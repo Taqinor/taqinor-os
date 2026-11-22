@@ -20,6 +20,7 @@ import json
 from unittest import mock
 
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import SimpleTestCase
 
 from apps.calepinage.models import (
     Calepinage, DossierReglementaire, GabaritDossierReglementaire,
@@ -112,6 +113,39 @@ class DepotTest(BaseGabarits):
         self.assertEqual(journal.created_by_id, self.user.pk)
         self.assertEqual(json.loads(journal.new_value)['code'],
                          'raccordement_bt')
+
+    def test_dossier_marocain_generique_creation_relecture_refus(self):
+        # ACAL822 (valeurs d'essai) : création, relecture, limite sans source
+        # 400 nommée, doublon de code 409, date future 400.
+        corps = {
+            'pays': 'ma', 'code': 'maroc_generique_bt',
+            'intitule': 'Dossier marocain générique',
+            'verifie_le': '2026-11-01',
+            'limites': [{'code': 'plafond_injection_kw', 'valeur': 5,
+                         'unite': 'kW',
+                         'source': 'notice remise par le distributeur'}]}
+        cree = self.api.post(URL, corps, format='json')
+        self.assertEqual(cree.status_code, 201, cree.data)
+        relu = self.api.get(f"{URL}{cree.data['gabarit']['id']}/").data
+        self.assertEqual(relu['verifie_le'], '2026-11-01')
+        self.assertEqual(relu['limites'], corps['limites'])
+        self.assertEqual(relu['pieces_attendues'], [])
+
+        sans_source = self.api.post(URL, dict(
+            corps, code='autre',
+            limites=[{'code': 'a', 'valeur': 1, 'unite': 'kW'}]),
+            format='json')
+        self.assertEqual(sans_source.status_code, 400, sans_source.data)
+        self.assertIn('limites[0].source', sans_source.data)
+
+        doublon = self.api.post(URL, dict(corps, code='dbl', limites=[
+            corps['limites'][0], corps['limites'][0]]), format='json')
+        self.assertEqual(doublon.status_code, 409, doublon.data)
+
+        futur = self.api.post(URL, dict(
+            corps, code='futur', verifie_le='2999-01-01'), format='json')
+        self.assertEqual(futur.status_code, 400, futur.data)
+        self.assertIn('verifie_le', futur.data)
 
     def test_modification_journalisee_avant_apres(self):
         gabarit_id = self._deposer().data['gabarit']['id']
@@ -404,3 +438,63 @@ class RefusTest(BaseGabarits):
             'champs': doublon}, format='json')
         self.assertEqual(mixte.status_code, 400, mixte.data)
         self.assertFalse(GabaritDossierReglementaire.objects.exists())
+
+
+class LimitesDeGabaritSansBaseTest(SimpleTestCase):
+    """ACAL822 — le contrôle des limites et de la date, sans base."""
+
+    LIMITE = {'code': 'plafond_injection_kw', 'valeur': 5, 'unite': 'kW',
+              'source': 'notice remise par le distributeur'}
+
+    def _refus(self, **champs):
+        from apps.calepinage.services.reglementaire import (
+            GabaritRefuse, _valider,
+        )
+
+        gabarit = GabaritDossierReglementaire(
+            pays='ma', code='maroc_generique_bt',
+            intitule='Dossier marocain générique', **champs)
+        with self.assertRaises(GabaritRefuse) as capture:
+            _valider(gabarit)
+        return capture.exception
+
+    def test_limite_sans_source_refusee_sous_son_champ(self):
+        sans_source = dict(self.LIMITE)
+        del sans_source['source']
+
+        refus = self._refus(limites=[sans_source])
+
+        self.assertEqual(list(refus.erreurs), ['limites[0].source'])
+        self.assertEqual(refus.statut, 400)
+
+    def test_limite_sans_code_ou_valeur_non_numerique_refusee(self):
+        self.assertEqual(
+            list(self._refus(limites=[dict(self.LIMITE, code='')]).erreurs),
+            ['limites[0].code'])
+        self.assertEqual(
+            list(self._refus(
+                limites=[dict(self.LIMITE, valeur='cinq')]).erreurs),
+            ['limites[0].valeur'])
+
+    def test_deux_limites_au_meme_code_donnent_un_conflit(self):
+        refus = self._refus(limites=[self.LIMITE, self.LIMITE])
+
+        self.assertEqual(refus.statut, 409)
+        self.assertEqual(list(refus.erreurs), ['limites[1].code'])
+
+    def test_verifie_le_dans_le_futur_refuse(self):
+        import datetime
+
+        refus = self._refus(verifie_le=datetime.date(2999, 1, 1))
+
+        self.assertEqual(list(refus.erreurs), ['verifie_le'])
+
+    def test_date_illisible_refusee_nommee(self):
+        from apps.calepinage.services.reglementaire import (
+            GabaritRefuse, _date_verifiee,
+        )
+
+        with self.assertRaises(GabaritRefuse) as capture:
+            _date_verifiee('01/11/2026')
+        self.assertEqual(list(capture.exception.erreurs), ['verifie_le'])
+        self.assertIsNone(_date_verifiee(''))

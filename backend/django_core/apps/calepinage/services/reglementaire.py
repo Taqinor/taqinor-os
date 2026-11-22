@@ -239,6 +239,11 @@ def _composer_dossier(entree, infos):
             'depose_le': gabarit.get('depose_le'),
             'depose_par': gabarit.get('depose_par'),
             'version': gabarit.get('version'),
+            # ACAL824 — la date de vérification, la durée réglée par la
+            # société et le verdict (``None`` : non réglé ou non vérifié).
+            'verifie_le': gabarit.get('verifie_le'),
+            'verification_max_jours': gabarit.get('verification_max_jours'),
+            'verification_perimee': gabarit.get('verification_perimee'),
         },
         'pieces': pieces,
         'champs_a_completer': champs,
@@ -358,7 +363,34 @@ def _adresse_du_site(calepinage):
     return adresse or ville
 
 
-def _entree_depuis_orm(gabarit, dossier, empreinte_courante=None):
+def _verification_perimee(verifie_le, max_jours, aujourdhui=None):
+    """ACAL824 — ``True`` si ``verifie_le`` date de plus de ``max_jours``
+    jours ; ``None`` quand on ne le SAIT pas (durée non réglée ou gabarit
+    jamais vérifié) — jamais ``False`` : « non vérifié » n'est pas « à jour »."""
+    if verifie_le is None or not max_jours:
+        return None
+    import datetime
+
+    aujourdhui = aujourdhui or datetime.date.today()
+    return (aujourdhui - verifie_le).days > max_jours
+
+
+def _max_jours_societe(parametres):
+    """ACAL824 — la durée de re-vérification saisie avec sa source (réglage
+    société ``gabarit_verification_max_jours``), ou ``None`` : jamais supposée."""
+    from .parametres_cles import SECTION_ELECTRIQUE_SOCIETE
+    from .valeurs import nombre
+
+    saisie = ((parametres or {}).get(SECTION_ELECTRIQUE_SOCIETE) or {}).get(
+        'gabarit_verification_max_jours')
+    if not isinstance(saisie, dict) or not saisie.get('source'):
+        return None
+    valeur = nombre(saisie.get('valeur'))
+    return int(valeur) if valeur is not None and valeur >= 1 else None
+
+
+def _entree_depuis_orm(gabarit, dossier, empreinte_courante=None,
+                       max_jours=None):
     depose_par = gabarit.depose_par
     fichier = gabarit.fichier
     return {
@@ -375,6 +407,11 @@ def _entree_depuis_orm(gabarit, dossier, empreinte_courante=None):
                             'nom_complet': str(depose_par)}
                            if depose_par is not None else None),
             'version': gabarit.version or None,
+            'verifie_le': (gabarit.verifie_le.isoformat()
+                           if gabarit.verifie_le else None),
+            'verification_max_jours': max_jours,
+            'verification_perimee': _verification_perimee(
+                gabarit.verifie_le, max_jours),
         },
         'pieces_attendues': gabarit.pieces_attendues or [],
         'champs': gabarit.champs or [],
@@ -425,8 +462,12 @@ def dossiers_du_calepinage(calepinage, *, pays=None):
             return None
         return empreinte_des_entrees(calepinage, 'fr', dossier=dossier)
 
+    from ..selectors import parametres_de_societe
+
+    max_jours = _max_jours_societe(parametres_de_societe(company))
     entrees = [_entree_depuis_orm(gabarit, dossiers.get(gabarit.pk),
-                                  _courante(dossiers.get(gabarit.pk)))
+                                  _courante(dossiers.get(gabarit.pk)),
+                                  max_jours)
                for gabarit in gabarits]
     return _composer_dossiers(calepinage_id=calepinage.pk, pays=pays,
                               entrees=entrees, infos=infos)
@@ -1004,7 +1045,7 @@ MESSAGE_GABARIT_NON_PDF = (
 
 #: Les champs qu'un dépôt / une modification de gabarit peut écrire.
 CHAMPS_GABARIT = ('pays', 'code', 'genre', 'intitule', 'version', 'actif',
-                  'pieces_attendues', 'champs')
+                  'pieces_attendues', 'champs', 'verifie_le', 'limites')
 
 #: Les clés vérifiées, dans l'ordre du modèle, pour NOMMER l'élément fautif
 #: d'une liste (``pieces_attendues[1].source_reference``).
@@ -1057,6 +1098,10 @@ def gabarit_publie(gabarit):
         'actif': gabarit.actif,
         'pieces_attendues': list(gabarit.pieces_attendues or []),
         'champs': list(gabarit.champs or []),
+        # ACAL822 — date de relecture (ISO ou ``null``) et limites saisies.
+        'verifie_le': (gabarit.verifie_le.isoformat()
+                       if gabarit.verifie_le else None),
+        'limites': list(gabarit.limites or []),
         'fichiers': ({'attachment': fichier.pk, 'nom': fichier.filename}
                      if fichier is not None else None),
         'depose_par': ({'id': auteur.pk, 'nom_complet': str(auteur)}
@@ -1155,6 +1200,31 @@ def _premier_element_fautif(liste, cles, prefixe):
     return prefixe
 
 
+def _limite_fautive(liste):
+    """ACAL822 — le chemin NOMMÉ de la limite fautive (même ordre de contrôle
+    que ``GabaritDossierReglementaire._erreur_limites``), ou ``limites``."""
+    from ..models import GabaritDossierReglementaire as Gabarit
+
+    if not isinstance(liste, list):
+        return 'limites'
+    plein, vus = Gabarit._texte_plein, set()
+    for rang, limite in enumerate(liste):
+        chemin = f'limites[{rang}]'
+        if not isinstance(limite, dict):
+            return chemin
+        code = limite.get('code')
+        if not plein(code) or code.strip() in vus:
+            return f'{chemin}.code'
+        vus.add(code.strip())
+        valeur = limite.get('valeur')
+        if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+            return f'{chemin}.valeur'
+        for cle in ('unite', 'source'):
+            if not plein(limite.get(cle)):
+                return f'{chemin}.{cle}'
+    return 'limites'
+
+
 def _valider(gabarit):
     """``clean_fields()`` + ``clean()`` du modèle, refus RE-NOMMÉS au chemin
     fautif.
@@ -1189,6 +1259,8 @@ def _valider(gabarit):
             elif champ == 'champs':
                 nom = _premier_element_fautif(gabarit.champs, _CLES_CHAMP,
                                               champ)
+            elif champ == 'limites':
+                nom = _limite_fautive(gabarit.limites)
             erreurs[nom] = ' '.join(messages)
         # Deux éléments au même code (rien d'autre à reprocher au corps) : un
         # CONFLIT entre éléments — un schéma ne sait pas exprimer l'unicité
@@ -1210,13 +1282,29 @@ def _valider(gabarit):
             statut=HTTPStatus.CONFLICT)
 
 
+def _date_verifiee(valeur):
+    """ACAL822 — ``verifie_le`` : une date ISO, ou vide (jamais relu)."""
+    import datetime
+
+    if valeur in (None, ''):
+        return None
+    try:
+        return datetime.date.fromisoformat(valeur)
+    except (TypeError, ValueError):
+        raise GabaritRefuse({'verifie_le': (
+            "« verifie_le » se donne en date ISO AAAA-MM-JJ "
+            f"(reçu : {valeur!r}).")})
+
+
 def _appliquer(gabarit, donnees):
     for champ in CHAMPS_GABARIT:
         if champ not in donnees:
             continue
         valeur = donnees[champ]
-        if champ in ('pieces_attendues', 'champs'):
+        if champ in ('pieces_attendues', 'champs', 'limites'):
             valeur = _liste_saisie(valeur, champ)
+        elif champ == 'verifie_le':
+            valeur = _date_verifiee(valeur)
         elif champ == 'actif':
             valeur = _booleen(valeur)
         elif valeur is None:

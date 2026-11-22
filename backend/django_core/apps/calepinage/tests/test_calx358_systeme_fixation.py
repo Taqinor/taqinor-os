@@ -91,7 +91,7 @@ class ModelesEtMigrationTest(SimpleTestCase):
         self.assertEqual(
             set(ComposantFixation.Role.values),
             {'rail', 'pince_milieu', 'pince_fin', 'crochet', 'embout',
-             'lest', 'visserie'})
+             'lest', 'visserie', 'echafaudage'})  # echafaudage : ACAL598
 
     def test_produit_opaque_jamais_une_fk_dure(self):
         champ = ComposantFixation._meta.get_field('produit_id')
@@ -141,6 +141,15 @@ class RegleDeQuantiteTest(SimpleTestCase):
             with self.subTest(base=base):
                 self.assertEqual(erreur_de_regle({'base': base}), '')
 
+    def test_bases_d_orientation_admises(self):
+        # ACAL569 — portrait et paysage, par module et par rangée.
+        for base in ('modules_portrait', 'modules_paysage',
+                     'rangees_portrait', 'rangees_paysage'):
+            with self.subTest(base=base):
+                self.assertIn(base, BASES)
+                self.assertEqual(erreur_de_regle({'base': base,
+                                                  'facteur': 4}), '')
+
     def test_refus(self):
         cas = (
             ([], 'objet'),
@@ -165,6 +174,27 @@ class RegleDeQuantiteTest(SimpleTestCase):
         self.assertEqual(
             erreur_de_regle({'base': 'role:rail', 'diviseur': None,
                              'libelle_diviseur': 'entraxe (m)'}), '')
+
+
+class CouverturesTest(SimpleTestCase):
+    """ACAL566 — le vocabulaire des couvertures EST celui du lead."""
+
+    def test_parite_avec_le_type_de_toiture_du_lead(self):
+        from apps.calepinage.services.catalogue_fixation import COUVERTURES
+        from apps.crm.models import Lead
+
+        self.assertEqual(COUVERTURES, tuple(Lead.TypeToiture.values))
+
+    def test_refus_nommes(self):
+        from apps.calepinage.services.catalogue_fixation import (
+            erreur_de_couvertures,
+        )
+
+        self.assertEqual(erreur_de_couvertures([]), '')
+        self.assertEqual(erreur_de_couvertures(['tuiles', 'bac_acier']), '')
+        self.assertIn('inconnue', erreur_de_couvertures(['ardoise']))
+        self.assertIn('deux fois', erreur_de_couvertures(['tuiles', 'tuiles']))
+        self.assertIn('liste', erreur_de_couvertures('tuiles'))
 
 
 class DecouplageTest(SimpleTestCase):
@@ -327,6 +357,16 @@ class CatalogueEnHttp(BaseApiCalepinage):
         self.assertEqual(reponse.data['composants[0].regle'],
                          [erreur_de_regle({'base': 'surface'})])
         self.assertIn('code', reponse.data)
+
+    def test_couvertures_acceptees_et_refusees_en_nommant_le_champ(self):
+        # ACAL566 — clé additive du contrat.
+        systeme = self._creer(couvertures=['tuiles'])
+        self.assertEqual(systeme['couvertures'], ['tuiles'])
+        reponse = self.api.post(URL_SYSTEMES,
+                                _corps(code='autre', couvertures=['ardoise']),
+                                format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('couvertures', reponse.data)
 
     def test_company_du_corps_ignoree(self):
         systeme = self._creer(company=self.autre.pk)

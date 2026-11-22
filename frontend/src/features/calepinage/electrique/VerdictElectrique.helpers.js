@@ -1,5 +1,9 @@
 // ENF22 — helpers extraits de VerdictElectrique.jsx (react-refresh/only-export-components) : le fichier composant n'exporte plus que des composants.
 
+/** ACAL879 — UN seul mot pour le statut « omis », lu par les deux écrans
+ *  (Verdict électrique et Raccordement). */
+export const LIBELLE_OMIS = 'Non calculé'
+
 /**
  * Les statuts publiés par `verdict_publiable`, chacun avec SON apparence.
  *
@@ -12,7 +16,7 @@ export const STATUTS = {
   sans_source: { libelle: 'Sans provenance', ton: 'outline', refuse: true },
   alerte: { libelle: 'À surveiller', ton: 'warning', refuse: false },
   non_verifiable: { libelle: 'Non vérifiable', ton: 'info', refuse: false },
-  omis: { libelle: 'Non calculé, motivé', ton: 'neutral', refuse: false },
+  omis: { libelle: LIBELLE_OMIS, ton: 'neutral', refuse: false },
   ok: { libelle: 'Conforme', ton: 'success', refuse: false },
 }
 

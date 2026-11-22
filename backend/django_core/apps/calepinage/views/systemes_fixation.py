@@ -34,8 +34,9 @@ from ..models import ComposantFixation, SystemeFixation
 from ..permissions import PeutLireOuEcrireCalepinage
 from ..serializers import forme_du_contrat, forme_reponse
 from ..services.catalogue_fixation import (
-    BASES, CLES_REGLE, PREFIXE_ROLE, systeme_de_societe,
+    BASES, CLES_REGLE, COUVERTURES, PREFIXE_ROLE, systeme_de_societe,
 )
+from ..services.controles_pose import CHAMPS_MM
 from ..services.systemes_fixation import (
     SystemeRefuse, creer_systeme, liste_des_systemes, modifier_systeme,
     systeme_publie,
@@ -71,6 +72,29 @@ assert set(CLES_REGLE) == {'base', 'facteur', 'diviseur', 'libelle_facteur',
                            'libelle_diviseur'}
 
 
+#: ACAL568 — les contrôles de pose : trois distances en mm (>= 0) et leur source
+#: (``erreur_de_controles_pose`` : source obligatoire dès qu'une valeur est
+#: saisie) ; ``{}`` = non déclarés. Déclaration seule, le service refuse.
+_CONTROLES_POSE = {
+    'type': 'object', 'additionalProperties': False,
+    'properties': {**{cle: {'type': 'number', 'minimum': 0, 'nullable': True}
+                      for cle in CHAMPS_MM}, 'source': _TEXTE_SANS_NUL},
+    # api-fuzz (PR #1523) — la règle « source dès qu'une valeur est saisie »
+    # est publiée : aucune distance (absente ou null), OU une source non blanche.
+    'anyOf': [
+        {'type': 'object', 'properties': {
+            cle: {'nullable': True, 'enum': [None]} for cle in CHAMPS_MM}},
+        {'type': 'object', 'required': ['source'], 'properties': {
+            'source': {'type': 'string',
+                       'pattern': r'^[^\u0000]*\S[^\u0000]*$'}}},
+    ]}
+
+
+@extend_schema_field(_CONTROLES_POSE)
+class _ChampControlesPose(serializers.JSONField):
+    """Déclaration des contrôles de pose (clés : ``CHAMPS_MM`` + source)."""
+
+
 def _corps(nom, *, creation):
     """Le corps PUBLIÉ (déclaration seule : le service lit et refuse). À la
     création, code, libellé et provenance sont requis (``SystemeFixation.clean``) ;
@@ -95,6 +119,11 @@ def _corps(nom, *, creation):
                                              required=False),
         'actif': serializers.BooleanField(required=False),
         'provenance': serializers.CharField(required=creation),
+        # ACAL566 — les couvertures servies (liste de ``COUVERTURES``).
+        'couvertures': serializers.ListField(
+            child=serializers.ChoiceField([(c, c) for c in COUVERTURES]),
+            required=False),
+        'controles_pose': _ChampControlesPose(required=False),  # ACAL568
         'composants': serializers.ListField(child=composant, required=False),
     })
 

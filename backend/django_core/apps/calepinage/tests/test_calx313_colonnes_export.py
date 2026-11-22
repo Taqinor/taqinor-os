@@ -26,11 +26,13 @@ from __future__ import annotations
 
 import csv
 import io
+import json
+import pathlib
 import unittest
 
 from apps.calepinage.services.export_csv import (
-    COLONNES_HORAIRE, DEFAULT_COLONNES_HORAIRE, PAS_DISPONIBLES,
-    ExportImpossible, export_csv,
+    COLONNES_HORAIRE, DEFAULT_COLONNES_HORAIRE, EXPORTS, PAS_DISPONIBLES,
+    ExportImpossible, LIGNE_PAS_JOUR, export_csv,
 )
 
 #: Un document d'essai — deux heures de série (une mesurée, une sans donnée
@@ -147,7 +149,68 @@ class PasDeTempsTest(unittest.TestCase):
         self.assertIn('journalier', capture.exception.motif)
 
     def test_pas_disponibles_declare_les_deux_valeurs_connues(self):
-        self.assertEqual(PAS_DISPONIBLES, ('horaire', '15min'))
+        self.assertEqual(PAS_DISPONIBLES, ('horaire', 'jour', '15min'))
+
+
+def _document_trois_jours():
+    points = []
+    for jour in (14, 15, 16):
+        for heure in range(24):
+            points.append({
+                'annee': 2020, 'mois': 1, 'jour': jour, 'heure': heure,
+                'p_w': 100.0 * (heure + jour), 'gi_w_m2': 10.0 * heure,
+                't2m_c': 15.0 + (heure % 5) if heure != 3 else None,
+                'p_ac_kw': 0.1 * (heure + jour), 'charge_kwh': 0.5 + heure,
+            })
+    return dict(DOCUMENT, points=points)
+
+
+class PasJourTest(unittest.TestCase):
+    """ACAL755 — ``pas='jour'`` : une ligne par jour, moyenne / somme."""
+
+    COLONNES = ['annee', 'mois', 'jour', 'heure', 'production_kw',
+                'p_ac_kw', 'gi_w_m2', 't2m_c', 'charge_kwh']
+
+    def _table(self, document):
+        table = lignes(export_csv(document, quoi='horaire',
+                                  colonnes=self.COLONNES, pas='jour'))
+        entete = table.index(self.COLONNES)
+        return table[:entete], [dict(zip(self.COLONNES, ligne))
+                                for ligne in table[entete + 1:]]
+
+    @staticmethod
+    def _virgule(valeur):
+        return ('%.3f' % valeur).replace('.', ',')
+
+    def test_une_ligne_par_jour_moyenne_des_puissances_somme_des_energies(self):
+        document = _document_trois_jours()
+        provenance, jours = self._table(document)
+        self.assertEqual(len(jours), 3)
+        for ligne, jour in zip(jours, (14, 15, 16)):
+            du_jour = [p for p in document['points'] if p['jour'] == jour]
+            self.assertEqual((ligne['jour'], ligne['heure']), (str(jour), ''))
+            moyenne_w = sum(p['p_w'] for p in du_jour) / 24
+            self.assertEqual(ligne['production_kw'],
+                             self._virgule(moyenne_w / 1000.0))
+            self.assertEqual(ligne['p_ac_kw'], self._virgule(
+                sum(p['p_ac_kw'] for p in du_jour) / 24))
+            self.assertEqual(ligne['charge_kwh'], self._virgule(
+                sum(p['charge_kwh'] for p in du_jour)))
+            presentes = [p['t2m_c'] for p in du_jour
+                         if p['t2m_c'] is not None]
+            self.assertAlmostEqual(
+                float(ligne['t2m_c'].replace(',', '.')),
+                sum(presentes) / len(presentes), places=2)
+        self.assertIn(['Pas de temps', LIGNE_PAS_JOUR], provenance)
+
+    def test_une_serie_deja_au_jour_n_est_pas_agregee_deux_fois(self):
+        au_jour = dict(DOCUMENT, points=[
+            {'annee': 2020, 'mois': 1, 'jour': 15, 'heure': None,
+             'p_w': 4000.0, 'charge_kwh': 12.0}])
+        _provenance, jours = self._table(au_jour)
+        self.assertEqual(len(jours), 1)
+        self.assertEqual(jours[0]['production_kw'], self._virgule(4.0))
+        self.assertEqual(jours[0]['charge_kwh'], self._virgule(12.0))
 
 
 class AucunMotDeMontantTest(unittest.TestCase):
@@ -175,6 +238,23 @@ class ParametresProprosAlHoraireTest(unittest.TestCase):
                            pas='15min')
         table = lignes(texte)
         self.assertIn(['mois', 'production_kwh'], table)
+
+
+class ContratColonnesTest(unittest.TestCase):
+    """ACAL753 — l'échantillon `calepinage_export_csv.json` affirme le
+    vocabulaire que l'écran (onglet Séries) importe : une seule liste."""
+
+    def test_echantillon_egal_au_service(self):
+        chemin = (pathlib.Path(__file__).resolve().parent.parent
+                  / 'contract_samples' / 'calepinage_export_csv.json')
+        exemple = json.loads(chemin.read_text(encoding='utf-8'))['exemple']
+        self.assertEqual(sorted(exemple['colonnes_horaire']),
+                         sorted(COLONNES_HORAIRE))
+        self.assertEqual(tuple(exemple['par_defaut']),
+                         DEFAULT_COLONNES_HORAIRE)
+        self.assertEqual(tuple(exemple['pas']), PAS_DISPONIBLES)
+        # ACAL754 — les exports offerts, dont « ombrage_modules ».
+        self.assertEqual(tuple(exemple['exports']), EXPORTS)
 
 
 if __name__ == '__main__':  # pragma: no cover

@@ -76,6 +76,7 @@ import { construireMaillagesPose } from './poseSurfaces'; // CALX124
 import { teinterAllees } from './teinteAllees'; // CALX403
 import { appliquerCiel } from './ciel'; // ACAL431
 import { porteeAppliquee, poserTrianglesDeRangee } from './piedsChassis'; // ACAL579 — boucle des tronçons sortie
+import { affectationGroupKey, affectationGroupLabel, identifiantsModulesParCellule, libelleModuleAffecte } from './libellesAffectation'; // ACAL729
 
 /** Dépendances injectées (carte + capacités de l'appareil, figées au boot). */
 export interface Scene3dDeps {
@@ -1038,22 +1039,7 @@ export function lireCouleurServie(texte: unknown): Rgb01 | null {
 /** GRIS des modules NON affectés — jamais une couleur de groupe, jamais l'invisible. */
 export const AFFECTATION_UNASSIGNED: Rgb01 = { r: 0.55, g: 0.56, b: 0.58 };
 
-/** Clé de groupe d'une ligne, selon le mode. `null` = module NON affecté.
- *  En mode MPPT la clé porte l'onduleur : deux onduleurs ont chacun leur entrée 1. */
-export function affectationGroupKey(row: AffectationRow, mode: AffectationMode): string | null {
-  if (mode === 'chaine') {
-    return row.chaine == null ? null : `c${row.chaine}`;
-  }
-  if (row.mppt == null) return null;
-  return `o${row.onduleur ?? 1}m${row.mppt}`;
-}
-
-/** Libellé lisible d'un groupe, pour la légende. */
-export function affectationGroupLabel(row: AffectationRow, mode: AffectationMode): string {
-  if (mode === 'chaine') return row.chaine == null ? 'Non affecté' : `Chaîne ${row.chaine}`;
-  if (row.mppt == null) return 'Non affecté';
-  return row.onduleur == null ? `MPPT ${row.mppt}` : `Onduleur ${row.onduleur} — MPPT ${row.mppt}`;
-}
+export { affectationGroupKey, affectationGroupLabel, identifiantsModulesParCellule } from './libellesAffectation'; // ACAL729 — extraits
 
 export interface AffectationLegendEntry {
   key: string | null;
@@ -1065,6 +1051,8 @@ export interface AffectationLegendEntry {
 export interface AffectationColoring {
   /** Couleur de CHAQUE module nommé par la table (non affecté inclus : gris). */
   colorByModule: Map<string, Rgb01>;
+  /** ACAL729 — libellé (« chaîne 2 ») des seuls modules AFFECTÉS. */
+  labelByModule: Map<string, string>;
   /** Légende, groupes dans l'ordre de PREMIÈRE apparition, « Non affecté » en dernier. */
   legend: AffectationLegendEntry[];
 }
@@ -1078,6 +1066,7 @@ export function buildAffectationColoring(
   mode: AffectationMode,
 ): AffectationColoring {
   const colorByModule = new Map<string, Rgb01>();
+  const labelByModule = new Map<string, string>(); // ACAL729
   const order: (string | null)[] = [];
   const parKey = new Map<string | null, AffectationLegendEntry>();
   for (const row of rows ?? []) {
@@ -1095,11 +1084,13 @@ export function buildAffectationColoring(
     }
     entry.count += 1;
     colorByModule.set(row.module, entry.color);
+    const libelle = libelleModuleAffecte(row, mode); // ACAL729
+    if (libelle) labelByModule.set(row.module, libelle);
   }
   const legend = order
     .map((k) => parKey.get(k)!)
     .sort((a, b) => (a.key === null ? 1 : 0) - (b.key === null ? 1 : 0));
-  return { colorByModule, legend };
+  return { colorByModule, labelByModule, legend };
 }
 
 /**
@@ -1119,20 +1110,6 @@ export function affectationColorFn(
     const c = id == null ? undefined : coloring.colorByModule.get(id);
     return c ?? AFFECTATION_UNASSIGNED;
   };
-}
-
-/**
- * ACAL286 — identifiant de module `<pan>#<rang>` de CHAQUE cellule de lattice posée, indexé
- * PAR CELLULE (la forme que `affectationColorFn` attend). Le rang est la position 1-based de la
- * cellule parmi les cellules occupées du pan, triées : c'est l'ordre de `geometry.panels` que
- * `serializeLayout` écrit, donc celui dont le serveur nomme ses modules (`chaines.py`).
- */
-export function identifiantsModulesParCellule(cellules: readonly number[], libelle: string): string[] {
-  const ids: string[] = [];
-  [...cellules].sort((a, b) => a - b).forEach((cellule, i) => {
-    ids[cellule] = `${libelle}#${i + 1}`;
-  });
-  return ids;
 }
 
 /** ACAL286 — la fonction cellule → couleur de la table SERVIE pour le pan actif (ou `null`). */

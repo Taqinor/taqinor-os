@@ -135,3 +135,20 @@ export function corpsDeSaisie(saisie, entree) {
   if (transformateur !== undefined) corps.transformateur = transformateur
   return corps
 }
+
+/* ACAL974 — la proposition de températures lue sur `temperatures` de `evaluer-electrique/` (le
+   serveur reste la seule règle : `temperatures_site`). `null` quand une saisie est enregistrée
+   ou que rien n'a été servi ; `{ etat: 'non_etablie' }` quand le noyau est en repli (`source`
+   nul ou `mention` non vide) ; `{ etat: 'proposee', froid, chaud, detail }` pour un TMY établi. */
+export function propositionTemperatures(temperatures, entree) {
+  const e = entree ?? {}
+  if (e.temperature_min_c != null || e.temperature_max_c != null) return null
+  if (!estObjet(temperatures)) return null
+  const { froid_c: froid, chaud_c: chaud, source, mention, detail } = temperatures
+  const lisible = Number.isFinite(froid) && Number.isFinite(chaud)
+  if (source !== 'tmy' || mention || !lisible) return { etat: 'non_etablie' }
+  return { etat: 'proposee', froid, chaud, detail: detail || '' }
+}
+
+/** Un nombre à la française, signe moins typographique. */
+export const nombreFr = (n) => String(n).replace('-', '−').replace('.', ',')

@@ -119,7 +119,10 @@ export default function Approbation({ calepinageId: idPropose = null, lectureSeu
   const etat = etatDecide ?? data
   if (!etat) return null
 
-  const champsFautifs = Object.keys(erreurs).filter((champ) => champ !== 'detail')
+  // ACAL946 — `decision` n'est pas un champ saisi : son refus se dit UNE fois, sous les boutons.
+  const champsFautifs = Object.keys(erreurs).filter((champ) => !['detail', 'decision'].includes(champ))
+  // ACAL946 — l'auteur qu'un autre approbateur peut relire ne voit pas « Approuver » (seul l'accord est refusé).
+  const accordPossible = etat.peut_approuver !== false
   const enAttente = suggestionsEnAttente(erreurs)
 
   return (
@@ -213,27 +216,29 @@ export default function Approbation({ calepinageId: idPropose = null, lectureSeu
               {erreurs.motif}
             </p>
           )}
-          {erreurs.decision && (
-            <p role="alert" data-testid="calx349-erreur-decision" className="mt-1 text-xs text-red-300">
-              {erreurs.decision}
-            </p>
-          )}
           {erreurs.empreinte && (
             <p role="alert" data-testid="acon23-erreur-empreinte" className="mt-1 text-xs text-red-300">
               {erreurs.empreinte}
             </p>
           )}
-          <div className="mt-3 flex gap-2">
-            <Button
-              type="button"
-              variant="success"
-              disabled={enCours || lectureSeule}
-              title={lectureSeule ? MOTIF_LECTURE_SEULE : undefined}
-              onClick={() => decider('approuve')}
-              data-testid="calx349-approuver"
-            >
-              Approuver
-            </Button>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {accordPossible ? (
+              <Button
+                type="button"
+                variant="success"
+                disabled={enCours || lectureSeule}
+                title={lectureSeule ? MOTIF_LECTURE_SEULE : undefined}
+                onClick={() => decider('approuve')}
+                data-testid="calx349-approuver"
+              >
+                Approuver
+              </Button>
+            ) : (
+              <p className="text-sm text-muted-foreground" data-testid="acal946-autre-relecteur"
+                title={etat.motif_sans_approbation || undefined}>
+                La conception doit être approuvée par un autre relecteur.
+              </p>
+            )}
             <Button
               type="button"
               variant="destructive"
@@ -245,6 +250,11 @@ export default function Approbation({ calepinageId: idPropose = null, lectureSeu
               Refuser
             </Button>
           </div>
+          {erreurs.decision && (
+            <p role="alert" data-testid="calx349-erreur-decision" className="mt-2 text-xs text-red-300">
+              {erreurs.decision}
+            </p>
+          )}
         </Card>
       ) : (
         <p className="text-xs text-muted-foreground" data-testid="calx349-sans-droit">

@@ -53,9 +53,12 @@ import {
   ecrireOptimisationDansDocument,
   semerOptimisationDepuisDocument,
 } from './optimisationDocument'; // CALX114 câblage
+import { emettreAlleeTechnique } from './alleeTechnique'; import { emettreChassis } from './chassisPavage'; // ACAL258 (sorti), ACAL585
 import { semerFondDepuisDocument, imageCapturePourDocument } from './fondDocument'; // CALX107 câblage ; ACAL509
 import { epingleDuSite } from './epingleSite'; // acceptation ACAL490 — épingle gardée sur un pan actif vide
 import { emettreProvenanceEpingle } from './provenanceEpingle'; import { emettreReperesChantier } from './reperesChantier'; import { emettreCoupures } from './coupuresPavage'; // ACAL193 (sorti), ACAL593, ACAL576
+import { orientationEmise } from './orientationDocument'; // ACAL608
+import { construireConsommation } from './consommationSerialisee'; import { type ChargeAvenir } from './chargesAvenir'; // ACAL780
 import { pitchSourceEmise } from './provenancePente'; import { emettrePortee } from './piedsChassis'; // ACAL252 (sorti), ACAL579
 
 /** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
@@ -227,7 +230,8 @@ export interface SerializedZoneGeometry {
    *  document sans rotation ressort octet pour octet identique. Sans cette clé, une
    *  symétrie appliquée était perdue au rechargement (les centres revenaient, pas
    *  l'orientation). */
-  panels: Array<{ cx: number; cy: number; face?: 'E' | 'W'; angleDeg?: number }>;
+  panels: Array<{ cx: number; cy: number; face?: 'E' | 'W'; angleDeg?: number; orient?: 'portrait' | 'landscape' }>;
+  panelOrientation?: 'portrait' | 'landscape' | 'mixed';
   /**
    * PV30 — MODE de placement de ces panneaux. ADDITIF et OMIS par défaut : un pan calepiné
    * sur les emplacements validés sérialise exactement comme avant (octet pour octet), et
@@ -273,6 +277,8 @@ export interface SerializedSolarAccess {
   assumptions: Record<string, unknown>;
   /** ISO 8601. */
   computedAt: string;
+  /** ACAL721/731 — accès par BANDE (sous-chaîne) de chaque module, aval → amont ; `null` = module sans bandes. Additif. */
+  bandes?: Array<number[] | null>;
 }
 
 /**
@@ -301,7 +307,10 @@ export function serializeSolarAccess(
     raw.assumptions && typeof raw.assumptions === 'object' && !Array.isArray(raw.assumptions)
       ? { ...raw.assumptions }
       : {};
-  return { values, method: { ...raw.method }, assumptions, computedAt };
+  // ACAL721 — liste de bandes alignée sur `values` (2 valeurs de [0;1] ou plus par module), sinon omise
+  const bandes = Array.isArray(raw.bandes) && raw.bandes.length === panelCount
+    ? raw.bandes.map((b) => (Array.isArray(b) && b.length >= 2 && b.every((v) => typeof v === 'number' && v >= 0 && v <= 1) ? b : null)) : null;
+  return { values, method: { ...raw.method }, assumptions, computedAt, ...(bandes?.some(Boolean) ? { bandes } : {}) };
 }
 
 /** CAL248 — relit l'accès solaire d'une géométrie de zone sérialisée. Absent, mal formé
@@ -342,7 +351,7 @@ export interface SerializedZone {
   pitchSource?: Record<string, unknown>;
   facingAzimuthDeg?: number;
   facingManual: boolean;
-  verrouille?: boolean; existant?: boolean; anneeMiseEnService?: number; coupuresPavage?: AreaRecord['coupuresPavage']; porteeEntrePieds?: AreaRecord['porteeEntrePieds']; // ACAL520 cadenas ; ACAL510 pan existant ; ACAL576 ; ACAL579 — émis seulement quand ils sont posés
+  verrouille?: boolean; existant?: boolean; anneeMiseEnService?: number; coupuresPavage?: AreaRecord['coupuresPavage']; porteeEntrePieds?: AreaRecord['porteeEntrePieds']; chassis?: AreaRecord['chassis']; // ACAL585 // ACAL520 cadenas ; ACAL510 pan existant ; ACAL576 ; ACAL579 — émis seulement quand ils sont posés
   neededPanels: number;
   neededAuto: boolean;
   /** WJ24 — géométrie pleine par pan (optionnel, additif). Présent seulement si un plan
@@ -703,6 +712,8 @@ export interface SerializedConsumption {
   saisons?: { ete: number; hiver: number };
   /** Appareils du calculateur (`ctx.consAppliances`). Omis si aucun appareil. */
   appareils?: Appliance[];
+  /** ACAL780 — charges à venir (voiture, PAC) : saisies, ou relues et réémises telles quelles. */
+  charges?: ChargeAvenir[];
   /** Comment la courbe a été obtenue — DÉDUITE, jamais un choix par défaut. */
   methode: 'facture' | 'courbe' | 'appareils';
   /** Provenance déclarative du bloc (jamais un chiffre, D-CALX 7). */
@@ -726,55 +737,11 @@ export function serializeConsumption(ctx: Ctx): { consumption?: SerializedConsum
   // ACAL26 — un bloc RELU du document (`ctx.consSource` posée par l'hydratation) est
   // toujours réémis : rouvrir puis enregistrer sans geste ne l'efface jamais.
   const relu = ctx.consSource != null;
-  const touche = consHandEdited || appareilsSrc.length > 0 || consDailyTarget > 0 || consSeasonal || relu;
+  const touche = consHandEdited || appareilsSrc.length > 0 || consDailyTarget > 0 || consSeasonal || relu
+    || ((ctx as { consCharges?: unknown[] }).consCharges?.length ?? 0) > 0; // ACAL780 — une charge seule suffit
   if (!touche) return {};
 
-  const courbe24 =
-    Array.isArray(ctx.consCurve) && ctx.consCurve.length === 24 ? ctx.consCurve.slice() : emptyCurve();
-  const methode: 'facture' | 'courbe' | 'appareils' = consHandEdited
-    ? 'courbe'
-    : appareilsSrc.length > 0
-      ? 'appareils'
-      : 'facture';
-  const consumption: SerializedConsumption = {
-    courbe24,
-    methode,
-    // ACAL26 — la provenance RELUE du document (`ctx.consSource`, posée par
-    // `appliquerHydratationAuCtx`) voyage telle quelle : rouvrir puis enregistrer sans
-    // geste ne réhorodate jamais la saisie. Sans provenance relue (saisie de cette
-    // session), l'atelier signe le bloc.
-    source:
-      ctx.consSource && typeof ctx.consSource.origine === 'string' && typeof ctx.consSource.saisi_le === 'string'
-        ? { origine: ctx.consSource.origine, saisi_le: ctx.consSource.saisi_le,
-            ...(typeof ctx.consSource.bareme === 'string' ? { bareme: ctx.consSource.bareme } : {}) } // ACAL311
-        : { origine: 'atelier', saisi_le: new Date().toISOString() },
-  };
-
-  const summerFactor =
-    typeof ctx.consSummerFactor === 'number' && Number.isFinite(ctx.consSummerFactor) ? ctx.consSummerFactor : null;
-  const winterFactor =
-    typeof ctx.consWinterFactor === 'number' && Number.isFinite(ctx.consWinterFactor) ? ctx.consWinterFactor : null;
-  if (consSeasonal && summerFactor != null && winterFactor != null) {
-    consumption.saisons = { ete: summerFactor, hiver: winterFactor };
-  }
-
-  // ACAL31 — une liste d'appareils VIDE relue du document repart vide (jamais retirée).
-  const appareilsRelus = (ctx.documentRelu?.consumption as { appareils?: unknown } | undefined)?.appareils;
-  if (appareilsSrc.length === 0 && ctx.consSource != null && Array.isArray(appareilsRelus) && appareilsRelus.length === 0) {
-    consumption.appareils = [];
-  }
-  if (appareilsSrc.length > 0) {
-    consumption.appareils = appareilsSrc.map((a) => ({
-      kind: a.kind,
-      label: a.label,
-      dailyKwh: a.dailyKwh,
-      startHour: a.startHour,
-      endHour: a.endHour,
-      billing: a.billing,
-    }));
-  }
-
-  return { consumption };
+  return { consumption: construireConsommation(ctx, appareilsSrc, consHandEdited, consSeasonal) }; // ACAL780 — corps extrait
 }
 
 /** Layout complet sérialisé : version + zones + repère léger (pin/outline). */
@@ -948,7 +915,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
       ...pitchSourceEmise(a.pitchSource, isActive ? ctx.pitchDeg : a.pitchDeg),
       facingAzimuthDeg: isActive ? ctx.facingAzimuthDeg : a.facingAzimuthDeg,
       facingManual: isActive ? ctx.facingManual : a.facingManual ?? false,
-      ...(a.verrouille ? { verrouille: true } : {}), ...emettreCoupures(a.coupuresPavage), ...emettrePortee(a.porteeEntrePieds), ...(a.existant ? { existant: true, ...(Number.isInteger(a.anneeMiseEnService) ? { anneeMiseEnService: a.anneeMiseEnService as number } : {}) } : {}), // ACAL520, ACAL510 — additifs
+      ...(a.verrouille ? { verrouille: true } : {}), ...emettreCoupures(a.coupuresPavage), ...emettrePortee(a.porteeEntrePieds), ...emettreChassis(a.chassis), ...(a.existant ? { existant: true, ...(Number.isInteger(a.anneeMiseEnService) ? { anneeMiseEnService: a.anneeMiseEnService as number } : {}) } : {}), // ACAL520, ACAL510 — additifs
       neededPanels: isActive ? ctx.neededPanels : a.neededPanels,
       neededAuto: isActive ? ctx.neededAuto : a.neededAuto,
       ...(a.buildingId ? { buildingId: a.buildingId } : {}), // CAL59 — additif
@@ -1000,6 +967,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
           : null;
       const posedIdx =
         live ?? Array.from({ length: Math.max(0, Math.min(g.grid.panels.length, Math.round(g.count))) }, (_, i) => i);
+      const ori = orientationEmise(g.grid, freePosed ?? posedIdx.map((i) => g.grid.panels[i])); // ACAL608
       const panels = freePosed
         ? freePosed.map((p) => ({
             cx: p.cx,
@@ -1013,7 +981,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
           }))
         : posedIdx.map((i) => {
             const p = g.grid.panels[i];
-            return { cx: p.cx, cy: p.cy, ...(p.face ? { face: p.face } : {}) };
+            return { cx: p.cx, cy: p.cy, ...(p.face ? { face: p.face } : {}), ...(ori.panelOrientation === 'mixed' ? { orient: p.orient } : {}) };
           });
       const posed = panels.length;
       zone.geometry = {
@@ -1025,6 +993,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
         count: posed,
         origin: [g.pack.origin[0], g.pack.origin[1]] as LngLat,
         panels,
+        ...ori, // ACAL608
         // PV30 — jamais émis hors placement libre (additif, rétro-compatible).
         ...(freePosed ? { mode: 'free' as const } : {}),
       };
@@ -1189,23 +1158,6 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
   return emettreProvenanceEpingle(reconcilierAvecDocumentRelu(ecrit, ctx), ctx);
 }
 
-// ═══════════ ACAL258 — L'ALLÉE TECHNIQUE DE CE CALEPINAGE ═══════════
-/** L'allée technique du document relu (`{largeurM > 0, source}`, clés inconnues conservées), ou `null`. */
-export function lireAlleeTechnique(doc: unknown): Ctx['alleeTechnique'] {
-  const brut = (doc as { alleeTechnique?: unknown } | null | undefined)?.alleeTechnique;
-  if (!brut || typeof brut !== 'object' || Array.isArray(brut)) return null;
-  const { largeurM, source } = brut as { largeurM?: unknown; source?: unknown };
-  if (typeof largeurM !== 'number' || !Number.isFinite(largeurM) || largeurM <= 0) return null;
-  if (typeof source !== 'string' || !source) return null;
-  return JSON.parse(JSON.stringify(brut)) as NonNullable<Ctx['alleeTechnique']>;
-}
-
-/** Fragment du document : `{ alleeTechnique }` quand elle existe, `{}` sinon (aucune clé inventée). */
-export function emettreAlleeTechnique(allee: Ctx['alleeTechnique']): { alleeTechnique?: NonNullable<Ctx['alleeTechnique']> } {
-  if (!allee || typeof allee.largeurM !== 'number' || !(allee.largeurM > 0)) return {};
-  return { alleeTechnique: JSON.parse(JSON.stringify(allee)) as NonNullable<Ctx['alleeTechnique']> };
-}
-
 /** ACAL307 — positions (et faces) d'une pose, sans les numéros : ce qui définit un pavage. */
 function empreintePose(panels: unknown): string {
   return JSON.stringify(
@@ -1239,7 +1191,7 @@ const CLES_RACINE_ATELIER = new Set([
 ]);
 /** Clés de PAN que l'atelier écrit lui-même ; toute autre clé relue est transmise telle quelle. */
 const CLES_PAN_ATELIER = new Set([
-  'id', 'label', 'vertices', 'obstacles', 'roofType', 'pitchDeg', 'pitchSource', 'facingAzimuthDeg', 'facingManual', 'verrouille', 'existant', 'anneeMiseEnService', 'coupuresPavage', 'porteeEntrePieds',
+  'id', 'label', 'vertices', 'obstacles', 'roofType', 'pitchDeg', 'pitchSource', 'facingAzimuthDeg', 'facingManual', 'verrouille', 'existant', 'anneeMiseEnService', 'coupuresPavage', 'porteeEntrePieds', 'chassis',
   'neededPanels', 'neededAuto', 'geometry', 'buildingId', 'edges', 'result',
 ]);
 
@@ -1433,7 +1385,7 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
       : {}),
     facingAzimuthDeg: z.facingAzimuthDeg ?? 180,
     facingManual: z.facingManual,
-    ...(z.verrouille === true ? { verrouille: true } : {}), ...emettreCoupures(z.coupuresPavage), ...emettrePortee(z.porteeEntrePieds), ...(z.existant === true ? { existant: true, anneeMiseEnService: Number.isInteger(z.anneeMiseEnService) ? z.anneeMiseEnService : null } : {}), // ACAL520, ACAL510
+    ...(z.verrouille === true ? { verrouille: true } : {}), ...emettreCoupures(z.coupuresPavage), ...emettrePortee(z.porteeEntrePieds), ...emettreChassis(z.chassis), ...(z.existant === true ? { existant: true, anneeMiseEnService: Number.isInteger(z.anneeMiseEnService) ? z.anneeMiseEnService : null } : {}), // ACAL520, ACAL510
     neededPanels: z.neededPanels,
     neededAuto: z.neededAuto,
     result: null,

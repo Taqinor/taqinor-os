@@ -96,6 +96,16 @@ def _cote_positive(valeur):
     return lu if lu is not None and lu > 0 else None
 
 
+def _sous_chaines(produit):
+    """ACAL731 — le nombre de sous-chaînes de la FICHE du module (lu par
+    ``specs_for_produit``, ACAL720), ou ``None`` : jamais 1 par défaut."""
+    from apps.stock.selectors import specs_for_produit
+
+    valeur = (specs_for_produit(produit) or {}).get('sous_chaines_par_module')
+    lu = nombre(valeur)
+    return int(lu) if lu is not None and lu >= 1 else None
+
+
 def _identifiant_module(produit_id):
     """L'``id`` STABLE d'un module du catalogue dans le document (CALX82)."""
     return '%s%s' % (PREFIXE_ID, produit_id)
@@ -127,6 +137,7 @@ def _entree_module(produit):
         'epaisseurMm': _cote_positive(cotes.get('epaisseur_mm')),
         'poidsKg': _cote_positive(cotes.get('poids_kg')),
         'pmaxWc': _cote_positive(cotes.get('puissance_wc')),
+        'sousChaines': _sous_chaines(produit),  # ACAL731, optionnel
         'source': SOURCE_FICHE,
     }
     manquants = [champ for champ in CHAMPS_REQUIS if module[champ] is None]

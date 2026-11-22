@@ -95,6 +95,24 @@ const LIBELLES_TAILLE = {
 }
 const LIBELLES_NON_INCLUS = { forage: 'forage', genie_civil: 'génie civil' }
 
+// ACAL1202 (D-ACAL-46) — le plan des panneaux de la production d'eau, dit en
+// mots : angle et orientation LUS dans la réponse (azimut boussole des pans,
+// 0 = nord ; aspect PVGIS de la référence, 0 = sud ⇒ + 180°).
+const ORIENTATIONS = ['nord', 'nord-est', 'est', 'sud-est', 'sud', 'sud-ouest', 'ouest', 'nord-ouest']
+const orientation = (azimut) => ORIENTATIONS[Math.round((((Number(azimut) % 360) + 360) % 360) / 45) % 8]
+function phrasePlanIrradiation(plan) {
+  if (!plan?.source) return null
+  if (plan.source === 'pose_calepinage') {
+    return "Production d'eau calculée sur la pose du calepinage : " + (plan.pans || [])
+      .map((p) => `${p.pan} ${fmtNum(p.inclinaison_deg)}° ${orientation(p.azimut_deg)}`).join(', ')
+  }
+  if (plan.source === 'repli') return "Production d'eau calculée sans ensoleillement du site : débit × heures du réglage société"
+  const ref = plan.plan_reference
+  return "Production d'eau calculée sur l'ensoleillement de référence du site"
+    + (ref ? ` (${fmtNum(ref.inclinaison_deg)}°, ${orientation(Number(ref.aspect_deg) + 180)})` : '')
+    + (plan.motif ? ` : ${plan.motif}` : '')
+}
+
 // AGR129 — le RÉSULTAT SERVEUR en direct (aucune valeur calculée ici : tout
 // vient de la réponse de l'aperçu AGR127).
 function ResultatPompage({ donnees, saisie, majPompage }) {
@@ -114,6 +132,7 @@ function ResultatPompage({ donnees, saisie, majPompage }) {
   const couv = d.couverture_pct_mois || null
   const moisCritique = d.conception?.mois_critique ?? null
   const refusAuto = refusAutoRemplirPompage(d)
+  const planIrradiation = d.production ? phrasePlanIrradiation(d.production.plan_irradiation) : null
   return (
     <div className="mt-4 grid gap-3" data-testid="resultat-pompage">
       <div className="rounded-lg border border-info/30 bg-info/10 p-3 text-sm">
@@ -142,6 +161,7 @@ function ResultatPompage({ donnees, saisie, majPompage }) {
         </p>
       )}
 
+      {planIrradiation && <p className="text-sm" data-testid="resultat-plan-irradiation">{planIrradiation}</p>}
       {couv && (
         <table className="w-full text-xs" data-testid="resultat-mois">
           <thead>

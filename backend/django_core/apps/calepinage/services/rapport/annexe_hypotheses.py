@@ -219,6 +219,30 @@ def _table_coefficients(lignes, motif, langue):
     return '<table class="annexe-hypotheses">%s%s</table>' % (entete, corps)
 
 
+#: ACAL751 — le titre et la mention de la liste des limites, par langue du
+#: rapport (``fr`` pour toute autre langue, comme les autres titres).
+TEXTES_LIMITES = {
+    'fr': ('Limites connues de la simulation',
+           'aucune limite déclarée par cette version'),
+    'en': ('Known limitations of the simulation',
+           'no limitation declared by this version'),
+}
+
+
+def _liste_limites(resultat, langue):
+    """ACAL751 — ``cascade.limites_connues`` TELLE QUE SERVIE (ACAL749)."""
+    code = 'en' if langue == 'en' else 'fr'
+    titre, mention = TEXTES_LIMITES[code]
+    cascade = resultat.get('cascade')
+    limites = cascade.get('limites_connues') if isinstance(cascade, dict) else None
+    textes = [str(lim.get('texte_%s' % code) or '').strip()
+              for lim in limites or () if isinstance(lim, dict)]
+    textes = [t for t in textes if t]
+    corps = ('<ul>%s</ul>' % ''.join('<li>%s</li>' % escape(t) for t in textes)
+             if textes else '<p>%s</p>' % escape(mention))
+    return '<p class="grandeur">%s</p>%s' % (escape(titre), corps)
+
+
 def html_de_section(contexte):
     """Le corps de la section ``hypotheses`` (le titre vient de l'assembleur).
 
@@ -226,7 +250,8 @@ def html_de_section(contexte):
     leur référence) — même sans grandeur employée ni grandeur omise,
     chacune s'imprime avec son seul en-tête : l'annexe ``entrees_exigees:
     []`` du contrat est toujours ``disponible``, elle ne tombe jamais sur
-    le rendu générique.
+    le rendu générique. ACAL751 : + la liste des limites connues de la
+    simulation, avant la table « Non calculé ».
     """
     resultat = contexte.get('resultat') or {}
     langue = contexte.get('langue') or 'fr'
@@ -238,8 +263,9 @@ def html_de_section(contexte):
     return (
         '<p class="grandeur">Hypothèses employées</p>%s'
         '<p class="grandeur">Coefficients de la norme électrique</p>%s'
-        '<p class="grandeur">Non calculé</p>%s'
+        '%s<p class="grandeur">Non calculé</p>%s'
         % (_table_hypotheses(postes, langue),
            _table_coefficients(coefficients, motif_norme, langue),
+           _liste_limites(resultat, langue),
            _table_non_calcule(non_calcule))
     )

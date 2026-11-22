@@ -453,3 +453,110 @@ class PoseReelleEnBase(BaseApiCalepinage):
     def test_autre_societe_introuvable(self):
         self.assertEqual(self._saisir(api=self.api_autre).status_code, 404)
         self.assertFalse(PoseReelle.objects.exists())
+
+
+# ── ACAL846 — consommation mesurée comparée à la simulée ──────────────────
+
+MESURES = json.loads(
+    (RACINE_APP / 'contract_samples' / 'calepinage_asbuilt_mesures.json')
+    .read_text(encoding='utf-8'))
+
+
+class EcartMesuresTest(SimpleTestCase):
+    """Le cœur PUR : 12 écarts, année moyenne de la fenêtre, refus nommés."""
+
+    def test_douze_ecarts_du_contrat(self):
+        mesures = service._mesures_kwh(MESURES['corps']['kwh'])
+        bloc = service._ecart_consommation(MESURES['resultat_simule'], mesures)
+        self.assertEqual(bloc, MESURES['exemple']['consommation'])
+        self.assertEqual(len(bloc['lignes']), 12)
+
+    def test_fenetre_de_deux_ans_ramenee_a_l_annee_moyenne(self):
+        une_annee = copy.deepcopy(MESURES['resultat_simule'])
+        une_annee['production']['total']['annees_fenetre'] = 1
+        mesures = [820.0] + [None] * 11
+        deux = service._ecart_consommation(MESURES['resultat_simule'], mesures)
+        une = service._ecart_consommation(une_annee, mesures)
+        self.assertEqual(deux['lignes'][0]['simule_kwh'], 820.0)
+        self.assertEqual(deux['lignes'][0]['ecart_pct'], 0.0)
+        self.assertEqual(une['lignes'][0]['simule_kwh'], 1640.0)
+        self.assertEqual(une['lignes'][0]['ecart_pct'], -50.0)
+
+    def test_sans_simulation_motif(self):
+        self.assertEqual(service._ecart_consommation({}, [None] * 12),
+                         MESURES['exemple_sans_simulation'])
+
+    def test_mesure_negative_nomme_kwh_2(self):
+        kwh = [1] * 12
+        kwh[2] = -5
+        with self.assertRaises(service.PoseRefusee) as refus:
+            service._mesures_kwh(kwh)
+        self.assertEqual(refus.exception.corps(), MESURES['refus_409_kwh'])
+
+    def test_mesure_illisible_et_liste_courte(self):
+        with self.assertRaises(service.PoseRefusee) as refus:
+            service._mesures_kwh(['abc'] + [1] * 11)
+        self.assertIn('kwh[0]', refus.exception.corps())
+        with self.assertRaises(service.PoseRefusee) as refus:
+            service._mesures_kwh([1] * 3)
+        self.assertIn('kwh', refus.exception.corps())
+
+    def test_action_gardee_par_l_approbation(self):
+        from apps.calepinage.permissions import PeutApprouverCalepinage
+        from apps.calepinage.views.asbuilt import ecart_mesures
+        from apps.calepinage.views.calepinages import CalepinageViewSet
+
+        actions = {a.__name__: a for a in CalepinageViewSet.get_extra_actions()}
+        self.assertEqual(actions['ecart_mesures'].url_path, 'ecart-mesures')
+        self.assertEqual(ecart_mesures.kwargs['permission_classes'],
+                         [PeutApprouverCalepinage])
+
+
+def url_ecart(pk):
+    return f'{url_detail(pk)}ecart-mesures/'
+
+
+class EcartMesuresEnBase(BaseApiCalepinage):
+    """La porte réelle : 200 au porteur de ``calepinage_approuver`` seul."""
+
+    def setUp(self):
+        super().setUp()
+        from apps.calepinage.permissions import CAL_APPROUVER, CAL_GERER
+
+        self.calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='Villa Anfa',
+            roof_layout=DOCUMENT, layout_hash='a' * 64,
+            resultat=copy.deepcopy(MESURES['resultat_simule']))
+        approbateur = User.objects.create_user(
+            username='acal846_approbateur', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='Approbateur846',
+                                     permissions=[CAL_VOIR, CAL_APPROUVER]))
+        gestionnaire = User.objects.create_user(
+            username='acal846_gerant', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='Gerant846',
+                                     permissions=[CAL_VOIR, CAL_GERER]))
+        self.api_approbateur = self._client(approbateur)
+        self.api_gerant = self._client(gestionnaire)
+
+    def _poster(self, api, corps=None):
+        return api.post(url_ecart(self.calepinage.pk),
+                        corps if corps is not None else MESURES['corps'],
+                        format='json')
+
+    def test_douze_ecarts_servis(self):
+        reponse = self._poster(self.api_approbateur)
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(reponse.data, MESURES['exemple'])
+
+    def test_sans_calepinage_approuver_403(self):
+        self.assertEqual(self._poster(self.api_gerant).status_code, 403)
+
+    def test_mesure_negative_409_nommant_kwh_2(self):
+        corps = copy.deepcopy(MESURES['corps'])
+        corps['kwh'][2] = -5
+        reponse = self._poster(self.api_approbateur, corps)
+        self.assertEqual(reponse.status_code, 409)
+        self.assertEqual(reponse.data, MESURES['refus_409_kwh'])
+
+    def test_autre_societe_404(self):
+        self.assertEqual(self._poster(self.api_autre).status_code, 404)

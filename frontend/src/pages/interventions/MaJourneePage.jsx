@@ -15,8 +15,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   CalendarDays, MapPin, ChevronRight, ClipboardList, Navigation, Camera,
   Tag, ListChecks, Mic, ShieldCheck, Wrench, AlertOctagon, CloudRain, Phone,
-  PenLine, RefreshCw,
+  PenLine, RefreshCw, Map as MapIcon,
 } from 'lucide-react'
+import PlanPoseTerrain from '../../features/installations/PlanPoseTerrain'
 import installationsApi from '../../api/installationsApi'
 import {
   Spinner, EmptyState, Badge, StatusPill, StatusAccentCard, Button,
@@ -573,6 +574,7 @@ const FLOW_TABS = [
   { value: 'trajet', label: 'Trajet', Icon: Navigation },
   { value: 'safety', label: 'Sécurité', Icon: ShieldCheck },
   { value: 'fiche', label: 'Fiche', Icon: ClipboardList },
+  { value: 'plan', label: 'Plan', Icon: MapIcon }, // ACAL589 — plan de pose, lu hors ligne
   { value: 'photos', label: 'Photos', Icon: Camera },
   { value: 'serials', label: 'N° série', Icon: Tag },
   { value: 'conso', label: 'Conso', Icon: ListChecks },
@@ -751,6 +753,7 @@ function InterventionFlowSheet({
           <TabsContent value="trajet" forceMount hidden={tab !== 'trajet'}><TrajetPanel intervention={interv} onChanged={panelChanged} /></TabsContent>
           <TabsContent value="safety" forceMount hidden={tab !== 'safety'}><SafetyPanel intervention={interv} onChanged={panelChanged} /></TabsContent>
           <TabsContent value="fiche" forceMount hidden={tab !== 'fiche'}><FichePanel intervention={interv} onChanged={panelChanged} /></TabsContent>
+          <TabsContent value="plan" hidden={tab !== 'plan'}><PlanPoseTerrain installationId={interv.installation} /></TabsContent>
           <TabsContent value="photos" forceMount hidden={tab !== 'photos'}><PhotosPanel intervention={interv} onChanged={panelChanged} /></TabsContent>
           <TabsContent value="serials" forceMount hidden={tab !== 'serials'}><SerialsPanel intervention={interv} onChanged={panelChanged} /></TabsContent>
           <TabsContent value="conso" forceMount hidden={tab !== 'conso'}><ConsommationPanel intervention={interv} onChanged={panelChanged} /></TabsContent>

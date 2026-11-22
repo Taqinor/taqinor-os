@@ -5,6 +5,7 @@ import { AlertCircle, Check } from 'lucide-react'
 import calepinageApi from '../../api/calepinageApi'
 import useResource from '../../hooks/useResource'
 import useSuiviJob from './production/useSuiviJob'
+import Pourquoi from './commun/Pourquoi'
 import { formatNumber } from '../../lib/format'
 import {
   Badge, Button, Card, Input, Spinner,
@@ -117,22 +118,25 @@ const LIGNES_TABLEAU = [
   {
     id: 'modules',
     libelle: 'Modules',
+    aide: <Pourquoi cle="comparatif.modules" />, // ACAL878
     rendu: (l) => (l.total_optimal != null && l.total_optimal !== l.total_modules
       ? `${nombre(l.total_modules)} (optimal : ${nombre(l.total_optimal)})`
       : nombre(l.total_modules)),
   },
-  { id: 'kwc', libelle: 'Puissance (kWc)', rendu: (l) => nombre(l.kwc, 2) },
+  { id: 'kwc', libelle: 'Puissance (kWc)', aide: <Pourquoi cle="comparatif.kwc" />, rendu: (l) => nombre(l.kwc, 2) },
   { id: 'orientation', libelle: 'Orientation', rendu: (l) => orientationTexte(l.orientation) },
   { id: 'marges', libelle: 'Marges', rendu: margesTexte },
   { id: 'methode', libelle: 'Méthode', rendu: (l) => l.methode || '—' },
   {
     id: 'ecart_modules',
     libelle: 'Écart modules / retenue',
+    aide: <Pourquoi cle="comparatif.ecart" />,
     rendu: (l) => ecart(l.ecart_modules),
   },
   {
     id: 'ecart_kwc',
     libelle: 'Écart kWc / retenue',
+    aide: <Pourquoi cle="comparatif.ecart" />,
     rendu: (l) => ecart(l.ecart_kwc, 2),
   },
 ]
@@ -267,6 +271,39 @@ function CoteACote({ lignes }) {
         ))}
       </div>
     </Card>
+  )
+}
+
+/* ACAL884 — les hypothèses de pertes et de météo comparées (`hypotheses`,
+   ACAL883) : servies telles quelles, dans l'ordre servi ; `null` ⇒ rien. */
+function HypothesesComparees({ hypotheses, lignes }) {
+  if (!hypotheses || typeof hypotheses.identiques !== 'boolean') return null
+  const nomDe = (id) => lignes.find((l) => String(l.id) === String(id))?.nom ?? `variante ${id}`
+  const nonSimulees = lignes.filter((l) => !l.simulee).length
+  const differences = Array.isArray(hypotheses.differences) ? hypotheses.differences : []
+  return (
+    <div className="space-y-1 text-sm" data-testid="cal-variantes-hypotheses">
+      {hypotheses.identiques ? (
+        <p data-testid="acal884-identiques">Mêmes hypothèses de pertes et de météo pour toutes les variantes comparées</p>
+      ) : (
+        <>
+          <p className="font-medium">Hypothèses différentes :</p>
+          <ul className="list-disc pl-5">
+            {differences.map((d) => (
+              <li key={d.cle} data-testid={`acal884-difference-${d.cle}`}>
+                {`${d.libelle} (${Object.entries(d.valeurs || {})
+                  .map(([id, v]) => `${v ?? 'non publiée'} chez ${nomDe(id)}`).join(', ')})`}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {nonSimulees > 0 && (
+        <p className="text-muted-foreground" data-testid="acal884-non-simulees">
+          {`${nonSimulees} variante(s) non comparée(s) : pas encore simulée(s)`}
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -476,7 +513,7 @@ export default function VariantesCompare() {
             {LIGNES_TABLEAU.map((rangee) => (
               <tr key={rangee.id} className="border-b border-border/60">
                 <th scope="row" className="p-3 text-left font-normal text-muted-foreground">
-                  {rangee.libelle}
+                  {rangee.libelle}{rangee.aide}
                 </th>
                 {lignes.map((ligne) => (
                   <td key={cle(ligne)} className="p-3" data-testid={`cal-${rangee.id}-${cle(ligne)}`}>
@@ -487,7 +524,7 @@ export default function VariantesCompare() {
             ))}
             <tr className="border-b border-border/60">
               <th scope="row" className="p-3 text-left font-normal text-muted-foreground">
-                Production P50 (kWh)
+                Production P50 (kWh)<Pourquoi cle="comparatif.p50_kwh" />
               </th>
               {lignes.map((ligne) => (
                 <td key={cle(ligne)} className="p-3" data-testid={`cal-p50-${cle(ligne)}`}>
@@ -601,6 +638,8 @@ export default function VariantesCompare() {
         </table>
       </Card>
       )}
+
+      {lignes.length > 0 && <HypothesesComparees hypotheses={data?.hypotheses} lignes={lignes} />}
 
       {lignes.length > 0 && <CoteACote lignes={lignes} />}
     </div>

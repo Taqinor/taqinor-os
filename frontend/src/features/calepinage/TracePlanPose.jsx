@@ -14,15 +14,27 @@ import { formatNumber } from '../../lib/format'
 const enPoints = (sommets) => sommets.map((p) => p.join(',')).join(' ')
 
 /** Le contour (emprise, terrain, toit) : trait plein, sans remplissage. */
-export function ContourPlan({ sommets, testid }) {
-  return (
+export function ContourPlan({ sommets, testid, hachure = false }) {
+  const contour = (
     <polygon
       data-testid={testid}
       points={enPoints(sommets)}
-      fill="none"
+      fill={hachure ? 'url(#plan-hachure-existant)' : 'none'}
       stroke="currentColor"
       strokeWidth="2"
     />
+  )
+  if (!hachure) return contour
+  // ACAL511 — pan « déjà en place » : hachuré à 45°, couleur du texte de l'ERP, contour inchangé.
+  return (
+    <>
+      <defs>
+        <pattern id="plan-hachure-existant" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="8" stroke="currentColor" strokeWidth="2" strokeOpacity="0.45" data-testid="plan-hachure" />
+        </pattern>
+      </defs>
+      {contour}
+    </>
   )
 }
 

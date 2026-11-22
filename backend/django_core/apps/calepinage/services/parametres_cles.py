@@ -157,12 +157,27 @@ CLES_SIMULATION = (
     ('rendement_specifique_max_kwh_kwc', 'Rendement spécifique vraisemblable, borne haute', 'kWh/kWc',
      'Réglage société, avec sa source : PVsyst et HelioScope ne publient aucune borne universelle ; '
      'aucune valeur proposée par défaut'),  # ACAL704
+    ('seuil_acces_retrait', 'Accès solaire sous lequel on propose de retirer un module', '',
+     'HelioScope — Optimize shaded modules (https://help-center.helioscope.com/hc/en-us/articles/'
+     '7835499970707-Optimize-shaded-modules) ; aucune valeur proposée par défaut'),  # ACAL716
+    ('ombrage_borne_courant_pct', "Perte d'ombrage à partir de laquelle on la dit courante", '%',
+     'Reonic — PV heatmap (https://docs.reonic.com/docs/en/offers-plan-pv-heatmap : lecture de l\'ombrage '
+     'par niveaux, relue le 21/11/2026 sans bande de perte chiffrée) ; aucune valeur proposée par défaut'),  # ACAL716
+    ('ombrage_borne_importante_pct', "Perte d'ombrage à partir de laquelle on la dit importante", '%',
+     'Reonic — PV heatmap (https://docs.reonic.com/docs/en/offers-plan-pv-heatmap : lecture de l\'ombrage '
+     'par niveaux, relue le 21/11/2026 sans bande de perte chiffrée) ; aucune valeur proposée par défaut'),  # ACAL716
     ('nettoyages_par_an', 'Nettoyages des panneaux par an', 'par an',
      "Réglage société — aucune valeur n'est supposée ; la salissure dépend de la pluviométrie locale "
      '(PVsyst, Soiling loss)'),  # ACAL742
     ('inclinaison_autonettoyage_deg', "Inclinaison à partir de laquelle la pluie lave les panneaux", '°',
      "Réglage société — aucune valeur n'est supposée ; la salissure dépend de la pluviométrie locale "
      '(PVsyst, Soiling loss)'),  # ACAL742
+    ('batterie_seuil_nuits_pct', 'Part de nuits au plancher à partir de laquelle la batterie est dite trop petite', '%',
+     "Réglage société — aucune valeur n'est supposée ; mot de verdict de la batterie (Pylon, Battery "
+     'Recommender)'),  # ACAL794
+    ('batterie_seuil_jours_pleine_pct', 'Part de jours pleine en dessous de laquelle la batterie est dite trop grande',
+     '%', "Réglage société — aucune valeur n'est supposée ; mot de verdict de la batterie (Pylon, Battery "
+     'Recommender)'),  # ACAL794
 )
 
 #: Les clés ADMISES de la section ``electrique_societe``, même forme et même
@@ -193,6 +208,21 @@ CLES_ELECTRIQUE_SOCIETE = (
      'Réglage société — texte saisi une fois, jamais écrit par le logiciel'),  # ACAL673
     ('tolerance_orientation_pans_deg', "Tolérance d'orientation pour câbler une chaîne sur deux pans", '°',
      'PVsyst / PVcase — pans de même orientation câblés ensemble ; aucune tolérance supposée'),  # ACAL650
+    ('distance_separation_foudre_min_m', 'Distance de séparation foudre minimale (paratonnerre ↔ champ)', 'm',
+     "Réglage société — étude foudre du site, avec sa source ; aucune distance supposée"),  # ACAL676
+    ('boucle_dc_max_m2', "Surface maximale d'une boucle de chaîne", 'm²',
+     "Réglage société — limite saisie avec sa source ; aucune surface admissible supposée"),  # ACAL678
+    ('seuil_orientations_micro', "Nombre d'orientations à partir duquel étudier des micro-onduleurs", '',
+     'Réglage société — seuil saisi avec sa source ; aucune règle de choix supposée'),  # ACAL671
+    ('seuil_ecart_acces_optimiseur', "Écart d'accès solaire dans une chaîne à partir duquel étudier des "
+     'optimiseurs', '',
+     'Réglage société — seuil saisi avec sa source (0 à 1) ; aucune règle de choix supposée'),  # ACAL671
+    ('gabarit_verification_max_jours', 'Nombre de jours au-delà duquel un gabarit vérifié est à redemander', 'jours',
+     'Réglage société — durée saisie avec sa source ; aucune durée supposée'),  # ACAL824
+    ('fiche_ecart_pmax_pct', "Écart toléré entre Pmax et Vmp × Imp d'une fiche module importée", '%',
+     'Réglage société — seuil saisi avec sa source ; vide : contrôle omis et dit'),  # ACAL657
+    ('seuil_acces_optimiseur', "Accès solaire sous lequel un module est proposé pour un optimiseur", '',
+     'Réglage société — seuil saisi avec sa source (0 à 1) ; vide : aucune proposition'),  # ACAL647
 )
 
 #: ``{section: tuple de déclarations}`` — le SEUL point d'entrée des lecteurs.
@@ -280,8 +310,13 @@ TYPES_CLES = {
         'modele_decomposition': {'type': 'enum', 'valeurs': ('erbs', 'disc')},  # ACAL456
         'rendement_specifique_min_kwh_kwc': {'type': 'nombre', 'minimum': 0},  # ACAL704
         'rendement_specifique_max_kwh_kwc': {'type': 'nombre', 'minimum': 0},  # ACAL704
+        'seuil_acces_retrait': {'type': 'nombre', 'minimum': 0, 'maximum': 1},  # ACAL716
+        'ombrage_borne_courant_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL716
+        'ombrage_borne_importante_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL716
         'nettoyages_par_an': {'type': 'entier', 'minimum': 0},  # ACAL742
         'inclinaison_autonettoyage_deg': {'type': 'nombre', 'minimum': 0, 'maximum': 90},  # ACAL742
+        'batterie_seuil_nuits_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL794
+        'batterie_seuil_jours_pleine_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL794
     },
     SECTION_ELECTRIQUE_SOCIETE: {
         'tolerance_polystring_acceptable_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL132
@@ -298,6 +333,13 @@ TYPES_CLES = {
         'facteur_regroupement': {'type': 'nombre', 'minimum': 0, 'maximum': 1},  # ACAL636
         'consigne_dc_plan_cablage': {'type': 'table'},  # ACAL673
         'tolerance_orientation_pans_deg': {'type': 'nombre', 'minimum': 0},  # ACAL650
+        'distance_separation_foudre_min_m': {'type': 'nombre', 'minimum': 0},  # ACAL676
+        'boucle_dc_max_m2': {'type': 'nombre', 'minimum': 0},  # ACAL678
+        'seuil_orientations_micro': {'type': 'entier', 'minimum': 1},  # ACAL671
+        'seuil_ecart_acces_optimiseur': {'type': 'nombre', 'minimum': 0, 'maximum': 1},  # ACAL671
+        'gabarit_verification_max_jours': {'type': 'entier', 'minimum': 1},  # ACAL824
+        'fiche_ecart_pmax_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL657
+        'seuil_acces_optimiseur': {'type': 'nombre', 'minimum': 0, 'maximum': 1},  # ACAL647
     },
 }
 

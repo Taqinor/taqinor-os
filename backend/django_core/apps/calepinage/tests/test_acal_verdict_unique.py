@@ -134,6 +134,74 @@ class VerdictUnique(BaseApiCalepinage):
                     evaluation_electrique(calepinage)['publiable'],
                     verdict_publiable(calepinage)['publiable'])
 
+    # ACAL616 — retenu + voisins de puissance, évalués à chaud, sans écrire.
+    def _onduleur(self, nom, ac_kw):
+        champs = dict(ond_n_mppt=2, ond_mppt_v_min=120.0, ond_mppt_v_max=500.0,
+                      ond_v_max_abs=600.0, ond_i_max_mppt_a=26.0,
+                      ond_phases=3)
+        if ac_kw is not None:
+            champs['ond_ac_kw'] = ac_kw
+        return self._produit(nom=nom, type_fiche='onduleur', **champs)
+
+    def _servi(self, calepinage):
+        reponse = self.api.get(
+            '/api/django/calepinage/calepinages/%s/configurations-onduleur/'
+            % calepinage.pk)
+        self.assertEqual(reponse.status_code, 200, reponse.content)
+        return reponse.json()
+
+    def test_voisins_dessus_dessous_et_fiche_incomplete(self):
+        import json
+        import pathlib
+
+        six = self._onduleur('Onduleur 6 kW', 6.0)
+        huit = self._onduleur('Onduleur 8 kW', 8.0)
+        cinq = self._onduleur('Onduleur 5 kW', 5.0)
+        sans = self._onduleur('Onduleur sans AC', None)
+        calepinage = self._calepinage(onduleur_produit=six.pk)
+        avant = Calepinage.objects.get(pk=calepinage.pk).resultat
+        servi = self._servi(calepinage)
+        echantillon = json.loads((pathlib.Path(__file__).resolve().parent.parent
+                                  / 'contract_samples'
+                                  / 'calepinage_configurations_onduleur.json')
+                                 .read_text(encoding='utf-8'))['exemple']
+        self.assertEqual(sorted(servi), sorted(echantillon))
+        lignes = servi['configurations']
+        self.assertEqual([(ligne['role'], ligne['produit_id'])
+                          for ligne in lignes],
+                         [('retenue', six.pk), ('plus_puissant', huit.pk),
+                          ('moins_puissant', cinq.pk)])
+        for ligne in lignes:
+            self.assertEqual(sorted(ligne),
+                             sorted(echantillon['configurations'][0]))
+            attendu = evaluation_electrique(
+                calepinage, entree={'onduleur_produit': ligne['produit_id']})
+            self.assertEqual(ligne['verdict'], attendu['verdict'])
+            self.assertEqual(ligne['alertes'], attendu['alertes'])
+        self.assertEqual(servi['retenue']['produit_id'], six.pk)
+        self.assertIn(sans.pk, [f['produit_id']
+                                for f in servi['fiches_incompletes']])
+        self.assertIsNone(servi['motif_vide'])
+        self.assertNotIn('prix', json.dumps(servi))
+        self.assertEqual(Calepinage.objects.get(pk=calepinage.pk).resultat,
+                         avant)
+
+    def test_sans_voisin_au_dessus(self):
+        cinq = self._onduleur('Onduleur 5 kW', 5.0)
+        # Le catalogue porte aussi « Onduleur 10 kW » (setUp) : retenu = 10.
+        calepinage = self._calepinage()
+        servi = self._servi(calepinage)
+        self.assertEqual([ligne['role'] for ligne in servi['configurations']],
+                         ['retenue', 'moins_puissant'])
+        self.assertEqual(servi['configurations'][1]['produit_id'], cinq.pk)
+        self.assertIn('plus puissant', servi['motif_vide'])
+
+    def test_aucun_onduleur_designe(self):
+        servi = self._servi(self._calepinage(onduleur_produit=None))
+        self.assertIsNone(servi['retenue'])
+        self.assertEqual(servi['configurations'], [])
+        self.assertIn('Matériel électrique', servi['motif_vide'])
+
     # ACAL934 — l'état à trois valeurs, le MÊME dans les quatre lectures.
     def _quatre_lectures(self, calepinage):
         from apps.calepinage.services.assistant import _bloc_electrique

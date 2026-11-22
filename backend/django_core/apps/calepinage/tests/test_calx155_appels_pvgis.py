@@ -211,6 +211,24 @@ CORPS_3X3 = {'pan': 1, 'axes': [
     {'nom': 'azimut_deg', 'min': 150, 'max': 210, 'pas': 30}]}
 
 
+#: ACAL812 — les clés que le seul ``critere`` ajoute au résultat.
+CLES_CRITERE_RESULTAT = {'optimum_mois', 'ecart_mois_kwh'}
+
+
+def _simuler_avec_mois(cal, *, variante, client):
+    """``_simuler_enregistre`` + une production MENSUELLE connue : l'énergie
+    de chaque mois vaut ``100 × mois`` kWh, plus un bonus de 10 kWh au mois 7
+    quand l'inclinaison est 30° (c'est elle qui gagne en juillet)."""
+    sortie = _simuler_enregistre(cal, variante=variante, client=client)
+    angle = variante.roof_layout['poseSurfaces'][0]['tiltDeg']
+    sortie['blocs']['production']['total']['kwc'] = 5.0
+    sortie['blocs']['production']['mensuel'] = [
+        {'mois': mois, 'p50_kwh': 100.0 * mois
+         + (10.0 if mois == 7 and angle == 30 else 0.0)}
+        for mois in range(1, 13)]
+    return sortie
+
+
 def _contrat_balayage(cle):
     import json
     import pathlib
@@ -258,13 +276,80 @@ class BalayageAppelsPvgisTest(unittest.TestCase):
         self.assertEqual(sortie['optimum']['azimut_deg'], 180.0)
         self.assertEqual(json.dumps(cal.roof_layout, sort_keys=True), avant,
                          'le document du calepinage ne doit pas bouger')
-        self.assertEqual(sorted(sortie),
-                         sorted(_contrat_balayage('exemple_resultat')))
+        # Sans ``critere`` : les clés du critère (ACAL812) ne sortent pas.
+        self.assertEqual(sorted(sortie), sorted(
+            set(_contrat_balayage('exemple_resultat')) - CLES_CRITERE_RESULTAT))
         for ligne in sortie['grille']:
             self.assertEqual(
                 sorted(ligne),
                 sorted(['inclinaison_deg', 'azimut_deg', 'p50_kwh',
                         'rendement_specifique_kwh_kwc']))
+
+    def test_acal812_critere_mois_lit_l_index_du_mois_sans_appel_de_plus(self):
+        from apps.calepinage.services.balayage import balayer
+
+        client, reseau = _client_enregistre()
+        sortie = balayer(self._cal(), dict(CORPS_3X3, critere={
+            'nom': 'mois', 'mois': 7}), client=client,
+            simuler=_simuler_avec_mois)
+        self.assertEqual(len(sortie['grille']), 9)
+        self.assertEqual(len(reseau), 9, 'aucun appel PVGIS de plus')
+        self.assertEqual(sortie['appels_pvgis'], 9)
+        for ligne in sortie['grille']:
+            bonus = 10.0 if ligne['inclinaison_deg'] == 30 else 0.0
+            # Juillet = index 6 de production.mensuel (700 kWh), jamais
+            # l'index 7 (août, 800 kWh).
+            self.assertEqual(ligne['p50_mois_kwh'], 700.0 + bonus)
+            self.assertEqual(ligne['rendement_mois_kwh_kwc'],
+                             (700.0 + bonus) / 5.0)
+        # L'optimum de l'année reste celui du rendement ANNUEL (20°, Sud) ;
+        # celui de juillet est à 30° (rendement du mois maximal).
+        self.assertEqual(sortie['optimum']['inclinaison_deg'], 20.0)
+        self.assertEqual(sortie['optimum_mois']['inclinaison_deg'], 30.0)
+        # 710 (juillet à 30°) − 700 (juillet à l'optimum de l'année).
+        self.assertEqual(sortie['ecart_mois_kwh'], 10.0)
+        self.assertEqual(
+            sorted(sortie),
+            sorted(_contrat_balayage('exemple_resultat')))
+        self.assertEqual(
+            sorted(sortie['grille'][0]), sorted(
+                ['inclinaison_deg', 'azimut_deg', 'p50_kwh',
+                 'rendement_specifique_kwh_kwc', 'p50_mois_kwh',
+                 'rendement_mois_kwh_kwc']))
+
+    def test_acal812_sans_critere_aucune_cle_de_plus(self):
+        from apps.calepinage.services.balayage import balayer
+
+        client, _ = _client_enregistre()
+        sortie = balayer(self._cal(), CORPS_3X3, client=client,
+                         simuler=_simuler_avec_mois)
+        self.assertEqual(CLES_CRITERE_RESULTAT & set(sortie), set())
+        self.assertNotIn('p50_mois_kwh', sortie['grille'][0])
+
+    def test_acal812_critere_mal_forme_nomme_critere_mois(self):
+        from apps.calepinage.services.balayage import (
+            BalayageInvalide, valider_demande)
+
+        layout = _layout_champ_au_sol()
+        for mois in (0, 13, 7.5, '7', True, None):
+            with self.subTest(mois=mois):
+                with self.assertRaises(BalayageInvalide) as capture:
+                    valider_demande(layout, dict(CORPS_3X3, critere={
+                        'nom': 'mois', 'mois': mois}))
+                self.assertEqual(capture.exception.champ, 'critere.mois')
+                self.assertTrue(capture.exception.forme)  # 400
+        with self.assertRaises(BalayageInvalide) as capture:
+            valider_demande(layout, dict(CORPS_3X3, critere={'nom': 'an'}))
+        self.assertEqual(capture.exception.champ, 'critere')
+        valider_demande(layout, dict(CORPS_3X3, critere={'nom': 'mois',
+                                                         'mois': 12}))
+
+    def test_acal812_le_corps_du_contrat_porte_le_critere(self):
+        from apps.calepinage.services.balayage import valider_demande
+
+        corps = _contrat_balayage('exemple_corps')
+        self.assertEqual(corps['critere'], {'nom': 'mois', 'mois': 7})
+        valider_demande(_layout_champ_au_sol(), corps)
 
     def test_un_client_neuf_par_point_est_detecte(self):
         """Mutant : sans le client partagé, le cache ne sert plus."""

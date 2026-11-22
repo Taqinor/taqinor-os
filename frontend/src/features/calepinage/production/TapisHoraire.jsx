@@ -3,10 +3,10 @@ import {
 } from 'react'
 import { useParams } from 'react-router-dom'
 import {
-  CartesianGrid, Legend, Line, LineChart, Tooltip, XAxis, YAxis,
+  CartesianGrid, Legend, Line, LineChart, ReferenceLine, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import calepinageApi from '../../../api/calepinageApi'
-import { lireCsvHoraire, texteDuFichier } from './serieHoraire'
+import { limiteOnduleur, lireCsvHoraire, texteDuFichier } from './serieHoraire'
 import { formatNumber } from '../../../lib/format'
 import { Button, Card, Spinner } from '../../../ui'
 import { ChartEmpty, ChartFrame, ChartTooltip } from '../../../ui/charts'
@@ -74,8 +74,8 @@ const GRANDEURS = [
 
 const LIGNE_JOUR = 'jour'
 
-/** ACAL446 — les sept colonnes historiques + `charge_kwh` (CALX313). */
-const COLONNES_HORAIRE = 'annee,mois,jour,heure,production_kw,irradiance_plan_w_m2,charge_kwh'
+/** ACAL446 — les sept colonnes historiques + `charge_kwh` ; ACAL738 + `p_dc_kw` (CALX313). */
+const COLONNES_HORAIRE = 'annee,mois,jour,heure,production_kw,irradiance_plan_w_m2,charge_kwh,p_dc_kw'
 
 const SANS_SERIE = (
   "La série horaire n'est pas encore enregistrée pour ce calepinage : le "
@@ -189,7 +189,7 @@ function journeesTypes(points, cle) {
 
 export default function TapisHoraire({
   calepinageId, serie: serieProposee, geometriePresente = true,
-  perime = false, motif = '', motifConsommation = '',
+  perime = false, motif = '', motifConsommation = '', cascade = null,
 }) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
@@ -241,7 +241,8 @@ export default function TapisHoraire({
     // Le garde ne retient l'étude qu'à la VRAIE requête : une série qui devient
     // disponible (simulation terminée) est alors lue une fois (acceptation ACAL490).
     idDejaTente.current = id
-    return Promise.resolve(calepinageApi.calepinages.exportCsv(id, 'horaire', COLONNES_HORAIRE))
+    return Promise.resolve(calepinageApi.calepinages.exportCsv(
+      id, 'horaire', COLONNES_HORAIRE, { suppressErrorToast: true }))
       .then(async (res) => setChargee(lireCsvHoraire(await texteDuFichier(res?.data))))
       .catch(async (erreur) => setRefus(await motifDuRefus(erreur) || SANS_SERIE))
       .finally(() => setEnCours(false))
@@ -262,6 +263,9 @@ export default function TapisHoraire({
     () => journeesTypes(points, grandeur.cle), [points, grandeur])
   const charges = useMemo(
     () => journeesTypes(points, 'charge_kwh'), [points])
+  const panneaux = useMemo(
+    () => journeesTypes(points, 'p_dc_kw'), [points])
+  const limite = useMemo(() => limiteOnduleur(cascade), [cascade])
 
   if (perime) {
     return (
@@ -291,12 +295,18 @@ export default function TapisHoraire({
     ?? (journees.length ? journees[journees.length - 1].mois : null)
   const journeeActive = journees.find((j) => j.mois === moisActif) || null
   const chargeActive = charges.find((c) => c.mois === moisActif) || null
+  // ACAL738 — P_DC : seulement sous la production (jamais sous l'irradiance).
+  const panneauxActifs = grandeur.cle === 'p_ac_kw'
+    ? panneaux.find((c) => c.mois === moisActif && c.pic !== null) || null : null
+  const manqueP = !panneauxActifs ? "la série servie ne porte pas la puissance des panneaux" : ''
+  const manqueLimite = limite.kw === null ? limite.motif : ''
   const dur = animationDuration()
 
   const donneesJournee = Array.from({ length: 24 }, (_, heure) => ({
     heure,
     production: journeeActive ? journeeActive.heures[heure] : null,
     charge: chargeActive ? chargeActive.heures[heure] : null,
+    panneaux: panneauxActifs ? panneauxActifs.heures[heure] : null,
   }))
 
   const valeur = (v) => (v === null
@@ -435,6 +445,25 @@ export default function TapisHoraire({
                 isAnimationActive={dur > 0}
                 animationDuration={dur}
               />
+              {panneauxActifs && (
+                <Line
+                  type="monotone"
+                  dataKey="panneaux"
+                  name="Puissance des panneaux (kW)"
+                  stroke={CHART_TOKENS.axis}
+                  strokeDasharray="4 3"
+                  dot={false}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              )}
+              {grandeur.cle === 'p_ac_kw' && limite.kw !== null && (
+                <ReferenceLine
+                  y={limite.kw}
+                  stroke={CHART_TOKENS.axis}
+                  label={`Limite de l'onduleur : ${formatNumber(limite.kw)} kW`}
+                />
+              )}
               {chargeActive && (
                 <Line
                   type="monotone"
@@ -456,6 +485,11 @@ export default function TapisHoraire({
               </li>
             ))}
           </ul>
+          {grandeur.cle === 'p_ac_kw' && journeeActive && (manqueP || manqueLimite) && (
+            <p className="text-xs text-muted-foreground" data-testid="acal738-sans-panneaux">
+              Puissance des panneaux non tracée : {[manqueP, manqueLimite].filter(Boolean).join(' ; ')}
+            </p>
+          )}
           {journeeActive && !chargeActive && (
             <p className="text-xs text-muted-foreground" data-testid="acal446-sans-charge">
               Consommation non tracée : {motifConsommation || 'consommation non calculée'}

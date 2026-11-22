@@ -430,7 +430,11 @@ def _surfaces_de_pose(roof_layout):
             + [t[3] for t in tables]
         modules = _nombre(moteur.get('modules'))
         kind = surface.get('kind')
+        appuis = surface.get('appuis') if isinstance(surface.get('appuis'), dict) else {}
         surfaces.append({
+            # ACAL580 — (entraxe, section) SAISIS des appuis, ``None`` sinon.
+            'appuis': tuple(v if v is not None and v > 0 else None
+                            for v in (_nombre(appuis.get('pasM')), _nombre(appuis.get('sectionM')))),
             'cle': str(surface.get('id') or 'surface-%d' % rang),
             'kind': kind if kind in LIBELLE_GENRE_SURFACE else 'sol',
             'libelle': str(surface.get('label') or surface.get('id')
@@ -1187,6 +1191,12 @@ def _corps_feuille_surface(surface, *, titre='', pied='',
                 ((x0, y0), (x1, y0), (x1, y1), (x0, y1)), vers_feuille,
                 contour=VERT_MODULE, remplissage=VERT_MODULE_FOND,
                 trait=TRAIT_MODULE))
+    poteaux, ligne_poteaux = _poteaux_de_surface(surface)
+    if contenu in (CONTENU_IMPLANTATION, CONTENU_POSE):
+        for numero, position in enumerate(poteaux, start=1):  # ACAL580 — P1…Pn
+            fx, fy = vers_feuille(position)
+            morceaux.append('<text x="%s" y="%s" font-size="2.5" fill="%s" text-anchor="middle">P%d</text>'
+                            % (_n(fx), _n(fy), NOIR, numero))
     x0, y0, x1, y1 = etendue
     morceaux.append(_cote_horizontale(x0, x1, y0, vers_feuille))
     morceaux.append(_cote_verticale(y0, y1, x0, vers_feuille))
@@ -1203,12 +1213,44 @@ def _corps_feuille_surface(surface, *, titre='', pied='',
         'Modules posés (moteur) : %s' % (
             modules if modules is not None else 'non publié'),
         'Tables posées : %d' % len(surface['tables']),
-        MENTION_REPERE_LOCAL,
-    ]
+    ] + ([ligne_poteaux] if ligne_poteaux else []) + [MENTION_REPERE_LOCAL]
     morceaux.extend(_bandeau_svg(titre, TITRE_FEUILLE_SURFACE, lignes, {},
                                  contenu))
     morceaux.append(_pied_svg(pied))
     return morceaux
+
+
+def _poteaux_de_surface(surface):
+    """ACAL580 — ``(positions, ligne)`` des poteaux d'une OMBRIÈRE : la marche
+    du contour d'ACAL578 (``fixation._positions_appuis``), entraxe ET section
+    saisis ; sinon aucun repère et « non décrits ». ``([], '')`` hors ombrière."""
+    if surface['kind'] != 'ombriere':
+        return [], ''
+    from .fixation import _positions_appuis
+
+    pas, section = surface.get('appuis') or (None, None)
+    if pas is None or section is None:
+        manque = 'entraxe des appuis non renseigné' if pas is None else 'section des appuis non renseignée'
+        return [], 'Poteaux : non décrits (%s)' % manque
+    positions = _positions_appuis(surface['contour'], pas) if surface['contour'] else []
+    return positions, 'Poteaux : %d (entraxe saisi %s m, section %s m)' % (
+        len(positions), ('%g' % pas).replace('.', ','), ('%.2f' % section).replace('.', ','))
+
+
+def _ligne_des_pieds(roof_layout):
+    """ACAL580 — « Pieds de châssis : n (portée saisie 2,4 m — source) », n lu
+    par la nomenclature (``fixation._grandeurs_du_document``, UNE source) ;
+    ``()`` sans portée saisie (plan d'aujourd'hui)."""
+    from .fixation import _grandeurs_du_document
+
+    pieds = _grandeurs_du_document(roof_layout)['valeurs'].get('pieds')
+    if pieds is None:
+        return ()
+    portees = dict.fromkeys(
+        'portée saisie %s m — %s' % (('%g' % _nombre(p['valeurM'])).replace('.', ','), p['source'])
+        for p in (zone.get('porteeEntrePieds') for zone in _zones(roof_layout))
+        if isinstance(p, dict) and _nombre(p.get('valeurM')) and str(p.get('source') or '').strip())
+    return ('Pieds de châssis : %d (%s)' % (pieds, ' ; '.join(portees)),)
 
 
 #: Le sous-titre d'une feuille de surface de pose.
@@ -1612,6 +1654,38 @@ TITRE_DE_CONTENU = {
 }
 
 
+#: ACAL889 — la source de la température citée, telle que le serveur la sert
+#: (``tensions_chaines`` : ``saisie`` | ``tmy``).
+_SOURCE_TEMPERATURE = {'saisie': 'saisie', 'tmy': 'météo type du site'}
+
+
+def _lignes_de_tensions(calepinage):
+    """ACAL889 — « Chaîne 1 : 343 V à vide maxi à froid (−5 °C, saisie) » par
+    chaîne, puis la consigne DC de la SOCIÉTÉ mot pour mot (vide : rien).
+
+    Les tensions sont celles SERVIES (``tensions_chaines.chaines_servies``,
+    la même lecture que le plan de câblage) : rien n'est recalculé ici.
+    """
+    from .documents.plan_cablage import _consigne_dc_de_societe
+    from .tensions_chaines import chaines_servies
+
+    lignes = []
+    for numero, servie in sorted(chaines_servies(calepinage).items()):
+        voc, froid = servie.get('voc_froid_v'), servie.get(
+            'temperature_froide_c')
+        if voc is None or froid is None:
+            lignes.append('Chaîne %s : tension non calculée : fiche '
+                          'incomplète' % numero)
+            continue
+        source = _SOURCE_TEMPERATURE.get(servie.get('temperature_source'))
+        lignes.append('Chaîne %s : %s V à vide maxi à froid (%s °C%s)' % (
+            numero, ('%g' % voc).replace('.', ','),
+            ('%g' % froid).replace('-', '−').replace('.', ','),
+            ', %s' % source if source else ''))
+    consigne = _consigne_dc_de_societe(calepinage)
+    return tuple(lignes) + ((consigne,) if consigne else ())
+
+
 def _rendre_plan_pose_svg(calepinage, *, moment=None, **options):
     """CAL211 — le plan de POSE, VÉRIFIÉ sans montant, portant l'empreinte."""
     from .. import selectors
@@ -1621,6 +1695,9 @@ def _rendre_plan_pose_svg(calepinage, *, moment=None, **options):
     # jamais la colonne brute, qui ne porte pas le bloc électrique).
     chaines = _lignes_de_chaines(selectors.resultat_servi(calepinage))
     bandeau += chaines or (MENTION_NON_CHAINE,)
+    if chaines:
+        bandeau += _lignes_de_tensions(calepinage)
+    bandeau += _ligne_des_pieds(getattr(calepinage, 'roof_layout', None))  # ACAL580
     # ACAL231 - la garde ne porte que sur les textes du catalogue / du moteur
     # (le bandeau), jamais sur le titre ou les libellés de pan SAISIS.
     _verifier_absence_d_argent('\n'.join(bandeau))

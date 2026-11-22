@@ -114,6 +114,15 @@
         "produit_par": "serveur",
         "disponible": true,
         "motif_indisponible": null
+      },
+      {
+        "code": "plan_lestage_pdf",
+        "libelle": "Plan de lestage",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/41/plan-lestage.pdf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Aucun système de fixation n'est saisi dans le catalogue de la société : la nomenclature de fixation n'est pas calculée. Saisissez un système et ses composants (rôle, unité, règle de quantité, source) pour l'obtenir."
       }
     ]
   },
@@ -230,6 +239,15 @@
         "produit_par": "serveur",
         "disponible": false,
         "motif_indisponible": "Aucune pièce disponible : un dossier technique ne se remet pas amputé en silence."
+      },
+      {
+        "code": "plan_lestage_pdf",
+        "libelle": "Plan de lestage",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/42/plan-lestage.pdf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Aucune conception enregistrée : le plan de lestage se dessine sur la géométrie stockée."
       }
     ]
   }

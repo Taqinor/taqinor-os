@@ -17,7 +17,7 @@ import assert from 'node:assert/strict'
 import {
   construireCle, hacherLayout, lireBrouillon, ecrireBrouillon, effacerBrouillon,
   brouillonPertinent, creerGestionnaireBrouillon,
-  purgerBrouillonsOrphelins, memoriserReprise, consommerReprise,
+  purgerBrouillonsOrphelins, memoriserReprise, consommerReprise, estPanneReseau,
 } from './brouillon.js'
 import { baseServeur, creerStockageMiroir, lireBrouillonServeur } from './brouillonServeur.js'
 import { documentContrat } from '../../test/fixtures/contractSamples.js'
@@ -491,4 +491,13 @@ test('ACAL400 — lecture serveur : exemple ⇒ proposé (serveur), exemple_vide
   assert.equal(await lireBrouillonServeur({
     lire: () => Promise.reject(new Error('réseau')), calepinageId: 41, hashBase: 'x',
   }), null)
+})
+
+test('ACAL945 — estPanneReseau : vrai sans réponse ou ERR_NETWORK ; faux pour ECONNABORTED et toute réponse HTTP', () => {
+  assert.equal(estPanneReseau(new Error('Network Error')), true)
+  assert.equal(estPanneReseau({ code: 'ERR_NETWORK' }), true)
+  assert.equal(estPanneReseau({ code: 'ECONNABORTED' }), false)
+  assert.equal(estPanneReseau({ code: 'ETIMEDOUT' }), false)
+  assert.equal(estPanneReseau({ response: { status: 409, data: {} } }), false)
+  assert.equal(estPanneReseau({ response: { status: 500 } }), false)
 })

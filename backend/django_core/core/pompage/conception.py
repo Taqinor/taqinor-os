@@ -465,7 +465,7 @@ def controle_pompes_par_variateur(*, pompes=None, variateur=None, mode=None):
     variateur (``pompe_kw``). kW de plaque SAISIS : aucune puissance déduite du
     CV ni du nom ; une donnée absente ⇒ ``non_verifiable`` et motif nommé."""
     sortie = {"verdict": "non_verifiable", "motif": None, "kw_demande": None,
-              "kw_variateur": None, "marge_kw": None}
+              "kw_variateur": None, "reserve_kw": None}
     kw_variateur = _flottant((variateur or {}).get("pompe_kw"))
     plaques = [_flottant((p or {}).get("kw")) for p in pompes or ()]
     if mode not in MODES_POMPES:
@@ -485,7 +485,7 @@ def controle_pompes_par_variateur(*, pompes=None, variateur=None, mode=None):
     sortie.update(
         verdict="conforme" if conforme else "depasse",
         kw_demande=round(demande, 2), kw_variateur=round(kw_variateur, 2),
-        marge_kw=round(kw_variateur - demande, 2),
+        reserve_kw=round(kw_variateur - demande, 2),  # kW restants sur la plaque du variateur
         motif=None if conforme else (
             "%s kW de pompes au-dessus des %s kW du variateur"
             % (round(demande, 2), round(kw_variateur, 2))))

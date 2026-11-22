@@ -44,6 +44,7 @@ ROUTES = {
     'pack_technique': ('post', 'pack-technique/'),
     'dossier_fin_chantier': ('post', 'dossier-fin-chantier/'),
     'dossier_reglementaire': ('post', 'generer-dossier/'),  # ACON44
+    'plan_lestage': ('get', 'plan-lestage.pdf/'),  # ACAL565
 }
 
 TOIT = {

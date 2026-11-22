@@ -1,10 +1,13 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { PVGIS_LIVE_LOSS_PCT } from '@rooflib/systemLoss'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { formatDate, formatNumber, formatPercent } from '../../../lib/format'
 import { PARAM_ONGLET } from '../atelier/onglets'
 import { estProfilDepart, MENTION_PUBLIEE } from '../reglages/profilDepart'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
+import Pourquoi from '../commun/Pourquoi'
 
 /* ============================================================================
    CALX65 — DIRE, DANS L'ATELIER, LAQUELLE DES DEUX PRODUCTIONS PARLE.
@@ -29,9 +32,26 @@ import { estIncomplet } from './BandeauProvenanceProduction.helpers'
    entier tant que le document a changé depuis le dernier calcul).
    ========================================================================== */
 
-const MENTION_RAPIDE = 'Estimation rapide (PVGIS PVcalc, pertes forfaitaires 20 %)'
+/* ACAL894 — PVGIS n'est nommé que s'il a répondu pour la carte (attribut
+   `data-source-prod` de `#rp9-reco-why`, posé par `optimizer.ts::paintCard`) ;
+   la perte citée est la constante réellement passée au service, importée. */
+const MENTION_PVGIS = `Estimation rapide (PVGIS PVcalc, pertes forfaitaires ${PVGIS_LIVE_LOSS_PCT} %)`
+const MENTION_ATELIER = "Estimation rapide de l'atelier — avant la simulation"
+const pvgisARepondu = (source) => /PVGIS/.test(source || '') && !/indisponible|table/i.test(source || '')
 
-export default function BandeauProvenanceProduction({ calepinageId }) {
+function useSourceCarte() {
+  const lire = () => document.getElementById('rp9-reco-why')?.dataset?.sourceProd ?? ''
+  const [source, setSource] = useState(lire)
+  useEffect(() => {
+    const obs = new MutationObserver(() => setSource(lire()))
+    obs.observe(document.body, { subtree: true, childList: true, attributeFilter: ['data-source-prod'] })
+    return () => obs.disconnect()
+  }, [])
+  return source
+}
+
+export default function BandeauProvenanceProduction({ calepinageId, chiffrage = null }) {
+  const source = useSourceCarte()
   const { data } = useResource(
     () => calepinageApi.calepinages.resultat(calepinageId), calepinageId,
     {
@@ -46,7 +66,7 @@ export default function BandeauProvenanceProduction({ calepinageId }) {
 
   return (
     <p className="mt-2 text-xs text-foreground" data-testid="calx65-bandeau">
-      <span data-testid="calx65-rapide">{MENTION_RAPIDE}</span>
+      <span data-testid="calx65-rapide">{pvgisARepondu(source) ? MENTION_PVGIS : MENTION_ATELIER}</span>
       {aSimulation && (
         <span data-testid="calx65-simulation">
           {' — Simulation : P50 '}
@@ -64,7 +84,29 @@ export default function BandeauProvenanceProduction({ calepinageId }) {
         </span>
       )}
       <EcartDevis ecart={data?.ecart_devis} />
+      <DevisAnnonce chiffrage={chiffrage} p50={aSimulation ? p50 : null} />
     </p>
+  )
+}
+
+/* ACAL995 — ce que le devis ANNONCERA (`chiffrage` de design-context, ACAL993,
+   reçu de l'atelier qui l'a déjà lu : jamais un second appel), SEULEMENT quand
+   il n'imprime pas la pose réelle (« standard ville ») ; non chiffré ⇒ le motif
+   servi. Écart = (simulation − devis) ÷ devis, à l'affichage. */
+function DevisAnnonce({ chiffrage, p50 }) {
+  const prod = chiffrage?.production_annuelle_kwh
+  if (!prod) return null
+  if (prod.etat === 'non_servi' || prod.etat === 'indisponible') {
+    const motif = chiffrage.omissions?.find((o) => o.grandeur === 'production_annuelle_kwh')?.motif
+    return <span className="block" data-testid="acal995-devis-annonce">{`Le devis n’est pas encore chiffré : ${motif || 'motif non publié'}`}</span>
+  }
+  if (prod.etat !== 'servi' || prod.source !== 'standard_ville' || !prod.valeur) return null
+  const ecart = typeof p50 === 'number' ? ((p50 - prod.valeur) / prod.valeur) * 100 : null
+  return (
+    <span className="block" data-testid="acal995-devis-annonce">
+      {`Le devis annonce : ${formatNumber(prod.valeur, { decimals: 0 })} kWh/an — production standard de la ville`}
+      {ecart !== null && ` (étude technique : ${ecart < 0 ? '−' : '+'}${formatNumber(Math.abs(ecart), { decimals: 1 })} %)`}
+    </span>
   )
 }
 
@@ -88,6 +130,74 @@ function EcartDevis({ ecart }) {
       {pct !== null && pct !== undefined && (
         <>{' — écart '}{signe}{formatNumber(pct, { decimals: 1 })}{' %'}</>
       )}
+    </span>
+  )
+}
+
+/* ACAL980 — « Ce qui est supposé » : les replis cachés du moteur (`suppose[]` de
+   `GET resultat/`, contrat `calepinage_resultat.json`), chacun avec sa valeur et
+   le champ à renseigner. Rien n'est calculé ici ; liste vide ou absente ⇒ rien. */
+export function Suppose({ suppose }) {
+  if (!Array.isArray(suppose) || suppose.length === 0) return null
+  return (
+    <div className="text-sm" data-testid="acal980-suppose">
+      <p className="text-xs font-medium text-muted-foreground">Ce qui est supposé</p>
+      <ul className="list-disc pl-5 text-xs">
+        {suppose.map((repli) => (
+          <li key={repli.code} data-testid={`acal980-${repli.code}`}>
+            {repli.libelle}
+            <span className="block text-muted-foreground">{`À renseigner : ${repli.champ}`}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+/* ACAL854 — l'écart à PVGIS que la simulation calcule déjà (`validation`,
+   `services/validation.py::ecart_vs_pvcalc`) : la valeur servie, une décimale,
+   signée. Aucun seuil ici : sans tolérance réglée par la société, pas de verdict. */
+export function EcartPvgis({ validation }) {
+  const pct = validation?.ecart_pct
+  if (typeof pct !== 'number') return null
+  const signe = pct < 0 ? '−' : (pct > 0 ? '+' : '')
+  const sansVerdict = validation.tolerance_pct == null && validation.verdict == null
+  return (
+    <p className="text-sm text-muted-foreground" data-testid="acal854-ecart-pvgis">
+      {'Comparé à PVGIS au même endroit : '}{signe}{formatNumber(Math.abs(pct), { decimals: 1 })}{' %'}
+      <Pourquoi cle="production.ecart_pvgis" valeurs={{ validation }} />{/* ACAL873 */}
+      {sansVerdict && (
+        <span className="block text-xs" data-testid="acal854-sans-verdict">
+          {'écart publié sans verdict — la tolérance n\'est pas réglée ('}
+          <Link to="/calepinage/reglages#tolerance_validation_pct" className="text-primary-text underline"
+            data-testid="acal854-lien-tolerance">régler la tolérance</Link>{')'}
+        </span>
+      )}
+      <VoyantPvgis validation={validation} />
+    </p>
+  )
+}
+
+/* ACAL855 — le voyant affiche le `verdict` SERVI et la tolérance de la société ;
+   il ne décide d'aucun seuil. */
+function VoyantPvgis({ validation }) {
+  const { verdict, tolerance_pct: tol, avertissement } = validation
+  if (verdict !== 'dans_la_tolerance' && verdict !== 'hors_tolerance') return null
+  const tolerance = `±${formatNumber(tol, { decimals: Number.isInteger(tol) ? 0 : 1 })} %`
+  if (verdict === 'dans_la_tolerance') {
+    return (
+      <span className="mt-1 block w-fit rounded bg-success/10 px-2 py-1 text-xs text-success-text"
+        data-testid="acal855-voyant" data-verdict="vert">
+        {`Dans la tolérance de ${tolerance} réglée par votre société`}
+      </span>
+    )
+  }
+  return (
+    <span className="mt-1 block w-fit rounded border border-warning/40 bg-warning/10 px-2 py-1 text-xs text-warning"
+      data-testid="acal855-voyant" data-verdict="orange">
+      {`Hors de la tolérance de ${tolerance} : vérifiez les pertes et la météo `}
+      <Link to={`?${PARAM_ONGLET}=pertes`} className="underline" data-testid="acal855-lien-pertes">voir les pertes</Link>
+      {avertissement && <span className="block" data-testid="acal855-avertissement">{avertissement}</span>}
     </span>
   )
 }
@@ -185,6 +295,43 @@ export function ReglagesUtilises({ simulation, ouvert, onBascule }) {
 const nonPublie = (v) => (v === null || v === undefined || v === '' ? 'non publié' : String(v))
 
 /** Le bloc `meteo` : service, bases, fenêtre, horizon, fuseau, date d'obtention. */
+/** ACAL745 — « Deuxième source météo » : l'écart annuel servi entre deux bases
+    (`meteo.comparaison_base`), son motif quand il est `null`, et le détail
+    mensuel replié. Aucun verdict, aucune couleur : les valeurs telles que
+    servies. Clé absente : rien. */
+export function EcartBases({ comparaison }) {
+  if (!comparaison || typeof comparaison !== 'object') return null
+  const ecart = comparaison.ecart_pct
+  const mois = Array.isArray(comparaison.mensuel) ? comparaison.mensuel : []
+  if (ecart === null || ecart === undefined) {
+    return (
+      <p className="text-sm" data-testid="acal745-ecart">
+        {`Deuxième source météo non comparée : ${comparaison.motif || 'motif non publié'}`}
+      </p>
+    )
+  }
+  return (
+    <div className="text-sm" data-testid="acal745-ecart">
+      <p>
+        {`Deuxième source météo (${comparaison.base_comparee}) : ${formatPercent(ecart, { decimals: 1 })} `
+          + `de rayonnement par an par rapport à ${comparaison.base_principale}`}
+      </p>
+      {mois.length > 0 && (
+        <details data-testid="acal745-mensuel">
+          <summary className="min-h-11 cursor-pointer text-sm">Mois par mois</summary>
+          <ul className="text-sm">
+            {mois.map((m) => (
+              <li key={m.mois} data-testid={`acal745-mois-${m.mois}`}>
+                {`Mois ${m.mois} : ${formatPercent(m.ecart_pct, { decimals: 1 })}`}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  )
+}
+
 export function SourceMeteo({ meteo }) {
   if (!meteo?.service) return null
   const horizon = meteo.horizon?.origine
@@ -204,6 +351,7 @@ export function SourceMeteo({ meteo }) {
     ['Obtenue le', obtenue],
   ]
   return (
+    <>
     <details className="text-sm" data-testid="enf15-source-meteo">
       <summary className="cursor-pointer text-xs font-medium text-muted-foreground">Source météo</summary>
       <dl className="mt-1 grid grid-cols-2 gap-x-3 text-xs">
@@ -215,6 +363,8 @@ export function SourceMeteo({ meteo }) {
         ))}
       </dl>
     </details>
+    <EcartBases comparaison={meteo.comparaison_base} />
+    </>
   )
 }
 

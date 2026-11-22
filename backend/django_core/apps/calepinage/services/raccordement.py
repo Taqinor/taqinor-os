@@ -47,6 +47,7 @@ from core.electrique.types import (
     COTE_AC, NATURE_FONCTIONNELLE, NATURE_MATERIELLE, STATUT_ALERTE,
     STATUT_BLOQUANT, STATUT_NON_VERIFIABLE, STATUT_OK, VerdictElectrique, fr,
 )
+from . import limites_livraison as _limites
 from .valeurs import nombre as _nombre
 
 import logging
@@ -66,6 +67,7 @@ CODE_PUISSANCE_SOUSCRITE = 'puissance_souscrite'
 CODE_REGIME_PHASES = 'regime_phases'
 CODE_TENSION_NOMINALE = 'tension_nominale'
 CODE_DESEQUILIBRE = 'desequilibre_phases'
+CODE_LIMITATION_INJECTION = 'limitation_injection'  # ACAL1187 — le sixième
 
 #: Intitulés publiés par le contrat CALX205 (clé ``libelle`` de chaque
 #: verdict). Ils vivent ici pour qu'un écran et un test les lisent au même
@@ -77,6 +79,7 @@ LIBELLES = {
     CODE_REGIME_PHASES: "Régime de l'onduleur face au branchement",
     CODE_TENSION_NOMINALE: 'Tension nominale employée par le calcul',
     CODE_DESEQUILIBRE: 'Déséquilibre entre les phases',
+    CODE_LIMITATION_INJECTION: "Limitation de l'injection",
 }
 
 #: Le motif publié quand aucune limite d'élévation n'est saisie — texte du
@@ -447,7 +450,7 @@ def verdicts_raccordement(conception, saisie, reglages=None):
         ``{puissance_injectee_kva, source_puissance, phases_onduleur,
         tension_employee_v, verdicts}`` — ``verdicts`` est le tuple des trois
         ``VerdictElectrique`` (puissance souscrite, régime, tension), dans
-        l'ordre du contrat.
+        l'ordre du contrat ; ``limitation`` est le sixième (ACAL1187).
 
     Raises:
         RaccordementInvalide: ``cos_phi_impose`` saisi sans
@@ -469,18 +472,25 @@ def verdicts_raccordement(conception, saisie, reglages=None):
     phases_onduleur = _phases_onduleur(conception)
     tension_employee = _tension_employee_v(conception)
 
+    verdicts = (
+        _verdict_puissance_souscrite(saisie, injectee, source_puissance,
+                                     motif_puissance),
+        _verdict_regime_phases(saisie, phases_onduleur),
+        _verdict_tension_nominale(saisie, tension_employee),
+    )
+    # ACAL1187 — le sixième contrôle : toujours publié sous ``limitation`` (le
+    # bloc le range en dernier) ; une ALERTE rejoint ``verdicts`` pour que
+    # ``_motifs_du_raccordement`` la reprenne sans recalcul.
+    limitation = _verdict_limitation_injection(conception, saisie)
     return {
         'puissance_injectee_kva': (None if injectee is None
                                    else round(injectee, 3)),
         'source_puissance': source_puissance,
         'phases_onduleur': phases_onduleur,
         'tension_employee_v': tension_employee,
-        'verdicts': (
-            _verdict_puissance_souscrite(saisie, injectee, source_puissance,
-                                         motif_puissance),
-            _verdict_regime_phases(saisie, phases_onduleur),
-            _verdict_tension_nominale(saisie, tension_employee),
-        ),
+        'verdicts': verdicts + ((limitation,) if limitation.statut
+                                == STATUT_ALERTE else ()),
+        'limitation': limitation,
     }
 
 
@@ -619,6 +629,10 @@ def _verdict_puissance_souscrite(saisie, injectee, source, motif):
 def _verdict_regime_phases(saisie, phases_onduleur):
     """Onduleur TRIPHASÉ sur branchement MONOPHASÉ = BLOQUANT."""
     phases_saisies = _entier(saisie.get('phases'))
+    # ACAL687 — la source CITÉE : l'écran Raccordement, ou « Saisies
+    # électriques » quand c'est elle qui a fourni la valeur (voir
+    # ``electrique._motifs_du_raccordement``).
+    source = saisie.get('phases_source') or 'saisie — phases'
     if phases_saisies not in (1, 3):
         return VerdictElectrique(
             code=CODE_REGIME_PHASES, nature=NATURE_MATERIELLE,
@@ -632,7 +646,7 @@ def _verdict_regime_phases(saisie, phases_onduleur):
                     "onduleur ne publie pas son régime : « phases » manque "
                     "sur la fiche, et aucun régime n'est supposé."
                     % phases_saisies,
-            borne=float(phases_saisies), valeur=None, source='saisie — phases')
+            borne=float(phases_saisies), valeur=None, source=source)
     if phases_onduleur == 3 and phases_saisies == 1:
         return VerdictElectrique(
             code=CODE_REGIME_PHASES, nature=NATURE_MATERIELLE,
@@ -642,7 +656,7 @@ def _verdict_regime_phases(saisie, phases_onduleur):
                     "« phases » si l'abonnement est en réalité triphasé, ou "
                     "retenez un onduleur monophasé.",
             borne=float(phases_saisies), valeur=float(phases_onduleur),
-            source='saisie — phases')
+            source=source)
     if phases_onduleur == phases_saisies:
         return VerdictElectrique(
             code=CODE_REGIME_PHASES, nature=NATURE_MATERIELLE,
@@ -651,7 +665,7 @@ def _verdict_regime_phases(saisie, phases_onduleur):
                     "les deux régimes concordent."
                     % (_mot_regime(phases_onduleur), phases_saisies),
             borne=float(phases_saisies), valeur=float(phases_onduleur),
-            source='saisie — phases')
+            source=source)
     # Onduleur(s) MONOphasé(s) sur un réseau triphasé : configuration normale
     # — c'est la répartition des phases (CALX243) qui la surveille.
     return VerdictElectrique(
@@ -660,7 +674,7 @@ def _verdict_regime_phases(saisie, phases_onduleur):
                 "configuration admise — la répartition des onduleurs entre "
                 "les phases est traitée par le contrôle de déséquilibre.",
         borne=float(phases_saisies), valeur=float(phases_onduleur),
-        source='saisie — phases')
+        source=source)
 
 
 def _verdict_tension_nominale(saisie, tension_employee):
@@ -944,6 +958,47 @@ def _verdict_desequilibre(desequilibre, seuil, source_seuil, motif):
         borne=seuil, valeur=desequilibre, source=source)
 
 
+def _verdict_limitation_injection(conception, saisie):
+    """ACAL1187 — des micro-onduleurs ne limitent pas l'injection d'eux-mêmes.
+
+    ``alerte`` quand un champ à micro-onduleurs seuls porte un plafond
+    d'injection (kW, A ou plages) sans dispositif déclaré ; ``ok`` en citant le
+    dispositif ; ``omis`` sans plafond saisi ou avec un onduleur de chaîne.
+    Aucun seuil, aucun chiffre : seule la présence des saisies est lue.
+    """
+    champ = 'dispositif_limitation_injection'
+    brut = saisie.get(champ)
+    dispositif = brut.strip() if isinstance(brut, str) else ''
+    plafond = any(saisie.get(cle) not in (None, '', [])
+                  for cle in ('plafond_injection_kw', 'plafond_injection_a',
+                              'plages_plafond_injection'))
+    source = 'saisie — %s' % champ
+
+    def verdict(statut, libelle, source_publiee=''):
+        return VerdictElectrique(
+            code=CODE_LIMITATION_INJECTION, nature=NATURE_FONCTIONNELLE,
+            statut=statut, libelle=libelle, borne=None, valeur=None,
+            source=source_publiee)
+    if not plafond:
+        return verdict(STATUT_NON_VERIFIABLE,
+                       "aucun plafond d'injection n'est saisi : il n'y a pas "
+                       "de limitation à contrôler.")
+    if not getattr(conception, 'micro_seul', False):
+        return verdict(STATUT_NON_VERIFIABLE,
+                       "le champ ne compte pas que des micro-onduleurs : le "
+                       "contrôle porte sur un champ à micro-onduleurs seuls.")
+    if not dispositif:
+        return verdict(
+            STATUT_ALERTE,
+            "Des micro-onduleurs ne limitent pas l'injection d'eux-mêmes : "
+            "déclarez le dispositif qui tient ce plafond (champ « %s%s »)."
+            % (PREFIXE_CHAMP, champ), source)
+    return verdict(STATUT_OK,
+                   "un plafond d'injection est saisi sur des "
+                   "micro-onduleurs ; dispositif déclaré : %s." % dispositif,
+                   source)
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # CALX244 — LES TROIS BLOCS DU CONTRAT, ASSEMBLÉS UNE SEULE FOIS
 # ═══════════════════════════════════════════════════════════════════════════
@@ -966,14 +1021,18 @@ def _verdict_desequilibre(desequilibre, seuil, source_seuil, motif):
 # jusqu'au compteur. Les tronçons continus sont donc marqués non parcourus —
 # ils ne sont pas « oubliés », ils sont en amont de l'onduleur.
 
-#: Les NEUF champs de la saisie du contrat CALX205, dans son ordre : les
-#: sept historiques, puis (ACAL155 / M0 ACAL9) le plafond d'injection et sa
+#: Les champs de la saisie du contrat CALX205, dans son ordre : les sept
+#: historiques, puis (ACAL155 / M0 ACAL9) le plafond d'injection et sa
 #: justification, que lisent ``etapes/autoconsommation.py`` et
-#: ``etapes/batterie.py``.
+#: ``etapes/batterie.py``, puis (ACAL827) le plafond en ampères et (ACAL828)
+#: les plages horaires du plafond.
 CHAMPS_SAISIE = ('puissance_souscrite_kva', 'phases', 'tension_nominale_v',
                  'limite_elevation_pct', 'source_limite', 'cos_phi_impose',
                  'source_cos_phi', 'plafond_injection_kw',
-                 'plafond_injection_justification')
+                 'plafond_injection_justification', 'plafond_injection_a',
+                 'plages_plafond_injection', 'plafond_soutirage_kw',
+                 'plafond_soutirage_justification',
+                 'dispositif_limitation_injection')
 
 #: ACAL155 — LA clé de ``Calepinage.resultat`` qui porte la saisie de
 #: raccordement. Unique : ni ``roof_layout['raccordement']`` (jamais écrit)
@@ -999,7 +1058,15 @@ INTITULES_SAISIE = {
     'cos_phi_impose': 'le cos φ imposé',
     'phases': 'le nombre de phases du branchement',
     'plafond_injection_kw': "le plafond d'injection (kW)",
+    'plafond_injection_a': "le plafond d'injection (A)",
+    'plafond_soutirage_kw': 'le plafond de soutirage (kW)',
 }
+
+#: ACAL829 — le refus opposé à un plafond de soutirage SANS justification.
+REFUS_SOUTIRAGE_SANS_JUSTIFICATION = (
+    "Un plafond de soutirage ne peut pas être enregistré sans sa "
+    "justification : indiquez le contrat ou la prescription du gestionnaire "
+    "de réseau qui l'impose.")
 
 #: Le statut PUBLIÉ pour un contrôle qui n'a pas eu lieu. Le noyau le nomme
 #: ``non_verifiable`` (``core/electrique/types.py``) ; le contrat CALX205 le
@@ -1066,13 +1133,13 @@ def _nombre_saisi(valeur, champ):
     return nombre
 
 
-def _plafond_saisi(valeur):
-    """Le plafond d'injection : un nombre ≥ 0, ``None``, ou un refus nommé.
+def _plafond_saisi(valeur, champ='plafond_injection_kw'):
+    """Le plafond d'injection (kW, ou A : ACAL827) : un nombre ≥ 0, ``None``,
+    ou un refus nommé.
 
     Zéro est ADMIS : une injection interdite (« zéro injection ») est un
     plafond réel, pas une absence de saisie.
     """
-    champ = 'plafond_injection_kw'
     if valeur is None or valeur == '':
         return None
     nombre = _nombre(valeur)
@@ -1113,7 +1180,17 @@ def _saisie_publiee(brute):
     sans source.
     """
     brute = brute if isinstance(brute, dict) else {}
+    try:
+        plages = _limites.plages_saisies(brute.get(_limites.CHAMP_PLAGES))
+    except _limites.PlageInvalide as refus:
+        raise _refus_saisie(refus.champ, str(refus), etat=refus.etat)
     saisie = {
+        'plages_plafond_injection': plages,
+        'plafond_soutirage_kw': _plafond_saisi(
+            brute.get('plafond_soutirage_kw'), 'plafond_soutirage_kw'),
+        'plafond_soutirage_justification': _texte_saisi(
+            brute.get('plafond_soutirage_justification'),
+            'plafond_soutirage_justification'),
         'phases': _phases_saisies(brute.get('phases')),
         'source_limite': _texte_saisi(brute.get('source_limite'),
                                       'source_limite'),
@@ -1121,17 +1198,35 @@ def _saisie_publiee(brute):
                                        'source_cos_phi'),
         'plafond_injection_kw': _plafond_saisi(
             brute.get('plafond_injection_kw')),
+        'plafond_injection_a': _plafond_saisi(
+            brute.get('plafond_injection_a'), 'plafond_injection_a'),
         'plafond_injection_justification': _texte_saisi(
             brute.get('plafond_injection_justification'),
             'plafond_injection_justification'),
+        # ACAL1187 — texte libre : le dispositif qui tient le plafond.
+        'dispositif_limitation_injection': _texte_saisi(
+            brute.get('dispositif_limitation_injection'),
+            'dispositif_limitation_injection'),
     }
     for champ in ('puissance_souscrite_kva', 'tension_nominale_v',
                   'limite_elevation_pct', 'cos_phi_impose'):
         saisie[champ] = _nombre_saisi(brute.get(champ), champ)
     if (saisie['plafond_injection_kw'] is not None
+            and saisie['plafond_injection_a'] is not None):
+        raise _refus_saisie('plafond_injection_a',
+                            "Un plafond d'injection se donne en kW ou en A, "
+                            "pas les deux : videz l'un des deux champs.",
+                            etat=True)  # règle liant deux champs : 409
+    if ((saisie['plafond_injection_kw'] is not None
+         or saisie['plafond_injection_a'] is not None
+         or saisie['plages_plafond_injection'])
             and not saisie['plafond_injection_justification']):
         raise _refus_saisie('plafond_injection_justification',
                             REFUS_PLAFOND_SANS_JUSTIFICATION, etat=True)
+    if (saisie['plafond_soutirage_kw'] is not None
+            and not saisie['plafond_soutirage_justification']):
+        raise _refus_saisie('plafond_soutirage_justification',
+                            REFUS_SOUTIRAGE_SANS_JUSTIFICATION, etat=True)
     return {champ: saisie[champ] for champ in CHAMPS_SAISIE}
 
 
@@ -1273,8 +1368,60 @@ def proposition_du_lead(calepinage):
             'source': SOURCE_PROPOSITION_LEAD}
 
 
+MOTIF_SANS_SIMULATION = "Simulez d'abord pour comparer l'injection"
+
+
+def _injection_publiee(autoconsommation, plafond_legal):
+    """ACAL783 — ``(injection, motif)`` : la part injectée simulée face au
+    plafond légal de 20 %, ou ``(None, motif)`` sans simulation fraîche.
+
+    Le plafond, sa source et la mention BT sont PASSÉS (lus de ``ventes`` par
+    l'appelant) : aucune valeur n'est recopiée ici. Avertissement non
+    bloquant : il ne change aucun verdict.
+    """
+    energie = (autoconsommation or {}).get('energie') or {}
+    surplus = _positif(energie.get('surplus_kwh'))
+    production = _positif(energie.get('production_kwh'))
+    if not plafond_legal or production is None:
+        return None, MOTIF_SANS_SIMULATION
+    part = round(100.0 * (surplus or 0.0) / production, 1)
+    plafond = plafond_legal['pct']
+    depasse = part > plafond
+    texte = ('%g' % part).replace('.', ',')
+    return {
+        'part_injectee_pct': part,
+        'plafond_pct': plafond,
+        'source': plafond_legal['source'],
+        'depasse': depasse,
+        'mention': plafond_legal['mention_bt'],
+        'avertissement': (
+            "La part injectée (%s %%) dépasse le plafond légal de %s %% de "
+            "la production annuelle : en MT/HT, l'excédent de revente n'est "
+            "pas valorisé" % (texte, plafond)) if depasse else None,
+    }, None
+
+
+def puissances_du_site(conception):
+    """ACAL782 — ``(kWc DC, kW AC)`` de la conception, ``None`` si inconnue."""
+    entree = getattr(conception, 'entree', None)
+    evaluation = _evaluation(conception)
+    ac = evaluation.puissance_ac_kw if evaluation is not None else None
+    return getattr(entree, 'puissance_kwc', None), ac or None
+
+
+def _regime_publie(puissance_dc_kwc, puissance_ac_kw, hors_reseau):
+    """ACAL782 — le régime loi 82-21 du site, LU dans le noyau (aucun seuil
+    ici) : puissance retenue = max(DC, AC), base « à confirmer »."""
+    from core.reglementaire.regime_8221 import regime_8221
+
+    return regime_8221(puissance_dc_kwc, puissance_ac_kw,
+                       hors_reseau=bool(hors_reseau))
+
+
 def bloc_raccordement(conception, saisie, troncons, reglages=None, *,
-                      proposition_lead=None):
+                      proposition_lead=None, puissance_dc_kwc=None,
+                      puissance_ac_kw=None, hors_reseau=False,
+                      autoconsommation=None, plafond_legal=None):
     """CALX244 — le document ``{saisie, calcul, verdicts}`` du raccordement.
 
     Args:
@@ -1291,9 +1438,15 @@ def bloc_raccordement(conception, saisie, troncons, reglages=None, *,
         proposition_lead: ACAL157 — la proposition de :func:`
             proposition_du_lead`, publiée TELLE QUELLE (jamais fusionnée
             dans la saisie).
+        puissance_dc_kwc, puissance_ac_kw, hors_reseau: ACAL782 — les
+            puissances du site et le mode hors réseau déclaré, lus par
+            l'appelant ; ils nourrissent la clé ``regime``.
+        autoconsommation, plafond_legal: ACAL783 — le bloc simulé FRAIS (ou
+            ``None``) et le plafond lu de ``ventes`` ; clés ``injection`` et
+            ``injection_motif``.
 
     Returns:
-        ``{saisie, calcul, verdicts, proposition_lead}`` — les CINQ verdicts
+        ``{saisie, calcul, verdicts, proposition_lead, regime}`` — les CINQ verdicts
         sont toujours présents, dans l'ordre du contrat, et un contrôle qui
         n'a pas eu lieu vaut ``omis`` avec le motif qui nomme ce qui manque ;
         ``proposition_lead`` est TOUJOURS présente (``null`` sans
@@ -1306,14 +1459,17 @@ def bloc_raccordement(conception, saisie, troncons, reglages=None, *,
     Fonction PURE : aucune base, aucun réseau, aucune horloge.
     """
     saisie = _saisie_publiee(saisie)
+    injection, motif_injection = _injection_publiee(autoconsommation,
+                                                    plafond_legal)
     elevation = _elevation_de_tension(_troncons_pour_elevation(troncons),
                                       _injection(saisie))
     branchement = verdicts_raccordement(conception, saisie, reglages)
     equilibrage = repartition_des_phases(_parc_onduleurs(conception),
                                          saisie['phases'],
                                          reglages=reglages)
-    verdicts = ((elevation['verdict'],) + tuple(branchement['verdicts'])
-                + (equilibrage['verdict'],))
+    verdicts = ((elevation['verdict'],) + tuple(branchement['verdicts'])[:3]
+                + (equilibrage['verdict'], branchement['limitation']))
+    kw_converti, conversion = _limites.convertir_plafond_a(saisie)
     return {
         'saisie': saisie,
         'calcul': {
@@ -1321,8 +1477,15 @@ def bloc_raccordement(conception, saisie, troncons, reglages=None, *,
             'ecart_limite_pct': elevation['ecart_limite_pct'],
             'puissance_injectee_kva': branchement['puissance_injectee_kva'],
             'desequilibre_pct': equilibrage['desequilibre_pct'],
+            # ACAL827 — le plafond saisi en A, converti (formule ou motif).
+            'plafond_injection_kw_converti': kw_converti,
+            'plafond_injection_conversion': conversion,
         },
         'verdicts': [_verdict_publie(verdict) for verdict in verdicts],
         'proposition_lead': (dict(proposition_lead)
                              if isinstance(proposition_lead, dict) else None),
+        'regime': _regime_publie(puissance_dc_kwc, puissance_ac_kw,
+                                 hors_reseau),
+        'injection': injection,
+        'injection_motif': motif_injection,
     }

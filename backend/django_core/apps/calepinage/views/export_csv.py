@@ -70,7 +70,7 @@ __all__ = ['export_csv_simulation']
 #: Les champs dont le refus dit l'ÉTAT du calepinage (rien à exporter tant que
 #: la simulation n'a pas tourné) : 409, et non une entrée mal formée (400).
 CHAMPS_D_ETAT = frozenset({'production', 'points', 'mensuel',
-                           'shading12x24'})
+                           'shading12x24', 'acces_modules'})
 
 
 #: Motif publié de ``colonnes`` : un ou plusieurs noms de ``COLONNES_HORAIRE``
@@ -88,8 +88,8 @@ _MOTIF_COLONNES = '^(?:%s)(?:,(?:%s))*$' % (_ALTERNATIVE_COLONNES,
         OpenApiParameter(
             name='quoi', type=OpenApiTypes.STR, required=False,
             enum=list(EXPORTS),
-            description="Export demandé : horaire (défaut), mensuel ou "
-                        'ombrage.'),
+            description="Export demandé : horaire (défaut), mensuel, "
+                        'ombrage ou ombrage_modules.'),
         OpenApiParameter(
             name='colonnes', required=False,
             # ERR-ENF11-FUZZ-CALEPINAGE — le vocabulaire est PUBLIÉ : une liste
@@ -103,9 +103,10 @@ _MOTIF_COLONNES = '^(?:%s)(?:,(?:%s))*$' % (_ALTERNATIVE_COLONNES,
                         'inchangé). Colonne inconnue -> 400, nommée.'),
         OpenApiParameter(
             name='pas', type=OpenApiTypes.STR, required=False,
-            enum=['horaire', '15min'],
+            enum=['horaire', 'jour', '15min'],
             description="CALX313, export horaire SEULEMENT — 'horaire' "
-                        "(défaut) ou '15min' (REFUSÉ : la série 15 minutes "
+                        "(défaut), 'jour' (ACAL755 : une ligne par jour) ou "
+                        "'15min' (REFUSÉ : la série 15 minutes "
                         "n'est pas encore produite, jamais une "
                         'interpolation).'),
     ],

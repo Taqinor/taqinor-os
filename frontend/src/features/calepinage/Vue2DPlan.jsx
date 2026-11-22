@@ -122,6 +122,9 @@ export default function Vue2DPlan({ plan, compte3d, titre, panId }) {
             <span data-testid="v2d-compte">{plan.panelCount}</span> module(s) — emprise{' '}
             {formatCote(plan.spanEastWestM)} (E-O) × {formatCote(plan.spanNorthSouthM)} (N-S).
           </p>
+          {plan.existant === true && (
+            <p className="mb-2 text-sm text-muted-foreground" data-testid="v2d-legende-existant">Modules déjà en place</p>
+          )}
           {divergence != null && (
             <p className="mb-2 text-sm text-destructive" data-testid="v2d-divergence">
               La vue 3D affiche {divergence} module(s) : le plan n’a pas été reprojeté depuis le
@@ -135,7 +138,7 @@ export default function Vue2DPlan({ plan, compte3d, titre, panId }) {
             role="img"
             aria-label={`Plan orthographique — ${plan.panelCount} modules`}
           >
-            <ContourPlan sommets={plan.outline} testid="v2d-contour" />
+            <ContourPlan sommets={plan.outline} testid="v2d-contour" hachure={plan.existant === true} />
             {plan.panels.map((q, i) => (
               <PolygonePose key={i} sommets={q} testid="v2d-module" />
             ))}

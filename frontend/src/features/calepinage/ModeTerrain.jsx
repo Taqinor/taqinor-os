@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useLatitudeDuSite } from './useDocumentCalepinage'
 import calepinageApi from '../../api/calepinageApi'
 import RetourAtelier from './atelier/RetourAtelier'
 import useSurfacePose from './useSurfacePose'
@@ -7,7 +8,7 @@ import TracePlanPose from './TracePlanPose'
 import {
   nombre, pasMesure, tauxOccupation, contourTerrain, KIND_SOL, SAISIE_MODULE_VIDE,
 } from './surfacePose'
-import { demandeMoteur, vueDuChamp } from './ModeTerrain.helpers'
+import { alerteOmbrageMutuel, demandeMoteur, ligneEntraxeCalcule, vueDuChamp } from './ModeTerrain.helpers'
 
 /* ============================================================================
    CAL89 — LE MODE TERRAIN : UNE CENTRALE AU SOL DANS L'ATELIER.
@@ -70,7 +71,7 @@ const CHAMPS = [
   ['moduleCourtM', 'Module — petit côté (m)'],
   ['puissanceWc', 'Module — puissance (Wc)'],
   ['modulesParTable', 'Modules par table'],
-  ['alleeM', 'Allée imposée entre rangées (m) — vide = politique du moteur'],
+  ['alleeM', 'Allée imposée entre rangées (m) — vide = calculée contre l’ombre d’hiver'],
 ]
 
 /** ENF19 — les `data-testid` du tracé du champ (le tracé lui-même est `TracePlanPose`). */
@@ -182,17 +183,33 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
   const pose = useSurfacePose({ idPropose, persister, documentVivant, ...POSE_TERRAIN })
   const { calepinageId, saisie, reponse, placeur, placeurAbsent, plan, majChamp } = pose
 
-  const calculer = () => pose.poser(
-    demandeMoteur(saisie),
-    'Dimensions du terrain et du module incomplètes : rien n’est '
-      + 'envoyé au moteur, et surtout aucune valeur par défaut inventée.',
-  )
+  // ACAL609 — la latitude de l'épingle part avec la pose (`sol`, HORS de `demande`).
+  const latitude = useLatitudeDuSite(calepinageId, pose.doc.document)
+  const [calcule, setCalcule] = useState(false)
+  const calculer = (s = saisie) => {
+    setCalcule(true)
+    pose.poser(
+      demandeMoteur(s),
+      'Dimensions du terrain et du module incomplètes : rien n’est '
+        + 'envoyé au moteur, et surtout aucune valeur par défaut inventée.',
+      latitude === null ? undefined : { sol: { latitude_deg: latitude } },
+    )
+  }
+  const anti = reponse?.anti_ombrage ?? null
+  const alerte = alerteOmbrageMutuel(anti)
+  const ligneEntraxe = ligneEntraxeCalcule(anti)
 
   const pas = plan ? (pasMesure(plan.rangees) ?? reponse?._pasRecharge ?? null) : null
   const aire = contourTerrain(saisie.largeurM, saisie.profondeurM)
     ? nombre(saisie.largeurM) * nombre(saisie.profondeurM)
     : null
   const taux = plan ? tauxOccupation(plan.tables, aire) : null
+  // ACAL610 — kWc du champ : celui du moteur ; sinon modules posés × puissance saisie ÷ 1 000 ; sinon inconnu.
+  const puissanceWc = nombre(saisie.puissanceWc)
+  const kwc = !plan ? null
+    : Number.isFinite(reponse?.kwc) ? reponse.kwc
+      : Number.isFinite(plan.modules) && plan.modules > 0 && puissanceWc !== null && puissanceWc > 0
+        ? (plan.modules * puissanceWc) / 1000 : null
 
   // CALX50 — le champ PLACÉ par le service, à partir du plan du moteur et des
   // seules grandeurs saisies. Pente absente ⇒ le service le dit dans
@@ -256,7 +273,7 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
           pose={pose}
           persister={persister}
           prefixe="cal-terrain"
-          onCalculer={calculer}
+          onCalculer={() => calculer()}
           libelles={{
             calculer: 'Calculer le champ au sol',
             enregistrer: 'Enregistrer le champ',
@@ -267,8 +284,28 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
           }}
         />
 
+        {calcule && latitude === null && (
+          <p className="mt-3 text-sm text-foreground" data-testid="cal-terrain-epingle-absente">
+            Épingle du site absente : posez-la sur la carte pour calculer l’espacement anti-ombrage
+          </p>
+        )}
+        {ligneEntraxe && <p className="mt-3 text-sm text-foreground" data-testid="cal-terrain-entraxe-calcule">{ligneEntraxe}</p>}
+        {alerte && (
+          <div className="mt-3 rounded border border-border p-3 text-sm text-destructive" role="alert" data-testid="cal-terrain-alerte-ombrage">
+            <p>{alerte}</p>
+            <button
+              type="button"
+              className="mt-2 min-h-[44px] rounded border border-border px-3 text-sm text-foreground"
+              data-testid="cal-terrain-utiliser-entraxe"
+              onClick={() => { majChamp('alleeM', ''); calculer({ ...saisie, alleeM: '' }) }}
+            >
+              Utiliser l’entraxe calculé
+            </button>
+          </div>
+        )}
+
         {plan && (
-          <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-border pt-4 sm:grid-cols-4">
+          <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-border pt-4 sm:grid-cols-5">
             <div data-testid="cal-terrain-modules">
               <dd className="fig text-lg text-foreground">{plan.modules ?? '—'}</dd>
               <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Modules posés (moteur)</dt>
@@ -283,6 +320,14 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
               </dd>
               <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 {pas === null ? 'Pas non mesurable (moins de 2 rangées)' : 'Pas inter-rangées (mesuré sur le plan)'}
+              </dt>
+            </div>
+            <div data-testid="cal-terrain-kwc">
+              <dd className="fig text-lg text-foreground">
+                {kwc === null ? '—' : `${new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(kwc)} kWc`}
+              </dd>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {kwc === null ? 'Puissance non calculable' : 'Puissance du champ (modules posés × puissance saisie)'}
               </dt>
             </div>
             <div data-testid="cal-terrain-taux">

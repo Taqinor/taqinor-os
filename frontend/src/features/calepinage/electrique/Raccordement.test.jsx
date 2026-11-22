@@ -21,7 +21,7 @@ const CONTRAT = documentContrat('calepinage', 'calepinage_raccordement')
 
 vi.mock('../../../api/calepinageApi', () => ({
   default: {
-    calepinages: { raccordement: vi.fn(), enregistrerRaccordement: vi.fn() },
+    calepinages: { raccordement: vi.fn(), enregistrerRaccordement: vi.fn(), explications: vi.fn() },
   },
 }))
 
@@ -42,7 +42,7 @@ beforeEach(() => { vi.clearAllMocks() })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('Raccordement (CALX244)', () => {
-  it('demande les NEUF champs du contrat, et rien de plus', async () => {
+  it('demande les champs du contrat, et rien de plus', async () => {
     servir(CONTRAT.exemple)
 
     rendre()
@@ -297,6 +297,56 @@ describe('Raccordement — valeurs du lead (ACAL158)', () => {
   })
 })
 
+describe('Raccordement — régime 82-21 et injection (ACAL784)', () => {
+  it('les deux lignes se lisent sur l’exemple du contrat, avec le voyant au-delà du plafond', async () => {
+    servir(CONTRAT.exemple)
+
+    rendre()
+
+    const regime = await screen.findByTestId('acal784-regime')
+    expect(regime.textContent).toBe(
+      'Régime 82-21 : Accord de raccordement — puissance retenue 12 kW, base à confirmer avec le distributeur',
+    )
+    expect(screen.getByTestId('acal784-injection').textContent)
+      .toContain('Injection simulée : 35 % de la production annuelle ; plafond légal 20 %')
+    expect(screen.getByTestId('acal784-voyant')).toBeTruthy()
+    expect(screen.getByTestId('acal784-avertissement').textContent)
+      .toBe(CONTRAT.exemple.injection.avertissement)
+  })
+
+  it('sans dépassement, aucun voyant ni avertissement', async () => {
+    servir({ ...CONTRAT.exemple, injection: { ...CONTRAT.exemple.injection, depasse: false, avertissement: null } })
+
+    rendre()
+
+    await screen.findByTestId('acal784-injection')
+    expect(screen.queryByTestId('acal784-voyant')).toBeNull()
+    expect(screen.queryByTestId('acal784-avertissement')).toBeNull()
+  })
+
+  it('sans simulation : le motif du serveur ; régime à qualifier : puissance inconnue', async () => {
+    servir(CONTRAT.exemple_vide)
+
+    rendre()
+
+    expect((await screen.findByTestId('acal784-regime')).textContent)
+      .toBe('Régime à qualifier : puissance du site inconnue')
+    expect(screen.getByTestId('acal784-injection').textContent)
+      .toBe(CONTRAT.exemple_vide.injection_motif)
+  })
+
+  it('un bloc sans régime ni injection ne rend aucune ligne', async () => {
+    const { regime, injection, injection_motif: motif, ...ancien } = CONTRAT.exemple
+    expect([regime, injection, motif]).not.toContain(undefined)
+    servir(ancien)
+
+    rendre()
+
+    await screen.findByTestId('calx244-panneau')
+    expect(screen.queryByTestId('acal784-regime-injection')).toBeNull()
+  })
+})
+
 describe('Fonctions pures (CALX244)', () => {
   it('erreursParChamp retire le préfixe que le serveur pose', () => {
     expect(erreursParChamp(CONTRAT.refus_limite_sans_source))
@@ -313,5 +363,96 @@ describe('Fonctions pures (CALX244)', () => {
 
   it('libelleStatut NOMME un statut inconnu plutôt que de le taire', () => {
     expect(libelleStatut('inconnu')).toContain('inconnu')
+  })
+})
+
+describe('Raccordement (ACAL874) — le « ? » des grandeurs électriques', () => {
+  it('l’élévation de tension porte un « ? » dont la phrase contient la valeur servie', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { join } = await import('node:path')
+    const { fichierContrat } = await import('../../../test/fixtures/contractSamples')
+    const { remplirPhrase } = await import('../commun/useExplications')
+    const registre = JSON.parse(readFileSync(
+      join(fichierContrat('calepinage', 'x'), '..', '..', 'data', 'explications.json'), 'utf8')).entrees
+    calepinageApi.calepinages.explications.mockResolvedValue({ data: { entrees: registre } })
+    servir(CONTRAT.exemple)
+    rendre()
+    await screen.findByTestId('calx244-panneau')
+    const cles = ['elevation_tension', 'marge_limite', 'puissance_injectee', 'desequilibre_phases']
+    for (const cle of cles) {
+      expect(document.querySelector(`[data-grandeur="electrique.${cle}"]`)).not.toBeNull()
+    }
+    await userEvent.click(document.querySelector('[data-grandeur="electrique.elevation_tension"]'))
+    const entree = registre.find((e) => e.cle === 'electrique.elevation_tension')
+    const phrase = remplirPhrase(entree, CONTRAT.exemple)
+    expect(phrase).toContain('0,82 %')
+    expect(phrase).toContain('limite du gestionnaire de réseau')
+    expect(await screen.findByText(phrase)).toBeInTheDocument()
+  })
+})
+
+describe('Raccordement — limites du distributeur (ACAL830)', () => {
+  it('16 A, une plage 16-18 h, soutirage 6 kW : corps posté, kW converti rendu, refus sous le champ', async () => {
+    servir(CONTRAT.exemple_vide)
+    const persistee = {
+      ...CONTRAT.exemple,
+      saisie: {
+        ...CONTRAT.exemple.saisie,
+        plafond_injection_a: 16,
+        plages_plafond_injection: [{ debut_h: 16, fin_h: 18, plafond_kw: 2 }],
+      },
+      calcul: {
+        ...CONTRAT.exemple.calcul,
+        plafond_injection_kw_converti: 11.085,
+        plafond_injection_conversion: 'Monophasé : 230 V × 16 A',
+      },
+    }
+    calepinageApi.calepinages.enregistrerRaccordement.mockResolvedValueOnce({ data: persistee })
+
+    rendre()
+    await screen.findByTestId('calx244-formulaire')
+    expect(screen.getByTestId('acal830-limites')).not.toHaveAttribute('open')
+    await userEvent.type(document.getElementById('calx244-champ-plafond_injection_a'), '16')
+    await userEvent.click(screen.getByTestId('acal830-ajouter-plage'))
+    const plages = screen.getByTestId('acal830-plages')
+    const cases = plages.querySelectorAll('input')
+    await userEvent.type(cases[0], '16')
+    await userEvent.type(cases[1], '18')
+    await userEvent.type(cases[2], '2')
+    await userEvent.type(document.getElementById('calx244-champ-plafond_soutirage_kw'), '6')
+    await userEvent.type(document.getElementById('calx244-champ-plafond_soutirage_justification'), 'Contrat (essai)')
+    await userEvent.click(screen.getByTestId('calx244-enregistrer'))
+
+    await waitFor(() => expect(calepinageApi.calepinages.enregistrerRaccordement).toHaveBeenCalledTimes(1))
+    const [, corps] = calepinageApi.calepinages.enregistrerRaccordement.mock.calls[0]
+    expect(Object.keys(corps).sort()).toEqual(Object.keys(CONTRAT.exemple.saisie).sort())
+    expect(corps.plafond_injection_a).toBe('16')
+    expect(corps.plages_plafond_injection).toEqual([{ debut_h: 16, fin_h: 18, plafond_kw: 2 }])
+    expect(corps.plafond_soutirage_kw).toBe('6')
+    expect(await screen.findByTestId('acal830-conversion')).toHaveTextContent('Monophasé : 230 V × 16 A')
+    expect(screen.getByTestId('acal830-conversion').textContent).toMatch(/= 11,085\s?kW/)
+
+    calepinageApi.calepinages.enregistrerRaccordement.mockRejectedValueOnce({
+      response: { status: 400, data: { 'raccordement.plages_plafond_injection[0]': 'Cette plage chevauche une autre plage.' } },
+    })
+    await userEvent.click(screen.getByTestId('calx244-enregistrer'))
+    expect(await screen.findByTestId('calx244-erreur-plages_plafond_injection[0]'))
+      .toHaveTextContent('chevauche')
+    expect(screen.getByTestId('calx244-bandeau')).toHaveTextContent('plages_plafond_injection[0]')
+  })
+
+  it('aucune plage ni valeur : null postés, section repliée ; la quatrième plage est refusée par le bouton masqué', async () => {
+    servir(CONTRAT.exemple_vide)
+    calepinageApi.calepinages.enregistrerRaccordement.mockResolvedValue({ data: CONTRAT.exemple_vide })
+
+    rendre()
+    await screen.findByTestId('calx244-formulaire')
+    await userEvent.click(screen.getByTestId('calx244-enregistrer'))
+    await waitFor(() => expect(calepinageApi.calepinages.enregistrerRaccordement).toHaveBeenCalled())
+    const [, corps] = calepinageApi.calepinages.enregistrerRaccordement.mock.calls[0]
+    expect(corps.plages_plafond_injection).toBeNull()
+    expect(corps.plafond_injection_a).toBeNull()
+    for (let i = 0; i < 3; i += 1) await userEvent.click(screen.getByTestId('acal830-ajouter-plage'))
+    expect(screen.queryByTestId('acal830-ajouter-plage')).toBeNull()
   })
 })

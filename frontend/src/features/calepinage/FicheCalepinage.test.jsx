@@ -50,7 +50,7 @@ vi.mock('../../api/customFieldsApi', () => ({
 
    CE TEST PARCOURT LE CONTRAT. Il ne cite aucune clé à la main : il lit
    `Object.keys(exemple)` du fichier COMMITTÉ et exige un rendu pour chacune. Le
-   jour où le serveur publie une vingt-cinquième clé, ce test la réclame.
+   jour où le serveur publie une vingt-septième clé, ce test la réclame.
 
    IL VÉRIFIE AUSSI LA DISCIPLINE DU NULL, celle que le contrat impose : sur
    `exemple_vide`, une grandeur non mesurée vaut `null` — l'écran rend « — » et
@@ -84,9 +84,10 @@ const ARCHIVABLE = {
   permissions: { ...DETAIL.permissions, peut_supprimer: true },
 }
 
-// `statut` et `statut_libelle` sont DEUX clés du contrat, rendues en deux
-// champs distincts (le libellé lisible et le code technique).
-const CLES = Object.keys(DOC.exemple)
+// ACAL966 — `id` et `statut` restent SERVIS par le contrat mais ne sont plus rendus (l'identifiant est dans
+// l'adresse, le statut se lit en mots par `statut_libelle`) : les autres clés sont toutes rendues.
+const NON_RENDUES = ['id', 'statut']
+const CLES = Object.keys(DOC.exemple).filter((cle) => !NON_RENDUES.includes(cle))
 
 const rendre = (detail) => render(
   <MemoryRouter><FicheCalepinage detail={detail} /></MemoryRouter>,
@@ -105,11 +106,23 @@ beforeEach(() => {
 afterEach(() => { cleanup() })
 
 describe('FicheCalepinage — l’agrégat CAL17 est lu EN ENTIER', () => {
-  it('rend une clé du contrat, et le contrat en publie bien vingt-cinq', () => {
+  it('rend une clé du contrat, et le contrat en publie bien vingt-six (vingt-quatre rendues)', () => {
     // Garde de dérive : si le contrat grossit, la liste ci-dessous grossit avec
     // lui et le test suivant exigera le rendu de la nouvelle clé.
-    // CIQ136 — `contraintes_site` ; ACAL6 — `custom_data` : 25 clés.
-    expect(CLES.length).toBe(25)
+    // CIQ136 — `contraintes_site` ; ACAL6 — `custom_data` : 25 clés ; ACAL915 — `surfaces_chiffrables` : 26 ;
+    // ACAL966 : 2 ne sont plus rendues (`id`, `statut`).
+    expect(CLES.length).toBe(24)
+  })
+
+  it('ACAL966 — ni « Identifiant technique » ni « Code de statut » ; « Statut » est gardé', () => {
+    rendre(DETAIL)
+
+    expect(screen.queryByText('Identifiant technique')).toBeNull()
+    expect(screen.queryByText('Code de statut')).toBeNull()
+    expect(screen.queryByTestId('cal-fiche-id')).toBeNull()
+    expect(screen.queryByTestId('cal-fiche-statut')).toBeNull()
+    expect(screen.getByText('Statut')).toBeInTheDocument()
+    expect(screen.getByTestId('cal-fiche-statut_libelle')).toHaveTextContent(DETAIL.statut_libelle)
   })
 
   it.each(CLES)('affiche la clé publiée « %s »', (cle) => {
@@ -181,6 +194,9 @@ describe('FicheCalepinage — l’agrégat CAL17 est lu EN ENTIER', () => {
     expect(screen.getByTestId('cal-fiche-client')).toHaveTextContent('—')
     // CIQ136 — aucune contrainte de site par défaut : « — », jamais FM.
     expect(screen.getByTestId('cal-fiche-contraintes_site')).toHaveTextContent('—')
+    // ACAL915 — aucune surface chiffrable : « — », jamais « 0 ».
+    expect(screen.getByTestId('cal-fiche-surfaces_chiffrables')).toHaveTextContent('—')
+    expect(screen.getByTestId('cal-fiche-surfaces_chiffrables')).not.toHaveTextContent('0')
     expect(screen.queryByRole('link', { name: 'Voir l’aperçu' })).toBeNull()
     // Les permissions de l'exemple vide : modifier + archiver (ACAL120 : le
     // geste « supprimer » est l'archivage), PAS retenir.

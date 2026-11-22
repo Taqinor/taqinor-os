@@ -186,6 +186,21 @@ describe('AGR105 — fiche pompe / variateur de pompage', () => {
     }
   })
 
+  it('ACAL817 — la tension redressée du bus DC tapée part dans le payload, sans arrondi', async () => {
+    renderEdit({
+      nom: 'VARIATEUR VEICHI SI23 5.5KW 380V', role_pompage: 'variateur_pompage',
+      type_pompe: '', courbe_pompe: null,
+    })
+    await pret()
+    const champ = screen.getByLabelText('Tension redressée du bus DC (V)')
+    expect(champ).toHaveAttribute('step', 'any')
+    fireEvent.change(champ, { target: { value: '540.5' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Mettre à jour' }))
+    await waitFor(() => expect(createFicheTechnique).toHaveBeenCalled())
+    const [payload] = createFicheTechnique.mock.calls[0]
+    expect(payload.var_bus_dc_redresse_v).toBe(540.5)
+  })
+
   it('rôle « pompe » : fiche pompe saisissable (nombre d’étages en entier)', async () => {
     renderEdit()
     await pret()

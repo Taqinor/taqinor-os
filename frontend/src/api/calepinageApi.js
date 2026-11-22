@@ -266,9 +266,9 @@ const calepinageApi = {
     // `params` (`{langue}`) n'accompagne que les pièces multilingues de
     // LANGUES_PAR_DOCUMENT (services/documents) — leurs routes, pour la garde
     // check_frontend_query_params.py :
-    // chemins-requete: /calepinage/calepinages/{id}/rapport-etude.pdf/ /calepinage/calepinages/{id}/rapport-ombrage.pdf/ /calepinage/calepinages/{id}/diagramme-pertes.svg/
-    telechargerDocument: (endpoint, params) =>
-      api.get(endpoint, { responseType: 'blob', params }),
+    // chemins-requete: /calepinage/calepinages/{id}/rapport-etude.pdf/ /calepinage/calepinages/{id}/rapport-ombrage.pdf/ /calepinage/calepinages/{id}/diagramme-pertes.svg/ /calepinage/calepinages/{id}/diagramme-energie.svg/
+    telechargerDocument: (endpoint, params, options) =>
+      api.get(endpoint, { responseType: 'blob', params, ...options }),
 
     ...projet,
 
@@ -286,6 +286,12 @@ const calepinageApi = {
     // résolu et les candidats (contrat `calepinage_entree_electrique.json`).
     // Le POST reste `enregistrerEntreeElectrique` (au-dessus).
     entreeElectrique: (id) => api.get(`${pivot(id)}entree-electrique/`),
+    // ACAL617 (contrat calepinage_configurations_onduleur.json) — l'onduleur retenu et ses deux voisins, évalués à chaud ; lecture pure.
+    configurationsOnduleur: (id) => api.get(`${pivot(id)}configurations-onduleur/`), // ACAL
+    // ACAL628 (contrat calepinage_controle_chaine.json) — le verdict d'UNE chaîne sans dessin ; rien n'est écrit.
+    controleChaine: (corps) => api.post('/calepinage/calepinages/controle-chaine/', corps), // ACAL
+    // ACAL631 (contrat calepinage_import_affectation.json) — un plan de chaînes CSV verdicté ; rien n'est enregistré.
+    importerAffectation: (id, csv) => api.post(`${pivot(id)}importer-affectation/`, { csv }), // ACAL
 
     // ACAL161 — l'ÉDITION du schéma unifilaire (libellés et repères par clef de bloc ;
     // `null` efface une rubrique). Le serveur fusionne clé par clé (ACAL160) et renvoie le
@@ -353,6 +359,11 @@ const calepinageApi = {
     // calepinage_consommation_proposee.json) : LECTURE PURE, `{consumption, kwh_annuel,
     // courbe24, saisons, avertissements}` ; 400/409 nomment le champ, 404 lead absent.
     proposerConsommation: (id, corps) => api.post(`${pivot(id)}consommation/proposer/`, corps), // ACAL
+    // ACAL840 (contrat calepinage_consommation_photo_facture.json, ACAL839) — LIRE une photo de facture :
+    // GET = la lecture est-elle ouverte ? ; POST multipart `fichier` = lignes `{mois: null, kwh}` à
+    // confirmer (rien n'est écrit, la photo n'est pas stockée).
+    lireFactureDisponible: (id) => api.get(`${pivot(id)}consommation/lire-facture/`), // ACAL
+    lireFactureConsommation: (id, corps) => api.post(`${pivot(id)}consommation/lire-facture/`, corps), // ACAL
     // ACAL469 — le BALAYAGE d'un pan libre (contrat calepinage_balayage.json) : 202 + job,
     // suivi par `moteur.resultat(jobId)` ; rien n'est écrit au calepinage.
     balayer: (id, corps) => api.post(`${pivot(id)}balayage/`, corps), // ACAL
@@ -364,6 +375,9 @@ const calepinageApi = {
     // ACAL466 (contrat calepinage_pente_terrain.json) — pente et orientation du RELIEF sous un champ au sol
     // (Copernicus GLO-30) : lecture pure ; `pente_deg: null` + `motif` quand le relief n'est pas lisible.
     penteTerrain: (id, surface) => api.get(`${pivot(id)}pente-terrain/`, { params: { surface } }), // ACAL
+    // ACAL719 (contrat calepinage_soleil_legal.json, ACAL730) — l'écart heure légale − heure solaire d'un jour
+    // (`params = {date}` AAAA-MM-JJ) : 409 `{site.fuseau|site.pin: [motif]}` quand le site ne le permet pas.
+    soleilLegal: (id, params) => api.get(`${pivot(id)}soleil-legal/`, { params }), // ACAL
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
@@ -444,7 +458,8 @@ const calepinageApi = {
   },
   // ACAL559 — le catalogue des systèmes de fixation de la société (contrat
   // `calepinage_systemes_fixation.json`, routes ACAL558) ; un 400 nomme le champ
-  // par son chemin (`provenance`, `composants[1].source`).
+  // par son chemin (`provenance`, `composants[1].source`). ACAL568 : un système
+  // porte `controles_pose` (mm, sourcés) ; `bom-fixation/` rend `alertes`.
   systemesFixation: {
     liste: () => api.get('/calepinage/calepinages/systemes-fixation/'),
     creer: (corps) => api.post('/calepinage/calepinages/systemes-fixation/', corps),
@@ -466,6 +481,8 @@ export default calepinageApi
 // ACAL391 — contrat calepinage_detection_toit.json (M0)
 // ACAL996 — contrat calepinage_productible_pose.json (M0)
 // ACAL611 — contrat calepinage_evaluation_electrique.json (M0)
+// ACAL618 / ACAL632 / ACAL677 — clés servies par ce contrat : `chaines`
+// (tension par chaîne), `onduleurs_suggeres`, `boucles_dc` (boucles de chaîne).
 // ACAL614 — contrat calepinage_configurations_onduleur.json (M0)
 // ACAL626 — contrat calepinage_controle_chaine.json (M0)
 // ACAL629 — contrat calepinage_import_affectation.json (M0)

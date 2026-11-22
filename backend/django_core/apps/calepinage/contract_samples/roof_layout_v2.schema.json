@@ -1190,6 +1190,14 @@
           ],
           "exclusiveMinimum": 0
         },
+        "sousChaines": {
+          "description": "ACAL731 — nombre de sous-chaînes de cellules du module (diodes de dérivation), lu de sa fiche (`sous_chaines_par_module`, ACAL720). `null` = fiche sans le champ : jamais 1 par défaut. OPTIONNEL et additif.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
         "source": {
           "description": "D'OÙ viennent les valeurs ci-dessus, en clair et en français (« fiche produit », « saisie atelier », « fiche technique du fabricant »…). Sans elle, deux modèles renseignés par deux chemins différents ne sont pas comparables, et rien ne dit à l'utilisateur ce qu'il peut engager (D-CALX 7).",
           "type": "string",
@@ -1340,6 +1348,22 @@
             ],
             "minimum": 0,
             "maximum": 1
+          }
+        },
+        "bandes": {
+          "description": "ACAL731 — accès solaire PAR BANDE de module (sous-chaîne de cellules), DANS LE MÊME ORDRE et de la MÊME longueur que `values` : une entrée par module, un tableau de 2 à N nombres de [0 ; 1] (une valeur par bande, de la bande 1 à la dernière) ou `null` pour un module sans bandes calculées. OPTIONNEL et additif : absent = aucune bande, jamais complétée par `values`. JSON Schema ne compare pas la longueur de deux tableaux frères : la longueur est contrôlée par `services/ombrage_chaines.py::acces_par_bande`, qui refuse la liste EN BLOC.",
+          "type": "array",
+          "items": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "minItems": 2,
+            "items": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
           }
         },
         "method": {
@@ -2680,6 +2704,18 @@
               0.98,
               0.95
             ],
+            "bandes": [
+              [
+                0.98,
+                0.98,
+                0.98
+              ],
+              [
+                0.95,
+                0.95,
+                0.95
+              ]
+            ],
             "method": {
               "horizon": true,
               "rangees": true,
@@ -3137,6 +3173,7 @@
         "epaisseurMm": 33,
         "poidsKg": 38.5,
         "pmaxWc": 720,
+        "sousChaines": 3,
         "source": "catalogue"
       }
     ],

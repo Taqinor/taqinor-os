@@ -45,7 +45,34 @@ export function refusDepuisErreur(erreur) {
   return {
     champ: champ || '',
     motif: (typeof motif === 'string' && motif) || 'Simulation refusée par le serveur.',
+    // ACAL940 — TOUS les manques servis en un seul 409 ({champ, motif, cible}).
+    manquants: Array.isArray(corps.manquants)
+      ? corps.manquants.filter((l) => l && typeof l.motif === 'string') : [],
   }
+}
+
+const PREFIXE_REGLAGE = 'parametres.simulation.'
+
+/** ACAL940 — l'adresse du réglage d'un refus : l'ancre `calx69-<clé>` de
+    l'écran des réglages quand le champ en est un, sinon le haut de la page. */
+export function lienReglage(champ) {
+  return typeof champ === 'string' && champ.startsWith(PREFIXE_REGLAGE)
+    ? `/calepinage/reglages#calx69-${champ.slice(PREFIXE_REGLAGE.length)}`
+    : '/calepinage/reglages'
+}
+
+// ACAL774 — les refus SANS champ de réglage : où agir. `plans` : le module PV se désigne dans
+// l'onglet « Matériel électrique » (relu dans `atelier/parcoursGuide.js`) ; `site.pin` : l'épingle se
+// pose sur la carte de l'atelier (adresse du calepinage, sans onglet).
+const CIBLES_HORS_REGLAGES = {
+  plans: { cible: { onglet: 'materiel-electrique' }, libelle: 'Ouvrir le matériel électrique' },
+  'site.pin': { cible: {}, libelle: 'Ouvrir la carte de l’atelier' },
+}
+
+/** `{cible, libelle}` de l'endroit où agir pour un champ hors réglages ; `null` pour un champ inconnu. */
+export function cibleHorsReglages(champ) {
+  return typeof champ === 'string' && Object.hasOwn(CIBLES_HORS_REGLAGES, champ)
+    ? CIBLES_HORS_REGLAGES[champ] : null
 }
 
 /** L'issue d'un sondage `moteur/resultat/<job>/` :

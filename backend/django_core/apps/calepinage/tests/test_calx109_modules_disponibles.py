@@ -59,8 +59,15 @@ class _FausseFiche:
     def __init__(self, **champs):
         self.type_fiche = champs.pop('type_fiche', 'module')
         for nom in ('longueur_mm', 'largeur_mm', 'epaisseur_mm', 'poids_kg',
-                    'pmax_wc'):
+                    'pmax_wc', 'sous_chaines_par_module'):
             setattr(self, nom, champs.pop(nom, None))
+
+    def __getattr__(self, nom):
+        # ``specs_for_produit`` (ACAL731) lit TOUS les champs de fiche : un
+        # champ non posé vaut NULL, comme sur une vraie fiche non saisie.
+        if nom.startswith('__'):
+            raise AttributeError(nom)
+        return None
 
 
 class _FauxProduit:
@@ -84,7 +91,8 @@ def _produit_complet():
     return _FauxProduit(
         4112, 'Module monocristallin 580 Wc (exemple)',
         _FausseFiche(longueur_mm=2278, largeur_mm=1134, epaisseur_mm=35,
-                     poids_kg=Decimal('27.50'), pmax_wc=Decimal('580.00')))
+                     poids_kg=Decimal('27.50'), pmax_wc=Decimal('580.00'),
+                     sous_chaines_par_module=3))
 
 
 def _produit_incomplet():
@@ -174,6 +182,16 @@ class UneEntreeEstUneEntreeDuDocumentTest(SimpleTestCase):
         document['modules'] = [entree_module(_produit_complet())['module']]
         document['zones'][0]['geometry']['moduleId'] = identifiant_module(4112)
         valider_document(document)
+
+    def test_sous_chaines_servies_et_null_sans_le_champ(self):
+        # ACAL731 — 3 sur la fiche ⇒ 3 ; fiche sans le champ ⇒ ``None``,
+        # jamais 1 (un défaut de 1 est le mutant).
+        self.assertEqual(entree_module(_produit_complet())['module']
+                         ['sousChaines'], 3)
+        self.assertIsNone(entree_module(_produit_incomplet())['module']
+                          ['sousChaines'])
+        sans_fiche = _FauxProduit(7, 'Panneau sans fiche (exemple)')
+        self.assertIsNone(entree_module(sans_fiche)['module']['sousChaines'])
 
     def test_la_provenance_est_toujours_publiee(self):
         for produit in (_produit_complet(), _produit_incomplet()):

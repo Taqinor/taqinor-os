@@ -62,6 +62,17 @@ class RatioEcretageTest(SimpleTestCase):
         self.assertEqual(servi['ratio_dc_ac']['ecretage_methode'],
                          METHODE_ECRETAGE_SERIE)
 
+    def test_acal752_p_dc_kw_persiste_au_moins_p_ac_kw(self):
+        materiel = _materiel(5.0)
+        materiel['onduleur']['rendement_euro_pct'] = 96.0  # l'étape s'applique
+        pivot = _simule(materiel)
+        bloc = pivot.resultat['serie_horaire']
+        self.assertIn('p_dc_kw', bloc['colonnes'])
+        produites = [p for p in bloc['points'] if p['p_ac_kw']]
+        self.assertTrue(produites)
+        for point in produites:
+            self.assertGreaterEqual(point['p_dc_kw'], point['p_ac_kw'])
+
     def test_perime_rend_null_et_le_motif(self):
         materiel = _materiel(5.0)
         pivot = _simule(materiel)

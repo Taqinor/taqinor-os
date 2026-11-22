@@ -45,6 +45,8 @@ export interface ModuleDocument {
   poidsKg: number | null;
   /** Puissance crête unitaire (Wc). `null` = non renseignée. */
   pmaxWc: number | null;
+  /** ACAL721/731 — sous-chaînes de cellules (fiche) ; absent = fiche sans le champ, jamais 1 par défaut. */
+  sousChaines?: number;
   /** D'où viennent les valeurs ci-dessus, en clair (obligatoire au schéma). */
   source: string;
 }
@@ -179,6 +181,7 @@ function lireModule(brut: unknown): ModuleDocument | null {
     epaisseurMm: cote('epaisseurMm'),
     poidsKg: cote('poidsKg'),
     pmaxWc: cote('pmaxWc'),
+    ...(Number.isInteger(o.sousChaines) && (o.sousChaines as number) >= 1 ? { sousChaines: o.sousChaines as number } : {}),
     source,
   };
 }
@@ -227,6 +230,19 @@ export function lireModulesDisponibles(reponse: unknown): CatalogueModules {
       ? null
       : (typeof o.motif_liste_vide === 'string' ? o.motif_liste_vide : null),
   };
+}
+
+/** ACAL913 — la mention d'un module posé d'office, jamais confirmé par l'utilisateur. */
+export const MENTION_MODULE_DE_DEPART = 'module de départ, à confirmer';
+
+/**
+ * ACAL913 — le module de DÉPART d'un pan neuf : le premier CHOISISSABLE du catalogue (celui
+ * du devis quand sa puissance y figure — les lignes du devis priment), `null` sans catalogue
+ * (le 720 Wc de l'atelier reste alors NOMMÉ, comme aujourd'hui).
+ */
+export function moduleDeDepart(catalogue: CatalogueModules, wattDuDevis?: number | null): ModuleDocument | null {
+  const duDevis = wattDuDevis ? catalogue.choisissables.find((m) => m.pmaxWc === wattDuDevis) : undefined;
+  return duDevis ?? catalogue.choisissables[0] ?? null;
 }
 
 /**

@@ -52,6 +52,10 @@ import {
   estRefus,
   lireModulesDisponibles,
   catalogueAvecModulesDuDocument,
+  kwcDuPan,
+  MODULE_PAR_DEFAUT_ATELIER,
+  resoudreModuleDuPan,
+  type ModuleDocument,
 } from './moduleSelect';
 import { type Panel2Module } from '../../lib/roofPro2';
 import {
@@ -73,6 +77,7 @@ import {
   type MatrixEvalV6,
   type MatrixV6Result,
 } from '../../lib/estimatorBrainV6';
+import { majNoteChassis, optionChassis } from './chassisPavage'; // ACAL585
 import {
   anneauPosableParArete, // CALX95 câblage
   solveLive,
@@ -93,6 +98,7 @@ import { fallbackPerKwc } from '../../lib/productionEngine';
 import {
   filtrerEmplacementsSousSeuil,
   hauteurToitPourOmbrageM,
+  seuilEffectifAccesSolaire, // ACAL548
   unifiedShadeEntries,
   type FiltrageAccesSolaire,
 } from './shadingUi'; // CALX115 — le seuil d'accès solaire lu par le posable
@@ -341,6 +347,8 @@ export interface OptimizerDeps {
   renderMatrixOptimumCard: () => void;
   /** Facture mensuelle (MAD) saisie — entrée. */
   monthlyBill: () => number;
+  /** ACAL777 — facture lue par les cartes seulement (saisie, sinon celle du lead) ; absente = `monthlyBill`. */
+  factureCarte?: () => number;
   /** Anneaux lng/lat des obstacles (zones d'exclusion) — entrée. */
   obstructionRings: () => LngLat[][];
   /** PV61 — dégagement (m) de CHAQUE obstacle selon son type, même ordre que
@@ -391,6 +399,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     obstructionRings,
     setStatus,
   } = deps;
+  const factureCarte = deps.factureCarte ?? monthlyBill; // ACAL777
   /** PV61 — dégagements par obstacle (type) ; dépendance absente → uniforme. */
   const obstructionClearances = (): number[] | undefined => deps.obstructionClearances?.();
   /** PV63 — retraits saisis quand la marge est GARDÉE ; absent → retrait unique. */
@@ -430,6 +439,13 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const cotes = cotesPourPan(catalogueAvecModulesDuDocument(catalogueModules, ctx.modulesDuDocument).catalogue, moduleId);
     return estRefus(cotes) ? undefined : cotes;
   };
+  /** ACAL851 — le module CHOISI du pan actif (même résolution que ses cotes), `null` sans choix. */
+  const moduleDuPanActif = (): ModuleDocument | null => {
+    const moduleId = ctx.activeArea()?.moduleId;
+    if (!moduleId) return null;
+    const module = resoudreModuleDuPan(catalogueAvecModulesDuDocument(catalogueModules, ctx.modulesDuDocument).catalogue, moduleId);
+    return estRefus(module) ? null : module;
+  };
 
   /* ═════════ CALX115 — LE SEUIL D'ACCÈS SOLAIRE RETIRE DES EMPLACEMENTS DU POSABLE ═════════
      `optimisation.seuilAccesSolaire` (contrat CALX88) voyage par le DOCUMENT et arrive ici
@@ -444,7 +460,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   /** CALX115 — les emplacements d'un pavage jugés contre le seuil SAISI, ou `null` quand
    *  le document n'en porte aucun (cas par défaut : aucun calcul n'est lancé). */
   function filtrageSeuil(panels: readonly PackedPanel[]): FiltrageAccesSolaire | null {
-    const seuil = choixOptimisationCourant()?.seuilAccesSolaire;
+    // ACAL548 — la valeur de CE dossier prime ; à défaut, le réglage de la société ; sans rien, aucun filtre.
+    const seuil = choixOptimisationCourant()?.seuilAccesSolaire ?? seuilEffectifAccesSolaire(null, ctx.opts?.reglagesAtelier)?.valeur;
     if (seuil == null || seuil === '') return null;
     const { obstructions, source } = obstructionsEtSource();
     return filtrerEmplacementsSousSeuil(
@@ -647,9 +664,10 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     // WJ19 — puis dérate d'ombrage tracé (1 = aucun → inchangé).
     const annualKwh =
       (o.isReco && ctx.pvgisPerKwc != null ? ctx.pvgisPerKwc * kwc : tableAnnual) * facteurDerateAnnuel(ctx);
-    const target = ctx.rec ? ctx.rec.targetAnnualKwh : billToAnnualKwh(monthlyBill());
+    const target = ctx.rec && ctx.rec.targetAnnualKwh > 0 ? ctx.rec.targetAnnualKwh : billToAnnualKwh(factureCarte()); // ACAL777
     const savings = annualSavingsMad(annualKwh, target); // plafonné à la conso
     renderScene(o.pack, o.grid, o.tiltDeg, o.family, placed, false, occupied); // CALX115
+    majNoteChassis(o.pack, o.grid); // ACAL585 — « n châssis de N × M posés » ou le motif
     afficherSensDePose(lignesSensDePose(o.pack, accesSolaireDe, placedFor)); // ACAL552
     paintCard(
       {
@@ -798,7 +816,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     // ACAL356 — puis le dérate ombrage × horizon de `renderConfig` (1 ⇒ inchangé).
     const annualKwh = clipDcAcKwh(w.annualKwh, effectiveDcAcRatio(w.family)) * gapScale * facteurDerateAnnuel(ctx);
     const kwc = w.kwc * gapScale;
-    const target = ctx.rec ? ctx.rec.targetAnnualKwh : billToAnnualKwh(monthlyBill());
+    const target = ctx.rec && ctx.rec.targetAnnualKwh > 0 ? ctx.rec.targetAnnualKwh : billToAnnualKwh(factureCarte()); // ACAL777
     const savings = annualSavingsMad(annualKwh, target);
     const pct = target > 0 ? (annualKwh / target) * 100 : 0;
     const cov = Math.round(pct);
@@ -811,8 +829,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       : ctx.devisMode && ctx.cibleVendue && ctx.neededPanels <= 0
         ? `Ce devis ne porte aucun panneau — aucune pose proposée. Fixez un nombre (facture ou saisie) pour calepiner.`
         : isReco
-          ? `Meilleure combinaison pour votre facture : ${liveOrientationLabel(w)} à ${w.tiltDeg}°, ${placedCount} panneaux ≈ ${cov} % de la facture. Touchez une option pour la verrouiller — le reste se re-résout.`
-          : `Vos choix sont tenus, le reste a été re-résolu : ${placedCount} panneaux ≈ ${cov} % de la facture. Les badges « Recommandé » montrent l'option optimale de chaque groupe.`;
+          ? `Meilleure combinaison pour votre facture : ${liveOrientationLabel(w)} à ${w.tiltDeg}°, ${placedCount} panneaux${couverture(target, cov)}. Touchez une option pour la verrouiller — le reste se re-résout.`
+          : `Vos choix sont tenus, le reste a été re-résolu : ${placedCount} panneaux${couverture(target, cov)}. Les badges « Recommandé » montrent l'option optimale de chaque groupe.`;
     paintCard(
       {
         title: `${liveOrientationLabel(w)} ${w.tiltDeg}° · ${w.layoutLabel}`,
@@ -945,6 +963,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       retraitsParAreteM: retraitsParArete(), // CALX95 — retrait propre à chaque arête saisie
       eastWestGeometry: eastWestGeometryInput(), // CAL87 — faîtage + écart inter-chevrons saisis
       module: cotesDuModuleDuPanActif(), // CALX109 — vraies cotes du module posé sur ce pan
+      chassis: optionChassis(ctx.activeArea?.()?.chassis), // ACAL585 — châssis N × M saisi sur ce pan
     });
     ctx.liveResult = res;
     if (ctx.neededAuto) ctx.neededPanels = res.neededPanels > 0 ? clampNeeded(res.neededPanels) : besoinAutoRelu(ctx.documentRelu, ctx.activeAreaId, monthlyBill());
@@ -992,8 +1011,14 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     liveResolveFlat();
   }
 
+  /** ACAL852 — la phrase de couverture : « ≈ N % de la facture », ou « facture inconnue » quand la cible est absente ou nulle. */
+  const couverture = (target: number, cov: number) =>
+    (target > 0 ? ` ≈ ${cov} % de la facture` : '. Facture inconnue — saisissez-la pour voir la couverture');
+
   function paintCard(d: CardData, sourceLabel?: string) {
     derniereCarte = { count: d.count, annualKwh: d.annualKwh };
+    // ACAL852 — sans facture (cible absente ou nulle ET aucune économie) : « facture inconnue », jamais « 0 MAD – 0 MAD/an ».
+    const factureInconnue = !((d.target ?? ctx.prodTarget) > 0) && !(d.savingsHigh > 0);
     const set = (id: string, v: string) => {
       const el = $(id);
       if (el) el.textContent = v;
@@ -1004,13 +1029,19 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     // deux cartes affichées pouvait diverger jusqu'à 0,1 kWc du total agrégé
     // (round(a) + round(b) ≠ round(a+b)) — cf. zones.ts. 2 décimales affichent la
     // valeur exacte (aucune perte), donc la somme affichée == le total affiché.
-    set('rp9-reco-kwc', `${d.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} kWc`);
-    set('rp9-reco-panels', `${fmt(d.count)} × 720 W`);
+    // ACAL851 — la puissance du module RÉELLEMENT posé (« 8 × 710 W ») ; sans choix, le défaut.
+    const choisi = moduleDuPanActif();
+    const kwc = choisi ? kwcDuPan(d.count, choisi) : d.kwc;
+    const watt = (choisi ?? MODULE_PAR_DEFAUT_ATELIER).pmaxWc;
+    set('rp9-reco-kwc', kwc == null ? '—' : `${kwc.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} kWc`);
+    set('rp9-reco-panels', watt ? `${fmt(d.count)} × ${fmt(watt)} W` : `${fmt(d.count)} panneaux`);
     set('rp9-reco-prod', d.annualKwh > 0 ? `${fmt(Math.round(d.annualKwh))} kWh/an` : '—');
     set('rp9-reco-cover', d.pct > 0 ? `${Math.round(d.pct)} %` : '—');
-    set('rp9-reco-savings', `${fmtMad(d.savingsLow)} – ${fmtMad(d.savingsHigh)}/an`);
+    set('rp9-reco-savings', factureInconnue ? '— facture inconnue' : `${fmtMad(d.savingsLow)} – ${fmtMad(d.savingsHigh)}/an`);
     const why = $('rp9-reco-why');
     if (why) why.textContent = d.why + (sourceLabel ? ` ${sourceLabel}` : '');
+    // ACAL894 — la provenance de la carte, lue par le bandeau « Estimation rapide » de l'ERP.
+    if (why) why.dataset.sourceProd = sourceLabel ?? '';
     const bif = $('rp9-reco-bifacial');
     if (bif) {
       // W94 — gain bifacial via les VRAIES constantes (face dense/plate ou E-O → FLAT,
@@ -1035,9 +1066,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
         const degPct = Math.round(ANNUAL_DEGRADATION * 1000) / 10; // 0,5 %
         band.textContent =
           `Dans la durée (dégradation ~${degPct.toLocaleString('fr-FR')} %/an) : ` +
-          `Année 1 ~${fmt(Math.round(d.annualKwh))} kWh/an (${fmtMad(d.savingsHigh)}/an) → ` +
-          `Année ${LIFETIME_YEARS} ~${fmt(Math.round(kwh25))} kWh/an (${fmtMad(sav25.high)}/an). ` +
-          `Économies toujours plafonnées à votre facture.`;
+          `Année 1 ~${fmt(Math.round(d.annualKwh))} kWh/an${factureInconnue ? '' : ` (${fmtMad(d.savingsHigh)}/an)`} → ` +
+          `Année ${LIFETIME_YEARS} ~${fmt(Math.round(kwh25))} kWh/an${factureInconnue ? '.' : ` (${fmtMad(sav25.high)}/an). Économies toujours plafonnées à votre facture.`}`;
       } else {
         band.textContent = '';
       }
@@ -1336,8 +1366,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
         : ctx.devisMode && ctx.cibleVendue && ctx.neededPanels <= 0
           ? `Ce devis ne porte aucun panneau — aucune pose proposée sur ce pan. Fixez un nombre (facture ou saisie) pour calepiner.`
           : isReco
-            ? `Pose affleurante optimale : ${w.placedCount} panneaux (${w.layoutLabel}, ${w.marginLabel}) ≈ ${cov} % de la facture. Inclinaison ${tiltTxt} = pente, azimut = face — imposés par la toiture, non optimisés.`
-            : `Vos choix sont tenus, le reste re-résolu : ${w.placedCount} panneaux ≈ ${cov} % de la facture. Les badges « Recommandé » montrent la pose/marge optimale.`;
+            ? `Pose affleurante optimale : ${w.placedCount} panneaux (${w.layoutLabel}, ${w.marginLabel})${couverture(res.target, cov)}. Inclinaison ${tiltTxt} = pente, azimut = face — imposés par la toiture, non optimisés.`
+            : `Vos choix sont tenus, le reste re-résolu : ${w.placedCount} panneaux${couverture(res.target, cov)}. Les badges « Recommandé » montrent la pose/marge optimale.`;
     paintCard(
       {
         title: `Toit en pente ~${tiltTxt} · face ${facingLabel(ctx.facingAzimuthDeg)} · ${w.layoutLabel}`,

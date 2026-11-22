@@ -172,6 +172,22 @@
       "verbe": "post"
     }
   ],
+  "calepinages.configurationsOnduleur": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/configurations-onduleur/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.controleChaine": [
+    {
+      "config": null,
+      "data": 7,
+      "url": "/calepinage/calepinages/controle-chaine/",
+      "verbe": "post"
+    }
+  ],
   "calepinages.corrigerReleve": [
     {
       "config": null,
@@ -210,7 +226,9 @@
   ],
   "calepinages.decisionApprobation": [
     {
-      "config": null,
+      "config": {
+        "suppressErrorToast": true
+      },
       "data": 3,
       "url": "/calepinage/calepinages/7/approbation/",
       "verbe": "post"
@@ -324,6 +342,20 @@
       "verbe": "get"
     }
   ],
+  "calepinages.diagrammeEnergie": [
+    {
+      "config": {
+        "params": {
+          "langue": 3
+        },
+        "responseType": "blob",
+        "suppressErrorToast": true
+      },
+      "data": null,
+      "url": "/calepinage/calepinages/7/diagramme-energie.svg/",
+      "verbe": "get"
+    }
+  ],
   "calepinages.documents": [
     {
       "config": null,
@@ -364,6 +396,14 @@
         }
       },
       "url": "/calepinage/calepinages/7/variantes/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.ecartMesures": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/ecart-mesures/",
       "verbe": "post"
     }
   ],
@@ -427,6 +467,14 @@
       "data": 3,
       "url": "/calepinage/calepinages/7/pose-reelle/",
       "verbe": "post"
+    }
+  ],
+  "calepinages.enregistrerProductionMesuree": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/production-mesuree/",
+      "verbe": "put"
     }
   ],
   "calepinages.enregistrerRaccordement": [
@@ -526,6 +574,14 @@
       "verbe": "post"
     }
   ],
+  "calepinages.explications": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/explications/",
+      "verbe": "get"
+    }
+  ],
   "calepinages.exportCsv": [
     {
       "config": {
@@ -610,6 +666,16 @@
       "verbe": "get"
     }
   ],
+  "calepinages.importerAffectation": [
+    {
+      "config": null,
+      "data": {
+        "csv": 3
+      },
+      "url": "/calepinage/calepinages/7/importer-affectation/",
+      "verbe": "post"
+    }
+  ],
   "calepinages.importerConception": [
     {
       "config": null,
@@ -681,6 +747,22 @@
       "config": null,
       "data": null,
       "url": "/calepinage/calepinages/7/layout/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.lireFactureConsommation": [
+    {
+      "config": null,
+      "data": 3,
+      "url": "/calepinage/calepinages/7/consommation/lire-facture/",
+      "verbe": "post"
+    }
+  ],
+  "calepinages.lireFactureDisponible": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/consommation/lire-facture/",
       "verbe": "get"
     }
   ],
@@ -824,6 +906,22 @@
       },
       "url": "/calepinage/calepinages/7/etiquettes/",
       "verbe": "post"
+    }
+  ],
+  "calepinages.pretAEnvoyer": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/pret-a-envoyer/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.productionMesuree": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/production-mesuree/",
+      "verbe": "get"
     }
   ],
   "calepinages.proposerConsommation": [
@@ -970,6 +1068,16 @@
       },
       "data": null,
       "url": "/calepinage/calepinages/7/schema-unifilaire.dxf/",
+      "verbe": "get"
+    }
+  ],
+  "calepinages.soleilLegal": [
+    {
+      "config": {
+        "params": 3
+      },
+      "data": null,
+      "url": "/calepinage/calepinages/7/soleil-legal/",
       "verbe": "get"
     }
   ],

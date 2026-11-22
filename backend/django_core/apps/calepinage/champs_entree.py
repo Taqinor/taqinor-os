@@ -70,10 +70,16 @@ def _transformateur():
 
 
 def _batterie():
-    from .services.batterie import COUPLAGES, MOTIVATIONS, STRATEGIES
+    from .services.batterie import (
+        COUPLAGES, FENETRES_MAX, MOTIVATIONS, STRATEGIES)
 
     heures = {'type': 'array', 'items': {
         'type': 'integer', 'minimum': 0, 'maximum': 23}}
+    fenetres = {'type': 'array', 'minItems': 1, 'maxItems': FENETRES_MAX,
+                'items': {'type': 'object', 'additionalProperties': False,
+                          'required': ['heures'], 'properties': {
+                              'heures': dict(heures, minItems=1),
+                              'soc_cible_pct': _positif(100)}}}
     return {'type': 'object', 'additionalProperties': False, 'properties': {
         'strategie': {'type': 'string', 'enum': list(STRATEGIES)},
         'couplage': {'type': 'string', 'enum': list(COUPLAGES)},
@@ -82,14 +88,65 @@ def _batterie():
         'seuil_effacement_kw': _positif(1e6),
         'reserve_backup_kwh': _positif(1e6),
         'etat_initial_kwh': _positif(1e6),
-        'heures_charge': heures, 'heures_decharge': heures}}
+        'heures_charge': heures, 'heures_decharge': heures,
+        # ACAL786 — secours (CALX270) et commande horaire (CALX268).
+        'appareils': {'type': 'array', 'minItems': 1, 'items': {
+            'type': 'object', 'additionalProperties': False,
+            'required': ['puissance_continue_kw', 'puissance_pointe_kw',
+                         'quantite'],
+            'properties': {
+                'nom': {'type': 'string', 'pattern': MOTIF_SANS_NUL},
+                'puissance_continue_kw': _positif(1e4, strict=True),
+                'puissance_pointe_kw': _positif(1e4, strict=True),
+                'quantite': _positif(1e4, strict=True)}}},
+        'duree_secours_h': _positif(1e3, strict=True),
+        'fenetres': {'type': 'object', 'additionalProperties': False,
+                     'required': ['charge', 'decharge'], 'properties': {
+                         sorte: fenetres for sorte in ('charge', 'decharge')}},
+        'part_effacable_pct': _positif(100, strict=True),
+        'plafond_effacable_kw': _positif(1e6, strict=True),
+        # ACAL796 — coupures de réseau déclarées (null efface) ; plage jugée
+        # par services/batterie_declaration.py::_valider_coupures.
+        'coupures': {'type': 'object', 'nullable': True,
+                     'additionalProperties': False,
+                     'required': ['nombre_par_an', 'duree_h', 'heure_debut'],
+                     'properties': {
+                         'nombre_par_an': {'type': 'integer', 'minimum': 1},
+                         'duree_h': {'type': 'integer', 'minimum': 1},
+                         'heure_debut': {'type': 'integer', 'minimum': 0,
+                                         'maximum': 23}}}},
+            # ACAL786 — appareils ⇒ durée, jamais avec la réserve nue ; fenêtres
+            # OU listes d'heures, jamais les deux (règles de services/batterie.py).
+            'allOf': [
+                {'anyOf': [{'not': {'required': ['appareils']}},
+                           {'required': ['duree_secours_h'],
+                            'not': {'required': ['reserve_backup_kwh']}}]},
+                {'not': {'required': ['fenetres', 'heures_charge']}},
+                {'not': {'required': ['fenetres', 'heures_decharge']}}]}
 
 
 def _hors_reseau():
     return {'type': 'object', 'additionalProperties': False, 'properties': {
         'actif': {'type': 'boolean'},
         'jours_autonomie': _positif(365, strict=True),
-        'etat_initial_kwh': _positif(1e6)}}
+        'etat_initial_kwh': _positif(1e6),
+        # ACAL790 — seuils de protection (CALX272) ; l'ordre arrêt ≤
+        # entretien ≤ veille est jugé par services/hors_reseau.py.
+        'seuils': {'type': 'object', 'nullable': True,
+                   'additionalProperties': False,
+                   'required': ['veille_pct', 'entretien_pct', 'arret_pct'],
+                   'properties': {nom: _positif(100) for nom in (
+                       'veille_pct', 'entretien_pct', 'arret_pct')}},
+        # ACAL800 — groupe d'appoint (null efface) ; démarrage < arrêt jugé
+        # par services/groupe_appoint.py.
+        'groupe': {'type': 'object', 'nullable': True,
+                   'additionalProperties': False, 'required': ['actif'],
+                   'properties': {
+                       'actif': {'type': 'boolean'},
+                       'puissance_kw': _positif(1e6, strict=True),
+                       'soc_demarrage_pct': _positif(100),
+                       'soc_arret_pct': _positif(100),
+                       'heures_max_par_jour': _positif(24, strict=True)}}}}
 
 
 def corps_entree_resserre():

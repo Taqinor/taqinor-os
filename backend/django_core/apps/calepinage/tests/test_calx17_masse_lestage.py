@@ -40,6 +40,8 @@ from apps.calepinage.services.lestage import (
     masse_et_lestage,
 )
 
+from .test_api_liste import BaseApiCalepinage
+
 ECHANTILLON = (pathlib.Path(__file__).resolve().parent.parent
                / 'contract_samples' / 'calepinage_masse_lestage.json')
 
@@ -235,3 +237,166 @@ class PorteMasseLestageTest(SimpleTestCase):
                       "Le refus doit NOMMER le champ fautif : un « non "
                       "enregistré » générique n'est pas actionnable.")
         self.assertIn('panneau-550', reponse.data['module'])
+
+
+# ── ACAL564 — centre, rive, coin : le lest ADDITIONNEL par module ──────────
+
+def _zones_saisies(**valeurs):
+    """Les quatre paramètres ``zones_de_pose`` saisis avec leur source."""
+    defaut = {'largeur_bande_rive_m': 1.0, 'largeur_coin_m': 0.8,
+              'lest_rive_kg_par_module': 12.5,
+              'lest_coin_kg_par_module': 25.0}
+    defaut.update(valeurs)
+    return {cle: {'valeur': v, 'source': 'notice K2 (essai)'}
+            for cle, v in defaut.items() if v is not None}
+
+
+def _pan_4x6():
+    return {'repere': 'PAN-1',
+            'points': [(0.0, 0.0), (4.0, 0.0), (4.0, 6.0), (0.0, 6.0)],
+            'modules': [(0.5 + i, 0.5 + j)
+                        for i in range(4) for j in range(6)]}
+
+
+class RepartitionDuLestageTest(SimpleTestCase):
+
+    def test_4x6_donne_4_coins_12_rives_8_centres(self):
+        from apps.calepinage.services.lestage_zones import repartir_modules
+
+        sortie = repartir_modules([_pan_4x6()], _zones_saisies())
+        self.assertTrue(sortie['disponible'])
+        self.assertEqual(sortie['manquants'], [])
+        pan = sortie['pans'][0]
+        self.assertEqual((pan['coins'], pan['rives'], pan['centres']),
+                         (4, 12, 8))
+        self.assertEqual(pan['lest_kg'], 4 * 25.0 + 12 * 12.5)
+        self.assertEqual(sortie['total_lest_kg'], pan['lest_kg'])
+        par_centre = {tuple(m['centre']): m for m in pan['modules']}
+        self.assertEqual(par_centre[(0.5, 0.5)]['zone'], 'coin')
+        self.assertEqual(par_centre[(1.5, 0.5)]['zone'], 'rive')
+        self.assertEqual(par_centre[(1.5, 1.5)],
+                         {'centre': [1.5, 1.5], 'zone': 'centre',
+                          'lest_kg': 0.0})
+
+    def test_la_bande_est_inclusive(self):
+        from apps.calepinage.services.lestage_zones import repartir_modules
+
+        # (1.5, 1.5) est à 1,5 m de la rive : une bande de 1,5 m l'y range.
+        pan = repartir_modules([_pan_4x6()], _zones_saisies(
+            largeur_bande_rive_m=1.5))['pans'][0]
+        self.assertEqual(pan['centres'], 0)
+
+    def test_un_parametre_manquant_rend_indisponible_en_le_nommant(self):
+        from apps.calepinage.services.lestage_zones import repartir_modules
+
+        sortie = repartir_modules([_pan_4x6()],
+                                  _zones_saisies(largeur_coin_m=None))
+        self.assertFalse(sortie['disponible'])
+        self.assertEqual([m['cle'] for m in sortie['manquants']],
+                         ['largeur_coin_m'])
+        self.assertEqual(sortie['pans'], [])
+        self.assertIsNone(sortie['total_lest_kg'])
+
+    def test_aucun_module_rend_vide(self):
+        from apps.calepinage.services.lestage_zones import repartir_modules
+
+        pan = dict(_pan_4x6(), modules=[])
+        sortie = repartir_modules([pan], _zones_saisies())
+        self.assertEqual(sortie['pans'], [])
+        self.assertEqual(sortie['total_lest_kg'], 0.0)
+
+
+# ── ACAL565 — la feuille « Plan de lestage » ───────────────────────────────
+
+class PlanLestagePurTest(SimpleTestCase):
+    """PUR — la mise en page et les motifs, sans base ni WeasyPrint."""
+
+    def _nu(self, layout):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(pk=None, company=None, titre='Villa Anfa',
+                               roof_layout=layout, layout_hash='',
+                               version_moteur='')
+
+    def test_la_feuille_dit_zones_lest_et_sources_sans_montant(self):
+        from apps.calepinage.services.garde_montants import mots_d_argent
+        from apps.calepinage.services.plan_lestage import _svg_de_plan_lestage
+        from apps.calepinage.services.planche import geometrie_de_planche
+
+        from .test_cal171_planche import LAYOUT
+
+        svg = _svg_de_plan_lestage(self._nu(LAYOUT),
+                                   geometrie_de_planche(LAYOUT),
+                                   _zones_saisies())
+        for attendu in ('Plan de lestage', 'Centre', 'Rive', 'Coin',
+                        '12,5 kg', 'notice K2 (essai)', 'calculées'):
+            self.assertIn(attendu, svg)
+        self.assertEqual(mots_d_argent(svg), [])
+
+    def test_sans_conception_le_motif_le_dit(self):
+        from apps.calepinage.services.plan_lestage import (
+            SANS_CONCEPTION, motif_plan_lestage,
+        )
+
+        self.assertEqual(motif_plan_lestage(self._nu(None)), SANS_CONCEPTION)
+
+    def test_sans_systeme_le_motif_nomme_le_systeme(self):
+        from apps.calepinage.services.plan_lestage import motif_plan_lestage
+
+        from .test_cal171_planche import LAYOUT
+
+        self.assertIn('système de fixation',
+                      motif_plan_lestage(self._nu(LAYOUT)))
+
+    def test_l_inventaire_liste_le_plan_meme_indisponible(self):
+        from apps.calepinage.views.sorties import inventaire_des_sorties
+
+        from types import SimpleNamespace
+
+        nu = SimpleNamespace(pk=7, company=None, titre='', roof_layout=None,
+                             resultat=None, layout_hash='', version_moteur='',
+                             roof_image=None)
+        entree = [s for s in inventaire_des_sorties(nu)['sorties']
+                  if s['code'] == 'plan_lestage_pdf'][0]
+        self.assertFalse(entree['disponible'])
+        self.assertTrue(entree['motif_indisponible'])
+        self.assertTrue(entree['endpoint'].endswith('/7/plan-lestage.pdf/'))
+
+
+class PlanLestageEnBaseTest(BaseApiCalepinage):
+    """CI — la porte réelle : PDF avec un système lesté et les quatre
+    paramètres, 409 nommé sinon."""
+
+    def setUp(self):
+        from apps.calepinage.models import Calepinage, SystemeFixation
+
+        from .test_cal171_planche import LAYOUT
+
+        super().setUp()
+        self.calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='Toit plat',
+            roof_layout=LAYOUT)
+        SystemeFixation.objects.create(
+            company=self.company, code='leste', libelle='Lesté (essai)',
+            mode_pose='toit_plat_leste', provenance='Notice (essai)')
+        self.url = ('/api/django/calepinage/calepinages/%s/plan-lestage.pdf/'
+                    % self.calepinage.pk)
+
+    def _saisir(self, **valeurs):
+        from apps.calepinage.services.parametres import enregistrer_parametres
+
+        enregistrer_parametres(self.company, {'lestage': {
+            'zones_de_pose': _zones_saisies(**valeurs)}})
+
+    def test_pdf_produit_avec_les_quatre_parametres(self):
+        self._saisir()
+        reponse = self.api.get(self.url)
+        self.assertEqual(reponse.status_code, 200,
+                         getattr(reponse, 'data', None))
+        self.assertEqual(reponse['Content-Type'], 'application/pdf')
+
+    def test_parametre_manquant_refuse_409_en_le_nommant(self):
+        self._saisir(largeur_coin_m=None)
+        reponse = self.api.get(self.url)
+        self.assertEqual(reponse.status_code, 409)
+        self.assertIn('largeur_coin_m', reponse.data)

@@ -35,6 +35,27 @@
         "motif": "",
         "provenance_fuseau": "profil_societe"
       },
+      "comparaison_base": {
+        "base_principale": "PVGIS-SARAH3",
+        "base_comparee": "PVGIS-ERA5",
+        "irradiation_kwh_m2": {"principale": 7.8, "comparee": 8.6},
+        "ecart_pct": 9.74,
+        "mensuel": [
+          {"mois": 1, "principale": 0.1, "comparee": 0.1, "ecart_pct": -10.0},
+          {"mois": 2, "principale": 0.2, "comparee": 0.2, "ecart_pct": 10.0},
+          {"mois": 3, "principale": 0.3, "comparee": 0.3, "ecart_pct": 10.0},
+          {"mois": 4, "principale": 0.4, "comparee": 0.4, "ecart_pct": 10.0},
+          {"mois": 5, "principale": 0.5, "comparee": 0.6, "ecart_pct": 10.0},
+          {"mois": 6, "principale": 0.6, "comparee": 0.7, "ecart_pct": 10.0},
+          {"mois": 7, "principale": 0.7, "comparee": 0.8, "ecart_pct": 10.0},
+          {"mois": 8, "principale": 0.8, "comparee": 0.9, "ecart_pct": 10.0},
+          {"mois": 9, "principale": 0.9, "comparee": 1.0, "ecart_pct": 10.0},
+          {"mois": 10, "principale": 1.0, "comparee": 1.1, "ecart_pct": 10.0},
+          {"mois": 11, "principale": 1.1, "comparee": 1.2, "ecart_pct": 10.0},
+          {"mois": 12, "principale": 1.2, "comparee": 1.3, "ecart_pct": 10.0}
+        ],
+        "motif": ""
+      },
       "fichier": null,
       "albedo_face_avant": {
         "valeur": null,
@@ -77,6 +98,7 @@
         "motif": "",
         "provenance_fuseau": null
       },
+      "comparaison_base": null,
       "fichier": null,
       "albedo_face_avant": {
         "valeur": null,
@@ -146,6 +168,18 @@
           ],
           "source": "mesure"
         }
+      }
+    }
+  },
+  "exemple_comparaison_sans_ecart": {
+    "meteo": {
+      "comparaison_base": {
+        "base_principale": "PVGIS-SARAH3",
+        "base_comparee": "PVGIS-ERA5",
+        "irradiation_kwh_m2": {"principale": null, "comparee": null},
+        "ecart_pct": null,
+        "mensuel": [],
+        "motif": "Les deux bases ne couvrent pas les mêmes années : l'écart n'est pas calculé."
       }
     }
   }

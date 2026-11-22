@@ -41,6 +41,9 @@ import {
   type ProLayout2,
 } from '../../lib/roofPro2';
 import { type LngLat } from '../../lib/roof';
+import { solarAccessSummary } from '../../lib/shadingEngine'; // ACAL721
+import { fallbackPerKwc } from '../../lib/productionEngine'; // ACAL721
+import { bandesDuPan } from './bandesAcces'; // ACAL721
 // CALX110 — le câblage RÉEL : le document écrit par `serializeLayout` et les totaux
 // affichés par `computePanStats`. Ce sont les deux seuls consommateurs de ce module.
 import { serializeLayout, hydrateFromDevis } from './prefill';
@@ -539,5 +542,49 @@ describe('ACAL30 — moduleId et modules[] conservés hors catalogue', () => {
     const sortie = serializeLayout(ctx, null, { modules: affectationDesPans([], ctx.areas) });
     expect(sortie.zones[0].geometry?.moduleId).toBeUndefined();
     expect(sortie.panelWatt).toBe(PANEL2_WATT);
+  });
+});
+
+describe('ACAL913 — le module de DÉPART d’un pan neuf', () => {
+  const m = (id: string, pmaxWc: number) => ({
+    id, produitId: 1, libelle: id, longueurMm: 2384, largeurMm: 1303, epaisseurMm: 35, poidsKg: 30,
+    pmaxWc, source: 'fiche produit du stock',
+  });
+  const catalogue = { choisissables: [m('a-500', 500), m('b-710', 710)], grises: [], motifListeVide: null };
+
+  it('le premier choisissable, ou celui du devis quand sa puissance y figure', async () => {
+    const { moduleDeDepart } = await import('./moduleSelect');
+    expect(moduleDeDepart(catalogue)?.id).toBe('a-500');
+    expect(moduleDeDepart(catalogue, 710)?.id).toBe('b-710');
+    expect(moduleDeDepart(catalogue, 720)?.id).toBe('a-500');
+  });
+
+  it('sans catalogue : aucun module de départ (le 720 Wc de l’atelier reste NOMMÉ)', async () => {
+    const { moduleDeDepart } = await import('./moduleSelect');
+    expect(moduleDeDepart({ choisissables: [], grises: [], motifListeVide: null })).toBeNull();
+  });
+});
+
+describe('ACAL721 — sousChaines de la fiche et bandes d’accès solaire du pan', () => {
+  const LAT = 33.5;
+  const cheminee = { x: 0, y: -3, effHeightM: 5, halfWidthM: Math.hypot(3, 3) / 2, footprint: [[-1.5, -4.5], [1.5, -4.5], [1.5, -1.5], [-1.5, -1.5]] as [number, number][] };
+  const acces = (pts: Array<{ x: number; y: number }>) => solarAccessSummary(LAT, [cheminee], fallbackPerKwc(), pts);
+  const base = { catalogue: [] as ModuleDocument[], moduleId: 'm3', panneaux: [{ cx: 0, cy: 0 }, { cx: 0, cy: 2 }], inclinaisonDeg: 0, azimutFaceDeg: 180, acces };
+
+  it('l’échantillon de contrat porte sousChaines : lu quand la fiche le dit, absent sinon', () => {
+    const [premier] = lireModulesDisponibles(CONTRAT.exemple).choisissables;
+    expect(premier.sousChaines).toBe(3);
+    expect(lireModulesDisponibles({ modules: [{ selectionnable: true, module: { ...module({ id: 'x' }), sousChaines: null } }] })
+      .choisissables[0]).not.toHaveProperty('sousChaines');
+  });
+
+  it('trois sous-chaînes : trois bandes par module, aval d’abord ; sans sousChaines, aucune bande', () => {
+    const m3 = module({ id: 'm3', sousChaines: 3 });
+    const bandes = bandesDuPan({ ...base, catalogue: [m3] });
+    expect(bandes).toHaveLength(2);
+    expect(bandes![0]).toHaveLength(3);
+    expect(bandes![0][0]).toBeLessThan(bandes![0][2]); // la bande basse (aval, vers l'obstacle) est la plus ombrée
+    expect(bandesDuPan({ ...base, catalogue: [module({ id: 'm3' })] })).toBeNull();
+    expect(bandesDuPan({ ...base, catalogue: [module({ id: 'm3', sousChaines: 1 })] })).toBeNull();
   });
 });

@@ -104,6 +104,9 @@
     ],
     "deja_saisis": [],
     "confirme": false,
+    "refus": "",
+    "conversions": [],
+    "controles_omis": [],
     "ecrits": null,
     "fiche": null,
     "detail": null,
@@ -118,6 +121,7 @@
       "longueur_mm": "2278",
       "epaisseur_mm": "35",
       "poids_kg": "32.00",
+      "cellules_serie": "72",
       "pmax_wc": "550.00",
       "tolerance_pmax_max_pct": "0.90",
       "bifacialite_pct": "70.0",
@@ -126,6 +130,7 @@
       "imp_a": "13.11",
       "vmp_v": "41.96",
       "temp_coeff_voc_pct_c": "-0.257",
+      "temp_coeff_isc_pct_c": "0.052",
       "temp_coeff_pmax_pct_c": "-0.340"
     },
     "reconnus": [
@@ -133,6 +138,7 @@
       "Height",
       "Depth",
       "Weight",
+      "NCelS",
       "PNom",
       "PNomTolUp",
       "BifacialityFactor",
@@ -140,6 +146,7 @@
       "Voc",
       "Imp",
       "Vmp",
+      "muISC",
       "muVocSpec",
       "muPmpReq"
     ],
@@ -162,7 +169,6 @@
       "Mode",
       "Model",
       "NCelP",
-      "NCelS",
       "NDiode",
       "NPieces",
       "NPtsEff",
@@ -191,12 +197,19 @@
       "VRevDiode",
       "Version",
       "YearBeg",
-      "muGamma",
-      "muISC"
+      "muGamma"
     ],
     "champs_attendus_absents": [],
     "deja_saisis": [],
-    "confirme": false
+    "confirme": false,
+    "refus": "",
+    "conversions": [
+      "muISC (mA/°C) converti avec Isc du même fichier",
+      "muVocSpec (mV/°C) converti avec Voc du même fichier"
+    ],
+    "controles_omis": [
+      "écart de Pmax non contrôlé : réglage non saisi"
+    ]
   },
   "exemple_module_pmax_deja_saisi": {
     "type_fiche": "module",
@@ -205,6 +218,7 @@
       "longueur_mm": "2278",
       "epaisseur_mm": "35",
       "poids_kg": "32.00",
+      "cellules_serie": "72",
       "tolerance_pmax_max_pct": "0.90",
       "bifacialite_pct": "70.0",
       "isc_a": "14.00",
@@ -212,6 +226,7 @@
       "imp_a": "13.11",
       "vmp_v": "41.96",
       "temp_coeff_voc_pct_c": "-0.257",
+      "temp_coeff_isc_pct_c": "0.052",
       "temp_coeff_pmax_pct_c": "-0.340"
     },
     "reconnus": [
@@ -219,6 +234,7 @@
       "Height",
       "Depth",
       "Weight",
+      "NCelS",
       "PNom",
       "PNomTolUp",
       "BifacialityFactor",
@@ -226,6 +242,7 @@
       "Voc",
       "Imp",
       "Vmp",
+      "muISC",
       "muVocSpec",
       "muPmpReq"
     ],
@@ -248,7 +265,6 @@
       "Mode",
       "Model",
       "NCelP",
-      "NCelS",
       "NDiode",
       "NPieces",
       "NPtsEff",
@@ -277,14 +293,21 @@
       "VRevDiode",
       "Version",
       "YearBeg",
-      "muGamma",
-      "muISC"
+      "muGamma"
     ],
     "champs_attendus_absents": [],
     "deja_saisis": [
       "pmax_wc"
     ],
-    "confirme": false
+    "confirme": false,
+    "refus": "",
+    "conversions": [
+      "muISC (mA/°C) converti avec Isc du même fichier",
+      "muVocSpec (mV/°C) converti avec Voc du même fichier"
+    ],
+    "controles_omis": [
+      "écart de Pmax non contrôlé : réglage non saisi"
+    ]
   },
   "exemple_confirme": {
     "type_fiche": "onduleur",
@@ -374,6 +397,9 @@
       "ond_i_max_mppt_a"
     ],
     "confirme": true,
+    "refus": "",
+    "conversions": [],
+    "controles_omis": [],
     "fiche": {
       "id": 41,
       "produit": 12,

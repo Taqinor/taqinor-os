@@ -230,6 +230,15 @@ def _kit_hors_composition_residentielle(devis, agricole, multi_villa):
     return bool(agricole or multi_villa or mode in MARCHES_CI)
 
 
+def _appliquer_cles_etude(etude, cles):
+    """Pose les clés d'étude du layout sur ``etude`` ; ACAL912 — une clé à ``None`` est RETIRÉE, jamais
+    laissée périmée."""
+    for cle in [c for c, v in cles.items() if v is None]:
+        etude.pop(cle, None)
+        cles.pop(cle)
+    etude.update(cles)
+
+
 def reconcilier(devis, intention):
     """QJR97 — L'ÉTAPE « RÉCONCILIER » du pipeline (``MODE_RECONCILIER``).
 
@@ -1076,7 +1085,8 @@ def reconcilier(devis, intention):
                 # l'option la PLUS équipée : celle avec batterie. Le compléter
                 # « sans » laisserait l'option « avec » incomplète au PDF.
                 avec_batterie=True if devis_deux_options else a_batterie,
-                avertissements=avertissements)
+                avertissements=avertissements,
+                modules_affleurants=_affleurants_au_niveau(verrou, layout))  # ACAL927
 
         # ── QJR220 — LES FORFAITS AU PANNEAU SUIVENT LE COMPTE RÉELLEMENT
         # ÉCRIT ──
@@ -1106,8 +1116,8 @@ def reconcilier(devis, intention):
         # géométrie et le kWc, jamais production ni économies (le moteur C&I
         # les calcule) ; résidentiel/agricole inchangés.
         from apps.ventes.domain.etude_schema import cles_etude_du_layout
-        etude.update(cles_etude_du_layout(
-            getattr(verrou, 'mode_installation', None), result))
+        _appliquer_cles_etude(etude, cles_etude_du_layout(
+            getattr(verrou, 'mode_installation', None), result, layout))
         # QJR63 — LE kWc VIENT DE SON PROPRIÉTAIRE, PLUS DU LAYOUT. Ce site
         # écrivait ``kwc`` — celui du CALEPINAGE — même quand la règle de
         # plafond de variante venait de faire atterrir le devis sur un AUTRE
@@ -1619,6 +1629,7 @@ from apps.ventes.domain.lignes import (  # noqa: E402 — fin de module (anti-cy
 # son étape ``reconcilier`` (import fonction-local, délibéré), donc il est
 # toujours complètement chargé quand cette ligne s'exécute.
 from apps.ventes.domain.pipeline import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+    _affleurants_au_niveau,
     MODE_RECONCILIER,
     ORIGINE_RESYNCHRONISATION,
     IntentionDevis,

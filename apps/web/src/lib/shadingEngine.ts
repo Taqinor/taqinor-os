@@ -37,11 +37,38 @@ import { WGS84_RADIUS } from './geo';
 import { HORIZON_KEPT_BY_ELEVATION } from './horizonEngine';
 const DEG2M = DEG2RAD * WGS84_RADIUS;
 
-/** Hypothèse PAR DÉFAUT du moment de prise de vue de l'imagerie : ~10 h 30 solaire
- *  (orbites héliosynchrones des satellites d'imagerie), mi-saison (équinoxe ≈ jour 80 —
- *  ni le pire ni le meilleur soleil, l'hypothèse la plus neutre). Ajustable par
- *  l'utilisateur, TOUJOURS étiquetée comme hypothèse. */
-export const IMAGERY_SUN_DEFAULT = { dayOfYear: 80, solarHour: 10.5 } as const;
+/** ACAL496 — le jour de l'année (1..366) d'une date AAAA-MM-JJ réelle, sinon `null`. */
+export function dayOfYearFromIsoDate(iso: unknown): number | null {
+  const texte = typeof iso === 'string' ? iso.trim() : '';
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(texte);
+  if (!m) return null;
+  const t = Date.UTC(+m[1], +m[2] - 1, +m[3]);
+  if (new Date(t).toISOString().slice(0, 10) !== texte) return null;
+  return Math.round((t - Date.UTC(+m[1], 0, 1)) / 86_400_000) + 1;
+}
+
+export const MOTIF_SOLEIL_PRISE_DE_VUE_ABSENT =
+  'Renseignez la date et l’heure solaire de prise de vue de l’image avant de mesurer une ombre.';
+
+export type DeclarationSoleil =
+  | { ok: true; elevationDeg: number; ligne: string }
+  | { ok: false; motif: string };
+
+/** ACAL496 — le soleil de la prise de vue d'après la date et l'heure SOLAIRE déclarées (aucune
+ *  valeur supposée : date ou heure absente ⇒ motif). `sunDirection` reste la seule formule. */
+export function declarationSoleilPriseDeVue(latitude: number, date: unknown, heure: unknown): DeclarationSoleil {
+  const jour = dayOfYearFromIsoDate(date);
+  if (jour == null || heure == null || heure === '') return { ok: false, motif: MOTIF_SOLEIL_PRISE_DE_VUE_ABSENT };
+  const h = typeof heure === 'number' ? heure : Number(heure);
+  if (!Number.isFinite(h) || h < 0 || h > 24) {
+    return { ok: false, motif: 'Heure solaire illisible : un nombre entre 0 et 24 (midi solaire = 12 h).' };
+  }
+  const elevationDeg = sunDirection(latitude, jour, h).elevationDeg;
+  const [, mm, jj] = /^\d{4}-(\d{2})-(\d{2})$/.exec(String(date).trim()) as RegExpExecArray;
+  const hTexte = h.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+  const deg = elevationDeg.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  return { ok: true, elevationDeg, ligne: `soleil à ${deg}° le ${jj}/${mm} à ${hTexte} h solaire` };
+}
 
 /** Part DIFFUSE du rayonnement conservée quand l'obstruction masque le soleil direct.
  *  ~25 % : fraction diffuse annuelle typique du global au Maroc (climat clair, ratios
@@ -428,6 +455,27 @@ export function cellsSolarAccess(
   return points.map((p) => pointSolarAccess(latitudeDeg, obstructions, prod, p.x, p.y, diffuseFraction));
 }
 
+/**
+ * ACAL721 — les centres des `n` BANDES d'un module (une par sous-chaîne de sa fiche), de la
+ * bande BASSE (aval) à la bande HAUTE (amont), dans le plan du champ. `sensPente` = vecteur
+ * vers l'AVAL (sud pour un pan face au sud : y négatif) ; `penteHorizontaleM` = longueur du
+ * module dans le sens de la pente, projetée à l'horizontale. `n` ≤ 1 → le centre du module. PUR.
+ */
+export function centresDeBandes(
+  centre: SolarAccessPoint,
+  sensPente: SolarAccessPoint,
+  penteHorizontaleM: number,
+  n: number,
+): SolarAccessPoint[] {
+  const norme = Math.hypot(sensPente.x, sensPente.y);
+  if (!(n > 1) || !(norme > 0) || !(penteHorizontaleM > 0)) return [{ x: centre.x, y: centre.y }];
+  const pas = penteHorizontaleM / n;
+  return Array.from({ length: n }, (_, i) => {
+    const decalage = penteHorizontaleM / 2 - (i + 0.5) * pas; // + côté aval, − côté amont
+    return { x: centre.x + (sensPente.x / norme) * decalage, y: centre.y + (sensPente.y / norme) * decalage };
+  });
+}
+
 // ═══════════ CAL97 — ACCÈS SOLAIRE CHIFFRÉ ET PUBLIÉ (TSRF) ═══════════
 // L'accès solaire par point était calculé UNIQUEMENT pour colorer la heatmap : aucun
 // chiffre n'en sortait. On l'agrège ici par module, par pan et pour l'installation, avec
@@ -458,8 +506,8 @@ export interface SolarAccessSummary {
   average: number;
   min: number;
   max: number;
-  /** Nombre de modules sous le seuil `SOLAR_ACCESS_LOW`. */
-  lowCount: number;
+  /** Nombre de modules sous le seuil de retrait de la société ; `null` quand aucun seuil n'est réglé (ACAL714). */
+  lowCount: number | null;
   /** Période évaluée : null = année entière, 0–11 = mois. */
   month: number | null;
   /** Méthode, en une phrase, à afficher À CÔTÉ du chiffre. */
@@ -467,11 +515,6 @@ export interface SolarAccessSummary {
   /** Hypothèses explicites du chiffre (jamais implicites). */
   assumptions: string[];
 }
-
-/** CAL97 — en dessous de ce taux d'accès solaire, un module est dit « fortement
- *  ombragé ». Seuil d'AFFICHAGE (il ne change aucun calcul) : il correspond à la perte
- *  d'un quart de l'irradiation annuelle reçue. */
-export const SOLAR_ACCESS_LOW = 0.75;
 
 /**
  * CAL97 — agrège l'accès solaire d'une liste de modules. Renvoie `null` — donc un chiffre
@@ -486,6 +529,7 @@ export function solarAccessSummary(
   points: readonly SolarAccessPoint[],
   month: number | null = null,
   diffuseFraction = DIFFUSE_FRACTION_WHEN_SHADED,
+  lowThreshold: number | null = null, // ACAL714 — réglage société ; absent ⇒ aucun compte, aucune valeur de repli
 ): SolarAccessSummary | null {
   if (!points.length || !obstructions.length) return null;
   const perModule = points.map((p) =>
@@ -501,7 +545,7 @@ export function solarAccessSummary(
     average: sum / count,
     min: Math.min(...perModule),
     max: Math.max(...perModule),
-    lowCount: perModule.filter((a) => a < SOLAR_ACCESS_LOW).length,
+    lowCount: lowThreshold == null ? null : perModule.filter((a) => a < lowThreshold).length,
     month,
     // ACAL138 — méthode OBJET : ce calcul ne modélise ni l'horizon lointain (poste séparé,
     // CAL93) ni l'ombrage mutuel des rangées — seulement les obstructions renseignées.
@@ -574,9 +618,9 @@ export interface ShadeRemovalProposal {
 export function proposeShadedRemoval(
   perModule: readonly number[],
   panelKwc: number,
-  threshold = SOLAR_ACCESS_LOW,
+  threshold: number | null = null, // ACAL714 — sans seuil réglé par la société : aucune proposition
 ): ShadeRemovalProposal | null {
-  if (!perModule.length || !Number.isFinite(panelKwc) || panelKwc <= 0) return null;
+  if (threshold == null || !perModule.length || !Number.isFinite(panelKwc) || panelKwc <= 0) return null;
   const indices: number[] = [];
   for (let i = 0; i < perModule.length; i++) if (perModule[i] < threshold) indices.push(i);
   if (!indices.length || indices.length === perModule.length) return null;

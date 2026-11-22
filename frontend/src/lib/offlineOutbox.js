@@ -139,12 +139,16 @@ export async function espaceDisponible(tailleOctets) {
 
 export class BinaryOutbox {
   // store : { load(), save(ops) } ; uploader : async(entry) => réponse serveur.
+  // accepte(entry) : les entrées que CET uploader rejoue — la clé IndexedDB est partagée
+  // (ACAL892 y range `calepinage.photo`, rejouée par sa propre file) : une entrée étrangère
+  // reste en file, intacte, jamais marquée « refusée ».
   constructor({
     store = memoryStore(), uploader, maxOps = BINARY_MAX_OPS,
-    maxBytes = BINARY_MAX_BYTES, persistent = true,
+    maxBytes = BINARY_MAX_BYTES, persistent = true, accepte = () => true,
   } = {}) {
     this.store = store
     this.uploader = uploader
+    this.accepte = accepte
     this.maxOps = maxOps
     this.maxBytes = maxBytes
     this.persistent = persistent
@@ -277,6 +281,7 @@ export class BinaryOutbox {
       // Copie : on itère sur un instantané, la file est réécrite au fil de l'eau.
       for (const op of [...this._ops]) {
         if (op.serverError) continue // déjà refusée : attend un abandon explicite
+        if (!this.accepte(op)) continue // REP-892 — entrée d'une autre file : laissée à son propre rejeu
         try {
           await this.uploader(op)
           await this._mutate((cur) => cur.filter((x) => x.client_op_id !== op.client_op_id))

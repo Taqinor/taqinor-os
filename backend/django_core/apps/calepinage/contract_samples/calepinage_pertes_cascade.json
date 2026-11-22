@@ -69,6 +69,20 @@
         },
         {
           "rang": 5,
+          "etape": "optimiseur",
+          "libelle": "Optimiseurs de puissance",
+          "kwh_avant": 15919.7,
+          "kwh_apres": null,
+          "perte_kwh": null,
+          "perte_pct": null,
+          "gain": false,
+          "source": null,
+          "entree": null,
+          "reference": null,
+          "motif_omission": "Aucun optimiseur n'est déclaré (ni produit pour le document, ni module marqué) : aucune perte de conversion à compter."
+        },
+        {
+          "rang": 6,
           "etape": "ohmique_dc",
           "libelle": "Chutes ohmiques côté courant continu",
           "kwh_avant": 15919.7,
@@ -82,7 +96,7 @@
           "motif_omission": ""
         },
         {
-          "rang": 6,
+          "rang": 7,
           "etape": "indisponibilite",
           "libelle": "Indisponibilité réseau et maintenance",
           "kwh_avant": 15792.3,
@@ -101,6 +115,7 @@
         "spectral",
         "thermique",
         "bifacial",
+        "optimiseur",
         "ohmique_dc",
         "indisponibilite"
       ],
@@ -111,6 +126,7 @@
       "hash_entree": "abababababababababababababababababababababababababababababababab",
       "etapes_omises": [
         "spectral",
+        "optimiseur",
         "indisponibilite"
       ],
       "irradiation_incidente_kwh_m2": 2105.5,
@@ -191,7 +207,13 @@
         "etapes": {},
         "total": null,
         "motif_absence": "aucune bande sourcée"
-      }
+      },
+      "limites_connues": [
+        {"code": "pas_horaire", "texte_fr": "La simulation travaille à l'heure : un passage nuageux de quelques minutes n'est pas vu, et le pas du quart d'heure est refusé à l'export.", "texte_en": "The simulation runs hourly: a cloud passing for a few minutes is not seen, and the quarter-hour step is refused on export."},
+        {"code": "suiveurs", "texte_fr": "Toute pose est fixe : aucun suiveur solaire n'est modélisé.", "texte_en": "Every mounting is fixed: no solar tracker is modelled."},
+        {"code": "courbe_iv", "texte_fr": "Le panneau suit les coefficients de sa fiche, pas une courbe courant-tension cellule par cellule.", "texte_en": "The module follows its datasheet coefficients, not a cell-by-cell current-voltage curve."},
+        {"code": "charges_structure", "texte_fr": "Vent et neige sur la structure : saisis par la société, aucune valeur n'est tirée d'une norme.", "texte_en": "Wind and snow on the structure: entered by the company, no value is taken from a standard."}
+      ]
     }
   },
   "exemple_vide": {
@@ -221,7 +243,8 @@
         "etapes": {},
         "total": null,
         "motif_absence": "aucune bande sourcée"
-      }
+      },
+      "limites_connues": []
     }
   },
   "exemple_ombrage_chaines": {
@@ -266,6 +289,7 @@
                   "P1#3"
                 ],
                 "sans_contrainte": false,
+                "modules_equipes": [],
                 "excedent_basse_pct": 20.0,
                 "excedent_haute_pct": 40.0,
                 "bornes": {
@@ -300,6 +324,7 @@
                 "acces_min": 1.0,
                 "modules_derives": [],
                 "sans_contrainte": false,
+                "modules_equipes": [],
                 "excedent_basse_pct": 0.0,
                 "excedent_haute_pct": 0.0,
                 "bornes": {
@@ -358,6 +383,13 @@
         "energie_totale_kwh": 23.1,
         "energie_ecretee_kwh": 2.2,
         "part_ecretee_pct": 9.524
+      },
+      "declassement": {
+        "applique": true,
+        "t_debut_c": 40.0,
+        "pente_pct_par_c": 2.0,
+        "heures_declassees": 2,
+        "heures_sans_temperature": 0
       }
     }
   }

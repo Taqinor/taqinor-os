@@ -67,14 +67,17 @@ export async function deposerImageDocument(calepinageId, { genre, blob }) {
 }
 
 /**
- * Dépose la carte de chaleur ACTIVE de l'atelier 3D — appelle
- * ``builderApi.renderImageHd(2)`` (même rendu hors écran que
- * ``exportImage.js``), puis ``deposerImageDocument(..., genre: 'ombrage')``.
+ * Dépose la carte d'accès solaire du pan actif — ACAL726 : ``builderApi.renderCarteAccesHd(2)``
+ * l'allume pour la capture puis la remet dans son état ; sans ombre saisie il rend ``null`` et
+ * rien n'est déposé. Puis ``deposerImageDocument(..., genre: 'ombrage')``.
  */
 export async function deposerCarteDeChaleur(calepinageId, builderApi, { scale = 2 } = {}) {
-  const { rendu, echec } = await rendreImageHd(builderApi, scale, {
+  const api = builderApi?.current ?? builderApi
+  const carte = typeof api?.renderCarteAccesHd === 'function'
+    ? { renderImageHd: (s) => api.renderCarteAccesHd(s) } : null
+  const { rendu, echec } = await rendreImageHd(carte, scale, {
     motifEchec: 'Le rendu de la carte de chaleur a échoué sur ce navigateur.',
-    motifVide: 'Scène non rendable ici (3D indisponible) — aucune carte produite.',
+    motifVide: 'Aucune ombre saisie : rien à teinter — saisissez une ombre ou un obstacle avec sa hauteur.',
   })
   if (echec) return echec
   return deposerImageDocument(calepinageId, { genre: 'ombrage', blob: rendu.blob })

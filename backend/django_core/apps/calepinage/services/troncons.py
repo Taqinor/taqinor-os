@@ -415,7 +415,7 @@ def _motif_norme_absente(norme):
     supposé à la place."""
     motif = (norme or {}).get('motif') or ''
     return ("section et chute de tension OMISES : %s "
-            "(services/norme.py::norme_applicable)."
+            "(norme électrique choisie pour le pays)."
             % (motif or "aucune norme électrique n'est applicable"))
 
 

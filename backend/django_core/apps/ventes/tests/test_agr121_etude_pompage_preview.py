@@ -156,7 +156,10 @@ class ContratTests(_Base):
         regle = CONTRAT['regles_sorties']['production.plan_irradiation']
         for source in ('pose_calepinage', 'site_reference', 'repli'):
             self.assertIn(source, regle)
-        self.assertNotIn('plan_irradiation', CONTRAT['exemple']['production'])
+        # ACAL1201 — la moitié serveur l'ajoute aussi à ``exemple`` (site).
+        site = CONTRAT['exemple']['production']['plan_irradiation']
+        self.assertEqual(set(site), set(plan))
+        self.assertEqual(site['source'], 'site_reference')
 
     def test_reponse_conforme_au_contrat(self):
         data = self.post(self.corps())
@@ -590,3 +593,72 @@ class TensionPlaqueUneSourceAGV14(SimpleTestCase):
         from apps.ventes.domain.pompage import MESURES_VISITE
         chemins = {chemin for _cat, _code, chemin in MESURES_VISITE}
         self.assertNotIn('plaque.tension_v', chemins)
+
+
+class ProfilsAuPlanDesPanneauxTests(SimpleTestCase):
+    """ACAL1200 — les journées types au plan RÉEL des panneaux (lectures
+    PVGIS doublées). Mutant : moyenne sans pondération ⇒ rouge."""
+
+    PLAN = {'source': 'pose_calepinage', 'pans': [
+        {'pan': 'E', 'kwc': 2.0, 'inclinaison_deg': 15.0, 'azimut_deg': 90.0},
+        {'pan': 'O', 'kwc': 1.0, 'inclinaison_deg': 15.0, 'azimut_deg': 270.0}]}
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+
+    def _profils(self, plan=None, *, forme=None, mensuel=None):
+        from apps.ventes.domain.pompage_pose import profils_horaires_pose
+
+        def _forme(lat, lon, mois, *, angle_deg, aspect_deg):
+            if forme is not None:
+                return forme(aspect_deg)
+            return [1.0 / 24] * 24
+
+        def _mensuel(lat, lon, *, angle_deg, aspect_deg):
+            if mensuel is not None:
+                return mensuel(aspect_deg)
+            return [150.0 if aspect_deg < 0 else 120.0] * 12
+        with mock.patch('apps.parametres.pvgis_profils.profil_horaire_live',
+                        side_effect=_forme) as f, \
+                mock.patch('apps.parametres.pvgis_profils.productible_mensuel_live',
+                           side_effect=_mensuel) as m:
+            rendu = profils_horaires_pose(lat=31.6, lon=-8.0, plan=plan or self.PLAN)
+        return rendu, f, m
+
+    def test_ponderation_2_pour_1_heure_par_heure(self):
+        rendu, _f, m = self._profils()
+        self.assertEqual(len(rendu), 12)
+        jour_e, jour_o = 150.0 / 31 * 1000.0 / 24, 120.0 / 31 * 1000.0 / 24
+        self.assertAlmostEqual(rendu[0][12], (2 * jour_e + jour_o) / 3, places=1)
+        aspects = sorted({c.kwargs['aspect_deg'] for c in m.call_args_list})
+        self.assertEqual(aspects, [-90.0, 90.0])  # est = −90 transmis
+        self.assertEqual({c.kwargs['angle_deg'] for c in m.call_args_list}, {15.0})
+
+    def test_un_pan_sans_reponse_rend_none(self):
+        rendu, _f, _m = self._profils(mensuel=lambda a: None if a > 0 else [100.0] * 12)
+        self.assertIsNone(rendu)
+        self.assertIsNone(self._profils(forme=lambda a: None)[0])
+
+    def test_un_pan_au_plan_de_reference_egal_au_site(self):
+        from apps.parametres import pvgis_profils as pp
+        from apps.parametres.tests_pvgis_profils import _payload_drcalc, _payload_pvcalc
+        from apps.ventes.domain.pompage import profils_horaires_site
+        from apps.ventes.domain.pompage_pose import profils_horaires_pose
+        plan = {'pans': [{'pan': 'S', 'kwc': 3.0, 'inclinaison_deg': pp.PVGIS_ANGLE_DEG,
+                          'azimut_deg': 180.0}]}
+
+        def _reseau(url):
+            return (_payload_drcalc(11) if 'DRcalc' in url
+                    else _payload_pvcalc([100.0 + i for i in range(12)]))
+        with mock.patch.object(pp, '_appel_pvgis', side_effect=_reseau):
+            site = profils_horaires_site(lat=31.6, lon=-8.0)
+            pose = profils_horaires_pose(lat=31.6, lon=-8.0, plan=plan)
+        self.assertIsNotNone(site)
+        for mois_site, mois_pose in zip(site, pose):
+            for a, b in zip(mois_site, mois_pose):
+                self.assertAlmostEqual(a, b, places=1)
+
+    def test_sans_gps_none(self):
+        from apps.ventes.domain.pompage_pose import profils_horaires_pose
+        self.assertIsNone(profils_horaires_pose(lat=None, lon=None, plan=self.PLAN))

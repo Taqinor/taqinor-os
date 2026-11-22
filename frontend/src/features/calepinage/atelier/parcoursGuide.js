@@ -13,15 +13,15 @@ import calepinageApi from '../../../api/calepinageApi'
    ========================================================================== */
 
 export const ETAPES = [
-  { cle: 'toit', libelle: 'Toit',
+  { cle: 'toit', libelle: 'Toit', action: 'Poser les panneaux', // ACAL868 — le bouton de la barre fixe : ouvre l'étape suivante
     onglets: ['plan', 'pente', 'coupe', 'terrain', 'ombriere', 'horizon', 'course-soleil', 'releve', 'reprise-visite', 'photos', 'detection-toit'] },
-  { cle: 'panneaux', libelle: 'Panneaux',
+  { cle: 'panneaux', libelle: 'Panneaux', action: 'Raccorder les panneaux',
     onglets: ['fiches', 'affectation', 'masse-lestage', 'fixation', 'pompage'] },
-  { cle: 'electrique', libelle: 'Électrique',
+  { cle: 'electrique', libelle: 'Électrique', action: 'Voir les résultats',
     onglets: ['equipements-electriques', 'cheminement-cables', 'raccordement', 'verdict-electrique',
-      'materiel-electrique', 'saisies-electriques', 'decisions-electriques', 'schema'] },
-  { cle: 'resultats', libelle: 'Résultats',
-    onglets: ['production', 'pertes', 'postes-pertes', 'series', 'batterie', 'economie', 'variantes', 'optimiser'] },
+      'materiel-electrique', 'saisies-electriques', 'decisions-electriques', 'controle-chaine', 'schema'] },
+  { cle: 'resultats', libelle: 'Résultats', action: 'Préparer les documents',
+    onglets: ['production', 'pertes', 'postes-pertes', 'series', 'batterie', 'economie', 'variantes', 'optimiser', 'consommation-mesuree', 'livre-prevu'] },
   { cle: 'documents', libelle: 'Documents',
     onglets: ['documents', 'dossiers', 'activite', 'versions', 'diff-versions', 'approbation', 'pose-reelle', 'projet'] },
 ]
@@ -62,7 +62,7 @@ export const ECRANS_ETAPE = {
     ouverture: 'verdict-electrique',
     libelle: 'Électrique — synthèse',
     onglets: ['equipements-electriques', 'cheminement-cables', 'raccordement', 'verdict-electrique',
-      'materiel-electrique', 'saisies-electriques', 'decisions-electriques'],
+      'materiel-electrique', 'saisies-electriques', 'decisions-electriques', 'controle-chaine'],
     composant: lazy(() => import('../electrique/EtapeElectrique')),
   },
   // ACAL396 — Résultats : le diagramme ET l'édition d'un poste dans un seul
@@ -72,6 +72,13 @@ export const ECRANS_ETAPE = {
     libelle: 'Pertes',
     onglets: ['pertes', 'postes-pertes'],
     composant: lazy(() => import('./PanneauPertesUnifie')),
+  },
+  // ACAL867 — Documents : écran de FIN de parcours (« Prêt à envoyer ? », « Générer le devis », documents).
+  documents: {
+    ouverture: 'documents',
+    libelle: 'Documents',
+    onglets: ['documents'],
+    composant: lazy(() => import('../documents/EtapeDocuments')),
   },
 }
 

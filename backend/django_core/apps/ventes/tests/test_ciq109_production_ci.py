@@ -229,6 +229,106 @@ class TestPlanToitPlat(unittest.TestCase):
         self.assertEqual((plan['angle_deg'], plan['source_angle']), (PVGIS_ANGLE_DEG, None))
 
 
+class TestBaseDeLaPoseCI(unittest.TestCase):
+    """ACAL1195 (D-ACAL-44) — un brouillon C&I de niveau 15 lié à un calepinage
+    simulé complet calcule son étude sur la pose réelle ; niveau ≤ 14 ou devis
+    émis : chemin d'aujourd'hui. Doublures seulement (aucune base de données)."""
+
+    SERVI = {'kwh_kwc_annuel': 1500.0, 'kwh_kwc_mensuel': [125.0] * 12,
+             'pertes_et_ombrage_inclus': True, 'kwc_simule': 50.0}
+    FIGEE = {'source': 'pvgis', 'kwh_kwc_mensuel': [140.0] * 12}
+
+    def _devis(self, regles=15, statut='brouillon', **params):
+        from types import SimpleNamespace
+        return SimpleNamespace(pk=1, reference='DEV-ACAL1195', mode_installation='commercial',
+                               statut=statut, regles_calcul=regles, company=None, lead=None,
+                               etude_params=dict({'production_figee': self.FIGEE}, **params))
+
+    def _rafraichir(self, devis, servi=None):
+        from unittest import mock
+
+        from apps.ventes.domain import etude_ci
+        etude = {'bilan': {}, 'production': {'source': 'calepinage'}, 'hypotheses': []}
+        with mock.patch('apps.ventes.domain.etudes.puissances_etude_horaire', return_value=(50.0, None)), \
+                mock.patch.object(etude_ci, 'lire_catalogue_ci', return_value={}), \
+                mock.patch.object(etude_ci, '_onduleurs_des_lignes', return_value=[]), \
+                mock.patch.object(etude_ci, '_option_avec_du_devis', return_value=(None, False)), \
+                mock.patch('apps.ventes.domain.depart_une_batterie_ci.empreinte_depart', side_effect=lambda d, e: e), \
+                mock.patch('apps.ventes.domain.depart_une_batterie_ci.poser_depart', side_effect=lambda d, b, e: b), \
+                mock.patch('apps.ventes.domain.etude_schema.ecrire') as ecrire, \
+                mock.patch('apps.calepinage.selectors_devis.productible_pose_servi',
+                           return_value=dict(servi or self.SERVI)) as servi_lu, \
+                mock.patch.object(etude_ci, 'etudier_ci', return_value=etude) as etudier:
+            bloc = etude_ci.rafraichir_etude_ci_devis(devis)
+        return bloc, etudier, ecrire, servi_lu
+
+    def test_niveau_15_base_servie_passe_devant_et_production_recalculee(self):
+        from apps.ventes.horaire.base import FORME_HORAIRE_BASE
+        bloc, etudier, ecrire, _lu = self._rafraichir(self._devis())
+        kwargs = etudier.call_args.kwargs
+        self.assertEqual(kwargs['base_production']['kwh_kwc_mensuel'], self.SERVI['kwh_kwc_mensuel'])
+        self.assertTrue(kwargs['base_production']['pertes_incluses'])
+        self.assertIsNone(kwargs['production_figee'])           # recalculé puis re-figé
+        self.assertTrue(ecrire.called)
+        forme = [h for h in bloc['hypotheses'] if h['cle'] == 'forme_horaire']
+        self.assertEqual([h['valeur'] for h in forme], [FORME_HORAIRE_BASE])
+
+    def test_base_changee_change_l_empreinte_meme_base_ne_recalcule_pas(self):
+        premier, _e, _w, _l = self._rafraichir(self._devis())
+        autre = dict(self.SERVI, kwh_kwc_mensuel=[120.0] * 12)
+        second, _e, _w, _l = self._rafraichir(self._devis(), servi=autre)
+        self.assertNotEqual(premier['empreinte'], second['empreinte'])
+        _b, etudier, ecrire, _l = self._rafraichir(self._devis(etude_ci=premier))
+        self.assertFalse(etudier.called)
+        self.assertFalse(ecrire.called)
+
+    def test_niveau_14_chemin_d_aujourd_hui(self):
+        from apps.ventes.domain import etude_ci
+        bloc, etudier, _w, servi_lu = self._rafraichir(self._devis(regles=14))
+        kwargs = etudier.call_args.kwargs
+        self.assertIsNone(kwargs['base_production'])
+        self.assertEqual(kwargs['production_figee'], self.FIGEE)
+        self.assertFalse(servi_lu.called)
+        self.assertEqual(bloc['hypotheses'], [])
+        stockees = {k: v for k, v in self._devis().etude_params.items()
+                    if k not in etude_ci.cles_hors_empreinte()}
+        self.assertEqual(bloc['empreinte'], etude_ci._empreinte(stockees, 50.0, [], None))
+
+    def test_devis_envoye_garde_son_bloc_fige(self):
+        _b, etudier, _w, servi_lu = self._rafraichir(self._devis(statut='envoye'))
+        self.assertFalse(servi_lu.called)
+        self.assertEqual(etudier.call_args.kwargs['production_figee'], self.FIGEE)
+        self.assertIsNone(etudier.call_args.kwargs['base_production'])
+
+    def test_base_de_production_sans_marches_reste_residentielle(self):
+        from unittest import mock
+
+        from apps.ventes.horaire.productible_pose import base_de_production
+        with mock.patch('apps.calepinage.selectors_devis.productible_pose_servi',
+                        return_value=dict(self.SERVI)):
+            self.assertIsNone(base_de_production(self._devis(), kwc=50.0))
+            base = base_de_production(self._devis(), kwc=50.0, marches=('commercial', 'industriel'))
+        self.assertEqual(base['kwh_kwc_mensuel'], self.SERVI['kwh_kwc_mensuel'])
+
+    def test_etudier_ci_passe_la_base_en_calepinage_sans_derate_ni_serie(self):
+        from unittest import mock
+
+        from apps.ventes.domain import etude_ci
+        base = {'kwh_kwc_annuel': 1500.0, 'kwh_kwc_mensuel': [125.0] * 12,
+                'pertes_incluses': True, 'source': 'calepinage_enregistre'}
+        pvgis = ([140.0] * 12, {'ete': [1.0]}, 'PVGIS test', {'kwh_kwc': [0.1]})
+        with mock.patch.object(etude_ci, 'lire_production', return_value=pvgis), \
+                mock.patch('apps.ventes.moteur_ci.production.bloc_production_ci',
+                           return_value=(None, [], [])) as bloc:
+            etude_ci.etudier_ci(None, {'mode': 'commercial', 'site': {'ville': 'Casablanca'},
+                                       'taille_explicite_kwc': 50}, base_production=base)
+        kwargs = bloc.call_args.kwargs
+        self.assertEqual(kwargs['calepinage'], {'id': 'calepinage_enregistre',
+                                                'kwh_kwc_mensuel': base['kwh_kwc_mensuel']})
+        self.assertEqual(kwargs['productible_mensuel'], pvgis[0])  # la base n'est pas re-dératée
+        self.assertIsNone(kwargs['serie'])
+
+
 class TestPurete(unittest.TestCase):
 
     def test_aucun_import_django(self):

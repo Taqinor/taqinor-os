@@ -137,6 +137,8 @@ from .leads_intake import (  # façade
 
 from .leads_attribution import default_responsable_for  # façade
 
+from .intake_photo import lire_photo_facture  # façade (ACAL839 : route du calepinage, lecture seule)
+
 from .reponses_meta import creer_lead_meta_pull  # façade (pull adsengine, 17/11/2026)
 
 from .fiche_api_publique import (  # façade
@@ -201,7 +203,7 @@ __all__ = [
     'find_lead_by_phone', 'handle_parrainage_signup', 'historique_appareil',
     'import_external_notes_for_contact', 'ip_de_requete', 'ip_visiteur_de_requete',
     'is_strong_identity_match',
-    'journaliser_visite', 'lead_notification_recipients', 'maybe_assign_mql', 'merge_clients',
+    'journaliser_visite', 'lead_notification_recipients', 'lire_photo_facture', 'maybe_assign_mql', 'merge_clients',
     'message_pour_etape', 'motif_refus_valide', 'normalize_email', 'normalize_phone',
     'noter_devis_corrige', 'noter_devis_envoye', 'noter_devis_ouvert', 'noter_devis_reouvert',
     'noter_touche_marketing', 'noter_version_remplacee_ouverte', 'notifier_signal_lecture',

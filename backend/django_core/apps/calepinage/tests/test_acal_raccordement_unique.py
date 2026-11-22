@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from django.test import SimpleTestCase
+
 from apps.calepinage.models import Calepinage, ParametresCalepinage
 from apps.calepinage.services.electrique import (
     CLE_ENTREE, verdict_publiable,
@@ -28,6 +30,7 @@ from apps.stock.models import FicheTechnique, Produit
 
 from .test_api_liste import BaseApiCalepinage, url_detail
 from .test_calx190_autoconsommation import contexte_de_test, serie_de_test
+from .test_calx205_contrat_raccordement import RACCORDEMENT
 from .test_calx5_simulation import (
     LAYOUT, MATERIEL, REGLAGES, _ClientRejoue,
 )
@@ -101,7 +104,9 @@ class Raccordement(BaseApiCalepinage):
         lu = self.api.get(url_raccordement(self.calepinage.pk))
         for cle, valeur in SAISIE.items():
             self.assertEqual(lu.data['saisie'][cle], valeur, cle)
-        self.assertEqual(len(lu.data['saisie']), 9)
+        # Les champs du contrat (ACAL827/828/829 en ont ajouté).
+        self.assertEqual(sorted(lu.data['saisie']),
+                         sorted(RACCORDEMENT['exemple']['saisie']))
         self._poster(lu.data['saisie'])
         self.assertEqual(self.calepinage.resultat[CLE_SAISIE], stockee)
 
@@ -168,3 +173,71 @@ class VerdictPublie(BaseApiCalepinage):
             self.assertIn(par_code[code]['statut'],
                           ('bloquant', 'sans_source'))
         self.assertFalse(verdict['publiable'])
+
+
+class PhasesDeSaisiesElectriquesTest(SimpleTestCase):
+    """ACAL687 — les phases saisies dans « Saisies électriques » ne sont plus
+    ignorées par le verdict de raccordement quand l'écran Raccordement ne les
+    porte pas ; la saisie de l'écran reste prioritaire (ACAL155)."""
+
+    @staticmethod
+    def _conception():
+        from apps.calepinage.services.chaines import concevoir_par_pan
+        from apps.calepinage.services.electrique import temperatures_site
+
+        return concevoir_par_pan(
+            {'version': 2, 'zones': [{'id': 'z1', 'label': 'PAN-1',
+                                      'geometry': {'count': 12,
+                                                   'azimuthDeg': 180.0,
+                                                   'tiltDeg': 15.0}}]},
+            module_specs={
+                'vmp_v': 41.5, 'voc_v': 49.6, 'isc_a': 18.4, 'imp_a': 17.1,
+                'pmax_wc': 710.0, 'temp_coeff_voc_pct_c': -0.27,
+                'temp_coeff_pmax_pct_c': -0.35},
+            onduleur_specs={
+                'n_mppt': 2, 'mppt_v_min': 150.0, 'mppt_v_max': 800.0,
+                'v_max_abs': 1000.0, 'i_max_mppt_a': 26.0, 'ac_kw': 10.0,
+                'phases': 3},
+            temperatures=temperatures_site(saisie={
+                'temperature_min_c': -5.0, 'temperature_max_c': 70.0}),
+            onduleur_designation='Onduleur d essai')
+
+    def _verdict_phases(self, saisie, donnees):
+        from apps.calepinage.services.electrique import (
+            _phases_du_raccordement)
+        from apps.calepinage.services.raccordement import (
+            CODE_REGIME_PHASES, verdicts_raccordement)
+
+        complete = _phases_du_raccordement(saisie, donnees)
+        bloc = verdicts_raccordement(self._conception(), complete)
+        return [v for v in bloc['verdicts']
+                if v.code == CODE_REGIME_PHASES][0]
+
+    def test_une_phase_saisie_ailleurs_est_jugee_et_sa_source_citee(self):
+        verdict = self._verdict_phases({}, {'phases': 1})
+
+        self.assertEqual(verdict.statut, 'bloquant')
+        self.assertEqual(verdict.source,
+                         'saisie — phases (Saisies électriques)')
+
+    def test_la_saisie_de_raccordement_l_emporte_et_le_dit(self):
+        verdict = self._verdict_phases({'phases': 3}, {'phases': 1})
+
+        self.assertEqual(verdict.statut, 'ok')
+        self.assertIn('prioritaire', verdict.source)
+
+    def test_aucune_des_deux_saisies_garde_le_motif_d_aujourd_hui(self):
+        from apps.calepinage.services.raccordement import MOTIF_SANS_PHASES
+
+        verdict = self._verdict_phases({}, {})
+
+        self.assertEqual(verdict.libelle, MOTIF_SANS_PHASES)
+
+    def test_la_saisie_stockee_n_est_pas_modifiee(self):
+        from apps.calepinage.services.electrique import (
+            _phases_du_raccordement)
+
+        saisie = {}
+        _phases_du_raccordement(saisie, {'phases': 1})
+
+        self.assertEqual(saisie, {})

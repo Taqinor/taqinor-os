@@ -488,6 +488,54 @@ class ReglesCalculDryrunCommandeTests(TestCase):
         self.assertEqual(relus, {'DEV-ACAL1000-E': (14, 1000, 'brouillon'), 'DEV-ACAL1000-V': (14, 1000, 'envoye'),
                                  'DEV-ACAL1000-S': (14, 1000, 'envoye')})
 
+    def test_acal1203_niveau_15_agricole_etude_pompage_recalculee(self):
+        """ACAL1203 — ``--niveau 15`` sur des devis AGRICOLES : l'étude de pompage
+        RANGÉE est recalculée (doublure : la pose est-ouest livre moins d'eau),
+        « changera » oui pour le brouillon, non pour l'envoyé ; rien n'est écrit.
+        Mutants : ne pas recalculer ⇒ aucun écart ; enregistrer le niveau ⇒ rouge."""
+        from io import StringIO
+        from django.core.management import call_command
+        from apps.ventes.models import Devis
+        from apps.ventes.tests.test_l_niv_niveau import make_client, make_company, make_devis, make_user
+        co = make_company('acal1203')
+        user, client = make_user(co), make_client(co)
+        lie, envoye, sans = (make_devis(co, user, client, f'DEV-ACAL1203-{n}') for n in 'EVS')
+        Devis.objects.filter(pk=lie.pk).update(statut='brouillon', date_envoi=None)
+
+        def etude(m3, source):
+            return {'m3_jour': m3, 'heures_pompage': 7, 'couverture_pct_mois': [100] * 12,
+                    'production': {'m3_jour_mois': [m3] * 12, 'plan_irradiation': {'source': source}}}
+        Devis.objects.filter(company=co).update(mode_installation='agricole', etude_params=etude(40, 'site_reference'),
+                                                regles_calcul=REGLES_SENSIBILITES_1911)
+        apres = {'DEV-ACAL1203-E': etude(36, 'pose_calepinage'), 'DEV-ACAL1203-V': etude(38, 'pose_calepinage'),
+                 'DEV-ACAL1203-S': etude(40, 'site_reference')}
+
+        def faux_pompage(devis, force=False):
+            self.assertTrue(force)
+            self.assertEqual((devis.regles_calcul, devis.statut), (REGLES_POSE_REELLE_2111, 'brouillon'))
+            devis.etude_params = apres[devis.reference]
+            devis.save(update_fields=['etude_params'])
+        buf = StringIO()
+        with mock.patch('apps.ventes.quote_engine.builder.build_quote_data', lambda d, o: {'prod_kwh': 1000}), \
+                mock.patch('apps.ventes.domain.etudes.rafraichir_etude_horaire_devis', lambda d, force=False: None), \
+                mock.patch('apps.ventes.domain.pompage.rafraichir_etude_pompage_devis', faux_pompage):
+            call_command('regles_calcul_ecarts_dryrun', '--niveau', '15', '--company', str(co.pk), stdout=buf)
+        out = buf.getvalue()
+        self.assertIn('DEV-ACAL1203-E, brouillon, oui, m3_jour, 40, 36, -4', out)
+        self.assertIn('DEV-ACAL1203-E, brouillon, oui, production.m3_jour_mois, %s, %s, %s'
+                      % ([40] * 12, [36] * 12, [-4] * 12), out)
+        self.assertIn('DEV-ACAL1203-E, brouillon, oui, production.plan_irradiation.source, '
+                      'site_reference, pose_calepinage, None', out)
+        self.assertIn('DEV-ACAL1203-V, envoye, non, m3_jour, 40, 38, -2', out)
+        self.assertNotIn('DEV-ACAL1203-S,', out)
+        self.assertNotIn('heures_pompage,', out)
+        self.assertIn('TOTAL m3_jour : -6.0', out)
+        self.assertIn('TOTAL production.m3_jour_mois : -72.0', out)
+        relus = {r: (n, p['m3_jour'], s) for r, n, p, s in Devis.objects.filter(company=co)
+                 .values_list('reference', 'regles_calcul', 'etude_params', 'statut')}
+        self.assertEqual(relus, {'DEV-ACAL1203-E': (14, 40, 'brouillon'), 'DEV-ACAL1203-V': (14, 40, 'envoye'),
+                                 'DEV-ACAL1203-S': (14, 40, 'envoye')})
+
 
 class FormateursReglesOrigineTests(SimpleTestCase):
     """AMOT24 / AMOT26 / AMOT45 / AMOT33 / AMOT27 — un devis aux règles

@@ -144,3 +144,68 @@ class UneSeuleDefinitionDuRapportSoeur(SimpleTestCase):
                          {'structure': 0, 'socle': 0})
         self.assertEqual(quantites_derivees_du_compte(Decimal('-3')),
                          {'structure': 0, 'socle': 0})
+
+    def test_acal927_les_affleurants_ne_prennent_ni_structure_ni_socle(self):
+        """48 sur 48 ⇒ 0 et 0 ; 40 + 8 ⇒ 8 et 16 ; plus d'affleurants que de
+        panneaux ⇒ 0 ; 0 (défaut) ⇒ inchangé. Mutant : ignorer ⇒ 2N."""
+        self.assertEqual(quantites_derivees_du_compte(48, 48), {'structure': 0, 'socle': 0})
+        self.assertEqual(quantites_derivees_du_compte(48, 40), {'structure': 8, 'socle': 16})
+        self.assertEqual(quantites_derivees_du_compte(48, 60), {'structure': 0, 'socle': 0})
+        self.assertEqual(quantites_derivees_du_compte(48, 0), quantites_derivees_du_compte(48))
+
+
+class ACAL927PoseAffleuranteKitDeFixation(_Base):
+    """D-ACAL-39 — un toit en pente à panneaux affleurants ne vend que le kit
+    de fixation ; jamais de structure de repli ni de prix inventé."""
+
+    LAYOUT = {'zones': [{'id': 'A', 'geometry': {'count': 48, 'flush': True}}]}
+
+    def _catalogue(self, kit=True):
+        from apps.stock.models import Produit
+        from apps.ventes.tests.test_composition_source_unique import CATALOGUE
+        lignes = list(CATALOGUE) + ([('Kit de fixation toit en pente', 'KIT-FIX', '90')] if kit else [])
+        return [Produit.objects.create(
+            company=self.company, nom=nom, sku='%s-927-%s' % (sku, self.company.pk),
+            prix_vente=Decimal(prix), prix_achat=Decimal('1'), quantite_stock=1000)
+            for nom, sku, prix in lignes]
+
+    def _lignes(self, affleurants, kit=True, avertissements=None):
+        from apps.ventes.domain.composition import composition_residentielle
+        lignes = composition_residentielle(
+            self._catalogue(kit), kwc=34.08, panel_watt=710, nb_panneaux=48,
+            modules_affleurants=affleurants, avertissements=avertissements)
+        return {li.designation: li.quantite for li in lignes}
+
+    def test_48_sur_48_ni_structure_ni_socle_et_le_kit(self):
+        lignes = self._lignes(48)
+        self.assertNotIn('Structures acier', lignes)
+        self.assertNotIn('Socles', lignes)
+        self.assertEqual(lignes['Kit de fixation toit en pente'], 48)
+
+    def test_40_affleurants_et_8_au_sol(self):
+        lignes = self._lignes(40)
+        self.assertEqual((lignes['Structures acier'], lignes['Socles']), (8, 16))
+        self.assertEqual(lignes['Kit de fixation toit en pente'], 40)
+
+    def test_sans_kit_au_catalogue_l_avertissement_et_aucune_structure(self):
+        avertissements = []
+        lignes = self._lignes(48, kit=False, avertissements=avertissements)
+        self.assertNotIn('Structures acier', lignes)
+        self.assertIn('Pose affleurante : aucun kit de fixation tarifé au catalogue — ligne non ajoutée.',
+                      avertissements)
+
+    def test_sans_affleurant_identique_au_bit_pres(self):
+        lignes = self._lignes(0)
+        self.assertEqual((lignes['Structures acier'], lignes['Socles']), (48, 96))
+        self.assertNotIn('Kit de fixation toit en pente', lignes)
+
+    def test_le_pipeline_ne_lit_les_affleurants_qu_au_niveau_15(self):
+        from apps.ventes.models import Devis
+        for niveau, attendu in ((15, ('2', '4')), (14, ('50', '100'))):
+            devis = self._devis(cible=50)
+            Devis.objects.filter(pk=devis.pk).update(roof_layout=self.LAYOUT, regles_calcul=niveau)
+            devis.refresh_from_db()
+            specs = _specs(48)
+            _appliquer_preseance_quantite(devis, specs)
+            par_designation = {s['designation']: s['quantite'] for s in specs}
+            self.assertEqual((par_designation['Structure acier'], par_designation['Socle béton']), attendu)

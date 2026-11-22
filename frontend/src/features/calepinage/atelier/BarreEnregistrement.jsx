@@ -6,6 +6,7 @@ import { formaterHeureBrouillon } from './contexteAtelier'
    vient de la réponse 2xx, rien n'est stocké. */
 export default function BarreEnregistrement({
   libelle, enCours, desactive, onEnregistrer, modifiee, enregistreLe, statut, erreur, children,
+  actionPrincipale = null, // ACAL868 — {libelle, onClick} : le bouton de l'étape suivante, à droite
 }) {
   const heure = enregistreLe ? formaterHeureBrouillon(enregistreLe) : ''
   const etat = modifiee ? 'Modifications non enregistrées'
@@ -27,6 +28,12 @@ export default function BarreEnregistrement({
             role="status" data-testid="cal-etat-enregistrement">{etat}</p>
         )}
         {children}
+        {actionPrincipale && (
+          <button type="button" onClick={actionPrincipale.onClick} data-testid="cal-action-etape-suivante"
+            className="ml-auto inline-flex min-h-11 items-center justify-center bg-primary px-6 py-3 text-base font-bold text-primary-foreground">
+            {actionPrincipale.libelle}
+          </button>
+        )}
       </div>
       {statut && <p className="mt-2 text-sm text-muted-foreground" aria-live="polite">{statut}</p>}
       {erreur && (

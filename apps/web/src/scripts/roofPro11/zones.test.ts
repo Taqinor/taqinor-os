@@ -684,3 +684,33 @@ describe('ACAL574 — pan existant : gestes refusés, géométrie intacte', () =
     expect(r.grise).toBe(false);
   });
 });
+
+// REP-853 / ACAL853 — le Total lit le kWh PEINT sur la carte (kWh par panneau × panneaux posés), pas
+// `w.annualKwh` du solveur : deux productibles différents rendent les deux lectures distinguables.
+describe('ACAL853 — liveActiveResult reprend le kWh de la carte peinte', () => {
+  const essai = (carte: { kwhParPanneau: number } | null) => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body></body>').window.document;
+    try { return essaiSousDom(carte); } finally { g.document = avant; }
+  };
+  const essaiSousDom = (carte: { kwhParPanneau: number } | null) => {
+    const areas = [panDeTest('area-1', { vertices: [ptM(-5, -5), ptM(5, -5), ptM(5, 5), ptM(-5, 5)], roofType: 'flat' })];
+    const gagnant = { placedCount: 10, kwc: 5.4, annualKwh: 9000, savingsLow: 1, savingsHigh: 2 };
+    const ctx = {
+      ...ctxDeBase(areas, 'area-1'), activeArea: () => areas[0], closed: true, dom: {},
+      liveResult: { winner: gagnant, target: 8000 }, shadeAnnualFactor: 1, horizonAnnualFactor: 1,
+    } as unknown as Ctx;
+    const zones = createZones(ctx, {
+      redrawTrace: vi.fn(), redrawObstacles: vi.fn(), recalc: vi.fn(), setStatus: vi.fn(),
+      ...(carte ? { etatCarte: () => carte } : {}),
+    } as unknown as Parameters<typeof createZones>[1]);
+    return zones.liveActiveResult();
+  };
+  it('carte peinte à 700 kWh/panneau : 10 panneaux → 7 000 (et non les 9 000 du solveur)', () => {
+    expect(essai({ kwhParPanneau: 700 })?.annualKwh).toBe(7000);
+  });
+  it('carte pas encore peinte : le calcul du solveur (9 000) sert', () => {
+    expect(essai(null)?.annualKwh).toBe(9000);
+  });
+});

@@ -102,3 +102,20 @@ class LireLayoutSurfacesDePoseTest(SimpleTestCase):
         self.assertEqual(modules_affleurants(layout), 0)
         self.assertEqual([p['modules'] for p in pans_du_document(layout)], [42, 10, 176])
         self.assertEqual(modules_affleurants(None), 0)
+
+    def test_acal916_chaque_surface_a_sa_puissance_sans_modules(self):
+        """ACAL916 — zone 42 × 710 W + champ 176 × 550 Wc, SANS ``modules[]``
+        ⇒ deux modèles, rendus aussi par ``modeles_designes`` ; une seule
+        puissance ⇒ inchangé au bit près (un groupe, ``modeles_designes`` vide).
+        Mutant : grouper au watt du toit ⇒ un seul modèle 218 × 710 ⇒ rouge."""
+        from apps.ventes.domain.geometrie import modeles_designes
+        layout = _layout_sol(176, moduleWc=550)
+        layout.update(panelWatt=710, zones=[{'id': 'Z1', 'geometry': {'count': 42}}])
+        attendu = [{'produit_id': None, 'watt': 710, 'count': 42},
+                   {'produit_id': None, 'watt': 550, 'count': 176}]
+        self.assertEqual(lire_layout(layout).modeles, attendu)
+        self.assertEqual(modeles_designes(layout), attendu)
+        layout['poseSurfaces'][0]['moduleWc'] = 710
+        self.assertEqual(lire_layout(layout).modeles,
+                         [{'produit_id': None, 'watt': 710, 'count': 218}])
+        self.assertEqual(modeles_designes(layout), [])

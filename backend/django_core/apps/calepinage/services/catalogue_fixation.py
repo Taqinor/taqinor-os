@@ -35,7 +35,22 @@ BASES = {
     'jonctions': 'jonctions entre modules voisins',
     'extremites': 'extrémités de rangées',
     'longueur_rangees_m': 'longueur des rangées (m)',
+    # ACAL569 — l'orientation du module, lue sur le document (ACAL601).
+    'modules_portrait': 'modules en portrait',
+    'modules_paysage': 'modules en paysage',
+    'rangees_portrait': 'rangées en portrait',
+    'rangees_paysage': 'rangées en paysage',
+    # ACAL578 — surfaces de pose (moteur) et pieds de châssis (portée saisie).
+    'tables': 'tables des surfaces de pose (sol, ombrière)',
+    'poteaux': "poteaux d'ombrière (entraxe et section des appuis saisis)",
+    'pieds': 'pieds de châssis (portée entre pieds saisie sur le pan)',
+    # ACAL598 — échafaudage : arêtes typées « égout » et hauteur de bâtiment saisie.
+    'longueur_egouts_m': "longueur des arêtes d'égout typées (m)",
+    'facade_egouts_m2': "façade sous égout : longueur d'égout × hauteur de bâtiment saisie (m²)",
 }
+#: ACAL569 — les quatre bases qui dépendent de l'orientation enregistrée.
+BASES_ORIENTATION = ('modules_portrait', 'modules_paysage',
+                     'rangees_portrait', 'rangees_paysage')
 
 #: Préfixe d'une base qui désigne la quantité d'un autre composant.
 PREFIXE_ROLE = 'role:'
@@ -44,8 +59,14 @@ PREFIXE_ROLE = 'role:'
 CLES_REGLE = ('base', 'facteur', 'diviseur', 'libelle_facteur',
               'libelle_diviseur')
 
+#: ACAL566 — les couvertures qu'un système peut servir : le vocabulaire du
+#: lead (``Lead.TypeToiture``, parité testée), jamais une liste à part.
+COUVERTURES = ('terrasse_beton', 'tole_metal', 'tuiles', 'bac_acier',
+               'fibrociment', 'autre')
+
 __all__ = [
-    'BASES', 'PREFIXE_ROLE', 'CLES_REGLE', 'erreur_de_regle',
+    'BASES', 'BASES_ORIENTATION', 'PREFIXE_ROLE', 'CLES_REGLE', 'COUVERTURES', 'erreur_de_regle',
+    'erreur_de_couvertures',
     'systemes_actifs', 'systeme_de_societe', 'composants_du_systeme',
 ]
 
@@ -96,6 +117,23 @@ def erreur_de_regle(regle):
     for cle in ('libelle_facteur', 'libelle_diviseur'):
         if cle in regle and not isinstance(regle[cle], str):
             return f"« {cle} » est un texte."
+    return ''
+
+
+def erreur_de_couvertures(couvertures):
+    """ACAL566 — le message qui refuse ``couvertures``, ou ``''`` (liste de
+    clés de :data:`COUVERTURES`, sans doublon ; vide = non déclarée)."""
+    if couvertures in (None, []):
+        return ''
+    if not isinstance(couvertures, list):
+        return ("Les couvertures se saisissent en liste "
+                f"(reçu : {type(couvertures).__name__}).")
+    inconnues = [str(c) for c in couvertures if c not in COUVERTURES]
+    if inconnues:
+        return (f"Couverture inconnue : « {', '.join(inconnues)} ». "
+                f"Couvertures admises : {', '.join(COUVERTURES)}.")
+    if len(set(couvertures)) != len(couvertures):
+        return "Une couverture est déclarée deux fois."
     return ''
 
 

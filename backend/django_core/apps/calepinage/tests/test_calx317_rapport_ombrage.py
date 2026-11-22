@@ -285,6 +285,51 @@ LAYOUT_OMBRAGE = {
 }
 
 
+class LegendeAccesSolaireTest(unittest.TestCase):
+    """ACAL727 — rampe fixe 0-100 % sous la carte fraîche, rien sans carte."""
+
+    @staticmethod
+    def _contrat():
+        import json
+        import pathlib
+
+        chemin = (pathlib.Path(rapport_ombrage.__file__).resolve().parents[1]
+                  / 'contract_samples' / 'legende_acces_solaire.json')
+        return json.loads(chemin.read_text(encoding='utf-8'))
+
+    def _rendu(self, *, piece, fraiche, uri='data:image/png;base64,AAAA'):
+        from unittest import mock
+
+        base = 'apps.calepinage.services.images_document.'
+        with mock.patch(base + 'image_recente', return_value=piece):
+            with mock.patch(base + 'image_est_fraiche', return_value=fraiche):
+                with mock.patch(base + 'derniere_image_encodee',
+                                return_value=uri):
+                    return rapport_ombrage.html_carte_de_chaleur(
+                        FauxCalepinage())
+
+    def test_stops_du_serveur_egaux_au_contrat(self):
+        stops = [{'acces': acces, 'rgb': list(rgb)}
+                 for acces, rgb in rapport_ombrage.STOPS_LEGENDE]
+        self.assertEqual(stops, self._contrat()['exemple']['stops'])
+
+    def test_legende_imprimee_avec_les_trois_stops(self):
+        html = self._rendu(piece=object(), fraiche=True)
+        for acces, rgb in rapport_ombrage.STOPS_LEGENDE:
+            rgb255 = ', '.join(str(round(c * 255)) for c in rgb)
+            self.assertIn('rgb(%s) %g%%' % (rgb255, acces * 100), html)
+        for texte in (rapport_ombrage.LEGENDE_ECHELLE_BAS,
+                      rapport_ombrage.LEGENDE_ECHELLE_HAUT,
+                      rapport_ombrage.LEGENDE_ECHELLE_PHRASE):
+            self.assertIn(texte, html)
+
+    def test_aucune_legende_sans_carte_ou_carte_perimee(self):
+        for piece, fraiche in ((None, False), (object(), False)):
+            html = self._rendu(piece=piece, fraiche=fraiche)
+            self.assertNotIn('ombrage-legende', html)
+            self.assertNotIn(rapport_ombrage.LEGENDE_ECHELLE_PHRASE, html)
+
+
 class RapportOmbrageApiTest(BaseApiCalepinage):
     """``GET rapport-ombrage.pdf/`` : route, société, permission."""
 

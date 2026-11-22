@@ -72,7 +72,7 @@ from ..serializers import (
     CalepinageLectureSerializer, CalepinageSerializer, ChampsPersonnalisesField,
     ContraintesSiteCreationField,
     CalepinageVarianteSerializer, FORME_DETAIL_CALEPINAGE, corps_obligatoire,
-    forme_du_contrat, forme_reponse,
+    forme_du_contrat, forme_reponse, surfaces_chiffrables,
 )
 # CAL52 — la sous-ressource « photos de site » vit dans SON fichier
 # (``views/photos.py``) : une base de plus, zéro logique ajoutée ici.
@@ -384,8 +384,13 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
     #: ACAL831 — ``pompage`` (POST) est un CALCUL ouvert à ``calepinage_voir``
     #: (garde déclarée ``PeutVoirCalepinage``) ; seul l'enregistrement du
     #: dernier rendu exige ``calepinage_gerer`` (``_enregistrer_dernier``).
+    #: ACAL846 — ``ecart_mesures`` (POST, rien d'enregistré) est gardée
+    #: ``PeutApprouverCalepinage`` : le porteur de ``calepinage_approuver``
+    #: SEUL doit passer (sinon le volet ``ScopedPermission`` exige
+    #: ``calepinage_gerer`` en plus : 403 au lieu de 200).
     PERMISSIONS_ECRITURE_PAR_ACTION = {'approbation': CAL_APPROUVER,
                                        'profil_depart': CAL_APPROUVER,
+                                       'ecart_mesures': CAL_APPROUVER,
                                        'pompage': CAL_VOIR}
 
     @property
@@ -789,7 +794,8 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
             'taux_tva': drf_serializers.JSONField(required=False),
             'remise_globale': drf_serializers.JSONField(required=False),
             'derogation_electrique': drf_serializers.JSONField(
-                required=False)}),
+                required=False),
+            'surfaces_chiffrees': drf_serializers.JSONField(required=False)}),  # ACAL968
         responses={200: _PUBLICATION_DEVIS, 201: _PUBLICATION_DEVIS,
                    409: _REFUS_VENTES})
     @action(detail=True, methods=['post'], url_path='generer-devis',
@@ -822,7 +828,8 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
                 taux_tva=corps.get('taux_tva'),
                 remise_globale=corps.get('remise_globale'),
                 journal=journal,
-                derogation_electrique=corps.get('derogation_electrique'))
+                derogation_electrique=corps.get('derogation_electrique'),
+                surfaces_chiffrees=corps.get('surfaces_chiffrees'))
         except DevisRefuse as refus:
             return Response(_refus_devis(refus),
                             status=_statut_refus_devis(refus))
@@ -842,7 +849,8 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
             'derogation_electrique': drf_serializers.JSONField(
                 required=False),
             # ACON80 — le devis porté par une variante de ce calepinage.
-            'devis': drf_serializers.IntegerField(required=False)}),
+            'devis': drf_serializers.IntegerField(required=False),
+            'surfaces_chiffrees': drf_serializers.JSONField(required=False)}),  # ACAL968
         responses={200: forme_reponse(
             'CalepinageSyncDevis', 'inchange', 'panneaux', 'kwc', 'scenario',
             'batterie', 'lignes_modifiees', 'lignes_ajoutees',
@@ -868,7 +876,8 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
             resultat = resynchroniser_devis(
                 calepinage, user=request.user,
                 derogation_electrique=corps.get('derogation_electrique'),
-                devis_id=_entier_ou_none(corps.get('devis')))
+                devis_id=_entier_ou_none(corps.get('devis')),
+                surfaces_chiffrees=corps.get('surfaces_chiffrees'))
         except DevisRefuse as refus:
             return Response(_refus_devis(refus),
                             status=_statut_refus_devis(refus))
@@ -1065,7 +1074,9 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
         ``contract_samples/calepinage_design_context.json``). LECTURE PURE,
         bornée société par ``get_queryset`` (404 pour une autre société).
         """
-        return Response(contexte_conception(self.get_object(), request))
+        from .chiffrage_contexte import avec_chiffrage  # ACAL993 — + le bloc ``chiffrage``
+        calepinage = self.get_object()
+        return Response(avec_chiffrage(contexte_conception(calepinage, request), calepinage))
 
     def _geste_repere(self, request, geste):
         """ACAL191 — exécute un geste de repère et rend la réponse d'écriture."""
@@ -1670,6 +1681,8 @@ def detail_calepinage(calepinage, request=None):
         or {},
         # ACAL294 — les champs personnalisés de la société (objet | null).
         'custom_data': getattr(calepinage, 'custom_data', None),
+        # ACAL915 — ce que « Générer le devis » additionne (toit + sol, D-ACAL-5).
+        'surfaces_chiffrables': surfaces_chiffrables(layout),
         'permissions': _permissions(calepinage, request,
                                     a_des_variantes=bool(variantes['total'])),
     }

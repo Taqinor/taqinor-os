@@ -311,6 +311,60 @@ class ChaineSansContrainte(SimpleTestCase):
         self.assertGreater(basse, 0.0)
 
 
+class ModulesEquipes(SimpleTestCase):
+    """ACAL724 — seuls les modules ÉQUIPÉS sortent de la contrainte de chaîne.
+
+    Valeurs recalculées à la main (seuil 0,6) : linéaire = Σ accès ; courant
+    série = Σ équipés + (nombre de non équipés) × min des non équipés ;
+    dérivation = Σ équipés + max(Σ non équipés ≥ seuil ; courant des non
+    équipés).
+    """
+
+    SEUIL_06 = {'valeur': 0.6, 'source': 'societe', 'reference': 'essai'}
+
+    def _etape(self, acces, drapeaux, **extra):
+        contexte = contexte_de(acces, seuil=self.SEUIL_06, **extra)
+        for ligne, drapeau in zip(contexte['affectation'], drapeaux):
+            if drapeau is not None:
+                ligne['optimiseur'] = drapeau
+        _, etape = mismatch_ombrage.appliquer(SERIE, contexte)
+        return etape['entree']
+
+    def test_un_module_equipe_sur_trois_ne_perd_plus_rien(self):
+        # 0,5 + 2 × min(1 ; 1) = 2,5 = linéaire : excédents 0 % / 0 %.
+        entree = self._etape([1.0, 1.0, 0.5], [False, False, True])
+        self.assertEqual(bornes(entree), (0.0, 0.0))
+        chaine = entree['chaines'][0]
+        self.assertEqual(chaine['modules_equipes'], ['PAN-A#3'])
+        self.assertFalse(chaine['sans_contrainte'])
+        self.assertEqual(entree['chaines_sans_contrainte'], [])
+
+    def test_sans_drapeau_l_excedent_haut_reste_40_pour_cent(self):
+        # courant série 3 × 0,5 = 1,5 contre linéaire 2,5 : (2,5−1,5)/2,5.
+        entree = self._etape([1.0, 1.0, 0.5], [None, None, None])
+        self.assertEqual(bornes(entree)[1], 40.0)
+
+    def test_chaine_mi_equipee_garde_une_perte_entre_les_deux(self):
+        # chaîne 1,0 / 0,8 / 0,5, le 0,5 équipé : courant série
+        # 0,5 + 2 × 0,8 = 2,1 contre linéaire 2,3 : 0,2/2,3 = 8,696 % ;
+        # dérivation 0,5 + max(1,8 ; 1,6) = 2,3 : borne basse 0 %.
+        entree = self._etape([1.0, 0.8, 0.5], [False, False, True])
+        self.assertEqual(bornes(entree), (0.0, 8.696))
+
+    def test_produit_du_document_equipe_tout_sauf_les_lignes_false(self):
+        # chaîne 1,0 / 0,5 / 1,0, produit déclaré, lignes 1 et 2 « false » :
+        # non équipés 1,0 et 0,5, équipé 1,0 : courant série
+        # 1,0 + 2 × 0,5 = 2,0 contre linéaire 2,5 : 20 %.
+        entree = self._etape([1.0, 0.5, 1.0], [False, False, None],
+                             fiche_optimiseur={'modeles': 'OPT-ESSAI'})
+        self.assertEqual(bornes(entree)[1], 20.0)
+        # sans la clause « false » le produit équipe tous les modules.
+        tous = self._etape([1.0, 0.5, 1.0], [None, None, None],
+                           fiche_optimiseur={'modeles': 'OPT-ESSAI'})
+        self.assertEqual(bornes(tous), (0.0, 0.0))
+        self.assertTrue(tous['chaines'][0]['sans_contrainte'])
+
+
 class PlusieursChainesEtPans(SimpleTestCase):
     """L'agrégation suit la partition RÉELLE, jamais une partition recalculée."""
 

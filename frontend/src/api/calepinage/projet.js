@@ -48,7 +48,8 @@ export const projet = {
     // son champ (`decision`, `motif`, ou une clé par suggestion automatique
     // encore en attente, ex. `buildings[0].hauteurM`).
     approbation: (id) => api.get(`${pivot(id)}approbation/`),
-    decisionApprobation: (id, corps) => api.post(`${pivot(id)}approbation/`, corps),
+    // ACAL946 — le refus s'affiche UNE fois, dans l'écran : pas de bulle générale en plus.
+    decisionApprobation: (id, corps) => api.post(`${pivot(id)}approbation/`, corps, { suppressErrorToast: true }),
 
     // CALX360 — la NOMENCLATURE DE FIXATION (CALX359, contrat
     // `contract_samples/calepinage_fixation_bom.json`) : `{systeme, lignes,
@@ -86,6 +87,10 @@ export const projet = {
     poseReelle: (id) => api.get(`${pivot(id)}pose-reelle/`),
     enregistrerPoseReelle: (id, corps) => api.post(`${pivot(id)}pose-reelle/`, corps),
     creerVersionPoseReelle: (id) => api.post(`${pivot(id)}pose-reelle/`, { creer_version: true }),
+    // ACAL846/847 — 12 consommations MESURÉES (jamais enregistrées) comparées au simulé (contrat
+    // `contract_samples/calepinage_asbuilt_mesures.json`) ; droit `calepinage_approuver`. Un refus
+    // 409 NOMME le champ fautif (`kwh[2]`, `annee`).
+    ecartMesures: (id, corps) => api.post(`${pivot(id)}ecart-mesures/`, corps),
 
     // CALX371 — le PROJET COMPLET en JSON : téléchargement TEL QUEL du
     // document déjà servi (CALX312/CALX370, contrat

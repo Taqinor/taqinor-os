@@ -45,7 +45,7 @@ from __future__ import annotations
 from .pertes_politique import SOURCES_ADMISES, PertesInvalides
 
 __all__ = [
-    'CATALOGUE', 'CATALOGUE_PAR_POSTE', 'MOIS_LIBELLES', 'SOURCES_ADMISES',
+    'CATALOGUE', 'CATALOGUE_PAR_POSTE', 'CLES_SOCIETE_PAR_POSTE', 'MOIS_LIBELLES', 'SOURCES_ADMISES',
     'PertesInvalides', 'enregistrer_pertes',
     'postes_du_calepinage', 'valider_postes',
 ]
@@ -91,6 +91,23 @@ CATALOGUE = (
 )
 
 CATALOGUE_PAR_POSTE = {entree['poste']: entree for entree in CATALOGUE}
+
+#: ACAL979 — les réglages SOCIÉTÉ (section « simulation ») que la chaîne lit
+#: pour un poste NON saisi, relus sur ``chaine_pertes.py::POSTE_PAR_ETAPE`` et
+#: la clé lue par chaque étape (``etapes/<étape>.py``) : ``{poste: ((clé,
+#: court), …)}`` — ``court`` préfixe la valeur dans le résumé (« b0 = 0,05 »).
+#: Garde : chaque clé existe au registre (``test_acal_pertes_servies``).
+CLES_SOCIETE_PAR_POSTE = {
+    'iam': (('modele_iam', ''), ('b0_iam', 'b0')),
+    'salissure': (('salissure_mensuelle_pct', ''),),
+    'thermique': (('thermique_par_pose', ''),),
+    'lid': (('lid_par_techno', ''),),
+    'qualite_module': (('regle_qualite_module', ''),),
+    'mismatch': (('mismatch_fabricant_pct', ''),),
+    'auxiliaires': (('auxiliaires_w_constants', 'constant'), ('auxiliaires_w_par_kw', 'par kW')),
+    'auxiliaires_nocturnes': (('auxiliaires_w_nuit', ''),),
+    'indisponibilite': (('indisponibilite_fenetres', ''),),
+}
 
 MOIS_LIBELLES = ('janvier', 'février', 'mars', 'avril', 'mai', 'juin',
                  'juillet', 'août', 'septembre', 'octobre', 'novembre',

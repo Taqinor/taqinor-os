@@ -49,7 +49,8 @@ import time
 
 from .chaine_pertes import (
     CLE_CHARGE, CLE_CLIENT_PVGIS, CLE_FOURNISSEUR_METEO, CLE_SORTIES_PAR_PAN,
-    ETAPES_ONDULEUR, MOTIF_TMY_HORIZONTAL, MeteoIndecise, appliquer_chaine,
+    ETAPES_ONDULEUR, ORDRE_ETAPES,
+    appliquer_chaine,
     bloc_serie_horaire, completude_de_la_chaine, decision_meteo,
 )
 from .etapes.autoconsommation import bloc_autoconsommation
@@ -65,6 +66,7 @@ from .pvgis_serie import (
     EntreeInvalide, PvgisIndisponible, azimut_pvgis, jambes_du_pan,
 )
 from . import irradiation_mensuelle as _irr
+from . import production_parties as _parties
 from .a_renseigner import construire as construire_a_renseigner
 from .bifacial_sheds import CLE_HORIZONTALE_LEGALE
 from .horizon import profil_depuis_document
@@ -176,10 +178,12 @@ class SimulationRefusee(ValueError):
     08/09/2026 : jamais un « non enregistré » générique).
     """
 
-    def __init__(self, message, *, champ=''):
+    def __init__(self, message, *, champ='', manquants=None):
         super().__init__(message)
         self.champ = champ
         self.motif = message
+        #: ACAL940 — toutes les lignes ``{champ, motif, cible}`` (vide : une seule).
+        self.manquants = list(manquants or [])
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -553,6 +557,7 @@ def empreinte_simulation(calepinage, *, document, donnees, materiel,
     from .batterie import heures_tarif_societe
     from .electrique import _options_entree
     from .layout import empreinte_document
+    from . import limites_livraison as _limites
     from .raccordement import saisie_du_calepinage
 
     reglages = reglages if isinstance(reglages, dict) else {}
@@ -591,7 +596,8 @@ def empreinte_simulation(calepinage, *, document, donnees, materiel,
                    for cle in ENTREES_ELECTRIQUES_SIMULEES
                    if donnees.get(cle) is not None},
         'options': _options_entree(donnees),
-        'raccordement': saisie_du_calepinage(calepinage),
+        'raccordement': _limites.saisie_pour_simulation(
+            saisie_du_calepinage(calepinage)),
         'site': site,
         'meteo_fichier': _signature_meteo_deposee(calepinage),
         'tou_heures': heures_tarif_societe(getattr(calepinage, 'company',
@@ -626,6 +632,7 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
     from .electrique import conception_du_calepinage, parametres_societe
     from .norme import norme_applicable
     from .pertes import postes_du_calepinage
+    from . import limites_livraison as _limites
     from .raccordement import saisie_du_calepinage
 
     from .electrique import TemperaturesInvalides
@@ -715,7 +722,8 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
         # ACAL155 — LA saisie de raccordement (cos φ imposé, plafond
         # d'injection), écrite par ``POST raccordement/`` : jamais une
         # section du document qu'aucun écrivain ne produit.
-        'raccordement': saisie_du_calepinage(calepinage),
+        'raccordement': _limites.saisie_pour_simulation(
+            saisie_du_calepinage(calepinage)),
         # ACAL166 — le mode hors réseau est DÉCLARÉ dans l'entrée électrique
         # enregistrée (jamais une section du document qu'aucun écrivain ne
         # produisait) ; absent, l'installation est raccordée (inchangé).
@@ -774,26 +782,21 @@ def verifier_simulable(contexte, meta, *, fichier_depose=False):
     source, jamais une copie. Rend la décision météo.
 
     Raises:
-        SimulationRefusee: le champ fautif est nommé.
+        SimulationRefusee: le champ fautif est nommé ; ACAL940 : TOUS les
+            manques dans ``manquants`` (``services/manquants_simulation.py``,
+            même ordre), le premier en tête. Le mode ``tmy`` sans fichier est
+            refusé : le service ``tmy`` de PVGIS ne publie que l'irradiance
+            globale HORIZONTALE et la chaîne ne transpose pas.
     """
-    try:
-        decision = decision_meteo(contexte)
-    except MeteoIndecise as refus:
-        raise SimulationRefusee(refus.motif, champ=refus.champ) from refus
-    if not meta.get('plans_equipes'):
-        raise SimulationRefusee(MOTIF_SANS_PAN_EQUIPE, champ='plans')
-    if not fichier_depose:
-        site = contexte.get('site') or {}
-        if site.get('lat') is None or site.get('lon') is None:
-            raise SimulationRefusee(MOTIF_SANS_POINT, champ='site.pin')
-        if decision['mode'] == 'tmy':
-            # Le service ``tmy`` de PVGIS ne publie que l'irradiance GLOBALE
-            # HORIZONTALE : la chaîne travaille sur le PLAN des modules et ne
-            # transpose pas. Le refus NOMME la colonne, comme la chaîne le
-            # ferait elle-même.
-            raise SimulationRefusee(MOTIF_TMY_HORIZONTAL,
-                                    champ='parametres.simulation.mode_meteo')
-    return decision
+    from . import manquants_simulation as _manquants
+
+    manquants = _manquants.manquants_de_simulation(
+        contexte, meta, fichier_depose=fichier_depose)
+    if manquants:
+        raise SimulationRefusee(manquants[0]['motif'],
+                                champ=manquants[0]['champ'],
+                                manquants=manquants)
+    return decision_meteo(contexte)
 
 
 def fichier_meteo_depose(calepinage):
@@ -1276,6 +1279,8 @@ def _annoter_cascade(blocs, cascade, contexte):
     """Pose la cascade et ses lectures dérivées ; rend l'avertissement de
     complétude (« borne haute », ACAL49) que l'appelant met en tête."""
     blocs['cascade'] = cascade
+    from .limites_connues import limites_connues  # ACAL749 — hors modèle
+    cascade['limites_connues'] = limites_connues(ORDRE_ETAPES)
     from .regroupement_pertes import regrouper  # ACAL695 — cinq postes lisibles
     cascade['postes_lisibles'] = regrouper(cascade)
     from .plages_usuelles import evaluer  # ACAL702 — pastilles sourcées
@@ -1288,13 +1293,16 @@ def _annoter_cascade(blocs, cascade, contexte):
 
 
 def _appels_complementaires_pvgis(blocs, client, reference, decision,
-                                  fichier, compteur):
+                                  fichier, compteur, document=None):
     """Les requêtes PVGIS posées APRÈS la chaîne, puis le compteur d'appels
     RÉELS : l'ordonnanceur compte ses demandes, le fournisseur compte ce qui
     est réellement parti sur le réseau."""
     from . import gain_inclinaison as _gain_inclinaison  # ACAL706
     blocs['production']['gain_inclinaison'] = _gain_inclinaison.demander(
         client, reference, decision, fichier, compteur, blocs['production'])
+    from . import meteo_comparee  # ACAL744 — la même irradiation, l'AUTRE base
+    blocs['meteo']['comparaison_base'] = meteo_comparee.comparer_bases(
+        client, reference, decision, document, fichier, compteur)
     blocs['meteo']['appels_pvgis'] = compteur['appels']
 
 
@@ -1305,6 +1313,20 @@ def _annexes_de_production(blocs, serie_reference, projection, contexte):
         serie_reference, blocs['production'])
     blocs['production']['duree_de_vie'] = bloc_duree_de_vie(
         projection, contexte)
+
+
+def _parties_et_projection(blocs, document, projection, contexte, maintenant):
+    """ACAL843 — existant / ajouté côte à côte (absent sans pan existant) ; puis CALX63 — chaque année de la
+    projection porte la capacité restante de la batterie quand le vieillissement est publié (fiche cycles/EOL
+    saisie) ; sans lui, les lignes sortent inchangées."""
+    parties = _parties.parties_de_la_production(
+        document, blocs['production'].get('par_pan'), contexte, maintenant)
+    if parties is not None:
+        blocs['production']['parties'] = parties
+    from .batterie import capacite_batterie_par_annee
+    blocs['production']['projection'] = capacite_batterie_par_annee(
+        projection['annees'],
+        ((blocs.get('batterie') or {}).get('total') or {}).get('vieillissement'))
 
 
 def simuler_calepinage(calepinage, *, forcer=False, client=None,
@@ -1439,7 +1461,7 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         blocs['avertissements'].remove(entete)
         blocs['avertissements'].insert(0, entete)
     _appels_complementaires_pvgis(blocs, client, reference, decision,
-                                  fichier, compteur)
+                                  fichier, compteur, meta['document'])
     identite = _relayer_fichier_meteo(blocs['meteo'], fichier, provenance)
 
     # 3. LA SIMULATION MODULE PAR MODULE (CALX182).
@@ -1526,13 +1548,7 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         total.get('p50_kwh'), contexte,
         parts=_parts_vieillies(meta['document'],
                                blocs['production'].get('par_pan'), maintenant))
-    # CALX63 — chaque année de la projection porte la capacité restante de la
-    # batterie quand le vieillissement est publié (fiche cycles/EOL saisie) ;
-    # sans lui, les lignes sortent inchangées.
-    from .batterie import capacite_batterie_par_annee
-    blocs['production']['projection'] = capacite_batterie_par_annee(
-        projection['annees'],
-        ((blocs.get('batterie') or {}).get('total') or {}).get('vieillissement'))
+    _parties_et_projection(blocs, meta['document'], projection, contexte, maintenant)
     _annexes_de_production(blocs, serie_reference, projection, contexte)
     if projection.get('motif_omission'):
         _ajouter_avertissement(blocs, MOTIF_PROJECTION.format(

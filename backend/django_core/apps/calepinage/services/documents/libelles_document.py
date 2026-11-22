@@ -117,6 +117,40 @@ LIBELLES = {
     'energie_livree': {'fr': 'Énergie livrée', 'en': 'Delivered energy'},
     'poste_omis': {'fr': 'omis', 'en': 'omitted'},
     'gain': {'fr': 'gain', 'en': 'gain'},
+
+    # ── ACAL772 — table IAM de la section pertes ──────────────────────────
+    'iam_titre': {'fr': "Facteur d'incidence (IAM)",
+                  'en': 'Incidence angle modifier (IAM)'},
+    'iam_col_angle': {'fr': 'Angle (°)', 'en': 'Angle (°)'},
+    'iam_col_facteur': {'fr': 'Facteur', 'en': 'Factor'},
+    'iam_modele': {'fr': 'Modèle', 'en': 'Model'},
+    'iam_indice_verre': {'fr': 'indice du verre', 'en': 'glass index'},
+
+    # ── ACAL761 — schéma « où va l'énergie » ─────────────────────────────
+    'energie_titre': {'fr': "Où va l'énergie", 'en': 'Where the energy goes'},
+    'energie_titre_a': {'fr': "Du soleil à l'électricité",
+                        'en': 'From the sun to electricity'},
+    'energie_titre_b': {'fr': "De l'électricité aux usages",
+                        'en': 'From electricity to uses'},
+    'energie_soleil': {'fr': 'Soleil reçu', 'en': 'Sunlight received'},
+    'energie_produite': {'fr': 'Électricité produite',
+                         'en': 'Electricity produced'},
+    'energie_production_brute': {'fr': 'Production brute',
+                                 'en': 'Gross production'},
+    'energie_sur_place': {'fr': 'Consommée sur place',
+                          'en': 'Used on site'},
+    'energie_injectee': {'fr': 'Injectée au réseau',
+                         'en': 'Exported to the grid'},
+    'energie_ecretee': {'fr': 'Écrêtée', 'en': 'Clipped'},
+    'energie_importee': {'fr': 'Importée du réseau',
+                         'en': 'Imported from the grid'},
+    'energie_consommation': {'fr': 'Consommation', 'en': 'Consumption'},
+    'energie_non_calcule': {'fr': 'non calculé', 'en': 'not calculated'},
+    'energie_batterie': {'fr': 'dont par la batterie',
+                         'en': 'of which through the battery'},
+    'energie_pertes_batterie': {'fr': 'pertes de la batterie',
+                                'en': 'battery losses'},
+    'poste_non_compte': {'fr': 'poste non compté', 'en': 'item not counted'},
 }
 
 

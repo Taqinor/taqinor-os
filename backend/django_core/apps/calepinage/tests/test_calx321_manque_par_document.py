@@ -328,7 +328,8 @@ class SortiesInchangeTest(unittest.TestCase):
             [s['code'] for s in servi['sorties']],
             ['planche_pdf', 'planche_svg', 'planche_png', 'plan_pose_pdf',
              'plan_toiture_pdf', 'plan_masse_pdf', 'note_calcul_pdf', 'dxf',
-             'tableur_xlsx', 'tableur_csv', 'image_3d', 'pack_technique'])
+             'tableur_xlsx', 'tableur_csv', 'image_3d', 'pack_technique',
+             'plan_lestage_pdf'])
 
 
 if __name__ == '__main__':  # pragma: no cover

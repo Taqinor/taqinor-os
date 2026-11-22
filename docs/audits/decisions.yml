@@ -1654,6 +1654,18 @@ decisions:
     source: "lot AskUserQuestion du 21/11/2026 au soir (campagne L5 calepinage, vérification de la vague 2) ; option a recommandée, écartée ; tâches du lot POMPAGE à écrire"
     taches: [ACAL1197, ACAL1198, ACAL1199, ACAL1200, ACAL1201, ACAL1202, ACAL1203]
 
+  - id: D-ACAL-47
+    question: "La garde des saisies électriques branchées (ACAL322) compte-t-elle l'atelier de toiture comme lecteur d'un réglage société (les trois réglages d'ombrage d'ACAL716 ne sont lus que par l'atelier, ACAL714 / ACAL715) ?"
+    options:
+      - cle: a
+        texte: "Non : retirer ACAL714, ACAL715 et ACAL716 de la PR"
+      - cle: b
+        texte: "Oui : la garde des saisies électriques branchées compte l'atelier de toiture comme lecteur d'un réglage ; un réglage que personne ne lit reste refusé ; aucune liste d'exceptions"
+    reponse: b
+    date: "2026-11-22"
+    source: "réponse de Reda du 22/11/2026 à la question de l'orchestrateur (PR n°2 #1523, garde check_saisies_electriques_branchees.py) ; les trois tâches restent dans la PR"
+    taches: [ACAL716, ACAL714, ACAL715]
+
   - id: D-APAR-1
     question: "Source du taux de TVA par defaut ?"
     options:

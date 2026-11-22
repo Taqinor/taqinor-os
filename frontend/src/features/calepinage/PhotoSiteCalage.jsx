@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import calepinageApi from '../../api/calepinageApi'
+import { compterEnAttente, deposerOuMettreEnFile, rejouerFile } from './fileEnvoiPhotos' // ACAL892
 import { urlFichierCalepinage, crossOriginFichierCalepinage } from '../../lib/calage/fichierCalepinage'
 import { ZOOM_INITIAL, poserFondCarte } from '../../lib/calage/fondCarte'
 import { retirerCarte } from '../../lib/leaflet/retirerCarte'
@@ -13,6 +14,9 @@ import {
 } from '../../ui'
 import { dessinerApercuDrape } from '../../lib/calage/apercuDrape'
 import { coinsDepuisFichierMonde } from './commun/fichierCalageMonde'
+import { dessinerSurPhoto } from './commun/projectionPhoto'
+import { telechargerBlob } from './exportImage' // ACAL897
+import { modulesDuDocument } from '@roofpro/modulesGeo'
 import { DEFAULT_CENTER, coinsDepuisMarqueurs, positionsInitiales } from './PhotoSiteCalage.helpers'
 
 /* ============================================================================
@@ -112,6 +116,8 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
   const [erreursDepot, setErreursDepot] = useState({})
   const [depotEnCours, setDepotEnCours] = useState(false)
   const [progressionDepot, setProgressionDepot] = useState(undefined)
+  const [enAttente, setEnAttente] = useState(0) // ACAL892 — photos gardées sur l'appareil (file hors ligne)
+  const [messageFile, setMessageFile] = useState(null)
 
   const mapRef = useRef(null)
   const containerRef = useRef(null)
@@ -119,6 +125,9 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
   const polygonRef = useRef(null)
   const canvasRef = useRef(null)
   const imageRef = useRef(null)
+  const surPhotoRef = useRef(null) // ACAL529 — la vue « modules sur la photo »
+  const [vueSurPhoto, setVueSurPhoto] = useState(false)
+  const [reference, setReference] = useState(null) // ACAL897 — la référence du calepinage, nom du PNG client
 
   const recharger = useCallback(() => {
     if (!calepinageId) return
@@ -133,6 +142,7 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
         setPhotos(liste)
         setImagerie(resParametres?.data?.imagerie ?? null)
         setContexte(resDetail?.data?.contexte_geographique ?? null)
+        setReference(resDetail?.data?.reference ?? null)
         setPhotoId((courant) => (
           courant && liste.some((p) => p.id === courant)
             ? courant
@@ -144,6 +154,26 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
   }, [calepinageId])
 
   useEffect(() => { recharger() }, [recharger])
+
+  // ACAL892 — les photos gardées partent dans l'ordre au retour du réseau ; le compte se relit dans la file (survit au rechargement).
+  const envoyerLaFile = useCallback(() => {
+    if (!calepinageId || navigator.onLine === false) return
+    rejouerFile(calepinageId).then(({ envoyees, refusees, restantes }) => {
+      setEnAttente(restantes)
+      if (refusees.length) {
+        const [champ, texte] = Object.entries(refusees[0].champs)[0] ?? []
+        setMessageFile(`Photo refusée par le serveur${champ ? ` (${champ} : ${texte})` : refusees[0].message ? ` : ${refusees[0].message}` : ''}.`)
+      } else if (envoyees) setMessageFile('Photo envoyée.')
+      if (envoyees) recharger()
+    }).catch(() => {})
+  }, [calepinageId, recharger])
+  useEffect(() => {
+    if (!calepinageId) return undefined
+    compterEnAttente(calepinageId).then(setEnAttente).catch(() => {})
+    envoyerLaFile()
+    window.addEventListener('online', envoyerLaFile)
+    return () => window.removeEventListener('online', envoyerLaFile)
+  }, [calepinageId, envoyerLaFile])
 
   // CALX38 — un genre ou une date absents sont REFUSÉS avant tout envoi (le
   // fichier reste choisi côté navigateur, aucun octet n'est parti).
@@ -159,18 +189,19 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
     setDepotEnCours(true)
     setProgressionDepot(20)
     setMessage(null)
-    const corps = new FormData()
-    corps.append('photo', fichier)
-    corps.append('genre', genreDepot)
-    corps.append('prise_le', priseLeDepot)
-    if (legendeDepot) corps.append('legende', legendeDepot)
-
+    setMessageFile(null)
     setProgressionDepot(60)
-    Promise.resolve(calepinageApi.calepinages.ajouterPhoto(calepinageId, corps))
-      .then((res) => {
+    Promise.resolve(deposerOuMettreEnFile(calepinageId, fichier,
+      { genre: genreDepot, prise_le: priseLeDepot, legende: legendeDepot }))
+      .then(({ enFile, res }) => {
         setProgressionDepot(100)
-        setMessage('Photo ajoutée : elle est calable ci-dessous.')
         setGenreDepot(''); setPriseLeDepot(''); setLegendeDepot(''); setErreursDepot({})
+        if (enFile) {
+          setMessageFile('Photo gardée sur cet appareil : elle partira dès le retour du réseau.')
+          compterEnAttente(calepinageId).then(setEnAttente)
+          return
+        }
+        setMessage('Photo ajoutée : elle est calable ci-dessous.')
         const neuve = res?.data?.photo
         recharger()
         if (neuve?.id) setPhotoId(neuve.id)
@@ -357,6 +388,32 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
     }
   }
 
+  // ACAL529 — carte → photo : les modules du document projetés sur la photo calée (rendu seul, rien n'est écrit).
+  const pansModules = modulesDuDocument(doc.document)
+  const nbModules = pansModules.reduce((n, pan) => n + pan.quads.length, 0)
+  const coinsCalage = photo?.calage?.coins
+  useEffect(() => {
+    const image = imageRef.current
+    if (vueSurPhoto && surPhotoRef.current && image?.complete && image.naturalWidth && coinsCalage) {
+      dessinerSurPhoto(surPhotoRef.current, image, coinsCalage, pansModules)
+    }
+  })
+  // ACAL897 — « Image pour le client » : le même dessin, sans repère interne, avec titre et légende, jamais un prix ; rien n'est rangé.
+  const imageClient = () => {
+    const image = imageRef.current
+    if (!image?.complete || !image.naturalWidth || !coinsCalage) { setMessage('La photo n’est pas encore chargée : réessayez dans un instant.'); return }
+    const toile = document.createElement('canvas')
+    dessinerSurPhoto(toile, image, coinsCalage, pansModules, { client: true })
+    toile.toBlob((blob) => blob && telechargerBlob(blob, `${reference ?? `calepinage-${calepinageId}`}-vos-panneaux.png`), 'image/png')
+  }
+  const telechargerSurPhoto = () => surPhotoRef.current?.toBlob((blob) => {
+    const lien = document.createElement('a')
+    lien.href = URL.createObjectURL(blob)
+    lien.download = `calepinage-${calepinageId}-sur-photo.png`
+    lien.click()
+    URL.revokeObjectURL(lien.href)
+  }, 'image/png')
+
   const utiliserCommeFond = () => {
     if (!photo?.calage) return
     ecrireFond(
@@ -443,6 +500,11 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
           onFiles={deposerPhoto}
           data-testid="cal-photo-depot-fichier"
         />
+        {(enAttente > 0 || messageFile) && (
+          <p role="status" className="text-sm text-foreground" data-testid="acal892-file-attente">
+            {messageFile}{enAttente > 0 ? ` ${enAttente} photo${enAttente > 1 ? 's' : ''} en attente d’envoi.` : ''}
+          </p>
+        )}
         {erreursDepot.photo && (
           <p role="alert" className="text-xs text-destructive" data-testid="cal-photo-depot-erreur-photo">
             {erreursDepot.photo}
@@ -577,6 +639,40 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
             )}
           </div>
 
+          {!photo.calage && (
+            <p className="mt-2 text-sm text-muted-foreground" data-testid="cal-photo-sur-photo-sans-calage">
+              Calez d’abord la photo sur la carte.
+            </p>
+          )}
+          {photo.calage && nbModules === 0 && (
+            <p className="mt-2 text-sm text-muted-foreground" data-testid="cal-photo-sur-photo-vide">
+              Aucun module posé à projeter.
+            </p>
+          )}
+          {photo.calage && nbModules > 0 && (
+            <div className="mt-2" data-testid="cal-photo-sur-photo">
+              <Button type="button" variant="outline" onClick={() => setVueSurPhoto((v) => !v)}
+                data-testid="cal-photo-sur-photo-bouton">
+                {vueSurPhoto ? 'Masquer la vue sur la photo' : 'Voir sur la photo'}
+              </Button>
+              <Button type="button" variant="outline" onClick={imageClient} className="ml-2"
+                data-testid="cal-photo-image-client">
+                Image pour le client
+              </Button>
+              {vueSurPhoto && (
+                <>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Les modules sont projetés comme si le toit était plat.
+                  </p>
+                  <canvas ref={surPhotoRef} className="mt-2 h-auto max-w-full" data-testid="cal-photo-sur-photo-canvas" />
+                  <Button type="button" variant="outline" onClick={telechargerSurPhoto}
+                    data-testid="cal-photo-sur-photo-telecharger">
+                    Télécharger l’image
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
           {!photo.calage && toucheeId !== photo.id && (
             <p className="mt-2 text-xs text-muted-foreground" data-testid="cal-photo-calage-non-cale">
               Photo non calée : déplacez une poignée pour poser un calage.

@@ -526,6 +526,50 @@ def controle_chaine_variateur(variateur, module, serie, paralleles=1,
     return sortie
 
 
+def controle_appoint(variateur, module, serie, temperatures=None):
+    """ACAL818 — appoint réseau ou groupe sur le bus DC du variateur : la chaîne
+    DONNÉE passe-t-elle AU-DESSUS du bus redressé PUBLIÉ par la fiche
+    (``var_bus_dc_redresse_v``), sans dépasser ``ond_v_max_abs`` ?
+
+    Tensions unitaires de ``fenetre_admissible`` (même source que
+    :func:`controle_chaine_variateur`). ``conforme`` ; ``voc_au_dessus_limite``
+    (vérifié d'abord : sécurité matériel) ; ``vmp_sous_bus`` (l'appoint prend
+    toute la charge) ; ``non_verifiable`` avec le champ nommé — jamais une
+    tension déduite de 220 ou 380 V. La composition du kit ne change pas."""
+    fiche = _fiche(variateur)
+    bus = _flottant(fiche.get("var_bus_dc_redresse_v"))
+    limite = _flottant(fiche.get("ond_v_max_abs"))
+    sortie = {"verdict": "non_verifiable", "motif": None, "bus_redresse_v": bus,
+              "vmp_chaud_v": None, "voc_froid_v": None, "limite_v": limite}
+    spec = spec_module(module)
+    for manque, motif in (
+            (not bus or bus <= 0, "tension redressée du bus DC non publiée "
+                                  "(var_bus_dc_redresse_v)"),
+            (not limite or limite <= 0, "tension maximale du variateur non "
+                                        "publiée (ond_v_max_abs)"),
+            (spec is None, "module incomplet (Vmp, Voc, Isc, Imp, Pmax)"),
+            (not serie or serie < 1, "nombre de modules en série inconnu")):
+        if manque:
+            sortie["motif"] = motif
+            return sortie
+    froid, chaud, source, mention = _temperatures(temperatures)
+    fenetre = fenetre_admissible(spec, spec_variateur(variateur), froid, chaud,
+                                 temp_source=source, temp_mention=mention)
+    vmp = serie * fenetre.vmp_chaud_unitaire_v
+    voc = serie * fenetre.voc_froid_unitaire_v
+    sortie.update(vmp_chaud_v=round(vmp), voc_froid_v=round(voc),
+                  verdict="conforme")
+    if voc > limite:
+        sortie.update(verdict="voc_au_dessus_limite", motif=(
+            "Voc à froid %s V au-dessus des %s V du variateur"
+            % (_fr(voc, 0), _fr(limite, 0))))
+    elif vmp < bus:
+        sortie.update(verdict="vmp_sous_bus", motif=(
+            "Vmp à chaud %s V sous les %s V du bus DC redressé : l'appoint "
+            "prend toute la charge" % (_fr(vmp, 0), _fr(bus, 0))))
+    return sortie
+
+
 def _repli_borne(nb, kwc0, pmax, plaque):
     """AGM2 (D-AGM-2) — ``(nb, mention)`` du repli « besoin non couvert » :
     le kWc de départ, BORNÉ à la borne haute de la bande champ/pompe × la

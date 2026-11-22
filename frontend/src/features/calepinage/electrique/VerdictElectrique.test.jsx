@@ -220,6 +220,34 @@ describe('VerdictElectrique (CALX249)', () => {
     expect(screen.queryByTestId('calx249-pourquoi-non')).toBeNull()
   })
 
+  it('ACAL613 — à compléter : titre et phrase du serveur, ton ambre, lignes gardées', async () => {
+    const donnees = exempleContrat('calepinage', 'calepinage_evaluation_electrique', 'exemple_a_completer')
+    servir(donnees)
+
+    rendre()
+
+    await screen.findByTestId('calx249-panneau')
+    const badge = screen.getByTestId('calx249-publiable')
+    expect(badge.textContent).toBe(donnees.publication.titre)
+    expect(badge.className).toContain('text-warning')
+    expect(badge.className).not.toContain('text-success')
+    expect(screen.getByTestId('calx249-pourquoi-oui').textContent).toBe(donnees.publication.phrase)
+    expect(screen.queryByText('Publiable')).toBeNull()
+    expect(screen.getByTestId('calx249-statut-FICHE_INCOMPLETE')).toBeTruthy()
+  })
+
+  it('ACAL613 — prêt garde le vert avec le titre du serveur', async () => {
+    const donnees = exempleContrat('calepinage', 'calepinage_evaluation_electrique', 'exemple')
+    servir(donnees)
+
+    rendre()
+
+    await screen.findByTestId('calx249-panneau')
+    const badge = screen.getByTestId('calx249-publiable')
+    expect(badge.textContent).toBe(donnees.publication.titre)
+    expect(badge.className).toContain('text-success')
+  })
+
   it('un verdict ABSENT ne devient jamais un « OK » supposé', async () => {
     servir({
       verdict: 'indetermine',
@@ -394,6 +422,57 @@ describe('ACAL712 — carte chaîne touchée par l’ombre', () => {
     expect(parades).toHaveTextContent('déplacer ou retirer ces modules')
     expect(parades.textContent).not.toMatch(/%|\d/)
     expect(screen.getByTestId('acal712-modifier')).toHaveAttribute('href', '/calepinage/7?onglet=affectation')
+  })
+
+  it('ACAL619 — « Tension par temps froid » : une ligne par chaîne, les nombres servis, mots pour l’état', async () => {
+    const chaines = exempleContrat('calepinage', 'calepinage_evaluation_electrique').chaines
+    servir({ ...REPONSE, chaines })
+
+    rendre()
+
+    const ligne = await screen.findByTestId('acal619-ligne-1')
+    expect(ligne).toHaveTextContent('642 V / 1 000 V — dans la limite')
+    expect(ligne).toHaveTextContent('432 V / 200 V — dans la limite')
+    expect(ligne).toHaveTextContent('-5 °C')
+    expect(screen.getByTestId('acal619-ligne-2')).toHaveTextContent('535 V')
+  })
+
+  it('ACAL619 — une chaîne indéterminée : « tension non calculable », jamais un nombre', async () => {
+    const chaines = [{ ...exempleContrat('calepinage', 'calepinage_evaluation_electrique').chaines[0], voc_froid_v: null, vmp_chaud_v: null, indetermine: ['fiche module : Voc absent'] }]
+    servir({ ...REPONSE, chaines })
+
+    rendre()
+
+    const ligne = await screen.findByTestId('acal619-ligne-1')
+    expect(ligne).toHaveTextContent('tension non calculable : fiche module : Voc absent')
+  })
+
+  it('ACAL685 — « Boucles de câblage » : la ligne de l’échantillon, puis limite null, puis surface null', async () => {
+    const boucle = exempleContrat('calepinage', 'calepinage_evaluation_electrique').boucles_dc[0]
+    servir({ ...REPONSE, boucles_dc: [boucle] })
+    rendre()
+    const ligne = await screen.findByTestId('acal685-ligne-1')
+    expect(ligne).toHaveTextContent('Chaîne 1 : boucle de 4,5 m², limite de 3 m² fixée par la société — au-dessus')
+    expect(ligne).not.toHaveTextContent('limite de 4,5')
+    cleanup()
+
+    servir({ ...REPONSE, boucles_dc: [{ ...boucle, limite_m2: null, limite_source: null, depasse: null, indetermine: ['limite non saisie : réglage boucle_dc_max_m2'] }] })
+    rendre()
+    const sansLimite = await screen.findByTestId('acal685-ligne-1')
+    expect(sansLimite).toHaveTextContent('boucle de 4,5 m², limite non saisie')
+    expect(sansLimite).toHaveTextContent('réglage boucle_dc_max_m2')
+    expect(sansLimite).not.toHaveTextContent('au-dessus')
+    cleanup()
+
+    servir({ ...REPONSE, boucles_dc: [{ ...boucle, surface_m2: null, depasse: null, indetermine: ['point de collecte non saisi'] }] })
+    rendre()
+    expect(await screen.findByTestId('acal685-ligne-1')).toHaveTextContent('Chaîne 1 : surface non calculable : point de collecte non saisi')
+    cleanup()
+
+    servir({ ...REPONSE, boucles_dc: [] })
+    rendre()
+    await waitFor(() => expect(calepinageApi.calepinages.evaluerElectrique).toHaveBeenCalled())
+    expect(screen.queryByTestId('acal685-boucles')).toBeNull()
   })
 
   it('rien sans chaîne touchée, sans cascade, ou en guidé', async () => {

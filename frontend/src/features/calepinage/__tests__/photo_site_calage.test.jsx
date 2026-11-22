@@ -39,6 +39,7 @@ vi.mock('leaflet/dist/leaflet.css', () => ({}))
 
 const { default: PhotoSiteCalage } = await import('../PhotoSiteCalage')
 const { positionsInitiales, coinsDepuisMarqueurs } = await import('../PhotoSiteCalage.helpers')
+const projectionPhoto = await import('../commun/projectionPhoto')
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -276,5 +277,130 @@ describe('CAL53 — l’écran est ATTEIGNABLE', () => {
     )
     expect(await screen.findByTestId('cal-lien-photos-calage'))
       .toHaveAttribute('href', '/calepinage/9?onglet=photos')
+  })
+})
+
+describe('ACAL529 — « Voir sur la photo » : les modules projetés par l’homographie du calage', () => {
+  const { versPixelsPhoto } = projectionPhoto
+  const COINS = PHOTO_CALEE.calage.coins // [lat, lng] : NO, NE, SE, SO
+  const L_IMG = 800
+  const H_IMG = 600
+
+  it('les 4 coins de calage tombent sur les 4 coins de l’image à 1 pixel près ; le centre au centre', () => {
+    const px = versPixelsPhoto(COINS, L_IMG, H_IMG)
+    const attendus = [[0, 0], [L_IMG, 0], [L_IMG, H_IMG], [0, H_IMG]]
+    COINS.forEach(([lat, lng], i) => {
+      const [x, y] = px(lng, lat)
+      expect(Math.abs(x - attendus[i][0])).toBeLessThan(1)
+      expect(Math.abs(y - attendus[i][1])).toBeLessThan(1)
+    })
+    const [cx, cy] = px(-7.15, 33.15)
+    expect(Math.abs(cx - L_IMG / 2)).toBeLessThan(1)
+    expect(Math.abs(cy - H_IMG / 2)).toBeLessThan(1)
+  })
+
+  it('latitude et longitude inversées : le coin NO ne tombe plus sur le pixel (0, 0)', () => {
+    const px = versPixelsPhoto(COINS, L_IMG, H_IMG)
+    const [x, y] = px(33.1, -7.1) // lat/lng permutés
+    expect(Math.hypot(x, y)).toBeGreaterThan(1)
+  })
+
+  it('sans calage : pas de bouton, la page dit de caler d’abord', async () => {
+    photos.mockResolvedValue({ data: { photos: [PHOTO_NON_CALEE] } })
+    get.mockResolvedValue({ data: { contexte_geographique: null } })
+    rendre()
+    await screen.findByTestId('cal-photo-calage-carte')
+    expect(screen.queryByTestId('cal-photo-sur-photo-bouton')).toBeNull()
+    expect(screen.getByTestId('cal-photo-sur-photo-sans-calage')).toHaveTextContent('Calez d’abord la photo sur la carte.')
+  })
+
+  it('calée mais sans module : « Aucun module posé à projeter. », pas de bouton', async () => {
+    photos.mockResolvedValue({ data: { photos: [PHOTO_CALEE] } })
+    get.mockResolvedValue({ data: { contexte_geographique: null } })
+    rendre()
+    expect(await screen.findByTestId('cal-photo-sur-photo-vide')).toHaveTextContent('Aucun module posé à projeter.')
+    expect(screen.queryByTestId('cal-photo-sur-photo-bouton')).toBeNull()
+  })
+
+  it('calée avec des modules : le bouton ouvre la vue et la phrase « toit plat »', async () => {
+    layout.mockResolvedValue({
+      data: {
+        roof_layout: { zones: [{ id: 'z1', geometry: { origin: [-7.15, 33.15], panels: [{ cx: 0, cy: 0 }], moduleId: null, tiltDeg: 0, azimuthDeg: 0 } }] },
+        empreinte_document: 'E0',
+      },
+    })
+    photos.mockResolvedValue({ data: { photos: [PHOTO_CALEE] } })
+    get.mockResolvedValue({ data: { contexte_geographique: null } })
+    rendre()
+    fireEvent.click(await screen.findByTestId('cal-photo-sur-photo-bouton'))
+    expect(screen.getByText('Les modules sont projetés comme si le toit était plat.')).toBeInTheDocument()
+    expect(screen.getByTestId('cal-photo-sur-photo-telecharger')).toBeInTheDocument()
+  })
+})
+
+describe('ACAL897 — « Image pour le client » : titre et légende, sans repère interne ni chiffre', () => {
+  const faux = () => {
+    const appels = { texte: [], arc: 0, trace: 0 }
+    const propres = {
+      moveTo: () => { appels.trace += 1 }, lineTo: () => { appels.trace += 1 },
+      arc: () => { appels.arc += 1 }, fillText: (t) => appels.texte.push(t),
+    }
+    // toute autre méthode 2D (clearRect, drawImage…) est un espion muet : le contexte n'est qu'un témoin
+    const ctx = new Proxy({}, { get: (cible, nom) => propres[nom] ?? (cible[nom] ??= vi.fn()), set: (cible, nom, v) => { cible[nom] = v; return true } })
+    return { appels, ctx, canvas: { getContext: () => ctx, width: 0, height: 0 }, image: { naturalWidth: 800, naturalHeight: 600 } }
+  }
+  const PANS = [{ quads: [[[-7.15, 33.15], [-7.14, 33.15], [-7.14, 33.16], [-7.15, 33.16]]] }]
+  const COINS = PHOTO_CALEE.calage.coins
+
+  it('mode client : titre et légende, aucun marqueur de coin, aucun chiffre ni symbole monétaire', () => {
+    const { appels, canvas, image } = faux()
+    projectionPhoto.dessinerSurPhoto(canvas, image, COINS, PANS, { client: true })
+    expect(appels.texte).toEqual([
+      'Vos panneaux sur la photo de votre toit',
+      'Projection indicative : le toit est supposé plat.',
+    ])
+    expect(appels.arc).toBe(0)
+    expect(appels.trace).toBe(4) // les 4 coins du module, rien d'autre
+    for (const t of appels.texte) expect(t).not.toMatch(/\d|€|\$|MAD|DH|kWc/i)
+  })
+
+  it('mode interne (ACAL529) : aucun texte ajouté', () => {
+    const { appels, canvas, image } = faux()
+    projectionPhoto.dessinerSurPhoto(canvas, image, COINS, PANS)
+    expect(appels.texte).toEqual([])
+  })
+
+  it('le bouton télécharge `<référence>-vos-panneaux.png` ; sans module ni calage, le bouton est absent', async () => {
+    layout.mockResolvedValue({
+      data: {
+        roof_layout: { zones: [{ id: 'z1', geometry: { origin: [-7.15, 33.15], panels: [{ cx: 0, cy: 0 }], moduleId: null, tiltDeg: 0, azimuthDeg: 0 } }] },
+        empreinte_document: 'E0',
+      },
+    })
+    photos.mockResolvedValue({ data: { photos: [PHOTO_CALEE] } })
+    get.mockResolvedValue({ data: { reference: 'CAL-2609-0001', contexte_geographique: null } })
+    const { ctx, appels } = faux()
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx)
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((cb) => cb(new Blob(['png'])))
+    vi.spyOn(HTMLImageElement.prototype, 'complete', 'get').mockReturnValue(true)
+    vi.spyOn(HTMLImageElement.prototype, 'naturalWidth', 'get').mockReturnValue(800)
+    vi.spyOn(HTMLImageElement.prototype, 'naturalHeight', 'get').mockReturnValue(600)
+    URL.createObjectURL = vi.fn(() => 'blob:x')
+    URL.revokeObjectURL = vi.fn()
+    const noms = []
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function suivre() { noms.push(this.download) })
+    try {
+      rendre()
+      fireEvent.click(await screen.findByTestId('cal-photo-image-client'))
+      expect(noms).toEqual(['CAL-2609-0001-vos-panneaux.png'])
+      expect(appels.texte).toContain('Vos panneaux sur la photo de votre toit')
+    } finally {
+      vi.restoreAllMocks()
+    }
+    cleanup()
+    photos.mockResolvedValue({ data: { photos: [PHOTO_NON_CALEE] } })
+    rendre()
+    await screen.findByTestId('cal-photo-calage-carte')
+    expect(screen.queryByTestId('cal-photo-image-client')).toBeNull()
   })
 })

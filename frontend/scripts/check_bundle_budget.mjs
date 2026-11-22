@@ -242,7 +242,13 @@ const PER_CHUNK_BUDGET_KB = 350
 // ReglagesSimulation +2,7, ToitureDesign +2,1, VerdictElectrique +1,7…) ; ce garde somme TOUS les .js, un import()
 // ne le fait pas baisser. Aucune dépendance npm ajoutée, aucun code en double. 659 chunks (plafond 865), aucun
 // autre plafond dépassé. Budget : mesure arrondie aux 5 Ko + 10 : 3965 -> 3995.
-const TOTAL_BUDGET_KB = 3995
+// 22/11/2026 (calepinage L5, lot 2, PR #1523 : 229 tâches de plus) : 4037,0 Ko mesurés sur le build LOCAL de la
+// tête de la PR (`npx vite build` puis ce script ; la CI n'a pas encore pu le mesurer, son job s'arrêtait avant).
+// Écart ≈ +56 Ko de code de fonctions neuves (écrans « prêt à envoyer », batterie et appoint, production mesurée,
+// contrôle des chaînes, cheminement des câbles, plan de pose, lecture de facture…). Aucune dépendance npm ajoutée
+// (diff package.json vide), 671 chunks (plafond 865), aucun autre plafond dépassé. Budget : mesure arrondie aux
+// 5 Ko + 10 : 3995 -> 4050.
+const TOTAL_BUDGET_KB = 4050
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,

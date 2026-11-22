@@ -36,6 +36,7 @@ Run :
 from __future__ import annotations
 
 import json
+import math
 import pathlib
 
 from django.test import SimpleTestCase
@@ -338,6 +339,59 @@ class EntreeManquanteTest(SimpleTestCase):
         contexte['meteo'] = {'heure': {'base': 'locale_standard',
                                        'decalage_minutes': []}}
         self.assertIn('meteo.heure.decalage_minutes', self._omise(contexte))
+
+
+def _fresnel_ecrit(angle_deg, indice=1.526):
+    """ACAL758 — la transmission de Fresnel ÉCRITE ICI, indépendante du code."""
+    def tau(theta):
+        if theta == 0.0:
+            return 1.0 - ((indice - 1.0) / (indice + 1.0)) ** 2
+        refracte = math.asin(math.sin(theta) / indice)
+        return 1.0 - 0.5 * (
+            math.sin(refracte - theta) ** 2 / math.sin(refracte + theta) ** 2
+            + math.tan(refracte - theta) ** 2
+            / math.tan(refracte + theta) ** 2)
+    return tau(math.radians(angle_deg)) / tau(0.0)
+
+
+class TableIamTest(SimpleTestCase):
+    """ACAL758 — la loi retenue, tabulée de 0 à 90° au pas de 10°."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.serie = serie_de(AVEC_COMPOSANTES, composantes=True)
+
+    def _table(self, reglages=None):
+        _rendue, etape = etape_iam.appliquer(
+            self.serie, contexte_de(reglages_simulation=reglages or {}))
+        self.assertEqual(etape['motif_omission'], '')
+        return etape['entree']['table_iam']
+
+    def test_fresnel_dix_lignes_egales_a_la_formule(self):
+        table = self._table()
+        self.assertEqual([ligne['angle_deg'] for ligne in table],
+                         list(range(0, 91, 10)))
+        self.assertEqual(table[0]['facteur'], 1.0)
+        self.assertEqual(table[-1]['facteur'], 0.0)
+        par_angle = {ligne['angle_deg']: ligne['facteur'] for ligne in table}
+        for angle in (40, 60):
+            self.assertAlmostEqual(par_angle[angle], _fresnel_ecrit(angle),
+                                   places=6)
+
+    def test_ashrae_avec_son_b0_saisi(self):
+        table = self._table({
+            'modele_iam': {'valeur': 'ashrae', 'source': 'societe'},
+            'b0_iam': {'valeur': 0.05, 'source': 'texte'}})
+        par_angle = {ligne['angle_deg']: ligne['facteur'] for ligne in table}
+        self.assertAlmostEqual(par_angle[60], 1.0 - 0.05 * (2.0 - 1.0),
+                               places=6)
+
+    def test_etape_omise_ne_publie_pas_la_cle(self):
+        serie = serie_de(SANS_COMPOSANTES, composantes=False)
+        _rendue, etape = etape_iam.appliquer(serie, contexte_de())
+        self.assertTrue(etape['motif_omission'])
+        self.assertNotIn('table_iam', etape.get('entree') or {})
 
 
 class DansLaChaineTest(SimpleTestCase):

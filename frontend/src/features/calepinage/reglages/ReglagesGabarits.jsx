@@ -35,6 +35,23 @@ const CLES_PREREMPLISSAGE = [
   ['inclinaison_deg', 'inclinaison (°)'],
 ]
 
+//: ACAL971 — les genres en mots (les clés de `GENRES_FRANCE` de
+//: `services/reglementaire.py`, relues à la source par le test) ; la valeur
+//: envoyée reste le slug. « Autre dossier… » ouvre le nom du dossier.
+const GENRES_GABARIT = [
+  ['dp_mairie', 'Déclaration préalable en mairie'],
+  ['enedis', 'Raccordement Enedis'],
+  ['consuel', 'Attestation de conformité (Consuel)'],
+]
+const PAYS_GABARIT = [['ma', 'Maroc'], ['fr', 'France']]
+const AUTRE = '__autre'
+
+/** Le nom saisi d'un dossier, en slug (sans accent, `a-z0-9_`, ≤ 40). */
+function slugDe(nom) {
+  return nom.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40)
+}
+
 const PIECE_VIDE = { code: '', intitule: '', source_reference: '', obligatoire: true }
 const CHAMP_VIDE = { code: '', libelle: '', type: 'texte', cle_calepinage: '', obligatoire: false }
 const FORMULAIRE_VIDE = { pays: '', code: '', genre: '', intitule: '', version: '' }
@@ -64,6 +81,65 @@ function Champ({ id, libelle, valeur, onChange, erreurs, cle, ...attributs }) {
         {...attributs}
       />
       <Erreur erreurs={erreurs} cle={cle} />
+    </div>
+  )
+}
+
+/** Une liste de mots + « Autre… » qui ouvre un champ ; `slugifier` : le nom
+ *  saisi part au serveur en slug. */
+function ListeOuAutre({
+  id, libelle, options, autre, valeur, onChange, erreurs, cle, slugifier = false,
+}) {
+  const [ouvert, setOuvert] = useState(false)
+  const [nom, setNom] = useState('')
+  const choix = ouvert ? AUTRE : valeur
+  const changer = (v) => {
+    setOuvert(v === AUTRE)
+    setNom('')
+    onChange(v === AUTRE ? '' : v)
+  }
+  const saisir = (texte) => { setNom(texte); onChange(slugifier ? slugDe(texte) : texte) }
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor={id} className="text-sm">{libelle}</label>
+      <select
+        id={id}
+        value={choix}
+        onChange={(e) => changer(e.target.value)}
+        className="min-h-[44px] rounded border border-border px-2 py-1 text-sm"
+      >
+        <option value="">Choisir…</option>
+        {options.map(([v, mot]) => <option key={v} value={v}>{mot}</option>)}
+        <option value={AUTRE}>{autre.option}</option>
+      </select>
+      {ouvert
+        ? <Champ id={`${id}-autre`} libelle={autre.champ} valeur={slugifier ? nom : valeur} onChange={saisir} erreurs={erreurs} cle={cle} />
+        : <Erreur erreurs={erreurs} cle={cle} />}
+    </div>
+  )
+}
+
+/** ACAL971 — le sélecteur de fichier en français : un bouton relié à l'`input`
+ *  masqué (qui garde son `data-testid`), suivi du nom ou de « Aucun fichier
+ *  choisi ». Réutilisé par l'onglet Séries. */
+export function SelecteurFichier({ id, testId, accept, fichier, onChange }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <input
+        id={id}
+        type="file"
+        accept={accept}
+        className="peer sr-only"
+        data-testid={testId}
+        onChange={(e) => onChange(e.target.files?.[0] || null)}
+      />
+      <label
+        htmlFor={id}
+        className="inline-flex min-h-[44px] cursor-pointer items-center rounded border border-border px-3 text-sm font-medium peer-focus-visible:ring-2"
+      >
+        Choisir un fichier
+      </label>
+      <span className="text-sm text-muted-foreground">{fichier ? fichier.name : 'Aucun fichier choisi'}</span>
     </div>
   )
 }
@@ -129,19 +205,19 @@ function FormulaireGabarit({ onCree }) {
     <form noValidate onSubmit={deposer} className="flex flex-col gap-3" data-testid="acal242-formulaire">
       <h2 className="text-base font-semibold">Déposer un gabarit</h2>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Champ id="acal242-pays" libelle="Pays (code à deux lettres)" valeur={valeurs.pays} onChange={poser('pays')} erreurs={erreurs} cle="pays" />
+        <ListeOuAutre id="acal242-pays" libelle="Pays" options={PAYS_GABARIT} autre={{ option: 'Autre pays…', champ: 'Code du pays (deux lettres)' }} valeur={valeurs.pays} onChange={poser('pays')} erreurs={erreurs} cle="pays" />
         <Champ id="acal242-code" libelle="Code" valeur={valeurs.code} onChange={poser('code')} erreurs={erreurs} cle="code" />
-        <Champ id="acal242-genre" libelle="Genre (dp_mairie, enedis, consuel, raccordement…)" valeur={valeurs.genre} onChange={poser('genre')} erreurs={erreurs} cle="genre" />
+        <ListeOuAutre id="acal242-genre" libelle="Genre de dossier" options={GENRES_GABARIT} autre={{ option: 'Autre dossier…', champ: 'Nom du dossier' }} valeur={valeurs.genre} onChange={poser('genre')} erreurs={erreurs} cle="genre" slugifier />
         <Champ id="acal242-intitule" libelle="Intitulé" valeur={valeurs.intitule} onChange={poser('intitule')} erreurs={erreurs} cle="intitule" />
         <Champ id="acal242-version" libelle="Version" valeur={valeurs.version} onChange={poser('version')} erreurs={erreurs} cle="version" />
         <div className="flex flex-col gap-1">
           <label htmlFor="acal242-fichier" className="text-sm">Fichier du gabarit (PDF)</label>
-          <input
+          <SelecteurFichier
             id="acal242-fichier"
-            type="file"
+            testId="acal242-fichier"
             accept="application/pdf"
-            data-testid="acal242-fichier"
-            onChange={(e) => setFichier(e.target.files?.[0] || null)}
+            fichier={fichier}
+            onChange={setFichier}
           />
           <Erreur erreurs={erreurs} cle="fichier" />
         </div>

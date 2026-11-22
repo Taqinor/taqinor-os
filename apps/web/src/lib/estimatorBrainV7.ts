@@ -34,7 +34,8 @@ import { centroidLngLat } from './roofGrid';
 import { PERIMETER_SETBACK_M, cotesDePavage, type Panel2Module, type PerimeterSetbacks } from './roofPro2';
 import { rognerParArete } from './roofSetbackEdge'; // CALX95 câblage
 import { PANEL2_WATT, type ConfigFamily, type PackResult, type EastWestGeometry, type TariffGrid, annualSavingsMad, aspectForAzimuth, billToAnnualKwh, neededPanelsForTarget, optimalSouthTiltDeg, packConfig, roofDominantAzimuthDeg, specificYield, tariffForCity } from './estimatorBrainV2';
-import { matrixTiltGrid, type YieldFn, type YieldSource } from './estimatorBrainV6';
+import type { OptionChassis } from './estimatorBrainV2Blocs'; // ACAL585
+import { EW_TILTS, matrixTiltGrid, type YieldFn, type YieldSource } from './estimatorBrainV6';
 import { departageAspect, departageBase, productionFields, type EvalProductionSourced } from './estimatorBrainCommun';
 
 export { PANEL2_WATT };
@@ -219,6 +220,8 @@ interface SolveCtx {
   eastWestGeometry?: EastWestGeometry;
   /** CALX109 câblage — module POSÉ (cotes + puissance). Absent ⇒ module par défaut. */
   module?: Panel2Module;
+  /** ACAL585 — châssis N × M du pan (option de `packConfig`, ACAL583). Absent ⇒ pavage d'aujourd'hui. */
+  chassis?: OptionChassis;
   tariff: TariffGrid;
   yieldFn: YieldFn | undefined;
   roofAz: number;
@@ -259,7 +262,8 @@ function evalOne(
   const ewKey = ctx.eastWestGeometry
     ? `|ew${ctx.eastWestGeometry.ridgeGapM ?? ''}/${ctx.eastWestGeometry.interTentGapM ?? ''}`
     : '';
-  const key = `${family}|${tiltDeg}|${Math.round(azimuthDeg * 1000)}|${Math.round(setbackM * 1000)}|${Math.round(ctx.overhangM * 1000)}|${sbKey}${ewKey}`;
+  const chKey = ctx.chassis ? `|ch${ctx.chassis.rangs}x${ctx.chassis.modulesParRang}/${ctx.chassis.jeuEntreRangsM}` : ''; // ACAL585 : sinon deux châssis partageraient un pavage
+  const key = `${family}|${tiltDeg}|${Math.round(azimuthDeg * 1000)}|${Math.round(setbackM * 1000)}|${Math.round(ctx.overhangM * 1000)}|${sbKey}${ewKey}${chKey}`;
   let pack = ctx.cache.get(key);
   if (!pack) {
     pack = packConfig(ctx.ring, ctx.latitudeDeg, {
@@ -275,6 +279,7 @@ function evalOne(
       // CALX109 câblage — les VRAIES cotes du module posé sur ce pan : un module plus grand
       // loge moins de rangées. Absent ⇒ module par défaut ⇒ pavage inchangé, octet pour octet.
       module: ctx.module,
+      chassis: ctx.chassis, // ACAL585
     });
     ctx.cache.set(key, pack);
   }
@@ -350,8 +355,11 @@ function orientationCandidates(ctx: SolveCtx, locked: OrientationAxis | undefine
   if (locked) return [locked];
   return turned ? ['south', 'aligned', 'eastwest'] : ['south', 'eastwest'];
 }
-function tiltCandidates(ctx: SolveCtx, locked: number | undefined): number[] {
-  if (locked != null) return [locked];
+function tiltCandidates(ctx: SolveCtx, locked: number | undefined, orientation: OrientationAxis): number[] {
+  if (locked != null) return [locked]; // une inclinaison VERROUILLÉE reste tenue de 0 à 35°
+  // ACAL928 — l'Est-Ouest libre n'essaie que les inclinaisons constructibles de V6 (tentes à 10-15°) ;
+  // plein sud et « aligné toit » gardent la grille complète.
+  if (orientation === 'eastwest') return [...EW_TILTS];
   return matrixTiltGrid(ctx.latitudeDeg);
 }
 function layoutCandidates(locked: LayoutAxis | undefined): LayoutAxis[] {
@@ -368,7 +376,7 @@ function marginCandidates(locked: MarginAxis | undefined): MarginAxis[] {
 function solveConstrained(ctx: SolveCtx, locks: AxisLocks, turned: boolean): LiveConfigEval {
   let winner: LiveConfigEval | null = null;
   for (const orientation of orientationCandidates(ctx, locks.orientation, turned)) {
-    for (const tiltDeg of tiltCandidates(ctx, locks.tiltDeg)) {
+    for (const tiltDeg of tiltCandidates(ctx, locks.tiltDeg, orientation)) {
       for (const layout of layoutCandidates(locks.layout)) {
         for (const margin of marginCandidates(locks.margin)) {
           const e = bestForOrientation(ctx, orientation, tiltDeg, layout, margin);
@@ -411,6 +419,8 @@ export interface LiveSolveOptions {
    * ceux d'aujourd'hui, octet pour octet (`JSON.stringify`).
    */
   module?: Panel2Module;
+  /** ACAL585 — châssis N × M saisi sur ce pan (voir `packConfig`) ; absent ⇒ balayage identique. */
+  chassis?: OptionChassis;
 }
 
 export interface LiveSolveResult {
@@ -493,6 +503,7 @@ export function solveLive(
     setbacksM: options.setbacksM, // PV63
     eastWestGeometry: options.eastWestGeometry, // CAL87
     module: options.module, // CALX109 câblage — cotes RÉELLES du module posé
+    chassis: options.chassis, // ACAL585
 
     tariff,
     yieldFn: options.yieldFn,

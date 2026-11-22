@@ -105,6 +105,16 @@ describe('calepinage — module.config (CAL34)', () => {
     expect(config.nav.items.map((i) => i.to)).toContain('/calepinage/reglages/fixation')
   })
 
+  it('ACAL893 — `/calepinage/reglages/allees` : route AVANT `/calepinage/:id`, entrée de nav et titre', async () => {
+    const { default: config } = await import('./module.config.jsx')
+    const chemins = config.routes.map((r) => r.path)
+    const iAllees = chemins.indexOf('/calepinage/reglages/allees')
+    expect(iAllees, 'route des allées absente').toBeGreaterThanOrEqual(0)
+    expect(iAllees).toBeLessThan(chemins.indexOf('/calepinage/:id'))
+    expect(config.nav.items.map((i) => i.to)).toContain('/calepinage/reglages/allees')
+    expect(config.titles.map(([prefixe]) => prefixe)).toContain('/calepinage/reglages/allees')
+  })
+
   it('les trois routes du module vivent toutes sous le préfixe `/calepinage`', async () => {
     const { default: config } = await import('./module.config.jsx')
     for (const route of config.routes) {
@@ -163,7 +173,10 @@ describe('calepinage — routes profondes redirigées (ACAL407)', () => {
   for (const cle of CLES) {
     it(`/calepinage/9/${cle} → /calepinage/9?onglet=${cle}`, async () => {
       const screen = await ouvrir(`/calepinage/9/${cle}`)
-      expect(await screen.findByTestId('sonde')).toHaveTextContent(`/calepinage/9?onglet=${cle}`)
+      // REP-407 — `RedirectionOnglet` est chargé à la demande (lazy) : le premier cas paie le chargement à froid,
+      // au-delà de la seconde par défaut de `findBy` sur un poste chargé.
+      expect(await screen.findByTestId('sonde', {}, { timeout: 15_000 }))
+        .toHaveTextContent(`/calepinage/9?onglet=${cle}`)
     }, 60_000)
   }
 

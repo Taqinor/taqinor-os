@@ -24,6 +24,7 @@ const api = vi.hoisted(() => ({
   getReservesChantier: vi.fn(),
   ajouterReserveChantier: vi.fn(),
   leverReserveChantier: vi.fn(),
+  valeursAttendues: vi.fn(),
 }))
 
 vi.mock('../../api/installationsApi', () => ({ default: api }))
@@ -70,6 +71,9 @@ beforeEach(() => {
     },
   })
   api.genererPackRemise.mockResolvedValue({ data: { complet: true, pieces: [] } })
+  api.valeursAttendues.mockResolvedValue({
+    data: exempleContrat('installations', 'recette_valeurs_attendues', 'exemple_sans_calepinage'),
+  })
 })
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
@@ -163,6 +167,55 @@ describe('ChantierGateTimeline — WIR202 fiche de recette IEC 62446-1', () => {
       pmax_mesure_w: '3400',
     }))
     expect(await screen.findByTestId('recette-releves')).toHaveTextContent('S1')
+  })
+
+  /* ACAL668 — contrat COMMITTÉ `recette_valeurs_attendues.json` ; la chaîne 2
+     est dérivée à la main de la MÊME fiche (12 × 49,5 V = 594 V, 12 × 550 W). */
+  const VA = exempleContrat('installations', 'recette_valeurs_attendues')
+  const CH1 = VA.chaines[0]
+  const CH2 = { ...CH1, chaine: 'CH2', modules: 12, voc_attendu_v: 594, pmax_attendu_w: 6600 }
+
+  async function ficheEnregistree(user) {
+    await ouvrirFormulaire(user)
+    await user.click(screen.getByRole('button', { name: /Enregistrer la fiche/ }))
+    await waitFor(() => expect(api.updateRecette).toHaveBeenCalled())
+  }
+
+  it('reprise des valeurs : trois champs remplis, mesures vides', async () => {
+    api.valeursAttendues.mockResolvedValue({ data: { ...VA, chaines: [CH1, CH2] } })
+    const user = userEvent.setup()
+    await ficheEnregistree(user)
+    await user.selectOptions(await screen.findByLabelText('Chaîne du calepinage'), 'CH2')
+    await user.click(screen.getByRole('button', { name: 'Reprendre les valeurs du calepinage' }))
+
+    expect(api.valeursAttendues).toHaveBeenCalledWith(9)
+    expect(screen.getByLabelText('Voc attendu (V)')).toHaveValue(594)
+    expect(screen.getByLabelText('Isc attendu (A)')).toHaveValue(CH1.isc_attendu_a)
+    expect(screen.getByLabelText('Pmax attendu (W)')).toHaveValue(6600)
+    for (const mesure of ['Voc mesuré (V)', 'Isc mesuré (A)', 'Pmax mesuré (W)']) {
+      expect(screen.getByLabelText(mesure)).toHaveValue(null)
+    }
+    expect(screen.getByTestId('recette-reprise-note'))
+      .toHaveTextContent(/d.après le calepinage, à confirmer/)
+    // Rien n'est écrit avant « Ajouter le relevé I-V ».
+    expect(api.ajouterReleveIv).not.toHaveBeenCalled()
+  })
+
+  it('chantier sans calepinage retenu : le bouton est masqué', async () => {
+    const user = userEvent.setup()
+    await ficheEnregistree(user)
+    await waitFor(() => expect(api.valeursAttendues).toHaveBeenCalledWith(9))
+    expect(screen.queryByRole('button', { name: 'Reprendre les valeurs du calepinage' })).toBeNull()
+  })
+
+  it('échec serveur : message sous le bouton', async () => {
+    api.valeursAttendues.mockRejectedValue({ response: { status: 500 } })
+    const user = userEvent.setup()
+    await ficheEnregistree(user)
+    const zone = await screen.findByTestId('recette-reprise-calepinage')
+    expect(within(zone).getByRole('alert')).toHaveTextContent('n’ont pas pu être lues')
+    expect(within(zone).getByRole('button', { name: 'Reprendre les valeurs du calepinage' }))
+      .toBeInTheDocument()
   })
 
   it('une fiche existante servie À PLAT par le GET est bien reconnue', async () => {

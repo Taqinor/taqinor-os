@@ -12,6 +12,8 @@
         "mode_pose": "toiture_inclinee",
         "actif": true,
         "provenance": "Notice de montage du fabricant, édition d'exemple",
+        "couvertures": ["tuiles"],
+        "controles_pose": {"distance_rail_bord_mm": 300, "porte_a_faux_rail_mm": 700, "porte_a_faux_max_mm": 400, "source": "Notice de montage du fabricant, tableau des distances"},
         "composants": [
           {
             "id": 31,
@@ -62,6 +64,8 @@
       "mode_pose": "toit_plat_leste",
       "actif": true,
       "provenance": "Notice de montage du fabricant, édition d'exemple",
+      "couvertures": ["terrasse_beton"],
+      "controles_pose": {},
       "composants": [
         {
           "role": "rail",
@@ -102,6 +106,8 @@
         "mode_pose": "toit_plat_leste",
         "actif": true,
         "provenance": "Notice de montage du fabricant, édition d'exemple",
+        "couvertures": ["terrasse_beton"],
+        "controles_pose": {},
         "composants": [
           {
             "id": 41,
@@ -149,7 +155,7 @@
         "Un système de fixation porte déjà ce code dans la société."
       ],
       "composants[0].regle": [
-        "Grandeur de base inconnue : « surface ». Bases admises : modules, rangees, pans, jonctions, extremites, longueur_rangees_m, ou « role:<rôle> »."
+        "Grandeur de base inconnue : « surface ». Bases admises : modules, rangees, pans, jonctions, extremites, longueur_rangees_m, modules_portrait, modules_paysage, rangees_portrait, rangees_paysage, ou « role:<rôle> »."
       ],
       "composants[1].source": [
         "La source du composant est obligatoire (notice du fabricant, référence du document) : aucun composant n'entre au catalogue sans elle."

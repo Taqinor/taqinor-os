@@ -18,12 +18,37 @@ function couleur(ligne) {
   return CHART_TOKENS.warning
 }
 
+const present = (v) => v !== null && v !== undefined
+
+/* ACAL735 — étape « Fenêtre MPPT » : heures et énergie sous la tension de
+   démarrage de l'onduleur, telles que servies (jamais calculées ici). Clés
+   absentes ou null : aucune ligne. */
+function SousDemarrage({ entree }) {
+  if (!entree || typeof entree !== 'object' || !present(entree.heures_sous_demarrage)) return null
+  const h = entree.heures_sous_demarrage
+  const e = entree.energie_sous_demarrage_kwh
+  const retiree = entree.energie_sous_demarrage_deja_retiree_kwh
+  return (
+    <div className="col-span-full text-sm" data-testid="acal735-sous-demarrage">
+      <p>
+        {`Sous la tension de démarrage de l'onduleur : ${formatNumber(h, { decimals: 0 })} ${h > 1 ? 'heures' : 'heure'}`}
+        {present(e) ? `, ${formatNumber(e, { decimals: 1 })} kWh produits par les panneaux à ces heures` : ''}
+        {present(retiree) && retiree !== 0
+          ? ` (dont ${formatNumber(retiree, { decimals: 1 })} kWh déjà retirés par la fenêtre)` : ''}
+      </p>
+      <p className="text-muted-foreground">
+        Information : cette énergie n'est pas retirée en plus ; la fenêtre de tension de l'onduleur décide.
+      </p>
+    </div>
+  )
+}
+
 function Detail({ ligne, id }) {
   const champs = [
     ['Valeur', ligne.pertePct === null || ligne.pertePct === undefined
       ? '—' : formatPercent(ligne.pertePct, { decimals: 1 })],
     ['Source', ligne.source || '—'],
-    ['Entrée', ligne.entree || '—'],
+    ...(typeof ligne.entree === 'string' ? [['Entrée', ligne.entree || '—']] : []),
     ['Référence', ligne.reference || '—'],
     ['Énergie avant', kwh(ligne.kwhAvant)],
     ['Énergie après', kwh(ligne.kwhApres)],
@@ -39,6 +64,7 @@ function Detail({ ligne, id }) {
           <dd className="break-words">{v}</dd>
         </div>
       ))}
+      {ligne.poste === 'mppt' && <SousDemarrage entree={ligne.entree} />}
     </dl>
   )
 }

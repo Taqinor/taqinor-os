@@ -33,6 +33,7 @@ import { esc } from './dom';
 // elle, et pas une seconde formule, qui donne l'azimut d'une façade.
 import { azimutNormaleArete, distanceEntreM } from './snap';
 import type { Ctx } from './context';
+import { affectationDesPans, cotesPourPan, estRefus, lireModulesDisponibles } from './moduleSelect'; // ACAL918
 // CALX124 — la géométrie de placement de CAL89/CAL91 existe et est testée depuis des
 // mois sans qu'aucun fichier applicatif ne l'importe : c'est ICI qu'elle est branchée.
 // On la RÉUTILISE telle quelle — il n'y a pas une seconde formule de placement.
@@ -467,6 +468,32 @@ export interface AtelierPose {
   enregistrerContour: (genre: GenrePose) => VerdictSurface;
   /** Les surfaces actuellement portées par l'atelier. */
   surfaces: () => SurfacePose[];
+  /** ACAL918 — résolue quand la demande de plan en cours (option `demanderPlanSurface`) est terminée. */
+  attendrePlan: () => Promise<void>;
+}
+
+/** ACAL918 — le bloc `engine` depuis la réponse du moteur : recopié, jamais recalculé ; `null` ⇒ non publié. */
+export function engineDepuisReponseMoteur(reponse: unknown, aireM2: number | null | undefined): PlanMoteurPose {
+  const r = (reponse ?? {}) as { plans?: Array<Record<string, unknown>>; version_moteur?: unknown; hash_entree?: unknown };
+  const plan = r.plans?.[0] ?? {};
+  const tables = (Array.isArray(plan.tables) ? plan.tables : []) as TablePoseDocument[];
+  const ys = Array.from(new Set((Array.isArray(plan.rangees) ? plan.rangees : []).map((x: { y0?: number }) => Number(x?.y0)).filter(Number.isFinite))).sort((a, b) => a - b);
+  const pas = ys.slice(1).map((y, i) => y - ys[i]).filter((e) => e > 0);
+  const emprise = tables.reduce((s, t) => s + Math.abs(t.x1 - t.x0) * Math.abs(t.y1 - t.y0), 0);
+  const nombre = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  return {
+    modules: nombre(plan.modules), rowPitchM: pas.length ? Math.min(...pas) : null, tables,
+    groundCoverageRatio: estSaisi(aireM2) && aireM2 > 0 && tables.length ? emprise / aireM2 : null,
+    versionMoteur: typeof r.version_moteur === 'string' ? r.version_moteur : null,
+    hashEntree: typeof r.hash_entree === 'string' ? r.hash_entree : null,
+  };
+}
+
+/** ACAL918 — le module du pan ACTIF (catalogue, sinon le module par défaut NOMMÉ de l'atelier) : cotes et puissance de la fiche. */
+function moduleDuPanActif(ctx: Ctx): Pick<SurfacePose, 'moduleWc' | 'moduleLongM' | 'moduleCourtM'> {
+  const catalogue = affectationDesPans(lireModulesDisponibles(ctx.opts?.modulesDisponibles).choisissables, ctx.areas ?? [], ctx.modulesDuDocument).catalogue;
+  const cotes = cotesPourPan(catalogue, ctx.activeArea?.()?.moduleId);
+  return estRefus(cotes) ? {} : { moduleWc: cotes.watt, moduleLongM: cotes.longM, moduleCourtM: cotes.courtM };
 }
 
 /** Lit un champ numérique du panneau : `null` quand il est vide (= NON SAISI). */
@@ -527,6 +554,7 @@ export function monterAtelierPose(ctx: Ctx, deps: AtelierPoseDeps = {}): Atelier
     <span class="mb-2 block text-[11px] text-rose-300" data-pose-erreur="contour"></span>
     <span class="mb-2 block text-[11px] text-rose-300" data-pose-erreur="identifiant"></span>
     <button type="button" data-pose-enregistrer class="w-full rounded border border-white/25 px-2 py-1 text-white">Enregistrer le contour tracé</button>
+    <p class="mt-1 text-xs text-rose-300" data-pose-motif-plan role="alert"></p>
     <ul data-pose-liste class="mt-2 space-y-1"></ul>`;
 
   const listeEl = racine.querySelector('[data-pose-liste]') as HTMLElement | null;
@@ -554,6 +582,24 @@ export function monterAtelierPose(ctx: Ctx, deps: AtelierPoseDeps = {}): Atelier
       .join('');
   }
 
+  /** ACAL918 — le plan du MOTEUR pour la surface fraîchement enregistrée : `engine` stocké, la liste dit « N modules » ;
+   *  un refus se dit sous le bouton et la surface est gardée sans `engine`. Option absente ⇒ comme avant. */
+  let enAttente: Promise<void> = Promise.resolve();
+  function demanderPlan(surface: SurfacePose): void {
+    const demander = ctx.opts?.demanderPlanSurface;
+    const motifEl = racine!.querySelector('[data-pose-motif-plan]') as HTMLElement | null;
+    if (motifEl) motifEl.textContent = '';
+    if (!demander) return;
+    enAttente = Promise.resolve().then(() => demander(surface)).then(
+      (reponse) => { surface.engine = engineDepuisReponseMoteur(reponse, surface.areaM2); rendreListe(); deps.recalc?.(); },
+      (e: unknown) => {
+        const motif = `Plan du moteur non reçu : ${e instanceof Error && e.message ? e.message : 'le moteur n’a pas répondu'}. La surface est gardée sans plan.`;
+        if (motifEl) motifEl.textContent = motif;
+        deps.setStatus?.(motif);
+      },
+    );
+  }
+
   function enregistrerContour(genre: GenrePose): VerdictSurface {
     const list = ctx.surfacesPose ?? (ctx.surfacesPose = []);
     const verdict = saisirSurface(genre, racine!, ctx, list.length + 1);
@@ -563,9 +609,11 @@ export function monterAtelierPose(ctx: Ctx, deps: AtelierPoseDeps = {}): Atelier
       return verdict;
     }
     afficherRefus(racine!, null, '');
+    Object.assign(verdict.surface, moduleDuPanActif(ctx)); // ACAL918
     list.push(verdict.surface);
     rendreListe();
     deps.recalc?.();
+    demanderPlan(verdict.surface);
     const manque = verdict.nonSaisi.length
       ? ` Non renseigné : ${verdict.nonSaisi.join(', ')} — la valeur reste absente du document.`
       : '';
@@ -580,7 +628,7 @@ export function monterAtelierPose(ctx: Ctx, deps: AtelierPoseDeps = {}): Atelier
   synchroniserGenre();
   rendreListe();
 
-  return { enregistrerContour, surfaces: () => (ctx.surfacesPose ?? []).slice() };
+  return { enregistrerContour, surfaces: () => (ctx.surfacesPose ?? []).slice(), attendrePlan: () => enAttente };
 }
 
 /** Lit le panneau et construit la surface du genre demandé. Extrait pour rester

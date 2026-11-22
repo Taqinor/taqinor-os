@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { formatNumber } from '../../../lib/format'
 import { MemoryRouter } from 'react-router-dom'
-import { documentContrat } from '../../../test/fixtures/contractSamples'
+import { COLONNES_CSV, COLONNES_DATE } from './colonnesCsv'
+import { documentContrat, exempleContrat } from '../../../test/fixtures/contractSamples'
 
 /* ============================================================================
    CALX6 — LE PANNEAU « SÉRIES », ET LE CONTRAT QU'IL PARTAGE AVEC LE SERVEUR.
@@ -85,6 +87,33 @@ const rendre = (props = {}) => render(
   <MemoryRouter><PanneauSeries calepinageId={5} {...props} /></MemoryRouter>,
 )
 
+describe('ACAL755 — le menu « Pas : heure / jour »', () => {
+  it('« Pas : jour » envoie pas=jour en 4e argument ; le défaut ne change pas', async () => {
+    exportCsv.mockResolvedValue({ data: 'x' })
+    rendre()
+    fireEvent.change(screen.getByTestId('acal755-pas'), { target: { value: 'jour' } })
+    fireEvent.click(screen.getByTestId('cal-series-telecharger-horaire'))
+    await waitFor(() => expect(exportCsv).toHaveBeenCalledWith(5, 'horaire', null, { pas: 'jour' }))
+  })
+
+  it("l'échantillon du contrat nomme le pas « jour »", () => {
+    expect(exempleContrat('calepinage', 'calepinage_export_csv').pas).toContain('jour')
+  })
+})
+
+describe('ACAL754 — la carte « Ombrage module par module »', () => {
+  it("la 4e carte demande quoi=ombrage_modules ; l'échantillon la nomme", async () => {
+    const { exports } = exempleContrat('calepinage', 'calepinage_export_csv')
+    expect(exports).toContain('ombrage_modules')
+    exportCsv.mockResolvedValue({ data: 'x' })
+    rendre()
+    fireEvent.click(screen.getByTestId('cal-series-telecharger-ombrage_modules'))
+    await waitFor(() => expect(exportCsv).toHaveBeenCalledWith(5, 'ombrage_modules'))
+    expect(screen.getByTestId('cal-series-ligne-ombrage_modules'))
+      .toHaveTextContent('Ombrage module par module (CSV)')
+  })
+})
+
 describe('CALX6 — les trois exports sont offerts', () => {
   it('propose horaire, mensuel et ombrage, tous cliquables au départ', () => {
     rendre()
@@ -106,6 +135,51 @@ describe('CALX6 — les trois exports sont offerts', () => {
     expect(downloadBlob.mock.calls[0][1]).toBe('calepinage-5-horaire.csv')
     expect(await screen.findByTestId('cal-series-fichier-horaire'))
       .toHaveTextContent('calepinage-5-horaire.csv')
+  })
+})
+
+const ECARTEES = ['t', 'p_w', 'gi_w_m2', 't2m_c']
+
+describe('ACAL753 — choisir les colonnes de la série horaire', () => {
+  it("la liste de l'écran et l'échantillon du serveur disent les mêmes noms", () => {
+    const { colonnes_horaire: serveur } = exempleContrat('calepinage', 'calepinage_export_csv')
+    const ecran = [...COLONNES_DATE, ...COLONNES_CSV.map((c) => c.nom)]
+    for (const nom of ecran) expect(serveur, nom).toContain(nom)
+    for (const nom of serveur) {
+      expect(ecran.includes(nom) || ECARTEES.includes(nom), nom).toBe(true)
+    }
+  })
+
+  it("cocher « Puissance écrêtée » envoie la chaîne des colonnes dans l'ordre de la liste", async () => {
+    exportCsv.mockResolvedValue({ data: 'x' })
+    rendre()
+    // Cochée AVANT une colonne de la liste placée plus haut : l'ordre reste celui de la liste.
+    fireEvent.click(screen.getByTestId('cal-series-colonne-ecretage_kw'))
+    fireEvent.click(screen.getByTestId('cal-series-colonne-ws10m'))
+    fireEvent.click(screen.getByTestId('cal-series-telecharger-horaire'))
+    await waitFor(() => expect(exportCsv).toHaveBeenCalledWith(
+      5, 'horaire',
+      'annee,mois,jour,heure,production_kw,irradiance_plan_w_m2,temperature_air_c,ws10m,ecretage_kw',
+    ))
+    expect(typeof exportCsv.mock.calls[0][2]).toBe('string')
+  })
+
+  it("la sélection d'office envoie un appel à DEUX arguments", async () => {
+    exportCsv.mockResolvedValue({ data: 'x' })
+    rendre()
+    fireEvent.click(screen.getByTestId('cal-series-colonne-ecretage_kw'))
+    fireEvent.click(screen.getByTestId('cal-series-colonne-ecretage_kw'))
+    fireEvent.click(screen.getByTestId('cal-series-telecharger-horaire'))
+    await waitFor(() => expect(exportCsv).toHaveBeenCalled())
+    expect(exportCsv.mock.calls[0]).toHaveLength(2)
+  })
+
+  it('un refus 400 nomme la colonne sous la carte', async () => {
+    exportCsv.mockRejectedValue(refusServeur('colonnes', 'Colonne inconnue : ws10m.'))
+    rendre()
+    fireEvent.click(screen.getByTestId('cal-series-colonne-ws10m'))
+    fireEvent.click(screen.getByTestId('cal-series-telecharger-horaire'))
+    expect(await screen.findByTestId('cal-series-motif-horaire')).toHaveTextContent('Colonne inconnue : ws10m.')
   })
 })
 
@@ -154,6 +228,13 @@ describe('CALX62 — déposer une série météo de la société', () => {
     ['horodatage;gi_w_m2\r\n2021-01-15T13:00:00+01:00;780.0\r\n'],
     'meteo-2021.csv', { type: 'text/csv' })
 
+  it('ACAL971 — le sélecteur de fichier est un bouton français, sans « Choose File »', () => {
+    rendre()
+    expect(screen.getByText('Choisir un fichier')).toHaveAttribute('for', 'cal-series-depot-fichier')
+    expect(screen.getByText('Aucun fichier choisi')).toBeInTheDocument()
+    expect(screen.queryByText('Choose File')).toBeNull()
+  })
+
   it('offre les DEUX champs obligatoires : le fichier et le fournisseur', () => {
     rendre()
     expect(screen.getByTestId('cal-series-depot-fichier')).toBeInTheDocument()
@@ -184,6 +265,49 @@ describe('CALX62 — déposer une série météo de la société', () => {
       CONTRAT_METEO.exemple.meteo.fichier.nom)
     expect(provenance).toHaveTextContent(
       CONTRAT_METEO.exemple.meteo.fournisseur)
+  })
+
+  async function deposerAvec(reponse) {
+    const utilisateur = userEvent.setup()
+    deposerMeteoFichier.mockResolvedValue({ data: reponse })
+    rendre()
+    await utilisateur.upload(screen.getByTestId('cal-series-depot-fichier'), fichierCsv())
+    await utilisateur.type(screen.getByTestId('cal-series-depot-fournisseur'), 'Station d essai')
+    await utilisateur.click(screen.getByTestId('cal-series-depot-envoyer'))
+    return screen.findByTestId('acal764-qualite')
+  }
+
+  it('ACAL764 — les quatre lignes de qualité de l’exemple du contrat, sans verdict', async () => {
+    const q = CONTRAT_METEO.exemple.qualite
+    const bloc = await deposerAvec(CONTRAT_METEO.exemple)
+    const nb = (v) => formatNumber(v)
+    expect(screen.getByTestId('acal764-couverture').textContent).toBe(
+      `Couverture : ${nb(q.couverture.heures_lues)} heures sur 2021 ; mois sans mesure : aucun`)
+    expect(screen.getByTestId('acal764-decalage')).toHaveTextContent(
+      `tombe ${q.decalage.ecart_median_min} minutes après le midi solaire calculé (sur ${q.decalage.jours_mesures} jours)`)
+    expect(screen.getByTestId('acal764-negatifs')).toHaveTextContent('Valeurs négatives : aucune')
+    expect(screen.getByTestId('acal764-extraterrestre')).toHaveTextContent('Au-dessus du soleil du jour : aucune')
+    expect(bloc).toHaveTextContent('Contrôle fait au dépôt')
+    expect(bloc.querySelector('button')).toBeNull() // aucun bouton bloquant
+  })
+
+  it('ACAL764 — « avant » si l’écart est négatif ; une ligne null dit « non calculé » et son motif', async () => {
+    const q = CONTRAT_METEO.exemple.qualite
+    await deposerAvec({
+      ...CONTRAT_METEO.exemple,
+      qualite: {
+        ...q,
+        decalage: { ...q.decalage, ecart_median_min: -62.0 },
+        extraterrestre: null,
+        negatifs: { gi_w_m2: { nombre: 3, plus_petite: -4.5 } },
+        motifs: { extraterrestre: 'épingle du site absente' },
+      },
+    })
+    expect(screen.getByTestId('acal764-decalage')).toHaveTextContent('62 minutes avant le midi solaire')
+    expect(screen.getByTestId('acal764-extraterrestre')).toHaveTextContent(
+      'non calculé — épingle du site absente')
+    expect(screen.getByTestId('acal764-negatifs')).toHaveTextContent('3 valeurs négatives')
+    expect(screen.getByTestId('acal764-negatifs')).toHaveTextContent('la plus petite : −4,5 W/m²')
   })
 
   it('un refus qui nomme une COLONNE du CSV s’affiche sous le fichier, avec sa ligne', async () => {

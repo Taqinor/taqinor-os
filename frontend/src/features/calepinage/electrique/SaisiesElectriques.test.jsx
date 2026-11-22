@@ -10,7 +10,7 @@ import { exempleContrat } from '../../../test/fixtures/contractSamples'
 
 vi.mock('../../../api/calepinageApi', () => ({
   default: {
-    calepinages: { entreeElectrique: vi.fn(), enregistrerEntreeElectrique: vi.fn() },
+    calepinages: { entreeElectrique: vi.fn(), enregistrerEntreeElectrique: vi.fn(), evaluerElectrique: vi.fn() },
   },
 }))
 
@@ -33,7 +33,11 @@ const rendre = () => render(
 )
 const champ = (cle) => document.getElementById(`acal153-champ-${cle}`)
 
-beforeEach(() => { vi.clearAllMocks() })
+beforeEach(() => {
+  vi.clearAllMocks()
+  // ACAL974 — la proposition est facultative : sans réponse, rien ne s'affiche.
+  calepinageApi.calepinages.evaluerElectrique.mockRejectedValue(new Error('indisponible'))
+})
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('SaisiesElectriques (ACAL153)', () => {
@@ -111,6 +115,46 @@ describe('SaisiesElectriques (ACAL153)', () => {
     expect(corps.cheminement.descente_m).toBeNull()
     // Les autres clés du cheminement sont conservées telles quelles.
     expect(corps.cheminement.coffret_vers_onduleur_m).toBe(6)
+  })
+
+  it('ACAL974 : la proposition du TMY s’affiche « à confirmer », le bouton remplit sans enregistrer', async () => {
+    servir(VIDE.entree)
+    calepinageApi.calepinages.evaluerElectrique.mockResolvedValue({
+      data: { temperatures: { froid_c: -2.5, chaud_c: 68, source: 'tmy', mention: '', detail: 'TMY PVGIS du site' } },
+    })
+
+    rendre()
+    const ligne = await screen.findByTestId('acal974-proposition')
+    expect(ligne).toHaveTextContent('Proposée — à confirmer : −2,5 °C / 68 °C, tirée de PVGIS')
+    expect(ligne).toHaveTextContent('TMY PVGIS du site')
+    expect(champ('temperature_min_c')).toHaveValue(null)
+    await userEvent.click(screen.getByTestId('acal974-utiliser'))
+    expect(champ('temperature_min_c')).toHaveValue(-2.5)
+    expect(champ('temperature_max_c')).toHaveValue(68)
+    expect(calepinageApi.calepinages.enregistrerEntreeElectrique).not.toHaveBeenCalled()
+  })
+
+  it('ACAL974 : un repli du noyau (mention non vide) ne propose rien et le dit', async () => {
+    servir(VIDE.entree)
+    calepinageApi.calepinages.evaluerElectrique.mockResolvedValue({
+      data: { temperatures: { froid_c: -5, chaud_c: 70, source: 'tmy', mention: 'valeur non sourcée', detail: '' } },
+    })
+
+    rendre()
+    expect(await screen.findByTestId('acal974-proposition')).toHaveTextContent('Température du site non établie : saisissez-la')
+    expect(screen.queryByTestId('acal974-utiliser')).toBeNull()
+  })
+
+  it('ACAL974 : une saisie enregistrée n’est jamais remplacée, aucune proposition', async () => {
+    servir(ENTREE)
+    calepinageApi.calepinages.evaluerElectrique.mockResolvedValue({
+      data: { temperatures: { froid_c: -2, chaud_c: 60, source: 'tmy', mention: '', detail: '' } },
+    })
+
+    rendre()
+    await screen.findByTestId('acal153-formulaire')
+    expect(calepinageApi.calepinages.evaluerElectrique).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('acal974-proposition')).toBeNull()
   })
 
   it('une saisie jamais touchée et absente du stock n’est pas inventée', () => {

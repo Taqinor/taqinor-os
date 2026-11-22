@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import copy
 import importlib
-from unittest import expectedFailure
 
 from django.apps import apps as registre
 from django.contrib.contenttypes.models import ContentType
@@ -167,6 +166,13 @@ CHAINE_2_SUR_4_A_10 = tuple(
     for n in range(4, 11))
 
 
+#: ACAL649 — la même affectation, ENREGISTRÉE avec le centre de chaque module
+#: (le serveur le mémorise : ``memoriser_centres``) — module n° i en x = i.
+CHAINE_2_AVEC_CENTRES = tuple(
+    dict(ligne, cx=float(n), cy=0.0)
+    for ligne, n in zip(CHAINE_2_SUR_4_A_10, range(4, 11)))
+
+
 def _manuels(layout, imposee=CHAINE_2_SUR_4_A_10):
     """Les abscisses des modules qui portent l'affectation manuelle."""
     table = affectation(_conception(layout), imposee=imposee)
@@ -188,12 +194,53 @@ class ChainesManuellesComportementTest(SimpleTestCase):
         self.assertEqual(_manuels(_pan_pose(self.SANS_LE_3)),
                          [5.0, 6.0, 7.0, 8.0, 9.0, 10.0])
 
-    @expectedFailure
     def test_retrait_au_milieu_non_numerote_garde_les_modules_4_a_10(self):
-        # Attendu (ACAL649 retirera ce marqueur) : les modules physiques 4 à
-        # 10 gardent la chaîne 2 après le retrait du module 3.
-        self.assertEqual(_manuels(_pan_pose(self.SANS_LE_3)),
+        # ACAL649 — avec le centre mémorisé de chaque ligne, les modules
+        # physiques 4 à 10 gardent la chaîne 2 après le retrait du module 3.
+        self.assertEqual(_manuels(_pan_pose(self.SANS_LE_3),
+                                  CHAINE_2_AVEC_CENTRES),
                          [4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0])
+
+    def test_le_reancrage_est_nomme_et_rien_n_est_obsolete(self):
+        bloc, avertissements = bloc_electrique(
+            _conception(_pan_pose(self.SANS_LE_3)),
+            imposee=CHAINE_2_AVEC_CENTRES)
+
+        self.assertEqual(bloc['affectation_obsolete'], [])
+        self.assertTrue(any('ont changé de chaîne, voir Affectation' in a
+                            for a in avertissements), avertissements)
+
+    def test_cx_sans_cy_est_refuse_en_nommant_le_champ(self):
+        from apps.calepinage.services.chaines import (
+            AffectationInvalide, normaliser_affectation_imposee,
+        )
+
+        with self.assertRaises(AffectationInvalide) as capture:
+            normaliser_affectation_imposee([
+                {'module': 'zA#4', 'chaine': 2, 'cx': 4.0}])
+        self.assertEqual(capture.exception.champ, 'cx')
+
+    def test_memoriser_centres_complete_depuis_le_document(self):
+        from apps.calepinage.services.chaines import memoriser_centres
+
+        reglages = memoriser_centres(
+            {'affectation_manuelle': list(CHAINE_2_SUR_4_A_10)},
+            _pan_pose(self.POSITIONS))
+
+        centres = [(ligne['cx'], ligne['cy'])
+                   for ligne in reglages['affectation_manuelle']]
+        self.assertEqual(centres, [(float(n), 0.0) for n in range(4, 11)])
+
+    def test_memoriser_centres_garde_le_centre_deja_memorise(self):
+        from apps.calepinage.services.chaines import memoriser_centres
+
+        stockee = {'affectation_manuelle': [
+            dict(CHAINE_2_SUR_4_A_10[0], cx=4.0, cy=0.0)]}
+        reglages = memoriser_centres(
+            {'affectation_manuelle': [dict(CHAINE_2_SUR_4_A_10[0])]},
+            _pan_pose(self.SANS_LE_3), stockee)
+
+        self.assertEqual(reglages['affectation_manuelle'][0]['cx'], 4.0)
 
     def test_retrait_au_milieu_numerote_garde_les_modules_4_a_10(self):
         # Le document NUMÉROTÉ avant le retrait : la clé suit n, rien ne

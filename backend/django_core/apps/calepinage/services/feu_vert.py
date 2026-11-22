@@ -58,6 +58,7 @@ PIECES_EXECUTION = (
     'pack_technique',       # dossier technique (GED)
     'dossier_fin_chantier',  # dossier de fin de chantier (GED)
     'dossier_reglementaire',  # ACON44 — generer-dossier (GED)
+    'plan_lestage',         # plan-lestage.pdf (ACAL565)
 )
 
 MESSAGES_APPROBATION = {

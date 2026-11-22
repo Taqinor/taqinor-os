@@ -224,6 +224,21 @@
         "motif": "Borne propre à la société, avec sa source : aucune page publiée ne donne de borne universelle du rendement spécifique, laissée sans valeur (D-CALX 7, ACAL704)."
       },
       {
+        "cle": "seuil_acces_retrait",
+        "section": "simulation",
+        "motif": "Seuil propre à la société : aucune page publiée ne fixe l'accès solaire sous lequel retirer un module, laissé sans valeur (D-CALX 7, ACAL716)."
+      },
+      {
+        "cle": "ombrage_borne_courant_pct",
+        "section": "simulation",
+        "motif": "Borne de lecture propre à la société : aucune page publiée relue ne chiffre une perte d'ombrage « courante », laissée sans valeur (D-CALX 7, ACAL716)."
+      },
+      {
+        "cle": "ombrage_borne_importante_pct",
+        "section": "simulation",
+        "motif": "Borne de lecture propre à la société : aucune page publiée relue ne chiffre une perte d'ombrage « importante », laissée sans valeur (D-CALX 7, ACAL716)."
+      },
+      {
         "cle": "nettoyages_par_an",
         "section": "simulation",
         "motif": "Fréquence de nettoyage propre à la société : la salissure dépend de la pluviométrie locale (PVsyst, Soiling loss), aucune valeur publiée trouvée, laissée sans valeur (D-CALX 7, ACAL742)."
@@ -232,6 +247,16 @@
         "cle": "inclinaison_autonettoyage_deg",
         "section": "simulation",
         "motif": "Seuil d'autonettoyage propre à la société : la salissure dépend de la pluie et de l'inclinaison (PVsyst, Soiling loss), aucune valeur publiée trouvée, laissé sans valeur (D-CALX 7, ACAL742)."
+      },
+      {
+        "cle": "batterie_seuil_nuits_pct",
+        "section": "simulation",
+        "motif": "Part de nuits au plancher au-delà de laquelle la batterie est dite trop petite : seuil propre à la société, aucune valeur publiée trouvée, laissé sans valeur (D-CALX 7, ACAL794)."
+      },
+      {
+        "cle": "batterie_seuil_jours_pleine_pct",
+        "section": "simulation",
+        "motif": "Part de jours pleine en dessous de laquelle la batterie est dite trop grande : seuil propre à la société, aucune valeur publiée trouvée, laissé sans valeur (D-CALX 7, ACAL794)."
       },
       {
         "cle": "facteur_regroupement",
@@ -257,6 +282,41 @@
         "cle": "consigne_dc_plan_cablage",
         "section": "electrique_societe",
         "motif": "Consigne DC du plan de câblage : réglage société, aucune page publiée relue, laissée sans valeur (D-CALX 7, ACAL673)."
+      },
+      {
+        "cle": "distance_separation_foudre_min_m",
+        "section": "electrique_societe",
+        "motif": "Distance de séparation foudre minimale : réglage société, aucune page publiée relue ne la fixe, laissée sans valeur (D-CALX 7, ACAL676)."
+      },
+      {
+        "cle": "boucle_dc_max_m2",
+        "section": "electrique_societe",
+        "motif": "Surface maximale d'une boucle de chaîne : réglage société, aucune page publiée relue ne la fixe, laissée sans valeur (D-CALX 7, ACAL678)."
+      },
+      {
+        "cle": "seuil_orientations_micro",
+        "section": "electrique_societe",
+        "motif": "Seuil d'orientations pour étudier des micro-onduleurs : réglage société, aucune page publiée relue ne le fixe, laissé sans valeur (D-CALX 7, ACAL671)."
+      },
+      {
+        "cle": "seuil_ecart_acces_optimiseur",
+        "section": "electrique_societe",
+        "motif": "Seuil d'écart d'accès solaire pour étudier des optimiseurs : réglage société, aucune page publiée relue ne le fixe, laissé sans valeur (D-CALX 7, ACAL671)."
+      },
+      {
+        "cle": "gabarit_verification_max_jours",
+        "section": "electrique_societe",
+        "motif": "Durée de validité d'un gabarit vérifié : réglage société, aucune page publiée relue ne la fixe, laissée sans valeur (D-CALX 7, ACAL824)."
+      },
+      {
+        "cle": "fiche_ecart_pmax_pct",
+        "section": "electrique_societe",
+        "motif": "Écart toléré entre Pmax et Vmp × Imp d'une fiche module : réglage société, aucune page publiée relue ne le fixe, laissé sans valeur (D-CALX 7, ACAL657)."
+      },
+      {
+        "cle": "seuil_acces_optimiseur",
+        "section": "electrique_societe",
+        "motif": "Accès solaire sous lequel un module est proposé pour un optimiseur : réglage société, aucune page publiée relue ne le fixe, laissé sans valeur (D-CALX 7, ACAL647)."
       }
     ]
   },

@@ -23,6 +23,7 @@ Run (essais purs) :
 import copy
 import json
 import pathlib
+import re
 import unittest
 import xml.etree.ElementTree as ET
 from unittest import mock
@@ -31,6 +32,7 @@ from apps.calepinage.models import Calepinage
 from apps.calepinage.services.diagramme_pertes import (
     ID_HACHURE, DiagrammeRefuse, svg_de_cascade, svg_embarquable,
 )
+from apps.calepinage.services.diagramme_energie import svg_d_energie
 from apps.calepinage.services.rapport import nombre_tel_que_servi
 from apps.calepinage.services.rapport.pertes import html_de_section
 
@@ -44,6 +46,10 @@ CASCADE = json.loads(
 RESULTAT = json.loads(
     (RACINE_APP / 'contract_samples' / 'calepinage_resultat.json')
     .read_text(encoding='utf-8'))['exemple']
+#: Les postes COMPTÉS de l'échantillon de cascade (ACAL761 : largeurs lues).
+POSTES_COMPTES = [
+    poste for poste in CASCADE['exemple']['cascade']['postes_lisibles']['postes']
+    if poste['statut'] == 'compte']
 SVG_NS = '{http://www.w3.org/2000/svg}'
 XMLNS = 'xmlns="http://www.w3.org/2000/svg"'
 
@@ -98,7 +104,8 @@ class HauteursTest(unittest.TestCase):
     def test_une_etape_omise_n_a_pas_de_barre_proportionnelle(self):
         arbre = racine(svg_de_cascade(cascade()))
         omises = {r.get('data-etape') for r in rects(arbre, 'barre-omise')}
-        self.assertEqual(omises, {'spectral', 'indisponibilite'})
+        # + l'étape « optimiseur », omise sans optimiseur déclaré.
+        self.assertEqual(omises, {'spectral', 'optimiseur', 'indisponibilite'})
         for barre in rects(arbre, 'barre-omise'):
             self.assertIsNone(barre.get('data-pct'))
 
@@ -177,6 +184,82 @@ class AutonomieTest(unittest.TestCase):
     def test_les_libelles_suivent_la_langue(self):
         self.assertIn('Delivered energy',
                       svg_de_cascade(cascade(), langue='en'))
+
+
+class SvgEnergieTest(unittest.TestCase):
+    """ACAL761 — le schéma « où va l'énergie » : largeurs lues, jamais calculées."""
+
+    @staticmethod
+    def _resultat():
+        # Les deux premiers postes prennent les valeurs des postes COMPTÉS
+        # de l'échantillon de cascade : aucune perte chiffrée en dur.
+        resultat = copy.deepcopy(RESULTAT)
+        postes = resultat['cascade']['postes_lisibles']['postes']
+        for poste, servi in zip(postes[:2], POSTES_COMPTES):
+            poste.update({cle: servi[cle] for cle in
+                          ('statut', 'perte_kwh', 'perte_pct')})
+        return resultat
+
+    @staticmethod
+    def _largeurs(svg):
+        trouves = re.findall(
+            r'data-flux="([^"]+)" data-kwh="([^"]+)" x="0" y="[^"]+" '
+            r'width="([^"]+)"', svg)
+        return {nom: (float(kwh), float(largeur))
+                for nom, kwh, largeur in trouves}
+
+    def test_largeur_de_chaque_flux_est_sa_valeur_servie_fois_l_echelle(self):
+        svg = svg_d_energie(self._resultat())
+        echelles = [float(e) for e in re.findall(
+            r'data-px-par-kwh="([^"]+)"', svg)]
+        self.assertEqual(len(echelles), 2)
+        energie = RESULTAT['autoconsommation']['energie']
+        largeurs = self._largeurs(svg)
+        for nom, cle in (('sur_place', 'autoconsomme_kwh'),
+                         ('injectee', 'export_reseau_kwh'),
+                         ('importee', 'import_reseau_kwh'),
+                         ('consommation', 'consommation_kwh'),
+                         ('production_brute', 'production_brute_kwh')):
+            kwh, largeur = largeurs[nom]
+            self.assertEqual(kwh, energie[cle])
+            self.assertAlmostEqual(largeur, energie[cle] * echelles[1], 1)
+        kwh, largeur = largeurs['ombres_proches']
+        servi = POSTES_COMPTES[0]['perte_kwh']
+        self.assertEqual(kwh, servi)
+        self.assertAlmostEqual(largeur, servi * echelles[0], 1)
+
+    def test_les_deux_totaux_qui_different_sont_imprimes_chacun(self):
+        svg = svg_d_energie(self._resultat())
+        self.assertIn('16800.0 kWh'.replace('.', ','), svg)
+        self.assertIn('13210,0 kWh', svg)
+
+    def test_un_flux_nul_ou_non_compte_est_hachure_et_nomme(self):
+        svg = svg_d_energie(self._resultat())
+        self.assertIn('class="flux-non-calcule" data-flux="chaleur"', svg)
+        self.assertIn('non calculé', svg)
+        self.assertNotIn('data-flux="chaleur" data-kwh', svg)
+
+    def test_autoconsommation_omise_bloc_b_hachure_avec_son_motif(self):
+        resultat = self._resultat()
+        resultat['autoconsommation'] = {
+            'energie': None, 'motif_absence': 'Aucune simulation lancée.'}
+        svg = svg_d_energie(resultat)
+        self.assertIn('class="flux-non-calcule" data-flux="autoconsommation"',
+                      svg)
+        self.assertIn('Aucune simulation lancée.', svg)
+        self.assertNotIn('data-flux="sur_place"', svg)
+
+    def test_la_batterie_ajoute_ses_deux_valeurs_servies(self):
+        svg = svg_d_energie(self._resultat())
+        self.assertIn('dont par la batterie : 2400,0 kWh', svg)
+        self.assertIn('pertes de la batterie : 250,0 kWh', svg)
+
+    def test_sans_postes_lisibles_refus_nommant_cascade(self):
+        resultat = self._resultat()
+        del resultat['cascade']['postes_lisibles']
+        with self.assertRaises(DiagrammeRefuse) as refus:
+            svg_d_energie(resultat)
+        self.assertEqual(refus.exception.champ, 'cascade')
 
 
 class DansLaSectionPertesTest(unittest.TestCase):

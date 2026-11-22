@@ -764,6 +764,10 @@ class FicheTechnique(models.Model):
     var_rendement_mppt_pct = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True,
         help_text='Variateur — rendement MPPT (%). Vide = non publié.')
+    var_bus_dc_redresse_v = models.DecimalField(  # ACAL816
+        max_digits=6, decimal_places=1, null=True, blank=True,
+        help_text='Variateur — tension DC redressée admise du bus (V). '
+                  'Vide = non publié.')
 
     # ── CIQ101 — champs C&I (contrat produit_ci.json, clé ``fiches``). Vide
     # (chaîne vide, liste vide, null) = « non publié », JAMAIS un défaut. ──

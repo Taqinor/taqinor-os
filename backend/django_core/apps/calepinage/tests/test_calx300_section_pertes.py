@@ -81,7 +81,9 @@ class AucuneArithmetiqueTest(unittest.TestCase):
 
     def test_aucun_arrondi(self):
         cascade = cascade_du_contrat()
-        cascade['etapes'][4]['kwh_apres'] = 15792.34
+        # La DERNIÈRE étape chiffrée (une étape omise peut la suivre).
+        [e for e in cascade['etapes']
+         if e['kwh_apres'] is not None][-1]['kwh_apres'] = 15792.34
         html = html_de_section(contexte({'cascade': cascade}))
         self.assertEqual([c for c in cellules(html, 'kwh-apres')
                           if c != '—'][-1], '15792,34')
@@ -147,6 +149,86 @@ class TableTest(unittest.TestCase):
                                         langue='en'))
         self.assertIn('Energy out (kWh)', html)
         self.assertIn('Chain total', html)
+
+
+class SchemaEnergieTest(unittest.TestCase):
+    """ACAL773 — « où va l'énergie » sous le diagramme de la cascade."""
+
+    def test_le_schema_d_energie_est_imprime_apres_la_cascade(self):
+        from apps.calepinage.services.diagramme_energie import svg_d_energie
+        from apps.calepinage.services.diagramme_pertes import (
+            svg_embarquable,
+        )
+        resultat = copy.deepcopy(RESULTAT['exemple'])
+        html = html_de_section(contexte(resultat))
+        attendu = svg_embarquable(svg_d_energie(resultat, langue='fr'))
+        self.assertIn(attendu, html)
+        self.assertIn("Où va l'énergie".replace("'", '&#x27;'), html)
+        self.assertLess(html.index('diagramme-pertes'),
+                        html.index('diagramme-energie'))
+
+    def test_titre_en_anglais(self):
+        html = html_de_section(contexte(
+            copy.deepcopy(RESULTAT['exemple']), langue='en'))
+        self.assertIn('Where the energy goes', html)
+
+    def test_sans_postes_lisibles_le_motif_remplace_le_schema(self):
+        resultat = copy.deepcopy(RESULTAT['exemple'])
+        del resultat['cascade']['postes_lisibles']
+        html = html_de_section(contexte(resultat))
+        self.assertIn('Aucune cascade regroup', html)
+        self.assertNotIn('class="bloc"', html)
+        self.assertIn('pertes-cascade', html)    # la table reste
+
+
+def _resultat_avec_iam(**entree):
+    resultat = copy.deepcopy(RESULTAT['exemple'])
+    etapes = [e for e in resultat['cascade']['etapes']
+              if e.get('etape') != 'iam']
+    # Les chiffres de l'étape sont ceux de la 1re étape de l'échantillon :
+    # aucune perte chiffrée en dur (CAL238) ; seuls l'IAM et son entrée
+    # sont propres au cas.
+    iam = copy.deepcopy(resultat['cascade']['etapes'][0])
+    iam.update(etape='iam', libelle='IAM', source='fiche', entree=entree)
+    etapes.append(iam)
+    resultat['cascade']['etapes'] = etapes
+    return resultat
+
+
+def _table_essai():
+    return [{'angle_deg': a, 'facteur': round(1 - (a / 100) ** 2 / 10, 6)}
+            for a in range(0, 100, 10)]
+
+
+class TableIamTest(unittest.TestCase):
+    """ACAL772 — la table IAM de l'étape, telle que servie."""
+
+    def test_dix_lignes_et_legende_du_modele(self):
+        table = _table_essai()
+        html = html_de_section(contexte(_resultat_avec_iam(
+            table_iam=table, modele='fresnel', indice_verre=1.526)))
+        self.assertIn("Facteur d&#x27;incidence (IAM)", html)
+        self.assertIn('Angle (°)', html)
+        for ligne in table:
+            self.assertIn('<td class="kwh">%s</td><td class="kwh">%s</td>' % (
+                nombre_tel_que_servi(ligne['angle_deg']),
+                nombre_tel_que_servi(ligne['facteur'])), html)
+        self.assertIn('Modèle : Fresnel · indice du verre 1,526', html)
+        self.assertLess(html.index('diagramme-pertes'), html.index('table-iam'))
+
+    def test_ashrae_ajoute_b0_et_l_anglais_traduit_les_titres(self):
+        html = html_de_section(contexte(_resultat_avec_iam(
+            table_iam=_table_essai(), modele='ashrae', indice_verre=1.5,
+            b0=0.05), langue='en'))
+        self.assertIn('Model : ASHRAE · glass index 1.5 · b0 0.05', html)
+        self.assertIn('Incidence angle modifier (IAM)', html)
+
+    def test_etape_omise_ou_sans_table_n_imprime_rien(self):
+        omise = _resultat_avec_iam(table_iam=_table_essai(), modele='fresnel')
+        omise['cascade']['etapes'][-1]['motif_omission'] = 'Pas de verre.'
+        self.assertNotIn('table-iam', html_de_section(contexte(omise)))
+        sans = _resultat_avec_iam(modele='fresnel')
+        self.assertNotIn('table-iam', html_de_section(contexte(sans)))
 
 
 class SansCascadeTest(unittest.TestCase):

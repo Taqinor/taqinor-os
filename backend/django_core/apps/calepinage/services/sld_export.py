@@ -124,7 +124,8 @@ def _dessin_et_tableau(calepinage):
     from core.electrique.schema import lignes_tableau
 
     from .electrique import (
-        bloquants_nommes, conception_du_calepinage, parametres_societe,
+        _reglages_electrique_societe, bloquants_nommes,
+        conception_du_calepinage, parametres_societe,
     )
     from .norme import norme_applicable
     from .sld import (
@@ -155,7 +156,9 @@ def _dessin_et_tableau(calepinage):
     # lit ``bom``, le dessin ``protections``), jamais le ``ResultatChaines`` ;
     # ACAL159 — réduit à la check-list DÉCIDÉE, comme le SVG.
     resultat, gabarit = resultat_et_gabarit_decides(
-        conception, donnees, norme, gabarit=gabarit_de_schema(norme))
+        conception, donnees, norme, gabarit=gabarit_de_schema(norme),
+        # REP-sld-export — les MÊMES réglages société que le SVG (sld.py).
+        reglages=_reglages_electrique_societe(calepinage))
     dessin = rendu_du_schema(
         getattr(conception, 'entree', None), resultat,
         edition=edition_sld(calepinage), gabarit=gabarit,

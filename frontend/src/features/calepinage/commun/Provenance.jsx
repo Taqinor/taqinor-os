@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { formatNumber } from '../../../lib/format'
@@ -98,13 +99,28 @@ export function ValeurSourcee({
    Il n'en calcule aucun et n'en invente aucun : ce qui n'est pas servi n'est
    pas affiché. */
 
-function Section({ titre, vide, children, testId }) {
+// ACAL937/938 — un lien profond vers le champ de Réglages (ancre lue par
+// `useOuvrirChamp`) ; il n'écrit aucune valeur.
+function LienReglages({ ancre, texte, testId }) {
+  return (
+    <Link
+      to={`/calepinage/reglages#${ancre}`}
+      className="inline-flex min-h-[44px] items-center text-sm underline"
+      data-testid={testId}
+    >
+      {texte}
+    </Link>
+  )
+}
+
+function Section({ titre, vide, children, testId, lien = null }) {
   return (
     <section className="flex flex-col gap-2" data-testid={testId}>
       <h3 className="text-sm font-semibold">{titre}</h3>
       {vide
         ? <p className="text-sm text-muted-foreground">{vide}</p>
         : <dl className="flex flex-col gap-1 text-sm">{children}</dl>}
+      {lien}
     </section>
   )
 }
@@ -166,6 +182,13 @@ export default function SourcesNormatives() {
       <Section
         titre="Norme électrique"
         testId="cal165-norme"
+        lien={(
+          <LienReglages
+            ancre="norme"
+            testId="cal937-lien-norme"
+            texte={norme.norme ? 'Changer la norme' : 'Choisir la norme'}
+          />
+        )}
         vide={Object.keys(coefficients).length === 0
           ? 'Aucune norme électrique choisie : les coefficients sont omis.'
           : null}
@@ -190,6 +213,13 @@ export default function SourcesNormatives() {
       <Section
         titre="Lestage"
         testId="cal165-lestage"
+        lien={(
+          <LienReglages
+            ancre="lestage"
+            testId="cal938-lien-lestage"
+            texte="Saisir le lestage"
+          />
+        )}
         vide={codesLestage.length === 0 && zonesLestage.length === 0
           ? 'Aucun paramètre de lestage enregistré : la feuille de lestage est omise.'
           : null}

@@ -43,7 +43,8 @@ s'ajoutent, ADDITIFS — un appel sans eux sort EXACTEMENT ce qu'il sortait
   hors de ce vocabulaire est REFUSÉE en la NOMMANT — jamais silencieusement
   ignorée. Le bloc de provenance liste désormais les colonnes retenues (une
   ligne ``Colonnes retenues``), pour que le fichier reste lisible seul.
-* ``pas`` — ``horaire`` (défaut) ou ``15min``. Le second est REFUSÉ avec son
+* ``pas`` — ``horaire`` (défaut), ``jour`` (ACAL755 : une ligne par jour, par
+  l'agrégat existant de ``chaine_pertes``) ou ``15min``. Le dernier est REFUSÉ avec son
   motif : la série au pas de 15 minutes n'est pas encore produite par le
   moteur, et ce module n'INTERPOLE JAMAIS une série horaire pour la
   remplacer (même discipline que « série indisponible ⇒ refus », jamais un
@@ -65,13 +66,13 @@ NON_PUBLIEE = 'non publiée'
 LIBELLE_EMPREINTE_LAYOUT = 'Empreinte du calepinage'
 LIBELLE_EMPREINTE_SIMULATION = "Empreinte d'entrée de la simulation"
 
-#: Les trois exports du module — toute autre valeur est refusée en la nommant.
-EXPORTS = ('horaire', 'mensuel', 'ombrage')
+#: Les exports du module — toute autre valeur est refusée en la nommant.
+EXPORTS = ('horaire', 'mensuel', 'ombrage', 'ombrage_modules')
 
 #: CALX313 — les deux pas de temps ÉNONCÉS. Seul ``horaire`` produit un
 #: fichier aujourd'hui ; ``15min`` est un pas RECONNU mais pas encore
 #: disponible (refus dédié, jamais une interpolation).
-PAS_DISPONIBLES = ('horaire', '15min')
+PAS_DISPONIBLES = ('horaire', 'jour', '15min')
 
 SEPARATEUR = ';'
 ENCODAGE_TABLEUR = 'utf-8-sig'
@@ -133,6 +134,7 @@ def document_exportable(calepinage, avec_points=True):
     absent, et l'exporteur refuse en le disant.
     """
     from .. import selectors
+    from .ombrage_chaines import acces_des_modules
 
     stocke = getattr(calepinage, 'resultat', None)
     stocke = stocke if isinstance(stocke, dict) else {}
@@ -157,6 +159,8 @@ def document_exportable(calepinage, avec_points=True):
         'points': ([] if perimee or not avec_points
                    else _points_de_la_serie(stocke.get('serie_horaire'))),
         'shading12x24': layout.get('shading12x24'),
+        # ACAL754 — l'accès solaire annuel PAR MODULE, tel que persisté.
+        'acces_modules': acces_des_modules(layout),
         'version_moteur': getattr(calepinage, 'version_moteur', '') or None,
         'simulation_perimee': perimee,
         'motif_perimee': (servi.get('motif') or '') if perimee else '',
@@ -316,6 +320,23 @@ def _valider_pas(pas):
             'remplacer.', champ='pas')
 
 
+#: ACAL755 — la ligne de provenance du pas « jour ».
+LIGNE_PAS_JOUR = ('jour — puissances = moyenne de la journée (énergie du jour '
+                  '= valeur × 24 h), énergies = sommes')
+
+
+def _points_au_jour(points):
+    """Un point par jour : l'agrégat de ``chaine_pertes`` (flux moyennés,
+    énergies sommées), appelé au pas de 60 min. Une série déjà au jour
+    (``heure`` vide partout) est rendue telle quelle, jamais agrégée deux fois."""
+    if all(isinstance(point, dict) and point.get('heure') in (None, '')
+           for point in points):
+        return points
+    from .chaine_pertes import _agreger_au_jour
+
+    return _agreger_au_jour(points, 60)
+
+
 def _export_horaire(document, *, colonnes=None, pas='horaire'):
     _valider_pas(pas)
     noms = _colonnes_retenues(colonnes)
@@ -327,6 +348,9 @@ def _export_horaire(document, *, colonnes=None, pas='horaire'):
             "lancez la simulation avant d'exporter. Aucun fichier de zéros "
             "n'est produit à la place.", champ='points')
     lignes = _lignes_de_provenance(document, colonnes_retenues=noms)
+    if pas == 'jour':
+        points = _points_au_jour(points)
+        lignes.insert(len(lignes) - 1, ['Pas de temps', LIGNE_PAS_JOUR])
     lignes.append(list(noms))
     for point in points:
         lignes.append([COLONNES_HORAIRE[nom](point) for nom in noms])
@@ -367,10 +391,27 @@ def _export_ombrage(document):
     return _ecrire(lignes)
 
 
+def _export_ombrage_modules(document):
+    acces = (document or {}).get('acces_modules')
+    if not isinstance(acces, dict) or not acces:
+        raise ExportImpossible(
+            "Aucun accès solaire par module n'est enregistré : calculez "
+            "l'ombrage dans l'atelier.", champ='acces_modules')
+    lignes = _lignes_de_provenance(document)
+    lignes.insert(len(lignes) - 1, [
+        'Résolution', 'accès solaire annuel, une valeur par module — le '
+        "mois et l'heure par module ne sont pas calculés"])
+    lignes.append(['module', 'acces_solaire'])
+    for cle, valeur in acces.items():
+        lignes.append([cle, _decimal(valeur, 3)])
+    return _ecrire(lignes)
+
+
 _FABRIQUES = {
     'horaire': _export_horaire,
     'mensuel': _export_mensuel,
     'ombrage': _export_ombrage,
+    'ombrage_modules': _export_ombrage_modules,
 }
 
 
@@ -382,7 +423,7 @@ def export_csv(document, *, quoi='horaire', colonnes=None, pas='horaire'):
             'shading12x24': [[…]], 'version_moteur': '…'}`` — la sortie de
             ``services.production`` enrichie de la série horaire et de la
             matrice d'ombrage du document de toiture.
-        quoi: ``horaire`` | ``mensuel`` | ``ombrage``.
+        quoi: ``horaire`` | ``mensuel`` | ``ombrage`` | ``ombrage_modules``.
         colonnes: CALX313, ``horaire`` SEULEMENT — sous-ensemble de
             ``COLONNES_HORAIRE`` à servir, dans l'ordre demandé. ``None``
             (défaut) sert ``DEFAULT_COLONNES_HORAIRE`` — le comportement

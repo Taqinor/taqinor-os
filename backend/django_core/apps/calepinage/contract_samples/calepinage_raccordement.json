@@ -11,13 +11,20 @@
       "cos_phi_impose": 0.9,
       "source_cos_phi": "saisie — contrat de raccordement du site (valeur d'essai)",
       "plafond_injection_kw": null,
-      "plafond_injection_justification": null
+      "plafond_injection_justification": null,
+      "plafond_injection_a": null,
+      "plages_plafond_injection": null,
+      "plafond_soutirage_kw": null,
+      "plafond_soutirage_justification": null,
+      "dispositif_limitation_injection": null
     },
     "calcul": {
       "elevation_pct": 0.82,
       "ecart_limite_pct": null,
       "puissance_injectee_kva": 8.0,
-      "desequilibre_pct": 11.4
+      "desequilibre_pct": 11.4,
+      "plafond_injection_kw_converti": null,
+      "plafond_injection_conversion": null
     },
     "verdicts": [
       {
@@ -54,13 +61,39 @@
         "statut": "omis",
         "detail": "le seuil de déséquilibre acceptable n'est pas réglé pour la société : le déséquilibre est publié, aucun verdict n'est prononcé. Réglez « seuil_desequilibre_pct » avec sa source dans les réglages du module.",
         "source": null
+      },
+      {
+        "code": "limitation_injection",
+        "libelle": "Limitation de l'injection",
+        "statut": "omis",
+        "detail": "aucun plafond d'injection n'est saisi : il n'y a pas de limitation à contrôler.",
+        "source": null
       }
     ],
     "proposition_lead": {
       "puissance_souscrite_kva": 12.0,
       "phases": 3,
       "source": "lead — facture d'électricité du 12/03/2026"
-    }
+    },
+    "regime": {
+      "code": "accord_raccordement",
+      "libelle": "Accord de raccordement",
+      "base": "loi 82-21 art. 4 ; décret 2.25.100 art. 5, 11",
+      "guichet": "distributeur",
+      "guichet_statut": "a_confirmer",
+      "puissance_retenue_kw": 12,
+      "base_puissance": "a_confirmer_avec_le_distributeur",
+      "a_qualifier": false
+    },
+    "injection": {
+      "part_injectee_pct": 35.0,
+      "plafond_pct": 20,
+      "source": "loi 82-21 art. 12 (BO 7400) ; ANRE 04/26 art. 7",
+      "depasse": true,
+      "mention": "Revente du surplus non ouverte en basse tension à ce jour — ANRE décision 04/26 ; installation dimensionnée pour l'autoconsommation",
+      "avertissement": "La part injectée (35 %) dépasse le plafond légal de 20 % de la production annuelle : en MT/HT, l'excédent de revente n'est pas valorisé"
+    },
+    "injection_motif": null
   },
   "exemple_limite_saisie": {
     "saisie": {
@@ -72,13 +105,20 @@
       "cos_phi_impose": 0.9,
       "source_cos_phi": "saisie — contrat de raccordement du site (valeur d'essai)",
       "plafond_injection_kw": 8.0,
-      "plafond_injection_justification": "Contrat de raccordement du site : injection limitée à 8 kW (valeur d'essai)."
+      "plafond_injection_justification": "Contrat de raccordement du site : injection limitée à 8 kW (valeur d'essai).",
+      "plafond_injection_a": null,
+      "plages_plafond_injection": null,
+      "plafond_soutirage_kw": null,
+      "plafond_soutirage_justification": null,
+      "dispositif_limitation_injection": null
     },
     "calcul": {
       "elevation_pct": 0.82,
       "ecart_limite_pct": 2.18,
       "puissance_injectee_kva": 8.0,
-      "desequilibre_pct": 11.4
+      "desequilibre_pct": 11.4,
+      "plafond_injection_kw_converti": null,
+      "plafond_injection_conversion": null
     },
     "verdicts": [
       {
@@ -115,9 +155,35 @@
         "statut": "omis",
         "detail": "le seuil de déséquilibre acceptable n'est pas réglé pour la société : le déséquilibre est publié, aucun verdict n'est prononcé. Réglez « seuil_desequilibre_pct » avec sa source dans les réglages du module.",
         "source": null
+      },
+      {
+        "code": "limitation_injection",
+        "libelle": "Limitation de l'injection",
+        "statut": "omis",
+        "detail": "le champ ne compte pas que des micro-onduleurs : le contrôle porte sur un champ à micro-onduleurs seuls.",
+        "source": null
       }
     ],
-    "proposition_lead": null
+    "proposition_lead": null,
+    "regime": {
+      "code": "accord_raccordement",
+      "libelle": "Accord de raccordement",
+      "base": "loi 82-21 art. 4 ; décret 2.25.100 art. 5, 11",
+      "guichet": "distributeur",
+      "guichet_statut": "a_confirmer",
+      "puissance_retenue_kw": 12,
+      "base_puissance": "a_confirmer_avec_le_distributeur",
+      "a_qualifier": false
+    },
+    "injection": {
+      "part_injectee_pct": 35.0,
+      "plafond_pct": 20,
+      "source": "loi 82-21 art. 12 (BO 7400) ; ANRE 04/26 art. 7",
+      "depasse": true,
+      "mention": "Revente du surplus non ouverte en basse tension à ce jour — ANRE décision 04/26 ; installation dimensionnée pour l'autoconsommation",
+      "avertissement": "La part injectée (35 %) dépasse le plafond légal de 20 % de la production annuelle : en MT/HT, l'excédent de revente n'est pas valorisé"
+    },
+    "injection_motif": null
   },
   "exemple_vide": {
     "saisie": {
@@ -129,13 +195,20 @@
       "cos_phi_impose": null,
       "source_cos_phi": null,
       "plafond_injection_kw": null,
-      "plafond_injection_justification": null
+      "plafond_injection_justification": null,
+      "plafond_injection_a": null,
+      "plages_plafond_injection": null,
+      "plafond_soutirage_kw": null,
+      "plafond_soutirage_justification": null,
+      "dispositif_limitation_injection": null
     },
     "calcul": {
       "elevation_pct": null,
       "ecart_limite_pct": null,
       "puissance_injectee_kva": null,
-      "desequilibre_pct": null
+      "desequilibre_pct": null,
+      "plafond_injection_kw_converti": null,
+      "plafond_injection_conversion": null
     },
     "verdicts": [
       {
@@ -172,9 +245,28 @@
         "statut": "omis",
         "detail": "le seuil de déséquilibre acceptable n'est pas réglé pour la société : le déséquilibre est publié, aucun verdict n'est prononcé. Réglez « seuil_desequilibre_pct » avec sa source dans les réglages du module.",
         "source": null
+      },
+      {
+        "code": "limitation_injection",
+        "libelle": "Limitation de l'injection",
+        "statut": "omis",
+        "detail": "aucun plafond d'injection n'est saisi : il n'y a pas de limitation à contrôler.",
+        "source": null
       }
     ],
-    "proposition_lead": null
+    "proposition_lead": null,
+    "regime": {
+      "code": null,
+      "libelle": "À qualifier",
+      "base": "loi 82-21 art. 11 : puissance totale du site requise ; décret 2.25.100 art. 5",
+      "guichet": null,
+      "guichet_statut": "a_confirmer",
+      "puissance_retenue_kw": null,
+      "base_puissance": "a_confirmer_avec_le_distributeur",
+      "a_qualifier": true
+    },
+    "injection": null,
+    "injection_motif": "Simulez d'abord pour comparer l'injection"
   },
   "refus_limite_sans_source": {
     "source_limite": "Une limite d'élévation de tension ne peut pas être enregistrée sans sa source : indiquez le texte réglementaire ou le contrat de raccordement qui la fixe — un seuil sans provenance n'est pas opposable."

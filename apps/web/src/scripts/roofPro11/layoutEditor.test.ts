@@ -13,6 +13,7 @@
 // fichier, et SEULEMENT ici : coordonnée u ≡ −(x ENU), coordonnée v ≡ y ENU. Un panneau
 // « posé à l'abscisse u » a donc son centre ENU en `cx = -u, cy = v`.
 import { describe, expect, it, vi } from 'vitest';
+import { occupiedCount } from '../../lib/layoutVariability'; // ACAL891
 import { createLayoutEditor } from './layoutEditor';
 import { creerBarreSelection } from './barreSelection';
 import { creerAnnulerAtelier } from './annulerAtelier';
@@ -665,5 +666,33 @@ describe('ACAL510 — pan existant : ses modules ne se glissent pas', () => {
     const { ctx, map } = presser(false);
     expect(ctx.layoutSel).toBe(0);
     expect(map.dragPan.disable).toHaveBeenCalled();
+  });
+});
+
+// ACAL891 — « Remplir » au-delà de la limite mesurée : le refus nommé, rien n'est posé.
+const limiteInjectee = vi.hoisted(() => ({ valeur: null as number | null }));
+vi.mock('./limiteModules', async (orig) => ({ ...(await orig<typeof import('./limiteModules')>()), limiteModules: () => limiteInjectee.valeur }));
+
+describe('ACAL891 — Remplir et la limite de modules', () => {
+  const remplir = (limite: number | null) => {
+    document.body.innerHTML = ''; // le gabarit de secours (ids uniques) est reposé pour CE cas
+    limiteInjectee.valeur = limite;
+    const { map } = makeMap();
+    const panneaux = [{ cx: 0, cy: 0 }, { cx: -4, cy: 0 }, { cx: -8, cy: 0 }];
+    const ctx = makeFreeCtx(makePlan(40), panneaux);
+    (ctx as unknown as { freeMode: boolean }).freeMode = false;
+    ctx.layoutState = createLayoutState(panneaux, 1); // 1 posé + 2 libres = 3 au total
+    createLayoutEditor(ctx, makeDeps(map));
+    (document.getElementById('rp9-layout-fill') as HTMLButtonElement).click();
+    return { posés: occupiedCount(ctx.layoutState!), note: document.getElementById('rp9-layout-note')?.textContent ?? '' };
+  };
+  it('limite 2 < 3 modules visés ⇒ message et zéro pose', () => {
+    const r = remplir(2);
+    expect(r.note).toBe('Au-delà de 2 modules, l’atelier n’est plus fluide : réduisez le toit ou posez par parties.');
+    expect(r.posés).toBe(1);
+  });
+  it('sous la limite, ou limite absente ⇒ inchangé (rempli)', () => {
+    expect(remplir(5).posés).toBe(3);
+    expect(remplir(null).posés).toBe(3);
   });
 });

@@ -467,3 +467,49 @@ describe('VariantesCompare (ACAL600) — ligne Module', () => {
     expect(cellule(B)).not.toHaveTextContent('re-poser')
   })
 })
+
+/* ACAL884 — les hypothèses comparées, servies (`hypotheses`, ACAL883).
+   Mutant : ignorer `identiques` ⇒ échec. */
+describe('VariantesCompare — hypothèses comparées (ACAL884)', () => {
+  const servirHypotheses = (hypotheses) => mocks.comparer.mockResolvedValue({ data: { ...CONTRAT, hypotheses } })
+
+  it('identiques ⇒ ligne « mêmes hypothèses »', async () => {
+    servirHypotheses({ ...CONTRAT.hypotheses, identiques: true, differences: [] })
+    rendre()
+    expect(await screen.findByTestId('acal884-identiques'))
+      .toHaveTextContent('Mêmes hypothèses de pertes et de météo pour toutes les variantes comparées')
+    expect(screen.queryByText('Hypothèses différentes :')).toBeNull()
+  })
+
+  it('différences ⇒ liste nommée, valeurs servies, non simulées comptées', async () => {
+    rendre()
+    const bloc = await screen.findByTestId('cal-variantes-hypotheses')
+    expect(within(bloc).getByText('Hypothèses différentes :')).toBeInTheDocument()
+    const [d] = CONTRAT.hypotheses.differences
+    const ligne = within(bloc).getByTestId(`acal884-difference-${d.cle}`)
+    expect(ligne).toHaveTextContent(d.libelle)
+    for (const [id, v] of Object.entries(d.valeurs)) {
+      expect(ligne).toHaveTextContent(`${v} chez ${CONTRAT.lignes.find((l) => String(l.id) === id).nom}`)
+    }
+    expect(within(bloc).getByTestId('acal884-non-simulees'))
+      .toHaveTextContent(`${CONTRAT.lignes.filter((l) => !l.simulee).length} variante(s) non comparée(s)`)
+  })
+
+  it('null ⇒ rien', async () => {
+    servirHypotheses(exempleContrat('calepinage', 'variantes_comparer', 'exemple_vide').hypotheses)
+    rendre()
+    await screen.findByTestId('cal-tableau-variantes')
+    expect(screen.queryByTestId('cal-variantes-hypotheses')).toBeNull()
+  })
+})
+
+/* ACAL878 — chaque rangée de chiffres du comparatif porte son « ? » (registre).
+   Mutant : retirer une entrée de la famille ⇒ la garde d'ACAL872 échoue. */
+describe('VariantesCompare — « ? » du comparatif (ACAL878)', () => {
+  it('chaque colonne de chiffres porte un « ? »', async () => {
+    rendre()
+    const tableau = await screen.findByTestId('cal-tableau-variantes')
+    const grandeurs = [...tableau.querySelectorAll('th [data-grandeur]')].map((b) => b.getAttribute('data-grandeur'))
+    expect(grandeurs).toEqual(['comparatif.modules', 'comparatif.kwc', 'comparatif.ecart', 'comparatif.ecart', 'comparatif.p50_kwh'])
+  })
+})

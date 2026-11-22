@@ -29,15 +29,15 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from ..permissions import PeutLireOuEcrireCalepinage
-from ..serializers import corps_obligatoire, forme_du_contrat
+from ..permissions import PeutApprouverCalepinage, PeutLireOuEcrireCalepinage
+from ..serializers import REPONSE_REFUS_ETAT, corps_obligatoire, forme_du_contrat
 from ..services.asbuilt import (
-    PanInconnu, PoseRefusee, enregistrer_pose, etat_pose_reelle,
-    supprimer_pose, version_depuis_ecarts,
+    PanInconnu, PoseRefusee, ecart_mesures_du_calepinage, enregistrer_pose,
+    etat_pose_reelle, supprimer_pose, version_depuis_ecarts,
 )
 from .calepinages import CalepinageViewSet
 
-__all__ = ['pose_reelle', 'supprimer_pose_reelle']
+__all__ = ['ecart_mesures', 'pose_reelle', 'supprimer_pose_reelle']
 
 
 def _demande_de_version(corps):
@@ -130,7 +130,37 @@ def supprimer_pose_reelle(self, request, pk=None, zone_id=None):
     return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+_FORME_ECART_MESURES = forme_du_contrat(
+    'CalepinageEcartMesures', 'calepinage_asbuilt_mesures.json')
+
+_CORPS_ECART_MESURES = {
+    'type': 'object',
+    'properties': {
+        'kwh': {'type': 'array', 'minItems': 12, 'maxItems': 12,
+                'items': {'type': 'number', 'nullable': True, 'minimum': 0}},
+        'annee': {'type': 'integer', 'minimum': 1900},
+    },
+    'required': ['kwh'],
+}
+
+
+@extend_schema(
+    request={'application/json': _CORPS_ECART_MESURES},
+    responses={200: _FORME_ECART_MESURES, 409: REPONSE_REFUS_ETAT})
+@action(detail=True, methods=['post'], url_path='ecart-mesures',
+        permission_classes=[PeutApprouverCalepinage])
+def ecart_mesures(self, request, pk=None):
+    """ACAL846 — 12 consommations mesurées comparées à la simulée (rien
+    d'enregistré) ; 409 nommant ``kwh[i]`` / ``annee`` illisible."""
+    calepinage = self.get_object()  # borné société par get_queryset
+    try:
+        return Response(ecart_mesures_du_calepinage(calepinage, request.data))
+    except PoseRefusee as refus:
+        return Response(refus.corps(), status=status.HTTP_409_CONFLICT)
+
+
 # Le nom d'attribut est EXACTEMENT celui de la fonction : DRF mappe par
 # ``__name__`` (piège CALX7).
+CalepinageViewSet.ecart_mesures = ecart_mesures  # ACAL846
 CalepinageViewSet.pose_reelle = pose_reelle
 CalepinageViewSet.supprimer_pose_reelle = supprimer_pose_reelle  # ACAL267

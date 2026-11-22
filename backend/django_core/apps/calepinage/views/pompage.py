@@ -43,6 +43,7 @@ from rest_framework.decorators import action
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 from core.champs_stricts import ChaineStricte
+from core.pompage.conception import comparaison_direct_reservoir, controle_pompes_par_variateur, heures_pic
 from core.pompage.hydraulique import hmt_mensuelle
 from core.pompage.selection import alertes_pose_pompe, selection_pompe, selection_variateur, tension_produit
 from core.pompage.volumes import bilan_reservoir_journalier, couverture_besoin_eau
@@ -179,21 +180,8 @@ def _chaines_variateur(calepinage, variateur_id, serie, paralleles):
     posés ; aucune adaptation du champ."""
     from core.pompage.champ import controle_chaine_variateur
 
-    from ..services.electrique import (
-        entree_stockee, resoudre_materiel, temperatures_pour_calepinage)
-
-    materiel, module, temperatures, variateur = {}, None, None, None
-    if serie is not None:  # sans longueur saisie, rien à résoudre
-        entree = entree_stockee(calepinage)
-        materiel = resoudre_materiel(calepinage.company, entree,
-                                     calepinage=calepinage)
-        module = materiel.get('module') or None
-        site = temperatures_pour_calepinage(calepinage, saisie=entree,
-                                            module_specs=module)
-        if site.source is not None:
-            temperatures = {'froid_c': float(site.froid_c),
-                            'chaud_c': float(site.chaud_c), 'source': site.source}
-        variateur = _element_pompage(calepinage.company, variateur_id)
+    materiel, module, temperatures, variateur = _materiel_du_champ(
+        calepinage, variateur_id, serie)
     bloc = controle_chaine_variateur(variateur, module, serie or 0,
                                      paralleles or 1, temperatures)
     if serie is None:
@@ -209,6 +197,73 @@ def _chaines_variateur(calepinage, variateur_id, serie, paralleles):
     return bloc
 
 
+def _materiel_du_champ(calepinage, variateur_id, serie):
+    """ACAL810/ACAL820 — ``(materiel, module, temperatures, variateur)`` : le
+    module RETENU (``resoudre_materiel``), les températures du site et
+    l'élément ``produits_pompage`` du variateur ; rien sans longueur saisie."""
+    from ..services.electrique import (
+        entree_stockee, resoudre_materiel, temperatures_pour_calepinage)
+
+    if serie is None:
+        return {}, None, None, None
+    entree = entree_stockee(calepinage)
+    materiel = resoudre_materiel(calepinage.company, entree, calepinage=calepinage)
+    module = materiel.get('module') or None
+    site = temperatures_pour_calepinage(calepinage, saisie=entree, module_specs=module)
+    temperatures = None
+    if site.source is not None:
+        temperatures = {'froid_c': float(site.froid_c),
+                        'chaud_c': float(site.chaud_c), 'source': site.source}
+    return materiel, module, temperatures, _element_pompage(calepinage.company, variateur_id)
+
+
+def _appoint_variateur(calepinage, variateur_id, serie, appoint):
+    """ACAL820 — ``controle_appoint`` (ACAL818) sur le variateur retenu et le
+    module du calepinage ; ``None`` sans appoint choisi (réseau ou groupe)."""
+    if appoint not in APPOINTS:
+        return None
+    from core.pompage.champ import controle_appoint
+
+    _materiel, module, temperatures, variateur = _materiel_du_champ(calepinage, variateur_id, serie)
+    bloc = controle_appoint(variateur, module, serie or 0, temperatures)
+    if serie is None:
+        bloc['motif'] = 'nombre de modules par chaîne non saisi'
+    elif variateur is None:
+        bloc['motif'] = 'aucun variateur retenu'
+    return dict(bloc, appoint=appoint)
+
+
+#: ACAL820 — appoint du variateur : réseau ou groupe électrogène ; vide = aucun.
+APPOINTS = ('reseau', 'groupe')
+
+
+def _bilans_reservoir(corps, besoin_jour_mois, pvgis, profils, reservoir):
+    """ACAL1114 / ACAL815 — ``(bilan_reservoir, comparaison)`` : le bilan du réservoir jour par jour (production
+    PVGIS ÷ jours du mois), puis le pompage direct (fenêtre de demande saisie) contre le réservoir déclaré
+    (heures-pic de chaque profil PVGIS déjà lu), à production égale."""
+    production_jour = [m / j for m, j in zip(pvgis, dim.JOURS_PAR_MOIS)] if pvgis else None
+    bilan_reservoir = bilan_reservoir_journalier(
+        besoin_m3_jour_mois=besoin_jour_mois, volume_reservoir_m3=reservoir,
+        production_m3_jour_mois=production_jour)
+    comparaison = comparaison_direct_reservoir(
+        besoin_m3_jour_mois=besoin_jour_mois, production_m3_jour_mois=production_jour,
+        heures_pic_mois=[heures_pic(p) for p in profils] if profils and len(profils) == 12 else None,
+        heures_demande_h=_nombre(corps.get('heures_demande_h')), volume_reservoir_m3=reservoir)
+    return bilan_reservoir, comparaison
+
+
+def _pompes_sur_variateur(corps, variateur_servi):
+    """ACAL821 — plusieurs pompes sur le variateur SERVI (``None`` sans liste saisie)."""
+    if not corps.get('pompes_variateur'):
+        return None
+    pompes_variateur = controle_pompes_par_variateur(
+        pompes=corps['pompes_variateur'], variateur=variateur_servi, mode=corps.get('mode_pompes'))
+    if variateur_servi is None and pompes_variateur['verdict'] == 'non_verifiable' \
+            and pompes_variateur['motif'] == 'plaque du variateur (kW) non publiée':
+        pompes_variateur['motif'] = 'aucun variateur retenu'
+    return pompes_variateur
+
+
 _NOMBRES_POMPAGE = (
     'hmt_saisie', 'debit_souhaite_m3h', 'heures_pompage',
     'volume_reservoir_m3', 'besoin_m3_jour', 'niveau_statique_m',
@@ -218,7 +273,8 @@ _NOMBRES_POMPAGE = (
     'c_hazen_williams', 'pertes_singulieres_m', 'pression_service_bar',
     'kwc', 'niveau_statique_ete_m', 'niveau_statique_hiver_m',
     'profondeur_calage_m', 'diametre_tubage_mm',  # ACAL1113 — contrôles de pose
-    'debit_exploitation_m3h')  # ACAL1114 — plafond du forage
+    'debit_exploitation_m3h',  # ACAL1114 — plafond du forage
+    'heures_demande_h')  # ACAL815 — fenêtre de demande du pompage direct
 
 
 class FlottantFini(serializers.FloatField):
@@ -266,7 +322,13 @@ def _champs_corps():
         'modules_en_serie': serializers.IntegerField(
             min_value=1, required=False, allow_null=True),
         'chaines_paralleles': serializers.IntegerField(
-            min_value=1, required=False, allow_null=True)}
+            min_value=1, required=False, allow_null=True),
+        # ACAL821 — plusieurs pompes sur le variateur retenu (kW de plaque saisis).
+        'pompes_variateur': serializers.ListField(child=type('PompeSurVariateur', (serializers.Serializer,), {
+            'nom': ChaineStricte(required=False, allow_blank=True),
+            'kw': FlottantFini(required=False, allow_null=True)})(), required=False, allow_null=True),
+        'mode_pompes': ChaineStricte(required=False),
+        'appoint': ChaineStricte(required=False, allow_blank=True)}  # ACAL820 — APPOINTS, vide = aucun
 
 
 @extend_schema(
@@ -444,6 +506,7 @@ def pompage(self, request, pk=None):
     # pour le kWc du champ (saisi, sinon variante retenue) et la plaque de la
     # pompe retenue. Le calcul plat reste publié à côté.
     volumes = None
+    profils = None
     if pompe_servie is not None and choix['debit_hmt_m3h']:
         from apps.parametres.pvgis_profils import productible_mensuel
         from apps.ventes.domain.pompage import profils_horaires_site
@@ -477,9 +540,7 @@ def pompage(self, request, pk=None):
     besoin_jour_mois = [besoin_jour] * 12 if besoin_jour is not None else (
         [b / j if b is not None else None for b, j in zip(besoin_mois, dim.JOURS_PAR_MOIS)] if besoin_mois else None)
     pvgis = (volumes or {}).get('m3_mois_pvgis')
-    bilan_reservoir = bilan_reservoir_journalier(
-        besoin_m3_jour_mois=besoin_jour_mois, volume_reservoir_m3=reservoir,
-        production_m3_jour_mois=[m / j for m, j in zip(pvgis, dim.JOURS_PAR_MOIS)] if pvgis else None)
+    bilan_reservoir, comparaison = _bilans_reservoir(corps, besoin_jour_mois, pvgis, profils, reservoir)
 
     # ── 3 bis. ACAL810 — les chaînes du champ posé contre le variateur ──────
     serie = corps.get('modules_en_serie')
@@ -494,6 +555,8 @@ def pompage(self, request, pk=None):
             '%d chaîne(s) de %d modules ne font pas les %d modules posés de la '
             'variante retenue' % (chaines['paralleles'], chaines['serie'],
                                   chaines['modules_poses']))
+
+    pompes_variateur = _pompes_sur_variateur(corps, variateur_servi)  # ACAL821
 
     besoin = couverture_besoin_eau(
         besoin_m3_jour=besoin_jour, besoin_m3_mois=besoin_mois,
@@ -526,6 +589,10 @@ def pompage(self, request, pk=None):
         'chaines_variateur': chaines,
         'besoin': besoin,
         'bilan_reservoir': bilan_reservoir,
+        'comparaison_reservoir': comparaison,
+        'pompes_variateur': pompes_variateur,
+        'appoint_variateur': _appoint_variateur(  # ACAL820 — absent sans appoint
+            calepinage, (variateur_servi or {}).get('produit'), chaines['serie'], corps.get('appoint')),
         'erreurs': erreurs,
         'avertissements': avertissements,
         'alertes': alertes,

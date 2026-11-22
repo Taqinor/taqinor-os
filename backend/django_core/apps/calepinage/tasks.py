@@ -263,7 +263,7 @@ def balayer_calepinage(job_id=None, company_id=None, calepinage_id=None,
     from core.models import BackgroundJob
 
     from .models import Calepinage
-    from .services.balayage import BalayageInvalide, balayer
+    from .services.balayage import BalayageInvalide, balayer, balayer_objectif
     from .services.simulation import SimulationRefusee
 
     job = BackgroundJob.objects.filter(pk=job_id).first()
@@ -281,7 +281,9 @@ def balayer_calepinage(job_id=None, company_id=None, calepinage_id=None,
 
     job.marquer_progression(5)
     try:
-        resultat = balayer(calepinage, corps,
+        # ACAL835 : un objectif de couverture cherche N sur la série stockée.
+        cherche = balayer_objectif if 'objectif' in (corps or {}) else balayer
+        resultat = cherche(calepinage, corps,
                            progression=job.marquer_progression)
     except BalayageInvalide as refus:
         _publier_echec(job, calepinage, refus.champ or 'balayage', str(refus))

@@ -478,7 +478,7 @@ PRODUCTION_SAISIE = 'saisie'
 MARCHES_CI = ('commercial', 'industriel')
 
 
-def cles_etude_du_layout(mode_installation, resultat):
+def cles_etude_du_layout(mode_installation, resultat, layout=None):
     """CIQ117 — ce que la synchro d'un calepinage écrit dans l'étude.
 
     Résidentiel et agricole : ``production_annuelle`` et
@@ -486,9 +486,16 @@ def cles_etude_du_layout(mode_installation, resultat):
     industriel : RIEN — la production vient de CIQ109 (calepinage retenu lu
     par le moteur C&I) et l'économie du moteur C&I ; l'économie de l'outil de
     toiture n'est jamais imprimée sur un devis MT (C2-VA-01, C2-VB-01).
+
+    ACAL912 — ``layout`` chiffre aussi une surface de pose (pan non ``toit`` à
+    modules > 0) : le ``result`` racine ne décrit que le toit (D-ACAL-5), les
+    trois clés sont rendues à ``None`` (l'appelant les RETIRE) — jamais une
+    production du toit seul à côté d'un kWc toit + surfaces.
     """
     if (mode_installation or '').strip().lower() in MARCHES_CI:
         return {}
+    if _pose_hors_toit(layout):
+        return dict.fromkeys(('production_annuelle', 'production_source', 'economies_annuelles'))
     resultat = resultat or {}
     cles = {}
     if resultat.get('annualKwh') is not None:
@@ -499,6 +506,14 @@ def cles_etude_du_layout(mode_installation, resultat):
     if resultat.get('savings') is not None:
         cles['economies_annuelles'] = int(resultat['savings'])
     return cles
+
+
+def _pose_hors_toit(layout):
+    """ACAL912 — ``layout`` porte-t-il un pan de pose non ``toit`` pavé ?"""
+    if not isinstance(layout, dict):
+        return False
+    from apps.ventes.domain.geometrie import lire_layout
+    return any(p['kind'] != 'toit' and p['modules'] > 0 for p in lire_layout(layout).pans)
 
 
 def entrees_du_moteur(cles=None):

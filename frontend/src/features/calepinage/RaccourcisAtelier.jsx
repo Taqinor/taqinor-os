@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { dialogueParDessus } from '../../providers/focusedRecordShortcuts'
-import { RACCOURCIS, SECTIONS_AIDE, estSaisieEnCours, raccourciDe } from './RaccourcisAtelier.helpers'
+import {
+  RACCOURCIS, REQUETE_SANS_CLAVIER, SECTIONS_AIDE, ecranSansClavier, estSaisieEnCours, raccourciDe,
+} from './RaccourcisAtelier.helpers'
 
 /* ============================================================================
    CAL101 — LES RACCOURCIS DE L'ATELIER, ET LEUR AIDE-MÉMOIRE.
@@ -27,6 +29,16 @@ export const TOUCHE_AIDE = '?'
 export default function RaccourcisAtelier({ actions = {} }) {
   const [aideOuverte, setAideOuverte] = useState(false)
   const racine = useRef(null)
+  // ACAL1027 — sur un appareil sans clavier le bouton n'ouvre rien d'utile : il n'est pas rendu (la touche « ? »
+  // reste écoutée) ; le choix suit le mode (tablette posée sur un clavier) par l'événement `change` de la requête.
+  const [sansClavier, setSansClavier] = useState(() => ecranSansClavier())
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return undefined
+    const requete = window.matchMedia(REQUETE_SANS_CLAVIER)
+    const suivre = () => setSansClavier(ecranSansClavier())
+    requete.addEventListener?.('change', suivre)
+    return () => requete.removeEventListener?.('change', suivre)
+  }, [])
 
   useEffect(() => {
     const surTouche = (evenement) => {
@@ -69,15 +81,17 @@ export default function RaccourcisAtelier({ actions = {} }) {
 
   return (
     <div data-testid="cal-raccourcis" ref={racine}>
-      <button
-        type="button"
-        onClick={() => setAideOuverte((ouverte) => !ouverte)}
-        data-testid="cal-raccourcis-bouton"
-        aria-expanded={aideOuverte}
-        className="text-sm font-semibold text-primary-text underline"
-      >
-        Raccourcis clavier (?)
-      </button>
+      {sansClavier ? null : (
+        <button
+          type="button"
+          onClick={() => setAideOuverte((ouverte) => !ouverte)}
+          data-testid="cal-raccourcis-bouton"
+          aria-expanded={aideOuverte}
+          className="text-sm font-semibold text-primary-text underline"
+        >
+          Raccourcis clavier (?)
+        </button>
+      )}
 
       {aideOuverte && (
         <div

@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import CarteDevisCree from './CarteDevisCree'
+import { libelleEtat } from './electrique/etatVerdict'
 import calepinageApi from '../../api/calepinageApi'
 import { toastWarning } from '../../lib/toast'
 import { reviserEtOuvrir } from '../ventes/reviserDevis'
@@ -43,12 +44,26 @@ import {
    (`refusDevis.js`) : une seule lecture des refus du pont devis. */
 export { MESSAGE_DEROGATION_RESERVEE, MESSAGE_MOTIF_OBLIGATOIRE } from './refusDevis'
 
-/* Le verdict INDÉTERMINÉ d'un succès : les manquantes, sans rien bloquer. */
+/* Le dossier « À compléter » d'un succès : les manquantes, sans rien bloquer.
+   ACAL935 — lit `electrique.etat` (ACAL934) ; un serveur qui ne le sert pas
+   encore garde la lecture `verdict: 'indetermine'`. */
 function manquantesElectriques(data) {
   const electrique = data?.electrique
-  if (!electrique || electrique.verdict !== 'indetermine') return []
+  const aCompleter = electrique?.etat
+    ? electrique.etat === 'a_completer'
+    : electrique?.verdict === 'indetermine'
+  if (!aCompleter) return []
   return (Array.isArray(electrique.manquantes) ? electrique.manquantes : [])
     .filter((m) => typeof m === 'string' && m.trim()).map((m) => m.trim())
+}
+
+/* ACAL935 — le titre du cadre : les mots de `etatVerdict.js`, seule source. */
+function titreEtatElectrique(data, manquantes) {
+  const electrique = data?.electrique
+  const lu = electrique?.etat
+    ? libelleEtat(electrique.etat, electrique.points)
+    : libelleEtat('a_completer', manquantes.length)
+  return lu?.libelle ?? null
 }
 
 /* ACAL95 — CE QUE LA GÉNÉRATION ET LA RESYNCHRO N'ONT PAS PU FAIRE se lit à
@@ -107,6 +122,7 @@ export default function BoutonDevis({
   // ACAL94 — avertissement (jamais un refus) avant une révision.
   const [retouches, setRetouches] = useState(false)
   const gesteEnCours = useRef(false) // ACON46 — garde ré-entrante (voir unSeulGeste)
+  const [decochees, setDecochees] = useState([]) // ACAL968 — clés des surfaces décochées
 
   // L'ÉTAT VIENT DU SERVEUR, et d'UNE SEULE lecture : l'agrégat de détail
   // (CAL17) est chargé par `AtelierPanneaux` et descendu ici en prop. Le
@@ -117,6 +133,19 @@ export default function BoutonDevis({
   if (!detail || (lectureSeule && !(revisionPossible && detail?.devis?.id))) return null
 
   const devisLie = detail.devis ?? null
+  // ACAL915 (D-ACAL-5) — dès deux surfaces posées, ce que le devis additionne, DIT avant le prix ;
+  // ACAL968 (D-ACAL-37) — toit ET champ au sol : une case par surface, toutes cochées à l'ouverture.
+  const surfaces = Array.isArray(detail.surfaces_chiffrables) ? detail.surfaces_chiffrables : []
+  const choixSurfaces = surfaces.some((s) => s.kind === 'toit') && surfaces.some((s) => s.kind !== 'toit')
+  const cochees = surfaces.filter((s) => !(choixSurfaces && decochees.includes(s.cle)))
+  const aucuneCochee = choixSurfaces && cochees.length === 0
+  // Tout coché ⇒ aucun corps (absent = tout, côté serveur) : seule une sélection part.
+  const selection = choixSurfaces && cochees.length < surfaces.length
+    ? { surfaces_chiffrees: cochees.map((s) => s.cle) } : {}
+  const phraseSurfaces = surfaces.length >= 2 && cochees.length > 0
+    ? `Le devis chiffre : ${cochees.map((s) => `${s.libelle} (${s.modules})`).join(' + ')} = ${
+      cochees.reduce((total, s) => total + Number(s.modules || 0), 0)} modules`
+    : null
   const variantes = detail.variantes ?? {}
   const totalVariantes = Number(variantes.total) || 0
   // GARDE DES VARIANTES (CAL38) : quand ce calepinage porte PLUSIEURS options
@@ -125,7 +154,7 @@ export default function BoutonDevis({
   // elle-même que le serveur chiffre (`services/devis.py::_exiger_layout`) —
   // il n'y a alors rien à choisir, et bloquer là ferait un bouton mort.
   const varianteManquante = totalVariantes > 0 && !variantes.retenue_id
-  const desactive = enCours || varianteManquante || !atelierPret
+  const desactive = enCours || varianteManquante || !atelierPret || aucuneCochee
 
   const executer = async (appel) => {
     if (enCours) return
@@ -192,16 +221,18 @@ export default function BoutonDevis({
     if (!(await enregistrerDabord())) return
     if (!corps.derogation_electrique) setBloquage({ geste: 'generer' })
     const res = await executer(
-      () => calepinageApi.calepinages.genererDevis(calepinageId, corps))
+      () => calepinageApi.calepinages.genererDevis(calepinageId, { ...selection, ...corps }))
     const nouveau = res?.data?.devis
     if (!nouveau) return
     setBloquage(null)
     setMotif('')
     // ACAL866 — AVEC ou SANS message : la carte « Devis … créé » (jamais de navigation immédiate),
     // les lignes techniques (ACAL95, ACAL171) repliées dessous ; la référence est celle du serveur.
+    const manquantes = manquantesElectriques(res.data)
     setRetour({
       messages: messagesDuServeur(res.data),
-      manquantes: manquantesElectriques(res.data),
+      manquantes,
+      etatTitre: titreEtatElectrique(res.data, manquantes),
       lignes: null,
       inchange: false,
       devisId: nouveau,
@@ -220,22 +251,23 @@ export default function BoutonDevis({
     if (!(await enregistrerDabord())) return
     if (!corps.derogation_electrique) setBloquage({ geste: 'sync' })
     const res = await executer(
-      () => calepinageApi.calepinages.syncDevis(calepinageId, corps))
+      () => calepinageApi.calepinages.syncDevis(calepinageId, { ...selection, ...corps }))
     if (!res) return
     setBloquage(null)
     setMotif('')
     const data = res?.data ?? {}
     const messages = messagesDuServeur(data)
     const manquantes = manquantesElectriques(data)
+    const etatTitre = titreEtatElectrique(data, manquantes)
     const lignes = libelleLignesAjoutees(data.lignes_ajoutees)
     // ACAL95 — « Aucun changement » se DIT ; rien n'a bougé, rien à recharger.
     if (data.inchange) {
-      setRetour({ messages, manquantes, lignes: null, inchange: true, devisId: null, suite: null })
+      setRetour({ messages, manquantes, etatTitre, lignes: null, inchange: true, devisId: null, suite: null })
       return
     }
     // Quelque chose à lire : le rechargement attend « J'ai lu ».
     if (messages.length > 0 || manquantes.length > 0 || lignes) {
-      setRetour({ messages, manquantes, lignes, inchange: false, devisId: null, suite: 'recharger' })
+      setRetour({ messages, manquantes, etatTitre, lignes, inchange: false, devisId: null, suite: 'recharger' })
       return
     }
     await relireEtRecharger()
@@ -306,6 +338,21 @@ export default function BoutonDevis({
 
   return (
     <div className="space-y-2" data-testid="cal-bouton-devis">
+      {choixSurfaces && (
+        <fieldset>
+          <legend className="text-xs font-semibold text-muted-foreground">Surfaces chiffrées par le devis</legend>
+          {surfaces.map((s) => (
+            <label key={s.cle} className="flex min-h-[44px] items-center gap-2 text-xs text-foreground">
+              <input type="checkbox" className="h-5 w-5" checked={!decochees.includes(s.cle)}
+                onChange={() => setDecochees((d) => (d.includes(s.cle)
+                  ? d.filter((c) => c !== s.cle) : [...d, s.cle]))} />
+              {`${s.libelle} (${s.modules} modules)`}
+            </label>
+          ))}
+          {aucuneCochee && <p className="text-xs text-destructive" role="status">Cochez au moins une surface</p>}
+        </fieldset>
+      )}
+      {phraseSurfaces && <p className="text-xs text-foreground" role="status">{phraseSurfaces}</p>}
       {devisLie ? (
         <button
           type="button"
@@ -432,7 +479,7 @@ export default function BoutonDevis({
             {retour.manquantes?.length > 0 && (
               <div data-testid="cal-devis-indetermine">
                 <p className="text-sm text-foreground" role="status">
-                  Verdict électrique indéterminé — à compléter :
+                  {retour.etatTitre}
                 </p>
                 <ul className="mt-1 space-y-1 text-sm text-primary-text">
                   {retour.manquantes.map((m) => <li key={m}>{m}</li>)}
@@ -458,7 +505,7 @@ export default function BoutonDevis({
           {retour.manquantes?.length > 0 && (
             <div data-testid="cal-devis-indetermine">
               <p className="text-sm text-foreground" role="status">
-                Verdict électrique indéterminé — à compléter :
+                {retour.etatTitre}
               </p>
               <ul className="mt-1 space-y-1 text-sm text-primary-text">
                 {retour.manquantes.map((m) => <li key={m}>{m}</li>)}

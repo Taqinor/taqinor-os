@@ -4,12 +4,20 @@ import { AlertTriangle } from 'lucide-react'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { formatNumber, formatPercent } from '../../../lib/format'
-import { Button, Card, Input, Label, Spinner, Stat } from '../../../ui'
+import { Button, Card, Checkbox, Input, Label, Spinner, Stat } from '../../../ui'
 import { refusParChamp } from '../electrique/entreeElectrique'
 import { BoutonCalculer } from '../production/PanneauProduction'
 import { CHAMPS_BATTERIE, STRATEGIES, corpsDeclaration, depuisEntree } from './PanneauBatterie.helpers'
 import { MotifAbsence } from '../MotifAbsence'
 import SemaineBatterie from './SemaineBatterie'
+import Pourquoi from '../commun/Pourquoi'
+import SecoursBatterie from './SecoursBatterie'
+import ModeExpertBatterie from './ModeExpertBatterie'
+import FaitsBatterie from './FaitsBatterie'
+import SeuilsHorsReseau from './SeuilsHorsReseau'
+import GroupeAppoint, { LectureGroupe } from './GroupeAppoint'
+import { FenetresBatterie, ReglagesPointe } from './FenetresBatterie'
+import useExpertParUrl from '../production/useExpertParUrl'
 
 /* ============================================================================
    CALX14 — LE PANNEAU « BATTERIE », ET CE QUE LA CHAÎNE CALCULE DEVIENT ENFIN
@@ -80,6 +88,8 @@ const pourcent01 = (v) => nonCalculee(v, (x) => formatPercent(x * 100, { decimal
 const pourcentBrut = (v) => nonCalculee(v, (x) => formatPercent(x, { decimals: 1 }))
 const libelleMois = (m) => (m === null || m === undefined ? 'non calculé' : (MOIS[m - 1] || String(m)))
 
+/* ACAL875 — chaque tuile porte son « ? » (`Pourquoi`) ; clé littérale `cle="…"` (garde). */
+
 /* CALX48 — le même bandeau de péremption : `simulation_perimee` (CALX70)
    remplace tous les blocs par `null`, jamais un chiffre trompeur. */
 function BandeauPerime({ motif }) {
@@ -112,12 +122,13 @@ function BandeauNonSimule({ avertissements }) {
 }
 
 
-function DeclarationBatterie({ id, onRelancer }) {
+function DeclarationBatterie({ id, onRelancer, reserve = null, secours = null }) {
   const [entree, setEntree] = useState(null)
   const [etat, setEtat] = useState(null)
   const [erreurs, setErreurs] = useState({})
   const [message, setMessage] = useState(null)
   const [enCours, setEnCours] = useState(false)
+  const expert = useExpertParUrl()
 
   const lire = useCallback(() => Promise.resolve(calepinageApi.calepinages.entreeElectrique(id))
     .then((res) => {
@@ -151,7 +162,7 @@ function DeclarationBatterie({ id, onRelancer }) {
   }
 
   const erreur = (cle) => erreurs[`batterie.${cle}`]
-  const champ = (cle, libelle, valeur, onChange, type = 'text', refus = erreur(cle)) => (
+  const champ = (cle, libelle, valeur, onChange, type = 'text', refus = erreur(cle), grise = false) => (
     <div key={cle} className="flex flex-col gap-1">
       <Label htmlFor={`acal167-${cle}`}>{libelle}</Label>
       <Input
@@ -159,9 +170,11 @@ function DeclarationBatterie({ id, onRelancer }) {
         type={type}
         step={type === 'number' ? 'any' : undefined}
         invalid={Boolean(refus)}
+        disabled={grise}
         value={valeur}
         onChange={(e) => onChange(e.target.value)}
       />
+      {grise ? <p className="text-xs text-muted-foreground">Remplacée par les appareils</p> : null}
       {refus ? <p className="text-xs text-destructive" data-testid={`acal167-erreur-${cle}`}>{refus}</p> : null}
     </div>
   )
@@ -173,7 +186,7 @@ function DeclarationBatterie({ id, onRelancer }) {
         value={valeur}
         onChange={(e) => poser(cle, e.target.value)}
         aria-invalid={refus ? 'true' : undefined}
-        className="w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
+        className="h-[var(--control-h)] min-h-11 w-full rounded-md border border-input bg-card px-2 text-sm text-foreground"
       >
         <option value="">— non choisi —</option>
         {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -199,15 +212,49 @@ function DeclarationBatterie({ id, onRelancer }) {
       <div className="grid gap-3 sm:grid-cols-2">
         {liste('strategie', 'Stratégie', etat.strategie, STRATEGIES.map((v) => [v, libelleStrategie(v)]), erreur('strategie'))}
         {liste('couplage', 'Couplage', etat.couplage, [['ac', 'AC'], ['dc', 'DC']], erreur('couplage'))}
-        {CHAMPS_BATTERIE.map((c) => champ(c.cle, c.libelle, etat[c.cle], (v) => poser(c.cle, v), c.genre === 'nombre' ? 'number' : 'text'))}
+        {CHAMPS_BATTERIE.map((c) => champ(
+          c.cle, c.libelle, etat[c.cle], (v) => poser(c.cle, v), c.genre === 'nombre' ? 'number' : 'text',
+          erreur(c.cle), c.cle === 'reserve_backup_kwh' && etat.appareils.length > 0))}
       </div>
+      {expert && etat.strategie === 'decalage' && (
+        <FenetresBatterie fenetres={etat.fenetres} erreurs={erreurs} onChange={(v) => poser('fenetres', v)} />
+      )}
+      {expert && etat.strategie === 'peak_shaving' && (
+        <ReglagesPointe
+          part={etat.part_effacable_pct}
+          plafond={etat.plafond_effacable_kw}
+          erreurs={erreurs}
+          onPart={(v) => poser('part_effacable_pct', v)}
+          onPlafond={(v) => poser('plafond_effacable_kw', v)}
+        />
+      )}
+      {etat.strategie === 'backup' && (
+        <SecoursBatterie
+          appareils={etat.appareils}
+          duree={etat.duree_secours_h}
+          erreurs={erreurs}
+          reserve={reserve}
+          onAppareils={(v) => poser('appareils', v)}
+          onDuree={(v) => poser('duree_secours_h', v)}
+          expert={expert}
+          coupures={etat.coupures}
+          secours={secours}
+          onCoupures={(v) => poser('coupures', v)}
+        />
+      )}
       <fieldset className="flex flex-col gap-2" data-testid="acal167-hors-reseau">
         <legend className="text-sm font-semibold">Mode hors réseau</legend>
-        <label className="flex items-center gap-2 text-sm" htmlFor="acal167-actif">
-          <input id="acal167-actif" type="checkbox" checked={etat.actif} onChange={(e) => poser('actif', e.target.checked)} />
+        <label className="flex min-h-11 items-center gap-2 text-sm" htmlFor="acal167-actif">
+          <Checkbox id="acal167-actif" checked={etat.actif} onCheckedChange={(v) => poser('actif', v === true)} />
           Le site est hors réseau
         </label>
         {champ('jours', 'Jours d’autonomie', etat.jours, (v) => poser('jours', v), 'number', erreurs['hors_reseau.jours_autonomie'])}
+        {expert && etat.actif && (
+          <SeuilsHorsReseau seuils={etat.seuils} erreurs={erreurs} onChange={(v) => poser('seuils', v)} />
+        )}
+        {expert && etat.actif && (
+          <GroupeAppoint groupe={etat.groupe} erreurs={erreurs} onChange={(v) => poser('groupe', v)} />
+        )}
       </fieldset>
       <div className="flex flex-wrap gap-2">
         <Button type="submit" size="sm" disabled={enCours} data-testid="acal167-enregistrer">Enregistrer</Button>
@@ -247,15 +294,22 @@ function BlocBatterie({ batterie }) {
     )
   }
   const { groupes = [], total } = batterie
+  const v = { batterie }
   return (
     <div className="flex flex-col gap-3" data-testid="calx14-batterie">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" data-testid="calx14-batterie-total">
-        <Stat label="Stratégie retenue" value={libelleStrategie(total?.strategie) || 'non calculée'} />
-        <Stat label="Capacité utile" value={kwh(total?.capacite_utile_kwh)} />
-        <Stat label="Énergie stockée" value={kwh(total?.energie_stockee_kwh)} />
-        <Stat label="Énergie restituée" value={kwh(total?.energie_restituee_kwh)} />
-        <Stat label="Taux d'autonomie" value={pourcent01(total?.taux_autonomie)} />
-        <Stat label="Heures sans import réseau" value={heuresFmt(total?.heures_sans_import)} />
+        <Stat label={<>Stratégie retenue<Pourquoi cle="batterie.strategie" valeurs={v} /></>}
+          value={libelleStrategie(total?.strategie) || 'non calculée'} />
+        <Stat label={<>Capacité utile<Pourquoi cle="batterie.capacite_utile" valeurs={v} /></>}
+          value={kwh(total?.capacite_utile_kwh)} />
+        <Stat label={<>Énergie stockée<Pourquoi cle="batterie.energie_stockee" valeurs={v} /></>}
+          value={kwh(total?.energie_stockee_kwh)} />
+        <Stat label={<>Énergie restituée<Pourquoi cle="batterie.energie_restituee" valeurs={v} /></>}
+          value={kwh(total?.energie_restituee_kwh)} />
+        <Stat label={<>Taux d&apos;autonomie<Pourquoi cle="batterie.taux_autonomie" valeurs={v} /></>}
+          value={pourcent01(total?.taux_autonomie)} />
+        <Stat label={<>Heures sans import réseau<Pourquoi cle="batterie.heures_sans_import" valeurs={v} /></>}
+          value={heuresFmt(total?.heures_sans_import)} />
       </div>
       {total?.definition && (
         <p className="text-xs text-muted-foreground" data-testid="calx14-batterie-definition">
@@ -264,12 +318,18 @@ function BlocBatterie({ batterie }) {
       )}
       {total?.energie && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" data-testid="calx14-batterie-energie">
-          <Stat label="Production" value={kwh(total.energie.production_kwh)} />
-          <Stat label="Consommation" value={kwh(total.energie.consommation_kwh)} />
-          <Stat label="Autoconsommée" value={kwh(total.energie.autoconsomme_kwh)} />
-          <Stat label="Exportée" value={kwh(total.energie.export_kwh)} />
-          <Stat label="Importée du réseau" value={kwh(total.energie.import_reseau_kwh)} />
-          <Stat label="Pertes de la batterie" value={kwh(total.energie.pertes_batterie_kwh)} />
+          <Stat label={<>Production<Pourquoi cle="batterie.production" valeurs={v} /></>}
+            value={kwh(total.energie.production_kwh)} />
+          <Stat label={<>Consommation<Pourquoi cle="batterie.consommation" valeurs={v} /></>}
+            value={kwh(total.energie.consommation_kwh)} />
+          <Stat label={<>Autoconsommée<Pourquoi cle="batterie.autoconsomme" valeurs={v} /></>}
+            value={kwh(total.energie.autoconsomme_kwh)} />
+          <Stat label={<>Exportée<Pourquoi cle="batterie.export" valeurs={v} /></>}
+            value={kwh(total.energie.export_kwh)} />
+          <Stat label={<>Importée du réseau<Pourquoi cle="batterie.import_reseau" valeurs={v} /></>}
+            value={kwh(total.energie.import_reseau_kwh)} />
+          <Stat label={<>Pertes de la batterie<Pourquoi cle="batterie.pertes_batterie" valeurs={v} /></>}
+            value={kwh(total.energie.pertes_batterie_kwh)} />
         </div>
       )}
       {groupes.length > 0 && (
@@ -466,24 +526,34 @@ function BlocHorsReseau({ horsReseau }) {
       />
     )
   }
+  const v = { hors_reseau: horsReseau }
   return (
     <div className="flex flex-col gap-3" data-testid="calx14-hors-reseau">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" data-testid="calx14-hors-reseau-total">
-        <Stat label="Défaillance annuelle" value={kwh(horsReseau.defaillance_kwh)} />
-        <Stat label="Heures défaillantes" value={heuresFmt(horsReseau.heures_defaillantes)} />
-        <Stat label="Taux de défaillance" value={pourcent01(horsReseau.taux_defaillance)} />
-        <Stat label="Pire mois" value={libelleMois(horsReseau.mois_le_plus_defavorable)} />
-        <Stat label="Servi" value={kwh(horsReseau.servi_kwh)} />
-        <Stat label="Surplus perdu" value={kwh(horsReseau.surplus_perdu_kwh)} />
+        <Stat label={<>Défaillance annuelle<Pourquoi cle="hors_reseau.defaillance" valeurs={v} /></>}
+          value={kwh(horsReseau.defaillance_kwh)} />
+        <Stat label={<>Heures défaillantes<Pourquoi cle="hors_reseau.heures_defaillantes" valeurs={v} /></>}
+          value={heuresFmt(horsReseau.heures_defaillantes)} />
+        <Stat label={<>Taux de défaillance<Pourquoi cle="hors_reseau.taux_defaillance" valeurs={v} /></>}
+          value={pourcent01(horsReseau.taux_defaillance)} />
+        <Stat label={<>Pire mois<Pourquoi cle="hors_reseau.pire_mois" valeurs={v} /></>}
+          value={libelleMois(horsReseau.mois_le_plus_defavorable)} />
+        <Stat label={<>Servi<Pourquoi cle="hors_reseau.servi" valeurs={v} /></>}
+          value={kwh(horsReseau.servi_kwh)} />
+        <Stat label={<>Surplus perdu<Pourquoi cle="hors_reseau.surplus_perdu" valeurs={v} /></>}
+          value={kwh(horsReseau.surplus_perdu_kwh)} />
       </div>
       {horsReseau.banque && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" data-testid="calx14-hors-reseau-banque">
-          <Stat label="Capacité utile" value={kwh(horsReseau.banque.capacite_utile_kwh)} />
-          <Stat label="Capacité nominale" value={kwh(horsReseau.banque.capacite_nominale_kwh)} />
-          <Stat label="Jours d'autonomie" value={nonCalculee(horsReseau.banque.jours_autonomie,
-            (x) => `${formatNumber(x, { decimals: 0 })} j`)}
+          <Stat label={<>Capacité utile<Pourquoi cle="hors_reseau.capacite_utile" valeurs={v} /></>}
+            value={kwh(horsReseau.banque.capacite_utile_kwh)} />
+          <Stat label={<>Capacité nominale<Pourquoi cle="hors_reseau.capacite_nominale" valeurs={v} /></>}
+            value={kwh(horsReseau.banque.capacite_nominale_kwh)} />
+          <Stat label={<>Jours d&apos;autonomie<Pourquoi cle="hors_reseau.jours_autonomie" valeurs={v} /></>}
+            value={nonCalculee(horsReseau.banque.jours_autonomie, (x) => `${formatNumber(x, { decimals: 0 })} j`)}
           />
-          <Stat label="Profondeur de décharge (fiche)" value={pourcentBrut(horsReseau.banque.dod_pct)} />
+          <Stat label={<>Profondeur de décharge (fiche)<Pourquoi cle="hors_reseau.dod" valeurs={v} /></>}
+            value={pourcentBrut(horsReseau.banque.dod_pct)} />
         </div>
       )}
       {horsReseau.quantiles_publiables === false && horsReseau.motif_quantiles && (
@@ -492,6 +562,7 @@ function BlocHorsReseau({ horsReseau }) {
         </p>
       )}
       <TableauParMois parMois={horsReseau.par_mois} />
+      <LectureGroupe horsReseau={horsReseau} nomMois={libelleMois} />
       {horsReseau.mentions?.length > 0 && (
         <ul className="list-disc pl-5 text-xs text-muted-foreground" data-testid="calx14-hors-reseau-mentions">
           {horsReseau.mentions.map((m) => <li key={m}>{m}</li>)}
@@ -526,11 +597,18 @@ export default function PanneauBatterie({ calepinageId, intervalleMs = 2000 }) {
       {perime
         ? <BandeauPerime motif={data?.motif} />
         : (!data?.simule && <BandeauNonSimule avertissements={data?.avertissements} />)}
-      <DeclarationBatterie id={id} onRelancer={() => setRelance((n) => n + 1)} />
+      <DeclarationBatterie
+        id={id}
+        onRelancer={() => setRelance((n) => n + 1)}
+        reserve={!perime && data?.simule ? data?.batterie?.total?.reserve_secours : null}
+        secours={!perime && data?.simule ? data?.batterie?.total?.secours : null}
+      />
       <BoutonCalculer calepinageId={id} data={data} onTermine={refetch} declenchement={relance} intervalleMs={intervalleMs} />
       {!perime && data?.simule && (
         <>
+          <FaitsBatterie batterie={data?.batterie} />
           <BlocBatterie batterie={data?.batterie} />
+          <ModeExpertBatterie batterie={data?.batterie} />
           <ComparateurCapacites bloc={data?.batterie?.capacites_candidates} />
           {data?.batterie?.total && <SemaineBatterie calepinageId={id} />}
           <div className="border-t border-border/60 pt-3">

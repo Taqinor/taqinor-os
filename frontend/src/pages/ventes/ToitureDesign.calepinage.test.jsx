@@ -78,6 +78,8 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
       // et l'atelier se comporte alors exactement comme en mode devis.
       cibleVendue: true,
       fullName: CTX.calepinage.titre,
+      // ACAL777 — la facture mensuelle du lead servie (ACAL776), repli d'affichage des cartes.
+      factureMensuelleMad: CTX.consommation_lead.facture_mensuelle_mad,
     })
 
     expect(await screen.findByRole('heading', { level: 1 }))
@@ -890,5 +892,102 @@ describe('ACAL546 — « Comparer les poses » monté en mode calepinage, sans m
     expect(bloc.querySelector('#rp9-matrix-filter')).not.toBeNull()
     expect(bloc.textContent).not.toMatch(/MAD|Économies/)
     expect(bloc.querySelectorAll('thead th')).toHaveLength(5)
+  })
+})
+
+describe('ACAL868 — le bouton de l’étape suivante dans la barre fixe', () => {
+  const clef = 'calepinage.mode_expert.anonyme'
+  afterEach(() => { try { window.localStorage.removeItem(clef) } catch { /* ignoré */ } })
+
+  it('guidé : la barre porte « Poser les panneaux » ; le clic ouvre l’étape Panneaux, puis « Raccorder les panneaux »', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    rendreCalepinage(CTX.calepinage.id)
+    const bouton = await screen.findByTestId('cal-action-etape-suivante')
+    expect(bouton).toHaveTextContent('Poser les panneaux')
+    expect(bouton.closest('[data-testid="cal-enregistrer-calepinage"]')).not.toBeNull()
+    await userEvent.click(bouton)
+    await waitFor(() => expect(screen.getByTestId('cal-action-etape-suivante')).toHaveTextContent('Raccorder les panneaux'))
+  })
+
+  it('mode expert : la barre garde le seul enregistrement', async () => {
+    window.localStorage.setItem(clef, '1')
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    rendreCalepinage(CTX.calepinage.id)
+    await screen.findByRole('button', { name: /Enregistrer le calepinage/ })
+    expect(screen.queryByTestId('cal-action-etape-suivante')).toBeNull()
+  })
+})
+
+describe('ACAL869 — le panneau « Personnaliser la disposition » en mode guidé', () => {
+  const clef = 'calepinage.mode_expert.anonyme'
+  afterEach(() => { try { window.localStorage.removeItem(clef) } catch { /* ignoré */ } })
+  // ACAL876 — les « ? » d'explication (`commun/Pourquoi`, `data-grandeur`) posés sur les compteurs de pose ne sont
+  // pas des gestes de disposition : ils sont hors du compte.
+  const boutonsDeBase = () => [...document.querySelectorAll('#rp9-layout-panel button:not([data-grandeur])')]
+    .filter((b) => !b.closest('#rp9-layout-avance'))
+
+  it('guidé : 5 boutons visibles hors du volet, les autres rangés dans « Réglages avancés » replié', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    rendreCalepinage(CTX.calepinage.id)
+    await screen.findByRole('button', { name: /Enregistrer le calepinage/ })
+    expect(boutonsDeBase().map((b) => b.id).sort()).toEqual(
+      ['rp9-layout-clear-sel', 'rp9-layout-fill', 'rp9-layout-redo', 'rp9-layout-select', 'rp9-layout-undo'])
+    const volet = document.getElementById('rp9-layout-avance')
+    expect(volet.open).toBe(false)
+    expect(volet.querySelector('summary')).toHaveTextContent('Réglages avancés')
+    // aucun id rp9-* retiré : les autres boutons restent dans le DOM, repliés (8 + « Ajouter un panneau » du placement libre, caché).
+    expect(volet.querySelectorAll('button')).toHaveLength(9)
+  })
+
+  it('mode expert : le volet est ouvert d’office', async () => {
+    window.localStorage.setItem(clef, '1')
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    rendreCalepinage(CTX.calepinage.id)
+    await screen.findByRole('button', { name: /Enregistrer le calepinage/ })
+    await waitFor(() => expect(document.getElementById('rp9-layout-avance').open).toBe(true))
+  })
+})
+
+describe('ACAL945 — enregistrer hors ligne sans mentir', () => {
+  const amorcer = () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.envoyerImage.mockResolvedValue({ data: {} })
+  }
+
+  it('réseau coupé : « Pas de réseau — enregistré sur ce téléphone », jamais « erreur 0 » ; `online` ⇒ UN seul second appel, même empreinte', async () => {
+    amorcer()
+    const enregistrer = calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel
+    enregistrer.mockRejectedValueOnce({ code: 'ERR_NETWORK', message: 'Network Error' })
+    enregistrer.mockResolvedValue({ data: { inchange: false, version: 6, empreinte_document: 'E9' } })
+    rendreCalepinage(CTX.calepinage.id)
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
+
+    expect(await screen.findByText(/Pas de réseau — enregistré sur ce téléphone, envoi automatique au retour du réseau\./)).toBeInTheDocument()
+    expect(screen.queryByText(/erreur 0/)).toBeNull()
+    expect(enregistrer).toHaveBeenCalledTimes(1)
+
+    window.dispatchEvent(new Event('online'))
+    await waitFor(() => expect(enregistrer).toHaveBeenCalledTimes(2))
+    expect(enregistrer.mock.calls[1]).toEqual(enregistrer.mock.calls[0]) // même document, même empreinte
+    window.dispatchEvent(new Event('online'))
+    await waitFor(() => expect(screen.getByText(/enregistrée au retour du réseau/)).toBeInTheDocument())
+    expect(enregistrer).toHaveBeenCalledTimes(2) // rejoué UNE fois
+  })
+
+  it('délai dépassé (ECONNABORTED) : rien n’est rejoué, la phrase dit que le serveur n’a pas répondu', async () => {
+    amorcer()
+    const enregistrer = calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel
+    enregistrer.mockRejectedValue({ code: 'ECONNABORTED', message: 'timeout' })
+    rendreCalepinage(CTX.calepinage.id)
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
+
+    expect(await screen.findByText(/Le serveur n’a pas répondu/)).toBeInTheDocument()
+    window.dispatchEvent(new Event('online'))
+    expect(enregistrer).toHaveBeenCalledTimes(1)
   })
 })

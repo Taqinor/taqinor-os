@@ -43,6 +43,7 @@ DOCUMENT = {
          'p_w': None, 'gi_w_m2': None, 't2m_c': 18.9},
     ],
     'shading12x24': [[1.0] * 24 for _ in range(12)],
+    'acces_modules': {'PAN-1#1': 0.9, 'PAN-1#2': None},
 }
 
 
@@ -115,6 +116,50 @@ class ExportMensuelEtOmbrageTest(unittest.TestCase):
         corps = [ligne for ligne in corps if ligne]
         self.assertEqual(len(corps), 12)
         self.assertTrue(all(len(ligne) == 25 for ligne in corps))
+
+
+class OmbrageModulesTest(unittest.TestCase):
+    """ACAL754 — une ligne par module, l'accès solaire annuel du document."""
+
+    @staticmethod
+    def _layout():
+        def pan(identifiant, valeurs):
+            return {'id': identifiant, 'geometry': {
+                'solarAccess': {'values': valeurs}}}
+        return {'zones': [pan('P1', [0.5, 0.25, 1.0]),
+                          pan('P2', [0.75, None])]}
+
+    def _document(self):
+        from apps.calepinage.services.ombrage_chaines import (
+            acces_des_modules,
+        )
+        return {**DOCUMENT, 'acces_modules': acces_des_modules(self._layout())}
+
+    def test_cinq_lignes_dans_l_ordre_des_pans_valeurs_du_document(self):
+        table = lignes(export_csv(self._document(), quoi='ombrage_modules'))
+        entete = table.index(['module', 'acces_solaire'])
+        corps = [ligne for ligne in table[entete + 1:] if ligne]
+        # Valeurs écrites ICI à partir du document d'essai, pas de la sortie.
+        self.assertEqual(corps, [
+            ['P1#1', '0,500'], ['P1#2', '0,250'], ['P1#3', '1,000'],
+            ['P2#1', '0,750'], ['P2#2', ''],
+        ])
+
+    def test_la_resolution_annuelle_est_dite_dans_l_entete(self):
+        texte = export_csv(self._document(), quoi='ombrage_modules')
+        self.assertIn('Résolution', texte)
+        self.assertIn("le mois et l'heure par module ne sont pas calculés",
+                      texte)
+        self.assertIn('Provenance', texte)
+
+    def test_sans_acces_par_module_refus_nomme_acces_modules(self):
+        for vide in ({}, None):
+            with self.assertRaises(ExportImpossible) as capture:
+                export_csv({**DOCUMENT, 'acces_modules': vide},
+                           quoi='ombrage_modules')
+            self.assertEqual(capture.exception.champ, 'acces_modules')
+            self.assertIn("Aucun accès solaire par module",
+                          capture.exception.motif)
 
 
 class RefusMotiveTest(unittest.TestCase):

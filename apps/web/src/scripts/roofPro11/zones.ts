@@ -33,10 +33,13 @@ import { computePanStats, computeSiteStats, hasMultipleBuildings, htmlTableSite,
 // CHAQUE pan. `moduleSelect.ts` est PUR (aucun DOM) : c'est ici, dans le panneau du pan, que
 // le choix devient visible, et c'est de là qu'il repart vers le pavage et le document.
 import {
+  MENTION_MODULE_DE_DEPART,
   MODULE_PAR_DEFAUT_ATELIER,
   cotesDeModule,
   estRefus,
+  kwcDuPan,
   lireModulesDisponibles,
+  moduleDeDepart,
   resoudreModuleDuPan,
   type CatalogueModules,
   type ModuleDisponible,
@@ -257,6 +260,7 @@ export function idPanEnDouble(zones: readonly { id: string }[]): string | null {
 export function panVierge(
   existants: readonly { id: string }[],
   vertices: AreaRecord['vertices'] = [],
+  moduleDepart: ModuleDocument | null = null, // ACAL913 — absent : aucun `moduleId` (720 Wc NOMMÉ)
 ): AreaRecord {
   const id = prochainId('area', existants);
   return {
@@ -272,6 +276,7 @@ export function panVierge(
     neededAuto: true,
     result: null,
     renderPlan: null,
+    ...(moduleDepart ? { moduleId: moduleDepart.id } : {}),
   };
 }
 
@@ -366,6 +371,8 @@ export interface ZonesDeps {
   selectArea?: (id: string) => void;
   /** ACAL728 — accès solaire moyen (0..1) du calcul VIVANT du pan actif ; absent, l'enregistré sert. */
   accesVivant?: () => number | null;
+  /** ACAL853 — le kWh PEINT sur la carte Recommandation (par panneau) ; absent ou `null` (carte pas encore peinte), le calcul du solveur sert. */
+  etatCarte?: () => { kwhParPanneau: number } | null;
 }
 
 /** CAL84 — libellé d'un bâtiment (repli « Bâtiment sans id » pour un groupe sans
@@ -404,7 +411,10 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     // plafonnées à la facture (1 ⇒ chiffres du solveur inchangés).
     const f = facteurDerateAnnuel(ctx);
     const eco = f < 1 ? annualSavingsMad(w.annualKwh * f, res.target) : { low: w.savingsLow, high: w.savingsHigh };
-    return { panels: w.placedCount, kwc: w.kwc, annualKwh: w.annualKwh * f, savingsLow: eco.low, savingsHigh: eco.high };
+    // ACAL853 — le Total reprend le kWh peint sur la carte (un seul nombre à l'écran) ; sinon le calcul d'avant.
+    const carte = deps.etatCarte?.();
+    const annualKwh = carte ? carte.kwhParPanneau * w.placedCount : w.annualKwh * f;
+    return { panels: w.placedCount, kwc: w.kwc, annualKwh, savingsLow: eco.low, savingsHigh: eco.high };
   }
 
   /** Écrit l'instantané du résultat vivant dans l'enregistrement de la zone active. */
@@ -461,12 +471,20 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     // économie plafonnée à partir du kWh produit total.
     const targetAnnualKwh = ctx.roofType === 'pitched' ? ctx.pitchedRec?.targetAnnualKwh : ctx.rec?.targetAnnualKwh;
     const total = aggregateAreas(results, targetAnnualKwh, annualSavingsMad);
-    if (areasTotalPanelsEl) areasTotalPanelsEl.textContent = `${fmt(total.panels)} × 720 W`;
-    // W97 §2 — 2 décimales, pas 1 : kwc = panneaux × 0,72 tient toujours en 2
-    // décimales exactes, donc le total agrégé et chaque carte de zone (rp9-reco-kwc,
-    // même règle) affichent leur valeur RÉELLE sans arrondi indépendant — la somme
-    // des zones affichées == le total affiché, par construction (cf. optimizer.ts).
-    if (areasTotalKwcEl) areasTotalKwcEl.textContent = `${total.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} kWc`;
+    // ACAL851 — le module CHOISI de chaque pan (le kWc de zone du solveur pour un pan sans choix).
+    const poses = areas.map((a, i) => {
+      const m = a.moduleId ? resoudreModuleDuPan(catalogueAtelier.choisissables, a.moduleId) : null;
+      const module = m && !estRefus(m) ? m : null;
+      const r = results[i];
+      return { r, module, kwc: r && module ? kwcDuPan(r.panels, module) : r?.kwc ?? 0 };
+    }).filter((p) => p.r != null && p.r.panels > 0);
+    const watts = new Set(poses.map((p) => (p.module ?? MODULE_PAR_DEFAUT_ATELIER).pmaxWc));
+    const watt = watts.size > 1 ? null : watts.size ? [...watts][0] : MODULE_PAR_DEFAUT_ATELIER.pmaxWc;
+    if (areasTotalPanelsEl) areasTotalPanelsEl.textContent = watt ? `${fmt(total.panels)} × ${fmt(watt)} W` : `${fmt(total.panels)} panneaux`;
+    // W97 §2 — 2 décimales : la somme des zones affichées == le total affiché (cf. optimizer.ts).
+    const kwcTotal = poses.some((p) => p.module) ? (poses.some((p) => p.kwc == null) ? null
+      : poses.reduce((s, p) => s + (p.kwc as number), 0)) : total.kwc;
+    if (areasTotalKwcEl) areasTotalKwcEl.textContent = kwcTotal == null ? '—' : `${kwcTotal.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} kWc`;
     if (areasTotalProdEl) areasTotalProdEl.textContent = total.annualKwh > 0 ? `${fmt(Math.round(total.annualKwh))} kWh/an` : '—';
     if (areasTotalSavingsEl) areasTotalSavingsEl.textContent = total.savingsHigh > 0 ? `${fmtMad(total.savingsLow)} – ${fmtMad(total.savingsHigh)}/an` : '—';
 
@@ -566,7 +584,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     const rows = pans
       .map(
         (p) => `<tr data-pan-stat="${esc(p.id)}">
-          <td class="px-2 py-1 text-white">${esc(p.label || p.id)}</td>
+          <td class="px-2 py-1 text-white">${esc(p.label || p.id)}${etiquettePanExistant(ctx.areas.find((a) => a.id === p.id))}</td>
           ${multiBuilding ? `<td class="px-2 py-1 text-lune-faint">${esc(buildingLabel(p.buildingId))}</td>` : ''}
           <td class="px-2 py-1 text-right">${p.panels ? fmt(p.panels) : `0 <span class="text-lune-faint">(${esc(p.zeroReason)})</span>`}</td>
           <td class="px-2 py-1 text-right">${p.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}</td>
@@ -1002,6 +1020,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
   const moduleSelectEl = document.getElementById('rp9-pan-module-select') as HTMLSelectElement | null;
   const moduleMentionEl = document.getElementById('rp9-pan-module-mention');
   const moduleErreurEl = document.getElementById('rp9-pan-module-erreur');
+  const panConfirmes = new Set<string>(); // ACAL913 — pans dont le module a été CHOISI ici
 
   /** Affiche (ou efface) un refus NOMMÉ, à côté du sélecteur ET dans le bandeau de statut. */
   function direRefusModule(motif: string | null) {
@@ -1046,7 +1065,11 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
         );
       }
     }
-    if (moduleMentionEl) {
+    // ACAL913 — un module posé d'office (premier du catalogue) reste « à confirmer ».
+    const depart = !panConfirmes.has(a.id) ? moduleDeDepart(catalogueAtelier) : null;
+    if (moduleMentionEl && depart && a.moduleId === depart.id) {
+      moduleMentionEl.textContent = `${depart.libelle} — ${MENTION_MODULE_DE_DEPART}`;
+    } else if (moduleMentionEl) {
       const aucunChoix = !ctx.areas.some((z) => z.moduleId);
       moduleMentionEl.textContent = aucunChoix
         ? `${MODULE_PAR_DEFAUT_ATELIER.libelle} — ${
@@ -1101,6 +1124,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     }
     ctx.pushWorkshopHistory?.(); // CAL100 — annulable comme le reste de l'atelier
     a.moduleId = module.id;
+    panConfirmes.add(a.id); // ACAL913 — choisi : plus « de départ »
     direRefusModule(null);
     deps.recalc?.(); // le pavage repart avec les VRAIES cotes de ce module
     renderAreasPanel();
@@ -1684,4 +1708,10 @@ export function modulesSurAllee(
     return false;
   };
   return (modules ?? []).filter((m) => touche(m.empriseM ?? [])).map((m) => m.repere);
+}
+
+/** ACAL511 — l'étiquette d'un pan « déjà en place » dans la liste des pans (HTML), vide pour un pan à poser. */
+export function etiquettePanExistant(pan: { existant?: boolean; anneeMiseEnService?: number | null } | undefined): string {
+  if (!pan?.existant) return '';
+  return ` <span class="text-lune-faint" data-pan-existant>· Existant ${pan.anneeMiseEnService ?? '(année non saisie)'}</span>`;
 }

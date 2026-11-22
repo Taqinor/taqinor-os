@@ -26,8 +26,9 @@ const RESULTAT_VIDE = exempleContrat('calepinage', 'calepinage_pompage',
   'exemple_vide')
 
 const pompage = vi.fn()
+const explications = vi.fn()
 vi.mock('../../../api/calepinageApi', () => ({
-  default: { calepinages: { pompage: (...a) => pompage(...a) } },
+  default: { calepinages: { pompage: (...a) => pompage(...a), explications: (...a) => explications(...a) } },
 }))
 
 const { default: PompagePanel } = await import('./PompagePanel')
@@ -42,9 +43,9 @@ beforeEach(() => { vi.clearAllMocks() })
 afterEach(() => { cleanup() })
 
 describe('CAL159 — la saisie du puits, du besoin et du réservoir', () => {
-  it('monte les trois groupes de champs, tous libres de saisie', () => {
+  it('monte les groupes de champs (puits, niveau d’eau, besoin, réservoir), tous libres de saisie', () => {
     rendre()
-    for (const groupe of ['puits', 'besoin', 'reservoir']) {
+    for (const groupe of ['puits', 'niveau_eau', 'besoin', 'reservoir', 'champ_solaire']) {
       expect(screen.getByTestId(`cal-pompage-groupe-${groupe}`)).toBeInTheDocument()
     }
     // Règle fondateur : l'écran ne refuse ni n'arrondit jamais une frappe.
@@ -176,6 +177,255 @@ describe('CAL159 — l’écran est ATTEIGNABLE', () => {
   })
 })
 
+describe('ACAL807 — le niveau d’eau, le réservoir jour par jour, les alertes sous leur champ', () => {
+  it('le groupe « Le niveau d’eau » porte ses cinq champs et les 12 pastilles de mois', () => {
+    pompage.mockResolvedValue({ data: RESULTAT })
+    rendre()
+    const groupe = screen.getByTestId('cal-pompage-groupe-niveau_eau')
+    for (const cle of ['niveau_statique_ete_m', 'niveau_statique_hiver_m', 'profondeur_calage_m',
+      'diametre_tubage_mm', 'debit_exploitation_m3h']) {
+      expect(groupe).toContainElement(screen.getByTestId(`cal-pompage-champ-${cle}`))
+    }
+    for (let m = 1; m <= 12; m += 1) {
+      expect(groupe).toContainElement(screen.getByTestId(`cal-pompage-mois-bas-${m}`))
+    }
+    fireEvent.click(screen.getByTestId('cal-pompage-mois-bas-7'))
+    fireEvent.click(screen.getByTestId('cal-pompage-mois-bas-8'))
+    expect(screen.getByTestId('cal-pompage-mois-bas-7')).toHaveAttribute('aria-pressed', 'true')
+    calculer()
+    expect(pompage.mock.calls[0][1]).toEqual({ mois_niveau_bas: [7, 8] })
+  })
+
+  it('la carte « Réservoir jour par jour » se lit sur l’exemple du contrat', async () => {
+    pompage.mockResolvedValue({ data: RESULTAT })
+    rendre()
+    calculer()
+    const bilan = RESULTAT.bilan_reservoir
+    const carte = await screen.findByTestId('cal-pompage-bilan')
+    expect(carte).toHaveTextContent(`Jours où l'eau manque : ${bilan.jours_manque} sur 365`)
+    expect(carte).toHaveTextContent(
+      `Jours où le réservoir est plein (la pompe s'arrête) : ${bilan.jours_plein}`)
+    expect(carte).toHaveTextContent(`Besoin couvert : ${bilan.besoin_couvert_pct} %`)
+    expect(carte).toHaveTextContent(bilan.mention)
+    expect(carte.querySelectorAll('[data-mois-manque]')).toHaveLength(12)
+    expect(screen.queryByTestId('cal-pompage-bilan-motif')).toBeNull()
+  })
+
+  it('chaque alerte apparaît SOUS son champ : une phrase simple puis le texte du serveur', async () => {
+    pompage.mockResolvedValue({ data: RESULTAT })
+    rendre()
+    calculer()
+    const alerte = await screen.findByTestId('cal-pompage-alerte-immersion_minimale')
+    expect(screen.getByTestId('cal-pompage-champ-profondeur_calage_m')).toContainElement(alerte)
+    expect(alerte).toHaveTextContent('La pompe risque de tourner à sec')
+    expect(alerte).toHaveTextContent(RESULTAT.alertes[0].message)
+    const forage = screen.getByTestId('cal-pompage-alerte-plafond_forage')
+    expect(screen.getByTestId('cal-pompage-champ-debit_exploitation_m3h')).toContainElement(forage)
+    expect(forage).toHaveTextContent('Le forage ne donne pas assez d\'eau pour ce besoin')
+  })
+
+  it('sans réservoir, la carte dit pourquoi elle est absente', async () => {
+    pompage.mockResolvedValue({ data: RESULTAT_VIDE })
+    rendre()
+    calculer()
+    expect(await screen.findByTestId('cal-pompage-bilan-motif')).toHaveTextContent(
+      `Bilan du réservoir non calculé : ${RESULTAT_VIDE.bilan_reservoir.motif}`)
+    expect(screen.queryByTestId('cal-pompage-bilan')).toBeNull()
+  })
+})
+
+describe('ACAL811 — le verdict des modules en série contre la fenêtre du variateur', () => {
+  const CHAINES = RESULTAT.chaines_variateur
+  const avecChaines = (surcharge) => ({
+    ...RESULTAT, chaines_variateur: { ...CHAINES, ...surcharge },
+  })
+
+  it('le groupe « Le champ solaire » propose série et parallèles, et les modules posés', async () => {
+    pompage.mockResolvedValue({ data: RESULTAT })
+    rendre()
+    const groupe = screen.getByTestId('cal-pompage-groupe-champ_solaire')
+    for (const cle of ['modules_en_serie', 'chaines_paralleles']) {
+      expect(groupe).toContainElement(screen.getByTestId(`cal-pompage-champ-${cle}`))
+    }
+    calculer()
+    await screen.findByTestId('cal-pompage-chaines')
+    expect(groupe).toHaveTextContent(`Modules posés : ${CHAINES.modules_poses}`)
+  })
+
+  it('conforme : icône ET mot, Voc à froid, fenêtre et température du site', async () => {
+    pompage.mockResolvedValue({ data: RESULTAT })
+    rendre()
+    calculer()
+    const ligne = await screen.findByTestId('cal-pompage-chaines')
+    expect(ligne).toHaveTextContent('✔ Conforme')
+    expect(ligne).toHaveTextContent(`${CHAINES.serie} modules en série : Voc à froid ${CHAINES.voc_froid_v} V`)
+    expect(ligne).toHaveTextContent(
+      `le variateur accepte ${CHAINES.fenetre.longueur_min} à ${CHAINES.fenetre.longueur_max} modules`)
+    expect(ligne).toHaveTextContent(CHAINES.temperatures.source)
+  })
+
+  it('21 modules : « Hors fenêtre » en rouge, en mots simples, avec la longueur maximale', async () => {
+    pompage.mockResolvedValue({ data: avecChaines({
+      verdict: 'hors_fenetre', serie: 21, voc_froid_v: 1097,
+      motif: 'trop longue : Voc à froid 1 097 V au-dessus des 1 000 V du variateur' }) })
+    rendre()
+    calculer()
+    const ligne = await screen.findByTestId('cal-pompage-chaines')
+    expect(ligne).toHaveTextContent('✖ Hors fenêtre')
+    expect(ligne).not.toHaveTextContent('Conforme')
+    expect(ligne.className).toMatch(/red/)
+    expect(ligne).toHaveTextContent('Trop de modules en série : la tension à froid dépasse ce que le variateur accepte')
+    expect(ligne).toHaveTextContent(`21 modules en série`)
+    expect(ligne).toHaveTextContent(`à ${CHAINES.fenetre.longueur_max} modules`)
+  })
+
+  it('non vérifiable : « À vérifier », jamais vert, et le champ à saisir est nommé sous lui', async () => {
+    pompage.mockResolvedValue({ data: RESULTAT_VIDE })
+    rendre()
+    calculer()
+    const ligne = await screen.findByTestId('cal-pompage-chaines')
+    expect(ligne).toHaveTextContent('⚠ À vérifier')
+    expect(ligne).not.toHaveTextContent('Conforme')
+    const sousChamp = screen.getByTestId('cal-pompage-alerte-chaine_a_saisir')
+    expect(screen.getByTestId('cal-pompage-champ-modules_en_serie')).toContainElement(sousChamp)
+    expect(sousChamp).toHaveTextContent(RESULTAT_VIDE.chaines_variateur.motif)
+  })
+})
+
+describe('ACAL815 — « Pompage direct » contre « Avec le réservoir »', () => {
+  it('les deux cartes se lisent sur l’exemple du contrat : 6,0 m³/h contre 2,4 m³/h', async () => {
+    pompage.mockResolvedValue({ data: RESULTAT })
+    rendre()
+    calculer()
+    const bloc = await screen.findByTestId('cal-pompage-comparaison')
+    const [direct, avec] = bloc.querySelectorAll('[data-option]')
+    expect(direct).toHaveAttribute('data-option', 'direct')
+    expect(direct).toHaveTextContent('Pompage direct')
+    expect(direct).toHaveTextContent('Débit de conception : 6,0 m³/h')
+    expect(direct).toHaveTextContent('Mois critique : Jan')
+    expect(avec).toHaveAttribute('data-option', 'avec_reservoir')
+    expect(avec).toHaveTextContent('Avec le réservoir')
+    expect(avec).toHaveTextContent('Débit de conception : 2,4 m³/h')
+    expect(avec).toHaveTextContent('Mois critique : Déc')
+    expect(avec).toHaveTextContent('Jours où l\'eau manque : 0')
+  })
+
+  it('sans heures de demande, la carte « direct » dit quel champ remplir', async () => {
+    const comparaison = { ...RESULTAT.comparaison_reservoir, direct: null,
+      motif: 'fenêtre de demande non saisie' }
+    pompage.mockResolvedValue({ data: { ...RESULTAT, comparaison_reservoir: comparaison } })
+    rendre()
+    calculer()
+    const bloc = await screen.findByTestId('cal-pompage-comparaison')
+    const direct = bloc.querySelector('[data-option="direct"]')
+    expect(direct).toHaveTextContent('fenêtre de demande non saisie')
+    expect(direct).toHaveTextContent('Heures par jour où l’on tire l’eau')
+    expect(direct).not.toHaveTextContent('Débit de conception')
+    expect(screen.getByLabelText(/Heures par jour où l’on tire l’eau/)).toHaveAttribute('step', 'any')
+  })
+})
+
+describe('ACAL821 — plusieurs pompes sur le même variateur', () => {
+  const POMPES = RESULTAT.pompes_variateur
+  const avecPompes = (surcharge) => ({ ...RESULTAT, pompes_variateur: { ...POMPES, ...surcharge } })
+
+  it('saisie : ajouter, retirer, choisir le mode ; un kW vide n’est jamais envoyé', () => {
+    pompage.mockResolvedValue({ data: RESULTAT })
+    rendre()
+    const ajouter = screen.getByRole('button', { name: 'Ajouter une pompe' })
+    fireEvent.click(ajouter)
+    fireEvent.click(ajouter)
+    fireEvent.click(ajouter)
+    fireEvent.change(screen.getByLabelText('Nom de la pompe 1'), { target: { value: 'Secteur A' } })
+    fireEvent.change(screen.getByLabelText('kW de plaque de la pompe 1'), { target: { value: '1.1' } })
+    fireEvent.change(screen.getByLabelText('kW de plaque de la pompe 2'), { target: { value: '1.1' } })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Retirer' })[2])
+    expect(screen.queryByLabelText('kW de plaque de la pompe 3')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'À tour de rôle' }))
+    calculer()
+    expect(pompage.mock.calls[0][1]).toEqual({
+      pompes_variateur: [{ nom: 'Secteur A', kw: '1.1' }, { kw: '1.1' }],
+      mode_pompes: 'a_tour_de_role',
+    })
+  })
+
+  it('conforme : « 4,4 kW demandés sur 5,5 kW : conforme »', async () => {
+    pompage.mockResolvedValue({ data: RESULTAT })
+    rendre()
+    calculer()
+    expect(await screen.findByTestId('cal-pompage-pompes'))
+      .toHaveTextContent('4,4 kW demandés sur 5,5 kW : conforme')
+  })
+
+  it('dépasse : « 6,6 kW demandés sur 5,5 kW : le variateur est trop petit »', async () => {
+    pompage.mockResolvedValue({ data: avecPompes({ verdict: 'depasse', kw_demande: 6.6, reserve_kw: -1.1,
+      motif: '6.6 kW de pompes au-dessus des 5.5 kW du variateur' }) })
+    rendre()
+    calculer()
+    const ligne = await screen.findByTestId('cal-pompage-pompes')
+    expect(ligne).toHaveTextContent('6,6 kW demandés sur 5,5 kW : le variateur est trop petit')
+    expect(ligne).not.toHaveTextContent(': conforme')
+  })
+
+  it('non vérifiable : « À vérifier » ; sans liste, la ligne est absente', async () => {
+    pompage.mockResolvedValue({ data: avecPompes({ verdict: 'non_verifiable', kw_demande: null,
+      kw_variateur: null, reserve_kw: null, motif: 'mode de marche non saisi (ensemble ou à tour de rôle)' }) })
+    rendre()
+    calculer()
+    const ligne = await screen.findByTestId('cal-pompage-pompes')
+    expect(ligne).toHaveTextContent('À vérifier : kW de plaque ou mode non saisi')
+    expect(ligne).toHaveTextContent('mode de marche non saisi')
+    cleanup()
+    pompage.mockResolvedValue({ data: RESULTAT_VIDE })
+    rendre()
+    calculer()
+    await screen.findByTestId('cal-pompage-hmt')
+    expect(screen.queryByTestId('cal-pompage-pompes')).toBeNull()
+  })
+})
+
+describe('ACAL820 — appoint réseau ou groupe sur le bus DC du variateur', () => {
+  const APPOINT = RESULTAT.appoint_variateur
+  const avecAppoint = (surcharge) => ({ ...RESULTAT, appoint_variateur: { ...APPOINT, ...surcharge } })
+
+  it('le choix « Réseau » part dans le corps ; « Pas d’appoint » ne l’envoie pas', () => {
+    pompage.mockResolvedValue({ data: RESULTAT })
+    rendre()
+    fireEvent.click(screen.getByRole('button', { name: 'Réseau' }))
+    calculer()
+    expect(pompage.mock.calls[0][1]).toEqual({ appoint: 'reseau' })
+    fireEvent.click(screen.getByRole('button', { name: 'Pas d’appoint' }))
+    calculer()
+    expect(pompage.mock.calls[1][1]).toEqual({})
+  })
+
+  it('vmp_sous_bus (exemple du contrat) : le champ ne passe pas au-dessus du bus, en rouge', async () => {
+    pompage.mockResolvedValue({ data: RESULTAT })
+    rendre()
+    calculer()
+    const ligne = await screen.findByTestId('cal-pompage-appoint')
+    expect(ligne).toHaveTextContent('Appoint : le variateur est alimenté par le réseau ou un groupe en plus des panneaux')
+    expect(ligne).toHaveTextContent('Le champ ne passe pas au-dessus du bus : l’appoint fait tout le travail')
+    expect(ligne).not.toHaveTextContent('Conforme')
+    expect(ligne.className).toContain('text-red-300')
+  })
+
+  it('sans tension redressée publiée : la ligne nomme la fiche à compléter ; sans appoint : absente', async () => {
+    pompage.mockResolvedValue({ data: avecAppoint({ verdict: 'non_verifiable', vmp_chaud_v: null,
+      motif: 'tension redressée du bus DC non publiée (var_bus_dc_redresse_v)' }) })
+    rendre()
+    calculer()
+    expect(await screen.findByTestId('cal-pompage-appoint'))
+      .toHaveTextContent('À vérifier : tension redressée du bus non publiée sur la fiche du variateur')
+    cleanup()
+    pompage.mockResolvedValue({ data: RESULTAT_VIDE })
+    rendre()
+    calculer()
+    await screen.findByTestId('cal-pompage-hmt')
+    expect(screen.queryByTestId('cal-pompage-appoint')).toBeNull()
+  })
+})
+
 describe('AGR125 — la HMT calculée comme au devis (pertes singulières, pression)', () => {
   it('les champs sont vides par défaut et en step="any"', () => {
     rendre()
@@ -217,5 +467,45 @@ describe('AGR125 — la HMT calculée comme au devis (pertes singulières, press
     expect(await screen.findByTestId('cal-pompage-erreur-hmt_saisie'))
       .toHaveTextContent('manquant : pertes singulières, pression de service')
     expect(screen.getByTestId('cal-pompage-bandeau')).toBeInTheDocument()
+  })
+})
+describe('ACAL877 — le « ? » des grandeurs du pompage', () => {
+  const servirRegistre = async () => {
+    const { readFileSync } = await import('node:fs')
+    const { join } = await import('node:path')
+    const { fichierContrat } = await import('../../../test/fixtures/contractSamples')
+    const registre = JSON.parse(readFileSync(
+      join(fichierContrat('calepinage', 'x'), '..', '..', 'data', 'explications.json'), 'utf8')).entrees
+    explications.mockResolvedValue({ data: { entrees: registre } })
+    return registre
+  }
+
+  it('chaque grandeur a son « ? » ; le débit à la HMT cite la valeur servie', async () => {
+    const userEvent = (await import('@testing-library/user-event')).default
+    const { remplirPhrase } = await import('../commun/useExplications')
+    const registre = await servirRegistre()
+    pompage.mockResolvedValue({ data: RESULTAT })
+    rendre()
+    calculer()
+    await screen.findByTestId('cal-pompage-hmt')
+    for (const cle of ['hmt', 'debit_hmt', 'pompe', 'variateur', 'autonomie', 'source_irradiation',
+      'm3_mensuels', 'couverture']) {
+      expect(document.querySelector(`[data-grandeur="pompage.${cle}"]`), cle).not.toBeNull()
+    }
+    await userEvent.click(document.querySelector('[data-grandeur="pompage.debit_hmt"]'))
+    const phrase = remplirPhrase(registre.find((e) => e.cle === 'pompage.debit_hmt'), RESULTAT)
+    expect(phrase).toContain('Débit lu sur la courbe')
+    expect(phrase).toContain('8,2 m³/h')
+    expect(await screen.findByText(phrase)).toBeInTheDocument()
+  })
+
+  it('pompe sans courbe : la phrase dit pourquoi les volumes sont omis', async () => {
+    await servirRegistre()
+    pompage.mockResolvedValue({ data: RESULTAT_VIDE })
+    rendre()
+    calculer()
+    const absent = await screen.findByTestId('cal-pompage-volumes-absents')
+    expect(absent.querySelector('[data-grandeur="pompage.volumes_omis"]')).not.toBeNull()
+    expect(document.querySelector('[data-grandeur="pompage.m3_mensuels"]')).toBeNull()
   })
 })

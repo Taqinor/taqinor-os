@@ -235,5 +235,64 @@ class RefusALaSaisieTest(unittest.TestCase):
             MOTIF_ALLER_RETOUR)
 
 
+class SurfaceDeBoucleTest(unittest.TestCase):
+    """ACAL677 — l'aire (lacet) du polygone modules + point de collecte."""
+
+    QUATRE = [{'module': 'z1#%d' % n, 'pan': 'PAN-1', 'chaine': 1}
+              for n in range(1, 5)]
+    DOCUMENT = {'zones': [{'id': 'z1', 'label': 'PAN-1', 'geometry': {
+        'panels': [{'cx': float(n), 'cy': 0.0} for n in range(4)]}}]}
+
+    def test_quatre_modules_alignes_et_collecte_a_1_5_3_font_4_5_m2(self):
+        from apps.calepinage.services.boucles_chaines import (
+            boucles_des_chaines, _surface_de_boucle)
+
+        # Triangle de base 3 m (cx 0 à 3) et de hauteur 3 m : 3 × 3 ÷ 2.
+        self.assertEqual(_surface_de_boucle(
+            [(0.0, 0.0), (1.0, 0.0), (2.0, 0.0), (3.0, 0.0)],
+            {'cx': 1.5, 'cy': 3.0}), 4.5)
+        ligne = boucles_des_chaines(
+            self.QUATRE, self.DOCUMENT,
+            {'pans': {'z1': {'point_collecte': {'cx': 1.5, 'cy': 3.0}}}})[0]
+        self.assertEqual(ligne['surface_m2'], 4.5)
+        self.assertEqual(ligne['nombre_modules'], 4)
+        # ACAL678 — seule la limite société non saisie reste nommée ici.
+        self.assertEqual(ligne['indetermine'],
+                         ['limite non saisie : réglage `boucle_dc_max_m2`'])
+
+    def test_point_de_collecte_absent_rend_null_et_nomme_le_pan(self):
+        from apps.calepinage.services.boucles_chaines import (
+            boucles_des_chaines)
+
+        ligne = boucles_des_chaines(self.QUATRE, self.DOCUMENT, {})[0]
+
+        self.assertIsNone(ligne['surface_m2'])
+        self.assertIn('PAN-1', ligne['indetermine'][0])
+        self.assertIn('point de collecte', ligne['indetermine'][0])
+
+    def test_un_seul_module_ne_forme_pas_de_boucle(self):
+        from apps.calepinage.services.boucles_chaines import (
+            boucles_des_chaines, _surface_de_boucle)
+
+        self.assertIsNone(_surface_de_boucle([(0.0, 0.0)],
+                                             {'cx': 1.0, 'cy': 1.0}))
+        ligne = boucles_des_chaines(
+            self.QUATRE[:1], self.DOCUMENT,
+            {'pans': {'z1': {'point_collecte': {'cx': 1.0, 'cy': 1.0}}}})[0]
+        self.assertIsNone(ligne['surface_m2'])
+        self.assertTrue(ligne['indetermine'])
+
+    def test_chaine_sur_deux_pans_est_indeterminee(self):
+        from apps.calepinage.services.boucles_chaines import (
+            boucles_des_chaines)
+
+        table = [{'module': 'z1#1', 'pan': 'PAN-1', 'chaine': 1},
+                 {'module': 'z2#1', 'pan': 'PAN-2', 'chaine': 1}]
+        ligne = boucles_des_chaines(table, self.DOCUMENT, {})[0]
+
+        self.assertIsNone(ligne['surface_m2'])
+        self.assertIn('deux repères de pan', ligne['indetermine'][0])
+
+
 if __name__ == '__main__':      # pragma: no cover
     unittest.main()

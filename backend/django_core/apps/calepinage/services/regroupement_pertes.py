@@ -31,7 +31,7 @@ POSTES = (
       'transformateur')),
     ('autres', 'Autres pertes',
      ('bifacial', 'iam', 'spectral', 'niveau_irradiance', 'qualite_module',
-      'lid', 'mismatch_fabricant', 'diodes', 'auxiliaires',
+      'lid', 'mismatch_fabricant', 'diodes', 'optimiseur', 'auxiliaires',
       'indisponibilite')),
 )
 

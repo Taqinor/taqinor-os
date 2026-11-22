@@ -128,3 +128,36 @@ class SiteMixteTest(SimpleTestCase):
         html = html_de_planche(svg)
         self.assertEqual(html.count('class="feuille"'), 2)
         self.assertIn(MENTION_REPERE_LOCAL, html)
+
+
+def ombriere(**appuis):
+    """ACAL580 — une ombrière 10 × 6 m, une table, ``appuis`` tels que saisis."""
+    return {'version': 2, 'pin': {'lat': 33.5731, 'lng': -7.5898}, 'panelWatt': 550,
+            'poseSurfaces': [{'id': 'omb-1', 'kind': 'ombriere', 'label': 'Ombrière parking',
+                              'contourM': [[0, 0], [10, 0], [10, 6], [0, 6]], 'appuis': appuis,
+                              'engine': {'modules': 8, 'tables': [{'x0': 1, 'y0': 1, 'x1': 9, 'y1': 5}]}}]}
+
+
+class PoteauxDOmbriereTest(SimpleTestCase):
+    """ACAL580 — les poteaux d'ombrière repérés P1…Pn sur le plan de pose."""
+
+    def svg(self, document):
+        return svg_de_planche(geometrie_de_planche(document), contenu=CONTENU_POSE)
+
+    def test_entraxe_deux_et_demi_treize_poteaux_reperes(self):
+        svg = self.svg(ombriere(pasM=2.5, sectionM=0.2))
+        self.assertIn('Poteaux : 13 (entraxe saisi 2,5 m, section 0,20 m)', svg)
+        # Mutant « numéroter P0… » : P0 présent et P13 absent ⇒ échec.
+        for numero in range(1, 14):
+            self.assertIn('>P%d</text>' % numero, svg)
+        self.assertNotIn('>P0</text>', svg)
+        self.assertNotIn('>P14</text>', svg)
+
+    def test_entraxe_absent_non_decrits_sans_repere(self):
+        svg = self.svg(ombriere(sectionM=0.2))
+        self.assertIn('Poteaux : non décrits (entraxe des appuis non renseigné)', svg)
+        self.assertNotIn('>P1</text>', svg)
+
+    def test_un_champ_au_sol_ne_parle_pas_de_poteaux(self):
+        self.assertNotIn('Poteaux :', svg_de_planche(
+            geometrie_de_planche(copy.deepcopy(CHAMP_SEUL)), contenu=CONTENU_POSE))

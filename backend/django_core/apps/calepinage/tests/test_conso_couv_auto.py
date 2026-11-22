@@ -101,6 +101,105 @@ class SansCourbeTest(unittest.TestCase):
         self.assertEqual(refus.exception.champ, 'consommation[5]')
 
 
+class CibleDeCouvertureTest(unittest.TestCase):
+    """ACAL835 — le plus petit N dont la couverture COUV-AUTO atteint la cible.
+
+    Charge plate 1 kW, production 2 kW pour 10 modules : N modules produisent
+    0,2 × N kW, donc couvrent 20 % × N (jusqu'à 100 % à 5 modules)."""
+
+    CHARGE = [1.0] * 24
+    PRODUCTION = [2.0] * 24
+
+    def _cherche(self, cible, n0=10):
+        from apps.calepinage.services.cible_couverture import (
+            plus_petit_nombre_pour_couverture)
+
+        return plus_petit_nombre_pour_couverture(
+            self.CHARGE, self.PRODUCTION, n0, cible)
+
+    def test_plus_petit_n_a_70_pour_cent(self):
+        trouve = self._cherche(70)
+        self.assertEqual(trouve['nombre_modules'], 4)  # 3 → 60 %, 4 → 80 %
+        self.assertEqual(trouve['couverture_pct'], 80.0)
+        self.assertIs(trouve['atteint'], True)
+        self.assertEqual(trouve['maximum']['nombre_modules'], 10)
+
+    def test_une_cible_exactement_atteinte_ne_monte_pas_d_un_cran(self):
+        self.assertEqual(self._cherche(60)['nombre_modules'], 3)
+        self.assertEqual(self._cherche(100)['nombre_modules'], 5)
+
+    def test_cible_inatteignable_dit_le_maximum_sans_depasser_le_pose(self):
+        from apps.calepinage.services.cible_couverture import (
+            plus_petit_nombre_pour_couverture)
+
+        # Les 3 modules posés produisent 0,6 kW à plat : 60 % au plus.
+        trouve = plus_petit_nombre_pour_couverture(
+            self.CHARGE, [0.6] * 24, 3, 70)
+        self.assertIs(trouve['atteint'], False)
+        self.assertIsNone(trouve['nombre_modules'])
+        self.assertEqual(trouve['couverture_pct'], 60.0)
+        self.assertEqual(trouve['maximum'],
+                         {'nombre_modules': 3, 'couverture_pct': 60.0})
+
+    def test_la_couverture_servie_est_celle_du_bilan_horaire(self):
+        from apps.calepinage.services.cible_couverture import (
+            plus_petit_nombre_pour_couverture)
+
+        # Production en cloche : N0 = 4, la couverture n'est PAS prod ÷ conso.
+        trouve = plus_petit_nombre_pour_couverture(
+            CONSO_PLATE, PROD_CLOCHE, 4, 30)
+        bilan = bilan_autoconsommation(
+            CONSO_PLATE, [p * trouve['nombre_modules'] / 4
+                          for p in PROD_CLOCHE])
+        self.assertEqual(trouve['couverture_pct'],
+                         round(100 * bilan['taux_couverture'], 2))
+        self.assertGreaterEqual(trouve['couverture_pct'], 30)
+
+    def _serie(self, **colonnes):
+        points = [dict({'p_ac_kw': 2.0, 'charge_kwh': 1.0}, **colonnes)
+                  for _ in range(24)]
+        return {'pas_minutes': 60, 'tronquee': False, 'points': points}
+
+    def test_le_socle_stocke_est_lu_ou_refuse_en_nommant_le_champ(self):
+        from apps.calepinage.services.balayage import BalayageInvalide
+        from apps.calepinage.services.cible_couverture import lire_socle
+
+        frais = {'simule': True, 'simulation_perimee': False}
+        charge, production = lire_socle(frais, self._serie(), 10)
+        self.assertEqual((charge[0], production[0], len(charge)), (1.0, 2.0, 24))
+        refus = {
+            'simulation': [(dict(frais, simule=False), self._serie(), 10),
+                           (dict(frais, simulation_perimee=True,
+                                 motif='périmée'), self._serie(), 10),
+                           (frais, dict(self._serie(), tronquee=True), 10)],
+            'pose': [(frais, self._serie(), 0)],
+            'electrique.batterie': [(frais, self._serie(
+                batterie_soc_pct=50.0), 10)],
+            'consommation': [(frais, self._serie(charge_kwh=None), 10)],
+            'production': [(frais, self._serie(p_ac_kw=None), 10)],
+        }
+        for champ, cas in refus.items():
+            for servi, serie, n0 in cas:
+                with self.assertRaises(BalayageInvalide) as erreur:
+                    lire_socle(servi, serie, n0)
+                self.assertEqual(erreur.exception.champ, champ)
+                self.assertFalse(erreur.exception.forme)
+
+    def test_la_forme_de_l_objectif_est_refusee_en_400(self):
+        from apps.calepinage.services.balayage import (
+            BalayageInvalide, valider_objectif)
+
+        for objectif in ({'critere': 'autoconsommation', 'cible_pct': 70},
+                         {'critere': 'couverture', 'cible_pct': 0},
+                         {'critere': 'couverture', 'cible_pct': 100.5},
+                         {'critere': 'couverture', 'cible_pct': '70'},
+                         {'critere': 'couverture'}, 'couverture'):
+            with self.assertRaises(BalayageInvalide) as erreur:
+                valider_objectif(None, {'objectif': objectif})
+            self.assertTrue(erreur.exception.forme)
+            self.assertTrue(erreur.exception.champ.startswith('objectif'))
+
+
 class SurfaceAucunForfaitTest(unittest.TestCase):
     """Aucun ratio d'autoconsommation forfaitaire dans le module."""
 

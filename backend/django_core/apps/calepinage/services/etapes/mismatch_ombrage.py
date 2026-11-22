@@ -190,7 +190,7 @@ REFERENCE = (
     'services/ombrage_chaines.py (accès solaire par chaîne) et '
     'services/chaines.py (affectation module → chaîne).')
 
-__all__ = ['POSTE', 'CLE_REGLAGE', 'MODELE_DERIVATION',
+__all__ = ['POSTE', 'CLE_REGLAGE', 'mesurer_les_chaines', 'MODELE_DERIVATION',
            'MODELE_COURANT_SERIE', 'CHAMPS_BRINS', 'CHAMPS_SANS_CONTRAINTE',
            'MOTIF_SANS_AFFECTATION', 'MOTIF_SANS_LAYOUT',
            'MOTIF_AUCUNE_CHAINE_MESURABLE', 'MOTIF_CHAINES_A_VIDE',
@@ -200,6 +200,50 @@ __all__ = ['POSTE', 'CLE_REGLAGE', 'MODELE_DERIVATION',
            'HYPOTHESE_PAYSAGE', 'HYPOTHESE_LIBRE']
 
 
+def mesurer_les_chaines(contexte):
+    """ACAL722 — la mesure des chaînes, partagée avec l'étape ``diodes``.
+
+    Rend ``{'omission': (motif, champ)}`` quand rien n'est mesurable, sinon
+    ``{layout, repere, lecture, mesures, seuil, valeur_seuil, brins,
+    affectation}`` — ``mesures`` est la liste de ``_mesurer_chaine``.
+    """
+    contexte = contexte if isinstance(contexte, dict) else {}
+    affectation = _affectation(contexte)
+    if not affectation:
+        return {'omission': (MOTIF_SANS_AFFECTATION, 'affectation')}
+    layout = _layout(contexte)
+    if not layout:
+        return {'omission': (MOTIF_SANS_LAYOUT, 'ombrage.layout')}
+
+    lecture = ombrage_des_chaines(layout, affectation)
+    if not lecture['mesure']:
+        return {'omission': (MOTIF_SANS_ACCES, 'ombrage.solarAccess')}
+
+    repere = _repere_du_pan(contexte)
+    chaines = [chaine for chaine in lecture['chaines']
+               if chaine['modules_mesures'] and (repere is None
+                                                 or chaine['pan'] == repere)]
+    if not chaines:
+        return {'omission': (MOTIF_AUCUNE_CHAINE_MESURABLE,
+                             'ombrage.solarAccess.values')}
+
+    seuil = etapes.reglage(contexte, CLE_REGLAGE)
+    valeur_seuil = _nombre(seuil.get('valeur')) if seuil else None
+    if valeur_seuil is None:
+        return {'omission': (MOTIF_SEUIL_ABSENT,
+                             'reglages_simulation.%s' % CLE_REGLAGE)}
+
+    equipes = _modules_equipes(contexte, affectation)
+    mesures = [_mesurer_chaine(chaine, valeur_seuil, equipes)
+               for chaine in chaines]
+    if sum(mesure['lineaire'] for mesure in mesures) <= 0.0:
+        return {'omission': (MOTIF_CHAINES_A_VIDE,
+                             'ombrage.solarAccess.values')}
+    return {'layout': layout, 'repere': repere, 'lecture': lecture,
+            'mesures': mesures, 'seuil': seuil, 'valeur_seuil': valeur_seuil,
+            'brins': _brins_proteges(contexte), 'affectation': affectation}
+
+
 def appliquer(serie, contexte):
     """``(serie, etape)`` — l'excédent I-V des chaînes ombrées, ou son silence.
 
@@ -207,46 +251,19 @@ def appliquer(serie, contexte):
     """
     contexte = contexte if isinstance(contexte, dict) else {}
     libelle = _libelle()
-
-    affectation = _affectation(contexte)
-    if not affectation:
-        return serie, etapes.etape_omise(libelle, MOTIF_SANS_AFFECTATION,
-                                         champ='affectation')
-    layout = _layout(contexte)
-    if not layout:
-        return serie, etapes.etape_omise(libelle, MOTIF_SANS_LAYOUT,
-                                         champ='ombrage.layout')
-
-    lecture = ombrage_des_chaines(layout, affectation)
-    if not lecture['mesure']:
-        return serie, etapes.etape_omise(libelle, MOTIF_SANS_ACCES,
-                                         champ='ombrage.solarAccess')
-
-    repere = _repere_du_pan(contexte)
-    chaines = [chaine for chaine in lecture['chaines']
-               if chaine['modules_mesures'] and (repere is None
-                                                 or chaine['pan'] == repere)]
-    if not chaines:
-        return serie, etapes.etape_omise(libelle,
-                                         MOTIF_AUCUNE_CHAINE_MESURABLE,
-                                         champ='ombrage.solarAccess.values')
-
-    seuil = etapes.reglage(contexte, CLE_REGLAGE)
-    valeur_seuil = _nombre(seuil.get('valeur')) if seuil else None
-    if valeur_seuil is None:
-        return serie, etapes.etape_omise(
-            libelle, MOTIF_SEUIL_ABSENT,
-            champ='reglages_simulation.%s' % CLE_REGLAGE)
-
-    brins = _brins_proteges(contexte)
-    sans_contrainte = _chaines_sans_contrainte(contexte, affectation)
-    mesures = [_mesurer_chaine(chaine, valeur_seuil, sans_contrainte)
-               for chaine in chaines]
+    mesure_des_chaines = mesurer_les_chaines(contexte)
+    if 'omission' in mesure_des_chaines:
+        motif, champ = mesure_des_chaines['omission']
+        return serie, etapes.etape_omise(libelle, motif, champ=champ)
+    layout = mesure_des_chaines['layout']
+    repere = mesure_des_chaines['repere']
+    lecture = mesure_des_chaines['lecture']
+    mesures = mesure_des_chaines['mesures']
+    seuil = mesure_des_chaines['seuil']
+    valeur_seuil = mesure_des_chaines['valeur_seuil']
+    brins = mesure_des_chaines['brins']
 
     lineaire = sum(mesure['lineaire'] for mesure in mesures)
-    if lineaire <= 0.0:
-        return serie, etapes.etape_omise(libelle, MOTIF_CHAINES_A_VIDE,
-                                         champ='ombrage.solarAccess.values')
     basse = sum(mesure['derivation'] for mesure in mesures)
     haute = sum(mesure['courant_serie'] for mesure in mesures)
     nominal = sum(mesure['modules_mesures'] for mesure in mesures)
@@ -294,7 +311,7 @@ def appliquer(serie, contexte):
 
 # ── la mesure d'une chaîne ──────────────────────────────────────────────
 
-def _mesurer_chaine(chaine, seuil, sans_contrainte):
+def _mesurer_chaine(chaine, seuil, equipes):
     """Les trois puissances relatives d'une chaîne, en « modules pleins ».
 
     ``lineaire`` est ce que la perte d'irradiance seule laisserait (la somme
@@ -303,34 +320,43 @@ def _mesurer_chaine(chaine, seuil, sans_contrainte):
     modules sous le seuil en sont sortis. Une diode ne conduit que
     lorsqu'elle fait gagner : la borne basse ne descend donc jamais sous la
     borne haute, par construction et non par correction après coup.
+
+    ACAL724 — un module ÉQUIPÉ (optimiseur, micro-onduleur) travaille à SON
+    point de puissance : il ne limite plus la chaîne. Seuls les modules NON
+    équipés restent en série ; la chaîne n'est exemptée que si TOUS ses
+    modules sont équipés.
     """
-    acces = [module['acces'] for module in chaine['modules']
-             if module['acces'] is not None]
-    mesures = len(acces)
-    lineaire = sum(acces)
-    exempte = (chaine['pan'], chaine['chaine']) in sans_contrainte
-    if exempte:
-        return {
-            'chaine': chaine['chaine'], 'pan': chaine['pan'],
-            'mppt': chaine['mppt'], 'modules_mesures': mesures,
-            'acces_min': chaine['acces_min'], 'lineaire': lineaire,
-            'courant_serie': lineaire, 'derivation': lineaire,
-            'modules_derives': [], 'sans_contrainte': True, 'ombres': [],
-        }
-    courant_serie = mesures * min(acces)
-    retenus = [valeur for valeur in acces if valeur >= seuil]
-    derivation = max(sum(retenus), courant_serie)
-    ombres = [{'module': module['module'], 'acces': module['acces']}
-              for module in chaine['modules']
-              if module['acces'] is not None and module['acces'] < seuil]
-    return {
+    modules = [module for module in chaine['modules']
+               if module['acces'] is not None]
+    mesures = len(modules)
+    lineaire = sum(module['acces'] for module in modules)
+    libres = [module['acces'] for module in modules
+              if str(module['module']) in equipes]
+    serie = [module['acces'] for module in modules
+             if str(module['module']) not in equipes]
+    equipes_chaine = [str(module['module']) for module in chaine['modules']
+                      if str(module['module']) in equipes]
+    exempte = len(equipes_chaine) == len(chaine['modules'])
+    commun = {
         'chaine': chaine['chaine'], 'pan': chaine['pan'],
         'mppt': chaine['mppt'], 'modules_mesures': mesures,
         'acces_min': chaine['acces_min'], 'lineaire': lineaire,
-        'courant_serie': courant_serie, 'derivation': derivation,
-        'modules_derives': [ombre['module'] for ombre in ombres],
-        'sans_contrainte': False, 'ombres': ombres,
+        'modules': chaine['modules'], 'modules_equipes': equipes_chaine,
     }
+    if exempte:
+        return dict(commun, courant_serie=lineaire, derivation=lineaire,
+                    modules_derives=[], sans_contrainte=True, ombres=[])
+    courant_serie = sum(libres) + len(serie) * (min(serie) if serie else 0.0)
+    retenus = [valeur for valeur in serie if valeur >= seuil]
+    derivation = sum(libres) + max(sum(retenus), len(serie) * (
+        min(serie) if serie else 0.0))
+    ombres = [{'module': module['module'], 'acces': module['acces']}
+              for module in modules
+              if str(module['module']) not in equipes
+              and module['acces'] < seuil]
+    return dict(commun, courant_serie=courant_serie, derivation=derivation,
+                modules_derives=[ombre['module'] for ombre in ombres],
+                sans_contrainte=False, ombres=ombres)
 
 
 def _publier_chaine(mesure):
@@ -343,6 +369,7 @@ def _publier_chaine(mesure):
         'acces_min': mesure['acces_min'],
         'modules_derives': list(mesure['modules_derives']),
         'sans_contrainte': mesure['sans_contrainte'],
+        'modules_equipes': list(mesure['modules_equipes']),
         'excedent_basse_pct': _pourcentage(mesure['lineaire'],
                                            mesure['derivation'],
                                            mesure['lineaire']),
@@ -482,26 +509,26 @@ def _brins_proteges(contexte):
     return None
 
 
-def _chaines_sans_contrainte(contexte, affectation):
-    """``{(pan, chaîne)}`` — les chaînes qui n'imposent plus leur courant.
+def _modules_equipes(contexte, affectation):
+    """``{module}`` — les modules câblés équipés (optimiseur, micro-onduleur).
 
-    Deux déclarations sont lues : la ligne d'affectation elle-même (un
-    module sous micro-onduleur ou optimiseur), et l'optimiseur déclaré pour
-    tout le document. Rien n'est déduit d'une fiche onduleur : un onduleur
-    de chaîne n'est pas un micro-onduleur, et le deviner au nom serait une
-    invention.
+    ACAL733 : la ligne dit ``optimiseur: true`` / ``false`` ; sans drapeau, le
+    produit optimiseur déclaré pour tout le document équipe le module. Un
+    micro-onduleur déclaré sur la ligne l'équipe aussi. Rien n'est déduit d'une
+    fiche onduleur : un onduleur de chaîne n'est pas un micro-onduleur, et le
+    deviner au nom serait une invention.
     """
     global_ = _optimiseur_du_document(contexte)
-    exemptes = set()
+    equipes = set()
     for ligne in affectation:
-        chaine = ligne.get('chaine')
-        if chaine is None:
+        if ligne.get('chaine') is None:
             continue
-        declare = global_ or any(ligne.get(champ)
-                                 for champ in CHAMPS_SANS_CONTRAINTE)
-        if declare:
-            exemptes.add((str(ligne.get('pan') or ''), chaine))
-    return exemptes
+        drapeau = ligne.get('optimiseur')
+        equipe = drapeau if isinstance(drapeau, bool) else global_
+        if equipe or any(ligne.get(champ) for champ in CHAMPS_SANS_CONTRAINTE
+                         if champ != 'optimiseur'):
+            equipes.add(str(ligne.get('module')))
+    return equipes
 
 
 def _optimiseur_du_document(contexte):

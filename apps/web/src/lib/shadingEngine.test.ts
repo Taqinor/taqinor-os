@@ -10,6 +10,8 @@ import {
   hourlyShadeFactors,
   annualShadeFactor,
   cellsSolarAccess,
+  centresDeBandes,
+  pointSolarAccess,
   shadeObstructionsENU,
   solarAccessSummary,
   combineSolarAccess,
@@ -148,6 +150,31 @@ describe('CAL94 — la matrice d’ombrage : rien sans obstruction, du rouge der
   });
 });
 
+describe('ACAL721 — centresDeBandes : une valeur par bande, de l’aval à l’amont', () => {
+  const LAT = 33.5;
+  const cheminee: ShadeObstructionENU = {
+    x: 0, y: -3, effHeightM: 5, halfWidthM: Math.hypot(3, 3) / 2, footprint: rect(0, -3, 1.5, 1.5),
+  };
+  const prod = fallbackPerKwc();
+  const aval = { x: 0, y: -1 }; // pan face au sud : l'aval est au sud (y négatif)
+
+  it('trois bandes : pointSolarAccess aux centres écrits à la main (0 ; −0,434 ; +0,434 m)', () => {
+    // L'accès d'une bande = l'accès évalué à son centre (c'est ce que fait `bandesDuPan`).
+    const bandes = cellsSolarAccess(LAT, [cheminee], prod, centresDeBandes({ x: 0, y: 0 }, aval, 1.303, 3));
+    // Aval = y négatif : la bande basse est à y = −0,434, la haute à y = +0,434.
+    const attendu = [-0.4343333, 0, 0.4343333].map((y) => pointSolarAccess(LAT, [cheminee], prod, 0, y));
+    expect(bandes).toHaveLength(3);
+    bandes.forEach((v, i) => expect(v).toBeCloseTo(attendu[i], 4));
+    expect(bandes[0]).toBeLessThan(bandes[2]); // la bande basse est la plus ombrée
+  });
+
+  it('n = 1 : la valeur du centre du module', () => {
+    expect(cellsSolarAccess(LAT, [cheminee], prod, centresDeBandes({ x: 0, y: 0 }, aval, 1.303, 1))).toEqual([
+      pointSolarAccess(LAT, [cheminee], prod, 0, 0),
+    ]);
+  });
+});
+
 // CAL97 — l'accès solaire n'était utilisé que pour COLORER : aucun chiffre n'était publié.
 // Il est désormais agrégé par module, par pan et pour l'installation, avec sa méthode et
 // ses hypothèses — et il est ABSENT (jamais estimé) quand rien n'a été renseigné.
@@ -166,6 +193,14 @@ describe('CAL97 — solarAccessSummary : un chiffre reproductible, ou pas de chi
     { x: 0, y: 2 },
     { x: 40, y: 0 },
   ];
+
+  it('ACAL714 — sans seuil réglé `lowCount` est null ; avec un seuil il compte les modules dessous', () => {
+    const sans = solarAccessSummary(LAT, [cheminee], prod, modules) as SolarAccessSummary;
+    expect(sans.lowCount).toBeNull();
+    const avec = solarAccessSummary(LAT, [cheminee], prod, modules, null, undefined, 0.6) as SolarAccessSummary;
+    expect(avec.lowCount).toBe(avec.perModule.filter((a) => a < 0.6).length);
+    expect(solarAccessSummary(LAT, [cheminee], prod, modules, null, undefined, 0)?.lowCount).toBe(0);
+  });
 
   it('AUCUNE obstruction renseignée → null : le chiffre est ABSENT, pas estimé à 100 %', () => {
     expect(solarAccessSummary(LAT, [], prod, modules)).toBeNull();
@@ -271,6 +306,13 @@ describe('CAL235 — proposeShadedRemoval : une proposition chiffrée, jamais un
     const copie = [...perModule];
     proposeShadedRemoval(perModule, PANEL_KWC, 0.75);
     expect(perModule).toEqual(copie);
+  });
+
+  it('ACAL714 — seuil absent ⇒ aucune proposition ; seuil 0,6 ⇒ les modules de 0,4 et 0,5', () => {
+    const acces = [0.9, 0.4, 0.9, 0.5, 0.9];
+    expect(proposeShadedRemoval(acces, PANEL_KWC, null)).toBeNull();
+    expect(proposeShadedRemoval(acces, PANEL_KWC)).toBeNull();
+    expect(proposeShadedRemoval(acces, PANEL_KWC, 0.6)?.indices).toEqual([1, 3]);
   });
 
   it('le seuil est paramétrable et pilote seul la sélection', () => {

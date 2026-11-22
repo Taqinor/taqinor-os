@@ -173,6 +173,25 @@ class ResyncParite(TestCase):
                 self.assertIsNotNone(q_ventes.get(cle), cle)
                 self.assertEqual(q_module.get(cle), q_ventes.get(cle))
 
+    def test_acal912_resync_avec_surface_de_pose_retire_la_production_du_toit(self):
+        """ACAL912 — un devis porteur de ``production_annuelle`` (toit seul),
+        resynchronisé avec un champ au sol pavé : les trois clés sont RETIRÉES,
+        jamais laissées de la synchro précédente. Mutant : ``etude.update`` des
+        clés du ``result`` racine ⇒ 14 000 reste ⇒ rouge."""
+        devis = self._devis()
+        Devis.objects.filter(pk=devis.pk).update(etude_params=dict(
+            devis.etude_params, production_annuelle=14000,
+            production_source='calepinage', economies_annuelles=12000))
+        layout = dict(_layout(12), poseSurfaces=[{
+            'kind': 'sol', 'id': 'TERRAIN', 'label': 'Champ au sol',
+            'moduleWc': WATT, 'engine': {'modules': 4}}])
+        r = self.api.post(f'/api/django/ventes/devis/{devis.id}/sync-layout/',
+                          layout, format='json', **en_tete_jeton(devis.id))
+        self.assertEqual(r.status_code, 200, r.data)
+        devis.refresh_from_db()
+        for cle in ('production_annuelle', 'production_source', 'economies_annuelles'):
+            self.assertNotIn(cle, devis.etude_params or {}, cle)
+
     def test_resync_inchange_ne_rafraichit_rien(self):
         devis = self._devis()
         self.assertEqual(self._sync_module(devis, 16).status_code, 200)

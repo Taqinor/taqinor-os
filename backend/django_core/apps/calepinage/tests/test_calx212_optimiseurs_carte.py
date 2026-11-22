@@ -125,6 +125,60 @@ class RatioDeFicheTest(SimpleTestCase):
         self.assertEqual(len(bloc['affectation']), 7)
 
 
+class SeulsLesModulesMarquesTest(SimpleTestCase):
+    """ACAL645 — des modules marqués (ACAL733) : seuls eux portent un
+    optimiseur."""
+
+    UN_PAR_OPTIMISEUR = {'modules_par_optimiseur': 1}
+
+    def _imposee(self, conception, marques):
+        from apps.calepinage.services.chaines import (
+            normaliser_affectation_imposee,
+        )
+
+        return normaliser_affectation_imposee([
+            {'module': ligne['module'], 'chaine': 1, 'mppt': 1,
+             'onduleur': 1, 'optimiseur': rang in marques}
+            for rang, ligne in enumerate(affectation(conception))])
+
+    def test_six_modules_marques_un_par_optimiseur_rendent_six(self):
+        layout = {'version': 2, 'zones': [
+            {'label': 'PAN-SUD', 'geometry': {
+                'count': 24, 'azimuthDeg': 180.0, 'tiltDeg': 15.0}}]}
+        conception = concevoir_par_pan(
+            layout, module_specs=MODULE, onduleur_specs=ONDULEUR,
+            temperatures=temperatures_site(saisie={
+                'temperature_min_c': -5.0, 'temperature_max_c': 70.0}),
+            onduleur_designation='Onduleur d essai')
+
+        bloc = _optimiseurs_du_calepinage(
+            conception, self.UN_PAR_OPTIMISEUR, 'Optimiseur d essai',
+            self._imposee(conception, set(range(0, 24, 4))))
+
+        self.assertEqual(bloc['quantite'], 6)
+        self.assertEqual(len(bloc['affectation']), 6)
+
+    def test_ratio_deux_sur_six_marques_donne_trois_optimiseurs(self):
+        conception = _conception()
+
+        bloc = _optimiseurs_du_calepinage(
+            conception, OPTIMISEUR_COMPLET, 'Optimiseur d essai',
+            self._imposee(conception, {0, 1, 2, 3, 4, 5}))
+
+        self.assertEqual(bloc['quantite'], 3)
+        self.assertEqual(len(bloc['affectation']), 6)
+
+    def test_sans_marquage_tout_le_toit_est_equipe_comme_avant(self):
+        conception = _conception()
+
+        bloc = _optimiseurs_du_calepinage(
+            conception, OPTIMISEUR_COMPLET, 'Optimiseur d essai',
+            self._imposee(conception, set()))
+
+        self.assertEqual(len(bloc['affectation']), 7)
+        self.assertEqual(bloc['quantite'], 4)
+
+
 class FicheMuetteTest(SimpleTestCase):
     """Sans ratio publié, rien n'est déduit — et le motif nomme le champ."""
 

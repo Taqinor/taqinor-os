@@ -12,10 +12,19 @@ export const simulation = {
     // affiche ce motif-là sous le bouton, il n'en invente aucun.
     // ACAL446 — `colonnes` OPTIONNEL (CSV de noms, CALX313) : absent ⇒ le
     // serveur sert ses colonnes par défaut, l'appel d'export reste inchangé.
-    exportCsv: (id, quoi, colonnes) =>
+    // ACAL767 — `options.suppressErrorToast` : une lecture que personne n'a
+    // demandée garde son refus local (la carte), sans toast global.
+    // ACAL755 — `options.pas` (`jour`) : une ligne par jour, envoyé seulement
+    // quand il est posé.
+    exportCsv: (id, quoi, colonnes, options) =>
       api.get(`${pivot(id)}export-csv/`, {
         responseType: 'blob',
-        params: colonnes ? { quoi, colonnes } : { quoi },
+        params: {
+          quoi,
+          ...(colonnes ? { colonnes } : {}),
+          ...(options?.pas ? { pas: options.pas } : {}),
+        },
+        ...(options?.suppressErrorToast ? { suppressErrorToast: true } : {}),
       }),
 
     // CALX62 — le DÉPÔT d'une série météo horaire de la société, à la place
@@ -51,8 +60,14 @@ export const simulation = {
     simuler: (id, { forcer = false, silencieux = false } = {}) =>
       api.post(`${pivot(id)}simuler/`, { forcer }, silencieux ? { suppressErrorToast: true } : undefined),
 
+    // ACAL871 — le registre des explications (contrat `calepinage_explications.json`) :
+    // le même pour tous les calepinages, sans `pk`.
+    explications: () => api.get('/calepinage/calepinages/explications/'),
+
     // ACAL392 — l'état du parcours guidé (contrat `calepinage_parcours_guide.json`).
     parcours: (id) => api.get(`${pivot(id)}parcours/`),
+    // ACAL860 — « prêt à envoyer ? » (contrat `calepinage_pret_a_envoyer.json`).
+    pretAEnvoyer: (id) => api.get(`${pivot(id)}pret-a-envoyer/`),
 
     // CALX229 — le métré et la chute, TRONÇON PAR TRONÇON (contrat
     // `contract_samples/calepinage_troncons.json`, CALX203). ÉTAT DU SERVEUR
@@ -77,6 +92,17 @@ export const simulation = {
     raccordement: (id) => api.get(`${pivot(id)}raccordement/`),
     enregistrerRaccordement: (id, corps) =>
       api.post(`${pivot(id)}raccordement/`, corps),
+
+    // ACAL887 — la PRODUCTION MESURÉE (contrat `calepinage_production_mesuree.json`,
+    // ACAL886), servie par `views/production_mesuree.py`. `GET` rend les mesures
+    // rangées et, par mois, `p50_kwh` / `kwh_mesure` / `ecart_pct` (null sans
+    // mesure ou sans simulation fraîche, avec le `motif`) ; `PUT` range
+    // `{annee, mesures: [{mois, kwh_mesure}]}` (12 lignes au plus) et rend la
+    // même forme. Un refus 400 NOMME le champ (`mesures[i].mois`…). L'écran est
+    // ACAL888 ; l'écart est publié, jamais jugé.
+    productionMesuree: (id) => api.get(`${pivot(id)}production-mesuree/`),
+    enregistrerProductionMesuree: (id, corps) =>
+      api.put(`${pivot(id)}production-mesuree/`, corps),
 
     // CALX235 — le schéma unifilaire en DXF, pour qu'un bureau d'études le
     // reprenne (`views/schema.py`, `url_path='schema-unifilaire.dxf'` — le

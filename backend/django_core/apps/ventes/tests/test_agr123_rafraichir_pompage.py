@@ -12,11 +12,14 @@ Run :
     powershell -File scripts/test-backend.ps1 -RestoreDb \\
         -Modules "apps.ventes.tests.test_agr123_rafraichir_pompage"
 """
+import json
 from decimal import Decimal
+from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 
 from apps.parametres.models import CompanyProfile
@@ -299,3 +302,181 @@ class ArticlesMultiplesTests(_Base):
         self.assertFalse(etude['champ']['chaines']['verifiable'])
         self.assertEqual(etude['champ']['chaines']['motif'],
                          'plusieurs variateurs facturés')
+
+
+_CONTRAT_POSE = json.loads(
+    (Path(__file__).resolve().parents[2] / 'calepinage' / 'contract_samples'
+     / 'calepinage_productible_pose.json').read_text(encoding='utf-8'))
+
+
+class PlanPosePompageTests(SimpleTestCase):
+    """ACAL1199 — le plan des panneaux d'un devis agricole (doublures, contrat
+    ACAL996). Mutant : relire le vivant d'un envoyé ⇒ ``assert_not_called``
+    rouge."""
+
+    def _devis(self, **champs):
+        return SimpleNamespace(**dict(dict(
+            pk=7, company=None, regles_calcul=15, statut='brouillon',
+            mode_installation='agricole', etude_params={}), **champs))
+
+    def _diag(self, devis, servi=None, kwc=71.0):
+        from apps.ventes.domain.pompage_pose import diagnostic_plan_pose_pompage
+        servi = _CONTRAT_POSE['exemple'] if servi is None else servi
+        with mock.patch('apps.calepinage.selectors_devis.productible_pose_servi',
+                        return_value=servi) as lu:
+            return diagnostic_plan_pose_pompage(devis, kwc=kwc), lu
+
+    def test_brouillon_niveau_15_frais_rend_ses_pans(self):
+        (plan, motif), lu = self._diag(self._devis())
+        self.assertEqual(motif, '')
+        self.assertEqual(plan['source'], 'pose_calepinage')
+        self.assertEqual([(p['pan'], p['azimut_deg']) for p in plan['pans']],
+                         [('PAN-E', 90.0), ('PAN-O', 270.0)])
+        self.assertEqual(set(plan['pans'][0]),
+                         {'pan', 'kwc', 'inclinaison_deg', 'azimut_deg'})
+        self.assertEqual(lu.call_args.kwargs['tolerance_kwc_ratio'], 0.02)
+
+    def test_perime_none_et_motif_servi(self):
+        (plan, motif), _lu = self._diag(self._devis(),
+                                        servi=_CONTRAT_POSE['exemple_perime'])
+        self.assertIsNone(plan)
+        self.assertEqual(motif, _CONTRAT_POSE['exemple_perime']['motif'])
+
+    def test_envoye_relit_le_plan_range(self):
+        range_ = {'source': 'pose_calepinage', 'pans': [
+            {'pan': 'A', 'kwc': 3.0, 'inclinaison_deg': 10.0, 'azimut_deg': 180.0}]}
+        devis = self._devis(statut='envoye',
+                            etude_params={'pvgis_fige': {'plan': range_}})
+        (plan, _m), lu = self._diag(devis)
+        self.assertEqual(plan, range_)
+        lu.assert_not_called()
+        (plan, _m), _lu = self._diag(self._devis(statut='envoye'))
+        self.assertIsNone(plan)
+
+    def test_autres_cas_none_et_motif(self):
+        for devis, attendu in (
+                (self._devis(regles_calcul=14), 'règles d’avant le 21/11'),
+                (self._devis(mode_installation='residentiel'), 'marché non agricole')):
+            (plan, motif), lu = self._diag(devis)
+            self.assertEqual((plan, motif), (None, attendu))
+            lu.assert_not_called()
+        (plan, motif), _lu = self._diag(self._devis(), kwc=80.0)
+        self.assertEqual((plan, motif),
+                         (None, 'lignes du devis différentes du calepinage'))
+        sans_azimut = dict(_CONTRAT_POSE['exemple'], pans=[
+            {'pan': 'X', 'kwc': 71.0, 'inclinaison_deg': 15.0, 'azimut_deg': None}])
+        self.assertIsNone(self._diag(self._devis(), servi=sans_azimut)[0][0])
+        with mock.patch('apps.calepinage.selectors_devis.productible_pose_servi',
+                        return_value=None):
+            from apps.ventes.domain.pompage_pose import plan_pose_pompage
+            self.assertIsNone(plan_pose_pompage(self._devis(), kwc=71.0))
+
+
+class PlanDuCalculTests(SimpleTestCase):
+    """ACAL1201 — le plan publié par le calcul d'eau (forme ACAL1198)."""
+
+    PLAN = {'source': 'pose_calepinage', 'pans': [
+        {'pan': 'E', 'kwc': 3.55, 'inclinaison_deg': 15.0, 'azimut_deg': 90.0}]}
+
+    def _plan(self, *, mode='neuve', diag=None, pose=PROFILS, site=PROFILS):
+        from apps.ventes.domain import pompage_pose as pp
+        with mock.patch.object(pp, 'diagnostic_plan_pose_pompage',
+                               return_value=diag or (self.PLAN, '')), \
+                mock.patch.object(pp, 'profils_horaires_pose', return_value=pose):
+            return pp.plan_du_calcul(SimpleNamespace(pk=1), facture=None,
+                                     mode_pompe=mode, profils_site=site,
+                                     coordonnees={'lat': 30.47, 'lon': -8.88})
+
+    def test_pose_servie(self):
+        plan, profils = self._plan()
+        self.assertEqual(plan, {'source': 'pose_calepinage',
+                                'pans': self.PLAN['pans'],
+                                'plan_reference': None, 'motif': None})
+        self.assertIs(profils, PROFILS)
+
+    def test_site_et_repli_avec_motif(self):
+        from apps.parametres.pvgis_profils import PVGIS_ANGLE_DEG, PVGIS_ASPECT_DEG
+        plan, profils = self._plan(mode='existante')
+        self.assertEqual((plan['source'], plan['motif'], profils),
+                         ('site_reference', 'pompe existante : débit déclaré', None))
+        self.assertEqual(plan['plan_reference'],
+                         {'inclinaison_deg': PVGIS_ANGLE_DEG,
+                          'aspect_deg': PVGIS_ASPECT_DEG})
+        plan, _p = self._plan(diag=(None, 'règles d’avant le 21/11'))
+        self.assertEqual(plan['motif'], 'règles d’avant le 21/11')
+        plan, _p = self._plan(pose=None)
+        self.assertEqual(plan['motif'],
+                         'ensoleillement indisponible au plan des panneaux')
+        plan, profils = self._plan(site=None)
+        self.assertEqual((plan['source'], profils), ('repli', None))
+
+
+class PoseReellePompageTests(_Base):
+    """ACAL1201 — le m³/jour d'un brouillon agricole de NIVEAU 15 suit le
+    plan servi par le calepinage ; l'envoyé garde le sien ; ≤ 14 à l'octet.
+    Mutants : profils de la pose passés à ``_besoin`` ⇒ besoin différent ⇒
+    rouge ; plan vivant relu sur un envoyé ⇒ ``assert_not_called`` rouge."""
+
+    #: Profils de la pose : 30 % d'irradiance de plus que ceux du site.
+    POSE = [[g * 1.3 for g in jour] for jour in PROFILS]
+
+    def _servi(self, azimut=90.0):
+        return dict(_CONTRAT_POSE['exemple'], kwc_simule=7.1, pans=[
+            {'pan': 'E', 'kwc': 7.1, 'inclinaison_deg': 15.0,
+             'azimut_deg': azimut, 'specific_yield_kwh_kwc': 1400.0}])
+
+    def _rafraichir(self, devis, servi):
+        with mock.patch('apps.calepinage.selectors_devis.productible_pose_servi',
+                        return_value=servi) as lu, \
+                mock.patch('apps.ventes.domain.pompage_pose.profils_horaires_pose',
+                           return_value=self.POSE):
+            pompage.rafraichir_etude_pompage_devis(devis)
+        devis.refresh_from_db()
+        return devis.etude_params, lu
+
+    def _devis(self, niveau, reference):
+        devis = self.devis(reference=reference)
+        Devis.objects.filter(pk=devis.pk).update(regles_calcul=niveau)
+        devis.refresh_from_db()
+        return devis
+
+    def test_niveau_15_m3_jour_de_la_pose_besoin_inchange(self):
+        site, _lu = self._rafraichir(self._devis(14, 'DEV-AGR123-1514'),
+                                     self._servi())
+        pose, _lu = self._rafraichir(self._devis(15, 'DEV-AGR123-1515'),
+                                     self._servi())
+        self.assertGreater(pose['m3_jour'], site['m3_jour'])
+        self.assertEqual(pose['besoin_mensuel'], site['besoin_mensuel'])
+        plan = pose['production']['plan_irradiation']
+        self.assertEqual((plan['source'], plan['plan_reference'], plan['motif']),
+                         ('pose_calepinage', None, None))
+        self.assertEqual(pose['production']['source_irradiation'], 'pvgis')
+        self.assertEqual(pose['pvgis_fige']['plan']['pans'][0]['azimut_deg'], 90.0)
+        # Niveau 14 : ni plan publié aux dérivées, ni plan figé.
+        self.assertNotIn('plan_irradiation', site['production'])
+        self.assertNotIn('plan', site['pvgis_fige'] or {})
+
+    def test_envoye_garde_son_m3_jour_apres_re_simulation(self):
+        devis = self._devis(15, 'DEV-AGR123-1516')
+        avant, _lu = self._rafraichir(devis, self._servi())
+        Devis.objects.filter(pk=devis.pk).update(statut='envoye')
+        devis.refresh_from_db()
+        with mock.patch('apps.calepinage.selectors_devis.productible_pose_servi',
+                        return_value=self._servi(azimut=270.0)) as vivant, \
+                mock.patch('apps.ventes.domain.pompage_pose.profils_horaires_pose',
+                           return_value=self.POSE):
+            pompage.rafraichir_etude_pompage_devis(devis, force=True)
+        vivant.assert_not_called()
+        devis.refresh_from_db()
+        self.assertEqual(devis.etude_params['m3_jour'], avant['m3_jour'])
+        self.assertEqual(devis.etude_params['pvgis_fige']['plan'],
+                         avant['pvgis_fige']['plan'])
+
+    def test_niveau_14_derivees_et_empreinte_identiques(self):
+        devis = self._devis(14, 'DEV-AGR123-1517')
+        etude, lu = self._rafraichir(devis, self._servi())
+        lu.assert_not_called()
+        facture = pompage.facture_du_devis(devis, pompage.lire_catalogue(self.co))
+        self.assertEqual(pompage._empreinte(etude, facture, None),
+                         pompage._empreinte(etude, facture, None, None))
+        self.assertNotIn('plan_irradiation', etude['production'])

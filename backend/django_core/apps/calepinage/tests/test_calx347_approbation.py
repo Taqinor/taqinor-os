@@ -248,7 +248,7 @@ class DecisionRefuseeSansEcritureTest(SimpleTestCase):
         calepinage.save = mock.Mock()
         with mock.patch('apps.calepinage.services.journal.noter'), \
                 mock.patch.object(service, 'etat_approbation',
-                                  side_effect=lambda c: c.approbation):
+                                  side_effect=lambda c, _u=None: c.approbation):
             etat = service.decider(calepinage, decision='refuse',
                                    motif='Pente à vérifier',
                                    maintenant=MAINTENANT)
@@ -272,11 +272,60 @@ class FormeDeLaReponseTest(SimpleTestCase):
                                 'decide_le': None, 'motif': None,
                                 'exigee': False, 'perimee': False,
                                 'empreinte_approuvee': '',
-                                'empreinte_courante': ''})
+                                'empreinte_courante': '',
+                                'peut_approuver': None,
+                                'motif_sans_approbation': None})
 
     def test_etat_illisible_publie_comme_non_decide(self):
         etat = self._etat(faux_calepinage(approbation={'etat': 'peut-etre'}))
         self.assertIsNone(etat['etat'])
+
+
+class LecteurPeutApprouverTest(SimpleTestCase):
+    """ACAL946 — l'état dit si le LECTEUR peut donner l'accord, par la règle
+    même du refus d'auto-approbation (décision du 07/10/2026)."""
+
+    AUTEUR = SimpleNamespace(pk=7)
+    RELECTEUR = SimpleNamespace(pk=8)
+
+    def _etat(self, user, *, autre_approbateur):
+        with mock.patch.object(service, 'approbation_exigee', return_value=False), \
+                mock.patch.object(service, '_concepteurs', return_value={7}), \
+                mock.patch.object(service, '_autre_approbateur_actif',
+                                  return_value=autre_approbateur):
+            return service.etat_approbation(faux_calepinage(), user)
+
+    def test_auteur_avec_un_autre_approbateur_ne_peut_pas(self):
+        etat = self._etat(self.AUTEUR, autre_approbateur=True)
+        self.assertIs(etat['peut_approuver'], False)
+        self.assertEqual(etat['motif_sans_approbation'],
+                         service.MESSAGE_AUTO_APPROBATION)
+
+    def test_autre_relecteur_peut(self):
+        etat = self._etat(self.RELECTEUR, autre_approbateur=True)
+        self.assertIs(etat['peut_approuver'], True)
+        self.assertIsNone(etat['motif_sans_approbation'])
+
+    def test_auteur_seul_approbateur_peut(self):
+        etat = self._etat(self.AUTEUR, autre_approbateur=False)
+        self.assertIs(etat['peut_approuver'], True)
+
+    def test_le_refus_de_decider_suit_la_meme_regle(self):
+        """La même règle refuse l'accord (champ ``decision``) — l'écran et le
+        serveur ne peuvent pas diverger."""
+        with mock.patch.object(service, '_concepteurs', return_value={7}), \
+                mock.patch.object(service, '_autre_approbateur_actif',
+                                  return_value=True):
+            with self.assertRaises(service.ApprobationRefusee) as refus:
+                service._refuser_auto_approbation(faux_calepinage(), self.AUTEUR)
+            self.assertFalse(service._refuser_auto_approbation(
+                faux_calepinage(), self.RELECTEUR))
+        self.assertEqual(refus.exception.champ, 'decision')
+
+    def test_l_etat_auteur_est_l_exemple_du_contrat(self):
+        contrat = json.loads(CONTRAT.read_text(encoding='utf-8'))
+        self.assertEqual(self._etat(self.AUTEUR, autre_approbateur=True),
+                         contrat['exemple_auteur'])
 
 
 class ContratCommitteTest(SimpleTestCase):
@@ -296,7 +345,9 @@ class ContratCommitteTest(SimpleTestCase):
     def test_l_etat_vide_est_l_exemple_vide(self):
         with mock.patch.object(service, 'approbation_exigee',
                                return_value=False):
-            etat = service.etat_approbation(faux_calepinage())
+            # ACAL946 — lu par un relecteur qui n'a pas conçu la conception.
+            etat = service.etat_approbation(faux_calepinage(),
+                                            SimpleNamespace(pk=8))
         affirmer_non_servies(self, etat, EN_ATTENTE)
         self.assertEqual(etat, sans(self.contrat['exemple_vide'], EN_ATTENTE))
 
@@ -371,6 +422,9 @@ class ActionApprobationEnBase(BaseApiCalepinage):
         self.assertIsNone(reponse.data['etat'])
         self.assertIsNone(reponse.data['decide_par'])
         self.assertFalse(reponse.data['exigee'])
+        # ACAL946 — le lecteur n'a pas conçu ce calepinage : il peut approuver.
+        self.assertIs(reponse.data['peut_approuver'], True)
+        self.assertIsNone(reponse.data['motif_sans_approbation'])
 
     def test_lecteur_lit_mais_ne_decide_pas(self):
         api, _user = self._compte('calx347_lecteur', [CAL_VOIR])

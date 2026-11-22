@@ -1,0 +1,20 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/export-csv/",
+  "forme_serveur": "partielle",
+  "pourquoi": "ACAL753 — le vocabulaire des colonnes que l'export `quoi=horaire` accepte dans `?colonnes=a,b,c` (`services/export_csv.py::COLONNES_HORAIRE`), la sélection d'office (`DEFAULT_COLONNES_HORAIRE`) et les pas de temps reconnus (`PAS_DISPONIBLES`). La route sert un FICHIER CSV, pas ce JSON : le document ne décrit que le choix de colonnes, pour que l'écran (onglet Séries) et le serveur ne gardent pas chacun leur liste. L'écran écarte `t` (alias de `heure`), `p_w`, `gi_w_m2` et `t2m_c` (mêmes grandeurs que `production_kw`, `irradiance_plan_w_m2`, `temperature_air_c`).",
+  "exemple": {
+    "colonnes_horaire": [
+      "annee", "mois", "jour", "heure", "t", "production_kw",
+      "irradiance_plan_w_m2", "temperature_air_c", "p_w", "gi_w_m2", "t2m_c",
+      "gb_i_w_m2", "gd_i_w_m2", "gr_i_w_m2", "ws10m", "h_sun_deg", "t_cell_c",
+      "p_dc_kw", "p_ac_kw", "ecretage_kw", "charge_kwh", "batterie_soc_pct",
+      "reseau_import_kwh", "reseau_export_kwh"
+    ],
+    "par_defaut": [
+      "annee", "mois", "jour", "heure", "production_kw",
+      "irradiance_plan_w_m2", "temperature_air_c"
+    ],
+    "pas": ["horaire", "jour", "15min"],
+    "exports": ["horaire", "mensuel", "ombrage", "ombrage_modules"]
+  }
+}

@@ -1519,6 +1519,10 @@ def reglages_economiques(company):
     return reglages
 
 
+MOTIF_CONSO_INCONNUE = ("consommation inconnue : renseignez la facture du lead "
+                        "avant de lire le TRI et le retour")
+
+
 def _donnees_du_devis(devis):
     """``(entrées du flux, hypothèse d'option, omissions)`` lues sur le devis."""
     from .quote_engine.builder import build_quote_data
@@ -1563,6 +1567,12 @@ def _donnees_du_devis(devis):
     cout_onduleur = cfa.get('inverter_replace_cost')
     annee_onduleur = cfa.get('inverter_replace_year')
     omissions = []
+    # ACAL976 (D-ACAL-40) — consommation du lead inconnue : l'économie du moteur
+    # n'est qu'une estimation forfaitaire ⇒ ni économie, ni TRI, ni retour. Les
+    # DEUX clés sont exigées : une clé absente n'est pas une estimation.
+    if data.get('savings_model') == 'estimation' and data.get('conso_annuelle_kwh') is None:
+        entrees['economie_annee1_mad'] = None
+        omissions.append(_omission('economie_annee1_mad', MOTIF_CONSO_INCONNUE))
     if cout_onduleur and annee_onduleur:
         entrees['remplacements'] = [{
             'equipement': 'onduleur', 'annee': int(annee_onduleur),
@@ -1603,5 +1613,7 @@ def economie_pour_devis(devis_id, company, *, reglages=None):
                   if cle not in entrees}
     bloc = flux_de_tresorerie(**entrees, **parametres)
     bloc['hypotheses'][:0] = hypotheses
-    bloc['omissions'][:0] = omissions
+    # Une omission nommée par le devis (ACAL976) remplace le motif générique.
+    propres = {omission['cle'] for omission in omissions}
+    bloc['omissions'] = omissions + [o for o in bloc['omissions'] if o['cle'] not in propres]
     return bloc

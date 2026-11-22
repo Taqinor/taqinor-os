@@ -37,6 +37,7 @@ import { distToBoundary, geodesicAreaM2, geodesicPerimeterM, pointInPolygon, rin
 import { makeClearanceAt, makeHitsObstruction, makeCellInside, makeCellTests, latticeDims } from './estimatorBrainGeom';
 import { PANEL2_WATT, PERIMETER_SETBACK_M, cotesDePavage, resolveSetbacks, extremityTotalM, type Panel2Module, type PerimeterSetbacks } from './roofPro2';
 import { projectRingENU, ringUVBounds, uvToENU } from './roofGrid';
+import { chassisApplicable, dimensionsChassis, developperChassis, panVide, type ChassisPose, type OptionChassis } from './estimatorBrainV2Blocs'; // ACAL583
 import { YIELD_TABLE } from './yieldTable';
 import { PRODUCTION_NET_FACTOR } from './systemLoss';
 
@@ -796,6 +797,8 @@ export interface EastWestGeometry {
 }
 
 export interface PackOptions {
+  /** ACAL583 — châssis N × M : la cellule posée est le châssis entier (pose au sud seulement). Absent ou 1 × 1 = pavage d'aujourd'hui. */
+  chassis?: OptionChassis;
   family: ConfigFamily;
   tiltDeg: number;
   /** Tracés d'obstructions (cheminée, skylight, bâche) à déduire. */
@@ -955,6 +958,8 @@ export interface PanelGrid {
   rowWidthM: number;
   /** Empreinte au sol d'UN panneau (m²) = L·cos β × largeur. */
   footprintPerPanelM2: number;
+  /** ACAL583 — présent seulement pour un pavage en châssis : blocs entiers posés (`count` = nombre × rangs × modules). */
+  chassis?: ChassisPose;
 }
 
 export interface PackResult {
@@ -977,6 +982,8 @@ export interface PackResult {
    * uniforme (repli explicite). Absent sur les packs adaptés depuis la pose affleurante.
    */
   mixed?: PanelGrid;
+  /** ACAL583 — pourquoi l'option `chassis` n'a pas joué (famille Est-Ouest) ; absent sinon. `mixed` ignore l'option. */
+  chassisMotif?: string;
 }
 
 /** Azimut de visée (degrés, 0=N, 90=E, 180=S, 270=O) pour l'empilement des rangées. */
@@ -1349,22 +1356,6 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
   const overhangRingM2 = overhangM > 0 ? geodesicPerimeterM(ring) * overhangM + Math.PI * overhangM * overhangM : 0;
   const usableAreaM2 = Math.max(0, areaM2 + overhangRingM2 - obstructionOverlapM2(ring, obstructions, areaM2));
 
-  const buildEmpty = (
-    panelOrientation: 'portrait' | 'landscape',
-    slopeLenM: number,
-    rowWidthM: number,
-    pitchM: number,
-  ): PanelGrid => ({
-    panelOrientation,
-    count: 0,
-    kwc: 0,
-    rowPitchM: pitchM,
-    panels: [],
-    slopeLenM,
-    rowWidthM,
-    footprintPerPanelM2: slopeLenM * Math.cos(beta) * rowWidthM,
-  });
-
   // CAL75 — écart rangée/colonne RÉGLABLE en pose optimisée (jusqu'ici réglable
   // SEULEMENT en placement libre, cf. FREE_PANEL_GAP_M). Défauts = les constantes
   // d'étude historiques → calepinage identique au millimètre quand les options sont
@@ -1372,6 +1363,8 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
   // solaire reste `rowPitchM`/l'écart de chevron E-O), mais un SUPPLÉMENT au-dessus.
   const rowGapExtraM = Math.max(0, opts.rowGapExtraM ?? 0);
   const colGapM = opts.colGapM != null && Number.isFinite(opts.colGapM) ? Math.max(0, opts.colGapM) : PANEL_SIDE_GAP_M;
+  const chassisDemande = chassisApplicable(opts.chassis); // ACAL583
+  const chassis = eastWest ? null : chassisDemande; // Est-Ouest : le chevron impose sa géométrie
 
   // Pas d'empilement, UNE seule règle solaire pour les deux familles.
   //  - Sud : 1 panneau/cellule, pas = empreinte + ombre(cos) + marge.
@@ -1415,22 +1408,7 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
   };
 
   if (!Array.isArray(ring) || ring.length < 3) {
-    const cP = cellFor(moduleLongM, moduleCourtM);
-    const cL = cellFor(moduleCourtM, moduleLongM);
-    const portrait = buildEmpty('portrait', moduleLongM, moduleCourtM, cP.pitchM);
-    const landscape = buildEmpty('landscape', moduleCourtM, moduleLongM, cL.pitchM);
-    return {
-      origin: ring?.[0] ?? [0, 0],
-      ringENU: [],
-      azimuthDeg,
-      tiltDeg,
-      family: opts.family,
-      areaM2,
-      usableAreaM2,
-      portrait,
-      landscape,
-      best: portrait,
-    };
+    return panVide({ ring, areaM2, usableAreaM2, azimuthDeg, tiltDeg, family: opts.family, moduleLongM, moduleCourtM, pitchPortraitM: cellFor(moduleLongM, moduleCourtM).pitchM, pitchLandscapeM: cellFor(moduleCourtM, moduleLongM).pitchM }); // ACAL583 : déplacé
   }
 
   // Projection ENU centrée sur le centroïde.
@@ -1438,8 +1416,12 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
   const obstructionsENU = obstructions.map((o) => o.map(toENU));
 
   const makeGrid = (panelOrientation: 'portrait' | 'landscape', slopeLenM: number, rowWidthM: number): PanelGrid => {
-    const cell = cellFor(slopeLenM, rowWidthM);
-    const panels = packCells(ringENU, obstructionsENU, azimuthDeg, setbacks, cell, clearanceM, overhangM, obstacleRule, opts.obstructionClearancesM);
+    // ACAL583 — châssis N × M (pose au sud seulement) : la cellule devient le châssis entier.
+    const dc = chassis ? dimensionsChassis(chassis, slopeLenM, rowWidthM, colGapM, tiltDeg) : null;
+    const cell = dc ? cellFor(dc.slopeLenM, dc.rowWidthM) : cellFor(slopeLenM, rowWidthM);
+    let panels = packCells(ringENU, obstructionsENU, azimuthDeg, setbacks, cell, clearanceM, overhangM, obstacleRule, opts.obstructionClearancesM);
+    const blocs = panels.length;
+    if (chassis) panels = developperChassis(panels, chassis, azimuthDeg, slopeLenM, rowWidthM, colGapM, tiltDeg);
     return {
       panelOrientation,
       count: panels.length,
@@ -1449,6 +1431,7 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
       slopeLenM,
       rowWidthM,
       footprintPerPanelM2: slopeLenM * Math.cos(beta) * rowWidthM,
+      ...(chassis ? { chassis: { nombre: blocs, rangs: chassis.rangs, modulesParRang: chassis.modulesParRang } } : {}),
     };
   };
 
@@ -1509,6 +1492,7 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
     get mixed(): PanelGrid {
       return buildMixed();
     },
+    ...(chassisDemande && eastWest ? { chassisMotif: `châssis ${chassisDemande.rangs} × ${chassisDemande.modulesParRang} : poses au sud seulement` } : {}), // ACAL583
   };
 }
 

@@ -345,6 +345,70 @@ class PariteVolumesDevisCalepinageTest(TestCase):
         regle = self._calepinage(dict(self._complet(), debit_exploitation_m3h=4))
         self.assertEqual(regle['volumes']['plafond_forage_m3h'], 2.0)
 
+    def test_acal815_comparaison_pompage_direct_contre_reservoir(self):
+        """ACAL815 — 12 mois de besoin, 2 h de demande, réservoir déclaré ⇒
+        débit direct > débit avec réservoir (heures-pic PVGIS) ; sans heures ⇒
+        ``direct: null`` + motif nommé. Mutant : intervertir les options ⇒ rouge."""
+        corps = dict(self._complet(), besoin_m3_mois=[300.0] * 12, volume_reservoir_m3=30)
+        deux = self._calepinage(dict(corps, heures_demande_h=2))['comparaison_reservoir']
+        self.assertEqual(set(deux), set(CONTRAT_CALEPINAGE['exemple']['comparaison_reservoir']))
+        direct, avec = deux['direct'], deux['avec_reservoir']
+        self.assertIsNotNone(direct)
+        self.assertIsNotNone(avec)
+        self.assertGreater(direct['debit_conception_m3h'], avec['debit_conception_m3h'])
+        self.assertEqual(set(direct), set(CONTRAT_CALEPINAGE['exemple']['comparaison_reservoir']['direct']))
+        sans = self._calepinage(corps)['comparaison_reservoir']
+        self.assertIsNone(sans['direct'])
+        self.assertIsNotNone(sans['avec_reservoir'])
+        self.assertEqual(sans['motif'], 'fenêtre de demande non saisie')
+
+    def test_acal821_plusieurs_pompes_sur_le_variateur_retenu(self):
+        """ACAL821 — plaque du variateur SERVI (7,5 kW dans ce catalogue) : 4 ×
+        1,1 kW conformes dans les deux modes ; 7 × 1,1 ensemble ⇒ ``depasse``,
+        à tour de rôle ⇒ conforme ; sans mode ⇒ ``non_verifiable`` ; sans liste ⇒
+        absent. Mutant : toujours sommer ⇒ rouge sur « à tour de rôle »."""
+        def bloc(nb, mode=None):
+            corps = dict(self._complet(), pompes_variateur=[{'nom': f'P{i}', 'kw': 1.1} for i in range(nb)])
+            if mode:
+                corps['mode_pompes'] = mode
+            return self._calepinage(corps)
+        quatre = bloc(4, 'ensemble')
+        self.assertEqual(quatre['variateur']['produit'], self.variateur.pk)
+        self.assertEqual(set(quatre['pompes_variateur']), set(CONTRAT_CALEPINAGE['exemple']['pompes_variateur']))
+        self.assertEqual(quatre['pompes_variateur']['verdict'], 'conforme')
+        self.assertEqual(quatre['pompes_variateur']['kw_demande'], 4.4)
+        self.assertEqual(quatre['pompes_variateur']['kw_variateur'], 7.5)
+        self.assertEqual(bloc(4, 'a_tour_de_role')['pompes_variateur']['verdict'], 'conforme')
+        self.assertEqual(bloc(7, 'ensemble')['pompes_variateur']['verdict'], 'depasse')
+        tour = bloc(7, 'a_tour_de_role')['pompes_variateur']
+        self.assertEqual((tour['verdict'], tour['kw_demande']), ('conforme', 1.1))
+        self.assertEqual(bloc(4)['pompes_variateur']['verdict'], 'non_verifiable')
+        self.assertIsNone(self._calepinage(self._complet())['pompes_variateur'])
+        url = f'/api/django/calepinage/calepinages/{self.calepinage.pk}/pompage/'
+        rep = self.api.post(url, {'mode_pompes': 0}, format='json')
+        self.assertEqual(rep.status_code, 400, rep.content[:300])
+
+    def test_acal820_appoint_sur_le_bus_dc_du_variateur_retenu(self):
+        """ACAL820 — fiche à bus 400 V d'essai, 11 modules (Vmp à chaud ≈ 370 V)
+        ⇒ ``vmp_sous_bus`` ; sans bus publié ⇒ ``non_verifiable`` nommant
+        ``var_bus_dc_redresse_v`` ; sans appoint ⇒ absent. Mutant : verdict
+        ``conforme`` par défaut ⇒ rouge."""
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(
+            resultat={'entree_electrique': {'module_produit': self.panneau.pk}})
+        corps = dict(self._complet(), modules_en_serie=11, appoint='reseau')
+        sans_bus = self._calepinage(corps)['appoint_variateur']
+        self.assertEqual(set(sans_bus), set(CONTRAT_CALEPINAGE['exemple']['appoint_variateur']))
+        self.assertEqual(sans_bus['verdict'], 'non_verifiable')
+        self.assertIn('var_bus_dc_redresse_v', sans_bus['motif'])
+        FicheTechnique.objects.filter(produit=self.variateur).update(
+            var_bus_dc_redresse_v=Decimal('400'))
+        bloc = self._calepinage(corps)['appoint_variateur']
+        self.assertEqual((bloc['verdict'], bloc['appoint']), ('vmp_sous_bus', 'reseau'))
+        self.assertLess(bloc['vmp_chaud_v'], 400)
+        self.assertEqual(bloc['bus_redresse_v'], 400.0)
+        self.assertIsNone(self._calepinage(dict(corps, appoint=''))['appoint_variateur'])
+        self.assertIsNone(self._calepinage(self._complet())['appoint_variateur'])
+
 
 class PariteHmtTest(TestCase):
     """La HMT du calepinage est celle de ``hmt_composantes`` (AGR111)."""

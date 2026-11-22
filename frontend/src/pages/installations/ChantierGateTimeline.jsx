@@ -18,6 +18,7 @@ import {
 } from '../../ui'
 import ChantierTimeline from './ChantierTimeline'
 import RecettePompageDialog from './RecettePompageDialog'
+import ReprendreValeursAttendues from './ReprendreValeursAttendues'
 import { RECETTE_TRI_ETAT, RECETTE_RESULTATS } from '../../features/installations/statuses'
 import RaisonsBlocageGate from '../../ui/RaisonsBlocageGate'
 
@@ -667,6 +668,9 @@ function RecetteDialog({
             )}
             {ficheId ? (
               <>
+                {/* ACAL668 — les trois « attendu » repris du calepinage retenu. */}
+                <ReprendreValeursAttendues ficheId={ficheId}
+                  onReprendre={(valeurs) => setIv((p) => ({ ...p, ...valeurs }))} />
                 <div className="grid gap-3 sm:grid-cols-4">
                   {IV_CHAMPS.map(([cle, libelle, type]) => (
                     <div key={cle} className="flex flex-col gap-1.5">

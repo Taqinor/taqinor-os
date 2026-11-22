@@ -121,6 +121,41 @@ class BlocEcritTest(unittest.TestCase):
             self.assertEqual(point['p_ac_kw'], 2.5)
 
 
+class PuissanceContinueServieTest(unittest.TestCase):
+    """ACAL752 — l'onduleur écrit ``p_dc_kw`` : la colonne devient servie, et
+    l'indisponibilité (plus loin dans la chaîne) ne la touche pas."""
+
+    def _bloc(self, fenetres=None):
+        reglages_sim = reglages()
+        if fenetres:
+            reglages_sim['indisponibilite_fenetres'] = {
+                'valeur': fenetres, 'source': 'societe'}
+        serie = {'pas_minutes': 60, 'colonne_energie': 'p_w',
+                 'points': serie_longue(48)}
+        contexte = {'site': {'lat': 33.5, 'lon': -7.6}, 'plans': [],
+                    'reglages_simulation': reglages_sim,
+                    'fiche_onduleur': {'ac_kw': 5.0,
+                                       'rendement_euro_pct': 96.0}}
+        resultat = {}
+        appliquer_chaine(serie, contexte, resultat=resultat)
+        return resultat['serie_horaire']
+
+    def test_colonnes_enumere_p_dc_kw(self):
+        bloc = self._bloc()
+        self.assertIn('p_dc_kw', bloc['colonnes'])
+        for point in bloc['points']:
+            self.assertAlmostEqual(point['p_dc_kw'], 1.0, places=9)
+
+    def test_une_fenetre_d_arret_laisse_p_dc_kw_intacte(self):
+        bloc = self._bloc([{'debut': '2020-01-01', 'fin': '2020-01-02',
+                            'motif': 'maintenance onduleur'}])
+        arretes = [p for p in bloc['points'] if p['jour'] == 1]
+        self.assertTrue(arretes)
+        for point in arretes:
+            self.assertEqual(point['p_ac_kw'], 0.0)
+            self.assertAlmostEqual(point['p_dc_kw'], 1.0, places=9)
+
+
 class ExportHoraireEnfinRempliTest(unittest.TestCase):
     """L'export horaire produit un fichier non vide aux sept colonnes."""
 

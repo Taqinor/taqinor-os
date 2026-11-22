@@ -330,6 +330,12 @@ class GenererDevisPortesTest(BaseApiCalepinage):
         self.assertEqual(sorted(reponse.data),
                          sorted(CONTRAT_ELECTRIQUE['exemple']))
         self.assertTrue(set(CONTRAT['exemple']) <= set(reponse.data))
+        # REP-935 — la clé ``electrique`` sert aussi ``etat`` et ``points``.
+        self.assertEqual(sorted(reponse.data['electrique']),
+                         sorted(CONTRAT_ELECTRIQUE['exemple']['electrique']))
+        self.assertEqual(
+            sorted(CONTRAT_ELECTRIQUE['exemple_avec_manquantes']['electrique']),
+            sorted(CONTRAT_ELECTRIQUE['exemple']['electrique']))
         self.assertIsInstance(reponse.data['avertissements'], list)
         self.assertIsInstance(reponse.data['marques_manquantes'], list)
         second = self._generer(self.original)
@@ -374,6 +380,74 @@ class GenererDevisPortesTest(BaseApiCalepinage):
                             for m in reponse.data['avertissements']))
         self.assertTrue(any('la face (180°)' in m
                             for m in reponse.data['avertissements']))
+
+    def test_module_substitue_409_sans_devis(self):
+        """ACAL914 — 100 × 720 W dessinés (72,00 kWc) contre un catalogue à
+        550 W : 409 ``module_substitue`` nommant les deux kWc, aucun devis
+        (mutant : retirer l'appel de la garde ⇒ 201)."""
+        doc = copy.deepcopy(TOIT)
+        doc['zones'] = [{
+            'id': 'A', 'label': 'A', 'roofType': 'flat',
+            'vertices': [[0, 0], [30, 0], [30, 20], [0, 20]],
+            'geometry': {'count': 100, 'kwc': 72.0, 'azimuthDeg': 180.0,
+                         'tiltDeg': 10.0},
+            'result': {'count': 100, 'kwc': 72.0}}]
+        calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='QA-ACAL914')
+        enregistrer_layout(calepinage, doc, user=self.user)
+        avant = Devis.objects.filter(company=self.company).count()
+        reponse = self._generer(calepinage)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertEqual(sorted(reponse.data),
+                         sorted(CONTRAT['exemple_409_module_substitue']))
+        self.assertEqual(reponse.data['code'], 'module_substitue')
+        self.assertEqual(reponse.data['kwc_dessine'], 72.0)
+        self.assertNotEqual(reponse.data['kwc_compose'], 72.0)
+        self.assertTrue(reponse.data['detail'].startswith(
+            'Le dessin porte 72,00 kWc ; le catalogue compose '))
+        self.assertEqual(Devis.objects.filter(company=self.company).count(),
+                         avant)
+        calepinage.refresh_from_db()
+        self.assertIsNone(calepinage.devis_id)
+
+    def test_acal968_champ_seul_coche_176_resynchro_comprise(self):
+        """ACAL968 (D-ACAL-37) — zone 42 + champ au sol 176, seul le champ
+        coché ⇒ 176 modules, sélection écrite au devis et relue par la
+        resynchro SANS corps ⇒ 176 ; vide ou clé inconnue ⇒ 400 nommant
+        ``surfaces_chiffrees``. Mutant : composer tout ⇒ 218 ⇒ rouge."""
+        doc = {
+            'scenario': 'reseau',
+            'zones': [{'id': 'z1', 'label': 'Zone 1', 'roofType': 'flat',
+                       'vertices': [[0, 0], [30, 0], [30, 20], [0, 20]],
+                       'geometry': {'count': 42, 'kwc': 23.1, 'azimuthDeg': 180.0, 'tiltDeg': 10.0},
+                       'result': {'count': 42, 'kwc': 23.1}}],
+            'poseSurfaces': [{'id': 's1', 'kind': 'sol', 'label': 'Champ au sol 1', 'moduleWc': 550,
+                              'contourM': [[0, 0], [40, 0], [40, 25], [0, 25]], 'areaM2': 1000,
+                              'rowAzimuthDeg': 90, 'tiltDeg': 25,
+                              'engine': {'modules': 176, 'tables': [], 'rowPitchM': 4.2}}]}
+        calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='QA-ACAL968')
+        enregistrer_layout(calepinage, doc, user=self.user)
+        url = url_generer(calepinage.pk)
+        for mauvais in ([], ['inconnue'], 's1'):
+            refus = self.api.post(url, {'surfaces_chiffrees': mauvais}, format='json')
+            self.assertEqual(refus.status_code, 400, refus.data)
+            self.assertEqual(sorted(refus.data), sorted(CONTRAT['exemple_400_surfaces_chiffrees']))
+        reponse = self.api.post(url, CONTRAT['corps_surfaces_chiffrees'], format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        devis = Devis.objects.get(pk=reponse.data['devis'])
+
+        def panneaux(devis):
+            return sum(int(ligne.quantite) for ligne in devis.lignes.all()
+                       if 'panneau' in (ligne.designation or '').lower())
+        self.assertEqual(panneaux(devis), 176)
+        self.assertEqual(devis.roof_layout['choixConception']['surfacesChiffrees'], ['s1'])
+        calepinage.refresh_from_db()
+        self.assertEqual(calepinage.roof_layout['zones'][0]['geometry']['count'], 42)  # jamais réécrit
+        sync = self.api.post(f'{url_detail(calepinage.pk)}sync-devis/', {}, format='json')
+        self.assertEqual(sync.status_code, 200, sync.data)
+        devis.refresh_from_db()
+        self.assertEqual(panneaux(devis), 176)
 
 
 class GenererDevisConcurrentTest(TransactionTestCase):

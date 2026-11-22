@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 import useResource from '../../hooks/useResource'
-import { formatDateTime } from '../../lib/format'
+import { formatDate, formatDateTime } from '../../lib/format'
 import { Button, Card } from '../../ui'
 import RetourAtelier from './atelier/RetourAtelier'
 import EtatEcranAtelier from './atelier/EtatEcranAtelier'
 import { refusServeur } from './commun/refusServeur'
+import Pourquoi from './commun/Pourquoi'
 
 /* ============================================================================
    CAL196 — L'ÉCRAN « DOSSIERS RÉGLEMENTAIRES » DU CALEPINAGE.
@@ -393,6 +394,7 @@ function Dossier({ dossier, calepinageId, onGenere, onEnregistre }) {
           texte={STATUT_DOSSIER[dossier.statut] || dossier.statut}
           alerte={dossier.statut !== 'complet'}
         />
+        <Pourquoi cle="documents.statut" />{/* ACAL878 */}
       </div>
 
       <p className="text-xs text-muted-foreground" data-testid={`cal196-gabarit-${dossier.id}`}>
@@ -402,6 +404,25 @@ function Dossier({ dossier, calepinageId, onGenere, onEnregistre }) {
             + `${gabarit.depose_par?.nom_complet ? ` par ${gabarit.depose_par.nom_complet}` : ''}`
           : 'Gabarit non déposé : aucun formulaire officiel n’est fabriqué sans le fichier de la société.'}
       </p>
+
+      {gabarit.present && gabarit.verifie_le
+        ? (
+          <p className="text-xs text-muted-foreground" data-testid={`acal824-verifie-${dossier.id}`}>
+            Vérifié le {formatDate(gabarit.verifie_le)}
+          </p>
+        )
+        : null}
+      {gabarit.verification_perimee === true
+        ? (
+          <p
+            role="alert"
+            className="rounded border border-destructive/40 bg-destructive/10 px-2 py-1 text-xs text-destructive"
+            data-testid={`acal824-perime-${dossier.id}`}
+          >
+            Vérifié il y a plus de {gabarit.verification_max_jours} jours : redemandez le formulaire au distributeur
+          </p>
+        )
+        : null}
 
       {dossier.genere_sur_conception_perimee === true
         ? (
@@ -523,6 +544,7 @@ function PackFrance({ pack }) {
           >
             {`${av.pieces_fournies ?? 0} / ${av.pieces_total ?? 0} pièces fournies`}
             {av.pourcentage == null ? '' : ` · ${av.pourcentage} %`}
+            <Pourquoi cle="documents.avancement" valeurs={{ avancement: av }} />
           </p>
         )
       })}

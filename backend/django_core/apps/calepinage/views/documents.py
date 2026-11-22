@@ -127,6 +127,44 @@ def diagramme_pertes_svg(self, request, pk=None):
 CalepinageViewSet.diagramme_pertes_svg = diagramme_pertes_svg
 
 
+@extend_schema(
+    responses={(200, 'image/svg+xml'): OpenApiTypes.BINARY,
+               409: REPONSE_REFUS_ETAT},
+    parameters=[OpenApiParameter(
+        name='langue', type=OpenApiTypes.STR, required=False,
+        description='Langue des libellés (fr, en ; ar retombe sur fr).')],
+)
+@action(detail=True, methods=['get'], url_path=r'diagramme-energie\.svg',
+        url_name='diagramme-energie-svg',
+        permission_classes=[PeutVoirCalepinage])
+def diagramme_energie_svg(self, request, pk=None):
+    """ACAL761 — le schéma « où va l'énergie » en SVG autonome.
+
+    * **200** — le SVG, nommé d'après le calepinage ;
+    * **409** — aucun résultat ou aucune cascade regroupée : motif français
+      et champ NOMMÉ.
+    """
+    from ..services.diagramme_energie import svg_de_l_energie_du_calepinage
+    from ..services.diagramme_pertes import DiagrammeRefuse
+    from ..services.planche import nom_de_fichier
+    from ..services.rapport import RapportRefuse
+    from .sorties import MIME_SVG, reponse_de_fichier
+
+    calepinage = self.get_object()  # borné société par get_queryset
+    try:
+        svg = svg_de_l_energie_du_calepinage(
+            calepinage, langue=request.query_params.get('langue'))
+    except (DiagrammeRefuse, RapportRefuse) as refus:
+        return Response({refus.champ or 'cascade': str(refus)},
+                        status=status.HTTP_409_CONFLICT)
+    return reponse_de_fichier(
+        svg.encode('utf-8'), mime=MIME_SVG,
+        nom_fichier=nom_de_fichier(calepinage, 'diagramme-energie.svg'))
+
+
+CalepinageViewSet.diagramme_energie_svg = diagramme_energie_svg
+
+
 # ── CALX321 — l'inventaire des documents du lot 6, DONNÉE PAR DONNÉE ───────
 # Imports de SECTION (fichier append-only : l'en-tête ne se rouvre pas).
 

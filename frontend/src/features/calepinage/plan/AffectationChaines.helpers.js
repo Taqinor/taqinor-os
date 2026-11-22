@@ -29,8 +29,8 @@
        `{ affectation_manuelle: [...] }` : ENREGISTRE, et répond avec le
        `resultat` recalculé — les lignes touchées y portent alors
        `source: « affectation manuelle »`. Aucun second appel n'est enchaîné.
-   Une ligne d'affectation est `{module, chaine, mppt, onduleur}` — les quatre
-   seules clés admises par `normaliser_affectation_imposee`.
+   Une ligne d'affectation est `{module, chaine, mppt, onduleur}` (+ `optimiseur`
+   facultatif, ACAL733) — les clés admises par `normaliser_affectation_imposee`.
 
    LE REFUS VIENT DU SERVEUR, TOUJOURS. Les bloquants sont RECOPIÉS tels quels
    (ils NOMMENT la contrainte, le pan et la chaîne) ; un refus 400 est affiché
@@ -61,6 +61,25 @@
 export function couleurServie(ligne, mode) {
   const couleur = mode === 'chaine' ? ligne.couleur_chaine : ligne.couleur_mppt
   return typeof couleur === 'string' && couleur ? couleur : null
+}
+
+/* ACAL725 — le drapeau « optimiseur » PAR MODULE (`affectation_manuelle[].optimiseur`, ACAL733) : vrai, faux,
+   ou ABSENT (le module suit le produit déclaré pour le document) — jamais `null` envoyé. */
+
+/** Le drapeau servi d'une ligne : `true`/`false`, ou `undefined` quand le serveur n'en porte pas. */
+export function drapeauOptimiseur(ligne) {
+  return typeof ligne?.optimiseur === 'boolean' ? ligne.optimiseur : undefined
+}
+
+/**
+ * Le geste « marquer une LISTE de modules » : chaque ligne `{module, chaine, mppt, onduleur}` ressort avec
+ * `optimiseur: valeur` (booléen) — ou SANS la clé quand `valeur` n'est pas un booléen.
+ */
+export function marquerModules(modules, valeur) {
+  return (modules || []).map(({ module, chaine = null, mppt = null, onduleur = null }) => (
+    typeof valeur === 'boolean'
+      ? { module, chaine, mppt, onduleur, optimiseur: valeur }
+      : { module, chaine, mppt, onduleur }))
 }
 
 /** Clé de groupe d'une ligne. `null` = module non affecté (gris). */

@@ -59,19 +59,24 @@ ETATS = ('exemple', 'exemple_limite_saisie', 'exemple_vide')
 CHAMPS_SAISIE = {'puissance_souscrite_kva', 'phases', 'tension_nominale_v',
                  'limite_elevation_pct', 'source_limite', 'cos_phi_impose',
                  'source_cos_phi', 'plafond_injection_kw',
-                 'plafond_injection_justification'}
+                 'plafond_injection_justification', 'plafond_injection_a',
+                 'plages_plafond_injection',  # ACAL828
+                 'plafond_soutirage_kw', 'plafond_soutirage_justification',  # ACAL829
+                 'dispositif_limitation_injection'}  # ACAL1187
 
-#: Les quatre grandeurs calculées.
+#: Les six grandeurs calculées (ACAL827 : + le plafond en A converti en kW).
 CHAMPS_CALCUL = {'elevation_pct', 'ecart_limite_pct', 'puissance_injectee_kva',
-                 'desequilibre_pct'}
+                 'desequilibre_pct', 'plafond_injection_kw_converti',
+                 'plafond_injection_conversion'}
 
 #: Les cinq champs d'un verdict, et les quatre statuts admis.
 CHAMPS_VERDICT = {'code', 'libelle', 'statut', 'detail', 'source'}
 STATUTS = ('ok', 'alerte', 'bloquant', 'omis')
 
-#: Les cinq contrôles, dans l'ordre où l'écran les affiche.
+#: Les six contrôles (ACAL1187 : « limitation de l'injection » en sixième),
+#: dans l'ordre où l'écran les affiche.
 CODES = ['elevation_tension', 'puissance_souscrite', 'regime_phases',
-         'tension_nominale', 'desequilibre_phases']
+         'tension_nominale', 'desequilibre_phases', 'limitation_injection']
 
 #: Les couples « valeur ⇔ sa provenance » : l'une sans l'autre est refusée.
 COUPLES_SOURCES = (('limite_elevation_pct', 'source_limite'),
@@ -118,12 +123,14 @@ class TroisBlocsTest(SimpleTestCase):
     def test_les_trois_blocs_dans_chaque_etat(self):
         for etat in ETATS:
             # ACAL157 — + ``proposition_lead`` (null sans proposition).
+            # ACAL782/783 — + ``regime``, ``injection``, ``injection_motif``.
             self.assertEqual(sorted(RACCORDEMENT[etat]),
-                             ['calcul', 'proposition_lead', 'saisie',
+                             ['calcul', 'injection', 'injection_motif',
+                              'proposition_lead', 'regime', 'saisie',
                               'verdicts'],
                              f'{etat} : les blocs de réponse ont bougé.')
 
-    def test_les_neuf_champs_de_saisie(self):
+    def test_les_champs_de_saisie(self):
         from apps.calepinage.services.raccordement import (
             CHAMPS_SAISIE as SERVIS,
         )
@@ -141,12 +148,12 @@ class TroisBlocsTest(SimpleTestCase):
             self.assertEqual(set(RACCORDEMENT[etat]['calcul']), CHAMPS_CALCUL,
                              f'{etat} : grandeurs calculées en écart.')
 
-    def test_les_cinq_verdicts_dans_chaque_etat(self):
+    def test_les_six_verdicts_dans_chaque_etat(self):
         for etat in ETATS:
             self.assertEqual(
                 [verdict['code']
                  for verdict in RACCORDEMENT[etat]['verdicts']], CODES,
-                f'{etat} : les cinq contrôles doivent TOUS être présents, '
+                f'{etat} : les six contrôles doivent TOUS être présents, '
                 f'dans le même ordre — un contrôle absent se lit « pas de '
                 f'problème ».')
 
@@ -334,3 +341,60 @@ class HorsSujetTest(SimpleTestCase):
                     f'"{interdit}', texte,
                     f'{etat} : le raccordement publie « {interdit} » — le '
                     f'calepinage ne calcule ni argent ni énergie.')
+
+
+class LimitationInjectionTest(SimpleTestCase):
+    """ACAL1187 — des micro-onduleurs ne limitent pas l'injection d'eux-mêmes."""
+
+    @staticmethod
+    def _limitation(micro, **saisie):
+        import dataclasses
+
+        from apps.calepinage.services.raccordement import verdicts_raccordement
+
+        from .test_acal_cos_phi_societe import _conception
+
+        return verdicts_raccordement(
+            dataclasses.replace(_conception(), micro_seul=micro), saisie)
+
+    def test_micro_et_plafond_zero_sans_dispositif_alerte_nommant_le_champ(self):
+        bloc = self._limitation(True, plafond_injection_kw=0)
+        verdict = bloc['limitation']
+        self.assertEqual(verdict.statut, 'alerte')
+        self.assertEqual(verdict.code, 'limitation_injection')
+        self.assertIn('raccordement.dispositif_limitation_injection',
+                      verdict.libelle)
+        self.assertIn("ne limitent pas l'injection d'eux-mêmes",
+                      verdict.libelle)
+        # L'alerte rejoint `verdicts` : `_motifs_du_raccordement` la reprend.
+        self.assertIn(verdict, bloc['verdicts'])
+
+    def test_dispositif_saisi_ok_et_cite(self):
+        verdict = self._limitation(
+            True, plafond_injection_kw=0,
+            dispositif_limitation_injection='passerelle de limitation')[
+                'limitation']
+        self.assertEqual(verdict.statut, 'ok')
+        self.assertIn('passerelle de limitation', verdict.libelle)
+
+    def test_dispositif_vide_vaut_non_declare(self):
+        verdict = self._limitation(
+            True, plafond_injection_kw=0,
+            dispositif_limitation_injection='   ')['limitation']
+        self.assertEqual(verdict.statut, 'alerte')
+
+    def test_sans_plafond_ou_avec_onduleur_de_chaine_omis_avec_motif(self):
+        for micro, saisie in ((True, {}), (False, {'plafond_injection_kw': 0}),
+                              (False, {})):
+            bloc = self._limitation(micro, **saisie)
+            self.assertEqual(bloc['limitation'].statut, 'non_verifiable')
+            self.assertTrue(bloc['limitation'].libelle.strip())
+            self.assertEqual(len(bloc['verdicts']), 3)
+
+    def test_le_dispositif_est_une_saisie_normalisee(self):
+        from apps.calepinage.services.raccordement import _saisie_publiee
+
+        self.assertEqual(
+            _saisie_publiee({'dispositif_limitation_injection': '  clé  '})[
+                'dispositif_limitation_injection'], 'clé')
+        self.assertIsNone(_saisie_publiee({})['dispositif_limitation_injection'])

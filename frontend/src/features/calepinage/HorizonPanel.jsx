@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { todayLocalIso } from '../../lib/dateLocale'
 import calepinageApi from '../../api/calepinageApi'
 import useDocumentCalepinage, {
   ecrireSection, MESSAGE_ILLISIBLE, useLatitudeDuSite,
@@ -10,6 +11,7 @@ import {
 import SunDiagram from './SunDiagram'
 import { LegendeCourbes } from './LegendeCourbes'
 import RetourAtelier from './atelier/RetourAtelier'
+import { demarrerCapteurs, lireVisee } from './capteursTelephone'
 import {
   lireFichierHorizon, nombreDeColonnes, CONVENTION_NORD, CONVENTION_SUD,
 } from './horizonFichier'
@@ -60,6 +62,17 @@ function directionsDistinctes(points) {
   return new Set(sortedHorizonPoints(points).map((p) => p.azimuthDeg)).size
 }
 
+/** ACAL518 — l'azimut MANQUANT d'un tour : règle du serveur (`services/horizon.py`), un écart circulaire
+ * > 2 × la médiane des écarts ; rend le milieu du plus grand écart, ou null (aucun pas codé). */
+function azimutManquant(points) {
+  const az = [...new Set(points.map((p) => p.azimuthDeg))].sort((a, b) => a - b)
+  if (az.length < 3) return null
+  const ecarts = az.map((a, i) => (az[(i + 1) % az.length] - a + 360) % 360 || 360)
+  const mediane = [...ecarts].sort((a, b) => a - b)[Math.floor(ecarts.length / 2)]
+  const pire = ecarts.indexOf(Math.max(...ecarts))
+  return ecarts[pire] > 2 * mediane ? Math.round((az[pire] + ecarts[pire] / 2) % 360) : null
+}
+
 function nombre(brut) {
   if (brut === null || brut === undefined || brut === '') return null
   const v = Number(brut)
@@ -81,6 +94,8 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
   const [recuperation, setRecuperation] = useState(false)
   const [fichier, setFichier] = useState(null) // { nom, texte }
   const [convention, setConvention] = useState(null) // ACAL458 : jamais présélectionnée
+  const [telephone, setTelephone] = useState(false) // ACAL518 : capteurs démarrés
+  const [precision, setPrecision] = useState('') // ACAL518 : précision de la boussole, DÉCLARÉE
   const chargement = doc.etat === 'chargement'
   const illisible = doc.etat === 'erreur'
 
@@ -119,6 +134,24 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
     setSaisie({ azimut: '', hauteur: '' })
     setSource('saisie') // toute saisie manuelle bascule la source (jamais mélangée à `pvgis`)
     setReleve(null)
+    setMessage(null)
+  }
+
+  // ACAL518 — « Relever au téléphone » : une visée par toucher, précision de la boussole DÉCLARÉE.
+  const capteursPresents = typeof window !== 'undefined' && typeof window.DeviceOrientationEvent !== 'undefined'
+  async function ouvrirTelephone() {
+    const depart = await demarrerCapteurs()
+    if (depart.indisponible) { setMessage(depart.motif); return }
+    setTelephone(true)
+    setMessage(null)
+  }
+  function enregistrerVisee() {
+    const precisionDeg = nombre(precision)
+    const v = lireVisee()
+    if (v.indisponible) { setMessage(v.motif); return }
+    setPoints((prev) => sortedHorizonPoints([...prev, { azimuthDeg: v.azimutDeg, heightDeg: v.hauteurDeg }]))
+    setSource('saisie')
+    setReleve({ mode: 'telephone', date: todayLocalIso(), precisionDeg })
     setMessage(null)
   }
 
@@ -329,6 +362,41 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
           </button>
         </div>
       </div>
+
+      {capteursPresents && (
+        <details className="mt-4" data-testid="horizon-tel">
+          <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold text-foreground">Relever au téléphone</summary>
+          {!telephone && (
+            <button type="button" onClick={ouvrirTelephone} data-testid="horizon-tel-demarrer"
+              className="min-h-11 rounded border border-border px-3 text-sm font-semibold text-foreground">
+              Démarrer les capteurs
+            </button>
+          )}
+          {telephone && (
+            <div className="mt-2" data-testid="horizon-tel-visees">
+              <label className="block text-sm text-foreground">
+                Précision de la boussole (°)
+                <input type="number" step="any" min="0" value={precision} onChange={(e) => setPrecision(e.target.value)}
+                  data-testid="horizon-tel-precision"
+                  className="mt-1 block min-h-11 w-28 rounded border border-border bg-transparent px-2 text-sm text-foreground" />
+              </label>
+              <p className="mt-2 text-sm text-muted-foreground" data-testid="horizon-tel-compte">
+                Visée {directionsDistinctes(points)} sur {DIRECTIONS_MINIMALES} minimum
+                {azimutManquant(points) !== null ? ` · il manque une visée vers ${azimutManquant(points)}°` : ''}
+              </p>
+              <button type="button" onClick={enregistrerVisee} disabled={!(nombre(precision) > 0)} data-testid="horizon-tel-viser"
+                className="mt-2 min-h-11 rounded border border-border px-3 text-sm font-semibold text-foreground disabled:opacity-50">
+                Enregistrer cette visée
+              </button>
+              {!(nombre(precision) > 0) && (
+                <p className="mt-1 text-sm text-muted-foreground" data-testid="horizon-tel-sans-precision">
+                  Déclarez la précision de la boussole pour viser.
+                </p>
+              )}
+            </div>
+          )}
+        </details>
+      )}
 
       <div className="mt-4 flex items-center gap-3">
         <button

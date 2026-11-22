@@ -320,6 +320,9 @@ rafraichir_dimensionnement_devis = _etudes.rafraichir_dimensionnement_devis
 rafraichir_etudes_du_devis = _etudes.rafraichir_etudes_du_devis
 compute_marge_snapshot = _etudes.compute_marge_snapshot
 refresh_marge_snapshot = _etudes.refresh_marge_snapshot
+# ACAL992 — la porte unique de chiffrage d'une conception (lue par apps/calepinage).
+from apps.ventes.domain import chiffrage_conception as _chiffrage_conception  # noqa: E402 — anti-cycle (D-ENF22)
+chiffrer_conception = _chiffrage_conception.chiffrer_conception
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -576,6 +579,7 @@ __all__ = [
     'capturer_configuration_devis',
     'carte_marques_composition',
     'catalogue_de_la_societe',
+    'chiffrer_conception',
     'cible_depuis_lignes',
     'classer_produit',
     'composer_devis_residentiel',

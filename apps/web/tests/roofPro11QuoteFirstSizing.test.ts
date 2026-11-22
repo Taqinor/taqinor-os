@@ -240,6 +240,23 @@ describe('ACAL311 — la consommation proposée par le serveur', () => {
     expect(JSON.stringify(enregistrerAtelier(ctx2).consumption)).toBe(JSON.stringify(doc1.consumption));
   });
 
+  it('ACAL837 — Mes factures : 3 mois saisis postent le corps du contrat et dessinent 12 barres dont 9 estimées', async () => {
+    vi.useFakeTimers();
+    const proposer = vi.fn(async () => reponse('exemple_factures_mois'));
+    const { panel } = monter(proposer);
+    const saisir = (mois: number, valeur: string) => {
+      const champ = panel.querySelector(`[data-cons-mois-ligne="${mois}"] [data-cons-mois-valeur]`) as HTMLInputElement;
+      champ.value = valeur;
+      champ.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    saisir(1, '300'); saisir(7, '500'); saisir(10, '400');
+    await vi.advanceTimersByTimeAsync(700);
+    expect(proposer).toHaveBeenCalledTimes(1);
+    expect(proposer).toHaveBeenLastCalledWith(CONTRAT.corps_factures_mois);
+    expect(panel.querySelectorAll('[data-cons-mois-barre]')).toHaveLength(12);
+    expect(panel.querySelectorAll('[data-source="estime"]')).toHaveLength(9);
+  });
+
   it('« Reprendre du lead », le CSV et le Ramadan postent les corps du contrat', async () => {
     const proposer = vi.fn(async (corps: { source: string; ramadan?: unknown }) =>
       reponse(corps.ramadan ? 'exemple_ramadan' : corps.source === 'csv' ? 'exemple_csv_15_min' : 'exemple'));

@@ -3,6 +3,10 @@
     {
       "rendementPvgis": null,
       "proposerConsommation": "[fn]",
+      "lireFactureConsommation": {
+        "disponible": "[fn]",
+        "lire": "[fn]"
+      },
       "productionAtelier": "[fn]",
       "maptilerKey": "cle-d-essai",
       "reducedMotion": false,
@@ -42,7 +46,8 @@
             "scenario": "reseau"
           },
           "cibleVendue": true,
-          "fullName": "Toiture — bâtiment principal"
+          "fullName": "Toiture — bâtiment principal",
+          "factureMensuelleMad": 900
         }
       },
       "referenceContour": [
@@ -61,6 +66,8 @@
       ],
       "modulesDisponibles": null,
       "reglagesAtelier": null,
+      "demanderPlanSurface": "[fn]",
+      "factureMensuelleMad": 900,
       "onApiReady": "[fn]",
       "onHydrationTerminee": "[fn]"
     }

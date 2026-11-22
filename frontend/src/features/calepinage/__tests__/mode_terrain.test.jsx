@@ -52,6 +52,7 @@ vi.mock('@roofpro/scene3d', () => ({
 const { default: ModeTerrain } = await import('../ModeTerrain')
 const {
   demandeMoteur, documentTerrain, planVue2D, vueDuChamp, AXE_AUTO, motifChampVide, motifRefus,
+  alerteOmbrageMutuel, ligneEntraxeCalcule,
 } = await import('../ModeTerrain.helpers')
 const { pasMesure, tauxOccupation, empriseTablesM2, contourTerrain } = await import('../surfacePose')
 const { formatCote } = await import('../plan2d')
@@ -92,13 +93,14 @@ describe('CAL89 — le pas inter-rangées est MESURÉ sur le plan du moteur', ()
     expect(pasMesure(undefined)).toBeNull()
   })
 
-  it('aucune constante de pas, aucun tan()/latitude dans l’écran — CAL88 est la seule physique', () => {
+  it('aucune constante de pas, aucune trigonométrie dans l’écran — CAL88 est la seule physique', () => {
     const source = fs.readFileSync(
       path.join(RACINE_FRONTEND, 'src/features/calepinage/ModeTerrain.jsx'), 'utf8',
     )
-    // Le fichier ne doit contenir AUCUNE trigonométrie de pas ni latitude.
-    expect(source).not.toMatch(/Math\.tan\s*\(/)
-    expect(source).not.toMatch(/latitude/i)
+    // Le fichier ne doit contenir AUCUNE trigonométrie de pas. ACAL609 : la latitude de l'épingle
+    // PART au serveur (`sol.latitude_deg`) et l'entraxe revient du serveur — jamais calculé ici.
+    expect(source).not.toMatch(/Math\.(tan|sin|cos|atan2?)\s*\(/)
+    expect(source).not.toMatch(/déclinaison|declinaison|solstice/i)
   })
 })
 
@@ -710,5 +712,116 @@ describe('TracePlanPose (ENF19)', () => {
       monterTrace(IDS_TRACE, { empriseTablesM2: 24, modules: null })
       expect(screen.getByTestId('x-emprise')).toHaveTextContent(/— module\(s\) posé\(s\) par le moteur\./)
     })
+  })
+})
+
+/* ── ACAL609 — la latitude part avec la pose ; l'entraxe calculé est dit ; l'allée trop serrée alerte ── */
+
+describe('ACAL609 — espacement anti-ombrage du champ au sol', () => {
+  const ANTI = exempleContrat('calepinage', 'pose', 'exemple_sol').anti_ombrage
+  const REPONSE_SOL = exempleContrat('calepinage', 'pose', 'exemple_sol')
+  const avecEpingle = () => layout.mockResolvedValue({
+    data: { roof_layout: { zones: [{ id: 'PAN-A' }], pin: { lat: 30.4, lng: -7.6 } }, empreinte_document: 'E0' },
+  })
+  const saisir = async () => {
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    await screen.findByTestId('cal-terrain-largeurM')
+    await waitFor(() => expect(screen.getByTestId('cal-terrain-calculer').disabled).toBe(false))
+    for (const [cle, valeur] of Object.entries(SAISIE)) {
+      const champ = screen.queryByTestId(`cal-terrain-${cle}`)
+      if (champ) fireEvent.change(champ, { target: { value: valeur } })
+    }
+  }
+
+  it('épingle ⇒ le corps porte `sol` HORS de `demande` ; `allee_m` reste absent', async () => {
+    avecEpingle()
+    pose.mockResolvedValue({ data: REPONSE_SOL })
+    monter()
+    await saisir()
+    fireEvent.click(screen.getByTestId('cal-terrain-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    const corps = pose.mock.calls[0][0]
+    expect(corps.sol).toEqual({ latitude_deg: 30.4 })
+    expect(corps.demande.parametres).not.toHaveProperty('allee_m')
+    expect(corps.demande).not.toHaveProperty('sol')
+    expect((await screen.findByTestId('cal-terrain-entraxe-calcule')).textContent)
+      .toBe('Entraxe calculé contre l’ombre d’hiver : 5,9 m (latitude 30,4°)')
+    expect(screen.queryByTestId('cal-terrain-alerte-ombrage')).toBeNull()
+  })
+
+  it('sans épingle ⇒ aucun `sol` envoyé, et l’écran le dit', async () => {
+    monter()
+    await saisir()
+    fireEvent.click(screen.getByTestId('cal-terrain-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    expect(pose.mock.calls[0][0]).not.toHaveProperty('sol')
+    expect(screen.getByTestId('cal-terrain-epingle-absente').textContent)
+      .toContain('Épingle du site absente : posez-la sur la carte pour calculer l’espacement anti-ombrage')
+  })
+
+  it('ALLEE_SAISIE sous le calculé ⇒ alerte nommant les deux entraxes ; égal ⇒ aucune alerte', () => {
+    const serre = { ...ANTI, politique: 'ALLEE_SAISIE', entraxe_applique_m: 4.921 }
+    expect(alerteOmbrageMutuel(serre)).toBe(
+      'Rangées trop serrées : chaque rangée ombre la suivante à 10 h solaire au solstice d’hiver '
+      + '(heure de dimensionnement du pas). Entraxe saisi 4,9 m, entraxe calculé 5,9 m (latitude 30,4°).')
+    expect(alerteOmbrageMutuel({ ...serre, entraxe_applique_m: ANTI.entraxe_calcule_m })).toBeNull()
+    expect(alerteOmbrageMutuel({ ...serre, entraxe_applique_m: 7 })).toBeNull()
+    expect(alerteOmbrageMutuel(ANTI)).toBeNull()
+    expect(alerteOmbrageMutuel(null)).toBeNull()
+    expect(ligneEntraxeCalcule({ ...ANTI, politique: 'ALLEE_SAISIE' })).toBeNull()
+  })
+
+  it('l’écran montre l’alerte ; le bouton vide l’allée et relance le calcul', async () => {
+    avecEpingle()
+    const serre = { ...REPONSE_SOL, anti_ombrage: { ...ANTI, politique: 'ALLEE_SAISIE', entraxe_applique_m: 4.921 } }
+    pose.mockResolvedValueOnce({ data: serre }).mockResolvedValue({ data: REPONSE_SOL })
+    monter()
+    await saisir()
+    fireEvent.change(screen.getByTestId('cal-terrain-alleeM'), { target: { value: '0.6' } })
+    fireEvent.click(screen.getByTestId('cal-terrain-calculer'))
+    expect((await screen.findByTestId('cal-terrain-alerte-ombrage')).getAttribute('role')).toBe('alert')
+    expect(pose.mock.calls[0][0].demande.parametres.allee_m).toBe(0.6)
+    fireEvent.click(screen.getByTestId('cal-terrain-utiliser-entraxe'))
+    await waitFor(() => expect(pose).toHaveBeenCalledTimes(2))
+    expect(pose.mock.calls[1][0].demande.parametres).not.toHaveProperty('allee_m')
+    expect(screen.getByTestId('cal-terrain-alleeM').value).toBe('')
+    await waitFor(() => expect(screen.queryByTestId('cal-terrain-alerte-ombrage')).toBeNull())
+  })
+})
+
+/* ── ACAL610 — le kWc du champ au sol est affiché ── */
+
+describe('ACAL610 — puissance du champ au sol', () => {
+  const calculer = async (reponse, puissance) => {
+    pose.mockResolvedValue({ data: reponse })
+    monter()
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    for (const [cle, valeur] of Object.entries(SAISIE)) {
+      const champ = screen.queryByTestId(`cal-terrain-${cle}`)
+      if (champ) fireEvent.change(champ, { target: { value: cle === 'puissanceWc' && puissance !== undefined ? puissance : valeur } })
+    }
+    fireEvent.click(screen.getByTestId('cal-terrain-calculer'))
+    return screen.findByTestId('cal-terrain-kwc')
+  }
+  const plans = (modules) => [{ ...REPONSE.plans[0], modules }]
+
+  it('`kwc` du moteur ⇒ la cellule le montre (124,96)', async () => {
+    const cellule = await calculer({ ...REPONSE, kwc: 124.96, plans: plans(176) })
+    expect(cellule.textContent).toContain('124,96')
+    expect(cellule.textContent).toContain('Puissance du champ (modules posés × puissance saisie)')
+  })
+
+  it('`kwc` absent ⇒ modules × puissance saisie ÷ 1 000 (176 × 710 Wc = 124,96)', async () => {
+    const { kwc: _omis, ...sansKwc } = REPONSE
+    const cellule = await calculer({ ...sansKwc, plans: plans(176) }, '710')
+    expect(cellule.textContent).toContain('124,96')
+  })
+
+  it('ni `kwc` ni puissance exploitable ⇒ « — » et « Puissance non calculable », jamais 0', async () => {
+    const { kwc: _omis, ...sansKwc } = REPONSE
+    const cellule = await calculer({ ...sansKwc, plans: plans(176) }, '0')
+    expect(cellule.textContent).toContain('—')
+    expect(cellule.textContent).toContain('Puissance non calculable')
+    expect(cellule.textContent).not.toMatch(/(^|\s)0(\s|$)/)
   })
 })

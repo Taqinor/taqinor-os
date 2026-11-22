@@ -28,7 +28,7 @@ from ..serializers import forme_reponse
 from ..serializers_pertes import (
     PertesCalepinageSerializer, PostesDePertesSerializer,
 )
-from ..services.pertes import CATALOGUE, PertesInvalides, postes_du_calepinage
+from ..services.pertes import CATALOGUE, CLES_SOCIETE_PAR_POSTE, PertesInvalides, postes_du_calepinage
 # Renommé à l'import : l'ACTION doit s'appeler ``enregistrer_pertes`` (le
 # routeur DRF fige le nom de la méthode AU MOMENT de la décoration, dans
 # ``MethodMapper`` — le renommer après coup ne changerait rien), donc le
@@ -64,9 +64,13 @@ def publication_des_pertes(calepinage):
     """
     from ..services.chaine_pertes import statuts_des_postes
 
+    from ..selectors import parametres_de_societe
+
     postes = postes_du_calepinage(calepinage)
     total = sum(poste['pct'] for poste in postes)
     statuts = statuts_des_postes(postes, _cascade_fraiche(calepinage))
+    societe = _societe_des_postes(
+        parametres_de_societe(getattr(calepinage, 'company', None)).get('simulation'))
     return {
         'calepinage': calepinage.pk,
         'pertes': postes,
@@ -82,8 +86,47 @@ def publication_des_pertes(calepinage):
                                if poste['source'] is None],
         'simulable': True,
         'motif_non_simulable': '',
-        'catalogue': [dict(entree) for entree in CATALOGUE],
+        # ACAL979 — chaque ligne cite le réglage SOCIÉTÉ que la chaîne lit
+        # quand le poste n'est pas saisi (`null` : le poste n'en a aucun).
+        'catalogue': [dict(entree, societe=societe.get(entree['poste']))
+                      for entree in CATALOGUE],
     }
+
+
+def _valeur_lisible(cle, valeur):
+    """ACAL979 — la valeur d'un réglage en mots : libellé français d'un
+    ``enum`` (ACAL964), nombre à la virgule et son unité, « valeurs saisies »
+    pour une table — jamais une valeur inventée."""
+    from ..services.parametres_cles import SECTION_SIMULATION, libelles_de_cle, registre
+
+    libelle = libelles_de_cle(SECTION_SIMULATION, cle).get(valeur)
+    if libelle:
+        return libelle
+    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+        return 'valeurs saisies'
+    unite = (registre(SECTION_SIMULATION).get(cle) or ('', '', ''))[1]
+    texte = ('%g' % valeur).replace('.', ',')
+    return f'{texte} {unite}'.strip()
+
+
+def _societe_des_postes(reglages):
+    """ACAL979 — ``{poste: {cles, renseigne, resume, source}}`` d'après
+    ``CLES_SOCIETE_PAR_POSTE`` et les réglages « simulation » de la société.
+    Un réglage compte s'il a une valeur ET une source (même règle que
+    ``etapes.reglage``)."""
+    publie = {}
+    for poste, cles in CLES_SOCIETE_PAR_POSTE.items():
+        parties, source = [], None
+        for cle, court in cles:
+            saisie = (reglages or {}).get(cle)
+            if not isinstance(saisie, dict) or saisie.get('valeur') is None or not saisie.get('source'):
+                continue
+            valeur = _valeur_lisible(cle, saisie['valeur'])
+            parties.append(f'{court} = {valeur}' if court else valeur)
+            source = source or saisie['source']
+        publie[poste] = {'cles': [cle for cle, _ in cles], 'renseigne': bool(parties),
+                         'resume': ', '.join(parties), 'source': source}
+    return publie
 
 
 def _cascade_fraiche(calepinage):
@@ -259,8 +302,10 @@ def simuler(self, request, pk=None):
         # ERR-ENF11-FUZZ-CALEPINAGE — réglage ou conception pas prêts (mode
         # météo, pan équipé, épingle, températures) : le corps est bien formé,
         # c'est l'ÉTAT du calepinage qui empêche — 409, même corps nommé.
-        return Response({refus.champ or 'simulation': [refus.motif]},
-                        status=status.HTTP_409_CONFLICT)
+        corps = {refus.champ or 'simulation': [refus.motif]}
+        if refus.manquants:  # ACAL940 — TOUS les manques, en une fois
+            corps['manquants'] = refus.manquants
+        return Response(corps, status=status.HTTP_409_CONFLICT)
     porteur = variante if variante is not None else calepinage
     entete = (porteur.resultat or {}).get(CLE_ENTETE_SIMULATION) \
         if isinstance(porteur.resultat, dict) else None

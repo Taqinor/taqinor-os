@@ -28,20 +28,46 @@ const MODES_POSE = [
 const ROLES = [
   ['rail', 'Rail'], ['pince_milieu', 'Pince de milieu'], ['pince_fin', 'Pince de fin'],
   ['crochet', 'Crochet'], ['embout', 'Embout'], ['lest', 'Lest'], ['visserie', 'Visserie'],
+  ['echafaudage', 'Échafaudage'], // ACAL598
 ]
 //: `catalogue_fixation.BASES` + « quantité d'un autre composant » (`role:<rôle>`).
 const BASES = [
   ['', 'aucune (règle non saisie)'], ['modules', 'modules posés'], ['rangees', 'rangées'],
   ['pans', 'pans'], ['jonctions', 'jonctions entre modules voisins'],
   ['extremites', 'extrémités de rangées'], ['longueur_rangees_m', 'longueur des rangées (m)'],
+  // ACAL569 — les quatre bases d'orientation (`catalogue_fixation.BASES_ORIENTATION`).
+  ['modules_portrait', 'modules en portrait'], ['modules_paysage', 'modules en paysage'],
+  ['rangees_portrait', 'rangées en portrait'], ['rangees_paysage', 'rangées en paysage'],
+  // ACAL578 / ACAL598 — surfaces de pose, pieds, égouts (`catalogue_fixation.BASES`).
+  ['tables', 'tables des surfaces de pose (sol, ombrière)'],
+  ['poteaux', "poteaux d'ombrière (entraxe et section des appuis saisis)"],
+  ['pieds', 'pieds de châssis (portée entre pieds saisie sur le pan)'],
+  ['longueur_egouts_m', "longueur des arêtes d'égout typées (m)"],
+  ['facade_egouts_m2', "façade sous égout : longueur d'égout × hauteur de bâtiment saisie (m²)"],
   ...ROLES.map(([role, libelle]) => [`role:${role}`, `quantité du composant « ${libelle} »`]),
+]
+
+//: ACAL566 — `catalogue_fixation.COUVERTURES` (= `Lead.TypeToiture`), même ordre.
+const COUVERTURES = [
+  ['terrasse_beton', 'Terrasse béton'], ['tole_metal', 'Tôle/Métal'], ['tuiles', 'Tuiles'],
+  ['bac_acier', 'Bac acier'], ['fibrociment', 'Fibrociment'], ['autre', 'Autre'],
 ]
 
 const COMPOSANT_NEUF = {
   role: 'rail', libelle: '', unite: '', produit_id: '', source: '',
   base: '', facteur: '', diviseur: '', libelle_facteur: '', libelle_diviseur: '',
 }
-const SYSTEME_NEUF = { code: '', libelle: '', fabricant: '', mode_pose: 'toiture_inclinee', provenance: '' }
+//: ACAL568 — les valeurs de pose déclarées (mm), `SystemeFixation.controles_pose`.
+const CONTROLES_POSE = [
+  ['distance_rail_bord_mm', 'Distance rail-bord (mm)'],
+  ['porte_a_faux_rail_mm', 'Porte-à-faux du rail (mm)'],
+  ['porte_a_faux_max_mm', 'Porte-à-faux admis (mm)'],
+]
+const CONTROLES_NEUFS = { distance_rail_bord_mm: '', porte_a_faux_rail_mm: '', porte_a_faux_max_mm: '', source: '' }
+const SYSTEME_NEUF = {
+  code: '', libelle: '', fabricant: '', mode_pose: 'toiture_inclinee', provenance: '', couvertures: [],
+  controles_pose: CONTROLES_NEUFS,
+}
 const CHAMP = 'min-h-11 rounded border border-border bg-background px-2 text-sm'
 
 const texte = (v) => (Array.isArray(v) ? v.join(' ') : String(v))
@@ -51,6 +77,24 @@ const libelleDe = (liste, cle) => (liste.find(([c]) => c === cle) || [cle, cle])
 function nombreOuNull(saisie) {
   const brut = String(saisie ?? '').trim().replace(',', '.')
   return brut === '' ? null : Number(brut)
+}
+
+/** Les contrôles de pose saisis → l'objet du contrat (une valeur vide est omise). */
+function controlesVersContrat(saisis) {
+  const sortie = {}
+  CONTROLES_POSE.forEach(([cle]) => {
+    const n = nombreOuNull(saisis?.[cle])
+    if (n !== null) sortie[cle] = n
+  })
+  const source = String(saisis?.source ?? '').trim()
+  if (source) sortie.source = source
+  return sortie
+}
+
+/** Le contrat servi → les champs de saisie (les nombres restent du texte). */
+function controlesDepuisContrat(servis) {
+  const vers = (v) => (v === null || v === undefined ? '' : String(v))
+  return { ...CONTROLES_NEUFS, ...Object.fromEntries(Object.entries(servis || {}).map(([k, v]) => [k, vers(v)])) }
 }
 
 /** La ligne d'écran → le composant du contrat (`ordre` = rang, posé par le serveur). */
@@ -115,7 +159,9 @@ function Formulaire({ initial, onFini }) {
     e.preventDefault()
     setErreurs({})
     setEnVol(true)
-    const corps = { ...systeme, composants: composants.map(versContrat) }
+    const corps = {
+      ...systeme, controles_pose: controlesVersContrat(systeme.controles_pose), composants: composants.map(versContrat),
+    }
     const appel = initial?.id
       ? calepinageApi.systemesFixation.modifier(initial.id, corps)
       : calepinageApi.systemesFixation.creer(corps)
@@ -125,7 +171,8 @@ function Formulaire({ initial, onFini }) {
     }).finally(() => setEnVol(false))
   }
 
-  const rendus = new Set(['code', 'libelle', 'fabricant', 'mode_pose', 'provenance'])
+  const rendus = new Set(['code', 'libelle', 'fabricant', 'mode_pose', 'provenance', 'couvertures', 'controles_pose'])
+  const poserControle = (cle) => (v) => setSysteme((s) => ({ ...s, controles_pose: { ...s.controles_pose, [cle]: v } }))
   composants.forEach((_c, i) => ['role', 'libelle', 'unite', 'produit_id', 'regle', 'source']
     .forEach((cle) => rendus.add(`composants[${i}].${cle}`)))
   const id = (suffixe) => `acal559-${suffixe}`
@@ -141,6 +188,32 @@ function Formulaire({ initial, onFini }) {
       </div>
       <Saisie id={id('provenance')} libelle="Provenance (notice du fabricant, référence du document)" chemin="provenance"
         erreurs={erreurs} valeur={systeme.provenance} onSaisie={poser('provenance')} />
+      <fieldset className="flex flex-col gap-1" data-testid="acal566-couvertures">
+        <legend className="text-sm">Toitures servies (proposé d’après le toit du lead)</legend>
+        <div className="flex flex-wrap gap-x-4">
+          {COUVERTURES.map(([cle, libelle]) => (
+            <label key={cle} className="flex min-h-11 items-center gap-2 text-sm">
+              <input type="checkbox" checked={systeme.couvertures.includes(cle)} data-testid={`acal566-couverture-${cle}`}
+                onChange={(e) => poser('couvertures')(e.target.checked
+                  ? [...systeme.couvertures, cle] : systeme.couvertures.filter((c) => c !== cle))} />
+              {libelle}
+            </label>
+          ))}
+        </div>
+        <SousLeChamp erreurs={erreurs} chemin="couvertures" />
+      </fieldset>
+
+      <fieldset className="flex flex-col gap-1" data-testid="acal568-controles-pose">
+        <legend className="text-sm">Contrôles de pose (expert, facultatif — valeurs de la notice, en mm)</legend>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {CONTROLES_POSE.map(([cle, libelle]) => (
+            <Saisie key={cle} id={id(`pose-${cle}`)} libelle={libelle} chemin="controles_pose" erreurs={{}}
+              valeur={systeme.controles_pose[cle]} onSaisie={poserControle(cle)} type="number" step="any" inputMode="decimal" />
+          ))}
+          <Saisie id={id('pose-source')} libelle="Source des valeurs (obligatoire dès qu’un nombre est saisi)" chemin="controles_pose"
+            erreurs={erreurs} valeur={systeme.controles_pose.source} onSaisie={poserControle('source')} />
+        </div>
+      </fieldset>
 
       <fieldset className="flex flex-col gap-3" data-testid="acal559-composants">
         <legend className="text-sm font-medium">Composants et règle de quantité</legend>
@@ -262,7 +335,9 @@ export default function ReglagesFixation() {
     initial: systeme ? {
       id: systeme.id,
       systeme: { code: systeme.code, libelle: systeme.libelle, fabricant: systeme.fabricant,
-        mode_pose: systeme.mode_pose, provenance: systeme.provenance },
+        mode_pose: systeme.mode_pose, provenance: systeme.provenance,
+        couvertures: Array.isArray(systeme.couvertures) ? systeme.couvertures : [],
+        controles_pose: controlesDepuisContrat(systeme.controles_pose) },
       composants: systeme.composants.map(depuisContrat),
     } : null,
   }))

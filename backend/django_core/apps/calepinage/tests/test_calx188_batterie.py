@@ -282,3 +282,246 @@ class GroupesTest(SimpleTestCase):
         self.assertEqual(ligne['source'], 'fiche')
         self.assertGreater(ligne['energie_restituee_kwh'], 0.0)
         self.assertGreater(ligne['cycles_an'], 0.0)
+
+
+class PointeEtReserveServiesTest(SimpleTestCase):
+    """ACAL787 — ``total`` sert la pointe (peak_shaving) et la réserve
+    déduite des appareils (backup), ``null`` ailleurs."""
+
+    SEUIL_KW = 0.5
+
+    def test_peak_shaving_publie_pointe_et_depassements(self):
+        contexte = contexte_de_test(strategie='peak_shaving',
+                                    seuil_effacement_kw=self.SEUIL_KW)
+        contexte[chaine_pertes.CLE_ANNEES_FENETRE] = 2
+        suite, resultat = bloc.bloc_batterie(serie_de_test(), contexte)
+        total = resultat['total']
+        imports = [p['reseau_import_kwh'] for p in suite['points']]
+        # Soutirage sans batterie : 1 kWh les 14 heures sans production.
+        self.assertEqual(total['pointe_avant_kw'], CONSO_KWH)
+        self.assertEqual(total['pointe_apres_kw'], round(max(imports), 3))
+        nuit = 24 - len(HEURES_DE_PRODUCTION)
+        self.assertEqual(total['heures_au_dessus_du_seuil'],
+                         round(nuit * 365 / 2, 1))
+        residuels = sum(1 for kwh in imports if kwh > self.SEUIL_KW + 1e-9)
+        self.assertEqual(total['nombre_depassements_residuels'],
+                         round(residuels / 2, 1))
+        self.assertIsNone(total['reserve_secours'])
+        self.assertNotIn('depassements_residuels', total)
+
+    def test_backup_avec_appareils_publie_la_reserve_deduite(self):
+        from apps.calepinage.services.batterie import reserve_depuis_appareils
+
+        appareils = [{'nom': 'Réfrigérateur', 'puissance_continue_kw': 0.15,
+                      'puissance_pointe_kw': 0.6, 'quantite': 1}]
+        contexte = contexte_de_test(strategie='backup', heures=48,
+                                    appareils=appareils, duree_secours_h=4)
+        _suite, resultat = bloc.bloc_batterie(serie_de_test(heures=48),
+                                              contexte)
+        self.assertEqual(resultat['total']['reserve_secours'],
+                         reserve_depuis_appareils(appareils, duree_h=4))
+        self.assertIsNone(resultat['total']['pointe_apres_kw'])
+
+    def test_acal793_faits_de_deux_jours_connus(self):
+        # Deux jours : 4 kW de 8 h à 17 h, 1 kWh consommé chaque heure, une
+        # banque de 10 kWh vide au départ. Elle se remplit chaque jour, et la
+        # plus longue nuit (0 h-7 h, 8 pas) se termine batterie vide les deux
+        # jours (14 h de nuit à 1 kWh > 10 kWh).
+        suite, resultat = bloc.bloc_batterie(serie_de_test(heures=48),
+                                             contexte_de_test(heures=48))
+        faits = resultat['total']['faits_serie']
+        self.assertEqual(faits['jours_total'], 2.0)
+        self.assertEqual(faits['jours_pleine'], 2.0)
+        self.assertEqual(faits['nuits_au_plancher'], 2.0)
+        # Sans batterie : 20 kWh autoconsommés sur 80 kWh produits.
+        self.assertEqual(faits['taux_autoconsommation_sans_batterie'], 0.25)
+        export = sum(p['reseau_export_kwh'] for p in suite['points'])
+        self.assertAlmostEqual(faits['part_surplus_injecte'],
+                               export / (80.0 - 20.0), places=3)
+
+    def test_acal793_nuit_ou_la_batterie_ne_se_vide_pas(self):
+        # Mutant « le jour entier au lieu de la nuit » : la fin du jour
+        # (23 h) n'est pas la fin de la plus longue nuit (7 h).
+        contexte = contexte_de_test(heures=48)
+        contexte['consommation']['import_intervalle']['valeurs'] = (
+            [0.1] * 48)
+        _suite, resultat = bloc.bloc_batterie(serie_de_test(heures=48),
+                                              contexte)
+        faits = resultat['total']['faits_serie']
+        # 0 h-7 h du 1er jour : batterie vide au départ ⇒ plancher ; le 2e
+        # jour, 14 h × 0,1 kWh < 10 kWh ⇒ jamais vide.
+        self.assertEqual(faits['nuits_au_plancher'], 1.0)
+
+    def test_autres_strategies_null(self):
+        _suite, resultat = bloc.bloc_batterie(
+            serie_de_test(heures=48), contexte_de_test(heures=48))
+        for cle in ('pointe_avant_kw', 'pointe_apres_kw',
+                    'heures_au_dessus_du_seuil',
+                    'nombre_depassements_residuels', 'reserve_secours'):
+            self.assertIsNone(resultat['total'][cle], cle)
+
+
+class VerdictDeLaBatterieTest(SimpleTestCase):
+    """ACAL794 — un mot de verdict seulement avec les deux seuils société."""
+
+    @staticmethod
+    def _seuil(valeur):
+        return {'valeur': valeur, 'source': 'societe',
+                'reference': "Valeur d'essai"}
+
+    def _bloc(self, nuits=None, jours=None, conso=None):
+        contexte = contexte_de_test(heures=48)
+        if conso is not None:
+            contexte['consommation']['import_intervalle']['valeurs'] = (
+                [conso] * 48)
+        reglages = {}
+        if nuits is not None:
+            reglages['batterie_seuil_nuits_pct'] = self._seuil(nuits)
+        if jours is not None:
+            reglages['batterie_seuil_jours_pleine_pct'] = self._seuil(jours)
+        contexte['reglages_simulation'] = reglages
+        return bloc.bloc_batterie(serie_de_test(heures=48), contexte)[1]
+
+    def test_sans_reglage_verdict_null_et_motif_nomme_les_deux_cles(self):
+        total = self._bloc()['total']
+        self.assertIsNone(total['verdict'])
+        for cle in ('batterie_seuil_nuits_pct',
+                    'batterie_seuil_jours_pleine_pct'):
+            self.assertIn(cle, total['motif_verdict'])
+
+    def test_un_seul_reglage_nomme_celui_qui_manque(self):
+        total = self._bloc(nuits=50.0)['total']
+        self.assertIsNone(total['verdict'])
+        self.assertIn('batterie_seuil_jours_pleine_pct',
+                      total['motif_verdict'])
+        self.assertNotIn('batterie_seuil_nuits_pct', total['motif_verdict'])
+
+    def test_les_trois_mots_suivent_les_faits_de_la_serie(self):
+        # Faits (série de 2 jours, conso 0,1) : 1 nuit au plancher sur 2
+        # jours = 50 %, 2 jours pleine sur 2 = 100 %.
+        cas = (
+            (40.0, 50.0, 'trop_petite'),   # 50 >= 40
+            (80.0, 100.0, 'trop_grande'),  # 50 < 80 ; 100 <= 100
+            (80.0, 50.0, 'adaptee'),       # 50 < 80 ; 100 > 50
+        )
+        for nuits, jours, mot in cas:
+            with self.subTest(mot=mot):
+                total = self._bloc(nuits, jours, conso=0.1)['total']
+                faits = total['faits_serie']
+                self.assertEqual(faits['nuits_au_plancher'], 1.0)
+                self.assertEqual(faits['jours_pleine'], 2.0)
+                self.assertEqual(total['verdict']['mot'], mot)
+                self.assertEqual(total['motif_verdict'], '')
+                self.assertEqual(
+                    total['verdict']['seuils_utilises'],
+                    {'batterie_seuil_nuits_pct': self._seuil(nuits),
+                     'batterie_seuil_jours_pleine_pct': self._seuil(jours)})
+
+
+class CoupuresRejoueesTest(SimpleTestCase):
+    """ACAL797 — le réseau coupé, rejoué sur chaque jour de la série.
+
+    Références calculées ICI à la main : 3 kWh/h pendant 4 h = 12 kWh ; une
+    banque de 10 kWh pleine, rendement 100 % ⇒ elle restitue 10 ; à 81 %
+    (racine 0,9 par sens) ⇒ 10 × 0,9 = 9.
+    """
+
+    COUPURES = {'nombre_par_an': 12, 'duree_h': 4, 'heure_debut': 0}
+
+    @staticmethod
+    def _flux(heures=48, conso=3.0, prod=0.0, etat=10.0):
+        return [{'conso': conso, 'prod': prod, 'etat': etat}
+                for _ in range(heures)]
+
+    @staticmethod
+    def _banque(rendement=100.0, decharge=10.0):
+        return {'capacite_utile_kwh': 10.0, 'puissance_charge_kw': 10.0,
+                'puissance_decharge_kw': decharge,
+                'rendement_ar_pct': rendement}
+
+    def _rejouer(self, flux, banque, strategie='backup', coupures=None):
+        from apps.calepinage.services.secours import rejouer_coupures
+
+        return rejouer_coupures(
+            flux, coupures=coupures or self.COUPURES, strategie=strategie,
+            parametres=banque, etat_initial=10.0, heure_de_depart=0,
+            pas_heures=1.0)
+
+    def test_batterie_pleine_charge_constante_sans_production(self):
+        bloc_, motif = self._rejouer(self._flux(), self._banque())
+        self.assertEqual(motif, '')
+        # Chaque jour : 12 kWh demandés − 10 kWh restitués = 2 kWh.
+        self.assertEqual(bloc_['jours_testes'], 2)
+        self.assertEqual(
+            bloc_['energie_non_fournie_par_coupure_moyenne_kwh'], 2.0)
+        self.assertEqual(bloc_['energie_non_fournie_par_coupure_pire_kwh'],
+                         2.0)
+        self.assertEqual(bloc_['energie_non_fournie_kwh'], 24.0)  # 12 × 2
+        self.assertIn('Attendu par an', bloc_['mention'])
+
+    def test_le_rendement_reduit_ce_que_la_batterie_restitue(self):
+        bloc_, _ = self._rejouer(self._flux(), self._banque(rendement=81.0))
+        self.assertEqual(
+            bloc_['energie_non_fournie_par_coupure_moyenne_kwh'], 3.0)
+
+    def test_la_puissance_de_decharge_borne_la_restitution(self):
+        # 1 kW par heure pendant 4 h = 4 kWh restitués ; 12 − 4 = 8.
+        bloc_, _ = self._rejouer(self._flux(), self._banque(decharge=1.0))
+        self.assertEqual(
+            bloc_['energie_non_fournie_par_coupure_moyenne_kwh'], 8.0)
+
+    def test_le_solaire_sert_d_abord_et_recharge_le_surplus(self):
+        # 1er jour : 4 kW de production pour 3 kW de charge ⇒ rien de non
+        # fourni, le surplus ne dépasse pas la capacité (banque pleine).
+        bloc_, _ = self._rejouer(self._flux(prod=4.0), self._banque())
+        self.assertEqual(bloc_['energie_non_fournie_kwh'], 0.0)
+
+    def test_etat_de_depart_lu_sur_le_dispatch(self):
+        flux = self._flux(etat=4.0)  # banque à 4 kWh à l'heure de début
+        bloc_, _ = self._rejouer(flux, self._banque(), coupures=dict(
+            self.COUPURES, heure_debut=1))  # jamais le tout premier pas
+        self.assertEqual(
+            bloc_['energie_non_fournie_par_coupure_moyenne_kwh'], 8.0)
+
+    def test_sans_coupures_hors_backup_ou_duree_trop_longue(self):
+        from apps.calepinage.services.secours import rejouer_coupures
+
+        for kwargs, attendu in (
+                (dict(coupures=None), 'Aucune coupure déclarée'),
+                (dict(strategie='autoconso'), 'backup'),
+                (dict(coupures=dict(self.COUPURES, duree_h=100)),
+                 'batterie.coupures.duree_h'),
+                (dict(pas_heures=0.5), 'non horaire')):
+            with self.subTest(attendu=attendu):
+                params = dict(
+                    coupures=self.COUPURES, strategie='backup',
+                    parametres=self._banque(), etat_initial=10.0,
+                    heure_de_depart=0, pas_heures=1.0)
+                params.update(kwargs)
+                bloc_, motif = rejouer_coupures(self._flux(), **params)
+                self.assertIsNone(bloc_)
+                self.assertIn(attendu, motif)
+
+    def test_le_bloc_publie_secours_coupures(self):
+        contexte = contexte_de_test(strategie='backup', heures=48,
+                                    reserve_backup_kwh=2.0,
+                                    coupures=dict(self.COUPURES,
+                                                  heure_debut=18))
+        _suite, resultat = bloc.bloc_batterie(serie_de_test(heures=48),
+                                              contexte)
+        secours = resultat['total']['secours']
+        self.assertEqual(secours['motif_coupures'], '')
+        publie = secours['coupures']
+        self.assertEqual(publie['nombre_par_an'], 12)
+        self.assertEqual(publie['jours_testes'], 2)
+        self.assertEqual(
+            publie['energie_non_fournie_kwh'],
+            round(12 * publie['energie_non_fournie_par_coupure_moyenne_kwh'],
+                  3))
+        # Sans coupures déclarées : null + motif.
+        _suite, sans = bloc.bloc_batterie(
+            serie_de_test(heures=48),
+            contexte_de_test(strategie='backup', heures=48,
+                             reserve_backup_kwh=2.0))
+        self.assertIsNone(sans['total']['secours']['coupures'])
+        self.assertTrue(sans['total']['secours']['motif_coupures'])

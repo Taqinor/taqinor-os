@@ -675,14 +675,7 @@ export default function FicheCalepinage({ detail, onRelire }) {
             </span>
           )}
         </Champ>
-        <Champ cle="id" label="Identifiant technique">
-          <span className="fig">{texte(detail.id)}</span>
-        </Champ>
-
         <Champ cle="statut_libelle" label="Statut">{texte(detail.statut_libelle)}</Champ>
-        <Champ cle="statut" label="Code de statut">
-          <code className="text-xs text-foreground">{texte(detail.statut)}</code>
-        </Champ>
         <Champ cle="responsable" label="Responsable">
           {rattachementEditable ? (
             <span className="inline-flex items-center gap-2">
@@ -874,6 +867,19 @@ export default function FicheCalepinage({ detail, onRelire }) {
               ) : null}
             </div>
           ) : null}
+        </Champ>
+        {/* ACAL915 — les surfaces que le chiffrage peut retenir, servies
+            telles quelles (libellé + nombre de modules posés) ; aucune
+            surface : « — », jamais « 0 ». */}
+        <Champ cle="surfaces_chiffrables" label="Surfaces chiffrables">
+          {Array.isArray(detail.surfaces_chiffrables) && detail.surfaces_chiffrables.length > 0
+            ? detail.surfaces_chiffrables.map((s) => (
+              <div key={s.cle}>
+                {texte(s.libelle)}
+                {typeof s.modules === 'number' ? ` — ${s.modules} modules` : ''}
+              </div>
+            ))
+            : '—'}
         </Champ>
         <Champ cle="permissions" label="Vous pouvez">
           {gestes.length > 0 ? gestes.join(', ') : 'consulter seulement'}

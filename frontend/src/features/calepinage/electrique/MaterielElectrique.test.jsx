@@ -11,7 +11,7 @@ import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractS
 
 vi.mock('../../../api/calepinageApi', () => ({
   default: {
-    calepinages: { entreeElectrique: vi.fn(), enregistrerEntreeElectrique: vi.fn() },
+    calepinages: { entreeElectrique: vi.fn(), enregistrerEntreeElectrique: vi.fn(), configurationsOnduleur: vi.fn() },
   },
 }))
 
@@ -102,6 +102,66 @@ describe('MaterielElectrique (ACAL149)', () => {
     await userEvent.click(screen.getByTestId('acal149-enregistrer'))
 
     expect(await screen.findByTestId('acal149-erreur-onduleur_produit')).toHaveTextContent('Produit hors société.')
+  })
+
+  describe('ACAL617 — Comparer avec d’autres onduleurs', () => {
+    const CONF = exempleContrat('calepinage', 'calepinage_configurations_onduleur')
+    const ouvrir = async () => {
+      calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: EXEMPLE })
+      calepinageApi.calepinages.configurationsOnduleur.mockResolvedValue({ data: CONF })
+      rendre()
+      await screen.findByTestId('acal149-formulaire')
+      expect(calepinageApi.calepinages.configurationsOnduleur).not.toHaveBeenCalled() // rien ne part avant le clic
+      await userEvent.click(screen.getByTestId('acal617-lien'))
+    }
+
+    it('cartes d’après l’échantillon : nombres servis, pastilles, « Retenu » sans bouton', async () => {
+      await ouvrir()
+      const retenue = await screen.findByTestId('acal617-carte-42')
+      expect(retenue).toHaveTextContent('Rapport DC/AC 1,16')
+      expect(retenue).toHaveTextContent('Entrées utilisées 2 sur 2')
+      expect(retenue).toHaveTextContent('Conforme')
+      expect(retenue).toHaveTextContent('Retenu')
+      expect(screen.queryByTestId('acal617-appliquer-42')).toBeNull()
+      expect(screen.getByTestId('acal617-carte-43')).toHaveTextContent('À surveiller')
+      expect(screen.getByTestId('acal617-carte-43')).toHaveTextContent(CONF.configurations[1].alertes[0])
+      expect(screen.getByTestId('acal617-fiche-44')).toHaveTextContent('puissance AC')
+    })
+
+    it('« Appliquer » envoie l’identifiant de la carte comme onduleur, relit l’entrée et les cartes', async () => {
+      await ouvrir()
+      calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: {} })
+      const lectures = calepinageApi.calepinages.entreeElectrique.mock.calls.length
+      await userEvent.click(await screen.findByTestId('acal617-appliquer-43'))
+
+      await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique).toHaveBeenCalledTimes(1))
+      const [id, corps] = calepinageApi.calepinages.enregistrerEntreeElectrique.mock.calls[0]
+      expect(id).toBe(1)
+      expect(corps.onduleur_produit).toBe(43)
+      expect(Object.keys(corps).sort()).toEqual(['module_produit', 'onduleur_produit', 'optimiseur_produit'])
+      await waitFor(() => expect(calepinageApi.calepinages.entreeElectrique.mock.calls.length).toBeGreaterThan(lectures))
+      await waitFor(() => expect(calepinageApi.calepinages.configurationsOnduleur).toHaveBeenCalledTimes(2))
+    })
+
+    it('un refus 4xx s’affiche, mot pour mot', async () => {
+      await ouvrir()
+      calepinageApi.calepinages.enregistrerEntreeElectrique.mockRejectedValue({
+        response: { status: 400, data: { onduleur_produit: 'Produit hors société.' } },
+      })
+      await userEvent.click(await screen.findByTestId('acal617-appliquer-43'))
+      expect(await screen.findByTestId('acal617-erreur')).toHaveTextContent('Produit hors société.')
+    })
+
+    it('sans onduleur désigné : le motif servi, aucune carte', async () => {
+      calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: EXEMPLE })
+      calepinageApi.calepinages.configurationsOnduleur.mockResolvedValue({
+        data: exempleContrat('calepinage', 'calepinage_configurations_onduleur', 'exemple_vide'),
+      })
+      rendre()
+      await screen.findByTestId('acal149-formulaire')
+      await userEvent.click(screen.getByTestId('acal617-lien'))
+      expect(await screen.findByTestId('acal617-vide')).toHaveTextContent('Aucun onduleur désigné')
+    })
   })
 
   it('une lecture en panne le DIT, sans inventer de matériel', async () => {

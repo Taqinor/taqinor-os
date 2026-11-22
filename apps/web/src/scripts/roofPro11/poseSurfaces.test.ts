@@ -16,6 +16,8 @@ import {
   emettreSurfacesPose,
   lireSurfacesPose,
   modulesPoses,
+  monterAtelierPose,
+  engineDepuisReponseMoteur,
   normaliserSurfacePose,
   pasInterRangeeAffiche,
   PLAFOND_APPUIS_DESSINES,
@@ -28,7 +30,11 @@ import { azimutNormaleArete } from './snap';
 // surfaces de pose qui l'alimentent.
 import { computePanStats, computeSiteStats, htmlTableSite } from './panStats';
 import { type ModuleDocument } from './moduleSelect';
-import { panDeTest } from './harnaisAtelier';
+import { panDeTest, racineDepot } from './harnaisAtelier';
+import { readFileSync } from 'node:fs'; // ACAL918
+import { join } from 'node:path'; // ACAL918
+import { JSDOM } from 'jsdom'; // ACAL918
+import { vi } from 'vitest'; // ACAL918
 import { type AreaRecord } from './types';
 import { type AreaResult } from '../../lib/roofAreas';
 
@@ -826,5 +832,63 @@ describe('ACAL607 — kWc d’une surface de pose depuis moduleWc', () => {
   it('un moduleFor fourni garde la priorité sur moduleWc', () => {
     const ligne = computeSiteStats(pans, [{ ...champ, moduleWc: 710 }], () => MODULE_550).lignes.find((l) => l.id === 'sol-1')!;
     expect(ligne.kwc).toBeCloseTo((176 * 550) / 1000, 6);
+  });
+});
+
+// ACAL918 — « Enregistrer le contour tracé » demande le plan au MOTEUR (option injectée par la page hôte) :
+// `engine` stocké, la liste dit « N modules » ; refus ⇒ motif sous le bouton, surface gardée sans `engine`.
+describe('ACAL918 — le plan du moteur pour la surface enregistrée', () => {
+  const POSE = JSON.parse(readFileSync(join(racineDepot(), 'backend', 'django_core', 'apps', 'calepinage', 'contract_samples', 'pose.json'), 'utf8')) as Record<string, unknown>;
+  const REPONSE = POSE.exemple_sol;
+  const monter = (demander?: (s: SurfacePose) => Promise<unknown>) => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><div id="zones"></div></body>').window.document;
+    const ctx = {
+      vertices: rectangle(30, 22), areas: [], activeArea: () => undefined, dom: { areasWindowEl: g.document.getElementById('zones') },
+      opts: demander ? { demanderPlanSurface: demander } : {},
+    } as unknown as Parameters<typeof monterAtelierPose>[0];
+    const pose = monterAtelierPose(ctx, { setStatus: vi.fn() })!;
+    return { pose, ctx, restaurer: () => { g.document = avant; }, liste: () => g.document!.querySelector('[data-pose-liste]')!.textContent ?? '', motif: () => g.document!.querySelector('[data-pose-motif-plan]')!.textContent ?? '' };
+  };
+
+  it('l’option rend l’exemple de pose.json ⇒ engine.modules posé, liste « 132 modules », module du pan actif écrit', async () => {
+    const demande = vi.fn(async () => REPONSE);
+    const m = monter(demande);
+    try {
+      m.pose.enregistrerContour('sol');
+      await m.pose.attendrePlan();
+      const s = m.pose.surfaces()[0];
+      expect(demande).toHaveBeenCalledOnce();
+      expect(s.engine?.modules).toBe(132);
+      expect(s.engine?.hashEntree).toBe((REPONSE as { hash_entree: string }).hash_entree);
+      expect(m.liste()).toContain('132 modules');
+      expect(s.moduleWc).toBeGreaterThan(0); // le module par défaut NOMMÉ de l'atelier, ses cotes et sa puissance
+      expect(s.moduleLongM).toBeGreaterThan(s.moduleCourtM!);
+    } finally { m.restaurer(); }
+  });
+
+  it('refus du moteur ⇒ motif sous le bouton, surface gardée sans engine ; option absente ⇒ comme avant', async () => {
+    const m = monter(async () => { throw new Error('contour inconstructible'); });
+    try {
+      m.pose.enregistrerContour('sol');
+      await m.pose.attendrePlan();
+      expect(m.pose.surfaces()).toHaveLength(1);
+      expect(m.pose.surfaces()[0].engine).toBeUndefined();
+      expect(m.motif()).toContain('contour inconstructible');
+      expect(m.liste()).toContain('plan du moteur non reçu');
+    } finally { m.restaurer(); }
+    const sans = monter();
+    try {
+      sans.pose.enregistrerContour('sol');
+      await sans.pose.attendrePlan();
+      expect(sans.pose.surfaces()[0].engine).toBeUndefined();
+      expect(sans.motif()).toBe('');
+    } finally { sans.restaurer(); }
+  });
+
+  it('engineDepuisReponseMoteur : un plan sans modules publiés vaut null, jamais 0', () => {
+    expect(engineDepuisReponseMoteur({ plans: [{}] }, 100).modules).toBeNull();
+    expect(engineDepuisReponseMoteur(undefined, null).rowPitchM).toBeNull();
   });
 });

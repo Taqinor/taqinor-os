@@ -30,7 +30,7 @@ from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 
 from ..permissions import PeutGererCalepinage
 from ..services.balayage import (
-    AXES_PRIS_EN_CHARGE, BalayageInvalide, valider_demande,
+    AXES_PRIS_EN_CHARGE, BalayageInvalide, valider_demande, valider_objectif,
 )
 from ..services.simulation import (
     SimulationRefusee, construire_contexte, fichier_meteo_depose,
@@ -61,21 +61,38 @@ def accuse_de_balayage(job):
 
 #: La forme EXACTE d'un axe, publiée en ``x-corps-resserre`` (aucun composant
 #: ne change) : ce que ``valider_demande`` refuse en 400 (``forme``).
-_AXES_RESSERRES = {EXTENSION_CORPS_RESSERRE: {'properties': {'axes': {
-    'type': 'array', 'minItems': 1, 'items': {
-        'type': 'object', 'required': ['nom', 'min', 'max', 'pas'],
-        'properties': {
-            'nom': {'type': 'string', 'enum': list(AXES_PRIS_EN_CHARGE)},
-            'min': {'type': 'number'}, 'max': {'type': 'number'},
-            'pas': {'type': 'number', 'minimum': 0,
-                    'exclusiveMinimum': True}}}}}}}
+_CRITERE_MOIS = {'type': 'object', 'required': ['nom', 'mois'], 'properties': {
+    'nom': {'type': 'string', 'enum': ['mois']},
+    'mois': {'type': 'integer', 'minimum': 1, 'maximum': 12}}}  # ACAL812
+
+_OBJECTIF = {'type': 'object', 'required': ['critere', 'cible_pct'], 'properties': {
+    'critere': {'type': 'string', 'enum': ['couverture']},
+    'cible_pct': {'type': 'number', 'minimum': 0, 'exclusiveMinimum': True,
+                  'maximum': 100}}}  # ACAL835
+
+# api-fuzz (PR #1523) : ``{}`` n'est pas une demande — des axes OU un objectif.
+_AXES_RESSERRES = {EXTENSION_CORPS_RESSERRE: {
+    'anyOf': [{'required': ['axes']}, {'required': ['objectif']}],
+    'properties': {
+        'critere': _CRITERE_MOIS, 'objectif': _OBJECTIF, 'axes': {
+            'type': 'array', 'minItems': 1, 'items': {
+                'type': 'object', 'required': ['nom', 'min', 'max', 'pas'],
+                'properties': {
+                    'nom': {'type': 'string',
+                            'enum': list(AXES_PRIS_EN_CHARGE)},
+                    'min': {'type': 'number'}, 'max': {'type': 'number'},
+                    'pas': {'type': 'number', 'minimum': 0,
+                            'exclusiveMinimum': True}}}}}}}
 
 
 @extend_schema(
     extensions=_AXES_RESSERRES,
     request=inline_serializer('CalepinageBalayageCorps', {
-        'pan': serializers.IntegerField(),
-        'axes': serializers.ListField(child=serializers.DictField())}),
+        'pan': serializers.IntegerField(required=False),
+        'axes': serializers.ListField(child=serializers.DictField(),
+                                      required=False),
+        'objectif': serializers.DictField(required=False),  # ACAL835
+        'critere': serializers.DictField(required=False)}),
     responses={202: inline_serializer('CalepinageBalayageAccuse', {
         'job_id': serializers.IntegerField(),
         'kind': serializers.CharField(),
@@ -93,16 +110,28 @@ def balayage(self, request, pk=None):
     inclinaison × azimut d'un pan libre, en tâche de fond."""
     from core.jobs import submit
 
-    from ..tasks import NATURE_BALAYAGE, balayer_calepinage
+    from ..tasks import KIND_CALEPINAGE, NATURE_BALAYAGE, balayer_calepinage
 
     calepinage = self.get_object()  # borné société par get_queryset
     corps = request.data if isinstance(request.data, dict) else {}
+    objectif = 'objectif' in corps  # ACAL835 : cherche N, ne simule rien
     try:
-        valider_demande(calepinage.roof_layout, corps)
+        if objectif:
+            valider_objectif(calepinage, corps)
+        else:
+            valider_demande(calepinage.roof_layout, corps)
     except BalayageInvalide as refus:
         return Response({refus.champ or 'balayage': [str(refus)]},
                         status=(status.HTTP_400_BAD_REQUEST if refus.forme
                                 else status.HTTP_409_CONFLICT))
+    if objectif:
+        job = submit(KIND_CALEPINAGE, balayer_calepinage,
+                     company=calepinage.company, user=request.user,
+                     calepinage_id=calepinage.pk,
+                     corps={'objectif': corps['objectif']},
+                     nature=NATURE_BALAYAGE)
+        return Response(accuse_de_balayage(job),
+                        status=status.HTTP_202_ACCEPTED)
     # Les refus nommés de la simulation, AVANT la file : une tâche vouée à
     # l'échec coûterait un worker pour rien.
     try:
@@ -112,12 +141,11 @@ def balayage(self, request, pk=None):
     except SimulationRefusee as refus:
         return Response({refus.champ or 'simulation': [refus.motif]},
                         status=status.HTTP_409_CONFLICT)
-    from ..tasks import KIND_CALEPINAGE
-
     job = submit(KIND_CALEPINAGE, balayer_calepinage,
                  company=calepinage.company, user=request.user,
                  calepinage_id=calepinage.pk, corps={
-                     'pan': corps.get('pan'), 'axes': corps.get('axes')},
+                     'pan': corps.get('pan'), 'axes': corps.get('axes'),
+                     'critere': corps.get('critere')},
                  nature=NATURE_BALAYAGE)
     return Response(accuse_de_balayage(job), status=status.HTTP_202_ACCEPTED)
 

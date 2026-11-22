@@ -101,7 +101,8 @@
         "var_v_sortie_v": "nombre ou null — tension de sortie vers la pompe (V)",
         "var_i_sortie_nominal_a": "nombre ou null — courant de sortie nominal (A)",
         "var_protection_marche_a_sec": "booléen ou null — protection marche à sec intégrée",
-        "var_rendement_mppt_pct": "nombre ou null — rendement MPPT (%)"
+        "var_rendement_mppt_pct": "nombre ou null — rendement MPPT (%)",
+        "var_bus_dc_redresse_v": "nombre ou null — tension redressée du bus DC (V) publiée par le constructeur (ACAL817) ; null = non publié, jamais déduite de 220 ou 380 V"
       },
       "exemple": {
         "type_fiche": "variateur_pompage",
@@ -116,7 +117,8 @@
         "var_v_sortie_v": null,
         "var_i_sortie_nominal_a": null,
         "var_protection_marche_a_sec": null,
-        "var_rendement_mppt_pct": null
+        "var_rendement_mppt_pct": null,
+        "var_bus_dc_redresse_v": null
       },
       "regle": "Aucune plage VEICHI n'est codée : les plages viennent UNIQUEMENT de la fiche saisie (AGR101). Fiche vide = « fiche à saisir », la compatibilité champ/variateur est alors non vérifiable (motif nommé), jamais supposée."
     }
@@ -195,7 +197,8 @@
           "var_v_sortie_v": null,
           "var_i_sortie_nominal_a": null,
           "var_protection_marche_a_sec": null,
-          "var_rendement_mppt_pct": null
+          "var_rendement_mppt_pct": null,
+          "var_bus_dc_redresse_v": null
         },
         "prix_connu": true
       },

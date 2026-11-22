@@ -9,24 +9,31 @@ import { Button, Card } from '../../../ui'
 import ListeManques from './ListeManques'
 import RetourAtelier from '../atelier/RetourAtelier'
 import {
-  LIBELLE_BOUTON, etatCalcul, refusDepuisErreur, refusRenvoieAuxReglages,
+  LIBELLE_BOUTON, cibleHorsReglages, etatCalcul, lienReglage, refusDepuisErreur, refusRenvoieAuxReglages,
 } from './suiviSimulation'
-import { IncertitudeSigma, ReglagesUtilises, SourceMeteo } from './BandeauProvenanceProduction'
+import { lienManque } from './lienManque'
+import { EcartPvgis, IncertitudeSigma, ReglagesUtilises, SourceMeteo } from './BandeauProvenanceProduction'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 import TapisHoraire from './TapisHoraire'
 import GraphiqueMensuel from './GraphiqueMensuel'
 import ResultatHeros from './ResultatHeros'
+import PartiesProduction from './PartiesProduction'
+import PourquoiProduction from './PourquoiProduction'
 import LigneSurLaDuree from './LigneSurLaDuree'
 import CartePostesPertes from './CartePostesPertes'
 import LigneValeursPubliees from './LigneValeursPubliees'
 import ResultatIncomplet from './ResultatIncomplet'
 import {
-  kwh, kwhParKwc, nonCalculee, nonPublie, pourcentagePerf,
+  kwh, kwhParKwc, nonPublie, pourcentagePerf,
 } from './ResultatHeros.helpers'
 import useSuiviJob from './useSuiviJob'
 import { reprendreSimulationAuto } from './simulationAuto'
 import EtatEcranAtelier from '../atelier/EtatEcranAtelier'
 import { useModeExpert } from '../atelier/modeExpert'
+import useExpertParUrl from './useExpertParUrl'
+import CarteFluxEnergie from './CarteFluxEnergie'
+import ChargesAjoutees from './ChargesAjoutees'
+import Pourquoi from '../commun/Pourquoi'
 
 /* ============================================================================
    CAL236 — LE PANNEAU « PRODUCTION » DU MODULE.
@@ -108,6 +115,19 @@ export function BandeauPerime({ motif }) {
    PAS désactivé quand aucun poste de perte n'est saisi : le service
    n'en exige aucun.
    ========================================================================== */
+// ACAL774 — le lien d'un refus qui ne se corrige pas dans les réglages (`plans`, `site.pin`).
+function LienHorsReglages({ calepinageId, champ }) {
+  const ou = cibleHorsReglages(champ)
+  if (!ou) return null
+  return (
+    <>
+      {' '}
+      <Link to={lienManque(calepinageId, ou.cible)} className="inline-flex min-h-11 items-center underline"
+        data-testid="acal774-lien">{ou.libelle}</Link>
+    </>
+  )
+}
+
 export function BoutonCalculer({
   calepinageId, data = null, avertissements = [], manque = [], intervalleMs = 2000, onTermine,
   declenchement = 0,
@@ -211,13 +231,33 @@ export function BoutonCalculer({
         </div>
       )}
 
-      {refus && (
+      {refus && refus.manquants?.length > 1 ? (
+        <div className="text-sm text-destructive" role="alert" data-testid="calx48-refus">
+          <p>La simulation ne peut pas démarrer :</p>
+          <ul className="list-disc pl-5" data-testid="acal940-manquants">
+            {refus.manquants.map((ligne) => (
+              <li key={ligne.champ} data-testid="acal940-manquant">
+                {ligne.motif}
+                {ligne.cible?.onglet === 'reglages' && ligne.cible.champ && (
+                  <>
+                    {' '}
+                    <Link to={`/calepinage/reglages#${ligne.cible.champ}`} className="inline-flex min-h-11 items-center underline"
+                      data-testid="acal940-lien-reglage">Ouvrir ce réglage</Link>
+                  </>
+                )}
+                {!ligne.cible && <LienHorsReglages calepinageId={calepinageId} champ={ligne.champ} />}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : refus && (
         <p className="text-sm text-destructive" role="alert" data-testid="calx48-refus">
           {refus.motif}
+          <LienHorsReglages calepinageId={calepinageId} champ={refus.champ} />
           {refusRenvoieAuxReglages(refus) && (
             <>
               {' '}
-              <Link to="/calepinage/reglages" className="underline" data-testid="calx48-lien-reglages">
+              <Link to={lienReglage(refus.champ)} className="underline" data-testid="calx48-lien-reglages">
                 Ouvrir les réglages de simulation
               </Link>
             </>
@@ -276,7 +316,8 @@ function TableauMensuelComplet({ mensuel, production }) {
         <tbody>
           {mensuel.map((point) => (
             <tr key={point.mois} className="border-t border-border/60">
-              <td className="py-1">{MOIS[(point.mois || 1) - 1] || point.mois}</td>
+              <td className="py-1">{MOIS[(point.mois || 1) - 1] || point.mois}
+                <Pourquoi cle="production.mensuel" valeurs={{ production }} /></td>
               {colonnes.map(([cle, , valeurs, rendu]) => (
                 <td key={cle} className="py-1 text-right tabular-nums" data-testid={`acal707-${cle}-${point.mois}`}>
                   {valeurs[point.mois] === null || valeurs[point.mois] === undefined
@@ -318,7 +359,8 @@ function TableauMensuel({ mensuel, production = null }) {
       <tbody>
         {mensuel.map((point) => (
           <tr key={point.mois} className="border-t border-border/60">
-            <td className="py-1">{MOIS[(point.mois || 1) - 1] || point.mois}</td>
+            <td className="py-1">{MOIS[(point.mois || 1) - 1] || point.mois}
+              <Pourquoi cle="production.mensuel" valeurs={{ production }} /></td>{/* ACAL873 */}
             <td className="py-1 text-right tabular-nums">{kwh(point.p50_kwh)}</td>
           </tr>
         ))}
@@ -326,6 +368,9 @@ function TableauMensuel({ mensuel, production = null }) {
     </table>
   )
 }
+
+/* ACAL970 — une grandeur absente du tableau par pan s'écrit « — », « non calculée » en infobulle. */
+const tiret = (v, rendu) => (v === null || v === undefined ? <span title="non calculée">—</span> : rendu(v))
 
 function TableauParPan({ parPan, total = null }) {
   const incomplet = estIncomplet(total)
@@ -340,37 +385,33 @@ function TableauParPan({ parPan, total = null }) {
     <table className="w-full text-sm" data-testid="cal236-par-pan">
       <thead>
         <tr className="text-left text-xs text-muted-foreground">
-          <th className="py-1 font-normal">Pan</th>
-          <th className="py-1 text-right font-normal">Modules</th>
-          <th className="py-1 text-right font-normal">kWc</th>
-          <th className="py-1 text-right font-normal">P50</th>
-          <th className="py-1 text-right font-normal">P75</th>
-          <th className="py-1 text-right font-normal">P90</th>
-          <th className="py-1 text-right font-normal">PR</th>
-          <th className="py-1 text-right font-normal">kWh/kWc</th>
+          <th className="px-3 py-1 font-normal">Pan</th>
+          {['Modules', 'kWc', 'P50', 'P75', 'P90', 'PR', 'kWh/kWc'].map((t) => (
+            <th key={t} className="px-3 py-1 text-right font-normal">{t}</th>
+          ))}
         </tr>
       </thead>
       <tbody>
         {parPan.map((pan) => (
           <tr key={pan.pan} className="border-t border-border/60">
-            <td className="py-1">{pan.pan}</td>
+            <td className="px-3 py-1">{pan.pan}</td>
             {/* Un pan sans module reste un vrai `0`, jamais « non calculée » :
                 `formatNumber(0)` rend « 0 », distinct de `null`. */}
-            <td className="py-1 text-right tabular-nums">{formatNumber(pan.modules, { decimals: 0 })}</td>
-            <td className="py-1 text-right tabular-nums">
-              {nonCalculee(pan.kwc, (x) => formatNumber(x, { decimals: 2 }))}
+            <td className="px-3 py-1 text-right tabular-nums">{formatNumber(pan.modules, { decimals: 0 })}</td>
+            <td className="px-3 py-1 text-right tabular-nums">
+              {tiret(pan.kwc, (x) => formatNumber(x, { decimals: 2 }))}
             </td>
-            <td className="py-1 text-right tabular-nums">{kwh(pan.p50_kwh)}</td>
-            <td className="py-1 text-right tabular-nums">
-              {incomplet ? nonPublie(total?.p75_kwh_motif) : kwh(pan.p75_kwh)}
+            <td className="px-3 py-1 text-right tabular-nums">{tiret(pan.p50_kwh, kwh)}</td>
+            <td className="px-3 py-1 text-right tabular-nums">
+              {incomplet ? nonPublie(total?.p75_kwh_motif) : tiret(pan.p75_kwh, kwh)}
             </td>
-            <td className="py-1 text-right tabular-nums">
-              {incomplet ? nonPublie(total?.p90_kwh_motif) : kwh(pan.p90_kwh)}
+            <td className="px-3 py-1 text-right tabular-nums">
+              {incomplet ? nonPublie(total?.p90_kwh_motif) : tiret(pan.p90_kwh, kwh)}
             </td>
-            <td className="py-1 text-right tabular-nums">
-              {incomplet ? nonPublie(total?.performance_ratio_motif) : pourcentagePerf(pan.performance_ratio)}
+            <td className="px-3 py-1 text-right tabular-nums">
+              {incomplet ? nonPublie(total?.performance_ratio_motif) : tiret(pan.performance_ratio, pourcentagePerf)}
             </td>
-            <td className="py-1 text-right tabular-nums">{kwhParKwc(pan.specific_yield_kwh_kwc)}</td>
+            <td className="px-3 py-1 text-right tabular-nums">{tiret(pan.specific_yield_kwh_kwc, kwhParKwc)}</td>
           </tr>
         ))}
       </tbody>
@@ -381,6 +422,7 @@ function TableauParPan({ parPan, total = null }) {
 export default function PanneauProduction({ calepinageId, intervalleMs = 2000, parcours = null }) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
+  const expert = useExpertParUrl()
 
   const { data, loading, error, refetch } = useResource(
     () => calepinageApi.calepinages.resultat(id), id,
@@ -412,7 +454,11 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000, p
     <>
       <RetourAtelier calepinageId={id} />
       <Card className="flex flex-col gap-4 p-4" data-testid="cal236-panneau">
-      <h2 className="text-base font-semibold">Production</h2>
+      {/* ACAL872 — le « ? » de la production annuelle, phrase du registre. */}
+      <h2 className="flex items-center gap-1 text-base font-semibold">
+        Production
+        {data?.simule === true && !perime && <Pourquoi cle="production.p50_kwh" valeurs={data} />}
+      </h2>
       {perime
         ? <BandeauPerime motif={data?.motif} />
         : (!data?.simule && <BandeauNonSimule avertissements={data?.avertissements} />)}
@@ -428,6 +474,9 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000, p
       <ResultatHeros total={production?.total} simule={data?.simule === true && !perime}
         motif={data?.motif} avertissements={data?.avertissements} plages={data?.cascade?.plages}
         autoconsommation={data?.autoconsommation} />
+      {data?.simule === true && !perime && <PartiesProduction parties={production?.parties} />}
+      {data?.simule === true && !perime && <EcartPvgis validation={data?.validation} />}
+      {data?.simule === true && !perime && <PourquoiProduction cascade={data?.cascade} />}
       {data?.simule === true && !perime && <LigneSurLaDuree production={production} />}
       {data?.simule === true && !perime && <ResultatIncomplet calepinageId={id} data={data} parcours={parcours} />}
       {data?.simule === true && !perime && <GraphiqueMensuel autoconsommation={data?.autoconsommation} />}
@@ -446,6 +495,8 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000, p
         </div>
       </div>
       <CartePostesPertes cascade={data?.cascade} />
+      {expert && <CarteFluxEnergie calepinageId={id} data={data} />}
+      <ChargesAjoutees consommation={data?.consommation} />
       <LigneValeursPubliees simulation={data?.simulation} onVoirSources={() => setSourcesOuvertes(true)} />
     </Card>
     {/* CALX64 — le tapis jour × heure de la série persistée (CALX193). La
@@ -457,7 +508,7 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000, p
         geste que personne n'a demandé en ouvrant simplement l'onglet. */}
     <TapisHoraire calepinageId={id} serie={data?.serie_horaire}
       geometriePresente={geometriePresente}
-      perime={perime} motif={data?.motif}
+      perime={perime} motif={data?.motif} cascade={data?.cascade}
       motifConsommation={data?.autoconsommation?.motif_absence} />
     </>
   )

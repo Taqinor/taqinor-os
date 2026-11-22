@@ -109,6 +109,8 @@ export interface InitOptions {
   // panneau près. Le type reste volontairement OPAQUE ici : la forme fait foi dans
   // le contrat, et `moduleSelect.ts` est le seul à la lire.
   modulesDisponibles?: unknown;
+  /** ACAL777 — facture mensuelle (MAD) du lead servie par le serveur (mode calepinage) : repli d'AFFICHAGE des cartes, jamais écrite au document. */
+  factureMensuelleMad?: number | null;
   /** ACAL80 — point de rendement PVGIS (URL) ; `null` = aucune requête (l'ERP n'a pas la
    *  route `/api/roof-yield` d'apps/web : repli sur la table committée). Absent = le défaut
    *  `/api/roof-yield` des pages publiques. */
@@ -120,6 +122,14 @@ export interface InitOptions {
    *  (barème indicatif) ») ; absente = pages publiques, comportement inchangé. */
   proposerConsommation?: ((corps: import('./consumption').CorpsPropositionConsommation) =>
     Promise<import('./consumption').PropositionConsommation>) | null;
+  /** ACAL918 — demande au MOTEUR le plan d'une surface de pose enregistrée (`POST calepinage/moteur/pose/`), fournie
+   *  par la page hôte (l'atelier ne parle jamais à Django) : rend la réponse du moteur, ou rejette avec une
+   *  `Error` dont le message est le motif français. Absente (pages publiques) = comportement d'avant. */
+  demanderPlanSurface?: (surface: import('./poseSurfaces').SurfacePose) => Promise<unknown>;
+  /** ACAL840 — la lecture d'une PHOTO de facture (`GET`/`POST calepinages/<pk>/consommation/lire-facture/`,
+   *  contrat `calepinage_consommation_photo_facture.json`), fournie par la page hôte (même patron
+   *  que `proposerConsommation`). `null`/absente = aucun bouton « Lire une photo de facture ». */
+  lireFactureConsommation?: import('./consommationMois').OptionLireFacture | null;
   /** ERR-ACAL311-PANNEAU-ABSENT-ERP — production PAR 1 kWc du plan courant, fournie par une
    *  page hôte SANS fenêtre de production ni `/api/roof-production` (l'ERP) : sans elle,
    *  « Affiner ma consommation » reste masqué faute de plan. Absente = pages publiques,
@@ -144,6 +154,8 @@ export interface ReglagesAtelier {
   zones_types?: unknown;
   /** Section `degagements` (CAL71/CALX402) — dont `allees_circulation` par pays. */
   degagements?: unknown;
+  /** ACAL714 — `{seuil_acces_retrait, ombrage_borne_courant_pct, ombrage_borne_importante_pct}` (`{valeur, source, reference}` chacun), ou `null`. */
+  simulation?: unknown;
 }
 
 /** PV75 — sous-ensemble bancable de `simulation.pr` (P50/P90/PR/cascade des pertes),
@@ -205,6 +217,13 @@ export interface RoofToolApi {
   renderImageHd: (
     scale: number,
   ) => Promise<{ blob: Blob; width: number; height: number; scale: number } | null>;
+  /** ACAL726 — comme `renderImageHd`, la carte d'accès solaire allumée pour la capture (année entière) puis
+   *  remise dans son état ; `null` sans source d'ombrage (rien à teinter) ou scène non rendable. */
+  renderCarteAccesHd: (
+    scale: number,
+  ) => Promise<{ blob: Blob; width: number; height: number; scale: number } | null>;
+  /** ACAL896 — enregistre une orbite de 360° de la carte (10 s) ; un motif français si l'enregistrement est impossible. */
+  enregistrerOrbite: (options?: import('./videoOrbite').OptionsOrbite) => Promise<import('./videoOrbite').ResultatOrbite>;
   /** ACAL537 — la scène 3D en glTF binaire (repère local), ou `null` si non rendable. */
   exporterSceneGltf: () => Promise<{ blob: Blob } | null>;
   /** ACAL435 — caméra sur l'une des quatre vues prêtes (600 ms, instantané si reduced-motion). */
@@ -746,6 +765,8 @@ export interface AreaRecord {
   coupuresPavage?: import('./coupuresPavage').CoupuresPavage;
   /** ACAL579 — portée maximale entre deux pieds de châssis (contrat ACAL587), SAISIE et sourcée. */
   porteeEntrePieds?: import('./piedsChassis').PorteeEntrePieds;
+  /** ACAL585 — châssis N × M du pan (contrat ACAL581), SAISI ; absent = pavage d'aujourd'hui. */
+  chassis?: import('./chassisPavage').ChassisPan;
 }
 
 // ═══════════ W50 — fenêtre « Production estimée » ═══════════

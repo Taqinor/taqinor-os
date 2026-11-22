@@ -98,6 +98,23 @@ class TableAffectationTest(unittest.TestCase):
         self.assertEqual(lignes['PAN-A#2']['source'], SOURCE_AUTO)
         self.assertEqual(lignes['PAN-A#2']['chaine'], 1)
 
+    def test_le_drapeau_optimiseur_par_module_est_conserve(self):  # ACAL733
+        imposee = normaliser_affectation_imposee([
+            {'module': 'PAN-A#1', 'chaine': 1, 'mppt': 1, 'onduleur': 1,
+             'optimiseur': True},
+            {'module': 'PAN-A#2', 'chaine': 1, 'mppt': 1, 'onduleur': 1,
+             'optimiseur': False},
+            {'module': 'PAN-A#3', 'chaine': 1, 'mppt': 1, 'onduleur': 1},
+        ])
+        lignes = {ligne['module']: ligne
+                  for ligne in affectation(_conception(), imposee=imposee)}
+        self.assertIs(lignes['PAN-A#1']['optimiseur'], True)
+        self.assertIs(lignes['PAN-A#2']['optimiseur'], False)
+        self.assertNotIn('optimiseur', lignes['PAN-A#3'])
+        self.assertEqual(len(lignes), 5)  # les autres lignes : aucune clé
+        for module in set(lignes) - {'PAN-A#1', 'PAN-A#2'}:
+            self.assertNotIn('optimiseur', lignes[module])
+
     def test_un_module_peut_etre_decable_a_la_main(self):
         imposee = normaliser_affectation_imposee([{'module': 'PAN-A#1'}])
         lignes = {ligne['module']: ligne
@@ -129,6 +146,13 @@ class NormalisationTest(unittest.TestCase):
             normaliser_affectation_imposee([
                 {'module': 'PAN-A#1', 'couleur': 'rouge'}])
         self.assertIn('couleur', str(capture.exception))
+
+    def test_optimiseur_non_booleen_refuse_en_nommant_module_et_champ(self):
+        with self.assertRaises(AffectationInvalide) as capture:
+            normaliser_affectation_imposee([
+                {'module': 'PAN-A#1', 'chaine': 1, 'optimiseur': 'oui'}])
+        self.assertIn('PAN-A#1', str(capture.exception))
+        self.assertEqual(capture.exception.champ, 'optimiseur')
 
     def test_numero_non_entier_refuse(self):
         for mauvais in (0, -1, 1.5, 'deux'):
@@ -209,3 +233,50 @@ class VerdictTest(unittest.TestCase):
 
     def test_aucune_proposition_aucun_verdict(self):
         self.assertEqual(verdict_affectation(_conception(), ()), ())
+
+
+class ImportCsvTest(unittest.TestCase):
+    """ACAL630 — chaque refus nomme SA ligne de fichier (en-tête = 1)."""
+
+    def _lire(self, texte):
+        from apps.calepinage.services.import_affectation import (
+            _lire_csv_affectation,
+        )
+        return _lire_csv_affectation(texte)
+
+    def test_ligne_4_fausse_refusee_avec_son_numero(self):
+        lignes, refus = self._lire(
+            'module;chaine;mppt;onduleur\nPAN-A#1;1;1;1\nPAN-A#2;1;1;1\n'
+            'PAN-A#3;abc;1;1')
+        self.assertEqual(refus, [{
+            'ligne': 4, 'colonne': 'chaine',
+            'message': 'La chaîne doit être un entier strictement positif '
+                       '(reçu : abc)'}])
+        self.assertEqual([ligne['module'] for ligne in lignes],
+                         ['PAN-A#1', 'PAN-A#2'])
+
+    def test_csv_valide_normalise_et_verdicte(self):
+        from apps.calepinage.services import chaines
+
+        vrai = chaines.evaluer_onduleurs
+        chaines.evaluer_onduleurs = lambda conception: _Evaluation()
+        self.addCleanup(setattr, chaines, 'evaluer_onduleurs', vrai)
+        lignes, refus = self._lire(
+            'module;chaine;mppt;onduleur\nPAN-A#1;1;1;1\nPAN-A#2;1;1;1')
+        self.assertEqual(refus, [])
+        self.assertEqual(verdict_affectation(
+            _conception(), normaliser_affectation_imposee(lignes)), ())
+
+    def test_entete_absent_ou_colonne_inconnue_ligne_1(self):
+        for texte in ('PAN-A#1;1;1;1', 'module;chaine;mppt;inverter\nx;1;1;1',
+                      ''):
+            with self.subTest(texte=texte):
+                lignes, refus = self._lire(texte)
+                self.assertEqual(lignes, [])
+                self.assertEqual([r['ligne'] for r in refus], [1])
+
+    def test_module_en_double_refuse_sur_la_seconde_ligne(self):
+        _lignes, refus = self._lire(
+            'module;chaine;mppt;onduleur\nPAN-A#1;1;1;1\nPAN-A#1;2;1;1')
+        self.assertEqual([(r['ligne'], r['colonne']) for r in refus],
+                         [(3, 'module')])

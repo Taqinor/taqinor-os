@@ -16,11 +16,14 @@
  * sont optionnels (le harness jsdom ne les fournit pas) — l'outil tourne sans eux.
  */
 import type * as maplibregl from 'maplibre-gl';
-import { sunDirection } from '../../lib/roofPro2';
 import { directPerduParHeure, moisDuJour, phraseDirectPerdu, svgCourbeDirectPerdu } from './courbeDirectPerdu'; // ACAL717
 import { modeExpertActif } from './orientationOmbre'; // ACAL717
+import { dateImageCapturee } from './imageCapture'; // ACAL496 / ACAL509
+import { phraseVerdictOmbrage } from './verdictOmbrage'; // ACAL715
+import { choixOptimisationCourant, poserChoixOptimisation } from './optimizer'; // ACAL548 (usage dans les fonctions seulement : import circulaire sûr)
+import { identifiantsModulesParCellule } from './libellesAffectation'; // ACAL729
 import {
-  IMAGERY_SUN_DEFAULT,
+  declarationSoleilPriseDeVue,
   SHADE_OBSTRUCTION_HALF_WIDTH_M,
   hourlyShadeFactors,
   annualShadeFactor,
@@ -31,9 +34,9 @@ import {
   pointSolarAccessMonth,
   solarAccessSummary,
   proposeShadedRemoval,
-  SOLAR_ACCESS_LOW,
   solarAccessColorRGB,
   type SolarAccessSummary,
+  type ShadeRemovalProposal,
   type ShadeObstruction,
   type ShadeObstructionENU,
 } from '../../lib/shadingEngine';
@@ -93,6 +96,12 @@ export interface ShadingUi {
   solarAccess: () => SolarAccessSummary | null;
   /** ACAL138 — accès solaire ANNUEL sur les modules POSÉS donnés (valeur persistée). */
   solarAccessAnnuel: (points: readonly { x: number; y: number }[]) => SolarAccessSummary | null;
+  /** ACAL726 — allume la carte d'accès (année entière) le temps de `fn`, puis la remet dans son état
+   *  d'avant ; `null` sans source d'ombrage (rien à teinter : `fn` n'est pas appelée). */
+  avecCarteDAcces: <T>(fn: () => Promise<T>) => Promise<T | null>;
+  /** ACAL726 — méta de table d'ombrage du pan actif (`g` = sa géométrie vivante, ou `null`). */
+  metaTableOmbrage: (g: { panels: ReadonlyArray<{ cx: number; cy: number }>; tiltDeg: number; azimuthDeg: number } | null) =>
+    { shadeTableByZone: Record<string, TableOmbrage | null>; signatureOmbrage: string; skyViewByZone: Record<string, FacteurVueCiel | null> };
   /** ACAL459 — table d'ombrage direct par direction du soleil, sur les modules POSÉS donnés
    *  (`null` sans module ni obstruction) ; `signatureTable` = signature des sources qui la porte. */
   tableOmbrage: (points: readonly { x: number; y: number }[]) => TableOmbrage | null;
@@ -487,6 +496,101 @@ export function hauteurToitPourOmbrageM(
   return effectiveBuildingHeightM(lu.origine === 'saisie' ? lu.hauteurM : null);
 }
 
+/** ACAL726 — exécute `fn` avec la carte d'accès allumée en année entière, puis la remet dans son état
+ *  d'avant (éteinte, avec son mois) ; déjà allumée, elle reste telle quelle. Sans source d'ombrage : `null`. */
+export async function executerAvecCarte<T>(
+  etat: { on: boolean; mois: number | null },
+  appliquer: (on: boolean, mois: number | null) => void,
+  sources: boolean,
+  fn: () => Promise<T>,
+): Promise<T | null> {
+  if (!sources) return null;
+  if (etat.on) return fn();
+  appliquer(true, null);
+  try {
+    return await fn();
+  } finally {
+    appliquer(false, etat.mois);
+  }
+}
+
+/** ACAL729 — le début de l'info-bulle d'un module : « Accès solaire 82 % (année entière) · chaîne 2 · », ou rien. */
+export function teteInfoBulleModule(acces: number | null, chaine: string | null): string {
+  const morceaux = [
+    acces == null ? null : `Accès solaire ${(acces * 100).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} % (année entière)`,
+    chaine,
+  ].filter((m): m is string => !!m);
+  return morceaux.length ? `${morceaux.join(' · ')} · ` : '';
+}
+
+/** ACAL714 — le seuil de retrait réglé par la société : un nombre fini dans [0, 1], sinon `null`. */
+export function seuilRetraitDesReglages(reglages: { simulation?: unknown } | null | undefined): number | null {
+  const sim = reglages?.simulation as { seuil_acces_retrait?: { valeur?: unknown } | null } | null | undefined;
+  const v = sim?.seuil_acces_retrait?.valeur;
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1 ? v : null;
+}
+
+const pctFr = (v: number) => `${(v * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %`;
+
+const estSeuil = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1;
+
+/** ACAL548 — le seuil EFFECTIF : la valeur de CE dossier si elle existe, sinon le réglage de la société, sinon `null`. */
+export function seuilEffectifAccesSolaire(
+  valeurDossier: unknown,
+  reglages: { simulation?: unknown } | null | undefined,
+): { valeur: number; origine: 'dossier' | 'societe' } | null {
+  if (estSeuil(valeurDossier)) return { valeur: valeurDossier, origine: 'dossier' };
+  const societe = seuilRetraitDesReglages(reglages);
+  return societe == null ? null : { valeur: societe, origine: 'societe' };
+}
+
+/** ACAL548 — la phrase qui dit d'où vient le seuil (jamais écrite si aucune valeur n'existe). */
+export function phraseOrigineSeuil(valeurDossier: unknown, reglages: { simulation?: unknown } | null | undefined): string {
+  const societe = seuilRetraitDesReglages(reglages);
+  const lSociete = societe == null ? '' : `réglage de votre société : ${pctFr(societe)}`;
+  if (!estSeuil(valeurDossier)) return lSociete;
+  const lDossier = `valeur de ce dossier : ${pctFr(valeurDossier)}`;
+  return lSociete ? `${lDossier} — ${lSociete}` : lDossier;
+}
+
+export type SeuilSaisi = { ok: true; valeur: number | null } | { ok: false; erreur: string };
+
+/** ACAL548 — lit le champ « Accès solaire minimal (%) » : « 80 » ⇒ 0,8 ; vide ⇒ `null` (clé retirée) ;
+ *  un texte non numérique ou hors 0 à 100 est REFUSÉ en le disant, jamais corrigé. */
+export function lireSeuilSaisi(texte: string): SeuilSaisi {
+  const t = texte.trim().replace(',', '.');
+  if (t === '') return { ok: true, valeur: null };
+  const n = /^\d+(\.\d+)?$/.test(t) ? Number(t) : NaN;
+  if (!Number.isFinite(n) || n < 0 || n > 100) return { ok: false, erreur: 'Saisissez un nombre entre 0 et 100' };
+  return { ok: true, valeur: n / 100 };
+}
+
+/** ACAL714 — le bloc « proposition de retrait » (CAL235) ; sans seuil réglé il dit où le régler, sans bouton. */
+export function htmlProposition(
+  proposal: ShadeRemovalProposal | null,
+  seuil: number | null,
+  peutRetirer: boolean,
+  modulesVises: string,
+  origine: 'dossier' | 'societe' = 'societe',
+): string {
+  if (seuil == null) {
+    return '<div class="mt-1 opacity-80">Retrait proposé : aucun seuil réglé par votre société (Réglages › simulation).</div>';
+  }
+  if (!proposal) return '';
+  return `<div class="mt-2 border border-white/10 bg-nuit-900/40 p-2">` +
+    `<div><span class="font-semibold text-white">Proposition</span> — retirer les ` +
+    `<span class="fig">${proposal.count}</span> module(s) dont l’accès solaire est sous ` +
+    `${esc(pctFr(proposal.threshold))} (${origine === 'dossier' ? `seuil de ce dossier (${esc(pctFr(proposal.threshold))})` : 'seuil de votre société'}) : <span class="fig">−${esc(proposal.kwcLost.toLocaleString('fr-FR', { maximumFractionDigits: 2 }))}</span> kWc, ` +
+    `accès solaire moyen des ${proposal.remaining} restants ` +
+    `<span class="fig">${esc(pctFr(proposal.averageBefore))}</span> → <span class="fig">${esc(pctFr(proposal.averageAfter))}</span>.</div>` +
+    `<div class="mt-1 opacity-80">Modules visés : ${esc(modulesVises)}.</div>` + // CALX111 câblage
+    (peutRetirer
+      ? `<button type="button" id="rp9-solar-access-apply" class="mt-2 border border-white/20 px-2 py-1 font-semibold text-white hover:bg-white/10">Retirer ces modules</button>` +
+        `<span class="ml-2 opacity-80">Rien n’est retiré tant que vous ne cliquez pas ; Ctrl+Z annule.</span>`
+      : '<div class="mt-1 opacity-80">Retrait non applicable sur cet écran — la proposition reste informative.</div>')
+    + '</div>';
+}
+
 export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   const { map, setStatus, recalcDisplays, applyHeatmap } = deps;
 
@@ -716,8 +820,8 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   }
 
   // — Hypothèse du moment de prise de vue (jour de l'année + heure solaire) —
-  let imageryDay: number = IMAGERY_SUN_DEFAULT.dayOfYear;
-  let imageryHour: number = IMAGERY_SUN_DEFAULT.solarHour;
+  // ACAL496 — la date est celle SAISIE (ACAL509), l'heure celle saisie ici : jamais une valeur supposée.
+  let imageryHour: number | null = null;
 
   // — Tracé en cours : null = inactif ; sinon le pied déjà posé (ou null en attente) —
   let tracing = false;
@@ -734,9 +838,12 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   /** CAL235 — dernière proposition affichée (les modules visés), ou null. */
   let lastProposal: { indices: number[] } | null = null;
 
-  /** Élévation solaire de l'hypothèse courante à la latitude du toit. */
-  const imagerySunElevation = (): number =>
-    sunDirection(ctx.centroidLat, imageryDay, imageryHour).elevationDeg;
+  /** ACAL496 — le soleil de la prise de vue d'après la date et l'heure DÉCLARÉES, ou le motif. */
+  const imagerySun = () => declarationSoleilPriseDeVue(ctx.centroidLat, dateImageCapturee()?.date, imageryHour);
+  const imagerySunElevation = (): number | null => {
+    const d = imagerySun();
+    return d.ok ? d.elevationDeg : null;
+  };
 
   /** CAL66/CAL67 — les obstructions vues de la zone active, TOUTES sources confondues
    *  (ombres tracées + obstacles de toiture à hauteur saisie + objets d'environnement). */
@@ -844,6 +951,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   /** Recalcule les hauteurs déduites (l'hypothèse de prise de vue a pu changer). */
   function recomputeHeights() {
     const elev = imagerySunElevation();
+    if (elev == null) return; // ACAL496 — rien de déclaré : les hauteurs relues du document restent
     for (const o of ctx.shadeObstructions) {
       const v = shadowVector(o.base, o.tip);
       const h = obstructionHeightFromShadow(v.lengthM, elev);
@@ -924,7 +1032,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   function solarAccessAnnuel(points: readonly { x: number; y: number }[]): SolarAccessSummary | null {
     if (!points.length || ctx.vertices.length < 3) return null;
     const prod = ctx.prodPerKwc ?? fallbackPerKwc();
-    return solarAccessSummary(ctx.centroidLat, activeShadeEntries(), prod, points, null);
+    return solarAccessSummary(ctx.centroidLat, activeShadeEntries(), prod, points, null, undefined, seuilRetrait());
   }
 
   /** ACAL459 — la table d'ombrage par direction du pan actif (même source d'obstructions). */
@@ -935,12 +1043,16 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   const vueCielActive = (points: readonly { x: number; y: number }[], penteDeg: number, azimutDeg: number): FacteurVueCiel | null =>
     ctx.vertices.length < 3 ? null : vueCielDuPan(facteurVueCiel(points, activeShadeEntries(), penteDeg, azimutDeg), signatureTable());
 
+  /** ACAL714 — le seuil de retrait du RÉGLAGE société (`simulation.seuil_acces_retrait`), ou `null`. */
+  const seuilEffectif = () => seuilEffectifAccesSolaire(choixOptimisationCourant()?.seuilAccesSolaire, ctx.opts?.reglagesAtelier); // ACAL548
+  const seuilRetrait = (): number | null => seuilEffectif()?.valeur ?? null;
+
   function solarAccess(): SolarAccessSummary | null {
     const plan = ctx.layoutPlan;
     if (!plan || !plan.grid.panels.length || ctx.vertices.length < 3) return null;
     const prod = ctx.prodPerKwc ?? fallbackPerKwc();
     const points = plan.grid.panels.map((p) => ({ x: p.cx, y: p.cy }));
-    return solarAccessSummary(ctx.centroidLat, activeShadeEntries(), prod, points, heatmapMonth);
+    return solarAccessSummary(ctx.centroidLat, activeShadeEntries(), prod, points, heatmapMonth, undefined, seuilRetrait());
   }
 
   /**
@@ -973,28 +1085,18 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     // CAL235 — PROPOSITION (jamais appliquée d'office) de retirer les modules les plus
     // ombragés. Chaque chiffre vient des calculs existants : compte, kWc perdu (puissance
     // unitaire RÉELLE du plan), effet sur l'accès solaire moyen. Aucun modèle nouveau.
-    const proposal = proposeShadedRemoval(s.perModule, panelKwcOfPlan(), SOLAR_ACCESS_LOW);
+    const seuil = seuilRetrait();
+    const proposal = proposeShadedRemoval(s.perModule, panelKwcOfPlan(), seuil);
     lastProposal = proposal ? { indices: proposal.indices } : null;
-    const proposalHtml = proposal
-      ? `<div class="mt-2 border border-white/10 bg-nuit-900/40 p-2">` +
-        `<div><span class="font-semibold text-white">Proposition</span> — retirer les ` +
-        `<span class="fig">${proposal.count}</span> module(s) dont l’accès solaire est sous ` +
-        `${esc(pct(proposal.threshold))} : <span class="fig">−${esc(fmt2(proposal.kwcLost))}</span> kWc, ` +
-        `accès solaire moyen des ${proposal.remaining} restants ` +
-        `<span class="fig">${esc(pct(proposal.averageBefore))}</span> → <span class="fig">${esc(pct(proposal.averageAfter))}</span>.</div>` +
-        `<div class="mt-1 opacity-80">Modules visés : ${esc(proposal.indices.map(etiquetteModule).join(', '))}.</div>` + // CALX111 câblage
-        (deps.removePanels
-          ? `<button type="button" id="rp9-solar-access-apply" class="mt-2 border border-white/20 px-2 py-1 font-semibold text-white hover:bg-white/10">Retirer ces modules</button>` +
-            `<span class="ml-2 opacity-80">Rien n’est retiré tant que vous ne cliquez pas ; Ctrl+Z annule.</span>`
-          : '<div class="mt-1 opacity-80">Retrait non applicable sur cet écran — la proposition reste informative.</div>')
-      + '</div>'
-      : '';
+    const origineSeuil = seuilEffectif()?.origine ?? 'societe';
+    const proposalHtml = htmlProposition(proposal, seuil, !!deps.removePanels, proposal ? proposal.indices.map(etiquetteModule).join(', ') : '', origineSeuil);
     el.innerHTML =
       `<div><span class="font-semibold text-white">Accès solaire (${esc(periode)})</span> — ` +
       `moyenne du pan <span class="fig">${esc(pct(s.average))}</span> sur ${s.count} module(s), ` +
       `du plus ombragé <span class="fig">${esc(pct(s.min))}</span> au plus dégagé <span class="fig">${esc(pct(s.max))}</span>` +
-      (s.lowCount ? `, dont ${s.lowCount} sous ${esc(pct(SOLAR_ACCESS_LOW))}` : '') +
+      (s.lowCount && seuil != null ? `, dont ${s.lowCount} sous le seuil ${origineSeuil === 'dossier' ? 'de ce dossier' : 'de votre société'} (${esc(pct(seuil))})` : '') +
       '.</div>' +
+      (modeExpertActif() ? `<div class="mt-1 text-white">${esc(phraseVerdictOmbrage(s, ctx.opts?.reglagesAtelier, periode))}</div>` : '') + // ACAL715
       `<div class="mt-1 opacity-80">${esc(s.method.description)}</div>` +
       `<ul class="mt-1 list-disc pl-4 opacity-80">${s.assumptions.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>` +
       proposalHtml;
@@ -1031,9 +1133,25 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     }
     const r = cellIndex >= 0 && cellIndex < readings.length ? readings[cellIndex] : null;
     if (!r) return null;
-    return r.maskedHours > 0 && r.firstMonthIndex != null
+    const ombrage = r.maskedHours > 0 && r.firstMonthIndex != null
       ? `Ombrage : ${r.maskedHours} heure(s) sur 288 masquée(s) par une obstruction, dès ${HEATMAP_MONTH_LABELS[r.firstMonthIndex]}.`
       : 'Ombrage : aucune heure masquée pour ce module.';
+    // ACAL729 — accès annuel du module et sa chaîne (table servie), en TÊTE ; rien d'inventé sinon.
+    const aire = ctx.areas.find((a) => a.id === ctx.activeAreaId);
+    const id = identifiantsModulesParCellule(ctx.activePanelCellIndex ?? [], String(aire?.label || aire?.id || ctx.activeAreaId || ''))[cellIndex];
+    return teteInfoBulleModule(accesAnnuelDuModule(cellIndex), id ? ctx.affectationColoration?.labelByModule?.get(id) ?? null : null) + ombrage;
+  }
+
+  /** ACAL729 — accès solaire ANNUEL d'un module du pan actif (mémorisé par plan + sources), ou `null`. */
+  let memoAccesTooltip: { plan: unknown; signature: string; resume: SolarAccessSummary | null } | null = null;
+  function accesAnnuelDuModule(cellIndex: number): number | null {
+    const plan = ctx.layoutPlan;
+    if (!plan) return null;
+    const signature = signatureTable();
+    if (!memoAccesTooltip || memoAccesTooltip.plan !== plan || memoAccesTooltip.signature !== signature) {
+      memoAccesTooltip = { plan, signature, resume: solarAccessAnnuel(plan.grid.panels.map((p) => ({ x: p.cx, y: p.cy }))) };
+    }
+    return memoAccesTooltip.resume?.perModule[cellIndex] ?? null;
   }
 
   /** CALX122 — publie, PAR MODULE, la lecture géométrique d'ombrage (heures masquées +
@@ -1067,6 +1185,18 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
       (earliestMonth != null ? `, dès ${HEATMAP_MONTH_LABELS[earliestMonth]}` : '') +
       '. Aucune production n’est calculée ici.';
   }
+
+  const avecCarteDAcces = <T,>(fn: () => Promise<T>) => executerAvecCarte(
+    { on: heatmapOn, mois: heatmapMonth },
+    (on, mois) => { heatmapMonth = mois; setHeatmap(on); },
+    hasShadeSources(),
+    fn,
+  );
+
+  const metaTableOmbrage: ShadingUi['metaTableOmbrage'] = (g) => {
+    const points = (g?.panels ?? []).map((p) => ({ x: p.cx, y: p.cy }));
+    return { shadeTableByZone: { [ctx.activeAreaId]: tableOmbrageActive(points) }, signatureOmbrage: signatureTable(), skyViewByZone: { [ctx.activeAreaId]: g ? vueCielActive(points, g.tiltDeg, g.azimuthDeg) : null } };
+  };
 
   function setHeatmap(on: boolean) {
     heatmapOn = on;
@@ -1171,6 +1301,11 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
       setStatus('Tracez et fermez d’abord le toit — l’ombrage se calcule pour ce champ.');
       return true;
     }
+    const soleil = imagerySun();
+    if (!soleil.ok) {
+      setStatus(soleil.motif);
+      return true;
+    }
     if (!pendingBase) {
       pendingBase = lngLat;
       setStatus('Pied posé — cliquez maintenant le BOUT de l’ombre.');
@@ -1178,7 +1313,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     }
     const base = pendingBase;
     const v = shadowVector(base, lngLat);
-    const h = obstructionHeightFromShadow(v.lengthM, imagerySunElevation());
+    const h = obstructionHeightFromShadow(v.lengthM, soleil.elevationDeg);
     if (h == null || v.lengthM < 0.5) {
       setStatus('Ombre trop courte (ou soleil rasant) pour déduire une hauteur — re-tracez.');
       pendingBase = null;
@@ -1195,7 +1330,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     });
     setTracing(false);
     recomputeShading();
-    setStatus(`Obstacle ajouté : hauteur estimée ~${fmt1(h)} m (déduite de l’ombre, hypothèse de prise de vue affichée).`);
+    setStatus(`Obstacle ajouté : hauteur estimée ~${fmt1(h)} m (déduite de l’ombre ; ${soleil.ligne}).`);
     return true;
   }
 
@@ -1218,24 +1353,17 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   });
   if (hourEl) {
     hourEl.addEventListener('input', () => {
-      const v = Number(hourEl.value);
-      if (!Number.isFinite(v)) return;
+      const v = hourEl.value.trim() === '' ? NaN : Number(hourEl.value);
+      if (!Number.isFinite(v) || v < 0 || v > 24) {
+        imageryHour = null;
+        if (hourValueEl) hourValueEl.textContent = 'Heure solaire illisible : un nombre entre 0 et 24.';
+        return;
+      }
       imageryHour = v;
       if (hourValueEl) hourValueEl.textContent = fmtH(v);
       if (hasShadeSources()) recomputeShading();
     });
   }
-  document.querySelectorAll<HTMLButtonElement>('[data-shade-season]').forEach((b) => {
-    b.addEventListener('click', () => {
-      const d = Number(b.dataset.shadeSeason);
-      if (!Number.isFinite(d)) return;
-      imageryDay = d;
-      document.querySelectorAll<HTMLButtonElement>('[data-shade-season]').forEach((o) =>
-        o.setAttribute('aria-pressed', String(o === b)),
-      );
-      if (hasShadeSources()) recomputeShading();
-    });
-  });
   listEl?.addEventListener('click', (e) => {
     const del = (e.target as HTMLElement).closest<HTMLElement>('[data-shade-del]');
     if (!del?.dataset.shadeDel) return;
@@ -1281,6 +1409,32 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     recomputeShading();
   });
 
+  // ACAL548 — « Accès solaire minimal (%) » : écrit `optimisation.seuilAccesSolaire` (les autres clés sont gardées).
+  const seuilEl = $<HTMLInputElement>('rp9-seuil-acces');
+  const seuilErreurEl = $('rp9-seuil-acces-erreur');
+  const seuilNoteEl = $('rp9-seuil-acces-note');
+  function syncSeuilUi() {
+    const doc = choixOptimisationCourant()?.seuilAccesSolaire;
+    if (seuilEl && document.activeElement !== seuilEl) {
+      seuilEl.value = estSeuil(doc) ? (doc * 100).toLocaleString('fr-FR', { maximumFractionDigits: 2, useGrouping: false }) : '';
+    }
+    if (seuilNoteEl) seuilNoteEl.textContent = phraseOrigineSeuil(doc, ctx.opts?.reglagesAtelier);
+  }
+  seuilEl?.addEventListener('change', () => {
+    const lu = lireSeuilSaisi(seuilEl.value);
+    if (seuilErreurEl) seuilErreurEl.textContent = lu.ok ? '' : lu.erreur;
+    seuilEl.setAttribute('aria-invalid', lu.ok ? 'false' : 'true');
+    if (!lu.ok) return; // rien ne change, rien n'est corrigé en silence
+    const suivant = { ...(choixOptimisationCourant() ?? {}) };
+    if (lu.valeur == null) delete suivant.seuilAccesSolaire;
+    else suivant.seuilAccesSolaire = lu.valeur;
+    poserChoixOptimisation(Object.keys(suivant).length ? suivant : null);
+    recalcDisplays();
+    renderSolarAccess();
+    syncSeuilUi();
+  });
+  syncSeuilUi();
+
   recomputeHorizonFactors(); // CAL93 — état initial (document rechargé avec un profil)
   renderHorizonNote();
   renderSolarAccess(); // CAL97 — état initial (dossier rechargé avec des obstructions)
@@ -1299,6 +1453,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   /** ACAL27 — redessine la liste et les lignes des ombres tracées après une hydratation,
    *  SANS recalcul (la matrice enregistrée reste en vigueur, cf. `recomputeFactors`). */
   function rafraichirOmbres() {
+    syncSeuilUi(); // ACAL548 — le champ se relit depuis le document
     renderList();
     drawShadeLines();
   }
@@ -1314,6 +1469,8 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     tableOmbrage: tableOmbrageActive, // ACAL459
     signatureTable,
     vueCiel: vueCielActive, // ACAL460
+    avecCarteDAcces, // ACAL726
+    metaTableOmbrage, // ACAL726 (extrait de roof-tool-pro11.ts)
     setHorizonProfile,
     // ACAL378 — la matrice dépend de la latitude : recalculée quand le centroïde change
     // (sinon un document rouvert garde celle de la latitude par défaut, 33,5°).

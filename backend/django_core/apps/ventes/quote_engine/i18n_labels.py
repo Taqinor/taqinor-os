@@ -2487,6 +2487,13 @@ LIBELLES = {
         'fr': 'Production estimée : ≈ {kwh} kWh par kWc et par an, pertes système de {pertes} % déduites.',
         'en': 'Estimated production: ≈ {kwh} kWh per kWc per year, system losses of {pertes} % deducted.',
         'ar': 'الإنتاج المقدر: ≈ {kwh} kWh لكل kWc سنويًا، بعد خصم خسائر النظام البالغة {pertes} %.'},
+    'res_hyp_production_calepinage': {  # ACAL973 — productible du calepinage enregistré
+        'fr': ('Production estimée : ≈ {kwh} kWh par kWc et par an, calepinage enregistré (pertes et ombrage '
+               'de la pose réelle inclus).'),
+        'en': ('Estimated production: ≈ {kwh} kWh per kWc per year, from the saved panel layout (losses and '
+               'shading of the actual installation included).'),
+        'ar': ('الإنتاج المقدر: ≈ {kwh} kWh لكل kWc سنويًا، حسب مخطط الألواح المسجّل (خسائر وتظليل التركيب '
+               'الفعلي محتسبة).')},
     'res_hyp_autoconso': {
         'fr': 'Autoconsommation retenue : {sans} % sans batterie · {avec} % {option}.',
         'en': 'Self-consumption used: {sans} % without battery · {avec} % {option}.',

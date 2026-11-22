@@ -283,6 +283,32 @@ describe('résultat serveur (AGR129)', () => {
     render(<PanneauAgricole {...PROPS_VIDES} apercuPompage={null} />)
     expect(screen.queryByTestId('resultat-pompage')).toBeNull()
   })
+
+  // ACAL1202 (D-ACAL-46) — le plan des panneaux de la production d'eau, LU
+  // dans la réponse (jamais un angle écrit par l'écran).
+  it('plan des panneaux : pose, référence avec motif lue dans plan_reference, rien sans la clé', () => {
+    const ligne = () => screen.queryByTestId('resultat-plan-irradiation')
+    const pose = CONTRAT.exemple_pose_calepinage
+    const { rerender } = render(<PanneauAgricole {...PROPS_VIDES}
+      apercuPompage={{ donnees: { ...REPONSE, production: pose.production } }} />)
+    expect(ligne().textContent).toBe(
+      "Production d'eau calculée sur la pose du calepinage : PAN-E 15° est, PAN-O 15° ouest")
+    const reference = {
+      ...CONTRAT.exemple.production.plan_irradiation,
+      plan_reference: { inclinaison_deg: 25, aspect_deg: -90 },
+      motif: 'la conception a changé depuis la simulation',
+    }
+    rerender(<PanneauAgricole {...PROPS_VIDES} apercuPompage={{ donnees: {
+      ...REPONSE, production: { ...REPONSE.production, plan_irradiation: reference } } }} />)
+    expect(ligne().textContent).toBe("Production d'eau calculée sur l'ensoleillement de référence "
+      + 'du site (25°, est) : la conception a changé depuis la simulation')
+    expect(ligne().className).toContain('text-sm')
+    rerender(<PanneauAgricole {...PROPS_VIDES} apercuPompage={{ donnees: {
+      ...REPONSE, production: { ...REPONSE.production, plan_irradiation: undefined } } }} />)
+    expect(ligne()).toBeNull()
+    rerender(<PanneauAgricole {...PROPS_VIDES} apercuPompage={{ donnees: { ...REPONSE, production: null } }} />)
+    expect(ligne()).toBeNull()
+  })
 })
 
 // ── AGR212 — économie déclarée ─────────────────────────────────────────────

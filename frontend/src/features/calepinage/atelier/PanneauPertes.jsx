@@ -91,6 +91,7 @@ function construireLignes(data) {
       mensuel: Boolean(item.mensuel) || aDouzeMois(origine?.mensuel),
       horsCatalogue: false,
       origine,
+      societe: item.societe ?? null, // ACAL979 — le réglage société hérité, ou null
     }
   })
   for (const p of servis) {
@@ -334,6 +335,12 @@ function LignePoste({
       </legend>
       {ligne.reference && (
         <p className="text-xs text-muted-foreground">{ligne.reference}</p>
+      )}
+      {/* ACAL979 — poste non saisi : la valeur HÉRITÉE du réglage société (servie). */}
+      {!origine && ligne.societe && (
+        <p className="mt-1 text-xs text-foreground" data-testid={`acal979-societe-${poste}`}>
+          Réglage société : {ligne.societe.renseigne && ligne.societe.resume ? ligne.societe.resume : 'aucun'}
+        </p>
       )}
       {statut && (
         <p

@@ -347,6 +347,33 @@ def compatibilite_du_materiel(panneau_id, onduleur_id, company, batterie_id=None
     return sortie
 
 
+def production_annoncee_du_devis(devis_id, company):
+    """ACAL1171 — ce que le PDF du devis imprimera comme production : celle de
+    la pose réelle SERVIE par le calepinage, ou le standard de la ville.
+
+    Relaye le résolveur du marché (``diagnostic_plan_pose_pompage`` pour
+    l'agricole, ``diagnostic_base_de_production`` sinon) : rien n'est recalculé.
+    Rend ``{regles_a_jour, servie, motif}`` — ``motif`` dit pourquoi la ville
+    sert quand ``servie`` est faux — ou ``None`` (devis inconnu / d'une autre
+    société). Lecture pure, ne lève pas."""
+    from .domain.regles_calcul import REGLES_POSE_REELLE_2111, regles_au_moins
+    from .models import Devis
+
+    if company is None or not devis_id:
+        return None
+    devis = Devis.objects.filter(company=company, pk=devis_id).first()
+    if devis is None:
+        return None
+    if devis.mode_installation == Devis.ModeInstallation.AGRICOLE:
+        from .domain.pompage_pose import diagnostic_plan_pose_pompage as lire
+    else:
+        from .horaire.productible_pose import (
+            diagnostic_base_de_production as lire)
+    base, motif = lire(devis)
+    return {'regles_a_jour': regles_au_moins(devis, REGLES_POSE_REELLE_2111),
+            'servie': base is not None, 'motif': motif}
+
+
 def devis_brouillon_pour_layout(company, lead_id, empreinte):
     """CAL24 — le BROUILLON déjà né de ce calepinage, ou ``None``.
 
@@ -788,3 +815,14 @@ def poids_solaires_mensuels():
     importer le moteur hors d'``apps.ventes``."""
     from .quote_engine.constants import MOROCCO_SOLAR_MONTHLY_WEIGHTS
     return MOROCCO_SOLAR_MONTHLY_WEIGHTS
+
+
+def plafond_injection_loi_8221():
+    """ACAL783 — le plafond légal d'injection de la loi 82-21 (art. 12) et la
+    mention « aucune revente en basse tension », lus de la constante du moteur
+    C&I : le calepinage n'en recopie aucune valeur."""
+    from .quote_engine.constants_82_21 import (
+        MENTION_BT, PLAFOND_INJECTION_PCT, PLAFOND_INJECTION_SOURCE,
+    )
+    return {'pct': PLAFOND_INJECTION_PCT, 'source': PLAFOND_INJECTION_SOURCE,
+            'mention_bt': MENTION_BT}

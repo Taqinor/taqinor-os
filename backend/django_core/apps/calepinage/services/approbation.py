@@ -198,20 +198,25 @@ def approbation_perimee(calepinage):
         getattr(calepinage, 'layout_hash', '') or '')
 
 
-def etat_approbation(calepinage):
+def etat_approbation(calepinage, user=None):
     """``{etat, decide_par, decide_le, motif, exigee, perimee,
-    empreinte_approuvee, empreinte_courante}`` — le contrat CALX334 (+ ACAL6/
-    ACAL114 ; ACON23 : ``empreinte_courante`` = l'empreinte imprimée VUE, que
-    l'accord renvoie).
+    empreinte_approuvee, empreinte_courante, peut_approuver,
+    motif_sans_approbation}`` — le contrat CALX334 (+ ACAL6/ACAL114 ; ACON23 :
+    ``empreinte_courante`` = l'empreinte imprimée VUE, que l'accord renvoie).
 
     ``etat`` vaut ``None`` tant que personne n'a décidé ; ``exigee`` reflète
     le réglage société (jamais supposé) ; ``perimee`` dit qu'un accord ne
-    couvre plus la conception imprimée d'aujourd'hui.
+    couvre plus la conception imprimée d'aujourd'hui. ACAL946 —
+    ``peut_approuver`` dit si ``user`` (le LECTEUR) peut donner l'accord, par
+    la règle même du refus d'auto-approbation ; ``None`` sans lecteur.
     """
     decision = _decision(calepinage)
     etat = decision.get('etat')
     etat = etat if etat in DECISIONS else None
+    peut = None if user is None else _approbation_possible_pour(calepinage, user)
     return {
+        'peut_approuver': peut,
+        'motif_sans_approbation': MESSAGE_AUTO_APPROBATION if peut is False else None,
         'etat': etat,
         'decide_par': (_decideur(calepinage, decision.get('decide_par_id'))
                        if etat else None),
@@ -414,7 +419,7 @@ def decider(calepinage, *, decision, motif='', user=None, maintenant=None,
     if avertissement:
         texte += f" — {avertissement}"
     noter(calepinage, texte, user=user)
-    return etat_approbation(calepinage)
+    return etat_approbation(calepinage, user)
 
 
 #: Décision fondateur 07/10/2026 — la trace d'une auto-approbation admise
@@ -471,11 +476,18 @@ def _refuser_auto_approbation(calepinage, user):
     alors et rend ``True`` (à journaliser « auto-approuvé (seul
     approbateur) »). Rend ``False`` pour une approbation ordinaire.
     """
-    if getattr(user, 'pk', None) not in _concepteurs(calepinage):
-        return False
-    if _autre_approbateur_actif(calepinage, user):
+    if not _approbation_possible_pour(calepinage, user):
         raise ApprobationRefusee(MESSAGE_AUTO_APPROBATION, champ='decision')
-    return True
+    return getattr(user, 'pk', None) in _concepteurs(calepinage)
+
+
+def _approbation_possible_pour(calepinage, user):
+    """ACAL946 — LA règle unique (refus de ``decider`` ET état lu par
+    l'écran) : ``user`` peut approuver sauf s'il a conçu ou porte la
+    conception ET qu'un autre approbateur actif existe dans la société."""
+    if getattr(user, 'pk', None) not in _concepteurs(calepinage):
+        return True
+    return not _autre_approbateur_actif(calepinage, user)
 
 
 def _verdict_electrique_avant_accord(calepinage):

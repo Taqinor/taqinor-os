@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/entree-electrique/",
-  "pourquoi": "ACAL9 (a) (C-ACAL-050/053/058) — RELECTURE DE L'ENTRÉE ÉLECTRIQUE STOCKÉE : le GET rend l'entrée telle que le POST l'a écrite, à l'identique (aucune donnée recalculée). `entree` = les clés de CHAMPS_ENTREE (services/electrique.py) SAUF `derogations` (un GESTE, jamais rangé dans l'entrée : il part dans le fil du calepinage), + `regime` (régime de neutre — jamais déduit), `transformateur` {declare, perte_a_vide_kw, perte_en_charge_kw_nominale, puissance_nominale_kw : chacun {valeur, source, reference}}, `batterie` {produit, packs, strategie, couplage, onduleur_ref, seuil_effacement_kw, heures_charge, heures_decharge, reserve_backup_kwh, motivation} | null, `hors_reseau` {actif, jours_autonomie, etat_initial_kwh, seuils} | null. `materiel` = le matériel RÉSOLU {module | onduleur | optimiseur : {produit_id, designation, provenance 'explicite' | 'devis' | null, fiche_complete, champs_manquants}, modules_par_pan (ACAL359) : [{pan, module_id, designation, produit_id, fiche_resolue, fiche_complete}] dans l'ordre du document — le module RÉELLEMENT posé sur chaque pan ; un pan sans fiche produit résolue (module saisi, produit introuvable) a fiche_resolue false et est chaîné avec la fiche du module par défaut} (D-ACAL-10 : par défaut les lignes du devis lié, provenance visible ; jamais un produit supposé) ; `absents` = les rôles sans matériel ; `candidats` = {modules | onduleurs | optimiseurs : [{id, libelle, marque, favori, fiche_complete, champs_manquants}]}. Refus 400 = {champ: message}. PACT10 : le contrat part AVANT les moitiés D05-T03/T04.",
+  "pourquoi": "ACAL9 (a) (C-ACAL-050/053/058) — RELECTURE DE L'ENTRÉE ÉLECTRIQUE STOCKÉE : le GET rend l'entrée telle que le POST l'a écrite, à l'identique (aucune donnée recalculée). `entree` = les clés de CHAMPS_ENTREE (services/electrique.py) SAUF `derogations` (un GESTE, jamais rangé dans l'entrée : il part dans le fil du calepinage), + `regime` (régime de neutre — jamais déduit), `transformateur` {declare, perte_a_vide_kw, perte_en_charge_kw_nominale, puissance_nominale_kw : chacun {valeur, source, reference}}, `batterie` {produit, packs, strategie, couplage, onduleur_ref, seuil_effacement_kw, heures_charge, heures_decharge, reserve_backup_kwh, motivation, et depuis ACAL786 appareils, duree_secours_h, fenetres, part_effacable_pct, plafond_effacable_kw, et depuis ACAL796 coupures {nombre_par_an, duree_h, heure_debut} | null — corps d'essai `exemple_secours` et `exemple_commande_avancee`} | null, `hors_reseau` {actif, jours_autonomie, etat_initial_kwh, seuils, et depuis ACAL800 groupe {actif, puissance_kw, soc_demarrage_pct, soc_arret_pct, heures_max_par_jour} | null} | null. `materiel` = le matériel RÉSOLU {module | onduleur | optimiseur : {produit_id, designation, provenance 'explicite' | 'devis' | null, fiche_complete, champs_manquants}, modules_par_pan (ACAL359) : [{pan, module_id, designation, produit_id, fiche_resolue, fiche_complete}] dans l'ordre du document — le module RÉELLEMENT posé sur chaque pan ; un pan sans fiche produit résolue (module saisi, produit introuvable) a fiche_resolue false et est chaîné avec la fiche du module par défaut} (D-ACAL-10 : par défaut les lignes du devis lié, provenance visible ; jamais un produit supposé) ; `absents` = les rôles sans matériel ; `candidats` = {modules | onduleurs | optimiseurs : [{id, libelle, marque, favori, fiche_complete, champs_manquants}]}. Refus 400 = {champ: message}. PACT10 : le contrat part AVANT les moitiés D05-T03/T04.",
   "exemple": {
     "calepinage": 1,
     "entree": {
@@ -19,7 +19,8 @@
       "nombre_onduleurs": null,
       "longueur_chaine_forcee": null,
       "protections": {
-        "parafoudre_dc": true
+        "parafoudre_dc": true,
+        "exigences": {"arret_rapide": "oui", "paratonnerre": {"present": "oui", "distance_separation_m": 1.2}}
       },
       "terre": {
         "resistance_ohm": 20.0
@@ -201,7 +202,47 @@
       }
     }
   },
+  "exemple_affectation_optimiseur": {
+    "affectation_manuelle": [
+      {"module": "P1#3", "chaine": 1, "mppt": 1, "onduleur": 1, "optimiseur": true, "cx": 4.2, "cy": 1.1},
+      {"module": "P1#4", "chaine": 1, "mppt": 1, "onduleur": 1, "optimiseur": false},
+      {"module": "P1#5", "chaine": 1, "mppt": 1, "onduleur": 1}
+    ]
+  },
+  "exemple_refus_motif_affectation": {
+    "cheminement.pans.z1.motif_affectation": "Pan « z1 » : motif d'affectation « zigzag » inconnu. Motifs admis : rangee, u."
+  },
   "exemple_refus_motif_parcours": {
     "cheminement.pans.z1.motif_parcours": "Pan « z1 » : motif de parcours inconnu."
+  },
+  "exemple_secours": {
+    "batterie": {
+      "strategie": "backup",
+      "appareils": [
+        {"nom": "Réfrigérateur", "puissance_continue_kw": 0.15, "puissance_pointe_kw": 0.6, "quantite": 1},
+        {"nom": "Éclairage", "puissance_continue_kw": 0.02, "puissance_pointe_kw": 0.02, "quantite": 6}
+      ],
+      "duree_secours_h": 4,
+      "coupures": {"nombre_par_an": 12, "duree_h": 4, "heure_debut": 18}
+    }
+  },
+  "exemple_commande_avancee": {
+    "batterie": {
+      "strategie": "decalage",
+      "fenetres": {
+        "charge": [{"heures": [10, 11, 12, 13], "soc_cible_pct": 90}],
+        "decharge": [{"heures": [19, 20, 21], "soc_cible_pct": 20}]
+      },
+      "part_effacable_pct": 60,
+      "plafond_effacable_kw": 5.0
+    }
+  },
+  "exemple_hors_reseau_avance": {
+    "hors_reseau": {
+      "actif": true,
+      "jours_autonomie": 2,
+      "seuils": {"veille_pct": 30, "entretien_pct": 20, "arret_pct": 10},
+      "groupe": {"actif": true, "puissance_kw": 5.0, "soc_demarrage_pct": 20, "soc_arret_pct": 80, "heures_max_par_jour": 6}
+    }
   }
 }

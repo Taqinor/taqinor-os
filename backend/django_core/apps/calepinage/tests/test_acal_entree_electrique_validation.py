@@ -13,6 +13,8 @@ source mockée.
 """
 from __future__ import annotations
 
+import json
+import pathlib
 from decimal import Decimal
 
 from apps.calepinage.models import Calepinage, ParametresCalepinage
@@ -175,6 +177,28 @@ class Ecriture(BaseValidation):
         entree = enregistrer_entree(self.calepinage, accepte)
         self.assertEqual(entree['regime'], 'TN')
         self.assertEqual(entree['batterie']['packs'], 2)
+        # ACAL786 — les cinq clés de secours et de commande sont typées, et
+        # les deux corps d'essai du contrat sont acceptés (200).
+        batterie = regle['properties']['batterie']['properties']
+        for cle in ('appareils', 'duree_secours_h', 'fenetres',
+                    'part_effacable_pct', 'plafond_effacable_kw',
+                    'coupures'):  # coupures : ACAL796
+            self.assertTrue(batterie[cle], cle)
+        contrat = json.loads((pathlib.Path(__file__).resolve().parents[1]
+                              / 'contract_samples'
+                              / 'calepinage_entree_electrique.json')
+                             .read_text(encoding='utf-8'))
+        # ACAL790 — les seuils hors réseau sont publiés et leur corps accepté.
+        self.assertTrue(regle['properties']['hors_reseau']['properties'][
+            'seuils'])
+        self.assertTrue(regle['properties']['hors_reseau']['properties'][
+            'groupe'])  # ACAL800
+        for cle in ('exemple_secours', 'exemple_commande_avancee',
+                    'exemple_hors_reseau_avance'):
+            with self.subTest(corps=cle):
+                reponse = self.api.post(url_entree(self.calepinage.pk),
+                                        contrat[cle], format='json')
+                self.assertEqual(reponse.status_code, 200, reponse.data)
 
 
 class EvaluationAChaud(BaseValidation):

@@ -10,9 +10,14 @@ est le journal IA du noyau (``usage_context``). Forme servie :
 """
 from __future__ import annotations
 
+import functools
 import json
+import logging
+from pathlib import Path
 
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 FEATURE = 'calepinage.detection_toit'
 MOTIF_NON_CONFIGUREE = "La détection du toit n'est pas configurée sur ce serveur."
@@ -25,6 +30,10 @@ ORIGINES = ('importee', 'carte')
 #: Bornes de chaque coin (degrés) : la FORME publiée au schéma.
 BORNES_COINS = {'ouest': (-180, 180), 'est': (-180, 180),
                 'sud': (-90, 90), 'nord': (-90, 90)}
+
+
+_SCHEMA_LAYOUT = (Path(__file__).resolve().parent.parent / 'contract_samples'
+                  / 'roof_layout_v2.schema.json')
 
 
 class DetectionIndisponible(Exception):
@@ -110,8 +119,34 @@ def _enveloppe(points):
     return [list(p) for p in demi(points) + demi(reversed(points))]
 
 
+@functools.lru_cache(maxsize=1)
+def _types_obstacle():
+    """Les types d'obstacle de l'atelier : l'enum du schéma du document, lue au chargement."""
+    with open(_SCHEMA_LAYOUT, encoding='utf-8') as fichier:
+        schema = json.load(fichier)
+    return frozenset(schema['$defs']['obstacle']['properties']['type']['enum'])
+
+
+def _projeter_obstacles(data, emprise):
+    """ACAL1049 — les obstacles du fournisseur, projetés comme les pans.
+
+    Seuls les types de l'atelier sont servis : un autre est ÉCARTÉ et journalisé
+    (``propositions.obstacles[i].type``), sans rien faire perdre d'autre. La forme
+    est déjà garantie par ``valider_obstacles`` (côté fournisseur). Jamais une pose.
+    """
+    servis = []
+    for rang, obstacle in enumerate(data.get('obstacles') or []):
+        if obstacle['type'] not in _types_obstacle():
+            logger.info("propositions.obstacles[%d].type : « %s » n'est pas un type de l'atelier, "
+                        "obstacle écarté", rang, obstacle['type'])
+            continue
+        servis.append({'type': obstacle['type'], 'confiance': obstacle['confiance'],
+                       'contour_lnglat': [_lnglat(p, emprise) for p in obstacle['sommets']]})
+    return servis
+
+
 def detecter(company_id, contenu, mime, emprise):
-    """Propositions ``{contour_lnglat, pans}`` ; lève ``DetectionIndisponible``."""
+    """Propositions ``{contour_lnglat, pans, obstacles}`` ; lève ``DetectionIndisponible``."""
     from core.ai.fournisseurs_claude import valider_pans
     from core.ai.usage import usage_context
 
@@ -126,4 +161,5 @@ def detecter(company_id, contenu, mime, emprise):
     pans = [{'contour_lnglat': [_lnglat(p, emprise) for p in pan['sommets']],
              'azimut_deg': None, 'confiance': pan['confiance']} for pan in pans]
     contour = _enveloppe([p for pan in pans for p in pan['contour_lnglat']])
-    return {'contour_lnglat': contour, 'pans': pans}
+    return {'contour_lnglat': contour, 'pans': pans,
+            'obstacles': _projeter_obstacles(resultat.data, emprise)}

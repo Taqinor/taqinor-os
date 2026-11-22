@@ -43,6 +43,8 @@ import { fmt as fmtInt, esc } from './dom';
 import { type Ctx } from './context';
 import { appliquerHydratationAuCtx, type HydratationAtelier } from './hydratation'; // ACAL311
 import { deserializeConsumptionFromLayout, lireCouchesDocument } from './prefill'; // ACAL311
+import { monterChargesAvenir, releireCharges } from './chargesAvenir'; import { modeExpertActif } from './orientationOmbre'; // ACAL780
+import { monterGrilleFactures, type DepsGrille, type MoisPropose } from './consommationMois'; // ACAL837
 
 /** ACAL311 — corps de `POST calepinages/<pk>/consommation/proposer/` (contrat
  *  `calepinage_consommation_proposee.json` : `corps_lead`/`corps_factures`/`corps_csv`/
@@ -63,6 +65,8 @@ export interface PropositionConsommation {
   courbe24: number[] | null;
   saisons: { ete?: number; hiver?: number };
   avertissements: string[];
+  /** ACAL836/837 — les 12 mois (factures saisies ou estimés), quand la source est `factures.mois`. */
+  mois?: MoisPropose[];
 }
 
 /** ACAL311 — le refus DÉCODÉ par la page hôte (`refusServeur` de l'ERP). */
@@ -513,6 +517,7 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
     if (!ready) return;
     rebuildConsCurve();
     if (!ctx.consMode) return; // panneau replié : rien à dessiner
+    rafraichirCharges?.(); // ACAL780
 
     const dailyTotal = curveTotal(ctx.consCurve);
     // W82 — la synthèse de TÊTE (autoconso/économies/batterie) est l'INTÉGRALE ANNUELLE
@@ -614,6 +619,7 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
   const refusEls = new Map<string, HTMLElement>();
   let refusGeneralEl: HTMLElement | null = null;
   let avisEl: HTMLElement | null = null;
+  let surReponse: Parameters<DepsGrille['ecouter']>[0] | null = null; // ACAL837 — la grille des mois lit chaque réponse
 
   /** Le nom du champ refusé ramené à sa saisie (`factures.hiver_mad` → `factures`). */
   function racineChamp(champ: string): string {
@@ -675,10 +681,13 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
     try {
       const rep = await proposerOpt(corps);
       if (n !== jeton) return false; // une saisie plus récente a pris la main
-      return appliquerProposition(rep);
+      const ok = appliquerProposition(rep);
+      surReponse?.(rep);
+      return ok;
     } catch (refus) {
       if (n !== jeton) return false;
       afficherRefus(refus as RefusPropositionConsommation);
+      surReponse?.(null, refus as RefusPropositionConsommation);
       return false;
     }
   }
@@ -686,6 +695,19 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
   /** Le corps de base (sans Ramadan) augmenté du Ramadan coché. */
   function avecRamadan(base: CorpsPropositionConsommation, actif: boolean, jour: string): CorpsPropositionConsommation {
     return actif ? { ...base, ramadan: { actif: true, jour } } : base;
+  }
+
+  /** ACAL780 — charges à venir, dans le conteneur `[data-cons-charges]` (niveau expert seulement). */
+  let rafraichirCharges: (() => void) | null = null;
+  function monterChargesDuPanneau() {
+    const hote = document.querySelector<HTMLElement>('[data-cons-charges]');
+    if (!hote) return;
+    const { rafraichir } = monterChargesAvenir(hote, {
+      lire: () => ctx.consCharges ?? releireCharges(ctx.documentRelu?.consumption),
+      ecrire: (liste) => { ctx.consCharges = liste; },
+    });
+    rafraichirCharges = () => { hote.hidden = !modeExpertActif(); rafraichir(); };
+    rafraichirCharges();
   }
 
   /** Monte les commandes du panneau. Option absente (pages publiques) : rien ne change. */
@@ -742,6 +764,9 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
       dernierCorps = base;
       void proposer(avecRamadan(base, Boolean(ramadanEl?.checked), jourEl?.value ?? ''));
     };
+    monterGrilleFactures(bloc, { lancer, classe: () => classeEl?.value ?? '', ecouter: (f) => { surReponse = f; },
+      lireFacture: ctx.opts?.lireFactureConsommation }); // ACAL837 + ACAL840 (photo : absente sans option)
+    monterChargesDuPanneau(); // ACAL780
     bloc.querySelector('[data-cons-action="lead"]')?.addEventListener('click', () =>
       lancer({ source: 'lead', ...classe() }));
     bloc.querySelector<HTMLInputElement>('[data-cons-csv]')?.addEventListener('change', async (e) => {

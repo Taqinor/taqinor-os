@@ -382,7 +382,7 @@ const CHAMPS_FICHE_VARIATEUR = [
   'ond_mppt_v_min', 'ond_mppt_v_max', 'ond_v_max_abs', 'ond_i_max_mppt_a',
   'ond_phases', 'ond_v_demarrage_v', 'var_voc_reco_min_v', 'var_voc_reco_max_v',
   'var_v_sortie_v', 'var_i_sortie_nominal_a', 'var_protection_marche_a_sec',
-  'var_rendement_mppt_pct',
+  'var_rendement_mppt_pct', 'var_bus_dc_redresse_v',
 ]
 
 /** Une fiche variateur est « saisie » si elle est typée et porte au moins une

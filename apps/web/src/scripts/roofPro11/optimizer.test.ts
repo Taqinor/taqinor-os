@@ -20,6 +20,8 @@ import {
   type EntreeDepartage,
 } from './optimizer';
 import { rectRing } from './harnaisAtelier';
+import { factureCarteDe, lireFactureSaisie } from './factureCarte'; // ACAL777
+import { seuilEffectifAccesSolaire } from './shadingUi'; // ACAL548
 import { panneauxPourCible } from './cibleProduction';
 import { cotesDePavage } from '../../lib/roofPro2';
 import {
@@ -509,5 +511,44 @@ describe('ACAL549 — causeDuPanVide', () => {
     (doc.zones as Array<{ geometry: { count: number } }>)[0].geometry.count = 2;
     expect(ecrireMotifsDansDocument(doc)).toBe(false);
     semerMotifsDepuisDocument({});
+  });
+});
+
+// ACAL548 — UNE règle pour le seuil d'accès solaire : le dossier prime, la société sert de départ, sinon aucun filtre.
+describe('ACAL548 — seuil effectif (dossier > société > rien)', () => {
+  const societe = { simulation: { seuil_acces_retrait: { valeur: 0.6, source: 'societe' } } };
+  it('sans valeur au document, le réglage société s’applique', () => {
+    expect(seuilEffectifAccesSolaire(undefined, societe)).toEqual({ valeur: 0.6, origine: 'societe' });
+  });
+  it('avec une valeur au document, elle prime sur la société', () => {
+    expect(seuilEffectifAccesSolaire(0.8, societe)).toEqual({ valeur: 0.8, origine: 'dossier' });
+  });
+  it('sans rien, aucun filtre ; une valeur de société hors [0, 1] n’est pas utilisée', () => {
+    expect(seuilEffectifAccesSolaire(undefined, null)).toBeNull();
+    expect(seuilEffectifAccesSolaire(undefined, { simulation: { seuil_acces_retrait: { valeur: 1.2 } } })).toBeNull();
+  });
+  it('le dépôt d’une valeur de dossier garde les autres clés et la société n’est jamais écrite', () => {
+    poserChoixOptimisation({ priorite: 'faitage' });
+    poserChoixOptimisation({ ...choixOptimisationCourant(), seuilAccesSolaire: 0.8 });
+    expect(choixOptimisationCourant()).toEqual({ priorite: 'faitage', seuilAccesSolaire: 0.8 });
+    poserChoixOptimisation(null);
+    expect(choixOptimisationCourant()).toBeNull();
+  });
+});
+
+// ACAL777 — la facture lue par les cartes : la saisie PRIME, le lead sert de repli, jamais d'invention.
+describe('ACAL777 — factureCarteDe / lireFactureSaisie', () => {
+  it('saisie > 0 prime ; sinon la facture du lead ; sinon 0 (rien inventé)', () => {
+    expect(factureCarteDe(1200, 900)).toBe(1200);
+    expect(factureCarteDe(0, 900)).toBe(900);
+    expect(factureCarteDe(0, null)).toBe(0);
+    expect(factureCarteDe(0, undefined)).toBe(0);
+    expect(factureCarteDe(0, -5)).toBe(0);
+  });
+  it('lireFactureSaisie : espaces et virgule décimale lus, vide ou illisible = 0', () => {
+    expect(lireFactureSaisie({ value: '1 250,5' })).toBe(1250.5);
+    expect(lireFactureSaisie({ value: '' })).toBe(0);
+    expect(lireFactureSaisie({ value: 'abc' })).toBe(0);
+    expect(lireFactureSaisie(null)).toBe(0);
   });
 });

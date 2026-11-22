@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useRef } from 'react'
+import { Suspense, useCallback, useEffect, useRef } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import api from '../../../api/axios'
 import {
@@ -168,6 +168,8 @@ function RailCorps({
   calepinageId: idPropose = null, builderApi = null,
   onRecharger = null, lectureSeule = false, documentVivant = null,
   expert, onBasculerExpert: basculerExpert,
+  onEtape = null, // ACAL868 — publie {etape, expert, allerA} à l'écran (barre fixe) ; jamais un second état d'expert
+  actionDevis = null, // ACAL867 — « Générer le devis » de l'atelier, relayé tel quel à l'écran de l'étape Documents
 }) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl ?? null
@@ -226,6 +228,12 @@ function RailCorps({
     const premier = ongletsVisibles(cle, null, expert)[0] ?? ETAPES.find((e) => e.cle === cle)?.onglets[0]
     if (premier) ouvrir(premier)
   }
+
+  // ACAL868 — `allerA` garde une identité stable (il lit la dernière `choisirEtape`) : l'effet ne rebondit pas.
+  const choisirEtapeRef = useRef(choisirEtape)
+  useEffect(() => { choisirEtapeRef.current = choisirEtape })
+  const allerA = useCallback((cle) => choisirEtapeRef.current(cle), [])
+  useEffect(() => { onEtape?.({ etape: cleEtape, expert, allerA }) }, [onEtape, cleEtape, expert, allerA])
 
   const Composant = ecran?.composant ?? actif?.composant ?? null
   const libelleActif = ecran ? ecran.libelle : actif?.libelle
@@ -298,6 +306,7 @@ function RailCorps({
                 lectureSeule={lectureSeule}
                 documentVivant={documentVivant}
                 parcours={parcours}
+                actionDevis={actionDevis}
                 ouvert={cleActive}
               />
             </Suspense>

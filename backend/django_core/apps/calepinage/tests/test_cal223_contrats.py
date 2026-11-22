@@ -88,6 +88,15 @@ SANS_PRODUCTEUR_PUR = {
         'HTML du document, mis en page depuis le calepinage en base (CALX323)',
     'calepinage_export_kml.json':
         'KML de la géométrie du calepinage en base, celle de la planche (ACAL536)',
+    'calepinage_export_csv.json':
+        "vocabulaire des colonnes du service d'export, fichier CSV rendu "
+        'par une vue (ACAL753, test_calx313)',
+    'legende_acces_solaire.json':
+        "rendu serveur du rapport d'ombrage, aucune route (ACAL727, "
+        'test_calx317)',
+    'calepinage_consommation_photo_facture.json':
+        'lecture crm.services.lire_photo_facture (OCR du serveur IA), '
+        "rien d'écrit (ACAL839, test_acal_consommation_proposee)",
     'calepinage_export_layout.json':
         'roof_layout du calepinage en base, exporté tel quel (CAL216)',
     'calepinage_modeles.json':
@@ -376,6 +385,18 @@ SANS_PRODUCTEUR_PUR = {
         'CAL212/CALX366) lit les `PoseReelle` et la variante retenue en base '
         '— la forme est affirmée contre l’exemple committé par '
         'apps/calepinage/tests/test_calx366_pose_reelle.py',
+    # ACAL846
+    'calepinage_asbuilt_mesures.json':
+        'consommation mesurée vs simulée : le cœur pur '
+        '(services/asbuilt.py::_ecart_consommation) est rejoué contre '
+        'l’exemple par apps/calepinage/tests/test_calx366_pose_reelle.py ; '
+        'l’eau lit les relevés m³ du SAV en base',
+    # ACAL886 / ACAL887
+    'calepinage_production_mesuree.json':
+        'douze kWh mensuels mesurés et leur écart au P50 servi : la route '
+        '(views/production_mesuree.py) lit et écrit `ProductionMesuree` et le '
+        'résultat servi en base — le cœur PUR (_composer_etat) est rejoué '
+        'contre l’exemple par apps/calepinage/tests/test_production_mesuree.py',
     # CALX335
     'calepinage_fixation_bom.json':
         'nomenclature de fixation : son producteur (CALX359, '
@@ -462,6 +483,9 @@ SANS_PRODUCTEUR_PUR = {
     'calepinage_import_affectation.json':  # ACAL629
         'POST : verdict d’affectation sur le calepinage en base ; route '
         'livrée par ACAL630',
+    'calepinage_soleil_legal.json':  # ACAL730
+        'GET : fuseau lu au profil de la société en base (repli de '
+        "l'imagerie) ; forme affirmée par test_forme_du_soleil_legal",
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -513,11 +537,10 @@ POSES_AVANT_LEUR_ROUTE = {
     # (``views/balayage.py``) : ``calepinage_balayage.json`` en est SORTI.
     # ACAL485 a livré ``GET``/``POST calepinages/<pk>/detection-toit/``
     # (``views/detection_toit.py``) : ``calepinage_detection_toit.json`` en est SORTI.
-    'calepinage_pret_a_envoyer.json': 'ACAL860',  # ACAL856
-    'calepinage_explications.json': 'ACAL871',  # ACAL870
-    'calepinage_configurations_onduleur.json': 'ACAL616',  # ACAL614
-    'calepinage_controle_chaine.json': 'ACAL627',  # ACAL626
-    'calepinage_import_affectation.json': 'ACAL630',  # ACAL629
+    # ACAL860 a livré ``GET calepinages/<pk>/pret-a-envoyer/``
+    # (``views/pret_a_envoyer.py``) : ``calepinage_pret_a_envoyer.json`` en est SORTI.
+    # ACAL871 a livré ``GET calepinages/explications/``
+    # (``views/explications.py``) : ``calepinage_explications.json`` en est SORTI.
     # ACAL558 a livré ``GET``/``POST calepinages/systemes-fixation/``
     # (``views/systemes_fixation.py``) : ``calepinage_systemes_fixation.json``
     # en est SORTI.
@@ -602,7 +625,9 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
 
         donnees = _charger('calepinage_systemes_fixation.json')
         cles_systeme = {'id', 'code', 'libelle', 'fabricant', 'mode_pose',
-                        'actif', 'provenance', 'composants'}
+                        'actif', 'provenance', 'composants',
+                        'couvertures',  # couvertures : ACAL566
+                        'controles_pose'}  # controles_pose : ACAL568
         cles_composant = {'id', 'role', 'libelle', 'unite', 'produit_id',
                           'regle', 'source', 'ordre'}
         cles_regle = {'base', 'facteur', 'diviseur', 'libelle_facteur',
@@ -736,7 +761,10 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
         self.assertTrue(set(dispo['origines_acceptees'])
                         <= {'importee', 'carte'})
         propositions = donnees['exemple']['propositions']
-        self.assertEqual(sorted(propositions), ['contour_lnglat', 'pans'])
+        en_attente = set(CLES_POSEES_AVANT_LEUR_PRODUCTEUR.get(
+            'calepinage_detection_toit.json', {}))
+        self.assertEqual(sorted(set(propositions) - en_attente),
+                         ['contour_lnglat', 'obstacles', 'pans'])
         self.assertEqual(donnees['exemple']['provenance'], 'ia')
         self.assertIs(donnees['exemple']['a_confirmer'], True)
         for pan in propositions['pans']:
@@ -744,6 +772,21 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
                              ['azimut_deg', 'confiance', 'contour_lnglat'])
             self.assertTrue(all(len(p) == 2 for p in pan['contour_lnglat']))
         self.assertTrue(donnees['exemple_indisponible_503']['detail'])
+
+    def test_obstacles_proposes_servis_par_acal1049(self):
+        # ACAL530 — types : la liste de l'atelier (ACAL498) du schéma du document ;
+        # ACAL1049 sert la clé (plus « en attente »).
+        self.assertNotIn('calepinage_detection_toit.json', CLES_POSEES_AVANT_LEUR_PRODUCTEUR)
+        types = _charger('roof_layout_v2.schema.json')['$defs']['obstacle'][
+            'properties']['type']['enum']
+        obstacles = _charger('calepinage_detection_toit.json')['exemple'][
+            'propositions']['obstacles']
+        self.assertEqual(len(obstacles), 2)
+        for obstacle in obstacles:
+            self.assertEqual(sorted(obstacle), ['confiance', 'contour_lnglat', 'type'])
+            self.assertIn(obstacle['type'], types)
+            self.assertGreaterEqual(len(obstacle['contour_lnglat']), 3)
+            self.assertTrue(0 <= obstacle['confiance'] <= 1)
 
     def test_forme_de_la_pente_terrain(self):
         # ACAL466 — lecture pure ; relief illisible = null + motif, jamais
@@ -791,6 +834,10 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
     def test_forme_de_la_publication_electrique(self):
         # ACAL611 — `etat` dit ce que `publiable` tait (D-ACAL-9 inchangé) ;
         # `points` = motifs d'abstention ; titre et phrase servis.
+        from apps.calepinage.services.synthese_publication import (
+            synthese_de_publication,
+        )
+
         donnees = _charger('calepinage_evaluation_electrique.json')
         self.assertIn('exemple de forme', donnees['pourquoi'].lower())
         entree = donnees['exemple_corps_a_chaud']['entree_electrique']
@@ -810,9 +857,13 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
             for motif in pub['motifs']:
                 self.assertEqual(sorted(motif),
                                  ['code', 'libelle', 'source', 'statut'])
+            # ACAL934 : un état bloquant compte ses motifs bloquants.
+            comptes = ('bloquant',) if etat == 'bloquant' else abstentions
             self.assertEqual(pub['points'], sum(
-                m['statut'] in abstentions for m in pub['motifs']), nom)
-            self.assertTrue(pub['titre'] and pub['phrase'], nom)
+                m['statut'] in comptes for m in pub['motifs']), nom)
+            # ACAL612 : titre et phrase = ceux que le serveur compose.
+            self.assertEqual(synthese_de_publication(
+                {**pub, 'titre': None, 'phrase': None}), pub, nom)
         self.assertGreater(
             donnees['exemple_a_completer']['publication']['points'], 0)
         self.assertIsNone(donnees['exemple_a_chaud']['publication'])
@@ -894,6 +945,28 @@ class InventaireDesEchantillonsTest(unittest.TestCase):
              if k != 'message'}, {'ligne': 4, 'colonne': 'chaine'})
         self.assertEqual(
             donnees['exemple_entete_absent']['refus'][0]['ligne'], 1)
+
+    def test_forme_du_soleil_legal(self):
+        # ACAL730 — les clés servies par ``correspondance_du_jour`` (double
+        # sans base, fuseau des réglages d'imagerie) sont celles du contrat.
+        import datetime
+        from types import SimpleNamespace
+
+        from apps.calepinage.services.soleil_legal import (
+            MOTIF_SANS_FUSEAU, correspondance_du_jour)
+
+        donnees = _charger('calepinage_soleil_legal.json')
+        servi = correspondance_du_jour(
+            SimpleNamespace(roof_layout={'pin': {'lat': 33.57, 'lng': -7.59}},
+                            company=None),
+            datetime.date(2026, 2, 11),
+            reglages={'imagerie': {'fuseau': 'Africa/Casablanca'}})
+        self.assertEqual(sorted(servi), sorted(donnees['exemple']))
+        for cle in ('decalage_utc_min', 'equation_du_temps_min',
+                    'ecart_legal_moins_solaire_min', 'midi_solaire_legal_h'):
+            self.assertEqual(servi[cle], donnees['exemple'][cle], cle)
+        self.assertEqual(donnees['exemple_sans_fuseau'],
+                         {'site.fuseau': [MOTIF_SANS_FUSEAU]})
 
     def test_forme_des_configurations_d_onduleur(self):
         # ACAL614 — 1 à 3 lignes comparables, null jamais 0, AUCUN prix.

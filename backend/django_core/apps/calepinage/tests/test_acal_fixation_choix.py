@@ -120,3 +120,49 @@ class ChoixDuSystemeTest(BaseApiCalepinage):
                                       {'systeme_id': self.s1.pk},
                                       format='json')
         self.assertEqual(reponse.status_code, 404)
+
+    # ── ACAL566 — le système proposé d'après le toit du lead ──────────────
+
+    def _toit_du_lead(self, type_toiture):
+        from apps.crm.models import Lead
+
+        Lead.objects.filter(pk=self.lead.pk).update(type_toiture=type_toiture)
+
+    def _couvertures(self, systeme, couvertures):
+        SystemeFixation.objects.filter(pk=systeme.pk).update(
+            couvertures=couvertures)
+
+    def test_lead_tuiles_recoit_le_systeme_tuiles(self):
+        self._couvertures(self.s1, ['tuiles'])
+        self._couvertures(self.s2, ['bac_acier', 'tole_metal'])
+        self._toit_du_lead('tuiles')
+        bom = self.api.get(url_bom(self.calepinage.pk))
+        self.assertEqual(bom.data['systeme']['id'], self.s1.pk)
+        self.assertEqual(bom.data['systeme_source'], 'couverture')
+        self.assertEqual(bom.data['refus'], [])
+
+    def test_deux_declarants_refus_listant_les_deux_seuls(self):
+        self._couvertures(self.s1, ['tuiles'])
+        self._couvertures(self.s2, ['tuiles'])
+        self._systeme('s3')  # couvertures vides : jamais listé
+        self._toit_du_lead('tuiles')
+        bom = self.api.get(url_bom(self.calepinage.pk))
+        self.assertIsNone(bom.data['systeme'])
+        message = bom.data['refus'][0]['message']
+        self.assertIn('Plusieurs systèmes de fixation sont actifs', message)
+        self.assertIn('« s1 »', message)
+        self.assertIn('« s2 »', message)
+        self.assertNotIn('« s3 »', message)
+
+    def test_un_declarant_et_un_vide_le_declarant_gagne(self):
+        self._couvertures(self.s1, ['tuiles'])
+        self._toit_du_lead('tuiles')
+        bom = self.api.get(url_bom(self.calepinage.pk))
+        self.assertEqual(bom.data['systeme']['id'], self.s1.pk)
+        self.assertEqual(bom.data['systeme_source'], 'couverture')
+
+    def test_couvertures_vides_comportement_d_aujourd_hui(self):
+        self._toit_du_lead('tuiles')
+        bom = self.api.get(url_bom(self.calepinage.pk))
+        self.assertIsNone(bom.data['systeme'], 'deux actifs, aucun choix')
+        self.assertIn('Plusieurs systèmes', bom.data['refus'][0]['message'])

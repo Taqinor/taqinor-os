@@ -1,0 +1,927 @@
+{
+  "entrees": [
+    {
+      "cle": "batterie.autoconsomme",
+      "famille": "batterie",
+      "phrase": "Sur l'année, {kwh} kWh de votre production sont consommés sur place, directement ou en passant par la batterie.",
+      "valeurs": {
+        "kwh": "batterie.total.energie.autoconsomme_kwh"
+      },
+      "geste": "Décaler des usages vers les heures de soleil augmente cette part.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "batterie.capacite_utile",
+      "famille": "batterie",
+      "phrase": "La batterie peut rendre {capacite} kWh par cycle : c'est la part réellement utilisable, pas la capacité écrite sur l'étiquette.",
+      "valeurs": {
+        "capacite": "batterie.total.capacite_utile_kwh"
+      },
+      "geste": "Pour couvrir plus de soirées, ajoutez un module de batterie.",
+      "lexique": "capacité utile",
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "batterie.consommation",
+      "famille": "batterie",
+      "phrase": "Le foyer consomme {kwh} kWh sur l'année, d'après le profil de consommation enregistré sur ce dossier.",
+      "valeurs": {
+        "kwh": "batterie.total.energie.consommation_kwh"
+      },
+      "geste": "Si ce total ne ressemble pas aux factures, corrigez le profil de consommation.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "batterie.energie_restituee",
+      "famille": "batterie",
+      "phrase": "La batterie rend {kwh} kWh sur l'année, le soir et la nuit : c'est l'énergie stockée moins ce que la charge et la décharge perdent.",
+      "valeurs": {
+        "kwh": "batterie.total.energie_restituee_kwh"
+      },
+      "geste": "Une batterie plus grande ne rend plus que si le surplus de journée suffit à la remplir.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "batterie.energie_stockee",
+      "famille": "batterie",
+      "phrase": "Sur l'année, {kwh} kWh de surplus solaire entrent dans la batterie au lieu de partir sur le réseau.",
+      "valeurs": {
+        "kwh": "batterie.total.energie_stockee_kwh"
+      },
+      "geste": "Comparez-la à l'énergie exportée : un gros export restant dit qu'une batterie plus grande servirait.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "batterie.export",
+      "famille": "batterie",
+      "phrase": "Ce surplus de {kwh} kWh n'est ni consommé ni stocké : il part sur le réseau.",
+      "valeurs": {
+        "kwh": "batterie.total.energie.export_kwh"
+      },
+      "geste": "Une batterie plus grande ou des usages de journée en récupèrent une partie.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "batterie.heures_sans_import",
+      "famille": "batterie",
+      "phrase": "Pendant {heures} heures de l'année, le foyer ne prend rien au réseau : le soleil ou la batterie couvrent tout.",
+      "valeurs": {
+        "heures": "batterie.total.heures_sans_import"
+      },
+      "geste": "Les heures qui restent sont surtout la nuit et l'hiver.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "batterie.import_reseau",
+      "famille": "batterie",
+      "phrase": "Il reste {kwh} kWh pris au réseau sur l'année, quand ni le soleil ni la batterie ne suffisent.",
+      "valeurs": {
+        "kwh": "batterie.total.energie.import_reseau_kwh"
+      },
+      "geste": "C'est la part de la facture qui demeure.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "batterie.pertes_batterie",
+      "famille": "batterie",
+      "phrase": "Charger puis décharger la batterie perd {kwh} kWh sur l'année : c'est l'écart entre l'énergie stockée et l'énergie rendue.",
+      "valeurs": {
+        "kwh": "batterie.total.energie.pertes_batterie_kwh"
+      },
+      "geste": "Le rendement publié sur la fiche de la batterie fixe cette perte.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "batterie.production",
+      "famille": "batterie",
+      "phrase": "Les panneaux produisent {kwh} kWh sur l'année dans ce calcul heure par heure de la batterie.",
+      "valeurs": {
+        "kwh": "batterie.total.energie.production_kwh"
+      },
+      "geste": "Le détail de cette production est dans l'onglet Production.",
+      "lexique": "production annuelle",
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "batterie.strategie",
+      "famille": "batterie",
+      "phrase": "La stratégie dit quand la batterie se charge et se décharge : sur le surplus solaire, aux heures creuses, ou pour limiter l'injection.",
+      "valeurs": {},
+      "geste": "Changez-la dans la déclaration de la batterie, puis relancez le calcul.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "batterie.taux_autonomie",
+      "famille": "batterie",
+      "phrase": "Le taux d'autonomie est la part de la consommation couverte sans le réseau, par le soleil ou par la batterie. Il ne dit pas la part de la facture : la couverture de la facture se lit ailleurs.",
+      "valeurs": {},
+      "geste": "Pour le monter, il faut plus de batterie ou plus de panneaux, selon ce qui manque le soir.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "hors_reseau.capacite_nominale",
+      "famille": "batterie",
+      "phrase": "La capacité nominale, {kwh} kWh, est celle écrite sur la fiche ; seule une partie est utilisable sans abîmer la batterie.",
+      "valeurs": {
+        "kwh": "hors_reseau.banque.capacite_nominale_kwh"
+      },
+      "geste": "Regardez la capacité utile pour savoir ce que la banque rend vraiment.",
+      "lexique": "capacité utile",
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "hors_reseau.capacite_utile",
+      "famille": "batterie",
+      "phrase": "La banque peut rendre {kwh} kWh : c'est la capacité de la fiche limitée à la profondeur de décharge publiée, {dod} %.",
+      "valeurs": {
+        "kwh": "hors_reseau.banque.capacite_utile_kwh",
+        "dod": "hors_reseau.banque.dod_pct"
+      },
+      "geste": "Pour tenir plus longtemps sans soleil, ajoutez des modules de batterie.",
+      "lexique": "capacité utile",
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "hors_reseau.defaillance",
+      "famille": "batterie",
+      "phrase": "Sans réseau, {kwh} kWh de besoins ne seraient pas servis sur l'année : ce sont des coupures.",
+      "valeurs": {
+        "kwh": "hors_reseau.defaillance_kwh"
+      },
+      "geste": "Plus de batterie ou plus de panneaux réduisent ces coupures ; regardez d'abord le pire mois.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "hors_reseau.dod",
+      "famille": "batterie",
+      "phrase": "La profondeur de décharge est la part de la batterie que l'on peut vider sans l'abîmer ; ici {dod} %, lue sur la fiche.",
+      "valeurs": {
+        "dod": "hors_reseau.banque.dod_pct"
+      },
+      "geste": "Si la fiche ne la publie pas, complétez-la dans le catalogue.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "hors_reseau.heures_defaillantes",
+      "famille": "batterie",
+      "phrase": "Pendant {heures} heures de l'année, la batterie serait vide et le soleil absent : le foyer serait sans courant.",
+      "valeurs": {
+        "heures": "hors_reseau.heures_defaillantes"
+      },
+      "geste": "Ces heures tombent surtout pendant le pire mois.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "hors_reseau.jours_autonomie",
+      "famille": "batterie",
+      "phrase": "Batterie pleine et sans aucun soleil, la banque tiendrait {jours} jours de consommation moyenne.",
+      "valeurs": {
+        "jours": "hors_reseau.banque.jours_autonomie"
+      },
+      "geste": "Pour des journées nuageuses à la suite, visez plus de jours en ajoutant des modules.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "hors_reseau.pire_mois",
+      "famille": "batterie",
+      "phrase": "Le pire mois est celui où il manque le plus d'énergie : peu de soleil pour beaucoup de besoins.",
+      "valeurs": {},
+      "geste": "Dimensionner pour ce mois-là évite les coupures du reste de l'année.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "hors_reseau.servi",
+      "famille": "batterie",
+      "phrase": "Sur l'année, {kwh} kWh de besoins sont servis par les panneaux et la batterie seuls.",
+      "valeurs": {
+        "kwh": "hors_reseau.servi_kwh"
+      },
+      "geste": "Comparez-le à la consommation : l'écart est la défaillance.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "hors_reseau.surplus_perdu",
+      "famille": "batterie",
+      "phrase": "Batterie pleine, {kwh} kWh de production ne trouvent pas d'usage sur l'année : sans réseau, ils sont perdus.",
+      "valeurs": {
+        "kwh": "hors_reseau.surplus_perdu_kwh"
+      },
+      "geste": "Des usages de journée, comme le pompage ou l'eau chaude, peuvent l'utiliser.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "hors_reseau.taux_defaillance",
+      "famille": "batterie",
+      "phrase": "Le taux de défaillance est la part des besoins de l'année qui ne serait pas servie sans réseau.",
+      "valeurs": {},
+      "geste": "Plus il est bas, plus le site tient seul.",
+      "lexique": null,
+      "ecrans": [
+        "batterie"
+      ]
+    },
+    {
+      "cle": "comparatif.ecart",
+      "famille": "comparatif",
+      "phrase": "La différence avec la variante retenue : positive quand cette variante en a plus, négative quand elle en a moins.",
+      "valeurs": {},
+      "geste": "Retenez la variante qui vous convient : les écarts se recalculent contre elle.",
+      "lexique": null,
+      "ecrans": [
+        "variantes"
+      ]
+    },
+    {
+      "cle": "comparatif.kwc",
+      "famille": "comparatif",
+      "phrase": "La puissance installée de cette variante : la somme des puissances de ses panneaux.",
+      "valeurs": {},
+      "geste": "Deux variantes de même puissance peuvent produire différemment selon leurs pans.",
+      "lexique": null,
+      "ecrans": [
+        "variantes"
+      ]
+    },
+    {
+      "cle": "comparatif.modules",
+      "famille": "comparatif",
+      "phrase": "Le nombre de panneaux posés dans cette variante ; l'optimal, quand il est affiché, est ce que le placement automatique aurait pu poser.",
+      "valeurs": {},
+      "geste": "Pour changer ce nombre, ouvrez la variante dans l'atelier.",
+      "lexique": null,
+      "ecrans": [
+        "variantes"
+      ]
+    },
+    {
+      "cle": "comparatif.p50_kwh",
+      "famille": "comparatif",
+      "phrase": "La production de l'année moyenne pour CETTE variante, calculée par sa propre simulation : une variante non simulée n'a pas de production.",
+      "valeurs": {},
+      "geste": "Lancez la simulation d'une variante pour la comparer aux autres.",
+      "lexique": "production annuelle",
+      "ecrans": [
+        "variantes"
+      ]
+    },
+    {
+      "cle": "documents.avancement",
+      "famille": "documents",
+      "phrase": "Pièces fournies sur pièces exigées par le gabarit déposé : {fournies} sur {total}.",
+      "valeurs": {
+        "fournies": "avancement.pieces_fournies",
+        "total": "avancement.pieces_total"
+      },
+      "geste": "Joignez les pièces manquantes depuis la carte du dossier.",
+      "lexique": null,
+      "ecrans": [
+        "dossiers"
+      ]
+    },
+    {
+      "cle": "documents.pages",
+      "famille": "documents",
+      "phrase": "Le nombre de pages de cette pièce dans le dossier composé, tel qu'il est rangé dans la GED.",
+      "valeurs": {},
+      "geste": "Ouvrez le dossier dans la GED pour relire chaque pièce.",
+      "lexique": null,
+      "ecrans": [
+        "documents"
+      ]
+    },
+    {
+      "cle": "documents.statut",
+      "famille": "documents",
+      "phrase": "L'état du dossier : complet quand chaque pièce exigée par le gabarit est fournie et chaque champ rempli, sinon ce qui manque encore.",
+      "valeurs": {},
+      "geste": "Le détail pièce par pièce est juste en dessous.",
+      "lexique": null,
+      "ecrans": [
+        "dossiers"
+      ]
+    },
+    {
+      "cle": "economie.flux",
+      "famille": "economie",
+      "phrase": "Chaque ligne est une année : l'économie de l'année, moins les charges et les remplacements saisis, donne le flux ; le cumul additionne les années passées. Les montants viennent du devis.",
+      "valeurs": {},
+      "geste": "Le cumul passe au positif l'année où l'installation est remboursée.",
+      "lexique": null,
+      "ecrans": [
+        "economie"
+      ]
+    },
+    {
+      "cle": "economie.horizon",
+      "famille": "economie",
+      "phrase": "Les économies sont comptées année par année jusqu'à l'horizon retenu sur le devis, écrit ici : au-delà, rien n'est compté.",
+      "valeurs": {},
+      "geste": "Pour changer l'horizon, modifiez-le sur le devis.",
+      "lexique": null,
+      "ecrans": [
+        "economie"
+      ]
+    },
+    {
+      "cle": "electrique.alerte_non_bloquante",
+      "famille": "electrique",
+      "phrase": "Ce point ne bloque pas le dossier, mais il mérite d'être regardé : {detail}",
+      "valeurs": {
+        "detail": "detail"
+      },
+      "geste": "Corrigez la conception, ou passez outre avec un motif écrit si vous avez le droit d'approuver.",
+      "lexique": null,
+      "ecrans": [
+        "verdict-electrique"
+      ]
+    },
+    {
+      "cle": "electrique.chute_ac_cumulee",
+      "famille": "electrique",
+      "phrase": "Chute de tension cumulée côté courant alternatif, de l'onduleur au point de livraison : {chute} %.",
+      "valeurs": {
+        "chute": "totaux.ac_chute_pct"
+      },
+      "geste": "Un câble de plus grosse section ou un trajet plus court la réduit.",
+      "lexique": "chute de tension",
+      "ecrans": [
+        "cheminement-cables"
+      ]
+    },
+    {
+      "cle": "electrique.chute_dc_cumulee",
+      "famille": "electrique",
+      "phrase": "Chute de tension cumulée côté courant continu, des panneaux jusqu'à l'onduleur : {chute} %.",
+      "valeurs": {
+        "chute": "totaux.dc_chute_pct"
+      },
+      "geste": "Un câble de plus grosse section ou un trajet plus court la réduit.",
+      "lexique": "chute de tension",
+      "ecrans": [
+        "cheminement-cables"
+      ]
+    },
+    {
+      "cle": "electrique.desequilibre_phases",
+      "famille": "electrique",
+      "phrase": "Écart de puissance injectée entre les phases du raccordement : {desequilibre} %. Plus l'écart est grand, plus la tension monte sur la phase la plus chargée.",
+      "valeurs": {
+        "desequilibre": "calcul.desequilibre_pct"
+      },
+      "geste": "Répartissez les onduleurs monophasés sur les phases pour le réduire.",
+      "lexique": null,
+      "ecrans": [
+        "raccordement"
+      ]
+    },
+    {
+      "cle": "electrique.elevation_tension",
+      "famille": "electrique",
+      "phrase": "Hausse de tension entre l'onduleur et le point de livraison : {elevation_pct} %, à comparer à la limite du gestionnaire de réseau.",
+      "valeurs": {
+        "elevation_pct": "calcul.elevation_pct"
+      },
+      "geste": "Si elle approche la limite, grossissez le câble entre l'onduleur et le point de livraison ou raccourcissez-le.",
+      "lexique": null,
+      "ecrans": [
+        "raccordement"
+      ]
+    },
+    {
+      "cle": "electrique.longueur_troncon",
+      "famille": "electrique",
+      "phrase": "Longueur de ce tronçon : {longueur} m (origine de la mesure : {origine}).",
+      "valeurs": {
+        "longueur": "longueur_m",
+        "origine": "longueur_origine"
+      },
+      "geste": "Une longueur mesurée sur place remplace celle du plan : saisissez-la si elle diffère.",
+      "lexique": null,
+      "ecrans": [
+        "cheminement-cables"
+      ]
+    },
+    {
+      "cle": "electrique.marge_limite",
+      "famille": "electrique",
+      "phrase": "Écart entre la hausse de tension calculée et la limite saisie pour ce raccordement : {ecart} %.",
+      "valeurs": {
+        "ecart": "calcul.ecart_limite_pct"
+      },
+      "geste": "Sans limite saisie avec sa source, cet écart ne peut pas être calculé : renseignez-la dans la saisie ci-dessus.",
+      "lexique": null,
+      "ecrans": [
+        "raccordement"
+      ]
+    },
+    {
+      "cle": "electrique.puissance_injectee",
+      "famille": "electrique",
+      "phrase": "Puissance retenue par le calcul de raccordement pour l'injection sur le réseau : {puissance} kVA.",
+      "valeurs": {
+        "puissance": "calcul.puissance_injectee_kva"
+      },
+      "geste": "Comparez-la à la puissance souscrite et au plafond d'injection éventuel du gestionnaire de réseau.",
+      "lexique": null,
+      "ecrans": [
+        "raccordement"
+      ]
+    },
+    {
+      "cle": "electrique.section_troncon",
+      "famille": "electrique",
+      "phrase": "Section retenue pour ce tronçon : {section} mm². Ce qui la fixe : {critere}.",
+      "valeurs": {
+        "section": "section_mm2",
+        "critere": "critere_dimensionnant"
+      },
+      "geste": "Pour réduire la chute de tension, choisissez la section au-dessus.",
+      "lexique": null,
+      "ecrans": [
+        "cheminement-cables"
+      ]
+    },
+    {
+      "cle": "electrique.voc_froid",
+      "famille": "electrique",
+      "phrase": "Par grand froid ({temperature} °C, la température la plus basse retenue pour ce site), la tension des panneaux monte : elle doit rester sous la tension maximale de l'onduleur.",
+      "valeurs": {
+        "temperature": "electrique.verdicts[voc_cold_under_vmax].temperature_c"
+      },
+      "geste": "Si la tension dépasse la limite, retirez un panneau par chaîne.",
+      "lexique": "tension à vide",
+      "ecrans": [
+        "schema"
+      ]
+    },
+    {
+      "cle": "mesure.ecart",
+      "famille": "mesure",
+      "phrase": "La différence, mois par mois, entre ce que le compteur a mesuré et la prévision du calcul : positive quand le réel dépasse la prévision, négative quand il reste en dessous.",
+      "valeurs": {},
+      "geste": "Collez les relevés du compteur pour chaque mois : l'écart se calcule sur les mois mesurés seulement.",
+      "lexique": null,
+      "ecrans": [
+        "livre-prevu"
+      ]
+    },
+    {
+      "cle": "pertes.etape",
+      "famille": "pertes",
+      "phrase": "Chaque étape retire une part de l'énergie qui lui arrive, dans l'ordre du calcul : la colonne Source dit d'où vient la valeur, et une étape omise affiche le motif publié par le calcul au lieu d'une perte.",
+      "valeurs": {},
+      "geste": "Une étape sans source se corrige dans les réglages de simulation.",
+      "lexique": null,
+      "ecrans": [
+        "pertes"
+      ]
+    },
+    {
+      "cle": "pompage.autonomie",
+      "famille": "pompage",
+      "phrase": "Le réservoir tient {jours} jours de besoin en eau sans que la pompe tourne.",
+      "valeurs": {
+        "jours": "besoin.autonomie_jours"
+      },
+      "geste": "Un réservoir plus grand couvre plus de jours sans soleil.",
+      "lexique": null,
+      "ecrans": [
+        "pompage"
+      ]
+    },
+    {
+      "cle": "pompage.couverture",
+      "famille": "pompage",
+      "phrase": "Part du besoin en eau du mois couverte par le volume pompé : au-dessus de cent pour cent, le besoin du mois est couvert.",
+      "valeurs": {},
+      "geste": "Un mois sous cent pour cent demande plus de panneaux, une pompe plus forte ou un réservoir.",
+      "lexique": null,
+      "ecrans": [
+        "pompage"
+      ]
+    },
+    {
+      "cle": "pompage.debit_hmt",
+      "famille": "pompage",
+      "phrase": "Débit lu sur la courbe de la pompe à la hauteur manométrique servie : {debit} m³/h.",
+      "valeurs": {
+        "debit": "pompe.debit_hmt_m3h"
+      },
+      "geste": "Si ce débit ne suffit pas, il faut une pompe plus forte ou une hauteur plus faible.",
+      "lexique": null,
+      "ecrans": [
+        "pompage"
+      ]
+    },
+    {
+      "cle": "pompage.hmt",
+      "famille": "pompage",
+      "phrase": "Hauteur manométrique totale : {hmt} m. C'est la hauteur que la pompe doit vaincre : niveau de l'eau, rabattement, pertes de charge et hauteur de refoulement.",
+      "valeurs": {
+        "hmt": "hmt.hmt_m"
+      },
+      "geste": "Un niveau d'eau mesuré sur place rend ce chiffre plus sûr.",
+      "lexique": null,
+      "ecrans": [
+        "pompage"
+      ]
+    },
+    {
+      "cle": "pompage.m3_mensuels",
+      "famille": "pompage",
+      "phrase": "Volume d'eau pompé chaque mois : la colonne « plat » répartit le pompage sans variation de saison, la colonne PVGIS suit l'ensoleillement du site mois par mois.",
+      "valeurs": {},
+      "geste": "Comparez chaque mois au besoin : la colonne Couverture le fait pour vous.",
+      "lexique": null,
+      "ecrans": [
+        "pompage"
+      ]
+    },
+    {
+      "cle": "pompage.pompe",
+      "famille": "pompage",
+      "phrase": "Pompe retenue : {nom}, la plus petite du catalogue dont la courbe donne le débit souhaité à cette hauteur.",
+      "valeurs": {
+        "nom": "pompe.nom"
+      },
+      "geste": "Si elle ne convient pas, revoyez le débit souhaité ou les hauteurs saisies.",
+      "lexique": null,
+      "ecrans": [
+        "pompage"
+      ]
+    },
+    {
+      "cle": "pompage.source_irradiation",
+      "famille": "pompage",
+      "phrase": "Origine des données d'ensoleillement utilisées pour calculer les volumes d'eau, mois par mois.",
+      "valeurs": {},
+      "geste": "Sans données du site, les volumes ne sont pas calculés.",
+      "lexique": null,
+      "ecrans": [
+        "pompage"
+      ]
+    },
+    {
+      "cle": "pompage.variateur",
+      "famille": "pompage",
+      "phrase": "Variateur assorti : {nom}, le plus petit dont la puissance couvre celle de la pompe, à la même tension.",
+      "valeurs": {
+        "nom": "variateur.nom"
+      },
+      "geste": "Plusieurs pompes sur un même variateur s'additionnent : vérifiez la ligne en bas de page.",
+      "lexique": null,
+      "ecrans": [
+        "pompage"
+      ]
+    },
+    {
+      "cle": "pompage.volumes_omis",
+      "famille": "pompage",
+      "phrase": "Cette pompe n'a pas de courbe débit-hauteur sur sa fiche : sans courbe, aucun volume d'eau n'est calculé, pour ne jamais afficher un chiffre deviné.",
+      "valeurs": {},
+      "geste": "Choisissez une pompe dont la fiche publie sa courbe, ou complétez la fiche.",
+      "lexique": null,
+      "ecrans": [
+        "pompage"
+      ]
+    },
+    {
+      "cle": "production.ecart_pvgis",
+      "famille": "production",
+      "phrase": "Le même toit calculé par PVGIS, l'outil public de la Commission européenne, avec les mêmes pertes totales, donne {pvgis} kWh par an : l'écart dit si notre calcul détaillé reste proche de cette référence.",
+      "valeurs": {
+        "pvgis": "validation.total_pvcalc_kwh"
+      },
+      "geste": "Un grand écart se cherche d'abord dans les pertes et la météo retenues.",
+      "lexique": null,
+      "ecrans": [
+        "production"
+      ]
+    },
+    {
+      "cle": "production.kwc",
+      "famille": "production",
+      "phrase": "La puissance installée de {kwc} kWc est la somme des puissances des panneaux posés sur le plan.",
+      "valeurs": {
+        "kwc": "production.total.kwc"
+      },
+      "geste": "Pour la changer, ajoutez ou retirez des panneaux sur le plan.",
+      "lexique": null,
+      "ecrans": [
+        "production"
+      ]
+    },
+    {
+      "cle": "production.mensuel",
+      "famille": "production",
+      "phrase": "La production de ce mois une année moyenne : les douze mois additionnés font les {p50} kWh de l'année.",
+      "valeurs": {
+        "p50": "production.total.p50_kwh"
+      },
+      "geste": "Les mois d'hiver produisent moins : comparez-les à la consommation des mêmes mois.",
+      "lexique": null,
+      "ecrans": [
+        "production"
+      ]
+    },
+    {
+      "cle": "production.p50_kwh",
+      "famille": "production",
+      "phrase": "Votre installation de {kwc} kWc produirait environ {p50} kWh par an une année moyenne : une année sur deux fait mieux, une sur deux fait moins bien.",
+      "valeurs": {
+        "kwc": "production.total.kwc",
+        "p50": "production.total.p50_kwh"
+      },
+      "geste": "Pour une valeur prudente, regardez la production atteinte 9 années sur 10.",
+      "lexique": "production annuelle",
+      "ecrans": [
+        "production"
+      ]
+    },
+    {
+      "cle": "production.p75_kwh",
+      "famille": "production",
+      "phrase": "Année un peu basse : la production l'atteint ou la dépasse trois années sur quatre ; ici {p75} kWh.",
+      "valeurs": {
+        "p75": "production.total.p75_kwh"
+      },
+      "geste": "Pour une valeur plus prudente encore, regardez le P90.",
+      "lexique": "P50 / P75 / P90",
+      "source": "backend/django_core/apps/calepinage/services/incertitude.py, constante DEPASSEMENTS (probabilités de dépassement, HelioScope)",
+      "ecrans": [
+        "production"
+      ]
+    },
+    {
+      "cle": "production.p90_kwh",
+      "famille": "production",
+      "phrase": "Année basse : la production l'atteint ou la dépasse neuf années sur dix ; ici {p90_kwh} kWh.",
+      "valeurs": {
+        "p90_kwh": "production.total.p90_kwh"
+      },
+      "geste": "C'est la valeur prudente à retenir pour un financement.",
+      "lexique": "P50 / P75 / P90",
+      "source": "backend/django_core/apps/calepinage/services/incertitude.py, constante DEPASSEMENTS (probabilités de dépassement, HelioScope)",
+      "ecrans": [
+        "production"
+      ]
+    },
+    {
+      "cle": "production.p95_kwh",
+      "famille": "production",
+      "phrase": "Année très basse : la production l'atteint ou la dépasse dix-neuf années sur vingt ; ici {p95} kWh.",
+      "valeurs": {
+        "p95": "production.total.p95_kwh"
+      },
+      "geste": "Une valeur très prudente, rarement plus basse dans la réalité.",
+      "lexique": "P50 / P75 / P90",
+      "source": "backend/django_core/apps/calepinage/services/incertitude.py, constante DEPASSEMENTS (probabilités de dépassement, HelioScope)",
+      "ecrans": [
+        "production"
+      ]
+    },
+    {
+      "cle": "production.performance_ratio",
+      "famille": "production",
+      "phrase": "Le ratio de performance compare l'énergie livrée à ce que les panneaux produiraient sans aucune perte : plus il est proche de cent pour cent, moins l'installation perd en route.",
+      "valeurs": {},
+      "geste": "Pour le relever, réduisez les pertes : ombre, câbles trop longs, onduleur mal dimensionné.",
+      "lexique": null,
+      "ecrans": [
+        "production"
+      ]
+    },
+    {
+      "cle": "production.pertes_totales",
+      "famille": "production",
+      "phrase": "Au total, {pertes} % de l'énergie reçue par les panneaux est perdue avant le compteur : chaleur, poussière, câbles, onduleur et ombre.",
+      "valeurs": {
+        "pertes": "production.total.total_loss_pct"
+      },
+      "geste": "L'onglet Pertes détaille chaque étape et sa source.",
+      "lexique": null,
+      "ecrans": [
+        "production"
+      ]
+    },
+    {
+      "cle": "production.productible",
+      "famille": "production",
+      "phrase": "Chaque kWc posé sur ce toit produit {rendement} kWh une année moyenne : ce chiffre compare deux toits de tailles différentes.",
+      "valeurs": {
+        "rendement": "production.total.specific_yield_kwh_kwc"
+      },
+      "geste": "Un productible bas vient le plus souvent de l'orientation, de la pente ou de l'ombre.",
+      "lexique": null,
+      "ecrans": [
+        "production"
+      ]
+    },
+    {
+      "cle": "production.variabilite",
+      "famille": "production",
+      "phrase": "D'une année à l'autre, la météo fait varier la production autour de la moyenne : plus ce chiffre est grand, plus une bonne et une mauvaise année s'écartent.",
+      "valeurs": {},
+      "geste": "Regardez le P90 pour savoir ce que donne une année basse.",
+      "lexique": null,
+      "ecrans": [
+        "production"
+      ]
+    },
+    {
+      "cle": "toit.hauteur_hors_tout",
+      "famille": "toit",
+      "phrase": "Hauteur du bord haut des panneaux au-dessus de la toiture : c'est elle qui fixe la longueur de l'ombre portée sur la rangée suivante.",
+      "valeurs": {},
+      "geste": "Une inclinaison plus faible la réduit, et permet de rapprocher les rangées.",
+      "lexique": null,
+      "ecrans": [
+        "coupe"
+      ]
+    },
+    {
+      "cle": "toit.inclinaison",
+      "famille": "toit",
+      "phrase": "Angle des panneaux par rapport à l'horizontale, lu sur la conception posée.",
+      "valeurs": {},
+      "geste": "Plus incliné capte mieux le soleil d'hiver, mais demande plus d'écart entre les rangées.",
+      "lexique": null,
+      "ecrans": [
+        "coupe"
+      ]
+    },
+    {
+      "cle": "toit.longueur_ombre",
+      "famille": "toit",
+      "phrase": "Longueur de l'ombre portée par une rangée à l'heure de conception, quand le soleil est le plus bas de l'année : si elle dépasse l'écart entre les rangées, la rangée de derrière est ombrée.",
+      "valeurs": {},
+      "geste": "Écartez les rangées ou baissez l'inclinaison pour la faire tenir.",
+      "lexique": null,
+      "ecrans": [
+        "coupe"
+      ]
+    },
+    {
+      "cle": "toit.pas_rangees",
+      "famille": "toit",
+      "phrase": "Distance entre deux rangées, calculée pour que la rangée avant ne fasse pas d'ombre à celle de derrière à l'heure de conception servie.",
+      "valeurs": {},
+      "geste": "Pour poser plus de panneaux, baissez l'inclinaison plutôt que de rapprocher les rangées.",
+      "lexique": null,
+      "ecrans": [
+        "coupe"
+      ]
+    },
+    {
+      "cle": "toit.pose_couverture",
+      "famille": "toit",
+      "phrase": "Part de la consommation de l'année que couvre la production estimée des panneaux posés : elle compare la production à la consommation.",
+      "valeurs": {},
+      "geste": "Ajoutez ou retirez des panneaux pour l'approcher du besoin.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "toit.pose_emplacements_libres",
+      "famille": "toit",
+      "phrase": "Emplacements encore valides pour un panneau : sur le toit, hors des retraits et hors des obstacles.",
+      "valeurs": {},
+      "geste": "Touchez un emplacement libre pour y déplacer un panneau.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "toit.pose_panneaux",
+      "famille": "toit",
+      "phrase": "Nombre de panneaux posés sur le plan en ce moment, à la main ou par le remplissage.",
+      "valeurs": {},
+      "geste": "Les boutons plus et moins en ajoutent ou en retirent un.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "toit.pose_puissance",
+      "famille": "toit",
+      "phrase": "Puissance crête des panneaux posés : leur nombre multiplié par la puissance d'un panneau.",
+      "valeurs": {},
+      "geste": "Un panneau plus puissant augmente ce total sans prendre plus de place.",
+      "lexique": "puissance crête",
+      "ecrans": []
+    },
+    {
+      "cle": "toit.rayon_solaire",
+      "famille": "toit",
+      "phrase": "Hauteur du soleil au-dessus de l'horizon à l'heure de conception, au solstice d'hiver : le soleil le plus bas pour lequel la coupe vérifie l'ombrage.",
+      "valeurs": {},
+      "geste": "Elle se lit avec la longueur d'ombre, juste à côté.",
+      "lexique": null,
+      "ecrans": [
+        "coupe"
+      ]
+    },
+    {
+      "cle": "toit.reco_couverture",
+      "famille": "toit",
+      "phrase": "Part de la consommation de l'année couverte par l'installation recommandée : elle compare la production estimée à la consommation.",
+      "valeurs": {},
+      "geste": "Si la consommation paraît fausse, corrigez-la sur le dossier.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "toit.reco_economies",
+      "famille": "toit",
+      "phrase": "Estimation des économies sur la facture d'électricité, calculée à partir de la production estimée de cette pose.",
+      "valeurs": {},
+      "geste": "Le chiffre qui engage est celui du devis.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "toit.reco_panneaux",
+      "famille": "toit",
+      "phrase": "Nombre de panneaux que la recommandation pose sur les surfaces tracées, dans les retraits et hors des obstacles.",
+      "valeurs": {},
+      "geste": "Changez-le avec les boutons « Panneaux nécessaires ».",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "toit.reco_production",
+      "famille": "toit",
+      "phrase": "Production estimée sur une année pour cette pose, d'après l'ensoleillement du site, l'orientation et l'inclinaison des panneaux.",
+      "valeurs": {},
+      "geste": "Ouvrez l'onglet Production pour le détail mois par mois.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "toit.reco_puissance",
+      "famille": "toit",
+      "phrase": "Puissance crête de l'installation recommandée : la somme des puissances des panneaux posés.",
+      "valeurs": {},
+      "geste": "Elle suit le nombre de panneaux : changez-le pour l'ajuster.",
+      "lexique": "puissance crête",
+      "ecrans": []
+    }
+  ]
+}

@@ -31,6 +31,7 @@ CE QUE CE MODULE GARANTIT
 Module PUR : aucune base, aucun réseau, aucun prix.
 """
 from __future__ import annotations
+from . import groupe_appoint as _groupe_appoint
 from .valeurs import nombre as _nombre
 
 __all__ = ['ETATS_PROTECTION', 'HorsReseauInvalide', 'SEUILS_PROTECTION',
@@ -213,11 +214,53 @@ def _plages(etats):
     return plages
 
 
+def _lignes_par_mois(par_mois):
+    """Les bilans mensuels arrondis, dans l'ordre des mois (taux ``None`` sur un mois sans consommation)."""
+    lignes_mois = []
+    for cle in sorted(par_mois):
+        bilan = par_mois[cle]
+        conso_mois = bilan['consommation_kwh']
+        bilan['taux_defaillance'] = (round(bilan['defaillance_kwh']
+                                           / conso_mois, 4)
+                                     if conso_mois > 0 else None)
+        bilan['consommation_kwh'] = round(conso_mois, 3)
+        bilan['defaillance_kwh'] = round(bilan['defaillance_kwh'], 3)
+        lignes_mois.append(bilan)
+    return lignes_mois
+
+
+def _bilan_protection(protection, etats_de_protection, arret_au_pas, sans_groupe, mentions):
+    """CALX272 — le bloc ``protection`` publié ; ajoute ses mentions à ``mentions`` (sans seuils : le motif).
+    ``sans_groupe`` (ACAL801) : aucun groupe d'appoint actif ⇒ la mention « entretien sans source AC »."""
+    if protection is None:
+        return {'seuils': None, 'heures_par_etat': None,
+                'plages_par_etat': None, 'arret_au_pas': None,
+                'motif': MOTIF_SANS_SEUILS}
+    bilan_protection = {
+        'seuils': dict(protection),
+        'heures_par_etat': {
+            etat: sum(1 for lu in etats_de_protection if lu == etat)
+            for etat in ETATS_PROTECTION},
+        'plages_par_etat': _plages(etats_de_protection),
+        'arret_au_pas': arret_au_pas,
+        'motif': '',
+    }
+    mentions.append(MENTION_SEUILS.format(
+        veille=f'{protection["veille_pct"]:g}',
+        entretien=f'{protection["entretien_pct"]:g}',
+        arret=f'{protection["arret_pct"]:g}'))
+    if sans_groupe:
+        mentions.append(MENTION_ENTRETIEN_SANS_SOURCE_AC)
+    if arret_au_pas is not None:
+        mentions.append(MENTION_ARRET.format(pas=arret_au_pas + 1))
+    return bilan_protection
+
+
 def _simuler_hors_reseau(charge_horaire, production_horaire, *,
                          capacite_utile_kwh, puissance_charge_kw=None,
                          puissance_decharge_kw=None, rendement_ar_pct=None,
                          mois_par_heure=None, etat_initial_kwh=None,
-                         pas_heures=1.0, seuils=None):
+                         pas_heures=1.0, seuils=None, groupe=None):
     """Fait tourner le site SANS RÉSEAU et publie son taux de défaillance.
 
     Il n'y a pas de soutirage ici : ce que la production et la batterie ne
@@ -246,11 +289,18 @@ def _simuler_hors_reseau(charge_horaire, production_horaire, *,
             de dimensionnement étrangère n'est importée : le « 4,8 kWh par
             kWc » que PV*SOL publie pour l'autonomie est REFUSÉ comme défaut.
 
+        groupe: ACAL801 — le groupe d'appoint DÉCLARÉ (``hors_reseau.groupe``,
+            validé par ``services/groupe_appoint.py``) ; ``actif: false`` ou
+            absent ⇒ le résultat d'avant, terme à terme. Actif, il démarre à
+            son SOC de démarrage, s'arrête à son SOC d'arrêt, sert d'abord le
+            besoin que le soleil ne couvre pas puis recharge la banque.
+
     Returns:
         dict — ``heures``, ``consommation_kwh``, ``production_kwh``,
         ``servi_kwh``, ``defaillance_kwh``, ``heures_defaillantes``,
         ``taux_defaillance``, ``surplus_perdu_kwh``, ``etat_de_charge_kwh``,
-        ``par_mois``, ``mois_le_plus_defavorable``, ``mentions``,
+        ``par_mois``, ``mois_le_plus_defavorable``, ``mentions``, ``groupe``
+        (ACAL801 — heures de marche et énergie fournie, ``None`` sans groupe),
         ``protection`` (CALX272 — ``seuils``, ``heures_par_etat``,
         ``plages_par_etat`` ``{etat: [[premier_pas, dernier_pas]]}``,
         ``arret_au_pas`` et ``motif`` ; tout ``None`` sans seuils, avec le
@@ -315,6 +365,9 @@ def _simuler_hors_reseau(charge_horaire, production_horaire, *,
     coupee = False
     arret_au_pas = None
     etats_de_protection = []
+    appoint = None
+    if isinstance(groupe, dict) and groupe.get('actif'):
+        appoint = _groupe_appoint.Groupe(groupe, capacite, pas)
 
     etats = []
     total_charge = 0.0
@@ -347,6 +400,14 @@ def _simuler_hors_reseau(charge_horaire, production_horaire, *,
             etats_de_protection.append(etat_du_pas)
             decharge_permise = etat_du_pas == 'normal'
 
+        # ACAL801 — le groupe d'appoint sert d'abord le besoin restant.
+        cle_mois = int(mois[rang]) if mois else None
+        energie_groupe = (appoint.marcher(rang, etat, cle_mois)
+                          if appoint is not None else 0.0)
+        servi_groupe = min(besoin, energie_groupe)
+        besoin -= servi_groupe
+        entree = 0.0
+
         if surplus > 0:
             place = (capacite - etat) / eta if eta > 0 else 0.0
             entree = min(surplus, place)
@@ -356,6 +417,13 @@ def _simuler_hors_reseau(charge_horaire, production_horaire, *,
                 entree = 0.0
             etat += entree * eta
             total_perdu += surplus - entree
+
+        recharge = _groupe_appoint.recharge_du_groupe(
+            energie_groupe - servi_groupe, capacite - etat, eta,
+            None if p_charge is None else p_charge * pas - entree, coupee)
+        etat += recharge * eta
+        if appoint is not None:
+            appoint.fournir(servi_groupe + recharge, cle_mois)
 
         sortie = 0.0
         if besoin > 0 and decharge_permise:
@@ -369,7 +437,7 @@ def _simuler_hors_reseau(charge_horaire, production_horaire, *,
             etat -= (sortie / eta) if eta > 0 else 0.0
 
         defaut = max(0.0, besoin - sortie)
-        total_servi += direct + sortie
+        total_servi += direct + servi_groupe + sortie
         total_defaut += defaut
         if defaut > 0:
             heures_defaut += 1
@@ -388,16 +456,7 @@ def _simuler_hors_reseau(charge_horaire, production_horaire, *,
             if defaut > 0:
                 bilan['heures_defaillantes'] += 1
 
-    lignes_mois = []
-    for cle in sorted(par_mois):
-        bilan = par_mois[cle]
-        conso_mois = bilan['consommation_kwh']
-        bilan['taux_defaillance'] = (round(bilan['defaillance_kwh']
-                                           / conso_mois, 4)
-                                     if conso_mois > 0 else None)
-        bilan['consommation_kwh'] = round(conso_mois, 3)
-        bilan['defaillance_kwh'] = round(bilan['defaillance_kwh'], 3)
-        lignes_mois.append(bilan)
+    lignes_mois = _lignes_par_mois(par_mois)
 
     pire = None
     candidats = [ligne for ligne in lignes_mois
@@ -410,27 +469,8 @@ def _simuler_hors_reseau(charge_horaire, production_horaire, *,
             'Aucun mois n’accompagne la série : le mois le plus défavorable '
             'n’est PAS désigné (aucun calendrier n’est deviné).')
 
-    if protection is None:
-        bilan_protection = {'seuils': None, 'heures_par_etat': None,
-                            'plages_par_etat': None, 'arret_au_pas': None,
-                            'motif': MOTIF_SANS_SEUILS}
-    else:
-        bilan_protection = {
-            'seuils': dict(protection),
-            'heures_par_etat': {
-                etat: sum(1 for lu in etats_de_protection if lu == etat)
-                for etat in ETATS_PROTECTION},
-            'plages_par_etat': _plages(etats_de_protection),
-            'arret_au_pas': arret_au_pas,
-            'motif': '',
-        }
-        mentions.append(MENTION_SEUILS.format(
-            veille=f'{protection["veille_pct"]:g}',
-            entretien=f'{protection["entretien_pct"]:g}',
-            arret=f'{protection["arret_pct"]:g}'))
-        mentions.append(MENTION_ENTRETIEN_SANS_SOURCE_AC)
-        if arret_au_pas is not None:
-            mentions.append(MENTION_ARRET.format(pas=arret_au_pas + 1))
+    bilan_protection = _bilan_protection(protection, etats_de_protection,
+                                         arret_au_pas, appoint is None, mentions)
 
     return {
         'heures': len(charge),
@@ -447,6 +487,7 @@ def _simuler_hors_reseau(charge_horaire, production_horaire, *,
         'mois_le_plus_defavorable': pire,
         'mentions': mentions,
         'protection': bilan_protection,
+        'groupe': appoint.publier() if appoint is not None else None,
     }
 
 

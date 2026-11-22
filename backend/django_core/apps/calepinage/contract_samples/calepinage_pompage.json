@@ -97,6 +97,13 @@
       "niveau_fin_mois_m3": [60.0, 60.0, 60.0, 60.0, 60.0, 60.0, 60.0, 60.0, 60.0, 60.0, 49.5, 0.0],
       "mention": "année type : chaque mois est une journée moyenne, les séries de jours sans soleil ne sont pas simulées"
     },
+    "comparaison_reservoir": {
+      "direct": {"debit_conception_m3h": 6.0, "mois_critique": 1, "jours_manque": 0, "besoin_couvert_pct": 100.0, "motif_bilan": null},
+      "avec_reservoir": {"debit_conception_m3h": 2.4, "mois_critique": 12, "jours_manque": 0, "besoin_couvert_pct": 100.0, "motif_bilan": null},
+      "motif": null
+    },
+    "pompes_variateur": {"verdict": "conforme", "motif": null, "kw_demande": 4.4, "kw_variateur": 5.5, "reserve_kw": 1.1},
+    "appoint_variateur": {"verdict": "vmp_sous_bus", "motif": "Vmp à chaud 422 V sous les 430 V du bus DC redressé : l'appoint prend toute la charge", "bus_redresse_v": 430.0, "vmp_chaud_v": 422, "voc_froid_v": 627, "limite_v": 800.0, "appoint": "reseau"},
     "erreurs": {},
     "avertissements": [],
     "alertes": [
@@ -196,6 +203,13 @@
       "niveau_fin_mois_m3": [60.0, 60.0, 60.0, 60.0, 60.0, 60.0, 60.0, 60.0, 60.0, 60.0, 49.5, 0.0],
       "mention": "année type : chaque mois est une journée moyenne, les séries de jours sans soleil ne sont pas simulées"
     },
+    "comparaison_reservoir": {
+      "direct": {"debit_conception_m3h": 6.0, "mois_critique": 1, "jours_manque": 0, "besoin_couvert_pct": 100.0, "motif_bilan": null},
+      "avec_reservoir": {"debit_conception_m3h": 2.4, "mois_critique": 12, "jours_manque": 0, "besoin_couvert_pct": 100.0, "motif_bilan": null},
+      "motif": null
+    },
+    "pompes_variateur": null,
+    "appoint_variateur": null,
     "avertissements": [],
     "alertes": [],
     "enregistre_le": "2026-11-21T10:15:00+00:00"
@@ -257,6 +271,9 @@
       "niveau_fin_mois_m3": null,
       "mention": "année type : chaque mois est une journée moyenne, les séries de jours sans soleil ne sont pas simulées"
     },
+    "comparaison_reservoir": {"direct": null, "avec_reservoir": null, "motif": "besoin non saisi"},
+    "pompes_variateur": null,
+    "appoint_variateur": null,
     "erreurs": {
       "hmt_saisie": "Renseignez la HMT, ou les cinq données de puits (niveau statique, rabattement spécifique, longueur de tuyauterie, coefficient de frottement, hauteur de refoulement) pour qu'elle soit calculée.",
       "debit_souhaite_m3h": "Le débit souhaité (m³/h) est obligatoire : sans lui, aucune pompe ne peut être choisie sur sa courbe."

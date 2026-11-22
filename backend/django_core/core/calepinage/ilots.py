@@ -17,11 +17,13 @@ Sans contrainte ⇒ aucune zone, aucun module retiré : octet-identique.
 Noyau PUR (stdlib + paquet).
 """
 
+import math
+
 from core.calepinage.types import NatureZone, Zone
 
 __all__ = [
     "bandes_allees", "zones_allees", "module_hors_allees", "regle_ilots",
-    "lire_contraintes",
+    "lire_contraintes", "zones_coupures",
 ]
 
 #: Débord des zones d'allée au-delà de la boîte du pan (m) : une allée doit
@@ -87,6 +89,29 @@ def zones_allees(repere, bornes, longueur, largeur, allee):
             sommets=((xmin - _DEBORD_M, a), (xmax + _DEBORD_M, a),
                      (xmax + _DEBORD_M, b), (xmin - _DEBORD_M, b))))
     return tuple(zones)
+
+
+def zones_coupures(repere, bornes, tous_les_n, largeur_m, pas_m, laterale_m):
+    """ACAL577 — zones ``INTERDITE`` des coupures « tous les N modules ».
+
+    La règle d'ACAL586 (``roof_layout_v2.schema.json::coupuresPavage``), la
+    même que l'atelier (``anneauxDeCoupures``) : origine = bord gauche du pan
+    + retrait latéral ; c = ``pas_m`` ; n = ⌈largeur ÷ c⌉ colonnes entières ;
+    la bande k ≥ 1 commence à origine + (k·N + (k−1)·n)·c et mesure n·c.
+    """
+    xmin, xmax, ymin, ymax = bornes
+    if pas_m <= 0 or tous_les_n < 1 or largeur_m <= 0:
+        return ()
+    n = math.ceil(largeur_m / pas_m - 1e-9)
+    largeur = n * pas_m  # pleine largeur n·c, jamais rognée au bord du pan
+    debuts = bandes_allees(xmin + laterale_m, xmax, tous_les_n * pas_m,
+                           largeur)
+    return tuple(
+        Zone(repere='%s_COUPURE_X%d' % (repere, k),
+             nature=NatureZone.INTERDITE,
+             sommets=((a, ymin - _DEBORD_M), (a + largeur, ymin - _DEBORD_M),
+                      (a + largeur, ymax + _DEBORD_M), (a, ymax + _DEBORD_M)))
+        for k, (a, _b) in enumerate(debuts, start=1))
 
 
 def _chevauche(debut, fin, bandes):

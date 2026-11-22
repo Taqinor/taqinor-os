@@ -50,6 +50,20 @@ beforeEach(() => {
   resetFicheMocks()
 })
 
+describe('ACAL663 — champs électriques de fiche', () => {
+  it('les champs électriques se saisissent, le vide part à null et jamais à 0', async () => {
+    renderEdit()
+    await pret()
+    fireEvent.change(screen.getByLabelText('Cellules en série'), { target: { value: '144' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Mettre à jour' }))
+
+    await waitFor(() => expect(createFicheTechnique).toHaveBeenCalled())
+    const [payload] = createFicheTechnique.mock.calls[0]
+    expect(payload.cellules_serie).toBe(144)
+    expect(payload.temp_coeff_isc_pct_c).toBeNull()
+  })
+})
+
 describe('CALX355 — bloc MODULE', () => {
   it('NOCT, bifacialité, tolérance et courbe sont saisissables ; un champ vide part à null, jamais 0', async () => {
     renderEdit()

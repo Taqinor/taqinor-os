@@ -157,6 +157,8 @@ export function contexteCalepinageVersPayload(contexte) {
     // (`neededPanels` du pan) prime à la réouverture.
     cibleVendue: contexte.cible?.source === 'devis',
     fullName: titre || undefined,
+    // ACAL777 — la facture mensuelle du lead servie (ACAL776) : repli d'AFFICHAGE des cartes ; `null` = rien inventé.
+    factureMensuelleMad: contexte.consommation_lead?.facture_mensuelle_mad ?? null,
   }
 }
 
@@ -242,6 +244,8 @@ export function tailleImagePlan(plan) {
 }
 
 export function httpMessage(status, responseData) {
+  // ACAL945 — `0` : aucune réponse du serveur (jamais « erreur 0 »).
+  if (status === 0) return 'Le serveur n’a pas répondu : vérifiez votre connexion puis réessayez.'
   // QJ17 — the backend returns a structured French error for 409 (ENF11, refus d'état) / 422 (composition
   // pre-flight failures). Surface it directly instead of a generic message.
   if (status === 422 || status === 409) {

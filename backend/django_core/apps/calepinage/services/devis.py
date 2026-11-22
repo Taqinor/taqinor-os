@@ -48,6 +48,58 @@ def _exiger_layout(calepinage):
     return layout
 
 
+def _layout_des_surfaces(layout, cles):
+    """ACAL968 (D-ACAL-37) — la COPIE du document limitée aux surfaces
+    COCHÉES (``cles`` de ``surfaces_chiffrables``) ; ``None`` ou tout coché ⇒
+    le document lui-même. Vide, non-liste ou clé inconnue ⇒ 400 nommant
+    ``surfaces_chiffrees``. Une zone retirée retire aussi le ``result``
+    racine ; la sélection est écrite dans ``choixConception.surfacesChiffrees``."""
+    import copy
+
+    from ..serializers import surfaces_chiffrables
+
+    if cles is None:
+        return layout
+    surfaces = surfaces_chiffrables(layout)
+    connues = [s['cle'] for s in surfaces]
+    if (not isinstance(cles, list) or not cles
+            or any(not isinstance(c, str) or c not in connues for c in cles)):
+        message = ("Cochez au moins une surface du calepinage parmi : %s."
+                   % (', '.join(s['libelle'] for s in surfaces) or 'aucune surface posée'))
+        raise DevisRefuse(message, champ='surfaces_chiffrees',
+                          donnees={'surfaces_chiffrees': [message]})
+    if set(cles) == set(connues):
+        return layout
+    copie = copy.deepcopy(layout)
+    cle_zones = next((k for k in ('zones', 'areas', 'pans') if copie.get(k)), None)
+    for cle_liste, prefixe in ((cle_zones, 'zone'), ('poseSurfaces', 'surface')):
+        if not cle_liste or not isinstance(copie.get(cle_liste), list):
+            continue
+        gardees = []
+        for index, element in enumerate(copie[cle_liste]):
+            cle = (str(element.get('id') or '%s-%d' % (prefixe, index + 1))
+                   if isinstance(element, dict) else None)
+            if cle in connues and cle not in cles:
+                if prefixe == 'zone':
+                    copie.pop('result', None)
+                continue
+            if isinstance(element, dict) and not element.get('id'):
+                element['id'] = cle  # la clé reste stable après retrait
+            gardees.append(element)
+        copie[cle_liste] = gardees
+    choix = copie.get('choixConception')
+    copie['choixConception'] = {**(choix if isinstance(choix, dict) else {}),
+                                'surfacesChiffrees': list(cles)}
+    return copie
+
+
+def _selection_du_devis(devis):
+    """ACAL968 — la sélection écrite au devis (``roof_layout``), ou ``None``."""
+    document = getattr(devis, 'roof_layout', None)
+    choix = document.get('choixConception') if isinstance(document, dict) else None
+    return choix.get('surfacesChiffrees') if isinstance(choix, dict) else None
+
+
 def _lead_et_client(calepinage):
     """Le lead ET le client du calepinage, résolus CÔTÉ SERVEUR.
 
@@ -146,8 +198,11 @@ def _brouillon_reutilisable(company, lead, empreinte, calepinage):
 
 def generer_devis(calepinage, *, user=None, taux_tva=None,
                   remise_globale=None, journal=None,
-                  derogation_electrique=None):
+                  derogation_electrique=None, surfaces_chiffrees=None):
     """CAL24 — crée (ou RETROUVE) le devis de ce calepinage.
+
+    ACAL968 — ``surfaces_chiffrees`` : les clés des surfaces COCHÉES
+    (``None`` = toutes) ; le devis compose la copie sans les décochées.
 
     Args:
         journal: ACAL89 — dict facultatif rempli SUR PLACE avec ce que la
@@ -182,7 +237,7 @@ def generer_devis(calepinage, *, user=None, taux_tva=None,
     from .feu_vert import GESTE_DEVIS, verifier_avant_publication
 
     verifier_avant_publication(calepinage, geste=GESTE_DEVIS)
-    layout = _exiger_layout(calepinage)
+    layout = _layout_des_surfaces(_exiger_layout(calepinage), surfaces_chiffrees)
     company = calepinage.company
     lead, client = _lead_et_client(calepinage)
     _refuser_lead_agricole(lead)
@@ -226,6 +281,73 @@ def _garde_kwh_declare(devis):
                           statut=409, donnees=refus)
 
 
+def taille_non_dimensionnee(calepinage):
+    """ACAL861/ACAL922 — LA condition « rien ne dimensionne ce devis », écrite
+    UNE fois (le contrôle « prêt à envoyer ? » la lit ; la porte 409 d'ACAL922
+    la lira) : sans lead, ou lead résidentiel sans ``taille_souhaitee_kwc``
+    dont ``cible_depuis_lead`` refuse faute de facture (``motif_code`` =
+    ``MOTIF_FACTURE_ABSENTE``). Rend ``{'refus': texte}`` ou ``None``
+    (dimensionné, ou refusé pour une AUTRE raison : C&I, agricole, kWh
+    incohérent ne posent pas cette question). Lecture seule."""
+    from apps.crm.selectors import get_company_lead
+    from apps.ventes.selectors import cible_depuis_lead
+    from apps.ventes.services import MOTIF_FACTURE_ABSENTE
+
+    company = getattr(calepinage, 'company', None)
+    if not getattr(calepinage, 'lead_id', None):
+        return {'refus': "Calepinage sans lead : aucune facture ne "
+                         "dimensionne le système."}
+    lead = get_company_lead(company, calepinage.lead_id, avec_corbeille=True)
+    cible = cible_depuis_lead(lead, company) if lead is not None else None
+    if cible and cible.get('motif_code') == MOTIF_FACTURE_ABSENTE:
+        return {'refus': cible.get('refus') or ''}
+    return None
+
+
+#: ACAL914 — l'écart d'ÉGALITÉ entre kWc dessiné et kWc composé : l'arrondi
+#: d'écriture de ``etude_params['puissance_kwc']`` (trois décimales), pas un
+#: seuil métier.
+EPSILON_KWC_COMPOSE = 0.001
+
+
+def _garde_module_substitue(devis, layout):
+    """ACAL914 — 409 ``module_substitue`` quand la composition chiffre un
+    autre module que le dessin (kWc composé ≠ kWc dessiné), sous la
+    transaction de la création (devis annulé)."""
+    from core.electrique.types import fr
+
+    from apps.ventes.selectors_calepinage import lignes_produits_calepinage
+    from apps.ventes.services import pans_du_document
+
+    from .valeurs import nombre
+
+    pans = pans_du_document(layout)
+    dessine = sum(p['kwc'] for p in pans if p.get('kwc'))
+    if dessine and not any(p['kind'] == 'toit' and p['source'] != 'aucune' for p in pans):
+        # Toit sans pan mesuré : il est résumé par le ``result`` racine, que la
+        # composition compte aussi (``ventes.lire_layout``) — sinon un toit
+        # résumé + un champ au sol se lisait « champ seul » (faux 409).
+        dessine += nombre(((layout if isinstance(layout, dict) else {})
+                           .get('result') or {}).get('kwc')) or 0.0
+    compose = (getattr(devis, 'etude_params', None) or {}).get('puissance_kwc')
+    if not dessine or compose is None:
+        return
+    if abs(float(compose) - dessine) <= EPSILON_KWC_COMPOSE + 1e-9:
+        return
+    panneau = next((ligne['designation'] for ligne in
+                    lignes_produits_calepinage(devis)
+                    if 'panneau' in (ligne['designation'] or '').lower()), '')
+    detail = ("Le dessin porte %s kWc ; le catalogue compose %s kWc%s. "
+              "Choisissez le module du catalogue dans l'atelier puis "
+              "relancez." % (fr(dessine, 2), fr(float(compose), 2),
+                             ' (%s)' % panneau if panneau else ''))
+    raise DevisRefuse(detail, champ='zones.0.geometry.moduleId', statut=409,
+                      donnees={'detail': detail, 'code': 'module_substitue',
+                               'champ': 'zones.0.geometry.moduleId',
+                               'kwc_dessine': round(dessine, 3),
+                               'kwc_compose': round(float(compose), 3)})
+
+
 def _generer(calepinage, layout, company, lead, client, montants, *, user,
              journal):
     """CAL24 — la création (ou la dédup) APRÈS toutes les gardes."""
@@ -248,7 +370,9 @@ def _generer(calepinage, layout, company, lead, client, montants, *, user,
         raise DevisRefuse(erreurs[0], champ='composition', statut=422,
                           donnees={'detail': erreurs[0], 'errors': erreurs})
 
-    empreinte = calepinage.layout_hash or layout_hash(layout)
+    # ACAL968 — une copie limitée aux surfaces cochées se dédoublonne sur SA empreinte.
+    empreinte = (calepinage.layout_hash if layout is calepinage.roof_layout
+                 else None) or layout_hash(layout)
     # ACON46 — UNE transaction sous verrou de ligne du calepinage : deux
     # générations concurrentes se sérialisent ; la seconde relit le lien posé
     # par la première (dédup) au lieu de créer un second devis.
@@ -303,6 +427,7 @@ def _generer_sous_verrou(calepinage, layout, company, lead, client, montants,
                 layout=layout, user=user, company=company, lead=lead,
                 client=client, journal=journal_composition, **montants)
             _garde_kwh_declare(devis)
+            _garde_module_substitue(devis, layout)  # ACAL914
     except AutoDevisError as refus:
         # ACAL32 — phase / site isolé du lead déduits par la création ; son
         # refus NOMMÉ (``hors_reseau``) remonte en 422, jamais un 500.
@@ -373,6 +498,7 @@ def _consigner_et_servir(calepinage, garde, *, user=None):
         }
     return {'verdict': garde['verdict'],
             'manquantes': list(garde.get('manquantes') or ()),
+            'etat': garde['etat'], 'points': garde['points'],
             'derogation': derogation}
 
 
@@ -465,8 +591,12 @@ def _montants(taux_tva, remise_globale, Decimal):
 
 
 def resynchroniser_devis(calepinage, *, user=None,
-                         derogation_electrique=None, devis_id=None):
+                         derogation_electrique=None, devis_id=None,
+                         surfaces_chiffrees=None):
     """CAL25 — resynchronise le devis lié sur la conception COURANTE.
+
+    ACAL968 — ``surfaces_chiffrees`` absent : la sélection ÉCRITE au devis
+    (``choixConception.surfacesChiffrees``) est relue ; aucune ⇒ tout.
 
     ACON6 — ``devis_id`` : le devis à resynchroniser, lu par
     ``selectors.conception_du_devis`` (un devis porté par une VARIANTE suit
@@ -528,6 +658,8 @@ def resynchroniser_devis(calepinage, *, user=None,
     if devis is None or (company is not None
                          and devis.company_id != company.pk):
         raise DevisRefuse(f"Devis introuvable (#{devis_id}).", champ='devis')
+    layout = _layout_des_surfaces(layout, surfaces_chiffrees if surfaces_chiffrees
+                                  is not None else _selection_du_devis(devis))
 
     try:
         # ACAL34 — l'enveloppe ventes UNIQUE : resynchro + quatre études

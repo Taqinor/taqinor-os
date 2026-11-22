@@ -347,3 +347,78 @@ class DeuxOnduleursTest(SimpleTestCase):
         for ligne in affectation(conception):
             self.assertNotIn(ligne['onduleur'], (2,))
         self.assertIsNone(conception.nombre_onduleurs)
+
+
+class MotifDAffectationTest(SimpleTestCase):
+    """ACAL642 — le motif d'affectation par pan : ``rangee`` ou ``u``."""
+
+    @staticmethod
+    def _layout_2_rangees():
+        panneaux = [{'cx': float(colonne), 'cy': 0.0}
+                    for colonne in range(10)]
+        panneaux += [{'cx': float(colonne), 'cy': 1.7}
+                     for colonne in range(10)]
+        return {'version': 2, 'zones': [{
+            'id': 'z1', 'label': 'PAN-1',
+            'geometry': {'count': 20, 'azimuthDeg': 180.0, 'tiltDeg': 15.0,
+                         'panels': panneaux}}]}
+
+    def _rangs_chaine_1(self, **options):
+        conception = concevoir_par_pan(
+            self._layout_2_rangees(), module_specs=MODULE,
+            onduleur_specs=ONDULEUR, temperatures=_temperatures(),
+            module_designation='Module d essai',
+            onduleur_designation='Onduleur d essai', **options)
+        return [int(ligne['module'].split('#')[1])
+                for ligne in affectation(conception)
+                if ligne['chaine'] == 1], conception
+
+    def test_l_ordre_en_u_est_1_a_10_puis_20_a_11(self):
+        from apps.calepinage.services.chaines import _ordre_du_motif
+
+        centres = tuple((float(c), 0.0) for c in range(10)) + tuple(
+            (float(c), 1.7) for c in range(10))
+
+        self.assertEqual(_ordre_du_motif(list(range(1, 21)), centres, 'u'),
+                         list(range(1, 11)) + list(range(20, 10, -1)))
+
+    def test_le_motif_u_change_les_modules_de_la_chaine(self):
+        # Chaîne imposée à 15 modules sur 20 : « rangée » prend 1…15, « u »
+        # prend la rangée 1 puis la fin de la rangée 2 (20…16).
+        rangs_u, conception = self._rangs_chaine_1(
+            motifs_affectation={'z1': 'u'}, longueur_forcee=15)
+        rangs_rangee, _ = self._rangs_chaine_1(longueur_forcee=15)
+
+        self.assertEqual(rangs_rangee, list(range(1, 16)))
+        self.assertEqual(rangs_u, list(range(1, 11)) + list(range(16, 21)))
+        self.assertEqual(conception.pans[0].motif_affectation, 'u')
+
+    def test_sans_motif_ou_rangee_l_ordre_est_celui_du_document(self):
+        sans, _ = self._rangs_chaine_1()
+        rangee, _ = self._rangs_chaine_1(motifs_affectation={'z1': 'rangee'})
+
+        self.assertEqual(sans, rangee)
+        self.assertEqual(sans, list(range(1, len(sans) + 1)))
+
+    def test_centres_absents_gardent_l_ordre_du_document(self):
+        from apps.calepinage.services.chaines import _ordre_du_motif
+
+        self.assertEqual(_ordre_du_motif([1, 2, 3], (), 'u'), [1, 2, 3])
+        self.assertEqual(_ordre_du_motif([1, 2, 3], ((0, 0),), 'u'),
+                         [1, 2, 3])
+
+    def test_motif_inconnu_est_refuse_en_nommant_le_champ(self):
+        from apps.calepinage.services.electrique import (
+            EntreeInvalide, _valider_cheminement)
+
+        class _C:
+            roof_layout = None
+
+        with self.assertRaises(EntreeInvalide) as capture:
+            _valider_cheminement(_C(), {'pans': {'z1': {
+                'motif_affectation': 'zigzag'}}})
+
+        self.assertEqual(capture.exception.champ,
+                         'cheminement.pans.z1.motif_affectation')
+        self.assertIn('rangee', str(capture.exception))
+        self.assertIn('u', str(capture.exception))

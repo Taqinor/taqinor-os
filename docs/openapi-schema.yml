@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5270, operations: 8118, components: 4058}
+counts: {paths: 5296, operations: 8148, components: 4075}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -540,9 +540,11 @@ operations:
 - get /api/django/calepinage/calepinages/catalogue-materiel/ -> django_calepinage_calepinages_catalogue_materiel_retrieve
 - post /api/django/calepinage/calepinages/comparer-projets/ -> django_calepinage_calepinages_comparer_projets_create
 - get /api/django/calepinage/calepinages/contenance/ -> django_calepinage_calepinages_contenance_retrieve
+- post /api/django/calepinage/calepinages/controle-chaine/ -> django_calepinage_calepinages_controle_chaine_create
 - post /api/django/calepinage/calepinages/depuis-lead/ -> django_calepinage_calepinages_depuis_lead_create
 - post /api/django/calepinage/calepinages/depuis-modele/ -> django_calepinage_calepinages_depuis_modele_create
 - get /api/django/calepinage/calepinages/du-lead/ -> django_calepinage_calepinages_du_lead_retrieve
+- get /api/django/calepinage/calepinages/explications/ -> django_calepinage_calepinages_explications_retrieve
 - post /api/django/calepinage/calepinages/import-projet/ -> django_calepinage_calepinages_import_projet_create
 - get /api/django/calepinage/calepinages/modeles/ -> django_calepinage_calepinages_modeles_list
 - post /api/django/calepinage/calepinages/preparer/ -> django_calepinage_calepinages_preparer_create
@@ -570,17 +572,22 @@ operations:
 - post /api/django/calepinage/calepinages/{id}/chatter/noter/ -> django_calepinage_calepinages_chatter_noter_create
 - get /api/django/calepinage/calepinages/{id}/comparatif.xlsx/ -> django_calepinage_calepinages_comparatif.xlsx_retrieve
 - get /api/django/calepinage/calepinages/{id}/comparer/ -> django_calepinage_calepinages_comparer_retrieve
+- get /api/django/calepinage/calepinages/{id}/configurations-onduleur/ -> django_calepinage_calepinages_configurations_onduleur_retrieve
+- get /api/django/calepinage/calepinages/{id}/consommation/lire-facture/ -> django_calepinage_calepinages_consommation_lire_facture_retrieve
+- post /api/django/calepinage/calepinages/{id}/consommation/lire-facture/ -> django_calepinage_calepinages_consommation_lire_facture_create
 - post /api/django/calepinage/calepinages/{id}/consommation/proposer/ -> django_calepinage_calepinages_consommation_proposer_create
 - post /api/django/calepinage/calepinages/{id}/demarquer-modele/ -> django_calepinage_calepinages_demarquer_modele_create
 - get /api/django/calepinage/calepinages/{id}/design-context/ -> django_calepinage_calepinages_design_context_retrieve
 - get /api/django/calepinage/calepinages/{id}/detection-toit/ -> django_calepinage_calepinages_detection_toit_retrieve
 - post /api/django/calepinage/calepinages/{id}/detection-toit/ -> django_calepinage_calepinages_detection_toit_create
+- get /api/django/calepinage/calepinages/{id}/diagramme-energie.svg/ -> django_calepinage_calepinages_diagramme_energie.svg_retrieve
 - get /api/django/calepinage/calepinages/{id}/diagramme-pertes.svg/ -> django_calepinage_calepinages_diagramme_pertes.svg_retrieve
 - get /api/django/calepinage/calepinages/{id}/document-asbuilt.pdf/ -> django_calepinage_calepinages_document_asbuilt.pdf_retrieve
 - get /api/django/calepinage/calepinages/{id}/documents/ -> django_calepinage_calepinages_documents_retrieve
 - post /api/django/calepinage/calepinages/{id}/dossier-fin-chantier/ -> django_calepinage_calepinages_dossier_fin_chantier_create
 - get /api/django/calepinage/calepinages/{id}/dossiers-reglementaires/ -> django_calepinage_calepinages_dossiers_reglementaires_retrieve
 - post /api/django/calepinage/calepinages/{id}/dupliquer/ -> django_calepinage_calepinages_dupliquer_create
+- post /api/django/calepinage/calepinages/{id}/ecart-mesures/ -> django_calepinage_calepinages_ecart_mesures_create
 - post /api/django/calepinage/calepinages/{id}/enregistrer-pertes/ -> django_calepinage_calepinages_enregistrer_pertes_create
 - get /api/django/calepinage/calepinages/{id}/entree-electrique/ -> django_calepinage_calepinages_entree_electrique_retrieve
 - post /api/django/calepinage/calepinages/{id}/entree-electrique/ -> django_calepinage_calepinages_entree_electrique_create
@@ -604,6 +611,7 @@ operations:
 - get /api/django/calepinage/calepinages/{id}/horizon/ -> django_calepinage_calepinages_horizon_retrieve
 - post /api/django/calepinage/calepinages/{id}/image-document/ -> django_calepinage_calepinages_image_document_create
 - post /api/django/calepinage/calepinages/{id}/import-layout/ -> django_calepinage_calepinages_import_layout_create
+- post /api/django/calepinage/calepinages/{id}/importer-affectation/ -> django_calepinage_calepinages_importer_affectation_create
 - post /api/django/calepinage/calepinages/{id}/importer-plan/ -> django_calepinage_calepinages_importer_plan_create
 - post /api/django/calepinage/calepinages/{id}/joindre-piece/ -> django_calepinage_calepinages_joindre_piece_create
 - get /api/django/calepinage/calepinages/{id}/layout/ -> django_calepinage_calepinages_layout_retrieve
@@ -632,6 +640,7 @@ operations:
 - get /api/django/calepinage/calepinages/{id}/plan-cablage.pdf/ -> django_calepinage_calepinages_plan_cablage.pdf_retrieve
 - get /api/django/calepinage/calepinages/{id}/plan-importe/ -> django_calepinage_calepinages_plan_importe_retrieve
 - get /api/django/calepinage/calepinages/{id}/plan-importe/fichier/ -> django_calepinage_calepinages_plan_importe_fichier_retrieve
+- get /api/django/calepinage/calepinages/{id}/plan-lestage.pdf/ -> django_calepinage_calepinages_plan_lestage.pdf_retrieve
 - get /api/django/calepinage/calepinages/{id}/plan-masse.pdf/ -> django_calepinage_calepinages_plan_masse.pdf_retrieve
 - get /api/django/calepinage/calepinages/{id}/plan-pose.pdf/ -> django_calepinage_calepinages_plan_pose.pdf_retrieve
 - get /api/django/calepinage/calepinages/{id}/plan-toiture.pdf/ -> django_calepinage_calepinages_plan_toiture.pdf_retrieve
@@ -642,6 +651,9 @@ operations:
 - post /api/django/calepinage/calepinages/{id}/pose-reelle/ -> django_calepinage_calepinages_pose_reelle_create
 - delete /api/django/calepinage/calepinages/{id}/pose-reelle/{zone_id}/ -> django_calepinage_calepinages_pose_reelle_destroy
 - get /api/django/calepinage/calepinages/{id}/presentation-compacte.pdf/ -> django_calepinage_calepinages_presentation_compacte.pdf_retrieve
+- get /api/django/calepinage/calepinages/{id}/pret-a-envoyer/ -> django_calepinage_calepinages_pret_a_envoyer_retrieve
+- get /api/django/calepinage/calepinages/{id}/production-mesuree/ -> django_calepinage_calepinages_production_mesuree_retrieve
+- put /api/django/calepinage/calepinages/{id}/production-mesuree/ -> django_calepinage_calepinages_production_mesuree_update
 - post /api/django/calepinage/calepinages/{id}/publier-devis/ -> django_calepinage_calepinages_publier_devis_create
 - get /api/django/calepinage/calepinages/{id}/publier-devis/apercu/ -> django_calepinage_calepinages_publier_devis_apercu_retrieve
 - get /api/django/calepinage/calepinages/{id}/raccordement/ -> django_calepinage_calepinages_raccordement_retrieve
@@ -666,6 +678,7 @@ operations:
 - get /api/django/calepinage/calepinages/{id}/schema-unifilaire/ -> django_calepinage_calepinages_schema_unifilaire_retrieve
 - post /api/django/calepinage/calepinages/{id}/schema-unifilaire/ -> django_calepinage_calepinages_schema_unifilaire_create
 - post /api/django/calepinage/calepinages/{id}/simuler/ -> django_calepinage_calepinages_simuler_create
+- get /api/django/calepinage/calepinages/{id}/soleil-legal/ -> django_calepinage_calepinages_soleil_legal_retrieve
 - get /api/django/calepinage/calepinages/{id}/sorties/ -> django_calepinage_calepinages_sorties_retrieve
 - post /api/django/calepinage/calepinages/{id}/suggestions-pente-relief/ -> django_calepinage_calepinages_suggestions_pente_relief_create
 - post /api/django/calepinage/calepinages/{id}/suggestions-pente/ -> django_calepinage_calepinages_suggestions_pente_create
@@ -1751,6 +1764,7 @@ operations:
 - post /api/django/installations/chantiers/{id}/noter/ -> django_installations_chantiers_noter_create
 - get /api/django/installations/chantiers/{id}/pack-remise/ -> django_installations_chantiers_pack_remise_retrieve
 - post /api/django/installations/chantiers/{id}/pack-remise/ -> django_installations_chantiers_pack_remise_create
+- get /api/django/installations/chantiers/{id}/plan-pose/ -> django_installations_chantiers_plan_pose_retrieve
 - post /api/django/installations/chantiers/{id}/planifier-pose/ -> django_installations_chantiers_planifier_pose_create
 - get /api/django/installations/chantiers/{id}/rapport-energie/ -> django_installations_chantiers_rapport_energie_retrieve
 - post /api/django/installations/chantiers/{id}/reactiver/ -> django_installations_chantiers_reactiver_create
@@ -2201,6 +2215,7 @@ operations:
 - patch /api/django/installations/recettes-commissioning/{id}/ -> django_installations_recettes_commissioning_partial_update
 - put /api/django/installations/recettes-commissioning/{id}/ -> django_installations_recettes_commissioning_update
 - post /api/django/installations/recettes-commissioning/{id}/ajouter-iv/ -> django_installations_recettes_commissioning_ajouter_iv_create
+- get /api/django/installations/recettes-commissioning/{id}/valeurs-attendues/ -> django_installations_recettes_commissioning_valeurs_attendues_retrieve
 - get /api/django/installations/recettes-pompage/ -> django_installations_recettes_pompage_list
 - get /api/django/installations/recettes-pompage/{id}/ -> django_installations_recettes_pompage_retrieve
 - patch /api/django/installations/recettes-pompage/{id}/ -> django_installations_recettes_pompage_partial_update
@@ -4640,9 +4655,11 @@ operations:
 - get /api/v1/calepinage/calepinages/catalogue-materiel/ -> v1_calepinage_calepinages_catalogue_materiel_retrieve
 - post /api/v1/calepinage/calepinages/comparer-projets/ -> v1_calepinage_calepinages_comparer_projets_create
 - get /api/v1/calepinage/calepinages/contenance/ -> v1_calepinage_calepinages_contenance_retrieve
+- post /api/v1/calepinage/calepinages/controle-chaine/ -> v1_calepinage_calepinages_controle_chaine_create
 - post /api/v1/calepinage/calepinages/depuis-lead/ -> v1_calepinage_calepinages_depuis_lead_create
 - post /api/v1/calepinage/calepinages/depuis-modele/ -> v1_calepinage_calepinages_depuis_modele_create
 - get /api/v1/calepinage/calepinages/du-lead/ -> v1_calepinage_calepinages_du_lead_retrieve
+- get /api/v1/calepinage/calepinages/explications/ -> v1_calepinage_calepinages_explications_retrieve
 - post /api/v1/calepinage/calepinages/import-projet/ -> v1_calepinage_calepinages_import_projet_create
 - get /api/v1/calepinage/calepinages/modeles/ -> v1_calepinage_calepinages_modeles_list
 - post /api/v1/calepinage/calepinages/preparer/ -> v1_calepinage_calepinages_preparer_create
@@ -4670,17 +4687,22 @@ operations:
 - post /api/v1/calepinage/calepinages/{id}/chatter/noter/ -> v1_calepinage_calepinages_chatter_noter_create
 - get /api/v1/calepinage/calepinages/{id}/comparatif.xlsx/ -> v1_calepinage_calepinages_comparatif.xlsx_retrieve
 - get /api/v1/calepinage/calepinages/{id}/comparer/ -> v1_calepinage_calepinages_comparer_retrieve
+- get /api/v1/calepinage/calepinages/{id}/configurations-onduleur/ -> v1_calepinage_calepinages_configurations_onduleur_retrieve
+- get /api/v1/calepinage/calepinages/{id}/consommation/lire-facture/ -> v1_calepinage_calepinages_consommation_lire_facture_retrieve
+- post /api/v1/calepinage/calepinages/{id}/consommation/lire-facture/ -> v1_calepinage_calepinages_consommation_lire_facture_create
 - post /api/v1/calepinage/calepinages/{id}/consommation/proposer/ -> v1_calepinage_calepinages_consommation_proposer_create
 - post /api/v1/calepinage/calepinages/{id}/demarquer-modele/ -> v1_calepinage_calepinages_demarquer_modele_create
 - get /api/v1/calepinage/calepinages/{id}/design-context/ -> v1_calepinage_calepinages_design_context_retrieve
 - get /api/v1/calepinage/calepinages/{id}/detection-toit/ -> v1_calepinage_calepinages_detection_toit_retrieve
 - post /api/v1/calepinage/calepinages/{id}/detection-toit/ -> v1_calepinage_calepinages_detection_toit_create
+- get /api/v1/calepinage/calepinages/{id}/diagramme-energie.svg/ -> v1_calepinage_calepinages_diagramme_energie.svg_retrieve
 - get /api/v1/calepinage/calepinages/{id}/diagramme-pertes.svg/ -> v1_calepinage_calepinages_diagramme_pertes.svg_retrieve
 - get /api/v1/calepinage/calepinages/{id}/document-asbuilt.pdf/ -> v1_calepinage_calepinages_document_asbuilt.pdf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/documents/ -> v1_calepinage_calepinages_documents_retrieve
 - post /api/v1/calepinage/calepinages/{id}/dossier-fin-chantier/ -> v1_calepinage_calepinages_dossier_fin_chantier_create
 - get /api/v1/calepinage/calepinages/{id}/dossiers-reglementaires/ -> v1_calepinage_calepinages_dossiers_reglementaires_retrieve
 - post /api/v1/calepinage/calepinages/{id}/dupliquer/ -> v1_calepinage_calepinages_dupliquer_create
+- post /api/v1/calepinage/calepinages/{id}/ecart-mesures/ -> v1_calepinage_calepinages_ecart_mesures_create
 - post /api/v1/calepinage/calepinages/{id}/enregistrer-pertes/ -> v1_calepinage_calepinages_enregistrer_pertes_create
 - get /api/v1/calepinage/calepinages/{id}/entree-electrique/ -> v1_calepinage_calepinages_entree_electrique_retrieve
 - post /api/v1/calepinage/calepinages/{id}/entree-electrique/ -> v1_calepinage_calepinages_entree_electrique_create
@@ -4704,6 +4726,7 @@ operations:
 - get /api/v1/calepinage/calepinages/{id}/horizon/ -> v1_calepinage_calepinages_horizon_retrieve
 - post /api/v1/calepinage/calepinages/{id}/image-document/ -> v1_calepinage_calepinages_image_document_create
 - post /api/v1/calepinage/calepinages/{id}/import-layout/ -> v1_calepinage_calepinages_import_layout_create
+- post /api/v1/calepinage/calepinages/{id}/importer-affectation/ -> v1_calepinage_calepinages_importer_affectation_create
 - post /api/v1/calepinage/calepinages/{id}/importer-plan/ -> v1_calepinage_calepinages_importer_plan_create
 - post /api/v1/calepinage/calepinages/{id}/joindre-piece/ -> v1_calepinage_calepinages_joindre_piece_create
 - get /api/v1/calepinage/calepinages/{id}/layout/ -> v1_calepinage_calepinages_layout_retrieve
@@ -4732,6 +4755,7 @@ operations:
 - get /api/v1/calepinage/calepinages/{id}/plan-cablage.pdf/ -> v1_calepinage_calepinages_plan_cablage.pdf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/plan-importe/ -> v1_calepinage_calepinages_plan_importe_retrieve
 - get /api/v1/calepinage/calepinages/{id}/plan-importe/fichier/ -> v1_calepinage_calepinages_plan_importe_fichier_retrieve
+- get /api/v1/calepinage/calepinages/{id}/plan-lestage.pdf/ -> v1_calepinage_calepinages_plan_lestage.pdf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/plan-masse.pdf/ -> v1_calepinage_calepinages_plan_masse.pdf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/plan-pose.pdf/ -> v1_calepinage_calepinages_plan_pose.pdf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/plan-toiture.pdf/ -> v1_calepinage_calepinages_plan_toiture.pdf_retrieve
@@ -4742,6 +4766,9 @@ operations:
 - post /api/v1/calepinage/calepinages/{id}/pose-reelle/ -> v1_calepinage_calepinages_pose_reelle_create
 - delete /api/v1/calepinage/calepinages/{id}/pose-reelle/{zone_id}/ -> v1_calepinage_calepinages_pose_reelle_destroy
 - get /api/v1/calepinage/calepinages/{id}/presentation-compacte.pdf/ -> v1_calepinage_calepinages_presentation_compacte.pdf_retrieve
+- get /api/v1/calepinage/calepinages/{id}/pret-a-envoyer/ -> v1_calepinage_calepinages_pret_a_envoyer_retrieve
+- get /api/v1/calepinage/calepinages/{id}/production-mesuree/ -> v1_calepinage_calepinages_production_mesuree_retrieve
+- put /api/v1/calepinage/calepinages/{id}/production-mesuree/ -> v1_calepinage_calepinages_production_mesuree_update
 - post /api/v1/calepinage/calepinages/{id}/publier-devis/ -> v1_calepinage_calepinages_publier_devis_create
 - get /api/v1/calepinage/calepinages/{id}/publier-devis/apercu/ -> v1_calepinage_calepinages_publier_devis_apercu_retrieve
 - get /api/v1/calepinage/calepinages/{id}/raccordement/ -> v1_calepinage_calepinages_raccordement_retrieve
@@ -4766,6 +4793,7 @@ operations:
 - get /api/v1/calepinage/calepinages/{id}/schema-unifilaire/ -> v1_calepinage_calepinages_schema_unifilaire_retrieve
 - post /api/v1/calepinage/calepinages/{id}/schema-unifilaire/ -> v1_calepinage_calepinages_schema_unifilaire_create
 - post /api/v1/calepinage/calepinages/{id}/simuler/ -> v1_calepinage_calepinages_simuler_create
+- get /api/v1/calepinage/calepinages/{id}/soleil-legal/ -> v1_calepinage_calepinages_soleil_legal_retrieve
 - get /api/v1/calepinage/calepinages/{id}/sorties/ -> v1_calepinage_calepinages_sorties_retrieve
 - post /api/v1/calepinage/calepinages/{id}/suggestions-pente-relief/ -> v1_calepinage_calepinages_suggestions_pente_relief_create
 - post /api/v1/calepinage/calepinages/{id}/suggestions-pente/ -> v1_calepinage_calepinages_suggestions_pente_create
@@ -5851,6 +5879,7 @@ operations:
 - post /api/v1/installations/chantiers/{id}/noter/ -> v1_installations_chantiers_noter_create
 - get /api/v1/installations/chantiers/{id}/pack-remise/ -> v1_installations_chantiers_pack_remise_retrieve
 - post /api/v1/installations/chantiers/{id}/pack-remise/ -> v1_installations_chantiers_pack_remise_create
+- get /api/v1/installations/chantiers/{id}/plan-pose/ -> v1_installations_chantiers_plan_pose_retrieve
 - post /api/v1/installations/chantiers/{id}/planifier-pose/ -> v1_installations_chantiers_planifier_pose_create
 - get /api/v1/installations/chantiers/{id}/rapport-energie/ -> v1_installations_chantiers_rapport_energie_retrieve
 - post /api/v1/installations/chantiers/{id}/reactiver/ -> v1_installations_chantiers_reactiver_create
@@ -6301,6 +6330,7 @@ operations:
 - patch /api/v1/installations/recettes-commissioning/{id}/ -> v1_installations_recettes_commissioning_partial_update
 - put /api/v1/installations/recettes-commissioning/{id}/ -> v1_installations_recettes_commissioning_update
 - post /api/v1/installations/recettes-commissioning/{id}/ajouter-iv/ -> v1_installations_recettes_commissioning_ajouter_iv_create
+- get /api/v1/installations/recettes-commissioning/{id}/valeurs-attendues/ -> v1_installations_recettes_commissioning_valeurs_attendues_retrieve
 - get /api/v1/installations/recettes-pompage/ -> v1_installations_recettes_pompage_list
 - get /api/v1/installations/recettes-pompage/{id}/ -> v1_installations_recettes_pompage_retrieve
 - patch /api/v1/installations/recettes-pompage/{id}/ -> v1_installations_recettes_pompage_partial_update
@@ -8260,6 +8290,7 @@ query_params:
   get /api/django/calepinage/calepinages/{id}/chatter/historique/: ordering
   get /api/django/calepinage/calepinages/{id}/comparatif.xlsx/: ids
   get /api/django/calepinage/calepinages/{id}/design-context/: devis
+  get /api/django/calepinage/calepinages/{id}/diagramme-energie.svg/: langue
   get /api/django/calepinage/calepinages/{id}/diagramme-pertes.svg/: langue
   delete /api/django/calepinage/calepinages/{id}/etiquettes/: nom tag_id
   get /api/django/calepinage/calepinages/{id}/export-csv/: colonnes pas quoi
@@ -8268,6 +8299,7 @@ query_params:
   get /api/django/calepinage/calepinages/{id}/rapport-ombrage.pdf/: langue
   get /api/django/calepinage/calepinages/{id}/resultat/: variante
   get /api/django/calepinage/calepinages/{id}/resume/: variante
+  get /api/django/calepinage/calepinages/{id}/soleil-legal/: date
   get /api/django/calepinage/calepinages/{id}/variantes/: ordering
   get /api/django/calepinage/calepinages/{id}/versions/: ordering
   get /api/django/calepinage/calepinages/{id}/versions/{version_id}/diff/: contre
@@ -8574,6 +8606,7 @@ query_params:
   get /api/django/installations/putaways/: emplacement ordering page page_size produit search statut
   get /api/django/installations/receptions-non-facturees/: bon_commande lettre ordering page page_size search
   get /api/django/installations/recettes-commissioning/: installation ordering page page_size search
+  get /api/django/installations/recettes-commissioning/{id}/valeurs-attendues/: eclairement_w_m2 temperature_c
   get /api/django/installations/recettes-pompage/: installation ordering page page_size search
   get /api/django/installations/recurrences-intervention/: installation ordering page page_size search
   get /api/django/installations/regles-approbation-achat/: ordering page page_size search
@@ -9101,6 +9134,7 @@ query_params:
   get /api/v1/calepinage/calepinages/{id}/chatter/historique/: ordering
   get /api/v1/calepinage/calepinages/{id}/comparatif.xlsx/: ids
   get /api/v1/calepinage/calepinages/{id}/design-context/: devis
+  get /api/v1/calepinage/calepinages/{id}/diagramme-energie.svg/: langue
   get /api/v1/calepinage/calepinages/{id}/diagramme-pertes.svg/: langue
   delete /api/v1/calepinage/calepinages/{id}/etiquettes/: nom tag_id
   get /api/v1/calepinage/calepinages/{id}/export-csv/: colonnes pas quoi
@@ -9109,6 +9143,7 @@ query_params:
   get /api/v1/calepinage/calepinages/{id}/rapport-ombrage.pdf/: langue
   get /api/v1/calepinage/calepinages/{id}/resultat/: variante
   get /api/v1/calepinage/calepinages/{id}/resume/: variante
+  get /api/v1/calepinage/calepinages/{id}/soleil-legal/: date
   get /api/v1/calepinage/calepinages/{id}/variantes/: ordering
   get /api/v1/calepinage/calepinages/{id}/versions/: ordering
   get /api/v1/calepinage/calepinages/{id}/versions/{version_id}/diff/: contre
@@ -9415,6 +9450,7 @@ query_params:
   get /api/v1/installations/putaways/: emplacement ordering page page_size produit search statut
   get /api/v1/installations/receptions-non-facturees/: bon_commande lettre ordering page page_size search
   get /api/v1/installations/recettes-commissioning/: installation ordering page page_size search
+  get /api/v1/installations/recettes-commissioning/{id}/valeurs-attendues/: eclairement_w_m2 temperature_c
   get /api/v1/installations/recettes-pompage/: installation ordering page page_size search
   get /api/v1/installations/recurrences-intervention/: installation ordering page page_size search
   get /api/v1/installations/regles-approbation-achat/: ordering page page_size search
@@ -10256,7 +10292,10 @@ components:
 - CalepinageComparaisonProjets
 - CalepinageComparaisonVariantes
 - CalepinageComparerProjetsRequeteRequest
+- CalepinageConfigurationsOnduleur
 - CalepinageConsommationProposee
+- CalepinageControleChaine
+- CalepinageControleChaineCorpsRequest
 - CalepinageCreationConflit
 - CalepinageCreationParClientRequest
 - CalepinageCreationParLeadRequest
@@ -10281,6 +10320,7 @@ components:
 - CalepinageDossiersReglementaires
 - CalepinageDupliquerReponse
 - CalepinageDupliquerRequeteRequest
+- CalepinageEcartMesures
 - CalepinageEntreeElectrique
 - CalepinageEntreeElectriqueCorpsRequest
 - CalepinageEquipementsDevis
@@ -10290,6 +10330,7 @@ components:
 - CalepinageEtiquettes
 - CalepinageEvaluationElectrique
 - CalepinageEvaluerElectriqueRequeteRequest
+- CalepinageExplications
 - CalepinageExportLayout
 - CalepinageExportProjet
 - CalepinageFixationBom
@@ -10303,6 +10344,7 @@ components:
 - CalepinageGabaritDossier
 - CalepinageGabaritDossierCorpsFichierRequest
 - CalepinageGabaritDossierCorpsRequest
+- CalepinageGabaritLimiteRequest
 - CalepinageGabaritPieceAttendueRequest
 - CalepinageGabaritsListe
 - CalepinageGenererDevisCorpsRequest
@@ -10314,6 +10356,8 @@ components:
 - CalepinageImageDocumentCorpsJsonRequest
 - CalepinageImageDocumentCorpsRequest
 - CalepinageImageDocumentDepot
+- CalepinageImportAffectation
+- CalepinageImportAffectationCorpsRequest
 - CalepinageImportLayout
 - CalepinageImportLayoutCorpsRequest
 - CalepinageImportPlan
@@ -10328,6 +10372,9 @@ components:
 - CalepinageLayoutLu
 - CalepinageLayoutSectionCorpsRequest
 - CalepinageLecture
+- CalepinageLireFacture
+- CalepinageLireFactureCorpsRequest
+- CalepinageLireFactureDispo
 - CalepinageMasseLestage
 - CalepinageMeteoFichier
 - CalepinageMeteoFichierCorpsRequest
@@ -10350,10 +10397,13 @@ components:
 - CalepinageParcoursGuide
 - CalepinagePhotoSite
 - CalepinagePhotosSite
+- CalepinagePlagePlafondInjectionRequest
 - CalepinagePlanImporte
 - CalepinagePompageCorpsRequest
 - CalepinagePompageReponse
 - CalepinagePoseReelle
+- CalepinagePretAEnvoyer
+- CalepinageProductionMesuree
 - CalepinageProfilDepart
 - CalepinageProfilDepartApplication
 - CalepinageProfilDepartRetrait
@@ -10375,6 +10425,7 @@ components:
 - CalepinageSimulationAccuse
 - CalepinageSimulationDejaCalculee
 - CalepinageSimulerCorpsRequest
+- CalepinageSoleilLegal
 - CalepinageSortiesInventaire
 - CalepinageSuggestionPenteDemandeRequest
 - CalepinageSuggestionPenteDocumentRequest
@@ -10596,6 +10647,7 @@ components:
 - CosPhiSourceEnum
 - CoteAcDcEnum
 - CouvertureEnum
+- CouverturesEnum
 - CreativeAsset
 - CreativeAssetRequest
 - CreativeBacklogItem
@@ -12570,6 +12622,7 @@ components:
 - PompeActuelleTypeEnum
 - PompeAlimActuelleEnum
 - PompeHmtSourceEnum
+- PompeSurVariateurRequest
 - PortailClientConsommationPoint
 - PortailClientMaConsommation
 - PortailClientProchainJalon

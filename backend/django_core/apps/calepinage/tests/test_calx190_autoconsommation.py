@@ -165,6 +165,174 @@ class PlafondInjectionTest(SimpleTestCase):
         self.assertIsNone(resultat['etape_plafond'])
 
 
+class PlafondSoutirageTest(SimpleTestCase):
+    """ACAL829 — l'import réseau face à un plafond de soutirage SAISI.
+
+    Charge 9 kWh/h sans aucune production sur 24 h : import 9 kW à chaque pas.
+    """
+
+    @staticmethod
+    def _contexte(plafond=None, justification=JUSTIFICATION):
+        contexte = contexte_de_test(heures=24)
+        contexte['consommation']['import_intervalle']['valeurs'] = [9.0] * 24
+        if plafond is not None:
+            raccordement = contexte[bloc.CLE_RACCORDEMENT]
+            raccordement['plafond_soutirage_kw'] = plafond
+            if justification is not None:
+                raccordement['plafond_soutirage_justification'] = justification
+        return contexte
+
+    def _soutirage(self, plafond, **options):
+        _suite, resultat = bloc.bloc_autoconsommation(
+            serie_de_test(heures=24, p_ac=0.0),
+            self._contexte(plafond, **options))
+        return resultat
+
+    def test_9_kw_face_a_6_kw_pointe_9_et_24_heures_au_dessus(self):
+        # 24 pas × (9 − 6) kWh = 72 kWh au-dessus du plafond.
+        soutirage = self._soutirage(6.0)['soutirage']
+        self.assertEqual(soutirage, {
+            'plafond_kw': 6.0, 'justification': JUSTIFICATION,
+            'pointe_kw': 9.0, 'heures_au_dessus': 24,
+            'energie_au_dessus_kwh': 72.0})
+
+    def test_plafond_egal_a_la_pointe_zero_heure(self):
+        # strictement au-dessus : 9 > 9 est faux (mutant « ≥ » ⇒ 24 h).
+        soutirage = self._soutirage(9.0)['soutirage']
+        self.assertEqual((soutirage['heures_au_dessus'],
+                          soutirage['energie_au_dessus_kwh']), (0, 0.0))
+        self.assertEqual(soutirage['pointe_kw'], 9.0)
+
+    def test_non_saisi_soutirage_null_jamais_zero_heure(self):
+        resultat = self._soutirage(None)
+        self.assertIn('soutirage', resultat)
+        self.assertIsNone(resultat['soutirage'])
+
+    def test_sans_justification_le_bloc_est_omis_en_nommant_le_champ(self):
+        resultat = self._soutirage(6.0, justification=None)
+        self.assertIsNone(resultat['energie'])
+        self.assertIsNone(resultat['soutirage'])
+        self.assertIn('plafond_soutirage_justification',
+                      resultat['motif_absence'])
+
+    def test_saisie_refus_nommes(self):
+        from apps.calepinage.services.raccordement import (
+            RaccordementInvalide, _saisie_publiee,
+        )
+
+        for corps, champ, etat in (
+                ({'plafond_soutirage_kw': -1,
+                  'plafond_soutirage_justification': 'x'},
+                 'raccordement.plafond_soutirage_kw', False),
+                ({'plafond_soutirage_kw': 'abc',
+                  'plafond_soutirage_justification': 'x'},
+                 'raccordement.plafond_soutirage_kw', False),
+                ({'plafond_soutirage_kw': 6},
+                 'raccordement.plafond_soutirage_justification', True)):
+            with self.subTest(corps=corps):
+                with self.assertRaises(RaccordementInvalide) as refus:
+                    _saisie_publiee(corps)
+                self.assertEqual(refus.exception.champ, champ)
+                self.assertEqual(refus.exception.etat, etat)
+        retenue = _saisie_publiee({'plafond_soutirage_kw': 0,
+                                   'plafond_soutirage_justification': 'x'})
+        self.assertEqual(retenue['plafond_soutirage_kw'], 0.0)
+
+
+class PlagesPlafondInjectionTest(SimpleTestCase):
+    """ACAL828 — une plage horaire REMPLACE le plafond de base sur ses heures.
+
+    Série de 24 h : 6 kW de production de 8 h à 18 h INCLUS (heure 18 comprise,
+    pour qu'un ``≤ fin_h`` soit visible), charge 1 kWh : surplus 5 kWh/h.
+    """
+
+    @staticmethod
+    def _serie():
+        serie = serie_de_test(heures=24)
+        for point in serie['points']:
+            if point['heure'] == 18:
+                point['p_ac_kw'] = P_AC_KW
+        return serie
+
+    @staticmethod
+    def _contexte(plages, plafond=None):
+        contexte = contexte_de_test(heures=24, plafond=plafond,
+                                    justification=JUSTIFICATION)
+        contexte[bloc.CLE_RACCORDEMENT]['plages_plafond_injection'] = plages
+        return contexte
+
+    def test_plage_16_18_a_2_kw_n_ecrete_que_les_heures_16_et_17(self):
+        plage = {'debut_h': 16, 'fin_h': 18, 'plafond_kw': 2.0}
+        suite, resultat = bloc.bloc_autoconsommation(
+            self._serie(), self._contexte([plage]))
+        exports = {point['heure']: point['reseau_export_kwh']
+                   for point in suite['points']}
+        self.assertEqual((exports[16], exports[17]), (2.0, 2.0))
+        # 15 h et 18 h (borne exclue) ne sont pas touchées : surplus 5 kWh.
+        self.assertEqual((exports[15], exports[18]), (5.0, 5.0))
+        publie = resultat['plafond']
+        self.assertIsNone(publie['plafond_kw'])
+        self.assertEqual(publie['heures_ecretees'], 2)
+        self.assertEqual(publie['plages'], [dict(
+            plage, heures_ecretees=2, energie_ecretee_kwh=6.0)])
+
+    def test_la_plage_remplace_le_plafond_de_base_sur_ses_heures(self):
+        # base 4 kW : surplus 5 écrêté de 1 kWh de 8 h à 15 h (8 h) puis 18 h ;
+        # plage 16-18 à 2 kW : 3 kWh écrêtés par heure sur 16 h et 17 h.
+        plage = {'debut_h': 16, 'fin_h': 18, 'plafond_kw': 2.0}
+        suite, resultat = bloc.bloc_autoconsommation(
+            self._serie(), self._contexte([plage], plafond=4.0))
+        exports = {point['heure']: point['reseau_export_kwh']
+                   for point in suite['points']}
+        self.assertEqual((exports[15], exports[16], exports[17], exports[18]),
+                         (4.0, 2.0, 2.0, 4.0))
+        self.assertEqual(resultat['plafond']['plages'][0]['heures_ecretees'],
+                         2)
+        self.assertEqual(resultat['plafond']['heures_ecretees'], 11)
+
+    def test_plage_sans_depassement_publie_zero_heure(self):
+        plage = {'debut_h': 2, 'fin_h': 4, 'plafond_kw': 2.0}
+        _suite, resultat = bloc.bloc_autoconsommation(
+            self._serie(), self._contexte([plage]))
+        self.assertEqual(resultat['plafond']['plages'][0]['heures_ecretees'],
+                         0)
+
+    def test_pas_non_horaire_omet_le_bloc_en_nommant_la_resolution(self):
+        serie = self._serie()
+        serie['pas_minutes'] = 30
+        _suite, resultat = bloc.bloc_autoconsommation(
+            serie, self._contexte([{'debut_h': 16, 'fin_h': 18,
+                                    'plafond_kw': 2.0}]))
+        self.assertIsNone(resultat['energie'])
+        self.assertIn('simulation.resolution_minutes',
+                      resultat['motif_absence'])
+
+    def test_validation_des_plages(self):
+        from apps.calepinage.services import limites_livraison as limites
+
+        plage = {'debut_h': 8, 'fin_h': 10, 'plafond_kw': 1.0}
+        self.assertIsNone(limites.plages_saisies(None))
+        self.assertEqual(limites.plages_saisies([plage]), [plage])
+        cas = {
+            'plus de 3 plages': [plage] * 4,
+            'debut >= fin': [{'debut_h': 10, 'fin_h': 10, 'plafond_kw': 1}],
+            'hors 0-24': [{'debut_h': 20, 'fin_h': 25, 'plafond_kw': 1}],
+            'chevauchement': [plage, {'debut_h': 9, 'fin_h': 12,
+                                      'plafond_kw': 1}],
+            'plafond négatif': [{'debut_h': 1, 'fin_h': 2, 'plafond_kw': -1}],
+        }
+        for nom, plages in cas.items():
+            with self.subTest(nom):
+                with self.assertRaises(limites.PlageInvalide) as refus:
+                    limites.plages_saisies(plages)
+                self.assertTrue(
+                    refus.exception.champ.startswith(
+                        'plages_plafond_injection'))
+        # deux plages contiguës ne se chevauchent pas ; 24 est admis.
+        self.assertEqual(len(limites.plages_saisies(
+            [plage, {'debut_h': 10, 'fin_h': 24, 'plafond_kw': 0}])), 2)
+
+
 class ApresBatterieTest(SimpleTestCase):
     """La production vue au compteur est celle que CALX188 a laissée."""
 

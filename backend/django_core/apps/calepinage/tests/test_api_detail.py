@@ -107,6 +107,23 @@ class DetailContratTest(BaseApiCalepinage):
         self.assertEqual(detail['devis']['statut'], self.devis.statut)
         self.assertEqual(detail['lead']['ville'], 'Casablanca')
 
+    def test_acal915_surfaces_chiffrables_zone_et_champ_au_sol(self):
+        """ACAL915 — zone 42 + champ au sol 176 ⇒ deux lignes, total 218 (le
+        cumul toit + sol voulu, D-ACAL-5) ; un pan non pavé n'est pas chiffré ;
+        un calepinage neuf ⇒ ``[]``. Mutant : ne pas servir la clé ⇒ rouge."""
+        Calepinage.objects.filter(pk=self.rempli.pk).update(roof_layout={
+            'schema_version': 2,
+            'zones': [{'id': 'z1', 'label': 'Zone 1', 'geometry': {'count': 42}},
+                      {'id': 'z2', 'label': 'Zone 2'}],
+            'poseSurfaces': [{'id': 's1', 'kind': 'sol', 'label': 'Champ au sol 1',
+                              'moduleWc': 550, 'engine': {'modules': 176}}]})
+        surfaces = self._detail(self.rempli)['surfaces_chiffrables']
+        self.assertEqual([(s['libelle'], s['modules']) for s in surfaces],
+                         [('Zone 1', 42), ('Champ au sol 1', 176)])
+        self.assertEqual(sum(s['modules'] for s in surfaces), 218)
+        self.assertEqual(set(surfaces[0]), set(EXEMPLE_SERVI['surfaces_chiffrables'][0]))
+        self.assertEqual(self._detail(self.neuf)['surfaces_chiffrables'], [])
+
     def test_autre_societe_introuvable(self):
         reponse = self.api_autre.get(url_detail(self.rempli.pk))
         self.assertEqual(reponse.status_code, 404)

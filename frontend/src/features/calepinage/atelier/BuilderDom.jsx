@@ -3,8 +3,11 @@
 // l'enveloppe du composant et les imports sont ajoutés, l'état arrive en props
 // NOMMÉES). Mêmes ids, MÊME ORDRE des enfants (consommés par roofPro11/layoutEditor.ts).
 import ToitClientOverlay from '../../ventes/ToitClientOverlay'
+import HeureLegale from '../HeureLegale'
+import Pourquoi from '../commun/Pourquoi'
 
 export default function BuilderDom({
+  expert = false, // ACAL869 — le niveau expert (publié par le rail) : ouvre « Réglages avancés » d'office
   basculerPleinEcran3d,
   chipClass,
   contourClientBrut,
@@ -75,15 +78,20 @@ export default function BuilderDom({
               type="button"
               onClick={basculerPleinEcran3d}
               data-testid="rp9-plein-ecran-toggle"
-              className={`${chipClass} absolute right-3 top-3 z-10`}
+              className={`${chipClass} rp9-carte-puce`}
             >
               {pleinEcran3d ? 'Quitter le plein écran' : 'Plein écran'}
             </button>
+            {/* ACAL954 — « Terminer le tracé » SUR la carte (centré en bas), plus sous la flottaison ;
+                ids inchangés (lus par roof-tool-pro11.ts). Même fond opaque que la puce ACAL950,
+                rangé dans le flux de ce bandeau (position statique). */}
+            <div className="absolute bottom-10 left-1/2 z-10 flex -translate-x-1/2 gap-2">
+              <button type="button" id="rp9-finish" disabled className={`${chipClass} rp9-carte-puce`} style={{ position: 'static' }}>Terminer le tracé</button>
+              <button type="button" id="rp9-undo-point" hidden className={`${chipClass} rp9-carte-puce`} style={{ position: 'static' }}>Annuler le dernier point</button>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-3 border-t border-border p-4">
-            <button type="button" id="rp9-finish" disabled className={chipClass}>Terminer le tracé</button>
-            <button type="button" id="rp9-undo-point" hidden className={chipClass}>Annuler le dernier point</button>
             <button type="button" id="rp9-clear" className={chipClass}>Effacer</button>
             <button type="button" id="rp9-add-area" disabled className={chipClass}>+ Ajouter une zone</button>
             {/* ACAL233 — la parcelle du site (clé racine `parcelle`, plan de masse). */}
@@ -169,6 +177,13 @@ export default function BuilderDom({
                 <label htmlFor="rp9-overhang-input" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mr-1">Débord (m)</label>
                 <input id="rp9-overhang-input" type="number" inputMode="decimal" step="any" min="0" defaultValue="0"
                   className="fig h-9 w-20 border border-border bg-background px-2 text-center text-base text-foreground outline-none focus:border-brass-400" />
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <label htmlFor="rp9-seuil-acces" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mr-1">Accès solaire minimal (%)</label>
+                <input id="rp9-seuil-acces" type="text" inputMode="decimal" aria-describedby="rp9-seuil-acces-erreur rp9-seuil-acces-note"
+                  className="fig h-11 w-20 border border-border bg-background px-2 text-center text-base text-foreground outline-none focus:border-brass-400" />
+                <span id="rp9-seuil-acces-note" className="text-xs text-muted-foreground" />
+                <span id="rp9-seuil-acces-erreur" role="alert" className="w-full text-xs text-destructive" />
               </div>
             </div>
             <div id="rp9-pitched-controls" hidden className="space-y-4">
@@ -293,6 +308,7 @@ export default function BuilderDom({
                 <p id="rp9-heatmap-note" className="w-full text-xs text-muted-foreground" />
               </div>
             </div>
+            <HeureLegale />
           </div>
 
           {/* W69 — « Personnaliser la disposition » : porté de apps/web/toiture-3d-pro-11.astro
@@ -318,6 +334,71 @@ export default function BuilderDom({
             </p>
 
             <div id="rp9-layout-panel" hidden className="mt-5 space-y-5">
+              <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+                <div>
+                  <dd id="rp9-layout-count" className="fig text-lg text-foreground sm:text-xl">—</dd>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Panneaux posés<Pourquoi cle="toit.pose_panneaux" /></dt>
+                </div>
+                <div>
+                  <dd id="rp9-layout-kwc" className="fig text-lg text-foreground sm:text-xl">—</dd>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Puissance<Pourquoi cle="toit.pose_puissance" /></dt>
+                </div>
+                <div>
+                  <dd id="rp9-layout-free" className="fig text-lg text-foreground sm:text-xl">—</dd>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Emplacements libres<Pourquoi cle="toit.pose_emplacements_libres" /></dt>
+                </div>
+                <div>
+                  <dd id="rp9-layout-cover" className="fig text-lg text-primary-text sm:text-xl">—</dd>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Couverture besoin<Pourquoi cle="toit.pose_couverture" /></dt>
+                </div>
+              </dl>
+
+              {/* PV25 — sélection MULTIPLE (marquee au glissé + Maj, ou mode sélection au
+                  doigt), déplacement du groupe / de la rangée entière, et nudge d'azimut.
+                  Chaque déplacement reste « tout ou rien » : si un seul panneau du groupe
+                  n'a pas d'emplacement valide, rien ne bouge.
+                  PV34 — les gestes SANS modificateur sont désormais les principaux : glisser
+                  sur le toit encadre, double-cliquer prend la rangée. Ces boutons restent le
+                  repli tactile (et le mode rangée), et le compteur dit en permanence combien
+                  de panneaux sont tenus. */}
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Poser &amp; sélectionner</span>
+                <button type="button" id="rp9-layout-fill"
+                  className="border border-brass-400 bg-brass-400/10 px-4 py-2.5 text-sm font-bold text-primary-text transition-colors hover:bg-brass-400/20 disabled:cursor-not-allowed disabled:opacity-40">
+                  ⤢ Remplir automatiquement
+                </button>
+                <button type="button" id="rp9-layout-select" aria-pressed="false"
+                  className="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text">
+                  ▭ Sélection multiple
+                </button>
+                <button type="button" id="rp9-layout-clear-sel"
+                  className="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text disabled:cursor-not-allowed disabled:opacity-40">
+                  ✕ Effacer la sélection
+                </button>
+                <span id="rp9-layout-selcount" data-rp9-selcount="0" aria-live="polite"
+                  className="text-sm font-semibold text-primary-text">
+                  Aucun panneau sélectionné
+                </span>
+              </div>
+              {/* PV26 — annuler / rétablir (Ctrl+Z / Ctrl+Y, ou ⌘). Les flèches du
+                  clavier déplacent le panneau (ou le groupe) d'un emplacement. */}
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Historique</span>
+                <button type="button" id="rp9-layout-undo" disabled
+                  className="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text disabled:cursor-not-allowed disabled:opacity-40">
+                  ↶ Annuler <span className="text-muted-foreground">(Ctrl+Z)</span>
+                </button>
+                <button type="button" id="rp9-layout-redo" disabled
+                  className="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text disabled:cursor-not-allowed disabled:opacity-40">
+                  ↷ Rétablir <span className="text-muted-foreground">(Ctrl+Y)</span>
+                </button>
+                <span className="text-xs text-foreground">Flèches ← ↑ ↓ → : déplacer d’un emplacement</span>
+              </div>
+
+              {/* ACAL869 — mode guidé : les gestes de base restent visibles, le reste est rangé ici (ids rp9-* inchangés, seulement repliés). */}
+              <details id="rp9-layout-avance" open={!!expert} className="border border-border p-3">
+                <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold text-foreground">Réglages avancés</summary>
+                <div className="mt-3 space-y-5">
               {/* PV30 — DEUX MODES d'édition, côte à côte et explicites. « Emplacements
                   validés » (le défaut) ne déplace un panneau que d'une cellule calculée à
                   une autre : sûr, mais impossible d'y gagner de la place. « Placement
@@ -362,25 +443,6 @@ export default function BuilderDom({
                 </div>
               </div>
 
-              <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
-                <div>
-                  <dd id="rp9-layout-count" className="fig text-lg text-foreground sm:text-xl">—</dd>
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Panneaux posés</dt>
-                </div>
-                <div>
-                  <dd id="rp9-layout-kwc" className="fig text-lg text-foreground sm:text-xl">—</dd>
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Puissance</dt>
-                </div>
-                <div>
-                  <dd id="rp9-layout-free" className="fig text-lg text-foreground sm:text-xl">—</dd>
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Emplacements libres</dt>
-                </div>
-                <div>
-                  <dd id="rp9-layout-cover" className="fig text-lg text-primary-text sm:text-xl">—</dd>
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Couverture besoin</dt>
-                </div>
-              </dl>
-
               {/* Boutons +/− (touch + mouvement réduit, sans glissé fin) */}
               <div className="flex flex-wrap items-center gap-3">
                 <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Ajouter / retirer</span>
@@ -388,42 +450,18 @@ export default function BuilderDom({
                   className="h-11 w-11 border border-border text-2xl font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text disabled:cursor-not-allowed disabled:opacity-40">−</button>
                 <button type="button" id="rp9-layout-plus" aria-label="Ajouter un panneau"
                   className="h-11 w-11 border border-border text-2xl font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text disabled:cursor-not-allowed disabled:opacity-40">+</button>
-                <button type="button" id="rp9-layout-fill"
-                  className="border border-brass-400 bg-brass-400/10 px-4 py-2.5 text-sm font-bold text-primary-text transition-colors hover:bg-brass-400/20 disabled:cursor-not-allowed disabled:opacity-40">
-                  ⤢ Remplir automatiquement
-                </button>
                 <button type="button" id="rp9-layout-reset"
                   className="ml-auto border border-brass-400 bg-brass-400/10 px-4 py-2.5 text-sm font-bold text-primary-text transition-colors hover:bg-brass-400/20">
                   ↺ Réinitialiser la disposition optimale
                 </button>
               </div>
 
-              {/* PV25 — sélection MULTIPLE (marquee au glissé + Maj, ou mode sélection au
-                  doigt), déplacement du groupe / de la rangée entière, et nudge d'azimut.
-                  Chaque déplacement reste « tout ou rien » : si un seul panneau du groupe
-                  n'a pas d'emplacement valide, rien ne bouge.
-                  PV34 — les gestes SANS modificateur sont désormais les principaux : glisser
-                  sur le toit encadre, double-cliquer prend la rangée. Ces boutons restent le
-                  repli tactile (et le mode rangée), et le compteur dit en permanence combien
-                  de panneaux sont tenus. */}
               <div className="flex flex-wrap items-center gap-3">
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sélection &amp; rangée</span>
-                <button type="button" id="rp9-layout-select" aria-pressed="false"
-                  className="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text">
-                  ▭ Sélection multiple
-                </button>
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Rangée</span>
                 <button type="button" id="rp9-layout-row" aria-pressed="false"
                   className="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text">
                   ⇔ Déplacer la rangée
                 </button>
-                <button type="button" id="rp9-layout-clear-sel"
-                  className="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text disabled:cursor-not-allowed disabled:opacity-40">
-                  ✕ Effacer la sélection
-                </button>
-                <span id="rp9-layout-selcount" data-rp9-selcount="0" aria-live="polite"
-                  className="text-sm font-semibold text-primary-text">
-                  Aucun panneau sélectionné
-                </span>
               </div>
               <p className="text-xs leading-relaxed text-foreground">
                 Sur la 3D : <strong className="text-foreground">glissez sur le toit, à côté des
@@ -435,21 +473,6 @@ export default function BuilderDom({
                 sélection. Glissez ensuite n’importe quel panneau sélectionné : tout le groupe
                 suit le curseur.
               </p>
-
-              {/* PV26 — annuler / rétablir (Ctrl+Z / Ctrl+Y, ou ⌘). Les flèches du
-                  clavier déplacent le panneau (ou le groupe) d'un emplacement. */}
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Historique</span>
-                <button type="button" id="rp9-layout-undo" disabled
-                  className="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text disabled:cursor-not-allowed disabled:opacity-40">
-                  ↶ Annuler <span className="text-muted-foreground">(Ctrl+Z)</span>
-                </button>
-                <button type="button" id="rp9-layout-redo" disabled
-                  className="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text disabled:cursor-not-allowed disabled:opacity-40">
-                  ↷ Rétablir <span className="text-muted-foreground">(Ctrl+Y)</span>
-                </button>
-                <span className="text-xs text-foreground">Flèches ← ↑ ↓ → : déplacer d’un emplacement</span>
-              </div>
 
               {/* Nudge d'AZIMUT : n'a de sens que sur un toit en PENTE (la face du pan est
                   imposée par la toiture ; sur toit plat l'azimut est un axe de l'optimiseur).
@@ -471,6 +494,8 @@ export default function BuilderDom({
                 <div id="rp9-layout-grid" className="rp9-layout-grid mt-3" role="group" aria-label="Plan des emplacements de panneaux"></div>
                 <p id="rp9-layout-note" className="mt-2 min-h-[1.25rem] text-xs leading-relaxed text-foreground" aria-live="polite"></p>
               </div>
+                </div>
+              </details>
             </div>
           </div>
 

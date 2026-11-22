@@ -2,9 +2,13 @@
 // et export image HD (CAL180), déplacés VERBATIM depuis pages/ventes/ToitureDesign.jsx
 // (move only : le JSX est inchangé ; seuls l'enveloppe du composant et les
 // imports sont ajoutés, l'état arrive en props NOMMÉES).
+import { useState } from 'react'
+import { useParams } from 'react-router-dom'
 import PanneauCalques from '../PanneauCalques'
 import Vue2DPlan from '../Vue2DPlan'
 import { FACTEURS_HD } from '../exportImage'
+import { exporterVideoOrbite } from '../exportVideo' // ACAL896
+import { useModeExpert } from './modeExpert'
 
 const VUES_CAMERA = [
   ['dessus', 'Dessus', 'cal-vue-dessus'],
@@ -16,8 +20,22 @@ const VUES_CAMERA = [
 export default function OutilsVue({
   builderReady, utilisateurCourantId, builderApiActuel, builderApi, chipClass,
   vue2d, setVue2d, plan2d, panId2d, ouvrirVue2d,
-  hdBusy, hdMessage, exporterHd,
+  hdBusy, hdMessage, exporterHd, gltfBusy, gltfMessage, exporterGltf,
 }) {
+  const [expert] = useModeExpert()
+  // ACAL896 — « Vidéo 10 s » : état local du bouton (ToitureDesign.jsx n'est pas touché).
+  const { id: reference } = useParams()
+  const [videoMessage, setVideoMessage] = useState(null) // null = au repos ; sinon le texte affiché
+  const [videoBusy, setVideoBusy] = useState(false)
+  const lancerVideo = async () => {
+    setVideoBusy(true)
+    setVideoMessage('Enregistrement… (0 s)')
+    const res = await exporterVideoOrbite(builderApi, {
+      reference, surProgres: (s) => setVideoMessage(`Enregistrement… (${s} s)`),
+    })
+    setVideoMessage(res.ok ? `Vidéo enregistrée : ${res.nom}` : res.motif)
+    setVideoBusy(false)
+  }
   return (
     <>
         {/* CAL103 — PANNEAU DE CALQUES : une seule liste pour imagerie, cadastre,
@@ -119,6 +137,32 @@ export default function OutilsVue({
               </button>
             ))}
             {hdMessage && <span className="text-xs text-muted-foreground" data-testid="cal-export-hd-message">{hdMessage}</span>}
+            {/* ACAL537 — scène 3D en glTF (.glb) pour un architecte : niveau expert. */}
+            {expert && (
+              <button
+                type="button"
+                className={chipClass}
+                disabled={gltfBusy}
+                data-testid="cal-export-gltf"
+                onClick={exporterGltf}
+              >
+                Exporter la 3D (glTF)
+              </button>
+            )}
+            {gltfMessage && <span className="text-xs text-muted-foreground" data-testid="cal-export-gltf-message">{gltfMessage}</span>}
+            {/* ACAL896 — une orbite de 10 s enregistrée puis téléchargée (WhatsApp) : niveau expert, aucun prix. */}
+            {expert && (
+              <button
+                type="button"
+                className={chipClass}
+                disabled={videoBusy}
+                data-testid="cal-video-orbite"
+                onClick={lancerVideo}
+              >
+                Vidéo 10 s
+              </button>
+            )}
+            {videoMessage && <span className="text-xs text-muted-foreground" data-testid="cal-video-orbite-message" role="status">{videoMessage}</span>}
           </div>
         )}
     </>

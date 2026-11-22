@@ -81,6 +81,18 @@ describe('CAL104 — cotes et compte', () => {
     expect(screen.queryByTestId('v2d-divergence')).toBeNull()
   })
 
+  it('ACAL511 — pan `existant` : contour hachuré et légende ; pan ordinaire : aucun motif', () => {
+    const { unmount } = render(<Vue2DPlan plan={{ ...PLAN, existant: true }} compte3d={2} />)
+    expect(screen.getByTestId('plan-hachure')).toBeTruthy()
+    expect(screen.getByTestId('v2d-contour').getAttribute('fill')).toBe('url(#plan-hachure-existant)')
+    expect(screen.getByTestId('v2d-legende-existant').textContent).toBe('Modules déjà en place')
+    unmount()
+    render(<Vue2DPlan plan={PLAN} compte3d={2} />)
+    expect(screen.queryByTestId('plan-hachure')).toBeNull()
+    expect(screen.queryByTestId('v2d-legende-existant')).toBeNull()
+    expect(screen.getByTestId('v2d-contour').getAttribute('fill')).toBe('none')
+  })
+
   it('si la 3D affiche un AUTRE compte, l’écran le dit au lieu de trancher', () => {
     render(<Vue2DPlan plan={PLAN} compte3d={7} />)
     const note = screen.getByTestId('v2d-divergence')

@@ -50,6 +50,8 @@ _FORME_GABARIT = inline_serializer('CalepinageGabaritDossier', {
     'actif': serializers.BooleanField(),
     'pieces_attendues': serializers.ListField(child=serializers.DictField()),
     'champs': serializers.ListField(child=serializers.DictField()),
+    'verifie_le': serializers.DateField(allow_null=True),  # ACAL822
+    'limites': serializers.ListField(child=serializers.DictField()),
     'fichiers': serializers.DictField(allow_null=True),
     'depose_par': serializers.DictField(allow_null=True),
     'depose_le': serializers.DateTimeField(allow_null=True),
@@ -98,12 +100,22 @@ _SCALAIRES_GABARIT = {
     'actif': serializers.BooleanField(required=False),
 }
 
+_ELEMENT_LIMITE = inline_serializer('CalepinageGabaritLimite', {  # ACAL822
+    'code': ChaineStricte(allow_blank=False),
+    'valeur': serializers.FloatField(),
+    'unite': ChaineStricte(allow_blank=False),
+    'source': ChaineStricte(allow_blank=False),
+})
+
 _CORPS_GABARIT = inline_serializer('CalepinageGabaritDossierCorps', {
     **_SCALAIRES_GABARIT,
     'pieces_attendues': serializers.ListField(
         child=_ELEMENT_PIECE, required=False),
     'champs': serializers.ListField(
         child=_ELEMENT_CHAMP, required=False),
+    'verifie_le': serializers.DateField(required=False, allow_null=True),
+    'limites': serializers.ListField(
+        child=_ELEMENT_LIMITE, required=False),
 })
 _CORPS_GABARIT_MULTIPART = inline_serializer(
     'CalepinageGabaritDossierCorpsFichier', {
@@ -131,7 +143,7 @@ def _donnees(request):
     # PARTIE À NOM DE FICHIER (``request.FILES``, jamais dans ``request.data``) :
     # elle était ignorée en silence (201 avec une liste vide). Son texte est lu
     # et validé comme toute liste (``_liste_saisie`` : 400 nommé sinon).
-    for cle in ('pieces_attendues', 'champs'):
+    for cle in ('pieces_attendues', 'champs', 'limites'):
         if cle not in donnees and cle in getattr(request, 'FILES', {}):
             donnees[cle] = request.FILES[cle].read().decode('utf-8', 'replace')
     donnees.pop('fichier', None)
