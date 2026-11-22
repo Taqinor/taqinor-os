@@ -55,6 +55,16 @@ __all__ = ['ElectriqueActionsMixin']
 _REFUS_DE_LECTURE = (TemperaturesInvalides, DecisionInvalide, TerreInvalide)
 
 
+def _bornes_temperature():
+    """``{champ: {min_value, max_value}}`` — la plage du calcul complet, non recopiée."""
+    formes = corps_entree_resserre()['properties']
+    return {champ: {'min_value': formes[champ]['minimum'],
+                    'max_value': formes[champ]['maximum']}
+            for champ in ('temperature_min_c', 'temperature_max_c')}
+
+
+_BORNES_TEMPERATURE = _bornes_temperature()
+
 _FORME_RESULTAT = forme_du_contrat(
     'CalepinageResultatServi', 'calepinage_resultat.json')
 
@@ -201,11 +211,17 @@ class ElectriqueActionsMixin:
 
     @extend_schema(request=inline_serializer(
         'CalepinageControleChaineCorps', {
-            'module_produit': drf_serializers.IntegerField(),
-            'onduleur_produit': drf_serializers.IntegerField(),
+            # Bornes publiées = celles que le service refuse en 400 (ENF11) :
+            # identifiant de clé primaire, plage de température du calcul complet.
+            'module_produit': drf_serializers.IntegerField(
+                min_value=1, max_value=2147483647),
+            'onduleur_produit': drf_serializers.IntegerField(
+                min_value=1, max_value=2147483647),
             'nombre_modules': drf_serializers.IntegerField(min_value=1),
-            'temperature_min_c': drf_serializers.FloatField(),
-            'temperature_max_c': drf_serializers.FloatField(),
+            'temperature_min_c': drf_serializers.FloatField(
+                **_BORNES_TEMPERATURE['temperature_min_c']),
+            'temperature_max_c': drf_serializers.FloatField(
+                **_BORNES_TEMPERATURE['temperature_max_c']),
         }), responses=forme_du_contrat(
             'CalepinageControleChaine', 'calepinage_controle_chaine.json'))
     @action(detail=False, methods=['post'], url_path='controle-chaine',
@@ -223,6 +239,7 @@ class ElectriqueActionsMixin:
         except ControleInvalide as refus:
             return Response({refus.champ: str(refus)}, status=(
                 status.HTTP_404_NOT_FOUND if refus.introuvable
+                else status.HTTP_409_CONFLICT if refus.etat  # ENF11 : règle de paire
                 else status.HTTP_400_BAD_REQUEST))
 
     @extend_schema(request=inline_serializer(

@@ -17,12 +17,15 @@ SOURCE = 'fiches module et onduleur'
 
 
 class ControleInvalide(ValueError):
-    """Un refus NOMMÉ (400), ou un produit introuvable (404)."""
+    """Un refus NOMMÉ (400), un produit introuvable (404), ou — ``etat`` — une
+    règle qui LIE plusieurs valeurs (froid ≥ chaud) que le schéma ne dit pas :
+    409 (ENF11, comme ``limites_livraison.PlageInvalide``)."""
 
-    def __init__(self, champ, message, *, introuvable=False):
+    def __init__(self, champ, message, *, introuvable=False, etat=False):
         super().__init__(message)
         self.champ = champ
         self.introuvable = introuvable
+        self.etat = etat
 
 
 def _volts(valeur):
@@ -126,7 +129,9 @@ def _temperatures(corps):
         _electrique._saisie({'temperature_min_c': froid,
                              'temperature_max_c': chaud})
     except _electrique.TemperaturesInvalides as refus:
-        raise ControleInvalide(refus.champ, str(refus))
+        # Les deux températures sont présentes ici : le seul refus possible est
+        # « froid ≥ chaud », une règle de paire (état, 409).
+        raise ControleInvalide(refus.champ, str(refus), etat=True)
     for champ, valeur in (('temperature_min_c', froid),
                           ('temperature_max_c', chaud)):
         mini, maxi = _plage(champ)

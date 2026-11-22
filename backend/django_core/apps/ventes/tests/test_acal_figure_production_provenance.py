@@ -66,7 +66,7 @@ class ProductionProvenanceTest(TestCase):
             company=self.company, nom='Panneau Canadian Solar 715W',
             sku='A101-PAN', prix_vente=Decimal('1200'),
             prix_achat=Decimal('800'), quantite_stock=100)
-        Produit.objects.create(
+        self.onduleur = Produit.objects.create(
             company=self.company, nom='Onduleur réseau Growatt 10kW',
             sku='A101-OND', prix_vente=Decimal('14000'),
             prix_achat=Decimal('9000'), quantite_stock=100)
@@ -83,6 +83,13 @@ class ProductionProvenanceTest(TestCase):
             devis=devis, produit=self.panneau, designation=self.panneau.nom,
             quantite=Decimal(str(panneaux)), prix_unitaire=Decimal('1200'),
             remise=Decimal('0'))
+        # Le moteur PDF refuse un devis sans onduleur (builder.py, règle dure
+        # « une option ne se rend jamais sans onduleur ») : la ligne onduleur
+        # rend le devis rendable ; elle ne touche pas aux panneaux (kWc).
+        LigneDevis.objects.create(
+            devis=devis, produit=self.onduleur,
+            designation=self.onduleur.nom, quantite=Decimal('1'),
+            prix_unitaire=Decimal('14000'), remise=Decimal('0'))
         return devis
 
     def test_decimale_haute_marquee_calepinage(self):

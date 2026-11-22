@@ -257,6 +257,10 @@ class ControleChaineSaisiesRefuseesTest(SimpleTestCase):
         refus = self._refus(temperature_min_c=60.0, temperature_max_c=10.0)
         self.assertEqual(refus.champ, 'temperature_min_c')
         self.assertIn('inversés', str(refus))
+        self.assertTrue(refus.etat)  # règle de paire : 409 à l'API (ENF11)
+
+    def test_refus_de_champ_seul_reste_un_400(self):
+        self.assertFalse(self._refus(temperature_min_c=-80.0).etat)
 
     def test_temperatures_hors_plage_refusees(self):
         refus = self._refus(temperature_min_c=-80.0)

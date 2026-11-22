@@ -109,8 +109,8 @@ describe('W97 §5 — l\'éditeur de disposition recompute count/kWc/couverture 
     const editor = makeEditor(ctx, sink);
     editor.setLayoutMode(true);
     expect(num('rp9-layout-count')).toBe(8); // les 8 premières cellules occupées
-    // kWc = 8 × 0,72 = 5,76 → « 5,8 kWc »
-    expect(txt('rp9-layout-kwc')).toMatch(/5[.,]8\s*kWc/);
+    // kWc = 8 × 0,72 = 5,76 → « 5,76 kWc » (R2-09 : deux décimales, comme l'ERP et le devis)
+    expect(txt('rp9-layout-kwc')).toMatch(/5,76\s*kWc/);
     expect(txt('rp9-layout-cover')).toBe('100 %'); // 8 / besoin 8
     // le plan tactile a 12 cellules (la lattice complète)
     expect(document.querySelectorAll('#rp9-layout-grid [data-cell]').length).toBe(12);
