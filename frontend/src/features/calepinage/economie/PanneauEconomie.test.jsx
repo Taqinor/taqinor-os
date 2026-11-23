@@ -27,7 +27,7 @@ vi.mock('recharts', async (importOriginal) => {
 })
 
 vi.mock('../../../api/calepinageApi', () => ({
-  default: { calepinages: { get: vi.fn() } },
+  default: { calepinages: { get: vi.fn(), resultat: vi.fn() } },
 }))
 vi.mock('../../../api/ventesApi', () => ({
   default: { getEconomieDevis: vi.fn() },
@@ -41,7 +41,11 @@ const rendre = () => render(
   <MemoryRouter><PanneauEconomie calepinageId={1} /></MemoryRouter>,
 )
 
-beforeEach(() => { vi.clearAllMocks() })
+beforeEach(() => {
+  vi.clearAllMocks()
+  // ACAL1611 — par défaut : aucune simulation (P50 null), donc aucune comparaison.
+  calepinageApi.calepinages.resultat.mockResolvedValue(reponseContrat('calepinage', 'calepinage_resultat', 'exemple_vide'))
+})
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('PanneauEconomie (CALX289)', () => {
@@ -194,5 +198,42 @@ describe('PanneauEconomie (CALX289)', () => {
     rendre()
     await screen.findByTestId('calx289-bloc')
     expect(screen.queryByTestId('acal448-graphique')).toBeNull()
+  })
+
+  describe("ACAL1611 — l'écart entre la production du devis et le P50 servi est nommé", () => {
+    const monter = async (p50Modifie) => {
+      calepinageApi.calepinages.get.mockResolvedValue({ data: exempleContrat('calepinage', 'calepinage_detail', 'exemple') })
+      ventesApi.getEconomieDevis.mockResolvedValue(reponseContrat('ventes', 'ventes_economie', 'exemple'))
+      const resultat = reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
+      if (p50Modifie !== undefined) resultat.data.production.total.p50_kwh = p50Modifie
+      calepinageApi.calepinages.resultat.mockResolvedValue(resultat)
+      rendre()
+      return screen.findByTestId('calx289-bloc')
+    }
+
+    it("devis 10 000 kWh ≠ P50 13 000 kWh : une phrase nomme les deux chiffres, l'écart et la méthode du devis", async () => {
+      const bloc = await monter()
+      const phrase = await within(bloc).findByTestId('acal1611-ecart-production')
+      expect(phrase).toHaveTextContent(/10.000 kWh\/an/)
+      expect(phrase).toHaveTextContent(/13.000 kWh\/an/)
+      expect(phrase).toHaveTextContent(/écart −23,1 %/)
+      expect(phrase).toHaveTextContent('méthode du devis')
+    })
+
+    it("à l'égalité (à 1 % près) : aucune phrase", async () => {
+      const bloc = await monter(10050)
+      await screen.findByTestId('calx289-hypotheses')
+      await vi.waitFor(() => expect(calepinageApi.calepinages.resultat).toHaveBeenCalled())
+      expect(within(bloc).queryByTestId('acal1611-ecart-production')).toBeNull()
+    })
+
+    it('sans simulation (P50 null) : aucune phrase', async () => {
+      calepinageApi.calepinages.get.mockResolvedValue({ data: exempleContrat('calepinage', 'calepinage_detail', 'exemple') })
+      ventesApi.getEconomieDevis.mockResolvedValue(reponseContrat('ventes', 'ventes_economie', 'exemple'))
+      rendre()
+      const bloc = await screen.findByTestId('calx289-bloc')
+      await vi.waitFor(() => expect(calepinageApi.calepinages.resultat).toHaveBeenCalled())
+      expect(within(bloc).queryByTestId('acal1611-ecart-production')).toBeNull()
+    })
   })
 })
