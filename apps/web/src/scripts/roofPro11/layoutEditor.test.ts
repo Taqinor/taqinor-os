@@ -456,6 +456,27 @@ describe('ACAL412 — Ctrl+Z hors mode disposition restaure le sommet et redessi
   });
 });
 
+// ACAL1403 — les boutons Annuler / Rétablir de la barre suivent la pile dès qu'un geste est photographié.
+describe('ACAL1403 — Annuler / Rétablir actifs dès qu’un geste est à défaire', () => {
+  it('un pushWorkshopHistory active Annuler ; undo active Rétablir et grise Annuler ; redo l’inverse', () => {
+    document.body.innerHTML = ''; // les autres cas laissent leur échafaudage : ids uniques
+    const { editor, ctx } = buildFreeEditor(40, []);
+    const annuler =document.getElementById('rp9-layout-undo') as HTMLButtonElement;
+    const retablir = document.getElementById('rp9-layout-redo') as HTMLButtonElement;
+    expect(annuler.disabled).toBe(true);
+    expect(retablir.disabled).toBe(true);
+    ctx.pushWorkshopHistory?.();
+    expect(annuler.disabled).toBe(false);
+    expect(retablir.disabled).toBe(true);
+    expect(editor.undo()).toBe(true);
+    expect(annuler.disabled).toBe(true);
+    expect(retablir.disabled).toBe(false);
+    expect(editor.redo()).toBe(true);
+    expect(annuler.disabled).toBe(false);
+    expect(retablir.disabled).toBe(true);
+  });
+});
+
 // ACAL418 — « Retirer la sélection » : le geste caché Alt + clic reçoit un bouton visible.
 describe('ACAL418 — barre de sélection : Retirer la sélection', () => {
   function monterRetrait(mode: 'free' | 'lattice', n: number) {

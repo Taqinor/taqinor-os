@@ -1188,6 +1188,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     applyWorkshopSnapshot(prev);
     renderCustomLayout();
     renderLayoutPanel();
+    syncUndoRedoButtons(); // ACAL1403
     if (layoutNoteEl) {
       layoutNoteEl.textContent = freeActive()
         ? `Action annulée — ${fmt(ctx.freeState?.panels.length ?? 0)} panneaux posés.`
@@ -1202,6 +1203,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     applyWorkshopSnapshot(next);
     renderCustomLayout();
     renderLayoutPanel();
+    syncUndoRedoButtons(); // ACAL1403
     if (layoutNoteEl) {
       layoutNoteEl.textContent = freeActive()
         ? `Action rétablie — ${fmt(ctx.freeState?.panels.length ?? 0)} panneaux posés.`
@@ -1251,6 +1253,12 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
    *  éditer le tracé, ou changer la pose du pan actif. */
   function pushWorkshopHistory() {
     workshopHistory.push(snapshotWorkshop());
+    syncUndoRedoButtons(); // ACAL1403 — Annuler s'allume dès qu'un geste est à défaire
+  }
+  /** ACAL1403 — SEULE écriture de `disabled` des boutons Annuler / Rétablir. */
+  function syncUndoRedoButtons() {
+    if (layoutUndoBtn) layoutUndoBtn.disabled = !workshopHistory.canUndo();
+    if (layoutRedoBtn) layoutRedoBtn.disabled = !workshopHistory.canRedo();
   }
   ctx.pushWorkshopHistory = pushWorkshopHistory; // auto-enregistrement — cf. commentaire ci-dessus
 
@@ -1482,8 +1490,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     }
     // CAL100 — `workshopHistory` pilote désormais `undo()`/`redo()` (sur-ensemble de
     // `history`/`freeHistory` — cf. bloc CAL100).
-    if (layoutUndoBtn) layoutUndoBtn.disabled = !workshopHistory.canUndo();
-    if (layoutRedoBtn) layoutRedoBtn.disabled = !workshopHistory.canRedo();
+    syncUndoRedoButtons();
     // L'azimut n'est nudgeable que sur un toit en PENTE (face imposée par la toiture) ;
     // sur toit plat, l'azimut est un AXE de l'optimiseur, pas un réglage de disposition.
     if (layoutAzWrapEl) layoutAzWrapEl.hidden = ctx.roofType !== 'pitched';
