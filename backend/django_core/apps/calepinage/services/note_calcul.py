@@ -266,13 +266,20 @@ def _controler_servi(resultat):
     Une simulation périmée refuse en 400 sous le champ ``simulation`` avec le
     MOTIF servi : jamais le P50 d'un ancien toit.
     """
-    if resultat.get('simulation_perimee'):
-        raise NoteRefusee(
-            "Note de calcul : %s" % (resultat.get('motif')
-                                     or 'la simulation est périmée.'),
-            champ='simulation')
+    perimee = motif_simulation_perimee(resultat)
+    if perimee:
+        raise NoteRefusee("Note de calcul : %s" % perimee, champ='simulation')
     for chemin, libelle in GRANDEURS_INDISPENSABLES:
         _exiger(resultat, chemin, libelle)
+
+
+def motif_simulation_perimee(servi):
+    """La règle de fraîcheur UNIQUE des pièces lues sur le servi (ACAL1702) :
+    le motif servi d'une simulation périmée, ou ``None`` si elle est fraîche.
+    La note de calcul et la carte « Rapport d'étude » la lisent toutes deux."""
+    if isinstance(servi, dict) and servi.get('simulation_perimee'):
+        return servi.get('motif') or 'la simulation est périmée.'
+    return None
 
 
 def motif_note_indisponible(calepinage):

@@ -125,6 +125,46 @@ class InventaireSurResultatServiTest(SansBase, SimpleTestCase):
                 [m['champ'] for m in carte['manque']],
                 ['roof_layout.zones[].geometry.solarAccess.values'])
 
+    def test_rapport_etude_indisponible_quand_la_simulation_est_perimee(self):
+        # ACAL1702 - cas 1952 : la conception a bougé depuis la simulation ;
+        # le servi publie ``production: null`` et le PDF dirait « Production
+        # non simulée ». La carte suit la MÊME règle que la note de calcul.
+        from apps.calepinage.services.note_calcul import (
+            motif_note_indisponible,
+        )
+        from .acal_livrables_helpers import modifier_la_conception
+
+        frais = _par_code(calepinage_simule_reel())['rapport_etude']
+        self.assertTrue(frais['disponible'], frais['motif_indisponible'])
+        perime_pivot = modifier_la_conception(calepinage_simule_reel())
+        carte = _par_code(perime_pivot)['rapport_etude']
+        self.assertFalse(carte['disponible'])
+        self.assertEqual([m['champ'] for m in carte['manque']],
+                         ['simulation'])
+        self.assertEqual(carte['manque'][0]['onglet'], 'production')
+        with patch_materiel():
+            motif_note = motif_note_indisponible(perime_pivot)
+        self.assertEqual(motif_note,
+                         'Note de calcul : %s' % carte['motif_indisponible'])
+
+    def test_rapport_etude_indisponible_sans_production_totale(self):
+        # ACAL1702 - un servi frais SANS ``production.total`` (rien de simulé
+        # à imprimer) : la carte dit « il manque le calcul », jamais prête.
+        from apps.calepinage.services.documents import (
+            MOTIF_SANS_SIMULATION_DOCUMENT,
+        )
+
+        servi = {'simule': False, 'simulation_perimee': False, 'motif': '',
+                 'production': None}
+        with mock.patch(
+                'apps.calepinage.services.rapport.resultat_du_rapport',
+                return_value=(servi, {})):
+            carte = _par_code(calepinage_simule_reel())['rapport_etude']
+        self.assertFalse(carte['disponible'])
+        self.assertEqual(carte['motif_indisponible'],
+                         MOTIF_SANS_SIMULATION_DOCUMENT)
+        self.assertEqual([m['champ'] for m in carte['manque']], ['resultat'])
+
     def test_deux_lectures_donnent_les_memes_cartes(self):
         pivot = calepinage_simule_reel()
         self.assertEqual(_par_code(pivot), _par_code(pivot))
