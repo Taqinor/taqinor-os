@@ -280,3 +280,41 @@ describe('prodWindow — page hôte sans fenêtre de production (option producti
     expect(ctx.prodPanels).toBe(0);
   });
 });
+
+// Demande croisée (lane editeur-1) — la fenêtre de production multipliait le nombre posé par 720 W (PANEL_KWC) même quand
+// le module DÉSIGNÉ du pan en a une autre puissance : 5 × 710 W lisait 3,60 kWc là où le bandeau (ACAL1520) lit 3,55.
+describe('prodWindow — kWc du module désigné du pan, comme le bandeau', () => {
+  const m710 = { id: 'produit-7', produitId: 7, libelle: 'Module 710 W', longueurMm: 2384, largeurMm: 1303, epaisseurMm: 33, poidsKg: 38, pmaxWc: 710, source: 'fiche' };
+  const catalogue = { calepinage: 1, modules: [{ module: m710, selectionnable: true, champs_manquants: [], motif: null }], champs_requis: [], motif_liste_vide: null };
+  const ctxAvec = (moduleId: string | null, extra: Record<string, unknown>): Ctx => {
+    const pan = { id: 'z1', moduleId };
+    return {
+      opts: { reducedMotion: true, maptilerKey: 'k', modulesDisponibles: catalogue }, activeArea: () => pan, closed: true,
+      vertices: [[-7.6, 33.5], [-7.59, 33.5], [-7.59, 33.51]], centroid: [-7.595, 33.505], roofType: 'flat',
+      liveResult: { target: 6000, winner: { placedCount: 5, tiltDeg: 10, aspect: 0 } }, pitchedLiveResult: null, prodScaled: null, prodPerKwc: null,
+      prodPanels: 0, prodTarget: 0, prodSource: 'pvgis', layoutMode: false, layoutState: null, svgBox: DEFAULT_GRAPH_BOX, prodScope: 'year', prodMonth: 0,
+      prodDay: null, prodToken: 0, prodSpecificDate: null, prodPlaneKey: '', ...extra,
+    } as unknown as Ctx;
+  };
+  const deps = (ctx: Ctx) => ({ graphs: createGraphs(ctx), renderConsumption: () => {}, renderLayoutPanel: () => {}, snapshotActiveAreaResult: () => {}, renderAreasPanel: () => {} });
+
+  it('atelier ERP (production injectée) : 5 × 710 W ⇒ 3,55 kWc et la production à 3,55 kWc ; sans module : 3,60', async () => {
+    document.body.innerHTML = '';
+    const { fallbackPerKwc } = await import('../src/lib/productionEngine');
+    for (const [moduleId, kwc] of [['produit-7', 3.55], [null, 3.6]] as const) {
+      const ctx = ctxAvec(moduleId, { opts: { reducedMotion: true, maptilerKey: 'k', modulesDisponibles: catalogue, productionAtelier: () => fallbackPerKwc() } });
+      createProdWindow(ctx, { ...makeDom(), prodWindowEl: null }, deps(ctx)).syncProductionWindow();
+      expect(ctx.prodScaled?.placedKwc).toBeCloseTo(kwc, 9);
+      expect(ctx.prodScaled?.annualKwh).toBeCloseTo(fallbackPerKwc().annualKwh * kwc, 6);
+    }
+  });
+
+  it('fenêtre de production (rescale sans requête) : 5 × 710 W ⇒ 3,55 kWc', async () => {
+    setupDom();
+    const { fallbackPerKwc } = await import('../src/lib/productionEngine');
+    const cfg = { lat: 33.5, lon: -7.6, tiltDeg: 10, aspect: 0, mountingplace: 'free' as const, panels: 5, target: 6000 };
+    const ctx = ctxAvec('produit-7', { prodPerKwc: fallbackPerKwc(), prodPlaneKey: '33.5000,-7.6000,10,0,free' });
+    createProdWindow(ctx, makeDom(), deps(ctx)).updateProductionWindow(cfg);
+    expect(ctx.prodScaled?.placedKwc).toBeCloseTo(3.55, 9);
+  });
+});
