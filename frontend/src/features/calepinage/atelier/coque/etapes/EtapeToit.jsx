@@ -111,8 +111,10 @@ function CartePente({ calepinageId, builderApi, documentVivant, lectureSeule, en
     if (lectureSeule) return
     // ACAL1428 — un toit pas encore dans la conception servie : on confirme le pan VIVANT (le moteur écrit `pitchSource`,
     // « Enregistrer » l'emporte) ; aucune écriture serveur avant « Enregistrer ».
-    if (!zone && vue && !vue.plat && confirmerPenteVivante(document, vue.deg)) {
-      setMessage('Pente confirmée : elle sera enregistrée avec le calepinage.')
+    // Critique — un toit PLAT tracé et pas encore enregistré prend le même chemin (le geste du moteur sur le pan vivant).
+    if (!zone && vue && Number.isFinite(vue.deg) && confirmerPenteVivante(document, vue.deg)) {
+      setMessage(vue.plat ? 'Toit plat confirmé : il sera enregistré avec le calepinage.'
+        : 'Pente confirmée : elle sera enregistrée avec le calepinage.')
       return
     }
     if (doc.etat !== 'ok') { setMessage('Conception illisible : rien n’est enregistré.'); return }

@@ -228,6 +228,28 @@ describe('Étape Toit — « Pente et orientation »', () => {
   })
 })
 
+describe('Critique ACAL1428 × ACAL1429 — toit PLAT tracé, pas encore enregistré', () => {
+  it('« Confirmer » confirme le pan vivant (même chemin que la pente), sans « Enregistrez d’abord » ni écriture', async () => {
+    builderApi = { panActifId: () => 'area-9', appliquerVue: vi.fn() }
+    const surPuce = vi.fn()
+    rendre({}, (hote) => {
+      hote.querySelector('[data-rooftype="flat"]').setAttribute('aria-pressed', 'true')
+      hote.querySelector('[data-rooftype="pitched"]').setAttribute('aria-pressed', 'false')
+      const puce = document.createElement('button')
+      puce.dataset.pitch = '22'
+      puce.addEventListener('click', () => { surPuce(); hote.querySelector('#rp9-pitch-note').textContent = '' })
+      hote.appendChild(puce)
+    })
+    const carte = screen.getByTestId('cal-toit-pente-carte')
+    await waitFor(() => expect(within(carte).getByText('Toit plat')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('cal-toit-pente-confirmer'))
+    expect(surPuce).toHaveBeenCalledTimes(1)
+    expect(within(carte).getByRole('status')).toHaveTextContent('Toit plat confirmé')
+    expect(within(carte).getByRole('status')).not.toHaveTextContent('Enregistrez d’abord')
+    expect(enregistrerSectionLayout).not.toHaveBeenCalled()
+  })
+})
+
 describe('ACAL1429 — toit plat jamais confirmé', () => {
   const PLAT = { id: 'area-1', label: 'Pan 1', roofType: 'flat', pitchDeg: 0, facingAzimuthDeg: 180 }
 
