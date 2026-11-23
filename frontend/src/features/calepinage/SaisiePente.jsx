@@ -116,6 +116,8 @@ export default function SaisiePente({
   const zoneId = zones.some((z) => String(z.id) === zoneChoisie)
     ? zoneChoisie : panParDefaut(layout)
   const zone = zones.find((z) => String(z.id) === zoneId) ?? null
+  // ACAL1341 — un pan « Toit plat » n'a pas de pente à écrire : ni enregistrement ni mesure au téléphone.
+  const plat = persister && zone?.roofType === 'flat'
   const [lectureHydratee, setLectureHydratee] = useState(null)
   const cleHydratation = `${doc.generation}|${zoneId}`
   if (persister && doc.etat === 'ok' && lectureHydratee !== cleHydratation) {
@@ -466,7 +468,12 @@ export default function SaisiePente({
           {RAISON_LECTURE_SEULE}
         </p>
       )}
-      {persister && (
+      {plat && (
+        <p className="mt-4 text-sm text-foreground" data-testid="cal-pente-plat">
+          Toit plat : ce pan n’a pas de pente à saisir. Pour un toit incliné, changez sa forme par les tuiles.
+        </p>
+      )}
+      {persister && !plat && (
         <button type="button" onClick={enregistrer} disabled={lectureSeule}
           data-testid="cal-pente-enregistrer"
           className="mt-4 rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-primary-text disabled:opacity-50">
@@ -479,7 +486,7 @@ export default function SaisiePente({
       )}
 
       {/* ACAL519 — mesure au téléphone : absente sans capteur (donc invisible au bureau). */}
-      {persister && !lectureSeule && capteursPresents && (
+      {persister && !lectureSeule && !plat && capteursPresents && (
         <details className="mt-4" data-testid="pente-tel">
           <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold text-primary-text">Mesurer avec le téléphone</summary>
           <p className="text-xs text-muted-foreground">
