@@ -8,6 +8,8 @@
  * unifié de configuration (injecté : `renderConfig`).
  */
 import { packConfig } from '../../lib/estimatorBrainV2';
+import { anneauPosableParArete } from '../../lib/estimatorBrainV7'; // ACAL1504
+import { supplementsParArete } from '../../lib/roofSetbackEdge'; // ACAL1504
 import {
   CIBLES_OPTIMISATION,
   fineGridMatrixV6,
@@ -63,6 +65,11 @@ export function createMatrix(ctx: Ctx, deps: MatrixDeps): Matrix {
 
   /** Clé stable d'une ligne (famille|inclinaison|azimut|pose|marge) — sert d'id de
    *  ligne (réutilise le highlight existant) et de comparaison au gagnant. */
+  /** ACAL1504 — l'anneau posable du pan actif : contour rogné du retrait propre à chaque arête (`retraitM`, table
+   *  société comprise), comme le solveur vivant ; le supplément ne dépend pas de la catégorie passée. */
+  const anneauPose = (): LngLat[] =>
+    anneauPosableParArete([...ctx.vertices], supplementsParArete(ctx.activeArea?.()?.edges, PERIMETER_SETBACK_M));
+
   function matrixRowKey(r: MatrixEvalV6): string {
     return `${r.family}|${r.tiltDeg}|${Math.round(r.azimuthDeg)}|${r.orientation}|${r.margin}`;
   }
@@ -214,7 +221,7 @@ export function createMatrix(ctx: Ctx, deps: MatrixDeps): Matrix {
   function renderMatrixRow(r: MatrixEvalV6) {
     if (!ctx.closed || ctx.vertices.length < 3) return;
     ctx.useRecommended = false;
-    const ring: LngLat[] = [...ctx.vertices];
+    const ring: LngLat[] = anneauPose(); // ACAL1504
     const setbackM = r.margin === 'keep' ? PERIMETER_SETBACK_M : 0;
     const pack = packConfig(ring, ctx.centroidLat, {
       family: r.family,
@@ -253,7 +260,7 @@ export function createMatrix(ctx: Ctx, deps: MatrixDeps): Matrix {
    *  GPS exact suit en asynchrone (computeMatrixPvgis). */
   function recomputeMatrix() {
     if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'flat') return;
-    const ring: LngLat[] = [...ctx.vertices];
+    const ring: LngLat[] = anneauPose(); // ACAL1504
     // W73 — note la matrice sur la MÊME source PVGIS que la carte « reco » : on passe le
     // yieldFn adossé à `ctx.v4YieldCache` (identique à `buildMatrix`/le solveur vivant).
     // Cache vide (PVGIS pas encore résolu) → repli table des DEUX côtés ; une fois PVGIS

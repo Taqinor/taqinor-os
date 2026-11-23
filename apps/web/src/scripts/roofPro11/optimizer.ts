@@ -1671,7 +1671,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       const v = ctx.v4YieldCache.get(v4Key(tiltDeg, aspect));
       return v == null ? null : v;
     };
-    ctx.matrixResult = fineGridMatrixV6(ring, ctx.centroidLat, bill, obstructionRings(), {
+    // ACAL1504 — le balayage pave le MÊME anneau posable que le solveur vivant (retrait propre à chaque arête).
+    ctx.matrixResult = fineGridMatrixV6(anneauPosableParArete(ring, retraitsParArete()), ctx.centroidLat, bill, obstructionRings(), {
       yieldFn,
       overhangM: ctx.overhangM,
       obstructionClearancesM: obstructionClearances(), // PV61

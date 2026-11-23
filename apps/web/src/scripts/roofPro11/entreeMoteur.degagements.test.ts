@@ -70,3 +70,57 @@ describe('ACAL257 — réglages société transmis au moteur', () => {
     expect(composerEntreeMoteur(scene(simple))!.parametres.rives.laterale_m).toBeCloseTo(uniformSetbacks().lateralM, 9);
   });
 });
+
+// ACAL1504 — le pavage d'un pan plat (solveur vivant ET balayage « Comparer les poses ») lit le retrait de CHAQUE
+// arête posé par la table de la société (`retraitM`, `retraitOrigine: 'societe'`), pas seulement les retraits uniformes.
+describe('ACAL1504 — retrait par arête dans le pavage plat', () => {
+  async function poser(widthM: number, depthM: number, retraitM: number | null) {
+    const { JSDOM } = await import('jsdom');
+    const { createOptimizer } = await import('./optimizer');
+    const { createMatrix } = await import('./matrix');
+    const { rectRing } = await import('./harnaisAtelier');
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body></body>').window.document;
+    try {
+      const vertices = rectRing(widthM, depthM);
+      const edges = retraitM == null ? undefined : [0, 1, 2, 3].map((index) => ({ index, type: 'rive', retraitM, retraitOrigine: 'societe' }));
+      const pan = { id: 'z1', label: 'Pan A', vertices, obstacles: [], roofType: 'flat', pitchDeg: 0, facingAzimuthDeg: 180, neededPanels: 0, neededAuto: true, edges };
+      const ctx = {
+        closed: true, vertices, roofType: 'flat', areas: [pan], activeAreaId: 'z1', activeArea: () => pan, opts: {}, dom: {},
+        centroid: vertices[0], centroidLat: 33.5, pinned: new Set(), sel: { family: 'south', tilt: 'reco', orient: 'auto', azimuth: 'south', margin: 'keep' },
+        v4YieldCache: new Map(), overhangM: 0, documentRelu: null, batiments: [], environment: [], shadeObstructions: [], obstacles: [],
+        neededAuto: true, neededPanels: 0, layoutPlan: null, matrixSort: { key: 'annualKwh', dir: 'desc' },
+      } as unknown as Ctx;
+      let pose = -1;
+      const deps = {
+        renderScene: (_p: unknown, _g: unknown, _t: unknown, _f: unknown, placed: number) => { pose = placed; },
+        paintComparison: () => {}, highlightRow: () => {}, syncProductionWindow: () => {}, prefillLead: () => {}, syncChips: () => {},
+        renderMatrixOptimumCard: () => {}, monthlyBill: () => 0, obstructionRings: () => [], setStatus: () => {},
+      };
+      const opt = createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]);
+      opt.liveResolveFlat();
+      const maxDe = () => Math.max(0, ...((ctx as unknown as { matrixResult: { rows: { placedCount: number }[] } }).matrixResult.rows.map((r) => r.placedCount)));
+      opt.buildMatrix([...vertices], 0);
+      const balayage = maxDe();
+      const matrice = createMatrix(ctx, { renderConfig: () => {}, monthlyBill: () => 0, obstructionRings: () => [] } as unknown as Parameters<typeof createMatrix>[1]);
+      matrice.recomputeMatrix();
+      return { pose, balayage, recompute: maxDe() };
+    } finally {
+      g.document = avant;
+    }
+  }
+
+  it('4 rives à 0,80 m sur 3 × 1,5 m ⇒ 0 module (vivant, balayage, recalcul de la matrice)', async () => {
+    const r = await poser(3, 1.5, 0.8);
+    expect(r).toEqual({ pose: 0, balayage: 0, recompute: 0 });
+  });
+
+  it('un plat 10 × 7 garde des panneaux, moins qu’au seul retrait uniforme', async () => {
+    const sans = await poser(10, 7, null);
+    const avec = await poser(10, 7, 0.8);
+    expect(avec.balayage).toBeGreaterThan(0);
+    expect(avec.balayage).toBeLessThan(sans.balayage);
+    expect(avec.recompute).toBeLessThan(sans.recompute);
+  });
+});
