@@ -39,6 +39,13 @@ Une pile locale jetable, à part de toute autre : elle ne parle ni à la prod ni
   simulations lourdes (159 arrêts) : une simulation restée à 5 % dans cette fenêtre est un artefact. Plafond porté à
   2,3 Go à 04 h 40 ; les calculs perdus se relancent par l'écran.
 
+- 23/11, 05 h 38 UTC : un arrêt de plus au plafond de 2,3 Go (processus du worker à 2,26 Go de mémoire propre). Cause
+  lue : le processus enfant servait DEUX tâches de suite et gardait la mémoire de la première (une simulation seule,
+  mesurée ensuite, culmine à ~1,1 Go conteneur compris, dont ~0,6 Go au repos). La tâche tuée a été reprise seule par
+  Celery (`CELERY_TASK_REJECT_ON_WORKER_LOST`) et s'est terminée. Depuis 05 h 46 UTC : un processus neuf par tâche
+  (`--max-tasks-per-child 1`), plafond inchangé. Constat d'orchestrateur `T2-ORCH-001` (la prod plafonne ce worker à
+  2 Go, sans recyclage des processus).
+
 ## Règles d'usage
 
 - Tu ne lances aucune commande `docker`, tu n'arrêtes ni ne relances rien. Si l'adresse ne répond plus, écris-le et
