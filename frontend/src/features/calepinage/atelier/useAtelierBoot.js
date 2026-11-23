@@ -78,6 +78,12 @@ export async function pousserAffectationAtelier(builder, calepinageId) {
 // MapLibre sur-échantillonne la dernière tuile servie, et le fond neutre n'en dépend pas.
 export const ZOOM_MAX_CADRAGE_ATELIER = 22
 
+// ACAL1421 — le contexte d'imagerie de l'atelier, tiré des réglages DÉJÀ lus (`imagerie.pays`, jamais une seconde
+// lecture) : la ligne « Image : fournisseur — résolution » s'affiche et l'adresse est cherchée dans le pays réglé.
+export function imageryDesReglages(reglagesAtelier) {
+  return { pays: reglagesAtelier?.pays ?? null }
+}
+
 /**
  * F6 — cadre la caméra sur TOUS les pans (le toit ≈ 40 % de la carte), sans animation. Caméra
  * seule : rien de sérialisé, aucun brouillon, la scène n'est pas marquée modifiée. Sans effet
@@ -368,6 +374,7 @@ export function useAtelierBoot(ctx) {
         // CALX104/CALX403 câblage — gabarits d'obstacle + largeur d'allée de la société,
         // transmis TELS QUELS ; `null` = aucun réglage, aucune cote de repli.
         reglagesAtelier,
+        imagery: imageryDesReglages(reglagesAtelier), // ACAL1421
         // L-MAP — le contour ORIGINAL du client, géo-référencé sur la carte
         // (calque passif, roofPro11/prefill.ts referenceContourRing). Gardé
         // par le MÊME `contourExploitable` que la légende/bascule (revue
@@ -531,6 +538,7 @@ export function useAtelierBoot(ctx) {
           modulesDisponibles,
           // CALX104/CALX403 câblage — voir `boot()` plus haut.
           reglagesAtelier,
+          imagery: imageryDesReglages(reglagesAtelier), // ACAL1421
           // ACAL918 — le plan du moteur pour « Enregistrer le contour tracé » (surface de pose).
           demanderPlanSurface: demanderPlanSurfaceDepuis(ctx),
           // ACAL777 — la facture du lead, repli d'affichage des cartes (jamais écrite au document).

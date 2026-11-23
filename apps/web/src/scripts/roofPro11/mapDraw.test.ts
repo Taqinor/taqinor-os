@@ -370,6 +370,34 @@ describe('ACAL1405 — date de la photo relue à la réouverture', () => {
   });
 });
 
+// ACAL1421 — l'atelier ERP passe enfin `imagery` : la ligne d'origine de l'image apparaît et l'adresse suit le pays réglé.
+describe('ACAL1421 — ligne « Image : … » et pays de recherche', () => {
+  const monter = (imagery: unknown) => {
+    document.body.innerHTML = '<form id="rp9-search"><input id="rp9-address"><ul id="rp9-suggestions" hidden></ul></form>';
+    const map = { getSource: () => undefined, flyTo: vi.fn(), jumpTo: vi.fn(), ...methodesCarteInertes(), getZoom: () => 19, getCenter: () => ({ lng: -7.62, lat: 33.58 }), getCanvas: () => ({ clientWidth: 800, clientHeight: 600 }) };
+    const ctx = { opts: { maptilerKey: 'K', imagery, reducedMotion: true }, vertices: [], obstacles: [], areas: [], activeAreaId: 'a1', closed: false, centroid: [-7.62, 33.58] } as unknown as Ctx;
+    return createMapDraw(ctx, { map: map as never, setStatus: vi.fn(), updateAreaReadout: vi.fn() });
+  };
+
+  it('`imagery` fourni : la ligne d’origine est créée, le pays filtre l’adresse', async () => {
+    const draw = monter({ pays: 'fr' });
+    expect(document.getElementById('rp9-image-source')?.textContent).toMatch(/^Image : .+ — date et résolution non annoncées par le fournisseur$/);
+    expect(document.getElementById('rp9-geocode-country')?.textContent).toBe('Recherche limitée au pays : FR');
+    const f = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ features: [] }) });
+    vi.stubGlobal('fetch', f);
+    try {
+      await draw.geocode('lyon');
+      expect(f.mock.calls.some((c) => String(c[0]).includes('country=fr'))).toBe(true);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('sans `imagery` (avant ACAL1421 côté ERP) : aucune ligne, repli MA dit', () => {
+    monter(undefined);
+    expect(document.getElementById('rp9-image-source')).toBeNull();
+    expect(document.getElementById('rp9-geocode-country')?.textContent).toBe('Recherche limitée au pays : MA');
+  });
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // ACAL506 / ACAL507 — coordonnées collées dans le champ « Adresse ».
 // ═══════════════════════════════════════════════════════════════════════════════
