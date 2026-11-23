@@ -348,6 +348,14 @@ vivent dans le scratchpad de la session, pas sur `main`.
      par SendUserFile à la fin). CONDITION DE FUSION de la vague B : CI verte + critique sans bloquant + verdict
      de `T3-ECRANS` sans défaut bloquant sur la nouvelle coque ; puis `gh pr ready 1529` et
      `gh pr merge 1529 --auto --merge`. La phase de contrôles ne commence qu'APRÈS cette fusion (consigne de Reda).
+   - **POINT à 11 h 25 UTC (le plus récent).** Critique Fable de la vague B rendue : FUSIONNABLE, 0 bloquant, 10
+     points « après » (`T2/critique-vague-B.md`) ; trois corrigés tout de suite par l'orchestrateur (garde des
+     montants : « marge » nu de nouveau refusé ; relevé hors ligne gardé sur une réponse passagère ; kWc de la pose
+     à côté des panneaux posés), les sept autres dans `T2/consolidation/entree-lot-O.md` § 8. Tête poussée de la
+     PR #1529 : `de4cc97b5d` (11 h 21), CI en cours (le run précédent, sur `c2cac20623`, était VERT). FUSION de la
+     vague B dès que : CI verte sur `de4cc97b5d` ET le relecteur `T3-ECRANS` ne signale aucun défaut bloquant de la
+     nouvelle coque. Tour 3 en vol : `T3-ECRANS`, `T3-PROD`, `T3-TOIT`, `T3-POSE` (fichiers de sortie nommés
+     `registre/evenements/T3-T3-<nom>-cv.jsonl`). Deux appels Fable faits sur trois (critiques des vagues A et B).
    - BUDGET (08 h 10 UTC) : quota hebdo 39 % (≈ 4 points par heure, ≈ 0,3 point par agent) ; contexte de
      l'orchestrateur 58 %. Règle : construire jusqu'à ≈ 56 %, puis tour 3 léger, fusion, phase de contrôles (≤ 5
      points), rapport. PRIORITÉ de ce qui reste à construire : (1) les M1 de tous les lots ; (2) la coque v2 puis
