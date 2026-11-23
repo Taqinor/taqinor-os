@@ -50,6 +50,24 @@ def _champ_du_motif(motif):
     return trouve.group('champ').strip() if trouve else ''
 
 
+#: ACAL1619 — « <clé> (réglages simulation) », la forme qu'une étape emploie
+#: pour nommer un réglage société parmi plusieurs remèdes (« … ou … »).
+_REGLAGE_SIMULATION_NOMME = re.compile(r'^(?P<cle>\w+) \(réglages simulation\)$')
+
+
+def _ligne_du_champ(etape, champ):
+    """La PREMIÈRE alternative (« A ou B ou C ») localisable : la ligne, sinon
+    ``None`` (le champ part alors dans ``non_localisables``)."""
+    for morceau in champ.split(' ou '):
+        morceau = morceau.strip()
+        nomme = _REGLAGE_SIMULATION_NOMME.match(morceau)
+        ligne = _ligne(etape, 'simulation.' + nomme.group('cle')
+                       if nomme else morceau)
+        if ligne is not None:
+            return ligne
+    return None
+
+
 def _ligne(etape, champ):
     from .parametres_cles import registre
 
@@ -84,7 +102,7 @@ def construire(cascade, non_renseignees):
         if (etape.get('etape'), champ) in vues:
             continue
         vues.add((etape.get('etape'), champ))
-        ligne = _ligne(etape, champ) if champ else None
+        ligne = _ligne_du_champ(etape, champ) if champ else None
         if ligne is not None:
             lignes.append(ligne)
             continue
