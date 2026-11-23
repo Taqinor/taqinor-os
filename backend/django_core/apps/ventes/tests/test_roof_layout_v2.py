@@ -228,6 +228,22 @@ class SchemaRoofLayoutV2Test(SimpleTestCase):
                 document['zones'][0]['obstacles'][0]['provenance'] = graphie
                 self.assertEqual(self._erreurs(document), [])
 
+    def test_un_pan_plat_confirme_est_conforme_et_un_mode_inconnu_refuse(self):
+        """ACAL1400 — `pitchSource.mode = 'plat'` : la confirmation d'un toit
+        plat porte sa source ; l'exemple en porte un ; « autre » reste refusé
+        en nommant le champ."""
+        self.assertIn('plat', [z.get('pitchSource', {}).get('mode')
+                               for z in self.schema['exemple']['zones']
+                               if z.get('roofType') == 'flat'])
+        document = copy.deepcopy(self.schema['exemple'])
+        pan = document['zones'][0]
+        pan.update(roofType='flat', pitchDeg=0, pitchSource={'mode': 'plat'})
+        self.assertEqual(self._erreurs(document), [])
+        pan['pitchSource'] = {'mode': 'autre'}
+        erreurs = self._erreurs(document)
+        self.assertEqual([chemin for chemin, _ in erreurs],
+                         [['zones', 0, 'pitchSource', 'mode']])
+
 
 class NonRegressionConsommateursVentesTest(SimpleTestCase):
     """Les TROIS consommateurs ventes ne changent aucun chiffre en v2."""

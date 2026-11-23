@@ -2337,7 +2337,7 @@
       }
     },
     "pitchSource": {
-      "description": "ACAL2 — PROVENANCE de la pente du PAN, écrite par l'onglet Pente : `mode` degres | pourcentage | cotes. Chaque mode ne porte que ses propres champs ; la pente RÉSULTANTE vit dans `zones[].pitchDeg`.",
+      "description": "ACAL2 — PROVENANCE de la pente du PAN, écrite par l'onglet Pente : `mode` degres | pourcentage | cotes | plat. Chaque mode ne porte que ses propres champs ; la pente RÉSULTANTE vit dans `zones[].pitchDeg`. ACAL1400 — `plat` = toit plat CONFIRMÉ (pan `roofType: flat`, aucun champ propre ; « Confirmer » écrit `pitchDeg: 0`, ACAL1341) ; absent = pan jamais confirmé.",
       "type": "object",
       "additionalProperties": true,
       "required": [
@@ -2349,7 +2349,8 @@
           "enum": [
             "degres",
             "pourcentage",
-            "cotes"
+            "cotes",
+            "plat"
           ]
         },
         "degres": {
@@ -2785,6 +2786,9 @@
         "obstacles": [],
         "roofType": "flat",
         "pitchDeg": 10.0,
+        "pitchSource": {
+          "mode": "plat"
+        },
         "facingAzimuthDeg": 90.0,
         "facingManual": true,
         "verrouille": true,
