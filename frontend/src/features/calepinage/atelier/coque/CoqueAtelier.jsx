@@ -14,7 +14,7 @@ import { BandeauAlertes } from './BandeauxCoque'
 import BarreProjet from './BarreProjet'
 import { nomClientServi, sousTitrePose } from './projet'
 import { ContexteCoque, ContextePresentation } from './contexteCoque'
-import PanneauEtape from './PanneauEtape'
+import PanneauEtape, { ProgressionEtapes } from './PanneauEtape'
 import { BoutonOr } from './primitives'
 import RailEtapes from './RailEtapes'
 
@@ -378,6 +378,7 @@ export default function CoqueAtelier({
                     le Schéma garde son panneau à droite). */}
                 {pleine && rang >= 0 && ecran?.titre && (
                   <div className="cal-plein-etape-tete" data-testid="cal-plein-etape-tete">
+                    <ProgressionEtapes numero={rang + 1} etats={parcours.etats} />
                     <p className="cal-panneau-etape-rang">{`Étape ${rang + 1} sur ${TOTAL}`}</p>
                     <h2 className="cal-panneau-etape-titre">{ecran.titre}</h2>
                   </div>
@@ -389,7 +390,8 @@ export default function CoqueAtelier({
           </main>
           <PanneauEtape numero={rang >= 0 ? rang + 1 : null} total={TOTAL} titre={ecran?.titre ?? null}
             cache={(pleine && !avance) || !!presentation} refCorps={setNoeudPanneau} refPied={setNoeudPiedPanneau}
-            pied={piedParDefaut} tiroir={tiroir} deplie={deplie} onDeplier={setDeplie} refControle={setNoeudControle}>
+            pied={piedParDefaut} tiroir={tiroir} deplie={deplie} onDeplier={setDeplie} refControle={setNoeudControle}
+            etats={parcours.etats}>
             {/* J1 — présentation : l'écran d'étape n'est pas monté (il ne tient aucun nœud `rp9-*`, il les LIT) — sa
                 caméra d'entrée (« Plan » à l'étape Toit) ne remet jamais la vue client de dessus. */}
             {carteVisible && !presentation && ecranMonte}

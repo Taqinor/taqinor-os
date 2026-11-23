@@ -164,7 +164,7 @@
     background: color-mix(in oklch, var(--muted-foreground) 40%, var(--card));
   }
   .cal-coque .cal-panneau-etape[data-tiroir='1'] .cal-panneau-etape-tete { grid-area: tete; padding: 0; align-self: center; }
-  .cal-coque .cal-panneau-etape[data-tiroir='1'] .cal-panneau-etape-titre { margin: 0; }
+  .cal-coque .cal-panneau-etape[data-tiroir='1'] .cal-panneau-etape-titre { margin: 0; font-size: 1.25rem; }
   .cal-coque .cal-panneau-etape-controle {
     grid-area: controle;
     min-width: 0;

@@ -519,3 +519,56 @@ describe('Étape Toit — budget de contrôles et thème', () => {
     expect(css).toContain('grid-template-columns: repeat(3, minmax(0, 1fr))')
   })
 })
+
+/* ACAL1803 — la tête et le pied v2 du panneau d'étape : cinq traits (fait / actif / à venir lus du parcours servi),
+   « Étape n sur 5 » 12 px, titre Archivo 24 px, bouton d'étape 52 px rayon 14 en 15 px graisse 700 à ombre dorée.
+   Le panneau est RENDU ; la feuille 49 + 50 est chargée dans le DOM de test et lue par getComputedStyle. */
+describe('ACAL1803 — tête et pied du panneau d’étape (maquettes v2)', () => {
+  let style
+  beforeEach(() => {
+    style = document.createElement('style')
+    style.textContent = ['49-jetons-v2.css', '50-coque-atelier.css']
+      .map((f) => readFileSync(resolve(process.cwd(), `src/styles/calepinage/${f}`), 'utf8')).join('\n')
+    document.head.appendChild(style)
+  })
+  afterEach(() => { style.remove(); cleanup() })
+
+  it('le panneau d’étape rend cinq traits, l’actif au rang de l’étape, les faits lus du parcours', async () => {
+    const { default: PanneauEtape } = await import('../PanneauEtape')
+    const { BoutonOr } = await import('../primitives')
+    render(
+      <div className="rp9-host cal-coque">
+        <PanneauEtape numero={2} total={5} titre="Les panneaux" etats={{ toit: 'fait', panneaux: 'en_cours' }}
+          pied={<BoutonOr plein fleche>Raccorder les panneaux</BoutonOr>} />
+      </div>,
+    )
+    const traits = [...screen.getByTestId('cal-progression-etapes').children]
+    expect(traits.map((t) => t.getAttribute('data-etat'))).toEqual(['fait', 'actif', 'a-venir', 'a-venir', 'a-venir'])
+    expect(screen.getByTestId('cal-progression-etapes')).toHaveAttribute('aria-hidden', 'true')
+    const cs = (el) => getComputedStyle(el)
+    expect(cs(traits[0]).background).toContain('--cal-action')
+    expect(cs(traits[1]).background).toContain('--cal-action')
+    expect(cs(traits[2]).background).toContain('--cal-progression-a-venir')
+    expect(cs(traits[0]).height).toBe('4px')
+    const rang = screen.getByText('Étape 2 sur 5')
+    expect(cs(rang).fontSize).toBe('0.75rem')
+    const titre = screen.getByTestId('cal-panneau-etape-titre')
+    expect(titre).toHaveTextContent('Les panneaux')
+    expect(cs(titre).fontSize).toBe('1.5rem')
+    expect(cs(titre).fontFamily).toBe('var(--font-display)')
+    const bouton = screen.getByRole('button', { name: 'Raccorder les panneaux' })
+    expect(cs(bouton).height).toBe('52px')
+    expect(cs(bouton).borderRadius).toBe('var(--cal-rayon-pile)')
+    expect(cs(bouton).fontSize).toBe('0.9375rem')
+    expect(cs(bouton).fontWeight).toBe('700')
+    expect(cs(bouton).boxShadow).toBe('var(--cal-action-ombre)')
+  })
+
+  it('panneau caché ou tiroir (tablette) : aucun trait — la tablette garde sa tête actuelle', async () => {
+    const { default: PanneauEtape } = await import('../PanneauEtape')
+    const { rerender } = render(<PanneauEtape numero={1} titre="Le toit" tiroir />)
+    expect(screen.queryByTestId('cal-progression-etapes')).toBeNull()
+    rerender(<PanneauEtape numero={1} titre="Le toit" cache />)
+    expect(screen.queryByTestId('cal-progression-etapes')).toBeNull()
+  })
+})

@@ -156,7 +156,8 @@
   font-size: 0.875rem;
   box-shadow: var(--cal-action-ombre);
 }
-.cal-coque .cal-bouton-or-plein { width: 100%; height: 48px; font-size: 1rem; }
+/* ACAL1803 — le bouton d'étape du pied (maquette v2) : 52 px, rayon 14, 15 px graisse 700, ombre dorée. */
+.cal-coque .cal-bouton-or-plein { width: 100%; height: 52px; gap: 10px; border-radius: var(--cal-rayon-pile); font-size: 0.9375rem; }
 .cal-coque .cal-bouton-or:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
 .cal-coque .cal-bouton-marine {
   position: relative;
@@ -402,27 +403,35 @@
   border-left: 1px solid var(--cal-filet);
 }
 .cal-coque .cal-panneau-etape[hidden] { display: none; }
-.cal-coque .cal-panneau-etape-tete { padding: 20px 20px 12px; }
-.cal-coque .cal-panneau-etape-rang { margin: 0; font-size: 0.75rem; color: var(--muted-foreground); }
+/* ACAL1803 — tête v2 : cinq traits de progression (4 px, or pour les étapes faites et l'active), « Étape N sur 5 »
+   12 px, titre Archivo 24 px (même tête au-dessus des écrans pleins, ACAL1727). */
+.cal-coque .cal-panneau-etape-tete { padding: 18px 22px 14px; }
+.cal-coque .cal-progression-etapes { display: flex; gap: 4px; margin-bottom: 14px; }
+.cal-coque .cal-progression-etapes > span { flex: 1; height: 4px; border-radius: 2px; background: var(--cal-progression-a-venir); }
+.cal-coque .cal-progression-etapes > span[data-etat='fait'],
+.cal-coque .cal-progression-etapes > span[data-etat='actif'] { background: var(--cal-action); }
+.cal-coque .cal-plein-etape-tete .cal-progression-etapes { max-width: 340px; }
+.cal-coque .cal-panneau-etape-rang { margin: 0; font-size: 0.75rem; font-weight: 500; color: var(--cal-texte-3); }
 .cal-coque .cal-panneau-etape-titre {
   margin: 2px 0 0;
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 1.25rem;
-  line-height: 1.1; /* maquette : boîte de 22 px (l'interligne hérité en faisait 30 et descendait le panneau) */
+  font-size: 1.5rem;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
 }
 .cal-coque .cal-panneau-etape-corps {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 0 20px 20px;
+  padding: 0 22px 12px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 .cal-coque .cal-panneau-etape-emplacement:empty { display: none; }
-.cal-coque .cal-panneau-etape-pied { padding: 16px 20px; border-top: 1px solid var(--border); }
+.cal-coque .cal-panneau-etape-pied { padding: 12px 22px 18px; border-top: 1px solid var(--cal-filet); }
 .cal-coque .cal-panneau-etape-pied:empty { display: none; }
 .cal-coque .cal-coque-groupe[hidden],
 .cal-coque .cal-coque-avance[hidden] { display: none; }
