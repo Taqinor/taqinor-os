@@ -522,7 +522,7 @@ describe('retraits du panneau de droite — règle CSS suivant la colonne (ACAL1
   it('.rp9-host .rp9-setbacks : colonnes automatiques, aucune règle de fenêtre ne la redéfinit', async () => {
     // (`?raw` rend '' sous vitest : la feuille est lue du disque puis chargée dans le DOM de test.)
     const { readFileSync } = await import('node:fs')
-    const css = readFileSync(`${process.cwd()}/src/styles/roofbuilder.css`, 'utf8')
+    const css = readFileSync(`${globalThis.process.cwd()}/src/styles/roofbuilder.css`, 'utf8')
     const style = document.createElement('style')
     style.textContent = css
     document.head.appendChild(style)
