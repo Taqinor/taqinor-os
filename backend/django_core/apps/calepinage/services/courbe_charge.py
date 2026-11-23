@@ -401,8 +401,12 @@ def _kwh_par_mois(declaration):
     return mois
 
 
-def _base_mensuelle(points, declaration, avertissements):
-    """Les kWh SAISIS mois par mois, mis en forme par le profil type."""
+def _base_mensuelle(points, declaration, avertissements, annees=1):
+    """Les kWh SAISIS mois par mois, mis en forme par le profil type.
+
+    ACAL1603 — sur une fenêtre de N années, CHAQUE année reçoit les kWh du
+    mois (N × la saisie sur les heures du mois) : la publication divise par N.
+    """
     par_mois = _kwh_par_mois(declaration)
     if not par_mois:
         return None
@@ -423,8 +427,8 @@ def _base_mensuelle(points, declaration, avertissements):
         if not rangs:
             absents.append(str(numero))
             continue
-        morceau, force_plat = _etaler_forme(points, forme, par_mois[numero],
-                                            rangs=rangs)
+        morceau, force_plat = _etaler_forme(
+            points, forme, par_mois[numero] * annees, rangs=rangs)
         plat = plat or force_plat
         for rang in rangs:
             courbe[rang] = morceau[rang]
@@ -448,8 +452,9 @@ def _base_mensuelle(points, declaration, avertissements):
     return courbe
 
 
-def _base_profil_type(points, declaration, avertissements):
-    """Une énergie ANNUELLE saisie, calée sur la forme d'un profil type."""
+def _base_profil_type(points, declaration, avertissements, annees=1):
+    """Une énergie ANNUELLE saisie, calée sur la forme d'un profil type
+    (ACAL1603 : N × l'énergie sur une fenêtre de N années)."""
     annuel = declaration.get('annuel_kwh')
     if annuel in (None, ''):
         return None
@@ -471,7 +476,7 @@ def _base_profil_type(points, declaration, avertissements):
     uniforme = forme is None
     if uniforme:
         forme = [1.0] * 24
-    courbe, plat = _etaler_forme(points, forme, energie)
+    courbe, plat = _etaler_forme(points, forme, energie * annees)
     avertissements.append(
         'Courbe de base : énergie annuelle SAISIE ({energie} kWh), mise en '
         "forme sur l'année.".format(energie=round(energie, 2)))
@@ -493,10 +498,16 @@ _SOURCES_DE_BASE = (
 )
 
 
-def _courbe_de_base(points, declaration, avertissements):
+#: Les sources qui portent une énergie (et non une courbe journalière) : sur
+#: N années elles reçoivent N fois la saisie (ACAL1603).
+_SOURCES_EN_ENERGIE = ('profil_mensuel', 'profil_type')
+
+
+def _courbe_de_base(points, declaration, avertissements, annees=1):
     """``(courbe, origine)`` de la première source SAISIE disponible."""
     for origine, fabrique in _SOURCES_DE_BASE:
-        courbe = fabrique(points, declaration, avertissements)
+        arguments = ((annees,) if origine in _SOURCES_EN_ENERGIE else ())
+        courbe = fabrique(points, declaration, avertissements, *arguments)
         if courbe is not None:
             return courbe, origine
     return None, None
@@ -781,14 +792,15 @@ def _charges_annuelles(declaration, points, contigues, avertissements):
     return blocs
 
 
-def _profil_mensuel_publie(points, courbe):
-    """Les douze mois de la courbe ASSEMBLÉE — dérivés, jamais saisis."""
+def _profil_mensuel_publie(points, courbe, annees=1):
+    """Les douze mois de la courbe ASSEMBLÉE — dérivés, jamais saisis — à
+    l'année moyenne de la fenêtre (ACAL1603)."""
     totaux = {}
     for point, valeur in zip(points, courbe):
         numero = _mois(point)
         if 1 <= numero <= 12:
             totaux[numero] = totaux.get(numero, 0.0) + float(valeur)
-    return [{'mois': numero, 'kwh': round(totaux[numero], 2)}
+    return [{'mois': numero, 'kwh': round(totaux[numero] / annees, 2)}
             for numero in sorted(totaux)]
 
 
@@ -858,7 +870,14 @@ def construire_courbe_charge(serie, contexte=None, *, consommation=None):
             'saisies au pas horaire sont lues heure par heure sur son '
             'calendrier, sans interpolation.'.format(pas=pas_minutes))
 
-    courbe_base, origine = _courbe_de_base(points, declaration, avertissements)
+    from .annee_moyenne import moyenne
+    from .chaine_pertes import annees_de_la_fenetre
+
+    # ACAL1603 — la courbe horaire reste ENTIÈRE ; ce qui est publié « par
+    # an » est l'année MOYENNE de la fenêtre (N = 1 : inchangé au bit).
+    annees = annees_de_la_fenetre(contexte)
+    courbe_base, origine = _courbe_de_base(points, declaration,
+                                           avertissements, annees)
     if courbe_base is None:
         return _omettre(MOTIF_CONSOMMATION, avertissements)
 
@@ -880,13 +899,13 @@ def construire_courbe_charge(serie, contexte=None, *, consommation=None):
         detail.append({
             'code': bloc['type'],
             'libelle': bloc['libelle'],
-            'kwh_an': publiee['energie_kwh'],
+            'kwh_an': moyenne(publiee['energie_kwh'], annees),
             'source': 'saisie',
             'methode': bloc['methode'],
             'planifie': bloc['planifie'],
             'plafonnee': bloc['plafonnee'],
-            'kwh_hors_production_an': _energie_hors_production(
-                bloc['courbe'], rangs_sans_production),
+            'kwh_hors_production_an': moyenne(_energie_hors_production(
+                bloc['courbe'], rangs_sans_production), annees),
             'hypotheses': bloc['hypotheses'],
         })
 
@@ -896,11 +915,12 @@ def construire_courbe_charge(serie, contexte=None, *, consommation=None):
         'consommation': {
             'courbe_origine': origine,
             'pas_minutes': pas_minutes,
-            'total_kwh': bilan['total_kwh'],
+            'total_kwh': moyenne(bilan['total_kwh'], annees),
             'charges': detail,
-            'profil_mensuel': _profil_mensuel_publie(points, bilan['courbe']),
-            'total_base_kwh': bilan['total_base_kwh'],
-            'total_charges_kwh': bilan['total_charges_kwh'],
+            'profil_mensuel': _profil_mensuel_publie(points, bilan['courbe'],
+                                                     annees),
+            'total_base_kwh': moyenne(bilan['total_base_kwh'], annees),
+            'total_charges_kwh': moyenne(bilan['total_charges_kwh'], annees),
             'avertissements': avertissements,
         },
         'omissions': {'consommation': '', 'batterie': '',
