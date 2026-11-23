@@ -195,3 +195,47 @@ class ConceptionRetenueTest(_DevisDeuxOptions):
         lu = self._lire(devis)
         self.assertEqual((lu['production_annuelle_kwh'], lu['production_origine']),
                          (95425.0, 'etude_ci'))
+
+
+class CibleOptionRetenueTest(_DevisDeuxOptions):
+    """ACAL1951 — la cible de l'atelier suit l'option RETENUE par le devis, et
+    l'enregistrement du dessin range l'option qu'il visait."""
+
+    def _calepinage(self, devis):
+        return Calepinage.objects.create(
+            company=self.company, lead_id=self.lead_lie.pk, devis=devis,
+            titre='QA-ACAL1951')
+
+    def _cible(self, calepinage):
+        reponse = self.api.get(url_contexte(calepinage.pk))
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        return reponse.data['cible']
+
+    def test_recommandee_avec_la_cible_est_l_option_avec(self):
+        cible = self._cible(self._calepinage(self._les_deux('Avec batterie')))
+        self.assertEqual((cible['panneaux'], cible['option'], cible['source']), (48, 'avec', 'devis'))
+        self.assertTrue(cible['batterie'])
+
+    def test_recommandee_sans_la_cible_est_l_option_sans(self):
+        cible = self._cible(self._calepinage(self._les_deux('Sans batterie')))
+        self.assertEqual((cible['panneaux'], cible['option']), (35, 'sans'))
+        self.assertIn('option', CONTRAT['exemple']['cible'])
+
+    def test_sans_devis_aucune_option(self):
+        cible = self._cible(Calepinage.objects.create(
+            company=self.company, lead_id=self.lead_lie.pk, titre='QA-ACAL1951-lead'))
+        self.assertIsNotNone(cible)
+        self.assertNotEqual(cible['source'], 'devis')
+        self.assertIsNone(cible['option'])
+
+    def test_l_enregistrement_range_l_option_visee(self):
+        from apps.calepinage.services.devis_retenu import CLE_OPTION_DESSINEE
+
+        calepinage = self._calepinage(self._les_deux('Sans batterie', statut='brouillon'))
+        url = f'{url_detail(calepinage.pk)}layout/'
+        reponse = self.api.post(url, {'schema_version': 2, 'zones': []}, format='json',
+                                HTTP_IF_MATCH='""')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        calepinage.refresh_from_db()
+        self.assertEqual(calepinage.resultat[CLE_OPTION_DESSINEE],
+                         {'devis': calepinage.devis_id, 'option': 'sans'})

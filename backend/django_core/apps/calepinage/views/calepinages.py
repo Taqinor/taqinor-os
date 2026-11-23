@@ -86,6 +86,7 @@ from .releve import ReleveTerrainMixin
 # CAL174 — les SOUS-RESSOURCES de sortie vivent dans leur propre module de vues, greffées ICI.
 from .sorties import SortiesMixin
 from .liste_compteurs import ListeCompteursMixin  # effectifs par statut de la liste
+from ..services.devis_retenu import cible_de_l_option_retenue, memoriser_option_dessinee
 from ..services.devis import (
     DevisRefuse, generer_devis, reponses_du_corps, resynchroniser_devis,
 )
@@ -671,6 +672,7 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
         except LayoutRefuse as refus:
             return Response({refus.champ or 'roof_layout': str(refus)},
                             status=status.HTTP_400_BAD_REQUEST)
+        memoriser_option_dessinee(calepinage)  # ACAL1951 — l'option que le dessin vise
         return Response(_reponse_ecriture(calepinage, resultat))
 
     @extend_schema(
@@ -1266,7 +1268,7 @@ def contexte_conception(calepinage, request=None):
     geometrie.update(etat_derive(
         getattr(calepinage, 'roof_layout', None), repere_du_lead(geo),
         devis_statut=(_devis_lie_resume(contexte_devis) or {}).get('statut')))
-    cible = _cible(calepinage, contexte_devis)
+    cible = _cible(calepinage, contexte_devis, devis)
     return {
         # ACAL36 — « Réviser » est-il possible sur le devis lié ? LU sur ventes
         # (``devis_modifiabilite``, jamais une règle recopiée) ; ``False`` sans
@@ -1466,7 +1468,7 @@ def _geometrie(calepinage, contexte_devis, geo=None):
             'contour_utilisable': utilisable, 'source_repere': source_repere}
 
 
-def _cible(calepinage, contexte_devis):
+def _cible(calepinage, contexte_devis, devis=None):
     """La cible de puissance, ou ``None`` — JAMAIS une puissance inventée.
 
     Ordre : la cible du DEVIS lié (celle que l'atelier devis emploie,
@@ -1477,7 +1479,7 @@ def _cible(calepinage, contexte_devis):
     par un repli forfaitaire.
     """
     if contexte_devis is not None and contexte_devis.get('cible'):
-        return dict(contexte_devis['cible'], source='devis', refus=None)
+        return cible_de_l_option_retenue(contexte_devis, devis)  # ACAL1951 — l'option retenue
     return _cible_du_lead(calepinage)
 
 
@@ -1526,6 +1528,7 @@ def _cible_du_lead(calepinage):
         'avertissements': [],
         'source': resultat['source'],
         'refus': resultat['refus'],
+        'option': None,  # ACAL1951 — aucune option de devis
     }
 
 
