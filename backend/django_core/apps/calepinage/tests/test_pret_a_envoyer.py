@@ -368,11 +368,8 @@ class CiblesDuReglerTest(SimpleTestCase):
 
     def test_toute_cible_servie_est_un_onglet_du_registre_ou_une_route(self):
         # Mutant : remettre « materiel », « obstacles » ⇒ échec (clés absentes).
-        import os
-
-        if _registre_onglets() is None and not os.environ.get('CI'):
-            self.skipTest('front absent de ce montage : la garde se joue sur le checkout complet de la CI')
-        self.assertIsNotNone(_registre_onglets(), 'registre des onglets introuvable dans le checkout')
+        # Aucun saut (ENF23) : sans le front (montage du seul ``django_core``) ce cas échoue et le dit.
+        self.assertIsNotNone(_registre_onglets(), 'registre des onglets introuvable : front absent de ce montage')
         cles = _cles_du_registre()
         self.assertGreater(len(cles), 30)  # le registre est bien lu
         self.assertEqual(_onglets_servis() - cles - ROUTES_NOMMEES, set())
