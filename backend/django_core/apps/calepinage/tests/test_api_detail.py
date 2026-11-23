@@ -126,6 +126,22 @@ class DetailContratTest(BaseApiCalepinage):
         self.assertEqual(set(surfaces[0]), set(EXEMPLE_SERVI['surfaces_chiffrables'][0]))
         self.assertEqual(self._detail(self.neuf)['surfaces_chiffrables'], [])
 
+    def test_acal1402_surfaces_chiffrables_disent_si_le_devis_les_chiffre(self):
+        """ACAL1402 — le contrat porte ``chiffree`` (booléen avec un devis lié,
+        ``null`` sans) et le détail réel a EXACTEMENT la forme de l'exemple.
+        Mutant : retirer la clé de l'exemple ⇒ échec."""
+        lignes = EXEMPLE_SERVI['surfaces_chiffrables']
+        self.assertTrue(lignes)
+        for ligne in lignes:
+            self.assertIsInstance(ligne['chiffree'], bool, ligne)
+        Calepinage.objects.filter(pk=self.rempli.pk).update(roof_layout={
+            'schema_version': 2,
+            'zones': [{'id': 'z1', 'label': 'Zone 1', 'geometry': {'count': 8}}],
+            'poseSurfaces': [{'id': 's1', 'kind': 'sol', 'label': 'Champ au sol 1',
+                              'moduleWc': 550, 'engine': {'modules': 4}}]})
+        for ligne in self._detail(self.rempli)['surfaces_chiffrables']:
+            self.assertEqual(set(ligne), set(lignes[0]))
+
     def test_autre_societe_introuvable(self):
         reponse = self.api_autre.get(url_detail(self.rempli.pk))
         self.assertEqual(reponse.status_code, 404)
