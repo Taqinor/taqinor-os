@@ -103,8 +103,8 @@ Modèle `ConceptionLead` dans `apps/ventes/models_conception.py` (à créer ; mo
 | Champ | Type | Rôle |
 |---|---|---|
 | `company` | FK société | multi-société ; forcé côté serveur, jamais lu d'un corps |
-| `lead` | FK `'crm.Lead'` (chaîne), `CASCADE`, nullable (§9 Q3) | le porteur |
-| `calepinage_id` | entier nullable | porteur quand il n'y a pas de lead (Q3) et calepinage dont la pose a servi |
+| `lead` | FK `'crm.Lead'` (chaîne), `CASCADE`, nullable (§9 Q3, décidée le 23/11) | le porteur |
+| `calepinage_id` | entier nullable | porteur quand il n'y a pas de lead (Q3, décidée : « On the calepinage itself ») et calepinage dont la pose a servi |
 | `version` | entier | par porteur, plus haut utilisé + 1 sous point de sauvegarde (jamais `count()+1`) |
 | `courante` | booléen | une seule courante par porteur (contrainte unique conditionnelle) |
 | `etat` / `refus` | texte / JSON | `complet` ou `refus` nommé `{code, champ, message}` (ex. `localisation_inconnue`) |
@@ -215,14 +215,14 @@ le calepinage et l'écran du devis disent les deux chiffres, chacun nommé, et p
 | 1 | CONTRAT seul sur `main` : `conception_lead.json`, forme des événements, liste des champs d'entrée | `check_api_shapes.py` vert ; contrat relu | 3 | faible | tout (PACT10) |
 | 2 | Modèle `ConceptionLead` (migration additive), `calculer_conception` qui APPELLE les noyaux tels quels, écrivain `relancer`, sélecteurs ; aucun lecteur branché | PARITÉ : pour les leads des goldens, les blocs rangés = ceux qu'écrit `build_devis_auto` aujourd'hui | 8 | moyen (forme des blocs) | 3, 4 |
 | 3 | Déclencheurs : `lead_entrees_modifiees` (crm), `pose_enregistree` (calepinage), file dédupliquée, filet d'empreinte, historique + phrase « pourquoi » ; commande de remplissage (liste d'abord, `--appliquer` ensuite) | test : changer la facture crée UNE version ; changer le nom aucune ; remplissage listé | 6 | moyen (tempêtes d'événements à l'import) | 4, 5, 7 |
-| 4 | Devis automatique et création de devis lisent la conception ; pointeur `etude_params.conception` ; garde CRM = manques du moteur | PARITÉ : 104 goldens `tests/golden/moteur/build_quote_data` + `split_dm_auto*` identiques ; aucun devis envoyé modifié | 7 | élevé (règle n° 4, chemins de création) | 5, 7 |
+| 4 | Devis automatique et création de devis lisent la conception ; pointeur `etude_params.conception` ; garde CRM = manques du moteur ; un brouillon que personne n'a retouché suit seul la nouvelle conception et le dit, un brouillon retouché garde ses valeurs et propose « Mettre à jour » (Q2, décidée le 23/11) | PARITÉ : 104 goldens `tests/golden/moteur/build_quote_data` + `split_dm_auto*` identiques ; aucun devis envoyé modifié | 7 | élevé (règle n° 4, chemins de création) | 5, 7 |
 | 5 | Calepinage lit la conception (généralise la vague C) ; devis lié envoyé = comparaison + « Réviser » | tests des trois états (sans devis, brouillon, envoyé) ; lead 1742 rejoué : 35 panneaux, Huawei, plus d'écart 16 | 6 | moyen | 6, 8 |
 | 6 | La pose est une entrée : le moteur appelle la simulation de la pose ; pose ajustée souveraine ; niveau 15 rendu courant après la liste d'ACAL1000 lue par le fondateur (ACAL1001) | dry-run des écarts de production des brouillons ; un enregistrement de pose = une version | 5 | élevé (chiffre client) | 8, 9 |
-| 7 | Écrans : fiche du lead, `/ventes/devis/nouveau`, atelier ERP, « Montrer au client » lisent la conception ; aperçu sans écriture | tests de rendu ; acceptation en direct (règle 3-bis) | 6 | moyen | 8 |
+| 7 | Écrans : fiche du lead, `/ventes/devis/nouveau`, atelier ERP, « Montrer au client » lisent la conception ; aperçu sans écriture ; pendant le dessin, avant l'enregistrement, l'atelier ne montre que les panneaux et le kWc posés, la production arrive du moteur à l'enregistrement (Q4, décidée le 23/11) | tests de rendu ; acceptation en direct (règle 3-bis) | 6 | moyen | 8 |
 | 8 | Retraits §7 + garde `check_moteur_unique.py` | garde verte ; suites `apps.calepinage`, `apps.ventes`, `apps.crm` | 5 | moyen | — |
-| 9 | (§9 Q1) Production sans toit = même simulation sur un plan par défaut | dry-run des écarts montré au fondateur avant bascule | 2 | élevé | — |
+| 9 | (Q1, décidée le 23/11 : « Same simulation, default roof ») Production sans toit = même simulation sur un toit supposé (30° plein sud ou pente déclarée du lead) | liste des écarts montrée au fondateur AVANT la bascule | 2 | élevé | — |
 
-## 9. Risques et questions pour le fondateur
+## 9. Risques, et réponses du fondateur du 23/11/2026
 
 Risques : coût d'un calcul (H3 lu : ~1,9 s et ~28 requêtes pour une taille résidentielle ; appels PVGIS) ⇒ calcul en
 tâche, jamais dans la requête de l'écran ; import de leads en masse ⇒ déduplication et regroupement ; fichiers de plus
@@ -232,14 +232,22 @@ chaque étape ; `prix_achat` ⇒ parcours interdit sur `valeurs`.
 
 - **Q1 — Production sans toit tracé.** Aujourd'hui : enveloppe de 20 % (résidentiel, `pricing.py::SYSTEM_LOSS_TOTAL`)
   ou jours types PVGIS (C&I). (a) même simulation que la pose, sur un plan par défaut (30° sud ou pente du lead) avec
-  les pertes D-ACAL-82 — un seul code, la production des NOUVEAUX devis change ; (b) garder le chemin actuel sans toit
-  (un chiffre par valeur, mais deux codes de production). Recommandé : (a), après la liste des écarts montrée.
+  les pertes D-ACAL-82 ; (b) garder le chemin actuel sans toit. **Réponse du fondateur : « Same simulation, default
+  roof »** — la même simulation horaire que pour un toit tracé, sur un toit supposé (30° plein sud, ou la pente déclarée
+  du lead) avec les quatre pertes ; la production des NOUVEAUX devis change ; la liste des écarts lui est montrée AVANT
+  la bascule (étape 9).
 - **Q2 — Brouillon de devis quand la conception change.** (a) mis à jour seul s'il n'a pas été retouché à la main,
-  « Mettre à jour » proposé sinon ; (b) toujours proposé ; (c) toujours seul. Recommandé : (a).
-- **Q3 — Calepinage sans lead** (dossier d'appel d'offres, client seul). (a) même table, porteur = calepinage ; les
-  dossiers AO gardent leur CPS (16, 60 kWc) hors moteur ; (b) un lead obligatoire. Recommandé : (a).
+  « Mettre à jour » proposé sinon ; (b) toujours proposé ; (c) toujours seul. **Réponse du fondateur : « Update unless
+  hand-edited »** — un brouillon que personne n'a retouché suit la nouvelle conception de lui-même, et le dit ; un
+  brouillon retouché garde ses valeurs et propose « Mettre à jour » (étape 4).
+- **Q3 — Calepinage sans lead** (dossier d'appel d'offres, client seul). (a) même table, porteur = calepinage ; (b) un
+  lead obligatoire. **Réponse du fondateur : « On the calepinage itself »** — même résultat rangé, porté par le
+  calepinage ; les dossiers d'appel d'offres gardent leurs règles de cahier des charges (16 modules par chaîne, 60 kWc
+  par onduleur) hors du moteur (modèle, §4).
 - **Q4 — Pendant le dessin, avant enregistrement.** (a) l'atelier ERP montre panneaux et kWc posés, la production
-  arrive du moteur à l'enregistrement ; (b) une estimation locale nommée « estimation de l'atelier ». Recommandé : (a).
+  arrive du moteur à l'enregistrement ; (b) une estimation locale nommée « estimation de l'atelier ». **Réponse du
+  fondateur : « Panels and kWc only »** — l'atelier montre le nombre de panneaux et le kWc posés ; la production arrive
+  du moteur dès l'enregistrement (la simulation part seule) (étape 7).
 
 ## 10. Ce que je n'ai pas lu
 
