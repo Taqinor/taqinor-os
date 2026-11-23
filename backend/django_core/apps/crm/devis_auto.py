@@ -312,9 +312,12 @@ _LIBELLES = {
     'raccordement': 'Phase du site (monophasé ou triphasé)',
     # ALEA67 — ville reconnue OU point GPS (une seule puce).
     'ville': 'ville',
-    'jours_ouverture': "Jours et heures d'ouverture (ou catégorie d'activité)",
-    'heure_debut': "Jours et heures d'ouverture (ou catégorie d'activité)",
+    # Coutures vague D2 — chaque groupe de rythme nomme ce qui manque
+    # vraiment ; les deux manquants partagent UNE puce (LIBELLE_RYTHME).
+    'jours_ouverture': "Jours d'ouverture (ou catégorie d'activité)",
+    'heure_debut': "Heures d'ouverture ou régime d'équipes (ou catégorie d'activité)",
 }
+LIBELLE_RYTHME = "Jours et heures d'ouverture (ou catégorie d'activité)"
 
 
 def champs_manquants_detail(lead, requis=None) -> list[dict]:
@@ -323,12 +326,16 @@ def champs_manquants_detail(lead, requis=None) -> list[dict]:
     groupe de rythme n'est requis QUE manquant (ALEA47, règle du moteur)."""
     detail = []
     mode = lead.type_installation or 'residentiel'
-    for groupe in champs_requis(lead) if requis is None else requis:
+    groupes = champs_requis(lead) if requis is None else requis
+    rythmes = sum(tuple(g) in _GROUPES_RYTHME.values() for g in groupes)
+    for groupe in groupes:
         rythme = tuple(groupe) in _GROUPES_RYTHME.values()
         if not rythme and any(_rempli(lead, champ) for champ in groupe):
             continue
         label = (_LIBELLES_PRO[mode] if mode in _MODES_ETUDE
-                 and groupe[0] in GROUPE_CONSO_PRO else _LIBELLES[groupe[0]])
+                 and groupe[0] in GROUPE_CONSO_PRO
+                 else LIBELLE_RYTHME if rythme and rythmes > 1
+                 else _LIBELLES[groupe[0]])
         if all(entree['label'] != label for entree in detail):
             detail.append({'champ': groupe[0], 'label': label})
     return detail

@@ -128,6 +128,21 @@ class PretEgaleCeQueLeMoteurExigeALEA47(SimpleTestCase):
         lead.heure_debut, lead.heure_fin = 8, 18
         self.assertEqual(champs_manquants(lead), [])
 
+    def test_le_refus_nomme_ce_qui_manque_vraiment(self):
+        # Coutures vague D2, point 5 — une seule puce quand jours ET heures
+        # manquent ; sinon le libellé ne nomme que ce qui manque.
+        lead = _lead_pro(conso_mensuelle_kwh=Decimal('10000'),
+                         categorie_commerciale='autre',
+                         contrat_electricite='bt_patente',
+                         raccordement='triphase')
+        self.assertEqual(champs_manquants(lead), [LIB_RYTHME])
+        lead.jours_ouverture = [1, 2, 3, 4, 5]
+        self.assertEqual(champs_manquants(lead),
+                         ["Heures d'ouverture ou régime d'équipes (ou catégorie d'activité)"])
+        lead.jours_ouverture, lead.heure_debut, lead.heure_fin = None, 8, 18
+        self.assertEqual(champs_manquants(lead),
+                         ["Jours d'ouverture (ou catégorie d'activité)"])
+
     def test_industriel_conso_et_contrat_sans_rythme_pas_pret(self):
         lead = Lead(nom='Usine', type_installation='industriel',
                     conso_mensuelle_kwh=Decimal('20000'),
