@@ -5567,3 +5567,29 @@ decisions:
     date: "2026-11-23"
     source: "tour 2 du L5 (23/11/2026) : la lane carte-a a reproduit le défaut — l'ombre proche est évaluée au seul centre du pan, si bien qu'une cheminée posée au centre donne 71,76 % de perte quelle que soit sa hauteur (la note « −72 % » vue par les relecteurs) et qu'un poteau hors du centre donne 0 % ; recommandation : la moyenne sur les panneaux posés, parce que c'est la grandeur que la note annonce ; NON tranchée par l'orchestrateur parce que la matrice d'ombrage est une clé imprimée du devis : la production des devis liés à un calepinage qui a un obstacle changerait ; à préparer en phase de contrôles : la liste des devis touchés et l'écart de chacun, avant la réponse"
     taches: [ACAL1407, ACAL1501]
+
+  - id: D-ACAL-84
+    question: "Quelle ligne de la table des coefficients thermiques vaut pour un toit affleurant (« intégré ») et pour un châssis ?"
+    options:
+      - cle: chassis_libre_affleurant_isole
+        texte: "Châssis → « pose libre » ; affleurant → « dos isolé »"
+      - cle: chassis_libre_affleurant_non_calcule
+        texte: "Châssis → « pose libre » ; affleurant non calculé tant qu'une ligne « semi-intégré » sourcée n'existe pas"
+      - cle: rien_par_defaut
+        texte: "Aucune correspondance par défaut : la société choisit"
+    reponse: ouverte
+    date: "2026-11-23"
+    source: "tour 2 du L5 (23/11/2026), lot C : le profil de départ publie deux lignes (« pose_libre », « dos_isole ») alors que le document de toiture dit « integre » ou « chassis » ; sans correspondance, l'étape thermique reste non calculée ; recommandation du lot C : châssis → pose libre, affleurant non calculé ; change la production imprimée au rapport d'étude"
+    taches: [ACAL1671]
+
+  - id: D-ACAL-85
+    question: "Le P90 de l'étude compte-t-il les incertitudes du modèle, de la météo et de la fiche du module, ou la seule variabilité d'une année à l'autre ?"
+    options:
+      - cle: composer
+        texte: "Composer les trois incertitudes avec la variabilité entre années, chaque composante citée avec sa source"
+      - cle: interannuelle
+        texte: "La seule variabilité d'une année à l'autre (comportement actuel), dite telle"
+    reponse: ouverte
+    date: "2026-11-23"
+    source: "tour 2 du L5 (23/11/2026), lot C : le P90 affiché ne compte que la variabilité entre années ; une étude de référence compose aussi les incertitudes du modèle, de la météo et de la fiche ; recommandation du lot C : composer, chaque composante citée ; le libellé honnête du P90 actuel est corrigé sans attendre (ACAL1657) ; change le P90 imprimé au rapport d'étude"
+    taches: [ACAL1672]
