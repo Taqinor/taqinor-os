@@ -256,6 +256,19 @@ def _fiche_du_module_pose(materiel, document):
     return dict(fiches[retenu].get('specs') or {}) if retenu is not None else defaut
 
 
+def _ranger_la_tete_des_avertissements(blocs, entete, non_raccordes):
+    """La « borne haute » ouvre les avertissements (ACAL49, D-ACAL-7) ; la
+    phrase des panneaux non raccordés la suit aussitôt (ACAL1602)."""
+    avertissements = blocs.get('avertissements') or []
+    en_tete = bool(entete and entete in avertissements)
+    if en_tete:
+        avertissements.remove(entete)
+        avertissements.insert(0, entete)
+    if non_raccordes:
+        avertissements = blocs.setdefault('avertissements', avertissements)
+        avertissements.insert(int(en_tete), non_raccordes)
+
+
 def _contexte_des_modules_poses(contexte):
     """ACAL1602 — le module par module voit les pans POSÉS entiers, sans
     l'accès météo partagé (il porte déjà le kWc des seuls raccordés)."""
@@ -1511,13 +1524,7 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     blocs['ombrage'] = ecrit['ombrage']
     for texte in (ecrit.get('avertissements') or []):
         _ajouter_avertissement(blocs, texte)
-    if entete and entete in blocs.get('avertissements', ()):
-        blocs['avertissements'].remove(entete)
-        blocs['avertissements'].insert(0, entete)
-    if meta['non_raccordes']:  # ACAL1602 — en tête, après la borne haute
-        blocs.setdefault('avertissements', []).insert(
-            int(bool(entete and entete in blocs['avertissements'])),
-            meta['non_raccordes'])
+    _ranger_la_tete_des_avertissements(blocs, entete, meta['non_raccordes'])
     _appels_complementaires_pvgis(blocs, client, reference, decision,
                                   fichier, compteur, meta['document'])
     identite = _relayer_fichier_meteo(blocs['meteo'], fichier, provenance)
