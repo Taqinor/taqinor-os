@@ -71,6 +71,12 @@
   letter-spacing: 0.2em;
   text-transform: uppercase;
 }
+/* « Affiner ma consommation » — le bandeau de synthèse (Conso/jour, Autoconsommation, Économies/an, Batteries) suit
+   `sm:grid-cols-4` du balisage partagé, réglé sur la FENÊTRE (≥ 640 px) ; dans le panneau d'étape (384 px) cela donnait
+   quatre colonnes de ~78 px dont les libellés et les montants se superposaient. Deux colonnes, libellés resserrés. */
+.rp9-host #rp9-cons-panel > dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.rp9-host #rp9-cons-panel > dl dt { letter-spacing: 0.12em; overflow-wrap: anywhere; }
+.rp9-host #rp9-cons-panel > dl dd { overflow-wrap: anywhere; }
 .rp9-host .rule-brass {
   display: flex;
   align-items: center;

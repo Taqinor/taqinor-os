@@ -804,6 +804,34 @@ describe('ACAL2001 — les messages se posent hors du bouton d’étape', () => 
   })
 })
 
+/* T3-VAGUEC (S3) — « Affiner ma consommation » : le panneau d'étape ne fait que 384 px, mais les quatre tuiles chiffrées du
+   bandeau de synthèse suivaient `sm:grid-cols-4`, réglé sur la FENÊTRE (≥ 640 px) : quatre colonnes de ~78 px, libellés et
+   montants superposés. Le vrai balisage partagé est rendu sous `.rp9-host` avec la règle Tailwind d'origine (posée sans sa
+   requête de média, que jsdom n'évalue pas) et la feuille du constructeur : le bandeau passe à deux colonnes. */
+describe('« Affiner ma consommation » — les quatre tuiles chiffrées ne se chevauchent pas', () => {
+  let style
+  let hote
+  beforeEach(async () => {
+    const { CONS_WINDOW_HTML } = await import('@roofpro/consumptionMarkup')
+    style = document.createElement('style')
+    style.textContent = `.sm\\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }\n${
+      readFileSync(resolve(process.cwd(), 'src/styles/roofbuilder.css'), 'utf8')}`
+    document.head.appendChild(style)
+    hote = document.createElement('div')
+    hote.className = 'rp9-host'
+    hote.innerHTML = CONS_WINDOW_HTML
+    document.body.appendChild(hote)
+  })
+  afterEach(() => { style.remove(); hote.remove() })
+
+  it('le bandeau de synthèse tient en deux colonnes dans le panneau, ses quatre tuiles y sont toutes', () => {
+    const bandeau = hote.querySelector('#rp9-cons-panel > dl')
+    expect(bandeau.children).toHaveLength(4)
+    expect(getComputedStyle(bandeau).getPropertyValue('grid-template-columns').trim()).toMatch(/^repeat\(2,/)
+    for (const libelle of bandeau.querySelectorAll('dt')) expect(getComputedStyle(libelle).overflowWrap).toBe('anywhere')
+  })
+})
+
 /* ACAL1904 — la carte d'adresse (#rp9-search) du calepinage sans toit : la pile de zoom reste libre, un clic de tracé hors
    des champs passe à la carte, la carte ne tient que la hauteur d'un champ tant qu'on n'écrit pas. Le composant de la
    carte est RENDU ; les feuilles 49 + 50 sont chargées dans le DOM de test et lues par getComputedStyle. */
