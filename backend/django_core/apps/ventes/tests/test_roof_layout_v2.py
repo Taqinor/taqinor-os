@@ -228,6 +228,36 @@ class SchemaRoofLayoutV2Test(SimpleTestCase):
                 document['zones'][0]['obstacles'][0]['provenance'] = graphie
                 self.assertEqual(self._erreurs(document), [])
 
+    def test_un_pan_plat_confirme_est_conforme_et_un_mode_inconnu_refuse(self):
+        """ACAL1400 — `pitchSource.mode = 'plat'` : la confirmation d'un toit
+        plat porte sa source ; l'exemple en porte un ; « autre » reste refusé
+        en nommant le champ."""
+        self.assertIn('plat', [z.get('pitchSource', {}).get('mode')
+                               for z in self.schema['exemple']['zones']
+                               if z.get('roofType') == 'flat'])
+        document = copy.deepcopy(self.schema['exemple'])
+        pan = document['zones'][0]
+        pan.update(roofType='flat', pitchDeg=0, pitchSource={'mode': 'plat'})
+        self.assertEqual(self._erreurs(document), [])
+        pan['pitchSource'] = {'mode': 'autre'}
+        erreurs = self._erreurs(document)
+        self.assertEqual([chemin for chemin, _ in erreurs],
+                         [['zones', 0, 'pitchSource', 'mode']])
+
+    def test_module_choisi_booleen_accepte_texte_refuse(self):
+        """ACAL1401 — `geometry.moduleChoisi` : vrai, ou absent (= module de
+        départ, jamais confirmé), sont conformes ; un texte est refusé en
+        nommant le champ."""
+        document = copy.deepcopy(self.schema['exemple'])
+        geometrie = document['zones'][0]['geometry']
+        self.assertNotIn('moduleChoisi', geometrie)
+        self.assertEqual(self._erreurs(document), [])
+        geometrie['moduleChoisi'] = True
+        self.assertEqual(self._erreurs(document), [])
+        geometrie['moduleChoisi'] = 'oui'
+        self.assertEqual([chemin for chemin, _ in self._erreurs(document)],
+                         [['zones', 0, 'geometry', 'moduleChoisi']])
+
 
 class NonRegressionConsommateursVentesTest(SimpleTestCase):
     """Les TROIS consommateurs ventes ne changent aucun chiffre en v2."""
