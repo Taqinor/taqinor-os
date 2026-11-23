@@ -248,7 +248,10 @@ export function matriceOmbrageDesSources(
   // ACAL1407 (D-ACAL-83) — la MOYENNE des matrices des panneaux posés ; sans panneau, d'une grille du pan.
   const grille = poses?.length ? poses : grilleDuPan(ctx.vertices, ctx.centroid, enu);
   const mats = (grille.length ? grille : [{ x: 0, y: 0 }]).map((p) => hourlyShadeFactors(ctx.centroidLat, enu, p.x, p.y));
-  return { factors: mats[0].map((row, m) => row.map((_v, h) => mats.reduce((s, mat) => s + mat[m][h], 0) / mats.length)), entries: enu.length };
+  // Couture ACAL1407 — la moyenne est arrondie comme le document l'enregistre (prefill.ts::serializeShading,
+  // 3 décimales) : la production de la session est celle que le document rouvert recalcule, à l'identique.
+  const moyenne = (m: number, h: number) => Math.round((mats.reduce((s, mat) => s + mat[m][h], 0) / mats.length) * 1000) / 1000;
+  return { factors: mats[0].map((row, m) => row.map((_v, h) => moyenne(m, h))), entries: enu.length };
 }
 
 /** ACAL1407 — points d'une grille du pan (ENU autour de `origin`, ≈ 10 par côté, pas ≥ 1 m), hors des empreintes d'obstacle. */
@@ -1254,8 +1257,11 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
 
   const metaTableOmbrage: ShadingUi['metaTableOmbrage'] = (g) => {
     const points = (g?.panels ?? []).map((p) => ({ x: p.cx, y: p.cy }));
-    // ACAL1407 — appelée avant chaque sérialisation : la matrice enregistrée suit les modules posés.
-    if (hasShadeSources() && poseDeLaMatrice !== empreinteDesPoses(points)) recomputeFactors();
+    // ACAL1407 — appelée avant chaque sérialisation : la matrice enregistrée suit les modules posés. Couture :
+    // comparée à la pose que `recomputeFactors` mesure (pointsPosesDuPan), et seulement quand une matrice est
+    // en vigueur — un document sans matrice ne s'en voit pas écrire une par un simple enregistrement.
+    const pose = empreinteDesPoses(pointsPosesDuPan(ctx));
+    if (hasShadeSources() && (poseDeLaMatrice !== null || ctx.shadeFactors) && poseDeLaMatrice !== pose) recomputeFactors();
     return { shadeTableByZone: { [ctx.activeAreaId]: tableOmbrageActive(points) }, signatureOmbrage: signatureTable(), skyViewByZone: { [ctx.activeAreaId]: g ? vueCielActive(points, g.tiltDeg, g.azimuthDeg) : null } };
   };
 
