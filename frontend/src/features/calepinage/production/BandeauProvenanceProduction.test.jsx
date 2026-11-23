@@ -200,6 +200,41 @@ describe('SourceMeteo — deuxième source météo (ACAL745)', () => {
   })
 })
 
+/* ACAL746 (D-ACAL-81) — la comparaison NASA POWER servie tient en UNE ligne à côté de PVGIS-ERA5 ; PVGIS reste la
+   source du chiffre ; quand le service ne répond pas, le motif servi, mot pour mot. */
+describe('SourceMeteo — comparaison NASA POWER (ACAL746)', () => {
+  const meteoDe = (variante) => exempleContrat('calepinage', 'calepinage_meteo', variante).meteo
+
+  it('NASA répond : une ligne avec les deux irradiations servies et l’écart, PVGIS nommé source du chiffre', () => {
+    const meteo = meteoDe('exemple')
+    const nasa = meteo.comparaison_nasa_power
+    render(<SourceMeteo meteo={meteo} />)
+    const ligne = screen.getByTestId('acal746-nasa')
+    const texte = ligne.textContent.replace(/\s/g, ' ')
+    expect(texte).toContain('NASA POWER')
+    expect(texte).toContain('1 842')
+    expect(texte).toContain('1 850')
+    expect(texte).toMatch(/[-−]0,4 %/)
+    expect(texte).toContain('PVGIS reste la source du chiffre')
+    expect(nasa.ecart_pct).toBe(-0.43)
+  })
+
+  it('NASA injoignable : « non comparée » et le motif servi, aucun chiffre inventé', () => {
+    const meteo = { ...meteoDe('exemple'), ...meteoDe('exemple_comparaison_sans_ecart') }
+    expect(meteo.comparaison_nasa_power.ecart_pct).toBeNull()
+    render(<SourceMeteo meteo={meteo} />)
+    const ligne = screen.getByTestId('acal746-nasa')
+    expect(ligne).toHaveTextContent('NASA POWER non comparée :')
+    if (meteo.comparaison_nasa_power.motif) expect(ligne).toHaveTextContent(meteo.comparaison_nasa_power.motif)
+    expect(ligne.textContent).not.toMatch(/kWh\/m²/)
+  })
+
+  it('comparaison_nasa_power absent ou null : rien', () => {
+    render(<SourceMeteo meteo={{ ...meteoDe('exemple'), comparaison_nasa_power: null }} />)
+    expect(screen.queryByTestId('acal746-nasa')).toBeNull()
+  })
+})
+
 describe('SourceMeteo / IncertitudeSigma (ENF15)', () => {
   it('la source météo affiche les clés servies, « non publié » pour un null', () => {
     const { meteo } = exempleContrat('calepinage', 'calepinage_meteo')
@@ -222,6 +257,8 @@ describe('SourceMeteo / IncertitudeSigma (ENF15)', () => {
   it('σ composé : une ligne par composante sourcée, méthode et portée nommées', () => {
     const { incertitude } = exempleContrat('calepinage', 'calepinage_incertitude')
     render(<IncertitudeSigma incertitude={incertitude} />)
+    // ACAL1672 — les composantes citées avec leur source sont À L'ÉCRAN (bloc ouvert), pas seulement le σ total.
+    expect(screen.getByTestId('enf15-incertitude')).toHaveAttribute('open')
     const lignes = screen.getAllByTestId('enf15-composante')
     expect(lignes).toHaveLength(incertitude.composantes.length)
     incertitude.composantes.forEach((c, i) => {
