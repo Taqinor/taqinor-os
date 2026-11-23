@@ -993,6 +993,7 @@ retiré plus un hook ajouté.
 | `cal-toit-pente-confirmer` | étape Toit : bouton « Confirmer » de la pente. |
 | `cal-toit-pente-inconnue` | étape Toit : bouton « Je ne la connais pas ». |
 | `cal-toit-obstacles` | étape Toit : liste des obstacles et « + Ajouter ». |
+| `cal-toit-soleil` | étape Toit : bloc « Soleil » (jour et heure du soleil du constructeur) à droite de la barre d’outils. |
 | `cal-panneaux-module` | étape Panneaux : carte du modèle de panneau. |
 | `cal-panneaux-option-facture` | étape Panneaux : option « Couvrir la facture ». |
 | `cal-panneaux-option-max` | étape Panneaux : option « Le plus de panneaux ». |

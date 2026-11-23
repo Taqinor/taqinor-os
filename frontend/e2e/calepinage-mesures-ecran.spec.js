@@ -497,3 +497,25 @@ test('ACAL1442: panneau Expert de l’étape Toit à 1440 × 900 — rien ne se 
     for (const b of boutons) expect(b.h, `cible du pan ${i + 1}`).toBeGreaterThanOrEqual(44)
   }
 })
+
+// ACAL1818 — le curseur « Heure du soleil » de l'étape Panneaux se touche sur 44 px (pointeur grossier, 390 × 844). Mesure
+// DOM : la zone du champ, jamais sa piste dessinée (6 px). Écrit pour la CI ; la vue client a le même curseur (58-telephone.css).
+test('ACAL1818: curseur « Heure du soleil » ≥ 44 px de haut à 390 × 844 (pointeur grossier)', async ({ browser }) => {
+  test.setTimeout(600_000)
+  const contexte = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 3 })
+  try {
+    const page = await contexte.newPage()
+    await carteRefusee(contexte)
+    await amorcerSession(page)
+    const id = await calepinageParApi(page.request, 'ACAL1818 Soleil', { layout: true })
+    await ouvrirAtelier(page, id, APPAREILS[1])
+    await page.getByTestId('cal-etape-panneaux').click()
+    const curseur = page.locator('.cal-pan-heure[aria-label="Heure du soleil"]').first()
+    await curseur.scrollIntoViewIfNeeded()
+    const boite = await curseur.boundingBox()
+    expect(boite, 'curseur Heure du soleil monté').toBeTruthy()
+    expect(boite.height, 'zone tactile du curseur').toBeGreaterThanOrEqual(44)
+  } finally {
+    await contexte.close()
+  }
+})

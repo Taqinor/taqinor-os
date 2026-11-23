@@ -128,7 +128,7 @@ describe('Étape Toit — le panneau de la maquette Main', () => {
   it('blocs dans l’ordre de la maquette, libellés mot pour mot, crochets e2e', async () => {
     rendre()
     const titres = [...document.querySelectorAll('.cal-etape-toit h2')].map((n) => n.textContent)
-    expect(titres).toEqual(['Forme', 'Dimensions', 'Pente et orientation', 'Obstacles'])
+    expect(titres).toEqual(['Forme', 'Dimensions', 'Pente et orientation', 'Obstacles · 2']) // ACAL1827 — le nombre est dit
     const dims = screen.getByTestId('cal-toit-dimensions')
     expect(within(dims).getByLabelText('Longueur')).toHaveValue('12,4')
     expect(within(dims).getByLabelText('Largeur')).toHaveValue('8,6')
@@ -136,7 +136,7 @@ describe('Étape Toit — le panneau de la maquette Main', () => {
     const carte = screen.getByTestId('cal-toit-pente-carte')
     await waitFor(() => expect(within(carte).getByText('22° · face sud')).toBeInTheDocument())
     expect(within(carte).getByText('À confirmer')).toBeInTheDocument()
-    expect(within(carte).getByText('Valeur de départ, pas une mesure. Confirmez-la ou mesurez-la avant d\'envoyer le devis.')).toBeInTheDocument()
+    expect(within(carte).getByText('Valeur de départ, pas une mesure : confirmez-la ou mesurez-la.')).toBeInTheDocument()
     expect(screen.getByTestId('cal-toit-pente-confirmer')).toHaveTextContent('Confirmer')
     expect(screen.getByTestId('cal-toit-pente-inconnue')).toHaveTextContent('Je ne la connais pas')
     const obstacles = screen.getByTestId('cal-toit-obstacles')
@@ -179,7 +179,7 @@ describe('Étape Toit — « Pente et orientation »', () => {
       cle: 'zones', zone_id: 'area-1', champs: { pitchDeg: 22, pitchSource: { mode: 'degres', degres: 22 } }, base_empreinte: 'jeton-1',
     })
     await waitFor(() => expect(screen.queryByText('À confirmer')).toBeNull())
-    expect(screen.getByRole('status')).toHaveTextContent('Pente enregistrée sur le pan « Pan 1 ».')
+    expect(within(screen.getByTestId('cal-toit-pente-carte')).getByRole('status')).toHaveTextContent('Pente enregistrée sur le pan « Pan 1 ».')
   })
 
   it('« Je ne la connais pas » : rien n’est écrit, la valeur reste « À confirmer », la visite la vérifiera', async () => {
@@ -188,7 +188,7 @@ describe('Étape Toit — « Pente et orientation »', () => {
     fireEvent.click(screen.getByTestId('cal-toit-pente-inconnue'))
     expect(enregistrerSectionLayout).not.toHaveBeenCalled()
     expect(screen.getByText('À confirmer')).toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent('elle sera vérifiée à la visite. Rien n’est enregistré.')
+    expect(within(screen.getByTestId('cal-toit-pente-carte')).getByRole('status')).toHaveTextContent('elle sera vérifiée à la visite. Rien n’est enregistré.')
     expect(screen.queryByTestId('cal-toit-pente-confirmer')).toBeNull()
   })
 
@@ -221,10 +221,32 @@ describe('Étape Toit — « Pente et orientation »', () => {
     expect(await screen.findByText('22° · face sud')).toBeInTheDocument()
     fireEvent.click(screen.getByTestId('cal-toit-pente-confirmer'))
     expect(surPuce).toHaveBeenCalledTimes(1)
-    expect(screen.getByRole('status')).toHaveTextContent('Pente confirmée')
-    expect(screen.getByRole('status')).not.toHaveTextContent('Enregistrez d’abord')
+    expect(within(screen.getByTestId('cal-toit-pente-carte')).getByRole('status')).toHaveTextContent('Pente confirmée')
+    expect(within(screen.getByTestId('cal-toit-pente-carte')).getByRole('status')).not.toHaveTextContent('Enregistrez d’abord')
     expect(enregistrerSectionLayout).not.toHaveBeenCalled()
     await waitFor(() => expect(screen.queryByText('À confirmer')).toBeNull())
+  })
+})
+
+describe('Critique ACAL1428 × ACAL1429 — toit PLAT tracé, pas encore enregistré', () => {
+  it('« Confirmer » confirme le pan vivant (même chemin que la pente), sans « Enregistrez d’abord » ni écriture', async () => {
+    builderApi = { panActifId: () => 'area-9', appliquerVue: vi.fn() }
+    const surPuce = vi.fn()
+    rendre({}, (hote) => {
+      hote.querySelector('[data-rooftype="flat"]').setAttribute('aria-pressed', 'true')
+      hote.querySelector('[data-rooftype="pitched"]').setAttribute('aria-pressed', 'false')
+      const puce = document.createElement('button')
+      puce.dataset.pitch = '22'
+      puce.addEventListener('click', () => { surPuce(); hote.querySelector('#rp9-pitch-note').textContent = '' })
+      hote.appendChild(puce)
+    })
+    const carte = screen.getByTestId('cal-toit-pente-carte')
+    await waitFor(() => expect(within(carte).getByText('Toit plat')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('cal-toit-pente-confirmer'))
+    expect(surPuce).toHaveBeenCalledTimes(1)
+    expect(within(carte).getByRole('status')).toHaveTextContent('Toit plat confirmé')
+    expect(within(carte).getByRole('status')).not.toHaveTextContent('Enregistrez d’abord')
+    expect(enregistrerSectionLayout).not.toHaveBeenCalled()
   })
 })
 
@@ -358,7 +380,7 @@ describe('Étape Toit — sur la carte', () => {
     $('rp9-add-area').disabled = false
     act(() => { vi.advanceTimersByTime(600) })
     expect(within(surCarte).getByText('Contour tracé')).toBeInTheDocument()
-    expect(within(surCarte).getByText('Cliquez sur un coin pour le déplacer, ou double-cliquez sur un bord pour ajouter un point.')).toBeInTheDocument()
+    expect(within(surCarte).getByText('Glissez un coin pour le déplacer. Double-cliquez un bord pour ajouter un point.')).toBeInTheDocument()
     act(() => { vi.advanceTimersByTime(9000) })
     expect(within(surCarte).queryByText('Contour tracé')).toBeNull()
   })
@@ -369,6 +391,139 @@ describe('Étape Toit — sur la carte', () => {
     act(() => { vi.advanceTimersByTime(10) })
     expect(builderApi.appliquerVue).toHaveBeenCalledWith('dessus')
     expect(builderApi.appliquerVue).not.toHaveBeenCalledWith('trois-quarts')
+  })
+})
+
+/* ACAL1445 — l'étape Toit face à Main / ToitSombre : bulle de consigne tant qu'aucun coin n'est déplacé, bloc « Soleil »
+   à côté de la barre d'outils, boussole sous la pile de zoom, « Je ne la connais pas » sur une ligne. */
+describe('ACAL1445 — bulle, bloc Soleil, boussole', () => {
+  const SOLEIL = '<input id="rp9-sun-date" type="date" value="2028-06-21"><input id="rp9-sun-hour" type="range" min="6" max="18" value="14">'
+  let style
+  beforeEach(() => {
+    style = document.createElement('style')
+    style.textContent = ['49-jetons-v2.css', '50-coque-atelier.css', '51-etape-toit.css']
+      .map((f) => readFileSync(resolve(process.cwd(), `src/styles/calepinage/${f}`), 'utf8')).join('\n')
+    document.head.appendChild(style)
+  })
+  afterEach(() => { style.remove() })
+
+  it('un toit déjà tracé s’ouvre avec la bulle « Contour tracé » ; un coin déplacé (historique actif) la retire', () => {
+    vi.useFakeTimers()
+    rendre()
+    expect(within(surCarte).getByText('Contour tracé')).toBeInTheDocument()
+    act(() => { vi.advanceTimersByTime(20000) }) // pas de minuteur : elle reste tant que rien n'est déplacé
+    expect(within(surCarte).getByText('Contour tracé')).toBeInTheDocument()
+    $('rp9-layout-undo').disabled = false // le moteur a gardé le déplacement d'un coin
+    act(() => { vi.advanceTimersByTime(600) })
+    expect(within(surCarte).queryByText('Contour tracé')).toBeNull()
+    $('rp9-layout-undo').disabled = true // annuler jusqu'au début ne la ramène pas : le coin a bien été déplacé
+    act(() => { vi.advanceTimersByTime(600) })
+    expect(within(surCarte).queryByText('Contour tracé')).toBeNull()
+  })
+
+  it('sans contour fermé, pas de bulle', () => {
+    rendre({}, (hote) => hote.querySelector('#rp9-add-area').remove())
+    expect(within(surCarte).queryByText('Contour tracé')).toBeNull()
+  })
+
+  it('bloc « Soleil » : le jour et l’heure du soleil du constructeur, jamais inventés', () => {
+    rendre({}, (hote) => { hote.insertAdjacentHTML('beforeend', SOLEIL) })
+    const bloc = within(surCarte).getByTestId('cal-toit-soleil')
+    expect(bloc).toHaveTextContent('Soleil21 juin · 14 h')
+    expect(bloc).toHaveAttribute('aria-label', 'Soleil : 21 juin · 14 h')
+    expect(bloc.tagName).not.toBe('BUTTON') // un repère, pas un contrôle de plus : l'heure se règle à l'étape Panneaux
+    cleanup(); document.body.innerHTML = ''
+    rendre() // le constructeur ne donne ni date ni heure : le bloc n'affirme rien
+    expect(within(surCarte).queryByTestId('cal-toit-soleil')).toBeNull()
+  })
+
+  it('boussole : sous la pile de zoom, rien d’autre à cacher en Guidé sur cette étape', () => {
+    rendre({}, (hote) => hote.insertAdjacentHTML('beforeend', '<div id="rp9-compass" class="rp9-compass"><div class="rp9-compass-arrow"><span>N</span><span>S</span></div></div>'))
+    expect(getComputedStyle($('rp9-compass')).display).not.toBe('none')
+  })
+
+  it('« Je ne la connais pas » tient sur une ligne', () => {
+    rendre()
+    const bouton = screen.getByTestId('cal-toit-pente-inconnue')
+    expect(getComputedStyle(bouton).whiteSpace).toBe('nowrap')
+  })
+})
+
+/* ACAL1827 — l'étape Toit à sa maquette v2 (Main) : compte des obstacles, carte de pente avec son cadran, « Confirmer » et
+   « Je ne la connais pas » côte à côte, champs de dimensions et lignes d'obstacles aux mesures de la maquette. */
+describe('ACAL1827 — l’étape Toit à sa maquette v2', () => {
+  let style
+  beforeEach(() => {
+    style = document.createElement('style')
+    style.textContent = ['49-jetons-v2.css', '50-coque-atelier.css', '51-etape-toit.css']
+      .map((f) => readFileSync(resolve(process.cwd(), `src/styles/calepinage/${f}`), 'utf8')).join('\n')
+    document.head.appendChild(style)
+  })
+  afterEach(() => { style.remove() })
+  const cs = (el) => getComputedStyle(el)
+
+  it('l’en-tête des obstacles porte leur nombre ; sans obstacle, l’en-tête seul', () => {
+    rendre()
+    const tete = within(screen.getByTestId('cal-toit-obstacles')).getByRole('heading', { level: 2 })
+    expect(tete).toHaveTextContent('Obstacles · 2')
+    cleanup(); document.body.innerHTML = ''
+    rendre({}, (hote) => hote.querySelectorAll('#rp9-objets-site li').forEach((n) => n.remove()))
+    expect(within(screen.getByTestId('cal-toit-obstacles')).getByRole('heading', { level: 2 })).toHaveTextContent(/^Obstacles$/)
+  })
+
+  it('la carte de pente porte un cadran dont l’aiguille suit la face lue ; sans face lue, pas d’aiguille', async () => {
+    rendre()
+    const carte = screen.getByTestId('cal-toit-pente-carte')
+    const cadran = await within(carte).findByRole('img', { name: 'Face sud, 180°' })
+    expect(cadran.querySelector('[data-aiguille]')).toHaveAttribute('transform', 'rotate(180 32 32)')
+    cleanup(); document.body.innerHTML = ''
+    builderApi = { panActifId: () => 'area-9', appliquerVue: vi.fn() }
+    rendre({}, (hote) => { hote.querySelector('#rp9-facing-value').textContent = '' })
+    await waitFor(() => expect(screen.getByTestId('cal-toit-pente-carte')).toHaveTextContent('22°'))
+    expect(within(screen.getByTestId('cal-toit-pente-carte')).queryByRole('img')?.querySelector('[data-aiguille]') ?? null).toBeNull()
+  })
+
+  it('« Confirmer » et « Je ne la connais pas » : deux colonnes 1:1, hors de la carte crème', async () => {
+    rendre()
+    const confirmer = await screen.findByTestId('cal-toit-pente-confirmer')
+    const inconnue = screen.getByTestId('cal-toit-pente-inconnue')
+    const actions = confirmer.parentElement
+    expect(inconnue.parentElement).toBe(actions)
+    expect(cs(actions).display).toBe('grid')
+    expect(cs(actions).gridTemplateColumns).toBe('repeat(2, minmax(0, 1fr))')
+    expect(actions.closest('.cal-toit-pente-cadre')).toBeNull() // les boutons sont sous la carte crème, pas dedans
+    expect(cs(confirmer).height).toBe('44px')
+    expect(cs(inconnue).height).toBe('44px')
+    expect(cs(inconnue).borderRadius).toBe('var(--cal-rayon-bouton)')
+  })
+
+  it('intitulés de section 13 px demi-gras en texte 2 ; champs de dimensions 44 px, rayon 10, fond des jetons', () => {
+    rendre()
+    const titre = document.querySelector('.cal-etape-toit .cal-section-etape-tete h2')
+    expect(cs(titre).fontSize).toBe('0.8125rem')
+    expect(cs(titre).color).toBe('var(--cal-texte-2)')
+    const champ = document.querySelector('.cal-toit-saisie')
+    expect(cs(champ).height).toBe('44px')
+    expect(cs(champ).borderRadius).toBe('10px')
+    expect(cs(champ).background).toBe('var(--cal-surface)')
+    expect(cs(document.querySelector('.cal-toit-champ > label')).color).toBe('var(--cal-texte-3)')
+  })
+
+  it('« Modifier la pente » se lit sur la ligne de l’intitulé et ne prend aucune ligne de plus tant qu’elle est fermée', async () => {
+    rendre()
+    const resume = await screen.findByText('Modifier la pente')
+    expect(cs(resume).position).toBe('absolute')
+    expect(cs(resume.closest('details')).marginTop).toBe('-10px')
+  })
+
+  it('lignes d’obstacles de 40 px dans un cadre de rayon 12, nom 14 px, cotes 13 px en texte 3', () => {
+    rendre()
+    const ligne = document.querySelector('.cal-toit-obstacles > li')
+    expect(cs(ligne).minHeight).toBe('40px')
+    expect(cs(document.querySelector('.cal-toit-obstacles')).borderRadius).toBe('var(--cal-rayon-tuile)')
+    const cotes = document.querySelector('.cal-toit-obstacle-cotes')
+    expect(cs(cotes).fontSize).toBe('0.8125rem')
+    expect(cs(cotes).color).toBe('var(--cal-texte-3)')
   })
 })
 

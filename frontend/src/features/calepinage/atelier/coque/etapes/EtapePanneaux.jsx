@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { couleurAccesActive } from '@rooflib/shadingEngine'
 import { MODULE_PAR_DEFAUT_ATELIER } from '@roofpro/moduleSelect'
@@ -10,6 +10,7 @@ import { BoutonMarine, CarteFlottante, Icone, Indicateur, Segmente } from '../pr
 import { BESOIN_MAX, gestes, useConstructeur } from './panneaux/constructeur'
 import { jourMois, ligneModule } from './panneaux/formats'
 import { useCibleFactures } from './panneaux/lectures'
+import ValeurUnite from './panneaux/ValeurUnite'
 import { fmtKwc, modulesServis, productionPubliee } from './panneaux/sources'
 
 /* ============================================================================
@@ -32,6 +33,35 @@ import { fmtKwc, modulesServis, productionPubliee } from './panneaux/sources'
 // La palette bleu nuit → or de la carte d'accès solaire est posée au DÉMARRAGE de l'atelier (useAtelierBoot,
 // ACAL1340), jamais ici : l'étape ne fait que la lire (couleurAccesActive) pour sa légende.
 
+/** ACAL1829 — la ligne d'une carte de taille (« 12 panneaux · 6,96 kWc · ≈ 82 % de la consommation ») : le nombre de chaque
+    morceau est dessiné en gras (Archivo), le texte reste celui de la lecture ; le « · » ne se voit pas (l'écart le remplace). */
+function Seg({ texte }) {
+  const m = /^(≈\s*)?(\d(?:[\d\u00a0\u202f ,.]*\d)?(?:\s%)?)(.*)$/.exec(texte)
+  if (!m) return <span>{texte}</span>
+  return <span>{m[1]}<b>{m[2]}</b>{m[3]}</span>
+}
+function Ligne({ texte }) {
+  return texte.split(' · ').map((seg, i) => (
+    <Fragment key={seg}>
+      {i > 0 && <span className="cal-pan-sep"> · </span>}
+      <Seg texte={seg} />
+    </Fragment>
+  ))
+}
+
+/** ACAL1829 — la vignette du panneau de la liste (maquette Panneaux) : un module vertical générique, peint aux jetons. */
+function Vignette() {
+  return (
+    <svg className="cal-pan-vignette" width="26" height="44" viewBox="0 0 30 56" aria-hidden="true">
+      <rect className="cal-vig-cadre" width="30" height="56" rx="1.5" />
+      <rect className="cal-vig-cellules" x="1.4" y="1.4" width="27.2" height="53.2" rx="0.6" />
+      <path className="cal-vig-grille" d="M6 1.4v53.2M10.5 1.4v53.2M15 1.4v53.2M19.5 1.4v53.2M24 1.4v53.2M1.4 10h27.2M1.4 19h27.2M1.4 37h27.2M1.4 46h27.2" />
+      <path className="cal-vig-barre" d="M1.4 28h27.2" />
+      <path className="cal-vig-reflet" d="M1.4 1.4h14L1.4 26z" />
+    </svg>
+  )
+}
+
 const compte = (n) => (n === 1 ? '1 panneau' : `${n} panneaux`)
 const selectData = { select: (r) => r?.data ?? null }
 const sansParenthese = (t) => (t ?? '').replace(/\s*\([^)]*\)\s*$/, '')
@@ -52,6 +82,7 @@ function useServi(calepinageId, enregistreLe, servi = null, attendre = false) {
     cible: facture.cible,
     motifFacture: facture.refus || facture.motif,
     refusFacture: facture.refus,
+    factureSaisie: facture.factureSaisie,
     entrees: Array.isArray(catalogue?.modules) ? catalogue.modules : [],
     servis: modulesServis(entree),
     publiee: productionPubliee(resultat),
@@ -103,6 +134,7 @@ function ChoixModule({ etat, entrees, servis, lectureSeule, g }) {
           aria-expanded={ouvert} disabled={lectureSeule || !module.present} title={affiche.nom}
           onClick={() => setOuvert((o) => !o)}
           onKeyDown={(e) => { if (e.key === 'Escape') setOuvert(false) }}>
+          <Vignette />
           <span className="cal-pan-module-texte">
             <span className="cal-pan-module-nom">{affiche.nom}</span>
             {affiche.ligne && <span className="cal-pan-module-ligne">{affiche.ligne}</span>}
@@ -185,7 +217,7 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
           <span className="cal-pan-option-nom">Couvrir la facture</span>
           {cible && <span className="cal-pan-badge">Recommandé</span>}
         </span>
-        {ligneFacture && <span className="cal-pan-option-ligne">{ligneFacture}</span>}
+        {ligneFacture && <span className="cal-pan-option-ligne"><Ligne texte={ligneFacture} /></span>}
       </button>
       {servi.facture.etat === 'chargement' && (
         <p className="cal-pan-note cal-pan-note-attente" data-zone="facture-lecture" aria-live="polite">
@@ -201,7 +233,7 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
       {servi.facture.etat === 'ok' && !cible && (
         <p className="cal-pan-note">
           {raison}
-          {servi.leadId && !servi.refusFacture && (
+          {servi.leadId && !(servi.refusFacture && servi.factureSaisie) && (
             <>{' '}<Link to={`/crm/leads/${servi.leadId}`} className="cal-pan-lien">Renseigner la facture du lead</Link></>
           )}
         </p>
@@ -209,7 +241,7 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
       <button type="button" className="cal-pan-option-pose" aria-pressed={max}
         disabled={lectureSeule || !besoin} onClick={() => { if (!max) g.besoin(BESOIN_MAX) }} data-testid="cal-panneaux-option-max">
         <span className="cal-pan-option-nom">Le plus de panneaux</span>
-        {ligneMax && <span className="cal-pan-option-ligne">{ligneMax}</span>}
+        {ligneMax && <span className="cal-pan-option-ligne"><Ligne texte={ligneMax} /></span>}
       </button>
       {!factureChoisie && !max && figures.panneaux > 0 && (
         <p className="cal-pan-note" data-zone="pose-actuelle">
@@ -220,11 +252,21 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
   )
 }
 
+const PICTO_PORTRAIT = (
+  <svg width="10" height="16" viewBox="0 0 10 16" aria-hidden="true"><rect x="0.75" y="0.75" width="8.5" height="14.5" rx="1" /></svg>
+)
+const PICTO_PAYSAGE = (
+  <svg width="16" height="10" viewBox="0 0 16 10" aria-hidden="true"><rect x="0.75" y="0.75" width="14.5" height="8.5" rx="1" /></svg>
+)
 const SENS_DE_POSE = [
   { valeur: 'portrait', libelle: 'Portrait' },
   { valeur: 'landscape', libelle: 'Paysage' },
   { valeur: 'auto', libelle: 'Au mieux' },
 ]
+// ACAL1829 — les pictogrammes ne changent pas les libellés lus ailleurs (SENS_DE_POSE) : ils habillent le segment.
+const SENS_AVEC_PICTO = SENS_DE_POSE.map((o) => ({
+  ...o, libelle: <>{o.valeur === 'portrait' ? PICTO_PORTRAIT : o.valeur === 'landscape' ? PICTO_PAYSAGE : null}{o.libelle}</>,
+}))
 
 /** L'alerte bleu-gris : seulement quand l'avis d'ombrage du constructeur propose de retirer des modules. */
 function AlerteOmbre({ ombre, g }) {
@@ -234,7 +276,7 @@ function AlerteOmbre({ ombre, g }) {
   return (
     <section className="cal-pan-alerte" data-testid="cal-panneaux-ombre">
       <h2 className="cal-pan-alerte-titre">
-        <Icone nom="info" taille={18} epaisseur={2} />
+        <span className="cal-pan-alerte-pastille" aria-hidden="true"><span /><span /></span>
         {n === 1 ? '1 panneau à l’ombre' : `${n} panneaux à l’ombre`}
       </h2>
       <p className="cal-pan-alerte-texte">
@@ -272,7 +314,7 @@ function PuceResume({ figures, publiee }) {
   return (
     <CarteFlottante className="cal-pan-puce" data-testid="cal-sur-carte-resume">
       {lus.map(([libelle, valeur]) => (
-        <Indicateur key={libelle} libelle={libelle} valeur={valeur} />
+        <Indicateur key={libelle} libelle={libelle} valeur={<ValeurUnite texte={valeur} />} />
       ))}
     </CarteFlottante>
   )
@@ -348,7 +390,7 @@ export default function EtapePanneaux({ calepinageId, lectureSeule = false, enre
       <section className="cal-pan-section">
         <h2 className="cal-pan-titre">Sens de pose</h2>
         <div data-testid="cal-panneaux-sens-pose">
-          <Segmente libelle="Sens de pose" grand className="cal-segmente-pose" options={SENS_DE_POSE}
+          <Segmente libelle="Sens de pose" grand className="cal-segmente-pose" options={SENS_AVEC_PICTO}
             valeur={etat.orientation} onChange={(v) => { if (v !== etat.orientation) gestesEcran.orientation(v) }} />
         </div>
         {bascule && (

@@ -857,6 +857,7 @@ export const ALL_HOOKS = [
   'cal-toit-pente-confirmer',
   'cal-toit-pente-inconnue',
   'cal-toit-obstacles',
+  'cal-toit-soleil',
   'cal-panneaux-module',
   'cal-panneaux-option-facture',
   'cal-panneaux-option-max',

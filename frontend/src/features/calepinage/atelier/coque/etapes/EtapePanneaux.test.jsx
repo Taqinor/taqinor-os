@@ -239,6 +239,19 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(document.body).not.toHaveTextContent('Aucune taille ne se tire des factures')
   })
 
+  it('Critique ACAL1517 — facture ABSENTE : le refus servi est dit ET le lien « Renseigner la facture du lead » reste là', async () => {
+    servir()
+    calepinageApi.calepinages.designContext.mockResolvedValue({
+      data: { calepinage: { lead: 42 }, consommation_lead: { facture_mensuelle_mad: null, source: 'lead', motif: '' } },
+    })
+    calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: {
+      cible_factures: null, refus: 'Aucune facture ni consommation sur ce lead : rien ne dimensionne le devis.' } })
+    rendre()
+    await screen.findByText(/rien ne dimensionne le devis/)
+    const lien = await screen.findByRole('link', { name: 'Renseigner la facture du lead' })
+    expect(lien).toHaveAttribute('href', '/crm/leads/42')
+  })
+
   it('ni l’une ni l’autre : aucune carte choisie et « Pose actuelle : N panneaux · kWc »', async () => {
     monterConstructeur({ besoin: '30', panneaux: '30 × 580 W', kwc: '17,40 kWc', prod: '28 700 kWh/an', cover: '431 %',
       note: '30 posés — il reste de la place sur le toit, laissée libre.' })
@@ -592,5 +605,116 @@ describe('palette d’ensoleillement — posée au démarrage, sans passer par l
     moteur.choisirPaletteAcces('site')
     await import('./EtapePanneaux')
     expect(moteur.couleurAccesActive(0)).toEqual(moteur.solarAccessColorRGB(0))
+  })
+})
+
+/* ACAL1818 — le curseur « Heure du soleil » se touche sur 44 px (la piste dessinée garde ses 6 px) : la règle des pointeurs
+   grossiers de la feuille de l'étape, lue sur les règles ANALYSÉES (jsdom n'évalue pas les @media). */
+describe('curseur « Heure du soleil » — zone tactile (ACAL1818)', () => {
+  it('sous pointer: coarse, le curseur fait ≥ 44 px de haut et sa piste se dessine dans la zone de contenu', async () => {
+    const { readFileSync } = await import('node:fs')
+    const style = document.createElement('style')
+    style.textContent = readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/52-etape-panneaux.css`, 'utf8')
+    document.head.appendChild(style)
+    try {
+      const grossier = [...style.sheet.cssRules].filter((r) => r.type === 4 && /pointer:\s*coarse/.test(r.media.mediaText))
+        .flatMap((m) => [...m.cssRules]).filter((r) => r.selectorText === '.cal-coque .cal-pan-heure')
+      expect(grossier, 'règle .cal-pan-heure sous pointer: coarse').toHaveLength(1)
+      const { height, padding, backgroundClip } = grossier[0].style
+      const haut = parseFloat(height)
+      const [vertical] = padding.split(/\s+/).map(parseFloat)
+      expect(haut).toBeGreaterThanOrEqual(44)
+      expect(haut - 2 * vertical, 'la piste reste fine : 6 px de contenu').toBe(6)
+      expect(backgroundClip).toBe('content-box')
+    } finally {
+      style.remove()
+    }
+  })
+})
+
+/* ACAL1829 — l'étape Panneaux à sa maquette v2 : cartes de taille (Archivo, chiffres gras, choisie = filet bleu nuit sur
+   papier), sens de pose à pictogrammes, légende 268 × 56, vignette du panneau, alerte « À surveiller », chiffres à unité
+   réduite. Le panneau est RENDU ; les feuilles 49 + 50 + 52 sont chargées dans le DOM de test et lues par getComputedStyle. */
+describe('ACAL1829 — l’étape Panneaux à sa maquette v2', () => {
+  let style
+  beforeEach(async () => {
+    const { readFileSync } = await import('node:fs')
+    style = document.createElement('style')
+    style.textContent = ['49-jetons-v2.css', '50-coque-atelier.css', '52-etape-panneaux.css']
+      .map((f) => readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/${f}`, 'utf8')).join('\n')
+    document.head.appendChild(style)
+    document.body.classList.add('cal-coque') // les feuilles de la coque visent `.cal-coque …`
+  })
+  afterEach(() => { style.remove(); document.body.classList.remove('cal-coque') })
+  const cs = (el) => getComputedStyle(el)
+
+  it('cartes de taille : titre Archivo, chiffres en gras, choisie sur papier ; l’autre carte blanche', async () => {
+    monterConstructeur()
+    rendre()
+    const facture = screen.getByTestId('cal-panneaux-option-facture')
+    await waitFor(() => expect(facture).toHaveTextContent('12 panneaux · 6,96 kWc'))
+    expect([...facture.querySelectorAll('b')].map((b) => b.textContent)).toEqual(['12', '6,96', '82 %'])
+    expect(cs(facture.querySelector('.cal-pan-option-nom')).fontFamily).toBe('var(--font-display)')
+    expect(cs(facture).borderRadius).toBe('14px')
+    expect(facture).toHaveAttribute('aria-pressed', 'true')
+    expect(cs(facture).background).toContain('--cal-choisi-fond')
+    const max = screen.getByTestId('cal-panneaux-option-max')
+    expect(cs(max).borderRadius).toBe('14px')
+    expect(cs(max).background).toContain('--cal-surface')
+    expect(cs(document.querySelector('.cal-pan-badge')).borderRadius).toBe('11px')
+  })
+
+  it('sens de pose : pictogrammes portrait et paysage, « Au mieux » sans ; segments de 44 px sur piste v2', () => {
+    monterConstructeur()
+    rendre()
+    const groupe = screen.getByRole('group', { name: 'Sens de pose' })
+    const [portrait, paysage, auto] = within(groupe).getAllByRole('button')
+    expect(portrait.querySelector('svg')).not.toBeNull()
+    expect(paysage.querySelector('svg')).not.toBeNull()
+    expect(auto.querySelector('svg')).toBeNull()
+    expect(cs(portrait).height).toBe('44px')
+    expect(cs(groupe).borderRadius).toBe('var(--cal-rayon-tuile)')
+  })
+
+  it('légende : 268 × 56, rayon 18, mots seuls (aucun accès par module n’est servi, aucun chiffre inventé)', () => {
+    monterConstructeur()
+    rendre()
+    const legende = document.querySelector('.cal-pan-legende')
+    expect(cs(legende).width).toBe('268px')
+    expect(cs(legende).minHeight).toBe('56px')
+    expect(cs(legende).borderRadius).toBe('var(--cal-rayon-outils)')
+    expect(legende).toHaveTextContent('Ensoleillement de chaque panneauOmbragéPlein soleil')
+    expect(legende.textContent).not.toMatch(/\d/)
+  })
+
+  it('modèle : vignette du panneau à gauche du nom, carte de 64 px', async () => {
+    monterConstructeur()
+    rendre()
+    const bouton = screen.getByRole('button', { name: /Module par défaut|Panneau/ })
+    const vignette = bouton.querySelector('.cal-pan-vignette')
+    expect(vignette).not.toBeNull()
+    expect(vignette.compareDocumentPosition(bouton.querySelector('.cal-pan-module-texte')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(cs(bouton).height).toBe('64px')
+    expect(cs(bouton).borderRadius).toBe('12px')
+  })
+
+  it('alerte d’ombrage : carte « à surveiller » aux jetons, deux pastilles de panneaux, boutons de 44 px', () => {
+    monterConstructeur({ ombre: 2 })
+    rendre()
+    const alerte = screen.getByTestId('cal-panneaux-ombre')
+    expect(cs(alerte).background).toContain('--cal-surveiller-fond')
+    expect(alerte.querySelectorAll('.cal-pan-alerte-pastille > span')).toHaveLength(2)
+    expect(cs(within(alerte).getByRole('button', { name: 'Garder' })).height).toBe('44px')
+  })
+
+  it('puce : l’unité des chiffres est réduite et grise, le texte reste celui du constructeur', () => {
+    monterConstructeur()
+    rendre()
+    const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
+    const puissance = [...puce.querySelectorAll('.cal-indicateur')].find((n) => n.textContent.startsWith('Puissance'))
+    expect(puissance.querySelector('.cal-unite')).toHaveTextContent('kWc')
+    expect(puissance.querySelector('.cal-indicateur-valeur')).toHaveTextContent('6,96 kWc')
+    expect(cs(puissance.querySelector('.cal-unite')).fontSize).toBe('0.8125rem')
+    expect(cs(puce).height).toBe('62px')
   })
 })
