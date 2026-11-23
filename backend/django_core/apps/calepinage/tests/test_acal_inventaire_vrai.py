@@ -89,6 +89,42 @@ class InventaireSurResultatServiTest(SansBase, SimpleTestCase):
         self.assertFalse(perime['disponible'])
         self.assertEqual(perime['manque'][0]['champ'], 'cascade')
 
+    def _ombrage_sur(self, valeurs_par_pan):
+        """La carte ``rapport_ombrage`` d'une conception à deux pans dont
+        ``valeurs_par_pan[i]`` est l'accès solaire du pan ``i`` (ou rien)."""
+        layout = copy.deepcopy(LAYOUT_SIMULABLE)
+        pan = layout['zones'][0]
+        layout['zones'] = [copy.deepcopy(pan), dict(copy.deepcopy(pan),
+                                                    id='b', label='PAN-B')]
+        for zone, valeurs in zip(layout['zones'], valeurs_par_pan):
+            if valeurs is not None:
+                zone['geometry']['solarAccess'] = {'values': valeurs}
+        pivot = PivotSansBase(layout, resultat={'entree_electrique': {}})
+        return _par_code(pivot)['rapport_ombrage']
+
+    def test_un_pan_a_acces_solaire_rend_le_rapport_ombrage_disponible(self):
+        # ACAL1615 - cas 1936 : obstacle de 3 m, 13 valeurs sur le pan 1,
+        # le pan 2 sans mesure. La grammaire ``valeur_au_chemin`` ne sait
+        # qu'un ``[]`` FINAL : « zones[] » n'existait jamais.
+        valeurs = [0.62, 0.7, 0.75, 0.8, 0.85, 0.9, 0.92, 0.95, 0.97,
+                   0.98, 0.99, 1.0, 1.0]
+        carte = self._ombrage_sur([valeurs, None])
+        self.assertTrue(carte['disponible'], carte['motif_indisponible'])
+        self.assertEqual(carte['manque'], [])
+        # Le second pan seul mesuré suffit aussi.
+        self.assertTrue(self._ombrage_sur([None, valeurs])['disponible'])
+
+    def test_sans_acces_solaire_le_rapport_ombrage_reste_indisponible(self):
+        from apps.calepinage.services.documents import MOTIF_SANS_OMBRAGE
+
+        for valeurs in ([None, None], [[], None], [[], []]):
+            carte = self._ombrage_sur(valeurs)
+            self.assertFalse(carte['disponible'], valeurs)
+            self.assertEqual(carte['motif_indisponible'], MOTIF_SANS_OMBRAGE)
+            self.assertEqual(
+                [m['champ'] for m in carte['manque']],
+                ['roof_layout.zones[].geometry.solarAccess.values'])
+
     def test_deux_lectures_donnent_les_memes_cartes(self):
         pivot = calepinage_simule_reel()
         self.assertEqual(_par_code(pivot), _par_code(pivot))

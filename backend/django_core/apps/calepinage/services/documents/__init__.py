@@ -296,10 +296,12 @@ def _etat_du_document(code, calepinage, resultat, refus_rapport=None):
         return True, None, []
 
     if code == 'rapport_ombrage':
-        present, _valeur = valeur_au_chemin(
-            {'roof_layout': getattr(calepinage, 'roof_layout', None)},
-            'roof_layout.zones[].geometry.solarAccess.values')
-        if not present:
+        # ACAL1615 - la grammaire ``valeur_au_chemin`` ne sait qu'un ``[]``
+        # FINAL : « zones[] » n'existait jamais. Disponible dès qu'UN pan
+        # porte des valeurs (liste non vide).
+        zones = (getattr(calepinage, 'roof_layout', None) or {}).get('zones')
+        if not any(valeur_au_chemin(zone, 'geometry.solarAccess.values[]')[0]
+                   for zone in zones or ()):
             return False, MOTIF_SANS_OMBRAGE, [MANQUE_SOLAR_ACCESS]
         return True, None, []
 
