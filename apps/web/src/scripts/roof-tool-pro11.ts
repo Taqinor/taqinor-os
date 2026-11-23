@@ -2712,7 +2712,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     if (idx < 0) return;
     const verrou = motifPanVerrouille(areas[idx], idx); // ACAL520
     if (verrou) { setStatus(verrou); return; }
-    const wasActive = id === activeAreaId;
+    const wasActive = id === activeAreaId; ctx.pushWorkshopHistory?.(); // « Annuler » de la barre rend le pan supprimé
     areas.splice(idx, 1);
     if (areas.length === 0) {
       reset();

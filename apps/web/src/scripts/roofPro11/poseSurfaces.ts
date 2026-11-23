@@ -612,8 +612,10 @@ export function monterAtelierPose(ctx: Ctx, deps: AtelierPoseDeps = {}): Atelier
     }
     afficherRefus(racine!, null, '');
     Object.assign(verdict.surface, moduleDuPanActif(ctx)); // ACAL918
-    list.push(verdict.surface);
+    // Demande croisée : la photo d'historique se prend AVANT la surface — le retrait du pan la prend (deleteArea), sinon ici.
     const retire = genre === 'sol' && retirerPanDeTrace(verdict.surface.id); // ACAL1412
+    if (!retire) ctx.pushWorkshopHistory?.();
+    list.push(verdict.surface);
     rendreListe();
     deps.recalc?.();
     demanderPlan(verdict.surface);

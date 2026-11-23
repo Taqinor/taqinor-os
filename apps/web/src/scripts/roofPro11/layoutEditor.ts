@@ -57,7 +57,7 @@ import { creerCalqueReperes, glisserAimante } from './reperesAlignement'; // ACA
 import { actionDisposition, actionAtelierCtrl } from './raccourcisAtelier';
 import { copierSelection as memoriserLot, collerAuPoint } from './collage'; // ACAL553
 import {
-  createLayoutHistory, createValueHistory, createWorkshopHistory, photoAtelierDepuisCtx, restaurerEnvZonesMesures,
+  createLayoutHistory, createValueHistory, createWorkshopHistory, photoAtelierDepuisCtx, restaurerEnvZonesMesures, restaurerPanEtSurfaces,
   type WorkshopSnapshot,
 } from './layoutHistory';
 // PV30 — placement libre : géométrie PURE + pont vers le pavage gagnant.
@@ -1244,7 +1244,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     ctx.roofType = s.roofType;
     ctx.pitchDeg = s.pitchDeg;
     ctx.facingAzimuthDeg = s.facingAzimuthDeg;
-    restaurerEnvZonesMesures(ctx, s); // ACAL515
+    restaurerEnvZonesMesures(ctx, s); restaurerPanEtSurfaces(ctx, s); // ACAL515 ; demande croisée : pan actif + surfaces de pose
     if (s.layoutOccupied && ctx.layoutState) {
       ctx.layoutState.occupied = new Set(s.layoutOccupied.filter((i) => i >= 0 && i < ctx.layoutState!.cells.length));
     }

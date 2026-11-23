@@ -808,6 +808,29 @@ describe('ACAL1530 — « Personnaliser la disposition » reste présent quand l
   });
 });
 
+describe('Demande croisée — l\'historique de l\'atelier rend le pan actif et les surfaces de pose', () => {
+  it('Annuler après « pan de tracé remplacé par un champ au sol » rend le pan, le pan actif et l\'absence de surface', () => {
+    const { map } = makeMap();
+    const pan = (id: string) => ({ id, label: id, vertices: [], obstacles: [], roofType: 'flat', pitchDeg: 0, facingAzimuthDeg: 180, neededPanels: 0, neededAuto: true, result: null, renderPlan: null });
+    const areas = [pan('area-1'), pan('area-2')];
+    const ctx = makeFreeCtx(makePlan(40), []) as unknown as Record<string, unknown>;
+    Object.assign(ctx, { areas, activeAreaId: 'area-2', surfacesPose: [{ id: 'sol-0', genre: 'sol' }] });
+    const editor = createLayoutEditor(ctx as unknown as Ctx, makeDeps(map));
+    (ctx.pushWorkshopHistory as () => void)(); // ce que fait deleteArea avant de retirer le pan
+    areas.splice(1, 1);
+    ctx.activeAreaId = 'area-1';
+    (ctx.surfacesPose as unknown[]).push({ id: 'sol-1', genre: 'sol' });
+    expect(editor.undo()).toBe(true);
+    expect((ctx.areas as { id: string }[]).map((a) => a.id)).toEqual(['area-1', 'area-2']);
+    expect(ctx.activeAreaId).toBe('area-2');
+    expect((ctx.surfacesPose as { id: string }[]).map((x) => x.id)).toEqual(['sol-0']);
+    expect(editor.redo()).toBe(true);
+    expect((ctx.areas as { id: string }[]).map((a) => a.id)).toEqual(['area-1']);
+    expect(ctx.activeAreaId).toBe('area-1');
+    expect((ctx.surfacesPose as { id: string }[]).map((x) => x.id)).toEqual(['sol-0', 'sol-1']);
+  });
+});
+
 // R2-09 / R2-05 — LE formateur de puissance (virgule, 2 décimales) et le libellé « Posés ÷ cible » (atelier ERP seulement).
 describe('R2-09 / R2-05 — fenêtre de pose : kWc au format français, « Posés ÷ cible » en ERP seulement', () => {
   const rendre = (opts: Record<string, unknown>) => {
