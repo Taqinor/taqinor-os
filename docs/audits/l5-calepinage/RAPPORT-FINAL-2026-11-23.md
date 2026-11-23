@@ -1,4 +1,7 @@
-# Calepinage L5 — report of 23 November 2026
+# Calepinage L5 — report of 23 November 2026 (state at 14:20 UTC)
+
+> Two things are still running and are marked « in progress » below: the third batch (PR #1530) and the « one
+> engine » part. Everything else is final. I will send the closing lines when both have landed.
 
 > Working state for a resumed session: `docs/audits/l5-calepinage/etat.md`.
 
@@ -10,7 +13,7 @@ assumptions, one engine, the lead « CPE Go Plus »). In about 17 hours: 14 new 
 the 388 fixes that had been delivered without proof was replayed on the real screens; 371 repair and build tasks were
 written from what the reviewers saw; about 180 of them are built. Two batches are merged on `main`: PR #1527 (109
 tasks) and PR #1529 (about 51 tasks: the new shell and five screens rebuilt on the v2 mockups). A third batch fixes
-what the replay of today's work found (to complete: PR #1530 and the « one engine » part).
+what the replay of today's work found: PR #1530 (in progress) and the « one engine » part (in progress, a fourth PR).
 **Nothing is deployed: the ERP changes go live only when you run `scripts/deploy-prod.ps1`.**
 
 **The three things to remember.** (1) The module is much closer to the mockups in its frame, but no screen is yet
@@ -27,7 +30,7 @@ and the fix is to make it take its design from the quote that was sent.
   **Only 132 were confirmed** (they are ticked, with the record `docs/audits/acceptation/ACAL/2026-11-23-bfb859c90.md`);
   95 were proven only in part (to replay); 12 were contradicted by their own screenshot (now repair tasks).
 - So of 388 delivered fixes, about one third fully held. This is the real size of what was « not finished ».
-- The worst defects found, all now fixed in code (round 3 is checking them on screen — to complete):
+- The worst defects found, all fixed in code and confirmed on screen by round 3 (section 6):
   the same production shown with four different values; yearly figures that were ten-year sums in multi-year weather
   mode (a yearly consumption of 121 976.8 kWh printed for 12 197.68); headline production counting panels connected
   to nothing; a ground-mounted field counted twice; a calepinage with « Pan existant » that no longer reopened;
@@ -36,7 +39,7 @@ and the fix is to make it take its design from the quote that was sent.
 
 ## 3. What was built
 
-- **Wave 1** (30 tasks) and **wave 2** (130 tasks), each with a failing test first; then **wave C** (to complete),
+- **Wave 1** (30 tasks) and **wave 2** (130 tasks), each with a failing test first; then **wave C** (PR #1530, in progress),
   the repairs found by replaying waves 1 and 2 on the real screens:
   - a saved layout reopens exactly as saved (the silent loss of a custom layout is fixed at its root: a background
     recalculation no longer re-places a layout the user holds);
@@ -50,7 +53,7 @@ and the fix is to make it take its design from the quote that was sent.
   panel, dark blue for what is active, gold only for the next action), then the Roof, Panels, Electrical, Diagram
   and Results screens. Side-by-side captures mockup | real screen: `docs/audits/l5-calepinage/T2/preuves/`.
   By the builders' own captures: Roof (light) faithful; the others close. An independent verdict on the real screens
-  is in progress (round 3) — to complete.
+  is section 7.4: 0 faithful, 6 close, 6 far.
 - **Mockups v2**: https://claude.ai/artifact/BJ5TrpZU3QvwHE3fWAteH5 (private link), 14 screens, one new screen
   « Montrer au client ». Files: `docs/audits/l5-calepinage/maquettes-v2/`.
 - **Research**: `T2/R1-beaute-simplicite.md`, `T2/R2-fonctions.md` (15 useful functions the module lacks; 13 of them
@@ -60,7 +63,9 @@ and the fix is to make it take its design from the quote that was sent.
 
 - **Merged**: PR #1527 (wave A, 109 tasks), 23/11 at 10:12 UTC — one additive migration, `calepinage/0043`.
   PR #1529 (wave B, about 51 tasks), 23/11 at 12:27 UTC — no migration.
-- **Wave C**: PR #1530 (to complete), then the « one engine » part (to complete).
+- **Wave C**: PR #1530 — in progress: its checks are running, an independent critic read it (one blocker, fixed
+  before merging: after a slow save the screen could say « Saved » for someone else's write), a reviewer is replaying
+  it on real screens. Then the « one engine » part, a fourth PR — in progress (7 of 11 tasks built).
 - The merge queue removed waves A and B once each, for server tests that nobody had run: on a `claude/*` branch the
   PR run does not run the server tests, only the merge queue does. I fixed and re-queued both times, on the standing
   rule of your CLAUDE.md. For wave C I ran the whole calepinage server suite locally before queueing.
@@ -157,7 +162,7 @@ Sources: `docs/audits/l5-calepinage/controles/` — `C1-moteur-unique.md`, `C2-d
 
 - **Residential works.** The 29 stops are spellings: « casa » (5), « casablaca », « kech », city names typed in
   Arabic, « maroc », a district. The lead card said « ready », then the engine refused. Wave C makes the card say
-  « Missing: city » (to complete: delivered or not). Recognising these spellings changes the production of those
+  « Missing: city » (in the « one engine » PR, in progress). Recognising these spellings changes the production of those
   quotes, so it is your decision: D-ACAL-95 (my recommendation: recognise common spellings and Arabic names).
 - **Commercial does not work with the bill and a profile alone**: 38 of 42 leads with a bill stop. The contract stop
   is your own decision D-CIQ-23; the opening days come from D-CIQ-1 (no standard industrial profile); for the phase I
@@ -179,7 +184,7 @@ Sources: `docs/audits/l5-calepinage/controles/` — `C1-moteur-unique.md`, `C2-d
   calepinage on the server, the workshop in the browser) plus two side tables. I found **five different limits** for
   the panel / inverter ratio, two temperature policies for string length, and the calepinage read nothing of the
   quote's study (not the retained option, not the inverter, not the strings, not the production).
-- Built in wave C (to complete: delivered or not): the quote states its retained design; the calepinage takes its
+- Being built (the « one engine » PR, 7 of 11 tasks done at 14:20 UTC): the quote states its retained design; the calepinage takes its
   target, its inverter, its string length and its production from it; when the calepinage differs it says « gap with
   the quote » instead of raising an alert against its own constants; one ratio rule, the quote's; a hybrid inverter is
   judged by its published capacity (your rule D-HYB-1); the calepinage follows the quote that was sent.
@@ -222,7 +227,8 @@ Boards « mockup | real »: `docs/audits/l5-calepinage/T3/preuves/B3-*.png`. Rep
 - **Why no screen is « faithful » yet**: what is drawn ON the map. Placed panels are plain black instead of tinted by
   sunlight, the roof outline has grey doubled dimensions instead of a gold outline with one dimension per edge, the
   strings are not drawn. The frame is right; the picture inside is not. Wave C looks for the cause of the black
-  panels (to complete). The rest is written as tasks.
+  panels: not established — it needs a machine with a graphics card, the task is written. The rest is written as
+  tasks.
 - My own check of the boards agrees with the reviewer. I did not see the real aerial photo: the private copy has no
   map key.
 
@@ -249,6 +255,6 @@ for files owned by others, in the lead, quote, settings, stock and cross-cutting
 
 ## 10. Cost
 
-Weekly quota: 3 % at the start of the campaign (21/11), 46 % at 10:20 UTC today, 60 % at 13:15 UTC — to complete.
+Weekly quota: 3 % at the start of the campaign (21/11), 46 % at 10:20 UTC today, 60 % at 13:15 UTC. I expect about 65 % at the end.
 Two calls to the most expensive model, within the house rule: the final critics of waves A and B (both found real
 defects that were fixed before merging). None on wave C.
