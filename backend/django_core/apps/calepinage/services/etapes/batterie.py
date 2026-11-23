@@ -184,6 +184,11 @@ MOTIF_RESERVE_EN_DOUBLE = (
     'réserve se saisit d’une seule façon, jamais les deux. Le bloc '
     '« batterie » est OMIS.')
 
+#: ACAL1911 — des fenêtres saisies pour une stratégie qui n'en a pas : ignorées, dites en clair.
+MENTION_FENETRES_IGNOREES = (
+    'Les fenêtres de charge et de décharge saisies pilotent la stratégie de décalage, pas '
+    '« {strategie} » : elles sont ignorées, la batterie est simulée sans elles.')
+
 #: CALX270 — la réserve DÉDUITE des appareils, dite en clair dans le bloc.
 MENTION_RESERVE_APPAREILS = (
     'Réserve de secours déduite de {nombre} appareil(s) secouru(s) : '
@@ -597,7 +602,8 @@ def _bloc_batterie_dispatch(serie, contexte=None, *, charge=None):
         'heures_decharge': declaration.get('heures_decharge'),
         # CALX268 — la commande horaire à SOC cible, quand le document la
         # déclare ; CALX270 — la part effaçable d'un tableau partiel.
-        'fenetres': declaration.get('fenetres'),
+        # ACAL1911 — hors décalage les fenêtres saisies n'ont pas d'objet : ignorées (avertissement nommé).
+        'fenetres': declaration.get('fenetres') if strategie == 'decalage' else None,
         'reserve_backup_kwh': reserve,
         'part_effacable_pct': declaration.get('part_effacable_pct'),
         'plafond_effacable_kw': declaration.get('plafond_effacable_kw'),
@@ -664,6 +670,9 @@ def _bloc_batterie_dispatch(serie, contexte=None, *, charge=None):
                            annees=annees_de_la_fenetre(contexte),
                            reserve=reserve, contexte=contexte,
                            heure_de_depart=heure_de_depart)
+    if declaration.get('fenetres') is not None and strategie != 'decalage':
+        bloc['avertissements'].append(
+            MENTION_FENETRES_IGNOREES.format(strategie=strategie))
     if isinstance(reserve, dict):
         bloc['avertissements'].append(MENTION_RESERVE_APPAREILS.format(
             nombre=len(reserve['detail']), energie=reserve['energie_kwh'],
