@@ -256,6 +256,52 @@ vivent dans le scratchpad de la session, pas sur `main`.
      REPRISES par message à 09 h 56 : `ecran-toit-panneaux` (agent ab941ec7513101b3f), `ecran-elec-resultats`
      (acf021c456913a617), `telephone-m1` (a5236a41184fe5c34). Lancée à 09 h 58 : `production-web` (opus,
      a0cd634fa4ec12e25) [1612, 1618 + 8 demandes croisées du moteur de dessin, dont ACAL1523 et ACAL1621].
+   - **POINT à 10 h 20 UTC — REPRENDRE ICI.**
+     **VAGUE A FUSIONNÉE** sur `main` à 10 h 12 UTC (PR Taqinor/taqinor-os#1527 : 109 tâches). À dire à Reda :
+     « mergé — à déployer par toi : `scripts/deploy-prod.ps1`, ~2 min » (migration `calepinage/0043`) ; conseil :
+     attendre le rejeu à l'écran du tour 3. `main` a été ré-intégré dans la branche (merge, sans conflit).
+     **VAGUE B : PR Taqinor/taqinor-os#1529** (brouillon, Auto-fix allumé, auto-archive éteint), tête poussée
+     `4720a085d6`. Elle porte 40 tâches de plus : `coque-prealables`, `simulation-1`, `consommation`, `docs-m1`,
+     `coque-v2`, `rapport-m1`, `telephone-m1` [1807, 1809, 1812, 1810, 1811 : carte visible 141 → 335 px au
+     téléphone] + trois corrections de l'orchestrateur (fond satellite, garde `_devis_lie`, test de la variante).
+     119 tâches de la vague 2 livrées au total (+ 30 de la vague 1). Claims renouvelées à 10 h 17.
+     EN VOL (base = branche locale) : `ecran-toit-panneaux` (sonnet, ab941ec7513101b3f, branche
+     `l5w3-ecran-toit-panneaux`) [1445, 1827, 1828, 1818, 1829 + 2 points] · `ecran-elec-resultats` (sonnet,
+     acf021c456913a617, `l5w3-ecran-elec-resultats`) [1708, 1833, 1822, 1832, 1830, 1831 + 3 demandes] ·
+     `production-web` (opus, a0cd634fa4ec12e25, `l5w3-production-web`) [1612, 1618 + DC-1 à DC-8].
+     AU RETOUR DE CHAQUE LANE : `git merge --no-ff <branche>` ; recopier `$SP/T2-lane-<nom>.jsonl` au registre
+     (ré-encoder si cp1252) ; `python $SP/l5b/marquer_livrees.py` ; si serveur : `check_api_shapes.py --write` et
+     `check_openapi_schema.py --write` (conteneur) ; gardes : `check_tests_source_regex`, `check_forme_code --base
+     origin/main`, `check_test_placement`, `node …/e2eHooks.test.mjs`, golden ; copier la planche de preuve dans
+     `T2/preuves/` ; `git worktree remove --force .claude/worktrees/agent-<id>`.
+     **PLAN DE LA SUITE (budget : quota hebdo 46 % à 10 h 20, ≈ 3,5 points par heure ; viser la fin vers 60 %)** :
+     1. Plier les 3 lanes en vol ; pousser ; CI verte sur la PR #1529 (les deux coutures : agent
+        `ad48e173ad7c41aaa` pour la suite entière d'`apps/web` — worktree à vraie installation, branche à créer
+        depuis l'origine — ; pour le front ERP, lancer une lane « couture » avec jonction `node_modules`).
+     2. Critique de la vague B avant sa fusion (opus ; diff `origin/main...<tête>` ; mêmes six questions que
+        `T2/critique-vague-A.md` ; elle porte des chiffres de production : lecture serrée de `simulation.py`,
+        `courbe_charge.py`, `etapes/`, `rapport/`).
+     3. Reconstruire l'INSTRUMENT sur la tête de la branche : `git -C <…>/l5cal-instr checkout --detach <sha>`,
+        `npm run build` du front dans `l5cal-instr/frontend`, `docker start`/recréer `l5cal-django` et
+        `l5cal-celery` par `$SP/l5cal/relancer.sh` (migrer la base `l5cal` : `manage.py migrate`), relancer
+        l'aperçu du front (tâche de fond `bhkmo4ocy`, port 5241), réarmer le Monitor.
+     4. TOUR 3 (relecteurs neufs sur l'écran réel, comptes `rev_b1…b8`, calibrage : un `ok` exige TOUS les cas
+        du « fini quand » montrés) : (a) rejeu ciblé des 95 `ok` « insuffisants » (leur `motif` dit quoi rejouer :
+        `registre/evenements/T2-audit-ok*.jsonl`) ; (b) contre-vérification des 149 tâches livrées des vagues 1 et
+        2 (`registre/evenements/T2-lane-*.jsonl`, champ `gestes_apres`) ; (c) relecteur beauté B3 : les 13 écrans
+        contre les maquettes v2, verdict FIDÈLE / PROCHE / ÉLOIGNÉ (K8) ; (d) régénérer UNE fois
+        `frontend/e2e/calepinage-mesures-ecran.baseline.json` et jouer les specs de l'orchestrateur (ACAL385,
+        1315, 891). Puis relecture adverse des `ok`, enregistrement d'acceptation, coches.
+     5. Corriger ce que le tour 3 trouve de grave (une ou deux lanes), CI, fusion de la vague B par la file.
+     6. PHASE DE CONTRÔLES (après le L5, ≤ 5 points) : fidélité des écrans aux maquettes v2 ; « tous mes devis
+        se calculent seuls avec les bonnes hypothèses » ; un seul moteur, celui du CRM ; lead 1742 « CPE Go Plus »
+        (faits déjà relevés : `$SP/cas-cpe-go-plus.md`, `$SP/probe1.out` ; prod en LECTURE SEULE).
+     7. RAPPORT FINAL détaillé pour Reda (en anglais, comme `RAPPORT-MATIN-2026-11-23.md`) : ce qui est fait,
+        chiffres, décisions prises seul à confirmer, décisions ouvertes D-ACAL-75/76 et 80 à 88, gestes pour lui
+        (deploy, `.wslconfig`, disque C: plein — 110 worktrees d'anciennes sessions à nettoyer —, fourchette du
+        ratio panneaux / onduleur à régler), ce qui reste au plan (M2 du tour 2 : ≈ 180 tâches, écrans restants
+        du lot E : Documents, Liste, Démarrage rapide, Tablette, client), coût. Puis nettoyage (liste en fin de
+        fichier) et rétro.
    - BUDGET (08 h 10 UTC) : quota hebdo 39 % (≈ 4 points par heure, ≈ 0,3 point par agent) ; contexte de
      l'orchestrateur 58 %. Règle : construire jusqu'à ≈ 56 %, puis tour 3 léger, fusion, phase de contrôles (≤ 5
      points), rapport. PRIORITÉ de ce qui reste à construire : (1) les M1 de tous les lots ; (2) la coque v2 puis
