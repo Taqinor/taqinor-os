@@ -185,6 +185,25 @@ vivent dans le scratchpad de la session, pas sur `main`.
      [1437, 1617, 1727, 1730, 1731, 1745] sonnet. ENSUITE, sur la tête pliée de `coque-prealables` : `coque-v2`
      [1800, 1801, 1802, 1803, 1804, 1805] opus, UNE lane, puis les écrans du lot E en parallèle (ordre :
      `T2/consolidation/lot-E.md` § 7) et le téléphone M1 [1807-1812].
+   - POINT à 08 h 55 UTC — **CI VERTE sur 746e197f5** (poussé à 08 h 42 ; 79 tâches de la vague 2 + 30 de la vague
+     1). C'est le candidat de la PREMIÈRE FUSION (vague A). Portail avant fusion EN VOL : critique finale Fable sur
+     `git diff origin/main...746e197f5` (sortie `T2/critique-vague-A.md` ; 1er appel Fable de la campagne) et essai
+     du site public sur l'aperçu Cloudflare `https://claude-calpinage-module-l5-aadbde-taqinor-web.taqinor.workers.dev`
+     contre `https://taqinor.ma` (sortie `T2/apercu-public.md`) — le moteur `roofPro11` est partagé et le site
+     public se déploie à la fusion. SI la critique dit fusionnable : `gh pr ready 1527` puis
+     `gh pr merge 1527 --auto --merge` (file de fusion), NE RIEN POUSSER entre-temps (la tête de la PR doit rester
+     746e197f5) ; après la fusion, les plis locaux (au-delà de 746e197f5 : `coque-prealables` déjà plié en local,
+     tête locale 5fb6e6166e) partent dans une NOUVELLE PR de la même branche (vague B). Bloquants de la critique :
+     les corriger d'abord (couture), repousser, attendre la CI.
+     Les lanes partent désormais de la branche LOCALE (`git checkout -B <lane> claude/calpinage-module-l5-aadbde`,
+     sans fetch) pour ne pas pousser pendant la CI. Conteneurs `l5cal-django` et `l5cal-celery` ARRÊTÉS (mémoire
+     pour les tests) : à reconstruire sur la branche pour le tour 3 (`$SP/l5cal/relancer.sh` après un build du
+     front de la branche dans `l5cal-instr` ou un nouveau worktree).
+     EN VOL : `simulation-1` opus · `consommation` [1601, 1603, 1604, 1608, 1609, 1610] opus · `docs-m1` [1700,
+     1703, 1704, 1709, 1711, 1712, 1710, 1705] opus · `coque-v2` [1800-1805 + ACAL1617] opus (base locale).
+     Pliées depuis 08 h 35 : `electrique-1` (9), coutures 3 et 4, `resultats-m1` [1611, 1614 ; 1621 → demande
+     croisée `scene3d.ts`], `coque-prealables` [1437, 1727, 1730, 1731, 1745 ; 1617 → `coque-v2`]. 84 tâches de
+     la vague 2 livrées.
    - BUDGET (08 h 10 UTC) : quota hebdo 39 % (≈ 4 points par heure, ≈ 0,3 point par agent) ; contexte de
      l'orchestrateur 58 %. Règle : construire jusqu'à ≈ 56 %, puis tour 3 léger, fusion, phase de contrôles (≤ 5
      points), rapport. PRIORITÉ de ce qui reste à construire : (1) les M1 de tous les lots ; (2) la coque v2 puis
