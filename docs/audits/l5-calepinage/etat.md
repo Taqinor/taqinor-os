@@ -52,6 +52,7 @@ vivent dans le scratchpad de la session, pas sur `main`.
 |---|---|---|---|---|---|
 | départ | 22/11 23 h | 3 % | 21 % | prises (`file:docs/plans/PLAN_AUDIT_CALEPINAGE.md`, `app:calepinage`) | tour 0 |
 | tour 0 fini, tour 2 lancé | 23/11 00 h UTC | 6 % | 67 % | renouvelées | état écrit et poussé ; économie de contexte : l'orchestrateur ne lit plus que des messages courts |
+| tour 2 à mi-chemin | 23/11 02 h 25 UTC | 17 % | 85 % | à renouveler avant 05 h UTC | état écrit et poussé avant la compaction du contexte |
 
 ## Où sont les choses
 
@@ -88,28 +89,42 @@ vivent dans le scratchpad de la session, pas sur `main`.
    `calepinage-perf`, `calepinage-horizon-telephone`, « monkey » — à rejouer sur l'instrument au repos.
 3. Maquettes v2 : langage écrit, `Main` (Toit) et `Resultats` écrites par l'orchestrateur et publiées sur le canevas
    https://claude.ai/artifact/BJ5TrpZU3QvwHE3fWAteH5 ; lot A (six écrans) confié à une lane de design.
-4. Tour 2 de relecteurs : EN COURS. Rentres : `S2-PARCOURS` (29 jouees sur 54 : ok 18, partiel 8, non-fait 3 ; 26
-   constats dont 8 S2 ; K6 NON tenu : jamais de resultat complet au premier jour) et `F2-RESU` (31 sur 54 : ok 17,
-   partiel 13 dont la S1 ACAL1304, non-fait 1 ; 26 constats dont 7 S2 ; la meme production se lit 4 362 / 4 542 /
-   5 131 / 5 173 kWh selon l'ecran). `non-fait + partiel` = 40 % > 10 % : TOUTES les corrections sont rejouees. Les
-   listes longues sont coupees en deux : moitie « a » = un relecteur opus (liste + classes + regard neuf), moitie
-   « b » = un verificateur sonnet (liste seule). Fiches de lancement pretes : `T2/lancement/<code>.md` (le message de
-   lancement tient en deux lignes : « lis ta fiche et execute-la » + le bloc d'ancrage). En vol : `F2-GESTES` (liste
-   `F2-GESTES-a`), `F2-TOIT-a`, `F2-RESU-b` ; `S2-PARCOURS-b` rentre (11 sur 25). File d'attente, dans l'ordre : `F2-DOCS-a`,
-   `F2-GESTES-b`, `F2-POSE-a`, `F2-TOIT-b`, `F2-ELEC-a`, `F2-DOCS-b`, `F2-SIMU-a`, `F2-POSE-b`, `F2-CONSO`,
-   `F2-ELEC-b`, `T2`, `F2-SIMU-b`, `B2` (B2 en dernier : il compare aux maquettes v2). Plafond mesure : 4 agents de
-   fond (95 % de processeur) — 3 relecteurs + 1 lane.
-5. Construction, vague 1 (les 37 tâches ouvertes et constructibles du plan, sortie de
-   `python scripts/plan_lanes.py docs/plans/PLAN_AUDIT_CALEPINAGE.md --workers 8 --wave-size 80`) : lane `liste`
-   lancée (branche `l5cal/lane-liste` dans son worktree : ACAL1308, 1309, 1334, 1333, 1335, 1343, 1322, 1337, 1338,
-   1339, 1342, puis les deux écrans ACAL1310 et ACAL1336 sur `maquettes-v2/Liste.dc.html`). Lanes restantes, à lancer
-   une par une quand une place se libère (brief commun `T2/brief-lanes.md`, base = la branche d'intégration) :
-   `atelier-brouillon` [ACAL1246, 1248, 1275, 1345] sonnet · `carte-dessin` + `site` [ACAL1273, 1328, 1329, 746] opus ·
-   `e2e` + `telephone` [ACAL1272, 1346, 1347, 1353] sonnet · `atelier-carte` + `coque` + `pompage` [ACAL1340, 1280,
-   1267] sonnet · `atelier-consommation` + `devis` + `production` [ACAL1321, 1249, 1274] opus · `atelier-coque` +
-   `exemples` + `reglages` [ACAL1348, 1349, 1344] sonnet · `atelier-toit` + `langage-ecran` + `simulation` [ACAL1341,
-   1323, 1247] opus. Neuf tâches sont REFUSÉES par le planificateur tant que leurs prérequis ne sont pas cochés
-   (ACAL450, 982, 984, 1193, 1002, 1003, 1010, 1286, 1293) : elles attendent l'acceptation des tâches livrées (K16).
+4. Tour 2 de relecteurs : EN COURS (etat au 23/11 02 h 25 UTC). `non-fait + partiel` ~ 40 % > 10 % : TOUTES les
+   corrections sont rejouees. Listes longues coupees en deux : moitie « a » = relecteur opus (liste + classes +
+   regard neuf), moitie « b » = verificateur sonnet (liste seule). Lancement : `T2/lancement/<code>.md` (message de
+   deux lignes : « lis ta fiche et execute-la » + le bloc d'ancrage). RENTRES (rapport `T2/<code>.md`, verdicts
+   `registre/evenements/T2-<code>-cv.jsonl`, constats `registre/constats/T2-<code>.jsonl`) :
+   - `S2-PARCOURS` 29/54 jouees : ok 18, partiel 8, non-fait 3 ; 26 constats (8 S2) ; K6 NON tenu.
+   - `F2-RESU` 31/54 : ok 17, partiel 13 (dont la S1 ACAL1304), non-fait 1 ; 26 constats (7 S2) ; meme production
+     lue 4 362 / 4 542 / 5 131 / 5 173 kWh selon l'ecran.
+   - `S2-PARCOURS-b` 11/25 (arrete par la panne) : ok 9, partiel 1, non-fait 1 ; 10 a REDONNER (ACAL874, 875,
+     877-880, 883-885, 888).
+   - `F2-GESTES` (liste -a) 18/18 : ok 11, partiel 6, non essaye 1 ; 16 constats (1 S1 : champ au sol compte deux
+     fois, 106 modules ; 3 S2).
+   EN VOL : `F2-TOIT-a` (rapport ecrit, 21 verdicts), `F2-RESU-b` (23 restantes), `F2-DOCS-a`.
+   FILE D'ATTENTE, dans l'ordre : `F2-GESTES-b`, `F2-POSE-a`, `F2-TOIT-b`, `F2-ELEC-a`, `F2-DOCS-b`, `F2-SIMU-a`,
+   `F2-POSE-b`, `F2-CONSO`, `F2-ELEC-b`, `T2`, `F2-SIMU-b`, puis un verificateur pour les 10 de `S2-PARCOURS-b`,
+   puis `B2` EN DERNIER (il compare aux maquettes v2). Comptes des verificateurs « b » : `rev_b1` (F2-RESU-b) a
+   `rev_b7` dans l'ordre de `l5b/lancements.py` ; `rev_b8` libre.
+   Plafond : 4 agents de fond (3 relecteurs + 1 lane) ; machine virtuelle de Docker a 5 Go (voir point 8).
+5. Construction, vague 1 (37 taches ouvertes du plan ; brief `T2/brief-lanes.md` ; base = branche d'integration) :
+   - PLIEES et poussees : lane 0 (2 tests du nocturne, wheels retires) ; lane `liste` (ACAL1308, 1309 contestee,
+     1310, 1322, 1333-1339, 1342, 1343 ; migration calepinage 0043 ; schema OpenAPI regenere ; empreinte CODEMAP et
+     reference on_delete rafraichies ; reperes de test `cal-vignette-toit`, `cal-signal` declares) ; lane `carte`
+     (ACAL1273, 1328, 1329 ; ACAL746 IMPOSSIBLE : pas de page officielle de conditions d'usage NASA POWER).
+   - EN VOL : lane `production` (branche `l5cal/lane-production` : ACAL1274, 1321, 1249).
+   - A LANCER ensuite, une a la fois : `atelier-brouillon` [ACAL1246, 1248, 1275, 1345] sonnet · `e2e` + `telephone`
+     [ACAL1272, 1346, 1347, 1353] sonnet (a besoin de la pile : le dire dans son message) · `atelier-carte` + `coque`
+     + `pompage` [ACAL1340, 1280, 1267] sonnet · `atelier-coque` + `exemples` + `reglages` [ACAL1348, 1349, 1344]
+     sonnet · `atelier-toit` + `langage-ecran` + `simulation` [ACAL1341, 1323, 1247] opus.
+   - Pli d'une lane : `git diff --stat <integration>...<branche>` ; `git merge --no-ff` ; si le serveur a change :
+     `makemigrations --check` et `check_openapi_schema.py --write` dans un conteneur `l5cal-django:t0` (env
+     `l5cal/test-lane0.env`, monte le worktree en `/repo`) ; `python scripts/codemap_fingerprint.py --write` ; pousser.
+     Rouges CI deja vus et corriges sur cette vague : fonction de service publique sans appelant (la rendre privee),
+     empreinte CODEMAP, reference `docs/on-delete-financial-audit.md`, repere `data-testid="cal-*"` non declare dans
+     `frontend/src/features/calepinage/E2E_HOOKS.md` + `e2eHooks.test.mjs`.
+   - Neuf taches REFUSEES par le planificateur tant que leurs prerequis ne sont pas coches (ACAL450, 982, 984,
+     1193, 1002, 1003, 1010, 1286, 1293) : elles attendent l'acceptation (K16).
 6. Maquettes v2 : écrites et publiées par l'orchestrateur — `Main` (Toit), `Resultats`, `Liste`, `Presentation`
    (écran NEUF : « Montrer au client » en grand format, sans prix) ; lot A en cours par une lane de design
    (`Panneaux`, `Electrique`, `Schema`, `ToitSombre`, `ResultatsIncomplet`, `Documents` — elle écrit dans le
@@ -117,7 +132,7 @@ vivent dans le scratchpad de la session, pas sur `main`.
    `maquettes-v2/`) ; lot B fait de même. LES 14 MAQUETTES v2 SONT ÉCRITES, publiées sur le canevas et rangées dans `maquettes-v2/`.
 7. Mesures du poste avec 4 agents : 3,3 Go libres, 43 % de processeur — 4 agents de fond tiennent (2 relecteurs à
    navigateur + 2 lanes sans navigateur) ; ne pas dépasser.
-8. PANNE de l'instrument le 23/11 de ~01 h 00 a ~01 h 40 UTC : la machine virtuelle de Docker (5 Go, 3 Go d'echange,
+8. PANNE de l'instrument le 23/11 de ~00 h 55 a ~01 h 28 UTC : la machine virtuelle de Docker (5 Go, 3 Go d'echange,
    `.wslconfig` de Reda, non modifie) etait pleine, echange compris ; `docker` ne repondait plus. Remede applique :
    Docker Desktop redemarre (`wsl --shutdown`), instrument remonte par `l5cal/relancer.sh` avec des plafonds —
    serveur gunicorn 2 processus x 2 fils, recyclage a 250 requetes, 1,1 Go ; worker Celery 1 processus, recycle
