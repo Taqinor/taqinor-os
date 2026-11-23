@@ -6,7 +6,7 @@ import { Button, Card, Spinner } from '../../../ui'
 import RetourAtelier from '../atelier/RetourAtelier'
 import { affectationComplete, couleurParModule, drapeauOptimiseur, libelleGroupe, marquerModules } from './AffectationChaines.helpers'
 import { phrasesChaines } from '../electrique/tensionsChaines'
-import { libelleEtat } from '../electrique/etatVerdict'
+import { etatAffiche, libelleEtat } from '../electrique/etatVerdict'
 import ImportAffectation from './ImportAffectation'
 
 /* ACAL44 — le motif d'un bouton d'écriture en lecture seule (devis lié figé). */
@@ -239,11 +239,16 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
      (`modules_sous_seuil`, d'après le seuil société) ; rien n'est calculé ici. Relue à l'ouverture
      et après chaque enregistrement. */
   const [proposes, setProposes] = useState([])
+  const [publication, setPublication] = useState(null) // ACAL1535 — l'état du dossier ENREGISTRÉ
   useEffect(() => {
     let monte = true
     Promise.resolve(calepinageApi.calepinages.evaluerElectrique(id, {}))
-      .then((r) => { if (monte) setProposes(r?.data?.modules_sous_seuil || []) })
-      .catch(() => { if (monte) setProposes([]) })
+      .then((r) => {
+        if (!monte) return
+        setProposes(r?.data?.modules_sous_seuil || [])
+        setPublication(r?.data?.publication || null)
+      })
+      .catch(() => { if (monte) { setProposes([]); setPublication(null) } })
     return () => { monte = false }
   }, [id, surcharge])
 
@@ -375,7 +380,7 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
   // ACAL935 — l'état se lit comme au cadre du devis (mêmes mots : `etatVerdict.js`) ;
   // un serveur sans `etat` garde l'ancienne lecture du verdict à quatre mots.
   const etatLu = verdict && (verdict.etat
-    ? libelleEtat(verdict.etat, verdict.points)
+    ? etatAffiche(verdict, publication)
     : libelleEtat(
       { bloquant: 'bloquant', indetermine: 'a_completer' }[verdict.verdict] || 'pret',
       verdict.verdict === 'bloquant' ? bloquants.length : (verdict.manquantes || []).length))

@@ -239,6 +239,25 @@ describe('AffectationChaines (CAL234) — le verdict SERVEUR', () => {
     expect(etat).not.toHaveTextContent(/indetermine|conforme/i)
   })
 
+  it('ACAL1535 : verdict conforme et dossier « À compléter : 10 points » ⇒ le résumé dit « À compléter »', async () => {
+    calepinageApi.calepinages.evaluerElectrique.mockImplementation((_id, corps) => Promise.resolve({
+      data: corps?.entree_electrique
+        ? { ...VERDICT_CONFORME, etat: 'pret', points: 0, publication: null }
+        : { ...VERDICT_CONFORME, etat: 'a_completer', points: 10, publication: { etat: 'a_completer', points: 10 } },
+    }))
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+    glisserSur([B1, B2])
+    saisir('chaine', '2')
+    saisir('mppt', '2')
+    saisir('onduleur', '1')
+    fireEvent.click(screen.getByTestId('cal234-affecter'))
+
+    const etat = await screen.findByTestId('cal234-verdict-etat')
+    await waitFor(() => expect(etat).toHaveTextContent('À compléter : 10 points'))
+    expect(etat).not.toHaveTextContent(/Prêt/)
+  })
+
   it('un numéro invalide est refusé SOUS le champ fautif, sans appel serveur', async () => {
     rendre()
     await screen.findByTestId('cal234-ecran')
