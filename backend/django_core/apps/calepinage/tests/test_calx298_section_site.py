@@ -52,7 +52,7 @@ def _charger(nom):
 
 RESULTAT = _charger('calepinage_resultat.json')['exemple']
 MOTIF = ("Aucune base d'irradiance publiée pour ce calepinage : lancez la "
-         "simulation (onglet Production) pour que la source météo soit "
+         "simulation (étape Résultats) pour que la source météo soit "
          "connue.")
 
 

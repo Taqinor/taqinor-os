@@ -135,7 +135,7 @@ def svg_de_cascade(cascade, *, largeur_mm=LARGEUR_DEFAUT_MM, langue='fr'):
     if not etapes:
         raise DiagrammeRefuse(
             "Aucune cascade de pertes produite pour ce calepinage : le "
-            "diagramme se dessine depuis la simulation (onglet Production), "
+            "diagramme se dessine depuis la simulation (étape Résultats), "
             "jamais depuis une liste de postes sans ordre d'application.")
     textes = _libelles(langue)
     largeur = _px_de_mm(largeur_mm)
