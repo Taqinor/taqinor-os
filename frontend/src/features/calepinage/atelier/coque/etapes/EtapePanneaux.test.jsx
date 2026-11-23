@@ -13,7 +13,9 @@ vi.mock('../../../../../api/calepinageApi', () => ({
 }))
 
 import { MODULE_PAR_DEFAUT_ATELIER } from '@roofpro/moduleSelect'
+import { choisirPaletteAcces } from '@rooflib/shadingEngine'
 import calepinageApi from '../../../../../api/calepinageApi'
+import { exempleContrat, reponseContrat } from '../../../../../test/fixtures/contractSamples'
 import { ContexteCoque } from '../contexteCoque'
 import EtapePanneaux from './EtapePanneaux'
 import { jourMois, ligneModule } from './panneaux/formats'
@@ -184,6 +186,57 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(max).toHaveTextContent('55 panneaux · 39,60 kWc')
     fireEvent.click(max)
     expect(document.getElementById('rp9-need-input').value).toBe('400')
+  })
+
+  it('tiennent < cible : la carte dit ce qui tient, jamais la taille irréalisable', async () => {
+    const { espion } = monterConstructeur({
+      besoin: '6', panneaux: '1 × 710 W', kwc: '0,71 kWc', cover: '14 %',
+      note: '6 au devis — seuls 1 tiennent en plein sud (toit ou obstacles).',
+    })
+    servir({ cible: { panneaux: 6, kwc: 4.26, module_wc: 710 } })
+    const surInput = espion('#rp9-need-input', 'input')
+    rendre()
+    const facture = screen.getByTestId('cal-panneaux-option-facture')
+    await waitFor(() => expect(facture).toHaveTextContent('Couvrir la factureRecommandé1 panneau · 0,71 kWc · sur 6 nécessaires'))
+    expect(facture).not.toHaveTextContent('4,26')
+    expect(facture).not.toHaveTextContent('6 panneaux')
+    fireEvent.click(facture)
+    expect(surInput).not.toHaveBeenCalled() // le besoin 6 est déjà la cible posée : rien à renvoyer, la pose reste 1
+  })
+
+  it('la carte non choisie garde ses chiffres : « Le plus de panneaux » dès l’ouverture, la part de la facture après le clic, le sens dit', async () => {
+    monterConstructeur({
+      besoin: '12', panneaux: '12 × 710 W', kwc: '8,52 kWc', cover: '63 %', orient: 'portrait',
+      note: '12 posés — seuls 20 tiennent en plein sud.',
+    })
+    rendre()
+    const facture = screen.getByTestId('cal-panneaux-option-facture')
+    const max = screen.getByTestId('cal-panneaux-option-max')
+    await waitFor(() => expect(facture).toHaveTextContent('≈ 63 % de la consommation'))
+    expect(max).toHaveTextContent('20 panneaux · 14,20 kWc') // 20 × 710 W, lu de la pose, dès l'ouverture
+    fireEvent.click(max)
+    expect(document.getElementById('rp9-need-input').value).toBe('400')
+    // le script pose tout ce qui tient et bascule le sens de pose
+    document.getElementById('rp9-reco-panels').textContent = '20 × 710 W'
+    document.getElementById('rp9-reco-kwc').textContent = '14,20 kWc'
+    document.getElementById('rp9-reco-cover').textContent = '105 %'
+    document.getElementById('rp9-need-note').textContent = '12 posés — seuls 20 tiennent en plein sud.'
+    document.querySelector('[data-orient="portrait"]').setAttribute('aria-pressed', 'false')
+    document.querySelector('[data-orient="landscape"]').setAttribute('aria-pressed', 'true')
+    await waitFor(() => expect(document.querySelector('[data-zone="sens-bascule"]')).toHaveTextContent('passé de Portrait à Paysage'), { timeout: 3000 })
+    expect(max).toHaveAttribute('aria-pressed', 'true')
+    expect(facture).toHaveTextContent('≈ 63 % de la consommation') // gardée, pas perdue au clic
+    expect(facture).not.toHaveTextContent('105')
+  })
+
+  it('lead C&I : la carte dit la raison servie (cible-factures/ refus), sans renvoyer renseigner une facture saisie', async () => {
+    servir()
+    calepinageApi.calepinages.cibleFactures.mockResolvedValue(reponseContrat('calepinage', 'calepinage_cible_factures', 'exemple_refus'))
+    rendre()
+    await screen.findByText(exempleContrat('calepinage', 'calepinage_cible_factures', 'exemple_refus').refus)
+    expect(screen.getByTestId('cal-panneaux-option-facture')).toBeDisabled()
+    expect(screen.queryByText('Renseigner la facture du lead')).toBeNull()
+    expect(document.body).not.toHaveTextContent('Aucune taille ne se tire des factures')
   })
 
   it('ni l’une ni l’autre : aucune carte choisie et « Pose actuelle : N panneaux · kWc »', async () => {
@@ -401,6 +454,7 @@ describe('étape Panneaux — sur la carte', () => {
   })
 
   it('légende d’ensoleillement : titre, dégradé, bornes ; le titre est le vrai bouton « carte d’accès solaire »', () => {
+    choisirPaletteAcces('atelier') // posée par le démarrage de l'atelier (useAtelierBoot), plus par l'étape
     const { espion } = monterConstructeur()
     const carte = espion('#rp9-heatmap-toggle')
     rendre()
@@ -436,5 +490,107 @@ describe('étape Panneaux — sur la carte', () => {
     expect(within(bloc).getByRole('button', { name: 'Hiver' })).toHaveAttribute('aria-pressed', 'true')
     fireEvent.click(within(bloc).getByRole('button', { name: 'Été' }))
     expect(ete).toHaveBeenCalledTimes(1)
+  })
+})
+
+/* ACAL1519 — « K-COLONNE-ETROITE » : les grilles du panneau de droite (bloc « Total — toutes les zones »,
+   bandeau de « Déplacer les panneaux ») suivent la largeur de la COLONNE (colonnes automatiques), jamais un
+   point de rupture de la fenêtre. Prouvé sur le DOM RENDU. */
+describe('panneau de droite — grilles suivant la colonne, pas la fenêtre (ACAL1519)', () => {
+  const POINT_DE_RUPTURE = /(?:^|\s)(?:sm|md|lg|xl|2xl):grid-cols-/
+  const AUTO = 'grid-cols-[repeat(auto-fit,minmax(7rem,1fr))]'
+
+  it('le bloc « Total » et la pose rendent des grilles à colonnes automatiques sans classe de fenêtre', async () => {
+    const { default: InspecteurBuilder } = await import('../../InspecteurBuilder.jsx')
+    const { default: BuilderPose } = await import('../../BuilderPose.jsx')
+    const { container } = render(<MemoryRouter><InspecteurBuilder estCalepinage /><BuilderPose /></MemoryRouter>)
+    for (const id of ['rp9-areas-window', 'rp9-layout-panel']) {
+      const grilles = [...container.querySelector(`#${id}`).querySelectorAll('dl')]
+        .filter((el) => el.className.includes('grid-cols-['))
+      expect(grilles.length, `${id} : grille à colonnes automatiques`).toBeGreaterThanOrEqual(1)
+      for (const g of grilles) expect(g.className).toContain(AUTO)
+    }
+    // Le bloc « Affiner ma consommation » (#rp9-cons-window) vient du balisage partagé @roofpro : hors périmètre.
+    for (const el of container.querySelectorAll('[class*="grid-cols-"]')) {
+      if (el.closest('#rp9-cons-window')) continue
+      expect(el.className, 'grille liée à la largeur de la fenêtre').not.toMatch(POINT_DE_RUPTURE)
+    }
+  })
+})
+
+describe('retraits du panneau de droite — règle CSS suivant la colonne (ACAL1519)', () => {
+  it('.rp9-host .rp9-setbacks : colonnes automatiques, aucune règle de fenêtre ne la redéfinit', async () => {
+    // (`?raw` rend '' sous vitest : la feuille est lue du disque puis chargée dans le DOM de test.)
+    const { readFileSync } = await import('node:fs')
+    const css = readFileSync(`${globalThis.process.cwd()}/src/styles/roofbuilder.css`, 'utf8')
+    const style = document.createElement('style')
+    style.textContent = css
+    document.head.appendChild(style)
+    try {
+      const regles = [...style.sheet.cssRules]
+      const bloc = regles.find((r) => r.selectorText === '.rp9-host .rp9-setbacks')
+      expect(bloc, 'règle .rp9-host .rp9-setbacks').toBeTruthy()
+      expect(bloc.cssText).toMatch(/auto-fit/)
+      const enFenetre = regles.filter((r) => r.type === 4 /* CSSMediaRule */)
+        .flatMap((m) => [...m.cssRules]).filter((r) => (r.selectorText || '').includes('.rp9-setbacks'))
+      expect(enFenetre).toHaveLength(0)
+    } finally {
+      style.remove()
+    }
+  })
+})
+
+/* ACAL1524 / ACAL1443 — la feuille de l'atelier est chargée dans le DOM de test et lue par getComputedStyle. */
+describe('feuille de l’atelier — boutons refusés et champs de la photo (ACAL1524, ACAL1443)', () => {
+  let style
+  beforeEach(async () => {
+    const { readFileSync } = await import('node:fs')
+    style = document.createElement('style')
+    style.textContent = readFileSync(`${globalThis.process.cwd()}/src/styles/roofbuilder.css`, 'utf8')
+    document.head.appendChild(style)
+  })
+  afterEach(() => { style.remove(); document.body.innerHTML = '' })
+
+  it('ACAL1524 : un bouton rp9-btn désactivé se distingue d’un bouton actif, « Déplacer » compris', () => {
+    document.body.innerHTML = `<div class="rp9-host">
+      <button id="actif" class="rp9-btn">a</button><button id="off" class="rp9-btn" disabled>b</button>
+      <button id="rp9-layout-toggle" disabled>c</button><button id="toggle-actif" class="x">d</button>
+      <p id="motif" class="rp9-motif-refus">m</p></div>`
+    const cs = (id) => getComputedStyle(document.getElementById(id))
+    for (const id of ['off', 'rp9-layout-toggle']) {
+      expect(cs(id).borderStyle, id).toBe('dashed')
+      expect(cs(id).cursor, id).toBe('not-allowed')
+      expect(cs(id).background, id).toContain('--muted')
+      expect(cs(id).color, id).toContain('--muted-foreground')
+      expect(cs(id).opacity, `${id} : l'opacité seule rendait le refus invisible`).toBe('1')
+    }
+    expect(cs('actif').borderStyle).not.toBe('dashed')
+    expect(cs('actif').cursor).not.toBe('not-allowed')
+    expect(cs('motif').color).toContain('--muted-foreground')
+  })
+
+  it('ACAL1443 : .rp9-image-capture-input est un vrai champ (bordure, fond, 44 px)', () => {
+    document.body.innerHTML = '<div class="rp9-host"><input id="champ" class="rp9-image-capture-input"></div>'
+    const c = getComputedStyle(document.getElementById('champ'))
+    // jsdom ne déplie pas `border: 1px solid var(--…)` : on lit la règle qui s'applique à l'élément.
+    const regle = [...style.sheet.cssRules].find((r) => r.selectorText && document.getElementById('champ').matches(r.selectorText))
+    expect(regle, 'règle appliquée au champ').toBeTruthy()
+    expect(regle.style.getPropertyValue('border')).toMatch(/^1px solid/)
+    expect(c.background).toContain('--muted')
+    expect(parseFloat(c.minHeight)).toBeGreaterThanOrEqual(2.75)
+  })
+})
+
+/* ACAL1340 — la palette d'ensoleillement n'est PAS posée par l'étape Panneaux : le démarrage de l'atelier
+   (`useAtelierBoot`, couvert par ToitureDesign.calepinage.test.jsx « F6 ») la pose pour toute étape et pour le
+   mode Expert. Charger le module de l'étape ne doit rien changer à la palette active (le site public garde
+   la sienne). */
+describe('palette d’ensoleillement — posée au démarrage, sans passer par l’étape', () => {
+  it('charger l’étape Panneaux ne touche pas la palette active (rouge → vert du site conservé)', async () => {
+    vi.resetModules()
+    const moteur = await import('@rooflib/shadingEngine')
+    moteur.choisirPaletteAcces('site')
+    await import('./EtapePanneaux')
+    expect(moteur.couleurAccesActive(0)).toEqual(moteur.solarAccessColorRGB(0))
   })
 })

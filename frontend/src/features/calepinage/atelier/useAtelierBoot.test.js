@@ -1,10 +1,21 @@
 import { describe, it, expect, vi } from 'vitest'
+import { renderHook, waitFor } from '@testing-library/react'
 import { fallbackPerKwc } from '@rooflib/productionEngine'
-import { exempleContrat } from '../../../test/fixtures/contractSamples'
+import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
+import api from '../../../api/axios'
+import calepinageApi from '../../../api/calepinageApi'
 import {
   productionAtelierDepuisChiffrage, adresseSansDoublon, MESSAGE_ACCES_REFUSE,
   cadrerToitAtelier, ZOOM_MAX_CADRAGE_ATELIER, hauteurCouverteParTiroir,
+  useAtelierBoot, imageryDesReglages, // ACAL1421
 } from './useAtelierBoot'
+
+// ACAL1421 — le boot réel du hook, réseau et constructeur doublés (les charges servies viennent des contrats).
+const { initRoofToolPro8 } = vi.hoisted(() => ({ initRoofToolPro8: vi.fn() }))
+vi.mock('@roofbuilder', () => ({ initRoofToolPro8 }))
+vi.mock('../../../api/axios', () => ({ default: { get: vi.fn() } }))
+vi.mock('../../../api/calepinageApi', () => ({ default: { parametres: { get: vi.fn() }, calepinages: {} } }))
+vi.mock('../../../api/crmApi', () => ({ default: { getRoofFootprint: vi.fn(() => Promise.resolve({ data: {} })) } }))
 
 /* ACAL994 — la production de l'atelier ERP vient du bloc `chiffrage` servi par design-context
    (ACAL993) quand il est servi ; sinon le repli de table, étiqueté « estimation ». Les valeurs
@@ -39,6 +50,39 @@ describe('productionAtelierDepuisChiffrage (ACAL994)', () => {
     expect(productionAtelierDepuisChiffrage(null)(CFG).annualKwh).toBe(repli)
     const sansKwc = { ...CHIFFRAGE, kwc: { ...CHIFFRAGE.kwc, etat: 'non_servi' } }
     expect(productionAtelierDepuisChiffrage(sansKwc)(CFG).annualKwh).toBe(repli)
+  })
+})
+
+describe('ACAL1421 — `imagery` passé à initRoofToolPro8', () => {
+  it('boot d’un lead : le pays réglé par la société part en `imagery` (aucune seconde lecture des réglages)', async () => {
+    const LEAD = exempleContrat('crm', 'lead')
+    api.get.mockImplementation((url) => Promise.resolve(
+      url === '/ventes/roof-config/' ? { data: { available: true, maptilerKey: 'K' } } : { data: LEAD }))
+    calepinageApi.parametres.get.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    window.__taqinorRoofBooted = false
+    const rien = () => {}
+    const ctx = {
+      cibleId: '7', leadId: '7', estCalepinage: false, builderApi: { current: null }, reducedMotion: false,
+      setBrouillonPropose: rien, setBuilderApiActuel: rien, setBuilderReady: rien, setContexte: rien,
+      setCatalogueIndisponible: rien, setContourMessage: rien, setHashBaseBrouillon: rien, setLead: rien,
+      setLoadError: rien, setStatus: rien, setSceneHydratee: rien, setRepereErreur: rien,
+    }
+    try {
+      renderHook(() => useAtelierBoot(ctx))
+      await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalledTimes(1))
+      const pays = exempleContrat('calepinage', 'parametres_calepinage').imagerie.pays
+      expect(initRoofToolPro8.mock.calls[0][0].imagery).toEqual({ pays })
+      expect(calepinageApi.parametres.get).toHaveBeenCalledTimes(1)
+    } finally {
+      window.__taqinorRoofBooted = false
+    }
+  })
+
+  it('société muette (réglages illisibles ou sans pays) : AUCUN contexte, le fond satellite historique ne change pas', () => {
+    expect(imageryDesReglages(null)).toBeUndefined()
+    expect(imageryDesReglages({ pays: null })).toBeUndefined()
+    expect(imageryDesReglages({ pays: '' })).toBeUndefined()
+    expect(imageryDesReglages({ pays: 'fr' })).toEqual({ pays: 'fr' })
   })
 })
 

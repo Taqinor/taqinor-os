@@ -51,10 +51,9 @@ __all__ = ['MOTIF_SANS_ACCES', 'acces_des_modules', 'acces_par_bande',
            'acces_par_module', 'modules_sous_seuil', 'ombrage_des_chaines']
 
 MOTIF_SANS_ACCES = (
-    "Le document de toiture ne porte aucun accès solaire par module "
-    ": aucun écart d'ombrage n'est "
-    'signalé. Le silence est explicite — un module sans accès calculé n’est '
-    'pas un module non ombré.')
+    "L'ombre sur chaque panneau n'est pas encore calculée : l'écart d'ombre "
+    "entre les chaînes n'est pas connu. Lancez le calcul des ombres du toit "
+    "pour le connaître (un panneau non calculé n'est pas un panneau sans ombre).")
 
 
 def acces_par_module(layout):

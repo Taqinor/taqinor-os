@@ -7,18 +7,19 @@ import { refusParChamp } from './entreeElectrique'
 import { volts } from './tensionsChaines'
 
 /* ============================================================================
-   ACAL628 — « CONTRÔLE RAPIDE D'UNE CHAÎNE » : un module, un onduleur, N modules et les deux
-   températures SAISIES ; le serveur (`POST calepinages/controle-chaine/`, ACAL627) rend le verdict
+   ACAL628 — « CONTRÔLE RAPIDE D'UNE CHAÎNE » : un module, un onduleur, N modules et la température
+   la plus froide SAISIS (la plus chaude facultative, ACAL1546) ; le serveur (`POST calepinages/controle-chaine/`, ACAL627) rend le verdict
    sans rien dessiner ni écrire. Les produits viennent des candidats de l'entrée électrique (même
    liste que « Matériel »). Aucun chiffre calculé ici : valeurs, bornes (phrase servie) et fenêtre
    « de x à y modules » sont celles du serveur. Le dernier essai se garde dans `sessionStorage`.
    ========================================================================== */
 
 const CLE_SESSION = 'cal-controle-chaine-dernier'
+// ACAL1546 — la plus chaude est facultative : vide, le serveur prend 70 °C et le dit (ACAL1545).
 const CHAMPS = [
-  { cle: 'nombre_modules', libelle: 'Nombre de modules dans la chaîne' },
-  { cle: 'temperature_min_c', libelle: 'Température la plus froide (°C)' },
-  { cle: 'temperature_max_c', libelle: 'Température la plus chaude (°C)' },
+  { cle: 'nombre_modules', libelle: 'Nombre de modules dans la chaîne', requis: true },
+  { cle: 'temperature_min_c', libelle: 'Température la plus froide (°C)', requis: true },
+  { cle: 'temperature_max_c', libelle: 'Température la plus chaude (°C), facultative — 70 °C par défaut' },
 ]
 const ETATS = {
   ok: { icone: '✔', mot: 'Conforme', classe: 'text-success-text' },
@@ -57,8 +58,8 @@ export default function ControleChaine({ calepinageId } = {}) {
     for (const [cle, texte] of [['module_produit', 'Choisissez un module.'], ['onduleur_produit', 'Choisissez un onduleur.']]) {
       if (!saisie[cle]) manquants[cle] = texte
     }
-    for (const { cle, libelle } of CHAMPS) {
-      if (String(saisie[cle]).trim() === '') manquants[cle] = `« ${libelle} » est à saisir.`
+    for (const { cle, libelle, requis } of CHAMPS) {
+      if (requis && String(saisie[cle]).trim() === '') manquants[cle] = `« ${libelle} » est à saisir.`
     }
     setErreurs(manquants)
     if (Object.keys(manquants).length > 0) return
@@ -70,7 +71,7 @@ export default function ControleChaine({ calepinageId } = {}) {
       onduleur_produit: Number(saisie.onduleur_produit),
       nombre_modules: nombre('nombre_modules'),
       temperature_min_c: nombre('temperature_min_c'),
-      temperature_max_c: nombre('temperature_max_c'),
+      ...(String(saisie.temperature_max_c ?? '').trim() === '' ? {} : { temperature_max_c: nombre('temperature_max_c') }),
     })
       .then((res) => { setVerdict(res?.data ?? null) })
       .catch((err) => {
@@ -128,7 +129,8 @@ export default function ControleChaine({ calepinageId } = {}) {
               ? <p className={`text-sm font-semibold ${ETATS.refus.classe}`} data-testid="acal628-titre">{ETATS.refus.icone} Trop haut : {volts(refus.valeur)} — {refus.borne}</p>
               : <p className="text-sm font-semibold" data-testid="acal628-titre">{verdict.verdict === 'indetermine' ? 'Contrôle impossible : fiche à compléter.' : 'Aucune limite bloquante dépassée.'}</p>}
             <ul className="flex flex-col gap-1">
-              {(verdict.controles ?? []).map((c) => (
+              {/* ACAL1546 — le refus bloquant est déjà le bloc rouge : il n'est pas répété ici. */}
+              {(verdict.controles ?? []).filter((c) => c !== refus).map((c) => (
                 <li key={c.code} className={`text-sm ${etat(c).classe}`} data-testid={`acal628-controle-${c.code}`}>
                   {etat(c).icone} {etat(c).mot} — {c.libelle} : {volts(c.valeur)} ({c.borne})
                 </li>

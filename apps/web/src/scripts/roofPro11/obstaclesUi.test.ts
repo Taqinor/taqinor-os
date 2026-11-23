@@ -1,10 +1,12 @@
+// @vitest-environment jsdom
 // CALX91 — GESTES SUR LES SOMMETS D'UN CONTOUR FERMÉ. La géométrie (projeté orthogonal,
 // refus de suppression) est prouvée dans `snap.test.ts` ; ce fichier couvre la DÉCISION que
 // `obstaclesUi.ts` prend avant d'agir : Alt maintenue = suppression et JAMAIS un glissé, et
 // aucun geste sommet hors des gardes déjà en place (contour fermé, hors mode obstacle /
 // disposition) — donc le comportement d'aujourd'hui tant qu'Alt n'est pas maintenue.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
+  createObstaclesUi, // ACAL1406
   gesteSommet,
   gesteEnvironnement,
   debutGlisseEnvironnement,
@@ -12,7 +14,19 @@ import {
   deplacementSommetAdmis, // ACAL77
   MOTIF_SOMMET_CROISE, // ACAL77
 } from './obstaclesUi';
-import { newEnvironmentObject, environmentShadeEntries } from './environment';
+import {
+  newEnvironmentObject,
+  environmentShadeEntries,
+  newLigneEnvironment, // ACAL1406
+  withEnvHeight,
+  withPoleDiameter,
+  withCrownDiameter,
+  withFutureHeight,
+  withSupposeCoupe,
+  withEpaisseurLigne,
+} from './environment';
+import { appliquerHydratationAuCtx } from './hydratation'; // ACAL1406
+import { type Ctx } from './context'; // ACAL1406
 import {
   aireObstacleM2,
   aireRetireeM2,
@@ -21,6 +35,7 @@ import {
   clearanceForType,
   degagementObstacle,
   lireGabaritsObstacle,
+  lireGabaritsZone, // ACAL1433
   motifContourObstacle,
   motifRayonObstacle,
   obstacleCercle,
@@ -30,6 +45,7 @@ import {
   type GabaritObstacle,
   type ObstacleEtendu,
 } from './types';
+import { bandesDepuisGabarit } from './bandeGabarit'; // ACAL1432
 import {
   aireAlleeM2,
   alleeCirculation,
@@ -48,7 +64,7 @@ import {
 import { obstacleRing } from '../../lib/obstacles';
 import { viderObstaclesAnnulable, questionEffacer, demanderEffacer } from './bandeauAnnuler'; // ACAL413
 import { type LngLat } from '../../lib/roof';
-import { lignesObjetsSite, ouvrirObjet } from './objetsSite'; // ACAL533
+import { lignesObjetsSite, monterObjetsSite, ouvrirObjet } from './objetsSite'; // ACAL533, ACAL1409
 
 const ETAT = {
   sommet: 2 as number | null,
@@ -176,6 +192,35 @@ describe('CALX105 — le glissé déplace le marqueur et consomme UN pas d’his
   it('un simple tap (aucun mouvement) ne laisse rien à annuler', () => {
     const glisse = debutGlisseEnvironnement(objet(), [-7.6, 33.5]);
     expect(glisse.moved).toBe(false); // rien n'a été poussé tant qu'on n'a pas bougé
+  });
+});
+
+// ACAL1406 — la liste d'environnement est montée AVANT le document : elle se relit après l'hydratation.
+describe('ACAL1406 — environnement relu à la réouverture', () => {
+  it('hydratation d’un document à `environment` : la liste a 3 lignes, l’ombrage est recalculé', async () => {
+    document.body.innerHTML = '<div><button id="rp9-obstacle"></button></div><ul id="rp9-env-list"></ul>';
+    const ctx = { obstacles: [], selectedObsId: null, obstacleMode: false, environment: [] } as unknown as Ctx;
+    const map = { getSource: () => undefined, getLayer: () => undefined, getCanvas: () => ({ style: {} }), on: () => {}, dragPan: { enable() {}, disable() {} }, queryRenderedFeatures: () => [] } as never;
+    const recomputeShading = vi.fn();
+    const ui = createObstaclesUi(ctx, { map, recalc: () => {}, setStatus: () => {}, redrawTrace: () => {}, recomputeShading });
+    expect(document.querySelectorAll('[data-env-row]')).toHaveLength(0);
+    const poteau = withPoleDiameter(withEnvHeight(newEnvironmentObject('env-1', 'poteau', [-7.6, 33.4999]), 8), 0.3);
+    const arbreBase = withCrownDiameter(withEnvHeight(newEnvironmentObject('env-2', 'arbre', [-7.6001, 33.4999]), 8), 4);
+    const arbre = withSupposeCoupe(withFutureHeight(arbreBase, 12, 10).objet, true);
+    const haie = withEpaisseurLigne(withEnvHeight(newLigneEnvironment('env-3', [[-7.6002, 33.4998], [-7.6001, 33.4998]]), 3), 0.5);
+    appliquerHydratationAuCtx(ctx, { environment: [poteau, arbre, haie] });
+    ui.relireEnvironment();
+    expect(document.querySelectorAll('[data-env-row]')).toHaveLength(3);
+    const champ = (sel: string) => document.querySelector<HTMLInputElement>(sel);
+    expect(champ('[data-env-height="env-1"]')?.value).toBe('8,0');
+    expect(champ('[data-env-pole="env-1"]')?.value).toBe('0,3');
+    expect(champ('[data-env-crown="env-2"]')?.value).toBe('4,0');
+    expect(champ('[data-env-hfut="env-2"]')?.value).toBe('12,0');
+    expect(champ('[data-env-coupe="env-2"]')?.checked).toBe(true);
+    expect(champ('[data-env-epaisseur="env-3"]')?.value).toBe('0,5');
+    expect(recomputeShading).not.toHaveBeenCalled(); // relancé APRÈS le boot (pans du document posés)
+    await Promise.resolve();
+    expect(recomputeShading).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -324,8 +369,57 @@ describe('CALX104 — les gabarits d’obstacle viennent des réglages, jamais d
     expect(gabarits.map((g) => g.cle).sort()).toEqual(['souche', 'vmc_ronde']);
     expect(refuses).toHaveLength(1);
     expect(refuses[0].cle).toBe('edicule_a_mesurer');
-    expect(refuses[0].motif).toContain('longueur_m');
-    expect(refuses[0].motif).toContain('largeur_m');
+    expect(refuses[0].motif).toContain('la longueur et la largeur');
+    expect(refuses[0].motif).not.toMatch(/_m/); // ACAL1433 — aucun nom de clé interne à l'écran
+  });
+
+  it('ACAL1433 — gabarit de zone absent des refus d’obstacle ; motifs sans `longueur_m`', () => {
+    const section = {
+      ...ZONES_TYPES,
+      bande_nord: { libelle: 'Bande coupe-feu', genre: 'bande', nature: 'INTERDITE', largeur_m: 1.2, source: 'Règle SDIS' },
+      bande_sans_cote: { libelle: 'Bande sans cote', genre: 'bande', nature: 'INTERDITE' },
+      rond: { libelle: 'Rond', forme: 'cercle' },
+      contour: { libelle: 'Contour', forme: 'polygone', sommets: [[0, 0], [1, 0]] },
+      long_seul: { libelle: 'Long seul', longueur_m: 2 },
+    };
+    const { gabarits, refuses } = lireGabaritsObstacle(section);
+    expect(gabarits.map((g) => g.cle)).not.toContain('bande_nord');
+    expect(refuses.map((r) => r.cle)).not.toContain('bande_nord');
+    expect(refuses.map((r) => r.cle)).not.toContain('bande_sans_cote');
+    for (const r of refuses) expect(r.motif).not.toMatch(/_m|\(sommets\)/);
+    expect(refuses.find((r) => r.cle === 'long_seul')?.motif).toContain('la largeur n’est pas saisie');
+    expect(lireGabaritsZone(section).gabarits.map((g) => g.cle)).toEqual(['bande_nord']);
+  });
+
+  it('ACAL1432 — gabarit bande nord 1,2 m : sommets au nord du pan, largeur 1,2 m', () => {
+    const section = { bande_nord: { libelle: 'Bande coupe-feu', genre: 'bande', nature: 'INTERDITE', largeur_m: 1.2, cote: 'nord', source: 'Règle SDIS' } };
+    const g = lireGabaritsZone(section).gabarits[0];
+    expect(g).toMatchObject({ genre: 'bande', largeurM: 1.2, cote: 'nord' });
+    const lat0 = 33.5;
+    const dLat = (m: number) => m / 111319.49;
+    const dLng = (m: number) => m / (111319.49 * Math.cos((lat0 * Math.PI) / 180));
+    const pan: [number, number][] = [[-7.6, lat0], [-7.6 + dLng(10), lat0], [-7.6 + dLng(10), lat0 + dLat(6)], [-7.6, lat0 + dLat(6)]];
+    for (const contour of [pan, [...pan].reverse()]) { // l'orientation des sommets n'y change rien
+      const v = bandesDepuisGabarit(contour, g);
+      if (!v.ok) throw new Error(v.motif);
+      expect(v.bandes).toHaveLength(1);
+      const lats = v.bandes[0].map((p) => p[1]);
+      expect(Math.max(...lats)).toBeCloseTo(lat0 + dLat(6), 9); // le bord nord du pan
+      expect(Math.min(...lats)).toBeCloseTo(lat0 + dLat(6 - 1.2), 9); // 1,2 m plus au sud
+      const lngs = v.bandes[0].map((p) => p[0]);
+      expect(Math.max(...lngs) - Math.min(...lngs)).toBeCloseTo(dLng(10), 9);
+    }
+  });
+
+  it('ACAL1432 — sans côté ou sans largeur saisis, le geste dit ce qui manque ; périmètre : une bande par arête', () => {
+    const pan: [number, number][] = [[-7.6, 33.5], [-7.5999, 33.5], [-7.5999, 33.5001], [-7.6, 33.5001]];
+    const base = { cle: 'b', libelle: 'Bande', nature: 'INTERDITE' as const, retraitM: 0, source: 's', genre: 'bande' as const };
+    const sansLargeur = bandesDepuisGabarit(pan, { ...base, cote: 'nord' });
+    expect(!sansLargeur.ok && sansLargeur.motif).toContain('largeur');
+    const sansCote = bandesDepuisGabarit(pan, { ...base, largeurM: 1.2 });
+    expect(!sansCote.ok && sansCote.motif).toContain('côté');
+    const tour = bandesDepuisGabarit(pan, { ...base, largeurM: 0.5, cote: 'perimetre' });
+    expect(tour.ok && tour.bandes).toHaveLength(4);
   });
 
   it('poser un gabarit donne un obstacle AUX COTES DU GABARIT', () => {
@@ -547,6 +641,46 @@ describe('ACAL413 — un filet pour les effacements de masse', () => {
   });
 });
 
+// ACAL1441 — la carte « Obstacle sélectionné » : le titre vient en tête, avant Provenance et Type.
+describe('ACAL1441 — titre de la carte obstacle avant les menus', () => {
+  it('les sélecteurs Provenance et Type se posent APRÈS la ligne de titre, dans l’ordre d’avant', () => {
+    document.body.innerHTML = '<div><button id="rp9-obstacle"></button></div><div id="rp9-obs-edit"><div id="rp9-obs-titre"><span>Obstacle sélectionné</span></div><p id="rp9-obs-corps"></p></div>';
+    const ctx = { obstacles: [], selectedObsId: null, obstacleMode: false, environment: [] } as unknown as Ctx;
+    const map = { getSource: () => undefined, getLayer: () => undefined, getCanvas: () => ({ style: {} }), on: () => {}, dragPan: { enable() {}, disable() {} }, queryRenderedFeatures: () => [] } as never;
+    createObstaclesUi(ctx, { map, recalc: () => {}, setStatus: () => {}, redrawTrace: () => {} });
+    const enfants = Array.from(document.getElementById('rp9-obs-edit')!.children).map((e) => e.id || e.className);
+    expect(enfants).toEqual(['rp9-obs-titre', 'rp9-obs-provenance-row', 'rp9-obs-type-row', 'rp9-obs-corps']);
+  });
+});
+
+// ACAL1409 — le tableau « Objets du site » suit chaque pose d'obstacle et la réouverture (même pan).
+describe('ACAL1409 — Objets du site à chaque pose et à la réouverture', () => {
+  it('poser un obstacle puis hydrater : le bloc objets-site porte deux boutons `data-objet`', () => {
+    document.body.innerHTML = '<div><button id="rp9-obstacle"></button></div>';
+    const ctx = { obstacles: [], selectedObsId: null, obstacleMode: false, environment: [], activeAreaId: 'a1', areas: [{ id: 'a1', label: 'Pan 1', obstacles: [] }] } as unknown as Ctx;
+    const map = { getSource: () => undefined, getLayer: () => undefined, getCanvas: () => ({ style: {} }), on: () => {}, dragPan: { enable() {}, disable() {} }, queryRenderedFeatures: () => [] } as never;
+    const ui = createObstaclesUi(ctx, { map, recalc: () => {}, setStatus: () => {}, redrawTrace: () => {} });
+    const selectionnes: string[] = [];
+    const objetsSite = monterObjetsSite(ctx, { selectArea: () => {}, selectObstacle: (id) => selectionnes.push(id) });
+    ui.apresRedessin(objetsSite.redessiner);
+    const boutons = () => Array.from(document.querySelectorAll<HTMLButtonElement>('#rp9-objets-site [data-objet]'));
+    expect(document.getElementById('rp9-objets-site')?.hidden).toBe(true);
+    const cheminee = { id: 'obs-1', centerLng: -7.6, centerLat: 33.5, lengthM: 0.8, widthM: 0.8, heightM: 1.2, type: 'cheminee' };
+    ui.addObstacle({ ...cheminee });
+    ui.addObstacle({ ...cheminee, id: 'obs-2', centerLng: -7.5999, lengthM: 1.2, widthM: 1, heightM: 0.5, type: 'velux' });
+    expect(boutons().map((b) => b.dataset.objet)).toEqual(['obs-1', 'obs-2']);
+    // Réouverture : le document relu remplace les obstacles du pan, puis l'atelier les redessine.
+    ctx.obstacles = JSON.parse(JSON.stringify(ctx.obstacles));
+    document.getElementById('rp9-objets-site')!.innerHTML = '';
+    ui.redrawObstacles();
+    expect(document.getElementById('rp9-objets-site')?.hidden).toBe(false);
+    expect(boutons()).toHaveLength(2);
+    expect(boutons()[0].textContent).toContain('0,8 × 0,8 m · hauteur 1,2 m');
+    boutons()[1].click();
+    expect(selectionnes).toEqual(['obs-2']);
+  });
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // ACAL533 — le tableau « Objets du site ».
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -565,11 +699,11 @@ describe('ACAL533 — lignesObjetsSite', () => {
     ],
   } as never;
 
-  it('30 obstacles se listent avec le nom de leur pan', () => {
+  it('30 obstacles se listent avec le nom de leur pan (son RANG, jamais un nom resté dans le document — demande croisée ACAL1430)', () => {
     const l = lignesObjetsSite(ctx);
     expect(l).toHaveLength(30);
-    expect(l.filter((x) => x.pan === 'Pan 1')).toHaveLength(15);
-    expect(l.filter((x) => x.pan === 'Pan 2')).toHaveLength(15);
+    expect(l.filter((x) => x.pan === 'Zone 1')).toHaveLength(15);
+    expect(l.filter((x) => x.pan === 'Zone 2')).toHaveLength(15);
   });
 
   it('les provenances non mesurées passent d’abord (pas un tri par id)', () => {
@@ -581,7 +715,7 @@ describe('ACAL533 — lignesObjetsSite', () => {
 
   it('le filtre de provenance et le filtre de type réduisent la liste', () => {
     expect(lignesObjetsSite(ctx, { provenance: 'DEVINE' })).toHaveLength(6);
-    expect(lignesObjetsSite(ctx, { type: 'climatiseur' }).every((x) => x.pan === 'Pan 2')).toBe(true);
+    expect(lignesObjetsSite(ctx, { type: 'climatiseur' }).every((x) => x.pan === 'Zone 2')).toBe(true);
   });
 
   it('un clic sur un obstacle d’un autre pan active d’abord ce pan puis sélectionne l’obstacle', () => {

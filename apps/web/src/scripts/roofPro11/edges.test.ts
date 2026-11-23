@@ -6,7 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { deduceEdgeDetails, deduceEdgeTypes, EDGE_COLOR_BY_TYPE, EDGE_TYPES, reinitialiserDepuisTraceClient, type EdgeDeductionZone } from './edges';
 import { lireTableRetraits, poserRetraitsSociete } from './retraitsSociete'; // ACAL562
 import { fusionnerAretesSaisies } from './edges';
-import { TRIANGLE_SUD, TRIANGLE_EST, DIAGONALE_SUD } from './harnaisAtelier';
+import { TRIANGLE_SUD, TRIANGLE_EST, DIAGONALE_SUD, ctxDeBase, panDeTest } from './harnaisAtelier';
+import { poserRetraitsPuisRecalculer } from './fermetureDuPan'; // demande croisée ACAL562
+import { type Ctx } from './context';
 
 const DEG2RAD = Math.PI / 180;
 const DEG2M = DEG2RAD * 6378137;
@@ -272,5 +274,20 @@ describe('ACAL562 — retraits de la société posés sur les arêtes typées', 
     const { edges } = poserRetraitsSociete(undefined, quatre, table);
     const fusion = fusionnerAretesSaisies(edges, quatre);
     expect(fusion![0]).toMatchObject({ retraitM: 0.4, retraitOrigine: 'societe' });
+  });
+
+  // Demande croisée — le premier pavage d'un pan neuf voit déjà les retraits de la société.
+  it('à la fin du tracé, les retraits sont posés AVANT le premier recalc (jamais juste après)', () => {
+    const pan = panDeTest('area-1', { vertices: polyM([[0, 0], [10, 0], [10, 6], [0, 6]]), roofType: 'flat' });
+    const ctx = {
+      ...ctxDeBase([pan]),
+      activeArea: () => pan,
+      opts: { reglagesAtelier: { degagements: { retraits_par_arete: [{ type: 'egout', retrait_m: 0.4 }, { type: 'rive', retrait_m: 0.3 }, { type: 'faitage', retrait_m: 0.2 }] } } },
+    } as unknown as Ctx;
+    let aretesVues: unknown;
+    poserRetraitsPuisRecalculer(ctx, () => { aretesVues = pan.edges?.map((e) => e.retraitOrigine); });
+    expect(aretesVues).toBeDefined();
+    expect((aretesVues as string[]).length).toBeGreaterThan(0);
+    expect(aretesVues).toContain('societe');
   });
 });

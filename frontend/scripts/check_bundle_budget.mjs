@@ -276,7 +276,11 @@ const VENDOR_CHUNK_BUDGETS_KB = {
   // 21/11/2026 (calepinage L5, vague 1 lane A) : mesuré 615,2 Ko gzip sur le runner (run frontend-static, tête
   // da22723b4), aucune dépendance ajoutée → 600 -> 630 (mesure arrondie aux 5 Ko + 10).
   // 22/11/2026 (D-ACAL-74) — cadrage du toit, mode présentation, tuiles de forme : mesuré 631,5 Ko → 635.
-  'roof-tool': 635,
+  // 23/11/2026 (calepinage L5, tour 2, vague 2 : relecture à la réouverture, tableau « Objets du site », retraits par
+  // arête au balayage, bandes de zone, cadrage après le tracé, panneaux teintés…) : mesuré 636,0 Ko gzip sur le
+  // runner (job frontend-static du run 45135923717, tête cf6c37e195), aucune dépendance ajoutée → 635 -> 650
+  // (mesure arrondie aux 5 Ko + 10).
+  'roof-tool': 650,
   // AOF192 — Atelier de calepinage AO (`features/ao/studio/`, canvas/
   // géométrie/relevé), isolé par `manualChunks` dans vite.config.js sous le
   // même patron que `roof-tool` (voir son commentaire, ligne au-dessus).

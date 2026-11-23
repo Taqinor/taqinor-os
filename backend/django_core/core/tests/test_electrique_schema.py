@@ -692,3 +692,38 @@ class CartoucheEtSurcharges(unittest.TestCase):
                         "Compteur de production", "TGBT", "Compteur ONEE",
                         "Schéma unifilaire"):
             self.assertIn(attendu, textes)
+
+
+class UneCouleurParChaine(unittest.TestCase):
+    """ACAL1337 — la liaison champ → organe suivant : un trait par chaîne de SA couleur,
+    la légende les nomme ; le reste du schéma (côté réseau) garde la couleur neutre."""
+
+    COULEURS = (("Chaîne 1", "rgb(36, 130, 214)"), ("Chaîne 2", "rgb(232, 125, 33)"),
+                ("Chaîne 3", "rgb(46, 163, 89)"), ("Chaîne 4", "rgb(184, 64, 158)"))
+
+    def _traits(self, svg):
+        espace = "{http://www.w3.org/2000/svg}"
+        return [n.attrib for n in ET.fromstring(svg).iter(espace + "line")]
+
+    def test_chaque_chaine_a_sa_couleur_et_sa_ligne_de_legende(self):
+        entree = _triphase_deux_pans()
+        svg = rendre_schema(entree, concevoir(entree), couleurs_chaines=self.COULEURS)
+        traits = self._traits(svg)
+        for _libelle, couleur in self.COULEURS:
+            # un trait de liaison + un échantillon de légende par chaîne
+            self.assertEqual(sum(1 for t in traits if t["stroke"] == couleur), 2, couleur)
+        self.assertIn("Chaîne 1", _textes(svg))
+        self.assertIn("Chaîne 4", _textes(svg))
+        # Noir et blanc : deux chaînes voisines ne se confondent pas (épaisseur, tirets).
+        premiere, seconde = ([t for t in traits if t["stroke"] == c][0] for _l, c in self.COULEURS[:2])
+        self.assertNotEqual((premiere["stroke-width"], premiere.get("stroke-dasharray")),
+                            (seconde["stroke-width"], seconde.get("stroke-dasharray")))
+        # Côté réseau : toujours le trait neutre.
+        self.assertGreater(sum(1 for t in traits if t["stroke"] == "#1f3a5f"), 5)
+
+    def test_sans_couleur_la_planche_d_avant_octet_pour_octet(self):
+        entree = _mono_reseau()
+        resultat = concevoir(entree)
+        self.assertEqual(rendre_schema(entree, resultat),
+                         rendre_schema(entree, resultat, couleurs_chaines=()))
+        self.assertNotIn("Chaîne 1", _textes(rendre_schema(entree, resultat)))

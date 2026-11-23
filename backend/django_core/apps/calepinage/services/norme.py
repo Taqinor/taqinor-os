@@ -28,8 +28,14 @@ from __future__ import annotations
 
 __all__ = [
     'NORME_FRANCAISE', 'PAYS_SANS_NORME_PAR_DEFAUT', 'COEFFICIENTS',
-    'norme_applicable', 'coefficients_publies',
+    'norme_applicable', 'coefficients_publies', 'MOTIF_SANS_NORME',
 ]
+
+#: ACAL1338 — LE texte servi sans norme choisie (un seul, réutilisé par les câbles, les
+#: protections, la terre et les tronçons) : ce qui manque et quoi faire, sans sigle.
+MOTIF_SANS_NORME = ("Aucune norme électrique n'est choisie%s : les câbles et les "
+                    "protections ne sont pas calculés. Choisissez une norme dans les "
+                    "réglages du calepinage de votre société pour les calculer.")
 
 #: L'identifiant du jeu français — le SEUL que le dépôt sache citer.
 NORME_FRANCAISE = 'nf_c_15_100'
@@ -168,13 +174,6 @@ def norme_applicable(parametres=None):
     return {
         'applicable': False, 'norme': None, 'reference': '', 'pays': pays,
         'coefficients': {},
-        'motif': "aucune norme électrique sélectionnée%s : les calculs qui en "
-                 "dépendent (sections de câble, chutes de tension, check-list "
-                 "de protections) sont OMIS. Aucun texte normatif marocain "
-                 "n'est intégré au module, et NF C 15-100 / UTE C 15-712-1 "
-                 "ne sont pas imprimées sur un chantier qui ne les a pas "
-                 "choisies — sélectionnez la norme applicable dans les "
-                 "réglages du module."
-                 % (" pour le pays « %s »" % pays if pays else ''),
+        'motif': MOTIF_SANS_NORME % (" pour ce pays (%s)" % pays if pays else ''),
         'avertissements': (),
     }

@@ -108,6 +108,20 @@ class ContexteConceptionTest(BaseApiCalepinage):
         self.assertEqual(self.api.get(f'{url_detail(self.etranger.pk)}cible-factures/').status_code, 404)
         self.assertNotIn('cible_factures', self._contexte(self.nu))
 
+    def test_acal1500_lead_industriel_sert_le_refus_nomme(self):
+        """ACAL1500 — un lead commercial avec facture : ``cible_factures`` nul
+        ET ``refus`` = la phrase de ``cible_depuis_lead`` (celle de l'exemple) ;
+        un calepinage sans lead sert ``refus`` vide. Mutant : ``refus`` vide ⇒ échec."""
+        lead = Lead.objects.create(company=self.company, nom='Boulangerie 1500',
+                                   type_installation='commercial', facture_hiver=1200)
+        ci = Calepinage.objects.create(company=self.company, lead_id=lead.pk,
+                                       titre='Boulangerie')
+        reponse = self.api.get(f'{url_detail(ci.pk)}cible-factures/')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(reponse.data, CONTRAT_CIBLE['exemple_refus'])
+        sans_lead = self.api.get(f'{url_detail(self.nu.pk)}cible-factures/')
+        self.assertEqual(sans_lead.data['refus'], CONTRAT_CIBLE['exemple_vide']['refus'])
+
     def test_sans_devis_ni_facture_la_cible_est_nulle(self):
         contexte = self._contexte(self.nu)
         self.assertIsNone(contexte['cible'])

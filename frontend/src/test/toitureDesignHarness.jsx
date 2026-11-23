@@ -104,9 +104,9 @@ export function stubberEmpreinteOsm() {
 }
 
 // ── Écrans montés dans leur routeur ─────────────────────────────────────────
-export function ecranCalepinage(id) {
+export function ecranCalepinage(id, recherche = '') {
   return (
-    <MemoryRouter initialEntries={[`/calepinage/${id}`]}>
+    <MemoryRouter initialEntries={[`/calepinage/${id}${recherche}`]}>
       <Routes>
         <Route path="/calepinage/:id"
           element={<ToitureDesign mode="calepinage" />} />
@@ -135,7 +135,7 @@ export function ecranLead(id = 88, chemin = '/devis-design/:id') {
   )
 }
 
-export const rendreCalepinage = (id) => render(ecranCalepinage(id))
+export const rendreCalepinage = (id, recherche) => render(ecranCalepinage(id, recherche))
 export const rendreDevis = (id, chemin) => render(ecranDevis(id, chemin))
 export const rendreLead = (id, chemin) => render(ecranLead(id, chemin))
 

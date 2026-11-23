@@ -80,7 +80,7 @@ endpoints:
   - path: /api/django/calepinage/calepinages/
     budget: 12
     enforced: true
-    note: "Liste des calepinages (CALX390) — layout_stale lu sur le devis lié (select_related + prefetch devis__lignes) + UN préchargement des leads de la page (CALX407)."
+    note: "Liste des calepinages (CALX390) — layout_stale lu sur le devis lié (select_related + prefetch devis__lignes__produit : ACAL1343, une requête PAR LIGNE DE DEVIS sans le produit) + UN préchargement des leads de la page (CALX407)."
 
   - path: /api/django/calepinage/calepinages/<pk>/
     budget: 25

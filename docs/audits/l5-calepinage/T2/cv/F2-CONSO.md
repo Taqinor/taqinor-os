@@ -1,0 +1,51 @@
+# Contre-vérification — F2-CONSO — Consommation, batterie, pompage, réseau
+
+23 corrections livrées sans preuve en direct, S1-S2 d'abord. Pour chacune : rejoue la « preuve », regarde l'écran, écris UN verdict (ok / partiel / non-fait / faux / regression / deja-present).
+Le texte complet d'une tâche (constat d'origine, Given/When/Then) : `grep -n "<id> —" docs/plans/PLAN_AUDIT_CALEPINAGE.md` dans le worktree en lecture.
+
+- **ACAL776** (S1) — Servir la facture mensuelle moyenne du lead dans le contexte de conception (`consommation_lead`) ; fini quand `GET calepinages/<pk>/design-context/` d'un calepinage dont le lead a 900 MAD en hiver et en été rend `consommation_lead
+  - Preuve : PA2.5 — ouvrir le calepinage du lead à 900 MAD/mois, lire la réponse `design-context/` dans l'onglet réseau.
+- **ACAL777** (S1) — Faire lire la facture du lead par l'atelier en mode calepinage ; fini quand, sur le lead à 900 MAD/mois, la carte « Recommandation » n'affiche plus « 0 MAD – 0 MAD/an » ni « ≈ 0 % » mais une couverture et des économies calculées s
+  - Preuve : PA2.5 — rejouer T1-S1-023 sur le lead à 900 MAD : la carte n'affiche plus « 0 MAD ».
+- **ACAL778** (S1) — Nommer l'origine du chiffre « Économies estimées » de la carte Recommandation et renvoyer vers l'onglet Économie ; fini quand la carte lit « Économies (estimation de l'atelier, plafonnée à la facture) » et que, seulement avec un d
+  - Preuve : PA2.5 — rejouer T1-S1-017 : la carte et l'onglet Économie ne se contredisent plus, la carte dit d'où vient son chiffre.
+- **ACAL788** (S2) — Ajouter à l'onglet Batterie la saisie des appareils à tenir pendant une coupure et de la durée à tenir (étape Résultats > Batterie, niveau essentiel, stratégie « Secours ») ; fini quand enregistrer deux appareils et 4 h affiche « 
+  - Preuve : PA2.5 — calepinage avec batterie du stock : « Secours », deux appareils, 4 h, relancer, lire la réserve.
+- **ACAL789** (S2) — Afficher dans un bloc « Mode expert » de l'onglet Batterie les cycles par an, le vieillissement année par année, la pointe avant/après effacement et les dépassements restants ; fini quand ces lignes se lisent sur l'exemple du cont
+  - Preuve : PA2.5 — calepinage en `peak_shaving` avec batterie du stock, mode expert coché : lire les quatre lignes.
+- **ACAL791** (S2) — Saisir en mode expert les trois seuils de protection de la batterie d'un site hors réseau (veille, recharge d'entretien, arrêt) ; fini quand un seuil d'arrêt saisi change `hors_reseau.mentions` après recalcul et qu'un refus s'affi
+  - Preuve : PA2.5 — calepinage hors réseau avec batterie du stock : saisir les trois seuils, relancer, lire la mention des seuils.
+- **ACAL792** (S2) — Saisir en mode expert les réglages propres à la stratégie : fenêtres de charge et de décharge à état de charge visé (« Décalage horaire »), part et plafond effaçables (« Effacement de pointe ») ; fini quand « charger de 10 h à 14 
+  - Preuve : PA2.5 — calepinage avec batterie du stock en « Décalage horaire », mode expert : fenêtre à 80 %, relancer, lire l'état de charge visé.
+- **ACAL847** (S2) — Ajouter à l'étape Résultats (niveau expert) un onglet « Consommation mesurée » réservé aux porteurs de `calepinage_approuver` : 12 champs à saisir, 12 écarts en %, l'eau mesurée ; fini quand, avec le droit, 12 saisies donnent 12 é
+  - Preuve : PA2.5 — en Directeur ouvrir Résultats › « Consommation mesurée », saisir 12 mois ; en commercial constater la mention seule ; capture à 375 px.
+- **ACAL848** (S2) — Afficher dans l'onglet Production (étape Résultats) un tableau « Existant / Ajouté / Total » quand le serveur publie `production.parties` ; fini quand `exemple_avec_existant` montre trois lignes et que, sans `parties`, rien ne cha
+  - Preuve : PA2.5 — simuler un calepinage à un pan existant et lire le tableau.
+- **ACAL779** (S3) — Ignorer une charge à venir marquée « déjà dans les factures » et le dire par un avertissement qui la nomme ; fini quand `consumption.charges[0].deja_dans_les_factures = true` n'ajoute aucune énergie, que la simulation aboutit et q
+  - Preuve : PA2.5 — cocher la case d'ACAL780 sur un véhicule déjà possédé et lancer la simulation : elle aboutit, l'énergie n'est pas ajoutée et l'avertissement nomme la charge.
+- **ACAL780** (S3) — Écrire `consumption.charges[]` depuis l'atelier : ajouter une charge à venir (voiture électrique, pompe à chaleur, climatisation) avec les seuls champs que le serveur exige, tous saisis ; fini quand une voiture saisie (30 km/jour,
+  - Preuve : PA2.5 — ajouter la voiture, enregistrer, recharger, lancer la simulation, lire « charges ajoutées » (ACAL781).
+- **ACAL781** (S3) — Afficher « charges ajoutées : X kWh/an » avec le détail par charge sous la courbe journalière de l'onglet Production ; fini quand la ligne se lit sur l'exemple du contrat et disparaît quand aucune charge n'est déclarée
+  - Preuve : PA2.5 — après ACAL780, lancer la simulation : la ligne donne l'énergie de la voiture.
+- **ACAL795** (S3) — Afficher en tête de l'onglet Batterie le garde-fou « votre production est déjà consommée à N % sans batterie », les trois faits de la série et le mot de verdict (ou la raison de son absence) ; fini quand les lignes se lisent sur l
+  - Preuve : PA2.5 — calepinage avec batterie du stock : lire le garde-fou et les trois faits ; effacer les réglages de seuil : le motif s'affiche.
+- **ACAL799** (S3) — Poser sous « Secours » de l'onglet Batterie les trois questions sur les coupures et lire l'énergie non fournie et les heures tenues par appareil ; fini quand saisir 12 coupures de 4 h affiche « énergie non fournie attendue : X kWh
+  - Preuve : PA2.5 — calepinage avec batterie du stock en « Secours », deux appareils : 12 coupures de 4 h, relancer, lire les heures tenues.
+- **ACAL803** (S3) — Saisir et lire le groupe d'appoint d'un site hors réseau dans l'onglet Batterie (interrupteur « Il y a un groupe sur le site » en mode expert, heures de marche par mois, banque du mois le plus chargé) ; fini quand les champs poste
+  - Preuve : PA2.5 — calepinage hors réseau avec batterie du stock : cocher le groupe, relancer, lire heures de marche et banque du mois chargé.
+- **ACAL807** (S3) — Afficher dans l'onglet Pompage la carte « Réservoir jour par jour », les saisies du niveau d'eau et les alertes sous le champ fautif ; fini quand la carte se lit sur l'exemple du contrat, que chaque alerte apparaît sous son champ 
+  - Preuve : onglet Pompage d'un calepinage agricole — réservoir 30 m³, besoin, niveaux d'été et d'hiver : relever les trois lignes.
+- **ACAL811** (S3) — Afficher dans l'onglet Pompage une ligne de verdict « N modules en série : Voc à froid X V, le variateur accepte A à B modules : conforme / hors fenêtre / à vérifier » ; fini quand 21 modules en série s'affichent en rouge avec la 
+  - Preuve : onglet Pompage — 21 modules en série : ligne rouge, puis la longueur maximale : verte.
+- **ACAL813** (S3) — Ajouter à l'onglet « Optimiser » le choix « Optimiser pour le mois de » (12 mois ou « toute l'année ») ; fini quand choisir juillet affiche « X° pour juillet, Y° pour l'année » et l'écart d'énergie du mois en kWh
+  - Preuve : atelier d'un champ au sol — choisir juillet, lancer, lire les deux inclinaisons.
+- **ACAL815** (S3) — Afficher dans l'onglet Pompage deux cartes côte à côte « Pompage direct » et « Avec le réservoir » : débit de conception, mois critique et jours de manque de chacune ; fini quand l'exemple du contrat affiche 6,0 m³/h contre 2,4 m³
+  - Preuve : onglet Pompage — réservoir 30 m³, besoin, 2 h de demande : deux cartes aux débits différents.
+- **ACAL820** (S3) — Contrôler l'appoint réseau ou groupe sur l'écran Pompage : choix « Appoint » et ligne de verdict ; fini quand 11 modules en série avec 400 V publiés rendent « le champ ne passe pas au-dessus du bus » et que sans valeur de fiche la
+  - Preuve : onglet Pompage — appoint réseau, 11 modules : ligne rouge.
+- **ACAL821** (S3) — Contrôler plusieurs pompes sur un même variateur dans l'écran Pompage : liste de pompes (nom, kW de plaque), choix « ensemble » ou « à tour de rôle » et ligne de verdict ; fini quand 4 pompes de 1,1 kW sur le variateur de 5,5 kW r
+  - Preuve : onglet Pompage — ajouter quatre pompes de 1,1 kW, lire la ligne dans les deux modes.
+- **ACAL837** (S3) — Monter dans « Affiner ma consommation » une grille repliable « Mes factures (1 à 12 mois) » (un mois par ligne, MAD ou kWh) qui interroge `consommation/proposer/` et montre les mois `estime` en pointillé ; fini quand 3 mois saisis
+  - Preuve : PA2.5 — saisir 3 mois, voir 9 barres en pointillé, capture à 375 px.
+- **ACAL840** (S3) — Afficher « Lire une photo de facture » seulement quand le serveur la dit disponible, puis proposer les kWh lus (le mois est à choisir) à confirmer un par un avant de remplir la grille ; fini quand, lecture disponible, une photo re
+  - Preuve : PA2.5 — sans clé (prod aujourd'hui) aucun bouton ; avec OCR simulé, une photo remplit un mois ; capture à 375 px.

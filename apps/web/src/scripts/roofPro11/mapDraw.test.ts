@@ -23,6 +23,7 @@ import {
 } from './mapDraw';
 import { lireCoordonneesCollees, proposerEchange } from './coordonneesCollees'; // ACAL506 / ACAL507
 import { underlayPourDocument } from './underlay'; // ACAL68
+import { dateImageCapturee, semerImageCapture } from './imageCapture'; // ACAL1405
 import { type Ctx } from './context'; // ACAL68
 import { UNDERLAY_PHOTO_LAYER_ID, UNDERLAY_PLAN_LAYER_ID } from './underlay';
 import { distanceEntreM } from './snap';
@@ -346,6 +347,54 @@ describe('ACAL68 — poserFond quand la carte n’est pas prête', () => {
     surLoad[0]();
     expect(sources.size).toBe(1);
     expect(underlayPourDocument(ctx)).toEqual({ underlay: fond });
+  });
+});
+
+// ACAL1405 — les champs « Date de la photo » sont montés AVANT la graine du document : ils se relisent après elle.
+describe('ACAL1405 — date de la photo relue à la réouverture', () => {
+  it('date relue après semis : les deux champs montrent la date et la source du document', () => {
+    document.body.innerHTML = '<form id="rp9-search"><input id="rp9-address"></form>';
+    const map = { getSource: () => undefined, ...methodesCarteInertes(), getZoom: () => 19, getCenter: () => ({ lng: -7.62, lat: 33.58 }), getCanvas: () => ({ clientWidth: 800, clientHeight: 600 }) };
+    const ctx = { opts: { maptilerKey: 'K', imagery: { pays: 'ma' }, reducedMotion: true }, vertices: [], obstacles: [], areas: [], activeAreaId: 'a1', closed: false, centroid: [-7.62, 33.58] } as unknown as Ctx;
+    semerImageCapture(null);
+    const draw = createMapDraw(ctx, { map: map as never, setStatus: vi.fn(), updateAreaReadout: vi.fn() });
+    const val = (id: string) => (document.getElementById(id) as HTMLInputElement).value;
+    expect(val('rp9-image-date')).toBe('');
+    semerImageCapture({ imageCapture: { date: '2026-06-21', source: 'page du fournisseur' } }); // graine du document, après le montage
+    draw.relireImageCapture();
+    expect([val('rp9-image-date'), val('rp9-image-date-source')]).toEqual(['2026-06-21', 'page du fournisseur']);
+    expect(dateImageCapturee()).toEqual({ date: '2026-06-21', source: 'page du fournisseur' }); // aucune écriture au chargement
+    semerImageCapture(null);
+    draw.relireImageCapture();
+    expect(val('rp9-image-date')).toBe('');
+  });
+});
+
+// ACAL1421 — l'atelier ERP passe enfin `imagery` : la ligne d'origine de l'image apparaît et l'adresse suit le pays réglé.
+describe('ACAL1421 — ligne « Image : … » et pays de recherche', () => {
+  const monter = (imagery: unknown) => {
+    document.body.innerHTML = '<form id="rp9-search"><input id="rp9-address"><ul id="rp9-suggestions" hidden></ul></form>';
+    const map = { getSource: () => undefined, flyTo: vi.fn(), jumpTo: vi.fn(), ...methodesCarteInertes(), getZoom: () => 19, getCenter: () => ({ lng: -7.62, lat: 33.58 }), getCanvas: () => ({ clientWidth: 800, clientHeight: 600 }) };
+    const ctx = { opts: { maptilerKey: 'K', imagery, reducedMotion: true }, vertices: [], obstacles: [], areas: [], activeAreaId: 'a1', closed: false, centroid: [-7.62, 33.58] } as unknown as Ctx;
+    return createMapDraw(ctx, { map: map as never, setStatus: vi.fn(), updateAreaReadout: vi.fn() });
+  };
+
+  it('`imagery` fourni : la ligne d’origine est créée, le pays filtre l’adresse', async () => {
+    const draw = monter({ pays: 'fr' });
+    expect(document.getElementById('rp9-image-source')?.textContent).toMatch(/^Image : .+ — date et résolution non annoncées par le fournisseur$/);
+    expect(document.getElementById('rp9-geocode-country')?.textContent).toBe('Recherche limitée au pays : FR');
+    const f = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ features: [] }) });
+    vi.stubGlobal('fetch', f);
+    try {
+      await draw.geocode('lyon');
+      expect(f.mock.calls.some((c) => String(c[0]).includes('country=fr'))).toBe(true);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('sans `imagery` (avant ACAL1421 côté ERP) : aucune ligne, repli MA dit', () => {
+    monter(undefined);
+    expect(document.getElementById('rp9-image-source')).toBeNull();
+    expect(document.getElementById('rp9-geocode-country')?.textContent).toBe('Recherche limitée au pays : MA');
   });
 });
 

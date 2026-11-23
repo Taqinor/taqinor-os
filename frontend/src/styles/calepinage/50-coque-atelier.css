@@ -124,6 +124,11 @@
   font-size: 0.875rem;
 }
 .cal-coque .cal-segmente-grand > button { height: 38px; }
+/* ACAL1280 — cible tactile de 44 × 44 px sans changer le dessin de la maquette (30/38 px) : la zone cliquable
+   déborde du bouton par un pseudo-élément transparent (la bande de 3 px du groupe est comptée dans la cible). */
+.cal-coque .cal-segmente > button { position: relative; min-width: 44px; }
+.cal-coque .cal-segmente > button::before { content: ''; position: absolute; inset: -7px 0; }
+.cal-coque .cal-segmente-grand > button::before { inset: -3px 0; }
 .cal-coque .cal-segmente > button[aria-pressed='true'] {
   background: var(--card);
   color: var(--foreground);
@@ -222,6 +227,12 @@
 .cal-coque .cal-coque-scene[hidden] { display: none; }
 .cal-coque .cal-coque-scene #rp9-search { flex: none; background: var(--card); }
 .cal-coque[data-avance='0'] .cal-coque-scene #rp9-search { display: none; }
+/* ACAL1410 — Guidé, aucun toit tracé : le champ d'adresse flotte au-dessus de la carte (44 px, bouton Localiser) ; la
+   coque porte `data-sans-toit` (posé par EtapeToit) jusqu'à la fermeture d'un contour. */
+.cal-coque[data-avance='0'][data-sans-toit='1'] .cal-coque-scene #rp9-search {
+  display: flex; position: absolute; top: 12px; left: 12px; right: 12px; min-height: 44px; align-items: center;
+  border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-md); z-index: calc(var(--z-base) + 20);
+}
 .cal-coque .cal-coque-scene .rp9-map-wrap:not([data-plein-ecran='1']) { flex: 1; min-height: 0; }
 .cal-coque .cal-coque-scene .rp9-map-wrap:not([data-plein-ecran='1']) #rp9-map { height: 100%; min-height: 0; }
 .cal-coque .cal-coque-sur-carte { position: absolute; inset: 0; pointer-events: none; z-index: calc(var(--z-base) + 10); }

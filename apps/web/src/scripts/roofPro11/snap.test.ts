@@ -3,7 +3,7 @@
 // est sous la tolérance, le point est rendu TEL QUEL hors tolérance, le PREMIER point d'un
 // tracé n'est jamais contraint, et un pas nul (puce éteinte) rend le point cliqué point pour
 // point — le tracé d'aujourd'hui.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   contraindreAngle,
   capEntreDeg,
@@ -27,7 +27,7 @@ import {
   TOLERANCE_ANGLE_DEG,
 } from './snap';
 import { DEG2RAD, WGS84_RADIUS } from './constants';
-import { lireCotes, rectangleDepuisCotes } from './toitParCotes';
+import { lireCotes, monterToitParCotes, rectangleDepuisCotes } from './toitParCotes';
 import { geodesicAreaM2 } from '../../lib/roof';
 import { type LngLat } from '../../lib/roof';
 
@@ -597,6 +597,13 @@ describe('ACAL422 — rectangle depuis cotes : aire 96 m², 4 angles droits, ori
     expect(capEntreDeg(r[0], r[1])).toBeCloseTo(120, 1);
     expect(distanceEntreM(r[0], r[1])).toBeCloseTo(12, 2);
     expect(geodesicAreaM2(r)).toBeGreaterThan(95.9);
+  });
+
+  it('ACAL1422 — la barre d’état dit « Toit créé : 12,4 × 8,6 m. » avec des virgules', () => {
+    const setStatus = vi.fn();
+    const { creerDepuisSaisie } = monterToitParCotes({ ancre: null, centre: () => C, vide: () => true, creer: vi.fn(), setStatus });
+    expect(creerDepuisSaisie('12.4', '8.6', '')).toBe(true);
+    expect(setStatus).toHaveBeenCalledWith('Toit créé : 12,4 × 8,6 m.');
   });
 
   it('saisies refusées en nommant le champ ; aucun arrondi ni borne', () => {

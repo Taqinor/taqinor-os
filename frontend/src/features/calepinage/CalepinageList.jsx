@@ -22,7 +22,7 @@ import BadgePerime from './BadgePerime'
 import { FiltreEtiquettes } from './Etiquettes'
 import {
   STATUTS_CALEPINAGE, STYLE_STATUT, apercuVide, identiteCarte, initiales, modifieDe, morceauxMesures,
-  nombreProjets,
+  nombreProjets, signalCarte, traceDuToit,
 } from './CalepinageList.helpers'
 
 /* ============================================================================
@@ -147,7 +147,7 @@ const ICONE_STATUT = {
 
 /* L'aperçu d'une carte : l'image servie, ou « Aucun aperçu » quand il n'y en a pas, qu'elle ne se charge
    pas (`onError`, fichier vide) ou qu'elle est TOUTE blanche (rendu sans rien dessiné, carte 293). */
-function ApercuCarte({ url, alt }) {
+function ApercuCarte({ url, alt, trace = null }) {
   const [echec, setEchec] = useState(false)
   const img = useRef(null)
   const verifier = () => {
@@ -170,11 +170,21 @@ function ApercuCarte({ url, alt }) {
   if (url && !echec) {
     return (
       <img ref={img} src={url} alt={alt} onLoad={verifier} onError={() => setEchec(true)}
-        className="block h-[140px] w-full flex-none object-cover" data-testid="cal-vignette-image" />
+        className="block h-[168px] w-full flex-none object-cover" data-testid="cal-vignette-image" />
+    )
+  }
+  // ACAL1336 — sans image : le tracé des pans servi (`apercu_toit`), jamais un toit inventé.
+  if (trace) {
+    return (
+      <div className="cliste-toit" data-testid="cal-vignette-toit">
+        <svg viewBox={trace.viewBox} role="img" aria-label={alt} preserveAspectRatio="xMidYMid meet">
+          {trace.contours.map((points, rang) => <polygon key={rang} points={points} />)}
+        </svg>
+      </div>
     )
   }
   return (
-    <div className="flex h-[140px] w-full flex-none flex-col items-center justify-center gap-2 bg-muted text-muted-foreground"
+    <div className="flex h-[168px] w-full flex-none flex-col items-center justify-center gap-2 bg-muted text-muted-foreground"
       data-testid="cal-vignette-sans-image">
       <LayoutGrid size={28} strokeWidth={1.5} aria-hidden="true" />
       <span className="text-xs">Aucun aperçu</span>
@@ -185,15 +195,16 @@ function ApercuCarte({ url, alt }) {
 export function VignetteCalepinage({ calepinage, selection = null }) {
   const url = urlImage(calepinage?.image?.url) || null
   const { titre, ville, propre } = identiteCarte(calepinage)
-  const mesures = morceauxMesures(calepinage)
+  const [kwc, ...reste] = morceauxMesures(calepinage)
   const modifie = modifieDe(calepinage?.modifie_le)
-  const points = calepinage?.points_a_regler
+  const signal = signalCarte(calepinage)
   const resp = responsableDe(calepinage)
   const Icone = ICONE_STATUT[calepinage?.statut] || CircleDashed
+  const autres = kwc && !kwc.fort ? [kwc, ...reste] : reste
   return (
-    <Card className="relative flex min-h-0 flex-col overflow-hidden rounded-[14px] transition-shadow hover:shadow-ui-md">
+    <Card className="cliste-carte relative flex min-h-0 flex-col overflow-hidden">
       {selection ? (
-        <label className="absolute left-2 top-2 z-10 flex items-center gap-1.5 rounded-md bg-card/90 px-2 py-1 text-xs shadow-ui-xs">
+        <label className="absolute right-2 top-2 z-10 flex items-center gap-1.5 rounded-md bg-card/90 px-2 py-1 text-xs shadow-ui-xs">
           <Checkbox
             checked={selection.coche}
             disabled={selection.desactive}
@@ -210,52 +221,45 @@ export function VignetteCalepinage({ calepinage, selection = null }) {
         title={`${calepinage?.reference || ''} · ${rattachementDe(calepinage)}`}
         data-testid={`cal-vignette-${calepinage.id}`}
       >
-        <ApercuCarte url={url} alt={`Aperçu de toiture — ${titre}`} />
-        <div className="flex min-h-[186px] flex-1 flex-col gap-2 border-t border-border px-4 py-[14px]">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex min-w-0 flex-col">
-              <span className="truncate font-display text-base font-semibold">{titre}</span>
-              {ville ? <span className="truncate text-sm text-muted-foreground">{ville}</span> : null}
-              {propre ? <span className="truncate text-xs text-muted-foreground" data-testid="liste-vignette-nom">{propre}</span> : null}
-            </div>
-            <span className="flex shrink-0 items-center gap-1.5">
-              <BadgePerime layoutStale={calepinage?.layout_stale}
-                layoutNbPanneaux={calepinage?.layout_nb_panneaux} />
-              {calepinage?.statut_libelle ? (
-                <span
-                  className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${STYLE_STATUT[calepinage.statut] || STYLE_STATUT.brouillon}`}
-                >
-                  <Icone size={14} aria-hidden="true" />
-                  {calepinage.statut_libelle}
-                </span>
-              ) : null}
+        <div className="cliste-apercu">
+          <ApercuCarte url={url} alt={`Aperçu de toiture — ${titre}`} trace={traceDuToit(calepinage?.apercu_toit)} />
+          {calepinage?.statut_libelle ? (
+            <span className={`cliste-etat ${STYLE_STATUT[calepinage.statut] || STYLE_STATUT.brouillon}`}>
+              <Icone size={12} aria-hidden="true" />
+              {calepinage.statut_libelle}
             </span>
+          ) : null}
+        </div>
+        <div className="cliste-corps">
+          <div className="flex items-start justify-between gap-3">
+            <div className="cliste-identite">
+              <span className="cliste-nom truncate font-semibold">{titre}</span>
+              {ville ? <span className="cliste-ville truncate">{ville}</span> : null}
+            </div>
+            <BadgePerime layoutStale={calepinage?.layout_stale} layoutNbPanneaux={calepinage?.layout_nb_panneaux} />
           </div>
-          {mesures.length ? (
-            <div className="flex flex-wrap gap-x-2 text-sm">
-              {mesures.map((m, rang) => (
-                <span key={m.texte} className="flex gap-2">
-                  {rang ? <span className="text-muted-foreground" aria-hidden="true">·</span> : null}
-                  <span className={m.fort ? 'font-semibold' : undefined}>{m.texte}</span>
-                </span>
-              ))}
+          {propre ? <span className="truncate text-xs text-muted-foreground" data-testid="liste-vignette-nom">{propre}</span> : null}
+          {kwc || autres.length ? (
+            <div className="cliste-chiffres">
+              {kwc?.fort ? <span className="cliste-kwc">{kwc.nombre} <span className="cliste-unite">{kwc.unite}</span></span> : null}
+              {autres.length ? <span className="cliste-reste">{autres.map((m) => m.texte).join(' · ')}</span> : null}
             </div>
           ) : null}
           {/* Référence et rattachement : pour les lecteurs d'écran et en infobulle. */}
           <span className="sr-only">{`${calepinage?.reference || ''} · ${rattachementDe(calepinage)}`}</span>
-          <div className="mt-auto flex items-center gap-2.5 text-xs text-muted-foreground">
-            <span className="flex flex-1 flex-wrap items-center gap-x-3 gap-y-1">
-              <span>{modifie || '—'}</span>
-              {typeof points === 'number' && points > 0 ? (
-                <span className="flex items-center gap-1 font-semibold text-warning-text">
-                  <TriangleAlert size={14} aria-hidden="true" />
-                  {`${points} point${points > 1 ? 's' : ''} à régler`}
-                </span>
-              ) : null}
-            </span>
+          <div className="cliste-pied">
+            <span>{modifie || '—'}</span>
+            {signal ? (
+              <span className="cliste-signal" data-ton={signal.ton} data-testid={`cal-signal-${calepinage.id}`}
+                title={signal.ton === 'relire' ? 'Le document a changé depuis le dernier « Prêt à envoyer ? »' : undefined}>
+                {signal.ton === 'regler' ? <TriangleAlert size={12} aria-hidden="true" /> : null}
+                {signal.texte}
+              </span>
+            ) : null}
+            <span className="flex-1" />
             {/* CALX406 — la colonne « Responsable » : initiales, nom complet en clair pour la lecture d'écran. */}
             <span
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-foreground"
+              className="cliste-avatar"
               title={resp ? resp.nom : 'Sans responsable'}
               data-testid={`cal-responsable-${calepinage.id}`}
             >
@@ -379,23 +383,20 @@ export default function CalepinageList() {
   const puces = [['', 'Tous'], ...optionsStatut]
   const nombreDe = (valeur) => (compteurs ? compteurs[valeur === '' ? 'tous' : valeur] : null)
   const estMoi = idMoi !== undefined && idMoi !== null && String(responsable) === String(idMoi)
-  const classePuce = (actif) => `flex h-11 items-center gap-2 rounded-full px-4 text-sm ${actif
-    ? 'bg-foreground font-semibold text-background'
-    : 'border border-border bg-card font-medium text-foreground'}`
 
   // Les deux boutons discrets de la rangée des puces : 44 px de cible, un libellé visible seulement quand actifs.
   const calme = (actif) => `h-11 gap-2 rounded-full text-sm text-muted-foreground ${actif ? 'px-3' : 'w-11 px-0'}`
 
   return (
-    <div className="space-y-4">
+    <div className="cliste space-y-4">
       <div className="flex flex-wrap items-center gap-4">
         <div className="flex flex-1 items-baseline gap-3">
-          <h1 className="font-display text-h2 font-semibold">Calepinages</h1>
+          <h1 className="cliste-titre">Calepinages</h1>
           <span className="text-sm text-muted-foreground">
             {nombreProjets(total)}
           </span>
         </div>
-        <div className="relative flex h-11 w-full items-center gap-2 rounded-[10px] border border-border bg-card px-3 sm:w-[360px]">
+        <div className="cliste-recherche relative flex h-11 w-full items-center gap-2 px-3 sm:w-[340px]">
           <Search size={18} className="text-muted-foreground" aria-hidden="true" />
           <label htmlFor="cal-q" className="sr-only">Rechercher un calepinage</label>
           <input
@@ -407,7 +408,7 @@ export default function CalepinageList() {
             onChange={(e) => surFiltre(setQ)(e.target.value)}
           />
         </div>
-        <Button className="h-11 gap-2 rounded-[10px] px-[18px] font-semibold" onClick={() => navigate('/calepinage/nouveau')}>
+        <Button className="cliste-action h-11 gap-2 px-[18px] font-bold" onClick={() => navigate('/calepinage/nouveau')}>
           <Plus size={18} aria-hidden="true" />
           Nouveau calepinage
         </Button>
@@ -419,11 +420,11 @@ export default function CalepinageList() {
         className="flex flex-wrap items-center gap-2">
         {puces.map(([valeur, libelle]) => (
           <button key={valeur || 'tous'} type="button" aria-pressed={statut === valeur}
-            className={classePuce(statut === valeur)}
+            className="cliste-puce"
             onClick={() => surFiltre(setStatut)(valeur)}>
             {libelle}
             {nombreDe(valeur) !== null && nombreDe(valeur) !== undefined ? (
-              <span className={statut === valeur ? 'font-medium opacity-80' : 'text-muted-foreground'}>
+              <span className="cliste-puce-n">
                 {nombreDe(valeur)}
               </span>
             ) : null}
@@ -432,7 +433,7 @@ export default function CalepinageList() {
         {idMoi !== undefined && idMoi !== null ? (
           <>
             <div className="mx-1 h-7 w-px bg-border" aria-hidden="true" />
-            <button type="button" className={classePuce(estMoi)} aria-pressed={estMoi}
+            <button type="button" className="cliste-puce" aria-pressed={estMoi}
               onClick={() => surFiltre(setResponsable)(estMoi ? '' : String(idMoi))}>
               <User size={16} aria-hidden="true" />
               Mes calepinages

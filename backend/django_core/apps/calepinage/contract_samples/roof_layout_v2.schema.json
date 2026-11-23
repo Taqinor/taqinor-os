@@ -768,6 +768,10 @@
           "type": "string",
           "minLength": 1
         },
+        "moduleChoisi": {
+          "description": "ACAL1401 — `true` = le module `moduleId` de CE pan a été CHOISI par l'utilisateur. OPTIONNEL et additif : absent = module de départ, jamais confirmé (« à confirmer ») ; jamais émis tant que personne ne l'a choisi (octet pour octet comme avant). Seule source de « choisi » : aucune autre côté serveur.",
+          "type": "boolean"
+        },
         "numerotation": {
           "description": "CALX83 — la convention de numérotation SAISIE pour ce pan. OPTIONNELLE et additive : absente = l'affichage par index d'aujourd'hui. Elle décrit ce que l'utilisateur a choisi, elle ne renumérote rien.",
           "$ref": "#/$defs/numerotationPan"
@@ -2337,7 +2341,7 @@
       }
     },
     "pitchSource": {
-      "description": "ACAL2 — PROVENANCE de la pente du PAN, écrite par l'onglet Pente : `mode` degres | pourcentage | cotes. Chaque mode ne porte que ses propres champs ; la pente RÉSULTANTE vit dans `zones[].pitchDeg`.",
+      "description": "ACAL2 — PROVENANCE de la pente du PAN, écrite par l'onglet Pente : `mode` degres | pourcentage | cotes | plat. Chaque mode ne porte que ses propres champs ; la pente RÉSULTANTE vit dans `zones[].pitchDeg`. ACAL1400 — `plat` = toit plat CONFIRMÉ (pan `roofType: flat`, aucun champ propre ; « Confirmer » écrit `pitchDeg: 0`, ACAL1341) ; absent = pan jamais confirmé.",
       "type": "object",
       "additionalProperties": true,
       "required": [
@@ -2349,7 +2353,8 @@
           "enum": [
             "degres",
             "pourcentage",
-            "cotes"
+            "cotes",
+            "plat"
           ]
         },
         "degres": {
@@ -2785,6 +2790,9 @@
         "obstacles": [],
         "roofType": "flat",
         "pitchDeg": 10.0,
+        "pitchSource": {
+          "mode": "plat"
+        },
         "facingAzimuthDeg": 90.0,
         "facingManual": true,
         "verrouille": true,

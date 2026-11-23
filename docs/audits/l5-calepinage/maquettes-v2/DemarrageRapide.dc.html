@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Atelier v2 — démarrage rapide</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:#1f4fd8}a:hover{color:#0c1335}
+</style>
+</helmet>
+<div style="position: relative; width: 1440px; height: 900px; overflow: hidden; background: #f5f4f0; color: #0c1335; font-family: 'Hanken Grotesk', system-ui, sans-serif; font-size: 14px; font-variant-numeric: tabular-nums">
+
+  <!-- Bandeau : le fil des réglages -->
+  <header style="position: absolute; left: 16px; right: 16px; top: 16px; height: 56px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 0 16px 0 8px; border-radius: 16px; background: #ffffff; box-shadow: 0 8px 24px rgba(12,19,53,0.07), 0 1px 2px rgba(12,19,53,0.06)">
+    <a href="#" style="height: 44px; display: flex; align-items: center; gap: 6px; padding: 0 10px 0 6px; border-radius: 10px; color: #4a5072; text-decoration: none; font-size: 14px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+      Réglages
+    </a>
+    <span aria-hidden="true" style="color: #9aa0bb">/</span>
+    <a href="#" style="height: 44px; display: flex; align-items: center; padding: 0 6px; color: #4a5072; text-decoration: none; font-size: 14px">Calepinage</a>
+    <span aria-hidden="true" style="color: #9aa0bb">/</span>
+    <span style="padding: 0 6px; font: 600 14px 'Hanken Grotesk', sans-serif">Démarrage rapide</span>
+  </header>
+
+  <main style="position: absolute; left: 16px; right: 16px; top: 88px; bottom: 16px; display: flex; flex-direction: column; gap: 18px">
+
+    <!-- Titre et promesse -->
+    <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 32px; padding: 14px 28px 0">
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <h1 style="margin: 0; font: 700 32px/1.15 'Archivo', sans-serif; letter-spacing: -0.02em">Démarrage rapide</h1>
+        <p style="margin: 0; max-width: 1010px; font-size: 15px; line-height: 1.55; color: #4a5072">Les réglages encore vides peuvent recevoir une valeur publiée par un logiciel de référence, toujours affichée avec sa source.<br>Vous la remplacerez par vos propres mesures quand vous les aurez ; ce que vous avez déjà saisi n'est jamais écrasé.</p>
+      </div>
+      <span style="flex: none; height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 14px; border-radius: 17px; background: #fbf6e6; border: 1px solid #efdfae; font-size: 13px; font-weight: 500; color: #5b4a12"><span style="width: 7px; height: 7px; border-radius: 4px; background: #e2b54a"></span>valeur publiée, non mesurée</span>
+    </div>
+
+    <!-- Le tableau : seul lui défile -->
+    <section aria-label="Réglages proposés" style="flex: 1; min-height: 0; display: flex; flex-direction: column; border-radius: 22px; background: #ffffff; box-shadow: 0 8px 24px rgba(12,19,53,0.07), 0 1px 2px rgba(12,19,53,0.06); overflow: hidden">
+      <div style="flex: none; display: grid; grid-template-columns: 72px 1.3fr 1.4fr 0.75fr 1fr; align-items: center; height: 46px; padding: 0 24px 0 8px; border-bottom: 1px solid rgba(12,19,53,0.08); font-size: 12px; font-weight: 600; color: #656b8c">
+        <span style="text-align: center">Remplir</span><span>Réglage</span><span>Valeur proposée</span><span>Source</span><span>État</span>
+      </div>
+
+      <div style="flex: 1; min-height: 0; overflow-y: auto">
+        <!-- 1 -->
+        <div style="display: grid; grid-template-columns: 72px 1.3fr 1.4fr 0.75fr 1fr; align-items: center; min-height: 65px; padding: 0 24px 0 8px; border-bottom: 1px solid rgba(12,19,53,0.07)">
+          <label style="position: relative; width: 44px; height: 44px; margin: 0 auto; display: flex; align-items: center; justify-content: center"><input type="checkbox" checked aria-label="Remplir : vieillissement de la première année" style="position: absolute; inset: 0; margin: 0; opacity: 0"><span style="width: 22px; height: 22px; border-radius: 7px; background: #0c1335; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e2b54a" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg></span></label>
+          <span style="display: flex; flex-direction: column; gap: 2px; padding-right: 16px"><span style="font-weight: 600">Vieillissement de la première année</span><span style="font-size: 12px; color: #4a5072">Perte des premières heures au soleil</span></span>
+          <span style="display: flex; flex-direction: column; gap: 2px; padding-right: 16px"><span style="display: flex; align-items: center; gap: 8px"><span style="font: 700 18px 'Archivo', sans-serif; letter-spacing: -0.01em">2 <span style="font: 500 13px 'Hanken Grotesk', sans-serif; color: #4a5072">%</span></span><span title="valeur publiée, non mesurée" style="width: 7px; height: 7px; border-radius: 4px; background: #e2b54a"></span></span><span style="font-size: 12px; color: #4a5072">Panneaux de type p ; ceux de type n ne sont pas concernés</span></span>
+          <span style="display: flex; align-items: center; gap: 4px"><span style="font-weight: 600">PVsyst</span><a href="#" style="height: 44px; display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; font-size: 13px; font-weight: 600">ouvrir<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5"/></svg></a></span>
+          <span style="display: flex; align-items: center; gap: 7px; color: #4a5072"><span style="width: 14px; height: 14px; box-sizing: border-box; border-radius: 7px; border: 1.5px dashed #9aa0bb"></span>Vide</span>
+        </div>
+        <!-- 2 -->
+        <div style="display: grid; grid-template-columns: 72px 1.3fr 1.4fr 0.75fr 1fr; align-items: center; min-height: 65px; padding: 0 24px 0 8px; border-bottom: 1px solid rgba(12,19,53,0.07)">
+          <label style="position: relative; width: 44px; height: 44px; margin: 0 auto; display: flex; align-items: center; justify-content: center"><input type="checkbox" checked aria-label="Remplir : écarts entre panneaux" style="position: absolute; inset: 0; margin: 0; opacity: 0"><span style="width: 22px; height: 22px; border-radius: 7px; background: #0c1335; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e2b54a" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg></span></label>
+          <span style="display: flex; flex-direction: column; gap: 2px; padding-right: 16px"><span style="font-weight: 600">Écarts entre panneaux</span><span style="font-size: 12px; color: #4a5072">Deux panneaux d'une chaîne ne sont jamais tout à fait égaux</span></span>
+          <span style="display: flex; flex-direction: column; gap: 2px; padding-right: 16px"><span style="display: flex; align-items: center; gap: 8px"><span style="font: 700 18px 'Archivo', sans-serif; letter-spacing: -0.01em">2 <span style="font: 500 13px 'Hanken Grotesk', sans-serif; color: #4a5072">%</span></span><span title="valeur publiée, non mesurée" style="width: 7px; height: 7px; border-radius: 4px; background: #e2b54a"></span></span><span style="font-size: 12px; color: #4a5072">Plus de 3 panneaux par chaîne (0 % · 0,5 % · 1 % pour 1, 2 ou 3)</span></span>
+          <span style="display: flex; align-items: center; gap: 4px"><span style="font-weight: 600">PVsyst</span><a href="#" style="height: 44px; display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; font-size: 13px; font-weight: 600">ouvrir<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5"/></svg></a></span>
+          <span style="display: flex; align-items: center; gap: 7px; color: #4a5072"><span style="width: 14px; height: 14px; box-sizing: border-box; border-radius: 7px; border: 1.5px dashed #9aa0bb"></span>Vide</span>
+        </div>
+        <!-- 3 -->
+        <div style="display: grid; grid-template-columns: 72px 1.3fr 1.4fr 0.75fr 1fr; align-items: center; min-height: 65px; padding: 0 24px 0 8px; border-bottom: 1px solid rgba(12,19,53,0.07)">
+          <label style="position: relative; width: 44px; height: 44px; margin: 0 auto; display: flex; align-items: center; justify-content: center"><input type="checkbox" checked aria-label="Remplir : échauffement selon la pose" style="position: absolute; inset: 0; margin: 0; opacity: 0"><span style="width: 22px; height: 22px; border-radius: 7px; background: #0c1335; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e2b54a" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg></span></label>
+          <span style="display: flex; flex-direction: column; gap: 2px; padding-right: 16px"><span style="font-weight: 600">Échauffement selon la pose</span><span style="font-size: 12px; color: #4a5072">Plus le panneau chauffe, moins il produit</span></span>
+          <span style="display: flex; flex-direction: column; gap: 2px; padding-right: 16px"><span style="display: flex; align-items: center; gap: 8px"><span style="font: 700 18px 'Archivo', sans-serif; letter-spacing: -0.01em">29 · 20 · 15</span><span title="valeurs publiées, non mesurées" style="width: 7px; height: 7px; border-radius: 4px; background: #e2b54a"></span></span><span style="font-size: 12px; color: #4a5072">Pose aérée · intermédiaire · collée au toit</span></span>
+          <span style="display: flex; align-items: center; gap: 4px"><span style="font-weight: 600">PVsyst</span><a href="#" style="height: 44px; display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; font-size: 13px; font-weight: 600">ouvrir<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5"/></svg></a></span>
+          <span style="display: flex; align-items: center; gap: 7px; color: #4a5072"><span style="width: 14px; height: 14px; box-sizing: border-box; border-radius: 7px; border: 1.5px dashed #9aa0bb"></span>Vide</span>
+        </div>
+        <!-- 4 -->
+        <div style="display: grid; grid-template-columns: 72px 1.3fr 1.4fr 0.75fr 1fr; align-items: center; min-height: 65px; padding: 0 24px 0 8px; border-bottom: 1px solid rgba(12,19,53,0.07)">
+          <label style="position: relative; width: 44px; height: 44px; margin: 0 auto; display: flex; align-items: center; justify-content: center"><input type="checkbox" checked aria-label="Remplir : reflets du verre" style="position: absolute; inset: 0; margin: 0; opacity: 0"><span style="width: 22px; height: 22px; border-radius: 7px; background: #0c1335; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e2b54a" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg></span></label>
+          <span style="display: flex; flex-direction: column; gap: 2px; padding-right: 16px"><span style="font-weight: 600">Reflets du verre</span><span style="font-size: 12px; color: #4a5072">Le soleil rasant rebondit sur la vitre du panneau</span></span>
+          <span style="display: flex; flex-direction: column; gap: 2px; padding-right: 16px"><span style="display: flex; align-items: center; gap: 8px"><span style="font: 700 18px 'Archivo', sans-serif; letter-spacing: -0.01em">0,05</span><span title="valeur publiée, non mesurée" style="width: 7px; height: 7px; border-radius: 4px; background: #e2b54a"></span></span><span style="font-size: 12px; color: #4a5072">Coefficient pour les panneaux cristallins</span></span>
+          <span style="display: flex; align-items: center; gap: 4px"><span style="font-weight: 600">PVsyst</span><a href="#" style="height: 44px; display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; font-size: 13px; font-weight: 600">ouvrir<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5"/></svg></a></span>
+          <span style="display: flex; align-items: center; gap: 7px; color: #4a5072"><span style="width: 14px; height: 14px; box-sizing: border-box; border-radius: 7px; border: 1.5px dashed #9aa0bb"></span>Vide</span>
+        </div>
+        <!-- 5 -->
+        <div style="display: grid; grid-template-columns: 72px 1.3fr 1.4fr 0.75fr 1fr; align-items: center; min-height: 65px; padding: 0 24px 0 8px; border-bottom: 1px solid rgba(12,19,53,0.07)">
+          <label style="position: relative; width: 44px; height: 44px; margin: 0 auto; display: flex; align-items: center; justify-content: center"><input type="checkbox" checked aria-label="Remplir : pertes dans les câbles côté panneaux" style="position: absolute; inset: 0; margin: 0; opacity: 0"><span style="width: 22px; height: 22px; border-radius: 7px; background: #0c1335; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e2b54a" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg></span></label>
+          <span style="display: flex; flex-direction: column; gap: 2px; padding-right: 16px"><span style="font-weight: 600">Pertes dans les câbles côté panneaux</span><span style="font-size: 12px; color: #4a5072">Valeur de départ, avant le tracé réel des câbles</span></span>
+          <span style="display: flex; flex-direction: column; gap: 2px; padding-right: 16px"><span style="display: flex; align-items: center; gap: 8px"><span style="font: 700 18px 'Archivo', sans-serif; letter-spacing: -0.01em">1,5 <span style="font: 500 13px 'Hanken Grotesk', sans-serif; color: #4a5072">%</span></span><span title="valeur publiée, non mesurée" style="width: 7px; height: 7px; border-radius: 4px; background: #e2b54a"></span></span><span style="font-size: 12px; color: #4a5072">En plein soleil d'essai ; sur l'année, environ 60 % de ce chiffre</span></span>
+          <span style="display: flex; align-items: center; gap: 4px"><span style="font-weight: 600">PVsyst</span><a href="#" style="height: 44px; display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; font-size: 13px; font-weight: 600">ouvrir<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5"/></svg></a></span>
+          <span style="display: flex; align-items: center; gap: 7px; color: #4a5072"><span style="width: 14px; height: 14px; box-sizing: border-box; border-radius: 7px; border: 1.5px dashed #9aa0bb"></span>Vide</span>
+        </div>
+        <!-- 6 -->
+        <div style="display: grid; grid-template-columns: 72px 1.3fr 1.4fr 0.75fr 1fr; align-items: center; min-height: 65px; padding: 0 24px 0 8px; border-bottom: 1px solid rgba(12,19,53,0.07)">
+          <label style="position: relative; width: 44px; height: 44px; margin: 0 auto; display: flex; align-items: center; justify-content: center"><input type="checkbox" checked aria-label="Remplir : réflexion du sol" style="position: absolute; inset: 0; margin: 0; opacity: 0"><span style="width: 22px; height: 22px; border-radius: 7px; background: #0c1335; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e2b54a" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg></span></label>
+          <span style="display: flex; flex-direction: column; gap: 2px; padding-right: 16px"><span style="font-weight: 600">Réflexion du sol</span><span style="font-size: 12px; color: #4a5072">Lumière renvoyée par le sol vers les panneaux</span></span>
+          <span style="display: flex; flex-direction: column; gap: 2px; padding-right: 16px"><span style="display: flex; align-items: center; gap: 8px"><span style="font: 700 18px 'Archivo', sans-serif; letter-spacing: -0.01em">0,2</span><span title="valeur publiée, non mesurée" style="width: 7px; height: 7px; border-radius: 4px; background: #e2b54a"></span></span><span style="font-size: 12px; color: #4a5072">Valeur type ; PV*SOL écrit « environ 20 % »</span></span>
+          <span style="display: flex; align-items: center; gap: 4px"><span style="font-weight: 600">PVsyst · PV*SOL</span><a href="#" style="height: 44px; display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; font-size: 13px; font-weight: 600">ouvrir<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5"/></svg></a></span>
+          <span style="display: flex; align-items: center; gap: 7px; color: #4a5072"><span style="width: 14px; height: 14px; box-sizing: border-box; border-radius: 7px; border: 1.5px dashed #9aa0bb"></span>Vide</span>
+        </div>
+        <!-- 7 : déjà renseigné -->
+        <div style="display: grid; grid-template-columns: 72px 1.3fr 1.4fr 0.75fr 1fr; align-items: center; min-height: 65px; padding: 0 24px 0 8px; border-bottom: 1px solid rgba(12,19,53,0.07)">
+          <label style="position: relative; width: 44px; height: 44px; margin: 0 auto; display: flex; align-items: center; justify-content: center"><input type="checkbox" aria-label="Remplacer votre valeur : marge de l'onduleur" style="position: absolute; inset: 0; margin: 0; opacity: 0"><span style="width: 22px; height: 22px; box-sizing: border-box; border-radius: 7px; border: 1.5px solid rgba(12,19,53,0.32); background: #ffffff"></span></label>
+          <span style="display: flex; flex-direction: column; gap: 2px; padding-right: 16px"><span style="font-weight: 600">Marge de l'onduleur</span><span style="font-size: 12px; color: #4a5072">Puissance des panneaux pour 1 kW d'onduleur</span></span>
+          <span style="display: flex; flex-direction: column; gap: 2px; padding-right: 16px"><span style="display: flex; align-items: center; gap: 8px"><span style="font: 700 18px 'Archivo', sans-serif; letter-spacing: -0.01em; color: #656b8c">1,25</span><span title="valeur publiée, non mesurée" style="width: 7px; height: 7px; border-radius: 4px; background: #e2b54a"></span></span><span style="font-size: 12px; color: #4a5072">« Environ 1,25 à 1,3 »</span></span>
+          <span style="display: flex; align-items: center; gap: 4px"><span style="font-weight: 600">PVsyst</span><a href="#" style="height: 44px; display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; font-size: 13px; font-weight: 600">ouvrir<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5"/></svg></a></span>
+          <span style="display: flex; align-items: center; gap: 8px; font-weight: 500; color: #1e7a57"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" style="flex: none"><circle cx="12" cy="12" r="10" fill="#e3f1ea"/><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#1e7a57" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Déjà renseigné par vous (<b style="font-weight: 700">1,30</b>) — conservé</span></span>
+        </div>
+        <!-- 8 : aucune valeur publiée -->
+        <div style="display: grid; grid-template-columns: 72px 1.3fr 1.4fr 0.75fr 1fr; align-items: center; min-height: 65px; padding: 0 24px 0 8px; background: #faf9f6">
+          <label style="position: relative; width: 44px; height: 44px; margin: 0 auto; display: flex; align-items: center; justify-content: center"><input type="checkbox" disabled aria-label="Remplir : poussière sur les panneaux (aucune valeur publiée)" style="position: absolute; inset: 0; margin: 0; opacity: 0"><span style="width: 22px; height: 22px; box-sizing: border-box; border-radius: 7px; border: 1.5px dashed rgba(12,19,53,0.24); background: #f5f4f0"></span></label>
+          <span style="display: flex; flex-direction: column; gap: 2px; padding-right: 16px"><span style="font-weight: 600">Poussière sur les panneaux</span><span style="font-size: 12px; color: #4a5072">Saleté accumulée entre deux nettoyages</span></span>
+          <span style="display: flex; flex-direction: column; gap: 2px; padding-right: 16px"><span style="font-weight: 600; color: #8a6a12">Aucune valeur publiée — à saisir par vous</span><span style="font-size: 12px; color: #4a5072">PVsyst donne des ordres de grandeur, pas une valeur de départ</span></span>
+          <span style="color: #656b8c">—</span>
+          <span style="display: flex; align-items: center; gap: 14px"><span style="display: flex; align-items: center; gap: 7px; color: #4a5072"><span style="width: 14px; height: 14px; box-sizing: border-box; border-radius: 7px; border: 1.5px dashed #9aa0bb"></span>Vide</span><a href="#" style="height: 44px; display: flex; align-items: center; padding: 0 16px; border: 1px solid rgba(12,19,53,0.18); border-radius: 11px; background: #ffffff; color: #0c1335; font: 600 14px 'Hanken Grotesk', sans-serif; text-decoration: none">Saisir</a></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Le pied : ce que ça change, et l'action -->
+    <div style="flex: none; height: 76px; box-sizing: border-box; display: flex; align-items: center; gap: 16px; padding: 0 12px 0 24px; border-radius: 20px; background: #ffffff; box-shadow: 0 8px 24px rgba(12,19,53,0.07), 0 1px 2px rgba(12,19,53,0.06)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4a5072" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.5"/></svg>
+      <span style="flex: 1; font-size: 13px; line-height: 1.5; color: #4a5072">Tant qu'une valeur publiée sert, le résultat porte la mention « estimation — valeurs publiées ». Tout reste modifiable dans Réglages › Calepinage.</span>
+      <button type="button" style="flex: none; height: 52px; padding: 0 20px; border: 1px solid rgba(12,19,53,0.18); border-radius: 14px; background: #ffffff; color: #0c1335; font: 600 15px 'Hanken Grotesk', sans-serif">Tout saisir à la main</button>
+      <button type="button" style="flex: none; height: 52px; display: flex; align-items: center; gap: 10px; padding: 0 24px; border: 0; border-radius: 14px; background: #e2b54a; color: #0c1335; font: 700 15px 'Hanken Grotesk', sans-serif; box-shadow: 0 8px 20px rgba(201,154,43,0.38), inset 0 1px 0 rgba(255,255,255,0.45)">
+        Remplir les 6 réglages vides
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </button>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

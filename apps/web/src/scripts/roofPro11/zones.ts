@@ -18,6 +18,7 @@ import { economieAffichee, facteurDerateAnnuel } from './optimizer'; // ACAL356 
 import { type Obstacle } from '../../lib/obstacles';
 import { pivoterSite } from './siteRotation'; // ACAL514
 import { motifPanVerrouille } from './panVerrouille'; // ACAL520
+import { texteTotalProduction } from './affichageErp'; // ACAL1418
 import { anneeValide, motifPanExistant } from './panExistant'; // ACAL510, ACAL574
 import { appliquerReglagesAuxPans, pansReglesAMain } from './jeuReglages'; // ACAL554
 import { accesMoyenDuPan, mentionAcces, trierPansParAcces } from './triPans'; // ACAL728
@@ -28,7 +29,7 @@ import {
   pivoterPoint,
   redimensionnerRectangle,
 } from './snap';
-import { computePanStats, computeSiteStats, hasMultipleBuildings, htmlTableSite, libelleBatiment, type PanStat } from './panStats'; // CALX126
+import { computePanStats, computeSiteStats, etiquettePanExistant, hasMultipleBuildings, htmlTableSite, libelleBatiment, type PanStat } from './panStats'; // CALX126, ACAL1431
 // CALX109/CALX110 câblage — le catalogue de modules de la société et le module posé sur
 // CHAQUE pan. `moduleSelect.ts` est PUR (aucun DOM) : c'est ici, dans le panneau du pan, que
 // le choix devient visible, et c'est de là qu'il repart vers le pavage et le document.
@@ -224,6 +225,7 @@ export function dupliquerPan(source: AreaRecord, nouvelId: string, pasM: number)
       renderPlan: null,
       ...(source.buildingId ? { buildingId: source.buildingId } : {}),
       ...(source.moduleId ? { moduleId: source.moduleId } : {}),
+      ...(source.moduleId && (source as PanAuChoix).moduleChoisi ? { moduleChoisi: true } : {}), // ACAL1415 — la copie garde le choix
       ...(source.edges ? { edges: source.edges.map((e) => ({ ...e })) } : {}),
       // Réglages PHYSIQUES du pan (copies profondes) ; jamais `existant` / `anneeMiseEnService` /
       // `verrouille` : la copie est un pan NEUF et modifiable (recopier « existant » la sortirait du devis).
@@ -270,6 +272,11 @@ export function idPanEnDouble(zones: readonly { id: string }[]): string | null {
   return null;
 }
 
+/** ACAL1415 — un pan et son drapeau « module CHOISI » (contrat `zones[].geometry.moduleChoisi`, ACAL1401) : la
+ *  seule source de « choisi ». Absent = module de départ, à confirmer ; `panVierge`/`poserModuleDeDepart` ne
+ *  l'écrivent jamais. */
+export type PanAuChoix = AreaRecord & { moduleChoisi?: boolean };
+
 /** Pan NEUF aux valeurs par défaut (toit plat 22°, plein sud), identifiant issu de LA fabrique
  *  `prochainId` : l'unique définition, partagée par le builder (`roof-tool-pro11.ts`) et
  *  `nouveauPanDepuisContour` (jamais deux copies du littéral). */
@@ -281,7 +288,7 @@ export function panVierge(
   const id = prochainId('area', existants);
   return {
     id,
-    label: areaLabel(Number(id.slice('area-'.length)) - 1),
+    label: areaLabel(existants.length), // ACAL1430 — le nom de son RANG (ajouté en fin), jamais celui de son identifiant
     vertices,
     obstacles: [],
     roofType: 'flat',
@@ -306,6 +313,7 @@ export function panVierge(
 export function nouveauPanDepuisContour(
   contourLngLat: unknown,
   existants: readonly { id: string }[],
+  moduleDepart: ModuleDocument | null = null, // ACAL1273 — comme `panVierge` : le module de départ du site
 ): { ok: true; pan: AreaRecord } | { ok: false; motif: string } {
   const points = Array.isArray(contourLngLat)
     ? (contourLngLat as unknown[]).map((p) =>
@@ -324,7 +332,74 @@ export function nouveauPanDepuisContour(
   if (!isSimplePolygon(ring)) {
     return { ok: false, motif: 'Ce contour se croise : corrigez-le avant d’en faire un pan (aucun pan créé).' };
   }
-  return { ok: true, pan: panVierge(existants, ring) };
+  return { ok: true, pan: panVierge(existants, ring, moduleDepart) };
+}
+
+/** ACAL1273 — document relu SANS aucun module : le module de départ sur chaque pan (hors installation
+ *  existante), donc écrit au premier enregistrement ; un document qui en désigne un reste tel quel. */
+export function poserModuleDeDepart(
+  pans: AreaRecord[],
+  zonesDuDocument: readonly { geometry?: { moduleId?: unknown } }[] | null | undefined,
+  depart: ModuleDocument | null,
+): void {
+  if (!depart || (zonesDuDocument ?? []).some((z) => z?.geometry?.moduleId)) return;
+  for (const p of pans) if (!p.existant) p.moduleId = depart.id;
+}
+
+// ═══════════ ACAL1329 — un pan AJOUTÉ sur un toit existant, du premier clic au dernier point ═══════════
+/** Vrai pendant l'ajout d'un pan : le pan actif n'est pas fermé et un autre pan a déjà son contour. */
+export const ajoutDePanEnCours = (areas: readonly AreaRecord[], activeAreaId: string, closed: boolean): boolean =>
+  !closed && areas.some((a) => a.id !== activeAreaId && (a.vertices?.length ?? 0) >= 3);
+
+/** Le toit EXISTANT (pans fermés hors pan actif), en polygones : ce qui reste dessiné, grisé, sous le tracé. */
+export function toitExistantGeoJSON(areas: readonly AreaRecord[], activeAreaId: string) {
+  return {
+    type: 'FeatureCollection' as const,
+    features: areas.filter((a) => a.id !== activeAreaId && (a.vertices?.length ?? 0) >= 3).map((a) => ({
+      type: 'Feature' as const, properties: {}, geometry: { type: 'Polygon' as const, coordinates: [[...a.vertices, a.vertices[0]]] },
+    })),
+  };
+}
+
+
+/** Ce que le calque de référence lit/écrit de la carte MapLibre. */
+interface CarteReference {
+  getSource(id: string): { setData(d: never): unknown } | undefined;
+  getLayer(id: string): unknown;
+  setPaintProperty(id: string, nom: string, v: string): unknown;
+  setLayoutProperty(id: string, nom: string, v: 'visible' | 'none'): unknown;
+  on(type: string, fn: (e: { sourceId?: string }) => void): unknown;
+}
+const GRIS_TOIT_EXISTANT = '#9aa0bb';
+
+/** Pendant l'ajout, le calque de référence (`rp9-ref-contour-*`, aucune seconde couche) montre le toit existant en
+ *  gris ; à la fin (dernier point, Échap, autre pan), `restaurer` lui rend le tracé du client. Relu à chaque re-pose
+ *  des sommets (`rp9-pts`). */
+export function monterToitGriseSousTrace(
+  map: CarteReference,
+  lire: () => { areas: readonly AreaRecord[]; activeAreaId: string; closed: boolean },
+  couleurReference: string,
+  restaurer: () => void,
+): void {
+  let grise = false;
+  const peindre = (couleur: string) => {
+    if (map.getLayer('rp9-ref-contour-fill')) map.setPaintProperty('rp9-ref-contour-fill', 'fill-color', couleur);
+    if (map.getLayer('rp9-ref-contour-line')) map.setPaintProperty('rp9-ref-contour-line', 'line-color', couleur);
+  };
+  map.on('sourcedata', (e) => {
+    if (e?.sourceId !== 'rp9-pts') return;
+    const { areas, activeAreaId, closed } = lire();
+    if (ajoutDePanEnCours(areas, activeAreaId, closed)) {
+      map.getSource('rp9-ref-contour')?.setData(toitExistantGeoJSON(areas, activeAreaId) as never);
+      peindre(GRIS_TOIT_EXISTANT);
+      for (const id of ['rp9-ref-contour-fill', 'rp9-ref-contour-line']) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'visible');
+      grise = true;
+    } else if (grise) {
+      grise = false;
+      peindre(couleurReference);
+      restaurer();
+    }
+  });
 }
 
 /** CALX98 — identifiant de zone NEUF, dans un espace de noms (`area-copie-N`) que le
@@ -471,6 +546,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     const { areasWindowEl, areasListEl, areasTotalPanelsEl, areasTotalKwcEl, areasTotalProdEl, areasTotalSavingsEl } = ctx.dom;
     if (!areasWindowEl) return;
     const areas = ctx.areas;
+    areas.forEach((a, i) => { a.label = areaLabel(i); }); // ACAL1430 — UN nom par pan (son rang) : liste, cadenas, refus, document
     const activeAreaId = ctx.activeAreaId;
     const liveActive = liveActiveResult();
     // Résultats agrégés : la zone active prend son résultat LIVE, les autres leur snapshot.
@@ -501,7 +577,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     const kwcTotal = poses.some((p) => p.module) ? (poses.some((p) => p.kwc == null) ? null
       : poses.reduce((s, p) => s + (p.kwc as number), 0)) : total.kwc;
     if (areasTotalKwcEl) areasTotalKwcEl.textContent = kwcTotal == null ? '—' : `${kwcTotal.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} kWc`;
-    if (areasTotalProdEl) areasTotalProdEl.textContent = total.annualKwh > 0 ? `${fmt(Math.round(total.annualKwh))} kWh/an` : '—';
+    if (areasTotalProdEl) areasTotalProdEl.textContent = texteTotalProduction(total.annualKwh, kwcTotal, ctx.opts?.chiffrage !== undefined, ctx.opts?.chiffrage); // ACAL1418 — la production servie, comme la carte
     if (areasTotalSavingsEl) areasTotalSavingsEl.textContent = economieAffichee(ctx, 'total', total.savingsHigh > 0 ? `${fmtMad(total.savingsLow)} – ${fmtMad(total.savingsHigh)}/an` : '—'); // ACAL994
 
     // CAL59 — statistiques par pan + totaux par bâtiment (colonnes toutes CALCULÉES).
@@ -509,7 +585,10 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     // sur deux pans rendaient le même kWc (`nombre × 720 W` partout) ; avec lui, le kWc d'un
     // pan vaut `nombre × la puissance de SON module` et l'occupation se mesure sur SON
     // empreinte. Un pan sans choix rend `null` ⇒ colonnes identiques à aujourd'hui.
-    const stats = computePanStats(areas, (a) => (a.id === activeAreaId ? liveActive : a.result), moduleDuPan);
+    // ACAL1420 — le pan ACTIF se mesure sur ses sommets VIVANTS (`ctx.vertices`), son enregistrement n'étant
+    // synchronisé qu'au changement de pan (même patron que la sérialisation) : jamais « non tracé » à côté de son aire.
+    const pansVivants = areas.map((a) => (a.id === activeAreaId ? { ...a, vertices: ctx.vertices } : a));
+    const stats = computePanStats(pansVivants, (a) => (a.id === activeAreaId ? liveActive : a.result), moduleDuPan);
     const multiBuilding = hasMultipleBuildings(stats);
 
     if (areasListEl) {
@@ -538,20 +617,20 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
           : 'border-white/10 bg-nuit-900/40';
         const delBtn =
           areas.length > 1
-            ? `<button type="button" data-area-del="${a.id}" aria-label="Supprimer ${esc(a.label)}" class="border border-alert-300/60 px-2.5 py-1 text-xs font-semibold text-alert-300 transition-colors hover:bg-alert-300/10">×</button>`
+            ? `<button type="button" data-area-del="${a.id}" aria-label="Supprimer ${esc(areaLabel(i))}" class="border border-alert-300/60 px-2.5 py-1 text-xs font-semibold text-alert-300 transition-colors hover:bg-alert-300/10">×</button>`
             : '';
         // ACAL520 — cadenas du pan (≥ 44 px, `aria-pressed`) : verrouillé, ses gestes refusent.
-        const lockBtn = `<button type="button" data-area-lock="${a.id}" aria-pressed="${a.verrouille ? 'true' : 'false'}" aria-label="Verrouiller ${esc(a.label || areaLabel(i))}" class="min-h-11 min-w-11 border px-2.5 py-1 text-xs font-semibold ${a.verrouille ? 'border-brass-400 text-brass-300' : 'border-white/25 text-lune-soft'}">${a.verrouille ? 'Verrouillé' : 'Verrouiller'}</button>`;
+        const lockBtn = `<button type="button" data-area-lock="${a.id}" aria-pressed="${a.verrouille ? 'true' : 'false'}" aria-label="Verrouiller ${esc(areaLabel(i))}" class="min-h-11 min-w-11 border px-2.5 py-1 text-xs font-semibold ${a.verrouille ? 'border-brass-400 text-brass-300' : 'border-white/25 text-lune-soft'}">${a.verrouille ? 'Verrouillé' : 'Verrouiller'}</button>`;
         const viewBtn = active
           ? `<span class="text-xs font-semibold text-brass-300">● active</span>`
           : `<button type="button" data-area-select="${a.id}" class="border border-white/25 px-2.5 py-1 text-xs font-semibold text-lune-soft transition-colors hover:border-brass-400 hover:text-brass-300">Voir</button>`;
         // CAL59 — saisie du bâtiment : un input LIBRE (l'utilisateur nomme ses bâtiments,
         // aucune liste imposée) ; vide = bâtiment unique, comportement historique.
         const buildingInput = `<input type="text" data-area-building="${a.id}" value="${esc(a.buildingId ?? '')}"
-          placeholder="bâtiment" aria-label="Bâtiment de ${esc(a.label || areaLabel(i))}"
+          placeholder="bâtiment" aria-label="Bâtiment de ${esc(areaLabel(i))}"
           class="w-24 border border-white/15 bg-nuit-900/60 px-1.5 py-0.5 text-[11px] text-lune-soft focus:border-brass-400 focus:outline-none" />`;
         return `<li class="flex flex-wrap items-center gap-x-3 gap-y-1 border ${rowClass} p-3 text-sm" data-area-row="${a.id}">
-          <span class="font-semibold text-white">${esc(areaLabel(i))}</span>
+          <span class="font-semibold text-white">${esc(areaLabel(i))}${etiquettePanExistant(a)}</span>
           <span class="text-xs text-lune-faint">${panels} panneaux · ${kwc}${triParAcces ? ` · ${mentionAcces(accesDe(a))}` : ''}</span>
           ${buildingInput}
           <span class="ml-auto flex items-center gap-2">${boutonReporterReglages(a.id, areas.length)}${lockBtn}${viewBtn}${delBtn}</span>
@@ -680,8 +759,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
   /** Nom du pan ACTIF, tel qu'il est écrit dans la liste des zones. */
   function nomDuPanActif(): string {
     const i = ctx.areas.findIndex((a) => a.id === ctx.activeAreaId);
-    const a = i >= 0 ? ctx.areas[i] : undefined;
-    return a?.label || areaLabel(i >= 0 ? i : 0);
+    return areaLabel(i >= 0 ? i : 0); // ACAL1430 — le nom de la liste, jamais un `label` périmé
   }
 
   /** Affiche (ou efface) un refus NOMMÉ, dans le panneau ET dans le bandeau de statut. */
@@ -707,6 +785,15 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     btn.disabled = !!motif;
     if (motif) btn.title = motif; else if (btn.dataset.titrePanExistant) btn.removeAttribute('title');
     if (motif) btn.dataset.titrePanExistant = '1'; else delete btn.dataset.titrePanExistant;
+    // ACAL1524 — le motif se LIT (au doigt le `title` n'existe pas) : une phrase écrite sous le bouton.
+    const rangee = btn.parentElement;
+    let ligne = document.getElementById('rp9-layout-toggle-motif');
+    if (motif && rangee && !ligne) {
+      ligne = document.createElement('p');
+      ligne.id = 'rp9-layout-toggle-motif'; ligne.className = 'rp9-motif-refus'; ligne.setAttribute('role', 'status');
+      rangee.insertAdjacentElement('afterend', ligne);
+    }
+    if (ligne) { ligne.textContent = motif ?? ''; ligne.hidden = !motif; }
   }
 
   /** Applique une géométrie transformée au pan ACTIF (contour + obstacles vivants). */
@@ -869,7 +956,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     const hote = ctx.dom.areasWindowEl;
     if (!source || !hote) return;
     document.getElementById('rp9-pan-report')?.remove();
-    const nom = (a: AreaRecord) => a.label || a.id;
+    const nom = (a: AreaRecord) => areaLabel(Math.max(0, ctx.areas.indexOf(a))); // ACAL1527 — « Zone 2 », jamais l'identifiant `area-copie-1`
     const box = document.createElement('div');
     box.id = 'rp9-pan-report';
     box.className = 'mt-2 space-y-1 border border-white/20 p-3 text-xs text-lune-soft';
@@ -1037,7 +1124,6 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
   const moduleSelectEl = document.getElementById('rp9-pan-module-select') as HTMLSelectElement | null;
   const moduleMentionEl = document.getElementById('rp9-pan-module-mention');
   const moduleErreurEl = document.getElementById('rp9-pan-module-erreur');
-  const panConfirmes = new Set<string>(); // ACAL913 — pans dont le module a été CHOISI ici
 
   /** Affiche (ou efface) un refus NOMMÉ, à côté du sélecteur ET dans le bandeau de statut. */
   function direRefusModule(motif: string | null) {
@@ -1082,8 +1168,9 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
         );
       }
     }
-    // ACAL913 — un module posé d'office (premier du catalogue) reste « à confirmer ».
-    const depart = !panConfirmes.has(a.id) ? moduleDeDepart(catalogueAtelier) : null;
+    // ACAL913/ACAL1415 — un module posé d'office reste « à confirmer » tant que le pan ne porte pas le drapeau
+    // `moduleChoisi` (écrit au document : il survit à l'enregistrement, contrairement à un état de session).
+    const depart = !(a as PanAuChoix).moduleChoisi ? moduleDeDepart(catalogueAtelier) : null;
     if (moduleMentionEl && depart && a.moduleId === depart.id) {
       moduleMentionEl.textContent = `${depart.libelle} — ${MENTION_MODULE_DE_DEPART}`;
     } else if (moduleMentionEl) {
@@ -1115,6 +1202,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     if (!id) {
       ctx.pushWorkshopHistory?.(); // CAL100 — annulable comme le reste de l'atelier
       delete a.moduleId;
+      delete (a as PanAuChoix).moduleChoisi; // ACAL1415 — plus de module désigné, plus de choix
       direRefusModule(null);
       deps.recalc?.();
       renderAreasPanel();
@@ -1141,7 +1229,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     }
     ctx.pushWorkshopHistory?.(); // CAL100 — annulable comme le reste de l'atelier
     a.moduleId = module.id;
-    panConfirmes.add(a.id); // ACAL913 — choisi : plus « de départ »
+    (a as PanAuChoix).moduleChoisi = true; // ACAL913/ACAL1415 — choisi : plus « de départ », écrit au document
     direRefusModule(null);
     deps.recalc?.(); // le pavage repart avec les VRAIES cotes de ce module
     renderAreasPanel();
@@ -1718,8 +1806,4 @@ export function modulesSurAllee(
   return (modules ?? []).filter((m) => touche(m.empriseM ?? [])).map((m) => m.repere);
 }
 
-/** ACAL511 — l'étiquette d'un pan « déjà en place » dans la liste des pans (HTML), vide pour un pan à poser. */
-export function etiquettePanExistant(pan: { existant?: boolean; anneeMiseEnService?: number | null } | undefined): string {
-  if (!pan?.existant) return '';
-  return ` <span class="text-lune-faint" data-pan-existant>· Existant ${pan.anneeMiseEnService ?? '(année non saisie)'}</span>`;
-}
+export { etiquettePanExistant } from './panStats'; // ACAL511 — définie à côté du tableau Site (ACAL1431), une seule étiquette

@@ -145,6 +145,24 @@ describe('DecisionsElectriques (ACAL154)', () => {
     expect(corpsDeDecisions(depuisEntree({}), {})).toEqual({})
   })
 
+  it('ACAL1550 : répondre « oui » à l’arrêt rapide s’enregistre dans protections.exigences.arret_rapide et se relit', async () => {
+    servir(VIDE.entree)
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: {} })
+
+    rendre()
+    await userEvent.selectOptions(await screen.findByLabelText(/arrêt rapide exigé/), 'oui')
+    await userEvent.click(screen.getByTestId('acal154-enregistrer'))
+
+    await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique).toHaveBeenCalled())
+    expect(poste().protections.exigences).toEqual({ arret_rapide: 'oui' })
+    cleanup()
+    servir({ protections: { ecartes: [], ajouts: [], exigences: { arret_rapide: 'oui', paratonnerre: { present: 'non' } } } })
+    rendre()
+    expect(await screen.findByLabelText(/arrêt rapide exigé/)).toHaveValue('oui')
+    expect(corpsDeDecisions(depuisEntree({ protections: { exigences: { arret_rapide: 'non' } } }), {}))
+      .toEqual({ protections: { ecartes: [], ajouts: [], exigences: { arret_rapide: 'non' } } })
+  })
+
   it('une lecture en panne le DIT', async () => {
     calepinageApi.calepinages.entreeElectrique.mockRejectedValue(new Error('boum'))
 

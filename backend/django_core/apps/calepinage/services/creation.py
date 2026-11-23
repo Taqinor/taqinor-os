@@ -412,10 +412,18 @@ def adopter_ou_creer_pour_devis(devis_id, company, *, user=None, titre='',
 
 def _etat_de_depart(devis, document):
     """ACAL1006 — ``'rapide'`` pour un devis automatique (ACAL1004) dont le
-    calepinage n'a encore aucun document dessiné, sinon ``'complet'``."""
+    calepinage n'a encore aucun pan dessiné, sinon ``'complet'``. ACAL1419 :
+    le document d'un devis automatique n'est pas vide (``{result, scenario,
+    panelWatt}``, un RÉSUMÉ) : « dessiné » = au moins un pan (ou une surface de
+    pose) lu par ``pans_du_document`` ; le compte ``result.count`` d'une zone
+    synthétique n'est pas un dessin."""
+    from apps.ventes.services import pans_du_document
+
     params = getattr(devis, 'etude_params', None)
     rapide = isinstance(params, dict) and params.get('origine_conception') == 'rapide'
-    return 'rapide' if rapide and not document else 'complet'
+    dessine = any(pan['source'] != 'result.count'
+                  for pan in pans_du_document(document if isinstance(document, dict) else {}))
+    return 'rapide' if rapide and not dessine else 'complet'
 
 
 def _marquer_l_adopte(adopte, devis):

@@ -1,6 +1,8 @@
 // ACAL546 — « Comparer les poses » (toit plat) : le tableau que `roofPro11/matrix.ts` peint dans
 // `#rp9-compare`, monté ici avec les mêmes ids que l'aperçu public. SANS colonne en MAD :
 // `data-sans-montant` dit au script de ne pas écrire la sixième cellule (l'argent vit dans `ventes`).
+// ACAL1525 (K-COLONNE-ETROITE) — aucune largeur minimale : les cinq colonnes tiennent dans la colonne de 320 px,
+// la configuration passe à la ligne, kWh/an et % du besoin restent visibles sans défilement horizontal.
 export default function TableauComparatif() {
   return (
     <details className="mt-6 rounded-xl border border-border bg-card" data-sans-montant-bloc="1">
@@ -15,19 +17,19 @@ export default function TableauComparatif() {
             </select>
           </label>
         </div>
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full min-w-[560px] text-left text-sm text-foreground">
+        <div className="mt-3">
+          <table className="w-full text-left text-xs text-foreground [&_td]:px-2 [&_td]:py-2">
             <thead className="text-muted-foreground">
               <tr className="border-b border-border">
-                <th className="px-5 py-3 font-semibold">Configuration</th>
-                <th className="px-5 py-3 text-right font-semibold" aria-sort="none">
+                <th className="px-2 py-2 font-semibold">Configuration</th>
+                <th className="px-2 py-2 text-right font-semibold" aria-sort="none">
                   <button type="button" data-rp9-sort="placedCount" className="rp9-sort min-h-11">Panneaux<span className="rp9-sort-arrow"></span></button>
                 </th>
-                <th className="px-5 py-3 text-right font-semibold">kWc</th>
-                <th className="px-5 py-3 text-right font-semibold" aria-sort="descending">
+                <th className="px-2 py-2 text-right font-semibold">kWc</th>
+                <th className="px-2 py-2 text-right font-semibold" aria-sort="descending">
                   <button type="button" data-rp9-sort="annualKwh" className="rp9-sort min-h-11">kWh/an<span className="rp9-sort-arrow"></span></button>
                 </th>
-                <th className="px-5 py-3 text-right font-semibold" aria-sort="none">
+                <th className="px-2 py-2 text-right font-semibold" aria-sort="none">
                   <button type="button" data-rp9-sort="pctOfTarget" className="rp9-sort min-h-11">% du besoin<span className="rp9-sort-arrow"></span></button>
                 </th>
               </tr>

@@ -148,6 +148,21 @@ class ConceptionReelle(BaseConceptionReelle):
         for bloc in reponse.data['blocs']:
             self.assertFalse(bloc['repere'], bloc)
 
+    def test_le_schema_colore_chaque_chaine_comme_la_carte(self):
+        """ACAL1337 — les couleurs du SVG servi sont celles de l'affectation servie
+        (``couleur_chaine``), une ligne de légende par chaîne."""
+        from apps.calepinage.services.chaines import affectation
+
+        self._norme_francaise()
+        conception, _m, _d, _doc = conception_du_calepinage(self.calepinage)
+        couleurs = {ligne['chaine']: ligne['couleur_chaine']
+                    for ligne in affectation(conception) if ligne['chaine'] is not None}
+        self.assertTrue(couleurs)
+        svg = self.api.get(url_schema(self.calepinage.pk)).data['svg']
+        for numero, couleur in couleurs.items():
+            self.assertIn('stroke="%s"' % couleur, svg)
+            self.assertIn('Chaîne %d' % numero, svg)
+
     def test_annexe_devis_inchangee(self):
         """Le jumeau client (``apps.ventes.selectors.schema_unifilaire_svg``)
         dessine, sur le MÊME résultat complet, le MÊME SVG que le calepinage

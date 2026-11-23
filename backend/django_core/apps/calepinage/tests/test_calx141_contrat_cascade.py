@@ -168,6 +168,50 @@ class OmissionTest(unittest.TestCase):
                                  'appliquée nomme la source de son entrée.')
 
 
+class MotifServiLisibleTest(unittest.TestCase):
+    """ACAL1323 — le motif servi à l'écran dit le champ en intitulé de métier ;
+    le chemin reste la donnée stockée relue par ``a_renseigner``."""
+
+    def test_motif_d_omission_lisible_champ_conserve_aucun_chemin(self):
+        import copy
+        import re
+
+        from apps.calepinage.services import a_renseigner
+        from apps.calepinage.services.etapes import etape_omise
+        from apps.calepinage.services.rapport.champs_lisibles import (
+            avec_motifs_lisibles,
+        )
+
+        etape = dict(etape_omise('Ombrage proche', 'Aucune matrice.',
+                                 champ='ombrage.shading12x24'),
+                     etape='ombrage_proche')
+        cascade = {'etapes': [etape]}
+        cascade['a_renseigner'] = a_renseigner.construire(
+            cascade, ['ombrage_proche'])
+        stocke = {'cascade': cascade, 'autoconsommation': {
+            'motif_absence': 'Absent. Champ manquant : « ombrage.solarAccess ».'}}
+        avant = copy.deepcopy(stocke)
+        servi = avec_motifs_lisibles(stocke)
+        self.assertEqual(
+            servi['cascade']['etapes'][0]['motif_omission'],
+            "Aucune matrice. Champ manquant : « matrice d'ombrage 12 mois "
+            "× 24 heures ».")
+        hors = servi['cascade']['a_renseigner']['non_localisables'][0]
+        self.assertEqual(hors['champ'], 'ombrage.shading12x24')
+        self.assertEqual(stocke, avant, 'le résultat stocké ne bouge pas')
+
+        def textes(noeud, cle=''):
+            if isinstance(noeud, str) and cle != 'champ':
+                yield noeud
+            for c, v in (noeud.items() if isinstance(noeud, dict) else
+                         enumerate(noeud) if isinstance(noeud, list) else ()):
+                yield from textes(v, c)
+
+        chemin = re.compile(r'[A-Za-z_]\w*\.[A-Za-z_]\w+|[\[\]]')
+        for texte in textes(servi):
+            self.assertIsNone(chemin.search(texte), texte)
+
+
 class PasDeDeriveTest(unittest.TestCase):
     """Le bloc détaillé ici reste celui que CALX4 annonce, et `pertes` reste
     une LISTE (D-CALX 11)."""

@@ -13,7 +13,7 @@
 # préfixe+numéro quand le fichier n'en donne pas (D-ASEC-4, D-QJR5-659...) ; `ouverte` quand le fichier ne donne pas la réponse.
 
 version: 1
-date_maj: "2026-11-22"
+date_maj: "2026-11-23"
 
 decisions:
 
@@ -5462,7 +5462,7 @@ decisions:
     reponse: ouverte
     date: "2026-11-22"
     source: "comparaison écrans / maquettes du 22/11/2026 (1 écran fidèle sur 13 à la troisième passe) ; reconstruction des écrans du calepinage ; constat : le calepinage 5 est servi avec 60 panneaux (43,2 kWc) et l'écran en montre 55 (39,60 kWc) dès la première vue, un « Enregistrer » écrirait 55 ; recommandation : rejouer la pose enregistrée (le document est la vérité, l'écran ne doit jamais le contredire)"
-    taches: [ACAL1330]
+    taches: [ACAL1330, ACAL1552, ACAL1448]
 
   - id: D-ACAL-76
     question: "L'atelier doit-il dimensionner le toit d'après la facture du lead ?"
@@ -5474,7 +5474,7 @@ decisions:
     reponse: ouverte
     date: "2026-11-22"
     source: "comparaison écrans / maquettes du 22/11/2026 (1 écran fidèle sur 13 à la troisième passe) ; reconstruction des écrans du calepinage ; constat : en mode calepinage la facture du lead n'entre que dans l'affichage, jamais dans la pose ; recommandation : afficher seulement, la taille reste un choix"
-    taches: [ACAL1331]
+    taches: [ACAL1331, ACAL1448]
 
   - id: D-ACAL-77
     question: "Contrôle « Taille dimensionnée » de « Prêt à envoyer ? » : le renommer, ou ajouter un contrôle taille ≈ cible ?"
@@ -5513,3 +5513,123 @@ decisions:
     date: "2026-11-22"
     source: "fidélité aux maquettes du 22/11/2026 ; mots écrits d'après la fonction de chaque contrôle, jamais relus ; recommandation : relecture par le fondateur avant le deploy"
     taches: [ACAL1350]
+
+  - id: D-ACAL-80
+    question: "Quelle température de froid pour borner la tension des chaînes : le minimum de l'année type du lieu, ou jamais plus chaud que −5 °C ?"
+    options:
+      - cle: tmy
+        texte: "Le minimum de l'année type du lieu (comportement actuel : +4,18 °C à Casablanca, −2,8 °C à Fès)"
+      - cle: plus_bas_des_deux
+        texte: "Le plus bas des deux : minimum de l'année type, ou −5 °C"
+      - cle: moins_cinq
+        texte: "−5 °C partout"
+    reponse: ouverte
+    date: "2026-11-23"
+    source: "tour 2 du L5 (23/11/2026) : un relecteur a lu +4,6 °C sur un plan de site où il attendait −5 °C ; lu dans le code : le plancher de −5 °C ne sert que si la météo manque, et une année type lisse les extrêmes (tension à froid sous-estimée, donc plus de modules par chaîne) ; recommandation du lot B : le plus bas des deux ; coût si faux : tension de chaîne mal bornée par grand froid"
+    taches: [ACAL1553]
+
+  - id: D-ACAL-81
+    question: "NASA POWER peut-il servir de seconde source météo alors qu'aucune page officielle de conditions d'usage n'a été trouvée ?"
+    options:
+      - cle: accepter
+        texte: "Oui : le texte d'accueil et le tutoriel du site, qui disent les données gratuites et libres, suffisent"
+      - cle: demander
+        texte: "Non : écrire d'abord à la NASA et attendre une réponse écrite"
+      - cle: renoncer
+        texte: "Non : s'en tenir à PVGIS"
+    reponse: ouverte
+    date: "2026-11-23"
+    source: "tour 2 du L5 (23/11/2026) : la lane carte a cherché une page officielle de conditions d'usage liée depuis power.larc.nasa.gov et n'en a trouvé aucune ; ACAL746 déclarée impossible sans cette décision"
+    taches: [ACAL746]
+
+  - id: D-ACAL-82
+    question: "Quelles valeurs par défaut pour les quatre pertes que le profil de départ ne renseigne pas (salissure, dégradation initiale, indisponibilité, pertes de câbles) ?"
+    options:
+      - cle: valeurs_fondateur
+        texte: "Le fondateur donne les quatre valeurs, étiquetées « supposé » à l'écran et au rapport"
+      - cle: valeurs_publiees
+        texte: "Reprendre des valeurs publiées par un outil de référence, citées avec leur source, étiquetées « supposé »"
+      - cle: rester_incomplet
+        texte: "Aucune valeur : le résultat reste « incomplet » tant que la société ne les a pas saisies"
+    reponse: ouverte
+    date: "2026-11-23"
+    source: "tour 2 du L5 (23/11/2026) : après « Démarrage rapide », aucun calepinage n'a de résultat complet au premier jour (19 pertes sur 22 sans valeur selon l'écran) ; le profil de départ ne publie rien pour la salissure, la dégradation initiale et l'indisponibilité, et les pertes de câbles n'ont pas de clé de réglage ; ACAL1349 déclarée impossible sans valeurs inventées ; rappel de la demande du fondateur du 22/11 : « my ERP should have default for everything »"
+    taches: [ACAL1349]
+
+  - id: D-ACAL-83
+    question: "Où mesurer l'ombre des obstacles proches d'un pan : en un seul point (le centre du pan), ou sur les panneaux posés ?"
+    options:
+      - cle: centre_du_pan
+        texte: "En un seul point, le centre du pan (comportement actuel)"
+      - cle: moyenne_modules
+        texte: "En moyenne sur les panneaux posés (et, sans panneau, sur une grille du pan)"
+    reponse: ouverte
+    date: "2026-11-23"
+    source: "tour 2 du L5 (23/11/2026) : la lane carte-a a reproduit le défaut — l'ombre proche est évaluée au seul centre du pan, si bien qu'une cheminée posée au centre donne 71,76 % de perte quelle que soit sa hauteur (la note « −72 % » vue par les relecteurs) et qu'un poteau hors du centre donne 0 % ; recommandation : la moyenne sur les panneaux posés, parce que c'est la grandeur que la note annonce ; NON tranchée par l'orchestrateur parce que la matrice d'ombrage est une clé imprimée du devis : la production des devis liés à un calepinage qui a un obstacle changerait ; à préparer en phase de contrôles : la liste des devis touchés et l'écart de chacun, avant la réponse"
+    taches: [ACAL1407, ACAL1501]
+
+  - id: D-ACAL-84
+    question: "Quelle ligne de la table des coefficients thermiques vaut pour un toit affleurant (« intégré ») et pour un châssis ?"
+    options:
+      - cle: chassis_libre_affleurant_isole
+        texte: "Châssis → « pose libre » ; affleurant → « dos isolé »"
+      - cle: chassis_libre_affleurant_non_calcule
+        texte: "Châssis → « pose libre » ; affleurant non calculé tant qu'une ligne « semi-intégré » sourcée n'existe pas"
+      - cle: rien_par_defaut
+        texte: "Aucune correspondance par défaut : la société choisit"
+    reponse: ouverte
+    date: "2026-11-23"
+    source: "tour 2 du L5 (23/11/2026), lot C : le profil de départ publie deux lignes (« pose_libre », « dos_isole ») alors que le document de toiture dit « integre » ou « chassis » ; sans correspondance, l'étape thermique reste non calculée ; recommandation du lot C : châssis → pose libre, affleurant non calculé ; change la production imprimée au rapport d'étude"
+    taches: [ACAL1671]
+
+  - id: D-ACAL-85
+    question: "Le P90 de l'étude compte-t-il les incertitudes du modèle, de la météo et de la fiche du module, ou la seule variabilité d'une année à l'autre ?"
+    options:
+      - cle: composer
+        texte: "Composer les trois incertitudes avec la variabilité entre années, chaque composante citée avec sa source"
+      - cle: interannuelle
+        texte: "La seule variabilité d'une année à l'autre (comportement actuel), dite telle"
+    reponse: ouverte
+    date: "2026-11-23"
+    source: "tour 2 du L5 (23/11/2026), lot C : le P90 affiché ne compte que la variabilité entre années ; une étude de référence compose aussi les incertitudes du modèle, de la météo et de la fiche ; recommandation du lot C : composer, chaque composante citée ; le libellé honnête du P90 actuel est corrigé sans attendre (ACAL1657) ; change le P90 imprimé au rapport d'étude"
+    taches: [ACAL1672]
+
+  - id: D-ACAL-86
+    question: "Quel chiffre de production le client lit-il quand le devis et le rapport d'étude en annoncent deux ?"
+    options:
+      - cle: devis_d_abord
+        texte: "Le rapport d'étude imprime d'abord le chiffre du devis"
+      - cle: chacun_nomme_l_autre
+        texte: "Chaque document nomme l'autre chiffre et dit la raison de l'écart"
+      - cle: rapport_interne
+        texte: "Le rapport d'étude n'est pas remis au client"
+    reponse: ouverte
+    date: "2026-11-23"
+    source: "tour 2 du L5 (23/11/2026), lot D : pour un même client, le devis annonce 6 047 kWh/an et le rapport d'étude 8 198 kWh (une « borne haute » imprimée comme P50) ; la correction du chiffre faux est faite sans attendre (ACAL1701, ACAL1702) ; reste à dire lequel des deux le client doit lire ; recommandation du lot D : chacun nomme l'autre ; coût si faux : deux chiffres sans explication"
+    taches: [ACAL1755]
+
+  - id: D-ACAL-87
+    question: "Quels genres de dossiers marocains offrir dans les gabarits réglementaires, et sous quels intitulés officiels ?"
+    options:
+      - cle: onee_srm_et_82_21
+        texte: "Raccordement ONEE / SRM et déclaration loi 82-21, intitulés donnés ou validés par le fondateur"
+      - cle: generique
+        texte: "Rester au dossier distributeur générique (D-ACAL-43)"
+    reponse: ouverte
+    date: "2026-11-23"
+    source: "tour 2 du L5 (23/11/2026), lot D : la liste « Genre de dossier » ne propose aucun dossier marocain ; les intitulés officiels sont à sourcer, rien n'est inventé ; rappel : D-ACAL-43 a retenu un dossier distributeur générique"
+    taches: [ACAL1756]
+
+  - id: D-ACAL-88
+    question: "Quel chiffre de production « Montrer au client » (téléphone et grand écran) montre-t-il au client avant un résultat complet ?"
+    options:
+      - cle: aucun
+        texte: "Aucun tant que le résultat n'est pas complet (comportement actuel)"
+      - cle: borne_haute
+        texte: "La borne haute, dite « au plus », la même qu'à l'étape Résultats"
+      - cle: estimation_pose
+        texte: "L'estimation de la pose, dite « estimation de la pose »"
+    reponse: ouverte
+    date: "2026-11-23"
+    source: "tour 2 du L5 (23/11/2026), lot E : la vue client ne montre aucune production tant que le résultat est incomplet, ce qui est le cas de tous les projets au premier jour (lié à D-ACAL-82) ; recommandation du lot E : la borne haute dite « au plus », un seul chiffre, le même que l'étape Résultats ; lié à D-ACAL-86 (quel chiffre le client lit)"
+    taches: [ACAL1840]

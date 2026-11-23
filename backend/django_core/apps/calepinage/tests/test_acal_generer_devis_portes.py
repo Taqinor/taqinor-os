@@ -136,6 +136,31 @@ class SurfacesCocheesSansBaseTest(SimpleTestCase):
         self.assertIs(_conception_a_jour(self._pivot(DOC_TOIT_ET_SOL),
                                          self._pivot(DOC_TOIT_ET_SOL)), True)
 
+    def test_selection_ancienne_avec_pan_existant_a_jour(self):
+        """ACAL1249 — devis partiel créé avant X4 : sa sélection rangée cite le
+        pan EXISTANT A (Critique D1, jamais vendu) et le pan neuf z1. La
+        sélection LUE ignore A : à jour tant que z1 n'a pas changé, périmé
+        sinon ; l'auditeur juge la même copie ; la sélection rangée reste."""
+        from apps.calepinage.services.devis import _layout_des_surfaces
+        from apps.ventes.coherence.regles_calepinage import _document_chiffre
+        from apps.ventes.selectors_calepinage import _conception_a_jour
+
+        doc = copy.deepcopy(DOC_TOIT_ET_SOL)
+        doc['zones'].insert(0, {'id': 'A', 'label': 'Existant', 'existant': True,
+                                'geometry': {'count': 8, 'kwc': 4.4}})
+        copie = _layout_des_surfaces(copy.deepcopy(doc), ['z1'])
+        copie['choixConception']['surfacesChiffrees'] = ['A', 'z1']  # rangée avant X4
+        devis = self._pivot(copie)
+        self.assertIs(_conception_a_jour(devis, self._pivot(doc)), True)
+        self.assertEqual(devis.roof_layout['choixConception']['surfacesChiffrees'], ['A', 'z1'])
+        self.assertEqual(_document_chiffre(devis, self._pivot(doc))['poseSurfaces'], [])  # sa copie, pas tout
+        # La resynchronisation relit la même sélection : plus de refus « Cochez au moins une surface ».
+        from apps.calepinage.services.devis import _selection_du_devis
+        self.assertEqual(_selection_du_devis(devis, self._pivot(doc)), ['z1'])
+        change = copy.deepcopy(doc)
+        change['zones'][1]['geometry'].update(count=40, kwc=22.0)
+        self.assertIs(_conception_a_jour(devis, self._pivot(change)), False)
+
     def test_ombrage_du_devis_partiel_est_celui_de_ses_pans(self):
         from apps.calepinage.selectors import _perte_ombrage_chiffree
 
@@ -195,6 +220,86 @@ class SurfacesCocheesSansBaseTest(SimpleTestCase):
             with self.assertRaises(DevisRefuse) as refus:
                 _garde_module_substitue(SimpleNamespace(etude_params={'puissance_kwc': 8.8}), doc)
         self.assertEqual(refus.exception.donnees['kwc_dessine'], 9.36)
+
+
+class ModuleSubstitueSurfaceSansBaseTest(SimpleTestCase):
+    """ACAL1440 — le 409 ``module_substitue`` d'une surface de pose seule nomme la
+    surface et dit de changer le module du pan ; celui d'un toit garde son texte."""
+
+    LIGNES = 'apps.ventes.selectors_calepinage.lignes_produits_calepinage'
+    PANNEAU = [{'designation': 'Panneau Canadien Solar 710W', 'quantite': 50}]
+
+    def _refus(self, doc, compose):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.calepinage.services.devis import DevisRefuse, _garde_module_substitue
+
+        with mock.patch(self.LIGNES, return_value=self.PANNEAU):
+            with self.assertRaises(DevisRefuse) as refus:
+                _garde_module_substitue(SimpleNamespace(etude_params={'puissance_kwc': compose}), doc)
+        return refus.exception
+
+    def test_champ_au_sol_seul_dit_quoi_changer_et_ou(self):
+        doc = {'schema_version': 2, 'poseSurfaces': [
+            {'id': 's1', 'kind': 'sol', 'label': 'Champ au sol 1', 'moduleWc': 720,
+             'engine': {'modules': 50}}]}
+        refus = self._refus(doc, 35.5)
+        self.assertEqual(refus.statut, 409)
+        self.assertEqual(refus.donnees['code'], 'module_substitue')
+        self.assertEqual(refus.donnees['detail'], (
+            "Champ au sol 1 : son module (« 720 W ») n'est pas celui que le catalogue compose "
+            "(« Panneau Canadien Solar 710W »). Changez le module du pan, puis ré-enregistrez le contour."))
+
+    def test_toit_garde_le_texte_actuel(self):
+        doc = {'schema_version': 2, 'zones': [
+            {'id': 'z1', 'label': 'Zone 1', 'geometry': {'count': 50, 'kwc': 36.0}}]}
+        detail = self._refus(doc, 35.5).donnees['detail']
+        self.assertIn("Choisissez le module du catalogue dans l'atelier puis relancez.", detail)
+        self.assertNotIn('Changez le module du pan', detail)
+
+
+class KwcComposeSansCleSansBaseTest(SimpleTestCase):
+    """ACAL1417 — ``etude_params`` sans ``puissance_kwc`` : le kWc vendu se lit des
+    lignes du devis (règle unique de ventes), pour la question de taille comme pour
+    la garde du module substitué."""
+
+    LIGNES_32_4 = 'apps.ventes.services.puissance_kwc_du_devis'
+
+    def test_question_de_taille_dit_le_kwc_et_le_ttc(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.calepinage.services import devis as service
+        from apps.ventes.services import MOTIF_FACTURE_ABSENTE
+
+        devis = SimpleNamespace(etude_params={}, total_ttc=Decimal('156900'))
+        cible = {'panneaux': None, 'kwc': None, 'source': 'factures', 'refus': 'Aucune facture.',
+                 'motif_code': MOTIF_FACTURE_ABSENTE}
+        with mock.patch.object(service, '_cible_du_calepinage', return_value=cible):
+            with mock.patch(self.LIGNES_32_4, return_value=32.4):
+                with self.assertRaises(service.DevisRefuse) as question:
+                    service._garde_taille(devis, SimpleNamespace(lead_id=3, company=None), False)
+        self.assertEqual(question.exception.donnees['kwc'], 32.4)
+        self.assertIn('32,40 kWc', question.exception.donnees['detail'])
+        self.assertIn('156 900,00 MAD TTC', question.exception.donnees['detail'])
+
+    def test_module_substitue_se_declenche_sans_la_cle(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.calepinage.services.devis import DevisRefuse, _garde_module_substitue
+
+        doc = {'scenario': 'reseau', 'modules': [{'id': 'm1', 'pmaxWc': 585}],
+               'zones': [{'id': 'A', 'label': 'A', 'geometry': {'moduleId': 'm1', 'panels': [{}] * 16}}],
+               'result': {'count': 16, 'kwc': 9.36}}
+        devis = SimpleNamespace(etude_params={})
+        with mock.patch('apps.ventes.selectors_calepinage.lignes_produits_calepinage', return_value=[]):
+            with mock.patch(self.LIGNES_32_4, return_value=9.36):
+                _garde_module_substitue(devis, doc)  # même kWc : aucun refus
+            with mock.patch(self.LIGNES_32_4, return_value=8.8), self.assertRaises(DevisRefuse) as refus:
+                _garde_module_substitue(devis, doc)
+        self.assertEqual(refus.exception.donnees['kwc_compose'], 8.8)
 
 
 class RecetteR2SansBaseTest(SimpleTestCase):

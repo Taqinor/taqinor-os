@@ -20,6 +20,20 @@ function nombrePoints(points) {
 /** `{libelle, ton}` d'un état servi, ou `null` quand l'état n'est pas connu
     (jamais un mot deviné). */
 export function libelleEtat(etat, points) {
+  return libelleDe(etat, points)
+}
+
+/** ACAL1535 — l'état à afficher pour une proposition : l'état à chaud du verdict, SAUF quand il dit « prêt » et que
+    le dossier enregistré (`publication`, servi par `evaluer-electrique` sans corps) reste « à compléter » : le
+    résumé ne contredit alors pas le dossier. `null` quand aucun des deux états n'est lu. */
+export function etatAffiche(verdict, publication) {
+  if (verdict?.etat === 'pret' && publication?.etat === 'a_completer') {
+    return libelleDe(publication.etat, publication.points)
+  }
+  return libelleDe(verdict?.etat, verdict?.points)
+}
+
+function libelleDe(etat, points) {
   if (!ETATS[etat]) return null
   const n = nombrePoints(points)
   const libelles = {

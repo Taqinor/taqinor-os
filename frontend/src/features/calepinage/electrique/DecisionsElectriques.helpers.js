@@ -30,6 +30,8 @@ export function depuisEntree(entree) {
         repere: enTexte(l?.repere), designation: enTexte(l?.designation), calibre: enTexte(l?.calibre),
         quantite: enTexte(l?.quantite), motif: enTexte(l?.motif),
       })),
+    // ACAL1550 — la réponse du dossier à « arrêt rapide exigé ? » : 'oui' | 'non' | '' (non renseigné).
+    arretRapide: { oui: 'oui', true: 'oui', non: 'non', false: 'non' }[String(prot.exigences?.arret_rapide).toLowerCase()] ?? '',
     terre: {},
     polystring: (Array.isArray(e.polystring) ? e.polystring : [])
       .map((g) => ({ mppt: enTexte(g?.mppt), pans: Array.isArray(g?.pans) ? g.pans.join(', ') : enTexte(g?.pans) })),
@@ -53,8 +55,17 @@ function protectionsPosees(etat, entree) {
     if (quantite !== null) ligne.quantite = quantite
     return ligne
   })
-  if (!stocke && ecartes.length === 0 && ajouts.length === 0) return undefined
-  return { ...(stocke ?? {}), ecartes, ajouts }
+  const arret = etat.arretRapide ?? ''
+  if (!stocke && ecartes.length === 0 && ajouts.length === 0 && arret === '') return undefined
+  const posees = { ...(stocke ?? {}), ecartes, ajouts }
+  // ACAL1550 — `exigences.arret_rapide` : posé « oui » / « non », retiré quand « non renseigné » ; les autres
+  // exigences du dossier (paratonnerre…) restent telles quelles.
+  const exigences = estObjet(stocke?.exigences) ? { ...stocke.exigences } : {}
+  if (arret === '') delete exigences.arret_rapide
+  else exigences.arret_rapide = arret
+  if (Object.keys(exigences).length > 0) posees.exigences = exigences
+  else delete posees.exigences
+  return posees
 }
 
 function terrePosee(etat, entree) {

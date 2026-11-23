@@ -89,8 +89,15 @@ class SimulerVarianteTest(BaseApiCalepinage):
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.assertFalse(reponse.data['simulation_perimee'],
                          reponse.data.get('motif'))
+        # ACAL1323 — ce qui est SERVI porte les motifs en intitulés de métier ;
+        # ce qui est stocké garde le chemin du champ : on compare donc au
+        # stocké passé par la même lecture, jamais au texte brut (l'égalité
+        # brute ne tenait que tant qu'aucun motif n'avait à être relu).
+        from apps.calepinage.services.rapport.champs_lisibles import (
+            avec_motifs_lisibles,
+        )
         self.assertEqual(reponse.data['production'],
-                         self.a.resultat['production'])
+                         avec_motifs_lisibles(self.a.resultat)['production'])
         # Le calepinage, lui, n'a jamais été simulé.
         with patch_materiel():
             courant = self.api.get(f'{self.base}resultat/')

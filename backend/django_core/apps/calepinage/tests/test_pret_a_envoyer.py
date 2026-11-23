@@ -203,8 +203,8 @@ class ControlesElectriquesTest(SimpleTestCase):
                          'Matériel non désigné')
         verdict = controles['verdict_electrique']
         self.assertEqual(verdict['etat'], 'a_regler')
-        # R3-10 : singulier juste (« 1 point »), et le même mot que la pastille.
-        self.assertEqual(verdict['valeur_texte'], 'À compléter : 1 point')
+        # ACAL1539 : « À compléter » seul — le détail des motifs est au Verdict.
+        self.assertEqual(verdict['valeur_texte'], 'À compléter')
         self.assertEqual(len(controles), 7)
 
     def test_resume_de_motifs_singulier_pluriel(self):
@@ -219,8 +219,10 @@ class ControlesElectriquesTest(SimpleTestCase):
     def test_etat_lu_jamais_recalcule(self):
         # Mutant : recalculer depuis les motifs ⇒ « pret » (aucun motif).
         controles = self._controles(etat='a_completer', points=3)
+        self.assertEqual(controles['verdict_electrique']['etat'], 'a_regler')
+        # ACAL1539 : aucun compte de motifs sur la ligne du dossier.
         self.assertEqual(controles['verdict_electrique']['valeur_texte'],
-                         'À compléter : 3 points')
+                         'À compléter')
 
     def test_bloquant_avec_n(self):
         controles = self._controles(etat='bloquant', points=2)
@@ -230,7 +232,7 @@ class ControlesElectriquesTest(SimpleTestCase):
         self.assertEqual(self._controles()['verdict_electrique']['etat'], 'ok')
 
     def test_ratio_sans_fourchette_info(self):
-        ratio = {'valeur': 1.25, 'borne': 1.35, 'dans_bornes': True,
+        ratio = {'valeur': 1.25, 'borne': 1.35, 'dans_bornes': None,
                  'borne_source': 'borne usuelle du noyau électrique'}
         controle = self._controles(ratio=ratio)['ratio_dc_ac']
         self.assertEqual(controle['etat'], 'info')
@@ -266,6 +268,27 @@ class ControlesElectriquesTest(SimpleTestCase):
                          'Chute 3,2 % pour 3 %')
         self.assertEqual(controles['terre_protections']['etat'], 'a_regler')
         self.assertEqual(controles['orientation_mppt']['etat'], 'ok')
+
+    def test_chaque_controle_a_regler_porte_l_onglet_qui_le_regle(self):
+        # ACAL1506 — « Régler » ouvre l'écran où le point se saisit, plus le
+        # Schéma (mutant : remettre ``schema`` par défaut ⇒ échec).
+        troncons = {'verdicts': [], 'omissions': [
+            {'motif': 'Longueur du tronçon non saisie'}]}
+        terre = [{'code': 'TERRE_OMISE', 'statut': 'omis',
+                  'libelle': 'Terre non saisie', 'source': ''}]
+        controles = self._controles(troncons=troncons, motifs=terre,
+                                    etat='a_completer', points=2)
+        attendus = {'verdict_electrique': 'verdict-electrique',
+                    'chutes_tension': 'cheminement-cables',
+                    'terre_protections': 'decisions-electriques'}
+        for code, onglet in attendus.items():
+            self.assertNotEqual(controles[code]['etat'], 'ok', code)
+            self.assertEqual(controles[code]['cible'],
+                             {'etape': 'electrique', 'onglet': onglet,
+                              'champ': ''}, code)
+        # Les contrôles sans écran de saisie propre restent au Schéma.
+        self.assertEqual(controles['tension_froid']['cible']['onglet'],
+                         'schema')
 
 
 DOSSIERS = 'apps.calepinage.services.reglementaire.dossiers_du_calepinage'
@@ -513,6 +536,29 @@ class TailleSansFactureTest(SimpleTestCase):
     def test_autre_refus_ne_pose_pas_la_question(self):
         ci = _cible(None, 'Lead commercial/industriel : étude C&I.')
         self.assertEqual(self._controle(ci)['etat'], 'ok')
+
+    def test_sans_facture_ni_taille_aucun_balayage_reponse_identique(self):
+        """ACAL1342 — un lead résidentiel sans facture ni taille souhaitée : la réponse
+        est celle du moteur (« facture absente »), sans lancer ``cible_depuis_lead`` ;
+        dès qu'un champ dimensionnant est rempli, le moteur tranche comme avant."""
+        from types import SimpleNamespace
+
+        from apps.calepinage.services.pret_a_envoyer import controle_taille_sans_facture
+
+        attendu = self._controle(_cible('facture_absente', 'Facture absente.'))
+        vide = dict(type_installation='residentiel', facture_hiver=None, facture_ete='',
+                    conso_mensuelle_kwh=None, taille_souhaitee_kwc=None)
+        for lead, appels in ((SimpleNamespace(**vide), 0),
+                             (SimpleNamespace(**dict(vide, facture_hiver=900)), 1),
+                             (SimpleNamespace(**dict(vide, type_installation='commercial')), 1)):
+            calepinage = _Calepinage(lead_id=3)
+            calepinage.roof_layout = {'zones': []}
+            with mock.patch(LEAD, return_value=lead), \
+                    mock.patch(CIBLE, return_value=_cible('facture_absente', 'Facture absente.')) as balayage, \
+                    mock.patch(MESURES, return_value={'kwc': 131.04, 'pans': []}):
+                controle = controle_taille_sans_facture(calepinage)
+            self.assertEqual(balayage.call_count, appels, lead)
+            self.assertEqual(controle, attendu)
 
     def test_puissance_inconnue_info_et_sans_lead(self):
         self.assertEqual(self._controle(_cible('facture_absente', 'x'),
@@ -956,3 +1002,30 @@ class PretAEnvoyerRouteTest(BaseApiCalepinage):
             # une lecture neuve recalcule : rien n'est gardé d'une requête à l'autre
             self.assertEqual((calculs.call_count, lectures.call_count),
                              (2 * premiere[0], 2 * premiere[1]))
+
+    def test_la_lecture_complete_range_son_verdict_le_filtre_non(self):
+        """ACAL1333 — verdict rangé par la lecture complète seule, idempotent,
+        sans toucher ``updated_at``."""
+        from apps.calepinage.models import Calepinage
+
+        calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='QA-ACAL1333',
+            layout_hash='a' * 64)
+        url = f'{url_detail(calepinage.pk)}pret-a-envoyer/'
+        avant = calepinage.updated_at
+        self.assertEqual(self.api.get(url, {'etape': 'electrique'}).status_code, 200)
+        self.assertIsNone(Calepinage.objects.get(pk=calepinage.pk).dernier_verdict)
+
+        reponse = self.api.get(url)
+
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        rangee = Calepinage.objects.get(pk=calepinage.pk)
+        verdict = rangee.dernier_verdict
+        self.assertEqual(
+            (verdict['a_regler'], verdict['bloquants'], verdict['empreinte']),
+            (reponse.data['nombre_a_regler'], reponse.data['nombre_bloquants'], 'a' * 64))
+        self.assertTrue(verdict['lu_le'])
+        self.assertEqual(rangee.updated_at, avant)
+        # Relire le même document : aucune réécriture (même date de lecture).
+        self.assertEqual(self.api.get(url).status_code, 200)
+        self.assertEqual(Calepinage.objects.get(pk=calepinage.pk).dernier_verdict, verdict)

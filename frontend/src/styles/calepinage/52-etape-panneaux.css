@@ -79,9 +79,10 @@
   color: var(--foreground); font-weight: 600; font-size: 0.875rem;
 }
 
-/* Sur la carte : la puce (haut, centrée), la légende (bas gauche), le lecteur du soleil (bas centre). */
+/* Sur la carte : la puce (haut gauche, comme Panneaux.dc.html — ACAL1515), la légende (bas gauche), le lecteur du
+   soleil (bas centre). */
 .cal-coque .cal-pan-puce {
-  position: absolute; top: 16px; left: 50%; transform: translateX(-50%); display: flex; align-items: center;
+  position: absolute; top: 16px; left: 16px; display: flex; align-items: center;
   gap: 20px; padding: 10px 20px; max-width: calc(100% - 140px); white-space: nowrap;
 }
 .cal-coque .cal-pan-puce .cal-indicateur + .cal-indicateur { padding-left: 20px; border-left: 1px solid var(--border); }

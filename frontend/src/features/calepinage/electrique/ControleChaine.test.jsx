@@ -63,6 +63,27 @@ describe('ControleChaine (ACAL628)', () => {
     expect(corps.temperature_max_c).toBe(70)
   })
 
+  it('ACAL1546 — N et le froid suffisent ; le verdict rouge n’est écrit qu’une fois', async () => {
+    await rendre()
+    calepinageApi.calepinages.controleChaine.mockResolvedValue({ data: ROUGE })
+    await userEvent.selectOptions(document.getElementById('acal628-module_produit'), String(complet(ENTREE.candidats.modules).id))
+    await userEvent.selectOptions(document.getElementById('acal628-onduleur_produit'), String(complet(ENTREE.candidats.onduleurs).id))
+    await userEvent.type(document.getElementById('acal628-nombre_modules'), '22')
+    await userEvent.type(document.getElementById('acal628-temperature_min_c'), '-5')
+    await userEvent.click(screen.getByTestId('acal628-controler'))
+
+    const verdict = await screen.findByTestId('acal628-verdict')
+    expect(screen.queryByTestId('acal628-erreur-temperature_max_c')).toBeNull()
+    const [corps] = calepinageApi.calepinages.controleChaine.mock.calls[0]
+    expect(corps).not.toHaveProperty('temperature_max_c')
+    expect(screen.getByTestId('acal628-titre')).toHaveTextContent('Trop haut : 1 177 V')
+    // Le refus bloquant n'est pas répété en ligne « Ne convient pas ».
+    expect(screen.queryByTestId('acal628-controle-voc_froid')).toBeNull()
+    expect(verdict.textContent.match(/1\s177\sV/g)).toHaveLength(1)
+    expect(verdict).not.toHaveTextContent('Ne convient pas')
+    expect(screen.getByTestId('acal628-controle-demarrage')).toHaveTextContent('Conforme')
+  })
+
   it('un champ vide est désigné sous le champ fautif, rien ne part au serveur', async () => {
     await rendre()
     await userEvent.click(screen.getByTestId('acal628-controler'))

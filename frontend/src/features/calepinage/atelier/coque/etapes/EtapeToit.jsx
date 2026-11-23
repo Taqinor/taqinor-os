@@ -5,7 +5,7 @@ import useDocumentCalepinage from '../../../useDocumentCalepinage'
 import { SurCarte } from '../emplacements'
 import { BoutonMarine, CarteFlottante, Icone, Indicateur, SectionEtape, Segmente } from '../primitives'
 import {
-  GESTES, ajoutTermine, annulerAjoutPan, appliquerCotes, commencerAjoutPan, degres, enregistrerPentePan, nomFace,
+  GESTES, ajoutTermine, annulerAjoutPan, appliquerCotes, commencerAjoutPan, confirmerPenteVivante, degres, enregistrerPentePan, nomFace,
   selectionnerObstacle, texteBesoin, useEtatToit,
 } from './EtapeToit.helpers'
 import { useCibleFactures } from './panneaux/lectures'
@@ -106,13 +106,20 @@ function CartePente({ calepinageId, builderApi, documentVivant, lectureSeule, en
 
   const confirmer = async () => {
     if (lectureSeule) return
+    // ACAL1428 — un toit pas encore dans la conception servie : on confirme le pan VIVANT (le moteur écrit `pitchSource`,
+    // « Enregistrer » l'emporte) ; aucune écriture serveur avant « Enregistrer ».
+    if (!zone && vue && !vue.plat && confirmerPenteVivante(document, vue.deg)) {
+      setMessage('Pente confirmée : elle sera enregistrée avec le calepinage.')
+      return
+    }
     if (doc.etat !== 'ok') { setMessage('Conception illisible : rien n’est enregistré.'); return }
     if (!zone) { setMessage('Enregistrez d’abord le calepinage : ce pan n’est pas encore dans la conception.'); return }
-    const deg = Number(zone.pitchDeg)
+    const plat = zone.roofType === 'flat'
+    const deg = plat ? 0 : Number(zone.pitchDeg)
     if (!Number.isFinite(deg)) { setMessage('Ce pan n’a pas de pente : saisissez-la avec « Modifier la pente ».'); return }
     setEnvoi(true)
     const rendu = await enregistrerPentePan({
-      calepinageId, doc, documentVivant, zone, zones,
+      calepinageId, doc, documentVivant, zone, zones, confirmerPlat: plat,
       champs: { pitchDeg: deg, pitchSource: sourceDePente({ degres: deg, source: 'degres' }, {}) },
     })
     setEnvoi(false)
@@ -122,7 +129,7 @@ function CartePente({ calepinageId, builderApi, documentVivant, lectureSeule, en
   const titre = !vue ? null
     : vue.plat ? 'Toit plat'
       : `${degres(vue.deg) ?? '—'}°${vue.face ? ` · face ${vue.face}` : ''}`
-  const aConfirmer = Boolean(vue && !vue.plat && vue.aConfirmer)
+  const aConfirmer = Boolean(vue && vue.aConfirmer) // ACAL1429 — un plat jamais confirmé l'est aussi
   return (
     <div className="cal-toit-pente" data-testid="cal-toit-pente-carte">
       {titre ? (
@@ -136,7 +143,9 @@ function CartePente({ calepinageId, builderApi, documentVivant, lectureSeule, en
       {aConfirmer && !inconnue && (
         <>
           <p className="cal-toit-pente-texte">
-            Valeur de départ, pas une mesure. Confirmez-la ou mesurez-la avant d&apos;envoyer le devis.
+            {vue.plat
+              ? "Toit plat pris par défaut, pas une mesure. Confirmez-le ou vérifiez-le avant d'envoyer le devis."
+              : "Valeur de départ, pas une mesure. Confirmez-la ou mesurez-la avant d'envoyer le devis."}
           </p>
           <div className="cal-toit-pente-actions">
             <BoutonMarine onClick={confirmer} disabled={lectureSeule || envoi} data-testid="cal-toit-pente-confirmer">
@@ -155,13 +164,16 @@ function CartePente({ calepinageId, builderApi, documentVivant, lectureSeule, en
         </p>
       )}
       {message && <p className="cal-toit-pente-message" role="status">{message}</p>}
-      <details className="cal-toit-pente-modifier" onToggle={(e) => setModifier(e.currentTarget.open)}>
-        <summary>Modifier la pente</summary>
-        {modifier && (
-          <SaisiePente calepinageId={calepinageId} documentVivant={documentVivant} lectureSeule={lectureSeule}
-            zoneInitiale={zone?.id ?? ''} onEnregistre={recharger} />
-        )}
-      </details>
+      {/* ACAL1341 — un toit plat n'a pas de pente : sa forme change par les tuiles, jamais par ce formulaire. */}
+      {!vue?.plat && (
+        <details className="cal-toit-pente-modifier" onToggle={(e) => setModifier(e.currentTarget.open)}>
+          <summary>Modifier la pente</summary>
+          {modifier && (
+            <SaisiePente calepinageId={calepinageId} documentVivant={documentVivant} lectureSeule={lectureSeule}
+              zoneInitiale={zone?.id ?? ''} onEnregistre={recharger} />
+          )}
+        </details>
+      )}
     </div>
   )
 }
@@ -369,6 +381,15 @@ export default function EtapeToit({
   // l'atelier, `ecranProps.contexte`, prime — relu ici seulement sans lui, REP-995).
   const facture = useCibleFactures(calepinageId, servi, { attendre: contexteEnCours })
   const [ajout, basculerAjout] = useAjoutPan(etat, relire)
+  // ACAL1410 — tant qu'aucun contour n'est fermé, le champ d'adresse (#rp9-search) flotte au-dessus de la carte en Guidé
+  // (la règle de 50-coque-atelier.css lit cet attribut de la coque) ; il disparaît dès qu'un toit est tracé.
+  const sansToit = !etat.outils.ferme
+  useEffect(() => {
+    const coque = document.querySelector('.cal-coque')
+    if (!coque || !sansToit) return undefined
+    coque.dataset.sansToit = '1'
+    return () => { delete coque.dataset.sansToit }
+  }, [sansToit])
   return (
     <div className="cal-etape-toit">
       <div className="cal-toit-bloc cal-toit-bloc-forme">

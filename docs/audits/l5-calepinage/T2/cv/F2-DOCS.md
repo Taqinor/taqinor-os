@@ -1,0 +1,72 @@
+# Contre-vérification — F2-DOCS — Documents : planche, rapport d'étude, dossier, exports
+
+33 corrections livrées sans preuve en direct, S1-S2 d'abord. Pour chacune : rejoue la « preuve », regarde l'écran, écris UN verdict (ok / partiel / non-fait / faux / regression / deja-present).
+Le texte complet d'une tâche (constat d'origine, Given/When/Then) : `grep -n "<id> —" docs/plans/PLAN_AUDIT_CALEPINAGE.md` dans le worktree en lecture.
+
+- **ACAL601** (S1) — Dessiner chaque module de la planche A3 dans son vrai sens : emprise lue de `geometry.panelOrientation` (et de `panels[].orient` en pose mixte), tournée de l'azimut du pan, au lieu du grand côté toujours posé en X ; fini quand 48 
+  - Preuve : rejeu T1-F1-020 (calepinage 16, Documents → Planche A3) : modules comptables, sans recouvrement, dans le cadre.
+- **ACAL604** (S1) — Écrire dans le DXF l'emprise vraie de chaque module (rectangle de `coins_du_module`, sans recouvrement) et un seul tracé par contour identique sur le calque TOITURE ; fini quand 48 modules portrait au pas de 1,323 m donnent 48 pol
+  - Preuve : rejeu T1-F1-031 : télécharger le DXF et le relire avec ezdxf.
+- **ACAL605** (S1) — Dessiner le plan de câblage et le calque CHAINES du DXF avec l'emprise vraie des modules (`coins_du_module`) au lieu de `_coins` couché ; fini quand 12 modules portrait teintés ne se recouvrent plus
+  - Preuve : rejeu T1 (Documents → Plan de câblage, puis DXF avec chaînes) : modules distincts et teintés.
+- **ACAL1307** (S1) — Présenter l'étape « Documents » sur deux colonnes (contrôles à gauche, cinq cartes de documents à vignette à droite) avec le bouton or « Générer le devis → » ; fini quand les cinq cartes (plan de pose, schéma, note de calcul, rapp
+  - Preuve : PA2.10 — capture à 1440 × 900 sur un calepinage dans le même état (calepinage 1 de la pile de recette, mode guidé, thème clair), posée à côté de `docs/audits/l5-calepinage/maquettes/Documents.dc.html` rendue en `file://` à la même taille : faits 5 à 9 : « Documents du projet » (20 px) + « Faits à partir de la version enregistrée à HH:MM », cinq cartes à vignette ≈ 100 px avec « Aperçu » et « ⤓ Télécharger », bandeau bleu sur le devis, rail « 1 à régler » sous Toit, aucune ligne d'empreinte en guidé ; verdict FIDÈLE
+- **ACAL602** (S2) — Imprimer l'échelle réellement dessinée : `_echelle_nommee` rend l'entier le plus proche de 1 000 ÷ (mm de feuille par mètre) au lieu du rang normalisé SUPÉRIEUR ; fini quand une planche tracée à 19,28 mm par mètre imprime « 1/52 »
+  - Preuve : rejeu T1-F1-020, PDF de la planche : mesurer la barre « 1,00 m » et la comparer à l'échelle imprimée.
+- **ACAL603** (S2) — Coter la planche (et le DXF) avec les dimensions du TOIT seul, contour et pans, jamais la boîte toit + obstacles + modules ; fini quand une lucarne à cheval sur la rive ne change plus les cotes générales d'un toit de 9,02 m × 5,89
+  - Preuve : rejeu T1-F1-021 : poser une cheminée au bord, télécharger la planche : « 9,02 m × 5,89 m ».
+- **ACAL942** (S2) — Dire « Conception enregistrée — il manque le calcul » après un enregistrement, pas « Aucune conception enregistrée » ; fini quand Documents sert ce motif et que la fiche dit « Oui » sans recharger
+  - Preuve : rejouer T1-S2-011 : Enregistrer, ouvrir Documents, lire le motif, puis la fiche « Oui » sans F5.
+  - Écran : étape Documents, essentiel, `docs/audits/l5-calepinage/maquettes/Documents.dc.html`.
+- **ACAL1008** (S2) — Refuser qu'un calepinage `rapide` sorte côté client : la planche A3 est refusée, l'annexe « paramètres du site » est omise et le rendement de la pose n'est jamais servi au devis tant que personne ne l'a vérifié ; fini quand ces tr
+  - Preuve : pile de revue — planche d'un calepinage rapide refusée avec le motif, puis acceptée après « J'ai vérifié le toit ».
+- **ACAL1306** (S2) — Faire de « Prêt à envoyer ? » une liste courte, groupée et filtrable (props `groupes` et `filtre`) : une ligne par contrôle (coche, titre, une phrase, rond « ? »), légende « Bon / À régler / Bloque le devis » ; fini quand la liste
+  - Preuve : PA2.10 — capture à 1440 × 900 sur un calepinage dans le même état (calepinage 1 de la pile de recette, mode guidé, thème clair), posée à côté de `docs/audits/l5-calepinage/maquettes/Documents.dc.html` rendue en `file://` à la même taille : faits 1 à 4 de la colonne gauche : « Prêt à envoyer ? », « N contrôles sur M sont bons » + pastille, groupes Toit/Panneaux/Électrique/Résultats avec coche verte et « ? », ligne dorée avec bouton « Régler dans Toit », légende « Bon / À régler / Bloque le devis » ; verdict FIDÈLE d
+- **ACAL575** (S?) — Exclure les modules d'un pan « existant » de la nomenclature de fixation et les marquer « existant » sur la planche et le plan de pose ; fini quand `bom-fixation/` d'un projet à 10 modules existants et 6 neufs compte 6 modules et 
+  - Preuve : PA2.5 — importer un document à un pan existant, ouvrir `bom-fixation/` (6) puis le plan de pose (10 modules grisés, légende).
+- **ACAL578** (S?) — Ajouter à la nomenclature de fixation les bases `tables` (champ au sol, ombrière), `poteaux` (ombrière à entraxe et section saisis) et `pieds` (portée saisie) ; fini quand un champ au sol de 12 tables avec la règle « 4 pieux par t
+  - Preuve : PA2.5 — projet à champ au sol de 12 tables, système à règle « 4 par table » : `bom-fixation/` rend 48.
+- **ACAL580** (S?) — Imprimer sur le plan de pose les poteaux d'ombrière (repères P1…Pn, nombre, entraxe saisi) et le nombre de pieds de châssis du toit plat (portée saisie) ; fini quand `plan-pose.pdf` d'une ombrière à entraxe et section saisis porte
+  - Preuve : PA2.5 — ombrière à entraxe et section saisis : ouvrir le plan de pose, lire les poteaux repérés et leur nombre.
+- **ACAL1065** (S?) — Imprimer les repères de chantier saisis sur la feuille A4 du pan qui les contient, avec un symbole par type, leur texte, le cercle du rayon saisi à l'échelle de la feuille et une légende ; fini quand une ancre à rayon de 2 m s'imp
+  - Preuve : atelier local : poser une ancre de 2 m, enregistrer, télécharger « Plan de pose » : la page A4 du pan montre le cercle, le texte et la légende ; imprimer en A4 et mesurer le cercle à la règle d'après la barre d'échelle.
+- **ACAL550** (S3) — Imprimer sur le plan de pose, sous chaque pan sans module, la cause rangée au document ; fini quand `plan-pose.pdf` d'un calepinage à un pan vide porte la phrase du motif au centre de ce pan, et que rien n'est imprimé pour un pan 
+  - Preuve : PA2.5 — calepinage de démo avec un pan trop étroit : télécharger le plan de pose, lire la phrase au centre du pan.
+- **ACAL588** (S3) — Servir par un sélecteur le plan de pose (SVG) du calepinage retenu d'un devis, avec son empreinte et sans montant ; fini quand `plan_pose_svg_pour_devis(devis_id, company)` rend le SVG d'un projet retenu, ou `svg: None` avec le mo
+  - Preuve : `python manage.py shell` sur le projet de démonstration retenu : `plan_pose_svg_pour_devis(<devis>, <société>)['svg']` écrit dans un fichier s'ouvre dans un navigateur sans réseau (aucune ressource externe) et montre R1…, le sens de pose et la liste des chaînes ; la preuve à l'écran est celle d'ACAL589.
+- **ACAL590** (S3) — Ajouter au plan de pose une feuille A4 par pan : modules teintés par chaîne, numéro de chaque module et flèche du sens de numérotation de chaque chaîne (« la polarité se vérifie sur site », comme le plan de câblage d'ACAL643) ; fi
+  - Preuve : télécharger « Plan de pose » du projet de démonstration à 2 chaînes (étape Documents) : la dernière page A4 montre le pan, ses deux teintes, ses numéros et ses + / − ; imprimer en A4 et vérifier que les numéros se lisent à 1 m.
+- **ACAL591** (S3) — Coter sur la feuille A4 de chaque pan les quatre distances du champ aux rives et chaque zone interdite ; fini quand un pan de 10 × 6 m aux marges connues sort quatre cotes mesurées égales à ces marges et une cote par zone interdit
+  - Preuve : plan de pose du projet de démonstration : comparer les quatre cotes d'un pan à la mesure faite dans l'atelier (outil de mesure CAL102) : même valeur au centimètre.
+- **ACAL592** (S3) — Publier la nomenclature de fixation PAR PAN et l'imprimer en encart sur la feuille A4 du pan ; fini quand, sur un projet à deux pans, la somme des quantités des deux encarts égale la ligne de `bom-fixation/` (unité « m », à 0,01 p
+  - Preuve : plan de pose de la démonstration avec un système saisi : l'encart de chaque pan se lit sur sa page A4 ; recompter à la main les pinces d'un pan.
+- **ACAL594** (S3) — Créer une variante par module coché du stock sur la même implantation ; fini quand cocher deux modules crée deux variantes nommées par module, l'une valide telle quelle (mêmes cotes) et l'autre marquée « à re-poser » (cotes différ
+  - Preuve : `curl` authentifié sur la pile locale : `POST variantes-par-module/` avec deux produits du stock ⇒ `GET variantes/` liste deux variantes nommées par module ; l'écran est celui d'ACAL600.
+- **ACAL595** (S3) — Servir le module de chaque variante dans le comparatif (`lignes[].module`) ; fini quand `GET comparer/` donne, pour chaque variante, le module désigné par ses pans (libellé, puissance, cotes) ou « mixte »
+  - Preuve : `GET /api/django/calepinage/calepinages/<pk>/comparer/` sur le projet de démonstration après ACAL594 : chaque ligne porte son module ; l'écran est celui d'ACAL600.
+- **ACAL596** (S3) — Servir par un sélecteur les points de contrôle de pose d'un calepinage retenu (système de fixation, chaînes dans l'ordre) ; fini quand `points_de_controle_pose(devis_id, company)` d'un projet à 2 chaînes rend 2 lignes de chaîne et
+  - Preuve : `python manage.py shell` sur la démonstration : `points_de_controle_pose(<devis>, <société>)` rend les lignes attendues ; leur apparition dans la check-list est la preuve d'ACAL597.
+- **ACAL598** (S3) — Ajouter l'échafaudage à la nomenclature de fixation : bases `longueur_egouts_m` et `facade_egouts_m2` lues sur les arêtes d'égout et la hauteur de bâtiment SAISIES, rôle « échafaudage », quantité par la règle de la société ; fini 
+  - Preuve : saisir un composant « Échafaudage » dans le système de la démonstration (rôle, unité, règle, source) puis `GET bom-fixation/` : la surface s'affiche ; retirer la hauteur du bâtiment : la ligne dit ce qui manque.
+- **ACAL600** (S3) — Ouvrir « Comparer d'autres modules » depuis l'étape Panneaux (niveau expert) : cocher 2 à 3 modules du stock, créer les variantes et ouvrir la comparaison avec une ligne « Module » ; fini quand cocher deux modules mène à la compar
+  - Preuve : atelier local en mode expert : étape Panneaux, « Comparer d'autres modules », cocher deux modules, valider : le comparatif s'ouvre avec les deux variantes et la ligne « Module » ; une variante de cotes différentes dit « à re-poser ».
+- **ACAL643** (S3) — Dessiner sur le plan de câblage le sens de numérotation des modules de chaque chaîne (flèche et légende) ; fini quand chaque chaîne de plus d'un module du `plan-cablage.pdf` porte sa flèche et la légende « sens de numérotation — l
+  - Preuve : pile locale — onglet Documents : télécharger le plan de câblage d'un calepinage à deux chaînes.
+- **ACAL672** (S3) — Imprimer sur le plan de câblage, pour chaque chaîne, sa tension à froid avec la température citée et son courant de court-circuit, lus dans la réponse du serveur ; fini quand chaque chaîne du `plan-cablage.pdf` porte « Voc à −5 °C
+  - Preuve : pile locale — onglet Documents : télécharger le plan de câblage d'un calepinage à deux chaînes et lire la légende.
+- **ACAL673** (S3) — Imprimer sur le plan de câblage la consigne DC de la société (texte saisi une fois dans les réglages, avec sa source), vide ⇒ rien d'imprimé ; fini quand la consigne saisie figure sous la légende du PDF
+  - Preuve : pile locale — saisir la consigne dans les réglages société, télécharger le plan de câblage.
+- **ACAL674** (S3) — Écrire dans le DXF un bloc `MODULE` défini une fois et inséré par module avec les attributs CHAINE, MPPT, ONDULEUR et N ; fini quand le DXF relu compte autant d'INSERT que de modules posés et que chaque attribut CHAINE égale l'aff
+  - Preuve : pile locale — télécharger le DXF d'un calepinage affecté et l'ouvrir dans un lecteur CAO ou ezdxf.
+- **ACAL686** (S3) — Faire dire au bandeau du schéma unifilaire sans norme ce qui n'est pas dessiné après l'onduleur (disjoncteur AC, compteur de production, TGBT, compteur du réseau) et quoi renseigner pour l'obtenir ; fini quand le bandeau d'un cale
+  - Preuve : pile locale — calepinage sans norme choisie : onglet Schéma unifilaire, lire le bandeau ; avec une norme : bandeau vide.
+- **ACAL831** (S3) — Enregistrer le dernier dimensionnement de pompage rendu, pour que le rapport d'étude puisse l'imprimer ; fini quand un POST `pompage/` complet laisse `pompage_dernier` dans le résultat stocké et répond `enregistre: true`, sans rie
+  - Preuve : PA2.5 — API : POST du dimensionnement d'essai, puis lecture du résultat stocké.
+- **ACAL832** (S3) — Ajouter au rapport d'étude interne la section « Consommation et hypothèses », omise quand aucune consommation n'est servie ; fini quand `rapport-etude.pdf` imprime l'origine de la courbe, le total, les charges ajoutées avec leur m
+  - Preuve : PA2.5 — onglet Documents : rapport d'étude PDF d'un calepinage simulé avec consommation, puis d'un autre sans.
+- **ACAL833** (S3) — Ajouter au rapport d'étude interne la section « Hors réseau » (défaillance par mois, pire mois, banque), omise pour une installation raccordée ; fini quand le PDF d'un calepinage hors réseau simulé l'imprime et que celui d'un cale
+  - Preuve : PA2.5 — rapport PDF d'un calepinage déclaré hors réseau, puis d'un raccordé.
+- **ACAL834** (S3) — Ajouter au rapport d'étude interne la section « Pompage » lue sur le dernier dimensionnement enregistré (HMT et composantes, pompe et variateur, volumes par mois, couverture), omise sans dimensionnement ; fini quand le PDF l'impri
+  - Preuve : PA2.5 — API : POST `pompage/`, puis rapport PDF.
+- **ACAL889** (S3) — Imprimer sur le plan de pose la tension DC maxi à froid de chaque chaîne et, si la société en a saisi une, sa consigne de sécurité ; fini quand le PDF d'exemple porte une ligne par chaîne et cette consigne mot pour mot
+  - Preuve : PA2.5 — PDF du plan de pose d'un calepinage chaîné : une ligne de tension par chaîne.

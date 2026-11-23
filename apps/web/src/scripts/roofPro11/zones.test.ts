@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom'; // ACAL574
 import { buildingLabel, createZones } from './zones'; // ACAL574
 import { motifPanExistant } from './panExistant'; // ACAL574
-import { ctxDeBase, panDeTest, ptM } from './harnaisAtelier'; // ACAL574
+import { ctxDeBase, panDeTest, ptM, rectRing } from './harnaisAtelier'; // ACAL574, ACAL1328
 import { fileURLToPath } from 'node:url';
 import { CHEMINS_TOURNES, CLES_REFUSEES, pivoterSite } from './siteRotation'; // ACAL514
 import { motifPanVerrouille } from './panVerrouille'; // ACAL520
@@ -35,13 +35,20 @@ import {
   prochainId, // ACAL64
   tousLesObstacles, // ACAL64
   nouveauPanDepuisContour, // ACAL71
+  poserModuleDeDepart, // ACAL1273
+  panVierge, // ACAL1416
+  ajoutDePanEnCours, monterToitGriseSousTrace, toitExistantGeoJSON, // ACAL1329
   type ExclusionZone,
 } from './zones';
-import { hydrateFromDevis, serializeLayout, type SerializedLayout } from './prefill'; // ACAL64
+import { deserializeLayout, hydrateFromDevis, serializeLayout, type SerializedLayout } from './prefill'; // ACAL64, ACAL1415
+import { MENTION_MODULE_DE_DEPART, affectationDesPans } from './moduleSelect'; // ACAL1415
+import { panAuModuleChoisi, remplacerParPanVierge, reprendreModuleChoisi } from './repriseModule'; // ACAL1416
 import { type Ctx } from './context'; // ACAL64
 import { lireGabaritsZone, lireGabaritsObstacle, type AreaRecord } from './types';
 import { type LngLat } from '../../lib/roof';
 import { type Obstacle } from '../../lib/obstacles';
+import { CALQUE_COTES, cotesDesAretes, monterCotesAretes, texteCote } from './cotesAretes'; // ACAL1328
+import { CALQUES_EDITION, poserPresentation } from './presentationCarte'; // ACAL1328
 
 const A: LngLat = [-7.6, 33.5];
 const B: LngLat = [-7.5995, 33.5004];
@@ -532,6 +539,145 @@ describe('ACAL71 — nouveauPanDepuisContour', () => {
   });
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACAL1273 — le module de départ est POSÉ dans le document (pan issu d'un contour, document
+// relu sans module) : jamais un pan sans `moduleId` qui retomberait sur le 720 Wc au rechargement.
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('ACAL1273 — module de départ posé dans le document', () => {
+  const m710 = { id: 'produit-7', produitId: 7, libelle: 'Module 710 W', longueurMm: 2384, largeurMm: 1303, epaisseurMm: 33, poidsKg: 38, pmaxWc: 710, source: 'fiche' };
+  const carre: [number, number][] = [[-7.6, 33.5], [-7.5998, 33.5], [-7.5998, 33.5002], [-7.6, 33.5002]];
+
+  it('pan issu d’un contour ⇒ moduleId de départ', () => {
+    const v = nouveauPanDepuisContour(carre, [{ id: 'area-1' }], m710);
+    expect(v.ok && v.pan.moduleId).toBe('produit-7');
+    const sans = nouveauPanDepuisContour(carre, [{ id: 'area-1' }], null); // sans catalogue : 720 Wc NOMMÉ
+    expect(sans.ok && 'moduleId' in sans.pan).toBe(false);
+  });
+
+  it('document de calepinage sans module ⇒ module de départ posé à l’hydratation, puis écrit au document', () => {
+    const doc = { version: 1, zones: [{ id: 'area-1', label: 'Zone 1', vertices: carre, obstacles: [], roofType: 'flat', pitchDeg: 22, facingAzimuthDeg: 180, facingManual: false, neededPanels: 0, neededAuto: true }] } as unknown as SerializedLayout;
+    const pans = hydrateFromDevis({ id: null, geometrie: { roof_layout: doc }, cibleVendue: false }).zones as AreaRecord[];
+    expect(pans[0].moduleId).toBeUndefined(); // le document relu n'en porte aucun
+    poserModuleDeDepart(pans, doc.zones, m710);
+    expect(pans.map((p) => p.moduleId)).toEqual(['produit-7']);
+    // Un document qui DÉSIGNE déjà un module reste tel quel ; une installation existante n'est pas la nôtre.
+    const choisi = [panDeTest('area-1', { moduleId: 'produit-9' }), panDeTest('area-2')];
+    poserModuleDeDepart(choisi, [{ geometry: { moduleId: 'produit-9' } }, {}], m710);
+    expect(choisi.map((p) => p.moduleId)).toEqual(['produit-9', undefined]);
+    const existant = [panDeTest('area-1', { existant: true })];
+    poserModuleDeDepart(existant, [{}], m710);
+    expect(existant[0].moduleId).toBeUndefined();
+  });
+});
+
+// ACAL1416 — « Effacer » puis retracer : le module CHOISI du pan effacé est conservé (jamais le départ du catalogue).
+describe('ACAL1416 — Effacer puis retracer : le moduleId choisi est conservé, kWc identique partout', () => {
+  const m720 = { id: 'produit-720', produitId: 720, libelle: 'Module 720 W', longueurMm: 2384, largeurMm: 1303, epaisseurMm: 33, poidsKg: 38, pmaxWc: 720, source: 'fiche' };
+  const carre: [number, number][] = [[-7.6, 33.5], [-7.5998, 33.5], [-7.5998, 33.5002], [-7.6, 33.5002]];
+
+  it('un pan au module choisi (Jinko 710 W) : le pan retracé garde son moduleId et son drapeau', () => {
+    const avant = [panDeTest('area-1', { moduleId: 'jinko-710', ...{ moduleChoisi: true } } as Partial<AreaRecord>)];
+    const neuf = reprendreModuleChoisi(panVierge(avant.slice(0, 0), carre, m720), panAuModuleChoisi(avant, 'area-1'));
+    expect(neuf.moduleId).toBe('jinko-710'); // pas le module de départ (720 W)
+    expect((neuf as { moduleChoisi?: boolean }).moduleChoisi).toBe(true);
+  });
+
+  it('remplacerParPanVierge : la liste ne garde que le pan neuf, au module choisi', () => {
+    const pans = [panDeTest('area-1', { moduleId: 'jinko-710', ...{ moduleChoisi: true } } as Partial<AreaRecord>), panDeTest('area-2')];
+    const neuf = remplacerParPanVierge(pans, 'area-1', () => panVierge([], carre, m720));
+    expect(pans).toEqual([neuf]);
+    expect(neuf.moduleId).toBe('jinko-710');
+  });
+
+  it('un module seulement « de départ » (jamais choisi) n’est pas repris', () => {
+    const avant = [panDeTest('area-1', { moduleId: 'produit-9' })];
+    expect(panAuModuleChoisi(avant, 'area-1')).toBeUndefined();
+    expect(reprendreModuleChoisi(panVierge([], carre, m720), undefined).moduleId).toBe('produit-720');
+  });
+});
+
+// ACAL1415 — le choix du module survit à l'enregistrement : « à confirmer » tant que personne n'a choisi (drapeau
+// `geometry.moduleChoisi` absent), « Module posé » après un choix, aller-retour du document compris.
+describe('ACAL1415 — module de départ « à confirmer » / module choisi, après aller-retour du document', () => {
+  const m710 = { id: 'produit-7', produitId: 7, libelle: 'Module 710 W', longueurMm: 2384, largeurMm: 1303, epaisseurMm: 33, poidsKg: 38, pmaxWc: 710, source: 'fiche' };
+  const catalogue = { calepinage: 1, modules: [{ module: m710, selectionnable: true, champs_manquants: [], motif: null }], champs_requis: [], motif_liste_vide: null };
+  const plan = {
+    pack: { origin: [-7.6, 33.59], azimuthDeg: 180 }, grid: { panels: [{ cx: 0, cy: 0 }, { cx: 2, cy: 0 }], kwc: 1.42 },
+    tiltDeg: 13, family: 'south', flush: false, count: 2,
+  } as unknown as AreaRecord['renderPlan'];
+  /** Monte l'atelier sur `areas` (DOM le temps du geste) ; rend la mention, le document émis et l'atelier. */
+  function monter(areas: AreaRecord[], geste?: (z: ReturnType<typeof createZones>) => void) {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><div id="rp9-areas"></div></body>').window.document;
+    try {
+      const ctx = { ...ctxDeBase(areas, areas[0].id), opts: { modulesDisponibles: catalogue }, activeArea: () => areas[0], closed: true,
+        dom: { areasWindowEl: document.getElementById('rp9-areas') } } as unknown as Ctx;
+      const zones = createZones(ctx, { recalc: vi.fn(), setStatus: vi.fn() });
+      geste?.(zones);
+      const doc = serializeLayout(ctx, 12000, { modules: affectationDesPans([m710], ctx.areas) });
+      return { mention: document.getElementById('rp9-pan-module-mention')?.textContent ?? '', doc };
+    } finally { g.document = avant; }
+  }
+  const pan = () => [panDeTest('area-1', { renderPlan: plan, roofType: 'flat', moduleId: 'produit-7' })];
+
+  it('pan jamais choisi : aucun drapeau écrit, « à confirmer » après rechargement', () => {
+    const { doc } = monter(pan());
+    expect('moduleChoisi' in (doc.zones[0].geometry ?? {})).toBe(false);
+    const relus = deserializeLayout(JSON.parse(JSON.stringify(doc)));
+    expect(monter(relus).mention).toBe(`Module 710 W — ${MENTION_MODULE_DE_DEPART}`);
+  });
+
+  it('pan choisi : drapeau écrit, plus « à confirmer » après rechargement (jamais un état de session)', () => {
+    const { doc } = monter(pan(), (z) => { expect(z.choisirModuleDuPanActif('produit-7')).toBe(true); });
+    expect(doc.zones[0].geometry?.moduleChoisi).toBe(true);
+    const relus = deserializeLayout(JSON.parse(JSON.stringify(doc)));
+    const rouvert = monter(relus);
+    expect(rouvert.mention).not.toContain(MENTION_MODULE_DE_DEPART);
+    expect(rouvert.doc.zones[0].geometry?.moduleChoisi).toBe(true); // ré-enregistré sans geste : le choix reste
+    // Retour au module par défaut : le drapeau tombe avec le `moduleId`.
+    expect(monter(relus, (z) => z.choisirModuleDuPanActif('')).doc.zones[0].geometry?.moduleChoisi).toBeUndefined();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACAL1329 — ajouter un pan sur un toit existant : le toit reste dessiné (grisé) sous le tracé, et aucun document
+// (brouillon, enregistrement) ne porte le pan avant son dernier point.
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('ACAL1329 — ajout d’un pan sur un toit existant', () => {
+  const toit = panDeTest('area-1');
+  const neuf = panDeTest('area-2', { vertices: [] });
+
+  it('ajout en cours : du premier clic au dernier point d’un pan ajouté, jamais pour le premier toit', () => {
+    expect(ajoutDePanEnCours([toit, neuf], 'area-2', false)).toBe(true);
+    expect(ajoutDePanEnCours([toit, neuf], 'area-2', true)).toBe(false); // dernier point posé
+    expect(ajoutDePanEnCours([panDeTest('area-1', { vertices: [] })], 'area-1', false)).toBe(false); // premier toit
+  });
+
+  it('le toit existant reste dessiné, grisé, pendant le tracé ; le tracé du client revient ensuite', () => {
+    expect(toitExistantGeoJSON([toit, neuf], 'area-2').features).toHaveLength(1);
+    const peint: Record<string, string> = {};
+    let donnees: unknown = null;
+    let ecouteur: (e: { sourceId?: string }) => void = () => {};
+    const restaurer = vi.fn();
+    const etat = { areas: [toit, neuf], activeAreaId: 'area-2', closed: false };
+    monterToitGriseSousTrace({
+      getSource: () => ({ setData: (d: never) => { donnees = d; } }),
+      getLayer: () => ({}),
+      setPaintProperty: (id: string, _n: string, v: string) => { peint[id] = v; },
+      setLayoutProperty: vi.fn(),
+      on: (_t: string, fn: (e: { sourceId?: string }) => void) => { ecouteur = fn; },
+    }, () => etat, '#f3cc66', restaurer);
+    ecouteur({ sourceId: 'rp9-pts' });
+    expect((donnees as { features: unknown[] }).features).toHaveLength(1);
+    expect(peint['rp9-ref-contour-line']).toBe('#9aa0bb');
+    etat.closed = true; // dernier point
+    ecouteur({ sourceId: 'rp9-pts' });
+    expect(peint['rp9-ref-contour-line']).toBe('#f3cc66');
+    expect(restaurer).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('ACAL291 — une zone posée depuis un gabarit réglementaire porte sa source', () => {
   const SECTION = {
     coupe_feu: {
@@ -662,12 +808,89 @@ describe('ACAL514 — pivoterSite', () => {
 });
 
 describe('ACAL520 — motifPanVerrouille', () => {
-  it('pan verrouillé ⇒ motif nommant le pan ; sinon null', () => {
-    expect(motifPanVerrouille({ verrouille: true, label: 'Pan 1' })).toBe('Pan 1 verrouillé — déverrouillez-le d’abord.');
+  it('pan verrouillé ⇒ motif nommant le pan (par son rang, ACAL1430) ; sinon null', () => {
+    expect(motifPanVerrouille({ verrouille: true, label: 'Pan 1' })).toBe('Zone 1 verrouillé — déverrouillez-le d’abord.');
     expect(motifPanVerrouille({ verrouille: true, label: '' }, 1)).toContain('verrouillé');
     expect(motifPanVerrouille({ verrouille: false, label: 'Pan 1' })).toBeNull();
     expect(motifPanVerrouille({ label: 'Pan 1' })).toBeNull();
     expect(motifPanVerrouille(undefined)).toBeNull();
+  });
+});
+
+// ACAL1430 — après « 2 pans » (identifiants area-2 / area-3), la liste, le cadenas, le refus et le tableau disent le
+// MÊME nom (« Zone 1 », « Zone 2 ») ; avant, le cadenas et le refus lisaient le `label` de l'identifiant (« Zone 2 »).
+describe('ACAL1430 — après découpe en 2 pans : même nom partout', () => {
+  it('liste, cadenas, refus de suppression et tableau des pans disent « Zone 1 » pour le premier pan', async () => {
+    const { decouperContour } = await import('./formesToit');
+    const v = decouperContour(rectRing(12, 9), 'gable', 22, [{ id: 'area-1' }]);
+    if (!v.ok) throw new Error(v.motif);
+    const areas = v.pans;
+    expect(areas.map((a) => a.id)).toEqual(['area-2', 'area-3']);
+    areas[0].verrouille = true;
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><div id="rp9-areas"><ul id="liste"></ul></div></body>').window.document;
+    try {
+      const ctx = { ...ctxDeBase(areas, 'area-2'), activeArea: () => areas[0], closed: true,
+        dom: { areasWindowEl: document.getElementById('rp9-areas'), areasListEl: document.getElementById('liste') } } as unknown as Ctx;
+      createZones(ctx, { setStatus: vi.fn() }).renderAreasPanel();
+      const ligne = document.querySelector('[data-area-row="area-2"]')!;
+      expect(ligne.querySelector('span')?.textContent).toBe('Zone 1');
+      expect(ligne.querySelector('[data-area-lock]')?.getAttribute('aria-label')).toBe('Verrouiller Zone 1');
+      expect(motifPanVerrouille(areas[0], 0)).toBe('Zone 1 verrouillé — déverrouillez-le d’abord.');
+      expect(document.querySelector('[data-pan-stat="area-2"] td')?.textContent?.trim()).toBe('Zone 1');
+      expect(serializeLayout(ctx).zones.map((z) => z.label)).toEqual(['Zone 1', 'Zone 2']); // le document suit l'ordre
+    } finally { g.document = avant; }
+  });
+});
+
+// ACAL1431 — un pan « existant » porte son étiquette « · Existant 2019 » dans la liste des pans ET dans les tableaux
+// (par pan, et « Site — pans de toit et surfaces de pose »), y compris après une découpe ; « année non saisie » sinon.
+describe('ACAL1431 — pan existant : étiquette dans la liste et le tableau', () => {
+  const rendre = async (annee: number | null) => {
+    const { decouperContour } = await import('./formesToit');
+    const v = decouperContour(rectRing(12, 9), 'gable', 22, [{ id: 'area-1' }]);
+    if (!v.ok) throw new Error(v.motif);
+    const areas = v.pans;
+    Object.assign(areas[0], { existant: true, anneeMiseEnService: annee });
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><div id="rp9-areas"><ul id="liste"></ul></div></body>').window.document;
+    try {
+      const ctx = { ...ctxDeBase(areas, 'area-2'), activeArea: () => areas[0], closed: true,
+        dom: { areasWindowEl: document.getElementById('rp9-areas'), areasListEl: document.getElementById('liste') } } as unknown as Ctx;
+      createZones(ctx, { setStatus: vi.fn() }).renderAreasPanel();
+      const t = (sel: string) => document.querySelector(sel)?.textContent ?? '';
+      return { liste: t('[data-area-row="area-2"]'), autre: t('[data-area-row="area-3"]'), parPan: t('[data-pan-stat="area-2"]'), site: t('[data-site-ligne="area-2"]') };
+    } finally { g.document = avant; }
+  };
+  it('« · Existant 2019 » dans la liste, le tableau par pan et le tableau Site ; le pan à poser n’en porte aucune', async () => {
+    const r = await rendre(2019);
+    for (const texte of [r.liste, r.parPan, r.site]) expect(texte).toContain('· Existant 2019');
+    expect(r.autre).not.toContain('Existant');
+  });
+  it('année non saisie : dite comme telle', async () => {
+    expect((await rendre(null)).liste).toContain('· Existant (année non saisie)');
+  });
+});
+
+// ACAL1510 — « Créer le toit » 12 × 9 m (premier sommet au nord-ouest) puis « 4 pans » : le pan que l'atelier CHARGE
+// (le premier de la découpe) regardait le nord ⇒ 0 module, 0 kWc, et une simulation lancée à 0 module. Le pan le mieux
+// exposé passe devant : le pan chargé pose des modules ; le pan nord passe en dernier (le solveur le dit « nord »).
+describe('ACAL1510 — un toit 4 pans rend un motif ou des panneaux, jamais 0 sans cause', () => {
+  it('le pan chargé (premier) pose des modules ; les pans sont rangés du plus exposé au pan nord', async () => {
+    const { decouperContour } = await import('./formesToit');
+    const { rectangleDepuisCotes } = await import('./toitParCotes');
+    const { solveLivePitched } = await import('../../lib/estimatorBrainV8');
+    const tanger: LngLat = [-5.8, 35.76];
+    const v = decouperContour(rectangleDepuisCotes(tanger, 12, 9, 0), 'hip', 22, [{ id: 'area-1' }]);
+    if (!v.ok) throw new Error(v.motif);
+    const poses = v.pans.map((p) => solveLivePitched(p.vertices, tanger[1], 800, 22, p.facingAzimuthDeg, [], {}));
+    expect(poses[0].northFacing).toBe(false);
+    expect(poses[0].winner.placedCount).toBeGreaterThan(0);
+    expect(v.pans.map((p) => Math.round(p.facingAzimuthDeg))).toEqual([180, 90, 270, 0]); // sud, est, ouest, nord
+    expect(poses.map((r) => r.northFacing)).toEqual([false, false, false, true]);
+    expect(v.pans.map((p) => p.id)).toEqual(['area-2', 'area-3', 'area-4', 'area-5']); // identifiants dans l'ordre affiché
   });
 });
 
@@ -678,13 +901,70 @@ describe('ACAL554 — bouton « Appliquer ces réglages à… »', () => {
   });
 });
 
+// ACAL1527 — annuler « Appliquer ces réglages à… » rend l'état d'avant pour TOUS les pans (module et résultat compris).
+describe("ACAL1527 — annuler le report rend le module d'origine des pans cibles", () => {
+  it("annuler le report rend le module d'origine des pans cibles", async () => {
+    const { createLayoutEditor } = await import('./layoutEditor');
+    const { carteEditeurFactice, depsEditeur } = await import('./harnaisAtelier');
+    const { appliquerReglagesAuxPans } = await import('./jeuReglages');
+    const fen = new JSDOM('<!doctype html><body></body>').window;
+    const g = globalThis as unknown as { document?: Document; window?: unknown; Event?: unknown };
+    const avant = { d: g.document, w: g.window, e: g.Event };
+    g.document = fen.document;
+    g.window = fen;
+    g.Event = fen.Event;
+    try {
+      const resultat = (n: number) => ({ placedCount: n }) as unknown as AreaRecord['result'];
+      const areas = [
+        { ...panDeTest('area-1', { label: 'Zone 1', moduleId: 'jinko-710', pitchDeg: 10 }) },
+        { ...panDeTest('area-copie-1', { label: 'Zone 2', moduleId: 'canadien-600', result: resultat(12) }) },
+        { ...panDeTest('area-copie-2', { label: 'Zone 3', moduleId: 'canadien-600', result: resultat(12) }) },
+      ];
+      const ctx = { ...ctxDeBase(areas, 'area-1'), activeArea: () => areas[0], closed: true, dom: {}, layoutMode: false, layoutPlan: null, layoutState: null,
+        layoutSel: null, freeState: null, freeMode: false } as unknown as Ctx;
+      const editor = createLayoutEditor(ctx, depsEditeur(carteEditeurFactice(fen.document.createElement('div'))));
+      ctx.pushWorkshopHistory?.(); // le geste du bouton « Confirmer » (zones.ts)
+      appliquerReglagesAuxPans(ctx.areas[0], [ctx.areas[1], ctx.areas[2]]);
+      for (const a of [ctx.areas[1], ctx.areas[2]]) a.result = resultat(7); // re-pavage à l'activation du pan
+      expect(ctx.areas.map((a) => a.moduleId)).toEqual(['jinko-710', 'jinko-710', 'jinko-710']);
+      expect(editor.undo()).toBe(true);
+      expect(ctx.areas.map((a) => a.moduleId)).toEqual(['jinko-710', 'canadien-600', 'canadien-600']);
+      expect(ctx.areas.map((a) => (a.result as { placedCount: number } | null)?.placedCount ?? null)).toEqual([null, 12, 12]);
+      expect(ctx.areas.map((a) => a.label)).toEqual(['Zone 1', 'Zone 2', 'Zone 3']);
+    } finally { g.document = avant.d; g.window = avant.w; g.Event = avant.e; }
+  });
+});
+
+describe("ACAL1527 — la boîte « Appliquer ces réglages à… » nomme « Zone 2 / Zone 3 »", () => {
+  it("un pan dupliqué sans libellé s'écrit « Zone 2 », jamais area-copie-1", () => {
+    const fen = new JSDOM('<!doctype html><body><ul id="l"></ul><div id="w"></div></body>').window;
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = fen.document;
+    try {
+      const areas = [panDeTest('area-1', { label: 'Zone 1' }), panDeTest('area-copie-1', { label: '' }), panDeTest('area-copie-2', { label: '' })];
+      const dom = { areasListEl: fen.document.getElementById('l'), areasWindowEl: fen.document.getElementById('w') };
+      const ctx = { ...ctxDeBase(areas, 'area-1'), activeArea: () => areas[0], closed: true, dom } as unknown as Ctx;
+      createZones(ctx, { redrawTrace: vi.fn(), redrawObstacles: vi.fn(), recalc: vi.fn(), setStatus: vi.fn(), selectArea: vi.fn() });
+      const bouton = fen.document.createElement('button');
+      bouton.dataset.areaReport = 'area-1';
+      dom.areasListEl!.appendChild(bouton);
+      bouton.dispatchEvent(new fen.MouseEvent('click', { bubbles: true }));
+      const texte = fen.document.getElementById('rp9-pan-report')?.textContent ?? '';
+      expect(texte).toContain('Zone 2');
+      expect(texte).toContain('Zone 3');
+      expect(texte).not.toContain('area-copie');
+    } finally { g.document = avant; }
+  });
+});
+
 // ACAL574 — un pan « existant » est intouchable : pivoter, redimensionner, changer de module.
 describe('ACAL574 — pan existant : gestes refusés, géométrie intacte', () => {
   /** Ce fichier tourne SANS DOM (il lit `import.meta.url`) : un document jsdom n'est posé que le temps du cas. */
   function avecDom<T>(f: () => T): T {
     const g = globalThis as unknown as { document?: Document };
     const avant = g.document;
-    g.document = new JSDOM('<!doctype html><body><button id="rp9-layout-toggle">Déplacer les panneaux</button></body>').window.document;
+    g.document = new JSDOM('<!doctype html><body><div><button id="rp9-layout-toggle">Déplacer les panneaux</button></div></body>').window.document;
     try { return f(); } finally { g.document = avant; }
   }
   const CARRE: LngLat[] = [ptM(-5, -5), ptM(5, -5), ptM(5, 5), ptM(-5, 5)];
@@ -699,6 +979,7 @@ describe('ACAL574 — pan existant : gestes refusés, géométrie intacte', () =
     return {
       pivote: zones.pivoterPanActif(90), redim: zones.redimensionnerPanActif(8, 12), module: zones.choisirModuleDuPanActif(null),
       intacte: JSON.stringify(ctx.vertices) === avant, setStatus, grise: btn.disabled, titre: btn.title, pan: areas[0],
+      ligne: document.getElementById('rp9-layout-toggle-motif'), // ACAL1524
     };
   });
   it('pivoter, redimensionner et choisir un module sont refusés, motif nommant le pan, géométrie intacte', () => {
@@ -706,15 +987,90 @@ describe('ACAL574 — pan existant : gestes refusés, géométrie intacte', () =
     expect([r.pivote, r.redim, r.module]).toEqual([false, false, false]);
     expect(r.intacte).toBe(true);
     const motif = motifPanExistant(r.pan)!;
-    expect(motif).toContain('Pan A : pan existant');
+    expect(motif).toContain('Zone 1 : pan existant');
     expect(r.setStatus).toHaveBeenCalledWith(motif);
     expect(r.grise).toBe(true);
     expect(r.titre).toBe(motif);
+    expect(r.ligne?.textContent).toBe(motif); // ACAL1524 — le motif se lit sous le bouton, sans survol
+    expect(r.ligne?.hidden).toBe(false);
   });
   it('pan sans clé : inchangé (le geste passe, le bouton reste actif)', () => {
     const r = essai(false);
     expect(r.pivote).toBe(true);
     expect(r.grise).toBe(false);
+    expect(r.ligne?.hidden ?? true).toBe(true); // ACAL1524 — aucun motif tant que le geste est permis
+  });
+});
+
+// ACAL1404 — la réouverture rejoue `close()` (optimiseur) puis `hydrateLayout` (pose enregistrée), comme
+// `applyDevisHydration` / `loadArea` : un pan `existant` doit s'y paver, sans aucun refus à l'ouverture.
+describe('ACAL1404 — document à pan existant : hydratation fermée, aucun refus à l’ouverture', () => {
+  it('pose enregistrée reposée (5 modules), barre d’état muette ; un geste ensuite reste refusé', async () => {
+    const { createOptimizer } = await import('./optimizer');
+    const { createLayoutEditor } = await import('./layoutEditor');
+    const { carteEditeurFactice, depsEditeur } = await import('./harnaisAtelier');
+    const { occupiedCount } = await import('../../lib/layoutVariability');
+    const g = globalThis as unknown as { document?: Document; window?: unknown };
+    const avant = { d: g.document, w: g.window };
+    const fen = new JSDOM('<!doctype html><body></body>').window;
+    g.document = fen.document;
+    g.window = fen;
+    try {
+      const CARRE: LngLat[] = [ptM(-5, -5), ptM(5, -5), ptM(5, 5), ptM(-5, 5)];
+      const pan = { ...panDeTest('area-1', { vertices: [...CARRE], roofType: 'flat', neededPanels: 5, neededAuto: false }), label: 'Pan A', existant: true, anneeMiseEnService: 2019 };
+      const avantPan = JSON.stringify(pan);
+      const ctx = {
+        ...ctxDeBase([pan], 'area-1'), activeArea: () => pan, closed: true, dom: {}, opts: {}, centroid: ptM(0, 0), centroidLat: ptM(0, 0)[1],
+        pinned: new Set(), sel: { family: 'south', tilt: 'reco', orient: 'auto', azimuth: 'south', margin: 'keep' }, v4YieldCache: new Map(),
+        overhangM: 0, documentRelu: null, batiments: [], environment: [], shadeObstructions: [], useRecommended: true,
+        layoutMode: false, layoutState: null, layoutSel: null, freeMode: false, freeState: null,
+      } as unknown as Ctx;
+      // Le rendu réel (`scene3d.renderScene`) mémorise le plan gagnant : c'est lui que `hydrateLayout` relit.
+      const renderScene = vi.fn((pack, grid, tiltDeg, family, maxCount, flush = false, occupied?: Set<number>) => {
+        if (occupied) return;
+        Object.assign(ctx, { layoutPlan: { pack, grid, tiltDeg, family, flush }, layoutOptimalCount: Math.min(grid.panels.length, maxCount), layoutState: null });
+      });
+      const setStatus = vi.fn();
+      const deps = { renderScene, paintComparison: vi.fn(), highlightRow: vi.fn(), syncProductionWindow: vi.fn(), prefillLead: vi.fn(),
+        syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 800, obstructionRings: () => [], setStatus };
+      const opt = createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]);
+      opt.liveResolveFlat(); // close() → recalc() → renderSelection()
+      const plan = (ctx as unknown as { layoutPlan: { grid: { panels: { cx: number; cy: number }[] } } | null }).layoutPlan;
+      expect(plan?.grid.panels.length ?? 0).toBeGreaterThanOrEqual(5);
+      const conteneur = fen.document.createElement('div');
+      fen.document.body.appendChild(conteneur);
+      const editeur = createLayoutEditor(ctx, depsEditeur(carteEditeurFactice(conteneur)));
+      expect(editeur.hydrateLayout(plan!.grid.panels.slice(0, 5), undefined, 'lattice')).toBe(true);
+      expect(occupiedCount(ctx.layoutState!)).toBe(5);
+      expect(setStatus).not.toHaveBeenCalledWith(motifPanExistant(pan));
+      expect(JSON.stringify(pan)).toBe(avantPan); // un simple chargement n'écrit rien
+      opt.liveResolveFlat(); // un geste de l'utilisateur, pose affichée : refus nommé (ACAL574)
+      expect(setStatus).toHaveBeenCalledWith(motifPanExistant(pan));
+    } finally {
+      g.document = avant.d;
+      g.window = avant.w;
+    }
+  });
+});
+
+// ACAL1503 — un plat 3 × 1,5 m dont les retraits par arête dépassent la largeur se rouvrait OUVERT : l'anneau
+// posable (anneauPosableParArete) revient vide, packConfig rend ringENU = [], et buildZoneMeshes appelait
+// THREE.Shape.closePath sur un contour vide (« Cannot read properties of undefined (reading 'getPoint') ») avant
+// que la fermeture du tracé n'aboutisse.
+describe('ACAL1503 — un pan plus étroit que deux retraits se recharge fermé', () => {
+  it('anneau posable vide ⇒ aucune forme construite, aucune exception ; la cause reproduite plante bien', async () => {
+    const THREE = await import('three');
+    const { anneauPosableParArete } = await import('../../lib/estimatorBrainV7');
+    const { packConfig } = await import('../../lib/estimatorBrainV2');
+    const { formeDuContour } = await import('./scene3d');
+    const PLAT: LngLat[] = [ptM(-1.5, -0.75), ptM(1.5, -0.75), ptM(1.5, 0.75), ptM(-1.5, 0.75)];
+    const posable = anneauPosableParArete(PLAT, { 0: 0.8, 2: 0.8 }); // rive 0,80 m sur les deux longs côtés : 1,5 − 1,6 < 0
+    expect(posable).toEqual([]);
+    const pack = packConfig(posable, PLAT[0][1], { family: 'south', tiltDeg: 10 } as Parameters<typeof packConfig>[2]);
+    expect(pack.ringENU).toEqual([]);
+    expect(() => { const s = new THREE.Shape(); pack.ringENU.forEach(([x, y], i) => (i ? s.lineTo(x, y) : s.moveTo(x, y))); s.closePath(); }).toThrow(/getPoint/);
+    expect(formeDuContour(pack.ringENU)).toBeNull();
+    expect(formeDuContour([[0, 0], [3, 0], [3, 1.5], [0, 1.5]])?.getPoints().length).toBeGreaterThanOrEqual(4); // pan normal : inchangé
   });
 });
 
@@ -753,5 +1109,79 @@ describe('ACAL981 — buildingLabel nomme le bâtiment sans identifiant par son 
     expect(buildingLabel(null, 1)).toBe('Bâtiment 1');
     expect(buildingLabel(null, 2)).toBe('Bâtiment 2');
     expect(buildingLabel('bat-A', 2)).toBe('bat-A');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACAL1328 — cotes d'arêtes du toit tracé (maquette Main : « 12,4 m » posé sur chaque bord) : la fonction PURE sur
+// un rectangle connu, puis le calque monté sur une carte de test (suit un sommet déplacé, se tait en 3D et en
+// présentation, jamais posé sur le site public). Déplacés de cotesAretes.test.ts (garde AMET84).
+// ═══════════════════════════════════════════════════════════════════════════════
+/** Carte de test : sources, calques, pente et événements — juste ce que lit le calque. */
+function carteDeTestCotes() {
+  const donnees = new Map<string, { features: Array<{ properties: { texte: string }; geometry: { coordinates: LngLat } }> }>();
+  const visibilite = new Map<string, string>();
+  const ecoute = new Map<string, Array<(e: { sourceId?: string }) => void>>();
+  let pente = 0;
+  const carte = {
+    addSource: (id: string, s: { data: never }) => { donnees.set(id, s.data); },
+    getSource: (id: string) => ({ setData: (d: never) => { donnees.set(id, d); } }),
+    addLayer: (l: { id: string; layout?: { visibility?: string } }) => { visibilite.set(l.id, l.layout?.visibility ?? 'visible'); },
+    getLayer: (id: string) => (visibilite.has(id) ? {} : undefined),
+    getLayoutProperty: (id: string) => visibilite.get(id),
+    setLayoutProperty: (id: string, _n: string, v: string) => { visibilite.set(id, v); },
+    getPitch: () => pente,
+    on: (t: string, fn: (e: { sourceId?: string }) => void) => { ecoute.set(t, [...(ecoute.get(t) ?? []), fn]); },
+  };
+  const emettre = (t: string, e: { sourceId?: string } = {}) => (ecoute.get(t) ?? []).forEach((fn) => fn(e));
+  const textes = () => (donnees.get('rp9-cotes')?.features ?? []).map((f) => f.properties.texte);
+  return { carte, emettre, textes, visibilite, pencher: (p: number) => { pente = p; emettre('pitch'); } };
+}
+
+describe('ACAL1328 — cotesDesAretes', () => {
+  it('4 sommets ⇒ 4 cotes arrondies au dixième, virgule', () => {
+    const ring = rectRing(12.4, 8.1);
+    const cotes = cotesDesAretes(ring, true);
+    expect(cotes.map((c) => c.texte)).toEqual(['12,4 m', '8,1 m', '12,4 m', '8,1 m']);
+    // Le point de pose est le MILIEU de l'arête (jamais un sommet).
+    expect(cotes[0].milieu[0]).toBeCloseTo((ring[0][0] + ring[1][0]) / 2, 12);
+    expect(cotes[0].milieu[1]).toBeCloseTo((ring[0][1] + ring[1][1]) / 2, 12);
+  });
+
+  it('contour en cours : n − 1 arêtes ; aucun pan sans arête ; arête nulle ignorée', () => {
+    const ring = rectRing(12.4, 8.1);
+    expect(cotesDesAretes(ring.slice(0, 3), false)).toHaveLength(2);
+    expect(cotesDesAretes([ring[0]], true)).toEqual([]);
+    expect(cotesDesAretes([], true)).toEqual([]);
+    expect(cotesDesAretes([ring[0], ring[0], ring[1]], false).map((c) => c.texte)).toEqual(['12,4 m']);
+    expect(texteCote(8.06)).toBe('8,1 m');
+  });
+});
+
+describe('ACAL1328 — calque rp9-cotes', () => {
+  it('suit le sommet déplacé, se tait en 3D et en présentation', () => {
+    const t = carteDeTestCotes();
+    const pans: Array<{ sommets: LngLat[]; ferme: boolean }> = [{ sommets: rectRing(12.4, 8.1), ferme: true }];
+    monterCotesAretes(t.carte, () => pans, true);
+    expect(t.textes()).toEqual(['12,4 m', '8,1 m', '12,4 m', '8,1 m']);
+    // Sommet déplacé : le tracé re-pose ses points (`rp9-pts`) ⇒ les cotes sont recalculées.
+    pans[0] = { sommets: rectRing(14, 8.1), ferme: true };
+    t.emettre('sourcedata', { sourceId: 'rp9-pts' });
+    expect(t.textes()).toEqual(['14,0 m', '8,1 m', '14,0 m', '8,1 m']);
+    t.pencher(60);
+    expect(t.visibilite.get(CALQUE_COTES)).toBe('none');
+    t.pencher(0);
+    expect(t.visibilite.get(CALQUE_COTES)).toBe('visible');
+    expect(CALQUES_EDITION).toContain(CALQUE_COTES);
+    poserPresentation(t.carte, true);
+    expect(t.visibilite.get(CALQUE_COTES)).toBe('none');
+    poserPresentation(t.carte, false);
+    expect(t.visibilite.get(CALQUE_COTES)).toBe('visible');
+  });
+
+  it('site public (option de montage absente) : aucun calque posé', () => {
+    const t = carteDeTestCotes();
+    monterCotesAretes(t.carte, () => [{ sommets: rectRing(12.4, 8.1), ferme: true }], false);
+    expect(t.visibilite.has(CALQUE_COTES)).toBe(false);
   });
 });

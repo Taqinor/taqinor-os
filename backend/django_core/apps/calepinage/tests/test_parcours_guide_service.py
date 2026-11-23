@@ -59,6 +59,61 @@ class ManqueRegroupeTest(unittest.TestCase):
         self.assertEqual(regrouper_manque(None), [])
         self.assertEqual(regrouper_manque(['', None]), [])
 
+    def test_textes_servis_en_phrases_simples_et_toujours_ranges(self):
+        """ACAL1338 — les phrases SERVIES (constantes des services) ne portent ni sigle
+        de norme ni terme de bureau d'études, et chacune garde son code et sa cible."""
+        from apps.calepinage.services import electrique, ombrage_chaines
+        from apps.calepinage.services.norme import norme_applicable
+
+        sans_norme = norme_applicable({'imagerie': {'pays': 'ma'}, 'norme_electrique': {}})
+        production = ("La production n'est pas encore calculée : lancez la simulation "
+                      "à l'étape Résultats pour connaître ce que l'installation produira.")
+        attendus = {sans_norme['motif']: ('norme_absente', 'reglages'),
+                    production: ('production_non_simulee', 'production'),
+                    electrique.MENTION_NON_SOURCEE: ('coefficients_non_sources', 'reglages'),
+                    ombrage_chaines.MOTIF_SANS_ACCES: ('acces_solaire_absent', 'production')}
+        for message, (code, onglet) in attendus.items():
+            for jargon in ('OMIS', 'NF C 15-100', 'UTE C 15-712-1', 'silence est explicite',
+                           'non sourcées', 'TSRF', 'TOF'):
+                self.assertNotIn(jargon, message)
+            ligne, = regrouper_manque([message])
+            self.assertEqual((ligne['code'], ligne['cible']['onglet']), (code, onglet), message)
+        self.assertIn('Choisissez une norme dans les réglages', sans_norme['motif'])
+
+    def test_le_rail_compte_les_memes_lignes_que_la_pastille(self):
+        """ACAL1539 — l'étape Électrique du rail compte les contrôles à
+        régler de « Prêt à envoyer ? » (mutant : compter les motifs ⇒ échec)."""
+        def controle(code, etat, onglet='schema'):
+            return {'code': code, 'libelle': code, 'etat': etat,
+                    'valeur_texte': 'v', 'cause': 'c', 'geste': '',
+                    'cible': {'etape': 'electrique', 'onglet': onglet,
+                              'champ': ''}, 'seuil_source': None}
+        controles = [controle('verdict_electrique', 'a_regler',
+                              'verdict-electrique'),
+                     controle('chutes_tension', 'a_regler',
+                              'cheminement-cables'),
+                     controle('tension_froid', 'bloquant'),
+                     controle('ratio_dc_ac', 'info'),
+                     controle('materiel_designe', 'ok', 'materiel')]
+        brut = [NORME, NORME, 'ratio DC/AC de 1,42 au-dessus de la borne',
+                'longueur de chaîne hors plage',
+                'simulation périmée : le document a changé']
+        lignes = regrouper_manque(brut, controles_electriques=controles)
+        pastille = sum(c['etat'] in ('bloquant', 'a_regler')
+                       for c in controles)
+        rail = sum(ligne['nombre'] for ligne in lignes
+                   if ligne['etape'] == 'electrique'
+                   and ligne['gravite'] != 'info')
+        self.assertEqual(rail, pastille)
+        self.assertEqual(rail, 3)
+        tension, = [ligne for ligne in lignes
+                    if ligne['code'] == 'tension_froid']
+        self.assertEqual(tension['gravite'], 'bloquant')
+        modele = CONTRAT['exemple']['manque'][0]
+        self.assertEqual(sorted(tension), sorted(modele))
+        # Les autres étapes gardent leurs avertissements regroupés.
+        self.assertIn('simulation_perimee', [ligne['code'] for ligne in lignes])
+
     def test_forme_des_lignes_egale_celle_du_contrat(self):
         modele = CONTRAT['exemple']['manque'][0]
         ligne = regrouper_manque([NORME])[0]

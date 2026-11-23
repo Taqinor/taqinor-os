@@ -126,6 +126,48 @@ class DetailContratTest(BaseApiCalepinage):
         self.assertEqual(set(surfaces[0]), set(EXEMPLE_SERVI['surfaces_chiffrables'][0]))
         self.assertEqual(self._detail(self.neuf)['surfaces_chiffrables'], [])
 
+    def test_acal1402_surfaces_chiffrables_disent_si_le_devis_les_chiffre(self):
+        """ACAL1402 — le contrat porte ``chiffree`` (booléen avec un devis lié,
+        ``null`` sans) et le détail réel a EXACTEMENT la forme de l'exemple.
+        Mutant : retirer la clé de l'exemple ⇒ échec."""
+        lignes = EXEMPLE_SERVI['surfaces_chiffrables']
+        self.assertTrue(lignes)
+        for ligne in lignes:
+            self.assertIsInstance(ligne['chiffree'], bool, ligne)
+        Calepinage.objects.filter(pk=self.rempli.pk).update(roof_layout={
+            'schema_version': 2,
+            'zones': [{'id': 'z1', 'label': 'Zone 1', 'geometry': {'count': 8}}],
+            'poseSurfaces': [{'id': 's1', 'kind': 'sol', 'label': 'Champ au sol 1',
+                              'moduleWc': 550, 'engine': {'modules': 4}}]})
+        for ligne in self._detail(self.rempli)['surfaces_chiffrables']:
+            self.assertEqual(set(ligne), set(lignes[0]))
+
+    def test_acal1413_chiffree_lit_la_selection_du_devis_lie(self):
+        """ACAL1413 — trois surfaces posées, un devis lié qui ne chiffre que
+        « Champ au sol 1 » ⇒ ``chiffree`` vrai pour elle, faux pour les deux
+        autres ; devis sans sélection écrite ou sans devis ⇒ ``null`` partout.
+        Mutant : tout ``True`` ⇒ échec."""
+        layout = {'schema_version': 2,
+                  'zones': [{'id': 'z1', 'label': 'Zone 1', 'geometry': {'count': 42}},
+                            {'id': 'z2', 'label': 'Zone 2', 'geometry': {'count': 14}}],
+                  'poseSurfaces': [{'id': 's1', 'kind': 'sol', 'label': 'Champ au sol 1',
+                                    'moduleWc': 550, 'engine': {'modules': 50}}]}
+        Calepinage.objects.filter(pk=self.rempli.pk).update(roof_layout=layout)
+        Calepinage.objects.filter(pk=self.neuf.pk).update(roof_layout=layout)
+
+        def chiffrees():
+            return {s['libelle']: s['chiffree']
+                    for s in self._detail(self.rempli)['surfaces_chiffrables']}
+
+        self.assertEqual(chiffrees(), {'Zone 1': None, 'Zone 2': None,
+                                       'Champ au sol 1': None})  # devis sans sélection
+        Devis.objects.filter(pk=self.devis.pk).update(roof_layout={
+            'choixConception': {'surfacesChiffrees': ['s1']}})
+        self.assertEqual(chiffrees(), {'Zone 1': False, 'Zone 2': False,
+                                       'Champ au sol 1': True})
+        for surface in self._detail(self.neuf)['surfaces_chiffrables']:  # sans devis lié
+            self.assertIsNone(surface['chiffree'], surface)
+
     def test_autre_societe_introuvable(self):
         reponse = self.api_autre.get(url_detail(self.rempli.pk))
         self.assertEqual(reponse.status_code, 404)

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { choisirPaletteAcces, couleurAccesActive } from '@rooflib/shadingEngine'
+import { couleurAccesActive } from '@rooflib/shadingEngine'
 import { MODULE_PAR_DEFAUT_ATELIER } from '@roofpro/moduleSelect'
 import calepinageApi from '../../../../../api/calepinageApi'
 import useResource from '../../../../../hooks/useResource'
@@ -29,9 +29,8 @@ import { fmtKwc, modulesServis, productionPubliee } from './panneaux/sources'
    renvoyé au VRAI contrôle (`rp9-*`), qui reste monté et fait foi.
    ========================================================================== */
 
-// L'atelier de l'ERP colore la carte d'accès solaire avec la rampe de la maquette (bleu nuit → or) ; le site
-// public garde la sienne. La carte et la légende lisent la même palette active (shadingEngine).
-choisirPaletteAcces('atelier')
+// La palette bleu nuit → or de la carte d'accès solaire est posée au DÉMARRAGE de l'atelier (useAtelierBoot,
+// ACAL1340), jamais ici : l'étape ne fait que la lire (couleurAccesActive) pour sa légende.
 
 const compte = (n) => (n === 1 ? '1 panneau' : `${n} panneaux`)
 const selectData = { select: (r) => r?.data ?? null }
@@ -51,7 +50,8 @@ function useServi(calepinageId, enregistreLe, servi = null, attendre = false) {
     leadId: facture.leadId,
     facture,
     cible: facture.cible,
-    motifFacture: facture.motif,
+    motifFacture: facture.refus || facture.motif,
+    refusFacture: facture.refus,
     entrees: Array.isArray(catalogue?.modules) ? catalogue.modules : [],
     servis: modulesServis(entree),
     publiee: productionPubliee(resultat),
@@ -145,13 +145,33 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
   // La carte choisie est celle de la cible ACTUELLE ; ni l'une ni l'autre → « Pose actuelle : N panneaux · kWc ».
   const factureChoisie = !!cible && besoin?.valeur === cible.panneaux
   const max = etat.max && !factureChoisie
+  // La taille des factures n'est promise que si elle tient sur le toit : « seuls N tiennent » (note du constructeur).
+  const tient = cible && besoin?.tiennent != null && besoin.tiennent < cible.panneaux ? besoin.tiennent : null
+  const ligneTaille = tient == null ? null : [
+    compte(tient), cible.kwc != null ? fmtKwc((cible.kwc * tient) / cible.panneaux) : null, `sur ${cible.panneaux} nécessaires`,
+  ].filter(Boolean).join(' · ')
   // Le % n'est dit qu'à côté de la taille pour laquelle il est calculé : production estimée ÷ consommation du lead.
   const part = (fig) => (fig?.couverture ? `≈ ${fig.couverture} de la consommation` : null)
-  const ligneFacture = cible && [
+  // La part de la consommation de la carte « Couvrir la facture » : lue sur le constructeur tant que cette taille est
+  // posée, gardée pour cette taille et ce module quand une autre carte est choisie (jamais déduite d'une autre pose).
+  const partLue = factureChoisie && cible && figures.panneaux === cible.panneaux ? part(figures) : null
+  const [gardee, setGardee] = useState(null)
+  if (partLue && (gardee?.pour !== cible.panneaux || gardee.watt !== figures.watt || gardee.texte !== partLue)) {
+    setGardee({ pour: cible.panneaux, watt: figures.watt, texte: partLue })
+  }
+  const partFacture = partLue ?? (gardee && cible && gardee.pour === cible.panneaux && gardee.watt === figures.watt
+    ? gardee.texte : null)
+  const ligneFacture = cible && (ligneTaille ?? [
     compte(cible.panneaux), cible.kwc != null ? fmtKwc(cible.kwc) : null,
-    factureChoisie && figures.panneaux === cible.panneaux ? part(figures) : null,
-  ].filter(Boolean).join(' · ')
-  const figuresMax = max ? figures : (memoire.max ?? (besoin?.tiennent ? { panneaux: besoin.tiennent } : null))
+    partFacture,
+  ].filter(Boolean).join(' · '))
+  // « Le plus de panneaux » : ses chiffres dès l'ouverture — ce que le constructeur dit tenir × la puissance du module
+  // qu'il pose (`figures.watt`), jamais une seconde formule ; la mémoire prime quand la carte a été posée.
+  const parTenue = besoin?.tiennent ? {
+    panneaux: besoin.tiennent,
+    kwc: figures.watt ? fmtKwc((besoin.tiennent * figures.watt) / 1000) : null,
+  } : null
+  const figuresMax = max ? figures : (memoire.max ?? parTenue)
   const ligneMax = figuresMax?.panneaux ? [compte(figuresMax.panneaux), figuresMax.kwc, part(figuresMax)]
     .filter(Boolean).join(' · ') : ''
   const raison = servi.motifFacture || 'Aucune taille ne se tire des factures de ce lead.'
@@ -181,7 +201,7 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
       {servi.facture.etat === 'ok' && !cible && (
         <p className="cal-pan-note">
           {raison}
-          {servi.leadId && (
+          {servi.leadId && !servi.refusFacture && (
             <>{' '}<Link to={`/crm/leads/${servi.leadId}`} className="cal-pan-lien">Renseigner la facture du lead</Link></>
           )}
         </p>
@@ -312,16 +332,30 @@ export default function EtapePanneaux({ calepinageId, lectureSeule = false, enre
     nom, (...args) => { geste(...args); rafraichir() },
   ]))
   const servi = useServi(calepinageId, enregistreLe, contexte, contexteEnCours)
+  // Un clic sur une carte de taille peut faire passer le constructeur d'un sens de pose à l'autre : l'écran le dit.
+  const [avant, setAvant] = useState(null)
+  const bascule = avant && etat.orientation && etat.orientation !== avant ? { de: avant, vers: etat.orientation } : null
+  const libelleSens = (v) => SENS_DE_POSE.find((o) => o.valeur === v)?.libelle ?? v
+  const gestesEcran = {
+    ...g,
+    besoin: (n) => { setAvant(etat.orientation); g.besoin(n) },
+    orientation: (v) => { setAvant(null); g.orientation(v) },
+  }
   return (
     <div className="cal-pan">
       <ChoixModule etat={etat} entrees={servi.entrees} servis={servi.servis} lectureSeule={lectureSeule} g={g} />
-      <CombienDePanneaux etat={etat} servi={servi} lectureSeule={lectureSeule} g={g} />
+      <CombienDePanneaux etat={etat} servi={servi} lectureSeule={lectureSeule} g={gestesEcran} />
       <section className="cal-pan-section">
         <h2 className="cal-pan-titre">Sens de pose</h2>
         <div data-testid="cal-panneaux-sens-pose">
           <Segmente libelle="Sens de pose" grand className="cal-segmente-pose" options={SENS_DE_POSE}
-            valeur={etat.orientation} onChange={(v) => { if (v !== etat.orientation) g.orientation(v) }} />
+            valeur={etat.orientation} onChange={(v) => { if (v !== etat.orientation) gestesEcran.orientation(v) }} />
         </div>
+        {bascule && (
+          <p className="cal-pan-note" data-zone="sens-bascule" role="status">
+            {`Le sens de pose est passé de ${libelleSens(bascule.de)} à ${libelleSens(bascule.vers)} pour cette taille.`}
+          </p>
+        )}
       </section>
       <AlerteOmbre key={etat.ombre?.n ?? 0} ombre={etat.ombre} g={g} />
       <SurCarte>

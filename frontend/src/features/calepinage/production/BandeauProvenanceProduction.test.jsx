@@ -378,6 +378,17 @@ describe('ACAL995 — « Le devis annonce » seulement hors pose réelle', () =>
     expect(screen.queryByTestId('acal995-devis-annonce')).toBeNull()
   })
 
+  it('ACAL1274 — pose réelle imprimée ≠ simulation ⇒ la ligne nomme les deux nombres', async () => {
+    const r = reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
+    r.data.production.total.p50_kwh = pose.production_annuelle_kwh.valeur * 0.988
+    calepinageApi.calepinages.resultat.mockResolvedValue(r)
+    rendreAvec(pose)
+    const espaces = (t) => t.replace(/\s/g, ' ')
+    expect(espaces((await screen.findByTestId('acal995-devis-annonce')).textContent)).toBe(espaces(
+      `Le devis annonce : ${formatNumber(pose.production_annuelle_kwh.valeur, { decimals: 0 })} kWh/an — `
+      + `pose réelle recalculée par le moteur du devis (étude technique : −${formatNumber(1.2, { decimals: 1 })} %)`))
+  })
+
   it('non servi ⇒ « Le devis n’est pas encore chiffré : <motif servi> »', async () => {
     const vide = exempleContrat('calepinage', 'calepinage_design_context', 'exemple_vide').chiffrage
     simule()

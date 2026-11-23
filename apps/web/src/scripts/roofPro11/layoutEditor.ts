@@ -57,7 +57,7 @@ import { creerCalqueReperes, glisserAimante } from './reperesAlignement'; // ACA
 import { actionDisposition, actionAtelierCtrl } from './raccourcisAtelier';
 import { copierSelection as memoriserLot, collerAuPoint } from './collage'; // ACAL553
 import {
-  createLayoutHistory, createValueHistory, createWorkshopHistory, photoAtelierDepuisCtx, restaurerEnvZonesMesures,
+  createLayoutHistory, createValueHistory, createWorkshopHistory, photoAtelierDepuisCtx, restaurerEnvZonesMesures, restaurerPanEtSurfaces,
   type WorkshopSnapshot,
 } from './layoutHistory';
 // PV30 — placement libre : géométrie PURE + pont vers le pavage gagnant.
@@ -95,10 +95,12 @@ import {
   type Vec2,
 } from '../../lib/freeLayout';
 import { DEFAULT_FREE_MARGINS, FREE_STEP_M, freeGeomFrom, freeStateFromCenters, quantizeFree } from './freeMode';
-import { cm, peindreSilhouette, silhouetteDuLot, texteDeMesure, violationLabel } from './silhouetteGlisse'; // ACAL551
+import { cm, peindreSilhouette, silhouetteDuLot, texteDeMesure, violationLabel } from './silhouetteGlisse'; import { direPoseIndisponible } from './structurePose'; // ACAL551, ACAL1530
 import { resnapEnMasse } from './layoutResnap'; // ACAL510 — sorti de ce fichier, ré-exporté ci-dessous
 export { resnapEnMasse, resnapNaif, type CentreASnapper } from './layoutResnap';
 import { motifPanExistant } from './panExistant'; // ACAL510
+import { EVT_POSE_RELUE } from './alignementRangees'; // ACAL1521
+import { catalogueAvecModulesDuDocument, estRefus, kwcDuPan, lireModulesDisponibles, resoudreModuleDuPan } from './moduleSelect'; // ACAL1520
 
 /** Décimal à 1 chiffre, à la française (identique à l'entrée). */
 const fmt1 = (n: number): string =>
@@ -1188,6 +1190,8 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     applyWorkshopSnapshot(prev);
     renderCustomLayout();
     renderLayoutPanel();
+    syncUndoRedoButtons(); // ACAL1403
+    signalerPoseRelue(); // ACAL1521
     if (layoutNoteEl) {
       layoutNoteEl.textContent = freeActive()
         ? `Action annulée — ${fmt(ctx.freeState?.panels.length ?? 0)} panneaux posés.`
@@ -1202,6 +1206,8 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     applyWorkshopSnapshot(next);
     renderCustomLayout();
     renderLayoutPanel();
+    syncUndoRedoButtons(); // ACAL1403
+    signalerPoseRelue(); // ACAL1521
     if (layoutNoteEl) {
       layoutNoteEl.textContent = freeActive()
         ? `Action rétablie — ${fmt(ctx.freeState?.panels.length ?? 0)} panneaux posés.`
@@ -1238,7 +1244,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     ctx.roofType = s.roofType;
     ctx.pitchDeg = s.pitchDeg;
     ctx.facingAzimuthDeg = s.facingAzimuthDeg;
-    restaurerEnvZonesMesures(ctx, s); // ACAL515
+    restaurerEnvZonesMesures(ctx, s); restaurerPanEtSurfaces(ctx, s); // ACAL515 ; demande croisée : pan actif + surfaces de pose
     if (s.layoutOccupied && ctx.layoutState) {
       ctx.layoutState.occupied = new Set(s.layoutOccupied.filter((i) => i >= 0 && i < ctx.layoutState!.cells.length));
     }
@@ -1251,6 +1257,16 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
    *  éditer le tracé, ou changer la pose du pan actif. */
   function pushWorkshopHistory() {
     workshopHistory.push(snapshotWorkshop());
+    syncUndoRedoButtons(); // ACAL1403 — Annuler s'allume dès qu'un geste est à défaire
+  }
+  /** ACAL1403 — SEULE écriture de `disabled` des boutons Annuler / Rétablir. */
+  /** ACAL1521 — dit à l'écran que la pose affichée vient d'être restaurée ou rechargée. */
+  function signalerPoseRelue() {
+    if (typeof document !== 'undefined') document.dispatchEvent(new Event(EVT_POSE_RELUE));
+  }
+  function syncUndoRedoButtons() {
+    if (layoutUndoBtn) layoutUndoBtn.disabled = !workshopHistory.canUndo();
+    if (layoutRedoBtn) layoutRedoBtn.disabled = !workshopHistory.canRedo();
   }
   ctx.pushWorkshopHistory = pushWorkshopHistory; // auto-enregistrement — cf. commentaire ci-dessus
 
@@ -1345,7 +1361,8 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   function renderLayoutPanel() {
     if (!layoutWindowEl) return;
     const ready = !!ctx.layoutPlan && ctx.layoutPlan.grid.panels.length > 0 && ctx.closed;
-    layoutWindowEl.hidden = !ready;
+    layoutWindowEl.hidden = !(ctx.layoutPlan && ctx.closed); // ACAL1530 — un plan sans emplacement garde le bloc, avec sa phrase
+    direPoseIndisponible(layoutWindowEl, layoutToggleEl, !!ctx.layoutPlan && !!ctx.closed && !ready);
     if (!ready) return;
     if (!ctx.layoutMode) return;
     ensureLayoutState();
@@ -1357,7 +1374,12 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     const freeOn = freeActive();
     const count = freeOn ? ctx.freeState!.panels.length : occupiedCount(layoutState);
     const free = freeOn ? 0 : emptyIndices(layoutState).length;
-    const kwc = count * PANEL_KWC;
+    // ACAL1520 — la puissance du module DÉSIGNÉ du pan actif (comme la pastille) ; sans choix : défaut atelier.
+    const moduleDuPan = resoudreModuleDuPan(
+      catalogueAvecModulesDuDocument(lireModulesDisponibles(ctx.opts?.modulesDisponibles).choisissables, ctx.modulesDuDocument).catalogue,
+      ctx.activeArea?.()?.moduleId,
+    );
+    const kwc = (!estRefus(moduleDuPan) && kwcDuPan(count, moduleDuPan)) || count * PANEL_KWC;
     if (layoutCountEl) layoutCountEl.textContent = fmt(count);
     if (layoutKwcEl) layoutKwcEl.textContent = `${fmtKwc(kwc)} kWc`;
     if (layoutFreeEl) layoutFreeEl.textContent = fmt(free);
@@ -1482,8 +1504,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     }
     // CAL100 — `workshopHistory` pilote désormais `undo()`/`redo()` (sur-ensemble de
     // `history`/`freeHistory` — cf. bloc CAL100).
-    if (layoutUndoBtn) layoutUndoBtn.disabled = !workshopHistory.canUndo();
-    if (layoutRedoBtn) layoutRedoBtn.disabled = !workshopHistory.canRedo();
+    syncUndoRedoButtons();
     // L'azimut n'est nudgeable que sur un toit en PENTE (face imposée par la toiture) ;
     // sur toit plat, l'azimut est un AXE de l'optimiseur, pas un réglage de disposition.
     if (layoutAzWrapEl) layoutAzWrapEl.hidden = ctx.roofType !== 'pitched';
@@ -1735,6 +1756,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       syncFreeInputs();
       renderCustomLayout();
       renderLayoutPanel();
+      signalerPoseRelue(); // ACAL1521
       if (layoutNoteEl) {
         layoutNoteEl.textContent = `Placement libre du dossier rechargé — ${fmt(centers.length)} panneaux reposés à l'identique.`;
       }
@@ -2076,7 +2098,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     const saisie = !!cible && (/^(input|textarea|select)$/i.test(cible.tagName) || cible.isContentEditable);
     const presse = mod && !saisie ? actionAtelierCtrl(e) : null;
     if (presse === 'copier' || presse === 'coller') {
-      if ((presse === 'copier' ? copierSelection() : collerSelection())) e.preventDefault();
+      if ((presse === 'copier' ? copierSelection() : collerSelection())) { e.preventDefault(); e.stopPropagation(); } // ACAL1528 — la frappe traitée ici ne remonte pas au gestionnaire de l'écran (second chemin → 2e collage refusé)
       return;
     }
     const geste = mod ? actionDisposition(e) : null; // ACAL414 — Ctrl+Z / Y lus dans la table
@@ -2674,12 +2696,14 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       // la retire — un geste qui n'a rien bougé n'est pas une action à annuler.
       const d = layoutDrag;
       const members = d?.freeOrigin?.map((o) => o.index) ?? [from];
-      if (d?.freePreviewed) {
+      if (d?.freePreviewed && !d.freeBlocked) {
         if (layoutNoteEl) {
           layoutNoteEl.textContent = `Déplacé — ${fmt(members.length)} panneau${members.length > 1 ? 'x' : ''} (placement libre).`;
         }
         renderCustomLayout(); // recompute des chiffres + repeint la sélection
       } else {
+        // ACAL1529 — la dernière position visée était refusée (la note l'a dit) : le relâchement refuse aussi, panneaux ramenés au départ.
+        if (d?.freePreviewed) { for (const o of d.freeOrigin ?? []) Object.assign(freeState()?.panels[o.index] ?? {}, { cx: o.cx, cy: o.cy }); renderCustomLayout(); }
         dropFreeHistory();
         flashRefusal(members); // refus VISIBLE (rouge), rien n'a bougé
         if (d?.freeBlocked) showMeasure(d.freeBlocked);

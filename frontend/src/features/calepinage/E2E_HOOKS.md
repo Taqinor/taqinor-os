@@ -35,6 +35,7 @@ retiré plus un hook ajouté.
 | `cal-lien-variantes` | lien variantes. |
 | `cal-devis-perime` | R2-13 : badge « devis périmé / envoyé » de l'en-tête. |
 | `cal-acces-refuse` | R2-20 : écran d'un 403 sur le calepinage (aucun outil). |
+| `cal-introuvable` | ACAL1246 : écran d'un 404 sur le calepinage (aucun outil, même gabarit que le 403). |
 
 ## BadgePerime (`BadgePerime.jsx`)
 
@@ -404,6 +405,7 @@ retiré plus un hook ajouté.
 | `cal-pente-message` | pente message. |
 | `cal-pente-lecture-seule` | pente : raison de la lecture seule (écritures désactivées). |
 | `cal-pente-mode` | pente mode. |
+| `cal-pente-plat` | pente : pan « Toit plat », aucune pente à saisir, la forme change par les tuiles (ACAL1341). |
 | `cal-pente-relief` | pente : bloc replié « Lire la pente sur un relief de drone » (ACAL535). |
 | `cal-pente-relief-fichier` | pente : sélecteur du fichier GeoTIFF du relief (ACAL535). |
 | `cal-pente-visite-orientation-utiliser` | pente : utiliser l’orientation de la visite (ACAL208). |
@@ -637,6 +639,7 @@ retiré plus un hook ajouté.
 | `cal-reprise-bouton` | reprise de visite — bouton « Reprendre dans ce calepinage ». |
 | `cal-reprise-chargement` | reprise de visite — lecture en cours. |
 | `cal-reprise-ecarts` | reprise de visite — bandeau « n écarts avec la visite » et son tableau (ACAL527). |
+| `cal-reprise-ecarts-motif` | reprise de visite — phrase « Motif : … » sous le bandeau quand la comparaison est à faire à la main, plusieurs pans (ACAL1411). |
 | `cal-reprise-erreur` | reprise de visite — refus du serveur sous le bouton, par champ. |
 | `cal-reprise-erreur-lecture` | reprise de visite — message d'erreur de lecture. |
 | `cal-reprise-mesure` | reprise de visite — une mesure telle que saisie. |
@@ -1021,6 +1024,8 @@ retiré plus un hook ajouté.
 | `cal-docs-info-devis` | étape Documents : bandeau d’information sur le devis. |
 | `cal-pret-groupe` | « Prêt à envoyer ? » : groupe de contrôles d’une étape (suffixe = clé de l’étape). |
 | `cal-liste-filtres-etat` | liste : puces de filtre par état (comptes servis). |
+| `cal-vignette-toit` | liste : vignette du toit sur la carte d’un calepinage (contours des pans, ou « Aucun aperçu »). |
+| `cal-signal` | liste : pastille « N point à régler » d’une carte (suffixe = identifiant du calepinage). |
 | `cal-releve` | écran « Relevé de visite » au téléphone (`/calepinage/:id/releve`). |
 | `cal-vue-client` | écran « Montrer au client » (`/calepinage/:id/client`). |
 

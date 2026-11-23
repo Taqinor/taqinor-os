@@ -3,9 +3,9 @@
 import { areaLabel } from '../../lib/roofAreas';
 import type { AreaRecord } from './types';
 
-/** Le motif de refus d'un pan verrouillé, ou `null` s'il est modifiable. `index` sert à le nommer
- *  quand il n'a pas de libellé (« Pan 1 »). */
+/** Le motif de refus d'un pan verrouillé, ou `null` s'il est modifiable. ACAL1430 — le pan est nommé par son RANG
+ *  (`areaLabel(index)`, le nom de la liste), jamais par un `label` stocké qui peut dater d'une découpe. */
 export function motifPanVerrouille(pan: Pick<AreaRecord, 'verrouille' | 'label'> | null | undefined, index = 0): string | null {
   if (!pan?.verrouille) return null;
-  return `${pan.label || areaLabel(index)} verrouillé — déverrouillez-le d’abord.`;
+  return `${index >= 0 ? areaLabel(index) : pan.label || areaLabel(0)} verrouillé — déverrouillez-le d’abord.`;
 }

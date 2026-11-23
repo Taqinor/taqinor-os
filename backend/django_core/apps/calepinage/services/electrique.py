@@ -118,7 +118,7 @@ REFERENCE_NOCT = ('IEC 61215 — définition NOCT (800 W/m², 20 °C ambiant, '
                   '1 m/s) : T_cellule = T_ambiante + (NOCT − 20) × G / 800')
 
 #: La phrase qui accompagne OBLIGATOIREMENT un verdict rendu sans source.
-MENTION_NON_SOURCEE = 'températures de référence, non sourcées'
+MENTION_NON_SOURCEE = 'températures habituelles supposées : celles du site ne sont pas connues'
 
 #: Le fournisseur de températures TMY, enregistré par la lane production
 #: (CAL136). ``None`` = ce chemin n'existe pas encore, et l'absence se
@@ -977,7 +977,11 @@ def enregistrer_entree(calepinage, donnees, *, user=None):
                 conception, materiel.get('optimiseur'),
                 (materiel.get('designations') or {}).get('optimiseur', ''),
                 reglages=_reglages_electrique_societe(calepinage),
-                onduleur_sku=(materiel.get('skus') or {}).get('onduleur')))
+                onduleur_sku=(materiel.get('skus') or {}).get('onduleur'),
+                bornes_ratio=_bornes_ratio(
+                    exigence_marche=_donnees.get('exigence_marche'),
+                    parametres_societe=_parametres_electriques(calepinage),
+                    reglages=_reglages_electrique_societe(calepinage))))
 
     avant_saisie = dict(entree_stockee(calepinage))
 
@@ -1633,9 +1637,16 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     optimiseur = materiel.get('optimiseur')
     nom_optimiseur = materiel['designations'].get('optimiseur', '')
     sku_onduleur = (materiel.get('skus') or {}).get('onduleur')  # ACAL662
+    # ACAL1538 — les bornes du ratio, lues UNE fois : bloc et verdict jugent pareil.
+    bornes_ratio = dict(
+        exigence_marche=donnees.get('exigence_marche'),
+        parametres_societe=_parametres_electriques(calepinage,
+                                                   parametres=societe),
+        reglages=electrique_societe)
     verdicts = _verdicts_electriques(
         conception, optimiseur, nom_optimiseur,
-        reglages=electrique_societe, onduleur_sku=sku_onduleur)
+        reglages=electrique_societe, onduleur_sku=sku_onduleur,
+        bornes_ratio=_bornes_ratio(**bornes_ratio))
     regle = _regle_chaine_publiee(conception, optimiseur, nom_optimiseur,
                                   sku_onduleur)
     try:
@@ -1696,10 +1707,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         porteur_simulation if porteur_simulation is not None else calepinage,
         empreinte, defauts=_defauts_simulation(pose))
     ratio, messages_ratio = _bloc_ratio_dc_ac(
-        conception,
-        exigence_marche=donnees.get('exigence_marche'),
-        parametres_societe=_parametres_electriques(calepinage,
-                                                   parametres=societe),
+        conception, **bornes_ratio,
         # ACAL141 — l'écrêtage de l'étape « ecretage » de la cascade FRAÎCHE
         # (``None`` périmée ou jamais simulée : motif inchangé).
         ecretage_pct=_ecretage_de_la_cascade(blocs.get('cascade')))
@@ -1819,9 +1827,9 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
             p50 = total_servi.get('p50_kwh')
     simule = _est_un_nombre(p50)
     if not simule:
-        messages.append("Production non simulée dans ce résultat : la pose et "
-                        "l'électricité sont connues, la production ne l'est "
-                        "pas.")
+        messages.append("La production n'est pas encore calculée : lancez la "
+                        "simulation à l'étape Résultats pour connaître ce que "
+                        "l'installation produira.")
 
     return {
         'calepinage': getattr(calepinage, 'pk', None),
@@ -1896,7 +1904,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         # avec quoi le calcul a été fait. Jamais simulé ⇒ l'empreinte
         # d'aujourd'hui et des valeurs nulles.
         CLE_SIMULATION: _entete_servie(calepinage, empreinte),
-        'avertissements': messages,
+        'avertissements': _avertissements_uniques(messages),  # ACAL1540
         # ACAL283 — les deux FILS bornés, LUS tels qu'enregistrés (jamais
         # recalculés), listes vides jamais absentes — y compris quand la
         # simulation est périmée.
@@ -1921,17 +1929,17 @@ def _ecart_devis(calepinage, p50):
     devis → ombrage servi → ce résultat ; profil créé, ACON87) ; ``ecart_pct`` = (P50 − devis) /
     devis, au dixième. Jamais l'inverse : le devis ne lit pas le P50
     (D-ACAL-6). ``None`` sans devis lié (ou d'une autre société), sans P50
-    servi (jamais simulé, ou périmé) ou sans production au devis. LECTURE
-    PURE."""
+    servi (jamais simulé, ou périmé), sans production au devis, ou quand le
+    PDF n'imprime pas cette figure (ACAL1274). LECTURE PURE."""
     devis_id = getattr(calepinage, 'devis_id', None)
     if not devis_id or not _est_un_nombre(p50):
         return None
     from apps.ventes.selectors import get_devis_by_pk, production_attendue_pour_devis
-    from apps.ventes.selectors_calepinage import _conception_a_jour
+    from apps.ventes.selectors_calepinage import _conception_a_jour, figure_stockee_imprimee
 
     if ((devis := get_devis_by_pk(devis_id)) is None
             or devis.company_id != getattr(calepinage, 'company_id', None)
-            or _conception_a_jour(devis, calepinage) is False):  # ACON27 — autre conception
+            or _conception_a_jour(devis, calepinage) is False or not figure_stockee_imprimee(devis)):  # ACON27 ACAL1274
         return None
     production = production_attendue_pour_devis(devis_id)
     if production is None or production <= 0:
@@ -3565,13 +3573,14 @@ VERDICTS_DE_CHAINE = (
     ('vmp_hot_over_mppt_min', 'Vmp à chaud au-dessus du bas de la plage MPPT'),
     ('courant_par_entree_mppt',
      'Courant par entrée MPPT sous le courant admissible'),
-    ('ratio_dc_ac', 'Ratio DC/AC dans la fourchette retenue par la société'),
+    ('ratio_dc_ac', 'Ratio DC/AC face à la fourchette réglée par la société'),
 )
+LIBELLE_RATIO = VERDICTS_DE_CHAINE[-1][1]
 
 
 def _verdicts_electriques(conception, optimiseur_specs=None,
                           optimiseur_designation='', *, reglages=None,
-                          onduleur_sku=None):
+                          onduleur_sku=None, bornes_ratio=None):
     """Les verdicts du contrat CAL244, dérivés des chiffres de FICHE.
 
     Les cinq codes sont ceux du contrat (``voc_cold_under_vmax``,
@@ -3587,6 +3596,8 @@ def _verdicts_electriques(conception, optimiseur_specs=None,
     Isc publié dépassé) ; ce qui dégrade la production alerte (écrêtage sur
     l'Imp, MPPT hors plage en été, ratio DC/AC).
     """
+    from core.electrique.types import fr
+
     from .chaines import MOTIF_MICRO_SEUL, evaluer_onduleurs
 
     if getattr(conception, 'micro_seul', False):
@@ -3685,17 +3696,25 @@ def _verdicts_electriques(conception, optimiseur_specs=None,
 
     # CALX213 — les trois paliers du ratio DC/AC viennent des réglages
     # SOCIÉTÉ quand ils sont saisis : c est eux qui jugent ce verdict.
+    # ACAL1538 — jugé par ``_juger_ratio`` (le même verdict que le bloc
+    # ``ratio_dc_ac``) ; ``bornes_ratio`` : les bornes déjà lues (marché,
+    # société), sinon celles des seuls ``reglages``.
     evaluation = evaluer_onduleurs(conception, reglages=reglages)
     ratio = evaluation.ratio_dc_ac if evaluation is not None else None
+    valeur = None if ratio is None else ratio.valeur
+    bornes = bornes_ratio or _bornes_ratio(reglages=reglages)
+    conforme = _juger_ratio(valeur, bornes, reglages)
     verdicts.append({
         'code': 'ratio_dc_ac',
-        'libelle': 'Ratio DC/AC dans la fourchette retenue par la société',
-        'conforme': (None if ratio is None or ratio.valeur is None
-                     else bool(ratio.dans_bornes)),
+        'libelle': LIBELLE_RATIO,
+        'conforme': conforme,
         'bloquant': False,
         'source': 'fiche',
-        'detail': ('' if ratio is None or ratio.valeur is None
-                   else '%s (%s)' % (ratio.texte, ratio.fourchette_texte)),
+        'detail': ('' if valeur is None
+                   else '%s — %s' % (ratio.texte, RATIO_NON_JUGE)
+                   if conforme is None
+                   else '%s pour %s au plus (%s)' % (
+                       ratio.texte, fr(bornes[0], 2), bornes[2])),
         **_bloc_temperature(conception.temperatures),
     })
     # CAL129 — les contrôles d'ENTRÉE de l'optimiseur viennent APRÈS les cinq
@@ -3749,16 +3768,19 @@ MOTIF_ECRETAGE_SANS_SERIE = (
     "aucun forfait n'est appliqué à sa place")
 
 
-def _bornes_ratio(*, exigence_marche=None, parametres_societe=None):
+def _bornes_ratio(*, exigence_marche=None, parametres_societe=None,
+                  reglages=None):
     """``(borne_dc_ac, seuil_alerte, source, detail)`` — jamais une borne écrite ici.
 
     ``exigence_marche`` et ``parametres_societe`` sont des dicts portant
     ``ratio_dc_ac_max`` (et, optionnellement, ``ratio_dc_ac_alerte``). Le
     premier qui en porte une l'emporte, et la SOURCE retenue voyage avec la
-    valeur.
+    valeur. ACAL1538 — puis la borne usuelle SAISIE de la section
+    « electrique_societe » (``reglages``), celle qu'``evaluer_onduleurs`` lit.
     """
     from core.electrique.onduleurs import (
-        BORNE_USUELLE_DC_AC, SEUIL_ALERTE_DC_AC,
+        BORNE_USUELLE_DC_AC, SEUIL_ALERTE_DC_AC, SOURCE_CONVENTION_ATELIER,
+        bornes_dc_ac,
     )
 
     for donnees, source in ((exigence_marche, SOURCE_BORNE_MARCHE),
@@ -3768,9 +3790,47 @@ def _bornes_ratio(*, exigence_marche=None, parametres_societe=None):
             alerte = _nombre((donnees or {}).get('ratio_dc_ac_alerte'))
             return (borne, alerte if alerte and alerte > 0 else None, source,
                     (donnees or {}).get('reference') or '')
+    saisies = bornes_dc_ac(reglages)
+    if saisies.borne_usuelle.source != SOURCE_CONVENTION_ATELIER:
+        alerte = saisies.seuil_alerte
+        return (saisies.borne_usuelle.valeur,
+                (alerte.valeur if alerte.source != SOURCE_CONVENTION_ATELIER
+                 else None), SOURCE_BORNE_SOCIETE, saisies.borne_usuelle.source)
+    # ACAL1540 — dit en phrase de métier, sans nom de module du code.
     return (BORNE_USUELLE_DC_AC, SEUIL_ALERTE_DC_AC, SOURCE_BORNE_NOYAU,
-            "core.electrique.onduleurs — convention onduleuriste, borne "
-            "usuelle 1,35 et alerte au-delà de 1,50")
+            "usage des fabricants d'onduleurs : borne usuelle 1,35 et alerte "
+            "au-delà de 1,50")
+
+
+def _avertissements_uniques(messages):
+    """ACAL1540 — chaque avertissement servi UNE fois, dans l'ordre : sans
+    norme, câbles, protections et terre omettent pour la MÊME raison."""
+    vus, uniques = set(), []
+    for message in messages:
+        cle = message if isinstance(message, str) else id(message)
+        if cle not in vus:
+            vus.add(cle)
+            uniques.append(message)
+    return uniques
+
+
+#: ACAL1538 — LA phrase du ratio quand aucune fourchette n'est réglée.
+RATIO_NON_JUGE = 'Non jugé : aucune fourchette réglée'
+
+
+def _juger_ratio(valeur, bornes, reglages=None):
+    """ACAL1538 — LE verdict du ratio DC/AC : vrai, faux, ou ``None`` (non jugé).
+
+    Seule une fourchette RÉGLÉE juge (marché, société, seuil bas saisi) : la
+    borne usuelle du noyau reste publiée, elle ne prononce plus rien."""
+    from core.electrique.onduleurs import bornes_dc_ac
+
+    borne, _alerte, source, _detail = bornes
+    bas = bornes_dc_ac(reglages).seuil_bas
+    if valeur is None or (source == SOURCE_BORNE_NOYAU and not bas.controlee):
+        return None
+    dans = source == SOURCE_BORNE_NOYAU or valeur <= borne + 1e-9
+    return dans and (not bas.controlee or valeur >= bas.valeur - 1e-9)
 
 
 def ecretage_depuis_serie(serie_dc_kw, puissance_ac_kw):
@@ -3799,7 +3859,8 @@ def ecretage_depuis_serie(serie_dc_kw, puissance_ac_kw):
 
 
 def _bloc_ratio_dc_ac(conception, *, exigence_marche=None,
-                      parametres_societe=None, ecretage_pct=None):
+                      parametres_societe=None, ecretage_pct=None,
+                      reglages=None):
     """CAL127 — le ratio, SA borne, la SOURCE de sa borne, et l'écrêtage.
 
     Rend ``(bloc, avertissements)``. Hors bornes, l'avertissement CITE la
@@ -3814,9 +3875,10 @@ def _bloc_ratio_dc_ac(conception, *, exigence_marche=None,
 
     from .chaines import evaluer_onduleurs
 
-    borne, alerte, source, detail = _bornes_ratio(
-        exigence_marche=exigence_marche,
-        parametres_societe=parametres_societe)
+    bornes = _bornes_ratio(exigence_marche=exigence_marche,
+                           parametres_societe=parametres_societe,
+                           reglages=reglages)
+    borne, alerte, source, detail = bornes
     evaluation = evaluer_onduleurs(conception)
     valeur = None
     puissance_ac = None
@@ -3826,15 +3888,21 @@ def _bloc_ratio_dc_ac(conception, *, exigence_marche=None,
         valeur = ratio.valeur if ratio is not None else None
 
     avertissements = []
-    dans_bornes = None
-    if valeur is not None:
-        dans_bornes = valeur <= borne + 1e-9
-        if not dans_bornes:
+    # ACAL1538 — le verdict UNIQUE (aussi celui de ``_verdicts_electriques``).
+    dans_bornes = _juger_ratio(valeur, bornes, reglages)
+    juge = source != SOURCE_BORNE_NOYAU
+    if dans_bornes is False:
+        if juge and valeur > borne + 1e-9:
             avertissements.append(
                 "ratio DC/AC de %s au-dessus de la borne %s (%s%s) — "
                 "écrêtage aux heures pleines"
                 % (fr(valeur, 2), fr(borne, 2), source,
                    ' : %s' % detail if detail else ''))
+        else:
+            avertissements.append(
+                "ratio DC/AC de %s sous le seuil bas réglé par la société — "
+                "onduleur sous-utilisé" % fr(valeur, 2))
+    if valeur is not None and juge:
         if alerte is not None and valeur > alerte + 1e-9:
             avertissements.append(
                 "ratio DC/AC de %s au-dessus du seuil d'alerte %s (%s) — "

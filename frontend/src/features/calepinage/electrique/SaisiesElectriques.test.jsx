@@ -134,6 +134,20 @@ describe('SaisiesElectriques (ACAL153)', () => {
     expect(calepinageApi.calepinages.enregistrerEntreeElectrique).not.toHaveBeenCalled()
   })
 
+  it('ACAL1549 : source « TMY + NOCT fiche » (sans mention) ⇒ proposée, bouton « Utiliser ces températures »', async () => {
+    servir(VIDE.entree)
+    calepinageApi.calepinages.evaluerElectrique.mockResolvedValue({
+      data: { temperatures: { froid_c: 4.18, chaud_c: 72.59, source: 'TMY + NOCT fiche', mention: '', detail: 'TMY ; NOCT 45' } },
+    })
+
+    rendre()
+    const ligne = await screen.findByTestId('acal974-proposition')
+    expect(ligne).toHaveTextContent('Proposée — à confirmer : 4,18 °C / 72,59 °C (TMY + NOCT de la fiche)')
+    await userEvent.click(screen.getByTestId('acal974-utiliser'))
+    expect(champ('temperature_min_c')).toHaveValue(4.18)
+    expect(champ('temperature_max_c')).toHaveValue(72.59)
+  })
+
   it('ACAL974 : un repli du noyau (mention non vide) ne propose rien et le dit', async () => {
     servir(VIDE.entree)
     calepinageApi.calepinages.evaluerElectrique.mockResolvedValue({

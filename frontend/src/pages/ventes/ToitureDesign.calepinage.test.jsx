@@ -188,6 +188,28 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     expect(toastInfo).not.toHaveBeenCalled()
   })
 
+  it('ACAL1275 — « Générer le devis » sur une conception inchangée : aucun toast « Aucun changement » ; « Enregistrer » le garde', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
+      { data: { inchange: true, version: null } })
+    calepinageApi.calepinages.genererDevis.mockResolvedValue(
+      { data: { devis: 43, reference: 'DEV-2611-0043', deduplique: false } })
+    calepinageApi.calepinages.get.mockResolvedValue(reponseContrat('calepinage', 'calepinage_detail', 'exemple_vide'))
+
+    rendreCalepinage(CTX.calepinage.id, '?onglet=documents')
+    await screen.findByTestId('cal-generer-devis', {}, { timeout: 15_000 })
+    await waitFor(() => expect(screen.getByTestId('cal-generer-devis')).toBeEnabled())
+    await userEvent.click(screen.getByTestId('cal-generer-devis'))
+
+    expect(await screen.findByTestId('cal-devis-cree', {}, { timeout: 10_000 })).toHaveTextContent('DEV-2611-0043')
+    expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel).toHaveBeenCalledTimes(1)
+    expect(toastInfo).not.toHaveBeenCalledWith('Aucun changement')
+
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
+    await waitFor(() => expect(toastInfo).toHaveBeenCalledWith('Aucun changement'))
+  })
+
   it('ACAL398 — conception inchangée ⇒ aucun appel simuler', async () => {
     calepinageApi.calepinages.designContext.mockResolvedValue(
       reponseContrat('calepinage', 'calepinage_design_context'))

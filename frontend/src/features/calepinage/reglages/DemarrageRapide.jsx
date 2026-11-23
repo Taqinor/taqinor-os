@@ -223,13 +223,23 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
   const [hauteur, setHauteur] = useState(null)
   useLayoutEffect(() => {
     if (!seul) return undefined
+    // ACAL1344 — le bas utile est celui du CONTENU du défilant de l'ERP (son bas moins sa marge basse), pas
+    // celui de la fenêtre : sinon la marge du cadre déborde et la page défile de quelques pixels.
+    const defilant = (n) => { let p = n?.parentElement; while (p && !/(auto|scroll)/.test(getComputedStyle(p).overflowY)) p = p.parentElement; return p }
     const mesurer = () => {
       const haut = racine.current?.getBoundingClientRect().top ?? 0
-      setHauteur(Math.max(360, Math.floor(window.innerHeight - haut - 24)))
+      const cadre = defilant(racine.current)
+      const bas = cadre
+        ? cadre.getBoundingClientRect().bottom - (parseFloat(getComputedStyle(cadre).paddingBottom) || 0)
+        : window.innerHeight - 24
+      setHauteur(Math.max(360, Math.floor(bas - haut)))
     }
     mesurer()
     window.addEventListener('resize', mesurer)
-    return () => window.removeEventListener('resize', mesurer)
+    // Le haut de la carte bouge quand une police arrive ou qu'une barre apparaît au-dessus : on remesure alors.
+    const veilleur = typeof ResizeObserver === 'function' ? new ResizeObserver(mesurer) : null
+    if (veilleur && racine.current?.parentElement) veilleur.observe(racine.current.parentElement)
+    return () => { window.removeEventListener('resize', mesurer); veilleur?.disconnect() }
   }, [seul])
 
   const agir = async (appel, phrase) => {

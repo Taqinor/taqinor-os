@@ -36,6 +36,7 @@ export const ALL_HOOKS = [
   'cal-cible-panneaux',
   'cal-devis-perime',
   'cal-acces-refuse',
+  'cal-introuvable',
   'cal-lien-photos-calage',
   'cal-lien-variantes',
   // ── BadgePerime.jsx ──
@@ -347,6 +348,7 @@ export const ALL_HOOKS = [
   'cal-pente-message',
   'cal-pente-lecture-seule',
   'cal-pente-mode',
+  'cal-pente-plat',
   'cal-pente-relief',
   'cal-pente-relief-fichier',
   'cal-pente-visite-orientation-utiliser',
@@ -532,6 +534,7 @@ export const ALL_HOOKS = [
   'cal-reprise-bouton',
   'cal-reprise-chargement',
   'cal-reprise-ecarts',
+  'cal-reprise-ecarts-motif',
   'cal-reprise-erreur',
   'cal-reprise-erreur-lecture',
   'cal-reprise-lecture-seule',
@@ -885,6 +888,8 @@ export const ALL_HOOKS = [
   'cal-docs-info-devis',
   'cal-pret-groupe',
   'cal-liste-filtres-etat',
+  'cal-vignette-toit',
+  'cal-signal',
   'cal-releve',
   'cal-vue-client',
 ]

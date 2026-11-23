@@ -48,7 +48,7 @@ def _charger(nom):
 CASCADE = _charger('calepinage_pertes_cascade.json')
 RESULTAT = _charger('calepinage_resultat.json')
 MOTIF = ("Ni cascade de pertes ni poste de perte déclaré : lancez la "
-         "simulation (onglet Production), ou déclarez les postes dans "
+         "simulation (étape Résultats), ou déclarez les postes dans "
          "l'éditeur de pertes.")
 
 
@@ -356,7 +356,9 @@ class FamilleDeMotifsSansNomInterneTest(unittest.TestCase):
             {'etape': 'b', 'motif_omission': ''}]}}
         servi = avec_motifs_lisibles(resultat)
         a, b = servi['cascade']['etapes']
-        self.assertEqual(a['motif_omission'], motif)  # la donnée ne change pas
+        # ACAL1323 — le motif SERVI est lui aussi lisible ; le stocké ne change pas.
+        self.assertEqual(a['motif_omission'], a['motif_lisible'])
+        self.assertEqual(resultat['cascade']['etapes'][0]['motif_omission'], motif)
         self.assertIn("matrice d'ombrage", a['motif_lisible'])
         self.assertNotIn('shading12x24', a['motif_lisible'])
         self.assertNotIn('motif_lisible', b)

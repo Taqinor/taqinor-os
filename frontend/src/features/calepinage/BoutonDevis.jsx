@@ -98,6 +98,13 @@ export const MESSAGE_ENREGISTREMENT_ECHOUE = 'La conception à l’écran n’a 
 export const MESSAGE_RETOUCHES_NON_ENREGISTREES = 'Retouches non enregistrées : elles ne '
   + 'seront pas reprises dans la V2.'
 
+// ACAL1414 — les clés des surfaces que le devis lié ne chiffre PAS (`chiffree === false`, servi par ACAL1413) ;
+// `null` (sans devis lié ou sans sélection écrite) ne décoche rien : tout est coché à l'ouverture (ACAL968).
+function surfacesNonChiffrees(detail) {
+  const surfaces = Array.isArray(detail?.surfaces_chiffrables) ? detail.surfaces_chiffrables : []
+  return surfaces.filter((s) => s.chiffree === false).map((s) => s.cle)
+}
+
 /* Recette R2-23 — l'enregistrement a RÉUSSI mais la resynchronisation du devis lié est
    refusée : `enregistrerAvant` rend `{ enregistre: true, devisModifie: false, motif }`
    (au lieu de `false`), `motif` = le texte du SERVEUR mot pour mot ; l'écran dit alors la
@@ -139,7 +146,15 @@ export default function BoutonDevis({
   // ACAL94 — avertissement (jamais un refus) avant une révision.
   const [retouches, setRetouches] = useState(false)
   const gesteEnCours = useRef(false) // ACON46 — garde ré-entrante (voir unSeulGeste)
-  const [decochees, setDecochees] = useState([]) // ACAL968 — clés des surfaces décochées
+  // ACAL968 — clés des surfaces décochées ; ACAL1414 : à l'ouverture, celles que le devis lié ne chiffre PAS.
+  const [decochees, setDecochees] = useState(() => surfacesNonChiffrees(detail))
+  // À la réouverture (et quand le serveur change la sélection du devis, ex. après « Générer »), l'écran relit ce choix.
+  const signatureChoix = JSON.stringify(surfacesNonChiffrees(detail))
+  const [choixLu, setChoixLu] = useState(signatureChoix)
+  if (choixLu !== signatureChoix) { // ajustement d'état pendant le rendu (React) : le choix du serveur a changé
+    setChoixLu(signatureChoix)
+    setDecochees(JSON.parse(signatureChoix))
+  }
 
   // L'ÉTAT VIENT DU SERVEUR, et d'UNE SEULE lecture : l'agrégat de détail
   // (CAL17) est chargé par `AtelierPanneaux` et descendu ici en prop. Le
@@ -238,7 +253,7 @@ export default function BoutonDevis({
     setRetour(null)
     let resultat = false
     try {
-      resultat = await enregistrerAvant()
+      resultat = await enregistrerAvant({ silencieux: true }) // ACAL1275 — pas de toast « Aucun changement » avant le devis
     } catch {
       resultat = false
     }

@@ -249,8 +249,12 @@ def controles_de_porte(calepinage):
 
 # ── ACAL858 — les contrôles ÉLECTRIQUES : l'état d'ACAL934 et les lignes
 # servies, LUS (aucun seuil, aucun message ni rangement électrique recopié).
-CIBLE_ELECTRIQUE = {'etape': 'electrique', 'onglet': 'schema', 'champ': ''}
 CIBLE_MATERIEL = {'etape': 'electrique', 'onglet': 'materiel', 'champ': ''}
+#: ACAL1506 — l'onglet qui RÈGLE chaque contrôle électrique (clés d'``ONGLETS``,
+#: ``atelier/onglets.js``, toutes de l'étape Électrique) ; sans entrée : le Schéma.
+_ONGLET_DU_CONTROLE = {'verdict_electrique': 'verdict-electrique',
+                       'chutes_tension': 'cheminement-cables',
+                       'terre_protections': 'decisions-electriques'}
 #: Le statut d'un motif de publication (``_rapport_publication``) dit en
 #: état de contrôle : bloquant reste bloquant, tout autre non-ok est à régler.
 _ETAT_DU_MOTIF = {'bloquant': 'bloquant'}
@@ -258,7 +262,9 @@ _RANG = {'ok': 0, 'info': 1, 'a_regler': 2, 'bloquant': 3}
 
 
 def _elec(code, libelle, etat, valeur, **autres):
-    autres.setdefault('cible', CIBLE_ELECTRIQUE)
+    autres.setdefault('cible', {
+        'etape': 'electrique',
+        'onglet': _ONGLET_DU_CONTROLE.get(code, 'schema'), 'champ': ''})
     return _controle(code, libelle, etat, valeur, **autres)
 
 
@@ -275,7 +281,6 @@ def _depuis_motifs(code, libelle, motifs, *, geste):
 
 
 def _verdict_electrique(publication):
-    from . import synthese_publication as _synthese
     from .etat_dossier_electrique import ETATS_DOSSIER
 
     etat, points = publication['etat'], publication['points']
@@ -283,8 +288,8 @@ def _verdict_electrique(publication):
     if etat == ETATS_DOSSIER[0]:
         return _elec('verdict_electrique', libelle, 'ok', 'Prêt')
     if etat == ETATS_DOSSIER[1]:
-        return _elec('verdict_electrique', libelle, 'a_regler',
-                     'À compléter : %s' % _synthese._points(points),
+        # ACAL1539 — « À compléter » seul : les motifs sont détaillés au Verdict.
+        return _elec('verdict_electrique', libelle, 'a_regler', 'À compléter',
                      geste='Compléter le dossier électrique')
     return _elec('verdict_electrique', libelle, 'bloquant',
                  'Bloquant : %d' % points,
@@ -319,7 +324,7 @@ def _tension_froid(verdicts):
 def _ratio_dc_ac(ratio):
     from core.electrique.types import fr
 
-    from .electrique import SOURCE_BORNE_NOYAU
+    from .electrique import RATIO_NON_JUGE
 
     libelle = 'Puissance des panneaux face à l’onduleur'
     valeur = (ratio or {}).get('valeur')
@@ -327,10 +332,10 @@ def _ratio_dc_ac(ratio):
         return _elec('ratio_dc_ac', libelle, 'info',
                      'Non calculé : onduleur non désigné')
     texte = fr(valeur, 2)
-    if ratio.get('borne_source') in (None, '', SOURCE_BORNE_NOYAU):
+    # ACAL1538 — le verdict du bloc servi, LU : ``None`` = non jugé.
+    if ratio.get('dans_bornes') is None:
         return _elec('ratio_dc_ac', libelle, 'info', texte,
-                     cause='Valeur publiée sans verdict : aucune fourchette '
-                           'saisie par votre société.',
+                     cause=RATIO_NON_JUGE + '.',
                      geste='Saisir une fourchette dans les réglages')
     etat = 'ok' if ratio.get('dans_bornes') else 'a_regler'
     controle = _elec('ratio_dc_ac', libelle, etat, '%s pour %s au plus' % (
@@ -636,11 +641,13 @@ def controle_taille_sans_facture(calepinage):
     """ACAL861 — ``taille_sans_facture`` : avertit, ne bloque jamais."""
     from core.electrique.types import fr
 
-    from .devis import taille_non_dimensionnee
+    from .devis import lead_sans_facture_ni_taille, taille_non_dimensionnee
     from .mesures import mesures_du_document
 
     libelle = 'Taille dimensionnée sur la consommation'
-    if taille_non_dimensionnee(calepinage) is None:
+    # ACAL1342 — ni facture ni taille souhaitée : la réponse est connue, aucun balayage.
+    if not lead_sans_facture_ni_taille(calepinage) \
+            and taille_non_dimensionnee(calepinage) is None:
         return _controle('taille_sans_facture', libelle, 'ok', 'Dimensionnée',
                          cible=CIBLE_FACTURE)
     kwc = mesures_du_document(getattr(calepinage, 'roof_layout', None)).get(

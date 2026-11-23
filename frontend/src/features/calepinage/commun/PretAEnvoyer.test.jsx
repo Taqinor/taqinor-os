@@ -67,6 +67,20 @@ describe('PretAEnvoyer — ordre des listes (H3)', () => {
     expect(calepinageApi.calepinages.pretAEnvoyer).toHaveBeenCalledWith(101, { etape: 'electrique' })
   })
 
+  it('ACAL1543 : liste courte, une seule ligne « Régler » dorée (la première), les autres discrètes', async () => {
+    const avecCible = (modele, code) => ({ ...ligne(modele, code), cible: { onglet: 'electrique', ...modele.cible } })
+    calepinageApi.calepinages.pretAEnvoyer.mockResolvedValue(servi([
+      avecCible(modeleARegler, 'chutes_tension'), avecCible(modeleBloquant, 'terre_protections'),
+      avecCible(modeleARegler, 'ratio_dc_ac'),
+    ]))
+    monter({ calepinageId: 105, filtre: 'electrique', court: true })
+    await screen.findByTestId('compte')
+    const boutons = [...screen.getByTestId('cal-pret-a-envoyer').querySelectorAll('[data-testid^="cal-pret-regler-"]')]
+    expect(boutons.length).toBeGreaterThan(1)
+    expect(boutons.filter((b) => b.dataset.recommande === 'oui')).toHaveLength(1)
+    expect(boutons[0].dataset.recommande).toBe('oui')
+  })
+
   it('par étape (Documents) : le groupe qui porte un point à régler passe en tête, ses points à régler d’abord', async () => {
     const controles = [
       ligne(modeleOk, 'visite_validee'), ligne(modeleOk, 'pentes_confirmees'),

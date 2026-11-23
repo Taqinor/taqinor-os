@@ -33,6 +33,7 @@ import { esc } from './dom';
 // elle, et pas une seconde formule, qui donne l'azimut d'une façade.
 import { azimutNormaleArete, distanceEntreM } from './snap';
 import type { Ctx } from './context';
+import type { AreaRecord } from './types'; // ACAL1412
 import { affectationDesPans, cotesPourPan, estRefus, lireModulesDisponibles } from './moduleSelect'; // ACAL918
 // CALX124 — la géométrie de placement de CAL89/CAL91 existe et est testée depuis des
 // mois sans qu'aucun fichier applicatif ne l'importe : c'est ICI qu'elle est branchée.
@@ -554,6 +555,7 @@ export function monterAtelierPose(ctx: Ctx, deps: AtelierPoseDeps = {}): Atelier
     <span class="mb-2 block text-[11px] text-rose-300" data-pose-erreur="contour"></span>
     <span class="mb-2 block text-[11px] text-rose-300" data-pose-erreur="identifiant"></span>
     <button type="button" data-pose-enregistrer class="w-full rounded border border-white/25 px-2 py-1 text-white">Enregistrer le contour tracé</button>
+    <button type="button" data-pose-annuler hidden class="mt-1 w-full rounded border border-white/25 px-2 py-1 text-white">Annuler : rétablir le pan de tracé</button>
     <p class="mt-1 text-xs text-rose-300" data-pose-motif-plan role="alert"></p>
     <ul data-pose-liste class="mt-2 space-y-1"></ul>`;
 
@@ -610,6 +612,9 @@ export function monterAtelierPose(ctx: Ctx, deps: AtelierPoseDeps = {}): Atelier
     }
     afficherRefus(racine!, null, '');
     Object.assign(verdict.surface, moduleDuPanActif(ctx)); // ACAL918
+    // Demande croisée : la photo d'historique se prend AVANT la surface — le retrait du pan la prend (deleteArea), sinon ici.
+    const retire = genre === 'sol' && retirerPanDeTrace(verdict.surface.id); // ACAL1412
+    if (!retire) ctx.pushWorkshopHistory?.();
     list.push(verdict.surface);
     rendreListe();
     deps.recalc?.();
@@ -617,9 +622,47 @@ export function monterAtelierPose(ctx: Ctx, deps: AtelierPoseDeps = {}): Atelier
     const manque = verdict.nonSaisi.length
       ? ` Non renseigné : ${verdict.nonSaisi.join(', ')} — la valeur reste absente du document.`
       : '';
-    deps.setStatus?.(`Surface « ${verdict.surface.label || verdict.surface.id} » enregistrée.${manque}`);
+    const nom = verdict.surface.label || verdict.surface.id;
+    deps.setStatus?.(retire ? `Le tracé est devenu la surface ${nom} — Annuler le défait.${manque}` : `Surface « ${nom} » enregistrée.${manque}`);
     return verdict;
   }
+
+  /** ACAL1412 — le pan qui a servi à tracer le champ au sol restait à côté de la surface : le devis chiffrait le
+   *  champ deux fois. Il est retiré par la suppression de pan EXISTANTE (bouton « × » de la liste des pans, zones.ts
+   *  → deleteArea) ; pan unique (pas de « × ») ou pan verrouillé ⇒ rien n'est retiré. */
+  const annulerEl = racine.querySelector('[data-pose-annuler]') as HTMLButtonElement | null;
+  let panRetire: { pan: AreaRecord; index: number; surfaceId: string } | null = null;
+  function retirerPanDeTrace(surfaceId: string): boolean {
+    const pan = ctx.activeArea?.();
+    const index = pan ? (ctx.areas ?? []).indexOf(pan) : -1;
+    const croix = Array.from(ctx.dom?.areasListEl?.querySelectorAll<HTMLElement>('[data-area-del]') ?? []).find((b) => b.dataset.areaDel === pan?.id);
+    if (!pan || index < 0 || !croix) return false;
+    Object.assign(pan, { vertices: (ctx.vertices ?? []).map((v) => [v[0], v[1]]), obstacles: (ctx.obstacles ?? []).map((o) => ({ ...o })), roofType: ctx.roofType, pitchDeg: ctx.pitchDeg, facingAzimuthDeg: ctx.facingAzimuthDeg });
+    croix.click();
+    if (ctx.areas.includes(pan)) return false;
+    panRetire = { pan, index, surfaceId };
+    if (annulerEl) annulerEl.hidden = false;
+    return true;
+  }
+  /** ACAL1412 — « Annuler » : la surface part, le pan revient à sa place et redevient le pan actif (« Voir »). */
+  function annulerRetrait(): void {
+    const r = panRetire;
+    panRetire = null;
+    if (annulerEl) annulerEl.hidden = true;
+    if (!r) return;
+    const list = ctx.surfacesPose ?? [];
+    list.splice(0, list.length, ...list.filter((s) => s.id !== r.surfaceId));
+    ctx.areas.splice(Math.min(r.index, ctx.areas.length), 0, r.pan);
+    const voir = document.createElement('button');
+    voir.dataset.areaSelect = r.pan.id;
+    ctx.dom?.areasListEl?.appendChild(voir);
+    voir.click();
+    voir.remove();
+    rendreListe();
+    deps.recalc?.();
+    deps.setStatus?.(`${r.pan.label} rétabli : la surface tracée est retirée.`);
+  }
+  annulerEl?.addEventListener('click', annulerRetrait);
 
   genreEl?.addEventListener('change', synchroniserGenre);
   (racine.querySelector('[data-pose-enregistrer]') as HTMLElement | null)?.addEventListener('click', () => {

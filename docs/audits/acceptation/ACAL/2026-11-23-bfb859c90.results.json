@@ -1,0 +1,3047 @@
+{
+ "sha": "bfb859c90b3d9be240ef707c36feaac6bf9e0431",
+ "date": "2026-11-23",
+ "groupe": "ACAL",
+ "verdict": "PASS",
+ "couvre": [
+  "ACAL377",
+  "ACAL427",
+  "ACAL430",
+  "ACAL438",
+  "ACAL478",
+  "ACAL494",
+  "ACAL503",
+  "ACAL507",
+  "ACAL513",
+  "ACAL516",
+  "ACAL518",
+  "ACAL519",
+  "ACAL531",
+  "ACAL535",
+  "ACAL536",
+  "ACAL537",
+  "ACAL548",
+  "ACAL550",
+  "ACAL559",
+  "ACAL560",
+  "ACAL575",
+  "ACAL576",
+  "ACAL582",
+  "ACAL596",
+  "ACAL601",
+  "ACAL602",
+  "ACAL603",
+  "ACAL604",
+  "ACAL605",
+  "ACAL606",
+  "ACAL608",
+  "ACAL609",
+  "ACAL612",
+  "ACAL613",
+  "ACAL617",
+  "ACAL630",
+  "ACAL631",
+  "ACAL632",
+  "ACAL633",
+  "ACAL634",
+  "ACAL635",
+  "ACAL641",
+  "ACAL671",
+  "ACAL672",
+  "ACAL673",
+  "ACAL674",
+  "ACAL677",
+  "ACAL685",
+  "ACAL695",
+  "ACAL713",
+  "ACAL715",
+  "ACAL720",
+  "ACAL727",
+  "ACAL740",
+  "ACAL742",
+  "ACAL745",
+  "ACAL749",
+  "ACAL750",
+  "ACAL753",
+  "ACAL758",
+  "ACAL759",
+  "ACAL762",
+  "ACAL763",
+  "ACAL768",
+  "ACAL769",
+  "ACAL770",
+  "ACAL771",
+  "ACAL776",
+  "ACAL777",
+  "ACAL778",
+  "ACAL782",
+  "ACAL783",
+  "ACAL784",
+  "ACAL786",
+  "ACAL787",
+  "ACAL789",
+  "ACAL791",
+  "ACAL793",
+  "ACAL794",
+  "ACAL795",
+  "ACAL797",
+  "ACAL798",
+  "ACAL799",
+  "ACAL801",
+  "ACAL803",
+  "ACAL822",
+  "ACAL827",
+  "ACAL829",
+  "ACAL830",
+  "ACAL833",
+  "ACAL848",
+  "ACAL854",
+  "ACAL855",
+  "ACAL856",
+  "ACAL857",
+  "ACAL862",
+  "ACAL880",
+  "ACAL887",
+  "ACAL888",
+  "ACAL892",
+  "ACAL894",
+  "ACAL896",
+  "ACAL897",
+  "ACAL914",
+  "ACAL915",
+  "ACAL923",
+  "ACAL926",
+  "ACAL928",
+  "ACAL937",
+  "ACAL939",
+  "ACAL940",
+  "ACAL945",
+  "ACAL947",
+  "ACAL950",
+  "ACAL951",
+  "ACAL952",
+  "ACAL954",
+  "ACAL955",
+  "ACAL958",
+  "ACAL960",
+  "ACAL965",
+  "ACAL966",
+  "ACAL971",
+  "ACAL975",
+  "ACAL978",
+  "ACAL1007",
+  "ACAL1027",
+  "ACAL1065",
+  "ACAL1185",
+  "ACAL1288",
+  "ACAL1289",
+  "ACAL1294"
+ ],
+ "couvre_avec_ecart": [],
+ "etapes": [
+  {
+   "id": "T2.ACAL377",
+   "taches": [
+    "ACAL377"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-GESTES-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL427",
+   "taches": [
+    "ACAL427"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-B2-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL430",
+   "taches": [
+    "ACAL430"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-B2-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL438",
+   "taches": [
+    "ACAL438"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-B2-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL478",
+   "taches": [
+    "ACAL478"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-GESTES-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL494",
+   "taches": [
+    "ACAL494"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-TOIT-a-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL503",
+   "taches": [
+    "ACAL503"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-B2-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL507",
+   "taches": [
+    "ACAL507"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-TOIT-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL513",
+   "taches": [
+    "ACAL513"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-TOIT-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL516",
+   "taches": [
+    "ACAL516"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-T2-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL518",
+   "taches": [
+    "ACAL518"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-T2-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL519",
+   "taches": [
+    "ACAL519"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-T2-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL531",
+   "taches": [
+    "ACAL531"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-TOIT-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL535",
+   "taches": [
+    "ACAL535"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-TOIT-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL536",
+   "taches": [
+    "ACAL536"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-TOIT-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL537",
+   "taches": [
+    "ACAL537"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-TOIT-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL548",
+   "taches": [
+    "ACAL548"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-POSE-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL550",
+   "taches": [
+    "ACAL550"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-DOCS-a-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL559",
+   "taches": [
+    "ACAL559"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-POSE-a-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL560",
+   "taches": [
+    "ACAL560"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-POSE-a-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL575",
+   "taches": [
+    "ACAL575"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-DOCS-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL576",
+   "taches": [
+    "ACAL576"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-POSE-a-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL582",
+   "taches": [
+    "ACAL582"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-RATT-2-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL596",
+   "taches": [
+    "ACAL596"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-RATT-2-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL601",
+   "taches": [
+    "ACAL601"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-DOCS-a-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL602",
+   "taches": [
+    "ACAL602"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-DOCS-a-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL603",
+   "taches": [
+    "ACAL603"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-DOCS-a-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL604",
+   "taches": [
+    "ACAL604"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-DOCS-a-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL605",
+   "taches": [
+    "ACAL605"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-DOCS-a-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL606",
+   "taches": [
+    "ACAL606"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-POSE-a-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL608",
+   "taches": [
+    "ACAL608"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-POSE-a-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL609",
+   "taches": [
+    "ACAL609"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-POSE-a-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL612",
+   "taches": [
+    "ACAL612"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-ELEC-a-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL613",
+   "taches": [
+    "ACAL613"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-ELEC-a-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL617",
+   "taches": [
+    "ACAL617"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-ELEC-a-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL630",
+   "taches": [
+    "ACAL630"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-ELEC-a-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL631",
+   "taches": [
+    "ACAL631"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-ELEC-a-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL632",
+   "taches": [
+    "ACAL632"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-ELEC-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL633",
+   "taches": [
+    "ACAL633"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-ELEC-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL634",
+   "taches": [
+    "ACAL634"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-ELEC-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL635",
+   "taches": [
+    "ACAL635"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-ELEC-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL641",
+   "taches": [
+    "ACAL641"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-ELEC-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL671",
+   "taches": [
+    "ACAL671"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-ELEC-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL672",
+   "taches": [
+    "ACAL672"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-DOCS-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL673",
+   "taches": [
+    "ACAL673"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-DOCS-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL674",
+   "taches": [
+    "ACAL674"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-DOCS-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL677",
+   "taches": [
+    "ACAL677"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-RATT-2-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL685",
+   "taches": [
+    "ACAL685"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-ELEC-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL695",
+   "taches": [
+    "ACAL695"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-SIMU-a-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL713",
+   "taches": [
+    "ACAL713"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-SIMU-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL715",
+   "taches": [
+    "ACAL715"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-RESU-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL720",
+   "taches": [
+    "ACAL720"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-RATT-2-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL727",
+   "taches": [
+    "ACAL727"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-RESU-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL740",
+   "taches": [
+    "ACAL740"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-RATT-2-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL742",
+   "taches": [
+    "ACAL742"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-SIMU-a-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL745",
+   "taches": [
+    "ACAL745"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-RESU-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL749",
+   "taches": [
+    "ACAL749"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-SIMU-a-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL750",
+   "taches": [
+    "ACAL750"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-RESU-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL753",
+   "taches": [
+    "ACAL753"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-RESU-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL758",
+   "taches": [
+    "ACAL758"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-SIMU-a-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL759",
+   "taches": [
+    "ACAL759"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-RESU-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL762",
+   "taches": [
+    "ACAL762"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-RESU-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL763",
+   "taches": [
+    "ACAL763"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-TOIT-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL768",
+   "taches": [
+    "ACAL768"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-RESU-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL769",
+   "taches": [
+    "ACAL769"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-RESU-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL770",
+   "taches": [
+    "ACAL770"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-SIMU-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL771",
+   "taches": [
+    "ACAL771"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-SIMU-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL776",
+   "taches": [
+    "ACAL776"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-CONSO-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL777",
+   "taches": [
+    "ACAL777"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-CONSO-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL778",
+   "taches": [
+    "ACAL778"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-CONSO-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL782",
+   "taches": [
+    "ACAL782"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-ELEC-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL783",
+   "taches": [
+    "ACAL783"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-ELEC-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL784",
+   "taches": [
+    "ACAL784"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-ELEC-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL786",
+   "taches": [
+    "ACAL786"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-SIMU-a-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL787",
+   "taches": [
+    "ACAL787"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-SIMU-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL789",
+   "taches": [
+    "ACAL789"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-CONSO-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL791",
+   "taches": [
+    "ACAL791"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-CONSO-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL793",
+   "taches": [
+    "ACAL793"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-SIMU-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL794",
+   "taches": [
+    "ACAL794"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-SIMU-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL795",
+   "taches": [
+    "ACAL795"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-CONSO-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL797",
+   "taches": [
+    "ACAL797"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-SIMU-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL798",
+   "taches": [
+    "ACAL798"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-SIMU-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL799",
+   "taches": [
+    "ACAL799"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-CONSO-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL801",
+   "taches": [
+    "ACAL801"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-SIMU-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL803",
+   "taches": [
+    "ACAL803"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-CONSO-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL822",
+   "taches": [
+    "ACAL822"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-ELEC-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL827",
+   "taches": [
+    "ACAL827"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-ELEC-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL829",
+   "taches": [
+    "ACAL829"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-SIMU-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL830",
+   "taches": [
+    "ACAL830"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-ELEC-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL833",
+   "taches": [
+    "ACAL833"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-RATT-2-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL848",
+   "taches": [
+    "ACAL848"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-CONSO-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL854",
+   "taches": [
+    "ACAL854"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-S2-PARCOURS-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL855",
+   "taches": [
+    "ACAL855"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-S2-PARCOURS-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL856",
+   "taches": [
+    "ACAL856"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-RATT-1-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL857",
+   "taches": [
+    "ACAL857"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-S2-PARCOURS-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL862",
+   "taches": [
+    "ACAL862"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-S2-PARCOURS-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL880",
+   "taches": [
+    "ACAL880"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-RATT-1-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL887",
+   "taches": [
+    "ACAL887"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-ELEC-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL888",
+   "taches": [
+    "ACAL888"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-RATT-1-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL892",
+   "taches": [
+    "ACAL892"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-T2-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL894",
+   "taches": [
+    "ACAL894"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-RATT-1-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL896",
+   "taches": [
+    "ACAL896"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-S2-PARCOURS-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL897",
+   "taches": [
+    "ACAL897"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-RATT-1-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL914",
+   "taches": [
+    "ACAL914"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-GESTES-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL915",
+   "taches": [
+    "ACAL915"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-GESTES-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL923",
+   "taches": [
+    "ACAL923"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-GESTES-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL926",
+   "taches": [
+    "ACAL926"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-GESTES-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL928",
+   "taches": [
+    "ACAL928"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-GESTES-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL937",
+   "taches": [
+    "ACAL937"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-S2-PARCOURS-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL939",
+   "taches": [
+    "ACAL939"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-POSE-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL940",
+   "taches": [
+    "ACAL940"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-RESU-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL945",
+   "taches": [
+    "ACAL945"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-T2-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL947",
+   "taches": [
+    "ACAL947"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-S2-PARCOURS-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL950",
+   "taches": [
+    "ACAL950"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-GESTES-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL951",
+   "taches": [
+    "ACAL951"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-T2-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL952",
+   "taches": [
+    "ACAL952"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-T2-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL954",
+   "taches": [
+    "ACAL954"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-GESTES-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL955",
+   "taches": [
+    "ACAL955"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-GESTES-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL958",
+   "taches": [
+    "ACAL958"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-GESTES-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL960",
+   "taches": [
+    "ACAL960"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-S2-PARCOURS-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL965",
+   "taches": [
+    "ACAL965"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-GESTES-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL966",
+   "taches": [
+    "ACAL966"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-B2-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL971",
+   "taches": [
+    "ACAL971"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-S2-PARCOURS-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL975",
+   "taches": [
+    "ACAL975"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-GESTES-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL978",
+   "taches": [
+    "ACAL978"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-RESU-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL1007",
+   "taches": [
+    "ACAL1007"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-GESTES-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL1027",
+   "taches": [
+    "ACAL1027"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-T2-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL1065",
+   "taches": [
+    "ACAL1065"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-DOCS-a-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL1185",
+   "taches": [
+    "ACAL1185"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-TOIT-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL1288",
+   "taches": [
+    "ACAL1288"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-TOIT-a-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL1289",
+   "taches": [
+    "ACAL1289"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-TOIT-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "T2.ACAL1294",
+   "taches": [
+    "ACAL1294"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/l5-calepinage/registre/evenements/T2-F2-TOIT-b-cv.jsonl",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  }
+ ]
+}

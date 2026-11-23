@@ -35,9 +35,18 @@ export default function ParcoursDuPan({ calepinageId, troncons = [], lectureSeul
   if (doc.etat !== 'ok' || entree === null || pans.length === 0) return null
 
   const existant = estObjet(entree.cheminement?.pans) ? entree.cheminement.pans : {}
-  const valeur = (cle) => {
+  // ACAL1547 — le point enregistré (`point_collecte` = centre d'un module du pan) est relu : l'index du module
+  // de `geometry.panels[]` dont le centre est ce point, ou '' (aucun point, ou point d'un module disparu).
+  const moduleEnregistre = (cle, zone) => {
+    const point = existant[cle]?.point_collecte
+    if (!estObjet(point)) return ''
+    const proche = (a, b) => Math.abs(Number(a) - Number(b)) < 1e-6
+    const i = zone.geometry.panels.findIndex((p) => proche(p.cx, point.cx) && proche(p.cy, point.cy))
+    return i < 0 ? '' : String(i)
+  }
+  const valeur = (cle, zone) => {
     const saisi = choix[cle] ?? {}
-    return { motif: saisi.motif ?? existant[cle]?.motif_parcours ?? '', module: saisi.module ?? '' }
+    return { motif: saisi.motif ?? existant[cle]?.motif_parcours ?? '', module: saisi.module ?? moduleEnregistre(cle, zone) }
   }
   const poser = (cle, champ, v) => setChoix((c) => ({ ...c, [cle]: { ...c[cle], [champ]: v } }))
 
@@ -45,7 +54,7 @@ export default function ParcoursDuPan({ calepinageId, troncons = [], lectureSeul
     const nouveaux = copieEntree(existant)
     for (const zone of pans) {
       const cle = String(zone.id)
-      const { motif, module } = valeur(cle)
+      const { motif, module } = valeur(cle, zone)
       const panneau = module === '' ? null : zone.geometry.panels[Number(module)]
       if (!motif && !panneau) continue
       nouveaux[cle] = { ...(nouveaux[cle] ?? {}) }
@@ -70,7 +79,7 @@ export default function ParcoursDuPan({ calepinageId, troncons = [], lectureSeul
       <p className="text-xs font-medium text-muted-foreground">Parcours du câble, par pan</p>
       {pans.map((zone) => {
         const cle = String(zone.id)
-        const { motif, module } = valeur(cle)
+        const { motif, module } = valeur(cle, zone)
         const erreurMotif = erreurs[`cheminement.pans.${cle}.motif_parcours`] ?? erreurs[`cheminement.pans.${cle}`]
         return (
           <div key={cle} className="grid grid-cols-1 gap-2 sm:grid-cols-2" data-testid={`acal641-pan-${cle}`}>

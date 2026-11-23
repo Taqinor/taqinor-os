@@ -708,6 +708,63 @@ describe('ACAL497 — libelleLigneOmbre', () => {
   });
 });
 
+// ACAL1405 — le panneau « Bâtiment » est monté avant l'hydratation : il se relit après elle.
+describe('ACAL1405 — bâtiment relu à la réouverture', () => {
+  function monterPuisHydrater(appel: 'syncHeightUi' | 'recomputeHorizon') {
+    document.body.innerHTML =
+      '<div id="rp9-shade-batiment"><input id="rp9-shade-height"><p id="rp9-shade-height-note"></p></div>';
+    const zone = { id: 'z1', label: 'Pan', vertices: [], obstacles: [], buildingId: null };
+    const ctx = {
+      areas: [zone], activeAreaId: 'z1', vertices: [], closed: false, obstacles: [], batiments: [],
+      shadeObstructions: [], environment: [], activeArea: () => zone, pushWorkshopHistory: () => {},
+      centroid: [-7.6, 33.5], centroidLat: 33.5, prodPerKwc: null, shadeFactors: null,
+    } as unknown as Ctx;
+    const map = new Proxy({}, { get: () => () => undefined }) as never;
+    const ui = createShadingUi(ctx, { map, setStatus: () => {}, recalcDisplays: () => {}, applyHeatmap: () => {} });
+    const doc = { buildings: [{ id: 'bat-sans-id', hauteurM: 6, source: 'mesurée au télémètre' }] };
+    appliquerHydratationAuCtx(ctx, { documentRelu: doc } as never);
+    ui[appel]();
+    return ctx;
+  }
+  const val = (id: string) => (document.getElementById(id) as HTMLInputElement).value;
+
+  it('hydratation d’un document à `buildings` : le champ hauteur et la provenance se relisent', () => {
+    const ctx = monterPuisHydrater('syncHeightUi');
+    expect(val('rp9-shade-height')).toBe('6,0');
+    expect(val('rp11-bat-source')).toBe('mesurée au télémètre');
+    expect(document.getElementById('rp9-shade-height-note')?.textContent).toBe('Hauteur saisie : 6,0 m (mesurée au télémètre).');
+    expect(ctx.batiments).toMatchObject([{ id: 'bat-sans-id', hauteurM: 6, source: 'mesurée au télémètre' }]); // aucune écriture
+  });
+
+  it('la fermeture du pan relu (recomputeHorizon) relit aussi le panneau', () => {
+    monterPuisHydrater('recomputeHorizon');
+    expect(val('rp11-bat-source')).toBe('mesurée au télémètre');
+  });
+});
+
+// ACAL1436 — « Heure solaire de l'image » accepte la virgule décimale comme le point.
+describe('ACAL1436 — heure solaire « 10,5 »', () => {
+  function saisir(texte: string): string {
+    document.body.innerHTML = '<input id="rp9-shade-hour"><p id="rp9-shade-hour-value"></p>';
+    const ctx = {
+      areas: [], activeAreaId: '', vertices: [], closed: false, obstacles: [], batiments: [], shadeObstructions: [],
+      environment: [], activeArea: () => null, pushWorkshopHistory: () => {},
+    } as unknown as Ctx;
+    const map = new Proxy({}, { get: () => () => undefined }) as never;
+    createShadingUi(ctx, { map, setStatus: () => {}, recalcDisplays: () => {}, applyHeatmap: () => {} });
+    const champ = document.getElementById('rp9-shade-hour') as HTMLInputElement;
+    champ.value = texte;
+    champ.dispatchEvent(new Event('input'));
+    return document.getElementById('rp9-shade-hour-value')?.textContent ?? '';
+  }
+
+  it('« 10,5 » donne « 10 h 30 » comme « 10.5 » ; « abc » reste refusé par le même message', () => {
+    expect(saisir('10.5')).toBe('10 h 30');
+    expect(saisir('10,5')).toBe('10 h 30');
+    expect(saisir('abc')).toBe('Heure solaire illisible : un nombre entre 0 et 24.');
+  });
+});
+
 // ACAL504 — la hauteur du bâtiment saisie SANS provenance est refusée sous le champ ET dans la barre d'état.
 describe('ACAL504 — refus d’une hauteur sans provenance', () => {
   function monter() {

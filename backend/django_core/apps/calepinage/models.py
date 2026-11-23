@@ -220,6 +220,13 @@ class Calepinage(TenantModel):
     etat_conception = models.CharField(
         'État de conception', max_length=10,
         choices=ETAT_CONCEPTION_CHOICES, default='complet')
+    #: ACAL1333 — le DERNIER verdict « Prêt à envoyer ? » de la lecture
+    #: COMPLÈTE (``{lu_le, a_regler, bloquants, empreinte}``, empreinte =
+    #: ``layout_hash`` lu) : la liste le lit sans lancer un contrôle. Seul
+    #: écrivain : ``services.lecture_liste.ranger_verdict`` par ``update()``
+    #: (ni ``updated_at`` ni version). ``None`` = jamais lu.
+    dernier_verdict = models.JSONField('Dernier verdict « Prêt à envoyer ? »',
+                                       null=True, blank=True)
 
     class Meta:
         verbose_name = 'Calepinage'

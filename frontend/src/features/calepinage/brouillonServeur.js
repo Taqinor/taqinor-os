@@ -18,7 +18,7 @@
    segment `aucun-document` (document encore vide) part comme `""`, l'empreinte
    serveur de « rien ».
    ========================================================================== */
-import { construireCle } from './brouillon.js'
+import { construireCle, hacherLayout } from './brouillon.js'
 
 const AUCUN_DOCUMENT = 'aucun-document'
 
@@ -37,6 +37,22 @@ export function sansVue(layout) {
   const copie = { ...layout }
   for (const cle of CLES_VUE_DOCUMENT) delete copie[cle]
   return copie
+}
+
+/* ACAL1345 — choisir un pan dans la liste change `activeAreaId`, `outline` (contour du pan actif) et `pin` (centre du
+   pan actif) dans le document, sans rien modifier de la conception : ces trois clés se DÉDUISENT des pans et du pan
+   choisi. La COMPARAISON (« modifié ? », brouillon) les ignore ; le CONTENU du brouillon les garde (reprise intacte).
+   `pin` ne s'ignore que s'il n'a pas été posé à la main (`pinSource: 'manuel'`) : une épingle déplacée EST une donnée. */
+export const CLES_DERIVEES_DU_PAN_ACTIF = Object.freeze(['activeAreaId', 'outline'])
+
+/** L'empreinte de comparaison d'un document : sans l'état de vue (`sansVue`) ni ce que le pan actif seul détermine. */
+export function empreinteSansVue(layout) {
+  const vue = sansVue(layout)
+  if (!vue || typeof vue !== 'object' || Array.isArray(vue)) return hacherLayout(vue)
+  const copie = { ...vue }
+  for (const cle of CLES_DERIVEES_DU_PAN_ACTIF) delete copie[cle]
+  if (copie.pinSource !== 'manuel') delete copie.pin
+  return hacherLayout(copie)
 }
 
 /** L'empreinte que le serveur compare (`""` pour un document encore vide). */
@@ -89,6 +105,9 @@ export function creerStockageMiroir({ base, calepinageId, envoyer, effacer }) {
   const cleModele = construireCle({ calepinageId, utilisateurId: 'u', hashBase: 'h' })
   const prefixe = cleModele.slice(0, cleModele.indexOf(':', cleModele.indexOf(':') + 1) + 1)
   const estBrouillon = (cle) => typeof cle === 'string' && cle.startsWith(prefixe)
+  // ACAL1248 — compte les effacements par clé : un PUT encore EN ATTENTE dans la file quand sa clé est effacée
+  // (enregistrement réussi) ne part plus — il serait suivi du DELETE, mais le serveur l'aurait gardé entre les deux.
+  const effacements = new Map()
   return {
     getItem: (cle) => local.getItem(cle),
     setItem(cle, valeur) {
@@ -99,10 +118,13 @@ export function creerStockageMiroir({ base, calepinageId, envoyer, effacer }) {
       if (!brouillon) return
       const { layout, horodatage } = brouillon
       const hashBase = cle.slice(cle.lastIndexOf(':') + 1)
-      silencieux(() => envoyer(calepinageId, { layout, horodatage, base_empreinte: baseServeur(hashBase) }))
+      const genEffacement = effacements.get(cle) ?? 0
+      silencieux(() => (effacements.get(cle) ?? 0) === genEffacement
+        ? envoyer(calepinageId, { layout, horodatage, base_empreinte: baseServeur(hashBase) }) : null)
     },
     removeItem(cle) {
       local.removeItem(cle)
+      if (estBrouillon(cle)) effacements.set(cle, (effacements.get(cle) ?? 0) + 1)
       if (estBrouillon(cle) && typeof effacer === 'function') {
         silencieux(() => effacer(calepinageId))
       }

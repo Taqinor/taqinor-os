@@ -577,8 +577,9 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
         if getattr(self, 'action', None) == 'list':
             # ACAL122 — la liste ne charge JAMAIS ``resultat`` (série horaire
             # de 8 760 points par ligne) : le sérialiseur ne l'expose pas.
-            # ``roof_layout`` reste chargé (layout_stale / nb_panneaux).
-            queryset = lecture_liste.annoter(queryset.prefetch_related('devis__lignes').defer('resultat'))
+            # ``roof_layout`` reste chargé (layout_stale / nb_panneaux). ACAL1343 — le
+            # PRODUIT de chaque ligne aussi (classement panneau : 1 requête par ligne de devis sinon).
+            queryset = lecture_liste.annoter(queryset.prefetch_related('devis__lignes__produit').defer('resultat'))
         return queryset
 
     # ── Détail : l'agrégat du contrat CAL1 ─────────────────────────────────
@@ -1573,7 +1574,10 @@ def detail_calepinage(calepinage, request=None):
 
     company = getattr(calepinage, 'company', None)
     layout = getattr(calepinage, 'roof_layout', None)
-    peremption = _peremption_calepinage(calepinage, company)
+    # ACAL1413 — le devis lié est lu UNE fois (société bornée) et sert la
+    # péremption, le bloc ``devis`` et la sélection chiffrée des surfaces.
+    devis_lie = _devis_lie(calepinage, company)
+    peremption = _peremption_calepinage(calepinage, devis_lie)
     # Une seule lecture des variantes : le compteur sert aussi la permission
     # « retenir » (plus de second ``.exists()``, budget de requêtes CALX390).
     variantes = _compteur_variantes(calepinage)
@@ -1589,7 +1593,7 @@ def detail_calepinage(calepinage, request=None):
         'responsable': _responsable(calepinage, company),
         'lead': _lead(calepinage, company),
         'client': _client(calepinage),
-        'devis': _devis(calepinage, company),
+        'devis': _devis(devis_lie),
         'layout_present': bool(layout),
         'layout_hash': _texte(getattr(calepinage, 'layout_hash', '')),
         'layout_schema_version': _schema_version(layout),
@@ -1613,26 +1617,22 @@ def detail_calepinage(calepinage, request=None):
         'etat_conception': etat_conception_du_calepinage(calepinage),
         'etat_conception_motif': (MOTIF_ETAT_RAPIDE if etat_conception_du_calepinage(calepinage) == 'rapide' else None),
         # ACAL915 — ce que « Générer le devis » additionne (toit + sol, D-ACAL-5).
-        'surfaces_chiffrables': surfaces_chiffrables(layout),
+        'surfaces_chiffrables': surfaces_chiffrables(layout, devis_lie),
         'permissions': _permissions(calepinage, request,
                                     a_des_variantes=bool(variantes['total'])),
     }
 
 
-def _peremption_calepinage(calepinage, company):
+def _peremption_calepinage(calepinage, devis):
     """``{layout_stale, layout_nb_panneaux}`` — CAL189, le MÊME helper que la
     fiche devis (``apps.ventes.selectors.peremption_layout_devis``) et la
-    liste calepinages (``CalepinageSerializer._peremption``). Sans devis lié,
-    la péremption est INCONNUE (``None``), jamais ``False`` : il n'y a rien à
-    quoi comparer la conception (CAL188 — l'écran affiche « — »)."""
-    from apps.ventes.selectors import get_devis_by_pk
-
+    liste calepinages (``CalepinageSerializer._peremption``). Sans devis lié
+    (``devis`` ``None``, lu par ``_devis_lie``), la péremption est INCONNUE
+    (``None``), jamais ``False`` : il n'y a rien à quoi comparer la
+    conception (CAL188 — l'écran affiche « — »)."""
     from ..serializers import nb_panneaux_du_document, peremption_du_calepinage
 
-    devis_id = getattr(calepinage, 'devis_id', None)
-    devis = get_devis_by_pk(devis_id) if devis_id else None
-    if devis is None or (company is not None
-                         and devis.company_id != company.pk):
+    if devis is None:
         # R3-12 : péremption inconnue sans devis, mais le compte du document se lit (comme la liste).
         return {'layout_stale': None, 'layout_nb_panneaux': nb_panneaux_du_document(calepinage)}
     # ACAL47 — le calepinage est passé au sélecteur : divergence de conception
@@ -1749,19 +1749,24 @@ def _client(calepinage):
             'ville': _texte(getattr(client, 'ville', ''))}
 
 
-def _devis(calepinage, company):
-    """``{id, reference, statut}`` du devis lié, ou ``None``.
-
-    Lu par ``apps.ventes.selectors`` et RE-BORNÉ à la société : un calepinage
-    ne peut pas servir de passerelle vers le devis d'une autre société.
-    """
+def _devis_lie(calepinage, company):
+    """Le devis lié (objet), lu par ``apps.ventes.selectors`` et RE-BORNÉ à la
+    société : un calepinage ne peut pas servir de passerelle vers le devis
+    d'une autre société. ``None`` sans devis lié."""
     from apps.ventes.selectors import get_devis_by_pk
 
     devis_id = getattr(calepinage, 'devis_id', None)
-    if not devis_id or company is None:
+    if not devis_id:
         return None
     devis = get_devis_by_pk(devis_id)
-    if devis is None or devis.company_id != company.pk:
+    if devis is None or (company is not None and devis.company_id != company.pk):
+        return None
+    return devis
+
+
+def _devis(devis):
+    """``{id, reference, statut}`` du devis lié (lu par ``_devis_lie``), ou ``None``."""
+    if devis is None:
         return None
     return {'id': devis.pk, 'reference': devis.reference,
             'statut': devis.statut}

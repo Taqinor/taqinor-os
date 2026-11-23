@@ -275,6 +275,33 @@ class ImportCsvTest(unittest.TestCase):
                 self.assertEqual(lignes, [])
                 self.assertEqual([r['ligne'] for r in refus], [1])
 
+    def test_un_module_inconnu_d_un_csv_nomme_sa_ligne(self):
+        """ACAL1542 — le refus « module absent » nomme SA ligne du fichier et
+        renvoie au fichier, pas à l'onglet (mutant : sans numéro ⇒ échec)."""
+        from unittest import mock
+
+        from apps.calepinage.services import chaines
+        from apps.calepinage.services.import_affectation import (
+            importer_affectation,
+        )
+
+        vrai = chaines.evaluer_onduleurs
+        chaines.evaluer_onduleurs = lambda conception: _Evaluation()
+        self.addCleanup(setattr, chaines, 'evaluer_onduleurs', vrai)
+        conception = _conception()
+        conception.fiche_incomplete = False
+        texte = ('module;chaine;mppt;onduleur\nPAN-A#1;1;1;1\nPAN-A#2;1;1;1\n'
+                 'PAN-A#3;abc;1;1\nPAN-B#1;3;2;1\narea-1#99;3;2;1')
+        with mock.patch(
+                'apps.calepinage.services.electrique.conception_du_calepinage',
+                return_value=(conception, {}, {}, {})):
+            rendu = importer_affectation(object(), texte)
+        self.assertEqual([r['ligne'] for r in rendu['refus']], [4])
+        self.assertIn('Ligne 6 : module « area-1#99 » absent du document — '
+                      'corrigez le fichier.', rendu['bloquants'])
+        self.assertFalse(any('onglet Affectation' in b
+                             for b in rendu['bloquants']))
+
     def test_module_en_double_refuse_sur_la_seconde_ligne(self):
         _lignes, refus = self._lire(
             'module;chaine;mppt;onduleur\nPAN-A#1;1;1;1\nPAN-A#1;2;1;1')

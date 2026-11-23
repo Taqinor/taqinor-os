@@ -126,7 +126,7 @@ describe('Approbation (CALX349) — décider, avec le code', () => {
     expect(await screen.findByTestId('acon23-erreur-empreinte')).toHaveTextContent(refus.empreinte)
   })
 
-  it('un refus SANS motif est rendu SOUS le champ « motif », bandeau nommé', async () => {
+  it('un refus SANS motif est rendu SOUS le champ « motif », UNE seule fois, sans bandeau à clé brute', async () => {
     servir('exemple_vide')
     calepinageApi.calepinages.decisionApprobation.mockRejectedValue({
       response: { data: { motif: 'Un refus d’approbation exige un motif : dites ce qui est à reprendre.' } },
@@ -139,7 +139,8 @@ describe('Approbation (CALX349) — décider, avec le code', () => {
     await screen.findByTestId('calx349-erreur-motif')
     expect(screen.getByTestId('calx349-erreur-motif'))
       .toHaveTextContent('exige un motif')
-    expect(screen.getByTestId('calx349-bandeau')).toHaveTextContent('motif')
+    expect(screen.queryByTestId('calx349-bandeau')).toBeNull()
+    expect(screen.getAllByText(/exige un motif/)).toHaveLength(1)
   })
 
   it('403 sans crash : le motif `detail` est affiché, l’enveloppe `error` jamais rendue', async () => {
@@ -213,7 +214,7 @@ describe('Approbation (CALX349) — décider, avec le code', () => {
 
     const ligne = await screen.findByTestId('calx349-suggestion-buildings[0].hauteurM')
     expect(ligne).toHaveTextContent('OpenStreetMap')
-    expect(screen.getByTestId('calx349-bandeau')).toHaveTextContent('buildings[0].hauteurM')
+    expect(screen.queryByTestId('calx349-bandeau')).toBeNull() // la ligne de la suggestion porte déjà son message
   })
 
   it('envoie le motif saisi avec la décision', async () => {

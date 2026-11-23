@@ -125,6 +125,25 @@ class EcartDevisTest(BaseApiCalepinage):
         self.assertIsNone(resultat_calepinage(
             frais, materiel=MATERIEL)['ecart_devis'])
 
+    def test_figure_non_imprimee_jamais_dite_imprimee(self):
+        """ACAL1274 (T2-F2-RESU-024) — la figure POSÉE par le calepinage
+        (``production_source='calepinage'``) n'est plus imprimée par le PDF
+        aux règles corrigées (AMOT15 : le moteur du devis la recalcule), ni
+        une figure C&I (le PDF imprime le moteur C&I) : aucun écart « imprimé
+        au client » n'est servi. Règles d'origine : le PDF imprime la figure
+        stockée, l'écart est servi."""
+        calepinage = self._calepinage()
+        cas = (({'production_source': 'calepinage'}, {}, False),
+               ({'production_source': 'saisie'}, {'mode_installation': 'commercial'}, False),
+               ({'production_source': 'calepinage'}, {'regles_calcul': 1}, True))
+        for source, champs, servi in cas:
+            Devis.objects.filter(pk=self.devis.pk).update(
+                etude_params=dict(source, production_annuelle=PRODUCTION_DEVIS),
+                mode_installation=champs.get('mode_installation', 'residentiel'),
+                regles_calcul=champs.get('regles_calcul', 14))
+            ecart = resultat_calepinage(calepinage, materiel=MATERIEL)['ecart_devis']
+            self.assertEqual(ecart is not None, servi, (source, champs))
+
     def test_devis_d_une_autre_conception_sans_ecart(self):
         """ACON27 (C-ACON-137) — le devis imprime une AUTRE conception (12
         modules, H1) que le calepinage (20 modules, H2) : aucun écart servi ni

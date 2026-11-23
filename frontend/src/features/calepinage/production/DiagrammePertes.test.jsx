@@ -169,7 +169,8 @@ describe('DiagrammePertes — cascade séquentielle (CALX48)', () => {
     // L'étape omise (spectral, D-CALX 16) reste NOMMÉE, jamais masquée.
     const ligneSpectrale = within(table).getByText('Correction spectrale').closest('tr')
     expect(within(ligneSpectrale).getByText(
-      'D-CALX 16 — le spectral figure dans la cascade et reste TOUJOURS omis avec '
+      // ACAL1323 : le motif servi ne porte plus le code interne « D-CALX 16 » (texte client).
+      'Le spectral figure dans la cascade et reste TOUJOURS omis avec '
       + 'son motif, jamais forfaitisé.',
     )).toBeInTheDocument()
     // « perte_pct vide » (Done CALX48) : jamais un 0 % qui prétendrait que
@@ -209,7 +210,8 @@ describe('DiagrammePertes — cascade séquentielle (CALX48)', () => {
     const omise = within(lignes).getByTestId('acal444-ligne-spectral')
     expect(omise).toHaveAttribute('data-omise', 'true')
     expect(within(omise).getByText('omise')).toBeInTheDocument()
-    expect(omise.textContent).toContain('D-CALX 16')
+    expect(omise.textContent).toContain('reste TOUJOURS omis avec son motif')
+    expect(omise.textContent).not.toContain('D-CALX')
     expect(within(omise).queryByTestId('acal444-barre-spectral')).toBeNull()
 
     const thermique = within(lignes).getByTestId('acal444-ligne-thermique')

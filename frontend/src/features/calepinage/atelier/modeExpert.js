@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react'
 import { store } from '../../../store'
 
 /* ============================================================================
@@ -34,26 +34,47 @@ export function ecrireModeExpert(utilisateurId, expert, stockage) {
   } catch { return false }
 }
 
+/* ACAL1438 — UN SEUL état partagé par tous les composants de l'atelier (rail, bandeau, Image HD, Résultats) : le choix
+   vit ici, par utilisateur, et chaque `useModeExpert` s'y abonne. Basculer dans l'un met les autres à jour sans recharger.
+   La mémoire du navigateur (localStorage) reste la règle d'ACAL394 ; l'état partagé est vidé quand plus aucun composant
+   n'est monté (le prochain montage relit le stockage). */
+const abonnes = new Set()
+const partage = new Map()
+
+const lirePartage = (utilisateurId) => {
+  const cle = cleModeExpert(utilisateurId)
+  if (!partage.has(cle)) partage.set(cle, lireModeExpert(utilisateurId))
+  return partage.get(cle)
+}
+const abonner = (f) => {
+  abonnes.add(f)
+  return () => {
+    abonnes.delete(f)
+    if (abonnes.size === 0) partage.clear()
+  }
+}
+
 /** `[expert, basculer]` — `forceUrl` (`?mode=expert`) impose l'expert sans l'écrire. */
 export function useModeExpert(forceUrl = false) {
   const utilisateurId = useMemo(() => {
     try { return store.getState()?.auth?.user?.id ?? null } catch { return null }
   }, [])
-  const [memorise, setMemorise] = useState(() => lireModeExpert(utilisateurId))
+  const memorise = useSyncExternalStore(abonner, () => lirePartage(utilisateurId), () => false)
   const basculer = useCallback((valeur) => {
-    setMemorise(valeur)
+    partage.set(cleModeExpert(utilisateurId), Boolean(valeur))
     ecrireModeExpert(utilisateurId, valeur)
+    abonnes.forEach((f) => f())
   }, [utilisateurId])
   const expert = forceUrl || memorise
   // Le PONT vers les scripts de l'atelier (ACAL552, 584, 717 : ils lisent
-  // `document.body.dataset.modeExpert === '1'`) : posé ici, l'UNIQUE endroit
-  // qui tient le mode, et retiré au démontage de l'atelier.
+  // `document.body.dataset.modeExpert === '1'`) : posé ici, et retiré au démontage
+  // du DERNIER composant qui tient le mode.
   useEffect(() => {
     const corps = typeof document !== 'undefined' ? document.body : null
     if (!corps) return undefined
     if (expert) corps.dataset.modeExpert = '1'
     else delete corps.dataset.modeExpert
-    return () => { delete corps.dataset.modeExpert }
+    return () => { if (abonnes.size === 0) delete corps.dataset.modeExpert }
   }, [expert])
   return [expert, basculer]
 }

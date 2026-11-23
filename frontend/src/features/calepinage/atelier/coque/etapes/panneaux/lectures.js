@@ -75,7 +75,7 @@ export function useLectureServie(nature, id, { servi = null, actif = true } = {}
 
 /**
  * LA taille tirée des factures, UN accesseur pour l'étape Toit (puce « Besoin d'après la facture ») et l'étape
- * Panneaux (« Couvrir la facture ») : `{ etat, cible, motif, leadId, reessayer }`. `cible` n'a de sens qu'en
+ * Panneaux (« Couvrir la facture ») : `{ etat, cible, motif, refus, leadId, reessayer }`. `cible` n'a de sens qu'en
  * `etat === 'ok'` (`null` = le lead n'a pas de facture exploitable) ; en chargement ou en échec, rien n'est affirmé.
  */
 export function useCibleFactures(calepinageId, servi = null, { attendre = false } = {}) {
@@ -95,6 +95,8 @@ export function useCibleFactures(calepinageId, servi = null, { attendre = false 
     etat,
     cible: etat === 'ok' ? cibleFactures(taille.donnees) : null,
     motif: contexte.etat === 'ok' ? (contexte.donnees?.consommation_lead?.motif || '') : '',
+    // ACAL1517 — le refus servi par `cible-factures/` (`refus`, ex. lead industriel) : dit tel quel, jamais réécrit.
+    refus: etat === 'ok' ? (taille.donnees?.refus || '') : '',
     leadId: contexte.donnees?.calepinage?.lead ?? null,
     reessayer,
   }

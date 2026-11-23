@@ -220,7 +220,9 @@ class ElectriqueActionsMixin:
             'nombre_modules': drf_serializers.IntegerField(min_value=1),
             'temperature_min_c': drf_serializers.FloatField(
                 **_BORNES_TEMPERATURE['temperature_min_c']),
+            # ACAL1545 — facultative : absente, le repli du noyau (70 °C).
             'temperature_max_c': drf_serializers.FloatField(
+                required=False, allow_null=True,
                 **_BORNES_TEMPERATURE['temperature_max_c']),
         }), responses=forme_du_contrat(
             'CalepinageControleChaine', 'calepinage_controle_chaine.json'))

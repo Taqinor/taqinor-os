@@ -404,7 +404,9 @@ describe('CalepinageList — maquette Liste', () => {
     rendre()
     const c1 = await screen.findByTestId('cal-vignette-301')
     // Le séparateur de milliers français est une espace fine insécable : on compare à l'espace simple.
-    expect(c1.textContent.replace(/\s/g, ' ')).toContain('6,96 kWc·12 panneaux·11 480 kWh/an')
+    // ACAL1310 (langage v2) — le kWc en grand chiffre, panneaux et production à côté.
+    expect(c1.textContent.replace(/\s/g, ' ')).toContain('6,96 kWc12 panneaux · 11 480 kWh/an')
+    expect(within(c1).getByText('kWc').className).toContain('cliste-unite')
     expect(screen.getByTestId('cal-vignette-302')).toHaveTextContent('8 panneaux')
     expect(screen.getByTestId('cal-vignette-302')).not.toHaveTextContent('kWc')
     expect(screen.getByTestId('cal-vignette-303').textContent).not.toMatch(/panneau|kWc|kWh/)
@@ -430,6 +432,24 @@ describe('CalepinageList — maquette Liste', () => {
     expect(screen.getByTestId('cal-responsable-311')).toHaveTextContent('Responsable : Hamza Bennani')
   })
 
+  it('ACAL1310 — le verdict rangé : « N points à régler », « À relire » si le document a changé, rien sinon ; l’état sur l’aperçu', async () => {
+    // Les trois cas du contrat : rangé (1 point), jamais lu (null), périmé (null + « à relire »).
+    const range = { ...AVEC_IMAGE, id: 341 }
+    const jamais = { ...CLIENT_SEUL, id: 342 }
+    const perime = { ...SANS_IMAGE, id: 343 }
+    const zero = { ...AVEC_IMAGE, id: 344, points_a_regler: 0 }
+    mocks.list.mockResolvedValue({ data: { count: 4, next: null, previous: null, results: [range, jamais, perime, zero] } })
+    rendre()
+    expect(await screen.findByTestId('cal-signal-341')).toHaveTextContent('1 point à régler')
+    expect(screen.queryByTestId('cal-signal-342')).toBeNull()
+    expect(screen.getByTestId('cal-signal-343')).toHaveTextContent('À relire')
+    expect(screen.getByTestId('cal-signal-343')).toHaveAttribute('data-ton', 'relire')
+    expect(screen.queryByTestId('cal-signal-344')).toBeNull()
+    const etat = within(screen.getByTestId('cal-vignette-341')).getByText(range.statut_libelle)
+    expect(etat.className).toContain('cliste-etat')
+    expect(etat.closest('.cliste-apercu')).not.toBeNull()
+  })
+
   it('la ville se lit sur le client rattaché, à défaut sur le lead', async () => {
     const parLead = { ...SANS_IMAGE, id: 321, client_apercu: null, lead: { id: 1, nom: 'L', ville: 'Fès', supprime: false } }
     mocks.list.mockResolvedValue({ data: { count: 1, next: null, previous: null, results: [parLead] } })
@@ -452,8 +472,25 @@ describe('CalepinageList — maquette Liste', () => {
     expect(screen.getByPlaceholderText('Client, ville ou lead')).toBeInTheDocument()
   })
 
+  it('ACAL1336 — sans image, la carte dessine les pans servis ; sans tracé, « Aucun aperçu »', async () => {
+    const trace = { ...SANS_IMAGE, id: 351, apercu_toit: AVEC_IMAGE.apercu_toit }
+    const rien = { ...SANS_IMAGE, id: 352 }
+    mocks.list.mockResolvedValue({ data: { count: 3, next: null, previous: null, results: [trace, rien, AVEC_IMAGE] } })
+    rendre()
+    const carte = await screen.findByTestId('cal-vignette-351')
+    const polygones = carte.querySelectorAll('[data-testid="cal-vignette-toit"] polygon')
+    expect(polygones).toHaveLength(AVEC_IMAGE.apercu_toit.contours.length)
+    expect(polygones[0].getAttribute('points')).toBe(
+      AVEC_IMAGE.apercu_toit.contours[0].map(([x, y]) => `${x},${y}`).join(' '))
+    expect(within(carte).queryByText('Aucun aperçu')).toBeNull()
+    expect(within(screen.getByTestId('cal-vignette-352')).getByText('Aucun aperçu')).toBeInTheDocument()
+    // Une image servie reste l'aperçu (le tracé ne la remplace pas).
+    expect(within(screen.getByTestId(`cal-vignette-${AVEC_IMAGE.id}`)).getByTestId('cal-vignette-image')).toBeInTheDocument()
+  })
+
   it('une image qui ne se charge pas retombe sur « Aucun aperçu »', async () => {
-    mocks.list.mockResolvedValue({ data: { count: 1, next: null, previous: null, results: [AVEC_IMAGE] } })
+    const sansTrace = { ...AVEC_IMAGE, apercu_toit: null }
+    mocks.list.mockResolvedValue({ data: { count: 1, next: null, previous: null, results: [sansTrace] } })
     rendre()
     const img = await screen.findByTestId('cal-vignette-image')
     fireEvent.error(img)

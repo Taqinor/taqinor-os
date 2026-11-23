@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Montrer au client — grand écran</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:#1f4fd8}a:hover{color:#0c1335}
+</style>
+</helmet>
+<div style="position: relative; width: 1440px; height: 900px; overflow: hidden; background: #cfe0ee; color: #0c1335; font-family: 'Hanken Grotesk', system-ui, sans-serif; font-size: 14px; font-variant-numeric: tabular-nums">
+
+  <!-- La maison en trois dimensions, lecture seule : le ciel, le soleil de l'heure choisie, l'ombre qu'il porte -->
+  <svg width="1440" height="900" viewBox="0 0 1440 900" style="position: absolute; inset: 0; display: block" role="img" aria-label="La villa en trois dimensions avec ses 12 panneaux sur le pan sud, soleil de midi en juin">
+    <defs>
+      <linearGradient id="prCiel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9cc3e4"/><stop offset="0.62" stop-color="#d9e8f1"/><stop offset="1" stop-color="#f4ead2"/></linearGradient>
+      <radialGradient id="prSoleil" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#fff6d6"/><stop offset="0.28" stop-color="#f8d771"/><stop offset="0.5" stop-color="#f3c755" stop-opacity="0.45"/><stop offset="1" stop-color="#f3c755" stop-opacity="0"/></radialGradient>
+      <linearGradient id="prSol" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c4d3a4"/><stop offset="1" stop-color="#9fb37f"/></linearGradient>
+      <linearGradient id="prPan" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c98b68"/><stop offset="1" stop-color="#a9694a"/></linearGradient>
+      <linearGradient id="prMur" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6ecd9"/><stop offset="1" stop-color="#e9dcc3"/></linearGradient>
+      <linearGradient id="prPignon" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#e3d3b7"/><stop offset="1" stop-color="#d2c0a0"/></linearGradient>
+      <linearGradient id="prVerre" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22306d"/><stop offset="0.5" stop-color="#0f1a48"/><stop offset="1" stop-color="#1a2760"/></linearGradient>
+      <linearGradient id="prVitre" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#b9dcee"/><stop offset="1" stop-color="#86b7d4"/></linearGradient>
+      <radialGradient id="prArbre" cx="38%" cy="30%" r="72%"><stop offset="0" stop-color="#8fae6c"/><stop offset="0.6" stop-color="#5f8048"/><stop offset="1" stop-color="#44603a"/></radialGradient>
+      <filter id="prFlou" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="14"/></filter>
+      <filter id="prFlouFin" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="5"/></filter>
+    </defs>
+
+    <rect width="1440" height="900" fill="url(#prCiel)"/>
+    <circle cx="1090" cy="150" r="170" fill="url(#prSoleil)"/>
+    <circle cx="1090" cy="150" r="44" fill="#fbe38f"/>
+    <!-- Lointain -->
+    <path d="M0 600c160-50 330-64 520-40s330 30 520 0 280-30 400-10v350H0z" fill="#d5e0bd"/>
+    <path d="M0 650c200-36 420-30 640-8s420 24 800-16v274H0z" fill="url(#prSol)"/>
+    <!-- Arbres -->
+    <ellipse cx="150" cy="742" rx="96" ry="22" fill="#2a3a22" opacity="0.28" filter="url(#prFlouFin)"/>
+    <rect x="124" y="640" width="16" height="96" rx="6" fill="#7b5b40"/><circle cx="132" cy="610" r="74" fill="url(#prArbre)"/>
+    <ellipse cx="1040" cy="716" rx="70" ry="16" fill="#2a3a22" opacity="0.26" filter="url(#prFlouFin)"/>
+    <rect x="1040" y="640" width="12" height="70" rx="5" fill="#7b5b40"/><circle cx="1046" cy="622" r="52" fill="url(#prArbre)"/>
+
+    <g transform="translate(0 -54)">
+    <!-- Ombre portée de la maison (soleil haut, à droite) -->
+    <path d="M271 702L60 792l210 60 485-47 198-66z" fill="#22301c" opacity="0.34" filter="url(#prFlou)"/>
+
+    <!-- Murs -->
+    <path d="M271 523L755 629V805L271 702z" fill="url(#prMur)"/>
+    <path d="M755 629L850 431 953 552V739L755 805z" fill="url(#prPignon)"/>
+    <path d="M271 523L755 629V805L271 702z" fill="#0c1335" opacity="0.04"/>
+    <!-- Ouvertures -->
+    <polygon points="319.4,580.1 392,596 392,660.5 319.4,644.6" fill="url(#prVitre)" stroke="#ffffff" stroke-width="4"/>
+    <polygon points="454.9,609.8 527.5,625.7 527.5,690.2 454.9,674.3" fill="url(#prVitre)" stroke="#ffffff" stroke-width="4"/>
+    <polygon points="590.4,646.7 643.7,658.3 643.7,783.6 590.4,772" fill="#8b5e45"/><polygon points="590.4,646.7 643.7,658.3 643.7,783.6 590.4,772" fill="none" stroke="#6f4732" stroke-width="2"/>
+    <polygon points="822.3,655.6 885.7,631 885.7,694.3 822.3,719" fill="url(#prVitre)" stroke="#f6ecd9" stroke-width="4"/>
+    <!-- Cheminée -->
+    <path d="M700 352h34v74l-34-8z" fill="#9a7b66"/><path d="M734 352l14 6v72l-14-4z" fill="#7f6453"/><path d="M694 346h46l14 6h-46z" fill="#6f5647"/>
+    <!-- Pan sud et sa rive -->
+    <path d="M370 328L850 431 755 629 271 523z" fill="url(#prPan)"/>
+    <path d="M271 523L755 629v12L271 535z" fill="#8d5438"/>
+    <path d="M755 629l95-198 8 6-95 200z" fill="#9c6144"/>
+    <path d="M370 328L850 431" stroke="#f1d5c0" stroke-opacity="0.6" stroke-width="2"/>
+    <!-- Les 12 panneaux -->
+    <g fill="url(#prVerre)" stroke="#dfe5f3" stroke-width="2" stroke-linejoin="round">
+      <polygon points="399.2,375.4 458.4,388.1 427.2,449.5 368,436.8"/><polygon points="464.2,389.3 523.4,402 492.2,463.4 433,450.7"/><polygon points="529.1,403.2 588.3,415.9 557.1,477.4 497.9,464.7"/><polygon points="594.1,417.2 653.3,429.9 622.1,491.3 562.9,478.6"/><polygon points="659,431.1 718.2,443.8 687,505.2 627.8,492.5"/><polygon points="724,445 783.2,457.8 752,519.2 692.8,506.5"/>
+      <polygon points="365,442.6 424.2,455.3 393.1,516.8 333.9,504"/><polygon points="430,456.6 489.2,469.3 458,530.7 398.8,518"/><polygon points="495,470.5 554.2,483.2 523,544.6 463.8,531.9"/><polygon points="559.9,484.4 619.1,497.1 587.9,558.6 528.7,545.9"/><polygon points="624.9,498.4 684.1,511.1 652.9,572.5 593.7,559.8"/><polygon points="689.8,512.3 749,525 717.9,586.4 658.6,573.7"/>
+    </g>
+    <path d="M418.9 379.6L387.7 441M438.7 383.8L407.5 445.2M383.6 406.1L442.8 418.8M483.9 393.5L452.7 454.9M503.6 397.8L472.4 459.2M448.6 420L507.8 432.7M548.8 407.5L517.7 468.9M568.6 411.7L537.4 473.1M513.5 433.9L572.7 446.6M613.8 421.4L582.6 482.8M633.5 425.6L602.4 487.1M578.5 447.9L637.7 460.6M678.8 435.3L647.6 496.8M698.5 439.6L667.3 501M643.4 461.8L702.6 474.5M743.7 449.3L712.5 510.7M763.5 453.5L732.3 514.9M708.4 475.8L767.6 488.5M384.8 446.9L353.6 508.3M404.5 451.1L373.3 512.5M349.4 473.3L408.6 486M449.7 460.8L418.5 522.2M469.5 465L438.3 526.5M414.4 487.3L473.6 500M514.7 474.7L483.5 536.2M534.4 479L503.2 540.4M479.4 501.2L538.6 513.9M579.6 488.7L548.5 550.1M599.4 492.9L568.2 554.3M544.3 515.2L603.5 527.9M644.6 502.6L613.4 564M664.3 506.9L633.2 568.3M609.3 529.1L668.5 541.8M709.6 516.6L678.4 578M729.3 520.8L698.1 582.2M674.2 543L733.4 555.7" stroke="#4b5c9e" stroke-opacity="0.7" stroke-width="1"/>
+    <!-- Reflet du soleil sur le verre -->
+    <path d="M594.1 417.2L653.3 429.9 640 456 581 443z" fill="#ffffff" opacity="0.14"/>
+    <path d="M659 431.1L718.2 443.8 708 464 649 451z" fill="#ffffff" opacity="0.10"/>
+    </g>
+  </svg>
+
+  <!-- Qui, où -->
+  <div style="position: absolute; left: 28px; top: 28px; display: flex; align-items: center; gap: 14px; padding: 12px 18px 12px 14px; border-radius: 18px; background: rgba(255,255,255,0.86); border: 1px solid rgba(255,255,255,0.7); box-shadow: 0 10px 34px rgba(12,19,53,0.14); backdrop-filter: blur(18px)">
+    <span style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 12px; background: #0c1335"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#e2b54a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5L12 4l9 7.5"/><path d="M5.5 10v9.5h13V10"/></svg></span>
+    <span style="display: flex; flex-direction: column; gap: 1px">
+      <span style="font: 600 18px 'Archivo', sans-serif; letter-spacing: -0.01em">Villa Bennani</span>
+      <span style="font-size: 13px; color: #4a5072">Casablanca · pan sud</span>
+    </span>
+  </div>
+
+  <!-- Sortir, partager -->
+  <div style="position: absolute; right: 28px; top: 28px; display: flex; align-items: center; gap: 10px">
+    <button type="button" style="height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 18px; border: 1px solid rgba(255,255,255,0.7); border-radius: 14px; background: rgba(255,255,255,0.86); color: #0c1335; font: 600 14px 'Hanken Grotesk', sans-serif; box-shadow: 0 10px 34px rgba(12,19,53,0.14); backdrop-filter: blur(18px)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+      Retour à l'atelier
+    </button>
+    <button type="button" style="height: 48px; display: flex; align-items: center; gap: 9px; padding: 0 20px; border: 0; border-radius: 14px; background: #e2b54a; color: #0c1335; font: 700 14px 'Hanken Grotesk', sans-serif; box-shadow: 0 10px 26px rgba(201,154,43,0.42), inset 0 1px 0 rgba(255,255,255,0.45)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="6" r="2.6"/><circle cx="18" cy="18" r="2.6"/><path d="M8.3 10.8l7.400-3.600M8.3 13.2l7.400 3.600"/></svg>
+      Envoyer le lien
+    </button>
+  </div>
+
+  <!-- Les trois chiffres, sans aucun prix -->
+  <aside aria-label="Votre installation en trois chiffres" style="position: absolute; right: 28px; top: 196px; width: 372px; box-sizing: border-box; display: flex; flex-direction: column; gap: 0; padding: 26px 28px; border-radius: 24px; background: rgba(12,19,53,0.90); color: #ffffff; box-shadow: 0 22px 54px rgba(12,19,53,0.36); backdrop-filter: blur(18px)">
+    <span style="font-size: 14px; font-weight: 500; color: #c7cce3">Votre toit produirait</span>
+    <span style="margin-top: 4px; font: 700 72px/1 'Archivo', sans-serif; letter-spacing: -0.03em; white-space: nowrap">11 480</span>
+    <span style="margin-top: 6px; font: 500 18px 'Hanken Grotesk', sans-serif; color: #c7cce3">kWh par an</span>
+    <span style="margin-top: 14px; align-self: flex-start; height: 26px; display: flex; align-items: center; gap: 6px; padding: 0 11px; border-radius: 13px; background: rgba(226,181,74,0.18); font-size: 12px; font-weight: 600; color: #f0d48a"><span style="width: 6px; height: 6px; border-radius: 3px; background: #e2b54a"></span>Estimation</span>
+    <div style="height: 1px; margin: 22px 0; background: rgba(255,255,255,0.12)"></div>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px">
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <span style="font: 700 40px/1 'Archivo', sans-serif; letter-spacing: -0.02em">12</span>
+        <span style="font-size: 14px; color: #c7cce3">panneaux</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <span style="font: 700 40px/1 'Archivo', sans-serif; letter-spacing: -0.02em">82 <span style="font: 500 20px 'Hanken Grotesk', sans-serif; color: #c7cce3">%</span></span>
+        <span style="font-size: 14px; color: #c7cce3">de votre facture</span>
+      </div>
+    </div>
+    <p style="margin: 22px 0 0; font-size: 13px; line-height: 1.5; color: #a4abcb">Estimation pour une année moyenne à Casablanca. Les montants figurent dans le devis.</p>
+  </aside>
+
+  <!-- Geste -->
+  <div style="position: absolute; left: 600px; top: 34px; height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 14px; border-radius: 18px; background: rgba(12,19,53,0.72); color: #ffffff; font-size: 13px; font-weight: 500; backdrop-filter: blur(12px)">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 10-3 6.200"/><path d="M20 6v6h-6"/></svg>
+    Glissez pour tourner autour
+  </div>
+
+  <!-- Le soleil de la journée -->
+  <div style="position: absolute; left: 28px; right: 28px; bottom: 28px; height: 76px; box-sizing: border-box; display: flex; align-items: center; gap: 20px; padding: 0 18px 0 14px; border-radius: 22px; background: rgba(255,255,255,0.88); border: 1px solid rgba(255,255,255,0.7); box-shadow: 0 16px 44px rgba(12,19,53,0.20); backdrop-filter: blur(20px) saturate(1.3)">
+    <button type="button" aria-label="Lancer la journée" style="width: 50px; height: 50px; flex: none; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 16px; background: #0c1335; color: #ffffff; box-shadow: 0 6px 14px rgba(12,19,53,0.28)"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.500l13 7.500-13 7.500z"/></svg></button>
+    <div style="flex: none; display: flex; flex-direction: column; gap: 2px; width: 118px">
+      <span style="font-size: 12px; color: #4a5072">Soleil</span>
+      <span style="font: 600 17px 'Archivo', sans-serif">21 juin · 12 h</span>
+    </div>
+    <div style="flex: 1; position: relative; height: 50px">
+      <div style="position: absolute; left: 0; right: 0; top: 18px; height: 6px; border-radius: 3px; background: rgba(12,19,53,0.10)"></div>
+      <div style="position: absolute; left: 0; width: 40%; top: 18px; height: 6px; border-radius: 3px; background: #e2b54a"></div>
+      <div style="position: absolute; left: 40%; top: 9px; width: 24px; height: 24px; margin-left: -12px; box-sizing: border-box; border-radius: 12px; background: #ffffff; border: 3px solid #e2b54a; box-shadow: 0 3px 10px rgba(12,19,53,0.24)"></div>
+      <div style="position: absolute; left: 0; right: 0; top: 34px; display: flex; justify-content: space-between; font-size: 12px; color: #656b8c"><span>6 h</span><span>9 h</span><span style="font-weight: 700; color: #0c1335">12 h</span><span>15 h</span><span>18 h</span><span>21 h</span></div>
+    </div>
+    <div role="group" aria-label="Saison" style="flex: none; display: flex; padding: 4px; background: rgba(12,19,53,0.07); border-radius: 14px">
+      <button type="button" aria-pressed="false" style="height: 42px; padding: 0 18px; border: 0; border-radius: 10px; background: transparent; color: #4a5072; font: 500 14px 'Hanken Grotesk', sans-serif">Hiver</button>
+      <button type="button" aria-pressed="true" style="height: 42px; padding: 0 18px; border: 0; border-radius: 10px; background: #ffffff; color: #0c1335; font: 600 14px 'Hanken Grotesk', sans-serif; box-shadow: 0 1px 3px rgba(12,19,53,0.16)">Été</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

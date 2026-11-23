@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import copy
 
+from django.test import SimpleTestCase
+
 from core import events
 
 from apps.calepinage.models import Calepinage
@@ -179,3 +181,26 @@ class AdoptionDevisTest(BaseApiCalepinage):
         c2.refresh_from_db()
         self.assertIsNone(self.c1.devis_id)
         self.assertIsNone(c2.devis_id)
+
+
+class EtatDeDepartSansBaseTest(SimpleTestCase):
+    """ACAL1419 — « rapide » = aucun PAN dessiné, pas « aucun document » : le document
+    d'un devis automatique porte déjà un résumé {result, scenario, panelWatt}."""
+
+    def test_devis_automatique_au_resume_seul_est_rapide(self):
+        from types import SimpleNamespace
+
+        from apps.calepinage.services.creation import _etat_de_depart
+
+        auto = SimpleNamespace(etude_params={'origine_conception': 'rapide'})
+        humain = SimpleNamespace(etude_params={'origine_conception': 'complet'})
+        resume = {'result': {'panels': 12, 'kwc': 6.6}, 'scenario': 'reseau', 'panelWatt': 550}
+        self.assertEqual(_etat_de_depart(auto, resume), 'rapide')
+        self.assertEqual(_etat_de_depart(auto, None), 'rapide')
+        # Un pan dessiné (même résumé en plus), une surface de pose, ou un devis dessiné à la main.
+        for dessine in ({**resume, 'zones': [{'id': 'z1', 'geometry': {'panels': [{}] * 12}}]},
+                        {**resume, 'poseSurfaces': [{'id': 's1', 'engine': {'modules': 40}}]},
+                        {'zones': [{}]}):
+            with self.subTest(document=dessine):
+                self.assertEqual(_etat_de_depart(auto, dessine), 'complet')
+        self.assertEqual(_etat_de_depart(humain, resume), 'complet')

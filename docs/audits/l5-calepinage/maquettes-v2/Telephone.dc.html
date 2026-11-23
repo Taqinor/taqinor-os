@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Atelier v2 — téléphone, relevé de visite</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:#1f4fd8}a:hover{color:#0c1335}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; overflow: hidden; background: #b9bfa6; color: #0c1335; font-family: 'Hanken Grotesk', system-ui, sans-serif; font-size: 16px; font-variant-numeric: tabular-nums">
+
+  <!-- La carte en haut : le toit relevé -->
+  <svg width="390" height="270" viewBox="0 0 390 270" style="position: absolute; left: 0; top: 0; display: block" role="img" aria-label="Vue aérienne de la villa, le contour du toit tracé en doré">
+    <defs>
+      <filter id="tpGrain" x="0" y="0" width="100%" height="100%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7" result="n"/>
+        <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.2  0 0 0 0 0.22  0 0 0 0 0.16  0 0 0 0.22 0"/>
+      </filter>
+      <filter id="tpFlou" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="7"/></filter>
+      <filter id="tpFlouFin" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="3"/></filter>
+      <radialGradient id="tpArbre" cx="38%" cy="34%" r="70%"><stop offset="0" stop-color="#7f9b62"/><stop offset="0.6" stop-color="#557246"/><stop offset="1" stop-color="#3d5636"/></radialGradient>
+      <linearGradient id="tpPanNord" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c98e6c"/><stop offset="1" stop-color="#bd8362"/></linearGradient>
+      <linearGradient id="tpPanSud" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b47656"/><stop offset="1" stop-color="#a86b4c"/></linearGradient>
+      <linearGradient id="tpEau" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7fc4d6"/><stop offset="1" stop-color="#4f9fbb"/></linearGradient>
+      <pattern id="tpTuiles" width="14" height="9" patternUnits="userSpaceOnUse"><path d="M0 8.5h14" stroke="#5d2f1c" stroke-opacity="0.22" stroke-width="1"/><path d="M7 0v9" stroke="#5d2f1c" stroke-opacity="0.08" stroke-width="1"/></pattern>
+      <pattern id="tpDalles" width="26" height="26" patternUnits="userSpaceOnUse"><path d="M0 25.5h26M25.5 0v26" stroke="#6b6f66" stroke-opacity="0.18"/></pattern>
+    </defs>
+    <g transform="translate(195 150) scale(0.52) translate(-566 -410)">
+      <rect x="-400" y="-400" width="2000" height="1400" fill="#b7bc9f"/>
+      <path d="M-400 -400h2000v1040H-400z" fill="#aab592"/>
+      <path d="M150 150h880v470H150z" fill="#b9c59c"/>
+      <path d="M190 200c120-40 250-30 330 10s180 30 260 0 150 0 210 60v300H190z" fill="#a9b98a" opacity="0.7"/>
+      <path d="M540 545h70v123h-70z" fill="#cdc6b4"/><path d="M540 545h70v123h-70z" fill="url(#tpDalles)"/>
+      <rect x="745" y="470" width="190" height="130" rx="6" fill="#d6cfbd"/><rect x="745" y="470" width="190" height="130" rx="6" fill="url(#tpDalles)"/>
+      <rect x="768" y="492" width="144" height="86" rx="10" fill="#e9e4d6"/>
+      <rect x="776" y="500" width="128" height="70" rx="7" fill="url(#tpEau)"/>
+      <ellipse cx="330" cy="268" rx="50" ry="46" fill="#1f2a1c" opacity="0.32" filter="url(#tpFlou)"/><circle cx="314" cy="286" r="48" fill="url(#tpArbre)"/>
+      <ellipse cx="916" cy="236" rx="38" ry="34" fill="#1f2a1c" opacity="0.32" filter="url(#tpFlou)"/><circle cx="904" cy="250" r="36" fill="url(#tpArbre)"/>
+      <ellipse cx="236" cy="430" rx="26" ry="24" fill="#1f2a1c" opacity="0.3" filter="url(#tpFlou)"/><circle cx="228" cy="440" r="25" fill="url(#tpArbre)"/>
+      <rect x="401" y="275" width="330" height="270" fill="#1b2019" opacity="0.42" filter="url(#tpFlou)" transform="translate(16 -18)"/>
+      <rect x="401" y="275" width="330" height="135" fill="url(#tpPanNord)"/>
+      <rect x="401" y="410" width="330" height="135" fill="url(#tpPanSud)"/>
+      <rect x="401" y="275" width="330" height="270" fill="url(#tpTuiles)"/>
+      <path d="M401 410h330" stroke="#6e3f2a" stroke-opacity="0.75" stroke-width="2.5"/>
+      <rect x="642" y="306" width="36" height="36" fill="#14180f" opacity="0.4" filter="url(#tpFlouFin)" transform="translate(7 -8)"/>
+      <rect x="642" y="306" width="36" height="36" rx="2" fill="#5b6470"/><rect x="649" y="313" width="22" height="22" rx="1" fill="#3a424d"/>
+      <rect x="452" y="452" width="66" height="44" rx="3" fill="#8fa2b8"/><rect x="456" y="456" width="58" height="36" rx="2" fill="#5f7a99"/><rect x="452" y="442" width="66" height="10" rx="5" fill="#d7dde4"/>
+      <rect x="401" y="275" width="330" height="270" fill="#e2b54a" fill-opacity="0.08" stroke="#ffffff" stroke-opacity="0.55" stroke-width="8"/>
+      <rect x="401" y="275" width="330" height="270" fill="none" stroke="#e2b54a" stroke-width="4"/>
+      <g fill="#ffffff" stroke="#c99a2b" stroke-width="4"><circle cx="401" cy="275" r="10"/><circle cx="731" cy="275" r="10"/><circle cx="731" cy="545" r="10"/><circle cx="401" cy="545" r="10"/></g>
+    </g>
+    <rect width="390" height="270" filter="url(#tpGrain)" opacity="0.5"/>
+    <rect width="390" height="270" fill="#0c1335" opacity="0.06"/>
+  </svg>
+
+  <!-- Cotes, les mêmes que les mesures -->
+  <div style="position: absolute; left: 162px; top: 88px; height: 26px; display: flex; align-items: center; padding: 0 10px; border-radius: 13px; background: rgba(255,255,255,0.92); box-shadow: 0 6px 18px rgba(12,19,53,0.22); font: 600 13px 'Hanken Grotesk', sans-serif">12,4 <span style="margin-left: 3px; font-weight: 500; color: #4a5072">m</span></div>
+  <div style="position: absolute; left: 290px; top: 138px; height: 26px; display: flex; align-items: center; padding: 0 10px; border-radius: 13px; background: rgba(255,255,255,0.92); box-shadow: 0 6px 18px rgba(12,19,53,0.22); font: 600 13px 'Hanken Grotesk', sans-serif">8,6 <span style="margin-left: 3px; font-weight: 500; color: #4a5072">m</span></div>
+
+  <!-- Bandeau flottant -->
+  <header style="position: absolute; left: 12px; right: 12px; top: 12px; height: 58px; box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 4px; border-radius: 18px; background: rgba(255,255,255,0.88); border: 1px solid rgba(255,255,255,0.7); box-shadow: 0 10px 30px rgba(12,19,53,0.18); backdrop-filter: blur(18px) saturate(1.3)">
+    <a href="#" aria-label="Retour" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 12px; color: #0c1335"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></a>
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px">
+      <span style="font: 600 16px/1.2 'Archivo', sans-serif; letter-spacing: -0.01em">Relevé de visite</span>
+      <span style="font-size: 12px; color: #4a5072">Villa Bennani — Casablanca</span>
+    </div>
+    <span style="height: 30px; display: flex; align-items: center; gap: 6px; padding: 0 11px; border-radius: 15px; background: #f3e3a8; color: #6f5407; font-size: 12px; font-weight: 600">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 8.5a15 15 0 0120 0M5.5 12a10 10 0 0113 0M9 15.5a5 5 0 016 0M3 3l18 18"/></svg>
+      Hors ligne
+    </span>
+  </header>
+
+  <!-- La feuille du bas -->
+  <div style="position: absolute; left: 0; right: 0; top: 230px; bottom: 0; display: flex; flex-direction: column; border-radius: 26px 26px 0 0; background: #f5f4f0; box-shadow: 0 -12px 30px rgba(12,19,53,0.20)">
+    <button type="button" aria-label="Agrandir ou réduire la feuille" style="flex: none; align-self: center; width: 96px; height: 20px; padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center"><span style="width: 40px; height: 5px; border-radius: 3px; background: rgba(12,19,53,0.20)"></span></button>
+
+    <div style="flex: 1; min-height: 0; overflow: hidden; padding: 0 16px 12px; display: flex; flex-direction: column; gap: 12px">
+      <section style="display: flex; flex-direction: column; gap: 8px">
+        <div style="display: flex; align-items: baseline; justify-content: space-between">
+          <h1 style="margin: 0; font: 600 20px 'Archivo', sans-serif; letter-spacing: -0.01em">Photos</h1>
+          <span style="font-size: 14px; color: #4a5072"><b style="font: 700 15px 'Archivo', sans-serif; color: #0c1335">4</b> sur 6</span>
+        </div>
+        <div aria-hidden="true" style="display: flex; gap: 3px"><span style="flex: 1; height: 5px; border-radius: 3px; background: #e2b54a"></span><span style="flex: 1; height: 5px; border-radius: 3px; background: #e2b54a"></span><span style="flex: 1; height: 5px; border-radius: 3px; background: #e2b54a"></span><span style="flex: 1; height: 5px; border-radius: 3px; background: #e2b54a"></span><span style="flex: 1; height: 5px; border-radius: 3px; background: #ebe9e2"></span><span style="flex: 1; height: 5px; border-radius: 3px; background: #ebe9e2"></span></div>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+          <div style="position: relative; height: 64px; border-radius: 12px; overflow: hidden">
+            <svg width="114" height="72" viewBox="0 0 114 72" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Photo du toit entier" style="position: absolute; inset: 0; width: 100%; height: 100%"><rect width="114" height="72" fill="#9cc3e4"/><path d="M0 40L60 18l54 18v36H0z" fill="#b47656"/><path d="M0 40L60 18l54 18" fill="none" stroke="#6e3f2a" stroke-width="2"/><g stroke="#5d2f1c" stroke-opacity="0.25"><path d="M0 48h114M0 56h114M0 64h114"/></g></svg>
+            <span style="position: absolute; left: 6px; bottom: 6px; height: 22px; display: flex; align-items: center; padding: 0 7px; border-radius: 7px; background: rgba(12,19,53,0.80); color: #ffffff; font-size: 12px; font-weight: 500">Toit entier</span>
+          </div>
+          <div style="position: relative; height: 64px; border-radius: 12px; overflow: hidden">
+            <svg width="114" height="72" viewBox="0 0 114 72" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Photo du compteur" style="position: absolute; inset: 0; width: 100%; height: 100%"><rect width="114" height="72" fill="#c9c6bb"/><rect x="36" y="8" width="42" height="52" rx="5" fill="#eceae3" stroke="#8e929b"/><rect x="44" y="16" width="26" height="10" rx="2" fill="#2a3a2a"/><circle cx="57" cy="40" r="8" fill="none" stroke="#8e929b" stroke-width="2"/></svg>
+            <span style="position: absolute; left: 6px; bottom: 6px; height: 22px; display: flex; align-items: center; padding: 0 7px; border-radius: 7px; background: rgba(12,19,53,0.80); color: #ffffff; font-size: 12px; font-weight: 500">Compteur</span>
+          </div>
+          <div style="position: relative; height: 64px; border-radius: 12px; overflow: hidden">
+            <svg width="114" height="72" viewBox="0 0 114 72" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Photo du tableau électrique" style="position: absolute; inset: 0; width: 100%; height: 100%"><rect width="114" height="72" fill="#d8d5ca"/><rect x="22" y="6" width="70" height="56" rx="4" fill="#f4f3ee" stroke="#8e929b"/><g fill="#5b6470"><rect x="30" y="16" width="6" height="14" rx="1"/><rect x="39" y="16" width="6" height="14" rx="1"/><rect x="48" y="16" width="6" height="14" rx="1"/><rect x="57" y="16" width="6" height="14" rx="1"/><rect x="66" y="16" width="6" height="14" rx="1"/><rect x="30" y="36" width="6" height="14" rx="1"/><rect x="39" y="36" width="6" height="14" rx="1"/><rect x="48" y="36" width="6" height="14" rx="1"/></g></svg>
+            <span style="position: absolute; left: 6px; bottom: 6px; height: 22px; display: flex; align-items: center; padding: 0 7px; border-radius: 7px; background: rgba(12,19,53,0.80); color: #ffffff; font-size: 12px; font-weight: 500">Tableau</span>
+          </div>
+          <div style="position: relative; height: 64px; border-radius: 12px; overflow: hidden">
+            <svg width="114" height="72" viewBox="0 0 114 72" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Photo des obstacles du toit" style="position: absolute; inset: 0; width: 100%; height: 100%"><rect width="114" height="72" fill="#a9c9e6"/><rect y="34" width="114" height="38" fill="#b47656"/><g stroke="#5d2f1c" stroke-opacity="0.25"><path d="M0 44h114M0 54h114M0 64h114"/></g><rect x="62" y="12" width="18" height="30" fill="#7d6a5c"/><rect x="58" y="9" width="26" height="5" fill="#5b4c42"/></svg>
+            <span style="position: absolute; left: 6px; bottom: 6px; height: 22px; display: flex; align-items: center; padding: 0 7px; border-radius: 7px; background: rgba(12,19,53,0.80); color: #ffffff; font-size: 12px; font-weight: 500">Obstacles</span>
+          </div>
+          <button type="button" style="height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border: 1.5px dashed rgba(12,19,53,0.24); border-radius: 12px; background: #ffffff; color: #0c1335; font: 600 12px/1.25 'Hanken Grotesk', sans-serif"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8a6a12" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Passage des câbles</button>
+          <button type="button" style="height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border: 1.5px dashed rgba(12,19,53,0.24); border-radius: 12px; background: #ffffff; color: #0c1335; font: 600 12px/1.25 'Hanken Grotesk', sans-serif"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8a6a12" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Vue vers le sud</button>
+        </div>
+      </section>
+
+      <section style="display: flex; flex-direction: column; gap: 8px">
+        <h2 style="margin: 0; font: 600 20px 'Archivo', sans-serif; letter-spacing: -0.01em">Mesures</h2>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+          <label style="display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #4a5072">Longueur
+            <span style="height: 48px; display: flex; align-items: center; gap: 6px; padding: 0 14px; border: 1px solid rgba(12,19,53,0.12); border-radius: 12px; background: #ffffff"><input value="12,4" inputmode="decimal" style="width: 100%; border: 0; outline: 0; background: transparent; font: 600 20px 'Archivo', sans-serif; color: #0c1335; font-variant-numeric: tabular-nums"><span style="font-size: 14px; color: #4a5072">m</span></span>
+          </label>
+          <label style="display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #4a5072">Largeur
+            <span style="height: 48px; display: flex; align-items: center; gap: 6px; padding: 0 14px; border: 1px solid rgba(12,19,53,0.12); border-radius: 12px; background: #ffffff"><input value="8,6" inputmode="decimal" style="width: 100%; border: 0; outline: 0; background: transparent; font: 600 20px 'Archivo', sans-serif; color: #0c1335; font-variant-numeric: tabular-nums"><span style="font-size: 14px; color: #4a5072">m</span></span>
+          </label>
+        </div>
+        <div style="display: flex; flex-direction: column; border-radius: 14px; background: #ffffff; box-shadow: 0 4px 14px rgba(12,19,53,0.05); border: 1px solid rgba(12,19,53,0.08)">
+          <div style="min-height: 56px; display: flex; align-items: center; gap: 12px; padding: 4px 8px 4px 14px">
+            <span style="flex: 1; display: flex; flex-direction: column; gap: 1px"><span style="font-size: 13px; color: #4a5072">Pente du toit</span><span style="display: flex; align-items: center; gap: 8px"><span style="font: 700 20px 'Archivo', sans-serif; letter-spacing: -0.01em">24°</span><span style="display: flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 600; color: #1e7a57"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>mesurée</span></span></span>
+            <button type="button" style="flex: none; height: 44px; padding: 0 14px; border: 1px solid rgba(12,19,53,0.18); border-radius: 11px; background: #ffffff; color: #0c1335; font: 600 14px 'Hanken Grotesk', sans-serif">Mesurer encore</button>
+          </div>
+          <div style="height: 1px; margin: 0 14px; background: rgba(12,19,53,0.08)"></div>
+          <div style="min-height: 56px; display: flex; align-items: center; gap: 12px; padding: 4px 8px 4px 14px">
+            <span style="flex: 1; display: flex; flex-direction: column; gap: 1px"><span style="font-size: 13px; color: #4a5072">Le toit regarde vers</span><span style="font: 700 20px 'Archivo', sans-serif; letter-spacing: -0.01em">Sud-sud-est</span></span>
+            <button type="button" style="flex: none; height: 44px; display: flex; align-items: center; gap: 6px; padding: 0 14px 0 10px; border: 1px solid rgba(12,19,53,0.18); border-radius: 11px; background: #ffffff; color: #0c1335; font: 600 14px 'Hanken Grotesk', sans-serif"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="#0c1335" stroke-width="1.6"/><path d="M12 5.5l2.6 6.5h-5.2z" fill="#c2410c"/><path d="M12 18.5l-2.6-6.5h5.2z" fill="#9aa0bb"/></svg>Boussole</button>
+          </div>
+        </div>
+      </section>
+
+      <section style="display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: #eef2fd">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1f4fd8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+        <span style="font-size: 13px; line-height: 1.45; color: #24306b">4 photos et 3 mesures gardées sur ce téléphone. Elles partiront dès le retour du réseau.</span>
+      </section>
+    </div>
+
+    <!-- L'action, collée en bas -->
+    <footer style="flex: none; display: flex; gap: 8px; padding: 12px 16px 18px; background: #ffffff; box-shadow: 0 -1px 0 rgba(12,19,53,0.08)">
+      <a href="#" style="flex: none; height: 54px; display: flex; align-items: center; justify-content: center; padding: 0 18px; border: 1px solid rgba(12,19,53,0.18); border-radius: 15px; color: #0c1335; font: 600 15px 'Hanken Grotesk', sans-serif; text-decoration: none">Voir en 3D</a>
+      <a href="#" style="flex: 1; height: 54px; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 15px; background: #e2b54a; color: #0c1335; font: 700 16px 'Hanken Grotesk', sans-serif; text-decoration: none; box-shadow: 0 8px 20px rgba(201,154,43,0.38), inset 0 1px 0 rgba(255,255,255,0.45)">Terminer le relevé</a>
+    </footer>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

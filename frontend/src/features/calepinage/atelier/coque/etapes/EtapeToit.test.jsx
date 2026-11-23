@@ -114,6 +114,17 @@ beforeEach(() => {
 afterEach(() => { cleanup(); document.body.innerHTML = ''; vi.useRealTimers(); oublierLecturesServies() })
 
 describe('Étape Toit — le panneau de la maquette Main', () => {
+  it('Guidé sans contour : la coque porte data-sans-toit (champ d’adresse visible) ; avec contour : retiré', async () => {
+    const { unmount } = rendre({}, (hote) => hote.querySelector('#rp9-add-area').remove())
+    const coque = document.querySelector('.cal-coque')
+    expect(coque.dataset.sansToit).toBe('1')
+    unmount()
+    expect(coque.dataset.sansToit).toBeUndefined()
+    cleanup(); document.body.innerHTML = ''
+    rendre()
+    expect(document.querySelector('.cal-coque').dataset.sansToit).toBeUndefined()
+  })
+
   it('blocs dans l’ordre de la maquette, libellés mot pour mot, crochets e2e', async () => {
     rendre()
     const titres = [...document.querySelectorAll('.cal-etape-toit h2')].map((n) => n.textContent)
@@ -195,9 +206,53 @@ describe('Étape Toit — « Pente et orientation »', () => {
     rendre()
     expect(await screen.findByText('22° · face sud')).toBeInTheDocument()
     expect(screen.getByText('À confirmer')).toBeInTheDocument()
+  })
+
+  it('ACAL1428 — pan absent du document servi : « Confirmer » confirme le pan vivant, sans écriture ni « Enregistrez d’abord »', async () => {
+    builderApi = { panActifId: () => 'area-9', appliquerVue: vi.fn() }
+    const surPuce = vi.fn()
+    rendre({}, (hote) => {
+      // le moteur : un clic sur la puce « ~22° » écrit pitchSource sur le pan et retire la mention « à confirmer »
+      const puce = document.createElement('button')
+      puce.dataset.pitch = '22'
+      puce.addEventListener('click', () => { surPuce(); hote.querySelector('#rp9-pitch-note').textContent = '' })
+      hote.appendChild(puce)
+    })
+    expect(await screen.findByText('22° · face sud')).toBeInTheDocument()
     fireEvent.click(screen.getByTestId('cal-toit-pente-confirmer'))
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Enregistrez d’abord le calepinage'))
+    expect(surPuce).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('status')).toHaveTextContent('Pente confirmée')
+    expect(screen.getByRole('status')).not.toHaveTextContent('Enregistrez d’abord')
     expect(enregistrerSectionLayout).not.toHaveBeenCalled()
+    await waitFor(() => expect(screen.queryByText('À confirmer')).toBeNull())
+  })
+})
+
+describe('ACAL1429 — toit plat jamais confirmé', () => {
+  const PLAT = { id: 'area-1', label: 'Pan 1', roofType: 'flat', pitchDeg: 0, facingAzimuthDeg: 180 }
+
+  it('pastille « À confirmer » et deux actions ; « Confirmer » écrit pitchSource {mode: plat} et 0°', async () => {
+    layout.mockResolvedValue({ data: { roof_layout: { zones: [PLAT] }, empreinte_document: 'jeton-1' } })
+    enregistrerSectionLayout.mockImplementation(async (_id, corps) => ({ data: {
+      empreinte_document: 'jeton-2', roof_layout: { zones: [{ ...PLAT, ...corps.champs }] } } }))
+    rendre()
+    const carte = screen.getByTestId('cal-toit-pente-carte')
+    await waitFor(() => expect(within(carte).getByText('Toit plat')).toBeInTheDocument())
+    expect(within(carte).getByText('À confirmer')).toBeInTheDocument()
+    expect(screen.getByTestId('cal-toit-pente-inconnue')).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('cal-toit-pente-confirmer'))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    expect(enregistrerSectionLayout.mock.calls[0][1].champs).toEqual({ pitchDeg: 0, pitchSource: { mode: 'plat' } })
+    await waitFor(() => expect(within(carte).queryByText('À confirmer')).toBeNull())
+    expect(within(carte).getByText('Toit plat')).toBeInTheDocument()
+  })
+
+  it('un plat déjà confirmé (pitchSource plat) : ni pastille ni actions', async () => {
+    layout.mockResolvedValue({ data: { roof_layout: { zones: [{ ...PLAT, pitchSource: { mode: 'plat' } }] }, empreinte_document: 'jeton-1' } })
+    rendre()
+    await waitFor(() => expect(within(screen.getByTestId('cal-toit-pente-carte')).getByText('Toit plat')).toBeInTheDocument())
+    expect(screen.queryByText('À confirmer')).toBeNull()
+    expect(screen.queryByTestId('cal-toit-pente-confirmer')).toBeNull()
   })
 })
 
@@ -367,6 +422,23 @@ describe('Étape Toit — « Ajouter un pan » sur un toit existant (jamais dest
     expect(script.etat.active).toBe('area-1')
     await waitFor(() => expect(within(barre).getByRole('button', { name: 'Ajouter un pan' })).toHaveAttribute('aria-pressed', 'false'))
     expect(within(surCarte).queryByText('Nouveau pan')).toBeNull()
+  })
+
+  it('ACAL1329 — outil de tracé : nom selon la présence d’un toit ; l’ajout n’écrit rien avant le dernier point', async () => {
+    rendre({}, (hote) => { hote.querySelector('#rp9-add-area').disabled = true }) // aucun toit fermé
+    const barre = within(surCarte).getByRole('toolbar')
+    expect(within(barre).getByRole('button', { name: 'Tracer un contour' })).toBeInTheDocument()
+    expect(within(barre).queryByRole('button', { name: 'Ajouter un pan' })).toBeNull()
+    cleanup(); document.body.innerHTML = ''
+    let script
+    rendre({}, (hote) => { script = scriptZones(hote) }) // un toit enregistré
+    const bouton = () => within(surCarte).getByRole('button', { name: 'Ajouter un pan' })
+    fireEvent.click(bouton())
+    await waitFor(() => expect(bouton()).toHaveAttribute('aria-pressed', 'true'))
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(script.etat.zones.map((z) => z.id)).toEqual(['area-1'])
+    // L'écran n'écrit jamais lui-même : ni section, ni document, pendant l'ajout ni à son annulation.
+    expect(enregistrerSectionLayout).not.toHaveBeenCalled()
   })
 
   it('re-cliquer annule aussi ; un contour fermé termine l’ajout et garde le nouveau pan', async () => {

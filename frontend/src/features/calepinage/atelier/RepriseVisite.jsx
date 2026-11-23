@@ -118,7 +118,11 @@ function EcartsAvecVisite({ etat }) {
   if (!Array.isArray(etat?.ecart_dessin)) return null
   const lignes = etat.ecart_dessin
   const n = lignes.filter((l) => typeof l.ecart === 'number' && l.ecart !== 0).length
-  const titre = n === 0 ? 'Aucun écart mesurable avec la visite' : `${n} écart${n > 1 ? 's' : ''} avec la visite`
+  // ACAL1411 — une ligne qui porte la valeur de la visite, un motif et aucun écart : la comparaison n'a pas pu se faire
+  // (pans à rapprocher à la main) ; jamais « aucun écart » pour une comparaison non faite. Le motif est celui du serveur.
+  const aMain = n === 0 ? lignes.find((l) => l.motif && l.ecart == null && l.visite != null) : null
+  const titre = aMain ? 'Comparaison à faire à la main'
+    : n === 0 ? 'Aucun écart mesurable avec la visite' : `${n} écart${n > 1 ? 's' : ''} avec la visite`
   const sources = [...new Set(lignes.filter((l) => l.source_dessin).map((l) => `${LIBELLES_ECART[l.mesure] ?? l.mesure} : ${l.source_dessin}`))]
   return (
     <div className="mt-3" role="status" data-testid="cal-reprise-ecarts">
@@ -126,6 +130,7 @@ function EcartsAvecVisite({ etat }) {
         className="min-h-11 w-full border border-border bg-muted px-3 text-left text-sm font-semibold text-foreground">
         {titre}
       </button>
+      {aMain && <p className="mt-1 text-sm text-foreground" data-testid="cal-reprise-ecarts-motif">{`Motif : ${aMain.motif}`}</p>}
       {ouvert && (
         <>
           <table className="mt-2 w-full text-left text-sm text-foreground" aria-label="Visite, dessin et écart">

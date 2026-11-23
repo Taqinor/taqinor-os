@@ -211,6 +211,28 @@
 .cal-coque .cal-toit-obstacle-nom { flex: 1; min-width: 0; }
 .cal-coque .cal-toit-obstacle-cotes { color: var(--muted-foreground); white-space: nowrap; }
 
+/* ── Carte « Obstacle sélectionné » (ACAL1441) : cibles de 44 px, phrase de dégagement en texte courant ───── */
+.cal-coque #rp9-obs-edit #rp9-obs-delete { min-height: 44px; border-radius: 10px; }
+.cal-coque #rp9-obs-edit #rp9-obs-minus,
+.cal-coque #rp9-obs-edit #rp9-obs-plus { flex: none; width: 44px; min-width: 44px; height: 44px; border-radius: 10px; }
+.cal-coque #rp9-obs-edit #rp9-obs-dims { flex: 1 1 100%; order: 9; font-size: 0.875rem; font-weight: 400; line-height: 1.45; color: var(--muted-foreground); }
+.cal-coque #rp9-obs-edit:has(#rp9-obs-dims) > div:has(> #rp9-obs-dims) { flex-wrap: wrap; }
+.cal-coque #rp9-obs-edit .rp9-obs-type-row,
+.cal-coque #rp9-obs-edit .rp9-obs-provenance-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; font-size: 0.875rem; }
+
+/* ── Panneau Expert (ACAL1442) : étiquettes au-dessus des champs, boutons sur deux lignes, rien hors du panneau ───── */
+.cal-coque .rp9-setbacks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.cal-coque .rp9-setbacks > label { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 0.8125rem; color: var(--muted-foreground); }
+.cal-coque .rp9-setbacks .rp9-input { width: 100%; min-height: 44px; }
+.cal-coque .rp9-setbacks > .rp9-note { grid-column: 1 / -1; margin: 0; }
+.cal-coque div:has(> #rp9-obstacle) { gap: 10px; }
+.cal-coque #rp9-env-panel > div:first-child { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.cal-coque #rp9-env-panel .rp9-btn { min-height: 44px; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.cal-coque #rp9-areas-window dl { grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr)); }
+.cal-coque #rp9-areas-window dl > div { min-width: 0; overflow-wrap: anywhere; }
+.cal-coque #rp9-areas-list [data-area-row] > .ml-auto { flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.cal-coque #rp9-areas-list [data-area-row] button { min-height: 44px; min-width: 44px; }
+
 /* ── Sur la carte : puce, bulle, barre d'outils ─────────────────────────── */
 .cal-coque .cal-sur-carte-resume {
   position: absolute;

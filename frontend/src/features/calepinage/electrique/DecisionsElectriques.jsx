@@ -166,6 +166,21 @@ export default function DecisionsElectriques({ calepinageId, lectureSeule = fals
               </Button>
             </div>
 
+            {/* ACAL1550 — la réponse du dossier à l'arrêt rapide : le serveur en déduit l'organe et sa question. */}
+            <div className="flex flex-col gap-1" data-testid="acal1550-arret-rapide">
+              <Label htmlFor={idChamp('arret-rapide')}>Coupure d’urgence DC / arrêt rapide exigé ?</Label>
+              <select id={idChamp('arret-rapide')} value={etat.arretRapide} disabled={lectureSeule}
+                onChange={(e) => setEtat((s) => ({ ...s, arretRapide: e.target.value }))}
+                className="h-11 border border-border bg-background px-2 text-sm text-foreground">
+                <option value="">Non renseigné</option>
+                <option value="oui">Oui</option>
+                <option value="non">Non</option>
+              </select>
+              {erreurs['protections.exigences.arret_rapide']
+                ? <p className="text-xs text-destructive" data-testid="acal1550-erreur">{erreurs['protections.exigences.arret_rapide']}</p>
+                : null}
+            </div>
+
             <h3 className="mt-2 text-sm font-semibold">Protections — organes ajoutés (décision société)</h3>
             <ul className="flex flex-col gap-2">
               {etat.ajouts.map((l, i) => (

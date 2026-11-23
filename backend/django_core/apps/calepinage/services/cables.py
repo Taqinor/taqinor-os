@@ -440,9 +440,7 @@ def cables_du_calepinage(conception, *, cheminement=None, norme=None,
     omissions = []
     if norme is not None and not norme.get('applicable', False):
         return {'cables': [], 'longueurs': {'dc': None, 'ac': None},
-                'omissions': [norme.get('motif') or
-                              "aucune norme électrique sélectionnée : "
-                              "sections et chutes de tension OMISES"],
+                'omissions': [norme.get('motif') or _sans_norme()],
                 'noyau': None}
     if conception.fiche_incomplete or conception.resultat is None \
             or not conception.chaines:
@@ -519,3 +517,10 @@ def _document(conception):
     sont pas devinables) ; ce repli ne sert qu'à ne pas planter.
     """
     return {'zones': []}
+
+
+def _sans_norme():
+    """ACAL1338 — le texte unique sans norme choisie (``norme.MOTIF_SANS_NORME``)."""
+    from .norme import MOTIF_SANS_NORME
+
+    return MOTIF_SANS_NORME % ''

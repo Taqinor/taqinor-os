@@ -168,7 +168,7 @@ class SimulationFraicheTest(SimpleTestCase):
 
     def test_aucun_avertissement_de_non_simulation(self):
         for message in self.resultat['avertissements']:
-            self.assertNotIn('Production non simulée', message)
+            self.assertNotIn("La production n'est pas encore calculée", message)
 
     def test_la_reponse_est_detachee_du_document_stocke(self):
         # Remanier la réponse ne doit JAMAIS remanier la base.
@@ -268,7 +268,7 @@ class AucuneSimulationTest(SimpleTestCase):
         self.assertFalse(self.resultat['simulation_perimee'])
         self.assertEqual(self.resultat['motif'], '')
         self.assertIsNone(self.resultat['calcule_le'])
-        self.assertTrue(any('Production non simulée' in message
+        self.assertTrue(any("La production n'est pas encore calculée" in message
                             for message in self.resultat['avertissements']))
 
     def test_une_simulation_sans_empreinte_ne_compte_pas(self):

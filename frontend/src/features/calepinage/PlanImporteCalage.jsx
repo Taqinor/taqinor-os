@@ -52,6 +52,34 @@ import { echelleDepuisDeuxPoints, phraseControleEchelle } from './PlanImporteCal
 
 const RAD = Math.PI / 180
 
+/** ACAL1443 — UNE classe de champ pour tout l'écran : celle de l'atelier (bordure, fond de champ, 44 px), jamais le
+ *  `bg-black/30` du thème sombre qui rendait les champs gris pleins en thème clair. */
+const CLASSE_CHAMP = 'mt-1 w-full min-h-11 border border-border bg-muted px-3 py-2 text-base text-foreground outline-none focus:border-brass-400'
+
+/** ACAL1443 — le sélecteur de fichier en français : un bouton relié à l'`input` masqué (qui garde son `data-testid`),
+ *  suivi du nom choisi ou de « Aucun fichier choisi » — jamais le « Choose File » natif. */
+function SelecteurPlan({ id, testId, accept, ariaLabel, invalide, fichier, onChange }) {
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-2">
+      <input
+        type="file"
+        id={id}
+        data-testid={testId}
+        accept={accept}
+        aria-label={ariaLabel}
+        aria-invalid={invalide ? 'true' : undefined}
+        onChange={onChange}
+        className="peer sr-only"
+      />
+      <label htmlFor={id}
+        className="inline-flex min-h-11 cursor-pointer items-center rounded border border-border px-3 text-sm font-medium peer-focus-visible:ring-2">
+        Choisir un fichier
+      </label>
+      <span className="text-sm text-muted-foreground">{fichier ? fichier.name : 'Aucun fichier choisi'}</span>
+    </div>
+  )
+}
+
 /** Une valeur servie, ou le tiret de l'inconnu — jamais un zéro de repli. */
 function texte(brut, suffixe = '') {
   if (brut === null || brut === undefined || brut === '') return '—'
@@ -69,7 +97,7 @@ function ChampNombre({ cle, label, valeur, erreur, onChange }) {
         value={valeur ?? ''}
         onChange={(e) => onChange(cle, e.target.value)}
         aria-invalid={erreur ? 'true' : undefined}
-        className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
+        className={CLASSE_CHAMP}
       />
       {erreur && (
         <span role="alert" data-testid={`cal-calage-erreur-${cle}`}
@@ -262,15 +290,15 @@ export default function PlanImporteCalage({
       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         Poser une image de plan (PNG ou JPEG) en fond de l’atelier
       </p>
-      <input
-        type="file"
+      <SelecteurPlan
+        id="cal-calage-fond-fichier"
         accept="image/png,image/jpeg"
-        aria-label="Image de plan (PNG ou JPEG)"
+        ariaLabel="Image de plan (PNG ou JPEG)"
+        fichier={imageFond}
         onChange={(e) => {
           setImageFond(e.target.files?.[0] ?? null)
           setRefusFond(null)
         }}
-        className="mt-1 block w-full text-sm text-foreground"
       />
       <button type="button" onClick={poserCommeFond}
         className="mt-2 rounded border border-border px-3 py-1 text-sm text-foreground">
@@ -293,17 +321,16 @@ export default function PlanImporteCalage({
       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         Déposer un plan (DXF ou PDF vectoriel)
       </p>
-      <input
-        type="file"
+      <SelecteurPlan
         id="cal-calage-fichier"
-        data-testid="cal-calage-fichier"
+        testId="cal-calage-fichier"
         accept=".dxf,.pdf"
-        aria-invalid={refusImport?.champ === 'fichier' ? 'true' : undefined}
+        invalide={refusImport?.champ === 'fichier'}
+        fichier={fichierDepose}
         onChange={(e) => {
           setFichierDepose(e.target.files?.[0] ?? null)
           setRefusImport(null)
         }}
-        className="mt-1 block w-full text-sm text-foreground"
       />
       <button type="button" onClick={() => envoyerPlan('')}
         data-testid="cal-calage-analyser"
@@ -331,7 +358,7 @@ export default function PlanImporteCalage({
               value={calqueChoisi}
               aria-invalid={refusImport?.champ === 'calque' ? 'true' : undefined}
               onChange={(e) => { setCalqueChoisi(e.target.value); setEntiteChoisie('') }}
-              className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
+              className={CLASSE_CHAMP}
             >
               <option value="">— choisir un calque —</option>
               {(analyse.calques ?? []).map((calque) => (

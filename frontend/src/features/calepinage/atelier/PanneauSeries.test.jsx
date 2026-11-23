@@ -102,6 +102,13 @@ describe('ACAL755 — le menu « Pas : heure / jour »', () => {
   })
 })
 
+describe('ACAL1614 — la carte « Série horaire » ne promet plus une ligne par heure partout', () => {
+  it('son aide nomme le pas du jour en météo pluriannuelle', () => {
+    rendre()
+    expect(screen.getByTestId('cal-series-ligne-horaire')).toHaveTextContent(/au pas du jour en météo pluriannuelle/)
+  })
+})
+
 describe('ACAL754 — la carte « Ombrage module par module »', () => {
   it("la 4e carte demande quoi=ombrage_modules ; l'échantillon la nomme", async () => {
     const { exports } = exempleContrat('calepinage', 'calepinage_export_csv')

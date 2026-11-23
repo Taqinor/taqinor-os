@@ -139,15 +139,20 @@ import {
   type ModulePose, // CALX403 câblage
   nouveauPanDepuisContour, // ACAL71
   panVierge,
+  poserModuleDeDepart, ajoutDePanEnCours, monterToitGriseSousTrace, // ACAL1273, ACAL1329
 } from './roofPro11/zones';
 import { monterAlignementRangees, pavageCellulesDe, pavagePoseDe } from './roofPro11/alignementRangees'; // ACAL584
 import { motifPanVerrouille } from './roofPro11/panVerrouille'; // ACAL520
+import { monterCotesAretes } from './roofPro11/cotesAretes'; // ACAL1328
 import { monterObjetsSite } from './roofPro11/objetsSite'; // ACAL533
 // CALX109/CALX110 câblage — le catalogue de modules de la société (`opts.modulesDisponibles`)
 // et le module posé sur chaque pan (`AreaRecord.moduleId`) : c'est ce couple qui part dans le
 // document à chaque sérialisation (`SerializeMeta.modules`). Sans cette ligne, `modules[]` et
 // `zones[].geometry.moduleId` n'étaient JAMAIS écrits et le choix se perdait au rechargement.
 import { affectationDesPans, lireModulesDisponibles, moduleDeDepart } from './roofPro11/moduleSelect';
+import { remplacerParPanVierge } from './roofPro11/repriseModule'; // ACAL1416
+import { cibleFermetureToit } from './roofPro11/vueFermetureToit'; // ACAL1422
+import { reafficherEpingleApresEffacement } from './roofPro11/repriseEpingle'; // ACAL1423
 import { enregistrerOrbite } from './roofPro11/videoOrbite'; // ACAL896
 import { factureCarteDe, lireFactureSaisie } from './roofPro11/factureCarte'; // ACAL777
 import { bandesDuPan, enveloppeAccesSolaire, type MemoAcces } from './roofPro11/bandesAcces'; // ACAL721
@@ -232,12 +237,12 @@ import { hydrateFromLead, hydrateFromDevis, serializeLayout, geometrieZoneActive
 import { deplacerEpingleALaMain, oublierEpingleDeplacee } from './roofPro11/provenanceEpingle'; // ACAL593 — sorti de prefill.ts
 import { masquerMarqueur, retirerMarqueur } from './roofPro11/epingleClient'; // ACAL972
 import { createReperesUi } from './roofPro11/reperesChantier'; // ACAL593
-import { refleterPrioriteRemplissage } from './roofPro11/prioriteRemplissage'; import { anneauxCoupuresDuPanActif, monterChampsCoupures } from './roofPro11/coupuresPavage'; import { monterChampPortee } from './roofPro11/piedsChassis'; import { monterChampsChassis } from './roofPro11/chassisPavage'; // ACAL576, ACAL579, ACAL585
+import { refleterPrioriteRemplissage } from './roofPro11/prioriteRemplissage'; import { anneauxCoupuresDuPanActif, monterChampsCoupures } from './roofPro11/coupuresPavage'; import { monterChampPortee } from './roofPro11/piedsChassis'; import { monterChampsChassis } from './roofPro11/chassisPavage'; import { grouperStructurePose } from './roofPro11/structurePose'; // ACAL576, ACAL579, ACAL585, ACAL1522
 import { createSoleilPlayer, sunriseSunsetHours, type SoleilPlayer } from './roofPro11/soleilPlay';
 import { apiCamera, appliquerVue } from './roofPro11/cadrageToit'; // ACAL435 + F6 (cadrage du toit)
 import { panneauxPourCible, phraseCible } from './roofPro11/cibleProduction'; // ACAL470
 import { majBadgesReco } from './roofPro11/recoBadges'; // ACAL562
-import { poserRetraitsSurPanActif } from './roofPro11/retraitsSociete'; // ACAL562
+import { poserRetraitsPuisRecalculer } from './roofPro11/fermetureDuPan'; // ACAL562
 
 let booted = false;
 
@@ -1357,7 +1362,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // disposition personnalisée (re-snap sur la nouvelle lattice) après une édition d'obstacle
   // ou d'axe pendant que l'éditeur est ouvert. Les autres méthodes pilotent le câblage interne.
   barreSelection = creerBarreSelection({ hote: () => map.getContainer?.() ?? null, editeur: layoutEditor, setStatus: (m) => setStatus(m), photographier: () => ctx.pushWorkshopHistory?.() }); // ACAL411 + ACAL418
-  monterChampsCoupures(ctx, { recalc: () => recalc() }); monterChampPortee(ctx, { recalc: () => recalc() }); monterChampsChassis(ctx, { recalc: () => recalc() }); // ACAL576, ACAL579, ACAL585 — rubrique « Avancé » de #rp9-layout-panel
+  monterChampsCoupures(ctx, { recalc: () => recalc() }); monterChampPortee(ctx, { recalc: () => recalc() }); monterChampsChassis(ctx, { recalc: () => recalc() }); grouperStructurePose(); // ACAL576, ACAL579, ACAL585, ACAL1522 — rubriques « Structure et pose », hors du panneau de déplacement
   const renderLayoutPanel = layoutEditor.renderLayoutPanel;
   const occupiedCenters = layoutEditor.occupiedCenters;
   const reenterCustomLayout = layoutEditor.reenterCustomLayout;
@@ -1386,10 +1391,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // Source relue à CHAQUE rendu : une allée tracée entre deux rendus se voit aussitôt.
   poserSourceCellulesSurAllees(ctx, () => cellulesSurAlleesCourantes()); // CALX403 câblage
   const redrawObstacles = obstaclesUi.redrawObstacles;
-  // CAL69 — redessine le calque des zones d'exclusion (même cadence que les obstacles).
-  const redrawExclusionZones = obstaclesUi.redrawExclusionZones;
+  const redrawExclusionZones = obstaclesUi.redrawExclusionZones; // CAL69 — zones d'exclusion, même cadence que les obstacles
   const clearPreview = obstaclesUi.clearPreview;
   const objetsSite = monterObjetsSite(ctx, { selectArea: (id) => selectArea(id), selectObstacle: (id) => obstaclesUi.selectObstacle(id) }); // ACAL533
+  obstaclesUi.apresRedessin(objetsSite.redessiner); // ACAL1409 — pose, glissé, suppression et hydratation redessinent le tableau
   const syncObsEdit = () => { obstaclesUi.syncObsEdit(); objetsSite.redessiner(); }; // le tableau suit chaque pose
   const selectObstacle = obstaclesUi.selectObstacle;
   const obstacleAtPoint = obstaclesUi.obstacleAtPoint;
@@ -1728,6 +1733,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       paint: { 'line-color': GOLD, 'line-width': 2, 'line-dasharray': [3, 2] },
     });
     setReferenceContour(referenceContourRing(opts.referenceContour));
+    monterToitGriseSousTrace(map as never, () => ({ areas, activeAreaId, closed }), GOLD, () => { setReferenceContour(referenceContourRing(opts.referenceContour)); setReferenceContourVisible(referenceContourVisible); }); // ACAL1329
     map.addSource('rp9-line', { type: 'geojson', data: empty as never });
     map.addSource('rp9-pts', { type: 'geojson', data: empty as never });
     map.addSource('rp9-obs', { type: 'geojson', data: empty as never });
@@ -1806,6 +1812,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       },
       paint: { 'text-color': '#ffffff', 'text-halo-color': '#070b1d', 'text-halo-width': 1.6 },
     });
+    monterCotesAretes(map as never, () => areas.map((a) => (a.id === activeAreaId ? { sommets: vertices, ferme: closed } : { sommets: a.vertices, ferme: true })), opts.chiffrage !== undefined); // ACAL1328 — atelier ERP seul
     // ACAL233 — calque de la parcelle (pointillés), distinct du tracé du toit.
     map.addSource('rp9-parcelle', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } as never });
     map.addLayer({
@@ -1898,7 +1905,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
    *  les DEUX boots (lead et devis) et par `appliquerSection` (onglets du Rail). */
   function appliquerHydratation(h: HydratationAtelier) {
     appliquerHydratationAuCtx(ctx, h);
-    if (h.environment !== undefined) obstaclesUi.redrawEnvironment();
+    if (h.environment !== undefined) obstaclesUi.relireEnvironment(); // ACAL1406 — liste + ombrage relus
     if (h.electrical !== undefined) coucheElectrique.rafraichir();
     if (h.shadeObstructions !== undefined) shadingUi.rafraichirOmbres(); // ACAL27
     if (h.surfacesPose !== undefined) {
@@ -1912,9 +1919,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       shadingUi.setHorizonProfile((ctx.horizonProfile ?? null) as unknown as import('../lib/horizonEngine').HorizonProfile | null);
       redrawExclusionZones();
       renderParcelle(); reperesUi.render(); // ACAL233, ACAL593
+      mapDraw.relireImageCapture(); shadingUi.syncHeightUi(); // ACAL1405 — date de la photo + bâtiment relus
       // CALX119 — contrôles du soleil de scène alignés sur l'instant relu.
-      if (sunHourEl) sunHourEl.value = String(Math.round(ctx.sunHour));
-      if (sunHourValueEl) sunHourValueEl.textContent = `${Math.round(ctx.sunHour)} h`;
+      if (sunHourEl) sunHourEl.value = String(Math.round(ctx.sunHour)); if (sunHourValueEl) sunHourValueEl.textContent = `${Math.round(ctx.sunHour)} h`;
       if (sunDateEl) sunDateEl.value = dayOfYearToDateValue(ctx.sunDay);
       document.querySelectorAll<HTMLButtonElement>('[data-sun-season]').forEach((o) =>
         o.setAttribute('aria-pressed', String(
@@ -1970,10 +1977,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       // RE-CALE : un dernier `resize()` + `jumpTo` empêche un redimensionnement React tardif
       // de laisser la caméra à MOROCCO_CENTER. `idle` ne change RIEN au boot public (qui n'a
       // pas de `h.center`).
-      const landOnPin = () => {
-        map.resize();
-        map.jumpTo(target);
-      };
+      const landOnPin = () => { map.resize(); map.jumpTo(target); };
       landOnPin();
       if (!opts.reducedMotion) map.easeTo({ ...target, duration: 600, essential: true });
       // Re-assertion au repos : garde contre une remise à MOROCCO_CENTER par un resize tardif.
@@ -2071,9 +2075,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // `appliquerHydratationAuCtx` ci-dessus — la MÊME fonction pour les deux boots.
     reporterContact(h.contact);
     // ACAL913 — document SANS aucun module : celui de départ (celui du devis s'il est au catalogue).
-    const depart = moduleDeDepart(lireModulesDisponibles(opts.modulesDisponibles), h.panelWatt);
-    const zonesDoc = (layout as { zones?: Array<{ geometry?: { moduleId?: unknown } }> } | null)?.zones ?? [];
-    if (depart && !zonesDoc.some((z) => z?.geometry?.moduleId)) for (const a of areas) a.moduleId = depart.id;
+    // ACAL1273 — posé APRÈS le remplacement des pans par ceux du document (avant, il partait avec eux).
+    const poserDepart = () => poserModuleDeDepart(areas, layout?.zones, moduleDeDepart(lireModulesDisponibles(opts.modulesDisponibles), h.panelWatt));
+    poserDepart();
     // Origine du design : reprise telle quelle dans l'export (meta de sérialisation).
     // ACAL31 — seulement quand le payload porte un id de devis : un calepinage sans devis
     // n'écrit jamais `source: 'devis'` ni un `devisId: null` inventé (le document relu fait foi).
@@ -2083,6 +2087,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       // Le devis porte un design : ses zones REMPLACENT les zones par défaut.
       areas.length = 0;
       for (const z of h.zones) areas.push(z);
+      poserDepart(); // ACAL1273
       activeAreaId = h.activeAreaId ?? areas[0].id;
       const a = activeArea() ?? areas[0];
       vertices = [...a.vertices];
@@ -2123,10 +2128,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     if (h.center) {
       imposeTarget();
       const target = { center: h.center, zoom: 19, pitch: 0 } as const;
-      const landOnPin = () => {
-        map.resize();
-        map.jumpTo(target);
-      };
+      const landOnPin = () => { map.resize(); map.jumpTo(target); };
       landOnPin();
       if (!opts.reducedMotion) map.easeTo({ ...target, duration: 600, essential: true });
       map.once('idle', landOnPin);
@@ -2397,10 +2399,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     if (undoPointBtn) undoPointBtn.hidden = true; // W92 — plus d'annulation après fermeture
     let lng = 0;
     let lat = 0;
-    for (const [x, y] of vertices) {
-      lng += x;
-      lat += y;
-    }
+    for (const [x, y] of vertices) { lng += x; lat += y; }
     centroid = [lng / vertices.length, lat / vertices.length];
     centroidLat = centroid[1];
     shadingUi.recomputeHorizon(); // ACAL378 — matrice d'horizon à la latitude du toit
@@ -2424,13 +2423,12 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // commune (sauf override manuel). Les puces « Face du pan » reflètent la valeur déduite.
     autoInferFacing();
     syncFacingChips();
-    recalc();
-    const infoRetraits = poserRetraitsSurPanActif(ctx); // ACAL562 — retraits de la société sur les arêtes typées
+    const infoRetraits = poserRetraitsPuisRecalculer(ctx, recalc); // ACAL562 — retraits de la société posés AVANT le premier pavage
     if (infoRetraits) setStatus(infoRetraits);
   }
 
   function go3DView() {
-    const target = { center: centroid, zoom: vertices.length >= 3 ? zoomToFitRing(vertices) : map.getZoom(), pitch: PITCH_VIEW } as const;
+    const target = cibleFermetureToit({ anneau: vertices, centre: centroid, carte: map, erp: opts.chiffrage !== undefined }); // ACAL1422 — l'atelier ERP garde Plan et cadre à son plafond
     if (opts.reducedMotion) map.jumpTo(target);
     else map.easeTo({ ...target, duration: 1100, essential: true });
   }
@@ -2441,7 +2439,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   function clearEditorState() {
     vertices = [];
     closed = false;
-    removeClientPinMarker(); // W113 — retire le repère client (nouveau lead / effacement)
+    reafficherEpingleApresEffacement(clientPinMarker); // ACAL1423 — « Effacer » rend le repère du lead masqué à la fermeture (jamais retiré)
     obstacles = [];
     selectedObsId = null;
     setObstacleMode(false);
@@ -2536,9 +2534,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     consAppliances = []; ctx.consCharges = []; // ACAL780
     consDailyTarget = 0;
     ctx.consSource = null;
-    areas.length = 0;
-    const fresh = newAreaRecord();
-    areas.push(fresh);
+    const fresh = remplacerParPanVierge(areas, activeAreaId, newAreaRecord); // ACAL1416 — « Effacer » garde le module CHOISI
     activeAreaId = fresh.id;
     imposeTarget(); // ACAL925 — la cible hydratée redevient le nombre voulu (sans cible hydratée : rien)
     if (areasWindowEl) areasWindowEl.hidden = true;
@@ -2716,7 +2712,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     if (idx < 0) return;
     const verrou = motifPanVerrouille(areas[idx], idx); // ACAL520
     if (verrou) { setStatus(verrou); return; }
-    const wasActive = id === activeAreaId;
+    const wasActive = id === activeAreaId; ctx.pushWorkshopHistory?.(); // « Annuler » de la barre rend le pan supprimé
     areas.splice(idx, 1);
     if (areas.length === 0) {
       reset();
@@ -4210,6 +4206,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // le layout finalisé (W113) + instantané PNG de la 3D (W115). Boot complet seulement
   // (jamais en capture). Absent → aucun effet.
   opts.onApiReady?.({
+    // ACAL1329 — un pan AJOUTÉ est en cours de tracé (du premier clic au dernier point) : l'hôte n'écrit aucun brouillon.
+    ajoutDePanEnCours: () => ajoutDePanEnCours(areas, activeAreaId, closed),
     // ACAL26 — le wrapper délègue au sérialiseur CÂBLÉ (`hydratation.ts`) : la composition
     // de la meta (origine devis, accès solaire, retraits, horizon, modules) est la même
     // qu'avant, et ses DEUX branches portent désormais la couche électrique.
@@ -4241,7 +4239,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // validateur et même refus de croisement que le tracé ; le pan actif est figé d'abord,
     // puis le nouveau est chargé et fermé par la voie du tracé (`loadArea` → `recalc`).
     ajouterPanDepuisContour: (contourLngLat: unknown) => {
-      const verdict = nouveauPanDepuisContour(contourLngLat, areas);
+      const verdict = nouveauPanDepuisContour(contourLngLat, areas, moduleDeDepart(lireModulesDisponibles(opts.modulesDisponibles))); // ACAL1273
       if (!verdict.ok) {
         setStatus(verdict.motif);
         return verdict;

@@ -28,12 +28,13 @@ vi.mock('../../../api/calepinageApi', () => ({
       evaluerElectrique: vi.fn(),
       enregistrerEntreeElectrique: vi.fn(),
       importerAffectation: vi.fn(),
+      entreeElectrique: vi.fn(),
     },
   },
 }))
 
 import calepinageApi from '../../../api/calepinageApi'
-import AffectationChaines from './AffectationChaines'
+import AffectationChaines, { BarreRaccordement } from './AffectationChaines'
 import { couleurParModule, marquerModules } from './AffectationChaines.helpers'
 
 const contratResultat = () => reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
@@ -141,6 +142,18 @@ describe('AffectationChaines (ACAL631) — importer un plan de chaînes (CSV)', 
     fireEvent.change(screen.getByTestId('acal631-fichier'), { target: { files: [fichier] } })
   }
 
+  it('ACAL1541 : l’import CSV porte un bouton en français et le nom du fichier choisi', async () => {
+    calepinageApi.calepinages.importerAffectation.mockResolvedValue({ data: REFUS })
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+
+    expect(screen.getByRole('button', { name: 'Choisir un fichier' })).toBeInTheDocument()
+    expect(screen.getByTestId('acal631-fichier')).toHaveClass('hidden')
+    expect(screen.getByTestId('acal1541-nom')).toHaveTextContent('Aucun fichier choisi')
+    deposer('module;chaine;mppt;onduleur')
+    await waitFor(() => expect(screen.getByTestId('acal1541-nom')).toHaveTextContent('chaines.csv'))
+  })
+
   it('CSV valide : la proposition est remplie, le verdict relancé, RIEN n’est enregistré', async () => {
     calepinageApi.calepinages.importerAffectation.mockResolvedValue({
       data: { ...IMPORT, lignes: [{ module: B1, chaine: 2, mppt: 2, onduleur: 1 }, { module: B2, chaine: 2, mppt: 2, onduleur: 1 }] },
@@ -237,6 +250,25 @@ describe('AffectationChaines (CAL234) — le verdict SERVEUR', () => {
     const etat = await screen.findByTestId('cal234-verdict-etat')
     expect(etat).toHaveTextContent('À compléter : 16 points')
     expect(etat).not.toHaveTextContent(/indetermine|conforme/i)
+  })
+
+  it('ACAL1535 : verdict conforme et dossier « À compléter : 10 points » ⇒ le résumé dit « À compléter »', async () => {
+    calepinageApi.calepinages.evaluerElectrique.mockImplementation((_id, corps) => Promise.resolve({
+      data: corps?.entree_electrique
+        ? { ...VERDICT_CONFORME, etat: 'pret', points: 0, publication: null }
+        : { ...VERDICT_CONFORME, etat: 'a_completer', points: 10, publication: { etat: 'a_completer', points: 10 } },
+    }))
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+    glisserSur([B1, B2])
+    saisir('chaine', '2')
+    saisir('mppt', '2')
+    saisir('onduleur', '1')
+    fireEvent.click(screen.getByTestId('cal234-affecter'))
+
+    const etat = await screen.findByTestId('cal234-verdict-etat')
+    await waitFor(() => expect(etat).toHaveTextContent('À compléter : 10 points'))
+    expect(etat).not.toHaveTextContent(/Prêt/)
   })
 
   it('un numéro invalide est refusé SOUS le champ fautif, sans appel serveur', async () => {
@@ -562,6 +594,30 @@ describe('AffectationChaines (ACAL725) — le drapeau « optimiseur » par modul
   })
 })
 
+describe('BarreRaccordement (ACAL1536) — dire pourquoi rien n’est raccordé', () => {
+  it('module non désigné ⇒ une phrase de cause au lieu du silence', async () => {
+    const vide = contratResultat()
+    vide.data.electrique.affectation = []
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue(vide)
+    calepinageApi.calepinages.entreeElectrique.mockResolvedValue({
+      data: exempleContrat('calepinage', 'calepinage_entree_electrique', 'exemple_vide'),
+    })
+    render(<BarreRaccordement calepinageId={1} onRaccorde={() => {}} onModifier={() => {}} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Raccorder automatiquement' }))
+    expect(await screen.findByText(/Choisissez d’abord le module de ce toit/)).toBeInTheDocument()
+  })
+
+  it('des chaînes apparaissent ⇒ aucune phrase de cause', async () => {
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue(contratResultat())
+    const onRaccorde = vi.fn()
+    render(<BarreRaccordement calepinageId={1} onRaccorde={onRaccorde} onModifier={() => {}} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Raccorder automatiquement' }))
+    await waitFor(() => expect(onRaccorde).toHaveBeenCalled())
+    expect(screen.queryByText(/Choisissez d’abord/)).toBeNull()
+    expect(calepinageApi.calepinages.entreeElectrique).not.toHaveBeenCalled()
+  })
+})
+
 describe('AffectationChaines (ACAL647) — modules ombrés proposés pour un optimiseur', () => {
   const lire = (module) => contratResultat().data.electrique.affectation.find((l) => l.module === module)
 
@@ -593,7 +649,13 @@ describe('AffectationChaines (ACAL647) — modules ombrés proposés pour un opt
     const [idAppele, corps] = calepinageApi.calepinages.enregistrerEntreeElectrique.mock.calls[0]
     expect(idAppele).toBe(1)
     const parModule = Object.fromEntries(corps.affectation_manuelle.map((l) => [l.module, l]))
-    expect(Object.keys(parModule).sort()).toEqual([...proposes].sort())
+    // ACAL1509 — l'affectation écrite garde TOUS les modules et leurs chaînes ; seuls les proposés sont marqués.
+    const tous = contratResultat().data.electrique.affectation
+    expect(Object.keys(parModule).sort()).toEqual(tous.map((l) => l.module).sort())
+    tous.filter((l) => !proposes.includes(l.module)).forEach((l) => {
+      expect(parModule[l.module].chaine).toBe(l.chaine)
+      expect(parModule[l.module].optimiseur).not.toBe(true)
+    })
     proposes.forEach((module) => {
       const servi = lire(module)
       expect(parModule[module]).toEqual({

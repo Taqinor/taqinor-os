@@ -82,6 +82,18 @@ export function marquerModules(modules, valeur) {
       : { module, chaine, mppt, onduleur }))
 }
 
+/**
+ * ACAL1509 — l'affectation COMPLÈTE à écrire : la table affichée (automatique comprise) sert de base, les lignes
+ * déjà proposées (manuelles, éditions, obsolètes gardées) passent par-dessus, puis les modules marqués. Écrire
+ * seulement les modules marqués laissait le serveur avec 6 modules en chaîne 1 (« minimum 9 »).
+ */
+export function affectationComplete(lignes, proposees, marques) {
+  const parModule = new Map((lignes || []).map((l) => [l.module, marquerModules([l], drapeauOptimiseur(l))[0]]))
+  for (const l of proposees || []) parModule.set(l.module, l)
+  for (const l of marques || []) parModule.set(l.module, l)
+  return Array.from(parModule.values())
+}
+
 /** Clé de groupe d'une ligne. `null` = module non affecté (gris). */
 export function cleGroupe(ligne, mode) {
   if (mode === 'chaine') return ligne.chaine == null ? null : `c${ligne.chaine}`

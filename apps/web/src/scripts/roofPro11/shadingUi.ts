@@ -138,6 +138,8 @@ export interface ShadingUi {
    * `batiment.test.ts` seuls).
    */
   setBatimentOsmPropose: (batiment: BatimentOsmServeur | null | undefined) => void;
+  /** ACAL1405 — relit la hauteur, sa provenance et le panneau « Bâtiment » depuis le document (réouverture). */
+  syncHeightUi: () => void;
 }
 
 /**
@@ -1358,7 +1360,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   });
   if (hourEl) {
     hourEl.addEventListener('input', () => {
-      const v = hourEl.value.trim() === '' ? NaN : Number(hourEl.value);
+      const v = hourEl.value.trim() === '' ? NaN : Number(hourEl.value.trim().replace(',', '.')); // ACAL1436 — virgule décimale acceptée
       if (!Number.isFinite(v) || v < 0 || v > 24) {
         imageryHour = null;
         if (hourValueEl) hourValueEl.textContent = 'Heure solaire illisible : un nombre entre 0 et 24.';
@@ -1484,8 +1486,10 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
       // ACAL381 — le facteur annuel de l'ombrage proche lit lui aussi la latitude du toit.
       if (ctx.shadeFactors) ctx.shadeAnnualFactor = annualShadeFactor(ctx.prodPerKwc ?? fallbackPerKwc(), ctx.shadeFactors, ctx.centroidLat);
       renderHorizonNote();
+      syncHeightUi(); // ACAL1405 — appelé à la fermeture du pan relu : le bâtiment de CE pan
     },
     horizonStatus,
+    syncHeightUi, // ACAL1405
     moduleShadeReadings,
     moduleShadeTooltip,
     setBatimentOsmPropose,

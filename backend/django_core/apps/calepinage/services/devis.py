@@ -105,11 +105,12 @@ def empreinte_des_surfaces(layout, cles):
         return ''
 
 
-def _selection_du_devis(devis):
-    """ACAL968 — la sélection écrite au devis (``roof_layout``), ou ``None``."""
-    from apps.ventes.selectors_calepinage import surfaces_chiffrees_du_devis
+def _selection_du_devis(devis, porteur):
+    """ACAL968 — la sélection écrite au devis (``roof_layout``), ou ``None`` ;
+    ACAL1249 : lue contre le document de ``porteur`` (pan existant ignoré)."""
+    from apps.ventes.selectors_calepinage import selection_lue_du_devis
 
-    return surfaces_chiffrees_du_devis(devis)
+    return selection_lue_du_devis(devis, porteur)
 
 
 def _lead_et_client(calepinage):
@@ -342,6 +343,39 @@ def taille_non_dimensionnee(calepinage, *, cible=None):
     return None
 
 
+#: ACAL1342 — les champs du lead d'où le moteur tire une consommation (facture d'hiver,
+#: d'été, kWh mensuel déclaré) et la taille souhaitée qui le court-circuite.
+_CHAMPS_DIMENSIONNANTS = ('facture_hiver', 'facture_ete', 'conso_mensuelle_kwh',
+                          'taille_souhaitee_kwc')
+
+
+def lead_sans_facture_ni_taille(calepinage):
+    """ACAL1342 — vrai quand le lead RÉSIDENTIEL ne porte AUCUN des champs dimensionnants :
+    le moteur refuserait « facture absente » (``taille_non_dimensionnee``) sans qu'il soit
+    utile de le lancer. Une seule lecture du lead ; un champ inconnu ⇒ faux (le moteur
+    tranche alors, comme avant)."""
+    from apps.crm.selectors import get_company_lead
+
+    if not getattr(calepinage, 'lead_id', None):
+        return False
+    lead = get_company_lead(getattr(calepinage, 'company', None), calepinage.lead_id,
+                            avec_corbeille=True)
+    absent = object()
+    valeurs = [getattr(lead, champ, absent) for champ in _CHAMPS_DIMENSIONNANTS]
+    if lead is None or absent in valeurs:
+        return False
+    if (getattr(lead, 'type_installation', '') or '').lower() not in ('', 'residentiel'):
+        return False
+    return not any(_positif_ou_none(v) for v in valeurs)
+
+
+def _positif_ou_none(valeur):
+    try:
+        return float(valeur) > 0 if valeur not in (None, '') else False
+    except (TypeError, ValueError):
+        return False
+
+
 #: Recette R2-17 (Q2, décision de l'orchestrateur du 22/11/2026, réversible) —
 #: au-delà de 2 × la cible tirée des FACTURES, la taille se confirme. Le facteur
 #: 2 est celui de la règle du fondateur du 30/09/2026 (« kWh déclaré contredisant
@@ -385,6 +419,18 @@ def _ttc_lisible(devis):
     return ttc, f'{ttc:,.2f}'.replace(',', ' ').replace('.', ',') + ' MAD TTC'
 
 
+def _kwc_compose_du_devis(devis):
+    """ACAL1417 — le kWc que la composition vend : ``etude_params['puissance_kwc']``
+    et, quand ce chemin de composition ne l'a pas posé, LA règle unique de
+    ``ventes`` (``puissance_kwc_du_devis``, lue des lignes panneau) — jamais
+    ``None`` faute de clé, ce qui faisait taire la garde du module substitué et
+    vider le kWc de la question de taille. ``None`` seulement si rien n'est lisible."""
+    from apps.ventes.services import puissance_kwc_du_devis
+
+    kwc = (getattr(devis, 'etude_params', None) or {}).get('puissance_kwc')
+    return kwc if kwc is not None else puissance_kwc_du_devis(devis)
+
+
 def _garde_taille(devis, calepinage, confirmer_taille):
     """ACAL922 — un devis que rien ne dimensionne demande une CONFIRMATION :
     409 ``confirmation_taille`` avec le kWc et le TTC du devis composé, sous
@@ -399,7 +445,7 @@ def _garde_taille(devis, calepinage, confirmer_taille):
     au_dela = None if question is not None else _question_pose_sur_cible(devis, cible)
     if question is None and au_dela is None:
         return
-    kwc = (getattr(devis, 'etude_params', None) or {}).get('puissance_kwc')
+    kwc = _kwc_compose_du_devis(devis)
     ttc, ttc_texte = _ttc_lisible(devis)
     chiffres = ([f'{fr(float(kwc), 2)} kWc'] if kwc is not None else []) + [ttc_texte]
     if au_dela is not None:
@@ -453,7 +499,7 @@ def _garde_module_substitue(devis, layout):
         from apps.ventes.selectors_calepinage import kwc_lu_du_layout
 
         dessine = kwc_lu_du_layout(layout)
-    compose = (getattr(devis, 'etude_params', None) or {}).get('puissance_kwc')
+    compose = _kwc_compose_du_devis(devis)
     if not dessine or compose is None:
         return
     if abs(float(compose) - dessine) <= EPSILON_KWC_COMPOSE + 1e-9:
@@ -461,10 +507,21 @@ def _garde_module_substitue(devis, layout):
     panneau = next((ligne['designation'] for ligne in
                     lignes_produits_calepinage(devis)
                     if 'panneau' in (ligne['designation'] or '').lower()), '')
-    detail = ("Le dessin porte %s kWc ; le catalogue compose %s kWc%s. "
-              "Choisissez le module du catalogue dans l'atelier puis "
-              "relancez." % (fr(dessine, 2), fr(float(compose), 2),
-                             ' (%s)' % panneau if panneau else ''))
+    vendus = [p for p in pans if p['modules'] > 0 and not p.get('existant')]
+    if vendus and all(p['kind'] != 'toit' for p in vendus):
+        # ACAL1440 — une surface de pose (champ au sol…) n'a aucun choix de module : elle reprend
+        # celui du pan actif à l'enregistrement (ACAL918). Le texte dit donc quoi changer et où.
+        watts = sorted({fr(p['module_wc'], 0) for p in vendus if p.get('module_wc')})
+        detail = ("%s : son module (« %s ») n'est pas celui que le catalogue compose (« %s »). "
+                  "Changez le module du pan, puis ré-enregistrez le contour."
+                  % (', '.join(p['libelle'] for p in vendus),
+                     ' / '.join('%s W' % w for w in watts) or '?',
+                     panneau or '%s kWc' % fr(float(compose), 2)))
+    else:
+        detail = ("Le dessin porte %s kWc ; le catalogue compose %s kWc%s. "
+                  "Choisissez le module du catalogue dans l'atelier puis "
+                  "relancez." % (fr(dessine, 2), fr(float(compose), 2),
+                                 ' (%s)' % panneau if panneau else ''))
     raise DevisRefuse(detail, champ='zones.0.geometry.moduleId', statut=409,
                       donnees={'detail': detail, 'code': 'module_substitue',
                                'champ': 'zones.0.geometry.moduleId',
@@ -925,7 +982,7 @@ def resynchroniser_devis(calepinage, *, user=None,
                          and devis.company_id != company.pk):
         raise DevisRefuse(f"Devis introuvable (#{devis_id}).", champ='devis')
     layout = _layout_des_surfaces(layout, surfaces_chiffrees if surfaces_chiffrees
-                                  is not None else _selection_du_devis(devis))
+                                  is not None else _selection_du_devis(devis, variante or calepinage))
 
     try:
         # ACAL34 — l'enveloppe ventes UNIQUE : resynchro + quatre études

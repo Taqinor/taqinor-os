@@ -106,6 +106,46 @@ class RendusDeclareLesSeptPiecesTest(SimpleTestCase):
             self.assertIn(code, rendus)
 
 
+class RapportRemisReutiliseTest(SimpleTestCase):
+    """ACAL1322 — le rapport d'étude REMIS dont l'empreinte est à jour entre dans le
+    pack tel quel : aucun second rendu (≈ 110 s) ; sinon, le rendu d'avant."""
+
+    RANGE = b'%PDF-1.7 rapport remis'
+
+    def _rapport(self, *, piece, sections=None, octets=RANGE):
+        from unittest import mock
+
+        from apps.calepinage.services.documents import versions_document
+
+        rendu = mock.Mock(return_value=b'%PDF-1.7 rendu neuf')
+        with mock.patch.object(versions_document, '_sections_du_document', return_value=sections), \
+                mock.patch.object(versions_document, 'empreinte_courante', return_value='e' * 16), \
+                mock.patch.object(versions_document, '_deja_remise', return_value=piece) as remise, \
+                mock.patch('apps.records.storage.fetch_attachment', return_value=(octets, None)), \
+                mock.patch('apps.calepinage.services.rapport.rendre_rapport', rendu):
+            sortie = pack_technique._rendus(FauxCalepinage(), 'societe-essai')['rapport_etude']()
+        return sortie, rendu, remise
+
+    def test_rapport_remis_a_jour_reutilise_sans_second_rendu(self):
+        from types import SimpleNamespace
+
+        sortie, rendu, remise = self._rapport(piece=SimpleNamespace(file_key='k'))
+        self.assertEqual(sortie, self.RANGE)
+        rendu.assert_not_called()
+        remise.assert_called_once()
+        self.assertEqual(remise.call_args.args[1:], ('rapport_etude', 'fr', 'e' * 16))
+
+    def test_sans_rapport_a_jour_le_rendu_d_avant(self):
+        from types import SimpleNamespace
+
+        for piece, sections, octets in ((None, None, self.RANGE),
+                                        (SimpleNamespace(file_key='k'), ['site'], self.RANGE),
+                                        (SimpleNamespace(file_key='k'), None, None)):
+            sortie, rendu, _remise = self._rapport(piece=piece, sections=sections, octets=octets)
+            self.assertEqual(sortie, b'%PDF-1.7 rendu neuf')
+            rendu.assert_called_once()
+
+
 @skipUnless(_FITZ, 'PyMuPDF absent de cet environnement')
 class DossierEtenduSimuleOuPasTest(SimpleTestCase):
     """``rendre_pieces`` avec un ``rendus`` EXPLICITE — MÊME mécanique que
