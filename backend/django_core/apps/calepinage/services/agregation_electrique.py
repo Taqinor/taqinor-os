@@ -55,7 +55,7 @@ from .valeurs import nombre as _nombre
 
 __all__ = [
     'ETAPE_MISMATCH', 'ETAPE_ECRETAGE', 'affectation_du_calepinage',
-    'agregation_production', 'plans_raccordes',
+    'agregation_production', 'phrase_non_raccordes', 'plans_raccordes',
 ]
 
 #: L'étape de la chaîne de pertes qui porte la dispersion PAR CHAÎNE
@@ -135,6 +135,19 @@ def affectation_du_calepinage(conception, entree_electrique=None):
             'motif': '', 'avertissements': tuple(avertissements)}
 
 
+def phrase_non_raccordes(nombre):
+    """ACAL1602 / ACAL1912 — la phrase des panneaux posés mais raccordés à
+    aucun onduleur : la simulation (``plans_raccordes``) et le résultat
+    électrique (``chaines.bloc_electrique``) disent la MÊME chose."""
+    if nombre == 1:
+        return ("1 panneau n'est raccordé à aucun onduleur : il n'est pas "
+                "compté dans la production (son énergie possible est donnée "
+                "à part, « hors chaîne »).")
+    return ("%d panneaux ne sont raccordés à aucun onduleur : ils ne sont pas "
+            "comptés dans la production (leur énergie possible est donnée à "
+            "part, « hors chaîne »)." % nombre)
+
+
 def plans_raccordes(plans, affectation):
     """ACAL1602 — ``(plans, nombre, avertissement)`` : chaque pan réduit à
     ses modules RACCORDÉS (``chaine`` non nulle dans la table ;
@@ -158,13 +171,7 @@ def plans_raccordes(plans, affectation):
         raccordes.append(plan)
     if not retires or not any(plan['modules'] for plan in raccordes):
         return plans, 0, ''
-    return raccordes, retires, (
-        "1 panneau n'est raccordé à aucun onduleur : il n'est pas compté dans "
-        "la production (son énergie possible est donnée à part, « hors "
-        "chaîne »)." if retires == 1 else
-        "%d panneaux ne sont raccordés à aucun onduleur : ils ne sont pas "
-        "comptés dans la production (leur énergie possible est donnée à part, "
-        "« hors chaîne »)." % retires)
+    return raccordes, retires, phrase_non_raccordes(retires)
 
 
 def _perte_de_l_etape(cascade, poste):

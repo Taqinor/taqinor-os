@@ -117,6 +117,38 @@ class AffectationTest(SimpleTestCase):
             self.assertIsNone(ligne['onduleur'])
             self.assertTrue(ligne['module'])
 
+    def test_les_panneaux_raccordes_a_rien_sont_dits_dans_les_avertissements(self):
+        """ACAL1912 — « N panneaux ne sont raccordés à aucun onduleur : ils ne
+        sont pas comptés » : servi par le bloc ``avertissements`` existant,
+        dans le bloc électrique ET dans le résultat servi."""
+        from unittest import mock
+
+        from apps.calepinage.services import chaines
+        from apps.calepinage.services.agregation_electrique import (
+            phrase_non_raccordes)
+
+        original = chaines.affectation
+        retires = 4
+
+        def quatre_en_reserve(conception, **kwargs):
+            table = [dict(ligne) for ligne in original(conception, **kwargs)]
+            for ligne in table[-retires:]:
+                ligne.update(chaine=None, mppt=None, onduleur=None)
+            return table
+
+        conception = _conception()
+        with mock.patch.object(chaines, 'affectation',
+                               side_effect=quatre_en_reserve):
+            _bloc, avertissements = bloc_electrique(conception)
+            servi = resultat_calepinage(_Calepinage(LAYOUT), materiel=MATERIEL)
+        phrase = phrase_non_raccordes(retires)
+        self.assertIn(phrase, avertissements)
+        self.assertIn(phrase, servi['avertissements'])
+        self.assertTrue(phrase.startswith('%d panneaux' % retires))
+        # Rien de non raccordé : aucune phrase.
+        _bloc, sans = bloc_electrique(conception)
+        self.assertFalse(any('aucun onduleur' in texte for texte in sans))
+
     def test_aucune_chaine_ne_recoit_deux_pans(self):
         par_chaine = {}
         for ligne in affectation(_conception()):
