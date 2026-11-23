@@ -1,0 +1,58 @@
+# Contre-vérification — S2-PARCOURS-b — Parcours guidé, explications, partage avec le client, réglages
+
+25 corrections livrées (reste de la liste, non joué par le premier relecteur) sans preuve en direct, S1-S2 d'abord. Pour chacune : rejoue la « preuve », regarde l'écran, écris UN verdict (ok / partiel / non-fait / faux / regression / deja-present).
+Le texte complet d'une tâche (constat d'origine, Given/When/Then) : `grep -n "<id> —" docs/plans/PLAN_AUDIT_CALEPINAGE.md` dans le worktree en lecture.
+
+- **ACAL862** (S1) — Contrôler que la puissance annoncée par le document égale « modules × Wc de la fiche » ; fini quand un document annoncé à 131,04 kWc pour 182 modules de 710 W rend un contrôle orange nommant les deux valeurs
+  - Preuve : PA2.5 — calepinage enregistré avant CALX110 : le panneau nomme les deux puissances ; après « Enregistrer le calepinage », la ligne passe au vert.
+- **ACAL854** (S2) — Montrer sous le chiffre de production l'écart à PVGIS que la simulation calcule déjà (« Comparé à PVGIS au même endroit : −2,0 % ») ; fini quand l'exemple du contrat rend la ligne et que, sans tolérance saisie, elle dit « écart pu
+  - Preuve : PA2.5 — calepinage simulé : la ligne d'écart sous la production ; sans tolérance, la mention « sans verdict ».
+- **ACAL855** (S2) — Donner un voyant à l'écart PVGIS : vert « dans la tolérance de la société », orange « hors tolérance », rien de coloré sans tolérance ; fini quand l'exemple hors tolérance passe en orange avec la tolérance nommée
+  - Preuve : PA2.5 — régler la tolérance, relancer le calcul : le badge change de couleur selon l'écart.
+- **ACAL857** (S2) — Calculer les contrôles de PORTE du « prêt à envoyer ? » sans lever d'erreur (visite validée, approbation à jour, conception périmée, simulation fraîche, kWh déclaré) ; fini quand un calepinage sans feu vert rend « bloquant » avec 
+  - Preuve : PA2.5 — calepinage d'un lead sans feu vert : la ligne « visite » est rouge avec le motif de la porte, l'approbation « non évaluée ».
+- **ACAL863** (S2) — Signaler avant le devis un obstacle qui dépasse de son pan ; fini quand la cheminée et la lucarne de T1-F1-021 rendent un contrôle orange « la lucarne dépasse du pan A », sans aucune distance
+  - Preuve : PA2.5 — tracer une lucarne à cheval sur la rive : le panneau la nomme.
+- **ACAL947** (S2) — Lister d'un coup toutes les erreurs de réglage, près du bouton « Enregistrer les réglages », avec ce que le serveur attend ; fini quand plusieurs clés fautives donnent UN seul 400 qui les nomme toutes et que l'écran les liste sous
+  - Preuve : rejouer T1-S2-015 : LID `{"mono": 2}` et un Uc/Uv fautif, Enregistrer : les deux erreurs listées sous le bouton en un essai.
+  - Écran : Réglages, expert, `docs/audits/l5-calepinage/maquettes/DemarrageRapide.dc.html`.
+- **ACAL959** (S2) — Faire porter le matériel au modèle : « Partir d'un modèle » recopie le module, l'onduleur et les décisions de matériel, jamais les températures ni les saisies de site ; fini quand un calepinage créé depuis un modèle a déjà son mod
+  - Preuve : rejouer T1-S2-018 : modèle Jinko 710 W + Huawei 100 kW + températures, « Partir d'un modèle » sur le lead d'Agadir : matériel désigné, températures vides.
+  - Écran : étape Électrique, essentiel, `docs/audits/l5-calepinage/maquettes/Electrique.dc.html`.
+- **ACAL960** (S2) — Choisir les favoris de matériel dans deux listes du catalogue (Modules, Onduleurs), pas par des identifiants tapés ; fini quand la Bibliothèque propose les produits de la société à cocher et enregistre sous les clés que le serveur
+  - Preuve : rejouer T1-S2-017 : cocher un module et un onduleur, enregistrer, ouvrir Matériel électrique : ils sont en tête.
+  - Écran : Bibliothèque, expert, `docs/audits/l5-calepinage/maquettes/Electrique.dc.html`.
+- **ACAL859** (S3) — Calculer les contrôles de RÉSULTAT et de DOSSIER du « prêt à envoyer ? » (écart PVGIS, ombrage chiffré, pièces du dossier réglementaire) sans seuil codé ; fini quand une tolérance saisie fait passer l'écart en « à régler » et qu'u
+  - Preuve : PA2.5 — régler la tolérance puis simuler : la ligne d'écart change d'état.
+- **ACAL873** (S3) — Brancher le « ? » sur la famille PRODUCTION : P50, P75/P90/P95, variabilité, productible, puissance, pertes totales, PR, tableau mensuel, écart PVGIS, et chaque étape de la cascade des pertes ; fini quand chaque tuile de `Resultat
+  - Preuve : PA2.5 — onglet Production : le « ? » du P90 dit « neuf années sur dix » et la valeur servie.
+- **ACAL874** (S3) — Brancher le « ? » sur les grandeurs ÉLECTRIQUES affichées : élévation de tension, marge à la limite, puissance injectée, déséquilibre entre phases, chutes DC et AC cumulées, sections et longueurs des tronçons, alertes non bloquant
+  - Preuve : PA2.5 — étape Électrique, section Raccordement : le « ? » de l'élévation de tension donne la valeur servie.
+- **ACAL875** (S3) — Brancher le « ? » sur la famille ÉNERGIE : capacité utile, énergie stockée et restituée, les six flux, hors-réseau (défaillance, pire mois, jours d'autonomie), taux d'autoconsommation et de couverture, horizon retenu et flux annue
+  - Preuve : PA2.5 — onglet Batterie : le « ? » de la capacité utile et des jours d'autonomie.
+- **ACAL877** (S3) — Brancher le « ? » sur la famille POMPAGE : débit à la HMT, pompe retenue, variateur, autonomie du réservoir, m³ mensuels, couverture ; fini quand les 7 grandeurs sans explication de `PompagePanel` en ont une
+  - Preuve : PA2.5 — onglet Pompage : le « ? » du débit à la HMT.
+- **ACAL878** (S3) — Brancher le « ? » sur la famille COMPARATIF et DOCUMENTS : modules, kWc, P50 et écarts du comparatif des variantes, pages par pièce, statut et avancement du dossier ; fini quand les 4 + 5 grandeurs sans explication de ces écrans e
+  - Preuve : PA2.5 — comparatif de deux variantes : le « ? » de l'écart.
+- **ACAL879** (S3) — Dire en mots du métier les motifs serveur qui montrent un chemin de code, et un seul vocabulaire pour le statut « omis » ; fini quand une garde ne trouve plus `::`, `[]` ni `.py` dans les textes affichés de `electrique.py` et que 
+  - Preuve : PA2.5 — onglet Verdict électrique et Raccordement : aucun chemin de code, même mot pour « omis ».
+- **ACAL880** (S3) — Ajouter sous le chiffre de production le bouton « Pourquoi ce chiffre ? » (maquette `Resultats.dc.html`) : les trois plus gros postes de pertes de la cascade et un geste chacun ; fini quand l'exemple du contrat rend trois lignes
+  - Preuve : PA2.5 — calepinage simulé : « Pourquoi ce chiffre ? » liste trois postes et leur geste.
+- **ACAL883** (S3) — Faire dire au comparatif des variantes « mêmes hypothèses de pertes et de météo » ou NOMMER ce qui diffère ; fini quand deux variantes à réglages différents rendent la liste des différences servie
+  - Preuve : PA2.5 — deux variantes dont une avec une autre poussière : la réponse nomme la différence.
+- **ACAL884** (S3) — Afficher sous le tableau des variantes la ligne « mêmes hypothèses de pertes et de météo » ou la liste de ce qui diffère ; fini quand deux variantes à réglages différents le disent
+  - Preuve : PA2.5 — comparatif de deux variantes aux réglages différents : la différence est nommée sous le tableau.
+- **ACAL885** (S3) — Ajouter à l'export tableur une feuille « Vérification » qui écrit EN TEXTE les formules de la Voc à froid et du ratio DC/AC avec les valeurs de la fiche ; fini quand un ingénieur retrouve la Voc à froid de l'écran à 0,1 V
+  - Preuve : PA2.5 — exporter le tableur d'un calepinage chaîné, refaire le calcul à la main et retrouver la Voc à froid de l'écran.
+- **ACAL888** (S3) — Ajouter le panneau « Livré et prévu » (douze valeurs mesurées collées, écart au P50) à l'étape Résultats, en mode expert ; fini quand l'exemple du contrat rend douze écarts lisibles
+  - Preuve : PA2.5 — coller les 12 valeurs d'un compteur : l'écart annuel s'affiche.
+- **ACAL890** (S3) — Mesurer UNE fois la fluidité de l'atelier à trois tailles (2 000, 5 000, 10 000 modules) et committer la limite mesurée ; fini quand la limite est un nombre lu d'un fichier daté et non tapé
+  - Preuve : relevé sur la pile locale par l'orchestrateur à ACAL490 (règle d'acceptation en direct) ; fichier committé avec sa date.
+- **ACAL891** (S3) — Refuser en le disant un pavage au-delà de la limite mesurée de modules : « Au-delà de N modules l'atelier n'est plus fluide » ; fini quand un remplissage qui dépasserait la limite affiche le message et ne pose rien
+  - Preuve : PA2.5 — avec une limite basse injectée, « Remplir » affiche le refus.
+- **ACAL894** (S3) — Ne nommer PVGIS dans la mention « Estimation rapide » que si PVGIS a répondu, et n'écrire que la perte réellement employée ; fini quand la carte ne dit plus « PVGIS » à côté de « table committée — PVGIS indisponible »
+  - Preuve : PA2.5 — toit en pente, PVGIS coupé : une seule provenance.
+- **ACAL897** (S3) — Offrir, sur la page « Photos du site », « Image pour le client » : la même projection des modules sur la photo calée, avec un titre et une légende client, sans aucun prix ni chiffre ; fini quand le PNG client porte le titre « Vos 
+  - Preuve : atelier ERP, page Photos du site : caler une photo, cliquer « Image pour le client », ouvrir le PNG (capture jointe) ; devis déjà envoyés : inchangés, rien ne passe par `/proposal`.
+- **ACAL906** (S3) — Ajouter au « prêt à envoyer ? » le contrôle de compatibilité panneau ↔ onduleur et batterie ↔ onduleur lu du sélecteur ventes ; fini quand une incompatibilité déclarée sort en orange avec ses raisons
+  - Preuve : PA2.5 — désigner un onduleur incompatible : la ligne est orange avec sa raison.

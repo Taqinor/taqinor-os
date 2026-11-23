@@ -1,0 +1,45 @@
+# Contre-vérification — F2-TOIT-b — Site, toit, relevé (étape Toit)
+
+20 corrections livrées (seconde moitié de la liste) sans preuve en direct, S1-S2 d'abord. Pour chacune : rejoue la « preuve », regarde l'écran, écris UN verdict (ok / partiel / non-fait / faux / regression / deja-present).
+Le texte complet d'une tâche (constat d'origine, Given/When/Then) : `grep -n "<id> —" docs/plans/PLAN_AUDIT_CALEPINAGE.md` dans le worktree en lecture.
+
+- **ACAL507** (S3) — Proposer « Vouliez-vous dire … ? » quand des coordonnées collées tombent hors du pays du projet et que leur inverse y tombe ; fini quand « -7.5898, 33.5731 » propose d'échanger les deux nombres et jamais ne les échange seul
+  - Preuve : atelier ERP : coller `-7.5898, 33.5731`, la seconde ligne propose l'échange et centre sur Casablanca au clic ; capture jointe.
+- **ACAL508** (S3) — Afficher sous la carte d'où vient l'image : fournisseur, puis la résolution PUBLIÉE avec sa source ou « date et résolution non annoncées par le fournisseur » ; fini quand chaque fournisseur du registre rend sa ligne et qu'aucune r
+  - Preuve : atelier ERP : la ligne sous la carte nomme le fournisseur actif, avec le jeton d'une société en France puis au Maroc ; capture jointe.
+- **ACAL509** (S3) — Ranger dans le document une date de prise de vue de l'image saisie (date + source) sous la clé racine `imageCapture` ; fini quand elle survit à l'enregistrement et à la réouverture et qu'un lecteur du navigateur la rend
+  - Preuve : atelier ERP : saisir une date, enregistrer, recharger : la date est relue ; capture jointe.
+- **ACAL510** (S3) — Marquer un pan « Pan existant » (modules déjà en place) avec une année de mise en service SAISIE ; fini quand le drapeau survit à l'enregistrement et que les modules du pan refusent le glissé en nommant la raison
+  - Preuve : atelier ERP : cocher la case sur un pan posé, tenter de glisser un module, constater le refus, enregistrer, recharger ; capture jointe.
+- **ACAL511** (S3) — Faire reconnaître un pan « déjà en place » : étiquette « Existant 2019 » dans la liste des pans et plan 2D hachuré ; fini quand le plan 2D (`Vue2DPlan`) et la liste distinguent le pan existant d'un pan à poser
+  - Preuve : atelier ERP : marquer un pan existant, ouvrir le plan 2D : hachuré visible et ligne « Existant 2019 » ; capture jointe.
+- **ACAL513** (S3) — Afficher dans l'écran d'import de plan le contrôle d'échelle « selon l'unité du fichier (mm), A–B mesure 9,84 m » à côté de la distance tapée, avec le rapport quand il s'écarte ; fini quand une distance tapée de 98,4 m pour 9,84 m
+  - Preuve : atelier ERP, onglet Plan importé : déposer un DXF en mm, taper une distance ×10, lire la phrase ; capture jointe.
+- **ACAL515** (S3) — Monter « Pivoter le site » (angle saisi + bouton) dans le panneau de géométrie des pans ; fini quand l'atelier ERP pivote pans, obstacles et objets d'un seul geste qu'un seul Annuler défait
+  - Preuve : atelier ERP, tracé de deux pans : taper 90, cliquer « Pivoter le site », un Annuler rend l'état ; capture jointe.
+- **ACAL520** (S3) — Ajouter un cadenas par pan : verrouillé, ses sommets, son glissé et sa suppression refusent en nommant le pan ; fini quand chacun de ces trois gestes refuse « Pan 1 verrouillé — déverrouillez-le d'abord »
+  - Preuve : atelier ERP : verrouiller le Pan 1, tenter de le supprimer et de glisser un sommet, constater les refus ; capture jointe.
+- **ACAL529** (S3) — Afficher les modules posés SUR la photo du site calée (« Voir sur la photo ») avec un export PNG interne ; fini quand les 4 coins de calage reviennent sur leurs pixels à moins d'un pixel et que l'image montre les modules du pan
+  - Preuve : atelier ERP, page Photos du site : caler une photo, cliquer « Voir sur la photo », télécharger le PNG ; capture jointe.
+- **ACAL531** (S3) — Afficher et cocher les obstacles proposés sous le contour dans l'onglet « Détection du toit » ; fini quand un obstacle coché devient un obstacle de l'atelier de provenance DEVINE, à confirmer
+  - Preuve : atelier ERP avec une réponse de détection enregistrée : cocher, poser, voir le bandeau « non engageable » ; capture jointe.
+- **ACAL533** (S3) — Afficher un tableau replié « Objets du site » (type, cotes, hauteur, provenance, pan) où un clic sélectionne l'objet sur la carte, filtrable par type et par provenance ; fini quand 30 obstacles se listent et que cliquer une ligne 
+  - Preuve : atelier ERP : poser 30 obstacles (à la main, ou par la trame d'ACAL1032 si elle est déjà construite : aucune dépendance), ouvrir le tableau, filtrer, cliquer une ligne ; capture jointe.
+- **ACAL535** (S3) — Offrir « Lire la pente sur un relief de drone » : un dépôt de GeoTIFF produit une suggestion de pente et d'orientation par pan hors de France, sans toucher la porte IGN ; fini quand une société marocaine obtient une suggestion « s
+  - Preuve : atelier ERP, société au Maroc : déposer un GeoTIFF de test, lire la proposition dans l'onglet Pente, la valider ; capture jointe.
+- **ACAL536** (S3) — Exporter les pans, zones et rangées en KML pour Google Earth depuis les Documents ; fini quand le fichier s'ouvre dans un lecteur KML de test avec le bon nombre de polygones
+  - Preuve : atelier ERP, onglet Documents : télécharger le KML d'un calepinage approuvé et l'ouvrir dans Google Earth ou un lecteur KML ; capture jointe.
+- **ACAL537** (S3) — Exporter la scène 3D de l'atelier en glTF pour un architecte ; fini quand le fichier relu par le chargeur glTF de three rend le même nombre de modules que l'atelier
+  - Preuve : atelier ERP : exporter la 3D, ouvrir le `.glb` dans une visionneuse glTF ; capture jointe.
+- **ACAL763** (S3) — Produire à chaque dépôt d'un fichier météo un rapport de qualité en quatre lignes (couverture, décalage horaire mesuré contre le soleil calculé, valeurs négatives, valeurs au-dessus de l'irradiance extraterrestre), servi dans la r
+  - Preuve : PA2.5 — déposer un fichier météo de démo décalé d'une heure : la réponse du dépôt annonce un écart d'environ une heure.
+- **ACAL764** (S3) — Afficher à l'import d'un fichier météo ses quatre lignes de qualité en mots simples, sans verdict ; fini quand l'écran rend les lignes de l'exemple du contrat et que « non calculé » dit son motif
+  - Preuve : PA2.5 — onglet Séries : déposer un fichier de démo, lire les quatre lignes sous le message.
+- **ACAL1185** (S3) — Dessiner les poignées des coins à la hauteur du toit en vue 3D ; fini quand, toit fermé et vue inclinée, chaque coin du tracé a sa poignée posée au haut des murs du bâtiment actif et qu'un appui sur cette poignée (et non sur le so
+  - Preuve : PA2 — atelier, tracer un toit de 4 coins, fermer, passer en 3D : les poignées sont sur l'arête du toit ; glisser l'une d'elles déplace ce coin.
+- **ACAL1289** (S3) — Présenter « Créer le toit » par ses deux dimensions (Longueur et Largeur, suffixe « m ») ; fini quand les deux champs décimaux portent leur suffixe, acceptent la virgule sans réécrire la saisie et créent le rectangle comme aujourd
+  - Preuve : PA2.3 — capture à 1440 × 900 sur un calepinage dans le même état (calepinage 1 de la pile de recette, mode guidé, thème clair), posée à côté de `docs/audits/l5-calepinage/maquettes/Main.dc.html` rendue en `file://` à la même taille : fait 2 : deux champs Longueur / Largeur avec « m » en suffixe sous les tuiles ; verdict FIDÈLE d'un relecteur neuf (CLAUDE.md 3-bis : la lane écrit le code et le test, l'orchestrateur prend la capture sur la pile reconstruite et range la paire `Main-maquette` / `Main-reel`)
+- **ACAL1291** (S3) — Présenter les obstacles du toit en lignes (« nom ▪ dimensions · hauteur ») sous un en-tête « Obstacles » et « + Ajouter » ; fini quand la liste de l'étape Toit montre une ligne par obstacle du document avec ses dimensions et sa ha
+  - Preuve : PA2.3 — capture à 1440 × 900 sur un calepinage dans le même état (calepinage 1 de la pile de recette, mode guidé, thème clair), posée à côté de `docs/audits/l5-calepinage/maquettes/Main.dc.html` rendue en `file://` à la même taille : fait 4 : en-tête « Obstacles » + « + Ajouter » + une ligne « nom ▪ dimensions · hauteur » par obstacle du calepinage ; verdict FIDÈLE d'un relecteur neuf (CLAUDE.md 3-bis : la lane écrit le code et le test, l'orchestrateur prend la capture sur la pile reconstruite et range la paire `Ma
+- **ACAL1294** (S3) — Faire rendre l'étape Toit en thème sombre par les seuls jetons ; fini quand la bascule « Sombre » donne le même écran en fonds bleu nuit, textes clairs et accents or, sans couleur littérale dans la coque, les tuiles ni les surcouc
+  - Preuve : PA2.3 — capture à 1440 × 900 sur un calepinage dans le même état (calepinage 1 de la pile de recette, mode guidé, thème clair), posée à côté de `docs/audits/l5-calepinage/maquettes/ToitSombre.dc.html` rendue en `file://` à la même taille : fonds bleu nuit, textes clairs, accents or, mêmes blocs que l'écran Main : bandeau, rail, tuiles, carte pente, barre flottante, bouton or « Poser les panneaux → » ; verdict FIDÈLE d'un relecteur neuf (CLAUDE.md 3-bis : la lane écrit le code et le test, l'orchestrateur prend la ca
