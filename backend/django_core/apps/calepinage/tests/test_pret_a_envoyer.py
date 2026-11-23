@@ -514,6 +514,29 @@ class TailleSansFactureTest(SimpleTestCase):
         ci = _cible(None, 'Lead commercial/industriel : étude C&I.')
         self.assertEqual(self._controle(ci)['etat'], 'ok')
 
+    def test_sans_facture_ni_taille_aucun_balayage_reponse_identique(self):
+        """ACAL1342 — un lead résidentiel sans facture ni taille souhaitée : la réponse
+        est celle du moteur (« facture absente »), sans lancer ``cible_depuis_lead`` ;
+        dès qu'un champ dimensionnant est rempli, le moteur tranche comme avant."""
+        from types import SimpleNamespace
+
+        from apps.calepinage.services.pret_a_envoyer import controle_taille_sans_facture
+
+        attendu = self._controle(_cible('facture_absente', 'Facture absente.'))
+        vide = dict(type_installation='residentiel', facture_hiver=None, facture_ete='',
+                    conso_mensuelle_kwh=None, taille_souhaitee_kwc=None)
+        for lead, appels in ((SimpleNamespace(**vide), 0),
+                             (SimpleNamespace(**dict(vide, facture_hiver=900)), 1),
+                             (SimpleNamespace(**dict(vide, type_installation='commercial')), 1)):
+            calepinage = _Calepinage(lead_id=3)
+            calepinage.roof_layout = {'zones': []}
+            with mock.patch(LEAD, return_value=lead), \
+                    mock.patch(CIBLE, return_value=_cible('facture_absente', 'Facture absente.')) as balayage, \
+                    mock.patch(MESURES, return_value={'kwc': 131.04, 'pans': []}):
+                controle = controle_taille_sans_facture(calepinage)
+            self.assertEqual(balayage.call_count, appels, lead)
+            self.assertEqual(controle, attendu)
+
     def test_puissance_inconnue_info_et_sans_lead(self):
         self.assertEqual(self._controle(_cible('facture_absente', 'x'),
                                         kwc=None)['etat'], 'info')

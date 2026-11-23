@@ -342,6 +342,39 @@ def taille_non_dimensionnee(calepinage, *, cible=None):
     return None
 
 
+#: ACAL1342 — les champs du lead d'où le moteur tire une consommation (facture d'hiver,
+#: d'été, kWh mensuel déclaré) et la taille souhaitée qui le court-circuite.
+_CHAMPS_DIMENSIONNANTS = ('facture_hiver', 'facture_ete', 'conso_mensuelle_kwh',
+                          'taille_souhaitee_kwc')
+
+
+def lead_sans_facture_ni_taille(calepinage):
+    """ACAL1342 — vrai quand le lead RÉSIDENTIEL ne porte AUCUN des champs dimensionnants :
+    le moteur refuserait « facture absente » (``taille_non_dimensionnee``) sans qu'il soit
+    utile de le lancer. Une seule lecture du lead ; un champ inconnu ⇒ faux (le moteur
+    tranche alors, comme avant)."""
+    from apps.crm.selectors import get_company_lead
+
+    if not getattr(calepinage, 'lead_id', None):
+        return False
+    lead = get_company_lead(getattr(calepinage, 'company', None), calepinage.lead_id,
+                            avec_corbeille=True)
+    absent = object()
+    valeurs = [getattr(lead, champ, absent) for champ in _CHAMPS_DIMENSIONNANTS]
+    if lead is None or absent in valeurs:
+        return False
+    if (getattr(lead, 'type_installation', '') or '').lower() not in ('', 'residentiel'):
+        return False
+    return not any(_positif_ou_none(v) for v in valeurs)
+
+
+def _positif_ou_none(valeur):
+    try:
+        return float(valeur) > 0 if valeur not in (None, '') else False
+    except (TypeError, ValueError):
+        return False
+
+
 #: Recette R2-17 (Q2, décision de l'orchestrateur du 22/11/2026, réversible) —
 #: au-delà de 2 × la cible tirée des FACTURES, la taille se confirme. Le facteur
 #: 2 est celui de la règle du fondateur du 30/09/2026 (« kWh déclaré contredisant
