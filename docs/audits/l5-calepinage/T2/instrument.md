@@ -4,7 +4,7 @@ Une pile locale jetable, à part de toute autre : elle ne parle ni à la prod ni
 
 - **Adresse à ouvrir** : http://127.0.0.1:5241 (le front construit ; il relaie `/api/django` vers le serveur
   http://127.0.0.1:8021). N'ouvre aucune autre adresse.
-- **Code servi** : `origin/main@bfb859c90` (worktree `C:/dev/taqinor-os/.claude/worktrees/l5cal-instr`, en lecture).
+- **Code servi** : tour 2 : `origin/main@bfb859c90` ; tour 3 (depuis le 23/11, 10 h 50 UTC) : `f7d5f1a7ec` (worktree `C:/dev/taqinor-os/.claude/worktrees/l5cal-instr`, en lecture).
 - **Société de démonstration** : celle de `seed_demo` (leads, clients, catalogue avec fiches produit). Aucune donnée
   réelle.
 - **Comptes** (un par relecteur, tous administrateurs de la société de démonstration) : `rev_toit`, `rev_pose`,
@@ -45,6 +45,12 @@ Une pile locale jetable, à part de toute autre : elle ne parle ni à la prod ni
   Celery (`CELERY_TASK_REJECT_ON_WORKER_LOST`) et s'est terminée. Depuis 05 h 46 UTC : un processus neuf par tâche
   (`--max-tasks-per-child 1`), plafond inchangé. Constat d'orchestrateur `T2-ORCH-001` (la prod plafonne ce worker à
   2 Go, sans recyclage des processus).
+
+- 23/11, 09 h 05 → 09 h 15 UTC : le disque du poste était plein, Docker est tombé puis a été relancé ; aucun relecteur
+  n'était sur la pile.
+- 23/11, 10 h 50 UTC : la pile sert désormais le code de la branche de la campagne (`f7d5f1a7ec` : nouvelle coque,
+  écrans refaits, corrections des vagues 1 et 2), base migrée (`calepinage/0043`), front reconstruit. Les comptes, la
+  société de démonstration et ses données sont les mêmes qu'au tour 2.
 
 ## Règles d'usage
 

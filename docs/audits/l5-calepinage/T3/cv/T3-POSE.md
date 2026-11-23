@@ -1,0 +1,82 @@
+# Contre-vérification du tour 3 — T3-POSE
+
+39 corrections livrées le 23/11 (vagues 1 et 2), jamais vues à l'écran réel. Pour chacune : lis le texte complet de la tâche (`grep -n "<ID> —" docs/plans/PLAN_AUDIT_CALEPINAGE.md`), rejoue sa « Preuve en direct » sur l'écran, écris UN verdict.
+
+- **ACAL1403** (M1, lane editeur-1) — Activer « Annuler » et « Rétablir » de la barre du plan dès qu'un geste est à défaire ; fini quand, après avoir glissé un coin ou posé un obstacle, le bouton Annuler est actif et un clic défait le geste
+  - Gestes pour revoir : PA2.3 — calepinage 1931, Guidé : glisser un coin puis cliquer Annuler à la souris (0 Ctrl + Z), relever l'état des deux boutons avant/après ; capture 1440x900 à côté de Main.dc.html
+- **ACAL1520** (M2, lane editeur-1) — Dire la même puissance pour la même pose ; fini quand le bandeau de « Déplacer les panneaux » lit « 3,55 kWc » pour 5 panneaux de 710 Wc, comme la pastille
+  - Gestes pour revoir : PA2.3 — calepinage 1968, Expert > Panneaux > Déplacer les panneaux, 5 panneaux de 710 Wc : bandeau et pastille lisent 3,55 kWc
+- **ACAL1521** (M2, lane editeur-1) — Reprise d'ACAL584 : Ctrl+Z défait l'alignement des rangées et la liste dit la pose réelle ; fini quand Ctrl+Z après « Droite » rend les rangées d'avant et que la liste revient sur « Centre » à la réouverture d'une pose centrée
+  - Gestes pour revoir : PA2.3 — calepinage 1970 : Alignement = Droite puis Ctrl+Z (deux fois) ; captures avant/après et à la réouverture (liste sur Centre pour une pose centrée)
+- **ACAL1522** (M2, lane editeur-2) — Montrer « Structure et pose » (châssis, coupures, pieds) sans activer « Déplacer les panneaux » ; fini quand les trois réglages sont visibles dans le panneau Panneaux de l'Expert dès l'ouverture, en un groupe
+  - Gestes pour revoir : PA2.3 — calepinage 1968, Expert > Panneaux, sans toucher « Déplacer les panneaux » : le groupe « Structure et pose » (coupures, pieds, châssis) est visible, capture 1440x900. Le groupe n'apparaît que quand le bloc « Personnaliser la disposition » est visible (plan de pose existant).
+- **ACAL1524** (M2, lane editeur-2) — Reprise d'ACAL574 : un geste refusé se voit grisé et son motif se lit sans survol ; fini quand « Déplacer les panneaux » désactivé a un aspect distinct du bouton actif et affiche son motif en ligne
+  - Gestes pour revoir : PA2.3 — pan existant coché : « Déplacer les panneaux » grisé (tirets, fond éteint) et phrase du motif sous le bouton, capture 1440x900 actif puis désactivé. Rouge non rejoué avant la CSS.
+- **ACAL1527** (M2, lane editeur-2) — Reprise d'ACAL554 : annuler « Appliquer ces réglages à… » rend l'état d'avant pour tous les pans ; fini quand ↶ ou Ctrl+Z après un report sur 2 pans rend les modules et le compte d'origine des zones 2 et 3
+  - Gestes pour revoir : PA2.3 — 3 pans (Zone 2 et 3 dupliquées), « Appliquer ces réglages à… » : la boîte nomme Zone 2 / Zone 3 ; puis ↶ (deux fois) : modules Canadien et « non calculé » à rejouer en direct.
+- **ACAL1528** (M2, lane editeur-2) — Reprise d'ACAL553 : le collage réussi ne laisse qu'une seule note vraie ; fini quand Ctrl+V qui colle 2 panneaux dit « Collé — 2 panneaux » et plus « Collage refusé : il chevaucherait un autre panneau »
+  - Gestes pour revoir : PA2.3 — calepinage I, placement libre, Ctrl+clic 2 panneaux, Ctrl+C, Ctrl+V : 6 -> 8 et UNE note « Collé — 2 panneaux ». Cause : la frappe était traitée par l'atelier (document) puis par le gestionnaire de l'écran (window, raccourcis.coller). Collage dans un autre pan toujours à rejouer.
+- **ACAL1529** (M2, lane editeur-2) — Reprise d'ACAL551 : la note du glissé et son résultat disent la même chose ; fini quand « sortirait du toit » n'est plus suivi de « Déplacé — 1 panneau » pour le même geste, et que la silhouette ambre apparaît quand seule une marge réglable est franchie
+  - Gestes pour revoir : PA2.3 — calepinage 4 pans : glissé près de la rive avec retrait réglable > dur : silhouette ambre + note du retrait ; au relâchement « Déplacement refusé — rien n'a bougé » et le panneau revient au départ (avant : « Déplacé » à la dernière position valide).
+- **ACAL1530** (M2, lane editeur-2) — Garder « Personnaliser la disposition » disponible quand un seuil d'accès solaire écarte des emplacements ; fini quand le bloc reste visible avec seuil 98 % ou dit pourquoi il est indisponible
+  - Gestes pour revoir : PA2.3 — calepinage B, accès solaire minimal 98 : « Personnaliser la disposition » présent ; si le plan n'a aucun emplacement, phrase d'indisponibilité. Le chemin réel (seuil -> grid.panels vide) n'est PAS reproduit : test au niveau de renderLayoutPanel avec un plan vide.
+- **ACAL1443** (M2, lane editeur-2) — Rendre visibles les champs de saisie de la date de la photo et du plan importé ; fini quand les champs ont bordure et fond comme le champ Adresse, et que le sélecteur de fichier est en français
+  - Gestes pour revoir : PA2.3 — Expert > date de la photo (champ visible 44 px) puis onglet Plan importé, clair et sombre : champs avec bordure/fond, « Choisir un fichier ». Titres coupés non reproduits (à rejouer) ; jumeau PhotoSiteCalage.jsx:591 non traité.
+- **DC-historique-pan-et-surfaces** (?, lane editeur-2) — (demande croisée : voir la sortie de la lane)
+  - Gestes pour revoir : Pan A + Pan B, tracer un champ au sol depuis B, Ctrl+Z / bouton Annuler : le pan B revient, plus de surface, pan actif B.
+- **ACAL1404** (M1, lane balayage) — Reproduire puis corriger la réouverture d'un calepinage qui porte un « Pan existant » ; fini quand un document enregistré avec `existant: true` se rouvre avec son toit dessiné, ses dimensions et la case décochable
+  - Gestes pour revoir : PA2.3 — enregistrer un calepinage avec « Pan existant » + 2019, recharger en Guidé puis en Expert : toit dessiné, compteur et liste des pans, case décochable, barre d’état sans refus
+- **ACAL1504** (M1, lane balayage) — Reproduire puis corriger : le pavage tient compte du retrait de chaque arête (ACAL562, reste) ; fini quand un plat 3 × 1,5 m aux quatre rives à 0,80 m ne pose plus de panneau de 2,38 × 1,30 m
+  - Gestes pour revoir : PA2.3 — pile de revue : table rive 0,80 m, nouveau plat 3 × 1,5 m, Guidé puis « Comparer les poses » : 0 panneau partout ; capture 1440 × 900
+- **ACAL1505** (M1, lane balayage) — Donner au balayage « Comparer les poses » la cible de la facture du lead (ACAL546 et ACAL547, reste) ; fini quand « % du besoin » n'affiche plus 0 % sur les 236 lignes et que la carte « Couvre le besoin » ou la phrase « Aucune pose ne couvre le besoin » s'affi
+  - Gestes pour revoir : PA2.3 — lead à 1 200 MAD/mois, calepinage plat 10 × 7, Expert, Panneaux, « Comparer les poses » : colonne % du besoin > 0, carte « Couvre le besoin » ou phrase « Aucune pose ne couvre le besoin » ; le nombre posé reste le même ; capture 1440 × 900
+- **ACAL1525** (M2, lane balayage) — Rendre « Comparer les poses » lisible dans le cadre de 320 px ; fini quand les puces d'objectif sont de vraies puces, que kWh/an et % du besoin tiennent sans défilement horizontal et que « % du besoin » vaut « — » quand il n'y a pas de cible
+  - Gestes pour revoir : PA2.3 — lead 1 200 MAD/mois, plat 10 × 7, Expert, Panneaux, « Comparer les poses » : puces espacées, kWh/an et % du besoin visibles sans défilement ; sans facture, « — » ; capture 1440 × 900 à côté de t3-tableau-1.png
+- **ACAL1526** (M2, lane balayage) — Dire la pose réelle dans la note sous « Panneaux nécessaires » ; fini quand 98 % d'accès minimal (3 panneaux dessinés pour 6 de cible) fait lire « 3 posés / 6 cible » et plus « il reste de la place sur le toit »
+  - Gestes pour revoir : PA2.3 — calepinage B de la revue (cheminée 1,1 m), Expert, Panneaux, Accès solaire minimal 98 : la note dit « 3 posés / 6 cible — N emplacements écartés par le seuil d’accès solaire. », identique après enregistrement et réouverture ; capture 1440 × 900
+- **ACAL1533** (M2, lane balayage) — Reprise d'ACAL552 : le chiffre annoncé par « Portrait / Paysage » est celui qu'on obtient ; fini quand « Portrait : 4 panneaux, accès 95 % » devient 4 panneaux après le clic et que le marquage suit la pose affichée
+  - Gestes pour revoir : PA2.3 — pan avec cheminée de la revue, Expert, lignes sous Portrait / Paysage : la ligne de la pose dessinée est marquée ; clic sur « Portrait : N panneaux » ⇒ N posés, « Marge de rive » inchangée ; captures 1440 × 900 avant/après
+- **ACAL1612** (M1, lane production-web) — Retirer la dégradation inventée de la colonne de l'atelier et nommer l'écart avec le P50 servi ; fini quand le bloc « Dans la durée » ne dit plus « dégradation ~0,5 %/an » pour une fiche sans dégradation, et que « TOTAL — TOUTES LES ZONES 4 362 kWh/an » nomme 
+  - Gestes pour revoir : PA2.4 — calepinage 1898, Expert, colonne droite à 1440 × 900 : la bande dit « Année 1 ~… kWh/an (… MAD/an). Dans la durée : non estimée — la fiche du module ne porte pas sa dégradation. » ; le Total dit « … kWh/an · estimation de l’atelier » ; la mention « · simulation : 5 131 kWh/an (écart − 15 %) » n’apparaît qu’une fois DC-1612 posée côté coque
+- **ACAL1618** (M1, lane production-web) — Annoncer le vrai maximum du toit pour une « Production visée » (ACAL470, reste) ; fini quand 12 000 kWh/an sur le toit plat 12 × 8 m n'annonce plus « au plus 7 536 kWh/an avec 7 panneaux » alors que « + » en pose 10
+  - Gestes pour revoir : PA2.3 — calepinage 1986 (toit plat 12 × 8 m), Expert, Panneaux : taper 12 000 dans « Production visée » puis Tab ; la phrase dit « Le toit donne au plus … kWh/an avec 10 panneaux en paysage. » et la pose bascule en paysage ; 5 000 donne 5 panneaux
+- **DC-1** (?, lane production-web) — (demande croisée : voir la sortie de la lane)
+  - Gestes pour revoir : calepinage 1968 (28 × 12 m), châssis 2 × 10 à 0,03 m : la pose dessinée = compte du solveur (multiple de 20) et #rp9-chassis-note dit « N châssis de 2 × 10 posés »
+- **DC-2** (?, lane production-web) — (demande croisée : voir la sortie de la lane)
+  - Gestes pour revoir : site à un seul pan tracé : « Enregistrer le contour tracé » en champ au sol ⇒ un pan vierge + la surface ; Annuler ⇒ le pan tracé revient, la surface part
+- **DC-3** (?, lane production-web) — (demande croisée : voir la sortie de la lane)
+  - Gestes pour revoir : lead avec épingle : tracer et fermer le toit (épingle masquée), « + Ajouter une zone » ⇒ l’épingle reste masquée ; « Effacer » ⇒ elle revient
+- **DC-4** (?, lane production-web) — (demande croisée : voir la sortie de la lane)
+  - Gestes pour revoir : ouvrir un calepinage enregistré dans la coque v2 à 1440 × 900 : le toit est centré dans la zone libre entre le rail et l’inspecteur, sous la barre du projet
+- **DC-5** (?, lane production-web) — (demande croisée : voir la sortie de la lane)
+  - Gestes pour revoir : calepinage 1936 avec chaînes servies : Documents › « Joindre la carte de chaleur » ⇒ l’image porte la rampe d’accès, pas les couleurs de chaîne (la coque reste à corriger par ACAL1621 côté frontend)
+- **DC-6** (?, lane production-web) — (demande croisée : voir la sortie de la lane)
+  - Gestes pour revoir : pan au module 710 W, chiffrage servi : la bande « Année 1 » dit la production servie ; « Enregistrer » ⇒ production de la carte et Total relus sans recharger
+- **DC-7** (?, lane production-web) — (demande croisée : voir la sortie de la lane)
+  - Gestes pour revoir : toit plat, retraits saisis 2 m : « Comparer les poses » note les mêmes comptes que la pose (marge gardée)
+- **DC-8** (?, lane production-web) — (demande croisée : voir la sortie de la lane)
+  - Gestes pour revoir : pan au module 710 W, 5 panneaux : la fenêtre de production lit 3,55 kWc comme le bandeau
+- **ACAL1502** (M1, lane react) — Limiter la carte « Couvrir la facture » à ce qui tient sur le toit ; fini quand un pan de 3 × 1,5 m dont le bandeau dit « 1 panneau » n'annonce plus « 6 panneaux · 4,26 kWc » sous le badge Recommandé
+  - Gestes pour revoir : PA2.3 lead 1200 MAD/mois, toit plat 3x1,5 m : carte Recommandé = 1 panneau · 0,71 kWc · sur 6 nécessaires
+- **ACAL1410** (M1, lane react) — Montrer un champ d'adresse en mode Guidé tant qu'aucun toit n'est tracé ; fini quand la consigne « tapez l'adresse » s'accompagne d'un champ visible et utilisable à l'étape Toit
+  - Gestes pour revoir : PA2.3 calepinage neuf en Guidé : taper Agadir, Localiser, la carte se centre ; capture à côté de Main.dc.html
+- **ACAL1411** (M1, lane react) — Dire, dans l'onglet « Reprise de la visite », quand la comparaison n'a pas pu se faire ; fini quand une visite validée à 30° face à un toit de deux pans à 22° ne dit plus « Aucun écart mesurable » mais « Comparaison à faire à la main : deux pans »
+  - Gestes pour revoir : PA2.3 /calepinage/1943?onglet=reprise-visite : bandeau Comparaison à faire à la main + motif, tableau
+- **ACAL1514** (M2, lane react) — Reprise d'ACAL1295 : les deux cartes « Combien de panneaux ? » gardent leurs chiffres qu'elles soient choisies ou non ; fini quand « Le plus de panneaux » lit « 20 panneaux · 14,20 kWc » dès l'ouverture et que « Couvrir la facture » garde sa part de consommati
+  - Gestes pour revoir : PA2.3 calepinage 1959 : deux cartes avant clic, après clic et après rechargement ; sens de pose dit
+- **ACAL1517** (M2, lane react) — Dire la vraie raison dans la carte « Couvrir la facture » d'un lead industriel ; fini quand la carte grisée lit « La taille se décide par l'étude C&I de l'écran devis. » et ne renvoie plus renseigner une facture déjà saisie
+  - Gestes pour revoir : PA2.3 calepinage 1962 : carte grisée avec la phrase servie, sans lien Renseigner la facture
+- **ACAL1428** (M2, lane react) — Permettre « Confirmer » la pente d'un toit juste créé, sans enregistrer d'abord ; fini quand « Confirmer » sur un toit créé par dimensions écrit la source de la pente sans le message « Enregistrez d'abord »
+  - Gestes pour revoir : PA2.3 créer le toit par dimensions, Confirmer sans enregistrer : À confirmer disparaît ; Enregistrer, recharger : confirmée
+- **ACAL1429** (M2, lane react) — Marquer « à confirmer » la pente d'un tracé libre jamais renseignée, avec « Confirmer » et « Je ne la connais pas » ; fini quand un toit tracé sans choisir de forme affiche « Toit plat — à confirmer » avec les deux actions
+  - Gestes pour revoir : PA2.3 tracé libre : Toit plat À confirmer, Confirmer, Enregistrer, recharger
+- **ACAL1424** (M2, lane react) — Dire le refus d'une décision d'approbation une seule fois, sans clé brute ; fini quand « Refuser » sans motif montre le seul message sous le champ Motif, sans bandeau « à corriger : motif »
+  - Gestes pour revoir : PA2.3 calepinage 1934, Refuser sans motif : un seul message sous Motif
+- **ACAL1435** (M2, lane react) — Montrer l'aide des raccourcis avec la touche « ? » en mode Guidé ; fini quand « ? » ouvre l'aide visible dans les deux modes
+  - Gestes pour revoir : PA2.3 Guidé puis Expert : taper ? , l'aide visible, Échap la ferme
+- **ACAL1438** (M2, lane react) — Partager le mode Expert entre tous les composants de l'atelier ; fini quand le clic sur « Expert » fait apparaître « Exporter la 3D (glTF) » et « Vidéo 10 s » sans recharger la page
+  - Gestes pour revoir : PA2.3 Guidé, Avancé > Image HD : cliquer Expert, Exporter la 3D et Vidéo 10 s apparaissent sans recharger
+- **ACAL1427** (M2, lane react) — Rendre lisible le croquis de principe de l'onglet Schéma ; fini quand les cinq libellés du croquis sont rendus à 12 px au moins, à la largeur du panneau latéral d'Avancé
+  - Gestes pour revoir : PA2.3 fiche incomplète, onglet Schéma dans Avancé, clair et sombre
+- **ACAL1519** (M2, lane react) — Ranger les retraits, le bandeau des quatre chiffres et le bloc « Total — toutes les zones » pour une colonne étroite ; fini quand « Retrait d'extrémité (m) » passe au-dessus de son champ, que « kWh/an » et « MAD/an » ne se chevauchent plus et que les quatre ch
+  - Gestes pour revoir : PA2.3 calepinage 1970 Expert > Panneaux, colonne 280 px : retraits, bandeau, Total

@@ -302,6 +302,42 @@ vivent dans le scratchpad de la session, pas sur `main`.
         ratio panneaux / onduleur à régler), ce qui reste au plan (M2 du tour 2 : ≈ 180 tâches, écrans restants
         du lot E : Documents, Liste, Démarrage rapide, Tablette, client), coût. Puis nettoyage (liste en fin de
         fichier) et rétro.
+   - **POINT à 10 h 45 UTC (le plus récent).** Toutes les lanes sont rentrées et pliées ; tête poussée de la
+     PR #1529 : `f7d5f1a7ec` (10 h 40). En plus du point de 10 h 20 : `ecran-toit-panneaux` [1445, 1827, 1818,
+     1829 ; 1828 → moteur] (Toit clair FIDÈLE, Toit sombre et Panneaux PROCHES, d'après ses planches),
+     `ecran-elec-resultats` [1708, 1833, 1822, 1832, 1830, 1831 + 3 demandes] (quatre écrans PROCHES),
+     `production-web` [1612, 1618 + 8 demandes dont ACAL1523 et ACAL1621]. 130 tâches de la vague 2 livrées (+ 30
+     de la vague 1 déjà fusionnées avec 79 d'entre elles). Planches maquette | réel : `T2/preuves/` (12 fichiers).
+     Le run de CI de 4720a085d était ROUGE sur deux contrôles du CRM qui lisent `index.css` résolu par motif
+     (LB40, APX2) : corrigé dans NOS feuilles (jetons v2 écrits en `rgb()`, un littéral du téléphone réécrit),
+     tests de jetons réalignés ; `node --test "src/**/*.test.mjs"` : les 4 rouges restants en local sont des
+     artefacts de Windows (fins de ligne), pas la CI.
+     À FAIRE MAINTENANT, dans l'ordre : (1) attendre la CI de `f7d5f1a7ec` et corriger ses rouges ; en parallèle,
+     suite entière d'`apps/web` (agent `ad48e173ad7c41aaa`, « quatrième passe ») et suite du front calepinage
+     (nouvelle lane de couture avec jonction) ; (2) critique de la vague B (opus) ; (3) reconstruire l'instrument
+     sur `f7d5f1a7ec` ou plus récent ; (4) TOUR 3 ; puis la suite du PLAN DE LA SUITE du point de 10 h 20.
+     Demandes croisées neuves à verser au lot O : `formatNumber` écrit U+202F que les polices Archivo et Hanken ne
+     dessinent pas (« 10620 kWh » collé) ; la tête « Étape 4 sur 5 » (ACAL1727) décale les écrans Résultats par
+     rapport à leur maquette ; étiquettes de chaînes sur la carte ; `chiffrage.simulation` à servir à la coque
+     (DC-1612, `useAtelierBoot.js`) ; panneaux masqués à l'étape Toit ; carte assombrie en thème sombre
+     (`underlay.ts`, `mapDraw.ts`) ; boussole masquée en Guidé par `50-coque-atelier.css` ; barre d'outils de la
+     carte trop large sous 640 px ; `rp9-undo-point` affiché malgré `hidden`.
+   - **POINT à 11 h 00 UTC (le plus récent).** INSTRUMENT RECONSTRUIT sur `f7d5f1a7ec` (10 h 50 : worktree
+     `l5cal-instr` détaché sur ce commit, base migrée, front rebâti, conteneurs relancés par `relancer.sh`).
+     **TOUR 3 LANCÉ** (`T3/lancement/T3.md`, listes `T3/cv/*.md` par `$SP/l5b/listes_t3.py` : 173 tâches livrées
+     en six listes + 35 « insuffisants » graves + 60 autres). EN VOL : `T3-ECRANS` (sonnet, `rev_b1`, 31 tâches),
+     `T3-PROD` (opus, `rev_b2`, 20 tâches + table de toutes les lectures de la production), `T3-TOIT` (sonnet,
+     `rev_b3`, 33 tâches). RESTE À LANCER (4 relecteurs au plus sur la pile) : `T3-POSE` (39, `rev_b4`),
+     `T3-ELEC` (45, `rev_b5`), `T3-INSUF-GRAVES` (35, `rev_b6`), puis le relecteur beauté `B3` (opus,
+     `rev_beaute` : les 13 écrans contre les maquettes v2 + `T3-TEL`, verdict FIDÈLE / PROCHE / ÉLOIGNÉ). Les 60
+     « insuffisants » non graves restent au plan pour un prochain rejeu (à dire au rapport).
+     Sorties attendues : `registre/evenements/T3-<code>-cv.jsonl`, `registre/constats/T3-<code>.jsonl`,
+     `T3/<code>.md`. ENSUITE : relecture adverse des `ok` du tour 3 (comme `T2/lancement/AUDIT-OK.md`),
+     enregistrement d'acceptation (sha `f7d5f1a7ec`…) et coches par `$SP/l5b/enregistrer_acceptation.py` (à
+     adapter : lire aussi `T3-*-cv.jsonl` et `T3-audit-ok*.jsonl`).
+     AUSSI EN VOL : couture 5 (suite entière d'`apps/web`, agent `ad48e173ad7c41aaa`, branche `l5w3-couture-5`),
+     couture 6 (suite du front calepinage, agent `a44321ebb9d33870c`, branche `l5w3-couture-6`), CI de la PR
+     #1529 sur `f7d5f1a7ec`. Commits locaux non poussés depuis : docs seulement.
    - BUDGET (08 h 10 UTC) : quota hebdo 39 % (≈ 4 points par heure, ≈ 0,3 point par agent) ; contexte de
      l'orchestrateur 58 %. Règle : construire jusqu'à ≈ 56 %, puis tour 3 léger, fusion, phase de contrôles (≤ 5
      points), rapport. PRIORITÉ de ce qui reste à construire : (1) les M1 de tous les lots ; (2) la coque v2 puis
