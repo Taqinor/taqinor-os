@@ -681,7 +681,7 @@ describe('ACAL510 — pan existant : ses modules ne se glissent pas', () => {
     expect(ctx.layoutSel ?? null).toBeNull();
     expect(map.dragPan.disable).not.toHaveBeenCalled();
     const notes = [...document.querySelectorAll('#rp9-layout-note')].map((n) => n.textContent);
-    expect(notes).toContain('Pan A : pan existant (déjà posé) — ses modules ne se modifient pas ; décochez « Pan existant » pour le modifier');
+    expect(notes).toContain('Zone 1 : pan existant (déjà posé) — ses modules ne se modifient pas ; décochez « Pan existant » pour le modifier');
   });
   it('sans le drapeau : le module est saisi comme avant', () => {
     const { ctx, map } = presser(false);

@@ -444,3 +444,56 @@ test('ACAL478: budget du mode guidé', async ({ page }) => {
   expect(base.par_etape, 'mode_guide.par_etape absente : lancer une fois avec CAL_MESURES_ECRIRE=1 puis committer le JSON').toBeTruthy()
   expect(ecartsParEtape(parEtape, base.par_etape), 'étape(s) du mode guidé au-dessus de leur base').toEqual([])
 })
+
+// ACAL1442 — panneau Expert de l'étape Toit : étiquettes au-dessus des champs, boutons d'environnement DANS le
+// panneau, totaux et boutons de la liste des pans sans chevauchement (≥ 44 px de cible). Mesure DOM, jamais de pixel.
+const rectsSeChevauchent = (a, b) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1
+function chevauchements(boites) {
+  const noms = Object.keys(boites)
+  const ecarts = []
+  for (let i = 0; i < noms.length; i += 1) {
+    for (let j = i + 1; j < noms.length; j += 1) {
+      if (rectsSeChevauchent(boites[noms[i]], boites[noms[j]])) ecarts.push(`${noms[i]} chevauche ${noms[j]}`)
+    }
+  }
+  return ecarts
+}
+
+test('ACAL1442: la garde de chevauchement nomme les deux boîtes qui se recouvrent', () => {
+  const a = { left: 0, top: 0, right: 100, bottom: 44 }
+  expect(chevauchements({ totaux: a, bouton: { left: 50, top: 20, right: 150, bottom: 64 } })).toEqual(['totaux chevauche bouton'])
+  expect(chevauchements({ totaux: a, bouton: { left: 100, top: 0, right: 200, bottom: 44 } })).toEqual([])
+})
+
+test('ACAL1442: panneau Expert de l’étape Toit à 1440 × 900 — rien ne se chevauche, rien ne déborde', async ({ page }) => {
+  test.setTimeout(600_000)
+  await carteRefusee(page.context())
+  await amorcerSession(page)
+  const id = await calepinageParApi(page.request, 'ACAL1442 Toit', { layout: true })
+  await ouvrirAtelier(page, id, APPAREILS[0])
+  await page.getByTestId('cal-barre-projet').getByRole('button', { name: 'Expert' }).click()
+  await page.locator('#rp9-setback-parapet').scrollIntoViewIfNeeded()
+  const mesure = await page.evaluate(() => {
+    const boite = (el) => {
+      const r = el.getBoundingClientRect()
+      return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, h: r.height, w: r.width }
+    }
+    const champ = document.getElementById('rp9-setback-parapet')
+    const etiquette = champ?.closest('label')
+    const panneauEnv = document.getElementById('rp9-env-panel')
+    const lignes = [...document.querySelectorAll('#rp9-areas-list [data-area-row]')]
+    return {
+      etiquetteAuDessus: Boolean(champ && etiquette) && etiquette.getBoundingClientRect().top <= champ.getBoundingClientRect().top - 8,
+      env: panneauEnv ? [...panneauEnv.querySelectorAll('.rp9-btn')].map((b) => ({ ...boite(b), panneauDroite: panneauEnv.getBoundingClientRect().right })) : [],
+      totaux: [...document.querySelectorAll('#rp9-areas-window dd')].map(boite),
+      lignes: lignes.map((l) => [...l.querySelectorAll('button')].map(boite)),
+    }
+  })
+  expect(mesure.etiquetteAuDessus, '« Retrait d’acrotère » doit être au-dessus de son champ').toBe(true)
+  for (const b of mesure.env) expect(b.right, 'bouton d’environnement hors du panneau').toBeLessThanOrEqual(b.panneauDroite + 1)
+  expect(chevauchements(Object.fromEntries(mesure.totaux.map((b, i) => [`total ${i + 1}`, b]))), 'totaux de la liste des pans').toEqual([])
+  for (const [i, boutons] of mesure.lignes.entries()) {
+    expect(chevauchements(Object.fromEntries(boutons.map((b, j) => [`pan ${i + 1} bouton ${j + 1}`, b]))), `boutons du pan ${i + 1}`).toEqual([])
+    for (const b of boutons) expect(b.h, `cible du pan ${i + 1}`).toBeGreaterThanOrEqual(44)
+  }
+})

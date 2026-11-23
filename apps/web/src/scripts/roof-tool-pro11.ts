@@ -150,6 +150,9 @@ import { monterObjetsSite } from './roofPro11/objetsSite'; // ACAL533
 // document à chaque sérialisation (`SerializeMeta.modules`). Sans cette ligne, `modules[]` et
 // `zones[].geometry.moduleId` n'étaient JAMAIS écrits et le choix se perdait au rechargement.
 import { affectationDesPans, lireModulesDisponibles, moduleDeDepart } from './roofPro11/moduleSelect';
+import { remplacerParPanVierge } from './roofPro11/repriseModule'; // ACAL1416
+import { cibleFermetureToit } from './roofPro11/vueFermetureToit'; // ACAL1422
+import { reafficherEpingleApresEffacement } from './roofPro11/repriseEpingle'; // ACAL1423
 import { enregistrerOrbite } from './roofPro11/videoOrbite'; // ACAL896
 import { factureCarteDe, lireFactureSaisie } from './roofPro11/factureCarte'; // ACAL777
 import { bandesDuPan, enveloppeAccesSolaire, type MemoAcces } from './roofPro11/bandesAcces'; // ACAL721
@@ -239,7 +242,7 @@ import { createSoleilPlayer, sunriseSunsetHours, type SoleilPlayer } from './roo
 import { apiCamera, appliquerVue } from './roofPro11/cadrageToit'; // ACAL435 + F6 (cadrage du toit)
 import { panneauxPourCible, phraseCible } from './roofPro11/cibleProduction'; // ACAL470
 import { majBadgesReco } from './roofPro11/recoBadges'; // ACAL562
-import { poserRetraitsSurPanActif } from './roofPro11/retraitsSociete'; // ACAL562
+import { poserRetraitsPuisRecalculer } from './roofPro11/fermetureDuPan'; // ACAL562
 
 let booted = false;
 
@@ -2420,13 +2423,12 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // commune (sauf override manuel). Les puces « Face du pan » reflètent la valeur déduite.
     autoInferFacing();
     syncFacingChips();
-    recalc();
-    const infoRetraits = poserRetraitsSurPanActif(ctx); // ACAL562 — retraits de la société sur les arêtes typées
+    const infoRetraits = poserRetraitsPuisRecalculer(ctx, recalc); // ACAL562 — retraits de la société posés AVANT le premier pavage
     if (infoRetraits) setStatus(infoRetraits);
   }
 
   function go3DView() {
-    const target = { center: centroid, zoom: vertices.length >= 3 ? zoomToFitRing(vertices) : map.getZoom(), pitch: PITCH_VIEW } as const;
+    const target = cibleFermetureToit({ anneau: vertices, centre: centroid, carte: map, erp: opts.chiffrage !== undefined }); // ACAL1422 — l'atelier ERP garde Plan et cadre à son plafond
     if (opts.reducedMotion) map.jumpTo(target);
     else map.easeTo({ ...target, duration: 1100, essential: true });
   }
@@ -2437,7 +2439,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   function clearEditorState() {
     vertices = [];
     closed = false;
-    removeClientPinMarker(); // W113 — retire le repère client (nouveau lead / effacement)
+    reafficherEpingleApresEffacement(clientPinMarker); // ACAL1423 — « Effacer » rend le repère du lead masqué à la fermeture (jamais retiré)
     obstacles = [];
     selectedObsId = null;
     setObstacleMode(false);
@@ -2532,9 +2534,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     consAppliances = []; ctx.consCharges = []; // ACAL780
     consDailyTarget = 0;
     ctx.consSource = null;
-    areas.length = 0;
-    const fresh = newAreaRecord();
-    areas.push(fresh);
+    const fresh = remplacerParPanVierge(areas, activeAreaId, newAreaRecord); // ACAL1416 — « Effacer » garde le module CHOISI
     activeAreaId = fresh.id;
     imposeTarget(); // ACAL925 — la cible hydratée redevient le nombre voulu (sans cible hydratée : rien)
     if (areasWindowEl) areasWindowEl.hidden = true;

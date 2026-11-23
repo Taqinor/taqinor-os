@@ -902,6 +902,18 @@ function texteReglage(v: unknown): string | undefined {
   return s || undefined;
 }
 
+/** ACAL1433 — la cote qui manque, en français et sans nom de clé : « la longueur n’est », « la largeur n’est », « la longueur et la largeur ne sont ». */
+function cotesManquantes(longueurM?: number, largeurM?: number): string {
+  if (longueurM == null && largeurM == null) return 'la longueur et la largeur ne sont';
+  return `${longueurM == null ? 'la longueur' : 'la largeur'} n’est`;
+}
+
+/** ACAL291/ACAL1433 — la même règle pour les deux lectures : une entrée de genre bande/polygone sans forme, type, cote ni rayon est une ZONE. */
+function estGabaritZone(e: Record<string, unknown>): boolean {
+  const genre = texteReglage(e.genre);
+  return (genre === 'bande' || genre === 'polygone') && !(texteReglage(e.forme) || texteReglage(e.type) || e.longueur_m != null || e.rayon_m != null);
+}
+
 /**
  * CALX104 — lit la section `zones_types` et en tire les gabarits POSABLES. Un gabarit sans
  * cote exploitable n'est PAS proposé : il rejoint `refuses` avec le champ qui lui manque,
@@ -920,6 +932,7 @@ export function lireGabaritsObstacle(section: unknown): {
   for (const [cle, brut] of Object.entries(section as Record<string, unknown>)) {
     if (!brut || typeof brut !== 'object' || Array.isArray(brut)) continue;
     const e = brut as Record<string, unknown>;
+    if (estGabaritZone(e)) continue; // ACAL1433 — une bande ou un polygone de zone n'est pas un obstacle
     const libelle = texteReglage(e.libelle) ?? cle;
     const typeSaisi = texteReglage(e.type);
     const type = OBSTACLE_TYPES.some((t) => t.id === typeSaisi) ? (typeSaisi as ObstacleType) : undefined;
@@ -961,7 +974,7 @@ export function lireGabaritsObstacle(section: unknown): {
         refuses.push({
           cle,
           libelle,
-          motif: `« ${libelle} » n’est pas proposé : son rayon (rayon_m) n’est pas saisi.`,
+          motif: `« ${libelle} » n’est pas proposé : son rayon n’est pas saisi.`,
         });
         continue;
       }
@@ -973,7 +986,7 @@ export function lireGabaritsObstacle(section: unknown): {
         refuses.push({
           cle,
           libelle,
-          motif: `« ${libelle} » n’est pas proposé : son contour (sommets) compte moins de trois points.`,
+          motif: `« ${libelle} » n’est pas proposé : son contour compte moins de trois points.`,
         });
         continue;
       }
@@ -984,7 +997,7 @@ export function lireGabaritsObstacle(section: unknown): {
       refuses.push({
         cle,
         libelle,
-        motif: `« ${libelle} » n’est pas proposé : ses cotes (longueur_m et largeur_m) ne sont pas toutes saisies.`,
+        motif: `« ${libelle} » n’est pas proposé : ${cotesManquantes(longueurM, largeurM)} pas saisie${longueurM == null && largeurM == null ? 's' : ''}.`,
       });
       continue;
     }
@@ -1008,6 +1021,10 @@ export interface GabaritZone {
   hauteurM?: number;
   /** Source textuelle OBLIGATOIRE — elle voyage avec la zone posée. */
   source: string;
+  /** ACAL1432 — genre saisi, et pour une bande sa largeur (`largeur_m`) et son côté (`cote`), tels que saisis (jamais complétés). */
+  genre: 'bande' | 'polygone';
+  largeurM?: number;
+  cote?: string;
 }
 
 /**
@@ -1023,9 +1040,7 @@ export function lireGabaritsZone(section: unknown): { gabarits: GabaritZone[]; r
   for (const [cle, brut] of Object.entries(section as Record<string, unknown>)) {
     if (!brut || typeof brut !== 'object' || Array.isArray(brut)) continue;
     const e = brut as Record<string, unknown>;
-    const genre = texteReglage(e.genre);
-    if (genre !== 'bande' && genre !== 'polygone') continue;
-    if (texteReglage(e.forme) || texteReglage(e.type) || e.longueur_m != null || e.rayon_m != null) continue;
+    if (!estGabaritZone(e)) continue;
     const libelle = texteReglage(e.libelle) ?? cle;
     const source = texteReglage(e.source);
     if (!source) {
@@ -1038,10 +1053,15 @@ export function lireGabaritsZone(section: unknown): { gabarits: GabaritZone[]; r
       continue;
     }
     const hauteurM = nombreReglage(e.hauteur_m);
+    const largeurM = nombreReglage(e.largeur_m);
+    const cote = texteReglage(e.cote);
     gabarits.push({
       cle,
       libelle,
       nature,
+      genre: texteReglage(e.genre) as 'bande' | 'polygone',
+      ...(largeurM != null ? { largeurM } : {}),
+      ...(cote ? { cote } : {}),
       retraitM: typeof e.retrait_m === 'number' && Number.isFinite(e.retrait_m) && e.retrait_m > 0 ? e.retrait_m : 0,
       ...(hauteurM != null ? { hauteurM } : {}),
       source,
@@ -1078,7 +1098,7 @@ export function obstacleDepuisGabarit(
   if (gabarit.longueurM == null || gabarit.largeurM == null) {
     return {
       ok: false,
-      motif: `« ${gabarit.libelle} » n’est pas posable : ses cotes (longueur_m et largeur_m) ne sont pas toutes saisies.`,
+      motif: `« ${gabarit.libelle} » n’est pas posable : ${cotesManquantes(gabarit.longueurM, gabarit.largeurM)} pas saisie${gabarit.longueurM == null && gabarit.largeurM == null ? 's' : ''}.`,
     };
   }
   return {

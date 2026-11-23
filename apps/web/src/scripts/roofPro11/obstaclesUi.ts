@@ -89,6 +89,7 @@ import {
 } from './zones';
 import { suivreAlt } from './altTracker';
 import { viderObstaclesAnnulable } from './bandeauAnnuler'; // ACAL413
+import { bandesDepuisGabarit, estBande } from './bandeGabarit'; // ACAL1432
 import { motifPanVerrouille } from './panVerrouille'; // ACAL520
 
 /** CAL72 — provenances proposées (vocabulaire `core.calepinage.types.Provenance`), avec
@@ -383,7 +384,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
       select.appendChild(opt);
     }
     label.appendChild(select);
-    obsEditPanel.insertBefore(label, obsEditPanel.firstChild);
+    obsEditPanel.insertBefore(label, obsEditPanel.firstElementChild?.nextSibling ?? null); // ACAL1441 — le titre reste en tête
     return select;
   }
   /** Libellé du dégagement courant (m), affiché sous le sélecteur. CALX104 — un obstacle
@@ -423,7 +424,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
       select.appendChild(opt);
     }
     label.appendChild(select);
-    obsEditPanel.insertBefore(label, obsEditPanel.firstChild);
+    obsEditPanel.insertBefore(label, obsEditPanel.firstElementChild?.nextSibling ?? null); // ACAL1441 — le titre reste en tête
     return select;
   }
 
@@ -790,6 +791,18 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     );
   }
 
+  /** ACAL1432 — pose la bande du gabarit le long de l'arête voulue du pan ACTIF (aucun rectangle à glisser). */
+  function poserBandeGabarit(g: GabaritZone) {
+    const v = bandesDepuisGabarit(ctx.closed ? ctx.vertices : [], g);
+    if (!v.ok) { setStatus(v.motif); return; }
+    ctx.pushWorkshopHistory?.();
+    for (const bande of v.bandes) zoneList().push({ ...exclusionZoneFromDrag(prochainId('zone', zoneList()), g.nature, bande[0], bande[2], g), vertices: bande });
+    renderZoneList();
+    redrawExclusionZones();
+    recalcWithShading();
+    setStatus(`Zone « ${g.libelle} » posée (${g.source}).`);
+  }
+
   function updateZone(id: string, transform: (z: ExclusionZone) => ExclusionZone) {
     const list = zoneList();
     const idx = list.findIndex((z) => z.id === id);
@@ -928,7 +941,8 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   }
   zoneGabaritPoserBtn?.addEventListener('click', () => {
     const g = gabaritsZone.find((x) => x.cle === zoneGabaritEl?.value);
-    if (g) beginZone(g.nature, g);
+    if (g && estBande(g)) poserBandeGabarit(g); // ACAL1432 — la bande se pose seule, à son côté et à sa largeur
+    else if (g) beginZone(g.nature, g);
   });
   const largeurReglee = largeurAlleeDepuisReglages(reglages?.degagements, paysDuSite);
 

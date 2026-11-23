@@ -36,11 +36,13 @@ import {
   tousLesObstacles, // ACAL64
   nouveauPanDepuisContour, // ACAL71
   poserModuleDeDepart, // ACAL1273
+  panVierge, // ACAL1416
   ajoutDePanEnCours, monterToitGriseSousTrace, toitExistantGeoJSON, // ACAL1329
   type ExclusionZone,
 } from './zones';
 import { deserializeLayout, hydrateFromDevis, serializeLayout, type SerializedLayout } from './prefill'; // ACAL64, ACAL1415
 import { MENTION_MODULE_DE_DEPART, affectationDesPans } from './moduleSelect'; // ACAL1415
+import { panAuModuleChoisi, remplacerParPanVierge, reprendreModuleChoisi } from './repriseModule'; // ACAL1416
 import { type Ctx } from './context'; // ACAL64
 import { lireGabaritsZone, lireGabaritsObstacle, type AreaRecord } from './types';
 import { type LngLat } from '../../lib/roof';
@@ -568,6 +570,32 @@ describe('ACAL1273 — module de départ posé dans le document', () => {
   });
 });
 
+// ACAL1416 — « Effacer » puis retracer : le module CHOISI du pan effacé est conservé (jamais le départ du catalogue).
+describe('ACAL1416 — Effacer puis retracer : le moduleId choisi est conservé, kWc identique partout', () => {
+  const m720 = { id: 'produit-720', produitId: 720, libelle: 'Module 720 W', longueurMm: 2384, largeurMm: 1303, epaisseurMm: 33, poidsKg: 38, pmaxWc: 720, source: 'fiche' };
+  const carre: [number, number][] = [[-7.6, 33.5], [-7.5998, 33.5], [-7.5998, 33.5002], [-7.6, 33.5002]];
+
+  it('un pan au module choisi (Jinko 710 W) : le pan retracé garde son moduleId et son drapeau', () => {
+    const avant = [panDeTest('area-1', { moduleId: 'jinko-710', ...{ moduleChoisi: true } } as Partial<AreaRecord>)];
+    const neuf = reprendreModuleChoisi(panVierge(avant.slice(0, 0), carre, m720), panAuModuleChoisi(avant, 'area-1'));
+    expect(neuf.moduleId).toBe('jinko-710'); // pas le module de départ (720 W)
+    expect((neuf as { moduleChoisi?: boolean }).moduleChoisi).toBe(true);
+  });
+
+  it('remplacerParPanVierge : la liste ne garde que le pan neuf, au module choisi', () => {
+    const pans = [panDeTest('area-1', { moduleId: 'jinko-710', ...{ moduleChoisi: true } } as Partial<AreaRecord>), panDeTest('area-2')];
+    const neuf = remplacerParPanVierge(pans, 'area-1', () => panVierge([], carre, m720));
+    expect(pans).toEqual([neuf]);
+    expect(neuf.moduleId).toBe('jinko-710');
+  });
+
+  it('un module seulement « de départ » (jamais choisi) n’est pas repris', () => {
+    const avant = [panDeTest('area-1', { moduleId: 'produit-9' })];
+    expect(panAuModuleChoisi(avant, 'area-1')).toBeUndefined();
+    expect(reprendreModuleChoisi(panVierge([], carre, m720), undefined).moduleId).toBe('produit-720');
+  });
+});
+
 // ACAL1415 — le choix du module survit à l'enregistrement : « à confirmer » tant que personne n'a choisi (drapeau
 // `geometry.moduleChoisi` absent), « Module posé » après un choix, aller-retour du document compris.
 describe('ACAL1415 — module de départ « à confirmer » / module choisi, après aller-retour du document', () => {
@@ -901,7 +929,7 @@ describe('ACAL574 — pan existant : gestes refusés, géométrie intacte', () =
     expect([r.pivote, r.redim, r.module]).toEqual([false, false, false]);
     expect(r.intacte).toBe(true);
     const motif = motifPanExistant(r.pan)!;
-    expect(motif).toContain('Pan A : pan existant');
+    expect(motif).toContain('Zone 1 : pan existant');
     expect(r.setStatus).toHaveBeenCalledWith(motif);
     expect(r.grise).toBe(true);
     expect(r.titre).toBe(motif);

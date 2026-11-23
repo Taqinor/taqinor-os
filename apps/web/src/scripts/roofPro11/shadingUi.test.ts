@@ -742,6 +742,29 @@ describe('ACAL1405 — bâtiment relu à la réouverture', () => {
   });
 });
 
+// ACAL1436 — « Heure solaire de l'image » accepte la virgule décimale comme le point.
+describe('ACAL1436 — heure solaire « 10,5 »', () => {
+  function saisir(texte: string): string {
+    document.body.innerHTML = '<input id="rp9-shade-hour"><p id="rp9-shade-hour-value"></p>';
+    const ctx = {
+      areas: [], activeAreaId: '', vertices: [], closed: false, obstacles: [], batiments: [], shadeObstructions: [],
+      environment: [], activeArea: () => null, pushWorkshopHistory: () => {},
+    } as unknown as Ctx;
+    const map = new Proxy({}, { get: () => () => undefined }) as never;
+    createShadingUi(ctx, { map, setStatus: () => {}, recalcDisplays: () => {}, applyHeatmap: () => {} });
+    const champ = document.getElementById('rp9-shade-hour') as HTMLInputElement;
+    champ.value = texte;
+    champ.dispatchEvent(new Event('input'));
+    return document.getElementById('rp9-shade-hour-value')?.textContent ?? '';
+  }
+
+  it('« 10,5 » donne « 10 h 30 » comme « 10.5 » ; « abc » reste refusé par le même message', () => {
+    expect(saisir('10.5')).toBe('10 h 30');
+    expect(saisir('10,5')).toBe('10 h 30');
+    expect(saisir('abc')).toBe('Heure solaire illisible : un nombre entre 0 et 24.');
+  });
+});
+
 // ACAL504 — la hauteur du bâtiment saisie SANS provenance est refusée sous le champ ET dans la barre d'état.
 describe('ACAL504 — refus d’une hauteur sans provenance', () => {
   function monter() {
