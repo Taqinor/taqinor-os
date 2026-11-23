@@ -1943,10 +1943,11 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     }
 
 
-#: ACAL104 — la mention publiée avec l'écart (contrat
-#: ``calepinage_resultat.json``, ``exemple_ecart_devis``), mot pour mot.
-MENTION_ECART_DEVIS = ("Production imprimée au client = moteur du devis "
-                       "(D-ACAL-6) ; P50 = étude technique du calepinage")
+#: ACAL104 + ACAL1755 (D-ACAL-86, D-ACAL-96) — la mention publiée avec l'écart
+#: (contrat ``calepinage_resultat.json``, ``exemple_ecart_devis``), mot pour mot.
+MENTION_ECART_DEVIS = ("Deux chiffres : celui du devis déjà remis au client et celui de la "
+                       "simulation de la pose, le plus réaliste. Le devis envoyé n'est pas "
+                       "modifié : une révision est proposée.")
 
 
 def _ecart_devis(calepinage, p50):
