@@ -493,6 +493,94 @@ describe('étape Panneaux — sur la carte', () => {
   })
 })
 
+/* ACAL1519 — « K-COLONNE-ETROITE » : les grilles du panneau de droite (bloc « Total — toutes les zones »,
+   bandeau de « Déplacer les panneaux ») suivent la largeur de la COLONNE (colonnes automatiques), jamais un
+   point de rupture de la fenêtre. Prouvé sur le DOM RENDU. */
+describe('panneau de droite — grilles suivant la colonne, pas la fenêtre (ACAL1519)', () => {
+  const POINT_DE_RUPTURE = /(?:^|\s)(?:sm|md|lg|xl|2xl):grid-cols-/
+  const AUTO = 'grid-cols-[repeat(auto-fit,minmax(7rem,1fr))]'
+
+  it('le bloc « Total » et la pose rendent des grilles à colonnes automatiques sans classe de fenêtre', async () => {
+    const { default: InspecteurBuilder } = await import('../../InspecteurBuilder.jsx')
+    const { default: BuilderPose } = await import('../../BuilderPose.jsx')
+    const { container } = render(<MemoryRouter><InspecteurBuilder estCalepinage /><BuilderPose /></MemoryRouter>)
+    for (const id of ['rp9-areas-window', 'rp9-layout-panel']) {
+      const grilles = [...container.querySelector(`#${id}`).querySelectorAll('dl')]
+        .filter((el) => el.className.includes('grid-cols-['))
+      expect(grilles.length, `${id} : grille à colonnes automatiques`).toBeGreaterThanOrEqual(1)
+      for (const g of grilles) expect(g.className).toContain(AUTO)
+    }
+    // Le bloc « Affiner ma consommation » (#rp9-cons-window) vient du balisage partagé @roofpro : hors périmètre.
+    for (const el of container.querySelectorAll('[class*="grid-cols-"]')) {
+      if (el.closest('#rp9-cons-window')) continue
+      expect(el.className, 'grille liée à la largeur de la fenêtre').not.toMatch(POINT_DE_RUPTURE)
+    }
+  })
+})
+
+describe('retraits du panneau de droite — règle CSS suivant la colonne (ACAL1519)', () => {
+  it('.rp9-host .rp9-setbacks : colonnes automatiques, aucune règle de fenêtre ne la redéfinit', async () => {
+    // (`?raw` rend '' sous vitest : la feuille est lue du disque puis chargée dans le DOM de test.)
+    const { readFileSync } = await import('node:fs')
+    const css = readFileSync(`${globalThis.process.cwd()}/src/styles/roofbuilder.css`, 'utf8')
+    const style = document.createElement('style')
+    style.textContent = css
+    document.head.appendChild(style)
+    try {
+      const regles = [...style.sheet.cssRules]
+      const bloc = regles.find((r) => r.selectorText === '.rp9-host .rp9-setbacks')
+      expect(bloc, 'règle .rp9-host .rp9-setbacks').toBeTruthy()
+      expect(bloc.cssText).toMatch(/auto-fit/)
+      const enFenetre = regles.filter((r) => r.type === 4 /* CSSMediaRule */)
+        .flatMap((m) => [...m.cssRules]).filter((r) => (r.selectorText || '').includes('.rp9-setbacks'))
+      expect(enFenetre).toHaveLength(0)
+    } finally {
+      style.remove()
+    }
+  })
+})
+
+/* ACAL1524 / ACAL1443 — la feuille de l'atelier est chargée dans le DOM de test et lue par getComputedStyle. */
+describe('feuille de l’atelier — boutons refusés et champs de la photo (ACAL1524, ACAL1443)', () => {
+  let style
+  beforeEach(async () => {
+    const { readFileSync } = await import('node:fs')
+    style = document.createElement('style')
+    style.textContent = readFileSync(`${globalThis.process.cwd()}/src/styles/roofbuilder.css`, 'utf8')
+    document.head.appendChild(style)
+  })
+  afterEach(() => { style.remove(); document.body.innerHTML = '' })
+
+  it('ACAL1524 : un bouton rp9-btn désactivé se distingue d’un bouton actif, « Déplacer » compris', () => {
+    document.body.innerHTML = `<div class="rp9-host">
+      <button id="actif" class="rp9-btn">a</button><button id="off" class="rp9-btn" disabled>b</button>
+      <button id="rp9-layout-toggle" disabled>c</button><button id="toggle-actif" class="x">d</button>
+      <p id="motif" class="rp9-motif-refus">m</p></div>`
+    const cs = (id) => getComputedStyle(document.getElementById(id))
+    for (const id of ['off', 'rp9-layout-toggle']) {
+      expect(cs(id).borderStyle, id).toBe('dashed')
+      expect(cs(id).cursor, id).toBe('not-allowed')
+      expect(cs(id).background, id).toContain('--muted')
+      expect(cs(id).color, id).toContain('--muted-foreground')
+      expect(cs(id).opacity, `${id} : l'opacité seule rendait le refus invisible`).toBe('1')
+    }
+    expect(cs('actif').borderStyle).not.toBe('dashed')
+    expect(cs('actif').cursor).not.toBe('not-allowed')
+    expect(cs('motif').color).toContain('--muted-foreground')
+  })
+
+  it('ACAL1443 : .rp9-image-capture-input est un vrai champ (bordure, fond, 44 px)', () => {
+    document.body.innerHTML = '<div class="rp9-host"><input id="champ" class="rp9-image-capture-input"></div>'
+    const c = getComputedStyle(document.getElementById('champ'))
+    // jsdom ne déplie pas `border: 1px solid var(--…)` : on lit la règle qui s'applique à l'élément.
+    const regle = [...style.sheet.cssRules].find((r) => r.selectorText && document.getElementById('champ').matches(r.selectorText))
+    expect(regle, 'règle appliquée au champ').toBeTruthy()
+    expect(regle.style.getPropertyValue('border')).toMatch(/^1px solid/)
+    expect(c.background).toContain('--muted')
+    expect(parseFloat(c.minHeight)).toBeGreaterThanOrEqual(2.75)
+  })
+})
+
 /* ACAL1340 — la palette d'ensoleillement n'est PAS posée par l'étape Panneaux : le démarrage de l'atelier
    (`useAtelierBoot`, couvert par ToitureDesign.calepinage.test.jsx « F6 ») la pose pour toute étape et pour le
    mode Expert. Charger le module de l'étape ne doit rien changer à la palette active (le site public garde
