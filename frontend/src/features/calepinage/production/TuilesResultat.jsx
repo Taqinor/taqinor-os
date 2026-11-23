@@ -12,6 +12,23 @@ import { formatNumber, formatPercent } from '../../../lib/format'
 
 const nombre = (v) => typeof v === 'number' && Number.isFinite(v)
 
+/* ACAL1833 — UN GRAND CHIFFRE (maquettes v2 : Archivo 700, unité plus petite et grise sur la même ligne de base).
+   L'espace des milliers de `formatNumber` est une espace fine insécable (U+202F) que la police ne dessine pas à
+   cette taille : chaque groupe est séparé par un <span> qui lui donne une largeur propre — « 12 950 » reste lisible.
+   Le texte du nœud garde l'espace insécable (lecteurs d'écran, copier-coller). */
+export function GrosChiffre({ valeur, decimals = 0, unite = null, signe = '' }) {
+  const groupes = formatNumber(valeur, { decimals }).split(/\s/)
+  return (
+    <span className="cal-gros">
+      <span className="cal-gros-n">
+        {signe}
+        {groupes.flatMap((g, i) => (i === 0 ? [g] : [<span key={`s${i}`} className="cal-gros-sep">{'\u202f'}</span>, g]))}
+      </span>
+      {unite && <>{' '}<span className="cal-gros-u">{unite}</span></>}
+    </span>
+  )
+}
+
 function Heros({ total }) {
   if (!nombre(total?.p50_kwh)) return null
   const moyenne = total?.portee === 'annee_moyenne'

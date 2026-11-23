@@ -827,7 +827,9 @@ describe('PanneauProduction — résultat incomplet (ACAL700)', () => {
     for (const t of ['Panneaux', 'Puissance', 'Raccordement', 'Conforme', 'Ombres proches']) {
       expect(within(sur).getByText(t)).toBeInTheDocument()
     }
-    expect(bloc).toHaveTextContent("Les années basses (9 fois sur 10 au-dessus) et l'indice de performance s'affichent dès que le résultat est complet")
+    // ACAL1833 — la phrase de la note est portée par les deux blocs ABSENTS de la maquette v2 (jamais de valeur inventée).
+    expect(within(bloc).getByTestId('acal1833-absent-annees')).toHaveTextContent("9 fois sur 10 au-dessus. S'affiche dès que le résultat est complet.")
+    expect(within(bloc).getByTestId('acal1833-absent-indice')).toHaveTextContent("Indice de performance")
     // Maquette ResultatsIncomplet : la barre « N étapes sur M » du serveur, les lignes numérotées, la carte « au plus » à gauche.
     expect(within(bloc).getByTestId('acal700-progression')).toHaveTextContent(`${a.etapes_comptees} ${a.etapes_comptees > 1 ? 'étapes' : 'étape'} sur ${a.etapes_a_compter}`)
     expect(within(bloc).getByTestId('acal700-valeur')).toHaveTextContent('kWh')
@@ -867,6 +869,51 @@ describe('PanneauProduction — résultat incomplet (ACAL700)', () => {
     rendreAvecParcours({ etapes: [{ cle: 'electrique', etat: 'a_faire' }], manque: [] })
     const sur = await screen.findByTestId('acal700-sur')
     expect(within(sur).queryByText('Raccordement')).toBeNull()
+  })
+
+  it('ACAL1833 — tuile « Ombres proches » non servie ⇒ « à renseigner » ; chiffre avec séparateur insécable visible', async () => {
+    const servi = incomplet()
+    servi.cascade.postes_lisibles.postes[0] = { ...servi.cascade.postes_lisibles.postes[0], statut: 'non_compte', perte_pct: null, perte_kwh: null }
+    servi.production = { ...servi.production, total: { ...servi.production.total, p50_kwh: 12950 } }
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: servi })
+    rendreAvecParcours({ etapes: [], manque: [] })
+    const sur = await screen.findByTestId('acal700-sur')
+    const ombres = [...sur.querySelectorAll('.cal-resinc-tuile')].find((t) => t.textContent.startsWith('Ombres proches'))
+    expect(ombres).toBeTruthy()
+    expect(ombres).toHaveTextContent('à renseigner')
+    expect(ombres).not.toHaveTextContent('%')
+    // Le chiffre principal : l'espace insécable des milliers est gardée dans le texte ET dessinée (largeur propre).
+    const valeur = screen.getByTestId('acal700-valeur')
+    expect(valeur.textContent).toBe('12\u202f950 kWh')
+    const sep = valeur.querySelector('.cal-gros-sep')
+    expect(sep).toBeTruthy()
+    const { readFileSync } = await import('node:fs')
+    const style = document.createElement('style')
+    style.textContent = readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/54-etape-resultats.css`, 'utf8')
+    document.head.appendChild(style)
+    try {
+      expect(getComputedStyle(sep).display).toBe('inline-block')
+      expect(parseFloat(getComputedStyle(sep).width)).toBeGreaterThan(0)
+      expect(parseFloat(getComputedStyle(sep).fontSize || '16')).toBeGreaterThan(0) // un em de 0 px aurait une largeur nulle
+    } finally {
+      style.remove()
+    }
+  })
+
+  it('ACAL1833 — deux colonnes ; « Étapes du calcul » en N segments servis ; pertes qui manquent en pastilles ; deux blocs absents', async () => {
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: incomplet() })
+    rendreAvecParcours({ etapes: [], manque: [] })
+    const bloc = await screen.findByTestId('acal700-incomplet')
+    const a = borneHaute.cascade.a_renseigner
+    expect(bloc.querySelectorAll('.cal-resinc-haut > .cal-resinc-colonne')).toHaveLength(2)
+    const segments = [...within(bloc).getByTestId('acal700-progression').querySelectorAll('.cal-resinc-segments > span')]
+    expect(segments).toHaveLength(a.etapes_a_compter)
+    expect(segments.filter((x) => x.dataset.fait === 'oui')).toHaveLength(a.etapes_comptees)
+    expect([...within(bloc).getByTestId('acal1833-manques').children].map((n) => n.textContent)).toEqual(
+      ['Poussière sur les panneaux', 'Écarts entre panneaux', 'Vieillissement de la première année'])
+    expect(within(bloc).getByTestId('acal1833-absent-indice')).toHaveTextContent('À renseigner')
+    expect(within(bloc).getByTestId('acal1833-absent-annees')).toHaveTextContent('À renseigner')
+    expect(within(bloc).getByTestId('acal1833-compteur')).toHaveTextContent('réglage')
   })
 
   it('complet : aucun de ces blocs', async () => {

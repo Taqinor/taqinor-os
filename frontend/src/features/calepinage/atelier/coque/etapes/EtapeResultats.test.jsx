@@ -290,7 +290,7 @@ describe('Étape Résultats — pas encore simulé (jamais lancé)', () => {
     const ordre = [haut, screen.getByTestId('acal700-sur')]
     expect(ordre[0].compareDocumentPosition(ordre[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(within(screen.getByTestId('acal700-sur')).getByText('12')).toBeInTheDocument() // pose.total_modules
-    expect(within(screen.getByTestId('acal700-sur')).getByText('8,64 kWc')).toBeInTheDocument() // pose.kwc
+    expect(screen.getByTestId('acal700-sur')).toHaveTextContent('8,64 kWc') // pose.kwc : chiffre et unité sont deux nœuds
     expect(bloc).not.toHaveTextContent(JARGON)
     expect(document.body.textContent).not.toMatch(JARGON)
     expect(screen.queryByText('Ce qui manque encore :')).toBeNull()
