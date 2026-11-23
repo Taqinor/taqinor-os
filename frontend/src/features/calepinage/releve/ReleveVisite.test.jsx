@@ -178,6 +178,54 @@ describe('Relevé de visite — même porte, même corps que le panneau de l’a
   })
 })
 
+describe('Relevé de visite — « Terminer » répond EN VUE (ACAL1812)', () => {
+  it('un refus ramène le champ fautif (focus) et s’écrit dans une bannière posée AVANT le pied fixe', async () => {
+    rendre()
+    await screen.findByTestId('releve-projet')
+    fireEvent.click(screen.getByTestId('releve-orientation-bouton'))
+    taper(await screen.findByTestId('releve-azimut-main').then(() => 'releve-azimut-main'), '160')
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    const bandeau = await screen.findByTestId('releve-message')
+    expect(bandeau).toHaveAttribute('role', 'alert')
+    expect(bandeau).toHaveTextContent('précision')
+    expect(document.activeElement).toBe(document.getElementById('releve-precision'))
+    // Entre le corps défilant et le pied : ni dans le corps (que la barre fixe recouvre), ni après le pied.
+    expect(bandeau.closest('.cal-tel-corps')).toBeNull()
+    expect(bandeau.nextElementSibling).toBe(document.querySelector('.cal-tel-pied'))
+    expect(api.corrigerReleve).not.toHaveBeenCalled()
+  })
+
+  it('le succès est dit dans la même bannière (focus) et la pente tapée reste lue « saisie à la main », écrite UNE fois', async () => {
+    rendre()
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(screen.getByTestId('releve-pente-bouton')).not.toBeDisabled())
+    fireEvent.click(screen.getByTestId('releve-pente-bouton'))
+    taper(await screen.findByTestId('releve-pente-main').then(() => 'releve-pente-main'), '22')
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    const bandeau = await screen.findByTestId('releve-message')
+    await waitFor(() => expect(bandeau).toHaveTextContent('Relevé corrigé.'))
+    expect(bandeau).toHaveAttribute('role', 'status')
+    expect(document.activeElement).toBe(bandeau)
+    expect(screen.getByTestId('releve-pente-valeur')).toHaveTextContent('22° · saisie à la main')
+    expect(api.enregistrerSectionLayout).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(api.corrigerReleve).toHaveBeenCalledTimes(2))
+    expect(api.enregistrerSectionLayout).toHaveBeenCalledTimes(1)
+  })
+
+  it('la feuille : la bannière ne rétrécit pas (flex: none) et ne sort pas du flux', async () => {
+    const { readFileSync } = await import('node:fs')
+    const style = document.createElement('style')
+    style.textContent = readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/58-telephone.css`, 'utf8')
+    document.head.appendChild(style)
+    try {
+      const regle = [...style.sheet.cssRules].find((r) => r.selectorText === '.cal-tel-message')
+      expect(regle.style.flex).toMatch(/none|0 0/)
+      expect(['', 'static', 'relative']).toContain(regle.style.position)
+    } finally { style.remove() }
+  })
+})
+
 describe('Relevé de visite — la pente est celle du PAN, lue comme l’atelier la lit', () => {
   const avecZone = (zone) => api.layout.mockResolvedValue({ data: { roof_layout: { zones: [{ ...ZONE, ...zone }] }, empreinte_document: 'emp-1' } })
 

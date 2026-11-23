@@ -27,8 +27,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 60px;
-  padding: 0 8px 0 4px;
+  height: calc(60px + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) 8px 0 4px;
   background: var(--card);
   border-bottom: 1px solid var(--border);
 }
@@ -171,7 +171,23 @@
 .cal-tel-bouton:disabled { opacity: 0.55; cursor: not-allowed; }
 .cal-tel-aide { margin: 0; font-size: 0.875rem; color: var(--muted-foreground); }
 .cal-tel-erreur { margin: 0; font-size: 0.875rem; color: var(--destructive); }
-.cal-tel-message { margin: 0; font-size: 0.875rem; color: var(--foreground); }
+/* ACAL1812 — la réponse de « Terminer le relevé » : une bannière ENTRE le corps défilant et le pied fixe (jamais sous la
+   barre du bas) ; fond teinté de son ton, 14 px, texte lisible en clair comme en sombre. */
+.cal-tel-message {
+  flex: none;
+  margin: 0;
+  padding: 10px 16px;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--success) 12%, var(--card));
+  border-top: 1px solid color-mix(in oklch, var(--success) 35%, var(--card));
+}
+.cal-tel-message[data-ton='refus'] {
+  background: color-mix(in oklch, var(--destructive) 10%, var(--card));
+  border-top-color: color-mix(in oklch, var(--destructive) 40%, var(--card));
+}
+.cal-tel-message:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 
 .cal-tel-note {
   display: flex;
@@ -193,7 +209,7 @@
   flex: none;
   display: flex;
   gap: 8px;
-  padding: 12px 16px 20px;
+  padding: 12px 16px max(20px, env(safe-area-inset-bottom));
   background: var(--card);
   border-top: 1px solid var(--border);
 }

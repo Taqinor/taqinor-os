@@ -189,3 +189,31 @@ test('ACAL1809 : « Relevé » dans le bandeau, 44 × 44 dans le premier écran,
   await entree.tap()
   await expect(page).toHaveURL(new RegExp(`/calepinage/${cal.id}/releve$`))
 })
+
+// ACAL1812 — « Terminer le relevé » répond EN VUE : le refus (orientation sans précision) pose le focus sur le champ
+// fautif et s'écrit dans une bannière entièrement au-dessus de la barre du bas ; le succès idem.
+test('ACAL1812 : la réponse de « Terminer le relevé » est visible, au-dessus de la barre fixe du bas', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 664 })
+  const cal = await calepinageDeTest(page, 'Atelier tel ACAL1812')
+  await page.goto(`/calepinage/${cal.id}/releve`)
+  await page.getByTestId('releve-orientation-bouton').tap()
+  await page.getByTestId('releve-azimut-main').fill('160')
+  await page.getByTestId('releve-terminer').tap()
+  const message = page.getByTestId('releve-message')
+  await expect(message).toBeVisible()
+  await expect(page.locator('#releve-precision')).toBeFocused()
+  const dessus = async () => page.evaluate(() => {
+    const m = document.querySelector('[data-testid="releve-message"]').getBoundingClientRect()
+    const p = document.querySelector('.cal-tel-pied').getBoundingClientRect()
+    return { basMessage: m.bottom, hautPied: p.top }
+  })
+  let m = await dessus()
+  expect(m.basMessage, 'le refus est sous la barre du bas').toBeLessThanOrEqual(m.hautPied + 0.5)
+  await page.getByTestId('releve-precision').fill('10')
+  await page.getByTestId('releve-longueur').fill('12,4')
+  await page.getByTestId('releve-largeur').fill('8,6')
+  await page.getByTestId('releve-terminer').tap()
+  await expect(message).toHaveText(/Relevé (enregistré|corrigé)\./)
+  m = await dessus()
+  expect(m.basMessage, 'le succès est sous la barre du bas').toBeLessThanOrEqual(m.hautPied + 0.5)
+})

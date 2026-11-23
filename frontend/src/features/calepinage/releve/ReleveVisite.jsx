@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import useDocumentCalepinage from '../useDocumentCalepinage'
@@ -28,6 +28,16 @@ import { CarteMesure, ChampDecimal } from './CarteMesure'
 
 const SANS_LECTURE = 'Aucune lecture du capteur : réessayez, ou saisissez la valeur à la main.'
 const attendre = (ms) => new Promise((r) => { setTimeout(r, ms) })
+
+/* ACAL1812 — le champ fautif d'un refus (clé du serveur ou de la validation locale) → l'identifiant du champ à l'écran. */
+function champFautif(champs) {
+  const cle = Object.keys(champs ?? {})[0] ?? ''
+  if (cle === 'precision_azimut_deg') return 'releve-precision'
+  if (cle.startsWith('azimut')) return 'releve-azimut-main'
+  const chaine = /^chaines\[(\d+)\]/.exec(cle)
+  if (chaine) return Number(chaine[1]) === 1 ? 'releve-largeur' : 'releve-longueur'
+  return null
+}
 
 function useEnLigne() {
   const [enLigne, setEnLigne] = useState(() => typeof navigator === 'undefined' || navigator.onLine !== false)
@@ -70,7 +80,16 @@ export default function ReleveVisite() {
   const [motifs, setMotifs] = useState({})
   const [erreurs, setErreurs] = useState({})
   const [enCours, setEnCours] = useState(false)
-  const [message, setMessage] = useState(null)
+  const [message, setMessage] = useState(null) // { texte, ton: 'ok' | 'refus', champ: identifiant du champ fautif à ramener en vue }
+  const reponse = useRef(null)
+
+  /* ACAL1812 — la réponse de « Terminer » est EN VUE : le champ fautif défile au centre et prend le focus ; sinon la
+     bannière (posée au-dessus du pied) prend le focus, sans défilement de la page. */
+  useEffect(() => {
+    if (!message) return
+    const champ = message.champ ? document.getElementById(message.champ) : null
+    if (champ) { champ.scrollIntoView?.({ block: 'center' }); champ.focus({ preventScroll: true }) } else reponse.current?.focus({ preventScroll: true })
+  }, [message])
 
   useEffect(() => {
     if (!id) return undefined
@@ -138,7 +157,8 @@ export default function ReleveVisite() {
     const mises = res?.data?.roof_layout?.zones
       ?? zonesDuDocument(doc.document).map((z) => (String(z.id) === String(zone.id) ? { ...z, ...champs } : z))
     doc.appliquerSection('zones', mises, res?.data?.empreinte_document ?? null)
-    setPente(null)
+    // La pente tapée RESTE lue (« 22° · saisie à la main ») : seule la marque « déjà écrite » évite de la réécrire.
+    setPente((p) => ({ ...p, enregistree: true }))
   }
 
   const terminer = async () => {
@@ -147,10 +167,13 @@ export default function ReleveVisite() {
     const fautes = validerAvantEnvoi(releve.chaines, azimut, precision)
     setErreurs(fautes)
     setMessage(null)
-    if (Object.keys(fautes).length) return
+    if (Object.keys(fautes).length) {
+      setMessage({ texte: Object.values(fautes)[0], ton: 'refus', champ: champFautif(fautes) })
+      return
+    }
     setEnCours(true)
     try {
-      if (pente && zone && doc.etat === 'ok') await enregistrerPente()
+      if (pente && !pente.enregistree && zone && doc.etat === 'ok') await enregistrerPente()
       const corps = corpsDuReleve({
         releveLe: releve.releveLe || dateDuJour(), chaines: releve.chaines, azimutDeg: azimut,
         precisionDeg: precision, notes: releve.notes, photoIds: releve.photoIds,
@@ -160,13 +183,14 @@ export default function ReleveVisite() {
         : calepinageApi.calepinages.enregistrerReleve(id, corps))
       const nouvelId = res?.data?.releve?.id
       setReleve((r) => ({ ...r, id: nouvelId ?? r.id, releveLe: corps.releve_le }))
-      setMessage(releve.id ? 'Relevé corrigé.' : 'Relevé enregistré.')
+      setMessage({ texte: releve.id ? 'Relevé corrigé.' : 'Relevé enregistré.', ton: 'ok' })
     } catch (err) {
-      if (!err?.response) setMessage('Pas de réseau : les mesures ne sont pas enregistrées. Terminez le relevé au retour du réseau.')
-      else if (lireConflit(err)?.documentModifie) { setMessage('Le calepinage a changé ailleurs : il est relu, recommencez.'); doc.recharger() } else {
+      const refus = (texte, champ = null) => setMessage({ texte, ton: 'refus', champ })
+      if (!err?.response) refus('Pas de réseau : les mesures ne sont pas enregistrées. Terminez le relevé au retour du réseau.')
+      else if (lireConflit(err)?.documentModifie) { refus('Le calepinage a changé ailleurs : il est relu, recommencez.'); doc.recharger() } else {
         const { champs } = refusServeur(err)
         setErreurs(champs)
-        setMessage(messageRefus(err, 'Le relevé a été refusé par le serveur.'))
+        refus(messageRefus(err, 'Le relevé a été refusé par le serveur.'), champFautif(champs))
       }
     } finally {
       setEnCours(false)
@@ -244,8 +268,13 @@ export default function ReleveVisite() {
             <span>{noteHorsLigne(photos.enAttente, enLigne)}</span>
           </section>
         )}
-        {message && <p role="status" className="cal-tel-message" data-testid="releve-message">{message}</p>}
       </div>
+
+      {/* ACAL1812 — la réponse vit ENTRE le corps défilant et le pied fixe : jamais sous la barre du bas. */}
+      {message && (
+        <p ref={reponse} tabIndex={-1} role={message.ton === 'refus' ? 'alert' : 'status'} className="cal-tel-message"
+          data-ton={message.ton} data-testid="releve-message">{message.texte}</p>
+      )}
 
       <footer className="cal-tel-pied">
         <Link to={`/calepinage/${id}`} className="cal-tel-pied-secondaire" data-testid="releve-voir-3d">Voir en 3D</Link>
