@@ -26,7 +26,7 @@ import ValeurUnite from './panneaux/ValeurUnite'
    Les anciens contrôles restent montés : masqués en guidé, visibles en Avancé.
    ========================================================================== */
 
-const ASTUCE_CONTOUR = 'Cliquez sur un coin pour le déplacer, ou double-cliquez sur un bord pour ajouter un point.'
+const ASTUCE_CONTOUR = 'Glissez un coin pour le déplacer. Double-cliquez un bord pour ajouter un point.'
 const ASTUCE_AJOUT = 'Cliquez sur la carte pour poser chaque coin du pan, double-cliquez pour le fermer. Échap annule l’ajout.'
 const DUREE_BULLE_MS = 8000
 
@@ -148,8 +148,8 @@ function CartePente({ calepinageId, builderApi, documentVivant, lectureSeule, en
             {aConfirmer && !inconnue && (
               <p className="cal-toit-pente-texte">
                 {vue.plat
-                  ? "Toit plat pris par défaut, pas une mesure. Confirmez-le ou vérifiez-le avant d'envoyer le devis."
-                  : "Valeur de départ, pas une mesure. Confirmez-la ou mesurez-la avant d'envoyer le devis."}
+                  ? "Toit plat pris par défaut, pas une mesure : confirmez-le ou vérifiez-le."
+                  : "Valeur de départ, pas une mesure : confirmez-la ou mesurez-la."}
               </p>
             )}
             {aConfirmer && inconnue && (

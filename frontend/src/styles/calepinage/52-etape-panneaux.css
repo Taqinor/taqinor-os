@@ -63,8 +63,9 @@
 .cal-coque .cal-pan-option-tete { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .cal-coque .cal-pan-option-nom { font-family: var(--font-display); font-size: 1rem; font-weight: 600; letter-spacing: -0.01em; }
 .cal-coque .cal-pan-option-ligne {
-  display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; font-size: 0.8125rem; font-weight: 400; color: var(--cal-texte-2);
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; font-size: 0.8125rem; font-weight: 400; color: var(--cal-texte-2);
 }
+.cal-coque .cal-pan-option-ligne > span { white-space: nowrap; }
 .cal-coque .cal-pan-option-ligne b { font-family: var(--font-display); font-size: 0.9375rem; font-weight: 700; color: var(--cal-texte-1); }
 /* Le « · » n'est qu'un séparateur de lecture (texte, lecteurs d'écran) : l'écart de 14 px le remplace à l'œil. */
 .cal-coque .cal-pan-sep { display: none; }
@@ -189,14 +190,14 @@
   content: '';
   position: absolute;
   left: 50%;
-  width: 14px;
-  height: 18px;
-  margin-left: -7px;
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 18'%3E%3Cpath d='M7 0l7 18H0z' fill='black'/%3E%3C/svg%3E") center / 14px 18px no-repeat;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 18'%3E%3Cpath d='M7 0l7 18H0z' fill='black'/%3E%3C/svg%3E") center / 14px 18px no-repeat;
+  width: 8px;
+  height: 9px;
+  margin-left: -4px;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 18'%3E%3Cpath d='M7 0l7 18H0z' fill='black'/%3E%3C/svg%3E") center / 8px 9px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 18'%3E%3Cpath d='M7 0l7 18H0z' fill='black'/%3E%3C/svg%3E") center / 8px 9px no-repeat;
 }
-.cal-coque[data-avance='0'][data-etape='panneaux'] #rp9-compass .rp9-compass-arrow::before { top: 4px; background: var(--cal-refus); }
-.cal-coque[data-avance='0'][data-etape='panneaux'] #rp9-compass .rp9-compass-arrow::after { bottom: 4px; background: var(--cal-texte-3); transform: rotate(180deg); }
+.cal-coque[data-avance='0'][data-etape='panneaux'] #rp9-compass .rp9-compass-arrow::before { top: 13px; background: var(--cal-refus); }
+.cal-coque[data-avance='0'][data-etape='panneaux'] #rp9-compass .rp9-compass-arrow::after { bottom: 13px; background: var(--cal-texte-3); transform: rotate(180deg); }
 
 /* Mode guidé : la pose du constructeur (« Recommandation », « Personnaliser la disposition ») reste montée
    mais se range sous « Avancé » ; l'écran de l'étape la remplace. */

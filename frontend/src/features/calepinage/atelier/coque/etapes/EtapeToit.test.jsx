@@ -136,7 +136,7 @@ describe('Étape Toit — le panneau de la maquette Main', () => {
     const carte = screen.getByTestId('cal-toit-pente-carte')
     await waitFor(() => expect(within(carte).getByText('22° · face sud')).toBeInTheDocument())
     expect(within(carte).getByText('À confirmer')).toBeInTheDocument()
-    expect(within(carte).getByText('Valeur de départ, pas une mesure. Confirmez-la ou mesurez-la avant d\'envoyer le devis.')).toBeInTheDocument()
+    expect(within(carte).getByText('Valeur de départ, pas une mesure : confirmez-la ou mesurez-la.')).toBeInTheDocument()
     expect(screen.getByTestId('cal-toit-pente-confirmer')).toHaveTextContent('Confirmer')
     expect(screen.getByTestId('cal-toit-pente-inconnue')).toHaveTextContent('Je ne la connais pas')
     const obstacles = screen.getByTestId('cal-toit-obstacles')
@@ -380,7 +380,7 @@ describe('Étape Toit — sur la carte', () => {
     $('rp9-add-area').disabled = false
     act(() => { vi.advanceTimersByTime(600) })
     expect(within(surCarte).getByText('Contour tracé')).toBeInTheDocument()
-    expect(within(surCarte).getByText('Cliquez sur un coin pour le déplacer, ou double-cliquez sur un bord pour ajouter un point.')).toBeInTheDocument()
+    expect(within(surCarte).getByText('Glissez un coin pour le déplacer. Double-cliquez un bord pour ajouter un point.')).toBeInTheDocument()
     act(() => { vi.advanceTimersByTime(9000) })
     expect(within(surCarte).queryByText('Contour tracé')).toBeNull()
   })
@@ -507,6 +507,13 @@ describe('ACAL1827 — l’étape Toit à sa maquette v2', () => {
     expect(cs(champ).borderRadius).toBe('10px')
     expect(cs(champ).background).toBe('var(--cal-surface)')
     expect(cs(document.querySelector('.cal-toit-champ > label')).color).toBe('var(--cal-texte-3)')
+  })
+
+  it('« Modifier la pente » se lit sur la ligne de l’intitulé et ne prend aucune ligne de plus tant qu’elle est fermée', async () => {
+    rendre()
+    const resume = await screen.findByText('Modifier la pente')
+    expect(cs(resume).position).toBe('absolute')
+    expect(cs(resume.closest('details')).marginTop).toBe('-10px')
   })
 
   it('lignes d’obstacles de 40 px dans un cadre de rayon 12, nom 14 px, cotes 13 px en texte 3', () => {

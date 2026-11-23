@@ -192,10 +192,19 @@
   white-space: nowrap;
 }
 .cal-coque .cal-toit-pente-message { margin: 0; font-size: 0.75rem; color: var(--cal-texte-1); }
+/* « Modifier la pente » se lit sur la ligne de l'intitulé, à droite (comme « + Ajouter » des obstacles) : fermée, elle ne prend
+   aucune ligne de plus (le panneau tient sans défiler à 1440 × 900) ; ouverte, le formulaire se déplie sous la carte. */
+.cal-coque .cal-toit-bloc-pente .cal-section-etape { position: relative; }
+.cal-coque .cal-toit-pente-modifier { margin-top: -10px; }
+.cal-coque .cal-toit-pente-modifier[open] { margin-top: 0; }
 .cal-coque .cal-toit-pente-modifier > summary {
+  position: absolute;
+  top: -8px;
+  right: -10px;
   display: flex;
   align-items: center;
-  min-height: 28px;
+  height: 32px;
+  padding: 0 10px;
   list-style: none;
   cursor: pointer;
   color: var(--cal-lien);
@@ -334,14 +343,14 @@
   content: '';
   position: absolute;
   left: 50%;
-  width: 14px;
-  height: 18px;
-  margin-left: -7px;
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 18'%3E%3Cpath d='M7 0l7 18H0z' fill='black'/%3E%3C/svg%3E") center / 14px 18px no-repeat;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 18'%3E%3Cpath d='M7 0l7 18H0z' fill='black'/%3E%3C/svg%3E") center / 14px 18px no-repeat;
+  width: 8px;
+  height: 9px;
+  margin-left: -4px;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 18'%3E%3Cpath d='M7 0l7 18H0z' fill='black'/%3E%3C/svg%3E") center / 8px 9px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 18'%3E%3Cpath d='M7 0l7 18H0z' fill='black'/%3E%3C/svg%3E") center / 8px 9px no-repeat;
 }
-.cal-coque[data-avance='0'][data-etape='toit'] #rp9-compass .rp9-compass-arrow::before { top: 4px; background: var(--cal-refus); }
-.cal-coque[data-avance='0'][data-etape='toit'] #rp9-compass .rp9-compass-arrow::after { bottom: 4px; background: var(--cal-texte-3); transform: rotate(180deg); }
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-compass .rp9-compass-arrow::before { top: 13px; background: var(--cal-refus); }
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-compass .rp9-compass-arrow::after { bottom: 13px; background: var(--cal-texte-3); transform: rotate(180deg); }
 .cal-coque .cal-barre-outils-carte {
   position: absolute;
   bottom: 20px;
@@ -370,11 +379,11 @@
 .cal-coque .cal-outil-carte:disabled { color: var(--muted-foreground); background: transparent; cursor: not-allowed; }
 .cal-coque .cal-barre-outils-separateur { width: 1px; height: 28px; margin: 0 4px; background: var(--border); }
 
-/* ACAL1445 — le bloc « Soleil » (maquette Main) : 56 de haut, rayon 18, à 12 px à droite de la barre d'outils (centrée). */
+/* ACAL1445 — le bloc « Soleil » (maquette Main) : 56 de haut, rayon 18, à 12 px à droite de la barre d'outils (centrée, 431 px). */
 .cal-coque .cal-coque-sur-carte .cal-toit-soleil {
   position: absolute;
   bottom: 28px;
-  left: calc(50% + 229px);
+  left: calc(50% + 228px);
   height: 56px;
   box-sizing: border-box;
   display: flex;
@@ -403,8 +412,8 @@
 
 @media (pointer: coarse) {
   .cal-coque .cal-lien-action,
-  .cal-coque .cal-toit-pente-modifier > summary,
   .cal-coque .cal-toit-obstacles > li { min-height: 44px; }
+  .cal-coque .cal-toit-pente-modifier > summary { height: 44px; top: -14px; }
 }
 /* H2 — la lecture de la facture a échoué : la puce le dit, en lien d'action (jamais une absence affirmée). */
 .cal-coque .cal-toit-reessayer {
