@@ -973,15 +973,19 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   });
 
   /** Cœur W34 : re-résolution CONTRAINTE vivante (verrous courants) + rendu + badges. */
-  /** ACAL574 — un pan « existant » ne se re-résout pas : ses modules restent ceux posés (refus nommé). */
-  function refusPanExistant(): boolean {
+  /** ACAL574 — un pan « existant » ne se re-résout pas : ses modules restent ceux posés (refus nommé).
+   *  ACAL1404 — seulement une fois sa pose affichée (`ctx.layoutPlan`) : au chargement (hydratation, pan rouvert,
+   *  plan remis à null) il se pave pour que `hydrateLayout` y repose la pose enregistrée, sans rien dire ;
+   *  `annoncer` faux = recalcul de fond (affinage PVGIS), qui n'est pas un geste : refus muet. */
+  function refusPanExistant(annoncer = true): boolean {
+    if (!ctx.layoutPlan) return false;
     const i = Array.isArray(ctx.areas) ? ctx.areas.findIndex((a) => a.id === ctx.activeAreaId) : -1;
     const motif = i >= 0 ? motifPanExistant(ctx.areas[i], i) : null;
-    if (motif) setStatus(motif);
+    if (motif && annoncer) setStatus(motif);
     return motif != null;
   }
-  function liveResolveFlat() {
-    if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'flat' || refusPanExistant()) return;
+  function liveResolveFlat(annoncer = true) {
+    if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'flat' || refusPanExistant(annoncer)) return;
     const ring: LngLat[] = [...ctx.vertices];
     const bill = monthlyBill();
     const locks = buildFlatLocks();
@@ -1384,8 +1388,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     return locks;
   }
 
-  function liveResolvePitched() {
-    if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'pitched' || refusPanExistant()) return; // ACAL574
+  function liveResolvePitched(annoncer = true) {
+    if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'pitched' || refusPanExistant(annoncer)) return; // ACAL574, ACAL1404
     const ring: LngLat[] = [...ctx.vertices];
     const bill = monthlyBill();
     const locks = buildPitchedLocks();
@@ -1557,7 +1561,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     if (token !== pitchedToken || perKwc == null) return;
     ctx.pitchedPvgisPerKwc = perKwc;
     // W35 — le cache PVGIS (pente, face) est rempli : re-résout l'optimiseur vivant.
-    if (ctx.roofType === 'pitched') liveResolvePitched();
+    if (ctx.roofType === 'pitched') liveResolvePitched(false); // ACAL1404 — fond, pas un geste
   }
 
   function pitchedRecompute() {
@@ -1679,7 +1683,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     renderVariantCards(); // PV64 — trois variantes lisibles du MÊME balayage
     // W34 — le cache PVGIS vient d'être enrichi : re-résout le solveur vivant pour que
     // le gagnant affiché + les badges « Recommandé » suivent la production PVGIS exacte.
-    if (ctx.roofType === 'flat') liveResolveFlat();
+    if (ctx.roofType === 'flat') liveResolveFlat(false); // ACAL1404 — fond, pas un geste
   };
 
   async function computeMatrixPvgis() {

@@ -450,7 +450,8 @@ describe('ACAL574 — re-résolution refusée sur un pan existant', () => {
     g.document = new JSDOM('<!doctype html><body></body>').window.document;
     try {
       const pan = { id: 'z1', label: 'Pan A', existant: true, geometrieEnregistree: { count: 4 } };
-      const ctx = { closed: true, vertices: rectRing(10, 8), roofType: 'flat', areas: [pan], activeAreaId: 'z1', opts: {} } as unknown as Ctx;
+      // ACAL1404 — pose déjà affichée (`layoutPlan`) : c'est un geste, refusé ; au chargement (plan null) le pan se pave.
+      const ctx = { closed: true, vertices: rectRing(10, 8), roofType: 'flat', areas: [pan], activeAreaId: 'z1', opts: {}, layoutPlan: {} } as unknown as Ctx;
       const deps = {
         renderScene: vi.fn(), paintComparison: vi.fn(), highlightRow: vi.fn(), syncProductionWindow: vi.fn(), prefillLead: vi.fn(),
         syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 800, obstructionRings: vi.fn(() => []), setStatus: vi.fn(),
