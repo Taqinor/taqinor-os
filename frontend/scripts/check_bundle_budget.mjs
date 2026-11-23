@@ -250,7 +250,11 @@ const PER_CHUNK_BUDGET_KB = 350
 // 5 Ko + 10 : 3995 -> 4050.
 // 22/11/2026 (D-ACAL-74, à confirmer par le fondateur) — reconstruction des 13 écrans du calepinage sur leurs
 // maquettes (coquille plein écran, écrans d'étape, vues téléphone) : mesuré par la CI 4 118,0 Ko → palier 4 130 Ko.
-const TOTAL_BUDGET_KB = 4130
+// 23/11/2026 (calepinage L5, tour 2, vague B : coque v2 de l'atelier, écrans Toit, Panneaux, Électrique, Schéma et
+// Résultats refaits sur leurs maquettes, relevé hors ligne au téléphone, corrections du moteur de dessin) : mesuré
+// 4 133,3 Ko gzip sur le runner (job frontend-static du run 45158204225, tête f7d5f1a7ec), aucune dépendance npm ajoutée
+// (diff package.json vide), aucun autre plafond dépassé. Budget : mesure arrondie aux 5 Ko + 10 : 4130 -> 4145.
+const TOTAL_BUDGET_KB = 4145
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
