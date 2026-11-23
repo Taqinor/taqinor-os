@@ -24,6 +24,14 @@ function refusAffectation(err, defaut) {
 }
 const REFUS_AUTO = 'Rétablissement refusé par le serveur.'
 
+/** ACAL1536 — la phrase qui dit pourquoi aucune chaîne n'est apparue, d'après les rôles absents servis. */
+function causeSansChaine(absents) {
+  const manque = absents ?? []
+  if (manque.includes('module')) return 'Choisissez d’abord le module de ce toit (module non désigné pour l’électrique).'
+  if (manque.includes('onduleur')) return 'Choisissez d’abord l’onduleur : sans lui, aucune chaîne n’est formée.'
+  return 'Aucune chaîne n’a pu être formée : vérifiez le module et l’onduleur choisis.'
+}
+
 /* Maquette Électrique (22/11) — LA BARRE D'ACTIONS POSÉE SUR LA CARTE (`cal-elec-actions-carte`).
    « Raccorder automatiquement » = le MÊME geste que « Relancer l'affectation automatique » ci-dessous
    (même requête, même confirmation quand une affectation faite à la main serait effacée, refus du
@@ -39,7 +47,14 @@ export function BarreRaccordement({ calepinageId, manuelles = false, lectureSeul
     setRefus(null)
     setEnCours(true)
     relancerAffectationAuto(calepinageId)
-      .then((r) => onRaccorde?.(r.data))
+      .then((r) => {
+        onRaccorde?.(r.data)
+        // ACAL1536 — 200 sans chaîne : la CAUSE est dite (matériel absent servi par `entree-electrique`).
+        if ((r.data?.electrique?.affectation ?? []).some((l) => l?.chaine != null)) return undefined
+        return Promise.resolve(calepinageApi.calepinages.entreeElectrique?.(calepinageId))
+          .then((e) => setRefus([causeSansChaine(e?.data?.absents)]))
+          .catch(() => setRefus([causeSansChaine(null)]))
+      })
       .catch((err) => setRefus(Object.values(refusAffectation(err, REFUS_AUTO)).map(String)))
       .finally(() => setEnCours(false))
   }
@@ -48,7 +63,7 @@ export function BarreRaccordement({ calepinageId, manuelles = false, lectureSeul
       {(arme || refus) && (
         <div className="cel-barre-message" role={refus ? 'alert' : 'status'}>
           {arme && <p>L’affectation faite à la main sera effacée. Confirmez pour continuer.</p>}
-          {(refus ?? []).map((m) => <p key={m} className="cel-refus">{m}</p>)}
+          {(refus ?? []).map((m) => <p key={m} className="cel-refus font-semibold">{m}</p>)}
         </div>
       )}
       <div role="toolbar" aria-label="Outils du raccordement" className="cel-barre-outils">

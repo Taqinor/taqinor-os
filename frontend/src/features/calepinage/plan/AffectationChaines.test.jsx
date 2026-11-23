@@ -28,12 +28,13 @@ vi.mock('../../../api/calepinageApi', () => ({
       evaluerElectrique: vi.fn(),
       enregistrerEntreeElectrique: vi.fn(),
       importerAffectation: vi.fn(),
+      entreeElectrique: vi.fn(),
     },
   },
 }))
 
 import calepinageApi from '../../../api/calepinageApi'
-import AffectationChaines from './AffectationChaines'
+import AffectationChaines, { BarreRaccordement } from './AffectationChaines'
 import { couleurParModule, marquerModules } from './AffectationChaines.helpers'
 
 const contratResultat = () => reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
@@ -578,6 +579,30 @@ describe('AffectationChaines (ACAL725) — le drapeau « optimiseur » par modul
     expect(marques.every((l) => l.optimiseur === true)).toBe(true)
     expect(marques[0]).toEqual({ module: 'P#1', chaine: 1, mppt: 1, onduleur: 1, optimiseur: true })
     expect(marquerModules(six, undefined).some((l) => 'optimiseur' in l)).toBe(false)
+  })
+})
+
+describe('BarreRaccordement (ACAL1536) — dire pourquoi rien n’est raccordé', () => {
+  it('module non désigné ⇒ une phrase de cause au lieu du silence', async () => {
+    const vide = contratResultat()
+    vide.data.electrique.affectation = []
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue(vide)
+    calepinageApi.calepinages.entreeElectrique.mockResolvedValue({
+      data: exempleContrat('calepinage', 'calepinage_entree_electrique', 'exemple_vide'),
+    })
+    render(<BarreRaccordement calepinageId={1} onRaccorde={() => {}} onModifier={() => {}} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Raccorder automatiquement' }))
+    expect(await screen.findByText(/Choisissez d’abord le module de ce toit/)).toBeInTheDocument()
+  })
+
+  it('des chaînes apparaissent ⇒ aucune phrase de cause', async () => {
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue(contratResultat())
+    const onRaccorde = vi.fn()
+    render(<BarreRaccordement calepinageId={1} onRaccorde={onRaccorde} onModifier={() => {}} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Raccorder automatiquement' }))
+    await waitFor(() => expect(onRaccorde).toHaveBeenCalled())
+    expect(screen.queryByText(/Choisissez d’abord/)).toBeNull()
+    expect(calepinageApi.calepinages.entreeElectrique).not.toHaveBeenCalled()
   })
 })
 
