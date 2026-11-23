@@ -417,6 +417,6 @@ describe('CALX109 câblage — l’optimiseur passe les cotes du pan ACTIF', () 
     const source = readFileSync(resolve(process.cwd(), 'src/scripts/roofPro11/optimizer.ts'), 'utf8');
     expect(source).toContain('const cotesDuModuleDuPanActif = (): Panel2Module | undefined => {');
     // Deux lignes d'appel : `solveLive` (plat) et `solveLivePitched` (pente).
-    expect(source.split('module: cotesDuModuleDuPanActif(),').length - 1).toBe(2);
+    expect(source.split('module: cotesDuModuleDuPanActif(), // CALX109').length - 1).toBe(2); // ACAL1523 : le rendu du gagnant porte un 3e appel (// ACAL1523), hors solveurs
   });
 });
