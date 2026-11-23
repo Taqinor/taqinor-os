@@ -1152,13 +1152,14 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
 
   it('bandeau, rail, carte et panneau dans l’ordre de la maquette, aux libellés de la maquette', async () => {
     amorcer()
+    calepinageApi.calepinages.get.mockResolvedValue(reponseContrat('calepinage', 'calepinage_detail'))
     rendreCalepinage(CTX.calepinage.id)
     const coque = await screen.findByTestId('cal-coque')
     const barre = screen.getByTestId('cal-barre-projet')
     // Le bandeau : « Calepinages », le nom servi (+ ville servie), la ligne lead + facture servie, Guidé | Expert, devis.
     expect(screen.getByTestId('cal-retour-liste')).toHaveTextContent('Calepinages')
-    expect(screen.getByTestId('cal-projet-titre')).toHaveTextContent(CTX.calepinage.titre)
-    expect(screen.getByTestId('cal-projet-titre')).toHaveTextContent(CTX.calepinage.client_ville)
+    // ACAL1730 : le nom du lead servi par le détail, plus « titre — ville ».
+    await waitFor(() => expect(screen.getByTestId('cal-projet-titre').textContent).toBe("Lead d'essai"))
     expect(screen.getByTestId('cal-projet-sous-titre')).toHaveTextContent(/^Lead · facture 900 MAD \/ mois$/)
     const mode = within(barre).getByRole('group', { name: 'Mode' })
     expect(within(mode).getAllByRole('button').map((b) => b.textContent)).toEqual(['Guidé', 'Expert'])
@@ -1398,22 +1399,27 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
     }
   })
 
-  it('H1 — bandeau : à partir d’Électrique, la ligne dit la pose SERVIE (panneaux · kWc), + l’onduleur à Résultats et Documents', async () => {
+  it('ACAL1730 — bandeau : le nom du lead en titre ; la ligne dit la pose SERVIE (panneaux · kWc · onduleur), la même à toute étape et dans les deux modes', async () => {
     amorcer()
     const res = reponseContrat('calepinage', 'calepinage_resultat')
     calepinageApi.calepinages.resultat.mockResolvedValue(res)
+    calepinageApi.calepinages.get.mockResolvedValue(reponseContrat('calepinage', 'calepinage_detail'))
     rendreCalepinage(CTX.calepinage.id)
     await screen.findByTestId('cal-coque')
-    await userEvent.click(screen.getByTestId('cal-etape-toit'))
-    expect(screen.getByTestId('cal-projet-sous-titre')).toHaveTextContent(/^Lead · facture 900 MAD \/ mois$/)
+    // Le titre : le nom du lead servi par le détail (« Lead d'essai »), jamais « Calepinage N — ville ».
+    await waitFor(() => expect(screen.getByTestId('cal-projet-titre').textContent).toBe('Lead d\'essai'))
     const { total_modules: n } = res.data.pose
     const o = res.data.electrique.onduleurs[0]
-    await userEvent.click(screen.getByTestId('cal-etape-electrique'))
     const kwc = res.data.pose.kwc.toLocaleString('fr-FR', { minimumFractionDigits: 2 })
-    await waitFor(() => expect(screen.getByTestId('cal-projet-sous-titre').textContent).toBe(`${n} panneaux · ${kwc} kWc`))
+    const ligne = `${n} panneaux · ${kwc} kWc · ${o.nombre} onduleur ${o.taille_kw} kW`
+    await userEvent.click(screen.getByTestId('cal-etape-toit'))
+    await waitFor(() => expect(screen.getByTestId('cal-projet-sous-titre').textContent).toBe(ligne))
     await userEvent.click(screen.getByTestId('cal-etape-documents'))
-    await waitFor(() => expect(screen.getByTestId('cal-projet-sous-titre').textContent)
-      .toBe(`${n} panneaux · ${kwc} kWc · ${o.nombre} onduleur ${o.taille_kw} kW`))
+    await waitFor(() => expect(screen.getByTestId('cal-projet-sous-titre').textContent).toBe(ligne))
+    await userEvent.click(within(screen.getByTestId('cal-barre-projet')).getByRole('button', { name: 'Expert' }))
+    await waitFor(() => expect(screen.getByTestId('cal-coque')).toHaveAttribute('data-expert', '1'))
+    expect(screen.getByTestId('cal-projet-sous-titre').textContent).toBe(ligne)
+    expect(screen.getByTestId('cal-projet-titre').textContent).toBe('Lead d\'essai')
   })
 
   it('H1 — les boutons de zoom de la carte sont nommés en français même quand la carte se monte tard', async () => {
