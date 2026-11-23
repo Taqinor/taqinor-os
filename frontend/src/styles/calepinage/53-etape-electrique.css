@@ -77,6 +77,9 @@
   overflow-y: auto;
   max-height: 274px;
   overscroll-behavior: contain;
+  /* ACAL1543 — dans la colonne flex, la boîte défilante ne se réduit jamais à rien (min-height auto vaut 0
+     quand elle défile) : elle garde sa hauteur de contenu, plafonnée par max-height. */
+  flex: none;
 }
 .cel-pret[aria-busy='true'] .cel-pret-lignes { opacity: 0.7; }
 .cel-pret-squelette > span { flex: 1; height: 14px; border-radius: 6px; background: var(--muted); }
@@ -108,10 +111,17 @@
   padding: 0 12px;
   border: 0;
   border-radius: 8px;
-  background: var(--foreground);
-  color: var(--background);
+  background: transparent;
+  color: var(--foreground);
+  box-shadow: inset 0 0 0 1px var(--border);
   font-weight: 600;
   font-size: 0.875rem;
+}
+/* ACAL1543 — le premier point à régler est doré (langage v2) ; les autres restent discrets. */
+.cel-pret-regler[data-recommande='oui'] {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: none;
 }
 
 /* Carte « Schéma électrique — Voir » */
