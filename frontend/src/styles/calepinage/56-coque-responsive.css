@@ -104,7 +104,7 @@
   .cal-coque .cal-retour { height: 48px; padding: 0 10px; gap: 6px; }
   .cal-coque .cal-barre-projet .cal-segmente { border-radius: 12px; }
   .cal-coque .cal-barre-projet .cal-segmente > button { height: 42px; padding: 0 16px; border-radius: 9px; }
-  .cal-coque .cal-barre-projet .cal-bouton-or { height: 48px; }
+  .cal-coque .cal-barre-projet .cal-bouton-devis { height: 48px; }
 
   /* Rail replié en pictogrammes. */
   .cal-coque .cal-rail { width: 72px; align-items: center; gap: 6px; padding: 12px 0; }
@@ -191,7 +191,7 @@
   .cal-coque .cal-barre-projet .cal-segmente > button { height: 44px; padding: 0 14px; }
   .cal-coque .cal-barre-espace { order: 3; flex-basis: 100%; height: 0; }
   .cal-coque .cal-barre-enregistrement { order: 4; flex-wrap: wrap; max-width: 100%; }
-  .cal-coque .cal-barre-projet .cal-bouton-or { order: 5; margin-left: auto; height: 44px; padding: 0 12px; }
+  .cal-coque .cal-barre-projet .cal-bouton-devis { order: 5; margin-left: auto; height: 44px; padding: 0 12px; }
   .cal-coque .cal-barre-messages { right: auto; left: 0; width: min(22rem, calc(100vw - 16px)); }
 
   /* Rail en barre du bas ; la carte au-dessus ; le tiroir posé sur la carte, au-dessus de la barre. */

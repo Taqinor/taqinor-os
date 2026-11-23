@@ -107,37 +107,40 @@
   box-shadow: var(--shadow-md);
 }
 
-/* Contrôle segmenté (Guidé | Expert, Plan | 3D…) */
+/* Contrôle segmenté (Guidé | Expert, Plan | 3D…) — maquette v2 : piste --cal-piste, option choisie en pastille claire
+   (une bascule, pas un « choisi » : l'actif bleu nuit est réservé à l'étape, à l'outil et au bouton enfoncé). */
 .cal-coque .cal-segmente {
   display: flex;
   padding: 3px;
-  background: var(--muted);
-  border-radius: 10px;
+  background: var(--cal-piste);
+  border-radius: var(--cal-rayon-bouton);
 }
 .cal-coque .cal-segmente > button {
-  height: 30px;
+  height: 32px;
   padding: 0 14px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--cal-rayon-champ);
   background: transparent;
-  color: var(--muted-foreground);
+  color: var(--cal-texte-2);
   font-weight: 500;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
 }
-.cal-coque .cal-segmente-grand > button { height: 38px; }
+.cal-coque .cal-segmente-grand > button { height: 38px; border-radius: 9px; }
 /* ACAL1280 — cible tactile de 44 × 44 px sans changer le dessin de la maquette (30/38 px) : la zone cliquable
    déborde du bouton par un pseudo-élément transparent (la bande de 3 px du groupe est comptée dans la cible). */
 .cal-coque .cal-segmente > button { position: relative; min-width: 44px; }
-.cal-coque .cal-segmente > button::before { content: ''; position: absolute; inset: -7px 0; }
+.cal-coque .cal-segmente > button::before { content: ''; position: absolute; inset: -6px 0; }
 .cal-coque .cal-segmente-grand > button::before { inset: -3px 0; }
 .cal-coque .cal-segmente > button[aria-pressed='true'] {
-  background: var(--card);
-  color: var(--foreground);
+  background: var(--cal-segment-choisi);
+  color: var(--cal-texte-1);
   font-weight: 600;
-  box-shadow: var(--shadow-xs);
+  box-shadow: var(--cal-segment-ombre);
 }
 
-/* Boutons des maquettes */
+/* Boutons des maquettes v2 (ACAL1802) — l'OR (--cal-action) est le seul aplat doré d'un écran : le bouton qui fait
+   avancer (BoutonOr). Tout le reste qui agit est bleu nuit (BoutonMarine, « Générer le devis » du bandeau).
+   Un seul rayon de bouton (--cal-rayon-bouton, 11 px). */
 .cal-coque .cal-bouton-or {
   display: inline-flex;
   align-items: center;
@@ -146,24 +149,30 @@
   height: 44px;
   padding: 0 18px;
   border: 0;
-  border-radius: 10px;
-  background: var(--primary);
-  color: var(--primary-foreground);
-  font-weight: 600;
+  border-radius: var(--cal-rayon-bouton);
+  background: var(--cal-action);
+  color: var(--cal-action-texte);
+  font-weight: 700;
   font-size: 0.875rem;
+  box-shadow: var(--cal-action-ombre);
 }
 .cal-coque .cal-bouton-or-plein { width: 100%; height: 48px; font-size: 1rem; }
-.cal-coque .cal-bouton-or:disabled { opacity: 0.6; cursor: not-allowed; }
+.cal-coque .cal-bouton-or:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
 .cal-coque .cal-bouton-marine {
+  position: relative;
   height: 44px;
   padding: 0 14px;
   border: 0;
-  border-radius: 10px;
-  background: var(--foreground);
-  color: var(--background);
+  border-radius: var(--cal-rayon-bouton);
+  background: var(--cal-marine);
+  color: var(--cal-marine-texte);
   font-weight: 600;
   font-size: 0.875rem;
 }
+.cal-coque .cal-bouton-marine:disabled { opacity: 0.6; cursor: not-allowed; }
+/* « Générer le devis » du bandeau : bleu nuit, 40 px dessinés (maquette), cible de 44 px par débord transparent. */
+.cal-coque .cal-bouton-devis { height: 40px; padding: 0 18px; box-shadow: var(--cal-marine-ombre); white-space: nowrap; }
+.cal-coque .cal-bouton-devis::before { content: ''; position: absolute; inset: -2px 0; }
 
 /* ── Corps : rail · centre · panneau ───────────────────────────────────── */
 .cal-coque .cal-coque-corps { flex: 1; display: flex; min-height: 0; }
@@ -200,17 +209,42 @@
 }
 .cal-coque .cal-rail-avance { min-height: 56px; }
 @media (hover: hover) {
-  .cal-coque .cal-rail-etape:hover { color: var(--foreground); }
+  .cal-coque .cal-rail-etape:not([aria-current='step']):hover { color: var(--cal-texte-1); background: var(--cal-piste); }
 }
+/* ACAL1802 — l'étape active : tuile bleu nuit, texte clair, pictogramme or (sombre : tuile or, texte bleu nuit). */
 .cal-coque .cal-rail-etape[aria-current='step'] {
-  background: color-mix(in oklch, var(--primary) 12%, var(--card));
-  color: var(--foreground);
+  background: var(--cal-actif);
+  color: var(--cal-actif-texte);
   font-weight: 600;
-  box-shadow: inset 0 0 0 1.5px var(--primary);
+  box-shadow: var(--cal-actif-ombre);
 }
-.cal-coque .cal-rail-etape[aria-current='step'] svg { color: var(--primary-text); }
-.cal-coque .cal-rail-avance[aria-expanded='true'] { color: var(--foreground); background: var(--muted); }
-.cal-coque .cal-rail-a-regler { font-size: 0.75rem; line-height: 16px; font-weight: 600; color: var(--warning-text); }
+.cal-coque .cal-rail-etape[aria-current='step'] svg { color: var(--cal-actif-picto); }
+/* Étape faite (hors active) : pastille verte cochée en haut à droite de la tuile (maquette Resultats). */
+.cal-coque .cal-rail-etape[data-etat='fait']:not([aria-current='step'])::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  right: 9px;
+  width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  background: var(--cal-ok) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6L9 17l-5-5'/%3E%3C/svg%3E") center / 10px 10px no-repeat;
+  box-shadow: 0 0 0 2px var(--cal-surface);
+}
+.cal-coque .cal-rail-avance[aria-expanded='true'] { color: var(--cal-texte-1); background: var(--cal-piste); }
+/* « N à régler » : pastille or de 7 px devant le texte. */
+.cal-coque .cal-rail-a-regler { font-size: 0.75rem; line-height: 16px; font-weight: 600; color: var(--cal-or-texte); }
+.cal-coque .cal-rail-a-regler::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 4px;
+  border-radius: 4px;
+  background: var(--cal-action);
+  vertical-align: 1px;
+}
+.cal-coque .cal-rail-etape[aria-current='step'] .cal-rail-a-regler { color: inherit; }
 /* Maquettes (mesurées en rendu) : tuile de 70 px (12 + 24 + 6 + 16 + 12) ; avec « 1 à régler » (Documents.dc.html,
    sous Toit) 92 px (+ 6 + 16). L'interligne hérité (18 px) donnait 72 et 96 et descendait les étapes suivantes. */
 .cal-coque .cal-rail-libelle { line-height: 16px; }
@@ -411,26 +445,29 @@
 .cal-coque .cal-section-etape-tete { display: flex; align-items: center; justify-content: space-between; }
 .cal-coque .cal-section-etape-tete h2 { margin: 0; font-size: 0.875rem; font-weight: 600; }
 .cal-coque .cal-tuile {
-  min-height: 64px;
+  min-height: 56px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--card);
-  color: var(--foreground);
+  gap: 5px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--cal-filet-fort);
+  border-radius: var(--cal-rayon-tuile);
+  background: var(--cal-surface);
+  color: var(--cal-texte-1);
   font-weight: 500;
   font-size: 0.75rem;
 }
+/* ACAL1802 — LE style « choisi » de l'atelier : filet bleu nuit de 2 px sur papier (sombre : filet or sur or à 14 %). */
 .cal-coque .cal-tuile[aria-pressed='true'] {
-  border-color: transparent;
-  background: color-mix(in oklch, var(--primary) 12%, var(--card));
+  border-width: 2px;
+  border-color: var(--cal-choisi-filet);
+  background: var(--cal-choisi-fond);
   font-weight: 600;
-  box-shadow: inset 0 0 0 1.5px var(--primary);
 }
-.cal-coque .cal-tuile-pointillee { border-style: dashed; color: var(--muted-foreground); }
+.cal-coque .cal-tuile-pointillee { border-style: dashed; color: var(--cal-texte-2); }
 
 .cal-coque button:focus-visible,
 .cal-coque a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }

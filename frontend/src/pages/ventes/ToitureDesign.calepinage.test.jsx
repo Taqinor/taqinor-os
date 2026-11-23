@@ -1499,6 +1499,8 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
     try {
       amorcer()
       rendreCalepinage(CTX.calepinage.id)
+      await screen.findByTestId('cal-coque')
+      await userEvent.click(screen.getByTestId('cal-etape-toit'))
       await screen.findByTestId('cal-barre-outils-carte', {}, { timeout: 5000 })
       await waitFor(() => expect(cadrerToit).toHaveBeenCalledWith({
         zoomMax: 22, basPx: 56 + 28, margesPx: { haut: 72, gauche: 92, droite: 400, bas: 84 },
@@ -1511,16 +1513,17 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
     beforeEach(async () => {
       const { readFileSync } = await import('node:fs')
       style = document.createElement('style')
-      style.textContent = ['49-jetons-v2.css', '50-coque-atelier.css', '56-coque-responsive.css']
-        .map((f) => readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/${f}`, 'utf8')).join('\n')
+      style.textContent = ['roofbuilder.css', 'calepinage/49-jetons-v2.css', 'calepinage/50-coque-atelier.css',
+        'calepinage/56-coque-responsive.css']
+        .map((f) => readFileSync(`${globalThis.process.cwd()}/src/styles/${f}`, 'utf8')).join('\n')
       document.head.appendChild(style)
     })
     afterEach(() => { style.remove(); document.documentElement.classList.remove('dark') })
     // Les règles du BUREAU (@media (min-width: 1280px)) lues dans la feuille chargée (jsdom n'évalue pas @media) :
     // la dernière règle qui vise l'élément et déclare la propriété (ordre de la feuille).
-    const auBureau = (el, prop) => {
-      const regles = [...style.sheet.cssRules].filter((r) => r.media && r.conditionText?.includes('min-width: 1280px'))
-        .flatMap((m) => [...m.cssRules])
+    const auBureau = (el, prop, bureau = true) => {
+      const regles = bureau ? [...style.sheet.cssRules].filter((r) => r.media && r.conditionText?.includes('min-width: 1280px'))
+        .flatMap((m) => [...m.cssRules]) : [...style.sheet.cssRules].filter((r) => r.selectorText)
       let valeur = ''
       for (const r of regles) {
         let vise = false
@@ -1573,6 +1576,43 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
       await userEvent.click(within(barre).getByRole('button', { name: 'Expert' }))
       await waitFor(() => expect(coque).toHaveAttribute('data-expert', '1'))
       expect(auBureau(carte, 'position')).toBe('')
+    })
+
+    it('ACAL1802 : bleu nuit sur tout état actif, l’or sur la SEULE action suivante, un seul style « choisi » ; Expert compris', async () => {
+      amorcer()
+      rendreCalepinage(CTX.calepinage.id)
+      const coque = await screen.findByTestId('cal-coque')
+      await userEvent.click(screen.getByTestId('cal-etape-toit'))
+      const pied = await screen.findByTestId('cal-action-etape-suivante')
+      const cs = (el) => getComputedStyle(el)
+      const etape = screen.getByTestId('cal-etape-toit')
+      expect(etape).toHaveAttribute('aria-current', 'step')
+      expect(cs(etape).background).toContain('--cal-actif')
+      expect(cs(etape).color).toContain('--cal-actif-texte')
+      expect(cs(etape).boxShadow).not.toContain('--primary')
+      expect(cs(screen.getByTestId('cal-generer-devis-haut')).background).toContain('--cal-marine')
+      expect(cs(screen.getByTestId('cal-generer-devis-haut')).borderRadius).toBe('var(--cal-rayon-bouton)')
+      // Le bouton enfoncé du constructeur et une tuile choisie, posés dans la coque rendue.
+      const poser = (html) => { const t = document.createElement('div'); t.innerHTML = html; coque.appendChild(t); return t.firstChild }
+      const rp9 = poser('<button class="rp9-btn" aria-pressed="true">Obstacle polygonal</button>')
+      expect(cs(rp9).background).toContain('--cal-actif')
+      expect(cs(rp9).borderRadius).toBe('var(--cal-rayon-bouton)')
+      expect(cs(poser('<input class="rp9-input">')).borderRadius).toBe('var(--cal-rayon-champ)')
+      const tuile = poser('<button class="cal-tuile" aria-pressed="true">2 pans</button>')
+      // (jsdom ne rend pas une couleur de bordure en var() : la règle qui s'applique est lue dans la feuille chargée)
+      expect(auBureau(tuile, 'border-color', false)).toBe('var(--cal-choisi-filet)')
+      expect(auBureau(tuile, 'border-width', false)).toBe('2px')
+      expect(cs(tuile).background).toContain('--cal-choisi-fond')
+      expect(cs(tuile).boxShadow, 'plus de liseré doré sur la tuile choisie').not.toContain('--primary')
+      // UN seul aplat doré à l'écran : le bouton d'étape.
+      const dores = () => [...coque.querySelectorAll('button')]
+        .filter((b) => !b.closest('[hidden]') && cs(b).background.includes('--cal-action'))
+      expect(dores()).toEqual([pied])
+      // Expert : aucun bouton d'étape, donc aucun aplat doré ; l'étape active reste bleu nuit.
+      await userEvent.click(within(screen.getByTestId('cal-barre-projet')).getByRole('button', { name: 'Expert' }))
+      await waitFor(() => expect(coque).toHaveAttribute('data-expert', '1'))
+      expect(dores()).toEqual([])
+      expect(cs(screen.getByTestId('cal-etape-toit')).background).toContain('--cal-actif')
     })
 
     it('ACAL1617 : Expert, étape Résultats — le panneau prend la largeur utile, la carte passe dessous ; Toit garde 384 px', async () => {

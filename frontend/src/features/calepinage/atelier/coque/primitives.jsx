@@ -44,8 +44,8 @@ export function Icone({ nom, taille = 24, epaisseur = 1.8, className = '' }) {
   )
 }
 
-/** Le bouton doré des maquettes (« Générer le devis », « Poser les panneaux → »).
-    `plein` : pleine largeur, 48 px, 16 px (pied d'étape) ; sinon 44 px, 14 px. */
+/** Le bouton doré des maquettes v2 : la SEULE action suivante d'un écran (« Poser les panneaux → »), jamais un autre
+    bouton (ACAL1802 : « Générer le devis » est bleu nuit). `plein` : pleine largeur (pied d'étape) ; sinon 44 px. */
 export function BoutonOr({ children, plein = false, fleche = false, className = '', ...props }) {
   return (
     <button type="button" className={`cal-bouton-or${plein ? ' cal-bouton-or-plein' : ''} ${className}`} {...props}>
@@ -55,7 +55,7 @@ export function BoutonOr({ children, plein = false, fleche = false, className = 
   )
 }
 
-/** Le bouton marine (« Confirmer », « Régler »). */
+/** Le bouton bleu nuit (« Confirmer », « Régler », « Générer le devis » du bandeau). */
 export function BoutonMarine({ children, className = '', ...props }) {
   return <button type="button" className={`cal-bouton-marine ${className}`} {...props}>{children}</button>
 }
@@ -104,7 +104,8 @@ export function SectionEtape({ titre, action = null, children, className = '' })
   )
 }
 
-/** La tuile choisie / non choisie (formes du toit, options de pose) : bord or + fond pâle si choisie. */
+/** La tuile choisie / non choisie (formes du toit, options de pose) : choisie = filet bleu nuit de 2 px sur papier
+    (sombre : filet or), LE style « choisi » de l'atelier (ACAL1802). */
 export function Tuile({ choisie = false, pointillee = false, children, className = '', ...props }) {
   return (
     <button type="button" aria-pressed={choisie}
