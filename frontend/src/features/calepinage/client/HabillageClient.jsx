@@ -4,7 +4,7 @@ import { Icone, Segmente } from '../atelier/coque/primitives'
 import { gestes, useConstructeur } from '../atelier/coque/etapes/panneaux/constructeur'
 import { jourMois } from '../atelier/coque/etapes/panneaux/formats'
 import { AvisEchec3D, PastilleAttente, PiedClient, PlanDessus, PuceProjet, TuilesClient, IconeTourner } from './partiesClient'
-import { instantSoleilChoisi } from './vueClient.helpers'
+import { estimationPose, instantSoleilChoisi } from './vueClient.helpers'
 import { useHorsVueClientInerte } from './inerteHorsClient'
 
 /* ============================================================================
@@ -127,6 +127,9 @@ export default function HabillageClient({
   // « Réessayer » : seulement ce qui a échoué — le démarrage de la 3D (relancé par la vue client) et la vue tenue ;
   // les tuiles déjà montrées restent.
   const reessayer = () => { setEssai((n) => n + 1); onReessayer?.() }
+  // ACAL1840 (D-ACAL-88) — sans résultat complet, la production montrée est l'estimation de la pose de l'atelier.
+  const [constructeur] = useConstructeur()
+  const tuiles = donnees.tuilesAvec ? donnees.tuilesAvec(estimationPose(constructeur.figures)) : donnees.tuiles
   return (
     <>
       {noeudScene && createPortal(
@@ -149,7 +152,7 @@ export default function HabillageClient({
       )}
       <div className="cal-client-corps" data-testid="cal-vue-client" data-vue-client="">
         <LecteurSoleil />
-        <TuilesClient tuiles={donnees.tuiles} ville={donnees.ville} />
+        <TuilesClient tuiles={tuiles} ville={donnees.ville} />
       </div>
       <PiedClient id={calepinageId} />
     </>

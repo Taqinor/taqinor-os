@@ -84,9 +84,14 @@ export function TuilesClient({ tuiles, ville }) {
           ))}
         </div>
       )}
-      {tuiles.some((t) => t.cle === 'kwh') && (
+      {tuiles.some((t) => t.cle === 'kwh' && !t.nature) && (
         <span className="cal-client-mention">
           {`Estimation pour une année moyenne${ville ? ` à ${ville}` : ''}. Les montants figurent dans le devis.`}
+        </span>
+      )}
+      {tuiles.some((t) => t.nature === 'estimation') && (
+        <span className="cal-client-mention" data-testid="client-mention-estimation">
+          {'Estimation de la pose, avant le calcul complet. Les montants figurent dans le devis.'}
         </span>
       )}
       <p id="client-lien-raison" className="cal-client-mention" data-testid="client-lien-raison">{RAISON_LIEN}</p>
