@@ -443,7 +443,7 @@ Tenu à jour au fil de l'eau dans `T2/pour-reda.md`.
 - [ ] worktree `l5cal-instr` et worktrees de lanes retirés ; Docker Desktop arrêté s'il n'était pas en marche
 - [ ] rétro bornée
 
-## POINT à 12 h 35 UTC (le plus récent — REPRENDRE ICI)
+## POINT à 12 h 35 UTC
 
 **Fait depuis 11 h 25.** Vague B FUSIONNÉE : PR #1529, 12 h 27 UTC (la file l'avait refusée une fois : deux tests
 serveur — le run de PR d'une branche `claude/*` ne joue PAS le backend, seul le groupe de fusion le fait ; leçon
@@ -492,3 +492,50 @@ Branches `lane-l5c-<nom>` ; événements `…/scratchpad/l5b/T2-lane-<nom>.jsonl
 7. Démontage de la pile, relance des 5 conteneurs `erp-agentique-*`, libération des claims, rétro.
 
 **Quota.** 55 % de la semaine à 12 h 05 UTC ; cible de fin relevée à environ 65 % (vague C non prévue au départ).
+
+## POINT à 15 h 10 UTC (le plus récent — REPRENDRE ICI)
+
+**Reda est réveillé depuis 13 h 25 UTC.** Il a reçu le rapport (état de 14 h 20) par `SendUserFile`, a répondu à TOUTES
+les décisions ouvertes par questions interactives (D-ACAL-75 à 96 dans `docs/audits/decisions.yml` ; résumé dans
+`docs/claude-memory/calepinage-decisions-fondateur.md`, section 23/11), puis a choisi : **« Build everything now »**.
+Sa règle : « i only want one engine calculating every number so no more then one number for each value and you keep
+the most realistic number ». Quota de la semaine : 60 % à 13 h 15, environ 63 % à 14 h 50 ; il a accepté ≈ 85 %.
+
+**PR ouverte : #1530** (vague C ; Auto-fix allumé ; PAS en file de fusion). Tête poussée `b8d4dafc27` : lanes ecrans-s2,
+production-s2, ecrans-s3, pose-reprise (1re), moteur-unique (10 commits), tâches du lot O dans six plans, tour 3
+(47 coches, enregistrement `2026-11-23-f7d5f1a7e`), décisions. **NE PAS mettre en file avant** : (1) le correctif RÉEL
+d'ACAL1900 (le rejeu en direct `T3/T3-VAGUEC.md` a montré que la pose de 16 se rouvre encore à 5) ; (2) la suite serveur
+entière jouée (le run de PR ne la joue pas) — la suite `apps.calepinage` du 23/11 14 h 26 sur `d972960ed5` : 7 280 tests,
+1 échec et 14 erreurs dont 3 expliquées (front absent du montage) et 11 NON LUES (journal tronqué) : attendre la liste
+de la lane moteur-unique ou la rejouer avec journal complet.
+
+**Lanes en cours (worktrees `agent-<id>`, branches locales).**
+| Lane | Agent | Modèle | Tâches | État à 15 h 10 |
+|---|---|---|---|---|
+| moteur-unique (C) | `a70b1300ce0d5322b` | opus | reste ACAL1957 + suite entière | 10 commits pliés (`35d938ab43`) ; re-plier son reste |
+| pose-reprise-2 (C) | `ad4b2a2953bc0d89e` | opus | ACAL1900, ACAL1903 avec navigateur réel | en cours |
+| pertes-simulation (D) | `aa4cc89b8529b9b34` | sonnet | ACAL1968+1349, 1671, 1987 (neuve), 1967 | en cours |
+| ombrage-p90-nasa (D) | `a0f2f3d374de04120` | opus | ACAL1407+1501, 1672, 746 | en cours |
+| devis-auto-ci (D) | `aeb85a9f773ecb762` | opus | ADEV125, 126, 127, 124 | en cours |
+| regles-communes (D) | `aae78b8237360c887` | opus | ADEV121, ADEV122+ACAL1553, ADEV123, APAR92 | en cours |
+| ecrans-d (D) | `a5ef7afef8238d297` | sonnet | ACAL1985, 1912, 1905, 1908, 1840, 1755 | 3 commits |
+Missions : `controles/lane-moteur-unique.md`, `controles/lanes-vague-C.md`, `controles/lanes-vague-D.md`.
+À lancer APRÈS le pli de pose-reprise-2 : lane « taille-auto » (ACAL1331 + ACAL1448, opus, moteur de dessin).
+
+**À chaque lane rendue** : relire le diff, `git merge --no-ff`, retirer le worktree (jonctions d'abord), recopier ses
+événements au registre (`lot_o_complement.py` les renomme), puis gardes : `flake8`, `eslint`, vitest du module ET
+`node --test "src/**/*.test.mjs"` depuis `frontend/` (la lane ecrans-s3 a cassé un test de logique pure que vitest ne
+joue pas), `check_services_appeles`, `check_api_shapes`, `check_forme_code --base origin/main`, `check_ancres_taches`,
+`check_decisions`, OpenAPI en conteneur (`docker run … -v <worktree>:/repo -w /repo/backend/django_core l5cal-django:t0
+python ../../scripts/check_openapi_schema.py`), `codemap_fingerprint.py --write`.
+
+**Reste à faire, dans l'ordre.**
+1. Plier pose-reprise-2 → reconstruire la pile (`l5cal-instr` : `git checkout --detach <sha>`, `vite build`, `docker
+   restart l5cal-django l5cal-celery`) → rejouer ACAL1900 en direct → file de fusion de #1530 (`gh pr merge 1530 --auto --merge`).
+2. Vague D : plier les lanes, critique finale (dernier appel Fable permis : la vague touche le moteur de devis), PR à
+   part (vague D), rejeu en direct ciblé, fusion.
+3. Plan : ligne ACAL1987 (simulation qui part seule) à écrire ; préfixes « [GATED : décision … ouverte] » des tâches
+   répondues à réécrire ; `marquer_livrees.py` ; tâches des 6 points « après » de `T3/critique-vague-C1.md` et des
+   restes de `T3/T3-VAGUEC.md`.
+4. Rapport final à compléter (`RAPPORT-FINAL-2026-11-23.md` : décisions répondues, vagues C et D) → `SendUserFile`.
+5. Démontage (le classifieur a refusé `docker rm -f` d'un conteneur de test : le dire à Reda), claims, rétro mémoire.
