@@ -816,6 +816,36 @@ describe('ACAL1430 — après découpe en 2 pans : même nom partout', () => {
   });
 });
 
+// ACAL1431 — un pan « existant » porte son étiquette « · Existant 2019 » dans la liste des pans ET dans les tableaux
+// (par pan, et « Site — pans de toit et surfaces de pose »), y compris après une découpe ; « année non saisie » sinon.
+describe('ACAL1431 — pan existant : étiquette dans la liste et le tableau', () => {
+  const rendre = async (annee: number | null) => {
+    const { decouperContour } = await import('./formesToit');
+    const v = decouperContour(rectRing(12, 9), 'gable', 22, [{ id: 'area-1' }]);
+    if (!v.ok) throw new Error(v.motif);
+    const areas = v.pans;
+    Object.assign(areas[0], { existant: true, anneeMiseEnService: annee });
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><div id="rp9-areas"><ul id="liste"></ul></div></body>').window.document;
+    try {
+      const ctx = { ...ctxDeBase(areas, 'area-2'), activeArea: () => areas[0], closed: true,
+        dom: { areasWindowEl: document.getElementById('rp9-areas'), areasListEl: document.getElementById('liste') } } as unknown as Ctx;
+      createZones(ctx, { setStatus: vi.fn() }).renderAreasPanel();
+      const t = (sel: string) => document.querySelector(sel)?.textContent ?? '';
+      return { liste: t('[data-area-row="area-2"]'), autre: t('[data-area-row="area-3"]'), parPan: t('[data-pan-stat="area-2"]'), site: t('[data-site-ligne="area-2"]') };
+    } finally { g.document = avant; }
+  };
+  it('« · Existant 2019 » dans la liste, le tableau par pan et le tableau Site ; le pan à poser n’en porte aucune', async () => {
+    const r = await rendre(2019);
+    for (const texte of [r.liste, r.parPan, r.site]) expect(texte).toContain('· Existant 2019');
+    expect(r.autre).not.toContain('Existant');
+  });
+  it('année non saisie : dite comme telle', async () => {
+    expect((await rendre(null)).liste).toContain('· Existant (année non saisie)');
+  });
+});
+
 describe('ACAL554 — bouton « Appliquer ces réglages à… »', () => {
   it('un seul pan ⇒ pas de bouton ; deux pans ⇒ le bouton de la ligne', () => {
     expect(boutonReporterReglages('area-1', 1)).toBe('');

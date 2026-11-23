@@ -29,7 +29,7 @@ import {
   pivoterPoint,
   redimensionnerRectangle,
 } from './snap';
-import { computePanStats, computeSiteStats, hasMultipleBuildings, htmlTableSite, libelleBatiment, type PanStat } from './panStats'; // CALX126
+import { computePanStats, computeSiteStats, etiquettePanExistant, hasMultipleBuildings, htmlTableSite, libelleBatiment, type PanStat } from './panStats'; // CALX126, ACAL1431
 // CALX109/CALX110 câblage — le catalogue de modules de la société et le module posé sur
 // CHAQUE pan. `moduleSelect.ts` est PUR (aucun DOM) : c'est ici, dans le panneau du pan, que
 // le choix devient visible, et c'est de là qu'il repart vers le pavage et le document.
@@ -630,7 +630,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
           placeholder="bâtiment" aria-label="Bâtiment de ${esc(areaLabel(i))}"
           class="w-24 border border-white/15 bg-nuit-900/60 px-1.5 py-0.5 text-[11px] text-lune-soft focus:border-brass-400 focus:outline-none" />`;
         return `<li class="flex flex-wrap items-center gap-x-3 gap-y-1 border ${rowClass} p-3 text-sm" data-area-row="${a.id}">
-          <span class="font-semibold text-white">${esc(areaLabel(i))}</span>
+          <span class="font-semibold text-white">${esc(areaLabel(i))}${etiquettePanExistant(a)}</span>
           <span class="text-xs text-lune-faint">${panels} panneaux · ${kwc}${triParAcces ? ` · ${mentionAcces(accesDe(a))}` : ''}</span>
           ${buildingInput}
           <span class="ml-auto flex items-center gap-2">${boutonReporterReglages(a.id, areas.length)}${lockBtn}${viewBtn}${delBtn}</span>
@@ -1797,8 +1797,4 @@ export function modulesSurAllee(
   return (modules ?? []).filter((m) => touche(m.empriseM ?? [])).map((m) => m.repere);
 }
 
-/** ACAL511 — l'étiquette d'un pan « déjà en place » dans la liste des pans (HTML), vide pour un pan à poser. */
-export function etiquettePanExistant(pan: { existant?: boolean; anneeMiseEnService?: number | null } | undefined): string {
-  if (!pan?.existant) return '';
-  return ` <span class="text-lune-faint" data-pan-existant>· Existant ${pan.anneeMiseEnService ?? '(année non saisie)'}</span>`;
-}
+export { etiquettePanExistant } from './panStats'; // ACAL511 — définie à côté du tableau Site (ACAL1431), une seule étiquette

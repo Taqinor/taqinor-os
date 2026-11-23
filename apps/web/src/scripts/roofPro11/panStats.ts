@@ -47,6 +47,9 @@ export interface PanStat {
   moduleId: string | null;
   /** CALX110 — son libellé, pour que l'écran NOMME le modèle au lieu d'un identifiant. */
   moduleLibelle: string | null;
+  /** ACAL1431 — pan « déjà en place » (ACAL510) : son étiquette suit la ligne jusqu'au tableau Site. Absent sinon. */
+  existant?: boolean;
+  anneeMiseEnService?: number | null;
 }
 
 export interface BuildingTotal {
@@ -116,6 +119,7 @@ export function computePanStats(
       zeroReason,
       moduleId: modulePan?.id ?? null,
       moduleLibelle: modulePan?.libelle ?? null,
+      ...(a.existant ? { existant: true, anneeMiseEnService: a.anneeMiseEnService ?? null } : {}), // ACAL1431
     };
   });
 
@@ -215,6 +219,9 @@ export interface LigneSite {
   kwc: number | null;
   /** Pourquoi une cellule est vide, en clair. `''` quand tout est rempli. */
   motif: string;
+  /** ACAL1431 — pan existant : l'étiquette « Existant <année> » de la ligne. */
+  existant?: boolean;
+  anneeMiseEnService?: number | null;
 }
 
 /** Un TOTAL (par bâtiment, ou pour le site). Une somme partielle le DIT. */
@@ -298,6 +305,7 @@ export function computeSiteStats(
     modules: p.panels,
     kwc: p.kwc,
     motif: p.areaM2 > 0 ? p.zeroReason : (p.sommets ?? 0) < 3 ? 'contour du pan non tracé' : 'aire nulle : vérifiez le contour',
+    ...(p.existant ? { existant: true, anneeMiseEnService: p.anneeMiseEnService ?? null } : {}), // ACAL1431
   }));
 
   for (const s of surfaces ?? []) {
@@ -335,6 +343,13 @@ export function computeSiteStats(
   };
 }
 
+/** ACAL511/ACAL1431 — l'étiquette d'un pan « déjà en place » (HTML) : liste des pans, tableau par pan et tableau Site ;
+ *  vide pour un pan à poser. */
+export function etiquettePanExistant(pan: { existant?: boolean; anneeMiseEnService?: number | null } | undefined): string {
+  if (!pan?.existant) return '';
+  return ` <span class="text-lune-faint" data-pan-existant>· Existant ${pan.anneeMiseEnService ?? '(année non saisie)'}</span>`;
+}
+
 /** Une cellule : le nombre formaté, ou VIDE (jamais 0) quand la valeur manque. */
 function cellule(v: number | null, decimales = 0): string {
   if (v === null) return '<span class="text-lune-faint" data-cellule-vide>—</span>';
@@ -352,7 +367,7 @@ export function htmlTableSite(stats: SiteStats): string {
   // ACAL981 — un groupe sans identifiant se nomme par son rang (« Bâtiment 1 »), jamais « sans id ».
   const rangDe = (id: string | null): number => stats.parBatiment.findIndex((b) => b.buildingId === id) + 1;
   const ligneHtml = (l: LigneSite): string => `<tr data-site-ligne="${escHtml(l.id)}" data-site-genre="${escHtml(l.genre)}">
-      <td class="px-2 py-1 text-white">${escHtml(l.label)}</td>
+      <td class="px-2 py-1 text-white">${escHtml(l.label)}${etiquettePanExistant(l)}</td>
       <td class="px-2 py-1 text-lune-faint">${escHtml(LIBELLE_GENRE_LIGNE[l.genre])}</td>
       <td class="px-2 py-1 text-lune-faint">${escHtml(libelleBatiment(l.buildingId, rangDe(l.buildingId)))}</td>
       <td class="px-2 py-1 text-right">${cellule(l.areaM2)}</td>
