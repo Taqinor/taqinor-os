@@ -2428,8 +2428,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   }
 
   function go3DView() {
-    const { clientWidth: largeurPx, clientHeight: hauteurPx } = map.getContainer(); // ACAL1422 — l'atelier ERP garde Plan et cadre à son plafond
-    const target = cibleFermetureToit({ anneau: vertices, centre: centroid, zoomCourant: map.getZoom(), pitchCourant: map.getPitch(), largeurPx, hauteurPx, erp: opts.chiffrage !== undefined });
+    const target = cibleFermetureToit({ anneau: vertices, centre: centroid, zoomCourant: map.getZoom(), pitchCourant: map.getPitch(), largeurPx: map.getContainer().clientWidth, hauteurPx: map.getContainer().clientHeight, erp: opts.chiffrage !== undefined }); // ACAL1422 — l'atelier ERP garde Plan et cadre à son plafond
     if (opts.reducedMotion) map.jumpTo(target);
     else map.easeTo({ ...target, duration: 1100, essential: true });
   }
