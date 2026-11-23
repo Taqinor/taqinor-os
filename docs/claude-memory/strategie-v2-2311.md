@@ -73,6 +73,13 @@ for taqinor forward ».
   31 dossiers du deuxième poste, puis tous les siens, vont à Meryem, AVANT l'envoi des brouillons ; les devis restés en
   brouillon sont terminés et envoyés (14 fiches, pas les cinq passées au Froid) ; pas de passage du week-end pour
   l'instant ; les avis et recommandations de clients attendent que TAQINOR ait un local.
+- Lu dans Meta le 23/11 au soir (lecture seule, par la connexion de l'ERP) : la publicité en ligne est DÉJÀ limitée à
+  Casablanca et 40 km depuis avril (personnes qui y vivent ou y sont passées récemment) ; proposer ce réglage ne change
+  rien, et les demandes d'autres régions arrivent malgré lui. Les quatre publicités en ligne portent toujours le texte
+  faux (« garanti 10 ans », « jusqu'à 70 % ») : le texte corrigé d'octobre n'a pas été collé. La connexion Meta de l'ERP
+  a les droits pour créer campagne, ensemble et publicités (toujours éteints) ; elle ne sait pas créer le formulaire.
+  **La nouvelle campagne attend les voix de Meryem** (rappel de Reda) : fiche transférée → séance de Meryem → montage →
+  son regard → campagne préparée éteinte → il l'allume.
 - Trouvé par la critique finale, vérifié dans le code : un devis expiré ne peut plus être signé par le client et ne se
   prolonge pas, il se révise (« Réviser », rôle responsable ou administrateur ; le suivi est repris sur la nouvelle
   version). Le 23/11, 12 des 36 foyers encore en discussion étaient sur un devis expiré. Envoyer un brouillon sur une
