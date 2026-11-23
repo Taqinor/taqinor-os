@@ -1514,7 +1514,7 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
       const { readFileSync } = await import('node:fs')
       style = document.createElement('style')
       style.textContent = ['roofbuilder.css', 'calepinage/49-jetons-v2.css', 'calepinage/50-coque-atelier.css',
-        'calepinage/56-coque-responsive.css']
+        'calepinage/51-etape-toit.css', 'calepinage/56-coque-responsive.css']
         .map((f) => readFileSync(`${globalThis.process.cwd()}/src/styles/${f}`, 'utf8')).join('\n')
       document.head.appendChild(style)
     })
@@ -1613,6 +1613,53 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
       await waitFor(() => expect(coque).toHaveAttribute('data-expert', '1'))
       expect(dores()).toEqual([])
       expect(cs(screen.getByTestId('cal-etape-toit')).background).toContain('--cal-actif')
+    })
+
+    it('ACAL1804 : barre d’outils, pile de zoom, pilule de chiffres et bulle de consigne au langage v2 (étape Toit)', async () => {
+      amorcer()
+      rendreCalepinage(CTX.calepinage.id)
+      const coque = await screen.findByTestId('cal-coque')
+      await userEvent.click(screen.getByTestId('cal-etape-toit'))
+      const outils = await screen.findByTestId('cal-barre-outils-carte')
+      // La pilule n'a pas de chiffres dans ce harnais (aucune surface tracée) : celle de l'écran, posée telle qu'il la rend.
+      const pilule = document.createElement('div')
+      pilule.className = 'cal-carte-flottante cal-sur-carte-resume'
+      pilule.setAttribute('data-testid', 'cal-sur-carte-resume')
+      coque.querySelector('.cal-coque-sur-carte').appendChild(pilule)
+      const cs = (el) => getComputedStyle(el)
+      const zoomHote = document.createElement('div')
+      zoomHote.className = 'maplibregl-ctrl-top-right'
+      zoomHote.innerHTML = '<div class="maplibregl-ctrl maplibregl-ctrl-group"><button class="maplibregl-ctrl-zoom-in"></button></div>'
+      screen.getByTestId('rp9-map-wrap').appendChild(zoomHote)
+      const zoom = zoomHote.firstChild
+      // Barre d'outils : 56 px, rayon 18, ombre de la barre, à 28 px du bas au bureau ; outils 44 × 44.
+      expect(cs(outils).height).toBe('56px')
+      expect(cs(outils).borderRadius).toBe('var(--cal-rayon-outils)')
+      expect(cs(outils).boxShadow).toBe('var(--cal-ombre-outils)')
+      expect(cs(outils).background).toContain('--cal-flottante-dense')
+      expect(auBureau(outils, 'bottom')).toBe('28px')
+      for (const b of outils.querySelectorAll('.cal-outil-carte')) {
+        expect([cs(b).width, cs(b).height]).toEqual(['44px', '44px'])
+      }
+      // Pile de zoom : rayon 14 (le haut, collé au plein écran en guidé), blanc 90 % flouté, ombre flottante.
+      expect(cs(zoom).borderRadius).toContain('var(--cal-rayon-pile)')
+      expect(cs(zoom).boxShadow).toBe('var(--cal-ombre-flottante)')
+      expect(cs(zoom).background).toContain('--cal-flottante-dense')
+      // Pilule : rayon 16, blanc 90 %, 62 px, à 16 px du rail et du bandeau.
+      expect(cs(pilule).borderRadius).toBe('var(--cal-rayon-piece)')
+      expect(cs(pilule).boxShadow).toBe('var(--cal-ombre-flottante)')
+      expect(cs(pilule).height).toBe('62px')
+      expect([auBureau(pilule, 'top'), auBureau(pilule, 'left')]).toEqual(['16px', '16px'])
+      // Bulle de consigne : bleu nuit, texte clair, ombre flottante ; la pilule se pose après elle.
+      const bulle = document.createElement('div')
+      bulle.className = 'cal-toit-bulle'
+      bulle.innerHTML = '<p class="cal-toit-bulle-titre">Contour tracé</p>'
+      coque.querySelector('.cal-coque-sur-carte').appendChild(bulle)
+      expect(cs(bulle).background).toContain('--cal-bulle')
+      expect(cs(bulle).color).toBe('var(--cal-bulle-titre)')
+      expect(cs(bulle).boxShadow).toBe('var(--cal-ombre-flottante)')
+      expect(cs(bulle).borderRadius).toBe('var(--cal-rayon-piece)')
+      expect(auBureau(pilule, 'left'), '16 + 296 (bulle) + 16').toBe('calc(328px)')
     })
 
     it('ACAL1617 : Expert, étape Résultats — le panneau prend la largeur utile, la carte passe dessous ; Toit garde 384 px', async () => {

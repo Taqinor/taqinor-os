@@ -441,15 +441,72 @@
 .cal-coque .cal-coque-liens a { display: inline-flex; align-items: center; min-height: 44px; color: var(--info); }
 
 /* ── Atomes (primitives.jsx) ───────────────────────────────────────────── */
+/* ACAL1804 — toute pièce posée SUR la carte (maquette v2 Main) : blanc 90 % flouté (sombre : bleu nuit 82 %), filet
+   clair, rayon 16, ombre de pièce flottante. Une règle pour toutes les étapes ; la place reste celle de l'écran. */
 .cal-coque .cal-carte-flottante {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  box-shadow: var(--shadow-md);
+  background: var(--cal-flottante-dense);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--cal-flottante-filet);
+  border-radius: var(--cal-rayon-piece);
+  box-shadow: var(--cal-ombre-flottante);
 }
-.cal-coque .cal-indicateur { display: flex; flex-direction: column; }
-.cal-coque .cal-indicateur-libelle { font-size: 0.75rem; color: var(--muted-foreground); }
-.cal-coque .cal-indicateur-valeur { font-family: var(--font-display); font-weight: 600; font-size: 1.25rem; }
+.cal-coque .cal-indicateur { display: flex; flex-direction: column; gap: 1px; }
+.cal-coque .cal-indicateur-libelle { font-size: 0.75rem; color: var(--cal-texte-2); }
+.cal-coque .cal-indicateur-valeur {
+  font-family: var(--cal-police-chiffres);
+  font-weight: 600;
+  font-size: 1.25rem;
+  letter-spacing: -0.01em;
+  font-variant-numeric: var(--cal-chiffres);
+}
+/* Pilule de chiffres vivants : 62 px (au bureau, collée au rail et au bandeau : 56-coque-responsive.css). */
+.cal-coque .cal-coque-sur-carte .cal-sur-carte-resume {
+  height: 62px;
+  box-sizing: border-box;
+  gap: 0;
+  padding: 0 6px;
+}
+.cal-coque .cal-coque-sur-carte .cal-sur-carte-resume-bloc { gap: 0; }
+.cal-coque .cal-coque-sur-carte .cal-sur-carte-resume .cal-indicateur { padding: 0 16px; }
+.cal-coque .cal-coque-sur-carte .cal-sur-carte-resume-filet { height: 30px; background: var(--cal-filet-fort); }
+/* Bulle de consigne : bleu nuit, texte clair, 296 px, rayon 16. */
+.cal-coque .cal-coque-sur-carte .cal-toit-bulle {
+  width: 296px;
+  box-sizing: border-box;
+  border: 1px solid var(--cal-bulle-filet);
+  border-radius: var(--cal-rayon-piece);
+  background: var(--cal-bulle);
+  color: var(--cal-bulle-titre);
+  box-shadow: var(--cal-ombre-flottante);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+.cal-coque .cal-coque-sur-carte .cal-toit-bulle-titre { font-family: var(--font-display); }
+.cal-coque .cal-coque-sur-carte .cal-toit-bulle-titre::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 4px;
+  background: var(--cal-action);
+}
+.cal-coque .cal-coque-sur-carte .cal-toit-bulle-texte { font-size: 0.8125rem; color: var(--cal-bulle-texte); }
+/* Barre d'outils : 56 de haut, rayon 18, boutons 44 × 44 rayon 12, outil actif bleu nuit. */
+.cal-coque .cal-coque-sur-carte .cal-barre-outils-carte {
+  height: 56px;
+  box-sizing: border-box;
+  padding: 0 6px;
+  border-radius: var(--cal-rayon-outils);
+  box-shadow: var(--cal-ombre-outils);
+  -webkit-backdrop-filter: var(--cal-flou);
+  backdrop-filter: var(--cal-flou);
+}
+.cal-coque .cal-barre-outils-carte .cal-outil-carte { border-radius: var(--cal-rayon-tuile); color: var(--cal-texte-1); }
+.cal-coque .cal-barre-outils-carte .cal-outil-carte[aria-pressed='true'] { background: var(--cal-actif); color: var(--cal-actif-texte); }
+.cal-coque .cal-barre-outils-carte .cal-outil-carte:disabled { color: var(--cal-texte-3); }
+.cal-coque .cal-barre-outils-carte .cal-barre-outils-separateur { height: 26px; background: var(--cal-filet-fort); }
 .cal-coque .cal-section-etape { display: flex; flex-direction: column; gap: 8px; }
 .cal-coque .cal-section-etape-tete { display: flex; align-items: center; justify-content: space-between; }
 .cal-coque .cal-section-etape-tete h2 { margin: 0; font-size: 0.875rem; font-weight: 600; }
@@ -507,15 +564,18 @@
    premier rendu (venue de 51-etape-toit.css, lane L1, qui ne se charge qu'à l'étape Toit) ──────────── */
 .cal-coque .maplibregl-ctrl-top-right { top: 16px; right: 16px; }
 .cal-coque .maplibregl-ctrl-top-right .maplibregl-ctrl { margin: 0 0 8px; }
+/* ACAL1804 — pile de zoom v2 : rayon 14, blanc 90 % flouté, filets --cal-filet-fort. */
 .cal-coque .maplibregl-ctrl-top-right .maplibregl-ctrl-group {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card);
-  box-shadow: var(--shadow-md);
+  border: 1px solid var(--cal-flottante-filet);
+  border-radius: var(--cal-rayon-pile);
+  background: var(--cal-flottante-dense);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  box-shadow: var(--cal-ombre-flottante);
   overflow: hidden;
 }
-.cal-coque .maplibregl-ctrl-top-right .maplibregl-ctrl-group button { width: 44px; height: 44px; color: var(--foreground); }
-.cal-coque .maplibregl-ctrl-top-right .maplibregl-ctrl-group button + button { border-top: 1px solid var(--border); }
+.cal-coque .maplibregl-ctrl-top-right .maplibregl-ctrl-group button { width: 44px; height: 44px; color: var(--cal-texte-1); }
+.cal-coque .maplibregl-ctrl-top-right .maplibregl-ctrl-group button + button { border-top: 1px solid var(--cal-filet-fort); }
 /* Les pictogrammes MapLibre (images sombres fixes) sont redessinés en masque, à la couleur du texte. */
 .cal-coque .maplibregl-ctrl-zoom-in .maplibregl-ctrl-icon,
 .cal-coque .maplibregl-ctrl-zoom-out .maplibregl-ctrl-icon {
@@ -531,7 +591,7 @@
 .cal-coque[data-avance='0'] .maplibregl-ctrl-top-right .maplibregl-ctrl-group:not(:first-child) { display: none; }
 .cal-coque[data-avance='0'] .maplibregl-ctrl-top-right .maplibregl-ctrl-group:first-child {
   border-bottom: 0;
-  border-radius: 12px 12px 0 0;
+  border-radius: var(--cal-rayon-pile) var(--cal-rayon-pile) 0 0;
 }
 .cal-coque[data-avance='0'] #rp9-compass { top: 168px; left: auto; right: 14px; }
 /* H1 (tour 3) — aucune maquette d'étape à carte (Main, Panneaux, Électrique, Tablette) ne montre de boussole : en guidé
@@ -544,17 +604,18 @@
   padding: 0;
   display: grid;
   place-items: center;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card);
-  color: var(--foreground);
-  box-shadow: var(--shadow-md);
+  border: 1px solid var(--cal-flottante-filet);
+  border-top-color: var(--cal-filet-fort);
+  border-radius: var(--cal-rayon-pile);
+  background: var(--cal-flottante-dense);
+  color: var(--cal-texte-1);
+  box-shadow: var(--cal-ombre-flottante);
 }
 .rp9-host.cal-coque[data-avance='0'] .rp9-chip.rp9-carte-puce.cal-carte-plein-ecran {
   left: auto;
   right: 16px;
   top: 105px;
-  border-radius: 0 0 12px 12px;
+  border-radius: 0 0 var(--cal-rayon-pile) var(--cal-rayon-pile);
 }
 
 /* ── Présentation « Montrer au client » (maquette TelephoneClient, client/HabillageClient.jsx) ──

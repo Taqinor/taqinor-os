@@ -82,6 +82,12 @@
     left: calc((var(--cal-libre-gauche) + 100% - var(--cal-libre-droite)) / 2);
   }
   .rp9-host.cal-coque[data-avance='0'] .rp9-toit-client { left: calc(var(--cal-libre-gauche) + 4px); bottom: 16px; }
+  /* ACAL1804 — pièces posées sur la carte aux places de la maquette, aux trois étapes à carte : pilule de chiffres
+     (`cal-sur-carte-resume` : Toit, Panneaux, Électrique) à 16 px du rail et du bandeau (après la bulle de consigne
+     quand elle est là), barre d'outils à 28 px du bas. */
+  .cal-coque .cal-coque-sur-carte [data-testid='cal-sur-carte-resume'] { top: 16px; left: 16px; transform: none; }
+  .cal-coque .cal-coque-sur-carte:has(.cal-toit-bulle) [data-testid='cal-sur-carte-resume'] { left: calc(16px + 296px + 16px); }
+  .cal-coque .cal-coque-sur-carte .cal-barre-outils-carte { bottom: 28px; }
   /* « Avancé » (feuille) : une pièce flottante comme le panneau. */
   .cal-coque[data-feuille='1'] .cal-coque-avance:not([hidden]) {
     right: 16px;
