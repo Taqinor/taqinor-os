@@ -593,7 +593,13 @@ describe('AffectationChaines (ACAL647) — modules ombrés proposés pour un opt
     const [idAppele, corps] = calepinageApi.calepinages.enregistrerEntreeElectrique.mock.calls[0]
     expect(idAppele).toBe(1)
     const parModule = Object.fromEntries(corps.affectation_manuelle.map((l) => [l.module, l]))
-    expect(Object.keys(parModule).sort()).toEqual([...proposes].sort())
+    // ACAL1509 — l'affectation écrite garde TOUS les modules et leurs chaînes ; seuls les proposés sont marqués.
+    const tous = contratResultat().data.electrique.affectation
+    expect(Object.keys(parModule).sort()).toEqual(tous.map((l) => l.module).sort())
+    tous.filter((l) => !proposes.includes(l.module)).forEach((l) => {
+      expect(parModule[l.module].chaine).toBe(l.chaine)
+      expect(parModule[l.module].optimiseur).not.toBe(true)
+    })
     proposes.forEach((module) => {
       const servi = lire(module)
       expect(parModule[module]).toEqual({

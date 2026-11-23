@@ -4,7 +4,7 @@ import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { Button, Card, Spinner } from '../../../ui'
 import RetourAtelier from '../atelier/RetourAtelier'
-import { couleurParModule, drapeauOptimiseur, libelleGroupe, marquerModules } from './AffectationChaines.helpers'
+import { affectationComplete, couleurParModule, drapeauOptimiseur, libelleGroupe, marquerModules } from './AffectationChaines.helpers'
 import { phrasesChaines } from '../electrique/tensionsChaines'
 import { libelleEtat } from '../electrique/etatVerdict'
 import ImportAffectation from './ImportAffectation'
@@ -320,9 +320,8 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
   const equiper = () => {
     setErreursChamp({})
     const marques = marquerModules(aEquiper, true)
-    const pris = new Set(marques.map((l) => l.module))
     calepinageApi.calepinages.enregistrerEntreeElectrique(id, {
-      affectation_manuelle: [...lignesProposees.filter((l) => !pris.has(l.module)), ...marques],
+      affectation_manuelle: affectationComplete(lignes, lignesProposees, marques),
     })
       .then((r) => {
         appliquerResultat(r.data)
