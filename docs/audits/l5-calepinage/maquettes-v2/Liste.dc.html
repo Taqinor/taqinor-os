@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Calepinages v2 — liste</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+a{color:#1f4fd8}a:hover{color:#0c1335}
+</style>
+</helmet>
+<div style="position: relative; width: 1440px; height: 900px; overflow: hidden; display: flex; flex-direction: column; background: #f5f4f0; color: #0c1335; font-family: 'Hanken Grotesk', system-ui, sans-serif; font-size: 14px; font-variant-numeric: tabular-nums">
+
+  <!-- Motifs et dégradés partagés par les six vignettes -->
+  <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+    <defs>
+      <pattern id="lsModule" width="23" height="21" patternUnits="userSpaceOnUse"><rect x="1" y="1" width="21" height="19" rx="1.5" fill="#101a45"/><path d="M8 1v19M15 1v19M1 10.5h21" stroke="#3b4a8c" stroke-width="0.6"/><rect x="1.5" y="1.5" width="20" height="18" rx="1.2" fill="none" stroke="#c9d0e6" stroke-opacity="0.55" stroke-width="0.7"/></pattern>
+      <pattern id="lsTuiles" width="12" height="8" patternUnits="userSpaceOnUse"><path d="M0 7.5h12" stroke="#5d2f1c" stroke-opacity="0.2" stroke-width="1"/></pattern>
+      <linearGradient id="lsToit" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c98e6c"/><stop offset="1" stop-color="#a86b4c"/></linearGradient>
+      <linearGradient id="lsBeton" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c3c5cc"/><stop offset="1" stop-color="#adb0b9"/></linearGradient>
+      <radialGradient id="lsArbre" cx="38%" cy="34%" r="70%"><stop offset="0" stop-color="#7f9b62"/><stop offset="0.6" stop-color="#557246"/><stop offset="1" stop-color="#3d5636"/></radialGradient>
+      <filter id="lsFlou" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="4"/></filter>
+    </defs>
+  </svg>
+
+  <!-- Fil d'Ariane -->
+  <header style="flex: none; height: 56px; display: flex; align-items: center; gap: 10px; padding: 0 28px; font-size: 14px; color: #4a5072">
+    <a href="#" aria-label="Retour" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 8px; color: #4a5072; text-decoration: none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></a>
+    <a href="#" style="color: #4a5072; text-decoration: none">Ventes</a>
+    <span aria-hidden="true" style="color: #9aa0bb">/</span>
+    <span style="font-weight: 600; color: #0c1335">Calepinages</span>
+  </header>
+
+  <main style="flex: 1; display: flex; flex-direction: column; gap: 18px; padding: 8px 48px 28px">
+    <!-- Titre, recherche, action -->
+    <div style="display: flex; align-items: center; gap: 16px">
+      <h1 style="margin: 0; font: 600 34px/1.1 'Archivo', sans-serif; letter-spacing: -0.02em">Calepinages</h1>
+      <span style="margin-top: 8px; font-size: 14px; color: #656b8c">6 projets</span>
+      <div style="flex: 1"></div>
+      <label style="width: 340px; height: 46px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-radius: 13px; background: #ffffff; box-shadow: 0 1px 2px rgba(12,19,53,0.06), 0 6px 18px rgba(12,19,53,0.05); color: #656b8c">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg>
+        <input aria-label="Rechercher un calepinage" placeholder="Client, ville ou lead" style="flex: 1; border: 0; outline: 0; background: transparent; font: 400 14px 'Hanken Grotesk', sans-serif; color: #0c1335">
+        <span style="height: 22px; padding: 0 7px; display: flex; align-items: center; border-radius: 6px; background: #f5f4f0; font-size: 12px; font-weight: 600; color: #656b8c">Ctrl K</span>
+      </label>
+      <button type="button" style="height: 46px; display: flex; align-items: center; gap: 8px; padding: 0 18px; border: 0; border-radius: 13px; background: #e2b54a; color: #0c1335; font: 700 14px 'Hanken Grotesk', sans-serif; box-shadow: 0 8px 20px rgba(201,154,43,0.36), inset 0 1px 0 rgba(255,255,255,0.45)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        Nouveau calepinage
+      </button>
+    </div>
+
+    <!-- Filtres -->
+    <div style="display: flex; align-items: center; gap: 8px">
+      <button type="button" aria-pressed="true" style="height: 38px; display: flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 19px; background: #0c1335; color: #ffffff; font: 600 13px 'Hanken Grotesk', sans-serif">Tous <span style="color: #c7cce3">6</span></button>
+      <button type="button" aria-pressed="false" style="height: 38px; display: flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 19px; background: #ffffff; color: #0c1335; font: 500 13px 'Hanken Grotesk', sans-serif; box-shadow: 0 1px 2px rgba(12,19,53,0.08)">Brouillon <span style="color: #656b8c">2</span></button>
+      <button type="button" aria-pressed="false" style="height: 38px; display: flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 19px; background: #ffffff; color: #0c1335; font: 500 13px 'Hanken Grotesk', sans-serif; box-shadow: 0 1px 2px rgba(12,19,53,0.08)">Prêt à envoyer <span style="color: #656b8c">1</span></button>
+      <button type="button" aria-pressed="false" style="height: 38px; display: flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 19px; background: #ffffff; color: #0c1335; font: 500 13px 'Hanken Grotesk', sans-serif; box-shadow: 0 1px 2px rgba(12,19,53,0.08)">Devis envoyé <span style="color: #656b8c">2</span></button>
+      <button type="button" aria-pressed="false" style="height: 38px; display: flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 19px; background: #ffffff; color: #0c1335; font: 500 13px 'Hanken Grotesk', sans-serif; box-shadow: 0 1px 2px rgba(12,19,53,0.08)">Signé <span style="color: #656b8c">1</span></button>
+      <div style="width: 1px; height: 22px; margin: 0 6px; background: rgba(12,19,53,0.12)"></div>
+      <button type="button" aria-pressed="false" style="height: 38px; display: flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 19px; background: #ffffff; color: #0c1335; font: 500 13px 'Hanken Grotesk', sans-serif; box-shadow: 0 1px 2px rgba(12,19,53,0.08)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c1-4 4-5.5 7-5.5s6 1.500 7 5.5"/></svg>Mes calepinages</button>
+    </div>
+
+    <!-- Les projets -->
+    <div style="flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 20px">
+
+      <a href="#" style="display: flex; flex-direction: column; border-radius: 20px; background: #ffffff; color: #0c1335; text-decoration: none; overflow: hidden; box-shadow: 0 1px 2px rgba(12,19,53,0.06), 0 10px 28px rgba(12,19,53,0.08)">
+        <div style="position: relative; height: 168px; flex: none">
+          <svg viewBox="0 0 434 150" preserveAspectRatio="xMidYMid slice" style="display: block; width: 100%; height: 100%" role="img" aria-label="Toit de la villa Bennani, 12 panneaux">
+            <rect width="434" height="150" fill="#b7bc9f"/><path d="M40 20c70-24 150-10 210 6s110 8 150-10v112H40z" fill="#a9b98a" opacity="0.7"/><rect y="128" width="434" height="22" fill="#8e929b"/><path d="M0 139h434" stroke="#e9e6dc" stroke-width="1.5" stroke-dasharray="16 12"/>
+            <ellipse cx="96" cy="40" rx="24" ry="22" fill="#1f2a1c" opacity="0.3" filter="url(#lsFlou)"/><circle cx="90" cy="48" r="22" fill="url(#lsArbre)"/><ellipse cx="366" cy="52" rx="18" ry="16" fill="#1f2a1c" opacity="0.3" filter="url(#lsFlou)"/><circle cx="361" cy="58" r="17" fill="url(#lsArbre)"/>
+            <rect x="148" y="16" width="150" height="100" fill="#1b2019" opacity="0.4" filter="url(#lsFlou)" transform="translate(7 -8)"/>
+            <rect x="148" y="16" width="150" height="100" fill="url(#lsToit)"/><rect x="148" y="16" width="150" height="100" fill="url(#lsTuiles)"/><path d="M148 62h150" stroke="#6e3f2a" stroke-opacity="0.7" stroke-width="1.5"/><rect x="252" y="28" width="14" height="14" rx="1" fill="#5b6470"/>
+            <rect width="138" height="42" fill="url(#lsModule)" transform="translate(154 68)"/><rect x="148" y="16" width="150" height="100" fill="none" stroke="#e2b54a" stroke-width="1.8"/>
+          </svg>
+          <span style="position: absolute; left: 12px; top: 12px; height: 26px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 13px; background: rgba(255,255,255,0.9); font-size: 12px; font-weight: 600; color: #4a5072; backdrop-filter: blur(10px)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-dasharray="3.2 3.2" aria-hidden="true"><circle cx="12" cy="12" r="9"/></svg>Brouillon</span>
+        </div>
+        <div style="flex: 1; display: flex; flex-direction: column; padding: 16px 18px 14px">
+          <div style="display: flex; align-items: baseline; gap: 8px"><span style="font: 600 17px 'Archivo', sans-serif; letter-spacing: -0.01em">Villa Bennani</span><span style="font-size: 13px; color: #656b8c">Casablanca</span></div>
+          <div style="margin-top: 10px; display: flex; align-items: baseline; gap: 14px"><span style="font: 700 26px/1 'Archivo', sans-serif; letter-spacing: -0.02em">6,96 <span style="font: 500 13px 'Hanken Grotesk', sans-serif; color: #4a5072">kWc</span></span><span style="font-size: 13px; color: #4a5072">12 panneaux · 11 480 kWh/an</span></div>
+          <div style="flex: 1"></div>
+          <div style="display: flex; align-items: center; gap: 10px; font-size: 12px; color: #656b8c"><span>Modifié aujourd'hui à 14:41</span><span style="height: 24px; display: flex; align-items: center; gap: 5px; padding: 0 9px; border-radius: 12px; background: #fbf6e6; font-weight: 600; color: #8a5a06"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17v0"/></svg>1 point à régler</span><span style="flex: 1"></span><span title="Hajar B." style="width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 14px; background: #ebe9e2; font-size: 12px; font-weight: 700; color: #0c1335">HB</span></div>
+        </div>
+      </a>
+
+      <a href="#" style="display: flex; flex-direction: column; border-radius: 20px; background: #ffffff; color: #0c1335; text-decoration: none; overflow: hidden; box-shadow: 0 1px 2px rgba(12,19,53,0.06), 0 10px 28px rgba(12,19,53,0.08)">
+        <div style="position: relative; height: 168px; flex: none">
+          <svg viewBox="0 0 434 150" preserveAspectRatio="xMidYMid slice" style="display: block; width: 100%; height: 100%" role="img" aria-label="Toit en L de la villa Tazi, 8 panneaux">
+            <rect width="434" height="150" fill="#b7bc9f"/><path d="M20 30c80-20 170 0 230 4s120-10 170-4v98H20z" fill="#a9b98a" opacity="0.7"/><rect y="128" width="434" height="22" fill="#8e929b"/><path d="M0 139h434" stroke="#e9e6dc" stroke-width="1.5" stroke-dasharray="16 12"/>
+            <ellipse cx="352" cy="26" rx="20" ry="18" fill="#1f2a1c" opacity="0.3" filter="url(#lsFlou)"/><circle cx="346" cy="33" r="19" fill="url(#lsArbre)"/><ellipse cx="96" cy="98" rx="20" ry="18" fill="#1f2a1c" opacity="0.3" filter="url(#lsFlou)"/><circle cx="90" cy="104" r="19" fill="url(#lsArbre)"/>
+            <path d="M150 14h130v54h-54v48h-76z" fill="#1b2019" opacity="0.4" filter="url(#lsFlou)" transform="translate(7 -8)"/>
+            <path d="M150 14h130v54h-54v48h-76z" fill="url(#lsToit)"/><path d="M150 14h130v54h-54v48h-76z" fill="url(#lsTuiles)"/>
+            <rect width="92" height="42" fill="url(#lsModule)" transform="translate(166 22)"/><path d="M150 14h130v54h-54v48h-76z" fill="none" stroke="#e2b54a" stroke-width="1.8"/>
+          </svg>
+          <span style="position: absolute; left: 12px; top: 12px; height: 26px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 13px; background: rgba(232,246,239,0.94); font-size: 12px; font-weight: 600; color: #17603f; backdrop-filter: blur(10px)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>Prêt à envoyer</span>
+        </div>
+        <div style="flex: 1; display: flex; flex-direction: column; padding: 16px 18px 14px">
+          <div style="display: flex; align-items: baseline; gap: 8px"><span style="font: 600 17px 'Archivo', sans-serif; letter-spacing: -0.01em">Villa Tazi</span><span style="font-size: 13px; color: #656b8c">Rabat</span></div>
+          <div style="margin-top: 10px; display: flex; align-items: baseline; gap: 14px"><span style="font: 700 26px/1 'Archivo', sans-serif; letter-spacing: -0.02em">4,64 <span style="font: 500 13px 'Hanken Grotesk', sans-serif; color: #4a5072">kWc</span></span><span style="font-size: 13px; color: #4a5072">8 panneaux · 7 420 kWh/an</span></div>
+          <div style="flex: 1"></div>
+          <div style="display: flex; align-items: center; gap: 10px; font-size: 12px; color: #656b8c"><span>Modifié aujourd'hui à 11:05</span><span style="flex: 1"></span><span title="Nadia A." style="width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 14px; background: #ebe9e2; font-size: 12px; font-weight: 700; color: #0c1335">NA</span></div>
+        </div>
+      </a>
+
+      <a href="#" style="display: flex; flex-direction: column; border-radius: 20px; background: #ffffff; color: #0c1335; text-decoration: none; overflow: hidden; box-shadow: 0 1px 2px rgba(12,19,53,0.06), 0 10px 28px rgba(12,19,53,0.08)">
+        <div style="position: relative; height: 168px; flex: none">
+          <svg viewBox="0 0 434 150" preserveAspectRatio="xMidYMid slice" style="display: block; width: 100%; height: 100%" role="img" aria-label="Toit à quatre pans de la maison Berrada, 10 panneaux">
+            <rect width="434" height="150" fill="#b7bc9f"/><path d="M30 14c90 10 180-8 250 0s100 10 130 0v114H30z" fill="#a9b98a" opacity="0.7"/><rect y="128" width="434" height="22" fill="#8e929b"/><path d="M0 139h434" stroke="#e9e6dc" stroke-width="1.5" stroke-dasharray="16 12"/>
+            <ellipse cx="84" cy="54" rx="24" ry="22" fill="#1f2a1c" opacity="0.3" filter="url(#lsFlou)"/><circle cx="78" cy="62" r="23" fill="url(#lsArbre)"/><ellipse cx="362" cy="90" rx="18" ry="16" fill="#1f2a1c" opacity="0.3" filter="url(#lsFlou)"/><circle cx="357" cy="96" r="17" fill="url(#lsArbre)"/>
+            <rect x="130" y="12" width="174" height="106" fill="#1b2019" opacity="0.4" filter="url(#lsFlou)" transform="translate(7 -8)"/>
+            <rect x="130" y="12" width="174" height="106" fill="url(#lsToit)"/><path d="M130 12l52 53M304 12l-52 53M130 118l52-53M304 118l-52-53M182 65h70" stroke="#6e3f2a" stroke-opacity="0.65" stroke-width="1.4"/><path d="M130 12l52 53h70l52-53z" fill="#d49a78" opacity="0.5"/>
+            <rect width="115" height="42" fill="url(#lsModule)" transform="translate(160 72)"/><rect x="130" y="12" width="174" height="106" fill="none" stroke="#e2b54a" stroke-width="1.8"/>
+          </svg>
+          <span style="position: absolute; left: 12px; top: 12px; height: 26px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 13px; background: rgba(232,238,252,0.94); font-size: 12px; font-weight: 600; color: #1a43b8; backdrop-filter: blur(10px)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3L10 14M21 3l-7 18-4-7-7-4z"/></svg>Devis envoyé</span>
+        </div>
+        <div style="flex: 1; display: flex; flex-direction: column; padding: 16px 18px 14px">
+          <div style="display: flex; align-items: baseline; gap: 8px"><span style="font: 600 17px 'Archivo', sans-serif; letter-spacing: -0.01em">Maison Berrada</span><span style="font-size: 13px; color: #656b8c">Fès</span></div>
+          <div style="margin-top: 10px; display: flex; align-items: baseline; gap: 14px"><span style="font: 700 26px/1 'Archivo', sans-serif; letter-spacing: -0.02em">5,80 <span style="font: 500 13px 'Hanken Grotesk', sans-serif; color: #4a5072">kWc</span></span><span style="font-size: 13px; color: #4a5072">10 panneaux · 9 400 kWh/an</span></div>
+          <div style="flex: 1"></div>
+          <div style="display: flex; align-items: center; gap: 10px; font-size: 12px; color: #656b8c"><span>Modifié hier à 17:20</span><span style="flex: 1"></span><span title="Hajar B." style="width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 14px; background: #ebe9e2; font-size: 12px; font-weight: 700; color: #0c1335">HB</span></div>
+        </div>
+      </a>
+
+      <a href="#" style="display: flex; flex-direction: column; border-radius: 20px; background: #ffffff; color: #0c1335; text-decoration: none; overflow: hidden; box-shadow: 0 1px 2px rgba(12,19,53,0.06), 0 10px 28px rgba(12,19,53,0.08)">
+        <div style="position: relative; height: 168px; flex: none">
+          <svg viewBox="0 0 434 150" preserveAspectRatio="xMidYMid slice" style="display: block; width: 100%; height: 100%" role="img" aria-label="Toit plat de la boulangerie Amrani, 30 panneaux">
+            <rect width="434" height="150" fill="#bdbfb2"/><rect y="128" width="434" height="22" fill="#8e929b"/><path d="M0 139h434" stroke="#e9e6dc" stroke-width="1.5" stroke-dasharray="16 12"/>
+            <ellipse cx="62" cy="26" rx="16" ry="14" fill="#1f2a1c" opacity="0.3" filter="url(#lsFlou)"/><circle cx="58" cy="31" r="15" fill="url(#lsArbre)"/>
+            <rect x="92" y="10" width="282" height="112" fill="#1b2019" opacity="0.4" filter="url(#lsFlou)" transform="translate(7 -8)"/>
+            <rect x="92" y="10" width="282" height="112" fill="url(#lsBeton)"/><rect x="98" y="16" width="270" height="100" fill="none" stroke="#8d909a" stroke-opacity="0.6"/>
+            <rect width="230" height="21" fill="url(#lsModule)" transform="translate(110 24)"/><rect width="230" height="21" fill="url(#lsModule)" transform="translate(110 55)"/><rect width="230" height="21" fill="url(#lsModule)" transform="translate(110 86)"/>
+            <rect x="92" y="10" width="282" height="112" fill="none" stroke="#e2b54a" stroke-width="1.8"/>
+          </svg>
+          <span style="position: absolute; left: 12px; top: 12px; height: 26px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 13px; background: #0c1335; font-size: 12px; font-weight: 600; color: #ffffff"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#e2b54a" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>Signé</span>
+        </div>
+        <div style="flex: 1; display: flex; flex-direction: column; padding: 16px 18px 14px">
+          <div style="display: flex; align-items: baseline; gap: 8px"><span style="font: 600 17px 'Archivo', sans-serif; letter-spacing: -0.01em">Boulangerie Amrani</span><span style="font-size: 13px; color: #656b8c">Marrakech</span></div>
+          <div style="margin-top: 10px; display: flex; align-items: baseline; gap: 14px"><span style="font: 700 26px/1 'Archivo', sans-serif; letter-spacing: -0.02em">17,40 <span style="font: 500 13px 'Hanken Grotesk', sans-serif; color: #4a5072">kWc</span></span><span style="font-size: 13px; color: #4a5072">30 panneaux · 29 580 kWh/an</span></div>
+          <div style="flex: 1"></div>
+          <div style="display: flex; align-items: center; gap: 10px; font-size: 12px; color: #656b8c"><span>Modifié 18 novembre</span><span style="flex: 1"></span><span title="Youssef K." style="width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 14px; background: #ebe9e2; font-size: 12px; font-weight: 700; color: #0c1335">YK</span></div>
+        </div>
+      </a>
+
+      <a href="#" style="display: flex; flex-direction: column; border-radius: 20px; background: #ffffff; color: #0c1335; text-decoration: none; overflow: hidden; box-shadow: 0 1px 2px rgba(12,19,53,0.06), 0 10px 28px rgba(12,19,53,0.08)">
+        <div style="position: relative; height: 168px; flex: none">
+          <svg viewBox="0 0 434 150" preserveAspectRatio="xMidYMid slice" style="display: block; width: 100%; height: 100%" role="img" aria-label="Toit de la villa Idrissi, 14 panneaux">
+            <rect width="434" height="150" fill="#b7bc9f"/><path d="M10 24c90-16 200-6 270 2s110 4 150-6v108H10z" fill="#a9b98a" opacity="0.7"/><rect y="128" width="434" height="22" fill="#8e929b"/><path d="M0 139h434" stroke="#e9e6dc" stroke-width="1.5" stroke-dasharray="16 12"/>
+            <ellipse cx="58" cy="82" rx="22" ry="20" fill="#1f2a1c" opacity="0.3" filter="url(#lsFlou)"/><circle cx="52" cy="89" r="21" fill="url(#lsArbre)"/><ellipse cx="390" cy="28" rx="18" ry="16" fill="#1f2a1c" opacity="0.3" filter="url(#lsFlou)"/><circle cx="385" cy="34" r="17" fill="url(#lsArbre)"/>
+            <rect x="118" y="14" width="198" height="102" fill="#1b2019" opacity="0.4" filter="url(#lsFlou)" transform="translate(7 -8)"/>
+            <rect x="118" y="14" width="198" height="102" fill="url(#lsToit)"/><rect x="118" y="14" width="198" height="102" fill="url(#lsTuiles)"/><path d="M118 62h198" stroke="#6e3f2a" stroke-opacity="0.7" stroke-width="1.5"/>
+            <rect width="161" height="42" fill="url(#lsModule)" transform="translate(136 68)"/><rect x="118" y="14" width="198" height="102" fill="none" stroke="#e2b54a" stroke-width="1.8"/>
+          </svg>
+          <span style="position: absolute; left: 12px; top: 12px; height: 26px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 13px; background: rgba(232,238,252,0.94); font-size: 12px; font-weight: 600; color: #1a43b8; backdrop-filter: blur(10px)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3L10 14M21 3l-7 18-4-7-7-4z"/></svg>Devis envoyé</span>
+        </div>
+        <div style="flex: 1; display: flex; flex-direction: column; padding: 16px 18px 14px">
+          <div style="display: flex; align-items: baseline; gap: 8px"><span style="font: 600 17px 'Archivo', sans-serif; letter-spacing: -0.01em">Villa Idrissi</span><span style="font-size: 13px; color: #656b8c">Agadir</span></div>
+          <div style="margin-top: 10px; display: flex; align-items: baseline; gap: 14px"><span style="font: 700 26px/1 'Archivo', sans-serif; letter-spacing: -0.02em">8,12 <span style="font: 500 13px 'Hanken Grotesk', sans-serif; color: #4a5072">kWc</span></span><span style="font-size: 13px; color: #4a5072">14 panneaux · 14 210 kWh/an</span></div>
+          <div style="flex: 1"></div>
+          <div style="display: flex; align-items: center; gap: 10px; font-size: 12px; color: #656b8c"><span>Modifié 17 novembre</span><span style="flex: 1"></span><span title="Nadia A." style="width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 14px; background: #ebe9e2; font-size: 12px; font-weight: 700; color: #0c1335">NA</span></div>
+        </div>
+      </a>
+
+      <a href="#" style="display: flex; flex-direction: column; border-radius: 20px; background: #ffffff; color: #0c1335; text-decoration: none; overflow: hidden; box-shadow: 0 1px 2px rgba(12,19,53,0.06), 0 10px 28px rgba(12,19,53,0.08)">
+        <div style="position: relative; height: 168px; flex: none">
+          <svg viewBox="0 0 434 150" preserveAspectRatio="xMidYMid slice" style="display: block; width: 100%; height: 100%" role="img" aria-label="Toit de la maison Lahlou, 6 panneaux, tracé à confirmer">
+            <rect width="434" height="150" fill="#b7bc9f"/><path d="M40 10c70 14 150-6 220 2s100 12 130 2v114H40z" fill="#a9b98a" opacity="0.7"/><rect y="128" width="434" height="22" fill="#8e929b"/><path d="M0 139h434" stroke="#e9e6dc" stroke-width="1.5" stroke-dasharray="16 12"/>
+            <ellipse cx="104" cy="34" rx="20" ry="18" fill="#1f2a1c" opacity="0.3" filter="url(#lsFlou)"/><circle cx="98" cy="41" r="19" fill="url(#lsArbre)"/><ellipse cx="342" cy="92" rx="22" ry="20" fill="#1f2a1c" opacity="0.3" filter="url(#lsFlou)"/><circle cx="336" cy="99" r="21" fill="url(#lsArbre)"/>
+            <rect x="160" y="22" width="112" height="92" fill="#1b2019" opacity="0.4" filter="url(#lsFlou)" transform="translate(7 -8)"/>
+            <rect x="160" y="22" width="112" height="92" fill="url(#lsToit)"/><rect x="160" y="22" width="112" height="92" fill="url(#lsTuiles)"/><path d="M160 66h112" stroke="#6e3f2a" stroke-opacity="0.7" stroke-width="1.5"/>
+            <rect width="92" height="21" fill="url(#lsModule)" transform="translate(170 80)"/><rect x="160" y="22" width="112" height="92" fill="none" stroke="#e2b54a" stroke-width="1.8" stroke-dasharray="6 4"/>
+          </svg>
+          <span style="position: absolute; left: 12px; top: 12px; height: 26px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 13px; background: rgba(255,255,255,0.9); font-size: 12px; font-weight: 600; color: #4a5072; backdrop-filter: blur(10px)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-dasharray="3.2 3.2" aria-hidden="true"><circle cx="12" cy="12" r="9"/></svg>Brouillon</span>
+        </div>
+        <div style="flex: 1; display: flex; flex-direction: column; padding: 16px 18px 14px">
+          <div style="display: flex; align-items: baseline; gap: 8px"><span style="font: 600 17px 'Archivo', sans-serif; letter-spacing: -0.01em">Maison Lahlou</span><span style="font-size: 13px; color: #656b8c">Tanger</span></div>
+          <div style="margin-top: 10px; display: flex; align-items: baseline; gap: 14px"><span style="font: 700 26px/1 'Archivo', sans-serif; letter-spacing: -0.02em">3,48 <span style="font: 500 13px 'Hanken Grotesk', sans-serif; color: #4a5072">kWc</span></span><span style="font-size: 13px; color: #4a5072">6 panneaux · 5 390 kWh/an</span></div>
+          <div style="flex: 1"></div>
+          <div style="display: flex; align-items: center; gap: 10px; font-size: 12px; color: #656b8c"><span>Modifié 14 novembre</span><span style="flex: 1"></span><span title="Youssef K." style="width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 14px; background: #ebe9e2; font-size: 12px; font-weight: 700; color: #0c1335">YK</span></div>
+        </div>
+      </a>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
