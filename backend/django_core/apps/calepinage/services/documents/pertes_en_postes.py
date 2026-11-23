@@ -4,10 +4,10 @@ phrase-gabarit par poste, remise au client par la commerciale (D-ACAL-38 d).
 Ce que la fiche imprime — LU, jamais recalculé
 ===============================================
 ``cascade.postes_lisibles`` (ACAL695) du résultat SERVI : par poste son
-libellé, sa part de pertes TELLE QUE SERVIE (``nombre_tel_que_servi``, sans
-arithmétique) et UNE phrase-gabarit sans chiffre écrit dans le code. Un poste
-« non compté » ou « partiel » le dit, avec le motif servi de chaque étape
-omise : jamais 0 %.
+libellé, sa part de pertes servie, arrondie à UNE décimale (ACAL1616 : une
+page client, jamais « 80,418 % »), et UNE phrase-gabarit sans chiffre écrit
+dans le code. Un poste « non compté » ou « partiel » le dit, avec un mot court
+par cause (``CAUSE_PAR_ETAPE``) : jamais 0 %, jamais le motif servi recopié.
 
 Ce qu'elle n'imprime JAMAIS : aucun kWh de production (un client ne reçoit
 jamais deux productions : celle de son document commercial fait foi), aucun
@@ -63,16 +63,62 @@ CSS_FICHE = (
 )
 
 
+#: ACAL1616 — ce qui manque à une étape omise, en mots de métier : une table
+#: FERMÉE ``étape -> cause``. Le motif servi reste au rapport d'étude
+#: (document technique) ; la fiche client n'en recopie jamais le texte.
+CAUSE_PAR_ETAPE = {
+    'horizon': 'horizon du site', 'ombrage_proche': 'aucun obstacle saisi',
+    'acces_module': 'ombre par panneau', 'ombrage_diffus': 'vue du ciel',
+    'inter_rangees': 'géométrie des rangées',
+    'mismatch_ombrage': 'ombre par panneau', 'salissure': 'salissure du site',
+    'neige': 'neige du site', 'thermique': 'fiche du module',
+    'ohmique_dc': 'câbles', 'mppt': 'température des cellules',
+    'onduleur': "fiche de l'onduleur", 'ecretage': "fiche de l'onduleur",
+    'ohmique_ac': "sortie de l'onduleur", 'transformateur': 'transformateur',
+    'bifacial': 'face arrière du module', 'iam': 'heure du site',
+    'spectral': 'modèle spectral', 'niveau_irradiance': 'fiche du module',
+    'qualite_module': 'fiche du module', 'lid': 'perte de mise en service',
+    'mismatch_fabricant': 'dispersion des modules',
+    'diodes': 'fiche du module', 'optimiseur': 'optimiseurs',
+    'auxiliaires': 'consommation des auxiliaires',
+    'indisponibilite': "périodes d'arrêt",
+}
+
+#: Le mot court d'état, lu dans le motif servi : la PREMIÈRE famille gagne.
+ETAT_PAR_CAUSE = (
+    (('sans objet', 'aucune perte'), 'sans objet'),
+    (('deux fois', 'déjà'), 'déjà compté'),
+    (('non modélis',), 'non modélisé'),
+    (('saisi', 'renseign', 'fiche', 'déclar'), 'non renseigné'),
+)
+
+
+def _cause_courte(etape):
+    """« <état> : <ce qui manque> » — jamais le motif servi recopié."""
+    motif = str(etape.get('motif_omission') or '').lower()
+    etat = next((mot for indices, mot in ETAT_PAR_CAUSE
+                 if any(indice in motif for indice in indices)),
+                'non calculé')
+    cause = CAUSE_PAR_ETAPE.get(etape.get('etape'))
+    if cause is None:  # étape neuve : son libellé, rendu lisible
+        cause = motif_lisible(etape.get('libelle') or 'donnée manquante')
+    return '%s : %s' % (etat, cause)
+
+
 def _non_comptees(poste):
-    """« non compté » + le motif servi de chaque étape omise du poste."""
-    morceaux = []
+    """Les causes courtes des étapes omises du poste, sans doublon."""
+    causes = []
     for etape in poste.get('etapes') or ():
-        if not isinstance(etape, dict):
-            continue
-        nom = str(etape.get('libelle') or etape.get('etape') or '')
-        motif = motif_lisible(etape.get('motif_omission') or '')
-        morceaux.append('%s : %s' % (nom, motif) if motif else nom)
-    return morceaux
+        if isinstance(etape, dict) and _cause_courte(etape) not in causes:
+            causes.append(_cause_courte(etape))
+    return causes
+
+
+def _pct(valeur):
+    """ACAL1616 — une part à UNE décimale (« 1,9 »), « — » quand absente."""
+    if valeur is None or isinstance(valeur, bool):
+        return '—'
+    return nombre_tel_que_servi(round(float(valeur), 1))
 
 
 def _ligne_de_poste(poste):
@@ -84,10 +130,9 @@ def _ligne_de_poste(poste):
         part = 'non compté'
         phrase = ''
     else:
-        part = '%s %%' % nombre_tel_que_servi(poste.get('perte_pct'))
-        phrase = escape(gabarit.format(
-            part=nombre_tel_que_servi(poste.get('perte_pct')))
-            if gabarit else '')
+        part = '%s %%' % _pct(poste.get('perte_pct'))
+        phrase = escape(gabarit.format(part=_pct(poste.get('perte_pct')))
+                        if gabarit else '')
     detail = ''
     if statut in ('non_compte', 'partiel'):
         detail = '<span class="detail">non compté%s</span>' % (
@@ -106,8 +151,8 @@ def _corps(postes):
         return '<p class="motif">%s</p>' % escape(str(motif))
     entete = ('<p>Pertes totales : %s %% — énergie qui arrive au réseau : '
               '%s %% de ce que le soleil apporte.</p>'
-              % (nombre_tel_que_servi(postes.get('total_pct')),
-                 nombre_tel_que_servi(postes.get('arrivee_pct'))))
+              % (_pct(postes.get('total_pct')),
+                 _pct(postes.get('arrivee_pct'))))
     return ('%s<table class="pertes-postes"><tr><th>Poste</th>'
             '<th class="part">Part des pertes</th></tr>%s</table>'
             % (entete, ''.join(_ligne_de_poste(p) for p in liste)))
