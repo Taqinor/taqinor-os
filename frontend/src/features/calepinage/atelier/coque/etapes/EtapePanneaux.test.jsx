@@ -15,6 +15,7 @@ vi.mock('../../../../../api/calepinageApi', () => ({
 import { MODULE_PAR_DEFAUT_ATELIER } from '@roofpro/moduleSelect'
 import { choisirPaletteAcces } from '@rooflib/shadingEngine'
 import calepinageApi from '../../../../../api/calepinageApi'
+import { exempleContrat, reponseContrat } from '../../../../../test/fixtures/contractSamples'
 import { ContexteCoque } from '../contexteCoque'
 import EtapePanneaux from './EtapePanneaux'
 import { jourMois, ligneModule } from './panneaux/formats'
@@ -226,6 +227,16 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(max).toHaveAttribute('aria-pressed', 'true')
     expect(facture).toHaveTextContent('≈ 63 % de la consommation') // gardée, pas perdue au clic
     expect(facture).not.toHaveTextContent('105')
+  })
+
+  it('lead C&I : la carte dit la raison servie (cible-factures/ refus), sans renvoyer renseigner une facture saisie', async () => {
+    servir()
+    calepinageApi.calepinages.cibleFactures.mockResolvedValue(reponseContrat('calepinage', 'calepinage_cible_factures', 'exemple_refus'))
+    rendre()
+    await screen.findByText(exempleContrat('calepinage', 'calepinage_cible_factures', 'exemple_refus').refus)
+    expect(screen.getByTestId('cal-panneaux-option-facture')).toBeDisabled()
+    expect(screen.queryByText('Renseigner la facture du lead')).toBeNull()
+    expect(document.body).not.toHaveTextContent('Aucune taille ne se tire des factures')
   })
 
   it('ni l’une ni l’autre : aucune carte choisie et « Pose actuelle : N panneaux · kWc »', async () => {

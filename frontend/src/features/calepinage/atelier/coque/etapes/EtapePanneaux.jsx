@@ -50,7 +50,8 @@ function useServi(calepinageId, enregistreLe, servi = null, attendre = false) {
     leadId: facture.leadId,
     facture,
     cible: facture.cible,
-    motifFacture: facture.motif,
+    motifFacture: facture.refus || facture.motif,
+    refusFacture: facture.refus,
     entrees: Array.isArray(catalogue?.modules) ? catalogue.modules : [],
     servis: modulesServis(entree),
     publiee: productionPubliee(resultat),
@@ -200,7 +201,7 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
       {servi.facture.etat === 'ok' && !cible && (
         <p className="cal-pan-note">
           {raison}
-          {servi.leadId && (
+          {servi.leadId && !servi.refusFacture && (
             <>{' '}<Link to={`/crm/leads/${servi.leadId}`} className="cal-pan-lien">Renseigner la facture du lead</Link></>
           )}
         </p>
