@@ -28,6 +28,7 @@ import {
   rescaleByPanels,
 } from '../../lib/productionWindow';
 import { PANEL_KWC, type PerKwcProduction } from '../../lib/productionEngine';
+import { catalogueAvecModulesDuDocument, estRefus, kwcDuPan, lireModulesDisponibles, resoudreModuleDuPan } from './moduleSelect'; // demande croisée
 import { occupiedCount } from '../../lib/layoutVariability';
 import { type Ctx } from './context';
 import { type Graphs } from './graphs';
@@ -67,6 +68,13 @@ export interface ProdWindow {
 
 export function createProdWindow(ctx: Ctx, dom: ProdWindowDom, deps: ProdWindowDeps): ProdWindow {
   const { graphs, renderConsumption, renderLayoutPanel, snapshotActiveAreaResult, renderAreasPanel } = deps;
+
+  /** Demande croisée — kWc d'UN panneau : le module DÉSIGNÉ du pan actif, même résolution que le bandeau (layoutEditor,
+   *  ACAL1520) ; sans choix ou sans puissance renseignée : le défaut de l'atelier (720 W). */
+  const kwcParPanneau = (): number => {
+    const m = resoudreModuleDuPan(catalogueAvecModulesDuDocument(lireModulesDisponibles(ctx.opts?.modulesDisponibles).choisissables, ctx.modulesDuDocument).catalogue, ctx.activeArea?.()?.moduleId);
+    return (!estRefus(m) && kwcDuPan(1, m)) || PANEL_KWC;
+  };
 
   const prodPlaneKeyOf = (p: ProdPlaneKey): string =>
     `${p.lat.toFixed(4)},${p.lon.toFixed(4)},${Math.round(p.tiltDeg)},${Math.round(p.aspect)},${p.mountingplace}`;
@@ -217,7 +225,7 @@ export function createProdWindow(ctx: Ctx, dom: ProdWindowDom, deps: ProdWindowD
 
     // Plan inchangé ET pas de date à (re)charger → rescale CLIENT pur (zéro appel serveur).
     if (!planeChanged && !dateChanged && ctx.prodPerKwc) {
-      ctx.prodScaled = rescaleByPanels(ctx.prodPerKwc, ctx.prodPanels, PANEL_KWC);
+      ctx.prodScaled = rescaleByPanels(ctx.prodPerKwc, ctx.prodPanels, kwcParPanneau());
       renderProdWindow();
       return;
     }
@@ -254,6 +262,8 @@ export function createProdWindow(ctx: Ctx, dom: ProdWindowDom, deps: ProdWindowD
           typicalDayByMonth: data.typicalDayByMonth,
           dailyKwhByMonth: data.dailyKwhByMonth,
         };
+        // Demande croisée — la route met à l'échelle à 720 W/panneau ; un module désigné d'une autre puissance est rescalé.
+        if (kwcParPanneau() !== PANEL_KWC) ctx.prodScaled = rescaleByPanels(ctx.prodPerKwc, ctx.prodPanels, kwcParPanneau());
         ctx.prodSource = data.source;
         ctx.prodPlaneKey = planKey;
         ctx.prodSpecificDate = data.specificDate ?? null;
@@ -327,7 +337,7 @@ export function createProdWindow(ctx: Ctx, dom: ProdWindowDom, deps: ProdWindowD
     ctx.prodPanels = perKwc ? Math.max(0, Math.round(panels)) : 0;
     ctx.prodTarget = cfg ? Math.max(0, cfg.target) : 0;
     ctx.prodPerKwc = perKwc;
-    ctx.prodScaled = perKwc ? rescaleByPanels(perKwc, ctx.prodPanels, PANEL_KWC) : null;
+    ctx.prodScaled = perKwc ? rescaleByPanels(perKwc, ctx.prodPanels, kwcParPanneau()) : null;
     if (perKwc) ctx.prodSource = perKwc.source;
     renderConsumption();
   }

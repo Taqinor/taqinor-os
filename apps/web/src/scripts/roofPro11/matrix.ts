@@ -26,7 +26,7 @@ import {
   cibleOptimisationSaisie,
   poserCibleOptimisation,
 } from './optimizer';
-import { PERIMETER_SETBACK_M } from '../../lib/roofPro2';
+import { PERIMETER_SETBACK_M, type PerimeterSetbacks } from '../../lib/roofPro2';
 import { type LngLat } from '../../lib/roof';
 import { $, celluleEconomies, esc, fmt } from './dom';
 import { type Ctx } from './context';
@@ -40,6 +40,9 @@ export interface MatrixDeps {
   monthlyBill: () => number;
   /** Anneaux lng/lat des obstacles (zones d'exclusion). */
   obstructionRings: () => LngLat[][];
+  /** Demande croisée (balayage) — dégagements par obstacle (PV61) et retraits saisis (PV63), comme `buildMatrix`. */
+  obstructionClearances?: () => number[] | undefined;
+  setbacksOf?: () => PerimeterSetbacks | undefined;
 }
 
 export interface Matrix {
@@ -277,6 +280,9 @@ export function createMatrix(ctx: Ctx, deps: MatrixDeps): Matrix {
     // ACAL1505 — cible du balayage = facture saisie, sinon celle du lead (mode calepinage : aucun champ `rp9-bill`).
     ctx.matrixResult = fineGridMatrixV6(ring, ctx.centroidLat, factureCarteDe(monthlyBill(), ctx.opts?.factureMensuelleMad), obstructionRings(), {
       yieldFn: matrixYieldFn,
+      overhangM: ctx.overhangM, // demande croisée — le même toit que buildMatrix et le solveur vivant
+      obstructionClearancesM: deps.obstructionClearances?.(),
+      setbacksM: deps.setbacksOf?.(),
       optimisation: choixOptimisationCourant(),
     });
     paintComparison();

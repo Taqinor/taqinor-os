@@ -77,7 +77,7 @@ export class FakeMap {
 
 // W113 — marqueurs MapLibre instanciés (le repère client de l'hydratation). On capture
 // chaque Marker créé (couleur + lngLat + ajout/retrait) pour vérifier l'hydratation pin.
-export interface FakeMarkerRecord { color?: string; lngLat: [number, number] | null; added: boolean; removed: boolean }
+export interface FakeMarkerRecord { color?: string; lngLat: [number, number] | null; added: boolean; removed: boolean; el: { hidden: boolean } }
 export const fakeMarkers: FakeMarkerRecord[] = [];
 
 vi.mock('maplibre-gl', () => {
@@ -87,12 +87,13 @@ vi.mock('maplibre-gl', () => {
   class Marker {
     rec: FakeMarkerRecord;
     constructor(opts?: { color?: string }) {
-      this.rec = { color: opts?.color, lngLat: null, added: false, removed: false };
+      this.rec = { color: opts?.color, lngLat: null, added: false, removed: false, el: { hidden: false } }; // ACAL1423 — `el` : la visibilité
       fakeMarkers.push(this.rec);
     }
     setLngLat(ll: [number, number]) { this.rec.lngLat = ll; return this; }
     addTo() { this.rec.added = true; return this; }
     remove() { this.rec.removed = true; return this; }
+    getElement() { return this.rec.el; }
   }
   // W91 — GeolocateControl natif mocké : un émetteur d'événements minimal (on/fire) pour
   // que l'entrée puisse s'abonner à `geolocate` et qu'un test déclenche une position.

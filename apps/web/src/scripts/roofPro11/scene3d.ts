@@ -75,6 +75,7 @@ import { type PerimeterSetbacks } from '../../lib/roofPro2';
 import { construireMaillagesPose } from './poseSurfaces'; // CALX124
 
 import { teinterAllees } from './teinteAllees'; // CALX403
+import { creerCanalTeinte, type CouleurDe } from './canalTeinte'; // ACAL1621
 import { appliquerCiel } from './ciel'; // ACAL431
 import { porteeAppliquee, poserTrianglesDeRangee } from './piedsChassis'; // ACAL579 — boucle des tronçons sortie
 import { affectationGroupKey, affectationGroupLabel, identifiantsModulesParCellule, libelleModuleAffecte } from './libellesAffectation'; // ACAL729
@@ -2157,7 +2158,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       ctx.activePanelMesh = panelIM;
       ctx.activePanelCellIndex = panelCellIndices;
       teinterAllees(ctx, panelIM, panelCellIndices); // CALX403 câblage
-      if (ctx.affectationColoration) rafraichirAffectation(); // ACAL286 — le mesh vient d'être reconstruit
+      if (ctx.affectationColoration || canal.accesActive()) rafraichirAffectation(); // ACAL286, ACAL1621 — mesh reconstruit : accès d'abord
     }
 
     // Zones NON actives : obstacles rendus en boîtes subduées (sans étiquette ni drag),
@@ -2685,30 +2686,24 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     map3dRepaint();
   }
 
-  /** WJ21 — teinte les instances de panneaux de la zone active par leur accès solaire.
-   *  `colorFor(cellIndex)` renvoie une couleur RVB (0–1) par cellule de lattice ; null
-   *  remet toutes les instances à blanc (teinte d'origine, heatmap OFF). Réutilise le
-   *  buffer instanceColor (MeshStandardMaterial multiplie sa couleur par instanceColor). */
-  function setSolarAccessHeatmap(colorFor: ((cellIndex: number) => { r: number; g: number; b: number }) | null) {
-    const mesh = ctx.activePanelMesh;
-    if (!mesh || !mesh.instanceColor) return;
-    ecrireTeintesPanneaux(mesh.instanceColor as THREE.InstancedBufferAttribute, ctx.activePanelCellIndex, colorFor); // ACAL1408
+  // Demande croisée (ACAL1621) — un canal, deux sources (canalTeinte.ts) : la carte d'accès allumée passe avant les chaînes.
+  const canal = creerCanalTeinte((c) => {
+    if (ctx.activePanelMesh?.instanceColor) ecrireTeintesPanneaux(ctx.activePanelMesh.instanceColor as THREE.InstancedBufferAttribute, ctx.activePanelCellIndex, c); // ACAL1408
     map3dRepaint();
-  }
+  });
+  const couleurAffectation = () => couleurParAffectation(ctx.affectationColoration, ctx.activePanelCellIndex, clePanAffectation(ctx.areas.find((a) => a.id === ctx.activeAreaId), ctx.activeAreaId)); // ACAL1516
+  /** WJ21 — teinte les instances de panneaux de la zone active par leur accès solaire ; `null` l'éteint (la teinte par
+   *  chaîne revient, sinon la teinte d'origine). Réutilise le buffer instanceColor. */
+  function setSolarAccessHeatmap(colorFor: CouleurDe) { canal.acces(colorFor, couleurAffectation); }
 
   /** CAL126 — MÊME écriture de buffer que `setSolarAccessHeatmap`, alimentée par la
    *  table d'affectation du serveur. Aucun nouveau mécanisme de rendu : on repasse par
    *  le canal existant, avec une autre source de vérité. */
-  function setStringColoring(colorFor: ((cellIndex: number) => { r: number; g: number; b: number }) | null) {
-    setSolarAccessHeatmap(colorFor);
-  }
+  function setStringColoring(colorFor: CouleurDe) { canal.chaines(colorFor); }
 
   /** ACAL286 — la table servie (ctx.affectationColoration) appliquée au pan actif ; absente ⇒
    *  teinte d'origine (comportement d'avant). */
-  function rafraichirAffectation() {
-    const aire = ctx.areas.find((a) => a.id === ctx.activeAreaId);
-    setStringColoring(couleurParAffectation(ctx.affectationColoration, ctx.activePanelCellIndex, clePanAffectation(aire, ctx.activeAreaId))); // ACAL1516
-  }
+  function rafraichirAffectation() { canal.chaines(couleurAffectation()); }
 
   /** Repeint la scène 3D (déclenché après un changement de couleur d'instance). */
   function map3dRepaint() {
