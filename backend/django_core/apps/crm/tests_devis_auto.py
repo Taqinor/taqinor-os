@@ -95,15 +95,28 @@ class TestDevisAutoProCIQ404(SimpleTestCase):
         self.assertEqual(champs_manquants(lead), [LIB_PRO['commercial']])
         self.assertIsNone(source_conso(lead))
 
-    def test_industriel_mad_seul_tension_vide_pas_pret(self):
+    def test_industriel_mad_seul_tension_non_declaree_bt_supposee(self):
+        # D-ACAL-92 (« supposer_bt », fondateur 23/11/2026, lead commercial OU
+        # industriel) — tension non déclarée (vide, « ne sait pas », défaut
+        # du site jamais touché) : basse tension supposée, la facture en MAD
+        # compte ; la visite reste requise (« tension de raccordement inconnue »).
+        for tension, source in ((None, None), ('ne_sait_pas', None),
+                                ('bt', 'site_defaut_visible'),
+                                ('mt', 'site_defaut_visible')):
+            lead = self._lead(type_installation='industriel',
+                              tension_raccordement=tension, tension_source=source,
+                              facture_hiver=Decimal('40000'), regime_equipes='3x8')
+            self.assertEqual(champs_manquants(lead), [], tension)
+            self.assertEqual(source_conso(lead), 'facture_hiver', tension)
+            self.assertTrue(visite_avant_devis(lead)['requise'], tension)
+            if tension != 'mt':  # visite_avant_devis inchangée (lit la valeur brute)
+                self.assertIn('tension de raccordement inconnue',
+                              visite_avant_devis(lead)['motifs'], tension)
+        # Sans rythme : seul le rythme manque (aucun archétype industriel).
         lead = self._lead(type_installation='industriel',
-                          facture_hiver=Decimal('40000'),
-                          contrat_electricite='bt_patente')
-        detail = champs_manquants_detail(lead)
-        # ALEA47 — + le rythme (aucun archétype industriel).
-        self.assertEqual([e['champ'] for e in detail],
-                         ['conso_mensuelle_kwh', 'jours_ouverture'])
-        self.assertEqual(detail[0]['label'], LIB_PRO['industriel'])
+                          facture_hiver=Decimal('40000'))
+        self.assertEqual([e['champ'] for e in champs_manquants_detail(lead)],
+                         ['jours_ouverture'])
 
     def test_industriel_bt_declaree_et_mad_pret(self):
         lead = self._lead(type_installation='industriel',
@@ -113,9 +126,13 @@ class TestDevisAutoProCIQ404(SimpleTestCase):
                           regime_equipes='continu',
                           jours_ouverture=[1, 2, 3, 4, 5, 6, 7])
         self.assertEqual(champs_manquants(lead), [])
-        # Défaut visible du site : la basse tension n'est PAS déclarée.
-        lead.tension_source = 'site_defaut_visible'
-        self.assertNotEqual(champs_manquants(lead), [])
+        # Une moyenne tension DÉCLARÉE garde sa règle : aucune facture en
+        # dirhams convertie au tarif basse tension (prime fixe MT).
+        lead.tension_raccordement, lead.contrat_electricite = 'mt', None
+        detail = champs_manquants_detail(lead)
+        self.assertEqual([e['champ'] for e in detail], ['conso_mensuelle_kwh'])
+        self.assertEqual(detail[0]['label'], LIB_PRO['industriel'])
+        self.assertIsNone(source_conso(lead))
 
     def test_industriel_releve_seul_pret(self):
         lead = self._lead(type_installation='industriel', releve_conso={

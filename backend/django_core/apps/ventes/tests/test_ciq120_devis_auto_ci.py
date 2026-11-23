@@ -383,6 +383,29 @@ class DevisAutoCITests(_Base):
         self.assertEqual(erreur.field, 'contrat_electricite')
         self.assertIn('Facture en MAD sans contrat', erreur.message)
 
+    def test_d_acal_92_industriel_facture_mad_sans_tension_bt_supposee_et_dite(self):
+        # D-ACAL-92 (« supposer_bt ») — industriel, facture en dirhams, ni
+        # tension ni contrat : basse tension supposée, dite avec le champ
+        # `tension_raccordement`, devis en estimation (sous réserve de visite).
+        lead = self._lead(facture_hiver=Decimal('30000'), type_installation='industriel',
+                          tension_raccordement=None, categorie_commerciale=None,
+                          regime_equipes='3x8')
+        journal = {}
+        devis = build_devis_auto(lead=lead, user=self.user, company=self.co,
+                                 journal_auto=journal)
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+        etude = devis.etude_params['etude_ci']
+        self.assertTrue(etude['sous_reserve_visite']['valeur'])
+        dites = [a for a in journal['alertes'] if a['champ_lead'] == 'tension_raccordement']
+        self.assertEqual(len(dites), 1, journal['alertes'])
+        self.assertIn('basse tension supposée', dites[0]['message'])
+        # Une moyenne tension DÉCLARÉE garde sa règle : la facture en dirhams
+        # n'est pas convertie au tarif basse tension, refus nommé.
+        mt = self._lead(facture_hiver=Decimal('30000'), type_installation='industriel',
+                        tension_raccordement='mt', categorie_commerciale=None,
+                        regime_equipes='3x8')
+        self.assertEqual(self._refus(mt, reel=True).field, 'conso_mensuelle_kwh')
+
     def test_profil_societe_dune_autre_categorie_jamais_retenu(self):
         ProfilTypeConsommation.objects.create(
             company=self.co, cle='hotel', libelle='Hôtel relevé', famille='commercial',

@@ -10,8 +10,8 @@ avant de pouvoir lancer le générateur de devis automatique :
   - Industriel / Commercial (CIQ404, contrat CIQ1) : l'un de
     conso_mensuelle_kwh, bill_kwh, releve_conso, ou facture_hiver (MAD) —
     pour un commercial si la tension n'est pas « mt », pour un industriel
-    seulement si la basse tension est DÉCLARÉE, avec un contrat BT déclaré ou
-    supposé ; ALEA47 — + le rythme, par LA règle du moteur
+    si la moyenne tension n'est pas DÉCLARÉE (D-ACAL-92 : basse tension
+    supposée et dite), avec un contrat BT déclaré ou supposé ; ALEA47 — + le rythme, par LA règle du moteur
     (``ventes.selectors.profil_charge_prerequis_ci``, jamais une copie) ; les
     champs que le moteur SUPPOSE ne sont plus exigés (ADEV125,
     ``ventes.services.champs_supposes_ci``) ;
@@ -99,13 +99,15 @@ def _tension_declaree(lead):
 def _facture_mad_compte(lead):
     """CIQ404 (contrat CIQ1 ``regles_devis_auto.facture_hiver``) — une
     facture MT porte une prime fixe : diviser ses MAD par un prix gonflerait
-    les kWh. Commercial : compte sauf en « mt » ; industriel : seulement si
-    la basse tension est DÉCLARÉE."""
+    les kWh. Commercial : compte sauf en « mt » ; industriel : sauf en « mt »
+    DÉCLARÉE — D-ACAL-92 (« supposer_bt », 23/11/2026) : une tension non
+    déclarée (vide, « ne sait pas », défaut du site) est supposée basse
+    tension par le moteur, et dite (``suppositions_ci``)."""
     mode = lead.type_installation
     if mode == 'commercial':
         return getattr(lead, 'tension_raccordement', None) != 'mt'
     if mode == 'industriel':
-        return _tension_declaree(lead) == 'bt'
+        return _tension_declaree(lead) != 'mt'
     return True
 
 
@@ -272,8 +274,9 @@ GROUPE_CONSO_PRO = ('conso_mensuelle_kwh', 'bill_kwh', 'releve_conso',
 #: ``devis_auto_pret.json`` → ``exemple_industriel``).
 _LIBELLES_PRO = {
     'commercial': 'Consommation (kWh) ou facture mensuelle (MAD)',
+    # D-ACAL-92 — la facture en MAD compte sauf en moyenne tension déclarée.
     'industriel': ('Consommation (kWh), relevé de factures, ou facture en '
-                   'MAD si la basse tension est déclarée'),
+                   'MAD (hors moyenne tension déclarée)'),
 }
 
 #: Ordre de préférence de la source de consommation : le relevé prime, puis
