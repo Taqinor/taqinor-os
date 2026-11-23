@@ -4,7 +4,8 @@ Les motifs d'omission de la cascade finissent par « Champ manquant : « chemin
 ». » (``etapes.etape_omise``) ou citent « Non renseigné(s) : « chemin » ».
 Ce texte est une DONNÉE servie, relue ailleurs par expression régulière
 (``a_renseigner.py``, contrat ``a_renseigner``) : il ne change PAS à la
-source. Seul le texte IMPRIMÉ (rapport, diagramme) passe par ``motif_lisible``.
+source. Seuls le texte IMPRIMÉ (rapport, diagramme) et le texte SERVI à l'écran
+(``avec_motifs_lisibles``, ACAL1323) passent par ``motif_lisible``.
 
 Les intitulés viennent, dans cet ordre, du registre des réglages société
 (``parametres_cles.registre``), des libellés de champ de fiche
@@ -92,6 +93,9 @@ INTITULES_CHEMINS = {
     'batterie.appareils': 'appareils secourus',
     'electrique.chainage': 'câblage des chaînes',
     'roof_layout.pin': 'point GPS du site',
+    # ACAL1323 — chemins encore servis bruts à l'écran (Économie, Production).
+    'remplacements': 'remplacements de matériel prévus',
+    'Produit.garantie_production_mois': 'garantie de production du module (mois)',
     'solarAccess.values': "accès solaire de chaque module (ombrage)",
     # Noms de colonnes de la série météo.
     'gi_w_m2': "irradiance du plan des modules",
@@ -315,18 +319,42 @@ def motif_lisible(motif):
     return texte if texte == brut else _nettoyer(texte)
 
 
-def avec_motifs_lisibles(resultat):
-    """Le ``resultat`` servi, chaque étape OMISE de la cascade portant, à côté
-    de ``motif_omission`` (inchangé : la donnée relue par expression régulière),
-    son texte lisible ``motif_lisible`` — la SEULE source des écrans (R3-19).
+#: ACAL1323 — les motifs SERVIS à l'écran, où qu'ils soient dans le résultat.
+_CLES_MOTIF_SERVI = frozenset(('motif_omission', 'motif_absence'))
 
-    Une copie : le résultat stocké n'est jamais modifié ; sans cascade, rendu
-    tel quel."""
+
+def _servis_lisibles(noeud, cles=_CLES_MOTIF_SERVI):
+    """``noeud`` dont chaque motif servi est rendu lisible (même objet s'il
+    n'en porte aucun : rien n'est recopié pour rien)."""
+    if isinstance(noeud, list):
+        lus = [_servis_lisibles(v, cles) for v in noeud]
+        return lus if any(a is not b for a, b in zip(lus, noeud)) else noeud
+    if not isinstance(noeud, dict):
+        return noeud
+    lus = {c: (motif_lisible(v) if c in cles and isinstance(v, str) and v
+               else _servis_lisibles(v, cles)) for c, v in noeud.items()}
+    return lus if any(lus[c] != noeud[c] if isinstance(noeud[c], str)
+                      else lus[c] is not noeud[c] for c in noeud) else noeud
+
+
+def avec_motifs_lisibles(resultat):
+    """Le ``resultat`` servi à l'écran : chaque étape OMISE de la cascade porte
+    ``motif_lisible`` (R3-19) et, ACAL1323, chaque ``motif_omission`` /
+    ``motif_absence`` servi est lui-même en intitulés de métier (« matrice
+    d'ombrage 12 mois × 24 heures », jamais « ombrage.shading12x24 »), comme
+    le motif d'un champ hors registre de ``cascade.a_renseigner``.
+
+    Une copie : le résultat STOCKÉ n'est jamais modifié — ``a_renseigner`` y
+    a relu le chemin (sa ``cible.champ`` pointe toujours le champ à saisir) ;
+    sans motif, rendu tel quel."""
     cascade = resultat.get('cascade') if isinstance(resultat, dict) else None
     etapes = cascade.get('etapes') if isinstance(cascade, dict) else None
-    if not isinstance(etapes, list):
-        return resultat
-    lues = [dict(e, motif_lisible=motif_lisible(e['motif_omission']))
-            if isinstance(e, dict) and e.get('motif_omission') else e
-            for e in etapes]
-    return dict(resultat, cascade=dict(cascade, etapes=lues))
+    if isinstance(etapes, list):
+        lues = [dict(e, motif_lisible=motif_lisible(e['motif_omission']))
+                if isinstance(e, dict) and e.get('motif_omission') else e
+                for e in etapes]
+        ailleurs = _servis_lisibles(cascade.get('a_renseigner'), {'motif'})
+        cascade = dict(cascade, etapes=lues, **(
+            {'a_renseigner': ailleurs} if 'a_renseigner' in cascade else {}))
+        resultat = dict(resultat, cascade=cascade)
+    return _servis_lisibles(resultat)

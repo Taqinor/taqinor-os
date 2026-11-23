@@ -31,7 +31,7 @@
           "source": null,
           "entree": null,
           "reference": null,
-          "motif_omission": "D-CALX 16 — le spectral figure dans la cascade et reste TOUJOURS omis avec son motif, jamais forfaitisé."
+          "motif_omission": "Le spectral figure dans la cascade et reste TOUJOURS omis avec son motif, jamais forfaitisé."
         },
         {
           "rang": 3,
@@ -107,7 +107,7 @@
           "source": null,
           "entree": null,
           "reference": null,
-          "motif_omission": "Aucun taux d'indisponibilité saisi pour cette société : l'étape est OMISE et la série ressort inchangée. Champ manquant : réglages de simulation, « indisponibilite_pct »."
+          "motif_omission": "Aucun taux d'indisponibilité saisi pour cette société : l'étape est OMISE et la série ressort inchangée. Champ manquant : réglages de simulation, « Indisponibilité (%) »."
         }
       ],
       "ordre": [
@@ -178,12 +178,12 @@
               {
                 "etape": "spectral",
                 "libelle": "Correction spectrale",
-                "motif_omission": "D-CALX 16 — le spectral figure dans la cascade et reste TOUJOURS omis avec son motif, jamais forfaitisé."
+                "motif_omission": "Le spectral figure dans la cascade et reste TOUJOURS omis avec son motif, jamais forfaitisé."
               },
               {
                 "etape": "indisponibilite",
                 "libelle": "Indisponibilité réseau et maintenance",
-                "motif_omission": "Aucun taux d'indisponibilité saisi pour cette société : l'étape est OMISE et la série ressort inchangée. Champ manquant : réglages de simulation, « indisponibilite_pct »."
+                "motif_omission": "Aucun taux d'indisponibilité saisi pour cette société : l'étape est OMISE et la série ressort inchangée. Champ manquant : réglages de simulation, « Indisponibilité (%) »."
               }
             ]
           }
