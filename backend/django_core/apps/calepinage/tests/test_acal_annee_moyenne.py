@@ -384,6 +384,54 @@ class PublicationAnneeMoyenneTest(SimpleTestCase):
                           blocs['production']['total']['annees_fenetre']),
                          (10.0, 10.0, 2.0, 4))
 
+    def test_distribution_d_ecretage_ramenee_a_l_annee(self):
+        # ACAL1605 — fenêtre de 10 ans : l'étape d'écrêtage a perdu
+        # 15 140 kWh sur la fenêtre (1 514 kWh par an) ; l'histogramme de
+        # l'onduleur publiait 15 140,8 kWh d'énergie écrêtée, dix fois la
+        # perte publiée de l'étape. Les deux se lisent à l'année moyenne.
+        etape = {
+            'etape': 'ecretage', 'kwh_avant': 200000.0,
+            'kwh_apres': 184860.0, 'perte_kwh': 15140.0, 'perte_pct': 7.57,
+            'entree': {'distribution': {
+                'borne_kw': 5.0, 'energie_totale_kwh': 200000.0,
+                'energie_ecretee_kwh': 15140.0, 'part_ecretee_pct': 7.57,
+                'classes': [{'de_kw': 0.0, 'a_kw': 5.0,
+                             'energie_kwh': 150000.0},
+                            {'de_kw': 5.0, 'a_kw': 7.5,
+                             'energie_kwh': 50000.0}]}},
+        }
+        blocs = annee_moyenne.publier_a_l_annee_moyenne({
+            'production': {'total': {'annees_fenetre': 10}},
+            'cascade': {'etapes': [etape]}})
+        publie = blocs['cascade']['etapes'][0]
+        distribution = publie['entree']['distribution']
+        self.assertEqual(publie['perte_kwh'], 1514.0)
+        self.assertEqual(distribution['energie_ecretee_kwh'], 1514.0)
+        self.assertEqual(distribution['energie_ecretee_kwh'],
+                         publie['perte_kwh'])
+        # La somme des classes reste l'énergie entrant dans l'étape.
+        self.assertEqual(sum(c['energie_kwh'] for c in distribution['classes']),
+                         publie['kwh_avant'])
+        self.assertEqual(distribution['energie_totale_kwh'],
+                         publie['kwh_avant'])
+        # Pourcentages et puissances : tels quels.
+        self.assertEqual((distribution['part_ecretee_pct'],
+                          distribution['borne_kw']), (7.57, 5.0))
+
+    def test_plafond_d_injection_deja_ramene_non_redivise(self):
+        # ACAL1605 — le plafond d'injection (``autoconsommation``, déjà à
+        # l'année par ``_par_an``) ne passe pas par la cascade publiée.
+        blocs = annee_moyenne.publier_a_l_annee_moyenne({
+            'production': {'total': {'annees_fenetre': 10}},
+            'cascade': {'etapes': []},
+            'autoconsommation': {
+                'plafond': {'energie_ecretee_kwh': 40.0},
+                'etape_plafond': {'entree': {'energie_ecretee_kwh': 40.0}}}})
+        auto = blocs['autoconsommation']
+        self.assertEqual(auto['plafond']['energie_ecretee_kwh'], 40.0)
+        self.assertEqual(
+            auto['etape_plafond']['entree']['energie_ecretee_kwh'], 40.0)
+
     def test_etat_des_energies_rangees(self):
         # Rangé AVANT la correction : l'arrivée vaut N × P50.
         etat = annee_moyenne.etat_des_energies(_blocs_de_publication(4))

@@ -87,10 +87,22 @@ class OmissionTest(unittest.TestCase):
         self.assertEqual(etapes.energie_kwh(rendue), 9.0)
 
     def test_le_motif_de_thermique_py_est_publie_tel_quel(self):
+        # ACAL1607 — sans poste forfaitaire SAISI, la phrase « le poste
+        # forfaitaire est conservé » est retirée : aucun forfait n'existe.
         _, etape = etape_thermique.appliquer(SERIE, contexte_de())
-        attendu = perte_thermique({}, POINTS)['motif']
+        attendu = perte_thermique({}, POINTS)['motif'].replace(
+            etape_thermique.PHRASE_FORFAIT, '')
         self.assertTrue(etape['motif_omission'].startswith(attendu),
                         etape['motif_omission'])
+        self.assertNotIn('forfaitaire', etape['motif_omission'])
+
+    def test_le_forfait_n_est_dit_conserve_que_s_il_est_saisi(self):
+        contexte = contexte_de(fiche={'uc_w_m2k': 29.0})
+        contexte['postes_saisis'] = [{'poste': 'thermique', 'pct': 6.0,
+                                      'source': 'societe'}]
+        _, etape = etape_thermique.appliquer(SERIE, contexte)
+        self.assertIn('temp_coeff_pmax_pct_c', etape['motif_omission'])
+        self.assertIn('forfaitaire est conservé', etape['motif_omission'])
 
     def test_le_coefficient_de_puissance_manquant_est_nomme(self):
         _, etape = etape_thermique.appliquer(
@@ -294,6 +306,53 @@ class DansLaChaineTest(unittest.TestCase):
                      if e['etape'] == 'thermique')
         self.assertTrue(etape['motif_omission'])
         self.assertIsNone(etape['perte_pct'])
+
+
+class ModulePoseTest(unittest.TestCase):
+    """ACAL1607 — l'étape lit la fiche du module POSÉ, pas celle du défaut.
+
+    Calepinage 1978 : le pan porte le produit 22984 (fiche 2793 : γ −0,290
+    %/°C, NOCT 44, Uc 29) alors que le module par défaut de l'entrée n'a ni
+    NOCT ni Uc. La fiche du posé est complète : l'étape s'applique.
+    """
+
+    def test_module_pose_different_du_defaut_sa_fiche_est_lue(self):
+        import copy
+
+        from apps.calepinage.services.simulation import construire_contexte
+
+        from .test_calx5_simulation import (
+            LAYOUT, MATERIEL, MODULE, REGLAGES, _Calepinage)
+
+        fiche_posee = dict(MODULE, pmax_wc=700.0, temp_coeff_pmax_pct_c=-0.29,
+                           noct_c=44.0, uc_w_m2k=29.0)
+        layout = copy.deepcopy(LAYOUT)
+        layout['modules'] = [{'id': 'm700', 'produitId': 22984,
+                              'pmaxWc': 700.0}]
+        layout['zones'][0]['geometry']['moduleId'] = 'm700'
+        materiel = dict(MATERIEL, produits={'module': 1}, fiches_modules={
+            22984: {'specs': fiche_posee, 'designation': 'Module 700W'}})
+        contexte, _meta = construire_contexte(
+            _Calepinage(layout), materiel=materiel, reglages=REGLAGES)
+
+        self.assertEqual(contexte['fiche_module_pose']['noct_c'], 44.0)
+        rendue, etape = etape_thermique.appliquer(SERIE, contexte)
+        self.assertEqual(etape['motif_omission'], '')
+        self.assertEqual(etape['entree']['provenance'],
+                         etape_thermique.PROVENANCE_FICHE)
+        self.assertEqual(
+            etape['entree']['parametres']['temp_coeff_pmax_pct_c'], -0.29)
+        # Juillet chaud : la perte est non nulle (9,0 kWh entrent).
+        self.assertLess(etapes.energie_kwh(rendue), 9.0)
+
+    def test_champ_mono_module_garde_la_fiche_par_defaut(self):
+        from apps.calepinage.services.simulation import construire_contexte
+
+        from .test_calx5_simulation import MATERIEL, REGLAGES, _Calepinage
+
+        contexte, _meta = construire_contexte(
+            _Calepinage(), materiel=MATERIEL, reglages=REGLAGES)
+        self.assertEqual(contexte['fiche_module_pose'], MATERIEL['module'])
 
 
 if __name__ == '__main__':

@@ -111,9 +111,20 @@ DECIMALES_ECART = 2
 #: de l'arithmétique d'arrondi, et aucun chiffre publié n'en dépend.
 EPSILON_PERTE_PCT = 0.1
 
+#: ACAL1606 — les étapes que PVcalc modélise LUI-MÊME : elles sortent de la
+#: perte « système » envoyée (sinon comptées deux fois). Aide PVGIS, « system
+#: loss » (paraphrase) : le calcul PVGIS inclut déjà la température, le
+#: faible éclairement, la réflexion angulaire et le spectre — manuel :
+#: https://joint-research-centre.ec.europa.eu/photovoltaic-geographical-
+#: information-system-pvgis/getting-started-pvgis/pvgis-user-manual_en
+ETAPES_MODELISEES_PAR_PVGIS = ('iam', 'spectral', 'niveau_irradiance',
+                               'thermique')
+
 MOTIF_ECART_INFORMATIF = (
-    'ÉCART INFORMATIF contre PVcalc à perte totale égale — jamais une '
-    '« validation », jamais un ajustement.')
+    'ÉCART INFORMATIF contre PVcalc à pertes système égales (réflexion, '
+    'température, faible éclairement et spectre, que PVGIS calcule lui-même, '
+    'ne lui sont pas envoyés) — jamais une « validation », jamais un '
+    'ajustement.')
 
 MOTIF_SANS_ECART = (
     "Aucune simulation lancée : aucun écart n'a été mesuré contre PVcalc.")
@@ -238,10 +249,11 @@ def ecart_vs_pvcalc(serie, contexte, reponse_pvgis, *, kwc=None,
                                               pvgis=pertes['pvgis_pct'])
 
     ecart = _ecart_pct(total_local, total_pvgis)
-    poste = _poste_principal(cascade, pertes, ecart)
+    tolerance = _etapes.reglage(contexte, CLE_TOLERANCE)
+    poste = _poste_principal(cascade, pertes, ecart,
+                             tolerance=_valeur_tolerance(tolerance))
     if poste is not None:
         motif += MOTIF_POSTE_PRINCIPAL.format(**poste)
-    tolerance = _etapes.reglage(contexte, CLE_TOLERANCE)
     verdict, avertissement, motif = _verdict(ecart, tolerance, motif)
 
     bloc = {
@@ -261,12 +273,16 @@ def ecart_vs_pvcalc(serie, contexte, reponse_pvgis, *, kwc=None,
     return _publier(resultat, bloc)
 
 
-def _poste_principal(cascade, pertes, ecart):
+def _poste_principal(cascade, pertes, ecart, tolerance=None):
     """ACAL692 — l'étape APPLIQUÉE (ni omise, ni gain) qui retire le plus
-    d'énergie (``perte_kwh``, égalité : rang le plus bas), seulement quand
-    la chaîne perd PLUS que PVGIS et produit MOINS ; sinon ``None``."""
+    d'énergie (``perte_kwh``, égalité : rang le plus bas), quand la chaîne
+    perd PLUS que PVGIS et produit MOINS, ou (ACAL1606, pertes système
+    égales) quand l'écart dépasse la ``tolerance`` saisie ; sinon ``None``."""
     chaine, pvgis = pertes.get('chaine_pct'), pertes.get('pvgis_pct')
-    if (pertes.get('egales') or chaine is None or pvgis is None
+    hors_tolerance = (pertes.get('egales') and ecart is not None
+                      and tolerance is not None and abs(ecart) > tolerance)
+    if not hors_tolerance and (
+            pertes.get('egales') or chaine is None or pvgis is None
             or ecart is None or not float(chaine) > float(pvgis)
             or not ecart < 0):
         return None
@@ -424,13 +440,40 @@ def _mensuel(sortie, mensuel_pvgis, annees=1):
     return lignes
 
 
+def perte_systeme(cascade):
+    """ACAL1606 — ``(pct, exclues)`` : la perte de la cascade SANS les étapes
+    de :data:`ETAPES_MODELISEES_PAR_PVGIS` (produit des ``kwh_apres /
+    kwh_avant`` des autres étapes appliquées, au dixième comme
+    ``total_pct``) et la liste des étapes retirées ``{etape, libelle,
+    perte_pct}``. Aucune étape retirée : ``total_pct`` tel quel."""
+    cascade = cascade or {}
+    facteur, exclues = 1.0, []
+    for etape in cascade.get('etapes') or ():
+        avant, apres = (_flottant(etape.get('kwh_avant')),
+                        _flottant(etape.get('kwh_apres')))
+        if etape.get('motif_omission') or not avant or apres is None:
+            continue
+        if etape.get('etape') in ETAPES_MODELISEES_PAR_PVGIS:
+            exclues.append({cle: etape.get(cle)
+                            for cle in ('etape', 'libelle', 'perte_pct')})
+        else:
+            facteur *= apres / avant
+    if not exclues:
+        return cascade.get('total_pct'), exclues
+    return round(100.0 * (1.0 - facteur), 1), exclues
+
+
 def _pertes_totales(cascade, mesure_pvgis):
-    """Les deux pertes totales, et si elles sont égales à l'arrondi près."""
-    chaine = cascade.get('total_pct')
+    """Les deux pertes SYSTÈME (celle de la chaîne hors étapes que PVGIS
+    modélise, celle que PVGIS dit avoir appliquée), si elles sont égales à
+    l'arrondi près, la perte de la cascade entière et les étapes retirées."""
+    chaine, exclues = perte_systeme(cascade)
     pvgis = mesure_pvgis.get('loss_pct')
     egales = (chaine is not None and pvgis is not None
               and abs(float(chaine) - float(pvgis)) <= EPSILON_PERTE_PCT)
-    return {'chaine_pct': chaine, 'pvgis_pct': pvgis, 'egales': bool(egales)}
+    return {'chaine_pct': chaine, 'pvgis_pct': pvgis, 'egales': bool(egales),
+            'cascade_pct': (cascade or {}).get('total_pct'),
+            'etapes_exclues': exclues}
 
 
 def _verdict(ecart, tolerance, motif):

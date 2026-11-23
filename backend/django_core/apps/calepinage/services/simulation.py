@@ -48,8 +48,8 @@ import logging
 import time
 
 from .chaine_pertes import (
-    CLE_CHARGE, CLE_CLIENT_PVGIS, CLE_FOURNISSEUR_METEO, CLE_SORTIES_PAR_PAN,
-    ETAPES_ONDULEUR, ORDRE_ETAPES,
+    CLE_CHARGE, CLE_CLIENT_PVGIS, CLE_FOURNISSEUR_METEO, CLE_METEO_PARTAGEE,
+    CLE_SORTIES_PAR_PAN, ETAPES_ONDULEUR, ORDRE_ETAPES,
     appliquer_chaine,
     bloc_serie_horaire, completude_de_la_chaine, decision_meteo,
 )
@@ -235,6 +235,36 @@ def _plans_du_contexte(pose, document):
         }
         plans.append(plan)
     return plans
+
+
+def _fiche_du_module_pose(materiel, document):
+    """ACAL1607 — la fiche du module qui couvre le PLUS de modules posés :
+    celle d'un produit de pan (``fiches_modules``, ACAL264) quand il domine,
+    sinon le module par défaut (égalité : le défaut)."""
+    defaut = materiel.get('module') or {}
+    fiches = materiel.get('fiches_modules') or {}
+    if not fiches:
+        return defaut
+    from apps.ventes.services import pans_du_document
+
+    comptes = {}
+    for pan in pans_du_document(document):
+        cle = pan.get('produit_id') if pan.get('produit_id') in fiches else None
+        comptes[cle] = comptes.get(cle, 0) + int(pan.get('modules') or 0)
+    retenu = max(comptes, key=lambda cle: (comptes[cle], cle is None),
+                 default=None)
+    return dict(fiches[retenu].get('specs') or {}) if retenu is not None else defaut
+
+
+def _contexte_des_modules_poses(contexte):
+    """ACAL1602 — le module par module voit les pans POSÉS entiers, sans
+    l'accès météo partagé (il porte déjà le kWc des seuls raccordés)."""
+    poses = contexte.get('plans_poses')
+    if poses is None or poses is contexte.get('plans'):
+        return contexte
+    copie = dict(contexte, plans=poses)
+    copie.pop(CLE_METEO_PARTAGEE, None)
+    return copie
 
 
 def _parts_vieillies(document, par_pan, maintenant=None):
@@ -626,7 +656,7 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
 
     Lecture seule : rien n'est écrit ici.
     """
-    from .agregation_electrique import affectation_du_calepinage
+    from .agregation_electrique import affectation_du_calepinage, plans_raccordes
     from .cables import cables_du_calepinage
     from .chaines import bloc_electrique, bloc_pose
     from .electrique import conception_du_calepinage, parametres_societe
@@ -653,8 +683,6 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
 
     pose = bloc_pose(conception)
     plans = _plans_du_contexte(pose, document)
-    plans_equipes = [plan for plan in plans
-                     if plan['modules'] and (plan['kwc'] or 0) > 0]
 
     norme = norme_applicable(reglages)
     cables = cables_du_calepinage(conception,
@@ -670,6 +698,13 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
     # avalés.
     rattachement = affectation_du_calepinage(conception, donnees)
     table_affectation = list(rattachement['affectation'])
+    # ACAL1602 — la cascade ne part que des modules RACCORDÉS ; les pans
+    # posés entiers restent sous ``plans_poses`` (module par module).
+    plans_poses = plans
+    plans, non_raccordes, motif_non_raccordes = plans_raccordes(
+        plans, table_affectation)
+    plans_equipes = [plan for plan in plans
+                     if plan['modules'] and (plan['kwc'] or 0) > 0]
 
     # CALX63 — la grille horaire de la société (heures seules, jamais un prix)
     # pour la stratégie « heures_tarif » : aucune grille saisie ⇒ None, et la
@@ -683,6 +718,8 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
         'tou_heures': heures_tarif_societe(company),
         # ── les fiches produit, déjà résolues ───────────────────────────
         'fiche_module': materiel_resolu.get('module') or {},
+        # ACAL1607 — la fiche du module POSÉ, lue par l'étape thermique.
+        'fiche_module_pose': _fiche_du_module_pose(materiel_resolu, document),
         'fiche_onduleur': materiel_resolu.get('onduleur') or {},
         'fiche_optimiseur': materiel_resolu.get('optimiseur'),
         # ACAL264 — le module par défaut PUIS celui de chaque pan qui en
@@ -698,6 +735,7 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
         # ── le site et le document ──────────────────────────────────────
         'site': _site_du_calepinage(calepinage, document, imagerie),
         'plans': plans,
+        'plans_poses': plans_poses,
         'layout': document,
         'ombrage': _ombrage_du_document(document),
         # ACAL123 — le profil tel que l'écran l'enregistre (camelCase v2),
@@ -745,7 +783,9 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
         'document': document,
         'pose': pose,
         'plans_equipes': plans_equipes,
-        'kwc': _nombre(pose.get('kwc')),
+        'kwc': (round(sum(plan['kwc'] or 0.0 for plan in plans), 3)
+                if non_raccordes else _nombre(pose.get('kwc'))),
+        'non_raccordes': motif_non_raccordes,
         'avertissements': list(materiel_resolu.get('absents') or ()),
         # CALX183 — ``{affectation, motif, avertissements}`` : POURQUOI il n'y
         # a pas de table quand il n'y en a pas.
@@ -1044,18 +1084,21 @@ def _plan_avec_le_site(plan, site):
 # ═══════════════════════════════════════════════════════════════════════════
 
 def _reponse_pvcalculation(client, plan, site, decision, cascade, kwc):
-    """La réponse PVGIS BRUTE du même plan, à PERTE TOTALE ÉGALE, ou ``None``.
+    """La réponse PVGIS BRUTE du même plan, à PERTES SYSTÈME ÉGALES, ou ``None``.
 
     ``ecart_vs_pvcalc`` compare notre chaîne à la production que PVGIS calcule
-    lui-même. Pour que les deux parlent de la même installation, la perte
-    plate envoyée à PVGIS est le TOTAL que la cascade vient de mesurer — la
-    seule valeur qui rende l'écart lisible comme un écart de MODÈLE.
+    lui-même. ACAL1606 — la perte plate envoyée est la perte SYSTÈME de la
+    cascade (``validation.perte_systeme`` : sans réflexion, température,
+    faible éclairement ni spectre, que PVGIS calcule lui-même — les envoyer
+    les compterait deux fois).
 
     ``None`` dès qu'une entrée manque (total de cascade inconnu, fenêtre
     d'années absente en mode année type) ou que PVGIS ne répond pas : le bloc
     ``validation`` est alors publié SANS écart, avec son motif.
     """
-    total_pct = _nombre((cascade or {}).get('total_pct'))
+    from .validation import perte_systeme
+
+    total_pct = _nombre(perte_systeme(cascade)[0])
     debut, fin = (decision['fenetre_annees'] or (None, None))
     if total_pct is None or debut is None or fin is None or not kwc:
         return None
@@ -1071,7 +1114,7 @@ def _reponse_pvcalculation(client, plan, site, decision, cascade, kwc):
     try:
         politique = politique_de_pertes([{
             'poste': 'chaine_calepinage',
-            'libelle': 'Total de la cascade du module',
+            'libelle': 'Perte système de la cascade du module',
             'pct': round(total_pct, 3),
             'source': 'mesure',
         }])
@@ -1471,12 +1514,17 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     if entete and entete in blocs.get('avertissements', ()):
         blocs['avertissements'].remove(entete)
         blocs['avertissements'].insert(0, entete)
+    if meta['non_raccordes']:  # ACAL1602 — en tête, après la borne haute
+        blocs.setdefault('avertissements', []).insert(
+            int(bool(entete and entete in blocs['avertissements'])),
+            meta['non_raccordes'])
     _appels_complementaires_pvgis(blocs, client, reference, decision,
                                   fichier, compteur, meta['document'])
     identite = _relayer_fichier_meteo(blocs['meteo'], fichier, provenance)
 
     # 3. LA SIMULATION MODULE PAR MODULE (CALX182).
-    par_module = production_module_par_module(contexte)
+    par_module = production_module_par_module(
+        _contexte_des_modules_poses(contexte))
     if par_module.get('par_module') or par_module.get('par_chaine'):
         blocs['production']['par_module'] = par_module['par_module']
         blocs['production']['par_chaine'] = par_module['par_chaine']

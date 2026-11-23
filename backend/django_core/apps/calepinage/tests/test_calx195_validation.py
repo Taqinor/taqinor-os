@@ -401,6 +401,78 @@ class PostePrincipalTest(SimpleTestCase):
         self.assertIn('pas démontré comme cause', texte)
 
 
+def _etape_kwh(rang, nom, avant, apres):
+    return {'rang': rang, 'etape': nom, 'libelle': f'Libellé {nom}',
+            'kwh_avant': avant, 'kwh_apres': apres,
+            'perte_kwh': round(avant - apres, 3),
+            'perte_pct': round(100.0 * (1.0 - apres / avant), 3),
+            'gain': False, 'motif_omission': ''}
+
+
+#: ACAL1606 — cascade chiffrée à la main : horizon −2 %, IAM −5 %, salissure
+#: −2 %, thermique −10 %, onduleur −3 %. Perte de la cascade = 1 − 0,98 ×
+#: 0,95 × 0,98 × 0,90 × 0,97 = 20,3 % ; PVGIS modélise lui-même l'IAM et la
+#: température : perte SYSTÈME envoyée = 1 − 0,98 × 0,98 × 0,97 = 6,8 %.
+CASCADE_SYSTEME = {'total_pct': 20.3, 'etapes': [
+    _etape_kwh(1, 'horizon', 1000.0, 980.0),
+    _etape_kwh(7, 'iam', 980.0, 931.0),
+    _etape_kwh(9, 'salissure', 931.0, 912.38),
+    _etape_kwh(12, 'thermique', 912.38, 821.142),
+    _etape_kwh(22, 'onduleur', 821.142, 796.50774),
+]}
+
+
+class _ClientPvcalc:
+    """Le client qui demande une production : il note la perte envoyée."""
+
+    def __init__(self):
+        self.envois = []
+
+    def _params_communs(self, *, lat, lon, base, politique):
+        return {'lat': lat, 'lon': lon, 'loss': politique.valeur_loss}
+
+    def _appeler(self, service, parametres):
+        self.envois.append(parametres)
+        return {'inputs': {}}, False
+
+
+class PerteSystemeTest(SimpleTestCase):
+    """ACAL1606 — PVGIS reçoit la perte SYSTÈME, pas la cascade entière."""
+
+    def test_la_perte_envoyee_exclut_iam_et_thermique(self):
+        from apps.calepinage.services import simulation
+
+        client = _ClientPvcalc()
+        simulation._reponse_pvcalculation(
+            client, {'inclinaison_deg': 30.0, 'azimut_pvgis_deg': 0.0},
+            {'lat': 33.5, 'lon': -7.6}, {'fenetre_annees': (2020, 2020)},
+            CASCADE_SYSTEME, 2.84)
+        self.assertEqual(len(client.envois), 1)
+        self.assertAlmostEqual(float(client.envois[0]['loss']), 6.8,
+                               delta=0.05)
+
+    def test_les_pertes_totales_publient_la_perte_systeme_et_ses_exclues(self):
+        pertes = v._pertes_totales(CASCADE_SYSTEME, {'loss_pct': 6.8})
+        self.assertAlmostEqual(pertes['chaine_pct'], 6.8, delta=0.05)
+        self.assertTrue(pertes['egales'])
+        self.assertEqual(pertes['cascade_pct'], 20.3)
+        self.assertEqual([e['etape'] for e in pertes['etapes_exclues']],
+                         ['iam', 'thermique'])
+        self.assertEqual(pertes['etapes_exclues'][1]['perte_pct'], 10.0)
+
+    def test_au_dela_de_la_tolerance_le_poste_principal_est_nomme(self):
+        pertes = v._pertes_totales(CASCADE_SYSTEME, {'loss_pct': 6.8})
+        poste = v._poste_principal(CASCADE_SYSTEME, pertes, -8.0,
+                                   tolerance=5.0)
+        self.assertEqual(poste['etape'], 'thermique')
+        self.assertIsNone(v._poste_principal(CASCADE_SYSTEME, pertes, -3.0,
+                                             tolerance=5.0))
+        self.assertIsNone(v._poste_principal(CASCADE_SYSTEME, pertes, -8.0))
+
+    def test_le_motif_dit_a_pertes_systeme_egales(self):
+        self.assertIn('à pertes système égales', v.MOTIF_ECART_INFORMATIF)
+
+
 class FormePvcalcMensuelleTest(SimpleTestCase):
     """La réponse ``PVcalc`` (mensuelle) est lue comme la série horaire.
 

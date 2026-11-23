@@ -55,7 +55,7 @@ from .valeurs import nombre as _nombre
 
 __all__ = [
     'ETAPE_MISMATCH', 'ETAPE_ECRETAGE', 'affectation_du_calepinage',
-    'agregation_production',
+    'agregation_production', 'plans_raccordes',
 ]
 
 #: L'étape de la chaîne de pertes qui porte la dispersion PAR CHAÎNE
@@ -133,6 +133,38 @@ def affectation_du_calepinage(conception, entree_electrique=None):
         imposee, avertissements = (), [str(refus)]
     return {'affectation': affectation(conception, imposee=imposee),
             'motif': '', 'avertissements': tuple(avertissements)}
+
+
+def plans_raccordes(plans, affectation):
+    """ACAL1602 — ``(plans, nombre, avertissement)`` : chaque pan réduit à
+    ses modules RACCORDÉS (``chaine`` non nulle dans la table ;
+    ``electrique.chainage.reste`` = les autres), kWc au prorata. La cascade
+    ne part que d'eux ; leurs voisins non raccordés restent servis dans
+    ``hors_chaine``. Sans table, ou si plus rien n'est raccordé : les pans
+    tels quels, ``0`` et ``''``."""
+    reserve = {}
+    for ligne in affectation or ():
+        if isinstance(ligne, dict) and ligne.get('chaine') is None:
+            pan = str(ligne.get('pan') or '')
+            reserve[pan] = reserve.get(pan, 0) + 1
+    raccordes, retires = [], 0
+    for plan in plans:
+        moins = min(reserve.get(plan['pan'], 0), plan['modules'])
+        if moins:
+            gardes, kwc = plan['modules'] - moins, plan['kwc']
+            plan = dict(plan, modules=gardes, kwc=(
+                None if kwc is None else round(kwc * gardes / plan['modules'], 3)))
+            retires += moins
+        raccordes.append(plan)
+    if not retires or not any(plan['modules'] for plan in raccordes):
+        return plans, 0, ''
+    return raccordes, retires, (
+        "1 panneau n'est raccordé à aucun onduleur : il n'est pas compté dans "
+        "la production (son énergie possible est donnée à part, « hors "
+        "chaîne »)." if retires == 1 else
+        "%d panneaux ne sont raccordés à aucun onduleur : ils ne sont pas "
+        "comptés dans la production (leur énergie possible est donnée à part, "
+        "« hors chaîne »)." % retires)
 
 
 def _perte_de_l_etape(cascade, poste):
