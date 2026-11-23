@@ -5555,3 +5555,15 @@ decisions:
     date: "2026-11-23"
     source: "tour 2 du L5 (23/11/2026) : après « Démarrage rapide », aucun calepinage n'a de résultat complet au premier jour (19 pertes sur 22 sans valeur selon l'écran) ; le profil de départ ne publie rien pour la salissure, la dégradation initiale et l'indisponibilité, et les pertes de câbles n'ont pas de clé de réglage ; ACAL1349 déclarée impossible sans valeurs inventées ; rappel de la demande du fondateur du 22/11 : « my ERP should have default for everything »"
     taches: [ACAL1349]
+
+  - id: D-ACAL-83
+    question: "Où mesurer l'ombre des obstacles proches d'un pan : en un seul point (le centre du pan), ou sur les panneaux posés ?"
+    options:
+      - cle: centre_du_pan
+        texte: "En un seul point, le centre du pan (comportement actuel)"
+      - cle: moyenne_modules
+        texte: "En moyenne sur les panneaux posés (et, sans panneau, sur une grille du pan)"
+    reponse: ouverte
+    date: "2026-11-23"
+    source: "tour 2 du L5 (23/11/2026) : la lane carte-a a reproduit le défaut — l'ombre proche est évaluée au seul centre du pan, si bien qu'une cheminée posée au centre donne 71,76 % de perte quelle que soit sa hauteur (la note « −72 % » vue par les relecteurs) et qu'un poteau hors du centre donne 0 % ; recommandation : la moyenne sur les panneaux posés, parce que c'est la grandeur que la note annonce ; NON tranchée par l'orchestrateur parce que la matrice d'ombrage est une clé imprimée du devis : la production des devis liés à un calepinage qui a un obstacle changerait ; à préparer en phase de contrôles : la liste des devis touchés et l'écart de chacun, avant la réponse"
+    taches: [ACAL1407, ACAL1501]
