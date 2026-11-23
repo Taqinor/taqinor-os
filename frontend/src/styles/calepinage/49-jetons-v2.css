@@ -13,7 +13,8 @@
 .cal-coque,
 .cliste,
 .cal-tel,
-.cal-client {
+.cal-client,
+.cal-reglages {
   --cal-papier: rgb(245 244 240);
   --cal-surface: rgb(255 255 255);
   --cal-surface-2: rgb(235 233 226);
@@ -77,7 +78,8 @@
 .dark .cal-coque,
 .dark .cliste,
 .dark .cal-tel,
-.dark .cal-client {
+.dark .cal-client,
+.dark .cal-reglages {
   --cal-papier: rgb(10 15 42);
   --cal-surface: rgb(18 26 63);
   --cal-surface-2: rgb(26 35 80);

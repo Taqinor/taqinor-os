@@ -236,12 +236,13 @@
   gap: 8px;
   height: 52px;
   border: 0;
-  border-radius: 12px;
-  background: var(--primary);
-  color: var(--primary-foreground);
-  font: 600 1rem var(--font-brand);
+  border-radius: var(--cal-rayon-pile);
+  background: var(--cal-action);
+  color: var(--cal-action-texte);
+  box-shadow: var(--cal-action-ombre);
+  font: 700 0.9375rem var(--font-brand);
 }
-.cal-tel-pied-or:disabled { opacity: 0.55; cursor: not-allowed; }
+.cal-tel-pied-or:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
 
 /* ── Montrer au client ───────────────────────────────────────────────────── */
 .cal-client-scene {

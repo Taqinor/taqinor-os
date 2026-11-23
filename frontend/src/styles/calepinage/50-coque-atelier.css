@@ -152,7 +152,8 @@ body[data-cal-atelier] [data-sonner-toaster][data-y-position='bottom'][data-x-po
 /* Boutons des maquettes v2 (ACAL1802) — l'OR (--cal-action) est le seul aplat doré d'un écran : le bouton qui fait
    avancer (BoutonOr). Tout le reste qui agit est bleu nuit (BoutonMarine, « Générer le devis » du bandeau).
    Un seul rayon de bouton (--cal-rayon-bouton, 11 px). */
-.cal-coque .cal-bouton-or {
+.cal-coque .cal-bouton-or,
+.cal-reglages .cal-bouton-or {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -169,7 +170,13 @@ body[data-cal-atelier] [data-sonner-toaster][data-y-position='bottom'][data-x-po
 }
 /* ACAL1803 — le bouton d'étape du pied (maquette v2) : 52 px, rayon 14, 15 px graisse 700, ombre dorée. */
 .cal-coque .cal-bouton-or-plein { width: 100%; height: 52px; gap: 10px; border-radius: var(--cal-rayon-pile); font-size: 0.9375rem; }
-.cal-coque .cal-bouton-or:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
+/* ACAL2002 — UN SEUL bouton doré : « Générer le devis » (Documents) et « Remplir… » (Démarrage rapide) prennent le MÊME
+   bouton que l'étape (52 px, rayon 14, 15 px graisse 700, ombre dorée), à largeur de contenu ; le relevé de visite
+   (58-telephone.css) lit les mêmes jetons. */
+.cal-coque .cal-bouton-or-grand,
+.cal-reglages .cal-bouton-or-grand { height: 52px; padding: 0 22px; gap: 10px; border-radius: var(--cal-rayon-pile); font-size: 0.9375rem; }
+.cal-coque .cal-bouton-or:disabled,
+.cal-reglages .cal-bouton-or:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
 .cal-coque .cal-bouton-marine {
   position: relative;
   height: 44px;

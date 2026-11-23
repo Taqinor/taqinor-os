@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import process from 'node:process'
 import userEvent from '@testing-library/user-event'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 
@@ -49,6 +50,33 @@ const DETAIL_SANS_SELECTION = { ...DETAIL, surfaces_chiffrables: SURFACES_SANS_S
 
 beforeEach(() => { vi.clearAllMocks() })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
+
+/* ACAL2002 — un seul bouton doré : « Générer le devis » de Documents est le bouton d'étape v2 (mêmes jetons --cal-*). */
+describe('ACAL2002 — « Générer le devis » est le bouton doré v2', () => {
+  it('porte la classe du bouton d’étape et en lit les jetons (fond d’action, rayon 14, 52 px, 700, ombre dorée)', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { resolve } = await import('node:path')
+    const style = document.createElement('style')
+    style.textContent = ['49-jetons-v2.css', '50-coque-atelier.css']
+      .map((f) => readFileSync(resolve(process.cwd(), `src/styles/calepinage/${f}`), 'utf8')).join('\n')
+    document.head.appendChild(style)
+    document.body.classList.add('cal-coque')
+    try {
+      rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+      const bouton = await screen.findByTestId('cal-generer-devis')
+      expect(bouton).toHaveClass('cal-bouton-or', 'cal-bouton-or-grand')
+      const cs = getComputedStyle(bouton)
+      expect(cs.background).toContain('--cal-action')
+      expect(cs.height).toBe('52px')
+      expect(cs.borderRadius).toBe('var(--cal-rayon-pile)')
+      expect(cs.fontWeight).toBe('700')
+      expect(cs.boxShadow).toBe('var(--cal-action-ombre)')
+    } finally {
+      document.body.classList.remove('cal-coque')
+      style.remove()
+    }
+  })
+})
 
 describe('BoutonDevis (CAL38)', () => {
   it('détail absent (agrégat pas encore lu) : aucun bouton deviné', async () => {

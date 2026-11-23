@@ -288,7 +288,7 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
 
   return (
     <Card ref={racine}
-      className={seul ? 'flex flex-col gap-5 border-0 bg-transparent p-0 shadow-none' : 'mt-5 space-y-4 p-4'}
+      className={seul ? 'cal-reglages flex flex-col gap-5 border-0 bg-transparent p-0 shadow-none' : 'cal-reglages mt-5 space-y-4 p-4'}
       style={seul && hauteur ? { height: hauteur } : undefined}
       data-testid="acal405-demarrage">
       {autonome === true ? (
@@ -381,10 +381,10 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
           Tout saisir à la main
         </a>
         {peut && (
-          <Button
+          <button
             type="button"
             disabled={occupe || enLecture || echecLecture || nbChoisies === 0}
-            className="h-12 rounded-[10px] px-[22px] text-base"
+            className="cal-bouton-or cal-bouton-or-grand"
             data-testid="acal405-appliquer"
             onClick={() => agir(
               () => calepinageApi.parametres.appliquerProfilDepart(choisies),
@@ -392,7 +392,7 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
             )}
           >
             {libelleAppliquer()}
-          </Button>
+          </button>
         )}
       </div>
       {message && (
