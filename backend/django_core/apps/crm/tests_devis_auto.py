@@ -261,12 +261,11 @@ class TestAgricoleSansCvAGR403(SimpleTestCase):
             [['facture_hiver'], ['facture_ete'], ['ville', 'gps_lat']])
         for mode in ('industriel', 'commercial'):
             # CIQ404 — groupe pro du contrat CIQ1 ; ALEA47 — + le rythme que
-            # le moteur exige (ici tout manque) ; ADEV125 — le contrat absent
-            # est supposé par le moteur, jamais exigé.
+            # le moteur exige (ici tout manque) ; ADEV125/ADEV126 — le contrat et
+            # la phase absents sont supposés par le moteur, jamais exigés.
             self.assertEqual(champs_requis(Lead(nom='x', type_installation=mode)),
                              [['conso_mensuelle_kwh', 'bill_kwh',
                                'releve_conso', 'facture_hiver'],
-                              ['raccordement'],
                               ['jours_ouverture'],
                               ['heure_debut', 'regime_equipes']])
 

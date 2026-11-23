@@ -275,16 +275,25 @@ class DevisAutoCITests(_Base):
         self.assertEqual(ctx.exception.field, 'conso_mensuelle_kwh')
         self.assertEqual(Devis.objects.filter(company=self.co).count(), avant)
 
-    def test_phase_inconnue_refus_nomme_le_raccordement(self):
-        # ADEV89 — la phase du site est un prérequis du moteur C&I : « je ne
-        # sais pas » (ou vide) refuse en nommant `raccordement`, rien n'est créé.
+    def test_adev126_phase_inconnue_triphase_suppose_et_dit(self):
+        # ADEV126 (D-ACAL-93, 23/11/2026) — « je ne sais pas » (ou vide) : le
+        # devis part en TRIPHASÉ supposé (onduleur triphasé), dit avec le champ
+        # `raccordement`, jamais figé au devis.
         for phase in ('inconnu', ''):
             lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), raccordement=phase)
-            avant = Devis.objects.filter(company=self.co).count()
-            with self.assertRaises(AutoDevisError) as ctx:
-                self._auto(lead)
-            self.assertEqual(ctx.exception.field, 'raccordement', phase)
-            self.assertEqual(Devis.objects.filter(company=self.co).count(), avant)
+            journal = {}
+            with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+                devis = build_devis_auto(lead=lead, user=self.user, company=self.co,
+                                         journal_auto=journal)
+            etude = devis.etude_params['etude_ci']
+            self.assertEqual(etude['entrees_resolues']['phases']['valeur'], 'tri', phase)
+            self.assertEqual(etude['entrees_resolues']['phases']['provenance']['origine'],
+                             'estimation')
+            self.assertNotIn('phases', devis.etude_params)
+            self.assertIn(self.onduleur.id, set(devis.lignes.values_list('produit_id', flat=True)))
+            dites = [a for a in journal['alertes'] if a['champ_lead'] == 'raccordement']
+            self.assertEqual(len(dites), 1, journal['alertes'])
+            self.assertIn('triphasé supposé', dites[0]['message'])
 
     def test_structure_sans_prix_422_prix_a_renseigner(self):
         Produit.objects.filter(pk=self.structure.pk).update(prix_vente=0)

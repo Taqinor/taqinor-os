@@ -161,9 +161,6 @@
           "facture_hiver"
         ],
         [
-          "raccordement"
-        ],
-        [
           "jours_ouverture"
         ],
         [
@@ -204,9 +201,6 @@
           "bill_kwh",
           "releve_conso",
           "facture_hiver"
-        ],
-        [
-          "raccordement"
         ],
         [
           "jours_ouverture"

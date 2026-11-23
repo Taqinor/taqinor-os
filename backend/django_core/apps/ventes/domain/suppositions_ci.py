@@ -61,6 +61,10 @@ HYPOTHESES_ESTIMEES = {
     'contrat_electricite': ('contrat_electricite', (
         "Contrat d'électricité non déclaré : tarif basse tension ({libelle}) supposé, devis "
         'en estimation. Demandez au client son contrat : il est écrit sur sa facture.')),
+    'phases': ('raccordement', (
+        'Phase du site non déclarée : triphasé supposé, les onduleurs en dépendent. '
+        'Demandez au client s’il est en monophasé ou en triphasé : c’est écrit sur sa '
+        'facture ou sur son compteur.')),
 }
 
 #: ADEV125 (D-ACAL-92, fondateur 23/11/2026) — contrat d'électricité non déclaré
@@ -69,8 +73,16 @@ HYPOTHESES_ESTIMEES = {
 #: usine), dit avec le champ de la fiche, devis marqué estimation.
 CONTRAT_BT_SUPPOSE = {'commercial': 'bt_patente', 'industriel': 'bt_force_motrice'}
 LIBELLES_SUPPOSES = {'bt_patente': 'BT patenté', 'bt_force_motrice': 'BT force motrice'}
+#: ADEV126 (D-ACAL-93, fondateur 23/11/2026) — phase non déclarée (vide ou « je
+#: ne sais pas ») : triphasé supposé pour tout commercial et industriel, dit.
+PHASE_SUPPOSEE = 'tri'
+PHASES_DECLAREES = ('mono', 'tri')
 #: Origine d'une entrée supposée (vocabulaire du contrat ``etude_ci_preview.json``).
 ORIGINE_SUPPOSEE = 'estimation'
+
+
+def _provenance_supposee(champ):
+    return {'origine': ORIGINE_SUPPOSEE, 'detail': champ, 'date': None}
 
 
 def champs_supposes(mode, tension):
@@ -78,7 +90,7 @@ def champs_supposes(mode, tension):
     ``tension`` : celle déclarée (``'mt'`` = aucun contrat à supposer)."""
     if mode not in CONTRAT_BT_SUPPOSE:
         return ()
-    return () if tension == 'mt' else ('contrat_electricite',)
+    return (() if tension == 'mt' else ('contrat_electricite',)) + ('raccordement',)
 
 
 def supposer_entrees(res, mode, regles=None):
@@ -97,11 +109,16 @@ def supposer_entrees(res, mode, regles=None):
             contrat = CONTRAT_BT_SUPPOSE[mode]
             res.poser('tarif_declare', dict(declare if isinstance(declare, dict) else {},
                                             contrat=contrat),
-                      {'origine': ORIGINE_SUPPOSEE, 'detail': 'contrat_electricite', 'date': None})
+                      _provenance_supposee('contrat_electricite'))
             hypotheses.append({'cle': 'contrat_electricite', 'valeur': contrat,
                                'statut': 'estimation',
                                'source': 'contrat non déclaré : tarif basse tension supposé '
                                          '(décision fondateur du 23/11/2026)'})
+    if 'raccordement' in champs_supposes(mode, tension) and res.valeur('phases') not in PHASES_DECLAREES:
+        res.poser('phases', PHASE_SUPPOSEE, _provenance_supposee('raccordement'))
+        hypotheses.append({'cle': 'phases', 'valeur': PHASE_SUPPOSEE, 'statut': 'estimation',
+                           'source': 'phase non déclarée : triphasé supposé (décision fondateur '
+                                     'du 23/11/2026)'})
     return hypotheses
 
 

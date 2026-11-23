@@ -40,7 +40,6 @@ _PRO_COMPLET = {'contrat_electricite': 'bt_patente',
                 'categorie_commerciale': 'bureau',
                 # ADEV89 — + la phase du site (combinaison d'onduleurs).
                 'raccordement': 'triphase'}
-LIB_PHASE = 'Phase du site (monophasé ou triphasé)'
 LIB_RYTHME = "Jours et heures d'ouverture (ou catégorie d'activité)"
 
 
@@ -92,24 +91,25 @@ class PretEgaleCeQueLeMoteurExigeALEA47(SimpleTestCase):
     rythme (ou catégorie à archétype), par la règle partagée du moteur."""
 
     def test_lead_1637_conso_seule_pas_pret_rythme_nomme(self):
-        # ADEV125 (D-ACAL-92) — le contrat absent est supposé par le moteur.
+        # ADEV125/ADEV126 (D-ACAL-92/93) — contrat et phase absents : supposés
+        # par le moteur (BT, triphasé) ; seul le rythme reste à demander.
         lead = _lead_pro(conso_mensuelle_kwh=Decimal('10000'))
-        self.assertEqual(champs_manquants(lead), [LIB_PHASE, LIB_RYTHME])
+        self.assertEqual(champs_manquants(lead), [LIB_RYTHME])
         self.assertEqual(
-            [e['champ'] for e in champs_manquants_detail(lead)],
-            ['raccordement', 'jours_ouverture'])
+            [e['champ'] for e in champs_manquants_detail(lead)], ['jours_ouverture'])
         self.assertEqual(champs_requis(lead)[1:], [
-            ['raccordement'], ['jours_ouverture'],
-            ['heure_debut', 'regime_equipes']])
+            ['jours_ouverture'], ['heure_debut', 'regime_equipes']])
 
-    def test_phase_inconnue_pas_prete(self):
-        # ADEV89 — « je ne sais pas » n'est pas une phase : le devis
-        # automatique attend (un hôtel triphasé sortait en onduleurs mono).
-        lead = _lead_pro(conso_mensuelle_kwh=Decimal('10000'),
-                         **dict(_PRO_COMPLET, raccordement='inconnu'))
-        self.assertEqual(champs_manquants(lead), [LIB_PHASE])
-        lead.raccordement = 'monophase'
-        self.assertEqual(champs_manquants(lead), [])
+    def test_adev126_phase_inconnue_supposee_prete(self):
+        # ADEV126 (D-ACAL-93) — « je ne sais pas » ou vide : triphasé supposé
+        # par le moteur, la fiche n'attend plus la phase.
+        for phase in ('inconnu', None):
+            lead = _lead_pro(conso_mensuelle_kwh=Decimal('10000'),
+                             **dict(_PRO_COMPLET, raccordement=phase))
+            self.assertEqual(champs_manquants(lead), [], phase)
+            self.assertNotIn(['raccordement'], champs_requis(lead))
+        self.assertIn('raccordement', champs_supposes_ci('commercial', 'mt'))
+        self.assertEqual(champs_supposes_ci('agricole', None), ())
 
     def test_bureau_et_bt_patente_pret(self):
         lead = _lead_pro(conso_mensuelle_kwh=Decimal('10000'), **_PRO_COMPLET)

@@ -205,9 +205,10 @@ def champs_requis(lead) -> list[list[str]]:
         # ADEV125 (D-ACAL-92) — sauf quand le moteur le suppose (BT, dit).
         if _tension_declaree(lead) != 'mt' and 'contrat_electricite' not in supposes:
             requis.append(['contrat_electricite'])
-        # ADEV89 (rejeu « humain » 23/10/2026) — + la phase du site : la
-        # combinaison d'onduleurs la suit (jamais « je ne sais pas »).
-        requis.append(['raccordement'])
+        # ADEV89 — + la phase du site (la combinaison d'onduleurs la suit) ;
+        # ADEV126 (D-ACAL-93) — sauf quand le moteur la suppose (triphasé, dit).
+        if 'raccordement' not in supposes:
+            requis.append(['raccordement'])
         return requis + _groupes_rythme(lead)
     requis = [['facture_hiver']]
     if lead.ete_differente:
