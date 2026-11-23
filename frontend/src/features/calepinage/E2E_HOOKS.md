@@ -977,11 +977,12 @@ retiré plus un hook ajouté.
 | `cal-retour-liste` | coque : lien « ‹ Calepinages » (ou « ‹ Devis ») du bandeau. |
 | `cal-projet-titre` | coque : nom du projet dans le bandeau (titre servi, + ville servie). |
 | `cal-projet-sous-titre` | coque : ligne sous le nom (Lead / Client · facture servie), absente sans donnée. |
-| `cal-generer-devis-haut` | coque : bouton doré « Générer le devis » du bandeau (ouvre l’étape Documents et son vrai bouton). |
+| `cal-generer-devis-haut` | coque : bouton bleu nuit « Générer le devis » du bandeau (ACAL1802 ; ouvre l’étape Documents et son vrai bouton). |
 | `cal-rail-avance` | coque : bouton « Avancé » en bas du rail (ouvre l’ancien inspecteur entier ; `aria-expanded`). |
 | `cal-panneau-etape` | coque : panneau d’étape de droite (`#rp9-studio-inspecteur`). |
 | `cal-panneau-etape-titre` | coque : titre du panneau d’étape (« Le toit »), sous « Étape N sur 5 ». |
 | `cal-plein-etape-tete` | coque : en-tête « Étape N sur 5 » + titre au-dessus d’un écran pleine largeur (Résultats, Documents). |
+| `cal-progression-etapes` | coque : les cinq traits de progression en tête du panneau d’étape (et de l’écran plein) ; un `span[data-etat]` par étape : `fait`, `actif`, `a-venir` (ACAL1803). |
 | `cal-sur-carte-resume` | étape Toit/Panneaux : puce blanche posée sur la carte (indicateurs servis). |
 | `cal-barre-outils-carte` | étape Toit : barre d’outils flottante au bas de la carte. |
 | `cal-toit-formes` | étape Toit : grille des formes du toit. |

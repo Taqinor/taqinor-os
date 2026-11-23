@@ -8,8 +8,9 @@ import { Icone } from '../atelier/coque/primitives'
    est best-effort : sans réponse, les boutons restent là, sans pastille. Un
    clic ouvre l'étape via `onChoisir(cleEtape)` — le rail écrit l'URL.
    Coque (maquettes 22/11) — `vertical` : le RAIL DE GAUCHE de l'atelier plein écran
-   (pictogramme + libellé empilés, l'étape active dans une tuile pâle bordée d'or,
-   « Avancé » en bas, ligne « N à régler » lue sur `manque` servi par le parcours).
+   (pictogramme + libellé empilés ; ACAL1802 : l'étape active dans une tuile BLEU NUIT, une étape `fait` porte la
+   pastille verte cochée, « N à régler » une pastille or — styles de 50-coque-atelier.css sur `data-etat` /
+   `aria-current` ; « Avancé » en bas, ligne « N à régler » lue sur `manque` servi par le parcours).
    ========================================================================== */
 
 const LIBELLE_ETAT = {

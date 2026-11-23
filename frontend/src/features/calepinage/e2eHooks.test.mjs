@@ -846,6 +846,7 @@ export const ALL_HOOKS = [
   'cal-panneau-etape',
   'cal-panneau-etape-titre',
   'cal-plein-etape-tete',
+  'cal-progression-etapes',
   'cal-sur-carte-resume',
   'cal-barre-outils-carte',
   'cal-toit-formes',

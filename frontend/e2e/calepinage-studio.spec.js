@@ -1,7 +1,7 @@
-// ACAL402 — disposition « studio » de l'atelier de calepinage. Coque (maquettes 22/11) : l'atelier
-// est PLEIN ÉCRAN (ni barre latérale ni en-tête de l'ERP) : bandeau 56 px, rail 113 px (tuiles de 96 px
-// + marges + filet, comme la maquette ; 72 px en pictogrammes sous 1 280 px, maquette Tablette), la carte au
-// centre, le panneau d'étape à droite (360 px) dont le corps défile seul ; sous 1 280 px le panneau devient
+// ACAL402 — disposition « studio » de l'atelier de calepinage. Coque v2 (ACAL1801, maquettes du 23/11) : l'atelier
+// est PLEIN ÉCRAN (ni barre latérale ni en-tête de l'ERP) ; au bureau la CARTE couvre toute la fenêtre et le bandeau
+// (16,16 · 56 px), le rail (76 px ; 72 px en pictogrammes sous 1 280 px, maquette Tablette) et le panneau d'étape
+// (384 px, à 16 px du bord) flottent dessus ; le corps du panneau défile seul ; sous 1 280 px le panneau devient
 // le TIROIR du bas (maquette Tablette). Hooks : `#rp9-studio-scene` / `#rp9-studio-inspecteur`
 // (contrat DOM `rp9-*`), `cal-coque`, `cal-barre-projet`, `cal-rail-etapes`.
 import { test, expect } from '@playwright/test'
@@ -37,10 +37,15 @@ test('ACAL402: à 1 440 × 900 la page ne défile plus, carte et bouton d’enre
   await expect(page.locator('.layout')).toHaveCount(0)
   const barre = await page.getByTestId('cal-barre-projet').boundingBox()
   expect(Math.round(barre.height)).toBe(56)
+  expect([Math.round(barre.x), Math.round(barre.y), Math.round(barre.width)]).toEqual([16, 16, 1408])
   const rail = await page.getByTestId('cal-rail-etapes').boundingBox()
-  expect(Math.round(rail.width)).toBe(113)
+  expect(Math.round(rail.width)).toBe(76)
   const panneau = await page.locator('#rp9-studio-inspecteur').boundingBox()
-  expect(Math.round(panneau.width)).toBe(360)
+  expect(Math.round(panneau.width)).toBe(384)
+  expect([Math.round(panneau.x), Math.round(panneau.y)]).toEqual([1040, 88])
+  // ACAL1801 — la carte est le décor : 1 440 × 900, sous les pièces.
+  const decor = await page.locator('#rp9-map').boundingBox()
+  expect([Math.round(decor.width), Math.round(decor.height)]).toEqual([1440, 900])
   await expect(page.getByTestId('cal-etape-toit')).toHaveAttribute('aria-current', 'step')
 
   // L'inspecteur défile seul : la carte garde sa position pendant le défilement.

@@ -1,11 +1,11 @@
 import { Link } from 'react-router-dom'
-import { BoutonOr, Icone, Segmente } from './primitives'
+import { BoutonMarine, Icone, Segmente } from './primitives'
 
 /* ============================================================================
-   COQUE — LE BANDEAU DU PROJET (maquette Main : 56 px, fond carte, filet bas).
+   COQUE — LE BANDEAU DU PROJET (maquette v2 Main : 56 px ; au bureau il flotte sur la carte).
    « ‹ Calepinages » · nom (16 px demi-gras) + ligne 12 px · [espace] · état
    d'enregistrement (BarreEnregistrement, forme barre du haut) · Guidé | Expert ·
-   « Générer le devis » doré. Le niveau expert reste porté par la case
+   « Générer le devis » BLEU NUIT (ACAL1802 : l'or est réservé au bouton d'étape). Le niveau expert reste porté par la case
    `cal-mode-expert` (contrat des tests et des specs) que le segmenté pilote.
    Rien n'est inventé : le nom et la ligne viennent du contexte servi.
    ========================================================================== */
@@ -47,7 +47,9 @@ export default function BarreProjet({
       <Segmente libelle="Mode" options={MODES} valeur={expert ? 'expert' : 'guide'}
         onChange={(v) => onExpert(v === 'expert')} />
       {onDevis && (
-        <BoutonOr onClick={onDevis} data-testid="cal-generer-devis-haut">{libelleDevis}</BoutonOr>
+        <BoutonMarine onClick={onDevis} className="cal-bouton-devis" data-testid="cal-generer-devis-haut">
+          {libelleDevis}
+        </BoutonMarine>
       )}
     </header>
   )

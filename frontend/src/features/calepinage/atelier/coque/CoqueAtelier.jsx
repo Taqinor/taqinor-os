@@ -6,7 +6,7 @@ import BarreEnregistrement from '../BarreEnregistrement'
 import { formaterHeureBrouillon } from '../contexteAtelier'
 import { PARAM_MODE, useModeExpert } from '../modeExpert'
 import { PARAM_ONGLET, resoudreOnglet } from '../onglets'
-import { cadrerToitAtelier } from '../useAtelierBoot'
+import { ZOOM_MAX_CADRAGE_ATELIER, hauteurCouverteParTiroir } from '../useAtelierBoot'
 import {
   CADRES, ETAPES, ecranCoque, memoriserEtape, premierOngletEtape, useParcours, vueParcours,
 } from '../parcoursGuide'
@@ -14,7 +14,7 @@ import { BandeauAlertes } from './BandeauxCoque'
 import BarreProjet from './BarreProjet'
 import { nomClientServi, sousTitrePose } from './projet'
 import { ContexteCoque, ContextePresentation } from './contexteCoque'
-import PanneauEtape from './PanneauEtape'
+import PanneauEtape, { ProgressionEtapes } from './PanneauEtape'
 import { BoutonOr } from './primitives'
 import RailEtapes from './RailEtapes'
 
@@ -74,6 +74,38 @@ const CHOIX_VUE = '.cal-barre-outils-carte [role="group"] button, [data-testid^=
 // La carte et le constructeur se posent tard sur un poste chargé : la vue est reposée à ces instants après l'entrée.
 const ESSAIS_PLAN_MS = [0, 1500, 4000, 8000]
 
+const pixels = (v) => (Number.isFinite(v) && v > 0 ? Math.round(v) : 0)
+
+/** ACAL1801 — la carte est le décor (maquettes v2) : les pixels de `#rp9-map` COUVERTS par les pièces qui flottent
+    dessus — bandeau (haut), rail vertical (gauche), panneau d'étape (droite), barre d'outils ou tiroir (bas). Le toit se
+    cadre dans la zone LIBRE. Tout à 0 sans DOM, carte masquée, ou quand une pièce n'est pas posée SUR la carte. */
+function margesCouvertes(racine = typeof document !== 'undefined' ? document : null) {
+  const zero = { haut: 0, bas: 0, gauche: 0, droite: 0 }
+  const carte = racine?.getElementById?.('rp9-map')?.getBoundingClientRect?.()
+  if (!carte || !(carte.width > 0 && carte.height > 0)) return zero
+  const boite = (sel) => {
+    const el = racine.querySelector(sel)
+    return el && !el.closest('[hidden]') ? el.getBoundingClientRect() : null
+  }
+  const rail = boite('[data-testid="cal-rail-etapes"]')
+  return {
+    haut: pixels(boite('[data-testid="cal-barre-projet"]')?.bottom - carte.top),
+    gauche: rail && rail.height > rail.width ? pixels(rail.right - carte.left) : 0,
+    droite: pixels(carte.right - boite('#rp9-studio-inspecteur:not([data-tiroir="1"])')?.left),
+    bas: Math.max(pixels(carte.bottom - boite('[data-testid="cal-barre-outils-carte"]')?.top),
+      hauteurCouverteParTiroir(racine)),
+  }
+}
+
+/** Cadre le toit au-dessus des pièces du bas (`basPx`, lu par le moteur) ; les quatre marges partent aussi en
+    `margesPx` pour centrer dans la zone libre (demande croisée au moteur de dessin, `cadrageToit.ts`). */
+function cadrerDansZoneLibre(builder) {
+  if (typeof builder?.cadrerToit !== 'function') return false
+  const marges = margesCouvertes()
+  const couvre = marges.haut + marges.gauche + marges.droite + marges.bas > 0
+  return builder.cadrerToit({ zoomMax: ZOOM_MAX_CADRAGE_ATELIER, basPx: marges.bas, ...(couvre ? { margesPx: marges } : {}) })
+}
+
 /** Plan + cadrage à l'entrée d'une étape à carte (caméra seule : rien n'est sérialisé, aucun brouillon). */
 function usePlanALEntreeDEtape({ builderRef, actif, cle, builderApiCoque }) {
   const vueChoisie = useRef(false)
@@ -93,7 +125,7 @@ function usePlanALEntreeDEtape({ builderRef, actif, cle, builderApiCoque }) {
       const b = builderRef.current
       if (!b || touchee) return
       if (!vueChoisie.current) b.appliquerVue?.('dessus')
-      cadrerToitAtelier(b)
+      cadrerDansZoneLibre(b)
     }
     const minuteurs = ESSAIS_PLAN_MS.map((ms) => window.setTimeout(() => window.requestAnimationFrame(poser), ms))
     return () => {
@@ -346,6 +378,7 @@ export default function CoqueAtelier({
                     le Schéma garde son panneau à droite). */}
                 {pleine && rang >= 0 && ecran?.titre && (
                   <div className="cal-plein-etape-tete" data-testid="cal-plein-etape-tete">
+                    <ProgressionEtapes numero={rang + 1} etats={parcours.etats} />
                     <p className="cal-panneau-etape-rang">{`Étape ${rang + 1} sur ${TOTAL}`}</p>
                     <h2 className="cal-panneau-etape-titre">{ecran.titre}</h2>
                   </div>
@@ -357,7 +390,8 @@ export default function CoqueAtelier({
           </main>
           <PanneauEtape numero={rang >= 0 ? rang + 1 : null} total={TOTAL} titre={ecran?.titre ?? null}
             cache={(pleine && !avance) || !!presentation} refCorps={setNoeudPanneau} refPied={setNoeudPiedPanneau}
-            pied={piedParDefaut} tiroir={tiroir} deplie={deplie} onDeplier={setDeplie} refControle={setNoeudControle}>
+            pied={piedParDefaut} tiroir={tiroir} deplie={deplie} onDeplier={setDeplie} refControle={setNoeudControle}
+            etats={parcours.etats}>
             {/* J1 — présentation : l'écran d'étape n'est pas monté (il ne tient aucun nœud `rp9-*`, il les LIT) — sa
                 caméra d'entrée (« Plan » à l'étape Toit) ne remet jamais la vue client de dessus. */}
             {carteVisible && !presentation && ecranMonte}

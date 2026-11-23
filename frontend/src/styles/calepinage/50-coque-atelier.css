@@ -1,8 +1,9 @@
 /* ============================================================================
-   COQUE DE L'ATELIER DE CALEPINAGE (maquettes 22/11 : Main, Resultats, Tablette).
-   Bandeau 56 px · rail 113 px (tuiles de 96 px + 8 px de chaque côté + filet, comme la maquette qui
-   compte padding et filet EN PLUS de ses 96 px) · centre (carte ou écran plein) · panneau 360 px.
-   Toutes les règles @media de la coque sont dans 56-coque-responsive.css.
+   COQUE DE L'ATELIER DE CALEPINAGE (maquettes v2 du 23/11 : Main, Resultats ; Tablette v1).
+   Bandeau 56 px · rail 76 px (tuiles 60 × 64) · centre (carte ou écran plein) · panneau 384 px.
+   ACAL1801 — au bureau (≥ 1 280 px) la carte est le DÉCOR : plein écran sous le bandeau, le rail et le
+   panneau qui flottent dessus (marge 16) — cette géométrie vit dans 56-coque-responsive.css, comme
+   toutes les règles @media de la coque. Couleurs : jetons v2 `--cal-*` (49-jetons-v2.css).
    Jetons uniquement (thème sombre par les jetons seuls) ; tailles de texte des
    maquettes : 12 / 14 / 16 / 20 px. Importée par atelier/coque/CoqueAtelier.jsx.
    ========================================================================== */
@@ -21,8 +22,8 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--cal-papier);
+  color: var(--cal-texte-1);
   font-family: var(--font-brand);
   font-size: 0.875rem;
 }
@@ -35,8 +36,8 @@
   align-items: center;
   gap: 16px;
   padding: 0 20px;
-  background: var(--card);
-  border-bottom: 1px solid var(--border);
+  background: var(--cal-surface);
+  border-bottom: 1px solid var(--cal-filet);
   position: relative;
   z-index: calc(var(--z-base) + 20);
 }
@@ -106,37 +107,40 @@
   box-shadow: var(--shadow-md);
 }
 
-/* Contrôle segmenté (Guidé | Expert, Plan | 3D…) */
+/* Contrôle segmenté (Guidé | Expert, Plan | 3D…) — maquette v2 : piste --cal-piste, option choisie en pastille claire
+   (une bascule, pas un « choisi » : l'actif bleu nuit est réservé à l'étape, à l'outil et au bouton enfoncé). */
 .cal-coque .cal-segmente {
   display: flex;
   padding: 3px;
-  background: var(--muted);
-  border-radius: 10px;
+  background: var(--cal-piste);
+  border-radius: var(--cal-rayon-bouton);
 }
 .cal-coque .cal-segmente > button {
-  height: 30px;
+  height: 32px;
   padding: 0 14px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--cal-rayon-champ);
   background: transparent;
-  color: var(--muted-foreground);
+  color: var(--cal-texte-2);
   font-weight: 500;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
 }
-.cal-coque .cal-segmente-grand > button { height: 38px; }
+.cal-coque .cal-segmente-grand > button { height: 38px; border-radius: 9px; }
 /* ACAL1280 — cible tactile de 44 × 44 px sans changer le dessin de la maquette (30/38 px) : la zone cliquable
    déborde du bouton par un pseudo-élément transparent (la bande de 3 px du groupe est comptée dans la cible). */
 .cal-coque .cal-segmente > button { position: relative; min-width: 44px; }
-.cal-coque .cal-segmente > button::before { content: ''; position: absolute; inset: -7px 0; }
+.cal-coque .cal-segmente > button::before { content: ''; position: absolute; inset: -6px 0; }
 .cal-coque .cal-segmente-grand > button::before { inset: -3px 0; }
 .cal-coque .cal-segmente > button[aria-pressed='true'] {
-  background: var(--card);
-  color: var(--foreground);
+  background: var(--cal-segment-choisi);
+  color: var(--cal-texte-1);
   font-weight: 600;
-  box-shadow: var(--shadow-xs);
+  box-shadow: var(--cal-segment-ombre);
 }
 
-/* Boutons des maquettes */
+/* Boutons des maquettes v2 (ACAL1802) — l'OR (--cal-action) est le seul aplat doré d'un écran : le bouton qui fait
+   avancer (BoutonOr). Tout le reste qui agit est bleu nuit (BoutonMarine, « Générer le devis » du bandeau).
+   Un seul rayon de bouton (--cal-rayon-bouton, 11 px). */
 .cal-coque .cal-bouton-or {
   display: inline-flex;
   align-items: center;
@@ -145,37 +149,45 @@
   height: 44px;
   padding: 0 18px;
   border: 0;
-  border-radius: 10px;
-  background: var(--primary);
-  color: var(--primary-foreground);
-  font-weight: 600;
+  border-radius: var(--cal-rayon-bouton);
+  background: var(--cal-action);
+  color: var(--cal-action-texte);
+  font-weight: 700;
   font-size: 0.875rem;
+  box-shadow: var(--cal-action-ombre);
 }
-.cal-coque .cal-bouton-or-plein { width: 100%; height: 48px; font-size: 1rem; }
-.cal-coque .cal-bouton-or:disabled { opacity: 0.6; cursor: not-allowed; }
+/* ACAL1803 — le bouton d'étape du pied (maquette v2) : 52 px, rayon 14, 15 px graisse 700, ombre dorée. */
+.cal-coque .cal-bouton-or-plein { width: 100%; height: 52px; gap: 10px; border-radius: var(--cal-rayon-pile); font-size: 0.9375rem; }
+.cal-coque .cal-bouton-or:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
 .cal-coque .cal-bouton-marine {
+  position: relative;
   height: 44px;
   padding: 0 14px;
   border: 0;
-  border-radius: 10px;
-  background: var(--foreground);
-  color: var(--background);
+  border-radius: var(--cal-rayon-bouton);
+  background: var(--cal-marine);
+  color: var(--cal-marine-texte);
   font-weight: 600;
   font-size: 0.875rem;
 }
+.cal-coque .cal-bouton-marine:disabled { opacity: 0.6; cursor: not-allowed; }
+/* « Générer le devis » du bandeau : bleu nuit, 40 px dessinés (maquette), cible de 44 px par débord transparent. */
+.cal-coque .cal-bouton-devis { height: 40px; padding: 0 18px; box-shadow: var(--cal-marine-ombre); white-space: nowrap; }
+.cal-coque .cal-bouton-devis::before { content: ''; position: absolute; inset: -2px 0; }
 
 /* ── Corps : rail · centre · panneau ───────────────────────────────────── */
 .cal-coque .cal-coque-corps { flex: 1; display: flex; min-height: 0; }
 
 .cal-coque .cal-rail {
-  width: 113px;
+  width: 76px;
   flex: none;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 12px 8px;
-  background: var(--card);
-  border-right: 1px solid var(--border);
+  align-items: center;
+  gap: 6px;
+  padding: 10px 0;
+  background: var(--cal-surface);
+  border-right: 1px solid var(--cal-filet);
   overflow-y: auto;
 }
 .cal-coque .cal-rail-etape {
@@ -183,27 +195,57 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 12px 4px;
+  justify-content: center;
+  flex: none;
+  width: 60px;
+  min-height: 64px;
+  gap: 5px;
+  padding: 8px 0;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--cal-rayon-pile);
   background: transparent;
-  color: var(--muted-foreground);
+  color: var(--cal-texte-2);
   font-weight: 500;
   font-size: 0.75rem;
 }
+.cal-coque .cal-rail-avance { min-height: 56px; }
 @media (hover: hover) {
-  .cal-coque .cal-rail-etape:hover { color: var(--foreground); }
+  .cal-coque .cal-rail-etape:not([aria-current='step']):hover { color: var(--cal-texte-1); background: var(--cal-piste); }
 }
+/* ACAL1802 — l'étape active : tuile bleu nuit, texte clair, pictogramme or (sombre : tuile or, texte bleu nuit). */
 .cal-coque .cal-rail-etape[aria-current='step'] {
-  background: color-mix(in oklch, var(--primary) 12%, var(--card));
-  color: var(--foreground);
+  background: var(--cal-actif);
+  color: var(--cal-actif-texte);
   font-weight: 600;
-  box-shadow: inset 0 0 0 1.5px var(--primary);
+  box-shadow: var(--cal-actif-ombre);
 }
-.cal-coque .cal-rail-etape[aria-current='step'] svg { color: var(--primary-text); }
-.cal-coque .cal-rail-avance[aria-expanded='true'] { color: var(--foreground); background: var(--muted); }
-.cal-coque .cal-rail-a-regler { font-size: 0.75rem; line-height: 16px; font-weight: 600; color: var(--warning-text); }
+.cal-coque .cal-rail-etape[aria-current='step'] svg { color: var(--cal-actif-picto); }
+/* Étape faite (hors active) : pastille verte cochée en haut à droite de la tuile (maquette Resultats). */
+.cal-coque .cal-rail-etape[data-etat='fait']:not([aria-current='step'])::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  right: 9px;
+  width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  background: var(--cal-ok) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6L9 17l-5-5'/%3E%3C/svg%3E") center / 10px 10px no-repeat;
+  box-shadow: 0 0 0 2px var(--cal-surface);
+}
+.cal-coque .cal-rail-avance[aria-expanded='true'] { color: var(--cal-texte-1); background: var(--cal-piste); }
+/* « N à régler » : pastille or de 7 px devant le texte. */
+.cal-coque .cal-rail-a-regler { font-size: 0.75rem; line-height: 16px; font-weight: 600; color: var(--cal-or-texte); }
+.cal-coque .cal-rail-a-regler::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 4px;
+  border-radius: 4px;
+  background: var(--cal-action);
+  vertical-align: 1px;
+}
+.cal-coque .cal-rail-etape[aria-current='step'] .cal-rail-a-regler { color: inherit; }
 /* Maquettes (mesurées en rendu) : tuile de 70 px (12 + 24 + 6 + 16 + 12) ; avec « 1 à régler » (Documents.dc.html,
    sous Toit) 92 px (+ 6 + 16). L'interligne hérité (18 px) donnait 72 et 96 et descendait les étapes suivantes. */
 .cal-coque .cal-rail-libelle { line-height: 16px; }
@@ -215,7 +257,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  background: var(--muted);
+  background: transparent;
 }
 .cal-coque .cal-coque-scene {
   position: relative;
@@ -343,7 +385,7 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 24px 28px;
-  background: var(--background);
+  background: transparent;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -352,36 +394,44 @@
 
 /* Panneau d'étape */
 .cal-coque .cal-panneau-etape {
-  width: 360px;
+  width: 384px;
   flex: none;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--card);
-  border-left: 1px solid var(--border);
+  background: var(--cal-surface);
+  border-left: 1px solid var(--cal-filet);
 }
 .cal-coque .cal-panneau-etape[hidden] { display: none; }
-.cal-coque .cal-panneau-etape-tete { padding: 20px 20px 12px; }
-.cal-coque .cal-panneau-etape-rang { margin: 0; font-size: 0.75rem; color: var(--muted-foreground); }
+/* ACAL1803 — tête v2 : cinq traits de progression (4 px, or pour les étapes faites et l'active), « Étape N sur 5 »
+   12 px, titre Archivo 24 px (même tête au-dessus des écrans pleins, ACAL1727). */
+.cal-coque .cal-panneau-etape-tete { padding: 18px 22px 14px; }
+.cal-coque .cal-progression-etapes { display: flex; gap: 4px; margin-bottom: 14px; }
+.cal-coque .cal-progression-etapes > span { flex: 1; height: 4px; border-radius: 2px; background: var(--cal-progression-a-venir); }
+.cal-coque .cal-progression-etapes > span[data-etat='fait'],
+.cal-coque .cal-progression-etapes > span[data-etat='actif'] { background: var(--cal-action); }
+.cal-coque .cal-plein-etape-tete .cal-progression-etapes { max-width: 340px; }
+.cal-coque .cal-panneau-etape-rang { margin: 0; font-size: 0.75rem; font-weight: 500; color: var(--cal-texte-3); }
 .cal-coque .cal-panneau-etape-titre {
   margin: 2px 0 0;
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 1.25rem;
-  line-height: 1.1; /* maquette : boîte de 22 px (l'interligne hérité en faisait 30 et descendait le panneau) */
+  font-size: 1.5rem;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
 }
 .cal-coque .cal-panneau-etape-corps {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 0 20px 20px;
+  padding: 0 22px 12px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 .cal-coque .cal-panneau-etape-emplacement:empty { display: none; }
-.cal-coque .cal-panneau-etape-pied { padding: 16px 20px; border-top: 1px solid var(--border); }
+.cal-coque .cal-panneau-etape-pied { padding: 12px 22px 18px; border-top: 1px solid var(--cal-filet); }
 .cal-coque .cal-panneau-etape-pied:empty { display: none; }
 .cal-coque .cal-coque-groupe[hidden],
 .cal-coque .cal-coque-avance[hidden] { display: none; }
@@ -391,39 +441,99 @@
 .cal-coque .cal-coque-liens a { display: inline-flex; align-items: center; min-height: 44px; color: var(--info); }
 
 /* ── Atomes (primitives.jsx) ───────────────────────────────────────────── */
+/* ACAL1804 — toute pièce posée SUR la carte (maquette v2 Main) : blanc 90 % flouté (sombre : bleu nuit 82 %), filet
+   clair, rayon 16, ombre de pièce flottante. Une règle pour toutes les étapes ; la place reste celle de l'écran. */
 .cal-coque .cal-carte-flottante {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  box-shadow: var(--shadow-md);
+  background: var(--cal-flottante-dense);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--cal-flottante-filet);
+  border-radius: var(--cal-rayon-piece);
+  box-shadow: var(--cal-ombre-flottante);
 }
-.cal-coque .cal-indicateur { display: flex; flex-direction: column; }
-.cal-coque .cal-indicateur-libelle { font-size: 0.75rem; color: var(--muted-foreground); }
-.cal-coque .cal-indicateur-valeur { font-family: var(--font-display); font-weight: 600; font-size: 1.25rem; }
+.cal-coque .cal-indicateur { display: flex; flex-direction: column; gap: 1px; }
+.cal-coque .cal-indicateur-libelle { font-size: 0.75rem; color: var(--cal-texte-2); }
+.cal-coque .cal-indicateur-valeur {
+  font-family: var(--cal-police-chiffres);
+  font-weight: 600;
+  font-size: 1.25rem;
+  letter-spacing: -0.01em;
+  font-variant-numeric: var(--cal-chiffres);
+}
+/* Pilule de chiffres vivants : 62 px (au bureau, collée au rail et au bandeau : 56-coque-responsive.css). */
+.cal-coque .cal-coque-sur-carte .cal-sur-carte-resume {
+  height: 62px;
+  box-sizing: border-box;
+  gap: 0;
+  padding: 0 6px;
+}
+.cal-coque .cal-coque-sur-carte .cal-sur-carte-resume-bloc { gap: 0; }
+.cal-coque .cal-coque-sur-carte .cal-sur-carte-resume .cal-indicateur { padding: 0 16px; }
+.cal-coque .cal-coque-sur-carte .cal-sur-carte-resume-filet { height: 30px; background: var(--cal-filet-fort); }
+/* Bulle de consigne : bleu nuit, texte clair, 296 px, rayon 16. */
+.cal-coque .cal-coque-sur-carte .cal-toit-bulle {
+  width: 296px;
+  box-sizing: border-box;
+  border: 1px solid var(--cal-bulle-filet);
+  border-radius: var(--cal-rayon-piece);
+  background: var(--cal-bulle);
+  color: var(--cal-bulle-titre);
+  box-shadow: var(--cal-ombre-flottante);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+.cal-coque .cal-coque-sur-carte .cal-toit-bulle-titre { font-family: var(--font-display); }
+.cal-coque .cal-coque-sur-carte .cal-toit-bulle-titre::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 4px;
+  background: var(--cal-action);
+}
+.cal-coque .cal-coque-sur-carte .cal-toit-bulle-texte { font-size: 0.8125rem; color: var(--cal-bulle-texte); }
+/* Barre d'outils : 56 de haut, rayon 18, boutons 44 × 44 rayon 12, outil actif bleu nuit. */
+.cal-coque .cal-coque-sur-carte .cal-barre-outils-carte {
+  height: 56px;
+  box-sizing: border-box;
+  padding: 0 6px;
+  border-radius: var(--cal-rayon-outils);
+  box-shadow: var(--cal-ombre-outils);
+  -webkit-backdrop-filter: var(--cal-flou);
+  backdrop-filter: var(--cal-flou);
+}
+.cal-coque .cal-barre-outils-carte .cal-outil-carte { border-radius: var(--cal-rayon-tuile); color: var(--cal-texte-1); }
+.cal-coque .cal-barre-outils-carte .cal-outil-carte[aria-pressed='true'] { background: var(--cal-actif); color: var(--cal-actif-texte); }
+.cal-coque .cal-barre-outils-carte .cal-outil-carte:disabled { color: var(--cal-texte-3); }
+.cal-coque .cal-barre-outils-carte .cal-barre-outils-separateur { height: 26px; background: var(--cal-filet-fort); }
 .cal-coque .cal-section-etape { display: flex; flex-direction: column; gap: 8px; }
 .cal-coque .cal-section-etape-tete { display: flex; align-items: center; justify-content: space-between; }
 .cal-coque .cal-section-etape-tete h2 { margin: 0; font-size: 0.875rem; font-weight: 600; }
 .cal-coque .cal-tuile {
-  min-height: 64px;
+  min-height: 56px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--card);
-  color: var(--foreground);
+  gap: 5px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--cal-filet-fort);
+  border-radius: var(--cal-rayon-tuile);
+  background: var(--cal-surface);
+  color: var(--cal-texte-1);
   font-weight: 500;
   font-size: 0.75rem;
 }
+/* ACAL1802 — LE style « choisi » de l'atelier : filet bleu nuit de 2 px sur papier (sombre : filet or sur or à 14 %). */
 .cal-coque .cal-tuile[aria-pressed='true'] {
-  border-color: transparent;
-  background: color-mix(in oklch, var(--primary) 12%, var(--card));
+  border-width: 2px;
+  border-color: var(--cal-choisi-filet);
+  background: var(--cal-choisi-fond);
   font-weight: 600;
-  box-shadow: inset 0 0 0 1.5px var(--primary);
 }
-.cal-coque .cal-tuile-pointillee { border-style: dashed; color: var(--muted-foreground); }
+.cal-coque .cal-tuile-pointillee { border-style: dashed; color: var(--cal-texte-2); }
 
 .cal-coque button:focus-visible,
 .cal-coque a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
@@ -454,15 +564,18 @@
    premier rendu (venue de 51-etape-toit.css, lane L1, qui ne se charge qu'à l'étape Toit) ──────────── */
 .cal-coque .maplibregl-ctrl-top-right { top: 16px; right: 16px; }
 .cal-coque .maplibregl-ctrl-top-right .maplibregl-ctrl { margin: 0 0 8px; }
+/* ACAL1804 — pile de zoom v2 : rayon 14, blanc 90 % flouté, filets --cal-filet-fort. */
 .cal-coque .maplibregl-ctrl-top-right .maplibregl-ctrl-group {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card);
-  box-shadow: var(--shadow-md);
+  border: 1px solid var(--cal-flottante-filet);
+  border-radius: var(--cal-rayon-pile);
+  background: var(--cal-flottante-dense);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  box-shadow: var(--cal-ombre-flottante);
   overflow: hidden;
 }
-.cal-coque .maplibregl-ctrl-top-right .maplibregl-ctrl-group button { width: 44px; height: 44px; color: var(--foreground); }
-.cal-coque .maplibregl-ctrl-top-right .maplibregl-ctrl-group button + button { border-top: 1px solid var(--border); }
+.cal-coque .maplibregl-ctrl-top-right .maplibregl-ctrl-group button { width: 44px; height: 44px; color: var(--cal-texte-1); }
+.cal-coque .maplibregl-ctrl-top-right .maplibregl-ctrl-group button + button { border-top: 1px solid var(--cal-filet-fort); }
 /* Les pictogrammes MapLibre (images sombres fixes) sont redessinés en masque, à la couleur du texte. */
 .cal-coque .maplibregl-ctrl-zoom-in .maplibregl-ctrl-icon,
 .cal-coque .maplibregl-ctrl-zoom-out .maplibregl-ctrl-icon {
@@ -478,7 +591,7 @@
 .cal-coque[data-avance='0'] .maplibregl-ctrl-top-right .maplibregl-ctrl-group:not(:first-child) { display: none; }
 .cal-coque[data-avance='0'] .maplibregl-ctrl-top-right .maplibregl-ctrl-group:first-child {
   border-bottom: 0;
-  border-radius: 12px 12px 0 0;
+  border-radius: var(--cal-rayon-pile) var(--cal-rayon-pile) 0 0;
 }
 .cal-coque[data-avance='0'] #rp9-compass { top: 168px; left: auto; right: 14px; }
 /* H1 (tour 3) — aucune maquette d'étape à carte (Main, Panneaux, Électrique, Tablette) ne montre de boussole : en guidé
@@ -491,17 +604,18 @@
   padding: 0;
   display: grid;
   place-items: center;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card);
-  color: var(--foreground);
-  box-shadow: var(--shadow-md);
+  border: 1px solid var(--cal-flottante-filet);
+  border-top-color: var(--cal-filet-fort);
+  border-radius: var(--cal-rayon-pile);
+  background: var(--cal-flottante-dense);
+  color: var(--cal-texte-1);
+  box-shadow: var(--cal-ombre-flottante);
 }
 .rp9-host.cal-coque[data-avance='0'] .rp9-chip.rp9-carte-puce.cal-carte-plein-ecran {
   left: auto;
   right: 16px;
   top: 105px;
-  border-radius: 0 0 12px 12px;
+  border-radius: 0 0 var(--cal-rayon-pile) var(--cal-rayon-pile);
 }
 
 /* ── Présentation « Montrer au client » (maquette TelephoneClient, client/HabillageClient.jsx) ──

@@ -900,8 +900,11 @@ describe('ToitureDesign — cible estimée vs cible vendue (ACAL195)', () => {
     expect(payload.cibleVendue).toBe(false)
     expect(payload.cible.panneaux).toBe(ctx.cible.panneaux)
     expect(payload.cible.panel_watt).toBe(ctx.cible.panel_watt)
-    expect(await screen.findByTestId('acal-cible-estimee')).toHaveTextContent(
-      `Cible estimée depuis les factures du lead : ${ctx.cible.panneaux} panneaux (non vendue)`)
+    // ACAL1805 — une cible estimée SANS refus n'ouvre plus aucune bande sous le bandeau (la maquette v2 n'en a pas :
+    // la cible se lit dans la pilule « Besoin d'après la facture » de l'étape Toit) ; la carte gagne 52 px.
+    await screen.findByTestId('cal-coque')
+    expect(screen.queryByTestId('acal-cible-estimee')).toBeNull()
+    expect(screen.queryByText(/Cible estimée depuis/)).toBeNull()
   })
 
   it('une cible source devis garde cibleVendue true', async () => {
@@ -1479,5 +1482,205 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
       // Les groupes du constructeur restent dans le même panneau (jamais remontés ailleurs).
       expect(panneau.contains(document.getElementById('rp9-config'))).toBe(true)
     } finally { window.matchMedia = avant }
+  })
+
+  it('ACAL1801 — la carte est le décor : le toit se cadre dans la zone LIBRE, marges = boîtes du bandeau, du rail, du panneau et de la barre d’outils', async () => {
+    const cadrerToit = vi.fn(() => true)
+    reinitialiserBoot({ cadrerToit, appliquerVue: vi.fn() })
+    // Les boîtes de la maquette v2 Main à 1 440 × 900 : carte plein écran, pièces flottantes à 16 px.
+    const BOITES = {
+      'rp9-map': [0, 0, 1440, 900], 'cal-barre-projet': [16, 16, 1424, 72], 'cal-rail-etapes': [16, 88, 92, 884],
+      'rp9-studio-inspecteur': [1040, 88, 1424, 884], 'cal-barre-outils-carte': [330, 816, 760, 872],
+    }
+    const avant = Element.prototype.getBoundingClientRect
+    Element.prototype.getBoundingClientRect = function boite() {
+      const b = BOITES[this.id] ?? BOITES[this.getAttribute('data-testid')]
+      if (!b) return avant.call(this)
+      const [left, top, right, bottom] = b
+      return { left, top, right, bottom, x: left, y: top, width: right - left, height: bottom - top }
+    }
+    try {
+      amorcer()
+      rendreCalepinage(CTX.calepinage.id)
+      await screen.findByTestId('cal-coque')
+      await userEvent.click(screen.getByTestId('cal-etape-toit'))
+      await screen.findByTestId('cal-barre-outils-carte', {}, { timeout: 5000 })
+      await waitFor(() => expect(cadrerToit).toHaveBeenCalledWith({
+        zoomMax: 22, basPx: 56 + 28, margesPx: { haut: 72, gauche: 92, droite: 400, bas: 84 },
+      }), { timeout: 6000 })
+    } finally { Element.prototype.getBoundingClientRect = avant }
+  }, 15000)
+
+  describe('feuilles de la coque v2 chargées dans le DOM de test (ACAL1800, ACAL1801, ACAL1617)', () => {
+    let style
+    beforeEach(async () => {
+      const { readFileSync } = await import('node:fs')
+      style = document.createElement('style')
+      style.textContent = ['roofbuilder.css', 'calepinage/49-jetons-v2.css', 'calepinage/50-coque-atelier.css',
+        'calepinage/51-etape-toit.css', 'calepinage/56-coque-responsive.css']
+        .map((f) => readFileSync(`${globalThis.process.cwd()}/src/styles/${f}`, 'utf8')).join('\n')
+      document.head.appendChild(style)
+    })
+    afterEach(() => { style.remove(); document.documentElement.classList.remove('dark') })
+    // Les règles du BUREAU (@media (min-width: 1280px)) lues dans la feuille chargée (jsdom n'évalue pas @media) :
+    // la dernière règle qui vise l'élément et déclare la propriété (ordre de la feuille).
+    const auBureau = (el, prop, bureau = true) => {
+      const regles = bureau ? [...style.sheet.cssRules].filter((r) => r.media && r.conditionText?.includes('min-width: 1280px'))
+        .flatMap((m) => [...m.cssRules]) : [...style.sheet.cssRules].filter((r) => r.selectorText)
+      let valeur = ''
+      for (const r of regles) {
+        let vise = false
+        try { vise = el.matches(r.selectorText) } catch { vise = false }
+        if (vise && r.style.getPropertyValue(prop)) valeur = r.style.getPropertyValue(prop)
+      }
+      return valeur
+    }
+
+    it('ACAL1800 : les jetons v2 se lisent sur la coque rendue, en clair puis en sombre', async () => {
+      amorcer()
+      rendreCalepinage(CTX.calepinage.id)
+      const coque = await screen.findByTestId('cal-coque')
+      expect(getComputedStyle(coque).getPropertyValue('--cal-papier').trim()).toBe('#f5f4f0')
+      expect(getComputedStyle(coque).getPropertyValue('--cal-actif').trim()).toBe('#0c1335')
+      document.documentElement.classList.add('dark')
+      expect(getComputedStyle(coque).getPropertyValue('--cal-papier').trim()).toBe('#0a0f2a')
+      expect(getComputedStyle(coque).getPropertyValue('--cal-actif').trim()).toBe('#e2b54a')
+    })
+
+    it('ACAL1801 : au bureau, carte plein écran sous le bandeau, le rail et le panneau qui flottent ; papier et pièces opaques sans carte', async () => {
+      amorcer()
+      rendreCalepinage(CTX.calepinage.id)
+      const coque = await screen.findByTestId('cal-coque')
+      const carte = screen.getByTestId('rp9-map-wrap')
+      const barre = screen.getByTestId('cal-barre-projet')
+      const rail = screen.getByTestId('cal-rail-etapes')
+      const panneau = screen.getByTestId('cal-panneau-etape')
+      expect(auBureau(carte, 'position')).toBe('fixed')
+      expect(auBureau(carte, 'inset')).toBe('0px')
+      expect(auBureau(coque, 'padding')).toBe('16px')
+      expect(auBureau(barre, 'border-radius')).toBe('var(--cal-rayon-piece)')
+      expect(auBureau(barre, 'background')).toBe('var(--cal-flottante)')
+      expect(auBureau(rail, 'border-radius')).toBe('var(--cal-rayon-panneau)')
+      expect(auBureau(panneau, 'border-radius')).toBe('var(--cal-rayon-panneau)')
+      expect(auBureau(panneau, 'box-shadow')).toBe('var(--cal-ombre-panneau)')
+      expect(getComputedStyle(rail).width).toBe('76px')
+      expect(getComputedStyle(panneau).width).toBe('384px')
+      // Le calque « sur la carte » reste dans la zone libre (débord de la marge commune seulement).
+      expect(auBureau(document.querySelector('.cal-coque-sur-carte'), 'inset')).toBe('-16px')
+      // Étape sans carte (Résultats) : papier, pièces opaques, carte non posée en décor.
+      await userEvent.click(screen.getByTestId('cal-etape-resultats'))
+      await waitFor(() => expect(coque).toHaveAttribute('data-cadre', 'plein'))
+      expect(getComputedStyle(coque).background).toContain('--cal-papier')
+      expect(auBureau(barre, 'background')).toBe('')
+      expect(getComputedStyle(barre).background).toContain('--cal-surface')
+      expect(auBureau(carte, 'position')).toBe('')
+      // Expert : la carte reste dans le centre (rangées du constructeur sous la carte).
+      await userEvent.click(screen.getByTestId('cal-etape-toit'))
+      await userEvent.click(within(barre).getByRole('button', { name: 'Expert' }))
+      await waitFor(() => expect(coque).toHaveAttribute('data-expert', '1'))
+      expect(auBureau(carte, 'position')).toBe('')
+    })
+
+    it('ACAL1802 : bleu nuit sur tout état actif, l’or sur la SEULE action suivante, un seul style « choisi » ; Expert compris', async () => {
+      amorcer()
+      rendreCalepinage(CTX.calepinage.id)
+      const coque = await screen.findByTestId('cal-coque')
+      await userEvent.click(screen.getByTestId('cal-etape-toit'))
+      const pied = await screen.findByTestId('cal-action-etape-suivante')
+      const cs = (el) => getComputedStyle(el)
+      const etape = screen.getByTestId('cal-etape-toit')
+      expect(etape).toHaveAttribute('aria-current', 'step')
+      expect(cs(etape).background).toContain('--cal-actif')
+      expect(cs(etape).color).toContain('--cal-actif-texte')
+      expect(cs(etape).boxShadow).not.toContain('--primary')
+      expect(cs(screen.getByTestId('cal-generer-devis-haut')).background).toContain('--cal-marine')
+      expect(cs(screen.getByTestId('cal-generer-devis-haut')).borderRadius).toBe('var(--cal-rayon-bouton)')
+      // Le bouton enfoncé du constructeur et une tuile choisie, posés dans la coque rendue.
+      const poser = (html) => { const t = document.createElement('div'); t.innerHTML = html; coque.appendChild(t); return t.firstChild }
+      const rp9 = poser('<button class="rp9-btn" aria-pressed="true">Obstacle polygonal</button>')
+      expect(cs(rp9).background).toContain('--cal-actif')
+      expect(cs(rp9).borderRadius).toBe('var(--cal-rayon-bouton)')
+      expect(cs(poser('<input class="rp9-input">')).borderRadius).toBe('var(--cal-rayon-champ)')
+      const tuile = poser('<button class="cal-tuile" aria-pressed="true">2 pans</button>')
+      // (jsdom ne rend pas une couleur de bordure en var() : la règle qui s'applique est lue dans la feuille chargée)
+      expect(auBureau(tuile, 'border-color', false)).toBe('var(--cal-choisi-filet)')
+      expect(auBureau(tuile, 'border-width', false)).toBe('2px')
+      expect(cs(tuile).background).toContain('--cal-choisi-fond')
+      expect(cs(tuile).boxShadow, 'plus de liseré doré sur la tuile choisie').not.toContain('--primary')
+      // UN seul aplat doré à l'écran : le bouton d'étape.
+      const dores = () => [...coque.querySelectorAll('button')]
+        .filter((b) => !b.closest('[hidden]') && cs(b).background.includes('--cal-action'))
+      expect(dores()).toEqual([pied])
+      // Expert : aucun bouton d'étape, donc aucun aplat doré ; l'étape active reste bleu nuit.
+      await userEvent.click(within(screen.getByTestId('cal-barre-projet')).getByRole('button', { name: 'Expert' }))
+      await waitFor(() => expect(coque).toHaveAttribute('data-expert', '1'))
+      expect(dores()).toEqual([])
+      expect(cs(screen.getByTestId('cal-etape-toit')).background).toContain('--cal-actif')
+    })
+
+    it('ACAL1804 : barre d’outils, pile de zoom, pilule de chiffres et bulle de consigne au langage v2 (étape Toit)', async () => {
+      amorcer()
+      rendreCalepinage(CTX.calepinage.id)
+      const coque = await screen.findByTestId('cal-coque')
+      await userEvent.click(screen.getByTestId('cal-etape-toit'))
+      const outils = await screen.findByTestId('cal-barre-outils-carte')
+      // La pilule n'a pas de chiffres dans ce harnais (aucune surface tracée) : celle de l'écran, posée telle qu'il la rend.
+      const pilule = document.createElement('div')
+      pilule.className = 'cal-carte-flottante cal-sur-carte-resume'
+      pilule.setAttribute('data-testid', 'cal-sur-carte-resume')
+      coque.querySelector('.cal-coque-sur-carte').appendChild(pilule)
+      const cs = (el) => getComputedStyle(el)
+      const zoomHote = document.createElement('div')
+      zoomHote.className = 'maplibregl-ctrl-top-right'
+      zoomHote.innerHTML = '<div class="maplibregl-ctrl maplibregl-ctrl-group"><button class="maplibregl-ctrl-zoom-in"></button></div>'
+      screen.getByTestId('rp9-map-wrap').appendChild(zoomHote)
+      const zoom = zoomHote.firstChild
+      // Barre d'outils : 56 px, rayon 18, ombre de la barre, à 28 px du bas au bureau ; outils 44 × 44.
+      expect(cs(outils).height).toBe('56px')
+      expect(cs(outils).borderRadius).toBe('var(--cal-rayon-outils)')
+      expect(cs(outils).boxShadow).toBe('var(--cal-ombre-outils)')
+      expect(cs(outils).background).toContain('--cal-flottante-dense')
+      expect(auBureau(outils, 'bottom')).toBe('28px')
+      for (const b of outils.querySelectorAll('.cal-outil-carte')) {
+        expect([cs(b).width, cs(b).height]).toEqual(['44px', '44px'])
+      }
+      // Pile de zoom : rayon 14 (le haut, collé au plein écran en guidé), blanc 90 % flouté, ombre flottante.
+      expect(cs(zoom).borderRadius).toContain('var(--cal-rayon-pile)')
+      expect(cs(zoom).boxShadow).toBe('var(--cal-ombre-flottante)')
+      expect(cs(zoom).background).toContain('--cal-flottante-dense')
+      // Pilule : rayon 16, blanc 90 %, 62 px, à 16 px du rail et du bandeau.
+      expect(cs(pilule).borderRadius).toBe('var(--cal-rayon-piece)')
+      expect(cs(pilule).boxShadow).toBe('var(--cal-ombre-flottante)')
+      expect(cs(pilule).height).toBe('62px')
+      expect([auBureau(pilule, 'top'), auBureau(pilule, 'left')]).toEqual(['16px', '16px'])
+      // Bulle de consigne : bleu nuit, texte clair, ombre flottante ; la pilule se pose après elle.
+      const bulle = document.createElement('div')
+      bulle.className = 'cal-toit-bulle'
+      bulle.innerHTML = '<p class="cal-toit-bulle-titre">Contour tracé</p>'
+      coque.querySelector('.cal-coque-sur-carte').appendChild(bulle)
+      expect(cs(bulle).background).toContain('--cal-bulle')
+      expect(cs(bulle).color).toBe('var(--cal-bulle-titre)')
+      expect(cs(bulle).boxShadow).toBe('var(--cal-ombre-flottante)')
+      expect(cs(bulle).borderRadius).toBe('var(--cal-rayon-piece)')
+      expect(auBureau(pilule, 'left'), '16 + 296 (bulle) + 16').toBe('calc(328px)')
+    })
+
+    it('ACAL1617 : Expert, étape Résultats — le panneau prend la largeur utile, la carte passe dessous ; Toit garde 384 px', async () => {
+      amorcer()
+      rendreCalepinage(CTX.calepinage.id)
+      const coque = await screen.findByTestId('cal-coque')
+      await userEvent.click(within(screen.getByTestId('cal-barre-projet')).getByRole('button', { name: 'Expert' }))
+      await waitFor(() => expect(coque).toHaveAttribute('data-expert', '1'))
+      const panneau = screen.getByTestId('cal-panneau-etape')
+      const centre = document.querySelector('.cal-coque-centre')
+      expect(auBureau(panneau, 'flex')).toBe('')
+      await userEvent.click(screen.getByTestId('cal-etape-resultats'))
+      await waitFor(() => expect(coque).toHaveAttribute('data-etape', 'resultats'))
+      expect(coque).toHaveAttribute('data-cadre', 'carte')
+      expect(auBureau(panneau, 'flex')).toBe('1 1 auto')
+      expect(auBureau(panneau, 'width')).toBe('auto')
+      expect(auBureau(centre, 'position')).toBe('absolute')
+      expect(document.getElementById('rp9-map')).not.toBeNull()
+    })
   })
 })
