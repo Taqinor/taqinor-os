@@ -227,6 +227,33 @@ class ControleChaineSansDessinTest(SimpleTestCase):
         self.assertEqual(reponse['longueur_max'], 17)
         self.assertEqual(reponse['manquantes'], [])
 
+    def test_froid_seul_verdict_avec_repli_chaud(self):
+        # ACAL1545 — N + le froid suffisent ; le chaud manquant vaut le repli
+        # du noyau (70 °C), ANNONCÉ (mutant : chaude obligatoire ⇒ refus).
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.calepinage.services.controle_chaine import controle_chaine
+
+        fiches = {1: self.MODULE_22, 2: ONDULEUR}
+        with mock.patch('apps.stock.selectors.get_produit_scoped',
+                        side_effect=lambda _c, pk: SimpleNamespace(pk=pk)):
+            with mock.patch('apps.stock.selectors.specs_for_produit',
+                            side_effect=lambda p: fiches[p.pk]):
+                reponse = controle_chaine(None, {
+                    'module_produit': 1, 'onduleur_produit': 2,
+                    'nombre_modules': 22, 'temperature_min_c': -5.0})
+        self.assertEqual(reponse['verdict'], 'bloquant')
+        self.assertAlmostEqual(self._voc(reponse)['valeur'], 1177.2, places=1)
+        chauds = [c for c in reponse['controles']
+                  if c['code'] in ('mppt_bas', 'demarrage')]
+        self.assertTrue(chauds)
+        for controle in chauds:
+            self.assertIn('température chaude : 70 °C par défaut (valeur de '
+                          'repli du noyau)', controle['source'])
+        self.assertEqual(self._voc(reponse)['source'],
+                         'fiches module et onduleur')
+
     def test_fiche_incomplete_indeterminee(self):
         onduleur = {cle: v for cle, v in ONDULEUR.items()
                     if cle != 'v_max_abs'}

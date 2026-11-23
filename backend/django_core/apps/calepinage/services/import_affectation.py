@@ -52,8 +52,11 @@ def _entete(premiere):
     return colonnes, None
 
 
-def _lire_csv_affectation(texte):
-    """``(lignes, refus)`` — les lignes valides et un refus par défaut."""
+def _lire_csv_affectation(texte, numeros=None):
+    """``(lignes, refus)`` — les lignes valides et un refus par défaut.
+
+    ACAL1542 — ``numeros`` (dict) reçoit ``{module: n° de ligne}`` des lignes
+    valides, pour que le verdict nomme la ligne d'un module absent."""
     lignes_fichier = str(texte or '').splitlines()
     if not lignes_fichier or not lignes_fichier[0].strip():
         return [], [_refus(1, None, "En-tête attendu : %s" % ENTETE)]
@@ -92,6 +95,8 @@ def _lire_csv_affectation(texte):
             continue
         vus.add(ligne['module'])
         lignes.append(ligne)
+        if numeros is not None:
+            numeros[ligne['module']] = numero
     return lignes, refus
 
 
@@ -103,7 +108,8 @@ def importer_affectation(calepinage, texte):
     )
     from .electrique import conception_du_calepinage
 
-    lignes, refus = _lire_csv_affectation(texte)
+    numeros = {}
+    lignes, refus = _lire_csv_affectation(texte, numeros)
     bloquants = []
     if lignes:
         conception, materiel, _donnees, _doc = conception_du_calepinage(
@@ -115,7 +121,8 @@ def importer_affectation(calepinage, texte):
             try:
                 bloquants = list(verdict_affectation(
                     conception, normaliser_affectation_imposee(lignes),
-                    specs_onduleur=materiel.get('onduleur')))
+                    specs_onduleur=materiel.get('onduleur'),
+                    lignes_du_fichier=numeros))
             except AffectationInvalide as erreur:
                 bloquants = [str(erreur)]
     return {'lignes': lignes, 'refus': refus, 'bloquants': bloquants,

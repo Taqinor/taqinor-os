@@ -1749,8 +1749,11 @@ def _numero_impose(valeur, module, quoi):
 
 
 def verdict_affectation(conception, imposee, *, specs_onduleur=None,
-                        obsoletes_bloquantes=True):
+                        obsoletes_bloquantes=True, lignes_du_fichier=None):
     """Les REFUS d'une affectation proposée, chacun NOMMANT sa contrainte.
+
+    ACAL1542 — ``lignes_du_fichier`` (``{module: n° de ligne}``, import CSV) :
+    un module absent du document nomme SA ligne et renvoie au fichier.
 
     Ne persiste RIEN et ne modifie RIEN : c'est un verdict. Les contrôles
     portent sur ce que le SERVEUR peut vérifier sans supposer quoi que ce
@@ -1787,6 +1790,11 @@ def verdict_affectation(conception, imposee, *, specs_onduleur=None,
             # l'enregistrement d'une autre chaîne : elle est gardée et
             # signalée, la publication reste refusée tant qu'elle existe.
             if not obsoletes_bloquantes:
+                continue
+            ligne_csv = (lignes_du_fichier or {}).get(module)
+            if ligne_csv is not None:
+                refus.append("Ligne %d : module « %s » absent du document — "
+                             "corrigez le fichier." % (ligne_csv, module))
                 continue
             refus.append(
                 "Module inconnu du document : « %s » n'est pas posé sur cette "

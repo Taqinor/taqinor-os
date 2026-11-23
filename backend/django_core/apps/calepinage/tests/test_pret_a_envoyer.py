@@ -203,8 +203,8 @@ class ControlesElectriquesTest(SimpleTestCase):
                          'Matériel non désigné')
         verdict = controles['verdict_electrique']
         self.assertEqual(verdict['etat'], 'a_regler')
-        # R3-10 : singulier juste (« 1 point »), et le même mot que la pastille.
-        self.assertEqual(verdict['valeur_texte'], 'À compléter : 1 point')
+        # ACAL1539 : « À compléter » seul — le détail des motifs est au Verdict.
+        self.assertEqual(verdict['valeur_texte'], 'À compléter')
         self.assertEqual(len(controles), 7)
 
     def test_resume_de_motifs_singulier_pluriel(self):
@@ -219,8 +219,10 @@ class ControlesElectriquesTest(SimpleTestCase):
     def test_etat_lu_jamais_recalcule(self):
         # Mutant : recalculer depuis les motifs ⇒ « pret » (aucun motif).
         controles = self._controles(etat='a_completer', points=3)
+        self.assertEqual(controles['verdict_electrique']['etat'], 'a_regler')
+        # ACAL1539 : aucun compte de motifs sur la ligne du dossier.
         self.assertEqual(controles['verdict_electrique']['valeur_texte'],
-                         'À compléter : 3 points')
+                         'À compléter')
 
     def test_bloquant_avec_n(self):
         controles = self._controles(etat='bloquant', points=2)
@@ -230,7 +232,7 @@ class ControlesElectriquesTest(SimpleTestCase):
         self.assertEqual(self._controles()['verdict_electrique']['etat'], 'ok')
 
     def test_ratio_sans_fourchette_info(self):
-        ratio = {'valeur': 1.25, 'borne': 1.35, 'dans_bornes': True,
+        ratio = {'valeur': 1.25, 'borne': 1.35, 'dans_bornes': None,
                  'borne_source': 'borne usuelle du noyau électrique'}
         controle = self._controles(ratio=ratio)['ratio_dc_ac']
         self.assertEqual(controle['etat'], 'info')
@@ -266,6 +268,27 @@ class ControlesElectriquesTest(SimpleTestCase):
                          'Chute 3,2 % pour 3 %')
         self.assertEqual(controles['terre_protections']['etat'], 'a_regler')
         self.assertEqual(controles['orientation_mppt']['etat'], 'ok')
+
+    def test_chaque_controle_a_regler_porte_l_onglet_qui_le_regle(self):
+        # ACAL1506 — « Régler » ouvre l'écran où le point se saisit, plus le
+        # Schéma (mutant : remettre ``schema`` par défaut ⇒ échec).
+        troncons = {'verdicts': [], 'omissions': [
+            {'motif': 'Longueur du tronçon non saisie'}]}
+        terre = [{'code': 'TERRE_OMISE', 'statut': 'omis',
+                  'libelle': 'Terre non saisie', 'source': ''}]
+        controles = self._controles(troncons=troncons, motifs=terre,
+                                    etat='a_completer', points=2)
+        attendus = {'verdict_electrique': 'verdict-electrique',
+                    'chutes_tension': 'cheminement-cables',
+                    'terre_protections': 'decisions-electriques'}
+        for code, onglet in attendus.items():
+            self.assertNotEqual(controles[code]['etat'], 'ok', code)
+            self.assertEqual(controles[code]['cible'],
+                             {'etape': 'electrique', 'onglet': onglet,
+                              'champ': ''}, code)
+        # Les contrôles sans écran de saisie propre restent au Schéma.
+        self.assertEqual(controles['tension_froid']['cible']['onglet'],
+                         'schema')
 
 
 DOSSIERS = 'apps.calepinage.services.reglementaire.dossiers_du_calepinage'

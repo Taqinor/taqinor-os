@@ -50,16 +50,32 @@ def _classer(message):
     return 'divers', 'resultats', 'production', '', 'info'
 
 
-def regrouper_manque(avertissements):
+def _lignes_des_controles(controles):
+    """ACAL1539 — une ligne ``manque`` par contrôle électrique à régler : le
+    MÊME compte que la pastille de « Prêt à envoyer ? »."""
+    return [{'code': c['code'], 'message': c.get('cause') or c['valeur_texte'],
+             'etape': 'electrique',
+             'cible': {'onglet': c['cible']['onglet'],
+                       'champ': c['cible']['champ']},
+             'gravite': c['etat'], 'nombre': 1}
+            for c in controles if c['etat'] in ('bloquant', 'a_regler')]
+
+
+def regrouper_manque(avertissements, controles_electriques=None):
     """Les avertissements bruts → ``manque[]`` sans deux lignes de même
     (``code``, ``cible``) ; ``nombre`` = lignes fusionnées. Ordre de première
-    apparition ; le message gardé est celui de la première ligne."""
+    apparition ; le message gardé est celui de la première ligne.
+
+    ACAL1539 — ``controles_electriques`` (ceux de « Prêt à envoyer ? »)
+    donnés : ils REMPLACENT les avertissements de l'étape Électrique."""
     groupes = {}
     for brut in avertissements or ():
         message = str(brut or '').strip()
         if not message:
             continue
         code, etape, onglet, champ, gravite = _classer(message)
+        if controles_electriques is not None and etape == 'electrique':
+            continue
         cle = (code, onglet, champ)
         if cle in groupes:
             groupes[cle]['nombre'] += 1
@@ -69,7 +85,8 @@ def regrouper_manque(avertissements):
             'cible': {'onglet': onglet, 'champ': champ},
             'gravite': gravite, 'nombre': 1,
         }
-    return list(groupes.values())
+    return (_lignes_des_controles(controles_electriques or ())
+            + list(groupes.values()))
 
 
 def _etapes_du_parcours(*, toit_fait, modules, verdict, simule, perime,
@@ -124,5 +141,14 @@ def etat_du_parcours(calepinage):
         modules=modules, verdict=verdict, simule=bool(servi.get('simule')),
         perime=bool(servi.get('simulation_perimee')),
         devis_lie=getattr(calepinage, 'devis_id', None) is not None)
+    # ACAL1539 — l'étape Électrique compte les lignes de la pastille (mêmes
+    # producteurs que ``?etape=electrique`` de « Prêt à envoyer ? »).
+    from .pret_a_envoyer import (
+        agreger, controle_compatibilite, controles_electriques,
+    )
+
+    controles = agreger(calepinage, (controles_electriques,
+                                     controle_compatibilite))['controles']
     return {'etapes': etapes,
-            'manque': regrouper_manque(servi.get('avertissements'))}
+            'manque': regrouper_manque(servi.get('avertissements'),
+                                       controles_electriques=controles)}

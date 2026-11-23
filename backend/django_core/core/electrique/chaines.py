@@ -941,15 +941,24 @@ def _verdicts_courant(chaines, onduleur, alertes, verdicts=None):
         # 2. Borne de FONCTIONNEMENT — écrêtage, légitime mais jamais tu.
         if onduleur.i_max_mppt_a > 0 \
                 and courant_imp > onduleur.i_max_mppt_a + 1e-9:
-            _verdict(
-                locaux, "CH_IMP_CUMULE_ECRETAGE", NATURE_FONCTIONNELLE,
-                STATUT_ALERTE,
+            # ACAL1537 — UNE chaîne seule : c'est le courant d'UN module qui
+            # dépasse, « répartir » serait un faux conseil. Le marqueur
+            # « ÉCRÊTAGE permanent » (lu par ``ventes``) reste dans les deux.
+            texte = (
+                "entrée MPPT %d : Imp %s > courant d'entrée admissible %s : ce "
+                "panneau ne convient pas à cet onduleur — ÉCRÊTAGE permanent, "
+                "prendre un onduleur à entrées plus larges"
+                % (entree_mppt, fr_a(courant_imp), fr_a(onduleur.i_max_mppt_a))
+                if len(lot) == 1 else
                 "entrée MPPT %d : %d chaînes en parallèle → Imp cumulé %s > "
                 "courant d'entrée admissible %s (Isc cumulé %s) — ÉCRÊTAGE "
                 "permanent, répartir une chaîne par entrée MPPT ou prendre un "
                 "onduleur à entrées plus larges"
                 % (entree_mppt, len(lot), fr_a(courant_imp),
-                   fr_a(onduleur.i_max_mppt_a), fr_a(courant_isc)),
+                   fr_a(onduleur.i_max_mppt_a), fr_a(courant_isc)))
+            _verdict(
+                locaux, "CH_IMP_CUMULE_ECRETAGE", NATURE_FONCTIONNELLE,
+                STATUT_ALERTE, texte,
                 borne=float(onduleur.i_max_mppt_a),
                 valeur=float(courant_imp), source=SOURCE_FICHE_ONDULEUR)
             continue

@@ -308,3 +308,60 @@ class ActionRaccordementTest(BaseApiCalepinage):
                 self.assertIsNone(
                     re.search(r'\b%s\b' % mot, texte),
                     "Le calepinage ne calcule aucun argent (D-CALX 5).")
+
+
+class PhasesDeSaisiesElectriquesLuesTest(BaseApiCalepinage):
+    """ACAL1512 — l'onglet Raccordement lit les phases de « Saisies
+    électriques » comme ``evaluer-electrique`` (``_phases_du_raccordement``),
+    sans les recopier dans sa propre saisie."""
+
+    def setUp(self):
+        super().setUp()
+        from decimal import Decimal
+
+        from apps.calepinage.services.electrique import CLE_ENTREE
+        from apps.stock.models import FicheTechnique, Produit
+
+        produits = {}
+        for nom, type_fiche, fiche in (
+                ('Module 710', 'module', dict(
+                    vmp_v=41.4, voc_v=49.3, isc_a=18.59, imp_a=17.59,
+                    pmax_wc=710.0)),
+                ('Onduleur 10 kW tri', 'onduleur', dict(
+                    ond_n_mppt=2, ond_mppt_v_min=160.0, ond_mppt_v_max=950.0,
+                    ond_v_max_abs=1100.0, ond_i_max_mppt_a=26.0,
+                    ond_ac_kw=10.0, ond_phases=3))):
+            produit = Produit.objects.create(
+                company=self.company, nom=nom, sku=f'ACAL1512-{nom}',
+                prix_achat=Decimal('999'), prix_vente=Decimal('1500'),
+                quantite_stock=1)
+            FicheTechnique.objects.create(company=self.company,
+                                          produit=produit,
+                                          type_fiche=type_fiche, **fiche)
+            produits[type_fiche] = produit.pk
+        self.calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='Villa 1992',
+            roof_layout={'pin': {'lat': 33.57, 'lng': -7.59},
+                         'zones': [{'id': 'z1', 'label': 'Sud',
+                                    'result': {'count': 12},
+                                    'facingAzimuthDeg': 180.0,
+                                    'pitchDeg': 15.0}]},
+            resultat={CLE_ENTREE: {
+                'module_produit': produits['module'],
+                'onduleur_produit': produits['onduleur'],
+                'temperature_min_c': -5.0, 'temperature_max_c': 70.0,
+                'phases': 1}})
+
+    def test_phases_de_saisies_electriques_lues_par_le_raccordement(self):
+        reponse = self.api.get(url_raccordement(self.calepinage.pk))
+
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        regime, = [v for v in reponse.data['verdicts']
+                   if v['code'] == 'regime_phases']
+        self.assertEqual(regime['statut'], 'bloquant', regime)
+        self.assertEqual(regime['source'],
+                         'saisie — phases (Saisies électriques)')
+        # Lue, jamais recopiée : la saisie de l'écran reste vide.
+        self.assertIsNone(reponse.data['saisie']['phases'])
+        self.calepinage.refresh_from_db()
+        self.assertNotIn(CLE_SAISIE, self.calepinage.resultat)

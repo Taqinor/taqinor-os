@@ -54,7 +54,9 @@ class BornesLuesTest(SimpleTestCase):
         self.assertEqual(borne, BORNE_USUELLE_DC_AC)
         self.assertEqual(alerte, SEUIL_ALERTE_DC_AC)
         self.assertEqual(source, SOURCE_BORNE_NOYAU)
-        self.assertIn('core.electrique', detail)
+        # ACAL1540 — la source dite en phrase, jamais un nom de module du code.
+        self.assertIn('1,35', detail)
+        self.assertNotIn('core.electrique', detail)
 
     def test_parametre_societe_prime_sur_le_noyau(self):
         borne, _, source, _ = _bornes_ratio(
@@ -84,17 +86,22 @@ class RatioPublieTest(SimpleTestCase):
         self.assertAlmostEqual(bloc['valeur'], 0.852, places=3)
         self.assertEqual(bloc['borne'], BORNE_USUELLE_DC_AC)
         self.assertEqual(bloc['borne_source'], SOURCE_BORNE_NOYAU)
-        self.assertTrue(bloc['dans_bornes'])
+        # ACAL1538 — la borne du noyau est publiée, elle ne juge plus.
+        self.assertIsNone(bloc['dans_bornes'])
         self.assertEqual(messages, ())
 
     def test_hors_bornes_l_avertissement_cite_la_borne_et_sa_source(self):
         # 24 × 710 Wc = 17,04 kWc sur 10 kW AC → 1,70.
-        bloc, messages = _bloc_ratio_dc_ac(_conception(24, 10.0))
+        # ACAL1538 — seule une borne RÉGLÉE juge (ici la société).
+        bloc, messages = _bloc_ratio_dc_ac(
+            _conception(24, 10.0),
+            parametres_societe={'ratio_dc_ac_max': 1.35,
+                                'ratio_dc_ac_alerte': 1.5})
 
         self.assertFalse(bloc['dans_bornes'])
         texte = '\n'.join(messages)
         self.assertIn('1,35', texte)
-        self.assertIn(SOURCE_BORNE_NOYAU, texte)
+        self.assertIn(SOURCE_BORNE_SOCIETE, texte)
         self.assertIn("seuil d'alerte", texte)
 
     def test_la_borne_societe_change_le_verdict_et_le_dit(self):
@@ -113,6 +120,52 @@ class RatioPublieTest(SimpleTestCase):
         self.assertIsNone(bloc['valeur'])
         self.assertIsNone(bloc['dans_bornes'])
         self.assertEqual(messages, ())
+
+
+class UnSeulVerdictTest(SimpleTestCase):
+    """ACAL1538 — le bloc, le verdict CAL244 et « Prêt à envoyer ? » disent
+    le MÊME statut ; sans fourchette réglée : « Non jugé », nulle part
+    « dans la fourchette »."""
+
+    def _trois(self, conception, **bornes):
+        from apps.calepinage.services.electrique import _verdicts_electriques
+        from apps.calepinage.services.pret_a_envoyer import _ratio_dc_ac
+
+        bloc, messages = _bloc_ratio_dc_ac(conception, **bornes)
+        verdict = next(v for v in _verdicts_electriques(
+            conception, bornes_ratio=_bornes_ratio(**bornes))
+            if v['code'] == 'ratio_dc_ac')
+        return bloc, messages, verdict, _ratio_dc_ac(bloc)
+
+    def test_sans_fourchette_aucun_chemin_ne_dit_dans_la_fourchette(self):
+        for modules in (24, 10):  # 1,70 puis 0,71
+            bloc, messages, verdict, controle = self._trois(
+                _conception(modules, 10.0))
+            self.assertIsNone(bloc['dans_bornes'])
+            self.assertEqual(messages, ())
+            self.assertIsNone(verdict['conforme'])
+            self.assertIn('Non jugé : aucune fourchette réglée',
+                          verdict['detail'])
+            self.assertEqual(controle['etat'], 'info')
+            self.assertIn('Non jugé : aucune fourchette réglée',
+                          controle['cause'])
+            textes = ' '.join([verdict['libelle'], verdict['detail'],
+                               controle['cause'], *messages])
+            self.assertNotIn('dans la fourchette', textes)
+
+    def test_avec_fourchette_le_meme_statut_partout(self):
+        bornes = {'parametres_societe': {'ratio_dc_ac_max': 1.2}}
+        bloc, messages, verdict, controle = self._trois(
+            _conception(24, 10.0), **bornes)
+        self.assertFalse(bloc['dans_bornes'])
+        self.assertIs(verdict['conforme'], False)
+        self.assertEqual(controle['etat'], 'a_regler')
+        self.assertEqual('\n'.join(messages).count('1,20'), 1)
+        bloc, _m, verdict, controle = self._trois(
+            _conception(12, 10.0), **bornes)
+        self.assertTrue(bloc['dans_bornes'])
+        self.assertIs(verdict['conforme'], True)
+        self.assertEqual(controle['etat'], 'ok')
 
 
 class EcretageTest(SimpleTestCase):
