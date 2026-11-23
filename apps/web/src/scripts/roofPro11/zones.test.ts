@@ -780,12 +780,39 @@ describe('ACAL514 — pivoterSite', () => {
 });
 
 describe('ACAL520 — motifPanVerrouille', () => {
-  it('pan verrouillé ⇒ motif nommant le pan ; sinon null', () => {
-    expect(motifPanVerrouille({ verrouille: true, label: 'Pan 1' })).toBe('Pan 1 verrouillé — déverrouillez-le d’abord.');
+  it('pan verrouillé ⇒ motif nommant le pan (par son rang, ACAL1430) ; sinon null', () => {
+    expect(motifPanVerrouille({ verrouille: true, label: 'Pan 1' })).toBe('Zone 1 verrouillé — déverrouillez-le d’abord.');
     expect(motifPanVerrouille({ verrouille: true, label: '' }, 1)).toContain('verrouillé');
     expect(motifPanVerrouille({ verrouille: false, label: 'Pan 1' })).toBeNull();
     expect(motifPanVerrouille({ label: 'Pan 1' })).toBeNull();
     expect(motifPanVerrouille(undefined)).toBeNull();
+  });
+});
+
+// ACAL1430 — après « 2 pans » (identifiants area-2 / area-3), la liste, le cadenas, le refus et le tableau disent le
+// MÊME nom (« Zone 1 », « Zone 2 ») ; avant, le cadenas et le refus lisaient le `label` de l'identifiant (« Zone 2 »).
+describe('ACAL1430 — après découpe en 2 pans : même nom partout', () => {
+  it('liste, cadenas, refus de suppression et tableau des pans disent « Zone 1 » pour le premier pan', async () => {
+    const { decouperContour } = await import('./formesToit');
+    const v = decouperContour(rectRing(12, 9), 'gable', 22, [{ id: 'area-1' }]);
+    if (!v.ok) throw new Error(v.motif);
+    const areas = v.pans;
+    expect(areas.map((a) => a.id)).toEqual(['area-2', 'area-3']);
+    areas[0].verrouille = true;
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><div id="rp9-areas"><ul id="liste"></ul></div></body>').window.document;
+    try {
+      const ctx = { ...ctxDeBase(areas, 'area-2'), activeArea: () => areas[0], closed: true,
+        dom: { areasWindowEl: document.getElementById('rp9-areas'), areasListEl: document.getElementById('liste') } } as unknown as Ctx;
+      createZones(ctx, { setStatus: vi.fn() }).renderAreasPanel();
+      const ligne = document.querySelector('[data-area-row="area-2"]')!;
+      expect(ligne.querySelector('span')?.textContent).toBe('Zone 1');
+      expect(ligne.querySelector('[data-area-lock]')?.getAttribute('aria-label')).toBe('Verrouiller Zone 1');
+      expect(motifPanVerrouille(areas[0], 0)).toBe('Zone 1 verrouillé — déverrouillez-le d’abord.');
+      expect(document.querySelector('[data-pan-stat="area-2"] td')?.textContent?.trim()).toBe('Zone 1');
+      expect(serializeLayout(ctx).zones.map((z) => z.label)).toEqual(['Zone 1', 'Zone 2']); // le document suit l'ordre
+    } finally { g.document = avant; }
   });
 });
 

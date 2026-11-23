@@ -288,7 +288,7 @@ export function panVierge(
   const id = prochainId('area', existants);
   return {
     id,
-    label: areaLabel(Number(id.slice('area-'.length)) - 1),
+    label: areaLabel(existants.length), // ACAL1430 — le nom de son RANG (ajouté en fin), jamais celui de son identifiant
     vertices,
     obstacles: [],
     roofType: 'flat',
@@ -546,6 +546,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     const { areasWindowEl, areasListEl, areasTotalPanelsEl, areasTotalKwcEl, areasTotalProdEl, areasTotalSavingsEl } = ctx.dom;
     if (!areasWindowEl) return;
     const areas = ctx.areas;
+    areas.forEach((a, i) => { a.label = areaLabel(i); }); // ACAL1430 — UN nom par pan (son rang) : liste, cadenas, refus, document
     const activeAreaId = ctx.activeAreaId;
     const liveActive = liveActiveResult();
     // Résultats agrégés : la zone active prend son résultat LIVE, les autres leur snapshot.
@@ -616,17 +617,17 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
           : 'border-white/10 bg-nuit-900/40';
         const delBtn =
           areas.length > 1
-            ? `<button type="button" data-area-del="${a.id}" aria-label="Supprimer ${esc(a.label)}" class="border border-alert-300/60 px-2.5 py-1 text-xs font-semibold text-alert-300 transition-colors hover:bg-alert-300/10">×</button>`
+            ? `<button type="button" data-area-del="${a.id}" aria-label="Supprimer ${esc(areaLabel(i))}" class="border border-alert-300/60 px-2.5 py-1 text-xs font-semibold text-alert-300 transition-colors hover:bg-alert-300/10">×</button>`
             : '';
         // ACAL520 — cadenas du pan (≥ 44 px, `aria-pressed`) : verrouillé, ses gestes refusent.
-        const lockBtn = `<button type="button" data-area-lock="${a.id}" aria-pressed="${a.verrouille ? 'true' : 'false'}" aria-label="Verrouiller ${esc(a.label || areaLabel(i))}" class="min-h-11 min-w-11 border px-2.5 py-1 text-xs font-semibold ${a.verrouille ? 'border-brass-400 text-brass-300' : 'border-white/25 text-lune-soft'}">${a.verrouille ? 'Verrouillé' : 'Verrouiller'}</button>`;
+        const lockBtn = `<button type="button" data-area-lock="${a.id}" aria-pressed="${a.verrouille ? 'true' : 'false'}" aria-label="Verrouiller ${esc(areaLabel(i))}" class="min-h-11 min-w-11 border px-2.5 py-1 text-xs font-semibold ${a.verrouille ? 'border-brass-400 text-brass-300' : 'border-white/25 text-lune-soft'}">${a.verrouille ? 'Verrouillé' : 'Verrouiller'}</button>`;
         const viewBtn = active
           ? `<span class="text-xs font-semibold text-brass-300">● active</span>`
           : `<button type="button" data-area-select="${a.id}" class="border border-white/25 px-2.5 py-1 text-xs font-semibold text-lune-soft transition-colors hover:border-brass-400 hover:text-brass-300">Voir</button>`;
         // CAL59 — saisie du bâtiment : un input LIBRE (l'utilisateur nomme ses bâtiments,
         // aucune liste imposée) ; vide = bâtiment unique, comportement historique.
         const buildingInput = `<input type="text" data-area-building="${a.id}" value="${esc(a.buildingId ?? '')}"
-          placeholder="bâtiment" aria-label="Bâtiment de ${esc(a.label || areaLabel(i))}"
+          placeholder="bâtiment" aria-label="Bâtiment de ${esc(areaLabel(i))}"
           class="w-24 border border-white/15 bg-nuit-900/60 px-1.5 py-0.5 text-[11px] text-lune-soft focus:border-brass-400 focus:outline-none" />`;
         return `<li class="flex flex-wrap items-center gap-x-3 gap-y-1 border ${rowClass} p-3 text-sm" data-area-row="${a.id}">
           <span class="font-semibold text-white">${esc(areaLabel(i))}</span>
@@ -758,8 +759,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
   /** Nom du pan ACTIF, tel qu'il est écrit dans la liste des zones. */
   function nomDuPanActif(): string {
     const i = ctx.areas.findIndex((a) => a.id === ctx.activeAreaId);
-    const a = i >= 0 ? ctx.areas[i] : undefined;
-    return a?.label || areaLabel(i >= 0 ? i : 0);
+    return areaLabel(i >= 0 ? i : 0); // ACAL1430 — le nom de la liste, jamais un `label` périmé
   }
 
   /** Affiche (ou efface) un refus NOMMÉ, dans le panneau ET dans le bandeau de statut. */
