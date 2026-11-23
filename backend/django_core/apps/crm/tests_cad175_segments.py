@@ -259,11 +259,17 @@ class CIQ410PanneauPro(SimpleTestCase):
     def test_une_facture_qui_ne_compte_pas_ne_ferme_pas_l_etape(self):
         """CSV2 — une facture en dirhams ne ferme l'étape que si la tension ET
         le contrat BT déclaré la laissent compter (règle de ``devis_auto``)."""
-        # Industriel sans basse tension déclarée : les dirhams ne comptent pas.
+        # D-ACAL-92 (« supposer_bt », 23/11/2026) — industriel sans tension
+        # déclarée : basse tension supposée, les dirhams comptent, étape fermée.
         champs = _champs(Lead(nom='P', type_installation='industriel',
                               facture_hiver=Decimal('9000')))
-        self.assertIn('conso_mensuelle_kwh', champs)
+        self.assertNotIn('conso_mensuelle_kwh', champs)
         self.assertNotIn('facture_hiver', champs)  # déjà remplie
+        # Industriel en moyenne tension DÉCLARÉE : les dirhams ne comptent pas.
+        champs = _champs(Lead(nom='P', type_installation='industriel',
+                              tension_raccordement='mt', tension_source='declare',
+                              facture_hiver=Decimal('9000')))
+        self.assertIn('conso_mensuelle_kwh', champs)
         # Commerce BT, dirhams, contrat pas encore posé : ADEV125 (D-ACAL-92)
         # — le moteur suppose le tarif BT, les dirhams comptent, étape fermée.
         champs = _champs(Lead(nom='P', type_installation='commercial',
