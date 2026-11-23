@@ -1063,18 +1063,21 @@ def _plan_avec_le_site(plan, site):
 # ═══════════════════════════════════════════════════════════════════════════
 
 def _reponse_pvcalculation(client, plan, site, decision, cascade, kwc):
-    """La réponse PVGIS BRUTE du même plan, à PERTE TOTALE ÉGALE, ou ``None``.
+    """La réponse PVGIS BRUTE du même plan, à PERTES SYSTÈME ÉGALES, ou ``None``.
 
     ``ecart_vs_pvcalc`` compare notre chaîne à la production que PVGIS calcule
-    lui-même. Pour que les deux parlent de la même installation, la perte
-    plate envoyée à PVGIS est le TOTAL que la cascade vient de mesurer — la
-    seule valeur qui rende l'écart lisible comme un écart de MODÈLE.
+    lui-même. ACAL1606 — la perte plate envoyée est la perte SYSTÈME de la
+    cascade (``validation.perte_systeme`` : sans réflexion, température,
+    faible éclairement ni spectre, que PVGIS calcule lui-même — les envoyer
+    les compterait deux fois).
 
     ``None`` dès qu'une entrée manque (total de cascade inconnu, fenêtre
     d'années absente en mode année type) ou que PVGIS ne répond pas : le bloc
     ``validation`` est alors publié SANS écart, avec son motif.
     """
-    total_pct = _nombre((cascade or {}).get('total_pct'))
+    from .validation import perte_systeme
+
+    total_pct = _nombre(perte_systeme(cascade)[0])
     debut, fin = (decision['fenetre_annees'] or (None, None))
     if total_pct is None or debut is None or fin is None or not kwc:
         return None
@@ -1090,7 +1093,7 @@ def _reponse_pvcalculation(client, plan, site, decision, cascade, kwc):
     try:
         politique = politique_de_pertes([{
             'poste': 'chaine_calepinage',
-            'libelle': 'Total de la cascade du module',
+            'libelle': 'Perte système de la cascade du module',
             'pct': round(total_pct, 3),
             'source': 'mesure',
         }])

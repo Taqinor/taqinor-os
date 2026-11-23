@@ -1126,12 +1126,25 @@
       "tolerance_pct": 5.0,
       "verdict": "dans_la_tolerance",
       "avertissement": "",
-      "motif": "ÉCART INFORMATIF contre PVcalc à perte totale égale — jamais une « validation », jamais un ajustement.",
+      "motif": "ÉCART INFORMATIF contre PVcalc à pertes système égales (réflexion, température, faible éclairement et spectre, que PVGIS calcule lui-même, ne lui sont pas envoyés) — jamais une « validation », jamais un ajustement.",
       "tolerance_source": "note interne du bureau d’études",
       "pertes_totales": {
-        "chaine_pct": 20.1,
-        "pvgis_pct": 20.1,
-        "egales": true
+        "chaine_pct": 11.3,
+        "pvgis_pct": 11.3,
+        "egales": true,
+        "cascade_pct": 20.1,
+        "etapes_exclues": [
+          {
+            "etape": "iam",
+            "libelle": "Incidence (IAM)",
+            "perte_pct": 3.4
+          },
+          {
+            "etape": "thermique",
+            "libelle": "Échauffement des modules",
+            "perte_pct": 6.0
+          }
+        ]
       },
       "mensuel": [
         {
@@ -2607,12 +2620,25 @@
       "tolerance_pct": 5.0,
       "verdict": "dans_la_tolerance",
       "avertissement": "",
-      "motif": "ÉCART INFORMATIF contre PVcalc à perte totale égale — jamais une « validation », jamais un ajustement.",
+      "motif": "ÉCART INFORMATIF contre PVcalc à pertes système égales (réflexion, température, faible éclairement et spectre, que PVGIS calcule lui-même, ne lui sont pas envoyés) — jamais une « validation », jamais un ajustement.",
       "tolerance_source": "note interne du bureau d’études",
       "pertes_totales": {
-        "chaine_pct": 20.1,
-        "pvgis_pct": 20.1,
-        "egales": true
+        "chaine_pct": 11.3,
+        "pvgis_pct": 11.3,
+        "egales": true,
+        "cascade_pct": 20.1,
+        "etapes_exclues": [
+          {
+            "etape": "iam",
+            "libelle": "Incidence (IAM)",
+            "perte_pct": 3.4
+          },
+          {
+            "etape": "thermique",
+            "libelle": "Échauffement des modules",
+            "perte_pct": 6.0
+          }
+        ]
       },
       "mensuel": [
         {
@@ -3758,12 +3784,25 @@
       "tolerance_pct": 5.0,
       "verdict": "dans_la_tolerance",
       "avertissement": "",
-      "motif": "ÉCART INFORMATIF contre PVcalc à perte totale égale — jamais une « validation », jamais un ajustement.",
+      "motif": "ÉCART INFORMATIF contre PVcalc à pertes système égales (réflexion, température, faible éclairement et spectre, que PVGIS calcule lui-même, ne lui sont pas envoyés) — jamais une « validation », jamais un ajustement.",
       "tolerance_source": "note interne du bureau d’études",
       "pertes_totales": {
-        "chaine_pct": 20.1,
-        "pvgis_pct": 20.1,
-        "egales": true
+        "chaine_pct": 11.3,
+        "pvgis_pct": 11.3,
+        "egales": true,
+        "cascade_pct": 20.1,
+        "etapes_exclues": [
+          {
+            "etape": "iam",
+            "libelle": "Incidence (IAM)",
+            "perte_pct": 3.4
+          },
+          {
+            "etape": "thermique",
+            "libelle": "Échauffement des modules",
+            "perte_pct": 6.0
+          }
+        ]
       },
       "mensuel": [
         {

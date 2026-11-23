@@ -1011,7 +1011,7 @@
       "tolerance_pct": 5.0,
       "verdict": "dans_la_tolerance",
       "avertissement": "",
-      "motif": "ÉCART INFORMATIF contre PVcalc à perte totale égale — jamais une « validation », jamais un ajustement.",
+      "motif": "ÉCART INFORMATIF contre PVcalc à pertes système égales (réflexion, température, faible éclairement et spectre, que PVGIS calcule lui-même, ne lui sont pas envoyés) — jamais une « validation », jamais un ajustement.",
       "poste_principal": null
     },
     "simulation_perimee": false,
@@ -2606,7 +2606,7 @@
       "tolerance_pct": 5.0,
       "verdict": "dans_la_tolerance",
       "avertissement": "",
-      "motif": "ÉCART INFORMATIF contre PVcalc à perte totale égale — jamais une « validation », jamais un ajustement.",
+      "motif": "ÉCART INFORMATIF contre PVcalc à pertes système égales (réflexion, température, faible éclairement et spectre, que PVGIS calcule lui-même, ne lui sont pas envoyés) — jamais une « validation », jamais un ajustement.",
       "poste_principal": null
     },
     "simulation_perimee": false,
