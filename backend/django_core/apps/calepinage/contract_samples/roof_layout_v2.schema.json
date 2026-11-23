@@ -1287,6 +1287,21 @@
               }
             }
           }
+        },
+        "factures_mois": {
+          "description": "ACAL1601 — les factures mensuelles SAISIES dans la grille « Mes factures (1 à 12 mois) » de l'atelier (`consommationMois.ts::monterGrilleFactures`), une entrée par mois renseigné, écrites et relues par ACAL1610. FACULTATIVE : absente = aucune facture mensuelle saisie ; aucune valeur n'est inventée pour les mois vides (D-CALX 7).",
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["mois", "valeur", "unite"],
+            "properties": {
+              "mois": {"description": "Mois de la facture, 1 = janvier … 12 = décembre.", "type": "integer", "minimum": 1, "maximum": 12},
+              "valeur": {"description": "Montant SAISI, strictement positif, dans l'unité `unite`.", "type": "number", "exclusiveMinimum": 0},
+              "unite": {"description": "Unité du montant saisi : `kwh` (consommation) ou `mad` (montant de la facture).", "type": "string", "enum": ["kwh", "mad"]}
+            }
+          }
         }
       }
     },
