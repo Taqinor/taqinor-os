@@ -2,6 +2,7 @@
 // GÉNÈRE les pans depuis un contour fermé + une pente saisie, au lieu du choix binaire
 // plat/pente par zone. Testé hors DOM/Three (pure geometry in, geometry out).
 import { describe, expect, it, vi } from 'vitest';
+import { creerCanalTeinte } from './canalTeinte'; // ACAL1621
 import { cibleVue, appliquerVue } from './vuesCamera';
 import { dimensionsTexture } from './panelTexture';
 import {
@@ -432,6 +433,25 @@ describe('ACAL1408 — la teinte d’accès modifie la couleur effective du pann
     ecrireTeintesPanneaux(buf, [7], () => bleu);
     expect(buf.rgb[0]).toEqual([bleu.r * GAIN_TEINTE_PANNEAU, bleu.g * GAIN_TEINTE_PANNEAU, bleu.b * GAIN_TEINTE_PANNEAU]);
     expect(Math.max(...effective(buf.rgb[0]))).toBeGreaterThan(0.3);
+  });
+});
+
+// Demande croisée (ACAL1621) — la carte d'accès et la teinte par chaîne écrivent le MÊME tampon : un maillage reconstruit
+// (ou une table de chaînes arrivée) pendant la capture de la carte de chaleur repeignait les chaînes par-dessus l'accès.
+describe('ACAL1621 — canal de teinte : la carte d’accès allumée passe avant la teinte par chaîne', () => {
+  it('accès allumé : la reconstruction / les chaînes réécrivent l’accès ; éteint : les chaînes reviennent', () => {
+    const ecrits: Array<string | null> = [];
+    const nomme = (nom: string) => Object.assign(() => ({ r: 0, g: 0, b: 0 }), { nom });
+    const canal = creerCanalTeinte((c) => ecrits.push(c ? (c as unknown as { nom: string }).nom : null));
+    const chaines = nomme('chaînes');
+    const acces = nomme('accès');
+    canal.chaines(chaines);
+    canal.acces(acces, () => chaines); // « Joindre la carte de chaleur » allume l'accès
+    canal.chaines(chaines); // maillage reconstruit pendant la capture
+    expect(canal.accesActive()).toBe(true);
+    canal.acces(null, () => chaines); // capture finie : l'accès s'éteint
+    canal.acces(null, () => null); // ni accès ni chaînes : teinte d'origine
+    expect(ecrits).toEqual(['chaînes', 'accès', 'accès', 'chaînes', null]);
   });
 });
 
