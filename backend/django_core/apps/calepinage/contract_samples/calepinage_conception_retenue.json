@@ -1,0 +1,32 @@
+{
+  "endpoint": "GET /api/django/ventes/devis/<int:pk>/design-context/",
+  "forme_serveur": "partielle",
+  "pourquoi": "ACAL1950 (demande du fondateur : « one engine, the CRM one ») — LA conception que le devis a RETENUE, rendue par `apps.ventes.selectors_calepinage.conception_retenue_du_devis(devis)` : le point d'entrée LECTURE SEULE que lit le calepinage d'un devis (cible de l'atelier ACAL1951, matériel électrique par défaut ACAL1952, longueur de chaîne de référence ACAL1953, production retenue de l'étape Résultats ACAL1956) au lieu de refaire son propre dimensionnement. PACT10 — POURQUOI CE CONTRAT PART SEUL : les quatre lecteurs le lisent ; il est posé avant eux, dans le commit du sélecteur. PORTÉE PARTIELLE : comme `calepinage_conception_du_devis.json`, ce document décrit le retour d'un sélecteur, rattaché à la route de conception du devis ; ses blocs sont servis par les lecteurs (bloc `cible` du design-context du calepinage, `entree-electrique/`, `resultat/`). CLÉS : `devis`/`reference`/`statut` du devis lu ; `recu` = statut envoyé ou accepté (le client a reçu ce devis) ; `option` = `sans` | `avec` (deux options ⇒ l'option RECOMMANDÉE, option unique ⇒ elle) ; `deux_options` ; `module` = `{produit, designation, quantite, watt}` de l'option (`null` sans ligne panneau, `watt` `null` quand ni la fiche ni le libellé ne le disent) ; `onduleurs` = `[{produit, designation, quantite}]` de l'option ; `chaines` = `{nombre, longueurs, longueur}` de la conception électrique RANGÉE du devis, `null` quand le devis n'en porte pas ou qu'elle décrit l'autre option ; `production_annuelle_kwh` = la production annuelle retenue (clé figée de l'étude, `null` quand elle manque — jamais un nombre supposé) et `production_origine` sa clé (`etude_ci`, `etude_ci.option_avec`, `etude_horaire`, `etude_horaire_sans`, `production_annuelle`, ou `null`). Sans devis, le sélecteur rend `null` (`exemple_vide`). AUCUN ARGENT, AUCUN PRIX D'ACHAT. Valeurs = PLACEHOLDERS assumés (identifiants à un chiffre).",
+  "exemple": {
+    "devis": 1,
+    "reference": "DEV-202611-0001",
+    "statut": "envoye",
+    "recu": true,
+    "option": "sans",
+    "deux_options": true,
+    "module": {"produit": 2, "designation": "Panneau 715 W", "quantite": 35, "watt": 715.0},
+    "onduleurs": [{"produit": 3, "designation": "Onduleur réseau 20 kW", "quantite": 1}],
+    "chaines": null,
+    "production_annuelle_kwh": 41250.0,
+    "production_origine": "etude_ci"
+  },
+  "exemple_option_avec": {
+    "devis": 1,
+    "reference": "DEV-202611-0001",
+    "statut": "envoye",
+    "recu": true,
+    "option": "avec",
+    "deux_options": true,
+    "module": {"produit": 2, "designation": "Panneau 715 W", "quantite": 48, "watt": 715.0},
+    "onduleurs": [{"produit": 4, "designation": "Onduleur hybride 20 kW", "quantite": 1}],
+    "chaines": {"nombre": 4, "longueurs": [12, 12, 12, 12], "longueur": 12},
+    "production_annuelle_kwh": null,
+    "production_origine": null
+  },
+  "exemple_vide": null
+}

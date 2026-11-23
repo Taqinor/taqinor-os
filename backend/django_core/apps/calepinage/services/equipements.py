@@ -119,6 +119,30 @@ CHAMPS_PAR_FAMILLE = {
 }
 
 
+def conception_retenue(devis):
+    """ACAL1950 — la conception RETENUE par ``devis`` (porte de lecture
+    ``apps.ventes.selectors_calepinage.conception_retenue_du_devis``), ou ``None``."""
+    from apps.ventes.selectors_calepinage import conception_retenue_du_devis
+
+    return conception_retenue_du_devis(devis) if devis is not None else None
+
+
+def conception_retenue_par_id(devis_id, company):
+    """ACAL1950 — la même conception, lue par l'identifiant du devis lié
+    (borné société, une requête quand le devis a des lignes)."""
+    from apps.ventes.selectors_calepinage import conception_retenue_du_devis_id
+
+    return conception_retenue_du_devis_id(devis_id, company)
+
+
+def borne_dc_ac_devis(mode_installation=None):
+    """ACAL1954 — la borne DC/AC du MOTEUR DE DEVIS (porte de lecture
+    ``apps.ventes.selectors_calepinage.borne_dc_ac_du_moteur_devis``)."""
+    from apps.ventes.selectors_calepinage import borne_dc_ac_du_moteur_devis
+
+    return borne_dc_ac_du_moteur_devis(mode_installation)
+
+
 def _devis_lie(calepinage):
     """Le devis lié au calepinage, borné à SA société — ou ``None``."""
     devis_id = getattr(calepinage, 'devis_id', None)

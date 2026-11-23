@@ -23,6 +23,7 @@ import calendar
 import datetime
 
 from apps.parametres.pvgis_profils import decalage_maroc_h
+from apps.ventes.domain.suppositions_ci import HEURE_DEBUT_SUPPOSEE, MESSAGE_HEURE_DEBUT_SUPPOSEE
 from apps.ventes.moteur_ci.categories import elements_horaire
 from apps.ventes.moteur_ci.profils import (
     MOTIF_PROFIL_DECLARE, SAISONS, TYPES_JOUR, forme_archetype,
@@ -780,15 +781,63 @@ def _repli_source(categorie, profil_societe):
     return True, None
 
 
+#: ADEV127 (D-ACAL-94, fondateur 23/11/2026) — régime d'équipes déclaré (1×8,
+#: 2×8, 3×8, continu) sans jours ouverts : lundi à samedi SUPPOSÉS, dits
+#: (« working days are assumed (Monday to Saturday) »). L'heure de début d'un
+#: 1×8 / 2×8 sans heure déclarée est SUPPOSÉE aussi (« regime_suffit »,
+#: ``suppositions_ci.HEURE_DEBUT_SUPPOSEE``), dite.
+JOURS_OUVRES_SUPPOSES = (True,) * 6 + (False,)
+MESSAGE_JOURS_SUPPOSES = ("Jours ouverts non déclarés : lundi à samedi supposés (régime "
+                          "d'équipes déclaré). Demandez au client ses jours de travail.")
+
+
+def _regime_declare(rythme):
+    return rythme.get('equipes') in DUREE_EQUIPES_H
+
+
+def _avec_jours_supposes(rythme, alertes):
+    """ADEV127 — le rythme avec ses jours supposés (lundi→samedi) quand un régime
+    d'équipes déclaré n'a pas de jours ; l'alerte les DIT (champ du lead
+    ``jours_ouverture``, ``suppositions_ci``)."""
+    if rythme.get('jours_ouverts') is not None or not _regime_declare(rythme):
+        return rythme
+    alertes.append(_alerte('jours_ouverts_supposes', FEUILLE_JOURS, MESSAGE_JOURS_SUPPOSES,
+                           interne=True))
+    return dict(rythme, jours_ouverts=list(JOURS_OUVRES_SUPPOSES))
+
+
+def _debut_equipe(rythme):
+    """D-ACAL-94 (« regime_suffit ») — l'heure de début du régime : déclarée,
+    sinon supposée (1×8 / 2×8), ``None`` hors de ces régimes."""
+    if rythme.get('debut_equipe_h') is not None:
+        return rythme['debut_equipe_h']
+    return HEURE_DEBUT_SUPPOSEE.get(rythme.get('equipes'))
+
+
+def _avec_heure_supposee(rythme, alertes):
+    """D-ACAL-94 — le rythme avec l'heure de début SUPPOSÉE d'un 1×8 / 2×8 sans
+    heure ni plage déclarée ; l'alerte la DIT (champ du lead ``heure_debut``)."""
+    equipes = rythme.get('equipes')
+    if (rythme.get('plages') or rythme.get('debut_equipe_h') is not None
+            or equipes not in HEURE_DEBUT_SUPPOSEE):
+        return rythme
+    heure = HEURE_DEBUT_SUPPOSEE[equipes]
+    alertes.append(_alerte('heure_debut_supposee', 'rythme.debut_equipe_h',
+                           MESSAGE_HEURE_DEBUT_SUPPOSEE.format(
+                               heure=heure, regime=equipes.replace('x', ' × ')),
+                           interne=True))
+    return dict(rythme, debut_equipe_h=heure)
+
+
 def profil_charge_prerequis(rythme, categorie=None, profil_societe=None):
     """ADEV76 (D-ACI-5=a) — LA règle des prérequis du profil de charge.
 
     Rend la liste ORDONNÉE des feuilles du rythme qui manquent pour que
     :func:`courbe_declaree` trace un profil (``[]`` = prêt) :
 
-    * plages déclarées = heures (``plages``) OU régime d'équipes placé (3x8 /
-      continu, ou 1x8 / 2x8 avec ``debut_equipe_h``) OU réponses de catégorie
-      qui posent un horaire (CIQ130) ;
+    * plages déclarées = heures (``plages``) OU régime d'équipes (3x8 /
+      continu ; 1x8 / 2x8 avec ``debut_equipe_h``, sinon heure SUPPOSÉE —
+      D-ACAL-94) OU réponses de catégorie qui posent un horaire (CIQ130) ;
     * dès que des plages existent, les jours ouverts sont exigés ;
     * sans plage : le profil SAISI par la société ou l'archétype vendorisé de
       ``categorie`` suffit ; sinon les jours (s'ils manquent) puis les plages.
@@ -802,9 +851,10 @@ def profil_charge_prerequis(rythme, categorie=None, profil_societe=None):
     fusionne, _non_consommees = _fusionner_categorie(
         rythme, rythme.get('categorie_commerciale') or categorie, [])
     jours = fusionne.get('jours_ouverts')
-    jours_declares = jours is not None and len(jours) == 7
+    # ADEV127 (D-ACAL-94) — un régime d'équipes déclaré : jours SUPPOSÉS.
+    jours_declares = (jours is not None and len(jours) == 7) or _regime_declare(fusionne)
     plages = bool(fusionne.get('plages')) or _plages_equipes(
-        fusionne.get('equipes'), fusionne.get('debut_equipe_h')) is not None
+        fusionne.get('equipes'), _debut_equipe(fusionne)) is not None
     if plages:
         return [] if jours_declares else [FEUILLE_JOURS]
     if _repli_source(categorie, profil_societe)[0]:
@@ -858,6 +908,7 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
     # déclarés, fusionnés avec la saisie (la saisie gagne).
     rythme, non_consommees = _fusionner_categorie(
         rythme, rythme.get('categorie_commerciale') or archetype, alertes)
+    rythme = _avec_heure_supposee(_avec_jours_supposes(rythme, alertes), alertes)
     calendrier, jours_declares, plages_declarees = _calendrier(
         rythme, annee_reference, feries, alertes)
     niveaux, repartition = _niveaux_mensuels(kwh_mensuels, calendrier, alertes)

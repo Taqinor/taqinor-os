@@ -61,10 +61,11 @@ import AlertesEnregistrement from '../../features/calepinage/atelier/AlertesEnre
 // rapide du constructeur vs simulation) ; ne modifie AUCUN chiffre de la carte
 // « Recommandation » (`rp9-results` ci-dessous), il se contente de la commenter.
 import BandeauProvenanceProduction from '../../features/calepinage/production/BandeauProvenanceProduction'
-import { lancerSimulationAuto } from '../../features/calepinage/production/simulationAuto' // ACAL398
+import { suivreSimulationDuServeur } from '../../features/calepinage/production/simulationAuto' // ACAL1987
 // CALX68 — brouillon LOCAL de l'atelier (mode calepinage) : minuterie/repli +
 // bandeau de reprise. Logique pure, voir l'en-tête de ce module.
 import { creerGestionnaireBrouillon, estPanneReseau, memoriserReprise } from '../../features/calepinage/brouillon'
+import { ecrireOuRelire } from '../../features/calepinage/delaiReseau'
 import { creerStockageMiroir, sansVue, empreinteSansVue } from '../../features/calepinage/brouillonServeur' // ACAL400 ; H1 : sans l'état de vue ; ACAL1345
 import { toastInfo } from '../../lib/toast'
 // L2 — confirmation maison (APX17 : jamais une popup système) avant une écriture qui
@@ -751,8 +752,10 @@ function AtelierToiture({
         // lue au boot puis remplacée par celle de chaque réponse 2xx.
         const res = varianteId
           ? await calepinageApi.calepinages.modifierVariante(calepinageId, varianteId, { roof_layout: layout })
-          : await calepinageApi.calepinages
-            .enregistrerLayoutCalepinageConditionnel(calepinageId, layout, empreinteDocument)
+          // ACAL1905 — réponse trop lente : l'écran RELIT l'empreinte du serveur (l'écriture a pu aboutir) avant de parler.
+          : await ecrireOuRelire(() => calepinageApi.calepinages
+            .enregistrerLayoutCalepinageConditionnel(calepinageId, layout, empreinteDocument), calepinageId, empreinteDocument,
+          (relu) => relu != null && empreinteSansVue(relu) === empreinteSansVue(layout)) // la NÔTRE, pas celle d'un autre onglet
         resultat = varianteId ? {} : (res?.data ?? {})
         heureReponse = res?.headers?.date || new Date().toISOString() // ACAL399
       } catch (err) {
@@ -842,9 +845,9 @@ function AtelierToiture({
       setSending(false)
       // R2-04 — `resultat.version` est l'identifiant GLOBAL de la version, pas son rang : jamais affiché.
       setStatus('Conception enregistrée.')
-      // ACAL398 — nouvelle version du calepinage (pas une variante) : la simulation repart
-      // seule, sans attendre ; son issue est reprise par l'onglet Production.
-      if (!varianteId) lancerSimulationAuto(calepinageId)
+      // ACAL1987 — un seul déclencheur : le SERVEUR lance la simulation d'une pose complète. Le navigateur ne poste
+      // plus `simuler/` ; il lit l'état servi et retient le job pour l'onglet Production.
+      if (!varianteId) suivreSimulationDuServeur(calepinageId)
 
       marquerSceneEnregistree(layout) // ACAL85
       setEnregistreLe(heureReponse) // ACAL399

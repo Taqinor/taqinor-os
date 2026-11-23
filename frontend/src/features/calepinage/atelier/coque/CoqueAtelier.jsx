@@ -12,11 +12,13 @@ import {
 } from '../parcoursGuide'
 import { BandeauAlertes } from './BandeauxCoque'
 import BarreProjet from './BarreProjet'
+import { usePoseVivante } from './etapes/panneaux/constructeur'
 import { nomClientServi, sousTitrePose } from './projet'
 import { ContexteCoque, ContextePresentation } from './contexteCoque'
 import PanneauEtape, { ProgressionEtapes } from './PanneauEtape'
 import { BoutonOr } from './primitives'
 import RailEtapes from './RailEtapes'
+import { useToastsHorsDuBouton } from './toastsAtelier'
 
 /* ============================================================================
    COQUE (maquettes 22/11) — L'ATELIER PLEIN ÉCRAN DU MODULE CALEPINAGE.
@@ -235,6 +237,7 @@ export default function CoqueAtelier({
   ecranProps = {}, enregistreLe = null, onEtape = null, renderAtelierPanneaux = null,
 }) {
   const presentation = useContext(ContextePresentation)
+  useToastsHorsDuBouton() // ACAL2001 : les messages ne se posent plus sur le bouton d'étape
   const tiroir = useTiroir() && !presentation
   const [deplie, setDeplie] = useState(false)
   const [parametres, setParametres] = useSearchParams()
@@ -313,6 +316,8 @@ export default function CoqueAtelier({
 
   // J1 — présentation : ni résultat ni détail pour le bandeau (masqué) — aucune lecture de plus devant le client.
   const resultatServi = useResultatServi(calepinageId, !presentation, enregistreLe)
+  // La ligne de pose du bandeau suit la pose de la carte tant que la scène est modifiée (module changé, retraits, remplissage).
+  const poseVivante = usePoseVivante(!presentation && enregistrement?.modifiee === true)
   const etatPropre = cleEtape === 'resultats' && !expert ? etatSimulation(resultatServi) : null
   const { le: derniereVersionLe, nom: nomClient } = useDetailServi(presentation ? null : calepinageId, enregistreLe)
 
@@ -357,7 +362,7 @@ export default function CoqueAtelier({
         data-avance={expert ? '1' : '0'} data-expert={expert ? '1' : '0'} data-feuille={feuille ? '1' : undefined}
         data-presentation={presentation ? '1' : undefined}>
         <BarreProjet cache={!!presentation} retour={retour} titre={calepinageId && nomClient ? nomClient : titre} expert={expert} onExpert={basculerExpert}
-          sousTitre={sousTitrePose(resultatServi) || sousTitre}
+          sousTitre={sousTitrePose(resultatServi, poseVivante) || sousTitre}
           libelleDevis={libelleDevis} onDevis={devisPossible ? onDevis : null}
           enregistrement={enregistrement && <BarreEnregistrement {...enregistrement} etatPropre={etatPropre}
             derniereVersionLe={derniereVersionLe} />} />

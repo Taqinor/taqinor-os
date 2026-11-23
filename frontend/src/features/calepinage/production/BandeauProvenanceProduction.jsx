@@ -231,9 +231,16 @@ export function BandeauBorneHaute({ total }) {
     >
       <p className="font-medium" data-testid="acal52-mention">{mention}</p>
       {manquants.length > 0 && (
-        <ul className="list-disc pl-5 text-xs text-muted-foreground" data-testid="acal52-socle-manquant">
-          {manquants.map((poste) => <li key={poste}>{poste}</li>)}
-        </ul>
+        <>
+          {/* ACAL1968 — la mention SERVIE compte toutes les pertes pas encore comptées ; cette liste est la part du
+              socle, celle qui empêche P75, P90 et P95 : on le dit, pour que le compte et la liste ne se contredisent pas. */}
+          <p className="m-0 text-xs text-muted-foreground" data-testid="acal52-socle-titre">
+            Parmi elles, celles qui bloquent P75, P90 et P95 :
+          </p>
+          <ul className="list-disc pl-5 text-xs text-muted-foreground" data-testid="acal52-socle-manquant">
+            {manquants.map((poste) => <li key={poste}>{poste}</li>)}
+          </ul>
+        </>
       )}
       <Link
         to="/calepinage/reglages#calx69-section-simulation"
@@ -348,6 +355,29 @@ export function EcartBases({ comparaison }) {
   )
 }
 
+/** ACAL746 (D-ACAL-81) — la comparaison NASA POWER servie (`meteo.comparaison_nasa_power`), EN UNE LIGNE à côté de la
+    comparaison PVGIS-ERA5 : les deux irradiations horizontales annuelles et l'écart tels que servis, PVGIS restant
+    la source du chiffre ; quand le service ne répond pas (`ecart_pct` null), le motif servi mot pour mot. Clé absente
+    ou null : rien. Aucun calcul, aucun verdict. */
+export function EcartNasaPower({ comparaison }) {
+  if (!comparaison || typeof comparaison !== 'object') return null
+  const ghi = comparaison.irradiation_horizontale_kwh_m2 || {}
+  if (typeof comparaison.ecart_pct !== 'number' || typeof ghi.nasa_power !== 'number' || typeof ghi.pvgis !== 'number') {
+    return (
+      <p className="text-sm" data-testid="acal746-nasa">
+        {`NASA POWER non comparée : ${comparaison.motif || 'motif non publié'}`}
+      </p>
+    )
+  }
+  return (
+    <p className="text-sm" data-testid="acal746-nasa">
+      {`NASA POWER : ${formatNumber(ghi.nasa_power, { decimals: 0 })} kWh/m² par an de rayonnement horizontal contre `
+        + `${formatNumber(ghi.pvgis, { decimals: 0 })} pour PVGIS (${formatPercent(comparaison.ecart_pct, { decimals: 1 })}) — `
+        + 'PVGIS reste la source du chiffre'}
+    </p>
+  )
+}
+
 export function SourceMeteo({ meteo }) {
   if (!meteo?.service) return null
   const horizon = meteo.horizon?.origine
@@ -380,6 +410,7 @@ export function SourceMeteo({ meteo }) {
       </dl>
     </details>
     <EcartBases comparaison={meteo.comparaison_base} />
+    <EcartNasaPower comparaison={meteo.comparaison_nasa_power} />
     </>
   )
 }
@@ -390,7 +421,7 @@ export function IncertitudeSigma({ incertitude }) {
   const composantes = Array.isArray(incertitude.composantes) ? incertitude.composantes : []
   const sigma = incertitude.sigma_total
   return (
-    <details className="text-sm" data-testid="enf15-incertitude">
+    <details className="text-sm" data-testid="enf15-incertitude" open>
       <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
         {'Incertitude (σ) : '}
         {sigma === null || sigma === undefined ? 'non composée' : formatPercent(sigma * 100, { decimals: 2 })}

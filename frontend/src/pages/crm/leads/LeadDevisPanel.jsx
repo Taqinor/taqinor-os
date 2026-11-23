@@ -135,7 +135,6 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   // Fondateur 19/11/2026 — les informations au-dessus du devis (succès + alertes)
   // se replient : dépliées par défaut, repliées elles laissent la place au PDF.
   const [infosRepliees, setInfosRepliees] = useState(false)
-  const nbAlertes = Array.isArray(alertes) ? alertes.length : 0
   // ALEA51 — le retour du serveur après le devis automatique (réf., kWc, TTC,
   // économie, retour, postes à chiffrer) : bannière de SUCCÈS, pas d'erreur.
   const [resume, setResume] = useState(null)
@@ -145,6 +144,11 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   // serveur, QJR516) : « Édition complète » seulement si modifiable, sinon
   // « Réviser ».
   const [devisRecord, setDevisRecord] = useState(null)
+  // ADEV123/ADEV125 — rouvert, le devis remontre les suppositions DITES à sa
+  // création, rangées avec lui (contrat devis_journal_auto.json).
+  const alertesVues = Array.isArray(alertes) && alertes.length > 0
+    ? alertes : (devisRecord?.etude_params?.journal_auto?.alertes || [])
+  const nbAlertes = alertesVues.length
   // EDC8 — plus de `true` par défaut avant la lecture : sur un devis EXISTANT,
   // « Édition complète » n'est rendu qu'une fois `devisRecord` chargé ET
   // modifiable. Seul cas sans devis (échec de la création automatique) :
@@ -663,7 +667,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
                       un chiffre inventé : le message du serveur, tel quel), en
                       AVERTISSEMENT sous le succès (ALEA51). AGQ25 — rendu UNIQUE,
                       partagé avec le générateur. */}
-                  <AlertesDevisAuto alertes={alertes} onAllerAuChamp={completerChamp} />
+                  <AlertesDevisAuto alertes={alertesVues} onAllerAuChamp={completerChamp} />
                     </div>
                   )}
                 </div>

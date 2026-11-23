@@ -3,6 +3,7 @@ import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-li
 import { exempleContrat, reponseContrat, documentContrat } from '../../../test/fixtures/contractSamples'
 import { espions } from '../../../test/fixtures/calepinageApiMock'
 import albedoSurfaces from './albedoSurfaces.json'
+import process from 'node:process'
 
 /* ============================================================================
    CALX69 / ACAL133 — LES RÉGLAGES DE SIMULATION ET D'ÉLECTRIQUE, SAISISSABLES,
@@ -484,6 +485,17 @@ describe('ACAL405 — Démarrage rapide', () => {
       expect(ligne('thermique_par_pose')).toHaveTextContent('Pose libre · dos isolé')
     })
 
+    it('ACAL1968 — « Qualité des panneaux » dit qu’elle lit la tolérance de la fiche du module et que, sans tolérance, l’écart est compté à 0 % (supposé)', async () => {
+      mocks.profilDepart.mockResolvedValue({ data: { ...PROFIL, valeurs: [LIGNE('regle_qualite_module', 'quart_pvsyst')] } })
+      servirReglages({})
+      rendre()
+      const ligne = await screen.findByTestId('acal405-valeur-regle_qualite_module')
+      expect(ligne).toHaveTextContent('Qualité des panneaux à la sortie d’usine')
+      expect(ligne).toHaveTextContent('Un quart de l’écart, comme PVsyst')
+      expect(ligne).toHaveTextContent('tolérance de puissance de la fiche du module')
+      expect(ligne).toHaveTextContent('sans tolérance publiée, l’écart est compté à 0 % (supposé)')
+    })
+
     it('jamais de JSON ni de clé technique à l’écran', async () => {
       mocks.profilDepart.mockResolvedValue({ data: PROFIL_RICHE })
       servirReglages({})
@@ -503,10 +515,23 @@ describe('ACAL405 — Démarrage rapide', () => {
       }
     })
 
+    it('la table LID du profil se lit « 1,5 · 1 · 1 · 1,5 % » avec ses cellules, jamais « Plusieurs valeurs »', async () => {
+      const { valeurLisible, precisionValeur } = await import('./profilDepart')
+      const lid = { perc: { pct: 1.5 }, topcon: { pct: 1 }, hjt: { pct: 1 }, inconnue: { pct: 1.5 } }
+      expect(valeurLisible(lid, '%')).toBe('1,5 · 1 · 1 · 1,5 %')
+      expect(precisionValeur(lid)).toBe('Cellules PERC · TOPCon · HJT · autre')
+      expect(valeurLisible({ pose_libre: { uc_w_m2k: 29 }, dos_isole: { uc_w_m2k: 15 } }, 'W/m²K')).toBe('29 · 15 W/m²K')
+    })
+
     it('toute clé « sans source » servie par le contrat a son nom français', async () => {
-      const { LIBELLES_SANS_SOURCE, nomSansSource, estSansSource } = await import('./profilDepart')
+      const { LIBELLES_SANS_SOURCE, nomSansSource, estSansSource, libelleReglage } = await import('./profilDepart')
       // L'écran des résultats incomplets lit cette même liste (« Remplir » ne remplit pas ces réglages).
-      for (const cle of ['salissure_mensuelle_pct', 'lid_par_techno', 'indisponibilite_fenetres']) expect(estSansSource(cle), cle).toBe(true)
+      for (const cle of ['indisponibilite_fenetres', 'modele_degradation']) expect(estSansSource(cle), cle).toBe(true)
+      // D-ACAL-82 : salissure, LID, indisponibilité forfaitaire et câbles ont une valeur de départ.
+      for (const cle of ['salissure_mensuelle_pct', 'lid_par_techno', 'indisponibilite_forfait_pct', 'ohmique_dc_conception_pct', 'ohmique_ac_conception_pct']) {
+        expect(estSansSource(cle), cle).toBe(false)
+        expect(libelleReglage(cle).nom, cle).not.toBe('Autre réglage')
+      }
       for (const v of PROFIL.valeurs) expect(estSansSource(v.cle), v.cle).toBe(false)
       const libellesRegistre = Object.fromEntries(
         Object.values(REGISTRE).flat().map((r) => [r.cle, r.libelle]))
@@ -545,6 +570,29 @@ describe('ACAL405 — Démarrage rapide', () => {
       await waitFor(() => expect(screen.getByTestId('acal405-appliquer')).toHaveTextContent('Remplir les 5 réglages vides'))
       expect(screen.getByRole('link', { name: 'Tout saisir à la main' })).toHaveAttribute(
         'href', '/calepinage/reglages#calx69-section-simulation')
+    })
+
+    it('ACAL2002 — « Remplir… » est le bouton doré v2 (mêmes jetons que le bouton d’étape)', async () => {
+      const { readFileSync } = await import('node:fs')
+      const { resolve } = await import('node:path')
+      const style = document.createElement('style')
+      style.textContent = ['49-jetons-v2.css', '50-coque-atelier.css']
+        .map((f) => readFileSync(resolve(process.cwd(), `src/styles/calepinage/${f}`), 'utf8')).join('\n')
+      document.head.appendChild(style)
+      try {
+        mocks.profilDepart.mockResolvedValue({ data: PROFIL_RICHE })
+        servirReglages({})
+        rendre()
+        const bouton = await screen.findByTestId('acal405-appliquer')
+        await waitFor(() => expect(bouton).toBeEnabled())
+        expect(bouton).toHaveClass('cal-bouton-or', 'cal-bouton-or-grand')
+        expect(bouton.closest('.cal-reglages')).not.toBeNull()
+        const cs = getComputedStyle(bouton)
+        expect(cs.background).toContain('--cal-action')
+        expect(cs.height).toBe('52px')
+        expect(cs.borderRadius).toBe('var(--cal-rayon-pile)')
+        expect(cs.boxShadow).toBe('var(--cal-action-ombre)')
+      } finally { style.remove() }
     })
 
     it('rien à remplir : le bouton le dit et se désactive', async () => {
@@ -648,6 +696,33 @@ describe('ACAL405 — Démarrage rapide', () => {
       } finally {
         Element.prototype.getBoundingClientRect = rect
         window.innerHeight = hauteurFenetre
+        window.history.replaceState(null, '', '/')
+      }
+    })
+
+    // ACAL1908 (rejeu T3-VAGUEC : 11 px de défilement restants, relevés au navigateur) — CAUSE : chaque ligne du tableau porte une
+    // citation `sr-only` (`position: absolute`). Le tableau défile dans une section `overflow: auto` NON positionnée : le bloc
+    // conteneur de ces spans était `.layout-content` (positionné par le shell), qui les comptait dans SON défilement à
+    // leur position de ligne — le dépassement dépend du nombre de lignes, jamais de la hauteur de la carte (relevé au
+    // navigateur : 1 159 px de défilement pour 848, 0 dès que la section est positionnée). La section est donc elle-même le
+    // bloc conteneur : tout élément absolu du tableau a un ancêtre positionné DANS la section.
+    it('ACAL1908 — le défilement du tableau retient ses éléments absolus : chaque citation `sr-only` a la section pour bloc conteneur', async () => {
+      window.history.replaceState(null, '', '/calepinage/reglages/demarrage-rapide')
+      try {
+        mocks.profilDepart.mockResolvedValue({ data: PROFIL })
+        servirReglages({})
+        const { default: DemarrageRapide } = await import('./DemarrageRapide')
+        render(<DemarrageRapide />)
+        const section = await screen.findByRole('region', { name: 'Réglages proposés' })
+        await waitFor(() => expect(section.querySelectorAll('.sr-only').length).toBeGreaterThan(0))
+        const positionne = (n) => ['relative', 'absolute', 'fixed', 'sticky'].some((c) => n.classList.contains(c))
+        const conteneur = (n) => { let p = n.parentElement; while (p && !positionne(p)) p = p.parentElement; return p }
+        for (const span of section.querySelectorAll('.sr-only')) {
+          const bloc = conteneur(span)
+          expect(bloc, 'ancêtre positionné d’une citation sr-only').not.toBeNull()
+          expect(section.contains(bloc), 'le bloc conteneur est dans la section qui défile').toBe(true)
+        }
+      } finally {
         window.history.replaceState(null, '', '/')
       }
     })

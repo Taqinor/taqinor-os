@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { screen, cleanup, waitFor, within } from '@testing-library/react'
+import { screen, cleanup, waitFor, within, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
@@ -32,6 +32,7 @@ import {
 import ventesApi from '../../api/ventesApi'
 import calepinageApi from '../../api/calepinageApi'
 import { toastInfo } from '../../lib/toast'
+import { reprendreSimulationAuto } from '../../features/calepinage/production/simulationAuto'
 import { choisirPaletteAcces, couleurAccesActive, solarAccessColorRGB } from '@rooflib/shadingEngine'
 
 const CTX = exempleContrat('calepinage', 'calepinage_design_context')
@@ -85,6 +86,11 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
       // Ce calepinage-là porte un devis lié : sa cible EST une cible vendue,
       // et l'atelier se comporte alors exactement comme en mode devis.
       cibleVendue: true,
+      // ACAL1331 — l'origine de la cible servie (ici le devis lié) : l'atelier la dit à la pose.
+      origineCible: CTX.cible.source,
+      // ACAL1951 — le devis lié et l'option servie : l'atelier les NOMME dans sa note (« 7 au devis DEV-… (option avec batterie) »).
+      referenceDevis: CTX.calepinage.devis_lie.reference,
+      optionCible: CTX.cible.option,
       fullName: CTX.calepinage.titre,
       // ACAL777 — la facture mensuelle du lead servie (ACAL776), repli d'affichage des cartes.
       factureMensuelleMad: CTX.consommation_lead.facture_mensuelle_mad,
@@ -172,27 +178,31 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     expect(calepinageApi.calepinages.envoyerImage).not.toHaveBeenCalled()
   })
 
-  /* ACAL398 — un enregistrement qui crée une version relance la simulation
-     toute seule (UN POST sans `forcer`) ; inchangé → aucun appel ; refus 409
-     → aucun toast (la phrase est reprise par l'onglet Production). */
-  it('ACAL398 — version créée ⇒ UN POST simuler sans forcer ; refus 409 ⇒ aucun toast', async () => {
+  /* ACAL1987 (D-ACAL-90 renversée) — UN SEUL déclencheur : le serveur. Un enregistrement qui crée une version ne
+     fait plus POSTer `simuler/` au navigateur : il LIT l'état servi (`simulation_automatique` de `GET resultat/`),
+     sans toast, et retient le job du serveur pour l'onglet Production. */
+  it('ACAL1987 — version créée ⇒ AUCUN POST simuler du navigateur ; il lit l’état servi, sans toast', async () => {
     calepinageApi.calepinages.designContext.mockResolvedValue(
       reponseContrat('calepinage', 'calepinage_design_context'))
     calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
       { data: { inchange: false, version: 4 } })
     calepinageApi.calepinages.envoyerImage.mockResolvedValue({ data: {} })
-    calepinageApi.calepinages.simuler.mockRejectedValue(
-      { response: { status: 409, data: { detail: 'Mode météo non choisi.' } } })
+    const enCours = exempleContrat('calepinage', 'calepinage_resultat', 'exemple_vide')
+    calepinageApi.calepinages.resultat.mockResolvedValue({
+      data: { ...enCours, simulation_automatique: { en_cours: true, job_id: 274, manquants: [] } } })
     snapshot.mockReturnValue('data:image/png;base64,aGk=')
 
     rendreCalepinage(CTX.calepinage.id)
     await userEvent.click(await screen.findByRole('button',
       { name: /Enregistrer le calepinage/ }))
 
-    await waitFor(() => expect(calepinageApi.calepinages.simuler).toHaveBeenCalledTimes(1))
-    // Acceptation ACAL490 : le pont axios toastait le 409 — l'appel part SILENCIEUX.
-    expect(calepinageApi.calepinages.simuler).toHaveBeenCalledWith(String(CTX.calepinage.id), { silencieux: true })
+    await waitFor(() => expect(calepinageApi.calepinages.resultat)
+      .toHaveBeenCalledWith(String(CTX.calepinage.id)))
+    expect(calepinageApi.calepinages.simuler).not.toHaveBeenCalled()
     expect(toastInfo).not.toHaveBeenCalled()
+    // Le job du SERVEUR est retenu pour l'onglet Production (une seule reprise).
+    await act(async () => {}) // laisse la lecture résolue écrire la table
+    expect(reprendreSimulationAuto(CTX.calepinage.id)).toEqual({ jobId: 274 })
   })
 
   it('ACAL1275 — « Générer le devis » sur une conception inchangée : aucun toast « Aucun changement » ; « Enregistrer » le garde', async () => {
@@ -266,6 +276,63 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     expect(await screen.findByTestId('cal-erreur-enregistrement'))
       .toHaveTextContent('Conception manquante ou invalide')
   })
+
+  /* ACAL1905 — un enregistrement dont la réponse n'est pas revenue (délai dépassé) : le serveur a pu l'écrire. L'écran
+     RELIT l'empreinte (`GET layout/`) : changée ⇒ « Enregistré » (aucun message de coupure, le jeton suivant est la
+     nouvelle empreinte) ; inchangée ⇒ le message de coupure d'avant (rien n'est écrit : réessayez). */
+  it('ACAL1905 — délai dépassé mais écriture faite : l’écran relit l’empreinte et dit « Enregistré »', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    const nouvelle = 'c'.repeat(64)
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel
+      .mockRejectedValue({ code: 'ECONNABORTED', message: 'timeout of 20000ms exceeded' })
+    serializeLayout.mockReturnValue(LAYOUT)
+    calepinageApi.calepinages.layout.mockResolvedValue({ data: { empreinte_document: nouvelle, roof_layout: LAYOUT } })
+
+    rendreCalepinage(CTX.calepinage.id)
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
+
+    await screen.findByText(/Enregistré à \d{2}:\d{2}/)
+    expect(calepinageApi.calepinages.layout).toHaveBeenCalledWith(String(CTX.calepinage.id))
+    expect(screen.queryByTestId('cal-erreur-enregistrement')).toBeNull()
+    expect(screen.queryByText(/Le serveur n’a pas répondu/)).toBeNull()
+  })
+
+  /* Critique de la vague C : une empreinte changée par QUELQU'UN D'AUTRE (autre onglet, collègue) n'est pas notre réussite.
+     Le document relu diffère de celui envoyé : rien n'est dit « enregistré », le message de coupure reste. */
+  it('ACAL1905 — délai dépassé et empreinte changée par un autre : jamais « Enregistré »', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    serializeLayout.mockReturnValue(LAYOUT)
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel
+      .mockRejectedValue({ code: 'ECONNABORTED', message: 'timeout of 20000ms exceeded' })
+    calepinageApi.calepinages.layout.mockResolvedValue({
+      data: { empreinte_document: 'd'.repeat(64), roof_layout: { ...LAYOUT, result: { panels: 99 } } },
+    })
+
+    rendreCalepinage(CTX.calepinage.id)
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
+
+    expect(await screen.findByTestId('cal-erreur-enregistrement', {}, { timeout: 8000 }))
+      .toHaveTextContent('Le serveur n’a pas répondu')
+    expect(screen.queryByText(/Enregistré à \d{2}:\d{2}/)).toBeNull()
+  }, 15000)
+
+  it('ACAL1905 — délai dépassé et rien d’écrit (empreinte inchangée) : le message de coupure reste, on peut réessayer', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel
+      .mockRejectedValue({ code: 'ECONNABORTED', message: 'timeout of 20000ms exceeded' })
+    calepinageApi.calepinages.layout.mockResolvedValue({ data: { empreinte_document: CTX.geometrie.empreinte_document } })
+
+    rendreCalepinage(CTX.calepinage.id)
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
+
+    expect(await screen.findByTestId('cal-erreur-enregistrement', {}, { timeout: 8000 }))
+      .toHaveTextContent('Le serveur n’a pas répondu')
+    // (le boot lit aussi `layout/` : au moins les trois relectures de l'écran s'y ajoutent)
+    expect(calepinageApi.calepinages.layout.mock.calls.length).toBeGreaterThanOrEqual(3)
+  }, 15000)
 
   it('409 roof_layout : le motif serveur est affiché', async () => {
     calepinageApi.calepinages.designContext.mockResolvedValue(
@@ -439,6 +506,28 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
       { data: { ...CTX, cible: { ...CTX.cible, source: 'factures' } } })
     rendreCalepinage(CTX.calepinage.id)
     await waitFor(() => expect(majChiffrage).toHaveBeenCalledWith(CTX.chiffrage ?? null, null))
+  })
+
+  /* ACAL1331 (D-ACAL-76 « dimensionner », 23/11) — un calepinage vierge se pose à la taille de la cible SERVIE : l'atelier
+     reçoit le nombre (cible.panneaux) ET son origine, qu'il DIT (« Posé d'après la facture … ») ; sans facture ni devis,
+     aucune cible ni origine : la pose d'aujourd'hui (ce qui tient), dite par l'atelier. */
+  it('ACAL1331 — décision dimensionner : la pose suit la cible servie et son origine ; sans facture, inchangée', async () => {
+    const FACTURES = exempleContrat('calepinage', 'calepinage_design_context', 'exemple_cible_lead')
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context', 'exemple_cible_lead'))
+    rendreCalepinage(FACTURES.calepinage.id)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const devis = initRoofToolPro8.mock.calls[0][0].hydrate.devis
+    expect(FACTURES.cible.source).toBe('factures')
+    expect([devis.cible.panneaux, devis.cibleVendue, devis.origineCible]).toEqual([FACTURES.cible.panneaux, false, 'factures'])
+
+    cleanup(); vi.clearAllMocks(); reinitialiserBoot()
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context', 'exemple_sans_devis'))
+    rendreCalepinage(exempleContrat('calepinage', 'calepinage_design_context', 'exemple_sans_devis').calepinage.id)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const sans = initRoofToolPro8.mock.calls[0][0].hydrate.devis
+    expect([sans.cible.panneaux, sans.origineCible]).toEqual([null, null])
   })
 
   /* ACAL84 — brouillon local : rien en lecture seule ; jamais bloquant. */
@@ -1142,13 +1231,15 @@ describe('ACAL945 — enregistrer hors ligne sans mentir', () => {
     amorcer()
     const enregistrer = calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel
     enregistrer.mockRejectedValue({ code: 'ECONNABORTED', message: 'timeout' })
+    // ACAL1905 — l'écran relit d'abord l'empreinte du serveur : inchangée = rien n'a été écrit, la phrase reste.
+    calepinageApi.calepinages.layout.mockResolvedValue({ data: { empreinte_document: CTX.geometrie.empreinte_document } })
     rendreCalepinage(CTX.calepinage.id)
     await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
 
-    expect(await screen.findByText(/Le serveur n’a pas répondu/)).toBeInTheDocument()
+    expect(await screen.findByText(/Le serveur n’a pas répondu/, {}, { timeout: 8000 })).toBeInTheDocument()
     window.dispatchEvent(new Event('online'))
     expect(enregistrer).toHaveBeenCalledTimes(1)
-  })
+  }, 15000)
 })
 
 /* Coque (maquettes 22/11, Main / Resultats / Tablette) — l'atelier plein écran : bandeau du projet,

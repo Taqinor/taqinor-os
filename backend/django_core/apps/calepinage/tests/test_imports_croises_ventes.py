@@ -27,7 +27,9 @@ PLAFONDS = {
     # ``calepinage.selectors_devis.productible_pose_servi`` (porte selectors).
     # ACAL992 : +1 — ``ventes/domain/chiffrage_conception.py`` lit
     # ``calepinage.selectors_devis.productible_pose_du_calepinage`` (porte selectors).
-    ('ventes', 'calepinage'): (21, 1),
+    # ADEV122 : +1 — ``ventes/domain/etude_ci_visite.py`` lit
+    # ``calepinage.selectors_devis.froid_dimensionnement_au_point`` (porte selectors).
+    ('ventes', 'calepinage'): (22, 1),
     # Compte MESURÉ sur l'arbre de la vague 2 (+4, tous par les portes
     # selectors*/services*) : ACAL997 ``selectors_devis.py`` (relit
     # ``ventes.selectors``/``selectors_calepinage`` pour la fraîcheur de la

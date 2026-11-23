@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import pathlib
 import unittest
+from unittest import mock
 
 from apps.calepinage.services.p50p90 import (
     CLE_SIGMA_METEO_SAISI, IncertitudeInvalide, ORIGINE_ABSENTE,
@@ -36,6 +37,23 @@ CITATIONS_ADMISES = ('test_calx184_sigma.py',
 
 #: Une production d'essai — un PLACEHOLDER, aucune installation réelle.
 PRODUCTION_ESSAI = 10000.0
+
+
+#: ACAL1672 — ce module porte la MÉCANIQUE de σ (mesuré / saisi / refusé) : les
+#: valeurs publiées par défaut (``data/incertitudes_publiees.json``) en sont
+#: retirées ici ; leur composition est prouvée par
+#: ``test_acal_norme_et_variabilite.CompositionPublieeTest``.
+_SANS_VALEURS_PUBLIEES = mock.patch(
+    'apps.calepinage.services.incertitude._incertitudes_publiees',
+    return_value={'composantes': {}})
+
+
+def setUpModule():
+    _SANS_VALEURS_PUBLIEES.start()
+
+
+def tearDownModule():
+    _SANS_VALEURS_PUBLIEES.stop()
 
 
 def _reglage(valeur_pct, *, source='societe', reference='Étude interne'):

@@ -282,6 +282,238 @@ def lignes_produits_calepinage(devis):
     ]
 
 
+def dernier_devis_recu_du_lead(company, lead_id):
+    """ACAL1955 — le dernier devis ACTIF du lead que le client a reçu (envoyé ou
+    accepté ; le plus récemment envoyé), ou ``None``. Borné société, lecture
+    seule."""
+    from .models import Devis
+
+    if company is None or not lead_id:
+        return None
+    return (Devis.objects
+            .filter(company=company, lead_id=lead_id, is_active=True,
+                    statut__in=STATUTS_DEVIS_RECU)
+            .order_by('-date_envoi', '-id').first())
+
+
+def borne_dc_ac_du_moteur_devis(mode_installation=None):
+    """ACAL1954 / D-ACAL-91 — la borne haute du ratio DC/AC que le MOTEUR DE
+    DEVIS applique quand la société n'a réglé aucune fourchette, LUE à sa
+    source (jamais recopiée) : moteur C&I = borne usuelle de
+    ``core.electrique.onduleurs.bornes_dc_ac`` (``moteur_ci/onduleurs``),
+    résidentiel = ``solar_design.MAX_DC_AC``. Un nombre (kWc par kW AC)."""
+    if (mode_installation or '') in ('commercial', 'industriel'):
+        from core.electrique.onduleurs import bornes_dc_ac
+
+        return float(bornes_dc_ac().borne_usuelle.valeur)
+    from .solar_design import MAX_DC_AC
+
+    return float(MAX_DC_AC)
+
+
+#: ACAL1950 — les statuts d'un devis que le client a déjà reçu.
+STATUTS_DEVIS_RECU = ('envoye', 'accepte')
+
+
+def conception_retenue_du_devis_id(devis_id, company):
+    """ACAL1950 — :func:`conception_retenue_du_devis` du devis ``devis_id``
+    de ``company`` (``None`` s'il n'existe pas ou appartient à une autre
+    société), en UNE requête quand le devis a des lignes (lignes, produit et
+    devis joints) : budget de requêtes des écrans du calepinage."""
+    from .models import Devis, LigneDevis
+
+    if not devis_id or company is None:
+        return None
+    lignes = list(LigneDevis.objects.filter(devis_id=devis_id, devis__company=company)
+                  .select_related('devis', 'produit').order_by('id'))
+    devis = (lignes[0].devis if lignes
+             else Devis.objects.filter(pk=devis_id, company=company).first())
+    return conception_retenue_du_devis(devis, lignes=lignes) if devis is not None else None
+
+
+def conception_retenue_du_devis(devis, lignes=None):
+    """ACAL1950 — LA conception que le devis a retenue, LUE (rien n'est
+    recalculé, rien n'est écrit) : ce que le calepinage d'un devis envoyé doit
+    reprendre au lieu de refaire son propre dimensionnement.
+
+    Rend ``None`` sans devis, sinon (contrat
+    ``apps/calepinage/contract_samples/calepinage_conception_retenue.json``) ::
+
+        {devis, reference, statut, recu, option, deux_options, module,
+         onduleurs, chaines, production_annuelle_kwh, production_origine}
+
+    * ``option`` — ``'sans'`` | ``'avec'``. Un devis à DEUX options (lignes
+      variantées, ou scénario « Les deux » — et l'option « avec » servable,
+      ``option_avec_servable``) retient l'option RECOMMANDÉE
+      (``recommended_option``, registre d'abord : ``scenario.
+      recommended_option_effective``) ; sans recommandation lisible, la même
+      option que le PDF met en avant (« Avec batterie »). Un devis à option
+      unique retient celle qu'il sert.
+    * ``module`` — ``{produit, designation, quantite, watt}`` de l'option
+      (quantité = somme des lignes panneau de l'option, même classifieur que
+      ``cible_depuis_lignes`` ; ``watt`` = libellé, sinon fiche, sinon
+      ``None``) ; ``None`` sans ligne panneau.
+    * ``onduleurs`` — ``[{produit, designation, quantite}]`` de l'option.
+    * ``chaines`` — ``{nombre, longueurs, longueur}`` lus dans la conception
+      électrique RANGÉE du devis (``electrical_design.chaines``), ``None``
+      quand le devis n'en porte pas OU quand elle décrit l'autre option (la
+      conception électrique d'un devis à deux options est celle de l'option
+      « avec », ``electrical_service._option_choisie``) — jamais un mélange.
+    * ``production_annuelle_kwh`` — la production annuelle que le devis a
+      retenue : C&I ``etude_ci.bilan`` (option « avec » :
+      ``etude_ci.option_avec.bilan``) ; résidentiel ``etude_horaire.annuel``
+      (option « sans » d'un devis divergent : ``etude_horaire_sans``), à
+      défaut ``production_annuelle`` (figure recalée, ACAL101) quand les deux
+      options ont le même champ. Clé absente ⇒ ``None``, jamais un nombre
+      supposé ; agricole ⇒ ``None``.
+    """
+    if devis is None:
+        return None
+    from . import solar_classification as classification
+    from .domain import lignes as _lignes
+    from .domain.scenario import (
+        SCENARIO_LES_DEUX, SCENARIO_SANS_BATTERIE, recommended_option_effective)
+
+    from .utils.options import familles_des_lignes, familles_servables
+
+    etude = devis.etude_params if isinstance(devis.etude_params, dict) else {}
+    # UNE lecture des lignes (produit joint) : budget de requêtes des écrans ;
+    # ``lignes`` déjà lues par l'appelant (``conception_retenue_du_devis_id``).
+    if lignes is None:
+        lignes = devis.lignes.select_related('produit').all()
+    lignes = [li for li in lignes if getattr(li, 'type_ligne', 'produit') == 'produit']
+    variantee = any((getattr(li, 'variante', '') or '') in ('sans', 'avec')
+                    for li in lignes)
+    # Même critère que ``option_avec_servable``, sur les lignes déjà lues.
+    avec_servable = familles_servables(**familles_des_lignes(
+        _lignes.lignes_de_variante(lignes, 'avec')))[1]
+    deux_options = bool(avec_servable and (
+        variantee or etude.get('scenario') == SCENARIO_LES_DEUX))
+    if deux_options:
+        reco = recommended_option_effective(devis, etude.get('recommended_option'))
+        option = 'sans' if reco == SCENARIO_SANS_BATTERIE else 'avec'
+    else:
+        option = 'avec' if avec_servable else 'sans'
+    lignes_option = _lignes.lignes_de_variante(lignes, option)
+    panneaux = [li for li in lignes_option
+                if _lignes._classe_ligne(li, _lignes._is_panel)]
+    onduleurs = [li for li in lignes_option
+                 if _lignes._classe_ligne(li, classification.is_inverter)]
+    divergent = deux_options and (
+        _compte_panneaux(lignes, 'sans', _lignes)
+        != _compte_panneaux(lignes, 'avec', _lignes))
+    production, origine = _production_retenue(devis, etude, option, divergent)
+    return {
+        'devis': devis.pk,
+        'reference': devis.reference,
+        'statut': devis.statut,
+        'recu': devis.statut in STATUTS_DEVIS_RECU,
+        'option': option,
+        'deux_options': deux_options,
+        'module': _module_retenu(panneaux, _lignes),
+        'onduleurs': [{'produit': li.produit_id,
+                       'designation': li.designation or getattr(li.produit, 'nom', '') or '',
+                       'quantite': _quantite_entiere(li.quantite)}
+                      for li in onduleurs],
+        'chaines': (_chaines_rangees(devis)
+                    if not deux_options or option == 'avec' else None),
+        'production_annuelle_kwh': production,
+        'production_origine': origine,
+    }
+
+
+def _quantite_entiere(valeur):
+    """ACAL1950 — une quantité de ligne en entier (0 si illisible)."""
+    from decimal import Decimal
+
+    try:
+        return int(Decimal(str(valeur or 0)))
+    except (ArithmeticError, TypeError, ValueError):
+        return 0
+
+
+def _compte_panneaux(lignes, option, _lignes):
+    """ACAL1950 — le nombre de panneaux de l'option ``option``."""
+    return sum(_quantite_entiere(li.quantite)
+               for li in _lignes.lignes_de_variante(lignes, option)
+               if _lignes._classe_ligne(li, _lignes._is_panel))
+
+
+def _module_retenu(panneaux, _lignes):
+    """ACAL1950 — ``{produit, designation, quantite, watt}`` ou ``None``."""
+    from decimal import Decimal
+
+    from . import solar_classification as classification
+
+    if not panneaux:
+        return None
+    dominante = max(panneaux, key=lambda li: Decimal(str(li.quantite or 0)))
+    nom = dominante.designation or getattr(dominante.produit, 'nom', '') or ''
+    # Le libellé d'abord (aucune requête), la fiche seulement s'il est muet.
+    watt = (classification.parse_watt(dominante.designation or '')
+            or classification.parse_watt(getattr(dominante.produit, 'nom', '') or '')
+            or _lignes._pmax_wc_du_produit(dominante.produit))
+    return {'produit': dominante.produit_id, 'designation': nom,
+            'quantite': sum(_quantite_entiere(li.quantite) for li in panneaux),
+            'watt': float(watt) if watt else None}
+
+
+def _chaines_rangees(devis):
+    """ACAL1950 — ``{nombre, longueurs, longueur}`` de la conception électrique
+    rangée du devis, ou ``None`` (aucune chaîne lisible)."""
+    design = getattr(devis, 'electrical_design', None)
+    chaines = design.get('chaines') if isinstance(design, dict) else None
+    longueurs = [_quantite_entiere(c.get('nb_modules'))
+                 for c in (chaines if isinstance(chaines, list) else [])
+                 if isinstance(c, dict)]
+    longueurs = [n for n in longueurs if n > 0]
+    if not longueurs:
+        return None
+    return {'nombre': len(longueurs), 'longueurs': longueurs,
+            'longueur': max(longueurs)}
+
+
+def _nombre_positif(valeur):
+    """ACAL1950 — un nombre fini > 0, sinon ``None``."""
+    import math
+
+    try:
+        nombre = float(valeur)
+    except (TypeError, ValueError):
+        return None
+    return nombre if math.isfinite(nombre) and nombre > 0 else None
+
+
+def _production_retenue(devis, etude, option, divergent):
+    """ACAL1950 — ``(kWh/an, origine)`` retenus par le devis, ``(None, None)``
+    quand la clé manque. Aucun recalcul."""
+    marche = (getattr(devis, 'mode_installation', '') or 'residentiel')
+    if marche == 'agricole':
+        return None, None
+    if marche in ('commercial', 'industriel'):
+        etude_ci = etude.get('etude_ci') if isinstance(etude.get('etude_ci'), dict) else {}
+        bloc, origine = etude_ci, 'etude_ci'
+        if option == 'avec' and isinstance(etude_ci.get('option_avec'), dict):
+            bloc, origine = etude_ci['option_avec'], 'etude_ci.option_avec'
+        bilan = bloc.get('bilan') if isinstance(bloc.get('bilan'), dict) else {}
+        production = _nombre_positif(bilan.get('production_kwh'))
+        return (production, origine) if production is not None else (None, None)
+    cle = 'etude_horaire_sans' if (option == 'sans' and divergent
+                                   and isinstance(etude.get('etude_horaire_sans'), dict)) else 'etude_horaire'
+    horaire = etude.get(cle) if isinstance(etude.get(cle), dict) else {}
+    annuel = horaire.get('annuel') if isinstance(horaire.get('annuel'), dict) else {}
+    production = _nombre_positif(annuel.get('production_kwh'))
+    if production is not None and (cle == 'etude_horaire_sans' or not divergent or option == 'avec'):
+        return production, cle
+    if not divergent:
+        from .domain.scenario import figure_production_du_devis
+
+        production = _nombre_positif(figure_production_du_devis(devis))
+        if production is not None:
+            return production, 'production_annuelle'
+    return None, None
+
+
 def peremption_layout_devis(devis, calepinage=None):
     """CAL189 — ``{layout_stale, layout_nb_panneaux}`` d'un devis.
 
@@ -924,3 +1156,29 @@ def plafond_injection_loi_8221():
     )
     return {'pct': PLAFOND_INJECTION_PCT, 'source': PLAFOND_INJECTION_SOURCE,
             'mention_bt': MENTION_BT}
+
+
+def forme_horaire_du_lead(lead):
+    """ACAL1967 — la forme horaire de consommation que le DEVIS prend pour ce
+    lead : la silhouette 24 h (somme = 1) de sa présence en journée
+    (``crm.Lead.occupation_jour``), PRÉSENCE par défaut (décision fondateur D4
+    du 29/08/2026) — le même traducteur (``occupation_du_lead``) et la même
+    silhouette que le moteur de devis, jamais une seconde règle.
+
+    Rend ``{forme, occupation, libelle, suppose, reponse}`` : ``suppose`` vrai
+    quand l'occupation est un défaut appliqué (le champ ``occupation_jour`` n'a
+    pas de réponse), ``reponse`` la valeur brute du champ ; ``None`` si la
+    silhouette n'est pas lisible. Lecture pure."""
+    from . import courbes_journalieres as cj
+
+    drapeau, source = cj.occupation_du_lead(lead)
+    forme = cj.silhouette_occupation(drapeau)
+    if forme is None:
+        return None
+    libelles = {cj.OCCUPATION_PRESENCE: 'présence en journée',
+                cj.OCCUPATION_ABSENCE: 'absence en journée',
+                cj.OCCUPATION_PARTIELLE: 'présence partielle en journée'}
+    return {'forme': list(forme), 'occupation': drapeau,
+            'libelle': libelles.get(drapeau, drapeau),
+            'suppose': cj.profil_suppose(source),
+            'reponse': str(getattr(lead, 'occupation_jour', '') or '')}

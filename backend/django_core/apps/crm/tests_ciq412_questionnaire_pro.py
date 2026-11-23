@@ -211,10 +211,13 @@ class QuestionnairePro(TestCase):
                        contrat_electricite='bt_patente',
                        raccordement='triphase', conso_mensuelle_kwh=6000)
         self.assertFalse(quest.manquantes(self._pro(**complet))['reseau'])
-        for vide in ('contrat_electricite', 'raccordement',
-                     'conso_mensuelle_kwh'):
+        self.assertTrue(quest.manquantes(self._pro(**dict(
+            complet, conso_mensuelle_kwh=None)))['reseau'])
+        # ADEV125/ADEV126 (D-ACAL-92/93, 23/11/2026) — contrat et phase vides :
+        # supposés par le moteur (BT, triphasé), ils ne bloquent plus le devis.
+        for vide in ('contrat_electricite', 'raccordement'):
             lead = self._pro(**dict(complet, **{vide: None}))
-            self.assertTrue(quest.manquantes(lead)['reseau'], vide)
+            self.assertFalse(quest.manquantes(lead)['reseau'], vide)
 
     def test_societe_ne_pose_avant_le_devis_que_nom_ice_tva(self):
         # CQST7 (D-CIQ-11) — RC, IF, siège, fonction et contact secondaire se
@@ -233,15 +236,20 @@ class QuestionnairePro(TestCase):
         base = dict(tension_raccordement='bt', tension_source='declare',
                     compteur_puissance_kva=60, contrat_electricite='bt_patente',
                     raccordement='triphase', conso_mensuelle_kwh=6000)
+        # ADEV125/ADEV126 (D-ACAL-92/93) — « ne sait pas » / « inconnu » : le
+        # moteur suppose BT et triphasé, la section réseau n'attend plus.
         for champ, valeur in (('contrat_electricite', 'ne_sait_pas'),
                               ('raccordement', 'inconnu')):
             lead = self._pro(**dict(base, **{champ: valeur}))
-            self.assertTrue(quest.manquantes(lead)['reseau'], champ)
-            self.assertFalse(quest.devis_possible(lead), champ)
+            self.assertFalse(quest.manquantes(lead)['reseau'], champ)
         mad_sans_contrat = self._pro(**dict(
             base, conso_mensuelle_kwh=None, facture_hiver=5000,
             contrat_electricite='ne_sait_pas'))
-        self.assertTrue(quest.manquantes(mad_sans_contrat)['reseau'])
+        self.assertFalse(quest.manquantes(mad_sans_contrat)['reseau'])
+        mad_mt_declare = self._pro(**dict(
+            base, conso_mensuelle_kwh=None, facture_hiver=5000,
+            contrat_electricite='mt_general'))
+        self.assertTrue(quest.manquantes(mad_mt_declare)['reseau'])
         mad_bt = self._pro(**dict(base, conso_mensuelle_kwh=None,
                                   facture_hiver=5000))
         self.assertFalse(quest.manquantes(mad_bt)['reseau'])

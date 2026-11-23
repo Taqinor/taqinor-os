@@ -38,7 +38,8 @@ from apps.ventes.models import Devis
 from .acal_livrables_helpers import patch_materiel
 from .test_acal_multi_pans import _ClientParOrientation, _layout, _zone
 from .test_api_liste import BaseApiCalepinage
-from .test_calx5_simulation import MATERIEL
+from .test_calx5_simulation import (
+    LAYOUT, MATERIEL, REGLAGES, _Calepinage, _ClientRejoue)
 
 
 class OmbrageServiTest(BaseApiCalepinage):
@@ -268,3 +269,120 @@ class ProductiblePoseServiTest(BaseApiCalepinage):
 
     def test_autre_societe_none(self):
         self.assertIsNone(self._servi(self.autre))
+
+
+class DemarrageRapideResultatCompletTest(SimpleTestCase):
+    """ACAL1968 / ACAL1349 (D-ACAL-82) — « Démarrage rapide » sur une société
+    neuve : les quatre pertes que rien ne renseignait (salissure, dégradation
+    initiale, indisponibilité, câbles) sortent du profil de départ, la
+    simulation de la VRAIE chaîne (météo rejouée) est complète, et le devis
+    l'accepte (``base_depuis_servi``). Seules les deux choix de la société
+    (mode et fenêtre météo) sont ajoutés à la main, comme au premier jour."""
+
+    QUATRE_POSTES = ('salissure', 'lid', 'ohmique_dc', 'ohmique_ac',
+                     'indisponibilite')
+    #: La fiche du module d'essai porte la tolérance de puissance du
+    #: constructeur (donnée PRODUIT, que le profil de départ ne fournit pas) :
+    #: sans elle « qualité module », hors des quatre postes, reste omise.
+    MATERIEL_TOLERANCE = dict(MATERIEL, module=dict(
+        MATERIEL['module'], tolerance_pmax_min_pct=0.0,
+        tolerance_pmax_max_pct=3.0))
+
+    def _reglages_du_profil(self, profil=None):
+        from apps.calepinage.services.parametres import (
+            _normaliser_cles_a_registre)
+        from apps.calepinage.services.profil_depart import (
+            _saisie_du_profil, charger_profil)
+
+        reglages = copy.deepcopy(REGLAGES)
+        for ligne in (profil or charger_profil())['valeurs']:
+            section = reglages.setdefault(ligne['section'], {})
+            section.update(_normaliser_cles_a_registre(
+                ligne['section'],
+                {ligne['cle']: _saisie_du_profil(ligne)}))
+        return reglages
+
+    def _simuler(self, reglages):
+        return simuler_calepinage(
+            _Calepinage(layout=copy.deepcopy(LAYOUT)),
+            client=_ClientRejoue(), materiel=self.MATERIEL_TOLERANCE,
+            reglages=reglages, enregistrer=False)['blocs']
+
+    def _etapes(self, blocs):
+        return {etape['etape']: etape for etape in blocs['cascade']['etapes']}
+
+    def test_societe_neuve_sans_profil_reste_incomplete(self):
+        blocs = self._simuler(copy.deepcopy(REGLAGES))
+        total = blocs['production']['total']
+        self.assertFalse(total['complete'])
+        for poste in ('salissure', 'ohmique_dc', 'ohmique_ac',
+                      'indisponibilite'):
+            self.assertIn(poste, total['socle_manquant'])
+
+    def test_profil_applique_donne_un_resultat_complet_accepte_du_devis(self):
+        from apps.ventes.horaire.productible_pose import base_depuis_servi
+
+        blocs = self._simuler(self._reglages_du_profil())
+        total = blocs['production']['total']
+        self.assertEqual(total['socle_manquant'], [])
+        self.assertTrue(total['complete'])
+        etapes = self._etapes(blocs)
+        for poste in self.QUATRE_POSTES:
+            self.assertEqual(etapes[poste]['motif_omission'], '', poste)
+            self.assertIsNotNone(etapes[poste]['perte_pct'], poste)
+        # les deux postes sans calcul réel disent « supposé »
+        for poste in ('ohmique_dc', 'ohmique_ac', 'indisponibilite', 'lid'):
+            self.assertTrue(etapes[poste]['entree']['supposee'], poste)
+        servi = {'simule': True, 'simulation_perimee': False,
+                 'calcule_le': '2026-11-23T10:00:00+01:00',
+                 'production': blocs['production'],
+                 'cascade': blocs['cascade']}
+        kwc = float(total['kwc'])
+        contrat = contrat_depuis_servi(servi, kwc, tolerance_kwc_ratio=0.02)
+        self.assertFalse(contrat['perime'], contrat['motif'])
+        base, motif = base_depuis_servi(contrat, kwc=kwc)
+        self.assertEqual(motif, '')
+        self.assertTrue(base['pertes_incluses'])
+        self.assertEqual(len(base['kwh_kwc_mensuel']), 12)
+
+    def test_retirer_une_valeur_du_profil_rend_le_resultat_incomplet(self):
+        from apps.calepinage.services.profil_depart import charger_profil
+
+        for cle, poste in (('salissure_mensuelle_pct', 'salissure'),
+                           ('ohmique_dc_conception_pct', 'ohmique_dc'),
+                           ('ohmique_ac_conception_pct', 'ohmique_ac'),
+                           ('indisponibilite_forfait_pct', 'indisponibilite'),
+                           ('lid_par_techno', 'lid')):
+            with self.subTest(cle=cle):
+                profil = charger_profil()
+                profil['valeurs'] = [ligne for ligne in profil['valeurs']
+                                     if ligne['cle'] != cle]
+                total = self._simuler(
+                    self._reglages_du_profil(profil))['production']['total']
+                self.assertFalse(total['complete'])
+                self.assertIn(poste, total['socle_manquant'])
+
+    def test_toit_affleurant_publie_la_chaleur_par_la_ligne_par_defaut(self):
+        """ACAL1671 (D-ACAL-84) — affleurant ⇒ ligne « dos isolé » du profil,
+        châssis ⇒ « pose libre », dites « par défaut — à confirmer »."""
+        from apps.calepinage.services.profil_depart import charger_profil
+
+        table = next(ligne['valeur'] for ligne in charger_profil()['valeurs']
+                     if ligne['cle'] == 'thermique_par_pose')
+        for flush, ligne in ((True, 'dos_isole'), (False, 'pose_libre')):
+            with self.subTest(flush=flush):
+                layout = copy.deepcopy(LAYOUT)
+                layout['zones'][0]['geometry']['flush'] = flush
+                blocs = simuler_calepinage(
+                    _Calepinage(layout=layout), client=_ClientRejoue(),
+                    materiel=self.MATERIEL_TOLERANCE,
+                    reglages=self._reglages_du_profil(),
+                    enregistrer=False)['blocs']
+                etape = self._etapes(blocs)['thermique']
+                self.assertEqual(etape['motif_omission'], '')
+                self.assertEqual(
+                    etape['entree']['parametres']['uc_w_m2k'],
+                    table[ligne]['uc_w_m2k'])
+                self.assertIn('par défaut — à confirmer',
+                              etape['entree']['mention'])
+                self.assertIn(ligne, etape['entree']['mention'])

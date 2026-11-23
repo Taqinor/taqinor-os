@@ -39,16 +39,22 @@ vi.mock('../../../hooks/useHasPermission', () => ({
 
 import calepinageApi from '../../../api/calepinageApi'
 import PanneauProduction from './PanneauProduction'
+import PiedResultats from './PiedResultats'
 import ReglagesSimulation from '../reglages/ReglagesSimulation'
 import sourceBibliotheque from '../Bibliotheque.jsx?raw'
 import { BandeauBorneHaute, EcartPvgis } from './BandeauProvenanceProduction'
-import { lancerSimulationAuto, viderSimulationsAuto } from './simulationAuto'
+import { suivreSimulationDuServeur, viderSimulationsAuto } from './simulationAuto'
 import { OPTIONS_TELECHARGEMENT } from '../documents/telechargement'
 
 const servir = (variante) => {
   calepinageApi.calepinages.resultat
     .mockResolvedValue(reponseContrat('calepinage', 'calepinage_resultat', variante))
 }
+
+/* ACAL1987 — `GET resultat/` d'une variante du contrat, avec l'état `simulation_automatique` servi posé dessus. */
+const servieAvecSimulationAuto = (variante, auto) => ({
+  data: { ...exempleContrat('calepinage', 'calepinage_resultat', variante), simulation_automatique: auto },
+})
 
 const rendre = () => render(
   <MemoryRouter><PanneauProduction calepinageId={1} /></MemoryRouter>,
@@ -518,33 +524,36 @@ describe('PanneauProduction — borne haute (ACAL52)', () => {
     expect(within(ligne).getAllByTestId('acal52-non-publie')).toHaveLength(3)
   })
 
-  /* ACAL398 — la simulation partie à l'enregistrement : l'onglet reprend son job. */
-  it('ACAL398 — job automatique en cours ⇒ « Simulation en cours… » puis relecture', async () => {
+  /* ACAL1987 — la simulation partie à l'enregistrement est lancée par le SERVEUR : l'onglet reprend SON job. */
+  it('ACAL1987 — job du serveur en cours ⇒ « Simulation en cours… » puis relecture, sans POST simuler', async () => {
     viderSimulationsAuto()
     servir('exemple')
-    calepinageApi.calepinages.simuler.mockResolvedValue({ data: { job_id: 'j-9' } })
+    calepinageApi.calepinages.resultat.mockResolvedValue(
+      servieAvecSimulationAuto('exemple', { en_cours: true, job_id: 'j-9', manquants: [] }))
     calepinageApi.moteur.resultat
       .mockResolvedValueOnce({ data: { job_id: 'j-9', statut: 'running' } })
       .mockResolvedValue({ data: { job_id: 'j-9', statut: 'done' } })
-    await lancerSimulationAuto(1)
+    await suivreSimulationDuServeur(1)
     render(<MemoryRouter><PanneauProduction calepinageId={1} intervalleMs={300} /></MemoryRouter>)
 
     expect(await screen.findByText('Simulation en cours…')).toBeInTheDocument()
     await waitFor(() => expect(calepinageApi.moteur.resultat).toHaveBeenCalledWith('j-9'))
-    await waitFor(() => expect(calepinageApi.calepinages.resultat.mock.calls.length).toBeGreaterThan(1))
+    await waitFor(() => expect(calepinageApi.calepinages.resultat.mock.calls.length).toBeGreaterThan(2))
+    expect(calepinageApi.calepinages.simuler).not.toHaveBeenCalled()
   })
 
-  it('ACAL398 — refus nommé du serveur ⇒ phrase affichée dans l’onglet', async () => {
+  it('ACAL1987 — pose incomplète (aucun job servi) ⇒ aucune reprise, aucun calcul, l’onglet ne dit pas « en cours »', async () => {
     viderSimulationsAuto()
-    servir('exemple')
-    calepinageApi.calepinages.simuler.mockRejectedValue(
-      { response: { status: 409, data: { 'parametres.mode_meteo': ['Mode météo non choisi.'] } } })
-    await lancerSimulationAuto(1)
+    servir('exemple_vide')
+    calepinageApi.calepinages.resultat.mockResolvedValue(servieAvecSimulationAuto(
+      'exemple_vide', exempleContrat('calepinage', 'calepinage_resultat', 'acal1987_simulation_automatique')))
+    await suivreSimulationDuServeur(1)
     rendre()
 
-    const refus = await screen.findByTestId('calx48-refus')
-    expect(refus).toHaveTextContent('La simulation automatique n’a pas démarré : Mode météo non choisi.')
-    expect(screen.getByTestId('calx48-lien-reglages')).toBeInTheDocument()
+    await screen.findByTestId('cal236-panneau')
+    expect(screen.queryByText('Simulation en cours…')).toBeNull()
+    expect(calepinageApi.calepinages.simuler).not.toHaveBeenCalled()
+    expect(calepinageApi.moteur.resultat).not.toHaveBeenCalled()
   })
 
   it('complet : ni bandeau ni masquage', async () => {
@@ -1339,5 +1348,60 @@ describe('PanneauProduction — texte rendu (ACAL990)', () => {
     for (const motif of INTERDITS) {
       expect(phrases.filter((p) => motif.test(p)), `texte rendu portant ${motif}`).toEqual([])
     }
+  })
+})
+
+/* ACAL1905 — une réponse lente n'est pas une connexion coupée : un délai dépassé de la lecture du résultat se dit
+   « Calcul en cours… » (information, pas erreur) avec « Réessayer », qui relit ; un vrai refus garde son message. */
+describe('ACAL1905 — lecture lente du résultat', () => {
+  it('délai dépassé : « Calcul en cours… » + « Réessayer » ; le bouton relit et le panneau s’affiche', async () => {
+    calepinageApi.calepinages.resultat.mockRejectedValueOnce({ code: 'ECONNABORTED', message: 'timeout of 60000ms exceeded' })
+    servir('exemple_vide')
+    rendre()
+    const lent = await screen.findByTestId('cal-calcul-lent')
+    expect(lent).toHaveTextContent('Calcul en cours…')
+    expect(screen.queryByText(/connexion a expiré/i)).toBeNull()
+    expect(screen.queryByTestId('cal236-erreur')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }))
+    await screen.findByTestId('cal236-panneau')
+    expect(calepinageApi.calepinages.resultat).toHaveBeenCalledTimes(2)
+  })
+
+  it('un refus du serveur garde son message d’erreur (et le bouton « Réessayer »)', async () => {
+    calepinageApi.calepinages.resultat.mockRejectedValue({ response: { status: 500, data: {} } })
+    rendre()
+    expect(await screen.findByTestId('cal236-erreur')).toHaveTextContent('Production indisponible.')
+    expect(screen.queryByTestId('cal-calcul-lent')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Réessayer' })).toBeInTheDocument()
+  })
+})
+
+/* ACAL1958 (T3-VAGUEC2, point 12) — le bouton de pied de l'étape Résultats : 340 × 52 comme les autres étapes quand il est
+   SEUL (résultat incomplet ou avant simulation : aucune phrase de durée) ; la maquette Resultats.dc.html garde son
+   330 × 104 à côté de la phrase quand le résultat est complet. Le CSS réel du module est posé dans le DOM de test. */
+describe('ACAL1958 — gabarit du bouton de pied de l’étape Résultats', () => {
+  const mesures = (production) => {
+    render(<MemoryRouter><PiedResultats production={production} /></MemoryRouter>)
+    const style = document.createElement('style')
+    style.textContent = readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/54-etape-resultats.css`, 'utf8')
+    document.head.appendChild(style)
+    try {
+      const bouton = screen.getByRole('button', { name: /Préparer les documents/ })
+      const calcule = getComputedStyle(bouton)
+      return { phrase: screen.getByTestId('cal-resultats-pied').querySelector('.cal-res-pied-ligne').textContent, largeur: calcule.width, hauteur: calcule.minHeight }
+    } finally {
+      style.remove()
+    }
+  }
+
+  it('sans phrase de durée (incomplet, avant simulation) : 340 × 52, le gabarit des autres étapes', () => {
+    expect(mesures(null)).toEqual({ phrase: '', largeur: '340px', hauteur: '52px' })
+  })
+
+  it('résultat complet, phrase de durée servie : la maquette Resultats garde son 330 × 104', () => {
+    const complet = exempleContrat('calepinage', 'calepinage_resultat').production
+    const m = mesures(complet)
+    expect(m.phrase).toMatch(/^Année basse|^Dans \d+ ans/)
+    expect([m.largeur, m.hauteur]).toEqual(['330px', '104px'])
   })
 })

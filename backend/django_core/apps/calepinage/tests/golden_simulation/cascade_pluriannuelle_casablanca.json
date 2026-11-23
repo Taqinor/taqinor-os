@@ -2,8 +2,8 @@
  "_provenance": {
   "tache": "CALX196",
   "produit_par": "python -m apps.calepinage.tests.test_calx196_golden --write",
-  "produit_le": "2026-11-22",
-  "arbre_sha": "86833417eee104fe63e1c34dd1d46a9322c3b8cb",
+  "produit_le": "2026-11-23",
+  "arbre_sha": "c4b66e7682",
   "fixture": "seriescalc_casablanca_sud_deux_annees.json",
   "fixture_url": "https://re.jrc.ec.europa.eu/api/v5_3/seriescalc?lat=33.5&lon=-7.6&startyear=2019&endyear=2020&pvcalculation=0&angle=15&aspect=0&raddatabase=PVGIS-SARAH3&outputformat=json&localtime=1",
   "fenetre_annees": "2019-2020",
@@ -181,7 +181,7 @@
      "kwh_apres": null,
      "perte_kwh": null,
      "perte_pct": null,
-     "motif_omission_non_compare": "Le document de toiture ne porte aucun accès solaire par module : aucun écart d'ombrage n'est signalé. Le silence est explicite — un module sans accès calculé n’est pas un module non ombré. Champ manquant : « ombrage.solarAccess »."
+     "motif_omission_non_compare": "L'ombre sur chaque panneau n'est pas encore calculée : l'écart d'ombre entre les chaînes n'est pas connu. Lancez le calcul des ombres du toit pour le connaître (un panneau non calculé n'est pas un panneau sans ombre). Champ manquant : « ombrage.solarAccess »."
     },
     {
      "omise": true,
@@ -348,7 +348,7 @@
      "kwh_apres": null,
      "perte_kwh": null,
      "perte_pct": null,
-     "motif_omission_non_compare": "La fiche du panneau ne porte pas son coefficient de puissance (« temp_coeff_pmax_pct_c ») : la perte thermique ne peut pas être calculée. Le poste forfaitaire est conservé et annoncé comme hypothèse. Champ manquant : « fiche_module.temp_coeff_pmax_pct_c »."
+     "motif_omission_non_compare": "La fiche du panneau ne porte pas son coefficient de puissance (« temp_coeff_pmax_pct_c ») : la perte thermique ne peut pas être calculée. Champ manquant : « fiche_module.temp_coeff_pmax_pct_c »."
     },
     {
      "omise": false,
@@ -555,9 +555,9 @@
    "total": {
     "kwc": 6.0,
     "p50_kwh": 65.8,
-    "p75_kwh": 62.9,
-    "p90_kwh": 60.2,
-    "p95_kwh": 58.6,
+    "p75_kwh": 62.7,
+    "p90_kwh": 59.9,
+    "p95_kwh": 58.3,
     "performance_ratio": 0.87,
     "complete": true,
     "socle_manquant": [],
@@ -567,7 +567,7 @@
     "p90_kwh_motif": "",
     "p95_kwh_motif": "",
     "specific_yield_kwh_kwc": 11.0,
-    "annual_variability": 0.067,
+    "annual_variability": 0.07,
     "annual_variability_source": "mesuree",
     "annual_variability_annees": 2,
     "total_loss_pct": 13.0,
@@ -646,8 +646,8 @@
      "azimut_deg": null,
      "inclinaison_deg": 15.0,
      "p50_kwh": 65.8,
-     "p75_kwh": 62.9,
-     "p90_kwh": 60.2,
+     "p75_kwh": 62.7,
+     "p90_kwh": 59.9,
      "performance_ratio": 0.87,
      "specific_yield_kwh_kwc": 11.0,
      "shading_annual_loss_pct": null,
@@ -684,15 +684,23 @@
      "reference": "Réglage de simulation « sigma_biais_meteo_pct », provenance societe — Cas figé CALX196 — réglages de TEST, aucune valeur par défaut du produit",
      "annees": null,
      "origine": "saisie"
+    },
+    {
+     "nom": "incertitude_fiche",
+     "sigma_relatif": 0.02,
+     "source": "texte",
+     "reference": "Incertitude de la fiche du module (puissance STC) — IEA PVPS Task 13 — Uncertainties in PV System Yield Predictions and Assessments, rapport IEA-PVPS T13-12:2018 (ISBN 978-3-906042-51-0), tableau 15 « Uncertainties of individual modelling steps used in the exemplary yield simulation » (STC power 2.0 % ; valeurs de la simulation EXEMPLAIRE du rapport (parc de 26 systèmes en Allemagne et en Espagne) : un ordre de grandeur publié, pas une mesure du site) — https://iea-pvps.org/wp-content/uploads/2020/01/Uncertainties_in_PV_System_Yield_Predictions_and_Assessments_by_Task_13.pdf",
+     "annees": null,
+     "origine": "publiee"
     }
    ],
-   "sigma_total": 0.066993,
+   "sigma_total": 0.069915,
    "methode": "quadrature",
    "quantiles": {
     "p50_kwh": 65.8,
-    "p75_kwh": 62.8,
-    "p90_kwh": 60.2,
-    "p95_kwh": 58.5
+    "p75_kwh": 62.7,
+    "p90_kwh": 59.9,
+    "p95_kwh": 58.2
    },
    "portee": "annuelle",
    "motif_refus": ""

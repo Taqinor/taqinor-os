@@ -117,7 +117,9 @@ def appliquer(serie, contexte):
     l'étape omise la rend telle quelle.
     """
     contexte = contexte if isinstance(contexte, dict) else {}
-    fiche_module = contexte.get('fiche_module') or {}
+    # ACAL1910 — la fiche du module POSÉ, à défaut celle du module par défaut.
+    fiche_module = (contexte.get('fiche_module_pose')
+                    or contexte.get('fiche_module') or {})
     produit = _produit_designe(contexte)
     libelle = _libelle()
 
@@ -298,6 +300,9 @@ def _produit_designe(contexte):
     déjà pour nommer le matériel retenu ; absente, l'étape parle du « module
     retenu » plutôt que d'un produit qu'elle ne connaît pas.
     """
+    nom_pose = str(contexte.get('designation_module_pose') or '').strip()
+    if nom_pose:  # ACAL1910 — le module POSÉ, jamais celui de l'entrée par défaut
+        return nom_pose
     designations = contexte.get('designations')
     if isinstance(designations, dict):
         nom = (designations.get('module') or '').strip()

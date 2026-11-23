@@ -1,0 +1,34 @@
+{
+  "pourquoi": "ACAL1672 (D-ACAL-85, fondateur 23/11/2026) — le P90 compose, avec la variabilité entre années, les incertitudes du modèle, de la météo et de la fiche du module, chacune citée. Ce fichier porte les SEULES valeurs par défaut de ces trois composantes ; une valeur saisie et sourcée par la société (réglages sigma_modele_pct, sigma_biais_meteo_pct) prime. Chaque composante vaut la composition en quadrature de ses lignes (une ligne : cette valeur). Toutes les valeurs sont lues dans la source ci-dessous, colonne « symétrique » (loi normale, écart-type σ en %). Elles s'appliquent seulement quand la variabilité entre années est connue (mesurée ou saisie) : sans elle, σ reste refusé comme avant.",
+  "source": {
+    "titre": "IEA PVPS Task 13 — Uncertainties in PV System Yield Predictions and Assessments, rapport IEA-PVPS T13-12:2018 (ISBN 978-3-906042-51-0), tableau 15 « Uncertainties of individual modelling steps used in the exemplary yield simulation »",
+    "url": "https://iea-pvps.org/wp-content/uploads/2020/01/Uncertainties_in_PV_System_Yield_Predictions_and_Assessments_by_Task_13.pdf",
+    "lu_le": "2026-11-23",
+    "portee": "valeurs de la simulation EXEMPLAIRE du rapport (parc de 26 systèmes en Allemagne et en Espagne) : un ordre de grandeur publié, pas une mesure du site"
+  },
+  "composantes": {
+    "modele_simulation": {
+      "libelle": "Incertitude du modèle de simulation",
+      "lignes": {
+        "Reflection": 0.5,
+        "Spectrum": 0.5,
+        "Irradiation level": 1.9,
+        "Temperature": 1.0,
+        "Inverter": 1.5
+      }
+    },
+    "biais_long_terme": {
+      "libelle": "Incertitude de la donnée météo (ressource solaire de long terme)",
+      "lignes": {
+        "GPOA (solar resource potential in the reference period)": 2.5
+      }
+    },
+    "incertitude_fiche": {
+      "libelle": "Incertitude de la fiche du module (puissance STC)",
+      "lignes": {
+        "STC power": 2.0
+      }
+    }
+  },
+  "lignes_non_retenues": "Les lignes de pertes du tableau 15 (ombrage d'horizon et de rangées, salissure, mismatch, câblage, limitation, transformateur) sont des postes de pertes du calepinage, chacun porté par sa propre saisie ; « Annual variation » est la variabilité entre années, MESURÉE sur la série PVGIS ; « System behavior » et « Solar irradiation » (période de prédiction) relèvent de la durée de vie, hors d'un P90 annuel."
+}

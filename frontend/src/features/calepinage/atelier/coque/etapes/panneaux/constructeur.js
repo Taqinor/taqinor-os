@@ -42,6 +42,33 @@ function lireFigures() {
   }
 }
 
+/** La pose que la carte du constructeur AFFICHE (`{ panneaux, kwc }`), ou `null` tant qu'elle n'affirme rien (« — »). */
+function lirePoseVivante() {
+  const { panneaux, kwc } = lireFigures()
+  return panneaux == null ? null : { panneaux, kwc }
+}
+
+/** La pose affichée, SUIVIE : relue à chaque changement du texte de la carte (changement de module, retrait, remplissage).
+    `actif` faux ⇒ `null` (l'en-tête garde alors la pose servie). Sert l'en-tête du projet tant que la scène est modifiée. */
+export function usePoseVivante(actif) {
+  const [pose, setPose] = useState(() => (actif ? lirePoseVivante() : null))
+  useEffect(() => {
+    if (!actif) return undefined
+    const relire = () => setPose((avant) => {
+      const suivante = lirePoseVivante()
+      return JSON.stringify(suivante) === JSON.stringify(avant) ? avant : suivante
+    })
+    relire()
+    const observateur = new MutationObserver(relire)
+    for (const id of ['rp9-reco-panels', 'rp9-reco-kwc']) {
+      const element = $(id)
+      if (element) observateur.observe(element, { childList: true, characterData: true, subtree: true })
+    }
+    return () => observateur.disconnect()
+  }, [actif])
+  return actif ? pose : null
+}
+
 function lireBesoin() {
   const champ = $('rp9-need-input')
   if (!champ) return null
@@ -53,6 +80,8 @@ function lireBesoin() {
     editable: !champ.disabled,
     note,
     tiennent: tiennent ? Number(tiennent[1].replace(/\D/g, '')) : null,
+    // ACAL1331 — la taille posée d'elle-même sur un calepinage vierge, dite par le script (tailleAuto.ts::noteTailleAuto).
+    auto: note.startsWith('Posé d’après '),
   }
 }
 

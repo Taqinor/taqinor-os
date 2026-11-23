@@ -46,6 +46,9 @@
             "scenario": "reseau"
           },
           "cibleVendue": true,
+          "origineCible": "devis",
+          "referenceDevis": "DEV-202610-0001",
+          "optionCible": "sans",
           "fullName": "Toiture — bâtiment principal",
           "factureMensuelleMad": 900
         }

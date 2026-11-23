@@ -75,13 +75,37 @@ class ToleranceAbsenteTest(unittest.TestCase):
     """Sans tolérance publiée, l'étape se TAIT — en nommant le champ."""
 
     def test_le_motif_nomme_le_champ_de_fiche(self):
-        etape = cascade(contexte_avec(regle='quart_pvsyst'))
+        etape = cascade(contexte_avec())
         self.assertIn('FicheTechnique.tolerance_pmax_min_pct',
                       etape['motif_omission'])
 
     def test_le_motif_nomme_le_produit(self):
-        etape = cascade(contexte_avec(regle='quart_pvsyst'))
+        etape = cascade(contexte_avec())
         self.assertIn('Module PV 550 Wc', etape['motif_omission'])
+
+    def test_regle_choisie_ecart_nul_suppose_et_dit(self):
+        """Fondateur 23/11/2026 (D-ACAL-82) — la société a choisi sa règle, la
+        fiche ne publie rien : écart compté à 0 %, DIT supposé avec le champ
+        de fiche ; l'étape n'est plus omise (le résultat peut être complet)."""
+        for regle in ('quart_pvsyst', 'borne_basse', 'moyenne'):
+            etape = cascade(contexte_avec(regle=regle))
+            self.assertEqual(etape['motif_omission'], '', regle)
+            self.assertEqual(etape['perte_pct'], 0.0, regle)
+            self.assertIs(etape['entree']['supposee'], True)
+            self.assertEqual(etape['entree']['champ_manquant'],
+                             'FicheTechnique.tolerance_pmax_min_pct')
+            self.assertIn('supposé', etape['entree']['mention'])
+            self.assertIn('Module PV 550 Wc', etape['entree']['mention'])
+            self.assertEqual(etape['source'], 'societe')
+        rendue, _ = seule(contexte_avec(regle='quart_pvsyst'))
+        self.assertEqual(etapes.energie_kwh(rendue), 10.0)
+
+    def test_regle_aucune_ou_sans_source_reste_omise(self):
+        for contexte in (contexte_avec(regle='aucune'),
+                         contexte_avec(regle='quart_pvsyst', source=None)):
+            etape = cascade(contexte)
+            self.assertIn('FicheTechnique.tolerance_pmax_min_pct',
+                          etape['motif_omission'])
 
     def test_elle_se_tait_meme_sans_regle_saisie(self):
         etape = cascade(contexte_avec())

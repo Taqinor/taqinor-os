@@ -25,6 +25,8 @@ export interface AnnulerAtelierDeps {
   /** Redessine ligne, obstacles et pavage après une restauration. */
   apres: () => void;
   setStatus: (msg: string) => void;
+  /** ACAL1901 — reçoit `annulerGeste` : les boutons Annuler / Rétablir de la barre passent par le MÊME geste que Ctrl+Z. */
+  ctx?: { annulerGeste?: { annuler: () => boolean; retablir: () => boolean } };
 }
 
 interface Frappe {
@@ -49,6 +51,7 @@ export function creerAnnulerAtelier(deps: AnnulerAtelierDeps): {
   };
   const annuler = () => geste(deps.editeur.undo, 'Action annulée.', 'Rien à annuler.');
   const retablir = () => geste(deps.editeur.redo, 'Action rétablie.', 'Rien à rétablir.');
+  if (deps.ctx) deps.ctx.annulerGeste = { annuler, retablir }; // ACAL1901
   const surFrappe = (e: Frappe): boolean => {
     if (!(e.ctrlKey || e.metaKey) || estChampDeSaisie(e.target) || deps.modeDisposition()) return false;
     const k = String(e.key).toLowerCase();

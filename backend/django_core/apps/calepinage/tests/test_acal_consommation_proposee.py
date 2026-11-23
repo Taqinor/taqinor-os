@@ -102,6 +102,73 @@ class ProposerTest(_Base):
         self.calepinage.refresh_from_db()
         self.assertNotIn('consumption', self.calepinage.roof_layout)
 
+    def _poser_bareme(self):
+        """Le barème RÉEL de la société (prix unique + redevance) : sans lui
+        les factures ne se convertissent pas en kWh (CALX257)."""
+        reglages = TariffSettings.get(company=self.company)
+        reglages.residential_tiers = [{'max_kwh': None,
+                                       'prix_kwh_ttc': '2.00'}]
+        reglages.redevance_compteur_mad_mois = Decimal('39.94')
+        reglages.save()
+
+    def test_lead_residentiel_prend_la_forme_du_devis_presence_supposee(self):
+        """ACAL1967 — la forme horaire est celle que le devis prend (présence en
+        journée par défaut), dite avec la valeur du champ ``occupation_jour``."""
+        from apps.calepinage.services.consommation import AVIS_FORME_UNIFORME
+        from apps.ventes.courbes_journalieres import (
+            OCCUPATION_PRESENCE, silhouette_occupation)
+
+        self._poser_bareme()
+        reponse = self._proposer({'source': 'lead'})
+
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        courbe = reponse.data['courbe24']
+        silhouette = silhouette_occupation(OCCUPATION_PRESENCE)
+        jour_moyen = reponse.data['kwh_annuel'] / 365.0
+        for heure in range(24):
+            self.assertAlmostEqual(courbe[heure],
+                                   jour_moyen * silhouette[heure], places=2)
+        self.assertGreater(len(set(courbe)), 1, 'forme uniforme')
+        self.assertAlmostEqual(sum(courbe), jour_moyen, delta=0.05)
+        avis = ' '.join(reponse.data['avertissements'])
+        self.assertIn('présence en journée', avis)
+        self.assertIn('« occupation_jour »', avis)
+        self.assertIn('présence supposée', avis)
+        self.assertNotIn(AVIS_FORME_UNIFORME, reponse.data['avertissements'])
+        self.assertEqual(reponse.data['consumption']['courbe24'], courbe)
+
+    def test_lead_absent_en_journee_prend_la_forme_d_absence(self):
+        from apps.ventes.courbes_journalieres import (
+            OCCUPATION_ABSENCE, OCCUPATION_PRESENCE, silhouette_occupation)
+
+        self.lead.occupation_jour = 'absent'
+        self.lead.save()
+        self._poser_bareme()
+
+        reponse = self._proposer({'source': 'lead'})
+
+        courbe = reponse.data['courbe24']
+        jour_moyen = reponse.data['kwh_annuel'] / 365.0
+        absence = silhouette_occupation(OCCUPATION_ABSENCE)
+        presence = silhouette_occupation(OCCUPATION_PRESENCE)
+        self.assertAlmostEqual(courbe[12], jour_moyen * absence[12], places=2)
+        self.assertNotAlmostEqual(courbe[12], jour_moyen * presence[12],
+                                  places=2)
+        avis = ' '.join(reponse.data['avertissements'])
+        self.assertIn('absence en journée', avis)
+        self.assertIn('absent', avis)
+        self.assertNotIn('supposée', avis)
+
+    def test_lead_commercial_garde_sa_classe_saisie_et_la_forme_uniforme(self):
+        from apps.calepinage.services.consommation import AVIS_FORME_UNIFORME
+
+        self._poser_bareme()
+        reponse = self._proposer({'source': 'lead', 'classe': 'force_motrice'})
+
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        self.assertEqual(len(set(reponse.data['courbe24'])), 1)
+        self.assertIn(AVIS_FORME_UNIFORME, reponse.data['avertissements'])
+
     def test_appareils_et_climatisation(self):
         reponse = self._proposer({
             'source': 'appareils', 'appareils': APPAREILS,

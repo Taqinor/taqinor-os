@@ -216,6 +216,76 @@ class TypeDePoseTest(unittest.TestCase):
                          ['integre', 'chassis'])
 
 
+#: ACAL1671 (D-ACAL-84) — les deux lignes que le profil de départ pose.
+TABLE_PROFIL = {
+    'pose_libre': {'uc_w_m2k': 29.0, 'uv_w_m3sk': 0.0, 'source': 'texte',
+                   'reference': 'PVsyst — free-standing'},
+    'dos_isole': {'uc_w_m2k': 15.0, 'uv_w_m3sk': 0.0, 'source': 'texte',
+                  'reference': 'PVsyst — fully insulated backside'},
+}
+#: Une fiche au Uc distinct des deux lignes : on voit si la fiche a servi.
+FICHE_GAMMA = {'temp_coeff_pmax_pct_c': GAMMA, 'uc_w_m2k': 31.0}
+
+
+class CorrespondancePoseTest(unittest.TestCase):
+    """ACAL1671 (D-ACAL-84) — châssis ⇒ ligne « pose libre » ; affleurant ⇒
+    ligne « dos isolé », dites « par défaut — à confirmer »."""
+
+    def _etape(self, pan, table=None):
+        return etape_thermique.appliquer(SERIE, contexte_de(
+            fiche=FICHE_GAMMA, table=TABLE_PROFIL if table is None else table,
+            plans=[pan]))[1]
+
+    def test_un_chassis_prend_la_ligne_pose_libre(self):
+        etape = self._etape(plan(type_pose='chassis'))
+        self.assertEqual(etape['motif_omission'], '')
+        self.assertEqual(etape['entree']['parametres']['uc_w_m2k'], 29.0)
+        self.assertEqual(etape['entree']['provenance'], 'societe')
+        self.assertIn('par défaut — à confirmer', etape['entree']['mention'])
+        self.assertIn('pose_libre', etape['entree']['mention'])
+
+    def test_un_affleurant_prend_la_ligne_dos_isole(self):
+        etape = self._etape(plan(type_pose='integre'))
+        self.assertEqual(etape['entree']['parametres']['uc_w_m2k'], 15.0)
+        self.assertIn('dos_isole', etape['entree']['mention'])
+        self.assertIn('par défaut — à confirmer', etape['entree']['mention'])
+
+    def test_le_document_reel_dit_sa_pose_par_flush_pas_par_le_type(self):
+        # ``zones[].geometry.family`` vaut « south » : la pose se lit sur ``flush``.
+        releve = self._etape(plan(type_pose='south', geometry={'flush': False}))
+        a_plat = self._etape(plan(type_pose='south', geometry={'flush': True}))
+        self.assertEqual(releve['entree']['parametres']['uc_w_m2k'], 29.0)
+        self.assertEqual(a_plat['entree']['parametres']['uc_w_m2k'], 15.0)
+        self.assertGreater(
+            a_plat['entree']['temperature_cellule_max_c'],
+            releve['entree']['temperature_cellule_max_c'])
+
+    def test_une_ligne_a_son_nom_prime_sur_la_correspondance(self):
+        table = dict(TABLE_PROFIL, chassis={
+            'uc_w_m2k': 22.0, 'uv_w_m3sk': 0.0, 'source': 'societe',
+            'reference': 'Mesure du bureau'})
+        etape = self._etape(plan(type_pose='chassis'), table)
+        self.assertEqual(etape['entree']['parametres']['uc_w_m2k'], 22.0)
+        self.assertNotIn('par défaut', etape['entree']['mention'])
+
+    def test_sans_la_ligne_correspondante_l_ecart_reste_dit(self):
+        table = {'pose_libre': TABLE_PROFIL['pose_libre']}
+        etape = self._etape(plan(type_pose='integre'), table)
+        self.assertEqual(etape['entree']['provenance'], 'fiche')
+        self.assertIn('integre', etape['entree']['mention'])
+
+    def test_une_ligne_de_correspondance_sans_source_est_ecartee(self):
+        table = {'pose_libre': {'uc_w_m2k': 29.0}}
+        etape = self._etape(plan(type_pose='chassis'), table)
+        self.assertEqual(etape['entree']['provenance'], 'fiche')
+        self.assertIn('ne porte pas sa source', etape['entree']['mention'])
+
+    def test_une_pose_hors_chassis_et_affleurant_n_est_pas_devinee(self):
+        etape = self._etape(plan(type_pose='ombriere'))
+        self.assertEqual(etape['entree']['provenance'], 'fiche')
+        self.assertIn('ombriere', etape['entree']['mention'])
+
+
 class HeureParHeureTest(unittest.TestCase):
     """La dérate est horaire, et la température reste sur la série."""
 
@@ -344,6 +414,39 @@ class ModulePoseTest(unittest.TestCase):
             etape['entree']['parametres']['temp_coeff_pmax_pct_c'], -0.29)
         # Juillet chaud : la perte est non nulle (9,0 kWh entrent).
         self.assertLess(etapes.energie_kwh(rendue), 9.0)
+
+    def test_etapes_eclairement_et_qualite_nomment_le_module_pose(self):
+        """ACAL1910 — 13 modules d'un autre produit que le module par défaut :
+        « niveau d'éclairement » et « qualité module » nomment (et lisent la
+        fiche du) module POSÉ, jamais celui de l'entrée."""
+        import copy
+
+        from apps.calepinage.services.etapes import (
+            niveau_irradiance, qualite_module)
+        from apps.calepinage.services.simulation import construire_contexte
+
+        from .test_calx5_simulation import (
+            LAYOUT, MATERIEL, MODULE, REGLAGES, _Calepinage)
+
+        posee = dict(MODULE)
+        layout = copy.deepcopy(LAYOUT)
+        layout['modules'] = [{'id': 'm1', 'produitId': 22984, 'pmaxWc': 710.0}]
+        layout['zones'][0]['geometry']['moduleId'] = 'm1'
+        nom_defaut, nom_pose = 'Panneau par defaut Jinko', 'Canadian Solar 710W'
+        materiel = dict(MATERIEL, produits={'module': 1},
+                        designations=dict(MATERIEL['designations'], module=nom_defaut),
+                        fiches_modules={22984: {'specs': posee, 'designation': nom_pose}})
+        contexte, _meta = construire_contexte(
+            _Calepinage(layout), materiel=materiel, reglages=REGLAGES)
+
+        # Rien de publié sur les deux fiches : les motifs d'omission nomment le produit.
+        for etape in (niveau_irradiance, qualite_module):
+            _, bloc = etape.appliquer(SERIE, contexte)
+            self.assertIn(nom_pose, bloc['motif_omission'], etape.__name__)
+            self.assertNotIn(nom_defaut, bloc['motif_omission'], etape.__name__)
+        # Mono-module : le nom reste celui du module par défaut.
+        sans, _ = construire_contexte(_Calepinage(), materiel=materiel, reglages=REGLAGES)
+        self.assertEqual(sans['designation_module_pose'], nom_defaut)
 
     def test_champ_mono_module_garde_la_fiche_par_defaut(self):
         from apps.calepinage.services.simulation import construire_contexte

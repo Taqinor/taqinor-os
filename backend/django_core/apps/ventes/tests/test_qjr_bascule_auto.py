@@ -444,6 +444,53 @@ class LaTailleDemandeeGagneEtNeReecritJamaisLeLead(_BaseAuto):
         self.assertIn(getattr(devis, 'overrides', None), (None, {}))
 
 
+class LeDevisAutoDitSesSuppositions(_BaseAuto):
+    """ADEV123 (règle du 17/11/2026) — ce que le calcul suppose est DIT au
+    vendeur avec le champ de la fiche qui le lève ; aucun chiffre ne change."""
+
+    def _journal(self, **champs):
+        journal = {}
+        devis = build_devis_auto(lead=self._lead(**champs), user=self.user,
+                                 company=self.company, journal_auto=journal)
+        return devis, {a['champ_lead']: a for a in journal.get('alertes', [])
+                       if a.get('champ_lead')}
+
+    def test_lead_sans_occupation_jour_quatre_suppositions_nommees(self):
+        devis, par_champ = self._journal(facture_hiver=Decimal('600'))
+        self.assertEqual(set(par_champ), {'occupation_jour', 'facture_ete',
+                                          'conso_mensuelle_kwh', 'inclinaison_deg'})
+        self.assertEqual(par_champ['occupation_jour']['code'], 'suppose_presence')
+        self.assertIn('30° plein sud', par_champ['inclinaison_deg']['message'])
+        # Aucun chiffre ne change : mêmes lignes que sans journal.
+        temoin = build_devis_auto(lead=self._lead(facture_hiver=Decimal('600'),
+                                                  email='temoin-adev123@example.com'),
+                                  user=self.user, company=self.company)
+        self.assertEqual(self._par_designation(devis), self._par_designation(temoin))
+
+    def test_fiche_renseignee_seul_le_30_plein_sud_reste_suppose(self):
+        _devis, par_champ = self._journal(conso_mensuelle_kwh=Decimal('300'),
+                                          occupation_jour='present')
+        self.assertEqual(set(par_champ), {'inclinaison_deg'})
+
+    def test_suppositions_rangees_avec_le_devis_et_relues(self):
+        # Clause « Persistance » (vu en direct T3-VAGUED : rouvrir le devis ne
+        # remontrait rien, etude_params sans journal_auto) — relire ⇒ identique.
+        devis, par_champ = self._journal(facture_hiver=Decimal('600'))
+        devis.refresh_from_db()
+        rangees = {a['champ_lead']: a for a in devis.etude_params['journal_auto']['alertes']}
+        self.assertEqual(set(rangees), set(par_champ))
+        for champ, alerte in par_champ.items():
+            self.assertEqual((rangees[champ]['code'], rangees[champ]['message']),
+                             (alerte['code'], alerte['message']), champ)
+        # Contrat d'abord : la forme rangée est celle de `devis_journal_auto.json`.
+        import json
+        from pathlib import Path
+        contrat = json.loads((Path(__file__).resolve().parents[1] / 'contract_samples'
+                              / 'devis_journal_auto.json').read_text(encoding='utf-8'))
+        exemple = contrat['exemple']['etude_params']['journal_auto']['alertes']
+        self.assertEqual({frozenset(a) for a in rangees.values()}, {frozenset(a) for a in exemple})
+
+
 class LeTunnelEstLeMemeCheminQueLEcran(_BaseAuto):
     """« chemin tunnel prouvé identique au chemin écran pour le MÊME lead ».
 

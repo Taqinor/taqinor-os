@@ -43,6 +43,17 @@ describe('CIQ127 — devis automatique non résidentiel : UN appel serveur', () 
     expect(onAlertes).toHaveBeenCalledWith(alertes)
   })
 
+  it('ADEV123 — résidentiel : les alertes du serveur (suppositions) vont aussi à onAlertes', async () => {
+    const { alertes } = exempleContrat('ventes', 'assistant_devis_cree')
+    api.creerDevisAuto.mockResolvedValueOnce(reponseContrat('ventes', 'assistant_devis_cree'))
+    const onAlertes = vi.fn()
+    const onResultat = vi.fn()
+    await createAutoQuote({ lead: { id: 11, type_installation: 'residentiel', facture_hiver: '600' },
+      discountStr: '0', onAlertes, onResultat })
+    expect(onAlertes).toHaveBeenCalledWith(alertes)
+    expect(onResultat).toHaveBeenCalledTimes(1)
+  })
+
   it('agricole : un 422 du serveur remonte TEL QUEL (message et champ nommé)', async () => {
     const detail = "Relevé du point d'eau requis avant devis (D-AGR-4) : niveau d'eau et débit du forage à mesurer lors d'une visite."
     api.creerDevisAuto.mockRejectedValueOnce({

@@ -283,8 +283,18 @@ class _BaseDevis(TestCase):
 
 
 class BuilderEconomieCiTest(_BaseDevis):
-    def test_contrat_inconnu_omis_economies_masquees(self):
-        devis = self._devis('DEV-CIQ210-0010', tension='bt')
+    def test_contrat_inconnu_bt_suppose_economies_servies(self):
+        # ADEV125 (D-ACAL-92, 23/11/2026) — contrat inconnu en BT : le tarif
+        # basse tension est supposé (grille ONEE, repli), les économies servies.
+        devis = self._devis('DEV-CIQ210-0011', tension='bt')
+        data = self._data(devis)
+        self.assertEqual(data['economie_ci']['statut'], 'calcule')
+        self.assertEqual(data['economie_ci']['tarif']['contrat'], 'bt_force_motrice')
+        self.assertEqual(data['economie_ci']['tarif']['origine'], tarif_ci.ORIGINE_GRILLE)
+
+    def test_contrat_domestique_declare_omis_economies_masquees(self):
+        devis = self._devis('DEV-CIQ210-0010', tension='bt',
+                            extra={'tarif_declare': {'contrat': 'bt_domestique'}})
         data = self._data(devis)
         self.assertEqual(data['economie_ci']['statut'], 'omis')
         self.assertTrue(data['economie_ci']['motifs_omission'])

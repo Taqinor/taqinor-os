@@ -803,3 +803,94 @@ describe('ACAL504 — refus d’une hauteur sans provenance', () => {
     expect(hauteurToitPourOmbrageM(ctx.batiments, null)).toBe(6);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACAL1407 + ACAL1501 (D-ACAL-83, fondateur 23/11/2026) — l'ombre proche se mesure sur les
+// panneaux POSÉS (moyenne de leurs matrices), et sans panneau sur une grille du pan. Avant :
+// au seul centroïde — une cheminée posée au centre donnait −72 % quelle que soit sa hauteur.
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('ACAL1407 + ACAL1501 — ombre proche mesurée sur les panneaux posés', () => {
+  const LAT = 33.5;
+  const CENTRE: [number, number] = [-7.6, LAT];
+  const M_PAR_DEG = (Math.PI / 180) * 6378137; // rayon WGS84 de lib/geo.ts
+  const COS = Math.cos((LAT * Math.PI) / 180);
+  const versLngLat = (x: number, y: number): [number, number] => [CENTRE[0] + x / (M_PAR_DEG * COS), CENTRE[1] + y / M_PAR_DEG];
+  // Toit plat 10 × 7 m centré sur le centroïde ; cheminée 1 × 1 m de 3 m.
+  const RING = [versLngLat(-5, -3.5), versLngLat(5, -3.5), versLngLat(5, 3.5), versLngLat(-5, 3.5)];
+  function cheminee(x: number, y: number) {
+    const [lng, lat] = versLngLat(x, y);
+    return { id: 'ch-1', centerLng: lng, centerLat: lat, lengthM: 1, widthM: 1, heightM: 3, type: 'cheminee' };
+  }
+  function ctxPan(obstacle: ReturnType<typeof cheminee>): Ctx {
+    const zone = { id: 'z1', label: 'Pan', vertices: RING, obstacles: [obstacle], buildingId: null };
+    return {
+      areas: [zone], activeAreaId: 'z1', vertices: RING, closed: true, obstacles: [obstacle], batiments: [],
+      roofType: 'flat', pitchDeg: 10, facingAzimuthDeg: 180, facingManual: false, neededPanels: 0, neededAuto: true,
+      layoutPlan: null, layoutOptimalCount: 0, shadeObstructions: [], environment: [], shadeFactors: null,
+      shadeAnnualFactor: 1, prodPerKwc: null, sunDay: Number.NaN, sunHour: Number.NaN,
+      centroid: CENTRE, centroidLat: LAT, activeArea: () => zone, pushWorkshopHistory: () => {},
+    } as unknown as Ctx;
+  }
+  const rangee = (y: number) => [-3, -1.5, 0, 1.5, 3].map((x) => ({ x, y }));
+  const perte = (m: number[][] | null) => 1 - annualShadeFactor(fallbackPerKwc(), m, LAT);
+  // Oracle INDÉPENDANT : la moyenne, case par case, des matrices évaluées à chaque panneau.
+  function moyenneDesPanneaux(ctx: Ctx, points: { x: number; y: number }[]): number[][] {
+    const enu: ShadeObstructionENU[] = ctx.obstacles.map((o) => {
+      const x = (o.centerLng - CENTRE[0]) * M_PAR_DEG * COS;
+      const y = (o.centerLat - CENTRE[1]) * M_PAR_DEG;
+      return { x, y, effHeightM: o.heightM as number, halfWidthM: Math.hypot(o.lengthM, o.widthM) / 2,
+        footprint: [[x - 0.5, y - 0.5], [x + 0.5, y - 0.5], [x + 0.5, y + 0.5], [x - 0.5, y + 0.5]] };
+    });
+    const mats = points.map((p) => hourlyShadeFactors(LAT, enu, p.x, p.y));
+    return mats[0].map((row, m) => row.map((_v, h) => mats.reduce((s, mat) => s + mat[m][h], 0) / mats.length));
+  }
+  const egales = (a: number[][] | null, b: number[][]) => a!.forEach((row, m) => row.forEach((v, h) => expect(v).toBeCloseTo(b[m][h], 9)));
+
+  it('cheminée au centre, panneaux posés ailleurs (rangée 3 m au sud) : perte proche de 0, plus les −72 % du centroïde', () => {
+    const ctx = ctxPan(cheminee(0, 0));
+    const calcul = matriceOmbrageDesSources(ctx, 6, rangee(-3));
+    expect(perte(calcul.factors)).toBeLessThan(0.02);
+    egales(calcul.factors, moyenneDesPanneaux(ctx, rangee(-3)));
+  });
+
+  it('cheminée 1 m au sud de la rangée : les panneaux posés perdent, et la matrice est leur moyenne', () => {
+    const ctx = ctxPan(cheminee(0, 0.5));
+    const calcul = matriceOmbrageDesSources(ctx, 6, rangee(1.5));
+    egales(calcul.factors, moyenneDesPanneaux(ctx, rangee(1.5)));
+    expect(perte(calcul.factors)).toBeGreaterThan(0.005);
+    expect(perte(calcul.factors)).toBeLessThan(0.5);
+  });
+
+  it('pan sans panneau : une grille du pan (empreinte de la cheminée exclue), jamais le seul centroïde', () => {
+    const ctx = ctxPan(cheminee(0, 0));
+    const grille = matriceOmbrageDesSources(ctx, 6, []);
+    expect(matriceOmbrageDesSources(ctx, 6)).toEqual(grille);
+    expect(perte(grille.factors)).toBeGreaterThan(0);
+    expect(perte(grille.factors)).toBeLessThan(0.2);
+  });
+
+  it('ACAL1501 — un document rouvert avec obstacle haut rend le même facteur annuel que la session de pose', () => {
+    const avant = ctxPan(cheminee(0, 0.5));
+    const session = matriceOmbrageDesSources(avant, 6, rangee(1.5)).factors;
+    avant.shadeFactors = session;
+    const facteurSession = annualShadeFactor(fallbackPerKwc(), session, LAT);
+    const doc = serializeLayout(avant);
+    const apres = ctxPan(cheminee(0, 0.5));
+    appliquerHydratationAuCtx(apres, hydrateFromDevis({ id: 7, geometrie: { roof_layout: doc }, cibleVendue: false }));
+    expect(apres.shadeAnnualFactor).toBeCloseTo(facteurSession, 9);
+    expect(apres.shadeAnnualFactor).toBeLessThan(1); // l'obstacle haut garde son ombre
+    expect(apres.shadeAnnualFactor).toBeGreaterThan(0.5); // jamais la saturation du centroïde (≈ 0,28)
+  });
+
+  it('« Effacer les ombres » recalcule sur les sources restantes : la cheminée garde son ombre', () => {
+    const ctx = ctxPan(cheminee(0, 0));
+    const ui = createShadingUi(ctx, {
+      map: new Proxy({}, { get: () => () => undefined }) as never, setStatus: () => {}, recalcDisplays: () => {}, applyHeatmap: () => {},
+    });
+    ctx.shadeObstructions.push({ id: 's1', base: versLngLat(0, -30), tip: versLngLat(0, 10), heightM: 30, halfWidthM: 6 });
+    ui.reset();
+    expect(ctx.shadeObstructions).toHaveLength(0);
+    expect(ctx.shadeFactors).toEqual(matriceOmbrageDesSources(ctx, 6).factors);
+    expect(ctx.shadeAnnualFactor).toBeLessThan(1);
+  });
+});

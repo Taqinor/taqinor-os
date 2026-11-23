@@ -10,9 +10,11 @@ avant de pouvoir lancer le générateur de devis automatique :
   - Industriel / Commercial (CIQ404, contrat CIQ1) : l'un de
     conso_mensuelle_kwh, bill_kwh, releve_conso, ou facture_hiver (MAD) —
     pour un commercial si la tension n'est pas « mt », pour un industriel
-    seulement si la basse tension est DÉCLARÉE, avec un contrat BT ; ALEA47 —
-    + le contrat (sauf MT déclarée) et le rythme, par LA règle du moteur
-    (``ventes.selectors.profil_charge_prerequis_ci``, jamais une copie) ;
+    si la moyenne tension n'est pas DÉCLARÉE (D-ACAL-92 : basse tension
+    supposée et dite), avec un contrat BT déclaré ou supposé ; ALEA47 — + le rythme, par LA règle du moteur
+    (``ventes.selectors.profil_charge_prerequis_ci``, jamais une copie) ; les
+    champs que le moteur SUPPOSE ne sont plus exigés (ADEV125,
+    ``ventes.services.champs_supposes_ci``) ;
   - Agricole (pompage, AGR403) : [HMT OU niveau d'eau] ET [débit souhaité,
     besoin en eau (m³/jour) OU débit de la pompe actuelle — ce dernier ne
     comptant qu'avec ses heures, volume déclaré D-AGR-3]. Le CV ne compte
@@ -51,7 +53,15 @@ GROUPES_HYDRAULIQUES_AGRICOLES = (
 _COMPTE_SEULEMENT_AVEC = {
     'pompe_actuelle_debit_m3h': ('pompage_heures_jour',),
     'pompe_actuelle_kw': ('pompe_actuelle_tension_v', 'pompe_actuelle_phases'),
+    # ALEA67 — un point GPS ne situe le chantier qu'avec ses DEUX coordonnées.
+    'gps_lat': ('gps_lng',),
 }
+
+#: ALEA67 — résidentiel : le moteur doit SITUER le chantier (ville reconnue par
+#: ``parametres.pvgis_profils.productible_mensuel``, ou point GPS posé) — sinon il
+#: refuse ensuite (``localisation_inconnue``, 29 leads « prêts » en production le
+#: 23/11/2026).
+GROUPE_LOCALISATION = ('ville', 'gps_lat')
 
 #: AGQ39 (D-AGQ-10) — groupe requis en plus quand le lead dit « pompe
 #: existante conservée » : la plaque de la pompe actuelle.
@@ -89,20 +99,34 @@ def _tension_declaree(lead):
 def _facture_mad_compte(lead):
     """CIQ404 (contrat CIQ1 ``regles_devis_auto.facture_hiver``) — une
     facture MT porte une prime fixe : diviser ses MAD par un prix gonflerait
-    les kWh. Commercial : compte sauf en « mt » ; industriel : seulement si
-    la basse tension est DÉCLARÉE."""
+    les kWh. Commercial : compte sauf en « mt » ; industriel : sauf en « mt »
+    DÉCLARÉE — D-ACAL-92 (« supposer_bt », 23/11/2026) : une tension non
+    déclarée (vide, « ne sait pas », défaut du site) est supposée basse
+    tension par le moteur, et dite (``suppositions_ci``)."""
     mode = lead.type_installation
     if mode == 'commercial':
         return getattr(lead, 'tension_raccordement', None) != 'mt'
     if mode == 'industriel':
-        return _tension_declaree(lead) == 'bt'
+        return _tension_declaree(lead) != 'mt'
     return True
 
 
 def _contrat_bt_declare(lead):
     """ALEA47 — contrat BT déclaré, exigé par le gating pour une facture MAD
-    (le lecteur du moteur sert la facture seule : son refus nomme le contrat)."""
-    return (getattr(lead, 'contrat_electricite', None) or '').startswith('bt_')
+    (le lecteur du moteur sert la facture seule : son refus nomme le contrat).
+    ADEV125 (D-ACAL-92) — ou SUPPOSÉ par le moteur quand la fiche n'en dit rien."""
+    contrat = getattr(lead, 'contrat_electricite', None) or ''
+    if contrat in ('', 'ne_sait_pas'):
+        return 'contrat_electricite' in _champs_supposes(lead)
+    return contrat.startswith('bt_')
+
+
+def _champs_supposes(lead):
+    """ADEV125 — les champs que le moteur C&I suppose quand ils sont vides
+    (``ventes.services.champs_supposes_ci``, jamais une copie de la règle)."""
+    from apps.ventes.services import champs_supposes_ci
+
+    return champs_supposes_ci(lead.type_installation, _tension_declaree(lead))
 
 
 def _rempli(lead, champ):
@@ -110,8 +134,12 @@ def _rempli(lead, champ):
     un débit actuel sans ses heures ne fait pas un volume."""
     if champ == 'releve_conso':
         return _releve_rempli(lead)
+    if champ == 'ville':
+        return _ville_situee(lead)
     if not getattr(lead, champ, None):
         return False
+    if champ == 'raccordement' and lead.type_installation == _MODE_AGRICOLE:
+        return _phase_du_moteur(lead) is not None
     if champ == 'contrat_electricite':
         return lead.contrat_electricite != 'ne_sait_pas'
     if champ == 'raccordement':
@@ -121,6 +149,26 @@ def _rempli(lead, champ):
         return False
     return all(getattr(lead, compagnon, None)
                for compagnon in _COMPTE_SEULEMENT_AVEC.get(champ, ()))
+
+
+def _ville_situee(lead):
+    """ALEA67 — la ville du lead SITUE-t-elle le chantier pour le moteur ? Même
+    lecteur que lui (``parametres.pvgis_profils.productible_mensuel`` : table des
+    villes, orthographes courantes, gazetier) — sans coordonnées : aucun appel
+    réseau ici."""
+    from apps.parametres.pvgis_profils import productible_mensuel
+
+    ville = (getattr(lead, 'ville', '') or '').strip()
+    return bool(ville) and productible_mensuel(ville=ville) is not None
+
+
+def _phase_du_moteur(lead):
+    """ALEA67 — la phase telle que le moteur agricole la lit
+    (``apps.ventes.services.phase_client_pour_dimensionnement``, jamais une copie
+    de la règle)."""
+    from apps.ventes.services import phase_client_pour_dimensionnement
+
+    return phase_client_pour_dimensionnement(lead)
 
 
 def releve_eau_manquant(lead) -> bool:
@@ -144,6 +192,8 @@ def champs_requis(lead) -> list[list[str]]:
     mode = lead.type_installation or 'residentiel'
     if mode == _MODE_AGRICOLE:
         requis = [list(groupe) for groupe in GROUPES_HYDRAULIQUES_AGRICOLES]
+        # ALEA67 — la phase (mono/tri) : le moteur agricole refuse sans elle.
+        requis.append(['raccordement'])
         if getattr(lead, 'mode_pompe', None) == 'existante':
             requis.append(list(GROUPE_PLAQUE_EXISTANTE))
         return requis
@@ -152,16 +202,20 @@ def champs_requis(lead) -> list[list[str]]:
         # CIQ404 (contrat CIQ1) — + le relevé de factures et la facture en
         # MAD (selon la tension, voir :func:`_facture_mad_compte`).
         requis = [list(GROUPE_CONSO_PRO)]
-        # ALEA47 (D-ACI-5=a) — + le contrat (MT déclarée : Tarif Général).
-        if _tension_declaree(lead) != 'mt':
+        supposes = _champs_supposes(lead)
+        # ALEA47 (D-ACI-5=a) — + le contrat (MT déclarée : Tarif Général) ;
+        # ADEV125 (D-ACAL-92) — sauf quand le moteur le suppose (BT, dit).
+        if _tension_declaree(lead) != 'mt' and 'contrat_electricite' not in supposes:
             requis.append(['contrat_electricite'])
-        # ADEV89 (rejeu « humain » 23/10/2026) — + la phase du site : la
-        # combinaison d'onduleurs la suit (jamais « je ne sais pas »).
-        requis.append(['raccordement'])
+        # ADEV89 — + la phase du site (la combinaison d'onduleurs la suit) ;
+        # ADEV126 (D-ACAL-93) — sauf quand le moteur la suppose (triphasé, dit).
+        if 'raccordement' not in supposes:
+            requis.append(['raccordement'])
         return requis + _groupes_rythme(lead)
     requis = [['facture_hiver']]
     if lead.ete_differente:
         requis.append(['facture_ete'])
+    requis.append(list(GROUPE_LOCALISATION))  # ALEA67
     return requis
 
 
@@ -220,8 +274,9 @@ GROUPE_CONSO_PRO = ('conso_mensuelle_kwh', 'bill_kwh', 'releve_conso',
 #: ``devis_auto_pret.json`` → ``exemple_industriel``).
 _LIBELLES_PRO = {
     'commercial': 'Consommation (kWh) ou facture mensuelle (MAD)',
+    # D-ACAL-92 — la facture en MAD compte sauf en moyenne tension déclarée.
     'industriel': ('Consommation (kWh), relevé de factures, ou facture en '
-                   'MAD si la basse tension est déclarée'),
+                   'MAD (hors moyenne tension déclarée)'),
 }
 
 #: Ordre de préférence de la source de consommation : le relevé prime, puis
@@ -255,9 +310,14 @@ _LIBELLES = {
     'contrat_electricite': "Contrat d'électricité",
     # ADEV89 — la phase du site, prérequis de la combinaison d'onduleurs.
     'raccordement': 'Phase du site (monophasé ou triphasé)',
-    'jours_ouverture': "Jours et heures d'ouverture (ou catégorie d'activité)",
-    'heure_debut': "Jours et heures d'ouverture (ou catégorie d'activité)",
+    # ALEA67 — ville reconnue OU point GPS (une seule puce).
+    'ville': 'ville',
+    # Coutures vague D2 — chaque groupe de rythme nomme ce qui manque
+    # vraiment ; les deux manquants partagent UNE puce (LIBELLE_RYTHME).
+    'jours_ouverture': "Jours d'ouverture (ou catégorie d'activité)",
+    'heure_debut': "Heures d'ouverture ou régime d'équipes (ou catégorie d'activité)",
 }
+LIBELLE_RYTHME = "Jours et heures d'ouverture (ou catégorie d'activité)"
 
 
 def champs_manquants_detail(lead, requis=None) -> list[dict]:
@@ -266,12 +326,16 @@ def champs_manquants_detail(lead, requis=None) -> list[dict]:
     groupe de rythme n'est requis QUE manquant (ALEA47, règle du moteur)."""
     detail = []
     mode = lead.type_installation or 'residentiel'
-    for groupe in champs_requis(lead) if requis is None else requis:
+    groupes = champs_requis(lead) if requis is None else requis
+    rythmes = sum(tuple(g) in _GROUPES_RYTHME.values() for g in groupes)
+    for groupe in groupes:
         rythme = tuple(groupe) in _GROUPES_RYTHME.values()
         if not rythme and any(_rempli(lead, champ) for champ in groupe):
             continue
         label = (_LIBELLES_PRO[mode] if mode in _MODES_ETUDE
-                 and groupe[0] in GROUPE_CONSO_PRO else _LIBELLES[groupe[0]])
+                 and groupe[0] in GROUPE_CONSO_PRO
+                 else LIBELLE_RYTHME if rythme and rythmes > 1
+                 else _LIBELLES[groupe[0]])
         if all(entree['label'] != label for entree in detail):
             detail.append({'champ': groupe[0], 'label': label})
     return detail

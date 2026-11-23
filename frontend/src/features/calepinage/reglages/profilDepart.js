@@ -19,7 +19,7 @@ export const estProfilDepart = (reference) =>
 export const LIBELLES_REGLAGES = {
   b0_iam: ['Reflets du verre', 'Le soleil rasant rebondit sur la vitre du panneau'],
   modele_iam: ['Façon de calculer les reflets', 'Méthode de calcul de la lumière perdue quand le soleil arrive de biais'],
-  regle_qualite_module: ['Qualité des panneaux à la sortie d’usine', 'Écart entre la puissance annoncée et la puissance réelle'],
+  regle_qualite_module: ['Qualité des panneaux à la sortie d’usine', 'Lue dans la tolérance de puissance de la fiche du module ; sans tolérance publiée, l’écart est compté à 0 % (supposé)'],
   mismatch_fabricant_pct: ['Écarts entre panneaux', 'Deux panneaux d’une chaîne ne sont jamais tout à fait égaux'],
   thermique_par_pose: ['Échauffement selon la pose', 'Plus le panneau chauffe, moins il produit'],
   albedo_mensuel: ['Réflexion du sol', 'Lumière renvoyée par le sol vers les panneaux'],
@@ -28,6 +28,11 @@ export const LIBELLES_REGLAGES = {
   tolerance_polystring_acceptable_pct: ['Écart acceptable entre chaînes', 'Écart de tension toléré entre deux chaînes branchées ensemble'],
   tolerance_polystring_bloquante_pct: ['Écart bloquant entre chaînes', 'Au-delà de cet écart de tension, le câblage est refusé'],
   seuil_bas_dc_ac: ['Taille minimale des panneaux face à l’onduleur', 'Puissance des panneaux rapportée à celle de l’onduleur'],
+  salissure_mensuelle_pct: ['Poussière sur les panneaux', 'La poussière retient une part du soleil entre deux nettoyages'],
+  lid_par_techno: ['Perte des premières heures de soleil', 'Un panneau neuf perd un peu de puissance dès sa première exposition, selon sa technologie'],
+  indisponibilite_forfait_pct: ['Arrêts de l’installation', 'Part de la production perdue quand l’installation est à l’arrêt (panne, entretien)'],
+  ohmique_dc_conception_pct: ['Câbles entre les panneaux et l’onduleur', 'Chaleur perdue dans les câbles tant que leurs longueurs réelles ne sont pas connues'],
+  ohmique_ac_conception_pct: ['Câble entre l’onduleur et le tableau', 'Chaleur perdue dans ce câble tant que sa longueur réelle n’est pas connue'],
 }
 
 /** `{ nom, aide }` d'une clé du profil ; « Autre réglage » si elle n'est pas dans la table. */
@@ -61,6 +66,10 @@ export function valeurLisible(valeur, unite = '') {
       .map((p) => p?.uc_w_m2k)
       .filter((v) => typeof v === 'number')
     if (poses.length) return `${poses.map(NOMBRE).join(' · ')} W/m²K`
+    const pertes = Object.values(valeur)
+      .map((p) => p?.pct)
+      .filter((v) => typeof v === 'number')
+    if (pertes.length) return `${pertes.map(NOMBRE).join(' · ')} %`
     return 'Plusieurs valeurs'
   }
   return '—'
@@ -68,10 +77,13 @@ export function valeurLisible(valeur, unite = '') {
 
 /** Sous la valeur « par pose » : les poses dans l'ordre servi (« Pose libre · dos isolé »). */
 const POSES = { pose_libre: 'libre', dos_isole: 'dos isolé' }
+const CELLULES = { perc: 'PERC', topcon: 'TOPCon', hjt: 'HJT', inconnue: 'autre' }
 export function precisionValeur(valeur) {
   if (!valeur || typeof valeur !== 'object') return ''
   const noms = Object.keys(valeur).map((k) => POSES[k]).filter(Boolean)
-  return noms.length ? `Pose ${noms.join(' · ')}` : ''
+  if (noms.length) return `Pose ${noms.join(' · ')}`
+  const cellules = Object.keys(valeur).map((k) => CELLULES[k]).filter(Boolean)
+  return cellules.length ? `Cellules ${cellules.join(' · ')}` : ''
 }
 
 /** « PVsyst » — l'éditeur nommé en tête de la référence (« Profil de départ — PVsyst, … »). */
@@ -97,10 +109,8 @@ export const LIBELLES_SANS_SOURCE = {
   sigma_meteo_saisi_pct: "Variabilité interannuelle saisie (σ météo)",
   tolerance_validation_pct: "Tolérance d’écart admise face à PVGIS",
   annees_exploitation: "Durée d’exploitation simulée",
-  lid_par_techno: "Perte LID déclarée par technologie de cellule",
   modele_degradation: "Modèle de dégradation pluriannuelle",
   attenuation_horizon: "Atténuation appliquée au profil d’horizon",
-  salissure_mensuelle_pct: "Salissure, mois par mois (12 valeurs, ou une seule pour les douze)",
   indisponibilite_fenetres: "Fenêtres d’arrêt de l’installation (début, fin, motif)",
   auxiliaires_w_constants: "Auxiliaires — terme constant en marche",
   auxiliaires_w_par_kw: "Auxiliaires — terme proportionnel à la production",

@@ -426,6 +426,7 @@ describe('ACAL412 — Ctrl+Z hors mode disposition restaure le sommet et redessi
       modeDisposition: () => Boolean(ctx.layoutMode && ctx.layoutState),
       apres: redessins,
       setStatus: (m) => void statuts.push(m),
+      ctx, // ACAL1901 — le bouton de la barre passe par le même geste
     });
     return { ctx, a, redessins, statuts };
   }
@@ -453,6 +454,25 @@ describe('ACAL412 — Ctrl+Z hors mode disposition restaure le sommet et redessi
     const champ = document.createElement('input');
     expect(a.surFrappe({ key: 'z', ctrlKey: true, target: champ })).toBe(false); // Ctrl+Z dans un champ
     expect(a.annuler()).toBe(true); // la photo est restée intacte
+  });
+
+  // ACAL1901 (T3-POSE-001) — le bouton Annuler de la barre (#rp9-layout-undo, cliqué par la coque) défait COMME Ctrl+Z.
+  it('clic sur Annuler hors mode disposition : sommet restauré ET redessiné ; Rétablir de même', () => {
+    document.body.innerHTML = ''; // ids uniques : les boutons sont ceux de CET éditeur
+    const { ctx, redessins } = monter();
+    ctx.pushWorkshopHistory?.(); // photo AVANT le coin glissé (70 → 91 m²)
+    (ctx as unknown as { vertices: [number, number][] }).vertices = [[0, 0], [1, 0], [5, 5]];
+    (document.getElementById('rp9-layout-undo') as HTMLButtonElement).click();
+    expect(ctx.vertices[2]).toEqual([1, 1]);
+    expect(redessins).toHaveBeenCalledTimes(1); // le toit et sa surface sont redessinés, comme Ctrl+Z
+    (document.getElementById('rp9-layout-redo') as HTMLButtonElement).click();
+    expect(ctx.vertices[2]).toEqual([5, 5]);
+    expect(redessins).toHaveBeenCalledTimes(2);
+    ctx.pushWorkshopHistory?.(); // un obstacle posé : même chemin
+    (ctx as unknown as { obstacles: unknown[] }).obstacles = [{ id: 'o1' }];
+    (document.getElementById('rp9-layout-undo') as HTMLButtonElement).click();
+    expect(ctx.obstacles).toEqual([]);
+    expect(redessins).toHaveBeenCalledTimes(3);
   });
 });
 

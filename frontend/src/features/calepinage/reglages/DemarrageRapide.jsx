@@ -221,14 +221,14 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
   // pied collé en bas — maquette), quelle que soit la hauteur de la fenêtre.
   const racine = useRef(null)
   const [hauteur, setHauteur] = useState(null)
+  const defilantDe = (n) => { let p = n?.parentElement; while (p && !/(auto|scroll)/.test(getComputedStyle(p).overflowY)) p = p.parentElement; return p }
   useLayoutEffect(() => {
     if (!seul) return undefined
     // ACAL1344 — le bas utile est celui du CONTENU du défilant de l'ERP (son bas moins sa marge basse), pas
     // celui de la fenêtre : sinon la marge du cadre déborde et la page défile de quelques pixels.
-    const defilant = (n) => { let p = n?.parentElement; while (p && !/(auto|scroll)/.test(getComputedStyle(p).overflowY)) p = p.parentElement; return p }
     const mesurer = () => {
       const haut = racine.current?.getBoundingClientRect().top ?? 0
-      const cadre = defilant(racine.current)
+      const cadre = defilantDe(racine.current)
       const bas = cadre
         ? cadre.getBoundingClientRect().bottom - (parseFloat(getComputedStyle(cadre).paddingBottom) || 0)
         : window.innerHeight - 24
@@ -279,7 +279,7 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
 
   return (
     <Card ref={racine}
-      className={seul ? 'flex flex-col gap-5 border-0 bg-transparent p-0 shadow-none' : 'mt-5 space-y-4 p-4'}
+      className={seul ? 'cal-reglages flex flex-col gap-5 border-0 bg-transparent p-0 shadow-none' : 'cal-reglages mt-5 space-y-4 p-4'}
       style={seul && hauteur ? { height: hauteur } : undefined}
       data-testid="acal405-demarrage">
       {autonome === true ? (
@@ -307,9 +307,11 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
       )}
 
       {/* Le tableau défile DANS sa carte (en-tête collé) : le titre en haut et le pied (boutons) en bas
-          restent à l'écran, comme la maquette, quelle que soit la hauteur de la fenêtre. */}
+          restent à l'écran, comme la maquette, quelle que soit la hauteur de la fenêtre. `relative` (ACAL1908) : la section
+          est le bloc conteneur des citations `sr-only` (absolues) de ses lignes — sans cela le défilant de l'ERP
+          (`.layout-content`, positionné) les comptait dans son propre défilement : 11 px de page qui défile à 1440 × 900. */}
       <section aria-label="Réglages proposés" aria-busy={enLecture}
-        className={`overflow-auto rounded-[14px] border border-border bg-card ${seul ? 'min-h-[180px] min-w-0 shrink' : ''}`}>
+        className={`relative overflow-auto rounded-[14px] border border-border bg-card ${seul ? 'min-h-[180px] min-w-0 shrink' : ''}`}>
         <div className="min-w-[760px]">
           <div className={`sticky top-0 z-10 grid ${COLONNES} h-11 items-center border-b border-border bg-background px-2 pr-5 text-xs font-semibold text-muted-foreground`}>
             <span className="text-center">Remplir</span><span>Réglage</span><span>Valeur proposée</span>
@@ -372,10 +374,10 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
           Tout saisir à la main
         </a>
         {peut && (
-          <Button
+          <button
             type="button"
             disabled={occupe || enLecture || echecLecture || nbChoisies === 0}
-            className="h-12 rounded-[10px] px-[22px] text-base"
+            className="cal-bouton-or cal-bouton-or-grand"
             data-testid="acal405-appliquer"
             onClick={() => agir(
               () => calepinageApi.parametres.appliquerProfilDepart(choisies),
@@ -383,7 +385,7 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
             )}
           >
             {libelleAppliquer()}
-          </Button>
+          </button>
         )}
       </div>
       {message && (

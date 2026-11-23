@@ -122,8 +122,13 @@ export default function BoutonDevis({
   // ACAL311 (rejeu P5.5) — faux tant que la scène de l'atelier n'est pas hydratée :
   // `enregistrerAvant` refuserait (rien n'est écrit avant l'hydratation).
   atelierPret = true,
+  // ACAL2002 — vrai quand ce bouton EST l'action de l'étape (Documents en Guidé) : il prend alors le bouton doré v2.
+  // Ailleurs (panneau Expert) il reste un bouton à filet : l'or est réservé à la seule action suivante (ACAL1802).
+  actionEtape = false,
 }) {
   const navigate = useNavigate()
+  const classeDuBouton = actionEtape ? 'cal-bouton-or cal-bouton-or-grand'
+    : 'inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-primary-text disabled:cursor-not-allowed disabled:opacity-60'
   // ACAL171 — le droit SERVI par l'agrégat (`permissions.peut_deroger`,
   // calepinage_approuver), jamais deviné côté écran.
   const peutDeroger = !!detail?.permissions?.peut_deroger
@@ -426,7 +431,7 @@ export default function BoutonDevis({
           onClick={() => resynchroniser()}
           disabled={desactive}
           data-testid="cal-resynchroniser-devis"
-          className="inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-primary-text disabled:cursor-not-allowed disabled:opacity-60"
+          className={classeDuBouton}
         >
           {enCours ? 'Resynchronisation…' : 'Resynchroniser le devis'}
         </button>
@@ -436,7 +441,7 @@ export default function BoutonDevis({
           onClick={() => generer()}
           disabled={desactive}
           data-testid="cal-generer-devis"
-          className="inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-primary-text disabled:cursor-not-allowed disabled:opacity-60"
+          className={classeDuBouton}
         >
           {enCours ? 'Génération…' : 'Générer le devis'}
         </button>

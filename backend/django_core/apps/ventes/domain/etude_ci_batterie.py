@@ -585,7 +585,7 @@ def _dimensionner(catalogue, bat, batteries, evaluation, *, phase, ps_kva, compo
         combiner=lambda kwc: combiner_onduleurs(
             kwc, bat['hybrides'], phase=phase, module=catalogue.get('module_spec'),
             ac_max_kw=ps_kva, max_appareils=MAX_HYBRIDES_PARALLELE, homogene=True,
-            fiche_fait_foi=True),
+            fiche_fait_foi=True, froid=catalogue.get('froid')),  # ADEV122
         composer=lambda kwc, onduleurs: composer(kwc, onduleurs, bat.get('elements')),
         batteries=batteries, hybrides=bat['hybrides'], kwc_max=(borne_toit or {}).get('kwc'),
         ps_kva=ps_kva, production_de=production_de,
@@ -601,7 +601,8 @@ def _dimensionner(catalogue, bat, batteries, evaluation, *, phase, ps_kva, compo
         modules_choisis=nb_batteries_choisi(nb_batteries),
         combiner_impose=lambda kwc, produit, quantite: combiner_impose(
             kwc, bat['hybrides'], produit, quantite, phase=phase,
-            module=catalogue.get('module_spec'), ac_max_kw=ps_kva, fiche_fait_foi=True),
+            module=catalogue.get('module_spec'), ac_max_kw=ps_kva, fiche_fait_foi=True,
+            froid=catalogue.get('froid')),
         **noyau)
     if resultat.get('evaluation'):
         resultat['evaluation']['inclinaison_retenue_deg'] = inclinaison_pose(
@@ -755,6 +756,7 @@ def option_imposee_des_lignes(lignes, catalogue, kwc, nb_panneaux=None, devis=No
             'hybrides': list(hybrides.values()),
             'recommandee': _recommandee_des_lignes(lignes, devis),
             'module_spec': catalogue.get('module_spec'),  # D-HYB-5 (chaînes du suffisant)
+            'froid': catalogue.get('froid'),  # ADEV122 — posé par l'étude (``option_avec_de_l_etude``)
             'empreinte': [kwc, sorted(q_h.items()), sorted(q_b.items())] + _jeton_cycles(lignes, devis)}
 
 
@@ -823,13 +825,13 @@ def _attend_extension(imposee):
     return bool(batterie.get('ajout_possible'))
 
 
-def _combinaison_libre(kwc, hybrides, contexte, module_spec):
+def _combinaison_libre(kwc, hybrides, contexte, module_spec, froid=None):
     from apps.ventes.moteur_ci.batterie import MAX_HYBRIDES_PARALLELE
     from apps.ventes.moteur_ci.onduleurs import combiner_onduleurs
     return combiner_onduleurs(
         kwc, hybrides or [], phase=contexte.get('phase'), module=module_spec,
         ac_max_kw=contexte.get('ps_kva'), max_appareils=MAX_HYBRIDES_PARALLELE,
-        homogene=True, fiche_fait_foi=True) or {}
+        homogene=True, fiche_fait_foi=True, froid=froid) or {}
 
 
 def extension_des_lignes(imposee, contexte):
@@ -840,7 +842,7 @@ def extension_des_lignes(imposee, contexte):
     if not _attend_extension(imposee):
         return None
     libre = _combinaison_libre(imposee['kwc'], imposee.get('hybrides'), contexte,
-                               imposee.get('module_spec'))
+                               imposee.get('module_spec'), imposee.get('froid'))
     return onduleur_extension(imposee.get('onduleurs'), libre,
                               int(imposee['recommandee']['quantite']))
 
@@ -855,14 +857,14 @@ def _recomposer(catalogue, imposee, contexte):
     from apps.ventes.moteur_ci.onduleurs import combiner_impose
     bat = catalogue.get('batterie') or {}
     onduleurs = _combinaison_libre(imposee['kwc'], bat.get('hybrides'), contexte,
-                                   catalogue.get('module_spec'))
+                                   catalogue.get('module_spec'), catalogue.get('froid'))
     garde = (imposee.get('onduleurs') or {}).get('combinaison') or []
     if _attend_extension(imposee) and len(garde) == 1:
         force = combiner_impose(
             imposee['kwc'], bat.get('hybrides') or [], garde[0].get('produit'),
             int(garde[0].get('quantite') or 0), phase=contexte.get('phase'),
             module=catalogue.get('module_spec'), ac_max_kw=contexte.get('ps_kva'),
-            fiche_fait_foi=True)
+            fiche_fait_foi=True, froid=catalogue.get('froid'))
         onduleurs = force if force.get('combinaison') else onduleurs
     composition = _composer_avec(
         lambda kwc, ond: contexte['composer'](kwc, ond, bat.get('elements')),
@@ -942,6 +944,10 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
         from apps.ventes.economie_ci import resoudre_tva_recuperable
         flux['tva_recuperable'] = resoudre_tva_recuperable(
             getattr(lead, 'tva_recuperable', None))
+    if imposee is not None and catalogue.get('froid') is not None:
+        # ADEV122 — l'option des LIGNES est bâtie hors étude (catalogue lu sans le site) : elle prend ici
+        # le froid du site de l'étude, celui de ses chaînes — l'onduleur d'extension n'est plus conçu à −5 °C.
+        imposee = dict(imposee, froid=catalogue['froid'])
     if imposee is not None and imposee.get('recomposer'):
         imposee = _recomposer(catalogue, imposee, contexte)
         return _imposee_verdict(dict(vide, bloc=_option_imposee(imposee, dict(contexte, **flux)),

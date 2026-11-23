@@ -30,7 +30,7 @@ beforeEach(() => { vi.clearAllMocks() })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('MaterielElectrique (ACAL149)', () => {
-  it('envoie {module_produit, onduleur_produit} puis affiche les valeurs RELUES du GET', async () => {
+  it('ACAL1987 — choisir dans la liste DÉSIGNE (un POST, sans autre bouton) puis affiche les valeurs RELUES du GET', async () => {
     const complet = {
       ...EXEMPLE,
       candidats: {
@@ -48,8 +48,8 @@ describe('MaterielElectrique (ACAL149)', () => {
     // Rien n'est désigné : « à désigner », message serveur (absents), aucun produit supposé.
     expect(screen.getByTestId('acal149-provenance-module')).toHaveTextContent('à désigner')
 
+    // Le choix dans la liste compte comme désignation : aucun clic sur « Enregistrer le matériel » n'est requis.
     await userEvent.selectOptions(document.getElementById('acal149-champ-module_produit'), '4112')
-    await userEvent.click(screen.getByTestId('acal149-enregistrer'))
 
     await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique).toHaveBeenCalledTimes(1))
     const [id, corps] = calepinageApi.calepinages.enregistrerEntreeElectrique.mock.calls[0]
@@ -74,7 +74,6 @@ describe('MaterielElectrique (ACAL149)', () => {
 
     // On surcharge le module par un autre choix : le corps le porte.
     await userEvent.selectOptions(document.getElementById('acal149-champ-module_produit'), '')
-    await userEvent.click(screen.getByTestId('acal149-enregistrer'))
     await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique).toHaveBeenCalled())
     expect(calepinageApi.calepinages.enregistrerEntreeElectrique.mock.calls[0][1].module_produit).toBeNull()
   })
@@ -92,14 +91,14 @@ describe('MaterielElectrique (ACAL149)', () => {
   })
 
   it('un refus 400 s’affiche sous le champ nommé, mot pour mot', async () => {
-    calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: VIDE })
+    calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: EXEMPLE })
     calepinageApi.calepinages.enregistrerEntreeElectrique.mockRejectedValue({
       response: { status: 400, data: { onduleur_produit: 'Produit hors société.' } },
     })
 
     rendre()
     await screen.findByTestId('acal149-formulaire')
-    await userEvent.click(screen.getByTestId('acal149-enregistrer'))
+    await userEvent.selectOptions(document.getElementById('acal149-champ-module_produit'), '4112')
 
     expect(await screen.findByTestId('acal149-erreur-onduleur_produit')).toHaveTextContent('Produit hors société.')
   })
@@ -162,6 +161,33 @@ describe('MaterielElectrique (ACAL149)', () => {
       await userEvent.click(screen.getByTestId('acal617-lien'))
       expect(await screen.findByTestId('acal617-vide')).toHaveTextContent('Aucun onduleur désigné')
     })
+  })
+
+  it('ACAL1952 — le matériel retenu par le devis est dit, avec l’écart d’une saisie contraire', async () => {
+    calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: EXEMPLE })
+    rendre()
+    const bloc = await screen.findByTestId('acal149-devis-retenu')
+    expect(bloc).toHaveTextContent(`Repris du devis ${EXEMPLE.devis_retenu.reference} (option sans batterie)`)
+    expect(bloc).toHaveTextContent(EXEMPLE.devis_retenu.onduleur.designation)
+    expect(bloc).toHaveTextContent(`Écart avec le devis — ${EXEMPLE.devis_retenu.ecarts[0]}`)
+  })
+
+  it('ACAL1950 — le bloc « repris du devis » décrit le même devis que la conception retenue (référence, statut, option, onduleurs)', () => {
+    // Deux échantillons, UN devis : `calepinage_conception_retenue.json` (ce que le devis a retenu, lu par le serveur) et le
+    // bloc `devis_retenu` que cet écran affiche. Si l'un dérive sans l'autre, ce cas casse.
+    const conception = exempleContrat('calepinage', 'calepinage_conception_retenue')
+    const { reference, statut, option, nombre_onduleurs: nombre } = EXEMPLE.devis_retenu
+    expect({ reference, statut, option, nombre }).toEqual({
+      reference: conception.reference, statut: conception.statut, option: conception.option,
+      nombre: conception.onduleurs[0].quantite,
+    })
+  })
+
+  it('ACAL1952 — sans devis lié, aucun bloc « repris du devis »', async () => {
+    calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: VIDE })
+    rendre()
+    await screen.findByTestId('acal149-formulaire')
+    expect(screen.queryByTestId('acal149-devis-retenu')).toBeNull()
   })
 
   it('une lecture en panne le DIT, sans inventer de matériel', async () => {

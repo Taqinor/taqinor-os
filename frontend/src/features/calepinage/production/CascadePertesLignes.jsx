@@ -43,6 +43,29 @@ function SousDemarrage({ entree }) {
   )
 }
 
+/* ACAL1671 / ACAL1968 — la mention SERVIE d'une entrée, telle quelle : la pose retenue de l'échauffement des modules
+   (ligne de la table société prise par correspondance) ou la phrase d'une valeur SUPPOSÉE (`entree.supposee === true` :
+   qualité des panneaux, LID, câbles, arrêts…). Jamais reformulée ; sans mention servie, aucune ligne. */
+function MentionEntree({ ligne }) {
+  const entree = ligne.entree
+  if (!entree || typeof entree !== 'object' || typeof entree.mention !== 'string' || !entree.mention) return null
+  if (ligne.poste === 'thermique') {
+    return (
+      <div className="col-span-full" data-testid="acal1671-mention-thermique">
+        <dt className="text-muted-foreground">Pose retenue</dt>
+        <dd className="break-words">{entree.mention}</dd>
+      </div>
+    )
+  }
+  if (entree.supposee !== true) return null
+  return (
+    <div className="col-span-full" data-testid="acal1968-mention-supposee">
+      <dt className="text-muted-foreground">Valeur supposée</dt>
+      <dd className="break-words">{entree.mention}</dd>
+    </div>
+  )
+}
+
 function Detail({ ligne, id }) {
   const champs = [
     ['Valeur', ligne.pertePct === null || ligne.pertePct === undefined
@@ -64,6 +87,7 @@ function Detail({ ligne, id }) {
           <dd className="break-words">{v}</dd>
         </div>
       ))}
+      <MentionEntree ligne={ligne} />
       {ligne.poste === 'mppt' && <SousDemarrage entree={ligne.entree} />}
     </dl>
   )

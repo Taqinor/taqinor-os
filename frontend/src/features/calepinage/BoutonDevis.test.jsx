@@ -50,6 +50,19 @@ const DETAIL_SANS_SELECTION = { ...DETAIL, surfaces_chiffrables: SURFACES_SANS_S
 beforeEach(() => { vi.clearAllMocks() })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
+/* ACAL2002 — un seul bouton doré : « Générer le devis » n'est le bouton d'étape v2 que là où il EST l'action de l'étape
+   (Documents en Guidé) ; ailleurs il reste à filet (ACAL1802 : l'or sur la seule action suivante). Les jetons du bouton
+   doré sont lus par les tests de la coque et du Démarrage rapide. */
+describe('ACAL2002 — « Générer le devis » est le bouton doré v2 quand il est l’action de l’étape', () => {
+  it('action de l’étape : classes du bouton d’étape ; hors étape : bouton à filet, jamais doré', async () => {
+    const vue = rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE, actionEtape: true })
+    expect(await screen.findByTestId('cal-generer-devis')).toHaveClass('cal-bouton-or', 'cal-bouton-or-grand')
+    vue.unmount()
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    expect(await screen.findByTestId('cal-generer-devis')).not.toHaveClass('cal-bouton-or')
+  })
+})
+
 describe('BoutonDevis (CAL38)', () => {
   it('détail absent (agrégat pas encore lu) : aucun bouton deviné', async () => {
     rendre({ detail: null })

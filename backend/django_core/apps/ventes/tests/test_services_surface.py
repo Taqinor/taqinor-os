@@ -145,6 +145,7 @@ SURFACE_PUBLIQUE = (
     "capturer_configuration_devis",
     "carte_marques_composition",
     "catalogue_de_la_societe",
+    "champs_supposes_ci",  # ADEV125 — règle des champs supposés C&I (lue par la fiche lead)
     "chiffrer_conception",  # ACAL992 — porte unique de chiffrage d'une conception
     "cible_depuis_lignes",
     "classer_produit",

@@ -1001,6 +1001,7 @@ retiré plus un hook ajouté.
 | `cal-panneaux-sens-pose` | étape Panneaux : segmenté Portrait / Paysage / Au mieux. |
 | `cal-panneaux-ombre` | étape Panneaux : alerte des panneaux à l’ombre (seulement quand le constructeur la sert). |
 | `cal-carte-soleil` | étape Panneaux : légende d’ensoleillement et lecteur du soleil sur la carte. |
+| `cal-elec-devis-retenu` | étape Électrique : « Repris du devis <référence> (option …) » sous la carte de l’onduleur, avec l’écart d’une saisie contraire (ACAL1952). |
 | `cal-elec-onduleur` | étape Électrique : carte de l’onduleur. |
 | `cal-elec-schema-voir` | étape Électrique : carte « Schéma électrique — Voir ». |
 | `cal-elec-actions-carte` | étape Électrique : barre d’actions sur la carte (« Raccorder automatiquement »…). |
@@ -1011,6 +1012,9 @@ retiré plus un hook ajouté.
 | `cal-resultats-pertes` | étape Résultats : carte « Du soleil au réseau ». |
 | `cal-resultats-pied` | étape Résultats : pied « Année basse… » + bouton de l’étape suivante. |
 | `cal-res-squelette` | étape Résultats : squelette de chargement (deux blocs aux boîtes de la mise en page, `role="status"`). |
+| `cal-calcul-lent` | écran de lecture (Résultats…) dont la réponse dépasse son délai : « Calcul en cours… » en information, jamais « connexion expirée » (ACAL1905). |
+| `cal-reessayer-lecture` | bouton « Réessayer » de cet écran (relance la lecture ; ACAL1905). |
+| `cal-reviser-devis-ecart` | étape Résultats : « Réviser le devis » (devis reçu par le client dont le chiffre diffère de la simulation de la pose ; crée la V2 ; ACAL1755). |
 | `cal-res-minibarres` | étape Résultats : les douze mini-barres mensuelles de la carte héros (production servie ; absentes sans série). |
 | `cal-res-regle-pertes` | étape Résultats : réglette de « Pertes au total » (bande habituelle servie et repère ; absente sans bande servie). |
 | `cal-res-regle-pvgis` | étape Résultats : réglette de « Écart avec PVGIS » (zéro et segment de l’écart servi). |

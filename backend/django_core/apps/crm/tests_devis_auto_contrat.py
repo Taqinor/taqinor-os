@@ -77,8 +77,9 @@ class TestDevisAutoContrat(TestCase):
                 raccordement='triphase', **kwh)
             bloc = self._bloc(seul)
             self.assertFalse(bloc['pret'], (type_installation, kwh))
+            # ADEV125 (D-ACAL-92) — le contrat absent est supposé (BT).
             self.assertEqual([e['champ'] for e in bloc['manquants_detail']],
-                             ['contrat_electricite', 'jours_ouverture'])
+                             ['jours_ouverture'])
             lead = Lead.objects.create(
                 company=self.company, nom='Kwh + moteur',
                 type_installation=type_installation, facture_hiver=None,
@@ -88,7 +89,7 @@ class TestDevisAutoContrat(TestCase):
 
     def test_residentiel_facture_hiver_zero_est_manquant(self):
         lead = Lead.objects.create(
-            company=self.company, nom='Maison', facture_hiver=Decimal('0'))
+            company=self.company, nom='Maison', facture_hiver=Decimal('0'), ville='Casablanca')
         bloc = self._bloc(lead)
         self.assertFalse(bloc['pret'])
         self.assertEqual([e['champ'] for e in bloc['manquants_detail']],
@@ -109,7 +110,7 @@ class TestDevisAutoContrat(TestCase):
 
     def test_agricole_requis_conforme_au_contrat(self):
         lead = Lead.objects.create(
-            company=self.company, nom='Ferme', type_installation='agricole')
+            company=self.company, nom='Ferme', type_installation='agricole', raccordement='triphase')
         attendu = CONTRAT['exemple_agricole']['devis_auto']
         self.assertEqual(champs_requis(lead), attendu['requis'])
         self.assertEqual([e['champ'] for e in champs_manquants_detail(lead)],
@@ -118,7 +119,7 @@ class TestDevisAutoContrat(TestCase):
     def test_manquants_libelles_inchanges(self):
         lead = Lead.objects.create(
             company=self.company, nom='Été', facture_hiver=Decimal('500'),
-            ete_differente=True)
+            ete_differente=True, ville='Casablanca')
         self.assertEqual(champs_manquants(lead), ['facture été'])
         self.assertEqual(champs_requis(lead),
-                         [['facture_hiver'], ['facture_ete']])
+                         [['facture_hiver'], ['facture_ete'], ['ville', 'gps_lat']])

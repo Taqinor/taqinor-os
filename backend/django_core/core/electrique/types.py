@@ -32,6 +32,8 @@ __all__ = [
     "Chaine", "Protection", "Cable", "LigneNomenclature", "Ratio",
     "Conformite", "ResultatElectrique",
     "TEMPERATURE_STC_C", "TEMP_FROID_DEFAUT_C", "TEMP_CHAUD_DEFAUT_C",
+    "REGLE_FROID_DIMENSIONNEMENT", "SOURCE_FROID_ANNEE_TYPE",
+    "FroidDimensionnement", "froid_de_dimensionnement",
     "ORIGINE_FICHE", "ORIGINE_DEFAUT_NON_SOURCE", "COEFFICIENTS_TEMPERATURE",
     "REGIME_TT", "REGIME_TN", "REGIME_IT", "REGIMES_CONNUS",
     "COTE_DC", "COTE_AC", "COTE_COMMUN", "COTES_CONNUS",
@@ -144,6 +146,42 @@ def fr_v(valeur, decimales=1):
 def fr_a(valeur, decimales=1):
     """« 13,8 A »."""
     return "%s A" % fr(valeur, decimales)
+
+
+# ---------------------------------------------- température froide des chaînes
+#: D-ACAL-80 (fondateur 23/11/2026) — LA règle de la température froide qui
+#: borne la tension des chaînes, UNE pour le devis et le calepinage : le
+#: minimum de l'année type du lieu ; sans épingle ni année type,
+#: ``TEMP_FROID_DEFAUT_C``, dit comme supposé.
+REGLE_FROID_DIMENSIONNEMENT = "minimum de l'année type du lieu (règle D-ACAL-80)"
+SOURCE_FROID_ANNEE_TYPE = "tmy"
+
+
+@dataclass(frozen=True)
+class FroidDimensionnement:
+    """La température froide retenue, sa source (``'tmy'`` ou ``None`` =
+    supposée) et la phrase qui le dit."""
+
+    valeur_c: float
+    source: Optional[str]
+    detail: str
+
+
+def froid_de_dimensionnement(minimum_annee_type_c=None):
+    """D-ACAL-80 — la température froide de dimensionnement d'un site.
+
+    ``minimum_annee_type_c`` : le minimum de T2m de l'année type du lieu (lu
+    par l'appelant, jamais ici : fonction PURE), ou ``None``."""
+    try:
+        valeur = float(minimum_annee_type_c)
+    except (TypeError, ValueError):
+        valeur = None
+    if valeur is not None and math.isfinite(valeur):
+        return FroidDimensionnement(valeur, SOURCE_FROID_ANNEE_TYPE, "froid : %s, %s °C" % (
+            REGLE_FROID_DIMENSIONNEMENT, fr(valeur)))
+    return FroidDimensionnement(TEMP_FROID_DEFAUT_C, None, (
+        "froid : %s °C supposé — ni épingle ni année type du lieu (%s)" % (
+            fr(TEMP_FROID_DEFAUT_C, 1), REGLE_FROID_DIMENSIONNEMENT)))
 
 
 # --------------------------------------------------------------- spécifications

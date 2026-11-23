@@ -86,7 +86,7 @@
         "bloquants": [
           {
             "code": "ratio_dc_ac",
-            "libelle": "Ratio DC/AC face à la fourchette réglée par la société",
+            "libelle": "Ratio DC/AC face à la borne du devis ou de la société",
             "detail": "Ratio 1,9 pour 1,5 admis."
           }
         ],

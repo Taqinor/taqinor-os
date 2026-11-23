@@ -355,7 +355,8 @@ class DevisAutoAgricoleTests(TestCase):
         rep = self._post(lead)
         self.assertEqual(rep.status_code, 409, rep.data)
         self.assertEqual(rep.data['field'], 'raccordement')
-        self.assertIn('Alimentation de la pompe inconnue', rep.data['detail'])
+        # ALEA67 — la garde « prêt » du lead exige la phase comme le moteur : même champ, nommé avant l'étude.
+        self.assertIn('Phase du site (monophasé ou triphasé)', rep.data['detail'])
         self.assertNotIn('catalogue', rep.data['detail'])
         self.assertFalse(Devis.objects.filter(lead=lead).exists())
 

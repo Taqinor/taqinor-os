@@ -188,6 +188,24 @@ describe('Montrer au client — l’atelier en mode présentation (vraie 3D)', (
     expect(heure.value).toBe('15')
   })
 
+  it('ACAL1906 — le curseur d’heure du client se touche sur 44 px, la carte garde sa hauteur (aucune règle du client ne l’annule)', async () => {
+    const { readFileSync } = await import('node:fs')
+    const style = document.createElement('style')
+    style.textContent = ['49-jetons-v2.css', '50-coque-atelier.css', '52-etape-panneaux.css', '58-telephone.css']
+      .map((f) => readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/${f}`, 'utf8')).join('\n')
+    document.head.appendChild(style)
+    try {
+      reinitialiserBoot({ appliquerVue: vi.fn() })
+      rendre({ webgl: true })
+      const lecteur = await screen.findByTestId('client-soleil', {}, ATTENTE_ATELIER)
+      const c = getComputedStyle(within(lecteur).getByRole('slider', { name: 'Heure du soleil' }))
+      expect(parseFloat(c.height)).toBeGreaterThanOrEqual(44)
+      expect(parseFloat(c.height) + parseFloat(c.marginTop) + parseFloat(c.marginBottom)).toBe(6)
+    } finally {
+      style.remove()
+    }
+  })
+
   it('aucune requête d’écriture au chargement ni en bougeant le soleil', async () => {
     reinitialiserBoot({ appliquerVue: vi.fn() })
     rendre({ webgl: true })
@@ -306,5 +324,49 @@ describe('J1 — tuiles tenues hors de l’atelier, orientation certaine', () =>
     api.layout.mockResolvedValue({ data: { roof_layout: { zones: [ZONE, { ...ZONE, id: 'z3' }] }, empreinte_document: 'e' } })
     rendre()
     await waitFor(() => expect(screen.getByTestId('client-projet')).toHaveTextContent('Casablanca · orienté sud'))
+  })
+})
+
+/* ACAL1840 (D-ACAL-88 : « l'estimation de la pose, dite estimation ») — tant que le résultat n'est pas complet, « Montrer
+   au client » montre l'estimation de la pose de l'atelier (le chiffre de « Production · estimation de la pose »), dite
+   telle ; un résultat complet la remplace ; jamais deux chiffres de production. */
+describe('ACAL1840 — la tuile de production avant un résultat complet', () => {
+  const INCOMPLET = { ...RESULTAT, production: { total: { p50_kwh: 52695.1, complete: false, mention: 'borne haute — 17 pertes non renseignées' } } }
+
+  it('tuilesClient : incomplet + estimation ⇒ panneaux, production « estimation de la pose » (marine), puissance ; complet ⇒ la production publiée seule', async () => {
+    const { tuilesClient, estimationPose } = await import('./vueClient.helpers')
+    const document = { zones: [ZONE] }
+    const tuiles = tuilesClient(document, INCOMPLET, estimationPose({ productionKwh: 5571 }))
+    expect(tuiles.map((t) => t.cle)).toEqual(['panneaux', 'kwh', 'kwc'])
+    expect(tuiles[1].valeur.replace(/\s/g, ' ')).toBe('5 571')
+    expect(tuiles[1].libelle).toBe('kWh par an · estimation de la pose')
+    expect(tuiles[1].marine).toBe(true)
+    expect(tuiles[2].marine).toBe(false)
+    // Un résultat complet remplace l'estimation : une seule tuile de production, celle du résultat publié.
+    const complet = tuilesClient(document, RESULTAT, estimationPose({ productionKwh: 5571 }))
+    expect(complet.filter((t) => t.cle === 'kwh')).toHaveLength(1)
+    expect(complet.find((t) => t.cle === 'kwh').valeur.replace(/\s/g, ' ')).toBe('11 480')
+    expect(complet.find((t) => t.cle === 'kwh').libelle).toBe('kWh par an · estimation')
+    // Sans estimation lue : le comportement d'avant (panneaux et puissance seulement).
+    expect(tuilesClient(document, INCOMPLET, estimationPose({ productionKwh: null })).map((t) => t.cle)).toEqual(['panneaux', 'kwc'])
+    expect(estimationPose({ productionKwh: 0 })).toBeNull()
+  })
+
+  it('3D : résultat incomplet ⇒ la tuile dit « estimation de la pose » avec le chiffre de l’atelier, sans la borne haute', async () => {
+    api.resultat.mockResolvedValue({ data: INCOMPLET })
+    reinitialiserBoot({ appliquerVue: vi.fn(), ...apiBuilder() })
+    rendre({ webgl: true })
+    await screen.findByTestId('client-soleil', {}, ATTENTE_ATELIER)
+    // Le constructeur de l'atelier publie son estimation dans « Recommandation » (`#rp9-reco-prod`).
+    let prod = document.getElementById('rp9-reco-prod')
+    if (!prod) { prod = document.createElement('p'); prod.id = 'rp9-reco-prod'; document.body.appendChild(prod) }
+    prod.textContent = '5 571 kWh/an'
+    await waitFor(() => expect(screen.getByTestId('client-tuile-kwh')).toBeInTheDocument(), { timeout: 5000 })
+    const tuile = screen.getByTestId('client-tuile-kwh')
+    expect(tuile.textContent.replace(/\s/g, ' ')).toMatch(/^5 571kWh par an · estimation de la pose$/)
+    expect(screen.getAllByTestId('client-tuile-kwh')).toHaveLength(1)
+    expect(screen.getByTestId('client-mention-estimation')).toHaveTextContent('Estimation de la pose')
+    expect(texteVisible(screen.getByTestId('cal-coque'))).not.toMatch(/52.695|au plus|borne haute/)
+    prod.textContent = '—'
   })
 })

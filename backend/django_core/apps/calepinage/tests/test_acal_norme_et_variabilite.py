@@ -163,3 +163,135 @@ class VariabiliteObserveeTest(SimpleTestCase):
         self.assertIsNone(bloc['sigma_total'])
         self.assertIn("une seule année", bloc['motif_refus'])
         self.assertIsNone(bloc['quantiles']['p90_kwh'])
+
+
+class CompositionPublieeTest(SimpleTestCase):
+    """ACAL1672 (D-ACAL-85) — le P90 compose modèle, météo et fiche avec la variabilité, chacune citée."""
+
+    ANNEES = {2019: 9500.0, 2020: 10000.0, 2021: 10500.0}
+
+    def _publiees(self):
+        import json
+        import pathlib
+        chemin = (pathlib.Path(__file__).resolve().parent.parent / 'data'
+                  / 'incertitudes_publiees.json')
+        return json.loads(chemin.read_text(encoding='utf-8'))
+
+    def test_composantes_retenues_composees(self):
+        import math
+        import statistics
+
+        from apps.calepinage.services.p50p90 import bankable
+
+        donnees = self._publiees()
+        bloc = bloc_incertitude(10000.0, totaux_par_annee=self.ANNEES)
+        noms = [c['nom'] for c in bloc['composantes']]
+        self.assertEqual(noms, [COMPOSANTE_METEO, 'modele_simulation',
+                                'biais_long_terme', 'incertitude_fiche'])
+        attendus = {COMPOSANTE_METEO: statistics.stdev(self.ANNEES.values()) / 10000.0}
+        for nom, bloc_publie in donnees['composantes'].items():
+            attendus[nom] = math.sqrt(sum(v ** 2 for v in bloc_publie['lignes'].values())) / 100.0
+        for composante in bloc['composantes']:
+            self.assertAlmostEqual(composante['sigma_relatif'], attendus[composante['nom']], places=6)
+            if composante['nom'] != COMPOSANTE_METEO:
+                self.assertEqual(composante['source'], 'texte')
+                self.assertEqual(composante['origine'], 'publiee')
+                self.assertIn(donnees['source']['url'], composante['reference'])
+                self.assertIn('IEA-PVPS T13-12:2018', composante['reference'])
+        sigma = math.sqrt(sum(v ** 2 for v in attendus.values()))
+        self.assertAlmostEqual(bloc['sigma_total'], sigma, places=5)
+        self.assertGreater(bloc['sigma_total'], attendus[COMPOSANTE_METEO])
+        p90 = bankable(10000.0, totaux_par_annee=self.ANNEES, kwc=7.0)['p90_kwh']
+        loi = statistics.NormalDist()
+        self.assertAlmostEqual(p90, 10000.0 * (1.0 + loi.inv_cdf(0.10) * bloc['sigma_total']), places=0)
+
+    def test_la_valeur_saisie_par_la_societe_prime(self):
+        reglages = {'sigma_modele_pct': {'valeur': 3.0, 'source': 'societe', 'reference': 'étude interne'}}
+        bloc = bloc_incertitude(10000.0, totaux_par_annee=self.ANNEES, reglages=reglages)
+        modele = [c for c in bloc['composantes'] if c['nom'] == 'modele_simulation']
+        self.assertEqual(len(modele), 1)
+        self.assertEqual(modele[0]['source'], 'societe')
+        self.assertAlmostEqual(modele[0]['sigma_relatif'], 0.03, places=6)
+
+
+class RegleDuFroidDesChainesTest(SimpleTestCase):
+    """ACAL1553 (D-ACAL-80) — un site au TMY plus doux que −5 °C se
+    dimensionne au minimum de son année type, et le détail cite la règle."""
+
+    def test_un_site_au_tmy_doux_dimensionne_au_minimum_de_l_annee_type(self):
+        from apps.calepinage.services.electrique import temperatures_site
+        site = temperatures_site(pin={'lat': 33.57, 'lng': -7.59}, fournisseur=lambda lat, lon: {
+            'temperature_min_c': 4.18, 'temperature_max_c': 38.0})
+        self.assertEqual((site.froid_c, site.source), (4.18, 'tmy'))
+        self.assertIn("minimum de l'année type du lieu (règle D-ACAL-80)", site.detail)
+
+
+class UneSeuleRegleDeFroidPourLeDevisEtLeCalepinage(SimpleTestCase):
+    """ADEV122 / ACAL1553 (D-ACAL-80, fondateur 23/11/2026) — la température
+    froide des chaînes est le minimum de l'année type du lieu, pour le devis
+    comme pour le calepinage ; sans épingle ni année type : −5 °C, dit."""
+
+    POINT = {'lat': 33.5731, 'lng': -7.5898}
+
+    @staticmethod
+    def _annee_type(lat, lon):
+        # Année type « douce » (Casablanca, relevé du tour 2 : +4,18 °C).
+        return {'temperature_min_c': 4.18, 'temperature_max_c': 38.0,
+                'base': 'PVGIS-SARAH3'}
+
+    def test_devis_et_calepinage_du_meme_site_meme_longueur_maximale(self):
+        from apps.calepinage.selectors_devis import froid_dimensionnement_au_point
+        from apps.calepinage.services.electrique import temperatures_site
+        from apps.ventes.moteur_ci.chaines_ci import longueur_max_appareil
+        from core.electrique.chaines import fenetre_admissible
+        from core.tests.test_electrique_chaines import _module, _onduleur
+        module, onduleur = _module(), _onduleur()
+        site = temperatures_site(pin=self.POINT, fournisseur=self._annee_type)
+        calepinage = fenetre_admissible(module, onduleur, site.froid_c,
+                                        site.chaud_c).longueur_max
+        froid = froid_dimensionnement_au_point(
+            self.POINT['lat'], self.POINT['lng'], fournisseur=self._annee_type)
+        devis = longueur_max_appareil(module, onduleur, froid.valeur_c)
+        self.assertEqual((site.froid_c, froid.valeur_c), (4.18, 4.18))
+        self.assertEqual(devis, calepinage)
+        # Mutant « le devis garde −5 °C » : une chaîne plus courte.
+        self.assertGreater(devis, longueur_max_appareil(module, onduleur))
+        self.assertIn('D-ACAL-80', site.detail)
+        self.assertEqual(froid.source, 'tmy')
+
+    def test_sans_epingle_ni_annee_type_moins_cinq_dit(self):
+        from apps.calepinage.selectors_devis import froid_dimensionnement_au_point
+        from apps.calepinage.services.electrique import temperatures_site
+        for froid in (froid_dimensionnement_au_point(None, None, fournisseur=self._annee_type),
+                      froid_dimensionnement_au_point(33.57, -7.59, fournisseur=lambda la, lo: None)):
+            self.assertEqual(froid.valeur_c, -5.0)
+            self.assertIsNone(froid.source)
+            self.assertIn('supposé', froid.detail)
+        site = temperatures_site(pin=None, fournisseur=None)
+        self.assertEqual(site.froid_c, -5.0)
+        self.assertIn('supposé', site.detail)
+
+    def test_le_devis_n_appelle_jamais_pvgis_sous_la_suite_de_tests(self):
+        """ADEV122 — le fournisseur RÉEL (PVGIS, enregistré au démarrage) n'est
+        jamais appelé par le devis pendant les tests : la longueur des chaînes
+        d'un test ne dépend pas du réseau. Un fournisseur injecté, lui, est lu."""
+        from unittest import mock
+
+        from apps.calepinage.selectors_devis import froid_dimensionnement_au_point
+        from apps.calepinage.services import electrique
+        from apps.calepinage.services.temperatures_tmy import temperatures_tmy
+        with mock.patch.object(electrique, '_fournisseur_temperatures',
+                               return_value=temperatures_tmy), \
+                mock.patch.object(electrique, '_depuis_fournisseur') as lecture:
+            froid = froid_dimensionnement_au_point(33.57, -7.59)
+        lecture.assert_not_called()
+        self.assertEqual((froid.valeur_c, froid.source), (-5.0, None))
+        self.assertIn('supposé', froid.detail)
+        # Hors de la suite de tests, le même appel lit bien le fournisseur réel.
+        with self.settings(TESTING=False), \
+                mock.patch.object(electrique, '_fournisseur_temperatures',
+                                  return_value=temperatures_tmy), \
+                mock.patch.object(electrique, '_depuis_fournisseur',
+                                  return_value=(4.18, 38.0, 'PVGIS-SARAH3')) as lecture:
+            froid_dimensionnement_au_point(33.57, -7.59)
+        lecture.assert_called_once()

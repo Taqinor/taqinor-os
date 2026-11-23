@@ -119,7 +119,7 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
     from apps.ventes.domain.creation import devise_par_defaut
     from apps.ventes.domain.etude_ci_batterie import (
         CLE_BANQUE_RECOMMANDEE, banque_recommandee, lignes_des_options)
-    from apps.ventes.domain.suppositions_ci import alertes_pour_la_commerciale
+    from apps.ventes.domain.suppositions_ci import alertes_du_journal
     from apps.ventes.models import Devis
 
     taille = target_kwc if target_kwc not in (None, '') else getattr(
@@ -187,9 +187,10 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
                     'message': ('« %s » à chiffrer après la visite technique : hors '
                                 'total, devis estimé sous réserve de visite.' % poste)}
                    for poste in (etude.get('composition') or {}).get('a_chiffrer_visite') or []]
-        alertes += [dict(a) for a in alertes_pour_la_commerciale(etude)
-                    if a.get('niveau') in ('alerte', 'bloquant')
-                    and a.get('code') != 'a_chiffrer_visite']
+        # ADEV124 — les suppositions qui changent un chiffre (profil estimé
+        # compris, même de niveau « info ») sortent au journal avec leur champ.
+        alertes += [dict(a) for a in alertes_du_journal(etude)
+                    if a.get('code') != 'a_chiffrer_visite']
         alertes += _alertes_brouillons_ci_du_lead(devis)
         journal_auto['alertes'] = alertes
     logger.info('Auto-devis C&I %s: %s kWc (lead %s, company %s)', devis.reference,
@@ -276,7 +277,8 @@ def build_devis_auto(*, lead, user, company, taux_tva=None,
                 "la fiche lead.", field='type_installation')
         return marquer_rapide(_build_devis_auto_ci(lead=lead, user=user, company=company,
                                                    taux_tva=taux_tva, remise_globale=remise_globale,
-                                                   journal_auto=journal_auto, target_kwc=target_kwc))
+                                                   journal_auto=journal_auto, target_kwc=target_kwc),
+                              journal_auto)
     if marche == 'agricole':
         # AGR124 — l'agricole passe par LE moteur serveur (D-AGR-1), origine
         # « auto » seulement : le tunnel du site reste refusé.
@@ -288,7 +290,7 @@ def build_devis_auto(*, lead, user, company, taux_tva=None,
         return marquer_rapide(_build_devis_auto_agricole(
             lead=lead, user=user, company=company, taux_tva=taux_tva,
             remise_globale=remise_globale, journal_auto=journal_auto,
-            target_kwc=target_kwc))
+            target_kwc=target_kwc), journal_auto)
     if marche and marche != 'residentiel':
         raise AutoDevisError(
             "L'auto-devis ne gère que le résidentiel pour l'instant. Pour "
@@ -303,12 +305,23 @@ def build_devis_auto(*, lead, user, company, taux_tva=None,
         scenario=scenario, etude_extra=etude_extra, plafond_toit=plafond_toit,
         journal_auto=journal_auto, origine=origine,
         structure_produit_id=structure_produit_id,
-        structure_type=structure_type))
+        structure_type=structure_type), journal_auto)
 
 
-def marquer_rapide(devis):  # ACAL1004 — « Devis automatique » : marque `rapide`, rien d'autre ne bouge
+def marquer_rapide(devis, journal_auto=None):  # ACAL1004 — « Devis automatique » : marque `rapide`
+    """ADEV123/ADEV125 (« Persistance ») — range aussi les SUPPOSITIONS dites à
+    la création (alertes du journal qui nomment un champ de la fiche) sous
+    ``etude_params.journal_auto`` : l'écran les remontre à la réouverture.
+    Clé DÉRIVÉE hors empreinte, jamais lue par le PDF ; écrite à la création
+    (brouillon) seulement."""
     from apps.ventes.domain.etude_schema import AUTO_DEVIS, ecrire
-    ecrire(devis, proprietaire=AUTO_DEVIS, origine_conception='rapide')
+    cles = {'origine_conception': 'rapide'}
+    suppositions = [dict({'code': a.get('code'), 'message': a.get('message'), 'champ_lead': a['champ_lead']},
+                         **({'interne': True} if a.get('interne') else {}))
+                    for a in (journal_auto or {}).get('alertes') or [] if a.get('champ_lead')]
+    if suppositions:
+        cles['journal_auto'] = {'alertes': suppositions}
+    ecrire(devis, proprietaire=AUTO_DEVIS, **cles)
     return devis
 
 

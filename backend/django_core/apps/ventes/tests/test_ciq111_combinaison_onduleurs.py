@@ -273,6 +273,26 @@ class ChainesCiTests(TestCase):
         self.assertIn('Huawei 15KTL-M5', r['bloquants'][0])
         self.assertEqual(r['entrees'], [])
 
+    def test_froid_du_site_borne_la_chaine_et_se_dit(self):
+        # ADEV122 (D-ACAL-80) — 715 Wc sur Huawei 20 kW : 20 modules à −5 °C,
+        # 21 au minimum de l'année type de Casablanca (+4,18 °C).
+        from apps.ventes.moteur_ci.chaines_ci import longueur_max_appareil
+        from core.electrique.types import froid_de_dimensionnement
+        huawei = _vivier_huawei()[1]
+        self.assertEqual(longueur_max_appareil(_module_715(), huawei['spec']), 20)
+        self.assertEqual(longueur_max_appareil(
+            _module_715(), huawei['spec'], froid_de_dimensionnement(4.18).valeur_c), 21)
+
+        def froid_dit(froid):
+            r = combiner_onduleurs(20.0, [huawei], phase='tri', module=_module_715(), froid=froid)
+            return [h for h in r['hypotheses'] if h['cle'] == 'temperature_froid_c']
+        site = froid_dit(froid_de_dimensionnement(4.18))
+        self.assertEqual((site[0]['valeur'], site[0]['statut']), (4.18, 'source'))
+        repli = froid_dit(froid_de_dimensionnement(None))
+        self.assertEqual((repli[0]['valeur'], repli[0]['statut']), (-5.0, 'estimation'))
+        self.assertIn('supposé', repli[0]['source'])
+        self.assertEqual(froid_dit(None), [])
+
     def test_combiner_20_kwc_tous_les_modules_cables(self):
         cat = [c for c in _vivier_huawei() if c['kw_ac'] == 20]
         r = combiner_onduleurs(20.59, cat, phase='tri', module=_module_cs7n())
@@ -424,6 +444,23 @@ class FicheFaitFoiTests(TestCase):
         r = self._combiner(100, _hybrides_deye_fiche())
         self.assertEqual([(x['kw_ac'], x['quantite']) for x in r['combinaison']], [(20.0, 2)])
         self.assertEqual(sum(c['nb_modules'] for c in r['chaines']), 100)
+
+    def test_le_moteur_ci_et_le_calepinage_appellent_la_meme_regle(self):
+        # ADEV121 — D-HYB-1 vit UNE fois, dans le noyau : le moteur C&I
+        # l'importe (plus de copie locale) ; le calepinage la lit aussi.
+        from types import SimpleNamespace
+        from unittest import mock
+        from apps.ventes.moteur_ci import onduleurs as moteur
+        from core.electrique import onduleurs as noyau
+        self.assertIs(moteur.capacite_dc_appareil_kwc, noyau.capacite_dc_appareil_kwc)
+        # Hybride 20 kW publiant 40 kWc : 40 kWc des deux côtés.
+        candidat = {'kw_ac': 20.0, 'dc_max_kwc': 40, '_fiche_fait_foi': True}
+        deye = SimpleNamespace(designation='Onduleur hybride Deye 20K', dc_max_kwc=40)
+        self.assertEqual(moteur._capacite_kwc(candidat, 1.35)[0], 40.0)
+        self.assertEqual(noyau.capacite_publiee_hybride(deye), 40.0)
+        # Mutant « copie locale gardée » : le moteur ne suivrait pas la règle.
+        with mock.patch.object(moteur, 'capacite_dc_appareil_kwc', return_value=7.0):
+            self.assertEqual(moteur._capacite_kwc(candidat, 1.35)[0], 7.0)
 
 
 class GardeAstTests(TestCase):

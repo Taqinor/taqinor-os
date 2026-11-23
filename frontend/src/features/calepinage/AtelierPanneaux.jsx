@@ -190,6 +190,7 @@ export default function AtelierPanneaux({
       enregistrerAvant={enregistrerAvant}
       aDesRetouches={aDesRetouches}
       atelierPret={atelierPret}
+      actionEtape={devisAuRail}
       // ACAL93 — le verdict SERVEUR (design-context, ACAL36).
       revisionPossible={!!contexte?.revision_possible}
     />

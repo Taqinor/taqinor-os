@@ -147,6 +147,46 @@ class NormalisationVilleTests(SimpleTestCase):
         self.assertIsNone(pp.cle_ville('Quartier Riad, Tombouctou'))
         self.assertIsNone(pp.cle_ville('Chefchaouen medina'))
 
+    def test_orthographes_courantes_et_noms_arabes_des_villes_de_la_table(self):
+        """APAR92 (D-ACAL-95, fondateur 23/11/2026) — les écritures relevées
+        en production le 23/11 (« casa », « casablaca », « caaza », « kech »,
+        noms en arabe) désignent des villes DE LA TABLE : reconnues. Le reste
+        (pays, ville hors table, quartier rattachable à plusieurs communes)
+        reste refusé — « Manque : ville »."""
+        reconnues = {
+            'casa': 'casablanca', 'CASA': 'casablanca', 'casablaca': 'casablanca',
+            'caaza': 'casablanca', 'Aïn Sbaa': 'casablanca', 'kech': 'marrakech',
+            'فاس': 'fes', 'طنجة': 'tanger', 'الدار البيضاء': 'casablanca',
+            'أكادير': 'agadir', 'إفران': 'ifrane', 'آسفي': 'safi', 'مراكش': 'marrakech',
+        }
+        for ecriture, cle in reconnues.items():
+            self.assertEqual(pp.cle_ville(ecriture), cle, ecriture)
+            self.assertEqual(pp.productible_mensuel(ville=ecriture)[1], 'pvgis_ville:%s' % cle)
+        for refusee in ('maroc', 'Maroc', 'harhoura', 'سيدي بنور', 'Paris', 'casanova'):
+            self.assertIsNone(pp.cle_ville(refusee), refusee)
+        # La table d'orthographes ne mène qu'à des villes DÉJÀ dans la table :
+        # aucune ville nouvelle n'y entre.
+        for ecriture, cle in pp._ORTHOGRAPHES.items():
+            self.assertIn(cle, pp.PRODUCTIBLE_MENSUEL_VILLE, ecriture)
+
+    def test_une_ville_de_la_table_passe_avant_une_orthographe_toleree(self):
+        """APAR92 — deux candidats de même longueur dans la même saisie : la
+        ville DE LA TABLE gagne sur l'orthographe tolérée, puis l'ordre
+        alphabétique tranche — jamais l'ordre d'un ensemble, qui change d'un
+        processus à l'autre (« Mohammedia, Casa » rendait Casablanca une fois
+        sur deux). Le comportement d'avant APAR92 est gardé."""
+        attendues = {
+            'Mohammedia, Casa': 'mohammedia', 'Casa - Mohammedia': 'mohammedia',
+            'Bouskoura casa': 'bouskoura', 'Casa route de Marrakech': 'marrakech',
+            'kech ou casa': 'casablanca',
+        }
+        for ecriture, cle in attendues.items():
+            self.assertEqual(pp.cle_ville(ecriture), cle, ecriture)
+        # L'ordre des candidats est TOTAL : la clé de tri ne laisse aucune égalité.
+        candidats = set(pp.PRODUCTIBLE_MENSUEL_VILLE) | set(pp._ORTHOGRAPHES)
+        cles = [(-len(c.split()), c in pp._ORTHOGRAPHES, c) for c in candidats]
+        self.assertEqual(len(set(cles)), len(cles))
+
 
 class DecalageHoraireTests(SimpleTestCase):
     """Le décalage est DÉRIVÉ de la base de fuseaux, jamais figé à « +1 ».

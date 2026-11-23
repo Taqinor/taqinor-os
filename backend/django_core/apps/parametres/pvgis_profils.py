@@ -744,6 +744,60 @@ _ORTHOGRAPHES = {
     'tangier': 'tanger',
     'marrakesh': 'marrakech',
     'boskoura': 'bouskoura',
+    # APAR92 (D-ACAL-95, fondateur 23/11/2026) — écritures courantes relevées
+    # sur les fiches en production le 23/11 (« casa » ×5, « casablaca »,
+    # « caaza », « kech »), puis le nom ARABE de chaque ville de la table
+    # (clé déjà normalisée : أ/إ/آ deviennent ا). Un quartier n'entre que
+    # s'il n'appartient qu'à une ville (Aïn Sebaâ, Casablanca) ; « maroc »,
+    # une ville hors table ou un lieu partagé (Harhoura) restent refusés.
+    'casa': 'casablanca',
+    'casa blanca': 'casablanca',
+    'casablaca': 'casablanca',
+    'caza': 'casablanca',
+    'caaza': 'casablanca',
+    'ain sbaa': 'casablanca',
+    'ain sebaa': 'casablanca',
+    'kech': 'marrakech',
+    'marakech': 'marrakech',
+    'mohamedia': 'mohammedia',
+    'tetuan': 'tetouan',
+    'hoceima': 'al hoceima',
+    'el hoceima': 'al hoceima',
+    'beni melal': 'beni mellal',
+    'rachidia': 'errachidia',
+    'الدار البيضاء': 'casablanca',
+    'بوسكورة': 'bouskoura',
+    'المحمدية': 'mohammedia',
+    'الجديدة': 'el jadida',
+    'الرباط': 'rabat',
+    'فاس': 'fes',
+    'مراكش': 'marrakech',
+    'اكادير': 'agadir',
+    'اغادير': 'agadir',
+    'طنجة': 'tanger',
+    'وجدة': 'oujda',
+    'ورزازات': 'ouarzazate',
+    'العيون': 'laayoune',
+    'الداخلة': 'dakhla',
+    'القنيطرة': 'kenitra',
+    'بوزنيقة': 'bouznika',
+    'سطات': 'settat',
+    'خريبكة': 'khouribga',
+    'بني ملال': 'beni mellal',
+    'مكناس': 'meknes',
+    'تازة': 'taza',
+    'الناظور': 'nador',
+    'الحسيمة': 'al hoceima',
+    'تطوان': 'tetouan',
+    'العرائش': 'larache',
+    'اسفي': 'safi',
+    'الصويرة': 'essaouira',
+    'كلميم': 'guelmim',
+    'طانطان': 'tan tan',
+    'تيزنيت': 'tiznit',
+    'تارودانت': 'taroudant',
+    'الرشيدية': 'errachidia',
+    'افران': 'ifrane',
 }
 
 
@@ -796,7 +850,10 @@ def _cle_ville_tolerante(texte_normalise):
     if not mots:
         return None
     candidats = set(PRODUCTIBLE_MENSUEL_VILLE) | set(_ORTHOGRAPHES)
-    for candidat in sorted(candidats, key=lambda c: -len(c.split())):
+    # Ordre TOTAL, donc identique d'un processus à l'autre (un ensemble n'a pas d'ordre) : les noms composés
+    # d'abord, puis une ville de la TABLE avant une orthographe tolérée, puis l'ordre alphabétique. Ainsi
+    # « Mohammedia, Casa » reste Mohammedia, comme avant les orthographes d'APAR92 (critique finale du 23/11).
+    for candidat in sorted(candidats, key=lambda c: (-len(c.split()), c in _ORTHOGRAPHES, c)):
         mots_candidat = candidat.split()
         n = len(mots_candidat)
         for i in range(len(mots) - n + 1):

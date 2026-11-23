@@ -442,3 +442,274 @@ Tenu à jour au fil de l'eau dans `T2/pour-reda.md`.
       `l5cal-net`, serveur du front, `DROP DATABASE l5cal`, fichier d'environnement effacé, image `l5cal-django:t0`)
 - [ ] worktree `l5cal-instr` et worktrees de lanes retirés ; Docker Desktop arrêté s'il n'était pas en marche
 - [ ] rétro bornée
+
+## POINT à 12 h 35 UTC
+
+**Fait depuis 11 h 25.** Vague B FUSIONNÉE : PR #1529, 12 h 27 UTC (la file l'avait refusée une fois : deux tests
+serveur — le run de PR d'une branche `claude/*` ne joue PAS le backend, seul le groupe de fusion le fait ; leçon
+versée à la mémoire `plan-drain-ci-bug-classes`, entrées 15 et 35). `origin/main` re-fusionné dans la branche locale
+(`d5837c0674` puis commits de docs) — RIEN n'est poussé depuis `41e7b88cab` : le prochain push ouvre la PR de la
+vague C (activer Auto-fix dès l'ouverture, jamais d'archivage automatique).
+
+**Phase de contrôles (commencée, la demande de Reda après le L5).**
+- `controles/C1-moteur-unique.md` (4 moteurs, 5 bornes de ratio, causes du lead 1742, 8 tâches).
+- `controles/C2-devis-automatiques.md` (par marché : aboutit / s'arrête où ; 6 tâches ; 5 questions).
+- `controles/C3-mesures-prod.md` (lecture seule de la prod : résidentiel 448 des 478 leads à facture aboutissent ;
+  commercial 4 sur 42 ; 11 calepinages, 5 liés à un devis, 3 à un nombre de panneaux différent de l'option retenue).
+- Décisions écrites dans `docs/audits/decisions.yml` : D-ACAL-75 (rejouer), 89, 90, 91 prises seul, à confirmer ;
+  D-ACAL-92 à 95 ouvertes (contrat, phase, rythme industriel, ville).
+
+**Tour 3 (contre-vérification en direct, pile au code `f7d5f1a7ec`).** Rapports rendus : T3-ECRANS (31 : 8 ok, 22
+partiel, 1 non-fait), T3-PROD (20 : 13 ok, 3 partiel, 2 non-fait, 2 non essayés), T3-POSE (24 sur 39 : 10 ok, 11
+partiel, 3 non-fait ; un défaut S1 : pose personnalisée perdue à la réouverture), T3-ELEC (22 sur 45, relancé pour
+les 23 restantes : agent `a43dbb69ac7e0ac40`). En cours : T3-TOIT (`a9720ab55bd56619f`, borné à 13 h 10 UTC), B3
+(`adace7d0ca0efc67b`, opus : 14 écrans contre maquettes v2 + 5 tâches du téléphone, sortie `T3/B3.md`, planches dans
+`T3/preuves/`). Non lancés, faute de budget : T3-INSUF-GRAVES (35) et T3-INSUF-AUTRES (60) → à dire au rapport.
+Liste lisible de tous les défauts et verdicts non ok du tour 3 : `…/scratchpad/t3-constats.txt` (à régénérer).
+
+**Vague C en construction (4 lanes en worktree, base `origin/claude/calpinage-module-l5-aadbde@41e7b88cab`).**
+| Lane | Agent | Modèle | Tâches | Mission |
+|---|---|---|---|---|
+| moteur-unique | `a70b1300ce0d5322b` | opus | ACAL1950-1956, ALEA67, + ajouts ACAL1954 élargie, ACAL1957, ACAL1958 | `controles/lane-moteur-unique.md` |
+| pose-reprise | `a9403d26b580a6e39` | opus | ACAL1900-1903 | `controles/lanes-vague-C.md` |
+| ecrans-s2 | `a4af39d42636672db` | sonnet | ACAL1904-1908 | idem |
+| production-s2 | `aeed6a7041ae6b1e1` | sonnet | ACAL1909-1913 | idem |
+Branches `lane-l5c-<nom>` ; événements `…/scratchpad/l5b/T2-lane-<nom>.jsonl`.
+
+**Reste à faire, dans l'ordre.**
+1. À chaque lane rendue : relire ses commits, plier (`git merge --no-ff lane-l5c-<nom>`), retirer son worktree.
+2. Faire écrire les lignes v3 du plan (un agent sonnet, sorties en fichiers d'attente puis assemblage) : ACAL1900-1913,
+   ACAL1950-1958, ALEA67 (plan lead), restes de C1 (moitié devis de D-HYB-1 et températures → plan transverse), C2
+   (devis : dire les suppositions ; calepinage : profil du CRM, quatre pertes gated D-ACAL-82 ; moteur : orthographes
+   de ville gated D-ACAL-95), restes S3 du tour 3, `T2/consolidation/entree-lot-O.md`. Puis `marquer_livrees.py`.
+3. Gardes hôte (`ci_guards.py stage-names`, flake8, eslint), CODEMAP / contrats / OpenAPI si des clés ont bougé,
+   suite `apps.calepinage` entière en conteneur AVANT la file (le run de PR ne joue pas le backend).
+4. Push → PR vague C → Auto-fix → critique (opus, pas Fable sauf surface à risque) → file de fusion.
+5. Reconstruire la pile sur la vague C, rejouer en direct : pose de 16 rouverte, calepinage lié au devis envoyé,
+   ratio, étape Résultats ; enregistrement d'acceptation du tour 3 (`enregistrer_acceptation.py` à adapter aux
+   fichiers `T3-*-cv.jsonl`), coches.
+6. Rapport final `RAPPORT-FINAL-2026-11-23.md` (sections 6, 7, 10) → `SendUserFile`.
+7. Démontage de la pile, relance des 5 conteneurs `erp-agentique-*`, libération des claims, rétro.
+
+**Quota.** 55 % de la semaine à 12 h 05 UTC ; cible de fin relevée à environ 65 % (vague C non prévue au départ).
+
+## POINT à 15 h 10 UTC
+
+**Reda est réveillé depuis 13 h 25 UTC.** Il a reçu le rapport (état de 14 h 20) par `SendUserFile`, a répondu à TOUTES
+les décisions ouvertes par questions interactives (D-ACAL-75 à 96 dans `docs/audits/decisions.yml` ; résumé dans
+`docs/claude-memory/calepinage-decisions-fondateur.md`, section 23/11), puis a choisi : **« Build everything now »**.
+Sa règle : « i only want one engine calculating every number so no more then one number for each value and you keep
+the most realistic number ». Quota de la semaine : 60 % à 13 h 15, environ 63 % à 14 h 50 ; il a accepté ≈ 85 %.
+
+**PR ouverte : #1530** (vague C ; Auto-fix allumé ; PAS en file de fusion). Tête poussée `b8d4dafc27` : lanes ecrans-s2,
+production-s2, ecrans-s3, pose-reprise (1re), moteur-unique (10 commits), tâches du lot O dans six plans, tour 3
+(47 coches, enregistrement `2026-11-23-f7d5f1a7e`), décisions. **NE PAS mettre en file avant** : (1) le correctif RÉEL
+d'ACAL1900 (le rejeu en direct `T3/T3-VAGUEC.md` a montré que la pose de 16 se rouvre encore à 5) ; (2) la suite serveur
+entière jouée (le run de PR ne la joue pas) — la suite `apps.calepinage` du 23/11 14 h 26 sur `d972960ed5` : 7 280 tests,
+1 échec et 14 erreurs dont 3 expliquées (front absent du montage) et 11 NON LUES (journal tronqué) : attendre la liste
+de la lane moteur-unique ou la rejouer avec journal complet.
+
+**Lanes en cours (worktrees `agent-<id>`, branches locales).**
+| Lane | Agent | Modèle | Tâches | État à 15 h 10 |
+|---|---|---|---|---|
+| moteur-unique (C) | `a70b1300ce0d5322b` | opus | reste ACAL1957 + suite entière | 10 commits pliés (`35d938ab43`) ; re-plier son reste |
+| pose-reprise-2 (C) | `ad4b2a2953bc0d89e` | opus | ACAL1900, ACAL1903 avec navigateur réel | en cours |
+| pertes-simulation (D) | `aa4cc89b8529b9b34` | sonnet | ACAL1968+1349, 1671, 1987 (neuve), 1967 | en cours |
+| ombrage-p90-nasa (D) | `a0f2f3d374de04120` | opus | ACAL1407+1501, 1672, 746 | en cours |
+| devis-auto-ci (D) | `aeb85a9f773ecb762` | opus | ADEV125, 126, 127, 124 | en cours |
+| regles-communes (D) | `aae78b8237360c887` | opus | ADEV121, ADEV122+ACAL1553, ADEV123, APAR92 | en cours |
+| ecrans-d (D) | `a5ef7afef8238d297` | sonnet | ACAL1985, 1912, 1905, 1908, 1840, 1755 | 3 commits |
+Missions : `controles/lane-moteur-unique.md`, `controles/lanes-vague-C.md`, `controles/lanes-vague-D.md`.
+À lancer APRÈS le pli de pose-reprise-2 : lane « taille-auto » (ACAL1331 + ACAL1448, opus, moteur de dessin).
+
+**À chaque lane rendue** : relire le diff, `git merge --no-ff`, retirer le worktree (jonctions d'abord), recopier ses
+événements au registre (`lot_o_complement.py` les renomme), puis gardes : `flake8`, `eslint`, vitest du module ET
+`node --test "src/**/*.test.mjs"` depuis `frontend/` (la lane ecrans-s3 a cassé un test de logique pure que vitest ne
+joue pas), `check_services_appeles`, `check_api_shapes`, `check_forme_code --base origin/main`, `check_ancres_taches`,
+`check_decisions`, OpenAPI en conteneur (`docker run … -v <worktree>:/repo -w /repo/backend/django_core l5cal-django:t0
+python ../../scripts/check_openapi_schema.py`), `codemap_fingerprint.py --write`.
+
+**Reste à faire, dans l'ordre.**
+1. Plier pose-reprise-2 → reconstruire la pile (`l5cal-instr` : `git checkout --detach <sha>`, `vite build`, `docker
+   restart l5cal-django l5cal-celery`) → rejouer ACAL1900 en direct → file de fusion de #1530 (`gh pr merge 1530 --auto --merge`).
+2. Vague D : plier les lanes, critique finale (dernier appel Fable permis : la vague touche le moteur de devis), PR à
+   part (vague D), rejeu en direct ciblé, fusion.
+3. Plan : ligne ACAL1987 (simulation qui part seule) à écrire ; préfixes « [GATED : décision … ouverte] » des tâches
+   répondues à réécrire ; `marquer_livrees.py` ; tâches des 6 points « après » de `T3/critique-vague-C1.md` et des
+   restes de `T3/T3-VAGUEC.md`.
+4. Rapport final à compléter (`RAPPORT-FINAL-2026-11-23.md` : décisions répondues, vagues C et D) → `SendUserFile`.
+5. Démontage (le classifieur a refusé `docker rm -f` d'un conteneur de test : le dire à Reda), claims, rétro mémoire.
+
+## POINT à 16 h 40 UTC
+
+**Quota : 72 % de la semaine à 16 h 35** (Reda a accepté ≈ 85 % : « Build everything now »). Contexte de l'orchestrateur à 78 %.
+
+**PR #1530 ouverte, PAS en file** (Auto-fix allumé). Branche poussée jusqu'à `7cb9f89366` (72 commits devant `main`).
+Pliés depuis 15 h 10 : moteur-unique (11 commits, dont les rouges de la suite entière corrigés), ecrans-d (6 points),
+ombrage-p90-nasa (3 tâches), pose-reprise-2 (**ACAL1900 corrigée pour de vrai, vue au navigateur** ; ACAL1903).
+Tenue des plans faite (`…/scratchpad/l5b/tenue_plans_d.py --ecrire` : ACAL1987 écrite, 19 préfixes GATED réécrits,
+tâches marquées « code livré » dans tous les plans ; à relancer après chaque pli + recopier les événements des lanes).
+
+**CI rouge à corriger avant toute file** : `web-build-test` — 3 tests du moteur de dessin
+(`apps/web/tests/estimatorRuntimePro10Pro11.test.ts` × 2, `userJourneyPro11.test.ts` × 1) : depuis ACAL1407 la matrice
+d'ombrage est réécrite à chaque sérialisation (document sans obstacle : `shading12x24` n'est plus `null` ; production
+qui bouge de 0,3 kWh à la réouverture sans geste). Lane de couture `adf87e0be276b65f7` (opus, branche
+`lane-l5d-coutureombrage`). Pour jouer ces deux suites à la main depuis `apps/web/` (jonction `node_modules` posée
+dans MON worktree vers `l5cal-instr`) : `npx vitest run --config <…>/scratchpad/PR2/vitest.jonction.mjs tests/estimatorRuntimePro10Pro11.test.ts tests/userJourneyPro11.test.ts`
+— À JOUER À CHAQUE PLI qui touche `apps/web/src/scripts/roofPro11/` (les lanes ne peuvent pas les jouer).
+
+**Lanes en cours.**
+| Lane | Agent | Branche | État à 16 h 35 |
+|---|---|---|---|
+| pertes-simulation | `aa4cc89b8529b9b34` | `lane-l5d-pertessimu` | 4 commits (ACAL1968+1349, 1671, 1987, 1967), suite entière en cours |
+| devis-auto-ci | `aeb85a9f773ecb762` | `lane-l5d-devisautoci` | 3 commits (ADEV125, 126, 127), reste ADEV124 |
+| regles-communes | `aae78b8237360c887` | `lane-l5d-reglescommunes` | 3 commits (ADEV121, ADEV122+ACAL1553, ADEV123), reste APAR92 |
+| taille-auto | `af9f681dc58971d47` | `lane-l5d-tailleauto` | lancée 16 h 00 (ACAL1331+1448, navigateur réel, port 5263, compte rev_b7) |
+| couture-ombrage | `adf87e0be276b65f7` | `lane-l5d-coutureombrage` | lancée 16 h 20 |
+| moteur-unique | `a70b1300ce0d5322b` | `lane-l5c-moteurunique` | tout plié ; attend sa suite finale (rapport à venir) |
+| vérificateur T3-VAGUEC2 | `a72e242511a4baaa1` | — | rejeu en direct sur la pile (`428193cc6f`), compte rev_b8, sorties `T3/T3-VAGUEC2.md` |
+
+**Demandes croisées ouvertes (à donner à une lane de couture après les plis)** :
+- brancher `nasa_power.py::ClientNasaPower.comparaison_horizontale` dans `simulation.py` (bloc `meteo.comparaison_nasa_power`), contrat météo, écran ;
+- rapport d'étude : `services/rapport/production.py` (bloc `production-ecart-devis`) et `MENTION_ECART_DEVIS` de `services/electrique.py` disent encore « Production imprimée au client = moteur du devis (D-ACAL-6) » — périmé depuis D-ACAL-86/96 (un seul chiffre, les deux nommés s'ils diffèrent, devis envoyé jamais modifié) ; recapture `calepinage_resultat.json` et son golden ;
+- ACAL1957 (« cible vide » après « Générer le devis ») : « impossible » pour la lane — cause probable `ventes/domain/lignes.py::cible_depuis_lignes` (aucune ligne classée panneau) ; à lire dans `T3/T3-VAGUEC2.md` partie B ;
+- 6 points « après » de `T3/critique-vague-C1.md` et restes de `T3/T3-VAGUEC.md` : tâches à écrire.
+
+**Ordre de fin.** (1) plier couture-ombrage → CI verte ; (2) lire T3-VAGUEC2 ; (3) plier pertes-simulation, devis-auto-ci,
+regles-communes, taille-auto (gardes du POINT 15 h 10 + suites runtime du moteur de dessin + `node --test`) ;
+(4) critique finale (dernier appel Fable permis : la vague touche le moteur de devis) ; (5) suite serveur ENTIÈRE avant la
+file (les lanes moteur-unique et pertes-simulation la jouent : lire leurs nombres) ; (6) `gh pr merge 1530 --auto --merge` ;
+(7) rejeu en direct ciblé de la vague D ; (8) rapport final complété + `SendUserFile` ; (9) démontage, claims
+(`plan_claims.py release` des 7 clés), rétro mémoire (leçons : run de PR sans backend ; suites runtime du moteur ;
+`node --test` au pli ; ancres `fichier::CONSTANTE` refusées ; `skipTest` refusé ; contrat sans moitié cliente ;
+conteneur de test oublié 4 h).
+
+## POINT à 17 h 35 UTC (le plus récent — REPRENDRE ICI)
+
+**Reda (17 h) : « i dont care about 85% i only care about good work, you can consume 100% »** — la qualité prime, pas le
+quota (mémoire `quality-over-quota`). Quota 72 % à 16 h 35. Contexte de l'orchestrateur ≈ 85-90 % : ce bloc suffit à reprendre.
+
+**D-ACAL-97 (un seul moteur dans l'ERP)** décidée et CONÇUE : `controles/C4-un-seul-moteur.md` (252 lignes),
+`controles/C4-taches.md` (48 tâches, format court). Réponses de Reda aux quatre questions du §9 (à écrire dans le
+document et dans decisions.yml) : Q1 = même simulation sur un toit par défaut (liste des écarts montrée avant bascule) ;
+Q2 = le brouillon suit la conception sauf s'il a été retouché à la main (« Mettre à jour » proposé sinon) ; Q3 = sans
+lead, le résultat est porté par le calepinage ; Q4 = pendant le dessin, panneaux et kWc seulement. **À CONSTRUIRE DANS
+UNE SESSION NEUVE** (sa décision). Reste à faire aujourd'hui : convertir `C4-taches.md` en lignes v3 dans les plans des
+propriétaires (agent sonnet, comme le lot O) pour que la session neuve puisse lancer « work on the plan ».
+
+**PR #1530 ouverte, PAS en file.** Branche locale = poussée jusqu'à `c7ad6af236` + commits locaux de docs. Pliés et
+poussés : toute la vague C (dont ACAL1900 vue deux fois au navigateur, couture ombrage : les 3 tests du moteur de dessin
+verts) + ecrans-d + ombrage-p90-nasa.
+
+**QUATRE LANES RENDUES, À PLIER (dans cet ordre), worktrees `agent-<id>` à retirer après :**
+| Lane | Branche (tête) | Agent | Contenu |
+|---|---|---|---|
+| regles-communes | `lane-l5d-reglescommunes` (`b10dc14839`) | `aae78b8237360c887` | ADEV121, ADEV122+ACAL1553 (partiel : C&I et résidentiel pas encore branchés), ADEV123, APAR92 |
+| devis-auto-ci | `lane-l5d-devisautoci` (`7a799b1cdf`) | `aeb85a9f773ecb762` | ADEV125, 126, 127, 124 |
+| pertes-simulation | `lane-l5d-pertessimu` (`4c0672846d`) | `aa4cc89b8529b9b34` | ACAL1968+1349, 1671, 1987, 1967 |
+| taille-auto | `lane-l5d-tailleauto` (`3e573106df`) | `af9f681dc58971d47` | ACAL1331, ACAL1448 (vus au navigateur) ; goldens `toitureDesign.*` recapturés |
+Conflits probables au pli : `apps/ventes/services.py` (deux lanes), `EtapeResultats.test.jsx`, `ReglagesSimulation.test.jsx`,
+`profilDepart.js` (pertes-simulation contre ecrans-d), goldens `toitureDesign.*` (taille-auto : prendre les siens puis
+les régénérer si rouges).
+
+**COUTURES à faire après les plis (lane(s) de couture, puis gardes) :**
+1. Golden HTTP du CRM à recapturer (`UPDATE_GOLDEN=1`, `apps.crm.tests_scission_golden`, conteneur) — rouge depuis ALEA67 ; la file de fusion le refuserait.
+2. ADEV122, branchement C&I : `apps/ventes/domain/etude_ci.py` pose `catalogue['froid']` et le passe à `combiner_onduleurs` (demande croisée de regles-communes, 3 lignes) ; résidentiel non branché → tâche.
+3. ACAL1987 : `services/electrique.py::enregistrer_entree` appelle `lancer_simulation_automatique` en `on_commit` ; `GET resultat/` + `EtapeResultats.jsx` lisent `selectors.simulation_automatique_en_cours` (« Simulation en cours… » sans clic).
+4. ACAL746 : brancher `nasa_power.py::ClientNasaPower.comparaison_horizontale` dans `simulation.py` (bloc météo), contrat, écran.
+5. ACAL1755 côté rapport d'étude : `services/rapport/production.py` (bloc `production-ecart-devis`) et `MENTION_ECART_DEVIS` (`services/electrique.py`) — un seul chiffre, les deux nommés s'ils diffèrent ; recapture `calepinage_resultat.json` + golden.
+6. ADEV125 : le PDF ne marque pas « estimation » (le bloc stocké n'a pas `sous_reserve_visite`) — demande croisée ; et choix à CONFIRMER par Reda : « BT patenté » pour un commerce, « BT force motrice » pour une usine.
+7. Vus à l'écran par T3-VAGUEC2 (`T3/T3-VAGUEC2.md`) : le ratio « 0,99 pour 1,35 au plus » marqué « à régler » sans raison dite (borne basse non dite) ; ACAL1951 (l'option du devis n'est pas nommée, « au devis » disparaît après remplissage) ; ACAL1952 (« Repris du devis » non visible à l'écran) ; ACAL1958 (bouton 330 × 104 au lieu de 340 × 52) ; ALEA67 (le mot « ville » n'est pas lu à l'écran) ; module d'essai posé par défaut au lieu de celui du devis.
+8. `docs/api-contracts.md` (3 clés de réglage de pertes), CODEMAP (nouveaux fichiers), OpenAPI en conteneur.
+9. Tâches à écrire : 6 « après » de `T3/critique-vague-C1.md`, restes de `T3/T3-VAGUEC.md` et `T3-VAGUEC2.md`, 3 tests pdf du rapport d'étude rouges sur `main` aussi (`test_acal_rapport_etude_servi.SchemaJointAuRapportTest`), `test_quote_engine_amot36_pages_ci` (2 échecs antérieurs, cherche « PROPRES À CETTE OPTION »), freezegun absent de l'image locale.
+
+**Puis** : gardes (liste du POINT 15 h 10 + suites runtime du moteur : `npx vitest run --config …/scratchpad/PR2/vitest.orchestrateur.mjs tests/estimatorRuntimePro10Pro11.test.ts tests/userJourneyPro11.test.ts` depuis `apps/web/` + `node --test "src/**/*.test.mjs"` depuis `frontend/`) → `tenue_plans_d.py --ecrire` (après avoir recopié les événements des lanes au registre) → critique finale (3e et dernier appel Fable : la vague touche le moteur de devis) → suites serveur `apps.crm`, `apps.ventes`, `apps.calepinage` → push → file de fusion (`gh pr merge 1530 --auto --merge`) → rejeu en direct de la vague D sur la pile reconstruite → rapport final complété (`RAPPORT-FINAL-2026-11-23.md` : décisions, vagues C et D, un seul moteur) → `SendUserFile` → démontage, `plan_claims.py release`, rétro mémoire.
+
+## POINT a 18 h 40 UTC (le plus recent - REPRENDRE ICI)
+
+Les quatre lanes de la vague D sont PLIEES et poussees (tete poussee `72194cca3d`, 101 commits devant `main`) :
+regles-communes, devis-auto-ci, pertes-simulation, taille-auto. Verifie sur la branche pliee : moteur de dessin
+1 587 + 107 tests (suites runtime comprises), ecrans 3 287 tests, `node --test` (2 echecs Windows connus), gardes
+`check_forme_code`, `check_api_shapes`, deux moities, ancres, services ; import-linter 21/21 (a jouer EN CONTENEUR a
+chaque pli : `docker run ... l5cal-django:t0 sh -c "pip install -q import-linter; lint-imports"` - une lane avait mis
+un test de `core/tests` qui importait des apps).
+
+EN COURS (trois lanes de couture, mission `controles/coutures-vague-D.md`, base `394d027567`) :
+- couture-devis `aa7ce21db18f62294` (opus), branche `lane-l5d-couturedevis` : golden HTTP du CRM (fait), froid du site
+  dans le devis C&I, marquage « estimation », libelle « ville » sur la fiche.
+- couture-calepinage `ab82581dac584f255` (opus), branche `lane-l5d-couturecalepinage` : simulation qui part seule (fin),
+  NASA POWER branche, rapport d'etude a un seul chiffre, borne basse du ratio, module du devis par defaut.
+- couture-ecran `ab6a7006b79c58e36` (sonnet), branche `lane-l5d-coutureecran` : option du devis nommee, « Repris du
+  devis » en Guide, bouton de Resultats, restes S3.
+- consolidation des taches du moteur unique `a551c09f1016760d9` (sonnet) : ecrit `controles/C4-taches-v3.md` et
+  `C4-consolidation.md`, et les reponses de Reda (Q1 a Q4) dans `C4-un-seul-moteur.md` §9.
+
+ENSUITE : plier les trois coutures (gardes + import-linter + suites) -> inserer les taches C4 dans les plans (script du
+type `autres_plans.py`, puis `check_ancres_taches`, `check_decisions`) -> critique finale (3e appel Fable : moteur de
+devis touche) sur `git diff origin/main...HEAD` hors docs -> suites serveur `apps.crm`, `apps.ventes`,
+`apps.calepinage` en conteneur -> file de fusion de #1530 -> reconstruire la pile et rejouer la vague D en direct ->
+rapport final (ajouter une section « apres-midi du 23/11 » : decisions repondues, vagues C et D, un seul moteur) ->
+`SendUserFile` -> demontage, claims, retro memoire.
+A CONFIRMER PAR REDA (a mettre au rapport) : pour un contrat absent, la lane a suppose « BT patente » pour un commerce
+et « BT force motrice » pour une usine.
+
+## POINT a 19 h 50 UTC
+
+TOUT EST PLIE ET POUSSE : tete `7fff8b561a` (PR #1530, Auto-fix allume, PAS en file). Vagues C et D completes + trois
+coutures (devis, calepinage, ecran). Les 55 taches du moteur unique (D-ACAL-97) sont dans six plans ; conception
+`controles/C4-un-seul-moteur.md` (reponses Q1-Q4 de Reda ecrites) ; a CONSTRUIRE DANS UNE SESSION NEUVE.
+
+EN COURS a 19 h 50 :
+- critique finale Fable `a2f31d6fe9e16ce5f` -> `T3/critique-finale-vagues-C-D.md` (75 min) ; un BLOQUANT se corrige avant la file.
+- verificateur `a56ce18c5dde95937` (T3-VAGUED, compte rev_b2, pile reconstruite sur `7fff8b561a`) -> `T3/T3-VAGUED.md`.
+- suite serveur `apps.calepinage` entiere (tache de fond bo9z2jyaw) -> `…/scratchpad/back-d1.log` (lignes ERROR/FAIL
+  completes). Echecs locaux connus : modules a `parents[5]` (front absent du montage), `freezegun` absent de l'image,
+  3 tests pdf `test_acal_rapport_etude_servi.SchemaJointAuRapportTest` (rouges sur main aussi).
+- a lancer apres elle (meme conteneur, un a la fois) : `tester.sh <worktree> vaguec apps.crm` puis les modules ventes
+  touches (`apps.ventes.tests.test_ciq118_etude_ci_preview`, `test_ciq666…`, goldens du moteur).
+
+ENSUITE : (1) corriger les bloquants de la critique, s'il y en a ; (2) `gh pr merge 1530 --auto --merge` ; surveiller le
+groupe de fusion (seul run qui joue le backend) ; (3) apres fusion : `git fetch origin main && git merge origin/main`,
+ligne au DONE LOG des plans, dire a Reda « merge - a deployer par toi : scripts/deploy-prod.ps1 » + la commande
+`manage.py relier_calepinages_devis_envoye` (liste) puis `--appliquer` ; (4) rapport final : ajouter au
+`RAPPORT-FINAL-2026-11-23.md` une section « Apres-midi du 23/11 » (decisions repondues ; vagues C et D : ce qui est
+livre, ce que les deux rejeux en direct ont vu ; un seul moteur : conception + 55 taches ; ce qui reste ; a confirmer :
+« BT patente » commerce / « BT force motrice » usine) puis `SendUserFile` ; (5) taches a ecrire pour les restes
+(`T3/critique-vague-C1.md` §3, `T3/T3-VAGUEC2.md`, `T3/T3-VAGUED.md`, critique finale « apres », NASA POWER a l'ecran,
+residentiel au froid du site, 3 tests pdf) ; (6) demontage (conteneurs l5cal-*, bases test_l5t_*, worktree l5cal-instr,
+jonctions `frontend/node_modules` et `apps/web/node_modules` de MON worktree par `cmd /c rmdir`, `docker start` des 5
+conteneurs erp-agentique arretes, vite preview bhkmo4ocy) - le classifieur a deja refuse un `docker rm -f` : donner les
+commandes a Reda si besoin ; (7) `plan_claims.py release` des 9 cles ; (8) retro memoire.
+
+## POINT à 20 h 20 UTC (le plus récent — REPRENDRE ICI)
+
+**PR #1530 ouverte, PAS en file.** Tête poussée `2d2d319322` (contrôles rapides verts à 20 h 18, `stage-names` et
+`web-build-test` en cours) ; local = + `0e283f29de` (brief du second tour de coutures).
+
+**Critique finale (3e et dernier appel au modèle le plus cher)** : `T3/critique-finale-vagues-C-D.md` — fusionnable
+après B1 et B2. FAITS et poussés : B1 (`b9f8569a3c`, ville déterministe), B2 (`70ea625012`, aucun appel PVGIS par le
+devis sous les tests + cliquet des imports ventes → calepinage à 22, seul vrai rouge de la suite complète du
+calepinage), point 1 (`2454a69f24`, froid du site sur l’option des lignes), point 4 (`7e2c8a305e`, pas de re-liaison
+d’une révision en brouillon). Point 3 vérifié en lecture seule sur la production : 70 devis envoyés ou acceptés avec
+lead, 49 sans GPS, la nouvelle reconnaissance de ville rend la MÊME clé pour les 49 (0 devis envoyé ne change ;
+sondes `…/scratchpad/probe4.py` et `probe5.py`). Restent à écrire en tâches : point 2 (réserve de visite imprimée pour
+quatre motifs — à confirmer par Reda), point 5 (dire que `semer_exemples_calepinage --apply` remplit tous les réglages
+vides), point 6 (page d’aperçu `/preview/toiture-3d-pro-11`).
+
+**Suites serveur jouées en conteneur sur la branche** : `apps.calepinage` en entier (7 386 tests : 1 vrai rouge, corrigé ;
+le reste = montage local sans front ni `freezegun`, et 3 tests du rapport d’étude déjà rouges sur `main`) ; 516 tests
+des modules `apps.crm` et `apps.ventes` touchés : verts ; avec `freezegun` installé dans le conteneur : golden HTTP du
+CRM, `test_ciq119_rafraichir_ci` et les cinq modules du calepinage qui en ont besoin : 87 verts.
+
+**Rejeu en direct T3-VAGUED** (agent `a56ce18c5dde95937`, pile à `7fff8b561a`) : partie A rendue (6 lignes au
+registre) — ADEV126, APAR92, ALEA67 ok ; ADEV125, ADEV127, ADEV123 partiels. Parties B et C en cours.
+
+**Lane « couture-suppositions » en cours** (agent `aea0530a7f4e378c0`, opus, branche `lane-l5d-couturesuppositions`,
+brief `controles/coutures-vague-D2.md`) : régime d’équipes seul (heure de début supposée 8 h en 1 × 8, 6 h en 2 × 8 —
+choix de l’orchestrateur, À CONFIRMER par Reda), industriel sans tension déclarée = basse tension supposée (D-ACAL-92),
+suppositions résidentielles montrées à l’écran, suppositions rangées avec le devis et remontrées à la réouverture.
+
+**Ordre restant** : fin du rejeu T3-VAGUED (corriger ce qui bloque) → pli de la lane (`--no-ff`), golden HTTP du CRM
+rejoué avec `freezegun`, gardes de l’hôte, `tenue_plans_d.py --ecrire` → push → `gh pr merge 1530 --auto --merge` →
+surveiller le groupe de fusion (seul passage avec les tests serveur) → tâches des restes → rapport final complété
+(section « Afternoon of 23/11 ») + `SendUserFile` → démontage, `plan_claims.py release`, rétro mémoire.

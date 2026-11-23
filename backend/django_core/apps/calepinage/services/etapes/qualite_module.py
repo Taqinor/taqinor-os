@@ -22,6 +22,17 @@ LES DEUX ENTRÉES, ET AUCUNE TROISIÈME
    quart de PVsyst sont trois décisions différentes, et c'est la société qui
    la prend — pas ce module (D-CALX 7).
 
+LA FICHE SANS TOLÉRANCE (fondateur, 23/11/2026 — D-ACAL-82 « valeurs
+recherchées », « default for everything »)
+------------------------------------------------------------------------
+Mesuré en production le 23/11/2026 : aucune des fiches de module ne publie
+sa tolérance ; chaque résultat restait donc « incomplet » et n'alimentait
+aucun devis. Quand la société A CHOISI sa règle mais que la fiche ne publie
+rien, l'écart au nominal est compté à 0 % (ni perte ni gain), DIT « supposé »
+avec le champ de fiche à saisir : les fabricants de premier rang publient un
+tri positif (0/+3 %, 0/+5 W), supposer 0 est donc prudent. Sans règle
+choisie, l'étape reste omise comme avant.
+
 LE QUART DE PVsyst EST UNE RÈGLE CITÉE, PAS UNE CONSTANTE
 -----------------------------------------------------------
 PVsyst propose, pour cette perte, un quart de la différence entre les deux
@@ -97,6 +108,11 @@ MOTIF_TOLERANCE_ABSENTE = (
     "rien ne dit de combien la puissance réelle des modules s'écarte du "
     "nominal. L'étape est OMISE — aucun forfait n'est appliqué à sa place.")
 
+MENTION_TOLERANCE_SUPPOSEE = (
+    'supposé — aucune tolérance de puissance publiée sur la fiche de '
+    '{produit} : écart au nominal compté à 0 % (ni perte ni gain), remplacé '
+    'dès que la tolérance est saisie sur la fiche')
+
 MOTIF_REGLE_ABSENTE = (
     "La tolérance de puissance de {produit} est publiée, mais la société n'a "
     "pas choisi ce qu'il faut en faire : retenir la borne basse, la moyenne "
@@ -129,7 +145,7 @@ MOTIF_ENERGIE_ILLISIBLE = (
 
 __all__ = ['CHAMP_MIN', 'CHAMP_MAX', 'CHAMP_MIN_AFFICHE',
            'CHAMP_MAX_AFFICHE', 'CLE_REGLAGE', 'REGLAGE_AFFICHE', 'REGLES',
-           'REFERENCE_PVSYST', 'appliquer']
+           'REFERENCE_PVSYST', 'MENTION_TOLERANCE_SUPPOSEE', 'appliquer']
 
 
 def appliquer(serie, contexte):
@@ -139,12 +155,17 @@ def appliquer(serie, contexte):
     l'étape omise la rend telle quelle.
     """
     contexte = contexte if isinstance(contexte, dict) else {}
-    fiche_module = contexte.get('fiche_module') or {}
+    # ACAL1910 — la fiche du module POSÉ, à défaut celle du module par défaut.
+    fiche_module = (contexte.get('fiche_module_pose')
+                    or contexte.get('fiche_module') or {})
     produit = _produit_designe(contexte)
     libelle = _libelle()
 
     minimum = _nombre(_tolerance_min(fiche_module))
     if minimum is None:
+        suppose = _ecart_nul_suppose(serie, contexte, produit, libelle)
+        if suppose is not None:
+            return suppose
         return serie, etapes.etape_omise(
             libelle, MOTIF_TOLERANCE_ABSENTE.format(produit=produit),
             champ=CHAMP_MIN_AFFICHE)
@@ -200,6 +221,30 @@ def appliquer(serie, contexte):
         reference=_reference(produit, nom_regle, saisie, minimum, maximum,
                              variation),
         gain=variation > 0.0)
+
+
+def _ecart_nul_suppose(serie, contexte, produit, libelle):
+    """Fiche SANS tolérance et règle CHOISIE par la société ⇒ ``(serie,
+    etape)`` d'un écart nul SUPPOSÉ (cf. docstring du module) ; ``None`` sans
+    règle choisie, avec la règle « aucune » ou sans colonne d'énergie :
+    l'omission d'avant reste dite."""
+    saisie = etapes.reglage(contexte, CLE_REGLAGE)
+    nom_regle = _nom_de_regle((saisie or {}).get('valeur'))
+    if nom_regle in (None, 'aucune') or etapes.colonne_energie(serie) is None:
+        return None
+    mention = MENTION_TOLERANCE_SUPPOSEE.format(produit=produit)
+    entree = {
+        'mode': 'tolerance_supposee',
+        'supposee': True,
+        'pct': 0.0,
+        'mention': mention,
+        'champ_manquant': CHAMP_MIN_AFFICHE,
+        'regle': nom_regle,
+        'source_du_reglage': saisie.get('source'),
+    }
+    return etapes.mettre_a_l_echelle(serie, 1.0), etapes.etape_appliquee(
+        libelle, source=saisie.get('source'), entree=entree,
+        reference=f'{mention}. {REFERENCE_PVSYST}')
 
 
 # ── la règle, et ce qu'elle fait de la tolérance ────────────────────────
@@ -288,6 +333,9 @@ def _produit_designe(contexte):
     pour nommer le matériel retenu ; absente, l'étape parle du « module
     retenu » plutôt que d'un produit qu'elle ne connaît pas.
     """
+    nom_pose = str(contexte.get('designation_module_pose') or '').strip()
+    if nom_pose:  # ACAL1910 — le module POSÉ, jamais celui de l'entrée par défaut
+        return nom_pose
     designations = contexte.get('designations')
     if isinstance(designations, dict):
         nom = (designations.get('module') or '').strip()

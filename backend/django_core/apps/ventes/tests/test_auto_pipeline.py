@@ -491,10 +491,10 @@ class CreerDevisAutomatiqueDepuisLeadTest(TestCase):
             return list(devis.lignes.order_by('pk').values_list(
                 'designation', 'quantite', 'prix_unitaire', 'remise', 'type_ligne'))
 
-        def espion(devis):
+        def espion(devis, journal_auto=None):
             avant.update(lignes=_lignes(devis), statut=devis.statut,
                          etude=dict(devis.etude_params or {}))
-            return vrai(devis)
+            return vrai(devis, journal_auto)
         with patch.object(creation_auto, 'marquer_rapide', espion):
             devis = self._creer(self._lead(roof_outline=CONTOUR_LATLNG))
         devis.refresh_from_db()
@@ -502,8 +502,12 @@ class CreerDevisAutomatiqueDepuisLeadTest(TestCase):
         self.assertEqual(valider(devis.etude_params), [])
         self.assertEqual(_lignes(devis), avant['lignes'])
         self.assertEqual(devis.statut, avant['statut'])
-        self.assertEqual({k: v for k, v in devis.etude_params.items() if k != 'origine_conception'},
+        # ADEV123 — la marque range aussi les suppositions dites (`journal_auto`) ;
+        # rien d'autre ne bouge.
+        self.assertEqual({k: v for k, v in devis.etude_params.items()
+                          if k not in ('origine_conception', 'journal_auto')},
                          avant['etude'])
+        self.assertTrue(all(a['champ_lead'] for a in devis.etude_params['journal_auto']['alertes']))
 
     def test_note_dhistorique_a_verifier(self):
         lead = self._lead(roof_outline=CONTOUR_LATLNG)

@@ -29,24 +29,32 @@ export function panneauxPourCible(
   return { panneaux: clamp(brut), plafonne: false, maxKwhAn: Math.round(brut * kwhParPanneau) };
 }
 
-/** ACAL1618 — ce qui tient AU MIEUX sur le pan : le plus grand des deux sens (le « + » bascule de même), ou le seul
- *  sens verrouillé (`orientVerrouillee` ; « auto »/« mixed » = aucun verrou). `ecartesDe` = emplacements écartés par le
- *  seuil d'accès solaire, déduits de la capacité. */
-export function maxDesSens<G extends { count: number; panels: unknown }>(
-  pack: { portrait: G; landscape: G }, orientVerrouillee: string | null, ecartesDe: (panels: G['panels']) => number,
-): { n: number; sens: SensPose } {
-  const sens: SensPose[] = orientVerrouillee === 'portrait' || orientVerrouillee === 'landscape' ? [orientVerrouillee] : ['portrait', 'landscape'];
-  return sens.map((s) => ({ n: Math.max(0, pack[s].count - ecartesDe(pack[s].panels)), sens: s })).reduce((a, b) => (b.n > a.n ? b : a));
+/** ACAL1903 — le maximum du toit : son nombre, son sens (portrait / paysage ; absent en pose mixte) et, quand il vient du
+ *  solveur, SA production annuelle (une autre pose que celle affichée : son rendement par panneau diffère). */
+export interface MaxDuToit { n: number; sens?: SensPose; kwhAn?: number }
+
+/** ACAL1903 — le gagnant du solveur vivant sans plafond de besoin = la pose que « + » atteint ; `kwhAn` = sa production.
+ *  `capacite` = ce qui en reste après le seuil d'accès solaire (emplacements écartés, comme `poseSousSeuil` au rendu) :
+ *  le nombre et la production suivent (même rendement par panneau). Rien ne tient ⇒ `null`. */
+export function maxDuSolveur<W extends { placedCount: number; layout: string }>(w: W | null | undefined, kwhAn: (w: W) => number, capacite?: number): MaxDuToit | null {
+  if (!w || !(w.placedCount > 0)) return null;
+  const n = Math.max(0, Math.min(w.placedCount, capacite ?? w.placedCount));
+  if (!(n > 0)) return null;
+  const sens = w.layout === 'portrait' || w.layout === 'landscape' ? w.layout : undefined;
+  return { n, ...(sens ? { sens } : {}), kwhAn: (kwhAn(w) * n) / w.placedCount };
 }
 
-/** ACAL1618 — l'objectif tapé lu sur l'état de la carte : borné par le maximum des deux sens quand il est connu. */
+/** ACAL1618 — l'objectif tapé lu sur l'état de la carte : borné par le maximum du toit quand il est connu ; plafonné,
+ *  la production dite est celle de CE maximum (ACAL1903), sinon le rendement de la carte affichée. */
 export function cibleDepuisCarte(
   objectifKwhAn: number,
-  e: { kwhParPanneau: number; tiennent: number; maxSens?: { n: number; sens: SensPose } | null } | null,
+  e: { kwhParPanneau: number; tiennent: number; maxSens?: MaxDuToit | null } | null,
   clamp: (n: number) => number,
 ): ResultatCible | null {
   if (!e) return null;
-  return panneauxPourCible(objectifKwhAn, e.kwhParPanneau, e.maxSens?.n ?? e.tiennent, clamp, e.maxSens?.sens);
+  const max = e.maxSens;
+  const r = panneauxPourCible(objectifKwhAn, e.kwhParPanneau, max?.n ?? e.tiennent, clamp, max?.sens);
+  return r?.plafonne && max?.kwhAn != null && r.panneaux === max.n ? { ...r, maxKwhAn: Math.round(max.kwhAn) } : r;
 }
 
 const SENS_FR: Record<SensPose, string> = { portrait: 'portrait', landscape: 'paysage' };

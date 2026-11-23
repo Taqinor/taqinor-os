@@ -519,11 +519,65 @@ class TestProfilChargePrerequis(unittest.TestCase):
     def test_regime_3x8_sans_heures_pret(self):
         self.assertEqual(self._accord({'jours_ouverts': TOUS, 'equipes': '3x8'}, 'industriel'), [])
 
-    def test_regime_2x8_sans_heure_de_debut_exige_les_heures(self):
-        self.assertEqual(self._accord({'jours_ouverts': TOUS, 'equipes': '2x8'}, 'industriel'),
-                         ['rythme.plages'])
-        self.assertEqual(self._accord({'jours_ouverts': TOUS, 'equipes': '2x8',
-                                       'debut_equipe_h': 6}, 'industriel'), [])
+    def test_adev127_regime_place_sans_jours_lundi_samedi_supposes_et_dits(self):
+        # ADEV127 (D-ACAL-94, 23/11/2026) — le régime d'équipes suffit : jours
+        # ouvrés supposés du lundi au samedi (le dimanche fermé), dits.
+        for rythme in ({'equipes': '3x8'}, {'equipes': 'continu'},
+                       {'equipes': '2x8', 'debut_equipe_h': 6}):
+            self.assertEqual(self._accord(rythme, 'industriel'), [], rythme)
+            jt, _prov, alertes = courbe_declaree(
+                dict(rythme, talon={'kw': 1}), [1000] * 12, annee_reference=ANNEE,
+                archetype='industriel', feries=[])
+            dites = [a for a in alertes if a['code'] == 'jours_ouverts_supposes']
+            self.assertEqual([(a['niveau'], a['champ']) for a in dites],
+                             [('alerte', 'rythme.jours_ouverts')], rythme)
+            ferme = _par(jt, 3, 'ferme')
+            self.assertEqual(ferme['nb_jours'], 4)  # les dimanches de mars 2027
+            self.assertTrue(all(abs(v - 1.0) < 1e-9 for v in ferme['charge_kwh']))
+        # Des heures déclarées sans régime : les jours restent exigés.
+        self.assertEqual(self._accord({'plages': {'ouvre': [[8, 18]]}}, 'industriel'),
+                         ['rythme.jours_ouverts'])
+
+    def test_regime_1x8_2x8_sans_heure_de_debut_heure_supposee_et_dite(self):
+        # D-ACAL-94 (« regime_suffit », fondateur 23/11/2026) — le régime seul
+        # suffit aussi en 1×8 / 2×8 : l'heure de début est SUPPOSÉE (constante
+        # nommée par régime) et dite avec le champ de la fiche ; une heure
+        # DÉCLARÉE prime toujours.
+        from apps.ventes.domain.suppositions_ci import (
+            CHAMP_LEAD_PAR_CODE, HEURE_DEBUT_SUPPOSEE, SOURCE_HEURE_DEBUT_SUPPOSEE)
+        self.assertEqual(HEURE_DEBUT_SUPPOSEE, {'1x8': 8, '2x8': 6})
+        for regime, duree in (('1x8', 8), ('2x8', 16)):
+            for rythme in ({'equipes': regime}, {'jours_ouverts': TOUS, 'equipes': regime}):
+                self.assertEqual(self._accord(rythme, 'industriel'), [], rythme)
+                jt, _prov, alertes = courbe_declaree(
+                    dict(rythme, talon={'kw': 0}), [1000] * 12, annee_reference=ANNEE,
+                    archetype='industriel', feries=[])
+                dites = [a for a in alertes if a['code'] == 'heure_debut_supposee']
+                self.assertEqual([(a['niveau'], a['champ']) for a in dites],
+                                 [('alerte', 'rythme.debut_equipe_h')], rythme)
+                self.assertIn('estimation', dites[0]['message'])
+                self.assertIn(SOURCE_HEURE_DEBUT_SUPPOSEE, dites[0]['message'])
+                self.assertIn('%d h' % HEURE_DEBUT_SUPPOSEE[regime], dites[0]['message'])
+                # La plage placée part de l'heure supposée (talon nul : charge
+                # posée sur les seules heures d'équipe).
+                ouvre = _par(jt, 3, 'ouvre')['charge_kwh']
+                debut = HEURE_DEBUT_SUPPOSEE[regime]
+                self.assertEqual([h for h, v in enumerate(ouvre) if v > 0],
+                                 list(range(debut, debut + duree)), rythme)
+        self.assertEqual(CHAMP_LEAD_PAR_CODE['heure_debut_supposee'], 'heure_debut')
+        # Une heure DÉCLARÉE prime : aucune supposition, la plage part d'elle.
+        jt, _prov, alertes = courbe_declaree(
+            {'jours_ouverts': TOUS, 'equipes': '2x8', 'debut_equipe_h': 5, 'talon': {'kw': 0}},
+            [1000] * 12, annee_reference=ANNEE, archetype='industriel', feries=[])
+        self.assertNotIn('heure_debut_supposee', {a['code'] for a in alertes})
+        self.assertEqual([h for h, v in enumerate(_par(jt, 3, 'ouvre')['charge_kwh']) if v > 0],
+                         list(range(5, 21)))
+        # Des heures DÉCLARÉES (plages) : rien n'est supposé non plus.
+        _jt, _prov, alertes = courbe_declaree(
+            {'jours_ouverts': TOUS, 'equipes': '1x8', 'plages': {'ouvre': [[9, 17]]},
+             'talon': {'kw': 0}}, [1000] * 12, annee_reference=ANNEE,
+            archetype='industriel', feries=[])
+        self.assertNotIn('heure_debut_supposee', {a['code'] for a in alertes})
 
     def test_reponses_de_categorie_posent_des_plages(self):
         rythme = {'reponses_categorie': {'horaires': 'midi_soir', 'heures': [[11, 23]]}}
@@ -542,6 +596,36 @@ class TestProfilChargePrerequis(unittest.TestCase):
         self.assertEqual(self._accord({}, 'hammam'), ['rythme.jours_ouverts', 'rythme.plages'])
         self.assertEqual(self._accord({}, None), ['rythme.jours_ouverts', 'rythme.plages'])
         self.assertEqual(self._accord({'jours_ouverts': TOUS}, 'industriel'), ['rythme.plages'])
+
+
+class TestSuppositionsTuesADEV124(unittest.TestCase):
+    """ADEV124 — les deux suppositions que le journal du devis automatique C&I taisait."""
+
+    def test_repli_sans_gps_inclinaison_dite_avec_le_point_gps(self):
+        from apps.ventes.domain.suppositions_ci import alertes_du_journal
+        from apps.ventes.moteur_ci.production import traces_production
+        hyp, _alertes = traces_production({'source': 'pvgis'}, source='table')
+        statuts = {h['cle']: h['statut'] for h in hyp}
+        self.assertEqual((statuts['inclinaison_deg'], statuts['azimut_deg']),
+                         ('estimation', 'estimation'))
+        dites = [a for a in alertes_du_journal({'hypotheses': hyp}) if a['champ_lead'] == 'gps_lat']
+        self.assertEqual(len(dites), 1)
+        self.assertIn('30° plein sud', dites[0]['message'])
+        # Une pente et un azimut DÉCLARÉS ne sont jamais une supposition.
+        hyp, _alertes = traces_production({'source': 'pvgis'}, toit={'pente_deg': 15, 'azimut_deg': 0})
+        self.assertEqual({h['statut'] for h in hyp if h['cle'] in ('inclinaison_deg', 'azimut_deg')},
+                         {'source'})
+
+    def test_profil_estime_garde_au_journal_avec_son_champ(self):
+        from apps.ventes.domain.suppositions_ci import alertes_du_journal
+        etude = {'alertes': [
+            {'code': 'profil_estime', 'champ': 'rythme', 'niveau': 'info', 'interne': False,
+             'message': 'Profil horaire estimé (archétype)'},
+            {'code': 'feries_non_saisis', 'champ': 'feries', 'niveau': 'info', 'interne': True,
+             'message': 'Aucun jour férié saisi'}]}
+        dites = {a['code']: a for a in alertes_du_journal(etude)}
+        self.assertEqual(set(dites), {'profil_estime'})
+        self.assertEqual(dites['profil_estime']['champ_lead'], 'jours_ouverture')
 
 
 class TestPurete(unittest.TestCase):

@@ -80,7 +80,11 @@ class TestDevisAutoProCIQ404(SimpleTestCase):
                           categorie_commerciale='bureau')
         self.assertEqual(champs_manquants(lead), [])
         self.assertEqual(source_conso(lead), 'facture_hiver')
+        # ADEV125 (D-ACAL-92) — sans contrat, le moteur suppose la BT : la
+        # facture compte toujours ; un contrat MT déclaré, non.
         lead.contrat_electricite = None
+        self.assertEqual(source_conso(lead), 'facture_hiver')
+        lead.contrat_electricite = 'mt_general'
         self.assertIsNone(source_conso(lead))
 
     def test_commercial_mt_et_mad_seul_pas_pret(self):
@@ -91,15 +95,28 @@ class TestDevisAutoProCIQ404(SimpleTestCase):
         self.assertEqual(champs_manquants(lead), [LIB_PRO['commercial']])
         self.assertIsNone(source_conso(lead))
 
-    def test_industriel_mad_seul_tension_vide_pas_pret(self):
+    def test_industriel_mad_seul_tension_non_declaree_bt_supposee(self):
+        # D-ACAL-92 (« supposer_bt », fondateur 23/11/2026, lead commercial OU
+        # industriel) — tension non déclarée (vide, « ne sait pas », défaut
+        # du site jamais touché) : basse tension supposée, la facture en MAD
+        # compte ; la visite reste requise (« tension de raccordement inconnue »).
+        for tension, source in ((None, None), ('ne_sait_pas', None),
+                                ('bt', 'site_defaut_visible'),
+                                ('mt', 'site_defaut_visible')):
+            lead = self._lead(type_installation='industriel',
+                              tension_raccordement=tension, tension_source=source,
+                              facture_hiver=Decimal('40000'), regime_equipes='3x8')
+            self.assertEqual(champs_manquants(lead), [], tension)
+            self.assertEqual(source_conso(lead), 'facture_hiver', tension)
+            self.assertTrue(visite_avant_devis(lead)['requise'], tension)
+            if tension != 'mt':  # visite_avant_devis inchangée (lit la valeur brute)
+                self.assertIn('tension de raccordement inconnue',
+                              visite_avant_devis(lead)['motifs'], tension)
+        # Sans rythme : seul le rythme manque (aucun archétype industriel).
         lead = self._lead(type_installation='industriel',
-                          facture_hiver=Decimal('40000'),
-                          contrat_electricite='bt_patente')
-        detail = champs_manquants_detail(lead)
-        # ALEA47 — + le rythme (aucun archétype industriel).
-        self.assertEqual([e['champ'] for e in detail],
-                         ['conso_mensuelle_kwh', 'jours_ouverture'])
-        self.assertEqual(detail[0]['label'], LIB_PRO['industriel'])
+                          facture_hiver=Decimal('40000'))
+        self.assertEqual([e['champ'] for e in champs_manquants_detail(lead)],
+                         ['jours_ouverture'])
 
     def test_industriel_bt_declaree_et_mad_pret(self):
         lead = self._lead(type_installation='industriel',
@@ -109,9 +126,13 @@ class TestDevisAutoProCIQ404(SimpleTestCase):
                           regime_equipes='continu',
                           jours_ouverture=[1, 2, 3, 4, 5, 6, 7])
         self.assertEqual(champs_manquants(lead), [])
-        # Défaut visible du site : la basse tension n'est PAS déclarée.
-        lead.tension_source = 'site_defaut_visible'
-        self.assertNotEqual(champs_manquants(lead), [])
+        # Une moyenne tension DÉCLARÉE garde sa règle : aucune facture en
+        # dirhams convertie au tarif basse tension (prime fixe MT).
+        lead.tension_raccordement, lead.contrat_electricite = 'mt', None
+        detail = champs_manquants_detail(lead)
+        self.assertEqual([e['champ'] for e in detail], ['conso_mensuelle_kwh'])
+        self.assertEqual(detail[0]['label'], LIB_PRO['industriel'])
+        self.assertIsNone(source_conso(lead))
 
     def test_industriel_releve_seul_pret(self):
         lead = self._lead(type_installation='industriel', releve_conso={
@@ -145,7 +166,7 @@ class TestDevisAutoProCIQ404(SimpleTestCase):
             lead = self._lead(type_installation=mode)
             self.assertIsNone(visite_avant_devis(lead), mode)
             self.assertIsNone(source_conso(lead), mode)
-        self.assertEqual(champs_requis(self._lead()), [['facture_hiver']])
+        self.assertEqual(champs_requis(self._lead()), [['facture_hiver'], ['ville', 'gps_lat']])
 
     def test_exemples_commercial_et_industriel_du_contrat(self):
         # ALEA47 — contrat BT déclaré, rythme manquant (aucune activité).
@@ -184,6 +205,7 @@ class TestAgricoleSansCvAGR403(SimpleTestCase):
     et drapeau « visite du point d'eau avant devis ». Règle pure."""
 
     def _lead(self, **kwargs):
+        kwargs.setdefault('raccordement', 'triphase')  # ALEA67 — la phase, exigée
         return Lead(nom='Ferme', type_installation='agricole', **kwargs)
 
     def test_hmt_et_debit_sans_cv_est_pret(self):
@@ -250,17 +272,17 @@ class TestAgricoleSansCvAGR403(SimpleTestCase):
             self.assertIsNone(visite_point_eau_avant_devis(lead), mode)
 
     def test_non_regression_residentiel_et_pro(self):
-        self.assertEqual(champs_requis(Lead(nom='x')), [['facture_hiver']])
+        self.assertEqual(champs_requis(Lead(nom='x')), [['facture_hiver'], ['ville', 'gps_lat']])
         self.assertEqual(
             champs_requis(Lead(nom='x', ete_differente=True)),
-            [['facture_hiver'], ['facture_ete']])
+            [['facture_hiver'], ['facture_ete'], ['ville', 'gps_lat']])
         for mode in ('industriel', 'commercial'):
-            # CIQ404 — groupe pro du contrat CIQ1 ; ALEA47 — + le contrat et
-            # le rythme que le moteur exige (ici tout manque).
+            # CIQ404 — groupe pro du contrat CIQ1 ; ALEA47 — + le rythme que
+            # le moteur exige (ici tout manque) ; ADEV125/ADEV126 — le contrat et
+            # la phase absents sont supposés par le moteur, jamais exigés.
             self.assertEqual(champs_requis(Lead(nom='x', type_installation=mode)),
                              [['conso_mensuelle_kwh', 'bill_kwh',
                                'releve_conso', 'facture_hiver'],
-                              ['contrat_electricite'], ['raccordement'],
                               ['jours_ouverture'],
                               ['heure_debut', 'regime_equipes']])
 
@@ -300,8 +322,10 @@ class TestChampsManquants(TestCase):
     def _lead(self, **kwargs):
         # ADEV89 — la phase du site est un prérequis C&I ; ces cas testent la
         # consommation, le contrat et le rythme : la phase est déclarée.
-        if kwargs.get('type_installation') in ('commercial', 'industriel'):
+        if kwargs.get('type_installation') in ('commercial', 'industriel', 'agricole'):
             kwargs.setdefault('raccordement', 'triphase')
+        else:  # ALEA67 — un chantier résidentiel situé (ville reconnue)
+            kwargs.setdefault('ville', 'Casablanca')
         return Lead(company=self.company, nom='Gate', **kwargs)
 
     def test_agv5_visite_point_eau_validee_leve_la_garde(self):
@@ -358,9 +382,9 @@ class TestChampsManquants(TestCase):
                              [LIB_PRO[mode]], mode)
             lead.conso_mensuelle_kwh = 1234.5
             self.assertEqual(champs_manquants(lead), [], mode)
+            # ADEV125 (D-ACAL-92) — contrat absent : BT supposé, toujours prêt.
             lead.contrat_electricite = None
-            self.assertEqual(champs_manquants(lead),
-                             ["Contrat d'électricité"], mode)
+            self.assertEqual(champs_manquants(lead), [], mode)
 
     def test_agricole_needs_the_two_hydraulic_groups(self):
         lead = self._lead(type_installation='agricole')
@@ -369,6 +393,28 @@ class TestChampsManquants(TestCase):
         self.assertEqual(champs_manquants(lead), [LIB_DEBIT])
         lead.pompe_debit_m3h = 12
         self.assertEqual(champs_manquants(lead), [])
+
+    def test_alea67_pret_seulement_si_le_moteur_sait_situer_le_chantier(self):
+        # ALEA67 — 29 leads « prêts » que le moteur refusait (localisation_inconnue).
+        from apps.parametres.pvgis_profils import productible_mensuel
+
+        inconnue = self._lead(type_installation='residentiel', facture_hiver=650, ville='Xyzzyville')
+        self.assertIsNone(productible_mensuel(ville='Xyzzyville'))
+        self.assertEqual(champs_manquants(inconnue), ['ville'])
+        self.assertEqual(message_manquants(champs_manquants(inconnue)), 'Manque : ville')
+        inconnue.gps_lat, inconnue.gps_lng = Decimal('33.57'), Decimal('-7.59')
+        self.assertEqual(champs_manquants(inconnue), [])
+        inconnue.gps_lng = None  # une seule coordonnée ne situe rien
+        self.assertEqual(champs_manquants(inconnue), ['ville'])
+        self.assertEqual(champs_manquants(self._lead(facture_hiver=650)), [])  # Casablanca reconnue
+
+    def test_alea67_agricole_exige_la_phase_comme_le_moteur(self):
+        for raccordement in (None, 'inconnu', 'aucun'):
+            lead = self._lead(type_installation='agricole', pompe_hmt_m=80, pompe_debit_m3h=12,
+                              raccordement=raccordement)
+            self.assertEqual(champs_manquants(lead), ['Phase du site (monophasé ou triphasé)'], raccordement)
+        self.assertEqual(champs_manquants(self._lead(type_installation='agricole', pompe_hmt_m=80,
+                                                     pompe_debit_m3h=12, raccordement='monophase')), [])
 
     def test_message_format(self):
         self.assertEqual(message_manquants(['HMT', 'débit souhaité']),
@@ -386,7 +432,7 @@ class TestDevisAutoSerializerField(TestCase):
         self.api = make_api(self.user)
 
     def test_field_in_list_payload(self):
-        Lead.objects.create(company=self.company, nom='PasPrêt')
+        Lead.objects.create(company=self.company, nom='PasPrêt', ville='Casablanca')
         resp = self.api.get('/api/django/crm/leads/')
         self.assertEqual(resp.status_code, 200)
         data = resp.data['results'] if 'results' in resp.data else resp.data
@@ -399,12 +445,26 @@ class TestDevisAutoSerializerField(TestCase):
 
     def test_field_when_ready(self):
         lead = Lead.objects.create(
-            company=self.company, nom='Prêt', facture_hiver=700)
+            company=self.company, nom='Prêt', facture_hiver=700, ville='Casablanca')
         resp = self.api.get(f'/api/django/crm/leads/{lead.id}/')
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.data['devis_auto']['pret'])
         self.assertEqual(resp.data['devis_auto']['manquants'], [])
         self.assertIsNone(resp.data['devis_auto']['message'])
+
+    def test_alea67_ville_redevenue_reconnue_lead_de_nouveau_pret(self):
+        # ALEA67 (rejeu T3-VAGUEC2, point 13) — la fiche nomme « ville » tant que
+        # le moteur ne situe pas le chantier, puis le lead redevient prêt.
+        lead = Lead.objects.create(company=self.company, nom='Situé ?', facture_hiver=700,
+                                   ville='Xyzzyville')
+        url = f'/api/django/crm/leads/{lead.id}/'
+        bloc = self.api.get(url).data['devis_auto']
+        self.assertEqual((bloc['pret'], bloc['message']), (False, 'Manque : ville'))
+        self.assertEqual(bloc['manquants_detail'], [{'champ': 'ville', 'label': 'ville'}])
+        resp = self.api.patch(url, {'ville': 'Casablanca'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content[:300])
+        bloc = self.api.get(url).data['devis_auto']
+        self.assertEqual((bloc['pret'], bloc['manquants'], bloc['message']), (True, [], None))
 
 
 class TestCatalogueCiAlea50(TestCase):
@@ -591,7 +651,7 @@ class TestDevisAutoEndpoint(TestCase):
         # actuelle ne compte plus).
         self.lead = Lead.objects.create(
             company=self.company, nom='Agriculteur',
-            type_installation='agricole')
+            type_installation='agricole', raccordement='triphase')
 
     def _post(self, lead_id=None, api=None):
         api = api or self.api

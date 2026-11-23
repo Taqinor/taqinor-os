@@ -237,14 +237,17 @@ def _plans_du_contexte(pose, document):
     return plans
 
 
-def _fiche_du_module_pose(materiel, document):
-    """ACAL1607 — la fiche du module qui couvre le PLUS de modules posés :
-    celle d'un produit de pan (``fiches_modules``, ACAL264) quand il domine,
-    sinon le module par défaut (égalité : le défaut)."""
+def _module_pose(materiel, document):
+    """ACAL1607 / ACAL1910 — ``(fiche, désignation)`` du module qui couvre le
+    PLUS de modules posés : celui d'un produit de pan (``fiches_modules``,
+    ACAL264) quand il domine, sinon le module par défaut (égalité : le défaut).
+    La désignation est celle de CE module : une étape qui lit sa fiche le
+    nomme, jamais le module par défaut de l'entrée."""
     defaut = materiel.get('module') or {}
+    nom_defaut = ((materiel.get('designations') or {}).get('module') or '')
     fiches = materiel.get('fiches_modules') or {}
     if not fiches:
-        return defaut
+        return defaut, nom_defaut
     from apps.ventes.services import pans_du_document
 
     comptes = {}
@@ -253,7 +256,16 @@ def _fiche_du_module_pose(materiel, document):
         comptes[cle] = comptes.get(cle, 0) + int(pan.get('modules') or 0)
     retenu = max(comptes, key=lambda cle: (comptes[cle], cle is None),
                  default=None)
-    return dict(fiches[retenu].get('specs') or {}) if retenu is not None else defaut
+    if retenu is None:
+        return defaut, nom_defaut
+    fiche = fiches[retenu]
+    return (dict(fiche.get('specs') or {}),
+            fiche.get('designation') or nom_defaut)
+
+
+def _fiche_du_module_pose(materiel, document):
+    """ACAL1607 — la fiche du module POSÉ (voir ``_module_pose``)."""
+    return _module_pose(materiel, document)[0]
 
 
 def _ranger_la_tete_des_avertissements(blocs, entete, non_raccordes):
@@ -733,6 +745,9 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
         'fiche_module': materiel_resolu.get('module') or {},
         # ACAL1607 — la fiche du module POSÉ, lue par l'étape thermique.
         'fiche_module_pose': _fiche_du_module_pose(materiel_resolu, document),
+        # ACAL1910 — le nom de ce module : « niveau d'éclairement » et
+        # « qualité module » nomment le module posé, plus celui par défaut.
+        'designation_module_pose': _module_pose(materiel_resolu, document)[1],
         'fiche_onduleur': materiel_resolu.get('onduleur') or {},
         'fiche_optimiseur': materiel_resolu.get('optimiseur'),
         # ACAL264 — le module par défaut PUIS celui de chaque pan qui en
@@ -1360,12 +1375,13 @@ def _appels_complementaires_pvgis(blocs, client, reference, decision,
     """Les requêtes PVGIS posées APRÈS la chaîne, puis le compteur d'appels
     RÉELS : l'ordonnanceur compte ses demandes, le fournisseur compte ce qui
     est réellement parti sur le réseau."""
-    from . import gain_inclinaison as _gain_inclinaison  # ACAL706
+    from . import gain_inclinaison as _gain_inclinaison, meteo_comparee  # ACAL706 ; ACAL744 : l'AUTRE base
     blocs['production']['gain_inclinaison'] = _gain_inclinaison.demander(
         client, reference, decision, fichier, compteur, blocs['production'])
-    from . import meteo_comparee  # ACAL744 — la même irradiation, l'AUTRE base
     blocs['meteo']['comparaison_base'] = meteo_comparee.comparer_bases(
         client, reference, decision, document, fichier, compteur)
+    blocs['meteo']['comparaison_nasa_power'] = meteo_comparee.comparer_nasa_power(  # ACAL746, ne lève jamais
+        client, reference, decision, fichier, blocs['production']['gain_inclinaison'])
     blocs['meteo']['appels_pvgis'] = compteur['appels']
 
 

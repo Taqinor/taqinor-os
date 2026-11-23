@@ -72,14 +72,25 @@ function puissancePose(resultat, panneaux) {
   return Number.isFinite(kwc) && kwc > 0 ? kwc : null
 }
 
+/** ACAL1840 (D-ACAL-88) — l'estimation de la pose : le chiffre que l'atelier affiche déjà comme « Production · estimation de
+    la pose » (`figures.productionKwh`, lu sur le constructeur par `panneaux/constructeur.js::lireFigures`) — même source,
+    aucun calcul ici. `{ kwh }`, ou `null` quand le constructeur n'en publie pas. */
+export function estimationPose(figures) {
+  const kwh = Number(figures?.productionKwh)
+  return Number.isFinite(kwh) && kwh > 0 ? { kwh } : null
+}
+
 /**
  * Les tuiles de la maquette, dans son ordre ; une donnée non servie ⇒ tuile omise.
  * PRODUCTION ET COUVERTURE (H2) : montrées au client SEULEMENT quand le résultat publié est frais ET complet —
  * la règle du devis (`productionPubliee`, `panneaux/sources.js` ; `calepinage/selectors_devis.py`). Un résultat
  * incomplet est une BORNE HAUTE (« au plus » à l'étape Résultats) : jamais présentée au client comme une année
- * moyenne. Restent alors les faits certains : les panneaux posés et la puissance (tuile médiane marine).
+ * moyenne. Restent alors les faits certains : les panneaux posés et la puissance.
+ * ACAL1840 (D-ACAL-88) — tant que le résultat n'est pas complet, la tuile de production est l'ESTIMATION DE LA POSE
+ * (`estimation`, lue sur l'atelier), dite « estimation de la pose » ; un résultat complet la remplace. Jamais deux
+ * chiffres de production à la fois.
  */
-export function tuilesClient(document, resultat) {
+export function tuilesClient(document, resultat, estimation = null) {
   const tuiles = []
   const panneaux = panneauxDuDocument(document)
   if (panneaux !== null) tuiles.push({ cle: 'panneaux', valeur: formatNumber(panneaux, { locale: 'fr' }), libelle: 'panneaux' })
@@ -93,8 +104,15 @@ export function tuilesClient(document, resultat) {
     return tuiles
   }
   const kwc = puissancePose(resultat, panneaux)
+  const kwhEstimes = estimation?.kwh > 0 ? Math.round(estimation.kwh) : null
+  if (kwhEstimes) {
+    tuiles.push({
+      cle: 'kwh', valeur: formatNumber(kwhEstimes, { locale: 'fr' }), libelle: 'kWh par an · estimation de la pose',
+      marine: true, nature: 'estimation',
+    })
+  }
   if (kwc !== null) {
-    tuiles.push({ cle: 'kwc', valeur: formatNumber(kwc, { locale: 'fr', decimals: 2 }), libelle: 'kWc de puissance', marine: true })
+    tuiles.push({ cle: 'kwc', valeur: formatNumber(kwc, { locale: 'fr', decimals: 2 }), libelle: 'kWc de puissance', marine: !kwhEstimes })
   }
   return tuiles
 }
@@ -139,6 +157,8 @@ export function useDonneesClient(id, { contexte: contexteServi = null, lireConte
     doc,
     plan: ok ? planDessus(document) : null,
     tuiles: ok ? tuilesClient(document, resultat) : [],
+    // ACAL1840 — les mêmes tuiles avec l'estimation de la pose lue sur l'atelier (3D) : `estimation` = `estimationPose(figures)`.
+    tuilesAvec: (estimation) => (ok ? tuilesClient(document, resultat, estimation) : []),
     // Le nom servi du projet ; sinon le client du devis lié (servi) ; sinon le nom que l'atelier donne lui-même
     // au calepinage (« Calepinage N », coque/projet.js).
     titre: (contexte?.calepinage?.titre ?? '').trim() || (contexte?.calepinage?.devis_lie?.client_nom ?? '').trim()

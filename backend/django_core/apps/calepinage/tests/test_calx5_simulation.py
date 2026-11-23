@@ -871,3 +871,289 @@ class LivraisonsBorneesTest(TestCase):
             issue = self._livrer(tasks.balayer_calepinage, corps={})
         self.assertEqual(calcul.call_count, 2)
         self.assertEqual(issue['statut'], 'failed')
+
+
+class SimulationAutomatiqueTest(TestCase):
+    """ACAL1987 (D-ACAL-90 renversée) — la simulation PART SEULE à
+    l'enregistrement d'une pose complète : UN job, jamais deux, jamais de
+    boucle, rien pour une pose incomplète (le manque est dit)."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+
+        from authentication.models import Company
+
+        from apps.calepinage.models import Calepinage
+        from apps.crm.models import Lead
+
+        self.societe = Company.objects.create(nom='ACAL1987', slug='acal1987')
+        self.user = get_user_model().objects.create_user(
+            username='acal1987', password='x', company=self.societe)
+        lead = Lead.objects.create(company=self.societe, nom='Toiture 1987')
+        self.calepinage = Calepinage.objects.create(
+            company=self.societe, lead_id=lead.pk, titre='Pose 1987')
+
+    def _enregistrer(self, layout, *, user='auteur'):
+        """``enregistrer_layout`` sous matériel et réglages du cas, les
+        callbacks de fin de transaction JOUÉS, la tâche Celery interceptée."""
+        import copy
+        from unittest import mock
+
+        from apps.calepinage import tasks
+        from apps.calepinage.services.layout import enregistrer_layout
+
+        from .acal_livrables_helpers import patch_materiel
+
+        auteur = self.user if user == 'auteur' else user
+        with patch_materiel(), mock.patch.object(
+                tasks.simuler_calepinage, 'delay') as depart:
+            with self.captureOnCommitCallbacks(execute=True):
+                enregistrer_layout(self.calepinage, copy.deepcopy(layout),
+                                   user=auteur)
+        return depart
+
+    def _jobs(self):
+        from core.models import BackgroundJob
+
+        return BackgroundJob.objects.filter(company=self.societe,
+                                            kind='calepinage')
+
+    def test_enregistrer_une_pose_neuve_cree_un_job_de_simulation(self):
+        depart = self._enregistrer(LAYOUT)
+        self.assertEqual(self._jobs().count(), 1)
+        depart.assert_called_once()
+        corps = depart.call_args.kwargs
+        self.assertEqual(corps['calepinage_id'], self.calepinage.pk)
+        self.assertEqual(corps['nature'], 'simulation')
+        self.assertFalse(corps['forcer'])
+        self.assertEqual(self._jobs().get().user_id, self.user.pk)
+
+    def test_reenregistrer_sans_geste_n_en_cree_pas(self):
+        self._enregistrer(LAYOUT)
+        depart = self._enregistrer(LAYOUT)
+        depart.assert_not_called()
+        self.assertEqual(self._jobs().count(), 1)
+
+    def test_une_pose_modifiee_relance_une_simulation(self):
+        import copy
+
+        self._enregistrer(LAYOUT)
+        autre = copy.deepcopy(LAYOUT)
+        autre['zones'][0]['geometry']['count'] += 2
+        depart = self._enregistrer(autre)
+        depart.assert_called_once()
+        self.assertEqual(self._jobs().count(), 2)
+
+    def test_le_meme_etat_demande_deux_fois_ne_se_double_pas(self):
+        from unittest import mock
+
+        from apps.calepinage import tasks
+        from apps.calepinage.services.simulation_auto import (
+            ETAT_EN_FILE, lancer_simulation_automatique)
+
+        from .acal_livrables_helpers import patch_materiel
+
+        self._enregistrer(LAYOUT)
+        self.assertEqual(self._jobs().count(), 1)
+        with patch_materiel(), mock.patch.object(
+                tasks.simuler_calepinage, 'delay'):
+            self.calepinage.refresh_from_db()
+            rendu = lancer_simulation_automatique(self.calepinage,
+                                                  user=self.user)
+        self.assertEqual(rendu['etat'], ETAT_EN_FILE)
+        self.assertEqual(self._jobs().count(), 1)
+
+    def test_une_pose_incomplete_ne_cree_rien_et_dit_ce_qui_manque(self):
+        import copy
+        from unittest import mock
+
+        from apps.calepinage import tasks
+        from apps.calepinage.services.simulation_auto import (
+            ETAT_INCOMPLETE, lancer_simulation_automatique)
+
+        from .acal_livrables_helpers import patch_materiel
+
+        vide = copy.deepcopy(LAYOUT)
+        vide['zones'][0]['geometry']['count'] = 0
+        depart = self._enregistrer(vide)
+        depart.assert_not_called()
+        self.assertEqual(self._jobs().count(), 0)
+        with patch_materiel(), mock.patch.object(
+                tasks.simuler_calepinage, 'delay'):
+            self.calepinage.refresh_from_db()
+            rendu = lancer_simulation_automatique(self.calepinage,
+                                                  user=self.user)
+        self.assertEqual(rendu['etat'], ETAT_INCOMPLETE)
+        self.assertIn('plans', [m['champ'] for m in rendu['manquants']])
+        self.assertTrue(all(m['motif'] for m in rendu['manquants']))
+
+    def test_sans_module_ni_onduleur_designes_rien_ne_part(self):
+        from unittest import mock
+
+        from apps.calepinage import tasks
+        from apps.calepinage.services.simulation_auto import (
+            ETAT_INCOMPLETE, lancer_simulation_automatique)
+
+        from .acal_livrables_helpers import patch_materiel
+
+        sans_materiel = dict(MATERIEL, module={}, onduleur={})
+        with patch_materiel() as materiel, mock.patch.object(
+                tasks.simuler_calepinage, 'delay') as depart:
+            materiel.return_value = sans_materiel
+            self.calepinage.roof_layout = LAYOUT
+            self.calepinage.save()
+            rendu = lancer_simulation_automatique(self.calepinage,
+                                                  user=self.user)
+        self.assertEqual(rendu['etat'], ETAT_INCOMPLETE)
+        champs = [m['champ'] for m in rendu['manquants']]
+        self.assertIn('materiel.module', champs)
+        self.assertIn('materiel.onduleur', champs)
+        depart.assert_not_called()
+
+    def test_sans_auteur_rien_ne_part(self):
+        depart = self._enregistrer(LAYOUT, user=None)
+        depart.assert_not_called()
+        self.assertEqual(self._jobs().count(), 0)
+
+    def test_un_calepinage_fige_n_est_jamais_resimule(self):
+        from unittest import mock
+
+        with mock.patch('apps.calepinage.services.verrou.est_verrouille',
+                        return_value=True):
+            depart = self._enregistrer(LAYOUT)
+        depart.assert_not_called()
+        self.assertEqual(self._jobs().count(), 0)
+
+    def test_une_simulation_a_jour_n_est_pas_relancee(self):
+        from unittest import mock
+
+        from apps.calepinage import tasks
+        from apps.calepinage.services.simulation import simuler_calepinage
+        from apps.calepinage.services.simulation_auto import (
+            ETAT_A_JOUR, lancer_simulation_automatique)
+
+        from .acal_livrables_helpers import patch_materiel
+
+        self.calepinage.roof_layout = LAYOUT
+        self.calepinage.save()
+        with patch_materiel(), mock.patch.object(
+                tasks.simuler_calepinage, 'delay') as depart:
+            simuler_calepinage(self.calepinage, client=_ClientRejoue(),
+                               materiel=MATERIEL, enregistrer=True)
+            self.calepinage.refresh_from_db()
+            rendu = lancer_simulation_automatique(self.calepinage,
+                                                  user=self.user)
+        self.assertEqual(rendu['etat'], ETAT_A_JOUR)
+        depart.assert_not_called()
+
+    def test_ecrire_le_resultat_ne_relance_jamais_de_simulation(self):
+        """Pas de boucle : la simulation écrit ``resultat`` sans repasser par
+        ``enregistrer_layout`` ni par la mise en file."""
+        from unittest import mock
+
+        from apps.calepinage.services.simulation import simuler_calepinage
+
+        from .acal_livrables_helpers import patch_materiel
+
+        self.calepinage.roof_layout = LAYOUT
+        self.calepinage.save()
+        with patch_materiel(), \
+                mock.patch('core.jobs.submit') as mise_en_file, \
+                mock.patch('apps.calepinage.services.layout.'
+                           'enregistrer_layout') as ecriture:
+            with self.captureOnCommitCallbacks(execute=True):
+                simuler_calepinage(self.calepinage, client=_ClientRejoue(),
+                                   materiel=MATERIEL, enregistrer=True)
+        mise_en_file.assert_not_called()
+        ecriture.assert_not_called()
+        self.calepinage.refresh_from_db()
+        self.assertIn('production', self.calepinage.resultat)
+
+    def test_la_simulation_en_cours_se_lit_par_le_selecteur(self):
+        from apps.calepinage.selectors import simulation_automatique_en_cours
+
+        self.assertIsNone(simulation_automatique_en_cours(self.calepinage))
+        self._enregistrer(LAYOUT)
+        self.assertEqual(simulation_automatique_en_cours(self.calepinage),
+                         self._jobs().get().pk)
+
+    def test_la_simulation_automatique_est_la_tache_du_bouton(self):
+        """Même kind, même tâche, même borne de livraisons que « Simuler »."""
+        from apps.calepinage import tasks
+
+        self._enregistrer(LAYOUT)
+        self.assertEqual(self._jobs().get().kind, tasks.KIND_CALEPINAGE)
+        self.assertEqual(tasks.LIVRAISONS_MAX, 2)
+
+    def test_designer_le_materiel_electrique_lance_la_simulation(self):
+        """Désigner le matériel (``POST entree-electrique/``) est le dernier
+        geste d'une pose complète : il met la simulation en file, seul."""
+        from unittest import mock
+
+        from apps.calepinage import tasks
+        from apps.calepinage.services.electrique import enregistrer_entree
+
+        from .acal_livrables_helpers import patch_materiel
+
+        self.calepinage.roof_layout = LAYOUT
+        self.calepinage.save()
+        self.assertEqual(self._jobs().count(), 0)
+        with patch_materiel(), mock.patch.object(
+                tasks.simuler_calepinage, 'delay') as depart:
+            with self.captureOnCommitCallbacks(execute=True):
+                enregistrer_entree(self.calepinage, {'dc_m': 42.0},
+                                   user=self.user)
+        depart.assert_called_once()
+        self.assertEqual(self._jobs().count(), 1)
+
+    def _etat_servi(self):
+        """``simulation_automatique`` lu par la VRAIE porte ``GET resultat/``."""
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
+
+        from .acal_livrables_helpers import patch_materiel
+
+        self.user.role, _cree = Role.objects.get_or_create(
+            company=self.societe, nom='Directeur',
+            defaults={'permissions': list(DIRECTEUR_PERMISSIONS)})
+        self.user.save()
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        with patch_materiel():
+            reponse = api.get('/api/django/calepinage/calepinages/'
+                              f'{self.calepinage.pk}/resultat/')
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        return reponse.data['simulation_automatique']
+
+    def test_get_resultat_dit_simulation_en_cours(self):
+        echantillon = json.loads(
+            (pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
+             / 'calepinage_resultat.json').read_text(encoding='utf-8'))
+        self._enregistrer(LAYOUT)
+        etat = self._etat_servi()
+        self.assertEqual(sorted(etat), sorted(
+            echantillon['acal1987_simulation_automatique']))
+        self.assertTrue(etat['en_cours'])
+        self.assertEqual(etat['job_id'], self._jobs().get().pk)
+        self.assertEqual(etat['manquants'], [])
+
+    def test_get_resultat_dit_ce_qui_manque_tant_que_la_pose_n_a_pas_bouge(
+            self):
+        import copy
+
+        vide = copy.deepcopy(LAYOUT)
+        vide['zones'][0]['geometry']['count'] = 0
+        self._enregistrer(vide)
+        etat = self._etat_servi()
+        self.assertFalse(etat['en_cours'])
+        self.assertIn('plans', [m['champ'] for m in etat['manquants']])
+        self.assertTrue(all(m['motif'] for m in etat['manquants']))
+        # La pose a changé depuis (sans passer par l'enregistrement) : la liste
+        # ne décrit plus ce dossier, elle n'est plus servie.
+        self.calepinage.roof_layout = LAYOUT
+        self.calepinage.save()
+        self.assertEqual(self._etat_servi()['manquants'], [])

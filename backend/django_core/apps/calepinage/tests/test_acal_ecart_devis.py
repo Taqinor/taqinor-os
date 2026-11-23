@@ -168,7 +168,14 @@ class EcartDevisTest(BaseApiCalepinage):
         self.assertIn('12\u202f600,0', html)   # production du devis, telle quelle
         self.assertIn('13\u202f000,0', html)   # P50 de l'étude
         self.assertIn('+3,2 %', html)
-        self.assertIn('moteur du devis', html)
+        # ACAL1755 (D-ACAL-86, D-ACAL-96) — deux chiffres différents : chacun
+        # NOMMÉ, et le devis envoyé n'est pas modifié (révision proposée).
+        self.assertIn('Production retenue par le devis', html)
+        self.assertIn('Production simulée de la pose', html)
+        self.assertIn("devis envoyé n'est pas modifié : une révision est proposée",
+                      html.replace('&#x27;', "'"))
+        self.assertNotIn('moteur du devis', html)
+        self.assertNotIn('D-ACAL-6', html)
         # Sans écart servi : aucun bloc.
         sans = dict(exemple, ecart_devis=None)
         self.assertNotIn('production-ecart-devis',
@@ -181,6 +188,33 @@ class EcartDevisTest(BaseApiCalepinage):
         self.assertIn('+50,9 %', html)
         self.assertEqual(Decimal('50.9'),
                          Decimal(str(servi['ecart_devis']['ecart_pct'])))
+
+    def test_acal1956_production_retenue_par_le_devis_les_trois_etats(self):
+        # Sans devis : rien.
+        sans = self._calepinage(devis=False, simule=False)
+        self.assertIsNone(resultat_calepinage(sans, materiel=MATERIEL)['production_devis'])
+        sans.delete()
+        # Devis encore brouillon : rien (le client ne l'a pas reçu).
+        brouillon = self._calepinage(simule=False)
+        self.assertIsNone(resultat_calepinage(brouillon, materiel=MATERIEL)['production_devis'])
+        brouillon.delete()
+        # Devis envoyé, SANS simulation : la production du devis, telle quelle.
+        Devis.objects.filter(pk=self.devis.pk).update(statut='envoye')
+        non_simule = self._calepinage(simule=False)
+        servi = resultat_calepinage(non_simule, materiel=MATERIEL)
+        self.assertFalse(servi['simule'])
+        self.assertEqual(servi['production_devis'], {
+            'devis': self.devis.pk, 'reference': 'DEV-202610-0648', 'statut': 'envoye',
+            'production_annuelle_kwh': float(PRODUCTION_DEVIS), 'production_origine': 'production_annuelle'})
+        self.assertEqual(set(servi['production_devis']),
+                         set(CONTRAT['exemple_ecart_devis']['production_devis']))
+        non_simule.delete()
+        # Devis envoyé, AVEC simulation : les deux chiffres côte à côte, devis inchangé.
+        servi = resultat_calepinage(self._calepinage(), materiel=MATERIEL)
+        self.assertEqual(servi['production_devis']['production_annuelle_kwh'], float(PRODUCTION_DEVIS))
+        self.assertEqual(servi['production']['total']['p50_kwh'], P50)
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.etude_params['production_annuelle'], PRODUCTION_DEVIS)
 
 
 class EcartDevisSansRenduTest(SimpleTestCase):
@@ -208,6 +242,17 @@ class EcartDevisSansRenduTest(SimpleTestCase):
         self.assertEqual(ecart['production_devis_kwh'], 3628.0)
         self.assertEqual(ecart['ecart_pct'], round((4808 - 3628) / 3628 * 100, 1))
         self.assertIn('3\u202f628,0', html_de_section({'resultat': {'ecart_devis': ecart}}))
+
+    def test_acal1755_un_seul_chiffre_quand_devis_et_simulation_sont_egaux(self):
+        """ACAL1755 (D-ACAL-86) — même chiffre au kWh près : le rapport n'en
+        imprime qu'UN, sans écart ni proposition de révision."""
+        ecart = self._ecart(Decimal('4808.3'))
+        html = html_de_section({'resultat': {'ecart_devis': ecart}})
+        self.assertIn('production-ecart-devis', html)
+        self.assertEqual(html.count('4 808'), 1)
+        self.assertIn('Production — devis DEV-202611-0071 et simulation de la pose', html)
+        self.assertNotIn('Écart', html)
+        self.assertNotIn('révision', html)
 
     def test_sans_production_aucune_phrase(self):
         """Pompage : aucune production au devis ⇒ aucun écart, jamais un 0."""

@@ -3,7 +3,7 @@
 // (jamais estimée) ; (2) le style d'un fournisseur porte cette attribution, que la carte
 // affiche ; (3) SANS section `imagerie`, `buildSatelliteStyle` produit exactement le
 // style d'avant CAL48 — non-régression stricte.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   buildSatelliteStyle,
   maptilerHybridStyleUrl,
@@ -26,6 +26,11 @@ import {
   type ImageryProvider,
   imageryDisclosure,
   resolutionSourceRefus,
+  styleSansImagerie,
+  brancherRepliImagerie,
+  themeSombreActif,
+  FOND_SANS_IMAGERIE_CLAIR,
+  FOND_SANS_IMAGERIE_SOMBRE,
 } from './roofConfig';
 
 const KEYS = { maptilerKey: 'KEY', mapboxToken: 'TOK' };
@@ -268,5 +273,34 @@ describe('ACAL508 — d’où vient l’image', () => {
   });
   it('aucun fournisseur ⇒ aucune ligne', () => {
     expect(imageryDisclosure(null)).toBe('');
+  });
+});
+
+describe('ACAL2004 — le fond neutre de la carte suit le thème', () => {
+  const fond = (s: object) => (s as { layers: { paint: Record<string, string> }[] }).layers[0].paint['background-color'];
+  it('clair : le papier chaud d’avant ; sombre : le fond de scène nuit', () => {
+    expect(fond(styleSansImagerie('K'))).toBe(FOND_SANS_IMAGERIE_CLAIR);
+    expect(fond(styleSansImagerie('K', false))).toBe('#e7e5df');
+    expect(fond(styleSansImagerie('K', true))).toBe(FOND_SANS_IMAGERIE_SOMBRE);
+    expect(FOND_SANS_IMAGERIE_SOMBRE).toBe('#0a0f2a');
+  });
+  it('la bascule de repli lit le thème au moment où le style est refusé', () => {
+    const poses: object[] = [];
+    let erreur: (e: unknown) => void = () => undefined;
+    brancherRepliImagerie<object>({
+      on: (_ev, h) => { erreur = h; },
+      once: () => undefined,
+      isStyleLoaded: () => false,
+      setStyle: (s: object) => { poses.push(s); },
+    }, () => undefined, 'K');
+    // Environnement node : un <html> minimal porte la classe `.dark` comme l'ERP le pose.
+    vi.stubGlobal('document', { documentElement: { classList: { contains: (c: string) => c === 'dark' } } });
+    try {
+      expect(themeSombreActif()).toBe(true);
+      erreur({ error: { message: 'refusé' } });
+    } finally { vi.unstubAllGlobals(); }
+    expect(poses).toHaveLength(1);
+    expect(fond(poses[0])).toBe(FOND_SANS_IMAGERIE_SOMBRE);
+    expect(themeSombreActif()).toBe(false);
   });
 });

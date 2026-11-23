@@ -131,3 +131,43 @@ class OmissionsNommeesTest(unittest.TestCase):
     def test_norme_non_applicable_reprend_le_motif_de_norme_py(self):
         _, etape = ohmique_ac.appliquer(SERIE, contexte(norme=NORME_MA))
         self.assertEqual(etape['motif_omission'], NORME_MA['motif'])
+
+
+#: ACAL1968 — le réglage de la valeur de CONCEPTION que pose le profil de départ.
+CONCEPTION = {'ohmique_ac_conception_pct': {
+    'valeur': 0.8, 'source': 'texte', 'reference': 'Profil de départ'}}
+
+
+class ValeurDeConceptionTest(unittest.TestCase):
+    """ACAL1968 (D-ACAL-82) — sans câble AC réel, la valeur de conception de la
+    société s'applique, DITE supposée ; un calcul sur câble réel PRIME."""
+
+    def test_sans_cable_la_valeur_de_conception_s_applique_dite_supposee(self):
+        serie, etape = ohmique_ac.appliquer(SERIE, contexte(
+            cable=False, reglages_simulation=dict(CONCEPTION)))
+        self.assertEqual(etape['motif_omission'], '')
+        self.assertTrue(etape['entree']['supposee'])
+        self.assertIn('supposé', etape['entree']['mention'])
+        self.assertIn('onduleur_vers_tgbt_m',
+                      etape['entree']['motif_du_calcul_reel'])
+        self.assertAlmostEqual(etapes.energie_kwh(serie), 3.0 * (1 - 0.008),
+                               places=9)
+
+    def test_un_cable_reel_prime_sur_la_valeur_de_conception(self):
+        _, etape = ohmique_ac.appliquer(SERIE, contexte(
+            reglages_simulation=dict(CONCEPTION)))
+        self.assertEqual(etape['motif_omission'], '')
+        self.assertNotIn('supposee', etape['entree'])
+        self.assertEqual(etape['entree']['liaison'],
+                         'onduleur → tableau général')
+
+    def test_un_poste_saisi_et_source_prime_sur_la_valeur_de_conception(self):
+        saisi = [{'poste': 'ohmique_ac', 'pct': 0.4, 'source': 'societe'}]
+        _, etape = ohmique_ac.appliquer(SERIE, contexte(
+            cable=False, reglages_simulation=dict(CONCEPTION),
+            postes_saisis=saisi))
+        self.assertTrue(etape['motif_omission'])
+
+    def test_sans_reglage_de_conception_l_omission_reste_dite(self):
+        _, etape = ohmique_ac.appliquer(SERIE, contexte(cable=False))
+        self.assertIn('onduleur_vers_tgbt_m', etape['motif_omission'])

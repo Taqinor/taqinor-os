@@ -7,6 +7,7 @@ import RetourAtelier from '../atelier/RetourAtelier'
 import { refusParChamp } from './entreeElectrique'
 import { ROLES, libelleProvenance } from './MaterielElectrique.helpers'
 import ConfigurationsOnduleur from './ConfigurationsOnduleur'
+import DevisRetenu from './DevisRetenu'
 
 /* ============================================================================
    ACAL149 — L'ONGLET « MATÉRIEL ÉLECTRIQUE » DE L'ATELIER.
@@ -41,17 +42,20 @@ export default function MaterielElectrique({ calepinageId, lectureSeule = false 
 
   useEffect(() => { lire() }, [lire])
 
-  const valeur = (role) => {
-    if (choix && role.champ in choix) return choix[role.champ]
+  const valeur = (role, courant = choix) => {
+    if (courant && role.champ in courant) return courant[role.champ]
     return bloc?.materiel?.[role.role]?.produit_id ?? bloc?.entree?.[role.champ] ?? null
   }
 
-  const enregistrer = (evenement) => {
-    evenement.preventDefault()
+  // ACAL1987 — CHOISIR dans une liste DÉSIGNE : un seul geste, sans « Enregistrer le matériel » à retrouver (le choix
+  // gardé seulement dans l'écran se perdait en quittant l'onglet, et « Matériel électrique désigné » restait « Non
+  // désigné »). Le bouton reste pour renvoyer la même désignation après un refus.
+  const enregistrer = (evenement, courant = choix) => {
+    evenement?.preventDefault?.()
     setEnregistrement(true)
     setErreurs({})
     const corps = {}
-    for (const role of ROLES) corps[role.champ] = valeur(role)
+    for (const role of ROLES) corps[role.champ] = valeur(role, courant)
     calepinageApi.calepinages.enregistrerEntreeElectrique(id, corps)
       .then(() => lire())
       .catch((err) => {
@@ -120,13 +124,17 @@ export default function MaterielElectrique({ calepinageId, lectureSeule = false 
                 <select
                   id={idChamp(role.champ)}
                   name={role.champ}
-                  disabled={lectureSeule}
+                  disabled={lectureSeule || enregistrement}
                   value={valeur(role) ?? ''}
                   aria-invalid={erreurs[role.champ] ? 'true' : undefined}
-                  onChange={(e) => setChoix({
-                    ...(choix ?? {}),
-                    [role.champ]: e.target.value === '' ? null : Number(e.target.value),
-                  })}
+                  onChange={(e) => {
+                    const suivant = {
+                      ...(choix ?? {}),
+                      [role.champ]: e.target.value === '' ? null : Number(e.target.value),
+                    }
+                    setChoix(suivant)
+                    enregistrer(null, suivant)
+                  }}
                   className="w-full rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
                 >
                   <option value="">{manque ? '— à désigner —' : '— aucun —'}</option>
@@ -158,6 +166,7 @@ export default function MaterielElectrique({ calepinageId, lectureSeule = false 
                       {erreurs[role.champ]}
                     </p>
                   ) : null}
+                {role.role === 'onduleur' && bloc.devis_retenu ? <DevisRetenu retenu={bloc.devis_retenu} /> : null}
                 {role.role === 'onduleur' && (
                   <ConfigurationsOnduleur
                     calepinageId={id}

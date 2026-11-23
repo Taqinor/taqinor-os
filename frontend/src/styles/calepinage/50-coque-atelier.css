@@ -28,6 +28,19 @@
   font-size: 0.875rem;
 }
 
+/* ACAL2001 — un message ne cache jamais le bouton d'action. Tant que l'atelier est monté, <body> porte
+   `data-cal-atelier` (atelier/coque/toastsAtelier.js) : les messages du Toaster de l'ERP (bas droite) se posent à
+   GAUCHE du panneau d'étape (384 px + marges = --cal-libre-droite, 416 px), jamais sur son bouton ni sur le
+   bandeau ; sur tablette le bas passe au-dessus du tiroir (56-coque-responsive.css). Le téléphone (messages en
+   haut) et le reste de l'ERP ne changent pas. */
+/* T3-VAGUEC — au bureau, le message se pose AU-DESSUS de la rangée du bas (barre du soleil, barre d'outils : 69 px au-dessus
+   de la marge de 16 px) avec un jeu de 8 px : il ne recouvre plus la moitié droite de la barre du soleil. */
+body[data-cal-atelier] { --cal-toast-droite: 416px; --cal-toast-bas: 96px; }
+body[data-cal-atelier] [data-sonner-toaster][data-y-position='bottom'][data-x-position='right'] {
+  right: var(--cal-toast-droite);
+  bottom: var(--cal-toast-bas);
+}
+
 /* ── Bandeau du projet ─────────────────────────────────────────────────── */
 .cal-coque .cal-barre-projet {
   height: 56px;
@@ -141,7 +154,8 @@
 /* Boutons des maquettes v2 (ACAL1802) — l'OR (--cal-action) est le seul aplat doré d'un écran : le bouton qui fait
    avancer (BoutonOr). Tout le reste qui agit est bleu nuit (BoutonMarine, « Générer le devis » du bandeau).
    Un seul rayon de bouton (--cal-rayon-bouton, 11 px). */
-.cal-coque .cal-bouton-or {
+.cal-coque .cal-bouton-or,
+.cal-reglages .cal-bouton-or {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -158,7 +172,13 @@
 }
 /* ACAL1803 — le bouton d'étape du pied (maquette v2) : 52 px, rayon 14, 15 px graisse 700, ombre dorée. */
 .cal-coque .cal-bouton-or-plein { width: 100%; height: 52px; gap: 10px; border-radius: var(--cal-rayon-pile); font-size: 0.9375rem; }
-.cal-coque .cal-bouton-or:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
+/* ACAL2002 — UN SEUL bouton doré : « Générer le devis » (Documents) et « Remplir… » (Démarrage rapide) prennent le MÊME
+   bouton que l'étape (52 px, rayon 14, 15 px graisse 700, ombre dorée), à largeur de contenu ; le relevé de visite
+   (58-telephone.css) lit les mêmes jetons. */
+.cal-coque .cal-bouton-or-grand,
+.cal-reglages .cal-bouton-or-grand { height: 52px; padding: 0 22px; gap: 10px; border-radius: var(--cal-rayon-pile); font-size: 0.9375rem; }
+.cal-coque .cal-bouton-or:disabled,
+.cal-reglages .cal-bouton-or:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
 .cal-coque .cal-bouton-marine {
   position: relative;
   height: 44px;
@@ -270,10 +290,26 @@
 .cal-coque .cal-coque-scene #rp9-search { flex: none; background: var(--card); }
 .cal-coque[data-avance='0'] .cal-coque-scene #rp9-search { display: none; }
 /* ACAL1410 — Guidé, aucun toit tracé : le champ d'adresse flotte au-dessus de la carte (44 px, bouton Localiser) ; la
-   coque porte `data-sans-toit` (posé par EtapeToit) jusqu'à la fermeture d'un contour. */
+   coque porte `data-sans-toit` (posé par EtapeToit) jusqu'à la fermeture d'un contour.
+   ACAL1904 — la carte laisse la pile de zoom libre (44 px + 16 de marge + 12 d'écart à droite), ne tient que la hauteur
+   d'un champ (les notes de pays et de source d'image et les champs « Date de la photo » ne se déplient que pendant la
+   saisie) et ne reçoit de clic que sur ses champs : un clic de tracé ailleurs arrive à la carte. */
 .cal-coque[data-avance='0'][data-sans-toit='1'] .cal-coque-scene #rp9-search {
-  display: flex; position: absolute; top: 12px; left: 12px; right: 12px; min-height: 44px; align-items: center;
+  display: flex; position: absolute; top: 12px; left: 12px; right: 72px; min-height: 44px; align-items: center;
+  padding: 6px; pointer-events: none;
   border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-md); z-index: calc(var(--z-base) + 20);
+}
+.cal-coque[data-avance='0'][data-sans-toit='1'] .cal-coque-scene #rp9-search :is(input, button, label, ul) { pointer-events: auto; }
+.cal-coque[data-avance='0'][data-sans-toit='1'] .cal-coque-scene #rp9-search :is(.rp9-geocode-country, .rp9-image-source, .rp9-image-capture) { display: none; }
+.cal-coque[data-avance='0'][data-sans-toit='1'] .cal-coque-scene #rp9-search:focus-within .rp9-geocode-country,
+.cal-coque[data-avance='0'][data-sans-toit='1'] .cal-coque-scene #rp9-search:focus-within .rp9-image-source,
+.cal-coque[data-avance='0'][data-sans-toit='1'] .cal-coque-scene #rp9-search:focus-within .rp9-image-capture { display: block; }
+/* ACAL1907 — « Localiser » : 44 px comme un champ, bouton secondaire (filet, surface) — l'or de l'écran est réservé à l'action suivante
+   (K8), et l'aplat doré de 114 × 200 px, étiré à la hauteur de la carte d'adresse, n'existe plus. */
+.cal-coque #rp9-search > button[type='submit'] {
+  flex: none; height: 44px; min-height: 44px; padding: 0 20px;
+  border: 1px solid var(--cal-filet-fort); border-radius: var(--cal-rayon-champ);
+  background: var(--cal-surface); color: var(--cal-texte-1); font-size: 0.875rem; font-weight: 600;
 }
 .cal-coque .cal-coque-scene .rp9-map-wrap:not([data-plein-ecran='1']) { flex: 1; min-height: 0; }
 .cal-coque .cal-coque-scene .rp9-map-wrap:not([data-plein-ecran='1']) #rp9-map { height: 100%; min-height: 0; }
@@ -403,12 +439,12 @@
   border-left: 1px solid var(--cal-filet);
 }
 .cal-coque .cal-panneau-etape[hidden] { display: none; }
-/* ACAL1803 — tête v2 : cinq traits de progression (4 px, or pour les étapes faites et l'active), « Étape N sur 5 »
+/* ACAL1803 — tête v2 : cinq traits de progression (4 px ; ACAL2003 : l'or marque l'étape COURANTE seule, les faites sont d'un neutre soutenu), « Étape N sur 5 »
    12 px, titre Archivo 24 px (même tête au-dessus des écrans pleins, ACAL1727). */
 .cal-coque .cal-panneau-etape-tete { padding: 18px 22px 14px; }
 .cal-coque .cal-progression-etapes { display: flex; gap: 4px; margin-bottom: 14px; }
 .cal-coque .cal-progression-etapes > span { flex: 1; height: 4px; border-radius: 2px; background: var(--cal-progression-a-venir); }
-.cal-coque .cal-progression-etapes > span[data-etat='fait'],
+.cal-coque .cal-progression-etapes > span[data-etat='fait'] { background: var(--cal-progression-faite); }
 .cal-coque .cal-progression-etapes > span[data-etat='actif'] { background: var(--cal-action); }
 .cal-coque .cal-plein-etape-tete .cal-progression-etapes { max-width: 340px; }
 .cal-coque .cal-panneau-etape-rang { margin: 0; font-size: 0.75rem; font-weight: 500; color: var(--cal-texte-3); }

@@ -305,6 +305,10 @@ describe('ACAL867 — l’étape Documents guidée porte « Générer le devis �
     const enfants = [...ecran.children]
     expect(enfants).toHaveLength(2)
     expect(enfants[0].querySelector('[data-testid="cal-generer-devis"]')).not.toBeNull()
+    // ACAL1985 — en Guidé à Documents, c'est le bouton doré v2 (52 px, rayon 14 par ses jetons), pas le filet de l'Expert.
+    const bouton = screen.getByTestId('cal-generer-devis')
+    expect(bouton.classList.contains('cal-bouton-or')).toBe(true)
+    expect(bouton.classList.contains('cal-bouton-or-grand')).toBe(true)
   }, 30_000)
 
   it('hors de l’étape Documents, ou en mode expert : le bouton reste dans cal-atelier-actions', async () => {
@@ -316,5 +320,7 @@ describe('ACAL867 — l’étape Documents guidée porte « Générer le devis �
     await waitFor(() => expect(dansActions()).not.toBeNull())
     expect(screen.getAllByTestId('cal-generer-devis')).toHaveLength(1)
     expect(screen.queryByTestId('cal-etape-documents-ecran')).toBeNull()
+    // ACAL1802 — en Expert l'or n'est pas l'action de l'étape : bouton à filet.
+    expect(screen.getByTestId('cal-generer-devis').classList.contains('cal-bouton-or')).toBe(false)
   }, 30_000)
 })

@@ -236,12 +236,13 @@
   gap: 8px;
   height: 52px;
   border: 0;
-  border-radius: 12px;
-  background: var(--primary);
-  color: var(--primary-foreground);
-  font: 600 1rem var(--font-brand);
+  border-radius: var(--cal-rayon-pile);
+  background: var(--cal-action);
+  color: var(--cal-action-texte);
+  box-shadow: var(--cal-action-ombre);
+  font: 700 0.9375rem var(--font-brand);
 }
-.cal-tel-pied-or:disabled { opacity: 0.55; cursor: not-allowed; }
+.cal-tel-pied-or:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
 
 /* ── Montrer au client ───────────────────────────────────────────────────── */
 .cal-client-scene {
@@ -335,8 +336,7 @@
 
 /* J1 — tuiles de la maquette (101 px) : le libellé tient deux lignes, même court (une seule rangée, même hauteur). */
 .cal-client-tuile-libelle { min-height: calc(2 * 1.3em); }
-/* J1 — curseur d'heure : au doigt, la cible de 24 px ne pousse pas la date (la piste de 6 px de la maquette compte seule). */
-@media (pointer: coarse) { .cal-coque .cal-client-soleil .cal-pan-heure { margin: -9px 0; } }
+/* J1 / ACAL1906 — curseur d'heure : la zone de 44 px et sa marge négative viennent de .cal-pan-heure (52-etape-panneaux.css). */
 
 /* ACAL1809 — l'entrée du bandeau de l'atelier : « Relevé » au doigt, « Montrer au client » à la souris (BarreProjet.jsx).
    Bouton secondaire (filet, texte bleu nuit) : jamais un second aplat doré ni bleu nuit à côté de « Générer le devis ». */

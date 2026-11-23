@@ -3,7 +3,7 @@
    (mêmes ids, mêmes éléments) et l'on prouve ce que React rend — structure, ordre, libellés mot pour mot,
    hooks — et que chaque geste part au VRAI contrôle ; les replis honnêtes (sans facture, sans avis d'ombrage). */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, within, fireEvent, waitFor, act } from '@testing-library/react'
+import { render, renderHook, screen, cleanup, within, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('../../../../../api/calepinageApi', () => ({
@@ -17,7 +17,9 @@ import { choisirPaletteAcces } from '@rooflib/shadingEngine'
 import calepinageApi from '../../../../../api/calepinageApi'
 import { exempleContrat, reponseContrat } from '../../../../../test/fixtures/contractSamples'
 import { ContexteCoque } from '../contexteCoque'
+import { sousTitrePose } from '../projet'
 import EtapePanneaux from './EtapePanneaux'
+import { usePoseVivante } from './panneaux/constructeur'
 import { jourMois, ligneModule } from './panneaux/formats'
 import { lireServi, oublierLecturesServies } from './panneaux/lectures'
 
@@ -168,7 +170,7 @@ describe('étape Panneaux — panneau de droite', () => {
     // la pose actuelle = tout ce qui tient (55) : « Le plus de panneaux », son % nommé pour ce qu'il est
     const max = screen.getByTestId('cal-panneaux-option-max')
     expect(max).toHaveAttribute('aria-pressed', 'true')
-    expect(max).toHaveTextContent('55 panneaux · 39,60 kWc · ≈ 809 % de la consommation')
+    expect(max).toHaveTextContent('55 panneaux · 39,60 kWc · ≈ 809 % : production ÷ consommation')
     expect(document.body).not.toHaveTextContent('de la facture')
     fireEvent.click(facture)
     expect(document.getElementById('rp9-need-input').value).toBe('12')
@@ -179,7 +181,7 @@ describe('étape Panneaux — panneau de droite', () => {
     document.getElementById('rp9-reco-kwc').textContent = '8,64 kWc'
     document.getElementById('rp9-reco-prod').textContent = '9 589 kWh/an'
     document.getElementById('rp9-reco-cover').textContent = '144 %'
-    await waitFor(() => expect(facture).toHaveTextContent('12 panneaux · 6,96 kWc · ≈ 144 % de la consommation'), { timeout: 3000 })
+    await waitFor(() => expect(facture).toHaveTextContent('12 panneaux · 6,96 kWc · ≈ 144 % : production ÷ consommation'), { timeout: 3000 })
     expect(facture).toHaveAttribute('aria-pressed', 'true')
     expect(max).toHaveAttribute('aria-pressed', 'false')
     // l'autre carte garde les chiffres lus quand elle était posée
@@ -204,6 +206,20 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(surInput).not.toHaveBeenCalled() // le besoin 6 est déjà la cible posée : rien à renvoyer, la pose reste 1
   })
 
+  // ACAL1331 (D-ACAL-76) — calepinage vierge : le constructeur a posé la taille de la cible et l'a dite dans sa note ;
+  // le Guidé la DIT sous « Combien de panneaux ? ». Le commercial ajuste (« + ») : la note change, la phrase part.
+  it('ACAL1331 — la taille posée d’elle-même est dite ; ajustée, la phrase part', async () => {
+    const phrase = 'Posé d’après la facture : 12 panneaux · 6,96 kWc — ajustez si besoin.'
+    monterConstructeur({ besoin: '12', note: phrase })
+    rendre()
+    const dite = () => document.querySelector('[data-zone="taille-auto"]')
+    await waitFor(() => expect(dite()).toHaveTextContent(phrase))
+    await waitFor(() => expect(screen.getByTestId('cal-panneaux-option-facture')).toHaveAttribute('aria-pressed', 'true'))
+    document.getElementById('rp9-need-input').value = '13'
+    document.getElementById('rp9-need-note').textContent = '13 posés / 13 cible — il reste de la place sur le toit, laissée libre.'
+    await waitFor(() => expect(dite()).toBeNull(), { timeout: 3000 })
+  })
+
   it('la carte non choisie garde ses chiffres : « Le plus de panneaux » dès l’ouverture, la part de la facture après le clic, le sens dit', async () => {
     monterConstructeur({
       besoin: '12', panneaux: '12 × 710 W', kwc: '8,52 kWc', cover: '63 %', orient: 'portrait',
@@ -212,7 +228,7 @@ describe('étape Panneaux — panneau de droite', () => {
     rendre()
     const facture = screen.getByTestId('cal-panneaux-option-facture')
     const max = screen.getByTestId('cal-panneaux-option-max')
-    await waitFor(() => expect(facture).toHaveTextContent('≈ 63 % de la consommation'))
+    await waitFor(() => expect(facture).toHaveTextContent('≈ 63 % : production ÷ consommation'))
     expect(max).toHaveTextContent('20 panneaux · 14,20 kWc') // 20 × 710 W, lu de la pose, dès l'ouverture
     fireEvent.click(max)
     expect(document.getElementById('rp9-need-input').value).toBe('400')
@@ -225,7 +241,7 @@ describe('étape Panneaux — panneau de droite', () => {
     document.querySelector('[data-orient="landscape"]').setAttribute('aria-pressed', 'true')
     await waitFor(() => expect(document.querySelector('[data-zone="sens-bascule"]')).toHaveTextContent('passé de Portrait à Paysage'), { timeout: 3000 })
     expect(max).toHaveAttribute('aria-pressed', 'true')
-    expect(facture).toHaveTextContent('≈ 63 % de la consommation') // gardée, pas perdue au clic
+    expect(facture).toHaveTextContent('≈ 63 % : production ÷ consommation') // gardée, pas perdue au clic
     expect(facture).not.toHaveTextContent('105')
   })
 
@@ -413,11 +429,21 @@ describe('étape Panneaux — panneau de droite', () => {
 })
 
 describe('étape Panneaux — sur la carte', () => {
+  it('ACAL1968 — la part estimée par le constructeur ne porte jamais le nom de la tuile « De la consommation » des Résultats', () => {
+    // Deux grandeurs (production ÷ consommation ici ; énergie autoconsommée ÷ consommation à l'étape Résultats) :
+    // jamais le même intitulé pour deux chiffres différents (règle du fondateur du 23/11 : un nom, un chiffre).
+    monterConstructeur()
+    rendre()
+    const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
+    expect(puce).toHaveTextContent('Production ÷ consommation')
+    expect(puce).not.toHaveTextContent('De la consommation')
+  })
+
   it('puce : les quatre chiffres lus ; un chiffre absent est omis', () => {
     monterConstructeur()
     rendre()
     const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
-    for (const t of ['Panneaux', '12', 'Puissance', '6,96 kWc', 'Production · estimation', '11 480 kWh / an', 'De la consommation', '≈ 82 %']) {
+    for (const t of ['Panneaux', '12', 'Puissance', '6,96 kWc', 'Production · estimation', '11 480 kWh / an', 'Production ÷ consommation', '≈ 82 %']) {
       expect(puce).toHaveTextContent(t)
     }
     cleanup()
@@ -426,7 +452,7 @@ describe('étape Panneaux — sur la carte', () => {
     rendre()
     const reduite = within(noeudCarte).getByTestId('cal-sur-carte-resume')
     expect(reduite).not.toHaveTextContent('Production')
-    expect(reduite).not.toHaveTextContent('De la consommation')
+    expect(reduite).not.toHaveTextContent('Production ÷ consommation')
   })
 
   it('puce : production PUBLIÉE fraîche et complète → le libellé de l’étape Résultats, jamais « estimation »', async () => {
@@ -608,26 +634,31 @@ describe('palette d’ensoleillement — posée au démarrage, sans passer par l
   })
 })
 
-/* ACAL1818 — le curseur « Heure du soleil » se touche sur 44 px (la piste dessinée garde ses 6 px) : la règle des pointeurs
-   grossiers de la feuille de l'étape, lue sur les règles ANALYSÉES (jsdom n'évalue pas les @media). */
-describe('curseur « Heure du soleil » — zone tactile (ACAL1818)', () => {
-  it('sous pointer: coarse, le curseur fait ≥ 44 px de haut et sa piste se dessine dans la zone de contenu', async () => {
+/* ACAL1818 / ACAL1906 — le curseur « Heure du soleil » se touche sur 44 px, QUEL QUE SOIT le pointeur (le relevé a mesuré 17 px sur
+   un téléphone émulé qui n'était pas `pointer: coarse`) ; la piste dessinée garde ses 6 px et la carte sa hauteur. Le curseur
+   est RENDU par l'étape ; les feuilles 49 + 50 + 52 sont chargées dans le DOM de test et lues par getComputedStyle. */
+describe('curseur « Heure du soleil » — zone tactile (ACAL1818, ACAL1906)', () => {
+  it('le curseur rendu a une zone de 44 px sans media query ; sa piste se dessine dans les 6 px du contenu ; la marge rend la hauteur', async () => {
     const { readFileSync } = await import('node:fs')
     const style = document.createElement('style')
-    style.textContent = readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/52-etape-panneaux.css`, 'utf8')
+    style.textContent = ['49-jetons-v2.css', '50-coque-atelier.css', '52-etape-panneaux.css']
+      .map((f) => readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/${f}`, 'utf8')).join('\n')
     document.head.appendChild(style)
+    document.body.classList.add('cal-coque')
     try {
-      const grossier = [...style.sheet.cssRules].filter((r) => r.type === 4 && /pointer:\s*coarse/.test(r.media.mediaText))
-        .flatMap((m) => [...m.cssRules]).filter((r) => r.selectorText === '.cal-coque .cal-pan-heure')
-      expect(grossier, 'règle .cal-pan-heure sous pointer: coarse').toHaveLength(1)
-      const { height, padding, backgroundClip } = grossier[0].style
-      const haut = parseFloat(height)
-      const [vertical] = padding.split(/\s+/).map(parseFloat)
-      expect(haut).toBeGreaterThanOrEqual(44)
-      expect(haut - 2 * vertical, 'la piste reste fine : 6 px de contenu').toBe(6)
-      expect(backgroundClip).toBe('content-box')
+      monterConstructeur()
+      rendre()
+      const curseur = await screen.findByRole('slider', { name: 'Heure du soleil' })
+      const c = getComputedStyle(curseur)
+      const [haut, haut1, bas] = [c.height, c.paddingTop, c.paddingBottom].map(parseFloat)
+      expect(haut, 'zone tactile').toBeGreaterThanOrEqual(44)
+      expect(haut - haut1 - bas, 'la piste reste fine : 6 px de contenu').toBe(6)
+      expect(c.backgroundClip).toBe('content-box')
+      // La carte ne grandit pas : zone − marges négatives = la piste de 6 px d'avant.
+      expect(haut + parseFloat(c.marginTop) + parseFloat(c.marginBottom)).toBe(6)
     } finally {
       style.remove()
+      document.body.classList.remove('cal-coque')
     }
   })
 })
@@ -716,5 +747,35 @@ describe('ACAL1829 — l’étape Panneaux à sa maquette v2', () => {
     expect(puissance.querySelector('.cal-indicateur-valeur')).toHaveTextContent('6,96 kWc')
     expect(cs(puissance.querySelector('.cal-unite')).fontSize).toBe('0.8125rem')
     expect(cs(puce).height).toBe('62px')
+  })
+})
+
+/* T3-VAGUEC / T3-VAGUEC2 (S3) — l'en-tête de pose (« 16 panneaux · 11,36 kWc · 1 onduleur 5 kW ») lisait le résultat SERVI :
+   après un changement de module ou des retraits, il restait sur l'ancienne pose jusqu'à l'enregistrement. Tant que la scène
+   n'est pas enregistrée, il dit la pose que la carte AFFICHE (lue sur le constructeur, comme « Pose actuelle »). */
+describe('en-tête de pose — suit la pose affichée tant que la scène n’est pas enregistrée', () => {
+  const servi = { pose: { total_modules: 16, kwc: 11.36 }, electrique: { onduleurs: [{ nombre: 1, taille_kw: 5 }] } }
+
+  it('sousTitrePose : la pose vivante prime sur la servie ; un retrait total dit « Aucun panneau posé »', () => {
+    expect(sousTitrePose(servi)).toBe('16 panneaux · 11,36 kWc · 1 onduleur 5 kW')
+    expect(sousTitrePose(servi, { panneaux: 5, kwc: '3,60 kWc' })).toBe('5 panneaux · 3,60 kWc · 1 onduleur 5 kW')
+    expect(sousTitrePose(servi, { panneaux: 1, kwc: null })).toBe('1 panneau · 1 onduleur 5 kW') // rien d’inventé : pas de kWc lu
+    expect(sousTitrePose(servi, { panneaux: 0, kwc: '0,00 kWc' })).toBe('Aucun panneau posé')
+    expect(sousTitrePose(servi, null)).toBe('16 panneaux · 11,36 kWc · 1 onduleur 5 kW')
+  })
+
+  it('usePoseVivante : lit la carte du constructeur, la suit quand le module change, se tait hors scène modifiée', async () => {
+    monterConstructeur({ panneaux: '16 × 710 W', kwc: '11,36 kWc' })
+    const { result, rerender } = renderHook(({ actif }) => usePoseVivante(actif), { initialProps: { actif: true } })
+    expect(result.current).toEqual({ panneaux: 16, kwc: '11,36 kWc' })
+    act(() => {
+      document.getElementById('rp9-reco-panels').textContent = '5 × 720 W'
+      document.getElementById('rp9-reco-kwc').textContent = '3,60 kWc'
+    })
+    await waitFor(() => expect(result.current).toEqual({ panneaux: 5, kwc: '3,60 kWc' }))
+    act(() => { document.getElementById('rp9-reco-panels').textContent = '—' }) // la carte n'affirme plus rien
+    await waitFor(() => expect(result.current).toBeNull())
+    rerender({ actif: false })
+    expect(result.current).toBeNull()
   })
 })

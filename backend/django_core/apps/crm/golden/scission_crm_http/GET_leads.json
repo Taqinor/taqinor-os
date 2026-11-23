@@ -69,20 +69,29 @@
     "devis_auto": {
      "catalogue_ci": null,
      "manquants": [
-      "facture hiver"
+      "facture hiver",
+      "ville"
      ],
      "manquants_detail": [
       {
        "champ": "facture_hiver",
        "label": "facture hiver"
+      },
+      {
+       "champ": "ville",
+       "label": "ville"
       }
      ],
-     "message": "Manque : facture hiver",
+     "message": "Manque : facture hiver, ville",
      "mode_pompe": null,
      "pret": false,
      "requis": [
       [
        "facture_hiver"
+      ],
+      [
+       "ville",
+       "gps_lat"
       ]
      ],
      "source_conso": null,
@@ -356,20 +365,29 @@
     "devis_auto": {
      "catalogue_ci": null,
      "manquants": [
-      "facture hiver"
+      "facture hiver",
+      "ville"
      ],
      "manquants_detail": [
       {
        "champ": "facture_hiver",
        "label": "facture hiver"
+      },
+      {
+       "champ": "ville",
+       "label": "ville"
       }
      ],
-     "message": "Manque : facture hiver",
+     "message": "Manque : facture hiver, ville",
      "mode_pompe": null,
      "pret": false,
      "requis": [
       [
        "facture_hiver"
+      ],
+      [
+       "ville",
+       "gps_lat"
       ]
      ],
      "source_conso": null,
@@ -643,20 +661,29 @@
     "devis_auto": {
      "catalogue_ci": null,
      "manquants": [
-      "facture hiver"
+      "facture hiver",
+      "ville"
      ],
      "manquants_detail": [
       {
        "champ": "facture_hiver",
        "label": "facture hiver"
+      },
+      {
+       "champ": "ville",
+       "label": "ville"
       }
      ],
-     "message": "Manque : facture hiver",
+     "message": "Manque : facture hiver, ville",
      "mode_pompe": null,
      "pret": false,
      "requis": [
       [
        "facture_hiver"
+      ],
+      [
+       "ville",
+       "gps_lat"
       ]
      ],
      "source_conso": null,

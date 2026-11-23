@@ -40,7 +40,16 @@ function texteOnduleurs(onduleurs) {
   return lignes.join(' + ')
 }
 
-export function sousTitrePose(resultat) {
+export function sousTitrePose(resultat, vivante = null) {
+  // Tant que la scène n'est pas enregistrée, la pose AFFICHÉE par la carte (`{ panneaux, kwc }` lus sur le constructeur) prime
+  // sur la servie : changement de module, retraits, remplissage — l'en-tête ne reste pas sur l'ancienne pose. Le kWc n'est dit
+  // que lu ; l'onduleur reste celui du résultat servi ; zéro panneau se dit tel quel.
+  if (vivante && Number.isFinite(vivante.panneaux)) {
+    if (vivante.panneaux <= 0) return 'Aucun panneau posé'
+    const n = vivante.panneaux
+    return [`${formatNumber(n, { decimals: 0, locale: 'fr' })} panneau${n > 1 ? 'x' : ''}`, vivante.kwc, texteOnduleurs(resultat?.electrique?.onduleurs)]
+      .filter(Boolean).join(' · ')
+  }
   const n = Number(resultat?.pose?.total_modules)
   const kwc = Number(resultat?.pose?.kwc)
   if (!(n > 0) || !(kwc > 0)) return ''

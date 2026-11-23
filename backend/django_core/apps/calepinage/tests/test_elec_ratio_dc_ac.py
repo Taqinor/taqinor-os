@@ -15,8 +15,9 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.services.chaines import concevoir_par_pan
 from apps.calepinage.services.electrique import (
-    SOURCE_BORNE_MARCHE, SOURCE_BORNE_NOYAU, SOURCE_BORNE_SOCIETE,
-    _bloc_ratio_dc_ac, _bornes_ratio, ecretage_depuis_serie, temperatures_site,
+    SOURCE_BORNE_CAPACITE, SOURCE_BORNE_DEVIS, SOURCE_BORNE_MARCHE,
+    SOURCE_BORNE_SOCIETE, _bloc_ratio_dc_ac, _bornes_ratio,
+    ecretage_depuis_serie, temperatures_site,
 )
 from core.electrique.onduleurs import BORNE_USUELLE_DC_AC, SEUIL_ALERTE_DC_AC
 
@@ -27,33 +28,37 @@ MODULE = {
 }
 
 
-def _onduleur(ac_kw):
+def _onduleur(ac_kw, **fiche):
     return {'n_mppt': 2, 'mppt_v_min': 150.0, 'mppt_v_max': 800.0,
             'v_max_abs': 1000.0, 'i_max_mppt_a': 26.0, 'ac_kw': ac_kw,
-            'phases': 3}
+            'phases': 3, **fiche}
 
 
-def _conception(modules, ac_kw):
+def _conception(modules, ac_kw, designation='Onduleur d essai', **fiche):
     layout = {'version': 2, 'zones': [
         {'label': 'PAN-A',
          'geometry': {'count': modules, 'azimuthDeg': 180.0,
                       'tiltDeg': 15.0}}]}
     return concevoir_par_pan(
-        layout, module_specs=MODULE, onduleur_specs=_onduleur(ac_kw),
+        layout, module_specs=MODULE, onduleur_specs=_onduleur(ac_kw, **fiche),
         temperatures=temperatures_site(
             saisie={'temperature_min_c': -5.0, 'temperature_max_c': 70.0}),
-        onduleur_designation='Onduleur d essai')
+        onduleur_designation=designation)
 
 
 class BornesLuesTest(SimpleTestCase):
     """Aucune borne n'est écrite dans l'app : elles sont toutes lues."""
 
-    def test_defaut_lu_sur_le_noyau(self):
+    def test_defaut_lu_sur_la_regle_du_devis(self):
+        # ACAL1954 (D-ACAL-91) — la borne du MOTEUR DE DEVIS, lue par ventes.
+        from apps.ventes.selectors_calepinage import borne_dc_ac_du_moteur_devis
+
         borne, alerte, source, detail = _bornes_ratio()
 
+        self.assertEqual(borne, borne_dc_ac_du_moteur_devis())
         self.assertEqual(borne, BORNE_USUELLE_DC_AC)
         self.assertEqual(alerte, SEUIL_ALERTE_DC_AC)
-        self.assertEqual(source, SOURCE_BORNE_NOYAU)
+        self.assertEqual(source, SOURCE_BORNE_DEVIS)
         # ACAL1540 — la source dite en phrase, jamais un nom de module du code.
         self.assertIn('1,35', detail)
         self.assertNotIn('core.electrique', detail)
@@ -85,9 +90,9 @@ class RatioPublieTest(SimpleTestCase):
 
         self.assertAlmostEqual(bloc['valeur'], 0.852, places=3)
         self.assertEqual(bloc['borne'], BORNE_USUELLE_DC_AC)
-        self.assertEqual(bloc['borne_source'], SOURCE_BORNE_NOYAU)
-        # ACAL1538 — la borne du noyau est publiée, elle ne juge plus.
-        self.assertIsNone(bloc['dans_bornes'])
+        self.assertEqual(bloc['borne_source'], SOURCE_BORNE_DEVIS)
+        # ACAL1954 — la règle du devis JUGE (D-ACAL-91 remplace ACAL1538).
+        self.assertIs(bloc['dans_bornes'], True)
         self.assertEqual(messages, ())
 
     def test_hors_bornes_l_avertissement_cite_la_borne_et_sa_source(self):
@@ -123,9 +128,9 @@ class RatioPublieTest(SimpleTestCase):
 
 
 class UnSeulVerdictTest(SimpleTestCase):
-    """ACAL1538 — le bloc, le verdict CAL244 et « Prêt à envoyer ? » disent
-    le MÊME statut ; sans fourchette réglée : « Non jugé », nulle part
-    « dans la fourchette »."""
+    """ACAL1538 / ACAL1954 — le bloc, le verdict CAL244 et « Prêt à envoyer ? »
+    disent le MÊME statut, jugé par la règle du devis sans fourchette société
+    (D-ACAL-91) : au-dessus ⇒ « à régler », jamais « Bon »."""
 
     def _trois(self, conception, **bornes):
         from apps.calepinage.services.electrique import _verdicts_electriques
@@ -137,21 +142,70 @@ class UnSeulVerdictTest(SimpleTestCase):
             if v['code'] == 'ratio_dc_ac')
         return bloc, messages, verdict, _ratio_dc_ac(bloc)
 
-    def test_sans_fourchette_aucun_chemin_ne_dit_dans_la_fourchette(self):
-        for modules in (24, 10):  # 1,70 puis 0,71
-            bloc, messages, verdict, controle = self._trois(
-                _conception(modules, 10.0))
-            self.assertIsNone(bloc['dans_bornes'])
-            self.assertEqual(messages, ())
-            self.assertIsNone(verdict['conforme'])
-            self.assertIn('Non jugé : aucune fourchette réglée',
-                          verdict['detail'])
-            self.assertEqual(controle['etat'], 'info')
-            self.assertIn('Non jugé : aucune fourchette réglée',
-                          controle['cause'])
-            textes = ' '.join([verdict['libelle'], verdict['detail'],
-                               controle['cause'], *messages])
-            self.assertNotIn('dans la fourchette', textes)
+    def test_sans_fourchette_la_regle_du_devis_juge_partout(self):
+        # 60 × 710 Wc = 42,6 kWc sur 10 kW réseau → 4,26 : à régler aux trois endroits.
+        bloc, messages, verdict, controle = self._trois(_conception(60, 10.0))
+        self.assertIs(bloc['dans_bornes'], False)
+        self.assertIs(verdict['conforme'], False)
+        self.assertEqual(controle['etat'], 'a_regler')
+        self.assertIn('4,26 pour 1,35 au plus (règle du devis)', verdict['detail'])
+        self.assertEqual(controle['valeur_texte'], verdict['detail'])
+        self.assertIn('1,35', '\n'.join(messages))
+        bloc, messages, verdict, controle = self._trois(_conception(10, 10.0))  # 0,71
+        self.assertIs(verdict['conforme'], True)
+        self.assertEqual(controle['etat'], 'ok')
+        self.assertEqual(messages, ())
+
+    def test_hybride_juge_a_sa_capacite_publiee(self):
+        # ACAL1954 (D-HYB-1) — hybride 20 kW publiant 40 kWc : 48 × 715 Wc ≈ 34,3 kWc.
+        hybride = {'designation': 'Onduleur hybride Deye 20 kW', 'dc_max_kwc': 40.0}
+        bloc, messages, verdict, controle = self._trois(_conception(48, 20.0, **hybride))
+        self.assertIs(verdict['conforme'], True)
+        self.assertEqual(bloc['borne_source'], SOURCE_BORNE_CAPACITE)
+        self.assertIn("dans la capacité publiée de l'onduleur (40 kWc)", verdict['detail'])
+        self.assertEqual(controle['etat'], 'ok')
+        self.assertNotIn("seuil d'alerte", '\n'.join(messages))
+        self.assertGreater(bloc['valeur'], 1.35)  # la borne de ratio l'aurait refusé
+        # Capacité publiée SOUS la puissance raccordée : au-delà, à régler.
+        petite = int(bloc['puissance_dc_kwc']) - 1
+        bloc, messages, verdict, controle = self._trois(_conception(
+            48, 20.0, designation=hybride['designation'], dc_max_kwc=float(petite)))
+        self.assertIs(verdict['conforme'], False)
+        self.assertEqual(controle['etat'], 'a_regler')
+        self.assertIn("au-delà de la capacité publiée de l'onduleur (%d kWc)" % petite, verdict['detail'])
+
+    def test_onduleur_reseau_et_fiche_sans_capacite_inchanges(self):
+        for fiche in ({'designation': 'Onduleur réseau 20 kW', 'dc_max_kwc': 40.0},
+                      {'designation': 'Onduleur hybride 20 kW'}):
+            bloc, _m, verdict, _c = self._trois(_conception(48, 20.0, **fiche))
+            self.assertEqual(bloc['borne_source'], SOURCE_BORNE_DEVIS)
+            self.assertIs(verdict['conforme'], False)  # 1,70 > 1,35
+
+    def test_sous_le_seuil_bas_la_borne_franchie_est_dite_aux_deux_ecrans(self):
+        """Rejeu T3-VAGUEC2 — « 0,99 pour 1,35 au plus (règle du devis) » était
+        « à régler » sans raison dite. La règle du devis n'a PAS de borne basse
+        (``borne_dc_ac_du_moteur_devis`` : un plafond) : sans seuil bas réglé,
+        0,99 est bon ; avec le seuil bas de la société (profil de départ :
+        1,00, PV*SOL), la phrase NOMME ce seuil franchi."""
+        from apps.calepinage.services.electrique import _verdicts_electriques
+        from apps.calepinage.services.pret_a_envoyer import _ratio_dc_ac
+
+        conception = _conception(14, 10.0)  # 14 × 710 Wc = 9,94 kWc sur 10 kW → 0,99
+        verdict = next(v for v in _verdicts_electriques(conception) if v['code'] == 'ratio_dc_ac')
+        self.assertIs(verdict['conforme'], True)
+        self.assertEqual(verdict['detail'], '0,99 pour 1,35 au plus (règle du devis)')
+        seuil = 1.0
+        reglages = {'seuil_bas_dc_ac': {'valeur': seuil, 'source': 'PV*SOL, Configuration check'}}
+        bloc, _messages = _bloc_ratio_dc_ac(conception, reglages=reglages)
+        verdict = next(v for v in _verdicts_electriques(conception, reglages=reglages)
+                       if v['code'] == 'ratio_dc_ac')
+        controle = _ratio_dc_ac(bloc, verdict=verdict)
+        self.assertIs(bloc['dans_bornes'], False)
+        self.assertIs(verdict['conforme'], False)
+        self.assertEqual(verdict['detail'], "0,99 : sous le seuil bas de 1,00 réglé par la société "
+                                            "(la règle du devis n'a pas de borne basse, 1,35 au plus)")
+        self.assertEqual(controle['etat'], 'a_regler')
+        self.assertEqual(controle['valeur_texte'], verdict['detail'])
 
     def test_avec_fourchette_le_meme_statut_partout(self):
         bornes = {'parametres_societe': {'ratio_dc_ac_max': 1.2}}
