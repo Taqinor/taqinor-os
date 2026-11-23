@@ -624,3 +624,31 @@ les régénérer si rouges).
 9. Tâches à écrire : 6 « après » de `T3/critique-vague-C1.md`, restes de `T3/T3-VAGUEC.md` et `T3-VAGUEC2.md`, 3 tests pdf du rapport d'étude rouges sur `main` aussi (`test_acal_rapport_etude_servi.SchemaJointAuRapportTest`), `test_quote_engine_amot36_pages_ci` (2 échecs antérieurs, cherche « PROPRES À CETTE OPTION »), freezegun absent de l'image locale.
 
 **Puis** : gardes (liste du POINT 15 h 10 + suites runtime du moteur : `npx vitest run --config …/scratchpad/PR2/vitest.orchestrateur.mjs tests/estimatorRuntimePro10Pro11.test.ts tests/userJourneyPro11.test.ts` depuis `apps/web/` + `node --test "src/**/*.test.mjs"` depuis `frontend/`) → `tenue_plans_d.py --ecrire` (après avoir recopié les événements des lanes au registre) → critique finale (3e et dernier appel Fable : la vague touche le moteur de devis) → suites serveur `apps.crm`, `apps.ventes`, `apps.calepinage` → push → file de fusion (`gh pr merge 1530 --auto --merge`) → rejeu en direct de la vague D sur la pile reconstruite → rapport final complété (`RAPPORT-FINAL-2026-11-23.md` : décisions, vagues C et D, un seul moteur) → `SendUserFile` → démontage, `plan_claims.py release`, rétro mémoire.
+
+## POINT a 18 h 40 UTC (le plus recent - REPRENDRE ICI)
+
+Les quatre lanes de la vague D sont PLIEES et poussees (tete poussee `72194cca3d`, 101 commits devant `main`) :
+regles-communes, devis-auto-ci, pertes-simulation, taille-auto. Verifie sur la branche pliee : moteur de dessin
+1 587 + 107 tests (suites runtime comprises), ecrans 3 287 tests, `node --test` (2 echecs Windows connus), gardes
+`check_forme_code`, `check_api_shapes`, deux moities, ancres, services ; import-linter 21/21 (a jouer EN CONTENEUR a
+chaque pli : `docker run ... l5cal-django:t0 sh -c "pip install -q import-linter; lint-imports"` - une lane avait mis
+un test de `core/tests` qui importait des apps).
+
+EN COURS (trois lanes de couture, mission `controles/coutures-vague-D.md`, base `394d027567`) :
+- couture-devis `aa7ce21db18f62294` (opus), branche `lane-l5d-couturedevis` : golden HTTP du CRM (fait), froid du site
+  dans le devis C&I, marquage « estimation », libelle « ville » sur la fiche.
+- couture-calepinage `ab82581dac584f255` (opus), branche `lane-l5d-couturecalepinage` : simulation qui part seule (fin),
+  NASA POWER branche, rapport d'etude a un seul chiffre, borne basse du ratio, module du devis par defaut.
+- couture-ecran `ab6a7006b79c58e36` (sonnet), branche `lane-l5d-coutureecran` : option du devis nommee, « Repris du
+  devis » en Guide, bouton de Resultats, restes S3.
+- consolidation des taches du moteur unique `a551c09f1016760d9` (sonnet) : ecrit `controles/C4-taches-v3.md` et
+  `C4-consolidation.md`, et les reponses de Reda (Q1 a Q4) dans `C4-un-seul-moteur.md` §9.
+
+ENSUITE : plier les trois coutures (gardes + import-linter + suites) -> inserer les taches C4 dans les plans (script du
+type `autres_plans.py`, puis `check_ancres_taches`, `check_decisions`) -> critique finale (3e appel Fable : moteur de
+devis touche) sur `git diff origin/main...HEAD` hors docs -> suites serveur `apps.crm`, `apps.ventes`,
+`apps.calepinage` en conteneur -> file de fusion de #1530 -> reconstruire la pile et rejouer la vague D en direct ->
+rapport final (ajouter une section « apres-midi du 23/11 » : decisions repondues, vagues C et D, un seul moteur) ->
+`SendUserFile` -> demontage, claims, retro memoire.
+A CONFIRMER PAR REDA (a mettre au rapport) : pour un contrat absent, la lane a suppose « BT patente » pour un commerce
+et « BT force motrice » pour une usine.
