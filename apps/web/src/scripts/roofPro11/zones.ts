@@ -584,7 +584,10 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     // sur deux pans rendaient le même kWc (`nombre × 720 W` partout) ; avec lui, le kWc d'un
     // pan vaut `nombre × la puissance de SON module` et l'occupation se mesure sur SON
     // empreinte. Un pan sans choix rend `null` ⇒ colonnes identiques à aujourd'hui.
-    const stats = computePanStats(areas, (a) => (a.id === activeAreaId ? liveActive : a.result), moduleDuPan);
+    // ACAL1420 — le pan ACTIF se mesure sur ses sommets VIVANTS (`ctx.vertices`), son enregistrement n'étant
+    // synchronisé qu'au changement de pan (même patron que la sérialisation) : jamais « non tracé » à côté de son aire.
+    const pansVivants = areas.map((a) => (a.id === activeAreaId ? { ...a, vertices: ctx.vertices } : a));
+    const stats = computePanStats(pansVivants, (a) => (a.id === activeAreaId ? liveActive : a.result), moduleDuPan);
     const multiBuilding = hasMultipleBuildings(stats);
 
     if (areasListEl) {

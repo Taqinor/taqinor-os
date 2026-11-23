@@ -2,7 +2,10 @@
 // colonnes sont calculées ; ce test prouve que la somme des lignes == le total.
 import { describe, expect, it } from 'vitest';
 import { computePanStats, computeSiteStats, hasMultipleBuildings, htmlTableSite, PANEL_FOOTPRINT_M2 } from './panStats';
-import { panDeTest } from './harnaisAtelier';
+import { ctxDeBase, panDeTest, rectRing } from './harnaisAtelier'; // ACAL1420
+import { JSDOM } from 'jsdom'; // ACAL1420
+import { createZones } from './zones'; // ACAL1420
+import { type Ctx } from './context'; // ACAL1420
 import { type AreaRecord } from './types';
 import { type AreaResult } from '../../lib/roofAreas';
 
@@ -80,6 +83,26 @@ describe('ACAL981 — libellé du bâtiment et motif du contour', () => {
     const p: [number, number] = [-7.6, 33.5];
     const stats = computeSiteStats(computePanStats([zone('a', { vertices: [p, p, p] })], () => null), []);
     expect(stats.lignes[0].motif).toBe('aire nulle : vérifiez le contour');
+  });
+
+  // ACAL1420 — le pan ACTIF se mesure sur ses sommets VIVANTS (`ctx.vertices`) : son enregistrement n'est synchronisé
+  // qu'au changement de pan, et un toit tout juste fermé disait « contour du pan non tracé » à côté de ses 63 m².
+  it('pan actif aux sommets vivants : aire > 0 dans le tableau Site, aucun « non tracé »', () => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><div id="rp9-areas"></div></body>').window.document;
+    try {
+      const pan = zone('area-1', { vertices: [], roofType: 'flat' }); // enregistrement périmé : le tracé vit sur ctx
+      const vivants = rectRing(9, 7);
+      const ctx = { ...ctxDeBase([pan]), vertices: vivants, activeArea: () => pan, closed: true, roofType: 'flat',
+        liveResult: { winner: { placedCount: 10, kwc: 7.2, annualKwh: 12000, savingsLow: 1, savingsHigh: 2 }, target: 12000 },
+        shadeAnnualFactor: 1, horizonAnnualFactor: 1, dom: { areasWindowEl: document.getElementById('rp9-areas') } } as unknown as Ctx;
+      createZones(ctx, { setStatus: () => undefined }).renderAreasPanel();
+      const ligne = document.querySelector('[data-site-ligne="area-1"]')?.textContent ?? '';
+      expect(ligne).not.toContain('non tracé');
+      expect(ligne).toContain('63');
+      expect(document.querySelector('[data-site-total=""]')?.textContent).not.toContain('sans contour mesuré');
+    } finally { g.document = avant; }
   });
 
   it('htmlTableSite d’un groupe sans identifiant écrit « Bâtiment 1 », jamais « Bâtiment sans id »', () => {
