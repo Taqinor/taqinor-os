@@ -143,6 +143,10 @@ export interface WorkshopSnapshot {
   environment?: EnvironmentObject[];
   exclusionZones?: ExclusionZone[];
   measurements?: Measurement[];
+  /** Demande croisée — le pan ACTIF et les surfaces de pose : supprimer un pan (ou le remplacer par un champ au sol)
+   *  se défait en rendant aussi ces deux-là. Absents = `ctx` qui ne les porte pas. */
+  activeAreaId?: string;
+  surfacesPose?: unknown[];
 }
 
 const copieListe = <T>(l: readonly T[] | undefined): T[] | undefined => (l ? (JSON.parse(JSON.stringify(l)) as T[]) : undefined);
@@ -164,6 +168,8 @@ export function photoAtelierDepuisCtx(ctx: Ctx): WorkshopSnapshot {
     environment: copieListe(ctx.environment),
     exclusionZones: copieListe(ctx.exclusionZones),
     measurements: copieListe(ctx.measurements),
+    activeAreaId: ctx.activeAreaId,
+    surfacesPose: copieListe(ctx.surfacesPose),
   };
 }
 
@@ -173,6 +179,12 @@ export function restaurerEnvZonesMesures(ctx: Ctx, s: WorkshopSnapshot): void {
     const cible = ctx[k] as unknown[] | undefined;
     if (cible && s[k]) cible.splice(0, cible.length, ...(copieListe(s[k] as unknown[]) ?? []));
   }
+}
+
+/** Demande croisée — rend le pan actif (s'il existe encore dans la photo) et les surfaces de pose, EN PLACE. */
+export function restaurerPanEtSurfaces(ctx: Ctx, s: WorkshopSnapshot): void {
+  if (s.activeAreaId !== undefined && s.areas.some((a) => a.id === s.activeAreaId)) ctx.activeAreaId = s.activeAreaId;
+  if (ctx.surfacesPose) ctx.surfacesPose.splice(0, ctx.surfacesPose.length, ...((copieListe(s.surfacesPose) ?? []) as typeof ctx.surfacesPose));
 }
 
 /** Copie PROFONDE d'un instantané d'atelier (jamais une référence partagée). */
@@ -193,6 +205,8 @@ export function copyWorkshopSnapshot(s: WorkshopSnapshot): WorkshopSnapshot {
     environment: copieListe(s.environment),
     exclusionZones: copieListe(s.exclusionZones),
     measurements: copieListe(s.measurements),
+    activeAreaId: s.activeAreaId,
+    surfacesPose: copieListe(s.surfacesPose),
   };
 }
 

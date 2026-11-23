@@ -901,13 +901,70 @@ describe('ACAL554 — bouton « Appliquer ces réglages à… »', () => {
   });
 });
 
+// ACAL1527 — annuler « Appliquer ces réglages à… » rend l'état d'avant pour TOUS les pans (module et résultat compris).
+describe("ACAL1527 — annuler le report rend le module d'origine des pans cibles", () => {
+  it("annuler le report rend le module d'origine des pans cibles", async () => {
+    const { createLayoutEditor } = await import('./layoutEditor');
+    const { carteEditeurFactice, depsEditeur } = await import('./harnaisAtelier');
+    const { appliquerReglagesAuxPans } = await import('./jeuReglages');
+    const fen = new JSDOM('<!doctype html><body></body>').window;
+    const g = globalThis as unknown as { document?: Document; window?: unknown; Event?: unknown };
+    const avant = { d: g.document, w: g.window, e: g.Event };
+    g.document = fen.document;
+    g.window = fen;
+    g.Event = fen.Event;
+    try {
+      const resultat = (n: number) => ({ placedCount: n }) as unknown as AreaRecord['result'];
+      const areas = [
+        { ...panDeTest('area-1', { label: 'Zone 1', moduleId: 'jinko-710', pitchDeg: 10 }) },
+        { ...panDeTest('area-copie-1', { label: 'Zone 2', moduleId: 'canadien-600', result: resultat(12) }) },
+        { ...panDeTest('area-copie-2', { label: 'Zone 3', moduleId: 'canadien-600', result: resultat(12) }) },
+      ];
+      const ctx = { ...ctxDeBase(areas, 'area-1'), activeArea: () => areas[0], closed: true, dom: {}, layoutMode: false, layoutPlan: null, layoutState: null,
+        layoutSel: null, freeState: null, freeMode: false } as unknown as Ctx;
+      const editor = createLayoutEditor(ctx, depsEditeur(carteEditeurFactice(fen.document.createElement('div'))));
+      ctx.pushWorkshopHistory?.(); // le geste du bouton « Confirmer » (zones.ts)
+      appliquerReglagesAuxPans(ctx.areas[0], [ctx.areas[1], ctx.areas[2]]);
+      for (const a of [ctx.areas[1], ctx.areas[2]]) a.result = resultat(7); // re-pavage à l'activation du pan
+      expect(ctx.areas.map((a) => a.moduleId)).toEqual(['jinko-710', 'jinko-710', 'jinko-710']);
+      expect(editor.undo()).toBe(true);
+      expect(ctx.areas.map((a) => a.moduleId)).toEqual(['jinko-710', 'canadien-600', 'canadien-600']);
+      expect(ctx.areas.map((a) => (a.result as { placedCount: number } | null)?.placedCount ?? null)).toEqual([null, 12, 12]);
+      expect(ctx.areas.map((a) => a.label)).toEqual(['Zone 1', 'Zone 2', 'Zone 3']);
+    } finally { g.document = avant.d; g.window = avant.w; g.Event = avant.e; }
+  });
+});
+
+describe("ACAL1527 — la boîte « Appliquer ces réglages à… » nomme « Zone 2 / Zone 3 »", () => {
+  it("un pan dupliqué sans libellé s'écrit « Zone 2 », jamais area-copie-1", () => {
+    const fen = new JSDOM('<!doctype html><body><ul id="l"></ul><div id="w"></div></body>').window;
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = fen.document;
+    try {
+      const areas = [panDeTest('area-1', { label: 'Zone 1' }), panDeTest('area-copie-1', { label: '' }), panDeTest('area-copie-2', { label: '' })];
+      const dom = { areasListEl: fen.document.getElementById('l'), areasWindowEl: fen.document.getElementById('w') };
+      const ctx = { ...ctxDeBase(areas, 'area-1'), activeArea: () => areas[0], closed: true, dom } as unknown as Ctx;
+      createZones(ctx, { redrawTrace: vi.fn(), redrawObstacles: vi.fn(), recalc: vi.fn(), setStatus: vi.fn(), selectArea: vi.fn() });
+      const bouton = fen.document.createElement('button');
+      bouton.dataset.areaReport = 'area-1';
+      dom.areasListEl!.appendChild(bouton);
+      bouton.dispatchEvent(new fen.MouseEvent('click', { bubbles: true }));
+      const texte = fen.document.getElementById('rp9-pan-report')?.textContent ?? '';
+      expect(texte).toContain('Zone 2');
+      expect(texte).toContain('Zone 3');
+      expect(texte).not.toContain('area-copie');
+    } finally { g.document = avant; }
+  });
+});
+
 // ACAL574 — un pan « existant » est intouchable : pivoter, redimensionner, changer de module.
 describe('ACAL574 — pan existant : gestes refusés, géométrie intacte', () => {
   /** Ce fichier tourne SANS DOM (il lit `import.meta.url`) : un document jsdom n'est posé que le temps du cas. */
   function avecDom<T>(f: () => T): T {
     const g = globalThis as unknown as { document?: Document };
     const avant = g.document;
-    g.document = new JSDOM('<!doctype html><body><button id="rp9-layout-toggle">Déplacer les panneaux</button></body>').window.document;
+    g.document = new JSDOM('<!doctype html><body><div><button id="rp9-layout-toggle">Déplacer les panneaux</button></div></body>').window.document;
     try { return f(); } finally { g.document = avant; }
   }
   const CARRE: LngLat[] = [ptM(-5, -5), ptM(5, -5), ptM(5, 5), ptM(-5, 5)];
@@ -922,6 +979,7 @@ describe('ACAL574 — pan existant : gestes refusés, géométrie intacte', () =
     return {
       pivote: zones.pivoterPanActif(90), redim: zones.redimensionnerPanActif(8, 12), module: zones.choisirModuleDuPanActif(null),
       intacte: JSON.stringify(ctx.vertices) === avant, setStatus, grise: btn.disabled, titre: btn.title, pan: areas[0],
+      ligne: document.getElementById('rp9-layout-toggle-motif'), // ACAL1524
     };
   });
   it('pivoter, redimensionner et choisir un module sont refusés, motif nommant le pan, géométrie intacte', () => {
@@ -933,11 +991,14 @@ describe('ACAL574 — pan existant : gestes refusés, géométrie intacte', () =
     expect(r.setStatus).toHaveBeenCalledWith(motif);
     expect(r.grise).toBe(true);
     expect(r.titre).toBe(motif);
+    expect(r.ligne?.textContent).toBe(motif); // ACAL1524 — le motif se lit sous le bouton, sans survol
+    expect(r.ligne?.hidden).toBe(false);
   });
   it('pan sans clé : inchangé (le geste passe, le bouton reste actif)', () => {
     const r = essai(false);
     expect(r.pivote).toBe(true);
     expect(r.grise).toBe(false);
+    expect(r.ligne?.hidden ?? true).toBe(true); // ACAL1524 — aucun motif tant que le geste est permis
   });
 });
 

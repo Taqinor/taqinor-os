@@ -57,7 +57,7 @@ import { creerCalqueReperes, glisserAimante } from './reperesAlignement'; // ACA
 import { actionDisposition, actionAtelierCtrl } from './raccourcisAtelier';
 import { copierSelection as memoriserLot, collerAuPoint } from './collage'; // ACAL553
 import {
-  createLayoutHistory, createValueHistory, createWorkshopHistory, photoAtelierDepuisCtx, restaurerEnvZonesMesures,
+  createLayoutHistory, createValueHistory, createWorkshopHistory, photoAtelierDepuisCtx, restaurerEnvZonesMesures, restaurerPanEtSurfaces,
   type WorkshopSnapshot,
 } from './layoutHistory';
 // PV30 — placement libre : géométrie PURE + pont vers le pavage gagnant.
@@ -95,7 +95,7 @@ import {
   type Vec2,
 } from '../../lib/freeLayout';
 import { DEFAULT_FREE_MARGINS, FREE_STEP_M, freeGeomFrom, freeStateFromCenters, quantizeFree } from './freeMode';
-import { cm, peindreSilhouette, silhouetteDuLot, texteDeMesure, violationLabel } from './silhouetteGlisse'; // ACAL551
+import { cm, peindreSilhouette, silhouetteDuLot, texteDeMesure, violationLabel } from './silhouetteGlisse'; import { direPoseIndisponible } from './structurePose'; // ACAL551, ACAL1530
 import { resnapEnMasse } from './layoutResnap'; // ACAL510 — sorti de ce fichier, ré-exporté ci-dessous
 export { resnapEnMasse, resnapNaif, type CentreASnapper } from './layoutResnap';
 import { motifPanExistant } from './panExistant'; // ACAL510
@@ -1244,7 +1244,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     ctx.roofType = s.roofType;
     ctx.pitchDeg = s.pitchDeg;
     ctx.facingAzimuthDeg = s.facingAzimuthDeg;
-    restaurerEnvZonesMesures(ctx, s); // ACAL515
+    restaurerEnvZonesMesures(ctx, s); restaurerPanEtSurfaces(ctx, s); // ACAL515 ; demande croisée : pan actif + surfaces de pose
     if (s.layoutOccupied && ctx.layoutState) {
       ctx.layoutState.occupied = new Set(s.layoutOccupied.filter((i) => i >= 0 && i < ctx.layoutState!.cells.length));
     }
@@ -1361,7 +1361,8 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   function renderLayoutPanel() {
     if (!layoutWindowEl) return;
     const ready = !!ctx.layoutPlan && ctx.layoutPlan.grid.panels.length > 0 && ctx.closed;
-    layoutWindowEl.hidden = !ready;
+    layoutWindowEl.hidden = !(ctx.layoutPlan && ctx.closed); // ACAL1530 — un plan sans emplacement garde le bloc, avec sa phrase
+    direPoseIndisponible(layoutWindowEl, layoutToggleEl, !!ctx.layoutPlan && !!ctx.closed && !ready);
     if (!ready) return;
     if (!ctx.layoutMode) return;
     ensureLayoutState();
@@ -2097,7 +2098,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     const saisie = !!cible && (/^(input|textarea|select)$/i.test(cible.tagName) || cible.isContentEditable);
     const presse = mod && !saisie ? actionAtelierCtrl(e) : null;
     if (presse === 'copier' || presse === 'coller') {
-      if ((presse === 'copier' ? copierSelection() : collerSelection())) e.preventDefault();
+      if ((presse === 'copier' ? copierSelection() : collerSelection())) { e.preventDefault(); e.stopPropagation(); } // ACAL1528 — la frappe traitée ici ne remonte pas au gestionnaire de l'écran (second chemin → 2e collage refusé)
       return;
     }
     const geste = mod ? actionDisposition(e) : null; // ACAL414 — Ctrl+Z / Y lus dans la table
@@ -2695,12 +2696,14 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       // la retire — un geste qui n'a rien bougé n'est pas une action à annuler.
       const d = layoutDrag;
       const members = d?.freeOrigin?.map((o) => o.index) ?? [from];
-      if (d?.freePreviewed) {
+      if (d?.freePreviewed && !d.freeBlocked) {
         if (layoutNoteEl) {
           layoutNoteEl.textContent = `Déplacé — ${fmt(members.length)} panneau${members.length > 1 ? 'x' : ''} (placement libre).`;
         }
         renderCustomLayout(); // recompute des chiffres + repeint la sélection
       } else {
+        // ACAL1529 — la dernière position visée était refusée (la note l'a dit) : le relâchement refuse aussi, panneaux ramenés au départ.
+        if (d?.freePreviewed) { for (const o of d.freeOrigin ?? []) Object.assign(freeState()?.panels[o.index] ?? {}, { cx: o.cx, cy: o.cy }); renderCustomLayout(); }
         dropFreeHistory();
         flashRefusal(members); // refus VISIBLE (rouge), rien n'a bougé
         if (d?.freeBlocked) showMeasure(d.freeBlocked);

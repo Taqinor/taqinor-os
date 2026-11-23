@@ -134,6 +134,33 @@ describe('PlanImporteCalage (CALX39) — le dépôt d’un plan', () => {
   })
 })
 
+describe('PlanImporteCalage (ACAL1443) — des champs qui se voient, un sélecteur de fichier français', () => {
+  it('champs avec classe de champ ; bouton fichier français', async () => {
+    const utilisateur = userEvent.setup()
+    calepinageApi.calepinages.importerPlan
+      .mockResolvedValueOnce(reponse('exemple_sans_calque'))
+    rendre()
+    await screen.findByTestId('cal-calage-sans-plan')
+
+    // Les deux sélecteurs (plan DXF/PDF, image de fond) sont des boutons français reliés à l'`input` masqué.
+    const boutons = screen.getAllByText('Choisir un fichier')
+    expect(boutons).toHaveLength(2)
+    expect(boutons[0]).toHaveAttribute('for', 'cal-calage-fichier')
+    expect(screen.getAllByText('Aucun fichier choisi')).toHaveLength(2)
+    expect(screen.queryByText('Choose File')).toBeNull()
+
+    await deposer(utilisateur)
+    expect(await screen.findByText('plan-toiture.dxf')).toBeInTheDocument()
+    await screen.findByTestId('cal-calage-analyse')
+    // Le champ « Calque » porte la classe de champ de l'atelier : bordure, fond de champ, 44 px — plus de fond noir.
+    const classe = screen.getByTestId('cal-calage-calque').className
+    expect(classe).toContain('border-border')
+    expect(classe).toContain('bg-muted')
+    expect(classe).toContain('min-h-11')
+    expect(classe).not.toContain('bg-black')
+  })
+})
+
 describe('PlanImporteCalage (CALX39) — les refus nomment leur champ', () => {
   it('un calque inconnu : message SOUS le champ et bandeau qui le nomme', async () => {
     const utilisateur = userEvent.setup()

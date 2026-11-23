@@ -5619,3 +5619,17 @@ decisions:
     date: "2026-11-23"
     source: "tour 2 du L5 (23/11/2026), lot D : la liste « Genre de dossier » ne propose aucun dossier marocain ; les intitulés officiels sont à sourcer, rien n'est inventé ; rappel : D-ACAL-43 a retenu un dossier distributeur générique"
     taches: [ACAL1756]
+
+  - id: D-ACAL-88
+    question: "Quel chiffre de production « Montrer au client » (téléphone et grand écran) montre-t-il au client avant un résultat complet ?"
+    options:
+      - cle: aucun
+        texte: "Aucun tant que le résultat n'est pas complet (comportement actuel)"
+      - cle: borne_haute
+        texte: "La borne haute, dite « au plus », la même qu'à l'étape Résultats"
+      - cle: estimation_pose
+        texte: "L'estimation de la pose, dite « estimation de la pose »"
+    reponse: ouverte
+    date: "2026-11-23"
+    source: "tour 2 du L5 (23/11/2026), lot E : la vue client ne montre aucune production tant que le résultat est incomplet, ce qui est le cas de tous les projets au premier jour (lié à D-ACAL-82) ; recommandation du lot E : la borne haute dite « au plus », un seul chiffre, le même que l'étape Résultats ; lié à D-ACAL-86 (quel chiffre le client lit)"
+    taches: [ACAL1840]
