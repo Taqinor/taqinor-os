@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 import pathlib
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.calepinage.services import etapes
 from apps.calepinage.services.chaine_pertes import LIBELLES, appliquer_chaine
@@ -416,3 +416,84 @@ class TableOmbrageDirectTest(SimpleTestCase):
             self.SERIE, self.contexte(0.0, acces={'PAN-A': {'m1': 0.9}}))
         self.assertEqual(etape['motif_omission'],
                          ombrage_proche.MOTIF_ACCES_MODULE)
+
+
+def _document_ombre(part_table, case_matrice, *, table=True):
+    """Un ``roof_layout`` : épingle, matrice 12 × 24 et (option) table des modules posés."""
+    contrat = json.loads(TableOmbrageDirectTest.CONTRAT.read_text(encoding='utf-8'))
+    bloc = contrat['exemple']['zones'][0]['geometry']['shadeTable']
+    bloc['facteurs'] = [[part_table] * len(bloc['azimutsDeg']) for _h in bloc['hauteursDeg']]
+    geometrie = {'shadeTable': bloc} if table else {}
+    return {'pin': {'lat': 33.5, 'lng': -7.6}, 'shading12x24': matrice(case_matrice),
+            'zones': [{'id': 'PAN-A', 'geometry': geometrie}]}
+
+
+class ListeOmbrageModulesTest(SimpleTestCase):
+    """ACAL1407 (D-ACAL-83) — la liste des calepinages dont la perte d'ombrage change."""
+
+    def setUp(self):
+        from apps.calepinage.management.commands import acal_dryrun_ombrage_modules as commande
+        self.ecart = commande.ecart_ombrage_du_document
+        self.masque = commande.PART_DIFFUSE_HEURE_MASQUEE
+
+    def test_centre_masque_panneaux_au_soleil_la_perte_tombe_a_zero(self):
+        ecart = self.ecart(_document_ombre(1.0, self.masque))
+        self.assertGreater(ecart['avant'], 70.0)
+        self.assertEqual(ecart['apres'], 0.0)
+        self.assertEqual(ecart['motif'], '')
+
+    def test_tous_les_panneaux_masques_rendent_la_matrice_du_centre(self):
+        ecart = self.ecart(_document_ombre(0.0, self.masque))
+        self.assertEqual(ecart['apres'], ecart['avant'])
+
+    def test_sans_table_l_apres_n_est_pas_invente(self):
+        ecart = self.ecart(_document_ombre(1.0, self.masque, table=False))
+        self.assertIsNone(ecart['apres'])
+        self.assertIn('aucune table des modules posés', ecart['motif'])
+
+    def test_sans_matrice_rien_a_lister(self):
+        document = _document_ombre(1.0, 1.0)
+        del document['shading12x24']
+        self.assertIsNone(self.ecart(document))
+
+
+class CommandeOmbrageModulesTest(TestCase):
+    """ACAL1407 — la commande LISTE et n'écrit rien (pas d'option d'écriture)."""
+
+    def setUp(self):
+        from authentication.models import Company
+
+        from apps.calepinage.management.commands.acal_dryrun_ombrage_modules import (
+            PART_DIFFUSE_HEURE_MASQUEE)
+        from apps.calepinage.models import Calepinage
+        from apps.crm.models import Client
+
+        company = Company.objects.create(nom='Ombre Co', slug='ombre-co-1407')
+        client = Client.objects.create(company=company, nom='Client')
+        self.change = Calepinage.objects.create(
+            company=company, client=client, titre='Cheminée au centre',
+            roof_layout=_document_ombre(1.0, PART_DIFFUSE_HEURE_MASQUEE))
+        self.stable = Calepinage.objects.create(
+            company=company, client=client, titre='Sans ombre',
+            roof_layout=_document_ombre(1.0, 1.0))
+
+    def test_liste_sans_ecrire(self):
+        import io
+
+        from django.core.management import call_command
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        sortie = io.StringIO()
+        with CaptureQueriesContext(connection) as requetes:
+            call_command('acal_dryrun_ombrage_modules', '--company', 'ombre-co-1407', stdout=sortie)
+        ecritures = [r['sql'] for r in requetes.captured_queries
+                     if r['sql'].lstrip().upper().startswith(('INSERT', 'UPDATE', 'DELETE'))]
+        self.assertEqual(ecritures, [])
+        lignes = sortie.getvalue().splitlines()
+        self.assertEqual(lignes[0], 'DRY-RUN ACAL1407 (lecture seule) — aucune écriture.')
+        listees = [ligne for ligne in lignes if ' | ' in ligne and '«' in ligne]
+        self.assertEqual(len(listees), 1)
+        self.assertIn(f'| {self.change.pk} « Cheminée au centre » |', listees[0])
+        self.assertIn('→ 0,0 % |', listees[0])
+        self.assertEqual(lignes[-1], 'Calepinages listés : 1')
