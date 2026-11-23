@@ -405,6 +405,7 @@ retiré plus un hook ajouté.
 | `cal-pente-message` | pente message. |
 | `cal-pente-lecture-seule` | pente : raison de la lecture seule (écritures désactivées). |
 | `cal-pente-mode` | pente mode. |
+| `cal-pente-plat` | pente : pan « Toit plat », aucune pente à saisir, la forme change par les tuiles (ACAL1341). |
 | `cal-pente-relief` | pente : bloc replié « Lire la pente sur un relief de drone » (ACAL535). |
 | `cal-pente-relief-fichier` | pente : sélecteur du fichier GeoTIFF du relief (ACAL535). |
 | `cal-pente-visite-orientation-utiliser` | pente : utiliser l’orientation de la visite (ACAL208). |
