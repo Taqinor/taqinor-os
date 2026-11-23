@@ -187,6 +187,22 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(document.getElementById('rp9-need-input').value).toBe('400')
   })
 
+  it('tiennent < cible : la carte dit ce qui tient, jamais la taille irréalisable', async () => {
+    const { espion } = monterConstructeur({
+      besoin: '6', panneaux: '1 × 710 W', kwc: '0,71 kWc', cover: '14 %',
+      note: '6 au devis — seuls 1 tiennent en plein sud (toit ou obstacles).',
+    })
+    servir({ cible: { panneaux: 6, kwc: 4.26, module_wc: 710 } })
+    const surInput = espion('#rp9-need-input', 'input')
+    rendre()
+    const facture = screen.getByTestId('cal-panneaux-option-facture')
+    await waitFor(() => expect(facture).toHaveTextContent('Couvrir la factureRecommandé1 panneau · 0,71 kWc · sur 6 nécessaires'))
+    expect(facture).not.toHaveTextContent('4,26')
+    expect(facture).not.toHaveTextContent('6 panneaux')
+    fireEvent.click(facture)
+    expect(surInput).not.toHaveBeenCalled() // le besoin 6 est déjà la cible posée : rien à renvoyer, la pose reste 1
+  })
+
   it('ni l’une ni l’autre : aucune carte choisie et « Pose actuelle : N panneaux · kWc »', async () => {
     monterConstructeur({ besoin: '30', panneaux: '30 × 580 W', kwc: '17,40 kWc', prod: '28 700 kWh/an', cover: '431 %',
       note: '30 posés — il reste de la place sur le toit, laissée libre.' })

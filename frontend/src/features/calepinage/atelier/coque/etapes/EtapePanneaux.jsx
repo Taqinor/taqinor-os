@@ -144,12 +144,17 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
   // La carte choisie est celle de la cible ACTUELLE ; ni l'une ni l'autre → « Pose actuelle : N panneaux · kWc ».
   const factureChoisie = !!cible && besoin?.valeur === cible.panneaux
   const max = etat.max && !factureChoisie
+  // La taille des factures n'est promise que si elle tient sur le toit : « seuls N tiennent » (note du constructeur).
+  const tient = cible && besoin?.tiennent != null && besoin.tiennent < cible.panneaux ? besoin.tiennent : null
+  const ligneTaille = tient == null ? null : [
+    compte(tient), cible.kwc != null ? fmtKwc((cible.kwc * tient) / cible.panneaux) : null, `sur ${cible.panneaux} nécessaires`,
+  ].filter(Boolean).join(' · ')
   // Le % n'est dit qu'à côté de la taille pour laquelle il est calculé : production estimée ÷ consommation du lead.
   const part = (fig) => (fig?.couverture ? `≈ ${fig.couverture} de la consommation` : null)
-  const ligneFacture = cible && [
+  const ligneFacture = cible && (ligneTaille ?? [
     compte(cible.panneaux), cible.kwc != null ? fmtKwc(cible.kwc) : null,
     factureChoisie && figures.panneaux === cible.panneaux ? part(figures) : null,
-  ].filter(Boolean).join(' · ')
+  ].filter(Boolean).join(' · '))
   const figuresMax = max ? figures : (memoire.max ?? (besoin?.tiennent ? { panneaux: besoin.tiennent } : null))
   const ligneMax = figuresMax?.panneaux ? [compte(figuresMax.panneaux), figuresMax.kwc, part(figuresMax)]
     .filter(Boolean).join(' · ') : ''
