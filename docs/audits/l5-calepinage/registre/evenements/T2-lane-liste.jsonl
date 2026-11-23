@@ -1,0 +1,1 @@
+{"id":"ACAL1308","tour":2,"etape":"correction","verdict":"corrige","commit":"32880dff6f","test":"backend/django_core/apps/calepinage/tests/test_acal_liste_forme.py::ContratDeLaCarteTest","gestes_apres":"API seulement : relire apps/calepinage/contract_samples/calepinage_liste.json (points_a_regler, points_a_regler_lu_le, points_a_regler_perime dans les trois exemples)"}
