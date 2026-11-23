@@ -108,7 +108,7 @@ import { type CardData, type ChiffrageAtelier, type RenderConfigOpts, type Rende
 import { type Ctx } from './context';
 import { besoinAutoRelu } from './cible'; // ACAL367
 import { lignesSensDePose, afficherSensDePose } from './orientationOmbre'; // ACAL552
-import { maxDesSens, type SensPose } from './cibleProduction'; // ACAL1618
+import { maxDesSens, phraseCouvertureMax, type SensPose } from './cibleProduction'; // ACAL1618, ACAL547
 import { heatmapAccessValues } from './shadingUi'; // ACAL552
 import { causeDuPanVide, mesurerPanVide, noterMotifPanVide, retraitApplique, type MotifPanVide } from './motifPanVide'; // ACAL549
 import { cotesDePavage } from '../../lib/roofPro2';
@@ -226,15 +226,7 @@ export function pickVariantCards(result: MatrixV6Result | null | undefined): Var
   return cards;
 }
 
-/** ACAL547 — aucune ligne du balayage n'atteint le besoin : le maximum MESURÉ, dit en toutes lettres. */
-export function phraseCouvertureMax(result: MatrixV6Result | null | undefined, pctTuile?: number): string | null {
-  // R2-16 — sans cible positive (facture inconnue) `pctOfTarget` vaut 0 : aucune phrase (« au plus 0 % » ne dit rien de vrai).
-  const rows = (result?.rows ?? []).filter((r) => Number.isFinite(r.pctOfTarget) && r.pctOfTarget > 0);
-  // R3-04 — jamais « aucune pose ne couvre » à côté d'une tuile qui couvre (`pctTuile` ≥ 100).
-  if (!rows.length || rows.some((r) => r.pctOfTarget >= 100) || (pctTuile ?? 0) >= 100) return null;
-  const max = rows.reduce((a, r) => (r.pctOfTarget > a.pctOfTarget ? r : a));
-  return `Aucune pose ne couvre le besoin (estimation) : le toit donne au plus ${Math.round(max.pctOfTarget)} % (${max.placedCount} panneaux).`;
-}
+export { phraseCouvertureMax }; // ACAL547 — vit dans cibleProduction.ts (re-exportée pour ses appelants)
 
 /* ═════════ CALX114 — L'OBJECTIF SAISI DU DOCUMENT, LU PAR LES DEUX BALAYAGES ═════════
    `optimisation` (CALX88) voyage par le DOCUMENT. L'atelier le dépose ICI, et les deux
@@ -605,8 +597,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   let dernierFit = 0;
   let derniereNote: { fit: number; famille: string; motif?: MotifPanVide | null; ecartes?: number; pack?: PackResult | null } | null = null; // R2-13, ACAL1618
   /** ACAL1618 — le maximum des DEUX sens du pack posé à plat (seuil déduit ; sens verrouillé seul) ; `null` en pente. */
-  const maxSensCarte = () => (derniereNote?.pack ? maxDesSens(derniereNote.pack, ctx.pinned.has('orient') && (ctx.sel.orient === 'portrait' || ctx.sel.orient === 'landscape') ? ctx.sel.orient : null,
-    (g: PanelGrid) => Math.max(0, g.count - (filtrageSeuil(g.panels)?.ecartes.length ?? 0))) : null);
+  const maxSensCarte = () => (derniereNote?.pack ? maxDesSens(derniereNote.pack, ctx.pinned.has('orient') ? ctx.sel.orient : null, (p) => filtrageSeuil(p)?.ecartes.length ?? 0) : null);
   const placedFor = (grid: PanelGrid): number =>
     ctx.neededPanels > 0
       ? Math.max(0, Math.min(ctx.neededPanels, grid.count))
@@ -842,6 +833,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       overhangM: ctx.overhangM, // W109 — le gagnant rendu déborde comme le solve l'a évalué
       colGapM: ctx.colGapM, // CAL75 — écart réglable, re-pavé à chaud (défaut : inchangé)
       rowGapExtraM: ctx.rowGapExtraM,
+      module: cotesDuModuleDuPanActif(), // ACAL1523 — les cotes du module DU PAN, comme le solveur
+      chassis: optionChassis(ctx.activeArea?.()?.chassis), // ACAL1523 — le châssis N × M saisi, comme le solveur
     });
     // PV62 — pose MIXTE : grille dédiée du pack (repli meilleur uniforme si le mixte perd).
     const grid = w.layout === 'mixed' ? pack.mixed ?? pack.best : w.layout === 'portrait' ? pack.portrait : pack.landscape;
@@ -856,6 +849,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const { placed: placedCount, occupied, ecartes } = poseSousSeuil(grid);
     const gapScale = w.placedCount > 0 ? placedCount / w.placedCount : placedCount > 0 ? 1 : 0;
     renderScene(pack, grid, w.tiltDeg, w.family, placedCount, false, occupied);
+    majNoteChassis(pack, grid); // ACAL1523 — « n châssis de N × M posés » ou le motif, comme renderConfig
     afficherSensDePose(lignesSensDePose(pack, accesSolaireDe, (g) => poseSousSeuil(g as PanelGrid, false)), { // ACAL552, ACAL1533
       affichee: w.layout,
       choisir: (sens) => choisirSensDePose(sens, { family: w.family, tilt: w.tiltDeg, azimuth: w.orientation === 'aligned' ? 'aligned' : 'south', margin: w.margin }),

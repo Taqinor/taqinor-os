@@ -484,7 +484,47 @@ describe('ACAL1618 — « Production visée » : maximum = le meilleur des deux 
   });
 });
 
-// ACAL574 — un pan « existant » ne se re-résout pas : ses modules restent ceux posés.
+// Demande croisée (ACAL1523) — le gagnant vivant est re-pavé avec le châssis N × M et les cotes du module DU PAN, comme le
+// solveur l'a évalué : la pose dessinée = le compte du solveur, multiple de 20, et la note « n châssis de 2 × 10 posés ».
+describe('ACAL1523 — renderLiveWinner : châssis et module du pan au re-pavage', () => {
+  const m400 = { id: 'produit-7', produitId: 7, libelle: 'Module 400 W', longueurMm: 1700, largeurMm: 1000, epaisseurMm: 33, poidsKg: 20, pmaxWc: 400, source: 'fiche' };
+  const catalogue = { calepinage: 1, modules: [{ module: m400, selectionnable: true, champs_manquants: [], motif: null }], champs_requis: [], motif_liste_vide: null };
+  const CHASSIS = { rangs: 2, modulesParRang: 10, jeuEntreRangsM: 0.03, source: 'notice du châssis' };
+  /** Résout le pan 28 × 12 m (sud verrouillé) ; rend le compte du solveur, le compte DESSINÉ et la note du châssis. */
+  const poser = (chassis: typeof CHASSIS | undefined) => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><p id="rp9-chassis-note"></p></body>').window.document;
+    try {
+      const vertices = rectRing(28, 12);
+      const [cLng, cLat] = [(vertices[0][0] + vertices[2][0]) / 2, (vertices[0][1] + vertices[2][1]) / 2];
+      const pan = { id: 'z1', label: 'Pan A', vertices, obstacles: [], roofType: 'flat', moduleId: 'produit-7', ...(chassis ? { chassis } : {}) };
+      const ctx = {
+        closed: true, vertices, roofType: 'flat', areas: [pan], activeAreaId: 'z1', activeArea: () => pan, opts: { chiffrage: null, modulesDisponibles: catalogue }, dom: {},
+        centroid: [cLng, cLat], centroidLat: cLat, pinned: new Set<string>(['family']), sel: { family: 'south', tilt: 'reco', orient: 'auto', azimuth: 'south', margin: 'keep' },
+        v4YieldCache: new Map(), overhangM: 0, documentRelu: null, batiments: [], environment: [], shadeObstructions: [], obstacles: [],
+        neededAuto: false, neededPanels: 0, layoutPlan: null, useRecommended: true,
+      } as unknown as Ctx;
+      let dessinee = -1;
+      const deps = { renderScene: (_p: unknown, grid: { count: number }) => { dessinee = grid.count; }, paintComparison: vi.fn(), highlightRow: vi.fn(),
+        syncProductionWindow: vi.fn(), prefillLead: vi.fn(), syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 0, obstructionRings: () => [], setStatus: vi.fn() };
+      createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]).liveResolveFlat();
+      const solveur = (ctx.liveResult as unknown as { winner: { fitCount: number } }).winner.fitCount;
+      return { solveur, dessinee, note: document.getElementById('rp9-chassis-note')?.textContent ?? '' };
+    } finally { g.document = avant; }
+  };
+  it('28 × 12 m, châssis 2 × 10 à 0,03 m, module 400 W : pose = compte du solveur, multiple de 20, note dite', () => {
+    const r = poser(CHASSIS);
+    expect(r.solveur % 20).toBe(0);
+    expect(r.dessinee).toBe(r.solveur);
+    expect(r.note).toBe(`${r.dessinee / 20} châssis de 2 × 10 posés`);
+  });
+  it('sans châssis, module 400 W (1,70 × 1,00 m) : la pose dessinée est pavée aux cotes du module du pan, comme le solveur', () => {
+    const r = poser(undefined);
+    expect(r.dessinee).toBe(r.solveur);
+  });
+});
+
 describe('ACAL574 — re-résolution refusée sur un pan existant', () => {
   it('liveResolveFlat / liveResolvePitched : rien n’est re-pavé ni redessiné, le motif nomme le pan', () => {
     const g = globalThis as unknown as { document?: Document };
