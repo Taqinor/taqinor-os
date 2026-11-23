@@ -118,6 +118,14 @@ def productible_pose_servi(devis_id, company, *, tolerance_kwc_ratio):
         tolerance_kwc_ratio=tolerance_kwc_ratio)
 
 
+def _reseau_interdit(fournisseur):
+    """Vrai sous la suite de tests quand ``fournisseur`` est le fournisseur réel
+    d'année type (PVGIS) : aucun test ne sort sur le réseau par le devis."""
+    from django.conf import settings
+    return bool(getattr(settings, 'TESTING', False)
+                and getattr(fournisseur, '__name__', '') == 'temperatures_tmy')
+
+
 def froid_dimensionnement_au_point(lat, lng, *, fournisseur=None):
     """ADEV122 (D-ACAL-80) — la température froide des chaînes au point d'un
     site, pour le devis : LA règle partagée
@@ -130,5 +138,10 @@ def froid_dimensionnement_au_point(lat, lng, *, fournisseur=None):
     from .services import electrique
     if fournisseur is None:
         fournisseur = electrique._fournisseur_temperatures()
+        # Sous la suite de tests, le fournisseur RÉEL (PVGIS) n'est jamais appelé par le devis : la longueur des
+        # chaînes d'un test ne dépend pas du réseau (critique finale du 23/11). Un test qui veut le froid du site
+        # injecte son fournisseur.
+        if _reseau_interdit(fournisseur):
+            return froid_de_dimensionnement(None)
     tmy = electrique._depuis_fournisseur({'lat': lat, 'lng': lng}, fournisseur)
     return froid_de_dimensionnement(tmy[0] if tmy else None)

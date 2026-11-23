@@ -270,3 +270,28 @@ class UneSeuleRegleDeFroidPourLeDevisEtLeCalepinage(SimpleTestCase):
         site = temperatures_site(pin=None, fournisseur=None)
         self.assertEqual(site.froid_c, -5.0)
         self.assertIn('supposé', site.detail)
+
+    def test_le_devis_n_appelle_jamais_pvgis_sous_la_suite_de_tests(self):
+        """ADEV122 — le fournisseur RÉEL (PVGIS, enregistré au démarrage) n'est
+        jamais appelé par le devis pendant les tests : la longueur des chaînes
+        d'un test ne dépend pas du réseau. Un fournisseur injecté, lui, est lu."""
+        from unittest import mock
+
+        from apps.calepinage.selectors_devis import froid_dimensionnement_au_point
+        from apps.calepinage.services import electrique
+        from apps.calepinage.services.temperatures_tmy import temperatures_tmy
+        with mock.patch.object(electrique, '_fournisseur_temperatures',
+                               return_value=temperatures_tmy), \
+                mock.patch.object(electrique, '_depuis_fournisseur') as lecture:
+            froid = froid_dimensionnement_au_point(33.57, -7.59)
+        lecture.assert_not_called()
+        self.assertEqual((froid.valeur_c, froid.source), (-5.0, None))
+        self.assertIn('supposé', froid.detail)
+        # Hors de la suite de tests, le même appel lit bien le fournisseur réel.
+        with self.settings(TESTING=False), \
+                mock.patch.object(electrique, '_fournisseur_temperatures',
+                                  return_value=temperatures_tmy), \
+                mock.patch.object(electrique, '_depuis_fournisseur',
+                                  return_value=(4.18, 38.0, 'PVGIS-SARAH3')) as lecture:
+            froid_dimensionnement_au_point(33.57, -7.59)
+        lecture.assert_called_once()
