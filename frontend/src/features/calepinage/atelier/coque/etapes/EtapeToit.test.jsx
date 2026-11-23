@@ -727,3 +727,74 @@ describe('ACAL1803 — tête et pied du panneau d’étape (maquettes v2)', () =
     expect(screen.queryByTestId('cal-progression-etapes')).toBeNull()
   })
 })
+
+/* ACAL1904 — la carte d'adresse (#rp9-search) du calepinage sans toit : la pile de zoom reste libre, un clic de tracé hors
+   des champs passe à la carte, la carte ne tient que la hauteur d'un champ tant qu'on n'écrit pas. Le composant de la
+   carte est RENDU ; les feuilles 49 + 50 sont chargées dans le DOM de test et lues par getComputedStyle. */
+describe('ACAL1904 — carte d’adresse sans toit', () => {
+  let style
+  beforeEach(() => {
+    style = document.createElement('style')
+    style.textContent = ['49-jetons-v2.css', '50-coque-atelier.css']
+      .map((f) => readFileSync(resolve(process.cwd(), `src/styles/calepinage/${f}`), 'utf8')).join('\n')
+    document.head.appendChild(style)
+  })
+  afterEach(() => { style.remove() })
+  const cs = (el) => getComputedStyle(el)
+
+  async function rendreCarte() {
+    const { default: BuilderCarte } = await import('../../BuilderCarte.jsx')
+    const hote = document.createElement('div')
+    hote.className = 'rp9-host cal-coque'
+    hote.dataset.avance = '0'
+    hote.dataset.sansToit = '1'
+    const scene = document.createElement('div')
+    scene.className = 'cal-coque-scene'
+    hote.appendChild(scene)
+    document.body.appendChild(hote)
+    render(<BuilderCarte chipClass="rp9-chip" inputClass="rp9-input" mapWrapRef={{ current: null }}
+      basculerPleinEcran3d={() => {}} contourClientBrut={null} photoToit={null} photoToitVisible={false}
+      pleinEcran3d={false} toitClientVisible={false} />, { container: scene })
+    // Ce que le moteur de dessin ajoute à côté du champ (mapDraw.ts : notes de pays et de source, champs « Date de la photo »).
+    const parent = document.getElementById('rp9-address').parentElement
+    parent.insertAdjacentHTML('beforeend', '<span id="rp9-geocode-country" class="rp9-geocode-country">Recherche limitée au pays : MA</span>'
+      + '<span id="rp9-image-source" class="rp9-image-source">Source</span>'
+      + '<label class="rp9-image-capture">Date de la photo <input id="rp9-image-date"></label>')
+    hote.insertAdjacentHTML('beforeend', '<div class="maplibregl-ctrl-top-right"><div class="maplibregl-ctrl maplibregl-ctrl-group"><button class="maplibregl-ctrl-zoom-in"></button></div></div>')
+    return document.getElementById('rp9-search')
+  }
+
+  it('la carte laisse la pile de zoom libre : elle s’arrête avant elle, à la largeur d’une pile + sa marge', async () => {
+    const carte = await rendreCarte()
+    const pile = document.querySelector('.maplibregl-ctrl-top-right')
+    const droiteCarte = parseFloat(cs(carte).right)
+    const largeurZoom = parseFloat(cs(pile.querySelector('button')).width)
+    expect(cs(carte).position).toBe('absolute')
+    expect(largeurZoom).toBe(44)
+    expect(droiteCarte).toBeGreaterThanOrEqual(parseFloat(cs(pile).right) + largeurZoom)
+  })
+
+  it('un clic hors des champs traverse la carte ; les champs, le bouton et les suggestions le reçoivent', async () => {
+    const carte = await rendreCarte()
+    expect(cs(carte).pointerEvents).toBe('none')
+    for (const el of [document.getElementById('rp9-address'), carte.querySelector('button[type="submit"]'),
+      document.getElementById('rp9-image-date'), document.getElementById('rp9-suggestions')]) {
+      expect(cs(el).pointerEvents).toBe('auto')
+    }
+  })
+
+  it('au repos la carte ne tient que la hauteur d’un champ ; elle ne déplie notes et date que pendant la saisie', async () => {
+    const carte = await rendreCarte()
+    expect(parseFloat(cs(carte).paddingTop)).toBeLessThanOrEqual(8)
+    for (const id of ['rp9-geocode-country', 'rp9-image-source']) expect(cs(document.getElementById(id)).display).toBe('none')
+    expect(cs(document.querySelector('.rp9-image-capture')).display).toBe('none')
+  })
+
+  it('pendant la saisie (le focus est dans la carte), les notes et les champs de la date se déplient', async () => {
+    await rendreCarte()
+    document.getElementById('rp9-address').focus() // (lu AVANT toute autre lecture : jsdom garde le style calculé jusqu'à une mutation)
+    expect(cs(document.getElementById('rp9-geocode-country')).display).toBe('block')
+    expect(cs(document.getElementById('rp9-image-source')).display).toBe('block')
+    expect(cs(document.querySelector('.rp9-image-capture')).display).toBe('block')
+  })
+})

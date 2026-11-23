@@ -270,11 +270,20 @@
 .cal-coque .cal-coque-scene #rp9-search { flex: none; background: var(--card); }
 .cal-coque[data-avance='0'] .cal-coque-scene #rp9-search { display: none; }
 /* ACAL1410 — Guidé, aucun toit tracé : le champ d'adresse flotte au-dessus de la carte (44 px, bouton Localiser) ; la
-   coque porte `data-sans-toit` (posé par EtapeToit) jusqu'à la fermeture d'un contour. */
+   coque porte `data-sans-toit` (posé par EtapeToit) jusqu'à la fermeture d'un contour.
+   ACAL1904 — la carte laisse la pile de zoom libre (44 px + 16 de marge + 12 d'écart à droite), ne tient que la hauteur
+   d'un champ (les notes de pays et de source d'image et les champs « Date de la photo » ne se déplient que pendant la
+   saisie) et ne reçoit de clic que sur ses champs : un clic de tracé ailleurs arrive à la carte. */
 .cal-coque[data-avance='0'][data-sans-toit='1'] .cal-coque-scene #rp9-search {
-  display: flex; position: absolute; top: 12px; left: 12px; right: 12px; min-height: 44px; align-items: center;
+  display: flex; position: absolute; top: 12px; left: 12px; right: 72px; min-height: 44px; align-items: center;
+  padding: 6px; pointer-events: none;
   border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-md); z-index: calc(var(--z-base) + 20);
 }
+.cal-coque[data-avance='0'][data-sans-toit='1'] .cal-coque-scene #rp9-search :is(input, button, label, ul) { pointer-events: auto; }
+.cal-coque[data-avance='0'][data-sans-toit='1'] .cal-coque-scene #rp9-search :is(.rp9-geocode-country, .rp9-image-source, .rp9-image-capture) { display: none; }
+.cal-coque[data-avance='0'][data-sans-toit='1'] .cal-coque-scene #rp9-search:focus-within .rp9-geocode-country,
+.cal-coque[data-avance='0'][data-sans-toit='1'] .cal-coque-scene #rp9-search:focus-within .rp9-image-source,
+.cal-coque[data-avance='0'][data-sans-toit='1'] .cal-coque-scene #rp9-search:focus-within .rp9-image-capture { display: block; }
 .cal-coque .cal-coque-scene .rp9-map-wrap:not([data-plein-ecran='1']) { flex: 1; min-height: 0; }
 .cal-coque .cal-coque-scene .rp9-map-wrap:not([data-plein-ecran='1']) #rp9-map { height: 100%; min-height: 0; }
 .cal-coque .cal-coque-sur-carte { position: absolute; inset: 0; pointer-events: none; z-index: calc(var(--z-base) + 10); }
