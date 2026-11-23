@@ -86,64 +86,79 @@ function messagePied(controles) {
   return null
 }
 
-/* Maquette `Electrique.dc.html` — la liste COURTE d'une étape (`PretAEnvoyer court filtre=…`) : titre +
-   pastille pâle « N points à régler », puis UNE liste encadrée : coche verte, titre, phrase de 12 px servie,
-   « ? » (cause longue derrière) ; le point à régler sur fond or pâle avec « Régler » marine (même cible). */
+/* ACAL1830 (maquette v2 Electrique.dc.html) — la carte « Prêt à envoyer ? » EN TÊTE du panneau : le titre, la pastille
+   « N points à régler » et, DANS la carte (fond or pâle), le point à régler avec son « Régler » bleu nuit (le premier de
+   la liste rangée ; les suivants, discrets) ; puis la section « Contrôles · N bons » REPLIÉE (coches vertes, « ? » rond).
+   Tous les contrôles servis restent à l'écran (rien n'est retiré) ; aucun compte n'est calculé hors des états servis. */
+function LigneCourte({ c, premierARegler, onRegler }) {
+  const aRegler = (c.etat === 'a_regler' || c.etat === 'bloquant') && Boolean(c.cible?.onglet)
+  return (
+    <li data-testid={`cal-pret-ligne-${c.code}`} data-etat={c.etat} className="cel-pret-ligne">
+      {c.etat === 'ok'
+        ? <Picto nom="coche" taille={18} epaisseur={2.4} className="cel-pret-coche" />
+        : <Pastille etat={c.etat} taille={18} />}
+      <span className="cel-pret-texte">
+        <span className="cel-pret-titre">{c.libelle}</span>
+        {c.valeur_texte ? <span className="cel-pret-detail">{c.valeur_texte}</span> : null}
+      </span>
+      <Pourquoi controle={c} />
+      {aRegler && (
+        <button type="button" data-testid={`cal-pret-regler-${c.code}`} className="cel-pret-regler"
+          data-recommande={c.code === premierARegler ? 'oui' : 'non'}
+          onClick={() => onRegler(c.cible)}>
+          Régler
+        </button>
+      )}
+    </li>
+  )
+}
+
 /* F3 — `attente` : une lecture est en vol. Sans ligne déjà servie, le titre est posé et seules les
    lignes sont grisées (aucun compte inventé) ; avec la lecture précédente, ses lignes restent. */
 /* H3 — `avis` (nœud) : l'avis « plus de temps que prévu » posé sous le titre ; sans ligne servie, il
    remplace le squelette. Lignes rangées bloquant, à régler, bon, info (`rangerControles`) : le point à
-   régler est EN TÊTE de la liste qui défile, jamais sous le pli. */
+   régler est EN TÊTE de la carte, jamais sous le pli. */
 function ListeCourte({ controles, testIdCompte, onRegler, attente = false, avis = null }) {
   const n = controles.filter((c) => c.etat === 'a_regler' || c.etat === 'bloquant').length
   const lignes = rangerControles(controles)
   const premiere = (attente || Boolean(avis)) && controles.length === 0
-  // ACAL1543 — UN seul « Régler » doré à la fois : le premier de la liste rangée ; les autres sont discrets.
-  const premierARegler = lignes.find((c) => (c.etat === 'a_regler' || c.etat === 'bloquant') && c.cible?.onglet)?.code
+  const aTraiter = lignes.filter((c) => c.etat === 'a_regler' || c.etat === 'bloquant')
+  const autres = lignes.filter((c) => c.etat !== 'a_regler' && c.etat !== 'bloquant')
+  const nbBons = autres.filter((c) => c.etat === 'ok').length
+  // ACAL1543 — UN seul « Régler » appuyé à la fois : le premier de la liste rangée ; les autres sont discrets.
+  const premierARegler = aTraiter.find((c) => c.cible?.onglet)?.code
   return (
     <section data-testid="cal-pret-a-envoyer" aria-labelledby="cel-pret-titre" aria-busy={attente || undefined} className="cel-pret">
-      <div className="cel-pret-tete">
-        <h2 id="cel-pret-titre">Prêt à envoyer ?</h2>
-        {!premiere && (
-          <span data-testid={testIdCompte} className="cel-pret-badge" data-ton={n > 0 ? 'a_regler' : 'ok'}>
-            {n > 0 ? `${n} point${n > 1 ? 's' : ''} à régler` : 'Prêt à envoyer'}
-          </span>
-        )}
-      </div>
-      {avis}
-      {premiere && !avis && (
-        <ul className="cel-pret-lignes" data-testid="cel-pret-attente" aria-label="Lecture des contrôles en cours">
-          {[0, 1, 2].map((i) => <li key={i} className="cel-pret-ligne cel-pret-squelette"><span /></li>)}
-        </ul>
-      )}
-      {premiere ? null : lignes.length === 0
-        ? <p className="cel-pret-vide">Aucun contrôle publié pour cette étape.</p>
-        : (
-          <ul className="cel-pret-lignes">
-            {lignes.map((c) => {
-              const aRegler = (c.etat === 'a_regler' || c.etat === 'bloquant') && Boolean(c.cible?.onglet)
-              return (
-                <li key={c.code} data-testid={`cal-pret-ligne-${c.code}`} data-etat={c.etat} className="cel-pret-ligne">
-                  {c.etat === 'ok'
-                    ? <Picto nom="coche" taille={18} epaisseur={2.4} className="cel-pret-coche" />
-                    : <Pastille etat={c.etat} taille={18} />}
-                  <span className="cel-pret-texte">
-                    <span className="cel-pret-titre">{c.libelle}</span>
-                    {c.valeur_texte ? <span className="cel-pret-detail">{c.valeur_texte}</span> : null}
-                  </span>
-                  <Pourquoi controle={c} />
-                  {aRegler && (
-                    <button type="button" data-testid={`cal-pret-regler-${c.code}`} className="cel-pret-regler"
-                      data-recommande={c.code === premierARegler ? 'oui' : 'non'}
-                      onClick={() => onRegler(c.cible)}>
-                      Régler
-                    </button>
-                  )}
-                </li>
-              )
-            })}
+      <div className="cel-pret-carte" data-ton={n > 0 ? 'a_regler' : 'ok'}>
+        <div className="cel-pret-tete">
+          <h2 id="cel-pret-titre">Prêt à envoyer ?</h2>
+          {!premiere && (
+            <span data-testid={testIdCompte} className="cel-pret-badge" data-ton={n > 0 ? 'a_regler' : 'ok'}>
+              {n > 0 ? `${n} point${n > 1 ? 's' : ''} à régler` : 'Prêt à envoyer'}
+            </span>
+          )}
+        </div>
+        {avis}
+        {premiere && !avis && (
+          <ul className="cel-pret-lignes" data-testid="cel-pret-attente" aria-label="Lecture des contrôles en cours">
+            {[0, 1, 2].map((i) => <li key={i} className="cel-pret-ligne cel-pret-squelette"><span /></li>)}
           </ul>
         )}
+        {!premiere && aTraiter.length > 0 && (
+          <ul className="cel-pret-lignes cel-pret-lignes-regler">
+            {aTraiter.map((c) => <LigneCourte key={c.code} c={c} premierARegler={premierARegler} onRegler={onRegler} />)}
+          </ul>
+        )}
+        {!premiere && lignes.length === 0 && <p className="cel-pret-vide">Aucun contrôle publié pour cette étape.</p>}
+      </div>
+      {!premiere && autres.length > 0 && (
+        <details className="cel-pret-bons" data-testid="cal-pret-bons">
+          <summary>{nbBons > 0 ? `Contrôles · ${nbBons} ${nbBons > 1 ? 'bons' : 'bon'}` : 'Autres contrôles'}</summary>
+          <ul className="cel-pret-lignes">
+            {autres.map((c) => <LigneCourte key={c.code} c={c} premierARegler={premierARegler} onRegler={onRegler} />)}
+          </ul>
+        </details>
+      )}
     </section>
   )
 }
