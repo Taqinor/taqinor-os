@@ -643,6 +643,53 @@ describe('ACAL1900 — une pose relue n’est pas re-posée par le recalcul de f
   });
 });
 
+// ACAL1902 (T3-POSE-007, ACAL1504, DC-7) — un retrait SAISI retire des panneaux, dans la pose ET dans le balayage :
+// la « marge retirée » ne contourne plus des retraits saisis (elle ne retire que la marge par défaut).
+describe('ACAL1902 — un retrait saisi retire des panneaux (pose et balayage)', () => {
+  const poser = async (l: number, w: number, retraitM: number | null) => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><p id="rp9-need-note"></p><tbody id="rp9-compare"></tbody></body>').window.document;
+    try {
+      const vertices = rectRing(l, w);
+      const [cLng, cLat] = [(vertices[0][0] + vertices[2][0]) / 2, (vertices[0][1] + vertices[2][1]) / 2];
+      const pan = { id: 'z1', label: 'Zone 1', vertices, obstacles: [], roofType: 'flat' };
+      const ctx = {
+        closed: true, vertices, roofType: 'flat', areas: [pan], activeAreaId: 'z1', activeArea: () => pan, opts: { chiffrage: null, rendementPvgis: null }, dom: {},
+        centroid: [cLng, cLat], centroidLat: cLat, pinned: new Set<string>(), sel: { family: 'south', tilt: 'reco', orient: 'auto', azimuth: 'south', margin: 'keep' },
+        v4YieldCache: new Map(), overhangM: 0, documentRelu: null, batiments: [], environment: [], shadeObstructions: [], obstacles: [],
+        neededAuto: false, neededPanels: 40, devisMode: true, cibleVendue: false, layoutPlan: null, layoutState: null, useRecommended: true,
+      } as unknown as Ctx;
+      let dessinee = -1;
+      const setbacks = retraitM == null ? undefined : { lateralM: retraitM, extremityM: retraitM, parapetM: retraitM, jointM: 0 };
+      const deps = { renderScene: (_p: unknown, _g: unknown, _t: unknown, _f: unknown, n: number) => { dessinee = n; }, paintComparison: vi.fn(), highlightRow: vi.fn(),
+        syncProductionWindow: vi.fn(), prefillLead: vi.fn(), syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 0,
+        obstructionRings: () => [], obstructionClearances: () => [], setStatus: vi.fn(), setbacksOf: () => setbacks };
+      const opt = createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]);
+      opt.liveResolveFlat();
+      await opt.computeMatrixPvgis();
+      const balayage = Math.max(...(ctx.matrixResult as unknown as { rows: { placedCount: number }[] }).rows.map((r) => r.placedCount));
+      return { pose: dessinee, balayage };
+    } finally { g.document = avant; }
+  };
+
+  it('plat 3 × 1,5 m, retraits 0,80 m : 0 panneau posé, 0 dans tout le balayage', async () => {
+    expect(await poser(3, 1.5, 0.8)).toEqual({ pose: 0, balayage: 0 });
+  });
+
+  it('plat 10 × 7 m, retraits 2 m : moins de panneaux qu’aux retraits par défaut, mêmes comptes pose / balayage', async () => {
+    const defaut = await poser(10, 7, null);
+    const deux = await poser(10, 7, 2);
+    expect(deux.pose).toBeLessThan(defaut.pose);
+    expect(deux.balayage).toBeLessThan(defaut.balayage);
+    expect(deux.pose).toBe(deux.balayage);
+  });
+
+  it('retraits au défaut (0,50 m partout) : balayage d’avant, la marge retirée reste candidate', async () => {
+    expect(await poser(10, 7, 0.5)).toEqual(await poser(10, 7, null));
+  });
+});
+
 // ACAL549 — la cause MESURÉE d'un pan vide, dans l'ordre retrait → obstacles → seuil → module → inconnue.
 describe('ACAL549 — causeDuPanVide', () => {
   const MODULE = cotesDePavage(undefined);

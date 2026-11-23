@@ -27,7 +27,7 @@
  *  la table committée (« estimé ») si PVGIS est injoignable. JAMAIS un devis.
  */
 import { type LngLat } from './roof';
-import { PERIMETER_SETBACK_M, cotesDePavage, type Panel2Module, type PerimeterSetbacks } from './roofPro2';
+import { PERIMETER_SETBACK_M, cotesDePavage, retraitsSaisis, type Panel2Module, type PerimeterSetbacks } from './roofPro2';
 import {
   PANEL2_WATT,
   type TariffGrid,
@@ -203,15 +203,15 @@ function evalPitched(ctx: PitchedCtx, layout: PitchedLayoutAxis, margin: Pitched
 function layoutCandidates(locked: PitchedLayoutAxis | undefined): PitchedLayoutAxis[] {
   return locked ? [locked] : ['portrait', 'landscape'];
 }
-function marginCandidates(locked: PitchedMarginAxis | undefined): PitchedMarginAxis[] {
-  return locked ? [locked] : ['keep', 'remove'];
+function marginCandidates(locked: PitchedMarginAxis | undefined, setbacksM?: Partial<PerimeterSetbacks>): PitchedMarginAxis[] {
+  return locked ? [locked] : retraitsSaisis(setbacksM) ? ['keep'] : ['keep', 'remove']; // ACAL1902
 }
 
 function solvePitchedConstrained(ctx: PitchedCtx, locks: PitchedLocks): { winner: PitchedLiveEval; rows: PitchedLiveEval[] } {
   let winner: PitchedLiveEval | null = null;
   const rows: PitchedLiveEval[] = [];
   for (const layout of layoutCandidates(locks.layout)) {
-    for (const margin of marginCandidates(locks.margin)) {
+    for (const margin of marginCandidates(locks.margin, ctx.setbacksM)) {
       const e = evalPitched(ctx, layout, margin);
       rows.push(e);
       if (!winner || betterPitched(e, winner)) winner = e;

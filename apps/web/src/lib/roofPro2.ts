@@ -127,6 +127,13 @@ export function uniformSetbacks(m: number = PERIMETER_SETBACK_M): PerimeterSetba
   return { lateralM: m, extremityM: m, parapetM: m, jointM: 0 };
 }
 
+/** ACAL1902 — des retraits SAISIS (un des trois écarte du défaut uniforme) sont un minimum : la « marge retirée »
+ *  (pleine rive) n'est plus une candidate des balayages, sinon elle les contourne en silence. Au défaut : rien ne change. */
+export function retraitsSaisis(s: Partial<PerimeterSetbacks> | null | undefined): boolean {
+  return !!s && (['lateralM', 'extremityM', 'parapetM'] as const)
+    .some((k) => typeof s[k] === 'number' && Number.isFinite(s[k]) && s[k] !== PERIMETER_SETBACK_M);
+}
+
 /**
  * Retraits utilisables par le calepinage. Une valeur SAISIE n'est jamais arrondie ni
  * « snappée » : on ne remplace que ce qui n'a aucun sens géométrique — non finie
