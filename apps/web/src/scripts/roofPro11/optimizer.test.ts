@@ -29,7 +29,7 @@ import { phraseSurplus } from './affichageErp'; // R2-17
 import { createZones } from './zones'; // ACAL1418
 import { factureCarteDe, lireFactureSaisie } from './factureCarte'; // ACAL777
 import { createShadingUi, seuilEffectifAccesSolaire } from './shadingUi'; // ACAL548, ACAL1900
-import { cibleDepuisCarte, panneauxPourCible, phraseCible } from './cibleProduction'; // ACAL1618
+import { cibleDepuisCarte, maxDuSolveur, panneauxPourCible, phraseCible } from './cibleProduction'; // ACAL1618, ACAL1903
 import { cotesDePavage } from '../../lib/roofPro2';
 import {
   causeDuPanVide, ecrireMotifsDansDocument, mesurerPanVide, noterMotifPanVide, retraitApplique,
@@ -450,14 +450,14 @@ describe('ACAL470 : objectif de production tapé', () => {
 // jamais les deux sens de la seule pose affichée ; la production annoncée est celle de CE maximum.
 describe('ACAL1903 — « Production visée » : le maximum est celui que « + » atteint', () => {
   /** Plat 12 × 8 m, cible 5 (la pose affichée) ; `plus()` pousse « + » jusqu'au bout et rend le compte dessiné. */
-  const atelier = (verrou: 'portrait' | null) => {
+  const atelier = (verrou: 'portrait' | null, reglagesAtelier?: unknown) => {
     const g = globalThis as unknown as { document?: Document };
     const avant = g.document;
     g.document = new JSDOM('<!doctype html><body><dd id="rp9-reco-prod"></dd><p id="rp9-need-note"></p></body>').window.document;
     const vertices = rectRing(12, 8);
     const [cLng, cLat] = [(vertices[0][0] + vertices[2][0]) / 2, (vertices[0][1] + vertices[2][1]) / 2];
     const pan = { id: 'area-1', vertices, obstacles: [], roofType: 'flat' };
-    const ctx = { opts: { chiffrage: null }, centroidLat: cLat, centroid: [cLng, cLat], neededPanels: 5, neededAuto: false, batiments: [], environment: [],
+    const ctx = { opts: { chiffrage: null, reglagesAtelier }, centroidLat: cLat, centroid: [cLng, cLat], neededPanels: 5, neededAuto: false, batiments: [], environment: [],
       shadeObstructions: [], obstacles: [], areas: [pan], activeAreaId: 'area-1', activeArea: () => pan, vertices, roofType: 'flat', closed: true,
       pinned: new Set(verrou ? ['orient'] : []), sel: { family: 'south', tilt: 'reco', orient: verrou ?? 'auto', azimuth: 'south', margin: 'keep' },
       v4YieldCache: new Map(), overhangM: 0, documentRelu: null, shadeAnnualFactor: 1, horizonAnnualFactor: 1, dom: {}, useRecommended: true } as unknown as Ctx;
@@ -480,6 +480,25 @@ describe('ACAL1903 — « Production visée » : le maximum est celui que « + �
       expect(r.maxKwhAn).toBe(Math.round(a.opt.etatCarte()!.kwhParPanneau * atteint)); // la carte une fois « + » arrivé
       expect(phraseCible(r).startsWith(`Le toit donne au plus ${r.maxKwhAn.toLocaleString('fr-FR')} kWh/an avec ${atteint} panneaux`)).toBe(true);
     } finally { a.fin(); }
+  });
+  // Rejeu en direct (T3-VAGUEC) : la société a un seuil d'accès solaire (60 %) ; sans ombre il n'écarte rien, mais sa seule
+  // présence renvoyait aux deux sens de la pose AFFICHÉE (30°) : « au plus 16 » alors que « + » en pose 27 (à 0°).
+  it('seuil d’accès solaire de la société, sans ombre : « au plus N » = le compte que « + » pose', () => {
+    const a = atelier(null, { simulation: { seuil_acces_retrait: { valeur: 0.6 } } });
+    try {
+      const r = cibleDepuisCarte(1e6, a.opt.etatCarte(), clampNeeded)!;
+      const atteint = a.plus();
+      expect(atteint).toBeGreaterThan(5);
+      expect(r.panneaux).toBe(atteint);
+      expect(r.maxKwhAn).toBe(Math.round(a.opt.etatCarte()!.kwhParPanneau * atteint));
+    } finally { a.fin(); }
+  });
+  it('maxDuSolveur : la capacité laissée par le seuil borne le nombre, la production suit ; rien ne tient ⇒ null', () => {
+    const w = { placedCount: 20, layout: 'portrait', annualKwh: 20000 };
+    expect(maxDuSolveur(w, (g) => g.annualKwh)).toEqual({ n: 20, sens: 'portrait', kwhAn: 20000 });
+    expect(maxDuSolveur(w, (g) => g.annualKwh, 15)).toEqual({ n: 15, sens: 'portrait', kwhAn: 15000 });
+    expect(maxDuSolveur({ ...w, layout: 'mixed' }, (g) => g.annualKwh, 30)).toEqual({ n: 20, kwhAn: 20000 });
+    expect(maxDuSolveur(w, (g) => g.annualKwh, 0)).toBeNull();
   });
   it('un objectif atteignable donne toujours le plus petit N, sans sens imposé', () => {
     const a = atelier(null);

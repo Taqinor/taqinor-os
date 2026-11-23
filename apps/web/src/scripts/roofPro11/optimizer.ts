@@ -108,7 +108,7 @@ import { type CardData, type ChiffrageAtelier, type RenderConfigOpts, type Rende
 import { type Ctx } from './context';
 import { besoinAutoRelu } from './cible'; // ACAL367
 import { lignesSensDePose, afficherSensDePose } from './orientationOmbre'; // ACAL552
-import { maxDesSens, maxDuSolveur, phraseCouvertureMax, type MaxDuToit } from './cibleProduction'; // ACAL1618, ACAL547, ACAL1903
+import { maxDuSolveur, phraseCouvertureMax, type MaxDuToit } from './cibleProduction'; // ACAL547, ACAL1903
 import { heatmapAccessValues } from './shadingUi'; // ACAL552
 import { causeDuPanVide, mesurerPanVide, noterMotifPanVide, retraitApplique, type MotifPanVide } from './motifPanVide'; // ACAL549
 import { cotesDePavage } from '../../lib/roofPro2';
@@ -597,12 +597,14 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   let derniereCarte: (CardData & { factureInconnue: boolean; sourceLabel?: string }) | null = null;
   let dernierFit = 0;
   let derniereNote: { fit: number; famille: string; motif?: MotifPanVide | null; ecartes?: number; pack?: PackResult | null } | null = null; // R2-13, ACAL1618
-  /** ACAL1903 — le maximum que « + » ATTEINT (solveur vivant, mêmes verrous, besoin non plafonné) et sa production écrêtée + dératée
-   *  comme la carte ; `null` en pente. Seuil d'accès solaire saisi (ignoré du solveur) : les deux sens du pack posé (ACAL1618). */
-  const maxSensCarte = (): MaxDuToit | null => !derniereNote?.pack ? null : filtrageSeuil(derniereNote.pack.portrait.panels)
-    ? maxDesSens(derniereNote.pack, ctx.pinned.has('orient') ? ctx.sel.orient : null, (p) => filtrageSeuil(p)?.ecartes.length ?? 0)
-    : maxDuSolveur(resoudreVivant({ ...buildFlatLocks(), need: clampNeeded(Number.MAX_SAFE_INTEGER), needImposedZero: false }).winner,
-      (w) => clipDcAcKwh(w.annualKwh, effectiveDcAcRatio(w.family)) * facteurDerateAnnuel(ctx));
+  /** ACAL1903 — le maximum que « + » ATTEINT : le gagnant vivant (mêmes verrous, besoin non plafonné) RE-PAVÉ et passé au seuil
+   *  d'accès solaire comme au rendu (`paveDuGagnant`, `poseSousSeuil`), sa production écrêtée + dératée comme la carte ; `null` en pente. */
+  const maxSensCarte = (): MaxDuToit | null => {
+    const w = derniereNote?.pack ? resoudreVivant({ ...buildFlatLocks(), need: clampNeeded(Number.MAX_SAFE_INTEGER), needImposedZero: false }).winner : null;
+    const grille = w ? paveDuGagnant(w).grid : null;
+    const ecartes = grille ? filtrageSeuil(grille.panels)?.ecartes.length ?? 0 : 0;
+    return maxDuSolveur(w, (g) => clipDcAcKwh(g.annualKwh, effectiveDcAcRatio(g.family)) * facteurDerateAnnuel(ctx), grille && ecartes ? grille.panels.length - ecartes : undefined);
+  };
   const placedFor = (grid: PanelGrid): number =>
     ctx.neededPanels > 0
       ? Math.max(0, Math.min(ctx.neededPanels, grid.count))
@@ -820,8 +822,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   }
 
   /** Rend le gagnant vivant (3D + carte + contrôles) avec SES chiffres (PVGIS/estimé). */
-  function renderLiveWinner(res: LiveSolveResult, isReco: boolean) {
-    const w = res.winner;
+  /** Re-pave le gagnant vivant (rendu ET maximum « + », ACAL1903) : son pack et sa grille. */
+  function paveDuGagnant(w: LiveSolveResult['winner']) {
     // CALX95 câblage — on re-pave le MÊME anneau posable que le solveur a évalué (retraits
     // d'arête rognés) ; sinon le compte affiché parlerait d'un contour que le solveur n'a
     // pas vu. Aucune arête saisie ⇒ c'est le contour tracé lui-même, rendu inchangé.
@@ -842,7 +844,11 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       chassis: optionChassis(ctx.activeArea?.()?.chassis), // ACAL1523 — le châssis N × M saisi, comme le solveur
     });
     // PV62 — pose MIXTE : grille dédiée du pack (repli meilleur uniforme si le mixte perd).
-    const grid = w.layout === 'mixed' ? pack.mixed ?? pack.best : w.layout === 'portrait' ? pack.portrait : pack.landscape;
+    return { pack, setbackM, grid: w.layout === 'mixed' ? pack.mixed ?? pack.best : w.layout === 'portrait' ? pack.portrait : pack.landscape };
+  }
+  function renderLiveWinner(res: LiveSolveResult, isReco: boolean) {
+    const w = res.winner;
+    const { pack, grid, setbackM } = paveDuGagnant(w);
     // CAL75 — le solveur (V7) a choisi cette config à l'écart D'ÉTUDE ; un écart personnalisé
     // change ce qui tient VRAIMENT dans ce même contour → le compte AFFICHÉ vient du pack
     // RE-PAVÉ (placedFor, même plafond besoin que partout ailleurs), kWc/kWh mis à l'échelle
