@@ -816,6 +816,49 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
   });
 });
 
+// ACAL1526 — la note sous « Panneaux nécessaires » dit la pose DESSINÉE : les emplacements écartés par le seuil
+// d'accès solaire (`poseSousSeuil`) sont retirés, jamais « il reste de la place » quand la pose a été rognée.
+describe('ACAL1526 — seuil d’accès : la note dit la pose dessinée', () => {
+  /** Un pan plat 10 × 7 avec une cheminée de 1,1 m au milieu ; `seuil` = accès solaire minimal (0..1) ou null. */
+  const poser = (seuil: number | null, besoin: number) => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    const doc = new JSDOM('<!doctype html><body><p id="rp9-need-note"></p></body>').window.document;
+    g.document = doc;
+    poserChoixOptimisation(seuil == null ? null : { seuilAccesSolaire: seuil });
+    try {
+      const vertices = rectRing(10, 7);
+      const [cLng, cLat] = [(vertices[0][0] + vertices[2][0]) / 2, (vertices[0][1] + vertices[2][1]) / 2];
+      const cheminee = { id: 'o1', type: 'cheminee', centerLng: cLng, centerLat: cLat, lengthM: 0.6, widthM: 0.6, heightM: 1.1 };
+      const ctx = { opts: { chiffrage: null }, dom: {}, centroidLat: cLat, centroid: [cLng, cLat], rec: { targetAnnualKwh: 4000 }, neededPanels: besoin,
+        devisMode: true, cibleVendue: true, activeArea: () => null, activeAreaId: null, batiments: [], environment: [], shadeObstructions: [],
+        obstacles: [cheminee], areas: [], pinned: new Set() } as unknown as Ctx;
+      let dessines = -1;
+      const deps = { renderScene: (_p: unknown, _g: unknown, _t: unknown, _f: unknown, placed: number) => { dessines = placed; }, paintComparison: vi.fn(),
+        highlightRow: vi.fn(), syncProductionWindow: vi.fn(), prefillLead: vi.fn(), syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(),
+        monthlyBill: () => 0, obstructionRings: vi.fn(() => []), setStatus: vi.fn() };
+      const pack = packConfig(vertices, cLat, { family: 'south', tiltDeg: 13 });
+      createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]).renderConfig({
+        pack, grid: pack.best, family: 'south', tiltDeg: 13, azimuthDeg: 180, isReco: true, title: 't', why: 'w', rowId: null,
+      });
+      return { note: doc.getElementById('rp9-need-note')?.textContent ?? '', dessines, capacite: pack.best.count };
+    } finally {
+      poserChoixOptimisation(null);
+      g.document = avant;
+    }
+  };
+
+  it('seuil qui rogne la pose sous la cible : « X posés / N cible — K emplacements écartés par le seuil »', () => {
+    const sansSeuil = poser(null, 6);
+    expect(sansSeuil.note).toContain('il reste de la place'); // la cible tient sans seuil
+    const r = poser(0.99, sansSeuil.capacite); // cible = tout ce qui tient : le seuil en écarte forcément
+    expect(r.dessines).toBeLessThan(sansSeuil.capacite);
+    const ecartes = sansSeuil.capacite - r.dessines;
+    expect(r.note).toBe(`${fmt(r.dessines)} posés / ${fmt(sansSeuil.capacite)} cible — ${fmt(ecartes)} emplacement${ecartes > 1 ? 's' : ''} écarté${ecartes > 1 ? 's' : ''} par le seuil d’accès solaire.`);
+    expect(r.note).not.toContain('il reste de la place');
+  });
+});
+
 describe('R3-25 (b) / R3-04 — cartes de variante espacées, phrase « aucune pose ne couvre »', () => {
   const anneau = (w: number, h: number, lng0 = -7.62, lat0 = 33.59): Array<[number, number]> => {
     const k = 111320 * Math.cos((lat0 * Math.PI) / 180);
