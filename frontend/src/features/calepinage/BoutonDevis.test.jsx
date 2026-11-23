@@ -51,30 +51,16 @@ const DETAIL_SANS_SELECTION = { ...DETAIL, surfaces_chiffrables: SURFACES_SANS_S
 beforeEach(() => { vi.clearAllMocks() })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
-/* ACAL2002 — un seul bouton doré : « Générer le devis » de Documents est le bouton d'étape v2 (mêmes jetons --cal-*). */
-describe('ACAL2002 — « Générer le devis » est le bouton doré v2', () => {
-  it('porte la classe du bouton d’étape et en lit les jetons (fond d’action, rayon 14, 52 px, 700, ombre dorée)', async () => {
-    const { readFileSync } = await import('node:fs')
-    const { resolve } = await import('node:path')
-    const style = document.createElement('style')
-    style.textContent = ['49-jetons-v2.css', '50-coque-atelier.css']
-      .map((f) => readFileSync(resolve(process.cwd(), `src/styles/calepinage/${f}`), 'utf8')).join('\n')
-    document.head.appendChild(style)
-    document.body.classList.add('cal-coque')
-    try {
-      rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
-      const bouton = await screen.findByTestId('cal-generer-devis')
-      expect(bouton).toHaveClass('cal-bouton-or', 'cal-bouton-or-grand')
-      const cs = getComputedStyle(bouton)
-      expect(cs.background).toContain('--cal-action')
-      expect(cs.height).toBe('52px')
-      expect(cs.borderRadius).toBe('var(--cal-rayon-pile)')
-      expect(cs.fontWeight).toBe('700')
-      expect(cs.boxShadow).toBe('var(--cal-action-ombre)')
-    } finally {
-      document.body.classList.remove('cal-coque')
-      style.remove()
-    }
+/* ACAL2002 — un seul bouton doré : « Générer le devis » n'est le bouton d'étape v2 que là où il EST l'action de l'étape
+   (Documents en Guidé) ; ailleurs il reste à filet (ACAL1802 : l'or sur la seule action suivante). Les jetons du bouton
+   doré sont lus par les tests de la coque et du Démarrage rapide. */
+describe('ACAL2002 — « Générer le devis » est le bouton doré v2 quand il est l’action de l’étape', () => {
+  it('action de l’étape : classes du bouton d’étape ; hors étape : bouton à filet, jamais doré', async () => {
+    const vue = rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE, actionEtape: true })
+    expect(await screen.findByTestId('cal-generer-devis')).toHaveClass('cal-bouton-or', 'cal-bouton-or-grand')
+    vue.unmount()
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    expect(await screen.findByTestId('cal-generer-devis')).not.toHaveClass('cal-bouton-or')
   })
 })
 
