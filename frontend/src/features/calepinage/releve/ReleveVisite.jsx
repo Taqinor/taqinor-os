@@ -13,6 +13,7 @@ import {
   ligneProjet, noteHorsLigne, nomDirection, penteDuPan, versPoint, versVirgule,
 } from './releveTelephone'
 import usePhotosReleve from './usePhotosReleve'
+import useReleveEnFile from './useReleveEnFile'
 import TuilesPhotos from './TuilesPhotos'
 import { CarteMesure, ChampDecimal } from './CarteMesure'
 
@@ -82,6 +83,17 @@ export default function ReleveVisite() {
   const [enCours, setEnCours] = useState(false)
   const [message, setMessage] = useState(null) // { texte, ton: 'ok' | 'refus', champ: identifiant du champ fautif à ramener en vue }
   const reponse = useRef(null)
+  /* ACAL1810 — le relevé terminé hors ligne attend dans la file des photos ; au retour du réseau il part SEUL. */
+  const fileReleve = useReleveEnFile(id, {
+    onEnvoye: (envoye) => {
+      if (envoye?.id) setReleve((r) => ({ ...r, id: envoye.id }))
+      setMessage({ texte: 'Relevé envoyé.', ton: 'ok' })
+    },
+    onRefus: ({ message: motif, champs }) => {
+      setErreurs(champs ?? {})
+      setMessage({ texte: motif || 'Le relevé gardé a été refusé par le serveur.', ton: 'refus', champ: champFautif(champs) })
+    },
+  })
 
   /* ACAL1812 — la réponse de « Terminer » est EN VUE : le champ fautif défile au centre et prend le focus ; sinon la
      bannière (posée au-dessus du pied) prend le focus, sans défilement de la page. */
@@ -172,22 +184,36 @@ export default function ReleveVisite() {
       return
     }
     setEnCours(true)
-    try {
-      if (pente && !pente.enregistree && zone && doc.etat === 'ok') await enregistrerPente()
-      const corps = corpsDuReleve({
-        releveLe: releve.releveLe || dateDuJour(), chaines: releve.chaines, azimutDeg: azimut,
-        precisionDeg: precision, notes: releve.notes, photoIds: releve.photoIds,
+    const corps = corpsDuReleve({
+      releveLe: releve.releveLe || dateDuJour(), chaines: releve.chaines, azimutDeg: azimut,
+      precisionDeg: precision, notes: releve.notes, photoIds: releve.photoIds,
+    })
+    const penteAEcrire = !!pente && !pente.enregistree && !!zone && doc.etat === 'ok'
+    /* Sans réseau (ou coupure en route) : le relevé reste sur le téléphone, dans la file, et le DIT en vue. */
+    const garderSurLeTelephone = async () => {
+      await fileReleve.garder(corps, releve.id)
+      setReleve((r) => ({ ...r, releveLe: corps.releve_le }))
+      setMessage({
+        texte: `Relevé gardé sur ce téléphone : il partira au retour du réseau.${penteAEcrire
+          ? ' La pente du toit s’enregistrera au prochain « Terminer le relevé » avec du réseau.' : ''}`,
+        ton: 'ok',
       })
+    }
+    try {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) { await garderSurLeTelephone(); return }
+      if (penteAEcrire) await enregistrerPente()
       const res = await (releve.id
         ? calepinageApi.calepinages.corrigerReleve(id, releve.id, corps)
         : calepinageApi.calepinages.enregistrerReleve(id, corps))
+      if (fileReleve.enAttente) await fileReleve.oublier() // l'envoi en ligne a réussi : la copie gardée ne repart pas
       const nouvelId = res?.data?.releve?.id
       setReleve((r) => ({ ...r, id: nouvelId ?? r.id, releveLe: corps.releve_le }))
       setMessage({ texte: releve.id ? 'Relevé corrigé.' : 'Relevé enregistré.', ton: 'ok' })
     } catch (err) {
       const refus = (texte, champ = null) => setMessage({ texte, ton: 'refus', champ })
-      if (!err?.response) refus('Pas de réseau : les mesures ne sont pas enregistrées. Terminez le relevé au retour du réseau.')
-      else if (lireConflit(err)?.documentModifie) { refus('Le calepinage a changé ailleurs : il est relu, recommencez.'); doc.recharger() } else {
+      if (!err?.response) {
+        try { await garderSurLeTelephone() } catch (e) { refus(e?.message || 'Le relevé n’a pas pu être gardé sur ce téléphone.') }
+      } else if (lireConflit(err)?.documentModifie) { refus('Le calepinage a changé ailleurs : il est relu, recommencez.'); doc.recharger() } else {
         const { champs } = refusServeur(err)
         setErreurs(champs)
         refus(messageRefus(err, 'Le relevé a été refusé par le serveur.'), champFautif(champs))
@@ -213,7 +239,7 @@ export default function ReleveVisite() {
           <span className="cal-tel-projet-titre">Relevé de visite</span>
           {titre && <span className="cal-tel-projet-ligne" data-testid="releve-projet">{titre}</span>}
         </div>
-        {(!enLigne || photos.enAttente > 0) && <PastilleHorsLigne />}
+        {(!enLigne || photos.enAttente > 0 || fileReleve.enAttente) && <PastilleHorsLigne />}
       </header>
 
       <div className="cal-tel-corps">
@@ -261,11 +287,11 @@ export default function ReleveVisite() {
           ))}
         </section>
 
-        {(photos.enAttente > 0 || !enLigne) && (
+        {(photos.enAttente > 0 || fileReleve.enAttente || !enLigne) && (
           <section className="cal-tel-note" data-testid="releve-note-hors-ligne">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
               strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14" /></svg>
-            <span>{noteHorsLigne(photos.enAttente, enLigne)}</span>
+            <span>{noteHorsLigne(photos.enAttente, enLigne, fileReleve.enAttente)}</span>
           </section>
         )}
       </div>

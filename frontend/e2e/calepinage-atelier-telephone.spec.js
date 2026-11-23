@@ -217,3 +217,22 @@ test('ACAL1812 : la réponse de « Terminer le relevé » est visible, au-dessus
   m = await dessus()
   expect(m.basMessage, 'le succès est sous la barre du bas').toBeLessThanOrEqual(m.hautPied + 0.5)
 })
+
+// ACAL1810 — un relevé terminé HORS LIGNE est gardé sur le téléphone et part SEUL au retour du réseau (même file que
+// les photos) : `GET releve/` le rend quelques secondes après, sans aucun geste, et l'écran dit « Relevé envoyé. ».
+test('ACAL1810 : relevé terminé hors ligne, envoyé seul au retour du réseau', async ({ page, context }) => {
+  const cal = await calepinageDeTest(page, 'Atelier tel ACAL1810')
+  await page.goto(`/calepinage/${cal.id}/releve`)
+  await page.getByTestId('releve-longueur').fill('12,4')
+  await page.getByTestId('releve-largeur').fill('8,6')
+  await context.setOffline(true)
+  await page.getByTestId('releve-terminer').tap()
+  await expect(page.getByTestId('releve-message')).toHaveText('Relevé gardé sur ce téléphone : il partira au retour du réseau.')
+  await context.setOffline(false)
+  await expect(page.getByTestId('releve-message')).toHaveText('Relevé envoyé.', { timeout: 15_000 })
+  await expect(async () => {
+    const res = await page.request.get(`/api/django/calepinage/calepinages/${cal.id}/releve/`)
+    expect(res.ok()).toBeTruthy()
+    expect((await res.json()).releves.length, 'relevés servis').toBe(1)
+  }).toPass({ timeout: 15_000 })
+})
