@@ -1713,8 +1713,7 @@ describe('runtime ACAL31 — l’exemple du contrat ressort identique des deux b
     const chemin = resolve(process.cwd(), '../../backend/django_core/apps/calepinage/contract_samples/roof_layout_v2.schema.json');
     // ACAL1430 — le nom d'un pan est son RANG (« Zone 1 », « Zone 2 ») : le boot réaligne `zones[].label`
     // sur l'ordre des pans ; seul ce champ de l'exemple est aligné, toute autre clé reste comparée telle quelle.
-    return ((e: Record<string, unknown>) => ({ ...e, zones: (e.zones as Record<string, unknown>[]).map((z, i) => ('label' in z ? { ...z, label: `Zone ${i + 1}` } : z)) }))(
-      (JSON.parse(readFileSync(chemin, 'utf8')) as { exemple: Record<string, unknown> }).exemple);
+    return ((e: Record<string, unknown>) => ({ ...e, zones: (e.zones as Record<string, unknown>[]).map((z, i) => ('label' in z ? { ...z, label: `Zone ${i + 1}` } : z)) }))((JSON.parse(readFileSync(chemin, 'utf8')) as { exemple: Record<string, unknown> }).exemple);
   }
 
   /** Les CHEMINS qui diffèrent (la garde rougit en nommant la clé, jamais un « objet ≠ »). */
