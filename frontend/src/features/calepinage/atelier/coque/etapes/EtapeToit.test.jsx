@@ -784,6 +784,16 @@ describe('ACAL2001 — les messages se posent hors du bouton d’étape', () => 
     ol.remove()
   })
 
+  /* T3-VAGUEC (S3) — au bureau le message du bas (356 × 54) tombait à 16 px du bord, sur la moitié droite de la barre du soleil
+     et de la barre d'outils (rangée de 69 px depuis le bord). Il se pose au-dessus de cette rangée, avec un jeu de 8 px. */
+  it('au bureau, la région des messages est relevée au-dessus de la barre du soleil et de la barre d’outils', async () => {
+    const { useToastsHorsDuBouton } = await import('../toastsAtelier')
+    function Atelier() { useToastsHorsDuBouton(); return null }
+    render(<Atelier />)
+    const bas = parseFloat(getComputedStyle(document.body).getPropertyValue('--cal-toast-bas'))
+    expect(bas).toBeGreaterThanOrEqual(69 + 8 + 16) // rangée du bas (69) + jeu (8) + marge de la région au bord (16)
+  })
+
   it('une région en haut (téléphone) n’est pas déplacée', async () => {
     const { useToastsHorsDuBouton } = await import('../toastsAtelier')
     function Atelier() { useToastsHorsDuBouton(); return null }

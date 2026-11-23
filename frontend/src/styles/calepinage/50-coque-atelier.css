@@ -33,7 +33,9 @@
    GAUCHE du panneau d'étape (384 px + marges = --cal-libre-droite, 416 px), jamais sur son bouton ni sur le
    bandeau ; sur tablette le bas passe au-dessus du tiroir (56-coque-responsive.css). Le téléphone (messages en
    haut) et le reste de l'ERP ne changent pas. */
-body[data-cal-atelier] { --cal-toast-droite: 416px; --cal-toast-bas: 16px; }
+/* T3-VAGUEC — au bureau, le message se pose AU-DESSUS de la rangée du bas (barre du soleil, barre d'outils : 69 px au-dessus
+   de la marge de 16 px) avec un jeu de 8 px : il ne recouvre plus la moitié droite de la barre du soleil. */
+body[data-cal-atelier] { --cal-toast-droite: 416px; --cal-toast-bas: 96px; }
 body[data-cal-atelier] [data-sonner-toaster][data-y-position='bottom'][data-x-position='right'] {
   right: var(--cal-toast-droite);
   bottom: var(--cal-toast-bas);
