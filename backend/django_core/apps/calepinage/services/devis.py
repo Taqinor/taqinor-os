@@ -105,11 +105,12 @@ def empreinte_des_surfaces(layout, cles):
         return ''
 
 
-def _selection_du_devis(devis):
-    """ACAL968 — la sélection écrite au devis (``roof_layout``), ou ``None``."""
-    from apps.ventes.selectors_calepinage import surfaces_chiffrees_du_devis
+def _selection_du_devis(devis, porteur):
+    """ACAL968 — la sélection écrite au devis (``roof_layout``), ou ``None`` ;
+    ACAL1249 : lue contre le document de ``porteur`` (pan existant ignoré)."""
+    from apps.ventes.selectors_calepinage import selection_lue_du_devis
 
-    return surfaces_chiffrees_du_devis(devis)
+    return selection_lue_du_devis(devis, porteur)
 
 
 def _lead_et_client(calepinage):
@@ -958,7 +959,7 @@ def resynchroniser_devis(calepinage, *, user=None,
                          and devis.company_id != company.pk):
         raise DevisRefuse(f"Devis introuvable (#{devis_id}).", champ='devis')
     layout = _layout_des_surfaces(layout, surfaces_chiffrees if surfaces_chiffrees
-                                  is not None else _selection_du_devis(devis))
+                                  is not None else _selection_du_devis(devis, variante or calepinage))
 
     try:
         # ACAL34 — l'enveloppe ventes UNIQUE : resynchro + quatre études

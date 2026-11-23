@@ -1921,17 +1921,17 @@ def _ecart_devis(calepinage, p50):
     devis → ombrage servi → ce résultat ; profil créé, ACON87) ; ``ecart_pct`` = (P50 − devis) /
     devis, au dixième. Jamais l'inverse : le devis ne lit pas le P50
     (D-ACAL-6). ``None`` sans devis lié (ou d'une autre société), sans P50
-    servi (jamais simulé, ou périmé) ou sans production au devis. LECTURE
-    PURE."""
+    servi (jamais simulé, ou périmé), sans production au devis, ou quand le
+    PDF n'imprime pas cette figure (ACAL1274). LECTURE PURE."""
     devis_id = getattr(calepinage, 'devis_id', None)
     if not devis_id or not _est_un_nombre(p50):
         return None
     from apps.ventes.selectors import get_devis_by_pk, production_attendue_pour_devis
-    from apps.ventes.selectors_calepinage import _conception_a_jour
+    from apps.ventes.selectors_calepinage import _conception_a_jour, figure_stockee_imprimee
 
     if ((devis := get_devis_by_pk(devis_id)) is None
             or devis.company_id != getattr(calepinage, 'company_id', None)
-            or _conception_a_jour(devis, calepinage) is False):  # ACON27 — autre conception
+            or _conception_a_jour(devis, calepinage) is False or not figure_stockee_imprimee(devis)):  # ACON27 ACAL1274
         return None
     production = production_attendue_pour_devis(devis_id)
     if production is None or production <= 0:

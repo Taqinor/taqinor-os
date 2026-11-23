@@ -46,8 +46,8 @@ def _document_chiffre(devis, calepinage):
     calepinage limitée à SA sélection (``choixConception.surfacesChiffrees``),
     comme ``_conception_a_jour`` ; le document entier sans sélection, ou quand
     elle ne s'applique plus (surface chiffrée retirée : l'écart est réel)."""
-    from apps.ventes.selectors_calepinage import surfaces_chiffrees_du_devis
-    selection = surfaces_chiffrees_du_devis(devis)
+    from apps.ventes.selectors_calepinage import selection_lue_du_devis
+    selection = selection_lue_du_devis(devis, calepinage)  # ACAL1249 — pan existant ignoré
     if selection is None:
         return calepinage.roof_layout
     from apps.calepinage.selectors import document_de_la_selection
