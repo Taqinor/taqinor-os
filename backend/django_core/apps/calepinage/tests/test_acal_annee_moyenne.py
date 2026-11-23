@@ -389,12 +389,13 @@ class PublicationAnneeMoyenneTest(SimpleTestCase):
         # 15 140 kWh sur la fenêtre (1 514 kWh par an) ; l'histogramme de
         # l'onduleur publiait 15 140,8 kWh d'énergie écrêtée, dix fois la
         # perte publiée de l'étape. Les deux se lisent à l'année moyenne.
+        avant, ecrete, part = 200000.0, 15140.0, 7.57
         etape = {
-            'etape': 'ecretage', 'kwh_avant': 200000.0,
-            'kwh_apres': 184860.0, 'perte_kwh': 15140.0, 'perte_pct': 7.57,
+            'etape': 'ecretage', 'kwh_avant': avant,
+            'kwh_apres': avant - ecrete, 'perte_kwh': ecrete, 'perte_pct': part,
             'entree': {'distribution': {
-                'borne_kw': 5.0, 'energie_totale_kwh': 200000.0,
-                'energie_ecretee_kwh': 15140.0, 'part_ecretee_pct': 7.57,
+                'borne_kw': 5.0, 'energie_totale_kwh': avant,
+                'energie_ecretee_kwh': ecrete, 'part_ecretee_pct': part,
                 'classes': [{'de_kw': 0.0, 'a_kw': 5.0,
                              'energie_kwh': 150000.0},
                             {'de_kw': 5.0, 'a_kw': 7.5,

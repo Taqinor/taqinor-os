@@ -327,15 +327,25 @@ class ControlesElectriquesTest(SimpleTestCase):
 #: ACAL1703 — le registre des onglets de l'atelier, LU (jamais recopié) : ``cle`` de
 #: chaque entrée d'``ONGLETS`` ; ``reglages`` est la route nommée ``/calepinage/reglages``
 #: (``production/lienManque.js``).
-REGISTRE_ONGLETS = (pathlib.Path(__file__).resolve().parents[4] / 'frontend' / 'src'
-                    / 'features' / 'calepinage' / 'atelier' / 'onglets.js')
+REGISTRE_ONGLETS = ('frontend', 'src', 'features', 'calepinage', 'atelier', 'onglets.js')
 ROUTES_NOMMEES = {'reglages'}
+
+
+def _registre_onglets():
+    """Le fichier du registre, cherché en remontant depuis ce test : la racine du dépôt
+    n'est pas à la même profondeur dans le checkout complet de la CI et dans un montage
+    du seul ``django_core`` (où le front n'existe pas : ``None``)."""
+    for parent in pathlib.Path(__file__).resolve().parents:
+        candidat = parent.joinpath(*REGISTRE_ONGLETS)
+        if candidat.is_file():
+            return candidat
+    return None
 
 
 def _cles_du_registre():
     import re
 
-    return set(re.findall(r"\{ cle: '([^']+)'", REGISTRE_ONGLETS.read_text(encoding='utf-8')))
+    return set(re.findall(r"\{ cle: '([^']+)'", _registre_onglets().read_text(encoding='utf-8')))
 
 
 def _onglets_servis():
@@ -358,6 +368,11 @@ class CiblesDuReglerTest(SimpleTestCase):
 
     def test_toute_cible_servie_est_un_onglet_du_registre_ou_une_route(self):
         # Mutant : remettre « materiel », « obstacles » ⇒ échec (clés absentes).
+        import os
+
+        if _registre_onglets() is None and not os.environ.get('CI'):
+            self.skipTest('front absent de ce montage : la garde se joue sur le checkout complet de la CI')
+        self.assertIsNotNone(_registre_onglets(), 'registre des onglets introuvable dans le checkout')
         cles = _cles_du_registre()
         self.assertGreater(len(cles), 30)  # le registre est bien lu
         self.assertEqual(_onglets_servis() - cles - ROUTES_NOMMEES, set())
