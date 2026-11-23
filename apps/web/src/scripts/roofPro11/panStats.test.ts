@@ -118,3 +118,23 @@ describe('ACAL981 — libellé du bâtiment et motif du contour', () => {
     expect(html).toContain('Bâtiment 2');
   });
 });
+
+// ACAL1513 (K-COLONNE-ETROITE) — le tableau Site vit dans la colonne de droite (≈ 270 px) : aucune largeur minimale,
+// une fiche empilée par ligne (deux cellules), et le total du SITE (modules, kWc) en tête, visible sans défiler.
+describe('ACAL1513 — le tableau Site ne force aucune largeur minimale', () => {
+  it('toit plat + champ au sol : aucun min-w, fiches à deux cellules, « 124,96 kWc » et « 139,36 kWc » lisibles', () => {
+    const pans = computePanStats([zone('a', { buildingId: 'bat-A' })], () => ({ ...RESULT_OK, panels: 20, kwc: 14.4 }));
+    const sol = { kind: 'sol', id: 'sol-1', label: 'Champ au sol', buildingId: 'bat-B', areaM2: 660, engine: { modules: 176 }, moduleWc: 710 };
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body></body>').window.document;
+    try {
+      document.body.innerHTML = htmlTableSite(computeSiteStats(pans, [sol]));
+      const table = document.querySelector('table[data-site-stats]')!;
+      expect(table.className).not.toMatch(/min-w-/);
+      for (const tr of document.querySelectorAll('tbody tr')) expect(tr.children.length).toBeLessThanOrEqual(2);
+      expect(document.querySelector('[data-site-ligne="sol-1"]')?.textContent).toContain('124,96 kWc');
+      expect(document.querySelector('[data-site-resume]')?.textContent).toBe('Total du site : 196 modules · 139,36 kWc');
+    } finally { g.document = avant; }
+  });
+});
