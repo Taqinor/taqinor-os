@@ -334,25 +334,27 @@ def _role_et_champ(libelle):
     return (role.strip().lower(), champ.strip()) if separateur else ('', str(libelle or ''))
 
 
-def _ratio_dc_ac(ratio, *, pourquoi='onduleur non désigné'):
+def _ratio_dc_ac(ratio, *, pourquoi='onduleur non désigné', devis_recu=False):
     from core.electrique.types import fr
 
-    from .electrique import RATIO_NON_JUGE
+    from .ratio_devis import detail_ratio
 
     libelle = 'Puissance des panneaux face à l’onduleur'
     valeur = (ratio or {}).get('valeur')
     if valeur is None:
         return _elec('ratio_dc_ac', libelle, 'info', 'Non calculé : %s' % pourquoi)
-    texte = fr(valeur, 2)
-    # ACAL1538 — le verdict du bloc servi, LU : ``None`` = non jugé.
-    if ratio.get('dans_bornes') is None:
-        return _elec('ratio_dc_ac', libelle, 'info', texte,
-                     cause=RATIO_NON_JUGE + '.',
-                     geste='Saisir une fourchette dans les réglages')
-    etat = 'ok' if ratio.get('dans_bornes') else 'a_regler'
-    controle = _elec('ratio_dc_ac', libelle, etat, '%s pour %s au plus' % (
-        texte, fr(ratio.get('borne'), 2)),
-        geste='' if etat == 'ok' else 'Revoir le choix de l’onduleur')
+    # ACAL1954 (D-ACAL-91) — le verdict du bloc servi, LU (la MÊME fonction que
+    # l'étape Électrique) ; la phrase dit d'où vient la borne.
+    conforme = bool(ratio.get('dans_bornes'))
+    texte = detail_ratio(fr(valeur, 2), conforme, (
+        ratio.get('borne'), None, ratio.get('borne_source'), ratio.get('borne_reference')))
+    if conforme:
+        controle = _elec('ratio_dc_ac', libelle, 'ok', texte)
+    elif devis_recu:
+        # Le client a déjà reçu ce devis : un écart avec lui s'INFORME, il ne bloque pas.
+        controle = _elec('ratio_dc_ac', libelle, 'info', texte, cause='Écart avec le devis déjà envoyé.')
+    else:
+        controle = _elec('ratio_dc_ac', libelle, 'a_regler', texte, geste='Revoir le choix de l’onduleur')
     controle['seuil_source'] = ratio.get('borne_source')
     return controle
 
@@ -375,6 +377,7 @@ def controles_electriques(calepinage):
     Le verdict est celui de ``verdict_publiable`` (``_rapport_publication``
     en est le seul calcul : son matériel est gardé pour ACAL906)."""
     from .electrique import CODE_FICHE_INCOMPLETE, CODE_POLYSTRING
+    from .devis_retenu import conception_du_devis_lie  # ACAL1954
     from .troncons import troncons_du_calepinage
 
     publication, _conception, resolu = _rapport(calepinage)
@@ -415,7 +418,8 @@ def controles_electriques(calepinage):
         _tension_froid(verdicts),
         _depuis_motifs('orientation_mppt', 'Une seule orientation par entrée',
                        poly, geste='Revoir l’affectation des chaînes'),
-        _ratio_dc_ac(resultat.get('ratio_dc_ac'), pourquoi=pourquoi_ratio),
+        _ratio_dc_ac(resultat.get('ratio_dc_ac'), pourquoi=pourquoi_ratio,
+                     devis_recu=bool((conception_du_devis_lie(calepinage) or {}).get('recu'))),
         _chutes(troncons_du_calepinage(calepinage)),
         _depuis_motifs('terre_protections', 'Terre et protections', terre,
                        geste='Compléter la check-list de terre'),

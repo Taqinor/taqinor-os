@@ -264,17 +264,27 @@ class ControlesElectriquesTest(SimpleTestCase):
                          'Bloquant : 2')
         self.assertEqual(self._controles()['verdict_electrique']['etat'], 'ok')
 
-    def test_ratio_sans_fourchette_info(self):
-        ratio = {'valeur': 1.25, 'borne': 1.35, 'dans_bornes': None,
-                 'borne_source': 'borne usuelle du noyau électrique'}
+    def test_ratio_juge_par_la_regle_du_devis_jamais_bon_au_dessus(self):
+        # ACAL1954 (D-ACAL-91) — 4,26 sur un onduleur réseau : « à régler », jamais « Bon ».
+        ratio = {'valeur': 1.25, 'borne': 1.35, 'dans_bornes': True,
+                 'borne_source': 'règle du devis', 'borne_reference': ''}
         controle = self._controles(ratio=ratio)['ratio_dc_ac']
-        self.assertEqual(controle['etat'], 'info')
-        self.assertEqual(controle['valeur_texte'], '1,25')
-        hors = dict(ratio, valeur=1.5, dans_bornes=False,
-                    borne_source='réglage de la société')
+        self.assertEqual(controle['etat'], 'ok')
+        self.assertEqual(controle['valeur_texte'], '1,25 pour 1,35 au plus (règle du devis)')
+        hors = dict(ratio, valeur=4.26, dans_bornes=False, borne_source='fourchette de la société')
         controle = self._controles(ratio=hors)['ratio_dc_ac']
         self.assertEqual(controle['etat'], 'a_regler')
-        self.assertEqual(controle['seuil_source'], 'réglage de la société')
+        self.assertEqual(controle['valeur_texte'], '4,26 pour 1,35 au plus (fourchette de la société)')
+        self.assertEqual(controle['seuil_source'], 'fourchette de la société')
+
+    def test_ratio_hors_devis_deja_envoye_est_une_information(self):
+        from apps.calepinage.services.pret_a_envoyer import _ratio_dc_ac
+
+        hors = {'valeur': 4.26, 'borne': 1.35, 'dans_bornes': False,
+                'borne_source': 'règle du devis', 'borne_reference': ''}
+        controle = _ratio_dc_ac(hors, devis_recu=True)
+        self.assertEqual(controle['etat'], 'info')
+        self.assertIn('Écart avec le devis', controle['cause'])
 
     def test_tension_froid_valeur_et_temperature_servies(self):
         ligne = {'code': 'voc_cold_under_vmax', 'conforme': True,

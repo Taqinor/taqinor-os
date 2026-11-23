@@ -282,6 +282,21 @@ def lignes_produits_calepinage(devis):
     ]
 
 
+def borne_dc_ac_du_moteur_devis(mode_installation=None):
+    """ACAL1954 / D-ACAL-91 — la borne haute du ratio DC/AC que le MOTEUR DE
+    DEVIS applique quand la société n'a réglé aucune fourchette, LUE à sa
+    source (jamais recopiée) : moteur C&I = borne usuelle de
+    ``core.electrique.onduleurs.bornes_dc_ac`` (``moteur_ci/onduleurs``),
+    résidentiel = ``solar_design.MAX_DC_AC``. Un nombre (kWc par kW AC)."""
+    if (mode_installation or '') in ('commercial', 'industriel'):
+        from core.electrique.onduleurs import bornes_dc_ac
+
+        return float(bornes_dc_ac().borne_usuelle.valeur)
+    from .solar_design import MAX_DC_AC
+
+    return float(MAX_DC_AC)
+
+
 #: ACAL1950 — les statuts d'un devis que le client a déjà reçu.
 STATUTS_DEVIS_RECU = ('envoye', 'accepte')
 

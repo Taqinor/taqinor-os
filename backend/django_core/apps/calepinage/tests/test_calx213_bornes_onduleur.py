@@ -88,6 +88,34 @@ class LaBorneDcMaxKwcBloque(SimpleTestCase):
         self.assertEqual(evaluation.bloquants, ())
 
 
+class UnHybrideSeJugeASaCapacitePubliee(SimpleTestCase):
+    """ACAL1954 (D-HYB-1) — hybride publiant ``dc_max_kwc`` : ni alerte 1,50 ni
+    borne usuelle dans sa capacité ; au-delà, le contrôle reprend."""
+
+    def _hybride(self, designation='Onduleur hybride Deye 20 kW'):
+        return _onduleur(ac_kw=20.0, dc_max_kwc=40.0, designation=designation)
+
+    def test_dans_la_capacite_aucune_alerte_de_ratio(self):
+        from core.electrique.onduleurs import capacite_publiee_hybride
+
+        evaluation = dimensionner_onduleurs(_entree(62, onduleur=self._hybride()))  # 34,1 kWc
+        self.assertGreater(evaluation.ratio_dc_ac.valeur, SEUIL_ALERTE_DC_AC)
+        self.assertFalse([a for a in evaluation.alertes if 'ratio DC/AC' in a])
+        self.assertEqual(capacite_publiee_hybride(self._hybride(), 2), 80.0)
+
+    def test_au_dela_de_la_capacite_l_alerte_revient(self):
+        evaluation = dimensionner_onduleurs(_entree(75, onduleur=self._hybride()))  # 41,25 kWc
+        self.assertTrue([a for a in evaluation.alertes if "seuil d'alerte" in a])
+
+    def test_onduleur_reseau_et_fiche_sans_capacite_inchanges(self):
+        from core.electrique.onduleurs import capacite_publiee_hybride
+
+        reseau = self._hybride(designation='Onduleur réseau Huawei 20 kW')
+        evaluation = dimensionner_onduleurs(_entree(62, onduleur=reseau))
+        self.assertTrue([a for a in evaluation.alertes if "seuil d'alerte" in a])
+        self.assertIsNone(capacite_publiee_hybride(_onduleur(designation='Onduleur hybride')))
+
+
 class LaBorneSMaxKvaAlerte(SimpleTestCase):
     """Puissance apparente < puissance active nominale = bridage, pas casse."""
 

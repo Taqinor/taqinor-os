@@ -203,7 +203,7 @@
         },
         {
           "code": "ratio_dc_ac",
-          "libelle": "Ratio DC/AC face à la fourchette réglée par la société",
+          "libelle": "Ratio DC/AC face à la borne du devis ou de la société",
           "conforme": true,
           "bloquant": false,
           "source": "saisie",
@@ -1388,7 +1388,7 @@
         },
         {
           "code": "ratio_dc_ac",
-          "libelle": "Ratio DC/AC face à la fourchette réglée par la société",
+          "libelle": "Ratio DC/AC face à la borne du devis ou de la société",
           "conforme": true,
           "bloquant": false,
           "source": "saisie",
@@ -1815,7 +1815,7 @@
         },
         {
           "code": "ratio_dc_ac",
-          "libelle": "Ratio DC/AC face à la fourchette réglée par la société",
+          "libelle": "Ratio DC/AC face à la borne du devis ou de la société",
           "conforme": true,
           "bloquant": false,
           "source": "saisie",

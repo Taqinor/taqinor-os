@@ -32,6 +32,7 @@ __all__ = [
     "BorneRatio", "BornesDcAc", "bornes_dc_ac",
     "EvaluationOnduleurs", "ratios", "nombre_onduleurs",
     "dimensionner_onduleurs", "puissance_a_temperature",
+    "est_onduleur_hybride", "capacite_publiee_hybride",
 ]
 
 #: Borne USUELLE du ratio DC/AC (convention ``apps/ventes/solar_design.MAX_DC_AC``)
@@ -235,6 +236,31 @@ def puissance_a_temperature(ac_kw, debut_c, pente_pct_c, temperature_c):
     return max(0.0, float(ac_kw) * (1.0 - float(pente_pct_c) * exces / 100.0))
 
 
+def est_onduleur_hybride(designation):
+    """ACAL1954 — l'appareil se dit-il hybride (« hybride », « hybrid ») ?"""
+    return "hybrid" in str(designation or "").lower()
+
+
+def capacite_publiee_hybride(onduleur, nombre=1):
+    """ACAL1954 — règle D-HYB-1 (fondateur, moteur de devis C&I :
+    ``moteur_ci/onduleurs._capacite_kwc``) : pour un onduleur HYBRIDE dont la
+    fiche publie ``dc_max_kwc``, la limite du champ PV est cette capacité
+    publiée (par appareil × ``nombre``), au-delà de toute borne de ratio.
+
+    Rend des kWc, ou ``None`` (onduleur réseau, ou capacité non publiée : la
+    borne de ratio habituelle s'applique). Fonction PURE."""
+    dc_max = getattr(onduleur, "dc_max_kwc", None)
+    if not est_onduleur_hybride(getattr(onduleur, "designation", "")):
+        return None
+    try:
+        dc_max = float(dc_max)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(dc_max) or dc_max <= 0:
+        return None
+    return dc_max * max(1, int(nombre or 1))
+
+
 def dimensionner_onduleurs(entree, puissance_dc_kwc=None, reglages=None):
     """PV34 — nombre d'onduleurs, puissance AC totale, et les deux ratios bornés.
 
@@ -283,13 +309,17 @@ def dimensionner_onduleurs(entree, puissance_dc_kwc=None, reglages=None):
     borne_usuelle = bornes.borne_usuelle.valeur
     seuil_alerte = bornes.seuil_alerte.valeur
     valeur = ratio_dc_ac.valeur
+    # ACAL1954 (D-HYB-1) — un hybride dans sa capacité publiée n'est pas jugé
+    # au ratio : ni alerte 1,50, ni borne usuelle.
+    capacite = capacite_publiee_hybride(onduleur, nombre)
+    au_ratio = capacite is None or dc > capacite + 1e-9
     if valeur is not None:
-        if valeur > seuil_alerte + 1e-9:
+        if valeur > seuil_alerte + 1e-9 and au_ratio:
             alertes.append(
                 "ratio DC/AC de %s au-dessus du seuil d'alerte %s — "
                 "surdimensionnement DC important, écrêtage probable aux heures "
                 "pleines" % (fr(valeur, 2), fr(seuil_alerte, 2)))
-        elif valeur > borne_usuelle + 1e-9:
+        elif valeur > borne_usuelle + 1e-9 and au_ratio:
             alertes.append(
                 "ratio DC/AC de %s au-dessus de la borne usuelle %s — "
                 "écrêtage aux heures pleines" % (fr(valeur, 2),
