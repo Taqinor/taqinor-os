@@ -204,6 +204,48 @@ vivent dans le scratchpad de la session, pas sur `main`.
      Pliées depuis 08 h 35 : `electrique-1` (9), coutures 3 et 4, `resultats-m1` [1611, 1614 ; 1621 → demande
      croisée `scene3d.ts`], `coque-prealables` [1437, 1727, 1730, 1731, 1745 ; 1617 → `coque-v2`]. 84 tâches de
      la vague 2 livrées.
+   - **POINT à 09 h 45 UTC (à lire en premier après une reprise).**
+     VAGUE A EN FILE DE FUSION : PR Taqinor/taqinor-os#1527, tête `a37c9be26` (= 746e197f5 + le correctif du fond
+     satellite), CI verte, `gh pr ready` + `gh pr merge --auto --merge` faits à 09 h 30 ; file : position 1,
+     « AWAITING_CHECKS ». À VÉRIFIER : `gh pr view 1527 --json state,mergedAt`. Une fois fusionnée : dire à Reda
+     « mergé — à déployer par toi : `scripts/deploy-prod.ps1` » (migration `calepinage/0043`), relâcher puis
+     reprendre les claims (`python scripts/plan_claims.py release …` / `claim …`), et ouvrir la PR de la VAGUE B
+     depuis la même branche (`git push origin HEAD` puis `gh pr create --draft`, Auto-fix à allumer
+     `mcp__ccd_pr__set_monitor`, jamais d'auto-archive). Critique Fable de la vague A : `T2/critique-vague-A.md`
+     — fusionnable, 0 bloquant ; ses 8 points « après » sont dans `T2/consolidation/entree-lot-O.md` § 6 (deux déjà
+     corrigés : fond satellite, garde `_devis_lie` ; quatre confiés aux lanes d'écran en vol). Site public : les
+     pages des visiteurs ne chargent pas le moteur modifié (lu par la critique) ; l'aperçu Cloudflare redirige vers
+     le site en ligne, donc NON essayé.
+     BRANCHE LOCALE (vague B, NON poussée, en avance sur la PR) : tête `f26d073102` — plis de `coque-prealables`,
+     `simulation-1` [1605, 1602, 1606, 1607, 1622, 1619], `consommation` [1601, 1603, 1604, 1609, 1610 ; 1608 à
+     moitié], `docs-m1` [1700, 1703, 1704, 1711, 1712, 1710, 1705 ; 1709 impossible avant ACAL1001], **`coque-v2`
+     [1800-1805 + 1617] : coque PROCHE de la maquette, planches `T2/preuves/coque-v2-planche-*.png`**. 109 tâches
+     de la vague 2 livrées au total. Gardes locales vertes. NE PAS pousser la branche avant la fusion de la vague A
+     (cela changerait la tête de la PR en file).
+     EN VOL (lancées à 09 h 35, base = branche LOCALE) : `rapport-m1` [1615, 1616, 1677, 1701, 1702] opus ·
+     `ecran-toit-panneaux` [1445, 1827, 1828, 1818, 1829 + 2 points de la critique] sonnet · `ecran-elec-resultats`
+     [1708, 1833, 1822, 1832, 1830, 1831 + 3 demandes croisées] sonnet · `telephone-m1` [1807, 1809, 1812, 1810,
+     1811] sonnet. Chaque lane d'écran doit rendre une planche maquette | réel et un verdict.
+     ENSUITE : `production-web` [1612, 1618, 1613 + demandes croisées `optimizer.ts` dont ACAL1523, champ au sol
+     seul pan, épingle du lead à « + Ajouter une zone », `cadrageToit.ts` qui honore `margesPx`, ACAL1621 dans
+     `scene3d.ts`] opus ; écrans restants du lot E : Documents 1834 (après 1726), Liste [1825, 1819], Démarrage
+     rapide 1826, Tablette 1835, relevé et client [1814, 1836, 1817, 1837, 1838], atelier-web [1808, 1813, 1820,
+     1821, 1839], e2e [1806, 1824], balayage 1823 ; `toit-d` [1706, 1707] ; `livrables` [1507, 1508, 1551, 1713] ;
+     lot O à rédiger. PUIS : reconstruire l'instrument sur la branche (conteneurs `l5cal-django` et `l5cal-celery`
+     arrêtés ; build du front de la branche), TOUR 3 (rejeu ciblé des 95 « insuffisants » d'après leur `motif`,
+     des tâches livrées des vagues 1-2, et regard neuf + comparaison des 13 écrans aux maquettes v2), régénérer
+     UNE fois `calepinage-mesures-ecran.baseline.json`, acceptation, fusion de la vague B, phase de contrôles,
+     rapport final.
+     INCIDENTS ET RÈGLES APPRISES : (1) 09 h 05 UTC, disque C: PLEIN (0 octet) — Docker tombé, relancé à 09 h 10 ;
+     cause : ~0,5 Go par worktree de lane ; RÈGLE : après chaque pli, `git worktree remove --force
+     .claude/worktrees/agent-<id>` (retirer d'abord toute jonction `node_modules` par `cmd //c rmdir`) ; ne JAMAIS
+     retirer les worktrees `lane-l5-*` d'autres sessions ; garder `agent-ad48e173ad7c41aaa` (seule vraie
+     installation d'`apps/web`, pour les coutures). (2) Un crochet interdit à cette session d'écrire dans un autre
+     worktree : pour poser un commit ailleurs, plomberie git (`read-tree` / `commit-tree`) depuis CE worktree.
+     (3) Chaque push annule le run de CI précédent : grouper les pushes. (4) Les lanes écrivent parfois leur
+     fichier d'événements en cp1252 : le ré-encoder en UTF-8 à la recopie. (5) Fautes de lane qui ont rougi la CI :
+     lignes de plus de 120 colonnes, test qui lit un source par motif, repère `cal-*` non déclaré, fichier ou
+     fonction « mur » qui grossit, budget du bundle — toutes écrites au brief des lanes § 2.3 et § 4.
    - BUDGET (08 h 10 UTC) : quota hebdo 39 % (≈ 4 points par heure, ≈ 0,3 point par agent) ; contexte de
      l'orchestrateur 58 %. Règle : construire jusqu'à ≈ 56 %, puis tour 3 léger, fusion, phase de contrôles (≤ 5
      points), rapport. PRIORITÉ de ce qui reste à construire : (1) les M1 de tous les lots ; (2) la coque v2 puis
