@@ -39,5 +39,23 @@
     "cabinet": "Documentation",
     "dossier": "Guides — Responsables",
     "acces": "responsable"
+  },
+  {
+    "fichier": "Fiche_videos_partie1.pdf",
+    "titre": "Fiche — Les vidéos à enregistrer (partie 1)",
+    "version": "1.0",
+    "description": "Huit petites vidéos en une seule séance d'environ 35 minutes : pour chacune, les lignes à lire et la façon de les enregistrer ; version du 21/11/2026.",
+    "cabinet": "Documents internes",
+    "dossier": "Vidéos et publicité",
+    "acces": "responsable"
+  },
+  {
+    "fichier": "Note_de_la_semaine_2026-11-23.pdf",
+    "titre": "Note de la semaine — 23/11/2026",
+    "version": "1.0",
+    "description": "Ce qui change cette semaine : les dossiers qui arrivent, les devis expirés à refaire, les seize foyers à traiter en premier, la question à poser, les brouillons à envoyer et deux règles nouvelles.",
+    "cabinet": "Documents internes",
+    "dossier": "Vidéos et publicité",
+    "acces": "responsable"
   }
 ]
