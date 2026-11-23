@@ -182,19 +182,34 @@ export function monterGrilleFactures(hote: HTMLElement, deps: DepsGrille): void 
     envoyes = (corps.factures as unknown as { mois: Array<{ mois: number }> }).mois.map((m) => m.mois);
     deps.lancer(corps);
   };
+  // ACAL1909 — la grille est montée à l'init de l'atelier, AVANT que le document relu soit posé : les
+  // mois enregistrés se relisent donc aussi à l'ouverture de la grille et au premier focus, tant que
+  // l'utilisateur n'y a rien saisi (un mois effacé à la main n'est jamais ressuscité).
+  let touchee = false;
+  const remplirDepuisDocument = () => {
+    if (touchee) return;
+    let rempli = false;
+    for (const f of deps.factures?.lire() ?? []) {
+      const ligne = grille.querySelector<HTMLElement>(`[data-cons-mois-ligne="${f.mois}"]`)!;
+      const champ = ligne.querySelector<HTMLInputElement>('[data-cons-mois-valeur]')!;
+      if (champ.value.trim()) continue;
+      champ.value = String(f.valeur);
+      ligne.querySelector<HTMLSelectElement>('[data-cons-mois-unite]')!.value = f.unite;
+      rempli = true;
+    }
+    if (rempli) envoyer();
+  };
+  grille.addEventListener('toggle', remplirDepuisDocument);
+  grille.addEventListener('focusin', remplirDepuisDocument);
   grille.addEventListener('input', () => {
+    remplirDepuisDocument(); // un mois saisi avant toute relecture part avec les mois enregistrés, jamais seul
+    touchee = true;
     deps.factures?.ecrire(facturesDepuisLignes(lignes())); // ACAL1610 — écrit au document sans délai
     if (minuterie != null) clearTimeout(minuterie);
     minuterie = setTimeout(envoyer, DELAI_FRAPPE_MS);
   });
   // ACAL1610 — les mois relus du document remplissent la grille ; la proposition (barres) est relancée.
-  const relues = deps.factures?.lire() ?? [];
-  for (const f of relues) {
-    const ligne = grille.querySelector<HTMLElement>(`[data-cons-mois-ligne="${f.mois}"]`)!;
-    ligne.querySelector<HTMLInputElement>('[data-cons-mois-valeur]')!.value = String(f.valeur);
-    ligne.querySelector<HTMLSelectElement>('[data-cons-mois-unite]')!.value = f.unite;
-  }
-  if (relues.length) envoyer();
+  remplirDepuisDocument();
   if (deps.lireFacture) {
     monterBlocPhoto(grille, deps.lireFacture, (mois, kwh) => {
       const ligne = grille.querySelector<HTMLElement>(`[data-cons-mois-ligne="${mois}"]`);
