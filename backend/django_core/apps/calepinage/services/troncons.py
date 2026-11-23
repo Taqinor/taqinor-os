@@ -351,8 +351,8 @@ def _courant_du_troncon(troncon, contexte):
     return (None,
             "le courant qui traverse le tronçon « %s » n'est publié ni par "
             "le rattachement des chaînes à ce tronçon ni par la conception "
-            "électrique du calepinage (%s) : section et chute de tension "
-            "OMISES." % (nom, manque))
+            "électrique du calepinage (%s) : la section et la chute de tension "
+            "ne sont pas calculées." % (nom, manque))
 
 
 #: ACAL635/636 — les réglages société (section ``electrique_societe``,
@@ -429,9 +429,8 @@ def _motif_norme_absente(norme):
     """Le motif D1, tel que ``norme_applicable`` le rédige — jamais un barème
     supposé à la place."""
     motif = (norme or {}).get('motif') or ''
-    return ("section et chute de tension OMISES : %s "
-            "(norme électrique choisie pour le pays)."
-            % (motif or "aucune norme électrique n'est applicable"))
+    return ("La section et la chute de tension ne sont pas calculées : %s"
+            % (motif or "aucune norme électrique n'est choisie."))
 
 
 def _dimensionner_troncon(troncon, contexte):
@@ -479,7 +478,7 @@ def _dimensionner_troncon(troncon, contexte):
         return (champs, _omission(
             nom, 'ib_a',
             "le courant d'emploi du tronçon « %s » n'est pas publié : "
-            "section et chute de tension OMISES." % nom))
+            "la section et la chute de tension ne sont pas calculées." % nom))
     if tension is None or tension <= 0:
         return (champs, _omission(
             nom, 'chute_pct',

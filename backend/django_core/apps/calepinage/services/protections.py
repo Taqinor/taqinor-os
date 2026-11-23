@@ -251,9 +251,7 @@ def checklist_protections(conception, *, decisions=None, norme=None,
 
     if norme is not None and not norme.get('applicable', False):
         return {'organes': [], 'justifications': [],
-                'omissions': [norme.get('motif') or
-                              "aucune norme électrique sélectionnée : "
-                              "check-list de protections OMISE"],
+                'omissions': [norme.get('motif') or _sans_norme()],
                 'questions': []}
     if conception.fiche_incomplete or conception.resultat is None \
             or not conception.chaines:
@@ -346,3 +344,10 @@ def organes_retenus(checklist):
     """
     return [ligne for ligne in (checklist or {}).get('organes') or ()
             if ligne.get('retenu')]
+
+
+def _sans_norme():
+    """ACAL1338 — le texte unique sans norme choisie (``norme.MOTIF_SANS_NORME``)."""
+    from .norme import MOTIF_SANS_NORME
+
+    return MOTIF_SANS_NORME % ''

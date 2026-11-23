@@ -162,4 +162,4 @@ class NormeTest(SimpleTestCase):
         self.assertEqual(checklist['lignes'], [])
         self.assertFalse(checklist['justification_requise'])
         self.assertTrue(garde_terre(checklist))
-        self.assertIn('OMIS', checklist['omissions'][0])
+        self.assertIn('ne sont pas calculés', checklist['omissions'][0])

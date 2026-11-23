@@ -120,9 +120,9 @@ GABARIT_NEUTRE = 'neutre'
 #: Le bandeau du gabarit NEUTRE : il DIT ce qui est omis et NOMME le réglage
 #: à renseigner (règle fondateur « erreur → champ fautif »).
 BANDEAU_NEUTRE = (
-    "Calibres et sections OMIS%s : aucune norme électrique n'est choisie — "
-    "renseignez « Norme électrique » dans les réglages du module. Cette "
-    "planche ne montre que la topologie : désignations, quantités, repères. "
+    "Calibres et sections non calculés%s : aucune norme électrique n'est "
+    "choisie — choisissez-la dans « Norme électrique » des réglages. Cette "
+    "planche ne montre que les appareils, leur nombre et leurs repères. "
     "Côté alternatif non dessiné (disjoncteur AC, compteur de production, "
     "TGBT, compteur du réseau) : il dépend de la norme."
 )

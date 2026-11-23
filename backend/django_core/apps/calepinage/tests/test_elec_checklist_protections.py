@@ -254,4 +254,4 @@ class NormeTest(SimpleTestCase):
         checklist = checklist_protections(_conception(), norme=NORME_MA)
 
         self.assertEqual(checklist['organes'], [])
-        self.assertIn('OMIS', checklist['omissions'][0])
+        self.assertIn('ne sont pas calculés', checklist['omissions'][0])

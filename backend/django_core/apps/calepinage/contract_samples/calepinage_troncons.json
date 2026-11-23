@@ -106,7 +106,7 @@
       {
         "troncon": "ch5",
         "champ": "section_mm2",
-        "motif": "aucune norme électrique sélectionnée pour le pays « ma » : la section du conducteur de protection en dépend, elle est donc OMISE. Sélectionnez la norme applicable dans les réglages du module (norme électrique choisie pour le pays)."
+        "motif": "La section et la chute de tension ne sont pas calculées : Aucune norme électrique n'est choisie pour ce pays (ma) : les câbles et les protections ne sont pas calculés. Choisissez une norme dans les réglages du calepinage de votre société pour les calculer."
       }
     ],
     "verdicts": [
