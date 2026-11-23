@@ -303,10 +303,24 @@
   outline: 2px solid var(--rp-brass-400);
   outline-offset: 2px;
 }
-.rp9-host .rp9-btn:disabled,
 .rp9-host .rp9-input:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+/* ACAL1524 — un geste refusé se voit : fond éteint, bordure en tirets, texte lisible (jamais le seul 0,4 d'opacité
+   qui laissait le bouton refusé pareil à un bouton actif) ; « Déplacer les panneaux » compris. */
+.rp9-host .rp9-btn:disabled,
+.rp9-host #rp9-layout-toggle:disabled {
+  border-style: dashed;
+  border-color: var(--border);
+  color: var(--muted-foreground);
+  background: var(--muted);
+  cursor: not-allowed;
+}
+.rp9-host .rp9-motif-refus {
+  margin: 0.375rem 0 0;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
 }
 .rp9-host .rp9-input {
   min-height: 2.75rem;

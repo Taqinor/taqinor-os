@@ -907,7 +907,7 @@ describe('ACAL574 — pan existant : gestes refusés, géométrie intacte', () =
   function avecDom<T>(f: () => T): T {
     const g = globalThis as unknown as { document?: Document };
     const avant = g.document;
-    g.document = new JSDOM('<!doctype html><body><button id="rp9-layout-toggle">Déplacer les panneaux</button></body>').window.document;
+    g.document = new JSDOM('<!doctype html><body><div><button id="rp9-layout-toggle">Déplacer les panneaux</button></div></body>').window.document;
     try { return f(); } finally { g.document = avant; }
   }
   const CARRE: LngLat[] = [ptM(-5, -5), ptM(5, -5), ptM(5, 5), ptM(-5, 5)];
@@ -922,6 +922,7 @@ describe('ACAL574 — pan existant : gestes refusés, géométrie intacte', () =
     return {
       pivote: zones.pivoterPanActif(90), redim: zones.redimensionnerPanActif(8, 12), module: zones.choisirModuleDuPanActif(null),
       intacte: JSON.stringify(ctx.vertices) === avant, setStatus, grise: btn.disabled, titre: btn.title, pan: areas[0],
+      ligne: document.getElementById('rp9-layout-toggle-motif'), // ACAL1524
     };
   });
   it('pivoter, redimensionner et choisir un module sont refusés, motif nommant le pan, géométrie intacte', () => {
@@ -933,11 +934,14 @@ describe('ACAL574 — pan existant : gestes refusés, géométrie intacte', () =
     expect(r.setStatus).toHaveBeenCalledWith(motif);
     expect(r.grise).toBe(true);
     expect(r.titre).toBe(motif);
+    expect(r.ligne?.textContent).toBe(motif); // ACAL1524 — le motif se lit sous le bouton, sans survol
+    expect(r.ligne?.hidden).toBe(false);
   });
   it('pan sans clé : inchangé (le geste passe, le bouton reste actif)', () => {
     const r = essai(false);
     expect(r.pivote).toBe(true);
     expect(r.grise).toBe(false);
+    expect(r.ligne?.hidden ?? true).toBe(true); // ACAL1524 — aucun motif tant que le geste est permis
   });
 });
 

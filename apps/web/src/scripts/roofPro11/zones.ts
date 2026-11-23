@@ -785,6 +785,15 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     btn.disabled = !!motif;
     if (motif) btn.title = motif; else if (btn.dataset.titrePanExistant) btn.removeAttribute('title');
     if (motif) btn.dataset.titrePanExistant = '1'; else delete btn.dataset.titrePanExistant;
+    // ACAL1524 — le motif se LIT (au doigt le `title` n'existe pas) : une phrase écrite sous le bouton.
+    const rangee = btn.parentElement;
+    let ligne = document.getElementById('rp9-layout-toggle-motif');
+    if (motif && rangee && !ligne) {
+      ligne = document.createElement('p');
+      ligne.id = 'rp9-layout-toggle-motif'; ligne.className = 'rp9-motif-refus'; ligne.setAttribute('role', 'status');
+      rangee.insertAdjacentElement('afterend', ligne);
+    }
+    if (ligne) { ligne.textContent = motif ?? ''; ligne.hidden = !motif; }
   }
 
   /** Applique une géométrie transformée au pan ACTIF (contour + obstacles vivants). */

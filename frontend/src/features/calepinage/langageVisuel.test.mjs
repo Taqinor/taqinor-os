@@ -101,6 +101,20 @@ test('ACAL969 : UN seul état « choisi » (fond doré sur [aria-pressed]) ; le 
   assert.ok(parseFloat(declarations(badge.corps)['font-size']) >= 0.75, '.rp9-reco-badge : texte sous 12 px')
 })
 
+// ACAL1524 — un geste refusé se voit : le bouton désactivé n'a plus l'aspect du bouton actif.
+test('ACAL1524 : un bouton rp9-btn désactivé se distingue d’un bouton actif (fond, bordure, texte), « Déplacer » compris', () => {
+  const regle = regles(CSS_ROOFBUILDER).find((r) => /\.rp9-btn:disabled/.test(r.selecteur))
+  assert.ok(regle, 'règle .rp9-btn:disabled absente')
+  const d = declarations(regle.corps)
+  assert.ok(/#rp9-layout-toggle:disabled/.test(regle.selecteur), 'le bouton « Déplacer les panneaux » (id, classes Tailwind) n’est pas couvert')
+  assert.equal(d['border-style'], 'dashed')
+  assert.ok(/var\(--muted\)/.test(d.background), 'fond éteint attendu (jeton --muted)')
+  assert.ok(/var\(--muted-foreground\)/.test(d.color), 'texte lisible attendu (jeton --muted-foreground), pas une simple opacité')
+  assert.equal(d['cursor'], 'not-allowed')
+  assert.ok(!('opacity' in d), 'l’opacité seule rendait le refus invisible')
+  assert.ok(regles(CSS_ROOFBUILDER).some((r) => /\.rp9-motif-refus/.test(r.selecteur)), 'ligne de motif sans règle')
+})
+
 // ACAL1519 — « K-COLONNE-ETROITE » : les grilles du panneau de droite (retraits, bandeau de « Déplacer les panneaux »,
 // bloc « Total — toutes les zones ») suivent la largeur de la COLONNE (auto-fit), jamais un point de rupture de fenêtre.
 test('ACAL1519 : aucune grille du panneau de droite ne dépend du point de rupture de la fenêtre', () => {
