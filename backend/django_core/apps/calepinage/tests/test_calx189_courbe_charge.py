@@ -539,3 +539,55 @@ class AnneeMoyenneTests(unittest.TestCase):
         )['consommation']
         janvier = next(m for m in bloc['profil_mensuel'] if m['mois'] == 1)
         self.assertAlmostEqual(janvier['kwh'], 520.0, delta=0.05)
+
+
+class FactureDuLeadTests(unittest.TestCase):
+    """ACAL1608 — sans aucune consommation saisie dans l'atelier, la courbe
+    de base est celle que ``consommation.py`` propose pour la facture du lead
+    (posée dans la déclaration sous ``facture_lead`` par le constructeur du
+    contexte), d'origine NOMMÉE ; un lead C&I ou agricole garde l'omission.
+
+    Cas chiffré : la proposition rend une courbe plate de 0,5 kWh/h (12
+    kWh/j) sans saisons ⇒ 12 × 365 = 4 380 kWh/an.
+    """
+
+    PROPOSITION = {'courbe24': [0.5] * 24, 'methode': 'facture',
+                   'source': {'origine': 'lead', 'bareme': 'societe'},
+                   'classe': 'residentiel'}
+
+    def test_aucune_saisie_lead_a_facture_courbe_publiee(self):
+        resultat = construire_courbe_charge(serie_de_test(), consommation={
+            'layout': {}, 'facture_lead': dict(self.PROPOSITION)})
+        bloc = resultat['consommation']
+
+        self.assertIsNotNone(bloc)
+        self.assertEqual(bloc['courbe_origine'], 'facture_lead')
+        self.assertIn('facture_lead', courbe_charge.ORIGINES)
+        self.assertAlmostEqual(bloc['total_kwh'], 4380.0, delta=0.01)
+        self.assertEqual(resultat['omissions']['autoconsommation'], '')
+        self.assertTrue(any('facture du lead' in texte
+                            for texte in bloc['avertissements']))
+
+    def test_les_saisons_de_la_facture_modulent_la_courbe(self):
+        proposition = dict(self.PROPOSITION,
+                           saisons={'ete': 1.5, 'hiver': 1.0})
+        bloc = construire_courbe_charge(serie_de_test(), consommation={
+            'facture_lead': proposition})['consommation']
+        juillet = next(m for m in bloc['profil_mensuel'] if m['mois'] == 7)
+        janvier = next(m for m in bloc['profil_mensuel'] if m['mois'] == 1)
+        self.assertAlmostEqual(juillet['kwh'], 31 * 12 * 1.5, delta=0.01)
+        self.assertAlmostEqual(janvier['kwh'], 31 * 12.0, delta=0.01)
+
+    def test_une_saisie_de_l_atelier_prime_sur_la_facture(self):
+        bloc = construire_courbe_charge(serie_de_test(), consommation={
+            'layout': layout_de_test(1.0),
+            'facture_lead': dict(self.PROPOSITION)})['consommation']
+        self.assertEqual(bloc['courbe_origine'], 'layout')
+
+    def test_lead_c_et_i_ou_agricole_garde_l_omission_motivee(self):
+        for classe in ('force_motrice', 'agricole'):
+            resultat = construire_courbe_charge(serie_de_test(), consommation={
+                'facture_lead': dict(self.PROPOSITION, classe=classe)})
+            self.assertIsNone(resultat['consommation'])
+            self.assertTrue(any('profil' in texte
+                                for texte in resultat['avertissements']))

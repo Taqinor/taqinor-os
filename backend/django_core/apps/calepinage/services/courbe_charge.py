@@ -77,8 +77,9 @@ __all__ = ['CourbeChargeInvalide', 'MOTIF_AUTOCONSOMMATION',
 
 #: Les provenances possibles de la courbe de BASE, dans l'ordre de priorité
 #: (décision fondateur Q14 du 21/09 : la saisie la plus proche du client
-#: gagne).
-ORIGINES = ('layout', 'import_intervalle', 'profil_mensuel', 'profil_type')
+#: gagne). ``facture_lead`` (ACAL1608) : repli NOMMÉ quand rien n'est saisi.
+ORIGINES = ('layout', 'import_intervalle', 'profil_mensuel', 'profil_type',
+            'facture_lead')
 
 #: Les charges additionnelles déclarables. ``vehicule`` et ``pac`` sont
 #: produites par ``services/charges.py`` ; les trois autres sont des appareils
@@ -285,25 +286,32 @@ def _base_layout(points, declaration, avertissements):
     # multiplicatifs été / hiver de l'atelier, mois d'été de
     # ``consommation.MOIS_ETE``) est LUE côté serveur ; absente, la courbe
     # est répétée telle quelle (comportement d'avant).
-    from .consommation import MOIS_ETE
-
     saisons = ((layout.get('consumption') or {}).get('saisons')
                if isinstance(layout, dict) else None)
+    origine = "SAISIES dans l'atelier (méthode « {methode} »)".format(
+        methode=profil.get('methode') or 'non renseignée')
+    return _repeter_courbe24(points, courbe24, saisons, origine,
+                             'SAISIE (« consumption.saisons »)', avertissements)
+
+
+def _repeter_courbe24(points, courbe24, saisons, origine, quelle_saison,
+                      avertissements):
+    """24 valeurs horaires répétées jour après jour, modulées été / hiver."""
+    from .consommation import MOIS_ETE
+
     saisons = saisons if isinstance(saisons, dict) else {}
     ete = _facteur_saison(saisons.get('ete'))
     hiver = _facteur_saison(saisons.get('hiver'))
     if ete is None and hiver is None:
         avertissements.append(
-            "Courbe de base : les 24 valeurs horaires SAISIES dans l'atelier "
-            '(méthode « {methode} »), répétées pour chaque jour de '
-            "l'année — aucune saisonnalité n'est inventée.".format(
-                methode=profil.get('methode') or 'non renseignée'))
+            'Courbe de base : les 24 valeurs horaires {origine}, répétées '
+            "pour chaque jour de l'année — aucune saisonnalité n'est "
+            'inventée.'.format(origine=origine))
         return [float(courbe24[_heure(point)]) for point in points]
     avertissements.append(
-        "Courbe de base : les 24 valeurs horaires SAISIES dans l'atelier "
-        '(méthode « {methode} »), modulées par la saisonnalité SAISIE '
-        '(« consumption.saisons ») : été ×{ete} (juin–septembre), hiver '
-        '×{hiver}.'.format(methode=profil.get('methode') or 'non renseignée',
+        'Courbe de base : les 24 valeurs horaires {origine}, modulées par '
+        'la saisonnalité {quelle} : été ×{ete} (juin–septembre), hiver '
+        '×{hiver}.'.format(origine=origine, quelle=quelle_saison,
                            ete=ete if ete is not None else 1,
                            hiver=hiver if hiver is not None else 1))
     courbe = []
@@ -489,12 +497,44 @@ def _base_profil_type(points, declaration, avertissements, annees=1):
     return courbe
 
 
-#: Les quatre sources de courbe de base, dans l'ordre de priorité.
+#: ACAL1608 — la facture du lead ne nourrit la courbe que pour un lead
+#: résidentiel : en C&I ou agricole, la consommation dépend de l'activité et
+#: une facture seule n'en donne pas le profil horaire.
+MOTIF_FACTURE_LEAD_NON_RESIDENTIELLE = (
+    'La facture du lead est connue, mais le lead n\'est pas résidentiel '
+    '(classe « {classe} ») : une facture seule ne donne pas le profil horaire '
+    "d'une activité. Saisissez la consommation dans l'atelier.")
+
+
+def _base_facture_lead(points, declaration, avertissements):
+    """ACAL1608 — repli : la courbe que ``consommation.py`` PROPOSE pour la
+    facture du lead (même conversion que la carte, barème société), posée
+    dans la déclaration sous ``facture_lead`` ; jamais un second barème."""
+    proposition = declaration.get('facture_lead')
+    if not isinstance(proposition, dict):
+        return None
+    courbe24 = proposition.get('courbe24')
+    if not isinstance(courbe24, list) or len(courbe24) != 24:
+        return None
+    classe = proposition.get('classe') or 'non renseignée'
+    if classe != 'residentiel':
+        avertissements.append(
+            MOTIF_FACTURE_LEAD_NON_RESIDENTIELLE.format(classe=classe))
+        return None
+    return _repeter_courbe24(
+        points, courbe24, proposition.get('saisons'),
+        'proposées pour la facture du lead (barème de la société, rien '
+        "n'a été saisi dans l'atelier)", 'des factures du lead',
+        avertissements)
+
+
+#: Les sources de courbe de base, dans l'ordre de priorité.
 _SOURCES_DE_BASE = (
     ('layout', _base_layout),
     ('import_intervalle', _base_import),
     ('profil_mensuel', _base_mensuelle),
     ('profil_type', _base_profil_type),
+    ('facture_lead', _base_facture_lead),
 )
 
 
