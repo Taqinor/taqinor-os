@@ -242,7 +242,7 @@ import { createSoleilPlayer, sunriseSunsetHours, type SoleilPlayer } from './roo
 import { apiCamera, appliquerVue } from './roofPro11/cadrageToit'; // ACAL435 + F6 (cadrage du toit)
 import { panneauxPourCible, phraseCible } from './roofPro11/cibleProduction'; // ACAL470
 import { majBadgesReco } from './roofPro11/recoBadges'; // ACAL562
-import { poserRetraitsSurPanActif } from './roofPro11/retraitsSociete'; // ACAL562
+import { poserRetraitsPuisRecalculer } from './roofPro11/fermetureDuPan'; // ACAL562
 
 let booted = false;
 
@@ -2423,8 +2423,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // commune (sauf override manuel). Les puces « Face du pan » reflètent la valeur déduite.
     autoInferFacing();
     syncFacingChips();
-    recalc();
-    const infoRetraits = poserRetraitsSurPanActif(ctx); // ACAL562 — retraits de la société sur les arêtes typées
+    const infoRetraits = poserRetraitsPuisRecalculer(ctx, recalc); // ACAL562 — retraits de la société posés AVANT le premier pavage
     if (infoRetraits) setStatus(infoRetraits);
   }
 
