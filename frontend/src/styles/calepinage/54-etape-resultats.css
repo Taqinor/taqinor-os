@@ -12,6 +12,11 @@
 .cal-res-titre { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 18px; line-height: 1.2;
   letter-spacing: -0.01em; }
 .cal-res-entete { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+/* ACAL1912 — « à surveiller » : des panneaux posés ne sont raccordés à aucun onduleur, donc pas comptés (crème, sombre : or à 14 %). */
+.cal-res-alerte { display: flex; flex-direction: column; gap: 4px; padding: 14px 18px; border-radius: var(--cal-rayon-pile);
+  border: 1px solid var(--cal-surveiller-filet); background: var(--cal-surveiller-fond); }
+.cal-res-alerte-titre { margin: 0; font-size: 0.875rem; font-weight: 600; line-height: 1.4; color: var(--cal-texte-1); }
+.cal-res-alerte-texte { margin: 0; font-size: 0.8125rem; line-height: 1.45; color: var(--cal-surveiller-texte); }
 .cal-res-lien { background: transparent; border: 0; padding: 0; min-height: 44px; color: var(--cal-lien);
   font: 600 13px var(--font-brand); text-decoration: underline; cursor: pointer; }
 @media (hover: hover) {

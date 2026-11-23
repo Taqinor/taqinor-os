@@ -72,6 +72,31 @@ function ProductionDuDevis({ bloc, p50 }) {
   )
 }
 
+/** ACAL1912 — des panneaux posés mais raccordés à aucun onduleur : la phrase SERVIE en tête de `avertissements` (le même texte
+    que l'Expert), et la production rapportée aux panneaux COMPTÉS — jamais « 13 panneaux » à côté d'un productible calculé
+    sur 9. Omis quand `production.hors_chaine.modules` n'est pas un nombre > 0. Rien n'est calculé : `posés − hors chaîne`. */
+function PanneauxNonRaccordes({ data }) {
+  const horsChaine = data?.production?.hors_chaine?.modules
+  const phrase = data?.avertissements?.[0]
+  if (!(typeof horsChaine === 'number' && horsChaine > 0) || typeof phrase !== 'string' || !phrase) return null
+  const poses = data?.pose?.total_modules
+  const kwcPose = data?.pose?.kwc
+  const kwcCompte = data?.production?.total?.kwc
+  const comptes = typeof poses === 'number' ? poses - horsChaine : null
+  const kwc = typeof kwcPose === 'number' && typeof kwcCompte === 'number'
+    ? ` (${formatNumber(kwcCompte, { decimals: 2 })} kWc sur ${formatNumber(kwcPose, { decimals: 2 })} kWc)` : ''
+  return (
+    <section className="cal-res-alerte" data-zone="non-raccordes" role="status">
+      <p className="cal-res-alerte-titre">{phrase}</p>
+      {comptes !== null && comptes >= 0 && (
+        <p className="cal-res-alerte-texte">
+          {`Production comptée sur ${formatNumber(comptes, { decimals: 0 })} des ${formatNumber(poses, { decimals: 0 })} panneaux posés${kwc}.`}
+        </p>
+      )}
+    </section>
+  )
+}
+
 export default function EtapeResultats({
   calepinageId = null, lectureSeule = false, parcours = null, action = null, intervalleMs = 2000,
 }) {
@@ -106,6 +131,7 @@ export default function EtapeResultats({
   return (
     <div className="cal-res" data-zone="etape-resultats">
       <ProductionDuDevis bloc={data?.production_devis} p50={simule ? total?.p50_kwh : null} />
+      {simule && <PanneauxNonRaccordes data={data} />}
       {!simule && (
         <ResultatAvantSimulation calepinageId={id} data={data} parcours={parcours}
           intervalleMs={intervalleMs} onTermine={refetch} />
