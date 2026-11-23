@@ -109,7 +109,15 @@ const JETONS_V2 = {
   '--cal-police-chiffres': ['var(--font-display)', null],
   '--cal-chiffres': ['tabular-nums', null],
 }
-const normaliser = (v) => String(v ?? '').replace(/\s+/g, '').toLowerCase()
+// Une couleur se compare par sa VALEUR : la feuille des jetons l'écrit en rgb() (voir sa tête), le tableau de
+// LANGAGE.md en hexadécimal — les deux sont ramenés à la même écriture avant la comparaison.
+const enRgb = (v) => String(v ?? '').replace(/#([0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})\b/g, (_, h) => {
+  const x = h.length <= 4 ? [...h].map((c) => c + c).join('') : h
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(x.slice(i, i + 2), 16))
+  return x.length === 8
+    ? `rgb(${r} ${g} ${b} / ${Number((parseInt(x.slice(6, 8), 16) / 255).toFixed(3))})` : `rgb(${r} ${g} ${b})`
+})
+const normaliser = (v) => enRgb(v).replace(/\s+/g, '').toLowerCase()
 const jetons = () => regles(readFileSync(new URL(`../../styles/calepinage/${FEUILLE_JETONS}`, import.meta.url), 'utf8')
   .replace(/\/\*[\s\S]*?\*\//g, ''))
 const blocDe = (liste) => {

@@ -1596,11 +1596,11 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
       amorcer()
       rendreCalepinage(CTX.calepinage.id)
       const coque = await screen.findByTestId('cal-coque')
-      expect(getComputedStyle(coque).getPropertyValue('--cal-papier').trim()).toBe('#f5f4f0')
-      expect(getComputedStyle(coque).getPropertyValue('--cal-actif').trim()).toBe('#0c1335')
+      expect(getComputedStyle(coque).getPropertyValue('--cal-papier').trim()).toBe('rgb(245 244 240)') // #f5f4f0, écrit en rgb() dans la feuille
+      expect(getComputedStyle(coque).getPropertyValue('--cal-actif').trim()).toBe('rgb(12 19 53)') // #0c1335
       document.documentElement.classList.add('dark')
-      expect(getComputedStyle(coque).getPropertyValue('--cal-papier').trim()).toBe('#0a0f2a')
-      expect(getComputedStyle(coque).getPropertyValue('--cal-actif').trim()).toBe('#e2b54a')
+      expect(getComputedStyle(coque).getPropertyValue('--cal-papier').trim()).toBe('rgb(10 15 42)') // #0a0f2a
+      expect(getComputedStyle(coque).getPropertyValue('--cal-actif').trim()).toBe('rgb(226 181 74)') // #e2b54a
     })
 
     it('ACAL1801 : au bureau, carte plein écran sous le bandeau, le rail et le panneau qui flottent ; papier et pièces opaques sans carte', async () => {
