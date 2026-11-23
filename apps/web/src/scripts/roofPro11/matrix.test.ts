@@ -178,6 +178,31 @@ describe('ACAL1505 — le balayage vise la facture du lead', () => {
   });
 });
 
+// ACAL1525 — « Comparer les poses » dans la colonne de 320 px : de vraies puces, jamais un texte collé, et « — » sans cible.
+describe('ACAL1525 — puces séparées ; % du besoin « — » sans cible', () => {
+  it('chaque puce est un élément espacé ; le texte lu sépare le titre et chaque objectif', () => {
+    matrice(makeCtx()).paintComparison();
+    const host = document.getElementById('rp9-cible')!;
+    expect(host.style.display).toBe('flex');
+    expect(host.style.flexWrap).toBe('wrap');
+    expect(host.style.gap).not.toBe('');
+    expect(host.textContent).toMatch(/Objectif du classement : \S/);
+    for (const b of puces()) expect(b.style.borderRadius).not.toBe('');
+    const texte = host.textContent ?? '';
+    const libelles = puces().map((b) => b.textContent ?? '');
+    for (let i = 1; i < libelles.length; i++) expect(texte).toContain(`${libelles[i - 1]} ${libelles[i]}`);
+  });
+
+  it('sans cible (aucune facture) la cellule vaut « — », avec une cible un pourcentage', () => {
+    const sans = { ...makeCtx(), matrixResult: fineGridMatrixV6(TOIT, LAT, 0, []) } as unknown as Ctx;
+    matrice(sans).paintComparison();
+    const cellules = () => Array.from(document.querySelectorAll('#rp9-compare tr')).map((tr) => tr.querySelectorAll('td')[4].textContent);
+    expect(cellules().every((c) => c === '—')).toBe(true);
+    matrice(makeCtx()).paintComparison();
+    expect(cellules().every((c) => /^\d+ %$/.test(c ?? ''))).toBe(true);
+  });
+});
+
 describe('ACAL546 — comparatif sans montant (atelier ERP)', () => {
   it('rp9-compare-wrap avec data-sans-montant : cinq cellules par ligne, aucune ne dit MAD', () => {
     document.body.innerHTML =

@@ -150,14 +150,19 @@ export function createMatrix(ctx: Ctx, deps: MatrixDeps): Matrix {
     if (!host) return;
     const saisie = cibleOptimisationSaisie();
     host.innerHTML = '';
+    // ACAL1525 — de vraies puces, espacées et repliables dans la colonne étroite (aucune feuille de style ne les
+    // range dans l'ERP) ; un espace entre chaque élément pour que le texte lu ne soit jamais collé.
+    host.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:0.5rem';
     const titre = document.createElement('span');
     titre.className = 'rp9-cible-titre';
     titre.textContent = 'Objectif du classement :';
     host.appendChild(titre);
     for (const c of CIBLES_OPTIMISATION) {
+      host.appendChild(document.createTextNode(' '));
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'rp9-cible-chip';
+      btn.style.cssText = 'min-height:2.75rem;padding:0 0.75rem;border:1px solid currentColor;border-radius:9999px';
       btn.dataset.cible = c.id;
       btn.textContent = c.label;
       btn.setAttribute('aria-pressed', String(saisie === c.id));
@@ -171,6 +176,7 @@ export function createMatrix(ctx: Ctx, deps: MatrixDeps): Matrix {
     const note = document.createElement('p');
     note.id = 'rp9-cible-note';
     note.className = 'rp9-cible-note';
+    note.style.flexBasis = '100%'; // ACAL1525 — la phrase sous les puces
     note.textContent = motifCible();
     host.appendChild(note);
   }
@@ -197,7 +203,7 @@ export function createMatrix(ctx: Ctx, deps: MatrixDeps): Matrix {
       const key = matrixRowKey(r);
       tr.dataset.id = key;
       const win = isMatrixWinner(r);
-      const cover = target > 0 ? Math.round(r.pctOfTarget) : 0;
+      const cover = target > 0 ? `${Math.round(r.pctOfTarget)} %` : '—'; // ACAL1525 — sans cible, aucun pourcentage
       // CALX114 — la ligne « Recommandé » dit SELON QUOI elle l'est : le classement
       // n'est plus un objectif implicite qu'il fallait connaître pour lire le tableau.
       const badge = win
@@ -208,7 +214,7 @@ export function createMatrix(ctx: Ctx, deps: MatrixDeps): Matrix {
         `<td class="num">${fmt(r.placedCount)}</td>` +
         `<td class="num">${r.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 1 })}</td>` +
         `<td class="num">${fmt(Math.round(r.annualKwh))}</td>` +
-        `<td class="num">${cover} %</td>` +
+        `<td class="num">${cover}</td>` +
         celluleEconomies(wrap, r.savingsLow, r.savingsHigh);
       tr.addEventListener('click', () => renderMatrixRow(r));
       tbody.appendChild(tr);
