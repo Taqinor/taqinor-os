@@ -276,7 +276,8 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     const nouvelle = 'c'.repeat(64)
     calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel
       .mockRejectedValue({ code: 'ECONNABORTED', message: 'timeout of 20000ms exceeded' })
-    calepinageApi.calepinages.layout.mockResolvedValue({ data: { empreinte_document: nouvelle } })
+    serializeLayout.mockReturnValue(LAYOUT)
+    calepinageApi.calepinages.layout.mockResolvedValue({ data: { empreinte_document: nouvelle, roof_layout: LAYOUT } })
 
     rendreCalepinage(CTX.calepinage.id)
     await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
@@ -286,6 +287,26 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     expect(screen.queryByTestId('cal-erreur-enregistrement')).toBeNull()
     expect(screen.queryByText(/Le serveur n’a pas répondu/)).toBeNull()
   })
+
+  /* Critique de la vague C : une empreinte changée par QUELQU'UN D'AUTRE (autre onglet, collègue) n'est pas notre réussite.
+     Le document relu diffère de celui envoyé : rien n'est dit « enregistré », le message de coupure reste. */
+  it('ACAL1905 — délai dépassé et empreinte changée par un autre : jamais « Enregistré »', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    serializeLayout.mockReturnValue(LAYOUT)
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel
+      .mockRejectedValue({ code: 'ECONNABORTED', message: 'timeout of 20000ms exceeded' })
+    calepinageApi.calepinages.layout.mockResolvedValue({
+      data: { empreinte_document: 'd'.repeat(64), roof_layout: { ...LAYOUT, result: { panels: 99 } } },
+    })
+
+    rendreCalepinage(CTX.calepinage.id)
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
+
+    expect(await screen.findByTestId('cal-erreur-enregistrement', {}, { timeout: 8000 }))
+      .toHaveTextContent('Le serveur n’a pas répondu')
+    expect(screen.queryByText(/Enregistré à \d{2}:\d{2}/)).toBeNull()
+  }, 15000)
 
   it('ACAL1905 — délai dépassé et rien d’écrit (empreinte inchangée) : le message de coupure reste, on peut réessayer', async () => {
     calepinageApi.calepinages.designContext.mockResolvedValue(

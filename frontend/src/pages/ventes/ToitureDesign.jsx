@@ -754,7 +754,8 @@ function AtelierToiture({
           ? await calepinageApi.calepinages.modifierVariante(calepinageId, varianteId, { roof_layout: layout })
           // ACAL1905 — réponse trop lente : l'écran RELIT l'empreinte du serveur (l'écriture a pu aboutir) avant de parler.
           : await ecrireOuRelire(() => calepinageApi.calepinages
-            .enregistrerLayoutCalepinageConditionnel(calepinageId, layout, empreinteDocument), calepinageId, empreinteDocument)
+            .enregistrerLayoutCalepinageConditionnel(calepinageId, layout, empreinteDocument), calepinageId, empreinteDocument,
+          (relu) => relu != null && empreinteSansVue(relu) === empreinteSansVue(layout)) // la NÔTRE, pas celle d'un autre onglet
         resultat = varianteId ? {} : (res?.data ?? {})
         heureReponse = res?.headers?.date || new Date().toISOString() // ACAL399
       } catch (err) {

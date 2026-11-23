@@ -28,13 +28,18 @@ const pause = (ms) => new Promise((resolve) => globalThis.setTimeout(resolve, ms
  * elle diffère de celle envoyée (l'écriture a abouti), sinon `null` (elle n'a pas abouti — ou le serveur ne répond pas
  * encore). Quelques lectures espacées : l'écriture peut encore être en vol au premier essai.
  */
-export async function relireEmpreinteApresDelai(calepinageId, empreinteEnvoyee, attendre = pause) {
+export async function relireEmpreinteApresDelai(calepinageId, empreinteEnvoyee, estLeDocumentEnvoye, attendre = pause) {
   for (let essai = 0; essai < ESSAIS_RELECTURE; essai += 1) {
     if (essai > 0) await attendre(ATTENTE_RELECTURE_MS)
     try {
       const res = await calepinageApi.calepinages.layout(calepinageId)
       const empreinte = res?.data?.empreinte_document
-      if (typeof empreinte === 'string' && empreinte && empreinte !== empreinteEnvoyee) return empreinte
+      if (typeof empreinte === 'string' && empreinte && empreinte !== empreinteEnvoyee) {
+        // Une empreinte changée n'est NOTRE réussite que si le document relu est celui que nous avons envoyé : un autre
+        // onglet ou un collègue a pu écrire entre-temps (notre écriture a alors reçu un 409 arrivé trop tard). Dans ce
+        // cas rien n'est dit « enregistré », l'empreinte de l'autre n'est pas adoptée et le prochain essai aura son 409.
+        return estLeDocumentEnvoye?.(res?.data?.roof_layout) === true ? empreinte : null
+      }
     } catch (err) {
       if (err?.response) return null // un refus du serveur n'est pas un délai : on laisse le message d'origine
     }
@@ -47,12 +52,12 @@ export async function relireEmpreinteApresDelai(calepinageId, empreinteEnvoyee, 
  * abouti : on rend une réponse `{data: {empreinte_document}}` comme celle que l'écriture aurait rendue. Sinon l'erreur
  * d'origine est relancée (rien n'a été écrit : l'écran peut dire « réessayez »).
  */
-export async function ecrireOuRelire(ecrire, calepinageId, empreinteEnvoyee, attendre = pause) {
+export async function ecrireOuRelire(ecrire, calepinageId, empreinteEnvoyee, estLeDocumentEnvoye, attendre = pause) {
   try {
     return await ecrire()
   } catch (err) {
     if (!estDelaiDepasse(err)) throw err
-    const relue = await relireEmpreinteApresDelai(calepinageId, empreinteEnvoyee, attendre)
+    const relue = await relireEmpreinteApresDelai(calepinageId, empreinteEnvoyee, estLeDocumentEnvoye, attendre)
     if (relue) return { data: { empreinte_document: relue }, headers: {} }
     throw err
   }
