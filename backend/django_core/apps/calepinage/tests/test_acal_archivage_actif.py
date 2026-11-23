@@ -306,8 +306,11 @@ class ExemplesDeBibliothequeTest(BaseApiCalepinage):
         return sortie.getvalue()
 
     def test_dry_run_ne_cree_rien(self):
-        self._semer()
+        sortie = self._semer()
         self.assertEqual(Calepinage.objects.filter(exemple=True).count(), 0)
+        # ACAL1349 — le dry-run DIT que --apply remplit aussi les réglages vides.
+        self.assertIn('réglages de simulation encore VIDES', sortie)
+        self.assertIn("aucune saisie n'est écrasée", sortie)
 
     def test_semis_deux_fois_trois_modeles_sans_rattachement(self):
         self._semer('--apply')

@@ -39,7 +39,14 @@ MODELES = (
 
 class Command(BaseCommand):
     help = ("ACAL895 — sème trois modèles d'exemple dans la bibliothèque "
-            "d'une société. Dry-run par défaut ; --apply écrit.")
+            "d'une société. Dry-run par défaut ; --apply écrit, ET remplit "
+            "les réglages de simulation encore vides de la société.")
+
+    #: Dit au dry-run ce que ``--apply`` écrit EN PLUS des modèles (ACAL1349).
+    ANNONCE_REGLAGES = (
+        "Avec --apply : les réglages de simulation encore VIDES de la société "
+        "sont remplis par le profil de départ (pertes comprises) ; aucune "
+        "saisie n'est écrasée.")
 
     #: Le client météo et le matériel de la simulation : ``None`` = ceux de
     #: production (PVGIS, catalogue de la société) ; les tests les posent.
@@ -89,6 +96,8 @@ class Command(BaseCommand):
             self._simuler(calepinage, company)
         self.stdout.write('%s modèle(s) %s.' % (
             crees, 'créés' if appliquer else 'à créer (dry-run)'))
+        if crees and not appliquer:
+            self.stdout.write(self.ANNONCE_REGLAGES)
 
     def _simuler(self, calepinage, company):
         """ACAL1349 — profil de départ sur les réglages vides, puis simulation
