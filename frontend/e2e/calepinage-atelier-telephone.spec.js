@@ -218,6 +218,16 @@ test('ACAL1812 : la réponse de « Terminer le relevé » est visible, au-dessus
   expect(m.basMessage, 'le succès est sous la barre du bas').toBeLessThanOrEqual(m.hautPied + 0.5)
 })
 
+// ACAL1811 — « Voir en 3D » du relevé ouvre « Montrer au client » ; « Retour au relevé » ramène au relevé.
+test('ACAL1811 : « Voir en 3D » du relevé mène à la vue client, « Retour au relevé » revient', async ({ page }) => {
+  const cal = await calepinageDeTest(page, 'Atelier tel ACAL1811')
+  await page.goto(`/calepinage/${cal.id}/releve`)
+  await page.getByTestId('releve-voir-3d').tap()
+  await expect(page).toHaveURL(new RegExp(`/calepinage/${cal.id}/client$`))
+  await page.getByTestId('client-retour-releve').tap()
+  await expect(page).toHaveURL(new RegExp(`/calepinage/${cal.id}/releve$`))
+})
+
 // ACAL1810 — un relevé terminé HORS LIGNE est gardé sur le téléphone et part SEUL au retour du réseau (même file que
 // les photos) : `GET releve/` le rend quelques secondes après, sans aucun geste, et l'écran dit « Relevé envoyé. ».
 test('ACAL1810 : relevé terminé hors ligne, envoyé seul au retour du réseau', async ({ page, context }) => {

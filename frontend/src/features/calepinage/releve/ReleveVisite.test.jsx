@@ -182,6 +182,15 @@ describe('Relevé de visite — même porte, même corps que le panneau de l’a
   })
 })
 
+describe('Relevé de visite — « Voir en 3D » ouvre la vue client (ACAL1811)', () => {
+  it('le lien du pied mène à /calepinage/<id>/client, jamais à l’atelier ; le geste inverse reste « Retour au relevé »', async () => {
+    rendre()
+    await screen.findByTestId('releve-projet')
+    expect(screen.getByTestId('releve-voir-3d').getAttribute('href')).toBe('/calepinage/1/client')
+    expect(screen.getByTestId('releve-voir-3d')).toHaveTextContent('Voir en 3D')
+  })
+})
+
 describe('Relevé de visite — « Terminer » répond EN VUE (ACAL1812)', () => {
   it('un refus ramène le champ fautif (focus) et s’écrit dans une bannière posée AVANT le pied fixe', async () => {
     rendre()
