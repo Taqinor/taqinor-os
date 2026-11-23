@@ -224,6 +224,7 @@ export function dupliquerPan(source: AreaRecord, nouvelId: string, pasM: number)
       renderPlan: null,
       ...(source.buildingId ? { buildingId: source.buildingId } : {}),
       ...(source.moduleId ? { moduleId: source.moduleId } : {}),
+      ...(source.moduleId && (source as PanAuChoix).moduleChoisi ? { moduleChoisi: true } : {}), // ACAL1415 — la copie garde le choix
       ...(source.edges ? { edges: source.edges.map((e) => ({ ...e })) } : {}),
       // Réglages PHYSIQUES du pan (copies profondes) ; jamais `existant` / `anneeMiseEnService` /
       // `verrouille` : la copie est un pan NEUF et modifiable (recopier « existant » la sortirait du devis).
@@ -269,6 +270,11 @@ export function idPanEnDouble(zones: readonly { id: string }[]): string | null {
   }
   return null;
 }
+
+/** ACAL1415 — un pan et son drapeau « module CHOISI » (contrat `zones[].geometry.moduleChoisi`, ACAL1401) : la
+ *  seule source de « choisi ». Absent = module de départ, à confirmer ; `panVierge`/`poserModuleDeDepart` ne
+ *  l'écrivent jamais. */
+export type PanAuChoix = AreaRecord & { moduleChoisi?: boolean };
 
 /** Pan NEUF aux valeurs par défaut (toit plat 22°, plein sud), identifiant issu de LA fabrique
  *  `prochainId` : l'unique définition, partagée par le builder (`roof-tool-pro11.ts`) et
@@ -1105,7 +1111,6 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
   const moduleSelectEl = document.getElementById('rp9-pan-module-select') as HTMLSelectElement | null;
   const moduleMentionEl = document.getElementById('rp9-pan-module-mention');
   const moduleErreurEl = document.getElementById('rp9-pan-module-erreur');
-  const panConfirmes = new Set<string>(); // ACAL913 — pans dont le module a été CHOISI ici
 
   /** Affiche (ou efface) un refus NOMMÉ, à côté du sélecteur ET dans le bandeau de statut. */
   function direRefusModule(motif: string | null) {
@@ -1150,8 +1155,9 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
         );
       }
     }
-    // ACAL913 — un module posé d'office (premier du catalogue) reste « à confirmer ».
-    const depart = !panConfirmes.has(a.id) ? moduleDeDepart(catalogueAtelier) : null;
+    // ACAL913/ACAL1415 — un module posé d'office reste « à confirmer » tant que le pan ne porte pas le drapeau
+    // `moduleChoisi` (écrit au document : il survit à l'enregistrement, contrairement à un état de session).
+    const depart = !(a as PanAuChoix).moduleChoisi ? moduleDeDepart(catalogueAtelier) : null;
     if (moduleMentionEl && depart && a.moduleId === depart.id) {
       moduleMentionEl.textContent = `${depart.libelle} — ${MENTION_MODULE_DE_DEPART}`;
     } else if (moduleMentionEl) {
@@ -1183,6 +1189,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     if (!id) {
       ctx.pushWorkshopHistory?.(); // CAL100 — annulable comme le reste de l'atelier
       delete a.moduleId;
+      delete (a as PanAuChoix).moduleChoisi; // ACAL1415 — plus de module désigné, plus de choix
       direRefusModule(null);
       deps.recalc?.();
       renderAreasPanel();
@@ -1209,7 +1216,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     }
     ctx.pushWorkshopHistory?.(); // CAL100 — annulable comme le reste de l'atelier
     a.moduleId = module.id;
-    panConfirmes.add(a.id); // ACAL913 — choisi : plus « de départ »
+    (a as PanAuChoix).moduleChoisi = true; // ACAL913/ACAL1415 — choisi : plus « de départ », écrit au document
     direRefusModule(null);
     deps.recalc?.(); // le pavage repart avec les VRAIES cotes de ce module
     renderAreasPanel();

@@ -28,7 +28,7 @@ import { type Measurement, type MeasureKind, isMeasureValid } from './mesureUi';
 import { deduceEdgeTypes, fusionnerAretesSaisies, type SerializedEdge, type EdgeDeductionZone } from './edges';
 import { nettoyerEnvironment, type EnvironmentObject } from './environment';
 import { type ShadeObstruction } from '../../lib/shadingEngine'; // ACAL27
-import { serializeExclusionZones, deserializeExclusionZones, idPanEnDouble, type ExclusionZone } from './zones';
+import { serializeExclusionZones, deserializeExclusionZones, idPanEnDouble, type ExclusionZone, type PanAuChoix } from './zones';
 import { resolveSetbacks, PERIMETER_SETBACK_M, type PerimeterSetbacks } from '../../lib/roofPro2';
 import { serializeHorizonProfile, type HorizonProfile } from '../../lib/horizonEngine';
 export { serializeHorizonProfile, deserializeHorizonProfileFromLayout } from '../../lib/horizonEngine'; // ACAL517 : déplacées, ré-exportées
@@ -260,6 +260,8 @@ export interface SerializedZoneGeometry {
    * est REFUSÉ par la porte d'import en nommant le champ (`services/io_layout.py`).
    */
   moduleId?: string;
+  /** ACAL1401/ACAL1415 — `true` = `moduleId` a été CHOISI ; absent = module de départ, à confirmer. */
+  moduleChoisi?: boolean;
 }
 
 /**
@@ -1143,6 +1145,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
   // somme, et `panelWatt` racine reste servi (watt du module MAJORITAIRE). Sans catalogue
   // ni pan affecté, le document repart INCHANGÉ, byte pour byte.
   ecrireModulesDansDocument(layout, meta?.modules);
+  emettreModuleChoisi(layout, ctx.areas); // ACAL1415 — le drapeau « choisi » suit le `moduleId` émis
   // CALX114 câblage — l'objectif d'optimisation SAISI (contrat CALX88, clé racine
   // `optimisation`) : sans cette ligne il ne quittait jamais la mémoire de l'optimiseur et
   // était perdu au rechargement. Aucun objectif saisi ⇒ aucune clé, document inchangé.
@@ -1156,6 +1159,17 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
   // ACAL193 — puis la provenance de l'épingle (après le repère relu : un déplacement à la
   // main l'emporte sur l'épingle du document).
   return emettreProvenanceEpingle(reconcilierAvecDocumentRelu(ecrit, ctx), ctx);
+}
+
+/** ACAL1415 — `geometry.moduleChoisi: true` seulement pour un pan CHOISI dont le `moduleId` émis est le sien ;
+ *  sinon la clé est retirée (une géométrie relue verbatim ne garde jamais un choix défait). */
+function emettreModuleChoisi(layout: SerializedLayout, areas: readonly PanAuChoix[]): void {
+  for (const z of layout.zones) {
+    const a = areas.find((p) => p.id === z.id);
+    if (!z.geometry) continue;
+    if (a?.moduleChoisi && z.geometry.moduleId && z.geometry.moduleId === a.moduleId) z.geometry.moduleChoisi = true;
+    else delete z.geometry.moduleChoisi;
+  }
 }
 
 /** ACAL307 — positions (et faces) d'une pose, sans les numéros : ce qui définit un pavage. */
@@ -1400,7 +1414,7 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
     // tout le site sur le module par défaut et le kWc enregistré cessait d'être reproductible.
     // Absent ⇒ aucun champ ajouté, pan identique à celui d'aujourd'hui.
     ...(typeof z.geometry?.moduleId === 'string' && z.geometry.moduleId.trim()
-      ? { moduleId: z.geometry.moduleId.trim() }
+      ? { moduleId: z.geometry.moduleId.trim(), ...(z.geometry.moduleChoisi === true ? { moduleChoisi: true } : {}) } // ACAL1415
       : {}),
     // ACAL28 — la géométrie ENREGISTRÉE du pan (copie profonde) : réémise verbatim tant que
     // le pan n'est pas actif, reposée à ses positions quand on le charge.

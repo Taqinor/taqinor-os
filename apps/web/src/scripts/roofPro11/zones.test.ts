@@ -39,7 +39,8 @@ import {
   ajoutDePanEnCours, monterToitGriseSousTrace, toitExistantGeoJSON, // ACAL1329
   type ExclusionZone,
 } from './zones';
-import { hydrateFromDevis, serializeLayout, type SerializedLayout } from './prefill'; // ACAL64
+import { deserializeLayout, hydrateFromDevis, serializeLayout, type SerializedLayout } from './prefill'; // ACAL64, ACAL1415
+import { MENTION_MODULE_DE_DEPART, affectationDesPans } from './moduleSelect'; // ACAL1415
 import { type Ctx } from './context'; // ACAL64
 import { lireGabaritsZone, lireGabaritsObstacle, type AreaRecord } from './types';
 import { type LngLat } from '../../lib/roof';
@@ -564,6 +565,50 @@ describe('ACAL1273 — module de départ posé dans le document', () => {
     const existant = [panDeTest('area-1', { existant: true })];
     poserModuleDeDepart(existant, [{}], m710);
     expect(existant[0].moduleId).toBeUndefined();
+  });
+});
+
+// ACAL1415 — le choix du module survit à l'enregistrement : « à confirmer » tant que personne n'a choisi (drapeau
+// `geometry.moduleChoisi` absent), « Module posé » après un choix, aller-retour du document compris.
+describe('ACAL1415 — module de départ « à confirmer » / module choisi, après aller-retour du document', () => {
+  const m710 = { id: 'produit-7', produitId: 7, libelle: 'Module 710 W', longueurMm: 2384, largeurMm: 1303, epaisseurMm: 33, poidsKg: 38, pmaxWc: 710, source: 'fiche' };
+  const catalogue = { calepinage: 1, modules: [{ module: m710, selectionnable: true, champs_manquants: [], motif: null }], champs_requis: [], motif_liste_vide: null };
+  const plan = {
+    pack: { origin: [-7.6, 33.59], azimuthDeg: 180 }, grid: { panels: [{ cx: 0, cy: 0 }, { cx: 2, cy: 0 }], kwc: 1.42 },
+    tiltDeg: 13, family: 'south', flush: false, count: 2,
+  } as unknown as AreaRecord['renderPlan'];
+  /** Monte l'atelier sur `areas` (DOM le temps du geste) ; rend la mention, le document émis et l'atelier. */
+  function monter(areas: AreaRecord[], geste?: (z: ReturnType<typeof createZones>) => void) {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><div id="rp9-areas"></div></body>').window.document;
+    try {
+      const ctx = { ...ctxDeBase(areas, areas[0].id), opts: { modulesDisponibles: catalogue }, activeArea: () => areas[0], closed: true,
+        dom: { areasWindowEl: document.getElementById('rp9-areas') } } as unknown as Ctx;
+      const zones = createZones(ctx, { recalc: vi.fn(), setStatus: vi.fn() });
+      geste?.(zones);
+      const doc = serializeLayout(ctx, 12000, { modules: affectationDesPans([m710], ctx.areas) });
+      return { mention: document.getElementById('rp9-pan-module-mention')?.textContent ?? '', doc };
+    } finally { g.document = avant; }
+  }
+  const pan = () => [panDeTest('area-1', { renderPlan: plan, roofType: 'flat', moduleId: 'produit-7' })];
+
+  it('pan jamais choisi : aucun drapeau écrit, « à confirmer » après rechargement', () => {
+    const { doc } = monter(pan());
+    expect('moduleChoisi' in (doc.zones[0].geometry ?? {})).toBe(false);
+    const relus = deserializeLayout(JSON.parse(JSON.stringify(doc)));
+    expect(monter(relus).mention).toBe(`Module 710 W — ${MENTION_MODULE_DE_DEPART}`);
+  });
+
+  it('pan choisi : drapeau écrit, plus « à confirmer » après rechargement (jamais un état de session)', () => {
+    const { doc } = monter(pan(), (z) => { expect(z.choisirModuleDuPanActif('produit-7')).toBe(true); });
+    expect(doc.zones[0].geometry?.moduleChoisi).toBe(true);
+    const relus = deserializeLayout(JSON.parse(JSON.stringify(doc)));
+    const rouvert = monter(relus);
+    expect(rouvert.mention).not.toContain(MENTION_MODULE_DE_DEPART);
+    expect(rouvert.doc.zones[0].geometry?.moduleChoisi).toBe(true); // ré-enregistré sans geste : le choix reste
+    // Retour au module par défaut : le drapeau tombe avec le `moduleId`.
+    expect(monter(relus, (z) => z.choisirModuleDuPanActif('')).doc.zones[0].geometry?.moduleChoisi).toBeUndefined();
   });
 });
 
