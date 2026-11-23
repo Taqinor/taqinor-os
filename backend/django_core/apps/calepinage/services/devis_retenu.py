@@ -18,7 +18,7 @@ from . import pret_a_envoyer as _pret_a_envoyer  # H5 — une_fois_par_lecture
 CLE_OPTION_DESSINEE = 'option_dessinee'
 
 
-def devis_lie_borne(calepinage):
+def _devis_lie_borne(calepinage):
     """Le devis lié au calepinage, borné à SA société, ou ``None``."""
     from apps.ventes.selectors import get_devis_by_pk
 
@@ -39,7 +39,7 @@ def conception_du_devis_lie(calepinage, devis=None):
     from apps.ventes.selectors_calepinage import conception_retenue_du_devis
 
     if devis is None:
-        devis = devis_lie_borne(calepinage)
+        devis = _devis_lie_borne(calepinage)
     return conception_retenue_du_devis(devis) if devis is not None else None
 
 
