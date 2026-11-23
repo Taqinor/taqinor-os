@@ -684,6 +684,51 @@ describe('ACAL1528 — Ctrl+V : un seul collage, une seule note vraie', () => {
   });
 });
 
+describe('ACAL1529 — le glissé et son relâchement disent la même chose', () => {
+  /** Glisse le panneau (0, 0) vers `cibles` (ENU, mètres ; 10 pixels = 1 m dans cette carte factice), puis relâche. */
+  function glisser(cibles: [number, number][], retraitM: number) {
+    document.body.innerHTML = '';
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const peint: { nature?: string }[][] = [];
+    const source = { setData: (d: { features: { properties: { nature: string } }[] }) => { peint.push(d.features.map((f) => f.properties)); } };
+    const origine: [number, number] = [-7.6, 33.5];
+    const cos = Math.cos(origine[1] * Math.PI / 180);
+    const M = 111320;
+    const map = {
+      ...carteEditeurFactice(container),
+      unproject: (p: { x: number; y: number }) => ({ lng: origine[0] + (p.x / 10) / (M * cos), lat: origine[1] + (p.y / 10) / M }), // 10 pixels = 1 m
+      getSource: () => source, addSource: vi.fn(), addLayer: vi.fn(),
+    } as unknown as ReturnType<typeof carteEditeurFactice>;
+    const ctx = makeFreeCtx(makePlan(10), [{ cx: 0, cy: 0 }]) as unknown as Record<string, unknown>;
+    Object.assign(ctx, { layoutState: { cells: [], occupied: new Set<number>() } });
+    const editor = createLayoutEditor(ctx as unknown as Ctx, makeDeps(map));
+    editor.setFreeMargins({ setbackM: retraitM, gapM: 0 });
+    const appels = (map.on as unknown as { mock: { calls: [string, (e: unknown) => void][] } }).mock.calls;
+    const sur = (ev: string, mx: number, my: number, x = mx * 10, y = my * 10) => appels.filter(([n]) => n === ev).forEach(([, f]) => f({ point: { x, y }, originalEvent: {}, preventDefault: () => undefined }));
+    const note = () => document.getElementById('rp9-layout-note')?.textContent ?? '';
+    sur('mousedown', 0, 0);
+    const notes: string[] = [];
+    for (const [x, y] of cibles) { sur('mousemove', x, y); notes.push(note()); }
+    sur('mouseup', cibles[cibles.length - 1][0], cibles[cibles.length - 1][1]);
+    return { notes, final: note(), peint, panneaux: editor.freePanels() };
+  }
+  it("marge réglable seule franchie : silhouette ambre, note du retrait, et le relâchement refuse comme la note l'a dit", () => {
+    const r = glisser([[-4, 0], [-8.6, 0]], 1);
+    expect(r.notes[1]).toBe('Ici : il passerait sous le retrait de rive que vous avez fixé.');
+    expect(r.peint.some((f) => f.some((p) => p.nature === 'relachable'))).toBe(true); // silhouette ambre
+    expect(r.final).toContain('Déplacement refusé');
+    expect(r.final).toContain('retrait de rive');
+    expect(r.final).not.toContain('Déplacé');
+    expect(r.panneaux).toEqual([{ cx: 0, cy: 0 }]); // refusé : le panneau est revenu à son départ
+  });
+  it('un glissé qui finit sur une position valide : « Déplacé », panneau à la position visée', () => {
+    const r = glisser([[-3, 0], [-4, 0]], 1);
+    expect(r.final).toContain('Déplacé — 1 panneau');
+    expect(r.panneaux[0].cx).toBeCloseTo(-4, 6);
+  });
+});
+
 describe('ACAL510 — pan existant : ses modules ne se glissent pas', () => {
   function presser(existant: boolean) {
     const container = document.createElement('div');

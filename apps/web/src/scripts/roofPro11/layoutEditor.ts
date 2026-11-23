@@ -2695,12 +2695,14 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       // la retire — un geste qui n'a rien bougé n'est pas une action à annuler.
       const d = layoutDrag;
       const members = d?.freeOrigin?.map((o) => o.index) ?? [from];
-      if (d?.freePreviewed) {
+      if (d?.freePreviewed && !d.freeBlocked) {
         if (layoutNoteEl) {
           layoutNoteEl.textContent = `Déplacé — ${fmt(members.length)} panneau${members.length > 1 ? 'x' : ''} (placement libre).`;
         }
         renderCustomLayout(); // recompute des chiffres + repeint la sélection
       } else {
+        // ACAL1529 — la dernière position visée était refusée (la note l'a dit) : le relâchement refuse aussi, panneaux ramenés au départ.
+        if (d?.freePreviewed) { for (const o of d.freeOrigin ?? []) Object.assign(freeState()?.panels[o.index] ?? {}, { cx: o.cx, cy: o.cy }); renderCustomLayout(); }
         dropFreeHistory();
         flashRefusal(members); // refus VISIBLE (rouge), rien n'a bougé
         if (d?.freeBlocked) showMeasure(d.freeBlocked);
