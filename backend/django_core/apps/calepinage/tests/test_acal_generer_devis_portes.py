@@ -235,8 +235,9 @@ class ModuleSubstitueSurfaceSansBaseTest(SimpleTestCase):
 
         from apps.calepinage.services.devis import DevisRefuse, _garde_module_substitue
 
-        with mock.patch(self.LIGNES, return_value=self.PANNEAU),                 self.assertRaises(DevisRefuse) as refus:
-            _garde_module_substitue(SimpleNamespace(etude_params={'puissance_kwc': compose}), doc)
+        with mock.patch(self.LIGNES, return_value=self.PANNEAU):
+            with self.assertRaises(DevisRefuse) as refus:
+                _garde_module_substitue(SimpleNamespace(etude_params={'puissance_kwc': compose}), doc)
         return refus.exception
 
     def test_champ_au_sol_seul_dit_quoi_changer_et_ou(self):
@@ -275,9 +276,10 @@ class KwcComposeSansCleSansBaseTest(SimpleTestCase):
         devis = SimpleNamespace(etude_params={}, total_ttc=Decimal('156900'))
         cible = {'panneaux': None, 'kwc': None, 'source': 'factures', 'refus': 'Aucune facture.',
                  'motif_code': MOTIF_FACTURE_ABSENTE}
-        with mock.patch.object(service, '_cible_du_calepinage', return_value=cible),                 mock.patch(self.LIGNES_32_4, return_value=32.4):
-            with self.assertRaises(service.DevisRefuse) as question:
-                service._garde_taille(devis, SimpleNamespace(lead_id=3, company=None), False)
+        with mock.patch.object(service, '_cible_du_calepinage', return_value=cible):
+            with mock.patch(self.LIGNES_32_4, return_value=32.4):
+                with self.assertRaises(service.DevisRefuse) as question:
+                    service._garde_taille(devis, SimpleNamespace(lead_id=3, company=None), False)
         self.assertEqual(question.exception.donnees['kwc'], 32.4)
         self.assertIn('32,40 kWc', question.exception.donnees['detail'])
         self.assertIn('156 900,00 MAD TTC', question.exception.donnees['detail'])

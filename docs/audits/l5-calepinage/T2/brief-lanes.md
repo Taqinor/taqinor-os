@@ -44,7 +44,9 @@ front et serveur).
 2. Corrige à la RACINE, partout où le défaut peut exister (clause « Jumeaux » : autre vue, autre thème, autre taille
    d'écran, autre marché).
 3. Tes contrôles, et SEULEMENT eux :
-   - Python : `python -m flake8 <tes fichiers>` et `python -m py_compile <tes fichiers>` ;
+   - Python : `python -m flake8 --max-line-length=120 <tes fichiers>` (la commande de la CI : 120 colonnes, toutes
+     les règles — jamais `--select=F` seul) et `python -m py_compile <tes fichiers>` ; une continuation de ligne
+     s'écrit par des `with` imbriqués ou des parenthèses, jamais par une barre oblique inverse en fin de ligne ;
    - LE test que tu répares ou écris, côté serveur :
      `bash "C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/l5cal/tester.sh" "<ton worktree en C:/…>" <nom court de ta lane, lettres et chiffres> <labels de tests…>`
      (conteneur jetable, base de test à toi, ≈ 3 min par appel, UN appel à la fois, jamais `timeout` devant) ;
@@ -100,6 +102,14 @@ Fautes de la vague 1 de CETTE campagne (chacune a rougi la CI une fois) :
 14. Dans le moteur de dessin, `serializeLayout` rend TOUJOURS le document courant, même pendant un geste : trois tests
     d'`apps/web` le gardent. Après toute retouche d'un geste ou de la sérialisation, joue les tests du dossier
     `roofPro11` que ton fichier touche.
+16. `apps/web/tests/estimatorPreviewPro11.test.ts` lit le SOURCE de `optimizer.ts`, `matrix.ts` et de leurs voisins
+    par expression régulière : toute retouche de ces fichiers se finit par
+    `npx vitest run tests/estimatorPreviewPro11.test.ts` depuis `apps/web/` (ce fichier-là passe avec la jonction).
+    Un cas rouge parce que le code a bougé se répare en faisant EXÉCUTER le comportement par le test, pas en
+    retirant le cas.
+17. Un fichier de 2 000 lignes ou plus (`optimizer.ts`, `roof-tool-pro11.ts`, `layoutEditor.ts`…) ne grossit que du
+    budget écrit dans la clause « Code net » de TA tâche (`scripts/check_forme_code.py` compte les lignes nettes) :
+    au-delà, extrais dans un fichier voisin.
 15. Une clé ajoutée à une réponse de l'API, ou un champ de modèle : dis-le dans ton rapport — l'orchestrateur
     régénère `docs/api-contracts.md` et `docs/openapi-schema.yml` au pli ; un `on_delete` ajouté ou déplacé change
     `docs/on-delete-financial-audit.md` (dis-le aussi).
