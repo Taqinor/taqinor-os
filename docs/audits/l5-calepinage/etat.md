@@ -442,3 +442,53 @@ Tenu à jour au fil de l'eau dans `T2/pour-reda.md`.
       `l5cal-net`, serveur du front, `DROP DATABASE l5cal`, fichier d'environnement effacé, image `l5cal-django:t0`)
 - [ ] worktree `l5cal-instr` et worktrees de lanes retirés ; Docker Desktop arrêté s'il n'était pas en marche
 - [ ] rétro bornée
+
+## POINT à 12 h 35 UTC (le plus récent — REPRENDRE ICI)
+
+**Fait depuis 11 h 25.** Vague B FUSIONNÉE : PR #1529, 12 h 27 UTC (la file l'avait refusée une fois : deux tests
+serveur — le run de PR d'une branche `claude/*` ne joue PAS le backend, seul le groupe de fusion le fait ; leçon
+versée à la mémoire `plan-drain-ci-bug-classes`, entrées 15 et 35). `origin/main` re-fusionné dans la branche locale
+(`d5837c0674` puis commits de docs) — RIEN n'est poussé depuis `41e7b88cab` : le prochain push ouvre la PR de la
+vague C (activer Auto-fix dès l'ouverture, jamais d'archivage automatique).
+
+**Phase de contrôles (commencée, la demande de Reda après le L5).**
+- `controles/C1-moteur-unique.md` (4 moteurs, 5 bornes de ratio, causes du lead 1742, 8 tâches).
+- `controles/C2-devis-automatiques.md` (par marché : aboutit / s'arrête où ; 6 tâches ; 5 questions).
+- `controles/C3-mesures-prod.md` (lecture seule de la prod : résidentiel 448 des 478 leads à facture aboutissent ;
+  commercial 4 sur 42 ; 11 calepinages, 5 liés à un devis, 3 à un nombre de panneaux différent de l'option retenue).
+- Décisions écrites dans `docs/audits/decisions.yml` : D-ACAL-75 (rejouer), 89, 90, 91 prises seul, à confirmer ;
+  D-ACAL-92 à 95 ouvertes (contrat, phase, rythme industriel, ville).
+
+**Tour 3 (contre-vérification en direct, pile au code `f7d5f1a7ec`).** Rapports rendus : T3-ECRANS (31 : 8 ok, 22
+partiel, 1 non-fait), T3-PROD (20 : 13 ok, 3 partiel, 2 non-fait, 2 non essayés), T3-POSE (24 sur 39 : 10 ok, 11
+partiel, 3 non-fait ; un défaut S1 : pose personnalisée perdue à la réouverture), T3-ELEC (22 sur 45, relancé pour
+les 23 restantes : agent `a43dbb69ac7e0ac40`). En cours : T3-TOIT (`a9720ab55bd56619f`, borné à 13 h 10 UTC), B3
+(`adace7d0ca0efc67b`, opus : 14 écrans contre maquettes v2 + 5 tâches du téléphone, sortie `T3/B3.md`, planches dans
+`T3/preuves/`). Non lancés, faute de budget : T3-INSUF-GRAVES (35) et T3-INSUF-AUTRES (60) → à dire au rapport.
+Liste lisible de tous les défauts et verdicts non ok du tour 3 : `…/scratchpad/t3-constats.txt` (à régénérer).
+
+**Vague C en construction (4 lanes en worktree, base `origin/claude/calpinage-module-l5-aadbde@41e7b88cab`).**
+| Lane | Agent | Modèle | Tâches | Mission |
+|---|---|---|---|---|
+| moteur-unique | `a70b1300ce0d5322b` | opus | ACAL1950-1956, ALEA67, + ajouts ACAL1954 élargie, ACAL1957, ACAL1958 | `controles/lane-moteur-unique.md` |
+| pose-reprise | `a9403d26b580a6e39` | opus | ACAL1900-1903 | `controles/lanes-vague-C.md` |
+| ecrans-s2 | `a4af39d42636672db` | sonnet | ACAL1904-1908 | idem |
+| production-s2 | `aeed6a7041ae6b1e1` | sonnet | ACAL1909-1913 | idem |
+Branches `lane-l5c-<nom>` ; événements `…/scratchpad/l5b/T2-lane-<nom>.jsonl`.
+
+**Reste à faire, dans l'ordre.**
+1. À chaque lane rendue : relire ses commits, plier (`git merge --no-ff lane-l5c-<nom>`), retirer son worktree.
+2. Faire écrire les lignes v3 du plan (un agent sonnet, sorties en fichiers d'attente puis assemblage) : ACAL1900-1913,
+   ACAL1950-1958, ALEA67 (plan lead), restes de C1 (moitié devis de D-HYB-1 et températures → plan transverse), C2
+   (devis : dire les suppositions ; calepinage : profil du CRM, quatre pertes gated D-ACAL-82 ; moteur : orthographes
+   de ville gated D-ACAL-95), restes S3 du tour 3, `T2/consolidation/entree-lot-O.md`. Puis `marquer_livrees.py`.
+3. Gardes hôte (`ci_guards.py stage-names`, flake8, eslint), CODEMAP / contrats / OpenAPI si des clés ont bougé,
+   suite `apps.calepinage` entière en conteneur AVANT la file (le run de PR ne joue pas le backend).
+4. Push → PR vague C → Auto-fix → critique (opus, pas Fable sauf surface à risque) → file de fusion.
+5. Reconstruire la pile sur la vague C, rejouer en direct : pose de 16 rouverte, calepinage lié au devis envoyé,
+   ratio, étape Résultats ; enregistrement d'acceptation du tour 3 (`enregistrer_acceptation.py` à adapter aux
+   fichiers `T3-*-cv.jsonl`), coches.
+6. Rapport final `RAPPORT-FINAL-2026-11-23.md` (sections 6, 7, 10) → `SendUserFile`.
+7. Démontage de la pile, relance des 5 conteneurs `erp-agentique-*`, libération des claims, rétro.
+
+**Quota.** 55 % de la semaine à 12 h 05 UTC ; cible de fin relevée à environ 65 % (vague C non prévue au départ).
