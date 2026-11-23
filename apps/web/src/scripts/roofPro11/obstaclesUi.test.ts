@@ -699,11 +699,11 @@ describe('ACAL533 — lignesObjetsSite', () => {
     ],
   } as never;
 
-  it('30 obstacles se listent avec le nom de leur pan', () => {
+  it('30 obstacles se listent avec le nom de leur pan (son RANG, jamais un nom resté dans le document — demande croisée ACAL1430)', () => {
     const l = lignesObjetsSite(ctx);
     expect(l).toHaveLength(30);
-    expect(l.filter((x) => x.pan === 'Pan 1')).toHaveLength(15);
-    expect(l.filter((x) => x.pan === 'Pan 2')).toHaveLength(15);
+    expect(l.filter((x) => x.pan === 'Zone 1')).toHaveLength(15);
+    expect(l.filter((x) => x.pan === 'Zone 2')).toHaveLength(15);
   });
 
   it('les provenances non mesurées passent d’abord (pas un tri par id)', () => {
@@ -715,7 +715,7 @@ describe('ACAL533 — lignesObjetsSite', () => {
 
   it('le filtre de provenance et le filtre de type réduisent la liste', () => {
     expect(lignesObjetsSite(ctx, { provenance: 'DEVINE' })).toHaveLength(6);
-    expect(lignesObjetsSite(ctx, { type: 'climatiseur' }).every((x) => x.pan === 'Pan 2')).toBe(true);
+    expect(lignesObjetsSite(ctx, { type: 'climatiseur' }).every((x) => x.pan === 'Zone 2')).toBe(true);
   });
 
   it('un clic sur un obstacle d’un autre pan active d’abord ce pan puis sélectionne l’obstacle', () => {

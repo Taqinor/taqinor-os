@@ -14,7 +14,7 @@ export function anneeValide(saisie: string, anneeCourante = new Date().getFullYe
 }
 
 /** Le refus d'un geste sur les modules d'un pan existant, ou `null` s'il est modifiable. */
-export function motifPanExistant(pan: Pick<AreaRecord, 'existant' | 'label'> | null | undefined, index = 0): string | null {
+export function motifPanExistant(pan: Pick<AreaRecord, 'existant'> | null | undefined, index = 0): string | null {
   if (!pan?.existant) return null;
-  return `${pan.label || areaLabel(index)} : pan existant (déjà posé) — ses modules ne se modifient pas ; décochez « Pan existant » pour le modifier`;
+  return `${areaLabel(index)} : pan existant (déjà posé) — ses modules ne se modifient pas ; décochez « Pan existant » pour le modifier`;
 }

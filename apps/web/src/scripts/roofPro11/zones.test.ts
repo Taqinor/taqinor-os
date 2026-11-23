@@ -929,7 +929,7 @@ describe('ACAL574 — pan existant : gestes refusés, géométrie intacte', () =
     expect([r.pivote, r.redim, r.module]).toEqual([false, false, false]);
     expect(r.intacte).toBe(true);
     const motif = motifPanExistant(r.pan)!;
-    expect(motif).toContain('Pan A : pan existant');
+    expect(motif).toContain('Zone 1 : pan existant');
     expect(r.setStatus).toHaveBeenCalledWith(motif);
     expect(r.grise).toBe(true);
     expect(r.titre).toBe(motif);

@@ -52,7 +52,7 @@ export function lignesObjetsSite(
       lignes.push({
         id: o.id,
         panId: a.id,
-        pan: a.label || areaLabel(i),
+        pan: areaLabel(i), // ACAL1430 — le nom d'un pan est son rang
         type,
         typeLabel: OBSTACLE_TYPES.find((t) => t.id === type)?.label ?? 'Obstacle',
         cotes: `${fr1(o.lengthM)} × ${fr1(o.widthM)} m`,
