@@ -325,7 +325,7 @@ def _tension_froid(verdicts):
 def _ratio_dc_ac(ratio):
     from core.electrique.types import fr
 
-    from .electrique import SOURCE_BORNE_NOYAU
+    from .electrique import RATIO_NON_JUGE
 
     libelle = 'Puissance des panneaux face à l’onduleur'
     valeur = (ratio or {}).get('valeur')
@@ -333,10 +333,10 @@ def _ratio_dc_ac(ratio):
         return _elec('ratio_dc_ac', libelle, 'info',
                      'Non calculé : onduleur non désigné')
     texte = fr(valeur, 2)
-    if ratio.get('borne_source') in (None, '', SOURCE_BORNE_NOYAU):
+    # ACAL1538 — le verdict du bloc servi, LU : ``None`` = non jugé.
+    if ratio.get('dans_bornes') is None:
         return _elec('ratio_dc_ac', libelle, 'info', texte,
-                     cause='Valeur publiée sans verdict : aucune fourchette '
-                           'saisie par votre société.',
+                     cause=RATIO_NON_JUGE + '.',
                      geste='Saisir une fourchette dans les réglages')
     etat = 'ok' if ratio.get('dans_bornes') else 'a_regler'
     controle = _elec('ratio_dc_ac', libelle, etat, '%s pour %s au plus' % (

@@ -230,7 +230,7 @@ class ControlesElectriquesTest(SimpleTestCase):
         self.assertEqual(self._controles()['verdict_electrique']['etat'], 'ok')
 
     def test_ratio_sans_fourchette_info(self):
-        ratio = {'valeur': 1.25, 'borne': 1.35, 'dans_bornes': True,
+        ratio = {'valeur': 1.25, 'borne': 1.35, 'dans_bornes': None,
                  'borne_source': 'borne usuelle du noyau électrique'}
         controle = self._controles(ratio=ratio)['ratio_dc_ac']
         self.assertEqual(controle['etat'], 'info')
