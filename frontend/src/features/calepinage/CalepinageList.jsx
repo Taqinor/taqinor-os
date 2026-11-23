@@ -22,7 +22,7 @@ import BadgePerime from './BadgePerime'
 import { FiltreEtiquettes } from './Etiquettes'
 import {
   STATUTS_CALEPINAGE, STYLE_STATUT, apercuVide, identiteCarte, initiales, modifieDe, morceauxMesures,
-  nombreProjets, signalCarte,
+  nombreProjets, signalCarte, traceDuToit,
 } from './CalepinageList.helpers'
 
 /* ============================================================================
@@ -147,7 +147,7 @@ const ICONE_STATUT = {
 
 /* L'aperçu d'une carte : l'image servie, ou « Aucun aperçu » quand il n'y en a pas, qu'elle ne se charge
    pas (`onError`, fichier vide) ou qu'elle est TOUTE blanche (rendu sans rien dessiné, carte 293). */
-function ApercuCarte({ url, alt }) {
+function ApercuCarte({ url, alt, trace = null }) {
   const [echec, setEchec] = useState(false)
   const img = useRef(null)
   const verifier = () => {
@@ -171,6 +171,16 @@ function ApercuCarte({ url, alt }) {
     return (
       <img ref={img} src={url} alt={alt} onLoad={verifier} onError={() => setEchec(true)}
         className="block h-[168px] w-full flex-none object-cover" data-testid="cal-vignette-image" />
+    )
+  }
+  // ACAL1336 — sans image : le tracé des pans servi (`apercu_toit`), jamais un toit inventé.
+  if (trace) {
+    return (
+      <div className="cliste-toit" data-testid="cal-vignette-toit">
+        <svg viewBox={trace.viewBox} role="img" aria-label={alt} preserveAspectRatio="xMidYMid meet">
+          {trace.contours.map((points, rang) => <polygon key={rang} points={points} />)}
+        </svg>
+      </div>
     )
   }
   return (
@@ -212,7 +222,7 @@ export function VignetteCalepinage({ calepinage, selection = null }) {
         data-testid={`cal-vignette-${calepinage.id}`}
       >
         <div className="cliste-apercu">
-          <ApercuCarte url={url} alt={`Aperçu de toiture — ${titre}`} />
+          <ApercuCarte url={url} alt={`Aperçu de toiture — ${titre}`} trace={traceDuToit(calepinage?.apercu_toit)} />
           {calepinage?.statut_libelle ? (
             <span className={`cliste-etat ${STYLE_STATUT[calepinage.statut] || STYLE_STATUT.brouillon}`}>
               <Icone size={12} aria-hidden="true" />

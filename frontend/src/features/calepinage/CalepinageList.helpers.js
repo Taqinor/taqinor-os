@@ -98,5 +98,17 @@ export function signalCarte(ligne) {
   return null
 }
 
+/** ACAL1336 — `apercu_toit` servi (`{viewBox, contours: [[[x, y], …]]}`, 0 à 100) → `{viewBox,
+    contours: ['x,y x,y …']}` pour des `<polygon>` ; `null` sans tracé lisible (un contour de moins
+    de trois points lisibles est ignoré). Aucune mise à l'échelle ici : le serveur l'a faite. */
+export function traceDuToit(apercu) {
+  const lisible = (p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])
+  const contours = (Array.isArray(apercu?.contours) ? apercu.contours : [])
+    .map((c) => (Array.isArray(c) ? c.filter(lisible) : []))
+    .filter((c) => c.length >= 3)
+    .map((c) => c.map(([x, y]) => `${x},${y}`).join(' '))
+  return contours.length ? { viewBox: apercu.viewBox || '0 0 100 100', contours } : null
+}
+
 /** « 6 projets » / « 1 projet » / « 0 projet » (le français n'accorde qu'au-delà de 1). */
 export const nombreProjets = (n) => `${n} projet${n > 1 ? 's' : ''}`
