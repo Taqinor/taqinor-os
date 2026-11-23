@@ -20,6 +20,8 @@ l'étude pour l'AFFICHAGE (aperçu du générateur, journal du devis automatique
   devient une ligne « Vendeur seulement » — jamais montrée au client.
 """
 
+from apps.ventes.moteur_ci.production import METHODE_JOURNEES_MOYENNES
+
 #: Code d'alerte → colonne du lead qui lève la supposition.
 CHAMP_LEAD_PAR_CODE = {
     'talon_non_declare': 'equipements_hors_horaires',
@@ -67,6 +69,17 @@ HYPOTHESES_ESTIMEES = {
         'Demandez au client s’il est en monophasé ou en triphasé : c’est écrit sur sa '
         'facture ou sur son compteur.')),
 }
+
+#: ADEV124 — sur le repli sans série horaire, inclinaison et orientation sont
+#: levées par le point GPS du chantier (une seule ligne, dédoublonnée par champ).
+_MESSAGE_REPLI = ('Inclinaison et orientation supposées à 30° plein sud : sans point GPS du '
+                  'chantier, la production suit 12 journées moyennes. Posez le point GPS pour '
+                  'la calculer heure par heure.')
+HYPOTHESES_REPLI = {'inclinaison_deg': ('gps_lat', _MESSAGE_REPLI),
+                    'azimut_deg': ('gps_lat', _MESSAGE_REPLI)}
+#: ADEV124 — alertes de niveau ``info`` gardées au journal : le profil horaire
+#: estimé (archétype de l'activité) change la taille et l'autoconsommation.
+CODES_INFO_DITS = frozenset({'profil_estime'})
 
 #: ADEV125 (D-ACAL-92, fondateur 23/11/2026) — contrat d'électricité non déclaré
 #: (« ne sait pas » compris) hors moyenne tension DÉCLARÉE : le tarif basse tension
@@ -163,8 +176,14 @@ def alertes_pour_la_commerciale(etude):
             alerte['message'] = MESSAGES_PAR_CODE.get(alerte.get('code'), alerte.get('message'))
             champs_dits.add(champ)
         alertes.append(alerte)
-    for hypothese in etude.get('hypotheses') or []:
-        regle = HYPOTHESES_ESTIMEES.get(hypothese.get('cle'))
+    hypotheses = etude.get('hypotheses') or []
+    # ADEV124 — sur le repli (12 journées moyennes à 30° plein sud), c'est le
+    # point GPS qui lève la supposition d'inclinaison et d'orientation.
+    repli = any(h.get('cle') == 'methode_autoconsommation' and h.get('valeur') == METHODE_JOURNEES_MOYENNES
+                for h in hypotheses if isinstance(h, dict))
+    for hypothese in hypotheses:
+        regle = ((HYPOTHESES_REPLI if repli else {}).get(hypothese.get('cle'))
+                 or HYPOTHESES_ESTIMEES.get(hypothese.get('cle')))
         if regle is None or hypothese.get('statut') != 'estimation' or regle[0] in champs_dits:
             continue
         champ, gabarit = regle
@@ -176,3 +195,11 @@ def alertes_pour_la_commerciale(etude):
                                       origine=_origine(hypothese.get('source')),
                                       libelle=LIBELLES_SUPPOSES.get(hypothese.get('valeur'), ''))})
     return alertes
+
+
+def alertes_du_journal(etude):
+    """ADEV124 — les alertes du JOURNAL du devis automatique : celles de
+    :func:`alertes_pour_la_commerciale` de niveau alerte / bloquant, plus les
+    suppositions de niveau ``info`` qui changent un chiffre (``CODES_INFO_DITS``)."""
+    return [a for a in alertes_pour_la_commerciale(etude)
+            if a.get('niveau') in ('alerte', 'bloquant') or a.get('code') in CODES_INFO_DITS]

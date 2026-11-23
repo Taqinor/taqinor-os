@@ -279,6 +279,15 @@ class DevisAutoCITests(_Base):
         dites = [a for a in journal['alertes'] if a['code'] == 'jours_ouverts_supposes']
         self.assertEqual([a['champ_lead'] for a in dites], ['jours_ouverture'])
 
+    def test_adev124_profil_estime_sort_au_journal(self):
+        # ADEV124 — le profil de l'activité (archétype, niveau « info ») est dit.
+        journal = {}
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            build_devis_auto(lead=self._lead(conso_mensuelle_kwh=Decimal('6000')),
+                             user=self.user, company=self.co, journal_auto=journal)
+        dites = {a['code']: a for a in journal['alertes']}
+        self.assertEqual(dites['profil_estime']['champ_lead'], 'jours_ouverture')
+
     def test_lead_sans_consommation_422_nomme_le_champ(self):
         lead = self._lead()
         avant = Devis.objects.filter(company=self.co).count()

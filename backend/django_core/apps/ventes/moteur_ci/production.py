@@ -149,9 +149,10 @@ def traces_production(production, *, source=None, toit=None):
     for cle, valeur, declare, defaut in (('inclinaison_deg', angle, pente, defaut_angle),
                                          ('azimut_deg', aspect, azimut, 'pvgis_profils.PVGIS_ASPECT_DEG')):
         # R1 (P4) — une valeur DÉCLARÉE est celle servie, série ou repli.
+        # ADEV124 — non déclarée, elle est SUPPOSÉE, repli compris (30° plein sud).
         lu = declare is not None
         hypotheses.append({'cle': cle, 'valeur': valeur, 'source': 'toit déclaré' if lu else defaut,
-                           'statut': 'estimation' if serie is not None and not lu else 'source'})
+                           'statut': 'source' if lu else 'estimation'})
     hypotheses.append({'cle': 'source_production', 'valeur': source,
                        'statut': 'source', 'source': 'PVGIS'})
     # AMOT99 — la méthode d'autoconsommation retenue est TOUJOURS dite.
