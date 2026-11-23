@@ -104,7 +104,7 @@ function DemarrageRapideBloc({ lignes }) {
         <span data-testid="acal700-demarrage-texte">{texte}</span>
       </span>
       {remplissables > 0 ? (
-        <Link to="/calepinage/reglages" className="cal-res-cta" style={{ minHeight: 44, fontSize: 14, padding: '0 16px' }}
+        <Link to="/calepinage/reglages/demarrage-rapide" className="cal-res-cta" style={{ minHeight: 44, fontSize: 14, padding: '0 16px' }}
           data-testid="acal700-lien-reglages">
           Voir les valeurs
         </Link>

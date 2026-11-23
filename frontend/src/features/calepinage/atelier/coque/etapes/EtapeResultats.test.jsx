@@ -208,6 +208,16 @@ describe('Étape Résultats — pertes nommées en clair', () => {
 })
 
 describe('Étape Résultats — résultat incomplet (maquette ResultatsIncomplet)', () => {
+  it('ACAL1708 — « Voir les valeurs » ouvre la page Démarrage rapide, pas la page des réglages', async () => {
+    const base = COMPLET()
+    const borne = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
+    servir({ ...base, production: borne.production, simulation: borne.simulation, cascade: borne.cascade })
+    rendre()
+    const lien = await screen.findByTestId('acal700-lien-reglages')
+    expect(lien).toHaveTextContent('Voir les valeurs')
+    expect(lien).toHaveAttribute('href', '/calepinage/reglages/demarrage-rapide')
+  })
+
   it('carte « au plus » et « Pour un résultat complet » côte à côte, sans tuiles ni pied', async () => {
     const base = COMPLET()
     const borne = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
