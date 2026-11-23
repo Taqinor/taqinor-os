@@ -653,7 +653,7 @@ rapport final (ajouter une section « apres-midi du 23/11 » : decisions repondu
 A CONFIRMER PAR REDA (a mettre au rapport) : pour un contrat absent, la lane a suppose « BT patente » pour un commerce
 et « BT force motrice » pour une usine.
 
-## POINT a 19 h 50 UTC (le plus recent - REPRENDRE ICI)
+## POINT a 19 h 50 UTC
 
 TOUT EST PLIE ET POUSSE : tete `7fff8b561a` (PR #1530, Auto-fix allume, PAS en file). Vagues C et D completes + trois
 coutures (devis, calepinage, ecran). Les 55 taches du moteur unique (D-ACAL-97) sont dans six plans ; conception
@@ -680,3 +680,36 @@ residentiel au froid du site, 3 tests pdf) ; (6) demontage (conteneurs l5cal-*, 
 jonctions `frontend/node_modules` et `apps/web/node_modules` de MON worktree par `cmd /c rmdir`, `docker start` des 5
 conteneurs erp-agentique arretes, vite preview bhkmo4ocy) - le classifieur a deja refuse un `docker rm -f` : donner les
 commandes a Reda si besoin ; (7) `plan_claims.py release` des 9 cles ; (8) retro memoire.
+
+## POINT à 20 h 20 UTC (le plus récent — REPRENDRE ICI)
+
+**PR #1530 ouverte, PAS en file.** Tête poussée `2d2d319322` (contrôles rapides verts à 20 h 18, `stage-names` et
+`web-build-test` en cours) ; local = + `0e283f29de` (brief du second tour de coutures).
+
+**Critique finale (3e et dernier appel au modèle le plus cher)** : `T3/critique-finale-vagues-C-D.md` — fusionnable
+après B1 et B2. FAITS et poussés : B1 (`b9f8569a3c`, ville déterministe), B2 (`70ea625012`, aucun appel PVGIS par le
+devis sous les tests + cliquet des imports ventes → calepinage à 22, seul vrai rouge de la suite complète du
+calepinage), point 1 (`2454a69f24`, froid du site sur l’option des lignes), point 4 (`7e2c8a305e`, pas de re-liaison
+d’une révision en brouillon). Point 3 vérifié en lecture seule sur la production : 70 devis envoyés ou acceptés avec
+lead, 49 sans GPS, la nouvelle reconnaissance de ville rend la MÊME clé pour les 49 (0 devis envoyé ne change ;
+sondes `…/scratchpad/probe4.py` et `probe5.py`). Restent à écrire en tâches : point 2 (réserve de visite imprimée pour
+quatre motifs — à confirmer par Reda), point 5 (dire que `semer_exemples_calepinage --apply` remplit tous les réglages
+vides), point 6 (page d’aperçu `/preview/toiture-3d-pro-11`).
+
+**Suites serveur jouées en conteneur sur la branche** : `apps.calepinage` en entier (7 386 tests : 1 vrai rouge, corrigé ;
+le reste = montage local sans front ni `freezegun`, et 3 tests du rapport d’étude déjà rouges sur `main`) ; 516 tests
+des modules `apps.crm` et `apps.ventes` touchés : verts ; avec `freezegun` installé dans le conteneur : golden HTTP du
+CRM, `test_ciq119_rafraichir_ci` et les cinq modules du calepinage qui en ont besoin : 87 verts.
+
+**Rejeu en direct T3-VAGUED** (agent `a56ce18c5dde95937`, pile à `7fff8b561a`) : partie A rendue (6 lignes au
+registre) — ADEV126, APAR92, ALEA67 ok ; ADEV125, ADEV127, ADEV123 partiels. Parties B et C en cours.
+
+**Lane « couture-suppositions » en cours** (agent `aea0530a7f4e378c0`, opus, branche `lane-l5d-couturesuppositions`,
+brief `controles/coutures-vague-D2.md`) : régime d’équipes seul (heure de début supposée 8 h en 1 × 8, 6 h en 2 × 8 —
+choix de l’orchestrateur, À CONFIRMER par Reda), industriel sans tension déclarée = basse tension supposée (D-ACAL-92),
+suppositions résidentielles montrées à l’écran, suppositions rangées avec le devis et remontrées à la réouverture.
+
+**Ordre restant** : fin du rejeu T3-VAGUED (corriger ce qui bloque) → pli de la lane (`--no-ff`), golden HTTP du CRM
+rejoué avec `freezegun`, gardes de l’hôte, `tenue_plans_d.py --ecrire` → push → `gh pr merge 1530 --auto --merge` →
+surveiller le groupe de fusion (seul passage avec les tests serveur) → tâches des restes → rapport final complété
+(section « Afternoon of 23/11 ») + `SendUserFile` → démontage, `plan_claims.py release`, rétro mémoire.
