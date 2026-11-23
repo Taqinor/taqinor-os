@@ -146,6 +146,9 @@ export interface Ctx {
   pushWorkshopHistory?: () => void;
   /** ACAL413 — montre le bandeau « <message> — Annuler » (posé par l'atelier ; absent = rien). */
   bandeauAnnuler?: (message: string) => void;
+  /** ACAL1901 — Annuler / Rétablir « comme Ctrl+Z » (restauration + redessin + statut), posés par
+   *  `annulerAtelier.ts` ; les boutons de la barre les appellent hors mode disposition. Absent = undo seul. */
+  annulerGeste?: { annuler: () => boolean; retablir: () => boolean };
   /** CAL75 — écart LATÉRAL entre panneaux d'une même rangée EN POSE OPTIMISÉE (m), saisi par
    *  la société. Optionnel : absent/non fini → PANEL_SIDE_GAP_M (2 cm, valeur d'étude),
    *  calepinage identique à aujourd'hui. Un `ctx` antérieur à CAL75 ne porte pas ce champ —

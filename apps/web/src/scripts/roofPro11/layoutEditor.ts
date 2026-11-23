@@ -98,7 +98,7 @@ import { DEFAULT_FREE_MARGINS, FREE_STEP_M, freeGeomFrom, freeStateFromCenters, 
 import { cm, peindreSilhouette, silhouetteDuLot, texteDeMesure, violationLabel } from './silhouetteGlisse'; import { direPoseIndisponible } from './structurePose'; // ACAL551, ACAL1530
 import { resnapEnMasse } from './layoutResnap'; // ACAL510 — sorti de ce fichier, ré-exporté ci-dessous
 export { resnapEnMasse, resnapNaif, type CentreASnapper } from './layoutResnap';
-import { motifPanExistant } from './panExistant'; // ACAL510
+import { motifPanExistant, direEcartPoseRelue } from './panExistant'; // ACAL510, ACAL1900
 import { EVT_POSE_RELUE } from './alignementRangees'; // ACAL1521
 import { catalogueAvecModulesDuDocument, estRefus, kwcDuPan, lireModulesDisponibles, resoudreModuleDuPan } from './moduleSelect'; // ACAL1520
 
@@ -1757,9 +1757,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       renderCustomLayout();
       renderLayoutPanel();
       signalerPoseRelue(); // ACAL1521
-      if (layoutNoteEl) {
-        layoutNoteEl.textContent = `Placement libre du dossier rechargé — ${fmt(centers.length)} panneaux reposés à l'identique.`;
-      }
+      if (layoutNoteEl) layoutNoteEl.textContent = `Placement libre du dossier rechargé — ${fmt(centers.length)} panneaux reposés à l'identique.`;
       return true;
     }
     st.occupied.clear();
@@ -1777,9 +1775,8 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     hydrated = true; // PV27 — entrer en mode disposition ne doit plus l'écraser
     renderCustomLayout();
     renderLayoutPanel();
-    if (layoutNoteEl && placed) {
-      layoutNoteEl.textContent = `Disposition du dossier rechargée — ${fmt(placed)} panneaux reposés à l'identique.`;
-    }
+    if (layoutNoteEl && placed) layoutNoteEl.textContent = `Disposition du dossier rechargée — ${fmt(placed)} panneaux reposés à l'identique.`;
+    direEcartPoseRelue(placed, ctx.neededPanels, fmt); // ACAL1900 — l'écart à la cible est DIT, jamais appliqué (D-ACAL-75)
     return placed > 0;
   }
 
@@ -1988,8 +1985,8 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   layoutAzPlusEl?.addEventListener('click', () => nudgeAzimuth(AZIMUTH_NUDGE_DEG));
 
   // PV26 — boutons « annuler » / « rétablir ».
-  layoutUndoBtn?.addEventListener('click', () => undo());
-  layoutRedoBtn?.addEventListener('click', () => redo());
+  layoutUndoBtn?.addEventListener('click', () => void (ctx.layoutMode && ctx.layoutState ? undo() : (ctx.annulerGeste?.annuler ?? undo)())); // ACAL1901 — comme Ctrl+Z
+  layoutRedoBtn?.addEventListener('click', () => void (ctx.layoutMode && ctx.layoutState ? redo() : (ctx.annulerGeste?.retablir ?? redo)()));
 
   // ── PV30 — bascule de MODE + réglages du placement libre ─────────────────────
   modeLatticeBtn?.addEventListener('click', () => {

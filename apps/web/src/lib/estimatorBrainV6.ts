@@ -43,7 +43,7 @@
  * pour garder chaque chiffre honnête. JAMAIS un devis : une fourchette indicative.
  */
 import { type LngLat } from './roof';
-import { PERIMETER_SETBACK_M, type PerimeterSetbacks } from './roofPro2';
+import { PERIMETER_SETBACK_M, retraitsSaisis, type PerimeterSetbacks } from './roofPro2';
 import { PANEL2_WATT, type ConfigFamily, type PackResult, type PanelGrid, type TariffGrid, annualSavingsMad, billToAnnualKwh, neededPanelsForTarget, optimalSouthTiltDeg, packConfig, roofDominantAzimuthDeg, tariffForCity } from './estimatorBrainV2';
 import { type YieldFn, type YieldSource } from './estimatorBrainV4';
 import { departageAspect, departageBase, productionFields, configProduction, type EvalProductionSourced } from './estimatorBrainCommun';
@@ -689,7 +689,7 @@ export function fineGridMatrixV6(
   const overhang = Math.max(0, options.overhangM ?? 0); // W109 — défaut 0 → balayage inchangé
   const southTilts = matrixTiltGrid(latitudeDeg);
   const orientations: AxisOrient[] = ['portrait', 'landscape'];
-  const margins: AxisMargin[] = ['keep', 'remove'];
+  const margins: AxisMargin[] = retraitsSaisis(options.setbacksM) ? ['keep'] : ['keep', 'remove']; // ACAL1902
   const cache = new Map<string, PackResult>();
 
   const span = uniqueAz(southSpanAzimuths());

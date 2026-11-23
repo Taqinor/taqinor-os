@@ -108,11 +108,11 @@ import { type CardData, type ChiffrageAtelier, type RenderConfigOpts, type Rende
 import { type Ctx } from './context';
 import { besoinAutoRelu } from './cible'; // ACAL367
 import { lignesSensDePose, afficherSensDePose } from './orientationOmbre'; // ACAL552
-import { maxDesSens, phraseCouvertureMax, type SensPose } from './cibleProduction'; // ACAL1618, ACAL547
+import { maxDesSens, maxDuSolveur, phraseCouvertureMax, type MaxDuToit } from './cibleProduction'; // ACAL1618, ACAL547, ACAL1903
 import { heatmapAccessValues } from './shadingUi'; // ACAL552
 import { causeDuPanVide, mesurerPanVide, noterMotifPanVide, retraitApplique, type MotifPanVide } from './motifPanVide'; // ACAL549
 import { cotesDePavage } from '../../lib/roofPro2';
-import { motifPanExistant } from './panExistant'; // ACAL574
+import { motifPanExistant, poseTenue } from './panExistant'; // ACAL574, ACAL1900
 
 // ═══════════ PV64 — TROIS VARIANTES LISIBLES DU BALAYAGE DÉJÀ CALCULÉ ═══════════
 // Le balayage V6 (`fineGridMatrixV6`) évalue déjà des centaines de configurations, mais
@@ -395,7 +395,7 @@ export interface Optimizer {
   /** Plafonne le besoin (1–400, arrondi) — partagé avec l'entrée. */
   clampNeeded: (n: number) => number;
   /** ACAL470 — énergie annuelle par panneau de la carte affichée et nombre qui tient ; null sans carte. */
-  etatCarte: () => { kwhParPanneau: number; tiennent: number; maxSens: { n: number; sens: SensPose } | null } | null; // ACAL1618
+  etatCarte: () => { kwhParPanneau: number; tiennent: number; maxSens: MaxDuToit | null } | null; // ACAL1618, ACAL1903
 }
 
 /** ACAL975 — la phrase « gain bifacial » d'une carte : VIDE pour une pose affleurante (la face arrière n'y est
@@ -596,8 +596,12 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   let derniereCarte: (CardData & { factureInconnue: boolean; sourceLabel?: string }) | null = null;
   let dernierFit = 0;
   let derniereNote: { fit: number; famille: string; motif?: MotifPanVide | null; ecartes?: number; pack?: PackResult | null } | null = null; // R2-13, ACAL1618
-  /** ACAL1618 — le maximum des DEUX sens du pack posé à plat (seuil déduit ; sens verrouillé seul) ; `null` en pente. */
-  const maxSensCarte = () => (derniereNote?.pack ? maxDesSens(derniereNote.pack, ctx.pinned.has('orient') ? ctx.sel.orient : null, (p) => filtrageSeuil(p)?.ecartes.length ?? 0) : null);
+  /** ACAL1903 — le maximum que « + » ATTEINT (solveur vivant, mêmes verrous, besoin non plafonné) et sa production écrêtée + dératée
+   *  comme la carte ; `null` en pente. Seuil d'accès solaire saisi (ignoré du solveur) : les deux sens du pack posé (ACAL1618). */
+  const maxSensCarte = (): MaxDuToit | null => !derniereNote?.pack ? null : filtrageSeuil(derniereNote.pack.portrait.panels)
+    ? maxDesSens(derniereNote.pack, ctx.pinned.has('orient') ? ctx.sel.orient : null, (p) => filtrageSeuil(p)?.ecartes.length ?? 0)
+    : maxDuSolveur(resoudreVivant({ ...buildFlatLocks(), need: clampNeeded(Number.MAX_SAFE_INTEGER), needImposedZero: false }).winner,
+      (w) => clipDcAcKwh(w.annualKwh, effectiveDcAcRatio(w.family)) * facteurDerateAnnuel(ctx));
   const placedFor = (grid: PanelGrid): number =>
     ctx.neededPanels > 0
       ? Math.max(0, Math.min(ctx.neededPanels, grid.count))
@@ -1005,17 +1009,9 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     if (motif && annoncer) setStatus(motif);
     return motif != null;
   }
-  function liveResolveFlat(annoncer = true) {
-    if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'flat' || refusPanExistant(annoncer)) return;
-    const ring: LngLat[] = [...ctx.vertices];
-    const bill = monthlyBill();
-    const locks = buildFlatLocks();
-    const yieldFn = (tiltDeg: number, aspect: number): number | null => {
-      const v = ctx.v4YieldCache.get(v4Key(tiltDeg, aspect));
-      return v == null ? null : v;
-    };
-    const res = solveLive(ring, ctx.centroidLat, bill, obstructionRings(), locks, {
-      yieldFn,
+  /** ACAL1903 — le solveur vivant du pan actif sous des verrous donnés : le rendu courant, ou le maximum du toit. */
+  const resoudreVivant = (locks: AxisLocks) => solveLive([...ctx.vertices], ctx.centroidLat, monthlyBill(), obstructionRings(), locks, {
+      yieldFn: (tiltDeg: number, aspect: number): number | null => ctx.v4YieldCache.get(v4Key(tiltDeg, aspect)) ?? null,
       overhangM: ctx.overhangM,
       obstructionClearancesM: obstructionClearances(), // PV61
       setbacksM: keepSetbacks(), // PV63
@@ -1024,6 +1020,10 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       module: cotesDuModuleDuPanActif(), // CALX109 — vraies cotes du module posé sur ce pan
       chassis: optionChassis(ctx.activeArea?.()?.chassis), // ACAL585 — châssis N × M saisi sur ce pan
     });
+  function liveResolveFlat(annoncer = true) {
+    if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'flat' || refusPanExistant(annoncer) || (!annoncer && poseTenue(ctx))) return; // ACAL1900 — le fond ne re-pose pas une pose tenue
+    const locks = buildFlatLocks();
+    const res = resoudreVivant(locks);
     ctx.liveResult = res;
     if (ctx.neededAuto) ctx.neededPanels = res.neededPanels > 0 ? clampNeeded(res.neededPanels) : besoinAutoRelu(ctx.documentRelu, ctx.activeAreaId, monthlyBill());
     const hasLocks = !!(locks.orientation || locks.tiltDeg != null || locks.layout || locks.margin || locks.need != null);
@@ -1052,7 +1052,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     liveTiltTimer = setTimeout(() => {
       void Promise.all(missing.map((a) => v4SpecificYield(t, a))).then(() => {
         if (token !== liveToken || ctx.roofType !== 'flat') return;
-        liveResolveFlat();
+        liveResolveFlat(false); // ACAL1900 — affinage de fond (débattu), pas un geste
       });
     }, 280);
   }
@@ -1406,7 +1406,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   }
 
   function liveResolvePitched(annoncer = true) {
-    if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'pitched' || refusPanExistant(annoncer)) return; // ACAL574, ACAL1404
+    if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'pitched' || refusPanExistant(annoncer) || (!annoncer && poseTenue(ctx))) return; // ACAL574, ACAL1404, ACAL1900
     const ring: LngLat[] = [...ctx.vertices];
     const bill = monthlyBill();
     const locks = buildPitchedLocks();
@@ -1753,7 +1753,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     computeMatrixPvgis,
     clampNeeded,
     majChiffrage,
-    etatCarte: () => (derniereCarte && derniereCarte.count > 0 && derniereCarte.annualKwh > 0 ? { kwhParPanneau: derniereCarte.annualKwh / derniereCarte.count, tiennent: dernierFit, maxSens: maxSensCarte() } : null),
+    etatCarte: () => (derniereCarte && derniereCarte.count > 0 && derniereCarte.annualKwh > 0 ? { kwhParPanneau: derniereCarte.annualKwh / derniereCarte.count, tiennent: dernierFit, get maxSens() { return maxSensCarte(); } } : null), // ACAL1903 — le solveur ne tourne qu'à la lecture
   };
 }
 

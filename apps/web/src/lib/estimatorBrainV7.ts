@@ -31,7 +31,7 @@
  */
 import { type LngLat } from './roof';
 import { centroidLngLat } from './roofGrid';
-import { PERIMETER_SETBACK_M, cotesDePavage, type Panel2Module, type PerimeterSetbacks } from './roofPro2';
+import { PERIMETER_SETBACK_M, cotesDePavage, retraitsSaisis, type Panel2Module, type PerimeterSetbacks } from './roofPro2';
 import { rognerParArete } from './roofSetbackEdge'; // CALX95 câblage
 import { PANEL2_WATT, type ConfigFamily, type PackResult, type EastWestGeometry, type TariffGrid, annualSavingsMad, aspectForAzimuth, billToAnnualKwh, neededPanelsForTarget, optimalSouthTiltDeg, packConfig, roofDominantAzimuthDeg, specificYield, tariffForCity } from './estimatorBrainV2';
 import type { OptionChassis } from './estimatorBrainV2Blocs'; // ACAL585
@@ -367,8 +367,8 @@ function layoutCandidates(locked: LayoutAxis | undefined): LayoutAxis[] {
   // verrouillé, via la puce « Mixte ». Le balayage libre reste identique à avant.
   return locked ? [locked] : ['portrait', 'landscape'];
 }
-function marginCandidates(locked: MarginAxis | undefined): MarginAxis[] {
-  return locked ? [locked] : ['keep', 'remove'];
+function marginCandidates(locked: MarginAxis | undefined, setbacksM?: Partial<PerimeterSetbacks>): MarginAxis[] {
+  return locked ? [locked] : retraitsSaisis(setbacksM) ? ['keep'] : ['keep', 'remove']; // ACAL1902
 }
 
 /** Re-résolution CONTRAINTE : tient chaque axe verrouillé fixe, balaie les axes AUTO,
@@ -378,7 +378,7 @@ function solveConstrained(ctx: SolveCtx, locks: AxisLocks, turned: boolean): Liv
   for (const orientation of orientationCandidates(ctx, locks.orientation, turned)) {
     for (const tiltDeg of tiltCandidates(ctx, locks.tiltDeg, orientation)) {
       for (const layout of layoutCandidates(locks.layout)) {
-        for (const margin of marginCandidates(locks.margin)) {
+        for (const margin of marginCandidates(locks.margin, ctx.setbacksM)) {
           const e = bestForOrientation(ctx, orientation, tiltDeg, layout, margin);
           if (!winner || betterLive(e, winner)) winner = e;
         }

@@ -6,7 +6,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { JSDOM } from 'jsdom'; // ACAL574
 import { type Ctx } from './context'; // ACAL574
-import { motifPanExistant } from './panExistant'; // ACAL574
+import { direEcartPoseRelue, motifPanExistant, noteEcartPoseRelue } from './panExistant'; // ACAL574, ACAL1900
+import { createLayoutState } from '../../lib/layoutVariability'; // ACAL1900
+import { serializeLayout } from './prefill'; // ACAL1900
 import { packConfig, defaultEastWestGeometry, type PackOptions } from '../../lib/estimatorBrainV2';
 import { PANEL2_SHORT_M, PERIMETER_SETBACK_M } from '../../lib/roofPro2';
 import {
@@ -443,44 +445,62 @@ describe('ACAL470 : objectif de production tapé', () => {
   });
 });
 
-// ACAL1618 — le maximum annoncé pour une « Production visée » est celui des DEUX sens de pose (le « + » bascule de même),
-// jamais celui de la seule pose courante ; un sens verrouillé borne à ce sens.
-describe('ACAL1618 — « Production visée » : maximum = le meilleur des deux sens', () => {
-  const grille = (n: number) => ({ count: n, kwc: n * 0.55, panels: [], rowWidthM: 2, footprintPerPanelM2: 2, slopeLenM: 1 });
-  const carte = (verrou: 'portrait' | null) => {
+// ACAL1618 + ACAL1903 (T3-POSE-002) — le maximum annoncé pour une « Production visée » est celui que « + » ATTEINT :
+// le gagnant du solveur vivant aux mêmes verrous, besoin non plafonné (portrait ou paysage, inclinaison, marge…),
+// jamais les deux sens de la seule pose affichée ; la production annoncée est celle de CE maximum.
+describe('ACAL1903 — « Production visée » : le maximum est celui que « + » atteint', () => {
+  /** Plat 12 × 8 m, cible 5 (la pose affichée) ; `plus()` pousse « + » jusqu'au bout et rend le compte dessiné. */
+  const atelier = (verrou: 'portrait' | null) => {
     const g = globalThis as unknown as { document?: Document };
     const avant = g.document;
     g.document = new JSDOM('<!doctype html><body><dd id="rp9-reco-prod"></dd><p id="rp9-need-note"></p></body>').window.document;
-    try {
-      const pan = { id: 'area-1', vertices: rectRing(12, 8), obstacles: [], roofType: 'flat', pitchDeg: 0, facingAzimuthDeg: 180 };
-      const ctx = { opts: { chiffrage: null }, centroidLat: 33.5, rec: { targetAnnualKwh: 4000 }, neededPanels: 0, batiments: [], centroid: [-7, 33], environment: [],
-        shadeObstructions: [], obstacles: [], areas: [pan], activeAreaId: 'area-1', activeArea: () => pan, vertices: pan.vertices, roofType: 'flat', closed: true,
-        pinned: new Set(verrou ? ['orient'] : []), sel: { orient: verrou ?? 'auto' }, shadeAnnualFactor: 1, horizonAnnualFactor: 1, dom: {} } as unknown as Ctx;
-      const deps = { renderScene: vi.fn(), paintComparison: vi.fn(), highlightRow: vi.fn(), syncProductionWindow: vi.fn(), prefillLead: vi.fn(),
-        syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 800, obstructionRings: vi.fn(() => []), setStatus: vi.fn() };
-      const opt = createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]);
-      const portrait = grille(7); // pose courante : UNE rangée en portrait (7)
-      opt.renderConfig({ pack: { origin: [-7, 33], ringENU: [], azimuthDeg: 0, portrait, landscape: grille(10) } as never,
-        grid: portrait as never, family: 'south', tiltDeg: 20, azimuthDeg: 0, isReco: true, title: 't', why: 'w', rowId: null });
-      return opt.etatCarte();
-    } finally { g.document = avant; }
+    const vertices = rectRing(12, 8);
+    const [cLng, cLat] = [(vertices[0][0] + vertices[2][0]) / 2, (vertices[0][1] + vertices[2][1]) / 2];
+    const pan = { id: 'area-1', vertices, obstacles: [], roofType: 'flat' };
+    const ctx = { opts: { chiffrage: null }, centroidLat: cLat, centroid: [cLng, cLat], neededPanels: 5, neededAuto: false, batiments: [], environment: [],
+      shadeObstructions: [], obstacles: [], areas: [pan], activeAreaId: 'area-1', activeArea: () => pan, vertices, roofType: 'flat', closed: true,
+      pinned: new Set(verrou ? ['orient'] : []), sel: { family: 'south', tilt: 'reco', orient: verrou ?? 'auto', azimuth: 'south', margin: 'keep' },
+      v4YieldCache: new Map(), overhangM: 0, documentRelu: null, shadeAnnualFactor: 1, horizonAnnualFactor: 1, dom: {}, useRecommended: true } as unknown as Ctx;
+    let dessinee = -1;
+    const deps = { renderScene: (_p: unknown, _g: unknown, _t: unknown, _f: unknown, n: number) => { dessinee = n; }, paintComparison: vi.fn(), highlightRow: vi.fn(),
+      syncProductionWindow: vi.fn(), prefillLead: vi.fn(), syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 800,
+      obstructionRings: vi.fn(() => []), obstructionClearances: () => [], setStatus: vi.fn() };
+    const opt = createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]);
+    opt.liveResolveFlat(); // la pose affichée : 5 panneaux
+    const plus = () => { ctx.neededPanels = clampNeeded(Number.MAX_SAFE_INTEGER); opt.liveResolveFlat(); return dessinee; };
+    return { opt, plus, fin: () => { g.document = avant; } };
   };
-  it('12 × 8 m, 7 en portrait / 10 en paysage : un objectif hors d’atteinte annonce 10 panneaux EN PAYSAGE', () => {
-    const e = carte(null)!;
-    const r = cibleDepuisCarte(1e6, e, clampNeeded)!;
-    expect(r.panneaux).toBe(10);
-    expect(r.plafonne).toBe(true);
-    expect(r.maxKwhAn).toBe(Math.round(10 * e.kwhParPanneau));
-    expect(phraseCible(r)).toBe(`Le toit donne au plus ${r.maxKwhAn.toLocaleString('fr-FR')} kWh/an avec 10 panneaux en paysage.`);
+  it('12 × 8 m, cible 5 : « au plus N » = le compte que « + » pose, avec la production de CETTE pose', () => {
+    const a = atelier(null);
+    try {
+      const r = cibleDepuisCarte(1e6, a.opt.etatCarte(), clampNeeded)!;
+      expect(r.plafonne).toBe(true);
+      const atteint = a.plus();
+      expect(r.panneaux).toBe(atteint);
+      expect(r.maxKwhAn).toBe(Math.round(a.opt.etatCarte()!.kwhParPanneau * atteint)); // la carte une fois « + » arrivé
+      expect(phraseCible(r).startsWith(`Le toit donne au plus ${r.maxKwhAn.toLocaleString('fr-FR')} kWh/an avec ${atteint} panneaux`)).toBe(true);
+    } finally { a.fin(); }
   });
-  it('un objectif atteignable donne toujours le plus petit N (5 panneaux), sans sens imposé', () => {
-    const e = carte(null)!;
-    const r = cibleDepuisCarte(Math.round(4.5 * e.kwhParPanneau), e, clampNeeded)!;
-    expect(r).toMatchObject({ panneaux: 5, plafonne: false });
-    expect(phraseCible(r)).not.toContain('paysage');
+  it('un objectif atteignable donne toujours le plus petit N, sans sens imposé', () => {
+    const a = atelier(null);
+    try {
+      const e = a.opt.etatCarte()!;
+      const r = cibleDepuisCarte(Math.round(4.5 * e.kwhParPanneau), e, clampNeeded)!;
+      expect(r).toMatchObject({ panneaux: 5, plafonne: false });
+      expect(phraseCible(r)).not.toMatch(/portrait|paysage/);
+    } finally { a.fin(); }
   });
-  it('portrait verrouillé : le maximum reste celui du portrait (7)', () => {
-    expect(cibleDepuisCarte(1e6, carte('portrait'), clampNeeded)?.panneaux).toBe(7);
+  it('portrait verrouillé : le maximum est celui que « + » atteint en portrait, jamais plus que sans verrou', () => {
+    const libre = atelier(null);
+    let maxLibre = 0;
+    try { maxLibre = cibleDepuisCarte(1e6, libre.opt.etatCarte(), clampNeeded)!.panneaux; } finally { libre.fin(); }
+    const a = atelier('portrait');
+    try {
+      const r = cibleDepuisCarte(1e6, a.opt.etatCarte(), clampNeeded)!;
+      expect(r.panneaux).toBe(a.plus());
+      expect(r.panneaux).toBeLessThanOrEqual(maxLibre);
+      expect(phraseCible(r)).not.toContain('paysage');
+    } finally { a.fin(); }
   });
 });
 
@@ -550,6 +570,141 @@ describe('ACAL574 — re-résolution refusée sur un pan existant', () => {
     } finally {
       g.document = avant;
     }
+  });
+});
+
+// ACAL1900 (T3-POSE-004, D-ACAL-75) — une pose enregistrée PLUS GRANDE que la cible se rouvre à l'identique : le
+// recalcul de FOND qui suit l'ouverture (balayage PVGIS → `liveResolveFlat(false)`) ne la re-pose plus à la cible.
+describe('ACAL1900 — une pose relue n’est pas re-posée par le recalcul de fond', () => {
+  /** Boot d'un plat 12 × 8 m, cible 5 : `close()` puis la pose RELUE du document (toutes les cellules, « Remplir »). */
+  const ouvrir = async (opts: Record<string, unknown>, pose: 'remplie' | 'optimum' = 'remplie') => {
+    const vertices = rectRing(12, 8);
+    const [cLng, cLat] = [(vertices[0][0] + vertices[2][0]) / 2, (vertices[0][1] + vertices[2][1]) / 2];
+    const pan = { id: 'z1', label: 'Zone 1', vertices, obstacles: [], roofType: 'flat' };
+    const ctx = {
+      closed: true, vertices, roofType: 'flat', areas: [pan], activeAreaId: 'z1', activeArea: () => pan, opts, dom: {},
+      centroid: [cLng, cLat], centroidLat: cLat, pinned: new Set<string>(), sel: { family: 'south', tilt: 'reco', orient: 'auto', azimuth: 'south', margin: 'keep' },
+      v4YieldCache: new Map(), overhangM: 0, documentRelu: null, batiments: [], environment: [], shadeObstructions: [], obstacles: [],
+      neededAuto: false, neededPanels: 5, devisMode: true, cibleVendue: false, layoutPlan: null, layoutState: null, layoutOptimalCount: 0, useRecommended: true,
+      freeMode: false, freeState: null,
+    } as unknown as Ctx;
+    // Même effet que scene3d::renderScene : un rendu de l'optimiseur (sans occupation) remet la disposition à null.
+    const renderScene = vi.fn((pack: unknown, grid: { panels: unknown[] }, tiltDeg: number, family: string, maxCount: number, flush: boolean, occ?: Set<number>) => {
+      if (occ) return;
+      Object.assign(ctx, { layoutPlan: { pack, grid, tiltDeg, family, flush }, layoutOptimalCount: Math.min(grid.panels.length, Math.round(maxCount)), layoutState: null });
+    });
+    const deps = { renderScene, paintComparison: vi.fn(), highlightRow: vi.fn(), syncProductionWindow: vi.fn(), prefillLead: vi.fn(),
+      syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 0, obstructionRings: () => [], obstructionClearances: () => [], setStatus: vi.fn() };
+    const opt = createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]);
+    opt.liveResolveFlat(); // close() au boot : l'optimum à la cible (5)
+    const cellules = ctx.layoutPlan!.grid.panels;
+    ctx.layoutState = createLayoutState(cellules, pose === 'remplie' ? cellules.length : ctx.layoutOptimalCount); // hydrateLayout
+    const relue = [...ctx.layoutState.occupied];
+    await opt.computeMatrixPvgis(); // le recalcul de fond qui suit l'ouverture
+    return { ctx, opt, cellules, relue, pan };
+  };
+  const enregistrer = (ctx: Ctx) => serializeLayout(ctx, null).zones[0].geometry!;
+  const doc = () => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><p id="rp9-need-note"></p><tbody id="rp9-compare"></tbody></body>').window.document;
+    return () => { g.document = avant; };
+  };
+
+  it('ERP, cible 5, pose de 16 : la pose relue survit au balayage et « Enregistrer » sans geste rend les MÊMES panneaux', async () => {
+    const remettre = doc();
+    try {
+      const { ctx, cellules, relue } = await ouvrir({ chiffrage: null, rendementPvgis: null });
+      expect(cellules.length).toBeGreaterThan(5);
+      expect(ctx.layoutState).not.toBeNull();
+      expect([...ctx.layoutState!.occupied].sort((a, b) => a - b)).toEqual(relue.sort((a, b) => a - b));
+      const un = enregistrer(ctx);
+      expect(un.count).toBe(cellules.length);
+      expect(un.panels.map((p) => [p.cx, p.cy])).toEqual(cellules.map((p) => [p.cx, p.cy])); // mêmes emplacements
+      expect(enregistrer(ctx)).toEqual(un); // deux enregistrements sans geste : même nombre, mêmes emplacements
+    } finally { remettre(); }
+  });
+
+  it('jumeaux : une pose égale à l’optimum reste intacte ; un GESTE sur la cible re-pose toujours', async () => {
+    const remettre = doc();
+    try {
+      const egale = await ouvrir({ chiffrage: null, rendementPvgis: null }, 'optimum');
+      expect(enregistrer(egale.ctx).count).toBe(5);
+      const { ctx, opt } = await ouvrir({ chiffrage: null, rendementPvgis: null });
+      ctx.neededPanels = 6;
+      opt.liveResolveFlat(); // « + » sur la cible : un geste
+      expect(ctx.layoutState).toBeNull();
+      expect(enregistrer(ctx).count).toBe(6);
+    } finally { remettre(); }
+  });
+
+  it('site public (aucun `chiffrage`) : comportement d’avant, le recalcul de fond re-pose l’optimum', async () => {
+    const remettre = doc();
+    try {
+      const { ctx } = await ouvrir({ rendementPvgis: null });
+      expect(ctx.layoutState).toBeNull();
+    } finally { remettre(); }
+  });
+
+  it('l’écart à la cible est DIT, jamais appliqué', () => {
+    expect(noteEcartPoseRelue(16, 5, fmt)).toBe('16 posés / 5 cible — pose enregistrée rouverte telle quelle (11 de plus que la cible, rien n’est retiré ni ajouté).');
+    expect(noteEcartPoseRelue(3, 5, fmt)).toContain('(2 de moins que la cible');
+    expect(noteEcartPoseRelue(5, 5, fmt)).toBeNull();
+    expect(noteEcartPoseRelue(16, 0, fmt)).toBeNull();
+    const remettre = doc(); // écrit dans la note du nombre (hydrateLayout l'appelle), rien sans écart
+    try {
+      direEcartPoseRelue(5, 5, fmt);
+      expect(document.getElementById('rp9-need-note')!.textContent).toBe('');
+      direEcartPoseRelue(16, 5, fmt);
+      expect(document.getElementById('rp9-need-note')!.textContent).toBe(noteEcartPoseRelue(16, 5, fmt));
+    } finally { remettre(); }
+  });
+});
+
+// ACAL1902 (T3-POSE-007, ACAL1504, DC-7) — un retrait SAISI retire des panneaux, dans la pose ET dans le balayage :
+// la « marge retirée » ne contourne plus des retraits saisis (elle ne retire que la marge par défaut).
+describe('ACAL1902 — un retrait saisi retire des panneaux (pose et balayage)', () => {
+  const poser = async (l: number, w: number, retraitM: number | null) => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><p id="rp9-need-note"></p><tbody id="rp9-compare"></tbody></body>').window.document;
+    try {
+      const vertices = rectRing(l, w);
+      const [cLng, cLat] = [(vertices[0][0] + vertices[2][0]) / 2, (vertices[0][1] + vertices[2][1]) / 2];
+      const pan = { id: 'z1', label: 'Zone 1', vertices, obstacles: [], roofType: 'flat' };
+      const ctx = {
+        closed: true, vertices, roofType: 'flat', areas: [pan], activeAreaId: 'z1', activeArea: () => pan, opts: { chiffrage: null, rendementPvgis: null }, dom: {},
+        centroid: [cLng, cLat], centroidLat: cLat, pinned: new Set<string>(), sel: { family: 'south', tilt: 'reco', orient: 'auto', azimuth: 'south', margin: 'keep' },
+        v4YieldCache: new Map(), overhangM: 0, documentRelu: null, batiments: [], environment: [], shadeObstructions: [], obstacles: [],
+        neededAuto: false, neededPanels: 40, devisMode: true, cibleVendue: false, layoutPlan: null, layoutState: null, useRecommended: true,
+      } as unknown as Ctx;
+      let dessinee = -1;
+      const setbacks = retraitM == null ? undefined : { lateralM: retraitM, extremityM: retraitM, parapetM: retraitM, jointM: 0 };
+      const deps = { renderScene: (_p: unknown, _g: unknown, _t: unknown, _f: unknown, n: number) => { dessinee = n; }, paintComparison: vi.fn(), highlightRow: vi.fn(),
+        syncProductionWindow: vi.fn(), prefillLead: vi.fn(), syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 0,
+        obstructionRings: () => [], obstructionClearances: () => [], setStatus: vi.fn(), setbacksOf: () => setbacks };
+      const opt = createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]);
+      opt.liveResolveFlat();
+      await opt.computeMatrixPvgis();
+      const balayage = Math.max(...(ctx.matrixResult as unknown as { rows: { placedCount: number }[] }).rows.map((r) => r.placedCount));
+      return { pose: dessinee, balayage };
+    } finally { g.document = avant; }
+  };
+
+  it('plat 3 × 1,5 m, retraits 0,80 m : 0 panneau posé, 0 dans tout le balayage', async () => {
+    expect(await poser(3, 1.5, 0.8)).toEqual({ pose: 0, balayage: 0 });
+  });
+
+  it('plat 10 × 7 m, retraits 2 m : moins de panneaux qu’aux retraits par défaut, mêmes comptes pose / balayage', async () => {
+    const defaut = await poser(10, 7, null);
+    const deux = await poser(10, 7, 2);
+    expect(deux.pose).toBeLessThan(defaut.pose);
+    expect(deux.balayage).toBeLessThan(defaut.balayage);
+    expect(deux.pose).toBe(deux.balayage);
+  });
+
+  it('retraits au défaut (0,50 m partout) : balayage d’avant, la marge retirée reste candidate', async () => {
+    expect(await poser(10, 7, 0.5)).toEqual(await poser(10, 7, null));
   });
 });
 

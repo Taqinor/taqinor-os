@@ -79,6 +79,20 @@ describe('V8 — un verrou est TENU pendant que le reste se re-résout', () => {
   });
 });
 
+// ACAL1902 — des retraits SAISIS ne sont pas contournés par la « marge retirée » (pleine rive) : seule la marge gardée est
+// balayée, et le compte posé baisse ; au défaut (0,50 m), les deux marges restent candidates comme avant.
+describe('ACAL1902 — pente : un retrait saisi retire des panneaux', () => {
+  const ring = squareRing(10);
+  it('retraits 2 m : plus aucune ligne « marge retirée », moins de panneaux qu’au défaut', () => {
+    const defaut = solveLivePitched(ring, LAT, BILL, PITCH, FACING, [], {});
+    const saisis = solveLivePitched(ring, LAT, BILL, PITCH, FACING, [], {}, { setbacksM: { lateralM: 2, extremityM: 2, parapetM: 2 } });
+    expect(saisis.rows.every((r) => r.margin === 'keep')).toBe(true);
+    expect(saisis.winner.fitCount).toBeLessThan(defaut.winner.fitCount);
+    const auDefaut = solveLivePitched(ring, LAT, BILL, PITCH, FACING, [], {}, { setbacksM: { lateralM: 0.5, extremityM: 0.5, parapetM: 0.5 } });
+    expect(auDefaut.rows.some((r) => r.margin === 'remove')).toBe(true);
+  });
+});
+
 describe('V8 — verrous cumulatifs + Réinitialiser', () => {
   const ring = squareRing(16);
 
