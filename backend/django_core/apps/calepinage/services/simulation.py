@@ -237,6 +237,25 @@ def _plans_du_contexte(pose, document):
     return plans
 
 
+def _fiche_du_module_pose(materiel, document):
+    """ACAL1607 — la fiche du module qui couvre le PLUS de modules posés :
+    celle d'un produit de pan (``fiches_modules``, ACAL264) quand il domine,
+    sinon le module par défaut (égalité : le défaut)."""
+    defaut = materiel.get('module') or {}
+    fiches = materiel.get('fiches_modules') or {}
+    if not fiches:
+        return defaut
+    from apps.ventes.services import pans_du_document
+
+    comptes = {}
+    for pan in pans_du_document(document):
+        cle = pan.get('produit_id') if pan.get('produit_id') in fiches else None
+        comptes[cle] = comptes.get(cle, 0) + int(pan.get('modules') or 0)
+    retenu = max(comptes, key=lambda cle: (comptes[cle], cle is None),
+                 default=None)
+    return dict(fiches[retenu].get('specs') or {}) if retenu is not None else defaut
+
+
 def _contexte_des_modules_poses(contexte):
     """ACAL1602 — le module par module voit les pans POSÉS entiers, sans
     l'accès météo partagé (il porte déjà le kWc des seuls raccordés)."""
@@ -699,6 +718,8 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
         'tou_heures': heures_tarif_societe(company),
         # ── les fiches produit, déjà résolues ───────────────────────────
         'fiche_module': materiel_resolu.get('module') or {},
+        # ACAL1607 — la fiche du module POSÉ, lue par l'étape thermique.
+        'fiche_module_pose': _fiche_du_module_pose(materiel_resolu, document),
         'fiche_onduleur': materiel_resolu.get('onduleur') or {},
         'fiche_optimiseur': materiel_resolu.get('optimiseur'),
         # ACAL264 — le module par défaut PUIS celui de chaque pan qui en

@@ -110,7 +110,9 @@ __all__ = ['CLE_REGLAGE', 'COLONNE_TEMPERATURE', 'CHAMPS_POSE',
 def appliquer(serie, contexte):
     """``(serie, etape)`` — la dérate thermique horaire, ou son silence."""
     contexte = contexte if isinstance(contexte, dict) else {}
-    fiche = contexte.get('fiche_module')
+    # ACAL1607 — la fiche du module POSÉ (``construire_contexte``), à défaut
+    # celle du module par défaut de l'entrée.
+    fiche = contexte.get('fiche_module_pose') or contexte.get('fiche_module')
     fiche = dict(fiche) if isinstance(fiche, dict) else {}
 
     types_lus, type_pose, champ_pose = _poses_du_document(contexte)
@@ -122,8 +124,13 @@ def appliquer(serie, contexte):
     points = list((serie or {}).get('points') or ())
     mesure = perte_thermique(specs, points)
     if not mesure['calculable']:
+        motif = mesure['motif']
+        if not _forfait_saisi(contexte):
+            # ACAL1607 — aucun poste « thermique » saisi : aucun forfait
+            # n'est conservé, la phrase de ``services/thermique.py`` mentirait.
+            motif = motif.replace(PHRASE_FORFAIT, '')
         return serie, _etapes.etape_omise(
-            LIBELLE, mesure['motif'], champ=_champ_manquant(specs))
+            LIBELLE, motif, champ=_champ_manquant(specs))
 
     provenance = _provenance(mesure['modele'], bool(coefficients))
     mention = MENTIONS[provenance]
@@ -264,6 +271,18 @@ def _provenance(modele, table_societe_employee):
     if modele == MODELE_FAIMAN and table_societe_employee:
         return PROVENANCE_SOCIETE
     return PROVENANCE_FICHE
+
+
+#: ACAL1607 — la phrase des motifs de ``services/thermique.py`` qui n'est
+#: vraie que si un poste « thermique » forfaitaire est SAISI.
+PHRASE_FORFAIT = ' Le poste forfaitaire est conservé et annoncé comme hypothèse.'
+
+
+def _forfait_saisi(contexte):
+    """Un poste « thermique » saisi avec un pourcentage lisible ?"""
+    return any(isinstance(poste, dict) and poste.get('poste') == 'thermique'
+               and _nombre(poste.get('pct')) is not None
+               for poste in contexte.get('postes_saisis') or ())
 
 
 def _champ_manquant(specs):
