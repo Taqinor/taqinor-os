@@ -133,6 +133,8 @@
   /* Le centre prend toute la largeur ; le tiroir se pose dessus, en bas. Les calques de la carte
      (légende, lecteur du soleil, barre d'outils, ligne d'état) se posent AU-DESSUS du tiroir fermé. */
   .cal-coque { --cal-tiroir: 280px; --cal-haut-barre: 64px; }
+  /* ACAL2001 — les messages du Toaster se posent au-dessus du tiroir fermé, jamais sur sa rangée d'action. */
+  body[data-cal-atelier] { --cal-toast-droite: 16px; --cal-toast-bas: calc(280px + 16px); }
   .cal-coque .cal-coque-corps { position: relative; }
   .cal-coque[data-cadre='carte']:not([data-presentation='1']) .cal-coque-sur-carte { bottom: var(--cal-tiroir); }
   .cal-coque.cal-coque[data-cadre='carte']:not([data-presentation='1']) .cal-coque-statut { bottom: calc(var(--cal-tiroir) + 16px); }

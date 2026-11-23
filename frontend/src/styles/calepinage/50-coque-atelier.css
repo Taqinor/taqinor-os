@@ -28,6 +28,17 @@
   font-size: 0.875rem;
 }
 
+/* ACAL2001 — un message ne cache jamais le bouton d'action. Tant que l'atelier est monté, <body> porte
+   `data-cal-atelier` (atelier/coque/toastsAtelier.js) : les messages du Toaster de l'ERP (bas droite) se posent à
+   GAUCHE du panneau d'étape (384 px + marges = --cal-libre-droite, 416 px), jamais sur son bouton ni sur le
+   bandeau ; sur tablette le bas passe au-dessus du tiroir (56-coque-responsive.css). Le téléphone (messages en
+   haut) et le reste de l'ERP ne changent pas. */
+body[data-cal-atelier] { --cal-toast-droite: 416px; --cal-toast-bas: 16px; }
+body[data-cal-atelier] [data-sonner-toaster][data-y-position='bottom'][data-x-position='right'] {
+  right: var(--cal-toast-droite);
+  bottom: var(--cal-toast-bas);
+}
+
 /* ── Bandeau du projet ─────────────────────────────────────────────────── */
 .cal-coque .cal-barre-projet {
   height: 56px;

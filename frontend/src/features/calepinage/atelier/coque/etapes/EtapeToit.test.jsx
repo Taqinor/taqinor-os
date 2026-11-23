@@ -728,6 +728,54 @@ describe('ACAL1803 — tête et pied du panneau d’étape (maquettes v2)', () =
   })
 })
 
+/* ACAL2001 — un message ne cache jamais le bouton d'action : tant que l'atelier est monté, le Toaster de l'ERP
+   (bas droite) se pose à gauche du panneau d'étape. Le crochet est RENDU, la feuille 50 est chargée dans le DOM de
+   test et lue par getComputedStyle sur une région sonner posée comme sonner la pose. */
+describe('ACAL2001 — les messages se posent hors du bouton d’étape', () => {
+  let style
+  beforeEach(() => {
+    style = document.createElement('style')
+    style.textContent = ['49-jetons-v2.css', '50-coque-atelier.css']
+      .map((f) => readFileSync(resolve(process.cwd(), `src/styles/calepinage/${f}`), 'utf8')).join('\n')
+    document.head.appendChild(style)
+  })
+  afterEach(() => { style.remove(); cleanup() })
+
+  function regionToasts(position = ['bottom', 'right']) {
+    const ol = document.createElement('ol')
+    ol.setAttribute('data-sonner-toaster', 'true')
+    ol.setAttribute('data-y-position', position[0])
+    ol.setAttribute('data-x-position', position[1])
+    document.body.appendChild(ol)
+    return ol
+  }
+
+  it('dans l’atelier, la région des messages quitte le coin du bouton ; hors atelier rien ne change', async () => {
+    const { useToastsHorsDuBouton } = await import('../toastsAtelier')
+    function Atelier() { useToastsHorsDuBouton(); return null }
+    const ol = regionToasts()
+    expect(getComputedStyle(ol).right).not.toBe('var(--cal-toast-droite)')
+    const { unmount } = render(<Atelier />)
+    expect(document.body).toHaveAttribute('data-cal-atelier', '1')
+    expect(getComputedStyle(ol).right).toBe('var(--cal-toast-droite)')
+    expect(getComputedStyle(ol).bottom).toBe('var(--cal-toast-bas)')
+    expect(getComputedStyle(document.body).getPropertyValue('--cal-toast-droite')).toBe('416px')
+    unmount()
+    expect(document.body).not.toHaveAttribute('data-cal-atelier')
+    expect(getComputedStyle(ol).right).not.toBe('var(--cal-toast-droite)')
+    ol.remove()
+  })
+
+  it('une région en haut (téléphone) n’est pas déplacée', async () => {
+    const { useToastsHorsDuBouton } = await import('../toastsAtelier')
+    function Atelier() { useToastsHorsDuBouton(); return null }
+    const ol = regionToasts(['top', 'center'])
+    render(<Atelier />)
+    expect(getComputedStyle(ol).right).not.toBe('var(--cal-toast-droite)')
+    ol.remove()
+  })
+})
+
 /* ACAL1904 — la carte d'adresse (#rp9-search) du calepinage sans toit : la pile de zoom reste libre, un clic de tracé hors
    des champs passe à la carte, la carte ne tient que la hauteur d'un champ tant qu'on n'écrit pas. Le composant de la
    carte est RENDU ; les feuilles 49 + 50 sont chargées dans le DOM de test et lues par getComputedStyle. */
