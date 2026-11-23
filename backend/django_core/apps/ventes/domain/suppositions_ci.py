@@ -8,7 +8,7 @@ supposée, sans qu'aucun écran ne nomme la question restée vide.
 
 Il porte aussi LA règle des entrées que le calcul C&I suppose quand la fiche
 les laisse vides (décisions du fondateur du 23/11/2026, :func:`supposer_entrees`)
-— lue par le moteur ET par la fiche lead (``ventes.selectors.champs_supposes_ci``),
+— lue par le moteur ET par la fiche lead (``ventes.services.champs_supposes_ci``),
 jamais recopiée. Pour le reste, il relit les ``alertes`` et les ``hypotheses`` de
 l'étude pour l'AFFICHAGE (aperçu du générateur, journal du devis automatique) :
 

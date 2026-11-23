@@ -27,7 +27,7 @@ from apps.crm.devis_auto import (
 from apps.crm.devis_selectors import entrees_ci_du_lead
 from apps.crm.models import Lead
 from apps.ventes.horaire.conso import profil_depuis_factures
-from apps.ventes.selectors import champs_supposes_ci
+from apps.ventes.services import champs_supposes_ci
 
 
 def _lead_pro(**kwargs):

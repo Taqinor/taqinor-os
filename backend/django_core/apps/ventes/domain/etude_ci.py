@@ -1051,7 +1051,19 @@ def _sous_reserve_visite(res, lead, niveau_donnees):
             motifs.append('surface disponible inconnue')
     if niveau_donnees == 'estimation':
         motifs.append('profil horaire non déclaré : estimation sous réserve de visite')
-    return {'valeur': bool(motifs), 'motif': '; '.join(motifs) if motifs else None}
+    # ADEV125 (D-ACAL-92) — un contrat SUPPOSÉ fait du devis une estimation.
+    from .suppositions_ci import est_supposee
+    suppose = est_supposee({'provenance': res.provenance('tarif_declare')})
+    return {'valeur': bool(motifs) or suppose, 'motif': '; '.join(motifs) if motifs else None}
+
+
+def _entrees_supposees(res, mode, devis):
+    """ADEV125/ADEV126 — les entrées vides que le moteur suppose (contrat BT,
+    triphasé), posées dans ``res`` ; rend leurs hypothèses ``estimation``."""
+    from apps.ventes import tarif_ci
+
+    from .suppositions_ci import supposer_entrees
+    return supposer_entrees(res, mode, tarif_ci.regles_du(devis))
 
 
 def _regime(kwc, puissance_ac, tension):
@@ -1368,9 +1380,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
                                'Mode commercial ou industriel requis.', niveau='bloquant'))
         return _sans_cles_interdites(_vide_etude(res, alertes, hypotheses))
     _couche_visite(res, lead, alertes, devis=devis)
-    from .suppositions_ci import supposer_entrees  # ADEV125 (D-ACAL-92) : contrat absent ⇒ BT supposé
-    supposees = supposer_entrees(res, mode, tarif_ci.regles_du(devis))
-    hypotheses.extend(supposees)
+    hypotheses.extend(_entrees_supposees(res, mode, devis))  # ADEV125/126 (D-ACAL-92/93)
     if _num(res.valeur('longueur_dc_m')) is None and _num(res.valeur('longueur_ac_m')) is None:
         alertes.append(_alerte(
             'longueurs_non_relevees', 'contraintes',
@@ -1443,8 +1453,6 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     alertes.extend(al_charge)
     niveau = (prov_charge or {}).get('niveau_donnees')
     sous_reserve = _sous_reserve_visite(res, lead, niveau)
-    if any(h['cle'] == 'contrat_electricite' for h in supposees):  # ADEV125 — devis en estimation
-        sous_reserve['valeur'] = True
     if not jours_types:
         etude = _vide_etude(res, alertes, hypotheses, sous_reserve)
         etude['production'] = production

@@ -14,7 +14,7 @@ avant de pouvoir lancer le générateur de devis automatique :
     supposé ; ALEA47 — + le rythme, par LA règle du moteur
     (``ventes.selectors.profil_charge_prerequis_ci``, jamais une copie) ; les
     champs que le moteur SUPPOSE ne sont plus exigés (ADEV125,
-    ``ventes.selectors.champs_supposes_ci``) ;
+    ``ventes.services.champs_supposes_ci``) ;
   - Agricole (pompage, AGR403) : [HMT OU niveau d'eau] ET [débit souhaité,
     besoin en eau (m³/jour) OU débit de la pompe actuelle — ce dernier ne
     comptant qu'avec ses heures, volume déclaré D-AGR-3]. Le CV ne compte
@@ -121,8 +121,8 @@ def _contrat_bt_declare(lead):
 
 def _champs_supposes(lead):
     """ADEV125 — les champs que le moteur C&I suppose quand ils sont vides
-    (``ventes.selectors.champs_supposes_ci``, jamais une copie de la règle)."""
-    from apps.ventes.selectors import champs_supposes_ci
+    (``ventes.services.champs_supposes_ci``, jamais une copie de la règle)."""
+    from apps.ventes.services import champs_supposes_ci
 
     return champs_supposes_ci(lead.type_installation, _tension_declaree(lead))
 
