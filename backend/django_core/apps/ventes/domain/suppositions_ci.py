@@ -31,6 +31,7 @@ CHAMP_LEAD_PAR_CODE = {
     'profil_estime': 'jours_ouverture',
     'jours_ouverts_non_declares': 'jours_ouverture',
     'jours_ouverts_supposes': 'jours_ouverture',  # ADEV127 (D-ACAL-94)
+    'heure_debut_supposee': 'heure_debut',  # D-ACAL-94 « regime_suffit »
     'horaires_a_demander': 'heure_debut',
     'heures_jour_a_preciser': 'heure_debut',
     'contenance_toit_inconnue': 'surface_toiture_m2',
@@ -91,6 +92,15 @@ LIBELLES_SUPPOSES = {'bt_patente': 'BT patenté', 'bt_force_motrice': 'BT force 
 #: ne sais pas ») : triphasé supposé pour tout commercial et industriel, dit.
 PHASE_SUPPOSEE = 'tri'
 PHASES_DECLAREES = ('mono', 'tri')
+#: D-ACAL-94 (réponse du fondateur du 23/11/2026 : « regime_suffit ») — régime
+#: 1×8 / 2×8 déclaré SANS heure de début : l'heure de la première équipe est
+#: supposée (une équipe de jour 8 h-16 h ; deux équipes 6 h-22 h), dite avec le
+#: champ ``heure_debut`` de la fiche, en estimation. Une heure DÉCLARÉE prime.
+HEURE_DEBUT_SUPPOSEE = {'1x8': 8, '2x8': 6}
+SOURCE_HEURE_DEBUT_SUPPOSEE = 'décision fondateur du 23/11/2026 (D-ACAL-94)'
+MESSAGE_HEURE_DEBUT_SUPPOSEE = (
+    "Heure de début d'équipe non déclarée : {heure} h supposée (régime {regime}, estimation, "
+    + SOURCE_HEURE_DEBUT_SUPPOSEE + "). Demandez au client l'heure de début de sa première équipe.")
 #: Origine d'une entrée supposée (vocabulaire du contrat ``etude_ci_preview.json``).
 ORIGINE_SUPPOSEE = 'estimation'
 

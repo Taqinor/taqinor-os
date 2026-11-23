@@ -279,6 +279,20 @@ class DevisAutoCITests(_Base):
         dites = [a for a in journal['alertes'] if a['code'] == 'jours_ouverts_supposes']
         self.assertEqual([a['champ_lead'] for a in dites], ['jours_ouverture'])
 
+    def test_d_acal_94_industriel_2x8_sans_heure_devis_et_heure_dite(self):
+        # D-ACAL-94 (« regime_suffit », fondateur 23/11/2026) — 2×8 sans heure
+        # de début : 6 h supposée, dite avec le champ `heure_debut` ; le devis part.
+        lead = self._lead(conso_mensuelle_kwh=Decimal('20000'), type_installation='industriel',
+                          categorie_commerciale=None, regime_equipes='2x8')
+        journal = {}
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            devis = build_devis_auto(lead=lead, user=self.user, company=self.co,
+                                     journal_auto=journal)
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+        dites = [a for a in journal['alertes'] if a['code'] == 'heure_debut_supposee']
+        self.assertEqual([a['champ_lead'] for a in dites], ['heure_debut'])
+        self.assertIn('6 h supposée', dites[0]['message'])
+
     def test_adev124_profil_estime_sort_au_journal(self):
         # ADEV124 — le profil de l'activité (archétype, niveau « info ») est dit.
         journal = {}
