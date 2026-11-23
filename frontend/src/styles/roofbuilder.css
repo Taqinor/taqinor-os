@@ -321,15 +321,17 @@
 /* ── Retraits, priorité de pose et notes créés à la volée — ACAL969 ──────── */
 .rp9-host .rp9-setbacks {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* ACAL1519 — le nombre de colonnes suit la largeur de la COLONNE, pas celle de la fenêtre. */
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
   gap: 0.5rem 1rem;
   margin-top: 0.5rem;
 }
 .rp9-host .rp9-setbacks > label {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 6rem;
+  /* libellé AU-DESSUS de son champ (« Retrait d'extrémité (m) » ne se coupe plus sous la valeur) */
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.25rem;
   min-height: 2.75rem;
   font-size: 0.875rem;
   color: var(--rp-lune-soft);
@@ -357,9 +359,6 @@
   width: 100%;
   max-width: 100%;
   min-height: 2.75rem;
-}
-@media (max-width: 639px) {
-  .rp9-host .rp9-setbacks { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* ── Curseurs (rp9-range) ───────────────────────────────────────────────── */
