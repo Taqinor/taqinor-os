@@ -88,3 +88,110 @@ class ContexteDevisLieTest(BaseApiCalepinage):
         for cle in ('calepinage', 'geometrie', 'cible', 'carte', 'modifiable',
                     'raison_lecture_seule', 'avertissements'):
             self.assertIn(cle, contexte)
+
+
+def _contrat_retenue():
+    return json.loads((Path(__file__).resolve().parent.parent / 'contract_samples'
+                       / 'calepinage_conception_retenue.json').read_text(encoding='utf-8'))
+
+
+class _DevisDeuxOptions(BaseApiCalepinage):
+    """ACAL1950 — un devis « Les deux » à deux comptes de panneaux : onduleur
+    réseau dans l'option sans, hybride + batterie dans l'option avec (même
+    fabrique que ``apps/ventes/tests/test_ctx3d_cible_avec.py``)."""
+
+    PRODUITS = (('PAN', 'Panneau Jinko 715W'),
+                ('ONDR', 'Onduleur réseau Huawei 20kW Triphasé'),
+                ('ONDH', 'Onduleur hybride Deye 20kW Triphasé'),
+                ('BAT', 'Batterie Dyness 10 kWh'))
+
+    def setUp(self):
+        from decimal import Decimal
+
+        from apps.stock.models import Produit
+
+        super().setUp()
+        self.client_lie = Client.objects.create(company=self.company, nom='Client ACAL1950')
+        self.lead_lie = Lead.objects.create(company=self.company, nom='Lead ACAL1950')
+        self.produits = {cle: Produit.objects.create(
+            company=self.company, nom=nom, sku=f'ACAL1950-{cle}',
+            prix_vente=Decimal('1100'), quantite_stock=50)
+            for cle, nom in self.PRODUITS}
+        self.compteur = 0
+
+    def _devis(self, lignes, statut='envoye', mode='residentiel', **extra):
+        from decimal import Decimal
+
+        self.compteur += 1
+        devis = Devis.objects.create(
+            company=self.company, client=self.client_lie, lead=self.lead_lie,
+            reference=f'DEV-ACAL1950-{self.compteur * 10}', statut=statut,
+            mode_installation=mode, **extra)
+        for cle, quantite, variante in lignes:
+            produit = self.produits[cle]
+            devis.lignes.create(produit=produit, designation=produit.nom,
+                                quantite=Decimal(str(quantite)),
+                                prix_unitaire=Decimal('1100'), variante=variante)
+        return devis
+
+    def _les_deux(self, recommandee=None, etude=None, **extra):
+        params = {'scenario': 'Les deux (Sans + Avec)', **(etude or {})}
+        if recommandee:
+            params['recommended_option'] = recommandee
+        return self._devis(
+            [('PAN', 35, 'sans'), ('PAN', 48, 'avec'), ('ONDR', 1, 'sans'),
+             ('ONDH', 1, 'avec'), ('BAT', 1, 'avec')],
+            etude_params=params, **extra)
+
+
+class ConceptionRetenueTest(_DevisDeuxOptions):
+    """ACAL1950 — le devis dit sa conception retenue (sélecteur ventes réel)."""
+
+    @staticmethod
+    def _lire(devis):
+        from apps.ventes.selectors_calepinage import conception_retenue_du_devis
+
+        return conception_retenue_du_devis(devis)
+
+    def test_recommandee_sans_rend_l_option_sans_et_ses_quantites(self):
+        devis = self._les_deux('Sans batterie', etude={
+            'etude_horaire': {'annuel': {'production_kwh': 60000}},
+            'etude_horaire_sans': {'annuel': {'production_kwh': 41250}}})
+        lu = self._lire(devis)
+        self.assertEqual(sorted(lu), sorted(_contrat_retenue()['exemple']))
+        self.assertEqual((lu['option'], lu['deux_options'], lu['recu']), ('sans', True, True))
+        self.assertEqual(lu['module']['quantite'], 35)
+        self.assertEqual(lu['module']['produit'], self.produits['PAN'].pk)
+        self.assertEqual(lu['module']['watt'], 715.0)
+        self.assertEqual([(o['produit'], o['quantite']) for o in lu['onduleurs']],
+                         [(self.produits['ONDR'].pk, 1)])
+        # La conception électrique rangée décrit l'option « avec » : jamais servie pour « sans ».
+        self.assertIsNone(lu['chaines'])
+        self.assertEqual((lu['production_annuelle_kwh'], lu['production_origine']),
+                         (41250.0, 'etude_horaire_sans'))
+
+    def test_recommandee_avec_rend_l_option_avec(self):
+        devis = self._les_deux('Avec batterie', electrical_design={'chaines': [
+            {'nb_modules': 12}, {'nb_modules': 12}, {'nb_modules': 12}, {'nb_modules': 12}]})
+        lu = self._lire(devis)
+        self.assertEqual((lu['option'], lu['module']['quantite']), ('avec', 48))
+        self.assertEqual([o['produit'] for o in lu['onduleurs']], [self.produits['ONDH'].pk])
+        self.assertEqual(lu['chaines'], {'nombre': 4, 'longueurs': [12, 12, 12, 12], 'longueur': 12})
+
+    def test_option_unique_et_cle_absente_rend_null(self):
+        devis = self._devis([('PAN', 10, ''), ('ONDR', 1, '')], statut='brouillon')
+        lu = self._lire(devis)
+        self.assertEqual((lu['option'], lu['deux_options'], lu['recu']), ('sans', False, False))
+        self.assertEqual(lu['module']['quantite'], 10)
+        self.assertIsNone(lu['chaines'])
+        self.assertIsNone(lu['production_annuelle_kwh'])
+        self.assertIsNone(lu['production_origine'])
+        self.assertIsNone(self._lire(None))
+        self.assertIsNone(_contrat_retenue()['exemple_vide'])
+
+    def test_c_i_lit_le_bilan_du_moteur(self):
+        devis = self._devis([('PAN', 35, ''), ('ONDR', 1, '')], mode='commercial',
+                            etude_params={'etude_ci': {'bilan': {'production_kwh': 95425}}})
+        lu = self._lire(devis)
+        self.assertEqual((lu['production_annuelle_kwh'], lu['production_origine']),
+                         (95425.0, 'etude_ci'))

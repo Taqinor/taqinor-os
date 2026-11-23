@@ -174,6 +174,10 @@ SANS_PRODUCTEUR_PUR = {
     'calepinage_conception_du_devis.json':
         'sélecteur sur un calepinage et sa variante en base — couvert par '
         'tests/test_acal_reviser_relie.py (second devis actif du lead)',
+    # ACAL1950
+    'calepinage_conception_retenue.json':
+        'sélecteur sur un devis et ses lignes en base — couvert par '
+        'tests/test_acal_design_context_devis.py (ConceptionRetenueTest)',
     'calepinage_brouillon.json':  # ACAL400
         'brouillon de l\'appelant lu en base (champ du pivot) — comparé par '
         'tests/test_api_layout.py (BrouillonServeurTest)',
