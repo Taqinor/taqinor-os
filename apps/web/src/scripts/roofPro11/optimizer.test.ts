@@ -24,6 +24,7 @@ import {
 import { rectRing } from './harnaisAtelier';
 import { fmt, fmtKwc, fmtMad } from './dom'; // ACAL994 + R2-09
 import { phraseSurplus } from './affichageErp'; // R2-17
+import { createZones } from './zones'; // ACAL1418
 import { factureCarteDe, lireFactureSaisie } from './factureCarte'; // ACAL777
 import { seuilEffectifAccesSolaire } from './shadingUi'; // ACAL548
 import { panneauxPourCible } from './cibleProduction';
@@ -813,6 +814,47 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
       expect(masquee(manque)).toBe(false);
       expect(masquee(publique)).toBe(false);
     } finally { couvre.fin(); manque.fin(); publique.fin(); }
+  });
+});
+
+// ACAL1418 — UNE production à l'écran quand le chiffrage est servi : la carte, le Total « Production estimée » et la ligne
+// « Année 1 » de la bande lisent la production servie (à kWc égal) ; non servi : le Total dit « estimation ».
+describe('ACAL1418 — chiffrage servi : Total et bande = production servie ; non servi : estimation étiquetée', () => {
+  const chiffrage = { kwc: { valeur: 5.5, etat: 'servi' }, production_annuelle_kwh: { valeur: 4636, etat: 'servi' }, economie_annee1_mad: { valeur: 7420, etat: 'servi' } };
+  const GRILLE = { count: 10, kwc: 5.5, panels: [], rowWidthM: 2, footprintPerPanelM2: 2, slopeLenM: 1 };
+  /** Rend la bande (via la carte) et le Total (via le panneau des pans) sous un DOM le temps du cas. */
+  const lire = (opts: Record<string, unknown>) => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    const doc = new JSDOM('<!doctype html><body><dd id="rp9-reco-kwc"></dd><dd id="rp9-reco-prod"></dd><dd id="rp9-reco-savings"></dd>'
+      + '<p id="rp9-reco-band"></p><p id="rp9-reco-why"></p><p id="rp9-need-note"></p><div id="rp9-areas"></div><dd id="tot-prod"></dd></body>').window.document;
+    g.document = doc;
+    try {
+      const pan = { id: 'area-1', label: '', vertices: rectRing(10, 7), obstacles: [], roofType: 'flat', pitchDeg: 22, facingAzimuthDeg: 180, facingManual: false, neededPanels: 0, neededAuto: true, result: null, renderPlan: null };
+      const ctx = { opts, centroidLat: 33.5, rec: { targetAnnualKwh: 4000 }, neededPanels: 0, batiments: [], centroid: [-7, 33], environment: [], shadeObstructions: [],
+        obstacles: [], areas: [pan], activeAreaId: 'area-1', activeArea: () => pan, vertices: pan.vertices, roofType: 'flat', closed: true, pinned: new Set(),
+        liveResult: { winner: { placedCount: 10, kwc: 5.5, annualKwh: 4362, savingsLow: 1, savingsHigh: 2 }, target: 4000 }, shadeAnnualFactor: 1, horizonAnnualFactor: 1,
+        dom: { areasWindowEl: doc.getElementById('rp9-areas'), areasTotalProdEl: doc.getElementById('tot-prod') } } as unknown as Ctx;
+      const deps = { renderScene: vi.fn(), paintComparison: vi.fn(), highlightRow: vi.fn(), syncProductionWindow: vi.fn(), prefillLead: vi.fn(),
+        syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 800, obstructionRings: vi.fn(() => []), setStatus: vi.fn() };
+      createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]).renderConfig({ pack: { origin: [-7, 33], ringENU: [], azimuthDeg: 0, portrait: GRILLE, landscape: GRILLE } as never,
+        grid: GRILLE as never, family: 'south', tiltDeg: 20, azimuthDeg: 0, isReco: true, title: 't', why: 'w', rowId: null });
+      createZones(ctx, { setStatus: vi.fn() }).renderAreasPanel();
+      const t = (id: string) => doc.getElementById(id)?.textContent ?? '';
+      return { carte: t('rp9-reco-prod'), bande: t('rp9-reco-band'), total: t('tot-prod') };
+    } finally { g.document = avant; }
+  };
+
+  it('servi : carte, Total et « Année 1 » disent les 4 636 kWh/an servis', () => {
+    const r = lire({ chiffrage });
+    expect(r.carte).toBe(`${fmt(4636)} kWh/an`);
+    expect(r.total).toBe(`${fmt(4636)} kWh/an`);
+    expect(r.bande).toContain(`Année 1 ~${fmt(4636)} kWh/an`);
+  });
+
+  it('non servi (ERP) : le Total dit « estimation » ; site public : le texte d’avant', () => {
+    expect(lire({ chiffrage: null }).total).toBe(`${fmt(4362)} kWh/an · estimation`);
+    expect(lire({}).total).toBe(`${fmt(4362)} kWh/an`);
   });
 });
 

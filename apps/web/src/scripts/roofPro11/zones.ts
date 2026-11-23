@@ -18,6 +18,7 @@ import { economieAffichee, facteurDerateAnnuel } from './optimizer'; // ACAL356 
 import { type Obstacle } from '../../lib/obstacles';
 import { pivoterSite } from './siteRotation'; // ACAL514
 import { motifPanVerrouille } from './panVerrouille'; // ACAL520
+import { texteTotalProduction } from './affichageErp'; // ACAL1418
 import { anneeValide, motifPanExistant } from './panExistant'; // ACAL510, ACAL574
 import { appliquerReglagesAuxPans, pansReglesAMain } from './jeuReglages'; // ACAL554
 import { accesMoyenDuPan, mentionAcces, trierPansParAcces } from './triPans'; // ACAL728
@@ -575,7 +576,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     const kwcTotal = poses.some((p) => p.module) ? (poses.some((p) => p.kwc == null) ? null
       : poses.reduce((s, p) => s + (p.kwc as number), 0)) : total.kwc;
     if (areasTotalKwcEl) areasTotalKwcEl.textContent = kwcTotal == null ? '—' : `${kwcTotal.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} kWc`;
-    if (areasTotalProdEl) areasTotalProdEl.textContent = total.annualKwh > 0 ? `${fmt(Math.round(total.annualKwh))} kWh/an` : '—';
+    if (areasTotalProdEl) areasTotalProdEl.textContent = texteTotalProduction(total.annualKwh, kwcTotal, ctx.opts?.chiffrage !== undefined, ctx.opts?.chiffrage); // ACAL1418 — la production servie, comme la carte
     if (areasTotalSavingsEl) areasTotalSavingsEl.textContent = economieAffichee(ctx, 'total', total.savingsHigh > 0 ? `${fmtMad(total.savingsLow)} – ${fmtMad(total.savingsHigh)}/an` : '—'); // ACAL994
 
     // CAL59 — statistiques par pan + totaux par bâtiment (colonnes toutes CALCULÉES).

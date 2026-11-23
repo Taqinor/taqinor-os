@@ -36,17 +36,18 @@ export const compteDevis = (v: unknown): number | null => (typeof v === 'number'
 
 /** R2-16 — le texte de la bande « Année 1 → Année N » d'une carte. ERP : UNE économie (la servie, sinon l'estimation prudente) ;
  *  l'année N ne recopie jamais un montant calculé sur une autre base que le servi. Site public : fourchette d'avant. */
-export function peindreBande(band: HTMLElement | null, d: CardData, cible: number, erp: boolean, chiffrage: ChiffrageAtelier | null | undefined, factureInconnue: boolean): void {
-  if (band) band.textContent = texteBandeCarte(d, cible, erp, chiffrage, factureInconnue);
+export function peindreBande(band: HTMLElement | null, d: CardData, cible: number, erp: boolean, chiffrage: ChiffrageAtelier | null | undefined, factureInconnue: boolean, kwc: number | null = d.kwc): void {
+  if (band) band.textContent = texteBandeCarte(d, cible, erp, chiffrage, factureInconnue, kwc);
 }
 
-function texteBandeCarte(d: CardData, cible: number, erp: boolean, chiffrage: ChiffrageAtelier | null | undefined, factureInconnue: boolean): string {
+function texteBandeCarte(d: CardData, cible: number, erp: boolean, chiffrage: ChiffrageAtelier | null | undefined, factureInconnue: boolean, kwc: number | null): string {
   if (!(d.annualKwh > 0)) return '';
   const servie = erp ? serviNb(chiffrage?.economie_annee1_mad) : null;
+  const prod = (erp ? productionServie(chiffrage, kwc) : null) ?? d.annualKwh; // ACAL1418 — l'Année 1 lit la production de la carte
   const fac25 = degradationFactor(LIFETIME_YEARS);
-  const sav25 = cible > 0 ? annualSavingsMad(d.annualKwh * fac25, cible) : { low: d.savingsLow * fac25, high: d.savingsHigh * fac25 };
+  const sav25 = cible > 0 ? annualSavingsMad(prod * fac25, cible) : { low: d.savingsLow * fac25, high: d.savingsHigh * fac25 };
   return texteBande({
-    degPct: Math.round(ANNUAL_DEGRADATION * 1000) / 10, annualKwh: d.annualKwh, kwhFin: d.annualKwh * fac25, annees: LIFETIME_YEARS, factureInconnue,
+    degPct: Math.round(ANNUAL_DEGRADATION * 1000) / 10, annualKwh: prod, kwhFin: prod * fac25, annees: LIFETIME_YEARS, factureInconnue,
     an1: erp ? (servie ?? d.savingsLow) : d.savingsHigh, an25: erp ? (servie != null ? null : sav25.low) : sav25.high,
   });
 }
@@ -56,4 +57,12 @@ export function productionServie(chiffrage: ChiffrageAtelier | null | undefined,
   const prod = serviNb(chiffrage?.production_annuelle_kwh);
   const kwcServi = serviNb(chiffrage?.kwc);
   return prod != null && kwcServi != null && kwc != null && Math.abs(kwcServi - kwc) < 0.005 ? prod : null;
+}
+
+/** ACAL1418 — le Total « Production estimée » : la production SERVIE à kWc égal (comme la carte), sinon l'estimation du
+ *  navigateur, DITE « estimation » dans l'ERP. Site public (`erp` faux) : le texte d'avant. */
+export function texteTotalProduction(annualKwh: number, kwc: number | null, erp: boolean, chiffrage: ChiffrageAtelier | null | undefined): string {
+  const servie = erp ? productionServie(chiffrage, kwc) : null;
+  if (servie != null) return `${fmt(Math.round(servie))} kWh/an`;
+  return annualKwh > 0 ? `${fmt(Math.round(annualKwh))} kWh/an${erp ? ' · estimation' : ''}` : '—';
 }
