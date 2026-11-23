@@ -173,6 +173,18 @@ vivent dans le scratchpad de la session, pas sur `main`.
      1550] sonnet · couture, 2e passe (branche `l5w2-couture-2`, agent ad48e173ad7c41aaa repris, garde son
      `node_modules`) · consolidation LOT E (opus). CI en cours sur cf6c37e195 : NE PAS pousser avant son verdict
      (chaque push annule le run précédent).
+   - POINT à 08 h 35 UTC : pliées en plus `electrique-2` [1509, 1535, 1536, 1541, 1543, 1544, 1547, 1549, 1550],
+     `editeur-2` [1522, 1524, 1527, 1528, 1529, 1530, 1443 + historique du pan actif], coutures 1 et 2 ; 68 tâches
+     de la vague 2 livrées. LOT E assemblé (42 tâches, ACAL1800-1841 ; D-ACAL-88 ouverte) : le plan porte 284 tâches
+     du tour 2, gardes vertes. Budget du bundle `roof-tool` 635 → 650 Ko (636,0 mesurés). CI ROUGE à 626926e930 sur
+     DEUX gardes connues : (a) `check_tests_source_regex` — trois cas de `langageVisuel.test.mjs` (ACAL1519, 1524,
+     1443) lisent un source par motif : `couture-3` (agent a528a75d09c030a66, branche `l5w2-couture-3`) les réécrit
+     et joue la suite du front ERP ; (b) `check_forme_code` — `apps/web/tests/estimatorRuntimePro10Pro11.test.ts`
+     +3 lignes : `couture-4` (agent ad48e173ad7c41aaa, branche `l5w2-couture-4`, vraie installation d'`apps/web`).
+     EN VOL aussi : `electrique-1`, `simulation-1`, `resultats-m1` [1611, 1621, 1614] sonnet, `coque-prealables`
+     [1437, 1617, 1727, 1730, 1731, 1745] sonnet. ENSUITE, sur la tête pliée de `coque-prealables` : `coque-v2`
+     [1800, 1801, 1802, 1803, 1804, 1805] opus, UNE lane, puis les écrans du lot E en parallèle (ordre :
+     `T2/consolidation/lot-E.md` § 7) et le téléphone M1 [1807-1812].
    - BUDGET (08 h 10 UTC) : quota hebdo 39 % (≈ 4 points par heure, ≈ 0,3 point par agent) ; contexte de
      l'orchestrateur 58 %. Règle : construire jusqu'à ≈ 56 %, puis tour 3 léger, fusion, phase de contrôles (≤ 5
      points), rapport. PRIORITÉ de ce qui reste à construire : (1) les M1 de tous les lots ; (2) la coque v2 puis
