@@ -203,6 +203,31 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(surInput).not.toHaveBeenCalled() // le besoin 6 est déjà la cible posée : rien à renvoyer, la pose reste 1
   })
 
+  it('la carte non choisie garde ses chiffres : « Le plus de panneaux » dès l’ouverture, la part de la facture après le clic, le sens dit', async () => {
+    monterConstructeur({
+      besoin: '12', panneaux: '12 × 710 W', kwc: '8,52 kWc', cover: '63 %', orient: 'portrait',
+      note: '12 posés — seuls 20 tiennent en plein sud.',
+    })
+    rendre()
+    const facture = screen.getByTestId('cal-panneaux-option-facture')
+    const max = screen.getByTestId('cal-panneaux-option-max')
+    await waitFor(() => expect(facture).toHaveTextContent('≈ 63 % de la consommation'))
+    expect(max).toHaveTextContent('20 panneaux · 14,20 kWc') // 20 × 710 W, lu de la pose, dès l'ouverture
+    fireEvent.click(max)
+    expect(document.getElementById('rp9-need-input').value).toBe('400')
+    // le script pose tout ce qui tient et bascule le sens de pose
+    document.getElementById('rp9-reco-panels').textContent = '20 × 710 W'
+    document.getElementById('rp9-reco-kwc').textContent = '14,20 kWc'
+    document.getElementById('rp9-reco-cover').textContent = '105 %'
+    document.getElementById('rp9-need-note').textContent = '12 posés — seuls 20 tiennent en plein sud.'
+    document.querySelector('[data-orient="portrait"]').setAttribute('aria-pressed', 'false')
+    document.querySelector('[data-orient="landscape"]').setAttribute('aria-pressed', 'true')
+    await waitFor(() => expect(document.querySelector('[data-zone="sens-bascule"]')).toHaveTextContent('passé de Portrait à Paysage'), { timeout: 3000 })
+    expect(max).toHaveAttribute('aria-pressed', 'true')
+    expect(facture).toHaveTextContent('≈ 63 % de la consommation') // gardée, pas perdue au clic
+    expect(facture).not.toHaveTextContent('105')
+  })
+
   it('ni l’une ni l’autre : aucune carte choisie et « Pose actuelle : N panneaux · kWc »', async () => {
     monterConstructeur({ besoin: '30', panneaux: '30 × 580 W', kwc: '17,40 kWc', prod: '28 700 kWh/an', cover: '431 %',
       note: '30 posés — il reste de la place sur le toit, laissée libre.' })
