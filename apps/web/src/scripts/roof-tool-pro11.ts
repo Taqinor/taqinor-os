@@ -1388,10 +1388,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // Source relue à CHAQUE rendu : une allée tracée entre deux rendus se voit aussitôt.
   poserSourceCellulesSurAllees(ctx, () => cellulesSurAlleesCourantes()); // CALX403 câblage
   const redrawObstacles = obstaclesUi.redrawObstacles;
-  // CAL69 — redessine le calque des zones d'exclusion (même cadence que les obstacles).
-  const redrawExclusionZones = obstaclesUi.redrawExclusionZones;
+  const redrawExclusionZones = obstaclesUi.redrawExclusionZones; // CAL69 — zones d'exclusion, même cadence que les obstacles
   const clearPreview = obstaclesUi.clearPreview;
   const objetsSite = monterObjetsSite(ctx, { selectArea: (id) => selectArea(id), selectObstacle: (id) => obstaclesUi.selectObstacle(id) }); // ACAL533
+  obstaclesUi.apresRedessin(objetsSite.redessiner); // ACAL1409 — pose, glissé, suppression et hydratation redessinent le tableau
   const syncObsEdit = () => { obstaclesUi.syncObsEdit(); objetsSite.redessiner(); }; // le tableau suit chaque pose
   const selectObstacle = obstaclesUi.selectObstacle;
   const obstacleAtPoint = obstaclesUi.obstacleAtPoint;

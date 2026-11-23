@@ -233,6 +233,8 @@ export interface ObstaclesUiDeps {
 
 export interface ObstaclesUi {
   redrawObstacles: () => void;
+  /** ACAL1409 — `fn` est rappelée après CHAQUE dessin des obstacles (pose, glissé, suppression, hydratation). */
+  apresRedessin: (fn: () => void) => void;
   /** CAL69 — re-dessine le calque des zones d'exclusion. */
   redrawExclusionZones: () => void;
   /** CAL69 — arme le tracé d'une zone de cette nature (le glissé suivant la crée). */
@@ -1329,6 +1331,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   majBandeauAllees(); // état initial (dossier rechargé avec des allées)
 
 
+  let apresRedessin: (() => void) | null = null; // ACAL1409 — le tableau « Objets du site »
   function redrawObstacles() {
     srcOf('rp9-obs')?.setData({
       type: 'FeatureCollection',
@@ -1343,6 +1346,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
         };
       }),
     } as never);
+    apresRedessin?.();
   }
 
   function setPreviewRect(a: LngLat, b: LngLat) {
@@ -1849,6 +1853,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
 
   return {
     redrawObstacles,
+    apresRedessin: (fn: () => void) => { apresRedessin = fn; }, // ACAL1409
     redrawExclusionZones,
     beginZone,
     setPreviewRect,

@@ -62,7 +62,7 @@ import {
 import { obstacleRing } from '../../lib/obstacles';
 import { viderObstaclesAnnulable, questionEffacer, demanderEffacer } from './bandeauAnnuler'; // ACAL413
 import { type LngLat } from '../../lib/roof';
-import { lignesObjetsSite, ouvrirObjet } from './objetsSite'; // ACAL533
+import { lignesObjetsSite, monterObjetsSite, ouvrirObjet } from './objetsSite'; // ACAL533, ACAL1409
 
 const ETAT = {
   sommet: 2 as number | null,
@@ -587,6 +587,34 @@ describe('ACAL413 — un filet pour les effacements de masse', () => {
     expect(n).toBe(1);
     demanderEffacer(null, { pans: 1, obstacles: 3, consommation: false, ombres: false }, () => { n += 1; });
     expect(n).toBe(1);
+  });
+});
+
+// ACAL1409 — le tableau « Objets du site » suit chaque pose d'obstacle et la réouverture (même pan).
+describe('ACAL1409 — Objets du site à chaque pose et à la réouverture', () => {
+  it('poser un obstacle puis hydrater : le bloc objets-site porte deux boutons `data-objet`', () => {
+    document.body.innerHTML = '<div><button id="rp9-obstacle"></button></div>';
+    const ctx = { obstacles: [], selectedObsId: null, obstacleMode: false, environment: [], activeAreaId: 'a1', areas: [{ id: 'a1', label: 'Pan 1', obstacles: [] }] } as unknown as Ctx;
+    const map = { getSource: () => undefined, getLayer: () => undefined, getCanvas: () => ({ style: {} }), on: () => {}, dragPan: { enable() {}, disable() {} }, queryRenderedFeatures: () => [] } as never;
+    const ui = createObstaclesUi(ctx, { map, recalc: () => {}, setStatus: () => {}, redrawTrace: () => {} });
+    const selectionnes: string[] = [];
+    const objetsSite = monterObjetsSite(ctx, { selectArea: () => {}, selectObstacle: (id) => selectionnes.push(id) });
+    ui.apresRedessin(objetsSite.redessiner);
+    const boutons = () => Array.from(document.querySelectorAll<HTMLButtonElement>('#rp9-objets-site [data-objet]'));
+    expect(document.getElementById('rp9-objets-site')?.hidden).toBe(true);
+    const cheminee = { id: 'obs-1', centerLng: -7.6, centerLat: 33.5, lengthM: 0.8, widthM: 0.8, heightM: 1.2, type: 'cheminee' };
+    ui.addObstacle({ ...cheminee });
+    ui.addObstacle({ ...cheminee, id: 'obs-2', centerLng: -7.5999, lengthM: 1.2, widthM: 1, heightM: 0.5, type: 'velux' });
+    expect(boutons().map((b) => b.dataset.objet)).toEqual(['obs-1', 'obs-2']);
+    // Réouverture : le document relu remplace les obstacles du pan, puis l'atelier les redessine.
+    ctx.obstacles = JSON.parse(JSON.stringify(ctx.obstacles));
+    document.getElementById('rp9-objets-site')!.innerHTML = '';
+    ui.redrawObstacles();
+    expect(document.getElementById('rp9-objets-site')?.hidden).toBe(false);
+    expect(boutons()).toHaveLength(2);
+    expect(boutons()[0].textContent).toContain('0,8 × 0,8 m · hauteur 1,2 m');
+    boutons()[1].click();
+    expect(selectionnes).toEqual(['obs-2']);
   });
 });
 
