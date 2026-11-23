@@ -1,11 +1,16 @@
+// @vitest-environment jsdom
 // ACAL576 — coupures automatiques du pavage (contrat ACAL586) : bandes INTERDITES générées depuis
 // `zones[].coupuresPavage`, évitées par un `packConfig` inchangé.
 import { describe, expect, it } from 'vitest';
 import { packConfig } from '../../lib/estimatorBrainV2';
 import { PANEL_SIDE_GAP_M } from '../../lib/roofPro2';
 import { rectRing } from './harnaisAtelier';
+import { monterChampsChassis } from './chassisPavage';
+import { monterChampPortee } from './piedsChassis';
+import { grouperStructurePose } from './structurePose';
 import {
-  anneauxDeCoupures, colonnesParCoupure, emettreCoupures, lireCoupures, noteCoupure, validerCoupures, type CoupuresPavage,
+  anneauxDeCoupures, colonnesParCoupure, emettreCoupures, lireCoupures, monterChampsCoupures, noteCoupure, validerCoupures,
+  type CoupuresPavage,
 } from './coupuresPavage';
 
 const LAT = 33.5;
@@ -78,5 +83,25 @@ describe('ACAL576 — coupuresPavage', () => {
     const degagements = [...autres.map(() => 0.3), ...anneaux.map(() => 0)];
     expect(degagements).toHaveLength(tous.length);
     expect(degagements.slice(-anneaux.length)).toEqual([0, 0]);
+  });
+});
+
+describe('ACAL1522 — « Structure et pose » sans l\'outil de déplacement', () => {
+  it('les champs de structure sont visibles sans l\'outil de déplacement', () => {
+    document.body.innerHTML = '<div id="rp9-layout-window"><div id="rp9-layout-panel" hidden></div></div>';
+    const ctx = { activeArea: () => undefined } as never;
+    const deps = { recalc: () => undefined };
+    monterChampsCoupures(ctx, deps); monterChampPortee(ctx, deps); monterChampsChassis(ctx, deps);
+    const groupe = grouperStructurePose();
+    expect(groupe?.querySelector('p')?.textContent).toBe('Structure et pose');
+    for (const id of ['rp9-coupures', 'rp9-portee', 'rp9-chassis']) {
+      const el = document.getElementById(id) as HTMLDetailsElement;
+      expect(el.parentElement).toBe(groupe);
+      expect(el.closest('[hidden]')).toBeNull(); // plus rien de caché par « Déplacer les panneaux »
+      expect(el.open).toBe(true);
+    }
+    expect(document.getElementById('rp9-layout-panel')?.hidden).toBe(true); // le panneau reste réservé au déplacement
+    grouperStructurePose(); // idempotent
+    expect(document.querySelectorAll('#rp9-structure-pose').length).toBe(1);
   });
 });

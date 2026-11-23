@@ -663,6 +663,72 @@ describe('ACAL553 — copier / coller la sélection libre', () => {
   });
 });
 
+describe('ACAL1528 — Ctrl+V : un seul collage, une seule note vraie', () => {
+  it("l'écran qui rappelle le geste sur la même frappe ne recolle pas : 2 → 4 panneaux, note « Collé », jamais « refusé »", () => {
+    viderCollage();
+    const { editor, ctx } = buildFreeEditor(40, [0, 6].map((u) => ({ cx: -u, cy: 0 })));
+    ctx.layoutState = { cells: [], occupied: new Set<number>() } as unknown as Ctx['layoutState']; // la frappe n'est lue qu'avec une disposition
+    editor.setSelection([0, 1]);
+    expect(editor.copierSelection()).toBe(true);
+    // Le gestionnaire de l'écran (fenêtre) appelle `raccourcis.coller` → `collerSelection` : un second chemin.
+    const ecran = vi.fn(() => { editor.collerSelection(); });
+    window.addEventListener('keydown', ecran);
+    try {
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, bubbles: true, cancelable: true }));
+    } finally { window.removeEventListener('keydown', ecran); }
+    expect(editor.freePanels()).toHaveLength(4);
+    const note = document.getElementById('rp9-layout-note')?.textContent ?? '';
+    expect(note).toContain('Collé — 2 panneaux');
+    expect(note).not.toContain('refusé');
+    expect(ecran).not.toHaveBeenCalled(); // la frappe traitée par l'atelier ne remonte pas à l'écran
+  });
+});
+
+describe('ACAL1529 — le glissé et son relâchement disent la même chose', () => {
+  /** Glisse le panneau (0, 0) vers `cibles` (ENU, mètres ; 10 pixels = 1 m dans cette carte factice), puis relâche. */
+  function glisser(cibles: [number, number][], retraitM: number) {
+    document.body.innerHTML = '';
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const peint: { nature?: string }[][] = [];
+    const source = { setData: (d: { features: { properties: { nature: string } }[] }) => { peint.push(d.features.map((f) => f.properties)); } };
+    const origine: [number, number] = [-7.6, 33.5];
+    const cos = Math.cos(origine[1] * Math.PI / 180);
+    const M = 111320;
+    const map = {
+      ...carteEditeurFactice(container),
+      unproject: (p: { x: number; y: number }) => ({ lng: origine[0] + (p.x / 10) / (M * cos), lat: origine[1] + (p.y / 10) / M }), // 10 pixels = 1 m
+      getSource: () => source, addSource: vi.fn(), addLayer: vi.fn(),
+    } as unknown as ReturnType<typeof carteEditeurFactice>;
+    const ctx = makeFreeCtx(makePlan(10), [{ cx: 0, cy: 0 }]) as unknown as Record<string, unknown>;
+    Object.assign(ctx, { layoutState: { cells: [], occupied: new Set<number>() } });
+    const editor = createLayoutEditor(ctx as unknown as Ctx, makeDeps(map));
+    editor.setFreeMargins({ setbackM: retraitM, gapM: 0 });
+    const appels = (map.on as unknown as { mock: { calls: [string, (e: unknown) => void][] } }).mock.calls;
+    const sur = (ev: string, mx: number, my: number, x = mx * 10, y = my * 10) => appels.filter(([n]) => n === ev).forEach(([, f]) => f({ point: { x, y }, originalEvent: {}, preventDefault: () => undefined }));
+    const note = () => document.getElementById('rp9-layout-note')?.textContent ?? '';
+    sur('mousedown', 0, 0);
+    const notes: string[] = [];
+    for (const [x, y] of cibles) { sur('mousemove', x, y); notes.push(note()); }
+    sur('mouseup', cibles[cibles.length - 1][0], cibles[cibles.length - 1][1]);
+    return { notes, final: note(), peint, panneaux: editor.freePanels() };
+  }
+  it("marge réglable seule franchie : silhouette ambre, note du retrait, et le relâchement refuse comme la note l'a dit", () => {
+    const r = glisser([[-4, 0], [-8.6, 0]], 1);
+    expect(r.notes[1]).toBe('Ici : il passerait sous le retrait de rive que vous avez fixé.');
+    expect(r.peint.some((f) => f.some((p) => p.nature === 'relachable'))).toBe(true); // silhouette ambre
+    expect(r.final).toContain('Déplacement refusé');
+    expect(r.final).toContain('retrait de rive');
+    expect(r.final).not.toContain('Déplacé');
+    expect(r.panneaux).toEqual([{ cx: 0, cy: 0 }]); // refusé : le panneau est revenu à son départ
+  });
+  it('un glissé qui finit sur une position valide : « Déplacé », panneau à la position visée', () => {
+    const r = glisser([[-3, 0], [-4, 0]], 1);
+    expect(r.final).toContain('Déplacé — 1 panneau');
+    expect(r.panneaux[0].cx).toBeCloseTo(-4, 6);
+  });
+});
+
 describe('ACAL510 — pan existant : ses modules ne se glissent pas', () => {
   function presser(existant: boolean) {
     const container = document.createElement('div');
@@ -715,6 +781,53 @@ describe('ACAL891 — Remplir et la limite de modules', () => {
   it('sous la limite, ou limite absente ⇒ inchangé (rempli)', () => {
     expect(remplir(5).posés).toBe(3);
     expect(remplir(null).posés).toBe(3);
+  });
+});
+
+describe('ACAL1530 — « Personnaliser la disposition » reste présent quand le seuil écarte tout', () => {
+  const monter = (cellules: number) => {
+    document.body.innerHTML = '';
+    const { map } = makeMap();
+    const plan = makePlan(40);
+    (plan.grid as unknown as { panels: unknown[] }).panels = Array.from({ length: cellules }, (_, i) => ({ cx: -4 * i, cy: 0 }));
+    const editor = createLayoutEditor(makeFreeCtx(plan, []), makeDeps(map));
+    editor.renderLayoutPanel();
+    return { fenetre: document.getElementById('rp9-layout-window') as HTMLElement, bouton: document.getElementById('rp9-layout-toggle') as HTMLButtonElement };
+  };
+  it('le bloc reste présent quand un seuil écarte des emplacements : il dit pourquoi, le bouton ne se touche pas dans le vide', () => {
+    const { fenetre, bouton } = monter(0);
+    expect(fenetre.hidden).toBe(false);
+    expect(document.getElementById('rp9-layout-indispo')?.textContent).toContain('seuil d’accès solaire');
+    expect(bouton.disabled).toBe(true);
+  });
+  it('avec des emplacements : aucune phrase d’indisponibilité, bouton actif', () => {
+    const { fenetre, bouton } = monter(3);
+    expect(fenetre.hidden).toBe(false);
+    expect(document.getElementById('rp9-layout-indispo')?.hidden ?? true).toBe(true);
+    expect(bouton.disabled).toBe(false);
+  });
+});
+
+describe('Demande croisée — l\'historique de l\'atelier rend le pan actif et les surfaces de pose', () => {
+  it('Annuler après « pan de tracé remplacé par un champ au sol » rend le pan, le pan actif et l\'absence de surface', () => {
+    const { map } = makeMap();
+    const pan = (id: string) => ({ id, label: id, vertices: [], obstacles: [], roofType: 'flat', pitchDeg: 0, facingAzimuthDeg: 180, neededPanels: 0, neededAuto: true, result: null, renderPlan: null });
+    const areas = [pan('area-1'), pan('area-2')];
+    const ctx = makeFreeCtx(makePlan(40), []) as unknown as Record<string, unknown>;
+    Object.assign(ctx, { areas, activeAreaId: 'area-2', surfacesPose: [{ id: 'sol-0', genre: 'sol' }] });
+    const editor = createLayoutEditor(ctx as unknown as Ctx, makeDeps(map));
+    (ctx.pushWorkshopHistory as () => void)(); // ce que fait deleteArea avant de retirer le pan
+    areas.splice(1, 1);
+    ctx.activeAreaId = 'area-1';
+    (ctx.surfacesPose as unknown[]).push({ id: 'sol-1', genre: 'sol' });
+    expect(editor.undo()).toBe(true);
+    expect((ctx.areas as { id: string }[]).map((a) => a.id)).toEqual(['area-1', 'area-2']);
+    expect(ctx.activeAreaId).toBe('area-2');
+    expect((ctx.surfacesPose as { id: string }[]).map((x) => x.id)).toEqual(['sol-0']);
+    expect(editor.redo()).toBe(true);
+    expect((ctx.areas as { id: string }[]).map((a) => a.id)).toEqual(['area-1']);
+    expect(ctx.activeAreaId).toBe('area-1');
+    expect((ctx.surfacesPose as { id: string }[]).map((x) => x.id)).toEqual(['sol-0', 'sol-1']);
   });
 });
 

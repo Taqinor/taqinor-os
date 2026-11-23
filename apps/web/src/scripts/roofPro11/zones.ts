@@ -785,6 +785,15 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     btn.disabled = !!motif;
     if (motif) btn.title = motif; else if (btn.dataset.titrePanExistant) btn.removeAttribute('title');
     if (motif) btn.dataset.titrePanExistant = '1'; else delete btn.dataset.titrePanExistant;
+    // ACAL1524 — le motif se LIT (au doigt le `title` n'existe pas) : une phrase écrite sous le bouton.
+    const rangee = btn.parentElement;
+    let ligne = document.getElementById('rp9-layout-toggle-motif');
+    if (motif && rangee && !ligne) {
+      ligne = document.createElement('p');
+      ligne.id = 'rp9-layout-toggle-motif'; ligne.className = 'rp9-motif-refus'; ligne.setAttribute('role', 'status');
+      rangee.insertAdjacentElement('afterend', ligne);
+    }
+    if (ligne) { ligne.textContent = motif ?? ''; ligne.hidden = !motif; }
   }
 
   /** Applique une géométrie transformée au pan ACTIF (contour + obstacles vivants). */
@@ -947,7 +956,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     const hote = ctx.dom.areasWindowEl;
     if (!source || !hote) return;
     document.getElementById('rp9-pan-report')?.remove();
-    const nom = (a: AreaRecord) => a.label || a.id;
+    const nom = (a: AreaRecord) => areaLabel(Math.max(0, ctx.areas.indexOf(a))); // ACAL1527 — « Zone 2 », jamais l'identifiant `area-copie-1`
     const box = document.createElement('div');
     box.id = 'rp9-pan-report';
     box.className = 'mt-2 space-y-1 border border-white/20 p-3 text-xs text-lune-soft';
