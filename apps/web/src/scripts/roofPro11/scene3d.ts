@@ -1154,6 +1154,12 @@ export function couleurParAffectation(
   return affectationColorFn(coloring, identifiantsModulesParCellule(cellules, libelle));
 }
 
+/** ACAL1516 — la clé de pan des modules servis (`'<zone.id>#<n>'`, `production.py::cle_de_pan`, ACAL265) : l'ID du
+ *  pan, jamais son libellé — « Zone 1#3 » ne retrouvait aucune ligne « z1#3 », tous les modules restaient gris. */
+export function clePanAffectation(aire: { id?: string | null } | null | undefined, activeAreaId?: string | null): string {
+  return String(aire?.id || activeAreaId || '');
+}
+
 
 // ————————————————————————————————————————————————————————————————————————
 // CAL104 — VUE 2D PLAN ORTHOGRAPHIQUE
@@ -2701,8 +2707,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
    *  teinte d'origine (comportement d'avant). */
   function rafraichirAffectation() {
     const aire = ctx.areas.find((a) => a.id === ctx.activeAreaId);
-    const libelle = String(aire?.label || aire?.id || ctx.activeAreaId || '');
-    setStringColoring(couleurParAffectation(ctx.affectationColoration, ctx.activePanelCellIndex, libelle));
+    setStringColoring(couleurParAffectation(ctx.affectationColoration, ctx.activePanelCellIndex, clePanAffectation(aire, ctx.activeAreaId))); // ACAL1516
   }
 
   /** Repeint la scène 3D (déclenché après un changement de couleur d'instance). */
