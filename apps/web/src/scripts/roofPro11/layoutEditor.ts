@@ -98,7 +98,7 @@ import { DEFAULT_FREE_MARGINS, FREE_STEP_M, freeGeomFrom, freeStateFromCenters, 
 import { cm, peindreSilhouette, silhouetteDuLot, texteDeMesure, violationLabel } from './silhouetteGlisse'; import { direPoseIndisponible } from './structurePose'; // ACAL551, ACAL1530
 import { resnapEnMasse } from './layoutResnap'; // ACAL510 — sorti de ce fichier, ré-exporté ci-dessous
 export { resnapEnMasse, resnapNaif, type CentreASnapper } from './layoutResnap';
-import { motifPanExistant, direEcartPoseRelue } from './panExistant'; // ACAL510, ACAL1900
+import { motifPanExistant, direEcartPoseRelue } from './panExistant'; import { suiteAuDevis } from './affichageErp'; // ACAL510, ACAL1900, ACAL1951
 import { EVT_POSE_RELUE } from './alignementRangees'; // ACAL1521
 import { catalogueAvecModulesDuDocument, estRefus, kwcDuPan, lireModulesDisponibles, resoudreModuleDuPan } from './moduleSelect'; // ACAL1520
 
@@ -1776,7 +1776,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     renderCustomLayout();
     renderLayoutPanel();
     if (layoutNoteEl && placed) layoutNoteEl.textContent = `Disposition du dossier rechargée — ${fmt(placed)} panneaux reposés à l'identique.`;
-    if (placed !== ctx.layoutOptimalCount) direEcartPoseRelue(placed, ctx.neededPanels, fmt); // ACAL1900 — l'écart est DIT, jamais appliqué (D-ACAL-75) ; égale au gagnant : sa note dit déjà tout
+    if (placed !== ctx.layoutOptimalCount) direEcartPoseRelue(placed, ctx.neededPanels, fmt, true, suiteAuDevis(ctx)); // ACAL1900, ACAL1951 — l'écart est DIT, jamais appliqué (D-ACAL-75) ; égale au gagnant : sa note dit déjà tout
     return placed > 0;
   }
 

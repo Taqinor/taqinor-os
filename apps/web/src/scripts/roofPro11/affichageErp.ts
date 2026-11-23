@@ -28,10 +28,27 @@ export function texteBande(p: { degPct: number; annualKwh: number; kwhFin: numbe
 }
 
 /** R2-13/22/23 — « N posés / M cible » (atelier ERP) et, pour un devis LIÉ au compte connu, « · K au devis ». Site public : « au devis ». */
-export function texteSurDevis(placed: number, besoin: number, erp: boolean, devisLie: boolean, duDevis: number | null | undefined): string {
+export function texteSurDevis(placed: number, besoin: number, erp: boolean, devisLie: boolean, duDevis: number | null | undefined, qui = ''): string {
   if (!erp) return `${fmt(placed)} posés / ${fmt(besoin)} au devis`;
   const base = `${fmt(placed)} posés / ${fmt(besoin)} cible`;
-  return devisLie && typeof duDevis === 'number' && duDevis > 0 ? `${base} · ${fmt(duDevis)} au devis` : base;
+  return devisLie && typeof duDevis === 'number' && duDevis > 0 ? `${base} · ${fmt(duDevis)} au devis${qui}` : base;
+}
+
+/** ACAL1951 — QUEL devis et QUELLE option : « DEV-202611-0022 (option avec batterie) », précédé d'une espace, lu du payload
+ *  de boot (`referenceDevis` = devis lié, `optionCible` = `cible.option` servie). Rien d'inventé : chaque morceau manquant
+ *  (cible estimée sans option, devis sans référence) est omis. */
+export function quiDuDevis(opts: { hydrate?: { devis?: object | null } | null } | null | undefined): string {
+  const p = opts?.hydrate?.devis as Record<string, unknown> | null | undefined;
+  const reference = typeof p?.referenceDevis === 'string' ? p.referenceDevis.trim() : '';
+  const option = p?.optionCible === 'avec' ? 'avec batterie' : p?.optionCible === 'sans' ? 'sans batterie' : '';
+  return `${reference ? ` ${reference}` : ''}${option ? ` (option ${option})` : ''}`;
+}
+
+/** ACAL1951 — la suite « · 7 au devis DEV-… (option avec batterie) » d'une note de pose : seulement dans l'atelier ERP, pour un
+ *  devis LIÉ et VENDU au compte positif (mêmes conditions que `texteSurDevis`) ; chaîne vide sinon. */
+export function suiteAuDevis(ctx: { opts?: { chiffrage?: unknown; devisLie?: boolean; hydrate?: { devis?: object | null } | null }; cibleVendue?: boolean; panneauxDevis?: number | null }): string {
+  const n = ctx.panneauxDevis;
+  return ctx.opts?.chiffrage !== undefined && ctx.opts.devisLie && ctx.cibleVendue && typeof n === 'number' && n > 0 ? ` · ${fmt(n)} au devis${quiDuDevis(ctx.opts)}` : '';
 }
 
 /** R2-13 — le compte de panneaux du devis relu avec le contexte : un nombre strictement positif, sinon `null` (aucun compte). */
