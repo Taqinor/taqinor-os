@@ -34,9 +34,7 @@ CONTRAT = json.loads(
 
 #: Clés posées au contrat AVANT leur producteur (PACT10) : la tâche nommée les
 #: sert et retire son entrée dans le même commit.
-EN_ATTENTE_LISTE = {
-    'apercu_toit': 'ACAL1335',
-}
+EN_ATTENTE_LISTE = {}
 
 
 class FormeDeLaListeTest(BaseApiCalepinage):
@@ -246,6 +244,16 @@ class ContratDeLaCarteTest(SimpleTestCase):
             self.assertNotIn('http', json.dumps(apercu))
         self.assertIn('apercu_toit', CONTRAT['pourquoi'])
 
+    def test_apercu_du_toit_pur(self):
+        """ACAL1335 — le tracé lu sur ``outline`` à défaut de pans ; rien ⇒ None."""
+        from apps.calepinage.services.lecture_liste import apercu_du_toit
+
+        self.assertIsNone(apercu_du_toit(None))
+        self.assertIsNone(apercu_du_toit({'zones': []}))
+        contour = apercu_du_toit({'outline': [[33.0, -7.0], [33.0, -6.999], [33.001, -6.999]]})
+        self.assertEqual(len(contour['contours']), 1)
+        self.assertTrue(all(0 <= v <= 100 for p in contour['contours'][0] for v in p))
+
     def test_kwc_et_production_nombres_ou_nuls(self):
         for cle, ligne in self._lignes().items():
             self.assertTrue(ligne['kwc'] is None or isinstance(ligne['kwc'], float), cle)
@@ -416,3 +424,31 @@ class ValeursRangeesDeLaListeTest(BaseApiCalepinage):
         self.assertEqual(
             [lignes[change.pk][c] for c in ('points_a_regler', 'points_a_regler_lu_le', 'points_a_regler_perime')],
             [None, '2026-11-21T10:00:00+00:00', True])
+
+    def test_apercu_toit_contours_normalises_ou_nul_sans_requete_de_plus(self):
+        """ACAL1335 — un contour par pan, de 0 à 100 ; sans contour ⇒ null ; le compte
+        de requêtes ne bouge pas (le document est déjà chargé)."""
+        deux_pans = {'version': 2, 'zones': [
+            {'id': 'a', 'vertices': [[-7.5900, 33.5730], [-7.5898, 33.5730],
+                                     [-7.5898, 33.5732], [-7.5900, 33.5732]]},
+            {'id': 'b', 'vertices': [[-7.5897, 33.5730], [-7.5896, 33.5730], [-7.5896, 33.5731]]},
+            {'id': 'c', 'vertices': [[-7.59, 33.57]]}]}  # illisible : ignoré
+        avec = Calepinage.objects.create(company=self.company, client=self.client_a,
+                                         titre='Deux pans', roof_layout=deux_pans)
+        sans = self._creer(0, False)  # champ au sol sans contour de pan
+
+        with CaptureQueriesContext(connection) as un_trace:
+            lignes = {ligne['id']: ligne for ligne in self._lignes(self.api.get(URL))}
+
+        apercu = lignes[avec.pk]['apercu_toit']
+        self.assertEqual(apercu['viewBox'], '0 0 100 100')
+        self.assertEqual([len(c) for c in apercu['contours']], [4, 3])
+        points = [p for c in apercu['contours'] for p in c]
+        self.assertTrue(all(0 <= x <= 100 and 0 <= y <= 100 for x, y in points), points)
+        # Le cadre commun est rempli (jamais des degrés ni des mètres bruts).
+        self.assertGreater(max(x for x, _ in points) - min(x for x, _ in points), 80)
+        self.assertIsNone(lignes[sans.pk]['apercu_toit'])
+        Calepinage.objects.filter(pk=avec.pk).update(roof_layout=SOL_12)
+        with CaptureQueriesContext(connection) as sans_trace:
+            self.api.get(URL)
+        self.assertEqual(len(un_trace), len(sans_trace))

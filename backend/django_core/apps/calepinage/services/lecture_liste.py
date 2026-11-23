@@ -127,6 +127,54 @@ def verdict_range(calepinage):
             'lu_le': verdict.get('lu_le'), 'perime': perime}
 
 
+def _contours_geo(document):
+    """Les contours ``[(lat, lng)]`` des pans (``zones[].vertices`` en ``[lng, lat]``),
+    à défaut le contour du toit (``outline`` en ``[lat, lng]``) ; les points illisibles
+    retirés, un contour de moins de trois points ignoré."""
+    def lire(brut, ordre):
+        points = []
+        for point in brut if isinstance(brut, (list, tuple)) else ():
+            if isinstance(point, (list, tuple)) and len(point) >= 2:
+                a, b = nombre(point[0]), nombre(point[1])
+                if a is not None and b is not None:
+                    points.append((a, b) if ordre == 'latlng' else (b, a))
+        return points if len(points) >= 3 else None
+
+    zones = document.get('zones') if isinstance(document.get('zones'), list) else []
+    contours = [c for c in (lire(z.get('vertices'), 'lnglat') for z in zones if isinstance(z, dict)) if c]
+    return contours or [c for c in [lire(document.get('outline'), 'latlng')] if c]
+
+
+def apercu_du_toit(document):
+    """ACAL1334/1335 — ``{viewBox: "0 0 100 100", contours}`` : chaque contour de pan
+    projeté à plat (mètres locaux) puis ramené de 0 à 100 dans le cadre COMMUN de tous les
+    pans, proportions gardées, y vers le bas ; ``None`` sans contour. Aucun chiffre ajouté."""
+    import math
+
+    contours = _contours_geo(document) if isinstance(document, dict) else []
+    if not contours:
+        return None
+    tous = [p for c in contours for p in c]
+    lat0 = sum(p[0] for p in tous) / len(tous)
+    cosinus = math.cos(math.radians(lat0))
+    plats = [[(lng * cosinus, -lat) for lat, lng in c] for c in contours]
+    xs, ys = [x for c in plats for x, _ in c], [y for c in plats for _, y in c]
+    etendue = max(max(xs) - min(xs), max(ys) - min(ys))
+    if not etendue > 0:
+        return None
+    echelle, marge = 92.0 / etendue, 4.0
+    dx = marge + (92.0 - (max(xs) - min(xs)) * echelle) / 2
+    dy = marge + (92.0 - (max(ys) - min(ys)) * echelle) / 2
+    return {'viewBox': '0 0 100 100',
+            'contours': [[[round((x - min(xs)) * echelle + dx, 1), round((y - min(ys)) * echelle + dy, 1)]
+                          for x, y in c] for c in plats]}
+
+
+def apercu_toit(calepinage):
+    """L'aperçu du toit de la ligne, lu sur le document DÉJÀ chargé (aucune requête)."""
+    return apercu_du_toit(getattr(calepinage, 'roof_layout', None))
+
+
 def compteurs_statut(lignes):
     """``{tous, brouillon, valide, perime, refuse}`` de ``lignes`` — un queryset DÉJÀ
     borné société, vue du responsable, recherche et filtres, SAUF le statut : UNE

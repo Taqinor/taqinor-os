@@ -407,6 +407,8 @@ class CalepinageSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
     points_a_regler = serializers.SerializerMethodField()
     points_a_regler_lu_le = serializers.SerializerMethodField()
     points_a_regler_perime = serializers.SerializerMethodField()
+    #: ACAL1335 — le tracé des pans du document (0 à 100), ou ``None``.
+    apercu_toit = serializers.SerializerMethodField()
     #: CALX406 — le NOM du responsable, pour la colonne de la liste (le champ
     #: ``responsable`` lui-même reste l'identifiant, en lecture-écriture).
     responsable_nom = serializers.SerializerMethodField()
@@ -439,7 +441,7 @@ class CalepinageSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
             'layout_stale', 'layout_nb_panneaux',
             'kwc', 'production_kwh_an',  # carte de la liste, lecture seule
             'points_a_regler', 'points_a_regler_lu_le',  # ACAL1333
-            'points_a_regler_perime',
+            'points_a_regler_perime', 'apercu_toit',  # ACAL1335
             'cree_par', 'created_at', 'updated_at',
             'responsable', 'responsable_nom',  # CALX406
             'reference', 'image', 'modifie_le', 'client_apercu',  # ACAL196
@@ -563,6 +565,17 @@ class CalepinageSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
         from .services.lecture_liste import verdict_range
 
         return verdict_range(calepinage)['perime']
+
+    @extend_schema_field({
+        'type': 'object', 'nullable': True,
+        'properties': {'viewBox': {'type': 'string'},
+                       'contours': {'type': 'array', 'items': {
+                           'type': 'array', 'items': {
+                               'type': 'array', 'items': {'type': 'number'}}}}}})
+    def get_apercu_toit(self, calepinage):
+        from .services.lecture_liste import apercu_toit
+
+        return apercu_toit(calepinage)
 
     @extend_schema_field(serializers.CharField())
     def get_reference(self, calepinage):
