@@ -756,7 +756,7 @@ def option_imposee_des_lignes(lignes, catalogue, kwc, nb_panneaux=None, devis=No
             'hybrides': list(hybrides.values()),
             'recommandee': _recommandee_des_lignes(lignes, devis),
             'module_spec': catalogue.get('module_spec'),  # D-HYB-5 (chaînes du suffisant)
-            'froid': catalogue.get('froid'),  # ADEV122 — même froid que les chaînes de l'étude
+            'froid': catalogue.get('froid'),  # ADEV122 — posé par l'étude (``option_avec_de_l_etude``)
             'empreinte': [kwc, sorted(q_h.items()), sorted(q_b.items())] + _jeton_cycles(lignes, devis)}
 
 
@@ -944,6 +944,10 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
         from apps.ventes.economie_ci import resoudre_tva_recuperable
         flux['tva_recuperable'] = resoudre_tva_recuperable(
             getattr(lead, 'tva_recuperable', None))
+    if imposee is not None and catalogue.get('froid') is not None:
+        # ADEV122 — l'option des LIGNES est bâtie hors étude (catalogue lu sans le site) : elle prend ici
+        # le froid du site de l'étude, celui de ses chaînes — l'onduleur d'extension n'est plus conçu à −5 °C.
+        imposee = dict(imposee, froid=catalogue['froid'])
     if imposee is not None and imposee.get('recomposer'):
         imposee = _recomposer(catalogue, imposee, contexte)
         return _imposee_verdict(dict(vide, bloc=_option_imposee(imposee, dict(contexte, **flux)),

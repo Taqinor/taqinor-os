@@ -1074,6 +1074,16 @@ class RetourOptionAvecFluxTests(SimpleTestCase):
         with mock.patch('apps.ventes.domain.etude_ci_batterie._option_imposee', espion):
             option_avec_de_l_etude({}, None, choix='avec', lead=None, imposee={'x': 1})
         self.assertEqual(vus['tva_recuperable']['valeur'], 'inconnu')
+        # ADEV122 — l'option des lignes prend le froid du site de l'ÉTUDE (son catalogue), y compris
+        # quand elle a été bâtie avec un catalogue lu sans le site (rafraîchisseur, révision de visite).
+        recues = []
+        with mock.patch('apps.ventes.domain.etude_ci_batterie._option_imposee',
+                        lambda imposee, contexte: recues.append(imposee) or {}):
+            option_avec_de_l_etude({'froid': 'froid du site'}, None, choix='avec', lead=None,
+                                   imposee={'x': 1, 'froid': None})
+            option_avec_de_l_etude({}, None, choix='avec', lead=None,
+                                   imposee={'x': 1, 'froid': 'déjà posé'})
+        self.assertEqual([r['froid'] for r in recues], ['froid du site', 'déjà posé'])
         for valeur, base in (('oui', 'ht'), ('non', 'ttc'), ('inconnu', 'deux')):
             ctx = dict(self._ctx(), tva_recuperable=valeur)
             bloc = _bloc(self._evaluation(), self._Valoriseur(), ctx)
