@@ -384,7 +384,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
       select.appendChild(opt);
     }
     label.appendChild(select);
-    obsEditPanel.insertBefore(label, obsEditPanel.firstChild);
+    obsEditPanel.insertBefore(label, obsEditPanel.firstElementChild?.nextSibling ?? null); // ACAL1441 — le titre reste en tête
     return select;
   }
   /** Libellé du dégagement courant (m), affiché sous le sélecteur. CALX104 — un obstacle
@@ -424,7 +424,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
       select.appendChild(opt);
     }
     label.appendChild(select);
-    obsEditPanel.insertBefore(label, obsEditPanel.firstChild);
+    obsEditPanel.insertBefore(label, obsEditPanel.firstElementChild?.nextSibling ?? null); // ACAL1441 — le titre reste en tête
     return select;
   }
 

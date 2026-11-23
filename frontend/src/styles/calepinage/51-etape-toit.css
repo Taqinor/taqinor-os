@@ -211,6 +211,15 @@
 .cal-coque .cal-toit-obstacle-nom { flex: 1; min-width: 0; }
 .cal-coque .cal-toit-obstacle-cotes { color: var(--muted-foreground); white-space: nowrap; }
 
+/* ── Carte « Obstacle sélectionné » (ACAL1441) : cibles de 44 px, phrase de dégagement en texte courant ───── */
+.cal-coque #rp9-obs-edit #rp9-obs-delete { min-height: 44px; border-radius: 10px; }
+.cal-coque #rp9-obs-edit #rp9-obs-minus,
+.cal-coque #rp9-obs-edit #rp9-obs-plus { flex: none; width: 44px; min-width: 44px; height: 44px; border-radius: 10px; }
+.cal-coque #rp9-obs-edit #rp9-obs-dims { flex: 1 1 100%; order: 9; font-size: 0.875rem; font-weight: 400; line-height: 1.45; color: var(--muted-foreground); }
+.cal-coque #rp9-obs-edit:has(#rp9-obs-dims) > div:has(> #rp9-obs-dims) { flex-wrap: wrap; }
+.cal-coque #rp9-obs-edit .rp9-obs-type-row,
+.cal-coque #rp9-obs-edit .rp9-obs-provenance-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; font-size: 0.875rem; }
+
 /* ── Sur la carte : puce, bulle, barre d'outils ─────────────────────────── */
 .cal-coque .cal-sur-carte-resume {
   position: absolute;

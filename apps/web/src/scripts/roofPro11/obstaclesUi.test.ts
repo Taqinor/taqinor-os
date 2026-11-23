@@ -641,6 +641,18 @@ describe('ACAL413 — un filet pour les effacements de masse', () => {
   });
 });
 
+// ACAL1441 — la carte « Obstacle sélectionné » : le titre vient en tête, avant Provenance et Type.
+describe('ACAL1441 — titre de la carte obstacle avant les menus', () => {
+  it('les sélecteurs Provenance et Type se posent APRÈS la ligne de titre, dans l’ordre d’avant', () => {
+    document.body.innerHTML = '<div><button id="rp9-obstacle"></button></div><div id="rp9-obs-edit"><div id="rp9-obs-titre"><span>Obstacle sélectionné</span></div><p id="rp9-obs-corps"></p></div>';
+    const ctx = { obstacles: [], selectedObsId: null, obstacleMode: false, environment: [] } as unknown as Ctx;
+    const map = { getSource: () => undefined, getLayer: () => undefined, getCanvas: () => ({ style: {} }), on: () => {}, dragPan: { enable() {}, disable() {} }, queryRenderedFeatures: () => [] } as never;
+    createObstaclesUi(ctx, { map, recalc: () => {}, setStatus: () => {}, redrawTrace: () => {} });
+    const enfants = Array.from(document.getElementById('rp9-obs-edit')!.children).map((e) => e.id || e.className);
+    expect(enfants).toEqual(['rp9-obs-titre', 'rp9-obs-provenance-row', 'rp9-obs-type-row', 'rp9-obs-corps']);
+  });
+});
+
 // ACAL1409 — le tableau « Objets du site » suit chaque pose d'obstacle et la réouverture (même pan).
 describe('ACAL1409 — Objets du site à chaque pose et à la réouverture', () => {
   it('poser un obstacle puis hydrater : le bloc objets-site porte deux boutons `data-objet`', () => {
