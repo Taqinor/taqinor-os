@@ -322,3 +322,55 @@ class CompteursEtCarteDeLaListeTest(BaseApiCalepinage):
         ligne = next(ligne for ligne in self._lignes(self.api.get(URL)) if ligne['id'] == calepinage.pk)
 
         self.assertEqual(ligne['production_kwh_an'], 11480)
+
+
+#: Un champ au sol de 12 modules de 580 Wc (6,96 kWc) : la puissance du document.
+SOL_12 = {'version': 2, 'pin': {'lat': 33.57, 'lng': -7.59}, 'zones': [],
+          'poseSurfaces': [{'id': 'champ-1', 'kind': 'sol', 'label': 'Champ sud',
+                            'moduleWc': 580, 'tiltDeg': 20, 'rowAzimuthDeg': 90,
+                            'engine': {'modules': 12}}]}
+
+
+class ValeursRangeesDeLaListeTest(BaseApiCalepinage):
+    """ACAL1309 — six lignes : les valeurs RANGÉES sont lues, ``null`` sinon,
+    les effectifs somment à six et le compte de requêtes ne suit pas les lignes."""
+
+    def _creer(self, rang, simule):
+        resultat = ({'production': {'total': {'p50_kwh': 9000.4 + rang}},
+                     'pose': {'total_modules': 12, 'kwc': 6.96}} if simule else None)
+        return Calepinage.objects.create(
+            company=self.company, client=self.client_a, lead_id=self.lead.pk,
+            titre=f'Toiture {rang}', roof_layout=SOL_12, resultat=resultat,
+            approbation=({'etat': 'refuse'} if rang == 5 else None))
+
+    def test_six_lignes_lues_sans_rien_recalculer(self):
+        simules = {self._creer(rang, True).pk: 9000 + rang for rang in range(3)}
+        nus = {self._creer(rang, False).pk for rang in range(3, 6)}
+
+        reponse = self.api.get(URL, {'page_size': 50})
+
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        lignes = {ligne['id']: ligne for ligne in self._lignes(reponse)}
+        for pk, p50 in simules.items():
+            self.assertEqual(lignes[pk]['production_kwh_an'], p50)
+            self.assertEqual(lignes[pk]['kwc'], 6.96)
+        for pk in nus:
+            self.assertIsNone(lignes[pk]['production_kwh_an'])
+            self.assertEqual(lignes[pk]['kwc'], 6.96)  # puissance du document seul
+        compteurs = reponse.data['compteurs_statut']
+        self.assertEqual(compteurs['tous'], 6)
+        self.assertEqual(sum(compteurs[s] for s in ('brouillon', 'valide', 'perime', 'refuse')), 6)
+        self.assertEqual(compteurs['refuse'], 1)
+
+    def test_le_compte_de_requetes_ne_suit_pas_les_lignes(self):
+        def mesurer(nombre):
+            Calepinage.objects.filter(company=self.company).delete()
+            for rang in range(nombre):
+                self._creer(rang, rang % 2 == 0)
+            self.api.get(URL)  # chauffe les caches de processus
+            with CaptureQueriesContext(connection) as requetes:
+                reponse = self.api.get(URL, {'page_size': 50})
+            self.assertEqual(reponse.status_code, 200)
+            return len(requetes)
+
+        self.assertEqual(mesurer(6), mesurer(18))
