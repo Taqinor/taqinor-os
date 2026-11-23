@@ -21,7 +21,7 @@
           "pose.kwc",
           "production.total.p50_kwh"
         ],
-        "motif_si_absent": "Synthèse non calculée : la puissance crête et la production annuelle P50 sont nécessaires (calepinez la toiture dans l'atelier, puis lancez la simulation dans l'onglet Production)."
+        "motif_si_absent": "Synthèse non calculée : la puissance crête et la production annuelle P50 sont nécessaires (calepinez la toiture dans l'atelier, puis lancez la simulation à l'étape Résultats)."
       },
       {
         "code": "site_meteo",
@@ -31,7 +31,7 @@
         "entrees_exigees": [
           "production.base"
         ],
-        "motif_si_absent": "Aucune base d'irradiance publiée pour ce calepinage : lancez la simulation (onglet Production) pour que la source météo soit connue."
+        "motif_si_absent": "Aucune base d'irradiance publiée pour ce calepinage : lancez la simulation (étape Résultats) pour que la source météo soit connue."
       },
       {
         "code": "photos_site",
@@ -59,7 +59,7 @@
         "ordre": 40,
         "obligatoire": true,
         "entrees_exigees": [],
-        "motif_si_absent": "Ni cascade de pertes ni poste de perte déclaré : lancez la simulation (onglet Production), ou déclarez les postes dans l'éditeur de pertes."
+        "motif_si_absent": "Ni cascade de pertes ni poste de perte déclaré : lancez la simulation (étape Résultats), ou déclarez les postes dans l'éditeur de pertes."
       },
       {
         "code": "production",
@@ -70,7 +70,7 @@
           "production.total.p50_kwh",
           "production.mensuel[]"
         ],
-        "motif_si_absent": "Production non simulée : le productible annuel et mensuel n'est publié qu'après la simulation (onglet Production)."
+        "motif_si_absent": "Production non simulée : le productible annuel et mensuel n'est publié qu'après la simulation (étape Résultats)."
       },
       {
         "code": "consommation",
@@ -80,7 +80,7 @@
         "entrees_exigees": [
           "consommation.total_kwh"
         ],
-        "motif_si_absent": "Aucune consommation servie : la section est omise (la courbe de charge se saisit dans l'onglet Production)."
+        "motif_si_absent": "Aucune consommation servie : la section est omise (la courbe de charge se saisit à l'étape Résultats)."
       },
       {
         "code": "hors_reseau",
@@ -101,7 +101,7 @@
         "entrees_exigees": [
           "autoconsommation"
         ],
-        "motif_si_absent": "Autoconsommation non calculée : elle se lit sur une simulation faite avec une courbe de charge (onglet Production, consommation du site)."
+        "motif_si_absent": "Autoconsommation non calculée : elle se lit sur une simulation faite avec une courbe de charge (étape Résultats, consommation du site)."
       },
       {
         "code": "pompage",

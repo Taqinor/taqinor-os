@@ -1,7 +1,8 @@
 """ACAL860 — ``GET /calepinages/<pk>/pret-a-envoyer/`` : « prêt à envoyer ? ».
 
 Lecture seule, recalculée à chaque lecture (``services/pret_a_envoyer.py``) :
-ni statut, ni version, ni devis touché (D-ACAL-1). Greffée sur
+ni statut, ni version, ni devis touché (D-ACAL-1) ; seule la lecture complète
+range son verdict pour la liste (ACAL1333, ``dernier_verdict``). Greffée sur
 ``CalepinageViewSet`` comme les autres actions rattachées
 (``views/rattachements.py``) ; la société est bornée par ``get_object()`` :
 un calepinage d'une autre société est INTROUVABLE (404).
@@ -18,6 +19,7 @@ from rest_framework.response import Response
 
 from ..permissions import PeutVoirCalepinage
 from ..services import pret_a_envoyer as controles
+from ..services.lecture_liste import ranger_verdict
 from .calepinages import CalepinageViewSet
 
 __all__ = ['pret_a_envoyer', 'PRODUCTEURS', 'PRODUCTEURS_PAR_ETAPE']
@@ -80,9 +82,14 @@ def pret_a_envoyer(self, request, pk=None):
     if etape is not None and etape not in PRODUCTEURS_PAR_ETAPE:
         raise ValidationError({'etape': 'Étape inconnue : choisissez parmi %s.'
                                % ', '.join(sorted(PRODUCTEURS_PAR_ETAPE))})
-    return Response(controles.agreger(
-        self.get_object(),
-        PRODUCTEURS_PAR_ETAPE[etape] if etape else PRODUCTEURS, etape=etape))
+    calepinage = self.get_object()
+    reponse = controles.agreger(
+        calepinage,
+        PRODUCTEURS_PAR_ETAPE[etape] if etape else PRODUCTEURS, etape=etape)
+    if etape is None:
+        # ACAL1333 — seule la lecture COMPLÈTE range le verdict que lit la liste.
+        ranger_verdict(calepinage, reponse)
+    return Response(reponse)
 
 
 CalepinageViewSet.pret_a_envoyer = pret_a_envoyer

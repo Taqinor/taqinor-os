@@ -214,7 +214,7 @@ class FormeDuResultatTest(SimpleTestCase):
         self.assertEqual(resultat['production']['mensuel'], [])
         self.assertEqual(resultat['pertes'], [])
         self.assertEqual(len(resultat['hash_entree']), 64)
-        self.assertTrue(any('Production non simulée' in message
+        self.assertTrue(any("La production n'est pas encore calculée" in message
                             for message in resultat['avertissements']))
 
     def test_aucun_prix_dans_le_resultat(self):

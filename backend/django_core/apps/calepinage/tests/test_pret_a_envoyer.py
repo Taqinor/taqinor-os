@@ -514,6 +514,29 @@ class TailleSansFactureTest(SimpleTestCase):
         ci = _cible(None, 'Lead commercial/industriel : étude C&I.')
         self.assertEqual(self._controle(ci)['etat'], 'ok')
 
+    def test_sans_facture_ni_taille_aucun_balayage_reponse_identique(self):
+        """ACAL1342 — un lead résidentiel sans facture ni taille souhaitée : la réponse
+        est celle du moteur (« facture absente »), sans lancer ``cible_depuis_lead`` ;
+        dès qu'un champ dimensionnant est rempli, le moteur tranche comme avant."""
+        from types import SimpleNamespace
+
+        from apps.calepinage.services.pret_a_envoyer import controle_taille_sans_facture
+
+        attendu = self._controle(_cible('facture_absente', 'Facture absente.'))
+        vide = dict(type_installation='residentiel', facture_hiver=None, facture_ete='',
+                    conso_mensuelle_kwh=None, taille_souhaitee_kwc=None)
+        for lead, appels in ((SimpleNamespace(**vide), 0),
+                             (SimpleNamespace(**dict(vide, facture_hiver=900)), 1),
+                             (SimpleNamespace(**dict(vide, type_installation='commercial')), 1)):
+            calepinage = _Calepinage(lead_id=3)
+            calepinage.roof_layout = {'zones': []}
+            with mock.patch(LEAD, return_value=lead), \
+                    mock.patch(CIBLE, return_value=_cible('facture_absente', 'Facture absente.')) as balayage, \
+                    mock.patch(MESURES, return_value={'kwc': 131.04, 'pans': []}):
+                controle = controle_taille_sans_facture(calepinage)
+            self.assertEqual(balayage.call_count, appels, lead)
+            self.assertEqual(controle, attendu)
+
     def test_puissance_inconnue_info_et_sans_lead(self):
         self.assertEqual(self._controle(_cible('facture_absente', 'x'),
                                         kwc=None)['etat'], 'info')
@@ -956,3 +979,30 @@ class PretAEnvoyerRouteTest(BaseApiCalepinage):
             # une lecture neuve recalcule : rien n'est gardé d'une requête à l'autre
             self.assertEqual((calculs.call_count, lectures.call_count),
                              (2 * premiere[0], 2 * premiere[1]))
+
+    def test_la_lecture_complete_range_son_verdict_le_filtre_non(self):
+        """ACAL1333 — verdict rangé par la lecture complète seule, idempotent,
+        sans toucher ``updated_at``."""
+        from apps.calepinage.models import Calepinage
+
+        calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='QA-ACAL1333',
+            layout_hash='a' * 64)
+        url = f'{url_detail(calepinage.pk)}pret-a-envoyer/'
+        avant = calepinage.updated_at
+        self.assertEqual(self.api.get(url, {'etape': 'electrique'}).status_code, 200)
+        self.assertIsNone(Calepinage.objects.get(pk=calepinage.pk).dernier_verdict)
+
+        reponse = self.api.get(url)
+
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        rangee = Calepinage.objects.get(pk=calepinage.pk)
+        verdict = rangee.dernier_verdict
+        self.assertEqual(
+            (verdict['a_regler'], verdict['bloquants'], verdict['empreinte']),
+            (reponse.data['nombre_a_regler'], reponse.data['nombre_bloquants'], 'a' * 64))
+        self.assertTrue(verdict['lu_le'])
+        self.assertEqual(rangee.updated_at, avant)
+        # Relire le même document : aucune réécriture (même date de lecture).
+        self.assertEqual(self.api.get(url).status_code, 200)
+        self.assertEqual(Calepinage.objects.get(pk=calepinage.pk).dernier_verdict, verdict)

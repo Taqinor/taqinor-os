@@ -403,6 +403,12 @@ class CalepinageSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
     #: (``services/lecture_liste.py``) : kWc du document, P50 déjà enregistré.
     kwc = serializers.SerializerMethodField()
     production_kwh_an = serializers.SerializerMethodField()
+    #: ACAL1333 — le dernier verdict « Prêt à envoyer ? » RANGÉ (aucun contrôle).
+    points_a_regler = serializers.SerializerMethodField()
+    points_a_regler_lu_le = serializers.SerializerMethodField()
+    points_a_regler_perime = serializers.SerializerMethodField()
+    #: ACAL1335 — le tracé des pans du document (0 à 100), ou ``None``.
+    apercu_toit = serializers.SerializerMethodField()
     #: CALX406 — le NOM du responsable, pour la colonne de la liste (le champ
     #: ``responsable`` lui-même reste l'identifiant, en lecture-écriture).
     responsable_nom = serializers.SerializerMethodField()
@@ -434,6 +440,8 @@ class CalepinageSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
             'layout_hash', 'roof_image', 'version_moteur',
             'layout_stale', 'layout_nb_panneaux',
             'kwc', 'production_kwh_an',  # carte de la liste, lecture seule
+            'points_a_regler', 'points_a_regler_lu_le',  # ACAL1333
+            'points_a_regler_perime', 'apercu_toit',  # ACAL1335
             'cree_par', 'created_at', 'updated_at',
             'responsable', 'responsable_nom',  # CALX406
             'reference', 'image', 'modifie_le', 'client_apercu',  # ACAL196
@@ -539,6 +547,35 @@ class CalepinageSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
         from .services.lecture_liste import production_annuelle
 
         return production_annuelle(calepinage)
+
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
+    def get_points_a_regler(self, calepinage):
+        from .services.lecture_liste import verdict_range
+
+        return verdict_range(calepinage)['points_a_regler']
+
+    @extend_schema_field(serializers.DateTimeField(allow_null=True))
+    def get_points_a_regler_lu_le(self, calepinage):
+        from .services.lecture_liste import verdict_range
+
+        return verdict_range(calepinage)['lu_le']
+
+    @extend_schema_field(serializers.BooleanField(allow_null=True))
+    def get_points_a_regler_perime(self, calepinage):
+        from .services.lecture_liste import verdict_range
+
+        return verdict_range(calepinage)['perime']
+
+    @extend_schema_field({
+        'type': 'object', 'nullable': True,
+        'properties': {'viewBox': {'type': 'string'},
+                       'contours': {'type': 'array', 'items': {
+                           'type': 'array', 'items': {
+                               'type': 'array', 'items': {'type': 'number'}}}}}})
+    def get_apercu_toit(self, calepinage):
+        from .services.lecture_liste import apercu_toit
+
+        return apercu_toit(calepinage)
 
     @extend_schema_field(serializers.CharField())
     def get_reference(self, calepinage):

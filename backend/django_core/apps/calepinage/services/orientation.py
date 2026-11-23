@@ -110,10 +110,9 @@ MOTIF_OPTIMAL_SANS_IRRADIATION = (
     'optimal (« H(i)_y ») : le TOF n\'est pas publié.')
 
 MOTIF_SANS_ACCES_SOLAIRE = (
-    "Le document ne porte aucun accès solaire pour ce pan "
-    ': le TSRF, qui est le produit de '
-    "l'accès solaire par le TOF, n'est pas publié — un accès supposé à 100 % "
-    'se lirait « pan sans aucune ombre, mesuré ».')
+    "L'ombre de ce pan n'est pas encore calculée : la part du soleil qu'il "
+    "reçoit, ombre comprise, n'est pas publiée. Lancez le calcul des ombres "
+    "du toit (un pan non calculé n'est pas un pan sans ombre).")
 
 __all__ = ['SERVICE_PVCALC', 'METHODE', 'SOURCE_PVGIS', 'REFERENCE',
            'PUISSANCE_EXIGEE_KWC', 'VALEUR_NEUTRE_EXIGEE',

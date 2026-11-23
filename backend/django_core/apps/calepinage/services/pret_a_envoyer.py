@@ -636,11 +636,13 @@ def controle_taille_sans_facture(calepinage):
     """ACAL861 — ``taille_sans_facture`` : avertit, ne bloque jamais."""
     from core.electrique.types import fr
 
-    from .devis import taille_non_dimensionnee
+    from .devis import lead_sans_facture_ni_taille, taille_non_dimensionnee
     from .mesures import mesures_du_document
 
     libelle = 'Taille dimensionnée sur la consommation'
-    if taille_non_dimensionnee(calepinage) is None:
+    # ACAL1342 — ni facture ni taille souhaitée : la réponse est connue, aucun balayage.
+    if not lead_sans_facture_ni_taille(calepinage) \
+            and taille_non_dimensionnee(calepinage) is None:
         return _controle('taille_sans_facture', libelle, 'ok', 'Dimensionnée',
                          cible=CIBLE_FACTURE)
     kwc = mesures_du_document(getattr(calepinage, 'roof_layout', None)).get(

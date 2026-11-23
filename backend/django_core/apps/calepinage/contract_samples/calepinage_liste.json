@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/calepinage/calepinages/",
-  "pourquoi": "ACAL11 (C-ACAL-017) — LA LISTE DES CALEPINAGES : enveloppe de pagination DRF {count, next, previous, results[]} ; chaque ligne porte : id, titre, nom, statut, statut_libelle, lead {id, nom, ville, supprime} | null, client (IDENTIFIANT — clé d'écriture INCHANGÉE), client_apercu {id, nom, ville} | null (lecture seule : ce que la liste affiche), devis (identifiant), reference (CAL-AAMM-NNNN, DÉRIVÉE), image {url, genere_le, expire_le} (url = chemin RELATIF même origine /api/django/calepinage/calepinages/<id>/roof-image/fichier/, ou null — jamais une URL MinIO), modifie_le (ISO = updated_at), layout_stale (bool | null — null sans devis), layout_nb_panneaux, responsable (id), responsable_nom. `statuts_publies` = les statuts DÉRIVÉS (brouillon, valide, perime ; ACON28 : refuse = dernière décision d'approbation un REFUS) avec leurs libellés, égaux à Calepinage.Statut.choices. Remplace la fixture tapée à la main LIGNE_AVEC_RATTACHEMENT de CalepinageList.err-qah-rattachement.test.jsx (supprimée par D06-T25). PACT10 : le contrat part AVANT D06-T24 (serveur) et D06-T25 (écran). D07-L6 (maquette Liste) — chaque ligne porte aussi kwc (kWc du document de pose, mesures_du_document, null si inconnu) et production_kwh_an (P50 déjà enregistré par la dernière simulation, entier, null sans simulation ou quand le nombre de modules simulés n'est plus celui du document ; jamais recalculé, services/lecture_liste.py) ; l'enveloppe porte compteurs_statut {tous, brouillon, valide, perime, refuse} : effectifs par statut dérivé sur la même portée que la liste (société, vue du responsable, recherche et filtres) SAUF le filtre de statut, en une requête groupée. La ville de la carte se lit sur client_apercu.ville puis lead.ville ; aucun « nombre de points à régler » n'est enregistré, la liste n'en sert pas.",
+  "pourquoi": "ACAL11 (C-ACAL-017) — LA LISTE DES CALEPINAGES : enveloppe de pagination DRF {count, next, previous, results[]} ; chaque ligne porte : id, titre, nom, statut, statut_libelle, lead {id, nom, ville, supprime} | null, client (IDENTIFIANT — clé d'écriture INCHANGÉE), client_apercu {id, nom, ville} | null (lecture seule : ce que la liste affiche), devis (identifiant), reference (CAL-AAMM-NNNN, DÉRIVÉE), image {url, genere_le, expire_le} (url = chemin RELATIF même origine /api/django/calepinage/calepinages/<id>/roof-image/fichier/, ou null — jamais une URL MinIO), modifie_le (ISO = updated_at), layout_stale (bool | null — null sans devis), layout_nb_panneaux, responsable (id), responsable_nom. `statuts_publies` = les statuts DÉRIVÉS (brouillon, valide, perime ; ACON28 : refuse = dernière décision d'approbation un REFUS) avec leurs libellés, égaux à Calepinage.Statut.choices. Remplace la fixture tapée à la main LIGNE_AVEC_RATTACHEMENT de CalepinageList.err-qah-rattachement.test.jsx (supprimée par D06-T25). PACT10 : le contrat part AVANT D06-T24 (serveur) et D06-T25 (écran). D07-L6 (maquette Liste) — chaque ligne porte aussi kwc (kWc du document de pose, mesures_du_document, null si inconnu) et production_kwh_an (P50 déjà enregistré par la dernière simulation, entier, null sans simulation ou quand le nombre de modules simulés n'est plus celui du document ; jamais recalculé, services/lecture_liste.py) ; l'enveloppe porte compteurs_statut {tous, brouillon, valide, perime, refuse} : effectifs par statut dérivé sur la même portée que la liste (société, vue du responsable, recherche et filtres) SAUF le filtre de statut, en une requête groupée. La ville de la carte se lit sur client_apercu.ville puis lead.ville. ACAL1308 — points_a_regler : nombre de points à régler (bloquants compris) du DERNIER verdict « Prêt à envoyer ? » RANGÉ par la lecture complète de pret-a-envoyer/ (jamais recalculé par ligne : la liste ne lance aucun contrôle), entier, null quand aucun verdict n'est rangé (jamais 0) ou quand le document a changé depuis ; points_a_regler_lu_le = date de cette lecture (ISO, null sans verdict rangé) ; points_a_regler_perime = true quand le document a changé depuis la lecture (l'écran dit alors « à relire »), false quand le verdict décrit le document, null sans verdict rangé. ACAL1334 — apercu_toit : le TRACÉ du toit dessiné sur la carte, lu sur les contours des pans du document enregistré (jamais une image, jamais une URL) : {viewBox: \"0 0 100 100\", contours: [[[x, y], …], …]} — un contour fermé par pan, coordonnées normalisées de 0 à 100 dans le cadre commun de tous les pans (proportions gardées, y vers le bas comme en SVG) ; null quand le document ne porte aucun contour de pan.",
   "exemple": {
     "count": 1,
     "next": null,
@@ -31,11 +31,55 @@
           "genere_le": "2026-10-03T09:00:00Z",
           "expire_le": "2026-10-03T10:00:00Z"
         },
+        "apercu_toit": {
+          "viewBox": "0 0 100 100",
+          "contours": [
+            [
+              [
+                8.0,
+                20.0
+              ],
+              [
+                52.0,
+                20.0
+              ],
+              [
+                52.0,
+                80.0
+              ],
+              [
+                8.0,
+                80.0
+              ]
+            ],
+            [
+              [
+                56.0,
+                30.0
+              ],
+              [
+                92.0,
+                30.0
+              ],
+              [
+                92.0,
+                70.0
+              ],
+              [
+                56.0,
+                70.0
+              ]
+            ]
+          ]
+        },
         "modifie_le": "2026-10-03T09:15:00Z",
         "layout_stale": false,
         "layout_nb_panneaux": 24,
         "kwc": 6.96,
         "production_kwh_an": 11480,
+        "points_a_regler": 1,
+        "points_a_regler_lu_le": "2026-10-03T09:10:00Z",
+        "points_a_regler_perime": false,
         "responsable": 3,
         "responsable_nom": "demo_admin"
       }
@@ -73,11 +117,37 @@
           "genere_le": "2026-10-03T09:00:00Z",
           "expire_le": "2026-10-03T10:00:00Z"
         },
+        "apercu_toit": {
+          "viewBox": "0 0 100 100",
+          "contours": [
+            [
+              [
+                10.0,
+                25.0
+              ],
+              [
+                90.0,
+                25.0
+              ],
+              [
+                90.0,
+                75.0
+              ],
+              [
+                10.0,
+                75.0
+              ]
+            ]
+          ]
+        },
         "modifie_le": "2026-10-03T09:15:00Z",
         "layout_stale": null,
         "layout_nb_panneaux": 24,
         "kwc": null,
         "production_kwh_an": null,
+        "points_a_regler": null,
+        "points_a_regler_lu_le": null,
+        "points_a_regler_perime": null,
         "responsable": 3,
         "responsable_nom": "demo_admin"
       }
@@ -113,11 +183,15 @@
           "genere_le": null,
           "expire_le": null
         },
+        "apercu_toit": null,
         "modifie_le": "2026-10-03T09:15:00Z",
         "layout_stale": null,
         "layout_nb_panneaux": null,
         "kwc": null,
         "production_kwh_an": null,
+        "points_a_regler": null,
+        "points_a_regler_lu_le": "2026-10-02T16:40:00Z",
+        "points_a_regler_perime": true,
         "responsable": 3,
         "responsable_nom": "demo_admin"
       }

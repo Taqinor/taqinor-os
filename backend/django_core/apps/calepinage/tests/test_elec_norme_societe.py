@@ -41,8 +41,9 @@ class RegleD5Test(SimpleTestCase):
         self.assertFalse(norme['applicable'])
         self.assertIsNone(norme['norme'])
         self.assertEqual(norme['coefficients'], {})
-        self.assertIn('OMIS', norme['motif'])
-        self.assertIn('aucun texte normatif marocain', norme['motif'].lower())
+        self.assertIn('ne sont pas calculés', norme['motif'])
+        # ACAL1338 — une phrase simple : aucun sigle de norme cité au Maroc.
+        self.assertNotIn('NF C 15-100', norme['motif'])
 
     def test_maroc_avec_selection_explicite_applique_le_jeu_choisi(self):
         norme = norme_applicable({

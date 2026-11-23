@@ -229,9 +229,7 @@ def checklist_terre(conception, *, decisions=None, norme=None, company=None):
         return {'lignes': [], 'justification_requise': False,
                 'justification_fournie': False, 'mesure': None,
                 'mesures_saisies': {}, 'piece_jointe': None,
-                'omissions': [norme.get('motif') or
-                              "aucune norme électrique sélectionnée : "
-                              "check-list de terre OMISE"]}
+                'omissions': [norme.get('motif') or _sans_norme()]}
     if conception.fiche_incomplete or conception.resultat is None \
             or not conception.chaines:
         return {'lignes': [], 'justification_requise': False,
@@ -319,3 +317,10 @@ def garde_terre(checklist):
             "mesure) peut y être rattachée depuis la GED.",
             champ='terre.justification_continuite')
     return True
+
+
+def _sans_norme():
+    """ACAL1338 — le texte unique sans norme choisie (``norme.MOTIF_SANS_NORME``)."""
+    from .norme import MOTIF_SANS_NORME
+
+    return MOTIF_SANS_NORME % ''

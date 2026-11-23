@@ -193,7 +193,7 @@ class NormeNonApplicableTest(SimpleTestCase):
             self.assertIn('norme', omission['motif'])
             # ACAL879 — la norme est nommée en mots du métier, jamais par
             # un chemin de code ; le champ reste la clé ``champ``.
-            self.assertIn('norme électrique choisie pour le pays',
+            self.assertIn('Choisissez une norme dans les réglages',
                           omission['motif'])
             for chemin in ('::', '.py', 'norme_applicable'):
                 self.assertNotIn(chemin, omission['motif'])

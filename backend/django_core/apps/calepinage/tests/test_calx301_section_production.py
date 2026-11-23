@@ -48,7 +48,7 @@ def _charger(nom):
 
 RESULTAT = _charger('calepinage_resultat.json')['exemple']
 MOTIF = ("Production non simulée : le productible annuel et mensuel n'est "
-         "publié qu'après la simulation (onglet Production).")
+         "publié qu'après la simulation (étape Résultats).")
 
 
 def contexte(resultat, langue='fr'):

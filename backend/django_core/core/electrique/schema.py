@@ -765,6 +765,38 @@ def _liaison(depart, arrivee):
     return "".join(morceaux)
 
 
+def _trait_de_chaine(rang, couleur, x1, x2, y):
+    """ACAL1337 — le trait de la chaîne de rang ``rang`` : SA couleur (celle de la carte),
+    épaisseur et tirets alternés pour rester lisible imprimé en noir et blanc."""
+    style = ' stroke-dasharray="5 2"' if rang % 2 else ""
+    return ('<line x1="%s" y1="%s" x2="%s" y2="%s" stroke="%s" stroke-width="%s"%s/>'
+            % (_n(x1), _n(y), _n(x2), _n(y), _esc(couleur), "1.5" if rang % 2 else "2.5", style))
+
+
+def _liaison_des_chaines(depart, arrivee, couleurs):
+    """ACAL1337 — champ → organe suivant : un trait PAR CHAÎNE dans une même rangée ;
+    sinon (ou sans couleur) la liaison neutre d'avant."""
+    _bloc_a, xa, ya, rangee_a = depart[:4]
+    _bloc_b, xb, yb, rangee_b = arrivee[:4]
+    if not couleurs or rangee_a != rangee_b or xb < xa or abs(ya - yb) > 0.5:
+        return _liaison(depart, arrivee)
+    pas = min(6.0, (_BLOC_H - 16.0) / max(1, len(couleurs) - 1))
+    haut = ya + _BLOC_H / 2 - pas * (len(couleurs) - 1) / 2
+    return "".join(_trait_de_chaine(rang, couleur, xa + _BLOC_L, xb - _POINTE_H, haut + rang * pas)
+                   for rang, (_libelle, couleur) in enumerate(couleurs)) + _pointe(xb, yb + _BLOC_H / 2, "droite")
+
+
+def _legende_des_chaines(couleurs, hauteur):
+    """ACAL1337 — « Chaîne 1 · Chaîne 2 … » au pied de la planche, au-dessus du bandeau."""
+    morceaux = []
+    for rang, (libelle, couleur) in enumerate(couleurs):
+        x, y = _MARGE + (rang % 8) * 72.0, hauteur - _MARGE - 24.0 - (rang // 8) * 14.0
+        morceaux.append(_trait_de_chaine(rang, couleur, x, x + 16.0, y - 3.0))
+        morceaux.append('<text x="%s" y="%s" font-size="9" fill="%s">%s</text>'
+                        % (_n(x + 20.0), _n(y), _TRAIT, _esc(libelle)))
+    return "".join(morceaux)
+
+
 def _symbole_terre(x, y):
     """Symbole de terre normalisé : trois traits horizontaux décroissants."""
     return "".join([
@@ -790,7 +822,7 @@ def _bandeau_svg(texte, hauteur):
 
 def rendre_schema(entree, resultat, cartouche=None, positions=None,
                   standard=False, branches_onduleur=None, blocs=None,
-                  bandeau=""):
+                  bandeau="", couleurs_chaines=()):
     """PV39 — rend le schéma unifilaire en SVG (texte), jamais un fichier.
 
     ``cartouche`` : ``{client, reference, date, indice}`` — aucun montant n'y a
@@ -814,6 +846,9 @@ def rendre_schema(entree, resultat, cartouche=None, positions=None,
 
     ``bandeau`` (CALX237) : la ligne d'omission apposée sous la planche quand
     aucune norme n'est choisie. Vide, la planche est celle d'aujourd'hui.
+
+    ``couleurs_chaines`` (ACAL1337) : ``((libellé, couleur), …)`` — un trait par chaîne
+    du champ à l'organe suivant et la légende ; vide, la planche d'aujourd'hui.
     """
     if blocs is None:
         blocs = blocs_du_schema(entree, resultat, standard=standard,
@@ -842,7 +877,10 @@ def rendre_schema(entree, resultat, cartouche=None, positions=None,
         svg.append(_bloc_svg(place[1], place[2], place[0]))
     chaine = [place for place in places if not place[4]]
     for depart, arrivee in zip(chaine, chaine[1:]):
-        svg.append(_liaison(depart, arrivee))
+        svg.append(_liaison_des_chaines(depart, arrivee, couleurs_chaines)
+                   if depart[0].clef == "champ" else _liaison(depart, arrivee))
+    if couleurs_chaines:
+        svg.append(_legende_des_chaines(couleurs_chaines, hauteur))
 
     svg.append(_branches(places))
     svg.append(_amorces_mppt(entree, resultat, places))

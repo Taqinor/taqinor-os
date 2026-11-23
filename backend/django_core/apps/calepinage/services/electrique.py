@@ -118,7 +118,7 @@ REFERENCE_NOCT = ('IEC 61215 — définition NOCT (800 W/m², 20 °C ambiant, '
                   '1 m/s) : T_cellule = T_ambiante + (NOCT − 20) × G / 800')
 
 #: La phrase qui accompagne OBLIGATOIREMENT un verdict rendu sans source.
-MENTION_NON_SOURCEE = 'températures de référence, non sourcées'
+MENTION_NON_SOURCEE = 'températures habituelles supposées : celles du site ne sont pas connues'
 
 #: Le fournisseur de températures TMY, enregistré par la lane production
 #: (CAL136). ``None`` = ce chemin n'existe pas encore, et l'absence se
@@ -1819,9 +1819,9 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
             p50 = total_servi.get('p50_kwh')
     simule = _est_un_nombre(p50)
     if not simule:
-        messages.append("Production non simulée dans ce résultat : la pose et "
-                        "l'électricité sont connues, la production ne l'est "
-                        "pas.")
+        messages.append("La production n'est pas encore calculée : lancez la "
+                        "simulation à l'étape Résultats pour connaître ce que "
+                        "l'installation produira.")
 
     return {
         'calepinage': getattr(calepinage, 'pk', None),

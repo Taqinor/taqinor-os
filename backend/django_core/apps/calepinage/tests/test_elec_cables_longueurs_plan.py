@@ -152,7 +152,7 @@ class CablesPubliesTest(SimpleTestCase):
             layout=LAYOUT)
 
         self.assertEqual(resultat['cables'], [])
-        self.assertIn('OMIS', resultat['omissions'][0])
+        self.assertIn('ne sont pas calculés', resultat['omissions'][0])
 
     def test_sans_chaine_il_n_y_a_rien_a_dimensionner(self):
         vide = concevoir_par_pan(

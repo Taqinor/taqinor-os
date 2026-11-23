@@ -25,11 +25,14 @@ const FR = (valeur, decimales) => formatNumber(Number(valeur), { decimals: decim
 
 /** « 6,96 kWc · 12 panneaux · 11 480 kWh/an » — CHAQUE morceau seulement quand
     le serveur le sert (`kwc`, `layout_nb_panneaux`, `production_kwh_an`), jamais
-    un chiffre fabriqué. Rend `[{ texte, fort }]` (le kWc est en gras). */
+    un chiffre fabriqué. Rend `[{ texte, fort }]` ; le kWc (`fort`) porte aussi `nombre` et `unite`,
+    dessinés en grand chiffre et petite unité (langage v2). */
 export function morceauxMesures(ligne) {
   const morceaux = []
   const kwc = ligne?.kwc
-  if (typeof kwc === 'number' && kwc > 0) morceaux.push({ texte: `${FR(kwc, 2)} kWc`, fort: true })
+  if (typeof kwc === 'number' && kwc > 0) {
+    morceaux.push({ texte: `${FR(kwc, 2)} kWc`, fort: true, nombre: FR(kwc, 2), unite: 'kWc' })
+  }
   const nb = ligne?.layout_nb_panneaux
   if (typeof nb === 'number' && nb > 0) morceaux.push({ texte: `${nb} panneau${nb > 1 ? 'x' : ''}`, fort: false })
   const prod = ligne?.production_kwh_an
@@ -83,6 +86,28 @@ export function apercuVide(rgba) {
     if (a > 8 && (r < 245 || g < 245 || b < 245)) return false
   }
   return true
+}
+
+/** ACAL1333 — le signal du pied de carte, lu sur le verdict « Prêt à envoyer ? » RANGÉ :
+    « N points à régler » (N > 0), « À relire » quand le document a changé depuis, sinon rien
+    (jamais lu, ou rien à régler : aucun signal inventé). */
+export function signalCarte(ligne) {
+  const n = ligne?.points_a_regler
+  if (typeof n === 'number' && n > 0) return { ton: 'regler', texte: `${n} point${n > 1 ? 's' : ''} à régler` }
+  if (ligne?.points_a_regler_perime === true) return { ton: 'relire', texte: 'À relire' }
+  return null
+}
+
+/** ACAL1336 — `apercu_toit` servi (`{viewBox, contours: [[[x, y], …]]}`, 0 à 100) → `{viewBox,
+    contours: ['x,y x,y …']}` pour des `<polygon>` ; `null` sans tracé lisible (un contour de moins
+    de trois points lisibles est ignoré). Aucune mise à l'échelle ici : le serveur l'a faite. */
+export function traceDuToit(apercu) {
+  const lisible = (p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])
+  const contours = (Array.isArray(apercu?.contours) ? apercu.contours : [])
+    .map((c) => (Array.isArray(c) ? c.filter(lisible) : []))
+    .filter((c) => c.length >= 3)
+    .map((c) => c.map(([x, y]) => `${x},${y}`).join(' '))
+  return contours.length ? { viewBox: apercu.viewBox || '0 0 100 100', contours } : null
 }
 
 /** « 6 projets » / « 1 projet » / « 0 projet » (le français n'accorde qu'au-delà de 1). */

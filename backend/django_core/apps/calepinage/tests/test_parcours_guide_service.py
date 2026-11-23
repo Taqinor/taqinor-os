@@ -59,6 +59,27 @@ class ManqueRegroupeTest(unittest.TestCase):
         self.assertEqual(regrouper_manque(None), [])
         self.assertEqual(regrouper_manque(['', None]), [])
 
+    def test_textes_servis_en_phrases_simples_et_toujours_ranges(self):
+        """ACAL1338 — les phrases SERVIES (constantes des services) ne portent ni sigle
+        de norme ni terme de bureau d'études, et chacune garde son code et sa cible."""
+        from apps.calepinage.services import electrique, ombrage_chaines
+        from apps.calepinage.services.norme import norme_applicable
+
+        sans_norme = norme_applicable({'imagerie': {'pays': 'ma'}, 'norme_electrique': {}})
+        production = ("La production n'est pas encore calculée : lancez la simulation "
+                      "à l'étape Résultats pour connaître ce que l'installation produira.")
+        attendus = {sans_norme['motif']: ('norme_absente', 'reglages'),
+                    production: ('production_non_simulee', 'production'),
+                    electrique.MENTION_NON_SOURCEE: ('coefficients_non_sources', 'reglages'),
+                    ombrage_chaines.MOTIF_SANS_ACCES: ('acces_solaire_absent', 'production')}
+        for message, (code, onglet) in attendus.items():
+            for jargon in ('OMIS', 'NF C 15-100', 'UTE C 15-712-1', 'silence est explicite',
+                           'non sourcées', 'TSRF', 'TOF'):
+                self.assertNotIn(jargon, message)
+            ligne, = regrouper_manque([message])
+            self.assertEqual((ligne['code'], ligne['cible']['onglet']), (code, onglet), message)
+        self.assertIn('Choisissez une norme dans les réglages', sans_norme['motif'])
+
     def test_forme_des_lignes_egale_celle_du_contrat(self):
         modele = CONTRAT['exemple']['manque'][0]
         ligne = regrouper_manque([NORME])[0]

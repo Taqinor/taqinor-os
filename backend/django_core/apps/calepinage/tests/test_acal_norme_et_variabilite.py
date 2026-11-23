@@ -95,7 +95,11 @@ class CoefficientsPubliesTest(SimpleTestCase):
         html = html_de_section({
             'resultat': {'norme': norme}, 'langue': 'fr',
             'section': {'code': 'hypotheses', 'motif_si_absent': ''}})
-        self.assertIn('aucune norme électrique sélectionnée', html)
+        # ACAL1338 — ce qui manque et quoi faire, sans sigle de norme ni « OMIS ».
+        self.assertIn('Aucune norme électrique', html)
+        self.assertIn('Choisissez une norme dans les réglages', html)
+        for jargon in ('OMIS', 'NF C 15-100', 'UTE C 15-712-1'):
+            self.assertNotIn(jargon, html)
 
 
 class VariabiliteObserveeTest(SimpleTestCase):

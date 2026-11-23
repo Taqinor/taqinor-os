@@ -48,7 +48,7 @@ def _charger(nom):
 CASCADE = _charger('calepinage_pertes_cascade.json')
 RESULTAT = _charger('calepinage_resultat.json')
 MOTIF = ("Ni cascade de pertes ni poste de perte déclaré : lancez la "
-         "simulation (onglet Production), ou déclarez les postes dans "
+         "simulation (étape Résultats), ou déclarez les postes dans "
          "l'éditeur de pertes.")
 
 

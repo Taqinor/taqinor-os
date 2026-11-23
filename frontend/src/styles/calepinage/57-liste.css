@@ -1,0 +1,93 @@
+/* ACAL1310 / ACAL1336 — la liste des calepinages (maquette v2 `maquettes-v2/Liste.dc.html`, langage
+   `maquettes-v2/LANGAGE.md`) : cartes posées sans cadre, ombre teintée, chiffres dessinés, une seule
+   action dorée. Jetons seulement (aucune couleur littérale) : le thème sombre suit par les jetons. */
+
+.cliste { --cliste-ombre: color-mix(in oklch, var(--foreground) 8%, transparent); }
+.cliste-titre {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 34px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+.cliste-recherche {
+  border: 0;
+  border-radius: 13px;
+  background: var(--card);
+  box-shadow: 0 1px 2px var(--cliste-ombre), 0 6px 18px var(--cliste-ombre);
+}
+.cliste-action { border-radius: 13px; box-shadow: 0 8px 20px color-mix(in oklch, var(--primary) 36%, transparent); }
+
+/* Les pastilles d'état : bleu nuit pour l'état choisi, blanches sinon (cible de 44 px gardée). */
+.cliste-puce {
+  display: flex; align-items: center; gap: 8px;
+  height: 44px; padding: 0 16px; border: 0; border-radius: 22px;
+  font-size: 13px; font-weight: 500;
+  background: var(--card); color: var(--foreground);
+  box-shadow: 0 1px 2px var(--cliste-ombre);
+}
+.cliste-puce[aria-pressed='true'] { background: var(--foreground); color: var(--background); font-weight: 600; }
+.cliste-puce-n { color: var(--muted-foreground); }
+.cliste-puce[aria-pressed='true'] .cliste-puce-n { color: inherit; opacity: 0.75; }
+
+/* La carte. */
+.cliste-carte {
+  border: 0;
+  border-radius: 20px;
+  background: var(--card);
+  box-shadow: 0 1px 2px var(--cliste-ombre), 0 10px 28px var(--cliste-ombre);
+  transition: box-shadow 120ms cubic-bezier(0.05, 0.7, 0.1, 1);
+}
+@media (hover: hover) {
+  .cliste-carte:hover { box-shadow: 0 2px 4px var(--cliste-ombre), 0 16px 36px var(--cliste-ombre); }
+}
+.cliste-apercu { position: relative; height: 168px; flex: none; }
+.cliste-etat {
+  position: absolute; left: 12px; top: 12px;
+  display: flex; align-items: center; gap: 6px;
+  height: 26px; padding: 0 10px; border-radius: 13px;
+  font-size: 12px; font-weight: 600;
+  backdrop-filter: blur(10px);
+}
+.cliste-corps { display: flex; flex: 1; flex-direction: column; gap: 4px; padding: 16px 18px 14px; }
+.cliste-identite { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.cliste-nom { font-family: var(--font-display); font-size: 17px; letter-spacing: -0.01em; }
+.cliste-ville { font-size: 13px; color: var(--muted-foreground); }
+.cliste-chiffres { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; }
+.cliste-kwc {
+  font-family: var(--font-display); font-weight: 700; font-size: 26px; line-height: 1;
+  letter-spacing: -0.02em; font-variant-numeric: tabular-nums;
+}
+.cliste-unite { font-family: var(--font-brand); font-weight: 500; font-size: 13px; color: var(--muted-foreground); }
+.cliste-reste { font-size: 13px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.cliste-pied { display: flex; align-items: center; gap: 10px; margin-top: auto; padding-top: 10px; font-size: 12px; color: var(--muted-foreground); }
+.cliste-signal {
+  display: flex; align-items: center; gap: 5px;
+  height: 24px; padding: 0 9px; border-radius: 12px;
+  font-weight: 600;
+  background: color-mix(in oklch, var(--warning) 15%, var(--card));
+  color: var(--warning-text);
+}
+.cliste-signal[data-ton='relire'] { background: var(--muted); color: var(--muted-foreground); }
+.cliste-avatar {
+  display: flex; align-items: center; justify-content: center; flex: none;
+  width: 28px; height: 28px; border-radius: 14px;
+  background: var(--muted); color: var(--foreground);
+  font-size: 12px; font-weight: 700;
+}
+
+/* ACAL1336 — le tracé du toit servi (`apercu_toit`) : pans en contours, trait du soleil (or). */
+.cliste-toit {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; height: 168px;
+  background: color-mix(in oklch, var(--muted) 70%, var(--card));
+  color: var(--primary-text);
+}
+.cliste-toit svg { width: 78%; height: 82%; }
+.cliste-toit polygon {
+  fill: color-mix(in oklch, currentColor 14%, transparent);
+  stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+@media (prefers-reduced-motion: reduce) { .cliste-carte { transition-duration: 80ms; } }
