@@ -1880,7 +1880,7 @@ def bloc_etude_ci_stocke(etude, *, mono=False):
     bloc = {cle: etude.get(cle) for cle in (
         'entrees_resolues', 'profil_charge', 'production', 'taille', 'bilan',
         'composition', 'economie_ci', 'alertes', 'hypotheses',
-        'feuille_consommation_retenue')}
+        'feuille_consommation_retenue', 'sous_reserve_visite')}  # ADEV125 : statut « estimation » du PDF
     if etude.get(CLE_OPTION_AVEC):
         bloc[CLE_OPTION_AVEC] = etude[CLE_OPTION_AVEC]
         if mono:
