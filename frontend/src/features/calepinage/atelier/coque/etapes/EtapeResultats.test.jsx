@@ -191,6 +191,30 @@ describe('Étape Résultats — résultat complet, bloc par bloc (maquette Resul
   })
 })
 
+describe('Étape Résultats — squelette de chargement (ACAL1822)', () => {
+  it('le squelette de Résultats rend deux blocs aux boîtes de la mise en page, `role="status"`, sans lien de retour', async () => {
+    calepinageApi.calepinages.resultat.mockReturnValue(new Promise(() => {})) // réponse qui n'arrive pas
+    const { container } = rendre()
+    const etat = await screen.findByRole('status')
+    expect(etat).toHaveAttribute('aria-label', 'Chargement…')
+    expect(etat).toHaveClass('cal-res-squelette')
+    const blocs = etat.querySelectorAll('.cal-res-squelette-bloc')
+    expect(blocs).toHaveLength(2)
+    expect(blocs[0]).toHaveClass('cal-res-squelette-heros')
+    // La carte héros (colonne de 540 px) puis « Pour un résultat complet » : la grille de l'écran incomplet.
+    expect(container.querySelector('.cal-res-squelette')).toBe(etat)
+    // Rien au-dessus du squelette : le contenu ne descend pas à l'arrivée des données.
+    expect(etat.previousElementSibling).toBeNull()
+  })
+
+  it('une erreur de lecture garde le lien de retour et le message, pas le squelette', async () => {
+    calepinageApi.calepinages.resultat.mockRejectedValue(new Error('boom'))
+    rendre()
+    expect(await screen.findByTestId('cal236-erreur')).toBeInTheDocument()
+    expect(document.querySelector('.cal-res-squelette')).toBeNull()
+  })
+})
+
 describe('Étape Résultats — pertes nommées en clair', () => {
   it('« Salissure / LID » deviennent les mots de la maquette, le terme technique reste en infobulle', async () => {
     const base = COMPLET()

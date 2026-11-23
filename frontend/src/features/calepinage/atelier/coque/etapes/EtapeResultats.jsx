@@ -59,7 +59,7 @@ export default function EtapeResultats({
     { select: (r) => r.data, errorMessage: 'Résultats indisponibles.' },
   )
   if (loading || error) {
-    return <EtatEcranAtelier id={id} loading={loading} error={error} testIdErreur="cal236-erreur" />
+    return <EtatEcranAtelier id={id} loading={loading} error={error} testIdErreur="cal236-erreur" forme="resultats" />
   }
   const perime = data?.simulation_perimee === true
   const simule = data?.simule === true && !perime

@@ -220,3 +220,10 @@
 .cal-res > details[data-zone="avance"] { background: transparent; border: 0; padding: 0 4px; box-shadow: none; }
 .cal-res > details[data-zone="avance"] > summary { font: 500 14px var(--font-brand); color: var(--cal-texte-2); min-height: 44px;
   display: flex; align-items: center; }
+
+/* ── Squelette de chargement de l'étape (ACAL1822) : les boîtes de l'écran incomplet — carte héros de 540 px, puis
+   « Pour un résultat complet » — pour que la carte bleu nuit ne saute pas à l'arrivée des données. ─────────────── */
+.cal-res-squelette { display: grid; grid-template-columns: minmax(0, 540px) minmax(0, 1fr); gap: 16px; }
+.cal-res-squelette > .cal-res-squelette-bloc { min-height: 340px; border-radius: var(--cal-rayon-carte); }
+.cal-res-squelette > .cal-res-squelette-heros { min-height: 342px; }
+@media (max-width: 860px) { .cal-res-squelette { grid-template-columns: 1fr; } }
