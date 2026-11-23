@@ -117,13 +117,14 @@ export function ligneProjet(detail) {
   return ville && qui && !qui.includes(ville) ? `${qui} — ${ville}` : qui
 }
 
-/** La note hors ligne, avec le compte RÉEL de la file (seules les photos y sont gardées). */
-export function noteHorsLigne(enAttente, enLigne) {
+/** La note hors ligne, avec le compte RÉEL de la file (les photos, et le relevé terminé s'il attend le réseau). */
+export function noteHorsLigne(enAttente, enLigne, releveEnFile = false) {
   const n = Number(enAttente) || 0
   const photos = n === 0 ? ''
     : n === 1 ? '1 photo gardée sur ce téléphone. Elle partira dès le retour du réseau.'
       : `${n} photos gardées sur ce téléphone. Elles partiront dès le retour du réseau.`
-  const mesures = enLigne ? '' : 'Les mesures s’enregistrent avec « Terminer le relevé », réseau revenu.'
+  const mesures = releveEnFile ? 'Le relevé terminé est gardé sur ce téléphone : il partira dès le retour du réseau.'
+    : (enLigne ? '' : 'Les mesures s’enregistrent avec « Terminer le relevé », réseau revenu.')
   return [photos, mesures].filter(Boolean).join(' ')
 }
 

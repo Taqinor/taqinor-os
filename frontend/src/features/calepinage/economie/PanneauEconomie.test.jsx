@@ -206,6 +206,11 @@ describe('PanneauEconomie (CALX289)', () => {
       ventesApi.getEconomieDevis.mockResolvedValue(reponseContrat('ventes', 'ventes_economie', 'exemple'))
       const resultat = reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
       if (p50Modifie !== undefined) resultat.data.production.total.p50_kwh = p50Modifie
+      // Demande croisée — l'écart est celui que le SERVEUR sert (`ecart_devis.ecart_pct` = (P50 − devis) ÷ devis, au dixième),
+      // jamais recalculé à l'écran : les trois nombres servis sont cohérents entre eux (devis 10 000, P50 servi).
+      const p50Servi = resultat.data.production.total.p50_kwh
+      resultat.data.ecart_devis = { ...resultat.data.ecart_devis, production_devis_kwh: 10000, p50_calepinage_kwh: p50Servi,
+        ecart_pct: Math.round(((p50Servi - 10000) / 10000) * 1000) / 10 }
       calepinageApi.calepinages.resultat.mockResolvedValue(resultat)
       rendre()
       return screen.findByTestId('calx289-bloc')
@@ -216,7 +221,7 @@ describe('PanneauEconomie (CALX289)', () => {
       const phrase = await within(bloc).findByTestId('acal1611-ecart-production')
       expect(phrase).toHaveTextContent(/10.000 kWh\/an/)
       expect(phrase).toHaveTextContent(/13.000 kWh\/an/)
-      expect(phrase).toHaveTextContent(/écart −23,1 %/)
+      expect(phrase).toHaveTextContent(/écart \+30,0 %/) // valeur SERVIE (P50 − devis) ÷ devis, le signe du serveur et du bandeau
       expect(phrase).toHaveTextContent('méthode du devis')
     })
 
@@ -224,6 +229,24 @@ describe('PanneauEconomie (CALX289)', () => {
       const bloc = await monter(10050)
       await screen.findByTestId('calx289-hypotheses')
       await vi.waitFor(() => expect(calepinageApi.calepinages.resultat).toHaveBeenCalled())
+      expect(within(bloc).queryByTestId('acal1611-ecart-production')).toBeNull()
+    })
+
+    it('Demande croisée — l’écart affiché est LA valeur servie, jamais un recalcul : un `ecart_pct` servi différent s’affiche tel quel, sans `ecart_devis` rien', async () => {
+      calepinageApi.calepinages.get.mockResolvedValue({ data: exempleContrat('calepinage', 'calepinage_detail', 'exemple') })
+      ventesApi.getEconomieDevis.mockResolvedValue(reponseContrat('ventes', 'ventes_economie', 'exemple'))
+      const resultat = reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
+      resultat.data.ecart_devis = { ...resultat.data.ecart_devis, ecart_pct: 7.7 } // ≠ de tout recalcul (+30,0 ou −23,1)
+      calepinageApi.calepinages.resultat.mockResolvedValue(resultat)
+      rendre()
+      const phrase = await within(await screen.findByTestId('calx289-bloc')).findByTestId('acal1611-ecart-production')
+      expect(phrase).toHaveTextContent(/écart \+7,7 %/)
+      cleanup()
+      resultat.data.ecart_devis = null // devis qui n'imprime pas la simulation : le serveur ne sert aucun écart
+      calepinageApi.calepinages.resultat.mockResolvedValue(resultat)
+      rendre()
+      const bloc = await screen.findByTestId('calx289-bloc')
+      await vi.waitFor(() => expect(calepinageApi.calepinages.resultat).toHaveBeenCalledTimes(2))
       expect(within(bloc).queryByTestId('acal1611-ecart-production')).toBeNull()
     })
 

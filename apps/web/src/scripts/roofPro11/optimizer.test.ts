@@ -27,7 +27,7 @@ import { phraseSurplus } from './affichageErp'; // R2-17
 import { createZones } from './zones'; // ACAL1418
 import { factureCarteDe, lireFactureSaisie } from './factureCarte'; // ACAL777
 import { seuilEffectifAccesSolaire } from './shadingUi'; // ACAL548
-import { panneauxPourCible } from './cibleProduction';
+import { cibleDepuisCarte, panneauxPourCible, phraseCible } from './cibleProduction'; // ACAL1618
 import { cotesDePavage } from '../../lib/roofPro2';
 import {
   causeDuPanVide, ecrireMotifsDansDocument, mesurerPanVide, noterMotifPanVide, retraitApplique,
@@ -443,7 +443,88 @@ describe('ACAL470 : objectif de production tapé', () => {
   });
 });
 
-// ACAL574 — un pan « existant » ne se re-résout pas : ses modules restent ceux posés.
+// ACAL1618 — le maximum annoncé pour une « Production visée » est celui des DEUX sens de pose (le « + » bascule de même),
+// jamais celui de la seule pose courante ; un sens verrouillé borne à ce sens.
+describe('ACAL1618 — « Production visée » : maximum = le meilleur des deux sens', () => {
+  const grille = (n: number) => ({ count: n, kwc: n * 0.55, panels: [], rowWidthM: 2, footprintPerPanelM2: 2, slopeLenM: 1 });
+  const carte = (verrou: 'portrait' | null) => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><dd id="rp9-reco-prod"></dd><p id="rp9-need-note"></p></body>').window.document;
+    try {
+      const pan = { id: 'area-1', vertices: rectRing(12, 8), obstacles: [], roofType: 'flat', pitchDeg: 0, facingAzimuthDeg: 180 };
+      const ctx = { opts: { chiffrage: null }, centroidLat: 33.5, rec: { targetAnnualKwh: 4000 }, neededPanels: 0, batiments: [], centroid: [-7, 33], environment: [],
+        shadeObstructions: [], obstacles: [], areas: [pan], activeAreaId: 'area-1', activeArea: () => pan, vertices: pan.vertices, roofType: 'flat', closed: true,
+        pinned: new Set(verrou ? ['orient'] : []), sel: { orient: verrou ?? 'auto' }, shadeAnnualFactor: 1, horizonAnnualFactor: 1, dom: {} } as unknown as Ctx;
+      const deps = { renderScene: vi.fn(), paintComparison: vi.fn(), highlightRow: vi.fn(), syncProductionWindow: vi.fn(), prefillLead: vi.fn(),
+        syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 800, obstructionRings: vi.fn(() => []), setStatus: vi.fn() };
+      const opt = createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]);
+      const portrait = grille(7); // pose courante : UNE rangée en portrait (7)
+      opt.renderConfig({ pack: { origin: [-7, 33], ringENU: [], azimuthDeg: 0, portrait, landscape: grille(10) } as never,
+        grid: portrait as never, family: 'south', tiltDeg: 20, azimuthDeg: 0, isReco: true, title: 't', why: 'w', rowId: null });
+      return opt.etatCarte();
+    } finally { g.document = avant; }
+  };
+  it('12 × 8 m, 7 en portrait / 10 en paysage : un objectif hors d’atteinte annonce 10 panneaux EN PAYSAGE', () => {
+    const e = carte(null)!;
+    const r = cibleDepuisCarte(1e6, e, clampNeeded)!;
+    expect(r.panneaux).toBe(10);
+    expect(r.plafonne).toBe(true);
+    expect(r.maxKwhAn).toBe(Math.round(10 * e.kwhParPanneau));
+    expect(phraseCible(r)).toBe(`Le toit donne au plus ${r.maxKwhAn.toLocaleString('fr-FR')} kWh/an avec 10 panneaux en paysage.`);
+  });
+  it('un objectif atteignable donne toujours le plus petit N (5 panneaux), sans sens imposé', () => {
+    const e = carte(null)!;
+    const r = cibleDepuisCarte(Math.round(4.5 * e.kwhParPanneau), e, clampNeeded)!;
+    expect(r).toMatchObject({ panneaux: 5, plafonne: false });
+    expect(phraseCible(r)).not.toContain('paysage');
+  });
+  it('portrait verrouillé : le maximum reste celui du portrait (7)', () => {
+    expect(cibleDepuisCarte(1e6, carte('portrait'), clampNeeded)?.panneaux).toBe(7);
+  });
+});
+
+// Demande croisée (ACAL1523) — le gagnant vivant est re-pavé avec le châssis N × M et les cotes du module DU PAN, comme le
+// solveur l'a évalué : la pose dessinée = le compte du solveur, multiple de 20, et la note « n châssis de 2 × 10 posés ».
+describe('ACAL1523 — renderLiveWinner : châssis et module du pan au re-pavage', () => {
+  const m400 = { id: 'produit-7', produitId: 7, libelle: 'Module 400 W', longueurMm: 1700, largeurMm: 1000, epaisseurMm: 33, poidsKg: 20, pmaxWc: 400, source: 'fiche' };
+  const catalogue = { calepinage: 1, modules: [{ module: m400, selectionnable: true, champs_manquants: [], motif: null }], champs_requis: [], motif_liste_vide: null };
+  const CHASSIS = { rangs: 2, modulesParRang: 10, jeuEntreRangsM: 0.03, source: 'notice du châssis' };
+  /** Résout le pan 28 × 12 m (sud verrouillé) ; rend le compte du solveur, le compte DESSINÉ et la note du châssis. */
+  const poser = (chassis: typeof CHASSIS | undefined) => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><p id="rp9-chassis-note"></p></body>').window.document;
+    try {
+      const vertices = rectRing(28, 12);
+      const [cLng, cLat] = [(vertices[0][0] + vertices[2][0]) / 2, (vertices[0][1] + vertices[2][1]) / 2];
+      const pan = { id: 'z1', label: 'Pan A', vertices, obstacles: [], roofType: 'flat', moduleId: 'produit-7', ...(chassis ? { chassis } : {}) };
+      const ctx = {
+        closed: true, vertices, roofType: 'flat', areas: [pan], activeAreaId: 'z1', activeArea: () => pan, opts: { chiffrage: null, modulesDisponibles: catalogue }, dom: {},
+        centroid: [cLng, cLat], centroidLat: cLat, pinned: new Set<string>(['family']), sel: { family: 'south', tilt: 'reco', orient: 'auto', azimuth: 'south', margin: 'keep' },
+        v4YieldCache: new Map(), overhangM: 0, documentRelu: null, batiments: [], environment: [], shadeObstructions: [], obstacles: [],
+        neededAuto: false, neededPanels: 0, layoutPlan: null, useRecommended: true,
+      } as unknown as Ctx;
+      let dessinee = -1;
+      const deps = { renderScene: (_p: unknown, grid: { count: number }) => { dessinee = grid.count; }, paintComparison: vi.fn(), highlightRow: vi.fn(),
+        syncProductionWindow: vi.fn(), prefillLead: vi.fn(), syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 0, obstructionRings: () => [], setStatus: vi.fn() };
+      createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]).liveResolveFlat();
+      const solveur = (ctx.liveResult as unknown as { winner: { fitCount: number } }).winner.fitCount;
+      return { solveur, dessinee, note: document.getElementById('rp9-chassis-note')?.textContent ?? '' };
+    } finally { g.document = avant; }
+  };
+  it('28 × 12 m, châssis 2 × 10 à 0,03 m, module 400 W : pose = compte du solveur, multiple de 20, note dite', () => {
+    const r = poser(CHASSIS);
+    expect(r.solveur % 20).toBe(0);
+    expect(r.dessinee).toBe(r.solveur);
+    expect(r.note).toBe(`${r.dessinee / 20} châssis de 2 × 10 posés`);
+  });
+  it('sans châssis, module 400 W (1,70 × 1,00 m) : la pose dessinée est pavée aux cotes du module du pan, comme le solveur', () => {
+    const r = poser(undefined);
+    expect(r.dessinee).toBe(r.solveur);
+  });
+});
+
 describe('ACAL574 — re-résolution refusée sur un pan existant', () => {
   it('liveResolveFlat / liveResolvePitched : rien n’est re-pavé ni redessiné, le motif nomme le pan', () => {
     const g = globalThis as unknown as { document?: Document };
@@ -721,16 +802,17 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
     } finally { egal.fin(); autreKwc.fin(); nonServi.fin(); sansKwc.fin(); }
   });
 
-  it('BANDE : l’économie SERVIE à l’année 1, l’année 25 sans montant ; non servi : estimation prudente aux deux bouts', () => {
+  it('BANDE : l’économie SERVIE à l’année 1 ; non servi : l’estimation prudente ; l’année 25 jamais inventée (ACAL1612)', () => {
     const s = erp(servi());
     const n = erp(servi({ economie_annee1_mad: { valeur: null, etat: 'non_servi' } }));
     try {
       const bande = s.t('rp9-reco-band');
-      expect(bande).toContain(`(${fmtMad(7420)}/an) →`);
+      expect(bande).toContain(`(${fmtMad(7420)}/an).`);
       expect(bande.match(MAD)).toHaveLength(1);
-      expect(bande).toMatch(/Année 25 ~[^(]*kWh\/an\.$/); // omise, jamais inventée
-      expect(n.t('rp9-reco-band').match(MAD)).toHaveLength(2);
-      expect(n.t('rp9-reco-band')).toContain('Économies toujours plafonnées à votre facture.');
+      expect(bande).not.toContain('Année 25'); // ACAL1612 — la fiche ne porte pas sa dégradation : omise avec sa raison
+      expect(bande).toContain('la fiche du module ne porte pas sa dégradation');
+      expect(n.t('rp9-reco-band').match(MAD)).toHaveLength(1);
+      expect(n.t('rp9-reco-band')).not.toMatch(/%\/an/);
     } finally { s.fin(); n.fin(); }
   });
 
@@ -853,8 +935,58 @@ describe('ACAL1418 — chiffrage servi : Total et bande = production servie ; no
   });
 
   it('non servi (ERP) : le Total dit « estimation » ; site public : le texte d’avant', () => {
-    expect(lire({ chiffrage: null }).total).toBe(`${fmt(4362)} kWh/an · estimation`);
+    expect(lire({ chiffrage: null }).total).toBe(`${fmt(4362)} kWh/an · estimation de l’atelier`); // ACAL1612
     expect(lire({}).total).toBe(`${fmt(4362)} kWh/an`);
+  });
+});
+
+// Demande croisée (lane zones) — la bande lit la production servie au kWc DE LA CARTE (module du pan : 10 × 710 W = 7,1),
+// et « Enregistrer » (majChiffrage) repeint aussi la production de la carte et le Total, pas seulement l'économie.
+describe('Demande croisée — bande au kWc de la carte ; majChiffrage repeint production et Total', () => {
+  const m710 = { id: 'produit-7', produitId: 7, libelle: 'Module 710 W', longueurMm: 2384, largeurMm: 1303, epaisseurMm: 33, poidsKg: 38, pmaxWc: 710, source: 'fiche' };
+  const catalogue = { calepinage: 1, modules: [{ module: m710, selectionnable: true, champs_manquants: [], motif: null }], champs_requis: [], motif_liste_vide: null };
+  const servi = { kwc: { valeur: 7.1, etat: 'servi' }, production_annuelle_kwh: { valeur: 4636, etat: 'servi' }, economie_annee1_mad: { valeur: 7420, etat: 'servi' } };
+  const GRILLE = { count: 10, kwc: 5.5, panels: [], rowWidthM: 2, footprintPerPanelM2: 2, slopeLenM: 1 };
+  const monter = (chiffrage: unknown) => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    const doc = new JSDOM('<!doctype html><body><dd id="rp9-reco-kwc"></dd><dd id="rp9-reco-prod"></dd><dd id="rp9-reco-savings"></dd>'
+      + '<p id="rp9-reco-band"></p><p id="rp9-reco-why"></p><p id="rp9-need-note"></p><div id="rp9-areas"></div><dd id="tot-prod"></dd></body>').window.document;
+    g.document = doc;
+    const pan = { id: 'area-1', label: '', vertices: rectRing(10, 7), obstacles: [], roofType: 'flat', pitchDeg: 22, facingAzimuthDeg: 180, facingManual: false, neededPanels: 0, neededAuto: true, result: null, renderPlan: null, moduleId: 'produit-7' };
+    const ctx = { opts: { chiffrage, modulesDisponibles: catalogue }, centroidLat: 33.5, rec: { targetAnnualKwh: 4000 }, neededPanels: 0, batiments: [], centroid: [-7, 33], environment: [], shadeObstructions: [],
+      obstacles: [], areas: [pan], activeAreaId: 'area-1', activeArea: () => pan, vertices: pan.vertices, roofType: 'flat', closed: true, pinned: new Set(),
+      liveResult: { winner: { placedCount: 10, kwc: 5.5, annualKwh: 4362, savingsLow: 1, savingsHigh: 2 }, target: 4000 }, shadeAnnualFactor: 1, horizonAnnualFactor: 1,
+      dom: { areasWindowEl: doc.getElementById('rp9-areas'), areasTotalProdEl: doc.getElementById('tot-prod') } } as unknown as Ctx;
+    const deps = { renderScene: vi.fn(), paintComparison: vi.fn(), highlightRow: vi.fn(), syncProductionWindow: vi.fn(), prefillLead: vi.fn(),
+      syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 800, obstructionRings: vi.fn(() => []), setStatus: vi.fn() };
+    const opt = createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]);
+    opt.renderConfig({ pack: { origin: [-7, 33], ringENU: [], azimuthDeg: 0, portrait: GRILLE, landscape: GRILLE } as never,
+      grid: GRILLE as never, family: 'south', tiltDeg: 20, azimuthDeg: 0, isReco: true, title: 't', why: 'w', rowId: null });
+    const zones = createZones(ctx, { setStatus: vi.fn() });
+    zones.renderAreasPanel();
+    const t = (id: string) => doc.getElementById(id)?.textContent ?? '';
+    return { opt, zones, t, fin: () => { g.document = avant; } };
+  };
+
+  it('servi à 7,1 kWc (module du pan) : la carte ET la bande « Année 1 » disent 4 636 kWh/an', () => {
+    const m = monter(servi);
+    try {
+      expect(m.t('rp9-reco-kwc')).toBe('7,10 kWc');
+      expect(m.t('rp9-reco-prod')).toBe(`${fmt(4636)} kWh/an`);
+      expect(m.t('rp9-reco-band')).toContain(`Année 1 ~${fmt(4636)} kWh/an`);
+    } finally { m.fin(); }
+  });
+
+  it('« Enregistrer » : le bloc relu repeint la production de la carte et le Total (avant : seule l’économie)', () => {
+    const m = monter(null);
+    try {
+      expect(m.t('rp9-reco-prod')).not.toBe(`${fmt(4636)} kWh/an`);
+      m.opt.majChiffrage(servi as never);
+      m.zones.renderAreasPanel(); // ce que fait l'enveloppe `majChiffrage` de roof-tool-pro11.ts après l'optimiseur
+      expect(m.t('rp9-reco-prod')).toBe(`${fmt(4636)} kWh/an`);
+      expect(m.t('tot-prod')).toBe(`${fmt(4636)} kWh/an`);
+    } finally { m.fin(); }
   });
 });
 

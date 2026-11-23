@@ -22,15 +22,17 @@ Run :
 import copy
 import threading
 import uuid
+from html import escape
 from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.db import connections
-from django.test import TestCase, TransactionTestCase
+from django.test import SimpleTestCase, TestCase, TransactionTestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
+from apps.calepinage import selectors
 from apps.calepinage.models import Calepinage
 from apps.calepinage.services.documents.versions_document import (
     enregistrer_version_document, versions_du_document,
@@ -240,6 +242,80 @@ class RemiseDocumentTest(TestCase):
                     octets, erreur = fetch_attachment(piece.file_key)
                     self.assertIsNone(erreur)
                     self.assertEqual(octets, lecture.content)
+
+
+class FichePertesEnPostesClientTest(SimpleTestCase):
+    """ACAL1616 — la fiche « Pertes expliquées en 5 postes » est REMISE au
+    client (D-ACAL-38) : des mots de métier, une décimale, une page. Rendue
+    par sa mise en page réelle sur un calepinage simulé par les vrais
+    écrivains ; seules les parts sont posées à trois décimales (ce que la
+    cascade sert, ``regroupement_pertes._pct``)."""
+
+    def _fiche(self):
+        import re
+
+        from apps.calepinage.services.documents.pertes_en_postes import (
+            html_de_pertes_en_postes,
+        )
+
+        pivot = calepinage_simule_reel()
+        with patch_materiel():
+            servi = selectors.resultat_servi(pivot)
+        servi = copy.deepcopy(servi)
+        lisibles = servi['cascade']['postes_lisibles']
+        lisibles.update(total_pct=19.582, arrivee_pct=80.418)
+        partiel = next(p for p in lisibles['postes']
+                       if p['statut'] == 'partiel')
+        partiel['perte_pct'] = 1.931
+        html = html_de_pertes_en_postes(pivot, resultat=servi, styles={},
+                                        etat={})
+        corps = re.search(r'<section class="pertes-en-postes">(.*?)</section>',
+                          html, re.S).group(1)
+        return pivot, servi, corps
+
+    def test_la_fiche_client_ne_porte_aucun_motif_d_etape_brut(self):
+        import re
+
+        _pivot, servi, corps = self._fiche()
+        motifs = [e['motif_omission']
+                  for p in servi['cascade']['postes_lisibles']['postes']
+                  for e in p['etapes']]
+        self.assertTrue(motifs)  # le cas porte bien des étapes omises
+        for motif in motifs:
+            self.assertNotIn(escape(motif[:40]), corps)
+        for interdit in ('Le silence est explicite', 'littéral', 'PV*SOL',
+                         'en v1', 'Champ manquant', 'OMISE', 'DÉJÀ'):
+            self.assertNotIn(interdit, corps)
+        # Aucune majuscule d'insistance (mot de 4 lettres capitales ou plus).
+        self.assertIsNone(re.search(r'\b[A-ZÀÂÉÈÊÎÔÛÇ]{4,}\b', corps))
+        # Un mot court par cause, sans doublon.
+        self.assertIn('non calculé : aucun obstacle saisi', corps)
+        self.assertIn('non renseigné : fiche du module', corps)
+        self.assertEqual(corps.count('non calculé : ombre par panneau'), 1)
+
+    def test_les_pourcentages_ont_une_decimale(self):
+        _pivot, _servi, corps = self._fiche()
+        self.assertIn('Pertes totales : 19,6 %', corps)
+        self.assertIn('80,4 %', corps)
+        self.assertIn('>1,9 %<', corps)
+        for brut in ('19,582', '80,418', '1,931'):
+            self.assertNotIn(brut, corps)
+
+    def test_la_fiche_tient_sur_une_page(self):
+        from apps.calepinage.services.documents.pertes_en_postes import (
+            rendre_pertes_en_postes,
+        )
+
+        from .acal_livrables_helpers import exiger_bibliotheques_pdf
+
+        exiger_bibliotheques_pdf()
+        import fitz
+
+        pivot, servi, _corps = self._fiche()
+        octets = rendre_pertes_en_postes(pivot, resultat=servi, styles={},
+                                         etat={})
+        with fitz.open(stream=octets, filetype='pdf') as pdf:
+            self.assertEqual(pdf.page_count, 1)
 
 
 class NumerotationConcurrenteTest(TransactionTestCase):

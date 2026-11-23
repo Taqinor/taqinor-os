@@ -2,7 +2,9 @@
    La file binaire de l'ERP (`createBinaryOutboxStore`, IndexedDB) ne rend qu'un magasin clé/valeur : l'ORDRE, le REJEU
    et le COMPTE sont écrits ici, sur le modèle de `installations/offline/fieldOutbox.js`. `ajouterPhoto` reste l'écrivain.
    Les entrées portent leur propre type (`calepinage.photo`) : le rejeu ne touche que les siennes. Un refus serveur
-   (réponse HTTP) retire la photo de la file et nomme le champ fautif ; une coupure réseau la laisse en file. */
+   (réponse HTTP) retire la photo de la file et nomme le champ fautif ; une coupure réseau la laisse en file.
+   ACAL1810 — le RELEVÉ de visite tapé hors ligne passe par la MÊME file (type `calepinage.releve`, un seul par calepinage :
+   le dernier relevé terminé remplace le précédent) et le même rejeu : aucun second système. */
 import calepinageApi from '../../api/calepinageApi'
 import { createBinaryOutboxStore } from '../../lib/offlineStore'
 import {
@@ -11,10 +13,11 @@ import {
 import { refusServeur } from './commun/refusServeur'
 
 export const OP_PHOTO_CALEPINAGE = 'calepinage.photo'
+export const OP_RELEVE_CALEPINAGE = 'calepinage.releve'
 
 let magasin = null
 const file = () => { magasin ??= createBinaryOutboxStore().store; return magasin }
-const miennes = (ops, id) => ops.filter((o) => o.op_type === OP_PHOTO_CALEPINAGE && (id == null || String(o.meta?.calepinageId) === String(id)))
+const miennes = (ops, id, type = OP_PHOTO_CALEPINAGE) => ops.filter((o) => o.op_type === type && (id == null || String(o.meta?.calepinageId) === String(id)))
 
 /** Le corps multipart de `ajouterPhoto` (mêmes champs que le dépôt en ligne). */
 function corpsPhoto(fichier, { genre, prise_le: priseLe, legende }) {
@@ -77,4 +80,67 @@ export async function rejouerFile(calepinageId) {
     await majAtomique(file(), (cur) => cur.filter((o) => o.client_op_id !== op.client_op_id))
   }
   return { envoyees, refusees, restantes: await compterEnAttente(calepinageId) }
+}
+
+/** ACAL1810 — garde le relevé terminé (corps de `corpsDuReleve`, id du relevé à corriger ou `null` pour en créer un) :
+    le relevé déjà en file de ce calepinage est REMPLACÉ, jamais doublé. Pas d'octets : le corps tient dans `meta`. */
+export async function mettreReleveEnFile(calepinageId, { corps, releveId = null }) {
+  const courantes = await file().load()
+  const sansLeMien = courantes.filter((o) => !miennes([o], calepinageId, OP_RELEVE_CALEPINAGE).length)
+  if (sansLeMien.length >= BINARY_MAX_OPS) {
+    throw new OutboxQuotaError('File d’envoi pleine : reconnectez-vous au réseau pour la vider avant de terminer le relevé.')
+  }
+  const entree = {
+    client_op_id: makeOpId(), op_type: OP_RELEVE_CALEPINAGE, meta: { calepinageId, releveId, corps },
+    bytes: new ArrayBuffer(0), name: 'releve.json', type: 'application/json', size: 0, queuedAt: new Date().toISOString(),
+  }
+  await majAtomique(file(), (cur) => [...cur.filter((o) => !miennes([o], calepinageId, OP_RELEVE_CALEPINAGE).length), entree])
+}
+
+/** Un relevé de ce calepinage attend-il le réseau ? (lu dans la file : survit au rechargement). */
+export async function releveEnAttente(calepinageId) {
+  return miennes(await file().load(), calepinageId, OP_RELEVE_CALEPINAGE).length > 0
+}
+
+/** Retire le relevé en file : l'envoi en ligne vient de réussir, le garder le renverrait une seconde fois. */
+export async function oublierReleveEnFile(calepinageId) {
+  await majAtomique(file(), (cur) => cur.filter((o) => !miennes([o], calepinageId, OP_RELEVE_CALEPINAGE).length))
+}
+
+const rejeuxReleve = new Map()
+
+/** Une réponse qui ne juge pas le relevé : la garder en file et réessayer plus tard. */
+const reponsePassagere = (statut) => statut === 401 || statut === 408 || statut === 429 || statut >= 500
+
+/** Rejoue le relevé en file : `{ envoye, releve, refus: {message, champs} | null, restantes }`. Sans réseau on s'arrête et
+    la file reste intacte ; un refus du serveur (réponse HTTP) retire l'entrée et la dit ; deux rejeux simultanés (retour du
+    réseau + ouverture de l'écran) n'en font qu'UN : le relevé part une seule fois. */
+export function rejouerReleve(calepinageId) {
+  const cle = String(calepinageId)
+  if (rejeuxReleve.has(cle)) return rejeuxReleve.get(cle)
+  const rejeu = (async () => {
+    let envoye = false
+    let releve = null
+    let refus = null
+    for (const op of miennes(await file().load(), calepinageId, OP_RELEVE_CALEPINAGE)) {
+      try {
+        const { calepinageId: id, releveId, corps } = op.meta
+        const res = await (releveId
+          ? calepinageApi.calepinages.corrigerReleve(id, releveId, corps)
+          : calepinageApi.calepinages.enregistrerReleve(id, corps))
+        envoye = true
+        releve = res?.data?.releve ?? null
+      } catch (err) {
+        // Sans réponse (réseau coupé) ou sur une réponse PASSAGÈRE (session expirée, serveur en cours de
+        // redémarrage, trop de requêtes) : le relevé RESTE en file et repartira ; seul un vrai refus du serveur
+        // le retire et le dit (critique de la vague B : un 502 pendant un deploy effaçait le relevé).
+        if (!err?.response || reponsePassagere(err.response.status)) break
+        refus = refusServeur(err)
+      }
+      await majAtomique(file(), (cur) => cur.filter((o) => o.client_op_id !== op.client_op_id))
+    }
+    return { envoye, releve, refus, restantes: miennes(await file().load(), calepinageId, OP_RELEVE_CALEPINAGE).length }
+  })().finally(() => { rejeuxReleve.delete(cle) })
+  rejeuxReleve.set(cle, rejeu)
+  return rejeu
 }

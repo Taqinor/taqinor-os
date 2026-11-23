@@ -779,3 +779,95 @@ class EcritureTest(TestCase):
                          {'phases': 3})
         self.assertEqual(len(calepinage.resultat['pertes']), 1)
         self.assertIn('production', calepinage.resultat)
+
+
+class _ProcessusTue(BaseException):
+    """Le processus tué par le système (SIGKILL) : aucune exception Python
+    n'est attrapée par la tâche, le job reste « en cours » et le message est
+    remis en file (``CELERY_TASK_ACKS_LATE`` + ``REJECT_ON_WORKER_LOST``)."""
+
+
+class LivraisonsBorneesTest(TestCase):
+    """ACAL1622 — un calcul que le serveur tue deux fois finit en échec DIT."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+
+        from authentication.models import Company
+        from core.models import BackgroundJob
+
+        from apps.calepinage.models import Calepinage
+        from apps.calepinage.tasks import KIND_CALEPINAGE
+        from apps.crm.models import Lead
+
+        self.societe = Company.objects.create(nom='ACAL1622', slug='acal1622')
+        user = get_user_model().objects.create_user(
+            username='acal1622', password='x', company=self.societe)
+        lead = Lead.objects.create(company=self.societe, nom='Toiture 1622')
+        self.calepinage = Calepinage.objects.create(
+            company=self.societe, lead_id=lead.pk, titre='Tué 1622',
+            roof_layout=LAYOUT)
+        self.job = BackgroundJob.objects.create(
+            company=self.societe, user=user, kind=KIND_CALEPINAGE,
+            statut=BackgroundJob.STATUT_QUEUED)
+
+    def _livrer(self, tache, **corps):
+        return tache(job_id=self.job.pk, company_id=self.societe.pk,
+                     calepinage_id=self.calepinage.pk, **corps)
+
+    def test_troisieme_livraison_d_un_job_deja_en_cours_echec_dit(self):
+        from unittest import mock
+
+        from apps.calepinage import tasks
+
+        with mock.patch('apps.calepinage.services.simulation.'
+                        'simuler_calepinage',
+                        side_effect=_ProcessusTue) as calcul:
+            for _ in range(2):
+                with self.assertRaises(_ProcessusTue):
+                    self._livrer(tasks.simuler_calepinage)
+            self.job.refresh_from_db()
+            self.assertEqual((self.job.statut, self.job.progress_pct),
+                             ('running', 5))
+            issue = self._livrer(tasks.simuler_calepinage)
+
+        # Le calcul n'est PAS relancé une troisième fois.
+        self.assertEqual(calcul.call_count, 2)
+        self.assertEqual(issue['statut'], 'failed')
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.statut, 'failed')
+        self.assertIn('le calcul a été interrompu par le serveur (mémoire) : '
+                      'réessayez ou réduisez la fenêtre météo',
+                      self.job.message_erreur)
+        # Relire / rouvrir : la charge servie à l'écran porte le motif.
+        charge = tasks.resultat_du_job(self.job)
+        self.assertEqual(charge['elements'][0]['statut'], 'failed')
+        self.assertIn('interrompu', charge['elements'][0]['motif'])
+
+    def test_une_tache_normale_n_est_jamais_marquee_en_echec(self):
+        from unittest import mock
+
+        from apps.calepinage import tasks
+
+        rendu = {'deja_calcule': True, 'hash_entree': 'h',
+                 'calcule_le': '2026-11-23T10:00:00Z'}
+        with mock.patch('apps.calepinage.services.simulation.'
+                        'simuler_calepinage', return_value=rendu):
+            issue = self._livrer(tasks.simuler_calepinage)
+        self.assertEqual(issue['statut'], 'done')
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.statut, 'done')
+
+    def test_le_balayage_a_la_meme_borne(self):
+        from unittest import mock
+
+        from apps.calepinage import tasks
+
+        with mock.patch('apps.calepinage.services.balayage.balayer',
+                        side_effect=_ProcessusTue) as calcul:
+            for _ in range(2):
+                with self.assertRaises(_ProcessusTue):
+                    self._livrer(tasks.balayer_calepinage, corps={})
+            issue = self._livrer(tasks.balayer_calepinage, corps={})
+        self.assertEqual(calcul.call_count, 2)
+        self.assertEqual(issue['statut'], 'failed')

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   Bar, BarChart, CartesianGrid, Legend, Tooltip, XAxis, YAxis,
 } from 'recharts'
@@ -6,6 +7,7 @@ import { ChartEmpty, ChartFrame, ChartTooltip } from '../../../ui/charts'
 import {
   CHART_GRID_STYLE, CHART_TOKENS, animationDuration,
 } from '../../../ui/charts/chart-theme.js'
+import { echelle, lectureMensuelle } from './GraphiqueMensuel.helpers'
 
 /* ACAL453 — GRAPHIQUE MENSUEL Production / Consommation / Autoconsommée.
    Données SERVIES : `autoconsommation.par_mois` (ACAL445), sinon `production.mensuel` (R3-08). Aucun
@@ -100,54 +102,72 @@ export default function GraphiqueMensuel({ autoconsommation, production = null }
   )
 }
 
-/* « MOIS PAR MOIS » de l'étape Résultats (maquette Resultats.dc.html) : douze paires de
-   barres Production / Consommation, initiales J à D dessous. Mêmes sources que ci-dessus
-   (production : `production.mensuel` P50, sinon `autoconsommation.par_mois` ; consommation :
-   `par_mois[].consommation_kwh`), aucune valeur calculée : un mois sans valeur servie n'a PAS
-   de barre (jamais 0), pas de consommation servie = pas de barre consommation ni de légende.
-   Les hauteurs ne sont qu'un rapport au plus grand mois affiché. Les valeurs exactes sont en
-   infobulle et dans un tableau lisible par les lecteurs d'écran. */
+/* « MOIS PAR MOIS » de l'étape Résultats (maquette v2 Resultats.dc.html) : douze colonnes — barres dorées de
+   production, points et courbe bleus de consommation, initiales J à D dessous, repères 500 / 1 000 / 1 500 à gauche,
+   le mois choisi (le plus fort par défaut, ou celui qu'on touche) entouré, et sa pastille « Juillet · 1 332 kWh
+   produits · 1 400 kWh consommés ». Mêmes sources que ci-dessus (production : `production.mensuel` P50, sinon
+   `autoconsommation.par_mois` ; consommation : `par_mois[].consommation_kwh`), aucune valeur calculée : un mois sans
+   valeur servie n'a PAS de barre (jamais 0), pas de consommation servie = ni point, ni courbe, ni légende. Les
+   hauteurs ne sont qu'un rapport à l'échelle des repères (arrondie au-dessus du plus grand mois servi). La bascule
+   « Année / Journée type » n'existe pas : aucune série horaire n'est servie (un bloc sans donnée est absent). Les
+   valeurs exactes sont en infobulle et dans un tableau lisible par les lecteurs d'écran. */
 const INITIALES = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D']
-const nombreServi = (v) => typeof v === 'number' && Number.isFinite(v)
-
+const MOIS_LONG = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre',
+  'Novembre', 'Décembre']
 export function MoisParMois({ data }) {
-  const mensuel = Array.isArray(data?.production?.mensuel) ? data.production.mensuel : []
-  const parMois = Array.isArray(data?.autoconsommation?.par_mois) ? data.autoconsommation.par_mois : []
-  const prod = Array(12).fill(null)
-  const conso = Array(12).fill(null)
-  if (mensuel.length) {
-    mensuel.forEach((m) => { if (m?.mois >= 1 && m.mois <= 12 && nombreServi(m.p50_kwh)) prod[m.mois - 1] = m.p50_kwh })
-  } else {
-    parMois.forEach((m) => { if (m?.mois >= 1 && m.mois <= 12 && nombreServi(m.production_kwh)) prod[m.mois - 1] = m.production_kwh })
-  }
-  parMois.forEach((m) => { if (m?.mois >= 1 && m.mois <= 12 && nombreServi(m.consommation_kwh)) conso[m.mois - 1] = m.consommation_kwh })
+  const { prod, conso } = lectureMensuelle(data)
+  const [touche, setTouche] = useState(null)
   const avecProd = prod.some((v) => v !== null)
   const avecConso = conso.some((v) => v !== null)
   if (!avecProd && !avecConso) return null
-  const max = Math.max(...prod.filter((v) => v !== null), ...conso.filter((v) => v !== null))
-  const h = (v) => (v === null || !(max > 0) ? null : `${Math.max(0, (v / max) * 100)}%`)
+  const servis = [...prod, ...conso].filter((v) => v !== null)
+  const { pas, haut } = echelle(Math.max(...servis))
+  const h = (v) => (v === null || !(haut > 0) ? null : Math.max(0, Math.min(100, (v / haut) * 100)))
+  const reference = avecProd ? prod : conso
+  const fort = reference.indexOf(Math.max(...reference.filter((v) => v !== null)))
+  const choisi = touche ?? fort
+  const points = conso.map((v, i) => (v === null ? null : [((i + 0.5) / 12) * 100, 100 - h(v)])).filter(Boolean)
   return (
-    <section className="cal-res-carte" data-testid="cal-resultats-mois">
+    <section className="cal-res-carte cal-res-carte-mois" data-testid="cal-resultats-mois">
       <div className="cal-res-entete">
         <h2 className="cal-res-titre">Mois par mois</h2>
-        <div className="cal-res-legende">
-          {avecProd && <span><span className="cal-res-pastille" />Production</span>}
-          {avecConso && <span><span className="cal-res-pastille cal-res-pastille-conso" />Consommation</span>}
+        <div className="cal-res-legende" data-testid="cal-res-mois-choisi">
+          <strong>{MOIS_LONG[choisi]}</strong>
+          {avecProd && prod[choisi] !== null && (
+            <span><i className="cal-res-pastille" /><b>{kwhOuNonCalcule(prod[choisi])}</b>{' '}produits</span>
+          )}
+          {avecConso && conso[choisi] !== null && (
+            <span><i className="cal-res-pastille cal-res-pastille-conso" /><b>{kwhOuNonCalcule(conso[choisi])}</b>{' '}consommés</span>
+          )}
         </div>
       </div>
-      <div role="img" className="cal-res-mois"
-        aria-label={`Histogramme mensuel de ${[avecProd && 'la production', avecConso && 'la consommation'].filter(Boolean).join(' et de ')}`}>
-        {INITIALES.map((_, i) => (
-          <div key={MOIS_COURT[i]} className="cal-res-mois-paire"
-            title={[prod[i] !== null && `${MOIS_COURT[i]} · production ${kwhOuNonCalcule(prod[i])}`,
-              conso[i] !== null && `consommation ${kwhOuNonCalcule(conso[i])}`].filter(Boolean).join(' · ') || undefined}>
-            {h(prod[i]) && <div className="cal-res-barre" style={{ height: h(prod[i]) }} />}
-            {h(conso[i]) && <div className="cal-res-barre cal-res-barre-conso" style={{ height: h(conso[i]) }} />}
-          </div>
-        ))}
+      <div className="cal-res-graphe">
+        <div className="cal-res-axe" aria-hidden="true">
+          {[1, 2, 3].map((k) => <span key={k} style={{ bottom: `${(k / 3) * 100}%` }}>{formatNumber(pas * k, { decimals: 0 })}</span>)}
+        </div>
+        <div role="img" className="cal-res-mois"
+          aria-label={`Histogramme mensuel de ${[avecProd && 'la production', avecConso && 'la consommation'].filter(Boolean).join(' et de ')}`}>
+          {[0, 1, 2, 3].map((k) => <span key={k} className="cal-res-grille" aria-hidden="true" style={{ bottom: `${(k / 3) * 100}%` }} />)}
+          {INITIALES.map((_, i) => (
+            <button key={MOIS_COURT[i]} type="button" className="cal-res-mois-paire" aria-pressed={i === choisi}
+              aria-label={`${MOIS_LONG[i]}`}
+              onClick={() => setTouche(i)}
+              title={[prod[i] !== null && `${MOIS_COURT[i]} · production ${kwhOuNonCalcule(prod[i])}`,
+                conso[i] !== null && `consommation ${kwhOuNonCalcule(conso[i])}`].filter(Boolean).join(' · ') || undefined}>
+              {h(prod[i]) !== null && <div className="cal-res-barre" style={{ height: `${h(prod[i])}%` }} />}
+              {h(conso[i]) !== null && <span className="cal-res-point" style={{ bottom: `${h(conso[i])}%` }} />}
+            </button>
+          ))}
+          {points.length > 1 && (
+            <svg className="cal-res-courbe" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              <polyline points={points.map((p) => p.join(',')).join(' ')} className="cal-res-courbe-halo" />
+              <polyline points={points.map((p) => p.join(',')).join(' ')} className="cal-res-courbe-trait" />
+            </svg>
+          )}
+        </div>
       </div>
       <div className="cal-res-mois-noms" aria-hidden="true">
-        {INITIALES.map((l, i) => <span key={MOIS_COURT[i]}>{l}</span>)}
+        {INITIALES.map((l, i) => <span key={MOIS_COURT[i]} data-choisi={i === choisi ? 'oui' : undefined}>{l}</span>)}
       </div>
       <table className="sr-only">
         <caption>Valeurs mensuelles</caption>

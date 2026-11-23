@@ -50,17 +50,35 @@ def _variante_pour_module(layout, module):
             a_repaver = True
         geometrie['moduleId'] = module['id']
         nombre = geometrie.get('count')
+        kwc_zone = None
         if isinstance(nombre, (int, float)) and not isinstance(nombre, bool):
-            geometrie['kwc'] = nombre * module['pmaxWc'] / 1000
+            kwc_zone = geometrie['kwc'] = nombre * module['pmaxWc'] / 1000
             total_kwc += geometrie['kwc']
+        # ACAL1710 — le ``result`` de CHAQUE zone porte aussi la production et le
+        # kWc de A : purgés comme ceux de la racine (une variante n'est pas simulée).
+        if isinstance(zone.get('result'), dict):
+            _purger_production(zone['result'], kwc_zone)
     document['modules'] = [dict(module)]
     document['panelWatt'] = module['pmaxWc']
     resultat = document.get('result')
     if isinstance(resultat, dict):
-        resultat['kwc'] = total_kwc
-        # Production d'une AUTRE puissance de module : jamais recopiée.
-        resultat.pop('annualKwh', None)
+        _purger_production(resultat, total_kwc)
     return document, a_repaver
+
+
+def _purger_production(resultat, kwc):
+    """Retire de ``resultat`` toute production (clé en ``kwh``, rendement) d'une
+    AUTRE puissance de module ; pose le kWc recalculé (ou le retire, inconnu)."""
+    for cle in [c for c in resultat if 'kwh' in c.lower() or c in _CLES_DE_RENDEMENT]:
+        del resultat[cle]
+    if kwc is None:
+        resultat.pop('kwc', None)
+    else:
+        resultat['kwc'] = kwc
+
+
+#: Rendements dérivés de la production (kWh/kWc, ratio de performance).
+_CLES_DE_RENDEMENT = ('specificYield', 'yieldKwhKwc', 'rendement', 'performanceRatio', 'pr')
 
 
 def creer_variantes_par_module(calepinage, identifiants, produits, *,

@@ -63,6 +63,8 @@
 @import "./styles/lead/43-lead-archive.css";
 @import "./styles/generateur/44-edition-complete-edc.css";
 /* Coque de l'atelier de calepinage et ses écrans d'étape (maquettes du 22/11/2026, ACAL1278-1327). */
+/* ACAL1800 — jetons v2 du module (la seule feuille à couleurs littérales), lus par 50-58 et roofbuilder. */
+@import "./styles/calepinage/49-jetons-v2.css";
 @import "./styles/calepinage/50-coque-atelier.css";
 @import "./styles/calepinage/51-etape-toit.css";
 @import "./styles/calepinage/52-etape-panneaux.css";

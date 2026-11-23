@@ -15,6 +15,15 @@ export function ligneModule(module) {
   return parts.join(' · ')
 }
 
+const NOMBRE_ET_UNITE = /^(≈\s*)?(\d(?:[\d\s,.]*\d)?)\s+(\S.*)$/
+
+/** ACAL1829 — `{ valeur, unite }` d'un texte « nombre unité » (« 6,96 kWc », « ≈ 82 % ») ; `unite` vaut `''` quand le
+    texte n'a pas cette forme (la valeur est alors le texte entier). */
+export function scinderUnite(texte) {
+  const m = NOMBRE_ET_UNITE.exec(String(texte ?? ''))
+  return m ? { valeur: `${m[1] ?? ''}${m[2]}`, unite: m[3] } : { valeur: String(texte ?? ''), unite: '' }
+}
+
 /** « Jour mois » d'une date `AAAA-MM-JJ` du champ date du constructeur (« 21 décembre »). */
 export function jourMois(date) {
   const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(date ?? '')

@@ -648,6 +648,26 @@ describe('BoutonDevis — recette R2 (pose au-delà de la cible, devis existant,
   })
 })
 
+describe('ACAL1705 — le devis lié se rouvre d’un clic, lu sur le calepinage', () => {
+  it('après rechargement, « Devis lié : DEV-… » est un lien vers le vrai devis (jamais du texte seul)', () => {
+    rendre()
+    const lien = screen.getByRole('link', { name: DETAIL.devis.reference })
+    expect(lien).toHaveAttribute('href', `/ventes/devis?devis=${DETAIL.devis.id}`)
+    expect(lien).toHaveAttribute('data-testid', 'cal-devis-lie-lien')
+  })
+
+  it('après un 201, la carte « Devis … créé » est montée avec ses deux gestes', async () => {
+    calepinageApi.calepinages.genererDevis.mockResolvedValue({
+      data: { devis: 42, reference: 'DEV-2609-0042', deduplique: false },
+    })
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+    const carte = await screen.findByTestId('cal-devis-cree')
+    expect(within(carte).getByRole('link', { name: 'Voir le devis' })).toHaveAttribute('href', '/ventes/devis?devis=42')
+    expect(within(carte).getByRole('button', { name: 'Revenir à la conception' })).toBeTruthy()
+  })
+})
+
 describe('ACAL1414 — la réouverture relit les surfaces que le devis lié chiffre', () => {
   const toit = DETAIL.surfaces_chiffrables.find((s) => s.kind === 'toit')
   const sol = DETAIL.surfaces_chiffrables.find((s) => s.kind !== 'toit')

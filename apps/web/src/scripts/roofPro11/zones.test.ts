@@ -49,6 +49,8 @@ import { type LngLat } from '../../lib/roof';
 import { type Obstacle } from '../../lib/obstacles';
 import { CALQUE_COTES, cotesDesAretes, monterCotesAretes, texteCote } from './cotesAretes'; // ACAL1328
 import { CALQUES_EDITION, poserPresentation } from './presentationCarte'; // ACAL1328
+import { peindreBande, texteTotalProduction } from './affichageErp'; // ACAL1612
+import { type CardData } from './types'; // ACAL1612
 
 const A: LngLat = [-7.6, 33.5];
 const B: LngLat = [-7.5995, 33.5004];
@@ -1101,6 +1103,35 @@ describe('ACAL853 — liveActiveResult reprend le kWh de la carte peinte', () =>
   });
   it('carte pas encore peinte : le calcul du solveur (9 000) sert', () => {
     expect(essai(null)?.annualKwh).toBe(9000);
+  });
+});
+
+// ACAL1612 — la bande « Dans la durée » n'invente plus de taux de dégradation (la fiche n'en porte pas) et le Total
+// « TOUTES LES ZONES » dit « estimation de l'atelier » en nommant le P50 de la simulation et l'écart.
+describe('ACAL1612 — bande sans taux inventé ; Total qui nomme la simulation', () => {
+  const carte = { annualKwh: 4362, kwc: 3.6, count: 5, savingsLow: 5000, savingsHigh: 6000, target: 4000 } as unknown as CardData;
+  const bande = (erp: boolean) => {
+    const el = new JSDOM('<!doctype html><p></p>').window.document.querySelector('p') as HTMLElement;
+    peindreBande(el, carte, 4000, erp, null, false);
+    return el.textContent ?? '';
+  };
+  it('fiche sans dégradation (ERP) : aucun taux affiché, la raison est dite, l’année 1 reste', () => {
+    expect(bande(true)).not.toMatch(/%\/an/);
+    expect(bande(true)).toContain(`Année 1 ~${(4362).toLocaleString('fr-FR')} kWh/an`);
+    expect(bande(true)).toContain('la fiche du module ne porte pas sa dégradation');
+    expect(bande(true)).not.toContain('Année 25');
+  });
+  it('site public : le texte d’avant (taux du barème, inchangé)', () => {
+    expect(bande(false)).toContain('dégradation ~0,5 %/an');
+  });
+  it('Total : 4 362 « estimation de l’atelier » + « simulation : 5 131 kWh/an (écart − 15 %) » quand une simulation à jour existe', () => {
+    const sim = { simulation: { p50_kwh: 5131, a_jour: true } };
+    expect(texteTotalProduction(4362, 3.6, true, sim as never)).toBe(
+      `${(4362).toLocaleString('fr-FR')} kWh/an · estimation de l’atelier · simulation : ${(5131).toLocaleString('fr-FR')} kWh/an (écart − 15 %)`);
+    expect(texteTotalProduction(4362, 3.6, true, { simulation: { p50_kwh: 5131, a_jour: false } } as never)).toBe(
+      `${(4362).toLocaleString('fr-FR')} kWh/an · estimation de l’atelier`);
+    expect(texteTotalProduction(4362, 3.6, true, null)).toBe(`${(4362).toLocaleString('fr-FR')} kWh/an · estimation de l’atelier`);
+    expect(texteTotalProduction(4362, 3.6, false, sim as never)).toBe(`${(4362).toLocaleString('fr-FR')} kWh/an`);
   });
 });
 

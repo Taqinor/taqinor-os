@@ -240,7 +240,7 @@ import { createReperesUi } from './roofPro11/reperesChantier'; // ACAL593
 import { refleterPrioriteRemplissage } from './roofPro11/prioriteRemplissage'; import { anneauxCoupuresDuPanActif, monterChampsCoupures } from './roofPro11/coupuresPavage'; import { monterChampPortee } from './roofPro11/piedsChassis'; import { monterChampsChassis } from './roofPro11/chassisPavage'; import { grouperStructurePose } from './roofPro11/structurePose'; // ACAL576, ACAL579, ACAL585, ACAL1522
 import { createSoleilPlayer, sunriseSunsetHours, type SoleilPlayer } from './roofPro11/soleilPlay';
 import { apiCamera, appliquerVue } from './roofPro11/cadrageToit'; // ACAL435 + F6 (cadrage du toit)
-import { panneauxPourCible, phraseCible } from './roofPro11/cibleProduction'; // ACAL470
+import { cibleDepuisCarte, phraseCible } from './roofPro11/cibleProduction'; // ACAL470, ACAL1618
 import { majBadgesReco } from './roofPro11/recoBadges'; // ACAL562
 import { poserRetraitsPuisRecalculer } from './roofPro11/fermetureDuPan'; // ACAL562
 
@@ -1268,7 +1268,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const matrix = createMatrix(ctx, {
     renderConfig: (o) => optimizer.renderConfig(o),
     monthlyBill: () => monthlyBill(),
-    obstructionRings,
+    obstructionRings, obstructionClearances, setbacksOf, // demande croisée — retraits/dégagements du balayage, comme buildMatrix
   });
   const paintComparison = matrix.paintComparison;
   const renderMatrixRow = matrix.renderMatrixRow;
@@ -2439,7 +2439,6 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   function clearEditorState() {
     vertices = [];
     closed = false;
-    reafficherEpingleApresEffacement(clientPinMarker); // ACAL1423 — « Effacer » rend le repère du lead masqué à la fermeture (jamais retiré)
     obstacles = [];
     selectedObsId = null;
     setObstacleMode(false);
@@ -2525,6 +2524,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
    *  seule zone vide active. */
   function reset() {
     clearEditorState();
+    reafficherEpingleApresEffacement(clientPinMarker); // ACAL1423 — « Effacer » SEUL rend le repère du lead masqué à la fermeture (jamais retiré)
     shadingUi.reset(); // WJ19/ACAL357 — les ombres et la matrice appartiennent au SITE : « Effacer » seul les vide
     oublierEpingleDeplacee(ctx); // ACAL193 — un site vierge n'a plus d'épingle déplacée
     // ACAL26 — « Effacer » repart d'un site vierge : la consommation du site (courbe,
@@ -3066,8 +3066,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   });
   $<HTMLInputElement>('rp9-cible-kwh')?.addEventListener('input', (ev) => { // ACAL470
     const x = parseInt(((ev.target as HTMLInputElement).value || '').replace(/\D/g, ''), 10);
-    const e = optimizer.etatCarte();
-    const r = e && x > 0 ? panneauxPourCible(x, e.kwhParPanneau, e.tiennent, clampNeeded) : null;
+    const r = x > 0 ? cibleDepuisCarte(x, optimizer.etatCarte(), clampNeeded) : null; // ACAL1618 — maximum des deux sens
     if (!r) return;
     setNeeded(r.panneaux);
     if (needNoteEl) needNoteEl.textContent = phraseCible(r);
@@ -4317,7 +4316,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // avant map.on('load') (map.getLayer(...) renvoie undefined tant que
     // les layers n'existent pas encore).
     setReferenceContourVisible: (visible: boolean) => setReferenceContourVisible(visible),
-    majChiffrage: (chiffrage, panneauxDevis) => optimizer.majChiffrage(chiffrage, panneauxDevis), // ACAL994, R2-13
+    majChiffrage: (chiffrage, panneauxDevis) => { optimizer.majChiffrage(chiffrage, panneauxDevis); renderAreasPanel(); }, // ACAL994, R2-13 ; le Total relit le bloc
     // AP-F2 — « Recommencer depuis le tracé client », posée par ToitureDesign.jsx à
     // côté de la note « Calepinage automatique depuis le tracé client — à vérifier ».
     recommencerDepuisTraceClient: () => recommencerDepuisTraceClient(),

@@ -1001,8 +1001,9 @@ function AtelierToiture({
   // posée à la main (ou sa provenance est inconnue) : le serveur dit « a_decider », la
   // bannière OFFRE les deux gestes. « automatique » est traité au boot (recentrage d'office),
   // « aucune » n'affiche rien. Toute translation est décidée par le SERVEUR.
-  // ACAL195 — cible ESTIMÉE (lead/factures) ou refus nommé du moteur, affichés tels quels.
-  const cibleEstimee = estCalepinage ? libelleCibleEstimee(contexte?.cible) : null
+  // ACAL195 — refus nommé du moteur, affiché tel quel. ACAL1805 — une cible estimée SANS refus n'ouvre plus de bande
+  // (absente des maquettes v2) : elle se lit dans la pilule « Besoin d'après la facture » de l'étape Toit.
+  const cibleEstimee = estCalepinage && contexte?.cible?.refus ? libelleCibleEstimee(contexte?.cible) : null
   const toitureLead = estCalepinage ? phraseToitureLead(contexte?.toiture_lead) : null // R2-15 — lecture seule
   const deriveRepere = estCalepinage ? contexte?.geometrie?.derive?.etat ?? null : null
   const ecartRepere = libelleEcartRepere(contexte?.geometrie?.ecart_m)

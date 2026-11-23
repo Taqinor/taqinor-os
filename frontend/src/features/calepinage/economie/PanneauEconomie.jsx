@@ -236,24 +236,25 @@ function ListeOmissions({ omissions }) {
 
 /* ACAL1611 — la production du devis (moteur du devis, AUTRE méthode que la simulation) et le
    P50 servi par la simulation ne sont pas le même chiffre : au-delà de 1 %, une phrase nomme
-   les deux et l'écart ; à l'égalité, ou sans simulation, rien. Écart = (devis − P50) ÷ P50,
-   fait à l'affichage — le calcul de l'argent reste celui du serveur. */
+   les deux et l'écart ; à l'égalité, ou sans simulation, rien. L'écart est LA valeur SERVIE
+   (`resultat.ecart_devis.ecart_pct` = (P50 − devis) ÷ devis, au dixième) : le même chiffre et le même signe que
+   le bandeau de provenance — jamais recalculé ici (il avait le signe inverse). Sans `ecart_devis` servi (devis qui
+   n'imprime pas la simulation, simulation périmée), rien. */
 const SEUIL_ECART_PCT = 1
-function EcartProduction({ economie, p50 }) {
+function EcartProduction({ economie, p50, ecartPct }) {
   const devis = economie.hypotheses?.find((h) => h.cle === 'production_annee1_kwh')?.valeur
-  if (typeof devis !== 'number' || typeof p50 !== 'number' || !p50) return null
-  const ecart = ((devis - p50) / p50) * 100
-  if (Math.abs(ecart) <= SEUIL_ECART_PCT) return null
+  if (typeof devis !== 'number' || typeof p50 !== 'number' || typeof ecartPct !== 'number') return null
+  if (Math.abs(ecartPct) <= SEUIL_ECART_PCT) return null
   return (
     <p className="text-xs text-muted-foreground" data-testid="acal1611-ecart-production">
       {`Production année 1 : ${formatNumber(devis, { decimals: 0 })} kWh/an (méthode du devis). `
         + `La simulation de l'atelier (P50) estime ${formatNumber(p50, { decimals: 0 })} kWh/an `
-        + `(écart ${ecart < 0 ? '−' : '+'}${formatNumber(Math.abs(ecart), { decimals: 1 })} %, méthode du devis).`}
+        + `(écart ${ecartPct < 0 ? '−' : '+'}${formatNumber(Math.abs(ecartPct), { decimals: 1 })} %, méthode du devis).`}
     </p>
   )
 }
 
-function BlocEconomie({ economie, p50 = null }) {
+function BlocEconomie({ economie, p50 = null, ecartPct = null }) {
   const { horizon_ans: horizonAns, flux, hypotheses, omissions } = economie
   return (
     <div className="flex flex-col gap-4" data-testid="calx289-bloc">
@@ -278,7 +279,7 @@ function BlocEconomie({ economie, p50 = null }) {
       <GraphiqueFlux flux={flux} retourAns={economie.retour_ans} />
       <TableauFlux flux={flux} />
       <TableauHypotheses hypotheses={hypotheses} />
-      <EcartProduction economie={economie} p50={p50} />
+      <EcartProduction economie={economie} p50={p50} ecartPct={ecartPct} />
       <ListeOmissions omissions={omissions} />
     </div>
   )
@@ -313,11 +314,11 @@ export default function PanneauEconomie({ calepinageId }) {
   )
 
   // ACAL1611 — le P50 servi (null sans simulation à jour) : même lecture que l'onglet Production.
-  const { data: p50 } = useResource(
+  const { data: lecture } = useResource(
     () => calepinageApi.calepinages.resultat(id), id,
     {
       enabled: Boolean(devisId),
-      select: (r) => r.data?.production?.total?.p50_kwh ?? null,
+      select: (r) => ({ p50: r.data?.production?.total?.p50_kwh ?? null, ecartPct: r.data?.ecart_devis?.ecart_pct ?? null }),
       errorMessage: 'Production simulée indisponible.',
     },
   )
@@ -341,7 +342,7 @@ export default function PanneauEconomie({ calepinageId }) {
         <p className="text-sm text-destructive" data-testid="calx289-erreur-economie">{errorEconomie}</p>
       )}
       {devisId && !loadingEconomie && !errorEconomie && economie && (
-        <BlocEconomie economie={economie} p50={p50} />
+        <BlocEconomie economie={economie} p50={lecture?.p50 ?? null} ecartPct={lecture?.ecartPct ?? null} />
       )}
     </Card>
   )

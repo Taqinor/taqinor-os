@@ -117,6 +117,7 @@ retiré plus un hook ajouté.
 | `cal-devis-details-technicien` | devis : détails techniques repliés sous la carte (ACAL866). |
 | `cal-devis-ouvrir` | devis : bouton « Voir le devis » (`/ventes/devis?devis=<id>`, ACAL95/ACAL866). |
 | `cal-devis-revenir` | devis : « Revenir à la conception » sous la carte (ACAL866). |
+| `cal-devis-lie-lien` | devis : « Devis lié : DEV-… » en lien vers `/ventes/devis?devis=<id>`, lu sur le calepinage (ACAL1705). |
 | `cal-devis-confirmation-taille` | devis : question « rien ne dimensionne le devis » du 409 `confirmation_taille` (ACAL922/ACAL923). |
 | `cal-devis-existant` | devis : question « le lead a déjà un brouillon » du 409 `devis_existant` — rattacher, ou créer un autre devis (recette R2-22). |
 | `cal-generer-devis` | générer devis. |
@@ -956,6 +957,7 @@ retiré plus un hook ajouté.
 | Hook | Sémantique |
 |---|---|
 | `cal-pret-a-envoyer` | panneau « Prêt à envoyer ? » (contrôles avant l’envoi, `GET pret-a-envoyer/`). |
+| `cal-pret-bons` | « Prêt à envoyer ? » court (étape Électrique) : section repliée « Contrôles · N bons » (`<details>`). |
 | `cal-pret-erreur` | panneau « Prêt à envoyer ? » : lecture en échec. |
 | `cal-pret-ligne` | une ligne de contrôle (suffixe = `code` du contrôle). |
 | `cal-pret-regler` | bouton « Régler » d’un contrôle (suffixe = `code`) : ouvre `?onglet=&champ=`. |
@@ -976,10 +978,14 @@ retiré plus un hook ajouté.
 | `cal-retour-liste` | coque : lien « ‹ Calepinages » (ou « ‹ Devis ») du bandeau. |
 | `cal-projet-titre` | coque : nom du projet dans le bandeau (titre servi, + ville servie). |
 | `cal-projet-sous-titre` | coque : ligne sous le nom (Lead / Client · facture servie), absente sans donnée. |
-| `cal-generer-devis-haut` | coque : bouton doré « Générer le devis » du bandeau (ouvre l’étape Documents et son vrai bouton). |
+| `cal-generer-devis-haut` | coque : bouton bleu nuit « Générer le devis » du bandeau (ACAL1802 ; ouvre l’étape Documents et son vrai bouton). |
+| `cal-barre-releve` | coque : entrée « Relevé » du bandeau, AU DOIGT (`pointer: coarse`), 44 × 44, ouvre `/calepinage/:id/releve` (ACAL1809). |
+| `cal-barre-montrer-client` | coque : entrée « Montrer au client » du bandeau, À LA SOURIS, ouvre `/calepinage/:id/client` (ACAL1809). |
 | `cal-rail-avance` | coque : bouton « Avancé » en bas du rail (ouvre l’ancien inspecteur entier ; `aria-expanded`). |
 | `cal-panneau-etape` | coque : panneau d’étape de droite (`#rp9-studio-inspecteur`). |
 | `cal-panneau-etape-titre` | coque : titre du panneau d’étape (« Le toit »), sous « Étape N sur 5 ». |
+| `cal-plein-etape-tete` | coque : en-tête « Étape N sur 5 » + titre au-dessus d’un écran pleine largeur (Résultats, Documents). |
+| `cal-progression-etapes` | coque : les cinq traits de progression en tête du panneau d’étape (et de l’écran plein) ; un `span[data-etat]` par étape : `fait`, `actif`, `a-venir` (ACAL1803). |
 | `cal-sur-carte-resume` | étape Toit/Panneaux : puce blanche posée sur la carte (indicateurs servis). |
 | `cal-barre-outils-carte` | étape Toit : barre d’outils flottante au bas de la carte. |
 | `cal-toit-formes` | étape Toit : grille des formes du toit. |
@@ -988,6 +994,7 @@ retiré plus un hook ajouté.
 | `cal-toit-pente-confirmer` | étape Toit : bouton « Confirmer » de la pente. |
 | `cal-toit-pente-inconnue` | étape Toit : bouton « Je ne la connais pas ». |
 | `cal-toit-obstacles` | étape Toit : liste des obstacles et « + Ajouter ». |
+| `cal-toit-soleil` | étape Toit : bloc « Soleil » (jour et heure du soleil du constructeur) à droite de la barre d’outils. |
 | `cal-panneaux-module` | étape Panneaux : carte du modèle de panneau. |
 | `cal-panneaux-option-facture` | étape Panneaux : option « Couvrir la facture ». |
 | `cal-panneaux-option-max` | étape Panneaux : option « Le plus de panneaux ». |
@@ -1003,6 +1010,11 @@ retiré plus un hook ajouté.
 | `cal-resultats-mois` | étape Résultats : carte « Mois par mois ». |
 | `cal-resultats-pertes` | étape Résultats : carte « Du soleil au réseau ». |
 | `cal-resultats-pied` | étape Résultats : pied « Année basse… » + bouton de l’étape suivante. |
+| `cal-res-squelette` | étape Résultats : squelette de chargement (deux blocs aux boîtes de la mise en page, `role="status"`). |
+| `cal-res-minibarres` | étape Résultats : les douze mini-barres mensuelles de la carte héros (production servie ; absentes sans série). |
+| `cal-res-regle-pertes` | étape Résultats : réglette de « Pertes au total » (bande habituelle servie et repère ; absente sans bande servie). |
+| `cal-res-regle-pvgis` | étape Résultats : réglette de « Écart avec PVGIS » (zéro et segment de l’écart servi). |
+| `cal-res-mois-choisi` | étape Résultats : pastille du mois choisi de « Mois par mois » (production et consommation servies de ce mois). |
 | `cal-avant-simulation` | étape Résultats avant simulation : racine (`data-etat` = `jamais` ou `perime`). |
 | `cal-avant-titre` | étape Résultats avant simulation : titre. |
 | `cal-avant-phrase` | étape Résultats avant simulation : phrase d’explication. |

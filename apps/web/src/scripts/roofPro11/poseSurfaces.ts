@@ -631,16 +631,21 @@ export function monterAtelierPose(ctx: Ctx, deps: AtelierPoseDeps = {}): Atelier
    *  champ deux fois. Il est retiré par la suppression de pan EXISTANTE (bouton « × » de la liste des pans, zones.ts
    *  → deleteArea) ; pan unique (pas de « × ») ou pan verrouillé ⇒ rien n'est retiré. */
   const annulerEl = racine.querySelector('[data-pose-annuler]') as HTMLButtonElement | null;
-  let panRetire: { pan: AreaRecord; index: number; surfaceId: string } | null = null;
+  let panRetire: { pan: AreaRecord; index: number; surfaceId: string; vierge: AreaRecord | null } | null = null;
+  const croixDe = (id: string | undefined) => Array.from(ctx.dom?.areasListEl?.querySelectorAll<HTMLElement>('[data-area-del]') ?? []).find((b) => b.dataset.areaDel === id);
   function retirerPanDeTrace(surfaceId: string): boolean {
     const pan = ctx.activeArea?.();
     const index = pan ? (ctx.areas ?? []).indexOf(pan) : -1;
-    const croix = Array.from(ctx.dom?.areasListEl?.querySelectorAll<HTMLElement>('[data-area-del]') ?? []).find((b) => b.dataset.areaDel === pan?.id);
-    if (!pan || index < 0 || !croix) return false;
+    // Demande croisée — le SEUL pan n'a pas de « × » : « + Ajouter une zone » (geste existant) pose d'abord un pan vierge.
+    const ajout = ctx.dom?.addAreaBtn;
+    const seul = pan != null && index >= 0 && ctx.areas.length === 1 && !croixDe(pan.id) && ajout != null && !ajout.disabled;
+    if (!pan || index < 0 || (!seul && !croixDe(pan.id))) return false;
     Object.assign(pan, { vertices: (ctx.vertices ?? []).map((v) => [v[0], v[1]]), obstacles: (ctx.obstacles ?? []).map((o) => ({ ...o })), roofType: ctx.roofType, pitchDeg: ctx.pitchDeg, facingAzimuthDeg: ctx.facingAzimuthDeg });
-    croix.click();
+    if (seul) ajout.click();
+    const vierge = seul ? ctx.activeArea?.() ?? null : null;
+    croixDe(pan.id)?.click();
     if (ctx.areas.includes(pan)) return false;
-    panRetire = { pan, index, surfaceId };
+    panRetire = { pan, index, surfaceId, vierge: vierge !== pan ? vierge : null };
     if (annulerEl) annulerEl.hidden = false;
     return true;
   }
@@ -658,6 +663,9 @@ export function monterAtelierPose(ctx: Ctx, deps: AtelierPoseDeps = {}): Atelier
     ctx.dom?.areasListEl?.appendChild(voir);
     voir.click();
     voir.remove();
+    // Le pan vierge posé pour un pan unique repart avec la surface, s'il est resté vierge.
+    const v = r.vierge && !r.vierge.vertices.length ? ctx.areas.indexOf(r.vierge) : -1;
+    if (v >= 0) ctx.areas.splice(v, 1);
     rendreListe();
     deps.recalc?.();
     deps.setStatus?.(`${r.pan.label} rétabli : la surface tracée est retirée.`);

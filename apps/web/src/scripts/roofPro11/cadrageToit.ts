@@ -15,14 +15,19 @@ export interface OptionsCadrage extends OptionsCadrageToit {
   /** J1 (tour 4) — vue client : pixels du HAUT de la carte laissés au ciel (marge haute de la caméra) ; la maison se
    *  pose plus bas, comme sur la maquette, en vue inclinée aussi. Absent : aucune marge (comportement d'avant). */
   cielPx?: number;
+  /** Demande croisée (coque v2) — pixels de la carte COUVERTS par les pièces flottantes (barre du projet en haut, rail à
+   *  gauche, inspecteur à droite, outils en bas) : le toit est cadré et centré dans la zone LIBRE ; `bas` remplace alors
+   *  `basPx`. Absent (site public) : comportement d'avant. */
+  margesPx?: { haut: number; gauche: number; droite: number; bas: number };
 }
 
-/** Le centre de la carte qui place `centre` au milieu de la partie visible (le bas couvert sur `basPx`). Vue du dessus,
- *  cap nul : le centre de la carte descend de `basPx / 2` pixels (mètres par pixel de MapLibre, tuiles 512 px). */
-function centreAuDessus(centre: LngLat, zoom: number, basPx: number): LngLat {
+/** Le centre de la carte qui place `centre` au milieu de la zone visible, décalée de (`dxPx`, `dyPx`) pixels (vers l'est,
+ *  vers le bas) du centre de la carte. Vue du dessus, cap nul (mètres par pixel de MapLibre, tuiles 512 px). */
+function centreDecale(centre: LngLat, zoom: number, dxPx: number, dyPx: number): LngLat {
   const lat = centre[1];
   const metresParPixel = (2 * Math.PI * WGS84_RADIUS * Math.cos((lat * Math.PI) / 180)) / (512 * 2 ** zoom);
-  return [centre[0], lat - ((basPx / 2) * metresParPixel) / ((Math.PI / 180) * WGS84_RADIUS)];
+  const degres = (px: number, cos = 1) => (px * metresParPixel) / ((Math.PI / 180) * WGS84_RADIUS * cos);
+  return [centre[0] - degres(dxPx, Math.cos((lat * Math.PI) / 180)), lat + degres(dyPx)];
 }
 
 export { appliquerVue };
@@ -61,11 +66,15 @@ export function cadrerToit(map: CarteCadrable, sources: SourcesCamera, options: 
     if (touche || sources.trace()) return false;
     map.resize();
     const { clientWidth, clientHeight } = map.getContainer();
-    const bas = Math.max(0, Math.min(options.basPx ?? 0, clientHeight * 0.6));
-    const cible = cadrageAnneaux(sources.anneaux(), clientWidth, clientHeight - bas, options);
+    const borne = (px: number | undefined, total: number) => Math.max(0, Math.min(px ?? 0, total * 0.6));
+    const m = options.margesPx;
+    const [haut, gauche, droite] = m ? [borne(m.haut, clientHeight), borne(m.gauche, clientWidth), borne(m.droite, clientWidth)] : [0, 0, 0];
+    const bas = borne(m ? m.bas : options.basPx, clientHeight);
+    const cible = cadrageAnneaux(sources.anneaux(), Math.max(1, clientWidth - gauche - droite), Math.max(1, clientHeight - haut - bas), options);
     if (!cible) return false;
     const ciel = Math.max(0, Math.min(options.cielPx ?? 0, clientHeight * 0.6));
-    const pose = bas > 0 ? { ...cible, center: centreAuDessus(cible.center, cible.zoom, bas) } : cible;
+    const [dx, dy] = [(gauche - droite) / 2, (haut - bas) / 2];
+    const pose = dx !== 0 || dy !== 0 ? { ...cible, center: centreDecale(cible.center, cible.zoom, dx, dy) } : cible;
     map.jumpTo(ciel > 0 ? { ...pose, padding: { top: ciel, bottom: 0, left: 0, right: 0 } } : pose);
     return true;
   };

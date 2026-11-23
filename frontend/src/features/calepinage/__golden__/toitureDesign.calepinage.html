@@ -23,7 +23,16 @@
 <button type="button" aria-pressed="true">Guidé</button>
 <button type="button" aria-pressed="false">Expert</button>
 </div>
-<button type="button" class="cal-bouton-or " data-testid="cal-generer-devis-haut">Resynchroniser le devis</button>
+<a class="cal-barre-entree" data-testid="cal-barre-montrer-client" title="Montrer au client" href="/calepinage/1/client" data-discover="true">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<rect x="3" y="4" width="18" height="12" rx="1.5">
+</rect>
+<path d="M8 20h8M12 16v4">
+</path>
+</svg>
+<span class="cal-barre-entree-texte">Montrer au client</span>
+</a>
+<button type="button" class="cal-bouton-marine cal-bouton-devis" data-testid="cal-generer-devis-haut">Resynchroniser le devis</button>
 </header>
 <div class="cal-coque-alertes" data-deplie="0">
 <div class="cal-coque-alertes-contenu">
@@ -211,6 +220,18 @@
 </main>
 <aside id="rp9-studio-inspecteur" aria-label="Le toit" class="cal-panneau-etape" data-testid="cal-panneau-etape">
 <div class="cal-panneau-etape-tete">
+<div class="cal-progression-etapes" data-testid="cal-progression-etapes" aria-hidden="true">
+<span data-etat="actif">
+</span>
+<span data-etat="a-venir">
+</span>
+<span data-etat="a-venir">
+</span>
+<span data-etat="a-venir">
+</span>
+<span data-etat="a-venir">
+</span>
+</div>
 <p class="cal-panneau-etape-rang">Étape 1 sur 5</p>
 <h2 class="cal-panneau-etape-titre" data-testid="cal-panneau-etape-titre">Le toit</h2>
 </div>
@@ -255,7 +276,7 @@
 <h2>Pente et orientation</h2>
 </div>
 <div class="cal-toit-pente" data-testid="cal-toit-pente-carte">
-<p class="cal-toit-pente-texte">Tracez d’abord le contour du toit : sa pente et sa face s’afficheront ici.</p>
+<p class="cal-toit-pente-texte cal-toit-pente-vide">Tracez d’abord le contour du toit : sa pente et sa face s’afficheront ici.</p>
 <details class="cal-toit-pente-modifier">
 <summary>Modifier la pente</summary>
 </details>

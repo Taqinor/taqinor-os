@@ -54,3 +54,52 @@ doubler). Chaque ligne dit la source ; « à vérifier » = relire le code sur l
 D-ACAL-80 (température de froid) · D-ACAL-81 (NASA POWER) · D-ACAL-82 (valeurs par défaut de quatre pertes) ·
 D-ACAL-83 (mesure de l'ombre proche : centre du pan ou panneaux posés) · D-ACAL-84 (ligne thermique d'un toit affleurant)
 · D-ACAL-85 (composition du P90).
+
+## 6. Points « à corriger après » de la critique de la vague A (`T2/critique-vague-A.md`)
+- Fond satellite de l'atelier (ACAL1421) : CORRIGÉ avant la fusion (commit a37c9be26).
+- Garde de société de `views/calepinages.py::_devis_lie` (ACAL1413) : CORRIGÉE (commit f26d073102, vague B).
+- Champ au sol encore compté deux fois quand il est le SEUL pan (`poseSurfaces.ts::retirerPanDeTrace`, ACAL1412) :
+  lane `production-web`.
+- Exemple `apps/ventes/contract_samples/etude_horaire.json` périmé par ACAL1537 : à régénérer (plan du propriétaire
+  de `ventes`).
+- Deux écarts de signe opposé entre l'onglet Économie et le bandeau Production (ACAL1611) : lane
+  `ecran-elec-resultats`.
+- Lien « Renseigner la facture du lead » caché quand la facture manque (ACAL1517) ; toit plat non enregistré :
+  « Confirmer » refuse encore (ACAL1428 × ACAL1429) : lane `ecran-toit-panneaux`.
+- L'épingle du lead réapparaît à « + Ajouter une zone » (`roof-tool-pro11.ts::clearEditorState`, ACAL1423) : lane
+  `production-web`.
+- Sans fourchette réglée, plus aucun avertissement de ratio panneaux / onduleur, même à 2,0 (ACAL1538, conforme au
+  texte de la tâche) : À DIRE au fondateur (régler une fourchette en production, ou garder une alerte de repli).
+- Sur la page privée `/preview/toiture-3d-pro-11` du site public, neuf retouches de l'atelier arrivent sans qu'une
+  tâche nomme le site (toit grisé pendant l'ajout d'un pan, tableau Site en deux colonnes, puces d'objectif, groupe
+  « Structure et pose »…) : sans effet sur les pages des visiteurs ; à dire au fondateur.
+
+## 7. Autres restes de la vague 2
+- ACAL1608 (la facture du lead n'atteint pas encore la simulation) : poser `facture_lead` dans `simulation.py` (le
+  contexte de simulation ne porte ni société ni lead) et le dire dans `ChargesAjoutees.jsx`.
+- ACAL1709 : impossible tant qu'ACAL1001 (niveau de règles 15, décision du fondateur) n'est pas tranchée.
+- ACAL1705 (carte « Devis créé » à boîte nulle) : non reproduite en test ; cause probable : le portail de la coque
+  qui se remonte après `onRecharger`.
+- ACAL1703 : l'obstacle fautif n'est pas sélectionné à l'arrivée (`EtapeToit.jsx`) ; `GroupesPretAEnvoyer.jsx` :
+  montrer le geste sur la ligne.
+- ACAL1550 : `protections.questions` n'est servie par aucune réponse (libellé recopié en dur).
+- Hors réseau : `heures` = longueur totale de la série (87 600 h en pluriannuel), non divisée.
+- Les étapes IAM, LID, qualité, MPPT, ohmique, onduleur, vieillissement, diodes, bifacial lisent encore la fiche du
+  module par défaut, pas celle du module posé (ACAL1607 ne corrige que la thermique).
+- `PhotoSiteCalage.jsx` : champ fichier natif (« Choose File ») ; `ParcoursDuPan.jsx` : `sm:grid-cols-2`.
+- `calepinage-mesures-ecran.baseline.json` : à régénérer UNE fois sur la pile (35 contrôles attendus au premier
+  écran après ACAL1805, +1 avec ACAL1809).
+
+## 8. Points « à corriger après » de la critique de la vague B (`T2/critique-vague-B.md` : fusionnable, 0 bloquant)
+- CORRIGÉS avant la fusion par l'orchestrateur : (1) un relevé hors ligne n'est plus effacé sur une réponse passagère
+  (401, 408, 429, ≥ 500) ; (3) la garde des montants refuse de nouveau « marge » nu, seules les tournures de chantier
+  nommées passent ; (4) le kWc dit à côté des panneaux posés est celui de la pose.
+- RESTENT (une tâche chacun) : (2) le relevé en file ne porte ni utilisateur ni clé d'idempotence et n'est pas vidé à
+  la déconnexion (même société seulement) ; même défaut de réponse passagère, plus ancien, dans `rejouerFile` (photos) ;
+  (5) jumeaux d'ACAL1607 : onze étapes lisent encore la fiche du module par défaut ; (6) `etapes/ecretage.py` :
+  `heures_ecretees` reste le compte de toute la fenêtre ; (7) `validation.py::_poste_principal` cite le plus gros poste
+  même quand la chaîne produit PLUS que PVGIS ; (8) `consommationSerialisee.ts::courbeDeBase` écrit encore 24 zéros
+  sans facture ni socle ; (9) `ventes/contract_samples/etude_horaire.json` à régénérer ; (10)
+  `tasks.py::_livraison_de_trop` : sans cache, la borne des livraisons ne tient pas.
+- À SAVOIR : avec des panneaux non raccordés, la perte d'ombrage servie à un devis PARTIEL peut valoir `None` pour un
+  pan entièrement non raccordé (le devis ne lit du calepinage que des pourcentages d'ombrage).

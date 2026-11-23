@@ -107,6 +107,16 @@ MANQUE_RESULTAT = {
     'onglet': 'production',
 }
 
+#: ACAL1702 - le champ manquant d'une simulation PÉRIMÉE (la conception a
+#: bougé depuis le calcul) : même champ ``simulation`` que le refus de la note.
+MANQUE_SIMULATION_PERIMEE = {
+    'champ': 'simulation',
+    'libelle': 'Simulation à jour de la conception enregistrée',
+    'ou_saisir': "Relancer la simulation à l'étape Résultats avant "
+                 "d'imprimer ce document.",
+    'onglet': 'production',
+}
+
 #: Motif commun aux deux manques ci-dessus — MOT POUR MOT l'exemple committé.
 MOTIF_SANS_CONCEPTION_DOCUMENT = (
     "Aucune conception enregistrée : ce document se compose de la "
@@ -293,13 +303,26 @@ def _etat_du_document(code, calepinage, resultat, refus_rapport=None):
         if refus_rapport is not None:
             return (False, str(refus_rapport),
                     [_manque_pour_champ(refus_rapport.champ)])
+        # ACAL1702 - jamais un PDF « Production non simulée » offert comme
+        # prêt : la MÊME règle de fraîcheur que la note de calcul, puis le
+        # bloc ``production.total`` servi.
+        from ..note_calcul import motif_simulation_perimee
+
+        perimee = motif_simulation_perimee(resultat)
+        if perimee:
+            return False, perimee, [MANQUE_SIMULATION_PERIMEE]
+        if not resultat.get('simule') or not valeur_au_chemin(
+                resultat, 'production.total')[0]:
+            return False, MOTIF_SANS_SIMULATION_DOCUMENT, [MANQUE_RESULTAT]
         return True, None, []
 
     if code == 'rapport_ombrage':
-        present, _valeur = valeur_au_chemin(
-            {'roof_layout': getattr(calepinage, 'roof_layout', None)},
-            'roof_layout.zones[].geometry.solarAccess.values')
-        if not present:
+        # ACAL1615 - la grammaire ``valeur_au_chemin`` ne sait qu'un ``[]``
+        # FINAL : « zones[] » n'existait jamais. Disponible dès qu'UN pan
+        # porte des valeurs (liste non vide).
+        zones = (getattr(calepinage, 'roof_layout', None) or {}).get('zones')
+        if not any(valeur_au_chemin(zone, 'geometry.solarAccess.values[]')[0]
+                   for zone in zones or ()):
             return False, MOTIF_SANS_OMBRAGE, [MANQUE_SOLAR_ACCESS]
         return True, None, []
 

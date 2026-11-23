@@ -27,7 +27,8 @@ export function productionPubliee(resultat) {
   const total = resultat?.production?.total
   if (resultat?.simule !== true || resultat?.simulation_perimee !== false) return null
   if (typeof total?.p50_kwh !== 'number' || estIncomplet(total) || total.complete !== true) return null
-  const kwc = total.kwc ?? resultat?.pose?.kwc
+  // Panneaux POSÉS et kWc POSÉ vont ensemble : `total.kwc` ne compte que les raccordés depuis ACAL1602.
+  const kwc = resultat?.pose?.kwc ?? total.kwc
   return {
     libelle: 'Production la première année',
     p50: total.p50_kwh,

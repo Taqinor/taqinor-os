@@ -33,12 +33,30 @@ __all__ = ['MOTS_D_ARGENT', 'mots_d_argent', 'premier_mot_d_argent']
 #: Les mots d'argent refuses. Un schema, un plan de pose et un classeur
 #: partent au bureau de controle, au chantier ou au bureau d'etudes : aucun
 #: montant n'y a sa place (D5, D-CALX 5).
-MOTS_D_ARGENT = ('prix', 'prix_achat', 'marge', 'montant', 'mad', 'tva',
+#: ACAL1711 — « marge » est aussi un mot de chantier (« Marge d'échafaudage en
+#: hauteur », marge de rive) : ces tournures-là passent (``_MARGE_DE_CHANTIER``) ;
+#: toute autre « marge » (commerciale, brute, nette, ou nue : « marge 30 % »,
+#: « taux de marge ») reste refusée, comme ``prix_achat``, ``prix``, ``montant``…
+MOTS_D_ARGENT = ('prix', 'prix_achat', 'marge commerciale', 'marge brute',
+                 'marge nette', 'montant', 'mad', 'tva',
                  'remise', 'achat', 'tarif', 'cout', 'coût', 'dh ht',
                  'facture')
 
+#: « marge » NU reste un mot d'argent (« marge 30 % », « taux de marge ») SAUF
+#: suivi d'un complément de chantier nommé ici : la garde ne s'ouvre que pour
+#: ces tournures (critique de la vague B du 23/11/2026 : « Taux de marge :
+#: 25 % » passait depuis ACAL1711).
+_MARGE_DE_CHANTIER = (r"d['’]\s*[ée]chafaudage", r'de\s+rive', r'de\s+recul',
+                      r'de\s+s[ée]curit[ée]', r'de\s+man(?:œ|oe)uvre',
+                      r'de\s+dilatation', r'de\s+pose')
+_MARGE_NUE = r'marge(?!\s+(?:%s))' % '|'.join(_MARGE_DE_CHANTIER)
+
+# Un mot composé (« marge commerciale ») admet n'importe quel blanc entre ses
+# mots ; il est essayé AVANT « marge » nu, pour être nommé en entier au refus.
 _MOT_D_ARGENT_RE = re.compile(
-    r'\b(?:%s)\b' % '|'.join(re.escape(mot) for mot in MOTS_D_ARGENT),
+    r'\b(?:%s)\b' % '|'.join(
+        [r'\s+'.join(re.escape(m) for m in mot.split()) for mot in MOTS_D_ARGENT]
+        + [_MARGE_NUE]),
     re.IGNORECASE)
 
 

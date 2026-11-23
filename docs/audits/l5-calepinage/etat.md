@@ -185,6 +185,177 @@ vivent dans le scratchpad de la session, pas sur `main`.
      [1437, 1617, 1727, 1730, 1731, 1745] sonnet. ENSUITE, sur la tête pliée de `coque-prealables` : `coque-v2`
      [1800, 1801, 1802, 1803, 1804, 1805] opus, UNE lane, puis les écrans du lot E en parallèle (ordre :
      `T2/consolidation/lot-E.md` § 7) et le téléphone M1 [1807-1812].
+   - POINT à 08 h 55 UTC — **CI VERTE sur 746e197f5** (poussé à 08 h 42 ; 79 tâches de la vague 2 + 30 de la vague
+     1). C'est le candidat de la PREMIÈRE FUSION (vague A). Portail avant fusion EN VOL : critique finale Fable sur
+     `git diff origin/main...746e197f5` (sortie `T2/critique-vague-A.md` ; 1er appel Fable de la campagne) et essai
+     du site public sur l'aperçu Cloudflare `https://claude-calpinage-module-l5-aadbde-taqinor-web.taqinor.workers.dev`
+     contre `https://taqinor.ma` (sortie `T2/apercu-public.md`) — le moteur `roofPro11` est partagé et le site
+     public se déploie à la fusion. SI la critique dit fusionnable : `gh pr ready 1527` puis
+     `gh pr merge 1527 --auto --merge` (file de fusion), NE RIEN POUSSER entre-temps (la tête de la PR doit rester
+     746e197f5) ; après la fusion, les plis locaux (au-delà de 746e197f5 : `coque-prealables` déjà plié en local,
+     tête locale 5fb6e6166e) partent dans une NOUVELLE PR de la même branche (vague B). Bloquants de la critique :
+     les corriger d'abord (couture), repousser, attendre la CI.
+     Les lanes partent désormais de la branche LOCALE (`git checkout -B <lane> claude/calpinage-module-l5-aadbde`,
+     sans fetch) pour ne pas pousser pendant la CI. Conteneurs `l5cal-django` et `l5cal-celery` ARRÊTÉS (mémoire
+     pour les tests) : à reconstruire sur la branche pour le tour 3 (`$SP/l5cal/relancer.sh` après un build du
+     front de la branche dans `l5cal-instr` ou un nouveau worktree).
+     EN VOL : `simulation-1` opus · `consommation` [1601, 1603, 1604, 1608, 1609, 1610] opus · `docs-m1` [1700,
+     1703, 1704, 1709, 1711, 1712, 1710, 1705] opus · `coque-v2` [1800-1805 + ACAL1617] opus (base locale).
+     Pliées depuis 08 h 35 : `electrique-1` (9), coutures 3 et 4, `resultats-m1` [1611, 1614 ; 1621 → demande
+     croisée `scene3d.ts`], `coque-prealables` [1437, 1727, 1730, 1731, 1745 ; 1617 → `coque-v2`]. 84 tâches de
+     la vague 2 livrées.
+   - **POINT à 09 h 45 UTC (à lire en premier après une reprise).**
+     VAGUE A EN FILE DE FUSION : PR Taqinor/taqinor-os#1527, tête `a37c9be26` (= 746e197f5 + le correctif du fond
+     satellite), CI verte, `gh pr ready` + `gh pr merge --auto --merge` faits à 09 h 30 ; file : position 1,
+     « AWAITING_CHECKS ». À VÉRIFIER : `gh pr view 1527 --json state,mergedAt`. Une fois fusionnée : dire à Reda
+     « mergé — à déployer par toi : `scripts/deploy-prod.ps1` » (migration `calepinage/0043`), relâcher puis
+     reprendre les claims (`python scripts/plan_claims.py release …` / `claim …`), et ouvrir la PR de la VAGUE B
+     depuis la même branche (`git push origin HEAD` puis `gh pr create --draft`, Auto-fix à allumer
+     `mcp__ccd_pr__set_monitor`, jamais d'auto-archive). Critique Fable de la vague A : `T2/critique-vague-A.md`
+     — fusionnable, 0 bloquant ; ses 8 points « après » sont dans `T2/consolidation/entree-lot-O.md` § 6 (deux déjà
+     corrigés : fond satellite, garde `_devis_lie` ; quatre confiés aux lanes d'écran en vol). Site public : les
+     pages des visiteurs ne chargent pas le moteur modifié (lu par la critique) ; l'aperçu Cloudflare redirige vers
+     le site en ligne, donc NON essayé.
+     BRANCHE LOCALE (vague B, NON poussée, en avance sur la PR) : tête `f26d073102` — plis de `coque-prealables`,
+     `simulation-1` [1605, 1602, 1606, 1607, 1622, 1619], `consommation` [1601, 1603, 1604, 1609, 1610 ; 1608 à
+     moitié], `docs-m1` [1700, 1703, 1704, 1711, 1712, 1710, 1705 ; 1709 impossible avant ACAL1001], **`coque-v2`
+     [1800-1805 + 1617] : coque PROCHE de la maquette, planches `T2/preuves/coque-v2-planche-*.png`**. 109 tâches
+     de la vague 2 livrées au total. Gardes locales vertes. NE PAS pousser la branche avant la fusion de la vague A
+     (cela changerait la tête de la PR en file).
+     EN VOL (lancées à 09 h 35, base = branche LOCALE) : `rapport-m1` [1615, 1616, 1677, 1701, 1702] opus ·
+     `ecran-toit-panneaux` [1445, 1827, 1828, 1818, 1829 + 2 points de la critique] sonnet · `ecran-elec-resultats`
+     [1708, 1833, 1822, 1832, 1830, 1831 + 3 demandes croisées] sonnet · `telephone-m1` [1807, 1809, 1812, 1810,
+     1811] sonnet. Chaque lane d'écran doit rendre une planche maquette | réel et un verdict.
+     ENSUITE : `production-web` [1612, 1618, 1613 + demandes croisées `optimizer.ts` dont ACAL1523, champ au sol
+     seul pan, épingle du lead à « + Ajouter une zone », `cadrageToit.ts` qui honore `margesPx`, ACAL1621 dans
+     `scene3d.ts`] opus ; écrans restants du lot E : Documents 1834 (après 1726), Liste [1825, 1819], Démarrage
+     rapide 1826, Tablette 1835, relevé et client [1814, 1836, 1817, 1837, 1838], atelier-web [1808, 1813, 1820,
+     1821, 1839], e2e [1806, 1824], balayage 1823 ; `toit-d` [1706, 1707] ; `livrables` [1507, 1508, 1551, 1713] ;
+     lot O à rédiger. PUIS : reconstruire l'instrument sur la branche (conteneurs `l5cal-django` et `l5cal-celery`
+     arrêtés ; build du front de la branche), TOUR 3 (rejeu ciblé des 95 « insuffisants » d'après leur `motif`,
+     des tâches livrées des vagues 1-2, et regard neuf + comparaison des 13 écrans aux maquettes v2), régénérer
+     UNE fois `calepinage-mesures-ecran.baseline.json`, acceptation, fusion de la vague B, phase de contrôles,
+     rapport final.
+     INCIDENTS ET RÈGLES APPRISES : (1) 09 h 05 UTC, disque C: PLEIN (0 octet) — Docker tombé, relancé à 09 h 10 ;
+     cause : ~0,5 Go par worktree de lane ; RÈGLE : après chaque pli, `git worktree remove --force
+     .claude/worktrees/agent-<id>` (retirer d'abord toute jonction `node_modules` par `cmd //c rmdir`) ; ne JAMAIS
+     retirer les worktrees `lane-l5-*` d'autres sessions ; garder `agent-ad48e173ad7c41aaa` (seule vraie
+     installation d'`apps/web`, pour les coutures). (2) Un crochet interdit à cette session d'écrire dans un autre
+     worktree : pour poser un commit ailleurs, plomberie git (`read-tree` / `commit-tree`) depuis CE worktree.
+     (3) Chaque push annule le run de CI précédent : grouper les pushes. (4) Les lanes écrivent parfois leur
+     fichier d'événements en cp1252 : le ré-encoder en UTF-8 à la recopie. (5) Fautes de lane qui ont rougi la CI :
+     lignes de plus de 120 colonnes, test qui lit un source par motif, repère `cal-*` non déclaré, fichier ou
+     fonction « mur » qui grossit, budget du bundle — toutes écrites au brief des lanes § 2.3 et § 4.
+   - **POINT à 10 h 00 UTC.** La vague A est SORTIE de la file à 09 h 50 (`failed_checks` : un seul test,
+     `test_acal_simuler_variante::test_get_resultat_variante_sert_sa_simulation`, qui comparait le servi au stocké
+     brut — instable depuis ACAL1323, selon l'ordre des tests). Corrigé (commit `ccac9d559b` posé sur la tête de la
+     PR par plomberie, aussi en local) et REMISE EN FILE à 09 h 53 (règle du dépôt : « corriger et re-mettre en
+     file ») : PR #1527, tête `ccac9d559b`, file position 1. À vérifier : `gh pr view 1527 --json state,mergedAt`.
+     Branche locale (vague B) : tête `6cbcc4ef99` + plis à venir ; `rapport-m1` pliée [1615, 1616, 1677, 1701,
+     1702] : 114 tâches de la vague 2 livrées. Trois lanes coupées par des erreurs d'API (500 / 529) à 09 h 45 et
+     REPRISES par message à 09 h 56 : `ecran-toit-panneaux` (agent ab941ec7513101b3f), `ecran-elec-resultats`
+     (acf021c456913a617), `telephone-m1` (a5236a41184fe5c34). Lancée à 09 h 58 : `production-web` (opus,
+     a0cd634fa4ec12e25) [1612, 1618 + 8 demandes croisées du moteur de dessin, dont ACAL1523 et ACAL1621].
+   - **POINT à 10 h 20 UTC — REPRENDRE ICI.**
+     **VAGUE A FUSIONNÉE** sur `main` à 10 h 12 UTC (PR Taqinor/taqinor-os#1527 : 109 tâches). À dire à Reda :
+     « mergé — à déployer par toi : `scripts/deploy-prod.ps1`, ~2 min » (migration `calepinage/0043`) ; conseil :
+     attendre le rejeu à l'écran du tour 3. `main` a été ré-intégré dans la branche (merge, sans conflit).
+     **VAGUE B : PR Taqinor/taqinor-os#1529** (brouillon, Auto-fix allumé, auto-archive éteint), tête poussée
+     `4720a085d6`. Elle porte 40 tâches de plus : `coque-prealables`, `simulation-1`, `consommation`, `docs-m1`,
+     `coque-v2`, `rapport-m1`, `telephone-m1` [1807, 1809, 1812, 1810, 1811 : carte visible 141 → 335 px au
+     téléphone] + trois corrections de l'orchestrateur (fond satellite, garde `_devis_lie`, test de la variante).
+     119 tâches de la vague 2 livrées au total (+ 30 de la vague 1). Claims renouvelées à 10 h 17.
+     EN VOL (base = branche locale) : `ecran-toit-panneaux` (sonnet, ab941ec7513101b3f, branche
+     `l5w3-ecran-toit-panneaux`) [1445, 1827, 1828, 1818, 1829 + 2 points] · `ecran-elec-resultats` (sonnet,
+     acf021c456913a617, `l5w3-ecran-elec-resultats`) [1708, 1833, 1822, 1832, 1830, 1831 + 3 demandes] ·
+     `production-web` (opus, a0cd634fa4ec12e25, `l5w3-production-web`) [1612, 1618 + DC-1 à DC-8].
+     AU RETOUR DE CHAQUE LANE : `git merge --no-ff <branche>` ; recopier `$SP/T2-lane-<nom>.jsonl` au registre
+     (ré-encoder si cp1252) ; `python $SP/l5b/marquer_livrees.py` ; si serveur : `check_api_shapes.py --write` et
+     `check_openapi_schema.py --write` (conteneur) ; gardes : `check_tests_source_regex`, `check_forme_code --base
+     origin/main`, `check_test_placement`, `node …/e2eHooks.test.mjs`, golden ; copier la planche de preuve dans
+     `T2/preuves/` ; `git worktree remove --force .claude/worktrees/agent-<id>`.
+     **PLAN DE LA SUITE (budget : quota hebdo 46 % à 10 h 20, ≈ 3,5 points par heure ; viser la fin vers 60 %)** :
+     1. Plier les 3 lanes en vol ; pousser ; CI verte sur la PR #1529 (les deux coutures : agent
+        `ad48e173ad7c41aaa` pour la suite entière d'`apps/web` — worktree à vraie installation, branche à créer
+        depuis l'origine — ; pour le front ERP, lancer une lane « couture » avec jonction `node_modules`).
+     2. Critique de la vague B avant sa fusion (opus ; diff `origin/main...<tête>` ; mêmes six questions que
+        `T2/critique-vague-A.md` ; elle porte des chiffres de production : lecture serrée de `simulation.py`,
+        `courbe_charge.py`, `etapes/`, `rapport/`).
+     3. Reconstruire l'INSTRUMENT sur la tête de la branche : `git -C <…>/l5cal-instr checkout --detach <sha>`,
+        `npm run build` du front dans `l5cal-instr/frontend`, `docker start`/recréer `l5cal-django` et
+        `l5cal-celery` par `$SP/l5cal/relancer.sh` (migrer la base `l5cal` : `manage.py migrate`), relancer
+        l'aperçu du front (tâche de fond `bhkmo4ocy`, port 5241), réarmer le Monitor.
+     4. TOUR 3 (relecteurs neufs sur l'écran réel, comptes `rev_b1…b8`, calibrage : un `ok` exige TOUS les cas
+        du « fini quand » montrés) : (a) rejeu ciblé des 95 `ok` « insuffisants » (leur `motif` dit quoi rejouer :
+        `registre/evenements/T2-audit-ok*.jsonl`) ; (b) contre-vérification des 149 tâches livrées des vagues 1 et
+        2 (`registre/evenements/T2-lane-*.jsonl`, champ `gestes_apres`) ; (c) relecteur beauté B3 : les 13 écrans
+        contre les maquettes v2, verdict FIDÈLE / PROCHE / ÉLOIGNÉ (K8) ; (d) régénérer UNE fois
+        `frontend/e2e/calepinage-mesures-ecran.baseline.json` et jouer les specs de l'orchestrateur (ACAL385,
+        1315, 891). Puis relecture adverse des `ok`, enregistrement d'acceptation, coches.
+     5. Corriger ce que le tour 3 trouve de grave (une ou deux lanes), CI, fusion de la vague B par la file.
+     6. PHASE DE CONTRÔLES (après le L5, ≤ 5 points) : fidélité des écrans aux maquettes v2 ; « tous mes devis
+        se calculent seuls avec les bonnes hypothèses » ; un seul moteur, celui du CRM ; lead 1742 « CPE Go Plus »
+        (faits déjà relevés : `$SP/cas-cpe-go-plus.md`, `$SP/probe1.out` ; prod en LECTURE SEULE).
+     7. RAPPORT FINAL détaillé pour Reda (en anglais, comme `RAPPORT-MATIN-2026-11-23.md`) : ce qui est fait,
+        chiffres, décisions prises seul à confirmer, décisions ouvertes D-ACAL-75/76 et 80 à 88, gestes pour lui
+        (deploy, `.wslconfig`, disque C: plein — 110 worktrees d'anciennes sessions à nettoyer —, fourchette du
+        ratio panneaux / onduleur à régler), ce qui reste au plan (M2 du tour 2 : ≈ 180 tâches, écrans restants
+        du lot E : Documents, Liste, Démarrage rapide, Tablette, client), coût. Puis nettoyage (liste en fin de
+        fichier) et rétro.
+   - **POINT à 10 h 45 UTC (le plus récent).** Toutes les lanes sont rentrées et pliées ; tête poussée de la
+     PR #1529 : `f7d5f1a7ec` (10 h 40). En plus du point de 10 h 20 : `ecran-toit-panneaux` [1445, 1827, 1818,
+     1829 ; 1828 → moteur] (Toit clair FIDÈLE, Toit sombre et Panneaux PROCHES, d'après ses planches),
+     `ecran-elec-resultats` [1708, 1833, 1822, 1832, 1830, 1831 + 3 demandes] (quatre écrans PROCHES),
+     `production-web` [1612, 1618 + 8 demandes dont ACAL1523 et ACAL1621]. 130 tâches de la vague 2 livrées (+ 30
+     de la vague 1 déjà fusionnées avec 79 d'entre elles). Planches maquette | réel : `T2/preuves/` (12 fichiers).
+     Le run de CI de 4720a085d était ROUGE sur deux contrôles du CRM qui lisent `index.css` résolu par motif
+     (LB40, APX2) : corrigé dans NOS feuilles (jetons v2 écrits en `rgb()`, un littéral du téléphone réécrit),
+     tests de jetons réalignés ; `node --test "src/**/*.test.mjs"` : les 4 rouges restants en local sont des
+     artefacts de Windows (fins de ligne), pas la CI.
+     À FAIRE MAINTENANT, dans l'ordre : (1) attendre la CI de `f7d5f1a7ec` et corriger ses rouges ; en parallèle,
+     suite entière d'`apps/web` (agent `ad48e173ad7c41aaa`, « quatrième passe ») et suite du front calepinage
+     (nouvelle lane de couture avec jonction) ; (2) critique de la vague B (opus) ; (3) reconstruire l'instrument
+     sur `f7d5f1a7ec` ou plus récent ; (4) TOUR 3 ; puis la suite du PLAN DE LA SUITE du point de 10 h 20.
+     Demandes croisées neuves à verser au lot O : `formatNumber` écrit U+202F que les polices Archivo et Hanken ne
+     dessinent pas (« 10620 kWh » collé) ; la tête « Étape 4 sur 5 » (ACAL1727) décale les écrans Résultats par
+     rapport à leur maquette ; étiquettes de chaînes sur la carte ; `chiffrage.simulation` à servir à la coque
+     (DC-1612, `useAtelierBoot.js`) ; panneaux masqués à l'étape Toit ; carte assombrie en thème sombre
+     (`underlay.ts`, `mapDraw.ts`) ; boussole masquée en Guidé par `50-coque-atelier.css` ; barre d'outils de la
+     carte trop large sous 640 px ; `rp9-undo-point` affiché malgré `hidden`.
+   - **POINT à 11 h 00 UTC (le plus récent).** INSTRUMENT RECONSTRUIT sur `f7d5f1a7ec` (10 h 50 : worktree
+     `l5cal-instr` détaché sur ce commit, base migrée, front rebâti, conteneurs relancés par `relancer.sh`).
+     **TOUR 3 LANCÉ** (`T3/lancement/T3.md`, listes `T3/cv/*.md` par `$SP/l5b/listes_t3.py` : 173 tâches livrées
+     en six listes + 35 « insuffisants » graves + 60 autres). EN VOL : `T3-ECRANS` (sonnet, `rev_b1`, 31 tâches),
+     `T3-PROD` (opus, `rev_b2`, 20 tâches + table de toutes les lectures de la production), `T3-TOIT` (sonnet,
+     `rev_b3`, 33 tâches). RESTE À LANCER (4 relecteurs au plus sur la pile) : `T3-POSE` (39, `rev_b4`),
+     `T3-ELEC` (45, `rev_b5`), `T3-INSUF-GRAVES` (35, `rev_b6`), puis le relecteur beauté `B3` (opus,
+     `rev_beaute` : les 13 écrans contre les maquettes v2 + `T3-TEL`, verdict FIDÈLE / PROCHE / ÉLOIGNÉ). Les 60
+     « insuffisants » non graves restent au plan pour un prochain rejeu (à dire au rapport).
+     Sorties attendues : `registre/evenements/T3-<code>-cv.jsonl`, `registre/constats/T3-<code>.jsonl`,
+     `T3/<code>.md`. ENSUITE : relecture adverse des `ok` du tour 3 (comme `T2/lancement/AUDIT-OK.md`),
+     enregistrement d'acceptation (sha `f7d5f1a7ec`…) et coches par `$SP/l5b/enregistrer_acceptation.py` (à
+     adapter : lire aussi `T3-*-cv.jsonl` et `T3-audit-ok*.jsonl`).
+     AUSSI EN VOL : couture 5 (suite entière d'`apps/web`, agent `ad48e173ad7c41aaa`, branche `l5w3-couture-5`),
+     couture 6 (suite du front calepinage, agent `a44321ebb9d33870c`, branche `l5w3-couture-6`), CI de la PR
+     #1529 sur `f7d5f1a7ec`. Commits locaux non poussés depuis : docs seulement.
+   - **POINT à 11 h 10 UTC (le plus récent).** Tête poussée de la PR #1529 : `c2cac20623` (11 h 00 : budget total
+     du bundle 4130 → 4145 Ko, coutures 5 et 6 pliées) ; CI en cours. EN VOL : critique Fable de la vague B (agent
+     `abfb9c485f57ebf42`, sortie `T2/critique-vague-B.md`, 2e appel Fable) ; tour 3 : `T3-ECRANS` (aa8f68df498f958cb),
+     `T3-PROD` (a7869b95be02b2a62), `T3-TOIT` (a9720ab55bd56619f), `T3-POSE` (a5bda948cfcd67244, `rev_b4`).
+     RESTE À LANCER quand une place se libère : `T3-ELEC` (`rev_b5`, 45), `T3-INSUF-GRAVES` (`rev_b6`, 35), `B3`
+     (opus, `rev_beaute`, 13 écrans contre les maquettes v2 + `T3-TEL`). BROUILLON DU RAPPORT FINAL écrit :
+     `docs/audits/l5-calepinage/RAPPORT-FINAL-2026-11-23.md` (sections 6, 7 et 10 à compléter ; l'envoyer à Reda
+     par SendUserFile à la fin). CONDITION DE FUSION de la vague B : CI verte + critique sans bloquant + verdict
+     de `T3-ECRANS` sans défaut bloquant sur la nouvelle coque ; puis `gh pr ready 1529` et
+     `gh pr merge 1529 --auto --merge`. La phase de contrôles ne commence qu'APRÈS cette fusion (consigne de Reda).
+   - **POINT à 11 h 25 UTC (le plus récent).** Critique Fable de la vague B rendue : FUSIONNABLE, 0 bloquant, 10
+     points « après » (`T2/critique-vague-B.md`) ; trois corrigés tout de suite par l'orchestrateur (garde des
+     montants : « marge » nu de nouveau refusé ; relevé hors ligne gardé sur une réponse passagère ; kWc de la pose
+     à côté des panneaux posés), les sept autres dans `T2/consolidation/entree-lot-O.md` § 8. Tête poussée de la
+     PR #1529 : `de4cc97b5d` (11 h 21), CI en cours (le run précédent, sur `c2cac20623`, était VERT). FUSION de la
+     vague B dès que : CI verte sur `de4cc97b5d` ET le relecteur `T3-ECRANS` ne signale aucun défaut bloquant de la
+     nouvelle coque. Tour 3 en vol : `T3-ECRANS`, `T3-PROD`, `T3-TOIT`, `T3-POSE` (fichiers de sortie nommés
+     `registre/evenements/T3-T3-<nom>-cv.jsonl`). Deux appels Fable faits sur trois (critiques des vagues A et B).
    - BUDGET (08 h 10 UTC) : quota hebdo 39 % (≈ 4 points par heure, ≈ 0,3 point par agent) ; contexte de
      l'orchestrateur 58 %. Règle : construire jusqu'à ≈ 56 %, puis tour 3 léger, fusion, phase de contrôles (≤ 5
      points), rapport. PRIORITÉ de ce qui reste à construire : (1) les M1 de tous les lots ; (2) la coque v2 puis

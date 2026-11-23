@@ -1595,20 +1595,18 @@ describe('runtime W113 — marqueur du pin client à l\'hydratation', () => {
     expect(jt.zoom).toBeGreaterThanOrEqual(15);
   });
 
-  it('« Effacer » ne retire PAS le marqueur du pin client : il est rendu à la carte (ACAL1423)', async () => {
+  it('« Effacer » rend le marqueur du lead (jamais retiré) ; « + Ajouter une zone » le laisse masqué (ACAL1423)', async () => {
     const init = await loadTool();
-    init({
-      maptilerKey: 'test',
-      reducedMotion: true,
-      roofType: createRoofTypeSelect(document),
-      hydrate: { lead: { roof_point: { lat: 33.5905, lng: -7.5997 } } },
-    });
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document), hydrate: { lead: { roof_point: { lat: 33.5905, lng: -7.5997 } } } });
     fireLoad();
     expect(fakeMarkers.filter((m) => m.added && !m.removed).length).toBe(1);
-    (document.getElementById('rp9-clear') as HTMLButtonElement).click(); // reset() → clearEditorState
-    // ACAL1423 : le repère du lead n'est jamais retiré (la fermeture du toit le masquait, « Effacer »
-    // le réaffiche — la visibilité est couverte par gestesCarte.test.ts, le faux Marker n'a pas de DOM).
-    expect(fakeMarkers.map((m) => [m.added, m.removed])).toEqual([[true, false]]); // un seul repère, posé et jamais retiré
+    setBill('1500'); traceRoof(fakeMaps[0], 16); // la fermeture du toit masque l'épingle (ACAL972)
+    const masque = () => fakeMarkers[0].el.hidden;
+    (document.getElementById('rp9-add-area') as HTMLButtonElement).click(); // nouveau pan : l'épingle reste masquée
+    expect(masque()).toBe(true);
+    (document.getElementById('rp9-clear') as HTMLButtonElement).click(); // « Effacer » (question : le pan tracé)
+    document.querySelector<HTMLButtonElement>('#rp9-question-effacer button')?.click();
+    expect([masque(), fakeMarkers.map((m) => [m.added, m.removed])]).toEqual([false, [[true, false]]]); // rendue, jamais retirée
   });
 
   // Boot normal (pro-11 sans hydrate) et capture : aucun marqueur planté → non-régression

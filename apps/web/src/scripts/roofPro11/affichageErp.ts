@@ -14,6 +14,9 @@ export function phraseSurplus(annualKwh: number, consommationKwh: number | null 
   return ` Pose très au-dessus de la consommation : ${fmt(Math.round(annualKwh))} kWh/an produits pour ${fmt(Math.round(consommationKwh as number))} kWh/an consommés.`;
 }
 
+/** ACAL1612 — la ligne « Dans la durée » de l'atelier ERP : la fiche du module servie ne porte pas sa dégradation. */
+export const SANS_DEGRADATION = 'Dans la durée : non estimée — la fiche du module ne porte pas sa dégradation.';
+
 /** La bande « Année 1 → Année N ». `an25` nul = l'année N est dite sans montant (jamais un montant inventé). */
 export function texteBande(p: { degPct: number; annualKwh: number; kwhFin: number; annees: number; factureInconnue: boolean; an1: number; an25: number | null }): string {
   const { factureInconnue: fi } = p;
@@ -44,11 +47,13 @@ function texteBandeCarte(d: CardData, cible: number, erp: boolean, chiffrage: Ch
   if (!(d.annualKwh > 0)) return '';
   const servie = erp ? serviNb(chiffrage?.economie_annee1_mad) : null;
   const prod = (erp ? productionServie(chiffrage, kwc) : null) ?? d.annualKwh; // ACAL1418 — l'Année 1 lit la production de la carte
+  // ACAL1612 — l'ERP n'invente aucun taux : la fiche servie ne porte pas sa dégradation, l'année N se tait en disant pourquoi.
+  if (erp) return `Année 1 ~${fmt(Math.round(prod))} kWh/an${factureInconnue ? '' : ` (${fmtMad(servie ?? d.savingsLow)}/an)`}. ${SANS_DEGRADATION}`;
   const fac25 = degradationFactor(LIFETIME_YEARS);
   const sav25 = cible > 0 ? annualSavingsMad(prod * fac25, cible) : { low: d.savingsLow * fac25, high: d.savingsHigh * fac25 };
   return texteBande({
     degPct: Math.round(ANNUAL_DEGRADATION * 1000) / 10, annualKwh: prod, kwhFin: prod * fac25, annees: LIFETIME_YEARS, factureInconnue,
-    an1: erp ? (servie ?? d.savingsLow) : d.savingsHigh, an25: erp ? (servie != null ? null : sav25.low) : sav25.high,
+    an1: d.savingsHigh, an25: sav25.high,
   });
 }
 
@@ -63,6 +68,16 @@ export function productionServie(chiffrage: ChiffrageAtelier | null | undefined,
  *  navigateur, DITE « estimation » dans l'ERP. Site public (`erp` faux) : le texte d'avant. */
 export function texteTotalProduction(annualKwh: number, kwc: number | null, erp: boolean, chiffrage: ChiffrageAtelier | null | undefined): string {
   const servie = erp ? productionServie(chiffrage, kwc) : null;
-  if (servie != null) return `${fmt(Math.round(servie))} kWh/an`;
-  return annualKwh > 0 ? `${fmt(Math.round(annualKwh))} kWh/an${erp ? ' · estimation' : ''}` : '—';
+  const sim = erp ? texteSimulation(servie ?? annualKwh, chiffrage) : '';
+  if (servie != null) return `${fmt(Math.round(servie))} kWh/an${sim}`;
+  return annualKwh > 0 ? `${fmt(Math.round(annualKwh))} kWh/an${erp ? ` · estimation de l’atelier${sim}` : ''}` : '—';
+}
+
+/** ACAL1612 — le P50 de la simulation À JOUR (`chiffrage.simulation`, fourni par la page hôte) et l'écart de l'estimation. */
+function texteSimulation(kwh: number, chiffrage: ChiffrageAtelier | null | undefined): string {
+  const sim = (chiffrage as { simulation?: { p50_kwh?: number | null; a_jour?: boolean } | null } | null | undefined)?.simulation;
+  const p50 = sim?.a_jour === true && typeof sim.p50_kwh === 'number' && sim.p50_kwh > 0 ? sim.p50_kwh : null;
+  if (p50 == null || !(kwh > 0)) return '';
+  const ecart = Math.round(((kwh - p50) / p50) * 100);
+  return ` · simulation : ${fmt(Math.round(p50))} kWh/an (écart ${ecart < 0 ? '−' : '+'} ${fmt(Math.abs(ecart))} %)`;
 }

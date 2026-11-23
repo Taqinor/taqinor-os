@@ -211,6 +211,28 @@ describe('CALX1 — le rail monte le panneau de l’onglet demandé', () => {
     expect(ESSENTIELS).toHaveLength(7)
   })
 
+  it('ACAL1731 — l’étape mémorisée sur cet appareil prime sur la première non faite ; un `?onglet=` garde la priorité ; stockage refusé ⇒ repli', async () => {
+    const cle = `calepinage.etape.${ID}`
+    try {
+      window.localStorage.setItem(cle, 'toit')
+      mocks.parcours.mockResolvedValue(reponseContrat('calepinage', 'calepinage_parcours_guide'))
+      const { unmount } = rendreRail()
+      // contrat : toit fait, panneaux en_cours ; la mémoire dit « toit » : l'atelier rouvre sur le Toit.
+      await waitFor(() => expect(screen.getByTestId('cal-etape-toit')).toHaveAttribute('data-etat', 'fait'))
+      expect(screen.getByTestId('cal-etape-toit')).toHaveAttribute('aria-current', 'step')
+      unmount()
+      // Un lien `?onglet=` prime sur la mémoire.
+      const lien = rendreRail('?onglet=fiches')
+      await waitFor(() => expect(screen.getByTestId('cal-etape-panneaux')).toHaveAttribute('aria-current', 'step'))
+      lien.unmount()
+      // Une valeur mémorisée qui n'est pas une étape, ou le stockage refusé : la première étape non faite.
+      window.localStorage.setItem(cle, 'inconnue')
+      const repli = rendreRail()
+      await waitFor(() => expect(screen.getByTestId('cal-etape-panneaux')).toHaveAttribute('aria-current', 'step'))
+      repli.unmount()
+    } finally { window.localStorage.removeItem(cle); mocks.parcours.mockReset() }
+  })
+
   it('la pastille d’état vient du parcours (contrat) et l’étape active est la première non faite', async () => {
     mocks.parcours.mockResolvedValueOnce(reponseContrat('calepinage', 'calepinage_parcours_guide'))
     rendreRail()
@@ -466,8 +488,15 @@ describe('ACAL395 — l’étape Électrique en UNE page', () => {
     mocks.parcours.mockResolvedValue(parcoursElectrique('fait'))
     mocks.pretAEnvoyer.mockResolvedValue(pretAvec([ok, { ...orange, code: 'chutes_tension' }]))
     rendreRail(`?${PARAM_ONGLET}=verdict-electrique`)
-    // le repli « Voir les n contrôles réussis » reste à la présentation par défaut de PretAEnvoyer (couverte ailleurs).
-    expect(await screen.findByTestId(`cal-pret-ligne-${ok.code}`, {}, { timeout: DELAI_PANNEAU })).toBeVisible()
+    // ACAL1830 (maquette v2) : les contrôles réussis sont rangés dans la section « Contrôles · N bons » REPLIÉE,
+    // la ligne y reste présente ; le repli « Voir les n contrôles réussis » de PretAEnvoyer n'existe pas ici.
+    const ligne = await screen.findByTestId(`cal-pret-ligne-${ok.code}`, {}, { timeout: DELAI_PANNEAU })
+    const bons = screen.getByTestId('cal-pret-bons')
+    expect(bons.open).toBe(false)
+    expect(within(bons).getByTestId(`cal-pret-ligne-${ok.code}`)).toBe(ligne)
+    await userEvent.setup().click(bons.querySelector('summary'))
+    expect(bons.open).toBe(true)
+    expect(ligne).toBeVisible()
     expect(screen.queryByTestId('cal-pret-reussis')).toBeNull()
   }, 30_000)
 

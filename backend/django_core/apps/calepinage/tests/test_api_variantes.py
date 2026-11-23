@@ -359,6 +359,31 @@ class VariantePourModuleTest(SimpleTestCase):
                          'produit-1')
         self.assertEqual(layout['result']['annualKwh'], 9999.0)
 
+    def test_aucune_production_de_a_dans_les_zones_ni_la_racine(self):
+        """ACAL1710 — A (460 W) simulé : chaque zone porte 4 312 kWh/an. La
+        variante B (430 W) ne garde AUCUN kWh ni rendement, ni à la racine ni
+        dans ``zones[].result`` ; le kWc de chaque zone est celui de B, compté à
+        la main : 10 × 430 W = 4,30 kWc et 5 × 430 W = 2,15 kWc ; le nombre de
+        modules ne bouge pas (mutant : ne purger que la racine ⇒ échec)."""
+        from apps.calepinage.services.variantes_modules import (
+            _variante_pour_module)
+
+        layout = _layout_sur_a()
+        layout['result'].update({'monthlyKwh': [300.0] * 12, 'specificYield': 1449.0})
+        for zone, (n, kwc) in zip(layout['zones'], ((10, 4.6), (5, 2.3))):
+            zone['result'] = {'count': n, 'kwc': kwc, 'annualKwh': 4312.0,
+                              'monthlyKwh': [359.0] * 12, 'specificYield': 937.4}
+        b = dict(_module_a(), id='produit-2', produitId=2, libelle='B 430', pmaxWc=430.0)
+        document, _ = _variante_pour_module(layout, b)
+        self.assertEqual(sorted(document['result']), ['kwc'])
+        for zone in document['zones']:
+            self.assertEqual(sorted(zone['result']), ['count', 'kwc'])
+        self.assertEqual([z['result']['count'] for z in document['zones']], [10, 5])
+        self.assertEqual([round(z['result']['kwc'], 6) for z in document['zones']], [4.3, 2.15])
+        self.assertAlmostEqual(document['result']['kwc'], 6.45)
+        # La conception d'origine (``Calepinage.resultat`` / layout source) reste intacte.
+        self.assertEqual(layout['zones'][0]['result']['annualKwh'], 4312.0)
+
     def test_cotes_differentes_a_repaver(self):
         from apps.calepinage.services.variantes_modules import (
             _variante_pour_module)

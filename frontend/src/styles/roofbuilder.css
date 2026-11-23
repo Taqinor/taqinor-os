@@ -348,6 +348,18 @@
   background: transparent;
   border-radius: 2px;
 }
+/* ACAL1802 — DANS L'ATELIER DE CALEPINAGE (`.cal-coque`, jamais le mode devis ni le site public) : l'état enfoncé du
+   constructeur est l'ACTIF v2 (bleu nuit, sombre : or), un seul rayon de bouton (11 px) et de champ (8 px). */
+.rp9-host.cal-coque .rp9-chip,
+.rp9-host.cal-coque .rp9-btn { border-radius: var(--cal-rayon-bouton); }
+.rp9-host.cal-coque .rp9-input,
+.rp9-host.cal-coque .rp9-image-capture-input { border-radius: var(--cal-rayon-champ); }
+.rp9-host.cal-coque .rp9-chip[aria-pressed='true'],
+.rp9-host.cal-coque .rp9-btn[aria-pressed='true'] {
+  border-color: var(--cal-actif);
+  color: var(--cal-actif-texte);
+  background: var(--cal-actif);
+}
 
 /* ── Retraits, priorité de pose et notes créés à la volée — ACAL969 ──────── */
 .rp9-host .rp9-setbacks {

@@ -251,6 +251,18 @@ class ModuleSubstitueSurfaceSansBaseTest(SimpleTestCase):
             "Champ au sol 1 : son module (« 720 W ») n'est pas celui que le catalogue compose "
             "(« Panneau Canadien Solar 710W »). Changez le module du pan, puis ré-enregistrez le contour."))
 
+    def test_contrat_porte_le_refus_de_surface_servi(self):
+        """ACAL1700 — le contrat épingle la forme du refus de surface : mêmes clés que
+        le refus d'un toit, valeurs égales à celles servies (mutant : retirer
+        ``kwc_compose`` de l'exemple ⇒ échec)."""
+        doc = {'schema_version': 2, 'poseSurfaces': [
+            {'id': 's1', 'kind': 'sol', 'label': 'Champ au sol 1', 'moduleWc': 720,
+             'engine': {'modules': 50}}]}
+        refus = self._refus(doc, 35.5)
+        exemple = CONTRAT['exemple_409_module_substitue_surface']
+        self.assertEqual(sorted(exemple), sorted(CONTRAT['exemple_409_module_substitue']))
+        self.assertEqual(refus.donnees, exemple)
+
     def test_toit_garde_le_texte_actuel(self):
         doc = {'schema_version': 2, 'zones': [
             {'id': 'z1', 'label': 'Zone 1', 'geometry': {'count': 50, 'kwc': 36.0}}]}

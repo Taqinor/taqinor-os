@@ -69,7 +69,7 @@ class SansFauxPositifTest(SimpleTestCase):
 
 class RefusAttenduTest(SimpleTestCase):
     def test_designation_catalogue_avec_mot_entier_prix_est_refusee(self):
-        for mot in ('prix', 'montant', 'marge', 'tva', 'tarif'):
+        for mot in ('prix', 'montant', 'marge commerciale', 'tva', 'tarif'):
             resultat = {'nomenclature': [{
                 'categorie': 'Structure', 'designation': 'Rail %s 6 m' % mot,
                 'quantite': 1, 'unite': 'u', 'spec': '', 'produit_id': None,
@@ -103,6 +103,34 @@ class RefusAttenduTest(SimpleTestCase):
     def test_le_plan_de_pose_refuse_un_mot_entier(self):
         with self.assertRaises(PlanDePoseRefuse):
             _verifier_absence_d_argent('Onduleur (prix sur demande)')
+
+    def test_marge_d_echafaudage_passe_marge_commerciale_refusee(self):
+        """ACAL1711 — « marge » est un mot de chantier avant d'être un prix : une
+        « Marge d'échafaudage en hauteur » se rend ; « marge commerciale/brute/nette »,
+        un prix d'achat ou un montant restent refusés, et le refus nomme le texte
+        trouvé et la ligne du bandeau qui le porte (mutant : remettre « marge » nu ⇒
+        échec)."""
+        chantier = "Fixation : Marge d'échafaudage en hauteur (2 m)"
+        self.assertEqual(mots_d_argent(chantier), [])
+        _verifier_absence_d_argent('Chaînes : 2\n' + chantier)  # ne lève pas
+        # Seules les tournures de chantier nommées passent ; « marge » nu reste
+        # un mot d'argent (critique de la vague B : « Taux de marge : 25 % »).
+        for tournure in ('Marge de rive 0,40 m', 'Marge de sécurité 10 cm', 'marges'):
+            self.assertEqual(mots_d_argent(tournure), [], tournure)
+        for fautif, trouve in (('Rail — marge 30 %', 'marge'),
+                               ('Taux de marge : 25 %', 'marge'),
+                               ('Rail, marge de 30 %', 'marge'),
+                               ('Rail — marge commerciale 30 %', 'marge commerciale'),
+                               ('Rail (marge brute)', 'marge brute'),
+                               ('Rail, marge  nette', 'marge  nette'),
+                               ('Rail prix_achat 120', 'prix_achat'),
+                               ('Rail : montant 1 200', 'montant')):
+            self.assertEqual(mots_d_argent(fautif), [trouve], fautif)
+            with self.assertRaises(PlanDePoseRefuse) as refus:
+                _verifier_absence_d_argent('Chaînes : 2\n' + fautif)
+            self.assertEqual(str(refus.exception), (
+                "Plan de pose refusé : une pièce de chantier ne porte aucun montant. "
+                "Trouvé : %s (ligne « %s »)." % (trouve, fautif)))
 
 
 class UneSeuleListeTest(SimpleTestCase):

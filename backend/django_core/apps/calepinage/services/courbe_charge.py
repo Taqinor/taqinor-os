@@ -77,8 +77,9 @@ __all__ = ['CourbeChargeInvalide', 'MOTIF_AUTOCONSOMMATION',
 
 #: Les provenances possibles de la courbe de BASE, dans l'ordre de priorité
 #: (décision fondateur Q14 du 21/09 : la saisie la plus proche du client
-#: gagne).
-ORIGINES = ('layout', 'import_intervalle', 'profil_mensuel', 'profil_type')
+#: gagne). ``facture_lead`` (ACAL1608) : repli NOMMÉ quand rien n'est saisi.
+ORIGINES = ('layout', 'import_intervalle', 'profil_mensuel', 'profil_type',
+            'facture_lead')
 
 #: Les charges additionnelles déclarables. ``vehicule`` et ``pac`` sont
 #: produites par ``services/charges.py`` ; les trois autres sont des appareils
@@ -285,25 +286,32 @@ def _base_layout(points, declaration, avertissements):
     # multiplicatifs été / hiver de l'atelier, mois d'été de
     # ``consommation.MOIS_ETE``) est LUE côté serveur ; absente, la courbe
     # est répétée telle quelle (comportement d'avant).
-    from .consommation import MOIS_ETE
-
     saisons = ((layout.get('consumption') or {}).get('saisons')
                if isinstance(layout, dict) else None)
+    origine = "SAISIES dans l'atelier (méthode « {methode} »)".format(
+        methode=profil.get('methode') or 'non renseignée')
+    return _repeter_courbe24(points, courbe24, saisons, origine,
+                             'SAISIE (« consumption.saisons »)', avertissements)
+
+
+def _repeter_courbe24(points, courbe24, saisons, origine, quelle_saison,
+                      avertissements):
+    """24 valeurs horaires répétées jour après jour, modulées été / hiver."""
+    from .consommation import MOIS_ETE
+
     saisons = saisons if isinstance(saisons, dict) else {}
     ete = _facteur_saison(saisons.get('ete'))
     hiver = _facteur_saison(saisons.get('hiver'))
     if ete is None and hiver is None:
         avertissements.append(
-            "Courbe de base : les 24 valeurs horaires SAISIES dans l'atelier "
-            '(méthode « {methode} »), répétées pour chaque jour de '
-            "l'année — aucune saisonnalité n'est inventée.".format(
-                methode=profil.get('methode') or 'non renseignée'))
+            'Courbe de base : les 24 valeurs horaires {origine}, répétées '
+            "pour chaque jour de l'année — aucune saisonnalité n'est "
+            'inventée.'.format(origine=origine))
         return [float(courbe24[_heure(point)]) for point in points]
     avertissements.append(
-        "Courbe de base : les 24 valeurs horaires SAISIES dans l'atelier "
-        '(méthode « {methode} »), modulées par la saisonnalité SAISIE '
-        '(« consumption.saisons ») : été ×{ete} (juin–septembre), hiver '
-        '×{hiver}.'.format(methode=profil.get('methode') or 'non renseignée',
+        'Courbe de base : les 24 valeurs horaires {origine}, modulées par '
+        'la saisonnalité {quelle} : été ×{ete} (juin–septembre), hiver '
+        '×{hiver}.'.format(origine=origine, quelle=quelle_saison,
                            ete=ete if ete is not None else 1,
                            hiver=hiver if hiver is not None else 1))
     courbe = []
@@ -401,8 +409,12 @@ def _kwh_par_mois(declaration):
     return mois
 
 
-def _base_mensuelle(points, declaration, avertissements):
-    """Les kWh SAISIS mois par mois, mis en forme par le profil type."""
+def _base_mensuelle(points, declaration, avertissements, annees=1):
+    """Les kWh SAISIS mois par mois, mis en forme par le profil type.
+
+    ACAL1603 — sur une fenêtre de N années, CHAQUE année reçoit les kWh du
+    mois (N × la saisie sur les heures du mois) : la publication divise par N.
+    """
     par_mois = _kwh_par_mois(declaration)
     if not par_mois:
         return None
@@ -423,8 +435,8 @@ def _base_mensuelle(points, declaration, avertissements):
         if not rangs:
             absents.append(str(numero))
             continue
-        morceau, force_plat = _etaler_forme(points, forme, par_mois[numero],
-                                            rangs=rangs)
+        morceau, force_plat = _etaler_forme(
+            points, forme, par_mois[numero] * annees, rangs=rangs)
         plat = plat or force_plat
         for rang in rangs:
             courbe[rang] = morceau[rang]
@@ -448,8 +460,9 @@ def _base_mensuelle(points, declaration, avertissements):
     return courbe
 
 
-def _base_profil_type(points, declaration, avertissements):
-    """Une énergie ANNUELLE saisie, calée sur la forme d'un profil type."""
+def _base_profil_type(points, declaration, avertissements, annees=1):
+    """Une énergie ANNUELLE saisie, calée sur la forme d'un profil type
+    (ACAL1603 : N × l'énergie sur une fenêtre de N années)."""
     annuel = declaration.get('annuel_kwh')
     if annuel in (None, ''):
         return None
@@ -471,7 +484,7 @@ def _base_profil_type(points, declaration, avertissements):
     uniforme = forme is None
     if uniforme:
         forme = [1.0] * 24
-    courbe, plat = _etaler_forme(points, forme, energie)
+    courbe, plat = _etaler_forme(points, forme, energie * annees)
     avertissements.append(
         'Courbe de base : énergie annuelle SAISIE ({energie} kWh), mise en '
         "forme sur l'année.".format(energie=round(energie, 2)))
@@ -484,19 +497,57 @@ def _base_profil_type(points, declaration, avertissements):
     return courbe
 
 
-#: Les quatre sources de courbe de base, dans l'ordre de priorité.
+#: ACAL1608 — la facture du lead ne nourrit la courbe que pour un lead
+#: résidentiel : en C&I ou agricole, la consommation dépend de l'activité et
+#: une facture seule n'en donne pas le profil horaire.
+MOTIF_FACTURE_LEAD_NON_RESIDENTIELLE = (
+    'La facture du lead est connue, mais le lead n\'est pas résidentiel '
+    '(classe « {classe} ») : une facture seule ne donne pas le profil horaire '
+    "d'une activité. Saisissez la consommation dans l'atelier.")
+
+
+def _base_facture_lead(points, declaration, avertissements):
+    """ACAL1608 — repli : la courbe que ``consommation.py`` PROPOSE pour la
+    facture du lead (même conversion que la carte, barème société), posée
+    dans la déclaration sous ``facture_lead`` ; jamais un second barème."""
+    proposition = declaration.get('facture_lead')
+    if not isinstance(proposition, dict):
+        return None
+    courbe24 = proposition.get('courbe24')
+    if not isinstance(courbe24, list) or len(courbe24) != 24:
+        return None
+    classe = proposition.get('classe') or 'non renseignée'
+    if classe != 'residentiel':
+        avertissements.append(
+            MOTIF_FACTURE_LEAD_NON_RESIDENTIELLE.format(classe=classe))
+        return None
+    return _repeter_courbe24(
+        points, courbe24, proposition.get('saisons'),
+        'proposées pour la facture du lead (barème de la société, rien '
+        "n'a été saisi dans l'atelier)", 'des factures du lead',
+        avertissements)
+
+
+#: Les sources de courbe de base, dans l'ordre de priorité.
 _SOURCES_DE_BASE = (
     ('layout', _base_layout),
     ('import_intervalle', _base_import),
     ('profil_mensuel', _base_mensuelle),
     ('profil_type', _base_profil_type),
+    ('facture_lead', _base_facture_lead),
 )
 
 
-def _courbe_de_base(points, declaration, avertissements):
+#: Les sources qui portent une énergie (et non une courbe journalière) : sur
+#: N années elles reçoivent N fois la saisie (ACAL1603).
+_SOURCES_EN_ENERGIE = ('profil_mensuel', 'profil_type')
+
+
+def _courbe_de_base(points, declaration, avertissements, annees=1):
     """``(courbe, origine)`` de la première source SAISIE disponible."""
     for origine, fabrique in _SOURCES_DE_BASE:
-        courbe = fabrique(points, declaration, avertissements)
+        arguments = ((annees,) if origine in _SOURCES_EN_ENERGIE else ())
+        courbe = fabrique(points, declaration, avertissements, *arguments)
         if courbe is not None:
             return courbe, origine
     return None, None
@@ -781,14 +832,15 @@ def _charges_annuelles(declaration, points, contigues, avertissements):
     return blocs
 
 
-def _profil_mensuel_publie(points, courbe):
-    """Les douze mois de la courbe ASSEMBLÉE — dérivés, jamais saisis."""
+def _profil_mensuel_publie(points, courbe, annees=1):
+    """Les douze mois de la courbe ASSEMBLÉE — dérivés, jamais saisis — à
+    l'année moyenne de la fenêtre (ACAL1603)."""
     totaux = {}
     for point, valeur in zip(points, courbe):
         numero = _mois(point)
         if 1 <= numero <= 12:
             totaux[numero] = totaux.get(numero, 0.0) + float(valeur)
-    return [{'mois': numero, 'kwh': round(totaux[numero], 2)}
+    return [{'mois': numero, 'kwh': round(totaux[numero] / annees, 2)}
             for numero in sorted(totaux)]
 
 
@@ -858,7 +910,14 @@ def construire_courbe_charge(serie, contexte=None, *, consommation=None):
             'saisies au pas horaire sont lues heure par heure sur son '
             'calendrier, sans interpolation.'.format(pas=pas_minutes))
 
-    courbe_base, origine = _courbe_de_base(points, declaration, avertissements)
+    from .annee_moyenne import moyenne
+    from .chaine_pertes import annees_de_la_fenetre
+
+    # ACAL1603 — la courbe horaire reste ENTIÈRE ; ce qui est publié « par
+    # an » est l'année MOYENNE de la fenêtre (N = 1 : inchangé au bit).
+    annees = annees_de_la_fenetre(contexte)
+    courbe_base, origine = _courbe_de_base(points, declaration,
+                                           avertissements, annees)
     if courbe_base is None:
         return _omettre(MOTIF_CONSOMMATION, avertissements)
 
@@ -880,13 +939,13 @@ def construire_courbe_charge(serie, contexte=None, *, consommation=None):
         detail.append({
             'code': bloc['type'],
             'libelle': bloc['libelle'],
-            'kwh_an': publiee['energie_kwh'],
+            'kwh_an': moyenne(publiee['energie_kwh'], annees),
             'source': 'saisie',
             'methode': bloc['methode'],
             'planifie': bloc['planifie'],
             'plafonnee': bloc['plafonnee'],
-            'kwh_hors_production_an': _energie_hors_production(
-                bloc['courbe'], rangs_sans_production),
+            'kwh_hors_production_an': moyenne(_energie_hors_production(
+                bloc['courbe'], rangs_sans_production), annees),
             'hypotheses': bloc['hypotheses'],
         })
 
@@ -896,11 +955,12 @@ def construire_courbe_charge(serie, contexte=None, *, consommation=None):
         'consommation': {
             'courbe_origine': origine,
             'pas_minutes': pas_minutes,
-            'total_kwh': bilan['total_kwh'],
+            'total_kwh': moyenne(bilan['total_kwh'], annees),
             'charges': detail,
-            'profil_mensuel': _profil_mensuel_publie(points, bilan['courbe']),
-            'total_base_kwh': bilan['total_base_kwh'],
-            'total_charges_kwh': bilan['total_charges_kwh'],
+            'profil_mensuel': _profil_mensuel_publie(points, bilan['courbe'],
+                                                     annees),
+            'total_base_kwh': moyenne(bilan['total_base_kwh'], annees),
+            'total_charges_kwh': moyenne(bilan['total_charges_kwh'], annees),
             'avertissements': avertissements,
         },
         'omissions': {'consommation': '', 'batterie': '',

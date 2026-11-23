@@ -14,6 +14,7 @@
  */
 import { esc } from './dom';
 import type { CorpsPropositionConsommation } from './consumption';
+import type { Ctx } from './context';
 
 export interface MoisPropose {
   mois: number;
@@ -42,6 +43,37 @@ export function corpsDepuisLignes(lignes: readonly LigneSaisie[], classe: string
   const enMad = mois.some((m) => 'mad' in m); // la classe ne sert qu'à convertir des MAD
   return { source: 'factures', factures: { mois, ...(enMad && classe ? { classe } : {}) } } as unknown as CorpsPropositionConsommation;
 }
+
+/** ACAL1610 — une facture mensuelle du document (`consumption.factures_mois`, contrat ACAL1601). */
+export interface FactureMois { mois: number; valeur: number; unite: 'kwh' | 'mad' }
+
+/** Les factures à écrire au document, tirées des lignes par `corpsDepuisLignes` (une seule lecture). */
+function facturesDepuisLignes(lignes: readonly LigneSaisie[]): FactureMois[] {
+  const corps = corpsDepuisLignes(lignes, '') as unknown as { factures: { mois: Array<Record<string, number>> } } | null;
+  return (corps?.factures.mois ?? []).map(({ mois, ...m }) => ('mad' in m
+    ? { mois, valeur: m.mad, unite: 'mad' } : { mois, valeur: m.kwh, unite: 'kwh' }));
+}
+
+/** Les factures RELUES d'un bloc `consumption` ; une entrée hors contrat (mois 13, valeur ≤ 0…) est ignorée. */
+export function releireFacturesMois(consumption: unknown): FactureMois[] {
+  const brutes = (consumption as { factures_mois?: unknown } | null | undefined)?.factures_mois;
+  return (Array.isArray(brutes) ? brutes : []).filter((f): f is FactureMois => Boolean(f) && Number.isInteger(f.mois)
+    && f.mois >= 1 && f.mois <= 12 && typeof f.valeur === 'number' && f.valeur > 0 && (f.unite === 'kwh' || f.unite === 'mad'))
+    .map((f) => ({ mois: f.mois, valeur: f.valeur, unite: f.unite }));
+}
+
+type CtxFactures = Pick<Ctx, 'documentRelu'> & { consFacturesMois?: FactureMois[] };
+type LiaisonFactures = { lire: () => FactureMois[]; ecrire: (liste: FactureMois[]) => void };
+
+/** Celles de l'écran (`consFacturesMois`) si l'utilisateur y a touché, sinon celles relues ; `null` = rien. */
+export function facturesAEcrire(ctx: CtxFactures): FactureMois[] | null {
+  const liste = Array.isArray(ctx.consFacturesMois) ? ctx.consFacturesMois : releireFacturesMois(ctx.documentRelu?.consumption);
+  return liste.length ? liste : null;
+}
+
+/** La liaison grille ↔ document que l'atelier passe à `monterGrilleFactures`. */
+export const liaisonFactures = (ctx: CtxFactures): LiaisonFactures => ({
+  lire: () => facturesAEcrire(ctx) ?? [], ecrire: (liste) => { ctx.consFacturesMois = liste; } });
 
 /** Les 12 barres lues dans `mois[]` : pleines (facture) ou en pointillé avec « estimé ». */
 export function htmlBarres(mois: readonly MoisPropose[]): string {
@@ -121,6 +153,8 @@ export interface DepsGrille {
   classe: () => string;
   /** Reçoit chaque réponse (`mois[]`) ou refus (`champs`) du serveur. */
   ecouter: (f: (rep: { mois?: MoisPropose[] } | null, refus?: { champs?: Record<string, string> } | null) => void) => void;
+  /** ACAL1610 — la grille se remplit depuis le document et y réécrit chaque frappe (`liaisonFactures`). */
+  factures?: LiaisonFactures;
 }
 
 export function monterGrilleFactures(hote: HTMLElement, deps: DepsGrille): void {
@@ -149,9 +183,18 @@ export function monterGrilleFactures(hote: HTMLElement, deps: DepsGrille): void 
     deps.lancer(corps);
   };
   grille.addEventListener('input', () => {
+    deps.factures?.ecrire(facturesDepuisLignes(lignes())); // ACAL1610 — écrit au document sans délai
     if (minuterie != null) clearTimeout(minuterie);
     minuterie = setTimeout(envoyer, DELAI_FRAPPE_MS);
   });
+  // ACAL1610 — les mois relus du document remplissent la grille ; la proposition (barres) est relancée.
+  const relues = deps.factures?.lire() ?? [];
+  for (const f of relues) {
+    const ligne = grille.querySelector<HTMLElement>(`[data-cons-mois-ligne="${f.mois}"]`)!;
+    ligne.querySelector<HTMLInputElement>('[data-cons-mois-valeur]')!.value = String(f.valeur);
+    ligne.querySelector<HTMLSelectElement>('[data-cons-mois-unite]')!.value = f.unite;
+  }
+  if (relues.length) envoyer();
   if (deps.lireFacture) {
     monterBlocPhoto(grille, deps.lireFacture, (mois, kwh) => {
       const ligne = grille.querySelector<HTMLElement>(`[data-cons-mois-ligne="${mois}"]`);

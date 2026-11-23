@@ -8,7 +8,9 @@ import {
   GESTES, ajoutTermine, annulerAjoutPan, appliquerCotes, commencerAjoutPan, confirmerPenteVivante, degres, enregistrerPentePan, nomFace,
   selectionnerObstacle, texteBesoin, useEtatToit,
 } from './EtapeToit.helpers'
+import { jourMois } from './panneaux/formats'
 import { useCibleFactures } from './panneaux/lectures'
+import ValeurUnite from './panneaux/ValeurUnite'
 
 /* ============================================================================
    COQUE — L'ÉTAPE « TOIT » (maquette Main du 22/11 ; ToitSombre = même écran,
@@ -24,7 +26,7 @@ import { useCibleFactures } from './panneaux/lectures'
    Les anciens contrôles restent montés : masqués en guidé, visibles en Avancé.
    ========================================================================== */
 
-const ASTUCE_CONTOUR = 'Cliquez sur un coin pour le déplacer, ou double-cliquez sur un bord pour ajouter un point.'
+const ASTUCE_CONTOUR = 'Glissez un coin pour le déplacer. Double-cliquez un bord pour ajouter un point.'
 const ASTUCE_AJOUT = 'Cliquez sur la carte pour poser chaque coin du pan, double-cliquez pour le fermer. Échap annule l’ajout.'
 const DUREE_BULLE_MS = 8000
 
@@ -81,6 +83,7 @@ function penteAffichee(zone, pente, ferme) {
       plat: zone.roofType ? zone.roofType === 'flat' : pente.plat,
       deg: Number.isFinite(Number(zone.pitchDeg)) ? Number(zone.pitchDeg) : null,
       face: nomFace(zone.facingAzimuthDeg),
+      azimut: zone.facingAzimuthDeg != null && Number.isFinite(Number(zone.facingAzimuthDeg)) ? Number(zone.facingAzimuthDeg) : null,
       aConfirmer: !estObjet(zone.pitchSource),
     }
   }
@@ -108,8 +111,10 @@ function CartePente({ calepinageId, builderApi, documentVivant, lectureSeule, en
     if (lectureSeule) return
     // ACAL1428 — un toit pas encore dans la conception servie : on confirme le pan VIVANT (le moteur écrit `pitchSource`,
     // « Enregistrer » l'emporte) ; aucune écriture serveur avant « Enregistrer ».
-    if (!zone && vue && !vue.plat && confirmerPenteVivante(document, vue.deg)) {
-      setMessage('Pente confirmée : elle sera enregistrée avec le calepinage.')
+    // Critique — un toit PLAT tracé et pas encore enregistré prend le même chemin (le geste du moteur sur le pan vivant).
+    if (!zone && vue && Number.isFinite(vue.deg) && confirmerPenteVivante(document, vue.deg)) {
+      setMessage(vue.plat ? 'Toit plat confirmé : il sera enregistré avec le calepinage.'
+        : 'Pente confirmée : elle sera enregistrée avec le calepinage.')
       return
     }
     if (doc.etat !== 'ok') { setMessage('Conception illisible : rien n’est enregistré.'); return }
@@ -133,35 +138,40 @@ function CartePente({ calepinageId, builderApi, documentVivant, lectureSeule, en
   return (
     <div className="cal-toit-pente" data-testid="cal-toit-pente-carte">
       {titre ? (
-        <div className="cal-toit-pente-tete">
-          <span className="cal-toit-pente-valeur">{titre}</span>
-          {aConfirmer && <span className="cal-toit-pente-tag">À confirmer</span>}
+        <div className="cal-toit-pente-cadre">
+          {!vue.plat && <Cadran azimut={vue.azimut ?? null} />}
+          <div className="cal-toit-pente-corps">
+            <div className="cal-toit-pente-tete">
+              <span className="cal-toit-pente-valeur">{titre}</span>
+              {aConfirmer && <span className="cal-toit-pente-tag">À confirmer</span>}
+            </div>
+            {aConfirmer && !inconnue && (
+              <p className="cal-toit-pente-texte">
+                {vue.plat
+                  ? "Toit plat pris par défaut, pas une mesure : confirmez-le ou vérifiez-le."
+                  : "Valeur de départ, pas une mesure : confirmez-la ou mesurez-la."}
+              </p>
+            )}
+            {aConfirmer && inconnue && (
+              <p className="cal-toit-pente-texte" role="status">
+                Valeur de départ gardée, toujours à confirmer : elle sera vérifiée à la visite. Rien n’est enregistré.
+              </p>
+            )}
+          </div>
         </div>
       ) : (
-        <p className="cal-toit-pente-texte">Tracez d’abord le contour du toit : sa pente et sa face s’afficheront ici.</p>
+        <p className="cal-toit-pente-texte cal-toit-pente-vide">Tracez d’abord le contour du toit : sa pente et sa face s’afficheront ici.</p>
       )}
       {aConfirmer && !inconnue && (
-        <>
-          <p className="cal-toit-pente-texte">
-            {vue.plat
-              ? "Toit plat pris par défaut, pas une mesure. Confirmez-le ou vérifiez-le avant d'envoyer le devis."
-              : "Valeur de départ, pas une mesure. Confirmez-la ou mesurez-la avant d'envoyer le devis."}
-          </p>
-          <div className="cal-toit-pente-actions">
-            <BoutonMarine onClick={confirmer} disabled={lectureSeule || envoi} data-testid="cal-toit-pente-confirmer">
-              Confirmer
-            </BoutonMarine>
-            <button type="button" className="cal-bouton-contour" data-testid="cal-toit-pente-inconnue"
-              onClick={() => { setInconnue(true); setMessage(null) }}>
-              Je ne la connais pas
-            </button>
-          </div>
-        </>
-      )}
-      {aConfirmer && inconnue && (
-        <p className="cal-toit-pente-texte" role="status">
-          Valeur de départ gardée, toujours à confirmer : elle sera vérifiée à la visite. Rien n’est enregistré.
-        </p>
+        <div className="cal-toit-pente-actions">
+          <BoutonMarine onClick={confirmer} disabled={lectureSeule || envoi} data-testid="cal-toit-pente-confirmer">
+            Confirmer
+          </BoutonMarine>
+          <button type="button" className="cal-bouton-contour" data-testid="cal-toit-pente-inconnue"
+            onClick={() => { setInconnue(true); setMessage(null) }}>
+            Je ne la connais pas
+          </button>
+        </div>
       )}
       {message && <p className="cal-toit-pente-message" role="status">{message}</p>}
       {/* ACAL1341 — un toit plat n'a pas de pente : sa forme change par les tuiles, jamais par ce formulaire. */}
@@ -175,6 +185,28 @@ function CartePente({ calepinageId, builderApi, documentVivant, lectureSeule, en
         </details>
       )}
     </div>
+  )
+}
+
+/** ACAL1827 — le cadran de la carte de pente (maquette Main) : un N, trois repères et l'aiguille tournée vers la face lue
+    (azimut 0 = nord, 180 = sud). Sans azimut lu, le cadran reste nu : aucune face n'est inventée. */
+function Cadran({ azimut }) {
+  const connu = Number.isFinite(azimut)
+  const nom = connu ? nomFace(azimut) : null
+  return (
+    <svg width="56" height="56" viewBox="0 0 64 64" className="cal-cadran" {...(connu
+      ? { role: 'img', 'aria-label': `Face ${nom}, ${Math.round(azimut)}°` } : { 'aria-hidden': 'true' })}>
+      <circle className="cal-cadran-disque" cx="32" cy="32" r="29" />
+      <path className="cal-cadran-reperes" d="M32 50v5M9 32h5M50 32h5" />
+      <text className="cal-cadran-n" x="32" y="25" textAnchor="middle">N</text>
+      {connu && (
+        <g data-aiguille="" transform={`rotate(${Math.round(azimut)} 32 32)`}>
+          <path className="cal-cadran-aiguille" d="M32 32V17" />
+          <path className="cal-cadran-pointe" d="M27 21l5-8 5 8z" />
+        </g>
+      )}
+      <circle className="cal-cadran-centre" cx="32" cy="32" r="3.5" />
+    </svg>
   )
 }
 
@@ -207,7 +239,8 @@ function Obstacles({ obstacles, relire }) {
   )
   return (
     <div className="cal-toit-bloc cal-toit-bloc-obstacles" data-testid="cal-toit-obstacles">
-      <SectionEtape titre="Obstacles" action={ajouter}>
+      <SectionEtape action={ajouter} titre={obstacles.length > 0
+        ? <>Obstacles{' '}<span className="cal-toit-obstacles-compte">· {obstacles.length}</span></> : 'Obstacles'}>
         {obstacles.length > 0 && (
           <ul role="listbox" aria-label="Obstacles du toit" tabIndex={0} className="cal-toit-obstacles"
             aria-activedescendant={`cal-toit-obstacle-${Math.min(actif, obstacles.length - 1)}`} onKeyDown={clavier}>
@@ -295,18 +328,54 @@ function Bulle({ titre, texte }) {
   )
 }
 
-/** La bulle « Contour tracé » : quelques secondes après la fermeture d'un tracé fait dans la séance. Pendant
-    l'ajout d'un pan, la bulle dit le geste suivant et comment l'annuler. */
-function BulleContour({ contourFerme, ajout }) {
+/** La bulle « Contour tracé » (maquette Main). Un toit ouvert avec son contour fermé la porte TANT QU'AUCUN coin n'est
+    déplacé (ACAL1445) : le moteur garde un déplacement dans son historique, `touche` est le premier instant où il le
+    dit — et le reste, annuler jusqu'au début ne la ramène pas. Un tracé fait dans la séance la porte quelques
+    secondes. Pendant l'ajout d'un pan, la bulle dit le geste suivant et comment l'annuler. */
+function BulleContour({ contourFerme, ferme, historique, ajout }) {
   const [vue, setVue] = useState(0)
+  const [touche, setTouche] = useState(false)
+  if (touche && !ferme) setTouche(false)
+  else if (!touche && ferme && historique) setTouche(true)
   useEffect(() => {
     if (!contourFerme) return undefined
     const minuterie = window.setTimeout(() => setVue(contourFerme), DUREE_BULLE_MS)
     return () => window.clearTimeout(minuterie)
   }, [contourFerme])
   if (ajout) return <Bulle titre="Nouveau pan" texte={ASTUCE_AJOUT} />
-  if (!contourFerme || vue === contourFerme) return null
+  // Ouvert tel quel (aucun tracé de la séance) : la bulle tient jusqu'au premier coin déplacé.
+  if (!contourFerme) return ferme && !touche && !historique ? <Bulle titre="Contour tracé" texte={ASTUCE_CONTOUR} /> : null
+  if (vue === contourFerme) return null
   return <Bulle titre="Contour tracé" texte={ASTUCE_CONTOUR} />
+}
+
+/** ACAL1445 — le bloc « Soleil » (maquette Main, à droite de la barre d'outils) : le jour et l'heure du soleil que le
+    constructeur utilise pour les ombres, lus sur ses champs. Un repère, pas un contrôle : l'heure se règle à l'étape
+    Panneaux. Sans date ni heure lues, rien n'est affiché. */
+function BlocSoleil({ soleil }) {
+  if (!soleil) return null
+  const quand = [jourMois(soleil.date), soleil.heure == null ? '' : `${soleil.heure} h`].filter(Boolean).join(' · ')
+  if (!quand) return null
+  // Le soleil sur son arc : la position vient de l'heure lue dans la plage du curseur, jamais d'une valeur de départ.
+  const t = soleil.heure != null && soleil.max > soleil.min
+    ? Math.min(1, Math.max(0, (soleil.heure - soleil.min) / (soleil.max - soleil.min))) : null
+  const x = t == null ? null : 32 - 28 * Math.cos(Math.PI * t)
+  const y = t == null ? null : 30 - 28 * Math.sin(Math.PI * t)
+  return (
+    <CarteFlottante role="group" aria-label={`Soleil : ${quand}`} className="cal-toit-soleil" data-testid="cal-toit-soleil"
+      title="L’heure du soleil se règle à l’étape Panneaux.">
+      <svg width="64" height="34" viewBox="0 0 64 34" aria-hidden="true">
+        <path className="cal-soleil-arc" d="M4 30a28 28 0 0156 0" />
+        {t != null && <path className="cal-soleil-trajet" d={`M4 30A28 28 0 0 1 ${x.toFixed(1)} ${y.toFixed(1)}`} />}
+        {t != null && <circle className="cal-soleil-astre" cx={x.toFixed(1)} cy={y.toFixed(1)} r="6" />}
+        <path className="cal-soleil-sol" d="M2 30h60" />
+      </svg>
+      <span className="cal-toit-soleil-texte">
+        <span>Soleil</span>
+        <span>{quand}</span>
+      </span>
+    </CarteFlottante>
+  )
 }
 
 /** « Ajouter un pan » et son annulation (re-clic ou Échap) : la zone vide ouverte est retirée, le pan d'avant
@@ -366,7 +435,7 @@ function ResumeCarte({ surface, pans, besoin }) {
       {blocs.map(([libelle, valeur], i) => (
         <div key={libelle} className="cal-sur-carte-resume-bloc">
           {i > 0 && <span className="cal-sur-carte-resume-filet" aria-hidden="true" />}
-          <Indicateur libelle={libelle} valeur={valeur} />
+          <Indicateur libelle={libelle} valeur={typeof valeur === 'string' ? <ValeurUnite texte={valeur} /> : valeur} />
         </div>
       ))}
     </CarteFlottante>
@@ -405,8 +474,9 @@ export default function EtapeToit({
       <Obstacles obstacles={etat.obstacles} relire={relire} />
       <SurCarte>
         <ResumeCarte surface={etat.surface} pans={etat.pans} besoin={besoinAffiche(facture)} />
-        <BulleContour contourFerme={etat.contourFerme} ajout={ajout} />
+        <BulleContour contourFerme={etat.contourFerme} ferme={etat.outils.ferme} historique={etat.outils.annuler} ajout={ajout} />
         <BarreOutils outils={etat.outils} builderApi={builderApi} relire={relire} ajout={ajout} onAjout={basculerAjout} />
+        <BlocSoleil soleil={etat.soleil} />
       </SurCarte>
     </div>
   )

@@ -23,7 +23,7 @@
 <button type="button" aria-pressed="true">Guidé</button>
 <button type="button" aria-pressed="false">Expert</button>
 </div>
-<button type="button" class="cal-bouton-or " data-testid="cal-generer-devis-haut">Resynchroniser le devis</button>
+<button type="button" class="cal-bouton-marine cal-bouton-devis" data-testid="cal-generer-devis-haut">Resynchroniser le devis</button>
 </header>
 <div class="cal-coque-alertes" data-deplie="0">
 <div class="cal-coque-alertes-contenu">
@@ -200,6 +200,22 @@
 <button type="button" aria-pressed="false">3D</button>
 </div>
 </div>
+<div class="cal-carte-flottante cal-toit-soleil" role="group" aria-label="Soleil : 12 h" data-testid="cal-toit-soleil" title="L’heure du soleil se règle à l’étape Panneaux.">
+<svg width="64" height="34" viewBox="0 0 64 34" aria-hidden="true">
+<path class="cal-soleil-arc" d="M4 30a28 28 0 0156 0">
+</path>
+<path class="cal-soleil-trajet" d="M4 30A28 28 0 0 1 32.0 2.0">
+</path>
+<circle class="cal-soleil-astre" cx="32.0" cy="2.0" r="6">
+</circle>
+<path class="cal-soleil-sol" d="M2 30h60">
+</path>
+</svg>
+<span class="cal-toit-soleil-texte">
+<span>Soleil</span>
+<span>12 h</span>
+</span>
+</div>
 </div>
 <div class="cal-coque-statut" data-masque="0">
 <p id="rp9-status" class="border-t border-border px-4 py-3 text-sm text-muted-foreground" aria-live="polite">Chargement…</p>
@@ -211,6 +227,18 @@
 </main>
 <aside id="rp9-studio-inspecteur" aria-label="Le toit" class="cal-panneau-etape" data-testid="cal-panneau-etape">
 <div class="cal-panneau-etape-tete">
+<div class="cal-progression-etapes" data-testid="cal-progression-etapes" aria-hidden="true">
+<span data-etat="actif">
+</span>
+<span data-etat="a-venir">
+</span>
+<span data-etat="a-venir">
+</span>
+<span data-etat="a-venir">
+</span>
+<span data-etat="a-venir">
+</span>
+</div>
 <p class="cal-panneau-etape-rang">Étape 1 sur 5</p>
 <h2 class="cal-panneau-etape-titre" data-testid="cal-panneau-etape-titre">Le toit</h2>
 </div>
@@ -255,7 +283,7 @@
 <h2>Pente et orientation</h2>
 </div>
 <div class="cal-toit-pente" data-testid="cal-toit-pente-carte">
-<p class="cal-toit-pente-texte">Tracez d’abord le contour du toit : sa pente et sa face s’afficheront ici.</p>
+<p class="cal-toit-pente-texte cal-toit-pente-vide">Tracez d’abord le contour du toit : sa pente et sa face s’afficheront ici.</p>
 <details class="cal-toit-pente-modifier">
 <summary>Modifier la pente</summary>
 </details>

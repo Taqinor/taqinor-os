@@ -1572,9 +1572,12 @@ def _verifier_absence_d_argent(document):
 
     trouves = mots_d_argent(document)
     if trouves:
+        # ACAL1711 — le refus NOMME le texte trouvé et la ligne du bandeau qui le porte.
+        ligne = next((lu for lu in str(document).splitlines() if mots_d_argent(lu)), '')
         raise PlanDePoseRefuse(
             "Plan de pose refusé : une pièce de chantier ne porte aucun "
-            "montant. Trouvé — %s." % ', '.join(trouves), champ='pose')
+            "montant. Trouvé : %s (ligne « %s »)." % (', '.join(trouves), ligne.strip()),
+            champ='pose')
     return document
 
 

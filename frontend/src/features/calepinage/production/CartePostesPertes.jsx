@@ -150,7 +150,11 @@ export function DuSoleilAuReseau({ cascade, note = null }) {
                   </span>
                 )}
               </span>
-              <div className="cal-res-piste" aria-hidden="true"><span style={{ width: `${Math.max(0, Math.min(100, restes[i]))}%` }} /></div>
+              {/* ACAL1832 — le restant (bleu nuit) puis CETTE perte (saumon) : deux segments d'une même piste. */}
+              <div className="cal-res-piste" aria-hidden="true">
+                <span style={{ width: `${Math.max(0, Math.min(100, restes[i]))}%` }} />
+                <span className="cal-res-perte" style={{ width: `${Math.max(0, Math.min(100, p.perte_pct))}%` }} />
+              </div>
               <span className="cal-res-poste-pct">{`− ${formatPercent(p.perte_pct, { decimals: 1 })}`}</span>
             </li>
           )

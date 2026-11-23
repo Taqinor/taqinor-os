@@ -89,6 +89,44 @@ class ReglageSocieteParPosteTest(SimpleTestCase):
                 self.assertIn(cle, connues, (poste, cle))
 
 
+class RemedeSocieteLocaliseTest(SimpleTestCase):
+    """ACAL1619 — la chaleur des panneaux, omise faute de Uc/Uv pour la pose,
+    est LISTÉE avec son remède (Réglages simulation › coefficients par type
+    de pose), au lieu de partir dans ``non_localisables`` (aucune ligne)."""
+
+    def test_remede_societe_localise_ligne_servie(self):
+        from apps.calepinage.services import a_renseigner
+        from apps.calepinage.services.etapes import thermique
+
+        serie = {'pas_minutes': 60, 'points': [
+            {'annee': 2020, 'mois': 7, 'jour': 15, 'heure': 12, 'p_w': 4000.0,
+             'gi_w_m2': 950.0, 't2m_c': 35.0}]}
+        _, etape = thermique.appliquer(
+            serie, {'fiche_module': {'temp_coeff_pmax_pct_c': -0.35}})
+        etape = dict(etape, etape='thermique')
+        servi = a_renseigner.construire({'etapes': [etape]}, ['thermique'])
+
+        self.assertEqual(servi['non_localisables'], [])
+        self.assertEqual(len(servi['lignes']), 1)
+        ligne = servi['lignes'][0]
+        self.assertEqual((ligne['nature'], ligne['section'], ligne['cle']),
+                         ('reglage_societe', 'simulation', 'thermique_par_pose'))
+        self.assertEqual(ligne['cible'], {'onglet': 'reglages',
+                                          'champ': 'thermique_par_pose'})
+        self.assertEqual(ligne['libelle_champ'],
+                         'Coefficients Uc/Uv par type de pose')
+
+    def test_un_champ_de_site_reste_non_localisable(self):
+        from apps.calepinage.services import a_renseigner
+
+        etape = {'etape': 'horizon', 'libelle': 'Horizon',
+                 'motif_omission': 'x' + a_renseigner.FORMAT_CHAMP_MANQUANT
+                 .format(champ='site.lat ou plans[].geometry')}
+        servi = a_renseigner.construire({'etapes': [etape]}, ['horizon'])
+        self.assertEqual(servi['lignes'], [])
+        self.assertEqual(len(servi['non_localisables']), 1)
+
+
 class PertesServiesTest(TestCase):
 
     def setUp(self):

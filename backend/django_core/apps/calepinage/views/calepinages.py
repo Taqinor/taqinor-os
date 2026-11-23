@@ -1756,10 +1756,10 @@ def _devis_lie(calepinage, company):
     from apps.ventes.selectors import get_devis_by_pk
 
     devis_id = getattr(calepinage, 'devis_id', None)
-    if not devis_id:
+    if not devis_id or company is None:  # sans société connue : jamais de devis
         return None
     devis = get_devis_by_pk(devis_id)
-    if devis is None or (company is not None and devis.company_id != company.pk):
+    if devis is None or devis.company_id != company.pk:
         return None
     return devis
 

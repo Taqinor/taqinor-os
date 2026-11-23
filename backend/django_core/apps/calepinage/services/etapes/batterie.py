@@ -282,15 +282,19 @@ def poser_colonnes(serie, colonnes):
     return suite
 
 
-def autonomie(import_horaire, charge_horaire):
+def autonomie(import_horaire, charge_horaire, annees=1):
     """``{taux_autonomie, heures_sans_import}`` — la part NON importée.
 
     Relu par ``etapes/autoconsommation.py`` (CALX190) : les deux blocs
     publient le même chiffre parce qu'ils appellent la même fonction.
+    ACAL1604 — ``annees`` : le N de la fenêtre météo ; le compte d'heures est
+    celui d'une année MOYENNE (N = 1 : l'entier, inchangé).
     """
     total_conso = sum(charge_horaire or [])
     total_import = sum(import_horaire or [])
     heures = sum(1 for valeur in (import_horaire or []) if valeur <= _EPSILON)
+    if annees and annees > 1:
+        heures = round(heures / annees, 3)
     taux = (round(1.0 - total_import / total_conso, 4)
             if total_conso > _EPSILON else None)
     return {'taux_autonomie': taux, 'heures_sans_import': heures}
@@ -759,7 +763,7 @@ def _publier(serie, flux, dispatch, groupes, banque, strategie, *,
     })
 
     part = autonomie([pas['import'] for pas in flux],
-                     [pas['conso'] for pas in flux])
+                     [pas['conso'] for pas in flux], annees=annees)
     plusieurs = len(groupes) > 1
     avertissements = []
     for groupe in groupes:

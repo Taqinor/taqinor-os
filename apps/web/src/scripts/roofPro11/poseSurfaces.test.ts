@@ -945,7 +945,7 @@ describe('ACAL1412 — « Enregistrer le contour tracé » remplace le pan de tr
     } finally { m.restaurer(); }
   });
 
-  it('un pan unique (aucun bouton « × ») n’est jamais retiré : la surface s’ajoute, rien d’autre', () => {
+  it('sans bouton « × » ni « + Ajouter une zone », aucun pan n’est retiré : la surface s’ajoute, rien d’autre', () => {
     const m = monter();
     try {
       m.doc.getElementById('pans')!.innerHTML = '';
@@ -954,5 +954,49 @@ describe('ACAL1412 — « Enregistrer le contour tracé » remplace le pan de tr
       expect(m.pose.surfaces()).toHaveLength(1);
       expect(m.doc.querySelector<HTMLButtonElement>('[data-pose-annuler]')!.hidden).toBe(true);
     } finally { m.restaurer(); }
+  });
+});
+
+// Demande croisée (ACAL1412, critique de la vague A) — le champ au sol tracé sur le SEUL pan du site : la liste n'a pas
+// de « × » (un seul pan), le pan restait à côté de la surface et le site comptait le champ deux fois.
+describe('ACAL1412 — champ au sol tracé sur le seul pan : il reste UNE surface, Annuler rétablit le pan', () => {
+  it('pan unique : un pan vierge le remplace (aucun panneau), la surface est seule à compter ; Annuler rend le pan tracé', () => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    const doc: Document = new JSDOM('<!doctype html><body><div id="zones"></div><ul id="pans"></ul><button id="ajout"></button></body>').window.document;
+    g.document = doc;
+    try {
+      const trace = rectangle(15, 12.2);
+      const areas: AreaRecord[] = [{ id: 'z1', label: 'Zone 1', vertices: trace.slice(), obstacles: [] } as unknown as AreaRecord];
+      const listeEl = doc.getElementById('pans')!;
+      const ajout = doc.getElementById('ajout') as HTMLButtonElement;
+      const ctx = {
+        vertices: trace.slice(), obstacles: [], areas, activeAreaId: 'z1', activeArea: () => areas.find((a) => a.id === ctx.activeAreaId),
+        dom: { areasWindowEl: doc.getElementById('zones'), areasListEl: listeEl, addAreaBtn: ajout }, opts: {},
+      } as unknown as Parameters<typeof monterAtelierPose>[0] & { activeAreaId: string; vertices: unknown[] };
+      // Comme zones.ts : le « × » n'existe qu'à partir de deux pans ; « + Ajouter une zone » crée un pan vierge actif.
+      const rendrePans = () => { listeEl.innerHTML = areas.map((a) => `<li><button data-area-select="${a.id}">Voir</button>${areas.length > 1 ? `<button data-area-del="${a.id}">×</button>` : ''}</li>`).join(''); };
+      ajout.addEventListener('click', () => { areas.push({ id: 'z2', label: 'Zone 2', vertices: [], obstacles: [] } as unknown as AreaRecord); ctx.activeAreaId = 'z2'; ctx.vertices = []; rendrePans(); });
+      listeEl.addEventListener('click', (e) => {
+        const t = e.target as HTMLElement;
+        const sel = t.closest<HTMLElement>('[data-area-select]')?.dataset.areaSelect;
+        const del = t.closest<HTMLElement>('[data-area-del]')?.dataset.areaDel;
+        if (sel) { ctx.activeAreaId = sel; ctx.vertices = areas.find((a) => a.id === sel)!.vertices.slice(); }
+        else if (del) { const actif = ctx.activeAreaId === del; areas.splice(areas.findIndex((a) => a.id === del), 1); if (actif) ctx.activeAreaId = areas[0].id; }
+        rendrePans();
+      });
+      rendrePans();
+      const pose = monterAtelierPose(ctx, { setStatus: vi.fn() })!;
+      pose.enregistrerContour('sol');
+      expect(areas.map((a) => a.vertices.length)).toEqual([0]); // un seul pan, vierge : aucun panneau chiffré deux fois
+      expect(pose.surfaces()).toHaveLength(1);
+      const annuler = doc.querySelector<HTMLButtonElement>('[data-pose-annuler]')!;
+      expect(annuler.hidden).toBe(false);
+      annuler.click();
+      expect(areas.map((a) => a.id)).toEqual(['z1']);
+      expect(areas[0].vertices).toEqual(trace);
+      expect(ctx.activeAreaId).toBe('z1');
+      expect(pose.surfaces()).toHaveLength(0);
+    } finally { g.document = avant; }
   });
 });

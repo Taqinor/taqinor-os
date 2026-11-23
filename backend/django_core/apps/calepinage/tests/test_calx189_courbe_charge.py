@@ -472,3 +472,122 @@ class ContexteTests(unittest.TestCase):
         self.assertIn(bloc['courbe_origine'], courbe_charge.ORIGINES)
         self.assertEqual(bloc['pas_minutes'], 60)
         self.assertTrue(bloc['avertissements'])
+
+
+def serie_de_deux_ans():
+    """DEUX années SYNTHÉTIQUES identiques (2021 puis 2022, 17 520 points)."""
+    return {'points': serie_de_test(annee=2021)['points']
+            + serie_de_test(annee=2022)['points'], 'pas_minutes': 60}
+
+
+class AnneeMoyenneTests(unittest.TestCase):
+    """ACAL1603 — en météo pluriannuelle, « par an » = une année moyenne.
+
+    Cas chiffré à la main : base saisie 1 kWh/h = 24 kWh/j × 365 = 8 760
+    kWh/an ; voiture 30 km/j × 16 kWh/100 km = 4,8 kWh/j × 365 = 1 752
+    kWh/an, rechargée de 22 h à 24 h (aucun soleil : tout « hors
+    production ») ; total 10 512 kWh/an ; janvier = 31 × (24 + 4,8) = 892,8.
+    """
+
+    DECLARATION = {
+        'layout': layout_de_test(1.0),
+        'charges': [{'type': 'vehicule', 'km_par_jour': 30,
+                     'kwh_par_100km': 16, 'fenetre_recharge': [22, 23]}],
+    }
+
+    def bloc(self, serie, annees):
+        return construire_courbe_charge(
+            serie, {'annees_fenetre': annees,
+                    'consommation': dict(self.DECLARATION)})['consommation']
+
+    def test_serie_de_deux_ans_total_et_kwh_an_valent_une_annee(self):
+        bloc = self.bloc(serie_de_deux_ans(), 2)
+
+        self.assertAlmostEqual(bloc['total_kwh'], 10512.0, delta=0.01)
+        self.assertAlmostEqual(bloc['total_base_kwh'], 8760.0, delta=0.01)
+        self.assertAlmostEqual(bloc['total_charges_kwh'], 1752.0, delta=0.01)
+        self.assertAlmostEqual(bloc['charges'][0]['kwh_an'], 1752.0,
+                               delta=0.01)
+        self.assertAlmostEqual(bloc['charges'][0]['kwh_hors_production_an'],
+                               1752.0, delta=0.01)
+        janvier = next(m for m in bloc['profil_mensuel'] if m['mois'] == 1)
+        self.assertAlmostEqual(janvier['kwh'], 892.8, delta=0.01)
+        self.assertAlmostEqual(sum(m['kwh'] for m in bloc['profil_mensuel']),
+                               bloc['total_kwh'], delta=0.05)
+
+    def test_en_annee_type_rien_ne_change(self):
+        une = self.bloc(serie_de_test(), 1)
+        sans_contexte = construire_courbe_charge(
+            serie_de_test(), consommation=dict(self.DECLARATION))
+        self.assertEqual(une, sans_contexte['consommation'])
+        self.assertAlmostEqual(une['total_kwh'], 10512.0, delta=0.01)
+
+    def test_energie_annuelle_saisie_reste_annuelle_sur_deux_ans(self):
+        # Jumeau : une énergie ANNUELLE saisie (profil type) se lit 9 000
+        # kWh/an, jamais 4 500 (9 000 étalés sur deux années).
+        bloc = construire_courbe_charge(
+            serie_de_deux_ans(),
+            {'annees_fenetre': 2, 'consommation': {'annuel_kwh': 9000}},
+        )['consommation']
+        self.assertAlmostEqual(bloc['total_kwh'], 9000.0, delta=0.05)
+
+    def test_kwh_mensuels_saisis_restent_mensuels_sur_deux_ans(self):
+        bloc = construire_courbe_charge(
+            serie_de_deux_ans(),
+            {'annees_fenetre': 2, 'consommation': {
+                'profil_mensuel': [{'mois': 1, 'kwh': 520}]}},
+        )['consommation']
+        janvier = next(m for m in bloc['profil_mensuel'] if m['mois'] == 1)
+        self.assertAlmostEqual(janvier['kwh'], 520.0, delta=0.05)
+
+
+class FactureDuLeadTests(unittest.TestCase):
+    """ACAL1608 — sans aucune consommation saisie dans l'atelier, la courbe
+    de base est celle que ``consommation.py`` propose pour la facture du lead
+    (posée dans la déclaration sous ``facture_lead`` par le constructeur du
+    contexte), d'origine NOMMÉE ; un lead C&I ou agricole garde l'omission.
+
+    Cas chiffré : la proposition rend une courbe plate de 0,5 kWh/h (12
+    kWh/j) sans saisons ⇒ 12 × 365 = 4 380 kWh/an.
+    """
+
+    PROPOSITION = {'courbe24': [0.5] * 24, 'methode': 'facture',
+                   'source': {'origine': 'lead', 'bareme': 'societe'},
+                   'classe': 'residentiel'}
+
+    def test_aucune_saisie_lead_a_facture_courbe_publiee(self):
+        resultat = construire_courbe_charge(serie_de_test(), consommation={
+            'layout': {}, 'facture_lead': dict(self.PROPOSITION)})
+        bloc = resultat['consommation']
+
+        self.assertIsNotNone(bloc)
+        self.assertEqual(bloc['courbe_origine'], 'facture_lead')
+        self.assertIn('facture_lead', courbe_charge.ORIGINES)
+        self.assertAlmostEqual(bloc['total_kwh'], 4380.0, delta=0.01)
+        self.assertEqual(resultat['omissions']['autoconsommation'], '')
+        self.assertTrue(any('facture du lead' in texte
+                            for texte in bloc['avertissements']))
+
+    def test_les_saisons_de_la_facture_modulent_la_courbe(self):
+        proposition = dict(self.PROPOSITION,
+                           saisons={'ete': 1.5, 'hiver': 1.0})
+        bloc = construire_courbe_charge(serie_de_test(), consommation={
+            'facture_lead': proposition})['consommation']
+        juillet = next(m for m in bloc['profil_mensuel'] if m['mois'] == 7)
+        janvier = next(m for m in bloc['profil_mensuel'] if m['mois'] == 1)
+        self.assertAlmostEqual(juillet['kwh'], 31 * 12 * 1.5, delta=0.01)
+        self.assertAlmostEqual(janvier['kwh'], 31 * 12.0, delta=0.01)
+
+    def test_une_saisie_de_l_atelier_prime_sur_la_facture(self):
+        bloc = construire_courbe_charge(serie_de_test(), consommation={
+            'layout': layout_de_test(1.0),
+            'facture_lead': dict(self.PROPOSITION)})['consommation']
+        self.assertEqual(bloc['courbe_origine'], 'layout')
+
+    def test_lead_c_et_i_ou_agricole_garde_l_omission_motivee(self):
+        for classe in ('force_motrice', 'agricole'):
+            resultat = construire_courbe_charge(serie_de_test(), consommation={
+                'facture_lead': dict(self.PROPOSITION, classe=classe)})
+            self.assertIsNone(resultat['consommation'])
+            self.assertTrue(any('profil' in texte
+                                for texte in resultat['avertissements']))
