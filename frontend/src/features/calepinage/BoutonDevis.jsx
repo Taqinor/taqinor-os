@@ -442,9 +442,17 @@ export default function BoutonDevis({
         </button>
       )}
 
+      {/* ACAL1705 — le devis lié se rouvre d'un clic après rechargement : le lien est lu sur
+          `Calepinage.devis` (agrégat servi), jamais sur l'état de la séance. */}
       {devisLie?.reference && (
         <p className="text-xs text-muted-foreground">
-          Devis lié : <span className="text-foreground">{devisLie.reference}</span>
+          Devis lié :{' '}
+          {devisLie.id ? (
+            <Link to={`/ventes/devis?devis=${devisLie.id}`} data-testid="cal-devis-lie-lien"
+              className="inline-flex min-h-11 items-center font-semibold text-primary-text underline">
+              {devisLie.reference}
+            </Link>
+          ) : <span className="text-foreground">{devisLie.reference}</span>}
         </p>
       )}
 

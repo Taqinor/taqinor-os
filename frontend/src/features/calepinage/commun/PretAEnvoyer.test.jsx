@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 
 /* ============================================================================
@@ -22,6 +22,7 @@ vi.mock('../../../api/calepinageApi', () => ({
 
 import calepinageApi from '../../../api/calepinageApi'
 import PretAEnvoyer from './PretAEnvoyer'
+import { ongletParCle } from '../atelier/onglets'
 import { ETAPE_DU_CODE, MESSAGE_ECHEC, MESSAGE_LENT, rangerControles } from './PretAEnvoyer.helpers'
 
 const pret = exempleContrat('calepinage', 'calepinage_pret_a_envoyer', 'exemple')
@@ -141,5 +142,52 @@ describe('PretAEnvoyer — lent n’est pas échoué (H3)', () => {
 
   it('le rangement par étape de l’écran est celui du contrat, que le serveur prend pour filtrer `?etape=`', () => {
     expect(ETAPE_DU_CODE).toEqual(etapeDuCode)
+  })
+})
+
+describe('PretAEnvoyer — « Régler » mène à un écran qui existe (ACAL1703)', () => {
+  const Ou = () => {
+    const lieu = useLocation()
+    return <output data-testid="ou">{`${lieu.pathname}${lieu.search}`}</output>
+  }
+  const monterRoutes = (id) => render(
+    <MemoryRouter initialEntries={[`/calepinage/${id}`]}>
+      <Routes>
+        <Route path="/calepinage/reglages" element={<Ou />} />
+        <Route path="/calepinage/:id" element={<><PretAEnvoyer calepinageId={id} testIdCompte="compte" /><Ou /></>} />
+      </Routes>
+    </MemoryRouter>,
+  )
+  const aRegler = (code, cible) => ({ ...ligne(modeleARegler, code), cible: { ...modeleARegler.cible, ...cible } })
+
+  it('Matériel électrique : `?onglet=materiel-electrique`, une clé du registre d’onglets', async () => {
+    calepinageApi.calepinages.pretAEnvoyer.mockResolvedValue(servi([
+      aRegler('materiel_designe', { etape: 'electrique', onglet: 'materiel-electrique', champ: '' })]))
+    monterRoutes(201)
+    await userEvent.click(await screen.findByTestId('cal-pret-regler-materiel_designe'))
+    expect(screen.getByTestId('ou')).toHaveTextContent('/calepinage/201?onglet=materiel-electrique')
+    expect(ongletParCle('materiel-electrique')).not.toBeNull()
+  })
+
+  it('ACAL1704 : matériel choisi, fiche incomplète — la vraie cause est SUR la ligne, pas « non désigné »', async () => {
+    calepinageApi.calepinages.pretAEnvoyer.mockResolvedValue(servi([{
+      ...aRegler('materiel_designe', { etape: 'electrique', onglet: 'materiel-electrique', champ: '' }),
+      valeur_texte: 'Fiche incomplète : tension au point de puissance maximale (Vmp) du module',
+      cause: 'module : tension au point de puissance maximale (Vmp)',
+      geste: 'Compléter la fiche du module',
+    }]))
+    monterRoutes(203)
+    const ligneMateriel = await screen.findByTestId('cal-pret-ligne-materiel_designe')
+    expect(ligneMateriel).toHaveTextContent('Fiche incomplète : tension au point de puissance maximale (Vmp) du module')
+    expect(ligneMateriel).toHaveTextContent('module : tension au point de puissance maximale (Vmp)')
+    expect(ligneMateriel).not.toHaveTextContent(/non désigné/i)
+  })
+
+  it('les pertes : la page des réglages, jamais `?onglet=reglages` (qui retombait sur « Plan importé »)', async () => {
+    calepinageApi.calepinages.pretAEnvoyer.mockResolvedValue(servi([
+      aRegler('un_seul_chiffre', { etape: 'resultats', onglet: 'reglages', champ: '' })]))
+    monterRoutes(202)
+    await userEvent.click(await screen.findByTestId('cal-pret-regler-un_seul_chiffre'))
+    expect(screen.getByTestId('ou')).toHaveTextContent(/^\/calepinage\/reglages$/)
   })
 })

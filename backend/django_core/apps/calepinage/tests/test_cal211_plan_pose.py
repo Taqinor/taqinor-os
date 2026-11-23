@@ -23,6 +23,7 @@ Run :
 import copy
 import html
 import json
+import math
 import pathlib
 import re
 import textwrap
@@ -535,6 +536,19 @@ class DistancesAuxRivesTest(SimpleTestCase):
         # marge nord reste la plus petite des distances, 0,50.
         self.assertAlmostEqual(distances['N']['distance'], 0.50, places=6)
 
+    def test_champ_au_contact_des_rives_ouest_et_nord(self):
+        """ACAL1712 — deux modules portrait (1,1 × 1,7) posés x 0..2,2, y 4,3..6,0 :
+        le champ TOUCHE l'ouest et le nord (0,00), l'est est à 10 − 2,2 = 7,80 et le
+        sud à 4,30 (mutant : compter la rive de départ, t ≈ 0 ⇒ E = S = 0)."""
+        pan = pan_de_10_sur_6('portrait')
+        distances, _ = self.mesures(
+            pan, modules_aux_marges(pan, [(0.55, 5.15), (1.65, 5.15)]))
+        for cote, attendu in (('N', 0.0), ('O', 0.0), ('E', 7.8), ('S', 4.3)):
+            self.assertAlmostEqual(distances[cote]['distance'], attendu,
+                                   places=6, msg=cote)
+            # Jamais « −0,00 » : une distance nulle est un zéro positif.
+            self.assertEqual(math.copysign(1.0, distances[cote]['distance']), 1.0)
+
     def test_orientation_non_enregistree_aucune_distance_et_motif_nomme(self):
         pan = pan_de_10_sur_6('portrait')
         modules = modules_aux_marges(pan, CENTRES_AUX_MARGES)
@@ -610,6 +624,33 @@ class FeuilleCoteeTest(SimpleTestCase):
                       'du pan', texte_de_svg(svg))
         self.assertIn('Cheminee', svg)
         self.assertIn('2,00 m', svg)
+
+    def test_champ_au_contact_quatre_lettres_distinctes_dans_la_feuille(self):
+        """ACAL1712 — champ au contact des rives ouest et nord : quatre cotes
+        justes, aucune « −0,00 », chaque lettre sur son propre bord et dans la
+        feuille (jamais empilées au même point, jamais x < 0)."""
+        from apps.calepinage.services.planche_pan import _feuille_de_pan
+
+        pan = pan_de_10_sur_6('portrait')
+        modules = [dict(m, pan='z1', chaine=None, couleur=None, rang=None,
+                        module='z1#%d' % (i + 1))
+                   for i, m in enumerate(
+                       modules_aux_marges(pan, [(0.55, 5.15), (1.65, 5.15)]))]
+        svg = _feuille_de_pan(pan, modules, [], [pan], '', [])
+        texte = texte_de_svg(svg)
+        for ligne in ('N : 0,00 m', 'O : 0,00 m', 'E : 7,80 m', 'S : 4,30 m'):
+            self.assertIn(ligne, texte)
+        self.assertNotIn('−0,00', texte)
+        self.assertNotIn('-0,00', texte)
+        lettres = dict(
+            (cote, (float(x), float(y))) for cote, x, y in re.findall(
+                r'<g data-cote="(\w)">.*?<text x="([-\d.]+)" y="([-\d.]+)" '
+                r'font-size="3.2" font-weight="bold"', svg))
+        self.assertEqual(sorted(lettres), ['E', 'N', 'O', 'S'])
+        self.assertEqual(len(set(lettres.values())), 4, lettres)
+        for cote, (x, y) in lettres.items():
+            self.assertGreaterEqual(x, 0.0, cote)
+            self.assertGreaterEqual(y, 0.0, cote)
 
 
 class EncartFixationDuPanTest(SimpleTestCase):

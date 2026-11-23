@@ -177,7 +177,7 @@ class ControlesElectriquesTest(SimpleTestCase):
     """ACAL858 — l'état d'ACAL934 et les lignes servies, LUS."""
 
     def _controles(self, *, motifs=(), etat='pret', points=0, verdicts=(),
-                   ratio=None, troncons=None):
+                   ratio=None, troncons=None, materiel=None):
         from apps.calepinage.services.pret_a_envoyer import (
             controles_electriques,
         )
@@ -186,7 +186,7 @@ class ControlesElectriquesTest(SimpleTestCase):
                        'etat': etat, 'points': points}
         resultat = {'electrique': {'verdicts': list(verdicts)},
                     'ratio_dc_ac': ratio}
-        with mock.patch(PUBLIABLE, return_value=(publication, None, None)), \
+        with mock.patch(PUBLIABLE, return_value=(publication, None, materiel)), \
                 mock.patch(SERVI, return_value=resultat), \
                 mock.patch(TRONCONS, return_value=troncons or {}):
             controles = controles_electriques(_Calepinage())
@@ -195,17 +195,50 @@ class ControlesElectriquesTest(SimpleTestCase):
 
     def test_sans_materiel_a_regler_jamais_ok(self):
         motifs = [{'code': 'FICHE_INCOMPLETE', 'statut': 'non_verifiable',
-                   'libelle': 'Onduleur : non désigné.', 'source': ''}]
+                   'libelle': 'onduleur : puissance AC', 'source': ''}]
+        absent = "onduleur non désigné — désignez-le dans l'onglet Matériel électrique"
         controles = self._controles(motifs=motifs, etat='a_completer',
-                                    points=1)
+                                    points=1, materiel={'absents': (absent,)})
         self.assertEqual(controles['materiel_designe']['etat'], 'a_regler')
+        # ACAL1704 — « Non désigné » : rien n'est choisi (le motif d'absence est la cause).
         self.assertEqual(controles['materiel_designe']['valeur_texte'],
-                         'Matériel non désigné')
+                         'Non désigné')
+        self.assertEqual(controles['materiel_designe']['cause'], absent)
+        self.assertEqual(controles['ratio_dc_ac']['valeur_texte'],
+                         'Non calculé : onduleur non désigné')
         verdict = controles['verdict_electrique']
         self.assertEqual(verdict['etat'], 'a_regler')
         # ACAL1539 : « À compléter » seul — le détail des motifs est au Verdict.
         self.assertEqual(verdict['valeur_texte'], 'À compléter')
         self.assertEqual(len(controles), 7)
+
+    def test_materiel_choisi_fiche_incomplete_dit_la_vraie_cause(self):
+        """ACAL1704 — panneau ET onduleur choisis, fiche du module sans Vmp :
+        « Fiche incomplète : <champ> du module » et le geste « Compléter la fiche
+        du module », jamais « Non désigné » ; le ratio dit « fiche du module
+        incomplète » (mutant : remettre la valeur fixe ⇒ échec)."""
+        motifs = [{'code': 'FICHE_INCOMPLETE', 'statut': 'non_verifiable',
+                   'libelle': 'module : tension au point de puissance maximale (Vmp)',
+                   'source': 'fiche technique du matériel retenu'}]
+        controles = self._controles(motifs=motifs, etat='a_completer', points=1,
+                                    materiel={'absents': ()})
+        materiel = controles['materiel_designe']
+        self.assertEqual(materiel['etat'], 'a_regler')
+        self.assertEqual(materiel['valeur_texte'], 'Fiche incomplète : tension au '
+                         'point de puissance maximale (Vmp) du module')
+        self.assertEqual(materiel['geste'], 'Compléter la fiche du module')
+        self.assertEqual(materiel['cause'],
+                         'module : tension au point de puissance maximale (Vmp)')
+        self.assertEqual(controles['ratio_dc_ac']['valeur_texte'],
+                         'Non calculé : fiche du module incomplète')
+        onduleur = [dict(motifs[0], libelle='onduleur : puissance AC')]
+        controles = self._controles(motifs=onduleur, materiel={'absents': ()})
+        self.assertEqual(controles['materiel_designe']['valeur_texte'],
+                         'Fiche incomplète : puissance AC de l’onduleur')
+        self.assertEqual(controles['materiel_designe']['geste'],
+                         'Compléter la fiche de l’onduleur')
+        self.assertEqual(controles['ratio_dc_ac']['valeur_texte'],
+                         'Non calculé : fiche de l’onduleur incomplète')
 
     def test_resume_de_motifs_singulier_pluriel(self):
         # R3-10 : jamais « 1 point(s) » — « 1 point », « 2 points ».
@@ -289,6 +322,53 @@ class ControlesElectriquesTest(SimpleTestCase):
         # Les contrôles sans écran de saisie propre restent au Schéma.
         self.assertEqual(controles['tension_froid']['cible']['onglet'],
                          'schema')
+
+
+#: ACAL1703 — le registre des onglets de l'atelier, LU (jamais recopié) : ``cle`` de
+#: chaque entrée d'``ONGLETS`` ; ``reglages`` est la route nommée ``/calepinage/reglages``
+#: (``production/lienManque.js``).
+REGISTRE_ONGLETS = (pathlib.Path(__file__).resolve().parents[4] / 'frontend' / 'src'
+                    / 'features' / 'calepinage' / 'atelier' / 'onglets.js')
+ROUTES_NOMMEES = {'reglages'}
+
+
+def _cles_du_registre():
+    import re
+
+    return set(re.findall(r"\{ cle: '([^']+)'", REGISTRE_ONGLETS.read_text(encoding='utf-8')))
+
+
+def _onglets_servis():
+    """Toutes les ``cible.onglet`` que le service peut servir : ses constantes
+    ``CIBLE_*``, l'onglet de chaque contrôle électrique et son défaut, et les
+    cibles de « Un seul chiffre »."""
+    from apps.calepinage.services import pret_a_envoyer as service
+
+    cibles = [v for nom, v in vars(service).items()
+              if nom.startswith('CIBLE_') and isinstance(v, dict)]
+    cibles += [c for *_x, c in service._MOTIFS_UN_SEUL_CHIFFRE if c]
+    onglets = {c['onglet'] for c in cibles if c['onglet']}
+    onglets |= set(service._ONGLET_DU_CONTROLE.values())
+    onglets.add(service._elec('x', 'X', 'ok', '')['cible']['onglet'])
+    return onglets
+
+
+class CiblesDuReglerTest(SimpleTestCase):
+    """ACAL1703 — « Régler » mène toujours vers un écran qui existe."""
+
+    def test_toute_cible_servie_est_un_onglet_du_registre_ou_une_route(self):
+        # Mutant : remettre « materiel », « obstacles » ⇒ échec (clés absentes).
+        cles = _cles_du_registre()
+        self.assertGreater(len(cles), 30)  # le registre est bien lu
+        self.assertEqual(_onglets_servis() - cles - ROUTES_NOMMEES, set())
+
+    def test_les_trois_cibles_menent_a_l_ecran_qui_porte_le_champ(self):
+        from apps.calepinage.services import pret_a_envoyer as service
+
+        self.assertEqual(service.CIBLE_MATERIEL['onglet'], 'materiel-electrique')
+        self.assertEqual((service.CIBLE_OBSTACLES['etape'], service.CIBLE_OBSTACLES['onglet']),
+                         ('toit', 'pente'))
+        self.assertEqual(service.CIBLE_PERTES['onglet'], 'reglages')
 
 
 DOSSIERS = 'apps.calepinage.services.reglementaire.dossiers_du_calepinage'

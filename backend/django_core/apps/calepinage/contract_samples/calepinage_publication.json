@@ -48,6 +48,13 @@
     "kwc_dessine": 72.0,
     "kwc_compose": 71.0
   },
+  "exemple_409_module_substitue_surface": {
+    "detail": "Champ au sol 1 : son module (« 720 W ») n'est pas celui que le catalogue compose (« Panneau Canadien Solar 710W »). Changez le module du pan, puis ré-enregistrez le contour.",
+    "code": "module_substitue",
+    "champ": "zones.0.geometry.moduleId",
+    "kwc_dessine": 36.0,
+    "kwc_compose": 35.5
+  },
   "exemple_409_confirmation_taille": {
     "detail": "Aucune facture ni taille souhaitée sur le lead : le devis remplit le toit (34,08 kWc, 168 800,00 MAD TTC). Confirmez, ou renseignez la facture du lead.",
     "code": "confirmation_taille",
