@@ -471,6 +471,56 @@ class SyntheseTest(unittest.TestCase):
         self.assertIn('non calculée — aucune chaîne calculée',
                       self.synthese(res))
 
+    def _cas_1945(self, complet=False):
+        # ACAL1701 - calepinage 1945 : 5 × 710 Wc = 3,55 kWc ; P50 servi
+        # 8 198,3 kWh ; productible = 8 198,3 / 3,55 = 2 309,4 kWh/kWc (fait
+        # à la main : 3,55 × 2 309,4 = 8 198,37) ; 19 pertes non renseignées.
+        res = resultat()
+        res['pose']['kwc'] = 3.55
+        total = res['production']['total']
+        total.update(kwc=3.55, p50_kwh=8198.3, specific_yield_kwh_kwc=2309.4,
+                     complete=complet,
+                     mention='' if complet
+                     else 'borne haute — 19 pertes non renseignées')
+        return res
+
+    def test_synthese_incomplete_le_productible_porte_la_mention(self):
+        page = self.synthese(self._cas_1945())
+        self.assertIn(
+            '<tr><th>Productible spécifique</th><td>2 309,4 kWh/kWc'
+            '<span class="detail">borne haute — 19 pertes non renseignées'
+            '</span></td></tr>', page)
+        self.assertIn('8 198,3 kWh<span class="detail">borne haute — '
+                      '19 pertes non renseignées</span>', page)
+        # Un résultat complet imprime les deux lignes comme avant.
+        complet = self.synthese(self._cas_1945(complet=True))
+        self.assertIn('<tr><th>Productible spécifique</th><td>2 309,4 '
+                      'kWh/kWc</td></tr>', complet)
+        self.assertNotIn('borne haute', complet)
+
+    def test_section_production_incomplete_le_productible_porte_la_mention(
+            self):
+        from apps.calepinage.services.rapport import production
+
+        page = production.html_de_section({'resultat': self._cas_1945()})
+        self.assertIn(
+            '<tr><th>Productible spécifique (kWh/kWc)</th><td>2 309,4 '
+            '<span class="detail mention-borne-haute">borne haute — 19 pertes '
+            'non renseignées</span></td></tr>', page)
+
+    def test_la_mention_borne_haute_s_imprime_en_corps_lisible(self):
+        # Le rendu COMPLET du rapport porte les feuilles de style des
+        # sections : la mention (classe ``detail``) de la synthèse et de la
+        # production est en 9 pt au moins (elle l'était en 7,5 pt gris).
+        page = html_du_rapport(NU, resultat=self._cas_1945(), site=SITE,
+                               identite=IDENTITE, styles=STYLES)
+        tailles = re.findall(
+            r'\.(?:synthese|production-totaux|production-quantiles) '
+            r'\.detail[^{]*\{[^}]*font-size:([\d.]+)pt', page)
+        self.assertTrue(tailles)
+        for taille in tailles:
+            self.assertGreaterEqual(float(taille), 9.0)
+
     def test_un_controle_non_conforme_est_nomme(self):
         res = resultat()
         res['electrique']['verdicts'][0]['conforme'] = False

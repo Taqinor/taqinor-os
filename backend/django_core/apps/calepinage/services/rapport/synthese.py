@@ -26,7 +26,8 @@ NON_CALCULEE = 'non calculée'
 CSS_SECTION = (
     '.synthese th{width:48%;text-align:left;}'
     '.synthese td{text-align:right;}'
-    '.synthese .detail{display:block;font-size:7.5pt;color:#555;}'
+    # ACAL1701 — la mention « borne haute » se lit : 9 pt, plus 7,5 pt gris.
+    '.synthese .detail{display:block;font-size:9pt;color:#555;}'
 )
 
 
@@ -97,9 +98,12 @@ def _controles(resultat):
     return '<br>'.join(escape(libelle_) for libelle_ in faux)
 
 
-def _p50(total):
-    p50 = _present(total, 'p50_kwh')
-    texte = _valeur(p50, unite=' kWh')
+def _p50(total, cle='p50_kwh', unite=' kWh'):
+    """``cle`` servie + la mention « borne haute » d'un résultat incomplet —
+    le P50 ET le productible spécifique (ACAL1701 : P50 ÷ kWc, la même borne
+    haute)."""
+    p50 = _present(total, cle)
+    texte = _valeur(p50, unite=unite)
     mention = mention_borne_haute(total)
     if p50 is None or not mention:
         return texte
@@ -146,8 +150,8 @@ def html_de_section(contexte):
         _ligne('Onduleurs', _onduleurs(resultat)),
         _ligne('Production annuelle P50', _p50(total)),
         _ligne('Production annuelle P90', _quantile(total, 'p90_kwh', ' kWh')),
-        _ligne('Productible spécifique', _valeur(
-            total.get('specific_yield_kwh_kwc'), unite=' kWh/kWc')),
+        _ligne('Productible spécifique',
+               _p50(total, 'specific_yield_kwh_kwc', ' kWh/kWc')),
         _ligne('Ratio de performance (PR)',
                _quantile(total, 'performance_ratio', '')),
         _ligne('Pertes totales', _valeur(pertes, unite=' %')),

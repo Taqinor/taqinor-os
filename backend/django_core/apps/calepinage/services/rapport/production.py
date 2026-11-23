@@ -82,8 +82,11 @@ def _valeur_ou_non_publie(total, cle):
     return nombre_tel_que_servi(total.get(cle))
 
 
-def _p50_et_mention(total):
-    p50 = nombre_tel_que_servi(total.get('p50_kwh'))
+def _p50_et_mention(total, cle='p50_kwh'):
+    """La valeur ``cle`` servie et, sur un résultat incomplet, la mention
+    « borne haute » (ACAL1701 : le productible spécifique est le P50 divisé
+    par les kWc — la même borne haute, jamais imprimée comme une mesure)."""
+    p50 = nombre_tel_que_servi(total.get(cle))
     mention = mention_borne_haute(total)
     if not mention:
         return p50
@@ -95,8 +98,9 @@ CSS_SECTION = (
     '.production-mensuelle td.valeur,.production-par-pan td.valeur,'
     '.production-pluriannuelle td.valeur,'
     '.production-quantiles td.valeur{text-align:right;}'
+    # ACAL1701 — la mention « borne haute » se lit : 9 pt, plus 7,5 pt gris.
     '.production-quantiles .detail,.production-totaux .detail'
-    '{display:block;font-size:7.5pt;color:#555;}'
+    '{display:block;font-size:9pt;color:#555;}'
 )
 
 #: PVsyst : P50/P75/P90 sont des quantiles ANNUELS (valeurs de dépassement),
@@ -140,7 +144,7 @@ def _bloc_totaux(total):
         _ligne('Ratio de performance (PR)',
                _valeur_ou_non_publie(total, 'performance_ratio')),
         _ligne('Productible spécifique (kWh/kWc)',
-               nombre_tel_que_servi(total.get('specific_yield_kwh_kwc'))),
+               _p50_et_mention(total, 'specific_yield_kwh_kwc')),
     ]
     return '<table class="production-totaux generique">%s</table>' % \
         ''.join(lignes)
