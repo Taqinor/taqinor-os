@@ -334,7 +334,7 @@ def _role_et_champ(libelle):
     return (role.strip().lower(), champ.strip()) if separateur else ('', str(libelle or ''))
 
 
-def _ratio_dc_ac(ratio, *, pourquoi='onduleur non désigné', devis_recu=False):
+def _ratio_dc_ac(ratio, *, pourquoi='onduleur non désigné', devis_recu=False, verdict=None):
     from core.electrique.types import fr
 
     from .ratio_devis import detail_ratio
@@ -344,9 +344,11 @@ def _ratio_dc_ac(ratio, *, pourquoi='onduleur non désigné', devis_recu=False):
     if valeur is None:
         return _elec('ratio_dc_ac', libelle, 'info', 'Non calculé : %s' % pourquoi)
     # ACAL1954 (D-ACAL-91) — le verdict du bloc servi, LU (la MÊME fonction que
-    # l'étape Électrique) ; la phrase dit d'où vient la borne.
+    # l'étape Électrique) ; la phrase dit d'où vient la borne. La phrase servie
+    # du verdict ``ratio_dc_ac`` (``electrique.verdicts``) prime : elle nomme
+    # aussi le seuil bas franchi — les deux écrans disent les MÊMES mots.
     conforme = bool(ratio.get('dans_bornes'))
-    texte = detail_ratio(fr(valeur, 2), conforme, (
+    texte = (verdict or {}).get('detail') or detail_ratio(fr(valeur, 2), conforme, (
         ratio.get('borne'), None, ratio.get('borne_source'), ratio.get('borne_reference')))
     if conforme:
         controle = _elec('ratio_dc_ac', libelle, 'ok', texte)
@@ -419,7 +421,8 @@ def controles_electriques(calepinage):
         _depuis_motifs('orientation_mppt', 'Une seule orientation par entrée',
                        poly, geste='Revoir l’affectation des chaînes'),
         _ratio_dc_ac(resultat.get('ratio_dc_ac'), pourquoi=pourquoi_ratio,
-                     devis_recu=bool((conception_du_devis_lie(calepinage) or {}).get('recu'))),
+                     devis_recu=bool((conception_du_devis_lie(calepinage) or {}).get('recu')),
+                     verdict=next((v for v in verdicts if v.get('code') == 'ratio_dc_ac'), None)),
         _chutes(troncons_du_calepinage(calepinage)),
         _depuis_motifs('terre_protections', 'Terre et protections', terre,
                        geste='Compléter la check-list de terre'),

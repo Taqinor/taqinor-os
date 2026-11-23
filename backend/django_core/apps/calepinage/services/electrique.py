@@ -3726,7 +3726,8 @@ def _verdicts_electriques(conception, optimiseur_specs=None,
         'conforme': conforme,
         'bloquant': False,
         'source': 'fiche',
-        'detail': '' if valeur is None else detail_ratio(ratio.texte, conforme, bornes),
+        'detail': '' if valeur is None else detail_ratio(ratio.texte, conforme, bornes, valeur=valeur,
+                                                         reglages=reglages),
         **_bloc_temperature(conception.temperatures),
     })
     # CAL129 — les contrôles d'ENTRÉE de l'optimiseur viennent APRÈS les cinq

@@ -92,11 +92,24 @@ def juger_ratio(valeur, bornes, reglages=None):
     return dans and (not bas.controlee or valeur >= bas.valeur - 1e-9)
 
 
-def detail_ratio(texte, conforme, bornes):
-    """La phrase du verdict, qui dit D'OÙ vient la borne."""
+def detail_ratio(texte, conforme, bornes, *, valeur=None, reglages=None):
+    """La phrase du verdict, qui dit D'OÙ vient la borne — et, sous le seuil BAS
+    réglé par la société, LA borne franchie : la règle du devis
+    (``borne_dc_ac_du_moteur_devis``) ne fixe qu'un plafond, jamais de borne
+    basse ; seul le seuil bas de la société (``seuil_bas_dc_ac``) peut juger un
+    ratio trop faible (rejeu T3-VAGUEC2 : « 0,99 pour 1,35 au plus » à régler
+    sans raison dite)."""
+    from core.electrique.onduleurs import bornes_dc_ac
     from core.electrique.types import fr
 
     borne, _alerte, source, detail = bornes
+    bas = bornes_dc_ac(reglages).seuil_bas
+    if (not conforme and valeur is not None and bas.controlee
+            and valeur < bas.valeur - 1e-9):
+        plafond = ("la règle du devis n'a pas de borne basse, %s au plus" % fr(borne, 2)
+                   if source == SOURCE_BORNE_DEVIS else '%s au plus, %s' % (fr(borne, 2), source))
+        return '%s : sous le seuil bas de %s réglé par la société (%s)' % (
+            texte, fr(bas.valeur, 2), plafond)
     if source == SOURCE_BORNE_CAPACITE:
         return '%s — %s la capacité publiée de l\'onduleur (%s)' % (
             texte, 'dans' if conforme else 'au-delà de', detail)
