@@ -26,59 +26,113 @@
 .cal-gros-sep { display: inline-block; width: 0.24em; overflow: hidden; text-indent: 1em; white-space: nowrap; }
 .cal-gros-u { font: 500 16px var(--font-brand); letter-spacing: 0; color: var(--cal-texte-2); }
 
-/* ── Quatre tuiles ───────────────────────────────────────────────────────── */
-.cal-res-tuiles { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; gap: 16px; }
-.cal-res-tuile { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 22px 24px;
+/* ── Quatre tuiles : le héros (500 px) puis trois lectures de même hauteur (212 px) ─────────────────────── */
+.cal-res-tuiles { display: grid; grid-template-columns: 500px repeat(3, minmax(0, 1fr)); gap: 16px; min-height: 212px; }
+.cal-res-tuile { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 20px 22px;
   background: var(--cal-surface); border: 0; border-radius: var(--cal-rayon-carte); box-shadow: var(--cal-ombre-posee); }
 .cal-res-tuile-label { font-size: 13px; font-weight: 500; color: var(--cal-texte-2); }
 .cal-res-tuile-valeur { font-family: var(--cal-police-chiffres); font-weight: 700; font-size: 38px; line-height: 1;
   letter-spacing: -0.02em; }
 .cal-res-tuile-note { font-size: 13px; color: var(--cal-texte-2); }
+.cal-res-tuile-note[data-ton='ok'] { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; color: var(--cal-ok); }
+.cal-res-tuile-note[data-ton='ok']::before { content: ''; width: 8px; height: 8px; border-radius: 4px; background: var(--cal-ok); }
+.cal-res-tuile-note[data-ton='hors'] { color: var(--cal-refus); }
+/* Le corps d'une tuile : le chiffre (et sa réglette / son anneau) centré entre l'étiquette et la phrase. */
+.cal-res-tuile-corps { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 14px; min-width: 0; }
+.cal-res-tuile-anneau { flex-direction: row; align-items: center; justify-content: flex-start; gap: 14px; }
+.cal-res-anneau-piste { stroke: var(--cal-surface-2); }
+.cal-res-anneau-arc { stroke: var(--cal-production); }
+/* Réglettes : piste de 8 px, bande habituelle en vert pâle, repère bleu nuit (pertes) ; zéro + segment bleu (écart). */
+.cal-res-regle { position: relative; display: block; height: 8px; border-radius: 4px; background: var(--cal-surface-2); }
+.cal-res-regle-plage { position: absolute; top: 0; bottom: 0; border-radius: 4px;
+  background: color-mix(in oklch, var(--cal-ok) 24%, var(--cal-surface-2)); }
+.cal-res-regle-repere { position: absolute; top: -4px; width: 4px; height: 16px; margin-left: -2px; border-radius: 2px;
+  background: var(--cal-marine); }
+.cal-res-regle-zero { position: absolute; left: 50%; top: -4px; width: 2px; height: 16px; margin-left: -1px;
+  background: var(--cal-texte-3); }
+.cal-res-regle-ecart { position: absolute; top: 0; bottom: 0; min-width: 4px; border-radius: 4px; background: var(--cal-consommation); }
 /* Carte bleu nuit : le chiffre de la page (même carte pour le héros complet et le plafond incomplet). */
 .cal-res-heros, .cal-resinc-plafond { position: relative; overflow: hidden; background: var(--color-encre);
   color: var(--color-azur-100); box-shadow: 0 18px 40px color-mix(in oklch, var(--color-encre) 28%, transparent),
     inset 0 0 0 1px var(--cal-flottante-filet); }
+.cal-res-heros { padding: 24px 26px; }
 .cal-res-heros::before, .cal-resinc-plafond::before { content: ''; position: absolute; inset: 0; pointer-events: none;
-  background: radial-gradient(circle at 92% 4%, color-mix(in oklch, var(--cal-action) 30%, transparent), transparent 68%); }
+  background: radial-gradient(circle at 88% 6%, color-mix(in oklch, var(--cal-action) 36%, transparent), transparent 70%); }
 .cal-res-heros > *, .cal-resinc-plafond > * { position: relative; }
+.cal-res-heros > .cal-res-heros-corps { position: static; justify-content: flex-start; margin-top: 4px; }
 .cal-res-heros .cal-res-tuile-label, .cal-res-heros .cal-res-tuile-note,
 .cal-resinc-plafond .cal-res-tuile-label, .cal-resinc-plafond .cal-res-tuile-note { color: var(--color-lune); }
 .cal-res-heros .cal-res-tuile-valeur, .cal-resinc-plafond .cal-res-tuile-valeur {
   font-size: 58px; color: var(--color-azur-100); }
 .cal-res-heros .cal-gros, .cal-resinc-plafond .cal-gros { gap: 10px; }
 .cal-res-heros .cal-gros-u, .cal-resinc-plafond .cal-gros-u { font-size: 20px; color: var(--color-lune); }
+/* Les douze mini-barres mensuelles, en bas à droite de la carte héros : le mois le plus fort est plein. */
+.cal-res-minibarres { position: absolute; right: 26px; bottom: 62px; display: flex; align-items: flex-end; gap: 4px; height: 74px; }
+.cal-res-minibarres > span { display: block; width: 7px; border-radius: 3px;
+  background: color-mix(in oklch, var(--cal-action) 42%, transparent); }
+.cal-res-minibarres > span[data-fort='oui'] { background: color-mix(in oklch, var(--cal-action) 95%, transparent); }
 .cal-res-explication { margin: 0; font-size: 12px; line-height: 1.45; color: var(--cal-texte-2); }
 
 /* ── Mois par mois + Du soleil au réseau ─────────────────────────────────── */
-.cal-res-milieu { display: grid; grid-template-columns: 1.15fr 1fr; gap: 16px; }
-.cal-res-legende { display: flex; gap: 16px; font-size: 12px; color: var(--cal-texte-2); }
+.cal-res-milieu { display: grid; grid-template-columns: minmax(0, 760px) minmax(0, 1fr); gap: 16px; min-height: 448px; }
+.cal-res-milieu > .cal-res-carte { padding: 22px 24px 16px; }
+.cal-res-carte-mois { gap: 10px; }
+.cal-res-legende { display: inline-flex; align-items: center; gap: 12px; height: 30px; padding: 0 12px; border-radius: 15px;
+  background: var(--cal-papier); font-size: 12px; color: var(--cal-texte-2); }
+.cal-res-legende strong { font-weight: 600; color: var(--cal-texte-1); }
 .cal-res-legende span { display: inline-flex; align-items: center; gap: 6px; }
+.cal-res-legende b { font-weight: 600; color: var(--cal-texte-1); }
 .cal-res-pastille { width: 10px; height: 10px; border-radius: 3px; background: var(--cal-production); }
-.cal-res-pastille-conso { background: var(--cal-consommation); }
-.cal-res-mois { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 10px; align-items: end;
-  height: 220px; padding-top: 8px; border-bottom: 1px solid var(--cal-filet); }
-.cal-res-mois-paire { display: flex; gap: 3px; align-items: end; height: 100%; }
-.cal-res-barre { flex: 1; min-height: 0; border-radius: 7px 7px 0 0; background: var(--cal-production); }
-.cal-res-barre-conso { background: var(--cal-consommation); }
-.cal-res-mois-noms { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 10px; text-align: center;
+.cal-res-pastille-conso { width: 14px; height: 3px; border-radius: 2px; background: var(--cal-consommation); }
+.cal-res-graphe { flex: 1; min-height: 260px; display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 0; }
+.cal-res-axe { position: relative; }
+.cal-res-axe > span { position: absolute; left: 0; transform: translateY(50%); font-size: 12px; color: var(--cal-texte-3); }
+.cal-res-mois { position: relative; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 0; align-items: stretch; }
+.cal-res-grille { position: absolute; left: 0; right: 0; height: 1px; background: var(--cal-filet); pointer-events: none; }
+.cal-res-mois-paire { position: relative; display: flex; justify-content: center; align-items: flex-end; min-height: 44px;
+  padding: 0; border: 0; background: transparent; cursor: pointer; }
+.cal-res-barre { width: 30px; max-width: 70%; min-height: 0; border-radius: 7px 7px 0 0;
+  background: linear-gradient(180deg, color-mix(in oklch, var(--cal-production) 88%, var(--cal-surface)), var(--cal-production)); }
+.cal-res-mois-paire[aria-pressed='true'] .cal-res-barre { box-shadow: 0 0 0 2px var(--cal-texte-1); border-radius: 7px; }
+.cal-res-point { position: absolute; left: 50%; width: 8px; height: 8px; margin: 0 0 -4px -4px; box-sizing: border-box;
+  border-radius: 50%; background: var(--cal-surface); border: 2px solid var(--cal-consommation); }
+.cal-res-mois-paire[aria-pressed='true'] .cal-res-point { width: 11px; height: 11px; margin: 0 0 -5.5px -5.5px; }
+.cal-res-courbe { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.cal-res-courbe polyline { fill: none; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.cal-res-courbe-halo { stroke: var(--cal-surface); stroke-width: 6px; }
+.cal-res-courbe-trait { stroke: var(--cal-consommation); stroke-width: 2.5px; }
+.cal-res-mois-noms { display: grid; grid-template-columns: 44px repeat(12, minmax(0, 1fr)); gap: 0; text-align: center;
   font-size: 12px; color: var(--cal-texte-3); }
+.cal-res-mois-noms > span:first-child { grid-column: 2; }
+.cal-res-mois-noms > span[data-choisi='oui'] { font-weight: 700; color: var(--cal-texte-1); }
 
-.cal-res-postes { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
-.cal-res-poste { display: grid; grid-template-columns: minmax(110px, 150px) 1fr 64px; align-items: center; gap: 12px; }
-.cal-res-piste { height: 14px; border-radius: 7px; background: var(--cal-surface-2); }
-.cal-res-piste > span { display: block; height: 14px; border-radius: 7px; background: var(--color-encre-soft); }
-.cal-res-piste-depart { background: var(--color-encre); }
-.cal-res-piste-arrivee > span { background: var(--cal-production); }
+/* « Du soleil au réseau » : une rangée par poste — nom, piste (restant bleu nuit + cette perte en saumon), pourcentage. */
+.cal-res-postes { display: flex; flex-direction: column; flex: 1; justify-content: center; margin: 0; padding: 0; list-style: none; }
+.cal-res-poste { display: grid; grid-template-columns: 200px minmax(0, 1fr) 58px; align-items: center; gap: 12px;
+  min-height: 44px; color: var(--cal-texte-2); }
+.cal-res-poste[data-poste='soleil'], .cal-res-poste-arrivee { min-height: 52px; color: var(--cal-texte-1); }
+.cal-res-poste[data-poste='soleil'] > span:first-child, .cal-res-poste-arrivee > span:first-child { font-weight: 600; }
+.cal-res-piste { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--cal-surface-2); }
+.cal-res-piste > span { display: block; height: 100%; border-radius: 0;
+  background: color-mix(in oklch, var(--color-encre) 62%, var(--cal-consommation)); }
+.cal-res-piste > .cal-res-perte { background: var(--cal-perte); }
+.cal-res-piste-depart { height: 20px; border-radius: 10px; background: var(--cal-marine); }
+.cal-res-piste-arrivee { height: 20px; border-radius: 10px; }
+.cal-res-piste-arrivee > span { border-radius: 10px; background: var(--cal-production); }
 .cal-res-poste-pct { text-align: right; color: var(--cal-texte-2); }
-.cal-res-poste-fort { font-weight: 600; color: var(--cal-texte-1); }
-.cal-res-poste-arrivee { padding-top: 10px; border-top: 1px solid var(--cal-filet); font-weight: 600; }
+.cal-res-poste-fort { font-weight: 700; color: var(--cal-texte-1); }
+.cal-res-poste-arrivee { margin-top: 8px; border-top: 1px solid var(--cal-filet); }
 .cal-res-info { margin-top: auto; display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px;
-  background: var(--cal-papier); border-radius: var(--cal-rayon-champ); font-size: 14px; line-height: 1.45;
+  background: var(--cal-papier); border-radius: var(--cal-rayon-champ); font-size: 13px; line-height: 1.45;
   color: var(--cal-texte-2); }
 
-/* ── Pied ────────────────────────────────────────────────────────────────── */
-.cal-res-pied { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-.cal-res-pied-ligne { font-size: 14px; color: var(--cal-texte-2); }
+/* ── Pied : la phrase sur sa carte, puis l'action suivante (330 × 104, l'UNIQUE aplat doré de l'écran) ───── */
+.cal-res-pied { display: flex; align-items: stretch; justify-content: flex-end; gap: 16px; min-height: 104px; }
+.cal-res-pied-ligne { flex: 1; display: flex; align-items: center; padding: 0 22px; border-radius: var(--cal-rayon-carte);
+  background: var(--cal-surface); box-shadow: var(--cal-ombre-posee); font-size: 14px; color: var(--cal-texte-2); }
+.cal-res-pied-ligne:empty { display: none; }
+.cal-res-pied > .cal-res-cta { flex: none; width: 330px; min-height: 104px; border-radius: var(--cal-rayon-carte); font-size: 16px;
+  box-shadow: 0 12px 28px color-mix(in oklch, var(--cal-or-trait) 40%, transparent), inset 0 1px 0 color-mix(in oklch, var(--cal-action-texte) 6%, transparent); }
 /* L'action suivante : l'UNIQUE aplat doré de l'écran (52 px, rayon 14, 15 px graisse 700, ombre dorée). */
 .cal-res-cta { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 52px;
   padding: 0 22px; border: 0; border-radius: var(--cal-rayon-pile); background: var(--cal-action);
@@ -86,6 +140,7 @@
   box-shadow: var(--cal-action-ombre); }
 @media (hover: hover) {
   .cal-res-cta:hover { filter: brightness(0.97); }
+  .cal-res-mois-paire:hover .cal-res-barre { filter: brightness(0.96); }
 }
 
 /* ── Résultat incomplet (ResultatsIncomplet.dc.html) : deux colonnes, 540 px à gauche ────────────────────── */
@@ -193,6 +248,8 @@
 @container (max-width: 860px) {
   .cal-res-milieu, .cal-resinc-haut { grid-template-columns: 1fr; }
   .cal-res-tuiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cal-res-milieu { min-height: 0; }
+  .cal-res-pied > .cal-res-cta { width: auto; flex: 1; min-height: 64px; }
   .cal-res-heros { grid-column: 1 / -1; }
 }
 @container (max-width: 520px) {
@@ -200,9 +257,10 @@
   .cal-resinc-sur, .cal-resinc > .cal-res-carte .cal-resinc-sur { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cal-resinc-absent-annees { flex-direction: column; }
   .cal-resinc-absent-annees .cal-resinc-absent-texte { width: auto; }
-  .cal-res-poste { grid-template-columns: 1fr 64px; }
+  .cal-res-poste { grid-template-columns: 1fr 58px; }
   .cal-res-poste .cal-res-piste { grid-column: 1 / -1; grid-row: 2; }
-  .cal-res-mois, .cal-res-mois-noms { gap: 4px; }
+  .cal-res-graphe { grid-template-columns: 36px minmax(0, 1fr); }
+  .cal-res-mois-noms { grid-template-columns: 36px repeat(12, minmax(0, 1fr)); }
 }
 @media (prefers-reduced-motion: no-preference) {
   .cal-res-barre, .cal-res-piste > span { transition: height var(--motion-base, 200ms) ease, width var(--motion-base, 200ms) ease; }

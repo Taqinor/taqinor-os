@@ -57,9 +57,10 @@ describe('Étape Résultats — résultat complet (maquette Resultats)', () => {
     const tuiles = await screen.findByTestId('cal-resultats-tuiles')
     const labels = [...tuiles.querySelectorAll('.cal-res-tuile-label')].map((n) => n.textContent)
     expect(labels).toEqual(['Production la première année', 'De la consommation', 'Pertes au total', 'Écart avec PVGIS'])
-    expect(within(tuiles).getByText('13 000 kWh')).toBeInTheDocument() // P50 servi
+    const valeurDe = (cle) => tuiles.querySelector(`[data-tuile="${cle}"] .cal-res-tuile-valeur`).textContent.replace(/\s/g, ' ')
+    expect(valeurDe('heros')).toBe('13 000 kWh') // P50 servi
     expect(within(tuiles).getByText('1 505 kWh par kWc · année moyenne (P50)')).toBeInTheDocument()
-    expect(within(tuiles).getByText('71 %')).toBeInTheDocument() // taux_couverture 0,71
+    expect(valeurDe('couverture')).toBe('71 %') // taux_couverture 0,71
     const mois = screen.getByTestId('cal-resultats-mois')
     expect(within(mois).getByText('Mois par mois')).toBeInTheDocument()
     expect(mois.querySelectorAll('.cal-res-mois-noms span')).toHaveLength(12)
@@ -169,7 +170,8 @@ describe('Étape Résultats — résultat complet, bloc par bloc (maquette Resul
     ])
     // 2. « Mois par mois » : titre, légende, 12 paires de barres, 12 initiales J F M A M J J A S O N D.
     const mois = screen.getByTestId('cal-resultats-mois')
-    expect(texte(mois.querySelector('.cal-res-entete'))).toBe('Mois par moisProductionConsommation')
+    // ACAL1832 : la pastille du mois choisi (le plus fort) porte la légende, avec les valeurs servies de ce mois.
+    expect(texte(mois.querySelector('.cal-res-entete'))).toMatch(/^Mois par mois[A-Zé][\wéû]+ [\d ]+ kWh produits[\d ]+ kWh consommés$/)
     expect(mois.querySelectorAll('.cal-res-mois-paire')).toHaveLength(12)
     mois.querySelectorAll('.cal-res-mois-paire').forEach((p) => expect(p.children).toHaveLength(2))
     expect([...mois.querySelectorAll('.cal-res-mois-noms span')].map(texte).join('')).toBe('JFMAMJJASOND')
@@ -212,6 +214,104 @@ describe('Étape Résultats — squelette de chargement (ACAL1822)', () => {
     rendre()
     expect(await screen.findByTestId('cal236-erreur')).toBeInTheDocument()
     expect(document.querySelector('.cal-res-squelette')).toBeNull()
+  })
+})
+
+/* ACAL1832 — l'écran Résultats complet à sa maquette v2 : chiffres dessinés, anneau, réglettes, mois par mois, pistes. */
+describe('Étape Résultats — résultat complet à la maquette v2 (ACAL1832)', () => {
+  const nombres = (liste) => liste.map((n) => Number.parseFloat(n))
+
+  it('la carte héros rend douze mini-barres servies (le mois le plus fort est plein) ; sans série servie, aucune', async () => {
+    const d = COMPLET_MAQUETTE()
+    servir(d)
+    const { unmount } = rendre()
+    const barres = [...(await screen.findByTestId('cal-res-minibarres')).children]
+    expect(barres).toHaveLength(12)
+    const servi = d.production.mensuel.map((m) => m.p50_kwh)
+    const fort = servi.indexOf(Math.max(...servi))
+    expect(barres.map((b) => b.dataset.fort)).toEqual(barres.map((_, i) => (i === fort ? 'oui' : undefined)))
+    expect(nombres(barres.map((b) => b.style.height))[fort]).toBe(100)
+    unmount()
+    const sans = COMPLET_MAQUETTE()
+    sans.production.mensuel = []
+    sans.autoconsommation.par_mois = []
+    servir(sans)
+    rendre()
+    await screen.findByTestId('cal-resultats-tuiles')
+    expect(screen.queryByTestId('cal-res-minibarres')).toBeNull()
+  })
+
+  it('anneau de la consommation : l’arc est la part servie (71 %), nommée pour les lecteurs d’écran', async () => {
+    servir(COMPLET_MAQUETTE())
+    rendre()
+    const anneau = (await screen.findByTestId('cal-resultats-tuiles')).querySelector('[data-tuile="couverture"] svg')
+    expect(anneau).toHaveAttribute('role', 'img')
+    expect(anneau).toHaveAttribute('aria-label', '71 % de la consommation couverte')
+    const [arc, total] = nombres(anneau.querySelector('.cal-res-anneau-arc').getAttribute('stroke-dasharray').split(' '))
+    expect(arc / total).toBeCloseTo(0.71, 2)
+  })
+
+  it('réglette des pertes : bande habituelle SERVIE et repère à la valeur ; sans bande servie, pas de réglette', async () => {
+    const d = COMPLET_MAQUETTE()
+    d.cascade.plages.total = { statut: 'dans_la_plage', min: 10, max: 20, unite: '%' }
+    servir(d)
+    const { unmount } = rendre()
+    const regle = await screen.findByTestId('cal-res-regle-pertes')
+    const plage = regle.querySelector('.cal-res-regle-plage')
+    const haut = Math.max(20, 18.6) * 1.35
+    expect(Number.parseFloat(plage.style.left)).toBeCloseTo((10 / haut) * 100, 1)
+    expect(Number.parseFloat(plage.style.width)).toBeCloseTo((10 / haut) * 100, 1)
+    expect(Number.parseFloat(regle.querySelector('.cal-res-regle-repere').style.left)).toBeCloseTo((18.6 / haut) * 100, 1)
+    unmount()
+    const sans = COMPLET_MAQUETTE() // plages.total sans min / max
+    servir(sans)
+    rendre()
+    await screen.findByTestId('cal-resultats-tuiles')
+    expect(screen.queryByTestId('cal-res-regle-pertes')).toBeNull()
+    expect(screen.getByText('Dans la plage habituelle')).toBeInTheDocument()
+  })
+
+  it('« Mois par mois » : le mois le plus fort est choisi, un toucher change la pastille ; courbe de consommation servie seulement', async () => {
+    const d = COMPLET_MAQUETTE()
+    servir(d)
+    const { unmount } = rendre()
+    const mois = await screen.findByTestId('cal-resultats-mois')
+    const pastille = within(mois).getByTestId('cal-res-mois-choisi')
+    const paires = [...mois.querySelectorAll('.cal-res-mois-paire')]
+    const choisi = paires.findIndex((p) => p.getAttribute('aria-pressed') === 'true')
+    expect(pastille).toHaveTextContent(['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'][choisi])
+    const autre = (choisi + 1) % 12
+    fireEvent.click(paires[autre])
+    expect(paires[autre]).toHaveAttribute('aria-pressed', 'true')
+    expect(paires[choisi]).toHaveAttribute('aria-pressed', 'false')
+    expect(mois.querySelectorAll('.cal-res-courbe-trait')).toHaveLength(1)
+    expect(mois.querySelector('.cal-res-courbe-trait').getAttribute('points').split(' ')).toHaveLength(12)
+    expect(mois.querySelectorAll('.cal-res-point')).toHaveLength(12)
+    // Repères ronds de l'échelle, au-dessus du plus grand mois servi.
+    const reperes = [...mois.querySelectorAll('.cal-res-axe span')].map((s) => s.textContent.replace(/\s/g, ''))
+    expect(reperes).toHaveLength(3)
+    unmount()
+    const sans = COMPLET_MAQUETTE()
+    sans.autoconsommation.par_mois = sans.autoconsommation.par_mois.map((m) => ({ ...m, consommation_kwh: null }))
+    servir(sans)
+    rendre()
+    const mois2 = await screen.findByTestId('cal-resultats-mois')
+    expect(mois2.querySelector('.cal-res-courbe')).toBeNull()
+    expect(mois2.querySelector('.cal-res-point')).toBeNull()
+    expect(within(mois2).getByTestId('cal-res-mois-choisi')).not.toHaveTextContent('consommés')
+    expect(mois2).not.toHaveTextContent('Journée type') // aucune série horaire servie : pas de bascule
+  })
+
+  it('« Du soleil au réseau » : chaque piste porte le restant puis CETTE perte (les pourcentages servis)', async () => {
+    servir(COMPLET_MAQUETTE())
+    rendre()
+    const carte = await screen.findByTestId('cal-resultats-pertes')
+    const pistes = [...carte.querySelectorAll('.cal-res-poste[data-statut] .cal-res-piste')]
+    expect(pistes).toHaveLength(5)
+    expect(pistes.map((p) => Number.parseFloat(p.querySelector('.cal-res-perte').style.width))).toEqual([3, 3, 6.4, 4.5, 3.1])
+    const restes = pistes.map((p) => Number.parseFloat(p.firstElementChild.style.width))
+    expect(restes[0]).toBeCloseTo(97, 5)
+    expect(restes[4]).toBeCloseTo(80, 5) // cumul visuel des pourcentages servis (100 − 3 − 3 − 6,4 − 4,5 − 3,1)
   })
 })
 
