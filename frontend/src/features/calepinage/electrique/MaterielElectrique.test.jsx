@@ -173,6 +173,17 @@ describe('MaterielElectrique (ACAL149)', () => {
     expect(bloc).toHaveTextContent(`Écart avec le devis — ${EXEMPLE.devis_retenu.ecarts[0]}`)
   })
 
+  it('ACAL1950 — le bloc « repris du devis » décrit le même devis que la conception retenue (référence, statut, option, onduleurs)', () => {
+    // Deux échantillons, UN devis : `calepinage_conception_retenue.json` (ce que le devis a retenu, lu par le serveur) et le
+    // bloc `devis_retenu` que cet écran affiche. Si l'un dérive sans l'autre, ce cas casse.
+    const conception = exempleContrat('calepinage', 'calepinage_conception_retenue')
+    const { reference, statut, option, nombre_onduleurs: nombre } = EXEMPLE.devis_retenu
+    expect({ reference, statut, option, nombre }).toEqual({
+      reference: conception.reference, statut: conception.statut, option: conception.option,
+      nombre: conception.onduleurs[0].quantite,
+    })
+  })
+
   it('ACAL1952 — sans devis lié, aucun bloc « repris du devis »', async () => {
     calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: VIDE })
     rendre()
