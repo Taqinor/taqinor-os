@@ -701,9 +701,11 @@ describe('ACAL1803 — tête et pied du panneau d’étape (maquettes v2)', () =
     expect(traits.map((t) => t.getAttribute('data-etat'))).toEqual(['fait', 'actif', 'a-venir', 'a-venir', 'a-venir'])
     expect(screen.getByTestId('cal-progression-etapes')).toHaveAttribute('aria-hidden', 'true')
     const cs = (el) => getComputedStyle(el)
-    expect(cs(traits[0]).background).toContain('--cal-action')
+    // ACAL2003 — seul le trait de l'étape COURANTE est doré ; les faites sont neutres soutenues, les autres claires.
+    expect(cs(traits[0]).background).toContain('--cal-progression-faite')
     expect(cs(traits[1]).background).toContain('--cal-action')
     expect(cs(traits[2]).background).toContain('--cal-progression-a-venir')
+    expect(traits.map((t) => cs(t).background.includes('--cal-action'))).toEqual([false, true, false, false, false])
     expect(cs(traits[0]).height).toBe('4px')
     const rang = screen.getByText('Étape 2 sur 5')
     expect(cs(rang).fontSize).toBe('0.75rem')
@@ -719,12 +721,76 @@ describe('ACAL1803 — tête et pied du panneau d’étape (maquettes v2)', () =
     expect(cs(bouton).boxShadow).toBe('var(--cal-action-ombre)')
   })
 
+  it('ACAL2003 — aux cinq étapes, un seul trait est doré : celui de l’étape courante', async () => {
+    const { default: PanneauEtape } = await import('../PanneauEtape')
+    const { ETAPES } = await import('../../parcoursGuide')
+    const etats = Object.fromEntries(ETAPES.map((e) => [e.cle, 'fait']))
+    for (let n = 1; n <= 5; n += 1) {
+      const { unmount } = render(
+        <div className="rp9-host cal-coque"><PanneauEtape numero={n} total={5} titre="x" etats={etats} /></div>,
+      )
+      const dores = [...screen.getByTestId('cal-progression-etapes').children]
+        .map((t) => getComputedStyle(t).background.includes('--cal-action'))
+      expect(dores.filter(Boolean)).toHaveLength(1)
+      expect(dores[n - 1]).toBe(true)
+      unmount()
+    }
+  })
+
   it('panneau caché ou tiroir (tablette) : aucun trait — la tablette garde sa tête actuelle', async () => {
     const { default: PanneauEtape } = await import('../PanneauEtape')
     const { rerender } = render(<PanneauEtape numero={1} titre="Le toit" tiroir />)
     expect(screen.queryByTestId('cal-progression-etapes')).toBeNull()
     rerender(<PanneauEtape numero={1} titre="Le toit" cache />)
     expect(screen.queryByTestId('cal-progression-etapes')).toBeNull()
+  })
+})
+
+/* ACAL2001 — un message ne cache jamais le bouton d'action : tant que l'atelier est monté, le Toaster de l'ERP
+   (bas droite) se pose à gauche du panneau d'étape. Le crochet est RENDU, la feuille 50 est chargée dans le DOM de
+   test et lue par getComputedStyle sur une région sonner posée comme sonner la pose. */
+describe('ACAL2001 — les messages se posent hors du bouton d’étape', () => {
+  let style
+  beforeEach(() => {
+    style = document.createElement('style')
+    style.textContent = ['49-jetons-v2.css', '50-coque-atelier.css']
+      .map((f) => readFileSync(resolve(process.cwd(), `src/styles/calepinage/${f}`), 'utf8')).join('\n')
+    document.head.appendChild(style)
+  })
+  afterEach(() => { style.remove(); cleanup() })
+
+  function regionToasts(position = ['bottom', 'right']) {
+    const ol = document.createElement('ol')
+    ol.setAttribute('data-sonner-toaster', 'true')
+    ol.setAttribute('data-y-position', position[0])
+    ol.setAttribute('data-x-position', position[1])
+    document.body.appendChild(ol)
+    return ol
+  }
+
+  it('dans l’atelier, la région des messages quitte le coin du bouton ; hors atelier rien ne change', async () => {
+    const { useToastsHorsDuBouton } = await import('../toastsAtelier')
+    function Atelier() { useToastsHorsDuBouton(); return null }
+    const ol = regionToasts()
+    expect(getComputedStyle(ol).right).not.toBe('var(--cal-toast-droite)')
+    const { unmount } = render(<Atelier />)
+    expect(document.body).toHaveAttribute('data-cal-atelier', '1')
+    expect(getComputedStyle(ol).right).toBe('var(--cal-toast-droite)')
+    expect(getComputedStyle(ol).bottom).toBe('var(--cal-toast-bas)')
+    expect(getComputedStyle(document.body).getPropertyValue('--cal-toast-droite')).toBe('416px')
+    unmount()
+    expect(document.body).not.toHaveAttribute('data-cal-atelier')
+    expect(getComputedStyle(ol).right).not.toBe('var(--cal-toast-droite)')
+    ol.remove()
+  })
+
+  it('une région en haut (téléphone) n’est pas déplacée', async () => {
+    const { useToastsHorsDuBouton } = await import('../toastsAtelier')
+    function Atelier() { useToastsHorsDuBouton(); return null }
+    const ol = regionToasts(['top', 'center'])
+    render(<Atelier />)
+    expect(getComputedStyle(ol).right).not.toBe('var(--cal-toast-droite)')
+    ol.remove()
   })
 })
 

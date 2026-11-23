@@ -3,6 +3,7 @@ import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-li
 import { exempleContrat, reponseContrat, documentContrat } from '../../../test/fixtures/contractSamples'
 import { espions } from '../../../test/fixtures/calepinageApiMock'
 import albedoSurfaces from './albedoSurfaces.json'
+import process from 'node:process'
 
 /* ============================================================================
    CALX69 / ACAL133 — LES RÉGLAGES DE SIMULATION ET D'ÉLECTRIQUE, SAISISSABLES,
@@ -545,6 +546,29 @@ describe('ACAL405 — Démarrage rapide', () => {
       await waitFor(() => expect(screen.getByTestId('acal405-appliquer')).toHaveTextContent('Remplir les 5 réglages vides'))
       expect(screen.getByRole('link', { name: 'Tout saisir à la main' })).toHaveAttribute(
         'href', '/calepinage/reglages#calx69-section-simulation')
+    })
+
+    it('ACAL2002 — « Remplir… » est le bouton doré v2 (mêmes jetons que le bouton d’étape)', async () => {
+      const { readFileSync } = await import('node:fs')
+      const { resolve } = await import('node:path')
+      const style = document.createElement('style')
+      style.textContent = ['49-jetons-v2.css', '50-coque-atelier.css']
+        .map((f) => readFileSync(resolve(process.cwd(), `src/styles/calepinage/${f}`), 'utf8')).join('\n')
+      document.head.appendChild(style)
+      try {
+        mocks.profilDepart.mockResolvedValue({ data: PROFIL_RICHE })
+        servirReglages({})
+        rendre()
+        const bouton = await screen.findByTestId('acal405-appliquer')
+        await waitFor(() => expect(bouton).toBeEnabled())
+        expect(bouton).toHaveClass('cal-bouton-or', 'cal-bouton-or-grand')
+        expect(bouton.closest('.cal-reglages')).not.toBeNull()
+        const cs = getComputedStyle(bouton)
+        expect(cs.background).toContain('--cal-action')
+        expect(cs.height).toBe('52px')
+        expect(cs.borderRadius).toBe('var(--cal-rayon-pile)')
+        expect(cs.boxShadow).toBe('var(--cal-action-ombre)')
+      } finally { style.remove() }
     })
 
     it('rien à remplir : le bouton le dit et se désactive', async () => {

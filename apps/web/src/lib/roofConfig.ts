@@ -240,13 +240,23 @@ export const STATUT_IMAGERIE_INDISPONIBLE =
 
 /** ACAL377 — fond de repli LOCAL : aucune source distante (seules les polices des
  *  étiquettes de mesure, `glyphs`, restent chez MapTiler). Jamais écrit dans le document. */
-export function styleSansImagerie(maptilerKey = ''): object {
+export function styleSansImagerie(maptilerKey = '', sombre = false): object {
   return {
     version: 8,
     glyphs: `https://api.maptiler.com/fonts/{fontstack}/{range}.pbf?key=${encodeURIComponent(maptilerKey)}`,
     sources: {},
-    layers: [{ id: 'fond-sans-imagerie', type: 'background', paint: { 'background-color': '#e7e5df' } }],
+    layers: [{ id: 'fond-sans-imagerie', type: 'background', paint: { 'background-color': sombre ? FOND_SANS_IMAGERIE_SOMBRE : FOND_SANS_IMAGERIE_CLAIR } }],
   };
+}
+
+/** ACAL2004 — le fond neutre suit le thème : en clair le papier chaud d'avant, en sombre le fond de scène nuit de
+ *  l'atelier (`--cal-papier` sombre, 49-jetons-v2.css, rgb 10 15 42) — une couleur de TOILE (MapLibre ne lit pas le CSS). */
+export const FOND_SANS_IMAGERIE_CLAIR = '#e7e5df';
+export const FOND_SANS_IMAGERIE_SOMBRE = '#0a0f2a';
+
+/** ACAL2004 — le thème sombre de l'ERP (`.dark` sur <html>) ; faux hors navigateur. */
+export function themeSombreActif(): boolean {
+  return typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
 }
 
 /** ACAL377 — MapLibre ne lève jamais `load` quand le STYLE est refusé : une erreur
@@ -271,7 +281,7 @@ export function brancherRepliImagerie<S>(
     if (bascule || err?.sourceId || map.isStyleLoaded()) return;
     bascule = true;
     setStatus(STATUT_IMAGERIE_INDISPONIBLE);
-    map.setStyle(styleSansImagerie(maptilerKey) as S);
+    map.setStyle(styleSansImagerie(maptilerKey, themeSombreActif()) as S);
     map.once('load', () => setStatus(STATUT_IMAGERIE_INDISPONIBLE));
   });
 }

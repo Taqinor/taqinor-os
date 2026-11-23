@@ -17,6 +17,7 @@ import { ContexteCoque, ContextePresentation } from './contexteCoque'
 import PanneauEtape, { ProgressionEtapes } from './PanneauEtape'
 import { BoutonOr } from './primitives'
 import RailEtapes from './RailEtapes'
+import { useToastsHorsDuBouton } from './toastsAtelier'
 
 /* ============================================================================
    COQUE (maquettes 22/11) — L'ATELIER PLEIN ÉCRAN DU MODULE CALEPINAGE.
@@ -235,6 +236,7 @@ export default function CoqueAtelier({
   ecranProps = {}, enregistreLe = null, onEtape = null, renderAtelierPanneaux = null,
 }) {
   const presentation = useContext(ContextePresentation)
+  useToastsHorsDuBouton() // ACAL2001 : les messages ne se posent plus sur le bouton d'étape
   const tiroir = useTiroir() && !presentation
   const [deplie, setDeplie] = useState(false)
   const [parametres, setParametres] = useSearchParams()

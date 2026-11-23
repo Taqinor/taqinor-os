@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import process from 'node:process'
 import { ConfirmProvider } from '../../../providers/ConfirmProvider'
 
 /* Écran neuf « Relevé de visite » au téléphone (maquette Telephone) : structure, ordre et
@@ -92,6 +93,26 @@ describe('Relevé de visite — la maquette, dans son ordre', () => {
     expect(await screen.findByTestId('releve-hors-ligne')).toHaveTextContent('Hors ligne')
     await waitFor(() => expect(screen.getByTestId('releve-note-hors-ligne'))
       .toHaveTextContent('2 photos gardées sur ce téléphone. Elles partiront dès le retour du réseau.'))
+  })
+})
+
+describe('ACAL2002 — « Terminer le relevé » est le bouton doré v2', () => {
+  it('lit les jetons du bouton d’étape : fond d’action, rayon 14, 700, ombre dorée', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { resolve } = await import('node:path')
+    const style = document.createElement('style')
+    style.textContent = ['49-jetons-v2.css', '58-telephone.css']
+      .map((f) => readFileSync(resolve(process.cwd(), `src/styles/calepinage/${f}`), 'utf8')).join('\n')
+    document.head.appendChild(style)
+    try {
+      rendre()
+      const bouton = await screen.findByTestId('releve-terminer')
+      const cs = getComputedStyle(bouton)
+      expect(cs.background).toContain('--cal-action')
+      expect(cs.borderRadius).toBe('var(--cal-rayon-pile)')
+      expect(cs.boxShadow).toBe('var(--cal-action-ombre)')
+      expect(cs.font).toContain('700')
+    } finally { style.remove() }
   })
 })
 

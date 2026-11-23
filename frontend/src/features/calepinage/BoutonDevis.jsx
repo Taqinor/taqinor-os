@@ -426,7 +426,7 @@ export default function BoutonDevis({
           onClick={() => resynchroniser()}
           disabled={desactive}
           data-testid="cal-resynchroniser-devis"
-          className="inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-primary-text disabled:cursor-not-allowed disabled:opacity-60"
+          className="cal-bouton-or cal-bouton-or-grand"
         >
           {enCours ? 'Resynchronisation…' : 'Resynchroniser le devis'}
         </button>
@@ -436,7 +436,7 @@ export default function BoutonDevis({
           onClick={() => generer()}
           disabled={desactive}
           data-testid="cal-generer-devis"
-          className="inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-primary-text disabled:cursor-not-allowed disabled:opacity-60"
+          className="cal-bouton-or cal-bouton-or-grand"
         >
           {enCours ? 'Génération…' : 'Générer le devis'}
         </button>

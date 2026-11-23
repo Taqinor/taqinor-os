@@ -28,6 +28,17 @@
   font-size: 0.875rem;
 }
 
+/* ACAL2001 — un message ne cache jamais le bouton d'action. Tant que l'atelier est monté, <body> porte
+   `data-cal-atelier` (atelier/coque/toastsAtelier.js) : les messages du Toaster de l'ERP (bas droite) se posent à
+   GAUCHE du panneau d'étape (384 px + marges = --cal-libre-droite, 416 px), jamais sur son bouton ni sur le
+   bandeau ; sur tablette le bas passe au-dessus du tiroir (56-coque-responsive.css). Le téléphone (messages en
+   haut) et le reste de l'ERP ne changent pas. */
+body[data-cal-atelier] { --cal-toast-droite: 416px; --cal-toast-bas: 16px; }
+body[data-cal-atelier] [data-sonner-toaster][data-y-position='bottom'][data-x-position='right'] {
+  right: var(--cal-toast-droite);
+  bottom: var(--cal-toast-bas);
+}
+
 /* ── Bandeau du projet ─────────────────────────────────────────────────── */
 .cal-coque .cal-barre-projet {
   height: 56px;
@@ -141,7 +152,8 @@
 /* Boutons des maquettes v2 (ACAL1802) — l'OR (--cal-action) est le seul aplat doré d'un écran : le bouton qui fait
    avancer (BoutonOr). Tout le reste qui agit est bleu nuit (BoutonMarine, « Générer le devis » du bandeau).
    Un seul rayon de bouton (--cal-rayon-bouton, 11 px). */
-.cal-coque .cal-bouton-or {
+.cal-coque .cal-bouton-or,
+.cal-reglages .cal-bouton-or {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -158,7 +170,13 @@
 }
 /* ACAL1803 — le bouton d'étape du pied (maquette v2) : 52 px, rayon 14, 15 px graisse 700, ombre dorée. */
 .cal-coque .cal-bouton-or-plein { width: 100%; height: 52px; gap: 10px; border-radius: var(--cal-rayon-pile); font-size: 0.9375rem; }
-.cal-coque .cal-bouton-or:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
+/* ACAL2002 — UN SEUL bouton doré : « Générer le devis » (Documents) et « Remplir… » (Démarrage rapide) prennent le MÊME
+   bouton que l'étape (52 px, rayon 14, 15 px graisse 700, ombre dorée), à largeur de contenu ; le relevé de visite
+   (58-telephone.css) lit les mêmes jetons. */
+.cal-coque .cal-bouton-or-grand,
+.cal-reglages .cal-bouton-or-grand { height: 52px; padding: 0 22px; gap: 10px; border-radius: var(--cal-rayon-pile); font-size: 0.9375rem; }
+.cal-coque .cal-bouton-or:disabled,
+.cal-reglages .cal-bouton-or:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
 .cal-coque .cal-bouton-marine {
   position: relative;
   height: 44px;
@@ -419,12 +437,12 @@
   border-left: 1px solid var(--cal-filet);
 }
 .cal-coque .cal-panneau-etape[hidden] { display: none; }
-/* ACAL1803 — tête v2 : cinq traits de progression (4 px, or pour les étapes faites et l'active), « Étape N sur 5 »
+/* ACAL1803 — tête v2 : cinq traits de progression (4 px ; ACAL2003 : l'or marque l'étape COURANTE seule, les faites sont d'un neutre soutenu), « Étape N sur 5 »
    12 px, titre Archivo 24 px (même tête au-dessus des écrans pleins, ACAL1727). */
 .cal-coque .cal-panneau-etape-tete { padding: 18px 22px 14px; }
 .cal-coque .cal-progression-etapes { display: flex; gap: 4px; margin-bottom: 14px; }
 .cal-coque .cal-progression-etapes > span { flex: 1; height: 4px; border-radius: 2px; background: var(--cal-progression-a-venir); }
-.cal-coque .cal-progression-etapes > span[data-etat='fait'],
+.cal-coque .cal-progression-etapes > span[data-etat='fait'] { background: var(--cal-progression-faite); }
 .cal-coque .cal-progression-etapes > span[data-etat='actif'] { background: var(--cal-action); }
 .cal-coque .cal-plein-etape-tete .cal-progression-etapes { max-width: 340px; }
 .cal-coque .cal-panneau-etape-rang { margin: 0; font-size: 0.75rem; font-weight: 500; color: var(--cal-texte-3); }
