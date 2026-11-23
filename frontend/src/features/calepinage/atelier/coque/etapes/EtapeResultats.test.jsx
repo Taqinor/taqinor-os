@@ -4,7 +4,7 @@
    Ce qui est prouvé : l'ordre et les libellés de la maquette, la règle « figure servie ou bloc omis »,
    aucun code technique à l'écran, le pied et son bouton, la carte « au plus » du résultat incomplet. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, within, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, within, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { exempleContrat } from '../../../../../test/fixtures/contractSamples'
 import { formatNumber } from '../../../../../lib/format'
@@ -20,8 +20,10 @@ vi.mock('../../../../../api/calepinageApi', () => ({
   },
 }))
 vi.mock('../../../../../hooks/useHasPermission', () => ({ useHasPermission: () => true }))
+vi.mock('../../../../../api/ventesApi', () => ({ default: { reviserDevis: vi.fn() } }))
 
 import calepinageApi from '../../../../../api/calepinageApi'
+import ventesApi from '../../../../../api/ventesApi'
 import EtapeResultats from './EtapeResultats'
 import PanneauPertesUnifie from '../../PanneauPertesUnifie'
 
@@ -595,6 +597,58 @@ describe('Étape Résultats — production retenue par le devis (ACAL1956)', () 
     const zone = document.querySelector('[data-zone="production-devis"]')
     expect(zone).toHaveTextContent(`Production retenue par le devis : ${kwh(PROD().production_annuelle_kwh)}`)
     expect(zone).toHaveTextContent(`Production simulée de la pose : ${kwh(data.production.total.p50_kwh)}`)
+  })
+
+  // ACAL1755 (D-ACAL-86 : un seul chiffre, le plus réaliste ; D-ACAL-96 : un devis envoyé n'est jamais modifié, la révision est proposée).
+  describe('ACAL1755 — un seul chiffre, ou les deux nommés avec « Réviser le devis »', () => {
+    const zone = () => document.querySelector('[data-zone="production-devis"]')
+
+    it('simulation et devis portent le même chiffre : UN seul chiffre, ni deuxième ligne ni bouton', async () => {
+      const d = COMPLET()
+      d.production_devis = { ...PROD(), production_annuelle_kwh: d.production.total.p50_kwh }
+      servir(d)
+      rendre()
+      await screen.findByRole('link', { name: PROD().reference })
+      expect(zone()).toHaveAttribute('data-chiffre', 'un-seul')
+      expect(zone()).toHaveTextContent(`Production : ${kwh(d.production.total.p50_kwh)}`)
+      expect(zone()).not.toHaveTextContent('Production simulée de la pose')
+      expect(screen.queryByRole('button', { name: 'Réviser le devis' })).toBeNull()
+    })
+
+    it('devis envoyé, chiffres différents : les deux nommés, le devis n’est pas touché, « Réviser le devis » crée la V2', async () => {
+      const d = { ...COMPLET(), production_devis: PROD() }
+      servir(d)
+      ventesApi.reviserDevis.mockResolvedValue({ data: { id: 99, reference: 'DEV-V2' } })
+      rendre()
+      await screen.findByRole('link', { name: PROD().reference })
+      expect(zone()).toHaveAttribute('data-chiffre', 'deux')
+      expect(zone()).toHaveTextContent('Le devis envoyé n’est pas modifié')
+      fireEvent.click(screen.getByRole('button', { name: 'Réviser le devis' }))
+      await waitFor(() => expect(ventesApi.reviserDevis).toHaveBeenCalledWith(PROD().devis))
+      expect(ventesApi.reviserDevis).toHaveBeenCalledTimes(1)
+    })
+
+    it('devis lié sans statut reçu (écart servi seul) : les deux chiffres nommés, aucun bouton de révision', async () => {
+      const d = COMPLET()
+      d.ecart_devis = { devis: 412, reference: 'DEV-202610-0042', production_devis_kwh: 12600, p50_calepinage_kwh: 13000, ecart_pct: 3.2, mention: '' }
+      servir(d)
+      rendre()
+      await screen.findByRole('link', { name: 'DEV-202610-0042' })
+      expect(zone()).toHaveTextContent(`Production retenue par le devis : ${kwh(12600)}`)
+      expect(zone()).toHaveTextContent(`Production simulée de la pose : ${kwh(d.production.total.p50_kwh)}`)
+      expect(screen.queryByRole('button', { name: 'Réviser le devis' })).toBeNull()
+    })
+
+    it('simulation incomplète (plafond) : jamais comparée au devis', async () => {
+      const base = COMPLET()
+      const borne = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
+      servir({ ...base, production: borne.production, simulation: borne.simulation, cascade: borne.cascade, production_devis: PROD() })
+      rendre()
+      await screen.findByRole('link', { name: PROD().reference })
+      expect(zone()).toHaveTextContent('La simulation de la pose est incomplète')
+      expect(zone()).not.toHaveTextContent('Production simulée de la pose')
+      expect(screen.queryByRole('button', { name: 'Réviser le devis' })).toBeNull()
+    })
   })
 })
 
