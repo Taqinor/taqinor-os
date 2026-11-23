@@ -284,6 +284,13 @@
 .cal-coque[data-avance='0'][data-sans-toit='1'] .cal-coque-scene #rp9-search:focus-within .rp9-geocode-country,
 .cal-coque[data-avance='0'][data-sans-toit='1'] .cal-coque-scene #rp9-search:focus-within .rp9-image-source,
 .cal-coque[data-avance='0'][data-sans-toit='1'] .cal-coque-scene #rp9-search:focus-within .rp9-image-capture { display: block; }
+/* ACAL1907 — « Localiser » : 44 px comme un champ, bouton secondaire (filet, surface) — l'or de l'écran est réservé à l'action suivante
+   (K8), et l'aplat doré de 114 × 200 px, étiré à la hauteur de la carte d'adresse, n'existe plus. */
+.cal-coque #rp9-search > button[type='submit'] {
+  flex: none; height: 44px; min-height: 44px; padding: 0 20px;
+  border: 1px solid var(--cal-filet-fort); border-radius: var(--cal-rayon-champ);
+  background: var(--cal-surface); color: var(--cal-texte-1); font-size: 0.875rem; font-weight: 600;
+}
 .cal-coque .cal-coque-scene .rp9-map-wrap:not([data-plein-ecran='1']) { flex: 1; min-height: 0; }
 .cal-coque .cal-coque-scene .rp9-map-wrap:not([data-plein-ecran='1']) #rp9-map { height: 100%; min-height: 0; }
 .cal-coque .cal-coque-sur-carte { position: absolute; inset: 0; pointer-events: none; z-index: calc(var(--z-base) + 10); }

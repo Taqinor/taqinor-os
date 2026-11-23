@@ -15,10 +15,33 @@ import { BuilderStatut } from '../BuilderPose'
      nouveau message la rouvre (rien n'est caché pour de bon).
    ========================================================================== */
 
+/* ACAL1907 — au bureau la carte est plein écran SOUS le bandeau d'alertes, et ses contrôles (pile de zoom, plein écran,
+   boussole) sont posés à `--cal-libre-haut` : quand une alerte pousse le rail et le panneau vers le bas, ils restaient sous elle
+   (le « + » caché). La hauteur occupée par la bande (+ les 16 px d'écart de la coque) est publiée sur la coque,
+   `--cal-alertes-h`, que 56-coque-responsive.css ajoute à `--cal-libre-haut`. 0 sans alerte. */
+export const ECART_COQUE_PX = 16
+function usePublierHauteurAlertes(ref) {
+  useEffect(() => {
+    const bande = ref.current
+    const coque = bande?.closest?.('.cal-coque')
+    if (!bande || !coque) return undefined
+    const publier = () => {
+      const h = bande.offsetHeight
+      coque.style.setProperty('--cal-alertes-h', h > 0 ? `${h + ECART_COQUE_PX}px` : '0px')
+    }
+    publier()
+    const obs = typeof ResizeObserver === 'function' ? new ResizeObserver(publier) : null
+    obs?.observe(bande)
+    return () => { obs?.disconnect(); coque.style.removeProperty('--cal-alertes-h') }
+  }, [ref])
+}
+
 export function BandeauAlertes({ children, cache = false }) {
   const [deplie, setDeplie] = useState(false)
+  const bande = useRef(null)
+  usePublierHauteurAlertes(bande)
   return (
-    <div className="cal-coque-alertes" data-deplie={deplie ? '1' : '0'} hidden={cache || undefined}>
+    <div ref={bande} className="cal-coque-alertes" data-deplie={deplie ? '1' : '0'} hidden={cache || undefined}>
       <div className="cal-coque-alertes-contenu">{children}</div>
       <button type="button" className="cal-coque-alertes-plus" aria-expanded={deplie}
         onClick={() => setDeplie((d) => !d)}>
