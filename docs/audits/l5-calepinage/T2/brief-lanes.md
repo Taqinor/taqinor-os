@@ -52,7 +52,12 @@ front et serveur).
      (conteneur jetable, base de test à toi, ≈ 3 min par appel, UN appel à la fois, jamais `timeout` devant) ;
    - front : `npx eslint <tes fichiers>` et LE test : `npx vitest run --pool=threads --maxWorkers=1 <fichier de test>`
      depuis `frontend/` ;
-   - si ta tâche édite un plan ou une garde : la garde citée par la tâche (`python scripts/check_….py`).
+   - si ta tâche édite un plan ou une garde : la garde citée par la tâche (`python scripts/check_….py`) ;
+   - AVANT ton rapport, depuis la racine de ton worktree : `python scripts/check_tests_source_regex.py` (elle refuse
+     tout NOUVEAU test qui lit un fichier source — JSX, TS, CSS, Python — et l'asserte par motif : rends le composant
+     et lis le DOM, appelle la fonction et lis son résultat), `python scripts/check_test_placement.py`, et, si tu as
+     touché un écran du calepinage, `node src/features/calepinage/e2eHooks.test.mjs` depuis `frontend/` (un repère
+     `data-testid="cal-…"` non déclaré y échoue).
    Pas de `docker compose`, pas d'autre conteneur, pas de suite voisine, pas de build du front, pas de Playwright.
    Une migration nécessaire : additive, écrite à la main à la suite de la dernière de l'app sur TA branche, dite dans
    ton rapport (l'orchestrateur vérifie `makemigrations --check` en CI).
