@@ -28,8 +28,13 @@ leads et la direction : **publier, c'est donc l'envoyer à Meryem.** Demander à
 - Supprimée : l'armoire vide « Administratif ».
 - Ajoutés à la liste de publication : la fiche des vidéos (partie 1) et la note de la semaine du 23/11.
 
-## Ce qui reste
+## Suite, le même jour (« Yes, delete for good »)
 
-Les dossiers « Commercial » et « Guides de Meryem » de « Documents internes » restent, vides à l'écran : l'ERP refuse de
-supprimer un dossier qui a encore un document en corbeille, pour que la corbeille reste récupérable. Ils s'enlèvent une
-fois la corbeille vidée.
+Les trois anciens guides et le doublon de la carte ont été supprimés définitivement, puis les dossiers « Commercial » et
+« Guides de Meryem », restés vides, ont été retirés. Les trois guides sont identiques aux PDF de `docs/meryem/` (même
+empreinte) ; le doublon de la carte ne l'était pas : une copie est gardée sur OneDrive
+(`Ad material\strategie-2026-11\travail\session2\archive_ged\`). Son CV et le logo restent en corbeille, récupérables.
+
+À retenir : l'ERP refuse de supprimer un dossier qui a encore un document en corbeille (la corbeille doit rester
+récupérable). Pour retirer un dossier, il faut d'abord supprimer définitivement ce qu'il a en corbeille : toujours
+demander à Reda, et sauvegarder d'abord tout fichier qui n'a pas de copie ailleurs.
