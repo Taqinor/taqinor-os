@@ -202,6 +202,8 @@ export function creerGestionnaireBrouillon({
   obtenirLayout,
   // ACAL1329 — vrai pendant le tracé d'un pan ajouté : AUCUNE écriture (ni lecture du document) avant le dernier point.
   enPause = () => false,
+  // ACAL1345 — l'empreinte de COMPARAISON (le contenu écrit reste `obtenirLayout()` entier) : par défaut, celle du document.
+  hacher = hacherLayout,
   minuteur = {
     definir: (fn, ms) => setInterval(fn, ms),
     annuler: (id) => clearInterval(id),
@@ -228,7 +230,7 @@ export function creerGestionnaireBrouillon({
     if (enPause()) return false
     const layout = lireLayout()
     if (layout == null) return false
-    const h = hacherLayout(layout)
+    const h = hacher(layout)
     if (dernierHashEcrit === null) {
       dernierHashEcrit = h
       return false
@@ -255,7 +257,7 @@ export function creerGestionnaireBrouillon({
       // ACAL84 — amorce la référence sur la scène d'ouverture (aucune écriture).
       if (dernierHashEcrit === null) {
         const layout = lireLayout()
-        if (layout != null) dernierHashEcrit = hacherLayout(layout)
+        if (layout != null) dernierHashEcrit = hacher(layout)
       }
       idMinuteur = intervalleActif
         ? minuteur.definir(enregistrerMaintenant, intervalleSecondes * 1000)
@@ -270,6 +272,19 @@ export function creerGestionnaireBrouillon({
     notifierGeste,
     enregistrerMaintenant,
     effacer: () => effacerBrouillon(storage, cle),
+    /* ACAL1248 — après un enregistrement RÉUSSI : le brouillon s'efface ET le document courant devient la
+       référence. Sans cela, la minuterie de l'ANCIEN gestionnaire (encore vivante jusqu'au prochain rendu) voit « un
+       document changé » depuis son dernier tic, le réécrit et le renvoie au serveur APRÈS le DELETE : un brouillon
+       fantôme qui revient comme « brouillon d'un autre poste ». (`effacer` seul garde la référence : le renvoi
+       après panne réseau doit, lui, laisser re-brouillonner ce qui a été modifié depuis.) */
+    effacerEtAmorcer() {
+      const ok = effacerBrouillon(storage, cle)
+      if (!enPause()) {
+        const layout = lireLayout()
+        if (layout != null) dernierHashEcrit = hacher(layout)
+      }
+      return ok
+    },
   }
 }
 

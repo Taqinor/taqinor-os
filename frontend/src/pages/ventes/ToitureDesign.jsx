@@ -64,8 +64,8 @@ import BandeauProvenanceProduction from '../../features/calepinage/production/Ba
 import { lancerSimulationAuto } from '../../features/calepinage/production/simulationAuto' // ACAL398
 // CALX68 — brouillon LOCAL de l'atelier (mode calepinage) : minuterie/repli +
 // bandeau de reprise. Logique pure, voir l'en-tête de ce module.
-import { hacherLayout, creerGestionnaireBrouillon, estPanneReseau, memoriserReprise } from '../../features/calepinage/brouillon'
-import { creerStockageMiroir, sansVue } from '../../features/calepinage/brouillonServeur' // ACAL400 ; H1 : sans l'état de vue
+import { creerGestionnaireBrouillon, estPanneReseau, memoriserReprise } from '../../features/calepinage/brouillon'
+import { creerStockageMiroir, sansVue, empreinteSansVue } from '../../features/calepinage/brouillonServeur' // ACAL400 ; H1 : sans l'état de vue ; ACAL1345
 import { toastInfo } from '../../lib/toast'
 // L2 — confirmation maison (APX17 : jamais une popup système) avant une écriture qui
 // diverge de la cible vendue du devis.
@@ -92,6 +92,7 @@ import OutilsVue from '../../features/calepinage/atelier/OutilsVue.jsx'
 import { useAtelierVues } from '../../features/calepinage/atelier/useAtelierVues.js'
 import { useAtelierBoot, pousserAffectationAtelier, MESSAGE_ACCES_REFUSE } from '../../features/calepinage/atelier/useAtelierBoot.js'
 import '../../styles/roofbuilder.css'
+const MESSAGE_INTROUVABLE = 'Calepinage introuvable.' // = le texte posé par useAtelierBoot sur un 404
 /** Lot 2 critique #23 — la conception est enregistrée, la resynchro du devis
  *  est refusée : le motif SERVEUR, jamais un « données invalides » générique. */
 const messageResyncRefusee = (raison) => (
@@ -338,7 +339,7 @@ function AtelierToiture({
   const hacherScene = useCallback(() => {
     try {
       const layout = builderApi.current?.serializeLayout?.()
-      return layout == null ? null : hacherLayout(sansVue(layout)) // H1 — regarder le soleil n'est pas une modification
+      return layout == null ? null : empreinteSansVue(layout) // H1 — regarder le soleil, ACAL1345 — choisir un pan : pas une modification
     } catch {
       return null
     }
@@ -354,7 +355,7 @@ function AtelierToiture({
   }, [hacherScene])
   const marquerSceneEnregistree = (layout) => {
     try {
-      hashSceneReferenceRef.current = layout == null ? hacherScene() : hacherLayout(sansVue(layout))
+      hashSceneReferenceRef.current = layout == null ? hacherScene() : empreinteSansVue(layout)
     } catch (err) {
       // Référence inchangée.
       console.warn('ToitureDesign.marquerSceneEnregistree : référence de scène inchangée', err)
@@ -423,6 +424,7 @@ function AtelierToiture({
       intervalleSecondes: intervalleBrouillonSecondes,
       obtenirLayout: () => sansVue(builderApi.current?.serializeLayout?.() ?? null), // H1 — jamais un brouillon de vue
       enPause: () => builderApi.current?.ajoutDePanEnCours?.() === true, // ACAL1329 — rien avant le dernier point
+      hacher: empreinteSansVue, // ACAL1345 — choisir un pan dans la liste n'écrit aucun brouillon
     })
     gestionnaireBrouillonRef.current = gestionnaire
     gestionnaire.demarrer()
@@ -710,7 +712,10 @@ function AtelierToiture({
     }
   }
 
-  const enregistrerCalepinage = async () => {
+  // ACAL1275 — `{ silencieux: true }` (« Générer / Resynchroniser » : enregistrement préalable) : un document inchangé
+  // ne montre pas « Aucun changement » avant la réponse du devis ; le bouton « Enregistrer » (événement) le garde.
+  const enregistrerCalepinage = async (options) => {
+    const silencieux = options?.silencieux === true
     if (sending) return false
     setGenError(null)
     setApercuMessage(null) // ACAL87
@@ -807,9 +812,9 @@ function AtelierToiture({
         // serveur sert déjà : le brouillon local ne porte donc plus rien de
         // plus récent, il s'efface (repli sur `layout` si `serializeLayout()`
         // n'est déjà plus joignable).
-        gestionnaireBrouillonRef.current?.effacer()
+        gestionnaireBrouillonRef.current?.effacerEtAmorcer()
         setHashBaseBrouillon(resultat?.empreinte_document || hashBaseBrouillon) // ACAL84
-        toastInfo('Aucun changement')
+        if (!silencieux) toastInfo('Aucun changement')
         setGenStatus(null)
         setSending(false)
         setStatus('Conception inchangée — le calepinage n’a pas bougé.')
@@ -830,7 +835,7 @@ function AtelierToiture({
       // vient de changer (nouvelle version) : son empreinte change avec lui,
       // ce qui fait démarrer une minuterie/clé neuve pour la suite de la
       // session (l'effet dédié plus haut réagit à `hashBaseBrouillon`).
-      gestionnaireBrouillonRef.current?.effacer()
+      gestionnaireBrouillonRef.current?.effacerEtAmorcer()
       // ACAL84 — la clé suivante est l'empreinte SERVEUR rendue par l'écriture.
       setHashBaseBrouillon(resultat?.empreinte_document || hashBaseBrouillon)
       setGenStatus(null)
@@ -1126,7 +1131,9 @@ function AtelierToiture({
   )
 
   // R2-20 — un compte sans droit sur le calepinage (403) : le message DIT le refus, aucun outil d'édition n'est monté.
-  if (estCalepinage && loadError === MESSAGE_ACCES_REFUSE) {
+  // ACAL1246 — un 404 (« Calepinage introuvable. », texte de `useAtelierBoot`) : MÊME écran sans outils, hook propre.
+  const refusOuIntrouvable = estCalepinage && (loadError === MESSAGE_ACCES_REFUSE || loadError === MESSAGE_INTROUVABLE)
+  if (refusOuIntrouvable) {
     return (
       <div className="rp9-host">
         <div className="rp9-topbar">
@@ -1136,7 +1143,7 @@ function AtelierToiture({
             <X className="size-5" aria-hidden="true" />
           </button>
         </div>
-        <p className="mt-6 text-sm text-destructive" role="alert" data-testid="cal-acces-refuse">{loadError}</p>
+        <p className="mt-6 text-sm text-destructive" role="alert" data-testid={loadError === MESSAGE_ACCES_REFUSE ? 'cal-acces-refuse' : 'cal-introuvable'}>{loadError}</p>
       </div>
     )
   }

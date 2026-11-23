@@ -35,6 +35,7 @@ retiré plus un hook ajouté.
 | `cal-lien-variantes` | lien variantes. |
 | `cal-devis-perime` | R2-13 : badge « devis périmé / envoyé » de l'en-tête. |
 | `cal-acces-refuse` | R2-20 : écran d'un 403 sur le calepinage (aucun outil). |
+| `cal-introuvable` | ACAL1246 : écran d'un 404 sur le calepinage (aucun outil, même gabarit que le 403). |
 
 ## BadgePerime (`BadgePerime.jsx`)
 
