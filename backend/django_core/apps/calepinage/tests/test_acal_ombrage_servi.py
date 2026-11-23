@@ -361,3 +361,28 @@ class DemarrageRapideResultatCompletTest(SimpleTestCase):
                     self._reglages_du_profil(profil))['production']['total']
                 self.assertFalse(total['complete'])
                 self.assertIn(poste, total['socle_manquant'])
+
+    def test_toit_affleurant_publie_la_chaleur_par_la_ligne_par_defaut(self):
+        """ACAL1671 (D-ACAL-84) — affleurant ⇒ ligne « dos isolé » du profil,
+        châssis ⇒ « pose libre », dites « par défaut — à confirmer »."""
+        from apps.calepinage.services.profil_depart import charger_profil
+
+        table = next(ligne['valeur'] for ligne in charger_profil()['valeurs']
+                     if ligne['cle'] == 'thermique_par_pose')
+        for flush, ligne in ((True, 'dos_isole'), (False, 'pose_libre')):
+            with self.subTest(flush=flush):
+                layout = copy.deepcopy(LAYOUT)
+                layout['zones'][0]['geometry']['flush'] = flush
+                blocs = simuler_calepinage(
+                    _Calepinage(layout=layout), client=_ClientRejoue(),
+                    materiel=self.MATERIEL_TOLERANCE,
+                    reglages=self._reglages_du_profil(),
+                    enregistrer=False)['blocs']
+                etape = self._etapes(blocs)['thermique']
+                self.assertEqual(etape['motif_omission'], '')
+                self.assertEqual(
+                    etape['entree']['parametres']['uc_w_m2k'],
+                    table[ligne]['uc_w_m2k'])
+                self.assertIn('par défaut — à confirmer',
+                              etape['entree']['mention'])
+                self.assertIn(ligne, etape['entree']['mention'])
