@@ -53,6 +53,8 @@ function lireBesoin() {
     editable: !champ.disabled,
     note,
     tiennent: tiennent ? Number(tiennent[1].replace(/\D/g, '')) : null,
+    // ACAL1331 — la taille posée d'elle-même sur un calepinage vierge, dite par le script (tailleAuto.ts::noteTailleAuto).
+    auto: note.startsWith('Posé d’après '),
   }
 }
 

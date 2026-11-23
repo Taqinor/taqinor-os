@@ -170,7 +170,7 @@ import {
   type HydratationAtelier,
 } from './roofPro11/hydratation'; // ACAL26 — une seule hydratation pour les deux boots
 import { reinitialiserDepuisTraceClient } from './roofPro11/edges'; // ACAL78
-import { appliquerObjectifsConserves, besoinAutoRelu, repartirCibleVendue } from './roofPro11/cible'; // ACAL99, ACAL367
+import { appliquerObjectifsConserves, besoinAutoRelu, repartirCibleVendue } from './roofPro11/cible'; import { heriterDuPanDecoupe } from './roofPro11/tailleAuto'; // ACAL99, ACAL367, ACAL1448
 import { createConsumption } from './roofPro11/consumption';
 import { createProdWindow } from './roofPro11/prodWindow';
 import { createMatrix } from './roofPro11/matrix';
@@ -1177,7 +1177,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const formesToit = monterFormesToit({
     ancre: addAreaBtn, contour: () => (closed ? vertices : []), pente: () => pitchDeg, existants: () => areas,
     obstacles: () => obstacles.length, setStatus: (m) => setStatus(m),
-    appliquer: (pans) => {
+    appliquer: (pans) => { heriterDuPanDecoupe(activeArea(), { neededPanels, neededAuto }, pans, opts.chiffrage !== undefined); // ACAL1448 — taille et module du pan découpé
       areas.splice(Math.max(0, areas.findIndex((a) => a.id === activeAreaId)), 1, ...pans);
       activeAreaId = pans[0].id;
       loadArea(pans[0]);

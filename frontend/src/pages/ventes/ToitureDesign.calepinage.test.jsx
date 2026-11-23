@@ -85,6 +85,8 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
       // Ce calepinage-là porte un devis lié : sa cible EST une cible vendue,
       // et l'atelier se comporte alors exactement comme en mode devis.
       cibleVendue: true,
+      // ACAL1331 — l'origine de la cible servie (ici le devis lié) : l'atelier la dit à la pose.
+      origineCible: CTX.cible.source,
       fullName: CTX.calepinage.titre,
       // ACAL777 — la facture mensuelle du lead servie (ACAL776), repli d'affichage des cartes.
       factureMensuelleMad: CTX.consommation_lead.facture_mensuelle_mad,
@@ -496,6 +498,28 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
       { data: { ...CTX, cible: { ...CTX.cible, source: 'factures' } } })
     rendreCalepinage(CTX.calepinage.id)
     await waitFor(() => expect(majChiffrage).toHaveBeenCalledWith(CTX.chiffrage ?? null, null))
+  })
+
+  /* ACAL1331 (D-ACAL-76 « dimensionner », 23/11) — un calepinage vierge se pose à la taille de la cible SERVIE : l'atelier
+     reçoit le nombre (cible.panneaux) ET son origine, qu'il DIT (« Posé d'après la facture … ») ; sans facture ni devis,
+     aucune cible ni origine : la pose d'aujourd'hui (ce qui tient), dite par l'atelier. */
+  it('ACAL1331 — décision dimensionner : la pose suit la cible servie et son origine ; sans facture, inchangée', async () => {
+    const FACTURES = exempleContrat('calepinage', 'calepinage_design_context', 'exemple_cible_lead')
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context', 'exemple_cible_lead'))
+    rendreCalepinage(FACTURES.calepinage.id)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const devis = initRoofToolPro8.mock.calls[0][0].hydrate.devis
+    expect(FACTURES.cible.source).toBe('factures')
+    expect([devis.cible.panneaux, devis.cibleVendue, devis.origineCible]).toEqual([FACTURES.cible.panneaux, false, 'factures'])
+
+    cleanup(); vi.clearAllMocks(); reinitialiserBoot()
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context', 'exemple_sans_devis'))
+    rendreCalepinage(exempleContrat('calepinage', 'calepinage_design_context', 'exemple_sans_devis').calepinage.id)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const sans = initRoofToolPro8.mock.calls[0][0].hydrate.devis
+    expect([sans.cible.panneaux, sans.origineCible]).toEqual([null, null])
   })
 
   /* ACAL84 — brouillon local : rien en lecture seule ; jamais bloquant. */

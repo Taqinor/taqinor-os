@@ -46,6 +46,7 @@
             "scenario": "reseau"
           },
           "cibleVendue": true,
+          "origineCible": "devis",
           "fullName": "Toiture — bâtiment principal",
           "factureMensuelleMad": 900
         }

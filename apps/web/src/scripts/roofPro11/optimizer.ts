@@ -112,7 +112,7 @@ import { maxDuSolveur, phraseCouvertureMax, type MaxDuToit } from './cibleProduc
 import { heatmapAccessValues } from './shadingUi'; // ACAL552
 import { causeDuPanVide, mesurerPanVide, noterMotifPanVide, retraitApplique, type MotifPanVide } from './motifPanVide'; // ACAL549
 import { cotesDePavage } from '../../lib/roofPro2';
-import { carteDeLaPoseTenue, direEcartPoseRelue, motifPanExistant, poseTenue } from './panExistant'; // ACAL574, ACAL1900
+import { carteDeLaPoseTenue, direEcartPoseRelue, motifPanExistant, poseTenue } from './panExistant'; import { noteTailleAuto } from './tailleAuto'; // ACAL574, ACAL1900, ACAL1331
 
 // ═══════════ PV64 — TROIS VARIANTES LISIBLES DU BALAYAGE DÉJÀ CALCULÉ ═══════════
 // Le balayage V6 (`fineGridMatrixV6`) évalue déjà des centaines de configurations, mais
@@ -672,7 +672,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
         : `${fmt(ctx.neededPanels)} couvrent votre facture (+10 %) — il reste de la place sur le toit, laissée libre.`;
     } else {
       needNoteEl.textContent = ctx.devisMode ? `${surDevis(placed)}.` : `On pose ${fmt(placed)} panneaux.`;
-    }
+    } needNoteEl.textContent = noteTailleAuto(ctx, placed, derniereCarte, needNoteEl.textContent ?? '', surDevis(placed)); // ACAL1331 — la taille de la cible, dite
   }
 
   // WJ19 — dérate d'ombrage tracé appliqué aux chiffres ANNUELS affichés (1 = aucun
