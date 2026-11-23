@@ -231,9 +231,16 @@ export function BandeauBorneHaute({ total }) {
     >
       <p className="font-medium" data-testid="acal52-mention">{mention}</p>
       {manquants.length > 0 && (
-        <ul className="list-disc pl-5 text-xs text-muted-foreground" data-testid="acal52-socle-manquant">
-          {manquants.map((poste) => <li key={poste}>{poste}</li>)}
-        </ul>
+        <>
+          {/* ACAL1968 — la mention SERVIE compte toutes les pertes pas encore comptées ; cette liste est la part du
+              socle, celle qui empêche P75, P90 et P95 : on le dit, pour que le compte et la liste ne se contredisent pas. */}
+          <p className="m-0 text-xs text-muted-foreground" data-testid="acal52-socle-titre">
+            Parmi elles, celles qui bloquent P75, P90 et P95 :
+          </p>
+          <ul className="list-disc pl-5 text-xs text-muted-foreground" data-testid="acal52-socle-manquant">
+            {manquants.map((poste) => <li key={poste}>{poste}</li>)}
+          </ul>
+        </>
       )}
       <Link
         to="/calepinage/reglages#calx69-section-simulation"

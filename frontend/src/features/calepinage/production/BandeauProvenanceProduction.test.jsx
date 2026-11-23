@@ -132,6 +132,17 @@ describe('BandeauBorneHaute / ReglagesUtilises (ACAL52)', () => {
     expect(screen.getByTestId('acal52-mention')).toHaveTextContent('3 pertes non renseignées')
   })
 
+  it('ACAL1968 — la mention annonce N pertes, la liste dit QUELLES sont celles du socle (jamais « 10 » pour une ligne sans le dire)', () => {
+    const servi = { ...borneHaute.production.total, mention: 'borne haute — 10 pertes non renseignées',
+      socle_manquant: ['qualite_module'] }
+    render(<MemoryRouter><BandeauBorneHaute total={servi} /></MemoryRouter>)
+
+    // La phrase servie reste telle quelle ; la liste est introduite comme la part du socle qui bloque P75/P90/P95.
+    expect(screen.getByTestId('acal52-mention')).toHaveTextContent('borne haute — 10 pertes non renseignées')
+    expect(screen.getByTestId('acal52-socle-titre')).toHaveTextContent('Parmi elles, celles qui bloquent P75, P90 et P95 :')
+    expect(within(screen.getByTestId('acal52-socle-manquant')).getAllByRole('listitem')).toHaveLength(1)
+  })
+
   it('complet ou jamais simulé : aucun bandeau', () => {
     const complet = exempleContrat('calepinage', 'calepinage_resultat', 'exemple').production.total
     const vide = exempleContrat('calepinage', 'calepinage_resultat', 'exemple_vide').production.total
