@@ -8,7 +8,7 @@ import { PARAM_MODE, useModeExpert } from '../modeExpert'
 import { PARAM_ONGLET, resoudreOnglet } from '../onglets'
 import { cadrerToitAtelier } from '../useAtelierBoot'
 import {
-  CADRES, ETAPES, ecranCoque, premierOngletEtape, useParcours, vueParcours,
+  CADRES, ETAPES, ecranCoque, memoriserEtape, premierOngletEtape, useParcours, vueParcours,
 } from '../parcoursGuide'
 import { BandeauAlertes } from './BandeauxCoque'
 import BarreProjet from './BarreProjet'
@@ -209,8 +209,8 @@ export default function CoqueAtelier({
   const [expert, basculerExpert] = useModeExpert(parametres.get(PARAM_MODE) === 'expert')
   const parcours = useParcours(calepinageId)
   const cleActive = resoudreOnglet(parametres.get(PARAM_ONGLET))?.cle ?? null
-  const { cleEtape } = vueParcours(cleActive, parcours.etats, expert)
-  const ecran = ecranCoque(cleActive, resoudreOnglet(cleActive), parcours.etats, expert)
+  const { cleEtape } = vueParcours(cleActive, parcours.etats, expert, parcours.memorisee)
+  const ecran = ecranCoque(cleActive, resoudreOnglet(cleActive), parcours.etats, expert, parcours.memorisee)
   // J1 — présentation : la carte, toujours (la 3D est la scène du client, quelle que soit l'étape du parcours).
   const cadre = expert || presentation ? CADRES.CARTE : (ecran?.cadre ?? CADRES.CARTE)
   // « Avancé » (guidé) : une FEUILLE à part, posée par-dessus l'écran (l'écran guidé reste intact dessous) ;
@@ -234,6 +234,9 @@ export default function CoqueAtelier({
   useEffect(() => { choisirRef.current = choisirEtape })
   const allerA = useCallback((cle) => choisirRef.current(cle), [])
   useEffect(() => { onEtape?.({ etape: cleEtape, expert, allerA }) }, [onEtape, cleEtape, expert, allerA])
+  // ACAL1731 — l'étape où l'on s'arrête (choisie par l'URL) est mémorisée sur cet appareil : l'atelier y rouvre.
+  useEffect(() => { if (cleActive && !presentation) memoriserEtape(calepinageId, cleEtape) },
+    [calepinageId, cleActive, cleEtape, presentation])
 
   const rang = ETAPES.findIndex((e) => e.cle === cleEtape)
   const suivante = rang >= 0 ? ETAPES[rang + 1] : null

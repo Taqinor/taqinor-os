@@ -52,10 +52,35 @@ export function ongletsVisibles(cleEtape, ouvert = null, expert = false) {
   return etape.onglets.filter((c) => ESSENTIELS.includes(c) || c === ouvert)
 }
 
-/** L'étape active : celle de l'onglet ouvert, sinon la première non `fait`, sinon `toit`. */
-export function etapeActive(cleOnglet, etatsParEtape = {}) {
+/* ACAL1731 — la dernière étape visitée, par calepinage, dans la mémoire LOCALE de cet appareil (jamais au serveur).
+   Stockage refusé ou valeur qui n'est pas une étape : `null` (repli : la première étape non faite). */
+const cleMemoireEtape = (calepinageId) => `calepinage.etape.${calepinageId}`
+
+export function lireEtapeMemorisee(calepinageId) {
+  if (!calepinageId) return null
+  try {
+    const cle = window.localStorage.getItem(cleMemoireEtape(calepinageId))
+    return ETAPES.some((e) => e.cle === cle) ? cle : null
+  } catch {
+    return null // stockage refusé : pas de mémoire, l'atelier retombe sur la première étape non faite
+  }
+}
+
+export function memoriserEtape(calepinageId, cleEtape) {
+  if (!calepinageId || !ETAPES.some((e) => e.cle === cleEtape)) return
+  try {
+    window.localStorage.setItem(cleMemoireEtape(calepinageId), cleEtape)
+  } catch {
+    return // stockage refusé : rien à mémoriser, l'étape reste dans l'URL
+  }
+}
+
+/** L'étape active : celle de l'onglet ouvert, sinon la dernière étape mémorisée (`memorisee`), sinon la première
+    non `fait`, sinon `toit`. */
+export function etapeActive(cleOnglet, etatsParEtape = {}, memorisee = null) {
   const deLOnglet = etapeDeOnglet(cleOnglet)
   if (deLOnglet) return deLOnglet
+  if (memorisee && ETAPES.some((e) => e.cle === memorisee)) return memorisee
   const premiere = ETAPES.find((e) => etatsParEtape[e.cle] && etatsParEtape[e.cle] !== 'fait')
   return (premiere ?? ETAPES[0]).cle
 }
@@ -143,10 +168,10 @@ export function ecranGuideDeOnglet(cleOnglet) {
 
 /** La vue du rail pour l'onglet ouvert : l'écran guidé qui le porte, la clé visible, l'étape active.
     UNE fonction pour le rail d'onglets ET la coque : les deux lisent l'URL, jamais deux états. */
-export function vueParcours(cleOnglet, etats = {}, expert = false) {
+export function vueParcours(cleOnglet, etats = {}, expert = false, memorisee = null) {
   const ecran = expert ? null : ecranGuideDeOnglet(cleOnglet)
   const cleVue = ecran ? ecran.ouverture : cleOnglet
-  return { ecran, cleVue, cleEtape: etapeActive(cleVue, etats) }
+  return { ecran, cleVue, cleEtape: etapeActive(cleVue, etats, memorisee) }
 }
 
 /** L'onglet qu'ouvre un clic sur l'étape `cle` (son premier onglet visible). */
@@ -157,9 +182,9 @@ export function premierOngletEtape(cle, expert = false) {
 /** Coque — l'écran guidé à monter pour l'étape active : l'écran qui porte l'onglet ouvert, sinon
     l'onglet ouvert lui-même s'il n'est pas celui qu'ouvre l'étape (lien profond `?onglet=variantes`),
     sinon l'écran de l'étape. `{ composant, cadre, titre }` ou `null` (expert : le rail d'onglets). */
-export function ecranCoque(cleOnglet, onglet, etats = {}, expert = false) {
+export function ecranCoque(cleOnglet, onglet, etats = {}, expert = false, memorisee = null) {
   if (expert) return null
-  const { ecran, cleEtape } = vueParcours(cleOnglet, etats, false)
+  const { ecran, cleEtape } = vueParcours(cleOnglet, etats, false, memorisee)
   const deLEtape = ECRANS_ETAPE[cleEtape] ?? null
   if (ecran) return { ...ecran, titre: ecran.titre ?? deLEtape?.titre, cadre: ecran.cadre ?? CADRES.CARTE }
   if (onglet?.composant && cleOnglet !== premierOngletEtape(cleEtape)) {
@@ -177,6 +202,8 @@ export function aReglerDeLEtape(manque, cle) {
 
 /** Les états par étape et « ce qui manque », lus une fois ; vides tant que le serveur n'a pas répondu. */
 export function useParcours(calepinageId) {
+  // ACAL1731 — lue UNE fois à l'ouverture : la coque et le rail d'onglets partagent la même étape de départ.
+  const [memorisee] = useState(() => lireEtapeMemorisee(calepinageId))
   const [parcours, setParcours] = useState({ etats: {}, manque: [] })
   useEffect(() => {
     if (!calepinageId) return undefined
@@ -198,7 +225,7 @@ export function useParcours(calepinageId) {
       .catch(() => {})
     return () => { vivant = false }
   }, [calepinageId])
-  return parcours
+  return { ...parcours, memorisee }
 }
 
 /** Les états par étape (ACAL393). */

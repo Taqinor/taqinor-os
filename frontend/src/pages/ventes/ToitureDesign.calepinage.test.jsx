@@ -42,7 +42,14 @@ beforeEach(() => {
   vi.clearAllMocks()
   reinitialiserBoot()
 })
-afterEach(() => { cleanup(); vi.clearAllMocks() })
+afterEach(() => {
+  cleanup(); vi.clearAllMocks()
+  // ACAL1731 — l'étape où l'on s'arrête est mémorisée par calepinage : aucune fuite d'un cas au suivant.
+  try {
+    Object.keys(window.localStorage).filter((k) => k.startsWith('calepinage.etape.'))
+      .forEach((k) => window.localStorage.removeItem(k))
+  } catch { /* stockage refusé : rien à nettoyer */ }
+})
 
 describe('ToitureDesign — mode calepinage (CAL37)', () => {
   it('boote sur UN SEUL appel design-context et hydrate depuis le calepinage', async () => {
