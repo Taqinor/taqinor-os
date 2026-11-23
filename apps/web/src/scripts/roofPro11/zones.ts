@@ -956,7 +956,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     const hote = ctx.dom.areasWindowEl;
     if (!source || !hote) return;
     document.getElementById('rp9-pan-report')?.remove();
-    const nom = (a: AreaRecord) => a.label || a.id;
+    const nom = (a: AreaRecord) => areaLabel(Math.max(0, ctx.areas.indexOf(a))); // ACAL1527 — « Zone 2 », jamais l'identifiant `area-copie-1`
     const box = document.createElement('div');
     box.id = 'rp9-pan-report';
     box.className = 'mt-2 space-y-1 border border-white/20 p-3 text-xs text-lune-soft';
