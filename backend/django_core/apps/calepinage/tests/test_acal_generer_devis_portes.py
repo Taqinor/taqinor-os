@@ -222,6 +222,48 @@ class SurfacesCocheesSansBaseTest(SimpleTestCase):
         self.assertEqual(refus.exception.donnees['kwc_dessine'], 9.36)
 
 
+class KwcComposeSansCleSansBaseTest(SimpleTestCase):
+    """ACAL1417 — ``etude_params`` sans ``puissance_kwc`` : le kWc vendu se lit des
+    lignes du devis (règle unique de ventes), pour la question de taille comme pour
+    la garde du module substitué."""
+
+    LIGNES_32_4 = 'apps.ventes.services.puissance_kwc_du_devis'
+
+    def test_question_de_taille_dit_le_kwc_et_le_ttc(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.calepinage.services import devis as service
+        from apps.ventes.services import MOTIF_FACTURE_ABSENTE
+
+        devis = SimpleNamespace(etude_params={}, total_ttc=Decimal('156900'))
+        cible = {'panneaux': None, 'kwc': None, 'source': 'factures', 'refus': 'Aucune facture.',
+                 'motif_code': MOTIF_FACTURE_ABSENTE}
+        with mock.patch.object(service, '_cible_du_calepinage', return_value=cible),                 mock.patch(self.LIGNES_32_4, return_value=32.4):
+            with self.assertRaises(service.DevisRefuse) as question:
+                service._garde_taille(devis, SimpleNamespace(lead_id=3, company=None), False)
+        self.assertEqual(question.exception.donnees['kwc'], 32.4)
+        self.assertIn('32,40 kWc', question.exception.donnees['detail'])
+        self.assertIn('156 900,00 MAD TTC', question.exception.donnees['detail'])
+
+    def test_module_substitue_se_declenche_sans_la_cle(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.calepinage.services.devis import DevisRefuse, _garde_module_substitue
+
+        doc = {'scenario': 'reseau', 'modules': [{'id': 'm1', 'pmaxWc': 585}],
+               'zones': [{'id': 'A', 'label': 'A', 'geometry': {'moduleId': 'm1', 'panels': [{}] * 16}}],
+               'result': {'count': 16, 'kwc': 9.36}}
+        devis = SimpleNamespace(etude_params={})
+        with mock.patch('apps.ventes.selectors_calepinage.lignes_produits_calepinage', return_value=[]):
+            with mock.patch(self.LIGNES_32_4, return_value=9.36):
+                _garde_module_substitue(devis, doc)  # même kWc : aucun refus
+            with mock.patch(self.LIGNES_32_4, return_value=8.8), self.assertRaises(DevisRefuse) as refus:
+                _garde_module_substitue(devis, doc)
+        self.assertEqual(refus.exception.donnees['kwc_compose'], 8.8)
+
+
 class RecetteR2SansBaseTest(SimpleTestCase):
     """Recette R2 du 22/11/2026 — R2-17 (pose au-delà de 2 × la cible des
     factures : la question ACAL922), R2-22 (brouillon libre né avant le
