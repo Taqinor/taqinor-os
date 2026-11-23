@@ -239,6 +239,19 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(document.body).not.toHaveTextContent('Aucune taille ne se tire des factures')
   })
 
+  it('Critique ACAL1517 — facture ABSENTE : le refus servi est dit ET le lien « Renseigner la facture du lead » reste là', async () => {
+    servir()
+    calepinageApi.calepinages.designContext.mockResolvedValue({
+      data: { calepinage: { lead: 42 }, consommation_lead: { facture_mensuelle_mad: null, source: 'lead', motif: '' } },
+    })
+    calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: {
+      cible_factures: null, refus: 'Aucune facture ni consommation sur ce lead : rien ne dimensionne le devis.' } })
+    rendre()
+    await screen.findByText(/rien ne dimensionne le devis/)
+    const lien = await screen.findByRole('link', { name: 'Renseigner la facture du lead' })
+    expect(lien).toHaveAttribute('href', '/crm/leads/42')
+  })
+
   it('ni l’une ni l’autre : aucune carte choisie et « Pose actuelle : N panneaux · kWc »', async () => {
     monterConstructeur({ besoin: '30', panneaux: '30 × 580 W', kwc: '17,40 kWc', prod: '28 700 kWh/an', cover: '431 %',
       note: '30 posés — il reste de la place sur le toit, laissée libre.' })
