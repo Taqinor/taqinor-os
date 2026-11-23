@@ -1026,6 +1026,16 @@ export interface Rgb01 {
   b: number;
 }
 
+/** ACAL1503 — la forme fermée d'un contour (mètres), `null` sous 3 sommets : `THREE.Shape.closePath` lit
+ *  `curves[0]` et plantait (« reading 'getPoint' ») quand les retraits par arête vidaient l'anneau posable. */
+export function formeDuContour(ring: readonly (readonly [number, number])[]): THREE.Shape | null {
+  if (ring.length < 3) return null;
+  const shape = new THREE.Shape();
+  ring.forEach(([x, y], i) => (i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y)));
+  shape.closePath();
+  return shape;
+}
+
 /** ACAL1408 — `instanceColor` MULTIPLIE la texture du panneau, quasi noire (≈ 0,05, `panelTexture.ts`) : une teinte
  *  0–1 brute y restait noire (carte d'accès et chaînes invisibles). Même gain que le surlignage (PV31). */
 export const GAIN_TEINTE_PANNEAU = 14;
@@ -1762,9 +1772,14 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     const ridgeLiftM = Math.max(0, plan.ridgeLiftM ?? 0);
 
     // Bâtiment
-    const shape = new THREE.Shape();
-    ring.forEach(([x, y], i) => (i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y)));
-    shape.closePath();
+    const shape = formeDuContour(ring); // ACAL1503
+    if (!shape) {
+      // Anneau posable vidé par les retraits : rien à extruder ni à paver ; la note du pan vide (motifPanVide) le dit.
+      const vide = new THREE.MeshStandardMaterial();
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+      return { deck: new THREE.Mesh(geo, vide), deckMat: vide, ring };
+    }
     const buildingMat = new THREE.MeshStandardMaterial({ color: 0xe2e7f2, roughness: 0.85, metalness: 0 });
     if (dim) {
       // Zone NON active : bâtiment subdué (plus sombre + légèrement transparent) pour
@@ -2198,9 +2213,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       (lat - activeOrigin[1]) * DEG2M,
     ]);
     const wallH = hauteurMurM; // CALX100
-    const shape = new THREE.Shape();
-    ring.forEach(([x, y], i) => (i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y)));
-    shape.closePath();
+    const shape = formeDuContour(ring)!; // ACAL1503 — même forme, garde « < 3 sommets » ci-dessus
     // Zone NON active sans panneaux : bâtiment subdué (même teinte que les autres zones).
     const buildingMat = new THREE.MeshStandardMaterial({ color: 0x9aa3b4, roughness: 0.85, metalness: 0, transparent: true, opacity: 0.55 });
     const building = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: wallH, bevelEnabled: false }), buildingMat);
