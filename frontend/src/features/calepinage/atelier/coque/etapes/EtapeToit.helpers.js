@@ -170,6 +170,20 @@ export function lireOutils(racine) {
   }
 }
 
+/** ACAL1445 — le soleil du constructeur (`#rp9-sun-date`, `#rp9-sun-hour`) : `{ date, heure, min, max }` ; `null` quand
+    ni la date ni l'heure ne sont lues (le bloc « Soleil » de la carte n'affirme alors rien). */
+export function lireSoleil(racine) {
+  const date = parId(racine, 'rp9-sun-date')?.value ?? ''
+  const curseur = parId(racine, 'rp9-sun-hour')
+  const heure = curseur ? nombre(curseur.value) : null
+  const borne = (attr, defaut) => {
+    const n = curseur?.getAttribute(attr) ? Number(curseur.getAttribute(attr)) : NaN
+    return Number.isFinite(n) ? n : defaut
+  }
+  if (!date && heure === null) return null
+  return { date, heure, min: borne('min', 6), max: borne('max', 18) }
+}
+
 /** Tout ce que l'étape Toit affiche, lu d'un coup (objet sérialisable : comparé pour éviter les rendus inutiles). */
 export function lireEtatToit(racine) {
   return {
@@ -179,6 +193,7 @@ export function lireEtatToit(racine) {
     obstacles: lireObstacles(racine),
     pente: lirePente(racine),
     outils: lireOutils(racine),
+    soleil: lireSoleil(racine),
   }
 }
 

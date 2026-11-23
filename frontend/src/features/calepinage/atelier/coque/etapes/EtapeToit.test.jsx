@@ -179,7 +179,7 @@ describe('Étape Toit — « Pente et orientation »', () => {
       cle: 'zones', zone_id: 'area-1', champs: { pitchDeg: 22, pitchSource: { mode: 'degres', degres: 22 } }, base_empreinte: 'jeton-1',
     })
     await waitFor(() => expect(screen.queryByText('À confirmer')).toBeNull())
-    expect(screen.getByRole('status')).toHaveTextContent('Pente enregistrée sur le pan « Pan 1 ».')
+    expect(within(screen.getByTestId('cal-toit-pente-carte')).getByRole('status')).toHaveTextContent('Pente enregistrée sur le pan « Pan 1 ».')
   })
 
   it('« Je ne la connais pas » : rien n’est écrit, la valeur reste « À confirmer », la visite la vérifiera', async () => {
@@ -188,7 +188,7 @@ describe('Étape Toit — « Pente et orientation »', () => {
     fireEvent.click(screen.getByTestId('cal-toit-pente-inconnue'))
     expect(enregistrerSectionLayout).not.toHaveBeenCalled()
     expect(screen.getByText('À confirmer')).toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent('elle sera vérifiée à la visite. Rien n’est enregistré.')
+    expect(within(screen.getByTestId('cal-toit-pente-carte')).getByRole('status')).toHaveTextContent('elle sera vérifiée à la visite. Rien n’est enregistré.')
     expect(screen.queryByTestId('cal-toit-pente-confirmer')).toBeNull()
   })
 
@@ -221,8 +221,8 @@ describe('Étape Toit — « Pente et orientation »', () => {
     expect(await screen.findByText('22° · face sud')).toBeInTheDocument()
     fireEvent.click(screen.getByTestId('cal-toit-pente-confirmer'))
     expect(surPuce).toHaveBeenCalledTimes(1)
-    expect(screen.getByRole('status')).toHaveTextContent('Pente confirmée')
-    expect(screen.getByRole('status')).not.toHaveTextContent('Enregistrez d’abord')
+    expect(within(screen.getByTestId('cal-toit-pente-carte')).getByRole('status')).toHaveTextContent('Pente confirmée')
+    expect(within(screen.getByTestId('cal-toit-pente-carte')).getByRole('status')).not.toHaveTextContent('Enregistrez d’abord')
     expect(enregistrerSectionLayout).not.toHaveBeenCalled()
     await waitFor(() => expect(screen.queryByText('À confirmer')).toBeNull())
   })
@@ -369,6 +369,61 @@ describe('Étape Toit — sur la carte', () => {
     act(() => { vi.advanceTimersByTime(10) })
     expect(builderApi.appliquerVue).toHaveBeenCalledWith('dessus')
     expect(builderApi.appliquerVue).not.toHaveBeenCalledWith('trois-quarts')
+  })
+})
+
+/* ACAL1445 — l'étape Toit face à Main / ToitSombre : bulle de consigne tant qu'aucun coin n'est déplacé, bloc « Soleil »
+   à côté de la barre d'outils, boussole sous la pile de zoom, « Je ne la connais pas » sur une ligne. */
+describe('ACAL1445 — bulle, bloc Soleil, boussole', () => {
+  const SOLEIL = '<input id="rp9-sun-date" type="date" value="2028-06-21"><input id="rp9-sun-hour" type="range" min="6" max="18" value="14">'
+  let style
+  beforeEach(() => {
+    style = document.createElement('style')
+    style.textContent = ['49-jetons-v2.css', '50-coque-atelier.css', '51-etape-toit.css']
+      .map((f) => readFileSync(resolve(process.cwd(), `src/styles/calepinage/${f}`), 'utf8')).join('\n')
+    document.head.appendChild(style)
+  })
+  afterEach(() => { style.remove() })
+
+  it('un toit déjà tracé s’ouvre avec la bulle « Contour tracé » ; un coin déplacé (historique actif) la retire', () => {
+    vi.useFakeTimers()
+    rendre()
+    expect(within(surCarte).getByText('Contour tracé')).toBeInTheDocument()
+    act(() => { vi.advanceTimersByTime(20000) }) // pas de minuteur : elle reste tant que rien n'est déplacé
+    expect(within(surCarte).getByText('Contour tracé')).toBeInTheDocument()
+    $('rp9-layout-undo').disabled = false // le moteur a gardé le déplacement d'un coin
+    act(() => { vi.advanceTimersByTime(600) })
+    expect(within(surCarte).queryByText('Contour tracé')).toBeNull()
+    $('rp9-layout-undo').disabled = true // annuler jusqu'au début ne la ramène pas : le coin a bien été déplacé
+    act(() => { vi.advanceTimersByTime(600) })
+    expect(within(surCarte).queryByText('Contour tracé')).toBeNull()
+  })
+
+  it('sans contour fermé, pas de bulle', () => {
+    rendre({}, (hote) => hote.querySelector('#rp9-add-area').remove())
+    expect(within(surCarte).queryByText('Contour tracé')).toBeNull()
+  })
+
+  it('bloc « Soleil » : le jour et l’heure du soleil du constructeur, jamais inventés', () => {
+    rendre({}, (hote) => { hote.insertAdjacentHTML('beforeend', SOLEIL) })
+    const bloc = within(surCarte).getByTestId('cal-toit-soleil')
+    expect(bloc).toHaveTextContent('Soleil21 juin · 14 h')
+    expect(bloc).toHaveAttribute('aria-label', 'Soleil : 21 juin · 14 h')
+    expect(bloc.tagName).not.toBe('BUTTON') // un repère, pas un contrôle de plus : l'heure se règle à l'étape Panneaux
+    cleanup(); document.body.innerHTML = ''
+    rendre() // le constructeur ne donne ni date ni heure : le bloc n'affirme rien
+    expect(within(surCarte).queryByTestId('cal-toit-soleil')).toBeNull()
+  })
+
+  it('boussole : sous la pile de zoom, rien d’autre à cacher en Guidé sur cette étape', () => {
+    rendre({}, (hote) => hote.insertAdjacentHTML('beforeend', '<div id="rp9-compass" class="rp9-compass"><div class="rp9-compass-arrow"><span>N</span><span>S</span></div></div>'))
+    expect(getComputedStyle($('rp9-compass')).display).not.toBe('none')
+  })
+
+  it('« Je ne la connais pas » tient sur une ligne', () => {
+    rendre()
+    const bouton = screen.getByTestId('cal-toit-pente-inconnue')
+    expect(getComputedStyle(bouton).whiteSpace).toBe('nowrap')
   })
 })
 

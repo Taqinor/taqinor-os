@@ -133,7 +133,15 @@
 }
 .cal-coque .cal-toit-pente-tete { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .cal-coque .cal-toit-pente-valeur { font-family: var(--font-display); font-weight: 600; font-size: 1.25rem; }
-.cal-coque .cal-toit-pente-tag { font-size: 0.75rem; font-weight: 600; color: var(--warning-text); white-space: nowrap; }
+.cal-coque .cal-toit-pente-tag {
+  padding: 2px 8px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--cal-action) 32%, var(--cal-surveiller-fond));
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--cal-surveiller-texte);
+  white-space: nowrap;
+}
 .cal-coque .cal-toit-pente-texte {
   margin: 0;
   font-size: 0.875rem;
@@ -141,7 +149,7 @@
   color: color-mix(in oklch, var(--foreground) 78%, var(--primary-text));
 }
 .cal-coque .cal-toit-pente-actions { display: flex; gap: 8px; }
-.cal-coque .cal-toit-pente-actions > * { flex: 1; }
+.cal-coque .cal-toit-pente-actions > * { flex: 1; min-width: 0; white-space: nowrap; }
 .cal-coque .cal-bouton-contour {
   height: 44px;
   padding: 0 12px;
@@ -151,6 +159,7 @@
   color: var(--foreground);
   font-weight: 600;
   font-size: 0.875rem;
+  white-space: nowrap;
 }
 .cal-coque .cal-toit-pente-message { margin: 0; font-size: 0.75rem; color: var(--foreground); }
 .cal-coque .cal-toit-pente-modifier > summary {
@@ -261,8 +270,36 @@
 }
 .cal-coque .cal-toit-bulle-titre { margin: 0; font-weight: 600; font-size: 0.875rem; }
 .cal-coque .cal-toit-bulle-texte { margin: 4px 0 0; font-size: 0.875rem; line-height: 1.45; }
-/* Maquette Main : pas de boussole N/S sur la carte de l'étape Toit en guidé (elle revient en Avancé). */
-.cal-coque[data-avance='0'][data-etape='toit'] #rp9-compass { display: none; }
+/* ACAL1445 — maquette v2 Main : la boussole est un rond de 44 px sous la pile de zoom (qui s'arrête à 16 + 134 px) ; son
+   aiguille (rouge au nord, grise au sud) tourne avec la carte, comme celle du constructeur. Les lettres N / S se taisent. */
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-compass {
+  display: block;
+  top: calc(var(--cal-libre-haut, 88px) + 148px);
+  right: calc(var(--cal-libre-droite, 0px) + 16px);
+  left: auto;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--cal-flottante-filet);
+  background: var(--cal-flottante-dense);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  box-shadow: var(--cal-ombre-flottante);
+}
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-compass .rp9-compass-arrow { padding: 0; }
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-compass .rp9-compass-arrow > span { display: none; }
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-compass .rp9-compass-arrow::before,
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-compass .rp9-compass-arrow::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  width: 14px;
+  height: 18px;
+  margin-left: -7px;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 18'%3E%3Cpath d='M7 0l7 18H0z' fill='black'/%3E%3C/svg%3E") center / 14px 18px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 18'%3E%3Cpath d='M7 0l7 18H0z' fill='black'/%3E%3C/svg%3E") center / 14px 18px no-repeat;
+}
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-compass .rp9-compass-arrow::before { top: 4px; background: var(--cal-refus); }
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-compass .rp9-compass-arrow::after { bottom: 4px; background: var(--cal-texte-3); transform: rotate(180deg); }
 .cal-coque .cal-barre-outils-carte {
   position: absolute;
   bottom: 20px;
@@ -290,6 +327,31 @@
 .cal-coque .cal-outil-carte[aria-pressed='true'] { background: var(--foreground); color: var(--background); }
 .cal-coque .cal-outil-carte:disabled { color: var(--muted-foreground); background: transparent; cursor: not-allowed; }
 .cal-coque .cal-barre-outils-separateur { width: 1px; height: 28px; margin: 0 4px; background: var(--border); }
+
+/* ACAL1445 — le bloc « Soleil » (maquette Main) : 56 de haut, rayon 18, à 12 px à droite de la barre d'outils (centrée). */
+.cal-coque .cal-coque-sur-carte .cal-toit-soleil {
+  position: absolute;
+  bottom: 28px;
+  left: calc(50% + 229px);
+  height: 56px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px 0 12px;
+  border-radius: var(--cal-rayon-outils);
+  box-shadow: var(--cal-ombre-outils);
+  -webkit-backdrop-filter: var(--cal-flou);
+  backdrop-filter: var(--cal-flou);
+}
+.cal-coque .cal-toit-soleil svg { flex: none; }
+.cal-coque .cal-soleil-arc { fill: none; stroke: var(--cal-filet-fort); stroke-width: 2; stroke-dasharray: 2 4; stroke-linecap: round; }
+.cal-coque .cal-soleil-trajet { fill: none; stroke: var(--cal-action); stroke-width: 2.5; stroke-linecap: round; }
+.cal-coque .cal-soleil-astre { fill: var(--cal-action); stroke: var(--cal-surface); stroke-width: 2; }
+.cal-coque .cal-soleil-sol { stroke: var(--cal-filet-fort); stroke-width: 1.5; stroke-linecap: round; }
+.cal-coque .cal-toit-soleil-texte { display: flex; flex-direction: column; gap: 1px; text-align: left; }
+.cal-coque .cal-toit-soleil-texte > span:first-child { font-size: 0.75rem; color: var(--cal-texte-2); }
+.cal-coque .cal-toit-soleil-texte > span:last-child { font-size: 0.875rem; font-weight: 600; color: var(--cal-texte-1); white-space: nowrap; }
 
 /* « Terminer le tracé » / « Annuler le dernier point » montent au-dessus de la barre ; désactivé, il se tait. */
 .cal-coque .rp9-map-wrap > div:has(> #rp9-finish) { bottom: 92px; }
