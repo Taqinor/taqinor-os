@@ -584,7 +584,7 @@ file (les lanes moteur-unique et pertes-simulation la jouent : lire leurs nombre
 `node --test` au pli ; ancres `fichier::CONSTANTE` refusées ; `skipTest` refusé ; contrat sans moitié cliente ;
 conteneur de test oublié 4 h).
 
-## POINT à 17 h 35 UTC (le plus récent — REPRENDRE ICI)
+## POINT à 17 h 35 UTC
 
 **Reda (17 h) : « i dont care about 85% i only care about good work, you can consume 100% »** — la qualité prime, pas le
 quota (mémoire `quality-over-quota`). Quota 72 % à 16 h 35. Contexte de l'orchestrateur ≈ 85-90 % : ce bloc suffit à reprendre.
@@ -625,7 +625,7 @@ les régénérer si rouges).
 
 **Puis** : gardes (liste du POINT 15 h 10 + suites runtime du moteur : `npx vitest run --config …/scratchpad/PR2/vitest.orchestrateur.mjs tests/estimatorRuntimePro10Pro11.test.ts tests/userJourneyPro11.test.ts` depuis `apps/web/` + `node --test "src/**/*.test.mjs"` depuis `frontend/`) → `tenue_plans_d.py --ecrire` (après avoir recopié les événements des lanes au registre) → critique finale (3e et dernier appel Fable : la vague touche le moteur de devis) → suites serveur `apps.crm`, `apps.ventes`, `apps.calepinage` → push → file de fusion (`gh pr merge 1530 --auto --merge`) → rejeu en direct de la vague D sur la pile reconstruite → rapport final complété (`RAPPORT-FINAL-2026-11-23.md` : décisions, vagues C et D, un seul moteur) → `SendUserFile` → démontage, `plan_claims.py release`, rétro mémoire.
 
-## POINT a 18 h 40 UTC (le plus recent - REPRENDRE ICI)
+## POINT a 18 h 40 UTC
 
 Les quatre lanes de la vague D sont PLIEES et poussees (tete poussee `72194cca3d`, 101 commits devant `main`) :
 regles-communes, devis-auto-ci, pertes-simulation, taille-auto. Verifie sur la branche pliee : moteur de dessin
@@ -681,7 +681,7 @@ jonctions `frontend/node_modules` et `apps/web/node_modules` de MON worktree par
 conteneurs erp-agentique arretes, vite preview bhkmo4ocy) - le classifieur a deja refuse un `docker rm -f` : donner les
 commandes a Reda si besoin ; (7) `plan_claims.py release` des 9 cles ; (8) retro memoire.
 
-## POINT à 20 h 20 UTC (le plus récent — REPRENDRE ICI)
+## POINT à 20 h 20 UTC
 
 **PR #1530 ouverte, PAS en file.** Tête poussée `2d2d319322` (contrôles rapides verts à 20 h 18, `stage-names` et
 `web-build-test` en cours) ; local = + `0e283f29de` (brief du second tour de coutures).
@@ -713,3 +713,34 @@ suppositions résidentielles montrées à l’écran, suppositions rangées avec
 rejoué avec `freezegun`, gardes de l’hôte, `tenue_plans_d.py --ecrire` → push → `gh pr merge 1530 --auto --merge` →
 surveiller le groupe de fusion (seul passage avec les tests serveur) → tâches des restes → rapport final complété
 (section « Afternoon of 23/11 ») + `SendUserFile` → démontage, `plan_claims.py release`, rétro mémoire.
+
+## POINT FINAL du 23/11 (le plus récent — REPRENDRE ICI)
+
+**PR #1530 FUSIONNÉE sur `main` (23 h 33 UTC, commit de fusion `93e1afeb19`).** Vagues C et D, leurs coutures, les deux
+lanes du second tour (couture-suppositions, couture-resultats), les correctifs de la critique finale. Aucune migration.
+**Rien n'est déployé** : `scripts/deploy-prod.ps1` est le geste de Reda ; ensuite Calepinage → Réglages → Démarrage
+rapide → « Remplir les réglages vides », puis `manage.py relier_calepinages_devis_envoye` (liste ; `--appliquer` re-lie).
+
+**La file de fusion a retiré la PR deux fois** (22 h 21 et 23 h 08 UTC), chaque fois pour UN test que seul le groupe de
+fusion joue : `apps.crm.tests_agr411_questionnaire_pompage` (phase exigée d'un lead agricole, ALEA67) puis
+`apps.ventes.tests.test_split_devis_domaine` (empreinte `split_dm_auto` de `build_devis_auto`, modifiée exprès).
+Leçons rangées dans la mémoire (`plan-drain-ci-bug-classes`, entrée 15).
+
+**À CONFIRMER par Reda** (`docs/audits/decisions.yml`) : D-ACAL-98 (fiche de module sans tolérance = 0 % supposé —
+aucune des 3 fiches de la production ne publie sa tolérance), D-ACAL-99 (heure de début d'équipe supposée 8 h / 6 h),
+D-ACAL-100 (tarif basse tension supposé : BT patenté / BT force motrice), D-ACAL-101 (réserve de visite imprimée pour
+quatre motifs).
+
+**Ce qui reste** (tout est écrit en tâches) :
+- le chantier « un seul moteur » (D-ACAL-97) : 55 tâches en neuf étapes, six plans, conception
+  `controles/C4-un-seul-moteur.md` — À CONSTRUIRE DANS UNE SESSION NEUVE, rien n'en est construit ;
+- 15 tâches de restes de la vague D : ACAL2030 à 2038, ACAL2040, ACAL2041, ADEV156 à 158, ADEP109
+  (dont trois rejeux en direct dus : ACAL2034 ombrage proche, ACAL2035 rapport d'étude PDF et « Réviser le devis »,
+  ACAL2036 NASA POWER ; ACAL2038 : en-tête « non enregistré » après l'enregistrement d'un calepinage neuf, non reproduit) ;
+- les correctifs du second tour de coutures sont prouvés par tests (rouge puis vert), deux rejoués à l'écran par la lane
+  (désignation du matériel, enregistrement) ; AUCUN relecteur neuf ne les a rejoués : à faire au prochain tour ;
+- six écrans à refaire sur les maquettes v2 (Documents, Démarrage rapide, Tablette, relevé et vue client au téléphone,
+  Présentation) et le dessin sur la carte (teinte des panneaux, contour doré, chaînes) ;
+- 95 correctifs anciens prouvés en partie seulement (`T3/cv/T3-INSUF-*.md`).
+
+**Démontage fait** : voir la fin du rapport (`RAPPORT-FINAL-2026-11-23.md`, section 11) et le message de fin de session.

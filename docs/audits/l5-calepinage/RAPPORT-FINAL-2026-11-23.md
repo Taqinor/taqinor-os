@@ -279,7 +279,7 @@ You answered all the open decisions between 13:30 and 17:10 UTC (they are in `do
 | P90 « count all of them » · NASA POWER « yes, use it » · « frame = free, flush = insulated » | Built on the server; see 11.3 for what the screen did not show |
 | **« One engine in the whole ERP, results stored once on the lead »** (D-ACAL-97) | Designed today, not built — see 11.5 |
 
-### 11.2 What is in PR #1530
+### 11.2 What is in PR #1530 — merged on `main` on 23/11 at 23:33 UTC
 
 Everything built after wave B: wave C (fixes from the replay of waves A and B, and the first « one engine » half:
 the calepinage reads the quote's design), wave D (your decisions above), their seams, and the fixes below.
@@ -366,7 +366,8 @@ on NEW quotes only; nothing sent changes.
 
 ### 11.7 What you have to do
 
-1. **Deploy when you want it live**: `scripts/deploy-prod.ps1`. Nothing of today is live until then.
+1. **Deploy when you want it live**: `scripts/deploy-prod.ps1`. The three PRs of today (#1527, #1529, #1530) are
+   merged; nothing of today is live until then.
 2. After the deploy, in this order: Calepinage → Settings → Quick start → « Fill the empty settings » (it shows each
    value and its source before writing). Then `manage.py relier_calepinages_devis_envoye` lists the calepinages to
    re-attach to their sent quote (today: one, on the lead CPE Go Plus); `--appliquer` does it.

@@ -1044,6 +1044,7 @@ Contre-visite de clôture `vérifie ADEV` du 04/11/2026 (base `e62ca97aa`, dossi
 
 
 ## DONE LOG
+- 2026-11-23 go-deep L5 du calepinage, vague D FUSIONNÉE (PR Taqinor/taqinor-os#1530, 23 h 33 UTC) : ADEV121 à ADEV127 marquées « code livré, preuve en direct due » — une règle de ratio et une règle de froid partagées avec le calepinage, suppositions du devis automatique dites avec leur champ (résidentiel et C&I), rangées avec le devis et remontrées à la réouverture, contrat et phase supposés (D-ACAL-92, 93), régime d'équipes suffisant (D-ACAL-94, heure de début supposée : D-ACAL-99 à confirmer) ; détail au DONE LOG de `docs/plans/PLAN_AUDIT_CALEPINAGE.md`.
 - 2026-11-17 — vague d'acceptation 8 (branche dev-all-acc8, rejeux sur runner GitHub + relecture adverse fraîche) : cochées AIC98.
 - 2026-11-17 — vague 7 (branche dev-all-w7, 8 lanes) : cochées AIC100.
 - 2026-11-17 — vague d'acceptation 6 (branche dev-all-acc6, rejeux sur runner GitHub + relecture adverse fraîche par tâche) : cochées ADVS50 ADRG5 ADRG11 ALEC23 ATST23 AMSG84 ; code livré, preuve en direct due : AIC98 ; tâches de correction déposées : AIC100.

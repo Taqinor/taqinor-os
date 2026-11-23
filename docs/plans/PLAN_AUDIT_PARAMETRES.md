@@ -381,6 +381,7 @@
 
 
 ## DONE LOG
+- 2026-11-23 go-deep L5 du calepinage, vague D FUSIONNÉE (PR Taqinor/taqinor-os#1530, 23 h 33 UTC) : APAR92 marquée « code livré, preuve en direct due » — orthographes courantes et noms arabes des villes de la table reconnus (D-ACAL-95), ordre des candidats fixé ; vérifié en lecture seule sur la production : les 49 devis envoyés ou acceptés sans GPS gardent la même ville.
 - 2026-11-19 — AERR169 coché : la double lecture venait de `ParametresEntreprise.jsx` (`if (loading)` démontait les sections à chaque relecture du profil) ; écran d'attente limité au premier chargement (commit f65d5c103, test rouge d'abord dans `ParametresEntreprise.droitModifier.test.jsx`) ; acceptation runner PASS `docs/audits/acceptation/AERR/2026-11-19-c1eb7c160.md` (500 ⇒ 1 lecture 1 toast ; 404 ⇒ 1 lecture 1 toast).
 - 2026-11-17 — vague d'acceptation 8 (branche dev-all-acc8, rejeux sur runner GitHub + relecture adverse fraîche) : cochées ALEC49.
 - 2026-11-17 — vague 7 (branche dev-all-w7, 8 lanes) : cochées ASUP64 ; code livré, preuve en direct due : ALEC49.

@@ -819,6 +819,7 @@ Seconde contre-visite de clôture du groupe ALEA (dossier `docs/audits/2026-11-0
 
 
 ## DONE LOG
+- 2026-11-23 go-deep L5 du calepinage, vague D FUSIONNÉE (PR Taqinor/taqinor-os#1530, 23 h 33 UTC) : ALEA67 marquée « code livré, preuve en direct due » — la fiche dit « Manque : ville » quand le moteur ne situe pas le chantier, exige la phase d'un lead agricole (le moteur de pompage la refuse sinon), et ne réclame plus ce que le moteur C&I suppose ; détail au DONE LOG de `docs/plans/PLAN_AUDIT_CALEPINAGE.md`.
 - 2026-11-20 — AERR131 — 59 sondes du groupe rejouées sur `main` (d2a47e071) : toutes « repro: false » ; 7 sondes périmées réécrites (002, 005, 047, 050, 053, 095, VER2-203), contre-épreuve « repro: true » sur l'avant de chaque correctif ; couverture 106/106 (dette 0) ; enregistrement docs/audits/acceptation/AERR/2026-11-20-d2a47e071.md ; session `loop audit`.
 - 2026-11-18 — ALEC56 — rejeu en direct PASS sur runner GitHub (docs/audits/acceptation/ALEC/2026-11-18-ed9668a67.md, run 44209948217), relu adversement ; vague claude/all-plans-loop-work-5l08a9 (PR #1461).
 - 2026-11-18 — AERR100 — rejeu en direct PASS sur runner GitHub (docs/audits/acceptation/AERR/2026-11-18-ed9668a67.md, run 44209948217), relu adversement ; vague claude/all-plans-loop-work-5l08a9 (PR #1461).
