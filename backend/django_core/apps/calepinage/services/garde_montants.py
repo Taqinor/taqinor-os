@@ -33,12 +33,19 @@ __all__ = ['MOTS_D_ARGENT', 'mots_d_argent', 'premier_mot_d_argent']
 #: Les mots d'argent refuses. Un schema, un plan de pose et un classeur
 #: partent au bureau de controle, au chantier ou au bureau d'etudes : aucun
 #: montant n'y a sa place (D5, D-CALX 5).
-MOTS_D_ARGENT = ('prix', 'prix_achat', 'marge', 'montant', 'mad', 'tva',
+#: ACAL1711 — « marge » NU est un mot de chantier (« Marge d'échafaudage en
+#: hauteur », marge de rive) avant d'être un prix : seules la marge commerciale,
+#: brute ou nette sont refusées ; ``prix_achat``, ``prix``, ``montant``, ``mad``…
+#: le restent, inchangés.
+MOTS_D_ARGENT = ('prix', 'prix_achat', 'marge commerciale', 'marge brute',
+                 'marge nette', 'montant', 'mad', 'tva',
                  'remise', 'achat', 'tarif', 'cout', 'coût', 'dh ht',
                  'facture')
 
+# Un mot composé (« marge commerciale ») admet n'importe quel blanc entre ses mots.
 _MOT_D_ARGENT_RE = re.compile(
-    r'\b(?:%s)\b' % '|'.join(re.escape(mot) for mot in MOTS_D_ARGENT),
+    r'\b(?:%s)\b' % '|'.join(r'\s+'.join(re.escape(m) for m in mot.split())
+                             for mot in MOTS_D_ARGENT),
     re.IGNORECASE)
 
 
