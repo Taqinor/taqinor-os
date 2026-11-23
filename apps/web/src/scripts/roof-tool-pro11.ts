@@ -2998,7 +2998,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
 
   finishBtn?.addEventListener('click', close);
   const annulerAtelier = creerAnnulerAtelier({ // ACAL412 — ↶ ↷ + Ctrl+Z / Ctrl+Y hors du panneau de disposition
-    ancre: clearBtn, editeur: layoutEditor, modeDisposition: () => Boolean(ctx.layoutMode && ctx.layoutState),
+    ancre: clearBtn, editeur: layoutEditor, ctx, modeDisposition: () => Boolean(ctx.layoutMode && ctx.layoutState), // ACAL1901 — ctx : les boutons de la barre
     apres: () => { redrawTrace(); redrawObstacles(); recalc(); }, setStatus: (m) => setStatus(m),
   });
   const bandeau = creerBandeauAnnuler(clearBtn, annulerAtelier.annuler); // ACAL413

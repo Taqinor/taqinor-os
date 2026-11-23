@@ -1985,8 +1985,8 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   layoutAzPlusEl?.addEventListener('click', () => nudgeAzimuth(AZIMUTH_NUDGE_DEG));
 
   // PV26 — boutons « annuler » / « rétablir ».
-  layoutUndoBtn?.addEventListener('click', () => undo());
-  layoutRedoBtn?.addEventListener('click', () => redo());
+  layoutUndoBtn?.addEventListener('click', () => void (ctx.layoutMode && ctx.layoutState ? undo() : (ctx.annulerGeste?.annuler ?? undo)())); // ACAL1901 — comme Ctrl+Z
+  layoutRedoBtn?.addEventListener('click', () => void (ctx.layoutMode && ctx.layoutState ? redo() : (ctx.annulerGeste?.retablir ?? redo)()));
 
   // ── PV30 — bascule de MODE + réglages du placement libre ─────────────────────
   modeLatticeBtn?.addEventListener('click', () => {
