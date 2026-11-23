@@ -22,6 +22,11 @@ visuel `docs/audits/l5-calepinage/maquettes-v2/LANGAGE.md` et, quand elle existe
   `cmd /c mklink /J "<ton worktree>\frontend\node_modules" "C:\dev\taqinor-os\.claude\worktrees\l5cal-instr\frontend\node_modules"`.
   N'y installe rien ; ne la retire que par `cmd /c rmdir "<ton worktree>\frontend\node_modules"` (jamais `rm -rf` : il
   viderait le dossier partagé) — et retire-la AVANT ton dernier message.
+- Moteur de dessin (`apps/web/src/scripts/roofPro11/`) : même principe, jonction
+  `cmd /c mklink /J "<ton worktree>\apps\web\node_modules" "C:\dev\taqinor-os\.claude\worktrees\l5cal-instr\apps\web\node_modules"`,
+  tests par `npx vitest run <fichier de test>` depuis `apps/web/`, retirée de la même façon avant ton dernier message.
+- Ton fichier d'événements est dans le dossier temporaire de la session (chemin absolu dans ton message), pas dans le
+  dépôt : l'orchestrateur le recopie au registre.
 
 ## 1. Lire avant d'écrire
 
@@ -84,6 +89,20 @@ plus fréquentes sur ce module :
 8. Un fichier de 2 000 lignes ou plus ne grossit pas : extrais dans un fichier voisin (clause « Code net »).
 9. Un `catch {}` vide est refusé : rends une valeur ou affiche l'erreur.
 10. Le prix d'achat (`prix_achat`) n'apparaît dans aucune réponse lue par un écran client ni aucun document.
+
+Fautes de la vague 1 de CETTE campagne (chacune a rougi la CI une fois) :
+11. Une fonction publique d'un `services/*.py` sans appelant hors de son fichier est refusée
+    (`scripts/check_services_appeles.py`) : préfixe-la d'un `_` si elle ne sert que dans son fichier.
+12. Tout nouveau repère `data-testid="cal-…"` est déclaré dans le MÊME commit dans
+    `frontend/src/features/calepinage/E2E_HOOKS.md` et dans `ALL_HOOKS` de `e2eHooks.test.mjs`.
+13. Pas de nouveau fichier de test par tâche, y compris sous `apps/web` (`scripts/check_test_placement.py`) : le test
+    va dans le fichier de test existant du module (ex. `zones.test.ts`).
+14. Dans le moteur de dessin, `serializeLayout` rend TOUJOURS le document courant, même pendant un geste : trois tests
+    d'`apps/web` le gardent. Après toute retouche d'un geste ou de la sérialisation, joue les tests du dossier
+    `roofPro11` que ton fichier touche.
+15. Une clé ajoutée à une réponse de l'API, ou un champ de modèle : dis-le dans ton rapport — l'orchestrateur
+    régénère `docs/api-contracts.md` et `docs/openapi-schema.yml` au pli ; un `on_delete` ajouté ou déplacé change
+    `docs/on-delete-financial-audit.md` (dis-le aussi).
 
 ## 5. Interdits
 

@@ -32,6 +32,13 @@ the « one engine, the CRM one » work have NOT been started: they come in the c
 So about 4 delivered fixes in 10 do not fully hold on the screen. That is why I am replaying all 388 and not a
 sample.
 
+**Correction, 06:15 UTC — the 188 is too optimistic.** I had an independent reviewer re-read the evidence behind a
+sample of 37 of those « works » verdicts. Result: 17 confirmed, 16 where the evidence covers only part of what the
+task requires, and 4 where the screenshot shows the fix does NOT hold (for example the study report prints a yearly
+consumption of 121 976.8 kWh, ten times the real 12 197.68). So about half of the « works » verdicts are not fully
+proven. I therefore tick nothing on a reviewer's word: every one of them is now being re-read the same way, and only
+the confirmed ones will be ticked.
+
 ## 2. The most serious problems found (to be fixed in the next waves)
 
 1. **The same production shows different numbers on different screens** (4 362, 4 542, 5 131 and 5 173 kWh for one
@@ -59,7 +66,8 @@ The full list, with screenshots, is in `docs/audits/l5-calepinage/T2/` (one repo
    mockups.
 2. Turn every verdict into tasks in the plan (in progress, in five lots).
 3. Fix by waves, each wave pushed to CI and merged through the merge queue when green.
-4. Tick the 188 fixes that work, after an independent re-read of a sample of 37 (in progress).
+4. Tick only the fixes whose evidence an independent reviewer confirms (re-read of all of them in progress); the
+   others are replayed in round 3 or become repair tasks.
 5. Round 3: replay the fixes of round 2 and a fresh look.
 6. **Then the checks phase**: screens against the v2 mockups, every quote calculated automatically with the right
    assumptions, one engine (the CRM one), and the lead « CPE Go Plus ».
