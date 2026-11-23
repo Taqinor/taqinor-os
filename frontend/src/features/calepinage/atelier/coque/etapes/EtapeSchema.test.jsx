@@ -117,6 +117,33 @@ describe('EtapeSchema — sous-écran « Schéma électrique » (ACAL1301)', () 
     expect(within(pied).getByRole('button', { name: 'DXF' })).toBeTruthy()
   })
 
+  it('ACAL1831 — « Télécharger (PDF) » est le bouton d’action v2 et « DXF » a la même taille ; la carte du schéma est à ses rayons et à son quadrillage', async () => {
+    servir()
+    const { pied } = rendre()
+    await screen.findByTestId('csch-blocs')
+    const pdf = within(pied).getByRole('button', { name: 'Télécharger (PDF)' })
+    const dxf = within(pied).getByRole('button', { name: 'DXF' })
+    expect(pdf).toHaveClass('cal-bouton-or', 'cal-bouton-or-plein') // la classe de l'action suivante (52 px, rayon 14, 700)
+    expect(dxf).toHaveClass('csch-dxf')
+    // La feuille réelle est chargée dans le DOM de test : les valeurs déclarées pour le bouton secondaire et la carte.
+    const { readFileSync } = await import('node:fs')
+    const style = document.createElement('style')
+    style.textContent = readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/53-etape-electrique.css`, 'utf8')
+    document.head.appendChild(style)
+    try {
+      expect(getComputedStyle(dxf).height).toBe('52px')
+      expect(getComputedStyle(dxf).borderRadius).toBe('var(--cal-rayon-pile)')
+      const planche = document.querySelector('.csch-planche')
+      expect(getComputedStyle(planche).borderRadius).toBe('var(--cal-rayon-carte)')
+      expect(getComputedStyle(planche).boxShadow).toBe('var(--cal-ombre-posee)')
+      expect(getComputedStyle(document.querySelector('.csch-titres h2')).fontSize).toBe('1.125rem')
+      // Quadrillage du fond (papier, traits à 8 %) sur la vue, y compris le dessin en blocs.
+      expect(getComputedStyle(document.querySelector('.csch-vue')).backgroundSize).toBe('22px 22px')
+    } finally {
+      style.remove()
+    }
+  })
+
   it('« Schéma détaillé » montre le SVG SERVI (celui du PDF / DXF) et sa propre légende ; rien n’est retiré', async () => {
     servir()
     const { panneau } = rendre()
