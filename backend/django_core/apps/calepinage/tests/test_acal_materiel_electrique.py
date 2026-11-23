@@ -206,3 +206,65 @@ class Simulation(BaseMateriel):
         contexte, meta = construire_contexte(calepinage)
         self.assertEqual(contexte['fiche_module'].get('pmax_wc'), 710.0)
         self.assertIsNotNone(meta['kwc'])
+
+
+class MaterielRetenuParLeDevis(BaseMateriel):
+    """ACAL1952 — sans saisie, l'onduleur, leur nombre et la longueur de chaîne
+    sont ceux du DEVIS (option retenue), servis avec la provenance « devis » ;
+    une saisie contraire reste permise et est dite comme écart."""
+
+    def setUp(self):
+        super().setUp()
+        self.hybride = self._produit(
+            nom='Onduleur hybride 10 kW', type_fiche='onduleur', ond_n_mppt=2,
+            ond_mppt_v_min=160.0, ond_mppt_v_max=950.0, ond_v_max_abs=1100.0,
+            ond_i_max_mppt_a=26.0, ond_ac_kw=10.0, ond_phases=3)
+        self.batterie = Produit.objects.create(
+            company=self.company, nom='Batterie Dyness 10 kWh', sku='ACAL1952-BAT',
+            prix_vente=Decimal('1500'), quantite_stock=1)
+
+    def _devis_deux_options(self, recommandee):
+        devis = Devis.objects.create(
+            company=self.company, client=self.client_a, reference='DEV-ACAL1952-10',
+            statut='envoye', etude_params={'scenario': 'Les deux (Sans + Avec)',
+                                           'recommended_option': recommandee})
+        for produit, variante in ((self.module_devis, ''), (self.onduleur, 'sans'),
+                                  (self.hybride, 'avec'), (self.batterie, 'avec')):
+            LigneDevis.objects.create(
+                devis=devis, produit=produit, designation=produit.nom, quantite=Decimal('1'),
+                prix_unitaire=Decimal('100'), type_ligne='produit', variante=variante)
+        return devis
+
+    def test_devis_a_un_onduleur_sert_l_onduleur_le_nombre_et_la_provenance(self):
+        calepinage = self._calepinage(devis=self._devis(self.module_devis, self.onduleur))
+        reponse = self.api.get(url_entree(calepinage.pk))
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        bloc = reponse.data['devis_retenu']
+        self.assertEqual((bloc['onduleur']['produit_id'], bloc['nombre_onduleurs'], bloc['provenance']),
+                         (self.onduleur.pk, 1, 'devis'))
+        self.assertEqual(bloc['ecarts'], [])
+        self.assertEqual(reponse.data['materiel']['onduleur']['provenance'], PROVENANCE_DEVIS)
+        self.assertEqual(sorted(bloc), sorted(json.loads(CONTRAT.read_text(encoding='utf-8'))
+                                              ['exemple']['devis_retenu']))
+
+    def test_option_avec_retenue_sert_l_onduleur_hybride(self):
+        calepinage = self._calepinage(devis=self._devis_deux_options('Avec batterie'))
+        _c, materiel, _d, _doc = conception_du_calepinage(calepinage)
+        self.assertEqual((materiel['produits']['onduleur'], materiel['provenances']['onduleur']),
+                         (self.hybride.pk, PROVENANCE_DEVIS))
+
+    def test_saisie_contraire_servie_et_ecart_nomme(self):
+        calepinage = self._calepinage(
+            devis=self._devis(self.module_devis, self.onduleur),
+            entree={'onduleur_produit': self.hybride.pk, 'nombre_onduleurs': 2})
+        reponse = self.api.get(url_entree(calepinage.pk))
+        self.assertEqual(reponse.data['materiel']['onduleur']['produit_id'], self.hybride.pk)
+        self.assertEqual(reponse.data['materiel']['onduleur']['provenance'], PROVENANCE_EXPLICITE)
+        ecarts = reponse.data['devis_retenu']['ecarts']
+        self.assertEqual(len(ecarts), 2, ecarts)
+        self.assertIn('au devis DEV-ACAL56-1', ecarts[0])
+        self.assertIn('Onduleur hybride 10 kW', ecarts[0])
+
+    def test_sans_devis_inchange(self):
+        reponse = self.api.get(url_entree(self._calepinage().pk))
+        self.assertIsNone(reponse.data['devis_retenu'])

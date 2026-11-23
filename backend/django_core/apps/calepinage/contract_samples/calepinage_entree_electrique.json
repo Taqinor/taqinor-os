@@ -114,6 +114,7 @@
     "absents": [
       "optimiseur"
     ],
+    "devis_retenu": {"devis": 1, "reference": "DEV-202611-0001", "statut": "envoye", "option": "sans", "provenance": "devis", "onduleur": {"produit_id": 901, "designation": "Onduleur réseau 10 kW (exemple)"}, "nombre_onduleurs": 1, "longueur_chaine": null, "ecarts": ["2 onduleur(s) saisi(s), 1 au devis DEV-202611-0001."]},
     "candidats": {
       "modules": [
         {
@@ -183,6 +184,7 @@
       "onduleur",
       "optimiseur"
     ],
+    "devis_retenu": null,
     "candidats": {
       "modules": [],
       "onduleurs": [],
@@ -244,5 +246,6 @@
       "seuils": {"veille_pct": 30, "entretien_pct": 20, "arret_pct": 10},
       "groupe": {"actif": true, "puissance_kw": 5.0, "soc_demarrage_pct": 20, "soc_arret_pct": 80, "heures_max_par_jour": 6}
     }
-  }
+  },
+  "acal1952_note": "ACAL1952 — `devis_retenu` : le matériel électrique que le devis LIÉ a retenu (`conception_retenue_du_devis`, contrat `calepinage_conception_retenue.json`) — onduleur de l'option retenue, nombre d'onduleurs, longueur de chaîne (null quand le devis n'en porte pas), `provenance: devis` — qui servent le calcul quand rien n'est saisi ; `ecarts` = les phrases d'une saisie CONTRAIRE au devis (information, la saisie reste permise). `null` sans devis lié."
 }

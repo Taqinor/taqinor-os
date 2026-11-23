@@ -164,6 +164,22 @@ describe('MaterielElectrique (ACAL149)', () => {
     })
   })
 
+  it('ACAL1952 — le matériel retenu par le devis est dit, avec l’écart d’une saisie contraire', async () => {
+    calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: EXEMPLE })
+    rendre()
+    const bloc = await screen.findByTestId('acal149-devis-retenu')
+    expect(bloc).toHaveTextContent(`Repris du devis ${EXEMPLE.devis_retenu.reference} (option sans batterie)`)
+    expect(bloc).toHaveTextContent(EXEMPLE.devis_retenu.onduleur.designation)
+    expect(bloc).toHaveTextContent(`Écart avec le devis — ${EXEMPLE.devis_retenu.ecarts[0]}`)
+  })
+
+  it('ACAL1952 — sans devis lié, aucun bloc « repris du devis »', async () => {
+    calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: VIDE })
+    rendre()
+    await screen.findByTestId('acal149-formulaire')
+    expect(screen.queryByTestId('acal149-devis-retenu')).toBeNull()
+  })
+
   it('une lecture en panne le DIT, sans inventer de matériel', async () => {
     calepinageApi.calepinages.entreeElectrique.mockRejectedValue(new Error('boum'))
 

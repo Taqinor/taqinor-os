@@ -60,6 +60,7 @@ from . import (hors_reseau_declaration as _hors_reseau_declaration,  # ACAL790
                suppositions as _suppositions)  # ACAL980
 from .regle_chaine_publiee import _regle_chaine_publiee  # ACAL645 — extraite
 from .valeurs import nombre as _nombre
+from .devis_retenu import bloc_devis_retenu, options_avec_devis, produits_retenus  # ACAL1952
 
 __all__ = [
     'SOURCE_SAISIE', 'SOURCE_TMY', 'MENTION_NON_SOURCEE',
@@ -1059,7 +1060,7 @@ def _produits_du_devis(calepinage):
         bloc = agregat.get(famille)
         if isinstance(bloc, dict) and bloc.get('produit') not in (None, ''):
             produits[role] = bloc['produit']
-    return produits
+    return produits_retenus(calepinage, produits)  # ACAL1952 — l'onduleur de l'option retenue
 
 
 def resoudre_materiel(company, entree, *, calepinage=None):
@@ -1244,6 +1245,7 @@ def entree_electrique_servie(calepinage, stockee):
         'materiel': materiel,
         'absents': [role for role in ROLES_MATERIEL if materiel[role] is None],
         'candidats': _candidats_materiel(calepinage),
+        'devis_retenu': bloc_devis_retenu(calepinage, stockee, resolu),  # ACAL1952
     }
 
 
@@ -1385,8 +1387,8 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
         # ACAL650 — tolérance d'orientation SAISIE (sourcée) ou None.
         tolerance_orientation_deg=tolerance_orientation_societe(
             parametres_societe(calepinage)),
-        **_options_entree(donnees), **_options_batterie(
-            calepinage, donnees, materiel))
+        **options_avec_devis(_options_entree(donnees), calepinage, donnees),  # ACAL1952
+        **_options_batterie(calepinage, donnees, materiel))
     return (conception, materiel, donnees, document)
 
 

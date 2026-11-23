@@ -345,7 +345,7 @@ def conception_retenue_du_devis(devis):
     panneaux = [li for li in lignes_option
                 if _lignes._classe_ligne(li, _lignes._is_panel)]
     onduleurs = [li for li in lignes_option
-                 if _lignes._classe_ligne(li, classification.is_any_inverter)]
+                 if _lignes._classe_ligne(li, classification.is_inverter)]
     divergent = deux_options and (
         _compte_panneaux(lignes, 'sans', _lignes)
         != _compte_panneaux(lignes, 'avec', _lignes))
