@@ -187,3 +187,26 @@ describe('étape Toit — ouvert depuis la carte « Pente et orientation »', ()
     expect(screen.getByTestId('cal-pente-message')).toHaveTextContent('Pente enregistrée sur le pan « Pan A ».')
   })
 })
+
+// ACAL1341 — un pan « Toit plat » n'a pas de pente : ni « Enregistrer la pente » ni « Confirmer » n'y écrivent 22°.
+describe('ACAL1341 — pan plat : aucune pente écrite', () => {
+  const PLAT = { id: 'zP', label: 'Terrasse', roofType: 'flat', pitchDeg: 22 }
+
+  it('l’onglet Pente ne s’offre pas pour un pan plat', async () => {
+    layout.mockResolvedValue({ data: { roof_layout: { zones: [PLAT], activeAreaId: 'zP' }, empreinte_document: 'jeton-1' } })
+    rendre()
+    expect(await screen.findByTestId('cal-pente-plat')).toHaveTextContent('Toit plat')
+    expect(screen.queryByTestId('cal-pente-enregistrer')).toBeNull()
+    expect(enregistrerSectionLayout).not.toHaveBeenCalled()
+  })
+
+  it('« Confirmer » sur un pan plat : pitchDeg 0, jamais la pente de départ', async () => {
+    const { enregistrerPentePan } = await import('./atelier/coque/etapes/EtapeToit.helpers')
+    const doc = { empreinte: 'jeton-1', appliquerSection: vi.fn(), recharger: vi.fn() }
+    const rendu = await enregistrerPentePan({ calepinageId: 7, doc, zone: PLAT, zones: [PLAT],
+      champs: { pitchDeg: 22, pitchSource: { mode: 'degres', degres: 22 } } })
+    expect(rendu.ok).toBe(true)
+    expect(enregistrerSectionLayout.mock.calls[0][1].champs).toEqual({ pitchDeg: 0 })
+    expect(doc.appliquerSection.mock.calls[0][1][0]).toMatchObject({ roofType: 'flat', pitchDeg: 0 })
+  })
+})

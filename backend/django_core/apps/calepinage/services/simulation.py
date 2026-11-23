@@ -827,13 +827,13 @@ def recalculer_simulations_societe(company, user, *,
     simulation encore fraîche se court-circuite d'elle-même.
 
     Returns:
-        ``{soumis, jobs: [{calepinage, job_id}], reste}`` — au plus
+        ``{soumis, jobs: [{calepinage, job_id}], hors_portee, reste}`` — au plus
         ``plafond`` travaux par appel ; ``reste`` compte ceux à relancer par
         un nouvel appel.
     """
     from core.jobs import submit
 
-    from ..selectors import liste_calepinages
+    from ..selectors import calepinages_visibles, liste_calepinages
     from ..tasks import (
         KIND_CALEPINAGE, NATURE_SIMULATION,
         simuler_calepinage as tache_de_simulation,
@@ -855,7 +855,14 @@ def recalculer_simulations_societe(company, user, *,
                      user=user, calepinage_id=calepinage_id,
                      nature=NATURE_SIMULATION, forcer=False)
         jobs.append({'calepinage': calepinage_id, 'job_id': job.pk})
-    return {'soumis': len(jobs), 'jobs': jobs,
+    # ACAL1247 (D-ALEC-4) — le travail vaut pour toute la société ; la réponse
+    # ne nomme que ce que le rôle de l'appelant lit, un compte pour le reste.
+    lus = (set(calepinages_visibles(user).filter(pk__in=candidats)
+               .values_list('pk', flat=True)) if user is not None
+           else set(candidats))
+    servis = [job for job in jobs if job['calepinage'] in lus]
+    return {'soumis': len(jobs), 'jobs': servis,
+            'hors_portee': len(jobs) - len(servis),
             'reste': max(0, len(candidats) - len(jobs))}
 
 

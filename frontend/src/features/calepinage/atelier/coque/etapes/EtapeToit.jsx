@@ -155,13 +155,16 @@ function CartePente({ calepinageId, builderApi, documentVivant, lectureSeule, en
         </p>
       )}
       {message && <p className="cal-toit-pente-message" role="status">{message}</p>}
-      <details className="cal-toit-pente-modifier" onToggle={(e) => setModifier(e.currentTarget.open)}>
-        <summary>Modifier la pente</summary>
-        {modifier && (
-          <SaisiePente calepinageId={calepinageId} documentVivant={documentVivant} lectureSeule={lectureSeule}
-            zoneInitiale={zone?.id ?? ''} onEnregistre={recharger} />
-        )}
-      </details>
+      {/* ACAL1341 — un toit plat n'a pas de pente : sa forme change par les tuiles, jamais par ce formulaire. */}
+      {!vue?.plat && (
+        <details className="cal-toit-pente-modifier" onToggle={(e) => setModifier(e.currentTarget.open)}>
+          <summary>Modifier la pente</summary>
+          {modifier && (
+            <SaisiePente calepinageId={calepinageId} documentVivant={documentVivant} lectureSeule={lectureSeule}
+              zoneInitiale={zone?.id ?? ''} onEnregistre={recharger} />
+          )}
+        </details>
+      )}
     </div>
   )
 }

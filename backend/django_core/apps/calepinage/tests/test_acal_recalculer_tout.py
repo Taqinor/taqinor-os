@@ -127,6 +127,56 @@ class RecalculerToutTest(TestCase):
         self.assertNotIn(self.simules[0].pk, ids)
         self.assertEqual(reponse.data['soumis'], 2)
 
+    def test_commercial_ne_voit_que_les_jobs_de_sa_portee(self):
+        """ACAL1247 (D-ALEC-4) — le travail lancé reste toute la société ; la
+        réponse et le suivi ne montrent que ce que le rôle lit, un compte
+        pour le reste ; le suivi d'un job hors portée répond 404."""
+        from core import cache as cache_tenant
+
+        from apps.calepinage.tasks import cle_job
+        from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
+
+        role = Role.objects.create(company=self.societe, nom='Commercial',
+                                   permissions=list(COMMERCIAL_PERMISSIONS))
+        rec_b = get_user_model().objects.create_user(
+            username='acal1247_b', password='x', company=self.societe,
+            role=role)
+        lead_b = Lead.objects.create(company=self.societe, nom='De B',
+                                     owner=rec_b)
+        siens = [Calepinage.objects.create(
+            company=self.societe, lead_id=lead_b.pk, titre=f'B {rang}',
+            cree_par=rec_b, resultat=SIMULE) for rang in range(2)]
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(rec_b)}')
+
+        reponse, envoi = self._poster()
+
+        self.assertEqual(reponse.status_code, 202, reponse.content[:300])
+        self.assertEqual(reponse.data['soumis'], 5)
+        self.assertEqual(reponse.data['hors_portee'], 3)
+        self.assertEqual(sorted(j['calepinage'] for j in reponse.data['jobs']),
+                         sorted(c.pk for c in siens))
+        self.assertEqual(envoi.call_count, 5)  # le travail : toute la société
+        for rang, appel in enumerate(envoi.call_args_list):
+            job = BackgroundJob.objects.get(pk=appel.kwargs['job_id'])
+            pk = appel.kwargs['calepinage_id']
+            # Succès (résumé) ou échec publié (motif nommé), comme tasks.py.
+            charge = ({'elements': [], 'resultat': {'calepinage': pk}}
+                      if rang % 2 else
+                      {'elements': [{'index': 0, 'repere': str(pk),
+                                     'statut': 'failed', 'champ': 'meteo',
+                                     'motif': 'Mode météo non saisi.',
+                                     'resultat': None}], 'resultat': None})
+            cache_tenant.set(self.societe.pk, cle_job(job.pk), charge)
+            job.marquer_termine(cle_job(job.pk))
+            suivi = self.api.get(
+                f'/api/django/calepinage/moteur/resultat/{job.pk}/')
+            attendu = 200 if pk in {c.pk for c in siens} else 404
+            self.assertEqual(suivi.status_code, attendu, suivi.data)
+            self.assertEqual(self.api.get(
+                f'/api/django/calepinage/moteur/resultat/{job.pk}/')
+                .status_code, attendu, 'relire le suivi : même réponse')
+
     def test_plafond_par_appel_dit_ce_qui_reste(self):
         from apps.calepinage.services.simulation import (
             recalculer_simulations_societe,

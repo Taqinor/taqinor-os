@@ -461,6 +461,18 @@ class MoteurResultatView(APIView):
             return Response({'detail': 'Calcul de calepinage introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
         charge = resultat_du_job(job) or {}
+        # ACAL1247 (D-ALEC-4) — le suivi d'une simulation d'un calepinage que
+        # le rôle ne lit pas (« tout recalculer ») est introuvable, comme lui.
+        from ..selectors import calepinages_visibles
+
+        resume = charge.get('resultat')
+        cible = (resume.get('calepinage') if isinstance(resume, dict) else next(
+            (e.get('repere') for e in charge.get('elements') or []
+             if isinstance(e, dict) and 'champ' in e), None))  # échec publié
+        if str(cible).isdigit() and not calepinages_visibles(
+                request.user, inclure_archives=True).filter(pk=cible).exists():
+            return Response({'detail': 'Calcul de calepinage introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
         return Response({
             'job_id': job.pk,
             'kind': job.kind,

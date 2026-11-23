@@ -276,7 +276,12 @@ export function useEtatToit(intervalle = 500) {
  * orientation » de l'étape Toit, maquette Main). Le document lu (`doc`) et l'atelier vivant
  * reprennent les pans rendus. Rend `{ ok, message }` (motif serveur d'abord, ACAL280).
  */
-export async function enregistrerPentePan({ calepinageId, doc, documentVivant = null, zone, zones, champs }) {
+export async function enregistrerPentePan({ calepinageId, doc, documentVivant = null, zone, zones, champs: demandes }) {
+  // ACAL1341 — un pan « Toit plat » n'a pas de pente : rien d'autre que 0° ne s'y écrit (la forme passe par les tuiles).
+  const plat = zone?.roofType === 'flat'
+  const champs = plat
+    ? Object.fromEntries([...Object.entries(demandes).filter(([cle]) => cle !== 'pitchSource'), ['pitchDeg', 0]])
+    : demandes
   // ACAL316 — le jeton de l'atelier vivant s'il existe, sinon celui de la lecture : un
   // document changé ailleurs répond 409 plutôt que d'être écrasé.
   const base = documentVivant?.empreinte || doc.empreinte
@@ -290,7 +295,8 @@ export async function enregistrerPentePan({ calepinageId, doc, documentVivant = 
       String(z.id) === String(zone.id) ? { ...z, ...champs } : z))
     doc.appliquerSection('zones', mises, apres)
     documentVivant?.appliquerSection?.('zones', mises, apres)
-    return { ok: true, message: `Pente enregistrée sur le pan « ${zone.label || zone.id} ».` }
+    const nom = zone.label || zone.id
+    return { ok: true, message: plat ? `Toit plat confirmé sur le pan « ${nom} ».` : `Pente enregistrée sur le pan « ${nom} ».` }
   } catch (e) {
     // Lot 2 critique #32 — jeton périmé (relu) ≠ verrou (motif serveur).
     const conflit = lireConflit(e)
