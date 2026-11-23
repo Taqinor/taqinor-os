@@ -62,6 +62,28 @@ class SchemaTests(SimpleTestCase):
         self.assertIn('origine_conception', cles_hors_empreinte())
         self.assertEqual(S.cles_refusees_pour(S.ECRAN, ['origine_conception']), ['origine_conception'])
 
+    def test_suppositions_du_devis_automatique_rangees_hors_empreinte(self):
+        """ADEV123/ADEV125 (« Persistance ») — seules les alertes qui nomment un
+        champ de la fiche sont rangées ; clé DÉRIVÉE, hors empreinte C&I,
+        jamais écrivable par l'écran ; sans supposition, aucune clé."""
+        from apps.ventes.domain.creation_auto import marquer_rapide
+        from apps.ventes.domain.etude_ci import cles_hors_empreinte
+        journal = {'alertes': [
+            {'code': 'suppose_presence', 'message': 'Présence supposée.', 'champ_lead': 'occupation_jour'},
+            {'code': 'supposition_contrat_electricite', 'message': 'Contrat supposé.',
+             'champ_lead': 'contrat_electricite', 'interne': True, 'niveau': 'alerte'},
+            {'code': 'a_chiffrer_visite', 'message': 'À chiffrer.', 'champ_lead': None},
+            {'code': 'composition', 'message': 'Avertissement.'}]}
+        devis = marquer_rapide(_DevisEnMemoire({'scenario': 'sans'}), journal)
+        self.assertEqual(devis.etude_params['journal_auto'], {'alertes': [
+            {'code': 'suppose_presence', 'message': 'Présence supposée.', 'champ_lead': 'occupation_jour'},
+            {'code': 'supposition_contrat_electricite', 'message': 'Contrat supposé.',
+             'champ_lead': 'contrat_electricite', 'interne': True}]})
+        self.assertEqual(S.valider(devis.etude_params), [])
+        self.assertIn('journal_auto', cles_hors_empreinte())
+        self.assertEqual(S.cles_refusees_pour(S.ECRAN, ['journal_auto']), ['journal_auto'])
+        self.assertNotIn('journal_auto', marquer_rapide(_DevisEnMemoire({}), {'alertes': []}).etude_params)
+
     def test_chaque_cle_declare_type_proprietaire_et_nature(self):
         for cle, regle in S.SCHEMA.items():
             with self.subTest(cle=cle):

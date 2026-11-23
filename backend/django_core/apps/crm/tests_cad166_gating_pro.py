@@ -128,27 +128,44 @@ class PretEgaleCeQueLeMoteurExigeALEA47(SimpleTestCase):
         lead.heure_debut, lead.heure_fin = 8, 18
         self.assertEqual(champs_manquants(lead), [])
 
+    def test_le_refus_nomme_ce_qui_manque_vraiment(self):
+        # Coutures vague D2, point 5 — une seule puce quand jours ET heures
+        # manquent ; sinon le libellé ne nomme que ce qui manque.
+        lead = _lead_pro(conso_mensuelle_kwh=Decimal('10000'),
+                         categorie_commerciale='autre',
+                         contrat_electricite='bt_patente',
+                         raccordement='triphase')
+        self.assertEqual(champs_manquants(lead), [LIB_RYTHME])
+        lead.jours_ouverture = [1, 2, 3, 4, 5]
+        self.assertEqual(champs_manquants(lead),
+                         ["Heures d'ouverture ou régime d'équipes (ou catégorie d'activité)"])
+        lead.jours_ouverture, lead.heure_debut, lead.heure_fin = None, 8, 18
+        self.assertEqual(champs_manquants(lead),
+                         ["Jours d'ouverture (ou catégorie d'activité)"])
+
     def test_industriel_conso_et_contrat_sans_rythme_pas_pret(self):
         lead = Lead(nom='Usine', type_installation='industriel',
                     conso_mensuelle_kwh=Decimal('20000'),
                     contrat_electricite='bt_force_motrice',
                     raccordement='triphase')
         self.assertEqual(champs_manquants(lead), [LIB_RYTHME])
-        # Un 1x8 sans heure de début ne place aucune plage (règle moteur).
+        # D-ACAL-94 (« regime_suffit ») — un 1x8 sans heure de début : heure
+        # supposée par le moteur (même règle que lui), le lead est prêt.
         lead.jours_ouverture, lead.regime_equipes = [1, 2, 3, 4, 5], '1x8'
-        self.assertEqual([e['champ'] for e in champs_manquants_detail(lead)],
-                         ['heure_debut'])
+        self.assertEqual(champs_manquants(lead), [])
         lead.heure_debut = 7
         self.assertEqual(champs_manquants(lead), [])
 
     def test_adev127_regime_d_equipes_seul_suffit(self):
-        # ADEV127 (D-ACAL-94) — 3×8 sans jours : prêt (lundi-samedi supposés
-        # par le moteur, même règle que lui) ; 1×8 sans heure : l'heure manque.
+        # ADEV127 (D-ACAL-94, réponse « regime_suffit ») — le régime seul,
+        # sans jours ni heure : prêt en 3×8, continu, 2×8 et 1×8 (lundi-samedi
+        # et heure de début supposés par le moteur, même règle que lui).
         lead = Lead(nom='Usine', type_installation='industriel',
                     conso_mensuelle_kwh=Decimal('20000'), regime_equipes='3x8')
-        self.assertEqual(champs_manquants(lead), [])
-        lead.regime_equipes = '1x8'
-        self.assertEqual([e['champ'] for e in champs_manquants_detail(lead)], ['heure_debut'])
+        for regime in ('3x8', 'continu', '2x8', '1x8'):
+            lead.regime_equipes = regime
+            self.assertEqual(champs_manquants(lead), [], regime)
+            self.assertNotIn(['heure_debut', 'regime_equipes'], champs_requis(lead), regime)
 
     def test_le_contrat_n_est_plus_jamais_un_groupe_requis(self):
         # MT déclarée : Tarif Général ; ADEV125 (D-ACAL-92) — tension inconnue

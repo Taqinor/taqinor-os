@@ -279,6 +279,35 @@ class DevisAutoCITests(_Base):
         dites = [a for a in journal['alertes'] if a['code'] == 'jours_ouverts_supposes']
         self.assertEqual([a['champ_lead'] for a in dites], ['jours_ouverture'])
 
+    def test_d_acal_94_industriel_2x8_sans_heure_devis_et_heure_dite(self):
+        # D-ACAL-94 (« regime_suffit », fondateur 23/11/2026) — 2×8 sans heure
+        # de début : 6 h supposée, dite avec le champ `heure_debut` ; le devis part.
+        lead = self._lead(conso_mensuelle_kwh=Decimal('20000'), type_installation='industriel',
+                          categorie_commerciale=None, regime_equipes='2x8')
+        journal = {}
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            devis = build_devis_auto(lead=lead, user=self.user, company=self.co,
+                                     journal_auto=journal)
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+        dites = [a for a in journal['alertes'] if a['code'] == 'heure_debut_supposee']
+        self.assertEqual([a['champ_lead'] for a in dites], ['heure_debut'])
+        self.assertIn('6 h supposée', dites[0]['message'])
+
+    def test_adev125_suppositions_rangees_avec_le_devis_et_relues(self):
+        # Clause « Persistance » (vu en direct T3-VAGUED : etude_ci.alertes ne
+        # garde pas les supposition_*) — rangées sous etude_params.journal_auto.
+        lead = self._lead(facture_hiver=Decimal('6000'), tension_raccordement=None,
+                          contrat_electricite=None)
+        journal = {}
+        devis = build_devis_auto(lead=lead, user=self.user, company=self.co, journal_auto=journal)
+        devis.refresh_from_db()
+        rangees = {a['champ_lead']: a for a in devis.etude_params['journal_auto']['alertes']}
+        dites = {a['champ_lead']: a for a in journal['alertes'] if a.get('champ_lead')}
+        self.assertEqual(set(rangees), set(dites))
+        self.assertIn('contrat_electricite', rangees)
+        self.assertIn('tension_raccordement', rangees)
+        self.assertEqual(rangees['contrat_electricite']['message'], dites['contrat_electricite']['message'])
+
     def test_adev124_profil_estime_sort_au_journal(self):
         # ADEV124 — le profil de l'activité (archétype, niveau « info ») est dit.
         journal = {}
@@ -368,6 +397,29 @@ class DevisAutoCITests(_Base):
         erreur = self._refus(lead, reel=True)
         self.assertEqual(erreur.field, 'contrat_electricite')
         self.assertIn('Facture en MAD sans contrat', erreur.message)
+
+    def test_d_acal_92_industriel_facture_mad_sans_tension_bt_supposee_et_dite(self):
+        # D-ACAL-92 (« supposer_bt ») — industriel, facture en dirhams, ni
+        # tension ni contrat : basse tension supposée, dite avec le champ
+        # `tension_raccordement`, devis en estimation (sous réserve de visite).
+        lead = self._lead(facture_hiver=Decimal('30000'), type_installation='industriel',
+                          tension_raccordement=None, categorie_commerciale=None,
+                          regime_equipes='3x8')
+        journal = {}
+        devis = build_devis_auto(lead=lead, user=self.user, company=self.co,
+                                 journal_auto=journal)
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+        etude = devis.etude_params['etude_ci']
+        self.assertTrue(etude['sous_reserve_visite']['valeur'])
+        dites = [a for a in journal['alertes'] if a['champ_lead'] == 'tension_raccordement']
+        self.assertEqual(len(dites), 1, journal['alertes'])
+        self.assertIn('basse tension supposée', dites[0]['message'])
+        # Une moyenne tension DÉCLARÉE garde sa règle : la facture en dirhams
+        # n'est pas convertie au tarif basse tension, refus nommé.
+        mt = self._lead(facture_hiver=Decimal('30000'), type_installation='industriel',
+                        tension_raccordement='mt', categorie_commerciale=None,
+                        regime_equipes='3x8')
+        self.assertEqual(self._refus(mt, reel=True).field, 'conso_mensuelle_kwh')
 
     def test_profil_societe_dune_autre_categorie_jamais_retenu(self):
         ProfilTypeConsommation.objects.create(

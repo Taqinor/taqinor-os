@@ -472,6 +472,24 @@ class LeDevisAutoDitSesSuppositions(_BaseAuto):
                                           occupation_jour='present')
         self.assertEqual(set(par_champ), {'inclinaison_deg'})
 
+    def test_suppositions_rangees_avec_le_devis_et_relues(self):
+        # Clause « Persistance » (vu en direct T3-VAGUED : rouvrir le devis ne
+        # remontrait rien, etude_params sans journal_auto) — relire ⇒ identique.
+        devis, par_champ = self._journal(facture_hiver=Decimal('600'))
+        devis.refresh_from_db()
+        rangees = {a['champ_lead']: a for a in devis.etude_params['journal_auto']['alertes']}
+        self.assertEqual(set(rangees), set(par_champ))
+        for champ, alerte in par_champ.items():
+            self.assertEqual((rangees[champ]['code'], rangees[champ]['message']),
+                             (alerte['code'], alerte['message']), champ)
+        # Contrat d'abord : la forme rangée est celle de `devis_journal_auto.json`.
+        import json
+        from pathlib import Path
+        contrat = json.loads((Path(__file__).resolve().parents[1] / 'contract_samples'
+                              / 'devis_journal_auto.json').read_text(encoding='utf-8'))
+        exemple = contrat['exemple']['etude_params']['journal_auto']['alertes']
+        self.assertEqual({frozenset(a) for a in rangees.values()}, {frozenset(a) for a in exemple})
+
 
 class LeTunnelEstLeMemeCheminQueLEcran(_BaseAuto):
     """« chemin tunnel prouvé identique au chemin écran pour le MÊME lead ».

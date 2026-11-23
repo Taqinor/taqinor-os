@@ -70,4 +70,22 @@ describe('QJR580 — lead et client en lecture seule en Édition complète', () 
     expect(payload).not.toHaveProperty('lead')
     expect(payload).not.toHaveProperty('client')
   })
+
+  it('ADEV123/ADEV125 — ?edit=42 d’un devis automatique : les suppositions rangées sont remontrées', async () => {
+    // Contrat devis_journal_auto.json : etude_params.journal_auto.alertes.
+    const { etude_params: rangees } = exempleContrat('ventes', 'devis_journal_auto')
+    const base = devis42()
+    ventesApi.getDevisById.mockResolvedValue({ data: {
+      ...base.data, etude_params: { ...base.data.etude_params, ...rangees } } })
+    renderRouteSortie(DevisGenerator, makeStore(), '/ventes/devis/nouveau?edit=42', 'APRES-ENREGISTREMENT')
+    const alertes = await screen.findByTestId('ldp-alertes-auto')
+    for (const a of rangees.journal_auto.alertes) expect(alertes).toHaveTextContent(a.message)
+    expect(alertes).toHaveTextContent('À compléter sur la fiche')
+  })
+
+  it('un devis sans supposition rangée n’affiche aucun bloc d’alertes', async () => {
+    renderRouteSortie(DevisGenerator, makeStore(), '/ventes/devis/nouveau?edit=42', 'APRES-ENREGISTREMENT')
+    await screen.findByTestId('gen-lead-lecture-seule')
+    expect(screen.queryByTestId('ldp-alertes-auto')).toBeNull()
+  })
 })

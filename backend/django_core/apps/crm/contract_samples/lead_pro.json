@@ -874,7 +874,7 @@
         "facture_hiver"
       ]
     ],
-    "facture_hiver": "En MAD : ne compte, pour un COMMERCIAL, que si `tension_raccordement` ≠ « mt » ; pour un INDUSTRIEL, que si la tension « bt » est DÉCLARÉE. Raison : une facture MT porte une prime fixe — diviser ses MAD par un prix gonflerait les kWh.",
+    "facture_hiver": "En MAD : ne compte, pour un COMMERCIAL, que si `tension_raccordement` ≠ « mt » ; pour un INDUSTRIEL, que si la moyenne tension n'est pas DÉCLARÉE (D-ACAL-92, fondateur 23/11/2026 : tension vide, « ne sait pas » ou défaut du site ⇒ basse tension supposée et dite). Raison : une facture MT porte une prime fixe — diviser ses MAD par un prix gonflerait les kWh.",
     "releve_conso": "Les 12 factures ne sont JAMAIS exigées (W5-VB-07) : un mois suffit à remplir le groupe.",
     "source_conso": "colonne qui a rempli le groupe (conso_mensuelle_kwh | bill_kwh | releve_conso | facture_hiver), null si aucune",
     "visite_avant_devis": "{requise, motifs} (D-CIQ-5) — requise si la tension vaut « mt », est vide, « ne_sait_pas » ou de source `site_defaut_visible` ; si la puissance souscrite est vide ; si le type de surface ou la surface sont vides. `pret` ne mesure que les DONNÉES : un devis indicatif reste possible, marqué « estimation sous réserve de visite »."

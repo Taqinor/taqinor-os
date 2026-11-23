@@ -1,0 +1,31 @@
+{
+  "endpoint": "GET /api/django/ventes/devis/<id>/",
+  "forme_serveur": "partielle",
+  "pourquoi": "ADEV123 / ADEV125 (clause « Persistance », rejeu en direct T3-VAGUED du 23/11/2026 : rouvrir un devis automatique ne remontrait aucune supposition) — CONTRAT D'ABORD de la clé `etude_params.journal_auto` : les suppositions DITES à la création du devis automatique (résidentiel comme commercial / industriel / agricole), rangées avec le devis par `domain/creation_auto.marquer_rapide` et remontrées par l'écran à la réouverture (générateur `?edit=<id>` et aperçu du panneau devis de la fiche lead, composant `AlertesDevisAuto`). Ce fichier ne décrit que cette clé ; le reste du détail de devis est inchangé.",
+  "notes": {
+    "contenu": "Seules les alertes du journal qui nomment un champ de la fiche (`champ_lead` non vide) sont rangées : {code, message, champ_lead} (+ `interne: true` quand le moteur la marque « vendeur seulement »). Les postes à chiffrer après visite et les avertissements de composition ne le sont pas.",
+    "absence": "Clé ABSENTE quand rien n'a été supposé, et sur tout devis créé avant ADEV123 : l'écran n'affiche alors rien (jamais un bloc vide).",
+    "regles": "Clé DÉRIVÉE de `etude_schema.SCHEMA` (propriétaire `auto_devis`) : hors empreinte C&I (`etude_ci.cles_hors_empreinte`), refusée en écriture depuis l'écran, écrite UNE fois à la création (brouillon) — un devis envoyé n'est jamais réécrit. Jamais lue par le PDF client (/proposal) : ces phrases sont pour la commerciale."
+  },
+  "exemple": {
+    "id": 512,
+    "reference": "DEV-202611-0030",
+    "statut": "brouillon",
+    "etude_params": {
+      "journal_auto": {
+        "alertes": [
+          {
+            "code": "suppose_presence",
+            "message": "Présence en journée supposée (profil « présent ») : renseignez « Présence en journée » sur la fiche.",
+            "champ_lead": "occupation_jour"
+          },
+          {
+            "code": "suppose_30_plein_sud",
+            "message": "Production calculée à 30° plein sud (supposé) : l'inclinaison et l'orientation de la fiche ne sont pas prises en compte par ce calcul.",
+            "champ_lead": "inclinaison_deg"
+          }
+        ]
+      }
+    }
+  }
+}

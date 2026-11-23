@@ -31,6 +31,7 @@ CHAMP_LEAD_PAR_CODE = {
     'profil_estime': 'jours_ouverture',
     'jours_ouverts_non_declares': 'jours_ouverture',
     'jours_ouverts_supposes': 'jours_ouverture',  # ADEV127 (D-ACAL-94)
+    'heure_debut_supposee': 'heure_debut',  # D-ACAL-94 « regime_suffit »
     'horaires_a_demander': 'heure_debut',
     'heures_jour_a_preciser': 'heure_debut',
     'contenance_toit_inconnue': 'surface_toiture_m2',
@@ -64,6 +65,9 @@ HYPOTHESES_ESTIMEES = {
     'contrat_electricite': ('contrat_electricite', (
         "Contrat d'électricité non déclaré : tarif basse tension ({libelle}) supposé, devis "
         'en estimation. Demandez au client son contrat : il est écrit sur sa facture.')),
+    'tension': ('tension_raccordement', (
+        'Tension de raccordement non déclarée : basse tension supposée, devis en estimation. '
+        'Demandez au client s’il est en basse ou en moyenne tension : c’est écrit sur sa facture.')),
     'phases': ('raccordement', (
         'Phase du site non déclarée : triphasé supposé, les onduleurs en dépendent. '
         'Demandez au client s’il est en monophasé ou en triphasé : c’est écrit sur sa '
@@ -91,6 +95,18 @@ LIBELLES_SUPPOSES = {'bt_patente': 'BT patenté', 'bt_force_motrice': 'BT force 
 #: ne sais pas ») : triphasé supposé pour tout commercial et industriel, dit.
 PHASE_SUPPOSEE = 'tri'
 PHASES_DECLAREES = ('mono', 'tri')
+#: D-ACAL-92 — tensions DÉCLARÉES (``entrees_ci_du_lead`` sert « inconnue »
+#: pour « ne sait pas » et le défaut du site jamais touché).
+TENSIONS_DECLAREES = ('bt', 'mt')
+#: D-ACAL-94 (réponse du fondateur du 23/11/2026 : « regime_suffit ») — régime
+#: 1×8 / 2×8 déclaré SANS heure de début : l'heure de la première équipe est
+#: supposée (une équipe de jour 8 h-16 h ; deux équipes 6 h-22 h), dite avec le
+#: champ ``heure_debut`` de la fiche, en estimation. Une heure DÉCLARÉE prime.
+HEURE_DEBUT_SUPPOSEE = {'1x8': 8, '2x8': 6}
+SOURCE_HEURE_DEBUT_SUPPOSEE = 'décision fondateur du 23/11/2026 (D-ACAL-94)'
+MESSAGE_HEURE_DEBUT_SUPPOSEE = (
+    "Heure de début d'équipe non déclarée : {heure} h supposée (régime {regime}, estimation, "
+    + SOURCE_HEURE_DEBUT_SUPPOSEE + "). Demandez au client l'heure de début de sa première équipe.")
 #: Origine d'une entrée supposée (vocabulaire du contrat ``etude_ci_preview.json``).
 ORIGINE_SUPPOSEE = 'estimation'
 
@@ -105,6 +121,21 @@ def champs_supposes(mode, tension):
     if mode not in CONTRAT_BT_SUPPOSE:
         return ()
     return (() if tension == 'mt' else ('contrat_electricite',)) + ('raccordement',)
+
+
+def _tension_supposee(res, mode, tension):
+    """D-ACAL-92 (« supposer_bt », 23/11/2026, lead commercial ou industriel) —
+    tension non déclarée (vide, « ne sait pas », défaut du site) sous un tarif
+    basse tension (déclaré ou supposé) : la basse tension est SUPPOSÉE, dite
+    avec le champ ``tension_raccordement`` (jamais posée dans ``res`` : aucun
+    chiffre de composition ne bouge)."""
+    tarif = res.valeur('tarif_declare')
+    contrat = tarif.get('contrat') if isinstance(tarif, dict) else None
+    if mode not in CONTRAT_BT_SUPPOSE or tension in TENSIONS_DECLAREES or not str(contrat or '').startswith('bt_'):
+        return []
+    return [{'cle': 'tension', 'valeur': 'bt', 'statut': 'estimation',
+             'source': 'tension non déclarée : basse tension supposée (décision fondateur du '
+                       '23/11/2026, D-ACAL-92)'}]
 
 
 def supposer_entrees(res, mode, regles=None):
@@ -128,6 +159,7 @@ def supposer_entrees(res, mode, regles=None):
                                'statut': 'estimation',
                                'source': 'contrat non déclaré : tarif basse tension supposé '
                                          '(décision fondateur du 23/11/2026)'})
+    hypotheses.extend(_tension_supposee(res, mode, tension))
     if 'raccordement' in champs_supposes(mode, tension) and res.valeur('phases') not in PHASES_DECLAREES:
         res.poser('phases', PHASE_SUPPOSEE, _provenance_supposee('raccordement'))
         hypotheses.append({'cle': 'phases', 'valeur': PHASE_SUPPOSEE, 'statut': 'estimation',

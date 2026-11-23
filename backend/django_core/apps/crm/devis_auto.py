@@ -10,8 +10,8 @@ avant de pouvoir lancer le générateur de devis automatique :
   - Industriel / Commercial (CIQ404, contrat CIQ1) : l'un de
     conso_mensuelle_kwh, bill_kwh, releve_conso, ou facture_hiver (MAD) —
     pour un commercial si la tension n'est pas « mt », pour un industriel
-    seulement si la basse tension est DÉCLARÉE, avec un contrat BT déclaré ou
-    supposé ; ALEA47 — + le rythme, par LA règle du moteur
+    si la moyenne tension n'est pas DÉCLARÉE (D-ACAL-92 : basse tension
+    supposée et dite), avec un contrat BT déclaré ou supposé ; ALEA47 — + le rythme, par LA règle du moteur
     (``ventes.selectors.profil_charge_prerequis_ci``, jamais une copie) ; les
     champs que le moteur SUPPOSE ne sont plus exigés (ADEV125,
     ``ventes.services.champs_supposes_ci``) ;
@@ -99,13 +99,15 @@ def _tension_declaree(lead):
 def _facture_mad_compte(lead):
     """CIQ404 (contrat CIQ1 ``regles_devis_auto.facture_hiver``) — une
     facture MT porte une prime fixe : diviser ses MAD par un prix gonflerait
-    les kWh. Commercial : compte sauf en « mt » ; industriel : seulement si
-    la basse tension est DÉCLARÉE."""
+    les kWh. Commercial : compte sauf en « mt » ; industriel : sauf en « mt »
+    DÉCLARÉE — D-ACAL-92 (« supposer_bt », 23/11/2026) : une tension non
+    déclarée (vide, « ne sait pas », défaut du site) est supposée basse
+    tension par le moteur, et dite (``suppositions_ci``)."""
     mode = lead.type_installation
     if mode == 'commercial':
         return getattr(lead, 'tension_raccordement', None) != 'mt'
     if mode == 'industriel':
-        return _tension_declaree(lead) == 'bt'
+        return _tension_declaree(lead) != 'mt'
     return True
 
 
@@ -272,8 +274,9 @@ GROUPE_CONSO_PRO = ('conso_mensuelle_kwh', 'bill_kwh', 'releve_conso',
 #: ``devis_auto_pret.json`` → ``exemple_industriel``).
 _LIBELLES_PRO = {
     'commercial': 'Consommation (kWh) ou facture mensuelle (MAD)',
+    # D-ACAL-92 — la facture en MAD compte sauf en moyenne tension déclarée.
     'industriel': ('Consommation (kWh), relevé de factures, ou facture en '
-                   'MAD si la basse tension est déclarée'),
+                   'MAD (hors moyenne tension déclarée)'),
 }
 
 #: Ordre de préférence de la source de consommation : le relevé prime, puis
@@ -309,9 +312,12 @@ _LIBELLES = {
     'raccordement': 'Phase du site (monophasé ou triphasé)',
     # ALEA67 — ville reconnue OU point GPS (une seule puce).
     'ville': 'ville',
-    'jours_ouverture': "Jours et heures d'ouverture (ou catégorie d'activité)",
-    'heure_debut': "Jours et heures d'ouverture (ou catégorie d'activité)",
+    # Coutures vague D2 — chaque groupe de rythme nomme ce qui manque
+    # vraiment ; les deux manquants partagent UNE puce (LIBELLE_RYTHME).
+    'jours_ouverture': "Jours d'ouverture (ou catégorie d'activité)",
+    'heure_debut': "Heures d'ouverture ou régime d'équipes (ou catégorie d'activité)",
 }
+LIBELLE_RYTHME = "Jours et heures d'ouverture (ou catégorie d'activité)"
 
 
 def champs_manquants_detail(lead, requis=None) -> list[dict]:
@@ -320,12 +326,16 @@ def champs_manquants_detail(lead, requis=None) -> list[dict]:
     groupe de rythme n'est requis QUE manquant (ALEA47, règle du moteur)."""
     detail = []
     mode = lead.type_installation or 'residentiel'
-    for groupe in champs_requis(lead) if requis is None else requis:
+    groupes = champs_requis(lead) if requis is None else requis
+    rythmes = sum(tuple(g) in _GROUPES_RYTHME.values() for g in groupes)
+    for groupe in groupes:
         rythme = tuple(groupe) in _GROUPES_RYTHME.values()
         if not rythme and any(_rempli(lead, champ) for champ in groupe):
             continue
         label = (_LIBELLES_PRO[mode] if mode in _MODES_ETUDE
-                 and groupe[0] in GROUPE_CONSO_PRO else _LIBELLES[groupe[0]])
+                 and groupe[0] in GROUPE_CONSO_PRO
+                 else LIBELLE_RYTHME if rythme and rythmes > 1
+                 else _LIBELLES[groupe[0]])
         if all(entree['label'] != label for entree in detail):
             detail.append({'champ': groupe[0], 'label': label})
     return detail

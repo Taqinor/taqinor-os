@@ -7,6 +7,7 @@ import { Button, Card, CardContent, Input, Label, Select, SelectContent, SelectI
 import { GenCardHeader } from './CarteMetrique'
 import { Plus, User } from 'lucide-react'
 import { Combobox } from '../../../ui/Combobox'
+import AlertesDevisAuto from '../../crm/leads/AlertesDevisAuto'
 
 export default function CarteLeadClient({
   clients, saving, errors, editId, editDevis, leadId, clientId, setClientQuickCreateOpen,
@@ -37,6 +38,10 @@ export default function CarteLeadClient({
                       Changer de client = créer un nouveau devis.
                     </p>
                   </div>
+                  {/* ADEV123/ADEV125 — les suppositions DITES à la création du
+                      devis automatique, rangées avec lui (contrat
+                      devis_journal_auto.json), remontrées à la réouverture. */}
+                  <AlertesDevisAuto alertes={editDevis?.suppositions_auto} />
                 </>
               ) : (<>
               <Label htmlFor="gen-lead" required>Lead (point de départ)</Label>

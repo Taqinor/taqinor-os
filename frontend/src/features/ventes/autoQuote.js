@@ -195,6 +195,11 @@ export async function createAutoQuote({ lead, discountStr, onAlertes, onResultat
     if (!id) {
       throw { detail: 'Devis créé sans identifiant — ouvrez-le depuis la liste des devis.' }
     }
+    // ADEV123 — les suppositions du calcul résidentiel (présence, été = hiver,
+    // kWh tirés des dirhams, 30° plein sud) partent à l'écran comme celles du C&I.
+    if (typeof onAlertes === 'function') {
+      onAlertes(Array.isArray(reponse.data.alertes) ? reponse.data.alertes : [])
+    }
     if (typeof onResultat === 'function') onResultat(reponse.data)
     return id
   }
