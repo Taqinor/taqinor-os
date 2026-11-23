@@ -128,9 +128,11 @@ class SectionPompageTests(TestCase):
         # du tunnel (refus voulu, AGR124) : une note UNE fois ; la plaque
         # d'une pompe neuve n'est jamais écrite ; 45.1 en flottant est lu.
         from unittest import mock
+        # ALEA67 — la phase est déclarée : sans elle le moteur agricole refuse
+        # (AGQ7 « Alimentation de la pompe inconnue »), et la fiche le dit.
         lead = self._agricole(source_eau='forage', niveau_statique_m=20,
                               surface_irriguee_ha=4, pompe_alim_actuelle='butane',
-                              besoin_eau_m3j=60)
+                              besoin_eau_m3j=60, raccordement='triphase')
         self.assertTrue(quest.manquantes(lead)['pompage'])
         lien = QuestionnaireLien.objects.create(
             company=self.company, lead=lead,
@@ -159,6 +161,26 @@ class SectionPompageTests(TestCase):
         self.assertEqual(lead.pompage_heures_jour, Decimal('6.3'))
         self.assertIsNone(lead.pompe_actuelle_kw)
         self.assertFalse(quest.manquantes(lead)['pompage'])
+
+    def test_post_pompage_sans_phase_le_devis_reste_bloque(self):
+        # ALEA67 — mêmes réponses, phase du site inconnue : le devis automatique
+        # reste bloqué (le moteur refuserait), aucune note « suffisent au devis ».
+        lead = self._agricole(source_eau='forage', niveau_statique_m=20,
+                              surface_irriguee_ha=4, pompe_alim_actuelle='butane',
+                              besoin_eau_m3j=60)
+        lien = QuestionnaireLien.objects.create(
+            company=self.company, lead=lead,
+            questions={s: s == 'pompage' for s in quest.sections_du_lead(lead)})
+        corps = {'section': 'pompage', 'reponses': {
+            'pompe_hmt_m': 45.1, 'pompe_actuelle_debit_m3h': 12,
+            'pompage_heures_jour': 6.3, 'mode_pompe': 'neuve'}}
+        with self.captureOnCommitCallbacks(execute=True):
+            res = self.client.post(PUBLIC.format(lien.token), data=json.dumps(corps),
+                                   content_type='application/json')
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertIs(res.json()['devis_possible'], False)
+        self.assertFalse(LeadActivity.objects.filter(
+            lead=lead, body__contains='suffisent au devis').exists())
 
     def test_post_pompage_plaque_ecrite_si_pompe_conservee(self):
         lead = self._agricole()
