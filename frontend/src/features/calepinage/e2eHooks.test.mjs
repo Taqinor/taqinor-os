@@ -885,6 +885,8 @@ export const ALL_HOOKS = [
   'cal-docs-info-devis',
   'cal-pret-groupe',
   'cal-liste-filtres-etat',
+  'cal-vignette-toit',
+  'cal-signal',
   'cal-releve',
   'cal-vue-client',
 ]

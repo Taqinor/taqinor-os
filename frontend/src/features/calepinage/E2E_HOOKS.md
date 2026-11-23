@@ -1021,6 +1021,8 @@ retiré plus un hook ajouté.
 | `cal-docs-info-devis` | étape Documents : bandeau d’information sur le devis. |
 | `cal-pret-groupe` | « Prêt à envoyer ? » : groupe de contrôles d’une étape (suffixe = clé de l’étape). |
 | `cal-liste-filtres-etat` | liste : puces de filtre par état (comptes servis). |
+| `cal-vignette-toit` | liste : vignette du toit sur la carte d’un calepinage (contours des pans, ou « Aucun aperçu »). |
+| `cal-signal` | liste : pastille « N point à régler » d’une carte (suffixe = identifiant du calepinage). |
 | `cal-releve` | écran « Relevé de visite » au téléphone (`/calepinage/:id/releve`). |
 | `cal-vue-client` | écran « Montrer au client » (`/calepinage/:id/client`). |
 
