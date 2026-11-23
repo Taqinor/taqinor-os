@@ -212,3 +212,15 @@ class CompositionPublieeTest(SimpleTestCase):
         self.assertEqual(len(modele), 1)
         self.assertEqual(modele[0]['source'], 'societe')
         self.assertAlmostEqual(modele[0]['sigma_relatif'], 0.03, places=6)
+
+
+class RegleDuFroidDesChainesTest(SimpleTestCase):
+    """ACAL1553 (D-ACAL-80) — un site au TMY plus doux que −5 °C se
+    dimensionne au minimum de son année type, et le détail cite la règle."""
+
+    def test_un_site_au_tmy_doux_dimensionne_au_minimum_de_l_annee_type(self):
+        from apps.calepinage.services.electrique import temperatures_site
+        site = temperatures_site(pin={'lat': 33.57, 'lng': -7.59}, fournisseur=lambda lat, lon: {
+            'temperature_min_c': 4.18, 'temperature_max_c': 38.0})
+        self.assertEqual((site.froid_c, site.source), (4.18, 'tmy'))
+        self.assertIn("minimum de l'année type du lieu (règle D-ACAL-80)", site.detail)

@@ -283,15 +283,54 @@ def _fmt_kwc_fr(valeur):
     return texte.replace('.', ',')
 
 
-def _ajouter_alerte(journal_auto, code, texte):
+def _ajouter_alerte(journal_auto, code, texte, champ_lead=None):
     """Ajoute une phrase au vendeur dans ``journal_auto['alertes']``, à la
     MÊME forme que le C&I et l'agricole (``{code, message}`` — rendue par
-    ``AlertesDevisAuto.jsx``), sans doublon. Sans effet hors dict."""
+    ``AlertesDevisAuto.jsx``), sans doublon. Sans effet hors dict.
+    ``champ_lead`` (ADEV123) : le champ de la fiche qui lève la supposition,
+    même clé que le C&I (``suppositions_ci``)."""
     if not isinstance(journal_auto, dict) or not texte:
         return
     alertes = journal_auto.setdefault('alertes', [])
     if all(a.get('message') != texte for a in alertes):
-        alertes.append({'code': code, 'message': texte})
+        alertes.append(dict({'code': code, 'message': texte},
+                            **({'champ_lead': champ_lead} if champ_lead else {})))
+
+
+#: ADEV123 — les quatre suppositions du calcul résidentiel, dites avec le
+#: champ de la fiche qui les lève (règle du 17/11/2026).
+SUPPOSITIONS_RESIDENTIEL = {
+    'occupation_jour': ('suppose_presence', "Présence en journée supposée (profil « présent ») : "
+                        "renseignez « Présence en journée » sur la fiche."),
+    'facture_ete': ('suppose_ete_egal_hiver', "Facture d'été supposée égale à celle d'hiver : renseignez "
+                    "« Facture été » (et « Été différent ») sur la fiche."),
+    'conso_mensuelle_kwh': ('suppose_kwh_depuis_facture', "Consommation estimée à partir de la facture en "
+                            "dirhams (barème ONEE) : renseignez « Consommation mensuelle (kWh) » sur la fiche."),
+    'inclinaison_deg': ('suppose_30_plein_sud', "Production calculée à 30° plein sud (supposé) : "
+                        "l'inclinaison et l'orientation de la fiche ne sont pas prises en compte par ce calcul."),
+}
+
+
+def _alerter_suppositions(journal_auto, lead, company, devis):
+    """ADEV123 — ce que le calcul a SUPPOSÉ, lu aux MÊMES sources que lui
+    (``entrees_depuis_lead``, ``occupation_du_lead``, base de production) ;
+    aucun chiffre ne change. Sans journal (dict), rien n'est lu."""
+    if not isinstance(journal_auto, dict) or lead is None:
+        return
+    from apps.ventes.courbes_journalieres import DEFAUT_RESIDENTIEL, occupation_du_lead
+    from apps.ventes.domain.entrees import entrees_depuis_lead
+    from apps.ventes.horaire.productible_pose import base_de_production
+    entrees = entrees_depuis_lead(lead, company, contexte=False)
+    source_conso = getattr(entrees, 'source_conso', None)
+    champs = [
+        'occupation_jour' if occupation_du_lead(lead)[1] == DEFAUT_RESIDENTIEL[1] else None,
+        'facture_ete' if source_conso == 'facture_hiver' else None,
+        'conso_mensuelle_kwh' if source_conso in ('facture_hiver', 'facture_hiver_ete') else None,
+        'inclinaison_deg' if not base_de_production(devis) else None,
+    ]
+    for champ in filter(None, champs):
+        code, texte = SUPPOSITIONS_RESIDENTIEL[champ]
+        _ajouter_alerte(journal_auto, code, texte, champ_lead=champ)
 
 
 def _alerter_taille_demandee(journal_auto, cible, taille_demandee):
@@ -329,6 +368,8 @@ def _journaliser_avertissements(devis, resultat, journal_auto):
     for avertissement in resultat['avertissements'] or []:
         logger.warning('Auto-devis %s: %s', devis.reference, avertissement)
         _ajouter_alerte(journal_auto, 'composition', str(avertissement))
+    # ADEV123 — puis ce que le calcul a SUPPOSÉ (hors de la fonction-mur).
+    _alerter_suppositions(journal_auto, devis.lead, devis.company, devis)
 
 
 def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,

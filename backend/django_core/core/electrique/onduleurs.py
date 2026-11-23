@@ -33,6 +33,7 @@ __all__ = [
     "EvaluationOnduleurs", "ratios", "nombre_onduleurs",
     "dimensionner_onduleurs", "puissance_a_temperature",
     "est_onduleur_hybride", "capacite_publiee_hybride",
+    "dc_max_publie_kwc", "capacite_dc_appareil_kwc",
 ]
 
 #: Borne USUELLE du ratio DC/AC (convention ``apps/ventes/solar_design.MAX_DC_AC``)
@@ -241,24 +242,46 @@ def est_onduleur_hybride(designation):
     return "hybrid" in str(designation or "").lower()
 
 
+def dc_max_publie_kwc(valeur):
+    """D-HYB-1 — la puissance PV maximale PUBLIÉE par une fiche (kWc), ou
+    ``None`` : seule une valeur finie > 0 compte comme publiée."""
+    try:
+        valeur = float(valeur)
+    except (TypeError, ValueError):
+        return None
+    return valeur if math.isfinite(valeur) and valeur > 0 else None
+
+
+def capacite_dc_appareil_kwc(borne_kwc, dc_max_kwc, *, hybride):
+    """ADEV121 — LA règle D-HYB-1 (fondateur 17/11/2026), une seule fois pour
+    le moteur de devis C&I (``moteur_ci/onduleurs._capacite_kwc``) et le
+    calepinage (:func:`capacite_publiee_hybride`).
+
+    kWc DC qu'un appareil porte : ``borne_kwc`` (kW AC × borne haute DC/AC) ;
+    capacité publiée ``dc_max_kwc`` : un HYBRIDE est jugé à elle, au-delà de la
+    borne ; un onduleur réseau ne fait que s'y limiter. Non publiée ⇒ la borne
+    seule. Fonction PURE."""
+    dc_max = dc_max_publie_kwc(dc_max_kwc)
+    if dc_max is None:
+        return borne_kwc
+    return dc_max if hybride else min(borne_kwc, dc_max)
+
+
 def capacite_publiee_hybride(onduleur, nombre=1):
-    """ACAL1954 — règle D-HYB-1 (fondateur, moteur de devis C&I :
-    ``moteur_ci/onduleurs._capacite_kwc``) : pour un onduleur HYBRIDE dont la
-    fiche publie ``dc_max_kwc``, la limite du champ PV est cette capacité
-    publiée (par appareil × ``nombre``), au-delà de toute borne de ratio.
+    """ACAL1954 — règle D-HYB-1 côté calepinage : pour un onduleur HYBRIDE
+    dont la fiche publie ``dc_max_kwc``, la limite du champ PV est cette
+    capacité publiée (par appareil × ``nombre``), au-delà de toute borne de
+    ratio — la même règle que :func:`capacite_dc_appareil_kwc`.
 
     Rend des kWc, ou ``None`` (onduleur réseau, ou capacité non publiée : la
     borne de ratio habituelle s'applique). Fonction PURE."""
-    dc_max = getattr(onduleur, "dc_max_kwc", None)
     if not est_onduleur_hybride(getattr(onduleur, "designation", "")):
         return None
-    try:
-        dc_max = float(dc_max)
-    except (TypeError, ValueError):
+    dc_max = dc_max_publie_kwc(getattr(onduleur, "dc_max_kwc", None))
+    if dc_max is None:
         return None
-    if not math.isfinite(dc_max) or dc_max <= 0:
-        return None
-    return dc_max * max(1, int(nombre or 1))
+    nombre = max(1, int(nombre or 1))
+    return capacite_dc_appareil_kwc(dc_max * nombre, dc_max * nombre, hybride=True)
 
 
 def dimensionner_onduleurs(entree, puissance_dc_kwc=None, reglages=None):

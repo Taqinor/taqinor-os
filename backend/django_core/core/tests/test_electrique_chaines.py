@@ -645,3 +645,47 @@ class PlafondParOnduleur(unittest.TestCase):
         self.assertEqual(evaluation.nombre, 2)
         self.assertAlmostEqual(evaluation.puissance_ac_kw, 100.0, places=6)
         self.assertAlmostEqual(evaluation.dc_par_onduleur_kwc, 55.0, places=6)
+
+
+class UneSeuleRegleDeFroidPourLeDevisEtLeCalepinage(unittest.TestCase):
+    """ADEV122 / ACAL1553 (D-ACAL-80, fondateur 23/11/2026) — la température
+    froide des chaînes est le minimum de l'année type du lieu, pour le devis
+    comme pour le calepinage ; sans épingle ni année type : −5 °C, dit."""
+
+    POINT = {'lat': 33.5731, 'lng': -7.5898}
+
+    @staticmethod
+    def _annee_type(lat, lon):
+        # Année type « douce » (Casablanca, relevé du tour 2 : +4,18 °C).
+        return {'temperature_min_c': 4.18, 'temperature_max_c': 38.0,
+                'base': 'PVGIS-SARAH3'}
+
+    def test_devis_et_calepinage_du_meme_site_meme_longueur_maximale(self):
+        from apps.calepinage.selectors_devis import froid_dimensionnement_au_point
+        from apps.calepinage.services.electrique import temperatures_site
+        from apps.ventes.moteur_ci.chaines_ci import longueur_max_appareil
+        module, onduleur = _module(), _onduleur()
+        site = temperatures_site(pin=self.POINT, fournisseur=self._annee_type)
+        calepinage = fenetre_admissible(module, onduleur, site.froid_c,
+                                        site.chaud_c).longueur_max
+        froid = froid_dimensionnement_au_point(
+            self.POINT['lat'], self.POINT['lng'], fournisseur=self._annee_type)
+        devis = longueur_max_appareil(module, onduleur, froid.valeur_c)
+        self.assertEqual((site.froid_c, froid.valeur_c), (4.18, 4.18))
+        self.assertEqual(devis, calepinage)
+        # Mutant « le devis garde −5 °C » : une chaîne plus courte.
+        self.assertGreater(devis, longueur_max_appareil(module, onduleur))
+        self.assertIn('D-ACAL-80', site.detail)
+        self.assertEqual(froid.source, 'tmy')
+
+    def test_sans_epingle_ni_annee_type_moins_cinq_dit(self):
+        from apps.calepinage.selectors_devis import froid_dimensionnement_au_point
+        from apps.calepinage.services.electrique import temperatures_site
+        for froid in (froid_dimensionnement_au_point(None, None, fournisseur=self._annee_type),
+                      froid_dimensionnement_au_point(33.57, -7.59, fournisseur=lambda la, lo: None)):
+            self.assertEqual(froid.valeur_c, -5.0)
+            self.assertIsNone(froid.source)
+            self.assertIn('supposé', froid.detail)
+        site = temperatures_site(pin=None, fournisseur=None)
+        self.assertEqual(site.froid_c, -5.0)
+        self.assertIn('supposé', site.detail)

@@ -116,3 +116,19 @@ def productible_pose_servi(devis_id, company, *, tolerance_kwc_ratio):
     return productible_pose_du_calepinage(
         calepinage, variante=variante,
         tolerance_kwc_ratio=tolerance_kwc_ratio)
+
+
+def froid_dimensionnement_au_point(lat, lng, *, fournisseur=None):
+    """ADEV122 (D-ACAL-80) — la température froide des chaînes au point d'un
+    site, pour le devis : LA règle partagée
+    (``core.electrique.types.froid_de_dimensionnement``) sur le minimum de
+    l'année type lu par le MÊME fournisseur que le calcul électrique du
+    calepinage (``services.electrique``, cache PVGIS partagé — jamais un
+    second appel météo). Sans point ni année type : −5 °C, dit. Ne lève
+    jamais (un service météo en panne ne bloque pas un devis)."""
+    from core.electrique.types import froid_de_dimensionnement
+    from .services import electrique
+    if fournisseur is None:
+        fournisseur = electrique._fournisseur_temperatures()
+    tmy = electrique._depuis_fournisseur({'lat': lat, 'lng': lng}, fournisseur)
+    return froid_de_dimensionnement(tmy[0] if tmy else None)

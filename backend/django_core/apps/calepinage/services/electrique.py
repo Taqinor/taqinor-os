@@ -46,7 +46,7 @@ from typing import Optional
 
 from core.electrique.types import (
     NATURE_FONCTIONNELLE, NATURE_MATERIELLE, STATUT_ALERTE, STATUT_BLOQUANT,
-    TEMP_CHAUD_DEFAUT_C, TEMP_FROID_DEFAUT_C, VerdictElectrique,
+    TEMP_CHAUD_DEFAUT_C, VerdictElectrique, froid_de_dimensionnement,
 )
 from .chaine_la_plus_faible import _chaine_la_plus_faible  # ACAL646 — extraite
 # REP-alias — appelées par leur MODULE (un alias masque l'appelant à la garde
@@ -314,7 +314,9 @@ def temperatures_site(*, pin=None, saisie=None, fournisseur=None,
         fournisseur = _FOURNISSEUR
     tmy = _depuis_fournisseur(pin, fournisseur)
     if tmy is not None:
-        froid, ambiante, detail = tmy
+        # ADEV122/ACAL1553 — le froid suit LA règle partagée (D-ACAL-80).
+        regle, ambiante, detail = froid_de_dimensionnement(tmy[0]), tmy[1], tmy[2]
+        froid, detail = regle.valeur_c, '%s ; %s' % (regle.detail, detail)
         # ACAL164 — le CHAUD est une température de CELLULE : la T2m
         # ambiante n'est jamais posée telle quelle dans ``chaud_c``.
         cellule = _temperature_cellule(ambiante, module_specs)
@@ -331,12 +333,10 @@ def temperatures_site(*, pin=None, saisie=None, fournisseur=None,
                    "T2m ambiante (%.2f °C) n'est pas une température de "
                    "cellule" % (detail, TEMP_CHAUD_DEFAUT_C, ambiante))
 
+    repli = froid_de_dimensionnement(None)
     return TemperaturesSite(
-        froid_c=TEMP_FROID_DEFAUT_C, chaud_c=TEMP_CHAUD_DEFAUT_C,
-        source=None, mention=MENTION_NON_SOURCEE,
-        detail="valeurs de repli du noyau électrique (%.1f °C / %.1f °C) — "
-               "aucune donnée de site" % (TEMP_FROID_DEFAUT_C,
-                                          TEMP_CHAUD_DEFAUT_C))
+        froid_c=repli.valeur_c, chaud_c=TEMP_CHAUD_DEFAUT_C, source=None, mention=MENTION_NON_SOURCEE,
+        detail="%s ; chaud : repli du noyau électrique (%.1f °C)" % (repli.detail, TEMP_CHAUD_DEFAUT_C))
 
 
 def temperatures_pour_calepinage(calepinage, *, saisie=None,
