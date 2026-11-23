@@ -29,8 +29,7 @@ const MOTIF_LECTURE_SEULE = 'Conception figée : révisez le devis (nouvelle ver
    sont ABSENTS et la raison est affichée (jamais un bouton désactivé muet).
    Un refus serveur (mauvais code, décision inconnue, refus sans motif, ou
    une suggestion d'origine automatique encore en attente — CALX106/CALX29)
-   est un 400 qui NOMME son champ : le bandeau liste les champs fautifs et le
-   message SERVEUR est rendu SOUS le champ concerné (règle fondateur du
+   est un 400 qui NOMME son champ : le message SERVEUR est rendu SOUS le champ concerné (règle fondateur du
    08/09/2026) — jamais un « refus » générique.
    ========================================================================== */
 
@@ -119,8 +118,8 @@ export default function Approbation({ calepinageId: idPropose = null, lectureSeu
   const etat = etatDecide ?? data
   if (!etat) return null
 
-  // ACAL946 — `decision` n'est pas un champ saisi : son refus se dit UNE fois, sous les boutons.
-  const champsFautifs = Object.keys(erreurs).filter((champ) => !['detail', 'decision'].includes(champ))
+  // ACAL1424 — chaque refus se dit UNE fois, sous son champ (motif, empreinte, conception, suggestion en attente,
+  // décision sous les boutons) : aucun bandeau ne répète la clé brute.
   // ACAL946 — l'auteur qu'un autre approbateur peut relire ne voit pas « Approuver » (seul l'accord est refusé).
   const accordPossible = etat.peut_approuver !== false
   const enAttente = suggestionsEnAttente(erreurs)
@@ -165,16 +164,6 @@ export default function Approbation({ calepinageId: idPropose = null, lectureSeu
           </p>
         )}
       </Card>
-
-      {champsFautifs.length > 0 && (
-        <p
-          role="alert"
-          data-testid="calx349-bandeau"
-          className="rounded border border-red-400/40 bg-red-500/10 px-3 py-2 text-sm text-red-200"
-        >
-          {`Décision refusée — à corriger : ${champsFautifs.join(', ')}`}
-        </p>
-      )}
 
       {erreurs.detail && (
         <p role="alert" data-testid="calx349-refus" className="text-sm text-red-300">
