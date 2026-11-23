@@ -65,3 +65,58 @@ et sur `src/features/ventes/autoQuote*.test.jsx`, `node --test "src/features/ven
 `python scripts/check_services_appeles.py`, `python scripts/check_forme_code.py --base origin/main`,
 `python scripts/check_duplicats_litteraux.py`. Dis dans ton rapport, pour chaque point : commit, test rouge puis
 vert (commande et sortie), et ce que tu n'as PAS vérifié.
+
+## Lane « couture-resultats » (écrans du calepinage : Résultats, Production, Électrique, Démarrage rapide) — branche `lane-l5d-coutureresultats`
+
+Source : les lignes ACAL1968, ACAL1349, ACAL1987, ACAL1671, ACAL1672, ACAL746 et GARDEFOU du même fichier d'événements
+(champs `preuve` et `reste`). Tu ne touches NI `frontend/src/features/ventes/`, NI `frontend/src/pages/crm/`, NI
+`frontend/src/pages/ventes/generator/`, NI `apps/crm`, NI `apps/ventes` (une autre lane y travaille). Déjà fait par
+l'orchestrateur, ne le refais pas : `apps/calepinage/services/etapes/qualite_module.py` — fiche de module sans
+tolérance et règle choisie ⇒ écart compté à 0 %, dit « supposé » (`entree.supposee`, `entree.mention`,
+`entree.champ_manquant`), D-ACAL-98.
+
+1. **ACAL1987, un seul déclencheur : le serveur** — vu en direct : une pose INCOMPLÈTE lance quand même un calcul et la
+   page affiche à la fois « Il manque une chose pour que la simulation parte seule » et « Simulation en cours… ». Cause
+   lue : deux lanceurs coexistent — le serveur (`backend/django_core/apps/calepinage/services/layout.py::
+   simuler_apres_enregistrement`, à la validation de l'enregistrement, pose complète seulement) et l'ancien lanceur du
+   navigateur (ACAL398 : `frontend/src/pages/ventes/ToitureDesign.jsx` appelle
+   `frontend/src/features/calepinage/production/simulationAuto.js::lancerSimulationAuto`, qui poste `simuler/` après
+   TOUT enregistrement). Attendu : après un enregistrement, le navigateur ne poste plus `simuler/` de lui-même ; il LIT
+   l'état servi (`simulation_automatique` de `GET resultat/` : `en_cours`, `job_id`, `manquants`) et suit le calcul du
+   serveur s'il y en a un (l'onglet Expert « Production » continue de dire « Simulation en cours… » puis le résultat —
+   reprise par `reprendreSimulationAuto`, table en mémoire gardée). Pose incomplète : aucun calcul, la page dit
+   seulement ce qui manque. Le bouton « Simuler » (geste) ne change pas. Les tests ACAL398 de
+   `ToitureDesign.calepinage.test.jsx` et de `PanneauProduction.test.jsx` suivent le nouveau comportement (jamais
+   supprimés sans remplaçant).
+2. **Le compte des pertes non renseignées** — vu en direct : résultat COMPLET (`total.complete=true`,
+   `socle_manquant=[]`) et la mention dit encore « borne haute — 9 pertes non renseignées » ; incomplet d'UNE perte, le
+   bandeau en annonce 10 et n'en liste qu'une. Cause probable : `frontend/src/features/calepinage/production/
+   BandeauProvenanceProduction.jsx` (repli `borne haute — ${manquants.length}…` compté sur toutes les étapes omises) ;
+   lis aussi `ResultatIncomplet.jsx` (R3-06 : un seul compte, celui du serveur). Attendu : résultat complet ⇒ aucune
+   mention « borne haute » ; incomplet ⇒ le compte et la liste sont ceux de `socle_manquant` servi.
+3. **Ce que l'écran doit DIRE et que seule l'API sert** (chaque phrase est servie : affiche-la, ne la réécris pas) :
+   (a) ACAL1671 — la ligne « Chaleur des panneaux » du détail des pertes dit la pose retenue (mention servie « pose
+   « chassis » lue sur le document, ligne « pose_libre »… ») ; (b) ACAL1672 — l'onglet Production cite les composantes
+   de l'incertitude avec leur source (`incertitude.composantes`), pas seulement le σ total ; (c) ACAL746 — la
+   comparaison NASA POWER servie (`simulation.comparaison_nasa_power` : chiffre, ou motif quand le service ne répond
+   pas) tient en une ligne à côté de la comparaison PVGIS-ERA5 ; (d) une étape de pertes dont l'entrée est supposée
+   (`entree.supposee === true`) affiche sa `entree.mention` — vaut pour la qualité des panneaux, le LID, les câbles,
+   les arrêts ; (e) le panneau « Détail des pertes et réglages » dit « Réglage société : aucun » pour les arrêts alors
+   que la cascade applique 2,0 % posés par le profil de départ : il lit la bonne clé de réglage.
+4. **Démarrage rapide** — la ligne « Qualité des panneaux : un quart de l'écart » dit qu'elle lit la tolérance de la
+   fiche du module et que, sans tolérance publiée, l'écart est compté à 0 % (supposé) — une phrase, pas un bloc.
+5. **Étape Électrique** — vu en direct : désigner le module et l'onduleur par la liste « Matériel électrique › Régler »
+   n'est pas reconnu (« Non désigné » reste affiché ; le vérificateur a dû passer par l'API `entree-electrique`), et
+   l'étape reste à « 4 points à régler » après le raccordement automatique. REPRODUIS d'abord sur l'écran réel (pile
+   de revue : API `http://127.0.0.1:8021`, lance TON `vite dev` sur un port libre avec `E2E_PROXY=1
+   E2E_API_TARGET=http://127.0.0.1:8021`, compte `rev_b3` — mot de passe dans `…/scratchpad/l5cal/env.local`, jamais
+   recopié dans un fichier ni un rapport). Si c'est un défaut : cause, correctif, test. Si le geste marche : écris
+   « non reproduit » avec les pas joués.
+Sorties, règles et CSS : comme la lane « couture-ecran » de `coutures-vague-D.md` (jetons `--cal-*`, aucun hexadécimal,
+tests qui exécutent le composant, listes figées des tests de logique pure, aucun fichier de 2 000 lignes ou plus ne
+grossit). Avant ton rapport : `npx eslint` sur tes fichiers, `npx vitest run` sur les tests touchés + 
+`src/pages/ventes/ToitureDesign.calepinage.test.jsx src/features/calepinage/production
+src/features/calepinage/atelier/coque/etapes`, `node --test "src/features/calepinage/*.test.mjs"` depuis `frontend/` ;
+si tu touches le serveur : `tester.sh` (nom court `coutureres`) sur les modules touchés,
+`python scripts/check_api_shapes.py`, `python scripts/check_contrats_calepinage_deux_moities.py`,
+`python scripts/check_forme_code.py --base origin/main`, `python scripts/check_duplicats_litteraux.py`.
