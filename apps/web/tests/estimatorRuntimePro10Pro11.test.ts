@@ -1608,8 +1608,7 @@ describe('runtime W113 — marqueur du pin client à l\'hydratation', () => {
     (document.getElementById('rp9-clear') as HTMLButtonElement).click(); // reset() → clearEditorState
     // ACAL1423 : le repère du lead n'est jamais retiré (la fermeture du toit le masquait, « Effacer »
     // le réaffiche — la visibilité est couverte par gestesCarte.test.ts, le faux Marker n'a pas de DOM).
-    expect(fakeMarkers.filter((m) => m.added && !m.removed).length).toBe(1);
-    expect(fakeMarkers.filter((m) => m.removed).length).toBe(0);
+    expect(fakeMarkers.map((m) => [m.added, m.removed])).toEqual([[true, false]]); // un seul repère, posé et jamais retiré
   });
 
   // Boot normal (pro-11 sans hydrate) et capture : aucun marqueur planté → non-régression
@@ -1712,12 +1711,10 @@ describe('runtime ACAL31 — l’exemple du contrat ressort identique des deux b
     const { resolve } = await import('node:path');
     // vitest tourne depuis apps/web : le contrat vit dans backend/ à la racine du dépôt.
     const chemin = resolve(process.cwd(), '../../backend/django_core/apps/calepinage/contract_samples/roof_layout_v2.schema.json');
-    const exemple = (JSON.parse(readFileSync(chemin, 'utf8')) as { exemple: Record<string, unknown> }).exemple;
-    // ACAL1430 — le nom d'un pan est son RANG (« Zone 1 », « Zone 2 ») : le boot réaligne
-    // `zones[].label` sur l'ordre des pans, donc les noms libres de l'exemple ne ressortent plus.
-    // Seul ce champ est aligné sur le comportement voulu ; toute autre clé reste comparée telle quelle.
-    const zones = Array.isArray(exemple.zones) ? exemple.zones as Record<string, unknown>[] : [];
-    return { ...exemple, zones: zones.map((z, i) => ('label' in z ? { ...z, label: `Zone ${i + 1}` } : z)) };
+    // ACAL1430 — le nom d'un pan est son RANG (« Zone 1 », « Zone 2 ») : le boot réaligne `zones[].label`
+    // sur l'ordre des pans ; seul ce champ de l'exemple est aligné, toute autre clé reste comparée telle quelle.
+    return ((e: Record<string, unknown>) => ({ ...e, zones: (e.zones as Record<string, unknown>[]).map((z, i) => ('label' in z ? { ...z, label: `Zone ${i + 1}` } : z)) }))(
+      (JSON.parse(readFileSync(chemin, 'utf8')) as { exemple: Record<string, unknown> }).exemple);
   }
 
   /** Les CHEMINS qui diffèrent (la garde rougit en nommant la clé, jamais un « objet ≠ »). */
