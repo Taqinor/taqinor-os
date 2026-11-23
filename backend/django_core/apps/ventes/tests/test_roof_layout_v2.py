@@ -244,6 +244,20 @@ class SchemaRoofLayoutV2Test(SimpleTestCase):
         self.assertEqual([chemin for chemin, _ in erreurs],
                          [['zones', 0, 'pitchSource', 'mode']])
 
+    def test_module_choisi_booleen_accepte_texte_refuse(self):
+        """ACAL1401 — `geometry.moduleChoisi` : vrai, ou absent (= module de
+        départ, jamais confirmé), sont conformes ; un texte est refusé en
+        nommant le champ."""
+        document = copy.deepcopy(self.schema['exemple'])
+        geometrie = document['zones'][0]['geometry']
+        self.assertNotIn('moduleChoisi', geometrie)
+        self.assertEqual(self._erreurs(document), [])
+        geometrie['moduleChoisi'] = True
+        self.assertEqual(self._erreurs(document), [])
+        geometrie['moduleChoisi'] = 'oui'
+        self.assertEqual([chemin for chemin, _ in self._erreurs(document)],
+                         [['zones', 0, 'geometry', 'moduleChoisi']])
+
 
 class NonRegressionConsommateursVentesTest(SimpleTestCase):
     """Les TROIS consommateurs ventes ne changent aucun chiffre en v2."""
