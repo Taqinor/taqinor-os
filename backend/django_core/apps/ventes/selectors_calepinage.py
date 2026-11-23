@@ -282,6 +282,20 @@ def lignes_produits_calepinage(devis):
     ]
 
 
+def dernier_devis_recu_du_lead(company, lead_id):
+    """ACAL1955 — le dernier devis ACTIF du lead que le client a reçu (envoyé ou
+    accepté ; le plus récemment envoyé), ou ``None``. Borné société, lecture
+    seule."""
+    from .models import Devis
+
+    if company is None or not lead_id:
+        return None
+    return (Devis.objects
+            .filter(company=company, lead_id=lead_id, is_active=True,
+                    statut__in=STATUTS_DEVIS_RECU)
+            .order_by('-date_envoi', '-id').first())
+
+
 def borne_dc_ac_du_moteur_devis(mode_installation=None):
     """ACAL1954 / D-ACAL-91 — la borne haute du ratio DC/AC que le MOTEUR DE
     DEVIS applique quand la société n'a réglé aucune fourchette, LUE à sa

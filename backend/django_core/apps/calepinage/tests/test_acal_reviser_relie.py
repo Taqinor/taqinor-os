@@ -286,3 +286,70 @@ class ReviserRelieTest(BaseApiCalepinage):
         v.refresh_from_db()
         self.assertIsNone(v.devis_id)
         self.assertEqual(v.roof_layout['zones'][0]['geometry']['count'], 8)
+
+
+class SuitLeDevisEnvoyeTest(BaseApiCalepinage):
+    """ACAL1955 (D-ACAL-89) — à l'envoi d'un devis, le calepinage ouvert du lead
+    resté sur un brouillon jamais envoyé le suit ; sinon rien ne bouge. Abonné
+    RÉEL de ``core.events.devis_sent`` ; commande en liste et en application."""
+
+    def setUp(self):
+        super().setUp()
+        self.d1 = self._devis('0951')
+        self.d2 = self._devis('0961')
+        self.c = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, client=self.client_a,
+            devis=self.d1, titre='QA-ACAL1955', roof_layout=copy.deepcopy(DOCUMENT))
+
+    def _devis(self, numero, statut=Devis.Statut.BROUILLON):
+        return Devis.objects.create(
+            company=self.company, reference=f'DEV-{MOIS}-{numero}', client=self.client_a,
+            lead=self.lead, statut=statut, taux_tva=Decimal('20'),
+            mode_installation='residentiel')
+
+    def _envoyer(self, devis):
+        from core.events import devis_sent
+
+        Devis.objects.filter(pk=devis.pk).update(statut=Devis.Statut.ENVOYE, date_envoi=timezone.now())
+        devis.refresh_from_db()
+        return devis_sent.send(sender=Devis, devis=devis, user=self.user, ancien_statut='brouillon')
+
+    def test_envoi_du_second_devis_auto_relie_le_calepinage(self):
+        self._envoyer(self.d2)
+        self.c.refresh_from_db()
+        self.assertEqual(self.c.devis_id, self.d2.pk)
+        self.assertEqual(selectors.calepinage_du_devis(self.d2.pk, self.company), self.c)
+        self.assertFalse(CalepinageVariante.objects.filter(calepinage=self.c).exists())
+        self.d1.refresh_from_db()
+        self.assertEqual(self.d1.statut, Devis.Statut.BROUILLON)  # règle #4
+
+    def test_deux_calepinages_ouverts_rien_ne_bouge(self):
+        Calepinage.objects.create(company=self.company, lead_id=self.lead.pk,
+                                  client=self.client_a, titre='QA-ACAL1955-bis')
+        self._envoyer(self.d2)
+        self.c.refresh_from_db()
+        self.assertEqual(self.c.devis_id, self.d1.pk)
+
+    def test_lie_a_un_devis_deja_envoye_rien_ne_bouge(self):
+        Devis.objects.filter(pk=self.d1.pk).update(statut=Devis.Statut.ENVOYE, date_envoi=timezone.now())
+        self._envoyer(self.d2)
+        self.c.refresh_from_db()
+        self.assertEqual(self.c.devis_id, self.d1.pk)
+
+    def test_commande_liste_puis_applique(self):
+        import io
+
+        from django.core.management import call_command
+
+        Devis.objects.filter(pk=self.d2.pk).update(statut=Devis.Statut.ENVOYE, date_envoi=timezone.now())
+        sortie = io.StringIO()
+        call_command('relier_calepinages_devis_envoye', stdout=sortie)
+        self.assertIn('%s | %s | %s' % (self.c.pk, self.d1.pk, self.d2.pk), sortie.getvalue())
+        self.c.refresh_from_db()
+        self.assertEqual(self.c.devis_id, self.d1.pk)  # liste seulement
+        voisine = io.StringIO()
+        call_command('relier_calepinages_devis_envoye', '--company', self.autre.slug, stdout=voisine)
+        self.assertIn('0 calepinage(s) à re-lier.', voisine.getvalue())
+        call_command('relier_calepinages_devis_envoye', '--appliquer', stdout=io.StringIO())
+        self.c.refresh_from_db()
+        self.assertEqual(self.c.devis_id, self.d2.pk)
