@@ -366,6 +366,24 @@ describe('ALEA51 — devis automatique créé : bannière de succès', () => {
     expect(screen.getByTestId('ldp-alertes-auto')).toHaveTextContent('À chiffrer après la visite.')
   })
 
+  it('ADEV123 — résidentiel : les suppositions du serveur s’affichent comme celles du C&I', async () => {
+    // Vu en direct (T3-VAGUED) : la réponse portait quatre suppositions, le panneau aucune.
+    ventesApi.creerDevisAuto.mockResolvedValueOnce({ data: {
+      ...BASE,
+      alertes: [{ code: 'suppose_presence', champ_lead: 'occupation_jour',
+                  message: 'Présence en journée supposée (profil « présent »).' }],
+    } })
+    rendrePanneau({
+      lead: { id: 93, nom: 'Maison', type_installation: 'residentiel', facture_hiver: '600' },
+      mode: 'auto', existingDevisId: undefined,
+    })
+    const alertes = await screen.findByTestId('ldp-alertes-auto')
+    expect(alertes).toHaveTextContent('Présence en journée supposée')
+    expect(within(alertes).getByTestId('alerte-champ-lead')).toHaveTextContent(
+      "À compléter sur la fiche : Y a-t-il quelqu'un à la maison en journée ?")
+    expect(screen.getByTestId('ldp-infos-bascule')).toHaveTextContent('1 alerte')
+  })
+
   it('le libellé omet ce que le serveur ne sert pas et garde le retour chiffré', () => {
     expect(libelleSuccesDevisAuto(null)).toBe('')
     const texte = normaliser(libelleSuccesDevisAuto({
