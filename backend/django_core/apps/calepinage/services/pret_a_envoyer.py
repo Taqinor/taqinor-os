@@ -323,7 +323,18 @@ def _tension_froid(verdicts):
     return controle
 
 
-def _ratio_dc_ac(ratio):
+#: ACAL1704 — le complément d'un champ de fiche manquant (« module : Vmp » est
+#: le libellé servi par ``chaines.concevoir`` : « <rôle> : <champ> »).
+_DU_ROLE = {'module': ' du module', 'onduleur': ' de l’onduleur'}
+
+
+def _role_et_champ(libelle):
+    """``('module', 'tension … (Vmp)')`` d'un motif « module : tension … (Vmp) »."""
+    role, separateur, champ = str(libelle or '').partition(' : ')
+    return (role.strip().lower(), champ.strip()) if separateur else ('', str(libelle or ''))
+
+
+def _ratio_dc_ac(ratio, *, pourquoi='onduleur non désigné'):
     from core.electrique.types import fr
 
     from .electrique import RATIO_NON_JUGE
@@ -331,8 +342,7 @@ def _ratio_dc_ac(ratio):
     libelle = 'Puissance des panneaux face à l’onduleur'
     valeur = (ratio or {}).get('valeur')
     if valeur is None:
-        return _elec('ratio_dc_ac', libelle, 'info',
-                     'Non calculé : onduleur non désigné')
+        return _elec('ratio_dc_ac', libelle, 'info', 'Non calculé : %s' % pourquoi)
     texte = fr(valeur, 2)
     # ACAL1538 — le verdict du bloc servi, LU : ``None`` = non jugé.
     if ratio.get('dans_bornes') is None:
@@ -367,18 +377,36 @@ def controles_electriques(calepinage):
     from .electrique import CODE_FICHE_INCOMPLETE, CODE_POLYSTRING
     from .troncons import troncons_du_calepinage
 
-    publication = _rapport(calepinage)[0]
+    publication, _conception, resolu = _rapport(calepinage)
     motifs = publication['motifs']
     resultat = _resultat(calepinage)
     verdicts = ((resultat.get('electrique') or {}).get('verdicts')) or ()
     fiche = [m for m in motifs if m['code'] == CODE_FICHE_INCOMPLETE]
-    materiel = (_controle('materiel_designe', 'Matériel électrique désigné',
-                          'a_regler', 'Matériel non désigné',
-                          cause=fiche[0]['libelle'],
-                          geste='Choisir le module et l’onduleur',
-                          cible=CIBLE_MATERIEL) if fiche else
-                _controle('materiel_designe', 'Matériel électrique désigné',
-                          'ok', 'Désigné', cible=CIBLE_MATERIEL))
+    # ACAL1704 — « Non désigné » (rien choisi : ``resoudre_materiel`` le nomme
+    # dans ``absents``) n'est pas « Fiche incomplète » (choisi, fiche à compléter).
+    absents = list((resolu or {}).get('absents') or ())
+    if absents:
+        materiel = _controle('materiel_designe', 'Matériel électrique désigné',
+                             'a_regler', 'Non désigné', cause=' ; '.join(absents),
+                             geste='Choisir le module et l’onduleur',
+                             cible=CIBLE_MATERIEL)
+    elif fiche:
+        role, champ = _role_et_champ(fiche[0]['libelle'])
+        materiel = _controle('materiel_designe', 'Matériel électrique désigné',
+                             'a_regler', 'Fiche incomplète : %s%s' % (
+                                 champ, _DU_ROLE.get(role, '')),
+                             cause=' ; '.join(m['libelle'] for m in fiche),
+                             geste='Compléter la fiche%s' % _DU_ROLE.get(role, ''),
+                             cible=CIBLE_MATERIEL)
+    else:
+        materiel = _controle('materiel_designe', 'Matériel électrique désigné',
+                             'ok', 'Désigné', cible=CIBLE_MATERIEL)
+    if absents:
+        pourquoi_ratio = absents[0].split(' — ')[0]
+    elif fiche:
+        pourquoi_ratio = 'fiche%s incomplète' % _DU_ROLE.get(_role_et_champ(fiche[0]['libelle'])[0], '')
+    else:
+        pourquoi_ratio = 'onduleur non désigné'
     poly = [m for m in motifs if m['code'] in (
         CODE_POLYSTRING, 'CH_PANS_PARTAGENT_UNE_ENTREE')]
     terre = [m for m in motifs if str(m['code']).startswith('TERRE_')]
@@ -387,7 +415,7 @@ def controles_electriques(calepinage):
         _tension_froid(verdicts),
         _depuis_motifs('orientation_mppt', 'Une seule orientation par entrée',
                        poly, geste='Revoir l’affectation des chaînes'),
-        _ratio_dc_ac(resultat.get('ratio_dc_ac')),
+        _ratio_dc_ac(resultat.get('ratio_dc_ac'), pourquoi=pourquoi_ratio),
         _chutes(troncons_du_calepinage(calepinage)),
         _depuis_motifs('terre_protections', 'Terre et protections', terre,
                        geste='Compléter la check-list de terre'),

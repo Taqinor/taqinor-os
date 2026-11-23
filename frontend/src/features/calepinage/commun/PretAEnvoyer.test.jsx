@@ -169,6 +169,20 @@ describe('PretAEnvoyer — « Régler » mène à un écran qui existe (ACAL1703
     expect(ongletParCle('materiel-electrique')).not.toBeNull()
   })
 
+  it('ACAL1704 : matériel choisi, fiche incomplète — la vraie cause est SUR la ligne, pas « non désigné »', async () => {
+    calepinageApi.calepinages.pretAEnvoyer.mockResolvedValue(servi([{
+      ...aRegler('materiel_designe', { etape: 'electrique', onglet: 'materiel-electrique', champ: '' }),
+      valeur_texte: 'Fiche incomplète : tension au point de puissance maximale (Vmp) du module',
+      cause: 'module : tension au point de puissance maximale (Vmp)',
+      geste: 'Compléter la fiche du module',
+    }]))
+    monterRoutes(203)
+    const ligneMateriel = await screen.findByTestId('cal-pret-ligne-materiel_designe')
+    expect(ligneMateriel).toHaveTextContent('Fiche incomplète : tension au point de puissance maximale (Vmp) du module')
+    expect(ligneMateriel).toHaveTextContent('module : tension au point de puissance maximale (Vmp)')
+    expect(ligneMateriel).not.toHaveTextContent(/non désigné/i)
+  })
+
   it('les pertes : la page des réglages, jamais `?onglet=reglages` (qui retombait sur « Plan importé »)', async () => {
     calepinageApi.calepinages.pretAEnvoyer.mockResolvedValue(servi([
       aRegler('un_seul_chiffre', { etape: 'resultats', onglet: 'reglages', champ: '' })]))
