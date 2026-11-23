@@ -284,5 +284,81 @@ class PostesDePertesTest(unittest.TestCase):
         self.assertTrue(bloc['motif_absence'])
 
 
+class ModulesHorsChaineTest(unittest.TestCase):
+    """ACAL1602 — la cascade ne part que des modules RACCORDÉS.
+
+    Le pan d'essai de CALX5 (12 × 710 W, un onduleur) est simulé deux fois :
+    tous les modules câblés, puis les 4 derniers laissés « en réserve »
+    (``chaine`` nulle dans la table d'affectation, ``electrique.chainage
+    .reste``). Calcul à la main : sans écrêtage (10 kW AC pour 8,52 kWc) ni
+    ombrage, l'énergie est proportionnelle au kWc entrant dans la chaîne,
+    donc P50 raccordé = P50 des 12 × 8 ÷ 12 et kWc = 8 × 0,71 = 5,68 ;
+    les 4 modules restent servis dans ``hors_chaine`` avec leur énergie
+    possible (≈ P50 des 12 × 4 ÷ 12).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from unittest import mock
+
+        from apps.calepinage.services import agregation_electrique
+
+        from .test_calx5_simulation import _simuler
+
+        cls.tous = _simuler()['blocs']
+        original = agregation_electrique.affectation_du_calepinage
+        cls.tables = []
+
+        def quatre_en_reserve(conception, entree_electrique=None):
+            rendu = original(conception, entree_electrique)
+            table = [dict(ligne) for ligne in rendu['affectation']]
+            for ligne in table[-4:]:
+                ligne.update(chaine=None, mppt=None, onduleur=None)
+            cls.tables.append(table)
+            return dict(rendu, affectation=tuple(table))
+
+        with mock.patch.object(agregation_electrique,
+                               'affectation_du_calepinage',
+                               side_effect=quatre_en_reserve):
+            cls.reserve = _simuler()['blocs']
+
+    def test_le_p50_ne_compte_que_les_modules_raccordes(self):
+        self.assertEqual(len(self.tables[0]), 12)
+        tous = self.tous['production']['total']
+        reserve = self.reserve['production']['total']
+        self.assertAlmostEqual(reserve['p50_kwh'],
+                               tous['p50_kwh'] * 8 / 12,
+                               delta=tous['p50_kwh'] * 0.005)
+        self.assertAlmostEqual(reserve['kwc'], 5.68, places=2)
+
+    def test_la_cascade_part_des_seuls_raccordes(self):
+        depart_tous = self.tous['cascade']['etapes'][0]['kwh_avant']
+        depart = self.reserve['cascade']['etapes'][0]['kwh_avant']
+        self.assertAlmostEqual(depart, depart_tous * 8 / 12,
+                               delta=depart_tous * 0.005)
+        ecretage = [etape for etape in self.reserve['cascade']['etapes']
+                    if etape['etape'] == 'ecretage'][0]
+        ecretage_tous = [etape for etape in self.tous['cascade']['etapes']
+                         if etape['etape'] == 'ecretage'][0]
+        if ecretage_tous.get('kwh_avant') is not None:
+            self.assertAlmostEqual(ecretage['kwh_avant'],
+                                   ecretage_tous['kwh_avant'] * 8 / 12,
+                                   delta=ecretage_tous['kwh_avant'] * 0.005)
+
+    def test_hors_chaine_reste_servi_et_l_avertissement_le_dit(self):
+        hors = self.reserve['production']['hors_chaine']
+        self.assertEqual(hors['modules'], 4)
+        self.assertAlmostEqual(
+            hors['p50_kwh'], self.tous['production']['total']['p50_kwh'] * 4 / 12,
+            delta=self.tous['production']['total']['p50_kwh'] * 0.01)
+        attendu = ('4 panneaux ne sont raccordés à aucun onduleur : ils ne '
+                   'sont pas comptés')
+        self.assertTrue(any(texte.startswith(attendu) for texte in
+                            self.reserve['avertissements'][:2]),
+                        self.reserve['avertissements'][:3])
+        self.assertFalse(any('raccordé' in texte for texte in
+                             self.tous.get('avertissements') or ()))
+
+
 if __name__ == '__main__':
     unittest.main()
