@@ -123,10 +123,11 @@ function Progression({ aRenseigner }) {
   )
 }
 
-/* Les réglages que « Remplir » (page Démarrage rapide) remplit : ceux pour lesquels une valeur publiée existe
+/* Les réglages que « Remplir » (page Démarrage rapide) remplit : des réglages de la SOCIÉTÉ (`nature === 'reglage_societe'` ;
+   une donnée de la fiche du panneau n'est pas un réglage vide) pour lesquels une valeur publiée existe
    (`estSansSource` : la liste `sans_source` servie par le profil). Un seul compte, partagé par l'encart, le titre
    de la carte et les blocs absents. */
-const reglagesRemplissables = (lignes) => lignes.filter((l) => !estSansSource(l.cle))
+const reglagesRemplissables = (lignes) => lignes.filter((l) => l.nature === 'reglage_societe' && !estSansSource(l.cle))
 
 function LienRemplir({ lignes }) {
   const n = reglagesRemplissables(lignes).length
@@ -214,7 +215,7 @@ function DemarrageRapideBloc({ lignes }) {
 
 const MAX_PASTILLES = 4
 
-export default function ResultatIncomplet({ calepinageId, data, parcours = null }) {
+export default function ResultatIncomplet({ calepinageId, data, parcours = null, onVoirEtapes = null }) {
   const total = data?.production?.total
   if (!estIncomplet(total)) return null
   const aRenseigner = data?.cascade?.a_renseigner
@@ -222,6 +223,9 @@ export default function ResultatIncomplet({ calepinageId, data, parcours = null 
   if (lignes.length === 0) return <BandeauBorneHaute total={total} />
   const manquantes = lignes.slice(0, MAX_PASTILLES).map((l) => nomDePerte(l.etape, l.libelle).nom)
   const societe = lignes.filter((l) => l.nature === 'reglage_societe').length
+  // Le compte annoncé (« N pertes ») égale les lignes listées, sinon « et K autres » avec « Voir les étapes ».
+  const annoncees = Math.max((aRenseigner?.etapes_a_compter ?? 0) - (aRenseigner?.etapes_comptees ?? 0), lignes.length)
+  const autres = annoncees - lignes.length
   return (
     <div className="cal-resinc" data-testid="acal700-incomplet">
       <div className="cal-resinc-haut">
@@ -278,6 +282,17 @@ export default function ResultatIncomplet({ calepinageId, data, parcours = null 
                   </Link>
                 </li>
               ))}
+              {autres > 0 && (
+                <li className="cal-resinc-ligne cal-resinc-autres" data-testid="acal700-autres">
+                  <span className="cal-resinc-texte">
+                    <span className="cal-resinc-nom">{`et ${autres} ${autres > 1 ? 'autres' : 'autre'}`}</span>
+                    <span className="cal-resinc-raison">{`${autres > 1 ? 'pertes pas encore comptées' : 'perte pas encore comptée'}, dans le détail du calcul`}</span>
+                  </span>
+                  {onVoirEtapes && (
+                    <button type="button" className="cal-resinc-bouton" onClick={onVoirEtapes}>Voir les étapes</button>
+                  )}
+                </li>
+              )}
             </ol>
             <DemarrageRapideBloc lignes={lignes} />
           </section>

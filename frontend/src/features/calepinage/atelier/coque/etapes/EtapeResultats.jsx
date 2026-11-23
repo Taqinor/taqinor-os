@@ -69,6 +69,11 @@ export default function EtapeResultats({
   const ouvert = avanceOuvert ?? expert
   const publiees = reglagesPublies(data?.simulation)
   const voirSources = () => { setSourcesOuvertes(true); setAvanceOuvert(true) }
+  // « Voir les étapes » (pertes pas encore comptées) : ouvre « Détail des pertes et réglages » et y amène.
+  const voirEtapes = () => {
+    setAvanceOuvert(true)
+    globalThis.document?.querySelector('[data-zone="avance"]')?.scrollIntoView?.({ block: 'start' })
+  }
   const note = publiees.length > 0
     ? <NoteValeursPubliees simulation={data?.simulation} onVoirSources={voirSources} /> : null
 
@@ -78,7 +83,7 @@ export default function EtapeResultats({
         <ResultatAvantSimulation calepinageId={id} data={data} parcours={parcours}
           intervalleMs={intervalleMs} onTermine={refetch} />
       )}
-      {incomplet && <ResultatIncomplet calepinageId={id} data={data} parcours={parcours} />}
+      {incomplet && <ResultatIncomplet calepinageId={id} data={data} parcours={parcours} onVoirEtapes={voirEtapes} />}
       {complet && (
         <>
           <TuilesResultat data={data} />

@@ -285,3 +285,6 @@
 .cal-res-squelette > .cal-res-squelette-bloc { min-height: 340px; border-radius: var(--cal-rayon-carte); }
 .cal-res-squelette > .cal-res-squelette-heros { min-height: 342px; }
 @media (max-width: 860px) { .cal-res-squelette { grid-template-columns: 1fr; } }
+
+/* Demande croisée — la ligne « et N autres » : comble l écart entre le compte annoncé et les lignes listées. */
+.cal-resinc-autres { background: var(--cal-papier); }

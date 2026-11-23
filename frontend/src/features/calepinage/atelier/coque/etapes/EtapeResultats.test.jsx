@@ -357,6 +357,58 @@ describe('Étape Résultats — résultat incomplet (maquette ResultatsIncomplet
     expect(screen.queryByTestId('cal-resultats-pied')).toBeNull()
   })
 
+  it('Demande croisée — le compte annoncé égale les lignes listées, ou dit « et N autres » avec « Voir les étapes » qui ouvre le détail', async () => {
+    const base = COMPLET()
+    const borne = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
+    const data = { ...base, production: borne.production, simulation: borne.simulation, cascade: JSON.parse(JSON.stringify(borne.cascade)) }
+    data.cascade.a_renseigner.etapes_comptees = 4
+    data.cascade.a_renseigner.etapes_a_compter = 22 // 18 pertes non comptées, 3 lignes à renseigner ici
+    servir(data)
+    rendre()
+    const phrase = await screen.findByTestId('acal700-plafond')
+    expect(phrase).toHaveTextContent('18 pertes ne sont pas encore comptées')
+    const lignes = screen.getAllByTestId('acal700-ligne')
+    expect(lignes).toHaveLength(3)
+    // 18 annoncées, 3 listées : la ligne « et 15 autres » comble l'écart, avec son lien.
+    const autres = screen.getByTestId('acal700-autres')
+    expect(autres).toHaveTextContent('et 15 autres')
+    expect(screen.queryByTestId('cal-pertes-unifie')).toBeNull()
+    fireEvent.click(within(autres).getByRole('button', { name: 'Voir les étapes' }))
+    expect(await screen.findByTestId('cal-pertes-unifie')).toBeInTheDocument()
+    cleanup()
+    // Compte = lignes : aucune ligne « et N autres ».
+    data.cascade.a_renseigner.etapes_comptees = 1
+    data.cascade.a_renseigner.etapes_a_compter = 4
+    servir(data)
+    rendre()
+    expect((await screen.findByTestId('acal700-plafond'))).toHaveTextContent('3 pertes ne sont pas encore comptées')
+    expect(screen.queryByTestId('acal700-autres')).toBeNull()
+  })
+
+  it('Demande croisée — « Démarrage rapide » ne compte que les lignes `reglage_societe` (pas les lignes de fiche panneau)', async () => {
+    const base = COMPLET()
+    const borne = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
+    const data = { ...base, production: borne.production, simulation: borne.simulation, cascade: JSON.parse(JSON.stringify(borne.cascade)) }
+    // Deux lignes à valeur publiée : l'une est un réglage de la société, l'autre une donnée de la fiche du panneau.
+    const [societe, , fiche] = data.cascade.a_renseigner.lignes
+    data.cascade.a_renseigner.lignes = [
+      { ...societe, cle: 'mismatch_fabricant_pct', nature: 'reglage_societe' },
+      { ...fiche, cle: 'b0_iam', nature: 'fiche_panneau' },
+    ]
+    servir(data)
+    rendre()
+    const texte = await screen.findByTestId('acal700-demarrage-texte')
+    expect(texte).toHaveTextContent(/^Remplir le réglage vide avec des valeurs publiées/)
+    expect(texte).not.toHaveTextContent('2 réglages')
+    expect(screen.getByTestId('acal1833-compteur')).toHaveTextContent('2 à renseigner') // toutes les lignes listées
+    // Aucune ligne de société : le bouton or « Voir les valeurs » n'est jamais promis.
+    cleanup()
+    data.cascade.a_renseigner.lignes = [{ ...fiche, cle: 'b0_iam', nature: 'fiche_panneau' }]
+    servir(data)
+    rendre()
+    expect(await screen.findByTestId('acal700-demarrage-texte')).toHaveTextContent('Aucune valeur publiée n’existe')
+  })
+
   it('« Démarrage rapide » ne compte que ce que « Remplir » remplit (même liste que la page Démarrage rapide)', async () => {
     const base = COMPLET()
     const borne = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
