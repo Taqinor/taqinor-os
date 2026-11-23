@@ -95,7 +95,7 @@ import {
   type Vec2,
 } from '../../lib/freeLayout';
 import { DEFAULT_FREE_MARGINS, FREE_STEP_M, freeGeomFrom, freeStateFromCenters, quantizeFree } from './freeMode';
-import { cm, peindreSilhouette, silhouetteDuLot, texteDeMesure, violationLabel } from './silhouetteGlisse'; // ACAL551
+import { cm, peindreSilhouette, silhouetteDuLot, texteDeMesure, violationLabel } from './silhouetteGlisse'; import { direPoseIndisponible } from './structurePose'; // ACAL551, ACAL1530
 import { resnapEnMasse } from './layoutResnap'; // ACAL510 — sorti de ce fichier, ré-exporté ci-dessous
 export { resnapEnMasse, resnapNaif, type CentreASnapper } from './layoutResnap';
 import { motifPanExistant } from './panExistant'; // ACAL510
@@ -1361,7 +1361,8 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   function renderLayoutPanel() {
     if (!layoutWindowEl) return;
     const ready = !!ctx.layoutPlan && ctx.layoutPlan.grid.panels.length > 0 && ctx.closed;
-    layoutWindowEl.hidden = !ready;
+    layoutWindowEl.hidden = !(ctx.layoutPlan && ctx.closed); // ACAL1530 — un plan sans emplacement garde le bloc, avec sa phrase
+    direPoseIndisponible(layoutWindowEl, layoutToggleEl, !!ctx.layoutPlan && !!ctx.closed && !ready);
     if (!ready) return;
     if (!ctx.layoutMode) return;
     ensureLayoutState();

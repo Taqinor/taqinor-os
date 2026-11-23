@@ -26,3 +26,21 @@ export function grouperStructurePose(doc: Document = document): HTMLElement | nu
   }
   return groupe;
 }
+
+/** ACAL1530 — « Personnaliser la disposition » reste visible quand le pavage ne retient aucun emplacement : une
+ *  phrase dit pourquoi (seuil d'accès solaire, retraits, obstacles) et « Déplacer » ne se touche pas dans le vide. */
+export function direPoseIndisponible(fenetre: HTMLElement, bouton: HTMLButtonElement | null, indisponible: boolean): void {
+  let phrase = fenetre.querySelector<HTMLElement>('#rp9-layout-indispo');
+  if (indisponible && !phrase) {
+    phrase = fenetre.ownerDocument.createElement('p');
+    phrase.id = 'rp9-layout-indispo';
+    phrase.setAttribute('role', 'status');
+    phrase.textContent = 'Aucun emplacement à personnaliser : tous sont sous le seuil d’accès solaire, ou écartés par les retraits et les obstacles.';
+    fenetre.prepend(phrase);
+  }
+  if (phrase) phrase.hidden = !indisponible;
+  if (bouton && (indisponible || bouton.dataset.indispoSeuil)) {
+    bouton.disabled = indisponible;
+    if (indisponible) bouton.dataset.indispoSeuil = '1'; else delete bouton.dataset.indispoSeuil;
+  }
+}

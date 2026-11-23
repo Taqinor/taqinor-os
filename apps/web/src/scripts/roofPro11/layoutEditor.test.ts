@@ -784,6 +784,30 @@ describe('ACAL891 — Remplir et la limite de modules', () => {
   });
 });
 
+describe('ACAL1530 — « Personnaliser la disposition » reste présent quand le seuil écarte tout', () => {
+  const monter = (cellules: number) => {
+    document.body.innerHTML = '';
+    const { map } = makeMap();
+    const plan = makePlan(40);
+    (plan.grid as unknown as { panels: unknown[] }).panels = Array.from({ length: cellules }, (_, i) => ({ cx: -4 * i, cy: 0 }));
+    const editor = createLayoutEditor(makeFreeCtx(plan, []), makeDeps(map));
+    editor.renderLayoutPanel();
+    return { fenetre: document.getElementById('rp9-layout-window') as HTMLElement, bouton: document.getElementById('rp9-layout-toggle') as HTMLButtonElement };
+  };
+  it('le bloc reste présent quand un seuil écarte des emplacements : il dit pourquoi, le bouton ne se touche pas dans le vide', () => {
+    const { fenetre, bouton } = monter(0);
+    expect(fenetre.hidden).toBe(false);
+    expect(document.getElementById('rp9-layout-indispo')?.textContent).toContain('seuil d’accès solaire');
+    expect(bouton.disabled).toBe(true);
+  });
+  it('avec des emplacements : aucune phrase d’indisponibilité, bouton actif', () => {
+    const { fenetre, bouton } = monter(3);
+    expect(fenetre.hidden).toBe(false);
+    expect(document.getElementById('rp9-layout-indispo')?.hidden ?? true).toBe(true);
+    expect(bouton.disabled).toBe(false);
+  });
+});
+
 // R2-09 / R2-05 — LE formateur de puissance (virgule, 2 décimales) et le libellé « Posés ÷ cible » (atelier ERP seulement).
 describe('R2-09 / R2-05 — fenêtre de pose : kWc au format français, « Posés ÷ cible » en ERP seulement', () => {
   const rendre = (opts: Record<string, unknown>) => {
