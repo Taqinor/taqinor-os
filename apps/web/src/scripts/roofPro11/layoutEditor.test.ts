@@ -742,4 +742,22 @@ describe('R2-09 / R2-05 — fenêtre de pose : kWc au format français, « Posé
     expect(pub.dt).toBe('Couverture besoin');
     expect(pub.kwc).toMatch(/^\d+,\d{2} kWc$/);
   });
+
+  // ACAL1520 — la puissance du bandeau suit le module DÉSIGNÉ du pan (comme la pastille), pas le 720 Wc par défaut.
+  it('ACAL1520 — 5 panneaux de 710 Wc lisent « 3,55 kWc » ; sans module désigné : 3,60 (défaut 720 Wc)', () => {
+    const module710 = { id: 'm710', libelle: 'Module 710', source: 'catalogue', longueurMm: 2384, largeurMm: 1303, pmaxWc: 710 };
+    const rendreAvec = (moduleId: string | undefined) => {
+      document.body.innerHTML = '';
+      const { map } = makeMap();
+      const plan = makePlan(40);
+      (plan.grid as unknown as { panels: unknown[] }).panels = [{ cx: 0, cy: 0 }];
+      const ctx = makeFreeCtx(plan, [0, 1, 2, 3, 4].map((i) => ({ cx: -4 * i, cy: 0 })));
+      (ctx as unknown as { opts: unknown }).opts = { modulesDisponibles: { modules: [{ module: module710, selectionnable: true }] } };
+      (ctx as unknown as { activeArea: () => unknown }).activeArea = () => ({ id: 'a1', ...(moduleId ? { moduleId } : {}) });
+      createLayoutEditor(ctx, makeDeps(map)).renderLayoutPanel();
+      return document.getElementById('rp9-layout-kwc')?.textContent;
+    };
+    expect(rendreAvec('m710')).toBe('3,55 kWc');
+    expect(rendreAvec(undefined)).toBe('3,60 kWc');
+  });
 });

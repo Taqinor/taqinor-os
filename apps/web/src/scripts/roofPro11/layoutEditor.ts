@@ -99,6 +99,7 @@ import { cm, peindreSilhouette, silhouetteDuLot, texteDeMesure, violationLabel }
 import { resnapEnMasse } from './layoutResnap'; // ACAL510 — sorti de ce fichier, ré-exporté ci-dessous
 export { resnapEnMasse, resnapNaif, type CentreASnapper } from './layoutResnap';
 import { motifPanExistant } from './panExistant'; // ACAL510
+import { catalogueAvecModulesDuDocument, estRefus, kwcDuPan, lireModulesDisponibles, resoudreModuleDuPan } from './moduleSelect'; // ACAL1520
 
 /** Décimal à 1 chiffre, à la française (identique à l'entrée). */
 const fmt1 = (n: number): string =>
@@ -1365,7 +1366,12 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     const freeOn = freeActive();
     const count = freeOn ? ctx.freeState!.panels.length : occupiedCount(layoutState);
     const free = freeOn ? 0 : emptyIndices(layoutState).length;
-    const kwc = count * PANEL_KWC;
+    // ACAL1520 — la puissance du module DÉSIGNÉ du pan actif (comme la pastille) ; sans choix : défaut atelier.
+    const moduleDuPan = resoudreModuleDuPan(
+      catalogueAvecModulesDuDocument(lireModulesDisponibles(ctx.opts?.modulesDisponibles).choisissables, ctx.modulesDuDocument).catalogue,
+      ctx.activeArea?.()?.moduleId,
+    );
+    const kwc = (!estRefus(moduleDuPan) && kwcDuPan(count, moduleDuPan)) || count * PANEL_KWC;
     if (layoutCountEl) layoutCountEl.textContent = fmt(count);
     if (layoutKwcEl) layoutKwcEl.textContent = `${fmtKwc(kwc)} kWc`;
     if (layoutFreeEl) layoutFreeEl.textContent = fmt(free);
