@@ -49,6 +49,10 @@
   cursor: pointer;
 }
 .cel-refus { margin: 0; font-size: 0.75rem; color: var(--cal-refus); }
+/* ACAL1952 — « Repris du devis DEV-… (option …) » sous la carte de l'onduleur ; l'écart d'une saisie contraire en or de texte. */
+.cel-devis-retenu { display: flex; flex-direction: column; gap: 4px; font-size: 0.75rem; line-height: 1.4; color: var(--cal-texte-3); }
+.cel-devis-retenu p { margin: 0; }
+.cel-devis-retenu .cel-devis-ecart { color: var(--cal-surveiller-texte); }
 
 /* « Prêt à envoyer ? » EN TÊTE : la carte (or pâle quand il reste un point, verte pâle quand tout est bon) porte le
    titre, la pastille et le point à régler avec son « Régler » bleu nuit ; les contrôles bons sont dans une section

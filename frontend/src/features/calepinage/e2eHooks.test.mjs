@@ -865,6 +865,7 @@ export const ALL_HOOKS = [
   'cal-panneaux-sens-pose',
   'cal-panneaux-ombre',
   'cal-carte-soleil',
+  'cal-elec-devis-retenu',
   'cal-elec-onduleur',
   'cal-elec-schema-voir',
   'cal-elec-actions-carte',
