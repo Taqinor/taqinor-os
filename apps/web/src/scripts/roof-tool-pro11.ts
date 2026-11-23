@@ -1268,7 +1268,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const matrix = createMatrix(ctx, {
     renderConfig: (o) => optimizer.renderConfig(o),
     monthlyBill: () => monthlyBill(),
-    obstructionRings,
+    obstructionRings, obstructionClearances, setbacksOf, // demande croisée — retraits/dégagements du balayage, comme buildMatrix
   });
   const paintComparison = matrix.paintComparison;
   const renderMatrixRow = matrix.renderMatrixRow;

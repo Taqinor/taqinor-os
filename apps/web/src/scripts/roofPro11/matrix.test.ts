@@ -14,6 +14,7 @@ import { fineGridMatrixV6 } from '../../lib/estimatorBrainV6';
 import { type LngLat } from '../../lib/roof';
 import { type Ctx } from './context';
 import { rectRing } from './harnaisAtelier';
+import { uniformSetbacks } from '../../lib/roofPro2'; // demande croisée (balayage)
 
 const LAT = 33.59;
 const FACTURE = 5000;
@@ -175,6 +176,21 @@ describe('ACAL1505 — le balayage vise la facture du lead', () => {
     expect(avec.pcts.every((p) => p > 0)).toBe(true);
     expect(sans.pcts.every((p) => p === 0)).toBe(true);
     expect(avec.pose).toBe(sans.pose);
+  });
+});
+
+// Demande croisée (lane balayage) — `recomputeMatrix` balayait sans les retraits saisis, les dégagements d'obstacle ni le
+// débord : le tableau ne notait pas le toit que `buildMatrix` (affinage PVGIS) et le solveur vivant notent.
+describe('Demande croisée — recomputeMatrix passe retraits, dégagements et débord comme buildMatrix', () => {
+  it('retraits de 2 m, débord 0,3 m : mêmes lignes que le balayage de buildMatrix, moins de panneaux qu’avec le retrait par défaut', () => {
+    const ctx = { ...makeCtx(), matrixResult: null, overhangM: 0.3 } as unknown as Ctx;
+    const retraits = uniformSetbacks(2);
+    createMatrix(ctx, { renderConfig: () => {}, monthlyBill: () => FACTURE, obstructionRings: () => [], setbacksOf: () => retraits, obstructionClearances: () => [] }).recomputeMatrix();
+    const attendu = fineGridMatrixV6(TOIT, LAT, FACTURE, [], { yieldFn: () => null, overhangM: 0.3, obstructionClearancesM: [], setbacksM: retraits, optimisation: null });
+    expect(ctx.matrixResult!.rows.map((r) => [r.label, r.placedCount])).toEqual(attendu.rows.map((r) => [r.label, r.placedCount]));
+    const parDefaut = fineGridMatrixV6(TOIT, LAT, FACTURE, [], { yieldFn: () => null });
+    const max = (rows: { placedCount: number; margin: string }[]) => Math.max(...rows.filter((r) => r.margin === 'keep').map((r) => r.placedCount)); // marge gardée
+    expect(max(ctx.matrixResult!.rows)).toBeLessThan(max(parDefaut.rows));
   });
 });
 
