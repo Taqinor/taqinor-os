@@ -314,7 +314,9 @@ SUPPOSITIONS_RESIDENTIEL = {
 def _alerter_suppositions(journal_auto, lead, company, devis):
     """ADEV123 — ce que le calcul a SUPPOSÉ, lu aux MÊMES sources que lui
     (``entrees_depuis_lead``, ``occupation_du_lead``, base de production) ;
-    aucun chiffre ne change."""
+    aucun chiffre ne change. Sans journal (dict), rien n'est lu."""
+    if not isinstance(journal_auto, dict) or lead is None:
+        return
     from apps.ventes.courbes_journalieres import DEFAUT_RESIDENTIEL, occupation_du_lead
     from apps.ventes.domain.entrees import entrees_depuis_lead
     from apps.ventes.horaire.productible_pose import base_de_production
@@ -366,6 +368,8 @@ def _journaliser_avertissements(devis, resultat, journal_auto):
     for avertissement in resultat['avertissements'] or []:
         logger.warning('Auto-devis %s: %s', devis.reference, avertissement)
         _ajouter_alerte(journal_auto, 'composition', str(avertissement))
+    # ADEV123 — puis ce que le calcul a SUPPOSÉ (hors de la fonction-mur).
+    _alerter_suppositions(journal_auto, devis.lead, devis.company, devis)
 
 
 def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
@@ -743,8 +747,6 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
     # (vivier batterie vide, forfait au panneau non re-tarifé…). Sur un chemin
     # sans commercial dans la boucle, le journal serveur est le seul lecteur.
     _journaliser_avertissements(devis, resultat, journal_auto)
-    if isinstance(journal_auto, dict):
-        _alerter_suppositions(journal_auto, lead, company, devis)
 
     # QJR63 — LE kWc a été posé par son propriétaire à l'étape 8 (``finaliser``),
     # sur les lignes RÉELLEMENT composées : ni ``target_kwc``, ni
