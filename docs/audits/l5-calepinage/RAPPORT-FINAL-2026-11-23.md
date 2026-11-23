@@ -83,14 +83,118 @@ a complete result on day one because four losses have no published value, and I 
   said so). In production you may want to set a range, or tell me to keep a fallback warning.
 - Five containers of your shared local stack stopped to free memory (database kept); I restart them at the end.
 
-## 6. Round 3 — today's fixes replayed on the real screens (to complete)
+## 6. Round 3 — today's fixes replayed on the real screens
 
-## 7. The checks you asked for after the L5 (to complete)
+Six fresh reviewers replayed, on the rebuilt private copy, the fixes delivered this morning (waves A and B).
 
-1. Screens against the v2 mockups.
-2. Every quote calculated automatically, with the right assumptions.
-3. One engine: the CRM one.
-4. The lead « CPE Go Plus » (1742).
+| | Listed | Played | Good | Partial | Not done | Not tried |
+|---|---|---|---|---|---|---|
+| Shell and screens | 31 | 31 | 8 | 22 | 1 | 0 |
+| Production figures | 20 | 18 | 13 | 3 | 2 | 2 |
+| Layout, editor, sweep | 39 | 24 | 10 | 11 | 3 | 15 |
+| Roof, obstacles, zones | 33 | 26 | 12 | 13 | 1 | 7 |
+| Electrical, diagram | 45 | 36 | 27 | 8 | 1 | 9 |
+| Phone | 5 | 5 | 3 | 2 | 0 | 0 |
+| **Total** | **173** | **140** | **73** | **59** | **8** | **33** |
+
+- As in round 2, a second reviewer re-read the « good » verdicts against their screenshots: of 64 re-read, **48
+  confirmed**, 14 only partly proven, 2 contradicted. 47 tasks are ticked on that basis (record
+  `docs/audits/acceptation/ACAL/2026-11-23-f7d5f1a7e.md`). 9 late « good » verdicts were not re-read and are not ticked.
+- What holds: the new shell works with the real engine (no dead screen); the three worst defects of round 2 hold
+  (« Pan existant » reopens, a ground field leaves one surface, the 4-face roof places its panels); the yearly figures
+  are yearly; a layout of 60 reopens at 60.
+- What round 3 found, all given to wave C (section 3): **a custom layout larger than the target was lost on reopen
+  without a word** (16 saved, 5 shown, then 5 written back by a plain « Save »); the Undo button did nothing where
+  Ctrl+Z worked; setbacks typed in changed nothing; « at most 16 panels » where 20 fit; a panel / inverter ratio of
+  4.26 shown with a green tick; the report naming the default panel instead of the one placed; monthly bills not read
+  back after reload; « connection expired » shown for a slow answer; the address card covering the zoom buttons.
+- Not done for lack of budget: the 95 old fixes judged « partly proven » in round 2 were not replayed (35 serious, 60
+  others). They stay unticked.
+
+## 7. The checks you asked for after the L5
+
+Sources: `docs/audits/l5-calepinage/controles/` — `C1-moteur-unique.md`, `C2-devis-automatiques.md`,
+`C3-mesures-prod.md` (production read only: counts and ids, nothing written).
+
+### 7.1 « All my quotes can be calculated automatically, from the bill and one profile » — measured on production
+
+| Market | Leads | With a bill or kWh | Ready for the automatic quote | They stop on |
+|---|---|---|---|---|
+| Residential | 1 065 | 478 | **448** (94 %) | the city as typed: 29 leads (18 not in « Froid ») |
+| Commercial | 80 | 42 | **4** | electricity contract 38 · opening days 37 · phase 35 |
+| Industrial | 1 | 1 | 1 | — |
+| Agricultural | 2 | 2 | 2 | — |
+
+- **Residential works.** The 29 stops are spellings: « casa » (5), « casablaca », « kech », city names typed in
+  Arabic, « maroc », a district. The lead card said « ready », then the engine refused. Wave C makes the card say
+  « Missing: city » (to complete: delivered or not). Recognising these spellings changes the production of those
+  quotes, so it is your decision: D-ACAL-95 (my recommendation: recognise common spellings and Arabic names).
+- **Commercial does not work with the bill and a profile alone**: 38 of 42 leads with a bill stop. The contract stop
+  is your own decision D-CIQ-23; the opening days come from D-CIQ-1 (no standard industrial profile); for the phase I
+  found no decision of yours. If you want « bill + profile is enough », answer D-ACAL-92, 93 and 94.
+- **Agricultural**: by your decisions the bill sizes nothing (head, flow, phase, visit of the water point).
+- **Assumptions that are made but not said, or half said** (your rule of 17/11): in residential, presence during the
+  day (984 of 1 065 leads have none declared; the banner does not name the field), summer = winter, 30° due south,
+  kWh derived from dirhams; in commercial and industrial, 30° due south when GPS is missing and the estimated
+  profile (dropped from the automatic quote's log). Tasks are written in the quote plan; they change no number.
+- **Defaults without a source I could read**: summer = winter over 12 months; fallback panel of 710 Wc. Two rest on
+  a code comment only: total losses 20 % (« fondateur 18/08 ») and 14 % for PVGIS.
+- **The most blocking decision is D-ACAL-82** (four losses without a value). While it is open every calepinage
+  result stays « incomplete », and an incomplete result is rejected by the quote: so the production of the real
+  layout, which you decided must feed new quotes (D-ACAL-36, 44, 46), reaches no quote at all today.
+
+### 7.2 « One engine, the CRM one »
+
+- Today **four engines** calculate the same installation (the C&I quote engine, the residential quote engine, the
+  calepinage on the server, the workshop in the browser) plus two side tables. I found **five different limits** for
+  the panel / inverter ratio, two temperature policies for string length, and the calepinage read nothing of the
+  quote's study (not the retained option, not the inverter, not the strings, not the production).
+- Built in wave C (to complete: delivered or not): the quote states its retained design; the calepinage takes its
+  target, its inverter, its string length and its production from it; when the calepinage differs it says « gap with
+  the quote » instead of raising an alert against its own constants; one ratio rule, the quote's; a hybrid inverter is
+  judged by its published capacity (your rule D-HYB-1); the calepinage follows the quote that was sent.
+- Not built, written as tasks: the C&I quote engine importing the same hybrid rule from the shared core (it keeps its
+  own copy for now — I did not touch the quote engine), one temperature policy for both, the calepinage using the
+  consumption profile chosen in the CRM.
+
+### 7.3 The lead « CPE Go Plus » (1742)
+
+**Your sent quote (564) is not the problem; the calepinage was calculating beside it.** Cause by cause:
+
+| What you saw | Cause | Fixed by |
+|---|---|---|
+| The calepinage is attached to draft 554, not to the sent quote 564 | It only followed a quote on a revision; each automatic quote is a new v1 | wave C (ACAL1955) + one command to run after deploy |
+| 48 panels instead of the 35 of the recommended option | 48 is what the roof holds (also the « with battery » option); the drawing never recorded which option it was for; the target was always « without battery » | wave C (ACAL1951) |
+| A different inverter (hybrid 20 kW) than the quote's | It was picked by hand in the calepinage, and a manual pick wins | wave C (ACAL1952): the quote's inverter by default, a manual pick shown as a gap |
+| Ratio 1.72 « above 1.35 » | The calepinage ignored your hybrid rule: that inverter publishes 40 kWc, the field is 34.32 | wave C (ACAL1954) |
+| String length 12 « against 16 » | 16 is a constant from tender files, not the quote; the quote itself has 12 | wave C (ACAL1953) |
+| Production « not simulated » | The simulation only runs on a click; the quote's production was never read | wave C (ACAL1956): the quote's production is shown until the layout is simulated |
+
+On production, of 5 calepinages attached to a quote, 3 have a panel count different from the quote's recommended
+option and none has a simulation. After you deploy, `manage.py relier_calepinages_devis_envoye` lists the calepinages
+to re-attach (today: one, the 9); with `--appliquer` it re-attaches them. That writes on production: your gesture.
+
+### 7.4 Screens against the v2 mockups — independent verdict
+
+A reviewer who built nothing put each real screen beside its mockup, same size, and measured both.
+Boards « mockup | real »: `docs/audits/l5-calepinage/T3/preuves/B3-*.png`. Report: `T3/B3.md`.
+
+| | Faithful | Close | Far | Not comparable |
+|---|---|---|---|---|
+| Before today's rebuild (round 2) | 0 | 3 | 8 | 2 |
+| After (round 3) | **0** | **6** | **6** | 2 |
+
+- **Close (6)**: Roof (light and dark), Panels, Electrical, Incomplete result, List. On these the shell is identical
+  to the mockup to the pixel (header, rail, step panel 384 × 796, gold button 340 × 52, colours, type).
+- **Far (6)**: Documents, Quick start, Tablet, Phone survey, Phone client view, Presentation — not rebuilt on v2 yet.
+- **Not comparable (2)**: Diagram and Complete result, because the demo data cannot reach those states (panel sheets
+  without electrical values; the four losses of D-ACAL-82).
+- **Why no screen is « faithful » yet**: what is drawn ON the map. Placed panels are plain black instead of tinted by
+  sunlight, the roof outline has grey doubled dimensions instead of a gold outline with one dimension per edge, the
+  strings are not drawn. The frame is right; the picture inside is not. Wave C looks for the cause of the black
+  panels (to complete). The rest is written as tasks.
+- My own check of the boards agrees with the reviewer. I did not see the real aerial photo: the private copy has no
+  map key.
 
 ## 8. What remains in the plan
 

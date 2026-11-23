@@ -1,0 +1,65 @@
+# Relecture adverse des `ok` du tour 3 - liste
+
+Une ligne par tache jugee `ok` par un verificateur du tour 3 (code de la pile : `f7d5f1a7ec`). Fichier de verdicts du verificateur entre parentheses.
+
+- **ACAL1520** (`registre/evenements/T3-POSE-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-POSE/cap/x1-actif.png`
+- **DC-8** (`registre/evenements/T3-POSE-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-POSE/cap/x1-actif.png`
+- **ACAL1522** (`registre/evenements/T3-POSE-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-POSE/cap/e10-RECOMM.png`
+- **ACAL1524** (`registre/evenements/T3-POSE-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-POSE/cap/ex2-desactive.png`
+- **ACAL1521** (`registre/evenements/T3-POSE-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-POSE/cap/al6-ctrlz2.png`
+- **ACAL1502** (`registre/evenements/T3-POSE-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-POSE/cap/mk2-B.png`
+- **DC-1** (`registre/evenements/T3-POSE-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-POSE/cap/ch2-note.png`
+- **ACAL1435** (`registre/evenements/T3-POSE-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-POSE/cap/ui1-guide-aide.png`
+- **ACAL1438** (`registre/evenements/T3-POSE-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-POSE/cap/ui2-avance-expert.png`
+- **ACAL1517** (`registre/evenements/T3-POSE-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-POSE/cap/mk-I.png`
+- **ACAL1601** (`registre/evenements/T3-PROD-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-PROD/acal1601.txt`
+- **ACAL1605** (`registre/evenements/T3-PROD-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-PROD/res2039.json`
+- **ACAL1607** (`registre/evenements/T3-PROD-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-PROD/cap/D1-resultats-guide.png`
+- **ACAL1603** (`registre/evenements/T3-PROD-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-PROD/cap/A7-Production.png`
+- **ACAL1609** (`registre/evenements/T3-PROD-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-PROD/cap/B3-charge-ajoutee.png`
+- **ACAL1615** (`registre/evenements/T3-PROD-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-PROD/cap/A10-docs-expert.png`
+- **ACAL1616** (`registre/evenements/T3-PROD-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-PROD/cap/postesB-p1.png`
+- **ACAL1677** (`registre/evenements/T3-PROD-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-PROD/cap/rapD-p3.png`
+- **ACAL1701** (`registre/evenements/T3-PROD-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-PROD/cap/rapD-p3.png`
+- **ACAL1614** (`registre/evenements/T3-PROD-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-PROD/cap/B9-Sries.png`
+- **ACAL1274** (`registre/evenements/T3-PROD-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-PROD/cap/B4-devis-annonce.png`
+- **ACAL1606** (`registre/evenements/T3-PROD-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-PROD/cap/B6-Production.png`
+- **ACAL1702** (`registre/evenements/T3-PROD-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-PROD/cap/P1-documents-perime.png`
+- **ACAL1437** (`registre/evenements/T3-T3-ECRANS-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-ECRANS/cap/s12-docs-apres.png`
+- **ACAL1731** (`registre/evenements/T3-T3-ECRANS-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-ECRANS/cap/s16-rouvert-liste.png`
+- **ACAL1730** (`registre/evenements/T3-T3-ECRANS-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-ECRANS/cap/s18-1954.png`
+- **ACAL1745** (`registre/evenements/T3-T3-ECRANS-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-ECRANS/cap/s23-gps-390.png`
+- **ACAL1805** (`registre/evenements/T3-T3-ECRANS-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-ECRANS/cap/s01-B-atelier-neuf.png`
+- **ACAL1822** (`registre/evenements/T3-T3-ECRANS-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-ECRANS/cap/s26-squelette.png`
+- **ACAL1517** (`registre/evenements/T3-T3-ECRANS-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-ECRANS/cap/s32-D-panneaux.png`
+- **ACAL1428** (`registre/evenements/T3-T3-ECRANS-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-ECRANS/cap/s32-confirmer.png`
+- **ACAL1545** (`registre/evenements/T3-T3-ELEC-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-ELEC/c3.js (API)`
+- **ACAL1500** (`registre/evenements/T3-T3-ELEC-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-ELEC/c1.js (API)`
+- **ACAL1308** (`registre/evenements/T3-T3-ELEC-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-ELEC/l1.js (API) + contract_samples/calepinage_liste.json`
+- **ACAL1334** (`registre/evenements/T3-T3-ELEC-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-ELEC/l1.js (API)`
+- **ACAL1333** (`registre/evenements/T3-T3-ELEC-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-ELEC/l2.js (API)`
+- **ACAL1335** (`registre/evenements/T3-T3-ELEC-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-ELEC/l2.js (API)`
+- **ACAL1339** (`registre/evenements/T3-T3-ELEC-cv.jsonl`) - capture : `git grep (lecture du code f7d5f1a7ec)`
+- **ACAL1400** (`registre/evenements/T3-T3-ELEC-cv.jsonl`) - capture : `lecture roof_layout_v2.schema.json`
+- **ACAL1401** (`registre/evenements/T3-T3-ELEC-cv.jsonl`) - capture : `lecture roof_layout_v2.schema.json`
+- **ACAL1413** (`registre/evenements/T3-T3-ELEC-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-ELEC/g4.js + g5.js (API)`
+- **ACAL1402** (`registre/evenements/T3-T3-ELEC-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-ELEC/g5.js + calepinage_detail.json`
+- **ACAL1440** (`registre/evenements/T3-T3-ELEC-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-ELEC/g11.js (API)`
+- **ACAL1700** (`registre/evenements/T3-T3-ELEC-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-ELEC/g11.js (API) vs calepinage_publication.json`
+- **ACAL1712** (`registre/evenements/T3-T3-ELEC-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-ELEC/cap/plan1948-p1.png + cap/plan1946-p1.png`
+- **ACAL1711** (`registre/evenements/T3-T3-ELEC-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-ELEC/m1.js (API) + dl/plan-pose-2058-t3elec-marge-ok.pdf`
+- **ACAL1710** (`registre/evenements/T3-T3-ELEC-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-ELEC/vr.js (API)`
+- **ACAL1539** (`registre/evenements/T3-T3-ELEC-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-ELEC/cap/u1-1977.png, u1-1975.png + p1-elec.png`
+- **ACAL1546** (`registre/evenements/T3-T3-ELEC-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-ELEC/cap/u9-controle.png`
+- **ACAL1405** (`registre/evenements/T3-T3-TOIT-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-TOIT/cap/s1-relu-env.png ; C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36`
+- **ACAL1406** (`registre/evenements/T3-T3-TOIT-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-TOIT/cap/s1-relu-env.png`
+- **ACAL1273** (`registre/evenements/T3-T3-TOIT-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-TOIT/cap/s1-relu-env.png`
+- **ACAL1436** (`registre/evenements/T3-T3-TOIT-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-TOIT/cap/x8-ombre.png`
+- **ACAL1510** (`registre/evenements/T3-T3-TOIT-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-TOIT/cap/s7-max.png ; C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db`
+- **ACAL1416** (`registre/evenements/T3-T3-TOIT-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-TOIT/cap/s15-3-panneaux.png ; C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/`
+- **ACAL1329** (`registre/evenements/T3-T3-TOIT-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-TOIT/cap/s17-1-trace-en-cours.png ; C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c7`
+- **ACAL1430** (`registre/evenements/T3-T3-TOIT-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-TOIT/cap/s26-site.png`
+- **ACAL1431** (`registre/evenements/T3-T3-TOIT-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-TOIT/cap/s24-relu.png ; C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49`
+- **ACAL1513** (`registre/evenements/T3-T3-TOIT-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-TOIT/cap/o3-1962.png`
+- **ACAL1248** (`registre/evenements/T3-T3-TOIT-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-TOIT/cap/s27-reload2.png`
+- **ACAL1420** (`registre/evenements/T3-T3-TOIT-cv.jsonl`) - capture : `C:/Users/kasri/AppData/Local/Temp/claude/0f9063243c725bde/b36b49db-06cb-474e-a24f-5b0f5d71f674/scratchpad/T3/T3-TOIT/cap/s34-site.png`
