@@ -60,6 +60,8 @@ from . import (hors_reseau_declaration as _hors_reseau_declaration,  # ACAL790
                suppositions as _suppositions)  # ACAL980
 from .regle_chaine_publiee import _regle_chaine_publiee  # ACAL645 — extraite
 from .valeurs import nombre as _nombre
+from .devis_retenu import (bloc_devis_retenu, bloc_production_devis,  # ACAL1952-1956
+                           longueur_du_devis_lie, options_avec_devis, produits_retenus)
 
 __all__ = [
     'SOURCE_SAISIE', 'SOURCE_TMY', 'MENTION_NON_SOURCEE',
@@ -76,7 +78,7 @@ __all__ = [
     'conception_du_calepinage', 'resultat_calepinage',
     'resultat_electrique_complet',  # ACAL55
     'ecretage_depuis_serie', 'SOURCE_BORNE_MARCHE', 'SOURCE_BORNE_SOCIETE',
-    'SOURCE_BORNE_NOYAU',
+    'SOURCE_BORNE_DEVIS', 'SOURCE_BORNE_CAPACITE',
     'REGLE_CHAINE_MODULE', 'REGLE_CHAINE_OPTIMISEUR',
     'PublicationBloquee', 'bloquants_nommes',
     'evaluation_electrique', 'garde_publication', 'rejouer_apres_layout',
@@ -1059,7 +1061,7 @@ def _produits_du_devis(calepinage):
         bloc = agregat.get(famille)
         if isinstance(bloc, dict) and bloc.get('produit') not in (None, ''):
             produits[role] = bloc['produit']
-    return produits
+    return produits_retenus(calepinage, produits)  # ACAL1952 — l'onduleur de l'option retenue
 
 
 def resoudre_materiel(company, entree, *, calepinage=None):
@@ -1244,6 +1246,7 @@ def entree_electrique_servie(calepinage, stockee):
         'materiel': materiel,
         'absents': [role for role in ROLES_MATERIEL if materiel[role] is None],
         'candidats': _candidats_materiel(calepinage),
+        'devis_retenu': bloc_devis_retenu(calepinage, stockee, resolu),  # ACAL1952
     }
 
 
@@ -1385,9 +1388,31 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
         # ACAL650 — tolérance d'orientation SAISIE (sourcée) ou None.
         tolerance_orientation_deg=tolerance_orientation_societe(
             parametres_societe(calepinage)),
-        **_options_entree(donnees), **_options_batterie(
-            calepinage, donnees, materiel))
-    return (conception, materiel, donnees, document)
+        **options_avec_devis(_options_entree(donnees), calepinage, donnees),  # ACAL1952
+        **_options_batterie(calepinage, donnees, materiel))
+    return (_nommer_module_pose(conception, materiel, document), materiel, donnees, document)
+
+
+def _nommer_module_pose(conception, materiel, document):
+    """ACAL1910 (moitié planche) — la planche unifilaire et le rapport nomment
+    le module POSÉ (celui qui couvre le plus de modules), plus le module par
+    défaut de l'entrée. Même source que l'étape thermique (ACAL1607,
+    ``simulation._fiche_du_module_pose``) ; seule la désignation du champ change,
+    les chaînes et leurs messages restent calculés tels quels."""
+    from dataclasses import replace
+
+    from .simulation import _fiche_du_module_pose
+
+    entree = getattr(conception, 'entree', None)
+    fiches = (materiel or {}).get('fiches_modules') or {}
+    if entree is None or getattr(entree, 'module', None) is None or not fiches:
+        return conception
+    pose = _fiche_du_module_pose(materiel, document)
+    nom = next((str(f.get('designation') or '') for f in fiches.values()
+                if isinstance(f, dict) and dict(f.get('specs') or {}) == dict(pose)), '')
+    if not nom or nom == entree.module.designation:
+        return conception
+    return replace(conception, entree=replace(entree, module=replace(entree.module, designation=nom)))
 
 
 def resultat_electrique_complet(conception, *, norme=None, noyau=None,
@@ -1767,7 +1792,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         getattr(calepinage, 'company', None))
 
     # CAL170 — quelle longueur de chaîne a été retenue, et d'où elle vient.
-    reconciliation = _longueur_chaine_retenue(conception)
+    reconciliation = _longueur_chaine_retenue(conception, longueur_du_devis_lie(calepinage))  # ACAL1953
     reconciliation = dict(reconciliation, plafond_modules=_plafond_modules(
         donnees.get('plafond_kwc_par_onduleur'),
         pose.get('puissance_module_wc')))
@@ -1795,8 +1820,8 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         messages.append(reconciliation['detail'])
     elif reconciliation['hors_tolerance']:
         messages.append(
-            "longueur de chaîne calculée %s contre %s au dossier (écart %s) — "
-            "écart au-delà de la tolérance, journalisé"
+            "longueur de chaîne calculée %s contre %s au devis (écart %s) — "
+            "information : le devis n'est pas modifié"
             % (reconciliation['longueur'], reconciliation['longueur_dossier'],
                reconciliation['ecart']))
     if terre['justification_requise'] and not terre['justification_fournie']:
@@ -1899,6 +1924,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         # client (moteur du devis) et le P50 de l'étude technique ; ``null``
         # sans devis lié, sans simulation fraîche ou sans production devis.
         'ecart_devis': _ecart_devis(calepinage, p50 if simule else None),
+        'production_devis': bloc_production_devis(calepinage),  # ACAL1956 — le chiffre du devis envoyé
         # ACAL48 — l'en-tête de la simulation STOCKÉE (empreinte, version de
         # simulation, réglages figés, date, durée), servi même périmé : il dit
         # avec quoi le calcul a été fait. Jamais simulé ⇒ l'empreinte
@@ -2806,8 +2832,8 @@ def rejouer_apres_layout(calepinage, *, user=None):
     try:
         conception, _materiel, _donnees, _doc = conception_du_calepinage(
             calepinage)
-        _journaliser_ecart_longueur(calepinage,
-                                    _longueur_chaine_retenue(conception))
+        _journaliser_ecart_longueur(calepinage, _longueur_chaine_retenue(
+            conception, longueur_du_devis_lie(calepinage)))
     except Exception:  # cf. docstring
         logging.getLogger(__name__).exception(
             'CAL170 : réconciliation de longueur en échec (calepinage %s)',
@@ -2850,13 +2876,6 @@ def rejouer_apres_layout(calepinage, *, user=None):
 ORIGINE_LONGUEUR_FICHE = 'fiche'
 ORIGINE_LONGUEUR_DOSSIER = 'dossier'
 
-#: Tolérance de l'écart moteur↔fiche, en MODULES puis en %. Reprise de la
-#: discipline PVG2 (``apps/ventes/domain/geometrie.py``) : un petit écart est
-#: une correction (la fiche est plus fine que la longueur de dossier, c'est le
-#: but), un GRAND écart est une anomalie qu'on journalise.
-TOLERANCE_LONGUEUR_MODULES = 2
-TOLERANCE_LONGUEUR_PCT = 5.0
-
 #: Nombre d'entrées conservées dans l'historique d'écarts (borné : un journal
 #: qui grossit sans fin finit par ne plus être lu). Ce n'est PAS un seuil
 #: électrique : c'est une taille de tampon, une convention d'atelier — aucune
@@ -2871,23 +2890,18 @@ CLE_FIL_ECARTS = 'journal_longueur_chaine'
 CLE_FIL_DEROGATIONS = 'journal_derogations'
 
 
-def _dans_la_tolerance(reference, ecart):
-    """L'écart tient-il dans l'une des deux tolérances (modules OU %) ?"""
-    ecart = abs(int(ecart))
-    if ecart <= TOLERANCE_LONGUEUR_MODULES:
-        return True
-    if reference > 0:
-        return (ecart * 100.0 / reference) <= TOLERANCE_LONGUEUR_PCT
-    return False
-
-
-def _longueur_chaine_retenue(conception):
+def _longueur_chaine_retenue(conception, longueur_devis=None):
     """CAL170 — la longueur de chaîne retenue, SON origine, et l'écart.
 
     Rend ``{longueur, origine, detail, longueur_dossier, ecart,
     hors_tolerance, par_pan}``. ``longueur`` vaut ``None`` quand les pans
     n'ont pas la même longueur : aucun nombre unique ne serait vrai, et le
     détail par pan est publié à sa place.
+
+    ACAL1953 — la référence de l'écart est la longueur du DEVIS lié
+    (``longueur_devis``, ACAL1950), sous ``longueur_dossier`` ; sans elle,
+    aucun écart n'est publié. La constante d'appel d'offres
+    ``MODULES_PAR_CHAINE`` ne sert plus que de repli assumé (fiche muette).
     """
     from core.calepinage.electrique import MODULES_PAR_CHAINE
 
@@ -2901,16 +2915,15 @@ def _longueur_chaine_retenue(conception):
     longueurs = set(par_pan.values())
     longueur = longueurs.pop() if len(longueurs) == 1 else None
     reference = longueur if longueur is not None else max(par_pan.values())
-    ecart = reference - dossier
+    ecart = reference - longueur_devis if longueur_devis else None
     return {
         'longueur': longueur,
         'origine': ORIGINE_LONGUEUR_FICHE,
         'detail': "longueur CALCULÉE sur les fiches par core.electrique "
-                  "(Voc à froid, plage MPPT, démarrage) — elle l'emporte sur "
-                  "la longueur de dossier de %d modules" % dossier,
-        'longueur_dossier': dossier,
+                  "(Voc à froid, plage MPPT, démarrage)",
+        'longueur_dossier': longueur_devis or None,
         'ecart': ecart,
-        'hors_tolerance': not _dans_la_tolerance(dossier, ecart),
+        'hors_tolerance': bool(ecart),
         'par_pan': par_pan,
     }
 
@@ -3573,7 +3586,7 @@ VERDICTS_DE_CHAINE = (
     ('vmp_hot_over_mppt_min', 'Vmp à chaud au-dessus du bas de la plage MPPT'),
     ('courant_par_entree_mppt',
      'Courant par entrée MPPT sous le courant admissible'),
-    ('ratio_dc_ac', 'Ratio DC/AC face à la fourchette réglée par la société'),
+    ('ratio_dc_ac', 'Ratio DC/AC face à la borne du devis ou de la société'),
 )
 LIBELLE_RATIO = VERDICTS_DE_CHAINE[-1][1]
 
@@ -3596,8 +3609,6 @@ def _verdicts_electriques(conception, optimiseur_specs=None,
     Isc publié dépassé) ; ce qui dégrade la production alerte (écrêtage sur
     l'Imp, MPPT hors plage en été, ratio DC/AC).
     """
-    from core.electrique.types import fr
-
     from .chaines import MOTIF_MICRO_SEUL, evaluer_onduleurs
 
     if getattr(conception, 'micro_seul', False):
@@ -3702,7 +3713,7 @@ def _verdicts_electriques(conception, optimiseur_specs=None,
     evaluation = evaluer_onduleurs(conception, reglages=reglages)
     ratio = evaluation.ratio_dc_ac if evaluation is not None else None
     valeur = None if ratio is None else ratio.valeur
-    bornes = bornes_ratio or _bornes_ratio(reglages=reglages)
+    bornes = bornes_du_verdict(bornes_ratio or _bornes_ratio(reglages=reglages), evaluation, conception)
     conforme = _juger_ratio(valeur, bornes, reglages)
     verdicts.append({
         'code': 'ratio_dc_ac',
@@ -3710,11 +3721,7 @@ def _verdicts_electriques(conception, optimiseur_specs=None,
         'conforme': conforme,
         'bloquant': False,
         'source': 'fiche',
-        'detail': ('' if valeur is None
-                   else '%s — %s' % (ratio.texte, RATIO_NON_JUGE)
-                   if conforme is None
-                   else '%s pour %s au plus (%s)' % (
-                       ratio.texte, fr(bornes[0], 2), bornes[2])),
+        'detail': '' if valeur is None else detail_ratio(ratio.texte, conforme, bornes),
         **_bloc_temperature(conception.temperatures),
     })
     # CAL129 — les contrôles d'ENTRÉE de l'optimiseur viennent APRÈS les cinq
@@ -3736,8 +3743,8 @@ def _verdicts_electriques(conception, optimiseur_specs=None,
 #
 # AUCUNE BORNE N'EST ÉCRITE ICI. Elles sont toutes LUES :
 #   * exigence de MARCHÉ (le CPS du dossier) — la plus forte, elle s'impose ;
-#   * paramètre SOCIÉTÉ (réglages du module) ;
-#   * à défaut, la borne du NOYAU électrique, publiée avec sa source.
+#   * capacité publiée d'un HYBRIDE (D-HYB-1), fourchette de la SOCIÉTÉ ;
+#   * à défaut, la RÈGLE DU DEVIS (ACAL1954, D-ACAL-91) — ``services/ratio_devis.py``.
 #
 # L'ÉCRÊTAGE : la perte d'écrêtage ne se déduit PAS d'un ratio. Elle se
 # calcule heure par heure (c'est ce que fait PVsyst) — donc elle exige la
@@ -3746,9 +3753,10 @@ def _verdicts_electriques(conception, optimiseur_specs=None,
 # seule grandeur réellement dérivable des puissances : les kWc DC au-dessus de
 # la capacité AC installée.
 
-SOURCE_BORNE_MARCHE = 'exigence de marché'
-SOURCE_BORNE_SOCIETE = 'paramètre société'
-SOURCE_BORNE_NOYAU = 'borne usuelle du noyau électrique'
+from .ratio_devis import (  # noqa: E402 — ACAL1954 : LE verdict du ratio (D-ACAL-91)
+    SOURCE_BORNE_CAPACITE, SOURCE_BORNE_DEVIS, SOURCE_BORNE_MARCHE, SOURCE_BORNE_SOCIETE,
+    bornes_du_verdict, bornes_ratio as _bornes_ratio, detail_ratio, juger_ratio as _juger_ratio,
+)
 
 # ── CALX172 — LES DEUX PHRASES DE L'ÉCRÊTAGE, ET ELLES SONT UNIQUES ──────
 #
@@ -3768,40 +3776,6 @@ MOTIF_ECRETAGE_SANS_SERIE = (
     "aucun forfait n'est appliqué à sa place")
 
 
-def _bornes_ratio(*, exigence_marche=None, parametres_societe=None,
-                  reglages=None):
-    """``(borne_dc_ac, seuil_alerte, source, detail)`` — jamais une borne écrite ici.
-
-    ``exigence_marche`` et ``parametres_societe`` sont des dicts portant
-    ``ratio_dc_ac_max`` (et, optionnellement, ``ratio_dc_ac_alerte``). Le
-    premier qui en porte une l'emporte, et la SOURCE retenue voyage avec la
-    valeur. ACAL1538 — puis la borne usuelle SAISIE de la section
-    « electrique_societe » (``reglages``), celle qu'``evaluer_onduleurs`` lit.
-    """
-    from core.electrique.onduleurs import (
-        BORNE_USUELLE_DC_AC, SEUIL_ALERTE_DC_AC, SOURCE_CONVENTION_ATELIER,
-        bornes_dc_ac,
-    )
-
-    for donnees, source in ((exigence_marche, SOURCE_BORNE_MARCHE),
-                            (parametres_societe, SOURCE_BORNE_SOCIETE)):
-        borne = _nombre((donnees or {}).get('ratio_dc_ac_max'))
-        if borne is not None and borne > 0:
-            alerte = _nombre((donnees or {}).get('ratio_dc_ac_alerte'))
-            return (borne, alerte if alerte and alerte > 0 else None, source,
-                    (donnees or {}).get('reference') or '')
-    saisies = bornes_dc_ac(reglages)
-    if saisies.borne_usuelle.source != SOURCE_CONVENTION_ATELIER:
-        alerte = saisies.seuil_alerte
-        return (saisies.borne_usuelle.valeur,
-                (alerte.valeur if alerte.source != SOURCE_CONVENTION_ATELIER
-                 else None), SOURCE_BORNE_SOCIETE, saisies.borne_usuelle.source)
-    # ACAL1540 — dit en phrase de métier, sans nom de module du code.
-    return (BORNE_USUELLE_DC_AC, SEUIL_ALERTE_DC_AC, SOURCE_BORNE_NOYAU,
-            "usage des fabricants d'onduleurs : borne usuelle 1,35 et alerte "
-            "au-delà de 1,50")
-
-
 def _avertissements_uniques(messages):
     """ACAL1540 — chaque avertissement servi UNE fois, dans l'ordre : sans
     norme, câbles, protections et terre omettent pour la MÊME raison."""
@@ -3812,25 +3786,6 @@ def _avertissements_uniques(messages):
             vus.add(cle)
             uniques.append(message)
     return uniques
-
-
-#: ACAL1538 — LA phrase du ratio quand aucune fourchette n'est réglée.
-RATIO_NON_JUGE = 'Non jugé : aucune fourchette réglée'
-
-
-def _juger_ratio(valeur, bornes, reglages=None):
-    """ACAL1538 — LE verdict du ratio DC/AC : vrai, faux, ou ``None`` (non jugé).
-
-    Seule une fourchette RÉGLÉE juge (marché, société, seuil bas saisi) : la
-    borne usuelle du noyau reste publiée, elle ne prononce plus rien."""
-    from core.electrique.onduleurs import bornes_dc_ac
-
-    borne, _alerte, source, _detail = bornes
-    bas = bornes_dc_ac(reglages).seuil_bas
-    if valeur is None or (source == SOURCE_BORNE_NOYAU and not bas.controlee):
-        return None
-    dans = source == SOURCE_BORNE_NOYAU or valeur <= borne + 1e-9
-    return dans and (not bas.controlee or valeur >= bas.valeur - 1e-9)
 
 
 def ecretage_depuis_serie(serie_dc_kw, puissance_ac_kw):
@@ -3865,7 +3820,7 @@ def _bloc_ratio_dc_ac(conception, *, exigence_marche=None,
 
     Rend ``(bloc, avertissements)``. Hors bornes, l'avertissement CITE la
     borne ET sa source : « ratio DC/AC 1,52 au-dessus de la borne 1,35
-    (borne usuelle du noyau électrique) ».
+    (règle du devis) ».
 
     ACAL141 — ``ecretage_pct`` est celui de l'étape « ecretage » de la
     cascade FRAÎCHE (calculé heure par heure par ``ecretage_depuis_serie``
@@ -3875,11 +3830,11 @@ def _bloc_ratio_dc_ac(conception, *, exigence_marche=None,
 
     from .chaines import evaluer_onduleurs
 
-    bornes = _bornes_ratio(exigence_marche=exigence_marche,
-                           parametres_societe=parametres_societe,
-                           reglages=reglages)
-    borne, alerte, source, detail = bornes
     evaluation = evaluer_onduleurs(conception)
+    bornes = bornes_du_verdict(_bornes_ratio(
+        exigence_marche=exigence_marche, parametres_societe=parametres_societe,
+        reglages=reglages), evaluation, conception)  # ACAL1954
+    borne, alerte, source, detail = bornes
     valeur = None
     puissance_ac = None
     if evaluation is not None and evaluation.nombre:
@@ -3888,11 +3843,13 @@ def _bloc_ratio_dc_ac(conception, *, exigence_marche=None,
         valeur = ratio.valeur if ratio is not None else None
 
     avertissements = []
-    # ACAL1538 — le verdict UNIQUE (aussi celui de ``_verdicts_electriques``).
+    # ACAL1538 / ACAL1954 — le verdict UNIQUE (aussi celui de ``_verdicts_electriques``).
     dans_bornes = _juger_ratio(valeur, bornes, reglages)
-    juge = source != SOURCE_BORNE_NOYAU
     if dans_bornes is False:
-        if juge and valeur > borne + 1e-9:
+        if source == SOURCE_BORNE_CAPACITE and valeur > borne + 1e-9:
+            avertissements.append('ratio DC/AC de %s au-delà de la %s (%s) — champ PV trop grand '
+                                  'pour cet onduleur' % (fr(valeur, 2), source, detail))
+        elif valeur > borne + 1e-9:
             avertissements.append(
                 "ratio DC/AC de %s au-dessus de la borne %s (%s%s) — "
                 "écrêtage aux heures pleines"
@@ -3902,7 +3859,7 @@ def _bloc_ratio_dc_ac(conception, *, exigence_marche=None,
             avertissements.append(
                 "ratio DC/AC de %s sous le seuil bas réglé par la société — "
                 "onduleur sous-utilisé" % fr(valeur, 2))
-    if valeur is not None and juge:
+    if valeur is not None:
         if alerte is not None and valeur > alerte + 1e-9:
             avertissements.append(
                 "ratio DC/AC de %s au-dessus du seuil d'alerte %s (%s) — "

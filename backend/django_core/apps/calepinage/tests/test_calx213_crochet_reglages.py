@@ -110,12 +110,12 @@ class CrochetEvaluerOnduleursTest(SimpleTestCase):
 class CrochetVerdictsElectriquesTest(SimpleTestCase):
     """C'est la borne SOCIÉTÉ qui juge le verdict ``ratio_dc_ac``."""
 
-    def test_sans_reglage_le_ratio_n_est_pas_juge(self):
+    def test_sans_reglage_la_regle_du_devis_juge(self):
         verdict = _verdict(_verdicts_electriques(_conception()), 'ratio_dc_ac')
 
-        # ACAL1538 — la borne usuelle du noyau ne juge plus : « Non jugé ».
-        self.assertIsNone(verdict['conforme'])
-        self.assertIn('Non jugé : aucune fourchette réglée', verdict['detail'])
+        # ACAL1954 (D-ACAL-91) — sans fourchette société, la règle du devis juge.
+        self.assertIs(verdict['conforme'], True)  # 1,28 ≤ 1,35
+        self.assertIn('règle du devis', verdict['detail'])
 
     def test_une_borne_societe_plus_stricte_fait_basculer_le_verdict(self):
         verdicts = _verdicts_electriques(_conception(), reglages={

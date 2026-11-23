@@ -155,6 +155,61 @@ def _refuser_repointage_d_un_actif(ancien_devis_id, nouveau, company):
         f"{_reference(nouveau)}.", champ='devis')
 
 
+#: ACAL1955 — les statuts d'un devis que le client a reçu.
+_STATUTS_RECUS = ('envoye', 'accepte')
+
+
+def candidat_suivi_devis_envoye(devis_envoye):
+    """ACAL1955 (D-ACAL-89) — ``(calepinage, brouillon_lie)`` à re-lier au devis
+    ENVOYÉ ``devis_envoye``, ou ``None`` (rien ne bouge).
+
+    Seulement quand le lead du devis a UN SEUL calepinage ouvert, lié à un
+    BROUILLON jamais envoyé du même lead (et de la même société). Plusieurs
+    calepinages ouverts, aucun lien, ou un lien vers un devis déjà envoyé ou
+    accepté ⇒ ``None``. Lecture seule."""
+    from apps.ventes.selectors import get_devis_by_pk
+
+    from ..selectors import calepinages_ouverts_du_lead
+
+    company = getattr(devis_envoye, 'company', None)
+    lead_id = getattr(devis_envoye, 'lead_id', None)
+    if company is None or not lead_id or getattr(devis_envoye, 'statut', '') not in _STATUTS_RECUS:
+        return None
+    ouverts = calepinages_ouverts_du_lead(company, lead_id)
+    if len(ouverts) != 1:
+        return None
+    calepinage = ouverts[0]
+    if not calepinage.devis_id or int(calepinage.devis_id) == int(devis_envoye.pk):
+        return None
+    lie = get_devis_by_pk(calepinage.devis_id)
+    if (lie is None or lie.company_id != company.pk or lie.lead_id != lead_id
+            or lie.statut != 'brouillon' or getattr(lie, 'date_envoi', None)):
+        return None
+    return calepinage, lie
+
+
+def suivre_devis_envoye(devis_envoye, *, user=None):
+    """ACAL1955 (D-ACAL-89) — re-lie le calepinage ouvert du lead au devis
+    ENVOYÉ quand il pointait un brouillon jamais envoyé
+    (:func:`candidat_suivi_devis_envoye`). Le brouillon quitté ne garde RIEN
+    (aucune variante n'est créée pour lui) ; le journal du calepinage dit d'où
+    il vient et où il va (lien CAL26 + une note). Rend ``{calepinage,
+    devis_lie, devis_envoye}`` ou ``None``. Lève :class:`LiaisonRefusee` si le
+    devis envoyé est déjà tenu par un autre calepinage."""
+    from .journal import noter
+
+    candidat = candidat_suivi_devis_envoye(devis_envoye)
+    if candidat is None:
+        return None
+    calepinage, lie = candidat
+    lier_devis(calepinage, devis_envoye.pk, user=user, ancien_abandonne=lie.pk)
+    noter(calepinage, f"Re-lié au devis envoyé {_reference(devis_envoye)} : quitte le "
+                      f"brouillon {_reference(lie)}, jamais envoyé, qui ne garde aucune "
+                      "conception.", user=user)
+    return {'calepinage': calepinage.pk, 'devis_lie': lie.pk,
+            'devis_envoye': devis_envoye.pk}
+
+
 def transferer_lead(company, *, de_lead_id, vers_lead_id, user=None):
     """ACAL176 — les calepinages d'un lead ABSORBÉ suivent le survivant.
 

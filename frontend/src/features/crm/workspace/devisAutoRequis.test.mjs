@@ -29,9 +29,9 @@ test('facture d’hiver à 0 → section Énergie NON complète (vide du serveur
   assert.equal(sectionAutoRepliee(rempli, 'energie'), true)
 })
 
-test('agricole : les champs requis vivent dans « Pompage », pas dans l’énergie', () => {
+test('agricole : les champs hydrauliques vivent dans « Pompage » ; seule la phase (ALEA67) est dans l’énergie', () => {
   const { requis } = exempleContrat('crm', 'devis_auto_pret', 'exemple_agricole').devis_auto
-  assert.deepEqual(sectionCoeurKeys(etat({ devis_auto: { requis } }), 'energie'), [])
+  assert.deepEqual(sectionCoeurKeys(etat({ devis_auto: { requis } }), 'energie'), ['raccordement'])
 })
 
 test('un libellé RENOMMÉ laisse la puce cliquable sur le bon champ', () => {
@@ -56,7 +56,9 @@ test('agricole : chaque puce vise son champ de pompage', () => {
 
 test('AGR415 — agricole : le cœur « Pompage » LIT les groupes servis (nouveau devis_auto_pret.json)', () => {
   const { requis } = exempleContrat('crm', 'devis_auto_pret', 'exemple_agricole').devis_auto
-  assert.deepEqual(sectionCoeurKeys(etat({ devis_auto: { requis } }), 'pompage'), requis.flat())
+  // ALEA67 — le groupe « phase » (raccordement) vit dans l’énergie : le cœur Pompage garde les groupes hydrauliques.
+  const hydrauliques = requis.filter((g) => !g.includes('raccordement')).flat()
+  assert.deepEqual(sectionCoeurKeys(etat({ devis_auto: { requis } }), 'pompage'), hydrauliques)
   // Sans règle servie (création) : repli sur HMT + débit, jamais le CV.
   assert.deepEqual(sectionCoeurKeys(etat({}), 'pompage'), ['pompe_hmt_m', 'pompe_debit_m3h'])
 })

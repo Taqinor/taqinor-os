@@ -182,6 +182,33 @@ class EcartDevisTest(BaseApiCalepinage):
         self.assertEqual(Decimal('50.9'),
                          Decimal(str(servi['ecart_devis']['ecart_pct'])))
 
+    def test_acal1956_production_retenue_par_le_devis_les_trois_etats(self):
+        # Sans devis : rien.
+        sans = self._calepinage(devis=False, simule=False)
+        self.assertIsNone(resultat_calepinage(sans, materiel=MATERIEL)['production_devis'])
+        sans.delete()
+        # Devis encore brouillon : rien (le client ne l'a pas reçu).
+        brouillon = self._calepinage(simule=False)
+        self.assertIsNone(resultat_calepinage(brouillon, materiel=MATERIEL)['production_devis'])
+        brouillon.delete()
+        # Devis envoyé, SANS simulation : la production du devis, telle quelle.
+        Devis.objects.filter(pk=self.devis.pk).update(statut='envoye')
+        non_simule = self._calepinage(simule=False)
+        servi = resultat_calepinage(non_simule, materiel=MATERIEL)
+        self.assertFalse(servi['simule'])
+        self.assertEqual(servi['production_devis'], {
+            'devis': self.devis.pk, 'reference': 'DEV-202610-0648', 'statut': 'envoye',
+            'production_annuelle_kwh': float(PRODUCTION_DEVIS), 'production_origine': 'production_annuelle'})
+        self.assertEqual(set(servi['production_devis']),
+                         set(CONTRAT['exemple_ecart_devis']['production_devis']))
+        non_simule.delete()
+        # Devis envoyé, AVEC simulation : les deux chiffres côte à côte, devis inchangé.
+        servi = resultat_calepinage(self._calepinage(), materiel=MATERIEL)
+        self.assertEqual(servi['production_devis']['production_annuelle_kwh'], float(PRODUCTION_DEVIS))
+        self.assertEqual(servi['production']['total']['p50_kwh'], P50)
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.etude_params['production_annuelle'], PRODUCTION_DEVIS)
+
 
 class EcartDevisSansRenduTest(SimpleTestCase):
     """L'écart de l'atelier lit la figure du devis par le sélecteur YSERV8,

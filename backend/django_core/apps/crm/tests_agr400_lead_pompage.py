@@ -218,7 +218,7 @@ class ReglePret(SimpleTestCase):
 
     def test_niveau_seul_ne_suffit_pas(self):
         from apps.crm import devis_auto
-        lead = Lead(nom='Ferme', type_installation='agricole',
+        lead = Lead(nom='Ferme', type_installation='agricole', raccordement='triphase',
                     niveau_statique_m=Decimal('45'),
                     pompe_debit_m3h=Decimal('20'))
         self.assertEqual(devis_auto.champs_manquants_detail(lead),
@@ -242,7 +242,7 @@ class ModePompeEtPlaque(SimpleTestCase):
     un mode vide part en « neuve », étiqueté « par défaut »."""
 
     def _lead(self, **extra):
-        champs = dict(nom='Ferme', type_installation='agricole',
+        champs = dict(nom='Ferme', type_installation='agricole', raccordement='triphase',
                       pompe_hmt_m=Decimal('60'), besoin_eau_m3j=Decimal('80'))
         champs.update(extra)
         return Lead(**champs)
@@ -263,7 +263,7 @@ class ModePompeEtPlaque(SimpleTestCase):
     def test_neuve_n_exige_pas_la_plaque(self):
         from apps.crm import devis_auto
         lead = self._lead(mode_pompe='neuve')
-        self.assertEqual(len(devis_auto.champs_requis(lead)), 2)
+        self.assertEqual(len(devis_auto.champs_requis(lead)), 3)  # + la phase (ALEA67)
         self.assertEqual(devis_auto.champs_manquants_detail(lead), [])
 
     def test_mode_vide_neuve_par_defaut(self):

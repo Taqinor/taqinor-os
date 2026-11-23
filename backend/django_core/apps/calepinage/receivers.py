@@ -26,8 +26,8 @@ import logging
 from django.dispatch import receiver
 
 from core.events import (
-    devis_revise, layout_finalise, lead_created, lead_trace_toit_recu,
-    revision_abandonnee,
+    devis_revise, devis_sent, layout_finalise, lead_created,
+    lead_trace_toit_recu, revision_abandonnee,
 )
 
 from .services.versions import (
@@ -40,6 +40,7 @@ __all__ = [
     'rattacher_conception_au_devis', 'relier_calepinage_au_devis_revise',
     'relier_calepinage_a_la_version_reactivee',
     'reprise_du_trace_public', 'reprise_du_trace_au_renvoi',
+    'suivre_le_devis_envoye',
 ]
 
 
@@ -185,6 +186,28 @@ def relier_calepinage_a_la_version_reactivee(sender, ancien=None,
         return {'calepinage': getattr(calepinage, 'pk', None),
                 'relie': False, 'motif': str(erreur)}
     return {'calepinage': calepinage.pk, 'relie': True, 'motif': ''}
+
+
+@receiver(devis_sent, dispatch_uid='calepinage_suivre_le_devis_envoye')
+def suivre_le_devis_envoye(sender, devis=None, user=None, **kwargs):
+    """ACAL1955 (D-ACAL-89) — à l'ENVOI d'un devis, le calepinage ouvert du
+    lead qui pointait un brouillon jamais envoyé est re-lié à ce devis
+    (``services.liens.suivre_devis_envoye``). BEST-EFFORT dans son propre point
+    de sauvegarde (contrat des abonnés de ``devis_sent``) : un échec est
+    journalisé, jamais propagé — l'envoi est déjà acté."""
+    if devis is None:
+        return None
+    try:
+        from django.db import transaction
+
+        from .services.liens import suivre_devis_envoye
+
+        with transaction.atomic():
+            return suivre_devis_envoye(devis, user=user)
+    except Exception:  # un re-lien ne casse jamais l'envoi
+        logger.exception('ACAL1955 : suivi du devis envoyé %s en échec',
+                         getattr(devis, 'pk', None))
+        return None
 
 
 @receiver(lead_created, dispatch_uid='calepinage_reprise_trace_public')

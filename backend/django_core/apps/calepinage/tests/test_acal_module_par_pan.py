@@ -259,9 +259,18 @@ class ModuleParPanStockReelTest(BaseApiCalepinage):
 
         conception, materiel, _d, _doc = conception_du_calepinage(calepinage)
 
+        # ACAL1910 — égalité de modules posés : la planche garde le module par défaut.
+        self.assertEqual(conception.entree.module.designation, materiel['designations']['module'])
         self.assertEqual(materiel['produits']['module'], m550.pk)
         self.assertIn(m400.pk, materiel['fiches_modules'])
         pose = bloc_pose(conception)
         self.assertEqual([(p['pan'], p['kwc']) for p in pose['pans']],
                          [('A', 5.5), ('B', 4.0)])
         self.assertEqual(pose['kwc'], 9.5)
+        # ACAL1910 — 13 modules 400 posés contre 10 du défaut : le champ de la planche (entree.module,
+        # lu par core.electrique.schema « Modules … ») nomme le module POSÉ.
+        layout['zones'][1]['geometry']['count'] = 13
+        calepinage.roof_layout = layout
+        conception, materiel, _d, _doc = conception_du_calepinage(calepinage)
+        self.assertEqual(conception.entree.module.designation, materiel['fiches_modules'][m400.pk]['designation'])
+        self.assertNotEqual(conception.entree.module.designation, materiel['designations']['module'])

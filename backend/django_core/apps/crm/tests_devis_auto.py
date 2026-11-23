@@ -145,7 +145,7 @@ class TestDevisAutoProCIQ404(SimpleTestCase):
             lead = self._lead(type_installation=mode)
             self.assertIsNone(visite_avant_devis(lead), mode)
             self.assertIsNone(source_conso(lead), mode)
-        self.assertEqual(champs_requis(self._lead()), [['facture_hiver']])
+        self.assertEqual(champs_requis(self._lead()), [['facture_hiver'], ['ville', 'gps_lat']])
 
     def test_exemples_commercial_et_industriel_du_contrat(self):
         # ALEA47 — contrat BT déclaré, rythme manquant (aucune activité).
@@ -184,6 +184,7 @@ class TestAgricoleSansCvAGR403(SimpleTestCase):
     et drapeau « visite du point d'eau avant devis ». Règle pure."""
 
     def _lead(self, **kwargs):
+        kwargs.setdefault('raccordement', 'triphase')  # ALEA67 — la phase, exigée
         return Lead(nom='Ferme', type_installation='agricole', **kwargs)
 
     def test_hmt_et_debit_sans_cv_est_pret(self):
@@ -250,10 +251,10 @@ class TestAgricoleSansCvAGR403(SimpleTestCase):
             self.assertIsNone(visite_point_eau_avant_devis(lead), mode)
 
     def test_non_regression_residentiel_et_pro(self):
-        self.assertEqual(champs_requis(Lead(nom='x')), [['facture_hiver']])
+        self.assertEqual(champs_requis(Lead(nom='x')), [['facture_hiver'], ['ville', 'gps_lat']])
         self.assertEqual(
             champs_requis(Lead(nom='x', ete_differente=True)),
-            [['facture_hiver'], ['facture_ete']])
+            [['facture_hiver'], ['facture_ete'], ['ville', 'gps_lat']])
         for mode in ('industriel', 'commercial'):
             # CIQ404 — groupe pro du contrat CIQ1 ; ALEA47 — + le contrat et
             # le rythme que le moteur exige (ici tout manque).
@@ -300,8 +301,10 @@ class TestChampsManquants(TestCase):
     def _lead(self, **kwargs):
         # ADEV89 — la phase du site est un prérequis C&I ; ces cas testent la
         # consommation, le contrat et le rythme : la phase est déclarée.
-        if kwargs.get('type_installation') in ('commercial', 'industriel'):
+        if kwargs.get('type_installation') in ('commercial', 'industriel', 'agricole'):
             kwargs.setdefault('raccordement', 'triphase')
+        else:  # ALEA67 — un chantier résidentiel situé (ville reconnue)
+            kwargs.setdefault('ville', 'Casablanca')
         return Lead(company=self.company, nom='Gate', **kwargs)
 
     def test_agv5_visite_point_eau_validee_leve_la_garde(self):
@@ -370,6 +373,28 @@ class TestChampsManquants(TestCase):
         lead.pompe_debit_m3h = 12
         self.assertEqual(champs_manquants(lead), [])
 
+    def test_alea67_pret_seulement_si_le_moteur_sait_situer_le_chantier(self):
+        # ALEA67 — 29 leads « prêts » que le moteur refusait (localisation_inconnue).
+        from apps.parametres.pvgis_profils import productible_mensuel
+
+        inconnue = self._lead(type_installation='residentiel', facture_hiver=650, ville='Xyzzyville')
+        self.assertIsNone(productible_mensuel(ville='Xyzzyville'))
+        self.assertEqual(champs_manquants(inconnue), ['ville'])
+        self.assertEqual(message_manquants(champs_manquants(inconnue)), 'Manque : ville')
+        inconnue.gps_lat, inconnue.gps_lng = Decimal('33.57'), Decimal('-7.59')
+        self.assertEqual(champs_manquants(inconnue), [])
+        inconnue.gps_lng = None  # une seule coordonnée ne situe rien
+        self.assertEqual(champs_manquants(inconnue), ['ville'])
+        self.assertEqual(champs_manquants(self._lead(facture_hiver=650)), [])  # Casablanca reconnue
+
+    def test_alea67_agricole_exige_la_phase_comme_le_moteur(self):
+        for raccordement in (None, 'inconnu', 'aucun'):
+            lead = self._lead(type_installation='agricole', pompe_hmt_m=80, pompe_debit_m3h=12,
+                              raccordement=raccordement)
+            self.assertEqual(champs_manquants(lead), ['Phase du site (monophasé ou triphasé)'], raccordement)
+        self.assertEqual(champs_manquants(self._lead(type_installation='agricole', pompe_hmt_m=80,
+                                                     pompe_debit_m3h=12, raccordement='monophase')), [])
+
     def test_message_format(self):
         self.assertEqual(message_manquants(['HMT', 'débit souhaité']),
                          'Manque : HMT, débit souhaité')
@@ -386,7 +411,7 @@ class TestDevisAutoSerializerField(TestCase):
         self.api = make_api(self.user)
 
     def test_field_in_list_payload(self):
-        Lead.objects.create(company=self.company, nom='PasPrêt')
+        Lead.objects.create(company=self.company, nom='PasPrêt', ville='Casablanca')
         resp = self.api.get('/api/django/crm/leads/')
         self.assertEqual(resp.status_code, 200)
         data = resp.data['results'] if 'results' in resp.data else resp.data
@@ -399,7 +424,7 @@ class TestDevisAutoSerializerField(TestCase):
 
     def test_field_when_ready(self):
         lead = Lead.objects.create(
-            company=self.company, nom='Prêt', facture_hiver=700)
+            company=self.company, nom='Prêt', facture_hiver=700, ville='Casablanca')
         resp = self.api.get(f'/api/django/crm/leads/{lead.id}/')
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.data['devis_auto']['pret'])
@@ -591,7 +616,7 @@ class TestDevisAutoEndpoint(TestCase):
         # actuelle ne compte plus).
         self.lead = Lead.objects.create(
             company=self.company, nom='Agriculteur',
-            type_installation='agricole')
+            type_installation='agricole', raccordement='triphase')
 
     def _post(self, lead_id=None, api=None):
         api = api or self.api

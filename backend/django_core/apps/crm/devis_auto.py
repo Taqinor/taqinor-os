@@ -51,7 +51,15 @@ GROUPES_HYDRAULIQUES_AGRICOLES = (
 _COMPTE_SEULEMENT_AVEC = {
     'pompe_actuelle_debit_m3h': ('pompage_heures_jour',),
     'pompe_actuelle_kw': ('pompe_actuelle_tension_v', 'pompe_actuelle_phases'),
+    # ALEA67 — un point GPS ne situe le chantier qu'avec ses DEUX coordonnées.
+    'gps_lat': ('gps_lng',),
 }
+
+#: ALEA67 — résidentiel : le moteur doit SITUER le chantier (ville reconnue par
+#: ``parametres.pvgis_profils.productible_mensuel``, ou point GPS posé) — sinon il
+#: refuse ensuite (``localisation_inconnue``, 29 leads « prêts » en production le
+#: 23/11/2026).
+GROUPE_LOCALISATION = ('ville', 'gps_lat')
 
 #: AGQ39 (D-AGQ-10) — groupe requis en plus quand le lead dit « pompe
 #: existante conservée » : la plaque de la pompe actuelle.
@@ -110,8 +118,12 @@ def _rempli(lead, champ):
     un débit actuel sans ses heures ne fait pas un volume."""
     if champ == 'releve_conso':
         return _releve_rempli(lead)
+    if champ == 'ville':
+        return _ville_situee(lead)
     if not getattr(lead, champ, None):
         return False
+    if champ == 'raccordement' and lead.type_installation == _MODE_AGRICOLE:
+        return _phase_du_moteur(lead) is not None
     if champ == 'contrat_electricite':
         return lead.contrat_electricite != 'ne_sait_pas'
     if champ == 'raccordement':
@@ -121,6 +133,26 @@ def _rempli(lead, champ):
         return False
     return all(getattr(lead, compagnon, None)
                for compagnon in _COMPTE_SEULEMENT_AVEC.get(champ, ()))
+
+
+def _ville_situee(lead):
+    """ALEA67 — la ville du lead SITUE-t-elle le chantier pour le moteur ? Même
+    lecteur que lui (``parametres.pvgis_profils.productible_mensuel`` : table des
+    villes, orthographes courantes, gazetier) — sans coordonnées : aucun appel
+    réseau ici."""
+    from apps.parametres.pvgis_profils import productible_mensuel
+
+    ville = (getattr(lead, 'ville', '') or '').strip()
+    return bool(ville) and productible_mensuel(ville=ville) is not None
+
+
+def _phase_du_moteur(lead):
+    """ALEA67 — la phase telle que le moteur agricole la lit
+    (``apps.ventes.services.phase_client_pour_dimensionnement``, jamais une copie
+    de la règle)."""
+    from apps.ventes.services import phase_client_pour_dimensionnement
+
+    return phase_client_pour_dimensionnement(lead)
 
 
 def releve_eau_manquant(lead) -> bool:
@@ -144,6 +176,8 @@ def champs_requis(lead) -> list[list[str]]:
     mode = lead.type_installation or 'residentiel'
     if mode == _MODE_AGRICOLE:
         requis = [list(groupe) for groupe in GROUPES_HYDRAULIQUES_AGRICOLES]
+        # ALEA67 — la phase (mono/tri) : le moteur agricole refuse sans elle.
+        requis.append(['raccordement'])
         if getattr(lead, 'mode_pompe', None) == 'existante':
             requis.append(list(GROUPE_PLAQUE_EXISTANTE))
         return requis
@@ -162,6 +196,7 @@ def champs_requis(lead) -> list[list[str]]:
     requis = [['facture_hiver']]
     if lead.ete_differente:
         requis.append(['facture_ete'])
+    requis.append(list(GROUPE_LOCALISATION))  # ALEA67
     return requis
 
 
@@ -255,6 +290,8 @@ _LIBELLES = {
     'contrat_electricite': "Contrat d'électricité",
     # ADEV89 — la phase du site, prérequis de la combinaison d'onduleurs.
     'raccordement': 'Phase du site (monophasé ou triphasé)',
+    # ALEA67 — ville reconnue OU point GPS (une seule puce).
+    'ville': 'ville',
     'jours_ouverture': "Jours et heures d'ouverture (ou catégorie d'activité)",
     'heure_debut': "Jours et heures d'ouverture (ou catégorie d'activité)",
 }

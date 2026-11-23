@@ -7,6 +7,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, within, fireEvent } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { exempleContrat } from '../../../../../test/fixtures/contractSamples'
+import { formatNumber } from '../../../../../lib/format'
 
 vi.mock('../../../../../api/calepinageApi', () => ({
   default: {
@@ -371,7 +372,10 @@ describe('Étape Résultats — résultat incomplet (maquette ResultatsIncomplet
     expect(haut.children[1]).toHaveTextContent('Pour un résultat complet')
     expect(within(bloc).getAllByText('Renseigner').length).toBeGreaterThan(0)
     expect(screen.queryByTestId('cal-resultats-tuiles')).toBeNull()
-    expect(screen.queryByTestId('cal-resultats-pied')).toBeNull()
+    // ACAL1958 — incomplet : le bouton de l'étape, sans la phrase de durée (valeurs non publiées).
+    const pied = screen.getByTestId('cal-resultats-pied')
+    expect(within(pied).getByRole('button', { name: /Préparer les documents/ })).toBeInTheDocument()
+    expect(pied.querySelector('.cal-res-pied-ligne').textContent).toBe('')
   })
 
   it('Demande croisée — le compte annoncé égale les lignes listées, ou dit « et N autres » avec « Voir les étapes » qui ouvre le détail', async () => {
@@ -487,7 +491,10 @@ describe('Étape Résultats — pas encore simulé (jamais lancé)', () => {
     expect(bloc).not.toHaveTextContent(JARGON)
     expect(document.body.textContent).not.toMatch(JARGON)
     expect(screen.queryByText('Ce qui manque encore :')).toBeNull()
-    expect(screen.queryByTestId('cal-resultats-pied')).toBeNull() // le pied n'existe qu'avec un résultat
+    // ACAL1958 — avant simulation : le bouton de l'étape est là, au même gabarit ; aucune phrase de durée.
+    const pied = screen.getByTestId('cal-resultats-pied')
+    expect(within(pied).getByRole('button', { name: /Préparer les documents/ })).toBeInTheDocument()
+    expect(pied.querySelector('.cal-res-pied-ligne').textContent).toBe('')
     expect(screen.queryByTestId('cal-resultats-tuiles')).toBeNull()
   })
 
@@ -537,5 +544,37 @@ describe('Étape Résultats — calcul à refaire (simulation périmée)', () =>
     expect(screen.getByText('Pour un résultat complet')).toBeInTheDocument()
     expect(screen.queryByTestId('calx48-perime')).toBeNull()
     expect(document.body.textContent).not.toMatch(JARGON)
+  })
+})
+
+/* ACAL1956 — la production RETENUE PAR LE DEVIS envoyé : bloc servi `production_devis` (exemple du contrat). */
+describe('Étape Résultats — production retenue par le devis (ACAL1956)', () => {
+  const PROD = () => exempleContrat('calepinage', 'calepinage_resultat', 'exemple_ecart_devis').production_devis
+  const kwh = (n) => `${formatNumber(n, { decimals: 0 })} kWh par an`.replace(/\s+/g, ' ')
+
+  it('sans devis lié : aucun bloc', async () => {
+    rendreAvec(JAMAIS())
+    await screen.findByTestId('cal-avant-simulation')
+    expect(screen.queryByText(/Production retenue par le devis/)).toBeNull()
+  })
+
+  it('devis envoyé sans simulation : le chiffre du devis, le lien vers le devis et l’invitation à simuler', async () => {
+    rendreAvec({ ...JAMAIS(), production_devis: PROD() })
+    await screen.findByRole('link', { name: PROD().reference })
+    const zone = document.querySelector('[data-zone="production-devis"]')
+    expect(zone).toHaveTextContent(`Production retenue par le devis : ${kwh(PROD().production_annuelle_kwh)}`)
+    expect(screen.getByRole('link', { name: PROD().reference })).toHaveAttribute('href', `/ventes/devis?devis=${PROD().devis}`)
+    expect(zone).toHaveTextContent('Simulez la pose pour la comparer à ce chiffre.')
+    expect(screen.getByRole('button', { name: 'Lancer la simulation' })).toBeInTheDocument()
+  })
+
+  it('devis envoyé avec simulation : les deux chiffres côte à côte, chacun nommé', async () => {
+    const data = { ...COMPLET(), production_devis: PROD() }
+    servir(data)
+    rendre()
+    await screen.findByRole('link', { name: PROD().reference })
+    const zone = document.querySelector('[data-zone="production-devis"]')
+    expect(zone).toHaveTextContent(`Production retenue par le devis : ${kwh(PROD().production_annuelle_kwh)}`)
+    expect(zone).toHaveTextContent(`Production simulée de la pose : ${kwh(data.production.total.p50_kwh)}`)
   })
 })

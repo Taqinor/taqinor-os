@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import calepinageApi from '../../../../../api/calepinageApi'
 import useResource from '../../../../../hooks/useResource'
+import { formatNumber } from '../../../../../lib/format'
 import { estIncomplet } from '../../../production/BandeauProvenanceProduction.helpers'
 import { DuSoleilAuReseau } from '../../../production/CartePostesPertes'
 import DiagrammePertes from '../../../production/DiagrammePertes'
@@ -21,7 +22,8 @@ import PanneauPertes from '../../PanneauPertes'
    ResultatsIncomplet.dc.html) : pleine largeur du centre de l'atelier, sans carte ni
    panneau de droite. UNE lecture de `GET resultat/` nourrit tout l'écran.
      · résultat complet  : quatre tuiles, « Mois par mois » + « Du soleil au réseau »,
-                           pied « Année basse… » + bouton de l'étape suivante ;
+                           pied « Année basse… » + bouton de l'étape suivante (le bouton, seul, dans
+                           les deux autres états — ACAL1958) ;
      · résultat incomplet : carte « au plus » + « Pour un résultat complet » (ACAL700) ;
      · jamais simulé / périmé : ResultatAvantSimulation (carte sombre + bouton de calcul,
                            « Pour un résultat complet », « Ce qui est déjà sûr »).
@@ -43,6 +45,30 @@ function PertesAvance({ calepinageId, lectureSeule, onEnregistre, sourcesOuverte
       <PanneauPertes calepinageId={calepinageId} lectureSeule={lectureSeule}
         onEnregistre={() => { setRelecture((n) => n + 1); onEnregistre?.() }} />
     </div>
+  )
+}
+
+/** ACAL1956 (D-ACAL-90) — la production RETENUE PAR LE DEVIS envoyé ou accepté (`production_devis` de `GET resultat/`) :
+    l'étape n'est jamais vide ; quand la pose est simulée, les deux chiffres côte à côte, chacun nommé. Rien n'est
+    recalculé ici. */
+function ProductionDuDevis({ bloc, p50 }) {
+  if (!bloc) return null
+  const kwh = typeof bloc.production_annuelle_kwh === 'number' ? bloc.production_annuelle_kwh : null
+  return (
+    <section className="cal-res-carte flex flex-col gap-1" data-zone="production-devis">
+      <p>
+        {kwh != null
+          ? `Production retenue par le devis : ${formatNumber(kwh, { decimals: 0 })} kWh par an`
+          : 'Production retenue par le devis : le devis ne la porte pas'}
+        {' — '}
+        <Link to={`/ventes/devis?devis=${bloc.devis}`}>{bloc.reference || 'voir le devis'}</Link>
+      </p>
+      <p>
+        {typeof p50 === 'number'
+          ? `Production simulée de la pose : ${formatNumber(p50, { decimals: 0 })} kWh par an`
+          : 'Simulez la pose pour la comparer à ce chiffre.'}
+      </p>
+    </section>
   )
 }
 
@@ -79,6 +105,7 @@ export default function EtapeResultats({
 
   return (
     <div className="cal-res" data-zone="etape-resultats">
+      <ProductionDuDevis bloc={data?.production_devis} p50={simule ? total?.p50_kwh : null} />
       {!simule && (
         <ResultatAvantSimulation calepinageId={id} data={data} parcours={parcours}
           intervalleMs={intervalleMs} onTermine={refetch} />
@@ -91,9 +118,11 @@ export default function EtapeResultats({
             <MoisParMois data={data} />
             <DuSoleilAuReseau cascade={data?.cascade} note={note} />
           </section>
-          <PiedResultats production={data?.production} action={action} />
         </>
       )}
+      {/* ACAL1958 — le bouton de l'étape est là dans les TROIS états (avant simulation, incomplet, complet) ;
+          la phrase de durée ne lit que les valeurs d'un résultat complet. */}
+      <PiedResultats production={complet ? data?.production : null} action={action} />
       <details open={ouvert} onToggle={(e) => setAvanceOuvert(e.currentTarget.open)}
         className="cal-res-carte" data-zone="avance">
         <summary className="cursor-pointer font-medium">Détail des pertes et réglages</summary>
