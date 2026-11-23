@@ -322,6 +322,23 @@
   font-size: 0.75rem;
   color: var(--muted-foreground);
 }
+/* ACAL1443 — « Date de la photo » et « Source de cette date » (mapDraw.ts) : un vrai champ, comme l'Adresse. */
+.rp9-host .rp9-image-capture-input {
+  display: block;
+  width: 100%;
+  min-height: 2.75rem;
+  margin-top: 0.25rem;
+  border: 1px solid var(--border);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--foreground);
+  background: var(--muted);
+  border-radius: 2px;
+}
+.rp9-host .rp9-image-capture-input:focus-visible {
+  outline: 2px solid var(--rp-brass-400);
+  outline-offset: 2px;
+}
 .rp9-host .rp9-input {
   min-height: 2.75rem;
   border: 1px solid color-mix(in srgb, var(--rp-lune-soft) 35%, transparent);

@@ -115,6 +115,16 @@ test('ACAL1524 : un bouton rp9-btn désactivé se distingue d’un bouton actif 
   assert.ok(regles(CSS_ROOFBUILDER).some((r) => /\.rp9-motif-refus/.test(r.selecteur)), 'ligne de motif sans règle')
 })
 
+// ACAL1443 — les champs de date de la photo (créés par mapDraw.ts) ont bordure, fond de champ et 44 px.
+test('ACAL1443 : .rp9-image-capture-input est un vrai champ (bordure, fond, 44 px)', () => {
+  const regle = regles(CSS_ROOFBUILDER).find((r) => /\.rp9-image-capture-input\s*$/.test(r.selecteur))
+  assert.ok(regle, 'règle .rp9-image-capture-input absente : le champ est invisible')
+  const d = declarations(regle.corps)
+  assert.ok(/^1px solid/.test(d.border), 'bordure attendue')
+  assert.ok(/var\(--muted\)/.test(d.background), 'fond de champ attendu')
+  assert.ok(parseFloat(d['min-height']) >= 2.75, 'hauteur sous 44 px')
+})
+
 // ACAL1519 — « K-COLONNE-ETROITE » : les grilles du panneau de droite (retraits, bandeau de « Déplacer les panneaux »,
 // bloc « Total — toutes les zones ») suivent la largeur de la COLONNE (auto-fit), jamais un point de rupture de fenêtre.
 test('ACAL1519 : aucune grille du panneau de droite ne dépend du point de rupture de la fenêtre', () => {
