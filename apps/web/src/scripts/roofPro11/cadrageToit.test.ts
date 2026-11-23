@@ -137,7 +137,8 @@ function cartePresentable() {
 
 describe('cibleFermetureToit — la caméra après « Terminer le tracé » (ACAL1422)', () => {
   const anneau = rect(-7.62, 33.59, 9, 7);
-  const entree = { anneau, centre: [-7.6199, 33.5900] as LngLat, zoomCourant: 21, pitchCourant: 0, largeurPx: 970, hauteurPx: 790 };
+  const carte = { getZoom: () => 21, getPitch: () => 0, getContainer: () => ({ clientWidth: 970, clientHeight: 790 }) };
+  const entree = { anneau, centre: [-7.6199, 33.5900] as LngLat, carte };
 
   it('option ERP : le zoom cible dépasse 19 pour un toit de 9 × 7 m et la vue reste Plan', () => {
     const cible = cibleFermetureToit({ ...entree, erp: true });
@@ -146,8 +147,9 @@ describe('cibleFermetureToit — la caméra après « Terminer le tracé » (ACA
     expect(cible.pitch).toBe(0); // Plan reste Plan
   });
 
-  it('site public : plafond 19 et vue inclinée, comme avant', () => {
-    const cible = cibleFermetureToit({ ...entree, erp: false });
+  it('site public : plafond 19 et vue inclinée, comme avant ; la carte n’est pas lue', () => {
+    const illisible = { getZoom: () => 21, getPitch: () => { throw new Error('lue'); }, getContainer: () => { throw new Error('lue'); } };
+    const cible = cibleFermetureToit({ ...entree, carte: illisible, erp: false });
     expect(cible.zoom).toBeLessThanOrEqual(19);
     expect(cible.pitch).toBeGreaterThan(0);
   });

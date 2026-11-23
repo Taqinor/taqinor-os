@@ -14,18 +14,17 @@ export const ZOOM_MAX_FERMETURE_ATELIER = 22;
 export interface EntreeFermeture {
   anneau: readonly LngLat[];
   centre: LngLat;
-  zoomCourant: number;
-  pitchCourant: number;
-  largeurPx: number;
-  hauteurPx: number;
+  /** La carte : lue (taille, pente) seulement pour l'atelier ERP — le site public ne s'en sert pas. */
+  carte: { getZoom(): number; getPitch(): number; getContainer(): { clientWidth: number; clientHeight: number } };
   /** Atelier ERP (vrai) ou site public (faux). */
   erp: boolean;
 }
 
 export function cibleFermetureToit(e: EntreeFermeture): { center: LngLat; zoom: number; pitch: number } {
   if (e.erp) {
-    const cadre = cadrageAnneaux([[...e.anneau]], e.largeurPx, e.hauteurPx, { zoomMax: ZOOM_MAX_FERMETURE_ATELIER });
-    if (cadre) return { ...cadre, pitch: e.pitchCourant };
+    const { clientWidth, clientHeight } = e.carte.getContainer();
+    const cadre = cadrageAnneaux([[...e.anneau]], clientWidth, clientHeight, { zoomMax: ZOOM_MAX_FERMETURE_ATELIER });
+    if (cadre) return { ...cadre, pitch: e.carte.getPitch() };
   }
-  return { center: e.centre, zoom: e.anneau.length >= 3 ? zoomToFitRing([...e.anneau]) : e.zoomCourant, pitch: PITCH_VIEW };
+  return { center: e.centre, zoom: e.anneau.length >= 3 ? zoomToFitRing([...e.anneau]) : e.carte.getZoom(), pitch: PITCH_VIEW };
 }
