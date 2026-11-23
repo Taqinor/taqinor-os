@@ -631,17 +631,6 @@ def _simuler_apres_enregistrement(calepinage, user):
     relu en base (la conception enregistrée, jamais l'instance en mémoire) et
     ``services/simulation_auto`` décide (pose complète ? déjà simulée ? déjà en
     file ?). Sans auteur, rien : le job de fond exige un utilisateur."""
-    if user is None:
-        return
-    from django.db import transaction
+    from .simulation_auto import lancer_apres_validation
 
-    pk = calepinage.pk
-
-    def _lancer():
-        from ..models import Calepinage
-        from .simulation_auto import lancer_simulation_automatique
-
-        relu = Calepinage.objects.filter(pk=pk).first()
-        lancer_simulation_automatique(relu or calepinage, user=user)
-
-    transaction.on_commit(_lancer)
+    lancer_apres_validation(calepinage, user=user)

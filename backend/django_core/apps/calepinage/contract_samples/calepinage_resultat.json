@@ -1199,6 +1199,7 @@
       "calcule_le": "2026-09-21T10:15:00Z",
       "duree_s": 12.4
     },
+    "simulation_automatique": {"en_cours": false, "job_id": null, "manquants": []},
     "production_devis": null,
     "ecart_devis": null,
     "derogations": [],
@@ -1445,6 +1446,7 @@
       "calcule_le": "2026-09-21T10:15:00Z",
       "duree_s": 12.4
     },
+    "simulation_automatique": {"en_cours": false, "job_id": null, "manquants": []},
     "production_devis": null,
     "ecart_devis": null,
     "derogations": [],
@@ -1622,6 +1624,7 @@
       "calcule_le": null,
       "duree_s": null
     },
+    "simulation_automatique": {"en_cours": false, "job_id": null, "manquants": []},
     "production_devis": null,
     "ecart_devis": null,
     "derogations": [],
@@ -2797,6 +2800,7 @@
       "calcule_le": "2026-09-21T10:15:00Z",
       "duree_s": 12.4
     },
+    "simulation_automatique": {"en_cours": false, "job_id": null, "manquants": []},
     "production_devis": {"devis": 412, "reference": "DEV-202610-0042", "statut": "envoye", "production_annuelle_kwh": 12600.0, "production_origine": "production_annuelle"},
     "ecart_devis": {
       "devis": 412,
@@ -2834,5 +2838,6 @@
     ]
   },
   "acal312_note": "ACAL312 (D-ACAL-20) — `pose.zones` ADDITIF (recalculé à chaque lecture, `services.electrique._chiffrage_des_zones` → `zones.chiffrage_zones`, calcul du noyau `core.calepinage.zones`) : `aire_retiree_m2` (INTERDITE + RESERVEE) et `par_nature` {nombre, aire_m2, aire_retiree_m2} pour les quatre natures — RESERVEE chiffrée à part, PREFEREE et ENVELOPPE à 0 dans le retiré ; m² au centième, jamais un montant ; `null` quand les zones du document sont illisibles.",
-  "acal1956_note": "ACAL1956 (D-ACAL-90) — `production_devis` : pour un calepinage lié à un devis ENVOYÉ ou ACCEPTÉ, la production annuelle RETENUE PAR LE DEVIS (`conception_retenue_du_devis`, contrat `calepinage_conception_retenue.json` : `production_annuelle_kwh`, `production_origine`, `null` quand la clé manque — jamais recalculée) avec `devis`/`reference`/`statut` ; servie même sans simulation (l'étape Résultats n'est jamais vide), et à côté du P50 quand la simulation existe. `null` sans devis lié ou devis brouillon."
+  "acal1956_note": "ACAL1956 (D-ACAL-90) — `production_devis` : pour un calepinage lié à un devis ENVOYÉ ou ACCEPTÉ, la production annuelle RETENUE PAR LE DEVIS (`conception_retenue_du_devis`, contrat `calepinage_conception_retenue.json` : `production_annuelle_kwh`, `production_origine`, `null` quand la clé manque — jamais recalculée) avec `devis`/`reference`/`statut` ; servie même sans simulation (l'étape Résultats n'est jamais vide), et à côté du P50 quand la simulation existe. `null` sans devis lié ou devis brouillon.",
+  "acal1987_simulation_automatique": {"en_cours": false, "job_id": null, "manquants": [{"champ": "materiel.onduleur", "motif": "Aucun onduleur n'est désigné pour cette pose : choisissez l'onduleur.", "cible": null}]}
 }

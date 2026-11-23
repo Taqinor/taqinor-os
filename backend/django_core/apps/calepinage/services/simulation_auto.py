@@ -40,7 +40,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 __all__ = ['ETAT_A_JOUR', 'ETAT_EN_FILE', 'ETAT_IGNOREE', 'ETAT_INCOMPLETE',
-           'ETAT_LANCEE', 'lancer_simulation_automatique',
+           'ETAT_LANCEE', 'etat_simulation_automatique',
+           'lancer_apres_validation', 'lancer_simulation_automatique',
            'simulation_automatique_en_cours']
 
 ETAT_LANCEE = 'lancee'
@@ -94,6 +95,55 @@ def simulation_automatique_en_cours(calepinage):
     return job_id if en_cours else None
 
 
+def etat_simulation_automatique(calepinage, empreinte):
+    """``{en_cours, job_id, manquants}`` servi par ``GET resultat/`` (clé
+    ``simulation_automatique``) : l'écran dit « Simulation en cours… » sans
+    clic, ou « Il manque … » quand la dernière pose enregistrée était
+    incomplète. ``manquants`` n'est servi que s'il décrit ENCORE ce dossier
+    (même empreinte de simulation ``empreinte``) : une saisie faite depuis
+    l'efface. Lecture pure (un cache, au plus une requête) ; ne lève jamais."""
+    rendu = {'en_cours': False, 'job_id': None, 'manquants': []}
+    if (calepinage is None or not getattr(calepinage, 'pk', None)
+            or getattr(calepinage, 'company_id', None) is None):
+        return rendu
+    try:
+        from core import cache as cache_tenant
+
+        job_id = simulation_automatique_en_cours(calepinage)
+        marqueur = cache_tenant.get(calepinage.company_id,
+                                    _cle_marqueur(calepinage))
+    except Exception:  # noqa: BLE001 — une lecture d'état ne fait jamais tomber GET resultat/ (D-ENF22-BLE001)
+        logger.exception('ACAL1987 : état de la simulation automatique '
+                         'illisible (calepinage %s)', calepinage.pk)
+        return rendu
+    manquants = []
+    if (isinstance(marqueur, dict) and empreinte
+            and marqueur.get('etat') == ETAT_INCOMPLETE
+            and marqueur.get('hash_entree') == empreinte):
+        manquants = list(marqueur.get('manquants') or [])
+    return dict(rendu, en_cours=job_id is not None, job_id=job_id,
+                manquants=manquants)
+
+
+def lancer_apres_validation(calepinage, *, user):
+    """Le geste qui ENREGISTRE une pose (conception, matériel électrique)
+    appelle ceci : une fois la transaction validée, le calepinage est relu en
+    base et ``lancer_simulation_automatique`` décide. Sans auteur, rien."""
+    if calepinage is None or user is None:
+        return
+    from django.db import transaction
+
+    pk = calepinage.pk
+
+    def _lancer():
+        from ..models import Calepinage
+
+        relu = Calepinage.objects.filter(pk=pk).first()
+        lancer_simulation_automatique(relu or calepinage, user=user)
+
+    transaction.on_commit(_lancer)
+
+
 def lancer_simulation_automatique(calepinage, *, user):
     """Met la simulation en file si la pose est complète et pas déjà simulée.
 
@@ -138,17 +188,23 @@ def _lancer(calepinage, user, rendu):
         return dict(rendu, etat=ETAT_INCOMPLETE, manquants=(
             refus.manquants or [_ligne_materiel(
                 refus.champ or 'simulation', refus.motif)]))
+    empreinte = meta['hash_entree']
+    cle = _cle_marqueur(calepinage)
     if manquants:
+        # Rangés pour ``GET resultat/`` (« Il manque … »), avec l'empreinte :
+        # servis seulement tant qu'ils décrivent ce dossier.
+        cache_tenant.set(calepinage.company_id, cle,
+                         {'hash_entree': empreinte, 'etat': ETAT_INCOMPLETE,
+                          'manquants': manquants},
+                         timeout=DUREE_MARQUEUR_S)
         return dict(rendu, etat=ETAT_INCOMPLETE, manquants=manquants)
 
-    empreinte = meta['hash_entree']
     entete = ((calepinage.resultat or {}).get(CLE_SIMULATION)
               if isinstance(calepinage.resultat, dict) else None)
     if (empreinte and isinstance(entete, dict)
             and entete.get('hash_entree') == empreinte):
         return dict(rendu, etat=ETAT_A_JOUR)
 
-    cle = _cle_marqueur(calepinage)
     marqueur = cache_tenant.get(calepinage.company_id, cle)
     if (isinstance(marqueur, dict) and empreinte
             and marqueur.get('hash_entree') == empreinte

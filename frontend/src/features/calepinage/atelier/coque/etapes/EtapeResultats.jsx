@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import calepinageApi from '../../../../../api/calepinageApi'
 import useResource from '../../../../../hooks/useResource'
@@ -155,6 +155,50 @@ function PanneauxNonRaccordes({ data }) {
   )
 }
 
+/** ACAL1987 (D-ACAL-90 renversée : « Simulation must start by itself ») — la simulation PARTIE SEULE à l'enregistrement
+    d'une pose complète (`simulation_automatique` de `GET resultat/`). En file ou en cours : « Simulation en cours… », sans
+    bouton ; `GET resultat/` est relu en silence toutes les `intervalleMs` jusqu'à la fin, puis `onTermine` relit l'écran
+    (le résultat s'affiche sans clic). La relecture d'attente ne passe pas par l'état de chargement de l'écran. */
+function SimulationEnCours({ calepinageId, intervalleMs, onTermine }) {
+  useEffect(() => {
+    let fini = false
+    const minuteur = setInterval(() => {
+      calepinageApi.calepinages.resultat(calepinageId)
+        .then((r) => {
+          if (fini || r?.data?.simulation_automatique?.en_cours === true) return
+          fini = true
+          clearInterval(minuteur)
+          onTermine?.()
+        })
+        .catch(() => { fini = true; clearInterval(minuteur); onTermine?.() })
+    }, intervalleMs)
+    return () => { fini = true; clearInterval(minuteur) }
+  }, [calepinageId, intervalleMs, onTermine])
+  return (
+    <section className="cal-res-carte flex flex-col gap-1" data-zone="simulation-en-cours" role="status">
+      <h2 className="cal-res-titre">Simulation en cours…</h2>
+      <p className="cal-res-sourdine m-0">
+        La pose enregistrée est complète : la simulation est partie d’elle-même. Le résultat s’affichera ici.
+      </p>
+    </section>
+  )
+}
+
+/** ACAL1987 — la dernière pose enregistrée était INCOMPLÈTE : la simulation n'est pas partie, et l'écran dit ce qui
+    manque (phrases servies `simulation_automatique.manquants[].motif`, jamais réécrites). Omis sans liste servie. */
+function SimulationEnAttente({ manquants }) {
+  const motifs = (manquants ?? []).map((m) => m?.motif).filter((m) => typeof m === 'string' && m)
+  if (motifs.length === 0) return null
+  return (
+    <section className="cal-res-carte flex flex-col gap-1" data-zone="simulation-manque" role="status">
+      <p className="m-0">Il manque {motifs.length > 1 ? 'ceci' : 'une chose'} pour que la simulation parte seule :</p>
+      <ul className="m-0">
+        {motifs.map((motif) => <li key={motif}>{motif}</li>)}
+      </ul>
+    </section>
+  )
+}
+
 export default function EtapeResultats({
   calepinageId = null, lectureSeule = false, parcours = null, action = null, intervalleMs = 2000,
 }) {
@@ -188,12 +232,16 @@ export default function EtapeResultats({
   }
   const note = publiees.length > 0
     ? <NoteValeursPubliees simulation={data?.simulation} onVoirSources={voirSources} /> : null
+  const auto = data?.simulation_automatique
+  const enCours = !simule && auto?.en_cours === true
 
   return (
     <div className="cal-res" data-zone="etape-resultats">
       <ProductionDuDevis bloc={blocDuDevis(data)} p50={complet ? total?.p50_kwh : null} incomplet={incomplet} />
       {simule && <PanneauxNonRaccordes data={data} />}
-      {!simule && (
+      {enCours && <SimulationEnCours calepinageId={id} intervalleMs={intervalleMs} onTermine={refetch} />}
+      {!simule && !enCours && <SimulationEnAttente manquants={auto?.manquants} />}
+      {!simule && !enCours && (
         <ResultatAvantSimulation calepinageId={id} data={data} parcours={parcours}
           intervalleMs={intervalleMs} onTermine={refetch} />
       )}

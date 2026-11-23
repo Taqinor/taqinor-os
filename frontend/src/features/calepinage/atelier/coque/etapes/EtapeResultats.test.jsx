@@ -558,6 +558,48 @@ describe('Étape Résultats — pas encore simulé (jamais lancé)', () => {
   })
 })
 
+/* ACAL1987 (D-ACAL-90 renversée) — la simulation part seule : `simulation_automatique` de `GET resultat/`, contrat
+   `calepinage_resultat.json` (`exemple_vide` pour l'état, `acal1987_simulation_automatique` pour une pose incomplète). */
+describe('Étape Résultats — la simulation part seule (ACAL1987)', () => {
+  const INCOMPLETE = () => exempleContrat('calepinage', 'calepinage_resultat', 'acal1987_simulation_automatique')
+  const avecAuto = (auto) => ({ ...JAMAIS(), simulation_automatique: { ...JAMAIS().simulation_automatique, ...auto } })
+
+  it('en file : « Simulation en cours… » sans bouton de calcul, puis le résultat sans clic', async () => {
+    const enCours = avecAuto({ en_cours: true, job_id: 7 })
+    calepinageApi.calepinages.resultat
+      .mockResolvedValueOnce({ data: enCours })
+      .mockResolvedValueOnce({ data: enCours })
+      .mockResolvedValue({ data: COMPLET() })
+    rendre({ intervalleMs: 5 })
+    expect(await screen.findByText('Simulation en cours…')).toBeInTheDocument()
+    expect(document.querySelector('[data-zone="simulation-en-cours"]')).toHaveAttribute('role', 'status')
+    expect(screen.queryByRole('button', { name: 'Lancer la simulation' })).toBeNull()
+    expect(await screen.findByTestId('cal-resultats-tuiles')).toBeInTheDocument()
+    expect(screen.queryByText('Simulation en cours…')).toBeNull()
+    expect(calepinageApi.calepinages.resultat.mock.calls.length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('pose incomplète : « Il manque … » avec les phrases servies ; le bouton de calcul reste', async () => {
+    rendreAvec(avecAuto(INCOMPLETE()))
+    const zone = await waitFor(() => {
+      const z = document.querySelector('[data-zone="simulation-manque"]')
+      expect(z).not.toBeNull()
+      return z
+    })
+    expect(zone).toHaveTextContent('Il manque une chose pour que la simulation parte seule :')
+    expect(zone).toHaveTextContent(INCOMPLETE().manquants[0].motif)
+    expect(screen.getByRole('button', { name: 'Lancer la simulation' })).toBeInTheDocument()
+    expect(screen.queryByText('Simulation en cours…')).toBeNull()
+  })
+
+  it('rien en file ni rien qui manque (état servi par défaut) : aucun des deux blocs', async () => {
+    rendreAvec(JAMAIS())
+    await screen.findByTestId('cal-avant-simulation')
+    expect(document.querySelector('[data-zone="simulation-manque"]')).toBeNull()
+    expect(document.querySelector('[data-zone="simulation-en-cours"]')).toBeNull()
+  })
+})
+
 describe('Étape Résultats — calcul à refaire (simulation périmée)', () => {
   it('même mise en page, titre « Calcul à refaire », bouton de relance, aucun bandeau en plus', async () => {
     rendreAvec(PERIME())

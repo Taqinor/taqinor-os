@@ -57,6 +57,7 @@ from . import validation_batterie as _validation_batterie  # ACAL633
 from . import batterie_declaration as _batterie_declaration  # ACAL786
 from . import (hors_reseau_declaration as _hors_reseau_declaration,  # ACAL790
                pret_a_envoyer as _pret_a_envoyer,  # H5 — une_fois_par_lecture
+               simulation_auto as _simulation_auto,  # ACAL1987
                suppositions as _suppositions)  # ACAL980
 from .regle_chaine_publiee import _regle_chaine_publiee  # ACAL645 — extraite
 from .valeurs import nombre as _nombre
@@ -998,23 +999,23 @@ def enregistrer_entree(calepinage, donnees, *, user=None):
         return entree
 
     posee = modifier_resultat(calepinage, _poser)
+    from .journal import noter
+
     if apres_envoi(calepinage):
         # ACAL43 — une saisie d'un devis ENVOYÉ se TRACE (corrigé après envoi).
         modifies = sorted(cle for cle, valeur in reglages.items()
                           if avant_saisie.get(cle) != valeur)
         if modifies:
-            from .journal import noter
-
             noter(calepinage, 'Saisie électrique modifiée : '
                   + ', '.join(modifies), user=user)
-    if traces:
-        # ACAL283 — chaque dérogation se lit aussi au CHATTER (reflet lisible
-        # du fil ``journal_derogations``, seul enregistrement structuré) ;
-        # l'auteur est posé par le serveur, jamais par le corps.
-        from .journal import noter
-
-        for trace in traces:
-            noter(calepinage, trace['texte'], user=user)
+    # ACAL283 — chaque dérogation se lit aussi au CHATTER (reflet lisible du
+    # fil ``journal_derogations``, seul enregistrement structuré) ; l'auteur
+    # est posé par le serveur, jamais par le corps.
+    for trace in traces or ():
+        noter(calepinage, trace['texte'], user=user)
+    # ACAL1987 — désigner le matériel est le DERNIER geste d'une pose
+    # complète : la simulation part seule, transaction validée.
+    _simulation_auto.lancer_apres_validation(calepinage, user=user)
     return posee
 
 
@@ -1930,6 +1931,9 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         # avec quoi le calcul a été fait. Jamais simulé ⇒ l'empreinte
         # d'aujourd'hui et des valeurs nulles.
         CLE_SIMULATION: _entete_servie(calepinage, empreinte),
+        # ACAL1987 — la simulation PARTIE SEULE : en file/en cours, ou ce qui
+        # manque à la dernière pose enregistrée (« Il manque … »).
+        'simulation_automatique': _simulation_auto.etat_simulation_automatique(calepinage, empreinte),
         'avertissements': _avertissements_uniques(messages),  # ACAL1540
         # ACAL283 — les deux FILS bornés, LUS tels qu'enregistrés (jamais
         # recalculés), listes vides jamais absentes — y compris quand la
