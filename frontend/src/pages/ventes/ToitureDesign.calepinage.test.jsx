@@ -1182,6 +1182,22 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
     expect(coque).toHaveAttribute('data-cadre', 'carte')
   })
 
+  it('ACAL1727 — Résultats et Documents portent « Étape N sur 5 » et leur titre en tête de l’écran plein', async () => {
+    amorcer()
+    rendreCalepinage(CTX.calepinage.id)
+    await screen.findByTestId('cal-coque')
+    await userEvent.click(screen.getByTestId('cal-etape-resultats'))
+    const tete = await screen.findByTestId('cal-plein-etape-tete')
+    expect(tete).toHaveTextContent('Étape 4 sur 5')
+    expect(tete).toHaveTextContent('Les résultats')
+    await userEvent.click(screen.getByTestId('cal-etape-documents'))
+    await waitFor(() => expect(screen.getByTestId('cal-plein-etape-tete')).toHaveTextContent('Étape 5 sur 5'))
+    expect(screen.getByTestId('cal-plein-etape-tete')).toHaveTextContent('Les documents')
+    // Une étape à carte garde sa tête dans le panneau : aucune tête pleine largeur.
+    await userEvent.click(screen.getByTestId('cal-etape-toit'))
+    await waitFor(() => expect(screen.queryByTestId('cal-plein-etape-tete')).toBeNull())
+  })
+
   it('Résultats : carte et panneau masqués (jamais démontés), la carte revient sur Toit et se recale (resize)', async () => {
     amorcer()
     rendreCalepinage(CTX.calepinage.id)

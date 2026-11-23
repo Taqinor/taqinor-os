@@ -336,6 +336,14 @@ export default function CoqueAtelier({
             </div>
             {!carteVisible && (
               <div className="cal-coque-plein">
+                {/* ACAL1727 — la même tête que le panneau d'étape : « Étape N sur 5 » + titre (cadre plein seulement ;
+                    le Schéma garde son panneau à droite). */}
+                {pleine && rang >= 0 && ecran?.titre && (
+                  <div className="cal-plein-etape-tete" data-testid="cal-plein-etape-tete">
+                    <p className="cal-panneau-etape-rang">{`Étape ${rang + 1} sur ${TOTAL}`}</p>
+                    <h2 className="cal-panneau-etape-titre">{ecran.titre}</h2>
+                  </div>
+                )}
                 {ecranMonte}
                 <div ref={setNoeudPiedPlein} className="cal-coque-plein-pied" />
               </div>
