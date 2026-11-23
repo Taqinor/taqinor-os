@@ -95,7 +95,7 @@ vivent dans le scratchpad de la session, pas sur `main`.
    listes longues sont coupees en deux : moitie « a » = un relecteur opus (liste + classes + regard neuf), moitie
    « b » = un verificateur sonnet (liste seule). Fiches de lancement pretes : `T2/lancement/<code>.md` (le message de
    lancement tient en deux lignes : « lis ta fiche et execute-la » + le bloc d'ancrage). En vol : `F2-GESTES` (liste
-   `F2-GESTES-a`), `S2-PARCOURS-b`, `F2-TOIT-a`. File d'attente, dans l'ordre : `F2-RESU-b`, `F2-DOCS-a`,
+   `F2-GESTES-a`), `F2-TOIT-a`, `F2-RESU-b` ; `S2-PARCOURS-b` rentre (11 sur 25). File d'attente, dans l'ordre : `F2-DOCS-a`,
    `F2-GESTES-b`, `F2-POSE-a`, `F2-TOIT-b`, `F2-ELEC-a`, `F2-DOCS-b`, `F2-SIMU-a`, `F2-POSE-b`, `F2-CONSO`,
    `F2-ELEC-b`, `T2`, `F2-SIMU-b`, `B2` (B2 en dernier : il compare aux maquettes v2). Plafond mesure : 4 agents de
    fond (95 % de processeur) — 3 relecteurs + 1 lane.
@@ -117,6 +117,14 @@ vivent dans le scratchpad de la session, pas sur `main`.
    `maquettes-v2/`) ; lot B fait de même. LES 14 MAQUETTES v2 SONT ÉCRITES, publiées sur le canevas et rangées dans `maquettes-v2/`.
 7. Mesures du poste avec 4 agents : 3,3 Go libres, 43 % de processeur — 4 agents de fond tiennent (2 relecteurs à
    navigateur + 2 lanes sans navigateur) ; ne pas dépasser.
+8. PANNE de l'instrument le 23/11 de ~01 h 00 a ~01 h 40 UTC : la machine virtuelle de Docker (5 Go, 3 Go d'echange,
+   `.wslconfig` de Reda, non modifie) etait pleine, echange compris ; `docker` ne repondait plus. Remede applique :
+   Docker Desktop redemarre (`wsl --shutdown`), instrument remonte par `l5cal/relancer.sh` avec des plafonds —
+   serveur gunicorn 2 processus x 2 fils, recyclage a 250 requetes, 1,1 Go ; worker Celery 1 processus, recycle
+   toutes les 4 taches, 1,3 Go ; conteneur de test d'une lane 0,9 Go. Base, comptes et donnees intacts. Un
+   surveillant (outil Monitor, a rearmer toutes les 30 min) previent si l'API est muette trois fois de suite.
+   `S2-PARCOURS-b` s'est arrete a 11 sur 25 a cause de la panne : ses 10 non joues (ACAL874, 875, 877-880, 883-885,
+   888) sont a redonner a un verificateur.
 
 **Prochaines actions, dans l'ordre** :
 a. à chaque retour de relecteur → lancer le suivant de la liste ; à chaque retour de lane → relire son diff

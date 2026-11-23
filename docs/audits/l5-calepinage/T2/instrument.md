@@ -28,6 +28,13 @@ Une pile locale jetable, à part de toute autre : elle ne parle ni à la prod ni
 - **PVGIS** (météo, gratuit) est joint par Internet depuis le serveur : s'il ne répond pas, la simulation le dit.
 - Le poste est modeste : attends la fin d'un chargement avant d'accuser une lenteur ; mesure deux fois.
 
+## Journal de l'instrument
+
+- 23/11, ~01 h 00 → ~01 h 40 UTC : PANNE (machine virtuelle de Docker saturée). Relancé à 01 h 40, mêmes données.
+  Un verdict obtenu dans cette fenêtre sur une lenteur ou une réponse absente se rejoue.
+- Le « Démarrage rapide » (profil de départ) est appliqué aux réglages de la société de démonstration depuis le
+  23/11 ; le mode météo « pluriannuel » (2014-2023) y est saisi.
+
 ## Règles d'usage
 
 - Tu ne lances aucune commande `docker`, tu n'arrêtes ni ne relances rien. Si l'adresse ne répond plus, écris-le et
