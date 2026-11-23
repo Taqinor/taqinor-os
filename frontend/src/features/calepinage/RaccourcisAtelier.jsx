@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { dialogueParDessus } from '../../providers/focusedRecordShortcuts'
 import {
   RACCOURCIS, REQUETE_SANS_CLAVIER, SECTIONS_AIDE, ecranSansClavier, estSaisieEnCours, raccourciDe,
@@ -93,12 +94,16 @@ export default function RaccourcisAtelier({ actions = {} }) {
         </button>
       )}
 
-      {aideOuverte && (
+      {/* ACAL1435 — l'aide est une fenêtre fixe montée sur <body> : le tiroir « Avancé » qui porte ce composant est
+          masqué (`hidden`) en Guidé, et une aide qui y vit mesure 0 × 0 px. */}
+      {aideOuverte && createPortal(
+        <div className="fixed inset-0 z-[var(--z-overlay)] flex items-center justify-center overflow-auto bg-background/70 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setAideOuverte(false) }}>
         <div
           role="dialog"
           aria-label="Aide-mémoire des raccourcis clavier"
           data-testid="cal-raccourcis-aide"
-          className="mt-3 rounded border border-border bg-black/40 p-4"
+          className="max-h-full w-full max-w-2xl overflow-auto rounded border border-border bg-card p-4 shadow-lg"
         >
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Raccourcis de l’atelier — inactifs pendant la saisie d’un champ
@@ -136,6 +141,8 @@ export default function RaccourcisAtelier({ actions = {} }) {
             </div>
           ))}
         </div>
+        </div>,
+        document.body,
       )}
     </div>
   )
