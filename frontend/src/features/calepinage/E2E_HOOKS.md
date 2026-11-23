@@ -117,6 +117,7 @@ retiré plus un hook ajouté.
 | `cal-devis-details-technicien` | devis : détails techniques repliés sous la carte (ACAL866). |
 | `cal-devis-ouvrir` | devis : bouton « Voir le devis » (`/ventes/devis?devis=<id>`, ACAL95/ACAL866). |
 | `cal-devis-revenir` | devis : « Revenir à la conception » sous la carte (ACAL866). |
+| `cal-devis-lie-lien` | devis : « Devis lié : DEV-… » en lien vers `/ventes/devis?devis=<id>`, lu sur le calepinage (ACAL1705). |
 | `cal-devis-confirmation-taille` | devis : question « rien ne dimensionne le devis » du 409 `confirmation_taille` (ACAL922/ACAL923). |
 | `cal-devis-existant` | devis : question « le lead a déjà un brouillon » du 409 `devis_existant` — rattacher, ou créer un autre devis (recette R2-22). |
 | `cal-generer-devis` | générer devis. |
