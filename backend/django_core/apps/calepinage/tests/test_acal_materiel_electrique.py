@@ -268,3 +268,21 @@ class MaterielRetenuParLeDevis(BaseMateriel):
     def test_sans_devis_inchange(self):
         reponse = self.api.get(url_entree(self._calepinage().pk))
         self.assertIsNone(reponse.data['devis_retenu'])
+
+    def test_acal1953_l_ecart_de_longueur_se_mesure_au_devis(self):
+        from apps.calepinage.services.electrique import resultat_calepinage
+
+        devis = self._devis(self.module_devis, self.onduleur)
+        devis.electrical_design = {'chaines': [{'nb_modules': 14}]}
+        devis.save(update_fields=['electrical_design'])
+        # Onduleur DÉSIGNÉ : la longueur du devis n'est pas imposée au calcul, elle sert de référence.
+        calepinage = self._calepinage(devis=devis, entree={'onduleur_produit': self.onduleur.pk})
+        servi = resultat_calepinage(calepinage)
+        longueur = servi['longueur_chaine']
+        self.assertEqual(longueur['longueur_dossier'], 14)
+        calcul = longueur['longueur'] or max(longueur['par_pan'].values())
+        self.assertEqual(longueur['ecart'], calcul - 14)
+        texte = json.dumps(servi, ensure_ascii=False)
+        self.assertNotIn('au dossier (écart', texte)
+        if calcul != 14:
+            self.assertIn('calculée %s contre 14 au devis' % calcul, texte)

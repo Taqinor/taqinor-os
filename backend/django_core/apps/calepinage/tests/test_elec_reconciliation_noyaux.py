@@ -71,8 +71,6 @@ class ArbitrageTest(SimpleTestCase):
         reconciliation = _longueur_chaine_retenue(_conception(24))
 
         self.assertEqual(reconciliation['origine'], ORIGINE_LONGUEUR_FICHE)
-        self.assertEqual(reconciliation['longueur_dossier'],
-                         MODULES_PAR_CHAINE)
         self.assertIsNotNone(reconciliation['longueur'])
         self.assertIn('CALCULÉE', reconciliation['detail'])
 
@@ -88,12 +86,23 @@ class ArbitrageTest(SimpleTestCase):
         self.assertIn('repli assumé', reconciliation['detail'])
         self.assertIsNone(reconciliation['ecart'])
 
-    def test_l_ecart_au_dossier_est_calcule(self):
+    def test_sans_devis_aucun_ecart_contre_la_longueur_d_appel_d_offres(self):
+        # ACAL1953 — la constante 16 ne sert qu'aux dossiers d'appel d'offres.
         reconciliation = _longueur_chaine_retenue(_conception(24))
 
-        self.assertEqual(reconciliation['ecart'],
-                         reconciliation['par_pan']['PAN-A']
-                         - MODULES_PAR_CHAINE)
+        self.assertIsNone(reconciliation['ecart'])
+        self.assertIsNone(reconciliation['longueur_dossier'])
+        self.assertFalse(reconciliation['hors_tolerance'])
+        self.assertNotIn(str(MODULES_PAR_CHAINE), reconciliation['detail'])
+
+    def test_l_ecart_se_mesure_contre_la_longueur_du_devis(self):
+        # ACAL1953 — calcul = devis : aucun écart ; calcul ≠ devis : écart dit.
+        calcul = _longueur_chaine_retenue(_conception(24))['par_pan']['PAN-A']
+        egal = _longueur_chaine_retenue(_conception(24), calcul)
+        self.assertEqual((egal['ecart'], egal['hors_tolerance']), (0, False))
+        autre = _longueur_chaine_retenue(_conception(24), calcul + 2)
+        self.assertEqual((autre['ecart'], autre['longueur_dossier'], autre['hors_tolerance']),
+                         (-2, calcul + 2, True))
 
 
 class JournalTest(SimpleTestCase):

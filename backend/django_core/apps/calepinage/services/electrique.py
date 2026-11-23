@@ -60,7 +60,8 @@ from . import (hors_reseau_declaration as _hors_reseau_declaration,  # ACAL790
                suppositions as _suppositions)  # ACAL980
 from .regle_chaine_publiee import _regle_chaine_publiee  # ACAL645 — extraite
 from .valeurs import nombre as _nombre
-from .devis_retenu import bloc_devis_retenu, options_avec_devis, produits_retenus  # ACAL1952
+from .devis_retenu import (bloc_devis_retenu, longueur_du_devis_lie,  # ACAL1952, ACAL1953
+                           options_avec_devis, produits_retenus)
 
 __all__ = [
     'SOURCE_SAISIE', 'SOURCE_TMY', 'MENTION_NON_SOURCEE',
@@ -1769,7 +1770,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         getattr(calepinage, 'company', None))
 
     # CAL170 — quelle longueur de chaîne a été retenue, et d'où elle vient.
-    reconciliation = _longueur_chaine_retenue(conception)
+    reconciliation = _longueur_chaine_retenue(conception, longueur_du_devis_lie(calepinage))  # ACAL1953
     reconciliation = dict(reconciliation, plafond_modules=_plafond_modules(
         donnees.get('plafond_kwc_par_onduleur'),
         pose.get('puissance_module_wc')))
@@ -1797,8 +1798,8 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         messages.append(reconciliation['detail'])
     elif reconciliation['hors_tolerance']:
         messages.append(
-            "longueur de chaîne calculée %s contre %s au dossier (écart %s) — "
-            "écart au-delà de la tolérance, journalisé"
+            "longueur de chaîne calculée %s contre %s au devis (écart %s) — "
+            "information : le devis n'est pas modifié"
             % (reconciliation['longueur'], reconciliation['longueur_dossier'],
                reconciliation['ecart']))
     if terre['justification_requise'] and not terre['justification_fournie']:
@@ -2808,8 +2809,8 @@ def rejouer_apres_layout(calepinage, *, user=None):
     try:
         conception, _materiel, _donnees, _doc = conception_du_calepinage(
             calepinage)
-        _journaliser_ecart_longueur(calepinage,
-                                    _longueur_chaine_retenue(conception))
+        _journaliser_ecart_longueur(calepinage, _longueur_chaine_retenue(
+            conception, longueur_du_devis_lie(calepinage)))
     except Exception:  # cf. docstring
         logging.getLogger(__name__).exception(
             'CAL170 : réconciliation de longueur en échec (calepinage %s)',
@@ -2852,13 +2853,6 @@ def rejouer_apres_layout(calepinage, *, user=None):
 ORIGINE_LONGUEUR_FICHE = 'fiche'
 ORIGINE_LONGUEUR_DOSSIER = 'dossier'
 
-#: Tolérance de l'écart moteur↔fiche, en MODULES puis en %. Reprise de la
-#: discipline PVG2 (``apps/ventes/domain/geometrie.py``) : un petit écart est
-#: une correction (la fiche est plus fine que la longueur de dossier, c'est le
-#: but), un GRAND écart est une anomalie qu'on journalise.
-TOLERANCE_LONGUEUR_MODULES = 2
-TOLERANCE_LONGUEUR_PCT = 5.0
-
 #: Nombre d'entrées conservées dans l'historique d'écarts (borné : un journal
 #: qui grossit sans fin finit par ne plus être lu). Ce n'est PAS un seuil
 #: électrique : c'est une taille de tampon, une convention d'atelier — aucune
@@ -2873,23 +2867,18 @@ CLE_FIL_ECARTS = 'journal_longueur_chaine'
 CLE_FIL_DEROGATIONS = 'journal_derogations'
 
 
-def _dans_la_tolerance(reference, ecart):
-    """L'écart tient-il dans l'une des deux tolérances (modules OU %) ?"""
-    ecart = abs(int(ecart))
-    if ecart <= TOLERANCE_LONGUEUR_MODULES:
-        return True
-    if reference > 0:
-        return (ecart * 100.0 / reference) <= TOLERANCE_LONGUEUR_PCT
-    return False
-
-
-def _longueur_chaine_retenue(conception):
+def _longueur_chaine_retenue(conception, longueur_devis=None):
     """CAL170 — la longueur de chaîne retenue, SON origine, et l'écart.
 
     Rend ``{longueur, origine, detail, longueur_dossier, ecart,
     hors_tolerance, par_pan}``. ``longueur`` vaut ``None`` quand les pans
     n'ont pas la même longueur : aucun nombre unique ne serait vrai, et le
     détail par pan est publié à sa place.
+
+    ACAL1953 — la référence de l'écart est la longueur du DEVIS lié
+    (``longueur_devis``, ACAL1950), sous ``longueur_dossier`` ; sans elle,
+    aucun écart n'est publié. La constante d'appel d'offres
+    ``MODULES_PAR_CHAINE`` ne sert plus que de repli assumé (fiche muette).
     """
     from core.calepinage.electrique import MODULES_PAR_CHAINE
 
@@ -2903,16 +2892,15 @@ def _longueur_chaine_retenue(conception):
     longueurs = set(par_pan.values())
     longueur = longueurs.pop() if len(longueurs) == 1 else None
     reference = longueur if longueur is not None else max(par_pan.values())
-    ecart = reference - dossier
+    ecart = reference - longueur_devis if longueur_devis else None
     return {
         'longueur': longueur,
         'origine': ORIGINE_LONGUEUR_FICHE,
         'detail': "longueur CALCULÉE sur les fiches par core.electrique "
-                  "(Voc à froid, plage MPPT, démarrage) — elle l'emporte sur "
-                  "la longueur de dossier de %d modules" % dossier,
-        'longueur_dossier': dossier,
+                  "(Voc à froid, plage MPPT, démarrage)",
+        'longueur_dossier': longueur_devis or None,
         'ecart': ecart,
-        'hors_tolerance': not _dans_la_tolerance(dossier, ecart),
+        'hors_tolerance': bool(ecart),
         'par_pan': par_pan,
     }
 

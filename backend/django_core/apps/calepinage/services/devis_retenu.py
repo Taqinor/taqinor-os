@@ -101,6 +101,12 @@ def _longueur_du_devis(conception):
     return ((conception or {}).get('chaines') or {}).get('longueur') or None
 
 
+def longueur_du_devis_lie(calepinage):
+    """ACAL1953 — la longueur de chaîne du devis lié (conception électrique
+    rangée de l'option retenue), ou ``None`` : sans elle, aucun écart."""
+    return _longueur_du_devis(conception_du_devis_lie(calepinage))
+
+
 def options_avec_devis(options, calepinage, donnees):
     """ACAL1952 — les options du noyau complétées par le DEVIS : sans saisie,
     le nombre d'onduleurs et la longueur de chaîne sont ceux du devis lié. Une
