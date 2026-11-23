@@ -900,8 +900,11 @@ describe('ToitureDesign — cible estimée vs cible vendue (ACAL195)', () => {
     expect(payload.cibleVendue).toBe(false)
     expect(payload.cible.panneaux).toBe(ctx.cible.panneaux)
     expect(payload.cible.panel_watt).toBe(ctx.cible.panel_watt)
-    expect(await screen.findByTestId('acal-cible-estimee')).toHaveTextContent(
-      `Cible estimée depuis les factures du lead : ${ctx.cible.panneaux} panneaux (non vendue)`)
+    // ACAL1805 — une cible estimée SANS refus n'ouvre plus aucune bande sous le bandeau (la maquette v2 n'en a pas :
+    // la cible se lit dans la pilule « Besoin d'après la facture » de l'étape Toit) ; la carte gagne 52 px.
+    await screen.findByTestId('cal-coque')
+    expect(screen.queryByTestId('acal-cible-estimee')).toBeNull()
+    expect(screen.queryByText(/Cible estimée depuis/)).toBeNull()
   })
 
   it('une cible source devis garde cibleVendue true', async () => {
