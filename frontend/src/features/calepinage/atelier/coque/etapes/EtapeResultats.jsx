@@ -22,7 +22,8 @@ import PanneauPertes from '../../PanneauPertes'
    ResultatsIncomplet.dc.html) : pleine largeur du centre de l'atelier, sans carte ni
    panneau de droite. UNE lecture de `GET resultat/` nourrit tout l'écran.
      · résultat complet  : quatre tuiles, « Mois par mois » + « Du soleil au réseau »,
-                           pied « Année basse… » + bouton de l'étape suivante ;
+                           pied « Année basse… » + bouton de l'étape suivante (le bouton, seul, dans
+                           les deux autres états — ACAL1958) ;
      · résultat incomplet : carte « au plus » + « Pour un résultat complet » (ACAL700) ;
      · jamais simulé / périmé : ResultatAvantSimulation (carte sombre + bouton de calcul,
                            « Pour un résultat complet », « Ce qui est déjà sûr »).
@@ -117,9 +118,11 @@ export default function EtapeResultats({
             <MoisParMois data={data} />
             <DuSoleilAuReseau cascade={data?.cascade} note={note} />
           </section>
-          <PiedResultats production={data?.production} action={action} />
         </>
       )}
+      {/* ACAL1958 — le bouton de l'étape est là dans les TROIS états (avant simulation, incomplet, complet) ;
+          la phrase de durée ne lit que les valeurs d'un résultat complet. */}
+      <PiedResultats production={complet ? data?.production : null} action={action} />
       <details open={ouvert} onToggle={(e) => setAvanceOuvert(e.currentTarget.open)}
         className="cal-res-carte" data-zone="avance">
         <summary className="cursor-pointer font-medium">Détail des pertes et réglages</summary>

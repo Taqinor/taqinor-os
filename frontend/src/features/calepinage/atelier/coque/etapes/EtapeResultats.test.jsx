@@ -372,7 +372,10 @@ describe('Étape Résultats — résultat incomplet (maquette ResultatsIncomplet
     expect(haut.children[1]).toHaveTextContent('Pour un résultat complet')
     expect(within(bloc).getAllByText('Renseigner').length).toBeGreaterThan(0)
     expect(screen.queryByTestId('cal-resultats-tuiles')).toBeNull()
-    expect(screen.queryByTestId('cal-resultats-pied')).toBeNull()
+    // ACAL1958 — incomplet : le bouton de l'étape, sans la phrase de durée (valeurs non publiées).
+    const pied = screen.getByTestId('cal-resultats-pied')
+    expect(within(pied).getByRole('button', { name: /Préparer les documents/ })).toBeInTheDocument()
+    expect(pied.querySelector('.cal-res-pied-ligne').textContent).toBe('')
   })
 
   it('Demande croisée — le compte annoncé égale les lignes listées, ou dit « et N autres » avec « Voir les étapes » qui ouvre le détail', async () => {
@@ -488,7 +491,10 @@ describe('Étape Résultats — pas encore simulé (jamais lancé)', () => {
     expect(bloc).not.toHaveTextContent(JARGON)
     expect(document.body.textContent).not.toMatch(JARGON)
     expect(screen.queryByText('Ce qui manque encore :')).toBeNull()
-    expect(screen.queryByTestId('cal-resultats-pied')).toBeNull() // le pied n'existe qu'avec un résultat
+    // ACAL1958 — avant simulation : le bouton de l'étape est là, au même gabarit ; aucune phrase de durée.
+    const pied = screen.getByTestId('cal-resultats-pied')
+    expect(within(pied).getByRole('button', { name: /Préparer les documents/ })).toBeInTheDocument()
+    expect(pied.querySelector('.cal-res-pied-ligne').textContent).toBe('')
     expect(screen.queryByTestId('cal-resultats-tuiles')).toBeNull()
   })
 
