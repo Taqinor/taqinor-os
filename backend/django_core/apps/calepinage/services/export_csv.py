@@ -119,6 +119,15 @@ def _points_de_la_serie(serie_horaire):
     return serie_horaire if isinstance(serie_horaire, list) else []
 
 
+def _serie_tronquee(serie_horaire):
+    """ACAL1614 — ``(tronquee, motif)`` du bloc stocké : une série DÉJÀ agrégée au jour par la
+    borne de persistance (``chaine_pertes._bloc_serie_horaire``) le dit ; une liste d'avant
+    CALX4 ou un bloc sans drapeau n'est jamais présumé tronqué."""
+    if not isinstance(serie_horaire, dict) or not serie_horaire.get('tronquee'):
+        return False, ''
+    return True, str(serie_horaire.get('motif_troncature') or '')
+
+
 def document_exportable(calepinage, avec_points=True):
     """ACAL217 — LE document d'export : une seule composition, résultat SERVI.
 
@@ -147,6 +156,7 @@ def document_exportable(calepinage, avec_points=True):
     simulation = stocke.get('simulation')
     simulation = simulation if isinstance(simulation, dict) else {}
     perimee = bool(servi.get('simulation_perimee'))
+    tronquee, motif_troncature = _serie_tronquee(stocke.get('serie_horaire'))
     production = servi.get('production')
     pertes = servi.get('pertes')
     return {
@@ -158,6 +168,8 @@ def document_exportable(calepinage, avec_points=True):
         # de zéros ni la série d'un ancien toit.
         'points': ([] if perimee or not avec_points
                    else _points_de_la_serie(stocke.get('serie_horaire'))),
+        'serie_tronquee': tronquee and not perimee and avec_points,
+        'motif_troncature': motif_troncature,
         'shading12x24': layout.get('shading12x24'),
         # ACAL754 — l'accès solaire annuel PAR MODULE, tel que persisté.
         'acces_modules': acces_des_modules(layout),
@@ -337,6 +349,16 @@ def _points_au_jour(points):
     return _agreger_au_jour(points, 60)
 
 
+def _pas_serie_agregee(document):
+    """ACAL1614 — la ligne « Pas de temps » d'une série déjà agrégée au jour : la fenêtre servie
+    (``fenetre_annees``) et le motif de troncature, tels que publiés, jamais reformulés."""
+    base = ((document or {}).get('production') or {}).get('base') or {}
+    fenetre = base.get('fenetre_annees')
+    precision = f', fenêtre {fenetre}' if fenetre else ''
+    motif = (document or {}).get('motif_troncature') or ''
+    return f'jour (série agrégée au jour{precision})' + (f' — {motif}' if motif else '')
+
+
 def _export_horaire(document, *, colonnes=None, pas='horaire'):
     _valider_pas(pas)
     noms = _colonnes_retenues(colonnes)
@@ -351,6 +373,9 @@ def _export_horaire(document, *, colonnes=None, pas='horaire'):
     if pas == 'jour':
         points = _points_au_jour(points)
         lignes.insert(len(lignes) - 1, ['Pas de temps', LIGNE_PAS_JOUR])
+    elif (document or {}).get('serie_tronquee'):
+        # ACAL1614 — la série stockée est DÉJÀ au jour (colonne heure vide) : le fichier le dit.
+        lignes.insert(len(lignes) - 1, ['Pas de temps', _pas_serie_agregee(document)])
     lignes.append(list(noms))
     for point in points:
         lignes.append([COLONNES_HORAIRE[nom](point) for nom in noms])

@@ -42,8 +42,8 @@ const EXPORTS = [
   {
     quoi: 'horaire',
     libelle: 'Série horaire (CSV)',
-    aide: "Une ligne par heure : production, irradiance sur le plan et "
-      + "température de l'air, précédées de leur provenance.",
+    aide: "Une ligne par heure en année type (au pas du jour en météo pluriannuelle, l'en-tête "
+      + "le dit) : production, irradiance sur le plan et température de l'air, précédées de leur provenance.",
   },
   {
     quoi: 'mensuel',
