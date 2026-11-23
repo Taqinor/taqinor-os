@@ -44,7 +44,7 @@ import { type Ctx } from './context';
 import { appliquerHydratationAuCtx, type HydratationAtelier } from './hydratation'; // ACAL311
 import { deserializeConsumptionFromLayout, lireCouchesDocument } from './prefill'; // ACAL311
 import { monterChargesAvenir, releireCharges } from './chargesAvenir'; import { modeExpertActif } from './orientationOmbre'; // ACAL780
-import { monterGrilleFactures, type DepsGrille, type MoisPropose } from './consommationMois'; // ACAL837
+import { liaisonFactures, monterGrilleFactures, type DepsGrille, type MoisPropose } from './consommationMois'; // ACAL837, ACAL1610
 
 /** ACAL311 — corps de `POST calepinages/<pk>/consommation/proposer/` (contrat
  *  `calepinage_consommation_proposee.json` : `corps_lead`/`corps_factures`/`corps_csv`/
@@ -764,7 +764,7 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
       dernierCorps = base;
       void proposer(avecRamadan(base, Boolean(ramadanEl?.checked), jourEl?.value ?? ''));
     };
-    monterGrilleFactures(bloc, { lancer, classe: () => classeEl?.value ?? '', ecouter: (f) => { surReponse = f; },
+    monterGrilleFactures(bloc, { lancer, classe: () => classeEl?.value ?? '', ecouter: (f) => { surReponse = f; }, factures: liaisonFactures(ctx),
       lireFacture: ctx.opts?.lireFactureConsommation }); // ACAL837 + ACAL840 (photo : absente sans option)
     monterChargesDuPanneau(); // ACAL780
     bloc.querySelector('[data-cons-action="lead"]')?.addEventListener('click', () =>

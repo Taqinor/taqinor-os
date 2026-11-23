@@ -9,7 +9,11 @@ import { chargesPourDocument, releireCharges, type ChargeAvenir } from './charge
 import { baselineCurve, composeConsumption, emptyCurve } from '../../lib/applianceConsumption';
 import { billToAnnualKwh } from '../../lib/estimatorBrainV2';
 import { factureCarteDe } from './factureCarte';
-import { type SerializedConsumption } from './prefill';
+import { facturesAEcrire, type FactureMois } from './consommationMois';
+import { type SerializedConsumption as ConsommationBase } from './prefill';
+
+/** ACAL1610 — le bloc, avec les factures mensuelles saisies (`$defs/consumption.factures_mois`). */
+type SerializedConsumption = ConsommationBase & { factures_mois?: FactureMois[] };
 
 /**
  * Les charges à venir à écrire : celles de l'écran (`ctx.consCharges`, posées par le panneau
@@ -91,5 +95,7 @@ export function construireConsommation(
   }
   const charges = chargesAEcrire(ctx); // ACAL780
   if (charges) consumption.charges = charges;
+  const factures = facturesAEcrire(ctx); // ACAL1610 — la grille « Mes factures », relue au rechargement
+  if (factures) consumption.factures_mois = factures;
   return consumption;
 }

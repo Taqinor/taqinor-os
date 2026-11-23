@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { racineDepot } from './harnaisAtelier';
-import { corpsDepuisLignes, htmlBarres, monterGrilleFactures, MOTIF_LECTURE_VIDE, type LectureFacture, type MoisPropose } from './consommationMois';
+import { corpsDepuisLignes, facturesAEcrire, htmlBarres, liaisonFactures, monterGrilleFactures, MOTIF_LECTURE_VIDE, releireFacturesMois, type LectureFacture, type MoisPropose } from './consommationMois';
 
 const CONTRAT = JSON.parse(readFileSync(join(
   racineDepot(), 'backend', 'django_core', 'apps', 'calepinage', 'contract_samples',
@@ -150,5 +150,50 @@ describe('ACAL840 — lire une photo de facture', () => {
     await attendre();
     await choisirPhoto(vide.hote);
     expect(vide.hote.querySelector('[data-cons-photo-message]')?.textContent).toBe(MOTIF_LECTURE_VIDE);
+  });
+});
+
+// ACAL1610 — les factures mensuelles saisies sont relues du document (`consumption.factures_mois`,
+// contrat ACAL1601) au rechargement, et réécrites au document à chaque frappe.
+describe('ACAL1610 — grille remplie depuis le document relu', () => {
+  const TROIS = [{ mois: 1, valeur: 520, unite: 'kwh' as const }, { mois: 2, valeur: 480, unite: 'kwh' as const },
+    { mois: 3, valeur: 450, unite: 'kwh' as const }];
+  function monterAvec(relues: unknown) {
+    const hote = document.createElement('div');
+    document.body.appendChild(hote);
+    const ctx = { documentRelu: { consumption: { factures_mois: relues } } } as Record<string, unknown>;
+    const lancer = vi.fn();
+    monterGrilleFactures(hote, { lancer, classe: () => '', ecouter: () => undefined, factures: liaisonFactures(ctx as never) });
+    const valeur = (m: number) => hote.querySelector<HTMLInputElement>(`[data-cons-mois-ligne="${m}"] [data-cons-mois-valeur]`)!;
+    const unite = (m: number) => hote.querySelector<HTMLSelectElement>(`[data-cons-mois-ligne="${m}"] [data-cons-mois-unite]`)!;
+    return { hote, ctx, lancer, valeur, unite };
+  }
+
+  it('janv. 520, févr. 480, mars 450 kWh relus, la proposition relancée (barres), un 4e mois s’ajoute aux trois', () => {
+    const { ctx, lancer, valeur, unite } = monterAvec(TROIS);
+    expect([1, 2, 3].map((m) => valeur(m).value)).toEqual(['520', '480', '450']);
+    expect(unite(1).value).toBe('kwh');
+    expect(valeur(4).value).toBe('');
+    expect(lancer).toHaveBeenCalledTimes(1);
+    expect(lancer.mock.calls[0][0].factures.mois).toEqual([{ mois: 1, kwh: 520 }, { mois: 2, kwh: 480 }, { mois: 3, kwh: 450 }]);
+    valeur(4).value = '430';
+    valeur(4).dispatchEvent(new Event('input', { bubbles: true }));
+    expect(facturesAEcrire(ctx as never)).toEqual([...TROIS, { mois: 4, valeur: 430, unite: 'kwh' }]);
+  });
+
+  it('une unité MAD relue revient en MAD ; une entrée hors contrat est ignorée', () => {
+    const { valeur, unite } = monterAvec([{ mois: 7, valeur: 600, unite: 'mad' }, { mois: 13, valeur: 1, unite: 'kwh' }]);
+    expect(valeur(7).value).toBe('600');
+    expect(unite(7).value).toBe('mad');
+    expect(releireFacturesMois({ factures_mois: [{ mois: 13, valeur: 1, unite: 'kwh' }, { mois: 2, valeur: 0, unite: 'kwh' }] })).toEqual([]);
+  });
+
+  it('le document enregistré porte consumption.factures_mois (aller-retour)', async () => {
+    const { construireConsommation } = await import('./consommationSerialisee');
+    const ctx = { consCurve: new Array(24).fill(0.5), consFacturesMois: TROIS } as never;
+    expect(construireConsommation(ctx, [], false, false).factures_mois).toEqual(TROIS);
+    const relu = { consCurve: new Array(24).fill(0.5), documentRelu: { consumption: { factures_mois: TROIS } } } as never;
+    expect(construireConsommation(relu, [], false, false).factures_mois).toEqual(TROIS);
+    expect('factures_mois' in construireConsommation({ consCurve: new Array(24).fill(0.5) } as never, [], false, false)).toBe(false);
   });
 });
