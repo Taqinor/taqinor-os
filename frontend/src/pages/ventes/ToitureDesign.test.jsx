@@ -302,6 +302,19 @@ describe('ToitureDesign — mode devis (PV20)', () => {
     expect(initRoofToolPro8).not.toHaveBeenCalled()
   })
 
+  it('ACAL1246 : un 404 sur le design-context dit « introuvable », sans outil d’édition (comme le 403)', async () => {
+    calepinageApi.calepinages.depuisModele.mockResolvedValue({ data: { id: CTX_CAL.calepinage.id } })
+    calepinageApi.calepinages.designContext.mockRejectedValue({ response: { status: 404 } })
+
+    rendreDevis(DEVIS_ID)
+
+    expect(await screen.findByTestId('cal-introuvable'))
+      .toHaveTextContent('Calepinage introuvable.')
+    expect(screen.queryByTestId('cal-acces-refuse')).toBeNull()
+    expect(screen.queryByRole('button', { name: /Enregistrer/ })).toBeNull()
+    expect(initRoofToolPro8).not.toHaveBeenCalled()
+  })
+
   it('devis introuvable : message FR, aucun boot du builder', async () => {
     calepinageApi.calepinages.depuisModele.mockRejectedValue({ response: { status: 404 } })
 

@@ -36,6 +36,7 @@ export const ALL_HOOKS = [
   'cal-cible-panneaux',
   'cal-devis-perime',
   'cal-acces-refuse',
+  'cal-introuvable',
   'cal-lien-photos-calage',
   'cal-lien-variantes',
   // ── BadgePerime.jsx ──

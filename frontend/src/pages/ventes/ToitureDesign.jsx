@@ -92,6 +92,7 @@ import OutilsVue from '../../features/calepinage/atelier/OutilsVue.jsx'
 import { useAtelierVues } from '../../features/calepinage/atelier/useAtelierVues.js'
 import { useAtelierBoot, pousserAffectationAtelier, MESSAGE_ACCES_REFUSE } from '../../features/calepinage/atelier/useAtelierBoot.js'
 import '../../styles/roofbuilder.css'
+const MESSAGE_INTROUVABLE = 'Calepinage introuvable.' // = le texte posé par useAtelierBoot sur un 404
 /** Lot 2 critique #23 — la conception est enregistrée, la resynchro du devis
  *  est refusée : le motif SERVEUR, jamais un « données invalides » générique. */
 const messageResyncRefusee = (raison) => (
@@ -1126,7 +1127,9 @@ function AtelierToiture({
   )
 
   // R2-20 — un compte sans droit sur le calepinage (403) : le message DIT le refus, aucun outil d'édition n'est monté.
-  if (estCalepinage && loadError === MESSAGE_ACCES_REFUSE) {
+  // ACAL1246 — un 404 (« Calepinage introuvable. », texte de `useAtelierBoot`) : MÊME écran sans outils, hook propre.
+  const refusOuIntrouvable = estCalepinage && (loadError === MESSAGE_ACCES_REFUSE || loadError === MESSAGE_INTROUVABLE)
+  if (refusOuIntrouvable) {
     return (
       <div className="rp9-host">
         <div className="rp9-topbar">
@@ -1136,7 +1139,7 @@ function AtelierToiture({
             <X className="size-5" aria-hidden="true" />
           </button>
         </div>
-        <p className="mt-6 text-sm text-destructive" role="alert" data-testid="cal-acces-refuse">{loadError}</p>
+        <p className="mt-6 text-sm text-destructive" role="alert" data-testid={loadError === MESSAGE_ACCES_REFUSE ? 'cal-acces-refuse' : 'cal-introuvable'}>{loadError}</p>
       </div>
     )
   }
