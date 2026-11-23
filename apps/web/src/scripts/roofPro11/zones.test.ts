@@ -964,6 +964,27 @@ describe('ACAL1404 — document à pan existant : hydratation fermée, aucun ref
   });
 });
 
+// ACAL1503 — un plat 3 × 1,5 m dont les retraits par arête dépassent la largeur se rouvrait OUVERT : l'anneau
+// posable (anneauPosableParArete) revient vide, packConfig rend ringENU = [], et buildZoneMeshes appelait
+// THREE.Shape.closePath sur un contour vide (« Cannot read properties of undefined (reading 'getPoint') ») avant
+// que la fermeture du tracé n'aboutisse.
+describe('ACAL1503 — un pan plus étroit que deux retraits se recharge fermé', () => {
+  it('anneau posable vide ⇒ aucune forme construite, aucune exception ; la cause reproduite plante bien', async () => {
+    const THREE = await import('three');
+    const { anneauPosableParArete } = await import('../../lib/estimatorBrainV7');
+    const { packConfig } = await import('../../lib/estimatorBrainV2');
+    const { formeDuContour } = await import('./scene3d');
+    const PLAT: LngLat[] = [ptM(-1.5, -0.75), ptM(1.5, -0.75), ptM(1.5, 0.75), ptM(-1.5, 0.75)];
+    const posable = anneauPosableParArete(PLAT, { 0: 0.8, 2: 0.8 }); // rive 0,80 m sur les deux longs côtés : 1,5 − 1,6 < 0
+    expect(posable).toEqual([]);
+    const pack = packConfig(posable, PLAT[0][1], { family: 'south', tiltDeg: 10 } as Parameters<typeof packConfig>[2]);
+    expect(pack.ringENU).toEqual([]);
+    expect(() => { const s = new THREE.Shape(); pack.ringENU.forEach(([x, y], i) => (i ? s.lineTo(x, y) : s.moveTo(x, y))); s.closePath(); }).toThrow(/getPoint/);
+    expect(formeDuContour(pack.ringENU)).toBeNull();
+    expect(formeDuContour([[0, 0], [3, 0], [3, 1.5], [0, 1.5]])?.getPoints().length).toBeGreaterThanOrEqual(4); // pan normal : inchangé
+  });
+});
+
 // REP-853 / ACAL853 — le Total lit le kWh PEINT sur la carte (kWh par panneau × panneaux posés), pas
 // `w.annualKwh` du solveur : deux productibles différents rendent les deux lectures distinguables.
 describe('ACAL853 — liveActiveResult reprend le kWh de la carte peinte', () => {

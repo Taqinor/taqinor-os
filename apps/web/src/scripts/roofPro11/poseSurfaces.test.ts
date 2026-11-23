@@ -892,3 +892,67 @@ describe('ACAL918 — le plan du moteur pour la surface enregistrée', () => {
     expect(engineDepuisReponseMoteur(undefined, null).rowPitchM).toBeNull();
   });
 });
+
+// ACAL1412 — le pan qui a servi à tracer le champ au sol restait À CÔTÉ de la surface : le devis chiffrait le
+// champ deux fois (Zone 1 (6) + Zone 2 (50) + Champ au sol 1 (50) = 106). La liste des pans est ici celle de la
+// page hôte : boutons « × » / « Voir » de zones.ts, écouteur de roof-tool-pro11.ts (deleteArea / selectArea).
+describe('ACAL1412 — « Enregistrer le contour tracé » remplace le pan de tracé, annulable', () => {
+  const monter = () => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    const doc: Document = new JSDOM('<!doctype html><body><div id="zones"></div><ul id="pans"></ul></body>').window.document;
+    g.document = doc;
+    const z1 = { id: 'z1', label: 'Zone 1', vertices: rectangle(5, 4), obstacles: [] } as unknown as AreaRecord;
+    const z2 = { id: 'z2', label: 'Zone 2', vertices: [], obstacles: [] } as unknown as AreaRecord;
+    const areas: AreaRecord[] = [z1, z2];
+    const listeEl = doc.getElementById('pans')!;
+    const ctx = {
+      vertices: rectangle(15, 12.2), obstacles: [], areas, activeAreaId: 'z2',
+      activeArea: () => areas.find((a) => a.id === ctx.activeAreaId),
+      dom: { areasWindowEl: doc.getElementById('zones'), areasListEl: listeEl }, opts: {},
+    } as unknown as Parameters<typeof monterAtelierPose>[0] & { activeAreaId: string };
+    const rendrePans = () => { listeEl.innerHTML = areas.map((a) => `<li><button data-area-select="${a.id}">Voir</button><button data-area-del="${a.id}">×</button></li>`).join(''); };
+    listeEl.addEventListener('click', (e) => {
+      const t = e.target as HTMLElement;
+      const sel = t.closest<HTMLElement>('[data-area-select]')?.dataset.areaSelect;
+      const del = t.closest<HTMLElement>('[data-area-del]')?.dataset.areaDel;
+      if (sel) { ctx.activeAreaId = sel; ctx.vertices = areas.find((a) => a.id === sel)!.vertices.slice(); }
+      else if (del) { areas.splice(areas.findIndex((a) => a.id === del), 1); ctx.activeAreaId = areas[0].id; ctx.vertices = areas[0].vertices.slice(); }
+      rendrePans();
+    });
+    rendrePans();
+    const statut = vi.fn();
+    const pose = monterAtelierPose(ctx, { setStatus: statut })!;
+    return { pose, ctx, areas, statut, doc, restaurer: () => { g.document = avant; } };
+  };
+
+  it('après enregistrement du contour, le pan de tracé n’existe plus, un Annuler le rétablit', () => {
+    const m = monter();
+    try {
+      const trace = m.ctx.vertices.slice();
+      m.pose.enregistrerContour('sol');
+      expect(m.areas.map((a) => a.id)).toEqual(['z1']);
+      expect(m.pose.surfaces().map((s) => s.label)).toEqual(['Champ au sol 1']);
+      expect(m.statut).toHaveBeenLastCalledWith(expect.stringContaining('Le tracé est devenu la surface Champ au sol 1 — Annuler le défait'));
+      const annuler = m.doc.querySelector<HTMLButtonElement>('[data-pose-annuler]')!;
+      expect(annuler.hidden).toBe(false);
+      annuler.click();
+      expect(m.areas.map((a) => a.id)).toEqual(['z1', 'z2']);
+      expect(m.areas[1].vertices).toEqual(trace);
+      expect(m.ctx.activeAreaId).toBe('z2');
+      expect(m.pose.surfaces()).toHaveLength(0);
+      expect(annuler.hidden).toBe(true);
+    } finally { m.restaurer(); }
+  });
+
+  it('un pan unique (aucun bouton « × ») n’est jamais retiré : la surface s’ajoute, rien d’autre', () => {
+    const m = monter();
+    try {
+      m.doc.getElementById('pans')!.innerHTML = '';
+      m.pose.enregistrerContour('sol');
+      expect(m.areas.map((a) => a.id)).toEqual(['z1', 'z2']);
+      expect(m.pose.surfaces()).toHaveLength(1);
+      expect(m.doc.querySelector<HTMLButtonElement>('[data-pose-annuler]')!.hidden).toBe(true);
+    } finally { m.restaurer(); }
+  });
+});

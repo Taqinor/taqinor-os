@@ -1026,6 +1026,35 @@ export interface Rgb01 {
   b: number;
 }
 
+/** ACAL1503 — la forme fermée d'un contour (mètres), `null` sous 3 sommets : `THREE.Shape.closePath` lit
+ *  `curves[0]` et plantait (« reading 'getPoint' ») quand les retraits par arête vidaient l'anneau posable. */
+export function formeDuContour(ring: readonly (readonly [number, number])[]): THREE.Shape | null {
+  if (ring.length < 3) return null;
+  const shape = new THREE.Shape();
+  ring.forEach(([x, y], i) => (i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y)));
+  shape.closePath();
+  return shape;
+}
+
+/** ACAL1408 — `instanceColor` MULTIPLIE la texture du panneau, quasi noire (≈ 0,05, `panelTexture.ts`) : une teinte
+ *  0–1 brute y restait noire (carte d'accès et chaînes invisibles). Même gain que le surlignage (PV31). */
+export const GAIN_TEINTE_PANNEAU = 14;
+
+/** ACAL1408 — écrit la teinte GAINÉE de chaque instance (`idxMap[i]` = sa cellule) ; `colorFor` null ⇒ blanc
+ *  (teinte d'origine). Seule écriture des teintes « par module » (accès solaire, chaînes). */
+export function ecrireTeintesPanneaux(
+  col: { setXYZ(i: number, x: number, y: number, z: number): unknown; needsUpdate: boolean },
+  idxMap: readonly number[],
+  colorFor: ((cellIndex: number) => Rgb01) | null,
+): void {
+  for (let i = 0; i < idxMap.length; i++) {
+    const c = colorFor ? colorFor(idxMap[i]) : null;
+    if (c) col.setXYZ(i, c.r * GAIN_TEINTE_PANNEAU, c.g * GAIN_TEINTE_PANNEAU, c.b * GAIN_TEINTE_PANNEAU);
+    else col.setXYZ(i, 1, 1, 1);
+  }
+  col.needsUpdate = true;
+}
+
 /**
  * ACAL286 — `rgb(r, g, b)` (0–255, la forme SERVIE par le serveur) → couleur 0–1 du buffer
  * `instanceColor`. Une valeur absente ou illisible rend `null` : le module reste gris.
@@ -1123,6 +1152,12 @@ export function couleurParAffectation(
 ): ((cellIndex: number) => Rgb01) | null {
   if (!coloring) return null;
   return affectationColorFn(coloring, identifiantsModulesParCellule(cellules, libelle));
+}
+
+/** ACAL1516 — la clé de pan des modules servis (`'<zone.id>#<n>'`, `production.py::cle_de_pan`, ACAL265) : l'ID du
+ *  pan, jamais son libellé — « Zone 1#3 » ne retrouvait aucune ligne « z1#3 », tous les modules restaient gris. */
+export function clePanAffectation(aire: { id?: string | null } | null | undefined, activeAreaId?: string | null): string {
+  return String(aire?.id || activeAreaId || '');
 }
 
 
@@ -1743,9 +1778,14 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     const ridgeLiftM = Math.max(0, plan.ridgeLiftM ?? 0);
 
     // Bâtiment
-    const shape = new THREE.Shape();
-    ring.forEach(([x, y], i) => (i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y)));
-    shape.closePath();
+    const shape = formeDuContour(ring); // ACAL1503
+    if (!shape) {
+      // Anneau posable vidé par les retraits : rien à extruder ni à paver ; la note du pan vide (motifPanVide) le dit.
+      const vide = new THREE.MeshStandardMaterial();
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+      return { deck: new THREE.Mesh(geo, vide), deckMat: vide, ring };
+    }
     const buildingMat = new THREE.MeshStandardMaterial({ color: 0xe2e7f2, roughness: 0.85, metalness: 0 });
     if (dim) {
       // Zone NON active : bâtiment subdué (plus sombre + légèrement transparent) pour
@@ -2179,9 +2219,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       (lat - activeOrigin[1]) * DEG2M,
     ]);
     const wallH = hauteurMurM; // CALX100
-    const shape = new THREE.Shape();
-    ring.forEach(([x, y], i) => (i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y)));
-    shape.closePath();
+    const shape = formeDuContour(ring)!; // ACAL1503 — même forme, garde « < 3 sommets » ci-dessus
     // Zone NON active sans panneaux : bâtiment subdué (même teinte que les autres zones).
     const buildingMat = new THREE.MeshStandardMaterial({ color: 0x9aa3b4, roughness: 0.85, metalness: 0, transparent: true, opacity: 0.55 });
     const building = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: wallH, bevelEnabled: false }), buildingMat);
@@ -2578,7 +2616,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
    * absorbe en douceur les valeurs > 1 du cadre alu — le panneau sélectionné « s'allume » au
    * lieu de se cramer. Les panneaux NON sélectionnés restent à 1 (teinte d'origine intacte).
    */
-  const HIGHLIGHT_GAIN = 14;
+  const HIGHLIGHT_GAIN = GAIN_TEINTE_PANNEAU; // ACAL1408 — une définition, partagée avec la carte d'accès
   /** Teintes de surlignage, AVANT gain (lisibles telles quelles). */
   const TINT_SELECTED: [number, number, number] = [1.0, 0.78, 0.32]; // laiton
   const TINT_HOVER: [number, number, number] = [1.0, 0.92, 0.72]; // laiton clair
@@ -2654,17 +2692,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   function setSolarAccessHeatmap(colorFor: ((cellIndex: number) => { r: number; g: number; b: number }) | null) {
     const mesh = ctx.activePanelMesh;
     if (!mesh || !mesh.instanceColor) return;
-    const col = mesh.instanceColor as THREE.InstancedBufferAttribute;
-    const idxMap = ctx.activePanelCellIndex;
-    for (let i = 0; i < idxMap.length; i++) {
-      if (colorFor) {
-        const c = colorFor(idxMap[i]);
-        col.setXYZ(i, c.r, c.g, c.b);
-      } else {
-        col.setXYZ(i, 1, 1, 1);
-      }
-    }
-    col.needsUpdate = true;
+    ecrireTeintesPanneaux(mesh.instanceColor as THREE.InstancedBufferAttribute, ctx.activePanelCellIndex, colorFor); // ACAL1408
     map3dRepaint();
   }
 
@@ -2679,8 +2707,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
    *  teinte d'origine (comportement d'avant). */
   function rafraichirAffectation() {
     const aire = ctx.areas.find((a) => a.id === ctx.activeAreaId);
-    const libelle = String(aire?.label || aire?.id || ctx.activeAreaId || '');
-    setStringColoring(couleurParAffectation(ctx.affectationColoration, ctx.activePanelCellIndex, libelle));
+    setStringColoring(couleurParAffectation(ctx.affectationColoration, ctx.activePanelCellIndex, clePanAffectation(aire, ctx.activeAreaId))); // ACAL1516
   }
 
   /** Repeint la scène 3D (déclenché après un changement de couleur d'instance). */

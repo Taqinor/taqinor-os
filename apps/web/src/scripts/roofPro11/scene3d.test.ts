@@ -28,7 +28,11 @@ import {
   type PlanMoteurSurface,
   capturerApresRendu,
   imageEntierementTransparente,
+  ecrireTeintesPanneaux, // ACAL1408
+  GAIN_TEINTE_PANNEAU, // ACAL1408
+  clePanAffectation, // ACAL1516
 } from './scene3d';
+import { couleurAccesActive } from '../../lib/shadingEngine'; // ACAL1408
 import { buildAreasFromShape } from './zones';
 import { coinLePlusProche, positionsPoignees, projeterPoignees } from './poigneesSommets3d'; // ACAL1185
 import { DEG2M } from './constants'; // ACAL1185
@@ -395,6 +399,57 @@ describe('ACAL286 — la teinte atteint le canal instanceColor du module PAN-A#1
   it('table vide ou non servie ⇒ aucune coloration (null)', () => {
     expect(couleurParAffectation(null, [0, 1], 'PAN-A')).toBeNull();
     expect(couleurParAffectation(buildAffectationColoring([], 'chaine'), [0, 1], 'PAN-A')).toBeNull();
+  });
+});
+
+// ACAL1408 — la carte d'accès écrivait la teinte brute dans `instanceColor`, que le matériau MULTIPLIE à une texture
+// de panneau quasi noire (≈ 0,05, panelTexture.ts / PV31) : « bleu nuit × noir = noir », aucun panneau ne changeait.
+describe('ACAL1408 — la teinte d’accès modifie la couleur effective du panneau, pas seulement instanceColor', () => {
+  const FOND_PANNEAU = 0.05; // luminance de la texture du verre (PV31)
+  const tampon = (n: number) => {
+    const rgb: number[][] = Array.from({ length: n }, () => [1, 1, 1]);
+    return { rgb, needsUpdate: false, setXYZ(i: number, r: number, g: number, b: number) { rgb[i] = [r, g, b]; } };
+  };
+  const effective = (c: number[]) => c.map((v) => Math.min(1, FOND_PANNEAU * v));
+
+  it('plein soleil ⇒ teinte lisible ; panneau ombré ⇒ nettement plus sombre ; éteinte ⇒ teinte d’origine', () => {
+    const acces = [1, 0.944, 0.1]; // cellule → accès solaire
+    const buf = tampon(3);
+    ecrireTeintesPanneaux(buf, [0, 1, 2], (cell) => couleurAccesActive(acces[cell], 'atelier')); // rampe bleu nuit → or (ERP)
+    expect(buf.needsUpdate).toBe(true);
+    const soleil = effective(buf.rgb[0]);
+    const ombre = effective(buf.rgb[2]);
+    expect(Math.max(...soleil)).toBeGreaterThan(0.3); // or lisible, pas un noir à peine plus chaud
+    const lum = (c: number[]) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    expect(lum(soleil) - lum(ombre)).toBeGreaterThan(0.1);
+    ecrireTeintesPanneaux(buf, [0, 1, 2], null);
+    expect(buf.rgb).toEqual([[1, 1, 1], [1, 1, 1], [1, 1, 1]]);
+  });
+
+  it('la teinte de chaîne (setStringColoring, même canal) est gainée de la même façon', () => {
+    const buf = tampon(1);
+    const bleu = lireCouleurServie(BLEU)!;
+    ecrireTeintesPanneaux(buf, [7], () => bleu);
+    expect(buf.rgb[0]).toEqual([bleu.r * GAIN_TEINTE_PANNEAU, bleu.g * GAIN_TEINTE_PANNEAU, bleu.b * GAIN_TEINTE_PANNEAU]);
+    expect(Math.max(...effective(buf.rgb[0]))).toBeGreaterThan(0.3);
+  });
+});
+
+// ACAL1516 — la carte de l'étape Électrique restait noire : le serveur sert `'<zone.id>#<n>'` (ACAL265) et la scène
+// cherchait `'<libellé>#<n>'` (« Zone 1#1 ») : aucune ligne trouvée, tous les modules au gris « non affecté ».
+describe('ACAL1516 — deux chaînes ⇒ deux teintes de module sur la carte', () => {
+  it('pan « Zone 1 » d’id z1, lignes servies z1#1 (chaîne 1, bleu) et z1#2 (chaîne 2, orange)', () => {
+    const lignes: AffectationRow[] = [
+      { module: 'z1#1', pan: 'z1', chaine: 1, onduleur: 1, mppt: 1, couleur_chaine: BLEU, couleur_mppt: BLEU },
+      { module: 'z1#2', pan: 'z1', chaine: 2, onduleur: 1, mppt: 2, couleur_chaine: ORANGE, couleur_mppt: ORANGE },
+    ];
+    const cle = clePanAffectation({ id: 'z1', label: 'Zone 1' } as { id: string }, 'z1');
+    expect(cle).toBe('z1');
+    const fn = couleurParAffectation(buildAffectationColoring(lignes, 'chaine'), [3, 8], cle)!;
+    expect(fn(3)).toEqual(lireCouleurServie(BLEU));
+    expect(fn(8)).toEqual(lireCouleurServie(ORANGE));
+    expect(fn(3)).not.toEqual(fn(8));
+    expect(clePanAffectation(undefined, 'z9')).toBe('z9'); // pan pas encore relu : l'id actif
   });
 });
 
