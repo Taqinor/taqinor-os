@@ -39,6 +39,7 @@ vi.mock('../../../hooks/useHasPermission', () => ({
 
 import calepinageApi from '../../../api/calepinageApi'
 import PanneauProduction from './PanneauProduction'
+import PiedResultats from './PiedResultats'
 import ReglagesSimulation from '../reglages/ReglagesSimulation'
 import sourceBibliotheque from '../Bibliotheque.jsx?raw'
 import { BandeauBorneHaute, EcartPvgis } from './BandeauProvenanceProduction'
@@ -1364,5 +1365,35 @@ describe('ACAL1905 — lecture lente du résultat', () => {
     expect(await screen.findByTestId('cal236-erreur')).toHaveTextContent('Production indisponible.')
     expect(screen.queryByTestId('cal-calcul-lent')).toBeNull()
     expect(screen.getByRole('button', { name: 'Réessayer' })).toBeInTheDocument()
+  })
+})
+
+/* ACAL1958 (T3-VAGUEC2, point 12) — le bouton de pied de l'étape Résultats : 340 × 52 comme les autres étapes quand il est
+   SEUL (résultat incomplet ou avant simulation : aucune phrase de durée) ; la maquette Resultats.dc.html garde son
+   330 × 104 à côté de la phrase quand le résultat est complet. Le CSS réel du module est posé dans le DOM de test. */
+describe('ACAL1958 — gabarit du bouton de pied de l’étape Résultats', () => {
+  const mesures = (production) => {
+    render(<MemoryRouter><PiedResultats production={production} /></MemoryRouter>)
+    const style = document.createElement('style')
+    style.textContent = readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/54-etape-resultats.css`, 'utf8')
+    document.head.appendChild(style)
+    try {
+      const bouton = screen.getByRole('button', { name: /Préparer les documents/ })
+      const calcule = getComputedStyle(bouton)
+      return { phrase: screen.getByTestId('cal-resultats-pied').querySelector('.cal-res-pied-ligne').textContent, largeur: calcule.width, hauteur: calcule.minHeight }
+    } finally {
+      style.remove()
+    }
+  }
+
+  it('sans phrase de durée (incomplet, avant simulation) : 340 × 52, le gabarit des autres étapes', () => {
+    expect(mesures(null)).toEqual({ phrase: '', largeur: '340px', hauteur: '52px' })
+  })
+
+  it('résultat complet, phrase de durée servie : la maquette Resultats garde son 330 × 104', () => {
+    const complet = exempleContrat('calepinage', 'calepinage_resultat').production
+    const m = mesures(complet)
+    expect(m.phrase).toMatch(/^Année basse|^Dans \d+ ans/)
+    expect([m.largeur, m.hauteur]).toEqual(['330px', '104px'])
   })
 })
