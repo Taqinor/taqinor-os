@@ -6,10 +6,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { JSDOM } from 'jsdom'; // ACAL574
 import { type Ctx } from './context'; // ACAL574
-import { direEcartPoseRelue, motifPanExistant, noteEcartPoseRelue } from './panExistant'; // ACAL574, ACAL1900
+import { carteDeLaPoseTenue, direEcartPoseRelue, motifPanExistant, noteEcartPoseRelue, remettreSurLePlan } from './panExistant'; // ACAL574, ACAL1900
 import { createLayoutState } from '../../lib/layoutVariability'; // ACAL1900
 import { serializeLayout } from './prefill'; // ACAL1900
-import { packConfig, defaultEastWestGeometry, type PackOptions } from '../../lib/estimatorBrainV2';
+import { annualSavingsMad, packConfig, defaultEastWestGeometry, type PackOptions } from '../../lib/estimatorBrainV2';
 import { PANEL2_SHORT_M, PERIMETER_SETBACK_M } from '../../lib/roofPro2';
 import {
   cibleOptimisationSaisie,
@@ -28,8 +28,8 @@ import { fmt, fmtKwc, fmtMad } from './dom'; // ACAL994 + R2-09
 import { phraseSurplus } from './affichageErp'; // R2-17
 import { createZones } from './zones'; // ACAL1418
 import { factureCarteDe, lireFactureSaisie } from './factureCarte'; // ACAL777
-import { seuilEffectifAccesSolaire } from './shadingUi'; // ACAL548
-import { cibleDepuisCarte, panneauxPourCible, phraseCible } from './cibleProduction'; // ACAL1618
+import { createShadingUi, seuilEffectifAccesSolaire } from './shadingUi'; // ACAL548, ACAL1900
+import { cibleDepuisCarte, maxDuSolveur, panneauxPourCible, phraseCible } from './cibleProduction'; // ACAL1618, ACAL1903
 import { cotesDePavage } from '../../lib/roofPro2';
 import {
   causeDuPanVide, ecrireMotifsDansDocument, mesurerPanVide, noterMotifPanVide, retraitApplique,
@@ -450,14 +450,14 @@ describe('ACAL470 : objectif de production tapé', () => {
 // jamais les deux sens de la seule pose affichée ; la production annoncée est celle de CE maximum.
 describe('ACAL1903 — « Production visée » : le maximum est celui que « + » atteint', () => {
   /** Plat 12 × 8 m, cible 5 (la pose affichée) ; `plus()` pousse « + » jusqu'au bout et rend le compte dessiné. */
-  const atelier = (verrou: 'portrait' | null) => {
+  const atelier = (verrou: 'portrait' | null, reglagesAtelier?: unknown) => {
     const g = globalThis as unknown as { document?: Document };
     const avant = g.document;
     g.document = new JSDOM('<!doctype html><body><dd id="rp9-reco-prod"></dd><p id="rp9-need-note"></p></body>').window.document;
     const vertices = rectRing(12, 8);
     const [cLng, cLat] = [(vertices[0][0] + vertices[2][0]) / 2, (vertices[0][1] + vertices[2][1]) / 2];
     const pan = { id: 'area-1', vertices, obstacles: [], roofType: 'flat' };
-    const ctx = { opts: { chiffrage: null }, centroidLat: cLat, centroid: [cLng, cLat], neededPanels: 5, neededAuto: false, batiments: [], environment: [],
+    const ctx = { opts: { chiffrage: null, reglagesAtelier }, centroidLat: cLat, centroid: [cLng, cLat], neededPanels: 5, neededAuto: false, batiments: [], environment: [],
       shadeObstructions: [], obstacles: [], areas: [pan], activeAreaId: 'area-1', activeArea: () => pan, vertices, roofType: 'flat', closed: true,
       pinned: new Set(verrou ? ['orient'] : []), sel: { family: 'south', tilt: 'reco', orient: verrou ?? 'auto', azimuth: 'south', margin: 'keep' },
       v4YieldCache: new Map(), overhangM: 0, documentRelu: null, shadeAnnualFactor: 1, horizonAnnualFactor: 1, dom: {}, useRecommended: true } as unknown as Ctx;
@@ -480,6 +480,25 @@ describe('ACAL1903 — « Production visée » : le maximum est celui que « + �
       expect(r.maxKwhAn).toBe(Math.round(a.opt.etatCarte()!.kwhParPanneau * atteint)); // la carte une fois « + » arrivé
       expect(phraseCible(r).startsWith(`Le toit donne au plus ${r.maxKwhAn.toLocaleString('fr-FR')} kWh/an avec ${atteint} panneaux`)).toBe(true);
     } finally { a.fin(); }
+  });
+  // Rejeu en direct (T3-VAGUEC) : la société a un seuil d'accès solaire (60 %) ; sans ombre il n'écarte rien, mais sa seule
+  // présence renvoyait aux deux sens de la pose AFFICHÉE (30°) : « au plus 16 » alors que « + » en pose 27 (à 0°).
+  it('seuil d’accès solaire de la société, sans ombre : « au plus N » = le compte que « + » pose', () => {
+    const a = atelier(null, { simulation: { seuil_acces_retrait: { valeur: 0.6 } } });
+    try {
+      const r = cibleDepuisCarte(1e6, a.opt.etatCarte(), clampNeeded)!;
+      const atteint = a.plus();
+      expect(atteint).toBeGreaterThan(5);
+      expect(r.panneaux).toBe(atteint);
+      expect(r.maxKwhAn).toBe(Math.round(a.opt.etatCarte()!.kwhParPanneau * atteint));
+    } finally { a.fin(); }
+  });
+  it('maxDuSolveur : la capacité laissée par le seuil borne le nombre, la production suit ; rien ne tient ⇒ null', () => {
+    const w = { placedCount: 20, layout: 'portrait', annualKwh: 20000 };
+    expect(maxDuSolveur(w, (g) => g.annualKwh)).toEqual({ n: 20, sens: 'portrait', kwhAn: 20000 });
+    expect(maxDuSolveur(w, (g) => g.annualKwh, 15)).toEqual({ n: 15, sens: 'portrait', kwhAn: 15000 });
+    expect(maxDuSolveur({ ...w, layout: 'mixed' }, (g) => g.annualKwh, 30)).toEqual({ n: 20, kwhAn: 20000 });
+    expect(maxDuSolveur(w, (g) => g.annualKwh, 0)).toBeNull();
   });
   it('un objectif atteignable donne toujours le plus petit N, sans sens imposé', () => {
     const a = atelier(null);
@@ -636,6 +655,69 @@ describe('ACAL1900 — une pose relue n’est pas re-posée par le recalcul de f
       expect(ctx.layoutState).toBeNull();
       expect(enregistrer(ctx).count).toBe(6);
     } finally { remettre(); }
+  });
+
+  // Rejeu en direct (T3-VAGUEC, pile de revue) : après le balayage, l'OMBRAGE relu au boot (`relireEnvironment` →
+  // `recomputeShading` → `recalcDisplays` = renderActive) re-posait encore la cible : 16 enregistrés → 5 à l'écran → 5 écrits.
+  it('chemin réel de l’ouverture : l’ombrage relu, puis le soleil, REDESSINENT la pose tenue sans la re-poser', async () => {
+    const remettre = doc();
+    try {
+      const { ctx, opt, cellules } = await ouvrir({ chiffrage: null, rendementPvgis: null });
+      const rendus: number[] = [];
+      let resolus = 0;
+      const map = new Proxy({}, { get: () => () => undefined }) as never;
+      // Le câblage de roof-tool-pro11 : recalcDisplays = renderActive (plat : renderSelection), renderPoseTenue = renderCustomLayout.
+      const ui = createShadingUi(ctx, { map, setStatus: () => {}, applyHeatmap: () => {}, recalcDisplays: () => { resolus += 1; opt.renderSelection(); }, renderPoseTenue: () => rendus.push(ctx.layoutState!.occupied.size) });
+      ui.recomputeShading();
+      expect(enregistrer(ctx).count).toBe(cellules.length);
+      ui.redessiner(); // heure, saison, date du soleil, bande climatique
+      expect(enregistrer(ctx).count).toBe(cellules.length);
+      expect(rendus).toEqual([cellules.length, cellules.length]);
+      expect(resolus).toBe(2); // les chiffres du plan sont recalculés (dérate, horizon, climat), la pose reste
+    } finally { remettre(); }
+  });
+
+  it('remettreSurLePlan : mêmes cellules ⇒ la pose telle quelle ; plan changé ⇒ re-snap au plus près ; aucun plan ⇒ null', () => {
+    const cellules = [0, 1, 2, 3].map((i) => ({ cx: i, cy: 0 }));
+    const tenue = createLayoutState(cellules, 0);
+    tenue.occupied.add(1).add(3);
+    expect(remettreSurLePlan(tenue, cellules)).toBe(tenue);
+    const decale = remettreSurLePlan(tenue, cellules.map((c) => ({ cx: c.cx + 0.2, cy: 0 })))!;
+    expect([...decale.occupied].sort()).toEqual([1, 3]);
+    expect(remettreSurLePlan(tenue, [])).toBeNull();
+  });
+
+  it('la carte (indicateurs, bande, Guidé) suit la pose tenue, et la note du nombre garde l’écart après « Enregistrer »', async () => {
+    const remettre = doc();
+    try {
+      const { ctx, opt, cellules } = await ouvrir({ chiffrage: null, rendementPvgis: null });
+      const carte = document.createElement('p');
+      carte.id = 'rp9-reco-panels';
+      document.body.appendChild(carte);
+      const n = cellules.length;
+      opt.peindreCartePosee(n); // renderCustomLayout → updateProductionWindow → la carte
+      expect(carte.textContent).toMatch(new RegExp(`^${n} `));
+      expect(opt.etatCarte()?.kwhParPanneau).toBeGreaterThan(0); // même rendement par panneau (ACAL1903 le lit)
+      const note = () => document.getElementById('rp9-need-note')!.textContent;
+      expect(note()).toBe(noteEcartPoseRelue(n, 5, fmt, false));
+      opt.majChiffrage(null); // après « Enregistrer » : le contexte relu repeint carte et note
+      expect(carte.textContent).toMatch(new RegExp(`^${n} `));
+      expect(note()).toBe(`${n} posés / 5 cible — pose tenue telle quelle (${n - 5} de plus que la cible, rien n’est retiré ni ajouté).`);
+      const publique = await ouvrir({ rendementPvgis: null }); // site public : la carte reste celle du gagnant
+      publique.opt.peindreCartePosee(n);
+      expect(carte.textContent).toMatch(/^5 /);
+    } finally { remettre(); }
+  });
+
+  it('carteDeLaPoseTenue : même rendement par panneau, économies plafonnées ; rien quand le nombre ne change pas', () => {
+    const d = { title: 'Plein sud 30°', isReco: true, count: 5, kwc: 3.55, annualKwh: 5571, pct: 63, savingsLow: 1, savingsHigh: 1, why: '', target: 8843 };
+    const c = carteDeLaPoseTenue(d, 16, fmt)!;
+    expect(c).toMatchObject({ count: 16, tenue: true, isReco: false });
+    expect(c.annualKwh).toBeCloseTo(5571 * 16 / 5, 6);
+    expect(c.kwc).toBeCloseTo(11.36, 6);
+    expect(c.savingsHigh).toBe(annualSavingsMad(c.annualKwh, 8843).high);
+    expect(carteDeLaPoseTenue(d, 5, fmt)).toBeNull();
+    expect(carteDeLaPoseTenue({ ...d, count: 0 }, 16, fmt)).toBeNull();
   });
 
   it('site public (aucun `chiffrage`) : comportement d’avant, le recalcul de fond re-pose l’optimum', async () => {

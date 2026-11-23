@@ -155,4 +155,15 @@ describe('ACAL1900 — l’écart entre la pose relue et la cible est dit, jamai
     expect(occupiedIndices(ctx.layoutState!)).toEqual([0, 1, 2, 9]);
     expect(note.textContent).toBe('4 posés / 6 cible — pose enregistrée rouverte telle quelle (2 de moins que la cible, rien n’est retiré ni ajouté).');
   });
+
+  it('pose relue ÉGALE au gagnant (« Le plus de panneaux » : 27 posés, cible 400) : la note du gagnant reste, aucun écart ajouté', () => {
+    const note = document.createElement('p');
+    note.id = 'rp9-need-note';
+    note.textContent = '4 posés / 400 cible — seuls 4 tiennent en plein sud (toit ou obstacles).';
+    document.body.appendChild(note);
+    Object.assign(ctx, { layoutOptimalCount: 4, neededPanels: 400 });
+    editor.hydrateLayout(POSED);
+    expect(occupiedIndices(ctx.layoutState!)).toEqual([0, 1, 2, 9]);
+    expect(note.textContent).toBe('4 posés / 400 cible — seuls 4 tiennent en plein sud (toit ou obstacles).');
+  });
 });

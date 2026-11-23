@@ -108,11 +108,11 @@ import { type CardData, type ChiffrageAtelier, type RenderConfigOpts, type Rende
 import { type Ctx } from './context';
 import { besoinAutoRelu } from './cible'; // ACAL367
 import { lignesSensDePose, afficherSensDePose } from './orientationOmbre'; // ACAL552
-import { maxDesSens, maxDuSolveur, phraseCouvertureMax, type MaxDuToit } from './cibleProduction'; // ACAL1618, ACAL547, ACAL1903
+import { maxDuSolveur, phraseCouvertureMax, type MaxDuToit } from './cibleProduction'; // ACAL547, ACAL1903
 import { heatmapAccessValues } from './shadingUi'; // ACAL552
 import { causeDuPanVide, mesurerPanVide, noterMotifPanVide, retraitApplique, type MotifPanVide } from './motifPanVide'; // ACAL549
 import { cotesDePavage } from '../../lib/roofPro2';
-import { motifPanExistant, poseTenue } from './panExistant'; // ACAL574, ACAL1900
+import { carteDeLaPoseTenue, direEcartPoseRelue, motifPanExistant, poseTenue } from './panExistant'; // ACAL574, ACAL1900
 
 // ═══════════ PV64 — TROIS VARIANTES LISIBLES DU BALAYAGE DÉJÀ CALCULÉ ═══════════
 // Le balayage V6 (`fineGridMatrixV6`) évalue déjà des centaines de configurations, mais
@@ -395,6 +395,7 @@ export interface Optimizer {
   /** Plafonne le besoin (1–400, arrondi) — partagé avec l'entrée. */
   clampNeeded: (n: number) => number;
   /** ACAL470 — énergie annuelle par panneau de la carte affichée et nombre qui tient ; null sans carte. */
+  peindreCartePosee: (n: number) => void; // ACAL1900 — l'ERP : la carte au nombre de la pose TENUE rendue (renderCustomLayout)
   etatCarte: () => { kwhParPanneau: number; tiennent: number; maxSens: MaxDuToit | null } | null; // ACAL1618, ACAL1903
 }
 
@@ -596,12 +597,14 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   let derniereCarte: (CardData & { factureInconnue: boolean; sourceLabel?: string }) | null = null;
   let dernierFit = 0;
   let derniereNote: { fit: number; famille: string; motif?: MotifPanVide | null; ecartes?: number; pack?: PackResult | null } | null = null; // R2-13, ACAL1618
-  /** ACAL1903 — le maximum que « + » ATTEINT (solveur vivant, mêmes verrous, besoin non plafonné) et sa production écrêtée + dératée
-   *  comme la carte ; `null` en pente. Seuil d'accès solaire saisi (ignoré du solveur) : les deux sens du pack posé (ACAL1618). */
-  const maxSensCarte = (): MaxDuToit | null => !derniereNote?.pack ? null : filtrageSeuil(derniereNote.pack.portrait.panels)
-    ? maxDesSens(derniereNote.pack, ctx.pinned.has('orient') ? ctx.sel.orient : null, (p) => filtrageSeuil(p)?.ecartes.length ?? 0)
-    : maxDuSolveur(resoudreVivant({ ...buildFlatLocks(), need: clampNeeded(Number.MAX_SAFE_INTEGER), needImposedZero: false }).winner,
-      (w) => clipDcAcKwh(w.annualKwh, effectiveDcAcRatio(w.family)) * facteurDerateAnnuel(ctx));
+  /** ACAL1903 — le maximum que « + » ATTEINT : le gagnant vivant (mêmes verrous, besoin non plafonné) RE-PAVÉ et passé au seuil
+   *  d'accès solaire comme au rendu (`paveDuGagnant`, `poseSousSeuil`), sa production écrêtée + dératée comme la carte ; `null` en pente. */
+  const maxSensCarte = (): MaxDuToit | null => {
+    const w = derniereNote?.pack ? resoudreVivant({ ...buildFlatLocks(), need: clampNeeded(Number.MAX_SAFE_INTEGER), needImposedZero: false }).winner : null;
+    const grille = w ? paveDuGagnant(w).grid : null;
+    const ecartes = grille ? filtrageSeuil(grille.panels)?.ecartes.length ?? 0 : 0;
+    return maxDuSolveur(w, (g) => clipDcAcKwh(g.annualKwh, effectiveDcAcRatio(g.family)) * facteurDerateAnnuel(ctx), grille && ecartes ? grille.panels.length - ecartes : undefined);
+  };
   const placedFor = (grid: PanelGrid): number =>
     ctx.neededPanels > 0
       ? Math.max(0, Math.min(ctx.neededPanels, grid.count))
@@ -819,8 +822,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   }
 
   /** Rend le gagnant vivant (3D + carte + contrôles) avec SES chiffres (PVGIS/estimé). */
-  function renderLiveWinner(res: LiveSolveResult, isReco: boolean) {
-    const w = res.winner;
+  /** Re-pave le gagnant vivant (rendu ET maximum « + », ACAL1903) : son pack et sa grille. */
+  function paveDuGagnant(w: LiveSolveResult['winner']) {
     // CALX95 câblage — on re-pave le MÊME anneau posable que le solveur a évalué (retraits
     // d'arête rognés) ; sinon le compte affiché parlerait d'un contour que le solveur n'a
     // pas vu. Aucune arête saisie ⇒ c'est le contour tracé lui-même, rendu inchangé.
@@ -841,7 +844,11 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       chassis: optionChassis(ctx.activeArea?.()?.chassis), // ACAL1523 — le châssis N × M saisi, comme le solveur
     });
     // PV62 — pose MIXTE : grille dédiée du pack (repli meilleur uniforme si le mixte perd).
-    const grid = w.layout === 'mixed' ? pack.mixed ?? pack.best : w.layout === 'portrait' ? pack.portrait : pack.landscape;
+    return { pack, setbackM, grid: w.layout === 'mixed' ? pack.mixed ?? pack.best : w.layout === 'portrait' ? pack.portrait : pack.landscape };
+  }
+  function renderLiveWinner(res: LiveSolveResult, isReco: boolean) {
+    const w = res.winner;
+    const { pack, grid, setbackM } = paveDuGagnant(w);
     // CAL75 — le solveur (V7) a choisi cette config à l'écart D'ÉTUDE ; un écart personnalisé
     // change ce qui tient VRAIMENT dans ce même contour → le compte AFFICHÉ vient du pack
     // RE-PAVÉ (placedFor, même plafond besoin que partout ailleurs), kWc/kWh mis à l'échelle
@@ -1108,17 +1115,16 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     etiquetteEconomie();
     if (derniereCarte) paintCard(derniereCarte, derniereCarte.sourceLabel); // R2-16 + demande croisée — production, bande et économie relues
     if (derniereNote) syncNeedControl(derniereNote.fit, derniereNote.famille, derniereNote.motif, derniereNote.ecartes, derniereNote.pack); // R2-13, ACAL1526 — « au devis » relu avec le contexte
-  }
+    if (derniereCarte?.tenue) direEcartPoseRelue(derniereCarte.count, ctx.neededPanels, fmt, false); } // ACAL1900 — la note du nombre parle de la pose tenue
 
+  /** ACAL1900 — l'ERP : la carte (et ce qui la lit : bande, indicateurs, Guidé) suit la pose TENUE rendue (n panneaux). */
+  function peindreCartePosee(n: number) { const d = modeErp() && derniereCarte ? carteDeLaPoseTenue(derniereCarte, n, fmt) : null; if (d) { paintCard(d, derniereCarte?.sourceLabel); direEcartPoseRelue(n, ctx.neededPanels, fmt, false); } }
   function paintCard(d: CardData, sourceLabel?: string) {
     for (const p of Array.from(document.querySelectorAll<HTMLElement>('[data-couverture-max]'))) p.hidden = modeErp() && d.pct >= 100; // R3-04
     // ACAL852 — sans facture (cible absente ou nulle ET aucune économie) : « facture inconnue », jamais « 0 MAD – 0 MAD/an ».
     const factureInconnue = !((d.target ?? ctx.prodTarget) > 0) && !(d.savingsHigh > 0);
     derniereCarte = { ...d, factureInconnue, sourceLabel };
-    const set = (id: string, v: string) => {
-      const el = $(id);
-      if (el) el.textContent = v;
-    };
+    const set = (id: string, v: string) => { const el = $(id); if (el) el.textContent = v; };
     set('rp9-reco-title', d.isReco ? `${d.title}  ·  ✓ recommandé` : d.title);
     // W97 §2 — kWc = panneaux × 0,72 (PANEL2_WATT) : toujours ≤ 2 décimales exactes.
     // 1 décimale arrondissait CHAQUE zone indépendamment, si bien que la somme des
@@ -1752,7 +1758,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     buildMatrix,
     computeMatrixPvgis,
     clampNeeded,
-    majChiffrage,
+    majChiffrage, peindreCartePosee, // ACAL1900
     etatCarte: () => (derniereCarte && derniereCarte.count > 0 && derniereCarte.annualKwh > 0 ? { kwhParPanneau: derniereCarte.annualKwh / derniereCarte.count, tiennent: dernierFit, get maxSens() { return maxSensCarte(); } } : null), // ACAL1903 — le solveur ne tourne qu'à la lecture
   };
 }
