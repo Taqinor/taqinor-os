@@ -72,7 +72,7 @@ export default function InspecteurBuilder({ estCalepinage = false }) {
             <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Total — toutes les zones</p>
             <p className="text-xs text-muted-foreground">Chaque zone est dimensionnée puis ajustable ; les totaux additionnent toutes les zones.</p>
           </div>
-          <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4" aria-live="polite">
+          <dl className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(7rem,1fr))] gap-x-6 gap-y-4" aria-live="polite">
             <div>
               <dd id="rp9-areas-total-panels" className="fig text-lg text-foreground sm:text-xl">—</dd>
               <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Panneaux</dt>

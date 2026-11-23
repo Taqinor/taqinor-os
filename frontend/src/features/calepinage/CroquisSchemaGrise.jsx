@@ -3,37 +3,21 @@
    (modules → coffret DC → onduleur → protections AC → réseau) : aucune donnée lue, aucune valeur, aucun
    nombre, aucun libellé de produit ; jamais présenté comme le schéma de la conception. */
 const ETAGES = ['Modules', 'Coffret DC', 'Onduleur', 'Protections AC', 'Réseau']
-const LARGEUR = 112
-const ECART = 28
-const HAUTEUR = 56
 
+/* ACAL1427 — les étages sont des boîtes HTML empilées (texte 14 px, jamais un SVG mis à l'échelle du rail : ses libellés
+   tombaient à ~3 px dans le panneau latéral d'Avancé) ; une colonne tient à toutes les largeurs. */
 export default function CroquisSchemaGrise() {
-  const largeurTotale = ETAGES.length * LARGEUR + (ETAGES.length - 1) * ECART
   return (
     <figure className="m-0 flex flex-col gap-2" data-testid="acal1028-croquis">
-      <svg
-        viewBox={`0 0 ${largeurTotale} ${HAUTEUR + 8}`}
-        role="img"
-        aria-label="Croquis de principe d’une installation, sans valeur"
-        className="w-full max-w-3xl text-muted-foreground opacity-60"
-      >
-        {ETAGES.map((nom, rang) => {
-          const x = rang * (LARGEUR + ECART)
-          return (
-            <g key={nom}>
-              <rect x={x} y="4" width={LARGEUR} height={HAUTEUR} rx="4" fill="none"
-                stroke="currentColor" strokeWidth="1.5" strokeDasharray="5 4" />
-              <text x={x + LARGEUR / 2} y={4 + HAUTEUR / 2 + 4} textAnchor="middle" fontSize="12" fill="currentColor">
-                {nom}
-              </text>
-              {rang < ETAGES.length - 1
-                ? <line x1={x + LARGEUR} y1={4 + HAUTEUR / 2} x2={x + LARGEUR + ECART} y2={4 + HAUTEUR / 2}
-                  stroke="currentColor" strokeWidth="1.5" />
-                : null}
-            </g>
-          )
-        })}
-      </svg>
+      <ol aria-label="Croquis de principe d’une installation, sans valeur"
+        className="m-0 flex max-w-xs list-none flex-col items-stretch p-0 text-muted-foreground">
+        {ETAGES.map((nom, rang) => (
+          <li key={nom} className="flex flex-col items-center">
+            {rang > 0 ? <span aria-hidden="true" className="h-3 w-px bg-border" /> : null}
+            <span className="w-full rounded border border-dashed border-border px-3 py-2 text-center text-sm">{nom}</span>
+          </li>
+        ))}
+      </ol>
       <figcaption className="text-sm text-muted-foreground" data-testid="acal1028-legende">
         Croquis de principe, sans valeur : votre schéma s’affichera quand les champs ci-dessous seront remplis.
       </figcaption>

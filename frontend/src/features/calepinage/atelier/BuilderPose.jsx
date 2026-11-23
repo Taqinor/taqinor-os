@@ -31,7 +31,7 @@ export default function BuilderPose({
             </p>
 
             <div id="rp9-layout-panel" hidden className="mt-5 space-y-5">
-              <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+              <dl className="grid grid-cols-[repeat(auto-fit,minmax(7rem,1fr))] gap-x-6 gap-y-4">
                 <div>
                   <dd id="rp9-layout-count" className="fig text-lg text-foreground sm:text-xl">—</dd>
                   <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Panneaux posés<Pourquoi cle="toit.pose_panneaux" /></dt>

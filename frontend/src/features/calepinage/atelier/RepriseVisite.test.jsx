@@ -264,6 +264,19 @@ describe('ACAL527 — bandeau « n écarts avec la visite »', () => {
     expect(bandeau.innerHTML).not.toMatch(/red|destructive|alert/)
   })
 
+  it('ACAL1411 — lignes à motif sans écart : « Comparaison à faire à la main », jamais « Aucun écart mesurable »', async () => {
+    const base = echantillon('exemple_avant_reprise')
+    calepinageApi.calepinages.releveVisite.mockResolvedValue({
+      data: { ...base, ecart_dessin: echantillon('exemple_ecart_dessin_plusieurs_pans') } })
+    rendre()
+    const bandeau = await screen.findByTestId('cal-reprise-ecarts')
+    expect(bandeau).toHaveTextContent('Comparaison à faire à la main')
+    expect(bandeau).toHaveTextContent('pans à rapprocher à la main')
+    expect(bandeau).not.toHaveTextContent('Aucun écart mesurable')
+    fireEvent.click(within(bandeau).getByRole('button'))
+    expect(within(bandeau).getByRole('table')).toHaveTextContent('15°') // la valeur de la visite est gardée
+  })
+
   it('aucun écart mesurable', async () => {
     const base = echantillon('exemple_avant_reprise')
     calepinageApi.calepinages.releveVisite.mockResolvedValue({ data: { ...base, ecart_dessin: [] } })

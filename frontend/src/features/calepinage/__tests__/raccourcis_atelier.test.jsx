@@ -190,6 +190,20 @@ describe('CAL101 — AUCUNE frappe n’est volée pendant la saisie d’un champ
   })
 })
 
+describe('ACAL1435 — Guidé : l’aide s’ouvre hors du tiroir « Avancé » masqué', () => {
+  it('« ? » dans un parent `hidden` : l’aide est une fenêtre (dialog) qui n’a aucun ancêtre masqué ; Échap la ferme', () => {
+    render(<div hidden data-testid="tiroir"><RaccourcisAtelier actions={actionsEspionnees()} /></div>)
+    fireEvent.keyDown(window, { key: '?' })
+    const aide = screen.getByTestId('cal-raccourcis-aide')
+    expect(aide).toHaveAttribute('role', 'dialog')
+    expect(aide.closest('[hidden]')).toBeNull()
+    expect(screen.getByTestId('tiroir')).not.toContainElement(aide)
+    expect(aide).toHaveTextContent('Dupliquer')
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByTestId('cal-raccourcis-aide')).toBeNull()
+  })
+})
+
 describe('CAL101 — le bouton d’aide, pour qui ne connaît pas encore « ? »', () => {
   it('ouvre la même aide, et annonce son état', () => {
     rendre(actionsEspionnees())

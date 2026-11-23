@@ -133,6 +133,24 @@ export function lirePente(racine) {
   }
 }
 
+/** ACAL1428 — confirme la pente du pan VIVANT par le geste du moteur (le clic d'une puce « ~N° » ou, hors puces, le
+    curseur « Pente fine ») : le script écrit lui-même `pitchSource` sur le pan, que « Enregistrer » emporte.
+    Rien n'est écrit côté serveur ici. Rend vrai si le geste est parti. */
+export function confirmerPenteVivante(racine, deg) {
+  const n = Math.round(Number(deg))
+  if (!Number.isFinite(n)) return false
+  const puce = racine?.querySelector?.(`[data-pitch="${n}"]`)
+  if (puce && !puce.disabled) {
+    puce.click()
+    return true
+  }
+  const curseur = parId(racine, 'rp9-pitch-range')
+  if (!curseur || curseur.disabled) return false
+  curseur.value = String(n)
+  curseur.dispatchEvent(new Event('input', { bubbles: true }))
+  return true
+}
+
 /** État des outils de la carte, lu sur les vrais contrôles du script. */
 export function lireOutils(racine) {
   const finish = parId(racine, 'rp9-finish')
@@ -276,11 +294,14 @@ export function useEtatToit(intervalle = 500) {
  * orientation » de l'étape Toit, maquette Main). Le document lu (`doc`) et l'atelier vivant
  * reprennent les pans rendus. Rend `{ ok, message }` (motif serveur d'abord, ACAL280).
  */
-export async function enregistrerPentePan({ calepinageId, doc, documentVivant = null, zone, zones, champs: demandes }) {
+export async function enregistrerPentePan({ calepinageId, doc, documentVivant = null, zone, zones, champs: demandes, confirmerPlat = false }) {
   // ACAL1341 — un pan « Toit plat » n'a pas de pente : rien d'autre que 0° ne s'y écrit (la forme passe par les tuiles).
   const plat = zone?.roofType === 'flat'
+  // ACAL1429 — « Confirmer » un plat (`confirmerPlat`, carte « Pente et orientation ») écrit `pitchSource {mode: 'plat'}`
+  // (ACAL1400) et 0° ; jamais une source en degrés. Sans `confirmerPlat` : 0° seul, comme avant.
   const champs = plat
-    ? Object.fromEntries([...Object.entries(demandes).filter(([cle]) => cle !== 'pitchSource'), ['pitchDeg', 0]])
+    ? { ...Object.fromEntries(Object.entries(demandes).filter(([cle]) => cle !== 'pitchSource')), pitchDeg: 0,
+      ...(confirmerPlat ? { pitchSource: { mode: 'plat' } } : {}) }
     : demandes
   // ACAL316 — le jeton de l'atelier vivant s'il existe, sinon celui de la lecture : un
   // document changé ailleurs répond 409 plutôt que d'être écrasé.

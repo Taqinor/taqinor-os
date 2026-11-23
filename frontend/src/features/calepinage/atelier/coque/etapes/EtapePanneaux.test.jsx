@@ -15,6 +15,7 @@ vi.mock('../../../../../api/calepinageApi', () => ({
 import { MODULE_PAR_DEFAUT_ATELIER } from '@roofpro/moduleSelect'
 import { choisirPaletteAcces } from '@rooflib/shadingEngine'
 import calepinageApi from '../../../../../api/calepinageApi'
+import { exempleContrat, reponseContrat } from '../../../../../test/fixtures/contractSamples'
 import { ContexteCoque } from '../contexteCoque'
 import EtapePanneaux from './EtapePanneaux'
 import { jourMois, ligneModule } from './panneaux/formats'
@@ -185,6 +186,57 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(max).toHaveTextContent('55 panneaux · 39,60 kWc')
     fireEvent.click(max)
     expect(document.getElementById('rp9-need-input').value).toBe('400')
+  })
+
+  it('tiennent < cible : la carte dit ce qui tient, jamais la taille irréalisable', async () => {
+    const { espion } = monterConstructeur({
+      besoin: '6', panneaux: '1 × 710 W', kwc: '0,71 kWc', cover: '14 %',
+      note: '6 au devis — seuls 1 tiennent en plein sud (toit ou obstacles).',
+    })
+    servir({ cible: { panneaux: 6, kwc: 4.26, module_wc: 710 } })
+    const surInput = espion('#rp9-need-input', 'input')
+    rendre()
+    const facture = screen.getByTestId('cal-panneaux-option-facture')
+    await waitFor(() => expect(facture).toHaveTextContent('Couvrir la factureRecommandé1 panneau · 0,71 kWc · sur 6 nécessaires'))
+    expect(facture).not.toHaveTextContent('4,26')
+    expect(facture).not.toHaveTextContent('6 panneaux')
+    fireEvent.click(facture)
+    expect(surInput).not.toHaveBeenCalled() // le besoin 6 est déjà la cible posée : rien à renvoyer, la pose reste 1
+  })
+
+  it('la carte non choisie garde ses chiffres : « Le plus de panneaux » dès l’ouverture, la part de la facture après le clic, le sens dit', async () => {
+    monterConstructeur({
+      besoin: '12', panneaux: '12 × 710 W', kwc: '8,52 kWc', cover: '63 %', orient: 'portrait',
+      note: '12 posés — seuls 20 tiennent en plein sud.',
+    })
+    rendre()
+    const facture = screen.getByTestId('cal-panneaux-option-facture')
+    const max = screen.getByTestId('cal-panneaux-option-max')
+    await waitFor(() => expect(facture).toHaveTextContent('≈ 63 % de la consommation'))
+    expect(max).toHaveTextContent('20 panneaux · 14,20 kWc') // 20 × 710 W, lu de la pose, dès l'ouverture
+    fireEvent.click(max)
+    expect(document.getElementById('rp9-need-input').value).toBe('400')
+    // le script pose tout ce qui tient et bascule le sens de pose
+    document.getElementById('rp9-reco-panels').textContent = '20 × 710 W'
+    document.getElementById('rp9-reco-kwc').textContent = '14,20 kWc'
+    document.getElementById('rp9-reco-cover').textContent = '105 %'
+    document.getElementById('rp9-need-note').textContent = '12 posés — seuls 20 tiennent en plein sud.'
+    document.querySelector('[data-orient="portrait"]').setAttribute('aria-pressed', 'false')
+    document.querySelector('[data-orient="landscape"]').setAttribute('aria-pressed', 'true')
+    await waitFor(() => expect(document.querySelector('[data-zone="sens-bascule"]')).toHaveTextContent('passé de Portrait à Paysage'), { timeout: 3000 })
+    expect(max).toHaveAttribute('aria-pressed', 'true')
+    expect(facture).toHaveTextContent('≈ 63 % de la consommation') // gardée, pas perdue au clic
+    expect(facture).not.toHaveTextContent('105')
+  })
+
+  it('lead C&I : la carte dit la raison servie (cible-factures/ refus), sans renvoyer renseigner une facture saisie', async () => {
+    servir()
+    calepinageApi.calepinages.cibleFactures.mockResolvedValue(reponseContrat('calepinage', 'calepinage_cible_factures', 'exemple_refus'))
+    rendre()
+    await screen.findByText(exempleContrat('calepinage', 'calepinage_cible_factures', 'exemple_refus').refus)
+    expect(screen.getByTestId('cal-panneaux-option-facture')).toBeDisabled()
+    expect(screen.queryByText('Renseigner la facture du lead')).toBeNull()
+    expect(document.body).not.toHaveTextContent('Aucune taille ne se tire des factures')
   })
 
   it('ni l’une ni l’autre : aucune carte choisie et « Pose actuelle : N panneaux · kWc »', async () => {
