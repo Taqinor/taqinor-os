@@ -188,6 +188,14 @@ def candidat_suivi_devis_envoye(devis_envoye):
     return calepinage, lie
 
 
+def dernier_devis_recu(company, lead_id):
+    """ACAL1955 — le dernier devis ACTIF du lead que le client a reçu (porte de
+    lecture ``apps.ventes.selectors_calepinage.dernier_devis_recu_du_lead``)."""
+    from apps.ventes.selectors_calepinage import dernier_devis_recu_du_lead
+
+    return dernier_devis_recu_du_lead(company, lead_id)
+
+
 def suivre_devis_envoye(devis_envoye, *, user=None):
     """ACAL1955 (D-ACAL-89) — re-lie le calepinage ouvert du lead au devis
     ENVOYÉ quand il pointait un brouillon jamais envoyé

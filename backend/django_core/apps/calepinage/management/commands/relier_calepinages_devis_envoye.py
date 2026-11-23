@@ -29,9 +29,9 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         from apps.calepinage.services.liens import (
-            LiaisonRefusee, candidat_suivi_devis_envoye, suivre_devis_envoye,
+            LiaisonRefusee, candidat_suivi_devis_envoye, dernier_devis_recu,
+            suivre_devis_envoye,
         )
-        from apps.ventes.selectors_calepinage import dernier_devis_recu_du_lead
 
         Calepinage = registre.get_model('calepinage', 'Calepinage')
         qs = (Calepinage.objects.filter(devis__isnull=False, lead_id__isnull=False)
@@ -48,7 +48,7 @@ class Command(BaseCommand):
             if cle in vus:
                 continue
             vus.add(cle)
-            envoye = dernier_devis_recu_du_lead(calepinage.company, calepinage.lead_id)
+            envoye = dernier_devis_recu(calepinage.company, calepinage.lead_id)
             candidat = candidat_suivi_devis_envoye(envoye) if envoye is not None else None
             if candidat is None:
                 continue
