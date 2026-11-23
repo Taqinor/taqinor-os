@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createConsumption, type ConsumptionDom, type ConsumptionDeps } from '../src/scripts/roofPro11/consumption';
 import { type Ctx } from '../src/scripts/roofPro11/context';
 import { emptyCurve } from '../src/lib/applianceConsumption';
+import { billToAnnualKwh } from '../src/lib/estimatorBrainV2';
 // ACAL311 — la consommation PROPOSÉE par le serveur (voir le bloc en fin de fichier).
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -163,6 +164,45 @@ describe('Ordre fondateur — le calepinage part du devis, jamais de la facture'
     cons.applyConsumptionToSizing();
 
     expect(ctx.neededPanels).toBe(5);
+    expect(renderActive).not.toHaveBeenCalled();
+  });
+});
+
+// ACAL1913 — en mode calepinage le champ facture n'existe pas (monthlyBill() = 0) : la courbe du
+// panneau « Affiner ma consommation » part de la facture mensuelle du LEAD servie à l'atelier,
+// jamais de « 0,0 kWh » ; le dimensionnement, lui, ne change pas.
+describe('ACAL1913 — la consommation du jour part de la facture du lead', () => {
+  const FACTURE_LEAD_MAD = 900;
+  const jourAttendu = billToAnnualKwh(FACTURE_LEAD_MAD) / 365;
+  const total = (c: number[]) => c.reduce((a, b) => a + b, 0);
+
+  it('sans facture saisie, la courbe porte la facture du lead ; une charge ajoutée s’y ajoute', () => {
+    const ctx = makeCtx({ opts: { factureMensuelleMad: FACTURE_LEAD_MAD } as never });
+    const cons = createConsumption(ctx, emptyDom(), makeDeps(0));
+    cons.rebuildConsCurve();
+    expect(total(ctx.consCurve)).toBeCloseTo(jourAttendu, 3);
+    expect(jourAttendu).toBeGreaterThan(5);
+    ctx.consAppliances = [{ kind: 'ev', label: 'Voiture', dailyKwh: 6, startHour: 22, endHour: 6, billing: 'onTop' }] as never;
+    cons.rebuildConsCurve();
+    expect(total(ctx.consCurve)).toBeCloseTo(jourAttendu + 6, 3);
+  });
+
+  it('sans facture du lead ni saisie, rien n’est inventé (0) ; la facture saisie PRIME', () => {
+    const vide = makeCtx({ opts: {} as never });
+    createConsumption(vide, emptyDom(), makeDeps(0)).rebuildConsCurve();
+    expect(total(vide.consCurve)).toBe(0);
+    const saisie = makeCtx({ opts: { factureMensuelleMad: FACTURE_LEAD_MAD } as never });
+    createConsumption(saisie, emptyDom(), makeDeps(1800)).rebuildConsCurve();
+    expect(total(saisie.consCurve)).toBeCloseTo(billToAnnualKwh(1800) / 365, 3);
+  });
+
+  it('le repli d’affichage ne dimensionne rien : la facture du lead seule ne change pas le besoin', () => {
+    const ctx = makeCtx({ opts: { factureMensuelleMad: FACTURE_LEAD_MAD } as never, neededPanels: 0 });
+    const renderActive = vi.fn();
+    const cons = createConsumption(ctx, emptyDom(), makeDeps(0, renderActive));
+    cons.rebuildConsCurve();
+    cons.applyConsumptionToSizing(total(ctx.consCurve) * 365);
+    expect(ctx.neededPanels).toBe(0);
     expect(renderActive).not.toHaveBeenCalled();
   });
 });
