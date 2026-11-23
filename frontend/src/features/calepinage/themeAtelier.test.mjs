@@ -68,7 +68,7 @@ const valeursDe = (selecteur) => Object.assign(
 
 /* ACAL1800 — les jetons v2 (LANGAGE.md, tableau « Jetons », colonnes Clair | Sombre) sous les racines du module.
    Valeur attendue = celle du tableau (normalisée : espaces retirés, minuscules) ; `null` en sombre = même valeur. */
-const RACINES = ['.cal-coque', '.cliste', '.cal-tel', '.cal-client']
+const RACINES = ['.cal-coque', '.cliste', '.cal-tel', '.cal-client', '.cal-reglages'] // ACAL1985 : Démarrage rapide lit le bouton doré v2
 const JETONS_V2 = {
   '--cal-papier': ['#f5f4f0', '#0a0f2a'],
   '--cal-surface': ['#ffffff', '#121a3f'],
