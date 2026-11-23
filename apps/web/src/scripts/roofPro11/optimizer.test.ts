@@ -27,7 +27,7 @@ import { phraseSurplus } from './affichageErp'; // R2-17
 import { createZones } from './zones'; // ACAL1418
 import { factureCarteDe, lireFactureSaisie } from './factureCarte'; // ACAL777
 import { seuilEffectifAccesSolaire } from './shadingUi'; // ACAL548
-import { panneauxPourCible } from './cibleProduction';
+import { cibleDepuisCarte, panneauxPourCible, phraseCible } from './cibleProduction'; // ACAL1618
 import { cotesDePavage } from '../../lib/roofPro2';
 import {
   causeDuPanVide, ecrireMotifsDansDocument, mesurerPanVide, noterMotifPanVide, retraitApplique,
@@ -440,6 +440,47 @@ describe('ACAL470 : objectif de production tapé', () => {
     expect(panneauxPourCible(50000, 600, 30, clampNeeded)).toEqual({ panneaux: 30, plafonne: true, maxKwhAn: 18000 });
     expect(panneauxPourCible(0, 600, 30, clampNeeded)).toBeNull();
     expect(panneauxPourCible(100, 0, 30, clampNeeded)).toBeNull();
+  });
+});
+
+// ACAL1618 — le maximum annoncé pour une « Production visée » est celui des DEUX sens de pose (le « + » bascule de même),
+// jamais celui de la seule pose courante ; un sens verrouillé borne à ce sens.
+describe('ACAL1618 — « Production visée » : maximum = le meilleur des deux sens', () => {
+  const grille = (n: number) => ({ count: n, kwc: n * 0.55, panels: [], rowWidthM: 2, footprintPerPanelM2: 2, slopeLenM: 1 });
+  const carte = (verrou: 'portrait' | null) => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><dd id="rp9-reco-prod"></dd><p id="rp9-need-note"></p></body>').window.document;
+    try {
+      const pan = { id: 'area-1', vertices: rectRing(12, 8), obstacles: [], roofType: 'flat', pitchDeg: 0, facingAzimuthDeg: 180 };
+      const ctx = { opts: { chiffrage: null }, centroidLat: 33.5, rec: { targetAnnualKwh: 4000 }, neededPanels: 0, batiments: [], centroid: [-7, 33], environment: [],
+        shadeObstructions: [], obstacles: [], areas: [pan], activeAreaId: 'area-1', activeArea: () => pan, vertices: pan.vertices, roofType: 'flat', closed: true,
+        pinned: new Set(verrou ? ['orient'] : []), sel: { orient: verrou ?? 'auto' }, shadeAnnualFactor: 1, horizonAnnualFactor: 1, dom: {} } as unknown as Ctx;
+      const deps = { renderScene: vi.fn(), paintComparison: vi.fn(), highlightRow: vi.fn(), syncProductionWindow: vi.fn(), prefillLead: vi.fn(),
+        syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 800, obstructionRings: vi.fn(() => []), setStatus: vi.fn() };
+      const opt = createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]);
+      const portrait = grille(7); // pose courante : UNE rangée en portrait (7)
+      opt.renderConfig({ pack: { origin: [-7, 33], ringENU: [], azimuthDeg: 0, portrait, landscape: grille(10) } as never,
+        grid: portrait as never, family: 'south', tiltDeg: 20, azimuthDeg: 0, isReco: true, title: 't', why: 'w', rowId: null });
+      return opt.etatCarte();
+    } finally { g.document = avant; }
+  };
+  it('12 × 8 m, 7 en portrait / 10 en paysage : un objectif hors d’atteinte annonce 10 panneaux EN PAYSAGE', () => {
+    const e = carte(null)!;
+    const r = cibleDepuisCarte(1e6, e, clampNeeded)!;
+    expect(r.panneaux).toBe(10);
+    expect(r.plafonne).toBe(true);
+    expect(r.maxKwhAn).toBe(Math.round(10 * e.kwhParPanneau));
+    expect(phraseCible(r)).toBe(`Le toit donne au plus ${r.maxKwhAn.toLocaleString('fr-FR')} kWh/an avec 10 panneaux en paysage.`);
+  });
+  it('un objectif atteignable donne toujours le plus petit N (5 panneaux), sans sens imposé', () => {
+    const e = carte(null)!;
+    const r = cibleDepuisCarte(Math.round(4.5 * e.kwhParPanneau), e, clampNeeded)!;
+    expect(r).toMatchObject({ panneaux: 5, plafonne: false });
+    expect(phraseCible(r)).not.toContain('paysage');
+  });
+  it('portrait verrouillé : le maximum reste celui du portrait (7)', () => {
+    expect(cibleDepuisCarte(1e6, carte('portrait'), clampNeeded)?.panneaux).toBe(7);
   });
 });
 

@@ -108,6 +108,7 @@ import { type CardData, type ChiffrageAtelier, type RenderConfigOpts, type Rende
 import { type Ctx } from './context';
 import { besoinAutoRelu } from './cible'; // ACAL367
 import { lignesSensDePose, afficherSensDePose } from './orientationOmbre'; // ACAL552
+import { maxDesSens, type SensPose } from './cibleProduction'; // ACAL1618
 import { heatmapAccessValues } from './shadingUi'; // ACAL552
 import { causeDuPanVide, mesurerPanVide, noterMotifPanVide, retraitApplique, type MotifPanVide } from './motifPanVide'; // ACAL549
 import { cotesDePavage } from '../../lib/roofPro2';
@@ -402,7 +403,7 @@ export interface Optimizer {
   /** Plafonne le besoin (1–400, arrondi) — partagé avec l'entrée. */
   clampNeeded: (n: number) => number;
   /** ACAL470 — énergie annuelle par panneau de la carte affichée et nombre qui tient ; null sans carte. */
-  etatCarte: () => { kwhParPanneau: number; tiennent: number } | null;
+  etatCarte: () => { kwhParPanneau: number; tiennent: number; maxSens: { n: number; sens: SensPose } | null } | null; // ACAL1618
 }
 
 /** ACAL975 — la phrase « gain bifacial » d'une carte : VIDE pour une pose affleurante (la face arrière n'y est
@@ -602,7 +603,10 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   // R3-04 — aussi la couverture (`pct`) de la tuile affichée ; R2-16 — et `factureInconnue`, pour repeindre la bande « Année 1 ».
   let derniereCarte: (CardData & { factureInconnue: boolean }) | null = null;
   let dernierFit = 0;
-  let derniereNote: { fit: number; famille: string; motif?: MotifPanVide | null; ecartes?: number } | null = null; // R2-13
+  let derniereNote: { fit: number; famille: string; motif?: MotifPanVide | null; ecartes?: number; pack?: PackResult | null } | null = null; // R2-13, ACAL1618
+  /** ACAL1618 — le maximum des DEUX sens du pack posé à plat (seuil déduit ; sens verrouillé seul) ; `null` en pente. */
+  const maxSensCarte = () => (derniereNote?.pack ? maxDesSens(derniereNote.pack, ctx.pinned.has('orient') && (ctx.sel.orient === 'portrait' || ctx.sel.orient === 'landscape') ? ctx.sel.orient : null,
+    (g: PanelGrid) => Math.max(0, g.count - (filtrageSeuil(g.panels)?.ecartes.length ?? 0))) : null);
   const placedFor = (grid: PanelGrid): number =>
     ctx.neededPanels > 0
       ? Math.max(0, Math.min(ctx.neededPanels, grid.count))
@@ -624,9 +628,9 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   const surDevis = (placed: number): string => texteSurDevis(placed, ctx.neededPanels, modeErp(), Boolean(ctx.opts?.devisLie && ctx.cibleVendue), ctx.panneauxDevis);
   /** ACAL1526 — `ecartes` = emplacements retirés par le seuil d'accès solaire (`poseSousSeuil`) : la capacité dite
    *  est celle qui reste, donc la note lit la pose DESSINÉE (jamais « il reste de la place » sur une pose rognée). */
-  function syncNeedControl(fitCount: number, familyLabel: string, motif?: MotifPanVide | null, ecartes = 0) {
+  function syncNeedControl(fitCount: number, familyLabel: string, motif?: MotifPanVide | null, ecartes = 0, pack: PackResult | null = null) {
     dernierFit = fitCount;
-    derniereNote = { fit: fitCount, famille: familyLabel, motif, ecartes };
+    derniereNote = { fit: fitCount, famille: familyLabel, motif, ecartes, pack };
     const capacite = Math.max(0, fitCount - ecartes);
     const active = ctx.neededPanels > 0;
     // L2 — en mode devis, le champ reste ACTIONNABLE même à 0 : aucune facture n'existe
@@ -730,7 +734,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       },
       o.sourceLabel,
     );
-    syncNeedControl(o.grid.count, o.family === 'eastwest' ? 'Est-Ouest' : 'plein sud', motifPanActif(o.pack, o.grid, placed, null), ecartes); // ACAL549 : retrait non transmis ici ; ACAL1526
+    syncNeedControl(o.grid.count, o.family === 'eastwest' ? 'Est-Ouest' : 'plein sud', motifPanActif(o.pack, o.grid, placed, null), ecartes, o.pack); // ACAL549 : retrait non transmis ici ; ACAL1526, ACAL1618
     syncTiltControl(o.tiltDeg, o.isReco);
     if (o.isReco) paintMaxLine();
     highlightRow(o.rowId);
@@ -895,7 +899,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       },
       w.yieldSource === 'pvgis' ? '(production PVGIS au GPS exact)' : '(production estimée — table par latitude)',
     );
-    syncNeedControl(grid.count, liveOrientationLabel(w), motifPanActif(pack, grid, placedCount, retraitApplique(setbacksForMargin(w.margin), setbackM)), ecartes); // ACAL1526
+    syncNeedControl(grid.count, liveOrientationLabel(w), motifPanActif(pack, grid, placedCount, retraitApplique(setbacksForMargin(w.margin), setbackM)), ecartes, pack); // ACAL1526, ACAL1618
     syncTiltControl(w.tiltDeg, isReco);
     paintMaxLine();
     highlightRow(null);
@@ -1108,7 +1112,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     for (const [id, el] of cibles) if (el && e.estimes[id] !== undefined) el.textContent = economieAffichee(ctx, id, e.estimes[id]);
     etiquetteEconomie();
     if (derniereCarte) paintBande(derniereCarte, derniereCarte.factureInconnue); // R2-16 — la bande « Année 1 » suit l'économie relue
-    if (derniereNote) syncNeedControl(derniereNote.fit, derniereNote.famille, derniereNote.motif, derniereNote.ecartes); // R2-13, ACAL1526 — « au devis » relu avec le contexte
+    if (derniereNote) syncNeedControl(derniereNote.fit, derniereNote.famille, derniereNote.motif, derniereNote.ecartes, derniereNote.pack); // R2-13, ACAL1526 — « au devis » relu avec le contexte
   }
 
   /** La bande « Année 1 → Année 25 ». ERP : UNE économie (la servie, sinon l'estimation prudente) ; l'année 25 ne
@@ -1759,7 +1763,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     computeMatrixPvgis,
     clampNeeded,
     majChiffrage,
-    etatCarte: () => (derniereCarte && derniereCarte.count > 0 && derniereCarte.annualKwh > 0 ? { kwhParPanneau: derniereCarte.annualKwh / derniereCarte.count, tiennent: dernierFit } : null),
+    etatCarte: () => (derniereCarte && derniereCarte.count > 0 && derniereCarte.annualKwh > 0 ? { kwhParPanneau: derniereCarte.annualKwh / derniereCarte.count, tiennent: dernierFit, maxSens: maxSensCarte() } : null),
   };
 }
 

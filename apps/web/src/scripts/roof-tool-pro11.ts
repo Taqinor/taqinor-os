@@ -240,7 +240,7 @@ import { createReperesUi } from './roofPro11/reperesChantier'; // ACAL593
 import { refleterPrioriteRemplissage } from './roofPro11/prioriteRemplissage'; import { anneauxCoupuresDuPanActif, monterChampsCoupures } from './roofPro11/coupuresPavage'; import { monterChampPortee } from './roofPro11/piedsChassis'; import { monterChampsChassis } from './roofPro11/chassisPavage'; import { grouperStructurePose } from './roofPro11/structurePose'; // ACAL576, ACAL579, ACAL585, ACAL1522
 import { createSoleilPlayer, sunriseSunsetHours, type SoleilPlayer } from './roofPro11/soleilPlay';
 import { apiCamera, appliquerVue } from './roofPro11/cadrageToit'; // ACAL435 + F6 (cadrage du toit)
-import { panneauxPourCible, phraseCible } from './roofPro11/cibleProduction'; // ACAL470
+import { cibleDepuisCarte, phraseCible } from './roofPro11/cibleProduction'; // ACAL470, ACAL1618
 import { majBadgesReco } from './roofPro11/recoBadges'; // ACAL562
 import { poserRetraitsPuisRecalculer } from './roofPro11/fermetureDuPan'; // ACAL562
 
@@ -3066,8 +3066,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   });
   $<HTMLInputElement>('rp9-cible-kwh')?.addEventListener('input', (ev) => { // ACAL470
     const x = parseInt(((ev.target as HTMLInputElement).value || '').replace(/\D/g, ''), 10);
-    const e = optimizer.etatCarte();
-    const r = e && x > 0 ? panneauxPourCible(x, e.kwhParPanneau, e.tiennent, clampNeeded) : null;
+    const r = x > 0 ? cibleDepuisCarte(x, optimizer.etatCarte(), clampNeeded) : null; // ACAL1618 — maximum des deux sens
     if (!r) return;
     setNeeded(r.panneaux);
     if (needNoteEl) needNoteEl.textContent = phraseCible(r);
