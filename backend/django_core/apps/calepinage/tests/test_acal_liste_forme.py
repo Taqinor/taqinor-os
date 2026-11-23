@@ -425,6 +425,45 @@ class ValeursRangeesDeLaListeTest(BaseApiCalepinage):
             [lignes[change.pk][c] for c in ('points_a_regler', 'points_a_regler_lu_le', 'points_a_regler_perime')],
             [None, '2026-11-21T10:00:00+00:00', True])
 
+    def test_lignes_avec_devis_et_leads_requetes_constantes(self):
+        """ACAL1343 — le cas réel de la pile : chaque calepinage a SON lead et SON
+        devis, dont les lignes portent un produit. 4 lignes ou 12 : même compte."""
+        from decimal import Decimal
+
+        from apps.crm.models import Lead
+        from apps.stock.models import Produit
+        from apps.ventes.models import Devis, LigneDevis
+
+        panneau = Produit.objects.create(
+            company=self.company, nom='Panneau 580 Wc', sku='ACAL1343-P',
+            prix_achat=Decimal('9876543.21'), prix_vente=Decimal('1500'), quantite_stock=1)
+
+        def mesurer(nombre):
+            Calepinage.objects.filter(company=self.company).delete()
+            for rang in range(nombre):
+                lead = Lead.objects.create(company=self.company, nom=f'Lead 1343-{nombre}-{rang}',
+                                           ville='Rabat', owner=self.user)
+                devis = Devis.objects.create(
+                    company=self.company, client=self.client_a, lead=lead, roof_layout=SOL_12,
+                    reference=f'DEV-202611-{nombre:02d}{rang:02d}', layout_hash='d' * 64)
+                for _ in range(2):
+                    LigneDevis.objects.create(devis=devis, produit=panneau, designation='Panneau 580 Wc',
+                                              quantite=Decimal(6), prix_unitaire=Decimal('1000'))
+                Calepinage.objects.create(
+                    company=self.company, lead_id=lead.pk, devis=devis, titre=f'Toiture {rang}',
+                    roof_layout=SOL_12, layout_hash='d' * 64,
+                    resultat={'production': {'total': {'p50_kwh': 9000}},
+                              'pose': {'total_modules': 12, 'kwc': 6.96}})
+            self.api.get(URL)  # chauffe les caches de processus
+            with CaptureQueriesContext(connection) as requetes:
+                reponse = self.api.get(URL, {'page_size': 300})
+            self.assertEqual(reponse.status_code, 200)
+            self.assertEqual(len(self._lignes(reponse)), nombre)
+            self.assertNotIn('9876543', json.dumps(reponse.data, default=str))  # prix_achat jamais servi
+            return len(requetes)
+
+        self.assertEqual(mesurer(4), mesurer(12))
+
     def test_apercu_toit_contours_normalises_ou_nul_sans_requete_de_plus(self):
         """ACAL1335 — un contour par pan, de 0 à 100 ; sans contour ⇒ null ; le compte
         de requêtes ne bouge pas (le document est déjà chargé)."""

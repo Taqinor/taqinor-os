@@ -577,8 +577,9 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
         if getattr(self, 'action', None) == 'list':
             # ACAL122 — la liste ne charge JAMAIS ``resultat`` (série horaire
             # de 8 760 points par ligne) : le sérialiseur ne l'expose pas.
-            # ``roof_layout`` reste chargé (layout_stale / nb_panneaux).
-            queryset = lecture_liste.annoter(queryset.prefetch_related('devis__lignes').defer('resultat'))
+            # ``roof_layout`` reste chargé (layout_stale / nb_panneaux). ACAL1343 — le
+            # PRODUIT de chaque ligne aussi (classement panneau : 1 requête par ligne de devis sinon).
+            queryset = lecture_liste.annoter(queryset.prefetch_related('devis__lignes__produit').defer('resultat'))
         return queryset
 
     # ── Détail : l'agrégat du contrat CAL1 ─────────────────────────────────
