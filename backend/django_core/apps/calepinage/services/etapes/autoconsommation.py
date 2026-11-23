@@ -365,7 +365,7 @@ def _plages_publiees(plages, mesurees, annees):
         ligne = par_rang.get(rang) or {'heures_ecretees': 0,
                                        'energie_ecretee_kwh': 0.0}
         publiees.append(dict(
-            plage, heures_ecretees=ligne['heures_ecretees'],
+            plage, heures_ecretees=_par_an(ligne['heures_ecretees'], annees),
             energie_ecretee_kwh=_par_an(ligne['energie_ecretee_kwh'],
                                         annees)))
     return publiees
@@ -403,22 +403,25 @@ def _publier(serie, bilan, courbe, au_compteur, brute, apres_batterie,
         'reseau_export_kwh': [round(valeur, 4) for valeur in exports],
     })
 
-    part = bloc_batterie.autonomie(imports, courbe)
+    part = bloc_batterie.autonomie(imports, courbe, annees=annees)
     publie_plafond = None
     etape = None
     if bloc_plafond:
+        # ACAL1604 — les heures écrêtées, à l'année moyenne comme l'énergie.
+        heures_ecretees = _par_an(bloc_plafond['heures_ecretees'], annees)
         publie_plafond = {
             'applique': True,
             'plafond_kw': bloc_plafond['plafond_kw'],
             'justification': bloc_plafond['justification'],
             'energie_ecretee_kwh': _par_an(ecretee, annees),
-            'heures_ecretees': bloc_plafond['heures_ecretees'],
+            'heures_ecretees': heures_ecretees,
             'motif': bloc_plafond['motif'],
             'plages': _plages_publiees(plages, bloc_plafond['plages'],
                                        annees),
         }
         etape = _etape_du_plafond(dict(
-            bloc_plafond, energie_ecretee_kwh=_par_an(ecretee, annees)))
+            bloc_plafond, energie_ecretee_kwh=_par_an(ecretee, annees),
+            heures_ecretees=heures_ecretees))
 
     return suite, {
         'taux_autoconsommation': bilan['taux_autoconsommation'],

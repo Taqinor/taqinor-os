@@ -14,6 +14,10 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { hydrateFromDevis } from './prefill';
 import { reinitialiserNumerotation } from './numerotation';
 import { enregistrerAtelier, exempleRoofLayoutV2, ouvrirAtelier } from './harnaisDocument';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import Ajv2020 from 'ajv/dist/2020';
+import { racineDepot } from './harnaisAtelier';
 
 
 const EXEMPLE = exempleRoofLayoutV2();
@@ -76,5 +80,33 @@ describe('ACAL31 — aller-retour octet-identique de l’exemple complet', () =>
     // Chaque pan porte SA production (ACAL355) ; le total en est la somme, jamais un prorata.
     for (const z of zones) expect(typeof z.result?.annualKwh).toBe('number');
     expect(result.annualKwh).toBe(zones.reduce((s, z) => s + (z.result?.annualKwh ?? 0), 0));
+  });
+});
+
+// ACAL1601 — la place des factures mensuelles saisies au contrat, validée par un VRAI validateur
+// JSON Schema sur le schéma lu dans le dépôt (jamais une copie).
+describe('ACAL1601 — consumption.factures_mois au contrat roof_layout_v2', () => {
+  const schema = JSON.parse(readFileSync(join(
+    racineDepot(), 'backend', 'django_core', 'apps', 'calepinage', 'contract_samples', 'roof_layout_v2.schema.json',
+  ), 'utf8')) as Record<string, unknown>;
+  const valider = new Ajv2020({ strict: false, allErrors: true }).compile(schema);
+  const avec = (factures: unknown) => {
+    const doc = JSON.parse(JSON.stringify(EXEMPLE)) as Record<string, Record<string, unknown>>;
+    doc.consumption = { ...doc.consumption, factures_mois: factures };
+    return doc;
+  };
+  const trois = [{ mois: 1, valeur: 520, unite: 'kwh' }, { mois: 2, valeur: 480, unite: 'kwh' }, { mois: 3, valeur: 450, unite: 'kwh' }];
+
+  it('trois factures mensuelles conformes, mois 13 refusé', () => {
+    expect(valider(avec(trois))).toBe(true);
+    expect(valider(avec([{ mois: 13, valeur: 520, unite: 'kwh' }]))).toBe(false);
+    expect(valider(avec([{ mois: 1, valeur: 520, unite: 'w' }]))).toBe(false);
+    expect(valider(avec([{ mois: 1, valeur: -1, unite: 'kwh' }]))).toBe(false);
+    expect(valider(avec([{ mois: 1, valeur: 300, unite: 'mad' }]))).toBe(true);
+  });
+
+  it('un document sans la clé reste conforme', () => {
+    expect((EXEMPLE.consumption as Record<string, unknown>).factures_mois).toBeUndefined();
+    expect(valider(JSON.parse(JSON.stringify(EXEMPLE)))).toBe(true);
   });
 });

@@ -485,3 +485,75 @@ class ParMoisTest(SimpleTestCase):
 
         self.assertIn('par_mois', resultat)
         self.assertIsNone(resultat['par_mois'])
+
+
+class AnneeMoyenneHeuresTest(SimpleTestCase):
+    """ACAL1604 — en météo pluriannuelle, les comptes d'heures publiés sont
+    ceux d'une année MOYENNE (≤ 8 760 h), comme les énergies.
+
+    Cas chiffré à la main (série de test) : 6 kW de 8 h à 18 h, 1 kWh/h de
+    charge ⇒ 10 heures par jour sans import, soit 3 650 h sur 2021 ; plafond
+    3 kW ⇒ ces 10 heures sont écrêtées (surplus 5 kWh) : 3 650 h/an.
+    """
+
+    @staticmethod
+    def _deux_ans():
+        return {'points': serie_de_test(annee=2021)['points']
+                + serie_de_test(annee=2022)['points'],
+                'pas_minutes': 60, 'colonne_energie': 'p_ac_kw'}
+
+    def test_deux_annees_identiques_heures_sans_import_d_une_annee(self):
+        contexte = contexte_de_test(heures=17520, plafond=3.0,
+                                    justification=JUSTIFICATION)
+        contexte[chaine_pertes.CLE_ANNEES_FENETRE] = 2
+        _suite, resultat = bloc.bloc_autoconsommation(self._deux_ans(),
+                                                      contexte)
+
+        self.assertEqual(resultat['heures_sans_import'], 3650)
+        self.assertEqual(resultat['plafond']['heures_ecretees'], 3650)
+
+    def test_plages_de_plafond_heures_annuelles(self):
+        contexte = contexte_de_test(heures=17520, justification=JUSTIFICATION)
+        contexte[bloc.CLE_RACCORDEMENT]['plages_plafond_injection'] = [
+            {'debut_h': 16, 'fin_h': 18, 'plafond_kw': 2.0}]
+        contexte[chaine_pertes.CLE_ANNEES_FENETRE] = 2
+        _suite, resultat = bloc.bloc_autoconsommation(self._deux_ans(),
+                                                      contexte)
+        # 2 heures (16 h, 17 h) × 365 jours = 730 h/an.
+        self.assertEqual(resultat['plafond']['plages'][0]['heures_ecretees'],
+                         730)
+        self.assertEqual(resultat['plafond']['heures_ecretees'], 730)
+
+    def test_en_annee_type_le_compte_reste_entier(self):
+        _suite, resultat = bloc.bloc_autoconsommation(serie_de_test(),
+                                                      contexte_de_test())
+        self.assertEqual(resultat['heures_sans_import'], 3650)
+        self.assertIsInstance(resultat['heures_sans_import'], int)
+
+    def test_autonomie_de_la_batterie_ramene_les_heures(self):
+        imports, charge = [0.0, 1.0, 0.0, 1.0], [1.0] * 4
+        self.assertEqual(bloc_bat.autonomie(imports, charge)
+                         ['heures_sans_import'], 2)
+        self.assertEqual(bloc_bat.autonomie(imports, charge, annees=2)
+                         ['heures_sans_import'], 1)
+
+    def test_hors_reseau_heures_defaillantes_annuelles(self):
+        from apps.calepinage.services.etapes import hors_reseau as bloc_hr
+        from apps.calepinage.tests import test_calx191_hors_reseau as hr
+
+        deux_ans = {'points': hr.serie_de_test(heures=720)['points']
+                    + hr.serie_de_test(annee=2022, heures=720)['points'],
+                    'pas_minutes': 60, 'colonne_energie': 'p_ac_kw'}
+        somme = bloc_hr.bloc_hors_reseau(
+            deux_ans, hr.contexte_de_test(heures=1440, jours=0.25))[1]
+        contexte = hr.contexte_de_test(heures=1440, jours=0.25)
+        contexte[chaine_pertes.CLE_ANNEES_FENETRE] = 2
+        deux = bloc_hr.bloc_hors_reseau(deux_ans, contexte)[1]
+
+        # Même simulation, publiée à l'année moyenne : la moitié exacte.
+        self.assertGreater(somme['heures_defaillantes'], 200)
+        self.assertEqual(deux['heures_defaillantes'],
+                         round(somme['heures_defaillantes'] / 2, 3))
+        for mois_s, mois_2 in zip(somme['par_mois'], deux['par_mois']):
+            self.assertEqual(mois_2['heures_defaillantes'],
+                             round(mois_s['heures_defaillantes'] / 2, 3))

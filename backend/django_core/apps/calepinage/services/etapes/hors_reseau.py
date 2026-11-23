@@ -311,10 +311,12 @@ def _par_an(valeur, annees):
 
 
 def _par_mois_par_an(par_mois, annees):
-    """ACAL54 — chaque énergie mensuelle (clé ``*_kwh``) au mois moyen."""
+    """ACAL54 — chaque énergie mensuelle (clé ``*_kwh``) au mois moyen ;
+    ACAL1604 — chaque compte d'heures (clé ``heures*``) aussi."""
     if annees <= 1 or not isinstance(par_mois, list):
         return par_mois
-    return [{cle: (_par_an(valeur, annees) if str(cle).endswith('_kwh')
+    return [{cle: (_par_an(valeur, annees)
+                   if str(cle).endswith('_kwh') or str(cle).startswith('heures')
                    else valeur)
              for cle, valeur in ligne.items()}
             if isinstance(ligne, dict) else ligne
@@ -359,7 +361,8 @@ def _publier(serie, rendu, courbe, mention, annees=1, banque_mois=(None, '')):
         'production_kwh': _par_an(simulation['production_kwh'], annees),
         'servi_kwh': _par_an(simulation['servi_kwh'], annees),
         'defaillance_kwh': _par_an(simulation['defaillance_kwh'], annees),
-        'heures_defaillantes': simulation['heures_defaillantes'],
+        'heures_defaillantes': _par_an(simulation['heures_defaillantes'],
+                                       annees),
         'taux_defaillance': simulation['taux_defaillance'],
         'surplus_perdu_kwh': _par_an(simulation['surplus_perdu_kwh'],
                                      annees),
