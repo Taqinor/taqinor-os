@@ -1,7 +1,7 @@
-# Calepinage L5 — report of 23 November 2026 (state at 14:20 UTC)
+# Calepinage L5 — report of 23 November 2026 (sections 1-10: state at 14:20 UTC · section 11: the evening)
 
-> Two things are still running and are marked « in progress » below: the third batch (PR #1530) and the « one
-> engine » part. Everything else is final. I will send the closing lines when both have landed.
+> **Read section 11 first.** It is the evening update, written after you answered the decisions: it replaces
+> what sections 4, 5.1 and 7.2 call « in progress » or « open ».
 
 > Working state for a resumed session: `docs/audits/l5-calepinage/etat.md`.
 
@@ -258,3 +258,135 @@ for files owned by others, in the lead, quote, settings, stock and cross-cutting
 Weekly quota: 3 % at the start of the campaign (21/11), 46 % at 10:20 UTC today, 60 % at 13:15 UTC. I expect about 65 % at the end.
 Two calls to the most expensive model, within the house rule: the final critics of waves A and B (both found real
 defects that were fixed before merging). None on wave C.
+
+## 11. The evening of 23/11 — after your answers
+
+### 11.1 What you decided, and what it did
+
+You answered all the open decisions between 13:30 and 17:10 UTC (they are in `docs/audits/decisions.yml`, D-ACAL-75 to
+97, each with your words). The ones that change what the ERP calculates:
+
+| You decided | What was built from it (PR #1530) |
+|---|---|
+| The four losses: « search yourself on right values », then « Yes, these values » | Soiling 3 % a year, first-hours loss 1.5 % (1 % for TOPCon and HJT), unavailability 2 %, cables 1.5 % DC + 1 % AC — each shown as « assumed », with its source, on the Quick start page. Sources: `controles/R-pertes-par-defaut.md` |
+| No contract declared: assume low voltage · no phase: assume three-phase · the shift pattern is enough | A commercial lead with a bill, a city and a business category now gets its automatic quote; each assumption is said with the field to fill; the quote is marked as an estimate |
+| Recognise city spellings | « casa », « kech », Arabic names… are recognised; « maroc » is refused and the lead card now says « Missing: city » |
+| « Simulation must start by itself » | Saving a complete layout starts the simulation on the server; the Results step shows it without a click |
+| Near shade « on the placed panels » | Shade is measured where the panels are, not at the centre of the roof face |
+| Sent quotes: « propose a revised quote » | The Results step shows both productions, named, and « Revise the quote »; the sent quote is never changed |
+| Cold temperature: « the site's typical minimum » | One rule for the quote and the calepinage (strings are sized at the site's cold, not at −5 °C everywhere) |
+| « Place them automatically » | A new calepinage of a lead with a bill places the number of panels the bill needs as soon as the roof is closed |
+| P90 « count all of them » · NASA POWER « yes, use it » · « frame = free, flush = insulated » | Built on the server; see 11.3 for what the screen did not show |
+| **« One engine in the whole ERP, results stored once on the lead »** (D-ACAL-97) | Designed today, not built — see 11.5 |
+
+### 11.2 What is in PR #1530
+
+Everything built after wave B: wave C (fixes from the replay of waves A and B, and the first « one engine » half:
+the calepinage reads the quote's design), wave D (your decisions above), their seams, and the fixes below.
+About 50 tasks, 215 code files, no migration. It is one PR on purpose (your rule: one CI at a time).
+
+### 11.3 Replayed on the real screens — three times
+
+A reviewer who built nothing replays each batch on a private copy of the ERP, by clicks.
+
+- **Replay 1 (wave C)** found that the main fix was NOT working although its test was green: a saved layout of 16
+  panels came back as another number. The real cause was found only with a real browser (three places re-placed the
+  panels behind the fix) and corrected. **Replay 2** confirmed it: 16 placed → reload 16 → save 16.
+- **Replay 3 (wave D, tonight)**: 21 checks. Good: the automatic quote of a commercial lead with only a bill, a city
+  and a category; city spellings; auto-sizing from the bill; the simulation starting by itself; both productions shown
+  with « Revise the quote »; the ratio sentence naming its limit. It also found gaps, fixed tonight in the same PR:
+
+| Seen on the real screen | Fix |
+|---|---|
+| A 2 × 8 factory was still refused without a start hour | start hour assumed (8 h for one shift, 6 h for two), said — **to confirm, D-ACAL-99** |
+| A factory with a dirham bill and no declared voltage was refused | low voltage assumed, said (your D-ACAL-92) |
+| The four residential assumptions were sent by the server but the screen showed none; reopening a quote showed no assumption at all | shown on screen and kept with the quote |
+| After « Fill the settings », the result was still « incomplete » | cause: the panel sheet has no power tolerance. Measured on production: **none of your 3 panel sheets has one** — so no result would ever have been complete, and no real-layout production would have reached a quote. Now counted as 0 % (neither loss nor gain), said « assumed » — **to confirm, D-ACAL-98** |
+| An incomplete layout still launched a calculation, and the page said both « something is missing » and « simulation running » | one launcher only (the server) |
+| A complete result still said « upper bound — 9 losses not filled » | the screen no longer shows it when the result is complete; the sentence the server sends is still worded that way (written as a task) |
+| Thermal line, P90 parts, NASA POWER comparison: served, not displayed | displayed |
+| Choosing the panel and the inverter in the Electrical step lists did not count as « designated » (so the simulation never started by itself) | choosing now designates — replayed on the real screen |
+| The Panels step said « ≈ 67 % of consumption » and the Results step « 36 % of consumption » under the same name | two different quantities, now named differently (production ÷ consumption / self-consumed ÷ consumption); the « one engine » work will leave one |
+
+- **Not played**: near shade with obstacles (the reviewer ran out of time); the study report PDF with the two
+  productions; the « equal productions, one figure » case; NASA POWER when the service answers (unreachable from the
+  private copy). These tasks stay « code delivered, live proof due ».
+- **Tonight's fixes themselves** are proven by tests (red first, then green); two were also replayed on the real
+  screen by the lane that fixed them (designation in the Electrical step; saving). The others were not replayed
+  by a fresh reviewer: I stopped there rather than start a fourth replay tonight. One defect could not be
+  reproduced (after saving a brand-new calepinage the header kept « unsaved changes »): written as a live check.
+
+### 11.4 The independent final critic
+
+One last read of the whole PR by a model that built nothing (third and last call to the most expensive model in
+this campaign). Verdict: mergeable after two fixes. Both are fixed, plus two defects it found in the new code:
+
+- The recognised city could differ from one server process to another for texts like « Mohammedia, Casa » → fixed
+  (fixed order; a city of the table wins over a spelling). **Checked on production, read only: of your 70 sent or
+  accepted quotes, 49 have no GPS, and the new recognition gives the same city for all 49. No sent quote changes.**
+- The quote tests were calling the real PVGIS service → blocked in tests.
+- The « with battery » option sized its extension inverter at −5 °C while the rest used the site's cold → fixed.
+- A calepinage attached to the draft revision of a quote already received could jump to another quote → refused.
+- Verified clean: no migration, every new read filtered by company, no purchase price anywhere, sent C&I quotes not
+  recalculated, no simulation loop, your public pages do not load the changed drawing code.
+
+- **The merge queue removed the PR twice** (22:21 and 23:08 UTC), each time for ONE backend test that only the
+  queue runs. First: an older test of the agricultural questionnaire expected « quote possible » for a lead with
+  no phase, while wave D makes the lead card require the phase (the pumping quote engine refuses without it) —
+  test corrected to the engine's rule. Second: a fingerprint that proves « this moved function was not edited »
+  had to be recaptured, because tonight's last lane edited that function on purpose (it now stores the
+  assumptions with the quote). Both fixed and re-queued, on the standing rule of your CLAUDE.md. Lesson banked:
+  when the lead-card rule or the automatic-quote builder changes, the whole CRM suite and the split fingerprints
+  are run before queueing, not only the changed test files.
+
+### 11.5 One engine (your decision D-ACAL-97)
+
+Your words: « one engine used everywhere and if the engine was used somewhere we just keep its values and use them
+everywhere no need to recompute ». What I found: four engines calculate the same installation today.
+What is ready: the design (`controles/C4-un-seul-moteur.md`: one entry point, the result stored once on the lead,
+recalculated only when an input changes and saying why, sent quotes never touched) with your four answers (default
+roof when none is drawn; a draft quote follows unless edited by hand; without a lead the calepinage carries the
+result; while drawing, panels and kWc only), and **55 tasks in nine steps**, written in the plans of the files'
+owners. As you chose, it is built in a fresh session: start it with « work on all plans », or name the group
+« un seul moteur ». It is the biggest remaining piece: until it is built, the calepinage reads the quote's design
+when a quote exists (wave C) and still calculates by itself otherwise.
+
+### 11.6 To confirm — four choices I had to take tonight
+
+They are recorded as D-ACAL-98 to 101 with their alternatives. Each changes a number or a status a client can read
+on NEW quotes only; nothing sent changes.
+
+1. **Panel sheet without power tolerance → 0 %** (D-ACAL-98). The alternative is to assume the usual 0/+3 %
+   (a 0.75 % gain). Better still: type the tolerance on your 3 panel sheets.
+2. **Shift start hour assumed: 8 h for one shift, 6 h for two** (D-ACAL-99).
+3. **Assumed low-voltage tariff: « BT patenté » for a shop, « BT force motrice » for a factory** (D-ACAL-100).
+4. **C&I quotes are printed « estimate, subject to a visit » for four reasons** (assumed contract, no hourly
+   profile, unknown surface, the lead's visit flag) — the PDF already had this rule but never received the flag
+   (D-ACAL-101).
+
+### 11.7 What you have to do
+
+1. **Deploy when you want it live**: `scripts/deploy-prod.ps1`. Nothing of today is live until then.
+2. After the deploy, in this order: Calepinage → Settings → Quick start → « Fill the empty settings » (it shows each
+   value and its source before writing). Then `manage.py relier_calepinages_devis_envoye` lists the calepinages to
+   re-attach to their sent quote (today: one, on the lead CPE Go Plus); `--appliquer` does it.
+3. Answer the four confirmations above when you have a minute.
+
+### 11.8 What remains
+
+- **One engine**: 55 tasks (11.5).
+- **Screens not rebuilt on the v2 mockups**: Documents, Quick start, Tablet, Phone survey, Phone client view,
+  Presentation; and the picture on the map (panel tint, gold outline, strings drawn).
+- **Live proofs due**: near shade with obstacles, the study report PDF, the 95 older fixes proven only in part.
+- **Small leftovers written as tasks** (15, in the plans of the files' owners): the residential quote does not yet
+  use the site's cold temperature; the lead card's « C&I catalogue ready » check misses five price-less items the
+  engine then refuses; the Expert mode page after creation is unfinished; an « empty target » case after
+  « Generate the quote » that nobody could reproduce; four tests that were already red on `main` at night
+  (three of the study report, one of the C&I quote pages).
+
+### 11.9 Cost
+
+Weekly quota at 20:20 UTC: **78 % (all models), 69 % on the most expensive model** (higher now: two more lanes and a
+reviewer ran after that reading); it resets on 28/11 at 11:00 UTC.
+You told me quality comes before quota; I kept the reviews and the replays. Three calls to the most expensive model
+as sub-agents (the final critics of waves A, B and C+D); each found real defects that were fixed before merging.
