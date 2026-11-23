@@ -10,14 +10,28 @@ publiée avec son motif, jamais une simulation arrêtée.
 """
 from __future__ import annotations
 
+import logging
+
 from .valeurs import nombre
 
-__all__ = ['MOTIF_FICHIER', 'MOTIF_ANNEES', 'comparer_bases']
+logger = logging.getLogger(__name__)
+
+__all__ = ['MOTIF_FICHIER', 'MOTIF_ANNEES', 'MOTIF_NASA_FENETRE',
+           'MOTIF_NASA_FICHIER', 'MOTIF_NASA_HORS_RESEAU', 'comparer_bases',
+           'comparer_nasa_power']
 
 MOTIF_FICHIER = ("La météo vient d'un fichier déposé : aucune autre base "
                  "PVGIS ne lui est comparée.")
 MOTIF_ANNEES = ("Les deux bases ne couvrent pas les mêmes années : "
                 "l'écart n'est pas calculé.")
+MOTIF_NASA_FICHIER = ("La météo vient d'un fichier déposé : NASA POWER ne lui "
+                      "est pas comparé.")
+MOTIF_NASA_FENETRE = ("Aucune fenêtre d'années PVGIS (année type) : NASA POWER "
+                      "n'est pas comparé.")
+MOTIF_NASA_HORS_RESEAU = ("NASA POWER n'a pas été interrogé (aucun accès "
+                          "réseau pour ce calcul) : PVGIS reste la seule source.")
+MOTIF_NASA_ECHEC = ("La comparaison à NASA POWER a échoué : elle est omise, "
+                    "PVGIS reste la source.")
 
 
 def _ecart_pct(principale, comparee):
@@ -106,3 +120,56 @@ def comparer_bases(client, plan, decision, document, fichier, compteur):
     return _bloc_comparaison(principale, comparee,
                              base_principale=BASE_PAR_DEFAUT,
                              base_comparee=autre)
+
+
+def _bloc_nasa_omis(ghi_pvgis, motif):
+    """La forme de ``ClientNasaPower.comparaison_horizontale``, valeurs à
+    ``None`` et ``motif`` nommé : la clé est toujours servie."""
+    return {'source_du_chiffre': 'pvgis', 'source_comparee': 'nasa_power',
+            'irradiation_horizontale_kwh_m2': {'pvgis': nombre(ghi_pvgis),
+                                               'nasa_power': None},
+            'ecart_pct': None, 'annees': [], 'meteo': None, 'motif': motif}
+
+
+def _client_nasa(client):
+    """Le client NASA POWER de ce calcul : celui posé sur le client PVGIS
+    (``client_nasa_power``, transport injecté par un test), sinon un client
+    neuf SEULEMENT quand PVGIS part réellement sur le réseau — un transport de
+    test ne reçoit jamais une URL de NASA POWER. ``None`` : pas d'appel."""
+    injecte = getattr(client, 'client_nasa_power', None)
+    if injecte is not None:
+        return injecte
+    from . import pvgis_serie
+    from .nasa_power import ClientNasaPower
+
+    transport = getattr(client, 'transport', None)
+    if transport is not None and transport is pvgis_serie._transport_urllib:
+        # Le MÊME transport que PVGIS : une sonde posée sur le transport réseau
+        # par un test l'intercepte aussi.
+        return ClientNasaPower(transport)
+    return None
+
+
+def comparer_nasa_power(client, plan, decision, fichier, gain_inclinaison):
+    """ACAL746 (D-ACAL-81) — ``meteo.comparaison_nasa_power`` : l'irradiation
+    HORIZONTALE annuelle de NASA POWER à côté de celle de PVGIS
+    (``production.gain_inclinaison.ghi_annuel_kwh_m2``, même fenêtre
+    d'années). PVGIS reste la source du chiffre (un seul chiffre par valeur).
+    Ne lève JAMAIS : la simulation n'échoue pas à cause de NASA POWER."""
+    ghi_pvgis = (gain_inclinaison.get('ghi_annuel_kwh_m2')
+                 if isinstance(gain_inclinaison, dict) else None)
+    if fichier is not None:
+        return _bloc_nasa_omis(ghi_pvgis, MOTIF_NASA_FICHIER)
+    debut, fin = ((decision or {}).get('fenetre_annees') or (None, None))
+    if debut is None or fin is None:
+        return _bloc_nasa_omis(ghi_pvgis, MOTIF_NASA_FENETRE)
+    try:
+        nasa = _client_nasa(client)
+        if nasa is None:
+            return _bloc_nasa_omis(ghi_pvgis, MOTIF_NASA_HORS_RESEAU)
+        return nasa.comparaison_horizontale(
+            lat=plan.get('lat'), lon=plan.get('lon'), annee_debut=debut,
+            annee_fin=fin, ghi_pvgis_kwh_m2=ghi_pvgis)
+    except Exception:  # noqa: BLE001 — une comparaison ne fait jamais échouer la simulation (D-ENF22-BLE001)
+        logger.exception('ACAL746 : comparaison NASA POWER en échec')
+        return _bloc_nasa_omis(ghi_pvgis, MOTIF_NASA_ECHEC)

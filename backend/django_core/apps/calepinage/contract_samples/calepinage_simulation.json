@@ -636,6 +636,7 @@
         ],
         "motif": ""
       },
+      "comparaison_nasa_power": {"source_du_chiffre": "pvgis", "source_comparee": "nasa_power", "irradiation_horizontale_kwh_m2": {"pvgis": 1850.0, "nasa_power": 1842.1}, "ecart_pct": -0.43, "annees": [2019, 2020], "meteo": {"service": "nasa_power", "obtenue_le": "2026-11-23T10:00:00Z", "point": {"lat": 33.57, "lon": -7.59, "altitude_m": 152.91}, "url": "https://power.larc.nasa.gov/api/temporal/hourly/point?parameters=ALLSKY_SFC_SW_DWN,ALLSKY_SFC_SW_DNI,ALLSKY_SFC_SW_DIFF,T2M,WS10M&community=RE&longitude=-7.59&latitude=33.57&start=20190101&end=20201231&format=JSON&time-standard=UTC", "sources": ["MERRA2", "SYN1DEG", "POWER"], "version_api": "v2.10.5"}, "motif": ""},
       "fichier": null
     },
     "incertitude": {
@@ -1421,6 +1422,7 @@
       "interpolation": false,
       "note_resolution": "",
       "comparaison_base": null,
+      "comparaison_nasa_power": null,
       "fichier": null
     },
     "incertitude": {
@@ -2118,6 +2120,7 @@
       "interpolation": false,
       "note_resolution": "La météo est au pas de 60 min (PVGIS sert une ligne par heure) et aucune interpolation infra-horaire n'est faite : entre deux heures, l'irradiance n'est jamais lissée.",
       "comparaison_base": null,
+      "comparaison_nasa_power": null,
       "fichier": null
     },
     "incertitude": {
@@ -3308,6 +3311,7 @@
       "interpolation": false,
       "note_resolution": "La météo est au pas de 60 min (PVGIS sert une ligne par heure) et aucune interpolation infra-horaire n'est faite : entre deux heures, l'irradiance n'est jamais lissée.",
       "comparaison_base": null,
+      "comparaison_nasa_power": null,
       "fichier": null
     },
     "incertitude": {
