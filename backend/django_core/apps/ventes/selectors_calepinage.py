@@ -195,6 +195,19 @@ def selection_lue_du_devis(devis, calepinage):
     return [cle for cle in selection if cle not in existants]
 
 
+def figure_stockee_imprimee(devis):
+    """ACAL1274 — la production lue SANS rendu (``selectors.
+    production_attendue_pour_devis``) est-elle celle que le PDF imprime ? Non
+    en C&I ni en agricole (moteur C&I, aucun kWh), ni quand le calepinage l'a
+    posée aux règles corrigées (AMOT15 : le moteur du devis la recalcule)."""
+    from .domain.etude_schema import PRODUCTION_CALEPINAGE
+    from .domain.regles_calcul import calcul_corrige
+    if (getattr(devis, 'mode_installation', None) or 'residentiel') != 'residentiel':
+        return False
+    source = (getattr(devis, 'etude_params', None) or {}).get('production_source')
+    return not (source == PRODUCTION_CALEPINAGE and calcul_corrige(devis))
+
+
 def kwc_lu_du_layout(layout):
     """Critique 22/11 — le kWc du document tel que LA composition le lit
     (``geometrie.lire_layout``), pour la garde ACAL914 du calepinage."""
