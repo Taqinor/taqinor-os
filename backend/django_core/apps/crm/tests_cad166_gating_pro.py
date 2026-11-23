@@ -141,6 +141,15 @@ class PretEgaleCeQueLeMoteurExigeALEA47(SimpleTestCase):
         lead.heure_debut = 7
         self.assertEqual(champs_manquants(lead), [])
 
+    def test_adev127_regime_d_equipes_seul_suffit(self):
+        # ADEV127 (D-ACAL-94) — 3×8 sans jours : prêt (lundi-samedi supposés
+        # par le moteur, même règle que lui) ; 1×8 sans heure : l'heure manque.
+        lead = Lead(nom='Usine', type_installation='industriel',
+                    conso_mensuelle_kwh=Decimal('20000'), regime_equipes='3x8')
+        self.assertEqual(champs_manquants(lead), [])
+        lead.regime_equipes = '1x8'
+        self.assertEqual([e['champ'] for e in champs_manquants_detail(lead)], ['heure_debut'])
+
     def test_le_contrat_n_est_plus_jamais_un_groupe_requis(self):
         # MT déclarée : Tarif Général ; ADEV125 (D-ACAL-92) — tension inconnue
         # ou défaut visible du site : la BT est supposée par le moteur.

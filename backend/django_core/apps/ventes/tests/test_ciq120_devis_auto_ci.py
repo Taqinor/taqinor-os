@@ -267,6 +267,18 @@ class DevisAutoCITests(_Base):
         devis = self._auto(lead)
         self.assertEqual(devis.etude_params['tension'], 'mt')
 
+    def test_adev127_industriel_3x8_sans_jours_devis_et_jours_dits(self):
+        # ADEV127 (D-ACAL-94) — le régime d'équipes suffit : lundi-samedi supposés, dits.
+        lead = self._lead(conso_mensuelle_kwh=Decimal('20000'), type_installation='industriel',
+                          categorie_commerciale=None, regime_equipes='3x8')
+        journal = {}
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            devis = build_devis_auto(lead=lead, user=self.user, company=self.co,
+                                     journal_auto=journal)
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+        dites = [a for a in journal['alertes'] if a['code'] == 'jours_ouverts_supposes']
+        self.assertEqual([a['champ_lead'] for a in dites], ['jours_ouverture'])
+
     def test_lead_sans_consommation_422_nomme_le_champ(self):
         lead = self._lead()
         avant = Devis.objects.filter(company=self.co).count()

@@ -28,6 +28,7 @@ CHAMP_LEAD_PAR_CODE = {
     'puissance_souscrite_inconnue': 'compteur_puissance_kva',
     'profil_estime': 'jours_ouverture',
     'jours_ouverts_non_declares': 'jours_ouverture',
+    'jours_ouverts_supposes': 'jours_ouverture',  # ADEV127 (D-ACAL-94)
     'horaires_a_demander': 'heure_debut',
     'heures_jour_a_preciser': 'heure_debut',
     'contenance_toit_inconnue': 'surface_toiture_m2',

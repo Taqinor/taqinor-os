@@ -519,6 +519,27 @@ class TestProfilChargePrerequis(unittest.TestCase):
     def test_regime_3x8_sans_heures_pret(self):
         self.assertEqual(self._accord({'jours_ouverts': TOUS, 'equipes': '3x8'}, 'industriel'), [])
 
+    def test_adev127_regime_place_sans_jours_lundi_samedi_supposes_et_dits(self):
+        # ADEV127 (D-ACAL-94, 23/11/2026) — le régime d'équipes suffit : jours
+        # ouvrés supposés du lundi au samedi (le dimanche fermé), dits.
+        for rythme in ({'equipes': '3x8'}, {'equipes': 'continu'},
+                       {'equipes': '2x8', 'debut_equipe_h': 6}):
+            self.assertEqual(self._accord(rythme, 'industriel'), [], rythme)
+            jt, _prov, alertes = courbe_declaree(
+                dict(rythme, talon={'kw': 1}), [1000] * 12, annee_reference=ANNEE,
+                archetype='industriel', feries=[])
+            dites = [a for a in alertes if a['code'] == 'jours_ouverts_supposes']
+            self.assertEqual([(a['niveau'], a['champ']) for a in dites],
+                             [('alerte', 'rythme.jours_ouverts')], rythme)
+            ferme = _par(jt, 3, 'ferme')
+            self.assertEqual(ferme['nb_jours'], 4)  # les dimanches de mars 2027
+            self.assertTrue(all(abs(v - 1.0) < 1e-9 for v in ferme['charge_kwh']))
+        # 1×8 sans heure de début : jours supposés, l'heure reste exigée.
+        self.assertEqual(self._accord({'equipes': '1x8'}, 'industriel'), ['rythme.plages'])
+        # Des heures déclarées sans régime : les jours restent exigés.
+        self.assertEqual(self._accord({'plages': {'ouvre': [[8, 18]]}}, 'industriel'),
+                         ['rythme.jours_ouverts'])
+
     def test_regime_2x8_sans_heure_de_debut_exige_les_heures(self):
         self.assertEqual(self._accord({'jours_ouverts': TOUS, 'equipes': '2x8'}, 'industriel'),
                          ['rythme.plages'])
