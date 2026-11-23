@@ -200,6 +200,8 @@ export function creerGestionnaireBrouillon({
   hashBase,
   intervalleSecondes,
   obtenirLayout,
+  // ACAL1329 — vrai pendant le tracé d'un pan ajouté : AUCUNE écriture (ni lecture du document) avant le dernier point.
+  enPause = () => false,
   minuteur = {
     definir: (fn, ms) => setInterval(fn, ms),
     annuler: (id) => clearInterval(id),
@@ -223,6 +225,7 @@ export function creerGestionnaireBrouillon({
   /* La règle UNIQUE des trois chemins d'écriture : rien sans document, la
      première vue amorce, et seul un document RÉELLEMENT changé s'écrit. */
   const ecrireSiChange = () => {
+    if (enPause()) return false
     const layout = lireLayout()
     if (layout == null) return false
     const h = hacherLayout(layout)

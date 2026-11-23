@@ -422,6 +422,7 @@ function AtelierToiture({
       hashBase: hashBaseBrouillon,
       intervalleSecondes: intervalleBrouillonSecondes,
       obtenirLayout: () => sansVue(builderApi.current?.serializeLayout?.() ?? null), // H1 — jamais un brouillon de vue
+      enPause: () => builderApi.current?.ajoutDePanEnCours?.() === true, // ACAL1329 — rien avant le dernier point
     })
     gestionnaireBrouillonRef.current = gestionnaire
     gestionnaire.demarrer()

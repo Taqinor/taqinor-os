@@ -36,7 +36,7 @@ import {
   tousLesObstacles, // ACAL64
   nouveauPanDepuisContour, // ACAL71
   poserModuleDeDepart, // ACAL1273
-  ajoutDePanEnCours, documentPendantAjout, monterToitGriseSousTrace, toitExistantGeoJSON, // ACAL1329
+  ajoutDePanEnCours, monterToitGriseSousTrace, toitExistantGeoJSON, // ACAL1329
   type ExclusionZone,
 } from './zones';
 import { hydrateFromDevis, serializeLayout, type SerializedLayout } from './prefill'; // ACAL64
@@ -573,20 +573,10 @@ describe('ACAL1329 — ajout d’un pan sur un toit existant', () => {
   const toit = panDeTest('area-1');
   const neuf = panDeTest('area-2', { vertices: [] });
 
-  it('aucune écriture avant le dernier point : le document d’avant le premier geste, puis le vivant', () => {
+  it('ajout en cours : du premier clic au dernier point d’un pan ajouté, jamais pour le premier toit', () => {
     expect(ajoutDePanEnCours([toit, neuf], 'area-2', false)).toBe(true);
     expect(ajoutDePanEnCours([toit, neuf], 'area-2', true)).toBe(false); // dernier point posé
     expect(ajoutDePanEnCours([panDeTest('area-1', { vertices: [] })], 'area-1', false)).toBe(false); // premier toit
-    const avant = { zones: [{ id: 'area-1' }] };
-    const memo: { doc: typeof avant | null } = { doc: avant }; // pris par `addArea`, avant toute mutation
-    const vivant = vi.fn(() => ({ zones: [{ id: 'area-1' }, { id: 'area-2' }] }));
-    // Clic « Ajouter un pan », puis deux points : le document servi reste celui d'avant (aucun brouillon).
-    expect(documentPendantAjout(true, memo, vivant)).toEqual(avant);
-    expect(documentPendantAjout(true, memo, vivant)).toEqual(avant);
-    expect(vivant).not.toHaveBeenCalled();
-    // Dernier point : le pan entre dans le document, la mémoire est oubliée.
-    expect(documentPendantAjout(false, memo, vivant).zones).toHaveLength(2);
-    expect(memo.doc).toBeNull();
   });
 
   it('le toit existant reste dessiné, grisé, pendant le tracé ; le tracé du client revient ensuite', () => {

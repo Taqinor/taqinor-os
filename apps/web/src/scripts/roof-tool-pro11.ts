@@ -139,7 +139,7 @@ import {
   type ModulePose, // CALX403 câblage
   nouveauPanDepuisContour, // ACAL71
   panVierge,
-  poserModuleDeDepart, ajoutDePanEnCours, documentPendantAjout, monterToitGriseSousTrace, // ACAL1273, ACAL1329
+  poserModuleDeDepart, ajoutDePanEnCours, monterToitGriseSousTrace, // ACAL1273, ACAL1329
 } from './roofPro11/zones';
 import { monterAlignementRangees, pavageCellulesDe, pavagePoseDe } from './roofPro11/alignementRangees'; // ACAL584
 import { motifPanVerrouille } from './roofPro11/panVerrouille'; // ACAL520
@@ -2627,10 +2627,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   /** « + Ajouter une zone » : fige la zone active (géométrie + résultat), crée une
    *  NOUVELLE zone vide, l'active et vide l'éditeur pour un tracé vierge (facture +
    *  liste des zones conservées). N'agit que si la zone active est fermée. */
-  const memoAjout: { doc: import('./roofPro11/prefill').SerializedLayout | null } = { doc: null }; // ACAL1329 — le document d'avant l'ajout
   function addArea() {
     if (!closed || vertices.length < 3) return;
-    try { memoAjout.doc = serialiserAtelier(); } catch { memoAjout.doc = null; } // ACAL1329 — avant toute mutation
     capturerGeometrieActive(); // ACAL28
     snapshotActiveAreaGeometry();
     snapshotActiveAreaResult();
@@ -4207,10 +4205,13 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // W114/W115 — expose une petite API à la page de design (étude Meriem) : sérialiser
   // le layout finalisé (W113) + instantané PNG de la 3D (W115). Boot complet seulement
   // (jamais en capture). Absent → aucun effet.
+  opts.onApiReady?.({
+    // ACAL1329 — un pan AJOUTÉ est en cours de tracé (du premier clic au dernier point) : l'hôte n'écrit aucun brouillon.
+    ajoutDePanEnCours: () => ajoutDePanEnCours(areas, activeAreaId, closed),
     // ACAL26 — le wrapper délègue au sérialiseur CÂBLÉ (`hydratation.ts`) : la composition
     // de la meta (origine devis, accès solaire, retraits, horizon, modules) est la même
     // qu'avant, et ses DEUX branches portent désormais la couche électrique.
-  const serialiserAtelier = (billKwh?: number | null, meta?: import('./roofPro11/prefill').SerializeMeta) =>
+    serializeLayout: (billKwh?: number | null, meta?: import('./roofPro11/prefill').SerializeMeta) =>
       serialiserDocumentAtelier(
         ctx,
         // ACAL31 — sans facture saisie, le billKwh RELU (ou null) ; ACAL311 — les kWh SERVIS d'abord.
@@ -4233,9 +4234,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
           coucheElectrique,
         },
         meta,
-      );
-  opts.onApiReady?.({
-    serializeLayout: (b?: number | null, m?: import('./roofPro11/prefill').SerializeMeta) => documentPendantAjout(ajoutDePanEnCours(areas, activeAreaId, closed), memoAjout, () => serialiserAtelier(b, m)), // ACAL1329
+      ),
     // ACAL71 — un contour géoréférencé (plan importé calé…) devient un NOUVEAU pan : même
     // validateur et même refus de croisement que le tracé ; le pan actif est figé d'abord,
     // puis le nouveau est chargé et fermé par la voie du tracé (`loadArea` → `recalc`).
