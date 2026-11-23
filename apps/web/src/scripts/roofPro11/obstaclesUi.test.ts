@@ -35,6 +35,7 @@ import {
   clearanceForType,
   degagementObstacle,
   lireGabaritsObstacle,
+  lireGabaritsZone, // ACAL1433
   motifContourObstacle,
   motifRayonObstacle,
   obstacleCercle,
@@ -367,8 +368,26 @@ describe('CALX104 — les gabarits d’obstacle viennent des réglages, jamais d
     expect(gabarits.map((g) => g.cle).sort()).toEqual(['souche', 'vmc_ronde']);
     expect(refuses).toHaveLength(1);
     expect(refuses[0].cle).toBe('edicule_a_mesurer');
-    expect(refuses[0].motif).toContain('longueur_m');
-    expect(refuses[0].motif).toContain('largeur_m');
+    expect(refuses[0].motif).toContain('la longueur et la largeur');
+    expect(refuses[0].motif).not.toMatch(/_m/); // ACAL1433 — aucun nom de clé interne à l'écran
+  });
+
+  it('ACAL1433 — gabarit de zone absent des refus d’obstacle ; motifs sans `longueur_m`', () => {
+    const section = {
+      ...ZONES_TYPES,
+      bande_nord: { libelle: 'Bande coupe-feu', genre: 'bande', nature: 'INTERDITE', largeur_m: 1.2, source: 'Règle SDIS' },
+      bande_sans_cote: { libelle: 'Bande sans cote', genre: 'bande', nature: 'INTERDITE' },
+      rond: { libelle: 'Rond', forme: 'cercle' },
+      contour: { libelle: 'Contour', forme: 'polygone', sommets: [[0, 0], [1, 0]] },
+      long_seul: { libelle: 'Long seul', longueur_m: 2 },
+    };
+    const { gabarits, refuses } = lireGabaritsObstacle(section);
+    expect(gabarits.map((g) => g.cle)).not.toContain('bande_nord');
+    expect(refuses.map((r) => r.cle)).not.toContain('bande_nord');
+    expect(refuses.map((r) => r.cle)).not.toContain('bande_sans_cote');
+    for (const r of refuses) expect(r.motif).not.toMatch(/_m|\(sommets\)/);
+    expect(refuses.find((r) => r.cle === 'long_seul')?.motif).toContain('la largeur n’est pas saisie');
+    expect(lireGabaritsZone(section).gabarits.map((g) => g.cle)).toEqual(['bande_nord']);
   });
 
   it('poser un gabarit donne un obstacle AUX COTES DU GABARIT', () => {
