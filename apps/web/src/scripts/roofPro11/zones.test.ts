@@ -846,6 +846,26 @@ describe('ACAL1431 — pan existant : étiquette dans la liste et le tableau', (
   });
 });
 
+// ACAL1510 — « Créer le toit » 12 × 9 m (premier sommet au nord-ouest) puis « 4 pans » : le pan que l'atelier CHARGE
+// (le premier de la découpe) regardait le nord ⇒ 0 module, 0 kWc, et une simulation lancée à 0 module. Le pan le mieux
+// exposé passe devant : le pan chargé pose des modules ; le pan nord passe en dernier (le solveur le dit « nord »).
+describe('ACAL1510 — un toit 4 pans rend un motif ou des panneaux, jamais 0 sans cause', () => {
+  it('le pan chargé (premier) pose des modules ; les pans sont rangés du plus exposé au pan nord', async () => {
+    const { decouperContour } = await import('./formesToit');
+    const { rectangleDepuisCotes } = await import('./toitParCotes');
+    const { solveLivePitched } = await import('../../lib/estimatorBrainV8');
+    const tanger: LngLat = [-5.8, 35.76];
+    const v = decouperContour(rectangleDepuisCotes(tanger, 12, 9, 0), 'hip', 22, [{ id: 'area-1' }]);
+    if (!v.ok) throw new Error(v.motif);
+    const poses = v.pans.map((p) => solveLivePitched(p.vertices, tanger[1], 800, 22, p.facingAzimuthDeg, [], {}));
+    expect(poses[0].northFacing).toBe(false);
+    expect(poses[0].winner.placedCount).toBeGreaterThan(0);
+    expect(v.pans.map((p) => Math.round(p.facingAzimuthDeg))).toEqual([180, 90, 270, 0]); // sud, est, ouest, nord
+    expect(poses.map((r) => r.northFacing)).toEqual([false, false, false, true]);
+    expect(v.pans.map((p) => p.id)).toEqual(['area-2', 'area-3', 'area-4', 'area-5']); // identifiants dans l'ordre affiché
+  });
+});
+
 describe('ACAL554 — bouton « Appliquer ces réglages à… »', () => {
   it('un seul pan ⇒ pas de bouton ; deux pans ⇒ le bouton de la ligne', () => {
     expect(boutonReporterReglages('area-1', 1)).toBe('');
