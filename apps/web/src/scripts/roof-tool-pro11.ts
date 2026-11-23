@@ -2439,7 +2439,6 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   function clearEditorState() {
     vertices = [];
     closed = false;
-    reafficherEpingleApresEffacement(clientPinMarker); // ACAL1423 — « Effacer » rend le repère du lead masqué à la fermeture (jamais retiré)
     obstacles = [];
     selectedObsId = null;
     setObstacleMode(false);
@@ -2525,6 +2524,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
    *  seule zone vide active. */
   function reset() {
     clearEditorState();
+    reafficherEpingleApresEffacement(clientPinMarker); // ACAL1423 — « Effacer » SEUL rend le repère du lead masqué à la fermeture (jamais retiré)
     shadingUi.reset(); // WJ19/ACAL357 — les ombres et la matrice appartiennent au SITE : « Effacer » seul les vide
     oublierEpingleDeplacee(ctx); // ACAL193 — un site vierge n'a plus d'épingle déplacée
     // ACAL26 — « Effacer » repart d'un site vierge : la consommation du site (courbe,
