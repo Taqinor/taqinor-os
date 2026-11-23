@@ -60,3 +60,32 @@ describe('mode expert — data-mode-expert sur document.body', () => {
     expect(document.body.dataset.modeExpert).toBeUndefined()
   })
 })
+
+describe('ACAL1438 — le mode est partagé entre composants', () => {
+  afterEach(() => {
+    try { localStorage.clear() } catch { /* stockage indisponible */ }
+    delete document.body.dataset.modeExpert
+  })
+
+  it('deux composants montés : basculer dans l’un met l’autre à jour, sans recharger', () => {
+    const a = renderHook(() => useModeExpert(false))
+    const b = renderHook(() => useModeExpert(false))
+    expect(a.result.current[0]).toBe(false)
+    expect(b.result.current[0]).toBe(false)
+    act(() => a.result.current[1](true))
+    expect(b.result.current[0]).toBe(true)
+    expect(a.result.current[0]).toBe(true)
+    act(() => b.result.current[1](false))
+    expect(a.result.current[0]).toBe(false)
+  })
+
+  it('le démontage d’un composant ne retire pas le pont tant qu’un autre tient le mode', () => {
+    const a = renderHook(() => useModeExpert(false))
+    const b = renderHook(() => useModeExpert(false))
+    act(() => a.result.current[1](true))
+    b.unmount()
+    expect(document.body.dataset.modeExpert).toBe('1')
+    a.unmount()
+    expect(document.body.dataset.modeExpert).toBeUndefined()
+  })
+})
