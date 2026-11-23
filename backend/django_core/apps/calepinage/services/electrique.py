@@ -1390,7 +1390,29 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
             parametres_societe(calepinage)),
         **options_avec_devis(_options_entree(donnees), calepinage, donnees),  # ACAL1952
         **_options_batterie(calepinage, donnees, materiel))
-    return (conception, materiel, donnees, document)
+    return (_nommer_module_pose(conception, materiel, document), materiel, donnees, document)
+
+
+def _nommer_module_pose(conception, materiel, document):
+    """ACAL1910 (moitié planche) — la planche unifilaire et le rapport nomment
+    le module POSÉ (celui qui couvre le plus de modules), plus le module par
+    défaut de l'entrée. Même source que l'étape thermique (ACAL1607,
+    ``simulation._fiche_du_module_pose``) ; seule la désignation du champ change,
+    les chaînes et leurs messages restent calculés tels quels."""
+    from dataclasses import replace
+
+    from .simulation import _fiche_du_module_pose
+
+    entree = getattr(conception, 'entree', None)
+    fiches = (materiel or {}).get('fiches_modules') or {}
+    if entree is None or getattr(entree, 'module', None) is None or not fiches:
+        return conception
+    pose = _fiche_du_module_pose(materiel, document)
+    nom = next((str(f.get('designation') or '') for f in fiches.values()
+                if isinstance(f, dict) and dict(f.get('specs') or {}) == dict(pose)), '')
+    if not nom or nom == entree.module.designation:
+        return conception
+    return replace(conception, entree=replace(entree, module=replace(entree.module, designation=nom)))
 
 
 def resultat_electrique_complet(conception, *, norme=None, noyau=None,
