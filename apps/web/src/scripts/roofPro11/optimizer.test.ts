@@ -859,6 +859,82 @@ describe('ACAL1526 — seuil d’accès : la note dit la pose dessinée', () => 
   });
 });
 
+// ACAL1533 — le chiffre annoncé par « Portrait / Paysage » (sous les puces de pose, Expert, toit ombré) est celui
+// qu'on obtient au clic : même seuil d'accès (`poseSousSeuil`), même marge, et la ligne marquée suit la pose affichée.
+describe('ACAL1533 — le chiffre annoncé par Portrait est le nombre posé après le clic', () => {
+  /** Pan plat avec cheminée, atelier en mode Expert ; les puces imitent celles de l'entrée (un clic verrouille l'axe). */
+  const monter = (seuil: number | null, besoin: number, largeurM = 10, profondeurM = 7) => {
+    const g = globalThis as unknown as { document?: Document; window?: unknown };
+    const avant = { d: g.document, w: g.window };
+    const fen = new JSDOM('<!doctype html><body data-mode-expert="1"><div><button data-orient="auto"></button><button data-orient="portrait"></button>'
+      + '<button data-orient="landscape"></button></div><div><button data-margin="keep"></button><button data-margin="remove"></button></div></body>').window;
+    g.document = fen.document;
+    g.window = fen;
+    poserChoixOptimisation(seuil == null ? null : { seuilAccesSolaire: seuil });
+    const vertices = rectRing(largeurM, profondeurM);
+    const [cLng, cLat] = [(vertices[0][0] + vertices[2][0]) / 2, (vertices[0][1] + vertices[2][1]) / 2];
+    const cheminee = { id: 'o1', type: 'cheminee', centerLng: cLng, centerLat: cLat, lengthM: 0.6, widthM: 0.6, heightM: 1.1 };
+    const pan = { id: 'z1', label: 'Pan A', vertices, obstacles: [cheminee], roofType: 'flat', neededPanels: besoin, neededAuto: false };
+    const ctx = {
+      closed: true, vertices, roofType: 'flat', areas: [pan], activeAreaId: 'z1', activeArea: () => pan, opts: { chiffrage: null }, dom: {},
+      centroid: [cLng, cLat], centroidLat: cLat, pinned: new Set<string>(), sel: { family: 'south', tilt: 'reco', orient: 'auto', azimuth: 'south', margin: 'keep' },
+      v4YieldCache: new Map(), overhangM: 0, documentRelu: null, batiments: [], environment: [], shadeObstructions: [], obstacles: [cheminee],
+      neededAuto: false, neededPanels: besoin, layoutPlan: null, useRecommended: true,
+    } as unknown as Ctx & { pinned: Set<string>; sel: Record<string, unknown> };
+    let pose = -1;
+    const sync = () => {
+      for (const b of Array.from(fen.document.querySelectorAll<HTMLElement>('[data-orient]'))) b.setAttribute('aria-pressed', String(b.dataset.orient === (ctx.useRecommended ? 'auto' : ctx.sel.orient)));
+      for (const b of Array.from(fen.document.querySelectorAll<HTMLElement>('[data-margin]'))) b.setAttribute('aria-pressed', String(b.dataset.margin === ctx.sel.margin));
+    };
+    const deps = {
+      renderScene: (_p: unknown, _g: unknown, _t: unknown, _f: unknown, placed: number) => { pose = placed; }, paintComparison: vi.fn(), highlightRow: vi.fn(),
+      syncProductionWindow: vi.fn(), prefillLead: vi.fn(), syncChips: sync, renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 0,
+      obstructionRings: () => [], setStatus: vi.fn(),
+    };
+    const opt = createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]);
+    for (const axe of ['orient', 'margin'] as const) {
+      for (const b of Array.from(fen.document.querySelectorAll<HTMLElement>(`[data-${axe}]`))) {
+        b.addEventListener('click', () => {
+          const v = b.dataset[axe]!;
+          if (v === 'auto' || (ctx.pinned.has(axe) && ctx.sel[axe] === v)) ctx.pinned.delete(axe);
+          else { ctx.pinned.add(axe); ctx.sel = { ...ctx.sel, [axe]: v }; }
+          opt.liveResolveFlat();
+        });
+      }
+    }
+    opt.liveResolveFlat();
+    const lignes = () => Array.from(fen.document.querySelectorAll<HTMLElement>('[data-orient-ombre]'));
+    const annonce = (sens: string) => Number((lignes().find((l) => l.dataset.orientOmbre === sens)?.textContent ?? '').match(/: (\d+) panneaux/)?.[1] ?? NaN);
+    return {
+      ctx, lignes, annonce, pose: () => pose,
+      cliquer: (sens: string) => lignes().find((l) => l.dataset.orientOmbre === sens)!.click(),
+      fin: () => { poserChoixOptimisation(null); g.document = avant.d; g.window = avant.w; },
+    };
+  };
+
+  const marquee = (m: ReturnType<typeof monter>) => m.lignes().find((l) => l.getAttribute('aria-pressed') === 'true')?.dataset.orientOmbre ?? null;
+
+  // Cas relevés sur la tête : seuil 0,99 / cible 4 ⇒ « Portrait : 4 » puis 3 posés ; cible 10 sans seuil ⇒ « Portrait : 7 »
+  // puis 10 posés et la marge passée de Pleine rive à Garder ; aucune ligne marquée en « auto ».
+  it('annoncé = posé après le clic, marge inchangée, ligne marquée = pose affichée (avec et sans seuil)', () => {
+    for (const seuil of [null, 0.99]) {
+      for (const besoin of [4, 10, 16]) {
+        for (const sens of ['portrait', 'landscape'] as const) {
+          const m = monter(seuil, besoin);
+          try {
+            expect(marquee(m)).toBe(m.ctx.sel.orient); // la pose dessinée est marquée, même en « auto »
+            const margeAvant = m.ctx.sel.margin;
+            const annonce = m.annonce(sens);
+            m.cliquer(sens);
+            expect({ seuil, besoin, sens, pose: m.pose(), marge: m.ctx.sel.margin }).toEqual({ seuil, besoin, sens, pose: annonce, marge: margeAvant });
+            expect(marquee(m)).toBe(sens);
+          } finally { m.fin(); }
+        }
+      }
+    }
+  });
+});
+
 describe('R3-25 (b) / R3-04 — cartes de variante espacées, phrase « aucune pose ne couvre »', () => {
   const anneau = (w: number, h: number, lng0 = -7.62, lat0 = 33.59): Array<[number, number]> => {
     const k = 111320 * Math.cos((lat0 * Math.PI) / 180);

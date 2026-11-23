@@ -536,11 +536,11 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
    * Aucun seuil saisi, seuil refusé, ou aucun emplacement sous le seuil ⇒ valeurs
    * STRICTEMENT identiques à aujourd'hui (`placedFor`, aucun jeu de cellules).
    */
-  function poseSousSeuil(grid: PanelGrid): { placed: number; occupied?: Set<number>; ecartes: number } {
+  function poseSousSeuil(grid: PanelGrid, annoncer = true): { placed: number; occupied?: Set<number>; ecartes: number } {
     const plafond = placedFor(grid);
     const f = filtrageSeuil(grid.panels);
     if (!f) return { placed: plafond, ecartes: 0 };
-    if (f.refuse || f.ecartes.length) {
+    if (annoncer && (f.refuse || f.ecartes.length)) { // ACAL1533 — le chiffrage des deux sens n'annonce rien
       if (f.motif !== dernierMotifSeuil) {
         dernierMotifSeuil = f.motif;
         setStatus(f.motif);
@@ -709,7 +709,10 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const savings = annualSavingsMad(annualKwh, target); // plafonné à la conso
     renderScene(o.pack, o.grid, o.tiltDeg, o.family, placed, false, occupied); // CALX115
     majNoteChassis(o.pack, o.grid); // ACAL585 — « n châssis de N × M posés » ou le motif
-    afficherSensDePose(lignesSensDePose(o.pack, accesSolaireDe, placedFor)); // ACAL552
+    afficherSensDePose(lignesSensDePose(o.pack, accesSolaireDe, (g) => poseSousSeuil(g as PanelGrid, false)), { // ACAL552, ACAL1533
+      affichee: o.grid === o.pack.portrait ? 'portrait' : o.grid === o.pack.landscape ? 'landscape' : undefined,
+      choisir: (sens) => choisirSensDePose(sens, { family: o.family, tilt: o.tiltDeg, azimuth: ctx.sel.azimuth, margin: ctx.sel.margin }),
+    });
     paintCard(
       {
         title: o.title,
@@ -849,7 +852,10 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const { placed: placedCount, occupied, ecartes } = poseSousSeuil(grid);
     const gapScale = w.placedCount > 0 ? placedCount / w.placedCount : placedCount > 0 ? 1 : 0;
     renderScene(pack, grid, w.tiltDeg, w.family, placedCount, false, occupied);
-    afficherSensDePose(lignesSensDePose(pack, accesSolaireDe, placedFor)); // ACAL552
+    afficherSensDePose(lignesSensDePose(pack, accesSolaireDe, (g) => poseSousSeuil(g as PanelGrid, false)), { // ACAL552, ACAL1533
+      affichee: w.layout,
+      choisir: (sens) => choisirSensDePose(sens, { family: w.family, tilt: w.tiltDeg, azimuth: w.orientation === 'aligned' ? 'aligned' : 'south', margin: w.margin }),
+    });
     // W94 — écrête la production AFFICHÉE au plafond AC de l'onduleur (le solveur V7
     // calcule le kWh DC brut sans clip) : un Sud est inchangé (ratio = design), une
     // « tente » E-O sur-densifiée est ramenée sous la valeur non écrêtée. On recalcule
@@ -978,6 +984,16 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     syncEwUi();
     liveResolveFlat();
   });
+
+  /** ACAL1533 — un clic sur « Portrait : N panneaux » / « Paysage : … » : la pose AFFICHÉE est tenue (famille,
+   *  inclinaison, azimut, marge verrouillés comme une carte de variante, PV64) et seul le sens change — le nombre
+   *  annoncé, chiffré sur ce même pavage par `poseSousSeuil`, est donc celui qu'on obtient ; la marge ne bouge pas. */
+  function choisirSensDePose(sens: 'portrait' | 'landscape', tenue: { family: ConfigFamily; tilt: number; azimuth: 'south' | 'aligned'; margin: 'keep' | 'remove' }) {
+    ctx.sel = { family: tenue.family, tilt: tenue.tilt, orient: sens, azimuth: tenue.azimuth, margin: tenue.margin };
+    for (const axe of ['family', 'tilt', 'orient', 'azimuth', 'margin'] as const) ctx.pinned.add(axe);
+    ctx.useRecommended = false;
+    liveResolveFlat();
+  }
 
   /** Cœur W34 : re-résolution CONTRAINTE vivante (verrous courants) + rendu + badges. */
   /** ACAL574 — un pan « existant » ne se re-résout pas : ses modules restent ceux posés (refus nommé).
