@@ -1,17 +1,23 @@
-# Calepinage L5 — report of 23 November 2026 (DRAFT, being completed)
+# Calepinage L5 — report of 23 November 2026
 
-> Draft written at 11:05 UTC while round 3 runs. Sections marked « to complete » are filled in at the end of the run.
 > Working state for a resumed session: `docs/audits/l5-calepinage/etat.md`.
 
 ## 1. In one paragraph
 
-You asked for an L5 on the calepinage module: more functions, simpler, prettier, new mockups, and the unfinished work
-of the last version finished. In about 14 hours: 14 new mockups (v2) were drawn; every one of the 388 fixes that had
-been delivered without proof was replayed on the real screens; 284 repair and build tasks were written from what the
-reviewers saw; about 160 of them are built; a first batch of 109 is merged on `main` (PR #1527); a second batch of
-about 51, which contains the new shell and the first five screens rebuilt on the v2 mockups, is in PR #1529.
-**Nothing is deployed: the ERP changes go live only when you run `scripts/deploy-prod.ps1`.** The checks you asked
-for after the L5 (quotes calculated automatically, one engine, the lead « CPE Go Plus ») are section 7 — to complete.
+You asked for an L5 on the calepinage module: more functions, simpler, prettier, new mockups, the unfinished work of
+the last version finished — then the checks (mockups, functions, every quote calculated automatically with the right
+assumptions, one engine, the lead « CPE Go Plus »). In about 17 hours: 14 new mockups (v2) were drawn; every one of
+the 388 fixes that had been delivered without proof was replayed on the real screens; 371 repair and build tasks were
+written from what the reviewers saw; about 180 of them are built. Two batches are merged on `main`: PR #1527 (109
+tasks) and PR #1529 (about 51 tasks: the new shell and five screens rebuilt on the v2 mockups). A third batch fixes
+what the replay of today's work found (to complete: PR #1530 and the « one engine » part).
+**Nothing is deployed: the ERP changes go live only when you run `scripts/deploy-prod.ps1`.**
+
+**The three things to remember.** (1) The module is much closer to the mockups in its frame, but no screen is yet
+« faithful »: what is drawn on the map (panel tint, roof outline, strings) is the gap. (2) Residential quotes
+calculate themselves for 94 % of the leads that have a bill; commercial ones for 4 of 42 — that needs three decisions
+from you. (3) On the lead « CPE Go Plus » your sent quote is right; the calepinage was calculating beside the quote,
+and the fix is to make it take its design from the quote that was sent.
 
 ## 2. What was found when the old fixes were replayed (round 2)
 
@@ -30,7 +36,16 @@ for after the L5 (quotes calculated automatically, one engine, the lead « CPE G
 
 ## 3. What was built
 
-- **Wave 1** (30 tasks) and **wave 2** (130 tasks so far), each with a failing test first.
+- **Wave 1** (30 tasks) and **wave 2** (130 tasks), each with a failing test first; then **wave C** (to complete),
+  the repairs found by replaying waves 1 and 2 on the real screens:
+  - a saved layout reopens exactly as saved (the silent loss of a custom layout is fixed at its root: a background
+    recalculation no longer re-places a layout the user holds);
+  - the Undo button undoes; a typed setback removes panels; « at most N panels » is the true maximum of the roof;
+  - monthly bills are read back after reload; the simulation reads and names the panel that is placed; charge
+    windows that do not apply no longer erase the battery; panels connected to nothing are said;
+  - screens: the address card no longer hides the zoom or swallows clicks; a slow answer is no longer « connection
+    expired »; a message never covers the action button; one gold button style; the progress bar shows the current
+    step; in dark theme the map without photo is dark.
 - **The new look**: the workshop shell rebuilt on the v2 mockups (full-screen map, floating header, rail and step
   panel, dark blue for what is active, gold only for the next action), then the Roof, Panels, Electrical, Diagram
   and Results screens. Side-by-side captures mockup | real screen: `docs/audits/l5-calepinage/T2/preuves/`.
@@ -43,10 +58,14 @@ for after the L5 (quotes calculated automatically, one engine, the lead « CPE G
 
 ## 4. Merges and what you have to do
 
-- **Merged**: PR #1527 (wave A, 109 tasks), 23/11 at 10:12 UTC. One additive migration: `calepinage/0043`.
-- **Open**: PR #1529 (wave B) — to complete (CI, independent critic, merge).
-- **Your gesture**: `scripts/deploy-prod.ps1` when you want this live. My advice: wait for the round-3 verdict
-  in section 6.
+- **Merged**: PR #1527 (wave A, 109 tasks), 23/11 at 10:12 UTC — one additive migration, `calepinage/0043`.
+  PR #1529 (wave B, about 51 tasks), 23/11 at 12:27 UTC — no migration.
+- **Wave C**: PR #1530 (to complete), then the « one engine » part (to complete).
+- The merge queue removed waves A and B once each, for server tests that nobody had run: on a `claude/*` branch the
+  PR run does not run the server tests, only the merge queue does. I fixed and re-queued both times, on the standing
+  rule of your CLAUDE.md. For wave C I ran the whole calepinage server suite locally before queueing.
+- **Your gesture**: `scripts/deploy-prod.ps1` when you want this live. After the « one engine » part is deployed, one
+  more: `manage.py relier_calepinages_devis_envoye` (it lists; `--appliquer` re-attaches) — see 7.3.
 - The public site deploys automatically at each merge. An independent critic checked that the pages your visitors
   use (`/devis/mon-toit`, `/proposition/<token>`) do not load the changed parts of the drawing engine. I could not
   test the Cloudflare preview: it redirects to the live site by design.
@@ -57,10 +76,13 @@ for after the L5 (quotes calculated automatically, one engine, the lead « CPE G
 
 | Id | Question | My recommendation |
 |---|---|---|
-| D-ACAL-75 | A layout of 60 panels reopens with 5: replay the saved layout, or re-place? | replay the saved layout |
+| D-ACAL-82 | **Most blocking.** Default values for four losses (soiling, initial degradation, unavailability, cables). While open, no result is complete and the real-layout production reaches no quote | you give them, shown as « assumed »; the only published value I found is 2 % for initial degradation |
+| D-ACAL-92 | Commercial or industrial lead with no electricity contract declared: automatic quote or not? (38 of 42 leads stop here) | assume low-voltage tariff, say it, mark the quote as an estimate |
+| D-ACAL-93 | Same lead with no phase declared (35 of 42) — I found no decision of yours behind this refusal | assume three-phase, say it |
+| D-ACAL-94 | What does an industrial lead need for its consumption rhythm? | a profile per sector that you enter in Settings |
+| D-ACAL-95 | Residential lead whose city is not recognised and has no GPS (29 leads: « casa », Arabic names…) | recognise common spellings and Arabic names |
 | D-ACAL-80 | Cold temperature for string voltage: typical-year minimum, or never warmer than −5 °C? | the lower of the two |
 | D-ACAL-81 | Use NASA POWER as a second weather source without an official terms page? | wait for a written answer |
-| D-ACAL-82 | Default values for four losses (soiling, initial degradation, unavailability, cables) | you give them, shown as « assumed » |
 | D-ACAL-83 | Near shading measured at the centre of the roof face (gives « −72 % ») or on the placed panels? | on the placed panels; I will list the quotes it changes first |
 | D-ACAL-84 | Which thermal line applies to a flush roof and to a frame? | frame = free-standing; flush = not calculated until sourced |
 | D-ACAL-85 | Does P90 include model, weather and datasheet uncertainty? | yes, each one cited |
@@ -68,19 +90,27 @@ for after the L5 (quotes calculated automatically, one engine, the lead « CPE G
 | D-ACAL-87 | Moroccan regulatory file types and their official names | you give or validate the names |
 | D-ACAL-88 | What production « Montrer au client » shows before a complete result | the upper bound, said as « at most » |
 
-All are in `docs/audits/decisions.yml`. D-ACAL-82 matters most for « a default for everything »: today no project has
-a complete result on day one because four losses have no published value, and I did not invent them.
+All are in `docs/audits/decisions.yml`, each with its options. I decided none of them: each changes a number a client
+reads.
 
 ### 5.2 Taken alone — tell me if one is wrong
 
+- **D-ACAL-75 — a saved layout is replayed as saved**, never re-placed on reopen. Round 3 showed work being lost in
+  silence; replaying changes no saved number.
+- **D-ACAL-91 — the panel / inverter ratio is judged by the quote engine's rule** (your company range if set, else
+  the quote's 1.35; a hybrid by its published capacity). This replaces what I had chosen alone this morning (« not
+  judged » without a company range), which round 3 showed as a ratio of 4.26 with a green tick.
+- **D-ACAL-89 — when the calepinage follows the sent quote, the draft it leaves keeps nothing.**
+- **D-ACAL-90 — the production simulation stays a click**; meanwhile the Results step of a sent quote shows the
+  quote's production instead of being empty.
 - All 388 old fixes replayed, and every « good » verdict re-read by a second reviewer before ticking anything.
 - The v2 mockups keep the structure of the v1 screens (same places, new look).
 - Two tasks declared impossible rather than filled with invented values (NASA POWER terms; the four losses).
 - Bundle size budgets raised by the rule written in the file (roof tool 635 → 650 KB; total 4 130 → 4 145 KB), no
   new dependency.
 - The v2 colour tokens are written in `rgb()` because two CRM tests read the shared stylesheet by pattern.
-- When no ratio range is set by the company, the panel / inverter ratio is now « not judged » everywhere (the task
-  said so). In production you may want to set a range, or tell me to keep a fallback warning.
+- The 95 old fixes that were only « partly proven » were not replayed a second time: the budget went to fixing what
+  round 3 found. They stay unticked.
 - Five containers of your shared local stack stopped to free memory (database kept); I restart them at the end.
 
 ## 6. Round 3 — today's fixes replayed on the real screens
@@ -198,9 +228,18 @@ Boards « mockup | real »: `docs/audits/l5-calepinage/T3/preuves/B3-*.png`. Rep
 
 ## 8. What remains in the plan
 
-- About 125 tasks of round 2 not built (mostly the lower-severity ones), the remaining screens of the v2 redesign
-  (Documents, List, Quick start, Tablet, client views), 60 partly-proven old fixes to replay, and the functions
-  parked behind decisions. All are written as tasks in `docs/plans/PLAN_AUDIT_CALEPINAGE.md` (group of 2026-11-23).
+Everything below is written as tasks, in `docs/plans/PLAN_AUDIT_CALEPINAGE.md` (group of 2026-11-23, 371 lines) and,
+for files owned by others, in the lead, quote, settings, stock and cross-cutting plans.
+
+- **To be « faithful » to the mockups**: the picture on the map (panel tint — cause not yet established, it needs a
+  machine with a graphics card; gold roof outline; strings drawn), then the six screens not rebuilt on v2
+  (Documents, Quick start, Tablet, Phone survey, Phone client view, Presentation).
+- **About 190 tasks of rounds 2 and 3 not built**, mostly medium severity: wording, small layout defects, cases the
+  reviewers could not play.
+- **One engine, second half**: the C&I quote engine importing the shared hybrid rule; one temperature policy for
+  string length; the calepinage using the consumption profile chosen in the CRM.
+- **Automatic quotes**: say the silent assumptions (residential and C&I); the four gated tasks behind D-ACAL-92 to 95.
+- **95 old fixes** proven only in part, to replay; **the functions parked behind decisions** (D-ACAL-80 to 88).
 
 ## 9. Your machine
 
@@ -210,4 +249,6 @@ Boards « mockup | real »: `docs/audits/l5-calepinage/T3/preuves/B3-*.png`. Rep
 
 ## 10. Cost
 
-Weekly quota: 3 % at the start, 46 % at 10:20 UTC — to complete.
+Weekly quota: 3 % at the start of the campaign (21/11), 46 % at 10:20 UTC today, 60 % at 13:15 UTC — to complete.
+Two calls to the most expensive model, within the house rule: the final critics of waves A and B (both found real
+defects that were fixed before merging). None on wave C.
