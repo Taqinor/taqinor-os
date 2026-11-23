@@ -43,11 +43,13 @@ def _chaines_par_entree(module, spec, chaines_max_par_mppt=None):
     return max(1, spm)
 
 
-def _fenetre(module, spec):
+def _fenetre(module, spec, temp_froid_c=TEMP_FROID_DEFAUT_C):
     """``(longueur_min, longueur_max, motif_trop_etroite)`` ou ``None`` quand
-    aucune borne haute n'est vérifiable."""
+    aucune borne haute n'est vérifiable. ``temp_froid_c`` (ADEV122) : le froid
+    de LA règle partagée (``core.electrique.types.froid_de_dimensionnement``)
+    fourni par l'appelant ; à défaut, −5 °C."""
     try:
-        f = fenetre_admissible(module, spec, TEMP_FROID_DEFAUT_C,
+        f = fenetre_admissible(module, spec, temp_froid_c,
                                TEMP_CHAUD_DEFAUT_C)
     except (AttributeError, TypeError, ValueError):
         return None
@@ -58,12 +60,13 @@ def _fenetre(module, spec):
     return f.longueur_min, f.longueur_max, ''
 
 
-def capacite_modules(module, spec, chaines_max_par_mppt=None):
+def capacite_modules(module, spec, chaines_max_par_mppt=None,
+                     temp_froid_c=TEMP_FROID_DEFAUT_C):
     """Nombre maxi de modules qu'un appareil raccorde (entrées × chaînes par
     entrée × longueur maxi) ; ``None`` quand la fiche ne permet pas de le dire
     ou que la fenêtre est vide."""
     spm = _chaines_par_entree(module, spec, chaines_max_par_mppt)
-    fen = _fenetre(module, spec)
+    fen = _fenetre(module, spec, temp_froid_c)
     if spm is None or fen is None or fen[2]:
         return None
     try:
@@ -87,20 +90,20 @@ def _decouper(n, spm, n_mppt, lmin, lmax):
     return None
 
 
-def longueur_max_appareil(module, spec):
+def longueur_max_appareil(module, spec, temp_froid_c=TEMP_FROID_DEFAUT_C):
     """Longueur maxi d'une chaîne (fenêtre de tension) ou ``None``."""
-    fen = _fenetre(module, spec)
+    fen = _fenetre(module, spec, temp_froid_c)
     return fen[1] if fen and not fen[2] else None
 
 
 def concevoir_chaines_ci(module, spec, nb_modules, *, produit=None, nom='',
-                         chaines_max_par_mppt=None):
+                         chaines_max_par_mppt=None, temp_froid_c=TEMP_FROID_DEFAUT_C):
     """Chaînes d'UN onduleur pour ``nb_modules`` modules : ``{produit,
     nb_modules, nb_chaines, bloquants, entrees:[{mppt, nb_chaines,
     longueur}]}`` — ``None`` si la fiche ne permet pas de concevoir (le
     parent dit « chaînes à vérifier »)."""
     spm = _chaines_par_entree(module, spec, chaines_max_par_mppt)
-    fen = _fenetre(module, spec)
+    fen = _fenetre(module, spec, temp_froid_c)
     sortie = {'produit': produit, 'nb_modules': nb_modules, 'nb_chaines': 0,
               'bloquants': [], 'entrees': [], 'coupe_impossible': False}
     if spm is None or fen is None:

@@ -44,6 +44,7 @@ from decimal import Decimal, InvalidOperation
 
 from core.electrique.onduleurs import bornes_dc_ac as _bornes_par_defaut
 from core.electrique.onduleurs import capacite_dc_appareil_kwc
+from core.electrique.types import TEMP_FROID_DEFAUT_C
 
 from .chaines_ci import (
     capacite_modules, concevoir_chaines_ci, longueur_max_appareil,
@@ -136,6 +137,12 @@ def _vivier(candidats, phase, alertes):
     return retenus, exclus
 
 
+def _froid(c):
+    """ADEV122 — le froid de dimensionnement porté par le candidat (LA règle
+    partagée D-ACAL-80, fournie par l'orchestrateur), sinon −5 °C."""
+    return c.get('_temp_froid_c', TEMP_FROID_DEFAUT_C)
+
+
 def _dc_max_fiche(c):
     """La puissance PV maximale lue sur la fiche du candidat (kWc, telle
     quelle), ou ``None`` ; seule une valeur > 0 compte comme publiée."""
@@ -163,7 +170,7 @@ def _capacite_kwc(c, borne_haute, module=None):
                                    hybride=bool(c.get('_fiche_fait_foi')))
     cable = None
     if module is not None and c.get('spec') is not None:
-        nb = capacite_modules(module, c['spec'], c.get('chaines_max_par_mppt'))
+        nb = capacite_modules(module, c['spec'], c.get('chaines_max_par_mppt'), _froid(c))
         try:
             cable = nb * float(module.pmax_wc) / 1000.0 if nb else None
         except (AttributeError, TypeError, ValueError):
@@ -287,7 +294,7 @@ def _repartir(nb_total, appareils, capacites):
 def _concevoir(module, c, nb):
     return concevoir_chaines_ci(
         module, c['spec'], nb, produit=c.get('produit'), nom=c.get('nom'),
-        chaines_max_par_mppt=c.get('chaines_max_par_mppt'))
+        chaines_max_par_mppt=c.get('chaines_max_par_mppt'), temp_froid_c=_froid(c))
 
 
 def _rendre_cablable(parts, appareils, retenus, module):
@@ -305,7 +312,7 @@ def _rendre_cablable(parts, appareils, retenus, module):
             memo[cle] = res is not None and not res['bloquants']
         return memo[cle]
 
-    longueurs = [longueur_max_appareil(module, retenus[i]['spec'])
+    longueurs = [longueur_max_appareil(module, retenus[i]['spec'], _froid(retenus[i]))
                  for i in appareils]
     parts = list(parts)
     for _ in range(4 * len(parts)):
@@ -355,7 +362,7 @@ def _essayer_chaines(kwc, module, combinaison, retenus):
         return None, alertes, False
     appareils = [i for i, q in sorted(combinaison.items()) for _ in range(q)]
     capacites = [capacite_modules(module, retenus[i]['spec'],
-                                  retenus[i].get('chaines_max_par_mppt'))
+                                  retenus[i].get('chaines_max_par_mppt'), _froid(retenus[i]))
                  for i in appareils]
     parts = _repartir(nb_total, [retenus[i]['kw_ac'] for i in appareils],
                       capacites)
@@ -465,9 +472,20 @@ def _haute_fiche(retenus, quantites):
     return round(max(ratios), 3) if ratios else None
 
 
+def _marquer_froid(retenus, froid, hypotheses):
+    """ADEV122 (D-ACAL-80) — porte le froid de LA règle partagée sur chaque
+    candidat retenu et le DIT en hypothèse ; ``froid`` None ⇒ inchangé."""
+    if froid is None:
+        return retenus
+    hypotheses.append({'cle': 'temperature_froid_c', 'valeur': froid.valeur_c,
+                       'statut': 'source' if froid.source else 'estimation',
+                       'source': froid.detail})
+    return [dict(c, _temp_froid_c=froid.valeur_c) for c in retenus]
+
+
 def combiner_onduleurs(kwc, candidats, *, phase, bornes_dc_ac=None,
                        module=None, ac_max_kw=None, max_appareils=None, homogene=False,
-                       fiche_fait_foi=False):
+                       fiche_fait_foi=False, froid=None):
     """La combinaison d'onduleurs au coût de vente minimal pour ``kwc``.
 
     ``candidats`` : ``[{produit, nom, kw_ac, prix (vente HT), triphase,
@@ -486,6 +504,9 @@ def combiner_onduleurs(kwc, candidats, *, phase, bornes_dc_ac=None,
     publiée EST la capacité d'un appareil (``_capacite_kwc``) ; la combinaison
     sert alors ``ratio_dc_ac.bornes.haute_fiche`` (clé ADDITIVE). Faux par
     défaut : les onduleurs réseau gardent la règle d'avant.
+    ``froid`` (ADEV122) : ``core.electrique.types.FroidDimensionnement`` du
+    site (minimum de l'année type, sinon −5 °C dit), servi en hypothèse
+    ``temperature_froid_c`` ; ``None`` ⇒ −5 °C, comme avant.
 
     Rend ``{combinaison, ratio_dc_ac, chaines, exclus, prix_vente_total_ht,
     motif, alertes, hypotheses}`` ; ``combinaison`` None ⇒ ``motif`` nommé.
@@ -493,7 +514,8 @@ def combiner_onduleurs(kwc, candidats, *, phase, bornes_dc_ac=None,
     if homogene:
         return _combiner_homogene(kwc, candidats, phase=phase, bornes_dc_ac=bornes_dc_ac,
                                   module=module, ac_max_kw=ac_max_kw,
-                                  max_appareils=max_appareils, fiche_fait_foi=fiche_fait_foi)
+                                  max_appareils=max_appareils, fiche_fait_foi=fiche_fait_foi,
+                                  froid=froid)
     alertes, hypotheses = [], []
     bornes = bornes_dc_ac if bornes_dc_ac is not None else _bornes_par_defaut()
     haute = bornes.borne_usuelle
@@ -514,6 +536,7 @@ def combiner_onduleurs(kwc, candidats, *, phase, bornes_dc_ac=None,
                            'source': 'non saisie — aucun contrôle bas'})
 
     retenus, exclus = _vivier(candidats, phase, alertes)
+    retenus = _marquer_froid(retenus, froid, hypotheses)
     if fiche_fait_foi:
         retenus = [dict(c, _fiche_fait_foi=True) for c in retenus]
         hypotheses.extend(_hypotheses_fiche(retenus))
@@ -639,6 +662,7 @@ def combiner_impose(kwc, candidats, produit, quantite, **kw):
                 float(kwc), unites, quantite)))
     alertes = [a for a in base.get('alertes') or [] if not a['code'].startswith('OND_CHAINES')]
     retenus, _exclus = _vivier(modele, kw.get('phase'), [])
+    retenus = _marquer_froid(retenus, kw.get('froid'), [])
     if kw.get('fiche_fait_foi'):
         retenus = [dict(c, _fiche_fait_foi=True) for c in retenus]
     sorties, alertes_chaines, _ko = _essayer_chaines(

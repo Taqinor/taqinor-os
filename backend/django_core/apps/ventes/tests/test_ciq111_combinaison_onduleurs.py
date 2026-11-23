@@ -273,6 +273,26 @@ class ChainesCiTests(TestCase):
         self.assertIn('Huawei 15KTL-M5', r['bloquants'][0])
         self.assertEqual(r['entrees'], [])
 
+    def test_froid_du_site_borne_la_chaine_et_se_dit(self):
+        # ADEV122 (D-ACAL-80) — 715 Wc sur Huawei 20 kW : 20 modules à −5 °C,
+        # 21 au minimum de l'année type de Casablanca (+4,18 °C).
+        from apps.ventes.moteur_ci.chaines_ci import longueur_max_appareil
+        from core.electrique.types import froid_de_dimensionnement
+        huawei = _vivier_huawei()[1]
+        self.assertEqual(longueur_max_appareil(_module_715(), huawei['spec']), 20)
+        self.assertEqual(longueur_max_appareil(
+            _module_715(), huawei['spec'], froid_de_dimensionnement(4.18).valeur_c), 21)
+
+        def froid_dit(froid):
+            r = combiner_onduleurs(20.0, [huawei], phase='tri', module=_module_715(), froid=froid)
+            return [h for h in r['hypotheses'] if h['cle'] == 'temperature_froid_c']
+        site = froid_dit(froid_de_dimensionnement(4.18))
+        self.assertEqual((site[0]['valeur'], site[0]['statut']), (4.18, 'source'))
+        repli = froid_dit(froid_de_dimensionnement(None))
+        self.assertEqual((repli[0]['valeur'], repli[0]['statut']), (-5.0, 'estimation'))
+        self.assertIn('supposé', repli[0]['source'])
+        self.assertEqual(froid_dit(None), [])
+
     def test_combiner_20_kwc_tous_les_modules_cables(self):
         cat = [c for c in _vivier_huawei() if c['kw_ac'] == 20]
         r = combiner_onduleurs(20.59, cat, phase='tri', module=_module_cs7n())
