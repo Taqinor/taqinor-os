@@ -41,7 +41,10 @@ Module PUR : aucune base, aucun réseau, aucun prix.
 """
 from __future__ import annotations
 
+import functools
+import json
 import math
+import pathlib
 import statistics
 
 __all__ = ['COMPOSANTE_BIAIS', 'COMPOSANTE_METEO', 'COMPOSANTE_MODELE',
@@ -244,18 +247,60 @@ def _composante_meteo(totaux_par_annee, reglages):
             ORIGINE_SAISIE, annees)
 
 
+#: ACAL1672 (D-ACAL-85) — la composante « fiche du module » (puissance STC),
+#: tirée du seul fichier de données publiées (aucun réglage société).
+COMPOSANTE_FICHE = 'incertitude_fiche'
+
+#: ACAL1672 — ``composantes[].origine`` d'une valeur PUBLIÉE (fichier
+#: ``data/incertitudes_publiees.json``), ni mesurée ni saisie.
+ORIGINE_PUBLIEE = 'publiee'
+
+
+@functools.lru_cache(maxsize=1)
+def _incertitudes_publiees():
+    """Le fichier des valeurs publiées par défaut (ACAL1672), lu une fois."""
+    chemin = pathlib.Path(__file__).resolve().parent.parent / 'data' / 'incertitudes_publiees.json'
+    return json.loads(chemin.read_text(encoding='utf-8'))
+
+
+def _composante_publiee(nom):
+    """La composante ``nom`` publiée par défaut (σ = quadrature de ses lignes, citées),
+    ou ``None`` quand le fichier n'en porte aucune valeur sourcée : elle est OMISE."""
+    donnees = _incertitudes_publiees()
+    bloc = (donnees.get('composantes') or {}).get(nom)
+    lignes = (bloc or {}).get('lignes')
+    if not lignes:
+        return None
+    sigma = math.sqrt(sum(float(v) ** 2 for v in lignes.values())) / 100.0
+    detail = ', '.join(f'{ligne} {valeur} %' for ligne, valeur in lignes.items())
+    source = donnees['source']
+    reference = (f"{bloc['libelle']} — {source['titre']} ({detail} ; "
+                 f"{source['portee']}) — {source['url']}")
+    return _composante(nom, sigma, SOURCE_TEXTE, reference, None, origine=ORIGINE_PUBLIEE)
+
+
 def _composantes(totaux_par_annee, reglages):
-    """Toutes les composantes SOURCÉES, dans l'ordre de PVsyst."""
+    """Toutes les composantes SOURCÉES, dans l'ordre de PVsyst.
+
+    ACAL1672 (D-ACAL-85) — dès que la variabilité entre années est connue, le
+    modèle, la météo et la fiche du module la rejoignent : valeur saisie et
+    sourcée par la société d'abord, sinon la valeur PUBLIÉE du fichier de
+    données. Sans variabilité entre années, rien n'est complété : σ reste
+    refusé, comme avant.
+    """
     composantes = []
     meteo, origine, annees = _composante_meteo(totaux_par_annee, reglages)
     if meteo is not None:
         composantes.append(meteo)
     for nom, (cle, libelle) in REGLAGES_COMPOSANTES.items():
         sigma, source, reference = _sigma_saisi(reglages, cle, libelle)
-        if sigma is None:
-            continue
-        composantes.append(_composante(nom, sigma, source, reference, None))
-    return composantes, origine, annees
+        if sigma is not None:
+            composantes.append(_composante(nom, sigma, source, reference, None))
+        elif meteo is not None:
+            composantes.append(_composante_publiee(nom))
+    if meteo is not None:
+        composantes.append(_composante_publiee(COMPOSANTE_FICHE))
+    return [c for c in composantes if c is not None], origine, annees
 
 
 def _quadrature(composantes):

@@ -44,8 +44,8 @@ import { roofObstacleShadeEntries, type Obstacle } from '../../lib/obstacles';
 import { hourlyHorizonFactors, maskedHourCount, type HorizonProfile } from '../../lib/horizonEngine';
 import { environmentShadeEntries, type EnvironmentObject } from './environment';
 import { fallbackPerKwc, type PerKwcProduction } from '../../lib/productionEngine';
-import { type LngLat } from '../../lib/roof';
-import { FLOORS, FLOOR_HEIGHT_M, GOLD } from './constants';
+import { pointInPolygon, type LngLat } from '../../lib/roof';
+import { DEG2M, DEG2RAD, FLOORS, FLOOR_HEIGHT_M, GOLD } from './constants';
 import {
   appliquerPropositionOsm,
   appliquerSaisie,
@@ -230,6 +230,7 @@ export function signatureSourcesOmbrage(ctx: Pick<Ctx, 'shadeObstructions' | 'ob
 export function matriceOmbrageDesSources(
   ctx: Pick<Ctx, 'shadeObstructions' | 'obstacles' | 'environment' | 'centroid' | 'centroidLat' | 'vertices'>,
   roofHeightM: number,
+  poses?: readonly { x: number; y: number }[],
 ): { factors: number[][] | null; entries: number } {
   const sources =
     (ctx.shadeObstructions ?? []).length > 0 ||
@@ -238,8 +239,40 @@ export function matriceOmbrageDesSources(
   if (!sources || (ctx.vertices ?? []).length < 3) return { factors: null, entries: 0 };
   const enu = unifiedShadeEntries(ctx.shadeObstructions, ctx.obstacles, ctx.environment, ctx.centroid, roofHeightM);
   if (!enu.length) return { factors: null, entries: 0 };
-  return { factors: hourlyShadeFactors(ctx.centroidLat, enu), entries: enu.length };
+  // ACAL1407 (D-ACAL-83) — la MOYENNE des matrices des panneaux posés ; sans panneau, d'une grille du pan.
+  const grille = poses?.length ? poses : grilleDuPan(ctx.vertices, ctx.centroid, enu);
+  const mats = (grille.length ? grille : [{ x: 0, y: 0 }]).map((p) => hourlyShadeFactors(ctx.centroidLat, enu, p.x, p.y));
+  return { factors: mats[0].map((row, m) => row.map((_v, h) => mats.reduce((s, mat) => s + mat[m][h], 0) / mats.length)), entries: enu.length };
 }
+
+/** ACAL1407 — points d'une grille du pan (ENU autour de `origin`, ≈ 10 par côté, pas ≥ 1 m), hors des empreintes d'obstacle. */
+function grilleDuPan(vertices: readonly LngLat[], origin: LngLat, exclus: readonly ShadeObstructionENU[]): { x: number; y: number }[] {
+  const cosLat = Math.cos(origin[1] * DEG2RAD);
+  const ring = vertices.map(([lng, lat]): [number, number] => [(lng - origin[0]) * DEG2M * cosLat, (lat - origin[1]) * DEG2M]);
+  const [xs, ys] = [ring.map((p) => p[0]), ring.map((p) => p[1])];
+  const pas = Math.max(1, Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) / 10);
+  const out: { x: number; y: number }[] = [];
+  for (let x = Math.min(...xs) + pas / 2; x < Math.max(...xs); x += pas) {
+    for (let y = Math.min(...ys) + pas / 2; y < Math.max(...ys); y += pas) {
+      const libre = !exclus.some((o) => o.footprint && pointInPolygon([x, y], o.footprint as [number, number][]));
+      if (libre && pointInPolygon([x, y], ring)) out.push({ x, y });
+    }
+  }
+  return out;
+}
+
+/** ACAL1407 — les centres des modules POSÉS du pan actif (même règle que `serializeLayout`), ou `[]`. */
+function pointsPosesDuPan(ctx: Pick<Ctx, 'freeMode' | 'freeState' | 'layoutPlan' | 'layoutState' | 'layoutOptimalCount'>): { x: number; y: number }[] {
+  if (ctx.freeMode && ctx.freeState) return ctx.freeState.panels.map((p) => ({ x: p.cx, y: p.cy }));
+  const cells = ctx.layoutPlan?.grid.panels ?? [];
+  const occupes = ctx.layoutState && ctx.layoutState.cells.length === cells.length ? [...ctx.layoutState.occupied].sort((a, b) => a - b) : null;
+  const rangs = occupes ?? Array.from({ length: Math.max(0, Math.min(cells.length, Math.round(ctx.layoutOptimalCount ?? 0))) }, (_, i) => i);
+  return rangs.filter((i) => i >= 0 && i < cells.length).map((i) => ({ x: cells[i].cx, y: cells[i].cy }));
+}
+
+/** ACAL1407 — empreinte au centimètre d'une liste de modules posés. */
+const empreinteDesPoses = (points: readonly { x: number; y: number }[]): string =>
+  JSON.stringify(points.map((p) => [Math.round(p.x * 100), Math.round(p.y * 100)]));
 
 /** CAL95 — noms des mois pour le sélecteur saisonnier de la carte d'accès solaire. */
 export const HEATMAP_MONTH_LABELS: readonly string[] = [
@@ -868,18 +901,26 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   /** Nombre d'obstructions RETENUES au dernier calcul (après retrait de la hauteur de
    *  toit) — pilote le libellé honnête de la note, cf. `renderList`. */
   let lastEntryCount = 0;
+  /** ACAL1407 — empreinte des modules posés de la matrice en vigueur, et de la première pose relue d'un document. */
+  let poseDeLaMatrice: string | null = null;
+  let poseEnregistree: string | null = null;
 
   /** (Re)calcule la matrice de dérate + le facteur annuel depuis la source unifiée.
    *  Horizon évalué au CENTROÏDE du tracé (documenté) ; hauteur de champ = toit 3D. */
   function recomputeFactors() {
     // ACAL26 — la matrice ENREGISTRÉE du document rouvert est conservée tant qu'aucune
     // source d'ombrage n'a été modifiée dans la session ; la première modification la
-    // retire pour de bon (le recalcul reprend la main).
+    // retire pour de bon (le recalcul reprend la main). ACAL1407 — déplacer les panneaux
+    // posés en est une aussi (la matrice est leur moyenne) : la première pose relue est retenue.
     const enregistre = ctx.ombrageEnregistre;
+    const poses = pointsPosesDuPan(ctx);
+    const pose = empreinteDesPoses(poses);
     if (enregistre) {
       const signature = signatureSourcesOmbrage(ctx);
-      if (enregistre.signature === null) enregistre.signature = signature;
-      if (enregistre.signature === signature) {
+      if (enregistre.signature === null) [enregistre.signature, poseEnregistree] = [signature, null];
+      if (poseEnregistree === null && poses.length) poseEnregistree = pose;
+      if (enregistre.signature === signature && (poseEnregistree === null || poseEnregistree === pose)) {
+        poseDeLaMatrice = pose;
         lastEntryCount = ctx.vertices.length >= 3 ? activeShadeEntries().length : 0;
         ctx.shadeFactors = enregistre.matrice.map((r) => r.slice());
         ctx.shadeAnnualFactor = annualShadeFactor(ctx.prodPerKwc ?? fallbackPerKwc(), ctx.shadeFactors, ctx.centroidLat);
@@ -888,7 +929,8 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
       ctx.ombrageEnregistre = null;
     }
     // ACAL27 — l'UNIQUE calcul, partagé avec la relecture du document (`matriceOmbrageDesSources`).
-    const calcul = matriceOmbrageDesSources(ctx, roofHeightM());
+    const calcul = matriceOmbrageDesSources(ctx, roofHeightM(), poses);
+    poseDeLaMatrice = pose;
     lastEntryCount = calcul.entries;
     if (!calcul.factors) {
       ctx.shadeFactors = null;
@@ -1203,6 +1245,8 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
 
   const metaTableOmbrage: ShadingUi['metaTableOmbrage'] = (g) => {
     const points = (g?.panels ?? []).map((p) => ({ x: p.cx, y: p.cy }));
+    // ACAL1407 — appelée avant chaque sérialisation : la matrice enregistrée suit les modules posés.
+    if (hasShadeSources() && poseDeLaMatrice !== empreinteDesPoses(points)) recomputeFactors();
     return { shadeTableByZone: { [ctx.activeAreaId]: tableOmbrageActive(points) }, signatureOmbrage: signatureTable(), skyViewByZone: { [ctx.activeAreaId]: g ? vueCielActive(points, g.tiltDeg, g.azimuthDeg) : null } };
   };
 
@@ -1345,8 +1389,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     ctx.shadeObstructions.length = 0;
     ctx.ombrageEnregistre = null; // ACAL26 — effacer l'ombrage est une modification
     ctx.shadeObstructionsNonLues = []; // ACAL27 — « Effacer » vide aussi les ombres relues
-    ctx.shadeFactors = null;
-    ctx.shadeAnnualFactor = 1;
+    recomputeFactors(); // ACAL1407 — les obstacles et l'environnement restants gardent leur ombre
     setTracing(false);
     renderList();
     drawShadeLines();

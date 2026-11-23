@@ -20,6 +20,7 @@ import json
 import math
 import pathlib
 import unittest
+from unittest import mock
 
 from apps.calepinage.services.incertitude import (
     COMPOSANTE_BIAIS, COMPOSANTE_METEO, COMPOSANTE_MODELE,
@@ -39,6 +40,23 @@ PRODUCTION_ESSAI = 13000.0
 
 #: Deux années observées : de quoi MESURER la composante météo.
 DEUX_ANNEES = {2019: 12500.0, 2020: 13500.0}
+
+
+#: ACAL1672 — ce module porte la MÉCANIQUE de la quadrature (CALX185) : les
+#: valeurs publiées par défaut (``data/incertitudes_publiees.json``) en sont
+#: retirées ici ; leur composition est prouvée par
+#: ``test_acal_norme_et_variabilite.CompositionPublieeTest``.
+_SANS_VALEURS_PUBLIEES = mock.patch(
+    'apps.calepinage.services.incertitude._incertitudes_publiees',
+    return_value={'composantes': {}})
+
+
+def setUpModule():
+    _SANS_VALEURS_PUBLIEES.start()
+
+
+def tearDownModule():
+    _SANS_VALEURS_PUBLIEES.stop()
 
 
 def _saisi(cle, valeur_pct, *, source='societe', reference='Étude interne'):
