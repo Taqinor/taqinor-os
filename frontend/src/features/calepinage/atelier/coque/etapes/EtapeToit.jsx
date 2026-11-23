@@ -114,11 +114,12 @@ function CartePente({ calepinageId, builderApi, documentVivant, lectureSeule, en
     }
     if (doc.etat !== 'ok') { setMessage('Conception illisible : rien n’est enregistré.'); return }
     if (!zone) { setMessage('Enregistrez d’abord le calepinage : ce pan n’est pas encore dans la conception.'); return }
-    const deg = Number(zone.pitchDeg)
+    const plat = zone.roofType === 'flat'
+    const deg = plat ? 0 : Number(zone.pitchDeg)
     if (!Number.isFinite(deg)) { setMessage('Ce pan n’a pas de pente : saisissez-la avec « Modifier la pente ».'); return }
     setEnvoi(true)
     const rendu = await enregistrerPentePan({
-      calepinageId, doc, documentVivant, zone, zones,
+      calepinageId, doc, documentVivant, zone, zones, confirmerPlat: plat,
       champs: { pitchDeg: deg, pitchSource: sourceDePente({ degres: deg, source: 'degres' }, {}) },
     })
     setEnvoi(false)
@@ -128,7 +129,7 @@ function CartePente({ calepinageId, builderApi, documentVivant, lectureSeule, en
   const titre = !vue ? null
     : vue.plat ? 'Toit plat'
       : `${degres(vue.deg) ?? '—'}°${vue.face ? ` · face ${vue.face}` : ''}`
-  const aConfirmer = Boolean(vue && !vue.plat && vue.aConfirmer)
+  const aConfirmer = Boolean(vue && vue.aConfirmer) // ACAL1429 — un plat jamais confirmé l'est aussi
   return (
     <div className="cal-toit-pente" data-testid="cal-toit-pente-carte">
       {titre ? (
@@ -142,7 +143,9 @@ function CartePente({ calepinageId, builderApi, documentVivant, lectureSeule, en
       {aConfirmer && !inconnue && (
         <>
           <p className="cal-toit-pente-texte">
-            Valeur de départ, pas une mesure. Confirmez-la ou mesurez-la avant d&apos;envoyer le devis.
+            {vue.plat
+              ? "Toit plat pris par défaut, pas une mesure. Confirmez-le ou vérifiez-le avant d'envoyer le devis."
+              : "Valeur de départ, pas une mesure. Confirmez-la ou mesurez-la avant d'envoyer le devis."}
           </p>
           <div className="cal-toit-pente-actions">
             <BoutonMarine onClick={confirmer} disabled={lectureSeule || envoi} data-testid="cal-toit-pente-confirmer">

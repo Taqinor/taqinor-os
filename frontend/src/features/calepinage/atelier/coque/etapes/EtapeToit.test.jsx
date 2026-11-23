@@ -228,6 +228,34 @@ describe('Étape Toit — « Pente et orientation »', () => {
   })
 })
 
+describe('ACAL1429 — toit plat jamais confirmé', () => {
+  const PLAT = { id: 'area-1', label: 'Pan 1', roofType: 'flat', pitchDeg: 0, facingAzimuthDeg: 180 }
+
+  it('pastille « À confirmer » et deux actions ; « Confirmer » écrit pitchSource {mode: plat} et 0°', async () => {
+    layout.mockResolvedValue({ data: { roof_layout: { zones: [PLAT] }, empreinte_document: 'jeton-1' } })
+    enregistrerSectionLayout.mockImplementation(async (_id, corps) => ({ data: {
+      empreinte_document: 'jeton-2', roof_layout: { zones: [{ ...PLAT, ...corps.champs }] } } }))
+    rendre()
+    const carte = screen.getByTestId('cal-toit-pente-carte')
+    await waitFor(() => expect(within(carte).getByText('Toit plat')).toBeInTheDocument())
+    expect(within(carte).getByText('À confirmer')).toBeInTheDocument()
+    expect(screen.getByTestId('cal-toit-pente-inconnue')).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('cal-toit-pente-confirmer'))
+    await waitFor(() => expect(enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    expect(enregistrerSectionLayout.mock.calls[0][1].champs).toEqual({ pitchDeg: 0, pitchSource: { mode: 'plat' } })
+    await waitFor(() => expect(within(carte).queryByText('À confirmer')).toBeNull())
+    expect(within(carte).getByText('Toit plat')).toBeInTheDocument()
+  })
+
+  it('un plat déjà confirmé (pitchSource plat) : ni pastille ni actions', async () => {
+    layout.mockResolvedValue({ data: { roof_layout: { zones: [{ ...PLAT, pitchSource: { mode: 'plat' } }] }, empreinte_document: 'jeton-1' } })
+    rendre()
+    await waitFor(() => expect(within(screen.getByTestId('cal-toit-pente-carte')).getByText('Toit plat')).toBeInTheDocument())
+    expect(screen.queryByText('À confirmer')).toBeNull()
+    expect(screen.queryByTestId('cal-toit-pente-confirmer')).toBeNull()
+  })
+})
+
 describe('Étape Toit — sur la carte', () => {
   it('puce « Surface du toit | Pans | Besoin d’après la facture » : surface et pans du constructeur, besoin servi', async () => {
     rendre()
