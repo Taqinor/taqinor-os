@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import calepinageApi from '../../../../../api/calepinageApi'
 import useResource from '../../../../../hooks/useResource'
 import { formatNumber } from '../../../../../lib/format'
+import { reviserEtOuvrir } from '../../../../ventes/reviserDevis'
 import { estIncomplet } from '../../../production/BandeauProvenanceProduction.helpers'
 import { DuSoleilAuReseau } from '../../../production/CartePostesPertes'
 import DiagrammePertes from '../../../production/DiagrammePertes'
@@ -13,6 +14,7 @@ import PiedResultats from '../../../production/PiedResultats'
 import ResultatAvantSimulation from '../../../production/ResultatAvantSimulation'
 import ResultatIncomplet from '../../../production/ResultatIncomplet'
 import TuilesResultat from '../../../production/TuilesResultat'
+import { messageResultatIndisponible } from '../../../delaiReseau'
 import EtatEcranAtelier from '../../EtatEcranAtelier'
 import { useModeExpert } from '../../modeExpert'
 import PanneauPertes from '../../PanneauPertes'
@@ -48,26 +50,107 @@ function PertesAvance({ calepinageId, lectureSeule, onEnregistre, sourcesOuverte
   )
 }
 
-/** ACAL1956 (D-ACAL-90) — la production RETENUE PAR LE DEVIS envoyé ou accepté (`production_devis` de `GET resultat/`) :
-    l'étape n'est jamais vide ; quand la pose est simulée, les deux chiffres côte à côte, chacun nommé. Rien n'est
-    recalculé ici. */
-function ProductionDuDevis({ bloc, p50 }) {
+/** ACAL1956 (D-ACAL-90) + ACAL1755 (D-ACAL-86, D-ACAL-96) — la production RETENUE PAR LE DEVIS lié (`production_devis` de
+    `GET resultat/` : devis envoyé ou accepté ; à défaut `ecart_devis` : tout devis lié dont le PDF imprime la figure) :
+    l'étape n'est jamais vide. UN SEUL chiffre quand la simulation de la pose (la plus réaliste) et le devis portent le même ;
+    sinon les DEUX, chacun nommé, et — pour un devis que le client a reçu — « Réviser le devis » (le devis envoyé n'est jamais
+    modifié : la révision en crée une V2). Rien n'est recalculé ici. `p50` : la simulation de la pose, seulement quand
+    elle est complète (un plafond « au plus » n'est pas un chiffre à comparer). */
+function ProductionDuDevis({ bloc, p50, incomplet = false }) {
+  const navigate = useNavigate()
+  const [enCours, setEnCours] = useState(false)
   if (!bloc) return null
   const kwh = typeof bloc.production_annuelle_kwh === 'number' ? bloc.production_annuelle_kwh : null
+  const lien = <Link to={`/ventes/devis?devis=${bloc.devis}`}>{bloc.reference || 'voir le devis'}</Link>
+  const simule = typeof p50 === 'number' ? p50 : null
+  const dit = (n) => `${formatNumber(n, { decimals: 0 })} kWh par an`
+  if (kwh != null && simule != null && Math.round(kwh) === Math.round(simule)) {
+    return (
+      <section className="cal-res-carte flex flex-col gap-1" data-zone="production-devis" data-chiffre="un-seul">
+        <p>
+          {`Production : ${dit(simule)} — le devis `}
+          {lien}
+          {' et la simulation de la pose portent le même chiffre.'}
+        </p>
+      </section>
+    )
+  }
+  // Un devis que le client a reçu (envoyé ou accepté) : jamais touché ; la révision en fait une V2 (même geste que `BoutonDevis`).
+  const reviser = async () => {
+    if (enCours) return
+    setEnCours(true)
+    let v2 = null
+    try {
+      await reviserEtOuvrir({
+        devis: { id: bloc.devis, reference: bloc.reference },
+        onApres: (nouveau) => { v2 = nouveau },
+        navigate: () => { if (v2?.id != null) navigate(`/ventes/devis/${v2.id}/design`) },
+      })
+    } finally {
+      setEnCours(false)
+    }
+  }
   return (
-    <section className="cal-res-carte flex flex-col gap-1" data-zone="production-devis">
+    <section className="cal-res-carte flex flex-col gap-1" data-zone="production-devis"
+      data-chiffre={simule != null && kwh != null ? 'deux' : undefined}>
       <p>
         {kwh != null
-          ? `Production retenue par le devis : ${formatNumber(kwh, { decimals: 0 })} kWh par an`
+          ? `Production retenue par le devis : ${dit(kwh)}`
           : 'Production retenue par le devis : le devis ne la porte pas'}
         {' — '}
-        <Link to={`/ventes/devis?devis=${bloc.devis}`}>{bloc.reference || 'voir le devis'}</Link>
+        {lien}
       </p>
       <p>
-        {typeof p50 === 'number'
-          ? `Production simulée de la pose : ${formatNumber(p50, { decimals: 0 })} kWh par an`
-          : 'Simulez la pose pour la comparer à ce chiffre.'}
+        {simule != null
+          ? `Production simulée de la pose : ${dit(simule)}`
+          : (incomplet
+            ? 'La simulation de la pose est incomplète : elle ne donne qu’un plafond, pas un chiffre à comparer.'
+            : 'Simulez la pose pour la comparer à ce chiffre.')}
       </p>
+      {simule != null && kwh != null && bloc.statut && (
+        <>
+          <p className="cal-res-sourdine">
+            Le devis envoyé n’est pas modifié : « Réviser le devis » crée une nouvelle version à ajuster sur la simulation de la pose.
+          </p>
+          <button type="button" className="cal-res-lien" style={{ alignSelf: 'flex-start' }} disabled={enCours}
+            onClick={reviser} data-testid="cal-reviser-devis-ecart">
+            {enCours ? 'Révision…' : 'Réviser le devis'}
+          </button>
+        </>
+      )}
+    </section>
+  )
+}
+
+/** Le bloc « devis » à comparer : `production_devis` (devis reçu : statut servi), à défaut `ecart_devis` (devis lié, sans statut). */
+function blocDuDevis(data) {
+  if (data?.production_devis) return data.production_devis
+  const ecart = data?.ecart_devis
+  if (!ecart || ecart.devis == null) return null
+  return { devis: ecart.devis, reference: ecart.reference, statut: null, production_annuelle_kwh: ecart.production_devis_kwh }
+}
+
+/** ACAL1912 — des panneaux posés mais raccordés à aucun onduleur : la phrase SERVIE en tête de `avertissements` (le même texte
+    que l'Expert), et la production rapportée aux panneaux COMPTÉS — jamais « 13 panneaux » à côté d'un productible calculé
+    sur 9. Omis quand `production.hors_chaine.modules` n'est pas un nombre > 0. Rien n'est calculé : `posés − hors chaîne`. */
+function PanneauxNonRaccordes({ data }) {
+  const horsChaine = data?.production?.hors_chaine?.modules
+  const phrase = data?.avertissements?.[0]
+  if (!(typeof horsChaine === 'number' && horsChaine > 0) || typeof phrase !== 'string' || !phrase) return null
+  const poses = data?.pose?.total_modules
+  const kwcPose = data?.pose?.kwc
+  const kwcCompte = data?.production?.total?.kwc
+  const comptes = typeof poses === 'number' ? poses - horsChaine : null
+  const kwc = typeof kwcPose === 'number' && typeof kwcCompte === 'number'
+    ? ` (${formatNumber(kwcCompte, { decimals: 2 })} kWc sur ${formatNumber(kwcPose, { decimals: 2 })} kWc)` : ''
+  return (
+    <section className="cal-res-alerte" data-zone="non-raccordes" role="status">
+      <p className="cal-res-alerte-titre">{phrase}</p>
+      {comptes !== null && comptes >= 0 && (
+        <p className="cal-res-alerte-texte">
+          {`Production comptée sur ${formatNumber(comptes, { decimals: 0 })} des ${formatNumber(poses, { decimals: 0 })} panneaux posés${kwc}.`}
+        </p>
+      )}
     </section>
   )
 }
@@ -82,10 +165,13 @@ export default function EtapeResultats({
   const [sourcesOuvertes, setSourcesOuvertes] = useState(false)
   const { data, loading, error, refetch } = useResource(
     () => calepinageApi.calepinages.resultat(id), id,
-    { select: (r) => r.data, errorMessage: 'Résultats indisponibles.' },
+    { select: (r) => r.data, errorMessage: messageResultatIndisponible },
   )
   if (loading || error) {
-    return <EtatEcranAtelier id={id} loading={loading} error={error} testIdErreur="cal236-erreur" forme="resultats" />
+    return (
+      <EtatEcranAtelier id={id} loading={loading} error={error} testIdErreur="cal236-erreur" forme="resultats"
+        onRetry={refetch} />
+    )
   }
   const perime = data?.simulation_perimee === true
   const simule = data?.simule === true && !perime
@@ -105,7 +191,8 @@ export default function EtapeResultats({
 
   return (
     <div className="cal-res" data-zone="etape-resultats">
-      <ProductionDuDevis bloc={data?.production_devis} p50={simule ? total?.p50_kwh : null} />
+      <ProductionDuDevis bloc={blocDuDevis(data)} p50={complet ? total?.p50_kwh : null} incomplet={incomplet} />
+      {simule && <PanneauxNonRaccordes data={data} />}
       {!simule && (
         <ResultatAvantSimulation calepinageId={id} data={data} parcours={parcours}
           intervalleMs={intervalleMs} onTermine={refetch} />

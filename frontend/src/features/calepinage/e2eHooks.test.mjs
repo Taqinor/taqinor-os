@@ -877,6 +877,7 @@ export const ALL_HOOKS = [
   'cal-res-squelette',
   'cal-calcul-lent',
   'cal-reessayer-lecture',
+  'cal-reviser-devis-ecart',
   'cal-res-minibarres',
   'cal-res-regle-pertes',
   'cal-res-regle-pvgis',

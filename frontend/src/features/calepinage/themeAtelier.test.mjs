@@ -207,3 +207,28 @@ test('studio : la hauteur retranche au moins le haut mesuré de la grille (266 p
   assert.ok(m, 'hauteur du studio lue')
   assert.ok(Number(m[1]) * 16 >= 266, `${m[1]} rem < 266 px mesurés`)
 })
+
+// ACAL1985 (rejeu T3-VAGUEC du 23/11) — en Guidé à Documents, « Générer le devis » mesurait 163 × 52, rayon 10, ancienne
+// teinte : la classe `.cal-bouton-or-grand` était posée, mais une règle de `55-etape-documents.css`
+// (`.cdoc-devis [data-testid=…] button`, plus spécifique que `.cal-coque .cal-bouton-or`) lui redonnait le fond
+// `--primary`, le rayon 10 et la graisse 600. Aucune feuille du module ne redessine le bouton de `BoutonDevis` :
+// fond, rayon, graisse et hauteur viennent des jetons du bouton d'étape.
+test('ACAL1985 : aucune règle ne redessine le bouton de BoutonDevis par-dessus le bouton doré v2', async () => {
+  const { readdirSync } = await import('node:fs')
+  const dossier = new URL('../../styles/calepinage/', import.meta.url)
+  const PROPRIETES = ['background', 'background-color', 'border-radius', 'font-weight', 'font-size', 'min-height', 'height']
+  const fautives = []
+  for (const f of readdirSync(dossier).filter((x) => x.endsWith('.css')).sort()) {
+    const source = readFileSync(new URL(f, dossier), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+    for (const { sel, corps } of regles(source)) {
+      const cibles = sel.split(',').map((s) => s.trim()).filter((s) => {
+        const i = s.indexOf('cal-bouton-devis')
+        return i >= 0 && s.slice(i).split(/[\s>]+/).some((morceau) => morceau.startsWith('button'))
+      })
+      if (!cibles.length) continue
+      const posees = Object.keys(declarations(corps)).filter((p) => PROPRIETES.includes(p))
+      if (posees.length) fautives.push(`${f} › ${cibles.join(', ')} { ${posees.join(', ')} }`)
+    }
+  }
+  assert.deepEqual(fautives, [], `bouton de BoutonDevis redessiné : ${fautives.join(' | ')}`)
+})

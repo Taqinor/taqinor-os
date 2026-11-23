@@ -221,16 +221,7 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
   // pied collé en bas — maquette), quelle que soit la hauteur de la fenêtre.
   const racine = useRef(null)
   const [hauteur, setHauteur] = useState(null)
-  // ACAL1908 — ce que la formule ci-dessous laisse déborder malgré tout (11 px relevés à 1440 × 900 : un liseré, une marge que la
-  // mesure ne voit pas) : MESURÉ sur le défilant après la pose de la hauteur, puis retiré de toutes les hauteurs suivantes.
-  const excesRef = useRef(0)
   const defilantDe = (n) => { let p = n?.parentElement; while (p && !/(auto|scroll)/.test(getComputedStyle(p).overflowY)) p = p.parentElement; return p }
-  useLayoutEffect(() => {
-    if (!seul || !hauteur) return
-    const cadre = defilantDe(racine.current)
-    const exces = cadre ? cadre.scrollHeight - cadre.clientHeight : 0
-    if (exces > 0 && hauteur - exces >= 360) { excesRef.current += exces; setHauteur(hauteur - exces) }
-  }, [seul, hauteur])
   useLayoutEffect(() => {
     if (!seul) return undefined
     // ACAL1344 — le bas utile est celui du CONTENU du défilant de l'ERP (son bas moins sa marge basse), pas
@@ -241,7 +232,7 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
       const bas = cadre
         ? cadre.getBoundingClientRect().bottom - (parseFloat(getComputedStyle(cadre).paddingBottom) || 0)
         : window.innerHeight - 24
-      setHauteur(Math.max(360, Math.floor(bas - haut) - excesRef.current))
+      setHauteur(Math.max(360, Math.floor(bas - haut)))
     }
     mesurer()
     window.addEventListener('resize', mesurer)
@@ -316,9 +307,11 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
       )}
 
       {/* Le tableau défile DANS sa carte (en-tête collé) : le titre en haut et le pied (boutons) en bas
-          restent à l'écran, comme la maquette, quelle que soit la hauteur de la fenêtre. */}
+          restent à l'écran, comme la maquette, quelle que soit la hauteur de la fenêtre. `relative` (ACAL1908) : la section
+          est le bloc conteneur des citations `sr-only` (absolues) de ses lignes — sans cela le défilant de l'ERP
+          (`.layout-content`, positionné) les comptait dans son propre défilement : 11 px de page qui défile à 1440 × 900. */}
       <section aria-label="Réglages proposés" aria-busy={enLecture}
-        className={`overflow-auto rounded-[14px] border border-border bg-card ${seul ? 'min-h-[180px] min-w-0 shrink' : ''}`}>
+        className={`relative overflow-auto rounded-[14px] border border-border bg-card ${seul ? 'min-h-[180px] min-w-0 shrink' : ''}`}>
         <div className="min-w-[760px]">
           <div className={`sticky top-0 z-10 grid ${COLONNES} h-11 items-center border-b border-border bg-background px-2 pr-5 text-xs font-semibold text-muted-foreground`}>
             <span className="text-center">Remplir</span><span>Réglage</span><span>Valeur proposée</span>

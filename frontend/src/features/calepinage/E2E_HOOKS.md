@@ -1013,6 +1013,7 @@ retiré plus un hook ajouté.
 | `cal-res-squelette` | étape Résultats : squelette de chargement (deux blocs aux boîtes de la mise en page, `role="status"`). |
 | `cal-calcul-lent` | écran de lecture (Résultats…) dont la réponse dépasse son délai : « Calcul en cours… » en information, jamais « connexion expirée » (ACAL1905). |
 | `cal-reessayer-lecture` | bouton « Réessayer » de cet écran (relance la lecture ; ACAL1905). |
+| `cal-reviser-devis-ecart` | étape Résultats : « Réviser le devis » (devis reçu par le client dont le chiffre diffère de la simulation de la pose ; crée la V2 ; ACAL1755). |
 | `cal-res-minibarres` | étape Résultats : les douze mini-barres mensuelles de la carte héros (production servie ; absentes sans série). |
 | `cal-res-regle-pertes` | étape Résultats : réglette de « Pertes au total » (bande habituelle servie et repère ; absente sans bande servie). |
 | `cal-res-regle-pvgis` | étape Résultats : réglette de « Écart avec PVGIS » (zéro et segment de l’écart servi). |

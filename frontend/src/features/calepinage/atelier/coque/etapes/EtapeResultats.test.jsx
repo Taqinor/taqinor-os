@@ -4,7 +4,7 @@
    Ce qui est prouvé : l'ordre et les libellés de la maquette, la règle « figure servie ou bloc omis »,
    aucun code technique à l'écran, le pied et son bouton, la carte « au plus » du résultat incomplet. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, within, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, within, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { exempleContrat } from '../../../../../test/fixtures/contractSamples'
 import { formatNumber } from '../../../../../lib/format'
@@ -20,8 +20,10 @@ vi.mock('../../../../../api/calepinageApi', () => ({
   },
 }))
 vi.mock('../../../../../hooks/useHasPermission', () => ({ useHasPermission: () => true }))
+vi.mock('../../../../../api/ventesApi', () => ({ default: { reviserDevis: vi.fn() } }))
 
 import calepinageApi from '../../../../../api/calepinageApi'
+import ventesApi from '../../../../../api/ventesApi'
 import EtapeResultats from './EtapeResultats'
 import PanneauPertesUnifie from '../../PanneauPertesUnifie'
 
@@ -217,6 +219,25 @@ describe('Étape Résultats — squelette de chargement (ACAL1822)', () => {
     rendre()
     expect(await screen.findByTestId('cal236-erreur')).toBeInTheDocument()
     expect(document.querySelector('.cal-res-squelette')).toBeNull()
+    // Une vraie erreur garde son message d'erreur et propose aussi « Réessayer ».
+    expect(screen.getByTestId('cal-reessayer-lecture')).toBeInTheDocument()
+    expect(screen.queryByTestId('cal-calcul-lent')).toBeNull()
+  })
+
+  // ACAL1905 — une réponse LENTE n'est pas une connexion coupée : un délai dépassé (axios ECONNABORTED) se dit « Calcul en
+  // cours… » (information, pas erreur) avec « Réessayer », qui relit `GET resultat/` ; jamais « La connexion a expiré ».
+  it('ACAL1905 — délai dépassé : « Calcul en cours… » et « Réessayer » relit, puis le résultat s’affiche', async () => {
+    const delai = Object.assign(new Error('timeout of 60000ms exceeded'), { code: 'ECONNABORTED' })
+    servir(COMPLET())
+    calepinageApi.calepinages.resultat.mockRejectedValueOnce(delai) // 1re lecture : délai dépassé ; la relecture aboutit
+    rendre()
+    const info = await screen.findByTestId('cal-calcul-lent')
+    expect(info).toHaveTextContent('Calcul en cours…')
+    expect(document.body.textContent).not.toMatch(/connexion a expiré|Résultats indisponibles/)
+    expect(screen.queryByTestId('cal236-erreur')).toBeNull()
+    fireEvent.click(screen.getByTestId('cal-reessayer-lecture'))
+    expect(await screen.findByTestId('cal-resultats-tuiles')).toBeInTheDocument()
+    expect(calepinageApi.calepinages.resultat).toHaveBeenCalledTimes(2)
   })
 })
 
@@ -576,5 +597,108 @@ describe('Étape Résultats — production retenue par le devis (ACAL1956)', () 
     const zone = document.querySelector('[data-zone="production-devis"]')
     expect(zone).toHaveTextContent(`Production retenue par le devis : ${kwh(PROD().production_annuelle_kwh)}`)
     expect(zone).toHaveTextContent(`Production simulée de la pose : ${kwh(data.production.total.p50_kwh)}`)
+  })
+
+  // ACAL1755 (D-ACAL-86 : un seul chiffre, le plus réaliste ; D-ACAL-96 : un devis envoyé n'est jamais modifié, la révision est proposée).
+  describe('ACAL1755 — un seul chiffre, ou les deux nommés avec « Réviser le devis »', () => {
+    const zone = () => document.querySelector('[data-zone="production-devis"]')
+
+    it('simulation et devis portent le même chiffre : UN seul chiffre, ni deuxième ligne ni bouton', async () => {
+      const d = COMPLET()
+      d.production_devis = { ...PROD(), production_annuelle_kwh: d.production.total.p50_kwh }
+      servir(d)
+      rendre()
+      await screen.findByRole('link', { name: PROD().reference })
+      expect(zone()).toHaveAttribute('data-chiffre', 'un-seul')
+      expect(zone()).toHaveTextContent(`Production : ${kwh(d.production.total.p50_kwh)}`)
+      expect(zone()).not.toHaveTextContent('Production simulée de la pose')
+      expect(screen.queryByRole('button', { name: 'Réviser le devis' })).toBeNull()
+    })
+
+    it('devis envoyé, chiffres différents : les deux nommés, le devis n’est pas touché, « Réviser le devis » crée la V2', async () => {
+      const d = { ...COMPLET(), production_devis: PROD() }
+      servir(d)
+      ventesApi.reviserDevis.mockResolvedValue({ data: { id: 99, reference: 'DEV-V2' } })
+      rendre()
+      await screen.findByRole('link', { name: PROD().reference })
+      expect(zone()).toHaveAttribute('data-chiffre', 'deux')
+      expect(zone()).toHaveTextContent('Le devis envoyé n’est pas modifié')
+      fireEvent.click(screen.getByRole('button', { name: 'Réviser le devis' }))
+      await waitFor(() => expect(ventesApi.reviserDevis).toHaveBeenCalledWith(PROD().devis))
+      expect(ventesApi.reviserDevis).toHaveBeenCalledTimes(1)
+    })
+
+    it('devis lié sans statut reçu (écart servi seul) : les deux chiffres nommés, aucun bouton de révision', async () => {
+      const d = COMPLET()
+      d.ecart_devis = { devis: 412, reference: 'DEV-202610-0042', production_devis_kwh: 12600, p50_calepinage_kwh: 13000, ecart_pct: 3.2, mention: '' }
+      servir(d)
+      rendre()
+      await screen.findByRole('link', { name: 'DEV-202610-0042' })
+      expect(zone()).toHaveTextContent(`Production retenue par le devis : ${kwh(12600)}`)
+      expect(zone()).toHaveTextContent(`Production simulée de la pose : ${kwh(d.production.total.p50_kwh)}`)
+      expect(screen.queryByRole('button', { name: 'Réviser le devis' })).toBeNull()
+    })
+
+    it('simulation incomplète (plafond) : jamais comparée au devis', async () => {
+      const base = COMPLET()
+      const borne = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
+      servir({ ...base, production: borne.production, simulation: borne.simulation, cascade: borne.cascade, production_devis: PROD() })
+      rendre()
+      await screen.findByRole('link', { name: PROD().reference })
+      expect(zone()).toHaveTextContent('La simulation de la pose est incomplète')
+      expect(zone()).not.toHaveTextContent('Production simulée de la pose')
+      expect(screen.queryByRole('button', { name: 'Réviser le devis' })).toBeNull()
+    })
+  })
+})
+
+/* ACAL1912 (rejeu T3-VAGUEC du 23/11) — Guidé > Résultats dit les panneaux posés mais non raccordés : la phrase SERVIE en tête
+   de `avertissements`, et la production rapportée aux panneaux COMPTÉS (jamais « 13 panneaux » à côté d'un productible
+   de 9). Tout vient de `GET resultat/` : `production.hors_chaine.modules`, `pose.*`, `production.total.kwc`. */
+describe('Étape Résultats — panneaux posés mais non raccordés (ACAL1912)', () => {
+  const PHRASE = '4 panneaux ne sont raccordés à aucun onduleur : ils ne sont pas comptés dans la production (leur énergie possible est donnée à part, « hors chaîne »).'
+  const NON_RACCORDES = () => {
+    const d = COMPLET()
+    d.pose = { ...d.pose, total_modules: 13, kwc: 9.23 }
+    d.production.total.kwc = 6.39
+    d.production.hors_chaine = { modules: 4, p50_kwh: 3300 }
+    d.avertissements = [PHRASE, 'Longueur de chaîne à vérifier.']
+    return d
+  }
+  const zone = () => document.querySelector('[data-zone="non-raccordes"]')
+
+  it('résultat complet : la phrase servie et les deux comptes (comptés / posés), une seule fois', async () => {
+    servir(NON_RACCORDES())
+    rendre()
+    await screen.findByTestId('cal-resultats-tuiles')
+    expect(zone()).not.toBeNull()
+    expect(zone()).toHaveTextContent(PHRASE)
+    expect(zone()).toHaveTextContent('Production comptée sur 9 des 13 panneaux posés (6,39 kWc sur 9,23 kWc).')
+    expect(document.body.textContent.split(PHRASE)).toHaveLength(2)
+    expect(zone()).not.toHaveTextContent('Longueur de chaîne')
+  })
+
+  it('résultat incomplet : même avertissement au-dessus de « Ce qui est déjà sûr »', async () => {
+    const borne = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
+    const d = NON_RACCORDES()
+    servir({ ...d, production: { ...borne.production, hors_chaine: d.production.hors_chaine }, simulation: borne.simulation, cascade: borne.cascade })
+    rendre()
+    await screen.findByTestId('acal700-incomplet')
+    expect(zone()).toHaveTextContent(PHRASE)
+    expect(zone()).toHaveTextContent('13 panneaux posés')
+  })
+
+  it('tous les panneaux raccordés (ou rien de servi) : aucun bloc', async () => {
+    const d = NON_RACCORDES()
+    d.production.hors_chaine = { modules: 0, p50_kwh: 0 }
+    servir(d)
+    rendre()
+    await screen.findByTestId('cal-resultats-tuiles')
+    expect(zone()).toBeNull()
+    cleanup()
+    servir(COMPLET())
+    rendre()
+    await screen.findByTestId('cal-resultats-tuiles')
+    expect(zone()).toBeNull()
   })
 })
