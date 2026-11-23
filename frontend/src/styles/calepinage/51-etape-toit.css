@@ -40,72 +40,93 @@
 }
 .cal-coque[data-avance='1'] .cal-toit-bloc-forme { display: none; }
 
-/* ── Forme : les puces du script en tuiles 3 × 2 ────────────────────────── */
+/* ── Intitulés de section (ACAL1827, demande croisée de la coque) : 13 px demi-gras en texte 2, 10 px sous l'intitulé ── */
+.cal-coque .cal-etape-toit .cal-section-etape { gap: 10px; }
+.cal-coque .cal-etape-toit .cal-section-etape-tete h2 { font-size: 0.8125rem; font-weight: 600; color: var(--cal-texte-2); }
+.cal-coque .cal-toit-obstacles-compte { font-weight: 500; color: var(--cal-texte-3); }
+
+/* ── Forme : les puces du script en tuiles 3 × 2 (maquette v2 : 56 de haut, rayon 12, pictogramme 26 × 18) ───── */
 .cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  margin: -12px 0 0;
+  margin: -6px 0 0;
 }
 .cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > .rp9-tuile-forme {
-  min-height: 64px;
+  position: relative;
+  min-height: 56px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 5px;
   padding: 0 4px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--card);
-  color: var(--foreground);
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--cal-filet-fort);
+  border-radius: var(--cal-rayon-tuile);
+  background: var(--cal-surface);
+  color: var(--cal-texte-1);
   font-weight: 500;
   font-size: 0.75rem;
 }
-/* Pictogrammes des tuiles (tracés de la maquette, 28 × 20) : masques peints à la couleur du texte. */
+/* Pictogrammes des tuiles (tracés de la maquette, 26 × 18) : masques peints à la couleur du texte. */
 .cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > .rp9-tuile-forme::before {
   content: '';
-  width: 28px;
-  height: 20px;
+  width: 26px;
+  height: 18px;
   background: currentColor;
-  -webkit-mask: var(--cal-forme) center / 28px 20px no-repeat;
-  mask: var(--cal-forme) center / 28px 20px no-repeat;
+  -webkit-mask: var(--cal-forme) center / 26px 18px no-repeat;
+  mask: var(--cal-forme) center / 26px 18px no-repeat;
 }
-.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > [data-forme='flat'] { --cal-forme: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 20' fill='none' stroke='black' stroke-width='1.6'%3E%3Crect x='2' y='3' width='24' height='14'/%3E%3C/svg%3E"); }
-.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > [data-forme='gable'] { --cal-forme: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 20' fill='none' stroke='black' stroke-width='1.6'%3E%3Crect x='2' y='3' width='24' height='14'/%3E%3Cpath d='M2 10h24'/%3E%3C/svg%3E"); }
-.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > [data-forme='hip'] { --cal-forme: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 20' fill='none' stroke='black' stroke-width='1.6'%3E%3Crect x='2' y='3' width='24' height='14'/%3E%3Cpath d='M2 3l7 7-7 7M26 3l-7 7 7 7M9 10h10'/%3E%3C/svg%3E"); }
-.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > [data-forme='l_gable'] { --cal-forme: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 20' fill='none' stroke='black' stroke-width='1.6'%3E%3Cpath d='M2 3h12v7h12v7H2z'/%3E%3C/svg%3E"); }
-.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > [data-forme='t_gable'] { --cal-forme: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 20' fill='none' stroke='black' stroke-width='1.6'%3E%3Cpath d='M2 3h24v7h-8v7h-8v-7H2z'/%3E%3C/svg%3E"); }
-.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > [data-forme='libre'] { --cal-forme: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 20' fill='none' stroke='black' stroke-width='1.6'%3E%3Cpath d='M3 16l6-12 8 9 8-6'/%3E%3C/svg%3E"); }
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > [data-forme='flat'] { --cal-forme: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 18' fill='none' stroke='black' stroke-width='1.7'%3E%3Crect x='2' y='3' width='22' height='12' rx='1.5'/%3E%3C/svg%3E"); }
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > [data-forme='gable'] { --cal-forme: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 18' fill='none' stroke='black' stroke-width='1.7'%3E%3Crect x='2' y='3' width='22' height='12' rx='1.5'/%3E%3C/svg%3E"); }
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > [data-forme='hip'] { --cal-forme: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 18' fill='none' stroke='black' stroke-width='1.7' stroke-linejoin='round'%3E%3Crect x='2' y='3' width='22' height='12' rx='1.5'/%3E%3Cpath d='M2 3l7 6h8l7-6M2 15l7-6M24 15l-7-6'/%3E%3C/svg%3E"); }
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > [data-forme='l_gable'] { --cal-forme: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 18' fill='none' stroke='black' stroke-width='1.7' stroke-linejoin='round'%3E%3Cpath d='M3 3h10v6h10v6H3z'/%3E%3C/svg%3E"); }
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > [data-forme='t_gable'] { --cal-forme: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 18' fill='none' stroke='black' stroke-width='1.7' stroke-linejoin='round'%3E%3Cpath d='M3 3h20v6h-6v6H9V9H3z'/%3E%3C/svg%3E"); }
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > [data-forme='libre'] { --cal-forme: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 18' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 14l6-9 6 6 8-7'/%3E%3C/svg%3E"); }
+/* Le faîtage du toit à 2 pans : un trait d'or (le soleil), posé sur le pictogramme. */
+.cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > [data-forme='gable']::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 17px;
+  width: 22px;
+  height: 2px;
+  margin-left: -11px;
+  background: var(--cal-or-trait);
+}
 .cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > .rp9-tuile-forme[aria-pressed='true'] {
-  border-color: transparent;
-  background: var(--cal-or-pale);
+  border-width: 2px;
+  border-color: var(--cal-choisi-filet);
+  background: var(--cal-choisi-fond);
   font-weight: 600;
-  box-shadow: inset 0 0 0 1.5px var(--primary);
+  box-shadow: none;
 }
 .cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > .rp9-tuile-forme[aria-pressed='true']::before {
-  background: var(--primary-text);
+  background: currentColor;
 }
 .cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > .rp9-tuile-forme[data-forme='libre'] {
   border-style: dashed;
-  border-color: var(--input);
-  color: var(--muted-foreground);
+  color: var(--cal-texte-2);
 }
 .cal-coque[data-avance='0'][data-etape='toit'] #rp9-formes-toit > .rp9-tuile-forme[aria-disabled='true'] { opacity: 0.55; }
 
-/* ── Dimensions ─────────────────────────────────────────────────────────── */
+/* ── Dimensions (maquette v2 : étiquette 12 px texte 3, champ 44 px rayon 10, saisie 16 px demi-gras, suffixe 13 px) ── */
 .cal-coque .cal-toit-dimensions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.cal-coque .cal-toit-champ { display: flex; flex-direction: column; gap: 4px; }
-.cal-coque .cal-toit-champ > label { font-size: 0.75rem; color: var(--muted-foreground); }
+.cal-coque .cal-toit-champ { display: flex; flex-direction: column; gap: 5px; }
+.cal-coque .cal-toit-champ > label { font-size: 0.75rem; color: var(--cal-texte-3); }
 .cal-coque .cal-toit-saisie {
   display: flex;
   align-items: center;
+  gap: 6px;
   height: 44px;
   padding: 0 12px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--cal-filet-fort);
   border-radius: 10px;
-  background: var(--card);
-  color: var(--muted-foreground);
+  background: var(--cal-surface);
+  color: var(--cal-texte-3);
+  font-size: 0.8125rem;
 }
 .cal-coque .cal-toit-saisie:focus-within { outline: 2px solid var(--ring); outline-offset: 1px; }
 .cal-coque .cal-toit-saisie input {
@@ -114,25 +135,37 @@
   border: 0;
   outline: 0;
   background: transparent;
-  color: var(--foreground);
-  font-weight: 500;
+  color: var(--cal-texte-1);
+  font-weight: 600;
   font-size: 1rem;
+  font-variant-numeric: tabular-nums;
 }
-.cal-coque .cal-toit-saisie input:disabled { color: var(--muted-foreground); }
+.cal-coque .cal-toit-saisie input:disabled { color: var(--cal-texte-3); }
 .cal-coque .cal-toit-creer { grid-column: 1 / -1; }
 
-/* ── Pente et orientation : cadre or pâle ───────────────────────────────── */
-.cal-coque .cal-toit-pente {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px;
-  border: 1px solid color-mix(in oklch, var(--primary) 50%, var(--card));
-  border-radius: 10px;
-  background: var(--cal-or-pale);
+/* ── Pente et orientation (maquette v2) : la carte crème (cadran + pente + « À confirmer »), puis les deux actions
+   1:1 sur une ligne, sous elle ─────────────────────────────────────────────── */
+.cal-coque .cal-toit-pente { display: flex; flex-direction: column; gap: 10px; }
+.cal-coque .cal-toit-pente-cadre,
+.cal-coque .cal-toit-pente-vide {
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--cal-surveiller-filet);
+  border-radius: var(--cal-rayon-pile);
+  background: var(--cal-surveiller-fond);
 }
+.cal-coque .cal-toit-pente-cadre { display: flex; align-items: center; gap: 12px; padding: 12px; }
+.cal-coque .cal-toit-pente-vide { padding: 14px; }
+.cal-coque .cal-toit-pente-corps { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .cal-coque .cal-toit-pente-tete { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.cal-coque .cal-toit-pente-valeur { font-family: var(--font-display); font-weight: 600; font-size: 1.25rem; }
+.cal-coque .cal-toit-pente-valeur {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.25rem;
+  letter-spacing: -0.01em;
+  color: var(--cal-texte-1);
+  white-space: nowrap;
+}
 .cal-coque .cal-toit-pente-tag {
   padding: 2px 8px;
   border-radius: 9px;
@@ -142,48 +175,54 @@
   color: var(--cal-surveiller-texte);
   white-space: nowrap;
 }
-.cal-coque .cal-toit-pente-texte {
-  margin: 0;
-  font-size: 0.875rem;
-  line-height: 1.45;
-  color: color-mix(in oklch, var(--foreground) 78%, var(--primary-text));
-}
-.cal-coque .cal-toit-pente-actions { display: flex; gap: 8px; }
-.cal-coque .cal-toit-pente-actions > * { flex: 1; min-width: 0; white-space: nowrap; }
+.cal-coque .cal-toit-pente-texte { margin: 0; font-size: 0.8125rem; line-height: 1.4; color: var(--cal-surveiller-texte); }
+.cal-coque .cal-toit-pente-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.cal-coque .cal-toit-pente-actions > * { min-width: 0; white-space: nowrap; }
 .cal-coque .cal-bouton-contour {
   height: 44px;
   padding: 0 12px;
-  border: 1px solid color-mix(in oklch, var(--primary-text) 55%, var(--card));
-  border-radius: 10px;
-  background: transparent;
-  color: var(--foreground);
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--cal-filet-fort);
+  border-radius: var(--cal-rayon-bouton);
+  background: var(--cal-surface);
+  color: var(--cal-texte-1);
   font-weight: 600;
   font-size: 0.875rem;
   white-space: nowrap;
 }
-.cal-coque .cal-toit-pente-message { margin: 0; font-size: 0.75rem; color: var(--foreground); }
+.cal-coque .cal-toit-pente-message { margin: 0; font-size: 0.75rem; color: var(--cal-texte-1); }
 .cal-coque .cal-toit-pente-modifier > summary {
   display: flex;
   align-items: center;
-  min-height: 32px;
+  min-height: 28px;
   list-style: none;
   cursor: pointer;
-  color: var(--info);
+  color: var(--cal-lien);
   font-weight: 600;
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
 }
 .cal-coque .cal-toit-pente-modifier > summary::-webkit-details-marker { display: none; }
 .cal-coque .cal-toit-pente-modifier > [data-testid='cal-pente'] { margin-top: 8px; padding: 14px; }
+/* Cadran : disque, repères, N, aiguille tournée vers la face (le tracé tourne par l'attribut transform). */
+.cal-coque .cal-cadran { flex: none; }
+.cal-coque .cal-cadran-disque { fill: var(--cal-surface); stroke: var(--cal-surveiller-filet); stroke-width: 1.5; }
+.cal-coque .cal-cadran-reperes { fill: none; stroke: var(--cal-or-trait); stroke-width: 1.5; stroke-linecap: round; }
+.cal-coque .cal-cadran-n { fill: var(--cal-or-texte); font-family: var(--font-brand); font-size: 14px; font-weight: 600; }
+.cal-coque .cal-cadran-aiguille { fill: none; stroke: var(--cal-texte-1); stroke-width: 2.5; stroke-linecap: round; }
+.cal-coque .cal-cadran-pointe { fill: var(--cal-texte-1); }
+.cal-coque .cal-cadran-centre { fill: var(--cal-action); stroke: var(--cal-texte-1); stroke-width: 1.5; }
 
-/* ── Obstacles ──────────────────────────────────────────────────────────── */
+/* ── Obstacles (maquette v2 : cadre à filet rayon 12, lignes de 40 px, nom 14 px demi-gras, cotes 13 px texte 3) ── */
 .cal-coque .cal-lien-action {
   height: 32px;
   padding: 0 10px;
   border: 0;
+  border-radius: var(--cal-rayon-champ);
   background: transparent;
-  color: var(--info);
+  color: var(--cal-lien);
   font-weight: 600;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
 }
 .cal-coque .cal-toit-obstacles {
   list-style: none;
@@ -191,34 +230,35 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  border: 1px solid var(--cal-filet);
+  border-radius: var(--cal-rayon-tuile);
+  overflow: hidden;
 }
 .cal-coque .cal-toit-obstacles:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .cal-coque .cal-toit-obstacles > li {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 44px;
-  padding: 0 12px;
-  border-bottom: 1px solid var(--border);
+  min-height: 40px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--cal-filet);
   cursor: pointer;
 }
 .cal-coque .cal-toit-obstacles > li:last-child { border-bottom: 0; }
-.cal-coque .cal-toit-obstacles > li[aria-selected='true'] { background: color-mix(in oklch, var(--primary) 12%, var(--card)); }
+.cal-coque .cal-toit-obstacles > li[aria-selected='true'] { background: color-mix(in srgb, var(--cal-action) 14%, var(--cal-surface)); }
 .cal-coque .cal-toit-obstacles:focus-visible > li[data-actif='1'] { box-shadow: inset 0 0 0 2px var(--ring); }
 .cal-coque .cal-toit-obstacle-pastille {
   flex: none;
   width: 12px;
   height: 12px;
-  border-radius: 2px;
-  background: var(--muted-foreground);
+  border-radius: 3px;
+  background: var(--cal-texte-2);
 }
 .cal-coque .cal-toit-obstacles > li:nth-child(even) .cal-toit-obstacle-pastille {
-  background: color-mix(in oklch, var(--muted-foreground) 60%, var(--card));
+  background: color-mix(in srgb, var(--cal-lien) 40%, var(--cal-texte-3));
 }
-.cal-coque .cal-toit-obstacle-nom { flex: 1; min-width: 0; }
-.cal-coque .cal-toit-obstacle-cotes { color: var(--muted-foreground); white-space: nowrap; }
+.cal-coque .cal-toit-obstacle-nom { flex: 1; min-width: 0; font-weight: 500; }
+.cal-coque .cal-toit-obstacle-cotes { font-size: 0.8125rem; color: var(--cal-texte-3); white-space: nowrap; }
 
 /* ── Carte « Obstacle sélectionné » (ACAL1441) : cibles de 44 px, phrase de dégagement en texte courant ───── */
 .cal-coque #rp9-obs-edit #rp9-obs-delete { min-height: 44px; border-radius: 10px; }
@@ -361,7 +401,8 @@
 
 @media (pointer: coarse) {
   .cal-coque .cal-lien-action,
-  .cal-coque .cal-toit-pente-modifier > summary { min-height: 44px; }
+  .cal-coque .cal-toit-pente-modifier > summary,
+  .cal-coque .cal-toit-obstacles > li { min-height: 44px; }
 }
 /* H2 — la lecture de la facture a échoué : la puce le dit, en lien d'action (jamais une absence affirmée). */
 .cal-coque .cal-toit-reessayer {

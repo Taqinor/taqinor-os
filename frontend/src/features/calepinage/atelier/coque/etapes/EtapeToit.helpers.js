@@ -124,11 +124,14 @@ export function lireObstacles(racine) {
     « à confirmer » = la mention du script `#rp9-pitch-note` (`hypotheses.ts::etatHypotheses` : pas de `pitchSource`). */
 export function lirePente(racine) {
   const plat = Boolean(racine?.querySelector?.('[data-rooftype="flat"][aria-pressed="true"]'))
-  const face = texte(parId(racine, 'rp9-facing-value')).split(' · ')[0].toLowerCase()
+  const lueFace = texte(parId(racine, 'rp9-facing-value'))
+  const face = lueFace.split(' · ')[0].toLowerCase()
+  const azimut = /·\s*(-?\d+(?:[.,]\d+)?)\s*°/.exec(lueFace)
   return {
     plat,
     deg: nombre(texte(parId(racine, 'rp9-pitch-value'))),
     face: face || null,
+    azimut: azimut ? Number(azimut[1].replace(',', '.')) : null, // ACAL1827 — l'aiguille du cadran
     aConfirmer: !vide(texte(parId(racine, 'rp9-pitch-note'))),
   }
 }

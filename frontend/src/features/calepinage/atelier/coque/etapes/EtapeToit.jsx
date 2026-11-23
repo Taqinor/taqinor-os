@@ -82,6 +82,7 @@ function penteAffichee(zone, pente, ferme) {
       plat: zone.roofType ? zone.roofType === 'flat' : pente.plat,
       deg: Number.isFinite(Number(zone.pitchDeg)) ? Number(zone.pitchDeg) : null,
       face: nomFace(zone.facingAzimuthDeg),
+      azimut: zone.facingAzimuthDeg != null && Number.isFinite(Number(zone.facingAzimuthDeg)) ? Number(zone.facingAzimuthDeg) : null,
       aConfirmer: !estObjet(zone.pitchSource),
     }
   }
@@ -134,35 +135,40 @@ function CartePente({ calepinageId, builderApi, documentVivant, lectureSeule, en
   return (
     <div className="cal-toit-pente" data-testid="cal-toit-pente-carte">
       {titre ? (
-        <div className="cal-toit-pente-tete">
-          <span className="cal-toit-pente-valeur">{titre}</span>
-          {aConfirmer && <span className="cal-toit-pente-tag">À confirmer</span>}
+        <div className="cal-toit-pente-cadre">
+          {!vue.plat && <Cadran azimut={vue.azimut ?? null} />}
+          <div className="cal-toit-pente-corps">
+            <div className="cal-toit-pente-tete">
+              <span className="cal-toit-pente-valeur">{titre}</span>
+              {aConfirmer && <span className="cal-toit-pente-tag">À confirmer</span>}
+            </div>
+            {aConfirmer && !inconnue && (
+              <p className="cal-toit-pente-texte">
+                {vue.plat
+                  ? "Toit plat pris par défaut, pas une mesure. Confirmez-le ou vérifiez-le avant d'envoyer le devis."
+                  : "Valeur de départ, pas une mesure. Confirmez-la ou mesurez-la avant d'envoyer le devis."}
+              </p>
+            )}
+            {aConfirmer && inconnue && (
+              <p className="cal-toit-pente-texte" role="status">
+                Valeur de départ gardée, toujours à confirmer : elle sera vérifiée à la visite. Rien n’est enregistré.
+              </p>
+            )}
+          </div>
         </div>
       ) : (
-        <p className="cal-toit-pente-texte">Tracez d’abord le contour du toit : sa pente et sa face s’afficheront ici.</p>
+        <p className="cal-toit-pente-texte cal-toit-pente-vide">Tracez d’abord le contour du toit : sa pente et sa face s’afficheront ici.</p>
       )}
       {aConfirmer && !inconnue && (
-        <>
-          <p className="cal-toit-pente-texte">
-            {vue.plat
-              ? "Toit plat pris par défaut, pas une mesure. Confirmez-le ou vérifiez-le avant d'envoyer le devis."
-              : "Valeur de départ, pas une mesure. Confirmez-la ou mesurez-la avant d'envoyer le devis."}
-          </p>
-          <div className="cal-toit-pente-actions">
-            <BoutonMarine onClick={confirmer} disabled={lectureSeule || envoi} data-testid="cal-toit-pente-confirmer">
-              Confirmer
-            </BoutonMarine>
-            <button type="button" className="cal-bouton-contour" data-testid="cal-toit-pente-inconnue"
-              onClick={() => { setInconnue(true); setMessage(null) }}>
-              Je ne la connais pas
-            </button>
-          </div>
-        </>
-      )}
-      {aConfirmer && inconnue && (
-        <p className="cal-toit-pente-texte" role="status">
-          Valeur de départ gardée, toujours à confirmer : elle sera vérifiée à la visite. Rien n’est enregistré.
-        </p>
+        <div className="cal-toit-pente-actions">
+          <BoutonMarine onClick={confirmer} disabled={lectureSeule || envoi} data-testid="cal-toit-pente-confirmer">
+            Confirmer
+          </BoutonMarine>
+          <button type="button" className="cal-bouton-contour" data-testid="cal-toit-pente-inconnue"
+            onClick={() => { setInconnue(true); setMessage(null) }}>
+            Je ne la connais pas
+          </button>
+        </div>
       )}
       {message && <p className="cal-toit-pente-message" role="status">{message}</p>}
       {/* ACAL1341 — un toit plat n'a pas de pente : sa forme change par les tuiles, jamais par ce formulaire. */}
@@ -176,6 +182,28 @@ function CartePente({ calepinageId, builderApi, documentVivant, lectureSeule, en
         </details>
       )}
     </div>
+  )
+}
+
+/** ACAL1827 — le cadran de la carte de pente (maquette Main) : un N, trois repères et l'aiguille tournée vers la face lue
+    (azimut 0 = nord, 180 = sud). Sans azimut lu, le cadran reste nu : aucune face n'est inventée. */
+function Cadran({ azimut }) {
+  const connu = Number.isFinite(azimut)
+  const nom = connu ? nomFace(azimut) : null
+  return (
+    <svg width="56" height="56" viewBox="0 0 64 64" className="cal-cadran" {...(connu
+      ? { role: 'img', 'aria-label': `Face ${nom}, ${Math.round(azimut)}°` } : { 'aria-hidden': 'true' })}>
+      <circle className="cal-cadran-disque" cx="32" cy="32" r="29" />
+      <path className="cal-cadran-reperes" d="M32 50v5M9 32h5M50 32h5" />
+      <text className="cal-cadran-n" x="32" y="25" textAnchor="middle">N</text>
+      {connu && (
+        <g data-aiguille="" transform={`rotate(${Math.round(azimut)} 32 32)`}>
+          <path className="cal-cadran-aiguille" d="M32 32V17" />
+          <path className="cal-cadran-pointe" d="M27 21l5-8 5 8z" />
+        </g>
+      )}
+      <circle className="cal-cadran-centre" cx="32" cy="32" r="3.5" />
+    </svg>
   )
 }
 
@@ -208,7 +236,8 @@ function Obstacles({ obstacles, relire }) {
   )
   return (
     <div className="cal-toit-bloc cal-toit-bloc-obstacles" data-testid="cal-toit-obstacles">
-      <SectionEtape titre="Obstacles" action={ajouter}>
+      <SectionEtape action={ajouter} titre={obstacles.length > 0
+        ? <>Obstacles{' '}<span className="cal-toit-obstacles-compte">· {obstacles.length}</span></> : 'Obstacles'}>
         {obstacles.length > 0 && (
           <ul role="listbox" aria-label="Obstacles du toit" tabIndex={0} className="cal-toit-obstacles"
             aria-activedescendant={`cal-toit-obstacle-${Math.min(actif, obstacles.length - 1)}`} onKeyDown={clavier}>

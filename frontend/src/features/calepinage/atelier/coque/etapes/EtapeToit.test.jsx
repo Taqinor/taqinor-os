@@ -128,7 +128,7 @@ describe('Étape Toit — le panneau de la maquette Main', () => {
   it('blocs dans l’ordre de la maquette, libellés mot pour mot, crochets e2e', async () => {
     rendre()
     const titres = [...document.querySelectorAll('.cal-etape-toit h2')].map((n) => n.textContent)
-    expect(titres).toEqual(['Forme', 'Dimensions', 'Pente et orientation', 'Obstacles'])
+    expect(titres).toEqual(['Forme', 'Dimensions', 'Pente et orientation', 'Obstacles · 2']) // ACAL1827 — le nombre est dit
     const dims = screen.getByTestId('cal-toit-dimensions')
     expect(within(dims).getByLabelText('Longueur')).toHaveValue('12,4')
     expect(within(dims).getByLabelText('Largeur')).toHaveValue('8,6')
@@ -424,6 +424,77 @@ describe('ACAL1445 — bulle, bloc Soleil, boussole', () => {
     rendre()
     const bouton = screen.getByTestId('cal-toit-pente-inconnue')
     expect(getComputedStyle(bouton).whiteSpace).toBe('nowrap')
+  })
+})
+
+/* ACAL1827 — l'étape Toit à sa maquette v2 (Main) : compte des obstacles, carte de pente avec son cadran, « Confirmer » et
+   « Je ne la connais pas » côte à côte, champs de dimensions et lignes d'obstacles aux mesures de la maquette. */
+describe('ACAL1827 — l’étape Toit à sa maquette v2', () => {
+  let style
+  beforeEach(() => {
+    style = document.createElement('style')
+    style.textContent = ['49-jetons-v2.css', '50-coque-atelier.css', '51-etape-toit.css']
+      .map((f) => readFileSync(resolve(process.cwd(), `src/styles/calepinage/${f}`), 'utf8')).join('\n')
+    document.head.appendChild(style)
+  })
+  afterEach(() => { style.remove() })
+  const cs = (el) => getComputedStyle(el)
+
+  it('l’en-tête des obstacles porte leur nombre ; sans obstacle, l’en-tête seul', () => {
+    rendre()
+    const tete = within(screen.getByTestId('cal-toit-obstacles')).getByRole('heading', { level: 2 })
+    expect(tete).toHaveTextContent('Obstacles · 2')
+    cleanup(); document.body.innerHTML = ''
+    rendre({}, (hote) => hote.querySelectorAll('#rp9-objets-site li').forEach((n) => n.remove()))
+    expect(within(screen.getByTestId('cal-toit-obstacles')).getByRole('heading', { level: 2 })).toHaveTextContent(/^Obstacles$/)
+  })
+
+  it('la carte de pente porte un cadran dont l’aiguille suit la face lue ; sans face lue, pas d’aiguille', async () => {
+    rendre()
+    const carte = screen.getByTestId('cal-toit-pente-carte')
+    const cadran = await within(carte).findByRole('img', { name: 'Face sud, 180°' })
+    expect(cadran.querySelector('[data-aiguille]')).toHaveAttribute('transform', 'rotate(180 32 32)')
+    cleanup(); document.body.innerHTML = ''
+    builderApi = { panActifId: () => 'area-9', appliquerVue: vi.fn() }
+    rendre({}, (hote) => { hote.querySelector('#rp9-facing-value').textContent = '' })
+    await waitFor(() => expect(screen.getByTestId('cal-toit-pente-carte')).toHaveTextContent('22°'))
+    expect(within(screen.getByTestId('cal-toit-pente-carte')).queryByRole('img')?.querySelector('[data-aiguille]') ?? null).toBeNull()
+  })
+
+  it('« Confirmer » et « Je ne la connais pas » : deux colonnes 1:1, hors de la carte crème', async () => {
+    rendre()
+    const confirmer = await screen.findByTestId('cal-toit-pente-confirmer')
+    const inconnue = screen.getByTestId('cal-toit-pente-inconnue')
+    const actions = confirmer.parentElement
+    expect(inconnue.parentElement).toBe(actions)
+    expect(cs(actions).display).toBe('grid')
+    expect(cs(actions).gridTemplateColumns).toBe('repeat(2, minmax(0, 1fr))')
+    expect(actions.closest('.cal-toit-pente-cadre')).toBeNull() // les boutons sont sous la carte crème, pas dedans
+    expect(cs(confirmer).height).toBe('44px')
+    expect(cs(inconnue).height).toBe('44px')
+    expect(cs(inconnue).borderRadius).toBe('var(--cal-rayon-bouton)')
+  })
+
+  it('intitulés de section 13 px demi-gras en texte 2 ; champs de dimensions 44 px, rayon 10, fond des jetons', () => {
+    rendre()
+    const titre = document.querySelector('.cal-etape-toit .cal-section-etape-tete h2')
+    expect(cs(titre).fontSize).toBe('0.8125rem')
+    expect(cs(titre).color).toBe('var(--cal-texte-2)')
+    const champ = document.querySelector('.cal-toit-saisie')
+    expect(cs(champ).height).toBe('44px')
+    expect(cs(champ).borderRadius).toBe('10px')
+    expect(cs(champ).background).toBe('var(--cal-surface)')
+    expect(cs(document.querySelector('.cal-toit-champ > label')).color).toBe('var(--cal-texte-3)')
+  })
+
+  it('lignes d’obstacles de 40 px dans un cadre de rayon 12, nom 14 px, cotes 13 px en texte 3', () => {
+    rendre()
+    const ligne = document.querySelector('.cal-toit-obstacles > li')
+    expect(cs(ligne).minHeight).toBe('40px')
+    expect(cs(document.querySelector('.cal-toit-obstacles')).borderRadius).toBe('var(--cal-rayon-tuile)')
+    const cotes = document.querySelector('.cal-toit-obstacle-cotes')
+    expect(cs(cotes).fontSize).toBe('0.8125rem')
+    expect(cs(cotes).color).toBe('var(--cal-texte-3)')
   })
 })
 
