@@ -25,10 +25,14 @@ from __future__ import annotations
 #: (``etapes/onduleur.py`` distribution, ``auxiliaires.py``,
 #: ``indisponibilite.py``, ``mppt.py``, ``transformateur.py``) et postes
 #: lisibles (``regroupement_pertes.py``). Liste FERMÉE : une clé neuve ne se
-#: divise qu'une fois ajoutée ici.
+#: divise qu'une fois ajoutée ici. ACAL1605 — ``energie_ecretee_kwh`` de
+#: l'histogramme de l'onduleur (``distribution.histogramme_puissance``) ; le
+#: plafond d'injection (bloc ``autoconsommation``, déjà ``_par_an``) ne passe
+#: pas par la cascade publiée : il n'est pas redivisé.
 CLES_ENERGIE_CASCADE = frozenset((
     'kwh_avant', 'kwh_apres', 'perte_kwh', 'irradiation_incidente_kwh_m2',
     'depart_kwh', 'arrivee_kwh', 'energie_kwh', 'energie_totale_kwh',
+    'energie_ecretee_kwh',
     'energie_jour_kwh', 'energie_nuit_kwh', 'energie_perdue_kwh',
     'energie_sous_demarrage_kwh', 'energie_sous_demarrage_deja_retiree_kwh',
     'energie_a_vide_kwh', 'energie_en_charge_kwh',
