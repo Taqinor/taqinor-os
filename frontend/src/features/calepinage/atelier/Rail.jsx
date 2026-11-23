@@ -187,7 +187,7 @@ function RailCorps({
   const etats = parcours.etats
   // ACAL395 — en guidé, les panneaux d'un écran d'étape (Électrique) s'ouvrent
   // dans UNE page portée par l'onglet `ouverture` ; l'URL garde la clé demandée.
-  const { ecran, cleVue, cleEtape } = vueParcours(cleActive, etats, expert)
+  const { ecran, cleVue, cleEtape } = vueParcours(cleActive, etats, expert, parcours.memorisee)
   const visibles = ongletsVisibles(cleEtape, cleVue, expert).map(ongletParCle).filter(Boolean)
   const libelleOnglet = (o) => (!expert
     && Object.values(ECRANS_ETAPE).find((e) => e.ouverture === o.cle)?.libelle) || o.libelle

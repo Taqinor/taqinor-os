@@ -145,6 +145,28 @@
   .cal-coque .cal-panneau-etape[data-tiroir='1'] .cal-bouton-or-plein { height: 48px; padding: 0 14px; font-size: 0.875rem; }
   .cal-coque .cal-coque-plein { padding: 16px; }
   .cal-coque .cal-coque-statut { max-width: calc(100% - 32px); }
+  /* ACAL1745 — une alerte à boutons (GPS du lead corrigé…) ne tient pas sur UNE ligne à 390 px : le texte passe à la
+     ligne, les boutons s'empilent en colonne, chacun de 44 px de haut, rien ne sort de l'écran. */
+  .cal-coque .cal-coque-alertes[data-deplie='0'] .cal-coque-alertes-contenu > :not(.sr-only) {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: 8px 0;
+  }
+  .cal-coque .cal-coque-alertes[data-deplie='0'] .cal-coque-alertes-contenu > * > p,
+  .cal-coque .cal-coque-alertes[data-deplie='0'] .cal-coque-alertes-contenu > * > p:first-child {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    max-width: none;
+  }
+  .cal-coque .cal-coque-alertes[data-deplie='0'] .cal-coque-alertes-contenu > * > div {
+    margin: 0;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .cal-coque .cal-coque-alertes-contenu button,
+  .cal-coque .cal-coque-alertes-plus { min-height: 44px; }
 }
 
 /* Maquette Tablette, étape Panneaux (guidé) : le tiroir est UNE rangée « Étape 2 sur 5 / Les panneaux · Panneau

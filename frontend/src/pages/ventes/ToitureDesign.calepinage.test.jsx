@@ -42,7 +42,14 @@ beforeEach(() => {
   vi.clearAllMocks()
   reinitialiserBoot()
 })
-afterEach(() => { cleanup(); vi.clearAllMocks() })
+afterEach(() => {
+  cleanup(); vi.clearAllMocks()
+  // ACAL1731 — l'étape où l'on s'arrête est mémorisée par calepinage : aucune fuite d'un cas au suivant.
+  try {
+    Object.keys(window.localStorage).filter((k) => k.startsWith('calepinage.etape.'))
+      .forEach((k) => window.localStorage.removeItem(k))
+  } catch { /* stockage refusé : rien à nettoyer */ }
+})
 
 describe('ToitureDesign — mode calepinage (CAL37)', () => {
   it('boote sur UN SEUL appel design-context et hydrate depuis le calepinage', async () => {
@@ -208,6 +215,24 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
     await waitFor(() => expect(toastInfo).toHaveBeenCalledWith('Aucun changement'))
+  })
+
+  it('ACAL1437 — à Documents, le clic de la barre déclenche la génération (même route que le bloc)', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
+      { data: { inchange: true, version: null } })
+    calepinageApi.calepinages.genererDevis.mockResolvedValue(
+      { data: { devis: 43, reference: 'DEV-2611-0043', deduplique: false } })
+    calepinageApi.calepinages.get.mockResolvedValue(reponseContrat('calepinage', 'calepinage_detail', 'exemple_vide'))
+
+    rendreCalepinage(CTX.calepinage.id, '?onglet=documents')
+    await screen.findByTestId('cal-generer-devis', {}, { timeout: 15_000 })
+    await waitFor(() => expect(screen.getByTestId('cal-generer-devis')).toBeEnabled())
+    await userEvent.click(screen.getByTestId('cal-generer-devis-haut'))
+
+    expect(await screen.findByTestId('cal-devis-cree', {}, { timeout: 10_000 })).toHaveTextContent('DEV-2611-0043')
+    expect(calepinageApi.calepinages.genererDevis).toHaveBeenCalledTimes(1)
   })
 
   it('ACAL398 — conception inchangée ⇒ aucun appel simuler', async () => {
@@ -1134,13 +1159,14 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
 
   it('bandeau, rail, carte et panneau dans l’ordre de la maquette, aux libellés de la maquette', async () => {
     amorcer()
+    calepinageApi.calepinages.get.mockResolvedValue(reponseContrat('calepinage', 'calepinage_detail'))
     rendreCalepinage(CTX.calepinage.id)
     const coque = await screen.findByTestId('cal-coque')
     const barre = screen.getByTestId('cal-barre-projet')
     // Le bandeau : « Calepinages », le nom servi (+ ville servie), la ligne lead + facture servie, Guidé | Expert, devis.
     expect(screen.getByTestId('cal-retour-liste')).toHaveTextContent('Calepinages')
-    expect(screen.getByTestId('cal-projet-titre')).toHaveTextContent(CTX.calepinage.titre)
-    expect(screen.getByTestId('cal-projet-titre')).toHaveTextContent(CTX.calepinage.client_ville)
+    // ACAL1730 : le nom du lead servi par le détail, plus « titre — ville ».
+    await waitFor(() => expect(screen.getByTestId('cal-projet-titre').textContent).toBe("Lead d'essai"))
     expect(screen.getByTestId('cal-projet-sous-titre')).toHaveTextContent(/^Lead · facture 900 MAD \/ mois$/)
     const mode = within(barre).getByRole('group', { name: 'Mode' })
     expect(within(mode).getAllByRole('button').map((b) => b.textContent)).toEqual(['Guidé', 'Expert'])
@@ -1162,6 +1188,22 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
     expect(screen.getByTestId('cal-panneau-etape-titre')).toHaveTextContent('Le toit')
     expect(await screen.findByTestId('cal-action-etape-suivante')).toHaveTextContent('Poser les panneaux')
     expect(coque).toHaveAttribute('data-cadre', 'carte')
+  })
+
+  it('ACAL1727 — Résultats et Documents portent « Étape N sur 5 » et leur titre en tête de l’écran plein', async () => {
+    amorcer()
+    rendreCalepinage(CTX.calepinage.id)
+    await screen.findByTestId('cal-coque')
+    await userEvent.click(screen.getByTestId('cal-etape-resultats'))
+    const tete = await screen.findByTestId('cal-plein-etape-tete')
+    expect(tete).toHaveTextContent('Étape 4 sur 5')
+    expect(tete).toHaveTextContent('Les résultats')
+    await userEvent.click(screen.getByTestId('cal-etape-documents'))
+    await waitFor(() => expect(screen.getByTestId('cal-plein-etape-tete')).toHaveTextContent('Étape 5 sur 5'))
+    expect(screen.getByTestId('cal-plein-etape-tete')).toHaveTextContent('Les documents')
+    // Une étape à carte garde sa tête dans le panneau : aucune tête pleine largeur.
+    await userEvent.click(screen.getByTestId('cal-etape-toit'))
+    await waitFor(() => expect(screen.queryByTestId('cal-plein-etape-tete')).toBeNull())
   })
 
   it('Résultats : carte et panneau masqués (jamais démontés), la carte revient sur Toit et se recale (resize)', async () => {
@@ -1364,22 +1406,27 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
     }
   })
 
-  it('H1 — bandeau : à partir d’Électrique, la ligne dit la pose SERVIE (panneaux · kWc), + l’onduleur à Résultats et Documents', async () => {
+  it('ACAL1730 — bandeau : le nom du lead en titre ; la ligne dit la pose SERVIE (panneaux · kWc · onduleur), la même à toute étape et dans les deux modes', async () => {
     amorcer()
     const res = reponseContrat('calepinage', 'calepinage_resultat')
     calepinageApi.calepinages.resultat.mockResolvedValue(res)
+    calepinageApi.calepinages.get.mockResolvedValue(reponseContrat('calepinage', 'calepinage_detail'))
     rendreCalepinage(CTX.calepinage.id)
     await screen.findByTestId('cal-coque')
-    await userEvent.click(screen.getByTestId('cal-etape-toit'))
-    expect(screen.getByTestId('cal-projet-sous-titre')).toHaveTextContent(/^Lead · facture 900 MAD \/ mois$/)
+    // Le titre : le nom du lead servi par le détail (« Lead d'essai »), jamais « Calepinage N — ville ».
+    await waitFor(() => expect(screen.getByTestId('cal-projet-titre').textContent).toBe('Lead d\'essai'))
     const { total_modules: n } = res.data.pose
     const o = res.data.electrique.onduleurs[0]
-    await userEvent.click(screen.getByTestId('cal-etape-electrique'))
     const kwc = res.data.pose.kwc.toLocaleString('fr-FR', { minimumFractionDigits: 2 })
-    await waitFor(() => expect(screen.getByTestId('cal-projet-sous-titre').textContent).toBe(`${n} panneaux · ${kwc} kWc`))
+    const ligne = `${n} panneaux · ${kwc} kWc · ${o.nombre} onduleur ${o.taille_kw} kW`
+    await userEvent.click(screen.getByTestId('cal-etape-toit'))
+    await waitFor(() => expect(screen.getByTestId('cal-projet-sous-titre').textContent).toBe(ligne))
     await userEvent.click(screen.getByTestId('cal-etape-documents'))
-    await waitFor(() => expect(screen.getByTestId('cal-projet-sous-titre').textContent)
-      .toBe(`${n} panneaux · ${kwc} kWc · ${o.nombre} onduleur ${o.taille_kw} kW`))
+    await waitFor(() => expect(screen.getByTestId('cal-projet-sous-titre').textContent).toBe(ligne))
+    await userEvent.click(within(screen.getByTestId('cal-barre-projet')).getByRole('button', { name: 'Expert' }))
+    await waitFor(() => expect(screen.getByTestId('cal-coque')).toHaveAttribute('data-expert', '1'))
+    expect(screen.getByTestId('cal-projet-sous-titre').textContent).toBe(ligne)
+    expect(screen.getByTestId('cal-projet-titre').textContent).toBe('Lead d\'essai')
   })
 
   it('H1 — les boutons de zoom de la carte sont nommés en français même quand la carte se monte tard', async () => {

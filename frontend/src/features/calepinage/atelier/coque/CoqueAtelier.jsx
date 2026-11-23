@@ -8,11 +8,11 @@ import { PARAM_MODE, useModeExpert } from '../modeExpert'
 import { PARAM_ONGLET, resoudreOnglet } from '../onglets'
 import { cadrerToitAtelier } from '../useAtelierBoot'
 import {
-  CADRES, ETAPES, ecranCoque, premierOngletEtape, useParcours, vueParcours,
+  CADRES, ETAPES, ecranCoque, memoriserEtape, premierOngletEtape, useParcours, vueParcours,
 } from '../parcoursGuide'
 import { BandeauAlertes } from './BandeauxCoque'
 import BarreProjet from './BarreProjet'
-import { ETAPES_POSE, sousTitrePose } from './projet'
+import { nomClientServi, sousTitrePose } from './projet'
 import { ContexteCoque, ContextePresentation } from './contexteCoque'
 import PanneauEtape from './PanneauEtape'
 import { BoutonOr } from './primitives'
@@ -150,7 +150,7 @@ function useFermetureFeuille(feuille, fermer, cleLieu) {
 const etatSimulation = (data) => (data?.calcule_le && data?.simulation_perimee === false
   ? `Simulation à jour · ${formaterHeureBrouillon(data.calcule_le)}` : null)
 
-/** Le résultat SERVI (`resultat/`) aux étapes Électrique, Résultats et Documents : « Simulation à jour · HH:MM » à
+/** Le résultat SERVI (`resultat/`) à toute étape : « Simulation à jour · HH:MM » à
     Résultats, et la ligne « N panneaux · x kWc (· onduleur) » du bandeau (maquettes). `null` tant qu'il n'est pas lu. */
 function useResultatServi(calepinageId, actif, relecture) {
   const [data, setData] = useState(null)
@@ -166,25 +166,34 @@ function useResultatServi(calepinageId, actif, relecture) {
   return actif ? data : null
 }
 
-/** L'heure de la dernière version enregistrée, servie par le détail (`versions.derniere_le`). */
-function useDerniereVersion(calepinageId, relecture) {
-  const [le, setLe] = useState(null)
+/** Le détail servi (une seule lecture) : l'heure de la dernière version (`versions.derniere_le`) et le nom du
+    lead ou du client (ACAL1730, titre du bandeau). */
+function useDetailServi(calepinageId, relecture) {
+  const [detail, setDetail] = useState({ le: null, nom: '' })
   useEffect(() => {
     if (!calepinageId) return undefined
     let vivant = true
     Promise.resolve()
       .then(() => calepinageApi.calepinages.get(calepinageId))
-      .then((rep) => { if (vivant) setLe(rep?.data?.versions?.derniere_le ?? null) })
-      .catch(() => { if (vivant) setLe(null) })
+      .then((rep) => {
+        if (vivant) setDetail({ le: rep?.data?.versions?.derniere_le ?? null, nom: nomClientServi(rep?.data) })
+      })
+      .catch(() => { if (vivant) setDetail({ le: null, nom: '' }) })
     return () => { vivant = false }
   }, [calepinageId, relecture])
-  return le
+  return detail
+}
+
+/** Le vrai bouton de devis du bloc, quand il est monté et à l'écran (hors `hidden`). */
+function boutonDevisVisible() {
+  const bouton = document.querySelector('[data-testid="cal-generer-devis"], [data-testid="cal-resynchroniser-devis"]')
+  return bouton && !bouton.closest('[hidden]') ? bouton : null
 }
 
 /** Met le focus sur le vrai bouton de devis dès qu'il est monté (étape Documents). */
 function focaliserBoutonDevis(essais = 30) {
-  const bouton = document.querySelector('[data-testid="cal-generer-devis"], [data-testid="cal-resynchroniser-devis"]')
-  if (bouton && bouton.offsetParent !== null) { bouton.focus(); return }
+  const bouton = boutonDevisVisible()
+  if (bouton) { bouton.focus(); return }
   if (essais > 0) window.setTimeout(() => focaliserBoutonDevis(essais - 1), 100)
 }
 
@@ -200,8 +209,8 @@ export default function CoqueAtelier({
   const [expert, basculerExpert] = useModeExpert(parametres.get(PARAM_MODE) === 'expert')
   const parcours = useParcours(calepinageId)
   const cleActive = resoudreOnglet(parametres.get(PARAM_ONGLET))?.cle ?? null
-  const { cleEtape } = vueParcours(cleActive, parcours.etats, expert)
-  const ecran = ecranCoque(cleActive, resoudreOnglet(cleActive), parcours.etats, expert)
+  const { cleEtape } = vueParcours(cleActive, parcours.etats, expert, parcours.memorisee)
+  const ecran = ecranCoque(cleActive, resoudreOnglet(cleActive), parcours.etats, expert, parcours.memorisee)
   // J1 — présentation : la carte, toujours (la 3D est la scène du client, quelle que soit l'étape du parcours).
   const cadre = expert || presentation ? CADRES.CARTE : (ecran?.cadre ?? CADRES.CARTE)
   // « Avancé » (guidé) : une FEUILLE à part, posée par-dessus l'écran (l'écran guidé reste intact dessous) ;
@@ -225,6 +234,9 @@ export default function CoqueAtelier({
   useEffect(() => { choisirRef.current = choisirEtape })
   const allerA = useCallback((cle) => choisirRef.current(cle), [])
   useEffect(() => { onEtape?.({ etape: cleEtape, expert, allerA }) }, [onEtape, cleEtape, expert, allerA])
+  // ACAL1731 — l'étape où l'on s'arrête (choisie par l'URL) est mémorisée sur cet appareil : l'atelier y rouvre.
+  useEffect(() => { if (cleActive && !presentation) memoriserEtape(calepinageId, cleEtape) },
+    [calepinageId, cleActive, cleEtape, presentation])
 
   const rang = ETAPES.findIndex((e) => e.cle === cleEtape)
   const suivante = rang >= 0 ? ETAPES[rang + 1] : null
@@ -268,11 +280,14 @@ export default function CoqueAtelier({
   usePlanALEntreeDEtape({ builderRef, actif: carteVisible && !presentation, cle: `${cleEtape}:${tiroir}`, builderApiCoque })
 
   // J1 — présentation : ni résultat ni détail pour le bandeau (masqué) — aucune lecture de plus devant le client.
-  const resultatServi = useResultatServi(calepinageId, ETAPES_POSE.includes(cleEtape) && !presentation, enregistreLe)
+  const resultatServi = useResultatServi(calepinageId, !presentation, enregistreLe)
   const etatPropre = cleEtape === 'resultats' && !expert ? etatSimulation(resultatServi) : null
-  const derniereVersionLe = useDerniereVersion(presentation ? null : calepinageId, enregistreLe)
+  const { le: derniereVersionLe, nom: nomClient } = useDetailServi(presentation ? null : calepinageId, enregistreLe)
 
+  // ACAL1437 — un bouton qui dit « Générer » génère quand son bloc est à l'écran (Documents, ou Expert), même route.
   const onDevis = () => {
+    const bouton = boutonDevisVisible()
+    if (bouton && !bouton.disabled) { bouton.click(); return }
     if (cleEtape !== 'documents') allerA('documents')
     focaliserBoutonDevis()
   }
@@ -309,8 +324,8 @@ export default function CoqueAtelier({
       <div className="rp9-host cal-coque" data-testid="cal-coque" data-etape={cleEtape} data-cadre={cadre}
         data-avance={expert ? '1' : '0'} data-expert={expert ? '1' : '0'} data-feuille={feuille ? '1' : undefined}
         data-presentation={presentation ? '1' : undefined}>
-        <BarreProjet cache={!!presentation} retour={retour} titre={titre} expert={expert} onExpert={basculerExpert}
-          sousTitre={sousTitrePose(resultatServi, cleEtape) || sousTitre}
+        <BarreProjet cache={!!presentation} retour={retour} titre={calepinageId && nomClient ? nomClient : titre} expert={expert} onExpert={basculerExpert}
+          sousTitre={sousTitrePose(resultatServi) || sousTitre}
           libelleDevis={libelleDevis} onDevis={devisPossible ? onDevis : null}
           enregistrement={enregistrement && <BarreEnregistrement {...enregistrement} etatPropre={etatPropre}
             derniereVersionLe={derniereVersionLe} />} />
@@ -327,6 +342,14 @@ export default function CoqueAtelier({
             </div>
             {!carteVisible && (
               <div className="cal-coque-plein">
+                {/* ACAL1727 — la même tête que le panneau d'étape : « Étape N sur 5 » + titre (cadre plein seulement ;
+                    le Schéma garde son panneau à droite). */}
+                {pleine && rang >= 0 && ecran?.titre && (
+                  <div className="cal-plein-etape-tete" data-testid="cal-plein-etape-tete">
+                    <p className="cal-panneau-etape-rang">{`Étape ${rang + 1} sur ${TOTAL}`}</p>
+                    <h2 className="cal-panneau-etape-titre">{ecran.titre}</h2>
+                  </div>
+                )}
                 {ecranMonte}
                 <div ref={setNoeudPiedPlein} className="cal-coque-plein-pied" />
               </div>
