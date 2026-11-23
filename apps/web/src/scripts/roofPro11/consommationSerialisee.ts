@@ -6,7 +6,9 @@
 import { type Ctx } from './context';
 import { type Appliance } from '../../lib/applianceConsumption';
 import { chargesPourDocument, releireCharges, type ChargeAvenir } from './chargesAvenir';
-import { emptyCurve } from '../../lib/applianceConsumption';
+import { baselineCurve, composeConsumption, emptyCurve } from '../../lib/applianceConsumption';
+import { billToAnnualKwh } from '../../lib/estimatorBrainV2';
+import { factureCarteDe } from './factureCarte';
 import { type SerializedConsumption } from './prefill';
 
 /**
@@ -21,6 +23,22 @@ export function chargesAEcrire(ctx: Ctx): ChargeAvenir[] | null {
   return relues.length ? chargesPourDocument(relues) : null;
 }
 
+/**
+ * ACAL1609 — la courbe de BASE écrite : celle de l'écran quand elle porte de l'énergie (ou
+ * qu'elle a été éditée à la main) ; sinon la courbe de la facture, composée comme
+ * `consumption.ts::rebuildConsCurve` — socle de la session, à défaut la facture du lead servie
+ * à l'atelier (`opts.factureMensuelleMad`, convertie comme la carte « Recommandation »). Une
+ * charge ajoutée seule n'écrit plus une maison à zéro. Aucune facture connue : courbe nulle.
+ */
+function courbeDeBase(ctx: Ctx, appareils: Appliance[], consHandEdited: boolean): number[] {
+  const ecran = Array.isArray(ctx.consCurve) && ctx.consCurve.length === 24 ? ctx.consCurve : null;
+  if (ecran && (consHandEdited || ecran.some((v) => v > 0))) return ecran.slice();
+  const socle = typeof ctx.consDailyTarget === 'number' && ctx.consDailyTarget > 0 ? ctx.consDailyTarget : 0;
+  const facture = socle > 0 ? 0 : factureCarteDe(0, ctx.opts?.factureMensuelleMad);
+  const jour = socle > 0 ? socle : facture > 0 ? billToAnnualKwh(facture) / 365 : 0;
+  return jour > 0 ? composeConsumption(baselineCurve(jour), appareils) : emptyCurve();
+}
+
 /** Le bloc `consumption` d'un `Ctx` « touché » (l'appelant a déjà écarté le cas vierge). */
 export function construireConsommation(
   ctx: Ctx,
@@ -28,8 +46,7 @@ export function construireConsommation(
   consHandEdited: boolean,
   consSeasonal: boolean,
 ): SerializedConsumption {
-  const courbe24 =
-    Array.isArray(ctx.consCurve) && ctx.consCurve.length === 24 ? ctx.consCurve.slice() : emptyCurve();
+  const courbe24 = courbeDeBase(ctx, appareilsSrc, consHandEdited);
   const methode: 'facture' | 'courbe' | 'appareils' = consHandEdited
     ? 'courbe'
     : appareilsSrc.length > 0

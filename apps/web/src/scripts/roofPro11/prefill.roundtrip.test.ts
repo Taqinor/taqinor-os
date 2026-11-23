@@ -573,3 +573,34 @@ describe('ACAL780 — les charges à venir (consumption.charges) font l’aller-
       .toEqual({ type: 'pac', puissance_kw: 6, cop: 3.2, heures_fonctionnement: [6, 7, 8] });
   });
 });
+
+// ACAL1609 — une charge à venir SEULE ne fait plus disparaître la maison : la base écrite
+// n'est jamais une courbe nulle quand une facture est connue (socle de la session, sinon la
+// facture du lead servie à l'atelier, convertie comme la carte « Recommandation »).
+describe('ACAL1609 — charge seule ⇒ pas de base nulle', () => {
+  const VOITURE = { type: 'vehicule', km_par_jour: 30, kwh_par_100km: 16, fenetre_recharge: [22, 23, 0] };
+  const ctxChargeSeule = (extra: Record<string, unknown>) => ({
+    consCurve: emptyCurve(), consHandEdited: false, consAppliances: [], consDailyTarget: 0,
+    consSeasonal: false, consSource: null, consCharges: [VOITURE], ...extra,
+  }) as unknown as Ctx;
+  const somme = (c: number[]) => c.reduce((a, b) => a + b, 0);
+
+  it('lead à 900 MAD/mois, voiture seule : la base est la courbe de la facture, jamais 24 zéros', async () => {
+    const { serializeConsumption } = await import('./prefill');
+    const { billToAnnualKwh } = await import('../../lib/estimatorBrainV2');
+    const { baselineCurve } = await import('../../lib/applianceConsumption');
+    const conso = serializeConsumption(ctxChargeSeule({ opts: { factureMensuelleMad: 900 } })).consumption!;
+    expect(conso.charges).toEqual([VOITURE]);
+    expect(somme(conso.courbe24)).toBeGreaterThan(0);
+    expect(conso.courbe24).toEqual(baselineCurve(billToAnnualKwh(900) / 365));
+    expect(conso.methode).toBe('facture');
+  });
+
+  it('un socle de session (12 kWh/j) prime ; une courbe éditée à la main reste telle quelle', async () => {
+    const { serializeConsumption } = await import('./prefill');
+    const conso = serializeConsumption(ctxChargeSeule({ consDailyTarget: 12, opts: { factureMensuelleMad: 900 } })).consumption!;
+    expect(somme(conso.courbe24)).toBeCloseTo(12, 9);
+    const main = serializeConsumption(ctxChargeSeule({ consHandEdited: true })).consumption!;
+    expect(main.courbe24).toEqual(emptyCurve());
+  });
+});
