@@ -78,7 +78,7 @@ export function monterToitParCotes(deps: ToitParCotesDeps): {
     const centre = deps.centre();
     if (!centre) return refus('Créer le toit : la carte n’a pas encore de centre.');
     deps.creer(rectangleDepuisCotes(centre, v.longueurM, v.largeurM, v.orientationDeg));
-    deps.setStatus(`Toit créé : ${v.longueurM} × ${v.largeurM} m.`);
+    deps.setStatus(`Toit créé : ${v.longueurM.toLocaleString('fr-FR')} × ${v.largeurM.toLocaleString('fr-FR')} m.`);
     return true;
   };
   const ancre = deps.ancre;

@@ -151,6 +151,7 @@ import { monterObjetsSite } from './roofPro11/objetsSite'; // ACAL533
 // `zones[].geometry.moduleId` n'étaient JAMAIS écrits et le choix se perdait au rechargement.
 import { affectationDesPans, lireModulesDisponibles, moduleDeDepart } from './roofPro11/moduleSelect';
 import { remplacerParPanVierge } from './roofPro11/repriseModule'; // ACAL1416
+import { cibleFermetureToit } from './roofPro11/vueFermetureToit'; // ACAL1422
 import { enregistrerOrbite } from './roofPro11/videoOrbite'; // ACAL896
 import { factureCarteDe, lireFactureSaisie } from './roofPro11/factureCarte'; // ACAL777
 import { bandesDuPan, enveloppeAccesSolaire, type MemoAcces } from './roofPro11/bandesAcces'; // ACAL721
@@ -2427,7 +2428,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   }
 
   function go3DView() {
-    const target = { center: centroid, zoom: vertices.length >= 3 ? zoomToFitRing(vertices) : map.getZoom(), pitch: PITCH_VIEW } as const;
+    const { clientWidth: largeurPx, clientHeight: hauteurPx } = map.getContainer(); // ACAL1422 — l'atelier ERP garde Plan et cadre à son plafond
+    const target = cibleFermetureToit({ anneau: vertices, centre: centroid, zoomCourant: map.getZoom(), pitchCourant: map.getPitch(), largeurPx, hauteurPx, erp: opts.chiffrage !== undefined });
     if (opts.reducedMotion) map.jumpTo(target);
     else map.easeTo({ ...target, duration: 1100, essential: true });
   }

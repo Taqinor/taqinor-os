@@ -5,6 +5,7 @@ import type { LngLat } from '../../lib/roof';
 import * as THREE from 'three';
 import { creerPoignees3d } from './poigneesSommets3d';
 import { poserPresentation } from './presentationCarte';
+import { cibleFermetureToit } from './vueFermetureToit'; // ACAL1422
 
 const R = 6378137;
 const DEG2M = (Math.PI / 180) * R;
@@ -133,6 +134,25 @@ function cartePresentable() {
   };
   return { map: map as unknown as CarteCadrable & typeof map, vis, ev, dom, cap: () => cap };
 }
+
+describe('cibleFermetureToit — la caméra après « Terminer le tracé » (ACAL1422)', () => {
+  const anneau = rect(-7.62, 33.59, 9, 7);
+  const entree = { anneau, centre: [-7.6199, 33.5900] as LngLat, zoomCourant: 21, pitchCourant: 0, largeurPx: 970, hauteurPx: 790 };
+
+  it('option ERP : le zoom cible dépasse 19 pour un toit de 9 × 7 m et la vue reste Plan', () => {
+    const cible = cibleFermetureToit({ ...entree, erp: true });
+    expect(cible.zoom).toBeGreaterThan(20.5); // 9 m ≈ 42 % de 790 px
+    expect(cible.zoom).toBeLessThanOrEqual(22);
+    expect(cible.pitch).toBe(0); // Plan reste Plan
+  });
+
+  it('site public : plafond 19 et vue inclinée, comme avant', () => {
+    const cible = cibleFermetureToit({ ...entree, erp: false });
+    expect(cible.zoom).toBeLessThanOrEqual(19);
+    expect(cible.pitch).toBeGreaterThan(0);
+  });
+});
+
 
 describe('modePresentation — vue client sans marqueur d\'édition (H6)', () => {
   it('masque les calques d\'édition présents, garde les autres, et rend chacun tel quel à la sortie', () => {
