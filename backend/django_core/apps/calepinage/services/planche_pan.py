@@ -184,12 +184,26 @@ MOTIF_SANS_ORIENTATION = ('orientation du module non enregistrée : '
 SENS_DE_MESURE = (('N', (0.0, 1.0)), ('S', (0.0, -1.0)),
                   ('E', (1.0, 0.0)), ('O', (-1.0, 0.0)))
 _TOLERANCE = 1e-9
+#: ACAL1712 — un sommet à moins d'1 mm d'une rive est POSÉ sur elle (le pavage
+#: colle les modules au contour, à l'arrondi près) : un écart de mesure, pas une cote.
+_CONTACT_M = 1e-3
 
 
 def _portee_jusqu_au_contour(point, sens, contour):
     """La distance de ``point`` au contour, mesurée PARALLÈLEMENT à ``sens``
-    (le premier croisement), ou ``None`` : rien n'est supposé."""
-    meilleure = None
+    (le premier croisement), ou ``None`` : rien n'est supposé.
+
+    ACAL1712 — un sommet posé SUR une rive (à ``_CONTACT_M`` près) : si
+    ``sens`` sort du pan par cette rive (normale extérieure dans le sens de la
+    mesure), la cote vaut 0 (le champ touche CETTE rive) ; s'il y entre, la rive
+    de départ n'est pas la rive en face et ne compte pas (elle faisait lire
+    E = 0 à un champ collé à l'ouest)."""
+    contour = list(contour)
+    # Orientation du contour : la normale extérieure d'une arête (ex, ey) est
+    # (ey, −ex) pour un contour direct, (−ey, ex) sinon.
+    signe = 1.0 if sum(contour[i - 1][0] * p[1] - p[0] * contour[i - 1][1]
+                       for i, p in enumerate(contour)) >= 0 else -1.0
+    croisements = []
     for rang, a in enumerate(contour):
         b = contour[(rang + 1) % len(contour)]
         ex, ey = b[0] - a[0], b[1] - a[1]
@@ -199,10 +213,13 @@ def _portee_jusqu_au_contour(point, sens, contour):
         dx, dy = a[0] - point[0], a[1] - point[1]
         t = (dx * ey - dy * ex) / denominateur
         u = (dx * sens[1] - dy * sens[0]) / denominateur
-        if t >= -_TOLERANCE and -_TOLERANCE <= u <= 1.0 + _TOLERANCE:
-            t = max(t, 0.0)
-            meilleure = t if meilleure is None else min(meilleure, t)
-    return meilleure
+        if t >= -_CONTACT_M and -_TOLERANCE <= u <= 1.0 + _TOLERANCE:
+            sortie = signe * (ey * sens[0] - ex * sens[1]) > 0
+            croisements.append((t, sortie))
+    if any(t <= _CONTACT_M and sortie for t, sortie in croisements):
+        return 0.0  # un zéro POSITIF : jamais « −0,00 »
+    loin = [t for t, _sortie in croisements if t > _CONTACT_M]
+    return min(loin) if loin else None
 
 
 def _distances_aux_rives(pan, modules_du_pan):
@@ -295,6 +312,11 @@ def _cotes_des_zones(pan, modules_du_pan, zones):
     return sortie
 
 
+#: ACAL1712 — décalage (mm de feuille) de la lettre d'une cote depuis le bout de
+#: sa cote, vers l'extérieur du champ (la feuille : y croît vers le bas).
+_DECALAGE_LETTRE = {'N': (-4.0, -1.5), 'S': (-4.0, 4.0), 'E': (1.5, 7.0), 'O': (-4.5, 7.0)}
+
+
 def _cotes_dessinees(distances, zones, vers_feuille):
     """Les cotes de rive (lettre + valeur) et les cotes d'emprise des zones."""
     morceaux = []
@@ -302,11 +324,16 @@ def _cotes_dessinees(distances, zones, vers_feuille):
         (x0, y0), (x1, y1) = mesure['depart'], mesure['arrivee']
         trace = (_cote_horizontale(x0, x1, y0, vers_feuille) if cote in 'EO'
                  else _cote_verticale(y0, y1, x0, vers_feuille))
-        lettre = vers_feuille((x0, y0))
+        # ACAL1712 — la lettre se pose au bout de SA cote (côté rive), décalée
+        # vers l'extérieur, et reste dans la feuille : quatre cotes nulles au même
+        # sommet ne s'empilent plus au coin haut-gauche (x = −2 mesuré).
+        bout = vers_feuille((x1, y1))
+        dx, dy = _DECALAGE_LETTRE[cote]
+        lx = min(max(bout[0] + dx, 1.0), FORMAT_A4_MM[0] - 4.0)
+        ly = min(max(bout[1] + dy, 4.0), FORMAT_A4_MM[1] - 1.0)
         morceaux.append('<g data-cote="%s">%s<text x="%s" y="%s" '
                         'font-size="3.2" font-weight="bold" fill="%s">%s'
-                        '</text></g>' % (cote, trace, _n(lettre[0] - 4.0),
-                                         _n(lettre[1] - 1.5), NOIR, cote))
+                        '</text></g>' % (cote, trace, _n(lx), _n(ly), NOIR, cote))
     for zone in zones:
         xs = [p[0] for p in zone['points']]
         ys = [p[1] for p in zone['points']]
