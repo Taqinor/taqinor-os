@@ -5526,7 +5526,7 @@ decisions:
     reponse: ouverte
     date: "2026-11-23"
     source: "tour 2 du L5 (23/11/2026) : un relecteur a lu +4,6 °C sur un plan de site où il attendait −5 °C ; lu dans le code : le plancher de −5 °C ne sert que si la météo manque, et une année type lisse les extrêmes (tension à froid sous-estimée, donc plus de modules par chaîne) ; recommandation du lot B : le plus bas des deux ; coût si faux : tension de chaîne mal bornée par grand froid"
-    taches: [ACAL1553]
+    taches: [ACAL1553, ADEV122]
 
   - id: D-ACAL-81
     question: "NASA POWER peut-il servir de seconde source météo alors qu'aucune page officielle de conditions d'usage n'a été trouvée ?"
@@ -5554,7 +5554,7 @@ decisions:
     reponse: ouverte
     date: "2026-11-23"
     source: "tour 2 du L5 (23/11/2026) : après « Démarrage rapide », aucun calepinage n'a de résultat complet au premier jour (19 pertes sur 22 sans valeur selon l'écran) ; le profil de départ ne publie rien pour la salissure, la dégradation initiale et l'indisponibilité, et les pertes de câbles n'ont pas de clé de réglage ; ACAL1349 déclarée impossible sans valeurs inventées ; rappel de la demande du fondateur du 22/11 : « my ERP should have default for everything » ; contrôle C2 du 23/11/2026 : tant que cette décision est ouverte, tout résultat reste « incomplet » et `ventes/horaire/productible_pose.py::base_depuis_servi` le rejette — la production de la pose réelle (D-ACAL-36, 44, 46) n'atteint donc AUCUN devis ; seule valeur publiée trouvée au dépôt : dégradation initiale 2 % suggérée par PVsyst ; repère : le devis applique déjà une enveloppe de 20 % de pertes au total"
-    taches: [ACAL1349]
+    taches: [ACAL1349, ACAL1968]
 
   - id: D-ACAL-83
     question: "Où mesurer l'ombre des obstacles proches d'un pan : en un seul point (le centre du pan), ou sur les panneaux posés ?"
@@ -5686,7 +5686,7 @@ decisions:
     reponse: ouverte
     date: "2026-11-23"
     source: "contrôle C2 du 23/11/2026 (« tous mes devis se calculent seuls ») ; mesure en lecture seule sur la production le même jour : 38 des 42 leads commerciaux qui ont une facture s'arrêtent sur ce champ (76 leads commerciaux sur 80 ne l'ont pas) ; change la taille et les économies du devis ; recommandation de l'enquête : supposer_bt"
-    taches: []
+    taches: [ADEV125]
 
   - id: D-ACAL-93
     question: "Un lead commercial ou industriel sans phase (raccordement) déclarée peut-il recevoir un devis automatique ?"
@@ -5700,7 +5700,7 @@ decisions:
     reponse: ouverte
     date: "2026-11-23"
     source: "contrôle C2 du 23/11/2026 (« tous mes devis se calculent seuls ») ; mesure en lecture seule sur la production le même jour : 35 des 42 leads commerciaux qui ont une facture n'ont pas de phase ; aucune décision du fondateur n'a été trouvée pour ce refus (ADEV89) ; change les onduleurs du devis"
-    taches: []
+    taches: [ADEV126]
 
   - id: D-ACAL-94
     question: "Que faut-il au devis automatique d'un lead industriel pour connaître son rythme de consommation ?"
@@ -5714,7 +5714,7 @@ decisions:
     reponse: ouverte
     date: "2026-11-23"
     source: "contrôle C2 du 23/11/2026 (« tous mes devis se calculent seuls ») ; mesure en lecture seule sur la production le même jour : 37 des 42 leads commerciaux qui ont une facture n'ont pas de jours d'ouverture ; 1 seul lead industriel en production ; change la taille et l'autoconsommation"
-    taches: []
+    taches: [ADEV127]
 
   - id: D-ACAL-95
     question: "Que fait le devis automatique résidentiel quand la ville du lead n'est pas reconnue et qu'aucun GPS n'est posé ?"
@@ -5728,4 +5728,4 @@ decisions:
     reponse: ouverte
     date: "2026-11-23"
     source: "contrôle C2 du 23/11/2026 (« tous mes devis se calculent seuls ») ; mesure en lecture seule sur la production le même jour : 29 leads résidentiels « prêts » selon la fiche sont refusés ensuite par le moteur (18 hors Froid) : « casa » 5 fois, « casablaca », « caaza », « kech », des noms en arabe, « maroc », des quartiers ; la garde de la fiche est corrigée par ALEA67 (elle dira « Manque : ville ») ; change la production et la taille des devis de ces leads ; recommandation : orthographes"
-    taches: []
+    taches: [APAR92]
