@@ -1,8 +1,5 @@
 # Lot B — pose des panneaux et électrique (tour 2 du L5, consolidation du 23/11/2026)
 
-« Before reporting progress, audit each claim against a tool result from this session. Only report work you can point to
-evidence for; if something is not yet verified, say so explicitly. If tests fail, say so with the output. »
-
 Relecteurs lus : F2-POSE-a, F2-POSE-b, F2-ELEC-a, F2-ELEC-b (verdicts, constats, rapports, captures S1-S2 regardées : réouverture
 60 → 5, champ au sol, pan étroit, schéma électrique, « Régler », toit « 4 pans », PDF du schéma). Code lu sur la tête `ba8ca4707`
 (branche, avec les 74 commits pliés depuis `bfb859c90`) : chaque cause dite « lue » a été ouverte dans ce dossier ; une cause « probable » commence sa tâche par « reproduire puis corriger ».
@@ -32,7 +29,6 @@ K-JARGON, K-ACTION-ENFOUIE, K-STYLE (jeton désactivé).
 | 6 | auto-raccordement 1 × 20 sur 2 entrées (ELEC-a-012) | ÉCARTÉ : règle fondateur du 24/08/2026 lue dans `core/electrique/chaines.py::_choisir_longueur` | aucun (règle écrite) |
 | 7 | contrôle rapide de chaîne | température chaude facultative, repli 70 °C sourcé (D-ENF-SEUILS-DEFAUT du 30/10/2026) (ACAL1545) | aucun nouveau chiffre inventé |
 | 8 | panneaux colorés par ensoleillement | oui (maquette Panneaux v2, OpenSolar) (ACAL1515) | un matériau par module de plus dans la scène |
-
 ## 4. Décisions ouvertes à écrire dans `docs/audits/decisions.yml` (listées, non écrites)
 1. **Température de froid de dimensionnement des chaînes** (tâche GATED ACAL1553). Lu dans le code : `froid_c` = minimum de l'année TYPE du TMY
    (4,18 °C à Casablanca, −2,8 °C à Fès), plancher −5 °C seulement si la météo manque ; la règle « TMY avant le plancher » n'est écrite nulle part
@@ -40,7 +36,6 @@ K-JARGON, K-ACTION-ENFOUIE, K-STYLE (jeton désactivé).
    du TMY et de −5 °C ; (c) −5 °C toujours. Recommandation : (b). Coût si faux : tension de chaîne mal bornée par grand froid (matériel).
 2. **D-ACAL-75** (déjà ouverte, rejouer ou re-poser) : la tâche GATED ACAL1552 y renvoie pour le cas S1 « Remplir automatiquement » (60 → 5).
    Aucun numéro neuf n'est pris ici.
-
 ## 5. Tâches → fichiers (disjonction : les tâches d'un même cluster partagent au moins un fichier et suivent `@after`)
 - Cluster A (atelier carte, 14) : 1503 1510 1515 1516 1519 1520 1521 1522 1524 1527 1528 1529 1530 1552 — `scene3d.ts`, `layoutEditor.ts`, `roof-tool-pro11.ts`, `roofbuilder.css`, `zones.test.ts`.
 - Cluster B (électrique serveur, 6) : 1506 1512 1538 1539 1540 1553 — `services/pret_a_envoyer.py`, `services/electrique.py`, `views/raccordement.py`.
@@ -52,7 +47,6 @@ K-JARGON, K-ACTION-ENFOUIE, K-STYLE (jeton désactivé).
   1534 (`PanneauDocuments.jsx`), 1537 (`core/electrique/chaines.py`), 1542 (`services/chaines.py`), 1543 (`GroupesPretAEnvoyer.jsx`), 1544 (`VerdictElectrique.jsx`),
   1545 + 1546 (`views/electrique.py`, `ControleChaine.jsx`), 1547 (`ParcoursDuPan.jsx`), 1548 (`DossiersReglementaires.jsx`), 1549 (`SaisiesElectriques.helpers.js`), 1550 (`DecisionsElectriques.jsx`).
 - Interfaces : 1500 → 1517 (clé `refus`, contrat d'abord) ; 1507 → 1508 → 1551 ; 1545 → 1546. À vérifier à l'assemblage : fichiers communs avec les lots A (toit : `roof-tool-pro11.ts`, `zones.ts`) et E (écrans, `roofbuilder.css`).
-
 ## 6. Preuves à rejouer au tour 3 (pas des défauts vus)
 ACAL577 et ACAL582 (compte du SERVEUR d'un pan à coupure ou à châssis : aucun écran ne l'affiche) ; ACAL593 « recentrer sur le lead » (fond de carte indisponible) ;
 ACAL568 avec un devis lié ; ACAL566 système « bac acier » seul ; ACAL551 silhouette ambre ; ACAL553 collage réussi dans un AUTRE pan ; zone Coin du plan de lestage
@@ -60,7 +54,6 @@ ACAL568 avec un devis lié ; ACAL566 système « bac acier » seul ; ACAL551 sil
 ACAL1188 (aucun micro-onduleur au catalogue de démonstration) ; ACAL627 « fiche incomplète » ; côté réseau du schéma après simulation ; WebKit, thème sombre, tablette non joués ;
 vu une fois, non reproduit : glisser près d'un coin qui déforme le toit (16 → 21 panneaux, POSE-a), « vider » les champs du châssis, carte « 14,40 kWc » (720 W) contre 14,20, « 10 kW » sous « Deye 15 kW » après un premier Appliquer.
 Les calepinages 2003 et 2008 ont un document écrit par script : ELEC-b-001 et ELEC-b-002 sont retenus sur la cause LUE dans le code, preuve en direct à refaire sur un calepinage dessiné.
-
 ## 7. Optionnels (S4 ou hors tâche)
 ELEC-a-013 (accords « 1 chaînes », « 1 modules », « 1 onduleur(s) ») ; ELEC-a-014 (nom d'onduleur doublé et coupé, carte Onduleur) ; ELEC-b-007 (message « provenance » sous le
 champ Dispositif ; bouton « Ajouter une plage » qui déborde de 13 px). Renvoyés au lot E (maquettes) : barre de progression des 5 étapes absente, ligne « Module posé » en double
