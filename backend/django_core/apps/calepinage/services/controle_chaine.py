@@ -1,9 +1,9 @@
 """ACAL627 — contrôler UNE chaîne SANS dessin (CAP-D3-10).
 
 « 22 modules sur cet onduleur ? » avant de dessiner : module, onduleur
-(fiches du stock de la société), nombre de modules et températures SAISIES
-(obligatoires : aucune valeur par défaut, à la différence du contrôle du
-devis). La fenêtre vient du noyau, non modifié :
+(fiches du stock de la société), nombre de modules et température la plus
+froide SAISIS (obligatoires) ; la plus chaude est facultative — absente, le
+repli du noyau ``TEMP_CHAUD_DEFAUT_C`` (70 °C), annoncé (ACAL1545). La fenêtre vient du noyau, non modifié :
 ``core/electrique/chaines.py::fenetre_admissible``. Chaque contrôle NOMME sa
 borne et sa valeur ; une fiche incomplète rend ``indetermine`` avec les
 champs manquants (jamais un faux vert). Lecture pure : rien n'est écrit.
@@ -42,8 +42,12 @@ def _controle(code, libelle, valeur, borne, nom_borne, *, haut, bloquant):
 
 
 def _controler_chaine(module_specs, onduleur_specs, nombre_modules,
-                      temperature_min_c, temperature_max_c):
-    """Le verdict pur d'une chaîne de ``nombre_modules`` modules."""
+                      temperature_min_c, temperature_max_c, *,
+                      chaud_par_defaut=False):
+    """Le verdict pur d'une chaîne de ``nombre_modules`` modules.
+
+    ACAL1545 — ``chaud_par_defaut`` : le chaud vient du repli du noyau, et les
+    contrôles qui le lisent le disent dans leur ``source``."""
     from core.electrique.chaines import fenetre_admissible
 
     from .chaines import specs_module, specs_onduleur
@@ -81,6 +85,14 @@ def _controler_chaine(module_specs, onduleur_specs, nombre_modules,
                   onduleur.tension_demarrage_v, demarrage, haut=False,
                   bloquant=True),
     ]
+    if chaud_par_defaut:
+        from core.electrique.types import fr
+
+        mention = ('%s ; température chaude : %s °C par défaut (valeur de '
+                   'repli du noyau)' % (SOURCE, fr(temperature_max_c, 0)))
+        controles = [dict(c, source=mention)
+                     if c['code'] in ('mppt_bas', 'demarrage') else c
+                     for c in controles]
     rouges = [c for c in controles if c['conforme'] is False]
     verdict = ('bloquant' if any(c['bloquant'] for c in rouges)
                else 'alerte' if rouges else 'conforme')
@@ -124,8 +136,17 @@ def _temperatures(corps):
     Ne fait que REFUSER de plus : aucun cas ne devient « conforme »."""
     from . import electrique as _electrique
 
+    from core.electrique.types import TEMP_CHAUD_DEFAUT_C
+
+    from .valeurs import nombre
+
     froid = _temperature(corps, 'temperature_min_c')
-    chaud = _temperature(corps, 'temperature_max_c')
+    # ACAL1545 — le chaud est facultatif : absent, le repli du noyau (décision
+    # fondateur 30/10/2026), annoncé sur les contrôles qui le lisent.
+    chaud = nombre(corps.get('temperature_max_c'))
+    repli = chaud is None
+    if repli:
+        chaud = TEMP_CHAUD_DEFAUT_C
     try:
         _electrique._saisie({'temperature_min_c': froid,
                              'temperature_max_c': chaud})
@@ -141,7 +162,7 @@ def _temperatures(corps):
                 champ, "« %s » (%s °C) doit être comprise entre %d et %d °C."
                 % (INTITULES[champ], '{:g}'.format(valeur).replace('.', ','),
                    mini, maxi))
-    return froid, chaud
+    return froid, chaud, repli
 
 
 def controle_chaine(company, corps):
@@ -149,7 +170,7 @@ def controle_chaine(company, corps):
     from apps.stock.selectors import get_produit_scoped, specs_for_produit
 
     corps = corps if isinstance(corps, dict) else {}
-    tmin, tmax = _temperatures(corps)
+    tmin, tmax, repli_chaud = _temperatures(corps)
     nombre_modules = corps.get('nombre_modules')
     if isinstance(nombre_modules, bool) or not isinstance(
             nombre_modules, int) or nombre_modules < 1:
@@ -173,4 +194,4 @@ def controle_chaine(company, corps):
         fiches[champ] = specs_for_produit(produit) or {}
     return _controler_chaine(fiches['module_produit'],
                              fiches['onduleur_produit'], nombre_modules, tmin,
-                             tmax)
+                             tmax, chaud_par_defaut=repli_chaud)
