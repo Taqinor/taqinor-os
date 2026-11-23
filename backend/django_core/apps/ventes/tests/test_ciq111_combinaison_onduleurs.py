@@ -425,6 +425,23 @@ class FicheFaitFoiTests(TestCase):
         self.assertEqual([(x['kw_ac'], x['quantite']) for x in r['combinaison']], [(20.0, 2)])
         self.assertEqual(sum(c['nb_modules'] for c in r['chaines']), 100)
 
+    def test_le_moteur_ci_et_le_calepinage_appellent_la_meme_regle(self):
+        # ADEV121 — D-HYB-1 vit UNE fois, dans le noyau : le moteur C&I
+        # l'importe (plus de copie locale) ; le calepinage la lit aussi.
+        from types import SimpleNamespace
+        from unittest import mock
+        from apps.ventes.moteur_ci import onduleurs as moteur
+        from core.electrique import onduleurs as noyau
+        self.assertIs(moteur.capacite_dc_appareil_kwc, noyau.capacite_dc_appareil_kwc)
+        # Hybride 20 kW publiant 40 kWc : 40 kWc des deux côtés.
+        candidat = {'kw_ac': 20.0, 'dc_max_kwc': 40, '_fiche_fait_foi': True}
+        deye = SimpleNamespace(designation='Onduleur hybride Deye 20K', dc_max_kwc=40)
+        self.assertEqual(moteur._capacite_kwc(candidat, 1.35)[0], 40.0)
+        self.assertEqual(noyau.capacite_publiee_hybride(deye), 40.0)
+        # Mutant « copie locale gardée » : le moteur ne suivrait pas la règle.
+        with mock.patch.object(moteur, 'capacite_dc_appareil_kwc', return_value=7.0):
+            self.assertEqual(moteur._capacite_kwc(candidat, 1.35)[0], 7.0)
+
 
 class GardeAstTests(TestCase):
     def test_module_pur(self):

@@ -43,6 +43,7 @@ import math
 from decimal import Decimal, InvalidOperation
 
 from core.electrique.onduleurs import bornes_dc_ac as _bornes_par_defaut
+from core.electrique.onduleurs import capacite_dc_appareil_kwc
 
 from .chaines_ci import (
     capacite_modules, concevoir_chaines_ci, longueur_max_appareil,
@@ -154,12 +155,12 @@ def _capacite_kwc(c, borne_haute, module=None):
     borne_entrees)`` ; ``borne_entrees`` est le kWc câblable ou ``None``.
 
     D1 (fondateur 17/11/2026) — candidat marqué ``_fiche_fait_foi`` (hybrides
-    de l'option « avec ») : la puissance PV maximale publiée EST la capacité,
-    au-delà de la borne DC/AC ; sans valeur publiée, la borne DC/AC reste."""
-    cap = c['kw_ac'] * borne_haute
+    de l'option « avec ») : règle D-HYB-1 du noyau (ADEV121,
+    ``core.electrique.onduleurs.capacite_dc_appareil_kwc``), la même que le
+    calepinage."""
     dc_max = _dc_max_fiche(c)
-    if dc_max is not None and dc_max > 0:
-        cap = dc_max if c.get('_fiche_fait_foi') else min(cap, dc_max)
+    cap = capacite_dc_appareil_kwc(c['kw_ac'] * borne_haute, dc_max,
+                                   hybride=bool(c.get('_fiche_fait_foi')))
     cable = None
     if module is not None and c.get('spec') is not None:
         nb = capacite_modules(module, c['spec'], c.get('chaines_max_par_mppt'))
