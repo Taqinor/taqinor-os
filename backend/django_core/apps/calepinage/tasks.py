@@ -108,6 +108,9 @@ def calculer_calepinage(job_id=None, company_id=None, entree=None,
     company = job.company
     elements = []
     reussites = 0
+    if _livraison_de_trop(job):  # ACAL1622 — même borne que la simulation
+        job.marquer_echec(MOTIF_INTERROMPU)
+        return {'statut': 'failed', 'motif': MOTIF_INTERROMPU}
     job.marquer_progression(5)
     for index, document in enumerate(documents):
         repere = document.get('repere') or f'#{index + 1}'
@@ -152,6 +155,34 @@ def calculer_calepinage(job_id=None, company_id=None, entree=None,
     job.marquer_termine(cle_job(job.pk))
     return {'statut': 'done', 'reussites': reussites,
             'elements': len(elements)}
+
+
+#: ACAL1622 — livraisons d'un MÊME job au-delà desquelles le calcul n'est plus
+#: relancé. Un processus tué par le système (mémoire : SIGKILL, aucune
+#: exception Python) remet son message en file (``CELERY_TASK_ACKS_LATE`` +
+#: ``CELERY_TASK_REJECT_ON_WORKER_LOST``) : sans borne, la tâche repartait
+#: sans fin et l'écran restait à 5 %. Deux essais tués ⇒ la 3e livraison dit
+#: l'échec.
+LIVRAISONS_MAX = 2
+
+MOTIF_INTERROMPU = (
+    'le calcul a été interrompu par le serveur (mémoire) : réessayez ou '
+    'réduisez la fenêtre météo')
+
+
+def _livraison_de_trop(job):
+    """ACAL1622 — compte la livraison du job (cache société, 24 h) ; vrai
+    au-delà de :data:`LIVRAISONS_MAX`. Un job encore « en file » est une
+    PREMIÈRE livraison (le compte repart de 1) ; le cache perdu recompte
+    depuis 1 : au pire un essai de plus, jamais un échec prononcé à tort."""
+    from core import cache as cache_tenant
+
+    cle = 'calepinage:livraisons:%s:%s' % (
+        job.pk, getattr(job, 'created_at', None) and job.created_at.timestamp())
+    rang = (1 if job.statut == job.STATUT_QUEUED
+            else int(cache_tenant.get(job.company_id, cle) or 0) + 1)
+    cache_tenant.set(job.company_id, cle, rang, timeout=DUREE_CACHE_S)
+    return rang > LIVRAISONS_MAX
 
 
 def _publier_echec(job, calepinage, champ, motif):
@@ -212,6 +243,9 @@ def simuler_calepinage(job_id=None, company_id=None, calepinage_id=None,
                               'abandonnée.')
             return {'statut': 'failed', 'motif': 'variante introuvable'}
 
+    if _livraison_de_trop(job):
+        _publier_echec(job, calepinage, '', MOTIF_INTERROMPU)
+        return {'statut': 'failed', 'motif': MOTIF_INTERROMPU}
     job.marquer_progression(5)
     try:
         rendu = service_simulation.simuler_calepinage(
@@ -279,6 +313,9 @@ def balayer_calepinage(job_id=None, company_id=None, calepinage_id=None,
                           'abandonné.')
         return {'statut': 'failed', 'motif': 'calepinage introuvable'}
 
+    if _livraison_de_trop(job):  # ACAL1622 — même borne que la simulation
+        _publier_echec(job, calepinage, '', MOTIF_INTERROMPU)
+        return {'statut': 'failed', 'motif': MOTIF_INTERROMPU}
     job.marquer_progression(5)
     try:
         # ACAL835 : un objectif de couverture cherche N sur la série stockée.
