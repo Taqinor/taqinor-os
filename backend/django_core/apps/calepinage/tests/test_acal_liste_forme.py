@@ -32,6 +32,14 @@ ECHANTILLONS = (pathlib.Path(__file__).resolve().parents[1]
 CONTRAT = json.loads(
     (ECHANTILLONS / 'calepinage_liste.json').read_text(encoding='utf-8'))
 
+#: Clés posées au contrat AVANT leur producteur (PACT10) : la tâche nommée les
+#: sert et retire son entrée dans le même commit.
+EN_ATTENTE_LISTE = {
+    'points_a_regler': 'ACAL1333',
+    'points_a_regler_lu_le': 'ACAL1333',
+    'points_a_regler_perime': 'ACAL1333',
+}
+
 
 class FormeDeLaListeTest(BaseApiCalepinage):
     def _ligne(self, calepinage, **params):
@@ -51,7 +59,8 @@ class FormeDeLaListeTest(BaseApiCalepinage):
 
         # Toutes les clés du contrat sont servies (le sérialiseur en publie
         # d'autres, jamais moins).
-        attendues = set(CONTRAT['exemple_client_seul']['results'][0])
+        attendues = (set(CONTRAT['exemple_client_seul']['results'][0])
+                     - set(EN_ATTENTE_LISTE))
         self.assertEqual(sorted(attendues - set(ligne)), [])
         self.assertEqual(ligne['reference'], detail.data['reference'])
         self.assertEqual(ligne['reference'], reference_calepinage(calepinage))
@@ -187,6 +196,47 @@ class StatutsEtBudgetTest(BaseApiCalepinage):
 
         # Pas de requête PAR ligne : le compte ne bouge pas de 5 à 15 lignes.
         self.assertEqual(mesurer(5), mesurer(15))
+
+
+class ContratDeLaCarteTest(SimpleTestCase):
+    """ACAL1308 — les chiffres de la carte au contrat, avec leurs règles d'absence."""
+
+    def _lignes(self):
+        return {cle: CONTRAT[cle]['results'][0]
+                for cle in ('exemple', 'exemple_client_seul', 'exemple_sans_image')}
+
+    def test_chaque_ligne_porte_les_cles_de_la_carte(self):
+        for cle, ligne in self._lignes().items():
+            for nom in ('kwc', 'production_kwh_an', 'points_a_regler',
+                        'points_a_regler_lu_le', 'points_a_regler_perime',
+                        'client_apercu', 'lead'):
+                self.assertIn(nom, ligne, cle)
+        self.assertEqual(sorted(CONTRAT['exemple']['compteurs_statut']),
+                         ['brouillon', 'perime', 'refuse', 'tous', 'valide'])
+
+    def test_points_a_regler_entier_ou_nul_jamais_zero_invente(self):
+        lignes = self._lignes()
+        rangee = lignes['exemple']
+        self.assertIsInstance(rangee['points_a_regler'], int)
+        self.assertNotIsInstance(rangee['points_a_regler'], bool)
+        self.assertRegex(rangee['points_a_regler_lu_le'], r'^\d{4}-\d{2}-\d{2}T')
+        self.assertIs(rangee['points_a_regler_perime'], False)
+        # Jamais lu : les trois clés nulles.
+        jamais = lignes['exemple_client_seul']
+        self.assertEqual([jamais['points_a_regler'], jamais['points_a_regler_lu_le'],
+                          jamais['points_a_regler_perime']], [None, None, None])
+        # Document changé depuis la lecture : plus de nombre, la date reste, « à relire ».
+        perime = lignes['exemple_sans_image']
+        self.assertIsNone(perime['points_a_regler'])
+        self.assertIsNotNone(perime['points_a_regler_lu_le'])
+        self.assertIs(perime['points_a_regler_perime'], True)
+        self.assertIn('points_a_regler', CONTRAT['pourquoi'])
+
+    def test_kwc_et_production_nombres_ou_nuls(self):
+        for cle, ligne in self._lignes().items():
+            self.assertTrue(ligne['kwc'] is None or isinstance(ligne['kwc'], float), cle)
+            self.assertTrue(ligne['production_kwh_an'] is None
+                            or isinstance(ligne['production_kwh_an'], int), cle)
 
 
 class LectureDeLaCarteSansBaseTest(SimpleTestCase):
