@@ -924,3 +924,29 @@ def plafond_injection_loi_8221():
     )
     return {'pct': PLAFOND_INJECTION_PCT, 'source': PLAFOND_INJECTION_SOURCE,
             'mention_bt': MENTION_BT}
+
+
+def forme_horaire_du_lead(lead):
+    """ACAL1967 — la forme horaire de consommation que le DEVIS prend pour ce
+    lead : la silhouette 24 h (somme = 1) de sa présence en journée
+    (``crm.Lead.occupation_jour``), PRÉSENCE par défaut (décision fondateur D4
+    du 29/08/2026) — le même traducteur (``occupation_du_lead``) et la même
+    silhouette que le moteur de devis, jamais une seconde règle.
+
+    Rend ``{forme, occupation, libelle, suppose, reponse}`` : ``suppose`` vrai
+    quand l'occupation est un défaut appliqué (le champ ``occupation_jour`` n'a
+    pas de réponse), ``reponse`` la valeur brute du champ ; ``None`` si la
+    silhouette n'est pas lisible. Lecture pure."""
+    from . import courbes_journalieres as cj
+
+    drapeau, source = cj.occupation_du_lead(lead)
+    forme = cj.silhouette_occupation(drapeau)
+    if forme is None:
+        return None
+    libelles = {cj.OCCUPATION_PRESENCE: 'présence en journée',
+                cj.OCCUPATION_ABSENCE: 'absence en journée',
+                cj.OCCUPATION_PARTIELLE: 'présence partielle en journée'}
+    return {'forme': list(forme), 'occupation': drapeau,
+            'libelle': libelles.get(drapeau, drapeau),
+            'suppose': cj.profil_suppose(source),
+            'reponse': str(getattr(lead, 'occupation_jour', '') or '')}
