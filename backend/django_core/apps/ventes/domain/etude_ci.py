@@ -38,7 +38,7 @@ from apps.ventes.moteur_ci.taille import HORIZON_MARGINAL_CI
 from .etude_ci_batterie import CLE as CLE_OPTION_AVEC, CLE_BANQUE_RECOMMANDEE, option_avec_de_l_etude
 from .sensibilites_option_avec import scenarios_du_devis
 from .regles_calcul import REGLES_CORRIGEES_2710, REGLES_CYCLES_BATTERIE_1911, REGLES_RETOURS_3010B, regles_au_moins
-from .etude_ci_visite import _couche_visite
+from .etude_ci_visite import _couche_visite, froid_du_site, hypotheses_de_la_combinaison
 
 logger = logging.getLogger(__name__)
 
@@ -993,7 +993,7 @@ def _traces_evaluation(evaluation, alertes, hypotheses):
     alertes.extend(evaluation['alertes_bilan'])
     alertes.extend(composition.get('alertes') or [])
     alertes.extend((evaluation['onduleurs'] or {}).get('alertes') or [])
-    hypotheses.extend(composition.get('hypotheses') or [])
+    hypotheses.extend((composition.get('hypotheses') or []) + hypotheses_de_la_combinaison(evaluation['onduleurs']))
 
 
 def _remplacer(liste, anciens, nouveaux):
@@ -1463,7 +1463,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
                      'archetype': prov_charge.get('archetype'),
                      'jours_types': jours_types, 'talon': prov_charge.get('talon')}
 
-    catalogue = lire_catalogue_ci(company)
+    catalogue = dict(lire_catalogue_ci(company), froid=froid_du_site(_point_du_site(site)))  # ADEV122
     reglages = _reglages_societe(company)
     forfaits = getattr(reglages, 'forfaits_ci', None) or {}
     phase = res.valeur('phases')
@@ -1475,7 +1475,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
             return _combinaison_imposee(onduleurs_imposes, catalogue['onduleurs'])
         # ADEV87 — module et fiches onduleur passés : les chaînes se calculent.
         return combiner_onduleurs(kwc, catalogue['onduleurs'], phase=phase,
-                                  module=catalogue.get('module_spec'),
+                                  module=catalogue.get('module_spec'), froid=catalogue.get('froid'),
                                   ac_max_kw=_ps_kva(res))
 
     def composer(kwc, onduleurs, extra=()):

@@ -113,3 +113,22 @@ def _couche_visite(res, lead, alertes, devis=None):
     for mesure, motif in sorted((releve.get('non_releves') or {}).items()):
         alertes.append(_alerte('mesure_non_verifiee', mesure,
                                '%s non vérifiée à la visite (%s).' % (mesure, motif)))
+
+
+def froid_du_site(point):
+    """ADEV122 (D-ACAL-80, fondateur 23/11/2026) — la température froide des
+    chaînes au ``point`` du site (``etude_ci._point_du_site`` : GPS, sinon la
+    ville au gazetier), par LA règle du calepinage
+    (``calepinage.selectors_devis.froid_dimensionnement_au_point`` : minimum
+    de l'année type du lieu ; sans point ni année type, −5 °C dit supposé).
+    Ne lève jamais : un service météo en panne ne bloque pas une étude."""
+    from apps.calepinage.selectors_devis import froid_dimensionnement_au_point
+    return froid_dimensionnement_au_point(*point)
+
+
+def hypotheses_de_la_combinaison(onduleurs):
+    """ADEV122 — l'hypothèse ``temperature_froid_c`` de la combinaison
+    d'onduleurs retenue (liste vide sans elle) : elle sort avec les autres
+    hypothèses de l'étude."""
+    return [h for h in (onduleurs or {}).get('hypotheses') or []
+            if h.get('cle') == 'temperature_froid_c']
