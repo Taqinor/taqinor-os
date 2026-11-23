@@ -64,6 +64,20 @@ class ReglageSocieteParPosteTest(SimpleTestCase):
         self.assertEqual(_societe_des_postes({'mismatch_fabricant_pct': {'valeur': 2, 'source': 'societe'}})
                          ['mismatch']['resume'], '2 %')
 
+    def test_indisponibilite_lit_le_forfait_pose_par_le_profil_de_depart(self):
+        """ACAL1349 — le forfait d'arrêts (`indisponibilite_forfait_pct`, posé par le profil de départ) est LU :
+        la ligne ne dit plus « Réglage société : aucun » alors que la cascade applique ce forfait."""
+        from apps.calepinage.views.simulation import _societe_des_postes
+
+        vide = _societe_des_postes({})['indisponibilite']
+        self.assertFalse(vide['renseigne'])
+        pose = _societe_des_postes(
+            {'indisponibilite_forfait_pct': {'valeur': 2, 'source': 'texte'}})['indisponibilite']
+        self.assertTrue(pose['renseigne'])
+        self.assertEqual(pose['resume'], 'forfait = 2 %')
+        self.assertIn('indisponibilite_forfait_pct', pose['cles'])
+        self.assertIn('indisponibilite_fenetres', pose['cles'])
+
     def test_reglage_en_table_ou_en_liste_ne_leve_pas(self):
         """R3-05 — `thermique_par_pose` (profil de départ) est un dict : la
         lecture ne doit plus lever `unhashable type`, quelle que soit la forme."""

@@ -168,16 +168,14 @@ export function BoutonCalculer({
     })
   }
 
-  // ACAL398 — la simulation partie toute seule à l'enregistrement : on reprend
-  // son job (« Simulation en cours… ») ou on dit le refus nommé du serveur.
+  // ACAL1987 — la simulation partie toute seule, lancée par le SERVEUR à l'enregistrement : on reprend son job
+  // (« Simulation en cours… » puis le résultat). Pose incomplète : aucun job, rien à reprendre.
   const reprisAuto = useRef(false)
   useEffect(() => {
     if (reprisAuto.current || !calepinageId) return
     reprisAuto.current = true
     const auto = reprendreSimulationAuto(calepinageId)
     if (auto?.jobId) suiviJob.reprendre(auto.jobId)
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reprise unique d'une issue externe (table mémoire)
-    else if (auto?.refus) setRefus(auto.refus)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [calepinageId])
 

@@ -61,7 +61,7 @@ import AlertesEnregistrement from '../../features/calepinage/atelier/AlertesEnre
 // rapide du constructeur vs simulation) ; ne modifie AUCUN chiffre de la carte
 // « Recommandation » (`rp9-results` ci-dessous), il se contente de la commenter.
 import BandeauProvenanceProduction from '../../features/calepinage/production/BandeauProvenanceProduction'
-import { lancerSimulationAuto } from '../../features/calepinage/production/simulationAuto' // ACAL398
+import { suivreSimulationDuServeur } from '../../features/calepinage/production/simulationAuto' // ACAL1987
 // CALX68 — brouillon LOCAL de l'atelier (mode calepinage) : minuterie/repli +
 // bandeau de reprise. Logique pure, voir l'en-tête de ce module.
 import { creerGestionnaireBrouillon, estPanneReseau, memoriserReprise } from '../../features/calepinage/brouillon'
@@ -845,9 +845,9 @@ function AtelierToiture({
       setSending(false)
       // R2-04 — `resultat.version` est l'identifiant GLOBAL de la version, pas son rang : jamais affiché.
       setStatus('Conception enregistrée.')
-      // ACAL398 — nouvelle version du calepinage (pas une variante) : la simulation repart
-      // seule, sans attendre ; son issue est reprise par l'onglet Production.
-      if (!varianteId) lancerSimulationAuto(calepinageId)
+      // ACAL1987 — un seul déclencheur : le SERVEUR lance la simulation d'une pose complète. Le navigateur ne poste
+      // plus `simuler/` ; il lit l'état servi et retient le job pour l'onglet Production.
+      if (!varianteId) suivreSimulationDuServeur(calepinageId)
 
       marquerSceneEnregistree(layout) // ACAL85
       setEnregistreLe(heureReponse) // ACAL399
