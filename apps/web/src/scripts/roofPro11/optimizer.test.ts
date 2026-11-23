@@ -721,16 +721,17 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
     } finally { egal.fin(); autreKwc.fin(); nonServi.fin(); sansKwc.fin(); }
   });
 
-  it('BANDE : l’économie SERVIE à l’année 1, l’année 25 sans montant ; non servi : estimation prudente aux deux bouts', () => {
+  it('BANDE : l’économie SERVIE à l’année 1 ; non servi : l’estimation prudente ; l’année 25 jamais inventée (ACAL1612)', () => {
     const s = erp(servi());
     const n = erp(servi({ economie_annee1_mad: { valeur: null, etat: 'non_servi' } }));
     try {
       const bande = s.t('rp9-reco-band');
-      expect(bande).toContain(`(${fmtMad(7420)}/an) →`);
+      expect(bande).toContain(`(${fmtMad(7420)}/an).`);
       expect(bande.match(MAD)).toHaveLength(1);
-      expect(bande).toMatch(/Année 25 ~[^(]*kWh\/an\.$/); // omise, jamais inventée
-      expect(n.t('rp9-reco-band').match(MAD)).toHaveLength(2);
-      expect(n.t('rp9-reco-band')).toContain('Économies toujours plafonnées à votre facture.');
+      expect(bande).not.toContain('Année 25'); // ACAL1612 — la fiche ne porte pas sa dégradation : omise avec sa raison
+      expect(bande).toContain('la fiche du module ne porte pas sa dégradation');
+      expect(n.t('rp9-reco-band').match(MAD)).toHaveLength(1);
+      expect(n.t('rp9-reco-band')).not.toMatch(/%\/an/);
     } finally { s.fin(); n.fin(); }
   });
 
@@ -853,7 +854,7 @@ describe('ACAL1418 — chiffrage servi : Total et bande = production servie ; no
   });
 
   it('non servi (ERP) : le Total dit « estimation » ; site public : le texte d’avant', () => {
-    expect(lire({ chiffrage: null }).total).toBe(`${fmt(4362)} kWh/an · estimation`);
+    expect(lire({ chiffrage: null }).total).toBe(`${fmt(4362)} kWh/an · estimation de l’atelier`); // ACAL1612
     expect(lire({}).total).toBe(`${fmt(4362)} kWh/an`);
   });
 });
