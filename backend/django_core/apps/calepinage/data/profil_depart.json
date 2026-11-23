@@ -80,22 +80,22 @@
         "perc": {
           "pct": 1.5,
           "source": "texte",
-          "reference": "PVsyst, LID loss : fourchette « typically ranges from 1% to 3% », défaut suggéré de 2 % ; médiane PVEL/Kiwa 2026 de 0,6 % pour le PERC (https://taiyangnews.info/technology/kiwa-pvel-2026-module-reliability-testing-scorecard) — 1,5 % retenu pour le PERC de type p"
+          "reference": "Valeur supposée de départ (D-ACAL-82) — PVsyst, LID loss : fourchette « typically ranges from 1% to 3% », défaut suggéré de 2 % ; médiane PVEL/Kiwa 2026 de 0,6 % pour le PERC (https://taiyangnews.info/technology/kiwa-pvel-2026-module-reliability-testing-scorecard) — 1,5 % retenu pour le PERC de type p"
         },
         "topcon": {
           "pct": 1.0,
           "source": "texte",
-          "reference": "Garantie de première année de 1 % des fiches TOPCon (Trina Vertex S+ i-TOPCon) ; médiane PVEL/Kiwa 2026 de 0,4 % (https://taiyangnews.info/technology/kiwa-pvel-2026-module-reliability-testing-scorecard) — 1 % retenu pour le TOPCon de type n"
+          "reference": "Valeur supposée de départ (D-ACAL-82) — Garantie de première année de 1 % des fiches TOPCon (Trina Vertex S+ i-TOPCon) ; médiane PVEL/Kiwa 2026 de 0,4 % (https://taiyangnews.info/technology/kiwa-pvel-2026-module-reliability-testing-scorecard) — 1 % retenu pour le TOPCon de type n"
         },
         "hjt": {
           "pct": 1.0,
           "source": "texte",
-          "reference": "PVEL/Kiwa 2026 : LID de 0,7 % et LeTID de 0,4 % pour l'hétérojonction (https://taiyangnews.info/technology/kiwa-pvel-2026-module-reliability-testing-scorecard) — 1 % retenu"
+          "reference": "Valeur supposée de départ (D-ACAL-82) — PVEL/Kiwa 2026 : LID de 0,7 % et LeTID de 0,4 % pour l'hétérojonction (https://taiyangnews.info/technology/kiwa-pvel-2026-module-reliability-testing-scorecard) — 1 % retenu"
         },
         "inconnue": {
           "pct": 1.5,
           "source": "texte",
-          "reference": "PVWatts v5 (NREL/TP-6A20-62641) : dégradation initiale de 1,5 % par défaut — appliquée quand la technologie de cellule de la fiche du module est absente ou ne figure pas dans cette table"
+          "reference": "Valeur supposée de départ (D-ACAL-82) — PVWatts v5 (NREL/TP-6A20-62641) : dégradation initiale de 1,5 % par défaut — appliquée quand la technologie de cellule de la fiche du module est absente ou ne figure pas dans cette table"
         }
       },
       "unite": "%",
