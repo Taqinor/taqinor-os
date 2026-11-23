@@ -35,6 +35,7 @@ import {
   prochainId, // ACAL64
   tousLesObstacles, // ACAL64
   nouveauPanDepuisContour, // ACAL71
+  poserModuleDeDepart, // ACAL1273
   type ExclusionZone,
 } from './zones';
 import { hydrateFromDevis, serializeLayout, type SerializedLayout } from './prefill'; // ACAL64
@@ -529,6 +530,37 @@ describe('ACAL71 — nouveauPanDepuisContour', () => {
     if (!hors.ok) expect(hors.motif).toMatch(/amplitude GPS/);
     expect(nouveauPanDepuisContour([[-7.6, 33.5], [-7.5, 33.5]], []).ok).toBe(false);
     expect(nouveauPanDepuisContour('pas un contour', []).ok).toBe(false);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACAL1273 — le module de départ est POSÉ dans le document (pan issu d'un contour, document
+// relu sans module) : jamais un pan sans `moduleId` qui retomberait sur le 720 Wc au rechargement.
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('ACAL1273 — module de départ posé dans le document', () => {
+  const m710 = { id: 'produit-7', produitId: 7, libelle: 'Module 710 W', longueurMm: 2384, largeurMm: 1303, epaisseurMm: 33, poidsKg: 38, pmaxWc: 710, source: 'fiche' };
+  const carre: [number, number][] = [[-7.6, 33.5], [-7.5998, 33.5], [-7.5998, 33.5002], [-7.6, 33.5002]];
+
+  it('pan issu d’un contour ⇒ moduleId de départ', () => {
+    const v = nouveauPanDepuisContour(carre, [{ id: 'area-1' }], m710);
+    expect(v.ok && v.pan.moduleId).toBe('produit-7');
+    const sans = nouveauPanDepuisContour(carre, [{ id: 'area-1' }], null); // sans catalogue : 720 Wc NOMMÉ
+    expect(sans.ok && 'moduleId' in sans.pan).toBe(false);
+  });
+
+  it('document de calepinage sans module ⇒ module de départ posé à l’hydratation, puis écrit au document', () => {
+    const doc = { version: 1, zones: [{ id: 'area-1', label: 'Zone 1', vertices: carre, obstacles: [], roofType: 'flat', pitchDeg: 22, facingAzimuthDeg: 180, facingManual: false, neededPanels: 0, neededAuto: true }] } as unknown as SerializedLayout;
+    const pans = hydrateFromDevis({ id: null, geometrie: { roof_layout: doc }, cibleVendue: false }).zones as AreaRecord[];
+    expect(pans[0].moduleId).toBeUndefined(); // le document relu n'en porte aucun
+    poserModuleDeDepart(pans, doc.zones, m710);
+    expect(pans.map((p) => p.moduleId)).toEqual(['produit-7']);
+    // Un document qui DÉSIGNE déjà un module reste tel quel ; une installation existante n'est pas la nôtre.
+    const choisi = [panDeTest('area-1', { moduleId: 'produit-9' }), panDeTest('area-2')];
+    poserModuleDeDepart(choisi, [{ geometry: { moduleId: 'produit-9' } }, {}], m710);
+    expect(choisi.map((p) => p.moduleId)).toEqual(['produit-9', undefined]);
+    const existant = [panDeTest('area-1', { existant: true })];
+    poserModuleDeDepart(existant, [{}], m710);
+    expect(existant[0].moduleId).toBeUndefined();
   });
 });
 

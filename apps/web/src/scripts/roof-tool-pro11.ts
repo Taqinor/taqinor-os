@@ -139,6 +139,7 @@ import {
   type ModulePose, // CALX403 câblage
   nouveauPanDepuisContour, // ACAL71
   panVierge,
+  poserModuleDeDepart, // ACAL1273
 } from './roofPro11/zones';
 import { monterAlignementRangees, pavageCellulesDe, pavagePoseDe } from './roofPro11/alignementRangees'; // ACAL584
 import { motifPanVerrouille } from './roofPro11/panVerrouille'; // ACAL520
@@ -2071,9 +2072,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // `appliquerHydratationAuCtx` ci-dessus — la MÊME fonction pour les deux boots.
     reporterContact(h.contact);
     // ACAL913 — document SANS aucun module : celui de départ (celui du devis s'il est au catalogue).
-    const depart = moduleDeDepart(lireModulesDisponibles(opts.modulesDisponibles), h.panelWatt);
-    const zonesDoc = (layout as { zones?: Array<{ geometry?: { moduleId?: unknown } }> } | null)?.zones ?? [];
-    if (depart && !zonesDoc.some((z) => z?.geometry?.moduleId)) for (const a of areas) a.moduleId = depart.id;
+    // ACAL1273 — posé APRÈS le remplacement des pans par ceux du document (avant, il partait avec eux).
+    const poserDepart = () => poserModuleDeDepart(areas, layout?.zones, moduleDeDepart(lireModulesDisponibles(opts.modulesDisponibles), h.panelWatt));
+    poserDepart();
     // Origine du design : reprise telle quelle dans l'export (meta de sérialisation).
     // ACAL31 — seulement quand le payload porte un id de devis : un calepinage sans devis
     // n'écrit jamais `source: 'devis'` ni un `devisId: null` inventé (le document relu fait foi).
@@ -2083,6 +2084,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       // Le devis porte un design : ses zones REMPLACENT les zones par défaut.
       areas.length = 0;
       for (const z of h.zones) areas.push(z);
+      poserDepart(); // ACAL1273
       activeAreaId = h.activeAreaId ?? areas[0].id;
       const a = activeArea() ?? areas[0];
       vertices = [...a.vertices];
@@ -4241,7 +4243,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // validateur et même refus de croisement que le tracé ; le pan actif est figé d'abord,
     // puis le nouveau est chargé et fermé par la voie du tracé (`loadArea` → `recalc`).
     ajouterPanDepuisContour: (contourLngLat: unknown) => {
-      const verdict = nouveauPanDepuisContour(contourLngLat, areas);
+      const verdict = nouveauPanDepuisContour(contourLngLat, areas, moduleDeDepart(lireModulesDisponibles(opts.modulesDisponibles))); // ACAL1273
       if (!verdict.ok) {
         setStatus(verdict.motif);
         return verdict;

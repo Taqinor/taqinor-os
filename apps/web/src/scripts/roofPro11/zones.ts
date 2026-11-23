@@ -306,6 +306,7 @@ export function panVierge(
 export function nouveauPanDepuisContour(
   contourLngLat: unknown,
   existants: readonly { id: string }[],
+  moduleDepart: ModuleDocument | null = null, // ACAL1273 — comme `panVierge` : le module de départ du site
 ): { ok: true; pan: AreaRecord } | { ok: false; motif: string } {
   const points = Array.isArray(contourLngLat)
     ? (contourLngLat as unknown[]).map((p) =>
@@ -324,7 +325,18 @@ export function nouveauPanDepuisContour(
   if (!isSimplePolygon(ring)) {
     return { ok: false, motif: 'Ce contour se croise : corrigez-le avant d’en faire un pan (aucun pan créé).' };
   }
-  return { ok: true, pan: panVierge(existants, ring) };
+  return { ok: true, pan: panVierge(existants, ring, moduleDepart) };
+}
+
+/** ACAL1273 — document relu SANS aucun module : le module de départ sur chaque pan (hors installation
+ *  existante), donc écrit au premier enregistrement ; un document qui en désigne un reste tel quel. */
+export function poserModuleDeDepart(
+  pans: AreaRecord[],
+  zonesDuDocument: readonly { geometry?: { moduleId?: unknown } }[] | null | undefined,
+  depart: ModuleDocument | null,
+): void {
+  if (!depart || (zonesDuDocument ?? []).some((z) => z?.geometry?.moduleId)) return;
+  for (const p of pans) if (!p.existant) p.moduleId = depart.id;
 }
 
 /** CALX98 — identifiant de zone NEUF, dans un espace de noms (`area-copie-N`) que le
