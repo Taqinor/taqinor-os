@@ -246,6 +246,16 @@ vivent dans le scratchpad de la session, pas sur `main`.
      fichier d'événements en cp1252 : le ré-encoder en UTF-8 à la recopie. (5) Fautes de lane qui ont rougi la CI :
      lignes de plus de 120 colonnes, test qui lit un source par motif, repère `cal-*` non déclaré, fichier ou
      fonction « mur » qui grossit, budget du bundle — toutes écrites au brief des lanes § 2.3 et § 4.
+   - **POINT à 10 h 00 UTC.** La vague A est SORTIE de la file à 09 h 50 (`failed_checks` : un seul test,
+     `test_acal_simuler_variante::test_get_resultat_variante_sert_sa_simulation`, qui comparait le servi au stocké
+     brut — instable depuis ACAL1323, selon l'ordre des tests). Corrigé (commit `ccac9d559b` posé sur la tête de la
+     PR par plomberie, aussi en local) et REMISE EN FILE à 09 h 53 (règle du dépôt : « corriger et re-mettre en
+     file ») : PR #1527, tête `ccac9d559b`, file position 1. À vérifier : `gh pr view 1527 --json state,mergedAt`.
+     Branche locale (vague B) : tête `6cbcc4ef99` + plis à venir ; `rapport-m1` pliée [1615, 1616, 1677, 1701,
+     1702] : 114 tâches de la vague 2 livrées. Trois lanes coupées par des erreurs d'API (500 / 529) à 09 h 45 et
+     REPRISES par message à 09 h 56 : `ecran-toit-panneaux` (agent ab941ec7513101b3f), `ecran-elec-resultats`
+     (acf021c456913a617), `telephone-m1` (a5236a41184fe5c34). Lancée à 09 h 58 : `production-web` (opus,
+     a0cd634fa4ec12e25) [1612, 1618 + 8 demandes croisées du moteur de dessin, dont ACAL1523 et ACAL1621].
    - BUDGET (08 h 10 UTC) : quota hebdo 39 % (≈ 4 points par heure, ≈ 0,3 point par agent) ; contexte de
      l'orchestrateur 58 %. Règle : construire jusqu'à ≈ 56 %, puis tour 3 léger, fusion, phase de contrôles (≤ 5
      points), rapport. PRIORITÉ de ce qui reste à construire : (1) les M1 de tous les lots ; (2) la coque v2 puis
