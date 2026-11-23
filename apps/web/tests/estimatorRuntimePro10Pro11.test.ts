@@ -1595,7 +1595,7 @@ describe('runtime W113 — marqueur du pin client à l\'hydratation', () => {
     expect(jt.zoom).toBeGreaterThanOrEqual(15);
   });
 
-  it('« Effacer » retire le marqueur du pin client', async () => {
+  it('« Effacer » ne retire PAS le marqueur du pin client : il est rendu à la carte (ACAL1423)', async () => {
     const init = await loadTool();
     init({
       maptilerKey: 'test',
@@ -1606,8 +1606,10 @@ describe('runtime W113 — marqueur du pin client à l\'hydratation', () => {
     fireLoad();
     expect(fakeMarkers.filter((m) => m.added && !m.removed).length).toBe(1);
     (document.getElementById('rp9-clear') as HTMLButtonElement).click(); // reset() → clearEditorState
-    // le marqueur posé est retiré (plus aucun marqueur vivant)
-    expect(fakeMarkers.filter((m) => m.added && !m.removed).length).toBe(0);
+    // ACAL1423 : le repère du lead n'est jamais retiré (la fermeture du toit le masquait, « Effacer »
+    // le réaffiche — la visibilité est couverte par gestesCarte.test.ts, le faux Marker n'a pas de DOM).
+    expect(fakeMarkers.filter((m) => m.added && !m.removed).length).toBe(1);
+    expect(fakeMarkers.filter((m) => m.removed).length).toBe(0);
   });
 
   // Boot normal (pro-11 sans hydrate) et capture : aucun marqueur planté → non-régression
