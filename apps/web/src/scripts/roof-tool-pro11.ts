@@ -143,6 +143,7 @@ import {
 } from './roofPro11/zones';
 import { monterAlignementRangees, pavageCellulesDe, pavagePoseDe } from './roofPro11/alignementRangees'; // ACAL584
 import { motifPanVerrouille } from './roofPro11/panVerrouille'; // ACAL520
+import { monterCotesAretes } from './roofPro11/cotesAretes'; // ACAL1328
 import { monterObjetsSite } from './roofPro11/objetsSite'; // ACAL533
 // CALX109/CALX110 câblage — le catalogue de modules de la société (`opts.modulesDisponibles`)
 // et le module posé sur chaque pan (`AreaRecord.moduleId`) : c'est ce couple qui part dans le
@@ -1807,6 +1808,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       },
       paint: { 'text-color': '#ffffff', 'text-halo-color': '#070b1d', 'text-halo-width': 1.6 },
     });
+    monterCotesAretes(map as never, () => areas.map((a) => (a.id === activeAreaId ? { sommets: vertices, ferme: closed } : { sommets: a.vertices, ferme: true })), opts.chiffrage !== undefined); // ACAL1328 — atelier ERP seul
     // ACAL233 — calque de la parcelle (pointillés), distinct du tracé du toit.
     map.addSource('rp9-parcelle', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } as never });
     map.addLayer({
@@ -2399,10 +2401,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     if (undoPointBtn) undoPointBtn.hidden = true; // W92 — plus d'annulation après fermeture
     let lng = 0;
     let lat = 0;
-    for (const [x, y] of vertices) {
-      lng += x;
-      lat += y;
-    }
+    for (const [x, y] of vertices) { lng += x; lat += y; }
     centroid = [lng / vertices.length, lat / vertices.length];
     centroidLat = centroid[1];
     shadingUi.recomputeHorizon(); // ACAL378 — matrice d'horizon à la latitude du toit
