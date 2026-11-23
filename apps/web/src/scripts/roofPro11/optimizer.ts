@@ -112,7 +112,7 @@ import { maxDesSens, phraseCouvertureMax, type SensPose } from './cibleProductio
 import { heatmapAccessValues } from './shadingUi'; // ACAL552
 import { causeDuPanVide, mesurerPanVide, noterMotifPanVide, retraitApplique, type MotifPanVide } from './motifPanVide'; // ACAL549
 import { cotesDePavage } from '../../lib/roofPro2';
-import { motifPanExistant } from './panExistant'; // ACAL574
+import { motifPanExistant, poseTenue } from './panExistant'; // ACAL574, ACAL1900
 
 // ═══════════ PV64 — TROIS VARIANTES LISIBLES DU BALAYAGE DÉJÀ CALCULÉ ═══════════
 // Le balayage V6 (`fineGridMatrixV6`) évalue déjà des centaines de configurations, mais
@@ -1006,7 +1006,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     return motif != null;
   }
   function liveResolveFlat(annoncer = true) {
-    if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'flat' || refusPanExistant(annoncer)) return;
+    if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'flat' || refusPanExistant(annoncer) || (!annoncer && poseTenue(ctx))) return; // ACAL1900 — le fond ne re-pose pas une pose tenue
     const ring: LngLat[] = [...ctx.vertices];
     const bill = monthlyBill();
     const locks = buildFlatLocks();
@@ -1052,7 +1052,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     liveTiltTimer = setTimeout(() => {
       void Promise.all(missing.map((a) => v4SpecificYield(t, a))).then(() => {
         if (token !== liveToken || ctx.roofType !== 'flat') return;
-        liveResolveFlat();
+        liveResolveFlat(false); // ACAL1900 — affinage de fond (débattu), pas un geste
       });
     }, 280);
   }
@@ -1406,7 +1406,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   }
 
   function liveResolvePitched(annoncer = true) {
-    if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'pitched' || refusPanExistant(annoncer)) return; // ACAL574, ACAL1404
+    if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'pitched' || refusPanExistant(annoncer) || (!annoncer && poseTenue(ctx))) return; // ACAL574, ACAL1404, ACAL1900
     const ring: LngLat[] = [...ctx.vertices];
     const bill = monthlyBill();
     const locks = buildPitchedLocks();
