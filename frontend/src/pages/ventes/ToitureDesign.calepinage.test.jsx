@@ -1519,6 +1519,27 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
     } finally { style.remove(); window.matchMedia = avant }
   })
 
+  it('ACAL1809 — le bandeau porte l’entrée de la visite : « Relevé » au doigt, « Montrer au client » à la souris, jamais les deux', async () => {
+    const avant = window.matchMedia
+    const poser = (doigt) => {
+      window.matchMedia = (q) => ({ matches: doigt && q === '(pointer: coarse)', media: q, addEventListener() {}, removeEventListener() {} })
+    }
+    try {
+      for (const [doigt, testid, absent, fin] of [[true, 'cal-barre-releve', 'cal-barre-montrer-client', 'releve'],
+        [false, 'cal-barre-montrer-client', 'cal-barre-releve', 'client']]) {
+        poser(doigt)
+        amorcer()
+        rendreCalepinage(CTX.calepinage.id)
+        const entree = await screen.findByTestId(testid)
+        expect(within(screen.getByTestId('cal-barre-projet')).getByTestId(testid)).toBe(entree)
+        expect(entree.getAttribute('href')).toBe(`/calepinage/${CTX.calepinage.id}/${fin}`)
+        expect(entree.textContent).toMatch(/\S/)
+        expect(screen.queryByTestId(absent)).toBeNull()
+        cleanup()
+      }
+    } finally { window.matchMedia = avant }
+  })
+
   it('ACAL1801 — la carte est le décor : le toit se cadre dans la zone LIBRE, marges = boîtes du bandeau, du rail, du panneau et de la barre d’outils', async () => {
     const cadrerToit = vi.fn(() => true)
     reinitialiserBoot({ cadrerToit, appliquerVue: vi.fn() })

@@ -175,3 +175,17 @@ test('ACAL1807 : carte visible ≥ 45 % de la hauteur à 390 × 664, tiroir réd
   await page.getByRole('button', { name: 'Agrandir ou réduire le panneau du bas' }).click()
   await expect(tiroir).toHaveAttribute('data-deplie', '1')
 })
+
+// ACAL1809 — « Relevé » est dans le bandeau, visible dans le premier écran (390 × 844), ≥ 44 × 44, et ouvre le relevé.
+test('ACAL1809 : « Relevé » dans le bandeau, 44 × 44 dans le premier écran, un toucher ouvre le relevé', async ({ page }) => {
+  const cal = await calepinageDeTest(page, 'Atelier tel ACAL1809')
+  await page.goto(`/calepinage/${cal.id}`)
+  const entree = page.getByTestId('cal-barre-releve')
+  await expect(entree).toBeVisible({ timeout: 20_000 })
+  const b = await entree.boundingBox()
+  expect(b.width, 'largeur de l’entrée Relevé').toBeGreaterThanOrEqual(43.5)
+  expect(b.height, 'hauteur de l’entrée Relevé').toBeGreaterThanOrEqual(43.5)
+  expect(b.y + b.height, 'dans le premier écran').toBeLessThanOrEqual(844)
+  await entree.tap()
+  await expect(page).toHaveURL(new RegExp(`/calepinage/${cal.id}/releve$`))
+})

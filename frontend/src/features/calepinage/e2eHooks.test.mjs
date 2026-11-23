@@ -842,6 +842,8 @@ export const ALL_HOOKS = [
   'cal-projet-titre',
   'cal-projet-sous-titre',
   'cal-generer-devis-haut',
+  'cal-barre-releve',
+  'cal-barre-montrer-client',
   'cal-rail-avance',
   'cal-panneau-etape',
   'cal-panneau-etape-titre',
