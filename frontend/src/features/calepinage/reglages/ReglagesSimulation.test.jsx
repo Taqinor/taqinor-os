@@ -652,6 +652,43 @@ describe('ACAL405 — Démarrage rapide', () => {
       }
     })
 
+    it('ACAL1908 — un excès MESURÉ sur le défilant (11 px relevés) est retiré de la carte : le défilement résiduel tombe à 0', async () => {
+      window.history.replaceState(null, '', '/calepinage/reglages/demarrage-rapide')
+      const rect = Element.prototype.getBoundingClientRect
+      const hauteurFenetre = window.innerHeight
+      const descripteurs = ['scrollHeight', 'clientHeight'].map((k) => [k, Object.getOwnPropertyDescriptor(Element.prototype, k)])
+      const hauteurCarte = () => parseFloat(document.querySelector('[data-testid="acal405-demarrage"]')?.style.height) || 0
+      try {
+        window.innerHeight = 900
+        Element.prototype.getBoundingClientRect = function mesure() {
+          const r = (top, bottom) => ({ top, bottom, left: 0, right: 0, width: 0, height: bottom - top, x: 0, y: top, toJSON() {} })
+          if (this.dataset?.testid === 'acal405-demarrage') return r(150, 150)
+          if (this.dataset?.testid === 'cadre-defilant') return r(52, 900)
+          return rect.call(this)
+        }
+        // Le cadre de l'ERP mesure 848 px ; tant que la carte dépasse 707 px, 11 px de plus débordent (cause que la formule ne voit pas).
+        Object.defineProperty(Element.prototype, 'clientHeight', { configurable: true, get() { return this.dataset?.testid === 'cadre-defilant' ? 848 : 0 } })
+        Object.defineProperty(Element.prototype, 'scrollHeight', {
+          configurable: true,
+          get() { return this.dataset?.testid === 'cadre-defilant' ? 848 + Math.max(0, hauteurCarte() - 707) : 0 },
+        })
+        mocks.profilDepart.mockResolvedValue({ data: PROFIL })
+        servirReglages({})
+        const { default: DemarrageRapide } = await import('./DemarrageRapide')
+        render(<div data-testid="cadre-defilant" style={{ overflowY: 'auto', paddingBottom: '32px' }}><DemarrageRapide /></div>)
+        const carte = await screen.findByTestId('acal405-demarrage')
+        // 718 (formule d'ACAL1344) − 11 (excès mesuré) = 707 : le cadre ne défile plus.
+        await waitFor(() => expect(carte.style.height).toBe('707px'))
+        const cadre = screen.getByTestId('cadre-defilant')
+        expect(cadre.scrollHeight - cadre.clientHeight).toBe(0)
+      } finally {
+        Element.prototype.getBoundingClientRect = rect
+        for (const [k, d] of descripteurs) { if (d) Object.defineProperty(Element.prototype, k, d); else delete Element.prototype[k] }
+        window.innerHeight = hauteurFenetre
+        window.history.replaceState(null, '', '/')
+      }
+    })
+
     it('seul sur sa route : titre de page 28 px, sans second fil d’Ariane (la page en porte déjà un) ; `autonome` le rend', async () => {
       window.history.replaceState(null, '', '/calepinage/reglages/demarrage-rapide')
       try {

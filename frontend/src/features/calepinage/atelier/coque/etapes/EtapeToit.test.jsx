@@ -727,3 +727,150 @@ describe('ACAL1803 — tête et pied du panneau d’étape (maquettes v2)', () =
     expect(screen.queryByTestId('cal-progression-etapes')).toBeNull()
   })
 })
+
+/* ACAL1904 — la carte d'adresse (#rp9-search) du calepinage sans toit : la pile de zoom reste libre, un clic de tracé hors
+   des champs passe à la carte, la carte ne tient que la hauteur d'un champ tant qu'on n'écrit pas. Le composant de la
+   carte est RENDU ; les feuilles 49 + 50 sont chargées dans le DOM de test et lues par getComputedStyle. */
+describe('ACAL1904 — carte d’adresse sans toit', () => {
+  let style
+  beforeEach(() => {
+    style = document.createElement('style')
+    style.textContent = ['49-jetons-v2.css', '50-coque-atelier.css']
+      .map((f) => readFileSync(resolve(process.cwd(), `src/styles/calepinage/${f}`), 'utf8')).join('\n')
+    document.head.appendChild(style)
+  })
+  afterEach(() => { style.remove() })
+  const cs = (el) => getComputedStyle(el)
+
+  async function rendreCarte() {
+    const { default: BuilderCarte } = await import('../../BuilderCarte.jsx')
+    const hote = document.createElement('div')
+    hote.className = 'rp9-host cal-coque'
+    hote.dataset.avance = '0'
+    hote.dataset.sansToit = '1'
+    const scene = document.createElement('div')
+    scene.className = 'cal-coque-scene'
+    hote.appendChild(scene)
+    document.body.appendChild(hote)
+    render(<BuilderCarte chipClass="rp9-chip" inputClass="rp9-input" mapWrapRef={{ current: null }}
+      basculerPleinEcran3d={() => {}} contourClientBrut={null} photoToit={null} photoToitVisible={false}
+      pleinEcran3d={false} toitClientVisible={false} />, { container: scene })
+    // Ce que le moteur de dessin ajoute à côté du champ (mapDraw.ts : notes de pays et de source, champs « Date de la photo »).
+    const parent = document.getElementById('rp9-address').parentElement
+    parent.insertAdjacentHTML('beforeend', '<span id="rp9-geocode-country" class="rp9-geocode-country">Recherche limitée au pays : MA</span>'
+      + '<span id="rp9-image-source" class="rp9-image-source">Source</span>'
+      + '<label class="rp9-image-capture">Date de la photo <input id="rp9-image-date"></label>')
+    hote.insertAdjacentHTML('beforeend', '<div class="maplibregl-ctrl-top-right"><div class="maplibregl-ctrl maplibregl-ctrl-group"><button class="maplibregl-ctrl-zoom-in"></button></div></div>')
+    return document.getElementById('rp9-search')
+  }
+
+  it('la carte laisse la pile de zoom libre : elle s’arrête avant elle, à la largeur d’une pile + sa marge', async () => {
+    const carte = await rendreCarte()
+    const pile = document.querySelector('.maplibregl-ctrl-top-right')
+    const droiteCarte = parseFloat(cs(carte).right)
+    const largeurZoom = parseFloat(cs(pile.querySelector('button')).width)
+    expect(cs(carte).position).toBe('absolute')
+    expect(largeurZoom).toBe(44)
+    expect(droiteCarte).toBeGreaterThanOrEqual(parseFloat(cs(pile).right) + largeurZoom)
+  })
+
+  it('un clic hors des champs traverse la carte ; les champs, le bouton et les suggestions le reçoivent', async () => {
+    const carte = await rendreCarte()
+    expect(cs(carte).pointerEvents).toBe('none')
+    for (const el of [document.getElementById('rp9-address'), carte.querySelector('button[type="submit"]'),
+      document.getElementById('rp9-image-date'), document.getElementById('rp9-suggestions')]) {
+      expect(cs(el).pointerEvents).toBe('auto')
+    }
+  })
+
+  it('au repos la carte ne tient que la hauteur d’un champ ; elle ne déplie notes et date que pendant la saisie', async () => {
+    const carte = await rendreCarte()
+    expect(parseFloat(cs(carte).paddingTop)).toBeLessThanOrEqual(8)
+    for (const id of ['rp9-geocode-country', 'rp9-image-source']) expect(cs(document.getElementById(id)).display).toBe('none')
+    expect(cs(document.querySelector('.rp9-image-capture')).display).toBe('none')
+  })
+
+  it('pendant la saisie (le focus est dans la carte), les notes et les champs de la date se déplient', async () => {
+    await rendreCarte()
+    document.getElementById('rp9-address').focus() // (lu AVANT toute autre lecture : jsdom garde le style calculé jusqu'à une mutation)
+    expect(cs(document.getElementById('rp9-geocode-country')).display).toBe('block')
+    expect(cs(document.getElementById('rp9-image-source')).display).toBe('block')
+    expect(cs(document.querySelector('.rp9-image-capture')).display).toBe('block')
+  })
+})
+
+/* ACAL1907 — rien de la carte ne dépasse ni ne se cache. Mesurable sans navigateur : la hauteur de la bande d'alertes publiée
+   sur la coque (le composant est RENDU), les règles de la feuille lues par getComputedStyle (jsdom n'évalue pas les @media : celles-ci
+   sont lues sur les règles ANALYSÉES). Non mesurable sans navigateur : la place réelle des pièces à l'écran (voir le rapport). */
+describe('ACAL1907 — pièces de la carte', () => {
+  let style
+  const feuilles = ['49-jetons-v2.css', '50-coque-atelier.css', '56-coque-responsive.css']
+  beforeEach(() => {
+    style = document.createElement('style')
+    style.textContent = feuilles.map((f) => readFileSync(resolve(process.cwd(), `src/styles/calepinage/${f}`), 'utf8')).join('\n')
+    document.head.appendChild(style)
+  })
+  afterEach(() => { style.remove() })
+  const regleMedia = (media, hote) => [...style.sheet.cssRules]
+    .filter((r) => r.type === 4 && r.media.mediaText.includes(media))
+    .flatMap((m) => [...m.cssRules]).filter((r) => r.selectorText && hote.matches(r.selectorText))
+
+  it('la pile de zoom suit la bande d’alertes : sa hauteur (+ l’écart de 16 px) est publiée sur la coque, 0 sans alerte', async () => {
+    const { BandeauAlertes } = await import('../BandeauxCoque')
+    const observateurs = []
+    const ancien = globalThis.ResizeObserver
+    globalThis.ResizeObserver = class { constructor(cb) { this.cb = cb; observateurs.push(this) } observe() {} disconnect() {} }
+    let hauteur = 52
+    const descripteur = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight')
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+      configurable: true, get() { return this.classList?.contains('cal-coque-alertes') ? hauteur : 0 },
+    })
+    try {
+      const hote = document.createElement('div')
+      hote.className = 'rp9-host cal-coque'
+      document.body.appendChild(hote)
+      render(<BandeauAlertes><p>GPS corrigé</p></BandeauAlertes>, { container: hote })
+      expect(hote.style.getPropertyValue('--cal-alertes-h')).toBe('68px')
+      hauteur = 0 // l'alerte disparaît : la bande n'occupe plus rien
+      act(() => { observateurs.forEach((o) => o.cb()) })
+      expect(hote.style.getPropertyValue('--cal-alertes-h')).toBe('0px')
+      // La feuille ajoute cette hauteur au décalage haut des contrôles de la carte (pile de zoom, plein écran, boussole).
+      const coque = document.createElement('div')
+      coque.className = 'rp9-host cal-coque'
+      document.body.appendChild(coque)
+      const [regle] = regleMedia('min-width: 1280px', coque).filter((r) => r.style.getPropertyValue('--cal-libre-haut'))
+      expect(regle, 'règle du décalage haut au bureau').toBeTruthy()
+      expect(regle.style.getPropertyValue('--cal-libre-haut')).toContain('var(--cal-alertes-h')
+    } finally {
+      globalThis.ResizeObserver = ancien
+      if (descripteur) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', descripteur)
+      else delete HTMLElement.prototype.offsetHeight
+    }
+  })
+
+  it('Expert > Résultats : la carte reste montée mais n’est plus visible autour du panneau plein', () => {
+    document.body.innerHTML = '<div class="rp9-host cal-coque" data-expert="1" data-etape="resultats"><main class="cal-coque-centre"></main></div>'
+    const centre = document.querySelector('.cal-coque-centre')
+    const regles = regleMedia('min-width: 1280px', centre).filter((r) => r.style.getPropertyValue('visibility'))
+    expect(regles.map((r) => r.style.getPropertyValue('visibility'))).toEqual(['hidden'])
+    expect(centre).toBeInTheDocument() // jamais démonté
+  })
+
+  it('« Localiser » : 44 px comme un champ, bouton secondaire (jamais l’aplat doré), centré sur la rangée dès 640 px', async () => {
+    const { default: BuilderCarte } = await import('../../BuilderCarte.jsx')
+    const hote = document.createElement('div')
+    hote.className = 'rp9-host cal-coque'
+    hote.dataset.avance = '1'
+    document.body.appendChild(hote)
+    render(<BuilderCarte chipClass="rp9-chip" inputClass="rp9-input" mapWrapRef={{ current: null }}
+      basculerPleinEcran3d={() => {}} contourClientBrut={null} photoToit={null} photoToitVisible={false}
+      pleinEcran3d={false} toitClientVisible={false} />, { container: hote })
+    const bouton = hote.querySelector('#rp9-search button[type="submit"]')
+    expect(bouton).toHaveTextContent('Localiser')
+    const c = getComputedStyle(bouton)
+    expect(c.height).toBe('44px')
+    expect(c.background).toContain('--cal-surface')
+    expect(c.background).not.toMatch(/--cal-action|--primary|brass/)
+    expect(regleMedia('min-width: 640px', bouton).map((r) => r.style.getPropertyValue('align-self'))).toContain('center')
+  })
+})

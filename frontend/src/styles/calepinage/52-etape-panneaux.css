@@ -150,8 +150,9 @@
 .cal-coque .cal-pan-curseur-tete strong { font-size: 0.8125rem; color: var(--cal-texte-1); font-weight: 600; }
 /* Curseur d'heure de la maquette : piste 6 px remplie d'or jusqu'au bouton, bouton 16 px d'or liseré de la surface. */
 .cal-coque .cal-pan-heure {
-  -webkit-appearance: none; appearance: none; width: 100%; height: 6px; margin: 0; border-radius: 3px;
+  -webkit-appearance: none; appearance: none; width: 100%; height: 44px; margin: -19px 0; padding: 19px 0; border-radius: 3px;
   background: linear-gradient(to right, var(--cal-action) var(--cal-pan-rempli, 0%), var(--cal-surface-2) var(--cal-pan-rempli, 0%));
+  background-clip: content-box; /* APRÈS le raccourci `background`, qui le remettrait à border-box */
 }
 .cal-coque .cal-pan-heure:disabled { opacity: 0.6; }
 .cal-coque .cal-pan-heure::-webkit-slider-thumb {
@@ -163,8 +164,9 @@
 }
 .cal-coque .cal-pan-heure::-moz-range-track { height: 6px; border-radius: 3px; background: transparent; }
 .cal-coque .cal-pan-heure:focus-visible { outline: 2px solid var(--ring); outline-offset: 4px; }
-/* ACAL1818 — au doigt, la zone du curseur fait 44 px ; la piste dessinée reste de 6 px (contenu, hors rembourrage). */
-@media (pointer: coarse) { .cal-coque .cal-pan-heure { height: 44px; background-clip: content-box; padding: 19px 0; } }
+/* ACAL1818 / ACAL1906 — la zone qui reçoit le doigt fait 44 px (hauteur + rembourrage), quel que soit le pointeur (un
+   téléphone émulé ou un écran tactile à souris n'est pas toujours `pointer: coarse` : la zone de 17 px mesurée au relevé) ;
+   la piste dessinée reste de 6 px (contenu, hors rembourrage) et la marge négative rend à la carte sa hauteur d'avant. */
 
 /* La ligne d'état du constructeur (bas gauche de la carte) se range au-dessus de la légende (28 + 56 + 12 px). */
 .cal-coque[data-etape='panneaux'] .cal-coque-statut { bottom: 96px; }

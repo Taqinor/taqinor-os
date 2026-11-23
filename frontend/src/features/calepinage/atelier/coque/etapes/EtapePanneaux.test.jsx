@@ -608,26 +608,31 @@ describe('palette d’ensoleillement — posée au démarrage, sans passer par l
   })
 })
 
-/* ACAL1818 — le curseur « Heure du soleil » se touche sur 44 px (la piste dessinée garde ses 6 px) : la règle des pointeurs
-   grossiers de la feuille de l'étape, lue sur les règles ANALYSÉES (jsdom n'évalue pas les @media). */
-describe('curseur « Heure du soleil » — zone tactile (ACAL1818)', () => {
-  it('sous pointer: coarse, le curseur fait ≥ 44 px de haut et sa piste se dessine dans la zone de contenu', async () => {
+/* ACAL1818 / ACAL1906 — le curseur « Heure du soleil » se touche sur 44 px, QUEL QUE SOIT le pointeur (le relevé a mesuré 17 px sur
+   un téléphone émulé qui n'était pas `pointer: coarse`) ; la piste dessinée garde ses 6 px et la carte sa hauteur. Le curseur
+   est RENDU par l'étape ; les feuilles 49 + 50 + 52 sont chargées dans le DOM de test et lues par getComputedStyle. */
+describe('curseur « Heure du soleil » — zone tactile (ACAL1818, ACAL1906)', () => {
+  it('le curseur rendu a une zone de 44 px sans media query ; sa piste se dessine dans les 6 px du contenu ; la marge rend la hauteur', async () => {
     const { readFileSync } = await import('node:fs')
     const style = document.createElement('style')
-    style.textContent = readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/52-etape-panneaux.css`, 'utf8')
+    style.textContent = ['49-jetons-v2.css', '50-coque-atelier.css', '52-etape-panneaux.css']
+      .map((f) => readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/${f}`, 'utf8')).join('\n')
     document.head.appendChild(style)
+    document.body.classList.add('cal-coque')
     try {
-      const grossier = [...style.sheet.cssRules].filter((r) => r.type === 4 && /pointer:\s*coarse/.test(r.media.mediaText))
-        .flatMap((m) => [...m.cssRules]).filter((r) => r.selectorText === '.cal-coque .cal-pan-heure')
-      expect(grossier, 'règle .cal-pan-heure sous pointer: coarse').toHaveLength(1)
-      const { height, padding, backgroundClip } = grossier[0].style
-      const haut = parseFloat(height)
-      const [vertical] = padding.split(/\s+/).map(parseFloat)
-      expect(haut).toBeGreaterThanOrEqual(44)
-      expect(haut - 2 * vertical, 'la piste reste fine : 6 px de contenu').toBe(6)
-      expect(backgroundClip).toBe('content-box')
+      monterConstructeur()
+      rendre()
+      const curseur = await screen.findByRole('slider', { name: 'Heure du soleil' })
+      const c = getComputedStyle(curseur)
+      const [haut, haut1, bas] = [c.height, c.paddingTop, c.paddingBottom].map(parseFloat)
+      expect(haut, 'zone tactile').toBeGreaterThanOrEqual(44)
+      expect(haut - haut1 - bas, 'la piste reste fine : 6 px de contenu').toBe(6)
+      expect(c.backgroundClip).toBe('content-box')
+      // La carte ne grandit pas : zone − marges négatives = la piste de 6 px d'avant.
+      expect(haut + parseFloat(c.marginTop) + parseFloat(c.marginBottom)).toBe(6)
     } finally {
       style.remove()
+      document.body.classList.remove('cal-coque')
     }
   })
 })

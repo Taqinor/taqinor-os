@@ -26,7 +26,7 @@
     padding: 16px;
     gap: 16px;
     --cal-haut-barre: 88px;
-    --cal-libre-haut: 88px;
+    --cal-libre-haut: calc(88px + var(--cal-alertes-h, 0px)); /* ACAL1907 : + la bande d'alertes (BandeauxCoque.jsx) */
     --cal-libre-gauche: 108px;
     --cal-libre-droite: 416px;
   }
@@ -102,6 +102,16 @@
      passe dessous (jamais démontée). */
   .cal-coque[data-expert='1'][data-etape='resultats'] .cal-panneau-etape { width: auto; flex: 1 1 auto; min-width: 0; }
   .cal-coque[data-expert='1'][data-etape='resultats'] .cal-coque-centre { position: absolute; inset: 0; z-index: var(--z-base); }
+  /* ACAL1907 — le panneau plein ne couvrait pas toute la carte : « Recherche limitée au pays », le coin doré de « Localiser » et
+     les bords de la barre d'outils dépassaient autour de lui. Sous un panneau plein la carte reste MONTÉE (jamais démontée) mais
+     n'est ni vue ni atteinte : `visibility` ne change aucune mesure. */
+  .cal-coque[data-expert='1'][data-etape='resultats'] .cal-coque-centre { visibility: hidden; }
+}
+
+/* ACAL1907 — « Localiser » : à côté du champ (formulaire en ligne dès 640 px), centré sur lui — plus étiré à la hauteur de la carte
+   d'adresse (la hauteur de 44 px et le style vivent dans 50-coque-atelier.css). */
+@media (min-width: 640px) {
+  .cal-coque #rp9-search > button[type='submit'] { align-self: center; }
 }
 
 @media (max-width: 1279px) {

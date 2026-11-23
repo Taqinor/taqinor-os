@@ -1,5 +1,6 @@
 import { Skeleton, SkeletonCard, SkeletonText } from '../../../ui'
 import RetourAtelier from './RetourAtelier'
+import { MESSAGE_CALCUL_LENT } from '../delaiReseau'
 
 /* État d'attente d'un écran de l'atelier (dossiers réglementaires, schéma
    unifilaire, pertes, production…) : lien de retour à l'atelier, puis le
@@ -18,8 +19,11 @@ function SqueletteResultats() {
   )
 }
 
-export default function EtatEcranAtelier({ id, loading, error, testIdErreur, forme = null }) {
+/* ACAL1905 — `onRetry` : un bouton « Réessayer » sous l'erreur. Un délai dépassé (`error === MESSAGE_CALCUL_LENT`, posé par
+   `messageResultatIndisponible`) se dit « Calcul en cours… » en information — pas en erreur : la connexion n'est pas coupée. */
+export default function EtatEcranAtelier({ id, loading, error, testIdErreur, forme = null, onRetry = null }) {
   if (loading && forme === 'resultats') return <SqueletteResultats />
+  const lent = !loading && error === MESSAGE_CALCUL_LENT
   return (
     <>
       <RetourAtelier calepinageId={id} />
@@ -30,7 +34,19 @@ export default function EtatEcranAtelier({ id, loading, error, testIdErreur, for
             <SkeletonText lines={2} />
           </div>
         )
-        : <p className="text-sm text-destructive" data-testid={testIdErreur}>{error}</p>}
+        : (
+          <div className="mt-3 flex flex-col items-start gap-3">
+            {lent
+              ? <p role="status" className="text-sm text-muted-foreground" data-testid="cal-calcul-lent">{error}</p>
+              : <p className="text-sm text-destructive" data-testid={testIdErreur}>{error}</p>}
+            {onRetry && (
+              <button type="button" onClick={onRetry} data-testid="cal-reessayer-lecture"
+                className="min-h-11 rounded-md border border-border bg-card px-4 text-sm font-semibold text-foreground">
+                Réessayer
+              </button>
+            )}
+          </div>
+        )}
     </>
   )
 }
