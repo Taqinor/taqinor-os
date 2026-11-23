@@ -16,6 +16,9 @@ annuelle déjà enregistrée, effectifs par statut.
   celui du document ⇒ ``None``. L'écran de résultats reste l'arbitre de la fraîcheur.
 * ``compteurs_statut`` — les calepinages visibles, comptés par statut DÉRIVÉ en UNE
   requête groupée (même annotation que le filtre ``?statut=``).
+* ``points_a_regler`` (ACAL1333) — le DERNIER verdict « Prêt à envoyer ? » rangé par
+  la lecture complète (:func:`ranger_verdict`), lu sur la colonne déjà chargée
+  (:func:`verdict_range`) : la liste ne lance aucun contrôle.
 """
 from __future__ import annotations
 
@@ -90,6 +93,38 @@ def production_annuelle(calepinage):
     if simules is not None and poses is not None and int(simules) != int(poses):
         return None
     return int(round(p50))
+
+
+def ranger_verdict(calepinage, reponse):
+    """ACAL1333 — range le verdict de la lecture COMPLÈTE de « Prêt à envoyer ? »
+    (``pret_a_envoyer.agreger``, sans ``?etape=``) : ``{lu_le, a_regler, bloquants,
+    empreinte}``. Écrit par ``update()`` (ni ``updated_at`` ni version ni journal),
+    et seulement quand le verdict ou l'empreinte change : relire ne réécrit rien."""
+    from django.utils import timezone
+
+    neuf = {'a_regler': int(reponse['nombre_a_regler']),
+            'bloquants': int(reponse['nombre_bloquants']),
+            'empreinte': calepinage.layout_hash or ''}
+    ancien = calepinage.dernier_verdict or {}
+    if all(ancien.get(cle) == valeur for cle, valeur in neuf.items()):
+        return
+    neuf['lu_le'] = timezone.now().isoformat()
+    type(calepinage).objects.filter(pk=calepinage.pk).update(dernier_verdict=neuf)
+    calepinage.dernier_verdict = neuf
+
+
+def verdict_range(calepinage):
+    """``{points_a_regler, lu_le, perime}`` du verdict rangé, sans aucun contrôle.
+
+    Jamais lu ⇒ trois ``None`` (jamais un 0). Document changé depuis la lecture
+    (empreinte différente) ⇒ ``points_a_regler`` ``None`` et ``perime`` vrai."""
+    verdict = getattr(calepinage, 'dernier_verdict', None)
+    if not isinstance(verdict, dict) or 'a_regler' not in verdict:
+        return {'points_a_regler': None, 'lu_le': None, 'perime': None}
+    perime = (verdict.get('empreinte') or '') != (calepinage.layout_hash or '')
+    points = int(verdict.get('a_regler') or 0) + int(verdict.get('bloquants') or 0)
+    return {'points_a_regler': None if perime else points,
+            'lu_le': verdict.get('lu_le'), 'perime': perime}
 
 
 def compteurs_statut(lignes):

@@ -35,9 +35,6 @@ CONTRAT = json.loads(
 #: Clés posées au contrat AVANT leur producteur (PACT10) : la tâche nommée les
 #: sert et retire son entrée dans le même commit.
 EN_ATTENTE_LISTE = {
-    'points_a_regler': 'ACAL1333',
-    'points_a_regler_lu_le': 'ACAL1333',
-    'points_a_regler_perime': 'ACAL1333',
     'apercu_toit': 'ACAL1335',
 }
 
@@ -391,3 +388,31 @@ class ValeursRangeesDeLaListeTest(BaseApiCalepinage):
             return len(requetes)
 
         self.assertEqual(mesurer(6), mesurer(18))
+
+    def test_points_a_regler_lus_sur_le_verdict_range(self):
+        """ACAL1333 — rangé ⇒ servi ; jamais lu ⇒ null (jamais 0) ; document
+        modifié depuis ⇒ null, date gardée, « à relire » ; aucun contrôle lancé."""
+        from unittest import mock
+
+        lu = self._creer(0, True)
+        Calepinage.objects.filter(pk=lu.pk).update(layout_hash='h1', dernier_verdict={
+            'a_regler': 2, 'bloquants': 1, 'empreinte': 'h1', 'lu_le': '2026-11-22T10:00:00+00:00'})
+        jamais = self._creer(1, True)
+        change = self._creer(2, True)
+        Calepinage.objects.filter(pk=change.pk).update(layout_hash='h2', dernier_verdict={
+            'a_regler': 4, 'bloquants': 0, 'empreinte': 'h1', 'lu_le': '2026-11-21T10:00:00+00:00'})
+
+        with mock.patch('apps.calepinage.services.pret_a_envoyer.agreger') as controle:
+            reponse = self.api.get(URL)
+        controle.assert_not_called()
+
+        lignes = {ligne['id']: ligne for ligne in self._lignes(reponse)}
+        self.assertEqual(
+            [lignes[lu.pk][c] for c in ('points_a_regler', 'points_a_regler_lu_le', 'points_a_regler_perime')],
+            [3, '2026-11-22T10:00:00+00:00', False])
+        self.assertEqual(
+            [lignes[jamais.pk][c] for c in ('points_a_regler', 'points_a_regler_lu_le', 'points_a_regler_perime')],
+            [None, None, None])
+        self.assertEqual(
+            [lignes[change.pk][c] for c in ('points_a_regler', 'points_a_regler_lu_le', 'points_a_regler_perime')],
+            [None, '2026-11-21T10:00:00+00:00', True])

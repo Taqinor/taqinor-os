@@ -5,6 +5,9 @@
   "exemple": {
     "kwc": null,
     "production_kwh_an": null,
+    "points_a_regler": null,
+    "points_a_regler_lu_le": null,
+    "points_a_regler_perime": null,
     "id": 77,
     "titre": "Toiture Anfa",
     "statut": "valide",
