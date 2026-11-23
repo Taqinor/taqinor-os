@@ -51,6 +51,11 @@ const servir = (variante) => {
     .mockResolvedValue(reponseContrat('calepinage', 'calepinage_resultat', variante))
 }
 
+/* ACAL1987 — `GET resultat/` d'une variante du contrat, avec l'état `simulation_automatique` servi posé dessus. */
+const servieAvecSimulationAuto = (variante, auto) => ({
+  data: { ...exempleContrat('calepinage', 'calepinage_resultat', variante), simulation_automatique: auto },
+})
+
 const rendre = () => render(
   <MemoryRouter><PanneauProduction calepinageId={1} /></MemoryRouter>,
 )
@@ -523,10 +528,8 @@ describe('PanneauProduction — borne haute (ACAL52)', () => {
   it('ACAL1987 — job du serveur en cours ⇒ « Simulation en cours… » puis relecture, sans POST simuler', async () => {
     viderSimulationsAuto()
     servir('exemple')
-    calepinageApi.calepinages.resultat.mockResolvedValue({ data: {
-      ...exempleContrat('calepinage', 'calepinage_resultat', 'exemple'),
-      simulation_automatique: { en_cours: true, job_id: 'j-9', manquants: [] },
-    } })
+    calepinageApi.calepinages.resultat.mockResolvedValue(
+      servieAvecSimulationAuto('exemple', { en_cours: true, job_id: 'j-9', manquants: [] }))
     calepinageApi.moteur.resultat
       .mockResolvedValueOnce({ data: { job_id: 'j-9', statut: 'running' } })
       .mockResolvedValue({ data: { job_id: 'j-9', statut: 'done' } })
@@ -542,10 +545,8 @@ describe('PanneauProduction — borne haute (ACAL52)', () => {
   it('ACAL1987 — pose incomplète (aucun job servi) ⇒ aucune reprise, aucun calcul, l’onglet ne dit pas « en cours »', async () => {
     viderSimulationsAuto()
     servir('exemple_vide')
-    calepinageApi.calepinages.resultat.mockResolvedValue({ data: {
-      ...exempleContrat('calepinage', 'calepinage_resultat', 'exemple_vide'),
-      simulation_automatique: exempleContrat('calepinage', 'calepinage_resultat', 'acal1987_simulation_automatique'),
-    } })
+    calepinageApi.calepinages.resultat.mockResolvedValue(servieAvecSimulationAuto(
+      'exemple_vide', exempleContrat('calepinage', 'calepinage_resultat', 'acal1987_simulation_automatique')))
     await suivreSimulationDuServeur(1)
     rendre()
 
