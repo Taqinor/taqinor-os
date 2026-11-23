@@ -153,6 +153,32 @@ test('notifierGeste — n’écrit PAS deux fois pour le même document (rien n�
   assert.equal(gestionnaire.notifierGeste(), false)
 })
 
+test('ACAL1329 — pan ajouté en cours de tracé : aucune écriture avant le dernier point, une seule ensuite', () => {
+  const storage = stockageFactice()
+  let layout = { zones: [{ id: 'area-1' }] }
+  let enTrace = false
+  const gestionnaire = creerGestionnaireBrouillon({
+    storage, calepinageId: 5, utilisateurId: 2, hashBase: 'h',
+    intervalleSecondes: null,
+    obtenirLayout: () => layout,
+    enPause: () => enTrace,
+  })
+  assert.equal(gestionnaire.notifierGeste(), false) // amorce : le toit enregistré
+  // « Ajouter un pan » puis deux points : le document (vrai) porte la zone ouverte, rien n'est écrit.
+  enTrace = true
+  layout = { zones: [{ id: 'area-1' }, { id: 'area-2', vertices: [] }] }
+  assert.equal(gestionnaire.notifierGeste(), false)
+  layout = { zones: [{ id: 'area-1' }, { id: 'area-2', vertices: [[0, 0], [1, 0]] }] }
+  assert.equal(gestionnaire.enregistrerMaintenant(), false)
+  assert.equal(storage._donnees.size, 0)
+  // Dernier point : le pan fermé s'écrit, une fois.
+  enTrace = false
+  layout = { zones: [{ id: 'area-1' }, { id: 'area-2', vertices: [[0, 0], [1, 0], [1, 1]] }] }
+  assert.equal(gestionnaire.notifierGeste(), true)
+  assert.equal(gestionnaire.notifierGeste(), false)
+  assert.equal(storage._donnees.size, 1)
+})
+
 test('notifierGeste — rien à sauvegarder (aucun pan tracé) ⇒ no-op, aucune entrée', () => {
   const storage = stockageFactice()
   const gestionnaire = creerGestionnaireBrouillon({

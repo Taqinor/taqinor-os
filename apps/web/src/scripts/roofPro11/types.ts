@@ -191,6 +191,9 @@ export interface RoofToolApi {
    *  PV13 — `meta` (optionnel) porte scénario / puissance panneau / batterie / origine
    *  devis-lead : la page les CONNAÎT, l'outil ne les devine jamais. */
   serializeLayout: (billKwh?: number | null, meta?: SerializeMeta) => unknown;
+  /** ACAL1329 — vrai du premier clic au dernier point d'un pan AJOUTÉ (pan actif ouvert, toit déjà tracé) : l'hôte
+   *  suspend l'écriture du brouillon ; `serializeLayout` dit toujours le vrai (le pan en cours y figure). */
+  ajoutDePanEnCours?: () => boolean;
   /** ACAL26 — applique UNE section du document (`horizonProfile`, `poseSurfaces`,
    *  `underlay`, `environment`, `alleeTechnique` — ACAL258) par la MÊME fonction d'hydratation que le boot
    *  (`hydratation.ts::appliquerHydratationAuCtx`) — pour les onglets du Rail. */

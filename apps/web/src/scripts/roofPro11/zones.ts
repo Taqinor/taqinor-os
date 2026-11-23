@@ -354,13 +354,6 @@ export function toitExistantGeoJSON(areas: readonly AreaRecord[], activeAreaId: 
   };
 }
 
-/** Le document servi pendant l'ajout : celui d'AVANT le premier geste (`memo.doc`, pris par `addArea`), copié ;
- *  hors ajout, le document vivant. Aucun brouillon ni enregistrement ne porte un pan avant son dernier point. */
-export function documentPendantAjout<T>(enAjout: boolean, memo: { doc: T | null }, serialiser: () => T): T {
-  if (enAjout && memo.doc) return JSON.parse(JSON.stringify(memo.doc)) as T;
-  memo.doc = null;
-  return serialiser();
-}
 
 /** Ce que le calque de référence lit/écrit de la carte MapLibre. */
 interface CarteReference {
