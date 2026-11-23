@@ -80,8 +80,12 @@ export const ZOOM_MAX_CADRAGE_ATELIER = 22
 
 // ACAL1421 — le contexte d'imagerie de l'atelier, tiré des réglages DÉJÀ lus (`imagerie.pays`, jamais une seconde
 // lecture) : la ligne « Image : fournisseur — résolution » s'affiche et l'adresse est cherchée dans le pays réglé.
+// Société MUETTE (aucun pays réglé) ⇒ aucun contexte : un contexte, même sans pays, fait passer le fond satellite
+// par le registre de fournisseurs, qui retient alors le premier déclaré au lieu du fond historique (critique de la
+// vague A du 23/11/2026). Le fond ne change donc que pour une société qui a réglé son imagerie.
 export function imageryDesReglages(reglagesAtelier) {
-  return { pays: reglagesAtelier?.pays ?? null }
+  const pays = reglagesAtelier?.pays ?? null
+  return pays ? { pays } : undefined
 }
 
 /**
