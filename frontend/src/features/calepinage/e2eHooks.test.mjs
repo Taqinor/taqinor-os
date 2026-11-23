@@ -534,6 +534,7 @@ export const ALL_HOOKS = [
   'cal-reprise-bouton',
   'cal-reprise-chargement',
   'cal-reprise-ecarts',
+  'cal-reprise-ecarts-motif',
   'cal-reprise-erreur',
   'cal-reprise-erreur-lecture',
   'cal-reprise-lecture-seule',

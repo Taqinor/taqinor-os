@@ -639,6 +639,7 @@ retiré plus un hook ajouté.
 | `cal-reprise-bouton` | reprise de visite — bouton « Reprendre dans ce calepinage ». |
 | `cal-reprise-chargement` | reprise de visite — lecture en cours. |
 | `cal-reprise-ecarts` | reprise de visite — bandeau « n écarts avec la visite » et son tableau (ACAL527). |
+| `cal-reprise-ecarts-motif` | reprise de visite — phrase « Motif : … » sous le bandeau quand la comparaison est à faire à la main, plusieurs pans (ACAL1411). |
 | `cal-reprise-erreur` | reprise de visite — refus du serveur sous le bouton, par champ. |
 | `cal-reprise-erreur-lecture` | reprise de visite — message d'erreur de lecture. |
 | `cal-reprise-mesure` | reprise de visite — une mesure telle que saisie. |
