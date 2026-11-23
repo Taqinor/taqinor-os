@@ -487,6 +487,19 @@ describe('ACAL712 — carte chaîne touchée par l’ombre', () => {
     expect(screen.getByTestId('acal619-ligne-2')).toHaveTextContent('535 V')
   })
 
+  it('ACAL1544 — 4.18 s’écrit « 4,18 °C » et 18.59 « 18,59 A », une fiche par chaîne', async () => {
+    const [une] = exempleContrat('calepinage', 'calepinage_evaluation_electrique').chaines
+    servir({ ...REPONSE, chaines: [{ ...une, temperature_froide_c: 4.18, isc_a: 18.59 }] })
+
+    rendre()
+
+    const ligne = await screen.findByTestId('acal619-ligne-1')
+    expect(ligne).toHaveTextContent('4,18 °C')
+    expect(ligne).toHaveTextContent('18,59 A')
+    expect(ligne.textContent).not.toMatch(/4\.18|18\.59/)
+    expect(ligne.closest('table')).toBeNull()
+  })
+
   it('ACAL619 — une chaîne indéterminée : « tension non calculable », jamais un nombre', async () => {
     const chaines = [{ ...exempleContrat('calepinage', 'calepinage_evaluation_electrique').chaines[0], voc_froid_v: null, vmp_chaud_v: null, indetermine: ['fiche module : Voc absent'] }]
     servir({ ...REPONSE, chaines })
