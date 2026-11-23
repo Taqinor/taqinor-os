@@ -76,7 +76,9 @@ for taqinor forward ».
 - Lu dans Meta le 23/11 au soir (lecture seule, par la connexion de l'ERP) : la publicité en ligne est DÉJÀ limitée à
   Casablanca et 40 km depuis avril (personnes qui y vivent ou y sont passées récemment) ; proposer ce réglage ne change
   rien, et les demandes d'autres régions arrivent malgré lui. Les quatre publicités en ligne portent toujours le texte
-  faux (« garanti 10 ans », « jusqu'à 70 % ») : le texte corrigé d'octobre n'a pas été collé. La connexion Meta de l'ERP
+  faux (« garanti 10 ans », « jusqu'à 70 % ») : le texte corrigé d'octobre n'a pas été collé. **Décision de Reda du
+  23/11 : on ne modifie pas les anciennes publicités, la nouvelle campagne les remplace ; ne plus le lui proposer.** La
+  connexion Meta de l'ERP
   a les droits pour créer campagne, ensemble et publicités (toujours éteints) ; elle ne sait pas créer le formulaire.
   **La nouvelle campagne attend les voix de Meryem** (rappel de Reda) : fiche transférée → séance de Meryem → montage →
   son regard → campagne préparée éteinte → il l'allume.
