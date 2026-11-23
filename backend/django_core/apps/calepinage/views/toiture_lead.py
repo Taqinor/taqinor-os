@@ -57,21 +57,30 @@ def _libelle(lead, champ):
     return str(getattr(lead, f'get_{champ}_display')()) or None
 
 
-def cible_factures(calepinage, *, lire_cible=None):
-    """Maquette Panneaux (22/11) — le bloc ``cible_factures`` : la taille que
-    le devis automatique tirerait des FACTURES du lead, par LA fonction du
-    garde R2-17 (``services.devis._cible_du_calepinage`` →
-    ``apps.ventes.selectors.cible_depuis_lead``) — jamais un second
-    dimensionnement. ``{panneaux, kwc, module_wc}``, ou ``None`` quand la
-    taille ne vient pas des factures (sans lead, sans facture, taille
-    souhaitée, C&I, agricole, refus). LECTURE PURE."""
+def cible_factures_et_refus(calepinage, *, lire_cible=None):
+    """ACAL1500 — ``(cible_factures, refus)`` d'UNE seule lecture de la cible
+    du garde R2-17 (``services.devis._cible_du_calepinage`` →
+    ``apps.ventes.selectors.cible_depuis_lead``) : le dimensionnement n'est
+    joué qu'une fois. ``refus`` est la phrase NOMMÉE de ``cible_depuis_lead``
+    (C&I, agricole, facture absente…) quand aucune taille ne se tire des
+    factures, ``''`` quand la cible existe ou qu'il n'y a pas de lead."""
     if lire_cible is None:
         from ..services.devis import _cible_du_calepinage as lire_cible
     cible = lire_cible(calepinage)
-    if not cible or cible.get('source') != 'factures' or not cible.get('panneaux'):
-        return None
-    return {'panneaux': int(cible['panneaux']), 'kwc': nombre(cible.get('kwc')),
-            'module_wc': nombre(cible.get('panel_watt'))}
+    if cible and cible.get('source') == 'factures' and cible.get('panneaux'):
+        return ({'panneaux': int(cible['panneaux']), 'kwc': nombre(cible.get('kwc')),
+                 'module_wc': nombre(cible.get('panel_watt'))}, '')
+    return None, str((cible or {}).get('refus') or '')
+
+
+def cible_factures(calepinage, *, lire_cible=None):
+    """Maquette Panneaux (22/11) — le bloc ``cible_factures`` : la taille que
+    le devis automatique tirerait des FACTURES du lead, par LA fonction du
+    garde R2-17 — jamais un second dimensionnement. ``{panneaux, kwc,
+    module_wc}``, ou ``None`` quand la taille ne vient pas des factures (sans
+    lead, sans facture, taille souhaitée, C&I, agricole, refus ; le motif est
+    dit par ``cible_factures_et_refus``). LECTURE PURE."""
+    return cible_factures_et_refus(calepinage, lire_cible=lire_cible)[0]
 
 
 # ── H3 (22/11) — ``GET calepinages/<pk>/cible-factures/`` : le bloc ci-dessus, LU À PART.
@@ -83,8 +92,9 @@ def cible_factures(calepinage, *, lire_cible=None):
 @extend_schema(responses=forme_du_contrat('CalepinageCibleFactures', 'calepinage_cible_factures.json'))
 @action(detail=True, methods=['get'], url_path='cible-factures', permission_classes=[PeutVoirCalepinage])
 def cible_factures_servie(self, request, pk=None):
-    """La taille tirée des factures du lead (``cible_factures``), ou ``null``."""
-    return Response({'cible_factures': cible_factures(self.get_object())})
+    """La taille tirée des factures du lead (``cible_factures``), ou ``null`` avec le ``refus`` nommé."""
+    cible, refus = cible_factures_et_refus(self.get_object())
+    return Response({'cible_factures': cible, 'refus': refus})
 
 
 CalepinageViewSet.cible_factures_servie = cible_factures_servie

@@ -42,6 +42,11 @@ function rendre(props = {}) {
   )
 }
 
+// ACAL1402/1414 — l'exemple dit le choix du devis lié (`chiffree` vrai/faux) ; les cas ACAL915/968 partent d'un
+// devis sans sélection écrite (`chiffree: null`) : tout est coché à l'ouverture.
+const SURFACES_SANS_SELECTION = DETAIL.surfaces_chiffrables.map((s) => ({ ...s, chiffree: null }))
+const DETAIL_SANS_SELECTION = { ...DETAIL, surfaces_chiffrables: SURFACES_SANS_SELECTION }
+
 beforeEach(() => { vi.clearAllMocks() })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -513,7 +518,7 @@ describe('Lot 2 critique #32 — champs des portes ACAL116 nommés', () => {
 
 describe('ACAL915 — ce que le devis chiffre, dit avant « Générer le devis »', () => {
   it('dès deux surfaces posées, la phrase est lue de l’exemple du contrat', () => {
-    rendre()
+    rendre({ detail: DETAIL_SANS_SELECTION })
     const surfaces = DETAIL.surfaces_chiffrables
     expect(surfaces.length).toBeGreaterThanOrEqual(2)
     const total = surfaces.reduce((t, s) => t + s.modules, 0)
@@ -533,7 +538,7 @@ describe('ACAL915 — ce que le devis chiffre, dit avant « Générer le devis �
 })
 
 describe('ACAL968 — une case par surface (toit ET champ au sol), toutes cochées à l’ouverture', () => {
-  const SANS_DEVIS = { ...DETAIL_VIDE, surfaces_chiffrables: DETAIL.surfaces_chiffrables }
+  const SANS_DEVIS = { ...DETAIL_VIDE, surfaces_chiffrables: SURFACES_SANS_SELECTION }
   const CORPS = exempleContrat('calepinage', 'calepinage_publication', 'corps_surfaces_chiffrees')
 
   it('tout coché : aucun corps ; la décochée est absente du corps', async () => {
@@ -640,5 +645,39 @@ describe('BoutonDevis — recette R2 (pose au-delà de la cible, devis existant,
       `La conception est enregistrée, mais le devis lié ${DETAIL.devis.reference} n’a pas été modifié : ${MOTIF}`)
     expect(refus).not.toHaveTextContent('n’a pas pu être enregistrée')
     expect(calepinageApi.calepinages.syncDevis).not.toHaveBeenCalled()
+  })
+})
+
+describe('ACAL1414 — la réouverture relit les surfaces que le devis lié chiffre', () => {
+  const toit = DETAIL.surfaces_chiffrables.find((s) => s.kind === 'toit')
+  const sol = DETAIL.surfaces_chiffrables.find((s) => s.kind !== 'toit')
+
+  it('chiffree faux ⇒ case décochée, phrase = la seule surface chiffrée', () => {
+    expect(toit.chiffree).toBe(false)
+    expect(sol.chiffree).toBe(true)
+    rendre()
+    expect(screen.getByRole('checkbox', { name: new RegExp(toit.libelle) })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: new RegExp(sol.libelle) })).toBeChecked()
+    expect(screen.getByTestId('cal-bouton-devis')).toHaveTextContent(
+      `Le devis chiffre : ${sol.libelle} (${sol.modules}) = ${sol.modules} modules`)
+  })
+
+  it('« Resynchroniser le devis » envoie la même sélection', async () => {
+    calepinageApi.calepinages.syncDevis.mockResolvedValue({ data: { inchange: true, devis: DETAIL.devis.id } })
+    rendre()
+    await userEvent.click(screen.getByTestId('cal-resynchroniser-devis'))
+    await waitFor(() => expect(calepinageApi.calepinages.syncDevis).toHaveBeenCalled())
+    expect(calepinageApi.calepinages.syncDevis.mock.calls[0][1].surfaces_chiffrees).toEqual([sol.cle])
+  })
+
+  it('le serveur change la sélection : l’écran la relit', () => {
+    const { rerender } = rendre({ detail: DETAIL_SANS_SELECTION })
+    screen.getAllByRole('checkbox').forEach((c) => expect(c).toBeChecked())
+    rerender(
+      <MemoryRouter>
+        <BoutonDevis calepinageId={DETAIL.id} detail={DETAIL} />
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('checkbox', { name: new RegExp(toit.libelle) })).not.toBeChecked()
   })
 })

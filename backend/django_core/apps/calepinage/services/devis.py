@@ -419,6 +419,18 @@ def _ttc_lisible(devis):
     return ttc, f'{ttc:,.2f}'.replace(',', ' ').replace('.', ',') + ' MAD TTC'
 
 
+def _kwc_compose_du_devis(devis):
+    """ACAL1417 — le kWc que la composition vend : ``etude_params['puissance_kwc']``
+    et, quand ce chemin de composition ne l'a pas posé, LA règle unique de
+    ``ventes`` (``puissance_kwc_du_devis``, lue des lignes panneau) — jamais
+    ``None`` faute de clé, ce qui faisait taire la garde du module substitué et
+    vider le kWc de la question de taille. ``None`` seulement si rien n'est lisible."""
+    from apps.ventes.services import puissance_kwc_du_devis
+
+    kwc = (getattr(devis, 'etude_params', None) or {}).get('puissance_kwc')
+    return kwc if kwc is not None else puissance_kwc_du_devis(devis)
+
+
 def _garde_taille(devis, calepinage, confirmer_taille):
     """ACAL922 — un devis que rien ne dimensionne demande une CONFIRMATION :
     409 ``confirmation_taille`` avec le kWc et le TTC du devis composé, sous
@@ -433,7 +445,7 @@ def _garde_taille(devis, calepinage, confirmer_taille):
     au_dela = None if question is not None else _question_pose_sur_cible(devis, cible)
     if question is None and au_dela is None:
         return
-    kwc = (getattr(devis, 'etude_params', None) or {}).get('puissance_kwc')
+    kwc = _kwc_compose_du_devis(devis)
     ttc, ttc_texte = _ttc_lisible(devis)
     chiffres = ([f'{fr(float(kwc), 2)} kWc'] if kwc is not None else []) + [ttc_texte]
     if au_dela is not None:
@@ -487,7 +499,7 @@ def _garde_module_substitue(devis, layout):
         from apps.ventes.selectors_calepinage import kwc_lu_du_layout
 
         dessine = kwc_lu_du_layout(layout)
-    compose = (getattr(devis, 'etude_params', None) or {}).get('puissance_kwc')
+    compose = _kwc_compose_du_devis(devis)
     if not dessine or compose is None:
         return
     if abs(float(compose) - dessine) <= EPSILON_KWC_COMPOSE + 1e-9:
@@ -495,10 +507,21 @@ def _garde_module_substitue(devis, layout):
     panneau = next((ligne['designation'] for ligne in
                     lignes_produits_calepinage(devis)
                     if 'panneau' in (ligne['designation'] or '').lower()), '')
-    detail = ("Le dessin porte %s kWc ; le catalogue compose %s kWc%s. "
-              "Choisissez le module du catalogue dans l'atelier puis "
-              "relancez." % (fr(dessine, 2), fr(float(compose), 2),
-                             ' (%s)' % panneau if panneau else ''))
+    vendus = [p for p in pans if p['modules'] > 0 and not p.get('existant')]
+    if vendus and all(p['kind'] != 'toit' for p in vendus):
+        # ACAL1440 — une surface de pose (champ au sol…) n'a aucun choix de module : elle reprend
+        # celui du pan actif à l'enregistrement (ACAL918). Le texte dit donc quoi changer et où.
+        watts = sorted({fr(p['module_wc'], 0) for p in vendus if p.get('module_wc')})
+        detail = ("%s : son module (« %s ») n'est pas celui que le catalogue compose (« %s »). "
+                  "Changez le module du pan, puis ré-enregistrez le contour."
+                  % (', '.join(p['libelle'] for p in vendus),
+                     ' / '.join('%s W' % w for w in watts) or '?',
+                     panneau or '%s kWc' % fr(float(compose), 2)))
+    else:
+        detail = ("Le dessin porte %s kWc ; le catalogue compose %s kWc%s. "
+                  "Choisissez le module du catalogue dans l'atelier puis "
+                  "relancez." % (fr(dessine, 2), fr(float(compose), 2),
+                                 ' (%s)' % panneau if panneau else ''))
     raise DevisRefuse(detail, champ='zones.0.geometry.moduleId', statut=409,
                       donnees={'detail': detail, 'code': 'module_substitue',
                                'champ': 'zones.0.geometry.moduleId',
