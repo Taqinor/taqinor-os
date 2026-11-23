@@ -625,6 +625,33 @@ describe('ACAL405 — Démarrage rapide', () => {
       expect(lien).toHaveAttribute('href', '/calepinage/reglages#calx69-section-simulation')
     })
 
+    it('ACAL1344 — seul sur sa route : la carte s’arrête au bas du CONTENU du défilant (marge incluse), la page ne défile plus', async () => {
+      window.history.replaceState(null, '', '/calepinage/reglages/demarrage-rapide')
+      const rect = Element.prototype.getBoundingClientRect
+      const hauteurFenetre = window.innerHeight
+      try {
+        window.innerHeight = 900
+        // Le cadre de l'ERP : un défilant de 848 px (de 52 à 900) qui garde 32 px de marge basse ; la carte part à 150.
+        Element.prototype.getBoundingClientRect = function mesure() {
+          const r = (top, bottom) => ({ top, bottom, left: 0, right: 0, width: 0, height: bottom - top, x: 0, y: top, toJSON() {} })
+          if (this.dataset?.testid === 'acal405-demarrage') return r(150, 150)
+          if (this.dataset?.testid === 'cadre-defilant') return r(52, 900)
+          return rect.call(this)
+        }
+        mocks.profilDepart.mockResolvedValue({ data: PROFIL })
+        servirReglages({})
+        const { default: DemarrageRapide } = await import('./DemarrageRapide')
+        render(<div data-testid="cadre-defilant" style={{ overflowY: 'auto', paddingBottom: '32px' }}><DemarrageRapide /></div>)
+        const carte = await screen.findByTestId('acal405-demarrage')
+        // 900 − 32 (marge basse du cadre) − 150 (haut de la carte) = 718 : le bas de la carte tombe sur le bas utile.
+        expect(carte.style.height).toBe('718px')
+      } finally {
+        Element.prototype.getBoundingClientRect = rect
+        window.innerHeight = hauteurFenetre
+        window.history.replaceState(null, '', '/')
+      }
+    })
+
     it('seul sur sa route : titre de page 28 px, sans second fil d’Ariane (la page en porte déjà un) ; `autonome` le rend', async () => {
       window.history.replaceState(null, '', '/calepinage/reglages/demarrage-rapide')
       try {
