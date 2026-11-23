@@ -207,6 +207,10 @@ SCHEMA = {
                                 'COP2-V3 — ce qui a été imposé, et par qui ; '
                                 'lu par `domain/composition_imposee`.'),
     'origine_conception': _cle((str,), AUTO_DEVIS, DERIVEE, 'ACAL1004 — `rapide` : « Devis automatique ».'),
+    'journal_auto': _cle((dict,), AUTO_DEVIS, DERIVEE,
+                         'ADEV123/ADEV125 — `{alertes: [{code, message, champ_lead}]}` : les suppositions '
+                         'dites à la création, remontrées à la réouverture ; pour la commerciale, '
+                         'jamais au PDF, hors empreinte.'),
 
     # ── Ce que le MOTEUR calcule (DÉRIVÉES) ──────────────────────────────────
     'etude_horaire': _cle((dict,), MOTEUR_HORAIRE, DERIVEE),

@@ -122,3 +122,4 @@ rougit pas tant que la route n'existe pas.
 | `devis_solde.json` (étendu) | `solde` : scalaires `emis`, `brouillons`, `reste_a_facturer` (VNT5) |
 | `devis_echeancier.json` | PUT ventes/devis/<pk>/echeancier/ sur devis accepté (VNT6) |
 | `vente_etat.json` | GET ventes/devis/<pk>/ : bloc `vente` (état de la vente), 7 variantes (VNT7 ; ATOT59 : `exemple_avoir_a_confirmer`) |
+| `devis_journal_auto.json` | GET ventes/devis/<id>/ : `etude_params.journal_auto.alertes` [{code, message, champ_lead, interne?}] — suppositions dites à la création du devis automatique, remontrées à la réouverture, jamais au PDF (ADEV123/ADEV125) |

@@ -293,6 +293,21 @@ class DevisAutoCITests(_Base):
         self.assertEqual([a['champ_lead'] for a in dites], ['heure_debut'])
         self.assertIn('6 h supposée', dites[0]['message'])
 
+    def test_adev125_suppositions_rangees_avec_le_devis_et_relues(self):
+        # Clause « Persistance » (vu en direct T3-VAGUED : etude_ci.alertes ne
+        # garde pas les supposition_*) — rangées sous etude_params.journal_auto.
+        lead = self._lead(facture_hiver=Decimal('6000'), tension_raccordement=None,
+                          contrat_electricite=None)
+        journal = {}
+        devis = build_devis_auto(lead=lead, user=self.user, company=self.co, journal_auto=journal)
+        devis.refresh_from_db()
+        rangees = {a['champ_lead']: a for a in devis.etude_params['journal_auto']['alertes']}
+        dites = {a['champ_lead']: a for a in journal['alertes'] if a.get('champ_lead')}
+        self.assertEqual(set(rangees), set(dites))
+        self.assertIn('contrat_electricite', rangees)
+        self.assertIn('tension_raccordement', rangees)
+        self.assertEqual(rangees['contrat_electricite']['message'], dites['contrat_electricite']['message'])
+
     def test_adev124_profil_estime_sort_au_journal(self):
         # ADEV124 — le profil de l'activité (archétype, niveau « info ») est dit.
         journal = {}

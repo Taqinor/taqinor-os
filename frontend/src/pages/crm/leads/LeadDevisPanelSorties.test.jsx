@@ -384,6 +384,22 @@ describe('ALEA51 — devis automatique créé : bannière de succès', () => {
     expect(screen.getByTestId('ldp-infos-bascule')).toHaveTextContent('1 alerte')
   })
 
+  it('ADEV123/ADEV125 — rouvert, le devis remontre les suppositions rangées à sa création', async () => {
+    // Contrat devis_journal_auto.json : etude_params.journal_auto.alertes.
+    const rangees = exempleContrat('ventes', 'devis_journal_auto')
+    ventesApi.getDevisById.mockResolvedValue({ data: {
+      ...exempleContrat('ventes', 'devis_modifiabilite', 'exemple_envoye'),
+      etude_params: rangees.etude_params,
+    } })
+    rendrePanneau({ mode: 'view', lead: { id: 77, nom: 'Khalid', type_installation: 'residentiel' } })
+    const alertes = await screen.findByTestId('ldp-alertes-auto')
+    for (const a of rangees.etude_params.journal_auto.alertes) {
+      expect(alertes).toHaveTextContent(a.message)
+    }
+    expect(within(alertes).getAllByTestId('alerte-champ-lead')[0]).toHaveTextContent(
+      "À compléter sur la fiche : Y a-t-il quelqu'un à la maison en journée ?")
+  })
+
   it('le libellé omet ce que le serveur ne sert pas et garde le retour chiffré', () => {
     expect(libelleSuccesDevisAuto(null)).toBe('')
     const texte = normaliser(libelleSuccesDevisAuto({

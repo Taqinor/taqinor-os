@@ -80,6 +80,9 @@ export function useChargeurEdition(ctx) {
                      // « Batteries au départ » et sa case « une seule batterie » lisent
                      // l'état ENREGISTRÉ du devis (options, banque, prix calculé).
                      etude_params: etudeParamsBatteries(d.etude_params),
+                     // ADEV123/ADEV125 — les suppositions DITES à la création du
+                     // devis automatique (contrat devis_journal_auto.json).
+                     suppositions_auto: d.etude_params?.journal_auto?.alertes ?? [],
                      layout_nb_panneaux: d.layout_nb_panneaux ?? null,
                      lineIds: (d.lignes ?? []).map(l => l.id) })
       // QJR658 — LE MAPPEUR EST UN MODULE PUR (`quote/etatDevis.js`,
