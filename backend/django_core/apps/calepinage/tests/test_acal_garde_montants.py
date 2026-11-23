@@ -113,7 +113,14 @@ class RefusAttenduTest(SimpleTestCase):
         chantier = "Fixation : Marge d'échafaudage en hauteur (2 m)"
         self.assertEqual(mots_d_argent(chantier), [])
         _verifier_absence_d_argent('Chaînes : 2\n' + chantier)  # ne lève pas
-        for fautif, trouve in (('Rail — marge commerciale 30 %', 'marge commerciale'),
+        # Seules les tournures de chantier nommées passent ; « marge » nu reste
+        # un mot d'argent (critique de la vague B : « Taux de marge : 25 % »).
+        for tournure in ('Marge de rive 0,40 m', 'Marge de sécurité 10 cm', 'marges'):
+            self.assertEqual(mots_d_argent(tournure), [], tournure)
+        for fautif, trouve in (('Rail — marge 30 %', 'marge'),
+                               ('Taux de marge : 25 %', 'marge'),
+                               ('Rail, marge de 30 %', 'marge'),
+                               ('Rail — marge commerciale 30 %', 'marge commerciale'),
                                ('Rail (marge brute)', 'marge brute'),
                                ('Rail, marge  nette', 'marge  nette'),
                                ('Rail prix_achat 120', 'prix_achat'),
