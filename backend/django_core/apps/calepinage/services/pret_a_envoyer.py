@@ -281,7 +281,6 @@ def _depuis_motifs(code, libelle, motifs, *, geste):
 
 
 def _verdict_electrique(publication):
-    from . import synthese_publication as _synthese
     from .etat_dossier_electrique import ETATS_DOSSIER
 
     etat, points = publication['etat'], publication['points']
@@ -289,8 +288,8 @@ def _verdict_electrique(publication):
     if etat == ETATS_DOSSIER[0]:
         return _elec('verdict_electrique', libelle, 'ok', 'Prêt')
     if etat == ETATS_DOSSIER[1]:
-        return _elec('verdict_electrique', libelle, 'a_regler',
-                     'À compléter : %s' % _synthese._points(points),
+        # ACAL1539 — « À compléter » seul : les motifs sont détaillés au Verdict.
+        return _elec('verdict_electrique', libelle, 'a_regler', 'À compléter',
                      geste='Compléter le dossier électrique')
     return _elec('verdict_electrique', libelle, 'bloquant',
                  'Bloquant : %d' % points,

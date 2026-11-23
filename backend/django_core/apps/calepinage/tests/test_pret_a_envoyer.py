@@ -203,8 +203,8 @@ class ControlesElectriquesTest(SimpleTestCase):
                          'Matériel non désigné')
         verdict = controles['verdict_electrique']
         self.assertEqual(verdict['etat'], 'a_regler')
-        # R3-10 : singulier juste (« 1 point »), et le même mot que la pastille.
-        self.assertEqual(verdict['valeur_texte'], 'À compléter : 1 point')
+        # ACAL1539 : « À compléter » seul — le détail des motifs est au Verdict.
+        self.assertEqual(verdict['valeur_texte'], 'À compléter')
         self.assertEqual(len(controles), 7)
 
     def test_resume_de_motifs_singulier_pluriel(self):
@@ -219,8 +219,10 @@ class ControlesElectriquesTest(SimpleTestCase):
     def test_etat_lu_jamais_recalcule(self):
         # Mutant : recalculer depuis les motifs ⇒ « pret » (aucun motif).
         controles = self._controles(etat='a_completer', points=3)
+        self.assertEqual(controles['verdict_electrique']['etat'], 'a_regler')
+        # ACAL1539 : aucun compte de motifs sur la ligne du dossier.
         self.assertEqual(controles['verdict_electrique']['valeur_texte'],
-                         'À compléter : 3 points')
+                         'À compléter')
 
     def test_bloquant_avec_n(self):
         controles = self._controles(etat='bloquant', points=2)
