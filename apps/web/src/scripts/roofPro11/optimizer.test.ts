@@ -393,6 +393,7 @@ describe('CALX114 — dépôt de `optimisation` (CALX88) pour le balayage', () =
 // ═══════════════════════════════════════════════════════════════════════════════
 import { besoinVendu, clampNeeded, lireRendement, RENDEMENT_PVGIS_DEFAUT } from './optimizer';
 import { hydrateFromDevis, type DevisPayload } from './prefill';
+import { heriterDuPanDecoupe } from './tailleAuto'; // ACAL1448
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -1477,5 +1478,17 @@ describe('ACAL1331 — la taille de la cible posée d’elle-même sur un calepi
       const a = fermer(12, 8, opts);
       try { expect(a.note()).not.toContain('d’après'); } finally { a.fin(); }
     }
+  });
+
+  it('ACAL1448 — « 2 pans » sur un toit posé : le premier pan (le mieux exposé) garde la taille, tous gardent le module', () => {
+    const pans = [{ id: 'area-2', neededPanels: 0, neededAuto: true }, { id: 'area-3', neededPanels: 0, neededAuto: true, existant: false }];
+    heriterDuPanDecoupe({ moduleId: 'produit-710' }, { neededPanels: 5, neededAuto: false }, pans as never, true);
+    expect(pans).toEqual([
+      { id: 'area-2', neededPanels: 5, neededAuto: false, moduleId: 'produit-710' },
+      { id: 'area-3', neededPanels: 0, neededAuto: true, existant: false, moduleId: 'produit-710' },
+    ]);
+    const publics = [{ id: 'area-2', neededPanels: 0, neededAuto: true }];
+    heriterDuPanDecoupe({ moduleId: 'produit-710' }, { neededPanels: 5, neededAuto: false }, publics as never, false); // site public : rien
+    expect(publics).toEqual([{ id: 'area-2', neededPanels: 0, neededAuto: true }]);
   });
 });

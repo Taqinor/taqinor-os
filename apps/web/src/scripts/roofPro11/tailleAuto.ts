@@ -6,6 +6,7 @@
 // commercial n'a rien ajusté, et garde la taille quand le toit est découpé en pans. Une pose tenue (relue, déplacée)
 // n'est jamais re-posée (ACAL1900, `poseTenue`). Site public : `opts.chiffrage` absent ⇒ rien ne change.
 import type { Ctx } from './context';
+import type { AreaRecord } from './types';
 import { fmt, fmtKwc } from './dom';
 import { poseTenue } from './panExistant';
 
@@ -45,4 +46,19 @@ export function noteTailleAuto(ctx: CtxTaille, placed: number, carte: { count: n
   if (placed >= t.panneaux) return `${tete} — ajustez si besoin.`;
   const raison = note.startsWith(prefixe) ? note.slice(prefixe.length).replace(/\.$/, '') : '';
   return `${tete} sur ${fmt(t.panneaux)}${raison} ; ajustez si besoin.`;
+}
+
+/** ACAL1448 — « Forme du toit » (2 pans, 4 pans…) remplace le pan actif par ses découpes : dans l'atelier ERP (`erp`), le
+ *  premier pan (le mieux exposé, celui que l'atelier charge) garde le nombre voulu du pan découpé, et tous gardent son
+ *  module — sinon la cible tombait et chaque pan se remplissait (15 panneaux pour une cible de 5, module changé). */
+export function heriterDuPanDecoupe(
+  ancien: Pick<AreaRecord, 'moduleId'> | null | undefined,
+  besoin: { neededPanels: number; neededAuto: boolean },
+  pans: AreaRecord[],
+  erp: boolean,
+): void {
+  if (!erp || !pans.length) return;
+  pans[0].neededPanels = besoin.neededPanels;
+  pans[0].neededAuto = besoin.neededAuto;
+  if (ancien?.moduleId) for (const p of pans) if (!p.existant) p.moduleId = ancien.moduleId;
 }
