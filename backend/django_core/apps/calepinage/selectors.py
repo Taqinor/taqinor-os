@@ -1408,6 +1408,16 @@ def calepinage_villa(area, *, ordre='lnglat', kit=None, produit_panneau=None,
 # compris (CALX70) — une intégration ne doit jamais recevoir une production
 # que l'écran déclarerait périmée.
 
+def simulation_automatique_en_cours(calepinage):
+    """ACAL1987 — l'identifiant du job de simulation PARTI SEUL (à
+    l'enregistrement d'une pose complète) et encore en file ou en cours pour
+    ce calepinage, ou ``None`` : de quoi dire « Simulation en cours… » sans
+    clic. Lecture pure ; l'écran de résultat le lit à côté de ``resultat_servi``."""
+    from .services import simulation_auto
+
+    return simulation_auto.simulation_automatique_en_cours(calepinage)
+
+
 def resultat_servi(calepinage, *, variante=None):
     """CALX369 — le ``resultat`` servi par ``GET resultat/`` (CALX70).
 

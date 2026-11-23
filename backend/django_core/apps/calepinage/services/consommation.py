@@ -1034,6 +1034,10 @@ ALIAS_CLASSES = {'domestique': 'residentiel'}
 AVIS_FORME_UNIFORME = (
     'Forme horaire UNIFORME : des factures mensuelles ne disent rien de la '
     'journée — affinez la courbe dans l’atelier (appareils ou relevé).')
+AVIS_FORME_DU_DEVIS = (
+    'Forme horaire du devis : {libelle} (champ « occupation_jour » du lead : '
+    '{etat}).')
+ETAT_OCCUPATION_SUPPOSEE = 'non renseigné, présence supposée — à confirmer'
 AVIS_SAISONS_DES_FACTURES = (
     'Saisons lues sur les factures : été (juin–septembre) ×{ete}, hiver '
     '×{hiver} par rapport au jour moyen de l’année.')
@@ -1212,14 +1216,40 @@ def _depuis_factures(corps, company):
                                   _classe_saisie(corps)) + ('facture',)
 
 
+def _forme_du_devis(courbe24, annuel, avertissements, lead, classe):
+    """ACAL1967 — la courbe horaire d'un lead RÉSIDENTIEL prend la forme que son
+    devis prend (présence en journée, par le sélecteur de ventes), au lieu de
+    la forme uniforme ; l'avis dit la valeur du champ ``occupation_jour``.
+    Hors résidentiel, ou sans courbe : rien ne change."""
+    if courbe24 is None or annuel is None or classe != 'residentiel':
+        return courbe24, avertissements
+    from apps.ventes.selectors_calepinage import forme_horaire_du_lead
+
+    forme = forme_horaire_du_lead(lead)
+    if not forme:
+        return courbe24, avertissements
+    jour_moyen = annuel / sum(JOURS_DU_MOIS)
+    courbe = [round(jour_moyen * part, 4) for part in forme['forme']]
+    etat = (ETAT_OCCUPATION_SUPPOSEE if forme['suppose']
+            else forme['reponse'])
+    avis = [texte for texte in avertissements if texte != AVIS_FORME_UNIFORME]
+    avis.append(AVIS_FORME_DU_DEVIS.format(libelle=forme['libelle'],
+                                           etat=etat))
+    return courbe, avis
+
+
 def _depuis_lead(corps, company, lead_id, lire_lead=None):
     lead = (lire_lead or _lire_lead)(company, lead_id) if lead_id else None
     if lead is None:
         raise LeadIntrouvable('Introuvable.')
     profil = _profil_depuis_lead(company, lead_id,
                                  lire_lead=lambda *_: lead)
-    return _depuis_profil_mensuel(profil, company,
-                                  _classe_saisie(corps, lead)) + ('facture',)
+    classe = _classe_saisie(corps, lead)
+    courbe24, annuel, saisons, avertissements = _depuis_profil_mensuel(
+        profil, company, classe)
+    courbe24, avertissements = _forme_du_devis(
+        courbe24, annuel, avertissements, lead, classe)
+    return courbe24, annuel, saisons, avertissements, 'facture'
 
 
 def _depuis_appareils(corps):

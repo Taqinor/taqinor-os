@@ -11,6 +11,7 @@ from __future__ import annotations
 import calendar
 import unittest
 
+from apps.calepinage.services import etapes
 from apps.calepinage.services.chaine_pertes import appliquer_chaine
 from apps.calepinage.services.etapes import indisponibilite
 
@@ -65,9 +66,11 @@ class OmissionTest(unittest.TestCase):
         _, etape = indisponibilite.appliquer(SERIE, contexte_de([]))
         self.assertIn('indisponibilite_fenetres', etape['motif_omission'])
 
-    def test_le_motif_refuse_explicitement_le_pourcentage_suppose(self):
+    def test_le_motif_dit_qu_aucun_forfait_n_est_regle(self):
+        # D-ACAL-82 : le forfait de départ peut tenir la place des fenêtres ;
+        # sans lui, l'omission le dit.
         _, etape = indisponibilite.appliquer(SERIE, {})
-        self.assertIn('jamais par un pourcentage annuel supposé',
+        self.assertIn("Aucun forfait de départ n'est réglé",
                       etape['motif_omission'])
 
     def test_une_fenetre_hors_plage_est_refusee_en_citant_ses_dates(self):
@@ -196,6 +199,63 @@ class DansLaChaineTest(unittest.TestCase):
                      if e['etape'] == 'indisponibilite')
         self.assertTrue(etape['motif_omission'])
         self.assertIsNone(etape['perte_pct'])
+
+
+#: ACAL1968 — le forfait de départ que pose le profil de départ.
+FORFAIT = {'indisponibilite_forfait_pct': {
+    'valeur': 2.0, 'source': 'texte', 'reference': 'Profil de départ'}}
+
+
+def contexte_forfait(fenetres=None):
+    contexte = {'reglages_simulation': dict(FORFAIT)}
+    if fenetres is not None:
+        contexte['reglages_simulation']['indisponibilite_fenetres'] = {
+            'valeur': fenetres, 'source': 'societe',
+            'reference': "Journal d'exploitation"}
+    return contexte
+
+
+class ForfaitDeDepartTest(unittest.TestCase):
+    """ACAL1968 (D-ACAL-82) — sans fenêtre datée, le forfait de départ de la
+    société s'applique, DIT supposé ; une fenêtre saisie PRIME."""
+
+    def test_sans_fenetre_le_forfait_s_applique_dit_suppose(self):
+        rendue, etape = indisponibilite.appliquer(SERIE, contexte_forfait())
+        self.assertEqual(etape['motif_omission'], '')
+        self.assertTrue(etape['entree']['supposee'])
+        self.assertIn('supposé', etape['entree']['mention'])
+        self.assertEqual(etape['entree']['pct'], 2.0)
+        self.assertAlmostEqual(
+            etapes.energie_kwh(rendue), etapes.energie_kwh(SERIE) * 0.98,
+            places=6)
+
+    def test_une_liste_vide_de_fenetres_vaut_aucune_fenetre(self):
+        _, etape = indisponibilite.appliquer(SERIE, contexte_forfait([]))
+        self.assertTrue(etape['entree']['supposee'])
+
+    def test_une_fenetre_saisie_prime_sur_le_forfait(self):
+        _, etape = indisponibilite.appliquer(
+            SERIE, contexte_forfait(semaine('2021-06-01', '2021-06-08')))
+        self.assertEqual(etape['motif_omission'], '')
+        self.assertNotIn('supposee', etape['entree'])
+        self.assertIn('pct_energie', etape['entree'])
+
+    def test_une_fenetre_refusee_n_est_jamais_remplacee_par_le_forfait(self):
+        _, etape = indisponibilite.appliquer(
+            SERIE, contexte_forfait(semaine('2019-06-01', '2019-06-08')))
+        self.assertIn('hors de la plage simulée', etape['motif_omission'])
+
+    def test_sans_forfait_ni_fenetre_l_omission_dit_les_deux(self):
+        _, etape = indisponibilite.appliquer(SERIE, {})
+        self.assertIn('indisponibilite_fenetres', etape['motif_omission'])
+        self.assertIn('Aucun forfait de départ', etape['motif_omission'])
+
+    def test_la_chaine_publie_la_perte_du_forfait(self):
+        _, cascade = appliquer_chaine(SERIE, contexte_forfait())
+        etape = next(e for e in cascade['etapes']
+                     if e['etape'] == 'indisponibilite')
+        self.assertEqual(etape['motif_omission'], '')
+        self.assertAlmostEqual(etape['perte_pct'], 2.0, places=3)
 
 
 if __name__ == '__main__':

@@ -33,9 +33,10 @@ couvre exactement sept jours. Les dates se saisissent en ISO
 
 CE QUI LA FAIT SE TAIRE
 ------------------------
-* Aucune fenêtre saisie ⇒ étape OMISE. Jamais 1 %, jamais un forfait : une
-  installation dont personne n'a daté les arrêts n'a pas « 1 % » d'arrêt,
-  elle a des arrêts qu'on n'a pas décrits.
+* Aucune fenêtre saisie ⇒ le FORFAIT de départ de la société quand elle en a
+  un (``indisponibilite_forfait_pct``, 2 % de l'énergie posé par le profil de
+  départ, dit « supposé », D-ACAL-82) ; sinon étape OMISE. Une fenêtre saisie
+  PRIME toujours sur le forfait.
 * Une fenêtre illisible, ou dont la fin précède le début ⇒ REFUSÉE en
   citant ses dates.
 * Une fenêtre HORS de la plage d'années simulée ⇒ REFUSÉE en citant ses
@@ -53,6 +54,10 @@ from apps.calepinage.services import etapes as _etapes
 
 #: La clé de réglage société lue ici (registre CALX145).
 CLE_REGLAGE = 'indisponibilite_fenetres'
+
+#: ACAL1968 — le forfait de départ (part de l'énergie annuelle) qui tient la
+#: place des fenêtres tant qu'aucune n'est saisie (D-ACAL-82).
+CLE_FORFAIT = 'indisponibilite_forfait_pct'
 
 #: Les colonnes de date que chaque point doit porter pour être situé.
 COLONNES_DATE = ('annee', 'mois', 'jour', 'heure')
@@ -83,11 +88,18 @@ def appliquer(serie, contexte):
     saisie = _etapes.reglage(contexte, CLE_REGLAGE)
     brutes = saisie.get('valeur') if saisie else None
     if not isinstance(brutes, (list, tuple)) or not brutes:
+        motif = ("Aucune fenêtre d'arrêt saisie pour cette installation : "
+                 "l'indisponibilité se décrit par des périodes datées.")
+        # ACAL1968 (D-ACAL-82) — à défaut de fenêtres, le forfait de départ
+        # de la société (2 % de l'énergie, supposé) ; une fenêtre saisie prime.
+        repli = _etapes.repli_de_conception(
+            serie, contexte, cle=CLE_FORFAIT, poste='indisponibilite',
+            libelle=LIBELLE, reference=REFERENCE, motif=motif)
+        if repli is not None:
+            return repli
         return serie, _etapes.etape_omise(
             LIBELLE,
-            "Aucune fenêtre d'arrêt saisie pour cette installation : "
-            "l'indisponibilité se décrit par des périodes datées, jamais par "
-            'un pourcentage annuel supposé.',
+            motif + " Aucun forfait de départ n'est réglé non plus.",
             champ=f'simulation.{CLE_REGLAGE}')
 
     repere = _repere(contexte)

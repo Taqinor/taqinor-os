@@ -15,6 +15,82 @@
         "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/array-incidence-loss-iam.html",
         "date_lecture": "2026-11-20",
         "etat": "a_appliquer"
+      },
+      {
+        "cle": "salissure_mensuelle_pct",
+        "section": "simulation",
+        "valeur": 3,
+        "unite": "%",
+        "source": "texte",
+        "reference": "Profil de départ — valeur de départ SUPPOSÉE, acceptée par le fondateur le 23/11/2026 (D-ACAL-82) : salissure de 3 % par an pour un toit raccordé, avec un nettoyage environ deux fois par an en plus de la pluie (fréquence non sourcée, à confirmer) ; repères publiés : 3,0 % dans PVsyst 6.02 (Sandia SAND2013-3880P), 2 % par défaut dans PVWatts v5 (NREL/TP-6A20-62641), 1,95 % avec nettoyage mensuel à Benguerir et 5,8 % sans nettoyage sur un site minier marocain (Abraim 2022, Ghennioui 2026, https://elib.dlr.de/223442/1/Abraim2026online1-s2.0-S2590123026011187-main.pdf)",
+        "url": "https://elib.dlr.de/189135/",
+        "date_lecture": "2026-11-23",
+        "etat": "a_appliquer"
+      },
+      {
+        "cle": "lid_par_techno",
+        "section": "simulation",
+        "valeur": {
+          "perc": {
+            "pct": 1.5,
+            "source": "texte",
+            "reference": "Valeur supposée de départ (D-ACAL-82) — PVsyst, LID loss : fourchette « typically ranges from 1% to 3% », défaut suggéré de 2 % ; médiane PVEL/Kiwa 2026 de 0,6 % pour le PERC (https://taiyangnews.info/technology/kiwa-pvel-2026-module-reliability-testing-scorecard) — 1,5 % retenu pour le PERC de type p"
+          },
+          "topcon": {
+            "pct": 1.0,
+            "source": "texte",
+            "reference": "Valeur supposée de départ (D-ACAL-82) — Garantie de première année de 1 % des fiches TOPCon (Trina Vertex S+ i-TOPCon) ; médiane PVEL/Kiwa 2026 de 0,4 % (https://taiyangnews.info/technology/kiwa-pvel-2026-module-reliability-testing-scorecard) — 1 % retenu pour le TOPCon de type n"
+          },
+          "hjt": {
+            "pct": 1.0,
+            "source": "texte",
+            "reference": "Valeur supposée de départ (D-ACAL-82) — PVEL/Kiwa 2026 : LID de 0,7 % et LeTID de 0,4 % pour l'hétérojonction (https://taiyangnews.info/technology/kiwa-pvel-2026-module-reliability-testing-scorecard) — 1 % retenu"
+          },
+          "inconnue": {
+            "pct": 1.5,
+            "source": "texte",
+            "reference": "Valeur supposée de départ (D-ACAL-82) — PVWatts v5 (NREL/TP-6A20-62641) : dégradation initiale de 1,5 % par défaut — appliquée quand la technologie de cellule de la fiche du module est absente ou ne figure pas dans cette table"
+          }
+        },
+        "unite": "%",
+        "source": "texte",
+        "reference": "Profil de départ — valeur de départ SUPPOSÉE, acceptée par le fondateur le 23/11/2026 (D-ACAL-82) : dégradation initiale (LID) de 1,5 % pour le PERC et pour une technologie inconnue, de 1 % pour le TOPCon et le HJT ; PVsyst ne propose aucune valeur par défaut et chiffre 1 à 3 % (page LID loss), PVEL/Kiwa 2026 mesure des médianes de 0,4 à 0,7 %",
+        "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/lid-loss.html",
+        "date_lecture": "2026-11-23",
+        "etat": "a_appliquer"
+      },
+      {
+        "cle": "indisponibilite_forfait_pct",
+        "section": "simulation",
+        "valeur": 2,
+        "unite": "%",
+        "source": "texte",
+        "reference": "Profil de départ — valeur de départ SUPPOSÉE, acceptée par le fondateur le 23/11/2026 (D-ACAL-82) : indisponibilité de 2 % de l'énergie annuelle, appliquée quand aucune fenêtre d'arrêt datée n'est saisie (une fenêtre saisie prime) ; repères publiés : 2 % à 7,3 jours par an dans PVsyst 6.02 (Sandia SAND2013-3880P), 3 % dans PVWatts v5, disponibilité médiane de 0,99 et P90 de 0,95 sur 1 128 systèmes américains (NREL/TP-5K00-88769) ; aucune donnée sur les coupures du réseau marocain",
+        "url": "https://www.osti.gov/biblio/2318550",
+        "date_lecture": "2026-11-23",
+        "etat": "a_appliquer"
+      },
+      {
+        "cle": "ohmique_dc_conception_pct",
+        "section": "simulation",
+        "valeur": 1.5,
+        "unite": "%",
+        "source": "texte",
+        "reference": "Profil de départ — valeur de départ SUPPOSÉE, acceptée par le fondateur le 23/11/2026 (D-ACAL-82) : pertes de câbles en continu de 1,5 %, valeur de CONCEPTION appliquée tant que les longueurs réelles des câbles ne sont pas connues (un calcul sur câbles réels prime) ; repères publiés : 1,5 % de fraction continue globale à STC dans PVsyst 6.02 (SAND2013-3880P), 2 % dans PVWatts v5 et dans Solargis, 3 % au maximum côté continu dans la norme UTE C 15-712-1 §11.2",
+        "url": "https://f1atb.fr/wp-content/uploads/2022/10/photovoltaique-norme-UTE-C157-12-1.pdf",
+        "date_lecture": "2026-11-23",
+        "etat": "a_appliquer"
+      },
+      {
+        "cle": "ohmique_ac_conception_pct",
+        "section": "simulation",
+        "valeur": 1,
+        "unite": "%",
+        "source": "texte",
+        "reference": "Profil de départ — valeur de départ SUPPOSÉE, acceptée par le fondateur le 23/11/2026 (D-ACAL-82) : pertes de câbles en alternatif de 1 %, valeur de CONCEPTION appliquée tant que la longueur réelle de la liaison onduleur → tableau général n'est pas connue (un calcul sur câble réel prime) ; repères publiés : 1 % recommandé et 3 % au maximum côté alternatif dans la norme UTE C 15-712-1 §11.3, 1 % en basse tension dans Solargis Evaluate",
+        "url": "https://f1atb.fr/wp-content/uploads/2022/10/photovoltaique-norme-UTE-C157-12-1.pdf",
+        "date_lecture": "2026-11-23",
+        "etat": "a_appliquer"
       }
     ],
     "sans_source": [
@@ -74,11 +150,6 @@
         "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
       },
       {
-        "cle": "lid_par_techno",
-        "section": "simulation",
-        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
-      },
-      {
         "cle": "mismatch_fabricant_pct",
         "section": "simulation",
         "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
@@ -95,11 +166,6 @@
       },
       {
         "cle": "attenuation_horizon",
-        "section": "simulation",
-        "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
-      },
-      {
-        "cle": "salissure_mensuelle_pct",
         "section": "simulation",
         "motif": "Aucune valeur vérifiable lue sur une page citée au 20/11/2026 : laissée sans valeur (D-CALX 7, jamais tapée de mémoire)."
       },

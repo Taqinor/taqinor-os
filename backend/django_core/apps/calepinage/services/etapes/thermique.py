@@ -21,6 +21,10 @@ CE QUE CETTE ÉTAPE FAIT
    source, reference}}``. Les valeurs publiées par les logiciels du marché
    sont proposées en AIDE À LA SAISIE par l'écran de réglages, jamais
    préremplies ici (D-CALX 7).
+2 bis. ACAL1671 (D-ACAL-84) — sans ligne à son nom, la pose se relie à une
+   ligne de la table par :data:`CORRESPONDANCE_POSE` : châssis ⇒ « pose
+   libre », affleurant ⇒ « dos isolé » (le document réel dit sa pose par
+   ``flush``), dite « par défaut — à confirmer ».
 3. Table société muette ⇒ Faiman avec le ``uc_w_m2k`` de la fiche s'il
    existe, provenance ``fiche``, et la mention qui dit que le coefficient
    d'une fiche est appliqué à une pose non caractérisée.
@@ -73,6 +77,18 @@ CHAMPS_POSE = ('type_pose', 'pose', 'kind', 'family')
 POSE_INTEGRE = 'integre'
 POSE_CHASSIS = 'chassis'
 
+#: ACAL1671 (D-ACAL-84) — la table FERMÉE qui relie la pose lue sur le document
+#: à une ligne de la table société quand elle n'en porte pas une à son nom :
+#: châssis ⇒ « pose libre » (air tout autour), affleurant ⇒ « dos isolé ». Les
+#: coefficients restent dans les DONNÉES (``data/profil_depart.json``) ; ici
+#: seulement des NOMS de lignes. Une ligne à son propre nom prime toujours.
+CORRESPONDANCE_POSE = {POSE_CHASSIS: 'pose_libre', POSE_INTEGRE: 'dos_isole'}
+
+#: La mention d'une ligne prise par correspondance (dite à l'écran et au rapport).
+MENTION_CORRESPONDANCE = (
+    'par défaut — à confirmer : pose « {pose} » lue sur le document, ligne '
+    '« {ligne} » de la table société (D-ACAL-84).')
+
 PROVENANCE_SOCIETE = 'societe'
 PROVENANCE_FICHE = 'fiche'
 PROVENANCE_NOCT = 'noct'
@@ -117,7 +133,7 @@ def appliquer(serie, contexte):
 
     types_lus, type_pose, champ_pose = _poses_du_document(contexte)
     coefficients, entree_societe, ecart_societe = _coefficients_societe(
-        contexte, type_pose)
+        contexte, type_pose, _genre_de_pose(contexte, type_pose))
 
     specs = dict(fiche)
     specs.update(coefficients)
@@ -221,27 +237,61 @@ def _normaliser(texte):
 
 # ── la table société, et ce qu'elle exige d'elle-même ──────────────────
 
-def _coefficients_societe(contexte, type_pose):
+def _genre_de_pose(contexte, type_pose):
+    """ACAL1671 — « chassis » ou « integre » : le type lu quand il l'est, sinon
+    le booléen ``flush`` du premier pan qui le porte. Le document réel nomme
+    sa famille (« south », « eastwest »), pas sa pose : c'est ``flush`` qui
+    distingue le panneau à plat sur la couverture du panneau relevé. ``None``
+    quand rien ne le dit — la correspondance n'est jamais devinée."""
+    if type_pose in CORRESPONDANCE_POSE:
+        return type_pose
+    for plan in contexte.get('plans') or ():
+        if not isinstance(plan, dict):
+            continue
+        flush = plan.get('flush')
+        if not isinstance(flush, bool):
+            geometrie = plan.get('geometry') or plan.get('geometrie')
+            flush = (geometrie.get('flush')
+                     if isinstance(geometrie, dict) else None)
+        if isinstance(flush, bool):
+            return POSE_INTEGRE if flush else POSE_CHASSIS
+    return None
+
+
+def _coefficients_societe(contexte, type_pose, genre=None):
     """``(coefficients, entree_publiee, ecart)`` lus dans le réglage société.
 
     Une entrée de la table qui ne porte pas sa propre ``source`` n'est PAS
     employée : elle est écartée, et l'écart est dit dans la mention (D-CALX 7
     — un chiffre qu'on ne peut pas sourcer ne se défend pas).
+
+    ACAL1671 (D-ACAL-84) — sans ligne à son nom, la pose se relie à une ligne de
+    la table par :data:`CORRESPONDANCE_POSE` (``genre`` : châssis ou
+    affleurant), et la mention dit « par défaut — à confirmer ».
     """
     saisie = _etapes.reglage(contexte, CLE_REGLAGE)
-    if not saisie or type_pose is None:
+    if not saisie or (type_pose is None and genre is None):
         return {}, None, ''
     table = saisie.get('valeur')
     if not isinstance(table, dict):
         return {}, None, ''
-    entree = None
+    entree, defaut = None, ''
     for cle, valeur in table.items():
         if _normaliser(cle) == type_pose and isinstance(valeur, dict):
             entree = valeur
             break
+    ligne_par_defaut = CORRESPONDANCE_POSE.get(genre)
+    if entree is None and ligne_par_defaut is not None:
+        for cle, valeur in table.items():
+            if (_normaliser(cle) == ligne_par_defaut
+                    and isinstance(valeur, dict)):
+                entree = valeur
+                defaut = MENTION_CORRESPONDANCE.format(
+                    pose=genre, ligne=ligne_par_defaut)
+                break
     if entree is None:
         return {}, None, (
-            f'aucune ligne « {type_pose} » dans la table société des '
+            f'aucune ligne « {type_pose or genre} » dans la table société des '
             'coefficients par type de pose.')
     if not (entree.get('source') or '').strip():
         return {}, None, (
@@ -262,7 +312,7 @@ def _coefficients_societe(contexte, type_pose):
         'reference': entree.get('reference') or '',
         'source_du_reglage': saisie.get('source'),
     }
-    return coefficients, publiee, ''
+    return coefficients, publiee, defaut
 
 
 def _provenance(modele, table_societe_employee):

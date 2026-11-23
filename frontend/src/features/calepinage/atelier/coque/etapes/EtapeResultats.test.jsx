@@ -454,9 +454,13 @@ describe('Étape Résultats — résultat incomplet (maquette ResultatsIncomplet
   it('« Démarrage rapide » ne compte que ce que « Remplir » remplit (même liste que la page Démarrage rapide)', async () => {
     const base = COMPLET()
     const borne = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
-    const data = { ...base, production: borne.production, simulation: borne.simulation, cascade: borne.cascade }
+    const data = { ...base, production: borne.production, simulation: borne.simulation, cascade: JSON.parse(JSON.stringify(borne.cascade)) }
+    // D-ACAL-82 : salissure et LID ont désormais une valeur de départ ; les deux lignes sans valeur publiée sont ici
+    // deux réglages qui n'en ont toujours pas (fenêtres d'arrêt, modèle de dégradation).
+    const SANS_VALEUR = ['indisponibilite_fenetres', 'modele_degradation']
+    data.cascade.a_renseigner.lignes = data.cascade.a_renseigner.lignes.map((l, i) => (i < 2 ? { ...l, cle: SANS_VALEUR[i] } : l))
     const cles = data.cascade.a_renseigner.lignes.map((l) => l.cle)
-    expect(cles).toHaveLength(3) // salissure + LID : aucune valeur publiée ; écarts entre panneaux : valeur publiée
+    expect(cles).toHaveLength(3) // deux réglages sans valeur publiée ; écarts entre panneaux : valeur publiée
     servir(data)
     rendre()
     const texte = await screen.findByTestId('acal700-demarrage-texte')
@@ -464,7 +468,7 @@ describe('Étape Résultats — résultat incomplet (maquette ResultatsIncomplet
     expect(texte).not.toHaveTextContent('3 réglages')
     cleanup()
     // Aucune ligne remplissable : jamais « Remplir » promis.
-    data.cascade.a_renseigner.lignes = data.cascade.a_renseigner.lignes.filter((l) => ['salissure_mensuelle_pct', 'lid_par_techno'].includes(l.cle))
+    data.cascade.a_renseigner.lignes = data.cascade.a_renseigner.lignes.filter((l) => SANS_VALEUR.includes(l.cle))
     servir(data)
     rendre()
     expect(await screen.findByTestId('acal700-demarrage-texte')).toHaveTextContent('Aucune valeur publiée n’existe pour ces réglages')

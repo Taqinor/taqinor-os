@@ -26,6 +26,15 @@ de 60 % » de la fraction déclarée au STC
 ohmic-losses/array-ohmic-wiring-loss.html). Le rapport exact dépend du profil
 de production du site : il est CALCULÉ ici, jamais supposé.
 
+VALEUR DE CONCEPTION (ACAL1968, D-ACAL-82)
+-------------------------------------------
+Quand les longueurs réelles ne sont pas connues (aucun câble publié, norme non
+applicable, tension inconnue), la valeur de conception de la société
+(``ohmique_dc_conception_pct``, posée par le profil de départ avec sa source)
+tient la place du calcul, DITE « supposé » dans ``entree``. Un calcul sur
+câbles réels PRIME toujours ; un poste saisi et sourcé du calepinage aussi ;
+sous micro-onduleur rien n'est supposé.
+
 CE QU'ELLE LIT DANS ``contexte``
 ----------------------------------
 * ``norme`` — le verdict de ``services/norme.py::norme_applicable``. Non
@@ -116,9 +125,30 @@ __all__ = ['appliquer', 'LIBELLE', 'REPERE_DC', 'CHAMP_MICRO_LONGUEUR',
            'CHAMP_MICRO_SECTION', 'CLE_SUIVI_MPP', 'SUIVI_MICRO_ONDULEUR']
 
 
+#: ACAL1968 — le réglage société de la valeur de CONCEPTION (D-ACAL-82), posé
+#: par le profil de départ, qui tient la place du calcul tant que les
+#: longueurs réelles des câbles ne sont pas connues.
+CLE_CONCEPTION = 'ohmique_dc_conception_pct'
+
+
 def appliquer(serie, contexte):
-    """``(serie, etape)`` — la perte ``R·I²`` de la liaison continue."""
+    """``(serie, etape)`` — la perte ``R·I²`` de la liaison continue ; à
+    défaut de câbles réels, la valeur de CONCEPTION de la société, dite
+    « supposé » (ACAL1968). Un calcul sur câbles réels PRIME toujours ; sous
+    micro-onduleur il n'existe aucune liaison de chaîne, rien n'est supposé."""
     contexte = contexte if isinstance(contexte, dict) else {}
+    rendue, etape = _calculer(serie, contexte)
+    if not etape.get('motif_omission') or _sous_micro_onduleur(contexte):
+        return rendue, etape
+    repli = etapes.repli_de_conception(
+        serie, contexte, cle=CLE_CONCEPTION, poste='ohmique_dc',
+        libelle=LIBELLE, reference=REFERENCE_PVSYST,
+        motif=etape['motif_omission'])
+    return repli if repli is not None else (rendue, etape)
+
+
+def _calculer(serie, contexte):
+    """Le calcul réel ``R·I²`` sur les câbles du métré, ou l'omission dite."""
 
     motif_norme = _motif_norme(contexte)
     if motif_norme:

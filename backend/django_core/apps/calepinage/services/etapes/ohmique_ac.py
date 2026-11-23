@@ -22,6 +22,13 @@ et ``EntreeElectrique.facteur_phases``), jamais réécrites ici. PV*SOL traite
 de même les câbles AC séparément de la ligne principale DC et des chaînes
 (https://help.valentin-software.com/pvsol/en/pages/cables/).
 
+VALEUR DE CONCEPTION (ACAL1968, D-ACAL-82)
+-------------------------------------------
+Quand le câble AC réel n'est pas connu, la valeur de conception de la société
+(``ohmique_ac_conception_pct``, posée par le profil de départ avec sa source)
+tient la place du calcul, DITE « supposé » dans ``entree`` ; un calcul sur
+câble réel PRIME, un poste saisi et sourcé du calepinage aussi.
+
 CE QU'ELLE LIT, ET CE QUI LA FAIT S'OMETTRE
 ---------------------------------------------
 * la série doit DÉCLARER le porteur alternatif (``colonne_energie ==
@@ -83,9 +90,29 @@ __all__ = ['appliquer', 'LIBELLE', 'REPERE_AC', 'COLONNE_ALTERNATIVE',
            'CONDUCTEURS_ACTIFS']
 
 
+#: ACAL1968 — le réglage société de la valeur de CONCEPTION (D-ACAL-82), posé
+#: par le profil de départ, qui tient la place du calcul tant que la longueur
+#: réelle de la liaison alternative n'est pas connue.
+CLE_CONCEPTION = 'ohmique_ac_conception_pct'
+
+
 def appliquer(serie, contexte):
-    """``(serie, etape)`` — la perte ``R·I²`` de la liaison alternative."""
+    """``(serie, etape)`` — la perte ``R·I²`` de la liaison alternative ; à
+    défaut de câble réel, la valeur de CONCEPTION de la société, dite
+    « supposé » (ACAL1968). Un calcul sur câble réel PRIME toujours."""
     contexte = contexte if isinstance(contexte, dict) else {}
+    rendue, etape = _calculer(serie, contexte)
+    if not etape.get('motif_omission'):
+        return rendue, etape
+    repli = etapes.repli_de_conception(
+        serie, contexte, cle=CLE_CONCEPTION, poste='ohmique_ac',
+        libelle=LIBELLE, reference=REFERENCE_PVSOL,
+        motif=etape['motif_omission'])
+    return repli if repli is not None else (rendue, etape)
+
+
+def _calculer(serie, contexte):
+    """Le calcul réel ``R·I²`` sur le câble AC du métré, ou l'omission dite."""
 
     if serie.get('colonne_energie') != COLONNE_ALTERNATIVE:
         return serie, etapes.etape_omise(

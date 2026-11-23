@@ -183,6 +183,73 @@ class OmissionsNommeesTest(unittest.TestCase):
         self.assertTrue(etape['motif_omission'])
 
 
+#: ACAL1968 — le réglage de la valeur de CONCEPTION que pose le profil de départ.
+CONCEPTION = {'ohmique_dc_conception_pct': {
+    'valeur': 1.2, 'source': 'texte', 'reference': 'Profil de départ'}}
+
+
+class ValeurDeConceptionTest(unittest.TestCase):
+    """ACAL1968 (D-ACAL-82) — sans câble réel, la valeur de conception de la
+    société s'applique, DITE supposée ; un calcul sur câble réel PRIME."""
+
+    def _sans_cable(self, **extras):
+        vide = {'cables': [], 'longueurs': {'dc': None, 'ac': None},
+                'omissions': ['descente verticale non saisie (m)']}
+        return ohmique_dc.appliquer(SERIE, contexte(
+            cables=vide, reglages_simulation=dict(CONCEPTION), **extras))
+
+    def test_sans_cable_la_valeur_de_conception_s_applique_dite_supposee(self):
+        serie, etape = self._sans_cable()
+        self.assertEqual(etape['motif_omission'], '')
+        self.assertTrue(etape['entree']['supposee'])
+        self.assertEqual(etape['entree']['mode'], 'valeur_de_conception')
+        self.assertIn('supposé', etape['entree']['mention'])
+        self.assertIn('descente verticale',
+                      etape['entree']['motif_du_calcul_reel'])
+        self.assertAlmostEqual(etapes.energie_kwh(serie), 10.0 * (1 - 0.012),
+                               places=9)
+
+    def test_norme_non_applicable_n_empeche_pas_la_valeur_de_conception(self):
+        _, etape = ohmique_dc.appliquer(SERIE, contexte(
+            norme=NORME_MA, reglages_simulation=dict(CONCEPTION)))
+        self.assertTrue(etape['entree']['supposee'])
+        self.assertEqual(etape['entree']['motif_du_calcul_reel'],
+                         NORME_MA['motif'])
+
+    def test_un_cable_reel_prime_sur_la_valeur_de_conception(self):
+        _, etape = ohmique_dc.appliquer(SERIE, contexte(
+            reglages_simulation=dict(CONCEPTION)))
+        self.assertEqual(etape['motif_omission'], '')
+        self.assertNotIn('supposee', etape['entree'])
+        self.assertEqual(etape['entree']['liaison'],
+                         'chaîne continue module → onduleur')
+
+    def test_un_poste_saisi_et_source_prime_sur_la_valeur_de_conception(self):
+        saisi = [{'poste': 'ohmique_dc', 'pct': 0.7, 'source': 'societe'}]
+        _, etape = self._sans_cable(postes_saisis=saisi)
+        self.assertTrue(etape['motif_omission'])
+
+    def test_sous_micro_onduleur_rien_n_est_suppose(self):
+        _, etape = self._sans_cable(**{
+            ohmique_dc.CLE_SUIVI_MPP: ohmique_dc.SUIVI_MICRO_ONDULEUR})
+        self.assertIn('micro-onduleur', etape['motif_omission'])
+
+    def test_sans_reglage_de_conception_l_omission_reste_dite(self):
+        vide = {'cables': [], 'longueurs': {'dc': None, 'ac': None},
+                'omissions': []}
+        serie, etape = ohmique_dc.appliquer(SERIE, contexte(cables=vide))
+        self.assertIn('W1', etape['motif_omission'])
+        self.assertEqual(etapes.energie_kwh(serie), 10.0)
+
+    def test_la_perte_publiee_par_la_chaine_est_celle_du_reglage(self):
+        vide = {'cables': [], 'longueurs': {'dc': None, 'ac': None},
+                'omissions': []}
+        _, cascade = appliquer_chaine(SERIE, contexte(
+            cables=vide, reglages_simulation=dict(CONCEPTION)))
+        ligne = _ligne(cascade, 'ohmique_dc')
+        self.assertAlmostEqual(ligne['perte_pct'], 1.2, places=3)
+
+
 def _ligne(cascade, nom):
     for etape in cascade['etapes']:
         if etape['etape'] == nom:
