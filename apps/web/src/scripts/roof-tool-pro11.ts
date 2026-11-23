@@ -150,6 +150,7 @@ import { monterObjetsSite } from './roofPro11/objetsSite'; // ACAL533
 // document à chaque sérialisation (`SerializeMeta.modules`). Sans cette ligne, `modules[]` et
 // `zones[].geometry.moduleId` n'étaient JAMAIS écrits et le choix se perdait au rechargement.
 import { affectationDesPans, lireModulesDisponibles, moduleDeDepart } from './roofPro11/moduleSelect';
+import { remplacerParPanVierge } from './roofPro11/repriseModule'; // ACAL1416
 import { enregistrerOrbite } from './roofPro11/videoOrbite'; // ACAL896
 import { factureCarteDe, lireFactureSaisie } from './roofPro11/factureCarte'; // ACAL777
 import { bandesDuPan, enveloppeAccesSolaire, type MemoAcces } from './roofPro11/bandesAcces'; // ACAL721
@@ -2532,9 +2533,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     consAppliances = []; ctx.consCharges = []; // ACAL780
     consDailyTarget = 0;
     ctx.consSource = null;
-    areas.length = 0;
-    const fresh = newAreaRecord();
-    areas.push(fresh);
+    const fresh = remplacerParPanVierge(areas, activeAreaId, newAreaRecord); // ACAL1416 — « Effacer » garde le module CHOISI
     activeAreaId = fresh.id;
     imposeTarget(); // ACAL925 — la cible hydratée redevient le nombre voulu (sans cible hydratée : rien)
     if (areasWindowEl) areasWindowEl.hidden = true;
