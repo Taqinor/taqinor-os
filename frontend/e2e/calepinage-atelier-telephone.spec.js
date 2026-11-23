@@ -96,3 +96,44 @@ test('ACAL423 : atelier à 390 px — pas de défilement horizontal, cibles ≥ 
   })
   expect(petites, 'boutons et puces de moins de 44 px de haut').toEqual([])
 })
+
+// ACAL1745 — le bandeau « GPS du lead corrigé » tient à 390 px : le texte passe à la ligne, les boutons s'empilent
+// (≥ 44 px de haut), aucun ne se chevauche ni ne sort de l'écran. La dérive est posée sur la réponse de
+// `design-context` (le cas réel demande un GPS corrigé après le tracé) ; la mise en page, elle, est la vraie.
+test('ACAL1745 : le bandeau « GPS du lead corrigé » tient en 390 px, boutons empilés et ≥ 44 px', async ({ page }) => {
+  await gotoLeads(page)
+  const name = await createLead(page, { nom: uniq('Atelier tel ACAL1745'), facture: 650, ville: 'Casablanca' })
+  const res = await page.request.get(`/api/django/crm/leads/?search=${encodeURIComponent(name)}&page_size=1`)
+  expect(res.ok(), `GET /crm/leads/?search= (${res.status()})`).toBeTruthy()
+  const body = await res.json()
+  const lead = (Array.isArray(body) ? body : body.results)[0]
+  const cree = await page.request.post('/api/django/calepinage/calepinages/', { data: { lead: lead.id, titre: uniq('Tel ACAL1745') } })
+  expect(cree.ok(), `POST calepinages (${cree.status()})`).toBeTruthy()
+  const cal = await cree.json()
+
+  await page.route(/\/calepinage\/calepinages\/\d+\/design-context\//, async (route) => {
+    const reelle = await route.fetch()
+    const corps = await reelle.json()
+    corps.geometrie = { ...(corps.geometrie || {}), derive: { etat: 'a_decider' } }
+    await route.fulfill({ response: reelle, json: corps })
+  })
+  await page.goto(`/calepinage/${cal.id}`)
+  const recentrer = page.getByTestId('acal-derive-recentrer')
+  const garder = page.getByTestId('acal-derive-garder')
+  await expect(recentrer).toBeVisible({ timeout: 20_000 })
+  await expect(garder).toBeVisible()
+
+  const boites = await Promise.all([recentrer, garder, page.locator('.cal-coque-alertes-plus')].map((l) => l.boundingBox()))
+  for (const b of boites) {
+    expect(b, 'un bouton du bandeau est introuvable').not.toBeNull()
+    expect(b.height, 'bouton du bandeau de moins de 44 px').toBeGreaterThanOrEqual(43.5)
+    expect(b.x, 'bouton hors de l’écran (gauche)').toBeGreaterThanOrEqual(-0.5)
+    expect(b.x + b.width, 'bouton hors de l’écran (droite)').toBeLessThanOrEqual(390.5)
+  }
+  const [r, g, plus] = boites
+  const chevauche = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
+  expect(chevauche(r, g), '« Recentrer » et « Garder » se chevauchent').toBe(false)
+  expect(chevauche(r, plus), '« Recentrer » et « En savoir plus » se chevauchent').toBe(false)
+  expect(chevauche(g, plus), '« Garder » et « En savoir plus » se chevauchent').toBe(false)
+  expect(await sansDebordement(page), 'défilement horizontal (px)').toBeLessThanOrEqual(0)
+})
