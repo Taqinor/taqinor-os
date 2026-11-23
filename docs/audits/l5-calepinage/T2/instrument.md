@@ -24,7 +24,7 @@ Une pile locale jetable, à part de toute autre : elle ne parle ni à la prod ni
 - **Aucune clé d'IA** : la détection du toit par IA et l'assistant répondent « indisponible ».
 - **Mails et WhatsApp** : rien ne part (console).
 - **Pas de tâche planifiée** (aucun planificateur) ; les tâches de fond lancées par un geste (simulation, calcul,
-  balayage, PDF) tournent sur un worker à 2 processus : une simulation peut prendre jusqu'à une minute.
+  balayage, PDF) tournent sur un worker à UN processus : une simulation peut prendre plusieurs minutes.
 - **PVGIS** (météo, gratuit) est joint par Internet depuis le serveur : s'il ne répond pas, la simulation le dit.
 - Le poste est modeste : attends la fin d'un chargement avant d'accuser une lenteur ; mesure deux fois.
 
@@ -34,6 +34,10 @@ Une pile locale jetable, à part de toute autre : elle ne parle ni à la prod ni
   Un verdict obtenu dans cette fenêtre sur une lenteur ou une réponse absente se rejoue.
 - Le « Démarrage rapide » (profil de départ) est appliqué aux réglages de la société de démonstration depuis le
   23/11 ; le mode météo « pluriannuel » (2014-2023) y est saisi.
+
+- 23/11, ~01 h 30 → ~04 h 40 UTC : le worker de tâches de fond était tué par son plafond de mémoire (1,3 Go) sur les
+  simulations lourdes (159 arrêts) : une simulation restée à 5 % dans cette fenêtre est un artefact. Plafond porté à
+  2,3 Go à 04 h 40 ; les calculs perdus se relancent par l'écran.
 
 ## Règles d'usage
 
