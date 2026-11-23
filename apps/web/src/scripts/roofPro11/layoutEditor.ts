@@ -99,6 +99,7 @@ import { cm, peindreSilhouette, silhouetteDuLot, texteDeMesure, violationLabel }
 import { resnapEnMasse } from './layoutResnap'; // ACAL510 — sorti de ce fichier, ré-exporté ci-dessous
 export { resnapEnMasse, resnapNaif, type CentreASnapper } from './layoutResnap';
 import { motifPanExistant } from './panExistant'; // ACAL510
+import { EVT_POSE_RELUE } from './alignementRangees'; // ACAL1521
 import { catalogueAvecModulesDuDocument, estRefus, kwcDuPan, lireModulesDisponibles, resoudreModuleDuPan } from './moduleSelect'; // ACAL1520
 
 /** Décimal à 1 chiffre, à la française (identique à l'entrée). */
@@ -1190,6 +1191,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     renderCustomLayout();
     renderLayoutPanel();
     syncUndoRedoButtons(); // ACAL1403
+    signalerPoseRelue(); // ACAL1521
     if (layoutNoteEl) {
       layoutNoteEl.textContent = freeActive()
         ? `Action annulée — ${fmt(ctx.freeState?.panels.length ?? 0)} panneaux posés.`
@@ -1205,6 +1207,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     renderCustomLayout();
     renderLayoutPanel();
     syncUndoRedoButtons(); // ACAL1403
+    signalerPoseRelue(); // ACAL1521
     if (layoutNoteEl) {
       layoutNoteEl.textContent = freeActive()
         ? `Action rétablie — ${fmt(ctx.freeState?.panels.length ?? 0)} panneaux posés.`
@@ -1257,6 +1260,10 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     syncUndoRedoButtons(); // ACAL1403 — Annuler s'allume dès qu'un geste est à défaire
   }
   /** ACAL1403 — SEULE écriture de `disabled` des boutons Annuler / Rétablir. */
+  /** ACAL1521 — dit à l'écran que la pose affichée vient d'être restaurée ou rechargée. */
+  function signalerPoseRelue() {
+    if (typeof document !== 'undefined') document.dispatchEvent(new Event(EVT_POSE_RELUE));
+  }
   function syncUndoRedoButtons() {
     if (layoutUndoBtn) layoutUndoBtn.disabled = !workshopHistory.canUndo();
     if (layoutRedoBtn) layoutRedoBtn.disabled = !workshopHistory.canRedo();
@@ -1748,6 +1755,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       syncFreeInputs();
       renderCustomLayout();
       renderLayoutPanel();
+      signalerPoseRelue(); // ACAL1521
       if (layoutNoteEl) {
         layoutNoteEl.textContent = `Placement libre du dossier rechargé — ${fmt(centers.length)} panneaux reposés à l'identique.`;
       }

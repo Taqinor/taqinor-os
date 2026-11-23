@@ -1,7 +1,12 @@
+// @vitest-environment jsdom
 // ACAL584 — alignement des rangées par post-traitement du pavage (fonction pure, sans DOM).
 import { describe, expect, it } from 'vitest';
-import { alignerRangees } from './alignementRangees';
+import { alignerRangees, monterAlignementRangees } from './alignementRangees';
 import { type FreeGeom } from '../../lib/freeLayout';
+import { createLayoutEditor } from './layoutEditor';
+import { carteEditeurFactice, depsEditeur } from './harnaisAtelier';
+import { type Ctx } from './context';
+import { type LayoutPlan } from './types';
 
 const W = 1.13;
 /** Tronçon libre de 10,30 m (x de 0 à 10,30), 6 m de profondeur ; u = x, v = y. */
@@ -52,5 +57,64 @@ describe('ACAL584 — alignerRangees', () => {
     const r = alignerRangees(geom(), rangee(9), 'centre');
     expect(r.panels[0].cx - W / 2).not.toBe(0); // un décalage fin, pas un module entier
     expect(r.panels[0].cx - W / 2).toBeLessThan(W / 2);
+  });
+});
+
+// ACAL1521 — Ctrl+Z défait l'alignement ; la liste dit la pose réelle (à la réouverture aussi).
+describe('ACAL1521 — Ctrl+Z après « Droite » et lecture du mode à la réouverture', () => {
+  function monter(panneaux: { cx: number; cy: number }[]) {
+    document.body.innerHTML = '<div class="rp9-priorite"></div>';
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const map = carteEditeurFactice(container, { disable: () => undefined, enable: () => undefined });
+    const plan = {
+      pack: { origin: [-7.6, 33.5], ringENU: [[-10, -3], [10, -3], [10, 3], [-10, 3]], azimuthDeg: 0 },
+      grid: { rowWidthM: 2, footprintPerPanelM2: 2, slopeLenM: 1, panels: [{ cx: 0, cy: 0 }] },
+      tiltDeg: 0, family: 'S', flush: false,
+    } as unknown as LayoutPlan;
+    const ctx = {
+      layoutMode: true, closed: true, vertices: [], obstacles: [], areas: [], roofType: 'flat', pitchDeg: 0,
+      facingAzimuthDeg: 0, facingManual: false, neededPanels: 0, layoutPlan: plan, layoutState: null, layoutSel: null,
+      layoutOptimalCount: 0, freeMode: true, freeState: { panels: panneaux.map((p) => ({ ...p })) },
+    } as unknown as Ctx;
+    const editor = createLayoutEditor(ctx, depsEditeur(map));
+    monterAlignementRangees({
+      ctx, pose: () => editor.freePanels(), retraitM: () => 0,
+      ancre: () => document.querySelector<HTMLElement>('.rp9-priorite'),
+      poser: (p) => editor.hydrateLayout(p, undefined, 'free'), photo: () => ctx.pushWorkshopHistory?.(),
+    });
+    const select = document.getElementById('rp9-alignement-select') as HTMLSelectElement;
+    const choisir = (v: string) => { select.value = v; select.dispatchEvent(new Event('change')); };
+    return { editor, select, choisir };
+  }
+  const cxs = (e: { freePanels: () => { cx: number }[] }) => e.freePanels().map((p) => Math.round(p.cx * 1000));
+
+  it('Droite puis Ctrl+Z (deux fois) : les rangées d’avant, la liste suit', () => {
+    const { editor, select, choisir } = monter([{ cx: 0, cy: 0 }, { cx: -2, cy: 0 }, { cx: -4, cy: 0 }]);
+    const avant = cxs(editor);
+    choisir('droite');
+    const apres = cxs(editor);
+    expect(apres).not.toEqual(avant);
+    expect(editor.undo()).toBe(true);
+    expect(cxs(editor)).toEqual(avant);
+    expect(select.value).toBe('gauche');
+    expect(editor.redo()).toBe(true);
+    expect(cxs(editor)).toEqual(apres);
+    expect(select.value).toBe('droite');
+    expect(editor.undo()).toBe(true);
+    expect(cxs(editor)).toEqual(avant);
+  });
+
+  it('une pose centrée rouverte (hydrateLayout) : la liste montre « Centre »', () => {
+    const { editor, select, choisir } = monter([{ cx: 0, cy: 0 }, { cx: -2, cy: 0 }]);
+    choisir('centre');
+    const centree = editor.freePanels();
+    const { select: neuf } = monter([{ cx: 5, cy: 0 }]);
+    expect(neuf.value).toBe('gauche');
+    // Réouverture : le document rend les positions enregistrées.
+    const { editor: rouvert, select: liste } = monter([{ cx: 0, cy: 0 }, { cx: -2, cy: 0 }]);
+    rouvert.hydrateLayout(centree, undefined, 'free');
+    expect(liste.value).toBe('centre');
+    expect(select).toBeTruthy();
   });
 });
