@@ -163,7 +163,7 @@ def _conception_a_jour(devis, calepinage):
     empreinte_cal = getattr(calepinage, 'layout_hash', '') or ''
     if not (empreinte_devis and empreinte_cal):
         return None
-    selection = surfaces_chiffrees_du_devis(devis)
+    selection = selection_lue_du_devis(devis, calepinage)
     if selection is not None:
         # ACAL968 — un devis qui ne chiffre qu'une PARTIE des surfaces porte
         # l'empreinte de SA copie : comparée à la même copie du document courant.
@@ -181,6 +181,18 @@ def surfaces_chiffrees_du_devis(devis):
     choix = document.get('choixConception') if isinstance(document, dict) else None
     selection = choix.get('surfacesChiffrees') if isinstance(choix, dict) else None
     return selection if isinstance(selection, list) else None
+
+
+def selection_lue_du_devis(devis, calepinage):
+    """ACAL1249 — la sélection du devis LUE contre le document de
+    ``calepinage`` : un pan existant (Critique D1, jamais vendu) coché avant
+    X4 en est retiré ; la sélection rangée n'est pas réécrite."""
+    from .domain.geometrie import pans_du_document
+    if (selection := surfaces_chiffrees_du_devis(devis)) is None:
+        return None
+    existants = {p['cle'] for p in pans_du_document(getattr(calepinage, 'roof_layout', None) or {})
+                 if p.get('existant')}
+    return [cle for cle in selection if cle not in existants]
 
 
 def kwc_lu_du_layout(layout):

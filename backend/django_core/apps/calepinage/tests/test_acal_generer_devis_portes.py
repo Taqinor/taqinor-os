@@ -136,6 +136,31 @@ class SurfacesCocheesSansBaseTest(SimpleTestCase):
         self.assertIs(_conception_a_jour(self._pivot(DOC_TOIT_ET_SOL),
                                          self._pivot(DOC_TOIT_ET_SOL)), True)
 
+    def test_selection_ancienne_avec_pan_existant_a_jour(self):
+        """ACAL1249 — devis partiel créé avant X4 : sa sélection rangée cite le
+        pan EXISTANT A (Critique D1, jamais vendu) et le pan neuf z1. La
+        sélection LUE ignore A : à jour tant que z1 n'a pas changé, périmé
+        sinon ; l'auditeur juge la même copie ; la sélection rangée reste."""
+        from apps.calepinage.services.devis import _layout_des_surfaces
+        from apps.ventes.coherence.regles_calepinage import _document_chiffre
+        from apps.ventes.selectors_calepinage import _conception_a_jour
+
+        doc = copy.deepcopy(DOC_TOIT_ET_SOL)
+        doc['zones'].insert(0, {'id': 'A', 'label': 'Existant', 'existant': True,
+                                'geometry': {'count': 8, 'kwc': 4.4}})
+        copie = _layout_des_surfaces(copy.deepcopy(doc), ['z1'])
+        copie['choixConception']['surfacesChiffrees'] = ['A', 'z1']  # rangée avant X4
+        devis = self._pivot(copie)
+        self.assertIs(_conception_a_jour(devis, self._pivot(doc)), True)
+        self.assertEqual(devis.roof_layout['choixConception']['surfacesChiffrees'], ['A', 'z1'])
+        self.assertEqual(_document_chiffre(devis, self._pivot(doc))['poseSurfaces'], [])  # sa copie, pas tout
+        # La resynchronisation relit la même sélection : plus de refus « Cochez au moins une surface ».
+        from apps.calepinage.services.devis import _selection_du_devis
+        self.assertEqual(_selection_du_devis(devis, self._pivot(doc)), ['z1'])
+        change = copy.deepcopy(doc)
+        change['zones'][1]['geometry'].update(count=40, kwc=22.0)
+        self.assertIs(_conception_a_jour(devis, self._pivot(change)), False)
+
     def test_ombrage_du_devis_partiel_est_celui_de_ses_pans(self):
         from apps.calepinage.selectors import _perte_ombrage_chiffree
 
