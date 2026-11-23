@@ -238,7 +238,7 @@ export default function BoutonDevis({
     setRetour(null)
     let resultat = false
     try {
-      resultat = await enregistrerAvant()
+      resultat = await enregistrerAvant({ silencieux: true }) // ACAL1275 — pas de toast « Aucun changement » avant le devis
     } catch {
       resultat = false
     }

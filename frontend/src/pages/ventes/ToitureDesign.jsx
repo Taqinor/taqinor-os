@@ -712,7 +712,10 @@ function AtelierToiture({
     }
   }
 
-  const enregistrerCalepinage = async () => {
+  // ACAL1275 — `{ silencieux: true }` (« Générer / Resynchroniser » : enregistrement préalable) : un document inchangé
+  // ne montre pas « Aucun changement » avant la réponse du devis ; le bouton « Enregistrer » (événement) le garde.
+  const enregistrerCalepinage = async (options) => {
+    const silencieux = options?.silencieux === true
     if (sending) return false
     setGenError(null)
     setApercuMessage(null) // ACAL87
@@ -811,7 +814,7 @@ function AtelierToiture({
         // n'est déjà plus joignable).
         gestionnaireBrouillonRef.current?.effacerEtAmorcer()
         setHashBaseBrouillon(resultat?.empreinte_document || hashBaseBrouillon) // ACAL84
-        toastInfo('Aucun changement')
+        if (!silencieux) toastInfo('Aucun changement')
         setGenStatus(null)
         setSending(false)
         setStatus('Conception inchangée — le calepinage n’a pas bougé.')
