@@ -51,6 +51,7 @@ vivent dans le scratchpad de la session, pas sur `main`.
 | Point | Date | Quota hebdo | Contexte orchestrateur | Claims renouvelées | Décision |
 |---|---|---|---|---|---|
 | départ | 22/11 23 h | 3 % | 21 % | prises (`file:docs/plans/PLAN_AUDIT_CALEPINAGE.md`, `app:calepinage`) | tour 0 |
+| tour 0 fini, tour 2 lancé | 23/11 00 h UTC | 6 % | 67 % | renouvelées | état écrit et poussé ; économie de contexte : l'orchestrateur ne lit plus que des messages courts |
 
 ## Où sont les choses
 
@@ -87,10 +88,39 @@ vivent dans le scratchpad de la session, pas sur `main`.
    `calepinage-perf`, `calepinage-horizon-telephone`, « monkey » — à rejouer sur l'instrument au repos.
 3. Maquettes v2 : langage écrit, `Main` (Toit) et `Resultats` écrites par l'orchestrateur et publiées sur le canevas
    https://claude.ai/artifact/BJ5TrpZU3QvwHE3fWAteH5 ; lot A (six écrans) confié à une lane de design.
-4. Tour 2 de relecteurs : EN COURS — `S2-PARCOURS` et `F2-RESU` lancés les premiers ; ordre suivant : `F2-GESTES`,
-   `F2-TOIT`, `F2-DOCS`, `F2-POSE`, `F2-ELEC`, `F2-SIMU`, `F2-CONSO`, `T2`, `B2` (deux à la fois).
-   **Prochaine action** : à chaque retour de relecteur, lancer le suivant ; quand tous sont rentrés → consolidation
-   (`gabarits/consolidation.md`), tâches au plan, lanes de correction.
+4. Tour 2 de relecteurs : EN COURS (lancé le 22/11 vers 23 h 30 UTC) — `S2-PARCOURS` et `F2-RESU` tournent ; ordre
+   suivant, deux à la fois : `F2-GESTES`, `F2-TOIT`, `F2-DOCS`, `F2-POSE`, `F2-ELEC`, `F2-SIMU`, `F2-CONSO`, `T2`, `B2`.
+   Message de lancement d'un relecteur : rôle + axe + vue + compte + sa liste `T2/cv/<code>.md` + classes
+   `T1/classes/K-*.md` + ses trois fichiers de sortie ; le reste est dans `T2/brief-relecteurs.md`.
+5. Construction, vague 1 (les 37 tâches ouvertes et constructibles du plan, sortie de
+   `python scripts/plan_lanes.py docs/plans/PLAN_AUDIT_CALEPINAGE.md --workers 8 --wave-size 80`) : lane `liste`
+   lancée (branche `l5cal/lane-liste` dans son worktree : ACAL1308, 1309, 1334, 1333, 1335, 1343, 1322, 1337, 1338,
+   1339, 1342, puis les deux écrans ACAL1310 et ACAL1336 sur `maquettes-v2/Liste.dc.html`). Lanes restantes, à lancer
+   une par une quand une place se libère (brief commun `T2/brief-lanes.md`, base = la branche d'intégration) :
+   `atelier-brouillon` [ACAL1246, 1248, 1275, 1345] sonnet · `carte-dessin` + `site` [ACAL1273, 1328, 1329, 746] opus ·
+   `e2e` + `telephone` [ACAL1272, 1346, 1347, 1353] sonnet · `atelier-carte` + `coque` + `pompage` [ACAL1340, 1280,
+   1267] sonnet · `atelier-consommation` + `devis` + `production` [ACAL1321, 1249, 1274] opus · `atelier-coque` +
+   `exemples` + `reglages` [ACAL1348, 1349, 1344] sonnet · `atelier-toit` + `langage-ecran` + `simulation` [ACAL1341,
+   1323, 1247] opus. Neuf tâches sont REFUSÉES par le planificateur tant que leurs prérequis ne sont pas cochés
+   (ACAL450, 982, 984, 1193, 1002, 1003, 1010, 1286, 1293) : elles attendent l'acceptation des tâches livrées (K16).
+6. Maquettes v2 : écrites et publiées par l'orchestrateur — `Main` (Toit), `Resultats`, `Liste`, `Presentation`
+   (écran NEUF : « Montrer au client » en grand format, sans prix) ; lot A en cours par une lane de design
+   (`Panneaux`, `Electrique`, `Schema`, `ToitSombre`, `ResultatsIncomplet`, `Documents` — elle écrit dans le
+   scratchpad `maquettes-v2/project/`, l'orchestrateur regarde le rendu, publie sur le canevas et recopie dans
+   `maquettes-v2/`) ; lot B à faire : `DemarrageRapide`, `Tablette`, `Telephone`, `TelephoneClient`.
+7. Mesures du poste avec 4 agents : 3,3 Go libres, 43 % de processeur — 4 agents de fond tiennent (2 relecteurs à
+   navigateur + 2 lanes sans navigateur) ; ne pas dépasser.
+
+**Prochaines actions, dans l'ordre** :
+a. à chaque retour de relecteur → lancer le suivant de la liste ; à chaque retour de lane → relire son diff
+   (`git diff claude/calpinage-module-l5-aadbde...<branche>`), plier `--no-ff`, pousser, lancer la lane suivante ;
+b. au retour de la lane de design → regarder les six rendus, publier, recopier, lui confier le lot B ;
+c. entre deux lots de relecteurs, pile au repos : rejouer la base e2e du calepinage sur l'instrument
+   (`E2E_BASE_URL=http://127.0.0.1:5241`, specs `calepinage-*.spec.js`, dont perf, horizon téléphone, « monkey » : K17) ;
+d. tous les relecteurs rentrés → consolidation (un agent opus, `gabarits/consolidation.md`) : verdicts, classes,
+   tâches v3 au plan du propriétaire, lanes ; y joindre les fonctions retenues de `T2/R2-fonctions.md` § B ;
+e. tests premiers, lanes de correction, pli, couture, CI, merge par la file ; enregistrements d'acceptation de
+   l'orchestrateur pour les tâches au verdict `ok` (K16) ; puis tour 3 ; puis la finale ; puis la phase de contrôles.
 
 ## Phase de contrôles (APRÈS le L5 — ne pas commencer avant)
 
