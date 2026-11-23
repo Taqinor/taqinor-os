@@ -65,6 +65,7 @@ import { lancerSimulationAuto } from '../../features/calepinage/production/simul
 // CALX68 — brouillon LOCAL de l'atelier (mode calepinage) : minuterie/repli +
 // bandeau de reprise. Logique pure, voir l'en-tête de ce module.
 import { creerGestionnaireBrouillon, estPanneReseau, memoriserReprise } from '../../features/calepinage/brouillon'
+import { ecrireOuRelire } from '../../features/calepinage/delaiReseau'
 import { creerStockageMiroir, sansVue, empreinteSansVue } from '../../features/calepinage/brouillonServeur' // ACAL400 ; H1 : sans l'état de vue ; ACAL1345
 import { toastInfo } from '../../lib/toast'
 // L2 — confirmation maison (APX17 : jamais une popup système) avant une écriture qui
@@ -751,8 +752,9 @@ function AtelierToiture({
         // lue au boot puis remplacée par celle de chaque réponse 2xx.
         const res = varianteId
           ? await calepinageApi.calepinages.modifierVariante(calepinageId, varianteId, { roof_layout: layout })
-          : await calepinageApi.calepinages
-            .enregistrerLayoutCalepinageConditionnel(calepinageId, layout, empreinteDocument)
+          // ACAL1905 — réponse trop lente : l'écran RELIT l'empreinte du serveur (l'écriture a pu aboutir) avant de parler.
+          : await ecrireOuRelire(() => calepinageApi.calepinages
+            .enregistrerLayoutCalepinageConditionnel(calepinageId, layout, empreinteDocument), calepinageId, empreinteDocument)
         resultat = varianteId ? {} : (res?.data ?? {})
         heureReponse = res?.headers?.date || new Date().toISOString() // ACAL399
       } catch (err) {

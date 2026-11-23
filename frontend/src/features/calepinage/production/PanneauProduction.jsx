@@ -29,6 +29,7 @@ import {
 import useSuiviJob from './useSuiviJob'
 import { reprendreSimulationAuto } from './simulationAuto'
 import EtatEcranAtelier from '../atelier/EtatEcranAtelier'
+import { estDelaiDepasse, MESSAGE_CALCUL_LENT } from '../delaiReseau'
 import { useModeExpert } from '../atelier/modeExpert'
 import useExpertParUrl from './useExpertParUrl'
 import CarteFluxEnergie from './CarteFluxEnergie'
@@ -435,13 +436,14 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000, p
 
   const { data, loading, error, refetch } = useResource(
     () => calepinageApi.calepinages.resultat(id), id,
-    { select: (r) => r.data, errorMessage: 'Production indisponible.' },
+    // ACAL1905 — un délai dépassé se dit « Calcul en cours… » (avec « Réessayer »), pas « Production indisponible ».
+    { select: (r) => r.data, errorMessage: (e) => (estDelaiDepasse(e) ? MESSAGE_CALCUL_LENT : 'Production indisponible.') },
   )
   // ACAL698 — « Voir les sources » ouvre le <details> « Réglages utilisés ».
   const [sourcesOuvertes, setSourcesOuvertes] = useState(false)
 
   if (loading || error) {
-    return <EtatEcranAtelier id={id} loading={loading} error={error} testIdErreur="cal236-erreur" />
+    return <EtatEcranAtelier id={id} loading={loading} error={error} testIdErreur="cal236-erreur" onRetry={refetch} />
   }
 
   const production = data?.production || null

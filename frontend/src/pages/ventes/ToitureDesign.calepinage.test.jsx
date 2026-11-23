@@ -267,6 +267,42 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
       .toHaveTextContent('Conception manquante ou invalide')
   })
 
+  /* ACAL1905 — un enregistrement dont la réponse n'est pas revenue (délai dépassé) : le serveur a pu l'écrire. L'écran
+     RELIT l'empreinte (`GET layout/`) : changée ⇒ « Enregistré » (aucun message de coupure, le jeton suivant est la
+     nouvelle empreinte) ; inchangée ⇒ le message de coupure d'avant (rien n'est écrit : réessayez). */
+  it('ACAL1905 — délai dépassé mais écriture faite : l’écran relit l’empreinte et dit « Enregistré »', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    const nouvelle = 'c'.repeat(64)
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel
+      .mockRejectedValue({ code: 'ECONNABORTED', message: 'timeout of 20000ms exceeded' })
+    calepinageApi.calepinages.layout.mockResolvedValue({ data: { empreinte_document: nouvelle } })
+
+    rendreCalepinage(CTX.calepinage.id)
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
+
+    await screen.findByText(/Enregistré à \d{2}:\d{2}/)
+    expect(calepinageApi.calepinages.layout).toHaveBeenCalledWith(String(CTX.calepinage.id))
+    expect(screen.queryByTestId('cal-erreur-enregistrement')).toBeNull()
+    expect(screen.queryByText(/Le serveur n’a pas répondu/)).toBeNull()
+  })
+
+  it('ACAL1905 — délai dépassé et rien d’écrit (empreinte inchangée) : le message de coupure reste, on peut réessayer', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel
+      .mockRejectedValue({ code: 'ECONNABORTED', message: 'timeout of 20000ms exceeded' })
+    calepinageApi.calepinages.layout.mockResolvedValue({ data: { empreinte_document: CTX.geometrie.empreinte_document } })
+
+    rendreCalepinage(CTX.calepinage.id)
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
+
+    expect(await screen.findByTestId('cal-erreur-enregistrement', {}, { timeout: 8000 }))
+      .toHaveTextContent('Le serveur n’a pas répondu')
+    // (le boot lit aussi `layout/` : au moins les trois relectures de l'écran s'y ajoutent)
+    expect(calepinageApi.calepinages.layout.mock.calls.length).toBeGreaterThanOrEqual(3)
+  }, 15000)
+
   it('409 roof_layout : le motif serveur est affiché', async () => {
     calepinageApi.calepinages.designContext.mockResolvedValue(
       reponseContrat('calepinage', 'calepinage_design_context'))
@@ -1142,13 +1178,15 @@ describe('ACAL945 — enregistrer hors ligne sans mentir', () => {
     amorcer()
     const enregistrer = calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel
     enregistrer.mockRejectedValue({ code: 'ECONNABORTED', message: 'timeout' })
+    // ACAL1905 — l'écran relit d'abord l'empreinte du serveur : inchangée = rien n'a été écrit, la phrase reste.
+    calepinageApi.calepinages.layout.mockResolvedValue({ data: { empreinte_document: CTX.geometrie.empreinte_document } })
     rendreCalepinage(CTX.calepinage.id)
     await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
 
-    expect(await screen.findByText(/Le serveur n’a pas répondu/)).toBeInTheDocument()
+    expect(await screen.findByText(/Le serveur n’a pas répondu/, {}, { timeout: 8000 })).toBeInTheDocument()
     window.dispatchEvent(new Event('online'))
     expect(enregistrer).toHaveBeenCalledTimes(1)
-  })
+  }, 15000)
 })
 
 /* Coque (maquettes 22/11, Main / Resultats / Tablette) — l'atelier plein écran : bandeau du projet,

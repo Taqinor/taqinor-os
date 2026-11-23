@@ -1341,3 +1341,28 @@ describe('PanneauProduction — texte rendu (ACAL990)', () => {
     }
   })
 })
+
+/* ACAL1905 — une réponse lente n'est pas une connexion coupée : un délai dépassé de la lecture du résultat se dit
+   « Calcul en cours… » (information, pas erreur) avec « Réessayer », qui relit ; un vrai refus garde son message. */
+describe('ACAL1905 — lecture lente du résultat', () => {
+  it('délai dépassé : « Calcul en cours… » + « Réessayer » ; le bouton relit et le panneau s’affiche', async () => {
+    calepinageApi.calepinages.resultat.mockRejectedValueOnce({ code: 'ECONNABORTED', message: 'timeout of 60000ms exceeded' })
+    servir('exemple_vide')
+    rendre()
+    const lent = await screen.findByTestId('cal-calcul-lent')
+    expect(lent).toHaveTextContent('Calcul en cours…')
+    expect(screen.queryByText(/connexion a expiré/i)).toBeNull()
+    expect(screen.queryByTestId('cal236-erreur')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }))
+    await screen.findByTestId('cal236-panneau')
+    expect(calepinageApi.calepinages.resultat).toHaveBeenCalledTimes(2)
+  })
+
+  it('un refus du serveur garde son message d’erreur (et le bouton « Réessayer »)', async () => {
+    calepinageApi.calepinages.resultat.mockRejectedValue({ response: { status: 500, data: {} } })
+    rendre()
+    expect(await screen.findByTestId('cal236-erreur')).toHaveTextContent('Production indisponible.')
+    expect(screen.queryByTestId('cal-calcul-lent')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Réessayer' })).toBeInTheDocument()
+  })
+})
