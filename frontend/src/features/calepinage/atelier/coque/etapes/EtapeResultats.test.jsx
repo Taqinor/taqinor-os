@@ -217,6 +217,25 @@ describe('Étape Résultats — squelette de chargement (ACAL1822)', () => {
     rendre()
     expect(await screen.findByTestId('cal236-erreur')).toBeInTheDocument()
     expect(document.querySelector('.cal-res-squelette')).toBeNull()
+    // Une vraie erreur garde son message d'erreur et propose aussi « Réessayer ».
+    expect(screen.getByTestId('cal-reessayer-lecture')).toBeInTheDocument()
+    expect(screen.queryByTestId('cal-calcul-lent')).toBeNull()
+  })
+
+  // ACAL1905 — une réponse LENTE n'est pas une connexion coupée : un délai dépassé (axios ECONNABORTED) se dit « Calcul en
+  // cours… » (information, pas erreur) avec « Réessayer », qui relit `GET resultat/` ; jamais « La connexion a expiré ».
+  it('ACAL1905 — délai dépassé : « Calcul en cours… » et « Réessayer » relit, puis le résultat s’affiche', async () => {
+    const delai = Object.assign(new Error('timeout of 60000ms exceeded'), { code: 'ECONNABORTED' })
+    servir(COMPLET())
+    calepinageApi.calepinages.resultat.mockRejectedValueOnce(delai) // 1re lecture : délai dépassé ; la relecture aboutit
+    rendre()
+    const info = await screen.findByTestId('cal-calcul-lent')
+    expect(info).toHaveTextContent('Calcul en cours…')
+    expect(document.body.textContent).not.toMatch(/connexion a expiré|Résultats indisponibles/)
+    expect(screen.queryByTestId('cal236-erreur')).toBeNull()
+    fireEvent.click(screen.getByTestId('cal-reessayer-lecture'))
+    expect(await screen.findByTestId('cal-resultats-tuiles')).toBeInTheDocument()
+    expect(calepinageApi.calepinages.resultat).toHaveBeenCalledTimes(2)
   })
 })
 

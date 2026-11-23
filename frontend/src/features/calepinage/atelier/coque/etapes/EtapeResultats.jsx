@@ -13,6 +13,7 @@ import PiedResultats from '../../../production/PiedResultats'
 import ResultatAvantSimulation from '../../../production/ResultatAvantSimulation'
 import ResultatIncomplet from '../../../production/ResultatIncomplet'
 import TuilesResultat from '../../../production/TuilesResultat'
+import { messageResultatIndisponible } from '../../../delaiReseau'
 import EtatEcranAtelier from '../../EtatEcranAtelier'
 import { useModeExpert } from '../../modeExpert'
 import PanneauPertes from '../../PanneauPertes'
@@ -107,10 +108,13 @@ export default function EtapeResultats({
   const [sourcesOuvertes, setSourcesOuvertes] = useState(false)
   const { data, loading, error, refetch } = useResource(
     () => calepinageApi.calepinages.resultat(id), id,
-    { select: (r) => r.data, errorMessage: 'Résultats indisponibles.' },
+    { select: (r) => r.data, errorMessage: messageResultatIndisponible },
   )
   if (loading || error) {
-    return <EtatEcranAtelier id={id} loading={loading} error={error} testIdErreur="cal236-erreur" forme="resultats" />
+    return (
+      <EtatEcranAtelier id={id} loading={loading} error={error} testIdErreur="cal236-erreur" forme="resultats"
+        onRetry={refetch} />
+    )
   }
   const perime = data?.simulation_perimee === true
   const simule = data?.simule === true && !perime
