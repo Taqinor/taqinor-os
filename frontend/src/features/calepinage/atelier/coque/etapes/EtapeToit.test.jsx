@@ -114,6 +114,17 @@ beforeEach(() => {
 afterEach(() => { cleanup(); document.body.innerHTML = ''; vi.useRealTimers(); oublierLecturesServies() })
 
 describe('Étape Toit — le panneau de la maquette Main', () => {
+  it('Guidé sans contour : la coque porte data-sans-toit (champ d’adresse visible) ; avec contour : retiré', async () => {
+    const { unmount } = rendre({}, (hote) => hote.querySelector('#rp9-add-area').remove())
+    const coque = document.querySelector('.cal-coque')
+    expect(coque.dataset.sansToit).toBe('1')
+    unmount()
+    expect(coque.dataset.sansToit).toBeUndefined()
+    cleanup(); document.body.innerHTML = ''
+    rendre()
+    expect(document.querySelector('.cal-coque').dataset.sansToit).toBeUndefined()
+  })
+
   it('blocs dans l’ordre de la maquette, libellés mot pour mot, crochets e2e', async () => {
     rendre()
     const titres = [...document.querySelectorAll('.cal-etape-toit h2')].map((n) => n.textContent)

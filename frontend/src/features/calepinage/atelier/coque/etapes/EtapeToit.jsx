@@ -372,6 +372,15 @@ export default function EtapeToit({
   // l'atelier, `ecranProps.contexte`, prime — relu ici seulement sans lui, REP-995).
   const facture = useCibleFactures(calepinageId, servi, { attendre: contexteEnCours })
   const [ajout, basculerAjout] = useAjoutPan(etat, relire)
+  // ACAL1410 — tant qu'aucun contour n'est fermé, le champ d'adresse (#rp9-search) flotte au-dessus de la carte en Guidé
+  // (la règle de 50-coque-atelier.css lit cet attribut de la coque) ; il disparaît dès qu'un toit est tracé.
+  const sansToit = !etat.outils.ferme
+  useEffect(() => {
+    const coque = document.querySelector('.cal-coque')
+    if (!coque || !sansToit) return undefined
+    coque.dataset.sansToit = '1'
+    return () => { delete coque.dataset.sansToit }
+  }, [sansToit])
   return (
     <div className="cal-etape-toit">
       <div className="cal-toit-bloc cal-toit-bloc-forme">
