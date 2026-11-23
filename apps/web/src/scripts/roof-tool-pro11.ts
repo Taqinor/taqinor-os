@@ -1902,7 +1902,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
    *  les DEUX boots (lead et devis) et par `appliquerSection` (onglets du Rail). */
   function appliquerHydratation(h: HydratationAtelier) {
     appliquerHydratationAuCtx(ctx, h);
-    if (h.environment !== undefined) obstaclesUi.redrawEnvironment();
+    if (h.environment !== undefined) obstaclesUi.relireEnvironment(); // ACAL1406 — liste + ombrage relus
     if (h.electrical !== undefined) coucheElectrique.rafraichir();
     if (h.shadeObstructions !== undefined) shadingUi.rafraichirOmbres(); // ACAL27
     if (h.surfacesPose !== undefined) {
