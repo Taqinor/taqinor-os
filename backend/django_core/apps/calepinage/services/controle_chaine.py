@@ -61,7 +61,8 @@ def _controler_chaine(module_specs, onduleur_specs, nombre_modules,
     n = nombre_modules
     demarrage = ("tension de démarrage de l'onduleur"
                  if onduleur.v_demarrage_v is not None
-                 else "bas de plage MPPT de l'onduleur (démarrage non publié)")
+                 else "bas de plage MPPT de l'onduleur, faute de tension de "
+                      "démarrage publiée")  # ACAL1540 : aucune parenthèse technique
     controles = [
         _controle('voc_froid', 'Tension à vide à froid de la chaîne',
                   n * fenetre.voc_froid_unitaire_v, onduleur.v_max_abs,

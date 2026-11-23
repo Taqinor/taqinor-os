@@ -1904,7 +1904,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         # avec quoi le calcul a été fait. Jamais simulé ⇒ l'empreinte
         # d'aujourd'hui et des valeurs nulles.
         CLE_SIMULATION: _entete_servie(calepinage, empreinte),
-        'avertissements': messages,
+        'avertissements': _avertissements_uniques(messages),  # ACAL1540
         # ACAL283 — les deux FILS bornés, LUS tels qu'enregistrés (jamais
         # recalculés), listes vides jamais absentes — y compris quand la
         # simulation est périmée.
@@ -3796,9 +3796,22 @@ def _bornes_ratio(*, exigence_marche=None, parametres_societe=None,
         return (saisies.borne_usuelle.valeur,
                 (alerte.valeur if alerte.source != SOURCE_CONVENTION_ATELIER
                  else None), SOURCE_BORNE_SOCIETE, saisies.borne_usuelle.source)
+    # ACAL1540 — dit en phrase de métier, sans nom de module du code.
     return (BORNE_USUELLE_DC_AC, SEUIL_ALERTE_DC_AC, SOURCE_BORNE_NOYAU,
-            "core.electrique.onduleurs — convention onduleuriste, borne "
-            "usuelle 1,35 et alerte au-delà de 1,50")
+            "usage des fabricants d'onduleurs : borne usuelle 1,35 et alerte "
+            "au-delà de 1,50")
+
+
+def _avertissements_uniques(messages):
+    """ACAL1540 — chaque avertissement servi UNE fois, dans l'ordre : sans
+    norme, câbles, protections et terre omettent pour la MÊME raison."""
+    vus, uniques = set(), []
+    for message in messages:
+        cle = message if isinstance(message, str) else id(message)
+        if cle not in vus:
+            vus.add(cle)
+            uniques.append(message)
+    return uniques
 
 
 #: ACAL1538 — LA phrase du ratio quand aucune fourchette n'est réglée.

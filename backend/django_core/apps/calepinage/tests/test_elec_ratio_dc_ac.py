@@ -54,7 +54,9 @@ class BornesLuesTest(SimpleTestCase):
         self.assertEqual(borne, BORNE_USUELLE_DC_AC)
         self.assertEqual(alerte, SEUIL_ALERTE_DC_AC)
         self.assertEqual(source, SOURCE_BORNE_NOYAU)
-        self.assertIn('core.electrique', detail)
+        # ACAL1540 — la source dite en phrase, jamais un nom de module du code.
+        self.assertIn('1,35', detail)
+        self.assertNotIn('core.electrique', detail)
 
     def test_parametre_societe_prime_sur_le_noyau(self):
         borne, _, source, _ = _bornes_ratio(

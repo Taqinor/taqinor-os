@@ -102,6 +102,44 @@ class CoefficientsPubliesTest(SimpleTestCase):
             self.assertNotIn(jargon, html)
 
 
+class AvertissementNormeUniqueTest(SimpleTestCase):
+    """ACAL1540 — sans norme, câbles, protections et terre omettent pour la
+    MÊME raison : l'avertissement servi est publié UNE fois, sans clé."""
+
+    def test_l_avertissement_de_norme_est_publie_une_fois_sans_cle(self):
+        from apps.calepinage.services import cables, protections, terre
+        from apps.calepinage.services.electrique import (
+            _avertissements_uniques, _bornes_ratio,
+        )
+
+        norme = norme_applicable({'imagerie': {'pays': 'ma'},
+                                  'norme_electrique': {}})
+        trois = [norme.get('motif') or module._sans_norme()
+                 for module in (cables, protections, terre)]
+        servis = _avertissements_uniques(
+            ['simulation périmée', *trois, 'simulation périmée'])
+        self.assertEqual(servis, ['simulation périmée', norme['motif']])
+        self.assertEqual(
+            sum("Aucune norme électrique n'est choisie" in m for m in servis), 1)
+        detail = _bornes_ratio()[3]
+        for jargon in ('core.', 'onduleurs —', '_'):
+            self.assertNotIn(jargon, detail)
+
+    def test_controle_rapide_sans_parenthese_technique(self):
+        from apps.calepinage.services.controle_chaine import (
+            _controler_chaine as controle_chaine,
+        )
+
+        module = {'vmp_v': 41.5, 'voc_v': 49.6, 'isc_a': 18.4, 'imp_a': 17.1,
+                  'pmax_wc': 710.0, 'temp_coeff_voc_pct_c': -0.27,
+                  'temp_coeff_pmax_pct_c': -0.35}
+        onduleur = {'n_mppt': 2, 'mppt_v_min': 150.0, 'mppt_v_max': 800.0,
+                    'v_max_abs': 1000.0, 'i_max_mppt_a': 26.0, 'ac_kw': 10.0}
+        rendu = controle_chaine(module, onduleur, 12, -5.0, 70.0)
+        textes = ' '.join(str(c) for c in rendu['controles'])
+        self.assertNotIn('(démarrage non publié)', textes)
+
+
 class VariabiliteObserveeTest(SimpleTestCase):
 
     def _meteo(self, bloc):
