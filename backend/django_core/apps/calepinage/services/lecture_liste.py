@@ -145,7 +145,7 @@ def _contours_geo(document):
     return contours or [c for c in [lire(document.get('outline'), 'latlng')] if c]
 
 
-def apercu_du_toit(document):
+def _apercu_du_toit(document):
     """ACAL1334/1335 — ``{viewBox: "0 0 100 100", contours}`` : chaque contour de pan
     projeté à plat (mètres locaux) puis ramené de 0 à 100 dans le cadre COMMUN de tous les
     pans, proportions gardées, y vers le bas ; ``None`` sans contour. Aucun chiffre ajouté."""
@@ -172,7 +172,7 @@ def apercu_du_toit(document):
 
 def apercu_toit(calepinage):
     """L'aperçu du toit de la ligne, lu sur le document DÉJÀ chargé (aucune requête)."""
-    return apercu_du_toit(getattr(calepinage, 'roof_layout', None))
+    return _apercu_du_toit(getattr(calepinage, 'roof_layout', None))
 
 
 def compteurs_statut(lignes):

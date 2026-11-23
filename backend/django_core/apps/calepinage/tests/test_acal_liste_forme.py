@@ -246,11 +246,11 @@ class ContratDeLaCarteTest(SimpleTestCase):
 
     def test_apercu_du_toit_pur(self):
         """ACAL1335 — le tracé lu sur ``outline`` à défaut de pans ; rien ⇒ None."""
-        from apps.calepinage.services.lecture_liste import apercu_du_toit
+        from apps.calepinage.services.lecture_liste import _apercu_du_toit
 
-        self.assertIsNone(apercu_du_toit(None))
-        self.assertIsNone(apercu_du_toit({'zones': []}))
-        contour = apercu_du_toit({'outline': [[33.0, -7.0], [33.0, -6.999], [33.001, -6.999]]})
+        self.assertIsNone(_apercu_du_toit(None))
+        self.assertIsNone(_apercu_du_toit({'zones': []}))
+        contour = _apercu_du_toit({'outline': [[33.0, -7.0], [33.0, -6.999], [33.001, -6.999]]})
         self.assertEqual(len(contour['contours']), 1)
         self.assertTrue(all(0 <= v <= 100 for p in contour['contours'][0] for v in p))
 
