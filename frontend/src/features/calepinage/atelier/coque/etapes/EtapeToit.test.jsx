@@ -369,6 +369,23 @@ describe('Étape Toit — « Ajouter un pan » sur un toit existant (jamais dest
     expect(within(surCarte).queryByText('Nouveau pan')).toBeNull()
   })
 
+  it('ACAL1329 — outil de tracé : nom selon la présence d’un toit ; l’ajout n’écrit rien avant le dernier point', async () => {
+    rendre({}, (hote) => { hote.querySelector('#rp9-add-area').disabled = true }) // aucun toit fermé
+    const barre = within(surCarte).getByRole('toolbar')
+    expect(within(barre).getByRole('button', { name: 'Tracer un contour' })).toBeInTheDocument()
+    expect(within(barre).queryByRole('button', { name: 'Ajouter un pan' })).toBeNull()
+    cleanup(); document.body.innerHTML = ''
+    let script
+    rendre({}, (hote) => { script = scriptZones(hote) }) // un toit enregistré
+    const bouton = () => within(surCarte).getByRole('button', { name: 'Ajouter un pan' })
+    fireEvent.click(bouton())
+    await waitFor(() => expect(bouton()).toHaveAttribute('aria-pressed', 'true'))
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(script.etat.zones.map((z) => z.id)).toEqual(['area-1'])
+    // L'écran n'écrit jamais lui-même : ni section, ni document, pendant l'ajout ni à son annulation.
+    expect(enregistrerSectionLayout).not.toHaveBeenCalled()
+  })
+
   it('re-cliquer annule aussi ; un contour fermé termine l’ajout et garde le nouveau pan', async () => {
     let script
     rendre({}, (hote) => { script = scriptZones(hote) })

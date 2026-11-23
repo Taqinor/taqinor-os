@@ -306,6 +306,7 @@ export function panVierge(
 export function nouveauPanDepuisContour(
   contourLngLat: unknown,
   existants: readonly { id: string }[],
+  moduleDepart: ModuleDocument | null = null, // ACAL1273 — comme `panVierge` : le module de départ du site
 ): { ok: true; pan: AreaRecord } | { ok: false; motif: string } {
   const points = Array.isArray(contourLngLat)
     ? (contourLngLat as unknown[]).map((p) =>
@@ -324,7 +325,81 @@ export function nouveauPanDepuisContour(
   if (!isSimplePolygon(ring)) {
     return { ok: false, motif: 'Ce contour se croise : corrigez-le avant d’en faire un pan (aucun pan créé).' };
   }
-  return { ok: true, pan: panVierge(existants, ring) };
+  return { ok: true, pan: panVierge(existants, ring, moduleDepart) };
+}
+
+/** ACAL1273 — document relu SANS aucun module : le module de départ sur chaque pan (hors installation
+ *  existante), donc écrit au premier enregistrement ; un document qui en désigne un reste tel quel. */
+export function poserModuleDeDepart(
+  pans: AreaRecord[],
+  zonesDuDocument: readonly { geometry?: { moduleId?: unknown } }[] | null | undefined,
+  depart: ModuleDocument | null,
+): void {
+  if (!depart || (zonesDuDocument ?? []).some((z) => z?.geometry?.moduleId)) return;
+  for (const p of pans) if (!p.existant) p.moduleId = depart.id;
+}
+
+// ═══════════ ACAL1329 — un pan AJOUTÉ sur un toit existant, du premier clic au dernier point ═══════════
+/** Vrai pendant l'ajout d'un pan : le pan actif n'est pas fermé et un autre pan a déjà son contour. */
+export const ajoutDePanEnCours = (areas: readonly AreaRecord[], activeAreaId: string, closed: boolean): boolean =>
+  !closed && areas.some((a) => a.id !== activeAreaId && (a.vertices?.length ?? 0) >= 3);
+
+/** Le toit EXISTANT (pans fermés hors pan actif), en polygones : ce qui reste dessiné, grisé, sous le tracé. */
+export function toitExistantGeoJSON(areas: readonly AreaRecord[], activeAreaId: string) {
+  return {
+    type: 'FeatureCollection' as const,
+    features: areas.filter((a) => a.id !== activeAreaId && (a.vertices?.length ?? 0) >= 3).map((a) => ({
+      type: 'Feature' as const, properties: {}, geometry: { type: 'Polygon' as const, coordinates: [[...a.vertices, a.vertices[0]]] },
+    })),
+  };
+}
+
+/** Le document servi pendant l'ajout : celui d'AVANT le premier geste (`memo.doc`, pris par `addArea`), copié ;
+ *  hors ajout, le document vivant. Aucun brouillon ni enregistrement ne porte un pan avant son dernier point. */
+export function documentPendantAjout<T>(enAjout: boolean, memo: { doc: T | null }, serialiser: () => T): T {
+  if (enAjout && memo.doc) return JSON.parse(JSON.stringify(memo.doc)) as T;
+  memo.doc = null;
+  return serialiser();
+}
+
+/** Ce que le calque de référence lit/écrit de la carte MapLibre. */
+interface CarteReference {
+  getSource(id: string): { setData(d: never): unknown } | undefined;
+  getLayer(id: string): unknown;
+  setPaintProperty(id: string, nom: string, v: string): unknown;
+  setLayoutProperty(id: string, nom: string, v: 'visible' | 'none'): unknown;
+  on(type: string, fn: (e: { sourceId?: string }) => void): unknown;
+}
+const GRIS_TOIT_EXISTANT = '#9aa0bb';
+
+/** Pendant l'ajout, le calque de référence (`rp9-ref-contour-*`, aucune seconde couche) montre le toit existant en
+ *  gris ; à la fin (dernier point, Échap, autre pan), `restaurer` lui rend le tracé du client. Relu à chaque re-pose
+ *  des sommets (`rp9-pts`). */
+export function monterToitGriseSousTrace(
+  map: CarteReference,
+  lire: () => { areas: readonly AreaRecord[]; activeAreaId: string; closed: boolean },
+  couleurReference: string,
+  restaurer: () => void,
+): void {
+  let grise = false;
+  const peindre = (couleur: string) => {
+    if (map.getLayer('rp9-ref-contour-fill')) map.setPaintProperty('rp9-ref-contour-fill', 'fill-color', couleur);
+    if (map.getLayer('rp9-ref-contour-line')) map.setPaintProperty('rp9-ref-contour-line', 'line-color', couleur);
+  };
+  map.on('sourcedata', (e) => {
+    if (e?.sourceId !== 'rp9-pts') return;
+    const { areas, activeAreaId, closed } = lire();
+    if (ajoutDePanEnCours(areas, activeAreaId, closed)) {
+      map.getSource('rp9-ref-contour')?.setData(toitExistantGeoJSON(areas, activeAreaId) as never);
+      peindre(GRIS_TOIT_EXISTANT);
+      for (const id of ['rp9-ref-contour-fill', 'rp9-ref-contour-line']) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'visible');
+      grise = true;
+    } else if (grise) {
+      grise = false;
+      peindre(couleurReference);
+      restaurer();
+    }
+  });
 }
 
 /** CALX98 — identifiant de zone NEUF, dans un espace de noms (`area-copie-N`) que le

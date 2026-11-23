@@ -139,9 +139,11 @@ import {
   type ModulePose, // CALX403 câblage
   nouveauPanDepuisContour, // ACAL71
   panVierge,
+  poserModuleDeDepart, ajoutDePanEnCours, documentPendantAjout, monterToitGriseSousTrace, // ACAL1273, ACAL1329
 } from './roofPro11/zones';
 import { monterAlignementRangees, pavageCellulesDe, pavagePoseDe } from './roofPro11/alignementRangees'; // ACAL584
 import { motifPanVerrouille } from './roofPro11/panVerrouille'; // ACAL520
+import { monterCotesAretes } from './roofPro11/cotesAretes'; // ACAL1328
 import { monterObjetsSite } from './roofPro11/objetsSite'; // ACAL533
 // CALX109/CALX110 câblage — le catalogue de modules de la société (`opts.modulesDisponibles`)
 // et le module posé sur chaque pan (`AreaRecord.moduleId`) : c'est ce couple qui part dans le
@@ -1728,6 +1730,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       paint: { 'line-color': GOLD, 'line-width': 2, 'line-dasharray': [3, 2] },
     });
     setReferenceContour(referenceContourRing(opts.referenceContour));
+    monterToitGriseSousTrace(map as never, () => ({ areas, activeAreaId, closed }), GOLD, () => { setReferenceContour(referenceContourRing(opts.referenceContour)); setReferenceContourVisible(referenceContourVisible); }); // ACAL1329
     map.addSource('rp9-line', { type: 'geojson', data: empty as never });
     map.addSource('rp9-pts', { type: 'geojson', data: empty as never });
     map.addSource('rp9-obs', { type: 'geojson', data: empty as never });
@@ -1806,6 +1809,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       },
       paint: { 'text-color': '#ffffff', 'text-halo-color': '#070b1d', 'text-halo-width': 1.6 },
     });
+    monterCotesAretes(map as never, () => areas.map((a) => (a.id === activeAreaId ? { sommets: vertices, ferme: closed } : { sommets: a.vertices, ferme: true })), opts.chiffrage !== undefined); // ACAL1328 — atelier ERP seul
     // ACAL233 — calque de la parcelle (pointillés), distinct du tracé du toit.
     map.addSource('rp9-parcelle', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } as never });
     map.addLayer({
@@ -1970,10 +1974,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       // RE-CALE : un dernier `resize()` + `jumpTo` empêche un redimensionnement React tardif
       // de laisser la caméra à MOROCCO_CENTER. `idle` ne change RIEN au boot public (qui n'a
       // pas de `h.center`).
-      const landOnPin = () => {
-        map.resize();
-        map.jumpTo(target);
-      };
+      const landOnPin = () => { map.resize(); map.jumpTo(target); };
       landOnPin();
       if (!opts.reducedMotion) map.easeTo({ ...target, duration: 600, essential: true });
       // Re-assertion au repos : garde contre une remise à MOROCCO_CENTER par un resize tardif.
@@ -2071,9 +2072,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // `appliquerHydratationAuCtx` ci-dessus — la MÊME fonction pour les deux boots.
     reporterContact(h.contact);
     // ACAL913 — document SANS aucun module : celui de départ (celui du devis s'il est au catalogue).
-    const depart = moduleDeDepart(lireModulesDisponibles(opts.modulesDisponibles), h.panelWatt);
-    const zonesDoc = (layout as { zones?: Array<{ geometry?: { moduleId?: unknown } }> } | null)?.zones ?? [];
-    if (depart && !zonesDoc.some((z) => z?.geometry?.moduleId)) for (const a of areas) a.moduleId = depart.id;
+    // ACAL1273 — posé APRÈS le remplacement des pans par ceux du document (avant, il partait avec eux).
+    const poserDepart = () => poserModuleDeDepart(areas, layout?.zones, moduleDeDepart(lireModulesDisponibles(opts.modulesDisponibles), h.panelWatt));
+    poserDepart();
     // Origine du design : reprise telle quelle dans l'export (meta de sérialisation).
     // ACAL31 — seulement quand le payload porte un id de devis : un calepinage sans devis
     // n'écrit jamais `source: 'devis'` ni un `devisId: null` inventé (le document relu fait foi).
@@ -2083,6 +2084,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       // Le devis porte un design : ses zones REMPLACENT les zones par défaut.
       areas.length = 0;
       for (const z of h.zones) areas.push(z);
+      poserDepart(); // ACAL1273
       activeAreaId = h.activeAreaId ?? areas[0].id;
       const a = activeArea() ?? areas[0];
       vertices = [...a.vertices];
@@ -2123,10 +2125,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     if (h.center) {
       imposeTarget();
       const target = { center: h.center, zoom: 19, pitch: 0 } as const;
-      const landOnPin = () => {
-        map.resize();
-        map.jumpTo(target);
-      };
+      const landOnPin = () => { map.resize(); map.jumpTo(target); };
       landOnPin();
       if (!opts.reducedMotion) map.easeTo({ ...target, duration: 600, essential: true });
       map.once('idle', landOnPin);
@@ -2397,10 +2396,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     if (undoPointBtn) undoPointBtn.hidden = true; // W92 — plus d'annulation après fermeture
     let lng = 0;
     let lat = 0;
-    for (const [x, y] of vertices) {
-      lng += x;
-      lat += y;
-    }
+    for (const [x, y] of vertices) { lng += x; lat += y; }
     centroid = [lng / vertices.length, lat / vertices.length];
     centroidLat = centroid[1];
     shadingUi.recomputeHorizon(); // ACAL378 — matrice d'horizon à la latitude du toit
@@ -2631,8 +2627,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   /** « + Ajouter une zone » : fige la zone active (géométrie + résultat), crée une
    *  NOUVELLE zone vide, l'active et vide l'éditeur pour un tracé vierge (facture +
    *  liste des zones conservées). N'agit que si la zone active est fermée. */
+  const memoAjout: { doc: import('./roofPro11/prefill').SerializedLayout | null } = { doc: null }; // ACAL1329 — le document d'avant l'ajout
   function addArea() {
     if (!closed || vertices.length < 3) return;
+    try { memoAjout.doc = serialiserAtelier(); } catch { memoAjout.doc = null; } // ACAL1329 — avant toute mutation
     capturerGeometrieActive(); // ACAL28
     snapshotActiveAreaGeometry();
     snapshotActiveAreaResult();
@@ -4209,11 +4207,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // W114/W115 — expose une petite API à la page de design (étude Meriem) : sérialiser
   // le layout finalisé (W113) + instantané PNG de la 3D (W115). Boot complet seulement
   // (jamais en capture). Absent → aucun effet.
-  opts.onApiReady?.({
     // ACAL26 — le wrapper délègue au sérialiseur CÂBLÉ (`hydratation.ts`) : la composition
     // de la meta (origine devis, accès solaire, retraits, horizon, modules) est la même
     // qu'avant, et ses DEUX branches portent désormais la couche électrique.
-    serializeLayout: (billKwh?: number | null, meta?: import('./roofPro11/prefill').SerializeMeta) =>
+  const serialiserAtelier = (billKwh?: number | null, meta?: import('./roofPro11/prefill').SerializeMeta) =>
       serialiserDocumentAtelier(
         ctx,
         // ACAL31 — sans facture saisie, le billKwh RELU (ou null) ; ACAL311 — les kWh SERVIS d'abord.
@@ -4236,12 +4233,14 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
           coucheElectrique,
         },
         meta,
-      ),
+      );
+  opts.onApiReady?.({
+    serializeLayout: (b?: number | null, m?: import('./roofPro11/prefill').SerializeMeta) => documentPendantAjout(ajoutDePanEnCours(areas, activeAreaId, closed), memoAjout, () => serialiserAtelier(b, m)), // ACAL1329
     // ACAL71 — un contour géoréférencé (plan importé calé…) devient un NOUVEAU pan : même
     // validateur et même refus de croisement que le tracé ; le pan actif est figé d'abord,
     // puis le nouveau est chargé et fermé par la voie du tracé (`loadArea` → `recalc`).
     ajouterPanDepuisContour: (contourLngLat: unknown) => {
-      const verdict = nouveauPanDepuisContour(contourLngLat, areas);
+      const verdict = nouveauPanDepuisContour(contourLngLat, areas, moduleDeDepart(lireModulesDisponibles(opts.modulesDisponibles))); // ACAL1273
       if (!verdict.ok) {
         setStatus(verdict.motif);
         return verdict;

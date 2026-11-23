@@ -9,6 +9,7 @@ export const CALQUES_EDITION = [
   'rp9-pts', 'rp9-line', 'rp9-mesure-line', 'rp9-mesure-label', 'rp9-obs-label', 'rp9-obs-preview',
   'rp9-ref-contour-fill', 'rp9-ref-contour-line', 'rp9-zones-label', 'rp9-reperes-cercle', 'rp9-reperes-point',
   'rp9-setback-lateral', 'rp9-setback-extremity', 'rp9-setback-parapet', 'rp9-setback-joint',
+  'rp9-cotes', // ACAL1328 — cotes d'arêtes
 ] as const;
 
 /** Degrés de cap par pixel glissé d'un doigt. */
