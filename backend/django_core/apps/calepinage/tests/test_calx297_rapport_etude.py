@@ -442,6 +442,35 @@ class SyntheseTest(unittest.TestCase):
         res['production']['total']['mention'] = 'borne haute — 2 pertes'
         self.assertIn('borne haute — 2 pertes', self.synthese(res))
 
+    def test_synthese_sans_onduleur_dit_son_motif(self):
+        # ACAL1677 - cas 1898 : aucun onduleur désigné, aucun verdict. Les
+        # deux lignes disaient « non calculée » SANS motif.
+        res = resultat()
+        res['electrique'] = {'chainage': None, 'onduleurs': [],
+                             'affectation': [], 'verdicts': []}
+        page = self.synthese(res)
+        self.assertIn(
+            '<tr><th>Onduleurs</th><td>non calculée — aucun onduleur '
+            'désigné</td></tr>', page)
+        self.assertIn(
+            '<tr><th>Contrôles électriques non conformes</th><td>non '
+            'calculée — aucun onduleur désigné</td></tr>', page)
+        self.assertNotIn('<td>non calculée</td>', page)
+
+    def test_synthese_controles_lisent_le_motif_servi(self):
+        # ACAL1677 - un onduleur désigné mais aucun verdict : le motif
+        # électrique SERVI sur l'onduleur (``onduleurs[].motif``) est imprimé
+        # tel quel ; sans motif servi, la chaîne absente est nommée.
+        res = resultat()
+        res['electrique']['verdicts'] = []
+        res['electrique']['onduleurs'][0]['motif'] = 'tension MPPT hors plage'
+        page = self.synthese(res)
+        self.assertIn('non calculée — tension MPPT hors plage', page)
+        self.assertIn('ONDULEUR-ESSAI-1', page)
+        res['electrique']['onduleurs'][0]['motif'] = ''
+        self.assertIn('non calculée — aucune chaîne calculée',
+                      self.synthese(res))
+
     def test_un_controle_non_conforme_est_nomme(self):
         res = resultat()
         res['electrique']['verdicts'][0]['conforme'] = False

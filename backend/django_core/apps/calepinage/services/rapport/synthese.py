@@ -56,21 +56,40 @@ def _ligne(libelle_, cellule):
     return '<tr><th>%s</th><td>%s</td></tr>' % (escape(libelle_), cellule)
 
 
+#: ACAL1677 — le motif d'une ligne électrique vide quand l'onduleur manque.
+MOTIF_SANS_ONDULEUR = 'aucun onduleur désigné'
+#: … et quand un onduleur est désigné sans chaîne (ni motif servi).
+MOTIF_SANS_CHAINE = 'aucune chaîne calculée'
+
+
+def _liste_onduleurs(resultat):
+    return [o for o in (resultat.get('electrique') or {}).get('onduleurs')
+            or () if isinstance(o, dict)]
+
+
 def _onduleurs(resultat):
-    liste = [o for o in (resultat.get('electrique') or {}).get('onduleurs')
-             or () if isinstance(o, dict)]
+    liste = _liste_onduleurs(resultat)
     if not liste:
-        return _valeur(None)
+        return _valeur(None, MOTIF_SANS_ONDULEUR)
     return '<br>'.join(escape('%s × %s (%s kW)' % (
         o.get('reference') or '—', nombre_tel_que_servi(o.get('nombre')),
         nombre_tel_que_servi(o.get('taille_kw')))) for o in liste)
+
+
+def _motif_sans_verdict(resultat):
+    """Le motif servi sur l'onduleur, sinon ce qui manque (ACAL1677)."""
+    liste = _liste_onduleurs(resultat)
+    if not liste:
+        return MOTIF_SANS_ONDULEUR
+    return next((str(o['motif']) for o in liste if o.get('motif')),
+                MOTIF_SANS_CHAINE)
 
 
 def _controles(resultat):
     verdicts = [v for v in (resultat.get('electrique') or {}).get('verdicts')
                 or () if isinstance(v, dict)]
     if not verdicts:
-        return _valeur(None)
+        return _valeur(None, _motif_sans_verdict(resultat))
     faux = [str(v.get('libelle') or v.get('code') or '—') for v in verdicts
             if v.get('conforme') is False]
     if not faux:
