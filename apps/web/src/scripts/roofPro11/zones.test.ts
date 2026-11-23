@@ -791,6 +791,57 @@ describe('ACAL574 — pan existant : gestes refusés, géométrie intacte', () =
   });
 });
 
+// ACAL1404 — la réouverture rejoue `close()` (optimiseur) puis `hydrateLayout` (pose enregistrée), comme
+// `applyDevisHydration` / `loadArea` : un pan `existant` doit s'y paver, sans aucun refus à l'ouverture.
+describe('ACAL1404 — document à pan existant : hydratation fermée, aucun refus à l’ouverture', () => {
+  it('pose enregistrée reposée (5 modules), barre d’état muette ; un geste ensuite reste refusé', async () => {
+    const { createOptimizer } = await import('./optimizer');
+    const { createLayoutEditor } = await import('./layoutEditor');
+    const { carteEditeurFactice, depsEditeur } = await import('./harnaisAtelier');
+    const { occupiedCount } = await import('../../lib/layoutVariability');
+    const g = globalThis as unknown as { document?: Document; window?: unknown };
+    const avant = { d: g.document, w: g.window };
+    const fen = new JSDOM('<!doctype html><body></body>').window;
+    g.document = fen.document;
+    g.window = fen;
+    try {
+      const CARRE: LngLat[] = [ptM(-5, -5), ptM(5, -5), ptM(5, 5), ptM(-5, 5)];
+      const pan = { ...panDeTest('area-1', { vertices: [...CARRE], roofType: 'flat', neededPanels: 5, neededAuto: false }), label: 'Pan A', existant: true, anneeMiseEnService: 2019 };
+      const avantPan = JSON.stringify(pan);
+      const ctx = {
+        ...ctxDeBase([pan], 'area-1'), activeArea: () => pan, closed: true, dom: {}, opts: {}, centroid: ptM(0, 0), centroidLat: ptM(0, 0)[1],
+        pinned: new Set(), sel: { family: 'south', tilt: 'reco', orient: 'auto', azimuth: 'south', margin: 'keep' }, v4YieldCache: new Map(),
+        overhangM: 0, documentRelu: null, batiments: [], environment: [], shadeObstructions: [], useRecommended: true,
+        layoutMode: false, layoutState: null, layoutSel: null, freeMode: false, freeState: null,
+      } as unknown as Ctx;
+      // Le rendu réel (`scene3d.renderScene`) mémorise le plan gagnant : c'est lui que `hydrateLayout` relit.
+      const renderScene = vi.fn((pack, grid, tiltDeg, family, maxCount, flush = false, occupied?: Set<number>) => {
+        if (occupied) return;
+        Object.assign(ctx, { layoutPlan: { pack, grid, tiltDeg, family, flush }, layoutOptimalCount: Math.min(grid.panels.length, maxCount), layoutState: null });
+      });
+      const setStatus = vi.fn();
+      const deps = { renderScene, paintComparison: vi.fn(), highlightRow: vi.fn(), syncProductionWindow: vi.fn(), prefillLead: vi.fn(),
+        syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 800, obstructionRings: () => [], setStatus };
+      const opt = createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]);
+      opt.liveResolveFlat(); // close() → recalc() → renderSelection()
+      const plan = (ctx as unknown as { layoutPlan: { grid: { panels: { cx: number; cy: number }[] } } | null }).layoutPlan;
+      expect(plan?.grid.panels.length ?? 0).toBeGreaterThanOrEqual(5);
+      const conteneur = fen.document.createElement('div');
+      fen.document.body.appendChild(conteneur);
+      const editeur = createLayoutEditor(ctx, depsEditeur(carteEditeurFactice(conteneur)));
+      expect(editeur.hydrateLayout(plan!.grid.panels.slice(0, 5), undefined, 'lattice')).toBe(true);
+      expect(occupiedCount(ctx.layoutState!)).toBe(5);
+      expect(setStatus).not.toHaveBeenCalledWith(motifPanExistant(pan));
+      expect(JSON.stringify(pan)).toBe(avantPan); // un simple chargement n'écrit rien
+      opt.liveResolveFlat(); // un geste de l'utilisateur, pose affichée : refus nommé (ACAL574)
+      expect(setStatus).toHaveBeenCalledWith(motifPanExistant(pan));
+    } finally {
+      g.document = avant.d;
+      g.window = avant.w;
+    }
+  });
+});
+
 // REP-853 / ACAL853 — le Total lit le kWh PEINT sur la carte (kWh par panneau × panneaux posés), pas
 // `w.annualKwh` du solveur : deux productibles différents rendent les deux lectures distinguables.
 describe('ACAL853 — liveActiveResult reprend le kWh de la carte peinte', () => {

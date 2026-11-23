@@ -536,17 +536,17 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
    * Aucun seuil saisi, seuil refusé, ou aucun emplacement sous le seuil ⇒ valeurs
    * STRICTEMENT identiques à aujourd'hui (`placedFor`, aucun jeu de cellules).
    */
-  function poseSousSeuil(grid: PanelGrid): { placed: number; occupied?: Set<number> } {
+  function poseSousSeuil(grid: PanelGrid, annoncer = true): { placed: number; occupied?: Set<number>; ecartes: number } {
     const plafond = placedFor(grid);
     const f = filtrageSeuil(grid.panels);
-    if (!f) return { placed: plafond };
-    if (f.refuse || f.ecartes.length) {
+    if (!f) return { placed: plafond, ecartes: 0 };
+    if (annoncer && (f.refuse || f.ecartes.length)) { // ACAL1533 — le chiffrage des deux sens n'annonce rien
       if (f.motif !== dernierMotifSeuil) {
         dernierMotifSeuil = f.motif;
         setStatus(f.motif);
       }
     }
-    if (!f.ecartes.length) return { placed: plafond };
+    if (!f.ecartes.length) return { placed: plafond, ecartes: 0 };
     // La CAPACITÉ du pan baisse d'autant : le seuil retire des emplacements, il n'en
     // fabrique aucun ailleurs. Le plafond « besoin » s'applique ensuite à cette capacité
     // réduite, par la MÊME règle que partout (`placedFor`, qui ne lit que `count`).
@@ -557,7 +557,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     for (let i = 0; i < grid.panels.length && occupied.size < placed; i++) {
       if (!ecartes.has(i)) occupied.add(i);
     }
-    return { placed: occupied.size, occupied };
+    return { placed: occupied.size, occupied, ecartes: f.ecartes.length }; // ACAL1526 — le nombre écarté, pour la note
   }
 
   // — DOM propre à l'optimiseur (mêmes nœuds que l'entrée ; getElementById idempotent) —
@@ -602,7 +602,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   // R3-04 — aussi la couverture (`pct`) de la tuile affichée ; R2-16 — et `factureInconnue`, pour repeindre la bande « Année 1 ».
   let derniereCarte: (CardData & { factureInconnue: boolean }) | null = null;
   let dernierFit = 0;
-  let derniereNote: { fit: number; famille: string; motif?: MotifPanVide | null } | null = null; // R2-13
+  let derniereNote: { fit: number; famille: string; motif?: MotifPanVide | null; ecartes?: number } | null = null; // R2-13
   const placedFor = (grid: PanelGrid): number =>
     ctx.neededPanels > 0
       ? Math.max(0, Math.min(ctx.neededPanels, grid.count))
@@ -622,9 +622,12 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
    *  « au devis » que pour un devis lié, avec le compte réel des panneaux de CE devis. Site public : libellé d'avant. */
   const modeErp = (): boolean => ctx.opts?.chiffrage !== undefined;
   const surDevis = (placed: number): string => texteSurDevis(placed, ctx.neededPanels, modeErp(), Boolean(ctx.opts?.devisLie && ctx.cibleVendue), ctx.panneauxDevis);
-  function syncNeedControl(fitCount: number, familyLabel: string, motif?: MotifPanVide | null) {
+  /** ACAL1526 — `ecartes` = emplacements retirés par le seuil d'accès solaire (`poseSousSeuil`) : la capacité dite
+   *  est celle qui reste, donc la note lit la pose DESSINÉE (jamais « il reste de la place » sur une pose rognée). */
+  function syncNeedControl(fitCount: number, familyLabel: string, motif?: MotifPanVide | null, ecartes = 0) {
     dernierFit = fitCount;
-    derniereNote = { fit: fitCount, famille: familyLabel, motif };
+    derniereNote = { fit: fitCount, famille: familyLabel, motif, ecartes };
+    const capacite = Math.max(0, fitCount - ecartes);
     const active = ctx.neededPanels > 0;
     // L2 — en mode devis, le champ reste ACTIONNABLE même à 0 : aucune facture n'existe
     // dans cet écran pour dériver un besoin automatiquement (le champ facture est retiré
@@ -651,13 +654,17 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
           : 'Indiquez votre facture pour dimensionner le nombre de panneaux.';
       return;
     }
-    const placed = motif ? 0 : Math.min(ctx.neededPanels, fitCount); // ACAL549 — un motif = un pan vide mesuré
-    if (placed < ctx.neededPanels) {
+    const placed = motif ? 0 : Math.min(ctx.neededPanels, capacite); // ACAL549 — un motif = un pan vide mesuré
+    if (placed < ctx.neededPanels && !motif && ecartes > 0) {
+      const s = ecartes > 1 ? 's' : '';
+      const seuil = `${fmt(ecartes)} emplacement${s} écarté${s} par le seuil d’accès solaire`; // ACAL1526
+      needNoteEl.textContent = ctx.devisMode ? `${surDevis(placed)} — ${seuil}.` : `${fmt(ctx.neededPanels)} nécessaires — ${seuil}. On pose ${fmt(placed)}.`;
+    } else if (placed < ctx.neededPanels) {
       const cause = motif ? ` — ${motif.message}` : ' (toit ou obstacles)'; // ACAL549
       needNoteEl.textContent = ctx.devisMode
         ? `${surDevis(placed)} — seuls ${fmt(placed)} tiennent en ${familyLabel}${cause}.`
         : `${fmt(ctx.neededPanels)} nécessaires — ${fmt(placed)} tiennent en ${familyLabel}${cause}. On pose ${fmt(placed)}.`;
-    } else if (fitCount > ctx.neededPanels) {
+    } else if (capacite > ctx.neededPanels) {
       needNoteEl.textContent = ctx.devisMode
         ? `${surDevis(placed)} — il reste de la place sur le toit, laissée libre.`
         : `${fmt(ctx.neededPanels)} couvrent votre facture (+10 %) — il reste de la place sur le toit, laissée libre.`;
@@ -688,7 +695,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   function renderConfig(o: RenderConfigOpts) {
     // CALX115 — la pose suit le seuil d'accès solaire SAISI ; sans seuil, `placed` vaut
     // exactement `placedFor(o.grid)` et `occupied` est absent (rendu d'aujourd'hui).
-    const { placed, occupied } = poseSousSeuil(o.grid);
+    const { placed, occupied, ecartes } = poseSousSeuil(o.grid);
     const kwc = o.grid.count > 0 ? (o.grid.kwc * placed) / o.grid.count : 0;
     // W1 : production à l'aspect réel (le rendement/panneau baisse honnêtement
     // quand l'array suit un toit tourné).
@@ -702,7 +709,10 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const savings = annualSavingsMad(annualKwh, target); // plafonné à la conso
     renderScene(o.pack, o.grid, o.tiltDeg, o.family, placed, false, occupied); // CALX115
     majNoteChassis(o.pack, o.grid); // ACAL585 — « n châssis de N × M posés » ou le motif
-    afficherSensDePose(lignesSensDePose(o.pack, accesSolaireDe, placedFor)); // ACAL552
+    afficherSensDePose(lignesSensDePose(o.pack, accesSolaireDe, (g) => poseSousSeuil(g as PanelGrid, false)), { // ACAL552, ACAL1533
+      affichee: o.grid === o.pack.portrait ? 'portrait' : o.grid === o.pack.landscape ? 'landscape' : undefined,
+      choisir: (sens) => choisirSensDePose(sens, { family: o.family, tilt: o.tiltDeg, azimuth: ctx.sel.azimuth, margin: ctx.sel.margin }),
+    });
     paintCard(
       {
         title: o.title,
@@ -720,7 +730,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       },
       o.sourceLabel,
     );
-    syncNeedControl(o.grid.count, o.family === 'eastwest' ? 'Est-Ouest' : 'plein sud', motifPanActif(o.pack, o.grid, placed, null)); // ACAL549 : retrait non transmis ici
+    syncNeedControl(o.grid.count, o.family === 'eastwest' ? 'Est-Ouest' : 'plein sud', motifPanActif(o.pack, o.grid, placed, null), ecartes); // ACAL549 : retrait non transmis ici ; ACAL1526
     syncTiltControl(o.tiltDeg, o.isReco);
     if (o.isReco) paintMaxLine();
     highlightRow(o.rowId);
@@ -839,10 +849,13 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     // CALX115 — le seuil d'accès solaire SAISI retire ses emplacements du posable AVANT
     // que la pose ne les retienne ; sans seuil, `placedCount` vaut exactement
     // `placedFor(grid)` et `occupied` est absent — chiffres et 3D INCHANGÉS.
-    const { placed: placedCount, occupied } = poseSousSeuil(grid);
+    const { placed: placedCount, occupied, ecartes } = poseSousSeuil(grid);
     const gapScale = w.placedCount > 0 ? placedCount / w.placedCount : placedCount > 0 ? 1 : 0;
     renderScene(pack, grid, w.tiltDeg, w.family, placedCount, false, occupied);
-    afficherSensDePose(lignesSensDePose(pack, accesSolaireDe, placedFor)); // ACAL552
+    afficherSensDePose(lignesSensDePose(pack, accesSolaireDe, (g) => poseSousSeuil(g as PanelGrid, false)), { // ACAL552, ACAL1533
+      affichee: w.layout,
+      choisir: (sens) => choisirSensDePose(sens, { family: w.family, tilt: w.tiltDeg, azimuth: w.orientation === 'aligned' ? 'aligned' : 'south', margin: w.margin }),
+    });
     // W94 — écrête la production AFFICHÉE au plafond AC de l'onduleur (le solveur V7
     // calcule le kWh DC brut sans clip) : un Sud est inchangé (ratio = design), une
     // « tente » E-O sur-densifiée est ramenée sous la valeur non écrêtée. On recalcule
@@ -882,7 +895,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       },
       w.yieldSource === 'pvgis' ? '(production PVGIS au GPS exact)' : '(production estimée — table par latitude)',
     );
-    syncNeedControl(grid.count, liveOrientationLabel(w), motifPanActif(pack, grid, placedCount, retraitApplique(setbacksForMargin(w.margin), setbackM)));
+    syncNeedControl(grid.count, liveOrientationLabel(w), motifPanActif(pack, grid, placedCount, retraitApplique(setbacksForMargin(w.margin), setbackM)), ecartes); // ACAL1526
     syncTiltControl(w.tiltDeg, isReco);
     paintMaxLine();
     highlightRow(null);
@@ -972,16 +985,30 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     liveResolveFlat();
   });
 
+  /** ACAL1533 — un clic sur « Portrait : N panneaux » / « Paysage : … » : la pose AFFICHÉE est tenue (famille,
+   *  inclinaison, azimut, marge verrouillés comme une carte de variante, PV64) et seul le sens change — le nombre
+   *  annoncé, chiffré sur ce même pavage par `poseSousSeuil`, est donc celui qu'on obtient ; la marge ne bouge pas. */
+  function choisirSensDePose(sens: 'portrait' | 'landscape', tenue: { family: ConfigFamily; tilt: number; azimuth: 'south' | 'aligned'; margin: 'keep' | 'remove' }) {
+    ctx.sel = { family: tenue.family, tilt: tenue.tilt, orient: sens, azimuth: tenue.azimuth, margin: tenue.margin };
+    for (const axe of ['family', 'tilt', 'orient', 'azimuth', 'margin'] as const) ctx.pinned.add(axe);
+    ctx.useRecommended = false;
+    liveResolveFlat();
+  }
+
   /** Cœur W34 : re-résolution CONTRAINTE vivante (verrous courants) + rendu + badges. */
-  /** ACAL574 — un pan « existant » ne se re-résout pas : ses modules restent ceux posés (refus nommé). */
-  function refusPanExistant(): boolean {
+  /** ACAL574 — un pan « existant » ne se re-résout pas : ses modules restent ceux posés (refus nommé).
+   *  ACAL1404 — seulement une fois sa pose affichée (`ctx.layoutPlan`) : au chargement (hydratation, pan rouvert,
+   *  plan remis à null) il se pave pour que `hydrateLayout` y repose la pose enregistrée, sans rien dire ;
+   *  `annoncer` faux = recalcul de fond (affinage PVGIS), qui n'est pas un geste : refus muet. */
+  function refusPanExistant(annoncer = true): boolean {
+    if (!ctx.layoutPlan) return false;
     const i = Array.isArray(ctx.areas) ? ctx.areas.findIndex((a) => a.id === ctx.activeAreaId) : -1;
     const motif = i >= 0 ? motifPanExistant(ctx.areas[i], i) : null;
-    if (motif) setStatus(motif);
+    if (motif && annoncer) setStatus(motif);
     return motif != null;
   }
-  function liveResolveFlat() {
-    if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'flat' || refusPanExistant()) return;
+  function liveResolveFlat(annoncer = true) {
+    if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'flat' || refusPanExistant(annoncer)) return;
     const ring: LngLat[] = [...ctx.vertices];
     const bill = monthlyBill();
     const locks = buildFlatLocks();
@@ -1081,7 +1108,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     for (const [id, el] of cibles) if (el && e.estimes[id] !== undefined) el.textContent = economieAffichee(ctx, id, e.estimes[id]);
     etiquetteEconomie();
     if (derniereCarte) paintBande(derniereCarte, derniereCarte.factureInconnue); // R2-16 — la bande « Année 1 » suit l'économie relue
-    if (derniereNote) syncNeedControl(derniereNote.fit, derniereNote.famille, derniereNote.motif); // R2-13 — « au devis » relu avec le contexte
+    if (derniereNote) syncNeedControl(derniereNote.fit, derniereNote.famille, derniereNote.motif, derniereNote.ecartes); // R2-13, ACAL1526 — « au devis » relu avec le contexte
   }
 
   /** La bande « Année 1 → Année 25 ». ERP : UNE économie (la servie, sinon l'estimation prudente) ; l'année 25 ne
@@ -1384,8 +1411,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     return locks;
   }
 
-  function liveResolvePitched() {
-    if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'pitched' || refusPanExistant()) return; // ACAL574
+  function liveResolvePitched(annoncer = true) {
+    if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'pitched' || refusPanExistant(annoncer)) return; // ACAL574, ACAL1404
     const ring: LngLat[] = [...ctx.vertices];
     const bill = monthlyBill();
     const locks = buildPitchedLocks();
@@ -1557,7 +1584,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     if (token !== pitchedToken || perKwc == null) return;
     ctx.pitchedPvgisPerKwc = perKwc;
     // W35 — le cache PVGIS (pente, face) est rempli : re-résout l'optimiseur vivant.
-    if (ctx.roofType === 'pitched') liveResolvePitched();
+    if (ctx.roofType === 'pitched') liveResolvePitched(false); // ACAL1404 — fond, pas un geste
   }
 
   function pitchedRecompute() {
@@ -1667,7 +1694,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       const v = ctx.v4YieldCache.get(v4Key(tiltDeg, aspect));
       return v == null ? null : v;
     };
-    ctx.matrixResult = fineGridMatrixV6(ring, ctx.centroidLat, bill, obstructionRings(), {
+    // ACAL1504 — le balayage pave le MÊME anneau posable que le solveur vivant (retrait propre à chaque arête).
+    ctx.matrixResult = fineGridMatrixV6(anneauPosableParArete(ring, retraitsParArete()), ctx.centroidLat, bill, obstructionRings(), {
       yieldFn,
       overhangM: ctx.overhangM,
       obstructionClearancesM: obstructionClearances(), // PV61
@@ -1679,14 +1707,14 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     renderVariantCards(); // PV64 — trois variantes lisibles du MÊME balayage
     // W34 — le cache PVGIS vient d'être enrichi : re-résout le solveur vivant pour que
     // le gagnant affiché + les badges « Recommandé » suivent la production PVGIS exacte.
-    if (ctx.roofType === 'flat') liveResolveFlat();
+    if (ctx.roofType === 'flat') liveResolveFlat(false); // ACAL1404 — fond, pas un geste
   };
 
   async function computeMatrixPvgis() {
     if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'flat') return;
     const token = ++matrixToken;
     const ring: LngLat[] = [...ctx.vertices];
-    const bill = monthlyBill();
+    const bill = factureCarte(); // ACAL1505 — cible du balayage : saisie, sinon la facture du lead (le vivant garde monthlyBill)
     const roofAz = roofDominantAzimuthDeg(ring);
     // Phase 1 — GROSSIÈRE : tous les aspects, inclinaisons grossières → la base.
     await Promise.all(pvgisCoarsePairs(ctx.centroidLat, roofAz).map((p) => v4SpecificYield(p.tiltDeg, p.aspect)));

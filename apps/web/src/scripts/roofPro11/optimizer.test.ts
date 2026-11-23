@@ -450,7 +450,8 @@ describe('ACAL574 — re-résolution refusée sur un pan existant', () => {
     g.document = new JSDOM('<!doctype html><body></body>').window.document;
     try {
       const pan = { id: 'z1', label: 'Pan A', existant: true, geometrieEnregistree: { count: 4 } };
-      const ctx = { closed: true, vertices: rectRing(10, 8), roofType: 'flat', areas: [pan], activeAreaId: 'z1', opts: {} } as unknown as Ctx;
+      // ACAL1404 — pose déjà affichée (`layoutPlan`) : c'est un geste, refusé ; au chargement (plan null) le pan se pave.
+      const ctx = { closed: true, vertices: rectRing(10, 8), roofType: 'flat', areas: [pan], activeAreaId: 'z1', opts: {}, layoutPlan: {} } as unknown as Ctx;
       const deps = {
         renderScene: vi.fn(), paintComparison: vi.fn(), highlightRow: vi.fn(), syncProductionWindow: vi.fn(), prefillLead: vi.fn(),
         syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 800, obstructionRings: vi.fn(() => []), setStatus: vi.fn(),
@@ -812,6 +813,125 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
       expect(masquee(manque)).toBe(false);
       expect(masquee(publique)).toBe(false);
     } finally { couvre.fin(); manque.fin(); publique.fin(); }
+  });
+});
+
+// ACAL1526 — la note sous « Panneaux nécessaires » dit la pose DESSINÉE : les emplacements écartés par le seuil
+// d'accès solaire (`poseSousSeuil`) sont retirés, jamais « il reste de la place » quand la pose a été rognée.
+describe('ACAL1526 — seuil d’accès : la note dit la pose dessinée', () => {
+  /** Un pan plat 10 × 7 avec une cheminée de 1,1 m au milieu ; `seuil` = accès solaire minimal (0..1) ou null. */
+  const poser = (seuil: number | null, besoin: number) => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    const doc = new JSDOM('<!doctype html><body><p id="rp9-need-note"></p></body>').window.document;
+    g.document = doc;
+    poserChoixOptimisation(seuil == null ? null : { seuilAccesSolaire: seuil });
+    try {
+      const vertices = rectRing(10, 7);
+      const [cLng, cLat] = [(vertices[0][0] + vertices[2][0]) / 2, (vertices[0][1] + vertices[2][1]) / 2];
+      const cheminee = { id: 'o1', type: 'cheminee', centerLng: cLng, centerLat: cLat, lengthM: 0.6, widthM: 0.6, heightM: 1.1 };
+      const ctx = { opts: { chiffrage: null }, dom: {}, centroidLat: cLat, centroid: [cLng, cLat], rec: { targetAnnualKwh: 4000 }, neededPanels: besoin,
+        devisMode: true, cibleVendue: true, activeArea: () => null, activeAreaId: null, batiments: [], environment: [], shadeObstructions: [],
+        obstacles: [cheminee], areas: [], pinned: new Set() } as unknown as Ctx;
+      let dessines = -1;
+      const deps = { renderScene: (_p: unknown, _g: unknown, _t: unknown, _f: unknown, placed: number) => { dessines = placed; }, paintComparison: vi.fn(),
+        highlightRow: vi.fn(), syncProductionWindow: vi.fn(), prefillLead: vi.fn(), syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(),
+        monthlyBill: () => 0, obstructionRings: vi.fn(() => []), setStatus: vi.fn() };
+      const pack = packConfig(vertices, cLat, { family: 'south', tiltDeg: 13 });
+      createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]).renderConfig({
+        pack, grid: pack.best, family: 'south', tiltDeg: 13, azimuthDeg: 180, isReco: true, title: 't', why: 'w', rowId: null,
+      });
+      return { note: doc.getElementById('rp9-need-note')?.textContent ?? '', dessines, capacite: pack.best.count };
+    } finally {
+      poserChoixOptimisation(null);
+      g.document = avant;
+    }
+  };
+
+  it('seuil qui rogne la pose sous la cible : « X posés / N cible — K emplacements écartés par le seuil »', () => {
+    const sansSeuil = poser(null, 6);
+    expect(sansSeuil.note).toContain('il reste de la place'); // la cible tient sans seuil
+    const r = poser(0.99, sansSeuil.capacite); // cible = tout ce qui tient : le seuil en écarte forcément
+    expect(r.dessines).toBeLessThan(sansSeuil.capacite);
+    const ecartes = sansSeuil.capacite - r.dessines;
+    expect(r.note).toBe(`${fmt(r.dessines)} posés / ${fmt(sansSeuil.capacite)} cible — ${fmt(ecartes)} emplacement${ecartes > 1 ? 's' : ''} écarté${ecartes > 1 ? 's' : ''} par le seuil d’accès solaire.`);
+    expect(r.note).not.toContain('il reste de la place');
+  });
+});
+
+// ACAL1533 — le chiffre annoncé par « Portrait / Paysage » (sous les puces de pose, Expert, toit ombré) est celui
+// qu'on obtient au clic : même seuil d'accès (`poseSousSeuil`), même marge, et la ligne marquée suit la pose affichée.
+describe('ACAL1533 — le chiffre annoncé par Portrait est le nombre posé après le clic', () => {
+  /** Pan plat avec cheminée, atelier en mode Expert ; les puces imitent celles de l'entrée (un clic verrouille l'axe). */
+  const monter = (seuil: number | null, besoin: number, largeurM = 10, profondeurM = 7) => {
+    const g = globalThis as unknown as { document?: Document; window?: unknown };
+    const avant = { d: g.document, w: g.window };
+    const fen = new JSDOM('<!doctype html><body data-mode-expert="1"><div><button data-orient="auto"></button><button data-orient="portrait"></button>'
+      + '<button data-orient="landscape"></button></div><div><button data-margin="keep"></button><button data-margin="remove"></button></div></body>').window;
+    g.document = fen.document;
+    g.window = fen;
+    poserChoixOptimisation(seuil == null ? null : { seuilAccesSolaire: seuil });
+    const vertices = rectRing(largeurM, profondeurM);
+    const [cLng, cLat] = [(vertices[0][0] + vertices[2][0]) / 2, (vertices[0][1] + vertices[2][1]) / 2];
+    const cheminee = { id: 'o1', type: 'cheminee', centerLng: cLng, centerLat: cLat, lengthM: 0.6, widthM: 0.6, heightM: 1.1 };
+    const pan = { id: 'z1', label: 'Pan A', vertices, obstacles: [cheminee], roofType: 'flat', neededPanels: besoin, neededAuto: false };
+    const ctx = {
+      closed: true, vertices, roofType: 'flat', areas: [pan], activeAreaId: 'z1', activeArea: () => pan, opts: { chiffrage: null }, dom: {},
+      centroid: [cLng, cLat], centroidLat: cLat, pinned: new Set<string>(), sel: { family: 'south', tilt: 'reco', orient: 'auto', azimuth: 'south', margin: 'keep' },
+      v4YieldCache: new Map(), overhangM: 0, documentRelu: null, batiments: [], environment: [], shadeObstructions: [], obstacles: [cheminee],
+      neededAuto: false, neededPanels: besoin, layoutPlan: null, useRecommended: true,
+    } as unknown as Ctx & { pinned: Set<string>; sel: Record<string, unknown> };
+    let pose = -1;
+    const sync = () => {
+      for (const b of Array.from(fen.document.querySelectorAll<HTMLElement>('[data-orient]'))) b.setAttribute('aria-pressed', String(b.dataset.orient === (ctx.useRecommended ? 'auto' : ctx.sel.orient)));
+      for (const b of Array.from(fen.document.querySelectorAll<HTMLElement>('[data-margin]'))) b.setAttribute('aria-pressed', String(b.dataset.margin === ctx.sel.margin));
+    };
+    const deps = {
+      renderScene: (_p: unknown, _g: unknown, _t: unknown, _f: unknown, placed: number) => { pose = placed; }, paintComparison: vi.fn(), highlightRow: vi.fn(),
+      syncProductionWindow: vi.fn(), prefillLead: vi.fn(), syncChips: sync, renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 0,
+      obstructionRings: () => [], setStatus: vi.fn(),
+    };
+    const opt = createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]);
+    for (const axe of ['orient', 'margin'] as const) {
+      for (const b of Array.from(fen.document.querySelectorAll<HTMLElement>(`[data-${axe}]`))) {
+        b.addEventListener('click', () => {
+          const v = b.dataset[axe]!;
+          if (v === 'auto' || (ctx.pinned.has(axe) && ctx.sel[axe] === v)) ctx.pinned.delete(axe);
+          else { ctx.pinned.add(axe); ctx.sel = { ...ctx.sel, [axe]: v }; }
+          opt.liveResolveFlat();
+        });
+      }
+    }
+    opt.liveResolveFlat();
+    const lignes = () => Array.from(fen.document.querySelectorAll<HTMLElement>('[data-orient-ombre]'));
+    const annonce = (sens: string) => Number((lignes().find((l) => l.dataset.orientOmbre === sens)?.textContent ?? '').match(/: (\d+) panneaux/)?.[1] ?? NaN);
+    return {
+      ctx, lignes, annonce, pose: () => pose,
+      cliquer: (sens: string) => lignes().find((l) => l.dataset.orientOmbre === sens)!.click(),
+      fin: () => { poserChoixOptimisation(null); g.document = avant.d; g.window = avant.w; },
+    };
+  };
+
+  const marquee = (m: ReturnType<typeof monter>) => m.lignes().find((l) => l.getAttribute('aria-pressed') === 'true')?.dataset.orientOmbre ?? null;
+
+  // Cas relevés sur la tête : seuil 0,99 / cible 4 ⇒ « Portrait : 4 » puis 3 posés ; cible 10 sans seuil ⇒ « Portrait : 7 »
+  // puis 10 posés et la marge passée de Pleine rive à Garder ; aucune ligne marquée en « auto ».
+  it('annoncé = posé après le clic, marge inchangée, ligne marquée = pose affichée (avec et sans seuil)', () => {
+    for (const seuil of [null, 0.99]) {
+      for (const besoin of [4, 10, 16]) {
+        for (const sens of ['portrait', 'landscape'] as const) {
+          const m = monter(seuil, besoin);
+          try {
+            expect(marquee(m)).toBe(m.ctx.sel.orient); // la pose dessinée est marquée, même en « auto »
+            const margeAvant = m.ctx.sel.margin;
+            const annonce = m.annonce(sens);
+            m.cliquer(sens);
+            expect({ seuil, besoin, sens, pose: m.pose(), marge: m.ctx.sel.margin }).toEqual({ seuil, besoin, sens, pose: annonce, marge: margeAvant });
+            expect(marquee(m)).toBe(sens);
+          } finally { m.fin(); }
+        }
+      }
+    }
   });
 });
 

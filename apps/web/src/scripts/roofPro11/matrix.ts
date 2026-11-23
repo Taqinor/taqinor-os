@@ -8,6 +8,9 @@
  * unifié de configuration (injecté : `renderConfig`).
  */
 import { packConfig } from '../../lib/estimatorBrainV2';
+import { anneauPosableParArete } from '../../lib/estimatorBrainV7'; // ACAL1504
+import { supplementsParArete } from '../../lib/roofSetbackEdge'; // ACAL1504
+import { factureCarteDe } from './factureCarte'; // ACAL1505
 import {
   CIBLES_OPTIMISATION,
   fineGridMatrixV6,
@@ -63,6 +66,11 @@ export function createMatrix(ctx: Ctx, deps: MatrixDeps): Matrix {
 
   /** Clé stable d'une ligne (famille|inclinaison|azimut|pose|marge) — sert d'id de
    *  ligne (réutilise le highlight existant) et de comparaison au gagnant. */
+  /** ACAL1504 — l'anneau posable du pan actif : contour rogné du retrait propre à chaque arête (`retraitM`, table
+   *  société comprise), comme le solveur vivant ; le supplément ne dépend pas de la catégorie passée. */
+  const anneauPose = (): LngLat[] =>
+    anneauPosableParArete([...ctx.vertices], supplementsParArete(ctx.activeArea?.()?.edges, PERIMETER_SETBACK_M));
+
   function matrixRowKey(r: MatrixEvalV6): string {
     return `${r.family}|${r.tiltDeg}|${Math.round(r.azimuthDeg)}|${r.orientation}|${r.margin}`;
   }
@@ -142,14 +150,19 @@ export function createMatrix(ctx: Ctx, deps: MatrixDeps): Matrix {
     if (!host) return;
     const saisie = cibleOptimisationSaisie();
     host.innerHTML = '';
+    // ACAL1525 — de vraies puces, espacées et repliables dans la colonne étroite (aucune feuille de style ne les
+    // range dans l'ERP) ; un espace entre chaque élément pour que le texte lu ne soit jamais collé.
+    host.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:0.5rem';
     const titre = document.createElement('span');
     titre.className = 'rp9-cible-titre';
     titre.textContent = 'Objectif du classement :';
     host.appendChild(titre);
     for (const c of CIBLES_OPTIMISATION) {
+      host.appendChild(document.createTextNode(' '));
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'rp9-cible-chip';
+      btn.style.cssText = 'min-height:2.75rem;padding:0 0.75rem;border:1px solid currentColor;border-radius:9999px';
       btn.dataset.cible = c.id;
       btn.textContent = c.label;
       btn.setAttribute('aria-pressed', String(saisie === c.id));
@@ -163,6 +176,7 @@ export function createMatrix(ctx: Ctx, deps: MatrixDeps): Matrix {
     const note = document.createElement('p');
     note.id = 'rp9-cible-note';
     note.className = 'rp9-cible-note';
+    note.style.flexBasis = '100%'; // ACAL1525 — la phrase sous les puces
     note.textContent = motifCible();
     host.appendChild(note);
   }
@@ -189,7 +203,7 @@ export function createMatrix(ctx: Ctx, deps: MatrixDeps): Matrix {
       const key = matrixRowKey(r);
       tr.dataset.id = key;
       const win = isMatrixWinner(r);
-      const cover = target > 0 ? Math.round(r.pctOfTarget) : 0;
+      const cover = target > 0 ? `${Math.round(r.pctOfTarget)} %` : '—'; // ACAL1525 — sans cible, aucun pourcentage
       // CALX114 — la ligne « Recommandé » dit SELON QUOI elle l'est : le classement
       // n'est plus un objectif implicite qu'il fallait connaître pour lire le tableau.
       const badge = win
@@ -200,7 +214,7 @@ export function createMatrix(ctx: Ctx, deps: MatrixDeps): Matrix {
         `<td class="num">${fmt(r.placedCount)}</td>` +
         `<td class="num">${r.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 1 })}</td>` +
         `<td class="num">${fmt(Math.round(r.annualKwh))}</td>` +
-        `<td class="num">${cover} %</td>` +
+        `<td class="num">${cover}</td>` +
         celluleEconomies(wrap, r.savingsLow, r.savingsHigh);
       tr.addEventListener('click', () => renderMatrixRow(r));
       tbody.appendChild(tr);
@@ -214,7 +228,7 @@ export function createMatrix(ctx: Ctx, deps: MatrixDeps): Matrix {
   function renderMatrixRow(r: MatrixEvalV6) {
     if (!ctx.closed || ctx.vertices.length < 3) return;
     ctx.useRecommended = false;
-    const ring: LngLat[] = [...ctx.vertices];
+    const ring: LngLat[] = anneauPose(); // ACAL1504
     const setbackM = r.margin === 'keep' ? PERIMETER_SETBACK_M : 0;
     const pack = packConfig(ring, ctx.centroidLat, {
       family: r.family,
@@ -253,14 +267,15 @@ export function createMatrix(ctx: Ctx, deps: MatrixDeps): Matrix {
    *  GPS exact suit en asynchrone (computeMatrixPvgis). */
   function recomputeMatrix() {
     if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'flat') return;
-    const ring: LngLat[] = [...ctx.vertices];
+    const ring: LngLat[] = anneauPose(); // ACAL1504
     // W73 — note la matrice sur la MÊME source PVGIS que la carte « reco » : on passe le
     // yieldFn adossé à `ctx.v4YieldCache` (identique à `buildMatrix`/le solveur vivant).
     // Cache vide (PVGIS pas encore résolu) → repli table des DEUX côtés ; une fois PVGIS
     // en cache, la ligne badgée == la config recommandée (plus de désaccord transitoire).
     // CALX114 — le MÊME objectif saisi que l'affinage PVGIS (`optimizer.buildMatrix`) :
     // la ligne badgée et la carte reco ne peuvent pas classer sur deux objectifs.
-    ctx.matrixResult = fineGridMatrixV6(ring, ctx.centroidLat, monthlyBill(), obstructionRings(), {
+    // ACAL1505 — cible du balayage = facture saisie, sinon celle du lead (mode calepinage : aucun champ `rp9-bill`).
+    ctx.matrixResult = fineGridMatrixV6(ring, ctx.centroidLat, factureCarteDe(monthlyBill(), ctx.opts?.factureMensuelleMad), obstructionRings(), {
       yieldFn: matrixYieldFn,
       optimisation: choixOptimisationCourant(),
     });
