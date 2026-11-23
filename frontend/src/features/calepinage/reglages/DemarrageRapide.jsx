@@ -221,18 +221,27 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
   // pied collé en bas — maquette), quelle que soit la hauteur de la fenêtre.
   const racine = useRef(null)
   const [hauteur, setHauteur] = useState(null)
+  // ACAL1908 — ce que la formule ci-dessous laisse déborder malgré tout (11 px relevés à 1440 × 900 : un liseré, une marge que la
+  // mesure ne voit pas) : MESURÉ sur le défilant après la pose de la hauteur, puis retiré de toutes les hauteurs suivantes.
+  const excesRef = useRef(0)
+  const defilantDe = (n) => { let p = n?.parentElement; while (p && !/(auto|scroll)/.test(getComputedStyle(p).overflowY)) p = p.parentElement; return p }
+  useLayoutEffect(() => {
+    if (!seul || !hauteur) return
+    const cadre = defilantDe(racine.current)
+    const exces = cadre ? cadre.scrollHeight - cadre.clientHeight : 0
+    if (exces > 0 && hauteur - exces >= 360) { excesRef.current += exces; setHauteur(hauteur - exces) }
+  }, [seul, hauteur])
   useLayoutEffect(() => {
     if (!seul) return undefined
     // ACAL1344 — le bas utile est celui du CONTENU du défilant de l'ERP (son bas moins sa marge basse), pas
     // celui de la fenêtre : sinon la marge du cadre déborde et la page défile de quelques pixels.
-    const defilant = (n) => { let p = n?.parentElement; while (p && !/(auto|scroll)/.test(getComputedStyle(p).overflowY)) p = p.parentElement; return p }
     const mesurer = () => {
       const haut = racine.current?.getBoundingClientRect().top ?? 0
-      const cadre = defilant(racine.current)
+      const cadre = defilantDe(racine.current)
       const bas = cadre
         ? cadre.getBoundingClientRect().bottom - (parseFloat(getComputedStyle(cadre).paddingBottom) || 0)
         : window.innerHeight - 24
-      setHauteur(Math.max(360, Math.floor(bas - haut)))
+      setHauteur(Math.max(360, Math.floor(bas - haut) - excesRef.current))
     }
     mesurer()
     window.addEventListener('resize', mesurer)
