@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import calepinageApi from '../../../../../api/calepinageApi'
 import useResource from '../../../../../hooks/useResource'
+import { formatNumber } from '../../../../../lib/format'
 import { estIncomplet } from '../../../production/BandeauProvenanceProduction.helpers'
 import { DuSoleilAuReseau } from '../../../production/CartePostesPertes'
 import DiagrammePertes from '../../../production/DiagrammePertes'
@@ -46,6 +47,30 @@ function PertesAvance({ calepinageId, lectureSeule, onEnregistre, sourcesOuverte
   )
 }
 
+/** ACAL1956 (D-ACAL-90) — la production RETENUE PAR LE DEVIS envoyé ou accepté (`production_devis` de `GET resultat/`) :
+    l'étape n'est jamais vide ; quand la pose est simulée, les deux chiffres côte à côte, chacun nommé. Rien n'est
+    recalculé ici. */
+function ProductionDuDevis({ bloc, p50 }) {
+  if (!bloc) return null
+  const kwh = typeof bloc.production_annuelle_kwh === 'number' ? bloc.production_annuelle_kwh : null
+  return (
+    <section className="cal-res-carte flex flex-col gap-1" data-zone="production-devis">
+      <p>
+        {kwh != null
+          ? `Production retenue par le devis : ${formatNumber(kwh, { decimals: 0 })} kWh par an`
+          : 'Production retenue par le devis : le devis ne la porte pas'}
+        {' — '}
+        <Link to={`/ventes/devis?devis=${bloc.devis}`}>{bloc.reference || 'voir le devis'}</Link>
+      </p>
+      <p>
+        {typeof p50 === 'number'
+          ? `Production simulée de la pose : ${formatNumber(p50, { decimals: 0 })} kWh par an`
+          : 'Simulez la pose pour la comparer à ce chiffre.'}
+      </p>
+    </section>
+  )
+}
+
 export default function EtapeResultats({
   calepinageId = null, lectureSeule = false, parcours = null, action = null, intervalleMs = 2000,
 }) {
@@ -79,6 +104,7 @@ export default function EtapeResultats({
 
   return (
     <div className="cal-res" data-zone="etape-resultats">
+      <ProductionDuDevis bloc={data?.production_devis} p50={simule ? total?.p50_kwh : null} />
       {!simule && (
         <ResultatAvantSimulation calepinageId={id} data={data} parcours={parcours}
           intervalleMs={intervalleMs} onTermine={refetch} />

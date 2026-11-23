@@ -154,3 +154,17 @@ def bloc_devis_retenu(calepinage, stockee, resolu):
                          if onduleur else None),
             'nombre_onduleurs': (onduleur or {}).get('quantite') or None,
             'longueur_chaine': longueur, 'ecarts': ecarts}
+
+
+def bloc_production_devis(calepinage):
+    """ACAL1956 (D-ACAL-90) — ``production_devis`` de ``GET resultat/`` : la
+    production annuelle RETENUE PAR LE DEVIS (``conception_retenue_du_devis``,
+    aucun recalcul) quand le calepinage est lié à un devis envoyé ou accepté —
+    l'étape Résultats n'est jamais vide, même avant la simulation de la pose.
+    ``{devis, reference, statut, production_annuelle_kwh, production_origine}``
+    ou ``None`` (sans devis lié, ou devis encore brouillon)."""
+    conception = conception_du_devis_lie(calepinage)
+    if not conception or not conception['recu']:
+        return None
+    return {cle: conception[cle] for cle in ('devis', 'reference', 'statut',
+                                             'production_annuelle_kwh', 'production_origine')}

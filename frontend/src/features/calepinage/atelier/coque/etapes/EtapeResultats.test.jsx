@@ -7,6 +7,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, within, fireEvent } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { exempleContrat } from '../../../../../test/fixtures/contractSamples'
+import { formatNumber } from '../../../../../lib/format'
 
 vi.mock('../../../../../api/calepinageApi', () => ({
   default: {
@@ -537,5 +538,37 @@ describe('Étape Résultats — calcul à refaire (simulation périmée)', () =>
     expect(screen.getByText('Pour un résultat complet')).toBeInTheDocument()
     expect(screen.queryByTestId('calx48-perime')).toBeNull()
     expect(document.body.textContent).not.toMatch(JARGON)
+  })
+})
+
+/* ACAL1956 — la production RETENUE PAR LE DEVIS envoyé : bloc servi `production_devis` (exemple du contrat). */
+describe('Étape Résultats — production retenue par le devis (ACAL1956)', () => {
+  const PROD = () => exempleContrat('calepinage', 'calepinage_resultat', 'exemple_ecart_devis').production_devis
+  const kwh = (n) => `${formatNumber(n, { decimals: 0 })} kWh par an`.replace(/\s+/g, ' ')
+
+  it('sans devis lié : aucun bloc', async () => {
+    rendreAvec(JAMAIS())
+    await screen.findByTestId('cal-avant-simulation')
+    expect(screen.queryByText(/Production retenue par le devis/)).toBeNull()
+  })
+
+  it('devis envoyé sans simulation : le chiffre du devis, le lien vers le devis et l’invitation à simuler', async () => {
+    rendreAvec({ ...JAMAIS(), production_devis: PROD() })
+    await screen.findByRole('link', { name: PROD().reference })
+    const zone = document.querySelector('[data-zone="production-devis"]')
+    expect(zone).toHaveTextContent(`Production retenue par le devis : ${kwh(PROD().production_annuelle_kwh)}`)
+    expect(screen.getByRole('link', { name: PROD().reference })).toHaveAttribute('href', `/ventes/devis?devis=${PROD().devis}`)
+    expect(zone).toHaveTextContent('Simulez la pose pour la comparer à ce chiffre.')
+    expect(screen.getByRole('button', { name: 'Lancer la simulation' })).toBeInTheDocument()
+  })
+
+  it('devis envoyé avec simulation : les deux chiffres côte à côte, chacun nommé', async () => {
+    const data = { ...COMPLET(), production_devis: PROD() }
+    servir(data)
+    rendre()
+    await screen.findByRole('link', { name: PROD().reference })
+    const zone = document.querySelector('[data-zone="production-devis"]')
+    expect(zone).toHaveTextContent(`Production retenue par le devis : ${kwh(PROD().production_annuelle_kwh)}`)
+    expect(zone).toHaveTextContent(`Production simulée de la pose : ${kwh(data.production.total.p50_kwh)}`)
   })
 })
