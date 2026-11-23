@@ -104,6 +104,10 @@ function mentionBorneHaute(total) {
    reçu de l'atelier qui l'a déjà lu : jamais un second appel), SEULEMENT quand
    il n'imprime pas la pose réelle (« standard ville ») ; non chiffré ⇒ le motif
    servi. Écart = (simulation − devis) ÷ devis, à l'affichage. */
+const ORIGINE_ANNONCE = {
+  standard_ville: 'production standard de la ville',
+  calepinage_enregistre: 'pose réelle recalculée par le moteur du devis',
+}
 function DevisAnnonce({ chiffrage, p50, borneHaute = null }) {
   const prod = chiffrage?.production_annuelle_kwh
   if (!prod) return null
@@ -111,11 +115,13 @@ function DevisAnnonce({ chiffrage, p50, borneHaute = null }) {
     const motif = chiffrage.omissions?.find((o) => o.grandeur === 'production_annuelle_kwh')?.motif
     return <span className="block" data-testid="acal995-devis-annonce">{`Le devis n’est pas encore chiffré : ${motif || 'motif non publié'}`}</span>
   }
-  if (prod.etat !== 'servi' || prod.source !== 'standard_ville' || !prod.valeur) return null
+  if (prod.etat !== 'servi' || !ORIGINE_ANNONCE[prod.source] || !prod.valeur) return null
+  // ACAL1274 — pose réelle : la ligne ne se tait que si le devis imprime la simulation à l'affichage près.
+  if (prod.source === 'calepinage_enregistre' && (typeof p50 !== 'number' || Math.round(p50) === Math.round(prod.valeur))) return null
   const ecart = typeof p50 === 'number' ? ((p50 - prod.valeur) / prod.valeur) * 100 : null
   return (
     <span className="block" data-testid="acal995-devis-annonce">
-      {`Le devis annonce : ${formatNumber(prod.valeur, { decimals: 0 })} kWh/an — production standard de la ville`}
+      {`Le devis annonce : ${formatNumber(prod.valeur, { decimals: 0 })} kWh/an — ${ORIGINE_ANNONCE[prod.source]}`}
       {ecart !== null && ` (étude technique : ${ecart < 0 ? '−' : '+'}${formatNumber(Math.abs(ecart), { decimals: 1 })} %${borneHaute ? ` — ${borneHaute}` : ''})`}
     </span>
   )
