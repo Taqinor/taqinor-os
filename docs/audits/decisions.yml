@@ -5460,8 +5460,8 @@ decisions:
       - cle: re_poser
         texte: "Re-poser le toit à l'ouverture (comportement actuel : 55 panneaux affichés pour 60 enregistrés sur le calepinage 5, avec le module par défaut) et le dire à l'écran avant tout enregistrement"
     reponse: rejouer
-    date: "2026-11-22"
-    source: "comparaison écrans / maquettes du 22/11/2026 (1 écran fidèle sur 13 à la troisième passe) ; reconstruction des écrans du calepinage ; constat : le calepinage 5 est servi avec 60 panneaux (43,2 kWc) et l'écran en montre 55 (39,60 kWc) dès la première vue, un « Enregistrer » écrirait 55 ; recommandation : rejouer la pose enregistrée (le document est la vérité, l'écran ne doit jamais le contredire) ; 23/11/2026 : décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER — le tour 3 du L5 a reproduit une perte silencieuse (constat T3-POSE-004, S1) : cible 5, pose personnalisée de 16 enregistrée, rouverte à 5, puis écrasée à 5 par un « Enregistrer » sans geste ; rejouer la pose enregistrée ne change aucun chiffre déjà enregistré et se défait en revenant au code d'avant"
+    date: "2026-11-23"
+    source: "comparaison écrans / maquettes du 22/11/2026 (1 écran fidèle sur 13 à la troisième passe) ; reconstruction des écrans du calepinage ; constat : le calepinage 5 est servi avec 60 panneaux (43,2 kWc) et l'écran en montre 55 (39,60 kWc) dès la première vue, un « Enregistrer » écrirait 55 ; recommandation : rejouer la pose enregistrée (le document est la vérité, l'écran ne doit jamais le contredire) ; 23/11/2026 : décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER — le tour 3 du L5 a reproduit une perte silencieuse (constat T3-POSE-004, S1) : cible 5, pose personnalisée de 16 enregistrée, rouverte à 5, puis écrasée à 5 par un « Enregistrer » sans geste ; rejouer la pose enregistrée ne change aucun chiffre déjà enregistré et se défait en revenant au code d'avant ; RÉPONSE DU FONDATEUR le 23/11/2026 (questions interactives) : CONFIRMÉ (« the other three are fine »)"
     taches: [ACAL1330, ACAL1552, ACAL1448, ACAL1900]
 
   - id: D-ACAL-76
@@ -5471,9 +5471,9 @@ decisions:
         texte: "Afficher seulement, comme construit le 22/11 : la taille tirée de la facture est une information et une carte « Couvrir la facture » ; la taille reste un choix du commercial"
       - cle: dimensionner
         texte: "Dimensionner automatiquement : la pose d'un calepinage vierge suit la taille tirée de la facture du lead"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "comparaison écrans / maquettes du 22/11/2026 (1 écran fidèle sur 13 à la troisième passe) ; reconstruction des écrans du calepinage ; constat : en mode calepinage la facture du lead n'entre que dans l'affichage, jamais dans la pose ; recommandation : afficher seulement, la taille reste un choix"
+    reponse: dimensionner
+    date: "2026-11-23"
+    source: "comparaison écrans / maquettes du 22/11/2026 (1 écran fidèle sur 13 à la troisième passe) ; reconstruction des écrans du calepinage ; constat : en mode calepinage la facture du lead n'entre que dans l'affichage, jamais dans la pose ; recommandation : afficher seulement, la taille reste un choix ; RÉPONSE DU FONDATEUR le 23/11/2026 (questions interactives) : la pose d'un calepinage vierge suit la taille tirée de la facture du lead, le commercial ajuste"
     taches: [ACAL1331, ACAL1448]
 
   - id: D-ACAL-77
@@ -5523,9 +5523,9 @@ decisions:
         texte: "Le plus bas des deux : minimum de l'année type, ou −5 °C"
       - cle: moins_cinq
         texte: "−5 °C partout"
-    reponse: ouverte
+    reponse: tmy
     date: "2026-11-23"
-    source: "tour 2 du L5 (23/11/2026) : un relecteur a lu +4,6 °C sur un plan de site où il attendait −5 °C ; lu dans le code : le plancher de −5 °C ne sert que si la météo manque, et une année type lisse les extrêmes (tension à froid sous-estimée, donc plus de modules par chaîne) ; recommandation du lot B : le plus bas des deux ; coût si faux : tension de chaîne mal bornée par grand froid"
+    source: "tour 2 du L5 (23/11/2026) : un relecteur a lu +4,6 °C sur un plan de site où il attendait −5 °C ; lu dans le code : le plancher de −5 °C ne sert que si la météo manque, et une année type lisse les extrêmes (tension à froid sous-estimée, donc plus de modules par chaîne) ; recommandation du lot B : le plus bas des deux ; coût si faux : tension de chaîne mal bornée par grand froid ; RÉPONSE DU FONDATEUR le 23/11/2026 (questions interactives) : le minimum de l'année type du lieu, UNE règle pour le devis et le calepinage (le moteur de devis quitte −5 °C partout)"
     taches: [ACAL1553, ADEV122]
 
   - id: D-ACAL-81
@@ -5537,9 +5537,9 @@ decisions:
         texte: "Non : écrire d'abord à la NASA et attendre une réponse écrite"
       - cle: renoncer
         texte: "Non : s'en tenir à PVGIS"
-    reponse: ouverte
+    reponse: accepter
     date: "2026-11-23"
-    source: "tour 2 du L5 (23/11/2026) : la lane carte a cherché une page officielle de conditions d'usage liée depuis power.larc.nasa.gov et n'en a trouvé aucune ; ACAL746 déclarée impossible sans cette décision"
+    source: "tour 2 du L5 (23/11/2026) : la lane carte a cherché une page officielle de conditions d'usage liée depuis power.larc.nasa.gov et n'en a trouvé aucune ; ACAL746 déclarée impossible sans cette décision ; RÉPONSE DU FONDATEUR le 23/11/2026 (questions interactives) : oui, NASA POWER sert de seconde source"
     taches: [ACAL746]
 
   - id: D-ACAL-82
@@ -5551,9 +5551,11 @@ decisions:
         texte: "Reprendre des valeurs publiées par un outil de référence, citées avec leur source, étiquetées « supposé »"
       - cle: rester_incomplet
         texte: "Aucune valeur : le résultat reste « incomplet » tant que la société ne les a pas saisies"
-    reponse: ouverte
+      - cle: valeurs_recherchees
+        texte: "Valeurs publiées recherchées par Claude à la demande du fondateur, proposées puis acceptées"
+    reponse: valeurs_recherchees
     date: "2026-11-23"
-    source: "tour 2 du L5 (23/11/2026) : après « Démarrage rapide », aucun calepinage n'a de résultat complet au premier jour (19 pertes sur 22 sans valeur selon l'écran) ; le profil de départ ne publie rien pour la salissure, la dégradation initiale et l'indisponibilité, et les pertes de câbles n'ont pas de clé de réglage ; ACAL1349 déclarée impossible sans valeurs inventées ; rappel de la demande du fondateur du 22/11 : « my ERP should have default for everything » ; contrôle C2 du 23/11/2026 : tant que cette décision est ouverte, tout résultat reste « incomplet » et `ventes/horaire/productible_pose.py::base_depuis_servi` le rejette — la production de la pose réelle (D-ACAL-36, 44, 46) n'atteint donc AUCUN devis ; seule valeur publiée trouvée au dépôt : dégradation initiale 2 % suggérée par PVsyst ; repère : le devis applique déjà une enveloppe de 20 % de pertes au total"
+    source: "tour 2 du L5 (23/11/2026) : après « Démarrage rapide », aucun calepinage n'a de résultat complet au premier jour (19 pertes sur 22 sans valeur selon l'écran) ; le profil de départ ne publie rien pour la salissure, la dégradation initiale et l'indisponibilité, et les pertes de câbles n'ont pas de clé de réglage ; ACAL1349 déclarée impossible sans valeurs inventées ; rappel de la demande du fondateur du 22/11 : « my ERP should have default for everything » ; contrôle C2 du 23/11/2026 : tant que cette décision est ouverte, tout résultat reste « incomplet » et `ventes/horaire/productible_pose.py::base_depuis_servi` le rejette — la production de la pose réelle (D-ACAL-36, 44, 46) n'atteint donc AUCUN devis ; seule valeur publiée trouvée au dépôt : dégradation initiale 2 % suggérée par PVsyst ; repère : le devis applique déjà une enveloppe de 20 % de pertes au total ; RÉPONSE DU FONDATEUR le 23/11/2026 (questions interactives) : « search yourself on right values to be added », puis valeurs proposées ACCEPTÉES : salissure 3 % par an ; dégradation initiale 1,5 % (PERC et technologie inconnue), 1 % (TOPCon, HJT) ; indisponibilité 2 % ; câbles 1,5 % en continu + 1 % en alternatif ; chacune affichée « supposé » avec sa source, modifiable par société ; sources et fourchettes : docs/audits/l5-calepinage/controles/R-pertes-par-defaut.md"
     taches: [ACAL1349, ACAL1968]
 
   - id: D-ACAL-83
@@ -5563,9 +5565,9 @@ decisions:
         texte: "En un seul point, le centre du pan (comportement actuel)"
       - cle: moyenne_modules
         texte: "En moyenne sur les panneaux posés (et, sans panneau, sur une grille du pan)"
-    reponse: ouverte
+    reponse: moyenne_modules
     date: "2026-11-23"
-    source: "tour 2 du L5 (23/11/2026) : la lane carte-a a reproduit le défaut — l'ombre proche est évaluée au seul centre du pan, si bien qu'une cheminée posée au centre donne 71,76 % de perte quelle que soit sa hauteur (la note « −72 % » vue par les relecteurs) et qu'un poteau hors du centre donne 0 % ; recommandation : la moyenne sur les panneaux posés, parce que c'est la grandeur que la note annonce ; NON tranchée par l'orchestrateur parce que la matrice d'ombrage est une clé imprimée du devis : la production des devis liés à un calepinage qui a un obstacle changerait ; à préparer en phase de contrôles : la liste des devis touchés et l'écart de chacun, avant la réponse"
+    source: "tour 2 du L5 (23/11/2026) : la lane carte-a a reproduit le défaut — l'ombre proche est évaluée au seul centre du pan, si bien qu'une cheminée posée au centre donne 71,76 % de perte quelle que soit sa hauteur (la note « −72 % » vue par les relecteurs) et qu'un poteau hors du centre donne 0 % ; recommandation : la moyenne sur les panneaux posés, parce que c'est la grandeur que la note annonce ; NON tranchée par l'orchestrateur parce que la matrice d'ombrage est une clé imprimée du devis : la production des devis liés à un calepinage qui a un obstacle changerait ; à préparer en phase de contrôles : la liste des devis touchés et l'écart de chacun, avant la réponse ; RÉPONSE DU FONDATEUR le 23/11/2026 (questions interactives) : sur les panneaux posés ; la liste des calepinages qui changent est montrée avant toute application aux existants"
     taches: [ACAL1407, ACAL1501]
 
   - id: D-ACAL-84
@@ -5577,9 +5579,9 @@ decisions:
         texte: "Châssis → « pose libre » ; affleurant non calculé tant qu'une ligne « semi-intégré » sourcée n'existe pas"
       - cle: rien_par_defaut
         texte: "Aucune correspondance par défaut : la société choisit"
-    reponse: ouverte
+    reponse: chassis_libre_affleurant_isole
     date: "2026-11-23"
-    source: "tour 2 du L5 (23/11/2026), lot C : le profil de départ publie deux lignes (« pose_libre », « dos_isole ») alors que le document de toiture dit « integre » ou « chassis » ; sans correspondance, l'étape thermique reste non calculée ; recommandation du lot C : châssis → pose libre, affleurant non calculé ; change la production imprimée au rapport d'étude"
+    source: "tour 2 du L5 (23/11/2026), lot C : le profil de départ publie deux lignes (« pose_libre », « dos_isole ») alors que le document de toiture dit « integre » ou « chassis » ; sans correspondance, l'étape thermique reste non calculée ; recommandation du lot C : châssis → pose libre, affleurant non calculé ; change la production imprimée au rapport d'étude ; RÉPONSE DU FONDATEUR le 23/11/2026 (questions interactives) : châssis = pose libre ; affleurant = dos isolé"
     taches: [ACAL1671]
 
   - id: D-ACAL-85
@@ -5589,9 +5591,9 @@ decisions:
         texte: "Composer les trois incertitudes avec la variabilité entre années, chaque composante citée avec sa source"
       - cle: interannuelle
         texte: "La seule variabilité d'une année à l'autre (comportement actuel), dite telle"
-    reponse: ouverte
+    reponse: composer
     date: "2026-11-23"
-    source: "tour 2 du L5 (23/11/2026), lot C : le P90 affiché ne compte que la variabilité entre années ; une étude de référence compose aussi les incertitudes du modèle, de la météo et de la fiche ; recommandation du lot C : composer, chaque composante citée ; le libellé honnête du P90 actuel est corrigé sans attendre (ACAL1657) ; change le P90 imprimé au rapport d'étude"
+    source: "tour 2 du L5 (23/11/2026), lot C : le P90 affiché ne compte que la variabilité entre années ; une étude de référence compose aussi les incertitudes du modèle, de la météo et de la fiche ; recommandation du lot C : composer, chaque composante citée ; le libellé honnête du P90 actuel est corrigé sans attendre (ACAL1657) ; change le P90 imprimé au rapport d'étude ; RÉPONSE DU FONDATEUR le 23/11/2026 (questions interactives) : composer les incertitudes du modèle, de la météo et de la fiche avec la variabilité entre années, chacune citée"
     taches: [ACAL1672]
 
   - id: D-ACAL-86
@@ -5603,9 +5605,11 @@ decisions:
         texte: "Chaque document nomme l'autre chiffre et dit la raison de l'écart"
       - cle: rapport_interne
         texte: "Le rapport d'étude n'est pas remis au client"
-    reponse: ouverte
+      - cle: un_seul_chiffre
+        texte: "Un seul moteur calcule chaque valeur : un seul chiffre partout, le plus réaliste"
+    reponse: un_seul_chiffre
     date: "2026-11-23"
-    source: "tour 2 du L5 (23/11/2026), lot D : pour un même client, le devis annonce 6 047 kWh/an et le rapport d'étude 8 198 kWh (une « borne haute » imprimée comme P50) ; la correction du chiffre faux est faite sans attendre (ACAL1701, ACAL1702) ; reste à dire lequel des deux le client doit lire ; recommandation du lot D : chacun nomme l'autre ; coût si faux : deux chiffres sans explication"
+    source: "tour 2 du L5 (23/11/2026), lot D : pour un même client, le devis annonce 6 047 kWh/an et le rapport d'étude 8 198 kWh (une « borne haute » imprimée comme P50) ; la correction du chiffre faux est faite sans attendre (ACAL1701, ACAL1702) ; reste à dire lequel des deux le client doit lire ; recommandation du lot D : chacun nomme l'autre ; coût si faux : deux chiffres sans explication ; RÉPONSE DU FONDATEUR le 23/11/2026 (questions interactives) : mot pour mot : « i only want one engine calculating every number so no more then one number for each value and you keep the most realistic number » — règle générale : un seul moteur par valeur, un seul chiffre, le plus réaliste ; voir D-ACAL-96 pour les devis déjà envoyés"
     taches: [ACAL1755]
 
   - id: D-ACAL-87
@@ -5615,9 +5619,9 @@ decisions:
         texte: "Raccordement ONEE / SRM et déclaration loi 82-21, intitulés donnés ou validés par le fondateur"
       - cle: generique
         texte: "Rester au dossier distributeur générique (D-ACAL-43)"
-    reponse: ouverte
+    reponse: generique
     date: "2026-11-23"
-    source: "tour 2 du L5 (23/11/2026), lot D : la liste « Genre de dossier » ne propose aucun dossier marocain ; les intitulés officiels sont à sourcer, rien n'est inventé ; rappel : D-ACAL-43 a retenu un dossier distributeur générique"
+    source: "tour 2 du L5 (23/11/2026), lot D : la liste « Genre de dossier » ne propose aucun dossier marocain ; les intitulés officiels sont à sourcer, rien n'est inventé ; rappel : D-ACAL-43 a retenu un dossier distributeur générique ; RÉPONSE DU FONDATEUR le 23/11/2026 (questions interactives) : garder le dossier distributeur générique"
     taches: [ACAL1756]
 
   - id: D-ACAL-88
@@ -5629,9 +5633,9 @@ decisions:
         texte: "La borne haute, dite « au plus », la même qu'à l'étape Résultats"
       - cle: estimation_pose
         texte: "L'estimation de la pose, dite « estimation de la pose »"
-    reponse: ouverte
+    reponse: estimation_pose
     date: "2026-11-23"
-    source: "tour 2 du L5 (23/11/2026), lot E : la vue client ne montre aucune production tant que le résultat est incomplet, ce qui est le cas de tous les projets au premier jour (lié à D-ACAL-82) ; recommandation du lot E : la borne haute dite « au plus », un seul chiffre, le même que l'étape Résultats ; lié à D-ACAL-86 (quel chiffre le client lit)"
+    source: "tour 2 du L5 (23/11/2026), lot E : la vue client ne montre aucune production tant que le résultat est incomplet, ce qui est le cas de tous les projets au premier jour (lié à D-ACAL-82) ; recommandation du lot E : la borne haute dite « au plus », un seul chiffre, le même que l'étape Résultats ; lié à D-ACAL-86 (quel chiffre le client lit) ; RÉPONSE DU FONDATEUR le 23/11/2026 (questions interactives) : l'estimation de la pose, dite « estimation »"
     taches: [ACAL1840]
 
   - id: D-ACAL-89
@@ -5643,7 +5647,7 @@ decisions:
         texte: "Une copie reste attachée au brouillon quitté"
     reponse: rien
     date: "2026-11-23"
-    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER (contrôles d'après L5 du 23/11/2026) ; contrôle C1 : en production le calepinage 9 est resté lié au brouillon 554 alors que le devis 564 est parti chez le client ; le calepinage est l'unique conception d'un lead (décision du 04/10)"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER (contrôles d'après L5 du 23/11/2026) ; contrôle C1 : en production le calepinage 9 est resté lié au brouillon 554 alors que le devis 564 est parti chez le client ; le calepinage est l'unique conception d'un lead (décision du 04/10) ; RÉPONSE DU FONDATEUR le 23/11/2026 (questions interactives) : CONFIRMÉ"
     taches: [ACAL1955]
 
   - id: D-ACAL-90
@@ -5655,9 +5659,9 @@ decisions:
         texte: "Oui, à chaque enregistrement d'une pose complète (un appel PVGIS par enregistrement)"
       - cle: a_l_ouverture
         texte: "Oui, à l'ouverture de l'étape Résultats"
-    reponse: geste
+    reponse: a_l_enregistrement
     date: "2026-11-23"
-    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER (contrôles d'après L5 du 23/11/2026) ; contrôle C1 : 5 calepinages liés à un devis sur 5 n'ont aucune simulation en production ; l'option retenue n'ajoute aucun appel extérieur et ne laisse plus l'étape vide"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER (contrôles d'après L5 du 23/11/2026) ; contrôle C1 : 5 calepinages liés à un devis sur 5 n'ont aucune simulation en production ; l'option retenue n'ajoute aucun appel extérieur et ne laisse plus l'étape vide ; RÉPONSE DU FONDATEUR le 23/11/2026 (questions interactives) : RENVERSÉ : « Simulation must start by itself » — la simulation part seule à l'enregistrement d'une pose"
     taches: [ACAL1956]
 
   - id: D-ACAL-91
@@ -5671,7 +5675,7 @@ decisions:
         texte: "Seulement la fourchette de la société, sans repli"
     reponse: regle_du_devis
     date: "2026-11-23"
-    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER (contrôles d'après L5 du 23/11/2026) ; le tour 3 a vu un rapport de 4,26 marqué « Bon » dans « Prêt à envoyer ? » pendant que l'étape Électrique affichait encore la borne 1,35 et une alerte (T3-PROD-009, ACAL1538 non faite) ; le fondateur a demandé un seul moteur, celui du devis ; remplace le choix « Non jugé » pris seul le matin même"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER (contrôles d'après L5 du 23/11/2026) ; le tour 3 a vu un rapport de 4,26 marqué « Bon » dans « Prêt à envoyer ? » pendant que l'étape Électrique affichait encore la borne 1,35 et une alerte (T3-PROD-009, ACAL1538 non faite) ; le fondateur a demandé un seul moteur, celui du devis ; remplace le choix « Non jugé » pris seul le matin même ; RÉPONSE DU FONDATEUR le 23/11/2026 (questions interactives) : CONFIRMÉ"
     taches: [ACAL1954]
 
   - id: D-ACAL-92
@@ -5683,9 +5687,9 @@ decisions:
         texte: "Oui : tarif basse tension supposé, dit avec le champ « contrat d'électricité », devis marqué estimation"
       - cle: refuser_si_mad
         texte: "Refuser seulement quand la consommation vient d'une facture en dirhams ; des kWh déclarés suffisent"
-    reponse: ouverte
+    reponse: supposer_bt
     date: "2026-11-23"
-    source: "contrôle C2 du 23/11/2026 (« tous mes devis se calculent seuls ») ; mesure en lecture seule sur la production le même jour : 38 des 42 leads commerciaux qui ont une facture s'arrêtent sur ce champ (76 leads commerciaux sur 80 ne l'ont pas) ; change la taille et les économies du devis ; recommandation de l'enquête : supposer_bt"
+    source: "contrôle C2 du 23/11/2026 (« tous mes devis se calculent seuls ») ; mesure en lecture seule sur la production le même jour : 38 des 42 leads commerciaux qui ont une facture s'arrêtent sur ce champ (76 leads commerciaux sur 80 ne l'ont pas) ; change la taille et les économies du devis ; recommandation de l'enquête : supposer_bt ; RÉPONSE DU FONDATEUR le 23/11/2026 (questions interactives) : tarif basse tension supposé, dit avec le champ, devis marqué estimation"
     taches: [ADEV125]
 
   - id: D-ACAL-93
@@ -5697,9 +5701,9 @@ decisions:
         texte: "Oui : triphasé supposé pour tout commercial et industriel, dit avec le champ « raccordement »"
       - cle: seuil
         texte: "Triphasé supposé au-delà d'un seuil de puissance que vous donnez"
-    reponse: ouverte
+    reponse: supposer_tri
     date: "2026-11-23"
-    source: "contrôle C2 du 23/11/2026 (« tous mes devis se calculent seuls ») ; mesure en lecture seule sur la production le même jour : 35 des 42 leads commerciaux qui ont une facture n'ont pas de phase ; aucune décision du fondateur n'a été trouvée pour ce refus (ADEV89) ; change les onduleurs du devis"
+    source: "contrôle C2 du 23/11/2026 (« tous mes devis se calculent seuls ») ; mesure en lecture seule sur la production le même jour : 35 des 42 leads commerciaux qui ont une facture n'ont pas de phase ; aucune décision du fondateur n'a été trouvée pour ce refus (ADEV89) ; change les onduleurs du devis ; RÉPONSE DU FONDATEUR le 23/11/2026 (questions interactives) : triphasé supposé pour tout commercial et industriel, dit avec le champ"
     taches: [ADEV126]
 
   - id: D-ACAL-94
@@ -5711,9 +5715,9 @@ decisions:
         texte: "Un profil par secteur que vous saisissez dans Paramètres (déjà lu par le moteur, D-ACI-7)"
       - cle: regime_suffit
         texte: "Le régime d'équipes choisi suffit ; jours ouvrés supposés (à donner : lundi-vendredi ou lundi-samedi), dits"
-    reponse: ouverte
+    reponse: regime_suffit
     date: "2026-11-23"
-    source: "contrôle C2 du 23/11/2026 (« tous mes devis se calculent seuls ») ; mesure en lecture seule sur la production le même jour : 37 des 42 leads commerciaux qui ont une facture n'ont pas de jours d'ouverture ; 1 seul lead industriel en production ; change la taille et l'autoconsommation"
+    source: "contrôle C2 du 23/11/2026 (« tous mes devis se calculent seuls ») ; mesure en lecture seule sur la production le même jour : 37 des 42 leads commerciaux qui ont une facture n'ont pas de jours d'ouverture ; 1 seul lead industriel en production ; change la taille et l'autoconsommation ; RÉPONSE DU FONDATEUR le 23/11/2026 (questions interactives) : le régime d'équipes suffit ; jours ouvrés supposés lundi-samedi, dits"
     taches: [ADEV127]
 
   - id: D-ACAL-95
@@ -5725,7 +5729,20 @@ decisions:
         texte: "Reconnaître les orthographes courantes et les noms en arabe des villes de la table (« casa », « kech », Fès et Tanger écrits en arabe), refuser le reste"
       - cle: siege
         texte: "Productible de la ville du siège de la société, dit avec le champ « ville »"
-    reponse: ouverte
+    reponse: orthographes
     date: "2026-11-23"
-    source: "contrôle C2 du 23/11/2026 (« tous mes devis se calculent seuls ») ; mesure en lecture seule sur la production le même jour : 29 leads résidentiels « prêts » selon la fiche sont refusés ensuite par le moteur (18 hors Froid) : « casa » 5 fois, « casablaca », « caaza », « kech », des noms en arabe, « maroc », des quartiers ; la garde de la fiche est corrigée par ALEA67 (elle dira « Manque : ville ») ; change la production et la taille des devis de ces leads ; recommandation : orthographes"
+    source: "contrôle C2 du 23/11/2026 (« tous mes devis se calculent seuls ») ; mesure en lecture seule sur la production le même jour : 29 leads résidentiels « prêts » selon la fiche sont refusés ensuite par le moteur (18 hors Froid) : « casa » 5 fois, « casablaca », « caaza », « kech », des noms en arabe, « maroc », des quartiers ; la garde de la fiche est corrigée par ALEA67 (elle dira « Manque : ville ») ; change la production et la taille des devis de ces leads ; recommandation : orthographes ; RÉPONSE DU FONDATEUR le 23/11/2026 (questions interactives) : orthographes courantes et noms en arabe reconnus ; le reste refusé avec « Manque : ville »"
     taches: [APAR92]
+  - id: D-ACAL-96
+    question: "Quand la simulation de la pose réelle donne une autre production que celle imprimée sur un devis DÉJÀ ENVOYÉ, que se passe-t-il ?"
+    options:
+      - cle: proposer_revision
+        texte: "Le devis envoyé n'est pas touché ; le calepinage montre le chiffre réaliste et propose « Réviser le devis » (V2) pour que devis et étude portent de nouveau le même chiffre ; d'ici là le rapport dit les deux"
+      - cle: chiffre_envoye
+        texte: "Tant que le devis n'est pas révisé, tout document montre le chiffre déjà reçu par le client"
+      - cle: modifier_l_envoye
+        texte: "Remplacer la production du devis envoyé (contraire à la règle « un devis envoyé garde ce que le client a reçu »)"
+    reponse: proposer_revision
+    date: "2026-11-23"
+    source: "réponse du fondateur le 23/11/2026 (questions interactives), à la suite de D-ACAL-86 (un seul chiffre, le plus réaliste) ; la règle du 08/10/2026 « devis envoyés : nouveaux rendus seulement » est gardée"
+    taches: []
