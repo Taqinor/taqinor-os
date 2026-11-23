@@ -139,7 +139,7 @@ import {
   type ModulePose, // CALX403 câblage
   nouveauPanDepuisContour, // ACAL71
   panVierge,
-  poserModuleDeDepart, // ACAL1273
+  poserModuleDeDepart, ajoutDePanEnCours, documentPendantAjout, monterToitGriseSousTrace, // ACAL1273, ACAL1329
 } from './roofPro11/zones';
 import { monterAlignementRangees, pavageCellulesDe, pavagePoseDe } from './roofPro11/alignementRangees'; // ACAL584
 import { motifPanVerrouille } from './roofPro11/panVerrouille'; // ACAL520
@@ -1730,6 +1730,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       paint: { 'line-color': GOLD, 'line-width': 2, 'line-dasharray': [3, 2] },
     });
     setReferenceContour(referenceContourRing(opts.referenceContour));
+    monterToitGriseSousTrace(map as never, () => ({ areas, activeAreaId, closed }), GOLD, () => { setReferenceContour(referenceContourRing(opts.referenceContour)); setReferenceContourVisible(referenceContourVisible); }); // ACAL1329
     map.addSource('rp9-line', { type: 'geojson', data: empty as never });
     map.addSource('rp9-pts', { type: 'geojson', data: empty as never });
     map.addSource('rp9-obs', { type: 'geojson', data: empty as never });
@@ -1973,10 +1974,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       // RE-CALE : un dernier `resize()` + `jumpTo` empêche un redimensionnement React tardif
       // de laisser la caméra à MOROCCO_CENTER. `idle` ne change RIEN au boot public (qui n'a
       // pas de `h.center`).
-      const landOnPin = () => {
-        map.resize();
-        map.jumpTo(target);
-      };
+      const landOnPin = () => { map.resize(); map.jumpTo(target); };
       landOnPin();
       if (!opts.reducedMotion) map.easeTo({ ...target, duration: 600, essential: true });
       // Re-assertion au repos : garde contre une remise à MOROCCO_CENTER par un resize tardif.
@@ -2127,10 +2125,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     if (h.center) {
       imposeTarget();
       const target = { center: h.center, zoom: 19, pitch: 0 } as const;
-      const landOnPin = () => {
-        map.resize();
-        map.jumpTo(target);
-      };
+      const landOnPin = () => { map.resize(); map.jumpTo(target); };
       landOnPin();
       if (!opts.reducedMotion) map.easeTo({ ...target, duration: 600, essential: true });
       map.once('idle', landOnPin);
@@ -2632,8 +2627,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   /** « + Ajouter une zone » : fige la zone active (géométrie + résultat), crée une
    *  NOUVELLE zone vide, l'active et vide l'éditeur pour un tracé vierge (facture +
    *  liste des zones conservées). N'agit que si la zone active est fermée. */
+  const memoAjout: { doc: import('./roofPro11/prefill').SerializedLayout | null } = { doc: null }; // ACAL1329 — le document d'avant l'ajout
   function addArea() {
     if (!closed || vertices.length < 3) return;
+    try { memoAjout.doc = serialiserAtelier(); } catch { memoAjout.doc = null; } // ACAL1329 — avant toute mutation
     capturerGeometrieActive(); // ACAL28
     snapshotActiveAreaGeometry();
     snapshotActiveAreaResult();
@@ -4210,11 +4207,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // W114/W115 — expose une petite API à la page de design (étude Meriem) : sérialiser
   // le layout finalisé (W113) + instantané PNG de la 3D (W115). Boot complet seulement
   // (jamais en capture). Absent → aucun effet.
-  opts.onApiReady?.({
     // ACAL26 — le wrapper délègue au sérialiseur CÂBLÉ (`hydratation.ts`) : la composition
     // de la meta (origine devis, accès solaire, retraits, horizon, modules) est la même
     // qu'avant, et ses DEUX branches portent désormais la couche électrique.
-    serializeLayout: (billKwh?: number | null, meta?: import('./roofPro11/prefill').SerializeMeta) =>
+  const serialiserAtelier = (billKwh?: number | null, meta?: import('./roofPro11/prefill').SerializeMeta) =>
       serialiserDocumentAtelier(
         ctx,
         // ACAL31 — sans facture saisie, le billKwh RELU (ou null) ; ACAL311 — les kWh SERVIS d'abord.
@@ -4237,7 +4233,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
           coucheElectrique,
         },
         meta,
-      ),
+      );
+  opts.onApiReady?.({
+    serializeLayout: (b?: number | null, m?: import('./roofPro11/prefill').SerializeMeta) => documentPendantAjout(ajoutDePanEnCours(areas, activeAreaId, closed), memoAjout, () => serialiserAtelier(b, m)), // ACAL1329
     // ACAL71 — un contour géoréférencé (plan importé calé…) devient un NOUVEAU pan : même
     // validateur et même refus de croisement que le tracé ; le pan actif est figé d'abord,
     // puis le nouveau est chargé et fermé par la voie du tracé (`loadArea` → `recalc`).

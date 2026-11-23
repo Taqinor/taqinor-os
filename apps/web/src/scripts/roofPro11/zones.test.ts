@@ -36,6 +36,7 @@ import {
   tousLesObstacles, // ACAL64
   nouveauPanDepuisContour, // ACAL71
   poserModuleDeDepart, // ACAL1273
+  ajoutDePanEnCours, documentPendantAjout, monterToitGriseSousTrace, toitExistantGeoJSON, // ACAL1329
   type ExclusionZone,
 } from './zones';
 import { hydrateFromDevis, serializeLayout, type SerializedLayout } from './prefill'; // ACAL64
@@ -561,6 +562,54 @@ describe('ACAL1273 — module de départ posé dans le document', () => {
     const existant = [panDeTest('area-1', { existant: true })];
     poserModuleDeDepart(existant, [{}], m710);
     expect(existant[0].moduleId).toBeUndefined();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACAL1329 — ajouter un pan sur un toit existant : le toit reste dessiné (grisé) sous le tracé, et aucun document
+// (brouillon, enregistrement) ne porte le pan avant son dernier point.
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('ACAL1329 — ajout d’un pan sur un toit existant', () => {
+  const toit = panDeTest('area-1');
+  const neuf = panDeTest('area-2', { vertices: [] });
+
+  it('aucune écriture avant le dernier point : le document d’avant le premier geste, puis le vivant', () => {
+    expect(ajoutDePanEnCours([toit, neuf], 'area-2', false)).toBe(true);
+    expect(ajoutDePanEnCours([toit, neuf], 'area-2', true)).toBe(false); // dernier point posé
+    expect(ajoutDePanEnCours([panDeTest('area-1', { vertices: [] })], 'area-1', false)).toBe(false); // premier toit
+    const avant = { zones: [{ id: 'area-1' }] };
+    const memo: { doc: typeof avant | null } = { doc: avant }; // pris par `addArea`, avant toute mutation
+    const vivant = vi.fn(() => ({ zones: [{ id: 'area-1' }, { id: 'area-2' }] }));
+    // Clic « Ajouter un pan », puis deux points : le document servi reste celui d'avant (aucun brouillon).
+    expect(documentPendantAjout(true, memo, vivant)).toEqual(avant);
+    expect(documentPendantAjout(true, memo, vivant)).toEqual(avant);
+    expect(vivant).not.toHaveBeenCalled();
+    // Dernier point : le pan entre dans le document, la mémoire est oubliée.
+    expect(documentPendantAjout(false, memo, vivant).zones).toHaveLength(2);
+    expect(memo.doc).toBeNull();
+  });
+
+  it('le toit existant reste dessiné, grisé, pendant le tracé ; le tracé du client revient ensuite', () => {
+    expect(toitExistantGeoJSON([toit, neuf], 'area-2').features).toHaveLength(1);
+    const peint: Record<string, string> = {};
+    let donnees: unknown = null;
+    let ecouteur: (e: { sourceId?: string }) => void = () => {};
+    const restaurer = vi.fn();
+    const etat = { areas: [toit, neuf], activeAreaId: 'area-2', closed: false };
+    monterToitGriseSousTrace({
+      getSource: () => ({ setData: (d: never) => { donnees = d; } }),
+      getLayer: () => ({}),
+      setPaintProperty: (id: string, _n: string, v: string) => { peint[id] = v; },
+      setLayoutProperty: vi.fn(),
+      on: (_t: string, fn: (e: { sourceId?: string }) => void) => { ecouteur = fn; },
+    }, () => etat, '#f3cc66', restaurer);
+    ecouteur({ sourceId: 'rp9-pts' });
+    expect((donnees as { features: unknown[] }).features).toHaveLength(1);
+    expect(peint['rp9-ref-contour-line']).toBe('#9aa0bb');
+    etat.closed = true; // dernier point
+    ecouteur({ sourceId: 'rp9-pts' });
+    expect(peint['rp9-ref-contour-line']).toBe('#f3cc66');
+    expect(restaurer).toHaveBeenCalledTimes(1);
   });
 });
 
