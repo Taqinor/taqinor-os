@@ -33,7 +33,7 @@ import { fmtKwc, modulesServis, productionPubliee } from './panneaux/sources'
 // La palette bleu nuit → or de la carte d'accès solaire est posée au DÉMARRAGE de l'atelier (useAtelierBoot,
 // ACAL1340), jamais ici : l'étape ne fait que la lire (couleurAccesActive) pour sa légende.
 
-/** ACAL1829 — la ligne d'une carte de taille (« 12 panneaux · 6,96 kWc · ≈ 82 % de la consommation ») : le nombre de chaque
+/** ACAL1829 — la ligne d'une carte de taille (« 12 panneaux · 6,96 kWc · ≈ 82 % : production ÷ consommation ») : le nombre de chaque
     morceau est dessiné en gras (Archivo), le texte reste celui de la lecture ; le « · » ne se voit pas (l'écart le remplace). */
 function Seg({ texte }) {
   const m = /^(≈\s*)?(\d(?:[\d\u00a0\u202f ,.]*\d)?(?:\s%)?)(.*)$/.exec(texte)
@@ -183,7 +183,9 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
     compte(tient), cible.kwc != null ? fmtKwc((cible.kwc * tient) / cible.panneaux) : null, `sur ${cible.panneaux} nécessaires`,
   ].filter(Boolean).join(' · ')
   // Le % n'est dit qu'à côté de la taille pour laquelle il est calculé : production estimée ÷ consommation du lead.
-  const part = (fig) => (fig?.couverture ? `≈ ${fig.couverture} de la consommation` : null)
+  // ACAL1968 — le nom de ce que ce % MESURE : production estimée ÷ consommation (jamais « de la consommation » tout court :
+  // c'est l'intitulé de la tuile des Résultats, qui est l'énergie AUTOCONSOMMÉE ÷ consommation — deux grandeurs, deux noms).
+  const part = (fig) => (fig?.couverture ? `≈ ${fig.couverture} : production ÷ consommation` : null)
   // La part de la consommation de la carte « Couvrir la facture » : lue sur le constructeur tant que cette taille est
   // posée, gardée pour cette taille et ce module quand une autre carte est choisie (jamais déduite d'une autre pose).
   const partLue = factureChoisie && cible && figures.panneaux === cible.panneaux ? part(figures) : null
@@ -295,7 +297,7 @@ function AlerteOmbre({ ombre, g }) {
 }
 
 /** La puce de la carte. Production publiée FRAÎCHE et COMPLÈTE → la pose simulée et sa production, libellé de l'étape
-    Résultats ; sinon la pose du constructeur, son estimation nommée « estimation » et la part de la consommation
+    Résultats ; sinon la pose du constructeur, son estimation nommée « estimation » et la part production ÷ consommation
     (production estimée ÷ consommation du lead : jamais « de la facture »). */
 function PuceResume({ figures, publiee }) {
   const indicateurs = publiee
@@ -308,7 +310,7 @@ function PuceResume({ figures, publiee }) {
       ['Panneaux', figures.panneaux ? String(figures.panneaux) : null],
       ['Puissance', figures.kwc],
       ['Production · estimation de la pose', figures.production],
-      ['De la consommation', figures.couverture ? `≈ ${figures.couverture}` : null],
+      ['Production ÷ consommation', figures.couverture ? `≈ ${figures.couverture}` : null],
     ]
   const lus = indicateurs.filter(([, valeur]) => valeur)
   if (lus.length === 0) return null
