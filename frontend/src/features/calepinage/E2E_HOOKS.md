@@ -957,6 +957,7 @@ retiré plus un hook ajouté.
 | Hook | Sémantique |
 |---|---|
 | `cal-pret-a-envoyer` | panneau « Prêt à envoyer ? » (contrôles avant l’envoi, `GET pret-a-envoyer/`). |
+| `cal-pret-bons` | « Prêt à envoyer ? » court (étape Électrique) : section repliée « Contrôles · N bons » (`<details>`). |
 | `cal-pret-erreur` | panneau « Prêt à envoyer ? » : lecture en échec. |
 | `cal-pret-ligne` | une ligne de contrôle (suffixe = `code` du contrôle). |
 | `cal-pret-regler` | bouton « Régler » d’un contrôle (suffixe = `code`) : ouvre `?onglet=&champ=`. |
@@ -1009,6 +1010,11 @@ retiré plus un hook ajouté.
 | `cal-resultats-mois` | étape Résultats : carte « Mois par mois ». |
 | `cal-resultats-pertes` | étape Résultats : carte « Du soleil au réseau ». |
 | `cal-resultats-pied` | étape Résultats : pied « Année basse… » + bouton de l’étape suivante. |
+| `cal-res-squelette` | étape Résultats : squelette de chargement (deux blocs aux boîtes de la mise en page, `role="status"`). |
+| `cal-res-minibarres` | étape Résultats : les douze mini-barres mensuelles de la carte héros (production servie ; absentes sans série). |
+| `cal-res-regle-pertes` | étape Résultats : réglette de « Pertes au total » (bande habituelle servie et repère ; absente sans bande servie). |
+| `cal-res-regle-pvgis` | étape Résultats : réglette de « Écart avec PVGIS » (zéro et segment de l’écart servi). |
+| `cal-res-mois-choisi` | étape Résultats : pastille du mois choisi de « Mois par mois » (production et consommation servies de ce mois). |
 | `cal-avant-simulation` | étape Résultats avant simulation : racine (`data-etat` = `jamais` ou `perime`). |
 | `cal-avant-titre` | étape Résultats avant simulation : titre. |
 | `cal-avant-phrase` | étape Résultats avant simulation : phrase d’explication. |

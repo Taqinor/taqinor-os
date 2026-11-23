@@ -1,13 +1,12 @@
 /* ============================================================================
-   L3 (maquettes 22/11) — ÉTAPE « ÉLECTRIQUE » ET SOUS-ÉCRAN « SCHÉMA ».
-   Maquettes `Electrique.dc.html` / `Schema.dc.html`. Jetons seuls (thème sombre par les jetons),
-   tailles 12 / 14 / 16 / 20 px. Importée par `electrique/EtapeElectrique.jsx` et
-   `atelier/coque/etapes/EtapeSchema.jsx`.
+   ÉTAPE « ÉLECTRIQUE » ET SOUS-ÉCRAN « SCHÉMA » — maquettes v2 `Electrique.dc.html` / `Schema.dc.html` (23/11/2026).
+   Jetons `--cal-*` seuls (thème sombre par les jetons), tailles 12 / 13 / 14 / 16 / 18 px. Importée par
+   `electrique/EtapeElectrique.jsx` et `atelier/coque/etapes/EtapeSchema.jsx`.
    ========================================================================== */
 
 /* ── Panneau de l'étape Électrique ─────────────────────────────────────── */
-.cel-ecran { display: flex; flex-direction: column; gap: 20px; font-size: 0.875rem; }
-.cel-libelle { font-size: 0.875rem; font-weight: 600; }
+.cel-ecran { display: flex; flex-direction: column; gap: 16px; font-size: 0.875rem; color: var(--cal-texte-1); }
+.cel-libelle { font-size: 0.8125rem; font-weight: 600; color: var(--cal-texte-2); }
 .cel-onduleur { display: flex; flex-direction: column; gap: 8px; }
 .cel-choix {
   position: relative;
@@ -15,12 +14,12 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  min-height: 56px;
-  padding: 0 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--card);
-  color: var(--foreground);
+  min-height: 60px;
+  padding: 0 14px;
+  border: 1px solid var(--cal-filet-fort);
+  border-radius: var(--cal-rayon-pile);
+  background: var(--cal-surface);
+  color: var(--cal-texte-1);
 }
 .cel-choix:focus-within { outline: 2px solid var(--ring); outline-offset: 2px; }
 .cel-choix select {
@@ -32,57 +31,89 @@
   cursor: pointer;
 }
 .cel-choix select:disabled { cursor: not-allowed; }
-.cel-choix-texte { display: flex; flex-direction: column; min-width: 0; }
+.cel-choix-texte { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .cel-choix-nom { font-weight: 600; font-size: 0.875rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cel-choix-ligne { font-size: 0.75rem; color: var(--muted-foreground); }
-.cel-choix[data-vide='1'] .cel-choix-nom { color: var(--muted-foreground); }
-.cel-choix-chevron { flex: none; color: var(--muted-foreground); }
+.cel-choix-ligne { font-size: 0.75rem; color: var(--cal-texte-2); }
+.cel-choix[data-vide='1'] .cel-choix-nom { color: var(--cal-texte-2); }
+.cel-choix-chevron { flex: none; color: var(--cal-texte-3); }
 .cel-lien {
   align-self: flex-start;
   min-height: 32px;
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--info);
+  color: var(--cal-lien);
   font-weight: 500;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   text-decoration: underline;
   cursor: pointer;
 }
-.cel-refus { margin: 0; font-size: 0.75rem; color: var(--destructive); }
+.cel-refus { margin: 0; font-size: 0.75rem; color: var(--cal-refus); }
 
-/* « Prêt à envoyer ? » court (`PretAEnvoyer court`) */
-.cel-pret { display: flex; flex-direction: column; gap: 8px; }
+/* « Prêt à envoyer ? » EN TÊTE : la carte (or pâle quand il reste un point, verte pâle quand tout est bon) porte le
+   titre, la pastille et le point à régler avec son « Régler » bleu nuit ; les contrôles bons sont dans une section
+   « Contrôles · N bons » repliée. */
+/* Le conteneur de « Prêt à envoyer ? » ne dessine rien : sa carte et sa section « Contrôles » deviennent des pièces du
+   panneau, rangées par `order` comme la maquette (carte, onduleur, contrôles, schéma, réglages avancés). */
+.cel-pret { display: contents; }
+.cel-pret-carte { order: 0; }
+.cel-onduleur { order: 1; }
+.cel-pret-bons { order: 2; }
+.cel-schema { order: 3; }
+.cel-avances { order: 4; }
+.cel-pret-carte {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  border-radius: var(--cal-rayon-pile);
+  border: 1px solid var(--cal-surveiller-filet);
+  background: var(--cal-surveiller-fond);
+  color: var(--cal-surveiller-texte);
+}
+.cel-pret-carte[data-ton='ok'] {
+  border-color: color-mix(in oklch, var(--cal-ok) 30%, var(--cal-surface));
+  background: color-mix(in oklch, var(--cal-ok) 9%, var(--cal-surface));
+  color: var(--cal-texte-2);
+}
 .cel-pret-tete { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.cel-pret-tete h2 { margin: 0; font-size: 0.875rem; font-weight: 600; }
+.cel-pret-tete h2 { margin: 0; font: 600 0.9375rem var(--font-display); color: var(--cal-texte-1); }
 .cel-pret-badge {
-  padding: 2px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
   border-radius: 999px;
   font-weight: 600;
   font-size: 0.75rem;
-  background: color-mix(in oklch, var(--warning) 18%, var(--card));
-  color: var(--warning-text);
+  background: color-mix(in oklch, var(--cal-action) 20%, var(--cal-surface));
+  color: var(--cal-surveiller-texte);
 }
-.cel-pret-badge[data-ton='ok'] { background: color-mix(in oklch, var(--success) 14%, var(--card)); color: var(--success-text); }
-.cel-pret-vide { margin: 0; font-size: 0.75rem; color: var(--muted-foreground); }
-/* F3 — la maquette montre 5 lignes : au-delà, la LISTE défile dans sa carte (la carte « Schéma
-   électrique — Voir » et le pied restent à leur place à 1440 × 900). */
+.cel-pret-badge::before { content: ''; width: 6px; height: 6px; border-radius: 3px; background: var(--cal-action); }
+.cel-pret-badge[data-ton='ok'] { background: color-mix(in oklch, var(--cal-ok) 14%, var(--cal-surface)); color: var(--cal-ok); }
+.cel-pret-badge[data-ton='ok']::before { background: var(--cal-ok); }
+.cel-pret-vide { margin: 0; font-size: 0.75rem; color: var(--cal-texte-2); }
+/* Les lignes : dans la carte, sans cadre ; dans « Contrôles · N bons », une liste encadrée qui défile au-delà de la
+   maquette (la carte Schéma et le pied restent à leur place à 1440 × 900). */
 .cel-pret-lignes {
   margin: 0;
   padding: 0;
   list-style: none;
-  border: 1px solid var(--border);
-  border-radius: 10px;
   overflow-x: hidden;
   overflow-y: auto;
   max-height: 274px;
   overscroll-behavior: contain;
-  /* ACAL1543 — dans la colonne flex, la boîte défilante ne se réduit jamais à rien (min-height auto vaut 0
-     quand elle défile) : elle garde sa hauteur de contenu, plafonnée par max-height. */
+  /* ACAL1543 — dans la colonne flex, la boîte défilante ne se réduit jamais à rien. */
   flex: none;
 }
+.cel-pret-bons .cel-pret-lignes {
+  margin-top: 8px;
+  border: 1px solid var(--cal-filet-fort);
+  border-radius: var(--cal-rayon-pile);
+  background: var(--cal-surface);
+}
 .cel-pret[aria-busy='true'] .cel-pret-lignes { opacity: 0.7; }
-.cel-pret-squelette > span { flex: 1; height: 14px; border-radius: 6px; background: var(--muted); }
+.cel-pret-squelette > span { flex: 1; height: 14px; border-radius: 6px; background: var(--cal-piste); }
 @media (prefers-reduced-motion: no-preference) {
   .cel-pret-squelette > span { animation: cel-pret-pouls 1.4s ease-in-out infinite; }
 }
@@ -90,65 +121,111 @@
 .cel-pret-ligne {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-height: 52px;
   padding: 6px 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--cal-filet);
+  color: var(--cal-texte-1);
 }
 .cel-pret-ligne:last-child { border-bottom: 0; }
-.cel-pret-ligne[data-etat='a_regler'],
-.cel-pret-ligne[data-etat='bloquant'] { background: color-mix(in oklch, var(--primary) 12%, var(--card)); }
-.cel-pret-coche { flex: none; color: var(--success-text); }
+.cel-pret-lignes-regler .cel-pret-ligne { padding: 4px 0; border-bottom: 0; }
+.cel-pret-lignes-regler .cel-pret-ligne { gap: 8px; }
+.cel-pret-lignes-regler .cdoc-aide { margin: 0 -8px; }
+.cel-pret-lignes-regler .cel-pret-ligne[data-etat='a_regler'] svg,
+.cel-pret-lignes-regler .cel-pret-ligne[data-etat='bloquant'] svg { color: var(--cal-or-texte); flex: none; }
+.cel-pret-coche {
+  flex: none;
+  box-sizing: content-box;
+  padding: 3px;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--cal-ok) 14%, var(--cal-surface));
+  color: var(--cal-ok);
+}
 .cel-pret-texte { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .cel-pret-titre { font-weight: 500; }
 .cel-pret-ligne[data-etat='a_regler'] .cel-pret-titre,
 .cel-pret-ligne[data-etat='bloquant'] .cel-pret-titre { font-weight: 600; }
-.cel-pret-detail { font-size: 0.75rem; color: var(--muted-foreground); }
+.cel-pret-detail { font-size: 0.75rem; color: var(--cal-texte-2); }
+.cel-pret-lignes-regler .cel-pret-detail { color: var(--cal-surveiller-texte); }
 .cel-pret .cdoc-aide > span { width: 32px; height: 32px; border-radius: 16px; }
 .cel-pret-regler {
   flex: none;
-  min-height: 36px;
-  padding: 0 12px;
+  min-height: 44px;
+  padding: 0 14px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--cal-rayon-bouton);
   background: transparent;
-  color: var(--foreground);
-  box-shadow: inset 0 0 0 1px var(--border);
+  color: var(--cal-texte-1);
+  box-shadow: inset 0 0 0 1px var(--cal-filet-fort);
   font-weight: 600;
   font-size: 0.875rem;
 }
-/* ACAL1543 — le premier point à régler est doré (langage v2) ; les autres restent discrets. */
+/* ACAL1543 — UN seul « Régler » appuyé : le premier point à régler, bleu nuit (l'or reste à l'action suivante). */
 .cel-pret-regler[data-recommande='oui'] {
-  background: var(--primary);
-  color: var(--primary-foreground);
-  box-shadow: none;
+  background: var(--cal-marine);
+  color: var(--cal-marine-texte);
+  box-shadow: var(--cal-marine-ombre);
 }
-
-/* Carte « Schéma électrique — Voir » */
-.cel-schema {
+.cel-pret-bons > summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  min-height: 44px;
+  list-style: none;
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--cal-texte-2);
 }
-.cel-schema-texte { display: flex; flex-direction: column; }
-.cel-schema-titre { font-weight: 600; }
-.cel-schema-detail { font-size: 0.75rem; color: var(--muted-foreground); }
+.cel-pret-bons > summary::-webkit-details-marker { display: none; }
+.cel-pret-bons > summary::after {
+  content: '';
+  width: 18px;
+  height: 18px;
+  background-color: currentColor;
+  -webkit-mask: var(--cel-chevron) center / contain no-repeat;
+  mask: var(--cel-chevron) center / contain no-repeat;
+  --cel-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  transition: transform 120ms ease;
+}
+.cel-pret-bons[open] > summary::after { transform: rotate(180deg); }
+
+/* Carte « Schéma électrique — Voir » : papier, rayon 14, pictogramme dans une pastille blanche. */
+.cel-schema {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: var(--cal-rayon-pile);
+  background: var(--cal-papier);
+}
+.cel-schema-picto {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: var(--cal-rayon-tuile);
+  background: var(--cal-surface);
+  box-shadow: var(--cal-ombre-posee);
+  color: var(--cal-texte-1);
+}
+.cel-schema-texte { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cel-schema-titre { font-family: var(--font-display); font-weight: 600; }
+.cel-schema-detail { font-size: 0.75rem; color: var(--cal-texte-2); }
 .cel-bouton-contour {
   flex: none;
-  min-height: 36px;
-  padding: 0 12px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 22%, var(--border));
-  border-radius: 8px;
-  background: var(--card);
-  color: var(--foreground);
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--cal-filet-fort);
+  border-radius: var(--cal-rayon-bouton);
+  background: var(--cal-surface);
+  color: var(--cal-texte-1);
   font-weight: 600;
   font-size: 0.875rem;
 }
-.cel-avances { font-size: 0.875rem; color: var(--muted-foreground); }
+.cel-avances { font-size: 0.875rem; color: var(--cal-texte-2); }
 /* F3 — « Réglages avancés » : UN lien discret en bas du panneau (absent de la maquette, rien n'est retiré). */
 .cel-avances [data-testid='cal-electrique-avances'] { border: 0; }
 .cel-avances .cel-avances-lien {
@@ -158,12 +235,14 @@
   padding: 0;
   font-size: 0.75rem;
   font-weight: 500;
-  color: var(--muted-foreground);
+  color: var(--cal-texte-3);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 @media (hover: hover) {
-  .cel-avances .cel-avances-lien:hover { color: var(--foreground); }
+  .cel-avances .cel-avances-lien:hover { color: var(--cal-texte-1); }
+  .cel-bouton-contour:hover { background: var(--cal-papier); }
+  .cel-pret-regler:hover { filter: brightness(0.96); }
 }
 .cel-retour,
 .csch-retour {
@@ -173,53 +252,55 @@
   min-height: 44px;
   padding: 0 12px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--cal-rayon-puce);
   background: transparent;
-  color: var(--muted-foreground);
+  color: var(--cal-texte-2);
   font-size: 0.875rem;
   font-weight: 500;
 }
 .cel-retour { align-self: flex-start; padding: 0; }
 @media (hover: hover) {
   .cel-retour:hover,
-  .csch-retour:hover { color: var(--foreground); }
+  .csch-retour:hover { color: var(--cal-texte-1); }
 }
 
-/* ── Calques posés sur la carte (portail `SurCarte`) ───────────────────── */
+/* ── Calques posés sur la carte (portail `SurCarte`) : pièces flottantes (50-coque-atelier.css : blanc flouté,
+   rayon 16) aux places de la maquette — pastille en haut à gauche, légende en bas à gauche, barre d'actions en bas. ── */
 .cel-pastille {
   position: absolute;
   top: 16px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 16px;
   display: flex;
   align-items: center;
-  padding: 10px 20px;
+  box-sizing: border-box;
+  height: 62px;
+  padding: 0 6px;
   white-space: nowrap;
 }
-.cel-pastille-case { display: flex; align-items: center; gap: 20px; }
-.cel-pastille-case + .cel-pastille-case { margin-left: 20px; }
-.cel-pastille-filet { width: 1px; height: 32px; background: var(--border); }
+.cel-pastille-case { display: flex; align-items: center; }
+.cel-pastille-case > .cal-indicateur { padding: 0 16px; }
+.cel-pastille-filet { width: 1px; height: 30px; background: var(--cal-filet-fort); }
 .cel-legende {
   position: absolute;
   left: 16px;
-  bottom: 20px;
+  bottom: 28px;
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px 14px;
-  /* Jamais SOUS la barre d'actions (centrée, ≈ 380 px) : la légende s'arrête à sa gauche. */
-  max-width: calc(50% - 16px - 196px);
-  padding: 10px 14px;
-  border-radius: 12px;
+  flex-direction: column;
+  gap: 4px;
+  box-sizing: border-box;
+  padding: 10px 16px;
+  border-radius: var(--cal-rayon-outils);
   font-size: 0.75rem;
+  color: var(--cal-texte-1);
 }
 /* Étape Électrique : le bouton « Terminer le tracé » du constructeur (grisé, aucun tracé en cours) ne passe plus
    derrière la barre d'actions. */
 .cal-coque[data-etape='electrique'] #rp9-finish:disabled { visibility: hidden; }
-.cel-legende-ligne { display: inline-flex; align-items: center; gap: 6px; }
-.cel-legende-puce { width: 12px; height: 12px; border-radius: 3px; }
+.cel-legende-ligne { display: inline-flex; align-items: center; gap: 10px; }
+.cel-legende-puce { width: 24px; height: 3px; border-radius: 2px; }
 .cel-barre {
   position: absolute;
-  bottom: 20px;
+  bottom: 28px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -230,9 +311,9 @@
 .cel-barre-message {
   max-width: 420px;
   padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--card);
+  border-radius: var(--cal-rayon-pile);
+  background: var(--cal-flottante-dense);
+  box-shadow: var(--cal-ombre-flottante);
   font-size: 0.75rem;
 }
 .cel-barre-message p { margin: 0; }
@@ -240,47 +321,64 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 6px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--card);
-  box-shadow: var(--shadow-lg, var(--shadow-md));
+  box-sizing: border-box;
+  height: 56px;
+  padding: 0 6px;
+  border: 1px solid var(--cal-flottante-filet);
+  border-radius: var(--cal-rayon-outils);
+  background: var(--cal-flottante-dense);
+  -webkit-backdrop-filter: var(--cal-flou);
+  backdrop-filter: var(--cal-flou);
+  box-shadow: var(--cal-ombre-outils);
 }
 .cel-barre-principal,
 .cel-barre-texte {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   height: 44px;
   border: 0;
-  border-radius: 10px;
-  font-size: 0.875rem;
+  border-radius: 12px;
+  font-size: 0.8125rem;
   white-space: nowrap;
 }
-.cel-barre-principal { padding: 0 16px; background: var(--foreground); color: var(--background); font-weight: 600; }
-.cel-barre-texte { padding: 0 14px; background: transparent; color: var(--foreground); font-weight: 500; }
+.cel-barre-principal { padding: 0 18px 0 14px; background: var(--cal-actif); color: var(--cal-actif-texte); font-weight: 600; }
+.cel-barre-principal::before {
+  content: '';
+  width: 16px;
+  height: 16px;
+  background-color: var(--cal-actif-picto);
+  -webkit-mask: var(--cel-eclat) center / contain no-repeat;
+  mask: var(--cel-eclat) center / contain no-repeat;
+  --cel-eclat: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8'/%3E%3C/svg%3E");
+}
+.cel-barre-texte { padding: 0 14px; background: transparent; color: var(--cal-texte-1); font-weight: 500; }
 @media (hover: hover) {
-  .cel-barre-texte:hover { background: var(--muted); }
+  .cel-barre-texte:hover { background: var(--cal-piste); }
 }
 .cel-barre-principal:disabled { opacity: 0.6; cursor: not-allowed; }
 
-/* ── Sous-écran « Schéma » (cadre `plein-panneau`) ─────────────────────── */
-.cal-coque[data-cadre='plein-panneau'] .cal-coque-plein { padding: 16px; background: var(--muted); }
+/* ── Sous-écran « Schéma » (cadre `plein-panneau`, maquette v2 Schema.dc.html) : la carte du schéma (rayon 22, ombre
+   posée, sans cadre) sur fond quadrillé, ses boîtes douces (rayon 16, filet à 14 %, ombre), le panneau à droite. ─── */
+.cal-coque[data-cadre='plein-panneau'] .cal-coque-plein { padding: 0; background: transparent; }
 .csch-ecran { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .csch-planche {
   flex: 1;
   min-height: 480px;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--card);
-  box-shadow: var(--shadow-md);
+  border: 0;
+  border-radius: var(--cal-rayon-carte);
+  background: var(--cal-surface);
+  box-shadow: var(--cal-ombre-posee);
   overflow: hidden;
 }
-.csch-tete { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 19px 20px 0 24px; }
+.csch-tete { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 20px 0 28px; }
 .csch-titres { display: flex; flex-direction: column; }
-.csch-titres h2 { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 1.25rem; line-height: 22px; }
-.csch-titres span { font-size: 0.875rem; line-height: 18px; color: var(--muted-foreground); }
+.csch-titres h2 { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 1.125rem; line-height: 24px; letter-spacing: -0.01em; }
+.csch-titres span { font-size: 0.8125rem; line-height: 18px; color: var(--cal-texte-2); }
 .csch-outils { display: flex; align-items: center; gap: 8px; }
-.csch-zoom { display: flex; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.csch-zoom { display: flex; border-radius: var(--cal-rayon-pile); background: var(--cal-papier); box-shadow: var(--cal-ombre-posee); overflow: hidden; }
 .csch-zoom button {
   width: 44px;
   height: 44px;
@@ -288,11 +386,11 @@
   align-items: center;
   justify-content: center;
   border: 0;
-  background: var(--card);
-  color: var(--foreground);
+  background: transparent;
+  color: var(--cal-texte-1);
 }
-.csch-zoom button + button { border-left: 1px solid var(--border); }
-.csch-zoom button:disabled { color: var(--muted-foreground); cursor: not-allowed; }
+.csch-zoom button + button { border-left: 1px solid var(--cal-filet-fort); }
+.csch-zoom button:disabled { color: var(--cal-texte-3); cursor: not-allowed; }
 .csch-vue {
   position: relative;
   flex: 1;
@@ -301,113 +399,121 @@
   overflow: hidden;
   cursor: grab;
   touch-action: none;
-  border-radius: 10px;
-  background: var(--background);
+  border-radius: var(--cal-rayon-piece);
+  /* Fond quadrillé de la maquette : papier, traits à 8 % tous les 22 px. */
+  background-color: var(--cal-papier);
+  background-image: linear-gradient(var(--cal-filet) 1px, transparent 1px), linear-gradient(90deg, var(--cal-filet) 1px, transparent 1px);
+  background-size: 22px 22px;
 }
 .csch-vue:active { cursor: grabbing; }
 .csch-vue:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .csch-dessin { position: absolute; inset: 0; transform-origin: center; }
 .csch-dessin svg { display: block; width: 100%; height: 100%; }
 /* F3 — le schéma EN BLOCS : à l'échelle 1 (textes de 12 à 20 px réels), centré en haut de la vue. */
-.csch-vue[data-vue='blocs'] { background: transparent; }
 .csch-dessin.csch-dessin-blocs { display: flex; justify-content: safe center; align-items: flex-start; transform-origin: top center; }
 .csch-dessin.csch-dessin-blocs svg { flex: none; width: auto; height: auto; overflow: visible; }
-.csch-blocs-svg text { font-family: var(--font-brand, inherit); fill: var(--foreground); }
+.csch-blocs-svg text { font-family: var(--font-brand, inherit); fill: var(--cal-texte-1); }
 .csch-blocs-svg .csch-t12 { font-size: 12px; }
 .csch-blocs-svg .csch-t14 { font-size: 14px; font-weight: 600; }
 .csch-blocs-svg .csch-t16 { font-size: 16px; font-weight: 600; }
 .csch-blocs-svg .csch-t20 { font-size: 20px; font-weight: 600; font-family: var(--font-display, inherit); }
 .csch-blocs-svg .csch-gras { font-weight: 600; }
-.csch-blocs-svg .csch-attenue { fill: var(--muted-foreground); }
-.csch-bande { fill: var(--background); stroke: color-mix(in oklch, var(--info) 30%, var(--border)); stroke-dasharray: 4 3; }
-.csch-boite { fill: var(--card); stroke: var(--foreground); stroke-width: 2; }
-.csch-organe { fill: var(--card); stroke: var(--border); }
-.csch-picto { fill: none; stroke: var(--foreground); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.csch-blocs-svg .csch-attenue { fill: var(--cal-texte-2); }
+/* Les zones : un fond doux arrondi, sans pointillé (la maquette n'a que l'étiquette). */
+.csch-bande { fill: color-mix(in oklch, var(--cal-surface-2) 55%, transparent); stroke: none; rx: 18px; }
+/* Les boîtes : blanches, rayon 16, un filet à 14 % et l'ombre douce — plus de trait noir de 2 px. */
+.csch-boite { fill: var(--cal-surface); stroke: var(--cal-filet-fort); stroke-width: 1; rx: 16px;
+  filter: drop-shadow(0 6px 14px color-mix(in oklch, var(--cal-texte-1) 10%, transparent)); }
+.csch-organe { fill: var(--cal-papier); stroke: none; rx: 10px; }
+.csch-picto { fill: none; stroke: var(--cal-texte-1); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .csch-picto-fin { stroke-width: 2; }
-.csch-pilule { fill: var(--muted); }
-.csch-blocs-svg .csch-pilule-texte { fill: var(--muted-foreground); }
-.csch-liaison { fill: none; stroke: var(--foreground); stroke-width: 3; }
+.csch-pilule { fill: var(--cal-surface-2); }
+.csch-blocs-svg .csch-pilule-texte { fill: var(--cal-texte-2); }
+.csch-liaison { fill: none; stroke: var(--cal-texte-1); stroke-width: 2.5; }
 .csch-zone { fill: transparent; stroke: transparent; }
 .csch-couleur,
-.csch-glyphe { fill: var(--foreground); }
-.csch-glyphe { stroke: var(--foreground); stroke-width: 2; }
-.csch-etiquette { paint-order: stroke; stroke: var(--background); stroke-width: 4px; stroke-linejoin: round; }
-.csch-terre path { fill: none; stroke: var(--muted-foreground); stroke-width: 2; stroke-dasharray: 6 4; }
+.csch-glyphe { fill: var(--cal-texte-1); }
+.csch-glyphe { stroke: var(--cal-texte-1); stroke-width: 2; }
+.csch-etiquette { paint-order: stroke; stroke: var(--cal-papier); stroke-width: 4px; stroke-linejoin: round; }
+.csch-terre path { fill: none; stroke: var(--cal-texte-3); stroke-width: 2; stroke-dasharray: 6 4; }
 .csch-terre .csch-terre-symbole path { stroke-dasharray: none; stroke-linecap: round; }
-.csch-blocs-svg .csch-terre-texte { fill: color-mix(in oklch, var(--foreground) 78%, var(--muted-foreground)); }
+.csch-blocs-svg .csch-terre-texte { fill: var(--cal-texte-2); }
 .csch-element { cursor: pointer; outline: none; }
 @media (hover: hover) {
-  .csch-element:hover > rect:first-child { stroke: var(--ring); }
+  .csch-element:hover > rect:first-child { stroke: var(--cal-texte-2); }
 }
 .csch-element:focus-visible > rect:first-child { stroke: var(--ring); stroke-width: 3; }
 .csch-element:focus-visible > text { text-decoration: underline; }
 .csch-motifs { flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 16px 24px; }
-.csch-note { margin: 0; padding: 12px 24px 18px; font-size: 0.75rem; color: var(--muted-foreground); }
-.csch-blocs-svg .csch-lien-svg { fill: color-mix(in oklch, var(--info) 70%, var(--foreground)); text-decoration: underline; }
+.csch-note { margin: 0; padding: 12px 24px 18px; font-size: 0.75rem; color: var(--cal-texte-2); }
+.csch-blocs-svg .csch-lien-svg { fill: var(--cal-lien); text-decoration: underline; }
 /* Côté réseau en creux : boîtes pointillées, texte atténué, aucune valeur. */
-.csch-boite.csch-boite-creux { fill: transparent; stroke: var(--muted-foreground); stroke-width: 1.5; stroke-dasharray: 6 4; }
-.csch-liaison.csch-liaison-creux { stroke: var(--muted-foreground); stroke-width: 2; stroke-dasharray: 6 4; }
+.csch-boite.csch-boite-creux { fill: transparent; stroke: var(--cal-texte-3); stroke-width: 1.5; stroke-dasharray: 6 4; filter: none; }
+.csch-liaison.csch-liaison-creux { stroke: var(--cal-texte-3); stroke-width: 2; stroke-dasharray: 6 4; }
 
 /* Panneau : légende, cartouche, note bleue, pied */
 .cel-section { display: flex; flex-direction: column; gap: 8px; }
-.cel-section h2 { margin: 0; font-size: 0.875rem; font-weight: 600; }
-.csch-legende { margin: 0; padding: 0; list-style: none; border: 1px solid var(--border); border-radius: 10px; }
+.cel-section h2 { margin: 0; font-size: 0.8125rem; font-weight: 600; color: var(--cal-texte-2); }
+.csch-legende { margin: 0; padding: 0; list-style: none; border: 1px solid var(--cal-filet-fort); border-radius: var(--cal-rayon-piece); overflow: hidden; }
 .csch-legende li {
   display: flex;
   align-items: center;
   gap: 12px;
   min-height: 40px;
-  padding: 0 12px;
-  border-bottom: 1px solid var(--border);
+  padding: 0 14px;
+  border-bottom: 1px solid var(--cal-filet);
 }
 .csch-legende li:last-child { border-bottom: 0; }
-.csch-trait { flex: none; width: 28px; height: 3px; background: var(--foreground); }
-.csch-trait-pointille { height: 0; background: none; border-top: 2px dashed var(--muted-foreground); }
+.csch-trait { flex: none; width: 28px; height: 3px; border-radius: 2px; background: var(--cal-texte-1); }
+.csch-trait-pointille { height: 0; background: none; border-top: 2px dashed var(--cal-texte-3); }
 .csch-mm2 { flex: none; width: 28px; font-size: 0.75rem; font-weight: 600; }
 .csch-cartouche {
   margin: 0;
   display: grid;
   grid-template-columns: 96px minmax(0, 1fr);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--cal-rayon-piece);
+  background: var(--cal-papier);
   overflow: hidden;
 }
 .csch-cartouche > div { display: contents; }
 .csch-cartouche dt,
-.csch-cartouche dd { margin: 0; padding: 10px 12px; line-height: 18px; border-bottom: 1px solid var(--border); }
-.csch-cartouche dt { background: var(--background); color: var(--muted-foreground); }
-.csch-cartouche dd { font-weight: 500; overflow-wrap: anywhere; }
+.csch-cartouche dd { margin: 0; padding: 10px 14px; line-height: 18px; border-bottom: 1px solid var(--cal-filet); }
+.csch-cartouche dt { color: var(--cal-texte-2); }
+.csch-cartouche dd { font-weight: 600; overflow-wrap: anywhere; }
 .csch-cartouche > div:last-child dt,
 .csch-cartouche > div:last-child dd { border-bottom: 0; }
 .csch-info {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 12px 14px;
-  border: 1px solid color-mix(in oklch, var(--info) 28%, var(--card));
-  border-radius: 10px;
-  background: color-mix(in oklch, var(--info) 7%, var(--card));
-  color: color-mix(in oklch, var(--info) 60%, var(--foreground));
+  padding: 14px 16px;
+  border-radius: var(--cal-rayon-piece);
+  background: color-mix(in oklch, var(--cal-lien) 9%, var(--cal-surface));
+  color: var(--cal-texte-2);
   line-height: 1.45;
 }
-.csch-info svg { flex: none; margin-top: 2px; color: var(--info); }
+.csch-info svg { flex: none; margin-top: 2px; color: var(--cal-lien); }
 .csch-pied { display: flex; flex-direction: column; gap: 8px; }
-.csch-pied-messages p { margin: 0; font-size: 0.75rem; color: var(--destructive); }
+.csch-pied-messages p { margin: 0; font-size: 0.75rem; color: var(--cal-refus); }
 /* Ce n'est pas une erreur (« il manque le calcul ») : une note discrète, pas du texte rouge. */
-.csch-pied-note p { color: var(--muted-foreground); }
+.csch-pied-note p { color: var(--cal-texte-2); }
 .csch-pied-boutons { display: flex; gap: 8px; }
 .csch-pied-boutons .cal-bouton-or-plein { flex: 1; width: auto; }
+/* « DXF » : le bouton secondaire de la même taille que l'action (52 px, rayon 14, 15 px graisse 700). */
 .csch-dxf {
-  height: 48px;
+  height: 52px;
   padding: 0 18px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 22%, var(--border));
-  border-radius: 10px;
-  background: var(--card);
-  color: var(--foreground);
-  font-weight: 600;
-  font-size: 1rem;
+  border: 1px solid var(--cal-filet-fort);
+  border-radius: var(--cal-rayon-pile);
+  background: var(--cal-surface);
+  color: var(--cal-texte-1);
+  font-weight: 700;
+  font-size: 0.9375rem;
 }
 .csch-dxf:disabled { opacity: 0.6; cursor: not-allowed; }
+@media (hover: hover) {
+  .csch-dxf:not(:disabled):hover { background: var(--cal-papier); }
+}
 
 /* Cibles tactiles ≥ 44 px (pointeur grossier) */
 @media (pointer: coarse) {

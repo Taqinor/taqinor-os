@@ -69,7 +69,7 @@ function ligneOnduleur(retenue, resultat) {
   return [
     typeof kw === 'number' ? `${nb(kw, Number.isInteger(kw) ? 0 : 1)} kW` : null,
     typeof entrees === 'number' ? `${entrees} entrée${entrees > 1 ? 's' : ''}` : null,
-    typeof panneaux === 'number' && panneaux > 0 ? `pour ${panneaux} panneau${panneaux > 1 ? 'x' : ''}` : null,
+    typeof panneaux === 'number' && panneaux > 0 ? `proposé pour ${panneaux} panneau${panneaux > 1 ? 'x' : ''}` : null,
   ].filter(Boolean).join(' · ')
 }
 
@@ -230,10 +230,18 @@ export default function EtapeElectrique(props) {
   return (
     <div data-testid="cal-etape-electrique-ecran" className="cel-ecran">
       {calques}
+      {/* ACAL1830 — la carte « Prêt à envoyer ? » est EN TÊTE du panneau (maquette v2), avant l'onduleur. */}
+      <PretAEnvoyer key={relecture} calepinageId={id} filtre="electrique" court testIdCompte="cal-electrique-synthese" />
       <CarteOnduleur id={id} entree={entree} configs={configs} resultat={resultat} lectureSeule={lectureSeule}
         onApplique={relire} />
-      <PretAEnvoyer key={relecture} calepinageId={id} filtre="electrique" court testIdCompte="cal-electrique-synthese" />
       <section className="cel-schema" data-testid="cal-elec-schema-voir">
+        <span className="cel-schema-picto" aria-hidden="true">
+          <svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="currentColor" strokeWidth="1.8"
+            strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2 13h4M20 13h4" /><rect x="6" y="8" width="6" height="10" rx="1.5" /><rect x="14" y="8" width="6" height="10" rx="1.5" />
+            <path d="M16 16l2-6" />
+          </svg>
+        </span>
         <span className="cel-schema-texte">
           <span className="cel-schema-titre">Schéma électrique</span>
           <span className="cel-schema-detail">Dessiné tout seul à partir du raccordement</span>

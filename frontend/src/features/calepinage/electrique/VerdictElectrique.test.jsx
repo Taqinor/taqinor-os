@@ -604,7 +604,7 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     const ecran = screen.getByTestId('cal-etape-electrique-ecran')
     // Le nom désigné et la ligne SERVIE de la configuration retenue (6 kW, 2 entrées) + panneaux du chaînage servi.
     await waitFor(() => expect(screen.getByTestId('cal-elec-onduleur')).toHaveTextContent('Onduleur réseau 10 kW (exemple)'))
-    await waitFor(() => expect(screen.getByTestId('cal-elec-onduleur')).toHaveTextContent('6 kW · 2 entrées · pour 12 panneaux'))
+    await waitFor(() => expect(screen.getByTestId('cal-elec-onduleur')).toHaveTextContent('6 kW · 2 entrées · proposé pour 12 panneaux'))
     // N = configurations servies autres que la retenue (2 dans l'échantillon).
     expect(screen.getByRole('button', { name: 'Comparer avec 2 autres onduleurs' })).toBeTruthy()
     const liste = await screen.findByTestId('cal-pret-a-envoyer')
@@ -614,8 +614,9 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     expect(within(liste).queryByTestId('cal-pret-ligne-simulation_fraiche')).toBeNull()
     expect(screen.getByTestId('cal-electrique-synthese')).toHaveTextContent('Prêt à envoyer')
     const blocs = [...ecran.children].map((n) => n.getAttribute('data-testid'))
-    expect(blocs.indexOf('cal-elec-onduleur')).toBeLessThan(blocs.indexOf('cal-pret-a-envoyer'))
-    expect(blocs.indexOf('cal-pret-a-envoyer')).toBeLessThan(blocs.indexOf('cal-elec-schema-voir'))
+    // ACAL1830 : la carte « Prêt à envoyer ? » est EN TÊTE du panneau (maquette v2), puis l'onduleur, puis le Schéma.
+    expect(blocs.indexOf('cal-pret-a-envoyer')).toBeLessThan(blocs.indexOf('cal-elec-onduleur'))
+    expect(blocs.indexOf('cal-elec-onduleur')).toBeLessThan(blocs.indexOf('cal-elec-schema-voir'))
     expect(screen.getByTestId('cal-elec-schema-voir')).toHaveTextContent('Schéma électriqueDessiné tout seul à partir du raccordementVoir')
     // Rien de normatif ni de clé brute à l'écran guidé (mutant : réafficher `ombrage.shading12x24`).
     expect(ecran.textContent).not.toMatch(/shading12x24|NF C 15-100|UTE C 15-712|ombrage\./)
@@ -623,6 +624,58 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     expect(screen.getByTestId('cal-electrique-avances')).toHaveAttribute('data-state', 'closed')
     expect(screen.getByRole('button', { name: 'Réglages avancés' })).toHaveClass('cel-avances-lien')
     expect(ecran.lastElementChild).toHaveClass('cel-avances') // en dernier, après la carte Schéma
+  })
+
+  it('ACAL1830 — tous bons ⇒ section « Contrôles · N bons » repliée avec son compte ; carte verte, aucun « Régler »', async () => {
+    const p = pret()
+    servirEtape({ p })
+    rendreEtape()
+    await waitFor(() => expect(screen.getByTestId('cal-electrique-synthese')).toHaveTextContent('Prêt à envoyer'))
+    const nbOk = p.controles.filter((c) => c.etat === 'ok').length
+    expect(nbOk).toBeGreaterThan(0)
+    const bons = screen.getByTestId('cal-pret-bons')
+    expect(bons.open).toBe(false)
+    expect(bons.querySelector('summary')).toHaveTextContent(`Contrôles · ${nbOk} ${nbOk > 1 ? 'bons' : 'bon'}`)
+    expect(screen.getByTestId('cal-pret-a-envoyer').querySelector('.cel-pret-carte')).toHaveAttribute('data-ton', 'ok')
+    expect(screen.queryByRole('button', { name: 'Régler' })).toBeNull()
+    // Les contrôles bons restent à l'écran (dans la section), coche verte et « ? » compris.
+    expect(within(bons).getByTestId('cal-pret-ligne-tension_froid').querySelector('.cel-pret-coche')).toBeTruthy()
+  })
+
+  it('ACAL1830 — le point à régler est DANS la carte en tête avec « Régler » appuyé (bleu nuit, 44 px) ; les bons sont dans la section', async () => {
+    const base = pret()
+    const ok = base.controles.find((c) => c.code === 'tension_froid')
+    const aRegler = { ...ok, code: 'pente_toit', libelle: 'Pente du toit à confirmer', etat: 'a_regler',
+      valeur_texte: '22° est une valeur de départ', cible: { etape: 'electrique', onglet: 'cheminement-cables', champ: '' } }
+    servirEtape({ p: pret([ok, aRegler]) })
+    rendreEtape()
+    await waitFor(() => expect(screen.getByTestId('cal-electrique-synthese')).toHaveTextContent('1 point à régler'))
+    const carte = screen.getByTestId('cal-pret-a-envoyer').querySelector('.cel-pret-carte')
+    expect(carte).toHaveAttribute('data-ton', 'a_regler')
+    const ligne = within(carte).getByTestId('cal-pret-ligne-pente_toit')
+    const regler = within(ligne).getByRole('button', { name: 'Régler' })
+    expect(regler).toHaveAttribute('data-recommande', 'oui')
+    expect(within(carte).queryByTestId('cal-pret-ligne-tension_froid')).toBeNull()
+    expect(within(screen.getByTestId('cal-pret-bons')).getByTestId('cal-pret-ligne-tension_froid')).toBeTruthy()
+    expect(screen.getByTestId('cal-pret-bons').querySelector('summary')).toHaveTextContent('Contrôles · 1 bon')
+    // La règle de la feuille : cible tactile de 44 px (la feuille réelle est chargée dans le DOM de test).
+    const { readFileSync } = await import('node:fs')
+    const style = document.createElement('style')
+    style.textContent = readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/53-etape-electrique.css`, 'utf8')
+    document.head.appendChild(style)
+    try {
+      expect(getComputedStyle(regler).minHeight).toBe('44px')
+    } finally {
+      style.remove()
+    }
+  })
+
+  it('ACAL1830 — sous-titre de l’onduleur : « 2 entrées · proposé pour 12 panneaux » servi, jamais « En stock »', async () => {
+    servirEtape()
+    rendreEtape()
+    const carte = screen.getByTestId('cal-elec-onduleur')
+    await waitFor(() => expect(carte).toHaveTextContent('2 entrées · proposé pour 12 panneaux'))
+    expect(carte).not.toHaveTextContent('En stock')
   })
 
   it('F3 — lecture en cours : le titre est posé tout de suite, seules les lignes sont grisées, aucun compte inventé', async () => {

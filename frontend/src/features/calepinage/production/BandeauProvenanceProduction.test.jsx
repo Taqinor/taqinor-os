@@ -251,15 +251,27 @@ describe('ReglagesUtilises — valeur publiée (ACAL405)', () => {
 
 /* ACAL854 — l'écart à PVGIS servi (`validation`), signé, une décimale. */
 describe('EcartPvgis (ACAL854)', () => {
-  const validation = exempleContrat('calepinage', 'calepinage_resultat', 'exemple').validation
+  // `pertes_totales` (ACAL1606) est servi par le bloc `validation` de la simulation (contrat `calepinage_simulation.json`).
+  const validation = exempleContrat('calepinage', 'calepinage_simulation', 'exemple').validation
   const rendreEcart = (v) => render(<MemoryRouter><EcartPvgis validation={v} /></MemoryRouter>)
 
   it('écart servi ⇒ la ligne, signe compris', () => {
     rendreEcart(validation)
     expect(screen.getByTestId('acal854-ecart-pvgis').textContent.replace(/\s/g, ' '))
-      .toContain('Comparé à PVGIS au même endroit : −2,0 %')
+      .toContain('Comparé à PVGIS au même endroit, à pertes système égales : −2,0 %') // `validation.pertes_totales.egales` servi
     expect(screen.queryByTestId('acal854-sans-verdict')).toBeNull()
     expect(screen.getByTestId('acal854-ecart-pvgis')).not.toHaveTextContent('PVcalc')
+  })
+
+  it('Demande croisée — « à pertes système égales » seulement quand le serveur le dit (`pertes_totales.egales`)', () => {
+    const { unmount } = rendreEcart({ ...validation, pertes_totales: { ...validation.pertes_totales, egales: false } })
+    expect(screen.getByTestId('acal854-ecart-pvgis').textContent.replace(/\s/g, ' '))
+      .toContain('Comparé à PVGIS au même endroit : −2,0 %')
+    expect(screen.getByTestId('acal854-ecart-pvgis')).not.toHaveTextContent('pertes système égales')
+    unmount()
+    const { pertes_totales: _omis, ...sansBloc } = validation // clé absente : rien n'est affirmé
+    rendreEcart(sansBloc)
+    expect(screen.getByTestId('acal854-ecart-pvgis')).not.toHaveTextContent('pertes système égales')
   })
 
   it('sans tolérance ⇒ « écart publié sans verdict » et le lien vers le réglage', () => {
