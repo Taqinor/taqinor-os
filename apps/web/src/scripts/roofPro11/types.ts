@@ -702,6 +702,8 @@ export interface CardData {
   target?: number;
   /** ACAL975 — pose affleurante (toit en pente) : aucun gain bifacial proposé. */
   flush?: boolean;
+  /** ACAL1900 — carte d'une pose TENUE (relue ou posée à la main, ERP), jamais celle du gagnant de l'optimiseur. */
+  tenue?: boolean;
 }
 
 // ═══════════ « PLUSIEURS ZONES » — enregistrements de zone ═══════════

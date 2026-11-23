@@ -64,12 +64,16 @@ import { poserLegendeAcces } from './legendeAcces'; // ACAL441
 import { signerSources, tableOmbrage, type TableOmbrage } from './tableOmbrage'; // ACAL459
 import { facteurVueCiel, vueCielDuPan, type FacteurVueCiel } from './vueCiel'; // ACAL460
 import { type Ctx } from './context';
+import { redessinerSansReposer } from './panExistant'; // ACAL1900
 
 export interface ShadingUiDeps {
   map: maplibregl.Map;
   setStatus: (msg: string) => void;
   /** Re-rend la zone active (3D + carte de résultat + fenêtre de production). */
   recalcDisplays: () => void;
+  /** ACAL1900 — re-rend la pose TENUE telle quelle (layoutEditor.renderCustomLayout) : un changement d'ombrage la
+   *  redessine sans la re-poser. Absent (site public) : `recalcDisplays`, comme avant. */
+  renderPoseTenue?: () => void;
   /** WJ21 — applique la teinte d'accès solaire aux panneaux 3D (scene3d), ou l'efface
    *  (colorFor null). Injecté en wrapper paresseux (scene3d est construit après). */
   applyHeatmap: (colorFor: ((cellIndex: number) => { r: number; g: number; b: number }) | null) => void;
@@ -85,6 +89,8 @@ export interface ShadingUi {
   handleMapClick: (lngLat: LngLat) => boolean;
   /** Recalcule hauteurs (hypothèse de prise de vue) + facteurs + affichages. */
   recomputeShading: () => void;
+  /** ACAL1900 — redessine la zone active sans re-poser une pose tenue (soleil, bande climatique). */
+  redessiner: () => void;
   /** ACAL27 — redessine liste + lignes des ombres tracées (après hydratation), sans recalcul. */
   rafraichirOmbres: () => void;
   /** WJ21 — ré-applique la heatmap d'accès solaire si elle est active (après un re-rendu
@@ -600,7 +606,10 @@ export function htmlProposition(
 }
 
 export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
-  const { map, setStatus, recalcDisplays, applyHeatmap } = deps;
+  const { map, setStatus, applyHeatmap } = deps;
+  // ACAL1900 — l'ombrage (relu au boot, hauteur, horizon, effacement) REDESSINE : une pose tenue n'est pas re-posée.
+  // Seul le seuil d'accès solaire (qui écarte des emplacements) re-résout (`deps.recalcDisplays`).
+  const recalcDisplays = () => redessinerSansReposer(ctx, deps.recalcDisplays, deps.renderPoseTenue);
 
   const addBtn = $<HTMLButtonElement>('rp9-shade-add');
   const clearBtn = $<HTMLButtonElement>('rp9-shade-clear');
@@ -1436,7 +1445,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     if (lu.valeur == null) delete suivant.seuilAccesSolaire;
     else suivant.seuilAccesSolaire = lu.valeur;
     poserChoixOptimisation(Object.keys(suivant).length ? suivant : null);
-    recalcDisplays();
+    deps.recalcDisplays(); // ACAL1900 — écarte des emplacements : re-résout, même une pose tenue
     renderSolarAccess();
     syncSeuilUi();
   });
@@ -1469,6 +1478,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     handleMapClick,
     rafraichirOmbres,
     recomputeShading,
+    redessiner: recalcDisplays, // ACAL1900 — soleil, bande climatique : redessin sans re-pose
     refreshHeatmap,
     reset,
     solarAccess,

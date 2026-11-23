@@ -6,10 +6,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { JSDOM } from 'jsdom'; // ACAL574
 import { type Ctx } from './context'; // ACAL574
-import { direEcartPoseRelue, motifPanExistant, noteEcartPoseRelue } from './panExistant'; // ACAL574, ACAL1900
+import { carteDeLaPoseTenue, direEcartPoseRelue, motifPanExistant, noteEcartPoseRelue, remettreSurLePlan } from './panExistant'; // ACAL574, ACAL1900
 import { createLayoutState } from '../../lib/layoutVariability'; // ACAL1900
 import { serializeLayout } from './prefill'; // ACAL1900
-import { packConfig, defaultEastWestGeometry, type PackOptions } from '../../lib/estimatorBrainV2';
+import { annualSavingsMad, packConfig, defaultEastWestGeometry, type PackOptions } from '../../lib/estimatorBrainV2';
 import { PANEL2_SHORT_M, PERIMETER_SETBACK_M } from '../../lib/roofPro2';
 import {
   cibleOptimisationSaisie,
@@ -28,7 +28,7 @@ import { fmt, fmtKwc, fmtMad } from './dom'; // ACAL994 + R2-09
 import { phraseSurplus } from './affichageErp'; // R2-17
 import { createZones } from './zones'; // ACAL1418
 import { factureCarteDe, lireFactureSaisie } from './factureCarte'; // ACAL777
-import { seuilEffectifAccesSolaire } from './shadingUi'; // ACAL548
+import { createShadingUi, seuilEffectifAccesSolaire } from './shadingUi'; // ACAL548, ACAL1900
 import { cibleDepuisCarte, panneauxPourCible, phraseCible } from './cibleProduction'; // ACAL1618
 import { cotesDePavage } from '../../lib/roofPro2';
 import {
@@ -636,6 +636,69 @@ describe('ACAL1900 — une pose relue n’est pas re-posée par le recalcul de f
       expect(ctx.layoutState).toBeNull();
       expect(enregistrer(ctx).count).toBe(6);
     } finally { remettre(); }
+  });
+
+  // Rejeu en direct (T3-VAGUEC, pile de revue) : après le balayage, l'OMBRAGE relu au boot (`relireEnvironment` →
+  // `recomputeShading` → `recalcDisplays` = renderActive) re-posait encore la cible : 16 enregistrés → 5 à l'écran → 5 écrits.
+  it('chemin réel de l’ouverture : l’ombrage relu, puis le soleil, REDESSINENT la pose tenue sans la re-poser', async () => {
+    const remettre = doc();
+    try {
+      const { ctx, opt, cellules } = await ouvrir({ chiffrage: null, rendementPvgis: null });
+      const rendus: number[] = [];
+      let resolus = 0;
+      const map = new Proxy({}, { get: () => () => undefined }) as never;
+      // Le câblage de roof-tool-pro11 : recalcDisplays = renderActive (plat : renderSelection), renderPoseTenue = renderCustomLayout.
+      const ui = createShadingUi(ctx, { map, setStatus: () => {}, applyHeatmap: () => {}, recalcDisplays: () => { resolus += 1; opt.renderSelection(); }, renderPoseTenue: () => rendus.push(ctx.layoutState!.occupied.size) });
+      ui.recomputeShading();
+      expect(enregistrer(ctx).count).toBe(cellules.length);
+      ui.redessiner(); // heure, saison, date du soleil, bande climatique
+      expect(enregistrer(ctx).count).toBe(cellules.length);
+      expect(rendus).toEqual([cellules.length, cellules.length]);
+      expect(resolus).toBe(2); // les chiffres du plan sont recalculés (dérate, horizon, climat), la pose reste
+    } finally { remettre(); }
+  });
+
+  it('remettreSurLePlan : mêmes cellules ⇒ la pose telle quelle ; plan changé ⇒ re-snap au plus près ; aucun plan ⇒ null', () => {
+    const cellules = [0, 1, 2, 3].map((i) => ({ cx: i, cy: 0 }));
+    const tenue = createLayoutState(cellules, 0);
+    tenue.occupied.add(1).add(3);
+    expect(remettreSurLePlan(tenue, cellules)).toBe(tenue);
+    const decale = remettreSurLePlan(tenue, cellules.map((c) => ({ cx: c.cx + 0.2, cy: 0 })))!;
+    expect([...decale.occupied].sort()).toEqual([1, 3]);
+    expect(remettreSurLePlan(tenue, [])).toBeNull();
+  });
+
+  it('la carte (indicateurs, bande, Guidé) suit la pose tenue, et la note du nombre garde l’écart après « Enregistrer »', async () => {
+    const remettre = doc();
+    try {
+      const { ctx, opt, cellules } = await ouvrir({ chiffrage: null, rendementPvgis: null });
+      const carte = document.createElement('p');
+      carte.id = 'rp9-reco-panels';
+      document.body.appendChild(carte);
+      const n = cellules.length;
+      opt.peindreCartePosee(n); // renderCustomLayout → updateProductionWindow → la carte
+      expect(carte.textContent).toMatch(new RegExp(`^${n} `));
+      expect(opt.etatCarte()?.kwhParPanneau).toBeGreaterThan(0); // même rendement par panneau (ACAL1903 le lit)
+      const note = () => document.getElementById('rp9-need-note')!.textContent;
+      expect(note()).toBe(noteEcartPoseRelue(n, 5, fmt, false));
+      opt.majChiffrage(null); // après « Enregistrer » : le contexte relu repeint carte et note
+      expect(carte.textContent).toMatch(new RegExp(`^${n} `));
+      expect(note()).toBe(`${n} posés / 5 cible — pose tenue telle quelle (${n - 5} de plus que la cible, rien n’est retiré ni ajouté).`);
+      const publique = await ouvrir({ rendementPvgis: null }); // site public : la carte reste celle du gagnant
+      publique.opt.peindreCartePosee(n);
+      expect(carte.textContent).toMatch(/^5 /);
+    } finally { remettre(); }
+  });
+
+  it('carteDeLaPoseTenue : même rendement par panneau, économies plafonnées ; rien quand le nombre ne change pas', () => {
+    const d = { title: 'Plein sud 30°', isReco: true, count: 5, kwc: 3.55, annualKwh: 5571, pct: 63, savingsLow: 1, savingsHigh: 1, why: '', target: 8843 };
+    const c = carteDeLaPoseTenue(d, 16, fmt)!;
+    expect(c).toMatchObject({ count: 16, tenue: true, isReco: false });
+    expect(c.annualKwh).toBeCloseTo(5571 * 16 / 5, 6);
+    expect(c.kwc).toBeCloseTo(11.36, 6);
+    expect(c.savingsHigh).toBe(annualSavingsMad(c.annualKwh, 8843).high);
+    expect(carteDeLaPoseTenue(d, 5, fmt)).toBeNull();
+    expect(carteDeLaPoseTenue({ ...d, count: 0 }, 16, fmt)).toBeNull();
   });
 
   it('site public (aucun `chiffrage`) : comportement d’avant, le recalcul de fond re-pose l’optimum', async () => {

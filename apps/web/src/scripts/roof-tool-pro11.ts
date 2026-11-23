@@ -1342,7 +1342,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     renderScene: (pack, grid, tiltDeg, family, maxCount, flush, occupiedSet) =>
       renderScene(pack, grid, tiltDeg, family, maxCount, flush, occupiedSet),
     prodConfigFromState,
-    updateProductionWindow,
+    updateProductionWindow: (cfg) => { updateProductionWindow(cfg); optimizer.peindreCartePosee(cfg.panels); }, // ACAL1900 — la carte suit la pose tenue (ERP)
     snapshotActiveAreaResult,
     renderAreasPanel,
     renderActive: () => renderActive(),
@@ -1511,7 +1511,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const shadingUi = createShadingUi(ctx, {
     map,
     setStatus,
-    recalcDisplays: () => renderActive(),
+    recalcDisplays: () => renderActive(), renderPoseTenue: () => layoutEditor.renderCustomLayout(), // ACAL1900 — l'ombrage redessine une pose tenue, sans la re-poser
     // WJ21 — wrapper paresseux : scene3d est construit plus bas ; cette closure n'est
     // appelée qu'après le boot (jamais pendant la TDZ du const scene3d).
     applyHeatmap: (colorFor) => scene3d.setSolarAccessHeatmap(colorFor),
@@ -3770,7 +3770,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       if (!Number.isFinite(h)) return;
       ctx.sunHour = h;
       if (sunHourValueEl) sunHourValueEl.textContent = `${h} h`;
-      renderActive();
+      shadingUi.redessiner(); // ACAL1900 — le soleil bouge, la pose tenue reste
       shadingUi.refreshHeatmap(); // WJ21 — le re-rendu a recréé les panneaux : garde la heatmap
     });
   }
@@ -3833,7 +3833,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
             (o.dataset.sunSeason !== 'summer' && day === WINTER_SOLSTICE_DAY),
         )),
       );
-      renderActive();
+      shadingUi.redessiner(); // ACAL1900 — le soleil bouge, la pose tenue reste
       shadingUi.refreshHeatmap(); // WJ21 — garde la heatmap après le re-rendu
     });
   }
@@ -3847,7 +3847,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
         o.setAttribute('aria-pressed', String(o === b)),
       );
       if (sunDateEl) sunDateEl.value = dayOfYearToDateValue(ctx.sunDay); // CALX119 — la date reflète le raccourci
-      renderActive();
+      shadingUi.redessiner(); // ACAL1900 — le soleil bouge, la pose tenue reste
       shadingUi.refreshHeatmap(); // WJ21 — garde la heatmap après le re-rendu saisonnier
     });
   });
@@ -3903,7 +3903,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     if (sunHourValueEl) sunHourValueEl.textContent = `${Math.round(s.sunHour)} h`;
     if (sunDateEl) sunDateEl.value = dayOfYearToDateValue(s.sunDay);
     document.querySelectorAll<HTMLButtonElement>('[data-sun-season]').forEach((o) => o.setAttribute('aria-pressed', 'false'));
-    renderActive();
+    shadingUi.redessiner(); // ACAL1900 — le soleil bouge, la pose tenue reste
     shadingUi.refreshHeatmap(); // WJ21 — le re-rendu a recréé les panneaux : garde la heatmap
   };
   if (soleilBtns) {
@@ -3951,7 +3951,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   climateToggleEl?.addEventListener('click', () => {
     ctx.climateBandOn = !ctx.climateBandOn;
     climateToggleEl.setAttribute('aria-pressed', String(ctx.climateBandOn));
-    renderActive();
+    shadingUi.redessiner(); // ACAL1900 — bande climatique : redessin, pas une re-pose
   });
   // W46 — bouton « Recommandé » de l'inclinaison = AFFORDANCE PAR AXE : il LIBÈRE LE
   // SEUL axe inclinaison (retour AUTO) en TENANT tous les autres verrous accumulés, puis

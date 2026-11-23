@@ -112,7 +112,7 @@ import { maxDesSens, maxDuSolveur, phraseCouvertureMax, type MaxDuToit } from '.
 import { heatmapAccessValues } from './shadingUi'; // ACAL552
 import { causeDuPanVide, mesurerPanVide, noterMotifPanVide, retraitApplique, type MotifPanVide } from './motifPanVide'; // ACAL549
 import { cotesDePavage } from '../../lib/roofPro2';
-import { motifPanExistant, poseTenue } from './panExistant'; // ACAL574, ACAL1900
+import { carteDeLaPoseTenue, direEcartPoseRelue, motifPanExistant, poseTenue } from './panExistant'; // ACAL574, ACAL1900
 
 // ═══════════ PV64 — TROIS VARIANTES LISIBLES DU BALAYAGE DÉJÀ CALCULÉ ═══════════
 // Le balayage V6 (`fineGridMatrixV6`) évalue déjà des centaines de configurations, mais
@@ -395,6 +395,7 @@ export interface Optimizer {
   /** Plafonne le besoin (1–400, arrondi) — partagé avec l'entrée. */
   clampNeeded: (n: number) => number;
   /** ACAL470 — énergie annuelle par panneau de la carte affichée et nombre qui tient ; null sans carte. */
+  peindreCartePosee: (n: number) => void; // ACAL1900 — l'ERP : la carte au nombre de la pose TENUE rendue (renderCustomLayout)
   etatCarte: () => { kwhParPanneau: number; tiennent: number; maxSens: MaxDuToit | null } | null; // ACAL1618, ACAL1903
 }
 
@@ -1108,17 +1109,16 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     etiquetteEconomie();
     if (derniereCarte) paintCard(derniereCarte, derniereCarte.sourceLabel); // R2-16 + demande croisée — production, bande et économie relues
     if (derniereNote) syncNeedControl(derniereNote.fit, derniereNote.famille, derniereNote.motif, derniereNote.ecartes, derniereNote.pack); // R2-13, ACAL1526 — « au devis » relu avec le contexte
-  }
+    if (derniereCarte?.tenue) direEcartPoseRelue(derniereCarte.count, ctx.neededPanels, fmt, false); } // ACAL1900 — la note du nombre parle de la pose tenue
 
+  /** ACAL1900 — l'ERP : la carte (et ce qui la lit : bande, indicateurs, Guidé) suit la pose TENUE rendue (n panneaux). */
+  function peindreCartePosee(n: number) { const d = modeErp() && derniereCarte ? carteDeLaPoseTenue(derniereCarte, n, fmt) : null; if (d) { paintCard(d, derniereCarte?.sourceLabel); direEcartPoseRelue(n, ctx.neededPanels, fmt, false); } }
   function paintCard(d: CardData, sourceLabel?: string) {
     for (const p of Array.from(document.querySelectorAll<HTMLElement>('[data-couverture-max]'))) p.hidden = modeErp() && d.pct >= 100; // R3-04
     // ACAL852 — sans facture (cible absente ou nulle ET aucune économie) : « facture inconnue », jamais « 0 MAD – 0 MAD/an ».
     const factureInconnue = !((d.target ?? ctx.prodTarget) > 0) && !(d.savingsHigh > 0);
     derniereCarte = { ...d, factureInconnue, sourceLabel };
-    const set = (id: string, v: string) => {
-      const el = $(id);
-      if (el) el.textContent = v;
-    };
+    const set = (id: string, v: string) => { const el = $(id); if (el) el.textContent = v; };
     set('rp9-reco-title', d.isReco ? `${d.title}  ·  ✓ recommandé` : d.title);
     // W97 §2 — kWc = panneaux × 0,72 (PANEL2_WATT) : toujours ≤ 2 décimales exactes.
     // 1 décimale arrondissait CHAQUE zone indépendamment, si bien que la somme des
@@ -1752,7 +1752,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     buildMatrix,
     computeMatrixPvgis,
     clampNeeded,
-    majChiffrage,
+    majChiffrage, peindreCartePosee, // ACAL1900
     etatCarte: () => (derniereCarte && derniereCarte.count > 0 && derniereCarte.annualKwh > 0 ? { kwhParPanneau: derniereCarte.annualKwh / derniereCarte.count, tiennent: dernierFit, get maxSens() { return maxSensCarte(); } } : null), // ACAL1903 — le solveur ne tourne qu'à la lecture
   };
 }

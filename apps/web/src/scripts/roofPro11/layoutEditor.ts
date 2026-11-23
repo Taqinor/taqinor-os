@@ -1776,7 +1776,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     renderCustomLayout();
     renderLayoutPanel();
     if (layoutNoteEl && placed) layoutNoteEl.textContent = `Disposition du dossier rechargée — ${fmt(placed)} panneaux reposés à l'identique.`;
-    direEcartPoseRelue(placed, ctx.neededPanels, fmt); // ACAL1900 — l'écart à la cible est DIT, jamais appliqué (D-ACAL-75)
+    if (placed !== ctx.layoutOptimalCount) direEcartPoseRelue(placed, ctx.neededPanels, fmt); // ACAL1900 — l'écart est DIT, jamais appliqué (D-ACAL-75) ; égale au gagnant : sa note dit déjà tout
     return placed > 0;
   }
 
