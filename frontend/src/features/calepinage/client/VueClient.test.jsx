@@ -188,6 +188,24 @@ describe('Montrer au client — l’atelier en mode présentation (vraie 3D)', (
     expect(heure.value).toBe('15')
   })
 
+  it('ACAL1906 — le curseur d’heure du client se touche sur 44 px, la carte garde sa hauteur (aucune règle du client ne l’annule)', async () => {
+    const { readFileSync } = await import('node:fs')
+    const style = document.createElement('style')
+    style.textContent = ['49-jetons-v2.css', '50-coque-atelier.css', '52-etape-panneaux.css', '58-telephone.css']
+      .map((f) => readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/${f}`, 'utf8')).join('\n')
+    document.head.appendChild(style)
+    try {
+      reinitialiserBoot({ appliquerVue: vi.fn() })
+      rendre({ webgl: true })
+      const lecteur = await screen.findByTestId('client-soleil', {}, ATTENTE_ATELIER)
+      const c = getComputedStyle(within(lecteur).getByRole('slider', { name: 'Heure du soleil' }))
+      expect(parseFloat(c.height)).toBeGreaterThanOrEqual(44)
+      expect(parseFloat(c.height) + parseFloat(c.marginTop) + parseFloat(c.marginBottom)).toBe(6)
+    } finally {
+      style.remove()
+    }
+  })
+
   it('aucune requête d’écriture au chargement ni en bougeant le soleil', async () => {
     reinitialiserBoot({ appliquerVue: vi.fn() })
     rendre({ webgl: true })
