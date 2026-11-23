@@ -701,9 +701,11 @@ describe('ACAL1803 — tête et pied du panneau d’étape (maquettes v2)', () =
     expect(traits.map((t) => t.getAttribute('data-etat'))).toEqual(['fait', 'actif', 'a-venir', 'a-venir', 'a-venir'])
     expect(screen.getByTestId('cal-progression-etapes')).toHaveAttribute('aria-hidden', 'true')
     const cs = (el) => getComputedStyle(el)
-    expect(cs(traits[0]).background).toContain('--cal-action')
+    // ACAL2003 — seul le trait de l'étape COURANTE est doré ; les faites sont neutres soutenues, les autres claires.
+    expect(cs(traits[0]).background).toContain('--cal-progression-faite')
     expect(cs(traits[1]).background).toContain('--cal-action')
     expect(cs(traits[2]).background).toContain('--cal-progression-a-venir')
+    expect(traits.map((t) => cs(t).background.includes('--cal-action'))).toEqual([false, true, false, false, false])
     expect(cs(traits[0]).height).toBe('4px')
     const rang = screen.getByText('Étape 2 sur 5')
     expect(cs(rang).fontSize).toBe('0.75rem')
@@ -717,6 +719,22 @@ describe('ACAL1803 — tête et pied du panneau d’étape (maquettes v2)', () =
     expect(cs(bouton).fontSize).toBe('0.9375rem')
     expect(cs(bouton).fontWeight).toBe('700')
     expect(cs(bouton).boxShadow).toBe('var(--cal-action-ombre)')
+  })
+
+  it('ACAL2003 — aux cinq étapes, un seul trait est doré : celui de l’étape courante', async () => {
+    const { default: PanneauEtape } = await import('../PanneauEtape')
+    const { ETAPES } = await import('../../parcoursGuide')
+    const etats = Object.fromEntries(ETAPES.map((e) => [e.cle, 'fait']))
+    for (let n = 1; n <= 5; n += 1) {
+      const { unmount } = render(
+        <div className="rp9-host cal-coque"><PanneauEtape numero={n} total={5} titre="x" etats={etats} /></div>,
+      )
+      const dores = [...screen.getByTestId('cal-progression-etapes').children]
+        .map((t) => getComputedStyle(t).background.includes('--cal-action'))
+      expect(dores.filter(Boolean)).toHaveLength(1)
+      expect(dores[n - 1]).toBe(true)
+      unmount()
+    }
   })
 
   it('panneau caché ou tiroir (tablette) : aucun trait — la tablette garde sa tête actuelle', async () => {

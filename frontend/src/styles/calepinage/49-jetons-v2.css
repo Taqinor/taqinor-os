@@ -43,7 +43,7 @@
   --cal-action-ombre: 0 8px 20px rgba(201, 154, 43, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.45);
   --cal-or-texte: rgb(138 106 18);
   --cal-or-trait: rgb(201 154 43);
-  --cal-progression-faite: rgb(226 181 74);
+  --cal-progression-faite: rgb(190 187 176);
   --cal-progression-a-venir: rgb(235 233 226);
   --cal-lien: rgb(31 79 216);
   --cal-ok: rgb(30 122 87);
@@ -104,6 +104,7 @@
   --cal-action-ombre: 0 8px 22px rgba(226, 181, 74, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.45);
   --cal-or-texte: rgb(226 181 74);
   --cal-or-trait: rgb(226 181 74);
+  --cal-progression-faite: rgba(255, 255, 255, 0.34);
   --cal-progression-a-venir: rgba(255, 255, 255, 0.1);
   --cal-lien: rgb(108 134 242);
   --cal-ok: rgb(61 190 139);
