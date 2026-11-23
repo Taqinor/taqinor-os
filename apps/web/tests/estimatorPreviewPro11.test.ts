@@ -81,7 +81,8 @@ describe('pro-11 — W35 : optimiseur contraint VIVANT en pente (cerveau V8)', (
     expect(optimizer).toContain("mountingplace: 'building'");
     expect(optimizer).toContain('pitchedPlaneLeg(');
     // après l'arrivée PVGIS, l'optimiseur pente se re-résout
-    expect(optimizer).toMatch(/refinePitchedPvgis[\s\S]{0,600}liveResolvePitched\(\)/);
+    // ACAL1404 : la re-résolution de fond passe `false` (pas un geste de l'utilisateur).
+    expect(optimizer).toMatch(/async function refinePitchedPvgis[\s\S]{0,600}liveResolvePitched\((?:false)?\)/);
   });
 
   it('axes LIBRES en pente = pose + marge (+ besoin) ; verrous cumulatifs + Réinitialiser', () => {
@@ -112,7 +113,9 @@ describe('pro-11 — W35 : optimiseur contraint VIVANT en pente (cerveau V8)', (
     expect(matrix).toContain('ctx.v4YieldCache.get(v4Key(');
     // CALX114 — l'appel porte désormais aussi l'objectif saisi (`optimisation`), donc on
     // épingle l'appel ET le yieldFn plutôt qu'une ligne d'arguments figée.
-    expect(matrix).toContain('fineGridMatrixV6(ring, ctx.centroidLat, monthlyBill(), obstructionRings(), {');
+    // ACAL1505 : la facture passée est celle de la carte (`factureCarteDe`, facture du lead
+    // d'abord), toujours dérivée de `monthlyBill()`.
+    expect(matrix).toContain('fineGridMatrixV6(ring, ctx.centroidLat, factureCarteDe(monthlyBill(), ctx.opts?.factureMensuelleMad), obstructionRings(), {');
     expect(matrix).toContain('yieldFn: matrixYieldFn,');
   });
 
