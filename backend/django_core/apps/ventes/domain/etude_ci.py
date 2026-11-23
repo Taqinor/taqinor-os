@@ -1368,6 +1368,9 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
                                'Mode commercial ou industriel requis.', niveau='bloquant'))
         return _sans_cles_interdites(_vide_etude(res, alertes, hypotheses))
     _couche_visite(res, lead, alertes, devis=devis)
+    from .suppositions_ci import supposer_entrees  # ADEV125 (D-ACAL-92) : contrat absent ⇒ BT supposé
+    supposees = supposer_entrees(res, mode, tarif_ci.regles_du(devis))
+    hypotheses.extend(supposees)
     if _num(res.valeur('longueur_dc_m')) is None and _num(res.valeur('longueur_ac_m')) is None:
         alertes.append(_alerte(
             'longueurs_non_relevees', 'contraintes',
@@ -1440,6 +1443,8 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     alertes.extend(al_charge)
     niveau = (prov_charge or {}).get('niveau_donnees')
     sous_reserve = _sous_reserve_visite(res, lead, niveau)
+    if any(h['cle'] == 'contrat_electricite' for h in supposees):  # ADEV125 — devis en estimation
+        sous_reserve['valeur'] = True
     if not jours_types:
         etude = _vide_etude(res, alertes, hypotheses, sous_reserve)
         etude['production'] = production
@@ -1561,11 +1566,13 @@ CLES_ENTREES_PERSISTEES = ('mode', 'site', 'tension', 'phases',
 
 
 def entrees_pour_etude_params(entrees_resolues):
-    """Les entrées RÉSOLUES, remises dans la forme ``etude_params`` C&I v2."""
+    """Les entrées RÉSOLUES, remises dans la forme ``etude_params`` C&I v2 —
+    jamais une entrée SUPPOSÉE (ADEV125 : re-supposée tant que la fiche est muette)."""
+    from .suppositions_ci import est_supposee
     arbre = {}
     for feuille, chemin in FEUILLES:
         entree = (entrees_resolues or {}).get(feuille)
-        if not isinstance(entree, dict) or _vide(entree.get('valeur')):
+        if not isinstance(entree, dict) or _vide(entree.get('valeur')) or est_supposee(entree):
             continue
         morceaux = chemin.split('.')
         if morceaux[0] not in CLES_ENTREES_PERSISTEES:
@@ -1575,7 +1582,7 @@ def entrees_pour_etude_params(entrees_resolues):
             noeud = noeud.setdefault(morceau, {})
         noeud[morceaux[-1]] = entree['valeur']
     tarif = (entrees_resolues or {}).get('tarif_declare')
-    if isinstance(tarif, dict) and isinstance(tarif.get('valeur'), dict):
+    if isinstance(tarif, dict) and isinstance(tarif.get('valeur'), dict) and not est_supposee(tarif):
         arbre['tarif_declare'] = tarif['valeur']
     return arbre
 

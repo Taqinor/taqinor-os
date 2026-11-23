@@ -1948,6 +1948,14 @@ def profil_charge_prerequis_ci(rythme, categorie=None, *, company=None, mode=Non
     return [CHAMP_LEAD_DES_ALERTES[f] for f in feuilles]
 
 
+def champs_supposes_ci(mode, tension_declaree):
+    """ADEV125 (décisions du fondateur du 23/11/2026) — les champs du LEAD que
+    le moteur C&I SUPPOSE quand ils sont vides (``domain.suppositions_ci``) :
+    la fiche lead ne les exige plus (une règle, lue ici, jamais recopiée)."""
+    from .domain.suppositions_ci import champs_supposes
+    return champs_supposes(mode, tension_declaree)
+
+
 #: ALEA50 (D-ACI-5=a / D-ACI-6=a) — postes FIXES du moteur C&I qu'un devis
 #: automatique doit pouvoir CHIFFRER : chaque groupe est un « l'un des » de
 #: rôles d'article (``core.product_roles.ROLES_CI``) dont au moins un article

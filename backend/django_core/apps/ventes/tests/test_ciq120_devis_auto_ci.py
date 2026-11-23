@@ -308,11 +308,13 @@ class DevisAutoCITests(_Base):
 
     # ── ADEV76 : les refus nomment un CHAMP DU LEAD ─────────────────────────
 
-    def test_lead_1637_sans_rythme_ni_categorie_ni_contrat_nomme_le_contrat(self):
+    def test_lead_1637_sans_rythme_ni_categorie_ni_contrat_nomme_les_jours(self):
+        # ADEV125 (D-ACAL-92) — le contrat absent est supposé (BT) : le refus
+        # nomme ce qui reste à demander, le rythme.
         lead = self._lead(conso_mensuelle_kwh=Decimal('10000'), facture_hiver=Decimal('18000'),
                           categorie_commerciale=None, surface_toiture_m2=Decimal('200'))
         erreur = self._refus(lead, reel=True)
-        self.assertEqual(erreur.field, 'contrat_electricite')
+        self.assertEqual(erreur.field, 'jours_ouverture')
 
     def test_sans_categorie_ni_heures_nomme_les_jours_puis_les_heures(self):
         lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), categorie_commerciale=None)
@@ -329,8 +331,10 @@ class DevisAutoCITests(_Base):
         for jargon in ('profil', 'archétype', 'sourcé', 'sur le lead'):
             self.assertNotIn(jargon, erreur.message)
 
-    def test_facture_mad_seule_sans_contrat_nomme_le_contrat(self):
-        lead = self._lead(facture_hiver=Decimal('3500'))
+    def test_facture_mad_contrat_mt_declare_nomme_le_contrat(self):
+        # ADEV125 — rien n'est supposé contre un contrat MT déclaré : la
+        # facture en dirhams ne se convertit pas (prime fixe), refus nommé.
+        lead = self._lead(facture_hiver=Decimal('3500'), contrat_electricite='mt_general')
         erreur = self._refus(lead, reel=True)
         self.assertEqual(erreur.field, 'contrat_electricite')
         self.assertIn('Facture en MAD sans contrat', erreur.message)
@@ -543,8 +547,11 @@ class RefusConsigneVendeurCorc3Tests(_Base):
     jargon du moteur (« Tarif non déclaré … économies non chiffrées »)."""
 
     def test_contrat_absent_consigne_vendeur(self):
+        # ADEV125 — un contrat ABSENT est supposé (BT) ; le contrat domestique
+        # DÉCLARÉ n'a aucune grille professionnelle : refus, même consigne.
         with self.assertRaises(AutoDevisError) as ctx:
-            build_devis_auto(lead=self._lead(conso_mensuelle_kwh=Decimal('6000')),
+            build_devis_auto(lead=self._lead(conso_mensuelle_kwh=Decimal('6000'),
+                                             contrat_electricite='bt_domestique'),
                              user=self.user, company=self.co)
         erreur = ctx.exception
         self.assertEqual(erreur.field, 'contrat_electricite')

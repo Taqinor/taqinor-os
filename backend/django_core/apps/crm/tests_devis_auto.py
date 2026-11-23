@@ -80,7 +80,11 @@ class TestDevisAutoProCIQ404(SimpleTestCase):
                           categorie_commerciale='bureau')
         self.assertEqual(champs_manquants(lead), [])
         self.assertEqual(source_conso(lead), 'facture_hiver')
+        # ADEV125 (D-ACAL-92) — sans contrat, le moteur suppose la BT : la
+        # facture compte toujours ; un contrat MT déclaré, non.
         lead.contrat_electricite = None
+        self.assertEqual(source_conso(lead), 'facture_hiver')
+        lead.contrat_electricite = 'mt_general'
         self.assertIsNone(source_conso(lead))
 
     def test_commercial_mt_et_mad_seul_pas_pret(self):
@@ -256,12 +260,13 @@ class TestAgricoleSansCvAGR403(SimpleTestCase):
             champs_requis(Lead(nom='x', ete_differente=True)),
             [['facture_hiver'], ['facture_ete'], ['ville', 'gps_lat']])
         for mode in ('industriel', 'commercial'):
-            # CIQ404 — groupe pro du contrat CIQ1 ; ALEA47 — + le contrat et
-            # le rythme que le moteur exige (ici tout manque).
+            # CIQ404 — groupe pro du contrat CIQ1 ; ALEA47 — + le rythme que
+            # le moteur exige (ici tout manque) ; ADEV125 — le contrat absent
+            # est supposé par le moteur, jamais exigé.
             self.assertEqual(champs_requis(Lead(nom='x', type_installation=mode)),
                              [['conso_mensuelle_kwh', 'bill_kwh',
                                'releve_conso', 'facture_hiver'],
-                              ['contrat_electricite'], ['raccordement'],
+                              ['raccordement'],
                               ['jours_ouverture'],
                               ['heure_debut', 'regime_equipes']])
 
@@ -361,9 +366,9 @@ class TestChampsManquants(TestCase):
                              [LIB_PRO[mode]], mode)
             lead.conso_mensuelle_kwh = 1234.5
             self.assertEqual(champs_manquants(lead), [], mode)
+            # ADEV125 (D-ACAL-92) — contrat absent : BT supposé, toujours prêt.
             lead.contrat_electricite = None
-            self.assertEqual(champs_manquants(lead),
-                             ["Contrat d'électricité"], mode)
+            self.assertEqual(champs_manquants(lead), [], mode)
 
     def test_agricole_needs_the_two_hydraulic_groups(self):
         lead = self._lead(type_installation='agricole')

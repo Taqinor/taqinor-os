@@ -6,9 +6,11 @@ est annoncée à l'utilisateur — avec le CHAMP DE LA FICHE qui la lève. Ce
 jour-là, six batteries de 16 kWh sortaient d'une consommation de nuit
 supposée, sans qu'aucun écran ne nomme la question restée vide.
 
-Ce module ne calcule rien et ne touche pas à l'étude : il relit ses
-``alertes`` et ses ``hypotheses`` pour l'AFFICHAGE (aperçu du générateur,
-journal du devis automatique) :
+Il porte aussi LA règle des entrées que le calcul C&I suppose quand la fiche
+les laisse vides (décisions du fondateur du 23/11/2026, :func:`supposer_entrees`)
+— lue par le moteur ET par la fiche lead (``ventes.selectors.champs_supposes_ci``),
+jamais recopiée. Pour le reste, il relit les ``alertes`` et les ``hypotheses`` de
+l'étude pour l'AFFICHAGE (aperçu du générateur, journal du devis automatique) :
 
 * une alerte qui tient à une réponse manquante de la fiche reçoit
   ``champ_lead`` (la colonne du lead) et, quand son texte parlait le jargon
@@ -56,7 +58,56 @@ HYPOTHESES_ESTIMEES = {
     'azimut_deg': ('orientation', (
         'Orientation des panneaux supposée (plein sud par défaut) : à confirmer avec '
         'le client ou à la visite.')),
+    'contrat_electricite': ('contrat_electricite', (
+        "Contrat d'électricité non déclaré : tarif basse tension ({libelle}) supposé, devis "
+        'en estimation. Demandez au client son contrat : il est écrit sur sa facture.')),
 }
+
+#: ADEV125 (D-ACAL-92, fondateur 23/11/2026) — contrat d'électricité non déclaré
+#: (« ne sait pas » compris) hors moyenne tension DÉCLARÉE : le tarif basse tension
+#: de la famille est supposé (patenté pour un commerce, force motrice pour une
+#: usine), dit avec le champ de la fiche, devis marqué estimation.
+CONTRAT_BT_SUPPOSE = {'commercial': 'bt_patente', 'industriel': 'bt_force_motrice'}
+LIBELLES_SUPPOSES = {'bt_patente': 'BT patenté', 'bt_force_motrice': 'BT force motrice'}
+#: Origine d'une entrée supposée (vocabulaire du contrat ``etude_ci_preview.json``).
+ORIGINE_SUPPOSEE = 'estimation'
+
+
+def champs_supposes(mode, tension):
+    """Les champs du LEAD que le calcul C&I suppose quand ils sont vides —
+    ``tension`` : celle déclarée (``'mt'`` = aucun contrat à supposer)."""
+    if mode not in CONTRAT_BT_SUPPOSE:
+        return ()
+    return () if tension == 'mt' else ('contrat_electricite',)
+
+
+def supposer_entrees(res, mode, regles=None):
+    """Pose dans la résolution ``res`` (``etude_ci._Resolution``) les valeurs
+    supposées des entrées vides, provenance ``estimation`` (jamais figées au
+    devis : le rafraîchisseur les re-suppose tant que la fiche est muette) ;
+    rend les hypothèses ``estimation`` qui les disent."""
+    from apps.ventes import tarif_ci
+
+    hypotheses = []
+    tension = res.valeur('tension')
+    if 'contrat_electricite' in champs_supposes(mode, tension):
+        declare = res.valeur('tarif_declare')
+        tarif = tarif_ci.tarif_applicable(declare, tension=tension, **(regles or {}))
+        if tarif.get('origine') == tarif_ci.ORIGINE_OMIS and not tarif.get('contrat'):
+            contrat = CONTRAT_BT_SUPPOSE[mode]
+            res.poser('tarif_declare', dict(declare if isinstance(declare, dict) else {},
+                                            contrat=contrat),
+                      {'origine': ORIGINE_SUPPOSEE, 'detail': 'contrat_electricite', 'date': None})
+            hypotheses.append({'cle': 'contrat_electricite', 'valeur': contrat,
+                               'statut': 'estimation',
+                               'source': 'contrat non déclaré : tarif basse tension supposé '
+                                         '(décision fondateur du 23/11/2026)'})
+    return hypotheses
+
+
+def est_supposee(entree):
+    """Vrai si l'entrée résolue ``{valeur, provenance}`` a été supposée."""
+    return ((entree or {}).get('provenance') or {}).get('origine') == ORIGINE_SUPPOSEE
 
 
 #: Début de la ``source`` d'une consommation estimée → ce que la commerciale lit.
@@ -104,5 +155,6 @@ def alertes_pour_la_commerciale(etude):
             'code': 'supposition_%s' % hypothese['cle'], 'champ': hypothese['cle'],
             'champ_lead': champ, 'niveau': 'alerte', 'interne': True,
             'message': gabarit.format(valeur=_nombre(hypothese.get('valeur')),
-                                      origine=_origine(hypothese.get('source')))})
+                                      origine=_origine(hypothese.get('source')),
+                                      libelle=LIBELLES_SUPPOSES.get(hypothese.get('valeur'), ''))})
     return alertes

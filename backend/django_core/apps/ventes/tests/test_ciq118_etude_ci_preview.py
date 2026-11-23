@@ -214,7 +214,15 @@ class ContratTests(_Base):
         self.assertIsNone(data['option_avec'])  # aucun hybride au catalogue de test
 
     def test_devis_auto_refuse_nomme_le_champ_du_lead(self):
+        # ADEV125 (D-ACAL-92) — sans contrat : BT supposé, dit (provenance
+        # « estimation ») ; le refus ne porte plus sur le contrat.
         data = self.post(self.corps(tarif=None))
+        self.assertEqual(data['entrees_resolues']['tarif_declare']['provenance']['origine'],
+                         'estimation')
+        self.assertNotEqual(data['devis_auto']['champ'], 'contrat_electricite')
+        self.assertIn('contrat_electricite', {a['champ_lead'] for a in data['alertes']})
+        # Un contrat DÉCLARÉ sans grille professionnelle (domestique) : refus nommé.
+        data = self.post(self.corps(tarif={'contrat': 'bt_domestique'}))
         self.assertFalse(data['devis_auto']['possible'])
         self.assertEqual(data['devis_auto']['champ'], 'contrat_electricite')
         self.assertTrue(data['devis_auto']['message'].startswith('Demandez au client'))
