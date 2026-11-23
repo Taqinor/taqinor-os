@@ -204,6 +204,20 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(surInput).not.toHaveBeenCalled() // le besoin 6 est déjà la cible posée : rien à renvoyer, la pose reste 1
   })
 
+  // ACAL1331 (D-ACAL-76) — calepinage vierge : le constructeur a posé la taille de la cible et l'a dite dans sa note ;
+  // le Guidé la DIT sous « Combien de panneaux ? ». Le commercial ajuste (« + ») : la note change, la phrase part.
+  it('ACAL1331 — la taille posée d’elle-même est dite ; ajustée, la phrase part', async () => {
+    const phrase = 'Posé d’après la facture : 12 panneaux · 6,96 kWc — ajustez si besoin.'
+    monterConstructeur({ besoin: '12', note: phrase })
+    rendre()
+    const dite = () => document.querySelector('[data-zone="taille-auto"]')
+    await waitFor(() => expect(dite()).toHaveTextContent(phrase))
+    await waitFor(() => expect(screen.getByTestId('cal-panneaux-option-facture')).toHaveAttribute('aria-pressed', 'true'))
+    document.getElementById('rp9-need-input').value = '13'
+    document.getElementById('rp9-need-note').textContent = '13 posés / 13 cible — il reste de la place sur le toit, laissée libre.'
+    await waitFor(() => expect(dite()).toBeNull(), { timeout: 3000 })
+  })
+
   it('la carte non choisie garde ses chiffres : « Le plus de panneaux » dès l’ouverture, la part de la facture après le clic, le sens dit', async () => {
     monterConstructeur({
       besoin: '12', panneaux: '12 × 710 W', kwc: '8,52 kWc', cover: '63 %', orient: 'portrait',

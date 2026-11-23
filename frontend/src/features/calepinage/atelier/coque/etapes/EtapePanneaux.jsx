@@ -219,6 +219,7 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
         </span>
         {ligneFacture && <span className="cal-pan-option-ligne"><Ligne texte={ligneFacture} /></span>}
       </button>
+      {besoin?.auto && <p className="cal-pan-note" data-zone="taille-auto" role="status">{besoin.note}</p>}
       {servi.facture.etat === 'chargement' && (
         <p className="cal-pan-note cal-pan-note-attente" data-zone="facture-lecture" aria-live="polite">
           Lecture de la facture du lead…

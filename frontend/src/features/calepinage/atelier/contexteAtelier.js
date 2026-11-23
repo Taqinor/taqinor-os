@@ -157,6 +157,9 @@ export function contexteCalepinageVersPayload(contexte) {
     // plafonnent le remplissage proposé, et le nombre choisi puis enregistré
     // (`neededPanels` du pan) prime à la réouverture.
     cibleVendue: contexte.cible?.source === 'devis',
+    // ACAL1331 (D-ACAL-76 « dimensionner ») — d'où vient la cible servie (`devis` | `factures` | `lead`, `null` sans
+    // cible) : sur un calepinage VIERGE, l'atelier pose cette taille dès le toit fermé et DIT « Posé d'après … ».
+    origineCible: contexte.cible?.source ?? null,
     fullName: titre || undefined,
     // ACAL777 — la facture mensuelle du lead servie (ACAL776) : repli d'AFFICHAGE des cartes ; `null` = rien inventé.
     factureMensuelleMad: contexte.consommation_lead?.facture_mensuelle_mad ?? null,
