@@ -64,8 +64,8 @@ import BandeauProvenanceProduction from '../../features/calepinage/production/Ba
 import { lancerSimulationAuto } from '../../features/calepinage/production/simulationAuto' // ACAL398
 // CALX68 — brouillon LOCAL de l'atelier (mode calepinage) : minuterie/repli +
 // bandeau de reprise. Logique pure, voir l'en-tête de ce module.
-import { hacherLayout, creerGestionnaireBrouillon, estPanneReseau, memoriserReprise } from '../../features/calepinage/brouillon'
-import { creerStockageMiroir, sansVue } from '../../features/calepinage/brouillonServeur' // ACAL400 ; H1 : sans l'état de vue
+import { creerGestionnaireBrouillon, estPanneReseau, memoriserReprise } from '../../features/calepinage/brouillon'
+import { creerStockageMiroir, sansVue, empreinteSansVue } from '../../features/calepinage/brouillonServeur' // ACAL400 ; H1 : sans l'état de vue ; ACAL1345
 import { toastInfo } from '../../lib/toast'
 // L2 — confirmation maison (APX17 : jamais une popup système) avant une écriture qui
 // diverge de la cible vendue du devis.
@@ -339,7 +339,7 @@ function AtelierToiture({
   const hacherScene = useCallback(() => {
     try {
       const layout = builderApi.current?.serializeLayout?.()
-      return layout == null ? null : hacherLayout(sansVue(layout)) // H1 — regarder le soleil n'est pas une modification
+      return layout == null ? null : empreinteSansVue(layout) // H1 — regarder le soleil, ACAL1345 — choisir un pan : pas une modification
     } catch {
       return null
     }
@@ -355,7 +355,7 @@ function AtelierToiture({
   }, [hacherScene])
   const marquerSceneEnregistree = (layout) => {
     try {
-      hashSceneReferenceRef.current = layout == null ? hacherScene() : hacherLayout(sansVue(layout))
+      hashSceneReferenceRef.current = layout == null ? hacherScene() : empreinteSansVue(layout)
     } catch (err) {
       // Référence inchangée.
       console.warn('ToitureDesign.marquerSceneEnregistree : référence de scène inchangée', err)
@@ -424,6 +424,7 @@ function AtelierToiture({
       intervalleSecondes: intervalleBrouillonSecondes,
       obtenirLayout: () => sansVue(builderApi.current?.serializeLayout?.() ?? null), // H1 — jamais un brouillon de vue
       enPause: () => builderApi.current?.ajoutDePanEnCours?.() === true, // ACAL1329 — rien avant le dernier point
+      hacher: empreinteSansVue, // ACAL1345 — choisir un pan dans la liste n'écrit aucun brouillon
     })
     gestionnaireBrouillonRef.current = gestionnaire
     gestionnaire.demarrer()
@@ -808,7 +809,7 @@ function AtelierToiture({
         // serveur sert déjà : le brouillon local ne porte donc plus rien de
         // plus récent, il s'efface (repli sur `layout` si `serializeLayout()`
         // n'est déjà plus joignable).
-        gestionnaireBrouillonRef.current?.effacer()
+        gestionnaireBrouillonRef.current?.effacerEtAmorcer()
         setHashBaseBrouillon(resultat?.empreinte_document || hashBaseBrouillon) // ACAL84
         toastInfo('Aucun changement')
         setGenStatus(null)
@@ -831,7 +832,7 @@ function AtelierToiture({
       // vient de changer (nouvelle version) : son empreinte change avec lui,
       // ce qui fait démarrer une minuterie/clé neuve pour la suite de la
       // session (l'effet dédié plus haut réagit à `hashBaseBrouillon`).
-      gestionnaireBrouillonRef.current?.effacer()
+      gestionnaireBrouillonRef.current?.effacerEtAmorcer()
       // ACAL84 — la clé suivante est l'empreinte SERVEUR rendue par l'écriture.
       setHashBaseBrouillon(resultat?.empreinte_document || hashBaseBrouillon)
       setGenStatus(null)

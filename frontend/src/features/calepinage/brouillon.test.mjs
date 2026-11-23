@@ -19,7 +19,7 @@ import {
   brouillonPertinent, creerGestionnaireBrouillon,
   purgerBrouillonsOrphelins, memoriserReprise, consommerReprise, estPanneReseau,
 } from './brouillon.js'
-import { baseServeur, creerStockageMiroir, lireBrouillonServeur, sansVue } from './brouillonServeur.js'
+import { baseServeur, creerStockageMiroir, empreinteSansVue, lireBrouillonServeur, sansVue } from './brouillonServeur.js'
 import { documentContrat } from '../../test/fixtures/contractSamples.js'
 
 /** Stockage en mémoire — MÊME contrat que `localStorage` (getItem/setItem/removeItem). */
@@ -550,6 +550,113 @@ test('R2-04 — les envois du miroir partent EN FILE : le DELETE ne passe jamais
   finirPut()
   await new Promise((r) => setTimeout(r, 0))
   assert.deepEqual(journal, ['put-debut', 'put-fin', 'delete'])
+})
+
+test('ACAL1248 — un PUT encore en attente quand la clé est effacée ne part plus : aucun PUT entre le PUT en vol et le DELETE', async () => {
+  const journal = []
+  const termines = []
+  const miroir = creerStockageMiroir({
+    base: stockageFactice(), calepinageId: 41,
+    envoyer: (id, corps) => new Promise((resolu) => {
+      journal.push(`put-${corps.layout.n}`); termines.push(() => { journal.push(`fin-${corps.layout.n}`); resolu() })
+    }),
+    effacer: () => { journal.push('delete'); return Promise.resolve() },
+  })
+  const cle = construireCle({ calepinageId: 41, utilisateurId: 7, hashBase: 'h1' })
+  miroir.setItem(cle, JSON.stringify({ layout: { n: 1 }, horodatage: 'x' })) // en vol
+  miroir.setItem(cle, JSON.stringify({ layout: { n: 2 }, horodatage: 'y' })) // en attente
+  miroir.removeItem(cle) // enregistrement réussi
+  await Promise.resolve()
+  termines[0]()
+  await new Promise((r) => setTimeout(r, 0))
+  assert.deepEqual(journal, ['put-1', 'fin-1', 'delete'], 'le PUT 2, en attente, est annulé par l’effacement')
+  // Un brouillon écrit APRÈS l'effacement (même clé) repart normalement.
+  miroir.setItem(cle, JSON.stringify({ layout: { n: 3 }, horodatage: 'z' }))
+  await new Promise((r) => setTimeout(r, 0))
+  assert.equal(journal.at(-1), 'put-3')
+})
+
+test('ACAL1248 — enregistrer ôte la référence de l’ancienne minuterie : aucun PUT après le DELETE, une vraie modification repart', async () => {
+  const journal = []
+  const miroir = creerStockageMiroir({
+    base: stockageFactice(), calepinageId: 41,
+    envoyer: (id, corps) => { journal.push(`put-${corps.layout.n}`); return Promise.resolve() },
+    effacer: () => { journal.push('delete'); return Promise.resolve() },
+  })
+  let doc = { n: 0 }
+  let tic = null
+  const g = creerGestionnaireBrouillon({
+    storage: miroir, calepinageId: 41, utilisateurId: 7, hashBase: 'h1', intervalleSecondes: 30,
+    obtenirLayout: () => doc,
+    minuteur: { definir: (fn) => { tic = fn; return 1 }, annuler: () => {} },
+  })
+  g.demarrer()
+  doc = { n: 1 } // l'utilisateur modifie puis clique « Enregistrer » avant le prochain tic
+  g.effacerEtAmorcer() // enregistrement réussi : le document courant EST le document servi
+  tic() // l'ancienne minuterie, encore vivante jusqu'au prochain rendu
+  await new Promise((r) => setTimeout(r, 0))
+  assert.deepEqual(journal, ['delete'], 'aucun brouillon fantôme après l’enregistrement')
+  doc = { n: 2 }
+  tic()
+  await new Promise((r) => setTimeout(r, 0))
+  assert.deepEqual(journal, ['delete', 'put-2'], 'une modification POSTÉRIEURE reste brouillonnée')
+})
+
+test('ACAL1248 — le renvoi après panne (effacer seul) garde la référence : ce qui a changé depuis se re-brouillonne', () => {
+  const storage = stockageFactice()
+  let doc = { n: 0 }
+  let tic = null
+  const g = creerGestionnaireBrouillon({
+    storage, calepinageId: 41, utilisateurId: 7, hashBase: 'h1', intervalleSecondes: 30,
+    obtenirLayout: () => doc, minuteur: { definir: (fn) => { tic = fn; return 1 }, annuler: () => {} },
+  })
+  g.demarrer()
+  doc = { n: 1 }
+  g.effacer()
+  tic()
+  assert.ok(lireBrouillon(storage, g.cle), 'modifié depuis la référence ⇒ re-brouillonné')
+})
+
+test('ACAL1345 — trois pans : choisir le pan 2, le 3, revenir au 1 ne change pas l’empreinte et n’écrit aucun brouillon', async () => {
+  const sommets = (x) => [[x, 0], [x + 4, 0], [x + 4, 3], [x, 3]]
+  const document3Pans = (actif) => ({ // forme réelle de `serializeLayout` : `outline`/`pin` suivent le pan actif
+    version: 2, zones: [{ id: 'p1', vertices: sommets(0) }, { id: 'p2', vertices: sommets(10) }, { id: 'p3', vertices: sommets(20) }],
+    activeAreaId: actif, outline: sommets({ p1: 0, p2: 10, p3: 20 }[actif]), pin: { lat: 33.5, lng: -7.6 + { p1: 0, p2: 1, p3: 2 }[actif] },
+    scene: { sunDay: 172, sunHour: 12 },
+  })
+  assert.notEqual(hacherLayout(sansVue(document3Pans('p1'))), hacherLayout(sansVue(document3Pans('p2'))),
+    'sans neutralisation, le choix du pan CHANGE le document : c’est ce que le test garde')
+  const envois = []
+  const miroir = creerStockageMiroir({
+    base: stockageFactice(), calepinageId: 9,
+    envoyer: (id, corps) => { envois.push(corps); return Promise.resolve() },
+  })
+  let doc = document3Pans('p1')
+  let tic = null
+  const g = creerGestionnaireBrouillon({
+    storage: miroir, calepinageId: 9, utilisateurId: 1, hashBase: 'h', intervalleSecondes: 30,
+    obtenirLayout: () => sansVue(doc), hacher: empreinteSansVue,
+    minuteur: { definir: (fn) => { tic = fn; return 1 }, annuler: () => {} },
+  })
+  g.demarrer()
+  const reference = empreinteSansVue(doc)
+  for (const actif of ['p2', 'p3', 'p1']) {
+    doc = document3Pans(actif)
+    assert.equal(empreinteSansVue(doc), reference, `pan actif ${actif} : même empreinte`)
+    tic()
+  }
+  await new Promise((r) => setTimeout(r, 0))
+  assert.equal(envois.length, 0, 'aucun PUT de brouillon')
+  // Une vraie modification, elle, s'écrit — avec le contenu ENTIER (pan actif et épingle compris : la reprise reste fidèle).
+  doc = { ...document3Pans('p2'), zones: [{ id: 'p1', vertices: sommets(0) }, { id: 'p2', vertices: sommets(11) }, { id: 'p3', vertices: sommets(20) }] }
+  tic()
+  await new Promise((r) => setTimeout(r, 0))
+  assert.equal(envois.length, 1)
+  assert.equal(envois[0].layout.activeAreaId, 'p2')
+  assert.ok(envois[0].layout.pin && envois[0].layout.outline)
+  // Une épingle posée à la main est une donnée : la déplacer modifie l'empreinte.
+  const manuel = { ...document3Pans('p1'), pinSource: 'manuel' }
+  assert.notEqual(empreinteSansVue(manuel), empreinteSansVue({ ...manuel, pin: { lat: 34, lng: -7 } }))
 })
 
 test('ACAL945 — estPanneReseau : vrai sans réponse ou ERR_NETWORK ; faux pour ECONNABORTED et toute réponse HTTP', () => {
