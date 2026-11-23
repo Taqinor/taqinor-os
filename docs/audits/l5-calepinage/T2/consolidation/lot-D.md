@@ -7,11 +7,11 @@ les « défauts voisins » de `T2-lane-*.jsonl`, `T2-audit-ok.jsonl` / `T2-audit
 
 ## 1. Comptes
 - Verdicts lus : 102 lignes, 98 corrections (ACAL889, 875, 857, 890 en double) : **ok 71 · partiel 23 · non-fait 4 (ACAL866, 869, 876, 890) · faux 0 · régression 0 · déjà-présent 0**.
-  Un `ok` contredit par la relecture adverse (ACAL598, 594, 832, 1285, 853) est traité comme un partiel (ACAL987 est du lot A, laissée).
+  Un `ok` contredit par la relecture adverse (ACAL598, 594, 1285 ici ; ACAL832 et ACAL853 sont déjà prises par le lot C : ACAL1603, ACAL1611) est traité comme un partiel (ACAL987 est du lot A, laissée).
 - Constats vus 60 (S1 2, S2 17, S3 34, S4 7) : **retenus 43** (S1 2, S2 13, S3 26, S4 2), doublons 12 (ACAL1410, 1613, 1648/1647, 1443, 1349, 1553, 1323, 1617 ×4, 1600), à reproduire / optionnels 5 (S4).
   Hors relecteur : base e2e 11 lignes (3 retenues, 5 artefacts écartés, 3 à rejouer ou reproduire) ; défauts voisins des lanes 8 (6 retenus, 1 doublon ACAL1338, 1 hors périmètre) ; 27 lignes de verdicts (24 reprises, 3 doublons) et 5 `contredit`.
 - Écartés : artefacts de pile 5 (`mesures-ecran:320/368/384`, `onglets:85`, `parcours:253`, `parite-crm:84`, société de démonstration déjà remplie) ; hors périmètre 1 (« Signé » de la liste, statut de devis) ; faux 0.
-- Tâches écrites : **60**, ACAL1700-ACAL1759 (M0 1, M1 16, M2 39, GATED 2, acceptation 2) ; 24 reprises ; modèles : opus 7, sonnet 35, haiku 18 ; événements : `registre/evenements/T2-consolidation-D.jsonl` (111).
+- Tâches écrites : **59**, ACAL1700-ACAL1758 (M0 1, M1 15, M2 39, GATED 2, acceptation 2) ; 24 reprises ; modèles : opus 6, sonnet 35, haiku 18 ; événements : `registre/evenements/T2-consolidation-D.jsonl` (111).
 
 ## 2. Classes
 Neuve : **K-TEXTE-HORS-FEUILLE** (`T2/classes/K-TEXTE-HORS-FEUILLE.md` : 8 endroits, 3 violés, 2 probables). Complétées (`T2/classes/complement-D.md`) : K-IMPASSE (cibles « Régler »), K-GRANDEUR-UNIQUE, K-ACTION-ENFOUIE, K-JARGON, K-DEFAUT-CHOIX, K-DOC-GEOMETRIE, K-RETOUR-FAUX.
@@ -33,8 +33,8 @@ Neuve : **K-TEXTE-HORS-FEUILLE** (`T2/classes/K-TEXTE-HORS-FEUILLE.md` : 8 endro
 | 12 | libellés des specs de maquettes | corriger la spec, pas l'écran (ACAL1748) | aucun |
 
 ## 4. Décisions ouvertes à écrire dans `docs/audits/decisions.yml` (listées, non écrites ; numéros provisoires)
-1. **D-ACAL-85** (ACAL1755, GATED) — quel chiffre de production le client lit quand le devis (6 047 kWh/an) et le rapport d'étude (8 198 kWh, « borne haute ») en annoncent deux : (a) le rapport imprime d'abord le chiffre du devis ; (b) chacun nomme l'autre et la raison de l'écart ; (c) le rapport n'est pas remis au client. Recommandation : (b), alignée sur le choix n° 1 du lot C (le devis nommé comme autre méthode). Coût si faux : deux chiffres sans explication.
-2. **D-ACAL-86** (ACAL1756, GATED) — genres de dossiers marocains (raccordement ONEE/SRM, déclaration loi 82-21) et leurs intitulés officiels : à sourcer, rien n'est inventé.
+1. **D-ACAL-86** (ACAL1755, GATED) — quel chiffre de production le client lit quand le devis (6 047 kWh/an) et le rapport d'étude (8 198 kWh, « borne haute ») en annoncent deux : (a) le rapport imprime d'abord le chiffre du devis ; (b) chacun nomme l'autre et la raison de l'écart ; (c) le rapport n'est pas remis au client. Recommandation : (b), alignée sur le choix n° 1 du lot C (le devis nommé comme autre méthode). Coût si faux : deux chiffres sans explication.
+2. **D-ACAL-87** (ACAL1756, GATED) — genres de dossiers marocains (raccordement ONEE/SRM, déclaration loi 82-21) et leurs intitulés officiels : à sourcer, rien n'est inventé.
 Liées, déjà ouvertes : D-ACAL-80 (froid, ACAL1553), D-ACAL-82 (résultat complet au premier jour, ACAL1349), D-ACAL-75/76 (pose au chargement, taille d'après la facture).
 
 ## 5. À jouer par l'orchestrateur (aucune tâche de lane)
@@ -50,11 +50,11 @@ PARCOURS-b-001 (toast générique + clé brute dans la liste d'erreurs), b-003 (
 ACAL1617 (cadre CARTE forcé en Expert) : ajouter à son « fini quand » la ligne dépliée de l'onglet Pertes (RATT-2-003) et la Journée type (RATT-2-008). ACAL1623/1603 : inchangées.
 
 ## 9. Tâche → fichiers (disjonction : les tâches d'un même cluster partagent un fichier et suivent `@after`)
-- Rapport (6) : 1701 1702 1724 1744 1759 1755 — `services/rapport/{synthese,production,hors_reseau,consommation,__init__,champs_lisibles}.py`, `services/documents/__init__.py`, `services/note_calcul.py`, `tests/test_calx297_rapport_etude.py`.
+- Rapport (6) : 1701 1702 1724 1744 1716 1755 — `services/rapport/{synthese,production,hors_reseau,consommation,__init__,champs_lisibles}.py`, `services/documents/__init__.py`, `services/note_calcul.py`, `tests/test_calx297_rapport_etude.py`.
 - Prêt à envoyer (5) : 1703 1704 1709 1734 puis 1725 — `services/pret_a_envoyer.py`, `commun/PretAEnvoyer.jsx`, `commun/GroupesPretAEnvoyer.jsx`.
 - PDF de chantier (8) : 1711 1717 1718 1712 1719 1722 1720 1721 — `services/{planche,planche_pan,fixation,export_dxf,garde_montants}.py`, `documents/plan_cablage.py`, `numerotation.ts`.
 - Écran Documents (6) : 1705 1738 1725 1726 1723 + 1721 (`cartesGuide.js`) — `BoutonDevis.jsx`, `CarteDevisCree.jsx`, `documents/{EtapeDocuments,ColonneDocuments,Vignettes,cartesGuide}.js(x)`.
-- Atelier web (11) : 1706 1707 1735 1716 1739 1752 1753 1737 1732 1720 — `roofPro11/{formesToit,toitParCotes,optimizer,zones,matrix,moduleSelect}.ts`, `roof-tool-pro11.ts`.
+- Atelier web (10) : 1706 1707 1735 1739 1752 1753 1737 1732 1720 — `roofPro11/{formesToit,toitParCotes,optimizer,zones,matrix,moduleSelect}.ts`, `roof-tool-pro11.ts`.
 - Coque (6) : 1727 1730 1731 1733 1745 1728 — `atelier/coque/{CoqueAtelier,BarreProjet,BandeauxCoque,PanneauEtape}.jsx`, `parcoursGuide.js`, `etapes/EtapePanneaux.jsx`.
 - Seules : 1700 (contrat) · 1710 (`variantes_modules.py`) · 1713 (`core/electrique/schema.py`, `sld.py`) · 1714 (`Rail.jsx`, `ComparerModules.jsx`) · 1715 (`chaine_pertes.py`, `simulation.py`) · 1708 (`ResultatIncomplet.jsx`) · 1729 (`Pourquoi.jsx`) · 1736 (`ReglagesSimulation.jsx`) · 1740 (`FichesIncompletes.jsx`) · 1741-1742 (`explications.py`, `explications.json`) · 1743 (`CheminementCables.jsx`) · 1746 (`AtelierPanneaux.jsx`) · 1747 (`CalepinageList.jsx`) · 1748 (specs maquettes) · 1749 (`EtapePanneaux.jsx`) · 1750 (`serializers.py`, `calepinage_liste.json`) · 1751 (commande) · 1754 (`useAtelierBoot.js`) · 1756 (`reglementaire.py`).
 - Fichiers communs avec les lots A, B, C (à vérifier à l'assemblage) : `EtapeToit.jsx`, `zones.ts`, `toitParCotes.ts`, `roof-tool-pro11.ts` (lot A) ; `EtapePanneaux.jsx`, `pret_a_envoyer.py`, `Rail.jsx` (lots B, C) ; `chaine_pertes.py`, `rapport/*`, `documents/__init__.py` (lot C : 1677 → 1701, 1615 → 1702). Interfaces : 1703 → 1704 → 1709 → 1734 ; 1701 → 1702 → 1724 ; 1706 → 1707 → 1735 ; 1711 → 1717 → 1718 ; 1712 → 1719 / 1722 ; 1720 → 1721 ; 1705 → 1725 → 1726 ; 1507 (lot B) → 1723.

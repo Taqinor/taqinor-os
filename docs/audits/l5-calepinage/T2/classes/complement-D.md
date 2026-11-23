@@ -22,7 +22,7 @@ Matrice : ligne « bouton Régler » × condition « onglet cible absent du regi
 | dossier client : proposition, rapport, atelier, Résultats (quatre chiffres) | oui (DOCS-a-008) | ACAL1755 (GATED D-ACAL-85) |
 | `services/documents/__init__.py::_etat_du_document` (carte rapport sans production) | oui, probable (DOCS-a-006) | ACAL1702 |
 | `services/pret_a_envoyer.py::controle_un_seul_chiffre` (ligne grise sans geste) | oui (PARCOURS-017) | ACAL1709 |
-| `apps/web/src/scripts/roofPro11/optimizer.ts` (Recommandation 14 620, Total 11 611) | oui, probable (ACAL853) | ACAL1716 |
+| production du moteur de devis (14 620) contre atelier (11 611) | oui (ACAL853, F2-CONSO-003) | ACAL1611 (lot C) |
 | `services/variantes_modules.py::_variante_pour_module` (production d'un autre module recopiée) | oui (ACAL594) | ACAL1710 |
 Matrice : ligne « production annuelle » × conditions « rapport, devis, atelier, variante » : casse sur les quatre.
 
@@ -35,7 +35,7 @@ Matrice : ligne « production annuelle » × conditions « rapport, devis, ateli
 ## K-JARGON
 | Endroit | Viole ? | Tâche |
 |---|---|---|
-| `services/rapport/__init__.py::_motif_html` (chemins bruts dans le PDF client) | oui (DOCS-a-007) | ACAL1759 |
+| `services/rapport/__init__.py::_motif_html` (chemins bruts dans le PDF client) | oui (DOCS-a-007) | ACAL1716 |
 | `frontend/src/features/calepinage/equipements/FichesIncompletes.jsx` (noct_c, vmp_v…) | oui (PARCOURS-025) | ACAL1740 |
 | `frontend/src/features/calepinage/electrique/CheminementCables.jsx` (« electrical.cheminements — ») | oui (RATT-1-002) | ACAL1743 |
 | `services/explications.py` et `data/explications.json` (« non publiée kWh », nom de champ interne) | oui, probable (PARCOURS-b-002, -004, RATT-1-004) | ACAL1741 |

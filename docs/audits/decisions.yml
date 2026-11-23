@@ -5593,3 +5593,29 @@ decisions:
     date: "2026-11-23"
     source: "tour 2 du L5 (23/11/2026), lot C : le P90 affiché ne compte que la variabilité entre années ; une étude de référence compose aussi les incertitudes du modèle, de la météo et de la fiche ; recommandation du lot C : composer, chaque composante citée ; le libellé honnête du P90 actuel est corrigé sans attendre (ACAL1657) ; change le P90 imprimé au rapport d'étude"
     taches: [ACAL1672]
+
+  - id: D-ACAL-86
+    question: "Quel chiffre de production le client lit-il quand le devis et le rapport d'étude en annoncent deux ?"
+    options:
+      - cle: devis_d_abord
+        texte: "Le rapport d'étude imprime d'abord le chiffre du devis"
+      - cle: chacun_nomme_l_autre
+        texte: "Chaque document nomme l'autre chiffre et dit la raison de l'écart"
+      - cle: rapport_interne
+        texte: "Le rapport d'étude n'est pas remis au client"
+    reponse: ouverte
+    date: "2026-11-23"
+    source: "tour 2 du L5 (23/11/2026), lot D : pour un même client, le devis annonce 6 047 kWh/an et le rapport d'étude 8 198 kWh (une « borne haute » imprimée comme P50) ; la correction du chiffre faux est faite sans attendre (ACAL1701, ACAL1702) ; reste à dire lequel des deux le client doit lire ; recommandation du lot D : chacun nomme l'autre ; coût si faux : deux chiffres sans explication"
+    taches: [ACAL1755]
+
+  - id: D-ACAL-87
+    question: "Quels genres de dossiers marocains offrir dans les gabarits réglementaires, et sous quels intitulés officiels ?"
+    options:
+      - cle: onee_srm_et_82_21
+        texte: "Raccordement ONEE / SRM et déclaration loi 82-21, intitulés donnés ou validés par le fondateur"
+      - cle: generique
+        texte: "Rester au dossier distributeur générique (D-ACAL-43)"
+    reponse: ouverte
+    date: "2026-11-23"
+    source: "tour 2 du L5 (23/11/2026), lot D : la liste « Genre de dossier » ne propose aucun dossier marocain ; les intitulés officiels sont à sourcer, rien n'est inventé ; rappel : D-ACAL-43 a retenu un dossier distributeur générique"
+    taches: [ACAL1756]
