@@ -568,6 +568,33 @@
           "type": "pourcentage",
           "minimum": 0,
           "maximum": 100
+        },
+        {
+          "cle": "indisponibilite_forfait_pct",
+          "libelle": "Indisponibilité forfaitaire (part de l'énergie annuelle), tant qu'aucune fenêtre d'arrêt datée n'est saisie",
+          "unite": "%",
+          "reference": "PVsyst — Unavailability loss ; NREL/TP-5K00-88769 (valeur de départ supposée, D-ACAL-82)",
+          "type": "pourcentage",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "cle": "ohmique_dc_conception_pct",
+          "libelle": "Pertes de câbles en continu — valeur de conception, tant que les longueurs réelles ne sont pas connues",
+          "unite": "%",
+          "reference": "UTE C 15-712-1 §11.2 ; PVsyst — Ohmic losses (valeur de départ supposée, D-ACAL-82)",
+          "type": "pourcentage",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "cle": "ohmique_ac_conception_pct",
+          "libelle": "Pertes de câbles en alternatif — valeur de conception, tant que la longueur réelle de la liaison n'est pas connue",
+          "unite": "%",
+          "reference": "UTE C 15-712-1 §11.3 ; Solargis Evaluate (valeur de départ supposée, D-ACAL-82)",
+          "type": "pourcentage",
+          "minimum": 0,
+          "maximum": 100
         }
       ],
       "electrique_societe": [
@@ -1350,6 +1377,33 @@
           "libelle": "Part de jours pleine en dessous de laquelle la batterie est dite trop grande",
           "unite": "%",
           "reference": "Réglage société — aucune valeur n'est supposée ; mot de verdict de la batterie (Pylon, Battery Recommender)",
+          "type": "pourcentage",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "cle": "indisponibilite_forfait_pct",
+          "libelle": "Indisponibilité forfaitaire (part de l'énergie annuelle), tant qu'aucune fenêtre d'arrêt datée n'est saisie",
+          "unite": "%",
+          "reference": "PVsyst — Unavailability loss ; NREL/TP-5K00-88769 (valeur de départ supposée, D-ACAL-82)",
+          "type": "pourcentage",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "cle": "ohmique_dc_conception_pct",
+          "libelle": "Pertes de câbles en continu — valeur de conception, tant que les longueurs réelles ne sont pas connues",
+          "unite": "%",
+          "reference": "UTE C 15-712-1 §11.2 ; PVsyst — Ohmic losses (valeur de départ supposée, D-ACAL-82)",
+          "type": "pourcentage",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "cle": "ohmique_ac_conception_pct",
+          "libelle": "Pertes de câbles en alternatif — valeur de conception, tant que la longueur réelle de la liaison n'est pas connue",
+          "unite": "%",
+          "reference": "UTE C 15-712-1 §11.3 ; Solargis Evaluate (valeur de départ supposée, D-ACAL-82)",
           "type": "pourcentage",
           "minimum": 0,
           "maximum": 100

@@ -354,3 +354,46 @@ class ExemplesDeBibliothequeTest(BaseApiCalepinage):
         self.assertEqual(copie.client_id, self.client_a.pk)
         self.assertIn(copie.pk, {c.pk for c in
                                  selectors.liste_calepinages(self.company)})
+
+    def _semer_complet(self, **reglages_societe):
+        """ACAL1349 — le semis ``--apply`` avec météo REJOUÉE et matériel
+        injecté (les deux choix de la société posés comme un administrateur)."""
+        from unittest import mock
+
+        from apps.calepinage.management.commands import (
+            semer_exemples_calepinage)
+        from apps.calepinage.services.parametres import enregistrer_parametres
+
+        from .test_calx5_simulation import MATERIEL, _ClientRejoue
+
+        enregistrer_parametres(self.company, {'simulation': {
+            cle: {'valeur': valeur, 'source': 'societe', 'reference': 'essai'}
+            for cle, valeur in reglages_societe.items()}})
+        materiel = dict(MATERIEL, module=dict(
+            MATERIEL['module'], tolerance_pmax_min_pct=0.0,
+            tolerance_pmax_max_pct=3.0))
+        commande = semer_exemples_calepinage.Command
+        with mock.patch.object(commande, 'client_pvgis', _ClientRejoue()):
+            with mock.patch.object(commande, 'materiel', materiel):
+                return self._semer('--apply')
+
+    def test_semis_complet_applique_le_profil_et_publie_un_resultat_complet(self):
+        sortie = self._semer_complet(mode_meteo='pluriannuel',
+                                     fenetre_annees=[2020, 2021])
+        exemple = Calepinage.objects.get(
+            company=self.company, titre='Exemple — villa à toit incliné')
+        total = exemple.resultat['production']['total']
+        self.assertEqual(total['socle_manquant'], [])
+        self.assertTrue(total['complete'])
+        self.assertIn('simulation publiée', sortie)
+        # idempotent : un second semis ne duplique rien et ne re-simule pas
+        deuxieme = self._semer('--apply')
+        self.assertNotIn('simulation', deuxieme)
+        self.assertEqual(Calepinage.objects.filter(
+            company=self.company, exemple=True).count(), 3)
+
+    def test_sans_choix_meteo_la_simulation_est_refusee_et_dite(self):
+        sortie = self._semer_complet()
+        self.assertIn('simulation non faite', sortie)
+        self.assertEqual(Calepinage.objects.filter(
+            company=self.company, exemple=True).count(), 3)

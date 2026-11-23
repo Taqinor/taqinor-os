@@ -67,7 +67,9 @@ class TypesDeclaresTest(SimpleTestCase):
         # Total RÉEL compté par script sur le registre : 40 simulation + 20
         # electrique_societe = 60 (REP-registre, 21/11/2026).
         # + 1 ACAL647 (seuil_acces_optimiseur) = 61.
-        self.assertEqual(total, 61)
+        # + 3 ACAL1968 (indisponibilite_forfait_pct, ohmique_dc_conception_pct,
+        # ohmique_ac_conception_pct : valeurs de départ des pertes) = 64.
+        self.assertEqual(total, 64)
 
     def test_aucun_type_pour_une_cle_hors_registre(self):
         for section, types in TYPES_CLES.items():

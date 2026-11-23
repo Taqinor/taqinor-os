@@ -9,6 +9,13 @@ IDEMPOTENT (clé : société + titre + ``exemple``) et DRY-RUN PAR DÉFAUT : la
 production ne reçoit ces lignes que sur un geste explicite (``--apply``),
 jamais au déploiement.
 
+ACAL1349 (D-ACAL-82) — ``--apply`` remplit aussi les réglages VIDES de la
+société avec le profil de départ (jamais une saisie écrasée) puis simule
+chaque modèle créé : son étape Résultats est alors complète. Le mode et la
+fenêtre météo restent un choix de la société, et la simulation a besoin d'un
+module et d'un onduleur du catalogue : à défaut, la simulation est REFUSÉE et
+dite (« simulation non faite »), le modèle reste semé.
+
     python manage.py semer_exemples_calepinage --societe <id>
     python manage.py semer_exemples_calepinage --societe <id> --apply
 """
@@ -33,6 +40,11 @@ MODELES = (
 class Command(BaseCommand):
     help = ("ACAL895 — sème trois modèles d'exemple dans la bibliothèque "
             "d'une société. Dry-run par défaut ; --apply écrit.")
+
+    #: Le client météo et le matériel de la simulation : ``None`` = ceux de
+    #: production (PVGIS, catalogue de la société) ; les tests les posent.
+    client_pvgis = None
+    materiel = None
 
     def add_arguments(self, parser):
         parser.add_argument('--societe', type=int, required=True,
@@ -74,5 +86,24 @@ class Command(BaseCommand):
                 enregistrer_layout(calepinage, document,
                                    libelle="Modèle d'exemple")
                 marquer_modele(calepinage)
+            self._simuler(calepinage, company)
         self.stdout.write('%s modèle(s) %s.' % (
             crees, 'créés' if appliquer else 'à créer (dry-run)'))
+
+    def _simuler(self, calepinage, company):
+        """ACAL1349 — profil de départ sur les réglages vides, puis simulation
+        publiée ; un refus ou un PVGIS injoignable est dit, jamais avalé."""
+        from ...services.profil_depart import appliquer_profil
+        from ...services.pvgis_serie import PvgisIndisponible
+        from ...services.simulation import (
+            SimulationRefusee, simuler_calepinage)
+
+        appliquer_profil(company, user=None)
+        try:
+            simuler_calepinage(calepinage, client=self.client_pvgis,
+                               materiel=self.materiel)
+        except (SimulationRefusee, PvgisIndisponible) as refus:
+            self.stdout.write('%s → simulation non faite : %s' % (
+                calepinage.titre, refus))
+        else:
+            self.stdout.write('%s → simulation publiée' % calepinage.titre)

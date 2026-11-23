@@ -504,10 +504,23 @@ describe('ACAL405 — Démarrage rapide', () => {
       }
     })
 
+    it('la table LID du profil se lit « 1,5 · 1 · 1 · 1,5 % » avec ses cellules, jamais « Plusieurs valeurs »', async () => {
+      const { valeurLisible, precisionValeur } = await import('./profilDepart')
+      const lid = { perc: { pct: 1.5 }, topcon: { pct: 1 }, hjt: { pct: 1 }, inconnue: { pct: 1.5 } }
+      expect(valeurLisible(lid, '%')).toBe('1,5 · 1 · 1 · 1,5 %')
+      expect(precisionValeur(lid)).toBe('Cellules PERC · TOPCon · HJT · autre')
+      expect(valeurLisible({ pose_libre: { uc_w_m2k: 29 }, dos_isole: { uc_w_m2k: 15 } }, 'W/m²K')).toBe('29 · 15 W/m²K')
+    })
+
     it('toute clé « sans source » servie par le contrat a son nom français', async () => {
-      const { LIBELLES_SANS_SOURCE, nomSansSource, estSansSource } = await import('./profilDepart')
+      const { LIBELLES_SANS_SOURCE, nomSansSource, estSansSource, libelleReglage } = await import('./profilDepart')
       // L'écran des résultats incomplets lit cette même liste (« Remplir » ne remplit pas ces réglages).
-      for (const cle of ['salissure_mensuelle_pct', 'lid_par_techno', 'indisponibilite_fenetres']) expect(estSansSource(cle), cle).toBe(true)
+      for (const cle of ['indisponibilite_fenetres', 'modele_degradation']) expect(estSansSource(cle), cle).toBe(true)
+      // D-ACAL-82 : salissure, LID, indisponibilité forfaitaire et câbles ont une valeur de départ.
+      for (const cle of ['salissure_mensuelle_pct', 'lid_par_techno', 'indisponibilite_forfait_pct', 'ohmique_dc_conception_pct', 'ohmique_ac_conception_pct']) {
+        expect(estSansSource(cle), cle).toBe(false)
+        expect(libelleReglage(cle).nom, cle).not.toBe('Autre réglage')
+      }
       for (const v of PROFIL.valeurs) expect(estSansSource(v.cle), v.cle).toBe(false)
       const libellesRegistre = Object.fromEntries(
         Object.values(REGISTRE).flat().map((r) => [r.cle, r.libelle]))

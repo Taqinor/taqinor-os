@@ -121,6 +121,76 @@ class ApplicationTest(unittest.TestCase):
         self.assertEqual(etapes.energie_kwh(SERIE), 4.0)
 
 
+#: ACAL1968 — la table que pose le profil de départ : quatre lignes, dont « inconnue ».
+TABLE_PROFIL = {
+    'p-type PERC': TABLE['p-type PERC'],
+    'topcon': {'pct': 1.0, 'source': 'texte', 'reference': 'Profil de départ'},
+    'inconnue': {'pct': 1.5, 'source': 'texte',
+                 'reference': 'Profil de départ'}}
+
+
+class LigneInconnueTest(unittest.TestCase):
+    """ACAL1968 (D-ACAL-82) — la ligne « inconnue » sert, DITE supposée, quand la
+    fiche ne dit pas sa technologie ou qu'elle n'est pas dans la table."""
+
+    def test_fiche_sans_techno_prend_la_ligne_inconnue_dite_supposee(self):
+        rendue, etape = lid.appliquer(
+            SERIE, contexte_de(techno='', table=TABLE_PROFIL))
+        self.assertEqual(etape['motif_omission'], '')
+        self.assertEqual(etape['entree']['ligne_retenue'], 'inconnue')
+        self.assertTrue(etape['entree']['supposee'])
+        self.assertIn('supposé', etape['entree']['mention'])
+        self.assertIn('non dite par la fiche', etape['entree']['mention'])
+        self.assertAlmostEqual(etapes.energie_kwh(rendue), 4.0 * (1 - 0.015),
+                               places=9)
+
+    def test_fiche_absente_prend_aussi_la_ligne_inconnue(self):
+        _, etape = lid.appliquer(SERIE, contexte_de(table=TABLE_PROFIL))
+        self.assertTrue(etape['entree']['supposee'])
+
+    def test_techno_hors_table_prend_la_ligne_inconnue_en_citant_la_chaine(self):
+        _, etape = lid.appliquer(
+            SERIE, contexte_de(techno='Cellules lamellaires',
+                               table=TABLE_PROFIL))
+        self.assertTrue(etape['entree']['supposee'])
+        self.assertIn('« Cellules lamellaires »', etape['entree']['mention'])
+
+    def test_techno_connue_n_est_pas_dite_supposee(self):
+        _, etape = lid.appliquer(
+            SERIE, contexte_de(techno='p-type PERC', table=TABLE_PROFIL))
+        self.assertFalse(etape['entree']['supposee'])
+        self.assertEqual(etape['entree']['mention'], '')
+
+    def test_la_fiche_du_catalogue_trouve_sa_ligne_par_ses_mots(self):
+        # La fiche réelle dit « N-type TOPCon (Tiger Neo) », pas « topcon ».
+        _, etape = lid.appliquer(
+            SERIE, contexte_de(techno='N-type TOPCon (Tiger Neo)',
+                               table=TABLE_PROFIL))
+        self.assertEqual(etape['entree']['ligne_retenue'], 'topcon')
+        self.assertEqual(etape['entree']['pct'], 1.0)
+        self.assertFalse(etape['entree']['supposee'])
+
+    def test_la_ligne_la_plus_precise_gagne(self):
+        table = dict(TABLE_PROFIL, **{'n type topcon': {
+            'pct': 0.8, 'source': 'mesure', 'reference': 'Mesure atelier'}})
+        _, etape = lid.appliquer(
+            SERIE, contexte_de(techno='N-type TOPCon (Tiger Neo)',
+                               table=table))
+        self.assertEqual(etape['entree']['ligne_retenue'], 'n type topcon')
+
+    def test_sans_ligne_inconnue_les_omissions_d_avant_restent(self):
+        _, etape = lid.appliquer(SERIE, contexte_de(techno='', table=TABLE))
+        self.assertIn('techno_cellule', etape['motif_omission'])
+        _, etape = lid.appliquer(
+            SERIE, contexte_de(techno='HJT bifacial', table=TABLE))
+        self.assertIn('« HJT bifacial »', etape['motif_omission'])
+
+    def test_une_ligne_inconnue_sans_source_est_refusee(self):
+        table = {'inconnue': {'pct': 1.5}}
+        _, etape = lid.appliquer(SERIE, contexte_de(techno='', table=table))
+        self.assertIn('REFUSÉE', etape['motif_omission'])
+
+
 class DansLaChaineTest(unittest.TestCase):
     """L'étape passe par l'ordonnanceur sans rien lui devoir."""
 

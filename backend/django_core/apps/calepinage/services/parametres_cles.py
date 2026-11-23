@@ -178,6 +178,15 @@ CLES_SIMULATION = (
     ('batterie_seuil_jours_pleine_pct', 'Part de jours pleine en dessous de laquelle la batterie est dite trop grande',
      '%', "Réglage société — aucune valeur n'est supposée ; mot de verdict de la batterie (Pylon, Battery "
      'Recommender)'),  # ACAL794
+    ('indisponibilite_forfait_pct', "Indisponibilité forfaitaire (part de l'énergie annuelle), tant qu'aucune "
+     "fenêtre d'arrêt datée n'est saisie", '%',
+     'PVsyst — Unavailability loss ; NREL/TP-5K00-88769 (valeur de départ supposée, D-ACAL-82)'),  # ACAL1968
+    ('ohmique_dc_conception_pct', 'Pertes de câbles en continu — valeur de conception, tant que les longueurs '
+     "réelles ne sont pas connues", '%',
+     'UTE C 15-712-1 §11.2 ; PVsyst — Ohmic losses (valeur de départ supposée, D-ACAL-82)'),  # ACAL1968
+    ('ohmique_ac_conception_pct', "Pertes de câbles en alternatif — valeur de conception, tant que la longueur "
+     "réelle de la liaison n'est pas connue", '%',
+     'UTE C 15-712-1 §11.3 ; Solargis Evaluate (valeur de départ supposée, D-ACAL-82)'),  # ACAL1968
 )
 
 #: Les clés ADMISES de la section ``electrique_societe``, même forme et même
@@ -317,6 +326,9 @@ TYPES_CLES = {
         'inclinaison_autonettoyage_deg': {'type': 'nombre', 'minimum': 0, 'maximum': 90},  # ACAL742
         'batterie_seuil_nuits_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL794
         'batterie_seuil_jours_pleine_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL794
+        'indisponibilite_forfait_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL1968
+        'ohmique_dc_conception_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL1968
+        'ohmique_ac_conception_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL1968
     },
     SECTION_ELECTRIQUE_SOCIETE: {
         'tolerance_polystring_acceptable_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL132

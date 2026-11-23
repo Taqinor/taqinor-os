@@ -110,7 +110,7 @@ __all__ = [
     'PAS_MINUTES_PVGIS', 'FACTEURS_KW', 'ORDRE_COLONNES_ENERGIE',
     'CLES_ETAPE', 'MOTIF_NON_LIVREE', 'chemin_module', 'charger',
     'colonne_energie', 'energie_kwh', 'mettre_a_l_echelle', 'etape_omise',
-    'etape_appliquee', 'reglage',
+    'etape_appliquee', 'reglage', 'repli_de_conception',
 ]
 
 
@@ -232,6 +232,51 @@ def etape_omise(libelle, motif, *, champ=''):
         'reference': None,
         'motif_omission': texte,
     }
+
+
+def repli_de_conception(serie, contexte, *, cle, poste, libelle, reference,
+                        motif):
+    """ACAL1968 (D-ACAL-82) — la valeur de CONCEPTION d'un poste, ou ``None``.
+
+    Quand une étape ne peut pas CALCULER sa perte (longueurs de câbles
+    inconnues, aucune fenêtre d'arrêt datée), la société peut avoir posé une
+    valeur de départ SUPPOSÉE au réglage ``cle`` (le profil de départ la
+    pose, sourcée). Elle s'applique alors à l'énergie, annoncée « supposé »
+    dans ``entree`` avec le motif du calcul absent. Un calcul réel PRIME
+    (l'appelant ne vient ici qu'étape omise) ; un poste saisi et sourcé du
+    calepinage PRIME aussi (l'ordonnanceur l'applique à ce défaut-ci) ; sans
+    réglage, sans pourcentage lisible ou sans colonne d'énergie : ``None`` et
+    l'omission reste dite.
+
+    Returns:
+        ``(serie_rendue, etape)`` ou ``None``.
+    """
+    for saisi in (contexte or {}).get('postes_saisis') or ():
+        if (isinstance(saisi, dict) and saisi.get('poste') == poste
+                and str(saisi.get('source') or '').strip()):
+            return None
+    saisie = reglage(contexte, cle)
+    if not saisie or colonne_energie(serie) is None:
+        return None
+    from apps.calepinage.services.valeurs import nombre
+
+    pct = nombre(saisie.get('valeur'))
+    if pct is None or not 0.0 <= pct < 100.0:
+        return None
+    entree = {
+        'mode': 'valeur_de_conception',
+        'supposee': True,
+        'pct': pct,
+        'mention': ('supposé — valeur de départ du réglage « %s », remplacée '
+                    'dès que le calcul réel est possible' % cle),
+        'champ_du_reglage': 'simulation.%s' % cle,
+        'motif_du_calcul_reel': motif,
+        'source_du_reglage': saisie.get('source'),
+        'reference_du_reglage': saisie.get('reference') or '',
+    }
+    return mettre_a_l_echelle(serie, 1.0 - pct / 100.0), etape_appliquee(
+        libelle, source=saisie.get('source'), entree=entree,
+        reference=reference)
 
 
 def etape_appliquee(libelle, *, source, entree, reference='', gain=False):

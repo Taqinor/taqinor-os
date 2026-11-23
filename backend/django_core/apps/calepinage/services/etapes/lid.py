@@ -16,8 +16,16 @@ La société déclare, PAR TECHNOLOGIE, une perte LID sourcée — le réglage
 ``source``. La technologie lue sur la fiche du module choisit la ligne ; la
 perte de cette ligne s'applique uniformément à la série.
 
-POURQUOI IL N'Y A AUCUNE VALEUR PAR DÉFAUT
---------------------------------------------
+POURQUOI IL N'Y A AUCUNE VALEUR PAR DÉFAUT DANS CE MODULE
+-----------------------------------------------------------
+ACAL1968 (D-ACAL-82) : les valeurs de départ (PERC 1,5 %, TOPCon 1 %, HJT 1 %,
+« inconnue » 1,5 %) vivent dans les DONNÉES, ``data/profil_depart.json``,
+chacune avec sa source ; ce module n'en tape aucune. La ligne « inconnue » de
+la table sert, DITE supposée, quand la fiche ne dit pas sa technologie ou
+qu'elle n'est pas dans la table ; une ligne est trouvée par les MOTS de la
+fiche (« N-type TOPCon (Tiger Neo) » ⇒ « topcon »). Sans ligne « inconnue »,
+le paragraphe qui suit reste vrai :
+
 PVsyst écrit que le LID ne concerne que le cristallin dopé BORE de type p,
 les technologies de type n n'étant pas affectées, et que PVsyst ne propose
 AUCUNE valeur de LID par défaut
@@ -46,6 +54,10 @@ from apps.calepinage.services import etapes as _etapes
 #: La clé de réglage société lue ici (registre CALX145).
 CLE_REGLAGE = 'lid_par_techno'
 
+#: ACAL1968 — le nom de la ligne de la table qui sert quand la technologie est
+#: absente de la fiche ou de la table (D-ACAL-82 : 1,5 %, dite supposée).
+LIGNE_INCONNUE = 'inconnue'
+
 #: Le champ de fiche produit qui porte la technologie de cellule — publié
 #: par ``apps.stock.selectors.specs_for_produit``.
 CHAMP_TECHNO = 'techno_cellule'
@@ -59,7 +71,8 @@ REFERENCE = (
 
 LIBELLE = 'LID (première exposition)'
 
-__all__ = ['CLE_REGLAGE', 'CHAMP_TECHNO', 'REFERENCE', 'LIBELLE', 'appliquer']
+__all__ = ['CLE_REGLAGE', 'CHAMP_TECHNO', 'LIGNE_INCONNUE', 'REFERENCE',
+           'LIBELLE', 'appliquer']
 
 
 def appliquer(serie, contexte):
@@ -79,7 +92,12 @@ def appliquer(serie, contexte):
     fiche = fiche if isinstance(fiche, dict) else {}
     brute = fiche.get(CHAMP_TECHNO)
     lue = brute.strip() if isinstance(brute, str) else ''
-    if not lue:
+    table = saisie.get('valeur')
+    # ACAL1968 (D-ACAL-82) — la ligne « inconnue » de la table (posée par le
+    # profil de départ) sert quand la fiche ne dit pas sa technologie ou
+    # qu'elle n'est pas dans la table : la perte est dite SUPPOSÉE.
+    cle_inconnue = _cle_de_la_techno(table, LIGNE_INCONNUE)
+    if not lue and cle_inconnue is None:
         return serie, _etapes.etape_omise(
             LIBELLE,
             "La fiche du module ne dit pas sa technologie de cellule : la "
@@ -87,8 +105,10 @@ def appliquer(serie, contexte):
             'ligne n\'est choisie à sa place.',
             champ=f'fiche_module.{CHAMP_TECHNO}')
 
-    table = saisie.get('valeur')
-    ligne = _ligne_de_la_techno(table, lue)
+    ligne = _ligne_de_la_techno(table, lue) if lue else None
+    supposee = False
+    if ligne is None and cle_inconnue is not None:
+        ligne, supposee = _ligne_de_la_techno(table, LIGNE_INCONNUE), True
     if ligne is None:
         return serie, _etapes.etape_omise(
             LIBELLE,
@@ -121,7 +141,10 @@ def appliquer(serie, contexte):
     rendue = _etapes.mettre_a_l_echelle(serie, 1.0 - pct / 100.0)
     entree = {
         'techno_lue': lue,
-        'ligne_retenue': _cle_de_la_techno(table, lue),
+        'ligne_retenue': _cle_de_la_techno(
+            table, LIGNE_INCONNUE if supposee else lue),
+        'supposee': supposee,
+        'mention': _mention_supposee(lue) if supposee else '',
         'pct': pct,
         'source_de_la_ligne': source,
         'reference_de_la_ligne': ligne.get('reference') or '',
@@ -131,15 +154,35 @@ def appliquer(serie, contexte):
         LIBELLE, source=source, entree=entree, reference=REFERENCE)
 
 
+def _mention_supposee(lue):
+    """Pourquoi la ligne « inconnue » a servi — dit à l'écran et au rapport."""
+    cause = (f'technologie « {lue} » absente de la table' if lue
+             else 'technologie non dite par la fiche')
+    return f'supposé — {cause} : ligne « {LIGNE_INCONNUE} » de la table société'
+
+
 def _cle_de_la_techno(table, lue):
-    """La clé de la table qui correspond à la technologie lue, ou ``None``."""
+    """La clé de la table qui correspond à la technologie lue, ou ``None``.
+
+    Une clé égale à la chaîne lue gagne ; à défaut, la clé dont TOUS les mots
+    figurent dans la chaîne lue (« N-type TOPCon (Tiger Neo) » ⇒ la ligne
+    « topcon »), la plus précise d'abord. La ligne « inconnue » n'est jamais
+    une correspondance par mots : elle ne sert qu'à défaut de toute autre."""
     if not isinstance(table, dict):
         return None
     cible = _normaliser(lue)
     for cle in table:
         if _normaliser(cle) == cible:
             return cle
-    return None
+    mots = set(cible.split('_'))
+    meilleure, taille = None, 0
+    for cle in table:
+        mots_cle = _normaliser(cle).split('_')
+        if _normaliser(cle) == LIGNE_INCONNUE or not set(mots_cle) <= mots:
+            continue
+        if len(mots_cle) > taille:
+            meilleure, taille = cle, len(mots_cle)
+    return meilleure
 
 
 def _ligne_de_la_techno(table, lue):
