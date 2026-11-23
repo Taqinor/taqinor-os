@@ -5746,3 +5746,14 @@ decisions:
     date: "2026-11-23"
     source: "réponse du fondateur le 23/11/2026 (questions interactives), à la suite de D-ACAL-86 (un seul chiffre, le plus réaliste) ; la règle du 08/10/2026 « devis envoyés : nouveaux rendus seulement » est gardée"
     taches: []
+  - id: D-ACAL-97
+    question: "Combien de moteurs calculent une installation dans l'ERP, et où vivent leurs résultats ?"
+    options:
+      - cle: un_moteur_stocke_sur_le_lead
+        texte: "UN seul moteur (celui du CRM / du devis), appelé de partout (fiche du lead, devis, calepinage) ; ses résultats sont rangés UNE fois sur le lead et relus partout ; personne ne recalcule, et surtout pas avec un autre code ; sans devis, le calepinage lance ce même moteur ; quand une entrée change, le moteur est relancé une fois, les anciennes valeurs vont à l'historique et l'écran dit pourquoi ; un devis envoyé n'est jamais touché (révision proposée)"
+      - cle: lire_le_devis_lie
+        texte: "Le calepinage lit les valeurs du devis lié quand il en a un, et garde ses propres calculs sinon (ce que la vague C du 23/11 a construit)"
+    reponse: un_moteur_stocke_sur_le_lead
+    date: "2026-11-23"
+    source: "réponse du fondateur le 23/11/2026, mot pour mot : « i dont want calpinage to always take it design from sent quote, and what if we dont have a sent quote, i want to have one engine used everywhere and if the engine was used somewhere we just keep its values and use them everywhere no need to recompute and specially using some other engine, so only one engine should be in my ERP » ; puis, par questions interactives : résultats rangés « On the lead », « Recalculate on an input change, and say it », « Design it now, build it in a fresh session » ; conception : docs/audits/l5-calepinage/controles/C4-un-seul-moteur.md ; complète D-ACAL-86 (un seul chiffre) et D-ACAL-96 (devis envoyé jamais modifié)"
+    taches: []
