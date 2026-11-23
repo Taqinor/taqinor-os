@@ -106,7 +106,9 @@ CLES_SOCIETE_PAR_POSTE = {
     'mismatch': (('mismatch_fabricant_pct', ''),),
     'auxiliaires': (('auxiliaires_w_constants', 'constant'), ('auxiliaires_w_par_kw', 'par kW')),
     'auxiliaires_nocturnes': (('auxiliaires_w_nuit', ''),),
-    'indisponibilite': (('indisponibilite_fenetres', ''),),
+    # ACAL1349 — le forfait posé par le profil de départ (`indisponibilite_forfait_pct`) tient la place tant
+    # qu'aucune fenêtre n'est saisie : la ligne le LIT, sinon elle disait « aucun » alors que la cascade l'applique.
+    'indisponibilite': (('indisponibilite_fenetres', ''), ('indisponibilite_forfait_pct', 'forfait')),
 }
 
 MOIS_LIBELLES = ('janvier', 'février', 'mars', 'avril', 'mai', 'juin',
