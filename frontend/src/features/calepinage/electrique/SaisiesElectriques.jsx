@@ -178,8 +178,8 @@ export default function SaisiesElectriques({ calepinageId, lectureSeule = false 
                       ? (
                         <>
                           <p>
-                            {`Proposée — à confirmer : ${nombreFr(proposition.froid)} °C / ${nombreFr(proposition.chaud)} °C, `
-                              + `tirée de PVGIS. ${proposition.detail}`}
+                            {`Proposée — à confirmer : ${nombreFr(proposition.froid)} °C / ${nombreFr(proposition.chaud)} °C`
+                              + (proposition.noct ? ' (TMY + NOCT de la fiche)' : `, tirée de PVGIS. ${proposition.detail}`)}
                           </p>
                           <Button
                             type="button"
