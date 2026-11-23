@@ -101,6 +101,21 @@ describe('cadrerToit — le toit remplit la carte (F6)', () => {
     const mpp = (2 * Math.PI * R * Math.cos((b.center[1] * Math.PI) / 180)) / (512 * 2 ** b.zoom);
     expect((a.center[1] - b.center[1]) * DEG2M).toBeCloseTo(140 * mpp, 1);
   });
+  it('margesPx (coque v2 : rail 108, inspecteur 416, barre 88) : toit au centre de la zone LIBRE ; sans marges, inchangé', () => {
+    const plein = carte();
+    cadrerToit(plein.map, sources(), { zoomMax: 22 });
+    const libre = carte();
+    cadrerToit(libre.map, sources(), { zoomMax: 22, basPx: 0, margesPx: { haut: 88, gauche: 108, droite: 416, bas: 0 } });
+    const a = plein.map.jumpTo.mock.calls[0][0];
+    const b = libre.map.jumpTo.mock.calls[0][0];
+    // Zoom sur la zone libre : 446 × 702 px (plus petite dimension 446 au lieu de 790) ⇒ log2(790 / 446) cran de moins.
+    expect(a.zoom - b.zoom).toBeCloseTo(Math.log2(790 / 446), 6);
+    const mpp = (2 * Math.PI * R * Math.cos((toit[0][1] * Math.PI) / 180)) / (512 * 2 ** b.zoom);
+    // Le centre de la zone libre est 154 px à GAUCHE et 44 px plus BAS que celui de la carte : la caméra se pose 154 px à
+    // l'est et 44 px au nord du toit, pour que le toit tombe au milieu de la zone libre.
+    expect((b.center[0] - a.center[0]) * DEG2M * Math.cos((toit[0][1] * Math.PI) / 180)).toBeCloseTo(154 * mpp, 1);
+    expect((b.center[1] - a.center[1]) * DEG2M).toBeCloseTo(44 * mpp, 1);
+  });
   it('apiCamera expose appliquerVue (inchangée) et cadrerToit', () => {
     const { map } = carte();
     const api = apiCamera(map, sources(), true);
