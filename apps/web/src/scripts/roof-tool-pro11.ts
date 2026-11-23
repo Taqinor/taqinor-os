@@ -4316,7 +4316,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // avant map.on('load') (map.getLayer(...) renvoie undefined tant que
     // les layers n'existent pas encore).
     setReferenceContourVisible: (visible: boolean) => setReferenceContourVisible(visible),
-    majChiffrage: (chiffrage, panneauxDevis) => optimizer.majChiffrage(chiffrage, panneauxDevis), // ACAL994, R2-13
+    majChiffrage: (chiffrage, panneauxDevis) => { optimizer.majChiffrage(chiffrage, panneauxDevis); renderAreasPanel(); }, // ACAL994, R2-13 ; le Total relit le bloc
     // AP-F2 — « Recommencer depuis le tracé client », posée par ToitureDesign.jsx à
     // côté de la note « Calepinage automatique depuis le tracé client — à vérifier ».
     recommencerDepuisTraceClient: () => recommencerDepuisTraceClient(),

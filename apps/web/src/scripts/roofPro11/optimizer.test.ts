@@ -940,6 +940,56 @@ describe('ACAL1418 — chiffrage servi : Total et bande = production servie ; no
   });
 });
 
+// Demande croisée (lane zones) — la bande lit la production servie au kWc DE LA CARTE (module du pan : 10 × 710 W = 7,1),
+// et « Enregistrer » (majChiffrage) repeint aussi la production de la carte et le Total, pas seulement l'économie.
+describe('Demande croisée — bande au kWc de la carte ; majChiffrage repeint production et Total', () => {
+  const m710 = { id: 'produit-7', produitId: 7, libelle: 'Module 710 W', longueurMm: 2384, largeurMm: 1303, epaisseurMm: 33, poidsKg: 38, pmaxWc: 710, source: 'fiche' };
+  const catalogue = { calepinage: 1, modules: [{ module: m710, selectionnable: true, champs_manquants: [], motif: null }], champs_requis: [], motif_liste_vide: null };
+  const servi = { kwc: { valeur: 7.1, etat: 'servi' }, production_annuelle_kwh: { valeur: 4636, etat: 'servi' }, economie_annee1_mad: { valeur: 7420, etat: 'servi' } };
+  const GRILLE = { count: 10, kwc: 5.5, panels: [], rowWidthM: 2, footprintPerPanelM2: 2, slopeLenM: 1 };
+  const monter = (chiffrage: unknown) => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    const doc = new JSDOM('<!doctype html><body><dd id="rp9-reco-kwc"></dd><dd id="rp9-reco-prod"></dd><dd id="rp9-reco-savings"></dd>'
+      + '<p id="rp9-reco-band"></p><p id="rp9-reco-why"></p><p id="rp9-need-note"></p><div id="rp9-areas"></div><dd id="tot-prod"></dd></body>').window.document;
+    g.document = doc;
+    const pan = { id: 'area-1', label: '', vertices: rectRing(10, 7), obstacles: [], roofType: 'flat', pitchDeg: 22, facingAzimuthDeg: 180, facingManual: false, neededPanels: 0, neededAuto: true, result: null, renderPlan: null, moduleId: 'produit-7' };
+    const ctx = { opts: { chiffrage, modulesDisponibles: catalogue }, centroidLat: 33.5, rec: { targetAnnualKwh: 4000 }, neededPanels: 0, batiments: [], centroid: [-7, 33], environment: [], shadeObstructions: [],
+      obstacles: [], areas: [pan], activeAreaId: 'area-1', activeArea: () => pan, vertices: pan.vertices, roofType: 'flat', closed: true, pinned: new Set(),
+      liveResult: { winner: { placedCount: 10, kwc: 5.5, annualKwh: 4362, savingsLow: 1, savingsHigh: 2 }, target: 4000 }, shadeAnnualFactor: 1, horizonAnnualFactor: 1,
+      dom: { areasWindowEl: doc.getElementById('rp9-areas'), areasTotalProdEl: doc.getElementById('tot-prod') } } as unknown as Ctx;
+    const deps = { renderScene: vi.fn(), paintComparison: vi.fn(), highlightRow: vi.fn(), syncProductionWindow: vi.fn(), prefillLead: vi.fn(),
+      syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 800, obstructionRings: vi.fn(() => []), setStatus: vi.fn() };
+    const opt = createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]);
+    opt.renderConfig({ pack: { origin: [-7, 33], ringENU: [], azimuthDeg: 0, portrait: GRILLE, landscape: GRILLE } as never,
+      grid: GRILLE as never, family: 'south', tiltDeg: 20, azimuthDeg: 0, isReco: true, title: 't', why: 'w', rowId: null });
+    const zones = createZones(ctx, { setStatus: vi.fn() });
+    zones.renderAreasPanel();
+    const t = (id: string) => doc.getElementById(id)?.textContent ?? '';
+    return { opt, zones, t, fin: () => { g.document = avant; } };
+  };
+
+  it('servi à 7,1 kWc (module du pan) : la carte ET la bande « Année 1 » disent 4 636 kWh/an', () => {
+    const m = monter(servi);
+    try {
+      expect(m.t('rp9-reco-kwc')).toBe('7,10 kWc');
+      expect(m.t('rp9-reco-prod')).toBe(`${fmt(4636)} kWh/an`);
+      expect(m.t('rp9-reco-band')).toContain(`Année 1 ~${fmt(4636)} kWh/an`);
+    } finally { m.fin(); }
+  });
+
+  it('« Enregistrer » : le bloc relu repeint la production de la carte et le Total (avant : seule l’économie)', () => {
+    const m = monter(null);
+    try {
+      expect(m.t('rp9-reco-prod')).not.toBe(`${fmt(4636)} kWh/an`);
+      m.opt.majChiffrage(servi as never);
+      m.zones.renderAreasPanel(); // ce que fait l'enveloppe `majChiffrage` de roof-tool-pro11.ts après l'optimiseur
+      expect(m.t('rp9-reco-prod')).toBe(`${fmt(4636)} kWh/an`);
+      expect(m.t('tot-prod')).toBe(`${fmt(4636)} kWh/an`);
+    } finally { m.fin(); }
+  });
+});
+
 // ACAL1526 — la note sous « Panneaux nécessaires » dit la pose DESSINÉE : les emplacements écartés par le seuil
 // d'accès solaire (`poseSousSeuil`) sont retirés, jamais « il reste de la place » quand la pose a été rognée.
 describe('ACAL1526 — seuil d’accès : la note dit la pose dessinée', () => {
