@@ -11,7 +11,7 @@ import HistogrammeEcretage from '../production/HistogrammeEcretage'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { messageRefus } from '../commun/refusServeur'
 import Pourquoi from '../commun/Pourquoi'
-import { formatDateTime } from '../../../lib/format'
+import { formatDateTime, formatNumber } from '../../../lib/format'
 import { PARAM_ONGLET, ongletParCle } from '../atelier/onglets'
 import { estIndeterminee, phraseChaine, volts } from './tensionsChaines'
 import { libelleEtat } from './etatVerdict'
@@ -287,30 +287,32 @@ function TableauTensions({ chaines }) {
   return (
     <details className="flex flex-col gap-2" data-testid="acal619-tensions">
       <summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold">Tension par temps froid</summary>
-      <table className="w-full text-left text-sm">
-        <thead>
-          <tr className="text-xs text-muted-foreground">
-            <th scope="col">Chaîne</th>
-            <th scope="col">Modules</th>
-            <th scope="col">Voc à froid / limite</th>
-            <th scope="col">Température</th>
-            <th scope="col">Vmp à chaud / démarrage</th>
-            <th scope="col">Isc</th>
-          </tr>
-        </thead>
-        <tbody>
-          {chaines.map((c) => (
-            <tr key={c.chaine} data-testid={`acal619-ligne-${c.chaine}`}>
-              <th scope="row">{c.chaine}</th>
-              <td>{c.nombre_modules}</td>
-              <td>{estIndeterminee(c) ? phraseChaine(c).replace(/^Chaîne \d+ : /, '') : `${volts(c.voc_froid_v)} / ${volts(c.voc_froid_limite_v)} — ${etat(c.voc_froid_conforme)}`}</td>
-              <td>{c.temperature_froide_c} °C</td>
-              <td>{estIndeterminee(c) ? '—' : `${volts(c.vmp_chaud_v)} / ${volts(c.demarrage_v)} — ${etat(c.vmp_chaud_conforme)}`}</td>
-              <td>{c.isc_a == null ? '—' : `${c.isc_a} A`}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {/* ACAL1544 — une FICHE par chaîne (liste verticale + paires libellé / valeur) : aucun point de rupture de
+          fenêtre, la colonne de 320 px suffit ; nombres à la française. */}
+      <ul className="flex flex-col gap-2">
+        {chaines.map((c) => {
+          const indeterminee = estIndeterminee(c)
+          const lignes = [
+            ['Voc à froid / limite', indeterminee ? phraseChaine(c).replace(/^Chaîne \d+ : /, '') : `${volts(c.voc_froid_v)} / ${volts(c.voc_froid_limite_v)} — ${etat(c.voc_froid_conforme)}`],
+            ['Température', c.temperature_froide_c == null ? '—' : `${formatNumber(c.temperature_froide_c, { maxDecimals: 2 })} °C`],
+            ['Vmp à chaud / démarrage', indeterminee ? '—' : `${volts(c.vmp_chaud_v)} / ${volts(c.demarrage_v)} — ${etat(c.vmp_chaud_conforme)}`],
+            ['Isc', c.isc_a == null ? '—' : `${formatNumber(c.isc_a, { maxDecimals: 2 })} A`],
+          ]
+          return (
+            <li key={c.chaine} data-testid={`acal619-ligne-${c.chaine}`} className="flex flex-col gap-1 rounded-md border border-border p-2 text-sm">
+              <p className="font-semibold">{`Chaîne ${c.chaine} · ${c.nombre_modules} modules`}</p>
+              <dl className="flex flex-col gap-1">
+                {lignes.map(([libelle, valeur]) => (
+                  <div key={libelle} className="flex flex-col">
+                    <dt className="text-xs text-muted-foreground">{libelle}</dt>
+                    <dd>{valeur}</dd>
+                  </div>
+                ))}
+              </dl>
+            </li>
+          )
+        })}
+      </ul>
     </details>
   )
 }

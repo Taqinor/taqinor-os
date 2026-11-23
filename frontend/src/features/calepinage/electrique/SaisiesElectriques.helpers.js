@@ -140,14 +140,19 @@ export function corpsDeSaisie(saisie, entree) {
    serveur reste la seule règle : `temperatures_site`). `null` quand une saisie est enregistrée
    ou que rien n'a été servi ; `{ etat: 'non_etablie' }` quand le noyau est en repli (`source`
    nul ou `mention` non vide) ; `{ etat: 'proposee', froid, chaud, detail }` pour un TMY établi. */
+const SOURCE_TMY_NOCT = 'TMY + NOCT fiche' // `SOURCE_TMY_NOCT` de services/electrique.py
+
 export function propositionTemperatures(temperatures, entree) {
   const e = entree ?? {}
   if (e.temperature_min_c != null || e.temperature_max_c != null) return null
   if (!estObjet(temperatures)) return null
   const { froid_c: froid, chaud_c: chaud, source, mention, detail } = temperatures
   const lisible = Number.isFinite(froid) && Number.isFinite(chaud)
-  if (source !== 'tmy' || mention || !lisible) return { etat: 'non_etablie' }
-  return { etat: 'proposee', froid, chaud, detail: detail || '' }
+  // ACAL1549 — `source` est une liste fermée : `tmy` (chaud de repli, avec mention) ou `TMY + NOCT fiche` (chaud
+  // calculé d'après le NOCT de la fiche, sans mention) — les deux sont proposés dès qu'aucune mention ne les dément.
+  const noct = source === SOURCE_TMY_NOCT
+  if ((source !== 'tmy' && !noct) || mention || !lisible) return { etat: 'non_etablie' }
+  return { etat: 'proposee', froid, chaud, detail: detail || '', noct }
 }
 
 /** Un nombre à la française, signe moins typographique. */

@@ -98,6 +98,8 @@ function ListeCourte({ controles, testIdCompte, onRegler, attente = false, avis 
   const n = controles.filter((c) => c.etat === 'a_regler' || c.etat === 'bloquant').length
   const lignes = rangerControles(controles)
   const premiere = (attente || Boolean(avis)) && controles.length === 0
+  // ACAL1543 — UN seul « Régler » doré à la fois : le premier de la liste rangée ; les autres sont discrets.
+  const premierARegler = lignes.find((c) => (c.etat === 'a_regler' || c.etat === 'bloquant') && c.cible?.onglet)?.code
   return (
     <section data-testid="cal-pret-a-envoyer" aria-labelledby="cel-pret-titre" aria-busy={attente || undefined} className="cel-pret">
       <div className="cel-pret-tete">
@@ -132,6 +134,7 @@ function ListeCourte({ controles, testIdCompte, onRegler, attente = false, avis 
                   <Pourquoi controle={c} />
                   {aRegler && (
                     <button type="button" data-testid={`cal-pret-regler-${c.code}`} className="cel-pret-regler"
+                      data-recommande={c.code === premierARegler ? 'oui' : 'non'}
                       onClick={() => onRegler(c.cible)}>
                       Régler
                     </button>

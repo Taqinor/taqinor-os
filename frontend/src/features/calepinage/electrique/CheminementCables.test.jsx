@@ -187,6 +187,23 @@ describe('CheminementCables (CALX229)', () => {
     await waitFor(() => expect(calepinageApi.calepinages.troncons.mock.calls.length).toBeGreaterThan(avant))
   })
 
+  it('ACAL1547 : le point de collecte enregistré est relu et affiché (« Module n° 2 »), pas « non choisi »', async () => {
+    servir(CONTRAT.exemple)
+    calepinageApi.calepinages.layout.mockResolvedValue({ data: {
+      roof_layout: { zones: [{ id: 'z1', label: 'Pan Sud', geometry: { panels: [{ n: 1, cx: 0.5, cy: 0.5 }, { n: 2, cx: 2.4, cy: 1.1 }] } }] },
+      empreinte_document: 'E0',
+    } })
+    calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: { entree: {
+      cheminement: { pans: { z1: { motif_parcours: 'aller_retour', point_collecte: { cx: 2.4, cy: 1.1 } } } },
+    } } })
+
+    rendre()
+
+    const point = await screen.findByTestId('acal641-point-z1')
+    expect(point).toHaveValue('1')
+    expect(point.selectedOptions[0]).toHaveTextContent('Module n° 2')
+  })
+
   it('ACAL641 : un refus 400 s’affiche SOUS le champ du pan', async () => {
     const refus = documentContrat('calepinage', 'calepinage_entree_electrique').exemple_refus_motif_parcours
     servir(CONTRAT.exemple)

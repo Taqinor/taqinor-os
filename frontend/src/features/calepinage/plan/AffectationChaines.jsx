@@ -4,9 +4,9 @@ import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { Button, Card, Spinner } from '../../../ui'
 import RetourAtelier from '../atelier/RetourAtelier'
-import { couleurParModule, drapeauOptimiseur, libelleGroupe, marquerModules } from './AffectationChaines.helpers'
+import { affectationComplete, couleurParModule, drapeauOptimiseur, libelleGroupe, marquerModules } from './AffectationChaines.helpers'
 import { phrasesChaines } from '../electrique/tensionsChaines'
-import { libelleEtat } from '../electrique/etatVerdict'
+import { etatAffiche, libelleEtat } from '../electrique/etatVerdict'
 import ImportAffectation from './ImportAffectation'
 
 /* ACAL44 — le motif d'un bouton d'écriture en lecture seule (devis lié figé). */
@@ -24,6 +24,14 @@ function refusAffectation(err, defaut) {
 }
 const REFUS_AUTO = 'Rétablissement refusé par le serveur.'
 
+/** ACAL1536 — la phrase qui dit pourquoi aucune chaîne n'est apparue, d'après les rôles absents servis. */
+function causeSansChaine(absents) {
+  const manque = absents ?? []
+  if (manque.includes('module')) return 'Choisissez d’abord le module de ce toit (module non désigné pour l’électrique).'
+  if (manque.includes('onduleur')) return 'Choisissez d’abord l’onduleur : sans lui, aucune chaîne n’est formée.'
+  return 'Aucune chaîne n’a pu être formée : vérifiez le module et l’onduleur choisis.'
+}
+
 /* Maquette Électrique (22/11) — LA BARRE D'ACTIONS POSÉE SUR LA CARTE (`cal-elec-actions-carte`).
    « Raccorder automatiquement » = le MÊME geste que « Relancer l'affectation automatique » ci-dessous
    (même requête, même confirmation quand une affectation faite à la main serait effacée, refus du
@@ -39,7 +47,14 @@ export function BarreRaccordement({ calepinageId, manuelles = false, lectureSeul
     setRefus(null)
     setEnCours(true)
     relancerAffectationAuto(calepinageId)
-      .then((r) => onRaccorde?.(r.data))
+      .then((r) => {
+        onRaccorde?.(r.data)
+        // ACAL1536 — 200 sans chaîne : la CAUSE est dite (matériel absent servi par `entree-electrique`).
+        if ((r.data?.electrique?.affectation ?? []).some((l) => l?.chaine != null)) return undefined
+        return Promise.resolve(calepinageApi.calepinages.entreeElectrique?.(calepinageId))
+          .then((e) => setRefus([causeSansChaine(e?.data?.absents)]))
+          .catch(() => setRefus([causeSansChaine(null)]))
+      })
       .catch((err) => setRefus(Object.values(refusAffectation(err, REFUS_AUTO)).map(String)))
       .finally(() => setEnCours(false))
   }
@@ -48,7 +63,7 @@ export function BarreRaccordement({ calepinageId, manuelles = false, lectureSeul
       {(arme || refus) && (
         <div className="cel-barre-message" role={refus ? 'alert' : 'status'}>
           {arme && <p>L’affectation faite à la main sera effacée. Confirmez pour continuer.</p>}
-          {(refus ?? []).map((m) => <p key={m} className="cel-refus">{m}</p>)}
+          {(refus ?? []).map((m) => <p key={m} className="cel-refus font-semibold">{m}</p>)}
         </div>
       )}
       <div role="toolbar" aria-label="Outils du raccordement" className="cel-barre-outils">
@@ -239,11 +254,16 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
      (`modules_sous_seuil`, d'après le seuil société) ; rien n'est calculé ici. Relue à l'ouverture
      et après chaque enregistrement. */
   const [proposes, setProposes] = useState([])
+  const [publication, setPublication] = useState(null) // ACAL1535 — l'état du dossier ENREGISTRÉ
   useEffect(() => {
     let monte = true
     Promise.resolve(calepinageApi.calepinages.evaluerElectrique(id, {}))
-      .then((r) => { if (monte) setProposes(r?.data?.modules_sous_seuil || []) })
-      .catch(() => { if (monte) setProposes([]) })
+      .then((r) => {
+        if (!monte) return
+        setProposes(r?.data?.modules_sous_seuil || [])
+        setPublication(r?.data?.publication || null)
+      })
+      .catch(() => { if (monte) { setProposes([]); setPublication(null) } })
     return () => { monte = false }
   }, [id, surcharge])
 
@@ -320,9 +340,8 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
   const equiper = () => {
     setErreursChamp({})
     const marques = marquerModules(aEquiper, true)
-    const pris = new Set(marques.map((l) => l.module))
     calepinageApi.calepinages.enregistrerEntreeElectrique(id, {
-      affectation_manuelle: [...lignesProposees.filter((l) => !pris.has(l.module)), ...marques],
+      affectation_manuelle: affectationComplete(lignes, lignesProposees, marques),
     })
       .then((r) => {
         appliquerResultat(r.data)
@@ -376,7 +395,7 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
   // ACAL935 — l'état se lit comme au cadre du devis (mêmes mots : `etatVerdict.js`) ;
   // un serveur sans `etat` garde l'ancienne lecture du verdict à quatre mots.
   const etatLu = verdict && (verdict.etat
-    ? libelleEtat(verdict.etat, verdict.points)
+    ? etatAffiche(verdict, publication)
     : libelleEtat(
       { bloquant: 'bloquant', indetermine: 'a_completer' }[verdict.verdict] || 'pret',
       verdict.verdict === 'bloquant' ? bloquants.length : (verdict.manquantes || []).length))
