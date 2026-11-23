@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import calepinageApi from '../../../api/calepinageApi'
-import { Label } from '../../../ui'
+import { Button, Label } from '../../../ui'
 import { refusParChamp } from '../electrique/entreeElectrique'
 
 /* ============================================================================
@@ -23,11 +23,14 @@ export default function ImportAffectation({ calepinageId, onProposer, lectureSeu
   const [refus, setRefus] = useState([])
   const [bloquants, setBloquants] = useState([])
   const [message, setMessage] = useState(null)
+  const [nomFichier, setNomFichier] = useState('')
+  const entreeRef = useRef(null)
 
   const importer = async (evenement) => {
     const fichier = evenement.target.files?.[0]
     evenement.target.value = ''
     if (!fichier) return
+    setNomFichier(fichier.name ?? '')
     setRefus([]); setBloquants([]); setMessage(null)
     try {
       const res = await calepinageApi.calepinages.importerAffectation(calepinageId, await lireTexte(fichier))
@@ -46,11 +49,22 @@ export default function ImportAffectation({ calepinageId, onProposer, lectureSeu
 
   return (
     <div className="mt-2 flex flex-col gap-1" data-testid="acal631-import">
-      <Label htmlFor="acal631-fichier" className="min-h-11 cursor-pointer text-sm font-semibold underline">
+      <Label htmlFor="acal631-fichier" className="text-sm font-semibold">
         Importer un plan de chaînes (CSV)
       </Label>
-      <input id="acal631-fichier" type="file" accept=".csv,text/csv" disabled={lectureSeule} onChange={importer}
-        aria-invalid={refus.length > 0 ? 'true' : undefined} className="min-h-11 text-sm" data-testid="acal631-fichier" />
+      {/* ACAL1541 — l'entrée native (texte du navigateur, en anglais) est masquée : un bouton français la déclenche. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <input ref={entreeRef} id="acal631-fichier" type="file" accept=".csv,text/csv" disabled={lectureSeule}
+          onChange={importer} aria-invalid={refus.length > 0 ? 'true' : undefined} className="hidden"
+          data-testid="acal631-fichier" />
+        <Button type="button" variant="outline" className="min-h-11" disabled={lectureSeule}
+          onClick={() => entreeRef.current?.click()} data-testid="acal1541-choisir">
+          Choisir un fichier
+        </Button>
+        <span className="text-sm text-muted-foreground" data-testid="acal1541-nom">
+          {nomFichier || 'Aucun fichier choisi'}
+        </span>
+      </div>
       {refus.length > 0 && (
         <ul role="alert" className="flex flex-col gap-1 text-sm text-destructive" data-testid="acal631-refus">
           {refus.map((r) => (

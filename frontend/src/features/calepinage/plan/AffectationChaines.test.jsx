@@ -142,6 +142,18 @@ describe('AffectationChaines (ACAL631) — importer un plan de chaînes (CSV)', 
     fireEvent.change(screen.getByTestId('acal631-fichier'), { target: { files: [fichier] } })
   }
 
+  it('ACAL1541 : l’import CSV porte un bouton en français et le nom du fichier choisi', async () => {
+    calepinageApi.calepinages.importerAffectation.mockResolvedValue({ data: REFUS })
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+
+    expect(screen.getByRole('button', { name: 'Choisir un fichier' })).toBeInTheDocument()
+    expect(screen.getByTestId('acal631-fichier')).toHaveClass('hidden')
+    expect(screen.getByTestId('acal1541-nom')).toHaveTextContent('Aucun fichier choisi')
+    deposer('module;chaine;mppt;onduleur')
+    await waitFor(() => expect(screen.getByTestId('acal1541-nom')).toHaveTextContent('chaines.csv'))
+  })
+
   it('CSV valide : la proposition est remplie, le verdict relancé, RIEN n’est enregistré', async () => {
     calepinageApi.calepinages.importerAffectation.mockResolvedValue({
       data: { ...IMPORT, lignes: [{ module: B1, chaine: 2, mppt: 2, onduleur: 1 }, { module: B2, chaine: 2, mppt: 2, onduleur: 1 }] },
