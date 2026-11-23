@@ -1916,9 +1916,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       shadingUi.setHorizonProfile((ctx.horizonProfile ?? null) as unknown as import('../lib/horizonEngine').HorizonProfile | null);
       redrawExclusionZones();
       renderParcelle(); reperesUi.render(); // ACAL233, ACAL593
+      mapDraw.relireImageCapture(); shadingUi.syncHeightUi(); // ACAL1405 — date de la photo + bâtiment relus
       // CALX119 — contrôles du soleil de scène alignés sur l'instant relu.
-      if (sunHourEl) sunHourEl.value = String(Math.round(ctx.sunHour));
-      if (sunHourValueEl) sunHourValueEl.textContent = `${Math.round(ctx.sunHour)} h`;
+      if (sunHourEl) sunHourEl.value = String(Math.round(ctx.sunHour)); if (sunHourValueEl) sunHourValueEl.textContent = `${Math.round(ctx.sunHour)} h`;
       if (sunDateEl) sunDateEl.value = dayOfYearToDateValue(ctx.sunDay);
       document.querySelectorAll<HTMLButtonElement>('[data-sun-season]').forEach((o) =>
         o.setAttribute('aria-pressed', String(

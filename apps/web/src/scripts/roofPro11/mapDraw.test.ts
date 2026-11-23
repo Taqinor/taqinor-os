@@ -23,6 +23,7 @@ import {
 } from './mapDraw';
 import { lireCoordonneesCollees, proposerEchange } from './coordonneesCollees'; // ACAL506 / ACAL507
 import { underlayPourDocument } from './underlay'; // ACAL68
+import { dateImageCapturee, semerImageCapture } from './imageCapture'; // ACAL1405
 import { type Ctx } from './context'; // ACAL68
 import { UNDERLAY_PHOTO_LAYER_ID, UNDERLAY_PLAN_LAYER_ID } from './underlay';
 import { distanceEntreM } from './snap';
@@ -346,6 +347,26 @@ describe('ACAL68 — poserFond quand la carte n’est pas prête', () => {
     surLoad[0]();
     expect(sources.size).toBe(1);
     expect(underlayPourDocument(ctx)).toEqual({ underlay: fond });
+  });
+});
+
+// ACAL1405 — les champs « Date de la photo » sont montés AVANT la graine du document : ils se relisent après elle.
+describe('ACAL1405 — date de la photo relue à la réouverture', () => {
+  it('date relue après semis : les deux champs montrent la date et la source du document', () => {
+    document.body.innerHTML = '<form id="rp9-search"><input id="rp9-address"></form>';
+    const map = { getSource: () => undefined, ...methodesCarteInertes(), getZoom: () => 19, getCenter: () => ({ lng: -7.62, lat: 33.58 }), getCanvas: () => ({ clientWidth: 800, clientHeight: 600 }) };
+    const ctx = { opts: { maptilerKey: 'K', imagery: { pays: 'ma' }, reducedMotion: true }, vertices: [], obstacles: [], areas: [], activeAreaId: 'a1', closed: false, centroid: [-7.62, 33.58] } as unknown as Ctx;
+    semerImageCapture(null);
+    const draw = createMapDraw(ctx, { map: map as never, setStatus: vi.fn(), updateAreaReadout: vi.fn() });
+    const val = (id: string) => (document.getElementById(id) as HTMLInputElement).value;
+    expect(val('rp9-image-date')).toBe('');
+    semerImageCapture({ imageCapture: { date: '2026-06-21', source: 'page du fournisseur' } }); // graine du document, après le montage
+    draw.relireImageCapture();
+    expect([val('rp9-image-date'), val('rp9-image-date-source')]).toEqual(['2026-06-21', 'page du fournisseur']);
+    expect(dateImageCapturee()).toEqual({ date: '2026-06-21', source: 'page du fournisseur' }); // aucune écriture au chargement
+    semerImageCapture(null);
+    draw.relireImageCapture();
+    expect(val('rp9-image-date')).toBe('');
   });
 });
 
