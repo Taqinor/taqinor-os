@@ -345,6 +345,39 @@ class ModulePoseTest(unittest.TestCase):
         # Juillet chaud : la perte est non nulle (9,0 kWh entrent).
         self.assertLess(etapes.energie_kwh(rendue), 9.0)
 
+    def test_etapes_eclairement_et_qualite_nomment_le_module_pose(self):
+        """ACAL1910 — 13 modules d'un autre produit que le module par défaut :
+        « niveau d'éclairement » et « qualité module » nomment (et lisent la
+        fiche du) module POSÉ, jamais celui de l'entrée."""
+        import copy
+
+        from apps.calepinage.services.etapes import (
+            niveau_irradiance, qualite_module)
+        from apps.calepinage.services.simulation import construire_contexte
+
+        from .test_calx5_simulation import (
+            LAYOUT, MATERIEL, MODULE, REGLAGES, _Calepinage)
+
+        posee = dict(MODULE)
+        layout = copy.deepcopy(LAYOUT)
+        layout['modules'] = [{'id': 'm1', 'produitId': 22984, 'pmaxWc': 710.0}]
+        layout['zones'][0]['geometry']['moduleId'] = 'm1'
+        nom_defaut, nom_pose = 'Panneau par defaut Jinko', 'Canadian Solar 710W'
+        materiel = dict(MATERIEL, produits={'module': 1},
+                        designations=dict(MATERIEL['designations'], module=nom_defaut),
+                        fiches_modules={22984: {'specs': posee, 'designation': nom_pose}})
+        contexte, _meta = construire_contexte(
+            _Calepinage(layout), materiel=materiel, reglages=REGLAGES)
+
+        # Rien de publié sur les deux fiches : les motifs d'omission nomment le produit.
+        for etape in (niveau_irradiance, qualite_module):
+            _, bloc = etape.appliquer(SERIE, contexte)
+            self.assertIn(nom_pose, bloc['motif_omission'], etape.__name__)
+            self.assertNotIn(nom_defaut, bloc['motif_omission'], etape.__name__)
+        # Mono-module : le nom reste celui du module par défaut.
+        sans, _ = construire_contexte(_Calepinage(), materiel=materiel, reglages=REGLAGES)
+        self.assertEqual(sans['designation_module_pose'], nom_defaut)
+
     def test_champ_mono_module_garde_la_fiche_par_defaut(self):
         from apps.calepinage.services.simulation import construire_contexte
 
