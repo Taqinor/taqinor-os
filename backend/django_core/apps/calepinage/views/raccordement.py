@@ -105,7 +105,7 @@ def _bloc_du_calepinage(calepinage, saisie):
     « electrique_societe » du registre : aucun seuil n'est écrit ici.
     """
     from ..services.electrique import (
-        conception_du_calepinage, parametres_societe,
+        _phases_du_raccordement, conception_du_calepinage, parametres_societe,
     )
     from ..services.parametres_cles import SECTION_ELECTRIQUE_SOCIETE
     from ..services.troncons import troncons_du_calepinage
@@ -124,15 +124,36 @@ def _bloc_du_calepinage(calepinage, saisie):
 
     from .. import selectors
     servi = selectors.resultat_servi(calepinage) or {}
+    # ACAL1512 — les phases de « Saisies électriques » complètent la saisie
+    # comme pour ``evaluer-electrique`` (même règle, ACAL687).
+    completee = _phases_du_raccordement(saisie, _donnees)
     # ACAL157 — la proposition du LEAD voyage à côté de la saisie, jamais
     # dedans : elle ne devient saisie que par un POST explicite.
-    return bloc_raccordement(
-        conception, saisie, troncons, reglages,
+    return _sans_recopie(saisie, completee, bloc_raccordement(
+        conception, completee, troncons, reglages,
         proposition_lead=proposition_du_lead(calepinage),
         puissance_dc_kwc=dc_kwc, puissance_ac_kw=ac_kw,
         autoconsommation=servi.get('autoconsommation'),
         plafond_legal=plafond_injection_loi_8221(),
-        hors_reseau=((_donnees or {}).get('hors_reseau') or {}).get('actif'))
+        hors_reseau=((_donnees or {}).get('hors_reseau') or {}).get('actif')))
+
+
+def _sans_recopie(saisie, completee, bloc):
+    """ACAL1512 — la phase venue d'ailleurs JUGE (sa source citée sur le
+    verdict de régime) mais n'entre jamais dans la saisie de l'écran : ce qui
+    est publié, puis enregistré par un POST, reste ce que l'écran a saisi."""
+    from ..services.raccordement import CODE_REGIME_PHASES
+
+    source = (completee or {}).get('phases_source')
+    if not source:
+        return bloc
+    verdicts = [dict(v, source=source)
+                if v.get('code') == CODE_REGIME_PHASES and v.get('source')
+                else v for v in bloc['verdicts']]
+    saisie_ecran = (bloc['saisie']
+                    if (saisie or {}).get('phases') not in (None, '')
+                    else dict(bloc['saisie'], phases=None))
+    return dict(bloc, saisie=saisie_ecran, verdicts=verdicts)
 
 
 class FlottantPositif(serializers.FloatField):
