@@ -556,15 +556,18 @@ class FichePertesEnPostesTest(unittest.TestCase):
     def test_un_poste_non_compte_est_nomme_jamais_zero(self):
         texte = _texte_visible(_html_pertes_en_postes())
         _premier_poste('non_compte')  # l'échantillon en porte un
-        from apps.calepinage.services.rapport.champs_lisibles import motif_lisible
+        from apps.calepinage.services.documents.pertes_en_postes import (
+            _cause_courte,
+        )
 
-        # R3-19 : le texte IMPRIMÉ est le motif lisible, la donnée servie ne change pas.
-        motif = next(motif_lisible(etape['motif_omission'])
-                     for poste in POSTES_LISIBLES['postes']
+        # ACAL1616 : la fiche CLIENT imprime un mot court par cause, jamais
+        # le motif servi recopié (la donnée servie ne change pas).
+        etape = next(etape for poste in POSTES_LISIBLES['postes']
                      for etape in poste['etapes'])
         part = str(_premier_poste('compte')['perte_pct']).replace('.', ',')
         self.assertIn('non compté', texte)
-        self.assertIn(motif, texte.replace('&#x27;', "'"))
+        self.assertIn(_cause_courte(etape), texte.replace('&#x27;', "'"))
+        self.assertNotIn(etape['motif_omission'], texte)
         self.assertNotRegex(texte, r'(?<![\d,])0 %')  # jamais 0 %
         self.assertIn(part + ' %', texte)  # la part servie, telle quelle
 
