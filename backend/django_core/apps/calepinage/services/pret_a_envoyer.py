@@ -249,7 +249,9 @@ def controles_de_porte(calepinage):
 
 # ── ACAL858 — les contrôles ÉLECTRIQUES : l'état d'ACAL934 et les lignes
 # servies, LUS (aucun seuil, aucun message ni rangement électrique recopié).
-CIBLE_MATERIEL = {'etape': 'electrique', 'onglet': 'materiel', 'champ': ''}
+#: ACAL1703 — chaque ``cible.onglet`` est une clé d'``ONGLETS`` (``atelier/onglets.js``)
+#: ou la route nommée ``reglages`` : une clé inconnue retombait sur « Plan importé ».
+CIBLE_MATERIEL = {'etape': 'electrique', 'onglet': 'materiel-electrique', 'champ': ''}
 #: ACAL1506 — l'onglet qui RÈGLE chaque contrôle électrique (clés d'``ONGLETS``,
 #: ``atelier/onglets.js``, toutes de l'étape Électrique) ; sans entrée : le Schéma.
 _ONGLET_DU_CONTROLE = {'verdict_electrique': 'verdict-electrique',
@@ -495,7 +497,8 @@ def controles_du_resultat(calepinage):
 #: Points d'un disque testés sur son pourtour : un ÉCHANTILLONNAGE du cercle
 #: (8 = un point tous les 45°), pas une règle métier.
 POINTS_DU_CERCLE = 8
-CIBLE_OBSTACLES = {'etape': 'toit', 'onglet': 'obstacles', 'champ': ''}
+#: ACAL1703 — l'écran Toit (onglet essentiel ``pente``) porte la liste « Objets du site ».
+CIBLE_OBSTACLES = {'etape': 'toit', 'onglet': 'pente', 'champ': ''}
 
 
 def _points_de_l_obstacle(obstacle, local):
@@ -665,6 +668,7 @@ def controle_taille_sans_facture(calepinage):
 
 # ── ACAL1171 — le chiffre que le PDF du devis imprimera : la pose réelle ou la
 # ville. La cause est celle du résolveur du devis (ventes), CLASSÉE ici en geste.
+#: ``reglages`` = la route ``/calepinage/reglages`` (``lienManque.js``, ``PretAEnvoyer.jsx``).
 CIBLE_PERTES = {'etape': 'resultats', 'onglet': 'reglages', 'champ': ''}
 #: Le motif du résolveur → (état, geste, cible), au premier mot trouvé ;
 #: sans mot connu : la simulation est périmée.

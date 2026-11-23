@@ -291,6 +291,53 @@ class ControlesElectriquesTest(SimpleTestCase):
                          'schema')
 
 
+#: ACAL1703 — le registre des onglets de l'atelier, LU (jamais recopié) : ``cle`` de
+#: chaque entrée d'``ONGLETS`` ; ``reglages`` est la route nommée ``/calepinage/reglages``
+#: (``production/lienManque.js``).
+REGISTRE_ONGLETS = (pathlib.Path(__file__).resolve().parents[4] / 'frontend' / 'src'
+                    / 'features' / 'calepinage' / 'atelier' / 'onglets.js')
+ROUTES_NOMMEES = {'reglages'}
+
+
+def _cles_du_registre():
+    import re
+
+    return set(re.findall(r"\{ cle: '([^']+)'", REGISTRE_ONGLETS.read_text(encoding='utf-8')))
+
+
+def _onglets_servis():
+    """Toutes les ``cible.onglet`` que le service peut servir : ses constantes
+    ``CIBLE_*``, l'onglet de chaque contrôle électrique et son défaut, et les
+    cibles de « Un seul chiffre »."""
+    from apps.calepinage.services import pret_a_envoyer as service
+
+    cibles = [v for nom, v in vars(service).items()
+              if nom.startswith('CIBLE_') and isinstance(v, dict)]
+    cibles += [c for *_x, c in service._MOTIFS_UN_SEUL_CHIFFRE if c]
+    onglets = {c['onglet'] for c in cibles if c['onglet']}
+    onglets |= set(service._ONGLET_DU_CONTROLE.values())
+    onglets.add(service._elec('x', 'X', 'ok', '')['cible']['onglet'])
+    return onglets
+
+
+class CiblesDuReglerTest(SimpleTestCase):
+    """ACAL1703 — « Régler » mène toujours vers un écran qui existe."""
+
+    def test_toute_cible_servie_est_un_onglet_du_registre_ou_une_route(self):
+        # Mutant : remettre « materiel », « obstacles » ⇒ échec (clés absentes).
+        cles = _cles_du_registre()
+        self.assertGreater(len(cles), 30)  # le registre est bien lu
+        self.assertEqual(_onglets_servis() - cles - ROUTES_NOMMEES, set())
+
+    def test_les_trois_cibles_menent_a_l_ecran_qui_porte_le_champ(self):
+        from apps.calepinage.services import pret_a_envoyer as service
+
+        self.assertEqual(service.CIBLE_MATERIEL['onglet'], 'materiel-electrique')
+        self.assertEqual((service.CIBLE_OBSTACLES['etape'], service.CIBLE_OBSTACLES['onglet']),
+                         ('toit', 'pente'))
+        self.assertEqual(service.CIBLE_PERTES['onglet'], 'reglages')
+
+
 DOSSIERS = 'apps.calepinage.services.reglementaire.dossiers_du_calepinage'
 
 

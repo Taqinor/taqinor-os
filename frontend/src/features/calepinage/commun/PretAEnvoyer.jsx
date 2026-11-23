@@ -1,4 +1,4 @@
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { Badge } from '../../../ui'
@@ -6,6 +6,7 @@ import EtatEcranAtelier from '../atelier/EtatEcranAtelier'
 import { PARAM_ONGLET } from '../atelier/onglets'
 import { PARAM_CHAMP } from '../atelier/ouvrirChamp'
 import { libelleEtat } from '../electrique/etatVerdict'
+import { lienManque } from '../production/lienManque'
 import Pourquoi from './Pourquoi'
 import {
   GROUPES, GROUPE_AUTRES, MESSAGE_ECHEC, MESSAGE_LENT, estDelaiDepasse, groupeDuControle, heureDe,
@@ -110,6 +111,7 @@ export default function PretAEnvoyer({
   calepinageId, testIdCompte, groupes = false, filtre = null, pied = null, court = false,
 }) {
   const [parametres, setParametres] = useSearchParams()
+  const naviguer = useNavigate()
   const { data: lue, loading, error, refetch } = useResource(
     // `etape` : seuls les contrôles de l'étape (le serveur ne calcule plus le reste).
     (id) => calepinageApi.calepinages.pretAEnvoyer(id, filtre ? { etape: filtre } : undefined), calepinageId,
@@ -153,6 +155,12 @@ export default function PretAEnvoyer({
   const reussis = controles.filter((c) => c.etat === 'ok')
 
   const regler = (cible) => {
+    // ACAL1703 — `reglages` n'est pas un onglet de l'atelier : c'est la route nommée des réglages
+    // (même lien que « Ce qui manque encore », `lienManque`), jamais `?onglet=reglages`.
+    if (cible.onglet === 'reglages') {
+      naviguer(lienManque(calepinageId, cible))
+      return
+    }
     const suivants = new URLSearchParams(parametres)
     suivants.set(PARAM_ONGLET, cible.onglet)
     if (cible.champ) suivants.set(PARAM_CHAMP, cible.champ)
