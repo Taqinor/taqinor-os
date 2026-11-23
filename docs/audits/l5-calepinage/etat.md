@@ -53,6 +53,7 @@ vivent dans le scratchpad de la session, pas sur `main`.
 | départ | 22/11 23 h | 3 % | 21 % | prises (`file:docs/plans/PLAN_AUDIT_CALEPINAGE.md`, `app:calepinage`) | tour 0 |
 | tour 0 fini, tour 2 lancé | 23/11 00 h UTC | 6 % | 67 % | renouvelées | état écrit et poussé ; économie de contexte : l'orchestrateur ne lit plus que des messages courts |
 | tour 2 à mi-chemin | 23/11 02 h 25 UTC | 17 % | 85 % | à renouveler avant 05 h UTC | état écrit et poussé avant la compaction du contexte |
+| tour 2 aux trois quarts | 23/11 06 h 00 UTC | 30 % (≈ 3,7 points par heure) | 21 % (après compaction) | renouvelées à 05 h 55 UTC | consolidation par lots, en sonnet sauf les lots C et E ; viser moins de 65 % à la fin du L5 |
 
 ## Où sont les choses
 
@@ -109,10 +110,22 @@ vivent dans le scratchpad de la session, pas sur `main`.
      rouvre plus). `F2-DOCS-b` 19 : ok 11, partiel 6, non essaye 2.
    - `F2-ELEC-a` 19 : ok 6, partiel 7, non essaye 6 (redonnees a `F2-ELEC-b`). `F2-SIMU-a` 22 : ok 10, partiel 9,
      non-fait 1 ; 1 S1 (le P50 de tete compte des panneaux raccordes a rien).
-   EN VOL (23/11 05 h 10 UTC) : `F2-POSE-b`, `F2-CONSO`, `F2-ELEC-b`, `T2`.
-   RESTE A LANCER : `F2-SIMU-b` (compte `rev_b7`), puis un verificateur de RATTRAPAGE (compte `rev_b8`) pour les
-   preuves non jouees — les 10 de `S2-PARCOURS-b` (ACAL874, 875, 877-880, 883-885, 888), ACAL833, ACAL767, ACAL738,
-   ACAL703, ACAL712 et toute simulation restee bloquee avant 04 h 40 —, puis `B2` EN DERNIER.
+   - `F2-POSE-b` 17 : ok 7, partiel 9, non-fait 1 (ACAL547) ; 11 constats. `F2-ELEC-b` 25 (dont ACAL632-636, 1188) :
+     ok 19, partiel 5, non essaye 1 (ACAL895). `T2` (telephone, tablette) 16 : ok 10, partiel 5, non essaye 1
+     (ACAL385, une spec e2e : a jouer par l'orchestrateur) ; 12 constats dont 6 S2 (au telephone on pose sans voir
+     le toit ; « Releve de visite » et « Montrer au client » enfouis ; releve hors ligne jamais renvoye).
+   BILAN au 23/11 06 h UTC (script `$SP/l5b/bilan_cv.py`) : 312 corrections avec verdict — ok 188, partiel 112,
+   non-fait 11, regression 1 ; 76 sans verdict (en vol ou a lancer).
+   EN VOL (23/11 06 h 05 UTC) : `F2-CONSO` (opus), `F2-SIMU-b` (`rev_b7`), `RATT-1` (`rev_b8`, 15 taches : les
+   preuves perdues de `S2-PARCOURS-b` + ACAL856, 959), `RATT-2` (`rev_b5`, 15 taches : restes des autres listes,
+   avec une exception pour `docker exec l5cal-django python manage.py …`) ; lancement : `T2/lancement/RATT.md`.
+   RESTE A LANCER : `B2` EN DERNIER (opus, 15 taches + comparaison des 13 ecrans aux maquettes v1 et v2).
+   A JOUER PAR L'ORCHESTRATEUR : ACAL385 (spec e2e), ACAL1194 et ACAL490 (taches d'acceptation).
+   CONSOLIDATION PAR LOTS (section ajoutee a `T2/brief-consolidation.md`) : lots A (toit, gestes ; ids 1400-1499)
+   et B (pose, electrique ; 1500-1599) EN VOL en sonnet effort haut ; C (production ; 1600-1699, opus) apres
+   `F2-SIMU-b` et `F2-CONSO` ; D (documents, parcours, liste ; 1700-1799) apres `RATT-1/2` ; E (ecrans, maquettes v2,
+   telephone, fonctions ; 1800-1899, opus) apres `B2`. Chaque lot ecrit `T2/consolidation/lot-<X>-taches.md` ;
+   l'orchestrateur ASSEMBLE dans le plan (nouveau groupe), lance les gardes, puis `plan_lanes.py`.
    Plafond : 4 agents de fond (3 relecteurs + 1 lane) ; machine virtuelle de Docker a 5 Go (voir point 8).
 5. Construction, vague 1 (37 taches ouvertes du plan ; brief `T2/brief-lanes.md` ; base = branche d'integration) :
    - PLIEES et poussees : lane 0 (2 tests du nocturne, wheels retires) ; lane `liste` (ACAL1308, 1309 contestee,

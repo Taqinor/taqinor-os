@@ -1,0 +1,41 @@
+# Echantillon de verdicts `ok` a relire (tirage du 23/11, graine 20261123)
+
+37 verdicts `ok` sur 189, tires par relecteur (les S1-S2 d'abord).
+
+- ACAL847 (S2) — relecteur F2-CONSO — verdict dans `registre/evenements/T2-F2-CONSO-cv.jsonl`
+- ACAL778 (S1) — relecteur F2-CONSO — verdict dans `registre/evenements/T2-F2-CONSO-cv.jsonl`
+- ACAL604 (S1) — relecteur F2-DOCS-a — verdict dans `registre/evenements/T2-F2-DOCS-a-cv.jsonl`
+- ACAL605 (S1) — relecteur F2-DOCS-a — verdict dans `registre/evenements/T2-F2-DOCS-a-cv.jsonl`
+- ACAL831 (S3) — relecteur F2-DOCS-b — verdict dans `registre/evenements/T2-F2-DOCS-b-cv.jsonl`
+- ACAL832 (S3) — relecteur F2-DOCS-b — verdict dans `registre/evenements/T2-F2-DOCS-b-cv.jsonl`
+- ACAL934 (S2) — relecteur F2-ELEC-a — verdict dans `registre/evenements/T2-F2-ELEC-a-cv.jsonl`
+- ACAL631 (S3) — relecteur F2-ELEC-a — verdict dans `registre/evenements/T2-F2-ELEC-a-cv.jsonl`
+- ACAL1188 (S2) — relecteur F2-ELEC-b — verdict dans `registre/evenements/T2-F2-ELEC-b-cv.jsonl`
+- ACAL636 (S3) — relecteur F2-ELEC-b — verdict dans `registre/evenements/T2-F2-ELEC-b-cv.jsonl`
+- ACAL664 (S3) — relecteur F2-ELEC-b — verdict dans `registre/evenements/T2-F2-ELEC-b-cv.jsonl`
+- ACAL923 (S2) — relecteur F2-GESTES — verdict dans `registre/evenements/T2-F2-GESTES-cv.jsonl`
+- ACAL925 (S2) — relecteur F2-GESTES — verdict dans `registre/evenements/T2-F2-GESTES-cv.jsonl`
+- ACAL987 (S2) — relecteur F2-GESTES-b — verdict dans `registre/evenements/T2-F2-GESTES-b-cv.jsonl`
+- ACAL993 (S2) — relecteur F2-GESTES-b — verdict dans `registre/evenements/T2-F2-GESTES-b-cv.jsonl`
+- ACAL609 (S2) — relecteur F2-POSE-a — verdict dans `registre/evenements/T2-F2-POSE-a-cv.jsonl`
+- ACAL559 (S2) — relecteur F2-POSE-a — verdict dans `registre/evenements/T2-F2-POSE-a-cv.jsonl`
+- ACAL569 (S3) — relecteur F2-POSE-b — verdict dans `registre/evenements/T2-F2-POSE-b-cv.jsonl`
+- ACAL939 (S3) — relecteur F2-POSE-b — verdict dans `registre/evenements/T2-F2-POSE-b-cv.jsonl`
+- ACAL1305 (S2) — relecteur F2-RESU — verdict dans `registre/evenements/T2-F2-RESU-cv.jsonl`
+- ACAL761 (S2) — relecteur F2-RESU — verdict dans `registre/evenements/T2-F2-RESU-cv.jsonl`
+- ACAL745 (?) — relecteur F2-RESU — verdict dans `registre/evenements/T2-F2-RESU-cv.jsonl`
+- ACAL757 (S2) — relecteur F2-RESU-b — verdict dans `registre/evenements/T2-F2-RESU-b-cv.jsonl`
+- ACAL754 (S2) — relecteur F2-RESU-b — verdict dans `registre/evenements/T2-F2-RESU-b-cv.jsonl`
+- ACAL786 (S2) — relecteur F2-SIMU-a — verdict dans `registre/evenements/T2-F2-SIMU-a-cv.jsonl`
+- ACAL706 (S2) — relecteur F2-SIMU-a — verdict dans `registre/evenements/T2-F2-SIMU-a-cv.jsonl`
+- ACAL1288 (S2) — relecteur F2-TOIT-a — verdict dans `registre/evenements/T2-F2-TOIT-a-cv.jsonl`
+- ACAL493 (S2) — relecteur F2-TOIT-a — verdict dans `registre/evenements/T2-F2-TOIT-a-cv.jsonl`
+- ACAL531 (S3) — relecteur F2-TOIT-b — verdict dans `registre/evenements/T2-F2-TOIT-b-cv.jsonl`
+- ACAL1185 (S3) — relecteur F2-TOIT-b — verdict dans `registre/evenements/T2-F2-TOIT-b-cv.jsonl`
+- ACAL1285 (S1) — relecteur S2-PARCOURS — verdict dans `registre/evenements/T2-S2-PARCOURS-cv.jsonl`
+- ACAL853 (S2) — relecteur S2-PARCOURS — verdict dans `registre/evenements/T2-S2-PARCOURS-cv.jsonl`
+- ACAL896 (S3) — relecteur S2-PARCOURS — verdict dans `registre/evenements/T2-S2-PARCOURS-cv.jsonl`
+- ACAL863 (S2) — relecteur S2-PARCOURS-b — verdict dans `registre/evenements/T2-S2-PARCOURS-b-cv.jsonl`
+- ACAL862 (S1) — relecteur S2-PARCOURS-b — verdict dans `registre/evenements/T2-S2-PARCOURS-b-cv.jsonl`
+- ACAL945 (S2) — relecteur T2 — verdict dans `registre/evenements/T2-T2-cv.jsonl`
+- ACAL952 (S2) — relecteur T2 — verdict dans `registre/evenements/T2-T2-cv.jsonl`
