@@ -305,6 +305,10 @@ _est_au_prix_catalogue = _composition._est_au_prix_catalogue
 from apps.ventes.domain import taille as _taille  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 AutoDevisError = _taille.AutoDevisError
 phase_client_pour_dimensionnement = _taille.phase_client_pour_dimensionnement
+# ADEV125/ADEV126 (fondateur 23/11/2026) — les champs du lead que le moteur C&I
+# SUPPOSE quand ils sont vides : la fiche lead ne les exige plus (une règle).
+from apps.ventes.domain import suppositions_ci as _suppositions_ci  # noqa: E402 — fin de module (D-ENF22)
+champs_supposes_ci = _suppositions_ci.champs_supposes
 MOTIF_FACTURE_ABSENTE = _taille.MOTIF_FACTURE_ABSENTE
 MOTIF_LOCALISATION = _taille.MOTIF_LOCALISATION
 MOTIF_CATALOGUE = _taille.MOTIF_CATALOGUE
@@ -580,6 +584,7 @@ __all__ = [
     'capturer_configuration_devis',
     'carte_marques_composition',
     'catalogue_de_la_societe',
+    'champs_supposes_ci',
     'chiffrer_conception',
     'cible_depuis_lignes',
     'classer_produit',

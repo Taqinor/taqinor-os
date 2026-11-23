@@ -267,6 +267,27 @@ class DevisAutoCITests(_Base):
         devis = self._auto(lead)
         self.assertEqual(devis.etude_params['tension'], 'mt')
 
+    def test_adev127_industriel_3x8_sans_jours_devis_et_jours_dits(self):
+        # ADEV127 (D-ACAL-94) — le régime d'équipes suffit : lundi-samedi supposés, dits.
+        lead = self._lead(conso_mensuelle_kwh=Decimal('20000'), type_installation='industriel',
+                          categorie_commerciale=None, regime_equipes='3x8')
+        journal = {}
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            devis = build_devis_auto(lead=lead, user=self.user, company=self.co,
+                                     journal_auto=journal)
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+        dites = [a for a in journal['alertes'] if a['code'] == 'jours_ouverts_supposes']
+        self.assertEqual([a['champ_lead'] for a in dites], ['jours_ouverture'])
+
+    def test_adev124_profil_estime_sort_au_journal(self):
+        # ADEV124 — le profil de l'activité (archétype, niveau « info ») est dit.
+        journal = {}
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            build_devis_auto(lead=self._lead(conso_mensuelle_kwh=Decimal('6000')),
+                             user=self.user, company=self.co, journal_auto=journal)
+        dites = {a['code']: a for a in journal['alertes']}
+        self.assertEqual(dites['profil_estime']['champ_lead'], 'jours_ouverture')
+
     def test_lead_sans_consommation_422_nomme_le_champ(self):
         lead = self._lead()
         avant = Devis.objects.filter(company=self.co).count()
@@ -275,16 +296,25 @@ class DevisAutoCITests(_Base):
         self.assertEqual(ctx.exception.field, 'conso_mensuelle_kwh')
         self.assertEqual(Devis.objects.filter(company=self.co).count(), avant)
 
-    def test_phase_inconnue_refus_nomme_le_raccordement(self):
-        # ADEV89 — la phase du site est un prérequis du moteur C&I : « je ne
-        # sais pas » (ou vide) refuse en nommant `raccordement`, rien n'est créé.
+    def test_adev126_phase_inconnue_triphase_suppose_et_dit(self):
+        # ADEV126 (D-ACAL-93, 23/11/2026) — « je ne sais pas » (ou vide) : le
+        # devis part en TRIPHASÉ supposé (onduleur triphasé), dit avec le champ
+        # `raccordement`, jamais figé au devis.
         for phase in ('inconnu', ''):
             lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), raccordement=phase)
-            avant = Devis.objects.filter(company=self.co).count()
-            with self.assertRaises(AutoDevisError) as ctx:
-                self._auto(lead)
-            self.assertEqual(ctx.exception.field, 'raccordement', phase)
-            self.assertEqual(Devis.objects.filter(company=self.co).count(), avant)
+            journal = {}
+            with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+                devis = build_devis_auto(lead=lead, user=self.user, company=self.co,
+                                         journal_auto=journal)
+            etude = devis.etude_params['etude_ci']
+            self.assertEqual(etude['entrees_resolues']['phases']['valeur'], 'tri', phase)
+            self.assertEqual(etude['entrees_resolues']['phases']['provenance']['origine'],
+                             'estimation')
+            self.assertNotIn('phases', devis.etude_params)
+            self.assertIn(self.onduleur.id, set(devis.lignes.values_list('produit_id', flat=True)))
+            dites = [a for a in journal['alertes'] if a['champ_lead'] == 'raccordement']
+            self.assertEqual(len(dites), 1, journal['alertes'])
+            self.assertIn('triphasé supposé', dites[0]['message'])
 
     def test_structure_sans_prix_422_prix_a_renseigner(self):
         Produit.objects.filter(pk=self.structure.pk).update(prix_vente=0)
@@ -308,11 +338,13 @@ class DevisAutoCITests(_Base):
 
     # ── ADEV76 : les refus nomment un CHAMP DU LEAD ─────────────────────────
 
-    def test_lead_1637_sans_rythme_ni_categorie_ni_contrat_nomme_le_contrat(self):
+    def test_lead_1637_sans_rythme_ni_categorie_ni_contrat_nomme_les_jours(self):
+        # ADEV125 (D-ACAL-92) — le contrat absent est supposé (BT) : le refus
+        # nomme ce qui reste à demander, le rythme.
         lead = self._lead(conso_mensuelle_kwh=Decimal('10000'), facture_hiver=Decimal('18000'),
                           categorie_commerciale=None, surface_toiture_m2=Decimal('200'))
         erreur = self._refus(lead, reel=True)
-        self.assertEqual(erreur.field, 'contrat_electricite')
+        self.assertEqual(erreur.field, 'jours_ouverture')
 
     def test_sans_categorie_ni_heures_nomme_les_jours_puis_les_heures(self):
         lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), categorie_commerciale=None)
@@ -329,8 +361,10 @@ class DevisAutoCITests(_Base):
         for jargon in ('profil', 'archétype', 'sourcé', 'sur le lead'):
             self.assertNotIn(jargon, erreur.message)
 
-    def test_facture_mad_seule_sans_contrat_nomme_le_contrat(self):
-        lead = self._lead(facture_hiver=Decimal('3500'))
+    def test_facture_mad_contrat_mt_declare_nomme_le_contrat(self):
+        # ADEV125 — rien n'est supposé contre un contrat MT déclaré : la
+        # facture en dirhams ne se convertit pas (prime fixe), refus nommé.
+        lead = self._lead(facture_hiver=Decimal('3500'), contrat_electricite='mt_general')
         erreur = self._refus(lead, reel=True)
         self.assertEqual(erreur.field, 'contrat_electricite')
         self.assertIn('Facture en MAD sans contrat', erreur.message)
@@ -543,8 +577,11 @@ class RefusConsigneVendeurCorc3Tests(_Base):
     jargon du moteur (« Tarif non déclaré … économies non chiffrées »)."""
 
     def test_contrat_absent_consigne_vendeur(self):
+        # ADEV125 — un contrat ABSENT est supposé (BT) ; le contrat domestique
+        # DÉCLARÉ n'a aucune grille professionnelle : refus, même consigne.
         with self.assertRaises(AutoDevisError) as ctx:
-            build_devis_auto(lead=self._lead(conso_mensuelle_kwh=Decimal('6000')),
+            build_devis_auto(lead=self._lead(conso_mensuelle_kwh=Decimal('6000'),
+                                             contrat_electricite='bt_domestique'),
                              user=self.user, company=self.co)
         erreur = ctx.exception
         self.assertEqual(erreur.field, 'contrat_electricite')

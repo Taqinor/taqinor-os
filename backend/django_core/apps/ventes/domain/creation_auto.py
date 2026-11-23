@@ -119,7 +119,7 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
     from apps.ventes.domain.creation import devise_par_defaut
     from apps.ventes.domain.etude_ci_batterie import (
         CLE_BANQUE_RECOMMANDEE, banque_recommandee, lignes_des_options)
-    from apps.ventes.domain.suppositions_ci import alertes_pour_la_commerciale
+    from apps.ventes.domain.suppositions_ci import alertes_du_journal
     from apps.ventes.models import Devis
 
     taille = target_kwc if target_kwc not in (None, '') else getattr(
@@ -187,9 +187,10 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
                     'message': ('« %s » à chiffrer après la visite technique : hors '
                                 'total, devis estimé sous réserve de visite.' % poste)}
                    for poste in (etude.get('composition') or {}).get('a_chiffrer_visite') or []]
-        alertes += [dict(a) for a in alertes_pour_la_commerciale(etude)
-                    if a.get('niveau') in ('alerte', 'bloquant')
-                    and a.get('code') != 'a_chiffrer_visite']
+        # ADEV124 — les suppositions qui changent un chiffre (profil estimé
+        # compris, même de niveau « info ») sortent au journal avec leur champ.
+        alertes += [dict(a) for a in alertes_du_journal(etude)
+                    if a.get('code') != 'a_chiffrer_visite']
         alertes += _alertes_brouillons_ci_du_lead(devis)
         journal_auto['alertes'] = alertes
     logger.info('Auto-devis C&I %s: %s kWc (lead %s, company %s)', devis.reference,

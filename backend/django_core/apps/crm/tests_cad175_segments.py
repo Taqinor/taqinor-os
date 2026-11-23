@@ -264,9 +264,16 @@ class CIQ410PanneauPro(SimpleTestCase):
                               facture_hiver=Decimal('9000')))
         self.assertIn('conso_mensuelle_kwh', champs)
         self.assertNotIn('facture_hiver', champs)  # déjà remplie
-        # Commerce BT, dirhams, contrat pas encore posé : étape ouverte.
+        # Commerce BT, dirhams, contrat pas encore posé : ADEV125 (D-ACAL-92)
+        # — le moteur suppose le tarif BT, les dirhams comptent, étape fermée.
         champs = _champs(Lead(nom='P', type_installation='commercial',
                               tension_raccordement='bt',
+                              facture_hiver=Decimal('5000')))
+        self.assertNotIn('conso_mensuelle_kwh', champs)
+        # Contrat MT déclaré : les dirhams ne comptent pas, étape ouverte.
+        champs = _champs(Lead(nom='P', type_installation='commercial',
+                              tension_raccordement='bt',
+                              contrat_electricite='mt_general',
                               facture_hiver=Decimal('5000')))
         self.assertIn('conso_mensuelle_kwh', champs)
         # Commerce BT, dirhams, contrat BT déclaré : l'étape est fermée.
@@ -292,12 +299,13 @@ class CIQ410PanneauPro(SimpleTestCase):
         self.assertNotIn('facture_hiver', champs)
         self.assertEqual(panneau.prefill_du_panneau(lead)['facture_hiver'],
                          5000.0)
-        # Contrat « ne sait pas » en BT : les dirhams ne comptent pas non plus.
+        # Contrat « ne sait pas » en BT : ADEV125 (D-ACAL-92) — tarif BT
+        # supposé par le moteur, les dirhams comptent (kWh plus redemandés).
         lead = Lead(nom='P', type_installation='commercial',
                     tension_raccordement='bt',
                     contrat_electricite='ne_sait_pas',
                     facture_hiver=Decimal('5000'))
-        self.assertEqual(_champs(lead)[0], 'conso_mensuelle_kwh')
+        self.assertNotIn('conso_mensuelle_kwh', _champs(lead))
 
     def test_contrat_pose_en_bt_jamais_en_mt_option_si_force_motrice(self):
         """CSV3 — le contrat se lit sur la facture : posé juste après la

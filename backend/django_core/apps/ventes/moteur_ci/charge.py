@@ -780,6 +780,30 @@ def _repli_source(categorie, profil_societe):
     return True, None
 
 
+#: ADEV127 (D-ACAL-94, fondateur 23/11/2026) — régime d'équipes déclaré (1×8,
+#: 2×8, 3×8, continu) sans jours ouverts : lundi à samedi SUPPOSÉS, dits
+#: (« working days are assumed (Monday to Saturday) »). L'heure de début d'un
+#: 1×8 / 2×8 reste exigée (aucune décision ne la suppose).
+JOURS_OUVRES_SUPPOSES = (True,) * 6 + (False,)
+MESSAGE_JOURS_SUPPOSES = ("Jours ouverts non déclarés : lundi à samedi supposés (régime "
+                          "d'équipes déclaré). Demandez au client ses jours de travail.")
+
+
+def _regime_declare(rythme):
+    return rythme.get('equipes') in DUREE_EQUIPES_H
+
+
+def _avec_jours_supposes(rythme, alertes):
+    """ADEV127 — le rythme avec ses jours supposés (lundi→samedi) quand un régime
+    d'équipes déclaré n'a pas de jours ; l'alerte les DIT (champ du lead
+    ``jours_ouverture``, ``suppositions_ci``)."""
+    if rythme.get('jours_ouverts') is not None or not _regime_declare(rythme):
+        return rythme
+    alertes.append(_alerte('jours_ouverts_supposes', FEUILLE_JOURS, MESSAGE_JOURS_SUPPOSES,
+                           interne=True))
+    return dict(rythme, jours_ouverts=list(JOURS_OUVRES_SUPPOSES))
+
+
 def profil_charge_prerequis(rythme, categorie=None, profil_societe=None):
     """ADEV76 (D-ACI-5=a) — LA règle des prérequis du profil de charge.
 
@@ -802,7 +826,8 @@ def profil_charge_prerequis(rythme, categorie=None, profil_societe=None):
     fusionne, _non_consommees = _fusionner_categorie(
         rythme, rythme.get('categorie_commerciale') or categorie, [])
     jours = fusionne.get('jours_ouverts')
-    jours_declares = jours is not None and len(jours) == 7
+    # ADEV127 (D-ACAL-94) — un régime d'équipes déclaré : jours SUPPOSÉS.
+    jours_declares = (jours is not None and len(jours) == 7) or _regime_declare(fusionne)
     plages = bool(fusionne.get('plages')) or _plages_equipes(
         fusionne.get('equipes'), fusionne.get('debut_equipe_h')) is not None
     if plages:
@@ -858,6 +883,7 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
     # déclarés, fusionnés avec la saisie (la saisie gagne).
     rythme, non_consommees = _fusionner_categorie(
         rythme, rythme.get('categorie_commerciale') or archetype, alertes)
+    rythme = _avec_jours_supposes(rythme, alertes)
     calendrier, jours_declares, plages_declarees = _calendrier(
         rythme, annee_reference, feries, alertes)
     niveaux, repartition = _niveaux_mensuels(kwh_mensuels, calendrier, alertes)

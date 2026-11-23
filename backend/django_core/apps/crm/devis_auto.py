@@ -10,9 +10,11 @@ avant de pouvoir lancer le générateur de devis automatique :
   - Industriel / Commercial (CIQ404, contrat CIQ1) : l'un de
     conso_mensuelle_kwh, bill_kwh, releve_conso, ou facture_hiver (MAD) —
     pour un commercial si la tension n'est pas « mt », pour un industriel
-    seulement si la basse tension est DÉCLARÉE, avec un contrat BT ; ALEA47 —
-    + le contrat (sauf MT déclarée) et le rythme, par LA règle du moteur
-    (``ventes.selectors.profil_charge_prerequis_ci``, jamais une copie) ;
+    seulement si la basse tension est DÉCLARÉE, avec un contrat BT déclaré ou
+    supposé ; ALEA47 — + le rythme, par LA règle du moteur
+    (``ventes.selectors.profil_charge_prerequis_ci``, jamais une copie) ; les
+    champs que le moteur SUPPOSE ne sont plus exigés (ADEV125,
+    ``ventes.services.champs_supposes_ci``) ;
   - Agricole (pompage, AGR403) : [HMT OU niveau d'eau] ET [débit souhaité,
     besoin en eau (m³/jour) OU débit de la pompe actuelle — ce dernier ne
     comptant qu'avec ses heures, volume déclaré D-AGR-3]. Le CV ne compte
@@ -109,8 +111,20 @@ def _facture_mad_compte(lead):
 
 def _contrat_bt_declare(lead):
     """ALEA47 — contrat BT déclaré, exigé par le gating pour une facture MAD
-    (le lecteur du moteur sert la facture seule : son refus nomme le contrat)."""
-    return (getattr(lead, 'contrat_electricite', None) or '').startswith('bt_')
+    (le lecteur du moteur sert la facture seule : son refus nomme le contrat).
+    ADEV125 (D-ACAL-92) — ou SUPPOSÉ par le moteur quand la fiche n'en dit rien."""
+    contrat = getattr(lead, 'contrat_electricite', None) or ''
+    if contrat in ('', 'ne_sait_pas'):
+        return 'contrat_electricite' in _champs_supposes(lead)
+    return contrat.startswith('bt_')
+
+
+def _champs_supposes(lead):
+    """ADEV125 — les champs que le moteur C&I suppose quand ils sont vides
+    (``ventes.services.champs_supposes_ci``, jamais une copie de la règle)."""
+    from apps.ventes.services import champs_supposes_ci
+
+    return champs_supposes_ci(lead.type_installation, _tension_declaree(lead))
 
 
 def _rempli(lead, champ):
@@ -186,12 +200,15 @@ def champs_requis(lead) -> list[list[str]]:
         # CIQ404 (contrat CIQ1) — + le relevé de factures et la facture en
         # MAD (selon la tension, voir :func:`_facture_mad_compte`).
         requis = [list(GROUPE_CONSO_PRO)]
-        # ALEA47 (D-ACI-5=a) — + le contrat (MT déclarée : Tarif Général).
-        if _tension_declaree(lead) != 'mt':
+        supposes = _champs_supposes(lead)
+        # ALEA47 (D-ACI-5=a) — + le contrat (MT déclarée : Tarif Général) ;
+        # ADEV125 (D-ACAL-92) — sauf quand le moteur le suppose (BT, dit).
+        if _tension_declaree(lead) != 'mt' and 'contrat_electricite' not in supposes:
             requis.append(['contrat_electricite'])
-        # ADEV89 (rejeu « humain » 23/10/2026) — + la phase du site : la
-        # combinaison d'onduleurs la suit (jamais « je ne sais pas »).
-        requis.append(['raccordement'])
+        # ADEV89 — + la phase du site (la combinaison d'onduleurs la suit) ;
+        # ADEV126 (D-ACAL-93) — sauf quand le moteur la suppose (triphasé, dit).
+        if 'raccordement' not in supposes:
+            requis.append(['raccordement'])
         return requis + _groupes_rythme(lead)
     requis = [['facture_hiver']]
     if lead.ete_differente:

@@ -77,8 +77,9 @@ class TestDevisAutoContrat(TestCase):
                 raccordement='triphase', **kwh)
             bloc = self._bloc(seul)
             self.assertFalse(bloc['pret'], (type_installation, kwh))
+            # ADEV125 (D-ACAL-92) — le contrat absent est supposé (BT).
             self.assertEqual([e['champ'] for e in bloc['manquants_detail']],
-                             ['contrat_electricite', 'jours_ouverture'])
+                             ['jours_ouverture'])
             lead = Lead.objects.create(
                 company=self.company, nom='Kwh + moteur',
                 type_installation=type_installation, facture_hiver=None,

@@ -27,6 +27,7 @@ from apps.crm.devis_auto import (
 from apps.crm.devis_selectors import entrees_ci_du_lead
 from apps.crm.models import Lead
 from apps.ventes.horaire.conso import profil_depuis_factures
+from apps.ventes.services import champs_supposes_ci
 
 
 def _lead_pro(**kwargs):
@@ -39,8 +40,6 @@ _PRO_COMPLET = {'contrat_electricite': 'bt_patente',
                 'categorie_commerciale': 'bureau',
                 # ADEV89 — + la phase du site (combinaison d'onduleurs).
                 'raccordement': 'triphase'}
-LIB_CONTRAT = "Contrat d'électricité"
-LIB_PHASE = 'Phase du site (monophasé ou triphasé)'
 LIB_RYTHME = "Jours et heures d'ouverture (ou catégorie d'activité)"
 
 
@@ -91,25 +90,26 @@ class PretEgaleCeQueLeMoteurExigeALEA47(SimpleTestCase):
     automatique prêt » que si le moteur C&I peut chiffrer : contrat BT +
     rythme (ou catégorie à archétype), par la règle partagée du moteur."""
 
-    def test_lead_1637_conso_seule_pas_pret_contrat_et_rythme_nommes(self):
+    def test_lead_1637_conso_seule_pas_pret_rythme_nomme(self):
+        # ADEV125/ADEV126 (D-ACAL-92/93) — contrat et phase absents : supposés
+        # par le moteur (BT, triphasé) ; seul le rythme reste à demander.
         lead = _lead_pro(conso_mensuelle_kwh=Decimal('10000'))
-        self.assertEqual(champs_manquants(lead),
-                         [LIB_CONTRAT, LIB_PHASE, LIB_RYTHME])
+        self.assertEqual(champs_manquants(lead), [LIB_RYTHME])
         self.assertEqual(
-            [e['champ'] for e in champs_manquants_detail(lead)],
-            ['contrat_electricite', 'raccordement', 'jours_ouverture'])
+            [e['champ'] for e in champs_manquants_detail(lead)], ['jours_ouverture'])
         self.assertEqual(champs_requis(lead)[1:], [
-            ['contrat_electricite'], ['raccordement'], ['jours_ouverture'],
-            ['heure_debut', 'regime_equipes']])
+            ['jours_ouverture'], ['heure_debut', 'regime_equipes']])
 
-    def test_phase_inconnue_pas_prete(self):
-        # ADEV89 — « je ne sais pas » n'est pas une phase : le devis
-        # automatique attend (un hôtel triphasé sortait en onduleurs mono).
-        lead = _lead_pro(conso_mensuelle_kwh=Decimal('10000'),
-                         **dict(_PRO_COMPLET, raccordement='inconnu'))
-        self.assertEqual(champs_manquants(lead), [LIB_PHASE])
-        lead.raccordement = 'monophase'
-        self.assertEqual(champs_manquants(lead), [])
+    def test_adev126_phase_inconnue_supposee_prete(self):
+        # ADEV126 (D-ACAL-93) — « je ne sais pas » ou vide : triphasé supposé
+        # par le moteur, la fiche n'attend plus la phase.
+        for phase in ('inconnu', None):
+            lead = _lead_pro(conso_mensuelle_kwh=Decimal('10000'),
+                             **dict(_PRO_COMPLET, raccordement=phase))
+            self.assertEqual(champs_manquants(lead), [], phase)
+            self.assertNotIn(['raccordement'], champs_requis(lead))
+        self.assertIn('raccordement', champs_supposes_ci('commercial', 'mt'))
+        self.assertEqual(champs_supposes_ci('agricole', None), ())
 
     def test_bureau_et_bt_patente_pret(self):
         lead = _lead_pro(conso_mensuelle_kwh=Decimal('10000'), **_PRO_COMPLET)
@@ -141,30 +141,43 @@ class PretEgaleCeQueLeMoteurExigeALEA47(SimpleTestCase):
         lead.heure_debut = 7
         self.assertEqual(champs_manquants(lead), [])
 
-    def test_mt_declaree_sans_contrat_aucun_groupe_contrat(self):
+    def test_adev127_regime_d_equipes_seul_suffit(self):
+        # ADEV127 (D-ACAL-94) — 3×8 sans jours : prêt (lundi-samedi supposés
+        # par le moteur, même règle que lui) ; 1×8 sans heure : l'heure manque.
+        lead = Lead(nom='Usine', type_installation='industriel',
+                    conso_mensuelle_kwh=Decimal('20000'), regime_equipes='3x8')
+        self.assertEqual(champs_manquants(lead), [])
+        lead.regime_equipes = '1x8'
+        self.assertEqual([e['champ'] for e in champs_manquants_detail(lead)], ['heure_debut'])
+
+    def test_le_contrat_n_est_plus_jamais_un_groupe_requis(self):
+        # MT déclarée : Tarif Général ; ADEV125 (D-ACAL-92) — tension inconnue
+        # ou défaut visible du site : la BT est supposée par le moteur.
         lead = Lead(nom='Usine', type_installation='industriel',
                     tension_raccordement='mt', tension_source='declare',
                     conso_mensuelle_kwh=Decimal('20000'))
         self.assertNotIn(['contrat_electricite'], champs_requis(lead))
-        # Tension inconnue / défaut visible du site : le contrat est exigé.
         lead.tension_source = 'site_defaut_visible'
-        self.assertIn(['contrat_electricite'], champs_requis(lead))
+        self.assertNotIn(['contrat_electricite'], champs_requis(lead))
+        self.assertEqual(champs_supposes_ci('industriel', None)[0], 'contrat_electricite')
+        self.assertNotIn('contrat_electricite', champs_supposes_ci('industriel', 'mt'))
 
-    def test_ne_sait_pas_n_est_pas_un_contrat(self):
+    def test_ne_sait_pas_contrat_suppose_pret(self):
+        # ADEV125 (D-ACAL-92) — « ne sait pas » = aucun contrat : BT supposé.
         lead = _lead_pro(conso_mensuelle_kwh=Decimal('10000'),
                          categorie_commerciale='bureau',
                          contrat_electricite='ne_sait_pas',
                          raccordement='triphase')
-        self.assertEqual(champs_manquants(lead), [LIB_CONTRAT])
+        self.assertEqual(champs_manquants(lead), [])
 
-    def test_facture_mad_ne_compte_qu_avec_un_contrat_bt(self):
+    def test_facture_mad_compte_avec_un_contrat_bt_declare_ou_suppose(self):
+        # ADEV125 (D-ACAL-92) — la facture seule + l'activité suffisent : le
+        # tarif BT est supposé ; un contrat MT déclaré ne la convertit pas.
         lead = _lead_pro(tension_raccordement='bt', tension_source='declare',
                          facture_hiver=Decimal('25000'),
                          categorie_commerciale='bureau',
                          raccordement='triphase')
-        self.assertEqual(
-            champs_manquants(lead),
-            ['Consommation (kWh) ou facture mensuelle (MAD)', LIB_CONTRAT])
+        self.assertEqual(champs_manquants(lead), [])
         lead.contrat_electricite = 'mt_general'
         self.assertIn('Consommation (kWh) ou facture mensuelle (MAD)',
                       champs_manquants(lead))

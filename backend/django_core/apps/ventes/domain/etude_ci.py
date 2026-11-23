@@ -1051,7 +1051,19 @@ def _sous_reserve_visite(res, lead, niveau_donnees):
             motifs.append('surface disponible inconnue')
     if niveau_donnees == 'estimation':
         motifs.append('profil horaire non déclaré : estimation sous réserve de visite')
-    return {'valeur': bool(motifs), 'motif': '; '.join(motifs) if motifs else None}
+    # ADEV125 (D-ACAL-92) — un contrat SUPPOSÉ fait du devis une estimation.
+    from .suppositions_ci import est_supposee
+    suppose = est_supposee({'provenance': res.provenance('tarif_declare')})
+    return {'valeur': bool(motifs) or suppose, 'motif': '; '.join(motifs) if motifs else None}
+
+
+def _entrees_supposees(res, mode, devis):
+    """ADEV125/ADEV126 — les entrées vides que le moteur suppose (contrat BT,
+    triphasé), posées dans ``res`` ; rend leurs hypothèses ``estimation``."""
+    from apps.ventes import tarif_ci
+
+    from .suppositions_ci import supposer_entrees
+    return supposer_entrees(res, mode, tarif_ci.regles_du(devis))
 
 
 def _regime(kwc, puissance_ac, tension):
@@ -1368,6 +1380,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
                                'Mode commercial ou industriel requis.', niveau='bloquant'))
         return _sans_cles_interdites(_vide_etude(res, alertes, hypotheses))
     _couche_visite(res, lead, alertes, devis=devis)
+    hypotheses.extend(_entrees_supposees(res, mode, devis))  # ADEV125/126 (D-ACAL-92/93)
     if _num(res.valeur('longueur_dc_m')) is None and _num(res.valeur('longueur_ac_m')) is None:
         alertes.append(_alerte(
             'longueurs_non_relevees', 'contraintes',
@@ -1561,11 +1574,13 @@ CLES_ENTREES_PERSISTEES = ('mode', 'site', 'tension', 'phases',
 
 
 def entrees_pour_etude_params(entrees_resolues):
-    """Les entrées RÉSOLUES, remises dans la forme ``etude_params`` C&I v2."""
+    """Les entrées RÉSOLUES, remises dans la forme ``etude_params`` C&I v2 —
+    jamais une entrée SUPPOSÉE (ADEV125 : re-supposée tant que la fiche est muette)."""
+    from .suppositions_ci import est_supposee
     arbre = {}
     for feuille, chemin in FEUILLES:
         entree = (entrees_resolues or {}).get(feuille)
-        if not isinstance(entree, dict) or _vide(entree.get('valeur')):
+        if not isinstance(entree, dict) or _vide(entree.get('valeur')) or est_supposee(entree):
             continue
         morceaux = chemin.split('.')
         if morceaux[0] not in CLES_ENTREES_PERSISTEES:
@@ -1575,7 +1590,7 @@ def entrees_pour_etude_params(entrees_resolues):
             noeud = noeud.setdefault(morceau, {})
         noeud[morceaux[-1]] = entree['valeur']
     tarif = (entrees_resolues or {}).get('tarif_declare')
-    if isinstance(tarif, dict) and isinstance(tarif.get('valeur'), dict):
+    if isinstance(tarif, dict) and isinstance(tarif.get('valeur'), dict) and not est_supposee(tarif):
         arbre['tarif_declare'] = tarif['valeur']
     return arbre
 
@@ -1589,8 +1604,6 @@ CHAMP_LEAD_DES_ALERTES = {
 }
 #: L'ordre dans lequel un refus nomme le premier champ manquant du lead.
 ORDRE_CHAMPS_LEAD_CI = ('contrat_electricite', 'jours_ouverture', 'heure_debut', 'equipements_hors_horaires')
-#: ADEV89 — phases du site admises par le devis automatique (jamais « inconnu »).
-PHASES_DECLAREES = ('mono', 'tri')
 # ALEA54 — ces refus s'adressent à la COMMERCIALE : une consigne à suivre auprès
 # du client, jamais le jargon du moteur (« profil de charge », « archétype »).
 MESSAGES_CHAMP_LEAD_CI = {
@@ -1599,9 +1612,6 @@ MESSAGES_CHAMP_LEAD_CI = {
     'contrat_electricite': ("Demandez au client son contrat d'électricité — basse tension "
                             'patenté, force motrice ou moyenne tension : il est écrit sur '
                             'sa facture ; sans lui, les économies ne se chiffrent pas.'),
-    'raccordement': ('Demandez au client si son site est en monophasé ou en triphasé — '
-                     "c'est écrit sur sa facture ou sur son compteur ; le choix des "
-                     'onduleurs en dépend.'),
     'jours_ouverture': ("Demandez au client quels jours le site est ouvert (ou en "
                         "production), ou choisissez son activité : le week-end n'est "
                         'jamais supposé.'),
@@ -1674,13 +1684,9 @@ def refus_devis_auto_ci(etude):
     if manquant is not None:
         champ, alerte = manquant
         return MESSAGES_CHAMP_LEAD_CI.get(champ) or alerte.get('message'), champ
-    # ADEV89 (rejeu « humain » 23/10/2026) — la PHASE du site est un prérequis
-    # du devis automatique : sans elle, un hôtel triphasé à 14 MWh/mois sortait
-    # composé d'onduleurs monophasés de 5 kW (puis refusé sur un disjoncteur
-    # mono sans prix). Le refus nomme le champ du lead (bouton « Compléter »).
-    phase = ((etude.get('entrees_resolues') or {}).get('phases') or {}).get('valeur')
-    if phase not in PHASES_DECLAREES:
-        return MESSAGES_CHAMP_LEAD_CI['raccordement'], 'raccordement'
+    # ADEV126 (D-ACAL-93, 23/11/2026) — la phase absente n'arrête plus rien :
+    # triphasé supposé et dit (``suppositions_ci.supposer_entrees``), jamais les
+    # onduleurs monophasés de 5 kW de l'hôtel d'ADEV89.
     taille = etude.get('taille') or {}
     bloquants = [a for a in alertes if a.get('niveau') == 'bloquant']
     # ADEV78 — la VRAIE cause d'un arrêt « module » ou « onduleurs ».
