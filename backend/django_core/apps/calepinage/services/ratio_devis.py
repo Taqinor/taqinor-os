@@ -20,16 +20,12 @@ Au-dessus ⇒ non conforme (« à régler »), jamais « Bon ». UNE fonction ju
 """
 from __future__ import annotations
 
+from .valeurs import nombre as _nombre
+
 SOURCE_BORNE_MARCHE = 'exigence de marché'
 SOURCE_BORNE_SOCIETE = 'fourchette de la société'
 SOURCE_BORNE_DEVIS = 'règle du devis'
 SOURCE_BORNE_CAPACITE = "capacité publiée de l'onduleur"
-
-
-def _nombre(valeur):
-    from .valeurs import nombre
-
-    return nombre(valeur)
 
 
 def bornes_ratio(*, exigence_marche=None, parametres_societe=None,
@@ -39,11 +35,12 @@ def bornes_ratio(*, exigence_marche=None, parametres_societe=None,
     ``exigence_marche`` et ``parametres_societe`` portent ``ratio_dc_ac_max`` (et,
     optionnellement, ``ratio_dc_ac_alerte``) ; puis la borne usuelle SAISIE de la
     section « electrique_societe » (``reglages``) ; sinon la règle du devis."""
-    from apps.ventes.selectors_calepinage import borne_dc_ac_du_moteur_devis
     from core.electrique.onduleurs import (
         SEUIL_ALERTE_DC_AC, SOURCE_CONVENTION_ATELIER, bornes_dc_ac,
     )
     from core.electrique.types import fr
+
+    from .equipements import borne_dc_ac_devis
 
     for donnees, source in ((exigence_marche, SOURCE_BORNE_MARCHE),
                             (parametres_societe, SOURCE_BORNE_SOCIETE)):
@@ -58,7 +55,7 @@ def bornes_ratio(*, exigence_marche=None, parametres_societe=None,
         return (saisies.borne_usuelle.valeur,
                 (alerte.valeur if alerte.source != SOURCE_CONVENTION_ATELIER
                  else None), SOURCE_BORNE_SOCIETE, saisies.borne_usuelle.source)
-    borne = borne_dc_ac_du_moteur_devis()
+    borne = borne_dc_ac_devis()
     return (borne, SEUIL_ALERTE_DC_AC, SOURCE_BORNE_DEVIS,
             'borne du moteur de devis : %s au plus' % fr(borne, 2))
 

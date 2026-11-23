@@ -315,7 +315,23 @@ def borne_dc_ac_du_moteur_devis(mode_installation=None):
 STATUTS_DEVIS_RECU = ('envoye', 'accepte')
 
 
-def conception_retenue_du_devis(devis):
+def conception_retenue_du_devis_id(devis_id, company):
+    """ACAL1950 — :func:`conception_retenue_du_devis` du devis ``devis_id``
+    de ``company`` (``None`` s'il n'existe pas ou appartient à une autre
+    société), en UNE requête quand le devis a des lignes (lignes, produit et
+    devis joints) : budget de requêtes des écrans du calepinage."""
+    from .models import Devis, LigneDevis
+
+    if not devis_id or company is None:
+        return None
+    lignes = list(LigneDevis.objects.filter(devis_id=devis_id, devis__company=company)
+                  .select_related('devis', 'produit').order_by('id'))
+    devis = (lignes[0].devis if lignes
+             else Devis.objects.filter(pk=devis_id, company=company).first())
+    return conception_retenue_du_devis(devis, lignes=lignes) if devis is not None else None
+
+
+def conception_retenue_du_devis(devis, lignes=None):
     """ACAL1950 — LA conception que le devis a retenue, LUE (rien n'est
     recalculé, rien n'est écrit) : ce que le calepinage d'un devis envoyé doit
     reprendre au lieu de refaire son propre dimensionnement.
@@ -335,7 +351,7 @@ def conception_retenue_du_devis(devis):
       unique retient celle qu'il sert.
     * ``module`` — ``{produit, designation, quantite, watt}`` de l'option
       (quantité = somme des lignes panneau de l'option, même classifieur que
-      ``cible_depuis_lignes`` ; ``watt`` = fiche, sinon libellé, sinon
+      ``cible_depuis_lignes`` ; ``watt`` = libellé, sinon fiche, sinon
       ``None``) ; ``None`` sans ligne panneau.
     * ``onduleurs`` — ``[{produit, designation, quantite}]`` de l'option.
     * ``chaines`` — ``{nombre, longueurs, longueur}`` lus dans la conception
@@ -358,11 +374,19 @@ def conception_retenue_du_devis(devis):
     from .domain.scenario import (
         SCENARIO_LES_DEUX, SCENARIO_SANS_BATTERIE, recommended_option_effective)
 
+    from .utils.options import familles_des_lignes, familles_servables
+
     etude = devis.etude_params if isinstance(devis.etude_params, dict) else {}
-    lignes = _lignes._lignes_produit(devis)
+    # UNE lecture des lignes (produit joint) : budget de requêtes des écrans ;
+    # ``lignes`` déjà lues par l'appelant (``conception_retenue_du_devis_id``).
+    if lignes is None:
+        lignes = devis.lignes.select_related('produit').all()
+    lignes = [li for li in lignes if getattr(li, 'type_ligne', 'produit') == 'produit']
     variantee = any((getattr(li, 'variante', '') or '') in ('sans', 'avec')
                     for li in lignes)
-    avec_servable = _lignes.option_avec_servable(devis)
+    # Même critère que ``option_avec_servable``, sur les lignes déjà lues.
+    avec_servable = familles_servables(**familles_des_lignes(
+        _lignes.lignes_de_variante(lignes, 'avec')))[1]
     deux_options = bool(avec_servable and (
         variantee or etude.get('scenario') == SCENARIO_LES_DEUX))
     if deux_options:
@@ -425,9 +449,10 @@ def _module_retenu(panneaux, _lignes):
         return None
     dominante = max(panneaux, key=lambda li: Decimal(str(li.quantite or 0)))
     nom = dominante.designation or getattr(dominante.produit, 'nom', '') or ''
-    watt = (_lignes._pmax_wc_du_produit(dominante.produit)
-            or classification.parse_watt(dominante.designation or '')
-            or classification.parse_watt(getattr(dominante.produit, 'nom', '') or ''))
+    # Le libellé d'abord (aucune requête), la fiche seulement s'il est muet.
+    watt = (classification.parse_watt(dominante.designation or '')
+            or classification.parse_watt(getattr(dominante.produit, 'nom', '') or '')
+            or _lignes._pmax_wc_du_produit(dominante.produit))
     return {'produit': dominante.produit_id, 'designation': nom,
             'quantite': sum(_quantite_entiere(li.quantite) for li in panneaux),
             'watt': float(watt) if watt else None}

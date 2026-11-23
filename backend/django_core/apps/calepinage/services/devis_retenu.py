@@ -18,29 +18,31 @@ from . import pret_a_envoyer as _pret_a_envoyer  # H5 — une_fois_par_lecture
 CLE_OPTION_DESSINEE = 'option_dessinee'
 
 
-def devis_lie_borne(calepinage):
-    """Le devis lié au calepinage, borné à SA société, ou ``None``."""
-    from apps.ventes.selectors import get_devis_by_pk
-
-    devis_id = getattr(calepinage, 'devis_id', None)
-    company = getattr(calepinage, 'company', None)
-    if not devis_id or company is None:
-        return None
-    devis = get_devis_by_pk(devis_id)
-    if devis is None or devis.company_id != company.pk:
-        return None
-    return devis
+#: Mémoire de la conception lue, posée sur l'INSTANCE du calepinage (une requête) :
+#: ``(devis_id, conception)`` — un re-lien change ``devis_id``, donc relit.
+_MEMOIRE = '_acal1950_conception_retenue'
 
 
 @_pret_a_envoyer.une_fois_par_lecture('conception_retenue')
 def conception_du_devis_lie(calepinage, devis=None):
     """ACAL1950 — la conception retenue du devis lié (``devis`` déjà lu par
-    l'appelant, sinon lu ici), ou ``None`` sans devis lié."""
-    from apps.ventes.selectors_calepinage import conception_retenue_du_devis
+    l'appelant, sinon lu ici, borné à la société), ou ``None`` sans devis lié.
+    Lue UNE fois par instance (budget de requêtes des écrans)."""
+    from .equipements import conception_retenue, conception_retenue_par_id
 
-    if devis is None:
-        devis = devis_lie_borne(calepinage)
-    return conception_retenue_du_devis(devis) if devis is not None else None
+    if devis is not None:
+        return conception_retenue(devis)
+    devis_id = getattr(calepinage, 'devis_id', None)
+    memoire = getattr(calepinage, _MEMOIRE, None)
+    if memoire is not None and memoire[0] == devis_id:
+        return memoire[1]
+    valeur = (conception_retenue_par_id(devis_id, getattr(calepinage, 'company', None))
+              if devis_id else None)
+    try:
+        setattr(calepinage, _MEMOIRE, (devis_id, valeur))
+    except AttributeError:  # double de test sans attributs libres : relu à chaque appel
+        pass
+    return valeur
 
 
 def cible_de_l_option_retenue(contexte_devis, devis):
@@ -51,9 +53,9 @@ def cible_de_l_option_retenue(contexte_devis, devis):
     ``cible_avec`` = option avec quand elle est servable, CTX3D) : on choisit,
     on ne recompte pas. Les clés de ``cible`` absentes de ``cible_avec``
     (``bill_kwh``) sont gardées."""
-    from apps.ventes.selectors_calepinage import conception_retenue_du_devis
+    from .equipements import conception_retenue
 
-    conception = conception_retenue_du_devis(devis) if devis is not None else None
+    conception = conception_retenue(devis)
     option = (conception or {}).get('option') or 'sans'
     cible = dict(contexte_devis['cible'])
     if option == 'avec' and isinstance(contexte_devis.get('cible_avec'), dict):

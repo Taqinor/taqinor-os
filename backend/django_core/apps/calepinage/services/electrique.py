@@ -3707,14 +3707,14 @@ def _verdicts_electriques(conception, optimiseur_specs=None,
 
     # CALX213 — les trois paliers du ratio DC/AC viennent des réglages
     # SOCIÉTÉ quand ils sont saisis : c est eux qui jugent ce verdict.
-    # ACAL1538 — jugé par ``_juger_ratio`` (le même verdict que le bloc
+    # ACAL1538 — jugé par ``juger_ratio`` (le même verdict que le bloc
     # ``ratio_dc_ac``) ; ``bornes_ratio`` : les bornes déjà lues (marché,
     # société), sinon celles des seuls ``reglages``.
     evaluation = evaluer_onduleurs(conception, reglages=reglages)
     ratio = evaluation.ratio_dc_ac if evaluation is not None else None
     valeur = None if ratio is None else ratio.valeur
     bornes = bornes_du_verdict(bornes_ratio or _bornes_ratio(reglages=reglages), evaluation, conception)
-    conforme = _juger_ratio(valeur, bornes, reglages)
+    conforme = juger_ratio(valeur, bornes, reglages)
     verdicts.append({
         'code': 'ratio_dc_ac',
         'libelle': LIBELLE_RATIO,
@@ -3755,7 +3755,7 @@ def _verdicts_electriques(conception, optimiseur_specs=None,
 
 from .ratio_devis import (  # noqa: E402 — ACAL1954 : LE verdict du ratio (D-ACAL-91)
     SOURCE_BORNE_CAPACITE, SOURCE_BORNE_DEVIS, SOURCE_BORNE_MARCHE, SOURCE_BORNE_SOCIETE,
-    bornes_du_verdict, bornes_ratio as _bornes_ratio, detail_ratio, juger_ratio as _juger_ratio,
+    bornes_du_verdict, bornes_ratio as _bornes_ratio, detail_ratio, juger_ratio,
 )
 
 # ── CALX172 — LES DEUX PHRASES DE L'ÉCRÊTAGE, ET ELLES SONT UNIQUES ──────
@@ -3844,7 +3844,7 @@ def _bloc_ratio_dc_ac(conception, *, exigence_marche=None,
 
     avertissements = []
     # ACAL1538 / ACAL1954 — le verdict UNIQUE (aussi celui de ``_verdicts_electriques``).
-    dans_bornes = _juger_ratio(valeur, bornes, reglages)
+    dans_bornes = juger_ratio(valeur, bornes, reglages)
     if dans_bornes is False:
         if source == SOURCE_BORNE_CAPACITE and valeur > borne + 1e-9:
             avertissements.append('ratio DC/AC de %s au-delà de la %s (%s) — champ PV trop grand '
