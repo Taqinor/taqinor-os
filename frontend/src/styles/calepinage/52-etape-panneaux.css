@@ -135,7 +135,8 @@
 }
 .cal-coque .cal-pan-heure::-moz-range-track { height: 6px; border-radius: 3px; background: transparent; }
 .cal-coque .cal-pan-heure:focus-visible { outline: 2px solid var(--ring); outline-offset: 4px; }
-@media (pointer: coarse) { .cal-coque .cal-pan-heure { height: 24px; background-clip: content-box; padding: 9px 0; } }
+/* ACAL1818 — au doigt, la zone du curseur fait 44 px ; la piste dessinée reste de 6 px (contenu, hors rembourrage). */
+@media (pointer: coarse) { .cal-coque .cal-pan-heure { height: 44px; background-clip: content-box; padding: 19px 0; } }
 
 /* La ligne d'état du constructeur (bas gauche de la carte) se range au-dessus de la légende (20 + 78 + 8 px). */
 .cal-coque[data-etape='panneaux'] .cal-coque-statut { bottom: 106px; }

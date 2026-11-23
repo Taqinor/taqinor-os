@@ -594,3 +594,27 @@ describe('palette d’ensoleillement — posée au démarrage, sans passer par l
     expect(moteur.couleurAccesActive(0)).toEqual(moteur.solarAccessColorRGB(0))
   })
 })
+
+/* ACAL1818 — le curseur « Heure du soleil » se touche sur 44 px (la piste dessinée garde ses 6 px) : la règle des pointeurs
+   grossiers de la feuille de l'étape, lue sur les règles ANALYSÉES (jsdom n'évalue pas les @media). */
+describe('curseur « Heure du soleil » — zone tactile (ACAL1818)', () => {
+  it('sous pointer: coarse, le curseur fait ≥ 44 px de haut et sa piste se dessine dans la zone de contenu', async () => {
+    const { readFileSync } = await import('node:fs')
+    const style = document.createElement('style')
+    style.textContent = readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/52-etape-panneaux.css`, 'utf8')
+    document.head.appendChild(style)
+    try {
+      const grossier = [...style.sheet.cssRules].filter((r) => r.type === 4 && /pointer:\s*coarse/.test(r.media.mediaText))
+        .flatMap((m) => [...m.cssRules]).filter((r) => r.selectorText === '.cal-coque .cal-pan-heure')
+      expect(grossier, 'règle .cal-pan-heure sous pointer: coarse').toHaveLength(1)
+      const { height, padding, backgroundClip } = grossier[0].style
+      const haut = parseFloat(height)
+      const [vertical] = padding.split(/\s+/).map(parseFloat)
+      expect(haut).toBeGreaterThanOrEqual(44)
+      expect(haut - 2 * vertical, 'la piste reste fine : 6 px de contenu').toBe(6)
+      expect(backgroundClip).toBe('content-box')
+    } finally {
+      style.remove()
+    }
+  })
+})
