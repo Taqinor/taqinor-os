@@ -181,6 +181,38 @@ describe('ACAL1610 — grille remplie depuis le document relu', () => {
     expect(facturesAEcrire(ctx as never)).toEqual([...TROIS, { mois: 4, valeur: 430, unite: 'kwh' }]);
   });
 
+  // ACAL1909 — dans l'atelier réel la grille est montée AVANT que le document relu soit posé au ctx.
+  it('document relu posé APRÈS le montage : ouverture de la grille ⇒ trois mois relus, un 4e s’ajoute aux trois', () => {
+    const hote = document.createElement('div');
+    document.body.appendChild(hote);
+    const ctx = {} as Record<string, unknown>;
+    monterGrilleFactures(hote, { lancer: vi.fn(), classe: () => '', ecouter: () => undefined, factures: liaisonFactures(ctx as never) });
+    const valeur = (m: number) => hote.querySelector<HTMLInputElement>(`[data-cons-mois-ligne="${m}"] [data-cons-mois-valeur]`)!;
+    expect(valeur(1).value).toBe('');
+    ctx.documentRelu = { consumption: { factures_mois: TROIS } };
+    hote.querySelector<HTMLElement>('[data-cons-mois-grille]')!.dispatchEvent(new Event('toggle'));
+    expect([1, 2, 3].map((m) => valeur(m).value)).toEqual(['520', '480', '450']);
+    valeur(4).value = '430';
+    valeur(4).dispatchEvent(new Event('input', { bubbles: true }));
+    expect(facturesAEcrire(ctx as never)).toEqual([...TROIS, { mois: 4, valeur: 430, unite: 'kwh' }]);
+  });
+
+  it('un mois saisi avant toute relecture part avec les mois enregistrés, jamais seul ; un mois effacé à la main reste effacé', () => {
+    const hote = document.createElement('div');
+    document.body.appendChild(hote);
+    const ctx = {} as Record<string, unknown>;
+    monterGrilleFactures(hote, { lancer: vi.fn(), classe: () => '', ecouter: () => undefined, factures: liaisonFactures(ctx as never) });
+    const valeur = (m: number) => hote.querySelector<HTMLInputElement>(`[data-cons-mois-ligne="${m}"] [data-cons-mois-valeur]`)!;
+    ctx.documentRelu = { consumption: { factures_mois: TROIS } };
+    valeur(4).value = '430';
+    valeur(4).dispatchEvent(new Event('input', { bubbles: true }));
+    expect(facturesAEcrire(ctx as never)).toEqual([...TROIS, { mois: 4, valeur: 430, unite: 'kwh' }]);
+    valeur(1).value = '';
+    valeur(1).dispatchEvent(new Event('input', { bubbles: true }));
+    hote.querySelector<HTMLElement>('[data-cons-mois-grille]')!.dispatchEvent(new Event('toggle'));
+    expect(valeur(1).value).toBe('');
+  });
+
   it('une unité MAD relue revient en MAD ; une entrée hors contrat est ignorée', () => {
     const { valeur, unite } = monterAvec([{ mois: 7, valeur: 600, unite: 'mad' }, { mois: 13, valeur: 1, unite: 'kwh' }]);
     expect(valeur(7).value).toBe('600');

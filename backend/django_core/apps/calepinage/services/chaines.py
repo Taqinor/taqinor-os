@@ -1504,6 +1504,13 @@ def bloc_electrique(conception, *, verdicts=(), imposee=None):
             "%d module(s) ont changé de chaîne, voir Affectation : %s"
             % (len(reancrees), ', '.join('%s → %s' % c for c in reancrees)))
     table = list(affectation(conception, imposee=imposee))
+    # ACAL1912 — les panneaux posés mais raccordés à rien sont DITS (le P50
+    # ne les compte pas) ; tous non raccordés (micro-onduleurs…) : aucun dit.
+    non_raccordes = sum(1 for ligne in table if ligne['chaine'] is None)
+    if 0 < non_raccordes < len(table):
+        from .agregation_electrique import phrase_non_raccordes
+
+        avertissements.append(phrase_non_raccordes(non_raccordes))
     obsoletes = _affectation_obsolete(conception, imposee, table=table)
     for ligne in obsoletes:
         avertissements.append(

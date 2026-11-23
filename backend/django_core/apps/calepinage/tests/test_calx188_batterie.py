@@ -201,6 +201,30 @@ class OmissionsTest(SimpleTestCase):
         self.assertIn('seuil_effacement_kw', resultat['motif_absence'])
         self.assertIs(suite, serie)
 
+    def test_fenetres_hors_decalage_sont_ignorees_la_batterie_reste_simulee(self):
+        """ACAL1911 — des fenêtres de charge / décharge saisies avec une stratégie
+        qui n'en a pas ne font plus omettre tout le bloc : ignorées, dites en clair."""
+        fenetres = {'charge': [{'heures': [10, 11, 12]}],
+                    'decharge': [{'heures': [18, 19, 20]}]}
+        for strategie, extra in (('autoconso', {}),
+                                 ('backup', {'reserve_backup_kwh': 4.0})):
+            with self.subTest(strategie=strategie):
+                contexte = contexte_de_test(strategie=strategie, heures=48,
+                                            fenetres=fenetres, **extra)
+                _suite, resultat = bloc.bloc_batterie(
+                    serie_de_test(heures=48), contexte)
+                self.assertEqual(resultat['motif_absence'], '')
+                self.assertIsNotNone(resultat['total'])
+                self.assertTrue(
+                    any('fenêtres' in texte and strategie in texte
+                        for texte in resultat['avertissements']),
+                    resultat['avertissements'])
+        # Sans fenêtre saisie, aucun avertissement de ce genre.
+        _suite, propre = bloc.bloc_batterie(
+            serie_de_test(heures=48), contexte_de_test(heures=48))
+        self.assertFalse(any('fenêtres' in texte
+                             for texte in propre['avertissements']))
+
     def test_aucune_strategie_choisie_omet_le_bloc(self):
         serie = serie_de_test(heures=48)
         contexte = contexte_de_test(strategie=None, heures=48)

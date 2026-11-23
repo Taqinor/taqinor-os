@@ -37,6 +37,7 @@ import {
   type Appliance,
   type HourlyCurve,
 } from '../../lib/applianceConsumption';
+import { factureCarteDe } from './factureCarte'; // ACAL1913
 import { annualSavingsMad, billToAnnualKwh, neededPanelsForTarget, tariffForCity } from '../../lib/estimatorBrainV2';
 import { fmtSavings } from '../../lib/productionWindow';
 import { fmt as fmtInt, esc } from './dom';
@@ -185,6 +186,16 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
     return annual > 0 ? annual / 365 : 0;
   }
 
+  /** ACAL1913 — kWh/jour du REPLI D'AFFICHAGE : sans facture saisie ni kWh servis (le champ
+   *  `rp9-bill` n'existe pas en mode calepinage), la facture mensuelle du lead servie à
+   *  l'atelier. 0 quand `billDailyKwh()` a déjà une source (elle prime) ou quand aucune
+   *  facture n'est connue — rien n'est inventé. */
+  function repliLeadDailyKwh(): number {
+    if (billDailyKwh() > 0) return 0;
+    const facture = factureCarteDe(0, ctx.opts?.factureMensuelleMad);
+    return facture > 0 ? billToAnnualKwh(facture) / 365 : 0;
+  }
+
   /** Profil horaire de PUISSANCE (kW) du jour-type courant (production), aligné 24 h.
    *  Source = la même production PVGIS que la fenêtre (jour-type du mois sélectionné,
    *  ou la date précise). Vide si aucun plan n'est calculé. */
@@ -297,7 +308,7 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
   let cibleRelue: number | undefined;
 
   function rebuildConsCurve() {
-    const cible = billDailyKwh();
+    const cible = billDailyKwh() || repliLeadDailyKwh(); // ACAL1913 — la facture du lead, jamais « 0,0 kWh »
     // ACAL31 — une courbe RELUE du document (aucun geste depuis l'ouverture) n'est pas
     // recomposée : rouvrir puis enregistrer la réémet telle quelle. Une facture modifiée
     // dans la session est un geste — la courbe se recompose et la saisie est signée.
@@ -350,7 +361,10 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
     // RÉTRÉCIT ; sans appareil en plus le besoin conso ≈ le besoin facture → rien ne change.
     // Ce recalcul ne s'exécute QUE si le besoin est encore en mode auto, ou déjà sous NOTRE
     // propre latch (`consOwnsLock`) — jamais sous une cible devis/manuelle (garde ci-dessus).
-    const annualCons = annualConsKwh ?? annualSummary().annualConsKwh;
+    // ACAL1913 — le repli d'affichage (facture du lead) n'entre jamais dans le dimensionnement :
+    // le besoin reste celui d'avant (facture saisie/servie + appareils « en plus »).
+    const sansRepli = (annualConsKwh ?? annualSummary().annualConsKwh) - repliLeadDailyKwh() * 365;
+    const annualCons = sansRepli > 1e-6 ? sansRepli : 0; // le résidu d'arrondi n'est pas un besoin
     // Besoin DICTÉ PAR LA FACTURE seule (le socle, sans les « en plus »).
     const annualBill = annualConsumptionFromDaily(billDailyKwh());
     const billNeeded = annualBill > 0 ? clampNeeded(neededPanelsForTarget(annualBill, ctx.centroidLat)) : 0;
@@ -910,7 +924,7 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
     // l'énergie des appareils « en plus » (clim/VE neufs pas encore dans la facture) — le
     // recalage ne doit que reproportionner la FORME, jamais supprimer cette énergie légitime.
     consRecalEl?.addEventListener('click', () => {
-      ctx.consCurve = rescaleToDaily(ctx.consCurve, billDailyKwh() + onTopDailyKwh());
+      ctx.consCurve = rescaleToDaily(ctx.consCurve, billDailyKwh() + onTopDailyKwh() + repliLeadDailyKwh());
       horodaterGeste(); // ACAL31
       ctx.consHandEdited = true; // c'est un override manuel recalé
       renderConsumption();
