@@ -488,8 +488,15 @@ describe('ACAL395 — l’étape Électrique en UNE page', () => {
     mocks.parcours.mockResolvedValue(parcoursElectrique('fait'))
     mocks.pretAEnvoyer.mockResolvedValue(pretAvec([ok, { ...orange, code: 'chutes_tension' }]))
     rendreRail(`?${PARAM_ONGLET}=verdict-electrique`)
-    // le repli « Voir les n contrôles réussis » reste à la présentation par défaut de PretAEnvoyer (couverte ailleurs).
-    expect(await screen.findByTestId(`cal-pret-ligne-${ok.code}`, {}, { timeout: DELAI_PANNEAU })).toBeVisible()
+    // ACAL1830 (maquette v2) : les contrôles réussis sont rangés dans la section « Contrôles · N bons » REPLIÉE,
+    // la ligne y reste présente ; le repli « Voir les n contrôles réussis » de PretAEnvoyer n'existe pas ici.
+    const ligne = await screen.findByTestId(`cal-pret-ligne-${ok.code}`, {}, { timeout: DELAI_PANNEAU })
+    const bons = screen.getByTestId('cal-pret-bons')
+    expect(bons.open).toBe(false)
+    expect(within(bons).getByTestId(`cal-pret-ligne-${ok.code}`)).toBe(ligne)
+    await userEvent.setup().click(bons.querySelector('summary'))
+    expect(bons.open).toBe(true)
+    expect(ligne).toBeVisible()
     expect(screen.queryByTestId('cal-pret-reussis')).toBeNull()
   }, 30_000)
 
