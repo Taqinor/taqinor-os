@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { screen, cleanup, waitFor, within } from '@testing-library/react'
+import { screen, cleanup, waitFor, within, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
@@ -32,6 +32,7 @@ import {
 import ventesApi from '../../api/ventesApi'
 import calepinageApi from '../../api/calepinageApi'
 import { toastInfo } from '../../lib/toast'
+import { reprendreSimulationAuto } from '../../features/calepinage/production/simulationAuto'
 import { choisirPaletteAcces, couleurAccesActive, solarAccessColorRGB } from '@rooflib/shadingEngine'
 
 const CTX = exempleContrat('calepinage', 'calepinage_design_context')
@@ -177,27 +178,31 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     expect(calepinageApi.calepinages.envoyerImage).not.toHaveBeenCalled()
   })
 
-  /* ACAL398 — un enregistrement qui crée une version relance la simulation
-     toute seule (UN POST sans `forcer`) ; inchangé → aucun appel ; refus 409
-     → aucun toast (la phrase est reprise par l'onglet Production). */
-  it('ACAL398 — version créée ⇒ UN POST simuler sans forcer ; refus 409 ⇒ aucun toast', async () => {
+  /* ACAL1987 (D-ACAL-90 renversée) — UN SEUL déclencheur : le serveur. Un enregistrement qui crée une version ne
+     fait plus POSTer `simuler/` au navigateur : il LIT l'état servi (`simulation_automatique` de `GET resultat/`),
+     sans toast, et retient le job du serveur pour l'onglet Production. */
+  it('ACAL1987 — version créée ⇒ AUCUN POST simuler du navigateur ; il lit l’état servi, sans toast', async () => {
     calepinageApi.calepinages.designContext.mockResolvedValue(
       reponseContrat('calepinage', 'calepinage_design_context'))
     calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
       { data: { inchange: false, version: 4 } })
     calepinageApi.calepinages.envoyerImage.mockResolvedValue({ data: {} })
-    calepinageApi.calepinages.simuler.mockRejectedValue(
-      { response: { status: 409, data: { detail: 'Mode météo non choisi.' } } })
+    const enCours = exempleContrat('calepinage', 'calepinage_resultat', 'exemple_vide')
+    calepinageApi.calepinages.resultat.mockResolvedValue({
+      data: { ...enCours, simulation_automatique: { en_cours: true, job_id: 274, manquants: [] } } })
     snapshot.mockReturnValue('data:image/png;base64,aGk=')
 
     rendreCalepinage(CTX.calepinage.id)
     await userEvent.click(await screen.findByRole('button',
       { name: /Enregistrer le calepinage/ }))
 
-    await waitFor(() => expect(calepinageApi.calepinages.simuler).toHaveBeenCalledTimes(1))
-    // Acceptation ACAL490 : le pont axios toastait le 409 — l'appel part SILENCIEUX.
-    expect(calepinageApi.calepinages.simuler).toHaveBeenCalledWith(String(CTX.calepinage.id), { silencieux: true })
+    await waitFor(() => expect(calepinageApi.calepinages.resultat)
+      .toHaveBeenCalledWith(String(CTX.calepinage.id)))
+    expect(calepinageApi.calepinages.simuler).not.toHaveBeenCalled()
     expect(toastInfo).not.toHaveBeenCalled()
+    // Le job du SERVEUR est retenu pour l'onglet Production (une seule reprise).
+    await act(async () => {}) // laisse la lecture résolue écrire la table
+    expect(reprendreSimulationAuto(CTX.calepinage.id)).toEqual({ jobId: 274 })
   })
 
   it('ACAL1275 — « Générer le devis » sur une conception inchangée : aucun toast « Aucun changement » ; « Enregistrer » le garde', async () => {

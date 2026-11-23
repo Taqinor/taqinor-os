@@ -43,7 +43,7 @@ import PiedResultats from './PiedResultats'
 import ReglagesSimulation from '../reglages/ReglagesSimulation'
 import sourceBibliotheque from '../Bibliotheque.jsx?raw'
 import { BandeauBorneHaute, EcartPvgis } from './BandeauProvenanceProduction'
-import { lancerSimulationAuto, viderSimulationsAuto } from './simulationAuto'
+import { suivreSimulationDuServeur, viderSimulationsAuto } from './simulationAuto'
 import { OPTIONS_TELECHARGEMENT } from '../documents/telechargement'
 
 const servir = (variante) => {
@@ -519,33 +519,40 @@ describe('PanneauProduction — borne haute (ACAL52)', () => {
     expect(within(ligne).getAllByTestId('acal52-non-publie')).toHaveLength(3)
   })
 
-  /* ACAL398 — la simulation partie à l'enregistrement : l'onglet reprend son job. */
-  it('ACAL398 — job automatique en cours ⇒ « Simulation en cours… » puis relecture', async () => {
+  /* ACAL1987 — la simulation partie à l'enregistrement est lancée par le SERVEUR : l'onglet reprend SON job. */
+  it('ACAL1987 — job du serveur en cours ⇒ « Simulation en cours… » puis relecture, sans POST simuler', async () => {
     viderSimulationsAuto()
     servir('exemple')
-    calepinageApi.calepinages.simuler.mockResolvedValue({ data: { job_id: 'j-9' } })
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: {
+      ...exempleContrat('calepinage', 'calepinage_resultat', 'exemple'),
+      simulation_automatique: { en_cours: true, job_id: 'j-9', manquants: [] },
+    } })
     calepinageApi.moteur.resultat
       .mockResolvedValueOnce({ data: { job_id: 'j-9', statut: 'running' } })
       .mockResolvedValue({ data: { job_id: 'j-9', statut: 'done' } })
-    await lancerSimulationAuto(1)
+    await suivreSimulationDuServeur(1)
     render(<MemoryRouter><PanneauProduction calepinageId={1} intervalleMs={300} /></MemoryRouter>)
 
     expect(await screen.findByText('Simulation en cours…')).toBeInTheDocument()
     await waitFor(() => expect(calepinageApi.moteur.resultat).toHaveBeenCalledWith('j-9'))
-    await waitFor(() => expect(calepinageApi.calepinages.resultat.mock.calls.length).toBeGreaterThan(1))
+    await waitFor(() => expect(calepinageApi.calepinages.resultat.mock.calls.length).toBeGreaterThan(2))
+    expect(calepinageApi.calepinages.simuler).not.toHaveBeenCalled()
   })
 
-  it('ACAL398 — refus nommé du serveur ⇒ phrase affichée dans l’onglet', async () => {
+  it('ACAL1987 — pose incomplète (aucun job servi) ⇒ aucune reprise, aucun calcul, l’onglet ne dit pas « en cours »', async () => {
     viderSimulationsAuto()
-    servir('exemple')
-    calepinageApi.calepinages.simuler.mockRejectedValue(
-      { response: { status: 409, data: { 'parametres.mode_meteo': ['Mode météo non choisi.'] } } })
-    await lancerSimulationAuto(1)
+    servir('exemple_vide')
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: {
+      ...exempleContrat('calepinage', 'calepinage_resultat', 'exemple_vide'),
+      simulation_automatique: exempleContrat('calepinage', 'calepinage_resultat', 'acal1987_simulation_automatique'),
+    } })
+    await suivreSimulationDuServeur(1)
     rendre()
 
-    const refus = await screen.findByTestId('calx48-refus')
-    expect(refus).toHaveTextContent('La simulation automatique n’a pas démarré : Mode météo non choisi.')
-    expect(screen.getByTestId('calx48-lien-reglages')).toBeInTheDocument()
+    await screen.findByTestId('cal236-panneau')
+    expect(screen.queryByText('Simulation en cours…')).toBeNull()
+    expect(calepinageApi.calepinages.simuler).not.toHaveBeenCalled()
+    expect(calepinageApi.moteur.resultat).not.toHaveBeenCalled()
   })
 
   it('complet : ni bandeau ni masquage', async () => {
