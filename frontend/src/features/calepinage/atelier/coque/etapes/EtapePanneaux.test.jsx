@@ -493,6 +493,53 @@ describe('étape Panneaux — sur la carte', () => {
   })
 })
 
+/* ACAL1519 — « K-COLONNE-ETROITE » : les grilles du panneau de droite (bloc « Total — toutes les zones »,
+   bandeau de « Déplacer les panneaux ») suivent la largeur de la COLONNE (colonnes automatiques), jamais un
+   point de rupture de la fenêtre. Prouvé sur le DOM RENDU. */
+describe('panneau de droite — grilles suivant la colonne, pas la fenêtre (ACAL1519)', () => {
+  const POINT_DE_RUPTURE = /(?:^|\s)(?:sm|md|lg|xl|2xl):grid-cols-/
+  const AUTO = 'grid-cols-[repeat(auto-fit,minmax(7rem,1fr))]'
+
+  it('le bloc « Total » et la pose rendent des grilles à colonnes automatiques sans classe de fenêtre', async () => {
+    const { default: InspecteurBuilder } = await import('../../InspecteurBuilder.jsx')
+    const { default: BuilderPose } = await import('../../BuilderPose.jsx')
+    const { container } = render(<MemoryRouter><InspecteurBuilder estCalepinage /><BuilderPose /></MemoryRouter>)
+    for (const id of ['rp9-areas-window', 'rp9-layout-panel']) {
+      const grilles = [...container.querySelector(`#${id}`).querySelectorAll('dl')]
+        .filter((el) => el.className.includes('grid-cols-['))
+      expect(grilles.length, `${id} : grille à colonnes automatiques`).toBeGreaterThanOrEqual(1)
+      for (const g of grilles) expect(g.className).toContain(AUTO)
+    }
+    // Le bloc « Affiner ma consommation » (#rp9-cons-window) vient du balisage partagé @roofpro : hors périmètre.
+    for (const el of container.querySelectorAll('[class*="grid-cols-"]')) {
+      if (el.closest('#rp9-cons-window')) continue
+      expect(el.className, 'grille liée à la largeur de la fenêtre').not.toMatch(POINT_DE_RUPTURE)
+    }
+  })
+})
+
+describe('retraits du panneau de droite — règle CSS suivant la colonne (ACAL1519)', () => {
+  it('.rp9-host .rp9-setbacks : colonnes automatiques, aucune règle de fenêtre ne la redéfinit', async () => {
+    // (`?raw` rend '' sous vitest : la feuille est lue du disque puis chargée dans le DOM de test.)
+    const { readFileSync } = await import('node:fs')
+    const css = readFileSync(`${process.cwd()}/src/styles/roofbuilder.css`, 'utf8')
+    const style = document.createElement('style')
+    style.textContent = css
+    document.head.appendChild(style)
+    try {
+      const regles = [...style.sheet.cssRules]
+      const bloc = regles.find((r) => r.selectorText === '.rp9-host .rp9-setbacks')
+      expect(bloc, 'règle .rp9-host .rp9-setbacks').toBeTruthy()
+      expect(bloc.cssText).toMatch(/auto-fit/)
+      const enFenetre = regles.filter((r) => r.type === 4 /* CSSMediaRule */)
+        .flatMap((m) => [...m.cssRules]).filter((r) => (r.selectorText || '').includes('.rp9-setbacks'))
+      expect(enFenetre).toHaveLength(0)
+    } finally {
+      style.remove()
+    }
+  })
+})
+
 /* ACAL1340 — la palette d'ensoleillement n'est PAS posée par l'étape Panneaux : le démarrage de l'atelier
    (`useAtelierBoot`, couvert par ToitureDesign.calepinage.test.jsx « F6 ») la pose pour toute étape et pour le
    mode Expert. Charger le module de l'étape ne doit rien changer à la palette active (le site public garde

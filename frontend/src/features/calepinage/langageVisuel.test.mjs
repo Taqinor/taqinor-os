@@ -100,16 +100,3 @@ test('ACAL969 : UN seul état « choisi » (fond doré sur [aria-pressed]) ; le 
   assert.ok(!/background/.test(badge.corps), '.rp9-reco-badge ne doit pas porter de fond doré')
   assert.ok(parseFloat(declarations(badge.corps)['font-size']) >= 0.75, '.rp9-reco-badge : texte sous 12 px')
 })
-
-// ACAL1519 — « K-COLONNE-ETROITE » : les grilles du panneau de droite (retraits, bandeau de « Déplacer les panneaux »,
-// bloc « Total — toutes les zones ») suivent la largeur de la COLONNE (auto-fit), jamais un point de rupture de fenêtre.
-test('ACAL1519 : aucune grille du panneau de droite ne dépend du point de rupture de la fenêtre', () => {
-  for (const f of ['atelier/InspecteurBuilder.jsx', 'atelier/BuilderPose.jsx']) {
-    const src = readFileSync(join(SRC, C + f), 'utf8')
-    assert.ok(!/(?:sm|md|lg|xl):grid-cols-/.test(src), `${f} : grille à point de rupture de fenêtre`)
-    assert.ok(src.includes('grid-cols-[repeat(auto-fit,'), `${f} : grille à colonnes automatiques attendue`)
-  }
-  const bloc = /\.rp9-host \.rp9-setbacks\s*\{[^}]*\}/.exec(CSS_ROOFBUILDER)?.[0] ?? ''
-  assert.match(bloc, /auto-fit/, 'roofbuilder.css : .rp9-setbacks doit suivre la largeur de la colonne')
-  assert.ok(!/@media[^{]*\{[^{}]*\.rp9-setbacks/.test(CSS_ROOFBUILDER), 'roofbuilder.css : .rp9-setbacks sans repli par la fenêtre')
-})
