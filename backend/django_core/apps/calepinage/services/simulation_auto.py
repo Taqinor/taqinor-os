@@ -41,8 +41,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = ['ETAT_A_JOUR', 'ETAT_EN_FILE', 'ETAT_IGNOREE', 'ETAT_INCOMPLETE',
            'ETAT_LANCEE', 'etat_simulation_automatique',
-           'lancer_apres_validation', 'lancer_simulation_automatique',
-           'simulation_automatique_en_cours']
+           'lancer_simulation_automatique', 'simulation_automatique_en_cours']
 
 ETAT_LANCEE = 'lancee'
 ETAT_A_JOUR = 'a_jour'
@@ -123,25 +122,6 @@ def etat_simulation_automatique(calepinage, empreinte):
         manquants = list(marqueur.get('manquants') or [])
     return dict(rendu, en_cours=job_id is not None, job_id=job_id,
                 manquants=manquants)
-
-
-def lancer_apres_validation(calepinage, *, user):
-    """Le geste qui ENREGISTRE une pose (conception, matériel électrique)
-    appelle ceci : une fois la transaction validée, le calepinage est relu en
-    base et ``lancer_simulation_automatique`` décide. Sans auteur, rien."""
-    if calepinage is None or user is None:
-        return
-    from django.db import transaction
-
-    pk = calepinage.pk
-
-    def _lancer():
-        from ..models import Calepinage
-
-        relu = Calepinage.objects.filter(pk=pk).first()
-        lancer_simulation_automatique(relu or calepinage, user=user)
-
-    transaction.on_commit(_lancer)
 
 
 def lancer_simulation_automatique(calepinage, *, user):

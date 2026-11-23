@@ -1000,6 +1000,7 @@ def enregistrer_entree(calepinage, donnees, *, user=None):
 
     posee = modifier_resultat(calepinage, _poser)
     from .journal import noter
+    from .layout import simuler_apres_enregistrement
 
     if apres_envoi(calepinage):
         # ACAL43 — une saisie d'un devis ENVOYÉ se TRACE (corrigé après envoi).
@@ -1015,7 +1016,7 @@ def enregistrer_entree(calepinage, donnees, *, user=None):
         noter(calepinage, trace['texte'], user=user)
     # ACAL1987 — désigner le matériel est le DERNIER geste d'une pose
     # complète : la simulation part seule, transaction validée.
-    _simulation_auto.lancer_apres_validation(calepinage, user=user)
+    simuler_apres_enregistrement(calepinage, user)
     return posee
 
 

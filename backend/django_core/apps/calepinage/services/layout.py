@@ -614,7 +614,7 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
 
     rejouer_apres_layout(calepinage, user=user)
     if not inchange:
-        _simuler_apres_enregistrement(calepinage, user)
+        simuler_apres_enregistrement(calepinage, user)
     return {
         'calepinage': calepinage,
         'version': version,
@@ -625,12 +625,24 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
     }
 
 
-def _simuler_apres_enregistrement(calepinage, user):
-    """ACAL1987 (D-ACAL-90 renversée) — une conception qui a CHANGÉ part en
-    simulation d'elle-même, une fois la transaction validée : le calepinage est
-    relu en base (la conception enregistrée, jamais l'instance en mémoire) et
-    ``services/simulation_auto`` décide (pose complète ? déjà simulée ? déjà en
-    file ?). Sans auteur, rien : le job de fond exige un utilisateur."""
-    from .simulation_auto import lancer_apres_validation
+def simuler_apres_enregistrement(calepinage, user):
+    """ACAL1987 (D-ACAL-90 renversée) — une pose ENREGISTRÉE (conception qui a
+    CHANGÉ, ici ; matériel électrique désigné, ``electrique.enregistrer_entree``)
+    part en simulation d'elle-même, une fois la transaction validée : le
+    calepinage est relu en base (la conception enregistrée, jamais l'instance en
+    mémoire) et ``services/simulation_auto`` décide (pose complète ? déjà
+    simulée ? déjà en file ?). Sans auteur, rien : le job exige un utilisateur."""
+    if calepinage is None or user is None:
+        return
+    from django.db import transaction
 
-    lancer_apres_validation(calepinage, user=user)
+    pk = calepinage.pk
+
+    def _lancer():
+        from ..models import Calepinage
+        from .simulation_auto import lancer_simulation_automatique
+
+        relu = Calepinage.objects.filter(pk=pk).first()
+        lancer_simulation_automatique(relu or calepinage, user=user)
+
+    transaction.on_commit(_lancer)
