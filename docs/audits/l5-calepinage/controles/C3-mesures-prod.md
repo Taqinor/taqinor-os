@@ -1,4 +1,4 @@
-# C3 — Mesures en lecture seule sur la production (23/11/2026, 12 h 40 UTC)
+# C3 — Mesures en lecture seule sur la production (23/11/2026, 12 h 05 UTC)
 
 Deux scripts `manage.py shell` en transaction annulée, des comptes et des identifiants seulement (aucun nom, aucune
 coordonnée). Fonctions du code servi appelées telles quelles : `crm/devis_auto.py::champs_manquants_detail`,
