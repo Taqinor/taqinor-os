@@ -1,6 +1,6 @@
 import { useReducer } from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { axe } from 'vitest-axe'
 import * as axeMatchers from 'vitest-axe/matchers'
 import { initState, dirtyKeys, reducer } from '../draftCore'
@@ -476,6 +476,29 @@ describe('ROUND 5 — bandeau « À compléter »', () => {
     for (const l of ['pompe (CV)', 'HMT', 'débit souhaité']) {
       expect(screen.getByRole('button', { name: `Compléter : ${l}` })).toBeInTheDocument()
     }
+  })
+
+  it('ALEA67 — « Manque : ville » : la puce NOMME la ville et mène au champ ; ville reconnue ⇒ plus de puce', async () => {
+    // Bloc servi par le CRM pour une ville que le moteur ne situe pas (ni GPS).
+    const nonSituee = {
+      pret: false, manquants: ['ville'], message: 'Manque : ville',
+      manquants_detail: [{ champ: 'ville', label: 'ville' }], requis: [['facture_hiver'], ['ville', 'gps_lat']],
+    }
+    const { container, unmount } = monter({ ...LEAD_COMPLET, ville: 'Xyzzyville', devis_auto: nonSituee })
+    const puce = within(screen.getByLabelText('Informations à compléter'))
+      .getByRole('button', { name: 'Compléter : ville' })
+    expect(puce).toHaveTextContent(/^ville$/)
+    // « Contact » porte le manque : ouverte, sans coche, et la puce focalise la ville.
+    expect(tete(container, 'contact')).toHaveAttribute('aria-expanded', 'true')
+    expect(tete(container, 'contact')).not.toHaveTextContent('✓')
+    fireEvent.click(puce)
+    await waitFor(() => expect(document.activeElement?.id).toBe('lf-ville'))
+    unmount()
+    // La ville redevient reconnue : le serveur sert « prêt », la fiche ne réclame plus rien.
+    const { container: apres } = monter({ ...LEAD_COMPLET, ville: 'Casablanca',
+      devis_auto: { ...nonSituee, pret: true, manquants: [], message: null, manquants_detail: [] } })
+    expect(apres.querySelector('.lw-todo')).toBeNull()
+    expect(tete(apres, 'contact')).toHaveTextContent('✓')
   })
 
   it('cliquer une chip DÉPLIE la section cible puis focalise le champ', async () => {

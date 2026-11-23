@@ -435,6 +435,20 @@ class TestDevisAutoSerializerField(TestCase):
         self.assertEqual(resp.data['devis_auto']['manquants'], [])
         self.assertIsNone(resp.data['devis_auto']['message'])
 
+    def test_alea67_ville_redevenue_reconnue_lead_de_nouveau_pret(self):
+        # ALEA67 (rejeu T3-VAGUEC2, point 13) — la fiche nomme « ville » tant que
+        # le moteur ne situe pas le chantier, puis le lead redevient prêt.
+        lead = Lead.objects.create(company=self.company, nom='Situé ?', facture_hiver=700,
+                                   ville='Xyzzyville')
+        url = f'/api/django/crm/leads/{lead.id}/'
+        bloc = self.api.get(url).data['devis_auto']
+        self.assertEqual((bloc['pret'], bloc['message']), (False, 'Manque : ville'))
+        self.assertEqual(bloc['manquants_detail'], [{'champ': 'ville', 'label': 'ville'}])
+        resp = self.api.patch(url, {'ville': 'Casablanca'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content[:300])
+        bloc = self.api.get(url).data['devis_auto']
+        self.assertEqual((bloc['pret'], bloc['manquants'], bloc['message']), (True, [], None))
+
 
 class TestCatalogueCiAlea50(TestCase):
     """ALEA50 (D-ACI-5=a / D-ACI-6=a) — « prêt » inclut le CATALOGUE : le bloc

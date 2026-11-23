@@ -53,6 +53,9 @@ CONTRAT = json.loads(
     (Path(__file__).resolve().parent.parent / 'contract_samples'
      / 'etude_ci_preview.json').read_text(encoding='utf-8'))
 URL = '/api/django/ventes/etude-ci/preview/'
+#: ADEV122 — le fournisseur d'année type du calepinage (lu par le sélecteur
+#: ``calepinage.selectors_devis.froid_dimensionnement_au_point``).
+_FOURNISSEUR_TMY = 'apps.calepinage.services.electrique._fournisseur_temperatures'
 
 
 def _production_casablanca(_site=None, toit=None):
@@ -150,6 +153,10 @@ class _Base(TestCase):
         patcher = mock.patch.object(etude_ci, 'lire_production',
                                     side_effect=_production_casablanca)
         self.production = patcher.start()
+        self.addCleanup(patcher.stop)
+        # ADEV122 — l'année type du lieu (froid des chaînes) : jamais le réseau.
+        patcher = mock.patch(_FOURNISSEUR_TMY, return_value=None)
+        self.annee_type = patcher.start()
         self.addCleanup(patcher.stop)
 
     def corps(self, **extra):
@@ -625,6 +632,48 @@ class Serie8760Amot99(_Base):
         self.production.assert_not_called()
         self.assertEqual(rejeu['bilan'], reference['bilan'])
         self.assertEqual(rejeu['methode'], etude_ci.METHODE)
+
+
+class FroidDuSiteAdev122(_Base):
+    """ADEV122 (D-ACAL-80, fondateur 23/11/2026) — le devis C&I borne ses
+    chaînes au froid de l'année type du lieu (la règle du calepinage), le dit
+    en hypothèse ; sans année type : −5 °C, dit « supposé »."""
+
+    SITE_GPS = {'ville': 'Casablanca', 'lat': 33.57, 'lon': -7.59}
+
+    def setUp(self):
+        super().setUp()
+        # Classe Voc 49,5 V, β(Voc) −0,25 %/°C (fiche publiée) : 20 modules
+        # au plus par chaîne à −5 °C sous 1 100 V, 21 à +4,18 °C.
+        FicheTechnique.objects.filter(company=self.co, pmax_wc=Decimal('710')).update(
+            voc_v=Decimal('49.5'), temp_coeff_voc_pct_c=Decimal('-0.25'))
+
+    def _etude(self, annee_type):
+        self.annee_type.return_value = annee_type
+        # 42 modules de 710 Wc : deux chaînes de 21 ou trois de 14.
+        corps = self.corps(site=dict(self.SITE_GPS), taille_explicite_kwc=29.82)
+        corps['contraintes']['longueur_dc_m'] = 30
+        etude = etude_ci.etudier_ci(self.co, corps)
+        froid = [h for h in etude['hypotheses'] if h['cle'] == 'temperature_froid_c']
+        chaines = etude['composition']['onduleurs']['chaines'] or []
+        longueurs = [e['longueur'] for c in chaines for e in c['entrees']]
+        return froid, longueurs, sum(c['nb_chaines'] for c in chaines)
+
+    def test_froid_de_l_annee_type_borne_les_chaines_et_se_dit(self):
+        def douce(lat, lon):  # Casablanca, relevé du tour 2 : +4,18 °C
+            self.assertEqual((lat, lon), (33.57, -7.59))
+            return {'temperature_min_c': 4.18, 'temperature_max_c': 38.0, 'base': 'PVGIS-SARAH3'}
+
+        froid, longueurs, nb_chaines = self._etude(douce)
+        self.assertEqual([(h['valeur'], h['statut']) for h in froid], [(4.18, 'source')])
+        self.assertIn('D-ACAL-80', froid[0]['source'])
+        repli, longueurs_repli, nb_chaines_repli = self._etude(None)
+        self.assertEqual([(h['valeur'], h['statut']) for h in repli], [(-5.0, 'estimation')])
+        self.assertIn('supposé', repli[0]['source'])
+        # Mutant « le devis garde −5 °C » : des chaînes plus courtes, plus nombreuses.
+        self.assertTrue(longueurs and longueurs_repli)
+        self.assertGreater(max(longueurs), max(longueurs_repli))
+        self.assertLess(nb_chaines, nb_chaines_repli)
 
 
 class AnneeTypePvgisAmot99(TestCase):

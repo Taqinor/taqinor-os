@@ -14,6 +14,7 @@ from decimal import Decimal
 from apps.ventes import tarif_ci
 from apps.ventes.domain import etude_ci
 from apps.ventes.models import Devis
+from apps.ventes.quote_engine.ci.synthese import STATUT_SOUS_RESERVE, _statut_et_a_confirmer
 from apps.ventes.services import build_devis_auto
 from apps.ventes.tests.test_ciq120_devis_auto_ci import _Base
 
@@ -65,6 +66,10 @@ class DevisAutoContratDuLead(_Base):
         self.assertEqual((hyp['contrat_electricite']['valeur'],
                           hyp['contrat_electricite']['statut']), (contrat, 'estimation'))
         self.assertIsNotNone(etude['economie_ci'])
+        # Le bloc rangé porte la réserve : le document dit « estimation sous
+        # réserve de visite » par son marquage existant (aucun texte nouveau).
+        self.assertTrue(etude['sous_reserve_visite']['valeur'])
+        self.assertEqual(_statut_et_a_confirmer(etude, None, {})[0], STATUT_SOUS_RESERVE)
         dites = [a for a in journal['alertes'] if a['champ_lead'] == 'contrat_electricite']
         self.assertEqual(len(dites), 1, journal['alertes'])
         self.assertIn('basse tension', dites[0]['message'])
