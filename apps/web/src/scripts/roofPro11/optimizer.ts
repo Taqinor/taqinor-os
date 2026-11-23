@@ -1691,7 +1691,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'flat') return;
     const token = ++matrixToken;
     const ring: LngLat[] = [...ctx.vertices];
-    const bill = monthlyBill();
+    const bill = factureCarte(); // ACAL1505 — cible du balayage : saisie, sinon la facture du lead (le vivant garde monthlyBill)
     const roofAz = roofDominantAzimuthDeg(ring);
     // Phase 1 — GROSSIÈRE : tous les aspects, inclinaisons grossières → la base.
     await Promise.all(pvgisCoarsePairs(ctx.centroidLat, roofAz).map((p) => v4SpecificYield(p.tiltDeg, p.aspect)));

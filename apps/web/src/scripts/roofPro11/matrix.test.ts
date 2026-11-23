@@ -141,6 +141,43 @@ describe('CALX114 — la ligne « Recommandé » dit selon quoi', () => {
   });
 });
 
+// ACAL1505 — en calepinage le champ `rp9-bill` n'existe pas (`monthlyBill()` = 0) : le balayage prend la facture du
+// lead servie (`factureCarteDe`), sinon « % du besoin » vaut 0 sur chaque ligne ; le nombre posé (solveur vivant) ne bouge pas.
+describe('ACAL1505 — le balayage vise la facture du lead', () => {
+  it('facture du lead servie ⇒ pctOfTarget > 0 sur le balayage (recalcul de la matrice)', () => {
+    const ctx = { ...makeCtx(), opts: { factureMensuelleMad: 1200 }, matrixResult: null } as unknown as Ctx;
+    createMatrix(ctx, { renderConfig: () => {}, monthlyBill: () => 0, obstructionRings: () => [] }).recomputeMatrix();
+    expect(ctx.matrixResult!.targetAnnualKwh).toBeGreaterThan(0);
+    expect(ctx.matrixResult!.rows.every((r) => r.pctOfTarget > 0)).toBe(true);
+  });
+
+  it('affinage PVGIS (buildMatrix) : même cible, nombre posé inchangé', async () => {
+    const { createOptimizer } = await import('./optimizer');
+    const lancer = async (factureLead: number) => {
+      const pan = { id: 'z1', label: 'Pan A', vertices: rect(10, 7), obstacles: [], roofType: 'flat', neededPanels: 0, neededAuto: true };
+      const ctx = {
+        ...makeCtx(), vertices: rect(10, 7), matrixResult: null, rec: null, areas: [pan], activeAreaId: 'z1', activeArea: () => pan,
+        opts: { rendementPvgis: null }, dom: {}, centroid: rect(10, 7)[0], pinned: new Set(), overhangM: 0, documentRelu: null,
+        sel: { family: 'south', tilt: 'reco', orient: 'auto', azimuth: 'south', margin: 'keep' }, batiments: [], environment: [],
+        shadeObstructions: [], obstacles: [], neededAuto: true, neededPanels: 0, layoutPlan: null,
+      } as unknown as Ctx;
+      let pose = -1;
+      const deps = {
+        renderScene: (_p: unknown, _g: unknown, _t: unknown, _f: unknown, placed: number) => { pose = placed; },
+        paintComparison: () => {}, highlightRow: () => {}, syncProductionWindow: () => {}, prefillLead: () => {}, syncChips: () => {},
+        renderMatrixOptimumCard: () => {}, monthlyBill: () => 0, factureCarte: () => factureLead, obstructionRings: () => [], setStatus: () => {},
+      };
+      await createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]).computeMatrixPvgis();
+      return { pose, pcts: ctx.matrixResult!.rows.map((r) => r.pctOfTarget) };
+    };
+    const sans = await lancer(0);
+    const avec = await lancer(1200);
+    expect(avec.pcts.every((p) => p > 0)).toBe(true);
+    expect(sans.pcts.every((p) => p === 0)).toBe(true);
+    expect(avec.pose).toBe(sans.pose);
+  });
+});
+
 describe('ACAL546 — comparatif sans montant (atelier ERP)', () => {
   it('rp9-compare-wrap avec data-sans-montant : cinq cellules par ligne, aucune ne dit MAD', () => {
     document.body.innerHTML =

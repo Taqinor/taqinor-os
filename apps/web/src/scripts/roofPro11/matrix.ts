@@ -10,6 +10,7 @@
 import { packConfig } from '../../lib/estimatorBrainV2';
 import { anneauPosableParArete } from '../../lib/estimatorBrainV7'; // ACAL1504
 import { supplementsParArete } from '../../lib/roofSetbackEdge'; // ACAL1504
+import { factureCarteDe } from './factureCarte'; // ACAL1505
 import {
   CIBLES_OPTIMISATION,
   fineGridMatrixV6,
@@ -267,7 +268,8 @@ export function createMatrix(ctx: Ctx, deps: MatrixDeps): Matrix {
     // en cache, la ligne badgée == la config recommandée (plus de désaccord transitoire).
     // CALX114 — le MÊME objectif saisi que l'affinage PVGIS (`optimizer.buildMatrix`) :
     // la ligne badgée et la carte reco ne peuvent pas classer sur deux objectifs.
-    ctx.matrixResult = fineGridMatrixV6(ring, ctx.centroidLat, monthlyBill(), obstructionRings(), {
+    // ACAL1505 — cible du balayage = facture saisie, sinon celle du lead (mode calepinage : aucun champ `rp9-bill`).
+    ctx.matrixResult = fineGridMatrixV6(ring, ctx.centroidLat, factureCarteDe(monthlyBill(), ctx.opts?.factureMensuelleMad), obstructionRings(), {
       yieldFn: matrixYieldFn,
       optimisation: choixOptimisationCourant(),
     });
