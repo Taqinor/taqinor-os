@@ -125,6 +125,33 @@ def compter_pages(octets_pdf):
         document.close()
 
 
+def _rapport_remis_a_jour(calepinage):
+    """ACAL1322 — les octets du rapport d'étude DÉJÀ REMIS (``remettre-document``)
+    dont l'empreinte des entrées est celle d'aujourd'hui, en français et toutes
+    sections (ce que le pack rendrait) ; ``None`` sinon — le pack le rend alors
+    comme avant. Aucun second rendu de 21 pages quand rien n'a changé."""
+    from apps.records.storage import fetch_attachment
+
+    from .documents.versions_document import (
+        _deja_remise, _sections_du_document, empreinte_courante,
+    )
+
+    code = 'rapport_etude'
+    try:
+        if _sections_du_document(calepinage, code) is not None:
+            return None  # la société retient des sections : le pack rend tout
+        piece = _deja_remise(calepinage, code, 'fr',
+                             empreinte_courante(calepinage, code, 'fr'))
+    except Exception as erreur:  # lecture impossible : le rendu d'avant, motif journalisé
+        logger.info('ACAL1322 : rapport remis non relu (calepinage %s) : %s',
+                    getattr(calepinage, 'pk', None), erreur)
+        return None
+    if piece is None:
+        return None
+    octets, _erreur = fetch_attachment(getattr(piece, 'file_key', ''))
+    return octets if octets and bytes(octets[:5]) == b'%PDF-' else None
+
+
 def _rendus(calepinage, company):
     """``code -> fonction de rendu`` — chacune rend des OCTETS PDF.
 
@@ -169,7 +196,9 @@ def _rendus(calepinage, company):
         # ACAL237 — le plan de pose TERRAIN, celui que sert plan-pose.pdf.
         'plan_pose': lambda: rendre_plan_pose_pdf(calepinage,
                                                   company=company),
-        'rapport_etude': lambda: rendre_rapport(calepinage, company=company),
+        # ACAL1322 — le rapport REMIS à jour est réutilisé (≈ 110 s de rendu évitées).
+        'rapport_etude': lambda: (_rapport_remis_a_jour(calepinage)
+                                  or rendre_rapport(calepinage, company=company)),
         'plan_cablage': lambda: rendre_plan_cablage_pdf(
             calepinage, company=company),
         'rapport_ombrage': lambda: rendre_rapport_ombrage(
