@@ -476,6 +476,7 @@ class ParametresCalepinageView(APIView):
 FORME_RECALCUL = inline_serializer('CalepinageRecalculSimulations', dict(
     soumis=serializers.IntegerField(),
     jobs=serializers.ListField(child=serializers.DictField()),
+    hors_portee=serializers.IntegerField(),  # ACAL1247 — soumis, non lisibles
     reste=serializers.IntegerField(),
 ))
 
