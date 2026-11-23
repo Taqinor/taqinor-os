@@ -1021,6 +1021,10 @@ export interface GabaritZone {
   hauteurM?: number;
   /** Source textuelle OBLIGATOIRE — elle voyage avec la zone posée. */
   source: string;
+  /** ACAL1432 — genre saisi, et pour une bande sa largeur (`largeur_m`) et son côté (`cote`), tels que saisis (jamais complétés). */
+  genre: 'bande' | 'polygone';
+  largeurM?: number;
+  cote?: string;
 }
 
 /**
@@ -1049,10 +1053,15 @@ export function lireGabaritsZone(section: unknown): { gabarits: GabaritZone[]; r
       continue;
     }
     const hauteurM = nombreReglage(e.hauteur_m);
+    const largeurM = nombreReglage(e.largeur_m);
+    const cote = texteReglage(e.cote);
     gabarits.push({
       cle,
       libelle,
       nature,
+      genre: texteReglage(e.genre) as 'bande' | 'polygone',
+      ...(largeurM != null ? { largeurM } : {}),
+      ...(cote ? { cote } : {}),
       retraitM: typeof e.retrait_m === 'number' && Number.isFinite(e.retrait_m) && e.retrait_m > 0 ? e.retrait_m : 0,
       ...(hauteurM != null ? { hauteurM } : {}),
       source,

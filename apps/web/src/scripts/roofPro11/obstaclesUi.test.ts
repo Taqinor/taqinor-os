@@ -45,6 +45,7 @@ import {
   type GabaritObstacle,
   type ObstacleEtendu,
 } from './types';
+import { bandesDepuisGabarit } from './bandeGabarit'; // ACAL1432
 import {
   aireAlleeM2,
   alleeCirculation,
@@ -388,6 +389,37 @@ describe('CALX104 — les gabarits d’obstacle viennent des réglages, jamais d
     for (const r of refuses) expect(r.motif).not.toMatch(/_m|\(sommets\)/);
     expect(refuses.find((r) => r.cle === 'long_seul')?.motif).toContain('la largeur n’est pas saisie');
     expect(lireGabaritsZone(section).gabarits.map((g) => g.cle)).toEqual(['bande_nord']);
+  });
+
+  it('ACAL1432 — gabarit bande nord 1,2 m : sommets au nord du pan, largeur 1,2 m', () => {
+    const section = { bande_nord: { libelle: 'Bande coupe-feu', genre: 'bande', nature: 'INTERDITE', largeur_m: 1.2, cote: 'nord', source: 'Règle SDIS' } };
+    const g = lireGabaritsZone(section).gabarits[0];
+    expect(g).toMatchObject({ genre: 'bande', largeurM: 1.2, cote: 'nord' });
+    const lat0 = 33.5;
+    const dLat = (m: number) => m / 111319.49;
+    const dLng = (m: number) => m / (111319.49 * Math.cos((lat0 * Math.PI) / 180));
+    const pan: [number, number][] = [[-7.6, lat0], [-7.6 + dLng(10), lat0], [-7.6 + dLng(10), lat0 + dLat(6)], [-7.6, lat0 + dLat(6)]];
+    for (const contour of [pan, [...pan].reverse()]) { // l'orientation des sommets n'y change rien
+      const v = bandesDepuisGabarit(contour, g);
+      if (!v.ok) throw new Error(v.motif);
+      expect(v.bandes).toHaveLength(1);
+      const lats = v.bandes[0].map((p) => p[1]);
+      expect(Math.max(...lats)).toBeCloseTo(lat0 + dLat(6), 9); // le bord nord du pan
+      expect(Math.min(...lats)).toBeCloseTo(lat0 + dLat(6 - 1.2), 9); // 1,2 m plus au sud
+      const lngs = v.bandes[0].map((p) => p[0]);
+      expect(Math.max(...lngs) - Math.min(...lngs)).toBeCloseTo(dLng(10), 9);
+    }
+  });
+
+  it('ACAL1432 — sans côté ou sans largeur saisis, le geste dit ce qui manque ; périmètre : une bande par arête', () => {
+    const pan: [number, number][] = [[-7.6, 33.5], [-7.5999, 33.5], [-7.5999, 33.5001], [-7.6, 33.5001]];
+    const base = { cle: 'b', libelle: 'Bande', nature: 'INTERDITE' as const, retraitM: 0, source: 's', genre: 'bande' as const };
+    const sansLargeur = bandesDepuisGabarit(pan, { ...base, cote: 'nord' });
+    expect(!sansLargeur.ok && sansLargeur.motif).toContain('largeur');
+    const sansCote = bandesDepuisGabarit(pan, { ...base, largeurM: 1.2 });
+    expect(!sansCote.ok && sansCote.motif).toContain('côté');
+    const tour = bandesDepuisGabarit(pan, { ...base, largeurM: 0.5, cote: 'perimetre' });
+    expect(tour.ok && tour.bandes).toHaveLength(4);
   });
 
   it('poser un gabarit donne un obstacle AUX COTES DU GABARIT', () => {
