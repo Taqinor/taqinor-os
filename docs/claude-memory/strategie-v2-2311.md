@@ -58,12 +58,40 @@ for taqinor forward ».
   remise de 17 % déjà accordée une fois, la vente ne laisse presque rien. La décision de fond (villas ou entreprises)
   n'attend plus le jour 90.
 
+## Deuxième séance du 23/11 : la trésorerie (détail : `10_FAIRE_RENTRER_PLUS_D_ARGENT.md`, lectures `recherche\U15` à `U17`)
+
+- Faits donnés par Reda : caisse de la société sous 30 000 DH ; fournisseurs tous payés ; aucune autre rentrée attendue ;
+  il peut couvrir l'écart lui-même et veut « une stratégie pour faire rentrer plus d'argent, dès maintenant » ; l'appel
+  d'offres de stockage est perdu. Les trois ventes d'octobre sont posées : 49 000 DH payée en entier, 73 900 DH (fiche
+  1511) acompte et 60 % payés, 45 000 DH (fiche 1670) acompte seul ; 11 200 DH restent dus sur une vente plus ancienne.
+  **Environ 50 090 DH à encaisser tout de suite.**
+- L'ERP ne voit pas cet argent : aucun paiement saisi depuis le 12/10 ; il affiche 149 400 DH dus. Ses quantités de stock
+  sont des valeurs de départ, pas un inventaire. Ne jamais lire la trésorerie ni le stock dans l'ERP sans le lui demander.
+- Ses décisions : les 60 % se paient avant la pose (règle ferme) ; la batterie reste en tête des devis (il a écarté
+  « l'option sans batterie d'abord ») ; publicité sur Casablanca et 40 km, **budget inchangé à 50 DH par jour** (il avait
+  d'abord dit 100 DH, puis est revenu à 50 quand la charge de Meryem a été chiffrée : elle est la seule à appeler) ; les
+  31 dossiers du deuxième poste, puis tous les siens, vont à Meryem, AVANT l'envoi des brouillons ; les devis restés en
+  brouillon sont terminés et envoyés (14 fiches, pas les cinq passées au Froid) ; pas de passage du week-end pour
+  l'instant ; les avis et recommandations de clients attendent que TAQINOR ait un local.
+- Trouvé par la critique finale, vérifié dans le code : un devis expiré ne peut plus être signé par le client et ne se
+  prolonge pas, il se révise (« Réviser », rôle responsable ou administrateur ; le suivi est repris sur la nouvelle
+  version). Le 23/11, 12 des 36 foyers encore en discussion étaient sur un devis expiré. Envoyer un brouillon sur une
+  fiche au Froid la rouvre : vérifier le stade avant toute consigne « envoie le devis ». Une étape de suivi appartient au
+  responsable de la fiche : un devis envoyé sur la fiche d'une personne qui ne fait pas ses étapes n'est suivi par
+  personne.
+- Mesuré le 23/11 (recompté par un lecteur neuf) : 4 signatures sur 124 foyers devisés depuis septembre, aucune depuis le
+  30/10 ; les signataires ont signé 0, 2, 6 et 21 jours après leur premier devis ; aucun des 73 foyers ouverts devisés
+  depuis plus de 21 jours n'a signé ; par tranche de facture : 3 sur 73 entre 1 000 et 2 000 DH, 0 sur 47 au-dessus.
+
 ## Ce qui attend encore Reda
 
 Rien n'a été envoyé à Meryem, rien n'a été publié, rien n'a été changé dans Meta ni en production. Restent les décisions
-6, 7, 9, 10, 12, 16 et 17 (§13 du document complet), ses gestes (limite de remise, 31 dossiers, interrupteur du week-end,
-deux factures d'acompte, note à transférer, dix minutes dans Meta : chemins au §4 de `9_TES_REPONSES_DU_23-11.md`), et une
-page « tenir trois mois » à bâtir avec lui.
+6, 10, 12, 16 et 17 (§13 du document complet ; la 7 est tranchée : la batterie reste en tête ; la 9 attend un local) et
+ses gestes, dans l'ordre du §5 de `10_FAIRE_RENTRER_PLUS_D_ARGENT.md` : encaisser les 50 090 DH, déléguer à Meryem les
+dossiers du deuxième poste puis les siens, saisir la limite de remise à 5 % et approuver les trois remises déjà envoyées
+(devis 483, 536, 494), lire puis transférer la note de la semaine, mettre l'ERP d'accord avec la réalité (paiements,
+factures), régler la zone et le texte dans Meta, puis « work on the plan » et son déploiement. Les chemins d'écran sont au
+§4 de `9_TES_REPONSES_DU_23-11.md`.
 
 ## Pièges appris (à ne pas refaire)
 

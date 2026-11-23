@@ -1,5 +1,9 @@
 # Polydesign BESS (Tanger Free Zone) — état du dossier et partenariat Huawei
 
+**23/11/2026 — appel d'offres PERDU** (dit par Reda en séance de questions). Ne plus le compter dans aucun plan ni aucune
+prévision de trésorerie. Le partenariat Huawei (société enregistrée, compte Power-Partner) reste acquis ; le reste de ce
+fichier décrit le dossier tel qu'il était au 30/10.
+
 **Faits durables (fondateur, 28–30/10/2026).** Dossier complet (notes, courbes du client sous NDA, simulation,
 fiches techniques, export de la session Claude) dans OneDrive - Atlencia :
 `TAQINOR/Projets/2026-10 Polydesign BESS/` (lire `CONTEXT.md` en premier). Ce fichier ne porte que ce qu'une
