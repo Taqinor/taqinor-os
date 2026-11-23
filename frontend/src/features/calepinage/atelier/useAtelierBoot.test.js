@@ -78,8 +78,10 @@ describe('ACAL1421 — `imagery` passé à initRoofToolPro8', () => {
     }
   })
 
-  it('réglages illisibles (`null`) : `imagery` sans pays, la recherche dit son repli', () => {
-    expect(imageryDesReglages(null)).toEqual({ pays: null })
+  it('société muette (réglages illisibles ou sans pays) : AUCUN contexte, le fond satellite historique ne change pas', () => {
+    expect(imageryDesReglages(null)).toBeUndefined()
+    expect(imageryDesReglages({ pays: null })).toBeUndefined()
+    expect(imageryDesReglages({ pays: '' })).toBeUndefined()
     expect(imageryDesReglages({ pays: 'fr' })).toEqual({ pays: 'fr' })
   })
 })
