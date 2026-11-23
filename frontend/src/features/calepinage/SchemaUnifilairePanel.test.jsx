@@ -5,7 +5,7 @@
    jamais un cadre vide — les motifs du serveur (`manquantes`, `bloquants`)
    sont rendus AU CARACTÈRE PRÈS, jamais reformulés côté écran. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 
@@ -125,6 +125,17 @@ describe('SchemaUnifilairePanel — croquis de principe grisé (ACAL1028)', () =
     expect(croquis.compareDocumentPosition(liste) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     // La liste du serveur reste mot pour mot.
     expect(screen.getByText('module : Isc (A)')).toBeInTheDocument()
+  })
+
+  it('ACAL1427 — croquis : cinq libellés en texte réel (14 px) dans une colonne, jamais un SVG mis à l’échelle', async () => {
+    servir({ calepinage: 12, svg: null, bloquants: [], manquantes: ['module : Isc (A)'] })
+    rendre()
+    const croquis = await screen.findByTestId('acal1028-croquis')
+    expect(croquis.querySelector('svg')).toBeNull()
+    for (const nom of ['Modules', 'Coffret DC', 'Onduleur', 'Protections AC', 'Réseau']) {
+      expect(within(croquis).getByText(nom)).toHaveClass('text-sm')
+    }
+    expect(within(croquis).getByRole('list')).toHaveClass('flex-col')
   })
 
   it('bloquants seuls, schéma réel ou rien à dire : aucun croquis', async () => {
