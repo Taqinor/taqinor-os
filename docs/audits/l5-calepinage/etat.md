@@ -160,14 +160,31 @@ vivent dans le scratchpad de la session, pas sur `main`.
      livrées au plan (le budget vient de leur clause « Code net ») ; (3) `apps/web/tests/estimatorPreviewPro11.test.ts`
      (2 cas qui lisent le source par motif) — lane `couture-1` EN VOL (vraie installation d'`apps/web`, suite
      entière). NE RIEN PLIER de plus sur `roofPro11` avant le retour de `couture-1`.
-   - EN VOL (23/11 07 h 50 UTC) : `scene` [1412, 1408, 1503, 1515, 1516, 1523] opus · `electrique-1` [1506, 1538,
-     1539, 1540, 1512, 1545, 1546, 1537, 1542] opus · `react` [1502, 1410, 1411, 1514, 1517, 1428, 1429, 1424, 1435,
-     1438, 1427, 1519] sonnet · `carte-b` [1416, 1422, 1423, 1433, 1432, 1436, 1441, 1442 + deux demandes croisées :
-     retraits avant `recalc()` dans `close()`, nom du pan par `areaLabel`] sonnet · `couture-1` sonnet.
-   - À LANCER ensuite : `editeur-2` [1522, 1524, 1527, 1528, 1529, 1530, 1443] après `carte-b` et `react` ;
-     `electrique-2` [1509, 1535, 1536, 1541, 1543, 1544, 1547, 1549, 1550] sonnet ; `petites` [1444, 1447, 1446,
-     1511, 1425, 1534, 1434, 1439, 1548, 1518, 1531] sonnet ; `livrables` [1507, 1508, 1551] sonnet ; [1445] après
-     `carte-b` ; `coque-e2e` [1272, 1346, 1347, 1353, 1426, 1437] sonnet, pile libre ; [1532] reste derrière 1501.
+   - PLIÉES ensuite (07 h 45 → 08 h 06 UTC) : `scene` [1412 (S1 champ au sol compté deux fois), 1408, 1503, 1515,
+     1516 ; 1523 impossible dans sa lane → `optimizer.ts::renderLiveWinner`] · `react` [1502, 1410, 1411, 1514, 1517,
+     1428, 1429, 1424, 1435, 1438, 1427, 1519] · `carte-b` [1416, 1422, 1423, 1433, 1432, 1436, 1441, 1442 + deux
+     demandes croisées honorées] · `couture-1` (suite `apps/web` verte sur sa base : 9 742 cas). 53 tâches de la
+     vague 2 corrigées et marquées livrées. TOUR 2 CLOS : 381 corrections avec verdict (ok 239, partiel 130,
+     non-fait 11, régression 1) ; relecture adverse de tous les ok : 132 confirmés (cochés), 95 insuffisants, 12
+     contredits. Fidélité aux maquettes v2 (relecteur B2) : 0 fidèle, 3 proches, 8 éloignés, 2 non comparés.
+   - EN VOL (23/11 08 h 10 UTC) : `electrique-1` [1506, 1538, 1539, 1540, 1512, 1545, 1546, 1537, 1542] opus ·
+     `simulation-1` [1605, 1602, 1606, 1607, 1622, 1619] opus · `editeur-2` [1522, 1524, 1527, 1528, 1529, 1530,
+     1443 + demande croisée historique] sonnet · `electrique-2` [1509, 1535, 1536, 1541, 1543, 1544, 1547, 1549,
+     1550] sonnet · couture, 2e passe (branche `l5w2-couture-2`, agent ad48e173ad7c41aaa repris, garde son
+     `node_modules`) · consolidation LOT E (opus). CI en cours sur cf6c37e195 : NE PAS pousser avant son verdict
+     (chaque push annule le run précédent).
+   - BUDGET (08 h 10 UTC) : quota hebdo 39 % (≈ 4 points par heure, ≈ 0,3 point par agent) ; contexte de
+     l'orchestrateur 58 %. Règle : construire jusqu'à ≈ 56 %, puis tour 3 léger, fusion, phase de contrôles (≤ 5
+     points), rapport. PRIORITÉ de ce qui reste à construire : (1) les M1 de tous les lots ; (2) la coque v2 puis
+     les écrans (lot E) ; (3) les M2 restent au plan.
+   - À LANCER ensuite (M1 d'abord) : `consommation` [1601, 1603, 1604, 1608, 1609, 1610] opus ; `rapport-m1`
+     [1615, 1616, 1677, 1701, 1702] opus ; `resultats-m1` [1611, 1614, 1621, 1613] sonnet/opus ; `production-web`
+     [1612, 1618] opus ; `docs-m1` [1700, 1703, 1704, 1709, 1705, 1710, 1711, 1712] (après `electrique-1`) ;
+     `toit-d` [1706, 1707] opus ; `livrables` [1507, 1508, 1551, 1713] ; `terrain` [1511, 1425] ; `optimiseur-2`
+     (demandes croisées de `entree-lot-O.md` § 3 sur `optimizer.ts`, dont ACAL1523) opus ; puis la chaîne de coque
+     du lot E et ses écrans. M2 restants : `petites` [1444, 1447, 1446, 1534, 1434, 1439, 1548, 1518, 1531], [1445],
+     `coque-e2e` [1272, 1346, 1347, 1353, 1426, 1437] (pile reconstruite sur la branche) ; [1532] derrière 1501.
+   - LOT D assemblé (59 tâches, ACAL1700-1758 ; D-ACAL-86 et 87 ouvertes). Le plan porte 242 tâches du tour 2.
      Demandes croisées encore ouvertes : `optimizer.ts` (kWc de la carte passé à `peindreBande`, `majChiffrage`
      après « Enregistrer ») ; contrat `orientation_nord` aux motifs de pan vide ; `prodWindow.ts` et
      `roof-tool-pro11.ts` multiplient encore par 720 W.
