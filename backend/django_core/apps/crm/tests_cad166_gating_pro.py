@@ -73,12 +73,12 @@ class LeGatingDuDevisAutomatiquePro(SimpleTestCase):
     def test_le_residentiel_n_est_PAS_touche(self):
         """Non-régression : le résidentiel reste gaté sur sa facture d'hiver,
         `bill_kwh` ne la remplace pas."""
-        lead = Lead(nom='Prospect', type_installation='residentiel',
+        lead = Lead(nom='Prospect', type_installation='residentiel', ville='Casablanca',
                     bill_kwh=Decimal('300'))
         self.assertEqual(champs_manquants(lead), ['facture hiver'])
 
     def test_l_agricole_n_est_PAS_touche(self):
-        lead = Lead(nom='Ferme', type_installation='agricole',
+        lead = Lead(nom='Ferme', type_installation='agricole', raccordement='triphase',
                     bill_kwh=Decimal('300'))
         # AGR403 — groupes hydrauliques agricoles ; `bill_kwh` n'y entre pas.
         self.assertEqual(
