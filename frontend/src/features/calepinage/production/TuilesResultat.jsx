@@ -154,9 +154,12 @@ function EcartPvgis({ validation }) {
   const tolerance = nombre(tol) ? `±${formatNumber(tol, { decimals: Number.isInteger(tol) ? 0 : 1 })} %` : null
   // Le bloc `validation` n'est publié que pour le MÊME site et la MÊME puissance crête (validation.py :
   // `_memes_puissances`) : la phrase de la maquette est donc exacte ; un verdict servi s'y ajoute.
-  let phrase = 'Même site, mêmes panneaux'
-  if (tolerance && validation.verdict === 'dans_la_tolerance') phrase = `Même site, mêmes panneaux · dans ±${tolerance.slice(1)}`
-  else if (tolerance && validation.verdict === 'hors_tolerance') phrase = `Même site, mêmes panneaux · hors de ${tolerance}`
+  // `pertes_totales.egales` (servi depuis ACAL1606) : le serveur a comparé les pertes système des deux côtés ; seul un
+  // « vrai » autorise la mention « à pertes système égales » (jamais affirmée sans cette clé).
+  const memes = `Même site, mêmes panneaux${validation.pertes_totales?.egales === true ? ', à pertes système égales' : ''}`
+  let phrase = memes
+  if (tolerance && validation.verdict === 'dans_la_tolerance') phrase = `${memes} · dans ±${tolerance.slice(1)}`
+  else if (tolerance && validation.verdict === 'hors_tolerance') phrase = `${memes} · hors de ${tolerance}`
   return (
     <div className="cal-res-tuile" data-tuile="ecart-pvgis">
       <span className="cal-res-tuile-label">Écart avec PVGIS</span>

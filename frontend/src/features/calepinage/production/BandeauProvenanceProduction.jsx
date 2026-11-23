@@ -181,7 +181,7 @@ export function EcartPvgis({ validation }) {
   const sansVerdict = validation.tolerance_pct == null && validation.verdict == null
   return (
     <p className="text-sm text-muted-foreground" data-testid="acal854-ecart-pvgis">
-      {'Comparé à PVGIS au même endroit : '}{signe}{formatNumber(Math.abs(pct), { decimals: 1 })}{' %'}
+      {`Comparé à PVGIS au même endroit${validation.pertes_totales?.egales === true ? ', à pertes système égales' : ''} : `}{signe}{formatNumber(Math.abs(pct), { decimals: 1 })}{' %'}
       <Pourquoi cle="production.ecart_pvgis" valeurs={{ validation }} />{/* ACAL873 */}
       {sansVerdict && (
         <span className="block text-xs" data-testid="acal854-sans-verdict">

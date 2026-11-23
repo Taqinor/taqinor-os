@@ -143,6 +143,8 @@ const COMPLET_MAQUETTE = () => {
     ].map(([poste, libelle, pct]) => ({ poste, libelle, perte_kwh: pct * 168, perte_pct: pct, statut: 'compte', etapes: [] })),
   }
   d.cascade.plages = { ...d.cascade.plages, total: { statut: 'dans_la_plage' } }
+  // `pertes_totales.egales` (ACAL1606) : le bloc `validation` servi par la simulation (contrat `calepinage_simulation.json`).
+  d.validation = { ...d.validation, pertes_totales: exempleContrat('calepinage', 'calepinage_simulation', 'exemple').validation.pertes_totales }
   d.production.total.total_loss_pct = 18.6
   const ref = 'Profil de départ — PVsyst, Array and system losses'
   d.simulation = { ...d.simulation, reglages_utilises: {
@@ -166,7 +168,7 @@ describe('Étape Résultats — résultat complet, bloc par bloc (maquette Resul
       ['Production la première année', '13 000 kWh', '1 505 kWh par kWc · année moyenne (P50)'],
       ['De la consommation', '71 %', 'Pourquoi ce chiffre ?'],
       ['Pertes au total', '18,6 %', 'Dans la plage habituelle'],
-      ['Écart avec PVGIS', '− 2,0 %', 'Même site, mêmes panneaux · dans ±5 %'],
+      ['Écart avec PVGIS', '− 2,0 %', 'Même site, mêmes panneaux, à pertes système égales · dans ±5 %'],
     ])
     // 2. « Mois par mois » : titre, légende, 12 paires de barres, 12 initiales J F M A M J J A S O N D.
     const mois = screen.getByTestId('cal-resultats-mois')
@@ -239,6 +241,21 @@ describe('Étape Résultats — résultat complet à la maquette v2 (ACAL1832)',
     rendre()
     await screen.findByTestId('cal-resultats-tuiles')
     expect(screen.queryByTestId('cal-res-minibarres')).toBeNull()
+  })
+
+  it('Demande croisée — la tuile « Écart avec PVGIS » dit « à pertes système égales » seulement quand `pertes_totales.egales` est servi vrai', async () => {
+    const d = COMPLET_MAQUETTE()
+    d.validation.pertes_totales = { ...d.validation.pertes_totales, egales: false }
+    servir(d)
+    const { unmount } = rendre()
+    const tuile = (await screen.findByTestId('cal-resultats-tuiles')).querySelector('[data-tuile="ecart-pvgis"]')
+    expect(tuile).toHaveTextContent('Même site, mêmes panneaux · dans ±5 %')
+    expect(tuile).not.toHaveTextContent('pertes système égales')
+    unmount()
+    servir(COMPLET_MAQUETTE())
+    rendre()
+    expect((await screen.findByTestId('cal-resultats-tuiles')).querySelector('[data-tuile="ecart-pvgis"]'))
+      .toHaveTextContent('Même site, mêmes panneaux, à pertes système égales · dans ±5 %')
   })
 
   it('anneau de la consommation : l’arc est la part servie (71 %), nommée pour les lecteurs d’écran', async () => {
