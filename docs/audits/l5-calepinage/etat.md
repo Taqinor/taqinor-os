@@ -652,3 +652,31 @@ rapport final (ajouter une section « apres-midi du 23/11 » : decisions repondu
 `SendUserFile` -> demontage, claims, retro memoire.
 A CONFIRMER PAR REDA (a mettre au rapport) : pour un contrat absent, la lane a suppose « BT patente » pour un commerce
 et « BT force motrice » pour une usine.
+
+## POINT a 19 h 50 UTC (le plus recent - REPRENDRE ICI)
+
+TOUT EST PLIE ET POUSSE : tete `7fff8b561a` (PR #1530, Auto-fix allume, PAS en file). Vagues C et D completes + trois
+coutures (devis, calepinage, ecran). Les 55 taches du moteur unique (D-ACAL-97) sont dans six plans ; conception
+`controles/C4-un-seul-moteur.md` (reponses Q1-Q4 de Reda ecrites) ; a CONSTRUIRE DANS UNE SESSION NEUVE.
+
+EN COURS a 19 h 50 :
+- critique finale Fable `a2f31d6fe9e16ce5f` -> `T3/critique-finale-vagues-C-D.md` (75 min) ; un BLOQUANT se corrige avant la file.
+- verificateur `a56ce18c5dde95937` (T3-VAGUED, compte rev_b2, pile reconstruite sur `7fff8b561a`) -> `T3/T3-VAGUED.md`.
+- suite serveur `apps.calepinage` entiere (tache de fond bo9z2jyaw) -> `…/scratchpad/back-d1.log` (lignes ERROR/FAIL
+  completes). Echecs locaux connus : modules a `parents[5]` (front absent du montage), `freezegun` absent de l'image,
+  3 tests pdf `test_acal_rapport_etude_servi.SchemaJointAuRapportTest` (rouges sur main aussi).
+- a lancer apres elle (meme conteneur, un a la fois) : `tester.sh <worktree> vaguec apps.crm` puis les modules ventes
+  touches (`apps.ventes.tests.test_ciq118_etude_ci_preview`, `test_ciq666…`, goldens du moteur).
+
+ENSUITE : (1) corriger les bloquants de la critique, s'il y en a ; (2) `gh pr merge 1530 --auto --merge` ; surveiller le
+groupe de fusion (seul run qui joue le backend) ; (3) apres fusion : `git fetch origin main && git merge origin/main`,
+ligne au DONE LOG des plans, dire a Reda « merge - a deployer par toi : scripts/deploy-prod.ps1 » + la commande
+`manage.py relier_calepinages_devis_envoye` (liste) puis `--appliquer` ; (4) rapport final : ajouter au
+`RAPPORT-FINAL-2026-11-23.md` une section « Apres-midi du 23/11 » (decisions repondues ; vagues C et D : ce qui est
+livre, ce que les deux rejeux en direct ont vu ; un seul moteur : conception + 55 taches ; ce qui reste ; a confirmer :
+« BT patente » commerce / « BT force motrice » usine) puis `SendUserFile` ; (5) taches a ecrire pour les restes
+(`T3/critique-vague-C1.md` §3, `T3/T3-VAGUEC2.md`, `T3/T3-VAGUED.md`, critique finale « apres », NASA POWER a l'ecran,
+residentiel au froid du site, 3 tests pdf) ; (6) demontage (conteneurs l5cal-*, bases test_l5t_*, worktree l5cal-instr,
+jonctions `frontend/node_modules` et `apps/web/node_modules` de MON worktree par `cmd /c rmdir`, `docker start` des 5
+conteneurs erp-agentique arretes, vite preview bhkmo4ocy) - le classifieur a deja refuse un `docker rm -f` : donner les
+commandes a Reda si besoin ; (7) `plan_claims.py release` des 9 cles ; (8) retro memoire.
