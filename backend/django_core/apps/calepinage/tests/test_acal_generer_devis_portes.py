@@ -222,6 +222,42 @@ class SurfacesCocheesSansBaseTest(SimpleTestCase):
         self.assertEqual(refus.exception.donnees['kwc_dessine'], 9.36)
 
 
+class ModuleSubstitueSurfaceSansBaseTest(SimpleTestCase):
+    """ACAL1440 — le 409 ``module_substitue`` d'une surface de pose seule nomme la
+    surface et dit de changer le module du pan ; celui d'un toit garde son texte."""
+
+    LIGNES = 'apps.ventes.selectors_calepinage.lignes_produits_calepinage'
+    PANNEAU = [{'designation': 'Panneau Canadien Solar 710W', 'quantite': 50}]
+
+    def _refus(self, doc, compose):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.calepinage.services.devis import DevisRefuse, _garde_module_substitue
+
+        with mock.patch(self.LIGNES, return_value=self.PANNEAU),                 self.assertRaises(DevisRefuse) as refus:
+            _garde_module_substitue(SimpleNamespace(etude_params={'puissance_kwc': compose}), doc)
+        return refus.exception
+
+    def test_champ_au_sol_seul_dit_quoi_changer_et_ou(self):
+        doc = {'schema_version': 2, 'poseSurfaces': [
+            {'id': 's1', 'kind': 'sol', 'label': 'Champ au sol 1', 'moduleWc': 720,
+             'engine': {'modules': 50}}]}
+        refus = self._refus(doc, 35.5)
+        self.assertEqual(refus.statut, 409)
+        self.assertEqual(refus.donnees['code'], 'module_substitue')
+        self.assertEqual(refus.donnees['detail'], (
+            "Champ au sol 1 : son module (« 720 W ») n'est pas celui que le catalogue compose "
+            "(« Panneau Canadien Solar 710W »). Changez le module du pan, puis ré-enregistrez le contour."))
+
+    def test_toit_garde_le_texte_actuel(self):
+        doc = {'schema_version': 2, 'zones': [
+            {'id': 'z1', 'label': 'Zone 1', 'geometry': {'count': 50, 'kwc': 36.0}}]}
+        detail = self._refus(doc, 35.5).donnees['detail']
+        self.assertIn("Choisissez le module du catalogue dans l'atelier puis relancez.", detail)
+        self.assertNotIn('Changez le module du pan', detail)
+
+
 class KwcComposeSansCleSansBaseTest(SimpleTestCase):
     """ACAL1417 — ``etude_params`` sans ``puissance_kwc`` : le kWc vendu se lit des
     lignes du devis (règle unique de ventes), pour la question de taille comme pour
