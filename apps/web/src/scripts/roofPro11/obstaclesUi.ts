@@ -233,6 +233,8 @@ export interface ObstaclesUiDeps {
 
 export interface ObstaclesUi {
   redrawObstacles: () => void;
+  /** ACAL1409 — `fn` est rappelée après CHAQUE dessin des obstacles (pose, glissé, suppression, hydratation). */
+  apresRedessin: (fn: () => void) => void;
   /** CAL69 — re-dessine le calque des zones d'exclusion. */
   redrawExclusionZones: () => void;
   /** CAL69 — arme le tracé d'une zone de cette nature (le glissé suivant la crée). */
@@ -272,6 +274,8 @@ export interface ObstaclesUi {
   endEnvMove: () => void;
   /** Re-dessine les marqueurs d'environnement. */
   redrawEnvironment: () => void;
+  /** ACAL1406 — après une hydratation : liste ET marqueurs relus, puis l'ombrage recalculé. */
+  relireEnvironment: () => void;
   // CALX103/CALX104/CALX403 — modes de tracé « à la volée » (clics successifs).
   /** Arme (ou désarme, `null`) un tracé : obstacle polygonal, obstacle circulaire, pose
    *  d'un gabarit société, ou allée de circulation. */
@@ -697,6 +701,13 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   });
   renderEnvList(); // état initial (dossier rechargé avec des objets d'environnement)
   redrawEnvironment(); // CALX105 — marqueurs du dossier rechargé
+  /** ACAL1406 — le document arrive APRÈS le montage : on relit la liste et les marqueurs, puis
+   *  l'ombrage est relancé une fois le boot fini (pans et obstacles du document posés). */
+  function relireEnvironment() {
+    renderEnvList();
+    redrawEnvironment();
+    queueMicrotask(() => deps.recomputeShading?.());
+  }
 
   // CALX105 — câblage carte : le clic POSE quand un mode est armé, le glissé DÉPLACE un
   // marqueur. Enregistré ici (le dispatcher de l'entrée n'est pas modifié) ; ces écouteurs
@@ -1320,6 +1331,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   majBandeauAllees(); // état initial (dossier rechargé avec des allées)
 
 
+  let apresRedessin: (() => void) | null = null; // ACAL1409 — le tableau « Objets du site »
   function redrawObstacles() {
     srcOf('rp9-obs')?.setData({
       type: 'FeatureCollection',
@@ -1334,6 +1346,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
         };
       }),
     } as never);
+    apresRedessin?.();
   }
 
   function setPreviewRect(a: LngLat, b: LngLat) {
@@ -1840,6 +1853,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
 
   return {
     redrawObstacles,
+    apresRedessin: (fn: () => void) => { apresRedessin = fn; }, // ACAL1409
     redrawExclusionZones,
     beginZone,
     setPreviewRect,
@@ -1869,6 +1883,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     doEnvMove,
     endEnvMove,
     redrawEnvironment,
+    relireEnvironment, // ACAL1406
     armerTrace,
     modeTraceArme: () => modeTrace,
     gabaritsObstacle: () => gabaritsObstacle.map((g) => ({ ...g })),

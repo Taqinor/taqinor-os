@@ -1,10 +1,12 @@
+// @vitest-environment jsdom
 // CALX91 — GESTES SUR LES SOMMETS D'UN CONTOUR FERMÉ. La géométrie (projeté orthogonal,
 // refus de suppression) est prouvée dans `snap.test.ts` ; ce fichier couvre la DÉCISION que
 // `obstaclesUi.ts` prend avant d'agir : Alt maintenue = suppression et JAMAIS un glissé, et
 // aucun geste sommet hors des gardes déjà en place (contour fermé, hors mode obstacle /
 // disposition) — donc le comportement d'aujourd'hui tant qu'Alt n'est pas maintenue.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
+  createObstaclesUi, // ACAL1406
   gesteSommet,
   gesteEnvironnement,
   debutGlisseEnvironnement,
@@ -12,7 +14,19 @@ import {
   deplacementSommetAdmis, // ACAL77
   MOTIF_SOMMET_CROISE, // ACAL77
 } from './obstaclesUi';
-import { newEnvironmentObject, environmentShadeEntries } from './environment';
+import {
+  newEnvironmentObject,
+  environmentShadeEntries,
+  newLigneEnvironment, // ACAL1406
+  withEnvHeight,
+  withPoleDiameter,
+  withCrownDiameter,
+  withFutureHeight,
+  withSupposeCoupe,
+  withEpaisseurLigne,
+} from './environment';
+import { appliquerHydratationAuCtx } from './hydratation'; // ACAL1406
+import { type Ctx } from './context'; // ACAL1406
 import {
   aireObstacleM2,
   aireRetireeM2,
@@ -48,7 +62,7 @@ import {
 import { obstacleRing } from '../../lib/obstacles';
 import { viderObstaclesAnnulable, questionEffacer, demanderEffacer } from './bandeauAnnuler'; // ACAL413
 import { type LngLat } from '../../lib/roof';
-import { lignesObjetsSite, ouvrirObjet } from './objetsSite'; // ACAL533
+import { lignesObjetsSite, monterObjetsSite, ouvrirObjet } from './objetsSite'; // ACAL533, ACAL1409
 
 const ETAT = {
   sommet: 2 as number | null,
@@ -176,6 +190,35 @@ describe('CALX105 — le glissé déplace le marqueur et consomme UN pas d’his
   it('un simple tap (aucun mouvement) ne laisse rien à annuler', () => {
     const glisse = debutGlisseEnvironnement(objet(), [-7.6, 33.5]);
     expect(glisse.moved).toBe(false); // rien n'a été poussé tant qu'on n'a pas bougé
+  });
+});
+
+// ACAL1406 — la liste d'environnement est montée AVANT le document : elle se relit après l'hydratation.
+describe('ACAL1406 — environnement relu à la réouverture', () => {
+  it('hydratation d’un document à `environment` : la liste a 3 lignes, l’ombrage est recalculé', async () => {
+    document.body.innerHTML = '<div><button id="rp9-obstacle"></button></div><ul id="rp9-env-list"></ul>';
+    const ctx = { obstacles: [], selectedObsId: null, obstacleMode: false, environment: [] } as unknown as Ctx;
+    const map = { getSource: () => undefined, getLayer: () => undefined, getCanvas: () => ({ style: {} }), on: () => {}, dragPan: { enable() {}, disable() {} }, queryRenderedFeatures: () => [] } as never;
+    const recomputeShading = vi.fn();
+    const ui = createObstaclesUi(ctx, { map, recalc: () => {}, setStatus: () => {}, redrawTrace: () => {}, recomputeShading });
+    expect(document.querySelectorAll('[data-env-row]')).toHaveLength(0);
+    const poteau = withPoleDiameter(withEnvHeight(newEnvironmentObject('env-1', 'poteau', [-7.6, 33.4999]), 8), 0.3);
+    const arbreBase = withCrownDiameter(withEnvHeight(newEnvironmentObject('env-2', 'arbre', [-7.6001, 33.4999]), 8), 4);
+    const arbre = withSupposeCoupe(withFutureHeight(arbreBase, 12, 10).objet, true);
+    const haie = withEpaisseurLigne(withEnvHeight(newLigneEnvironment('env-3', [[-7.6002, 33.4998], [-7.6001, 33.4998]]), 3), 0.5);
+    appliquerHydratationAuCtx(ctx, { environment: [poteau, arbre, haie] });
+    ui.relireEnvironment();
+    expect(document.querySelectorAll('[data-env-row]')).toHaveLength(3);
+    const champ = (sel: string) => document.querySelector<HTMLInputElement>(sel);
+    expect(champ('[data-env-height="env-1"]')?.value).toBe('8,0');
+    expect(champ('[data-env-pole="env-1"]')?.value).toBe('0,3');
+    expect(champ('[data-env-crown="env-2"]')?.value).toBe('4,0');
+    expect(champ('[data-env-hfut="env-2"]')?.value).toBe('12,0');
+    expect(champ('[data-env-coupe="env-2"]')?.checked).toBe(true);
+    expect(champ('[data-env-epaisseur="env-3"]')?.value).toBe('0,5');
+    expect(recomputeShading).not.toHaveBeenCalled(); // relancé APRÈS le boot (pans du document posés)
+    await Promise.resolve();
+    expect(recomputeShading).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -544,6 +587,34 @@ describe('ACAL413 — un filet pour les effacements de masse', () => {
     expect(n).toBe(1);
     demanderEffacer(null, { pans: 1, obstacles: 3, consommation: false, ombres: false }, () => { n += 1; });
     expect(n).toBe(1);
+  });
+});
+
+// ACAL1409 — le tableau « Objets du site » suit chaque pose d'obstacle et la réouverture (même pan).
+describe('ACAL1409 — Objets du site à chaque pose et à la réouverture', () => {
+  it('poser un obstacle puis hydrater : le bloc objets-site porte deux boutons `data-objet`', () => {
+    document.body.innerHTML = '<div><button id="rp9-obstacle"></button></div>';
+    const ctx = { obstacles: [], selectedObsId: null, obstacleMode: false, environment: [], activeAreaId: 'a1', areas: [{ id: 'a1', label: 'Pan 1', obstacles: [] }] } as unknown as Ctx;
+    const map = { getSource: () => undefined, getLayer: () => undefined, getCanvas: () => ({ style: {} }), on: () => {}, dragPan: { enable() {}, disable() {} }, queryRenderedFeatures: () => [] } as never;
+    const ui = createObstaclesUi(ctx, { map, recalc: () => {}, setStatus: () => {}, redrawTrace: () => {} });
+    const selectionnes: string[] = [];
+    const objetsSite = monterObjetsSite(ctx, { selectArea: () => {}, selectObstacle: (id) => selectionnes.push(id) });
+    ui.apresRedessin(objetsSite.redessiner);
+    const boutons = () => Array.from(document.querySelectorAll<HTMLButtonElement>('#rp9-objets-site [data-objet]'));
+    expect(document.getElementById('rp9-objets-site')?.hidden).toBe(true);
+    const cheminee = { id: 'obs-1', centerLng: -7.6, centerLat: 33.5, lengthM: 0.8, widthM: 0.8, heightM: 1.2, type: 'cheminee' };
+    ui.addObstacle({ ...cheminee });
+    ui.addObstacle({ ...cheminee, id: 'obs-2', centerLng: -7.5999, lengthM: 1.2, widthM: 1, heightM: 0.5, type: 'velux' });
+    expect(boutons().map((b) => b.dataset.objet)).toEqual(['obs-1', 'obs-2']);
+    // Réouverture : le document relu remplace les obstacles du pan, puis l'atelier les redessine.
+    ctx.obstacles = JSON.parse(JSON.stringify(ctx.obstacles));
+    document.getElementById('rp9-objets-site')!.innerHTML = '';
+    ui.redrawObstacles();
+    expect(document.getElementById('rp9-objets-site')?.hidden).toBe(false);
+    expect(boutons()).toHaveLength(2);
+    expect(boutons()[0].textContent).toContain('0,8 × 0,8 m · hauteur 1,2 m');
+    boutons()[1].click();
+    expect(selectionnes).toEqual(['obs-2']);
   });
 });
 

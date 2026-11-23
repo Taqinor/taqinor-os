@@ -456,6 +456,8 @@ export interface MapDraw {
    *  requête échoue/est annulée. Même clé MapTiler + même garde anti-course (jeton +
    *  AbortController) que `geocode`. */
   reverseGeocode: (lng: number, lat: number, opts?: { signal?: AbortSignal }) => Promise<string | null>;
+  /** ACAL1405 — remet « Date de la photo » et sa source sur la date relue du document (réouverture). */
+  relireImageCapture: () => void;
 }
 
 export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
@@ -541,6 +543,14 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     };
     d.i.addEventListener('change', valider);
     s.i.addEventListener('change', valider);
+  }
+  /** ACAL1405 — les champs sont montés AVANT la graine du document : on les relit après elle. */
+  function relireImageCapture() {
+    const lu = dateImageCapturee();
+    for (const [id, v] of [['rp9-image-date', lu?.date], ['rp9-image-date-source', lu?.source]] as const) {
+      const el = $<HTMLInputElement>(id);
+      if (el && document.activeElement !== el) el.value = v ?? '';
+    }
   }
 
   // CAL54 — CALQUES OPTIONNELS. Superposition raster PURE : on ajoute une source et une
@@ -1752,5 +1762,6 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     poserSegmentSaisi,
     geocode,
     reverseGeocode,
+    relireImageCapture, // ACAL1405
   };
 }
