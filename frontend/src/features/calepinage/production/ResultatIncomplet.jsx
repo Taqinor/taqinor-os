@@ -58,7 +58,9 @@ export function CeQuiEstSur({ data, parcours, avecNote = true }) {
   const ombres = (data?.cascade?.postes_lisibles?.postes || [])
     .find((p) => p.poste === 'ombres_proches' && p.statut === 'compte')
   const modules = data?.pose?.total_modules
-  const kwc = data?.production?.total?.kwc ?? data?.pose?.kwc // la pose est un fait servi, même sans simulation
+  // Le kWc dit à côté des panneaux POSÉS est celui de la pose (un fait servi, même sans simulation) : depuis
+  // ACAL1602 `production.total.kwc` ne compte que les panneaux raccordés — il ne se lit ici qu'à défaut.
+  const kwc = data?.pose?.kwc ?? data?.production?.total?.kwc
   return (
     <section className="cal-res-carte cal-resinc-sur-carte" data-testid="acal700-sur">
       <div className="cal-resinc-sur-tete">

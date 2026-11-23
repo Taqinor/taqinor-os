@@ -109,6 +109,9 @@ export async function oublierReleveEnFile(calepinageId) {
 
 const rejeuxReleve = new Map()
 
+/** Une réponse qui ne juge pas le relevé : la garder en file et réessayer plus tard. */
+const reponsePassagere = (statut) => statut === 401 || statut === 408 || statut === 429 || statut >= 500
+
 /** Rejoue le relevé en file : `{ envoye, releve, refus: {message, champs} | null, restantes }`. Sans réseau on s'arrête et
     la file reste intacte ; un refus du serveur (réponse HTTP) retire l'entrée et la dit ; deux rejeux simultanés (retour du
     réseau + ouverture de l'écran) n'en font qu'UN : le relevé part une seule fois. */
@@ -128,7 +131,10 @@ export function rejouerReleve(calepinageId) {
         envoye = true
         releve = res?.data?.releve ?? null
       } catch (err) {
-        if (!err?.response) break
+        // Sans réponse (réseau coupé) ou sur une réponse PASSAGÈRE (session expirée, serveur en cours de
+        // redémarrage, trop de requêtes) : le relevé RESTE en file et repartira ; seul un vrai refus du serveur
+        // le retire et le dit (critique de la vague B : un 502 pendant un deploy effaçait le relevé).
+        if (!err?.response || reponsePassagere(err.response.status)) break
         refus = refusServeur(err)
       }
       await majAtomique(file(), (cur) => cur.filter((o) => o.client_op_id !== op.client_op_id))

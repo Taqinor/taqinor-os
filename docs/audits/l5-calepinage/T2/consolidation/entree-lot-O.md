@@ -89,3 +89,17 @@ D-ACAL-83 (mesure de l'ombre proche : centre du pan ou panneaux posés) · D-ACA
 - `PhotoSiteCalage.jsx` : champ fichier natif (« Choose File ») ; `ParcoursDuPan.jsx` : `sm:grid-cols-2`.
 - `calepinage-mesures-ecran.baseline.json` : à régénérer UNE fois sur la pile (35 contrôles attendus au premier
   écran après ACAL1805, +1 avec ACAL1809).
+
+## 8. Points « à corriger après » de la critique de la vague B (`T2/critique-vague-B.md` : fusionnable, 0 bloquant)
+- CORRIGÉS avant la fusion par l'orchestrateur : (1) un relevé hors ligne n'est plus effacé sur une réponse passagère
+  (401, 408, 429, ≥ 500) ; (3) la garde des montants refuse de nouveau « marge » nu, seules les tournures de chantier
+  nommées passent ; (4) le kWc dit à côté des panneaux posés est celui de la pose.
+- RESTENT (une tâche chacun) : (2) le relevé en file ne porte ni utilisateur ni clé d'idempotence et n'est pas vidé à
+  la déconnexion (même société seulement) ; même défaut de réponse passagère, plus ancien, dans `rejouerFile` (photos) ;
+  (5) jumeaux d'ACAL1607 : onze étapes lisent encore la fiche du module par défaut ; (6) `etapes/ecretage.py` :
+  `heures_ecretees` reste le compte de toute la fenêtre ; (7) `validation.py::_poste_principal` cite le plus gros poste
+  même quand la chaîne produit PLUS que PVGIS ; (8) `consommationSerialisee.ts::courbeDeBase` écrit encore 24 zéros
+  sans facture ni socle ; (9) `ventes/contract_samples/etude_horaire.json` à régénérer ; (10)
+  `tasks.py::_livraison_de_trop` : sans cache, la borne des livraisons ne tient pas.
+- À SAVOIR : avec des panneaux non raccordés, la perte d'ombrage servie à un devis PARTIEL peut valoir `None` pour un
+  pan entièrement non raccordé (le devis ne lit du calepinage que des pourcentages d'ombrage).

@@ -272,6 +272,28 @@ describe('Relevé de visite — terminé hors ligne : gardé sur le téléphone,
     expect(api.corrigerReleve).toHaveBeenCalledTimes(1)
   })
 
+  it('une réponse PASSAGÈRE au retour du réseau (502 pendant un redémarrage) garde le relevé ; le retour suivant l’envoie', async () => {
+    rendre()
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(api.releve).toHaveBeenCalled())
+    enLigne = false
+    remplir()
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Relevé gardé sur ce téléphone'))
+    expect(await releveEnAttente('1')).toBe(true)
+
+    api.corrigerReleve.mockRejectedValueOnce({ response: { status: 502, data: {} } })
+    enLigne = true
+    await act(async () => { window.dispatchEvent(new Event('online')) })
+    await waitFor(() => expect(api.corrigerReleve).toHaveBeenCalledTimes(1))
+    expect(await releveEnAttente('1')).toBe(true) // ni perdu, ni dit « refusé »
+
+    await act(async () => { window.dispatchEvent(new Event('online')) })
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Relevé envoyé.'))
+    expect(api.corrigerReleve).toHaveBeenCalledTimes(2)
+    expect(await releveEnAttente('1')).toBe(false)
+  })
+
   it('une coupure en route (aucune réponse du serveur) garde aussi le relevé ; au rechargement hors ligne il attend toujours', async () => {
     api.corrigerReleve.mockRejectedValueOnce({ code: 'ERR_NETWORK', message: 'Network Error' })
     rendre()
