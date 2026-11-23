@@ -1,0 +1,83 @@
+# C4 — Tâches du chemin « un seul moteur » (à convertir au format du plan par un autre agent)
+
+Conception : `C4-un-seul-moteur.md`. Chemins relatifs à `backend/django_core/` sauf `frontend/`, `apps/web/`,
+`scripts/`. « (à créer) » = fichier absent aujourd'hui (vérifié par `ls`) ; tout autre fichier existe (vérifié par
+`ls`). Propriétaire = `python scripts/check_ownership.py --owner-of <fichier>` (premier fichier de la ligne).
+CONTRAT = pose un contrat seul (PACT10) ; PARITÉ = prouve que rien ne change. Plusieurs propriétaires ⇒ la tâche
+va au plan transverse (`docs/plans/PLAN_AUDIT_TRANSVERSE.md`). Format :
+`n · étape · titre · fichiers · fini quand · propriétaire · dépend de · modèle · risque`.
+
+## Étape 1 — Contrat d'abord (seul sur `main`)
+
+1 · E1 · CONTRAT — Poser la forme du résultat rangé sur le lead · `apps/ventes/contract_samples/conception_lead.json` (à créer) · l'échantillon porte `etat, refus, marche, option_retenue, valeurs (table §2 par option, {valeur, unite, source}), blocs, suppositions [{code, champ, valeur, source, message}], entrees_utilisees, empreinte, niveau_regles, version_moteur, declencheur, version, calcule_le` et `scripts/check_api_shapes.py` est vert · devis · — · opus · moyen
+2 · E1 · CONTRAT — Déclarer les deux événements du moteur · `core/events/lead.py`, `core/events/calepinage.py` · `lead_entrees_modifiees(company_id, lead_id, champs)` et `pose_enregistree(company_id, calepinage_id, lead_id, empreinte_pose)` existent avec docstring, sans abonné · lead + calepinage (transverse) · — · sonnet · faible
+3 · E1 · CONTRAT — Lister les champs du lead qui sont des entrées du moteur · `apps/ventes/conception/champs.py` (à créer) · une constante par marché donne les colonnes lues par `domain/entrees.py::entrees_depuis_lead`, `crm.selectors.entrees_ci_du_lead` et `entrees_pompage_du_lead`, et un test rouge si un adaptateur lit une colonne absente · devis · — · sonnet · moyen
+
+## Étape 2 — Le moteur et son rangement, sans aucun lecteur branché
+
+4 · E2 · Créer le modèle ConceptionLead (migration additive) · `apps/ventes/models_conception.py` (à créer), `apps/ventes/models.py` · table créée, une seule `courante` par porteur (contrainte), `lead` FK `'crm.Lead'` en chaîne, société forcée, `lint-imports` vert · devis · 1 · sonnet · faible
+5 · E2 · Réunir les entrées des trois marchés en EntreesConception · `apps/ventes/conception/entrees.py` (à créer), `apps/ventes/domain/entrees.py` · `EntreesConception` enveloppe `EntreesMoteur`, la résolution C&I et la résolution pompage, et son empreinte rés. est égale à `empreinte_entrees` actuelle pour les mêmes fiches · devis · 3 · opus · moyen
+6 · E2 · Écrire calculer_conception qui appelle les noyaux TELS QUELS · `apps/ventes/conception/moteur.py` (à créer) · rés. = `recommander_taille` + `composer` + conception électrique + `calculer_etude_horaire` ; C&I = `etudier_ci` ; agr. = `etudier_pompage` ; aucune écriture ; refus nommé (`localisation_inconnue`, `tarif_omis`…) · devis · 5 · opus · élevé
+7 · E2 · Sortir les suppositions avec le champ de la fiche · `apps/ventes/conception/moteur.py` (à créer) · présence supposée, été = hiver, kWh tirés des MAD, 30° sud, BT/triphasé/lun-sam (D-ACAL-92 à 94), pertes D-ACAL-82 sortent dans `suppositions` avec `champ` · devis · 6 · sonnet · faible
+8 · E2 · Écrire l'écrivain unique relancer · `apps/ventes/conception/service.py` (à créer), `apps/ventes/services.py` · empreinte égale ⇒ aucune version ; sinon version + 1 (plus haut + 1 sous point de sauvegarde), l'ancienne passe `courante=False`, `declencheur` rangé ; aucun `prix_achat` ni marge dans `valeurs`/`blocs` (test récursif) · devis · 4, 6 · opus · moyen
+9 · E2 · Servir les lecteurs · `apps/ventes/selectors_conception.py` (à créer), `apps/ventes/selectors.py` · `conception_courante`, `historique_conception`, `manques_du_moteur`, `ecart_devis` existent, bornés à la société (test d'isolation) · devis · 8 · sonnet · faible
+10 · E2 · Servir la conception par une route · `apps/ventes/views/conception.py` (à créer), `apps/ventes/urls.py` · `GET /api/django/ventes/conception/<lead_id>/` rend la forme de `conception_lead.json`, 404 pour une autre société · devis · 1, 9 · sonnet · faible
+11 · E2 · PARITÉ — Les blocs rangés égalent ceux du devis automatique d'aujourd'hui · `apps/ventes/tests/test_conception_lead.py` (à créer, « Nouveau fichier car : » module neuf) · pour chaque lead des goldens `split_dm_auto_res.json`, `split_dm_auto.json`, `split_dm_auto_agr.json`, les blocs de `calculer_conception` sont identiques à ceux que `build_devis_auto` écrit · devis · 6 · opus · moyen
+
+## Étape 3 — Quand il recalcule, et le dire
+
+12 · E3 · Émettre lead_entrees_modifiees quand une entrée change · `apps/crm/receivers.py`, `apps/crm/activity.py` · modifier la facture d'hiver émet UN événement avec `[{champ, avant, apres}]` ; modifier le nom n'en émet aucun ; la liste vient de `apps.ventes.selectors_conception` (jamais copiée) · lead · 2, 3 · sonnet · moyen
+13 · E3 · Émettre pose_enregistree à l'enregistrement d'une pose · `apps/calepinage/receivers.py`, `apps/calepinage/services/creation.py` · un enregistrement qui change l'empreinte de la pose émet UN événement ; un ré-enregistrement sans geste n'en émet aucun (même règle qu'ACAL1407) · calepinage · 2 · sonnet · moyen
+14 · E3 · Relancer le moteur en tâche dédupliquée · `apps/ventes/receivers.py`, `apps/ventes/tasks.py`, `apps/ventes/apps.py` · un événement met UNE tâche en file par `(porteur, empreinte)` ; dix modifications rapprochées ⇒ un calcul ; un import en masse ne relance qu'une fois par lead · facturation (receivers) + devis ⇒ transverse · 8, 12, 13 · opus · moyen
+15 · E3 · Filet d'empreinte à la lecture · `apps/ventes/selectors_conception.py` (à créer) · une version dont l'empreinte diffère des entrées actuelles est servie avec `perimee: true` et met la tâche en file · devis · 9, 14 · sonnet · faible
+16 · E3 · Dire pourquoi : phrase et chatter du lead · `apps/ventes/conception/service.py` (à créer), `apps/crm/activity.py` · chaque version écrit au chatter « Conception recalculée : facture d'hiver 900 → 1 200 MAD » par un service de `crm`, et la phrase est servie dans `declencheur` · devis + lead ⇒ transverse · 8 · sonnet · faible
+17 · E3 · Remplir les leads existants (liste d'abord) · `apps/ventes/management/commands/remplir_conceptions.py` (à créer) · sans option : liste les leads qui recevraient une conception et leurs refus ; `--appliquer` les calcule ; aucun devis lu en écriture ; isolé par société · devis · 8 · sonnet · moyen
+
+## Étape 4 — Le devis reçoit la conception (règle n° 4 intacte)
+
+18 · E4 · Le devis automatique lit la conception courante · `apps/ventes/domain/creation_auto.py`, `apps/ventes/domain/creation_auto_residentiel.py`, `apps/ventes/domain/creation_auto_agricole.py` · `build_devis_auto` ne dimensionne plus : taille et matériel en `CibleDevis` imposée, blocs de la conception copiés ; conception absente ou périmée ⇒ relance synchrone une fois · devis · 11 · opus · élevé
+19 · E4 · Pointer la conception depuis le devis · `apps/ventes/domain/pipeline.py` · `etude_params['conception'] = {id, version, empreinte}` posé à la création, jamais réécrit après l'envoi · devis · 18 · sonnet · moyen
+20 · E4 · Les études du devis voient les blocs à jour · `apps/ventes/domain/etudes.py` · un devis créé depuis la conception ne relance aucun des quatre rafraîchisseurs (empreinte égale, test qui compte les appels) · devis · 18 · opus · moyen
+21 · E4 · PARITÉ — Les 104 goldens du rendu ne bougent pas · `apps/ventes/tests/golden/moteur/build_quote_data` · `build_quote_data` des 104 cas est identique octet pour octet avant/après E4 ; `split_dm_*` identiques · devis · 18, 19, 20 · opus · élevé
+22 · E4 · PARITÉ — Aucun devis envoyé ne change · `apps/ventes/tests/test_conception_lead.py` (à créer) · un devis `envoye`/`accepte` garde `etude_params`, `electrical_design` et lignes identiques après une relance du moteur du lead · devis · 18 · sonnet · moyen
+23 · E4 · La garde du CRM lit les manques du moteur · `apps/crm/devis_auto.py`, `apps/crm/contract_samples/devis_auto_pret.json` · `champs_requis` = `manques_du_moteur(lead)` (généralise ALEA67) ; un lead « prêt » n'est jamais refusé par le moteur ; contrat cohérent avec ses lecteurs front · lead · 9 · sonnet · moyen
+24 · E4 · Comparer un devis envoyé à la conception courante · `apps/ventes/selectors_conception.py` (à créer), `apps/ventes/domain/revision.py` · `ecart_devis(devis)` liste les valeurs différentes, chacune nommée ; « Réviser le devis » (geste existant) est proposé, rien n'est écrit sur l'envoyé (D-ACAL-96) · devis · 9 · sonnet · moyen
+
+## Étape 5 — Le calepinage lit la conception (généralise la vague C)
+
+25 · E5 · La cible de l'atelier = la conception courante · `apps/calepinage/services/devis_retenu.py`, `apps/calepinage/views/toiture_lead.py` · cible = taille de l'option retenue de la conception, qu'il y ait un devis ou non ; sans conception : refus nommé du moteur ; ACAL1951 généralisé · calepinage · 9 · sonnet · moyen
+26 · E5 · Le matériel par défaut = celui de la conception · `apps/calepinage/services/electrique.py`, `apps/calepinage/services/equipements.py` · sans saisie, onduleur, nombre et longueur viennent de la conception, provenance « moteur » ; une saisie devient une entrée imposée (relance) ; ACAL1952 généralisé · calepinage · 9, 14 · opus · moyen
+27 · E5 · La longueur de référence = celle de la conception · `apps/calepinage/services/electrique.py` · `_longueur_chaine_retenue` compare à la conception ; `MODULES_PAR_CHAINE` n'est lu que pour un dossier AO (ACAL1953 généralisé) · calepinage · 26 · sonnet · faible
+28 · E5 · Résultats montrent la conception, et l'écart au devis envoyé · `apps/calepinage/services/devis_retenu.py`, `frontend/src/features/calepinage/atelier/coque/etapes/EtapeResultats.jsx` · un chiffre par valeur ; devis lié envoyé différent ⇒ les deux nommés + « Réviser le devis » ; tests des trois états (sans devis, brouillon, envoyé) · calepinage · 24 · sonnet · moyen
+29 · E5 · Les contrôles « Prêt à envoyer ? » lisent les verdicts servis · `apps/calepinage/services/pret_a_envoyer.py`, `apps/calepinage/services/ratio_devis.py` · ratio, capacité d'hybride, longueur : verdicts lus dans la conception, jamais rejugés · calepinage · 26 · sonnet · faible
+30 · E5 · PARITÉ — Rejouer le lead 1742 en fabrique · `apps/calepinage/tests/test_acal_ecart_devis.py` · fabrique du cas 1742 : cible 35, onduleur de l'option sans, aucun écart « contre 16 », aucune alerte 1,50 pour l'hybride dans sa capacité · calepinage · 25, 26, 27 · sonnet · faible
+
+## Étape 6 — La pose est une entrée du moteur
+
+31 · E6 · L'étape production appelle la simulation de la pose · `apps/ventes/conception/moteur.py` (à créer), `apps/calepinage/services/simulation.py`, `apps/calepinage/services/__init__.py` · toit tracé et pose complète ⇒ `simuler_calepinage` est appelé PAR le moteur avec son matériel ; la production rangée = celle de la simulation ; `Calepinage.resultat` garde le détail au même `hash_entree` · calepinage + devis ⇒ transverse · 13, 26 · opus · élevé
+32 · E6 · La pose ajustée à la main est souveraine · `apps/ventes/conception/moteur.py` (à créer), `apps/calepinage/selectors.py` · un nombre posé à la main ne se redimensionne pas : la taille rangée = le compte posé, tout le reste recalculé pour lui · devis · 31 · opus · moyen
+33 · E6 · Le bouton Simuler devient « Relancer le moteur » · `apps/calepinage/views/simulation.py` · le POST appelle `relancer(..., forcer=True)` ; plus aucun appel direct de la simulation hors du moteur (remplace la file d'ACAL1987) · calepinage · 31 · sonnet · moyen
+34 · E6 · La consommation du calepinage vient du moteur · `apps/calepinage/services/consommation.py` · pour un calepinage de lead, la forme horaire et les kWh lus sont ceux de la conception (plus `_profil_depuis_lead` ni la forme uniforme) ; CSV et appareils deviennent une entrée du lead · calepinage · 31 · opus · moyen
+35 · E6 · PARITÉ — Liste des écarts de production des brouillons avant le niveau 15 · `apps/ventes/management/commands/remplir_conceptions.py` (à créer) · `--ecarts` liste, pour chaque brouillon jamais envoyé, production actuelle vs production de la pose ; le niveau 15 n'est rendu courant (ACAL1001) qu'après lecture du fondateur · devis · 31 · sonnet · élevé
+
+## Étape 7 — Les écrans lisent la conception
+
+36 · E7 · Carte « Conception » sur la fiche du lead · `frontend/src/features/crm/workspace/LeadWorkspace.jsx`, `frontend/src/api/crmApi.js` · la fiche montre taille, production, économies, payback (source du prix dite), suppositions avec champ, « recalcul en cours » et historique · lead · 10, 16 · sonnet · faible
+37 · E7 · Le kWc de la pastille du lead vient de la conception · `apps/crm/roof_selectors.py`, `apps/ventes/selectors_calepinage.py` · `conception_pour_lead` sert le kWc de la conception courante (plus le dernier devis ni le calepinage) · calepinage · 9 · sonnet · faible
+38 · E7 · L'écran devis lit la conception et prévisualise sans écrire · `frontend/src/pages/ventes/DevisGenerator.jsx`, `frontend/src/pages/ventes/generator/hooks/useApercuEtude.js`, `apps/ventes/views/conception.py` (à créer) · `POST conception/apercu/` appelle `calculer_conception` sans écriture ; plus aucun appel de `computeROI` ni `productibleForCity` · generateur + devis ⇒ transverse · 10 · opus · moyen
+39 · E7 · L'atelier ERP affiche les valeurs servies · `apps/web/src/scripts/roofPro11/affichageErp.ts`, `apps/web/src/scripts/roofPro11/optimizer.ts` · en mode ERP, production et économies = conception servie ; panneaux et kWc posés restent de la géométrie ; hors ligne « dernier calcul » ; site public inchangé · calepinage · 10 · sonnet · moyen
+40 · E7 · « Montrer au client » montre la conception · `frontend/src/features/calepinage/atelier/coque/BarreProjet.jsx` · la vue client lit la conception courante (pertes par défaut dites, D-ACAL-88) · calepinage · 39 · sonnet · faible
+41 · E7 · Le chiffrage de conception devient une lecture · `apps/ventes/domain/chiffrage_conception.py`, `apps/ventes/tests/test_chiffrage_conception.py` · `chiffrer_conception` lit `ConceptionLead` (plus `calculer_etude_horaire` ni `etudier_ci`) ; forme du contrat inchangée · devis · 9 · sonnet · moyen
+
+## Étape 8 — Retraits et garde
+
+42 · E8 · Retirer les maths locales de l'écran devis · `frontend/src/features/ventes/solar.js`, `frontend/src/features/ventes/calc/roi.js` · `PRODUCTIBLE_PAR_VILLE`, `EFFICIENCY`, `GHI`, `KWH_PRICE`, `PRODUCTIBLE_NET_FACTOR`, `estimerMois`, `computeROI`, `paybackMoteurHoraire` supprimés après grep des appelants ; eslint vert · generateur · 38 · sonnet · moyen
+43 · E8 · Retirer le second bilan du calepinage sur le chemin lead · `apps/calepinage/services/autoconsommation.py`, `apps/calepinage/services/cible_couverture.py` · aucun appel de `bilan_autoconsommation` pour un calepinage de lead ; `plus_petit_nombre_pour_couverture` lit le bilan rangé · calepinage · 34 · sonnet · moyen
+44 · E8 · Cantonner les constantes AO aux dossiers AO · `apps/calepinage/services/suppositions.py`, `apps/calepinage/services/electrique.py` · `core/calepinage/electrique.py` n'est importé que sur le chemin `appel_offre_id` (grep) · calepinage · 27 · sonnet · faible
+45 · E8 · Retirer la lecture des lignes du devis comme source du calepinage · `apps/calepinage/services/electrique.py`, `apps/calepinage/services/devis_retenu.py` · `_produits_du_devis` et `cible_de_l_option_retenue` supprimés ; `conception_retenue_du_devis` n'est plus lu que par `ecart_devis` · calepinage · 26, 28 · sonnet · moyen
+46 · E8 · Garde : aucun noyau appelé hors du moteur · `scripts/check_moteur_unique.py` (à créer), `.github/workflows` · la garde refuse tout appel de `recommander_taille`, `etudier_ci`, `etudier_pompage`, `calculer_etude_horaire`, `simuler_calepinage` hors de `apps/ventes/conception/` et d'une liste figée ; branchée au job stage-names · deploy · 42-45 · sonnet · faible
+
+## Étape 9 — (après la réponse à Q1) Un seul code de production
+
+47 · E9 · PARITÉ — Liste des écarts « enveloppe 20 % » → simulation sur plan par défaut · `apps/ventes/management/commands/remplir_conceptions.py` (à créer) · `--ecarts-sans-toit` liste, sur les leads de prod (lecture seule), production actuelle vs simulation du plan par défaut · devis · 35 · sonnet · élevé
+48 · E9 · La simulation accepte un plan par défaut · `apps/calepinage/services/simulation.py` · un plan virtuel (pente du lead ou 30°, azimut, kWc, pertes D-ACAL-82, sans ombre proche) se simule sans calepinage ; le moteur l'utilise sans toit ; nouveaux rendus seulement (niveau de règles monté) · calepinage · 47 + réponse Q1 · opus · élevé

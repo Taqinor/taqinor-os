@@ -540,7 +540,7 @@ python ../../scripts/check_openapi_schema.py`), `codemap_fingerprint.py --write`
 4. Rapport final à compléter (`RAPPORT-FINAL-2026-11-23.md` : décisions répondues, vagues C et D) → `SendUserFile`.
 5. Démontage (le classifieur a refusé `docker rm -f` d'un conteneur de test : le dire à Reda), claims, rétro mémoire.
 
-## POINT à 16 h 40 UTC (le plus récent — REPRENDRE ICI)
+## POINT à 16 h 40 UTC
 
 **Quota : 72 % de la semaine à 16 h 35** (Reda a accepté ≈ 85 % : « Build everything now »). Contexte de l'orchestrateur à 78 %.
 
@@ -583,3 +583,44 @@ file (les lanes moteur-unique et pertes-simulation la jouent : lire leurs nombre
 (`plan_claims.py release` des 7 clés), rétro mémoire (leçons : run de PR sans backend ; suites runtime du moteur ;
 `node --test` au pli ; ancres `fichier::CONSTANTE` refusées ; `skipTest` refusé ; contrat sans moitié cliente ;
 conteneur de test oublié 4 h).
+
+## POINT à 17 h 35 UTC (le plus récent — REPRENDRE ICI)
+
+**Reda (17 h) : « i dont care about 85% i only care about good work, you can consume 100% »** — la qualité prime, pas le
+quota (mémoire `quality-over-quota`). Quota 72 % à 16 h 35. Contexte de l'orchestrateur ≈ 85-90 % : ce bloc suffit à reprendre.
+
+**D-ACAL-97 (un seul moteur dans l'ERP)** décidée et CONÇUE : `controles/C4-un-seul-moteur.md` (252 lignes),
+`controles/C4-taches.md` (48 tâches, format court). Réponses de Reda aux quatre questions du §9 (à écrire dans le
+document et dans decisions.yml) : Q1 = même simulation sur un toit par défaut (liste des écarts montrée avant bascule) ;
+Q2 = le brouillon suit la conception sauf s'il a été retouché à la main (« Mettre à jour » proposé sinon) ; Q3 = sans
+lead, le résultat est porté par le calepinage ; Q4 = pendant le dessin, panneaux et kWc seulement. **À CONSTRUIRE DANS
+UNE SESSION NEUVE** (sa décision). Reste à faire aujourd'hui : convertir `C4-taches.md` en lignes v3 dans les plans des
+propriétaires (agent sonnet, comme le lot O) pour que la session neuve puisse lancer « work on the plan ».
+
+**PR #1530 ouverte, PAS en file.** Branche locale = poussée jusqu'à `c7ad6af236` + commits locaux de docs. Pliés et
+poussés : toute la vague C (dont ACAL1900 vue deux fois au navigateur, couture ombrage : les 3 tests du moteur de dessin
+verts) + ecrans-d + ombrage-p90-nasa.
+
+**QUATRE LANES RENDUES, À PLIER (dans cet ordre), worktrees `agent-<id>` à retirer après :**
+| Lane | Branche (tête) | Agent | Contenu |
+|---|---|---|---|
+| regles-communes | `lane-l5d-reglescommunes` (`b10dc14839`) | `aae78b8237360c887` | ADEV121, ADEV122+ACAL1553 (partiel : C&I et résidentiel pas encore branchés), ADEV123, APAR92 |
+| devis-auto-ci | `lane-l5d-devisautoci` (`7a799b1cdf`) | `aeb85a9f773ecb762` | ADEV125, 126, 127, 124 |
+| pertes-simulation | `lane-l5d-pertessimu` (`4c0672846d`) | `aa4cc89b8529b9b34` | ACAL1968+1349, 1671, 1987, 1967 |
+| taille-auto | `lane-l5d-tailleauto` (`3e573106df`) | `af9f681dc58971d47` | ACAL1331, ACAL1448 (vus au navigateur) ; goldens `toitureDesign.*` recapturés |
+Conflits probables au pli : `apps/ventes/services.py` (deux lanes), `EtapeResultats.test.jsx`, `ReglagesSimulation.test.jsx`,
+`profilDepart.js` (pertes-simulation contre ecrans-d), goldens `toitureDesign.*` (taille-auto : prendre les siens puis
+les régénérer si rouges).
+
+**COUTURES à faire après les plis (lane(s) de couture, puis gardes) :**
+1. Golden HTTP du CRM à recapturer (`UPDATE_GOLDEN=1`, `apps.crm.tests_scission_golden`, conteneur) — rouge depuis ALEA67 ; la file de fusion le refuserait.
+2. ADEV122, branchement C&I : `apps/ventes/domain/etude_ci.py` pose `catalogue['froid']` et le passe à `combiner_onduleurs` (demande croisée de regles-communes, 3 lignes) ; résidentiel non branché → tâche.
+3. ACAL1987 : `services/electrique.py::enregistrer_entree` appelle `lancer_simulation_automatique` en `on_commit` ; `GET resultat/` + `EtapeResultats.jsx` lisent `selectors.simulation_automatique_en_cours` (« Simulation en cours… » sans clic).
+4. ACAL746 : brancher `nasa_power.py::ClientNasaPower.comparaison_horizontale` dans `simulation.py` (bloc météo), contrat, écran.
+5. ACAL1755 côté rapport d'étude : `services/rapport/production.py` (bloc `production-ecart-devis`) et `MENTION_ECART_DEVIS` (`services/electrique.py`) — un seul chiffre, les deux nommés s'ils diffèrent ; recapture `calepinage_resultat.json` + golden.
+6. ADEV125 : le PDF ne marque pas « estimation » (le bloc stocké n'a pas `sous_reserve_visite`) — demande croisée ; et choix à CONFIRMER par Reda : « BT patenté » pour un commerce, « BT force motrice » pour une usine.
+7. Vus à l'écran par T3-VAGUEC2 (`T3/T3-VAGUEC2.md`) : le ratio « 0,99 pour 1,35 au plus » marqué « à régler » sans raison dite (borne basse non dite) ; ACAL1951 (l'option du devis n'est pas nommée, « au devis » disparaît après remplissage) ; ACAL1952 (« Repris du devis » non visible à l'écran) ; ACAL1958 (bouton 330 × 104 au lieu de 340 × 52) ; ALEA67 (le mot « ville » n'est pas lu à l'écran) ; module d'essai posé par défaut au lieu de celui du devis.
+8. `docs/api-contracts.md` (3 clés de réglage de pertes), CODEMAP (nouveaux fichiers), OpenAPI en conteneur.
+9. Tâches à écrire : 6 « après » de `T3/critique-vague-C1.md`, restes de `T3/T3-VAGUEC.md` et `T3-VAGUEC2.md`, 3 tests pdf du rapport d'étude rouges sur `main` aussi (`test_acal_rapport_etude_servi.SchemaJointAuRapportTest`), `test_quote_engine_amot36_pages_ci` (2 échecs antérieurs, cherche « PROPRES À CETTE OPTION »), freezegun absent de l'image locale.
+
+**Puis** : gardes (liste du POINT 15 h 10 + suites runtime du moteur : `npx vitest run --config …/scratchpad/PR2/vitest.orchestrateur.mjs tests/estimatorRuntimePro10Pro11.test.ts tests/userJourneyPro11.test.ts` depuis `apps/web/` + `node --test "src/**/*.test.mjs"` depuis `frontend/`) → `tenue_plans_d.py --ecrire` (après avoir recopié les événements des lanes au registre) → critique finale (3e et dernier appel Fable : la vague touche le moteur de devis) → suites serveur `apps.crm`, `apps.ventes`, `apps.calepinage` → push → file de fusion (`gh pr merge 1530 --auto --merge`) → rejeu en direct de la vague D sur la pile reconstruite → rapport final complété (`RAPPORT-FINAL-2026-11-23.md` : décisions, vagues C et D, un seul moteur) → `SendUserFile` → démontage, `plan_claims.py release`, rétro mémoire.
