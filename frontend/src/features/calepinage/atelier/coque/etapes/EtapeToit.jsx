@@ -5,7 +5,7 @@ import useDocumentCalepinage from '../../../useDocumentCalepinage'
 import { SurCarte } from '../emplacements'
 import { BoutonMarine, CarteFlottante, Icone, Indicateur, SectionEtape, Segmente } from '../primitives'
 import {
-  GESTES, ajoutTermine, annulerAjoutPan, appliquerCotes, commencerAjoutPan, degres, enregistrerPentePan, nomFace,
+  GESTES, ajoutTermine, annulerAjoutPan, appliquerCotes, commencerAjoutPan, confirmerPenteVivante, degres, enregistrerPentePan, nomFace,
   selectionnerObstacle, texteBesoin, useEtatToit,
 } from './EtapeToit.helpers'
 import { useCibleFactures } from './panneaux/lectures'
@@ -106,6 +106,12 @@ function CartePente({ calepinageId, builderApi, documentVivant, lectureSeule, en
 
   const confirmer = async () => {
     if (lectureSeule) return
+    // ACAL1428 — un toit pas encore dans la conception servie : on confirme le pan VIVANT (le moteur écrit `pitchSource`,
+    // « Enregistrer » l'emporte) ; aucune écriture serveur avant « Enregistrer ».
+    if (!zone && vue && !vue.plat && confirmerPenteVivante(document, vue.deg)) {
+      setMessage('Pente confirmée : elle sera enregistrée avec le calepinage.')
+      return
+    }
     if (doc.etat !== 'ok') { setMessage('Conception illisible : rien n’est enregistré.'); return }
     if (!zone) { setMessage('Enregistrez d’abord le calepinage : ce pan n’est pas encore dans la conception.'); return }
     const deg = Number(zone.pitchDeg)

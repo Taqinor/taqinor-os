@@ -133,6 +133,24 @@ export function lirePente(racine) {
   }
 }
 
+/** ACAL1428 — confirme la pente du pan VIVANT par le geste du moteur (le clic d'une puce « ~N° » ou, hors puces, le
+    curseur « Pente fine ») : le script écrit lui-même `pitchSource` sur le pan, que « Enregistrer » emporte.
+    Rien n'est écrit côté serveur ici. Rend vrai si le geste est parti. */
+export function confirmerPenteVivante(racine, deg) {
+  const n = Math.round(Number(deg))
+  if (!Number.isFinite(n)) return false
+  const puce = racine?.querySelector?.(`[data-pitch="${n}"]`)
+  if (puce && !puce.disabled) {
+    puce.click()
+    return true
+  }
+  const curseur = parId(racine, 'rp9-pitch-range')
+  if (!curseur || curseur.disabled) return false
+  curseur.value = String(n)
+  curseur.dispatchEvent(new Event('input', { bubbles: true }))
+  return true
+}
+
 /** État des outils de la carte, lu sur les vrais contrôles du script. */
 export function lireOutils(racine) {
   const finish = parId(racine, 'rp9-finish')

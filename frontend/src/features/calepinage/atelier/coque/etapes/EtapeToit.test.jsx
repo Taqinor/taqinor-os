@@ -206,9 +206,25 @@ describe('Étape Toit — « Pente et orientation »', () => {
     rendre()
     expect(await screen.findByText('22° · face sud')).toBeInTheDocument()
     expect(screen.getByText('À confirmer')).toBeInTheDocument()
+  })
+
+  it('ACAL1428 — pan absent du document servi : « Confirmer » confirme le pan vivant, sans écriture ni « Enregistrez d’abord »', async () => {
+    builderApi = { panActifId: () => 'area-9', appliquerVue: vi.fn() }
+    const surPuce = vi.fn()
+    rendre({}, (hote) => {
+      // le moteur : un clic sur la puce « ~22° » écrit pitchSource sur le pan et retire la mention « à confirmer »
+      const puce = document.createElement('button')
+      puce.dataset.pitch = '22'
+      puce.addEventListener('click', () => { surPuce(); hote.querySelector('#rp9-pitch-note').textContent = '' })
+      hote.appendChild(puce)
+    })
+    expect(await screen.findByText('22° · face sud')).toBeInTheDocument()
     fireEvent.click(screen.getByTestId('cal-toit-pente-confirmer'))
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Enregistrez d’abord le calepinage'))
+    expect(surPuce).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('status')).toHaveTextContent('Pente confirmée')
+    expect(screen.getByRole('status')).not.toHaveTextContent('Enregistrez d’abord')
     expect(enregistrerSectionLayout).not.toHaveBeenCalled()
+    await waitFor(() => expect(screen.queryByText('À confirmer')).toBeNull())
   })
 })
 
