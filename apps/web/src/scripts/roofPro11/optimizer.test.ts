@@ -445,44 +445,62 @@ describe('ACAL470 : objectif de production tapé', () => {
   });
 });
 
-// ACAL1618 — le maximum annoncé pour une « Production visée » est celui des DEUX sens de pose (le « + » bascule de même),
-// jamais celui de la seule pose courante ; un sens verrouillé borne à ce sens.
-describe('ACAL1618 — « Production visée » : maximum = le meilleur des deux sens', () => {
-  const grille = (n: number) => ({ count: n, kwc: n * 0.55, panels: [], rowWidthM: 2, footprintPerPanelM2: 2, slopeLenM: 1 });
-  const carte = (verrou: 'portrait' | null) => {
+// ACAL1618 + ACAL1903 (T3-POSE-002) — le maximum annoncé pour une « Production visée » est celui que « + » ATTEINT :
+// le gagnant du solveur vivant aux mêmes verrous, besoin non plafonné (portrait ou paysage, inclinaison, marge…),
+// jamais les deux sens de la seule pose affichée ; la production annoncée est celle de CE maximum.
+describe('ACAL1903 — « Production visée » : le maximum est celui que « + » atteint', () => {
+  /** Plat 12 × 8 m, cible 5 (la pose affichée) ; `plus()` pousse « + » jusqu'au bout et rend le compte dessiné. */
+  const atelier = (verrou: 'portrait' | null) => {
     const g = globalThis as unknown as { document?: Document };
     const avant = g.document;
     g.document = new JSDOM('<!doctype html><body><dd id="rp9-reco-prod"></dd><p id="rp9-need-note"></p></body>').window.document;
-    try {
-      const pan = { id: 'area-1', vertices: rectRing(12, 8), obstacles: [], roofType: 'flat', pitchDeg: 0, facingAzimuthDeg: 180 };
-      const ctx = { opts: { chiffrage: null }, centroidLat: 33.5, rec: { targetAnnualKwh: 4000 }, neededPanels: 0, batiments: [], centroid: [-7, 33], environment: [],
-        shadeObstructions: [], obstacles: [], areas: [pan], activeAreaId: 'area-1', activeArea: () => pan, vertices: pan.vertices, roofType: 'flat', closed: true,
-        pinned: new Set(verrou ? ['orient'] : []), sel: { orient: verrou ?? 'auto' }, shadeAnnualFactor: 1, horizonAnnualFactor: 1, dom: {} } as unknown as Ctx;
-      const deps = { renderScene: vi.fn(), paintComparison: vi.fn(), highlightRow: vi.fn(), syncProductionWindow: vi.fn(), prefillLead: vi.fn(),
-        syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 800, obstructionRings: vi.fn(() => []), setStatus: vi.fn() };
-      const opt = createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]);
-      const portrait = grille(7); // pose courante : UNE rangée en portrait (7)
-      opt.renderConfig({ pack: { origin: [-7, 33], ringENU: [], azimuthDeg: 0, portrait, landscape: grille(10) } as never,
-        grid: portrait as never, family: 'south', tiltDeg: 20, azimuthDeg: 0, isReco: true, title: 't', why: 'w', rowId: null });
-      return opt.etatCarte();
-    } finally { g.document = avant; }
+    const vertices = rectRing(12, 8);
+    const [cLng, cLat] = [(vertices[0][0] + vertices[2][0]) / 2, (vertices[0][1] + vertices[2][1]) / 2];
+    const pan = { id: 'area-1', vertices, obstacles: [], roofType: 'flat' };
+    const ctx = { opts: { chiffrage: null }, centroidLat: cLat, centroid: [cLng, cLat], neededPanels: 5, neededAuto: false, batiments: [], environment: [],
+      shadeObstructions: [], obstacles: [], areas: [pan], activeAreaId: 'area-1', activeArea: () => pan, vertices, roofType: 'flat', closed: true,
+      pinned: new Set(verrou ? ['orient'] : []), sel: { family: 'south', tilt: 'reco', orient: verrou ?? 'auto', azimuth: 'south', margin: 'keep' },
+      v4YieldCache: new Map(), overhangM: 0, documentRelu: null, shadeAnnualFactor: 1, horizonAnnualFactor: 1, dom: {}, useRecommended: true } as unknown as Ctx;
+    let dessinee = -1;
+    const deps = { renderScene: (_p: unknown, _g: unknown, _t: unknown, _f: unknown, n: number) => { dessinee = n; }, paintComparison: vi.fn(), highlightRow: vi.fn(),
+      syncProductionWindow: vi.fn(), prefillLead: vi.fn(), syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 800,
+      obstructionRings: vi.fn(() => []), obstructionClearances: () => [], setStatus: vi.fn() };
+    const opt = createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]);
+    opt.liveResolveFlat(); // la pose affichée : 5 panneaux
+    const plus = () => { ctx.neededPanels = clampNeeded(Number.MAX_SAFE_INTEGER); opt.liveResolveFlat(); return dessinee; };
+    return { opt, plus, fin: () => { g.document = avant; } };
   };
-  it('12 × 8 m, 7 en portrait / 10 en paysage : un objectif hors d’atteinte annonce 10 panneaux EN PAYSAGE', () => {
-    const e = carte(null)!;
-    const r = cibleDepuisCarte(1e6, e, clampNeeded)!;
-    expect(r.panneaux).toBe(10);
-    expect(r.plafonne).toBe(true);
-    expect(r.maxKwhAn).toBe(Math.round(10 * e.kwhParPanneau));
-    expect(phraseCible(r)).toBe(`Le toit donne au plus ${r.maxKwhAn.toLocaleString('fr-FR')} kWh/an avec 10 panneaux en paysage.`);
+  it('12 × 8 m, cible 5 : « au plus N » = le compte que « + » pose, avec la production de CETTE pose', () => {
+    const a = atelier(null);
+    try {
+      const r = cibleDepuisCarte(1e6, a.opt.etatCarte(), clampNeeded)!;
+      expect(r.plafonne).toBe(true);
+      const atteint = a.plus();
+      expect(r.panneaux).toBe(atteint);
+      expect(r.maxKwhAn).toBe(Math.round(a.opt.etatCarte()!.kwhParPanneau * atteint)); // la carte une fois « + » arrivé
+      expect(phraseCible(r).startsWith(`Le toit donne au plus ${r.maxKwhAn.toLocaleString('fr-FR')} kWh/an avec ${atteint} panneaux`)).toBe(true);
+    } finally { a.fin(); }
   });
-  it('un objectif atteignable donne toujours le plus petit N (5 panneaux), sans sens imposé', () => {
-    const e = carte(null)!;
-    const r = cibleDepuisCarte(Math.round(4.5 * e.kwhParPanneau), e, clampNeeded)!;
-    expect(r).toMatchObject({ panneaux: 5, plafonne: false });
-    expect(phraseCible(r)).not.toContain('paysage');
+  it('un objectif atteignable donne toujours le plus petit N, sans sens imposé', () => {
+    const a = atelier(null);
+    try {
+      const e = a.opt.etatCarte()!;
+      const r = cibleDepuisCarte(Math.round(4.5 * e.kwhParPanneau), e, clampNeeded)!;
+      expect(r).toMatchObject({ panneaux: 5, plafonne: false });
+      expect(phraseCible(r)).not.toMatch(/portrait|paysage/);
+    } finally { a.fin(); }
   });
-  it('portrait verrouillé : le maximum reste celui du portrait (7)', () => {
-    expect(cibleDepuisCarte(1e6, carte('portrait'), clampNeeded)?.panneaux).toBe(7);
+  it('portrait verrouillé : le maximum est celui que « + » atteint en portrait, jamais plus que sans verrou', () => {
+    const libre = atelier(null);
+    let maxLibre = 0;
+    try { maxLibre = cibleDepuisCarte(1e6, libre.opt.etatCarte(), clampNeeded)!.panneaux; } finally { libre.fin(); }
+    const a = atelier('portrait');
+    try {
+      const r = cibleDepuisCarte(1e6, a.opt.etatCarte(), clampNeeded)!;
+      expect(r.panneaux).toBe(a.plus());
+      expect(r.panneaux).toBeLessThanOrEqual(maxLibre);
+      expect(phraseCible(r)).not.toContain('paysage');
+    } finally { a.fin(); }
   });
 });
 
