@@ -1026,6 +1026,25 @@ export interface Rgb01 {
   b: number;
 }
 
+/** ACAL1408 — `instanceColor` MULTIPLIE la texture du panneau, quasi noire (≈ 0,05, `panelTexture.ts`) : une teinte
+ *  0–1 brute y restait noire (carte d'accès et chaînes invisibles). Même gain que le surlignage (PV31). */
+export const GAIN_TEINTE_PANNEAU = 14;
+
+/** ACAL1408 — écrit la teinte GAINÉE de chaque instance (`idxMap[i]` = sa cellule) ; `colorFor` null ⇒ blanc
+ *  (teinte d'origine). Seule écriture des teintes « par module » (accès solaire, chaînes). */
+export function ecrireTeintesPanneaux(
+  col: { setXYZ(i: number, x: number, y: number, z: number): unknown; needsUpdate: boolean },
+  idxMap: readonly number[],
+  colorFor: ((cellIndex: number) => Rgb01) | null,
+): void {
+  for (let i = 0; i < idxMap.length; i++) {
+    const c = colorFor ? colorFor(idxMap[i]) : null;
+    if (c) col.setXYZ(i, c.r * GAIN_TEINTE_PANNEAU, c.g * GAIN_TEINTE_PANNEAU, c.b * GAIN_TEINTE_PANNEAU);
+    else col.setXYZ(i, 1, 1, 1);
+  }
+  col.needsUpdate = true;
+}
+
 /**
  * ACAL286 — `rgb(r, g, b)` (0–255, la forme SERVIE par le serveur) → couleur 0–1 du buffer
  * `instanceColor`. Une valeur absente ou illisible rend `null` : le module reste gris.
@@ -2578,7 +2597,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
    * absorbe en douceur les valeurs > 1 du cadre alu — le panneau sélectionné « s'allume » au
    * lieu de se cramer. Les panneaux NON sélectionnés restent à 1 (teinte d'origine intacte).
    */
-  const HIGHLIGHT_GAIN = 14;
+  const HIGHLIGHT_GAIN = GAIN_TEINTE_PANNEAU; // ACAL1408 — une définition, partagée avec la carte d'accès
   /** Teintes de surlignage, AVANT gain (lisibles telles quelles). */
   const TINT_SELECTED: [number, number, number] = [1.0, 0.78, 0.32]; // laiton
   const TINT_HOVER: [number, number, number] = [1.0, 0.92, 0.72]; // laiton clair
@@ -2654,17 +2673,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   function setSolarAccessHeatmap(colorFor: ((cellIndex: number) => { r: number; g: number; b: number }) | null) {
     const mesh = ctx.activePanelMesh;
     if (!mesh || !mesh.instanceColor) return;
-    const col = mesh.instanceColor as THREE.InstancedBufferAttribute;
-    const idxMap = ctx.activePanelCellIndex;
-    for (let i = 0; i < idxMap.length; i++) {
-      if (colorFor) {
-        const c = colorFor(idxMap[i]);
-        col.setXYZ(i, c.r, c.g, c.b);
-      } else {
-        col.setXYZ(i, 1, 1, 1);
-      }
-    }
-    col.needsUpdate = true;
+    ecrireTeintesPanneaux(mesh.instanceColor as THREE.InstancedBufferAttribute, ctx.activePanelCellIndex, colorFor); // ACAL1408
     map3dRepaint();
   }
 
