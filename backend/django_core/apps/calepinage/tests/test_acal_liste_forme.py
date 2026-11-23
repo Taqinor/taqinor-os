@@ -38,6 +38,7 @@ EN_ATTENTE_LISTE = {
     'points_a_regler': 'ACAL1333',
     'points_a_regler_lu_le': 'ACAL1333',
     'points_a_regler_perime': 'ACAL1333',
+    'apercu_toit': 'ACAL1335',
 }
 
 
@@ -231,6 +232,22 @@ class ContratDeLaCarteTest(SimpleTestCase):
         self.assertIsNotNone(perime['points_a_regler_lu_le'])
         self.assertIs(perime['points_a_regler_perime'], True)
         self.assertIn('points_a_regler', CONTRAT['pourquoi'])
+
+    def test_apercu_toit_trace_normalise_ou_nul(self):
+        """ACAL1334 — un tracé de contours de 0 à 100, ou ``null`` : ni image ni URL."""
+        lignes = self._lignes()
+        self.assertIsNone(lignes['exemple_sans_image']['apercu_toit'])
+        for cle in ('exemple', 'exemple_client_seul'):
+            apercu = lignes[cle]['apercu_toit']
+            self.assertEqual(sorted(apercu), ['contours', 'viewBox'], cle)
+            self.assertEqual(apercu['viewBox'], '0 0 100 100')
+            self.assertTrue(apercu['contours'])
+            for contour in apercu['contours']:
+                self.assertGreaterEqual(len(contour), 3)
+                for x, y in contour:
+                    self.assertTrue(0 <= x <= 100 and 0 <= y <= 100, (cle, x, y))
+            self.assertNotIn('http', json.dumps(apercu))
+        self.assertIn('apercu_toit', CONTRAT['pourquoi'])
 
     def test_kwc_et_production_nombres_ou_nuls(self):
         for cle, ligne in self._lignes().items():
