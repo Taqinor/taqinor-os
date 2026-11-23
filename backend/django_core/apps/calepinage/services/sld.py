@@ -666,8 +666,25 @@ def _liaisons(places):
     return tuple(liaisons)
 
 
+def _couleurs_des_chaines(conception, donnees):
+    """ACAL1337 — ``(('Chaîne N', couleur), …)`` lus sur l'affectation SERVIE (manuelle
+    comprise) : la palette et l'ordre de la carte et du plan de câblage, jamais une copie."""
+    from .chaines import (
+        AffectationInvalide, affectation, normaliser_affectation_imposee,
+    )
+
+    try:
+        imposee = normaliser_affectation_imposee((donnees or {}).get('affectation_manuelle'))
+    except AffectationInvalide:
+        imposee = ()
+    vues = {}
+    for ligne in affectation(conception, imposee=imposee):
+        vues.setdefault(ligne.get('chaine'), ligne.get('couleur_chaine'))
+    return tuple(('Chaîne %d' % numero, couleur) for numero, couleur in vues.items() if numero is not None)
+
+
 def rendu_du_schema(entree, resultat, *, edition=None, gabarit=None,
-                    cartouche=None, branches_onduleur=None):
+                    cartouche=None, branches_onduleur=None, couleurs_chaines=()):
     """Le dessin d'une conception, ÉDITION APPLIQUÉE — SVG et blocs d'accord.
 
     ``gabarit`` (CALX237) : le verdict de ``gabarit_de_schema``. Un gabarit
@@ -714,7 +731,8 @@ def rendu_du_schema(entree, resultat, *, edition=None, gabarit=None,
     # module qui réémettait un fragment de dessin.
     svg = rendre_schema(entree, resultat, cartouche=cartouche or {},
                         positions=positions, standard=standard, blocs=blocs,
-                        bandeau=(gabarit or {}).get('bandeau') or '')
+                        bandeau=(gabarit or {}).get('bandeau') or '',
+                        couleurs_chaines=couleurs_chaines)
     return {'svg': svg, 'blocs': _blocs_publies(places, edition),
             'liaisons': _liaisons(places), 'largeur': largeur,
             'hauteur': hauteur}
@@ -833,7 +851,8 @@ def schema_du_calepinage(calepinage):
         # CALX238 (crochet de phase 2) — dix onduleurs identiques dessinent
         # UN sous-ensemble « typique de 10 », et la planche cesse de basculer
         # en A3 par le seul effet du nombre.
-        branches_onduleur=branches_onduleur_de_la_conception(conception))
+        branches_onduleur=branches_onduleur_de_la_conception(conception),
+        couleurs_chaines=_couleurs_des_chaines(conception, donnees))
     reponse['svg'] = dessin['svg']
     reponse['blocs'] = [dict(bloc) for bloc in dessin['blocs']]
     reponse['edition'] = _edition_publiee(edition, dessin)
