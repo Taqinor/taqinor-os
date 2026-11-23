@@ -336,6 +336,15 @@ class SuitLeDevisEnvoyeTest(BaseApiCalepinage):
         self.c.refresh_from_db()
         self.assertEqual(self.c.devis_id, self.d1.pk)
 
+    def test_lie_a_la_revision_d_un_devis_deja_recu_rien_ne_bouge(self):
+        # V1 reçue par le client puis révisée : d1 est sa V2 en brouillon, et porte le calepinage.
+        v1 = self._devis('0941', statut=Devis.Statut.ENVOYE)
+        Devis.objects.filter(pk=v1.pk).update(
+            date_envoi=timezone.now(), superseded_by=self.d1, is_active=False)
+        self._envoyer(self.d2)
+        self.c.refresh_from_db()
+        self.assertEqual(self.c.devis_id, self.d1.pk)
+
     def test_commande_liste_puis_applique(self):
         import io
 

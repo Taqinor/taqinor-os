@@ -165,9 +165,10 @@ def candidat_suivi_devis_envoye(devis_envoye):
 
     Seulement quand le lead du devis a UN SEUL calepinage ouvert, lié à un
     BROUILLON jamais envoyé du même lead (et de la même société). Plusieurs
-    calepinages ouverts, aucun lien, ou un lien vers un devis déjà envoyé ou
-    accepté ⇒ ``None``. Lecture seule."""
-    from apps.ventes.selectors import get_devis_by_pk
+    calepinages ouverts, aucun lien, un lien vers un devis déjà envoyé ou
+    accepté, ou vers la RÉVISION en brouillon d'un devis déjà reçu ⇒ ``None``.
+    Lecture seule."""
+    from apps.ventes.selectors import devis_predecesseurs_revision_ids, get_devis_by_pk
 
     from ..selectors import calepinages_ouverts_du_lead
 
@@ -184,6 +185,10 @@ def candidat_suivi_devis_envoye(devis_envoye):
     lie = get_devis_by_pk(calepinage.devis_id)
     if (lie is None or lie.company_id != company.pk or lie.lead_id != lead_id
             or lie.statut != 'brouillon' or getattr(lie, 'date_envoi', None)):
+        return None
+    if devis_predecesseurs_revision_ids(lie):
+        # Le brouillon lié RÉVISE un devis que le client a déjà reçu : la chaîne V1 → V2 garde son
+        # calepinage et sa « Version envoyée », quel que soit l'autre devis du lead qui part.
         return None
     return calepinage, lie
 
