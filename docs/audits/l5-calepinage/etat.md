@@ -101,18 +101,29 @@ vivent dans le scratchpad de la session, pas sur `main`.
      877-880, 883-885, 888).
    - `F2-GESTES` (liste -a) 18/18 : ok 11, partiel 6, non essaye 1 ; 16 constats (1 S1 : champ au sol compte deux
      fois, 106 modules ; 3 S2).
-   EN VOL : `F2-TOIT-a` (rapport ecrit, 21 verdicts), `F2-RESU-b` (23 restantes), `F2-DOCS-a`.
-   FILE D'ATTENTE, dans l'ordre : `F2-GESTES-b`, `F2-POSE-a`, `F2-TOIT-b`, `F2-ELEC-a`, `F2-DOCS-b`, `F2-SIMU-a`,
-   `F2-POSE-b`, `F2-CONSO`, `F2-ELEC-b`, `T2`, `F2-SIMU-b`, puis un verificateur pour les 10 de `S2-PARCOURS-b`,
-   puis `B2` EN DERNIER (il compare aux maquettes v2). Comptes des verificateurs « b » : `rev_b1` (F2-RESU-b) a
-   `rev_b7` dans l'ordre de `l5b/lancements.py` ; `rev_b8` libre.
+   - `F2-TOIT-a` 21/21 : ok 11, partiel 10 ; 18 constats (9 S2). `F2-GESTES-b` 17 : ok 9, partiel 6, non-fait 1.
+   - `F2-DOCS-a` 17 : ok 8, partiel 5, non essaye 4 ; 2 S1 (rapport d'etude : un plafond imprime comme P50 ; deux
+     productions pour un meme client). `F2-RESU-b` 23 : ok 11, partiel 7, non-fait 1, non essaye 4.
+   - `F2-POSE-a` 18 : ok 9, partiel 7 ; 1 S1 (pose enregistree de 60 panneaux rouverte a 5, puis ecrite a 5).
+   - `F2-TOIT-b` 20 : ok 12, partiel 5, non-fait 2, REGRESSION 1 (ACAL510 : un calepinage a « Pan existant » ne se
+     rouvre plus). `F2-DOCS-b` 19 : ok 11, partiel 6, non essaye 2.
+   - `F2-ELEC-a` 19 : ok 6, partiel 7, non essaye 6 (redonnees a `F2-ELEC-b`). `F2-SIMU-a` 22 : ok 10, partiel 9,
+     non-fait 1 ; 1 S1 (le P50 de tete compte des panneaux raccordes a rien).
+   EN VOL (23/11 05 h 10 UTC) : `F2-POSE-b`, `F2-CONSO`, `F2-ELEC-b`, `T2`.
+   RESTE A LANCER : `F2-SIMU-b` (compte `rev_b7`), puis un verificateur de RATTRAPAGE (compte `rev_b8`) pour les
+   preuves non jouees — les 10 de `S2-PARCOURS-b` (ACAL874, 875, 877-880, 883-885, 888), ACAL833, ACAL767, ACAL738,
+   ACAL703, ACAL712 et toute simulation restee bloquee avant 04 h 40 —, puis `B2` EN DERNIER.
    Plafond : 4 agents de fond (3 relecteurs + 1 lane) ; machine virtuelle de Docker a 5 Go (voir point 8).
 5. Construction, vague 1 (37 taches ouvertes du plan ; brief `T2/brief-lanes.md` ; base = branche d'integration) :
    - PLIEES et poussees : lane 0 (2 tests du nocturne, wheels retires) ; lane `liste` (ACAL1308, 1309 contestee,
      1310, 1322, 1333-1339, 1342, 1343 ; migration calepinage 0043 ; schema OpenAPI regenere ; empreinte CODEMAP et
      reference on_delete rafraichies ; reperes de test `cal-vignette-toit`, `cal-signal` declares) ; lane `carte`
      (ACAL1273, 1328, 1329 ; ACAL746 IMPOSSIBLE : pas de page officielle de conditions d'usage NASA POWER).
-   - EN VOL : lane `production` (branche `l5cal/lane-production` : ACAL1274, 1321, 1249).
+   - PLIEES aussi : lanes `production` (ACAL1274, 1249 ; 1321 contestee), `brouillon` (ACAL1246, 1248, 1275, 1345),
+     `toit` (ACAL1341, 1323, 1247 ; demande croisee : valeur `plat` a ajouter a `pitchSource.mode` du contrat du
+     document de toiture), `finitions` (ACAL1280, 1340, 1344, 1267 ; 1348 contestee ; 1349 IMPOSSIBLE sans valeurs
+     inventees : salissure, degradation initiale, indisponibilite, pertes de cables).
+   - RESTE de la vague 1 : la lane `e2e` + `telephone` [ACAL1272, 1346, 1347, 1353], qui a besoin de la pile.
    - A LANCER ensuite, une a la fois : `atelier-brouillon` [ACAL1246, 1248, 1275, 1345] sonnet · `e2e` + `telephone`
      [ACAL1272, 1346, 1347, 1353] sonnet (a besoin de la pile : le dire dans son message) · `atelier-carte` + `coque`
      + `pompage` [ACAL1340, 1280, 1267] sonnet · `atelier-coque` + `exemples` + `reglages` [ACAL1348, 1349, 1344]
