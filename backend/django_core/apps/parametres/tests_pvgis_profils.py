@@ -169,6 +169,24 @@ class NormalisationVilleTests(SimpleTestCase):
         for ecriture, cle in pp._ORTHOGRAPHES.items():
             self.assertIn(cle, pp.PRODUCTIBLE_MENSUEL_VILLE, ecriture)
 
+    def test_une_ville_de_la_table_passe_avant_une_orthographe_toleree(self):
+        """APAR92 — deux candidats de même longueur dans la même saisie : la
+        ville DE LA TABLE gagne sur l'orthographe tolérée, puis l'ordre
+        alphabétique tranche — jamais l'ordre d'un ensemble, qui change d'un
+        processus à l'autre (« Mohammedia, Casa » rendait Casablanca une fois
+        sur deux). Le comportement d'avant APAR92 est gardé."""
+        attendues = {
+            'Mohammedia, Casa': 'mohammedia', 'Casa - Mohammedia': 'mohammedia',
+            'Bouskoura casa': 'bouskoura', 'Casa route de Marrakech': 'marrakech',
+            'kech ou casa': 'casablanca',
+        }
+        for ecriture, cle in attendues.items():
+            self.assertEqual(pp.cle_ville(ecriture), cle, ecriture)
+        # L'ordre des candidats est TOTAL : la clé de tri ne laisse aucune égalité.
+        candidats = set(pp.PRODUCTIBLE_MENSUEL_VILLE) | set(pp._ORTHOGRAPHES)
+        cles = [(-len(c.split()), c in pp._ORTHOGRAPHES, c) for c in candidats]
+        self.assertEqual(len(set(cles)), len(cles))
+
 
 class DecalageHoraireTests(SimpleTestCase):
     """Le décalage est DÉRIVÉ de la base de fuseaux, jamais figé à « +1 ».

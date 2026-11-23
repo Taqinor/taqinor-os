@@ -850,7 +850,10 @@ def _cle_ville_tolerante(texte_normalise):
     if not mots:
         return None
     candidats = set(PRODUCTIBLE_MENSUEL_VILLE) | set(_ORTHOGRAPHES)
-    for candidat in sorted(candidats, key=lambda c: -len(c.split())):
+    # Ordre TOTAL, donc identique d'un processus à l'autre (un ensemble n'a pas d'ordre) : les noms composés
+    # d'abord, puis une ville de la TABLE avant une orthographe tolérée, puis l'ordre alphabétique. Ainsi
+    # « Mohammedia, Casa » reste Mohammedia, comme avant les orthographes d'APAR92 (critique finale du 23/11).
+    for candidat in sorted(candidats, key=lambda c: (-len(c.split()), c in _ORTHOGRAPHES, c)):
         mots_candidat = candidat.split()
         n = len(mots_candidat)
         for i in range(len(mots) - n + 1):
