@@ -56,10 +56,10 @@ export function carteDeLaPoseTenue(d: CardData, n: number, fmt: (n: number) => s
 }
 
 /** ACAL1900 — la phrase de l'écart entre la pose RELUE (ou tenue, `rouverte` faux) et la cible, ou `null` (pas de cible, ou égales). */
-export function noteEcartPoseRelue(poses: number, cible: number, fmt: (n: number) => string, rouverte = true): string | null {
+export function noteEcartPoseRelue(poses: number, cible: number, fmt: (n: number) => string, rouverte = true, auDevis = ''): string | null {
   if (!(cible > 0) || !(poses > 0) || poses === cible) return null;
   const ecart = poses - cible;
-  return `${fmt(poses)} posés / ${fmt(cible)} cible — ${rouverte ? 'pose enregistrée rouverte' : 'pose tenue'} telle quelle `
+  return `${fmt(poses)} posés / ${fmt(cible)} cible${auDevis} — ${rouverte ? 'pose enregistrée rouverte' : 'pose tenue'} telle quelle `
     + `(${fmt(Math.abs(ecart))} de ${ecart > 0 ? 'plus' : 'moins'} que la cible, rien n’est retiré ni ajouté).`;
 }
 
@@ -80,8 +80,8 @@ export function motifPanExistant(pan: Pick<AreaRecord, 'existant'> | null | unde
 }
 
 /** ACAL1900 — écrit l'écart de `noteEcartPoseRelue` dans la note du nombre de panneaux (`rp9-need-note`) ; rien sans écart ni note. */
-export function direEcartPoseRelue(poses: number, cible: number, fmt: (n: number) => string, rouverte = true): void {
-  const note = noteEcartPoseRelue(poses, cible, fmt, rouverte);
+export function direEcartPoseRelue(poses: number, cible: number, fmt: (n: number) => string, rouverte = true, auDevis = ''): void {
+  const note = noteEcartPoseRelue(poses, cible, fmt, rouverte, auDevis);
   const el = note && typeof document !== 'undefined' ? document.getElementById('rp9-need-note') : null;
   if (el && note) el.textContent = note;
 }

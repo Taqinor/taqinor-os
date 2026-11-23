@@ -11,6 +11,7 @@ import { PARAM_CHAMP } from '../atelier/ouvrirChamp'
 import PretAEnvoyer from '../commun/PretAEnvoyer'
 import AffectationChaines, { BarreRaccordement } from '../plan/AffectationChaines'
 import ConfigurationsOnduleur from './ConfigurationsOnduleur'
+import DevisRetenu from './DevisRetenu'
 import { refusParChamp } from './entreeElectrique'
 import { ROLES } from './MaterielElectrique.helpers'
 import { casesPastille, chainesServies, libelleChaine } from './resumeRaccordement'
@@ -127,6 +128,10 @@ function CarteOnduleur({ id, entree, configs, resultat, lectureSeule, onApplique
         </select>
       </div>
       {refus && <p role="alert" className="cel-refus">{refus}</p>}
+      {/* ACAL1952 — le devis dont vient l'onduleur, nommé ici : « Repris du devis DEV-… (option …) », avec l'écart d'une saisie contraire. */}
+      {entree?.devis_retenu && (
+        <DevisRetenu retenu={entree.devis_retenu} testId="cal-elec-devis-retenu" className="cel-devis-retenu" classeEcart="cel-devis-ecart" />
+      )}
       {autres > 0 && (
         <button type="button" className="cel-lien" aria-expanded={comparer} onClick={() => setComparer((o) => !o)}>
           {`Comparer avec ${autres} autre${autres > 1 ? 's' : ''} onduleur${autres > 1 ? 's' : ''}`}

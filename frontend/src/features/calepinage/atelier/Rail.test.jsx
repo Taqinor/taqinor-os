@@ -28,7 +28,8 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 vi.mock('../../../api/calepinageApi', async () => (await import('../../../test/fixtures/proxyPermissif')).moduleApiPermissif({
   calepinages: new Proxy({}, { get: (_c, prop) => (prop === 'parcours' ? (...a) => mocks.parcours(...a)
     : prop === 'modulesDisponibles' ? (...a) => mocks.modulesDisponibles(...a)
-      : prop === 'pretAEnvoyer' ? (...a) => mocks.pretAEnvoyer(...a) : () => Promise.resolve({ data: {} })) }),
+      : prop === 'pretAEnvoyer' ? (...a) => mocks.pretAEnvoyer(...a)
+        : prop === 'entreeElectrique' ? (...a) => mocks.entreeElectrique(...a) : () => Promise.resolve({ data: {} })) }),
 }))
 vi.mock('../../../api/ventesApi', () => ({ default: { reviserDevis: vi.fn() } }))
 
@@ -38,7 +39,7 @@ vi.mock('../../../api/ventesApi', () => ({ default: { reviserDevis: vi.fn() } })
    son bandeau d'échec au lieu du contenu. */
 const mocks = vi.hoisted(() => ({
   hasPermission: vi.fn(() => false), parcours: vi.fn(), modulesDisponibles: vi.fn(),
-  pretAEnvoyer: vi.fn(() => Promise.resolve({ data: {} })),
+  pretAEnvoyer: vi.fn(() => Promise.resolve({ data: {} })), entreeElectrique: vi.fn(() => Promise.resolve({ data: {} })),
 }))
 vi.mock('../../../hooks/useHasPermission', () => ({
   useHasPermission: (code) => mocks.hasPermission(code),
@@ -509,6 +510,23 @@ describe('ACAL395 — l’étape Électrique en UNE page', () => {
     expect(ligne.textContent.match(/À compléter : 3 points/g)).toHaveLength(1)
     // une valeur que la pastille ne dit pas reste affichée.
     expect(screen.getByTestId(`cal-pret-ligne-${info.code}`)).toHaveTextContent(info.valeur_texte)
+  }, 30_000)
+
+  it('ACAL1952 — en Guidé, le panneau de l’étape dit « Repris du devis <référence> » avec l’écart d’une saisie contraire', async () => {
+    const entree = exempleContrat('calepinage', 'calepinage_entree_electrique')
+    mocks.entreeElectrique.mockResolvedValue({ data: entree })
+    mocks.parcours.mockResolvedValue(parcoursElectrique('fait'))
+    mocks.pretAEnvoyer.mockResolvedValue(pretAvec([ok]))
+    rendreRail(`?${PARAM_ONGLET}=verdict-electrique`)
+    const bloc = await screen.findByTestId('cal-elec-devis-retenu', {}, { timeout: DELAI_PANNEAU })
+    expect(bloc).toHaveTextContent(`Repris du devis ${entree.devis_retenu.reference} (option sans batterie)`)
+    expect(bloc).toHaveTextContent(`Écart avec le devis — ${entree.devis_retenu.ecarts[0]}`)
+    // sans devis lié : aucune mention
+    cleanup()
+    mocks.entreeElectrique.mockResolvedValue({ data: exempleContrat('calepinage', 'calepinage_entree_electrique', 'exemple_vide') })
+    rendreRail(`?${PARAM_ONGLET}=verdict-electrique`)
+    await screen.findByTestId('cal-elec-onduleur', {}, { timeout: DELAI_PANNEAU })
+    expect(screen.queryByTestId('cal-elec-devis-retenu')).toBeNull()
   }, 30_000)
 
   it('un lien `?onglet=raccordement` déplie le Raccordement (et « Réglages avancés » avec lui)', async () => {

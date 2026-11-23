@@ -132,12 +132,16 @@
   color: var(--cal-texte-2); }
 
 /* ── Pied : la phrase sur sa carte, puis l'action suivante (330 × 104, l'UNIQUE aplat doré de l'écran) ───── */
-.cal-res-pied { display: flex; align-items: stretch; justify-content: flex-end; gap: 16px; min-height: 104px; }
-.cal-res-pied-ligne { flex: 1; display: flex; align-items: center; padding: 0 22px; border-radius: var(--cal-rayon-carte);
+.cal-res-pied { display: flex; align-items: stretch; justify-content: flex-end; gap: 16px; }
+.cal-res-pied-ligne { flex: 1; display: flex; align-items: center; min-height: 104px; padding: 0 22px; border-radius: var(--cal-rayon-carte);
   background: var(--cal-surface); box-shadow: var(--cal-ombre-posee); font-size: 14px; color: var(--cal-texte-2); }
 .cal-res-pied-ligne:empty { display: none; }
 .cal-res-pied > .cal-res-cta { flex: none; width: 330px; min-height: 104px; border-radius: var(--cal-rayon-carte); font-size: 16px;
   box-shadow: 0 12px 28px color-mix(in oklch, var(--cal-or-trait) 40%, transparent), inset 0 1px 0 color-mix(in oklch, var(--cal-action-texte) 6%, transparent); }
+/* ACAL1958 — SANS phrase de durée (résultat incomplet, avant simulation) le bouton est seul : le gabarit des autres étapes,
+   340 × 52, rayon 14, 15 px, ombre dorée ; avec la phrase, la maquette Resultats garde sa carte d'action 330 × 104. */
+.cal-res-pied > .cal-res-pied-ligne:empty + .cal-res-cta { width: 340px; max-width: 100%; min-height: 52px;
+  border-radius: var(--cal-rayon-pile); font-size: 15px; box-shadow: var(--cal-action-ombre); }
 /* L'action suivante : l'UNIQUE aplat doré de l'écran (52 px, rayon 14, 15 px graisse 700, ombre dorée). */
 .cal-res-cta { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 52px;
   padding: 0 22px; border: 0; border-radius: var(--cal-rayon-pile); background: var(--cal-action);
@@ -255,6 +259,7 @@
   .cal-res-tuiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cal-res-milieu { min-height: 0; }
   .cal-res-pied > .cal-res-cta { width: auto; flex: 1; min-height: 64px; }
+  .cal-res-pied > .cal-res-pied-ligne:empty + .cal-res-cta { width: 100%; min-height: 52px; }
   .cal-res-heros { grid-column: 1 / -1; }
 }
 @container (max-width: 520px) {

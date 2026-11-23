@@ -87,6 +87,9 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
       cibleVendue: true,
       // ACAL1331 — l'origine de la cible servie (ici le devis lié) : l'atelier la dit à la pose.
       origineCible: CTX.cible.source,
+      // ACAL1951 — le devis lié et l'option servie : l'atelier les NOMME dans sa note (« 7 au devis DEV-… (option avec batterie) »).
+      referenceDevis: CTX.calepinage.devis_lie.reference,
+      optionCible: CTX.cible.option,
       fullName: CTX.calepinage.titre,
       // ACAL777 — la facture mensuelle du lead servie (ACAL776), repli d'affichage des cartes.
       factureMensuelleMad: CTX.consommation_lead.facture_mensuelle_mad,

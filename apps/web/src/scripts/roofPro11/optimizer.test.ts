@@ -710,6 +710,22 @@ describe('ACAL1900 — une pose relue n’est pas re-posée par le recalcul de f
     } finally { remettre(); }
   });
 
+  // ACAL1951 (T3-VAGUEC2, point 7) — la note nomme le devis et l'option dont vient la cible, et les garde après « Remplir ».
+  it('devis lié : la note de la pose tenue garde « N au devis », sa référence et son option (avec batterie)', async () => {
+    const remettre = doc();
+    try {
+      const hydrate = { devis: { referenceDevis: 'DEV-202611-0022', optionCible: 'avec' } };
+      const { ctx, opt, cellules } = await ouvrir({ chiffrage: null, rendementPvgis: null, devisLie: true, hydrate });
+      Object.assign(ctx, { cibleVendue: true, panneauxDevis: 5 });
+      const n = cellules.length;
+      opt.peindreCartePosee(n);
+      expect(document.getElementById('rp9-need-note')!.textContent).toBe(
+        `${n} posés / 5 cible · 5 au devis DEV-202611-0022 (option avec batterie) — pose tenue telle quelle (${n - 5} de plus que la cible, rien n’est retiré ni ajouté).`);
+      opt.majChiffrage(null); // le contexte relu après « Enregistrer » : la même phrase
+      expect(document.getElementById('rp9-need-note')!.textContent).toContain('· 5 au devis DEV-202611-0022 (option avec batterie) — pose tenue telle quelle');
+    } finally { remettre(); }
+  });
+
   it('carteDeLaPoseTenue : même rendement par panneau, économies plafonnées ; rien quand le nombre ne change pas', () => {
     const d = { title: 'Plein sud 30°', isReco: true, count: 5, kwc: 3.55, annualKwh: 5571, pct: 63, savingsLow: 1, savingsHigh: 1, why: '', target: 8843 };
     const c = carteDeLaPoseTenue(d, 16, fmt)!;
@@ -1098,6 +1114,19 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
       a.opt.majChiffrage(null);
       expect(a.t('rp9-need-note')).toContain('· 16 au devis');
     } finally { for (const x of [a, sansDevis, nonVendu, sansCompte, publique]) x.fin(); }
+  });
+
+  it('ACAL1951 — « au devis » nomme le devis et l’option (sans / avec batterie) ; une cible estimée ne nomme aucune option', () => {
+    const lie = { devisMode: true, cibleVendue: true, neededPanels: 12, panneauxDevis: 14 };
+    const avec = monter({ chiffrage: null, devisLie: true, hydrate: { devis: { referenceDevis: 'DEV-202611-0022', optionCible: 'avec' } } }, lie);
+    const sans = monter({ chiffrage: null, devisLie: true, hydrate: { devis: { referenceDevis: 'DEV-202611-0022', optionCible: 'sans' } } }, lie);
+    const estimee = monter({ chiffrage: null, devisLie: true, hydrate: { devis: { referenceDevis: 'DEV-202611-0022', optionCible: null } } }, lie);
+    try {
+      expect(avec.t('rp9-need-note')).toContain('10 posés / 12 cible · 14 au devis DEV-202611-0022 (option avec batterie) — seuls 10 tiennent');
+      expect(sans.t('rp9-need-note')).toContain('· 14 au devis DEV-202611-0022 (option sans batterie) — seuls');
+      expect(estimee.t('rp9-need-note')).toContain('· 14 au devis DEV-202611-0022 — seuls');
+      expect(estimee.t('rp9-need-note')).not.toContain('option');
+    } finally { for (const x of [avec, sans, estimee]) x.fin(); }
   });
 
   it('renommage de la tuile : « Production ÷ consommation » en ERP seulement ; « Couverture » reste sur le site public', () => {

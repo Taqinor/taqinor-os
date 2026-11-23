@@ -784,6 +784,16 @@ describe('ACAL2001 — les messages se posent hors du bouton d’étape', () => 
     ol.remove()
   })
 
+  /* T3-VAGUEC (S3) — au bureau le message du bas (356 × 54) tombait à 16 px du bord, sur la moitié droite de la barre du soleil
+     et de la barre d'outils (rangée de 69 px depuis le bord). Il se pose au-dessus de cette rangée, avec un jeu de 8 px. */
+  it('au bureau, la région des messages est relevée au-dessus de la barre du soleil et de la barre d’outils', async () => {
+    const { useToastsHorsDuBouton } = await import('../toastsAtelier')
+    function Atelier() { useToastsHorsDuBouton(); return null }
+    render(<Atelier />)
+    const bas = parseFloat(getComputedStyle(document.body).getPropertyValue('--cal-toast-bas'))
+    expect(bas).toBeGreaterThanOrEqual(69 + 8 + 16) // rangée du bas (69) + jeu (8) + marge de la région au bord (16)
+  })
+
   it('une région en haut (téléphone) n’est pas déplacée', async () => {
     const { useToastsHorsDuBouton } = await import('../toastsAtelier')
     function Atelier() { useToastsHorsDuBouton(); return null }
@@ -791,6 +801,34 @@ describe('ACAL2001 — les messages se posent hors du bouton d’étape', () => 
     render(<Atelier />)
     expect(getComputedStyle(ol).right).not.toBe('var(--cal-toast-droite)')
     ol.remove()
+  })
+})
+
+/* T3-VAGUEC (S3) — « Affiner ma consommation » : le panneau d'étape ne fait que 384 px, mais les quatre tuiles chiffrées du
+   bandeau de synthèse suivaient `sm:grid-cols-4`, réglé sur la FENÊTRE (≥ 640 px) : quatre colonnes de ~78 px, libellés et
+   montants superposés. Le vrai balisage partagé est rendu sous `.rp9-host` avec la règle Tailwind d'origine (posée sans sa
+   requête de média, que jsdom n'évalue pas) et la feuille du constructeur : le bandeau passe à deux colonnes. */
+describe('« Affiner ma consommation » — les quatre tuiles chiffrées ne se chevauchent pas', () => {
+  let style
+  let hote
+  beforeEach(async () => {
+    const { CONS_WINDOW_HTML } = await import('@roofpro/consumptionMarkup')
+    style = document.createElement('style')
+    style.textContent = `.sm\\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }\n${
+      readFileSync(resolve(process.cwd(), 'src/styles/roofbuilder.css'), 'utf8')}`
+    document.head.appendChild(style)
+    hote = document.createElement('div')
+    hote.className = 'rp9-host'
+    hote.innerHTML = CONS_WINDOW_HTML
+    document.body.appendChild(hote)
+  })
+  afterEach(() => { style.remove(); hote.remove() })
+
+  it('le bandeau de synthèse tient en deux colonnes dans le panneau, ses quatre tuiles y sont toutes', () => {
+    const bandeau = hote.querySelector('#rp9-cons-panel > dl')
+    expect(bandeau.children).toHaveLength(4)
+    expect(getComputedStyle(bandeau).getPropertyValue('grid-template-columns').trim()).toMatch(/^repeat\(2,/)
+    for (const libelle of bandeau.querySelectorAll('dt')) expect(getComputedStyle(libelle).overflowWrap).toBe('anywhere')
   })
 })
 

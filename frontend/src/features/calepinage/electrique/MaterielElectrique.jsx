@@ -7,6 +7,7 @@ import RetourAtelier from '../atelier/RetourAtelier'
 import { refusParChamp } from './entreeElectrique'
 import { ROLES, libelleProvenance } from './MaterielElectrique.helpers'
 import ConfigurationsOnduleur from './ConfigurationsOnduleur'
+import DevisRetenu from './DevisRetenu'
 
 /* ============================================================================
    ACAL149 — L'ONGLET « MATÉRIEL ÉLECTRIQUE » DE L'ATELIER.
@@ -24,26 +25,6 @@ import ConfigurationsOnduleur from './ConfigurationsOnduleur'
    ========================================================================== */
 
 const idChamp = (champ) => `acal149-champ-${champ}`
-
-/* ACAL1952 — le matériel électrique que le devis lié a RETENU (`devis_retenu`, servi par
-   `entree-electrique/`) : ce qui sert le calcul quand rien n'est saisi, et les écarts d'une saisie
-   contraire — des informations, la saisie reste permise. */
-function DevisRetenu({ retenu }) {
-  const option = retenu.option === 'avec' ? 'avec batterie' : 'sans batterie'
-  const morceaux = [
-    retenu.onduleur?.designation,
-    retenu.nombre_onduleurs ? `${retenu.nombre_onduleurs} onduleur${retenu.nombre_onduleurs > 1 ? 's' : ''}` : null,
-    retenu.longueur_chaine ? `chaînes de ${retenu.longueur_chaine} modules` : null,
-  ].filter(Boolean)
-  return (
-    <div className="flex flex-col gap-1 text-xs text-muted-foreground" data-testid="acal149-devis-retenu">
-      <p>{`Repris du devis ${retenu.reference} (option ${option})${morceaux.length ? ` : ${morceaux.join(' · ')}` : ''}.`}</p>
-      {(retenu.ecarts ?? []).map((ecart) => (
-        <p key={ecart} className="text-info">{`Écart avec le devis — ${ecart}`}</p>
-      ))}
-    </div>
-  )
-}
 
 export default function MaterielElectrique({ calepinageId, lectureSeule = false } = {}) {
   const { id: idRoute } = useParams()

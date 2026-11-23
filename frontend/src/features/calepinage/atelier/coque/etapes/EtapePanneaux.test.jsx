@@ -3,7 +3,7 @@
    (mêmes ids, mêmes éléments) et l'on prouve ce que React rend — structure, ordre, libellés mot pour mot,
    hooks — et que chaque geste part au VRAI contrôle ; les replis honnêtes (sans facture, sans avis d'ombrage). */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, within, fireEvent, waitFor, act } from '@testing-library/react'
+import { render, renderHook, screen, cleanup, within, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('../../../../../api/calepinageApi', () => ({
@@ -17,7 +17,9 @@ import { choisirPaletteAcces } from '@rooflib/shadingEngine'
 import calepinageApi from '../../../../../api/calepinageApi'
 import { exempleContrat, reponseContrat } from '../../../../../test/fixtures/contractSamples'
 import { ContexteCoque } from '../contexteCoque'
+import { sousTitrePose } from '../projet'
 import EtapePanneaux from './EtapePanneaux'
+import { usePoseVivante } from './panneaux/constructeur'
 import { jourMois, ligneModule } from './panneaux/formats'
 import { lireServi, oublierLecturesServies } from './panneaux/lectures'
 
@@ -735,5 +737,35 @@ describe('ACAL1829 — l’étape Panneaux à sa maquette v2', () => {
     expect(puissance.querySelector('.cal-indicateur-valeur')).toHaveTextContent('6,96 kWc')
     expect(cs(puissance.querySelector('.cal-unite')).fontSize).toBe('0.8125rem')
     expect(cs(puce).height).toBe('62px')
+  })
+})
+
+/* T3-VAGUEC / T3-VAGUEC2 (S3) — l'en-tête de pose (« 16 panneaux · 11,36 kWc · 1 onduleur 5 kW ») lisait le résultat SERVI :
+   après un changement de module ou des retraits, il restait sur l'ancienne pose jusqu'à l'enregistrement. Tant que la scène
+   n'est pas enregistrée, il dit la pose que la carte AFFICHE (lue sur le constructeur, comme « Pose actuelle »). */
+describe('en-tête de pose — suit la pose affichée tant que la scène n’est pas enregistrée', () => {
+  const servi = { pose: { total_modules: 16, kwc: 11.36 }, electrique: { onduleurs: [{ nombre: 1, taille_kw: 5 }] } }
+
+  it('sousTitrePose : la pose vivante prime sur la servie ; un retrait total dit « Aucun panneau posé »', () => {
+    expect(sousTitrePose(servi)).toBe('16 panneaux · 11,36 kWc · 1 onduleur 5 kW')
+    expect(sousTitrePose(servi, { panneaux: 5, kwc: '3,60 kWc' })).toBe('5 panneaux · 3,60 kWc · 1 onduleur 5 kW')
+    expect(sousTitrePose(servi, { panneaux: 1, kwc: null })).toBe('1 panneau · 1 onduleur 5 kW') // rien d’inventé : pas de kWc lu
+    expect(sousTitrePose(servi, { panneaux: 0, kwc: '0,00 kWc' })).toBe('Aucun panneau posé')
+    expect(sousTitrePose(servi, null)).toBe('16 panneaux · 11,36 kWc · 1 onduleur 5 kW')
+  })
+
+  it('usePoseVivante : lit la carte du constructeur, la suit quand le module change, se tait hors scène modifiée', async () => {
+    monterConstructeur({ panneaux: '16 × 710 W', kwc: '11,36 kWc' })
+    const { result, rerender } = renderHook(({ actif }) => usePoseVivante(actif), { initialProps: { actif: true } })
+    expect(result.current).toEqual({ panneaux: 16, kwc: '11,36 kWc' })
+    act(() => {
+      document.getElementById('rp9-reco-panels').textContent = '5 × 720 W'
+      document.getElementById('rp9-reco-kwc').textContent = '3,60 kWc'
+    })
+    await waitFor(() => expect(result.current).toEqual({ panneaux: 5, kwc: '3,60 kWc' }))
+    act(() => { document.getElementById('rp9-reco-panels').textContent = '—' }) // la carte n'affirme plus rien
+    await waitFor(() => expect(result.current).toBeNull())
+    rerender({ actif: false })
+    expect(result.current).toBeNull()
   })
 })

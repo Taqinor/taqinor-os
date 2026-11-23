@@ -1001,6 +1001,7 @@ retiré plus un hook ajouté.
 | `cal-panneaux-sens-pose` | étape Panneaux : segmenté Portrait / Paysage / Au mieux. |
 | `cal-panneaux-ombre` | étape Panneaux : alerte des panneaux à l’ombre (seulement quand le constructeur la sert). |
 | `cal-carte-soleil` | étape Panneaux : légende d’ensoleillement et lecteur du soleil sur la carte. |
+| `cal-elec-devis-retenu` | étape Électrique : « Repris du devis <référence> (option …) » sous la carte de l’onduleur, avec l’écart d’une saisie contraire (ACAL1952). |
 | `cal-elec-onduleur` | étape Électrique : carte de l’onduleur. |
 | `cal-elec-schema-voir` | étape Électrique : carte « Schéma électrique — Voir ». |
 | `cal-elec-actions-carte` | étape Électrique : barre d’actions sur la carte (« Raccorder automatiquement »…). |

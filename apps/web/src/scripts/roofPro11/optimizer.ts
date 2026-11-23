@@ -103,7 +103,7 @@ import {
   type FiltrageAccesSolaire,
 } from './shadingUi'; // CALX115 — le seuil d'accès solaire lu par le posable
 import { $, celluleEconomies, fmt, fmtKwc, fmtMad, renommerDt } from './dom';
-import { compteDevis, phraseSurplus, peindreBande, productionServie, texteSurDevis } from './affichageErp'; // R2-13/16/17
+import { compteDevis, phraseSurplus, peindreBande, productionServie, quiDuDevis, suiteAuDevis, texteSurDevis } from './affichageErp'; // R2-13/16/17
 import { type CardData, type ChiffrageAtelier, type RenderConfigOpts, type RenderSceneFn } from './types';
 import { type Ctx } from './context';
 import { besoinAutoRelu } from './cible'; // ACAL367
@@ -623,7 +623,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   /** R2-13/22/23 — l'atelier ERP (`opts.chiffrage` défini, `null` compris) dit « cible » pour le nombre MODIFIABLE et ne dit
    *  « au devis » que pour un devis lié, avec le compte réel des panneaux de CE devis. Site public : libellé d'avant. */
   const modeErp = (): boolean => ctx.opts?.chiffrage !== undefined;
-  const surDevis = (placed: number): string => texteSurDevis(placed, ctx.neededPanels, modeErp(), Boolean(ctx.opts?.devisLie && ctx.cibleVendue), ctx.panneauxDevis);
+  const surDevis = (placed: number): string => texteSurDevis(placed, ctx.neededPanels, modeErp(), Boolean(ctx.opts?.devisLie && ctx.cibleVendue), ctx.panneauxDevis, quiDuDevis(ctx.opts)); // ACAL1951
   /** ACAL1526 — `ecartes` = emplacements retirés par le seuil d'accès solaire (`poseSousSeuil`) : la capacité dite
    *  est celle qui reste, donc la note lit la pose DESSINÉE (jamais « il reste de la place » sur une pose rognée). */
   function syncNeedControl(fitCount: number, familyLabel: string, motif?: MotifPanVide | null, ecartes = 0, pack: PackResult | null = null) {
@@ -1115,10 +1115,10 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     etiquetteEconomie();
     if (derniereCarte) paintCard(derniereCarte, derniereCarte.sourceLabel); // R2-16 + demande croisée — production, bande et économie relues
     if (derniereNote) syncNeedControl(derniereNote.fit, derniereNote.famille, derniereNote.motif, derniereNote.ecartes, derniereNote.pack); // R2-13, ACAL1526 — « au devis » relu avec le contexte
-    if (derniereCarte?.tenue) direEcartPoseRelue(derniereCarte.count, ctx.neededPanels, fmt, false); } // ACAL1900 — la note du nombre parle de la pose tenue
+    if (derniereCarte?.tenue) direEcartPoseRelue(derniereCarte.count, ctx.neededPanels, fmt, false, suiteAuDevis(ctx)); } // ACAL1900, ACAL1951 — la note du nombre parle de la pose tenue
 
   /** ACAL1900 — l'ERP : la carte (et ce qui la lit : bande, indicateurs, Guidé) suit la pose TENUE rendue (n panneaux). */
-  function peindreCartePosee(n: number) { const d = modeErp() && derniereCarte ? carteDeLaPoseTenue(derniereCarte, n, fmt) : null; if (d) { paintCard(d, derniereCarte?.sourceLabel); direEcartPoseRelue(n, ctx.neededPanels, fmt, false); } }
+  function peindreCartePosee(n: number) { const d = modeErp() && derniereCarte ? carteDeLaPoseTenue(derniereCarte, n, fmt) : null; if (d) { paintCard(d, derniereCarte?.sourceLabel); direEcartPoseRelue(n, ctx.neededPanels, fmt, false, suiteAuDevis(ctx)); } }
   function paintCard(d: CardData, sourceLabel?: string) {
     for (const p of Array.from(document.querySelectorAll<HTMLElement>('[data-couverture-max]'))) p.hidden = modeErp() && d.pct >= 100; // R3-04
     // ACAL852 — sans facture (cible absente ou nulle ET aucune économie) : « facture inconnue », jamais « 0 MAD – 0 MAD/an ».
