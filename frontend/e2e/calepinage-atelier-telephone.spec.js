@@ -137,3 +137,41 @@ test('ACAL1745 : le bandeau « GPS du lead corrigé » tient en 390 px, boutons 
   expect(chevauche(g, plus), '« Garder » et « En savoir plus » se chevauchent').toBe(false)
   expect(await sansDebordement(page), 'défilement horizontal (px)').toBeLessThanOrEqual(0)
 })
+
+// Un calepinage neuf rattaché à un lead créé pour le cas (les tests de ce fichier partent tous de là).
+async function calepinageDeTest(page, prefixe) {
+  await gotoLeads(page)
+  const name = await createLead(page, { nom: uniq(prefixe), facture: 650, ville: 'Casablanca' })
+  const res = await page.request.get(`/api/django/crm/leads/?search=${encodeURIComponent(name)}&page_size=1`)
+  expect(res.ok(), `GET /crm/leads/?search= (${res.status()})`).toBeTruthy()
+  const body = await res.json()
+  const lead = (Array.isArray(body) ? body : body.results)[0]
+  const cree = await page.request.post('/api/django/calepinage/calepinages/', { data: { lead: lead.id, titre: uniq(prefixe) } })
+  expect(cree.ok(), `POST calepinages (${cree.status()})`).toBeTruthy()
+  return cree.json()
+}
+
+// ACAL1807 — au téléphone, le toit d'abord : à 390 × 664 le tiroir s'ouvre RÉDUIT et la carte visible (du haut de la
+// carte au haut du tiroir) mesure au moins 45 % de la hauteur ; au centre de cette zone, aucune pièce flottante.
+test('ACAL1807 : carte visible ≥ 45 % de la hauteur à 390 × 664, tiroir réduit, aucune pièce au centre du toit', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 664 })
+  const cal = await calepinageDeTest(page, 'Atelier tel ACAL1807')
+  await page.goto(`/calepinage/${cal.id}`)
+  const tiroir = page.getByTestId('cal-panneau-etape')
+  await expect(tiroir).toHaveAttribute('data-deplie', '0', { timeout: 20_000 })
+  for (const etape of ['cal-etape-toit', 'cal-etape-panneaux']) {
+    await page.getByTestId(etape).click()
+    await expect(tiroir).toHaveAttribute('data-deplie', '0')
+    const m = await page.evaluate(() => {
+      const carte = document.getElementById('rp9-map').getBoundingClientRect()
+      const t = document.querySelector('[data-testid="cal-panneau-etape"]').getBoundingClientRect()
+      const el = document.elementFromPoint(carte.x + carte.width / 2, carte.y + (t.top - carte.y) / 2)
+      return { visible: t.top - carte.y, hautTiroir: t.height, centreDansCarte: !!el && !!el.closest('#rp9-map, .rp9-map-wrap') }
+    })
+    expect(m.visible, `${etape} : carte visible (px)`).toBeGreaterThanOrEqual(0.45 * 664 - 1)
+    expect(m.hautTiroir, `${etape} : tiroir réduit (px)`).toBeLessThanOrEqual(110)
+    expect(m.centreDansCarte, `${etape} : une pièce couvre le centre du toit`).toBe(true)
+  }
+  await page.getByRole('button', { name: 'Agrandir ou réduire le panneau du bas' }).click()
+  await expect(tiroir).toHaveAttribute('data-deplie', '1')
+})

@@ -1484,6 +1484,41 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
     } finally { window.matchMedia = avant }
   })
 
+  it('ACAL1807 — téléphone (< 640 px), guidé : le tiroir s’ouvre RÉDUIT et la feuille lui donne 96 px, la carte garde ≥ 45 % de la hauteur', async () => {
+    const avant = window.matchMedia
+    window.matchMedia = (q) => ({ matches: q === '(max-width: 1279px)', media: q, addEventListener() {}, removeEventListener() {} })
+    const { readFileSync } = await import('node:fs')
+    const style = document.createElement('style')
+    style.textContent = readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/56-coque-responsive.css`, 'utf8')
+    document.head.appendChild(style)
+    try {
+      amorcer()
+      rendreCalepinage(CTX.calepinage.id)
+      const panneau = await screen.findByTestId('cal-panneau-etape')
+      // Par défaut : réduit (poignée, titre, bouton d'étape) ; la poignée l'ouvre en pleine hauteur et le referme.
+      expect(panneau).toHaveAttribute('data-deplie', '0')
+      const poignee = within(panneau).getByRole('button', { name: 'Agrandir ou réduire le panneau du bas' })
+      expect(within(panneau).getByTestId('cal-panneau-etape-titre').textContent).not.toBe('')
+      await userEvent.click(poignee)
+      expect(panneau).toHaveAttribute('data-deplie', '1')
+      await userEvent.click(poignee)
+      expect(panneau).toHaveAttribute('data-deplie', '0')
+      // La feuille : sous 640 px, le tiroir réduit du guidé mesure `--cal-tiroir` (96 px) et masque corps + contrôle.
+      const mq = [...style.sheet.cssRules].find((r) => r.type === 4 && r.conditionText === '(max-width: 639px)')
+      expect(mq, 'bloc téléphone de la feuille').toBeTruthy()
+      const regles = [...mq.cssRules]
+      const reduit = regles.find((r) => r.selectorText?.endsWith("[data-deplie='0']:not([hidden])") && r.style.height)
+      expect(reduit.style.height).toBe('var(--cal-tiroir)')
+      const cache = regles.find((r) => r.selectorText?.includes("[data-deplie='0'] :is(") && r.selectorText.includes('cal-panneau-etape-corps'))
+      expect(cache.style.display).toBe('none')
+      const variable = regles.find((r) => r.selectorText === ".cal-coque[data-expert='0']")
+      const tiroir = Number.parseInt(variable.style.getPropertyValue('--cal-tiroir'), 10)
+      expect(tiroir).toBe(96)
+      // Arithmétique de la revue (390 × 664, bandeau + alertes = 168 px, rail de 64 px) : la carte visible ≥ 45 % de 664.
+      expect(664 - 168 - 64 - tiroir).toBeGreaterThanOrEqual(0.45 * 664)
+    } finally { style.remove(); window.matchMedia = avant }
+  })
+
   it('ACAL1801 — la carte est le décor : le toit se cadre dans la zone LIBRE, marges = boîtes du bandeau, du rail, du panneau et de la barre d’outils', async () => {
     const cadrerToit = vi.fn(() => true)
     reinitialiserBoot({ cadrerToit, appliquerVue: vi.fn() })
