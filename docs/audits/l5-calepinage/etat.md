@@ -150,21 +150,37 @@ vivent dans le scratchpad de la session, pas sur `main`.
    lanes : `$SP/l5b/lanes-v2.txt`). `plan_lanes.py` range 57 tâches dans UNE lane `etape-toit` (fichiers partagés du
    moteur de dessin) : découpe à la main en sous-lanes disjointes par fichier SOURCE, 3 à 4 agents à la fois (mémoire
    libre du poste : 2,5 Go), chaque agent part de la tête de la branche d'intégration :
-   - EN VOL (23/11 06 h 40 UTC) : `contrats-m0` [1400, 1401] opus · `contrats-suite` [1402, 1500, 1413, 1414, 1417,
-     1440, 1419] sonnet · `balayage` [1404, 1504, 1505, 1525, 1526, 1533] opus.
-   - À LANCER, dans cet ordre, quand une place se libère :
-     `carte-a` [1405, 1406, 1407, 1409, 1421, 1501] opus (roof-tool-pro11.ts, mapDraw, shadingUi, obstaclesUi) ;
-     `scene` [1408, 1503, 1412, 1515, 1516, 1523] opus (scene3d.ts, poseSurfaces.ts, chassisPavage.ts) ;
-     `electrique-1` [1506, 1538, 1539, 1540, 1512, 1545, 1546, 1537, 1542] opus puis `electrique-2` [1509, 1535,
-     1536, 1541, 1543, 1544, 1547, 1549, 1550] sonnet ;
-     `zones` [1415, 1418, 1420, 1430, 1431, 1513, 1510] opus — APRÈS le pli de `contrats-m0` (1401) et de `balayage`
-     (1404) ;
-     `editeur` [1403, 1520, 1521] puis, APRÈS le pli de `carte-a` et de `zones` : [1522, 1524, 1527, 1528, 1529, 1530] ;
-     `carte-b` [1416, 1422, 1423, 1433, 1432, 1436, 1441, 1442, 1443, 1532] APRÈS `carte-a` et `zones` ;
-     `react` [1502, 1514, 1517, 1428, 1429, 1410, 1411, 1424, 1435, 1438, 1427, 1519] sonnet, puis [1445] après
-     `carte-b` ; `petites` [1444, 1447, 1446, 1511, 1425, 1534, 1434, 1439, 1548, 1518, 1531] sonnet ;
-     `livrables` [1507, 1508, 1551] sonnet ; `coque-e2e` [1272, 1346, 1347, 1353, 1426, 1437] sonnet, pile libre.
-   - Puis les lots C, D, E de la consolidation (ids 1600-1899), à assembler et à découper de la même façon.
+   - PLIÉES et poussées (23/11, 06 h 45 → 07 h 40 UTC), 29 tâches corrigées : `contrats-m0` [1400, 1401] ·
+     `balayage` [1404 (la régression), 1504, 1505, 1525, 1526, 1533] · `carte-a` [1405, 1406, 1409, 1421 ; 1407
+     IMPOSSIBLE sans décision → GATED D-ACAL-83 (l'ombre proche est mesurée au seul centre du pan : d'où « −72 % ») ;
+     1501 contestée, même cause, GATED] · `contrats-suite` [1402, 1500, 1413, 1414, 1417, 1440, 1419] · `editeur-1`
+     [1403, 1520, 1521] · `zones` [1415, 1418, 1420, 1430, 1431, 1513, 1510]. Goldens de démarrage régénérés.
+   - CI ROUGE à 77c8c0128 (07 h 20 UTC), trois causes : (1) deux lignes de plus de 120 colonnes — corrigé (6d3d95a44a) ;
+     (2) `check_forme_code` (gros fichier `optimizer.ts` : +18 lignes) — vert depuis que les tâches sont marquées
+     livrées au plan (le budget vient de leur clause « Code net ») ; (3) `apps/web/tests/estimatorPreviewPro11.test.ts`
+     (2 cas qui lisent le source par motif) — lane `couture-1` EN VOL (vraie installation d'`apps/web`, suite
+     entière). NE RIEN PLIER de plus sur `roofPro11` avant le retour de `couture-1`.
+   - EN VOL (23/11 07 h 50 UTC) : `scene` [1412, 1408, 1503, 1515, 1516, 1523] opus · `electrique-1` [1506, 1538,
+     1539, 1540, 1512, 1545, 1546, 1537, 1542] opus · `react` [1502, 1410, 1411, 1514, 1517, 1428, 1429, 1424, 1435,
+     1438, 1427, 1519] sonnet · `carte-b` [1416, 1422, 1423, 1433, 1432, 1436, 1441, 1442 + deux demandes croisées :
+     retraits avant `recalc()` dans `close()`, nom du pan par `areaLabel`] sonnet · `couture-1` sonnet.
+   - À LANCER ensuite : `editeur-2` [1522, 1524, 1527, 1528, 1529, 1530, 1443] après `carte-b` et `react` ;
+     `electrique-2` [1509, 1535, 1536, 1541, 1543, 1544, 1547, 1549, 1550] sonnet ; `petites` [1444, 1447, 1446,
+     1511, 1425, 1534, 1434, 1439, 1548, 1518, 1531] sonnet ; `livrables` [1507, 1508, 1551] sonnet ; [1445] après
+     `carte-b` ; `coque-e2e` [1272, 1346, 1347, 1353, 1426, 1437] sonnet, pile libre ; [1532] reste derrière 1501.
+     Demandes croisées encore ouvertes : `optimizer.ts` (kWc de la carte passé à `peindreBande`, `majChiffrage`
+     après « Enregistrer ») ; contrat `orientation_nord` aux motifs de pan vide ; `prodWindow.ts` et
+     `roof-tool-pro11.ts` multiplient encore par 720 W.
+   - LOT C assemblé (78 tâches, ACAL1600-1677 ; classes `K-ANNEE-MOYENNE`, table des 17 lectures de la production
+     dans `T2/classes/complement-C.md`) ; lanes à découper d'après `T2/consolidation/lot-C.md` § 8 : simulation
+     (serveur), consommation (serveur), rapport, résultats (front), atelier-web, petites. LOT D EN VOL (sonnet).
+     LOT E après `B2` (EN VOL). LOT O (orchestrateur, ids 1900-1949) à écrire : reprises d'ACAL987 et ACAL444
+     (`ok` contredits hors lots), demandes croisées ci-dessus, tâches pour d'autres plans listées par le lot C
+     (worker Celery → plan deploy ; fiche produit → plan stock).
+   - ACCEPTATION : `docs/audits/acceptation/ACAL/2026-11-23-bfb859c90.md` — 127 tâches cochées (ok confirmés par
+     la relecture adverse : 127 confirmés, 94 insuffisants à rejouer au tour 3, 12 contredits devenus des reprises).
+     Scripts : `$SP/l5b/confirmes.py`, `enregistrer_acceptation.py`, `marquer_livrees.py` (à relancer après chaque
+     assemblage), `assembler.py --ecrire`, `decisions_t2.py` (D-ACAL-80 à 85 ouvertes).
    - A LANCER ensuite, une a la fois : `atelier-brouillon` [ACAL1246, 1248, 1275, 1345] sonnet · `e2e` + `telephone`
      [ACAL1272, 1346, 1347, 1353] sonnet (a besoin de la pile : le dire dans son message) · `atelier-carte` + `coque`
      + `pompage` [ACAL1340, 1280, 1267] sonnet · `atelier-coque` + `exemples` + `reglages` [ACAL1348, 1349, 1344]
