@@ -26,6 +26,9 @@
         }
       },
       "reglagesAtelier": null,
+      "imagery": {
+        "pays": null
+      },
       "referenceContour": null,
       "onApiReady": "[fn]",
       "onHydrationTerminee": "[fn]"

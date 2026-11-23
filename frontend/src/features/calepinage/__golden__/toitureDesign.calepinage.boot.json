@@ -66,6 +66,9 @@
       ],
       "modulesDisponibles": null,
       "reglagesAtelier": null,
+      "imagery": {
+        "pays": null
+      },
       "demanderPlanSurface": "[fn]",
       "factureMensuelleMad": 900,
       "devisLie": true,
