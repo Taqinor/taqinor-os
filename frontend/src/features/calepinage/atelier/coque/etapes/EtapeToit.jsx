@@ -10,6 +10,7 @@ import {
 } from './EtapeToit.helpers'
 import { jourMois } from './panneaux/formats'
 import { useCibleFactures } from './panneaux/lectures'
+import ValeurUnite from './panneaux/ValeurUnite'
 
 /* ============================================================================
    COQUE — L'ÉTAPE « TOIT » (maquette Main du 22/11 ; ToitSombre = même écran,
@@ -432,7 +433,7 @@ function ResumeCarte({ surface, pans, besoin }) {
       {blocs.map(([libelle, valeur], i) => (
         <div key={libelle} className="cal-sur-carte-resume-bloc">
           {i > 0 && <span className="cal-sur-carte-resume-filet" aria-hidden="true" />}
-          <Indicateur libelle={libelle} valeur={valeur} />
+          <Indicateur libelle={libelle} valeur={typeof valeur === 'string' ? <ValeurUnite texte={valeur} /> : valeur} />
         </div>
       ))}
     </CarteFlottante>

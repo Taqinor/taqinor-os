@@ -1,29 +1,40 @@
-/* Étape « Panneaux » (maquettes Panneaux.dc.html et Tablette.dc.html).
-   Aucune couleur littérale : jetons de l'ERP seulement (thème clair et sombre). Tailles 12/14/16/20 px.
-   Importé par `atelier/coque/etapes/EtapePanneaux.jsx`. Les `@media` de la coque vont dans 56-coque-responsive. */
+/* Étape « Panneaux » (maquettes v2 Panneaux.dc.html et Tablette.dc.html — ACAL1829, 23/11/2026).
+   Aucune couleur littérale : jetons `--cal-*` (49-jetons-v2.css) et jetons de l'ERP seulement (thème clair et sombre).
+   Tailles 12/13/14/16/20 px. Importé par `atelier/coque/etapes/EtapePanneaux.jsx`. Les `@media` de la coque vont dans
+   56-coque-responsive. */
 
-.cal-coque .cal-pan { display: flex; flex-direction: column; gap: 20px; min-width: 0; line-height: 1.3; }
-.cal-coque .cal-pan-section { display: flex; flex-direction: column; gap: 8px; margin: 0; }
-.cal-coque .cal-pan-titre { margin: 0; font-size: 0.875rem; font-weight: 600; }
-.cal-coque .cal-pan-note { margin: 0; font-size: 0.75rem; line-height: 1.45; color: var(--muted-foreground); }
+.cal-coque .cal-pan { display: flex; flex-direction: column; gap: 18px; min-width: 0; line-height: 1.3; }
+.cal-coque .cal-pan-section { display: flex; flex-direction: column; gap: 10px; margin: 0; }
+/* Intitulés de section : 13 px demi-gras en texte 2 (maquette « Panneau », « Combien de panneaux ? », « Sens de pose »). */
+.cal-coque .cal-pan-titre { margin: 0; font-size: 0.8125rem; font-weight: 600; color: var(--cal-texte-2); }
+.cal-coque .cal-pan-note { margin: 0; font-size: 0.75rem; line-height: 1.45; color: var(--cal-texte-3); }
 .cal-coque .cal-pan-erreur { margin: 0; font-size: 0.75rem; line-height: 1.45; color: var(--destructive); }
-.cal-coque .cal-pan-lien { color: var(--info); text-decoration: underline; }
+.cal-coque .cal-pan-lien { color: var(--cal-lien); text-decoration: underline; }
+/* L'unité d'un chiffre dessiné (« kWc », « m² », « % ») : plus petite, grise, même ligne de base. */
+.cal-coque .cal-unite { font-family: var(--font-brand); font-size: 0.8125rem; font-weight: 500; letter-spacing: 0; color: var(--cal-texte-2); }
 
-/* Le modèle de panneau : carte à liste déroulante (56 px, nom 14 px, ligne 12 px). */
+/* Le modèle de panneau : carte à liste déroulante (64 px, vignette, nom 14 px, ligne 12 px). */
 .cal-coque .cal-pan-liste-hote { position: relative; }
 .cal-coque .cal-pan-module {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; height: 56px;
-  padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card);
-  color: var(--foreground); text-align: left;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; height: 64px;
+  padding: 0 12px 0 10px; border: 1px solid var(--cal-filet-fort); border-radius: 12px; background: var(--cal-surface);
+  color: var(--cal-texte-1); text-align: left;
 }
 .cal-coque .cal-pan-module:disabled { opacity: 0.6; cursor: not-allowed; }
-.cal-coque .cal-pan-module svg { flex: none; color: var(--muted-foreground); }
-.cal-coque .cal-pan-module-texte { display: flex; flex-direction: column; min-width: 0; }
+.cal-coque .cal-pan-module > svg:last-child { flex: none; color: var(--cal-texte-2); }
+.cal-coque .cal-pan-module-texte { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
 /* Une ligne chacun, coupée par une ellipse (le nom entier reste dans l'infobulle du bouton). */
 .cal-coque .cal-pan-module-nom { font-size: 0.875rem; font-weight: 600; }
-.cal-coque .cal-pan-module-ligne { font-size: 0.75rem; font-weight: 400; color: var(--muted-foreground); }
+.cal-coque .cal-pan-module-ligne { font-size: 0.75rem; font-weight: 400; color: var(--cal-texte-2); }
 .cal-coque .cal-pan-module .cal-pan-module-nom,
 .cal-coque .cal-pan-module .cal-pan-module-ligne { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* La vignette du panneau : un module vertical générique, peint aux jetons. */
+.cal-coque .cal-pan-vignette { flex: none; filter: drop-shadow(1px 2px 2px var(--cal-filet-fort)); }
+.cal-coque .cal-vig-cadre { fill: var(--cal-surface-2); }
+.cal-coque .cal-vig-cellules { fill: var(--cal-bulle); }
+.cal-coque .cal-vig-grille { fill: none; stroke: var(--cal-bulle-texte); stroke-opacity: 0.16; stroke-width: 0.7; }
+.cal-coque .cal-vig-barre { fill: none; stroke: var(--cal-surface-2); stroke-width: 1.2; }
+.cal-coque .cal-vig-reflet { fill: var(--cal-bulle-titre); fill-opacity: 0.12; }
 .cal-coque .cal-pan-options {
   position: absolute; z-index: calc(var(--z-base) + 20); top: calc(100% + 4px); left: 0; right: 0; margin: 0; padding: 4px; list-style: none;
   max-height: 320px; overflow-y: auto; background: var(--popover); border: 1px solid var(--border);
@@ -39,107 +50,153 @@
 .cal-coque .cal-pan-option:disabled { opacity: 0.6; cursor: not-allowed; }
 .cal-coque .cal-pan-options [aria-selected='true'] .cal-pan-option { box-shadow: inset 0 0 0 1.5px var(--primary); }
 
-/* « Combien de panneaux ? » : deux cartes ; la choisie a le bord or et le fond pâle. */
+/* « Combien de panneaux ? » : deux cartes de 78 px, titre Archivo, chiffres en gras ; la choisie a le filet bleu nuit de
+   2 px sur papier (LE style « choisi » de l'atelier), l'autre est blanche à filet. */
 .cal-coque .cal-pan-option-pose {
-  display: flex; flex-direction: column; gap: 6px; min-height: 44px; padding: 14px; border: 1px solid var(--border);
-  border-radius: 10px; background: var(--card); color: var(--foreground); text-align: left;
+  display: flex; flex-direction: column; gap: 8px; min-height: 44px; padding: 14px 16px; border: 1px solid var(--cal-filet-fort);
+  border-radius: 14px; background: var(--cal-surface); color: var(--cal-texte-1); text-align: left;
 }
 .cal-coque .cal-pan-option-pose[aria-pressed='true'] {
-  border-color: transparent; background: color-mix(in oklch, var(--primary) 12%, var(--card));
-  box-shadow: inset 0 0 0 1.5px var(--primary);
+  padding: 13px 15px; border: 2px solid var(--cal-choisi-filet); background: var(--cal-choisi-fond);
 }
 .cal-coque .cal-pan-option-pose:disabled { opacity: 0.6; cursor: not-allowed; }
 .cal-coque .cal-pan-option-tete { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.cal-coque .cal-pan-option-nom { font-size: 1rem; font-weight: 600; }
-.cal-coque .cal-pan-option-ligne { font-size: 0.875rem; font-weight: 400; color: var(--muted-foreground); }
-.cal-coque .cal-pan-option-pose[aria-pressed='true'] .cal-pan-option-ligne { color: var(--foreground); }
+.cal-coque .cal-pan-option-nom { font-family: var(--font-display); font-size: 1rem; font-weight: 600; letter-spacing: -0.01em; }
+.cal-coque .cal-pan-option-ligne {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; font-size: 0.8125rem; font-weight: 400; color: var(--cal-texte-2);
+}
+.cal-coque .cal-pan-option-ligne b { font-family: var(--font-display); font-size: 0.9375rem; font-weight: 700; color: var(--cal-texte-1); }
+/* Le « · » n'est qu'un séparateur de lecture (texte, lecteurs d'écran) : l'écart de 14 px le remplace à l'œil. */
+.cal-coque .cal-pan-sep { display: none; }
 .cal-coque .cal-pan-badge {
-  padding: 2px 8px; border-radius: 999px; background: var(--foreground); color: var(--background);
-  font-size: 0.75rem; font-weight: 600;
+  display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 11px;
+  background: var(--cal-actif); color: var(--cal-actif-texte); font-size: 0.75rem; font-weight: 600;
 }
 
-/* Sens de pose : trois segments pleine largeur de 44 px. */
-.cal-coque .cal-segmente.cal-segmente-pose > button { flex: 1; height: 44px; }
+/* Sens de pose : trois segments pleine largeur de 44 px (piste v2), pictogrammes portrait / paysage. */
+.cal-coque .cal-segmente.cal-segmente-pose { border-radius: var(--cal-rayon-tuile); }
+.cal-coque .cal-segmente.cal-segmente-pose > button {
+  flex: 1; height: 44px; display: flex; align-items: center; justify-content: center; gap: 7px;
+}
+.cal-coque .cal-segmente-pose svg { flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; }
+.cal-coque .cal-segmente-pose > button[aria-pressed='true'] svg { color: var(--cal-or-trait); }
 
-/* Alerte d'ombrage (bleu-gris, jetons d'information). */
+/* Alerte d'ombrage : la carte « à surveiller » (crème, sombre : or à 14 %), deux pastilles de panneaux ombrés. */
 .cal-coque .cal-pan-alerte {
-  display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 10px;
-  border: 1px solid color-mix(in oklch, var(--info) 22%, var(--card));
-  background: color-mix(in oklch, var(--info) 6%, var(--card));
+  display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 14px;
+  border: 1px solid var(--cal-surveiller-filet); background: var(--cal-surveiller-fond);
 }
 .cal-coque .cal-pan-alerte-titre {
-  display: flex; align-items: center; gap: 8px; margin: 0; font-size: 0.875rem; font-weight: 600;
+  display: flex; align-items: center; gap: 10px; margin: 0; font-size: 0.875rem; font-weight: 600; color: var(--cal-texte-1);
 }
-.cal-coque .cal-pan-alerte-titre svg { flex: none; color: var(--info); }
-.cal-coque .cal-pan-alerte-texte { margin: 0; font-size: 0.875rem; line-height: 1.45; color: var(--secondary-foreground); }
+.cal-coque .cal-pan-alerte-pastille { flex: none; width: 30px; height: 22px; display: flex; gap: 2px; }
+.cal-coque .cal-pan-alerte-pastille > span { flex: 1; border-radius: 2px; box-shadow: inset 0 0 0 1px var(--cal-surface); }
+.cal-coque .cal-pan-alerte-pastille > span:first-child { background: var(--cal-texte-3); }
+.cal-coque .cal-pan-alerte-pastille > span:last-child { background: var(--cal-texte-2); }
+.cal-coque .cal-pan-alerte-texte { margin: 0; font-size: 0.8125rem; line-height: 1.45; color: var(--cal-surveiller-texte); }
 .cal-coque .cal-pan-alerte-actions { display: flex; gap: 8px; }
 .cal-coque .cal-pan-alerte-actions .cal-bouton-marine { flex: 1; }
 .cal-coque .cal-pan-garder {
-  height: 44px; padding: 0 14px; border: 1px solid var(--border); border-radius: 10px; background: transparent;
-  color: var(--foreground); font-weight: 600; font-size: 0.875rem;
+  height: 44px; padding: 0 18px; border: 1px solid var(--cal-filet-fort); border-radius: var(--cal-rayon-bouton); background: var(--cal-surface);
+  color: var(--cal-texte-1); font-weight: 600; font-size: 0.875rem;
 }
 
-/* Sur la carte : la puce (haut gauche, comme Panneaux.dc.html — ACAL1515), la légende (bas gauche), le lecteur du
-   soleil (bas centre). */
+/* Sur la carte : la puce (haut gauche, 62 px, comme Panneaux.dc.html — ACAL1515), la légende (bas gauche, 268 × 56), le
+   lecteur du soleil (à sa droite, 56 de haut). */
 .cal-coque .cal-pan-puce {
-  position: absolute; top: 16px; left: 16px; display: flex; align-items: center;
-  gap: 20px; padding: 10px 20px; max-width: calc(100% - 140px); white-space: nowrap;
+  position: absolute; top: 16px; left: 16px; display: flex; align-items: center; height: 62px; box-sizing: border-box;
+  gap: 0; padding: 0 6px; max-width: calc(100% - 140px); white-space: nowrap;
 }
-.cal-coque .cal-pan-puce .cal-indicateur + .cal-indicateur { padding-left: 20px; border-left: 1px solid var(--border); }
+.cal-coque .cal-pan-puce .cal-indicateur { position: relative; padding: 0 16px; }
+.cal-coque .cal-pan-puce .cal-indicateur + .cal-indicateur::before {
+  content: ''; position: absolute; left: 0; top: 16px; bottom: 16px; width: 1px; background: var(--cal-filet-fort);
+}
 /* Interlignes de la maquette : libellé 12/16, valeur 20/22. */
 .cal-coque .cal-pan-puce .cal-indicateur-libelle { line-height: 16px; }
 .cal-coque .cal-pan-puce .cal-indicateur-valeur { line-height: 22px; }
 .cal-coque .cal-coque-sur-carte > div.cal-carte-soleil { position: absolute; inset: 0; pointer-events: none; }
-.cal-coque .cal-carte-soleil > * { pointer-events: auto; position: absolute; bottom: 20px; line-height: 16px; }
-.cal-coque .cal-pan-legende { left: 16px; width: 232px; padding: 0 14px 12px; }
-/* Le titre EST le bouton de la carte d'accès solaire : il couvre le haut de la légende (12 px de marge + la ligne
-   + 8 px jusqu'au dégradé, comme la maquette) ; 44 px de cible au toucher. */
+.cal-coque .cal-carte-soleil > * { pointer-events: auto; position: absolute; bottom: 28px; line-height: 16px; }
+.cal-coque .cal-pan-legende {
+  left: 16px; width: 268px; min-height: 56px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center;
+  gap: 5px; padding: 0 16px; border-radius: var(--cal-rayon-outils); box-shadow: var(--cal-ombre-outils);
+  -webkit-backdrop-filter: var(--cal-flou); backdrop-filter: var(--cal-flou);
+}
+/* Le titre EST le bouton de la carte d'accès solaire ; 44 px de cible au toucher. */
 .cal-coque .cal-pan-legende-titre {
-  display: block; width: 100%; padding: 12px 0 8px; border: 0; background: transparent;
-  color: var(--foreground); font-size: 0.75rem; font-weight: 600; line-height: 16px; text-align: left;
+  display: block; width: 100%; padding: 0; border: 0; background: transparent;
+  color: var(--cal-texte-1); font-size: 0.75rem; font-weight: 600; line-height: 16px; text-align: left;
 }
 .cal-coque .cal-pan-legende-titre[aria-pressed='true'] { text-decoration: underline; text-underline-offset: 3px; }
 @media (pointer: coarse) { .cal-coque .cal-pan-legende-titre { min-height: 44px; } }
 .cal-coque .cal-pan-legende-titre:disabled { cursor: default; }
-.cal-coque .cal-pan-degrade { height: 10px; border-radius: 5px; }
-.cal-coque .cal-pan-legende-bornes {
-  display: flex; justify-content: space-between; margin-top: 4px; font-size: 0.75rem; color: var(--muted-foreground);
-}
+.cal-coque .cal-pan-degrade { height: 8px; border-radius: 4px; }
+.cal-coque .cal-pan-legende-bornes { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--cal-texte-2); }
 .cal-coque .cal-pan-lecteur {
-  left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; padding: 8px 14px 8px 8px;
-  box-shadow: var(--shadow-lg);
+  left: calc(16px + 268px + 12px); display: flex; align-items: center; gap: 14px; height: 56px; box-sizing: border-box;
+  padding: 0 6px; border-radius: var(--cal-rayon-outils); box-shadow: var(--cal-ombre-outils);
+  -webkit-backdrop-filter: var(--cal-flou); backdrop-filter: var(--cal-flou);
 }
 .cal-coque .cal-pan-lecture {
   flex: none; width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center;
-  border: 0; border-radius: 10px; background: var(--foreground); color: var(--background);
+  border: 0; border-radius: var(--cal-rayon-tuile); background: var(--cal-marine); color: var(--cal-marine-texte);
 }
 .cal-coque .cal-pan-lecture:disabled { opacity: 0.6; cursor: not-allowed; }
-.cal-coque .cal-pan-lecture[aria-pressed='true'] { box-shadow: 0 0 0 2px var(--primary); }
-.cal-coque .cal-pan-curseur { display: flex; flex-direction: column; gap: 6px; width: 260px; }
+.cal-coque .cal-pan-lecture[aria-pressed='true'] { box-shadow: 0 0 0 2px var(--cal-action); }
+.cal-coque .cal-pan-curseur { display: flex; flex-direction: column; gap: 7px; width: 244px; }
 .cal-coque .cal-pan-curseur-tete {
-  display: flex; justify-content: space-between; font-size: 0.75rem; line-height: 16px; color: var(--muted-foreground);
+  display: flex; justify-content: space-between; align-items: baseline; font-size: 0.75rem; line-height: 16px; color: var(--cal-texte-3);
 }
-.cal-coque .cal-pan-curseur-tete strong { color: var(--foreground); font-weight: 600; }
-/* Curseur d'heure de la maquette : piste 6 px remplie d'or jusqu'au bouton, bouton 18 px blanc liseré or. */
+.cal-coque .cal-pan-curseur-tete strong { font-size: 0.8125rem; color: var(--cal-texte-1); font-weight: 600; }
+/* Curseur d'heure de la maquette : piste 6 px remplie d'or jusqu'au bouton, bouton 16 px d'or liseré de la surface. */
 .cal-coque .cal-pan-heure {
   -webkit-appearance: none; appearance: none; width: 100%; height: 6px; margin: 0; border-radius: 3px;
-  background: linear-gradient(to right, var(--primary) var(--cal-pan-rempli, 0%), var(--muted) var(--cal-pan-rempli, 0%));
+  background: linear-gradient(to right, var(--cal-action) var(--cal-pan-rempli, 0%), var(--cal-surface-2) var(--cal-pan-rempli, 0%));
 }
 .cal-coque .cal-pan-heure:disabled { opacity: 0.6; }
 .cal-coque .cal-pan-heure::-webkit-slider-thumb {
-  -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%;
-  background: var(--card); border: 2px solid var(--primary); box-sizing: border-box;
+  -webkit-appearance: none; appearance: none; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--cal-action); border: 2.5px solid var(--cal-surface); box-sizing: border-box; box-shadow: 0 2px 6px var(--cal-filet-fort);
 }
 .cal-coque .cal-pan-heure::-moz-range-thumb {
-  width: 18px; height: 18px; border-radius: 50%; background: var(--card); border: 2px solid var(--primary); box-sizing: border-box;
+  width: 16px; height: 16px; border-radius: 50%; background: var(--cal-action); border: 2.5px solid var(--cal-surface); box-sizing: border-box;
 }
 .cal-coque .cal-pan-heure::-moz-range-track { height: 6px; border-radius: 3px; background: transparent; }
 .cal-coque .cal-pan-heure:focus-visible { outline: 2px solid var(--ring); outline-offset: 4px; }
 /* ACAL1818 — au doigt, la zone du curseur fait 44 px ; la piste dessinée reste de 6 px (contenu, hors rembourrage). */
 @media (pointer: coarse) { .cal-coque .cal-pan-heure { height: 44px; background-clip: content-box; padding: 19px 0; } }
 
-/* La ligne d'état du constructeur (bas gauche de la carte) se range au-dessus de la légende (20 + 78 + 8 px). */
-.cal-coque[data-etape='panneaux'] .cal-coque-statut { bottom: 106px; }
+/* La ligne d'état du constructeur (bas gauche de la carte) se range au-dessus de la légende (28 + 56 + 12 px). */
+.cal-coque[data-etape='panneaux'] .cal-coque-statut { bottom: 96px; }
+
+/* ACAL1445 / ACAL1829 — boussole du constructeur : sous la pile de zoom, comme sur l'étape Toit (même dessin). */
+.cal-coque[data-avance='0'][data-etape='panneaux'] #rp9-compass {
+  display: block;
+  top: calc(var(--cal-libre-haut, 88px) + 148px);
+  right: calc(var(--cal-libre-droite, 0px) + 16px);
+  left: auto;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--cal-flottante-filet);
+  background: var(--cal-flottante-dense);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  box-shadow: var(--cal-ombre-flottante);
+}
+.cal-coque[data-avance='0'][data-etape='panneaux'] #rp9-compass .rp9-compass-arrow { padding: 0; }
+.cal-coque[data-avance='0'][data-etape='panneaux'] #rp9-compass .rp9-compass-arrow > span { display: none; }
+.cal-coque[data-avance='0'][data-etape='panneaux'] #rp9-compass .rp9-compass-arrow::before,
+.cal-coque[data-avance='0'][data-etape='panneaux'] #rp9-compass .rp9-compass-arrow::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  width: 14px;
+  height: 18px;
+  margin-left: -7px;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 18'%3E%3Cpath d='M7 0l7 18H0z' fill='black'/%3E%3C/svg%3E") center / 14px 18px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 18'%3E%3Cpath d='M7 0l7 18H0z' fill='black'/%3E%3C/svg%3E") center / 14px 18px no-repeat;
+}
+.cal-coque[data-avance='0'][data-etape='panneaux'] #rp9-compass .rp9-compass-arrow::before { top: 4px; background: var(--cal-refus); }
+.cal-coque[data-avance='0'][data-etape='panneaux'] #rp9-compass .rp9-compass-arrow::after { bottom: 4px; background: var(--cal-texte-3); transform: rotate(180deg); }
 
 /* Mode guidé : la pose du constructeur (« Recommandation », « Personnaliser la disposition ») reste montée
    mais se range sous « Avancé » ; l'écran de l'étape la remplace. */

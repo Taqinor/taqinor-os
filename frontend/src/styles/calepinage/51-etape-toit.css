@@ -295,6 +295,8 @@
   white-space: nowrap;
 }
 .cal-coque .cal-sur-carte-resume-bloc { display: flex; align-items: center; gap: 20px; }
+/* L'unité d'un chiffre dessiné (« m² », « kWc ») : plus petite, grise, même ligne de base (comme à l'étape Panneaux). */
+.cal-coque .cal-unite { font-family: var(--font-brand); font-size: 0.8125rem; font-weight: 500; letter-spacing: 0; color: var(--cal-texte-2); }
 .cal-coque .cal-sur-carte-resume-filet { width: 1px; height: 32px; background: var(--border); }
 .cal-coque .cal-toit-bulle {
   position: absolute;
