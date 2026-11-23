@@ -14,6 +14,90 @@
   .cal-coque * { transition: none !important; animation-duration: 0s !important; }
 }
 
+/* ── ACAL1801 — BUREAU (≥ 1 280 px, maquettes v2 Main et Resultats) : LA CARTE EST LE DÉCOR. ────────────────
+   Bandeau (16,16 · 56 de haut · rayon 16), rail (76 de large · rayon 20) et panneau d'étape (384 · rayon 20) flottent à
+   16 px des bords et entre eux ; le centre (la scène) est la zone LIBRE entre eux. En guidé, l'enveloppe de la carte
+   (`.rp9-map-wrap`) sort de cette zone et couvre toute la fenêtre, SOUS les pièces : ce qui est posé « sur la carte »
+   (`.cal-coque-sur-carte`) reste dans la zone libre ; les contrôles internes de la carte sont décalés d'autant
+   (`--cal-libre-*`). Expert, « Avancé » et la présentation gardent la carte dans le centre. Étapes sans carte : papier,
+   pièces opaques. Tablette et téléphone (au-dessous) : inchangés. */
+@media (min-width: 1280px) {
+  .rp9-host.cal-coque:not([data-presentation='1']) {
+    padding: 16px;
+    gap: 16px;
+    --cal-haut-barre: 88px;
+    --cal-libre-haut: 88px;
+    --cal-libre-gauche: 108px;
+    --cal-libre-droite: 416px;
+  }
+  .cal-coque .cal-barre-projet {
+    padding: 0 10px 0 8px;
+    gap: 14px;
+    border: 1px solid var(--cal-flottante-filet);
+    border-radius: var(--cal-rayon-piece);
+    box-shadow: var(--cal-ombre-posee);
+  }
+  .cal-coque .cal-coque-alertes { border: 0; border-radius: var(--cal-rayon-piece); box-shadow: var(--cal-ombre-posee); }
+  .cal-coque .cal-coque-corps { gap: 16px; }
+  .cal-coque .cal-rail,
+  .cal-coque .cal-panneau-etape { position: relative; z-index: calc(var(--z-base) + 15); }
+  .cal-coque .cal-rail {
+    border: 1px solid var(--cal-flottante-filet);
+    border-radius: var(--cal-rayon-panneau);
+    box-shadow: var(--cal-ombre-posee);
+  }
+  .cal-coque .cal-panneau-etape {
+    border: 0;
+    border-radius: var(--cal-rayon-panneau);
+    box-shadow: var(--cal-ombre-panneau);
+    overflow: hidden;
+  }
+  .cal-coque .cal-coque-plein { padding: 0; }
+  /* Étapes à carte : bandeau et rail translucides, floutés, ombre de pièce flottante. */
+  .cal-coque[data-cadre='carte'] .cal-barre-projet,
+  .cal-coque[data-cadre='carte'] .cal-rail {
+    background: var(--cal-flottante);
+    -webkit-backdrop-filter: var(--cal-flou);
+    backdrop-filter: var(--cal-flou);
+    box-shadow: var(--cal-ombre-flottante);
+  }
+  /* La carte plein écran, sous les pièces (guidé, étape à carte). */
+  .cal-coque[data-cadre='carte'][data-avance='0']:not([data-presentation='1']) .cal-coque-scene .rp9-map-wrap:not([data-plein-ecran='1']) {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-base);
+  }
+  /* Le calque « sur la carte » déborde de 16 px la zone libre : une pièce posée à 16 px de son bord touche la marge
+     commune (maquette : bulle et pilule à 16 px du rail et du bandeau). */
+  .cal-coque[data-cadre='carte'][data-avance='0']:not([data-presentation='1']) .cal-coque-sur-carte { inset: -16px; }
+  .cal-coque[data-avance='0'] .maplibregl-ctrl-top-right {
+    top: var(--cal-libre-haut);
+    right: calc(var(--cal-libre-droite) + 16px);
+  }
+  .rp9-host.cal-coque[data-avance='0'] .rp9-chip.rp9-carte-puce.cal-carte-plein-ecran {
+    top: calc(var(--cal-libre-haut) + 89px);
+    right: calc(var(--cal-libre-droite) + 16px);
+  }
+  .cal-coque[data-avance='0'] .rp9-map-wrap > div:has(> #rp9-finish) {
+    left: calc((var(--cal-libre-gauche) + 100% - var(--cal-libre-droite)) / 2);
+  }
+  .rp9-host.cal-coque[data-avance='0'] .rp9-toit-client { left: calc(var(--cal-libre-gauche) + 4px); bottom: 16px; }
+  /* « Avancé » (feuille) : une pièce flottante comme le panneau. */
+  .cal-coque[data-feuille='1'] .cal-coque-avance:not([hidden]) {
+    right: 16px;
+    bottom: 16px;
+    width: min(520px, calc(100vw - 32px));
+    border: 0;
+    border-radius: var(--cal-rayon-panneau);
+    box-shadow: var(--cal-ombre-panneau);
+  }
+  /* ACAL1617 (demande croisée de la lane coque) — Expert, étape Résultats : les onglets Production, Pertes, Économie,
+     Batterie vivent dans l'inspecteur du panneau ; le panneau prend toute la largeur utile à droite du rail et la carte
+     passe dessous (jamais démontée). */
+  .cal-coque[data-expert='1'][data-etape='resultats'] .cal-panneau-etape { width: auto; flex: 1 1 auto; min-width: 0; }
+  .cal-coque[data-expert='1'][data-etape='resultats'] .cal-coque-centre { position: absolute; inset: 0; z-index: var(--z-base); }
+}
+
 @media (max-width: 1279px) {
   /* Bandeau (maquette Tablette : 64 px, cibles 48 px). */
   .cal-coque .cal-barre-projet { height: 64px; gap: 14px; padding: 0 16px 0 8px; }

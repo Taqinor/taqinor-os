@@ -1480,4 +1480,117 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
       expect(panneau.contains(document.getElementById('rp9-config'))).toBe(true)
     } finally { window.matchMedia = avant }
   })
+
+  it('ACAL1801 — la carte est le décor : le toit se cadre dans la zone LIBRE, marges = boîtes du bandeau, du rail, du panneau et de la barre d’outils', async () => {
+    const cadrerToit = vi.fn(() => true)
+    reinitialiserBoot({ cadrerToit, appliquerVue: vi.fn() })
+    // Les boîtes de la maquette v2 Main à 1 440 × 900 : carte plein écran, pièces flottantes à 16 px.
+    const BOITES = {
+      'rp9-map': [0, 0, 1440, 900], 'cal-barre-projet': [16, 16, 1424, 72], 'cal-rail-etapes': [16, 88, 92, 884],
+      'rp9-studio-inspecteur': [1040, 88, 1424, 884], 'cal-barre-outils-carte': [330, 816, 760, 872],
+    }
+    const avant = Element.prototype.getBoundingClientRect
+    Element.prototype.getBoundingClientRect = function boite() {
+      const b = BOITES[this.id] ?? BOITES[this.getAttribute('data-testid')]
+      if (!b) return avant.call(this)
+      const [left, top, right, bottom] = b
+      return { left, top, right, bottom, x: left, y: top, width: right - left, height: bottom - top }
+    }
+    try {
+      amorcer()
+      rendreCalepinage(CTX.calepinage.id)
+      await screen.findByTestId('cal-barre-outils-carte', {}, { timeout: 5000 })
+      await waitFor(() => expect(cadrerToit).toHaveBeenCalledWith({
+        zoomMax: 22, basPx: 56 + 28, margesPx: { haut: 72, gauche: 92, droite: 400, bas: 84 },
+      }), { timeout: 6000 })
+    } finally { Element.prototype.getBoundingClientRect = avant }
+  }, 15000)
+
+  describe('feuilles de la coque v2 chargées dans le DOM de test (ACAL1800, ACAL1801, ACAL1617)', () => {
+    let style
+    beforeEach(async () => {
+      const { readFileSync } = await import('node:fs')
+      style = document.createElement('style')
+      style.textContent = ['49-jetons-v2.css', '50-coque-atelier.css', '56-coque-responsive.css']
+        .map((f) => readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/${f}`, 'utf8')).join('\n')
+      document.head.appendChild(style)
+    })
+    afterEach(() => { style.remove(); document.documentElement.classList.remove('dark') })
+    // Les règles du BUREAU (@media (min-width: 1280px)) lues dans la feuille chargée (jsdom n'évalue pas @media) :
+    // la dernière règle qui vise l'élément et déclare la propriété (ordre de la feuille).
+    const auBureau = (el, prop) => {
+      const regles = [...style.sheet.cssRules].filter((r) => r.media && r.conditionText?.includes('min-width: 1280px'))
+        .flatMap((m) => [...m.cssRules])
+      let valeur = ''
+      for (const r of regles) {
+        let vise = false
+        try { vise = el.matches(r.selectorText) } catch { vise = false }
+        if (vise && r.style.getPropertyValue(prop)) valeur = r.style.getPropertyValue(prop)
+      }
+      return valeur
+    }
+
+    it('ACAL1800 : les jetons v2 se lisent sur la coque rendue, en clair puis en sombre', async () => {
+      amorcer()
+      rendreCalepinage(CTX.calepinage.id)
+      const coque = await screen.findByTestId('cal-coque')
+      expect(getComputedStyle(coque).getPropertyValue('--cal-papier').trim()).toBe('#f5f4f0')
+      expect(getComputedStyle(coque).getPropertyValue('--cal-actif').trim()).toBe('#0c1335')
+      document.documentElement.classList.add('dark')
+      expect(getComputedStyle(coque).getPropertyValue('--cal-papier').trim()).toBe('#0a0f2a')
+      expect(getComputedStyle(coque).getPropertyValue('--cal-actif').trim()).toBe('#e2b54a')
+    })
+
+    it('ACAL1801 : au bureau, carte plein écran sous le bandeau, le rail et le panneau qui flottent ; papier et pièces opaques sans carte', async () => {
+      amorcer()
+      rendreCalepinage(CTX.calepinage.id)
+      const coque = await screen.findByTestId('cal-coque')
+      const carte = screen.getByTestId('rp9-map-wrap')
+      const barre = screen.getByTestId('cal-barre-projet')
+      const rail = screen.getByTestId('cal-rail-etapes')
+      const panneau = screen.getByTestId('cal-panneau-etape')
+      expect(auBureau(carte, 'position')).toBe('fixed')
+      expect(auBureau(carte, 'inset')).toBe('0px')
+      expect(auBureau(coque, 'padding')).toBe('16px')
+      expect(auBureau(barre, 'border-radius')).toBe('var(--cal-rayon-piece)')
+      expect(auBureau(barre, 'background')).toBe('var(--cal-flottante)')
+      expect(auBureau(rail, 'border-radius')).toBe('var(--cal-rayon-panneau)')
+      expect(auBureau(panneau, 'border-radius')).toBe('var(--cal-rayon-panneau)')
+      expect(auBureau(panneau, 'box-shadow')).toBe('var(--cal-ombre-panneau)')
+      expect(getComputedStyle(rail).width).toBe('76px')
+      expect(getComputedStyle(panneau).width).toBe('384px')
+      // Le calque « sur la carte » reste dans la zone libre (débord de la marge commune seulement).
+      expect(auBureau(document.querySelector('.cal-coque-sur-carte'), 'inset')).toBe('-16px')
+      // Étape sans carte (Résultats) : papier, pièces opaques, carte non posée en décor.
+      await userEvent.click(screen.getByTestId('cal-etape-resultats'))
+      await waitFor(() => expect(coque).toHaveAttribute('data-cadre', 'plein'))
+      expect(getComputedStyle(coque).background).toContain('--cal-papier')
+      expect(auBureau(barre, 'background')).toBe('')
+      expect(getComputedStyle(barre).background).toContain('--cal-surface')
+      expect(auBureau(carte, 'position')).toBe('')
+      // Expert : la carte reste dans le centre (rangées du constructeur sous la carte).
+      await userEvent.click(screen.getByTestId('cal-etape-toit'))
+      await userEvent.click(within(barre).getByRole('button', { name: 'Expert' }))
+      await waitFor(() => expect(coque).toHaveAttribute('data-expert', '1'))
+      expect(auBureau(carte, 'position')).toBe('')
+    })
+
+    it('ACAL1617 : Expert, étape Résultats — le panneau prend la largeur utile, la carte passe dessous ; Toit garde 384 px', async () => {
+      amorcer()
+      rendreCalepinage(CTX.calepinage.id)
+      const coque = await screen.findByTestId('cal-coque')
+      await userEvent.click(within(screen.getByTestId('cal-barre-projet')).getByRole('button', { name: 'Expert' }))
+      await waitFor(() => expect(coque).toHaveAttribute('data-expert', '1'))
+      const panneau = screen.getByTestId('cal-panneau-etape')
+      const centre = document.querySelector('.cal-coque-centre')
+      expect(auBureau(panneau, 'flex')).toBe('')
+      await userEvent.click(screen.getByTestId('cal-etape-resultats'))
+      await waitFor(() => expect(coque).toHaveAttribute('data-etape', 'resultats'))
+      expect(coque).toHaveAttribute('data-cadre', 'carte')
+      expect(auBureau(panneau, 'flex')).toBe('1 1 auto')
+      expect(auBureau(panneau, 'width')).toBe('auto')
+      expect(auBureau(centre, 'position')).toBe('absolute')
+      expect(document.getElementById('rp9-map')).not.toBeNull()
+    })
+  })
 })

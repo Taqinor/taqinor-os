@@ -1,8 +1,9 @@
 /* ============================================================================
-   COQUE DE L'ATELIER DE CALEPINAGE (maquettes 22/11 : Main, Resultats, Tablette).
-   Bandeau 56 px · rail 113 px (tuiles de 96 px + 8 px de chaque côté + filet, comme la maquette qui
-   compte padding et filet EN PLUS de ses 96 px) · centre (carte ou écran plein) · panneau 360 px.
-   Toutes les règles @media de la coque sont dans 56-coque-responsive.css.
+   COQUE DE L'ATELIER DE CALEPINAGE (maquettes v2 du 23/11 : Main, Resultats ; Tablette v1).
+   Bandeau 56 px · rail 76 px (tuiles 60 × 64) · centre (carte ou écran plein) · panneau 384 px.
+   ACAL1801 — au bureau (≥ 1 280 px) la carte est le DÉCOR : plein écran sous le bandeau, le rail et le
+   panneau qui flottent dessus (marge 16) — cette géométrie vit dans 56-coque-responsive.css, comme
+   toutes les règles @media de la coque. Couleurs : jetons v2 `--cal-*` (49-jetons-v2.css).
    Jetons uniquement (thème sombre par les jetons seuls) ; tailles de texte des
    maquettes : 12 / 14 / 16 / 20 px. Importée par atelier/coque/CoqueAtelier.jsx.
    ========================================================================== */
@@ -21,8 +22,8 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--cal-papier);
+  color: var(--cal-texte-1);
   font-family: var(--font-brand);
   font-size: 0.875rem;
 }
@@ -35,8 +36,8 @@
   align-items: center;
   gap: 16px;
   padding: 0 20px;
-  background: var(--card);
-  border-bottom: 1px solid var(--border);
+  background: var(--cal-surface);
+  border-bottom: 1px solid var(--cal-filet);
   position: relative;
   z-index: calc(var(--z-base) + 20);
 }
@@ -168,14 +169,15 @@
 .cal-coque .cal-coque-corps { flex: 1; display: flex; min-height: 0; }
 
 .cal-coque .cal-rail {
-  width: 113px;
+  width: 76px;
   flex: none;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 12px 8px;
-  background: var(--card);
-  border-right: 1px solid var(--border);
+  align-items: center;
+  gap: 6px;
+  padding: 10px 0;
+  background: var(--cal-surface);
+  border-right: 1px solid var(--cal-filet);
   overflow-y: auto;
 }
 .cal-coque .cal-rail-etape {
@@ -183,15 +185,20 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 12px 4px;
+  justify-content: center;
+  flex: none;
+  width: 60px;
+  min-height: 64px;
+  gap: 5px;
+  padding: 8px 0;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--cal-rayon-pile);
   background: transparent;
-  color: var(--muted-foreground);
+  color: var(--cal-texte-2);
   font-weight: 500;
   font-size: 0.75rem;
 }
+.cal-coque .cal-rail-avance { min-height: 56px; }
 @media (hover: hover) {
   .cal-coque .cal-rail-etape:hover { color: var(--foreground); }
 }
@@ -215,7 +222,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  background: var(--muted);
+  background: transparent;
 }
 .cal-coque .cal-coque-scene {
   position: relative;
@@ -343,7 +350,7 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 24px 28px;
-  background: var(--background);
+  background: transparent;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -352,13 +359,13 @@
 
 /* Panneau d'étape */
 .cal-coque .cal-panneau-etape {
-  width: 360px;
+  width: 384px;
   flex: none;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--card);
-  border-left: 1px solid var(--border);
+  background: var(--cal-surface);
+  border-left: 1px solid var(--cal-filet);
 }
 .cal-coque .cal-panneau-etape[hidden] { display: none; }
 .cal-coque .cal-panneau-etape-tete { padding: 20px 20px 12px; }
