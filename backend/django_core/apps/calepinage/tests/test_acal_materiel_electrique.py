@@ -269,6 +269,38 @@ class MaterielRetenuParLeDevis(BaseMateriel):
         reponse = self.api.get(url_entree(self._calepinage().pk))
         self.assertIsNone(reponse.data['devis_retenu'])
 
+    def test_le_module_de_l_atelier_est_celui_de_la_conception_retenue(self):
+        """Rejeu T3-VAGUEC2 — un module d'ESSAI de même puissance, premier du
+        catalogue par son nom, était posé d'office au lieu du module du devis.
+        Le module de la conception retenue (option « avec » recommandée) est
+        celui de l'entrée électrique ET le premier du catalogue de l'atelier."""
+        cotes = {'longueur_mm': 2384, 'largeur_mm': 1303, 'pmax_wc': 710.0,
+                 'vmp_v': 41.4, 'voc_v': 49.3, 'isc_a': 18.59, 'imp_a': 17.59}
+        essai = self._produit(nom='A panneau essai 710W', type_fiche='module', **cotes)
+        retenu = self._produit(nom='Panneau retenu 710W', type_fiche='module', **cotes)
+        devis = Devis.objects.create(
+            company=self.company, client=self.client_a, reference='DEV-ACAL1952-20',
+            statut='envoye', etude_params={'scenario': 'Les deux (Sans + Avec)',
+                                           'recommended_option': 'Avec batterie'})
+        for produit, variante in ((essai, 'sans'), (self.onduleur, 'sans'), (retenu, 'avec'),
+                                  (self.hybride, 'avec'), (self.batterie, 'avec')):
+            LigneDevis.objects.create(
+                devis=devis, produit=produit, designation=produit.nom, quantite=Decimal('1'),
+                prix_unitaire=Decimal('100'), type_ligne='produit', variante=variante)
+        calepinage = self._calepinage(devis=devis)
+        _c, materiel, _d, _doc = conception_du_calepinage(calepinage)
+        self.assertEqual((materiel['produits']['module'], materiel['provenances']['module']),
+                         (retenu.pk, PROVENANCE_DEVIS))
+        catalogue = self.api.get(f'{url_detail(calepinage.pk)}modules-disponibles/')
+        self.assertEqual(catalogue.status_code, 200, catalogue.data)
+        self.assertEqual(catalogue.data['modules'][0]['module']['produitId'], retenu.pk)
+        # Une désignation manuelle reste permise et garde la main.
+        calepinage.resultat = {CLE_ENTREE: dict(TEMPERATURES, module_produit=essai.pk)}
+        calepinage.save()
+        _c, materiel, _d, _doc = conception_du_calepinage(calepinage)
+        self.assertEqual((materiel['produits']['module'], materiel['provenances']['module']),
+                         (essai.pk, PROVENANCE_EXPLICITE))
+
     def test_acal1953_l_ecart_de_longueur_se_mesure_au_devis(self):
         from apps.calepinage.services.electrique import resultat_calepinage
 

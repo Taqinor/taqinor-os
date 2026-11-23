@@ -91,12 +91,35 @@ def _onduleur_retenu(conception):
     return onduleurs[0] if onduleurs and onduleurs[0].get('produit') else None
 
 
+def _module_retenu(conception):
+    module = (conception or {}).get('module')
+    produit = module.get('produit') if isinstance(module, dict) else None
+    return produit if produit not in (None, '') else None
+
+
+def module_retenu_du_devis(calepinage):
+    """Rejeu T3-VAGUEC2 — le produit MODULE de la conception retenue du devis
+    lié (``apps.ventes.selectors_calepinage.conception_retenue_du_devis``),
+    ou ``None`` sans devis lié ni ligne panneau : le module que l'atelier pose
+    d'office, jamais un module d'essai du catalogue de même puissance."""
+    return _module_retenu(conception_du_devis_lie(calepinage))
+
+
 def produits_retenus(calepinage, produits):
-    """ACAL1952 — ``{rôle: produit}`` du devis lié : l'onduleur est celui de
-    l'option RETENUE par le devis (plus la première ligne hors « avec ») ; les
-    autres rôles restent ceux de l'agrégat ``equipements``."""
-    onduleur = _onduleur_retenu(conception_du_devis_lie(calepinage))
-    return dict(produits, onduleur=onduleur['produit']) if onduleur else produits
+    """ACAL1952 — ``{rôle: produit}`` du devis lié : l'onduleur ET le module
+    sont ceux de l'option RETENUE par le devis (plus la première ligne hors
+    « avec ») ; l'optimiseur reste celui de l'agrégat ``equipements``. Une
+    désignation EXPLICITE de l'entrée garde la main (``resoudre_materiel`` ne
+    lit le devis qu'à défaut)."""
+    conception = conception_du_devis_lie(calepinage)
+    retenus = dict(produits)
+    onduleur = _onduleur_retenu(conception)
+    if onduleur:
+        retenus['onduleur'] = onduleur['produit']
+    module = _module_retenu(conception)
+    if module is not None:
+        retenus['module'] = module
+    return retenus
 
 
 def _longueur_du_devis(conception):

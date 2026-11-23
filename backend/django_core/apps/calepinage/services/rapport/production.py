@@ -303,25 +303,39 @@ def _signe(pct):
     return '+' if pct > 0 else ''
 
 
+def _meme_chiffre(devis_kwh, p50_kwh):
+    """D-ACAL-86 — devis et simulation portent-ils le même chiffre au kWh
+    près (comparaison des valeurs SERVIES, rien n'est recalculé) ?"""
+    return (isinstance(devis_kwh, (int, float)) and isinstance(p50_kwh, (int, float))
+            and round(devis_kwh) == round(p50_kwh))
+
+
 def _bloc_ecart_devis(ecart, total):
-    """ACAL104 (D-ACAL-6) — la production du DEVIS (imprimée au client), le
-    P50 de l'étude et l'écart, LUS dans ``resultat.ecart_devis`` (mêmes
-    valeurs que le JSON ``GET resultat/``) ; la mention « borne haute » suit
-    le P50 quand des pertes ne sont pas renseignées (D-ACAL-7)."""
+    """ACAL104 + ACAL1755 (D-ACAL-86, D-ACAL-96) — la production du DEVIS et
+    celle de la SIMULATION DE LA POSE, LUES dans ``resultat.ecart_devis``
+    (mêmes valeurs que ``GET resultat/``). Égales au kWh près : UN seul
+    chiffre. Sinon les deux, chacun nommé, l'écart, et la mention servie (le
+    devis envoyé n'est pas modifié : une révision est proposée). La mention
+    « borne haute » suit la simulation quand des pertes manquent (D-ACAL-7)."""
     if not isinstance(ecart, dict):
         return ''
+    reference = ecart.get('reference') or ''
+    devis_kwh, p50_kwh = ecart.get('production_devis_kwh'), ecart.get('p50_calepinage_kwh')
+    simulation = _p50_et_mention(dict(total or {}, p50_kwh=p50_kwh))
+    if _meme_chiffre(devis_kwh, p50_kwh):
+        return ('<table class="production-ecart-devis generique">%s</table>'
+                % _ligne('Production — devis %s et simulation de la pose (kWh/an)'
+                         % reference, simulation))
     pct = ecart.get('ecart_pct')
     texte_pct = ('%s%s %%' % (_signe(pct), nombre_tel_que_servi(pct))
                  if isinstance(pct, (int, float)) else
                  nombre_tel_que_servi(pct))
     lignes = [
-        _ligne('Production du devis %s (kWh/an, imprimée au client)'
-               % (ecart.get('reference') or ''),
-               nombre_tel_que_servi(ecart.get('production_devis_kwh'))),
-        _ligne('P50 de l\'étude technique (kWh/an)',
-               _p50_et_mention(dict(total or {},
-                                    p50_kwh=ecart.get('p50_calepinage_kwh')))),
-        _ligne('Écart étude / devis', escape(texte_pct)),
+        _ligne('Production retenue par le devis %s, déjà remise au client (kWh/an)'
+               % reference, nombre_tel_que_servi(devis_kwh)),
+        _ligne('Production simulée de la pose, le chiffre le plus réaliste (kWh/an)',
+               simulation),
+        _ligne('Écart simulation / devis', escape(texte_pct)),
     ]
     return ('<table class="production-ecart-devis generique">%s</table>'
             '<p class="note">%s</p>'

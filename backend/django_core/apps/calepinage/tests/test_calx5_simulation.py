@@ -1084,3 +1084,76 @@ class SimulationAutomatiqueTest(TestCase):
         self._enregistrer(LAYOUT)
         self.assertEqual(self._jobs().get().kind, tasks.KIND_CALEPINAGE)
         self.assertEqual(tasks.LIVRAISONS_MAX, 2)
+
+    def test_designer_le_materiel_electrique_lance_la_simulation(self):
+        """Désigner le matériel (``POST entree-electrique/``) est le dernier
+        geste d'une pose complète : il met la simulation en file, seul."""
+        from unittest import mock
+
+        from apps.calepinage import tasks
+        from apps.calepinage.services.electrique import enregistrer_entree
+
+        from .acal_livrables_helpers import patch_materiel
+
+        self.calepinage.roof_layout = LAYOUT
+        self.calepinage.save()
+        self.assertEqual(self._jobs().count(), 0)
+        with patch_materiel(), mock.patch.object(
+                tasks.simuler_calepinage, 'delay') as depart:
+            with self.captureOnCommitCallbacks(execute=True):
+                enregistrer_entree(self.calepinage, {'dc_m': 42.0},
+                                   user=self.user)
+        depart.assert_called_once()
+        self.assertEqual(self._jobs().count(), 1)
+
+    def _etat_servi(self):
+        """``simulation_automatique`` lu par la VRAIE porte ``GET resultat/``."""
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
+
+        from .acal_livrables_helpers import patch_materiel
+
+        self.user.role, _cree = Role.objects.get_or_create(
+            company=self.societe, nom='Directeur',
+            defaults={'permissions': list(DIRECTEUR_PERMISSIONS)})
+        self.user.save()
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        with patch_materiel():
+            reponse = api.get('/api/django/calepinage/calepinages/'
+                              f'{self.calepinage.pk}/resultat/')
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        return reponse.data['simulation_automatique']
+
+    def test_get_resultat_dit_simulation_en_cours(self):
+        echantillon = json.loads(
+            (pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
+             / 'calepinage_resultat.json').read_text(encoding='utf-8'))
+        self._enregistrer(LAYOUT)
+        etat = self._etat_servi()
+        self.assertEqual(sorted(etat), sorted(
+            echantillon['acal1987_simulation_automatique']))
+        self.assertTrue(etat['en_cours'])
+        self.assertEqual(etat['job_id'], self._jobs().get().pk)
+        self.assertEqual(etat['manquants'], [])
+
+    def test_get_resultat_dit_ce_qui_manque_tant_que_la_pose_n_a_pas_bouge(
+            self):
+        import copy
+
+        vide = copy.deepcopy(LAYOUT)
+        vide['zones'][0]['geometry']['count'] = 0
+        self._enregistrer(vide)
+        etat = self._etat_servi()
+        self.assertFalse(etat['en_cours'])
+        self.assertIn('plans', [m['champ'] for m in etat['manquants']])
+        self.assertTrue(all(m['motif'] for m in etat['manquants']))
+        # La pose a changé depuis (sans passer par l'enregistrement) : la liste
+        # ne décrit plus ce dossier, elle n'est plus servie.
+        self.calepinage.roof_layout = LAYOUT
+        self.calepinage.save()
+        self.assertEqual(self._etat_servi()['manquants'], [])

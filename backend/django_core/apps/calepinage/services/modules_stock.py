@@ -176,6 +176,17 @@ def _favoris_modules(calepinage):
     return [str(identifiant) for identifiant in favoris]
 
 
+def _module_du_devis(calepinage):
+    """L'identifiant (texte) du module de la conception retenue du devis lié,
+    ou ``None`` — sans devis lié, aucune lecture (appelable sans base)."""
+    if not getattr(calepinage, 'devis_id', None):
+        return None
+    from .devis_retenu import module_retenu_du_devis
+
+    produit = module_retenu_du_devis(calepinage)
+    return str(produit) if produit is not None else None
+
+
 def modules_disponibles_du_calepinage(calepinage, produits):
     """CALX109 — le contrat ``calepinage_modules_disponibles.json`` COMPLET.
 
@@ -199,7 +210,14 @@ def modules_disponibles_du_calepinage(calepinage, produits):
             for position, identifiant in enumerate(favoris)}
     for entree in entrees:
         entree['favori'] = str(entree['module']['produitId']) in rang
+    # Rejeu T3-VAGUEC2 — devis lié : le module de SA conception retenue passe
+    # EN TÊTE, devant les favoris. L'atelier pose d'office le premier module du
+    # catalogue de la puissance du devis (``moduleDeDepart``) : c'est donc lui,
+    # jamais un module d'essai de même puissance. Le choisir autrement reste un
+    # geste de l'atelier.
+    du_devis = _module_du_devis(calepinage)
     entrees.sort(key=lambda entree: (
+        0 if du_devis is not None and str(entree['module']['produitId']) == du_devis else 1,
         0 if entree['favori'] else 1,
         rang.get(str(entree['module']['produitId']), 0)))
     selectionnables = [entree for entree in entrees if entree['selectionnable']]

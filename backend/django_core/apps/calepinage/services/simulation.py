@@ -1375,12 +1375,13 @@ def _appels_complementaires_pvgis(blocs, client, reference, decision,
     """Les requêtes PVGIS posées APRÈS la chaîne, puis le compteur d'appels
     RÉELS : l'ordonnanceur compte ses demandes, le fournisseur compte ce qui
     est réellement parti sur le réseau."""
-    from . import gain_inclinaison as _gain_inclinaison  # ACAL706
+    from . import gain_inclinaison as _gain_inclinaison, meteo_comparee  # ACAL706 ; ACAL744 : l'AUTRE base
     blocs['production']['gain_inclinaison'] = _gain_inclinaison.demander(
         client, reference, decision, fichier, compteur, blocs['production'])
-    from . import meteo_comparee  # ACAL744 — la même irradiation, l'AUTRE base
     blocs['meteo']['comparaison_base'] = meteo_comparee.comparer_bases(
         client, reference, decision, document, fichier, compteur)
+    blocs['meteo']['comparaison_nasa_power'] = meteo_comparee.comparer_nasa_power(  # ACAL746, ne lève jamais
+        client, reference, decision, fichier, blocs['production']['gain_inclinaison'])
     blocs['meteo']['appels_pvgis'] = compteur['appels']
 
 

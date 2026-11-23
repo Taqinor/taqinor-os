@@ -100,9 +100,11 @@ class BlocPublieTest(unittest.TestCase):
         self.assertIn('meteo', self.resultat)
 
     def test_les_clefs_sont_celles_du_contrat_committe(self):
-        # ACAL744 — ``comparaison_base`` est posée APRÈS la chaîne par
-        # ``simuler_calepinage`` (meteo_comparee.comparer_bases), pas par elle.
-        attendues = set(CONTRAT['exemple']['meteo']) - {'comparaison_base'}
+        # ACAL744 / ACAL746 — ``comparaison_base`` et ``comparaison_nasa_power``
+        # sont posées APRÈS la chaîne par ``simuler_calepinage``
+        # (meteo_comparee), pas par elle.
+        attendues = set(CONTRAT['exemple']['meteo']) - {
+            'comparaison_base', 'comparaison_nasa_power'}
         self.assertTrue(
             attendues.issubset(set(self.bloc)),
             'une clé du contrat CALX143 manque au bloc publié : '
@@ -463,6 +465,87 @@ class NasaPowerComparaisonTest(unittest.TestCase):
             lat=33.5, lon=-7.6, annee_debut=2023, annee_fin=2023, ghi_pvgis_kwh_m2=1900.0)
         self.assertIsNone(bloc['ecart_pct'])
         self.assertIn('2023', bloc['motif'])
+
+
+class NasaPowerDansLaSimulationTest(unittest.TestCase):
+    """ACAL746 — ``meteo.comparaison_nasa_power`` posé par la simulation (``meteo_comparee``),
+    au contrat du bloc météo ; jamais un appel réseau en test, jamais une simulation arrêtée."""
+
+    PLAN = {'lat': 33.57, 'lon': -7.59}
+    DECISION = {'fenetre_annees': (2019, 2020)}
+    GAIN = {'ghi_annuel_kwh_m2': 1850.0}
+
+    @staticmethod
+    def _deux_annees(ghi_w_m2):
+        import datetime
+
+        from apps.calepinage.services.nasa_power import PARAMETRES
+        charge = _reponse_nasa()
+        heures, instant = [], datetime.datetime(2019, 1, 1)
+        while instant.year <= 2020:
+            heures.append(instant.strftime('%Y%m%d%H'))
+            instant += datetime.timedelta(hours=1)
+        charge['properties']['parameter'] = {
+            nom: {h: (ghi_w_m2 if nom == 'ALLSKY_SFC_SW_DWN' else 1.0) for h in heures} for nom in PARAMETRES}
+        return charge
+
+    def _comparer(self, client, *, fichier=None, decision=None):
+        from apps.calepinage.services.meteo_comparee import comparer_nasa_power
+        return comparer_nasa_power(client, self.PLAN, decision or self.DECISION, fichier, self.GAIN)
+
+    @staticmethod
+    def _client_pvgis(**attributs):
+        return type('ClientPvgisEssai', (), attributs)()
+
+    def test_le_bloc_servi_est_celui_du_contrat(self):
+        contrat = json.loads((ECHANTILLONS / 'calepinage_meteo.json').read_text(encoding='utf-8'))
+        transport = _TransportNasa(self._deux_annees(210.0))
+        servi = self._comparer(self._client_pvgis(client_nasa_power=_client_nasa(transport)))
+        attendu = copy.deepcopy(contrat['exemple']['meteo']['comparaison_nasa_power'])
+        servi['meteo']['obtenue_le'] = attendu['meteo']['obtenue_le']  # l'horloge du jour
+        self.assertEqual(servi, attendu)
+        self.assertEqual(servi['source_du_chiffre'], 'pvgis')
+        self.assertEqual(len(transport.urls), 1)
+        self.assertIsNone(contrat['exemple_vide']['meteo']['comparaison_nasa_power'])
+
+    def test_un_transport_de_test_ne_recoit_jamais_d_url_nasa(self):
+        contrat = json.loads((ECHANTILLONS / 'calepinage_meteo.json').read_text(encoding='utf-8'))
+        transport = _TransportNasa(self._deux_annees(210.0))
+        servi = self._comparer(self._client_pvgis(transport=transport))
+        self.assertEqual(transport.urls, [])
+        self.assertEqual(servi, contrat['exemple_comparaison_sans_ecart']['meteo']['comparaison_nasa_power'])
+
+    def test_le_transport_reseau_de_pvgis_sert_aussi_nasa_power(self):
+        from unittest import mock
+
+        from apps.calepinage.services import nasa_power, pvgis_serie
+        sonde = _TransportNasa(self._deux_annees(210.0))
+        with mock.patch.object(pvgis_serie, '_transport_urllib', sonde):
+            with mock.patch.object(nasa_power, '_CACHE_PARTAGE', pvgis_serie._Cache()):
+                servi = self._comparer(self._client_pvgis(transport=pvgis_serie._transport_urllib))
+        self.assertEqual(len(sonde.urls), 1)
+        self.assertIn('power.larc.nasa.gov', sonde.urls[0][0])
+        self.assertEqual(servi['irradiation_horizontale_kwh_m2']['nasa_power'], 1842.1)
+
+    def test_aucune_panne_ne_fait_echouer_la_simulation(self):
+        from apps.calepinage.services.meteo_comparee import MOTIF_NASA_ECHEC
+
+        class Casse:
+            def comparaison_horizontale(self, **_demande):
+                raise AssertionError('transport inattendu')
+
+        servi = self._comparer(self._client_pvgis(client_nasa_power=Casse()))
+        self.assertEqual(servi['motif'], MOTIF_NASA_ECHEC)
+        self.assertIsNone(servi['ecart_pct'])
+        self.assertEqual(servi['irradiation_horizontale_kwh_m2']['pvgis'], 1850.0)
+
+    def test_fichier_depose_ou_annee_type_aucune_comparaison(self):
+        from apps.calepinage.services.meteo_comparee import MOTIF_NASA_FENETRE, MOTIF_NASA_FICHIER
+        transport = _TransportNasa(self._deux_annees(210.0))
+        client = self._client_pvgis(client_nasa_power=_client_nasa(transport))
+        self.assertEqual(self._comparer(client, fichier={'identite': {}})['motif'], MOTIF_NASA_FICHIER)
+        self.assertEqual(self._comparer(client, decision={'fenetre_annees': None})['motif'], MOTIF_NASA_FENETRE)
+        self.assertEqual(transport.urls, [])
 
 
 if __name__ == '__main__':

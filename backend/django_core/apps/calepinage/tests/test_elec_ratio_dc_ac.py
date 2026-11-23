@@ -181,6 +181,32 @@ class UnSeulVerdictTest(SimpleTestCase):
             self.assertEqual(bloc['borne_source'], SOURCE_BORNE_DEVIS)
             self.assertIs(verdict['conforme'], False)  # 1,70 > 1,35
 
+    def test_sous_le_seuil_bas_la_borne_franchie_est_dite_aux_deux_ecrans(self):
+        """Rejeu T3-VAGUEC2 — « 0,99 pour 1,35 au plus (règle du devis) » était
+        « à régler » sans raison dite. La règle du devis n'a PAS de borne basse
+        (``borne_dc_ac_du_moteur_devis`` : un plafond) : sans seuil bas réglé,
+        0,99 est bon ; avec le seuil bas de la société (profil de départ :
+        1,00, PV*SOL), la phrase NOMME ce seuil franchi."""
+        from apps.calepinage.services.electrique import _verdicts_electriques
+        from apps.calepinage.services.pret_a_envoyer import _ratio_dc_ac
+
+        conception = _conception(14, 10.0)  # 14 × 710 Wc = 9,94 kWc sur 10 kW → 0,99
+        verdict = next(v for v in _verdicts_electriques(conception) if v['code'] == 'ratio_dc_ac')
+        self.assertIs(verdict['conforme'], True)
+        self.assertEqual(verdict['detail'], '0,99 pour 1,35 au plus (règle du devis)')
+        seuil = 1.0
+        reglages = {'seuil_bas_dc_ac': {'valeur': seuil, 'source': 'PV*SOL, Configuration check'}}
+        bloc, _messages = _bloc_ratio_dc_ac(conception, reglages=reglages)
+        verdict = next(v for v in _verdicts_electriques(conception, reglages=reglages)
+                       if v['code'] == 'ratio_dc_ac')
+        controle = _ratio_dc_ac(bloc, verdict=verdict)
+        self.assertIs(bloc['dans_bornes'], False)
+        self.assertIs(verdict['conforme'], False)
+        self.assertEqual(verdict['detail'], "0,99 : sous le seuil bas de 1,00 réglé par la société "
+                                            "(la règle du devis n'a pas de borne basse, 1,35 au plus)")
+        self.assertEqual(controle['etat'], 'a_regler')
+        self.assertEqual(controle['valeur_texte'], verdict['detail'])
+
     def test_avec_fourchette_le_meme_statut_partout(self):
         bornes = {'parametres_societe': {'ratio_dc_ac_max': 1.2}}
         bloc, messages, verdict, controle = self._trois(
