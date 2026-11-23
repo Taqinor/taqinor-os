@@ -1,0 +1,51 @@
+# Contre-vérification — F2-RESU-b — Étape Résultats : chiffres, graphiques, explications
+
+23 corrections livrées (reste de la liste, non joué par le premier relecteur) sans preuve en direct, S1-S2 d'abord. Pour chacune : rejoue la « preuve », regarde l'écran, écris UN verdict (ok / partiel / non-fait / faux / regression / deja-present).
+Le texte complet d'une tâche (constat d'origine, Given/When/Then) : `grep -n "<id> —" docs/plans/PLAN_AUDIT_CALEPINAGE.md` dans le worktree en lecture.
+
+- **ACAL447** (S2) — L'onglet Batterie trace l'état de charge d'une semaine réelle de la série simulée (un mois au choix, jours 8 à 14), lu dans le CSV horaire ; sans batterie dispatchée ou série agrégée au jour, un état nomme le motif ; fini quand la
+  - Preuve : PA2.5 — calepinage avec batterie Deye ou Dyness du stock : onglet Batterie, semaine de mars.
+- **ACAL694** (S2) — Imprimer le tableau pluriannuel (année, production, facteur, garantie du fabricant) dans la section « Production » du rapport d'étude interne ; fini quand `rapport-etude.pdf` porte le tableau d'après l'exemple du contrat et le mot
+  - Preuve : génération du rapport d'étude d'un calepinage simulé : la table apparaît sous les quantiles ; avec la dégradation retirée de la fiche, le motif la remplace.
+- **ACAL728** (S2) — Trier la liste des pans de l'étape Panneaux par accès solaire moyen décroissant, à la demande, avec l'accès de chaque pan en clair ; fini quand le geste « Trier par ensoleillement » classe les pans et range en dernier ceux dont l'
+  - Preuve : PA2.3 — calepinage à trois pans dont un seul avec ombre saisie : visiter un autre pan puis revenir, cliquer « Trier par ensoleillement » : le pan quitté garde sa valeur.
+- **ACAL729** (S2) — Faire dire à l'info-bulle d'un module son accès solaire annuel et sa chaîne, en plus des heures masquées ; fini quand le survol d'un module du pan actif affiche « accès solaire 82 % · chaîne 2 » quand l'affectation est servie, et 
+  - Preuve : PA2.3 — atelier ERP, mode disposition : survoler un module ombré puis un module dégagé.
+- **ACAL754** (S2) — Ajouter l'export « Ombrage module par module » : une ligne par module (module, accès solaire annuel) avec l'en-tête de provenance ; fini quand `GET export-csv/?quoi=ombrage_modules` rend les valeurs du document et qu'un document s
+  - Preuve : revue de données sans écran : calepinage de démo dont l'ombrage est calculé dans l'atelier, télécharger la 4e carte de l'onglet Séries et comparer trois lignes à la carte d'accès solaire.
+- **ACAL757** (S2) — Ajouter au rapport d'étude interne la section « Autoconsommation et batterie » : taux, bilan d'énergie, plafond d'injection, batterie et tableau mensuel, tels que servis ; fini quand `rapport-etude.pdf` les imprime d'après l'exemp
+  - Preuve : PA2.5 — aperçu HTML du rapport d'un calepinage avec courbe de charge : la section affiche la même couverture que la tuile de l'onglet Production.
+- **ACAL759** (S2) — Ajouter au rapport d'étude interne la section « Photos du site » : les photos déposées, légendées et datées, lues dans `PhotoSite` ; fini quand `rapport-etude.pdf` imprime les photos d'un calepinage et dit « aucune photo déposée »
+  - Preuve : PA2.5 — déposer deux photos de site, ouvrir l'aperçu HTML du rapport : les deux photos sont là, légendées et datées.
+- **ACAL735** (S?) — Afficher, dans la ligne dépliée de l'étape « Fenêtre MPPT » du diagramme de pertes, le nombre d'heures et l'énergie produite sous la tension de démarrage de l'onduleur, avec la phrase « information : non retirée » ; fini quand l'e
+  - Preuve : PA2.5 — calepinage de démo avec une fiche onduleur portant la tension de démarrage : onglet Pertes, déplier « Fenêtre MPPT » ⇒ la ligne s'affiche.
+- **ACAL737** (S?) — Tracer l'histogramme de puissance de l'écrêtage dans l'étape Électrique (carte « Panneaux pour l'onduleur », niveau expert) avec la phrase « x % de l'énergie des panneaux est perdue : l'onduleur plafonne à y kW » ; fini quand l'ex
+  - Preuve : PA2.5 — calepinage à ratio élevé, mode expert, étape Électrique : histogramme et phrase.
+- **ACAL738** (S?) — Tracer la puissance des panneaux (P_DC) et la borne de l'onduleur dans la journée type d'un mois, à côté de la production livrée (P_AC) ; fini quand une série avec `p_dc_kw` trace trois repères (panneaux, livré, borne) et qu'une s
+  - Preuve : PA2.5 — calepinage à ratio élevé, journée type de juin : la courbe des panneaux dépasse la limite, la livrée est plafonnée.
+- **ACAL703** (S3) — Afficher la pastille « inhabituel » sur chaque ligne de perte hors bande et « Dans la plage habituelle » sous « Pertes au total » quand une bande totale est servie ; fini quand l'exemple du contrat rend les deux et qu'une étape sa
+  - Preuve : PA2.5 — calepinage de démo : une perte hors bande porte la pastille et le lien ouvre la page citée.
+- **ACAL712** (S3) — Afficher, dans l'étape Électrique, une carte « chaîne touchée par l'ombre » par chaîne dont les deux bornes diffèrent, avec ses modules ombrés, sa perte entre deux valeurs et une liste FIXE de parades sans aucun chiffre de gain ; 
+  - Preuve : PA2.5 — calepinage de démo à deux pans avec une ombre portée sur un module : ouvrir l'étape Électrique, section Verdict, lire la carte, cliquer « Modifier une chaîne » (arrivée sur l'onglet Affectation).
+- **ACAL714** (S3) — Remplacer le seuil codé en dur `SOLAR_ACCESS_LOW = 0.75` par le réglage société `seuil_acces_retrait`, lu au démarrage de l'atelier ; fini quand, sans réglage, l'atelier ne propose AUCUN retrait (la carte d'accès reste) et que, av
+  - Preuve : PA2.3 — atelier ERP avec un obstacle saisi (après ACAL436) : sans réglage, aucune proposition ; saisir 0,6 dans Réglages simulation, rouvrir : la proposition apparaît.
+- **ACAL715** (S3) — Publier sous l'accès solaire d'un pan UNE phrase de verdict (« Ombrage du pan : x % de l'énergie, n modules sous le seuil de votre société ») et n'y mettre une étiquette « faible / courante / importante » que si la société a saisi
+  - Preuve : PA2.3 — pan ombré par une cheminée : lire la phrase sans bornes, saisir 5 et 10 dans Réglages simulation, rouvrir.
+- **ACAL717** (S3) — Tracer sous la barre du soleil la courbe « direct perdu » heure par heure du mois de la date choisie, avec une phrase sur l'heure la plus touchée ; fini quand un mur au sud rend le creux attendu à midi solaire de décembre et qu'un
+  - Preuve : PA2.3 — atelier ERP : tracer une ombre, choisir Hiver puis « Lecture jour » : la courbe suit le mois.
+- **ACAL719** (S3) — Afficher l'heure LÉGALE à côté de l'heure solaire sur le curseur d'heure de la barre du soleil et sur le repère « soleil de scène » du diagramme de course, en disant que l'atelier compte en heure solaire vraie ; fini quand « 12 h 
+  - Preuve : PA2.3 — atelier ERP : déplacer le curseur d'heure, changer la date autour du Ramadan ; ouvrir l'onglet Course du soleil et lire la légende du repère.
+- **ACAL721** (S3) — Faire calculer par l'atelier l'accès solaire de chaque BANDE d'un module (autant de bandes que de sous-chaînes de sa fiche) et l'écrire dans le document ; fini quand `zones[].geometry.solarAccess.bandes` est aligné sur `values` et
+  - Preuve : PA2.3 — atelier ERP avec un module dont la fiche porte 3 sous-chaînes (après ACAL720/731) : poser une ombre, enregistrer, lire `roof_layout` : `bandes` à côté de `values`.
+- **ACAL725** (S3) — Poser et montrer le drapeau « optimiseur » par module à l'écran d'affectation des chaînes ; fini quand un module marqué porte un liseré et la mention « optimiseur », que l'enregistrement envoie `optimiseur: true` pour ces modules 
+  - Preuve : PA2.5 — étape Électrique, onglet Affectation : marquer deux modules, enregistrer, recharger : les deux restent marqués ; simuler : l'étape `optimiseur` (ACAL723) les compte.
+- **ACAL726** (S3) — Faire que « Joindre la carte de chaleur » de Documents rende réellement la carte d'accès solaire du pan actif (allumée pour la capture puis remise dans son état) au lieu d'une vue 3D quelconque ; fini quand l'image déposée porte l
+  - Preuve : PA2.6 — atelier ERP, carte éteinte : Documents, « Joindre la carte de chaleur », puis le rapport d'ombrage : l'image porte les couleurs, la carte de l'atelier est restée éteinte.
+- **ACAL727** (S3) — Imprimer sous la carte de chaleur du rapport d'ombrage une légende à échelle FIXE 0-100 % (rampe rouge, jaune, vert, extrémités nommées) ; fini quand la rampe du rapport porte les trois couleurs de `solarAccessColorRGB` et qu'un t
+  - Preuve : pile locale — déposer une carte (ACAL726), ouvrir le PDF du rapport d'ombrage : la rampe est sous l'image.
+- **ACAL731** (S3) — Déclarer au contrat du document les accès solaires PAR BANDE de module et le nombre de sous-chaînes du module, servir ce nombre au catalogue de modules de l'atelier et lire les bandes côté serveur ; fini quand `modules-disponibles
+  - Preuve : pile locale — `GET …/modules-disponibles/` d'un calepinage dont un module a sa fiche renseignée.
+- **ACAL767** (S4) — Ne jamais lever de toast pour la lecture AUTOMATIQUE de la série horaire : un refus (409 d'état ou 400) reste local et s'écrit dans la carte ; fini quand un export refusé à l'ouverture de l'onglet ne déclenche aucun toast global
+  - Preuve : PA2.5 — ouvrir Production, modifier le toit dans un autre onglet puis revenir : la carte dit « simulation périmée » sans toast rouge.
+- **ACAL769** (S4) — Dire quoi faire quand le téléchargement d'un document dépasse son délai : un message sur la carte (plus de toast « vérifiez votre connexion ») et l'indication « jusqu'à 2 minutes » pendant la préparation ; fini quand un dépassemen
+  - Preuve : PA2.5 — simuler un document qui dépasse le délai : le message sur la carte dit quoi faire, aucun toast rouge.

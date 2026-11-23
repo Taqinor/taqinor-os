@@ -88,10 +88,17 @@ vivent dans le scratchpad de la session, pas sur `main`.
    `calepinage-perf`, `calepinage-horizon-telephone`, « monkey » — à rejouer sur l'instrument au repos.
 3. Maquettes v2 : langage écrit, `Main` (Toit) et `Resultats` écrites par l'orchestrateur et publiées sur le canevas
    https://claude.ai/artifact/BJ5TrpZU3QvwHE3fWAteH5 ; lot A (six écrans) confié à une lane de design.
-4. Tour 2 de relecteurs : EN COURS (lancé le 22/11 vers 23 h 30 UTC) — `S2-PARCOURS` et `F2-RESU` tournent ; ordre
-   suivant, deux à la fois : `F2-GESTES`, `F2-TOIT`, `F2-DOCS`, `F2-POSE`, `F2-ELEC`, `F2-SIMU`, `F2-CONSO`, `T2`, `B2`.
-   Message de lancement d'un relecteur : rôle + axe + vue + compte + sa liste `T2/cv/<code>.md` + classes
-   `T1/classes/K-*.md` + ses trois fichiers de sortie ; le reste est dans `T2/brief-relecteurs.md`.
+4. Tour 2 de relecteurs : EN COURS. Rentres : `S2-PARCOURS` (29 jouees sur 54 : ok 18, partiel 8, non-fait 3 ; 26
+   constats dont 8 S2 ; K6 NON tenu : jamais de resultat complet au premier jour) et `F2-RESU` (31 sur 54 : ok 17,
+   partiel 13 dont la S1 ACAL1304, non-fait 1 ; 26 constats dont 7 S2 ; la meme production se lit 4 362 / 4 542 /
+   5 131 / 5 173 kWh selon l'ecran). `non-fait + partiel` = 40 % > 10 % : TOUTES les corrections sont rejouees. Les
+   listes longues sont coupees en deux : moitie « a » = un relecteur opus (liste + classes + regard neuf), moitie
+   « b » = un verificateur sonnet (liste seule). Fiches de lancement pretes : `T2/lancement/<code>.md` (le message de
+   lancement tient en deux lignes : « lis ta fiche et execute-la » + le bloc d'ancrage). En vol : `F2-GESTES` (liste
+   `F2-GESTES-a`), `S2-PARCOURS-b`, `F2-TOIT-a`. File d'attente, dans l'ordre : `F2-RESU-b`, `F2-DOCS-a`,
+   `F2-GESTES-b`, `F2-POSE-a`, `F2-TOIT-b`, `F2-ELEC-a`, `F2-DOCS-b`, `F2-SIMU-a`, `F2-POSE-b`, `F2-CONSO`,
+   `F2-ELEC-b`, `T2`, `F2-SIMU-b`, `B2` (B2 en dernier : il compare aux maquettes v2). Plafond mesure : 4 agents de
+   fond (95 % de processeur) — 3 relecteurs + 1 lane.
 5. Construction, vague 1 (les 37 tâches ouvertes et constructibles du plan, sortie de
    `python scripts/plan_lanes.py docs/plans/PLAN_AUDIT_CALEPINAGE.md --workers 8 --wave-size 80`) : lane `liste`
    lancée (branche `l5cal/lane-liste` dans son worktree : ACAL1308, 1309, 1334, 1333, 1335, 1343, 1322, 1337, 1338,
@@ -107,7 +114,7 @@ vivent dans le scratchpad de la session, pas sur `main`.
    (écran NEUF : « Montrer au client » en grand format, sans prix) ; lot A en cours par une lane de design
    (`Panneaux`, `Electrique`, `Schema`, `ToitSombre`, `ResultatsIncomplet`, `Documents` — elle écrit dans le
    scratchpad `maquettes-v2/project/`, l'orchestrateur regarde le rendu, publie sur le canevas et recopie dans
-   `maquettes-v2/`) ; lot B à faire : `DemarrageRapide`, `Tablette`, `Telephone`, `TelephoneClient`.
+   `maquettes-v2/`) ; lot B fait de même. LES 14 MAQUETTES v2 SONT ÉCRITES, publiées sur le canevas et rangées dans `maquettes-v2/`.
 7. Mesures du poste avec 4 agents : 3,3 Go libres, 43 % de processeur — 4 agents de fond tiennent (2 relecteurs à
    navigateur + 2 lanes sans navigateur) ; ne pas dépasser.
 
