@@ -181,10 +181,16 @@ function useDerniereVersion(calepinageId, relecture) {
   return le
 }
 
+/** Le vrai bouton de devis du bloc, quand il est monté et à l'écran (hors `hidden`). */
+function boutonDevisVisible() {
+  const bouton = document.querySelector('[data-testid="cal-generer-devis"], [data-testid="cal-resynchroniser-devis"]')
+  return bouton && !bouton.closest('[hidden]') ? bouton : null
+}
+
 /** Met le focus sur le vrai bouton de devis dès qu'il est monté (étape Documents). */
 function focaliserBoutonDevis(essais = 30) {
-  const bouton = document.querySelector('[data-testid="cal-generer-devis"], [data-testid="cal-resynchroniser-devis"]')
-  if (bouton && bouton.offsetParent !== null) { bouton.focus(); return }
+  const bouton = boutonDevisVisible()
+  if (bouton) { bouton.focus(); return }
   if (essais > 0) window.setTimeout(() => focaliserBoutonDevis(essais - 1), 100)
 }
 
@@ -272,7 +278,10 @@ export default function CoqueAtelier({
   const etatPropre = cleEtape === 'resultats' && !expert ? etatSimulation(resultatServi) : null
   const derniereVersionLe = useDerniereVersion(presentation ? null : calepinageId, enregistreLe)
 
+  // ACAL1437 — un bouton qui dit « Générer » génère quand son bloc est à l'écran (Documents, ou Expert), même route.
   const onDevis = () => {
+    const bouton = boutonDevisVisible()
+    if (bouton && !bouton.disabled) { bouton.click(); return }
     if (cleEtape !== 'documents') allerA('documents')
     focaliserBoutonDevis()
   }

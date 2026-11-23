@@ -210,6 +210,24 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     await waitFor(() => expect(toastInfo).toHaveBeenCalledWith('Aucun changement'))
   })
 
+  it('ACAL1437 — à Documents, le clic de la barre déclenche la génération (même route que le bloc)', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
+      { data: { inchange: true, version: null } })
+    calepinageApi.calepinages.genererDevis.mockResolvedValue(
+      { data: { devis: 43, reference: 'DEV-2611-0043', deduplique: false } })
+    calepinageApi.calepinages.get.mockResolvedValue(reponseContrat('calepinage', 'calepinage_detail', 'exemple_vide'))
+
+    rendreCalepinage(CTX.calepinage.id, '?onglet=documents')
+    await screen.findByTestId('cal-generer-devis', {}, { timeout: 15_000 })
+    await waitFor(() => expect(screen.getByTestId('cal-generer-devis')).toBeEnabled())
+    await userEvent.click(screen.getByTestId('cal-generer-devis-haut'))
+
+    expect(await screen.findByTestId('cal-devis-cree', {}, { timeout: 10_000 })).toHaveTextContent('DEV-2611-0043')
+    expect(calepinageApi.calepinages.genererDevis).toHaveBeenCalledTimes(1)
+  })
+
   it('ACAL398 — conception inchangée ⇒ aucun appel simuler', async () => {
     calepinageApi.calepinages.designContext.mockResolvedValue(
       reponseContrat('calepinage', 'calepinage_design_context'))
