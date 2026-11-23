@@ -663,6 +663,27 @@ describe('ACAL553 — copier / coller la sélection libre', () => {
   });
 });
 
+describe('ACAL1528 — Ctrl+V : un seul collage, une seule note vraie', () => {
+  it("l'écran qui rappelle le geste sur la même frappe ne recolle pas : 2 → 4 panneaux, note « Collé », jamais « refusé »", () => {
+    viderCollage();
+    const { editor, ctx } = buildFreeEditor(40, [0, 6].map((u) => ({ cx: -u, cy: 0 })));
+    ctx.layoutState = { cells: [], occupied: new Set<number>() } as unknown as Ctx['layoutState']; // la frappe n'est lue qu'avec une disposition
+    editor.setSelection([0, 1]);
+    expect(editor.copierSelection()).toBe(true);
+    // Le gestionnaire de l'écran (fenêtre) appelle `raccourcis.coller` → `collerSelection` : un second chemin.
+    const ecran = vi.fn(() => { editor.collerSelection(); });
+    window.addEventListener('keydown', ecran);
+    try {
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, bubbles: true, cancelable: true }));
+    } finally { window.removeEventListener('keydown', ecran); }
+    expect(editor.freePanels()).toHaveLength(4);
+    const note = document.getElementById('rp9-layout-note')?.textContent ?? '';
+    expect(note).toContain('Collé — 2 panneaux');
+    expect(note).not.toContain('refusé');
+    expect(ecran).not.toHaveBeenCalled(); // la frappe traitée par l'atelier ne remonte pas à l'écran
+  });
+});
+
 describe('ACAL510 — pan existant : ses modules ne se glissent pas', () => {
   function presser(existant: boolean) {
     const container = document.createElement('div');

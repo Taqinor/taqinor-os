@@ -2097,7 +2097,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     const saisie = !!cible && (/^(input|textarea|select)$/i.test(cible.tagName) || cible.isContentEditable);
     const presse = mod && !saisie ? actionAtelierCtrl(e) : null;
     if (presse === 'copier' || presse === 'coller') {
-      if ((presse === 'copier' ? copierSelection() : collerSelection())) e.preventDefault();
+      if ((presse === 'copier' ? copierSelection() : collerSelection())) { e.preventDefault(); e.stopPropagation(); } // ACAL1528 — la frappe traitée ici ne remonte pas au gestionnaire de l'écran (second chemin → 2e collage refusé)
       return;
     }
     const geste = mod ? actionDisposition(e) : null; // ACAL414 — Ctrl+Z / Y lus dans la table
