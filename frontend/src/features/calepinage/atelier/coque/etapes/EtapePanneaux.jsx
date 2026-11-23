@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { choisirPaletteAcces, couleurAccesActive } from '@rooflib/shadingEngine'
+import { couleurAccesActive } from '@rooflib/shadingEngine'
 import { MODULE_PAR_DEFAUT_ATELIER } from '@roofpro/moduleSelect'
 import calepinageApi from '../../../../../api/calepinageApi'
 import useResource from '../../../../../hooks/useResource'
@@ -29,9 +29,8 @@ import { fmtKwc, modulesServis, productionPubliee } from './panneaux/sources'
    renvoyé au VRAI contrôle (`rp9-*`), qui reste monté et fait foi.
    ========================================================================== */
 
-// L'atelier de l'ERP colore la carte d'accès solaire avec la rampe de la maquette (bleu nuit → or) ; le site
-// public garde la sienne. La carte et la légende lisent la même palette active (shadingEngine).
-choisirPaletteAcces('atelier')
+// La palette bleu nuit → or de la carte d'accès solaire est posée au DÉMARRAGE de l'atelier (useAtelierBoot,
+// ACAL1340), jamais ici : l'étape ne fait que la lire (couleurAccesActive) pour sa légende.
 
 const compte = (n) => (n === 1 ? '1 panneau' : `${n} panneaux`)
 const selectData = { select: (r) => r?.data ?? null }

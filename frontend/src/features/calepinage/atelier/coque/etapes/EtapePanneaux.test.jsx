@@ -13,6 +13,7 @@ vi.mock('../../../../../api/calepinageApi', () => ({
 }))
 
 import { MODULE_PAR_DEFAUT_ATELIER } from '@roofpro/moduleSelect'
+import { choisirPaletteAcces } from '@rooflib/shadingEngine'
 import calepinageApi from '../../../../../api/calepinageApi'
 import { ContexteCoque } from '../contexteCoque'
 import EtapePanneaux from './EtapePanneaux'
@@ -401,6 +402,7 @@ describe('étape Panneaux — sur la carte', () => {
   })
 
   it('légende d’ensoleillement : titre, dégradé, bornes ; le titre est le vrai bouton « carte d’accès solaire »', () => {
+    choisirPaletteAcces('atelier') // posée par le démarrage de l'atelier (useAtelierBoot), plus par l'étape
     const { espion } = monterConstructeur()
     const carte = espion('#rp9-heatmap-toggle')
     rendre()
@@ -436,5 +438,19 @@ describe('étape Panneaux — sur la carte', () => {
     expect(within(bloc).getByRole('button', { name: 'Hiver' })).toHaveAttribute('aria-pressed', 'true')
     fireEvent.click(within(bloc).getByRole('button', { name: 'Été' }))
     expect(ete).toHaveBeenCalledTimes(1)
+  })
+})
+
+/* ACAL1340 — la palette d'ensoleillement n'est PAS posée par l'étape Panneaux : le démarrage de l'atelier
+   (`useAtelierBoot`, couvert par ToitureDesign.calepinage.test.jsx « F6 ») la pose pour toute étape et pour le
+   mode Expert. Charger le module de l'étape ne doit rien changer à la palette active (le site public garde
+   la sienne). */
+describe('palette d’ensoleillement — posée au démarrage, sans passer par l’étape', () => {
+  it('charger l’étape Panneaux ne touche pas la palette active (rouge → vert du site conservé)', async () => {
+    vi.resetModules()
+    const moteur = await import('@rooflib/shadingEngine')
+    moteur.choisirPaletteAcces('site')
+    await import('./EtapePanneaux')
+    expect(moteur.couleurAccesActive(0)).toEqual(moteur.solarAccessColorRGB(0))
   })
 })

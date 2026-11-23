@@ -124,6 +124,11 @@
   font-size: 0.875rem;
 }
 .cal-coque .cal-segmente-grand > button { height: 38px; }
+/* ACAL1280 — cible tactile de 44 × 44 px sans changer le dessin de la maquette (30/38 px) : la zone cliquable
+   déborde du bouton par un pseudo-élément transparent (la bande de 3 px du groupe est comptée dans la cible). */
+.cal-coque .cal-segmente > button { position: relative; min-width: 44px; }
+.cal-coque .cal-segmente > button::before { content: ''; position: absolute; inset: -7px 0; }
+.cal-coque .cal-segmente-grand > button::before { inset: -3px 0; }
 .cal-coque .cal-segmente > button[aria-pressed='true'] {
   background: var(--card);
   color: var(--foreground);
