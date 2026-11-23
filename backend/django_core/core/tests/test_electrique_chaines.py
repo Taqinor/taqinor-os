@@ -493,6 +493,26 @@ class CouplePV85_CS710_SurDeyeSG05LP3(unittest.TestCase):
         # légitime, il ALERTE et ne bloque pas.
         self.assertEqual(res.bloquants, ())
 
+    def test_une_chaine_par_entree_et_imp_au_dessus_ne_conseille_pas_de_repartir(self):
+        """ACAL1537 — UNE chaîne sur l'entrée : c'est le courant d'UN module
+        qui dépasse ; le conseil « répartir » serait faux (mutant : conseil
+        toujours écrit ⇒ échec). Le marqueur « ÉCRÊTAGE permanent » reste."""
+        entree = EntreeElectrique(
+            module=CS7N_710,
+            onduleur=dataclasses.replace(DEYE_SG05LP3, n_mppt=1,
+                                         i_max_mppt_a=13.5,
+                                         isc_max_mppt_a=None),
+            groupes=(GroupePan("Toiture", 7, 180.0, 15.0),),
+            phases=3, longueur_chaine_forcee=7)
+        res = concevoir_chaines(entree)
+        self.assertEqual(res.nb_chaines, 1)
+        ecretage = [a for a in res.alertes if "ÉCRÊTAGE permanent" in a]
+        self.assertEqual(len(ecretage), 1, res.alertes)
+        self.assertIn("Imp 17,6 A > courant d'entrée admissible 13,5 A : ce "
+                      "panneau ne convient pas à cet onduleur", ecretage[0])
+        self.assertNotIn("répartir", ecretage[0])
+        self.assertEqual(res.bloquants, ())
+
     def test_l_isc_garde_sa_propre_borne_materielle(self):
         """26 A (fonctionnement) et 39 A (Isc) ne sont pas la même borne."""
         self.assertEqual(DEYE_SG05LP3.courant_isc_max_a, 39.0)
