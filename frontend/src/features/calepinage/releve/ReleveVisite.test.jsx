@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ConfirmProvider } from '../../../providers/ConfirmProvider'
 
@@ -20,7 +20,9 @@ vi.mock('../../../api/calepinageApi', () => ({
   default: { calepinages: new Proxy({}, { get: (_, nom) => (...a) => api[nom](...a) }) },
 }))
 const file = { compterEnAttente: vi.fn(), deposerOuMettreEnFile: vi.fn(), rejouerFile: vi.fn() }
-vi.mock('../fileEnvoiPhotos', () => ({
+// Les photos sont simulées ; la file du RELEVÉ (ACAL1810) est la vraie (magasin en mémoire sous jsdom, comme sans IndexedDB).
+vi.mock('../fileEnvoiPhotos', async (importOriginal) => ({
+  ...(await importOriginal()),
   compterEnAttente: (...a) => file.compterEnAttente(...a),
   deposerOuMettreEnFile: (...a) => file.deposerOuMettreEnFile(...a),
   rejouerFile: (...a) => file.rejouerFile(...a),
@@ -33,6 +35,7 @@ vi.mock('../capteursTelephone', () => ({
   arreter: (...a) => capteurs.arreter(...a),
 }))
 
+const { oublierReleveEnFile, releveEnAttente } = await import('../fileEnvoiPhotos')
 const { default: ReleveVisite } = await import('./ReleveVisite')
 const { default: PanneauReleve } = await import('../atelier/PanneauReleve')
 
@@ -44,8 +47,9 @@ const rendre = () => render(
 )
 const taper = (testId, valeur) => fireEvent.change(screen.getByTestId(testId), { target: { value: valeur } })
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks()
+  await oublierReleveEnFile('1')
   enLigne = true
   Object.defineProperty(window.navigator, 'onLine', { configurable: true, get: () => enLigne })
   api.releve.mockResolvedValue({ data: { releves: [RELEVE_COURANT], releve_courant_id: 9 } })
@@ -175,6 +179,129 @@ describe('Relevé de visite — même porte, même corps que le panneau de l’a
     fireEvent.click(screen.getByTestId('releve-terminer'))
     expect(await screen.findByTestId('releve-erreur-precision')).toHaveTextContent('précision')
     expect(api.corrigerReleve).not.toHaveBeenCalled()
+  })
+})
+
+describe('Relevé de visite — « Voir en 3D » ouvre la vue client (ACAL1811)', () => {
+  it('le lien du pied mène à /calepinage/<id>/client, jamais à l’atelier ; le geste inverse reste « Retour au relevé »', async () => {
+    rendre()
+    await screen.findByTestId('releve-projet')
+    expect(screen.getByTestId('releve-voir-3d').getAttribute('href')).toBe('/calepinage/1/client')
+    expect(screen.getByTestId('releve-voir-3d')).toHaveTextContent('Voir en 3D')
+  })
+})
+
+describe('Relevé de visite — « Terminer » répond EN VUE (ACAL1812)', () => {
+  it('un refus ramène le champ fautif (focus) et s’écrit dans une bannière posée AVANT le pied fixe', async () => {
+    rendre()
+    await screen.findByTestId('releve-projet')
+    fireEvent.click(screen.getByTestId('releve-orientation-bouton'))
+    taper(await screen.findByTestId('releve-azimut-main').then(() => 'releve-azimut-main'), '160')
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    const bandeau = await screen.findByTestId('releve-message')
+    expect(bandeau).toHaveAttribute('role', 'alert')
+    expect(bandeau).toHaveTextContent('précision')
+    expect(document.activeElement).toBe(document.getElementById('releve-precision'))
+    // Entre le corps défilant et le pied : ni dans le corps (que la barre fixe recouvre), ni après le pied.
+    expect(bandeau.closest('.cal-tel-corps')).toBeNull()
+    expect(bandeau.nextElementSibling).toBe(document.querySelector('.cal-tel-pied'))
+    expect(api.corrigerReleve).not.toHaveBeenCalled()
+  })
+
+  it('le succès est dit dans la même bannière (focus) et la pente tapée reste lue « saisie à la main », écrite UNE fois', async () => {
+    rendre()
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(screen.getByTestId('releve-pente-bouton')).not.toBeDisabled())
+    fireEvent.click(screen.getByTestId('releve-pente-bouton'))
+    taper(await screen.findByTestId('releve-pente-main').then(() => 'releve-pente-main'), '22')
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    const bandeau = await screen.findByTestId('releve-message')
+    await waitFor(() => expect(bandeau).toHaveTextContent('Relevé corrigé.'))
+    expect(bandeau).toHaveAttribute('role', 'status')
+    expect(document.activeElement).toBe(bandeau)
+    expect(screen.getByTestId('releve-pente-valeur')).toHaveTextContent('22° · saisie à la main')
+    expect(api.enregistrerSectionLayout).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(api.corrigerReleve).toHaveBeenCalledTimes(2))
+    expect(api.enregistrerSectionLayout).toHaveBeenCalledTimes(1)
+  })
+
+  it('la feuille : la bannière ne rétrécit pas (flex: none) et ne sort pas du flux', async () => {
+    const { readFileSync } = await import('node:fs')
+    const style = document.createElement('style')
+    style.textContent = readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/58-telephone.css`, 'utf8')
+    document.head.appendChild(style)
+    try {
+      const regle = [...style.sheet.cssRules].find((r) => r.selectorText === '.cal-tel-message')
+      expect(regle.style.flex).toMatch(/none|0 0/)
+      expect(['', 'static', 'relative']).toContain(regle.style.position)
+    } finally { style.remove() }
+  })
+})
+
+describe('Relevé de visite — terminé hors ligne : gardé sur le téléphone, envoyé seul au retour du réseau (ACAL1810)', () => {
+  const remplir = () => { taper('releve-longueur', '12,4'); taper('releve-largeur', '8,6') }
+
+  it('Terminer sans réseau met le relevé en file ; l’événement online l’envoie UNE fois, avec le même corps', async () => {
+    rendre()
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(api.releve).toHaveBeenCalled())
+    enLigne = false
+    remplir()
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(screen.getByTestId('releve-message'))
+      .toHaveTextContent('Relevé gardé sur ce téléphone : il partira au retour du réseau.'))
+    expect(api.corrigerReleve).not.toHaveBeenCalled()
+    expect(api.enregistrerReleve).not.toHaveBeenCalled()
+    expect(await releveEnAttente('1')).toBe(true)
+    expect(screen.getByTestId('releve-note-hors-ligne')).toHaveTextContent('Le relevé terminé est gardé sur ce téléphone')
+
+    enLigne = true
+    window.dispatchEvent(new Event('online'))
+    window.dispatchEvent(new Event('online')) // deux retours simultanés : UN seul envoi
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Relevé envoyé.'))
+    expect(api.corrigerReleve).toHaveBeenCalledTimes(1)
+    const [calepinage, releveId, corps] = api.corrigerReleve.mock.calls[0]
+    expect([calepinage, releveId]).toEqual(['1', 9])
+    expect(corps.chaines).toEqual([
+      { nom: 'Longueur', total_mesure: null, tolerance_m: null, cotes: [{ nom: 'Longueur', valeur: 12.4 }] },
+      { nom: 'Largeur', total_mesure: null, tolerance_m: null, cotes: [{ nom: 'Largeur', valeur: 8.6 }] },
+    ])
+    expect(await releveEnAttente('1')).toBe(false)
+    await act(async () => { window.dispatchEvent(new Event('online')) }) // file vide : rien à renvoyer
+    expect(api.corrigerReleve).toHaveBeenCalledTimes(1)
+  })
+
+  it('une coupure en route (aucune réponse du serveur) garde aussi le relevé ; au rechargement hors ligne il attend toujours', async () => {
+    api.corrigerReleve.mockRejectedValueOnce({ code: 'ERR_NETWORK', message: 'Network Error' })
+    rendre()
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(api.releve).toHaveBeenCalled())
+    remplir()
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Relevé gardé sur ce téléphone'))
+    cleanup()
+    enLigne = false
+    rendre() // rechargement hors ligne : rien ne part, la file garde le relevé et l’écran le dit
+    await waitFor(() => expect(screen.getByTestId('releve-note-hors-ligne')).toHaveTextContent('Le relevé terminé est gardé sur ce téléphone'))
+    expect(api.corrigerReleve).toHaveBeenCalledTimes(1)
+    expect(await releveEnAttente('1')).toBe(true)
+  })
+
+  it('un relevé terminé en ligne n’est jamais renvoyé : la copie gardée est retirée', async () => {
+    rendre()
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(api.releve).toHaveBeenCalled())
+    enLigne = false
+    remplir()
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Relevé gardé'))
+    enLigne = true
+    fireEvent.click(screen.getByTestId('releve-terminer')) // le réseau est revenu AVANT l'événement : envoi direct
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Relevé corrigé.'))
+    expect(await releveEnAttente('1')).toBe(false)
+    await act(async () => { window.dispatchEvent(new Event('online')) }) // file vide : rien à renvoyer
+    expect(api.corrigerReleve).toHaveBeenCalledTimes(1)
   })
 })
 

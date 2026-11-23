@@ -978,6 +978,8 @@ retiré plus un hook ajouté.
 | `cal-projet-titre` | coque : nom du projet dans le bandeau (titre servi, + ville servie). |
 | `cal-projet-sous-titre` | coque : ligne sous le nom (Lead / Client · facture servie), absente sans donnée. |
 | `cal-generer-devis-haut` | coque : bouton bleu nuit « Générer le devis » du bandeau (ACAL1802 ; ouvre l’étape Documents et son vrai bouton). |
+| `cal-barre-releve` | coque : entrée « Relevé » du bandeau, AU DOIGT (`pointer: coarse`), 44 × 44, ouvre `/calepinage/:id/releve` (ACAL1809). |
+| `cal-barre-montrer-client` | coque : entrée « Montrer au client » du bandeau, À LA SOURIS, ouvre `/calepinage/:id/client` (ACAL1809). |
 | `cal-rail-avance` | coque : bouton « Avancé » en bas du rail (ouvre l’ancien inspecteur entier ; `aria-expanded`). |
 | `cal-panneau-etape` | coque : panneau d’étape de droite (`#rp9-studio-inspecteur`). |
 | `cal-panneau-etape-titre` | coque : titre du panneau d’étape (« Le toit »), sous « Étape N sur 5 ». |

@@ -27,8 +27,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 60px;
-  padding: 0 8px 0 4px;
+  height: calc(60px + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) 8px 0 4px;
   background: var(--card);
   border-bottom: 1px solid var(--border);
 }
@@ -171,7 +171,23 @@
 .cal-tel-bouton:disabled { opacity: 0.55; cursor: not-allowed; }
 .cal-tel-aide { margin: 0; font-size: 0.875rem; color: var(--muted-foreground); }
 .cal-tel-erreur { margin: 0; font-size: 0.875rem; color: var(--destructive); }
-.cal-tel-message { margin: 0; font-size: 0.875rem; color: var(--foreground); }
+/* ACAL1812 — la réponse de « Terminer le relevé » : une bannière ENTRE le corps défilant et le pied fixe (jamais sous la
+   barre du bas) ; fond teinté de son ton, 14 px, texte lisible en clair comme en sombre. */
+.cal-tel-message {
+  flex: none;
+  margin: 0;
+  padding: 10px 16px;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--success) 12%, var(--card));
+  border-top: 1px solid color-mix(in oklch, var(--success) 35%, var(--card));
+}
+.cal-tel-message[data-ton='refus'] {
+  background: color-mix(in oklch, var(--destructive) 10%, var(--card));
+  border-top-color: color-mix(in oklch, var(--destructive) 40%, var(--card));
+}
+.cal-tel-message:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 
 .cal-tel-note {
   display: flex;
@@ -193,7 +209,7 @@
   flex: none;
   display: flex;
   gap: 8px;
-  padding: 12px 16px 20px;
+  padding: 12px 16px max(20px, env(safe-area-inset-bottom));
   background: var(--card);
   border-top: 1px solid var(--border);
 }
@@ -321,6 +337,35 @@
 .cal-client-tuile-libelle { min-height: calc(2 * 1.3em); }
 /* J1 — curseur d'heure : au doigt, la cible de 24 px ne pousse pas la date (la piste de 6 px de la maquette compte seule). */
 @media (pointer: coarse) { .cal-coque .cal-client-soleil .cal-pan-heure { margin: -9px 0; } }
+
+/* ACAL1809 — l'entrée du bandeau de l'atelier : « Relevé » au doigt, « Montrer au client » à la souris (BarreProjet.jsx).
+   Bouton secondaire (filet, texte bleu nuit) : jamais un second aplat doré ni bleu nuit à côté de « Générer le devis ». */
+.cal-coque .cal-barre-entree {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--cal-filet-fort);
+  border-radius: var(--cal-rayon-bouton);
+  background: transparent;
+  color: var(--cal-texte-1);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+@media (hover: hover) {
+  .cal-coque .cal-barre-entree:hover { background: var(--cal-surface-2); }
+}
+@media (max-width: 639px) {
+  /* Téléphone : pictogramme seul (44 × 44), le libellé reste lu par les lecteurs d'écran. */
+  .cal-coque .cal-barre-entree { width: 44px; padding: 0; }
+  .cal-coque .cal-barre-projet .cal-barre-entree { order: 2; }
+  .cal-coque .cal-barre-entree-texte { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .cal-tel *, .cal-tel *::before, .cal-tel *::after { transition: none !important; animation: none !important; }

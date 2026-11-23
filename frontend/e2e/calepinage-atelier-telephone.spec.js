@@ -137,3 +137,112 @@ test('ACAL1745 : le bandeau « GPS du lead corrigé » tient en 390 px, boutons 
   expect(chevauche(g, plus), '« Garder » et « En savoir plus » se chevauchent').toBe(false)
   expect(await sansDebordement(page), 'défilement horizontal (px)').toBeLessThanOrEqual(0)
 })
+
+// Un calepinage neuf rattaché à un lead créé pour le cas (les tests de ce fichier partent tous de là).
+async function calepinageDeTest(page, prefixe) {
+  await gotoLeads(page)
+  const name = await createLead(page, { nom: uniq(prefixe), facture: 650, ville: 'Casablanca' })
+  const res = await page.request.get(`/api/django/crm/leads/?search=${encodeURIComponent(name)}&page_size=1`)
+  expect(res.ok(), `GET /crm/leads/?search= (${res.status()})`).toBeTruthy()
+  const body = await res.json()
+  const lead = (Array.isArray(body) ? body : body.results)[0]
+  const cree = await page.request.post('/api/django/calepinage/calepinages/', { data: { lead: lead.id, titre: uniq(prefixe) } })
+  expect(cree.ok(), `POST calepinages (${cree.status()})`).toBeTruthy()
+  return cree.json()
+}
+
+// ACAL1807 — au téléphone, le toit d'abord : à 390 × 664 le tiroir s'ouvre RÉDUIT et la carte visible (du haut de la
+// carte au haut du tiroir) mesure au moins 45 % de la hauteur ; au centre de cette zone, aucune pièce flottante.
+test('ACAL1807 : carte visible ≥ 45 % de la hauteur à 390 × 664, tiroir réduit, aucune pièce au centre du toit', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 664 })
+  const cal = await calepinageDeTest(page, 'Atelier tel ACAL1807')
+  await page.goto(`/calepinage/${cal.id}`)
+  const tiroir = page.getByTestId('cal-panneau-etape')
+  await expect(tiroir).toHaveAttribute('data-deplie', '0', { timeout: 20_000 })
+  for (const etape of ['cal-etape-toit', 'cal-etape-panneaux']) {
+    await page.getByTestId(etape).click()
+    await expect(tiroir).toHaveAttribute('data-deplie', '0')
+    const m = await page.evaluate(() => {
+      const carte = document.getElementById('rp9-map').getBoundingClientRect()
+      const t = document.querySelector('[data-testid="cal-panneau-etape"]').getBoundingClientRect()
+      const el = document.elementFromPoint(carte.x + carte.width / 2, carte.y + (t.top - carte.y) / 2)
+      return { visible: t.top - carte.y, hautTiroir: t.height, centreDansCarte: !!el && !!el.closest('#rp9-map, .rp9-map-wrap') }
+    })
+    expect(m.visible, `${etape} : carte visible (px)`).toBeGreaterThanOrEqual(0.45 * 664 - 1)
+    expect(m.hautTiroir, `${etape} : tiroir réduit (px)`).toBeLessThanOrEqual(110)
+    expect(m.centreDansCarte, `${etape} : une pièce couvre le centre du toit`).toBe(true)
+  }
+  await page.getByRole('button', { name: 'Agrandir ou réduire le panneau du bas' }).click()
+  await expect(tiroir).toHaveAttribute('data-deplie', '1')
+})
+
+// ACAL1809 — « Relevé » est dans le bandeau, visible dans le premier écran (390 × 844), ≥ 44 × 44, et ouvre le relevé.
+test('ACAL1809 : « Relevé » dans le bandeau, 44 × 44 dans le premier écran, un toucher ouvre le relevé', async ({ page }) => {
+  const cal = await calepinageDeTest(page, 'Atelier tel ACAL1809')
+  await page.goto(`/calepinage/${cal.id}`)
+  const entree = page.getByTestId('cal-barre-releve')
+  await expect(entree).toBeVisible({ timeout: 20_000 })
+  const b = await entree.boundingBox()
+  expect(b.width, 'largeur de l’entrée Relevé').toBeGreaterThanOrEqual(43.5)
+  expect(b.height, 'hauteur de l’entrée Relevé').toBeGreaterThanOrEqual(43.5)
+  expect(b.y + b.height, 'dans le premier écran').toBeLessThanOrEqual(844)
+  await entree.tap()
+  await expect(page).toHaveURL(new RegExp(`/calepinage/${cal.id}/releve$`))
+})
+
+// ACAL1812 — « Terminer le relevé » répond EN VUE : le refus (orientation sans précision) pose le focus sur le champ
+// fautif et s'écrit dans une bannière entièrement au-dessus de la barre du bas ; le succès idem.
+test('ACAL1812 : la réponse de « Terminer le relevé » est visible, au-dessus de la barre fixe du bas', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 664 })
+  const cal = await calepinageDeTest(page, 'Atelier tel ACAL1812')
+  await page.goto(`/calepinage/${cal.id}/releve`)
+  await page.getByTestId('releve-orientation-bouton').tap()
+  await page.getByTestId('releve-azimut-main').fill('160')
+  await page.getByTestId('releve-terminer').tap()
+  const message = page.getByTestId('releve-message')
+  await expect(message).toBeVisible()
+  await expect(page.locator('#releve-precision')).toBeFocused()
+  const dessus = async () => page.evaluate(() => {
+    const m = document.querySelector('[data-testid="releve-message"]').getBoundingClientRect()
+    const p = document.querySelector('.cal-tel-pied').getBoundingClientRect()
+    return { basMessage: m.bottom, hautPied: p.top }
+  })
+  let m = await dessus()
+  expect(m.basMessage, 'le refus est sous la barre du bas').toBeLessThanOrEqual(m.hautPied + 0.5)
+  await page.getByTestId('releve-precision').fill('10')
+  await page.getByTestId('releve-longueur').fill('12,4')
+  await page.getByTestId('releve-largeur').fill('8,6')
+  await page.getByTestId('releve-terminer').tap()
+  await expect(message).toHaveText(/Relevé (enregistré|corrigé)\./)
+  m = await dessus()
+  expect(m.basMessage, 'le succès est sous la barre du bas').toBeLessThanOrEqual(m.hautPied + 0.5)
+})
+
+// ACAL1811 — « Voir en 3D » du relevé ouvre « Montrer au client » ; « Retour au relevé » ramène au relevé.
+test('ACAL1811 : « Voir en 3D » du relevé mène à la vue client, « Retour au relevé » revient', async ({ page }) => {
+  const cal = await calepinageDeTest(page, 'Atelier tel ACAL1811')
+  await page.goto(`/calepinage/${cal.id}/releve`)
+  await page.getByTestId('releve-voir-3d').tap()
+  await expect(page).toHaveURL(new RegExp(`/calepinage/${cal.id}/client$`))
+  await page.getByTestId('client-retour-releve').tap()
+  await expect(page).toHaveURL(new RegExp(`/calepinage/${cal.id}/releve$`))
+})
+
+// ACAL1810 — un relevé terminé HORS LIGNE est gardé sur le téléphone et part SEUL au retour du réseau (même file que
+// les photos) : `GET releve/` le rend quelques secondes après, sans aucun geste, et l'écran dit « Relevé envoyé. ».
+test('ACAL1810 : relevé terminé hors ligne, envoyé seul au retour du réseau', async ({ page, context }) => {
+  const cal = await calepinageDeTest(page, 'Atelier tel ACAL1810')
+  await page.goto(`/calepinage/${cal.id}/releve`)
+  await page.getByTestId('releve-longueur').fill('12,4')
+  await page.getByTestId('releve-largeur').fill('8,6')
+  await context.setOffline(true)
+  await page.getByTestId('releve-terminer').tap()
+  await expect(page.getByTestId('releve-message')).toHaveText('Relevé gardé sur ce téléphone : il partira au retour du réseau.')
+  await context.setOffline(false)
+  await expect(page.getByTestId('releve-message')).toHaveText('Relevé envoyé.', { timeout: 15_000 })
+  await expect(async () => {
+    const res = await page.request.get(`/api/django/calepinage/calepinages/${cal.id}/releve/`)
+    expect(res.ok()).toBeTruthy()
+    expect((await res.json()).releves.length, 'relevés servis').toBe(1)
+  }).toPass({ timeout: 15_000 })
+})
