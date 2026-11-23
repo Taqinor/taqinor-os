@@ -249,8 +249,12 @@ def controles_de_porte(calepinage):
 
 # ── ACAL858 — les contrôles ÉLECTRIQUES : l'état d'ACAL934 et les lignes
 # servies, LUS (aucun seuil, aucun message ni rangement électrique recopié).
-CIBLE_ELECTRIQUE = {'etape': 'electrique', 'onglet': 'schema', 'champ': ''}
 CIBLE_MATERIEL = {'etape': 'electrique', 'onglet': 'materiel', 'champ': ''}
+#: ACAL1506 — l'onglet qui RÈGLE chaque contrôle électrique (clés d'``ONGLETS``,
+#: ``atelier/onglets.js``, toutes de l'étape Électrique) ; sans entrée : le Schéma.
+_ONGLET_DU_CONTROLE = {'verdict_electrique': 'verdict-electrique',
+                       'chutes_tension': 'cheminement-cables',
+                       'terre_protections': 'decisions-electriques'}
 #: Le statut d'un motif de publication (``_rapport_publication``) dit en
 #: état de contrôle : bloquant reste bloquant, tout autre non-ok est à régler.
 _ETAT_DU_MOTIF = {'bloquant': 'bloquant'}
@@ -258,7 +262,9 @@ _RANG = {'ok': 0, 'info': 1, 'a_regler': 2, 'bloquant': 3}
 
 
 def _elec(code, libelle, etat, valeur, **autres):
-    autres.setdefault('cible', CIBLE_ELECTRIQUE)
+    autres.setdefault('cible', {
+        'etape': 'electrique',
+        'onglet': _ONGLET_DU_CONTROLE.get(code, 'schema'), 'champ': ''})
     return _controle(code, libelle, etat, valeur, **autres)
 
 

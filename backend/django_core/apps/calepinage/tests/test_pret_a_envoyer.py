@@ -267,6 +267,27 @@ class ControlesElectriquesTest(SimpleTestCase):
         self.assertEqual(controles['terre_protections']['etat'], 'a_regler')
         self.assertEqual(controles['orientation_mppt']['etat'], 'ok')
 
+    def test_chaque_controle_a_regler_porte_l_onglet_qui_le_regle(self):
+        # ACAL1506 — « Régler » ouvre l'écran où le point se saisit, plus le
+        # Schéma (mutant : remettre ``schema`` par défaut ⇒ échec).
+        troncons = {'verdicts': [], 'omissions': [
+            {'motif': 'Longueur du tronçon non saisie'}]}
+        terre = [{'code': 'TERRE_OMISE', 'statut': 'omis',
+                  'libelle': 'Terre non saisie', 'source': ''}]
+        controles = self._controles(troncons=troncons, motifs=terre,
+                                    etat='a_completer', points=2)
+        attendus = {'verdict_electrique': 'verdict-electrique',
+                    'chutes_tension': 'cheminement-cables',
+                    'terre_protections': 'decisions-electriques'}
+        for code, onglet in attendus.items():
+            self.assertNotEqual(controles[code]['etat'], 'ok', code)
+            self.assertEqual(controles[code]['cible'],
+                             {'etape': 'electrique', 'onglet': onglet,
+                              'champ': ''}, code)
+        # Les contrôles sans écran de saisie propre restent au Schéma.
+        self.assertEqual(controles['tension_froid']['cible']['onglet'],
+                         'schema')
+
 
 DOSSIERS = 'apps.calepinage.services.reglementaire.dossiers_du_calepinage'
 
