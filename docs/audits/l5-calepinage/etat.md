@@ -338,6 +338,16 @@ vivent dans le scratchpad de la session, pas sur `main`.
      AUSSI EN VOL : couture 5 (suite entière d'`apps/web`, agent `ad48e173ad7c41aaa`, branche `l5w3-couture-5`),
      couture 6 (suite du front calepinage, agent `a44321ebb9d33870c`, branche `l5w3-couture-6`), CI de la PR
      #1529 sur `f7d5f1a7ec`. Commits locaux non poussés depuis : docs seulement.
+   - **POINT à 11 h 10 UTC (le plus récent).** Tête poussée de la PR #1529 : `c2cac20623` (11 h 00 : budget total
+     du bundle 4130 → 4145 Ko, coutures 5 et 6 pliées) ; CI en cours. EN VOL : critique Fable de la vague B (agent
+     `abfb9c485f57ebf42`, sortie `T2/critique-vague-B.md`, 2e appel Fable) ; tour 3 : `T3-ECRANS` (aa8f68df498f958cb),
+     `T3-PROD` (a7869b95be02b2a62), `T3-TOIT` (a9720ab55bd56619f), `T3-POSE` (a5bda948cfcd67244, `rev_b4`).
+     RESTE À LANCER quand une place se libère : `T3-ELEC` (`rev_b5`, 45), `T3-INSUF-GRAVES` (`rev_b6`, 35), `B3`
+     (opus, `rev_beaute`, 13 écrans contre les maquettes v2 + `T3-TEL`). BROUILLON DU RAPPORT FINAL écrit :
+     `docs/audits/l5-calepinage/RAPPORT-FINAL-2026-11-23.md` (sections 6, 7 et 10 à compléter ; l'envoyer à Reda
+     par SendUserFile à la fin). CONDITION DE FUSION de la vague B : CI verte + critique sans bloquant + verdict
+     de `T3-ECRANS` sans défaut bloquant sur la nouvelle coque ; puis `gh pr ready 1529` et
+     `gh pr merge 1529 --auto --merge`. La phase de contrôles ne commence qu'APRÈS cette fusion (consigne de Reda).
    - BUDGET (08 h 10 UTC) : quota hebdo 39 % (≈ 4 points par heure, ≈ 0,3 point par agent) ; contexte de
      l'orchestrateur 58 %. Règle : construire jusqu'à ≈ 56 %, puis tour 3 léger, fusion, phase de contrôles (≤ 5
      points), rapport. PRIORITÉ de ce qui reste à construire : (1) les M1 de tous les lots ; (2) la coque v2 puis
