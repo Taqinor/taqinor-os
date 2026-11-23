@@ -145,6 +145,20 @@ export function alignerRangees<T extends Pose>(
   return { panels: sortie, immobiles };
 }
 
+/** ACAL1521 — l'événement que l'éditeur émet quand la pose affichée vient d'être restaurée ou rechargée. */
+export const EVT_POSE_RELUE = 'rp9:pose-relue';
+
+/** ACAL1521 — le mode d'alignement que les positions POSÉES disent : le premier mode qui ne les
+ *  bouge plus ; aucun (ou tous : rangée pleine, indifférente) ⇒ « gauche », le pavage d'origine. */
+export function modeAlignementDe(g: FreeGeom, panels: readonly Pose[], retraitM = 0): ModeAlignement {
+  const stable = (mode: ModeAlignement) => {
+    const r = alignerRangees(g, panels, mode, retraitM).panels;
+    return r.every((p, i) => Math.hypot(p.cx - panels[i].cx, p.cy - panels[i].cy) < 0.005);
+  };
+  const fixes = (['centre', 'droite', 'justifie'] as const).filter(stable);
+  return fixes.length === 0 || fixes.length === 3 ? 'gauche' : fixes[0];
+}
+
 type EditeurPose = { isFreeMode: () => boolean; freePanels: () => readonly { cx: number; cy: number; face?: 'E' | 'W' }[] };
 
 /** Les modules RÉELLEMENT posés AVEC leur cellule de lattice (l'index que `scene3d` connaît) —
@@ -195,7 +209,18 @@ export function monterAlignementRangees(d: DepsAlignement): void {
     + '<p id="rp9-alignement-note" class="rp9-note" role="status"></p>';
   ancre.insertAdjacentElement('afterend', wrap);
   const note = wrap.querySelector<HTMLElement>('#rp9-alignement-note')!;
-  wrap.querySelector('select')!.addEventListener('change', (e) => {
+  const select = wrap.querySelector('select')!;
+  let enCours = false; // le geste du sélecteur lui-même : sa note et sa valeur font foi
+  // ACAL1521 — Ctrl+Z / Ctrl+Y / réouverture : la liste redit la pose RÉELLE, la note les modules affichés.
+  document.addEventListener(EVT_POSE_RELUE, () => {
+    if (enCours || !wrap.isConnected) return;
+    const g = freeGeomFrom(d.ctx.layoutPlan, d.ctx.obstacles ?? []);
+    const poses = d.pose();
+    if (!g || !poses.length) return;
+    select.value = modeAlignementDe(g, poses, d.retraitM());
+    note.textContent = `Pose relue — ${poses.length} modules affichés.`;
+  });
+  select.addEventListener('change', (e) => {
     const mode = (e.target as HTMLSelectElement).value as ModeAlignement;
     const g = freeGeomFrom(d.ctx.layoutPlan, d.ctx.obstacles ?? []);
     const poses = d.pose();
@@ -205,7 +230,9 @@ export function monterAlignementRangees(d: DepsAlignement): void {
     }
     const res = alignerRangees(g, poses, mode, d.retraitM());
     if (mode !== 'gauche') d.photo();
-    const ok = mode === 'gauche' || d.poser(res.panels);
+    enCours = true;
+    let ok: boolean;
+    try { ok = mode === 'gauche' || d.poser(res.panels); } finally { enCours = false; }
     const refus = res.immobiles.map((r) => r.motif).join(' ; ');
     note.textContent = ok
       ? `Rangées alignées (${MODES_ALIGNEMENT.find((m) => m.id === mode)?.label}) — ${poses.length} modules, compte inchangé.${refus ? ` ${refus}.` : ''} Ctrl+Z restaure.`

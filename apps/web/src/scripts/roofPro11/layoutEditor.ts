@@ -99,6 +99,8 @@ import { cm, peindreSilhouette, silhouetteDuLot, texteDeMesure, violationLabel }
 import { resnapEnMasse } from './layoutResnap'; // ACAL510 — sorti de ce fichier, ré-exporté ci-dessous
 export { resnapEnMasse, resnapNaif, type CentreASnapper } from './layoutResnap';
 import { motifPanExistant } from './panExistant'; // ACAL510
+import { EVT_POSE_RELUE } from './alignementRangees'; // ACAL1521
+import { catalogueAvecModulesDuDocument, estRefus, kwcDuPan, lireModulesDisponibles, resoudreModuleDuPan } from './moduleSelect'; // ACAL1520
 
 /** Décimal à 1 chiffre, à la française (identique à l'entrée). */
 const fmt1 = (n: number): string =>
@@ -1188,6 +1190,8 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     applyWorkshopSnapshot(prev);
     renderCustomLayout();
     renderLayoutPanel();
+    syncUndoRedoButtons(); // ACAL1403
+    signalerPoseRelue(); // ACAL1521
     if (layoutNoteEl) {
       layoutNoteEl.textContent = freeActive()
         ? `Action annulée — ${fmt(ctx.freeState?.panels.length ?? 0)} panneaux posés.`
@@ -1202,6 +1206,8 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     applyWorkshopSnapshot(next);
     renderCustomLayout();
     renderLayoutPanel();
+    syncUndoRedoButtons(); // ACAL1403
+    signalerPoseRelue(); // ACAL1521
     if (layoutNoteEl) {
       layoutNoteEl.textContent = freeActive()
         ? `Action rétablie — ${fmt(ctx.freeState?.panels.length ?? 0)} panneaux posés.`
@@ -1251,6 +1257,16 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
    *  éditer le tracé, ou changer la pose du pan actif. */
   function pushWorkshopHistory() {
     workshopHistory.push(snapshotWorkshop());
+    syncUndoRedoButtons(); // ACAL1403 — Annuler s'allume dès qu'un geste est à défaire
+  }
+  /** ACAL1403 — SEULE écriture de `disabled` des boutons Annuler / Rétablir. */
+  /** ACAL1521 — dit à l'écran que la pose affichée vient d'être restaurée ou rechargée. */
+  function signalerPoseRelue() {
+    if (typeof document !== 'undefined') document.dispatchEvent(new Event(EVT_POSE_RELUE));
+  }
+  function syncUndoRedoButtons() {
+    if (layoutUndoBtn) layoutUndoBtn.disabled = !workshopHistory.canUndo();
+    if (layoutRedoBtn) layoutRedoBtn.disabled = !workshopHistory.canRedo();
   }
   ctx.pushWorkshopHistory = pushWorkshopHistory; // auto-enregistrement — cf. commentaire ci-dessus
 
@@ -1357,7 +1373,12 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     const freeOn = freeActive();
     const count = freeOn ? ctx.freeState!.panels.length : occupiedCount(layoutState);
     const free = freeOn ? 0 : emptyIndices(layoutState).length;
-    const kwc = count * PANEL_KWC;
+    // ACAL1520 — la puissance du module DÉSIGNÉ du pan actif (comme la pastille) ; sans choix : défaut atelier.
+    const moduleDuPan = resoudreModuleDuPan(
+      catalogueAvecModulesDuDocument(lireModulesDisponibles(ctx.opts?.modulesDisponibles).choisissables, ctx.modulesDuDocument).catalogue,
+      ctx.activeArea?.()?.moduleId,
+    );
+    const kwc = (!estRefus(moduleDuPan) && kwcDuPan(count, moduleDuPan)) || count * PANEL_KWC;
     if (layoutCountEl) layoutCountEl.textContent = fmt(count);
     if (layoutKwcEl) layoutKwcEl.textContent = `${fmtKwc(kwc)} kWc`;
     if (layoutFreeEl) layoutFreeEl.textContent = fmt(free);
@@ -1482,8 +1503,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     }
     // CAL100 — `workshopHistory` pilote désormais `undo()`/`redo()` (sur-ensemble de
     // `history`/`freeHistory` — cf. bloc CAL100).
-    if (layoutUndoBtn) layoutUndoBtn.disabled = !workshopHistory.canUndo();
-    if (layoutRedoBtn) layoutRedoBtn.disabled = !workshopHistory.canRedo();
+    syncUndoRedoButtons();
     // L'azimut n'est nudgeable que sur un toit en PENTE (face imposée par la toiture) ;
     // sur toit plat, l'azimut est un AXE de l'optimiseur, pas un réglage de disposition.
     if (layoutAzWrapEl) layoutAzWrapEl.hidden = ctx.roofType !== 'pitched';
@@ -1735,6 +1755,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       syncFreeInputs();
       renderCustomLayout();
       renderLayoutPanel();
+      signalerPoseRelue(); // ACAL1521
       if (layoutNoteEl) {
         layoutNoteEl.textContent = `Placement libre du dossier rechargé — ${fmt(centers.length)} panneaux reposés à l'identique.`;
       }
