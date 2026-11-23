@@ -253,6 +253,42 @@ describe('DiagrammePertes — cascade séquentielle (CALX48)', () => {
     expect(within(lignes2).queryByTestId('acal735-sous-demarrage')).toBeNull()
   })
 
+  /* ACAL1671 / ACAL1968 — la mention SERVIE d'une entrée (pose retenue du thermique, valeur supposée d'une perte)
+     s'affiche telle quelle sous la ligne dépliée ; une entrée non supposée et sans mention n'ajoute rien. */
+  const avecEntrees = (entrees) => {
+    const d = donneesAvecCascadeDetaillee()
+    d.cascade = { ...d.cascade, etapes: d.cascade.etapes.map((e) => (
+      entrees[e.etape] ? { ...e, entree: { ...(typeof e.entree === 'object' ? e.entree : {}), ...entrees[e.etape] } } : e)) }
+    return d
+  }
+  const deplier = async (poste) => {
+    const lignes = within(await screen.findByTestId('calx48-cascade-detaillee')).getByTestId('acal444-lignes')
+    fireEvent.click(within(within(lignes).getByTestId(`acal444-ligne-${poste}`)).getByRole('button'))
+    return within(lignes).getByTestId(`acal444-detail-${poste}`)
+  }
+
+  it('ACAL1671 : la ligne « Échauffement » dépliée dit la pose retenue, phrase servie telle quelle', async () => {
+    const mention = 'par défaut — à confirmer : pose « chassis » lue sur le document, ligne « pose_libre » de la table société (D-ACAL-84).'
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: avecEntrees({ thermique: { mention } }) })
+    rendre()
+    const detail = await deplier('thermique')
+    expect(within(detail).getByTestId('acal1671-mention-thermique')).toHaveTextContent(mention)
+  })
+
+  it('ACAL1968 : une étape dont l’entrée est SUPPOSÉE affiche sa mention ; non supposée ou sans mention : rien', async () => {
+    const mention = 'supposé — fiche sans tolérance de puissance, écart compté à 0 %.'
+    const etape = donneesAvecCascadeDetaillee().cascade.etapes.find((e) => e.etape !== 'thermique' && !e.motif_omission)
+    calepinageApi.calepinages.resultat.mockResolvedValue({
+      data: avecEntrees({ [etape.etape]: { supposee: true, mention } }) })
+    rendre()
+    expect(within(await deplier(etape.etape)).getByTestId('acal1968-mention-supposee')).toHaveTextContent(mention)
+    cleanup()
+    calepinageApi.calepinages.resultat.mockResolvedValue({
+      data: avecEntrees({ [etape.etape]: { supposee: false, mention } }) })
+    rendre()
+    expect(within(await deplier(etape.etape)).queryByTestId('acal1968-mention-supposee')).toBeNull()
+  })
+
   it('ACAL735 : `entree` en objet : aucun plantage, « Entrée » non rendue', async () => {
     calepinageApi.calepinages.resultat.mockResolvedValue({ data: avecMppt({ modele: 'x' }) })
     rendre()
