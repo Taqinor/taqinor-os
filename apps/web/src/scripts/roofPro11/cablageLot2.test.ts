@@ -71,7 +71,7 @@ describe('CALX97/98 câblage — la carte se redessine après une transformation
 
     expect(redrawTrace).not.toHaveBeenCalled();
     expect(recalc).not.toHaveBeenCalled();
-    expect(setStatus).toHaveBeenCalledWith(expect.stringContaining('Zone area-1'));
+    expect(setStatus).toHaveBeenCalledWith(expect.stringContaining('Zone 1')); // ACAL1430 — le nom de la liste (rang), jamais le label stocké
   });
 
   it('l’entrée du constructeur passe bien les quatre crochets à `createZones`', () => {
@@ -353,7 +353,7 @@ describe('ACAL520 — pan verrouillé : cotes et rotation refusées', () => {
     expect(zones.pivoterPanActif(90)).toBe(false);
     expect(zones.redimensionnerPanActif(8, 12)).toBe(false);
     expect(JSON.stringify(ctx.vertices)).toBe(avant);
-    expect(setStatus).toHaveBeenCalledWith('Pan 1 verrouillé — déverrouillez-le d’abord.');
+    expect(setStatus).toHaveBeenCalledWith('Zone 1 verrouillé — déverrouillez-le d’abord.'); // ACAL1430
     delete areas[0].verrouille;
     expect(zones.pivoterPanActif(90)).toBe(true);
   });

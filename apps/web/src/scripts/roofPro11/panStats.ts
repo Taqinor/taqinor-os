@@ -47,6 +47,9 @@ export interface PanStat {
   moduleId: string | null;
   /** CALX110 — son libellé, pour que l'écran NOMME le modèle au lieu d'un identifiant. */
   moduleLibelle: string | null;
+  /** ACAL1431 — pan « déjà en place » (ACAL510) : son étiquette suit la ligne jusqu'au tableau Site. Absent sinon. */
+  existant?: boolean;
+  anneeMiseEnService?: number | null;
 }
 
 export interface BuildingTotal {
@@ -116,6 +119,7 @@ export function computePanStats(
       zeroReason,
       moduleId: modulePan?.id ?? null,
       moduleLibelle: modulePan?.libelle ?? null,
+      ...(a.existant ? { existant: true, anneeMiseEnService: a.anneeMiseEnService ?? null } : {}), // ACAL1431
     };
   });
 
@@ -215,6 +219,9 @@ export interface LigneSite {
   kwc: number | null;
   /** Pourquoi une cellule est vide, en clair. `''` quand tout est rempli. */
   motif: string;
+  /** ACAL1431 — pan existant : l'étiquette « Existant <année> » de la ligne. */
+  existant?: boolean;
+  anneeMiseEnService?: number | null;
 }
 
 /** Un TOTAL (par bâtiment, ou pour le site). Une somme partielle le DIT. */
@@ -298,6 +305,7 @@ export function computeSiteStats(
     modules: p.panels,
     kwc: p.kwc,
     motif: p.areaM2 > 0 ? p.zeroReason : (p.sommets ?? 0) < 3 ? 'contour du pan non tracé' : 'aire nulle : vérifiez le contour',
+    ...(p.existant ? { existant: true, anneeMiseEnService: p.anneeMiseEnService ?? null } : {}), // ACAL1431
   }));
 
   for (const s of surfaces ?? []) {
@@ -335,6 +343,13 @@ export function computeSiteStats(
   };
 }
 
+/** ACAL511/ACAL1431 — l'étiquette d'un pan « déjà en place » (HTML) : liste des pans, tableau par pan et tableau Site ;
+ *  vide pour un pan à poser. */
+export function etiquettePanExistant(pan: { existant?: boolean; anneeMiseEnService?: number | null } | undefined): string {
+  if (!pan?.existant) return '';
+  return ` <span class="text-lune-faint" data-pan-existant>· Existant ${pan.anneeMiseEnService ?? '(année non saisie)'}</span>`;
+}
+
 /** Une cellule : le nombre formaté, ou VIDE (jamais 0) quand la valeur manque. */
 function cellule(v: number | null, decimales = 0): string {
   if (v === null) return '<span class="text-lune-faint" data-cellule-vide>—</span>';
@@ -351,21 +366,17 @@ function cellule(v: number | null, decimales = 0): string {
 export function htmlTableSite(stats: SiteStats): string {
   // ACAL981 — un groupe sans identifiant se nomme par son rang (« Bâtiment 1 »), jamais « sans id ».
   const rangDe = (id: string | null): number => stats.parBatiment.findIndex((b) => b.buildingId === id) + 1;
-  const ligneHtml = (l: LigneSite): string => `<tr data-site-ligne="${escHtml(l.id)}" data-site-genre="${escHtml(l.genre)}">
-      <td class="px-2 py-1 text-white">${escHtml(l.label)}</td>
-      <td class="px-2 py-1 text-lune-faint">${escHtml(LIBELLE_GENRE_LIGNE[l.genre])}</td>
-      <td class="px-2 py-1 text-lune-faint">${escHtml(libelleBatiment(l.buildingId, rangDe(l.buildingId)))}</td>
-      <td class="px-2 py-1 text-right">${cellule(l.areaM2)}</td>
-      <td class="px-2 py-1 text-right">${cellule(l.modules)}</td>
-      <td class="px-2 py-1 text-right">${cellule(l.kwc, 2)}</td>
-      <td class="px-2 py-1 text-lune-faint">${escHtml(l.motif)}</td>
+  // ACAL1513 (K-COLONNE-ETROITE) — chaque ligne est une FICHE empilée sur deux cellules (qui / chiffres), aucune largeur
+  // minimale : le tableau tient dans la colonne de droite (≈ 270 px) sans défilement horizontal.
+  const chiffres = (v: { areaM2: number | null; modules: number | null; kwc: number | null; motif: string }): string => `
+      <td class="px-2 py-1 text-right align-top"><span class="block">${cellule(v.modules)} modules</span><span class="block">${cellule(v.kwc, 2)} kWc</span>`
+    + `<span class="block text-lune-faint">${cellule(v.areaM2)} m²</span>${v.motif ? `<span class="block text-lune-faint">${escHtml(v.motif)}</span>` : ''}</td>`;
+  const ligneHtml = (l: LigneSite): string => `<tr data-site-ligne="${escHtml(l.id)}" data-site-genre="${escHtml(l.genre)}" class="border-t border-white/10">
+      <td class="px-2 py-1 align-top"><span class="text-white">${escHtml(l.label)}</span>${etiquettePanExistant(l)}`
+    + `<span class="block text-lune-faint">${escHtml(LIBELLE_GENRE_LIGNE[l.genre])} · ${escHtml(libelleBatiment(l.buildingId, rangDe(l.buildingId)))}</span></td>${chiffres(l)}
     </tr>`;
   const totalHtml = (t: TotalSite): string => `<tr data-site-total="${escHtml(t.buildingId ?? '')}" class="border-t border-white/15 font-semibold">
-      <td class="px-2 py-1 text-white" colspan="3">Total ${escHtml(t.buildingId ?? (stats.parBatiment.includes(t) ? libelleBatiment(null, rangDe(null)) : 'du site'))}</td>
-      <td class="px-2 py-1 text-right">${cellule(t.areaM2)}</td>
-      <td class="px-2 py-1 text-right">${cellule(t.modules)}</td>
-      <td class="px-2 py-1 text-right">${cellule(t.kwc, 2)}</td>
-      <td class="px-2 py-1 text-lune-faint">${escHtml(t.motif)}</td>
+      <td class="px-2 py-1 align-top text-white">Total ${escHtml(t.buildingId ?? (stats.parBatiment.includes(t) ? libelleBatiment(null, rangDe(null)) : 'du site'))}</td>${chiffres(t)}
     </tr>`;
   const corps = stats.parBatiment
     .map(
@@ -374,17 +385,14 @@ export function htmlTableSite(stats: SiteStats): string {
         totalHtml(b),
     )
     .join('');
-  return `<table data-site-stats class="mt-3 w-full min-w-[620px] border-collapse text-xs text-lune-soft">
-      <caption class="pb-1 text-left text-[11px] uppercase tracking-wide text-lune-faint">Site — pans de toit et surfaces de pose</caption>
+  const s = stats.site; // ACAL1513 — le total du SITE en tête, toujours visible (le pied ne porte que les totaux de bâtiment)
+  return `<table data-site-stats class="mt-3 w-full border-collapse text-xs tabular-nums text-lune-soft">
+      <caption class="pb-1 text-left text-[11px] uppercase tracking-wide text-lune-faint">Site — pans de toit et surfaces de pose`
+    + `<span data-site-resume class="block text-xs font-semibold normal-case tracking-normal text-white">Total du site : ${cellule(s.modules)} modules · ${cellule(s.kwc, 2)} kWc</span></caption>
       <thead>
         <tr class="border-b border-white/15 text-left text-[11px] uppercase tracking-wide text-lune-faint">
           <th class="px-2 py-1">Surface</th>
-          <th class="px-2 py-1">Genre</th>
-          <th class="px-2 py-1">Bâtiment</th>
-          <th class="px-2 py-1 text-right">Aire m²</th>
-          <th class="px-2 py-1 text-right">Modules</th>
-          <th class="px-2 py-1 text-right">kWc</th>
-          <th class="px-2 py-1">Ce qui manque</th>
+          <th class="px-2 py-1 text-right">Modules · kWc · aire</th>
         </tr>
       </thead>
       <tbody>${corps}</tbody>

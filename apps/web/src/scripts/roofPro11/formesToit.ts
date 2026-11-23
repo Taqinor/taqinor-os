@@ -47,6 +47,7 @@ const ecartAzimut = (a: number, b: number): number => {
   const d = (((a - b) % 360) + 360) % 360;
   return Math.min(d, 360 - d);
 };
+const ecartAuSudDeg = (face: number): number => ecartAzimut(face, 180); // ACAL1510
 
 /**
  * Maquette Main — la tuile d'un toit ROUVERT : le document ne garde aucune « forme », mais ses pans la portent
@@ -88,7 +89,10 @@ export function decouperContour(
 ): VerdictForme {
   if (contour.length < 3) return { ok: false, motif: 'Forme du toit : fermez d’abord le contour du pan.' };
   try {
-    const decoupes = generateRoofShapePans([...contour], forme);
+    // ACAL1510 — le pan le mieux exposé d'abord (tri stable) : c'est lui que l'atelier CHARGE. « Créer le toit » commence au
+    // nord-ouest, et le premier pan de la croupe regardait le nord : 0 module, 0 kWc, aucune cause.
+    const decoupes = generateRoofShapePans([...contour], forme)
+      .map((d, i) => ({ d, i })).sort((a, b) => ecartAuSudDeg(a.d.facingAzimuthDeg) - ecartAuSudDeg(b.d.facingAzimuthDeg) || a.i - b.i).map((x) => x.d);
     if (!decoupes.length) return { ok: false, motif: 'Forme du toit : ce contour ne donne aucun pan.' };
     const pris: { id: string }[] = [...existants];
     const pans = buildAreasFromShape(decoupes, forme, penteDeg, () => {

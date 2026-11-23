@@ -2,7 +2,10 @@
 // colonnes sont calculées ; ce test prouve que la somme des lignes == le total.
 import { describe, expect, it } from 'vitest';
 import { computePanStats, computeSiteStats, hasMultipleBuildings, htmlTableSite, PANEL_FOOTPRINT_M2 } from './panStats';
-import { panDeTest } from './harnaisAtelier';
+import { ctxDeBase, panDeTest, rectRing } from './harnaisAtelier'; // ACAL1420
+import { JSDOM } from 'jsdom'; // ACAL1420
+import { createZones } from './zones'; // ACAL1420
+import { type Ctx } from './context'; // ACAL1420
 import { type AreaRecord } from './types';
 import { type AreaResult } from '../../lib/roofAreas';
 
@@ -82,6 +85,26 @@ describe('ACAL981 — libellé du bâtiment et motif du contour', () => {
     expect(stats.lignes[0].motif).toBe('aire nulle : vérifiez le contour');
   });
 
+  // ACAL1420 — le pan ACTIF se mesure sur ses sommets VIVANTS (`ctx.vertices`) : son enregistrement n'est synchronisé
+  // qu'au changement de pan, et un toit tout juste fermé disait « contour du pan non tracé » à côté de ses 63 m².
+  it('pan actif aux sommets vivants : aire > 0 dans le tableau Site, aucun « non tracé »', () => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><div id="rp9-areas"></div></body>').window.document;
+    try {
+      const pan = zone('area-1', { vertices: [], roofType: 'flat' }); // enregistrement périmé : le tracé vit sur ctx
+      const vivants = rectRing(9, 7);
+      const ctx = { ...ctxDeBase([pan]), vertices: vivants, activeArea: () => pan, closed: true, roofType: 'flat',
+        liveResult: { winner: { placedCount: 10, kwc: 7.2, annualKwh: 12000, savingsLow: 1, savingsHigh: 2 }, target: 12000 },
+        shadeAnnualFactor: 1, horizonAnnualFactor: 1, dom: { areasWindowEl: document.getElementById('rp9-areas') } } as unknown as Ctx;
+      createZones(ctx, { setStatus: () => undefined }).renderAreasPanel();
+      const ligne = document.querySelector('[data-site-ligne="area-1"]')?.textContent ?? '';
+      expect(ligne).not.toContain('non tracé');
+      expect(ligne).toContain('63');
+      expect(document.querySelector('[data-site-total=""]')?.textContent).not.toContain('sans contour mesuré');
+    } finally { g.document = avant; }
+  });
+
   it('htmlTableSite d’un groupe sans identifiant écrit « Bâtiment 1 », jamais « Bâtiment sans id »', () => {
     const html = htmlTableSite(computeSiteStats(computePanStats([zone('a')], () => RESULT_OK), []));
     expect(html).toContain('Bâtiment 1');
@@ -93,5 +116,25 @@ describe('ACAL981 — libellé du bâtiment et motif du contour', () => {
     const html = htmlTableSite(computeSiteStats(computePanStats([zone('a', { buildingId: 'bat-A' }), zone('b')], () => RESULT_OK), []));
     expect(html).toContain('bat-A');
     expect(html).toContain('Bâtiment 2');
+  });
+});
+
+// ACAL1513 (K-COLONNE-ETROITE) — le tableau Site vit dans la colonne de droite (≈ 270 px) : aucune largeur minimale,
+// une fiche empilée par ligne (deux cellules), et le total du SITE (modules, kWc) en tête, visible sans défiler.
+describe('ACAL1513 — le tableau Site ne force aucune largeur minimale', () => {
+  it('toit plat + champ au sol : aucun min-w, fiches à deux cellules, « 124,96 kWc » et « 139,36 kWc » lisibles', () => {
+    const pans = computePanStats([zone('a', { buildingId: 'bat-A' })], () => ({ ...RESULT_OK, panels: 20, kwc: 14.4 }));
+    const sol = { kind: 'sol', id: 'sol-1', label: 'Champ au sol', buildingId: 'bat-B', areaM2: 660, engine: { modules: 176 }, moduleWc: 710 };
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body></body>').window.document;
+    try {
+      document.body.innerHTML = htmlTableSite(computeSiteStats(pans, [sol]));
+      const table = document.querySelector('table[data-site-stats]')!;
+      expect(table.className).not.toMatch(/min-w-/);
+      for (const tr of document.querySelectorAll('tbody tr')) expect(tr.children.length).toBeLessThanOrEqual(2);
+      expect(document.querySelector('[data-site-ligne="sol-1"]')?.textContent).toContain('124,96 kWc');
+      expect(document.querySelector('[data-site-resume]')?.textContent).toBe('Total du site : 196 modules · 139,36 kWc');
+    } finally { g.document = avant; }
   });
 });
