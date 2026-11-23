@@ -212,5 +212,49 @@ class ExportInchangeTest(unittest.TestCase):
                              'la lit pas : l’ajout n’est plus additif.')
 
 
+class SerieAgregeeAuJourTest(unittest.TestCase):
+    """ACAL1614 — une série DÉJÀ agrégée au jour par la borne de persistance, demandée au pas
+    « heure », le dit dans l'en-tête au lieu de sortir 3 652 lignes journalières sans un mot."""
+
+    MOTIF = 'La série calculée porte 87 648 points ; publiée AGRÉGÉE AU JOUR.'
+
+    def _csv(self, etat, **en_plus):
+        document = {
+            'production': {'base': {'fenetre_annees': '2014-2023'}},
+            'pertes': [],
+            'points': bloc(etat)['points'],
+            'shading12x24': None,
+            'version_moteur': None,
+        }
+        document.update(en_plus)
+        return export_csv(document, quoi='horaire')
+
+    def test_serie_tronquee_exportee_au_pas_heure_porte_la_ligne_pas_de_temps(self):
+        texte = self._csv('exemple_tronquee', serie_tronquee=True,
+                          motif_troncature=self.MOTIF)
+        ligne = next(entete for entete in texte.splitlines()
+                     if entete.startswith('Pas de temps;'))
+        self.assertIn('jour (série agrégée au jour', ligne)
+        self.assertIn('2014-2023', ligne)
+        self.assertIn(self.MOTIF, ligne)
+
+    def test_annee_type_reste_horaire_sans_ligne_pas_de_temps(self):
+        texte = self._csv('exemple', serie_tronquee=False)
+        self.assertNotIn('Pas de temps', texte)
+
+    def test_le_document_d_export_porte_le_drapeau_de_la_serie_stockee(self):
+        from types import SimpleNamespace
+
+        from apps.calepinage.services.export_csv import document_exportable
+
+        bloc_tronque = dict(bloc('exemple_tronquee'), motif_troncature=self.MOTIF)
+        calepinage = SimpleNamespace(
+            resultat={'serie_horaire': bloc_tronque}, roof_layout={},
+            version_moteur='', layout_hash='')
+        document = document_exportable(calepinage)
+        self.assertTrue(document['serie_tronquee'])
+        self.assertEqual(document['motif_troncature'], self.MOTIF)
+
+
 if __name__ == '__main__':
     unittest.main()
