@@ -475,10 +475,11 @@ def pompage(self, request, pk=None):
                 'des pompes compatibles existent dans l’autre tension '
                 'd’alimentation : vérifiez le choix mono/triphasé')
     elif not erreurs:
+        # ACAL1267 — des pompes à courbe sans prix DÉLIVRENT : seules les pompes CHIFFRÉES manquent.
         avertissements.append(
-            'aucune pompe à courbe ne délivre le débit demandé à cette HMT — '
+            'aucune pompe à courbe %sne délivre le débit demandé à cette HMT — '
             'aucun m³/jour n’est publié (une pompe sans courbe ne produit '
-            'jamais de volume chiffré)')
+            'jamais de volume chiffré)' % ('chiffrée ' if choix['sans_prix'] else ''))
         if choix['sans_prix']:
             avertissements.append(
                 'des pompes conviennent mais n’ont pas de prix renseigné : '

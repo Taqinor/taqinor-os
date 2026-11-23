@@ -146,6 +146,23 @@ class PariteVolumesDevisCalepinageTest(TestCase):
         self.assertNotIn('prix_achat', texte)
         self.assertNotIn('marge', texte)
 
+    def test_acal1267_pompes_a_courbe_sans_prix_les_deux_phrases_ne_se_contredisent_pas(self):
+        """Seules des pompes à courbe SANS prix délivrent : le premier avertissement dit « chiffrée »
+        (ces pompes délivrent, mais ne sont pas proposables) ; sans pompe sans prix, le texte d'avant reste."""
+        Produit.objects.filter(pk=self.pompe.pk).update(prix_vente=Decimal('0'))
+        donnees = self._calepinage({'hmt_saisie': 60, 'debit_souhaite_m3h': 12})
+        self.assertIsNone(donnees['pompe'])
+        premier, second = donnees['avertissements'][:2]
+        self.assertTrue(premier.startswith(
+            'aucune pompe à courbe chiffrée ne délivre le débit demandé à cette HMT'), premier)
+        self.assertIn('des pompes conviennent mais n’ont pas de prix renseigné', second)
+
+        Produit.objects.filter(pk=self.pompe.pk).update(prix_vente=Decimal('1000'))
+        donnees = self._calepinage({'hmt_saisie': 60, 'debit_souhaite_m3h': 500})
+        self.assertEqual([a for a in donnees['avertissements'] if 'ne délivre' in a],
+                         ['aucune pompe à courbe ne délivre le débit demandé à cette HMT — aucun m³/jour '
+                          'n’est publié (une pompe sans courbe ne produit jamais de volume chiffré)'])
+
     def test_sans_kwc_ni_variante_retenue_aucun_volume_physique(self):
         devis = self._preview()
         donnees = self._calepinage({'hmt_saisie': devis['hmt']['valeur_m'],
