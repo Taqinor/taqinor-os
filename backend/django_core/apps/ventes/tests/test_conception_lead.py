@@ -2102,3 +2102,68 @@ class RelanceEnTacheTests(_emprunt(RelanceConceptionTests, '_relancer'),
         self.assertEqual((relue['perimee'], relue['version'], relue['declencheur']['origine']), (False, 2, 'filet'))
         self.assertEqual(relue['entrees_utilisees']['facture_hiver']['valeur'], 2400.0)
         self.assertEqual(self.en_file.call_count, 0)
+
+
+# ── ADEV141 — remplir les conceptions des leads existants, liste d'abord ─────
+
+class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_utilisateur', '_residentiel',
+                                       '_ci', '_agricole', '_fiches_residentielles', '_site_isole', '_structures',
+                                       '_fiches_ci', '_cas'), TestCase):
+    """ADEV141 — ``manage.py remplir_conceptions`` : sans option, la LISTE
+    (rien n'est écrit) ; ``--appliquer`` range par l'écrivain unique, société
+    par société ; aucun devis n'est modifié ; rejouer n'écrit rien."""
+
+    def _commande(self, *args):
+        import io
+
+        from django.core.management import call_command
+
+        sortie = io.StringIO()
+        with self.captureOnCommitCallbacks(execute=True):
+            call_command('remplir_conceptions', *args, stdout=sortie)
+        return sortie.getvalue()
+
+    def test_liste_puis_appliquer_societe_isolee_aucun_devis_touche(self):
+        from django.utils import timezone
+
+        from apps.crm.models import Lead
+        from apps.ventes.models import ConceptionLead, Devis
+        from apps.ventes.services import build_devis_auto
+        from authentication.models import Company
+
+        company, premier = self._residentiel(facture_hiver=Decimal('1800'))
+        _reglages_de_la_societe(company)
+        situes = [premier] + [Lead.objects.create(company=company, nom='Situe', prenom=str(i), ville=premier.ville,
+                                                  facture_hiver=Decimal('1500') + i * 100) for i in range(6)]
+        sans_lieu = [Lead.objects.create(company=company, nom='SansLieu', prenom=str(i), ville='',
+                                         facture_hiver=Decimal('1800')) for i in range(3)]
+        autre = Company.objects.create(nom='Autre remplissage', slug='autre-remplissage-conception')
+        lead_b = Lead.objects.create(company=autre, nom='B', prenom='Lead', ville=premier.ville,
+                                     facture_hiver=Decimal('1800'))
+        devis = build_devis_auto(lead=premier, user=self._utilisateur(company), company=company)
+        Devis.objects.filter(pk=devis.pk).update(statut='envoye', date_envoi=timezone.now())
+        photo = _photo_devis(devis.pk)
+
+        liste = self._commande('--company', str(company.pk))
+        self.assertFalse(ConceptionLead.objects.exists(), liste)  # mutant « écrire sans --appliquer » : rouge
+        for lead in situes:
+            self.assertIn(f'lead #{lead.pk} [residentiel] option retenue : ', liste)
+        for lead in sans_lieu:
+            self.assertIn(f'lead #{lead.pk} [residentiel] REFUS localisation_inconnue (ville)', liste)
+        self.assertIn('LISTE : 7 conception(s) complète(s), 3 refus, 0 erreur(s)', liste)
+        self.assertNotIn(f'lead #{lead_b.pk} ', liste)
+
+        applique = self._commande('--company', str(company.pk), '--appliquer')
+        self.assertIn('APPLIQUÉ : 7 version(s) rangée(s), 0 inchangée(s), 3 sans ville ni GPS', applique)
+        rangees = ConceptionLead.objects.filter(company=company, courante=True)
+        self.assertEqual(set(rangees.values_list('lead_id', flat=True)), {lead.pk for lead in situes})
+        for version in rangees:
+            self.assertEqual((version.etat, version.declencheur['origine'], version.version),
+                             ('complet', 'remplissage', 1))
+        self.assertFalse(ConceptionLead.objects.filter(company=autre).exists())
+        self.assertEqual(_photo_devis(devis.pk), photo)  # le devis envoyé n'a pas bougé
+
+        rejoue = self._commande('--company', str(company.pk), '--appliquer')
+        self.assertIn('APPLIQUÉ : 0 version(s) rangée(s), 7 inchangée(s)', rejoue)
+        self.assertEqual(ConceptionLead.objects.filter(company=company).count(), 7)
+        self.assertEqual(_photo_devis(devis.pk), photo)
