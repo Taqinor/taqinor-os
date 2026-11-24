@@ -1,9 +1,10 @@
 # Dossier contractuel — état du chantier L5 (à lire EN PREMIER pour reprendre)
 
 Dernière écriture : 24/11/2026 par la session du poste fixe · branche `claude/erp-lead-contracts-e2fdab`.
-**Prochaine action unique** : lire le résultat de la CI de la PR Taqinor/taqinor-os#1539 sur la tête
-`57ce4b8135` (ou plus récente), corriger ses rouges, puis jouer la **vérification finale** (ci-dessous) AVANT tout
-merge. Rien n'est mergé.
+**Prochaine action unique** : lire le rapport de la contre-vérification sur écran réel (tête `d6e459643f`,
+défauts C1 à C10 du premier rejeu + parcours heureux jusqu'au quitus). Sans S1-S2 ouvert et CI verte : passer la
+PR Taqinor/taqinor-os#1539 en « prête » et la mettre en file (`gh pr merge 1539 --auto --merge`). Sinon corriger
+d'abord. Puis démonter la pile privée (voir plus bas) et relâcher les worktrees des lanes.
 
 ## Demande et cadre
 - Demande de Reda, mot pour mot (24/11/2026) : « i want you make ERP create 4 contract for each lead signed was we
@@ -98,3 +99,20 @@ ctr-minio`, `docker network rm ctr-net`, `DROP DATABASE ctr`.
   `backend/django_core/apps/documents/contract_samples/{dossier_contractuel,acte_contractuel}.json`.
 - Tirage des PDF d'exemple (sans base, conteneur jetable, hors réseau) : scripts du tour 0 dans le scratchpad de la
   session — à promouvoir en commande `manage.py` par la lane serveur (`apercu_actes`).
+
+## Revue 1 et contre-vérifications (24-25/11/2026) — détail : `docs/contrats/revue-1.md`
+- Cinq relecteurs neufs avant le premier merge (code serveur, écran, contenu français, traduction arabe par
+  retraduction, impression de 31 pages) → 4 lanes de correction (S 14 points, T 21, R 11, F 9), toutes pliées.
+- Contre-vérification du serveur par un relecteur neuf : 13 points sur 14 « ok », S1 « partiel » (option et
+  article dans le même enregistrement) → mécanisme refait par alignement du texte corrigé sur son gabarit
+  (lane S2), module `contrats/gabarits.py`.
+- Contre-vérification des phrases arabes nouvelles : aucun écart de sens, trois retouches de langue appliquées.
+- Premier rejeu sur ÉCRAN RÉEL (pile privée, bureau et 390 px) : dix constats, dont trois S1 que ni les tests ni la
+  lecture du code n'avaient vus (échéancier faux quand une facture d'acompte existe, brouillon de quitus trompeur,
+  garantie du contrat ignorée au certificat) → corrigés (lanes S2 et F), règles C13 à C17 de `conception.md` § 8.
+- CI entièrement verte sur `43cf846595` (dont les tests serveur à base de données) ; tête complète poussée :
+  `d6e459643f`.
+- Quota hebdomadaire au 25/11 : 97 % tous modèles, 91 % Fable (Reda a dit de continuer au-delà de 90 %).
+- Restent pour le tour suivant (non bloquants) : en-tête de l'aperçu dans `InstallationDetail.jsx` (référence du
+  chantier à côté de celle de l'acte), liste des cas « peut attendre » des rapports de relecteurs, relecture de
+  l'arabe par un arabophone, les douze points de `juridique.md` § 4, signature par lien.
