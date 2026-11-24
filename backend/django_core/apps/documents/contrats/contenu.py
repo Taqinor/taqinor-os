@@ -91,9 +91,12 @@ def ajouter_mois(depart, mois):
         return None
     total = d.month - 1 + int(mois)
     annee, mois_ = d.year + total // 12, total % 12 + 1
-    suivant = date(annee + (mois_ == 12), mois_ % 12 + 1, 1)
-    dernier = (suivant - timedelta(days=1)).day
-    return date(annee, mois_, min(d.day, dernier))
+    try:
+        suivant = date(annee + (mois_ == 12), mois_ % 12 + 1, 1)
+        dernier = (suivant - timedelta(days=1)).day
+        return date(annee, mois_, min(d.day, dernier))
+    except (OverflowError, ValueError):  # au-delà de l'an 9999
+        return None
 
 
 def _slug(texte):
@@ -769,7 +772,7 @@ def _delais(date_document, jours, date_fixee, langue):
     if limite is None and jours not in (None, '') and _date(date_document):
         try:
             limite = _date(date_document) + timedelta(days=int(jours))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             limite = None
     longue = C.date_longue(limite, langue=langue) if limite else ''
     if langue == 'ar':
