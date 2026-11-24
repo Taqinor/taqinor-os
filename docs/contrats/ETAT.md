@@ -1,10 +1,42 @@
 # Dossier contractuel — état du chantier L5 (à lire EN PREMIER pour reprendre)
 
 Dernière écriture : 24/11/2026 par la session du poste fixe · branche `claude/erp-lead-contracts-e2fdab`.
-**Prochaine action unique** : la PR Taqinor/taqinor-os#1539 est prête et en fusion automatique (file de fusion)
-dès sa CI verte. Ensuite : (1) Reda déploie (`scripts/deploy-prod.ps1`) ; (2) tour 2 de relecteurs après le 28/11
-(quota), en commençant par la liste « Restes » ci-dessous ; (3) étage « vraie vie ». La pile privée de revue est
-démontée (conteneurs, réseau, bases `ctr` / `ctr2`, serveur du front, jonction `node_modules`).
+**Prochaine action unique** : la PR Taqinor/taqinor-os#1539 est SORTIE de la file de fusion le 25/11 (tête
+`350f91e7c8`) : la CI complète de la file (lots de tests, fuzz de l'API — que la CI de la PR ne joue pas) a trouvé
+22 rouges dus à ce travail, listés ci-dessous. RIEN n'est mergé ; la fusion automatique est désarmée. Corriger les
+cinq causes, pousser, vérifier par `gh workflow` / la file, puis re-mettre en file SUR DEMANDE de Reda. Quota
+hebdomadaire à 99 % le 25/11 : reprise après la remise à zéro du 28/11.
+
+### Rouges de la file de fusion (run 45342555496) — à corriger avant toute re-mise en file
+1. **Règle n° 4 — une app importe le moteur de devis.** `apps/ventes/tests/test_cal195_schema_unifilaire.py`
+   (`test_aucune_app_n_importe_le_moteur_de_devis`) refuse `contrats/rendu/style.py` (import de
+   `apps.ventes.quote_engine…theme.font_face_css`) ; même défaut probable pour `rendu/composants.py` (import de
+   `quote_engine.logo`). Correctif : ne plus IMPORTER le moteur — lire les fichiers de police par leur chemin (ou les
+   poser dans `apps/documents`), et traiter le logo sans `quote_engine.logo` (logo de la société tel quel sur une
+   pastille claire de l'en-tête).
+2. **Garde de classe des routes de `documents`.** `apps/documents/tests/test_adoc_garde_classe_endpoints.py`
+   (`test_toutes_les_routes_documents_portee_et_etat`) : une vingtaine d'écarts — `chantiers/<pk>/contrats/` rend 200
+   sur un chantier annulé (409 attendu) ; les routes d'action (`emettre`, `rouvrir`, `signer`, `marquer-signe`) rendent
+   405 là où la garde attend 404 ; `modele` rend 403 là où elle attend 404. Lire la garde, puis soit aligner les
+   routes (portée → 404 avant méthode et droit ; chantier annulé → 409 ou exception documentée), soit déclarer les
+   nouvelles routes dans le registre de la garde avec leur règle.
+3. **Montants des tranches (bug réel, introduit par S2-C1).** `test_contrats_dossier.MontantsTests.
+   test_montants_acompte_regle` (10 sous-tests, fr et ar, quatre actes) : attendu `16560 / 33120 / 5520`, obtenu
+   `16560 / 16560 / 5520` quand l'acompte est réglé ; et `ArticlesGabaritsTests.
+   test_paiement_corrige_suit_l_echeancier_de_la_vente` : après passage de la vente à 40 / 50 / 10, la liste imprime
+   30 % et 50 %. `tranches_convenues` ne doit PAS dériver des `cible_cumul_ttc` de `plan_facturation` (elles ne sont
+   pas cumulatives dans tous les états) : calculer chaque tranche depuis l'échéancier figé du devis
+   (`ventes.utils.echeancier.tranches_normalisees` : % ou montant) appliqué au prix convenu, la dernière prenant le
+   reste au centime.
+4. **Fuzz de l'API — « Response violates schema »** sur les neuf routes (`documents/chantiers/{id}/contrats/` et
+   `documents/actes/{id}/…`, GET / PATCH / POST / pdf) : les réponses réelles ne respectent pas les schémas déclarés
+   (`serializers_contrats.py` : valeurs nulles, énumérations, chaînes décimales, formes d'erreur 400 / 404 / 409 non
+   déclarées, PDF binaire). Rejouer en local : job `api-fuzz-pr` (voir `.github/workflows/ci.yml`).
+5. **Hors de ce travail** : `e2e/calepinage-parcours.spec.js:693` (ACAL987) a échoué une fois dans la file
+   (délai dépassé sur un onglet du calepinage) — à laisser, sauf s'il se répète.
+Leçon de méthode : la CI d'une PR ne joue ni les lots complets ni le fuzz ; avant de mettre une PR à routes neuves en
+file, lancer ces jobs à la main ou lire les gardes de classe de l'app (`test_adoc_garde_classe_endpoints`,
+`test_cal195…`).
 
 ## Demande et cadre
 - Demande de Reda, mot pour mot (24/11/2026) : « i want you make ERP create 4 contract for each lead signed was we
