@@ -8,15 +8,21 @@ Module neuf du paquet ``apps/ventes/conception/`` (conception :
   ``main`` avant le modèle, le moteur et la route (PACT10) : chaque clé du §4,
   la forme ACTUELLE des blocs d'étude du devis (jamais redéfinie ici : relue
   dans les contrats et le schéma existants), aucune clé d'achat ni de marge.
+* ADEV130 — ``apps/ventes/conception/champs.py::CHAMPS_ENTREES`` : les
+  colonnes du lead que lisent les trois adaptateurs (résidentiel, C&I,
+  pompage), déduites en ESPIONNANT leurs lectures sur un lead renseigné ; un
+  adaptateur qui lit une colonne hors liste est rouge.
 
 Run :
     powershell -File scripts/test-backend.ps1 -RestoreDb \
         -Modules "apps.ventes.tests.test_conception_lead"
 """
 import json
+from decimal import Decimal
 from pathlib import Path
+from unittest import mock
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
 DOSSIER = Path(__file__).resolve().parents[1] / 'contract_samples'
 CONTRAT = DOSSIER / 'conception_lead.json'
@@ -195,3 +201,109 @@ class ContratConceptionLeadTests(SimpleTestCase):
         # Le parcours détecte bien une clé interdite enfouie.
         self.assertEqual(_cles_interdites({'a': [{'b': {'prix_achat_ht': 1}}]}),
                          ['$.a[0].b.prix_achat_ht'])
+
+
+# ── ADEV130 — les colonnes du lead qui sont des entrées du moteur ────────────
+
+#: Un lead renseigné sur toutes les entrées connues des trois adaptateurs, pour
+#: que chaque branche de lecture s'exécute (valeurs illustratives).
+_LEAD_RENSEIGNE = {
+    'ville': 'Casablanca', 'ville_reference': 'Casablanca',
+    'gps_lat': Decimal('33.5731'), 'gps_lng': Decimal('-7.5898'),
+    'facture_hiver': Decimal('1200'), 'facture_ete': Decimal('900'),
+    'ete_differente': True, 'conso_mensuelle_kwh': Decimal('500'),
+    'bill_kwh': Decimal('500'), 'raccordement': 'triphase',
+    'occupation_jour': 'present', 'equip_clim': True, 'equip_piscine': True,
+    'equip_voiture_electrique': True, 'equip_chauffe_eau_electrique': True,
+    'tension_raccordement': 'bt', 'contrat_electricite': 'bt_patente',
+    'compteur_puissance_kva': Decimal('36'), 'regime_equipes': '2x8',
+    'jours_ouverture': [1, 2, 3, 4, 5], 'heure_debut': 8, 'heure_fin': 18,
+    'fermeture_mois': [8], 'type_surface': 'toiture',
+    'type_toiture': 'terrasse_beton', 'surface_toiture_m2': Decimal('200'),
+    'tva_recuperable': 'oui', 'pompe_hmt_m': Decimal('40'),
+    'pompe_debit_m3h': Decimal('5'), 'besoin_eau_m3j': Decimal('30'),
+}
+
+
+class ChampsEntreesTests(TestCase):
+    """ADEV130 — un adaptateur qui lit une colonne absente de
+    ``CHAMPS_ENTREES`` est rouge. L'espion compte TOUTE lecture d'une colonne
+    sur une instance ``Lead`` pendant l'appel de l'adaptateur (y compris dans
+    les sélecteurs du CRM qu'il appelle)."""
+
+    def _lead(self, marche):
+        from apps.crm.models import Lead
+        from authentication.models import Company
+
+        company = Company.objects.create(nom=f'Moteur {marche}',
+                                         slug=f'moteur-unique-{marche}')
+        lead = Lead.objects.create(company=company, nom='Lead', prenom=marche,
+                                   telephone='+212600000000',
+                                   type_installation=marche, **_LEAD_RENSEIGNE)
+        return company, lead
+
+    def _colonnes_lues(self, appel):
+        from apps.crm.models import Lead
+
+        colonnes = {}
+        for champ in Lead._meta.concrete_fields:
+            colonnes[champ.name] = champ.name
+            colonnes[champ.attname] = champ.name
+        lues = set()
+        lecture = object.__getattribute__
+
+        def espion(instance, nom):
+            if nom in colonnes:
+                lues.add(colonnes[nom])
+            return lecture(instance, nom)
+
+        with mock.patch.object(Lead, '__getattribute__', espion):
+            appel()
+        return lues
+
+    def _adaptateur(self, marche, company, lead):
+        from apps.ventes.domain import entrees, etude_ci, pompage
+
+        if marche == 'residentiel':
+            return lambda: entrees.entrees_depuis_lead(lead, company)
+        if marche == 'agricole':
+            return lambda: pompage.resoudre_entrees(company, {}, lead=lead)
+        return lambda: etude_ci.resoudre_entrees({}, lead=lead)
+
+    def test_chaque_colonne_lue_par_l_adaptateur_est_dans_la_liste(self):
+        from apps.ventes.conception.champs import (
+            CHAMPS_ENTREES, CHAMPS_LUS_HORS_ENTREES, champs_pour)
+
+        self.assertEqual(set(CHAMPS_ENTREES),
+                         {'residentiel', 'commercial', 'industriel', 'agricole'})
+        for marche in CHAMPS_ENTREES:
+            with self.subTest(marche=marche):
+                company, lead = self._lead(marche)
+                lues = self._colonnes_lues(self._adaptateur(marche, company, lead))
+                # L'espion voit bien les lectures (preuve qu'il n'est pas muet).
+                self.assertIn('gps_lat', lues)
+                hors_liste = lues - set(champs_pour(marche)) - set(CHAMPS_LUS_HORS_ENTREES)
+                self.assertEqual(
+                    hors_liste, set(),
+                    f"{marche} : colonnes lues par l'adaptateur et absentes de "
+                    f"CHAMPS_ENTREES['{marche}'] : {sorted(hors_liste)}")
+
+    def test_listes_sur_de_vraies_colonnes_sans_identite(self):
+        from apps.crm.models import Lead
+        from apps.ventes.conception.champs import (
+            CHAMPS_ENTREES, CHAMPS_LUS_HORS_ENTREES, champs_pour)
+
+        colonnes = {f.name for f in Lead._meta.concrete_fields}
+        for marche, champs in CHAMPS_ENTREES.items():
+            with self.subTest(marche=marche):
+                self.assertIsInstance(champs, tuple)
+                self.assertEqual(champs_pour(marche), champs)
+                self.assertLessEqual(set(champs), colonnes)
+                self.assertEqual(set(champs) & set(CHAMPS_LUS_HORS_ENTREES), set())
+                self.assertIn('type_installation', champs)
+                for identite in ('nom', 'prenom', 'telephone', 'email', 'notes'):
+                    self.assertNotIn(identite, champs)
+        self.assertIn('facture_hiver', champs_pour('residentiel'))
+        self.assertLessEqual(set(CHAMPS_LUS_HORS_ENTREES), colonnes)
+        with self.assertRaises(KeyError):
+            champs_pour('inconnu')
