@@ -773,3 +773,48 @@ choix recommandé est pris et listé à la fin ; rien de ce qu'un client lit n'e
 ### Déroulé du 24/11 (un point par étape)
 
 1. E1 (ADEV129, ADEV130, ACAL2010) : lane opus lancée depuis `origin/main`.
+2. **E1 FAIT** (3 commits de lane + pli + coches) : PR Taqinor/taqinor-os#1540, branche `dev-moteur-unique`, Auto-fix
+   allumé, auto-archive éteint, mise en file automatique demandée (`gh pr merge 1540 --auto --merge`). À VÉRIFIER à la
+   reprise : `gh pr view 1540 --json state,mergedAt`. Aucune migration, aucun écran, aucun chiffre : rien à déployer
+   pour elle seule. Points laissés à l'étape 2 par la lane du contrat : la réponse ne porte ni `lead`, ni
+   `calepinage`, ni `empreinte_pose` (à ajouter par ADEV131/ADEV137, échantillon et code dans le même commit) ;
+   `CHAMPS_ENTREES` ne couvre que les trois adaptateurs (le moteur lit aussi `batterie_souhaitee` ailleurs, et les
+   mesures de visite par les sélecteurs de `visites`) : l'espion doit couvrir un passage COMPLET de
+   `calculer_conception` ; les études agricoles n'ont pas de clé `etude_pompage` (clés à plat dans `etude_params`).
+3. **E2 EN VOL** (lancée le 24/11 vers 04 h 10 UTC) : lane opus, worktree `.claude/worktrees/agent-a31fc72966fc4489a`,
+   branche `lane/moteur-e2` partie de la branche locale d'intégration ; tâches ADEV131 → ADEV138, un commit par tâche ;
+   suffixe de base de test `e2`. Brief : celui recopié ci-dessous (« Brief des lanes du moteur »). À SON RETOUR : relire
+   le diff (`git diff claude/l5-calepinage-quote-completion-da59ee...lane/moteur-e2`), plier `--no-ff`, régénérer
+   `docs/api-contracts.md` (`check_api_shapes.py --write`) et l'OpenAPI (`check_openapi_schema.py --write`, dans un
+   conteneur), `codemap_fingerprint.py --write` (paquet neuf `apps/ventes/conception/`, modèle, route), relecture
+   adverse du diff serveur par un opus neuf (isolation par société, aucun devis envoyé touché, aucune écriture hors
+   `relancer`, parité), cocher (preuves « API seulement »), pousser dans une PR NEUVE après la fusion de #1540.
+   Si la session s'arrête avant : les commits de la lane restent dans son worktree et sa branche locale.
+4. **Restes de la vague D (étape 2 de la demande), construits en parallèle** — à fusionner dans LEUR PR, une fois
+   #1540 fusionnée (un seul CI à la fois) :
+   - lane B (sonnet) RENTRÉE, 5 tâches corrigées, branche locale `worktree-agent-aa8d1e0c1ac75b664` (5 commits depuis
+     `origin/main@c99872dda8`) : ADEP109 `ad6b8cb210`, ACAL2041 `6e01aba789`, ACAL2037 `8540b2d482` (golden
+     `cascade_pluriannuelle_casablanca.json` recapturé : `mention` vide pour un résultat complet — relu, conforme à la
+     tâche), ACAL2033 `1b8508cb56`, ADEV158 `3b21d2b9dd`. Tests rejoués par la lane sur base privée (318 tests ; un
+     seul échec hors sujet, qui exige le dossier du front dans le conteneur). Pas encore pliée ni cochée.
+   - lane A (opus) EN VOL, worktree `.claude/worktrees/agent-a337a6de920502c94`, branche
+     `worktree-agent-a337a6de920502c94` : ADEV156 livrée (`3649ec1184`), puis ADEV157, ACAL2040.
+   - PAS LANCÉES : ACAL2030 (CSS du mode Expert), ACAL2031, ACAL2032 (tests et moteur de dessin d'`apps/web` : il faut
+     une vraie installation de `node_modules`) ; les quatre rejeux en direct de l'orchestrateur ACAL2034, 2035, 2036,
+     2038 (il faut la pile de revue).
+5. **Outils de la session (scratchpad, perdus au redémarrage du poste — à réécrire d'après ceci)** :
+   - Constat mesuré : le gabarit `test_erp_db_base` a 188 migrations de retard sur `main` ; `scripts/test-backend.ps1
+     -RestoreDb` les rejoue À CHAQUE passage (30 min et plus sur ce poste, machine virtuelle de Docker à 4 cœurs et
+     5 Go partagée avec une autre session), et chaque passage réinstalle `requirements-dev.txt` (7 min). La première
+     heure de la session y est passée.
+   - Remède : image `lane-test:dev` (= `erp-agentique-django_core` + `pip install -r requirements-dev.txt`, par
+     `docker commit`) ; gabarit à jour `test_erp_lane_base` (2 422 migrations, figé depuis une base de lane migrée) ;
+     une base privée par lane `test_erp_lane_<suffixe>` clonée de ce gabarit, puis, depuis la racine du worktree de
+     la lane : `docker compose -p erp-agentique -f docker-compose.yml -f <surcharge: services.django_core.image =
+     lane-test:dev> run --rm --no-deps --name lane-test-<suffixe> -e DJANGO_SETTINGS_MODULE=erp_agentique.settings.dev
+     -e DB_NAME=erp_lane_<suffixe> django_core python manage.py test <modules> --keepdb --parallel 1`. Un passage de
+     9 tests : 1 min 30. Les lanes ne font plus la queue sur `test_erp_db`.
+   - À proposer au plan deploy (pas fait) : rafraîchir `test_erp_db_base` (`-Snapshot`) et ne plus réinstaller les
+     paquets de test à chaque passage.
+6. Quota : 94 % à 04 h 20 UTC le 24/11 (88 % au départ, environ 2 points par heure, une autre session du même compte
+   tourne aussi). Fable hebdomadaire : 89 %.
