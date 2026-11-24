@@ -3,9 +3,14 @@ références de loi des textes par défaut (sans base de données).
 
 - ``html_de`` rend chaque contenu d'exemple (contract_samples/acte_contractuel
   .json), sans accolade restée ni prix d'achat ;
-- palier « pdf » : pagination de référence (contrat ≤ 6 pages, procès-verbaux
-  ≤ 2, clôture ≤ 4 — docs/contrats/conception.md § 7) et PDF signé portant le
-  nom du signataire ;
+- les corrections d'impression de la revue 1 (docs/contrats/revue-1.md,
+  lane R) que le HTML garantit : aucun double échappement (R9), réserves et
+  part retenue (R1), CIN sous le nom (R5), insécables (R3), renvoi vers la
+  signature (R11) ;
+- palier « pdf » : pagination de référence en français ET en arabe (contrat
+  ≤ 7 pages, procès-verbaux 2, clôture 3), référence en tête des pages 2 et
+  suivantes (R7), dates longues seulement (R6), part retenue imprimée (R1),
+  nom à apostrophe (R9), et PDF signé portant le nom du signataire ;
 - toute référence de loi que PRODUISENT les fabriques de ``textes.py``
   (« article », « loi n° »), toutes options, figure dans
   docs/contrats/juridique.md § 2 (critère K9).
@@ -40,8 +45,11 @@ def juridique():
     raise AssertionError('docs/contrats/juridique.md introuvable')
 
 
-PAGES_MAX = {'contrat_installation': 6, 'pv_livraison': 2, 'pv_reception': 2,
-             'cloture_garanties': 4}
+# Pagination tenue sur les exemples, en français ET en arabe (revue 1) :
+# (au moins, au plus) pages.
+PAGES = {'contrat_installation': (1, 7), 'pv_livraison': (2, 2),
+         'pv_reception': (2, 2), 'cloture_garanties': (3, 3)}
+DATE_COURTE = re.compile(r'\b\d{1,2}/\d{1,2}/\d{4}\b')
 SIG = ('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAf'
        'FcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==')
 
@@ -61,6 +69,38 @@ def texte_pdf(octets):
         doc.close()
 
 
+# L'en-tête courant s'imprime dans la marge haute (17 mm = 48 pt).
+HAUT_DE_PAGE_PT = 48
+
+
+def pages_pdf(octets):
+    """(texte de la page, texte de son en-tête courant) pour chaque page."""
+    doc = fitz.open(stream=octets, filetype='pdf')
+    try:
+        return [(p.get_text(), ' '.join(
+            b[4] for b in p.get_text('blocks') if b[3] <= HAUT_DE_PAGE_PT))
+            for p in doc]
+    finally:
+        doc.close()
+
+
+def exemples_deux_langues():
+    """(clé, langue, contenu) : chaque exemple en français puis en arabe (le
+    contenu arabe que construit le test de la traduction)."""
+    from apps.documents.tests.test_contrats_arabe import _arabiser
+    for cle, contenu in exemples():
+        yield cle, 'fr', contenu
+        yield cle, 'ar', _arabiser(contenu)
+
+
+def exemple(type_acte, variante=''):
+    for _cle, contenu in exemples():
+        if contenu['type'] == type_acte and (
+                not variante or contenu.get('variante') == variante):
+            return copy.deepcopy(contenu)
+    raise AssertionError(f'exemple {type_acte} introuvable')
+
+
 class RenduHtmlTests(unittest.TestCase):
 
     def test_cinq_exemples(self):
@@ -78,17 +118,96 @@ class RenduHtmlTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             html_de({'type': 'inconnu'})
 
+    def test_aucun_double_echappement(self):
+        """R9 — un nom à apostrophe ne s'imprime jamais « &amp;#x27; »."""
+        for cle, langue, contenu in exemples_deux_langues():
+            contenu = copy.deepcopy(contenu)
+            contenu['societe']['nom'] = contenu['societe']['nom_court'] = (
+                "L'Atelier & Fils")
+            with self.subTest(exemple=cle, langue=langue):
+                html = html_de(contenu)
+                self.assertNotIn('&amp;#', html)
+                self.assertNotIn('&amp;amp;', html)
+
+    def test_reception_reserves_et_part_retenue(self):
+        """R1 — quatre lignes de réserves et la ligne de la part retenue."""
+        html = html_de(exemple('pv_reception'))
+        self.assertIn('<div class="lignes">' + '<i></i>' * 4 + '</div>', html)
+        self.assertIn('class="part-retenue"', html)
+        self.assertIn('class="a-remplir"', html)
+
+    def test_cin_sous_le_nom_du_client(self):
+        """R5 — la CIN du client particulier, ou la ligne à remplir."""
+        contenu = exemple('pv_reception')
+        contenu['client']['cin'] = 'BK123456'
+        self.assertIn('<div class="ident">CIN\u00a0BK123456</div>',
+                      html_de(contenu))
+        contenu['client']['cin'] = ''
+        self.assertIn('<div class="ident">CIN : ', html_de(contenu))
+
+    def test_insecables_sans_nowrap_dans_les_phrases(self):
+        """R3 — « n° 31-08 » et le RIB ne se coupent pas ; le RIB passe à la
+        ligne ; aucun span nowrap dans une phrase (WeasyPrint recule alors la
+        coupure au premier mot)."""
+        from apps.documents.contrats.rendu import composants as c
+        sortie = c.texte_libre(
+            "Virement à l'ordre de X. RIB : 000 000 0000 00 — Banque.")
+        self.assertIn('<br>RIB\u00a0:\u00a0000\u00a0000\u00a00000\u00a000',
+                      sortie)
+        self.assertIn('loi n°\u00a031-08', c.texte_libre('la loi n° 31-08'))
+        self.assertIn('رقم\u00a031.08', c.texte_libre('القانون رقم 31.08'))
+        self.assertNotIn('class="nb"', html_de(exemple('contrat_installation')))
+
+    def test_signature_en_fin_sous_la_frise(self):
+        """R11 — le renvoi vers la signature suit la frise du contrat."""
+        html = html_de(exemple('contrat_installation'))
+        self.assertLess(html.index('class="frise"'), html.index('class="renvoi"'))
+        self.assertLess(html.index('class="renvoi"'),
+                        html.index('class="parties"'))
+
 
 @tag('pdf')
 class RenduPdfTests(unittest.TestCase):
     """Rendu WeasyPrint réel (palier « pdf », hors gate rapide)."""
 
     def test_pagination_de_reference(self):
-        for cle, contenu in exemples():
-            with self.subTest(exemple=cle):
-                pages, texte = texte_pdf(pdf_de(contenu))
-                self.assertLessEqual(pages, PAGES_MAX[contenu['type']], cle)
-                self.assertIn(contenu['reference'], texte)
+        """Contrat ≤ 7 pages, procès-verbaux 2, clôture 3 — français et arabe ;
+        la référence en tête de chaque page à partir de la 2e (R7) ; aucune
+        date courte jj/mm/aaaa (R6)."""
+        for cle, langue, contenu in exemples_deux_langues():
+            with self.subTest(exemple=cle, langue=langue):
+                pages = pages_pdf(pdf_de(contenu))
+                mini, maxi = PAGES[contenu['type']]
+                self.assertGreaterEqual(len(pages), mini)
+                self.assertLessEqual(len(pages), maxi)
+                self.assertIn(contenu['reference'], pages[0][0])
+                for numero, (_texte, tete) in enumerate(pages[1:], start=2):
+                    self.assertIn(contenu['reference'], tete,
+                                  f'référence absente en tête de la page '
+                                  f'{numero}')
+                self.assertIsNone(DATE_COURTE.search(
+                    '\n'.join(texte for texte, _tete in pages)))
+
+    def test_reception_part_retenue_imprimee(self):
+        """R1 — la ligne de la part retenue est dans le PDF de la réception."""
+        from apps.documents.contrats.rendu.libelles import libelle
+        _pages, texte = texte_pdf(pdf_de(exemple('pv_reception')))
+        debut = libelle('part_retenue').split('…')[0].strip()
+        self.assertIn(debut, re.sub(r'\s+', ' ', texte))
+
+    def test_livraison_nom_a_apostrophe(self):
+        """R9 — un nom de société à apostrophe s'imprime tel quel dans la
+        livraison ; le titre des articles est « Ce que nous convenons
+        ensemble », sans entité HTML."""
+        from apps.documents.contrats.rendu.libelles import libelle
+        contenu = exemple('pv_livraison')
+        contenu['societe']['nom'] = contenu['societe']['nom_court'] = (
+            "L'Atelier Solaire")
+        _pages, texte = texte_pdf(pdf_de(contenu))
+        self.assertIn(libelle('ce_que_vous_convenez'), texte)
+        self.assertIn("L'Atelier Solaire", texte.replace('’', "'"))
+        self.assertNotIn('&#x27;', texte)
+        self.assertNotIn('&amp;', texte)
 
     def test_pdf_signe_porte_le_nom(self):
         contenu = copy.deepcopy(exemples()[0][1])
