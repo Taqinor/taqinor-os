@@ -52,7 +52,7 @@ import {
 } from './constants';
 import { type AreaRecord, type ZoneRenderPlan, type RenderSceneFn } from './types';
 import { makeCanadianPanelTexture, type JeuPanneau } from './panelTexture';
-import { poserOeil } from './oeilCamera'; // ACAL1984
+import { aplatirEnPlan, poserOeil } from './oeilCamera'; // ACAL1984, T4-U1-017
 import { boiteObstacle } from './obstacle3d'; // ACAL1820
 import { etiquettesChaines, type ChaineAPoser } from './electrique3d'; // ACAL1944
 import { teintesBatiment, eclatPresentation, TEINTES_PRESENTATION } from './jeuPresentation'; // ACAL1839
@@ -1580,7 +1580,8 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     },
     render(_gl: WebGLRenderingContext | WebGL2RenderingContext, args: maplibregl.CustomRenderMethodInput) {
       if (glLost || !renderer || !scene || !threeCamera || !modelMatrix) return;
-      const m = new THREE.Matrix4().fromArray(Array.from(args.defaultProjectionData.mainMatrix)).multiply(modelMatrix);
+      const m = new THREE.Matrix4().fromArray(Array.from(args.defaultProjectionData.mainMatrix)).multiply(modelMatrix)
+        .multiply(aplatirEnPlan(map.getPitch())); // T4-U1-017 — en Plan, la dalle retombe sur le contour tracé au sol
       poignees3d.suivre(m.elements);
       if (!(atelierErp && poserOeil(threeCamera, m))) threeCamera.projectionMatrix = m; // ACAL1984 — l'œil réel (oeilCamera.ts)
       renderer.resetState(); renderer.setViewport(0, 0, _gl.drawingBufferWidth, _gl.drawingBufferHeight); // H1 : la carte a pu changer de taille
