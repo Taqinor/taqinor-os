@@ -62,6 +62,10 @@ const SEGMENT_LABELS = {
 // QJR590 — libellés des champs d'identité de `client_ecart`.
 const ECART_LABELS = {
   nom: 'nom', prenom: 'prénom', email: 'e-mail', telephone: 'téléphone', adresse: 'adresse',
+  // Client société (identité d'entreprise, et fiche à passer en entreprise).
+  type_client: 'passage en entreprise', contact_nom: 'contact', contact_fonction: 'fonction',
+  ice: 'ICE', rc: 'RC', if_fiscal: 'IF', adresse_siege: 'adresse du siège',
+  tva_recuperable: 'TVA récupérable',
 }
 
 // Rail identité (zone gauche, 288px) : tout ce qu'on regarde AVANT d'appeler.

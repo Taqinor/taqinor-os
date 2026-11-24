@@ -36,6 +36,7 @@ import { useConfirmerRecul } from '../confirmRecul'
 import { useLeadDraft, rememberVille } from './useLeadDraft'
 import { schedulePrefetch } from './leadPrefetch'
 import { getField } from './draftCore'
+import { sectionDuChamp } from './missingFields'
 import { jumpToField } from './jumpToField'
 import fieldLabels from './fieldLabels'
 import IdentityRail from './IdentityRail'
@@ -192,7 +193,10 @@ export default function LeadWorkspace({
   // la PREMIÈRE clé de `errors` qui a une entrée dans fieldLabels.js (celles sans
   // entrée — `submit`, motif_perte posé par la validation CLIENT de création,
   // etc. — sont ignorées ici, `find(Boolean)` saute silencieusement les `undefined`).
-  const primaryErrorField = Object.keys(errors).map((k) => fieldLabels[k]).find(Boolean) || null
+  const cleErreur = Object.keys(errors).find((k) => fieldLabels[k])
+  const primaryErrorField = cleErreur
+    ? { ...fieldLabels[cleErreur], section: sectionDuChamp(cleErreur, getField(state, 'type_installation')) }
+    : null
   // Primitives STABLES hoistées : le compilateur React (lint v7) refuse de
   // préserver un useCallback dont les deps mêlent optional-chaining et objet
   // entier — on ne dépend que de scalaires.

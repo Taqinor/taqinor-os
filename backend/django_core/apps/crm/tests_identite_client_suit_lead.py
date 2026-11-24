@@ -20,7 +20,8 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Client, Lead, LeadActivity
-from apps.crm.clients_identite import resolve_client_for_lead
+from apps.crm.clients_identite import (
+    client_ecart, resolve_client_for_lead, synchroniser_identite_client)
 from apps.ventes.models import Devis
 from authentication.models import Company
 
@@ -182,3 +183,200 @@ class TestIdentiteEntrepriseSuitLead(TestCase):
         self.assertEqual(
             r.json()['client_ecart'],
             CONTRAT['exemple_entreprise']['get_lead']['client_ecart'])
+
+
+class TestPromotionClientParticulierEnEntreprise(TestCase):
+    """24/11/2026 — « un devis résidentiel pour une société avec ICE » : un
+    lead qui porte une raison sociale (et un ICE) fait de SA fiche client
+    ``particulier`` une ENTREPRISE (nom ← raison sociale, personne →
+    ``contact_nom``). Cas réel : client « Khalid Lachraf », société saisie
+    sur le lead APRÈS la création du client. Garde : un client corrigé à la
+    main n'est jamais promu sans ``force``."""
+
+    ICE = '000000000000000'
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='Promotion Co', slug='promotion-co')
+        self.user = User.objects.create_user(
+            username='promo_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Lachraf', prenom='Khalid',
+            email='khalid@example.com', telephone='0612345611',
+            adresse='5 rue Y', ville='Casablanca')
+        self.client_obj = resolve_client_for_lead(self.lead)
+        self.lead.refresh_from_db()
+        self.assertEqual(
+            self.client_obj.type_client, Client.TypeClient.PARTICULIER)
+
+    def _poser(self, **champs):
+        """Écrit ``champs`` sur le lead en base ; rend l'instantané d'AVANT
+        (ce que la vue passe à ``synchroniser_identite_client``)."""
+        avant = Lead.objects.get(pk=self.lead.pk)
+        Lead.objects.filter(pk=self.lead.pk).update(**champs)
+        self.lead.refresh_from_db()
+        return avant
+
+    def _recharger(self):
+        self.client_obj.refresh_from_db()
+        return self.client_obj
+
+    def test_patch_societe_et_ice_promeut_le_client(self):
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-PROMO-1',
+            client=self.client_obj, lead=self.lead, statut='envoye')
+        r = self.api.patch(
+            f'/api/django/crm/leads/{self.lead.id}/',
+            {'societe': 'K and L building', 'ice': self.ICE,
+             'fonction_contact': 'Gérant'}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        client = self._recharger()
+        self.assertEqual(client.type_client, Client.TypeClient.ENTREPRISE)
+        self.assertEqual(client.nom, 'K and L building')
+        self.assertFalse(client.prenom)
+        self.assertEqual(client.contact_nom, 'Khalid Lachraf')
+        self.assertEqual(client.contact_fonction, 'Gérant')
+        self.assertEqual(client.ice, self.ICE)
+        self.assertFalse(client.raison_sociale_a_confirmer)
+        self.assertEqual(r.json()['client_ecart'], [])
+        # Même fiche client, jamais un doublon.
+        self.assertEqual(
+            Client.objects.filter(company=self.company).count(), 1)
+        # Chatter : la fiche est dite « passée en entreprise ».
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=self.lead, body__icontains='passée en entreprise').exists())
+        # Trace « corrigé après envoi » du devis envoyé.
+        devis.refresh_from_db()
+        self.assertIn('resync_apres_envoi', devis.etude_params or {})
+
+    def test_promotion_directe_client_non_diverge(self):
+        avant = self._poser(societe='K and L building', ice=self.ICE)
+        champs, message = synchroniser_identite_client(
+            self.lead, avant, self.user)
+        client = self._recharger()
+        self.assertEqual(client.type_client, Client.TypeClient.ENTREPRISE)
+        self.assertEqual(client.nom, 'K and L building')
+        self.assertEqual(client.ice, self.ICE)
+        self.assertEqual(client.contact_nom, 'Khalid Lachraf')
+        self.assertIn('type_client', champs)
+        self.assertIn('ice', champs)
+        self.assertIsNone(message)
+
+    def test_client_diverge_sans_force_jamais_promu(self):
+        Client.objects.filter(pk=self.client_obj.pk).update(nom='Khalid L.')
+        avant = self._poser(societe='K and L building', ice=self.ICE)
+        champs, _message = synchroniser_identite_client(
+            self.lead, avant, self.user)
+        client = self._recharger()
+        self.assertEqual(client.type_client, Client.TypeClient.PARTICULIER)
+        self.assertEqual(client.nom, 'Khalid L.')
+        self.assertFalse(client.ice)
+        self.assertNotIn('type_client', champs)
+
+    def test_force_promeut_meme_un_client_diverge(self):
+        Client.objects.filter(pk=self.client_obj.pk).update(nom='Khalid L.')
+        self._poser(societe='K and L building', ice=self.ICE)
+        champs, _message = synchroniser_identite_client(
+            self.lead, None, self.user, force=True)
+        client = self._recharger()
+        self.assertEqual(client.type_client, Client.TypeClient.ENTREPRISE)
+        self.assertEqual(client.nom, 'K and L building')
+        self.assertEqual(client.ice, self.ICE)
+        self.assertIn('type_client', champs)
+
+    def test_sans_avant_et_sans_force_pas_de_promotion(self):
+        self._poser(societe='K and L building', ice=self.ICE)
+        champs, message = synchroniser_identite_client(
+            self.lead, None, self.user)
+        self.assertEqual(champs, [])
+        self.assertIsNone(message)
+        self.assertEqual(
+            self._recharger().type_client, Client.TypeClient.PARTICULIER)
+
+    def test_lead_commercial_sans_societe_ne_promeut_rien(self):
+        avant = self._poser(type_installation='commercial', ice=self.ICE)
+        champs, _message = synchroniser_identite_client(
+            self.lead, avant, self.user)
+        client = self._recharger()
+        self.assertEqual(client.type_client, Client.TypeClient.PARTICULIER)
+        self.assertEqual(client.nom, 'Lachraf')
+        self.assertFalse(client.ice)
+        self.assertEqual(champs, [])
+        self.assertEqual(client_ecart(self.lead), [])
+
+    def test_societe_blanche_ne_promeut_rien(self):
+        avant = self._poser(societe='   ', ice=self.ICE)
+        synchroniser_identite_client(self.lead, avant, self.user)
+        self.assertEqual(
+            self._recharger().type_client, Client.TypeClient.PARTICULIER)
+
+    def test_ice_different_deja_present_jamais_ecrase_sans_force(self):
+        Client.objects.filter(pk=self.client_obj.pk).update(
+            ice='111111111111111')
+        avant = self._poser(societe='K and L building', ice=self.ICE)
+        champs, message = synchroniser_identite_client(
+            self.lead, avant, self.user)
+        client = self._recharger()
+        # Promu, mais l'ICE de la fiche reste, et le message le dit.
+        self.assertEqual(client.type_client, Client.TypeClient.ENTREPRISE)
+        self.assertEqual(client.nom, 'K and L building')
+        self.assertEqual(client.ice, '111111111111111')
+        self.assertNotIn('ice', champs)
+        self.assertIn('ICE', message)
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=self.lead, body__icontains='ICE').exists())
+
+    def test_force_ecrase_l_ice_different(self):
+        Client.objects.filter(pk=self.client_obj.pk).update(
+            ice='111111111111111')
+        self._poser(societe='K and L building', ice=self.ICE)
+        synchroniser_identite_client(self.lead, None, self.user, force=True)
+        self.assertEqual(self._recharger().ice, self.ICE)
+
+    def test_jamais_de_retrogradation_en_particulier(self):
+        lead = Lead.objects.create(
+            company=self.company, nom='Alami', prenom='Sara',
+            societe='Atlas SARL', email='atlas@example.com',
+            telephone='0612345622')
+        client = resolve_client_for_lead(lead)
+        self.assertEqual(client.type_client, Client.TypeClient.ENTREPRISE)
+        avant = Lead.objects.get(pk=lead.pk)
+        Lead.objects.filter(pk=lead.pk).update(societe='')
+        lead.refresh_from_db()
+        synchroniser_identite_client(lead, avant, self.user)
+        synchroniser_identite_client(lead, None, self.user, force=True)
+        client.refresh_from_db()
+        self.assertEqual(client.type_client, Client.TypeClient.ENTREPRISE)
+
+    def test_client_ecart_liste_l_ecart_de_promotion(self):
+        self.assertEqual(client_ecart(self.lead), [])
+        self._poser(societe='K and L building', ice=self.ICE,
+                    fonction_contact='Gérant')
+        ecart = client_ecart(self.lead)
+        for champ in ('nom', 'contact_nom', 'contact_fonction', 'ice'):
+            self.assertIn(champ, ecart)
+        # Lecture seule : rien n'a bougé.
+        self.assertEqual(
+            self._recharger().type_client, Client.TypeClient.PARTICULIER)
+        # Le GET du lead porte le même écart (bouton « Mettre à jour »).
+        r = self.api.get(f'/api/django/crm/leads/{self.lead.id}/')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()['client_ecart'], ecart)
+
+    def test_action_mettre_a_jour_la_fiche_client_promeut(self):
+        Client.objects.filter(pk=self.client_obj.pk).update(nom='Khalid L.')
+        self._poser(societe='K and L building', ice=self.ICE)
+        r = self.api.post(
+            f'/api/django/crm/leads/{self.lead.id}/synchroniser-client/', {},
+            format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(set(r.json()), set(CONTRAT['exemple']))
+        self.assertIn('type_client', r.json()['champs_mis_a_jour'])
+        self.assertEqual(r.json()['client_ecart'], [])
+        client = self._recharger()
+        self.assertEqual(client.type_client, Client.TypeClient.ENTREPRISE)
+        self.assertEqual(client.nom, 'K and L building')
