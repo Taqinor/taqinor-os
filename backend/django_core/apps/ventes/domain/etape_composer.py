@@ -142,6 +142,9 @@ class IntentionComposition:
     #: ``domain/resolution_catalogue``. ``None`` (LE DÉFAUT) ⇒ inchangé.
     onduleur_impose: object = None
     batterie_imposee: object = None
+    #: ADEV156 (D-ACAL-80) — le froid du SITE (``compatibilites.froid_du_lead``)
+    #: du verdict panneau / onduleur. ``None`` (LE DÉFAUT) ⇒ −5 °C, inchangé.
+    froid: object = None
 
 
 @dataclass(frozen=True)
@@ -215,6 +218,7 @@ def composer(intention):
         phase=intention.phase,
         regles_2710=getattr(intention, 'regles_2710', True),
         modules_affleurants=getattr(intention, 'modules_affleurants', 0),  # ACAL927
+        froid=getattr(intention, 'froid', None),  # ADEV156
     )
     catalogue = reglages.catalogue
     kwc = float(intention.kwc or 0)
@@ -337,6 +341,8 @@ class ContexteSonde:
     ville: str = ''
     #: RSIZ2/3/5 — cf. ``IntentionComposition.regles_2710``.
     regles_2710: bool = True
+    #: ADEV156 — cf. ``IntentionComposition.froid`` (même froid que le pipeline).
+    froid: object = None
 
 
 def _mppt_paires_du_devis(devis):
@@ -368,6 +374,7 @@ def contexte_sonde_du_devis(devis, *, reglages=None):
     """Le ``ContexteSonde`` d'un devis : gamme, structure, phase, MPPT, TVA,
     hors-réseau et ville du barème — lus UNE fois, sur le devis et son lead."""
     from apps.crm.selectors import lead_du_devis
+    from apps.ventes.compatibilites import froid_du_lead
     from apps.ventes.domain.composition import structure_produit_id_du_devis
     from apps.ventes.domain.gammes import gamme_nom
     from apps.ventes.domain.regles_calcul import (
@@ -395,7 +402,8 @@ def contexte_sonde_du_devis(devis, *, reglages=None):
         hors_reseau=bool(hors_reseau),
         ville=ville_du_lead(lead),
         # RSIZ2/3/5 — un devis aux règles d'origine (< 3) garde ses règles.
-        regles_2710=regles_au_moins(devis, REGLES_CORRIGEES_2710))
+        regles_2710=regles_au_moins(devis, REGLES_CORRIGEES_2710),
+        froid=froid_du_lead(lead, devis))  # ADEV156
 
 
 def composer_sonde(contexte, nb_panneaux, *, avec_batterie, cible_kwh=None,
@@ -424,7 +432,8 @@ def composer_sonde(contexte, nb_panneaux, *, avec_batterie, cible_kwh=None,
         ville=contexte.ville,
         batterie_module_kwh=module_kwh,
         reglages=contexte.reglages,
-        regles_2710=getattr(contexte, 'regles_2710', True)))
+        regles_2710=getattr(contexte, 'regles_2710', True),
+        froid=getattr(contexte, 'froid', None)))
 
 
 def sonder_wattage(contexte):
