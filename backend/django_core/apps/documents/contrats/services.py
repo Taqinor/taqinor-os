@@ -54,6 +54,7 @@ def preparer_dossier(chantier, user=None):
     if chantier is None or chantier.company_id is None:
         return []
     from ..models import ActeContractuel
+    user = user if getattr(user, 'pk', None) else None
     with transaction.atomic():
         for type_acte, variante, _rang in T.LIGNES_DOSSIER:
             reference = K.reference_acte(type_acte, chantier.reference,
