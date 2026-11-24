@@ -1071,7 +1071,7 @@ réglages vides » : 5 pertes supposées ; météo « plusieurs années réelles
 2. Clé de carte : l'orchestrateur ne saisit pas une clé de production ; à poser par le fondateur dans `l5t/l5t.env`
    (`PUBLIC_MAPTILER_KEY=`), sinon le test se joue sur fond gris.
 
-### Point du 24/11, ~17 h 15 UTC (le plus récent — REPRENDRE ICI)
+### Point du 24/11, ~15 h 20 UTC (le plus récent — REPRENDRE ICI)
 
 **Règles du fondateur ajoutées dans la journée (toutes en vigueur)**
 - « you push too many CIs » : UNE PR par gros lot, plus de petites PR. Le lot en cours = la branche locale
