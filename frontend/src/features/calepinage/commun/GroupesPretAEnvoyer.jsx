@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Info, OctagonX } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronRight, Info, OctagonX } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '../../../ui/Popover'
 import { Icone as Picto } from '../atelier/coque/primitives'
 import { ETAPES, etapeDeOnglet } from '../atelier/parcoursGuide'
@@ -70,6 +70,43 @@ function Ligne({ controle, onRegler }) {
         </button>
       )}
     </li>
+  )
+}
+
+const estPoint = (c) => c.etat === 'a_regler' || c.etat === 'bloquant'
+
+/* ACAL1725 — un groupe qui porte un point à régler reste déplié (ses points d'abord) ; un groupe SANS point se
+   replie sur UNE ligne « Électrique — 4 bons » (ses contrôles restent là, un clic les ouvre) : les quinze
+   contrôles tiennent dans la carte sans liste à défilement. Le compte ne vient que des états servis. */
+function Groupe({ groupe, onRegler }) {
+  const lignes = (
+    <ul className="cdoc-lignes">
+      {rangerControles(groupe.controles).map((c) => <Ligne key={c.code} controle={c} onRegler={onRegler} />)}
+    </ul>
+  )
+  const testid = `cal-pret-groupe-${groupe.cle}`
+  if (groupe.controles.some(estPoint)) {
+    return (
+      <div className="cdoc-groupe" data-testid={testid}>
+        <h3 className="cdoc-groupe-titre">{groupe.libelle}</h3>
+        {lignes}
+      </div>
+    )
+  }
+  const bons = groupe.controles.filter((c) => c.etat === 'ok').length
+  const infos = groupe.controles.length - bons
+  const compte = [
+    bons > 0 && `${bons} ${bons > 1 ? 'bons' : 'bon'}`,
+    infos > 0 && `${infos} pour information`,
+  ].filter(Boolean).join(' · ')
+  return (
+    <details className="cdoc-groupe cdoc-groupe-replie" data-testid={testid}>
+      <summary>
+        <ChevronRight size={16} className="cdoc-chevron" aria-hidden="true" />
+        <h3 className="cdoc-groupe-titre">{`${groupe.libelle} — ${compte}`}</h3>
+      </summary>
+      {lignes}
+    </details>
   )
 }
 
@@ -213,15 +250,8 @@ export default function GroupesPretAEnvoyer({
         </span>
       </div>
       {avis}
-      <div className="cdoc-groupes">
-        {ranges.map((g) => (
-          <div key={g.cle} className="cdoc-groupe" data-testid={`cal-pret-groupe-${g.cle}`}>
-            <h3 className="cdoc-groupe-titre">{g.libelle}</h3>
-            <ul className="cdoc-lignes">
-              {rangerControles(g.controles).map((c) => <Ligne key={c.code} controle={c} onRegler={onRegler} />)}
-            </ul>
-          </div>
-        ))}
+      <div className="cdoc-groupes" data-testid="cal-pret-groupes">
+        {ranges.map((g) => <Groupe key={g.cle} groupe={g} onRegler={onRegler} />)}
       </div>
       <div className="cdoc-pied">
         <div className="cdoc-pied-texte">

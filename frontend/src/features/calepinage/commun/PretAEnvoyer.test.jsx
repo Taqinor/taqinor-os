@@ -145,6 +145,45 @@ describe('PretAEnvoyer — lent n’est pas échoué (H3)', () => {
   })
 })
 
+describe('PretAEnvoyer par étape — quinze contrôles sans défilement interne (ACAL1725)', () => {
+  // Quinze contrôles : six à régler (Électrique et Résultats), neuf bons (Toit et Panneaux n'ont aucun point).
+  const quinze = () => [
+    ...['visite_validee', 'approbation_a_jour', 'pentes_confirmees', 'obstacle_hors_pan'].map((c) => ligne(modeleOk, c)),
+    ...['kwc_coherent', 'taille_sans_facture'].map((c) => ligne(modeleOk, c)),
+    ...['verdict_electrique', 'materiel_designe', 'chutes_tension', 'terre_protections'].map((c) => ligne(modeleARegler, c)),
+    ...['tension_froid', 'orientation_mppt'].map((c) => ligne(modeleOk, c)),
+    ligne(modeleARegler, 'simulation_fraiche'), ligne(modeleARegler, 'ecart_pvgis'), ligne(modeleOk, 'dossier_pieces'),
+  ]
+
+  it('un groupe sans point à régler se replie sur une ligne « Toit — 4 bons », ses contrôles restent lisibles', async () => {
+    calepinageApi.calepinages.pretAEnvoyer.mockResolvedValue(servi(quinze()))
+    monter({ calepinageId: 301, groupes: true })
+    const toit = await screen.findByTestId('cal-pret-groupe-toit')
+    expect(toit.tagName).toBe('DETAILS')
+    expect(toit).not.toHaveAttribute('open')
+    expect(within(toit).getByText('Toit — 4 bons')).toBeTruthy()
+    expect(screen.getByTestId('cal-pret-groupe-panneaux')).toHaveTextContent('Panneaux — 2 bons')
+    expect(codesAffiches(toit)).toHaveLength(4)
+    await userEvent.click(within(toit).getByText('Toit — 4 bons'))
+    expect(toit).toHaveAttribute('open')
+  })
+
+  it('les groupes qui portent un point à régler restent dépliés, en tête, avec leurs six points ; aucune hauteur fixe', async () => {
+    calepinageApi.calepinages.pretAEnvoyer.mockResolvedValue(servi(quinze()))
+    monter({ calepinageId: 302, groupes: true })
+    await screen.findByTestId('cal-pret-groupe-electrique')
+    for (const cle of ['electrique', 'resultats']) {
+      expect(screen.getByTestId(`cal-pret-groupe-${cle}`).tagName).not.toBe('DETAILS')
+    }
+    const groupes = screen.getByTestId('cal-pret-groupes')
+    expect([...groupes.children].map((n) => n.dataset.testid))
+      .toEqual(['cal-pret-groupe-electrique', 'cal-pret-groupe-resultats', 'cal-pret-groupe-toit', 'cal-pret-groupe-panneaux'])
+    expect(groupes.querySelectorAll('li[data-etat="a_regler"]')).toHaveLength(6)
+    expect(groupes.style.height).toBe('')
+    expect(groupes.style.maxHeight).toBe('')
+  })
+})
+
 describe('PretAEnvoyer — « Régler » mène à un écran qui existe (ACAL1703)', () => {
   const Ou = () => {
     const lieu = useLocation()

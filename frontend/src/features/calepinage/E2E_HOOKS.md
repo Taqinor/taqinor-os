@@ -1038,7 +1038,8 @@ retiré plus un hook ajouté.
 | `cal-docs-attente` | étape Documents : documents en cours de lecture. |
 | `cal-docs-vide` | étape Documents : aucun document servi. |
 | `cal-docs-info-devis` | étape Documents : bandeau d’information sur le devis. |
-| `cal-pret-groupe` | « Prêt à envoyer ? » : groupe de contrôles d’une étape (suffixe = clé de l’étape). |
+| `cal-pret-groupe` | « Prêt à envoyer ? » : groupe de contrôles d’une étape (suffixe = clé de l’étape) ; un groupe sans point à régler est un `<details>` replié « Électrique — 4 bons » (ACAL1725). |
+| `cal-pret-groupes` | « Prêt à envoyer ? » par étape : la liste des groupes (sans hauteur fixe, ACAL1725). |
 | `cal-liste-filtres-etat` | liste : puces de filtre par état (comptes servis). |
 | `cal-vignette-toit` | liste : vignette du toit sur la carte d’un calepinage (contours des pans, ou « Aucun aperçu »). |
 | `cal-signal` | liste : pastille « N point à régler » d’une carte (suffixe = identifiant du calepinage). |

@@ -840,7 +840,7 @@ describe('EtapeDocuments — l’écran guidé de la maquette (ACAL1193)', () =>
     expect(await within(gauche).findByRole('heading', { name: 'Prêt à envoyer ?' })).toBeTruthy()
     expect(screen.getByTestId('cal-documents-synthese')).toHaveTextContent('9 contrôles sur 10 sont bons.')
     expect(within(gauche).getAllByRole('heading', { level: 3 }).map((h) => h.textContent))
-      .toEqual(['Toit', 'Panneaux', 'Électrique', 'Résultats'])
+      .toEqual(['Toit', 'Panneaux — 3 bons', 'Électrique — 3 bons', 'Résultats — 2 bons']) // ACAL1725 : sans point ⇒ replié
     expect(gauche).toHaveTextContent('1 point à régler')
     expect(within(screen.getByTestId('cal-pret-ligne-pentes_confirmees'))
       .getByRole('button', { name: 'Régler dans Toit' })).toBeTruthy()

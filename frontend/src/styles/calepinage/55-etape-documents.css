@@ -42,6 +42,16 @@
 .cdoc-groupes { display: flex; flex: 1 1 auto; min-height: 0; overflow-y: auto; flex-direction: column; gap: 10px; }
 .cdoc-groupe { display: flex; flex-direction: column; gap: 4px; }
 .cdoc-groupe-titre { margin: 0; font-size: 12px; font-weight: 600; color: var(--muted-foreground); }
+/* ACAL1725 — un groupe sans point à régler : une ligne « Électrique — 4 bons » qui se déplie (cible tactile 44 px). */
+.cdoc-groupe-replie > summary {
+  display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 4px; cursor: pointer; list-style: none;
+}
+.cdoc-groupe-replie > summary::-webkit-details-marker { display: none; }
+.cdoc-groupe-replie > summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 8px; }
+.cdoc-chevron { flex: none; color: var(--muted-foreground); transition: transform 120ms; }
+.cdoc-groupe-replie[open] > summary .cdoc-chevron { transform: rotate(90deg); }
+.cdoc-groupe-replie[open] > summary { min-height: 32px; }
+@media (prefers-reduced-motion: reduce) { .cdoc-chevron { transition: none; } }
 .cdoc-lignes { margin: 0; padding: 0; list-style: none; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
 .cdoc-ligne {
   display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 2px 8px 2px 14px;
