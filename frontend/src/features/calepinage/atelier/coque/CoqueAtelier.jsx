@@ -15,7 +15,7 @@ import BarreProjet from './BarreProjet'
 import { usePoseVivante } from './etapes/panneaux/constructeur'
 import { nomClientServi, sousTitrePose } from './projet'
 import { ContexteCoque, ContextePresentation } from './contexteCoque'
-import PanneauEtape, { ProgressionEtapes } from './PanneauEtape'
+import PanneauEtape from './PanneauEtape'
 import { BoutonOr } from './primitives'
 import RailEtapes from './RailEtapes'
 import { useToastsHorsDuBouton } from './toastsAtelier'
@@ -381,13 +381,13 @@ export default function CoqueAtelier({
             </div>
             {!carteVisible && (
               <div className="cal-coque-plein">
-                {/* ACAL1727 — la même tête que le panneau d'étape : « Étape N sur 5 » + titre (cadre plein seulement ;
-                    le Schéma garde son panneau à droite). */}
+                {/* ACAL1727 — « Étape N sur 5 » + titre (cadre plein seulement ; le Schéma garde son panneau à droite).
+                    Maquettes v2 Resultats et Documents : AUCUNE tête visible — la position reste dite aux lecteurs
+                    d'écran (`sr-only`), le rail montre déjà l'étape active (`aria-current="step"`). */}
                 {pleine && rang >= 0 && ecran?.titre && (
-                  <div className="cal-plein-etape-tete" data-testid="cal-plein-etape-tete">
-                    <ProgressionEtapes numero={rang + 1} etats={parcours.etats} />
-                    <p className="cal-panneau-etape-rang">{`Étape ${rang + 1} sur ${TOTAL}`}</p>
-                    <h2 className="cal-panneau-etape-titre">{ecran.titre}</h2>
+                  <div className="sr-only" data-testid="cal-plein-etape-tete">
+                    <p>{`Étape ${rang + 1} sur ${TOTAL}`}</p>
+                    <h2>{ecran.titre}</h2>
                   </div>
                 )}
                 {ecranMonte}

@@ -1284,7 +1284,7 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
     expect(coque).toHaveAttribute('data-cadre', 'carte')
   })
 
-  it('ACAL1727 — Résultats et Documents portent « Étape N sur 5 » et leur titre en tête de l’écran plein', async () => {
+  it('ACAL1727 — Résultats et Documents disent « Étape N sur 5 » et leur titre aux lecteurs d’écran, sans tête visible (maquettes v2)', async () => {
     amorcer()
     rendreCalepinage(CTX.calepinage.id)
     await screen.findByTestId('cal-coque')
@@ -1292,6 +1292,10 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
     const tete = await screen.findByTestId('cal-plein-etape-tete')
     expect(tete).toHaveTextContent('Étape 4 sur 5')
     expect(tete).toHaveTextContent('Les résultats')
+    // Maquettes v2 Resultats / Documents : aucune tête ni barre de progression visibles ; le rail porte l'étape active.
+    expect(tete).toHaveClass('sr-only')
+    expect(within(tete).queryByTestId('cal-progression-etapes')).toBeNull()
+    expect(screen.getByTestId('cal-etape-resultats')).toHaveAttribute('aria-current', 'step')
     await userEvent.click(screen.getByTestId('cal-etape-documents'))
     await waitFor(() => expect(screen.getByTestId('cal-plein-etape-tete')).toHaveTextContent('Étape 5 sur 5'))
     expect(screen.getByTestId('cal-plein-etape-tete')).toHaveTextContent('Les documents')

@@ -984,7 +984,7 @@ retiré plus un hook ajouté.
 | `cal-rail-avance` | coque : bouton « Avancé » en bas du rail (ouvre l’ancien inspecteur entier ; `aria-expanded`). |
 | `cal-panneau-etape` | coque : panneau d’étape de droite (`#rp9-studio-inspecteur`). |
 | `cal-panneau-etape-titre` | coque : titre du panneau d’étape (« Le toit »), sous « Étape N sur 5 ». |
-| `cal-plein-etape-tete` | coque : en-tête « Étape N sur 5 » + titre au-dessus d’un écran pleine largeur (Résultats, Documents). |
+| `cal-plein-etape-tete` | coque : « Étape N sur 5 » + titre d’un écran pleine largeur (Résultats, Documents), lu par les lecteurs d’écran seulement (`sr-only`, maquettes v2 sans tête visible). |
 | `cal-progression-etapes` | coque : les cinq traits de progression en tête du panneau d’étape (et de l’écran plein) ; un `span[data-etat]` par étape : `fait`, `actif`, `a-venir` (ACAL1803). |
 | `cal-sur-carte-resume` | étape Toit/Panneaux : puce blanche posée sur la carte (indicateurs servis). |
 | `cal-barre-outils-carte` | étape Toit : barre d’outils flottante au bas de la carte. |
