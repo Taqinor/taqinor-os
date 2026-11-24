@@ -21,6 +21,8 @@ export default function ActeEtape({
     ['emettre', !ecarte && acte.peut_emettre, principal === 'emettre' ? 'default' : 'outline'],
     ['signer', !ecarte && acte.peut_signer, principal === 'signer' ? 'default' : 'outline'],
     ['papier', !ecarte && acte.peut_signer, 'outline'],
+    // Régénérer = rouvrir + émettre en un geste : même droit, même état.
+    ['regenerer', !ecarte && acte.peut_rouvrir, 'outline'],
     ['rouvrir', !ecarte && acte.peut_rouvrir, 'outline'],
     ['telecharger', !ecarte, 'ghost'],
   ].filter(([, visible]) => visible)

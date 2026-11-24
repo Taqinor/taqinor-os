@@ -40,7 +40,8 @@ def _article(cle, titre, paragraphes, ctx):
 
 # Une seule règle de garde, la même au contrat (Propriété), à l'acte 2
 # (Garde, avec « sans l'ouvrir ni le déplacer ») et à l'acte 3 (la dernière
-# proposition seule) — revue 1, T8.
+# proposition seule) — revue 1, T8. Décision de Reda du 24/11/2026 : la règle
+# ne dit plus que la société « a la garde du chantier » pendant la pose.
 _GARDE_LIVRAISON = (
     "De la livraison au début de la pose, le Client a la garde du matériel "
     "livré : il le conserve à l'abri, dans un lieu fermé, ")
@@ -48,15 +49,13 @@ _GARDE_SANS_OUVRIR = "sans l'ouvrir ni le déplacer, "
 _GARDE_REPOND = (
     "et répond des pertes ou des dégradations dues à son fait ou à un "
     "défaut de surveillance. ")
-_GARDE_POSE = (
-    "Pendant la pose et jusqu'à la réception, {societe} a la garde du "
-    "chantier ; à la réception, ")
+_GARDE_RECEPTION = "À la réception, "
 _GARDE_TRANSFERT = "la garde de l'installation passe au Client."
 
 
 def _regle_de_garde(sans_ouvrir=False):
     return (_GARDE_LIVRAISON + (_GARDE_SANS_OUVRIR if sans_ouvrir else '')
-            + _GARDE_REPOND + _GARDE_POSE + _GARDE_TRANSFERT)
+            + _GARDE_REPOND + _GARDE_RECEPTION + _GARDE_TRANSFERT)
 
 
 # Textes communs au contrat et au certificat de garantie (acte 4).
@@ -91,9 +90,7 @@ def _contrat_installation(ctx, options):
             "L'installation est livrée **clé en main** : étude, fourniture "
             "du matériel, pose, raccordement à l'installation électrique du "
             "Client, mise en service et explication du fonctionnement.",
-            "Le devis accepté fait partie du contrat. Si deux lignes se "
-            "contredisent, les conditions particulières l'emportent, puis le "
-            "présent contrat, puis le devis.",
+            "Le devis accepté fait partie du contrat.",
         ]),
         ('prix', 'Prix', [
             "Le prix est **ferme et définitif** : {total_ttc} toutes taxes "
@@ -159,17 +156,6 @@ def _contrat_installation(ctx, options):
             "- payer chaque étape au moment prévu à l'article Paiement.",
         ]),
     ]
-    if options.get('raccorde_reseau', True):
-        arts.append(('demarches', "Démarches auprès du réseau électrique", [
-            "La loi n° 82-21 sur l'autoproduction d'électricité demande au "
-            "propriétaire d'une installation raccordée au réseau de la "
-            "déclarer au gestionnaire du réseau avant les travaux ou, selon "
-            "sa puissance, d'obtenir son accord de raccordement.",
-            "Le Client charge {societe} de préparer ce dossier et de le "
-            "suivre pour lui ; il signe les documents demandés. Les frais "
-            "éventuels du gestionnaire du réseau, dont ceux du compteur, "
-            "restent à la charge du Client.",
-        ]))
     if options.get('reserve_propriete', True):
         arts.append(('propriete', 'Propriété du matériel', [
             "Le matériel reste la propriété de {societe} jusqu'au paiement "
@@ -206,12 +192,6 @@ def _contrat_installation(ctx, options):
             "Le Client bénéficie des garanties du tableau « Vos garanties » : "
             "celles des fabricants sur le matériel, et celle de {societe} "
             "sur son travail de pose pendant {garantie_installation}.",
-            "Pendant ces durées, {societe} est l'interlocuteur unique du "
-            "Client : elle fait le diagnostic, traite la demande auprès du "
-            "fabricant et prend à sa charge les frais de transport du "
-            "matériel garanti. La durée d'une garantie est prolongée du "
-            "temps pendant lequel le matériel est immobilisé pour "
-            "réparation. {pieces_detachees}",
             _GARANTIE_LEGALE,
             "Elles ne couvrent pas : " + " ; ".join(_EXCLUSIONS) + ".",
         ]),
@@ -336,7 +316,7 @@ def _pv_reception(ctx, options):
             "devis {devis_reference}, que l'installation est conforme à ces "
             "documents et fonctionne, et qu'il n'a constaté aucun défaut "
             "apparent en dehors des réserves écrites ci-dessus.",
-            "À la réception, " + _GARDE_TRANSFERT + " "
+            _GARDE_RECEPTION + _GARDE_TRANSFERT + " "
             "{societe} lève les réserves éventuelles dans le délai "
             "indiqué ; leur levée est constatée par écrit et signée du "
             "Client.",
@@ -381,27 +361,14 @@ def _cloture_garanties(ctx, options):
     consommateur = options.get('consommateur', True)
     arts = [
         ('contact', 'Qui appeler', [
-            "Un seul interlocuteur : le service après-vente de {societe}. "
-            "Décrivez ce que vous constatez et envoyez une photo de l'écran "
-            "de l'onduleur ou de l'application de suivi.",
-        ]),
-        ('demarche', 'Comment se passe une demande', [
-            "- {societe} fait le diagnostic, à distance ou sur place ;\n"
-            "- si une garantie joue, {societe} répare ou remplace le "
-            "matériel et traite la demande auprès du fabricant ;\n"
-            "- les réparations sont faites sur place ou à l'atelier de "
-            "{societe}, {adresse_societe} ;\n"
-            "- le matériel à renvoyer au fabricant passe par {societe} ;\n"
-            "- les frais de transport du matériel garanti sont à la charge "
-            "de {societe} ;\n"
-            "- la durée de la garantie est prolongée du temps pendant "
-            "lequel le matériel est immobilisé ; un reçu daté vous est "
-            "remis à l'enlèvement et au retour.",
+            "En cas de panne, contactez le service après-vente de "
+            "{societe}. Décrivez ce que vous constatez et envoyez une photo "
+            "de l'écran de l'onduleur ou de l'application de suivi.",
         ]),
         ('couvert', 'Ce qui est couvert', [
             "Les défauts du matériel, dans les conditions de chaque "
             "fabricant, et les défauts de pose pendant la durée de la "
-            "garantie d'installation. {pieces_detachees}",
+            "garantie d'installation.",
         ]),
         ('exclusions', "Ce qui ne l'est pas", [
             "- " + " ;\n- ".join(_EXCLUSIONS) + ".",
@@ -420,7 +387,7 @@ def _cloture_garanties(ctx, options):
 def articles_par_defaut(type_acte, variante='', ctx=None, options=None):
     """Les articles par défaut d'un acte. ``ctx`` : repères déjà mis en forme
     (montants, dates, noms) ; ``options`` : ``consommateur``,
-    ``reserve_propriete``, ``raccorde_reseau``, ``penalite_retard_pct``."""
+    ``reserve_propriete``, ``penalite_retard_pct``."""
     ctx = ctx or {}
     options = options or {}
     if type_acte == 'contrat_installation':

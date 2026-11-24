@@ -32,6 +32,14 @@ bien terminés, signé par le client (protection si le solde n'est pas payé), (
   alimentée par `apps.ventes.utils.pdf.logo_document_html` (rôle « couverture », variante claire) ; un test refuse
   tout gabarit qui imprimerait `logo_uri` lui-même. Non couverts, volontairement : le repli hérité `devis.html`
   (règle n° 4), les pièces du calepinage (logo du thème, `TenantTheme`), les e-mails et le portail.
+- **Textes retirés du contrat après sa lecture en production (24/11/2026)** — ne pas les remettre : la phrase
+  « si deux lignes se contredisent… » (article 1) ; l'article « Démarches auprès du réseau électrique » ; « la société
+  a la garde du chantier » pendant la pose ; et tout engagement de S'OCCUPER de la garantie (« we should not be
+  obliged by this contract to take care of his warranty ») : interlocuteur unique, diagnostic, démarche auprès
+  du fabricant, frais de transport, pièces détachées — dans le contrat comme dans le certificat. Les garanties
+  restent citées (tableau, durées, garantie légale, exclusions). Détail : `docs/contrats/conception.md` § 9.
+- **Bouton « Régénérer »** (24/11/2026) : Reda devait refaire un devis pour obtenir un contrat à jour. Un acte émis
+  non signé se refait en un geste (`POST documents/actes/<id>/regenerer/`), tout ou rien ; jamais un acte signé.
 - **Logo affiché par Google = l'emblème seul** (24/11/2026, « just keep the sun and the bolt ») : icônes du site
   (`apps/web/public/favicon.*`, `icon-*.png`, `apple-touch-icon.png`) et logo de la donnée structurée
   (`logo-embleme.png`) = soleil doré à huit rayons + éclair bleu nuit, géométrie de `Logo.astro`. `logo.png` reste

@@ -817,8 +817,8 @@ FICHES = {
     # bloc affichait « Garantie 5 ans », une valeur introuvable dans AUCUN
     # document Dyness officiel (contradiction exacte relevée par l'audit — le
     # web affichait 10 ans pour le même produit DL5.0C). Les documents
-    # officiels dyness.com trouvés donnent 10 ans (version Europe) ou 7 ans
-    # (version Amériques/Pro) selon la région — jamais 5. Harmonisé sur 10 ans,
+    # officiels dyness.com trouvés donnent 10 ans pour la DL5.0C d'origine
+    # (seule une version V2 diffère, hors périmètre ici) — jamais 5. Harmonisé sur 10 ans,
     # même valeur et même réserve régionale que le web.
     # « 90 % DoD » n'est PLUS répété ici (PVFCH) : ``bat_dod_pct`` = 90.0 sur
     # ces deux SKU dans FICHES_TECHNIQUES ci-dessous PORTE DÉJÀ ce nombre — le
@@ -833,24 +833,29 @@ FICHES = {
     # data if it is wrong ») : fiches RELUES sur les documents officiels
     # dyness.com — datasheet DL5.0C V1.0-20241011, manuel DL5.0C V2-EN
     # 20241114, garantie Afrique DL5.0C V2-202502 ; datasheet MEA Powerbox Pro
-    # 20241023 + manuel Powerbox Pro V2-EN 20230724. Les deux SKU ne partagent
-    # PLUS un texte unique : « 7 ans » est une clause du seul DL5.0C V2 (7 ans
-    # de base, 10 ans par extension) ; aucune lettre de garantie Powerbox Pro
-    # n'est publiée (10 ans = harmonisation fondateur O1/O3 avec la fiche web,
-    # inchangée, à faire confirmer par écrit par Dyness). Les deux manuels
-    # imposent « Installation location should be away from the sea to avoid
-    # brine and high humidity environment » — dit en prose, aucun champ.
+    # 20241023 + manuel Powerbox Pro V2-EN 20230724. Aucune lettre de garantie
+    # Powerbox Pro n'est publiée (10 ans = harmonisation fondateur O1/O3 avec
+    # la fiche web, inchangée, à faire confirmer par écrit par Dyness). Les
+    # deux manuels imposent « Installation location should be away from the
+    # sea to avoid brine and high humidity environment » — dit en prose,
+    # aucun champ.
+    # DÉCISION FONDATEUR 24/11/2026 : la DL5.0C posée est la version
+    # d'ORIGINE (aucun « V2 » sur l'étiquette). Conditions de garantie
+    # officielles Dyness, version Afrique V2-202502 (dyness.com, fichier
+    # DynessWarrantyTermsDL5.0Cfeizhouban2.pdf) : la DL5.0C d'origine est
+    # garantie 10 ans ; seule la DL5.0C V2 a 7 ans de base. Le 7 ans posé le
+    # 27/10 « à la place du fondateur, à revoir » est donc retiré : 10 ans.
     # Trou comblé (20/08/2026) : ``garantie_mois`` 120 posé par le seeder
     # (la migration 0012 ne backfillait que les batteries EXISTANTES).
     'BAT-DEY-5': {
         'marque': 'Dyness',
         # RPDF (fondateur 27/10/2026 : une garantie client = UNE durée, celle
-        # du Maroc, sans réserve) — garantie Afrique DL5.0C V2-202502 :
-        # 7 ans de base, 10 ans seulement par extension ACHETÉE (même règle
-        # que Deye 5 ans : l'option non achetée ne s'imprime pas).
-        'garantie': ('Garantie constructeur 7 ans · '
+        # du Maroc, sans « selon site », « variante », « version » ni
+        # « extensible ») ; durée corrigée à 10 ans le 24/11/2026 (voir
+        # ci-dessus) — migration stock 0187 pour les bases déjà semées.
+        'garantie': ('Garantie constructeur 10 ans · '
                      '6 000 cycles (0,2C, 25 °C, DoD 90 %)'),
-        'garantie_mois': 84,
+        'garantie_mois': 120,
         # PVFCH : tension, énergie, DoD et mise en parallèle vivent dans la
         # FicheTechnique — la prose ne garde que ce qu'aucun champ ne porte.
         'description': ('Batterie lithium LiFePO4 basse tension 100 Ah\n'

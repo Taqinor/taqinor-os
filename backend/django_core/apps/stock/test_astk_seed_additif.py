@@ -148,8 +148,9 @@ class SeedAdditifTests(TestCase):
 class GarantiesMarocTests(TestCase):
     """RPDF (fondateur 27/10/2026) — une garantie client est UNE durée, celle
     du Maroc : jamais « selon site », « variante régionale » ni « version ».
-    Deye = 5 ans et Dyness DL5.0C V2 = 7 ans (durées de base, l'extension
-    payante n'est pas achetée), texte ET ``garantie_mois`` (sinon la page 2
+    Deye = 5 ans (durée de base, l'extension payante n'est pas achetée) et
+    Dyness DL5.0C d'origine = 10 ans (décision fondateur 24/11/2026, le 7 ans
+    de la V2 ne s'applique pas), texte ET ``garantie_mois`` (sinon la page 2
     et la tuile de la page 3 se contredisent) ; la migration 0174 corrige les
     bases déjà seedées sans toucher une saisie du fondateur."""
 
@@ -163,14 +164,14 @@ class GarantiesMarocTests(TestCase):
             for mot in ('selon', 'variante', 'régionale', 'version', ' à 10'):
                 self.assertNotIn(mot, texte, sku)
 
-    def test_seed_deye_5_ans_dyness_7_ans(self):
+    def test_seed_deye_5_ans_dyness_10_ans(self):
         _seed(self.company)
         deye = Produit.objects.get(company=self.company, sku='OND-H-DEY-10T')
         self.assertEqual(deye.garantie, 'Garantie constructeur 5 ans')
         self.assertEqual(deye.garantie_mois, 60)
         dyness = Produit.objects.get(company=self.company, sku='BAT-DEY-5')
-        self.assertTrue(dyness.garantie.startswith('Garantie constructeur 7 ans'))
-        self.assertEqual(dyness.garantie_mois, 84)
+        self.assertTrue(dyness.garantie.startswith('Garantie constructeur 10 ans'))
+        self.assertEqual(dyness.garantie_mois, 120)
 
     def test_migration_0174_corrige_l_ancienne_valeur_semee(self):
         from importlib import import_module
@@ -201,6 +202,37 @@ class GarantiesMarocTests(TestCase):
         self.assertEqual(_p('OND-H-DEY-5M').garantie,
                          'Garantie 10 ans (extension achetée)')
         self.assertEqual(_p('OND-H-DEY-5M').garantie_mois, 99)
+
+    def test_migration_0187_remet_10_ans_sur_la_valeur_semee(self):
+        from importlib import import_module
+
+        from django.apps import apps as registre
+        mig = import_module(
+            'apps.stock.migrations.0187_dyness_5kwh_garantie_10_ans')
+        _seed(self.company)
+        autre = Company.objects.create(
+            nom='Seed RPDF bis', slug='seed-rpdf-garanties-bis')
+        _seed(autre)
+        # Ancienne valeur semée (7 ans / 84) → corrigée.
+        Produit.objects.filter(company=self.company, sku='BAT-DEY-5').update(
+            garantie=mig.ANCIEN_TEXTE, garantie_mois=84)
+        # Saisie du fondateur → jamais réécrite (texte ET mois).
+        Produit.objects.filter(company=autre, sku='BAT-DEY-5').update(
+            garantie='Garantie 8 ans (accord Dyness)', garantie_mois=96)
+
+        mig.corriger(registre, None)
+
+        semee = Produit.objects.get(company=self.company, sku='BAT-DEY-5')
+        self.assertEqual(semee.garantie, mig.NOUVEAU_TEXTE)
+        self.assertEqual(semee.garantie_mois, 120)
+        saisie = Produit.objects.get(company=autre, sku='BAT-DEY-5')
+        self.assertEqual(saisie.garantie, 'Garantie 8 ans (accord Dyness)')
+        self.assertEqual(saisie.garantie_mois, 96)
+
+        mig.retablir(registre, None)
+        semee.refresh_from_db()
+        self.assertEqual(semee.garantie, mig.ANCIEN_TEXTE)
+        self.assertEqual(semee.garantie_mois, 84)
 
 
 class DescriptionHybridesDeyeTests(TestCase):

@@ -399,8 +399,7 @@ class FormeEtLanguesTests(TestCase):
         c = K.construire_contenu(v.acte(T.CONTRAT))
         self.assertEqual(c['options'], {
             'consommateur': True, 'reserve_propriete': True,
-            'raccorde_reseau': True, 'penalite_retard_pct': None,
-            'delai_execution_jours': 30})
+            'penalite_retard_pct': None, 'delai_execution_jours': 30})
         self.assertIsNotNone(c['delais']['date_limite'])
         self.assertNotIn('retractation', c)
         self.assertNotIn('conclusion', c)
@@ -629,7 +628,6 @@ class GabaritTests(SimpleTestCase):
             for type_acte, variante in CINQ_ACTES:
                 for opts in ({}, {'consommateur': False,
                                   'reserve_propriete': False,
-                                  'raccorde_reseau': False,
                                   'penalite_retard_pct': '2'}):
                     with self.subTest(module=module.__name__,
                                       acte=type_acte, opts=opts):

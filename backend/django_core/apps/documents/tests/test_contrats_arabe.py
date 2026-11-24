@@ -48,10 +48,10 @@ CAS = (('contrat_installation', ''), ('pv_livraison', 'reste_a_regler'),
 
 def _toutes_options():
     """Toutes les combinaisons des options qui changent la liste française."""
-    for conso, reserve, reseau, penalite in itertools.product(
-            (True, False), (True, False), (True, False), (None, 10)):
+    for conso, reserve, penalite in itertools.product(
+            (True, False), (True, False), (None, 10)):
         yield {'consommateur': conso, 'reserve_propriete': reserve,
-               'raccorde_reseau': reseau, 'penalite_retard_pct': penalite}
+               'penalite_retard_pct': penalite}
 
 
 def _reperes(module, fonction, args):

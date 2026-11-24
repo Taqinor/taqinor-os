@@ -16,6 +16,7 @@ const { documentsApiMock } = vi.hoisted(() => ({
     pdfActe: vi.fn(),
     emettreActe: vi.fn(),
     rouvrirActe: vi.fn(),
+    regenererActe: vi.fn(),
     signerActe: vi.fn(),
     marquerActeSigne: vi.fn(),
     enregistrerModeleActe: vi.fn(),
@@ -132,7 +133,7 @@ describe('Onglet Contrats', () => {
     }))
     return d
   }
-  const GESTES_ECRITURE = ['Modifier', 'Émettre', 'Faire signer sur place', 'Signé sur papier', 'Rouvrir']
+  const GESTES_ECRITURE = ['Modifier', 'Émettre', 'Faire signer sur place', 'Signé sur papier', 'Régénérer', 'Rouvrir']
 
   it('F8 — un rôle en lecture seule (peut_* à false côté serveur) ne voit aucun bouton d’écriture', async () => {
     documentsApiMock.dossierContrats.mockResolvedValue({ data: sansDroits(dossier()) })
@@ -227,6 +228,23 @@ describe('Onglet Contrats', () => {
     expect(documentsApiMock.rouvrirActe).not.toHaveBeenCalled()
     await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Rouvrir l’acte' }))
     expect(documentsApiMock.rouvrirActe).toHaveBeenCalledWith(d.actes[1].id)
+  })
+
+  it('« Régénérer » est offert sur un acte émis, demande confirmation, puis appelle le serveur', async () => {
+    const d = dossier()
+    d.actes[1] = { ...d.actes[1], statut: 'emis', emis_le: '2026-12-15T09:00:00Z', peut_rouvrir: true }
+    documentsApiMock.dossierContrats.mockResolvedValue({ data: d })
+    documentsApiMock.regenererActe.mockResolvedValue({ data: {} })
+    const user = userEvent.setup()
+    monter()
+    await screen.findByText('Livraison du matériel — reste à régler')
+    // Un brouillon ne se régénère pas : son aperçu est toujours à jour.
+    expect(within(carte(d.actes[0].titre)).queryByRole('button', { name: 'Régénérer' })).toBeNull()
+    await user.click(within(carte('Livraison du matériel — reste à régler')).getByRole('button', { name: 'Régénérer' }))
+    expect(documentsApiMock.regenererActe).not.toHaveBeenCalled()
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Régénérer l’acte' }))
+    expect(documentsApiMock.regenererActe).toHaveBeenCalledWith(d.actes[1].id)
+    expect(documentsApiMock.rouvrirActe).not.toHaveBeenCalled()
   })
 
   it('F16 — l’aperçu s’intitule avec la référence de l’ACTE', async () => {
