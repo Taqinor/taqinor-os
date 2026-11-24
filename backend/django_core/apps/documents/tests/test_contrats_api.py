@@ -69,6 +69,37 @@ class ApiContratsTests(TestCase):
         self.assertEqual(r.status_code, 404)
         self.assertEqual(autre.acte(T.CONTRAT).statut, T.BROUILLON)
 
+    def test_id_invisible_404_avant_methode_et_permission(self):
+        """Garde de classe : l'acte est résolu avant le 405 (route d'écriture
+        sondée en GET) et avant le 403 (modèle réservé au Directeur)."""
+        autre = Vente(self)
+        acte = autre.acte(T.CONTRAT)
+        for geste in ('emettre/', 'rouvrir/', 'signer/', 'marquer-signe/',
+                      'modele/'):
+            with self.subTest(geste=geste):
+                url = ACTE.format(acte.pk) + geste
+                self.assertEqual(self.api.get(url).status_code, 404)
+                self.assertEqual(self.api.post(url).status_code, 404)
+
+    def test_chantier_annule_409_a_tout_verbe(self):
+        """Chantier annulé : 409 ``chantier_annule`` sur le dossier et sur
+        chaque route d'acte, lectures et écritures, avant 405 et 403."""
+        acte = self.v.acte(T.CONTRAT)
+        Installation.objects.filter(pk=self.v.chantier.pk).update(annule=True)
+        urls = [DOSSIER.format(self.v.chantier.pk)] + [
+            ACTE.format(acte.pk) + suite for suite in (
+                '', 'pdf/', 'emettre/', 'rouvrir/', 'signer/',
+                'marquer-signe/', 'modele/')]
+        for url in urls:
+            with self.subTest(url=url):
+                r = self.api.get(url)
+                self.assertEqual((r.status_code, r.data['code']),
+                                 (409, T.CODE_CHANTIER_ANNULE))
+                self.assertEqual(r.data['detail'], 'Chantier annulé')
+        r = self.api.post(ACTE.format(acte.pk) + 'modele/')
+        self.assertEqual((r.status_code, r.data['code']),
+                         (409, T.CODE_CHANTIER_ANNULE))
+
     def test_role_lecture_seule_ne_peut_pas_ecrire(self):
         role = Role.objects.create(company=self.v.company, nom='Lecture',
                                    permissions=['installation_voir'])

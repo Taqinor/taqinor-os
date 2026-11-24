@@ -15,6 +15,12 @@ class ErreurActeSerializer(serializers.Serializer):
     code = serializers.CharField()
 
 
+class RefusActeSerializer(serializers.Serializer):
+    """409 : refus d'état, toujours ``{detail, code}``."""
+    detail = serializers.CharField()
+    code = serializers.CharField()
+
+
 class ChantierDossierSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     reference = serializers.CharField()

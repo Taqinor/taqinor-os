@@ -109,6 +109,13 @@ class GardeClasseEndpointsDocumentsTests(TestCase):
             company=self.company, installation=self.chantier,
             type_intervention='pose', created_by=self.resp,
             technicien=self.tech_iv)
+        # Dossier contractuel : les routes ``actes/<int:pk>/…`` prennent l'id
+        # d'un ACTE, pas d'un chantier — la garde leur passe un acte du
+        # chantier sondé (chaque chantier a ses cinq brouillons).
+        from apps.documents.contrats.services import preparer_dossier
+        self.acte_de = {
+            ch.pk: preparer_dossier(ch, self.resp)[0].pk
+            for ch in (self.chantier, self.chantier_annule)}
 
     def _api(self, user):
         api = APIClient()
@@ -123,7 +130,9 @@ class GardeClasseEndpointsDocumentsTests(TestCase):
                 violations.append(f'{nom} : route sans <int:pk> de chantier')
                 continue
 
-            def url(pk, gabarit=gabarit):
+            def url(chantier, gabarit=gabarit):
+                pk = (self.acte_de[chantier.pk]
+                      if gabarit.startswith('actes/') else chantier.pk)
                 return PREFIXE + gabarit.replace('<int:pk>', str(pk))
 
             cas = (
@@ -135,7 +144,7 @@ class GardeClasseEndpointsDocumentsTests(TestCase):
                  (200, 403)),
             )
             for libelle, user, chantier, attendus in cas:
-                code = self._api(user).get(url(chantier.pk)).status_code
+                code = self._api(user).get(url(chantier)).status_code
                 if code not in attendus:
                     violations.append(
                         f'{nom} ({gabarit}) — {libelle} : {code}, '
