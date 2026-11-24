@@ -22,6 +22,18 @@ import django.dispatch
 # ``apps.calepinage``.
 calepinage_simule = django.dispatch.Signal()
 
+# ACAL2010 (D-ACAL-97, « un seul moteur ») — Émis par le calepinage quand une
+# POSE est enregistrée avec une empreinte NOUVELLE (la pose est une entrée du
+# moteur unique) — jamais pour un enregistrement à empreinte inchangée.
+# Émetteur prévu : ACAL2011 (calepinage). Arguments : ``company_id``,
+# ``calepinage_id``, ``lead_id`` (entiers ; ``lead_id`` peut valoir ``None`` :
+# un calepinage sans lead porte lui-même sa conception) et ``empreinte_pose``
+# (texte, l'empreinte de la pose enregistrée). Abonné prévu : ventes, qui
+# relance la conception (ADEV139) ; d'ici là, réservé dans
+# ``core.event_coverage.ALLOWED_UNCONSUMED``. Aucun statut ne bouge.
+pose_enregistree = django.dispatch.Signal()
+
 __all__ = [
     'calepinage_simule',
+    'pose_enregistree',
 ]

@@ -126,6 +126,16 @@ appointment_effectue = django.dispatch.Signal()
 #     Arguments : ``lead``, ``salle``, ``company``.
 salle_vente_signal_interet = django.dispatch.Signal()
 
+# ACAL2010 (D-ACAL-97, « un seul moteur ») — Émis par le CRM quand une colonne
+# du lead qui est une ENTRÉE du moteur unique change de valeur (liste :
+# ``apps.ventes.conception.champs.CHAMPS_ENTREES``) — jamais pour le nom, le
+# téléphone, les notes ou l'étape. Émetteur prévu : ALEA68 (crm). Arguments :
+# ``company_id`` (entier), ``lead_id`` (entier), ``champs`` (liste
+# ``[{champ, avant, apres}]``, valeurs JSON). Abonné prévu : ventes, qui relance
+# la conception rangée du lead (ADEV139) ; d'ici là, réservé dans
+# ``core.event_coverage.ALLOWED_UNCONSUMED``. Aucun statut ne bouge.
+lead_entrees_modifiees = django.dispatch.Signal()
+
 __all__ = [
     'lead_erased',
     'lead_created',
@@ -136,4 +146,5 @@ __all__ = [
     'deal_commission_due',
     'appointment_effectue',
     'salle_vente_signal_interet',
+    'lead_entrees_modifiees',
 ]

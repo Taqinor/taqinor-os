@@ -113,6 +113,7 @@ from .facturation import (
 from .devis import (
     devis_accepted, devis_acceptation_annulee, devis_sent, layout_finalise, devis_revise,
     devis_refused, devis_expired, document_pdf_generated, revision_abandonnee,
+    conception_recalculee,
 )
 from .stock import (
     reception_fournisseur_confirmee, reception_fournisseur_annulee, facture_fournisseur_creee,
@@ -123,6 +124,7 @@ from .stock import (
 from .lead import (
     lead_erased, lead_created, visite_validee, visite_planifiee, visite_terminee,
     lead_stage_changed, deal_commission_due, appointment_effectue, salle_vente_signal_interet,
+    lead_entrees_modifiees,
 )
 from .acquisition import (
     meta_lead_captured, lead_trace_toit_recu,
@@ -134,7 +136,7 @@ from .sav import (
     ticket_resolu, equipement_remplace,
 )
 from .calepinage import (
-    calepinage_simule,
+    calepinage_simule, pose_enregistree,
 )
 
 # Signaux ré-exportés par les sous-modules (même surface que l'ancien `import *` : leur `__all__`).
@@ -158,6 +160,8 @@ __all__ = [
     'lead_trace_toit_recu', 'intervention_completed', 'chantier_annule', 'chantier_receptionne',
     'ticket_resolu', 'equipement_remplace', 'calepinage_simule',
     'revision_abandonnee',
+    # ACAL2010 — les trois signaux du moteur unique (D-ACAL-97).
+    'lead_entrees_modifiees', 'pose_enregistree', 'conception_recalculee',
 ]
 
 _logger = logging.getLogger(__name__)
