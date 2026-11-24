@@ -130,6 +130,17 @@ export function useEnvoiDevis({
   const [editTaillesOuvert, setEditTaillesOuvert] = useState(null) // id du devis | null
   const produitsCatalogue = useCatalogueSubstitutions(editTaillesOuvert)
   const leadPhoneOk = !!normalizePhoneE164(leadPhone)
+  // T4-U2-003 / T4-U3-011 — le lien client ENVOYÉ (copie / WhatsApp), par
+  // devis : affiché dans un champ sélectionnable dès qu'il existe, pour que
+  // « sélectionnez le lien » ait un lien à sélectionner. Jamais celui d'un
+  // simple « Ouvrir » (qui n'envoie pas) ni l'aperçu interne.
+  const [liensEnvoyes, setLiensEnvoyes] = useState({}) // id -> url absolue
+  // Pourquoi un canal est grisé — tiré des données de la fiche, jamais deviné.
+  const raisonWhatsApp = leadPhoneOk ? null
+    : (leadPhone || '').trim()
+      ? `le numéro « ${(leadPhone || '').trim()} » n’est pas un numéro exploitable`
+      : 'aucun numéro de téléphone sur la fiche du lead'
+  const raisonEmail = leadEmail ? null : 'aucune adresse e-mail sur la fiche du lead'
   const { getNiveau, getOtp, getSections, memoriserLien } = reglages
 
   // Après un ENVOI réussi : relance J+3 si demandée, puis rechargement de la fiche.
@@ -161,7 +172,7 @@ export function useEnvoiDevis({
     } catch (err) {
       // presse-papier indisponible (contexte non sécurisé, permission) : le lien
       // reste ouvrable dans la boîte — dit au commercial, jamais avalé (AFAC95).
-      setActionMsg(errorMessageFrom(err, 'Copie impossible : sélectionnez le lien et copiez-le.'))
+      setActionMsg(errorMessageFrom(err, 'Copie impossible : sélectionnez le lien ci-dessous et copiez-le.'))
     }
   }
 
@@ -174,7 +185,9 @@ export function useEnvoiDevis({
       ...(envoi ? { envoi: true } : {}),
     })
     memoriserLien(d, res.data)
-    return clientProposalUrl(res.data?.[cle], PUBLIC_SITE_URL)
+    const url = clientProposalUrl(res.data?.[cle], PUBLIC_SITE_URL)
+    if (envoi && cle === 'path') setLiensEnvoyes((cur) => ({ ...cur, [d.id]: url }))
+    return url
   }
 
   const copierApercuInterne = (d) => lancer(`i-${d.id}`, 'Lien d’aperçu interne indisponible.', async () => {
@@ -230,7 +243,9 @@ export function useEnvoiDevis({
   }
 
   return {
-    ...reglages, leadPhoneOk, leadEmail, relance, linkBusy, copiedId, copiedInterneId,
+    ...reglages, leadPhoneOk, leadEmail, raisonWhatsApp, raisonEmail,
+    lienEnvoye: (d) => liensEnvoyes[d.id] ?? null,
+    relance, linkBusy, copiedId, copiedInterneId,
     actionMsg, setActionMsg, editTaillesOuvert, setEditTaillesOuvert,
     produitsCatalogue, copierApercuInterne, ouvrirApercuInterne, copierPageClient,
     ouvrirPageClient, envoyerWhatsAppUnique, envoyerEmail, onNiveauChange,
