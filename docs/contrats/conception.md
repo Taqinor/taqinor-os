@@ -155,10 +155,19 @@ dont seules les polices et le traitement du logo sont importés.
 | C6 | Signature à distance par lien : seconde vague (la cérémonie GED existe : `ged.services.demander_signature`) | d'abord la signature sur place et papier | — |
 | C7 | ~~Version arabe : seconde vague~~ — tranché par Reda le 24/11 : dans cette vague (§ 9) | | |
 | C8 | La version « 90 % réglés » de la livraison ne s'émet que si l'encaissement est enregistré dans l'ERP (elle reste prête et se prévisualise) | signée sur une supposition, elle prouverait contre la société un paiement jamais reçu (revue 1) | saisir le paiement avant d'émettre |
-| C9 | Un article ou un quitus corrigé à la main garde ses valeurs VIVANTES (montants, dates, références redeviennent des repères) ; l'émission est refusée (409 `montant_fige`) si un texte cite un montant qui n'est plus celui de la vente | un contrat ne doit jamais dire autre chose que la vente (revue 1) | retaper le montant |
+| C9 | Un article ou un quitus corrigé à la main garde ses valeurs VIVANTES : la correction est ALIGNÉE sur le texte que l'écran affichait et reportée sur le gabarit (un paragraphe non touché reste entièrement vivant, un repère non touché reste un repère, même vide). Un montant en dirhams TAPÉ ou repris à la main dans un article personnalisé bloque l'émission (409 `montant_fige`) | un contrat ne doit jamais dire autre chose que la vente (revue 1, puis contre-vérification : la reconnaissance des valeurs par recherche figeait options et montants) | corriger un mot DANS la liste des paiements reprend toute la liste à la main : « Rétablir cet article » |
 | C10 | Réception : sans case cochée, la signature vaut réception sans réserve ; une retenue sur le solde n'existe que chiffrée, plafonnée aux travaux restants, payable huit jours après la levée ; en cas de refus de signer, mise en demeure de recevoir (DOC art. 774) | c'est l'acte qui protège le solde (revue 1) | un texte du modèle |
 | C11 | Durées et dates de fin des garanties, date limite : communes aux deux langues (réglées en français) ; l'arabe ne personnalise que les mots | deux versions signées ensemble ne doivent pas se contredire sur un chiffre (revue 1) | — |
 | C12 | Supprimer un chantier emporte ses brouillons et ses actes annulés ; un acte émis ou signé l'empêche | la preuve ne se supprime pas, un brouillon ne bloque pas | — |
+| C13 | L'échéancier imprimé est l'échéancier CONVENU (cible cumulée d'une tranche moins la précédente, la dernière prend le reste), jamais « ce qui reste à facturer » de la tranche | rejeu sur écran réel : avec une facture d'acompte déjà émise, l'acte imprimait « Acompte 96,00 DH · 0,1 % » | — |
+| C14 | Tout PDF d'un acte non émis porte la mention « PROJET — document non émis » sur chaque page ; tant qu'une somme reste due, le brouillon du quitus affiche « Reste à régler » et n'atteste rien | rejeu sur écran réel : le brouillon du quitus se téléchargeait en « payé intégralement » | — |
+| C15 | Les garanties sont UNE par chantier : le certificat de clôture reprend les lignes, durées et dates de fin du CONTRAT (figé s'il est émis ou signé) ; sa date de départ est celle de la réception signée | rejeu sur écran réel : garantie portée à 3 ans au contrat signé, « 2 ans » au certificat | — |
+| C16 | Dans l'acte arabe, les cases cochées suivent le français ; un texte libre saisi en français sans traduction (réserves, conditions particulières) s'imprime tel que saisi | deux documents signés ensemble ne doivent pas différer sur un fait | traduire le texte |
+| C17 | Le rappel des sommes dues tient compte des avoirs : jamais plus que ce que la vente doit encore | contre-vérification | — |
+
+Constat laissé tel quel (données, pas produit) : sur la société de démonstration, « Installation » et « Transport »
+sont rangés en accessoires par `seed_demo` et sortent donc dans « Le matériel livré », comme sur le bon de livraison
+existant ; le catalogue réel les range en prestations (D-APDF-4).
 
 ## 9. Décisions de Reda pendant la construction
 
