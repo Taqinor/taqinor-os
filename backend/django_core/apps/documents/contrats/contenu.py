@@ -295,25 +295,36 @@ class Lecture:
 
 
 def tranches_convenues(tranches_plan, prix):
-    """L'échéancier CONVENU d'une vente, tel qu'un acte l'imprime : le
-    montant de chaque tranche = sa cible cumulée moins la précédente, la
-    dernière prenant le reste du prix au centime ; le pourcentage en découle.
-    Jamais le ``montant_ttc`` du plan, qui dit ce qu'il RESTE à facturer
-    sur une tranche (une facture d'acompte de 33 024 DH pour 33 120 DH
-    convenus laissait « Acompte 96,00 DH · 0,1 % » dans tous les actes)."""
-    prix = _q(prix or ZERO)
-    sortie, precedente = [], ZERO
+    """L'échéancier CONVENU d'une vente, tel qu'un acte l'imprime, calculé
+    sur l'échéancier FIGÉ du devis (``unite``/``valeur`` de chaque tranche du
+    plan) appliqué au prix convenu : une tranche en % vaut prix × % (au
+    centime, demi supérieur), une tranche en MAD vaut son montant, la
+    DERNIÈRE prend le reste du prix au centime — la somme égale donc toujours
+    le prix. Le pourcentage est montant ÷ prix ; ``cible`` = cumul des
+    montants convenus. Jamais ``montant_ttc`` (ce qu'il RESTE à facturer :
+    une facture d'acompte de 33 024 DH pour 33 120 DH convenus laissait
+    « Acompte 96,00 DH · 0,1 % » dans tous les actes) ni ``cible_cumul_ttc``
+    (le TTC déjà facturé s'y substitue au convenu : une facture d'acompte
+    d'un autre montant ou un acompte réglé déplaçait toutes les tranches)."""
+    from apps.ventes.utils.echeancier import UNITE_MONTANT
+    prix = max(ZERO, _q(prix or ZERO))
+    sortie, cumul = [], ZERO
     for i, t in enumerate(tranches_plan):
-        cible = _q(t['cible_cumul_ttc'])
-        if i == len(tranches_plan) - 1 and prix > 0:
-            cible = prix
-        montant = max(ZERO, cible - precedente)
+        reste = prix - cumul
+        if i == len(tranches_plan) - 1:
+            montant = reste
+        else:
+            valeur = _d(t.get('valeur')) or ZERO
+            montant = min(reste, _q(
+                valeur if t.get('unite') == UNITE_MONTANT
+                else prix * valeur / 100))
+            montant = max(ZERO, montant)
+        cumul += montant
         sortie.append({
             'cle': t['cle'], 'key': t['key'], 'libelle': t['libelle'],
-            'montant': montant, 'cible': cible,
+            'montant': montant, 'cible': cumul,
             'pourcentage': _q(montant / prix * 100) if prix > 0 else ZERO,
         })
-        precedente = max(precedente, cible)
     return sortie
 
 
