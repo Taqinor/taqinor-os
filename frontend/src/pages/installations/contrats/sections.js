@@ -10,6 +10,8 @@ import {
   nombreTape, paragraphesVersTexte, texteVersParagraphes,
 } from './outils'
 
+const TYPE_CONTRAT = 'contrat_installation'
+
 const chaine = (v) => (v === null || v === undefined ? '' : String(v))
 
 export const SECTIONS = {
@@ -67,6 +69,12 @@ export const SECTIONS = {
       cle: a.cle, titre: a.titre, paragraphes: texteVersParagraphes(a.texte),
     })),
   },
+  paiement: {
+    libelle: 'Paiement : les modalités',
+    // Seul le texte des modalités se modifie ; les montants viennent de la vente.
+    lire: (c) => ({ modalites: chaine(c.paiement?.modalites) }),
+    ecrire: (d) => ({ modalites: d.modalites }),
+  },
   conditions_particulieres: {
     libelle: 'Conditions particulières',
     lire: (c) => chaine(c.conditions_particulieres),
@@ -74,10 +82,11 @@ export const SECTIONS = {
   },
   options: {
     libelle: 'Options',
-    // `delai_execution_jours` n'est lu / envoyé que si le serveur le sert.
+    // `delai_execution_jours` n'est lu / envoyé que sur le CONTRAT (les procès-verbaux
+    // et la clôture le portent dans `options` mais ne le règlent pas).
     lire: (c) => ({
       reserve_propriete: !!c.options?.reserve_propriete,
-      ...('delai_execution_jours' in (c.options ?? {})
+      ...(c.type === TYPE_CONTRAT && 'delai_execution_jours' in (c.options ?? {})
         ? { delai_execution_jours: chaine(c.options.delai_execution_jours) } : {}),
       penalite_retard_pct: chaine(c.options?.penalite_retard_pct),
     }),
@@ -134,6 +143,11 @@ export const SECTIONS = {
     }),
     ecrire: (d) => d,
   },
+  conseils_intro: {
+    libelle: 'Conseils : introduction',
+    lire: (c) => chaine(c.conseils_intro),
+    ecrire: (d) => d,
+  },
   conseils: {
     libelle: 'Conseils de consommation',
     lire: (c) => (c.conseils ?? []).map((k) => ({
@@ -151,9 +165,9 @@ export const SECTIONS = {
 // Ordre de lecture dans l'éditeur (celui du document imprimé).
 export const ORDRE_SECTIONS = [
   'titre', 'lieu', 'date_document', 'societe', 'delais', 'echeancier_textes',
-  'articles', 'garanties', 'conditions_particulieres', 'options',
+  'paiement', 'articles', 'garanties', 'conditions_particulieres', 'options',
   'livraison', 'reception', 'constats', 'reserves', 'quitus', 'sav',
-  'conseils', 'entretien',
+  'conseils_intro', 'conseils', 'entretien',
 ]
 
 export function brouillonDe(contenu, sections) {

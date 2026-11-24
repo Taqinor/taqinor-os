@@ -271,4 +271,52 @@ describe('Éditeur d’un acte', () => {
     expect(screen.queryByRole('group', { name: 'Conditions particulières' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Enregistrer' })).toBeDisabled()
   })
+
+  it('F4 — « Délai d’exécution » n’apparaît que sur le contrat, jamais sur un procès-verbal', async () => {
+    const user = userEvent.setup()
+    const { unmount } = render(
+      <ConfirmProvider>
+        <ActeEditeur open acteId={31} onOpenChange={vi.fn()} />
+      </ConfirmProvider>,
+    )
+    const contrat = await screen.findByRole('group', { name: 'Options' })
+    expect(within(contrat).getByLabelText(/Délai d’exécution/)).toBeInTheDocument()
+    unmount()
+    cleanup()
+    documentsApiMock.acte.mockResolvedValue({
+      data: structuredClone(exempleContrat('documents', 'acte_contractuel', 'exemple_pv_reception')),
+    })
+    monter()
+    const pv = await screen.findByRole('group', { name: 'Options' })
+    expect(within(pv).queryByLabelText(/Délai d’exécution/)).toBeNull()
+    await user.click(within(pv).getByLabelText(/Réserve de propriété/))
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    expect(Object.keys(documentsApiMock.modifierActe.mock.calls[0][1].options).sort())
+      .toEqual(['penalite_retard_pct', 'reserve_propriete'])
+  })
+
+  it('F5 — les modalités de paiement et l’introduction des conseils se modifient', async () => {
+    const user = userEvent.setup()
+    monter()
+    const paiement = await screen.findByRole('group', { name: 'Paiement : les modalités' })
+    const zone = within(paiement).getByLabelText('Modalités de paiement')
+    await user.clear(zone)
+    await user.type(zone, 'Virement uniquement.')
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    expect(documentsApiMock.modifierActe).toHaveBeenLastCalledWith(31, {
+      paiement: { modalites: 'Virement uniquement.' },
+    }, 'fr')
+    cleanup()
+    documentsApiMock.acte.mockResolvedValue({
+      data: structuredClone(exempleContrat('documents', 'acte_contractuel', 'exemple_cloture_garanties')),
+    })
+    monter()
+    const intro = within(await screen.findByRole('group', { name: 'Conseils : introduction' }))
+      .getByLabelText('Introduction des conseils')
+    await user.type(intro, ' Merci.')
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    const envoye = documentsApiMock.modifierActe.mock.calls.at(-1)[1]
+    expect(Object.keys(envoye)).toEqual(['conseils_intro'])
+    expect(envoye.conseils_intro).toMatch(/ Merci\.$/)
+  })
 })

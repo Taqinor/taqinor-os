@@ -114,6 +114,14 @@ function ChampsSection({ cle, v, m, contenu }) {
           ))}
         </>
       )
+    case 'paiement':
+      return (
+        <Zone id={p} libelle="Modalités de paiement" lignes={3} valeur={v.modalites}
+              aide="Le texte seulement : les montants et les échéances viennent de la vente."
+              onChange={(x) => m({ ...v, modalites: x })} />
+      )
+    case 'conseils_intro':
+      return <Zone id={p} libelle="Introduction des conseils" lignes={4} valeur={v} onChange={m} />
     case 'articles':
       return v.map((a, i) => (
         <div key={a.cle} className="contrats-editeur__bloc">
