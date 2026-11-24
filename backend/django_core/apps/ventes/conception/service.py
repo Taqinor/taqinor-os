@@ -92,9 +92,14 @@ def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None
 CODE_APPEL_OFFRES = 'appel_offres_hors_moteur'
 
 
-def _porteur(lead, company, calepinage_id):
+def _porteur(lead, company, calepinage_id, calepinage=None):
     """``(lead du calcul, filtre du porteur, refus)``. Un calepinage d'une
-    autre société est introuvable (``ValueError``, comme un lead étranger)."""
+    autre société est introuvable (``ValueError``, comme un lead étranger).
+    Résolution bornée à la SOCIÉTÉ seulement : pour les appelants système (la
+    tâche du moteur n'a pas d'utilisateur). Une route passe ``calepinage``
+    (et le lead) déjà résolus dans la portée de l'appelant (relecture B1)."""
+    if calepinage is not None:
+        calepinage_id = calepinage.pk
     if calepinage_id is None:
         if getattr(lead, 'company_id', None) != getattr(company, 'pk', None):
             raise ValueError('Lead hors de la société : aucune conception.')
@@ -102,8 +107,8 @@ def _porteur(lead, company, calepinage_id):
     from apps.calepinage.selectors import calepinage_detail
     from apps.crm.selectors import get_company_lead
 
-    calepinage = calepinage_detail(calepinage_id, company)
-    if calepinage is None:
+    calepinage = calepinage if calepinage is not None else calepinage_detail(calepinage_id, company)
+    if calepinage is None or calepinage.company_id != company.pk:
         raise ValueError('Calepinage hors de la société : aucune conception.')
     if calepinage.appel_offre_id:
         return None, None, {
@@ -127,7 +132,7 @@ class SaisieRefusee(ValueError):
         self.champ = champ
 
 
-def apercu_conception(lead, company, *, calepinage_id=None, saisies=None, imposes=None):
+def apercu_conception(lead, company, *, calepinage_id=None, calepinage=None, saisies=None, imposes=None):
     """ADEV137/ADEV152 — la sortie du moteur (contrat, clés ``CLES_SORTIE``)
     pour des valeurs TAPÉES et non enregistrées, SANS AUCUNE ÉCRITURE : le
     porteur (lead, ou calepinage sans lead) est copié en mémoire, ses colonnes
@@ -145,7 +150,7 @@ def apercu_conception(lead, company, *, calepinage_id=None, saisies=None, impose
     from apps.ventes.conception.moteur import calculer_conception, reglages_lus_sans_creer, sans_cles_interdites
     from apps.ventes.domain.composition_imposee import imposition_du_corps
 
-    lead, _filtre, refus = _porteur(lead, company, calepinage_id)
+    lead, _filtre, refus = _porteur(lead, company, calepinage_id, calepinage)
     if refus is not None:
         return None, refus
     copie, saisies = copy.copy(lead), dict(saisies or {})  # jamais enregistrée
