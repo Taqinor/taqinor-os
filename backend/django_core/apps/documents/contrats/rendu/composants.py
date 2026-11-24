@@ -46,8 +46,66 @@ def langue_de(contenu):
     return 'ar' if (contenu or {}).get('langue') == 'ar' else 'fr'
 
 
+# Libellés posés par la lane des textes (revue 1, docs/contrats/revue-1.md,
+# noms partagés) : tant qu'un libellé n'est pas encore dans ``libelles``, le
+# rendu imprime ce repli — jamais une KeyError, jamais un mot français dans
+# l'acte arabe.
+_REPLIS = {
+    'part_retenue': {
+        'fr': ("Part du solde retenue jusqu'à la levée des réserves : "
+               "………… DH"),
+        'ar': ('الجزء المحتجز من باقي الثمن إلى حين رفع التحفظات: '
+               '………… درهم'),
+    },
+    'signature_en_fin': {
+        'fr': 'Signature en dernière page',
+        'ar': 'التوقيع في الصفحة الأخيرة',
+    },
+}
+
+
+def libelle_sur(cle, langue='fr', **valeurs):
+    """``libelle`` avec le repli de ``_REPLIS`` quand la clé manque encore."""
+    try:
+        return libelle(cle, langue, **valeurs)
+    except KeyError:
+        repli = _REPLIS[cle]
+        texte = repli.get(langue, repli['fr'])
+        return texte.format(**valeurs) if valeurs else texte
+
+
 def esc(valeur):
     return escape('' if valeur is None else str(valeur), quote=True)
+
+
+# ── Ce qui ne se coupe jamais (texte déjà échappé) ──────────────────────────
+# Une référence de document (CTR-…, DEV-…), « n° 31-08 » (« رقم 31.08 »), un
+# RIB : coupés en fin de ligne, ils deviennent illisibles ou faux. Chacun
+# passe dans un ``<span class="nb">`` (``white-space:nowrap``) ; le RIB part
+# en plus sur sa propre ligne. Ne s'applique qu'à du texte DÉJÀ échappé : les
+# balises ajoutées ne contiennent que le texte trouvé, lui-même déjà échappé.
+_REFERENCE = re.compile(r'\b[A-Z]{2,5}-\d[\d-]*\d\b')
+_NUMERO_LOI = re.compile(r'(?:n°|رقم)[\s\u00a0]*\d+(?:[-.]\d+)*')
+_RIB = re.compile(r'(?<=\S)[ \u00a0]+(RIB[ \u00a0]*:[ \u00a0]*'
+                  r'[\d \u00a0\u202f]*\d)')
+
+
+def _insecable(texte):
+    return (f'<span class="nb">'
+            f'{re.sub(r"[ ]+", INSECABLE, texte)}</span>')
+
+
+def insecables(html_echappe):
+    """Pose les ``<span class="nb">`` sur un texte déjà échappé."""
+    sortie = _RIB.sub(lambda m: '<br>' + _insecable(m.group(1)), html_echappe)
+    sortie = _NUMERO_LOI.sub(lambda m: _insecable(m.group()), sortie)
+    return _REFERENCE.sub(lambda m: _insecable(m.group()), sortie)
+
+
+def texte_libre(valeur):
+    """Un texte libre du ``contenu`` (modalités, engagement) : échappé, puis
+    rendu insécable là où une coupure le fausserait."""
+    return insecables(esc(valeur))
 
 
 # ── Isolation bidi (arabe) ──────────────────────────────────────────────────
@@ -156,11 +214,6 @@ def date_longue(valeur, langue='fr'):
     return f'{jour} {MOIS[d.month - 1]} {d.year}'
 
 
-def date_courte(valeur):
-    d = _date(valeur)
-    return d.strftime('%d/%m/%Y') if d else ''
-
-
 def _compte_ar(n, un, deux, pluriel, singulier):
     """Accord arabe du nom compté : 1, 2, 3 à 10, puis 11 et plus."""
     if n == 1:
@@ -225,8 +278,9 @@ def paragraphes(textes):
 def _gras(texte):
     morceaux = esc(texte).split('**')
     if len(morceaux) < 3 or len(morceaux) % 2 == 0:
-        return esc(texte)
-    return ''.join(m if i % 2 == 0 else f'<strong>{m}</strong>'
+        return insecables(esc(texte))
+    return ''.join(insecables(m) if i % 2 == 0
+                   else f'<strong>{insecables(m)}</strong>'
                    for i, m in enumerate(morceaux))
 
 
@@ -284,8 +338,11 @@ def titre(type_acte, h1, chapeau, reference='', langue='fr'):
     rang = [t for t, _, _ in PARCOURS].index(type_acte) + 1
     court = _etape(type_acte, langue)[0]
     surtitre = libelle('surtitre', langue, rang=rang, court=esc(court))
+    # La référence de l'en-tête courant (pages 2 et suivantes) : ``string-set``
+    # n'est lu que sur un élément MIS EN PAGE — d'où un élément visible de
+    # hauteur nulle, jamais un ``display:none`` (revue 1, R7).
     return (f'<div class="titre"><div class="surtitre">{surtitre}</div>'
-            f'<div class="reference-cachee">{esc(reference)}'
+            f'<div class="reference-courante">{esc(reference)}'
             f'</div><h1>{esc(h1)}</h1><p class="chapeau">{chapeau}</p></div>')
 
 
@@ -338,7 +395,7 @@ def frise(echeancier, *, avec_etats=False, langue='fr'):
             mot = _mot_etat(etat, langue)
             if etat == 'regle' and tr.get('regle_le'):
                 mot = libelle('regle_le', langue, mot=mot,
-                              date=date_courte(tr['regle_le']))
+                              date=date_longue(tr['regle_le'], langue))
             bloc_etat = f'<div class="etat">{esc(mot)}</div>'
         note = (f'<div class="note">{esc(tr["note"])}</div>'
                 if tr.get('note') else '')
@@ -365,7 +422,10 @@ def _identifiants_societe(societe, *, cnss=True, langue='fr'):
               ('id_patente', societe.get('patente'))]
     if cnss:
         paires.append(('id_cnss', societe.get('cnss')))
-    return ' · '.join(f'{libelle(k, langue)} {v}' for k, v in paires if v)
+    # Libellé et numéro liés par une espace insécable : « IF 00000000 » ne se
+    # coupe jamais en fin de ligne.
+    return ' · '.join(f'{libelle(k, langue)}{INSECABLE}{v}'
+                      for k, v in paires if v)
 
 
 def _forme_capital(societe, langue):
@@ -390,19 +450,25 @@ def partie_societe(societe, role=None, langue='fr'):
             f'</div></div>')
 
 
+def _cin(client, langue):
+    """« CIN BK000000 », ou la ligne à remplir au stylo (texte brut)."""
+    if client.get('cin'):
+        return f'{libelle("id_cin", langue)}{INSECABLE}{client["cin"]}'
+    return libelle('cin_a_remplir', langue)
+
+
 def partie_client(client, role=None, langue='fr'):
     role = role or libelle('le_client', langue)
     entreprise = client.get('type') == 'entreprise'
     if entreprise:
-        ident = ' · '.join(f'{libelle(k, langue)} {v}' for k, v in (
+        ident = ' · '.join(f'{libelle(k, langue)}{INSECABLE}{v}' for k, v in (
             ('id_rc', client.get('rc')), ('id_ice', client.get('ice')),
             ('id_if', client.get('if_fiscal'))) if v)
         represente = (libelle('representee_par', langue,
                               nom=client['representant'])
                       if client.get('representant') else '')
     else:
-        ident = (f'{libelle("id_cin", langue)} {client["cin"]}'
-                 if client.get('cin') else libelle('cin_a_remplir', langue))
+        ident = _cin(client, langue)
         represente = ''
     contact = ' · '.join(x for x in (client.get('telephone'),
                                      client.get('email')) if x)
@@ -462,7 +528,7 @@ def tableau_garanties(garanties, *, avec_dates=False, langue='fr'):
             barre = f'<div class="barre"><i style="width:{largeur}%"></i></div>'
         garant = (f'<small>{esc(g["garant"])}</small>'
                   if g.get('garant') else '')
-        fin = (f'<td class="nb">{esc(date_courte(g.get("fin")))}</td>'
+        fin = (f'<td class="nb">{esc(date_longue(g.get("fin"), langue))}</td>'
                if avec_dates else '')
         corps.append(
             f'<tr><td><b>{esc(g.get("designation"))}</b>{garant}</td>'
@@ -585,9 +651,19 @@ def pied(contenu, *, paraphes=True):
     societe = contenu.get('societe') or {}
     tete = ' '.join(x for x in (
         societe.get('nom'), _forme_capital(societe, langue)) if x)
-    ligne2 = ' · '.join(x for x in (
-        societe.get('adresse'), societe.get('telephone'),
-        societe.get('email'), societe.get('site_web')) if x)
+    # Quatre lignes voulues (identité, identifiants, adresse, contact), dont
+    # chaque élément est insécable : la ligne se coupe ENTRE deux éléments,
+    # jamais au milieu d'un téléphone ou d'une adresse électronique.
+
+    def ligne(*valeurs):
+        return ' · '.join(f'<span class="nb">{esc(v)}</span>'
+                          for v in valeurs if v)
+    lignes_legales = [x for x in (
+        f'<b>{esc(tete)}</b>',
+        esc(_identifiants_societe(societe, cnss=False, langue=langue)),
+        esc(societe.get('adresse') or ''),
+        ligne(societe.get('telephone'), societe.get('email'),
+              societe.get('site_web'))) if x]
     bloc_paraphes = ''
     if paraphes:
         bloc_paraphes = (
@@ -597,9 +673,8 @@ def pied(contenu, *, paraphes=True):
             f'<div class="paraphe"><span>{libelle("paraphe_societe", langue)}'
             '</span><i></i></div></div>')
     return (f'<div class="pied"><div class="pied-in"><div class="pied-legal">'
-            f'<b>{esc(tete)}</b><br>'
-            f'{esc(_identifiants_societe(societe, cnss=False, langue=langue))}'
-            f'<br>{esc(ligne2)}</div><div class="pied-droite">{bloc_paraphes}'
+            f'{"<br>".join(lignes_legales)}'
+            f'</div><div class="pied-droite">{bloc_paraphes}'
             f'<div class="folio"><b>{esc(contenu.get("reference"))}</b>'
             f'<i></i></div>'
             f'</div></div></div>')

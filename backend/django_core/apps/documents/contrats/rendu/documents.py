@@ -113,12 +113,12 @@ def contrat_installation(contenu):
                   libelle('paiement_intro', langue))
     corps += c.frise(echeancier, langue=langue)
     if contenu.get('paiement', {}).get('modalites'):
-        corps += f'<p class="petit">{c.esc(contenu["paiement"]["modalites"])}</p>'
+        corps += f'<p class="petit">{c.texte_libre(contenu["paiement"]["modalites"])}</p>'
 
     corps += c.h2(libelle('entre_soussignes', langue))
     corps += c.parties(contenu)
 
-    devis = c.esc((contenu.get('chantier') or {}).get('devis_reference'))
+    devis = c.texte_libre((contenu.get('chantier') or {}).get('devis_reference'))
     corps += c.h2(libelle('ce_que_nous_installons', langue),
                   libelle('ce_que_nous_installons_intro', langue, devis=devis))
     corps += c.tableau_materiel(systeme.get('lignes'), langue=langue)
@@ -169,7 +169,7 @@ def _encadre_paiement_livraison(contenu):
     if lignes:
         texte += '<p>' + ' · '.join(lignes) + '</p>'
     if paiement.get('modalites'):
-        texte += f'<p class="petit">{c.esc(paiement["modalites"])}</p>'
+        texte += f'<p class="petit">{c.texte_libre(paiement["modalites"])}</p>'
     return c.encadre(libelle('a_regler_livraison', langue), texte)
 
 
@@ -195,7 +195,7 @@ def pv_livraison(contenu):
     )
     corps += c.h2(libelle('materiel_livre', langue),
                   libelle('conformement_devis', langue,
-                          devis=c.esc(chantier.get('devis_reference'))))
+                          devis=c.texte_libre(chantier.get('devis_reference'))))
     corps += c.tableau_materiel(systeme.get('lignes'), avec_series=bool(
         livraison.get('avec_series')), langue=langue)
 
@@ -278,10 +278,10 @@ def pv_reception(contenu):
         if paiement.get('exigible_en_lettres'):
             texte += (f'<p class="lettres">'
                       f'{c.esc(paiement["exigible_en_lettres"])}</p>')
-        texte += (f'<p>{c.esc(paiement.get("engagement") or "")}</p>'
+        texte += (f'<p>{c.texte_libre(paiement.get("engagement") or "")}</p>'
                   if paiement.get('engagement') else '')
         if paiement.get('modalites'):
-            texte += f'<p class="petit">{c.esc(paiement["modalites"])}</p>'
+            texte += f'<p class="petit">{c.texte_libre(paiement["modalites"])}</p>'
         corps += c.encadre(libelle('solde_a_regler', langue), texte)
 
     corps += c.h2(libelle('ce_que_reception_change', langue))

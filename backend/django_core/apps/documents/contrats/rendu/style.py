@@ -149,7 +149,8 @@ strong,b{font-weight:700;color:__NAVY__}
 .titre{padding:8.5mm 0 3mm}
 .surtitre{font-size:7.6pt;letter-spacing:.2em;text-transform:uppercase;
   color:__BRONZE__;font-weight:700;margin-bottom:2.2mm;string-set:acte content()}
-.reference-cachee{string-set:reference content();display:none}
+.reference-courante{string-set:reference content();height:0;overflow:hidden;
+  line-height:0;font-size:1pt;color:__PAPIER__}
 h1{font-family:__TITRE__;font-weight:400;font-size:27pt;line-height:1.12;
   color:__NAVY__;letter-spacing:-.005em}
 .chapeau{margin-top:3.2mm;font-size:11pt;line-height:1.5;color:__GRIS__;
@@ -225,9 +226,9 @@ tr.total td{border-bottom:none;border-top:.9pt solid __NAVY__;font-weight:700;
   color:__NAVY__;padding-top:2.6mm}
 table.garanties td:first-child{width:33%}
 table.garanties td:nth-child(2){width:21%}
-table.garanties.dates td:first-child{width:29%}
-table.garanties.dates td:nth-child(2){width:19%}
-table.garanties.dates td:nth-child(3){width:15%}
+table.garanties.dates td:first-child{width:27%}
+table.garanties.dates td:nth-child(2){width:17%}
+table.garanties.dates td:nth-child(3){width:20%}
 .duree{font-family:__TITRE__;font-size:13pt;color:__NAVY__;white-space:nowrap;
   line-height:1.2}
 .barre{height:1.5mm;border-radius:1mm;background:#E9ECF1;margin-top:1.4mm;
