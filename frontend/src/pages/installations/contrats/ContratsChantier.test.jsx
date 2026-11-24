@@ -128,23 +128,37 @@ describe('Onglet Contrats', () => {
     expect(documentsApiMock.pdfActe).toHaveBeenLastCalledWith(34, 'ar')
   })
 
-  it('un rôle en lecture seule ne voit aucun bouton d’écriture', async () => {
-    monter({ peutGerer: false })
-    await screen.findByText('Contrat d\'installation')
-    for (const nom of ['Modifier', 'Émettre', 'Faire signer sur place', 'Signé sur papier', 'Rouvrir']) {
-      expect(screen.queryByRole('button', { name: nom })).toBeNull()
-    }
+  const sansDroits = (d) => {
+    d.actes = d.actes.map((a) => ({
+      ...a, peut_modifier: false, peut_emettre: false, peut_signer: false, peut_rouvrir: false,
+    }))
+    return d
+  }
+  const GESTES_ECRITURE = ['Modifier', 'Émettre', 'Faire signer sur place', 'Signé sur papier', 'Rouvrir']
+
+  it('F8 — un rôle en lecture seule (peut_* à false côté serveur) ne voit aucun bouton d’écriture', async () => {
+    documentsApiMock.dossierContrats.mockResolvedValue({ data: sansDroits(dossier()) })
+    monter()
+    await screen.findByText("Contrat d'installation")
+    for (const nom of GESTES_ECRITURE) expect(screen.queryByRole('button', { name: nom })).toBeNull()
     expect(screen.getAllByRole('button', { name: 'Aperçu (PDF)' })).toHaveLength(5)
   })
 
-  it('chantier annulé : bandeau et aucun geste', async () => {
-    const d = dossier()
+  it('F8 — les gestes suivent les peut_* du serveur, jamais un drapeau local (peutGerer)', async () => {
+    monter({ peutGerer: false })
+    await screen.findByText("Contrat d'installation")
+    expect(within(carte('Réception des travaux')).getByRole('button', { name: 'Modifier' })).toBeInTheDocument()
+    expect(within(carte('Réception des travaux')).getByRole('button', { name: 'Émettre' })).toBeInTheDocument()
+  })
+
+  it('chantier annulé : bandeau, et les gestes que le serveur retire (peut_* à false) disparaissent', async () => {
+    const d = sansDroits(dossier())
     d.chantier.annule = true
     d.prochaine_action = null
     documentsApiMock.dossierContrats.mockResolvedValue({ data: d })
     monter()
     expect(await screen.findByText(/Ce chantier est annulé/)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Modifier' })).toBeNull()
+    for (const nom of GESTES_ECRITURE) expect(screen.queryByRole('button', { name: nom })).toBeNull()
   })
 
   it('chantier sans devis : prix à préciser et avertissement serveur', async () => {

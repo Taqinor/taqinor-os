@@ -99,8 +99,7 @@ export function grouperParRang(actes) {
 }
 
 /** Le geste principal d'un acte (celui que « prochaine action » met en avant). */
-export function actionPrincipale(acte, peutEcrire) {
-  if (!peutEcrire) return null
+export function actionPrincipale(acte) {
   if (acte.peut_emettre) return 'emettre'
   if (acte.peut_signer) return 'signer'
   return null

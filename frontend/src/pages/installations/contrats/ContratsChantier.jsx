@@ -42,8 +42,10 @@ export default function ContratsChantier({
   const [aModifier, setAModifier] = useState(null)
   const [langueApercu, setLangueApercu] = useState('fr') // Aperçu / Télécharger
 
-  // Le Directeur (ou le palier admin) enregistre un modèle de société ; sinon
-  // le serveur refuse et son `detail` s'affiche dans l'éditeur.
+  // Seul garde local : « Enregistrer comme modèle » (le serveur ne donne aucun
+  // `peut_*` pour lui). Le Directeur (ou le palier admin) l'enregistre ; sinon
+  // le serveur refuse et son `detail` s'affiche dans l'éditeur. Tous les autres
+  // gestes d'écriture suivent les `peut_*` de chaque acte, rien d'autre.
   const estDirecteur = useHasPermission(null, ['Directeur'])
   const estAdmin = useIsAdmin()
   const peutModele = peutGerer && (estDirecteur || estAdmin)
@@ -70,7 +72,6 @@ export default function ContratsChantier({
   const reessayer = () => { setEtat('chargement'); recharger() }
 
   const annule = !!dossier?.chantier?.annule
-  const peutEcrire = peutGerer && !annule
 
   const noterErreur = (id, detail) => setErreurs((e) => ({ ...e, [id]: detail }))
   const effacerErreur = (id) => setErreurs((e) => {
@@ -167,7 +168,7 @@ export default function ContratsChantier({
   const acteProchain = prochaine
     ? dossier.actes.find((a) => a.id === prochaine.acte_id)
     : null
-  const gestePrincipal = acteProchain ? actionPrincipale(acteProchain, peutEcrire) : null
+  const gestePrincipal = acteProchain ? actionPrincipale(acteProchain) : null
 
   return (
     <div className="contrats-chantier">
@@ -259,7 +260,6 @@ export default function ContratsChantier({
                     <ActeEtape
                       key={acte.id}
                       acte={acte}
-                      peutEcrire={peutEcrire}
                       occupe={occupe === acte.id}
                       erreur={erreurs[acte.id]}
                       onAction={surAction}
