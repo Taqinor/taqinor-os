@@ -1523,51 +1523,16 @@ def rafraichir_etude_pompage_devis(devis, *, force=False, sortie=None):
             != 'agricole':
         return None
     try:
+        from apps.ventes.conception.etudes_lignes import etude_pompage_des_lignes
         from .etude_schema import MOTEUR_POMPAGE, ecrire
 
-        etude = dict(devis.etude_params or {})
-        company = devis.company
-        lead = getattr(devis, 'lead', None)
-        catalogue = lire_catalogue(company)
-        facture = facture_du_devis(devis, catalogue)
-        from .pompage_pose import plan_pose_pompage
-        from .regles_calcul import REGLES_POSE_REELLE_2111, regles_au_moins
-        plan = plan_pose_pompage(devis)  # ACAL1201 — None ⇒ empreinte d'avant
-        empreinte = _empreinte(etude, facture, getattr(lead, 'id', None), plan)
-        stockee = (etude.get('provenance_pompage') or {}).get('_empreinte')
-        if not force and stockee == empreinte:
+        # ADEV160 — la moitié CALCUL (lignes facturées, empreinte, étude relue
+        # ou calculée, dérivées) est ``conception/etudes_lignes`` ; seule
+        # l'écriture des dérivées qui changent reste ici.
+        calcul = etude_pompage_des_lignes(devis, force=force, sortie=sortie)
+        if calcul is None:
             return None
-
-        corps = {}
-        fige = etude.get('pvgis_fige') or {}
-        localisation = etude.get('localisation') or {}
-        if (fige.get('lat') is not None and fige.get('lon') is not None
-                and (localisation.get('lat') is None
-                     or localisation.get('lon') is None)):
-            corps['localisation'] = dict(localisation, lat=fige['lat'],
-                                         lon=fige['lon'])
-        # AGQ24 — l'étude écrite par le devis automatique est RELUE (passée
-        # ou posée par :func:`etude_precalculee`) : jamais deux calculs.
-        sortie = sortie or _sortie_precalculee(devis)
-        if sortie is None:
-            sortie = etudier_pompage(company, corps, devis=devis, lead=lead,
-                                     facture=facture)
-        derivees = derivees_de_l_etude(sortie, pvgis_fige=fige or None)
-        if derivees.get('production') and not regles_au_moins(
-                devis, REGLES_POSE_REELLE_2111):  # ACAL1201 — ≤ 14 à l'octet
-            derivees['production'] = {k: v for k, v in derivees['production'].items()
-                                      if k != 'plan_irradiation'}
-        # ``pvgis_fige`` est À LA FOIS une entrée de l'empreinte et une dérivée
-        # que CE rafraîchisseur écrit (premier appel : None → coordonnées
-        # figées). L'empreinte STOCKÉE décrit donc l'état APRÈS écriture —
-        # sinon le second appel, sans aucun changement, la verrait différente
-        # et relancerait le moteur (garde « mêmes entrées ⇒ zéro calcul »).
-        empreinte = _empreinte(
-            dict(etude, pvgis_fige=derivees.get('pvgis_fige')), facture,
-            getattr(lead, 'id', None), plan)
-        derivees['provenance_pompage']['_empreinte'] = empreinte
-        a_ecrire = {cle: valeur for cle, valeur in derivees.items()
-                    if etude.get(cle) != valeur}
+        derivees, a_ecrire = calcul
         if a_ecrire:
             ecrire(devis, proprietaire=MOTEUR_POMPAGE, **a_ecrire)
         return derivees
