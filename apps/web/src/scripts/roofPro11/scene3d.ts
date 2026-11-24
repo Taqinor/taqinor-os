@@ -52,6 +52,7 @@ import {
 } from './constants';
 import { type AreaRecord, type ZoneRenderPlan, type RenderSceneFn } from './types';
 import { makeCanadianPanelTexture, materiauVerre } from './panelTexture';
+import { poserOeil } from './oeilCamera'; // ACAL1984
 import { type Ctx } from './context';
 import { poserEtiquettesNumeros } from './numerotation'; // CALX111
 // CALX94 câblage — couleur d'arête RETENUE (correction manuelle prioritaire), PURE.
@@ -1293,6 +1294,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   const readOnly = deps.readOnly === true;
   const poignees3d = creerPoignees3d(map); // ACAL1185 — poignées des coins au haut des murs
   const opts = ctx.opts;
+  const atelierErp = opts?.productionAtelier !== undefined; // ACAL1984 — `productionAtelier` : ERP seul (types.ts) ; site public : rendu inchangé
 
   const fmt1 = (n: number) => n.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const dimsLabel = (o: Obstacle) => `${fmt1(o.lengthM)} × ${fmt1(o.widthM)} m`;
@@ -1396,7 +1398,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     socleMat: THREE.MeshStandardMaterial;
   }
   const buildPanelMatSet = (dim: boolean, rapport: number): PanelMatSet => {
-    const glassMat = materiauVerre(panelTexOf(rapport), ctx.opts?.productionAtelier !== undefined); // ACAL1984 — `productionAtelier` : ERP seul (types.ts)
+    const glassMat = materiauVerre(panelTexOf(rapport), atelierErp); // ACAL1984
     const frameMat = new THREE.MeshStandardMaterial({ color: 0x9aa0aa, metalness: 0.85, roughness: 0.35 });
     const backMat = new THREE.MeshStandardMaterial({ color: 0xe6e8ee, metalness: 0.1, roughness: 0.6 });
     if (dim) {
@@ -1545,9 +1547,9 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     },
     render(_gl: WebGLRenderingContext | WebGL2RenderingContext, args: maplibregl.CustomRenderMethodInput) {
       if (glLost || !renderer || !scene || !threeCamera || !modelMatrix) return;
-      const m = new THREE.Matrix4().fromArray(Array.from(args.defaultProjectionData.mainMatrix));
-      threeCamera.projectionMatrix = m.multiply(modelMatrix);
-      poignees3d.suivre(threeCamera.projectionMatrix.elements);
+      const m = new THREE.Matrix4().fromArray(Array.from(args.defaultProjectionData.mainMatrix)).multiply(modelMatrix);
+      poignees3d.suivre(m.elements);
+      if (!(atelierErp && poserOeil(threeCamera, m))) threeCamera.projectionMatrix = m; // ACAL1984 — l'œil réel (oeilCamera.ts)
       renderer.resetState(); renderer.setViewport(0, 0, _gl.drawingBufferWidth, _gl.drawingBufferHeight); // H1 : la carte a pu changer de taille
       renderer.render(scene, threeCamera);
     },

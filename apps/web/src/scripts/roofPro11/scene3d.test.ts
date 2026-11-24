@@ -5,6 +5,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { creerCanalTeinte } from './canalTeinte'; // ACAL1621
 import { cibleVue, appliquerVue } from './vuesCamera';
 import { dimensionsTexture, materiauVerre } from './panelTexture'; // ACAL1984
+import * as THREE from 'three'; // ACAL1984
+import { poserOeil } from './oeilCamera'; // ACAL1984
 import {
   generateRoofShapePans,
   computeRidgeLifts,
@@ -457,6 +459,29 @@ describe('ACAL1408 — la teinte d’accès modifie la couleur effective du pann
 
 // Demande croisée (ACAL1621) — la carte d'accès et la teinte par chaîne écrivent le MÊME tampon : un maillage reconstruit
 // (ou une table de chaînes arrivée) pendant la capture de la carte de chaleur repeignait les chaînes par-dessus l'accès.
+// ACAL1984 (suite) — même cause, second symptôme : une TACHE sombre sur les panneaux teintés au-dessus de l'origine de la
+// scène (diffus éteint par la vue rasante). L'atelier pose l'œil RÉEL tiré de la matrice de la carte.
+describe('ACAL1984 — l’œil de la caméra de la couche est celui de la carte, l’image reste la même', () => {
+  it('œil retrouvé, vue × projection = matrice de la carte ; une matrice dégénérée laisse la caméra', () => {
+    const vraie = new THREE.PerspectiveCamera(36, 1.6, 0.5, 4000);
+    vraie.position.set(12, -40, 55);
+    vraie.lookAt(0, 0, 6);
+    vraie.updateMatrixWorld(true);
+    const carte = vraie.projectionMatrix.clone().multiply(vraie.matrixWorldInverse);
+    const couche = new THREE.Camera();
+    expect(poserOeil(couche, carte)).toBe(true);
+    expect(couche.position.distanceTo(vraie.position)).toBeLessThan(1e-6);
+    const recomposee = couche.projectionMatrix.clone().multiply(couche.matrixWorldInverse);
+    recomposee.elements.forEach((v, i) => expect(v).toBeCloseTo(carte.elements[i], 9));
+    // un panneau au-dessus de l'origine est vu d'en haut (N·V > 0), plus de vue rasante
+    const versOeil = couche.position.clone().sub(new THREE.Vector3(0, 0, 6)).normalize();
+    expect(versOeil.dot(new THREE.Vector3(0, 0, 1))).toBeGreaterThan(0.5);
+    const intacte = new THREE.Camera();
+    expect(poserOeil(intacte, new THREE.Matrix4().makeScale(0, 0, 0))).toBe(false);
+    expect(intacte.position.toArray()).toEqual([0, 0, 0]);
+  });
+});
+
 describe('ACAL1621 — canal de teinte : la carte d’accès allumée passe avant la teinte par chaîne', () => {
   it('accès allumé : la reconstruction / les chaînes réécrivent l’accès ; éteint : les chaînes reviennent', () => {
     const ecrits: Array<string | null> = [];
