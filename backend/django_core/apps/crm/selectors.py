@@ -231,3 +231,16 @@ def lead_efface(lead):
     from .dsr_provider import LEAD_NOM_ANONYMISE
 
     return lead is not None and getattr(lead, 'nom', None) == LEAD_NOM_ANONYMISE
+
+
+def lead_efface_sous_verrou(company, lead_id):
+    """Relecture E3 B1(b) — VERROUILLE la ligne du lead de ``company``
+    (``select_for_update``, corbeille comprise) et dit s'il est effacé ou
+    disparu. À appeler dans une transaction : l'UPDATE du scrub
+    d'``anonymiser_lead`` prend ce même verrou, les deux se sérialisent."""
+    from .dsr_provider import LEAD_NOM_ANONYMISE
+    from .models import Lead
+
+    nom = (Lead.all_objects.select_for_update().filter(company=company, pk=lead_id)
+           .values_list('nom', flat=True).first())
+    return nom is None or nom == LEAD_NOM_ANONYMISE

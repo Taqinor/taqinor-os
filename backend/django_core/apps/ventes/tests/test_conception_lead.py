@@ -1590,6 +1590,71 @@ class RelanceConceptionTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher'
                                    calepinage_id=None, version=2, declencheur=version.declencheur)
         self.assertEqual(lignes.count(), 1)
 
+    def test_effacement_pendant_le_calcul_rien_n_est_range(self):
+        """Relecture E3 B1(b) — la relance a lu le lead, l'effacement passe
+        pendant son calcul (versions supprimées) : ``ranger`` relit la ligne du
+        lead sous verrou et ne range RIEN, aucun événement."""
+        from apps.crm.dsr_provider import anonymiser_lead
+        from apps.crm.models import Lead
+        from apps.ventes.conception import moteur
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        Lead.objects.filter(pk=lead.pk).update(gps_lat=Decimal('33.5731'), gps_lng=Decimal('-7.5898'))
+        lead.refresh_from_db()
+        evenements = _Evenements(self)
+        vrai = moteur.calculer_conception
+
+        def calcul_puis_effacement(*args, **kwargs):
+            resultat = vrai(*args, **kwargs)
+            with self.captureOnCommitCallbacks(execute=True):
+                anonymiser_lead(company, Lead.all_objects.get(pk=lead.pk), motif='Effacement (test B1b)')
+            return resultat
+        self._patcher(moteur, 'calculer_conception', side_effect=calcul_puis_effacement)
+        relance = self._relancer(lead, company, _declencheur())  # le lead lu AVANT l'effacement
+        self.assertEqual((relance.conception, relance.ecrite), (None, False))  # mutant « sans garde » : v1
+        self.assertFalse(ConceptionLead.objects.filter(lead_id=lead.pk).exists())
+        self.assertEqual(evenements.recus, [])
+
+    def test_une_relance_plus_ancienne_ne_recouvre_pas_une_plus_recente(self):
+        """Relecture E3 Q5 — A part (facture 2 000), une modification range B
+        (facture 2 600) pendant le calcul de A : A ne range pas ses entrées
+        plus anciennes par-dessus ; B reste courante, un seul événement."""
+        import datetime
+
+        from django.utils import timezone
+
+        from apps.crm.models import Lead
+        from apps.ventes.conception import moteur
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        self._relancer(lead, company, _declencheur())
+        evenements = _Evenements(self)
+        Lead.objects.filter(pk=lead.pk).update(facture_hiver=Decimal('2000'))
+        lead_a = Lead.objects.get(pk=lead.pk)
+        vrai = moteur.calculer_conception
+        etat = {'b': False}
+
+        def calcul_de_a(*args, **kwargs):
+            resultat = vrai(*args, **kwargs)
+            if not etat['b']:
+                etat['b'] = True
+                Lead.objects.filter(pk=lead.pk).update(facture_hiver=Decimal('2600'))
+                plus_tard = timezone.now() + datetime.timedelta(seconds=1)
+                with mock.patch('django.utils.timezone.now', return_value=plus_tard):
+                    self._relancer(Lead.objects.get(pk=lead.pk), company, _declencheur('manuel'))
+            return resultat
+        self._patcher(moteur, 'calculer_conception', side_effect=calcul_de_a)
+        relance_a = self._relancer(lead_a, company, _declencheur('manuel'))
+        self.assertEqual((relance_a.conception, relance_a.ecrite), (None, False))  # mutant « ranger A » : v3
+        courante = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual((courante.version, courante.entrees_utilisees['facture_hiver']['valeur']), (2, 2600.0))
+        # (B est annoncée par sa propre capture ET rejouée par celle de A, englobante.)
+        self.assertEqual({e['version'] for e in evenements.recus}, {2})
+
     def test_chatter_muet_pour_remplissage_filet_et_regles(self):
         """Relecture E3 M3 — seule une relance causée par un changement de la
         fiche ou de la pose écrit « Conception recalculée » ; remplissage,
