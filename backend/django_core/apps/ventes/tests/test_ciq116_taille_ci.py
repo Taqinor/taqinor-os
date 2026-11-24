@@ -1380,7 +1380,7 @@ class HauteTensionOptionAvecTests(unittest.TestCase):
                                                        nb_batteries=None, dimensionner=dimensionner)
         dimensionner.assert_not_called()
         self.assertEqual((resultat, bat), (bt, None))
-        self.assertIn('créé avant la règle haute tension', alertes[0]['message'])
+        self.assertIn('envoyé avant la règle haute tension', alertes[0]['message'])
         self.assertIsNone(self._etude(self._bat(ht=_famille_ht()), regles_ht=False)['bloc'])
 
     def test_tailles_admissibles_et_grappes_portees(self):

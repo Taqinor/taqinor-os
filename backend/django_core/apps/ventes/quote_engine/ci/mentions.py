@@ -164,6 +164,15 @@ TEXTES_CONSOMMATION_ESTIMEE = {
     "ar": "الاستهلاك: تقدير على أساس {n} أشهر مسجلة.",
 }
 _RELEVE_PARTIEL = re.compile(r"relevé partiel \((\d+) mois\)")
+#: Fondateur 24/11/2026 — consommation estimée depuis la puissance maximale
+#: appelée (``domain.estimation_puissance_ci``) : dite au client comme le
+#: relevé partiel, même entrée ``consommation_estimee``, même note de couverture.
+TEXTES_CONSOMMATION_ESTIMEE_PUISSANCE = {
+    "fr": "Consommation : estimation à partir de la puissance maximale déclarée ({kva} kVA).",
+    "en": "Consumption: estimate based on the declared maximum power ({kva} kVA).",
+    "ar": "الاستهلاك: تقدير على أساس القدرة القصوى المصرح بها ({kva} kVA).",
+}
+_PUISSANCE_MAX = re.compile(r"puissance maximale appelée ([\d ]+(?:,\d+)?) kVA")
 
 
 def _dict(v):
@@ -714,15 +723,25 @@ def _mention_pointe(data):
 
 def _mention_consommation_estimee(data):
     """ADEV110 — « estimation sur n mois relevés » quand l'étude a retenu un
-    relevé partiel (``etude.etude_ci.hypotheses``), sinon ``None``."""
+    relevé partiel (``etude.etude_ci.hypotheses``) ; 24/11/2026 — « estimation
+    à partir de la puissance maximale déclarée » quand elle vient de la
+    puissance maximale appelée ; sinon ``None``."""
     etude_ci = _dict(_dict(data.get("etude")).get("etude_ci"))
     for h in etude_ci.get("hypotheses") or []:
         h = _dict(h)
+        if h.get("cle") != "consommation" or h.get("statut") != "estimation":
+            continue
         trouve = _RELEVE_PARTIEL.search(str(h.get("source") or ""))
-        if h.get("cle") == "consommation" and h.get("statut") == "estimation" and trouve:
+        if trouve:
             n = int(trouve.group(1))
             return _entree("consommation_estimee", {
                 k: v.format(n=n) for k, v in TEXTES_CONSOMMATION_ESTIMEE.items()}, h["source"])
+        puissance = _PUISSANCE_MAX.search(str(h.get("source") or ""))
+        if puissance:
+            kva = puissance.group(1).strip()
+            return _entree("consommation_estimee", {
+                k: v.format(kva=kva) for k, v in TEXTES_CONSOMMATION_ESTIMEE_PUISSANCE.items()},
+                "puissance maximale appelée déclarée (%s kVA)" % kva)
     return None
 
 

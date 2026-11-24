@@ -92,7 +92,7 @@ def famille_des_lignes(bat_bt, lignes, devis=None):
     """``(bat, haute tension?)`` de l'option « avec » des LIGNES d'un devis :
     la famille haute tension quand une ligne porte un hybride haute tension
     ET que le devis l'ouvre (``regles_calcul.hybrides_ht_ouverts`` — un devis
-    créé avant garde ce qu'il a reçu) ; sinon la basse tension, inchangée."""
+    envoyé avant garde ce qu'il a reçu) ; sinon la basse tension, inchangée."""
     from .regles_calcul import hybrides_ht_ouverts
     famille = (bat_bt or {}).get(CLE) or famille_vide()
     ids = {h['produit'] for h in famille['hybrides']}
@@ -197,7 +197,7 @@ def essayer_haute_tension(resultat_bt, bat_bt, *, regles_ht, nb_batteries, dimen
 
     Basse tension composée, ou aucun hybride haute tension au catalogue
     (aucune option haute tension possible) : le résultat basse tension
-    inchangé, aucune alerte. Devis antérieur à la
+    inchangé, aucune alerte. Devis envoyé avant la
     règle (``regles_ht`` faux) : inchangé, les hybrides haute tension NOMMÉS.
     Sinon la famille haute tension est appariée et dimensionnée par
     ``dimensionner(bat, batteries, nb_batteries=, max_appareils=, parallele=)``."""
@@ -206,7 +206,7 @@ def essayer_haute_tension(resultat_bt, bat_bt, *, regles_ht, nb_batteries, dimen
         return resultat_bt, None, []
     if not regles_ht:
         return resultat_bt, None, _alertes_ecartes([
-            ('hybride', h['nom'], 'devis créé avant la règle haute tension du 24/11/2026 : il garde '
+            ('hybride', h['nom'], 'devis envoyé avant la règle haute tension du 24/11/2026 : il garde '
              "l'option qu'il a reçue") for h in famille['hybrides']])
     bat, modele, nb, alertes, motif = _preparer(famille, nb_batteries)
     if motif:

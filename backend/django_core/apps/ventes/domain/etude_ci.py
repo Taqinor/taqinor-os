@@ -1540,7 +1540,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         regles_3010b=regles_au_moins(devis, REGLES_RETOURS_3010B),  # D-CI-BATTERIE-NON-RENTABLE
         talon_inconnu=(prov_charge.get('talon') or {}).get('statut') == 'borne_conservatrice',
         nb_batteries=res.valeur('nb_batteries'), regles_cycles=regles_au_moins(devis, REGLES_CYCLES_BATTERIE_1911),
-        regles_ht=hybrides_ht_ouverts(devis),  # HT24 : haute tension, devis créés depuis le 25/11/2026
+        regles_ht=hybrides_ht_ouverts(devis),  # HT24 : haute tension, hors devis envoyés avant le 25/11/2026
         sensibilites=scenarios_du_devis(company, devis))  # niveau 14 (D-SENS-1)
     alertes.extend(_alertes_postes(composition, avec))
     hypotheses.extend(avec['hypotheses'])
