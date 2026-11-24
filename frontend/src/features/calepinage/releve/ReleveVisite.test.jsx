@@ -173,11 +173,13 @@ describe('Relevé de visite — même porte, même corps que le panneau de l’a
     await waitFor(() => expect(api.releve).toHaveBeenCalledTimes(2))
     taper('releve-longueur', '12,4')
     taper('releve-largeur', '8,6')
+    capteurs.demarrerCapteurs.mockResolvedValue({ ok: true })
+    capteurs.lireInclinaison.mockReturnValue({ betaDeg: 0, gammaDeg: 0 })
+    capteurs.lireVisee.mockReturnValue({ azimutDeg: 337.5, hauteurDeg: 0 }) // le pan regarde à l'opposé : 157,5°
     fireEvent.click(screen.getByTestId('releve-orientation-bouton'))
-    await screen.findByTestId('releve-azimut-main')
-    taper('releve-azimut-main', '157,5')
+    await waitFor(() => expect(screen.getByTestId('releve-orientation-valeur')).toHaveTextContent('Sud-sud-est'))
+    expect(screen.getByTestId('releve-orientation-valeur').textContent).not.toMatch(/saisie à la main/)
     taper('releve-precision', '10')
-    expect(screen.getByTestId('releve-orientation-valeur')).toHaveTextContent('Sud-sud-est · saisie à la main')
     fireEvent.click(screen.getByTestId('releve-terminer'))
     await waitFor(() => expect(api.corrigerReleve).toHaveBeenCalledTimes(2))
     const [, idTel, corpsTel] = api.corrigerReleve.mock.calls[1]
@@ -192,14 +194,59 @@ describe('Relevé de visite — même porte, même corps que le panneau de l’a
     expect(api.enregistrerSectionLayout).not.toHaveBeenCalled()
   })
 
-  it('un azimut sans précision est refusé AVANT envoi, l’erreur sous la carte', async () => {
+  it('un azimut de CAPTEUR sans précision est refusé AVANT envoi, l’erreur sous la carte', async () => {
+    capteurs.demarrerCapteurs.mockResolvedValue({ ok: true })
+    capteurs.lireInclinaison.mockReturnValue({ betaDeg: 0, gammaDeg: 0 })
+    capteurs.lireVisee.mockReturnValue({ azimutDeg: 0, hauteurDeg: 0 })
     rendre()
     await screen.findByTestId('releve-projet')
     fireEvent.click(screen.getByTestId('releve-orientation-bouton'))
-    taper(await screen.findByTestId('releve-azimut-main').then(() => 'releve-azimut-main'), '180')
+    await screen.findByTestId('releve-precision')
     fireEvent.click(screen.getByTestId('releve-terminer'))
     expect(await screen.findByTestId('releve-erreur-precision')).toHaveTextContent('précision')
     expect(api.corrigerReleve).not.toHaveBeenCalled()
+  })
+})
+
+describe('ACAL1814 — une orientation TAPÉE reste une saisie à la main', () => {
+  it('« 160 » tapé puis « Terminer » : aucun azimut boussole envoyé, le pan écrit en source « saisie », relu « saisie à la main »', async () => {
+    rendre()
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(screen.getByTestId('releve-orientation-bouton')).not.toBeDisabled())
+    fireEvent.click(screen.getByTestId('releve-orientation-bouton'))
+    taper(await screen.findByTestId('releve-azimut-main').then(() => 'releve-azimut-main'), '160')
+    expect(screen.queryByTestId('releve-precision')).toBeNull() // aucune précision de boussole exigée pour une saisie
+    expect(screen.getByTestId('releve-orientation-valeur')).toHaveTextContent('Sud-sud-est · saisie à la main')
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(api.corrigerReleve).toHaveBeenCalledTimes(1))
+    const [, , corps] = api.corrigerReleve.mock.calls[0]
+    expect(corps.azimut_boussole_deg).toBeNull()
+    expect(corps.precision_azimut_deg).toBeNull()
+    expect(api.enregistrerSectionLayout).toHaveBeenCalledTimes(1)
+    expect(api.enregistrerSectionLayout.mock.calls[0][1]).toEqual({
+      cle: 'zones', zone_id: 'z1', base_empreinte: 'emp-1',
+      champs: { facingAzimuthDeg: 160, facingManual: true, facingAzimuthSource: 'saisie', facingAzimuthPrecisionDeg: null },
+    })
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Relevé corrigé.'))
+    fireEvent.click(screen.getByTestId('releve-terminer')) // déjà écrite : jamais réécrite
+    await waitFor(() => expect(api.corrigerReleve).toHaveBeenCalledTimes(2))
+    expect(api.enregistrerSectionLayout).toHaveBeenCalledTimes(1)
+  })
+
+  it('relue du pan : l’orientation « saisie » du document se lit « Sud-sud-est · saisie à la main » ; une mesure de capteur reprend la main et exige sa précision', async () => {
+    api.layout.mockResolvedValue({ data: {
+      roof_layout: { zones: [{ ...ZONE, facingAzimuthDeg: 160, facingAzimuthSource: 'saisie', facingManual: true }] },
+      empreinte_document: 'emp-1',
+    } })
+    rendre()
+    await waitFor(() => expect(screen.getByTestId('releve-orientation-valeur')).toHaveTextContent('Sud-sud-est · saisie à la main'))
+    capteurs.demarrerCapteurs.mockResolvedValue({ ok: true })
+    capteurs.lireInclinaison.mockReturnValue({ betaDeg: 0, gammaDeg: 0 })
+    capteurs.lireVisee.mockReturnValue({ azimutDeg: 0, hauteurDeg: 0 })
+    fireEvent.click(screen.getByTestId('releve-orientation-bouton'))
+    await screen.findByTestId('releve-precision')
+    expect(screen.getByTestId('releve-orientation-valeur')).toHaveTextContent('Sud')
+    expect(screen.getByTestId('releve-orientation-valeur').textContent).not.toMatch(/saisie à la main/)
   })
 })
 
@@ -214,10 +261,13 @@ describe('Relevé de visite — « Voir en 3D » ouvre la vue client (ACAL1811)'
 
 describe('Relevé de visite — « Terminer » répond EN VUE (ACAL1812)', () => {
   it('un refus ramène le champ fautif (focus) et s’écrit dans une bannière posée AVANT le pied fixe', async () => {
+    capteurs.demarrerCapteurs.mockResolvedValue({ ok: true })
+    capteurs.lireInclinaison.mockReturnValue({ betaDeg: 0, gammaDeg: 0 })
+    capteurs.lireVisee.mockReturnValue({ azimutDeg: 340, hauteurDeg: 0 }) // 160° vers le pan
     rendre()
     await screen.findByTestId('releve-projet')
     fireEvent.click(screen.getByTestId('releve-orientation-bouton'))
-    taper(await screen.findByTestId('releve-azimut-main').then(() => 'releve-azimut-main'), '160')
+    await screen.findByTestId('releve-precision')
     fireEvent.click(screen.getByTestId('releve-terminer'))
     const bandeau = await screen.findByTestId('releve-message')
     expect(bandeau).toHaveAttribute('role', 'alert')

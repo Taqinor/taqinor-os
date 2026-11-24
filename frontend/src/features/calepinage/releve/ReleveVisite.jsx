@@ -74,7 +74,9 @@ export default function ReleveVisite() {
   const [releve, setReleve] = useState({ id: null, releveLe: '', notes: '', chaines: [], photoIds: [] })
   const [azimutDeg, setAzimutDeg] = useState('')
   const [precisionDeg, setPrecisionDeg] = useState('')
-  const [azimutAMain, setAzimutAMain] = useState(false)
+  const [azimutMain, setAzimutMain] = useState('') // ACAL1814 — l'orientation TAPÉE : écrite sur le pan, jamais en azimut boussole
+  const [capteurLu, setCapteurLu] = useState(false) // une lecture du capteur dans cette séance : elle prime sur l'orientation déjà tapée du pan
+  const [azimutEcrit, setAzimutEcrit] = useState('') // la valeur tapée déjà écrite sur le pan (évite de la réécrire)
   const [pente, setPente] = useState(null) // { degres, capteur } — en attente de « Terminer »
   const [capteursActifs, setCapteursActifs] = useState(false)
   const [manuel, setManuel] = useState({ pente: false, azimut: false })
@@ -153,16 +155,32 @@ export default function ReleveVisite() {
   }
   const mesurerAzimut = async () => {
     const m = await lireCapteur('azimut')
-    if (m && m.azimutDeg !== null) { setAzimutDeg(String(m.azimutDeg)); setAzimutAMain(false) }
+    if (m && m.azimutDeg !== null) { setAzimutDeg(String(m.azimutDeg)); setAzimutMain(''); setCapteurLu(true) }
   }
 
   const carteP = penteDuPan(zone, pente)
-  const direction = nomDirection(azimutDeg)
+  /* ACAL1814 — ce que dit la carte : la valeur tapée, sinon l'orientation saisie déjà écrite sur le pan (relue), sinon la boussole du relevé. */
+  const azimutDuPan = zone?.facingAzimuthSource === 'saisie' && Number.isFinite(Number(zone.facingAzimuthDeg))
+    && zone.facingAzimuthDeg !== null ? String(zone.facingAzimuthDeg) : ''
+  const aMain = azimutMain !== '' || (azimutDuPan !== '' && !capteurLu)
+  const azimutLu = azimutMain !== '' ? versPoint(azimutMain) : (aMain ? azimutDuPan : azimutDeg)
+  const direction = nomDirection(azimutLu)
 
-  /* La pente du PAN, écrite exactement comme `SaisiePente` (primitive par section). */
-  const enregistrerPente = async () => {
-    const v = pente.degres
-    const champs = { pitchDeg: v, pitchSource: pente.capteur ? { mode: 'degres', degres: v, provenance: 'telephone' } : { mode: 'degres', degres: v } }
+  /* Le PAN, écrit exactement comme `SaisiePente` (primitive par section) : la pente, et/ou l'orientation TAPÉE
+     (source « saisie », ACAL1814) — UNE seule écriture, un seul jeton. */
+  const enregistrerPan = async (aEcrirePente, azimutTape) => {
+    const champs = {}
+    if (aEcrirePente) {
+      const v = pente.degres
+      champs.pitchDeg = v
+      champs.pitchSource = pente.capteur ? { mode: 'degres', degres: v, provenance: 'telephone' } : { mode: 'degres', degres: v }
+    }
+    if (azimutTape !== null) {
+      champs.facingAzimuthDeg = azimutTape
+      champs.facingManual = true
+      champs.facingAzimuthSource = 'saisie'
+      champs.facingAzimuthPrecisionDeg = null
+    }
     const res = await calepinageApi.calepinages.enregistrerSectionLayout(id, {
       cle: 'zones', zone_id: zone.id, champs, base_empreinte: doc.empreinte,
     })
@@ -170,12 +188,16 @@ export default function ReleveVisite() {
       ?? zonesDuDocument(doc.document).map((z) => (String(z.id) === String(zone.id) ? { ...z, ...champs } : z))
     doc.appliquerSection('zones', mises, res?.data?.empreinte_document ?? null)
     // La pente tapée RESTE lue (« 22° · saisie à la main ») : seule la marque « déjà écrite » évite de la réécrire.
-    setPente((p) => ({ ...p, enregistree: true }))
+    if (aEcrirePente) setPente((p) => ({ ...p, enregistree: true }))
+    if (azimutTape !== null) setAzimutEcrit(String(azimutTape))
   }
 
   const terminer = async () => {
+    // ACAL1814 — seule une mesure de capteur (boussole) part en azimut du relevé, et exige sa précision.
     const azimut = versPoint(azimutDeg)
     const precision = versPoint(precisionDeg)
+    const tape = versPoint(azimutMain)
+    const azimutTape = tape !== '' && Number.isFinite(Number(tape)) && tape !== azimutEcrit ? Number(tape) : null
     const fautes = validerAvantEnvoi(releve.chaines, azimut, precision)
     setErreurs(fautes)
     setMessage(null)
@@ -188,27 +210,36 @@ export default function ReleveVisite() {
       releveLe: releve.releveLe || dateDuJour(), chaines: releve.chaines, azimutDeg: azimut,
       precisionDeg: precision, notes: releve.notes, photoIds: releve.photoIds,
     })
-    const penteAEcrire = !!pente && !pente.enregistree && !!zone && doc.etat === 'ok'
+    const pretAEcrire = !!zone && doc.etat === 'ok'
+    const penteAEcrire = !!pente && !pente.enregistree && pretAEcrire
+    const azimutAEcrire = azimutTape !== null && pretAEcrire
+    const panAEcrire = penteAEcrire || azimutAEcrire
+    const sansPanPourAzimut = azimutTape !== null && !zone
     /* Sans réseau (ou coupure en route) : le relevé reste sur le téléphone, dans la file, et le DIT en vue. */
     const garderSurLeTelephone = async () => {
       await fileReleve.garder(corps, releve.id)
       setReleve((r) => ({ ...r, releveLe: corps.releve_le }))
       setMessage({
-        texte: `Relevé gardé sur ce téléphone : il partira au retour du réseau.${penteAEcrire
-          ? ' La pente du toit s’enregistrera au prochain « Terminer le relevé » avec du réseau.' : ''}`,
+        texte: `Relevé gardé sur ce téléphone : il partira au retour du réseau.${panAEcrire
+          ? ` ${[penteAEcrire && 'La pente du toit', azimutAEcrire && 'L’orientation du toit'].filter(Boolean).join(' et ')
+          } s’enregistrera au prochain « Terminer le relevé » avec du réseau.` : ''}`,
         ton: 'ok',
       })
     }
     try {
       if (typeof navigator !== 'undefined' && navigator.onLine === false) { await garderSurLeTelephone(); return }
-      if (penteAEcrire) await enregistrerPente()
+      if (panAEcrire) await enregistrerPan(penteAEcrire, azimutAEcrire ? azimutTape : null)
       const res = await (releve.id
         ? calepinageApi.calepinages.corrigerReleve(id, releve.id, corps)
         : calepinageApi.calepinages.enregistrerReleve(id, corps))
       if (fileReleve.enAttente) await fileReleve.oublier() // l'envoi en ligne a réussi : la copie gardée ne repart pas
       const nouvelId = res?.data?.releve?.id
       setReleve((r) => ({ ...r, id: nouvelId ?? r.id, releveLe: corps.releve_le }))
-      setMessage({ texte: releve.id ? 'Relevé corrigé.' : 'Relevé enregistré.', ton: 'ok' })
+      setMessage({
+        texte: `${releve.id ? 'Relevé corrigé.' : 'Relevé enregistré.'}${sansPanPourAzimut
+          ? ' L’orientation tapée n’est pas enregistrée : aucun pan dessiné, tracez le toit dans l’atelier.' : ''}`,
+        ton: 'ok',
+      })
     } catch (err) {
       const refus = (texte, champ = null) => setMessage({ texte, ton: 'refus', champ })
       if (!err?.response) {
@@ -268,15 +299,15 @@ export default function ReleveVisite() {
           </CarteMesure>
 
           <CarteMesure testId="releve-orientation" libelle="Le toit regarde vers"
-            valeur={direction ? `${direction}${azimutAMain ? ' · saisie à la main' : ''}` : 'à relever'}
+            valeur={direction ? `${direction}${aMain ? ' · saisie à la main' : ''}` : 'à relever'}
             bouton="Boussole" onBouton={mesurerAzimut}>
             {motifs.azimut && <p role="alert" className="cal-tel-aide">{motifs.azimut}</p>}
             {manuel.azimut && (
               <ChampDecimal id="releve-azimut-main" testId="releve-azimut-main" libelle="Orientation saisie à la main (0 = nord)" unite="°" compact
-                valeur={azimutAMain ? versVirgule(azimutDeg) : ''}
-                onChange={(v) => { setAzimutDeg(versPoint(v)); setAzimutAMain(true) }} />
+                valeur={versVirgule(azimutMain !== '' ? azimutMain : azimutDuPan)}
+                onChange={(v) => { setAzimutMain(versPoint(v)); setCapteurLu(false) }} />
             )}
-            {(azimutDeg !== '' || manuel.azimut) && (
+            {azimutDeg !== '' && !aMain && (
               <ChampDecimal id="releve-precision" testId="releve-precision" libelle="Précision de la boussole (±)" unite="°" compact
                 valeur={versVirgule(precisionDeg)} onChange={(v) => setPrecisionDeg(versPoint(v))} />
             )}
