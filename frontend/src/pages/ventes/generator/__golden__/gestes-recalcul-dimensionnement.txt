@@ -157,15 +157,19 @@ TVA %
 Total TTC
 Option
 Ordre
+Option sans batterie
 — Produit —
 HT : 14 000 MAD
 16 800 MADHT : 14 000 MAD
+Option avec batterie
 — Produit —
 HT : 17 000 MAD
 20 400 MADHT : 17 000 MAD
+Option sans batterie
 — Produit —
 HT : 1 800 MAD
 2 160 MADHT : 1 800 MAD
+Option sans batterie
 — Produit —
 HT : 1 200 MAD
 1 440 MADHT : 1 200 MAD
@@ -173,6 +177,7 @@ HT : 1 200 MAD
 HT : 1 450 MAD
 TVA appliquée : 20 % (catalogue : 10 %)
 13 920 MADHT : 11 600 MAD
+Option avec batterie
 — Produit —
 HT : 16 000 MAD
 19 200 MADHT : 16 000 MAD

@@ -107,7 +107,7 @@ import {
 } from '../../features/ventes/calc/lignesDefaut.js' // QJR546 — garde « produit tarifé » ; T4-U3-006 — table par marché
 import {
   optionTotalsTTC, prixParKwc, discountForTarget, computeBuyCostDetail, avecBatterieAvailability,
-  multiPropertyPreviewTTC, lignesRemiseesParPanier,
+  multiPropertyPreviewTTC, lignesRemiseesParPanier, optionsDesLignes,
 } from '../../features/ventes/calc/totaux.js'
 import { MESSAGE_KWH_INCOHERENT, baremeDepuisProfil } from '../../features/ventes/calc/tarifs.js'
 import { todayLocalIso } from '../../lib/format'
@@ -988,6 +988,12 @@ export default function DevisGenerator({
     [lines, discountPct, scenario, optionArgent, produits, centaineMontee],
   )
   const lignesRemiseesTtc = remiseParPanier.parLigne
+  // T4-U2-011 — l'option où compte chaque ligne qui ne compte pas dans les
+  // deux totaux (même règle que les totaux du rail et le PDF).
+  const optionsLignes = useMemo(
+    () => optionsDesLignes(lines, { scenario, produits }),
+    [lines, scenario, produits],
+  )
   // Condition d'affichage = remise > 0 (jamais « montant ≠ catalogue ») :
   // remise nulle ⇒ écran inchangé à l'octet (le miroir rend le catalogue).
   const montrerRemise = (parseFloat(discountPct) || 0) > 0
@@ -2139,7 +2145,7 @@ export default function DevisGenerator({
           errorLines={errors.lines}
           accessoiresOnly={accessoiresOnly}
           setAccessoiresOnly={setAccessoiresOnly}
-          lignesRemiseesTtc={lignesRemiseesTtc}
+          lignesRemiseesTtc={lignesRemiseesTtc} optionsLignes={optionsLignes}
           montrerRemise={montrerRemise}
         >
           <RailArgent agricole={modeInstallation === 'agricole'}

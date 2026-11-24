@@ -48,6 +48,9 @@ export default function LigneTable({
   // ici : « AUCUNE règle métier ici »). `lignesRemiseesTtc` est ALIGNÉ sur
   // `lines` ; `montrerRemise` gate l'affichage (remise > 0).
   lignesRemiseesTtc, montrerRemise,
+  // T4-U2-011 — option de chaque ligne (`optionsDesLignes`, ALIGNÉ sur
+  // `lines`, calculé dans la coquille : aucune règle métier ici).
+  optionsLignes = null,
   // Le RAIL D'ARGENT (`RailArgent`) vit DANS cette même carte, sous la table :
   // c'est le contrat visuel historique (mêmes `CardContent`, même bordure).
   // Il est passé en `children` pour que le DOM rendu soit inchangé à l'octet.
@@ -266,6 +269,8 @@ export default function LigneTable({
                   // tableau/objet recréé à chaque rendu).
                   totalTtcRemise={lignesRemiseesTtc?.[i] ?? null}
                   montrerRemise={montrerRemise}
+                  optionLigne={optionsLignes?.[i]?.option ?? null}
+                  raisonOption={optionsLignes?.[i]?.raison ?? null}
                   onSetField={onSetField}
                   onDesignationBlur={onDesignationBlur}
                   onProduitChange={onProduitChange}
