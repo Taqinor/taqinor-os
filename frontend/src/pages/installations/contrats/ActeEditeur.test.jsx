@@ -214,9 +214,10 @@ describe('Éditeur d’un acte', () => {
     expect(await screen.findByText('Cet acte est émis : rouvrez-le pour le modifier.')).toBeInTheDocument()
   })
 
-  it('« Enregistrer comme modèle » n’apparaît que pour un rôle autorisé et appelle le serveur', async () => {
+  it('« Enregistrer comme modèle » apparaît quand le serveur l’autorise (peut_enregistrer_modele) et l’appelle', async () => {
     const user = userEvent.setup()
-    monter({ peutModele: true })
+    documentsApiMock.acte.mockResolvedValue({ data: { ...acte(), peut_enregistrer_modele: true } })
+    monter()
     documentsApiMock.enregistrerModeleActe.mockResolvedValue({ data: { detail: 'ok' } })
     await user.click(await screen.findByRole('button', { name: 'Enregistrer comme modèle de la société' }))
     expect(documentsApiMock.enregistrerModeleActe).toHaveBeenCalledWith(31)
@@ -252,7 +253,8 @@ describe('Éditeur d’un acte', () => {
 
   it('F3 — « Enregistrer comme modèle » est désactivé tant que des modifications ne sont pas enregistrées', async () => {
     const user = userEvent.setup()
-    monter({ peutModele: true })
+    documentsApiMock.acte.mockResolvedValue({ data: { ...acte(), peut_enregistrer_modele: true } })
+    monter()
     const modele = await screen.findByRole('button', { name: 'Enregistrer comme modèle de la société' })
     expect(modele).toBeEnabled()
     await salir(user)
@@ -428,5 +430,39 @@ describe('Éditeur d’un acte', () => {
       memeForme(envoye.paiement, contenu.paiement, 'paiement')
       memeForme(envoye.garanties, contenu.garanties, 'garanties')
     })
+  })
+
+  it('« Enregistrer comme modèle » suit uniquement peut_enregistrer_modele du serveur (absent s’il est faux)', async () => {
+    documentsApiMock.acte.mockResolvedValue({ data: { ...acte(), peut_enregistrer_modele: false } })
+    monter()
+    await screen.findByRole('group', { name: 'Options' })
+    expect(screen.queryByRole('button', { name: 'Enregistrer comme modèle de la société' })).toBeNull()
+  })
+
+  it('un champ non touché est renvoyé avec sa valeur, jamais null ni vide (réception, livraison)', async () => {
+    const user = userEvent.setup()
+    const pv = structuredClone(exempleContrat('documents', 'acte_contractuel', 'exemple_pv_reception'))
+    documentsApiMock.acte.mockResolvedValue({ data: pv })
+    monter()
+    const rec = await screen.findByRole('group', { name: 'Réception' })
+    await user.type(within(rec).getByLabelText('Délai pour lever les réserves'), ' ouvrés')
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    const envoye = documentsApiMock.modifierActe.mock.calls.at(-1)[1]
+    // Seule la section ouverte ET modifiée part ; ses autres champs gardent leur valeur.
+    expect(Object.keys(envoye)).toEqual(['reception'])
+    expect(envoye.reception).toEqual({
+      ...pv.contenu.reception, delai_levee_reserves: `${pv.contenu.reception.delai_levee_reserves} ouvrés`,
+    })
+    expect(envoye.reception.date_mise_en_service).toBe('2026-12-21')
+    cleanup()
+    const liv = structuredClone(exempleContrat('documents', 'acte_contractuel', 'exemple_pv_livraison_reste_a_regler'))
+    documentsApiMock.acte.mockResolvedValue({ data: liv })
+    monter()
+    const g = await screen.findByRole('group', { name: 'Livraison' })
+    await user.type(within(g).getByLabelText('Suite prévue'), ' !')
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    const l = documentsApiMock.modifierActe.mock.calls.at(-1)[1]
+    expect(l.livraison).toEqual({ ...liv.contenu.livraison, suite: `${liv.contenu.livraison.suite} !` })
+    expect(l.livraison.date).toBe(liv.contenu.livraison.date)
   })
 })
