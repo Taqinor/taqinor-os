@@ -86,6 +86,25 @@ def _prenom_et_telephone(d, prenom, telephone):
     return prenom, format_telephone(telephone)
 
 
+def fragment_ice_client(d, prefixe=""):
+    """Demande du fondateur (24/11/2026) — devis RÉSIDENTIEL d'une entreprise :
+    l'ICE du client (``client_ice``, posé par le builder pour tous les marchés
+    et échappé au rendu comme ``client_full``) s'imprime sur la couverture et
+    au bloc de signature, avec le libellé et la forme de la ligne du moteur
+    legacy (« ICE&#160;: » en gras 600, même littéral dans les trois langues).
+
+    ``prefixe`` (séparateur, espace) est porté À L'INTÉRIEUR du fragment :
+    sans ICE la fonction rend ``""`` et le HTML reste octet pour octet celui
+    d'avant. Fragment insécable et EN LIGNE (jamais un bloc) : il ne coûte une
+    ligne que si la place manque, jamais une page."""
+    ice = str(d.get("client_ice") or "").strip()
+    if not ice:
+        return ""
+    return (f'{prefixe}<span class="ice-client" style="white-space:nowrap;">'
+            f'<span style="font-weight:600;">ICE&#160;:</span>&#160;{ice}'
+            f'</span>')
+
+
 def nom_option(d, option, minuscule=False):
     """Nom de l'option ``"sans"`` / ``"avec"`` dans la langue du document :
     « Sans batterie » ou le libellé du builder (``libelle_avec``, BAT-DIFF)
@@ -958,7 +977,7 @@ def build(ctx):
   <!-- CLIENT LINE ──────────────────────────────────────────────────────── -->
   <div class="c1-client">
     <b class="c1-client-nom">{client_full}</b>
-    <span class="c1-client-meta">{client_meta}</span>
+    <span class="c1-client-meta">{client_meta}{fragment_ice_client(d, ' · ' if client_meta else '')}</span>
     <span class="c1-tag-cell"><span class="c1-tag">{inst_type}</span></span>
   </div>
 

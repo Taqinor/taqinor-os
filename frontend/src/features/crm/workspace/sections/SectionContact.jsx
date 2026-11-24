@@ -3,7 +3,8 @@ import { Button, FormField, Input } from '../../../../ui'
 import { toast } from '../../../../ui/confirm'
 import crmApi from '../../../../api/crmApi'
 import VilleCheckDialog from './VilleCheckDialog'
-import { getField, isSuggested } from '../draftCore'
+import { getField, isSuggested, SEGMENTS_PRO } from '../draftCore'
+import { ChampIce } from './SectionPro'
 import { useDuplicateCheck } from '../../../../hooks/useDuplicateCheck'
 import { usePasteClean, parsePastedPhone } from '../../../../hooks/usePasteClean'
 import PhoneHint from '../../../../components/PhoneHint'
@@ -234,6 +235,13 @@ export default function SectionContact({ state, setField, errors = {}, mode, ref
           />
         </FormField>
       </div>
+      {/* Lead non professionnel : l'ICE d'une entreprise se saisit ici, sous
+          « Société » (un lead pro l'a dans « Professionnel » — jamais deux). */}
+      {!SEGMENTS_PRO.includes(v('type_installation')) && (v('societe') || v('ice')) && (
+        <div className="form-row">
+          <ChampIce state={state} setField={setField} errors={errors} />
+        </div>
+      )}
       {/* GPS7 — lien Google Maps collé par le client → GPS exact ; ou
           géocodage de l'adresse (repli centre-ville, annoncé comme tel).
           Résolveur PUR côté serveur : les champs sont remplis ici, c'est

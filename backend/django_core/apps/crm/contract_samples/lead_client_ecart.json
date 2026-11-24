@@ -45,5 +45,29 @@
       "adresse_siege": "↔ lead.adresse_siege"
     },
     "regle": "CIQ8 — pour un client `entreprise`, `client_ecart` compare en plus ces six champs (vocabulaire de `client_entreprise.json`)."
+  },
+  "exemple_promotion": {
+    "get_lead": {
+      "client": 701,
+      "client_nom": "Khalid Lachraf",
+      "client_ecart": [
+        "nom",
+        "contact_nom",
+        "contact_fonction",
+        "ice"
+      ]
+    },
+    "post": {
+      "client_ecart": [],
+      "champs_mis_a_jour": [
+        "type_client",
+        "prenom",
+        "nom",
+        "contact_nom",
+        "contact_fonction",
+        "ice"
+      ]
+    },
+    "regle": "24/11/2026 — un lead qui porte une raison sociale (`societe`) non vide dont le client lié est un `particulier` : `client_ecart` compare à l'identité ENTREPRISE (même vocabulaire que ci-dessus ; `['type_client']` seul quand rien d'autre ne diffère), et la synchro (ou « Mettre à jour la fiche client ») PROMEUT le client en entreprise — `type_client` et `prenom` (vidé) apparaissent alors dans `champs_mis_a_jour`. Sans `force`, jamais si le nom/prénom du client ont divergé du lead d'avant ; un ICE différent déjà présent n'est jamais écrasé sans `force` ; jamais de retour à `particulier`."
   }
 }
