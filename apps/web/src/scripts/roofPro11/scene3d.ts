@@ -53,6 +53,7 @@ import {
 import { type AreaRecord, type ZoneRenderPlan, type RenderSceneFn } from './types';
 import { makeCanadianPanelTexture, materiauVerre } from './panelTexture';
 import { poserOeil } from './oeilCamera'; // ACAL1984
+import { boiteObstacle } from './obstacle3d'; // ACAL1820
 import { type Ctx } from './context';
 import { poserEtiquettesNumeros } from './numerotation'; // CALX111
 // CALX94 câblage — couleur d'arête RETENUE (correction manuelle prioritaire), PURE.
@@ -1768,7 +1769,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     // (ils ne doivent ni voler la référence de pick des panneaux à la zone active,
     // ni perdre leurs propres obstacles).
     isOtherZone: boolean = dim,
-  ): { deck: THREE.Mesh; deckMat: THREE.MeshStandardMaterial; ring: [number, number][] } {
+  ): { deck: THREE.Mesh; deckMat: THREE.MeshStandardMaterial; ring: [number, number][]; dessusDalle?: (x: number, y: number) => number } {
     const { pack, grid, tiltDeg, family, flush } = plan;
     const wallH = hauteurExtrusion(plan.batiment).hauteurM; // CALX100 — saisie, sinon dessin
     const ring: [number, number][] = pack.ringENU.map(([x, y]) => [x + offX, y + offY]);
@@ -1849,6 +1850,8 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     deck.position.z = wallH + 0.02 + (flush ? 0 : ridgeLiftM);
     deck.receiveShadow = true;
     sceneRoot!.add(deck);
+    /** z monde du dessus de dalle au point (x, y) — plan incliné en pente, plat sinon. */
+    const dessusDalle = (x: number, y: number) => (flush ? wallH + 0.02 + pitchedDeckZ(x, y, pitchEaveCoord, ridgeLiftM, tiltDeg, pack.azimuthDeg) : deck.position.z);
 
     // CALX101 — bandeau d'ACROTÈRE : un VOLUME (pas seulement un recul), qui porte une
     // vraie ombre de rive. Il n'existe que si une hauteur de relevé est SAISIE dans le
@@ -1931,11 +1934,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
           ctx.areas.filter((a) => a.id !== actif.id).map((a) => pourDeduction(a, a.vertices)),
           actif.edges,
         );
-        /** z monde du dessus de dalle au point (x, y) — plan incliné en pente, plat sinon. */
-        const zDalle = (x: number, y: number) =>
-          (flush
-            ? wallH + 0.02 + pitchedDeckZ(x, y, pitchEaveCoord, ridgeLiftM, tiltDeg, pack.azimuthDeg)
-            : deck.position.z) + EDGE_LINE_LIFT_M;
+        const zDalle = (x: number, y: number) => dessusDalle(x, y) + EDGE_LINE_LIFT_M;
         couleurs.forEach((couleur, i) => {
           const [ax, ay] = ring[i];
           const [bx, by] = ring[(i + 1) % ring.length];
@@ -2174,31 +2173,13 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         const ox = (o.centerLng - pack.origin[0]) * DEG2M * cosLat + offX;
         const oy = (o.centerLat - pack.origin[1]) * DEG2M + offY;
         const tint = dim ? 0xc06464 : 0xff6b6b;
-        // CAL66 — volume à la hauteur SAISIE quand elle existe, sinon le repli visuel
-        // historique (obstacle plan, OBSTACLE_BOX_H_M) — rendu inchangé sans saisie.
-        const boxH = o.heightM ?? OBSTACLE_BOX_H_M;
-        const geo = new THREE.BoxGeometry(o.widthM, o.lengthM, boxH);
-        const mat = new THREE.MeshStandardMaterial({
-          color: tint,
-          metalness: 0.1,
-          roughness: 0.7,
-          transparent: true,
-          opacity: dim ? 0.3 : 0.42,
-          depthWrite: false,
-        });
-        const mesh = new THREE.Mesh(geo, mat);
-        mesh.position.set(ox, oy, wallH + boxH / 2 + 0.05);
-        mesh.renderOrder = 3;
-        const edges = new THREE.LineSegments(
-          new THREE.EdgesGeometry(geo),
-          new THREE.LineBasicMaterial({ color: tint, transparent: true, opacity: dim ? 0.6 : 0.95 }),
-        );
-        mesh.add(edges);
+        // CAL66 — hauteur SAISIE, sinon le repli visuel ; ACAL1820 — assise sur la dalle et ombres (atelier ERP).
+        const mesh = boiteObstacle(o, { x: ox, y: oy, murM: wallH, dessusDalleM: dessusDalle(ox, oy), teinte: tint, opacite: dim ? 0.3 : 0.42, opaciteAretes: dim ? 0.6 : 0.95, ombres: atelierErp });
         sceneRoot!.add(mesh);
       }
     }
 
-    return { deck, deckMat, ring };
+    return { deck, deckMat, ring, dessusDalle };
   }
 
   /** W78 — bâtiment SUBDUÉ « nu » (sans panneaux) d'une zone qui n'a pas encore de
@@ -2449,26 +2430,9 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         const oy = (o.centerLat - pack.origin[1]) * DEG2M;
         const selected = o.id === ctx.selectedObsId;
         const tint = selected ? 0xf3cc66 : 0xff6b6b;
-        // CAL66 — volume à la hauteur SAISIE quand elle existe, sinon le repli visuel
-        // historique (obstacle plan, OBSTACLE_BOX_H_M) — rendu inchangé sans saisie.
+        // CAL66 — hauteur SAISIE, sinon le repli visuel ; ACAL1820 — assise sur la dalle, porte et reçoit les ombres (ERP).
         const boxH = o.heightM ?? OBSTACLE_BOX_H_M;
-        const geo = new THREE.BoxGeometry(o.widthM, o.lengthM, boxH);
-        const mat = new THREE.MeshStandardMaterial({
-          color: tint,
-          metalness: 0.1,
-          roughness: 0.7,
-          transparent: true,
-          opacity: selected ? 0.5 : 0.42,
-          depthWrite: false, // laisse la texture du toit transparaître
-        });
-        const mesh = new THREE.Mesh(geo, mat);
-        mesh.position.set(ox, oy, wallH + boxH / 2 + 0.05);
-        mesh.renderOrder = 3;
-        const edges = new THREE.LineSegments(
-          new THREE.EdgesGeometry(geo),
-          new THREE.LineBasicMaterial({ color: tint, transparent: true, opacity: 0.95 }),
-        );
-        mesh.add(edges);
+        const mesh = boiteObstacle(o, { x: ox, y: oy, murM: wallH, dessusDalleM: built.dessusDalle?.(ox, oy), teinte: tint, opacite: selected ? 0.5 : 0.42, ombres: atelierErp });
         // Change B : taille affichée SUR la boîte, en 3D (plus de libellé « en
         // dessous » sur la carte). Enfant du mesh → suit la boîte au déplacement.
         // VISIONNEUSE : aucune étiquette de cote — c'est une aide au PLACEMENT

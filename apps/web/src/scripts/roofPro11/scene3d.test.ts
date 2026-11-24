@@ -7,6 +7,7 @@ import { cibleVue, appliquerVue } from './vuesCamera';
 import { dimensionsTexture, materiauVerre } from './panelTexture'; // ACAL1984
 import * as THREE from 'three'; // ACAL1984
 import { poserOeil } from './oeilCamera'; // ACAL1984
+import { boiteObstacle } from './obstacle3d'; // ACAL1820
 import {
   generateRoofShapePans,
   computeRidgeLifts,
@@ -479,6 +480,23 @@ describe('ACAL1984 — l’œil de la caméra de la couche est celui de la carte
     const intacte = new THREE.Camera();
     expect(poserOeil(intacte, new THREE.Matrix4().makeScale(0, 0, 0))).toBe(false);
     expect(intacte.position.toArray()).toEqual([0, 0, 0]);
+  });
+});
+
+// ACAL1820 — la cheminée de 1,2 m d'un pan en pente était ENFOUIE sous le plan incliné (assise au mur) et ne portait
+// aucune ombre : rien ne changeait à 12 h ni à 16 h.
+describe('ACAL1820 — un obstacle de la zone active porte et reçoit les ombres', () => {
+  const cheminee = { widthM: 0.6, lengthM: 0.6, heightM: 1.2 };
+  it('atelier ERP : posé SUR la dalle inclinée, ombre portée et reçue ; site public : la boîte d’avant', () => {
+    const erp = boiteObstacle(cheminee, { x: 4, y: 3.3, murM: 6, dessusDalleM: 7.49, teinte: 0xff6b6b, opacite: 0.42, ombres: true });
+    expect([erp.castShadow, erp.receiveShadow]).toEqual([true, true]);
+    expect(erp.position.z - 0.6).toBeGreaterThan(7.49); // la base est au-dessus du toit : la cheminée dépasse de 1,2 m
+    expect(erp.position.toArray()).toEqual([4, 3.3, 7.49 + 0.6 + 0.05]);
+    const pub = boiteObstacle(cheminee, { x: 4, y: 3.3, murM: 6, dessusDalleM: 7.49, teinte: 0xff6b6b, opacite: 0.42, ombres: false });
+    expect([pub.castShadow, pub.receiveShadow]).toEqual([false, false]);
+    expect(pub.position.z).toBe(6 + 0.6 + 0.05);
+    // sans hauteur saisie : le repli visuel d'avant (0,8 m), même en ERP
+    expect((boiteObstacle({ widthM: 1, lengthM: 1 }, { x: 0, y: 0, murM: 3, teinte: 0, opacite: 0.4, ombres: true }).geometry as THREE.BoxGeometry).parameters.depth).toBe(0.8);
   });
 });
 
