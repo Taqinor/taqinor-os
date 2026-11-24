@@ -94,6 +94,9 @@ class ContenuActeSerializer(serializers.Serializer):
 
 class DetailActeSerializer(ResumeActeSerializer):
     chantier = ChantierActeSerializer()
+    #: L'utilisateur peut-il enregistrer ces textes comme modèle de la
+    #: société (Directeur) ?
+    peut_enregistrer_modele = serializers.BooleanField()
     langue = serializers.ChoiceField(choices=T.LANGUES)
     langues = serializers.ListField(child=serializers.CharField())
     sections_personnalisees = serializers.ListField(

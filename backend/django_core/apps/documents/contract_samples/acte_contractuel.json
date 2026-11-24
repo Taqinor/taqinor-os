@@ -67,6 +67,7 @@
     "peut_emettre": true,
     "peut_signer": false,
     "peut_rouvrir": false,
+    "peut_enregistrer_modele": false,
     "document_ged_id": null,
     "chantier": {
       "id": 12,
@@ -440,6 +441,7 @@
     "peut_emettre": true,
     "peut_signer": false,
     "peut_rouvrir": false,
+    "peut_enregistrer_modele": false,
     "document_ged_id": null,
     "chantier": {
       "id": 12,
@@ -685,6 +687,7 @@
     "peut_emettre": true,
     "peut_signer": false,
     "peut_rouvrir": false,
+    "peut_enregistrer_modele": false,
     "document_ged_id": null,
     "chantier": {
       "id": 12,
@@ -928,6 +931,7 @@
     "peut_emettre": true,
     "peut_signer": false,
     "peut_rouvrir": false,
+    "peut_enregistrer_modele": false,
     "document_ged_id": null,
     "chantier": {
       "id": 12,
@@ -1172,6 +1176,7 @@
     "peut_emettre": false,
     "peut_signer": false,
     "peut_rouvrir": false,
+    "peut_enregistrer_modele": false,
     "document_ged_id": null,
     "chantier": {
       "id": 12,

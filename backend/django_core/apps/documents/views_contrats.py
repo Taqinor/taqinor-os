@@ -79,8 +79,35 @@ def _erreur(exc):
     return _refus(exc.code, exc.detail, exc.statut_http)
 
 
-def _detail(acte, langue='fr', avertissements=None):
-    donnees = selectors.detail_acte(acte, langue)
+class _RequeteEcriture:
+    """La requête vue comme un geste d'écriture (POST) : sert à évaluer les
+    permissions des routes d'écriture pendant une lecture."""
+    method = 'POST'
+
+    def __init__(self, request):
+        self._requete = request
+
+    def __getattr__(self, nom):
+        return getattr(self._requete, nom)
+
+
+def _droits(request):
+    """Les droits d'écriture de l'utilisateur, évalués avec les MÊMES
+    permissions que les routes d'écriture (rôle + droit de la grille) et que
+    l'enregistrement du modèle (Directeur) : les ``peut_*`` servis disent la
+    vérité."""
+    ecriture = _RequeteEcriture(request)
+    vue = ActeEmettreView()
+    ecrire = all(p.has_permission(ecriture, vue) for p in (
+        IsResponsableOrAdmin(), DroitDeLaGrille(CODE_ECRITURE)()))
+    return {'ecrire': ecrire,
+            'enregistrer_modele': EstDirecteur().has_permission(
+                request, ActeModeleView())}
+
+
+def _detail(acte, langue='fr', avertissements=None, request=None):
+    donnees = selectors.detail_acte(
+        acte, langue, droits=_droits(request) if request is not None else None)
     if avertissements:
         donnees['avertissements'] = list(donnees['avertissements']) + list(
             avertissements)
@@ -103,7 +130,8 @@ class DossierContractuelView(APIView):
                               404: ErreurActeSerializer})
     def get(self, request, pk):
         chantier = _get_chantier_or_404(request, pk)
-        return Response(selectors.dossier_du_chantier(chantier, request.user))
+        return Response(selectors.dossier_du_chantier(
+            chantier, request.user, droits=_droits(request)))
 
 
 class _ActeVue(APIView):
@@ -129,7 +157,8 @@ class ActeDetailView(APIView):
             return _refus(T.CODE_CONTENU_INVALIDE,
                           'Langue inconnue : fr ou ar attendu.')
         acte = _acte_ou_404(request, pk)
-        return Response(selectors.detail_acte(acte, langue))
+        return Response(selectors.detail_acte(acte, langue,
+                                              droits=_droits(request)))
 
     @extend_schema(request=CorpsPatchSerializer,
                    responses={200: DetailActeSerializer, **_ERREURS})
@@ -144,7 +173,7 @@ class ActeDetailView(APIView):
                                      request.user, langue)
         except services.ErreurActe as exc:
             return _erreur(exc)
-        return _detail(acte, langue)
+        return _detail(acte, langue, request=request)
 
 
 class ActePdfView(APIView):
@@ -179,7 +208,8 @@ class ActeEmettreView(_ActeVue):
             acte, avertissements = services.emettre(acte, request.user)
         except services.ErreurActe as exc:
             return _erreur(exc)
-        return _detail(acte, avertissements=avertissements)
+        return _detail(acte, avertissements=avertissements,
+                       request=request)
 
 
 class ActeRouvrirView(_ActeVue):
@@ -193,7 +223,7 @@ class ActeRouvrirView(_ActeVue):
             acte = services.rouvrir(acte, request.user)
         except services.ErreurActe as exc:
             return _erreur(exc)
-        return _detail(acte)
+        return _detail(acte, request=request)
 
 
 def _agent(request):
@@ -221,7 +251,8 @@ class ActeSignerView(_ActeVue):
                 **corps.validated_data)
         except services.ErreurActe as exc:
             return _erreur(exc)
-        return _detail(acte, avertissements=avertissements)
+        return _detail(acte, avertissements=avertissements,
+                       request=request)
 
 
 class ActeMarquerSigneView(_ActeVue):
@@ -242,7 +273,8 @@ class ActeMarquerSigneView(_ActeVue):
                 user=request.user, ip=_ip(request), agent=_agent(request))
         except services.ErreurActe as exc:
             return _erreur(exc)
-        return _detail(acte, avertissements=avertissements)
+        return _detail(acte, avertissements=avertissements,
+                       request=request)
 
 
 class ActeModeleView(APIView):

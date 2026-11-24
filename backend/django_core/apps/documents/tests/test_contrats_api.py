@@ -77,9 +77,19 @@ class ApiContratsTests(TestCase):
             company=self.v.company, role=role)
         a = api(lecteur)
         acte = self.v.acte(T.CONTRAT)
-        self.assertEqual(a.get(DOSSIER.format(self.v.chantier.pk)).status_code,
-                         200)
-        self.assertEqual(a.get(ACTE.format(acte.pk)).status_code, 200)
+        r = a.get(DOSSIER.format(self.v.chantier.pk))
+        self.assertEqual(r.status_code, 200)
+        # S11 : les peut_* disent la vérité — aucun geste proposé.
+        gestes = ('peut_modifier', 'peut_emettre', 'peut_signer',
+                  'peut_rouvrir')
+        self.assertFalse(any(x[g] for x in r.data['actes'] for g in gestes))
+        r = a.get(ACTE.format(acte.pk))
+        self.assertEqual(r.status_code, 200)
+        self.assertFalse(any(r.data[g] for g in gestes))
+        self.assertFalse(r.data['peut_enregistrer_modele'])
+        moi = self._detail(acte)
+        self.assertTrue(moi['peut_modifier'] and moi['peut_emettre'])
+        self.assertFalse(moi['peut_enregistrer_modele'])
         self.assertEqual(self._patch(acte, {'titre': 'X'}, client=a)
                          .status_code, 403)
         for geste in ('emettre/', 'rouvrir/', 'modele/'):
@@ -100,6 +110,8 @@ class ApiContratsTests(TestCase):
             username=f'ctr-dir-{self.v.company.pk}', password='x',
             company=self.v.company, role=role)
         self._patch(acte, {'societe': {'representant': 'Reda, gérant'}})
+        self.assertTrue(api(directeur).get(ACTE.format(acte.pk)).data[
+            'peut_enregistrer_modele'])
         r = api(directeur).post(ACTE.format(acte.pk) + 'modele/')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertIn('Modèle enregistré', r.data['detail'])
