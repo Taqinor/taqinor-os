@@ -7,7 +7,12 @@
     body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 12px; color: #333; }
     .page { padding: 40px; }
     .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; }
-    .header-left { display: flex; flex-direction: column; gap: 6px; }
+    .header-left { display: block; flex: 1 1 auto; min-width: 0; }
+    .header-left > * { display: block; }
+    /* Colonne en bloc (une colonne flex chevauche un titre sur deux
+       lignes au rendu PDF) ; l'écart de 6 px entre enfants est conservé. */
+    .header-left > * + * { margin-top: 6px; }
+    .header-left > * + .doc-title { margin-top: 14px; }
     .logo img { max-height: 70px; max-width: 200px; object-fit: contain; }
     .doc-title { font-size: 24px; font-weight: bold; color: {{ couleur_principale }}; margin-top: 8px; }
     .doc-ref { font-size: 13px; color: #666; }
@@ -42,7 +47,7 @@
 <div class="page">
   <div class="header">
     <div class="header-left">
-      {% if logo_uri %}<div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>{% endif %}
+      {% if logo_uri %}<div class="logo">{% include "_logo.html" %}</div>{% endif %}
       <div class="doc-title">BON DE LIVRAISON</div>
       <div class="doc-ref">Chantier {{ chantier.reference }}</div>
     </div>

@@ -27,6 +27,28 @@ bien terminés, signé par le client (protection si le solde n'est pas payé), (
   added should not be used anywhere ») : tout acte imprime le logo que le moteur de devis imprime (détouré, lettres
   blanches et soleil doré sur l'en-tête bleu nuit), lu par la porte `apps.ventes.selectors.logo_entete_html`. Jamais
   le fichier téléversé posé tel quel, jamais de pastille blanche autour — ni dans un nouveau document.
+  Étendu le même jour à TOUS les autres documents PDF (« yes use the quote logo on all other documents too ») :
+  factures, avoirs, bons, procès-verbaux, reçus, SAV, rapports — une pièce commune `templates/pdf/_logo.html`,
+  alimentée par `apps.ventes.utils.pdf.logo_document_html` (rôle « couverture », variante claire) ; un test refuse
+  tout gabarit qui imprimerait `logo_uri` lui-même.
+  Reda le même soir, sur les exceptions restantes : « why there is still another logo, i told you, only one
+  everywhere » → AUCUNE exception : l'ancien PDF de devis de secours passe par la pièce ; les documents du
+  calepinage impriment le logo du devis du profil (le thème `TenantTheme` ne donne plus que les couleurs et un
+  logo de repli) ; la marque des écrans de l'ERP (`TaqinorMark`), ses icônes et ses images de démarrage sont
+  l'emblème officiel (8 rayons dorés, éclair bleu nuit `#022F53`). Les e-mails n'ont pas d'image de logo (nom en
+  texte). Ne jamais réintroduire un autre dessin du soleil ni un logo propre à un module.
+- **Textes retirés du contrat après sa lecture en production (24/11/2026)** — ne pas les remettre : la phrase
+  « si deux lignes se contredisent… » (article 1) ; l'article « Démarches auprès du réseau électrique » ; « la société
+  a la garde du chantier » pendant la pose ; et tout engagement de S'OCCUPER de la garantie (« we should not be
+  obliged by this contract to take care of his warranty ») : interlocuteur unique, diagnostic, démarche auprès
+  du fabricant, frais de transport, pièces détachées — dans le contrat comme dans le certificat. Les garanties
+  restent citées (tableau, durées, garantie légale, exclusions). Détail : `docs/contrats/conception.md` § 9.
+- **Bouton « Régénérer »** (24/11/2026) : Reda devait refaire un devis pour obtenir un contrat à jour. Un acte émis
+  non signé se refait en un geste (`POST documents/actes/<id>/regenerer/`), tout ou rien ; jamais un acte signé.
+- **Logo affiché par Google = l'emblème seul** (24/11/2026, « just keep the sun and the bolt ») : icônes du site
+  (`apps/web/public/favicon.*`, `icon-*.png`, `apple-touch-icon.png`) et logo de la donnée structurée
+  (`logo-embleme.png`) = soleil doré à huit rayons + éclair bleu nuit, géométrie de `Logo.astro`. `logo.png` reste
+  le logo complet téléchargeable de la page « à propos ».
 
 **Why :** Reda a des soldes impayés sur des chantiers posés (≈ 50 090 DH au 23/11) ; son avocat lui a dit de faire
 signer la bonne exécution des travaux.

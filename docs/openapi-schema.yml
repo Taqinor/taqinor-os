@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5314, operations: 8168, components: 4094}
+counts: {paths: 5316, operations: 8170, components: 4094}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -1286,6 +1286,7 @@ operations:
 - post /api/django/documents/actes/{id}/marquer-signe/ -> django_documents_actes_marquer_signe_create
 - post /api/django/documents/actes/{id}/modele/ -> django_documents_actes_modele_create
 - get /api/django/documents/actes/{id}/pdf/ -> django_documents_actes_pdf_retrieve
+- post /api/django/documents/actes/{id}/regenerer/ -> django_documents_actes_regenerer_create
 - post /api/django/documents/actes/{id}/rouvrir/ -> django_documents_actes_rouvrir_create
 - post /api/django/documents/actes/{id}/signer/ -> django_documents_actes_signer_create
 - get /api/django/documents/chantiers/{id}/attestation/ -> django_documents_chantiers_attestation_retrieve
@@ -5411,6 +5412,7 @@ operations:
 - post /api/v1/documents/actes/{id}/marquer-signe/ -> v1_documents_actes_marquer_signe_create
 - post /api/v1/documents/actes/{id}/modele/ -> v1_documents_actes_modele_create
 - get /api/v1/documents/actes/{id}/pdf/ -> v1_documents_actes_pdf_retrieve
+- post /api/v1/documents/actes/{id}/regenerer/ -> v1_documents_actes_regenerer_create
 - post /api/v1/documents/actes/{id}/rouvrir/ -> v1_documents_actes_rouvrir_create
 - post /api/v1/documents/actes/{id}/signer/ -> v1_documents_actes_signer_create
 - get /api/v1/documents/chantiers/{id}/attestation/ -> v1_documents_chantiers_attestation_retrieve

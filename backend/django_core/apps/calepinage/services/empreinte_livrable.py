@@ -51,7 +51,8 @@ CHAMPS_VOLATILS = frozenset({'calcule_le', 'saisi_le'})
 
 #: ACON45 — version de MISE EN PAGE des livrables : à monter à chaque
 #: changement de gabarit de rendu (un document rendu autrement est neuf).
-VERSION_RENDU = 1
+#: 2 (24/11/2026) : les documents impriment le logo du devis de la société.
+VERSION_RENDU = 2
 
 
 def _sans_volatils(valeur):
@@ -153,12 +154,18 @@ def _identite(calepinage):
 
 
 def _marque(company):
-    """La marque imprimée (``styles_de_societe``), vide sans société."""
-    from .documents.gabarit_document import styles_de_societe
+    """La marque imprimée (``styles_de_societe``), vide sans société.
+
+    Le logo du devis y entre par la CLÉ de son fichier (``logo_cle``), jamais
+    par ses balises : l'empreinte reste une lecture légère — aucun fichier
+    téléchargé, aucune image traitée pour dire si un livrable est à jour. Un
+    logo remplacé au profil change la clé, donc l'empreinte."""
+    from .documents.gabarit_document import cle_du_logo, styles_de_societe
 
     if company is None:
-        return styles_de_societe({})
-    return styles_de_societe(company)
+        return dict(styles_de_societe({}), logo_cle='')
+    return dict(styles_de_societe(company, logos=False),
+                logo_cle=cle_du_logo(company))
 
 
 def _materiel(calepinage):

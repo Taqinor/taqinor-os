@@ -270,6 +270,36 @@ class EmpreinteLivrableTest(TestCase):
         self.assertEqual(b_jointe, self._empreinte(dossier=dossier_b))
         self.assertEqual(pack, self._empreinte())
 
+    def test_la_marque_porte_la_cle_du_logo_jamais_ses_balises(self):
+        """« Un seul logo partout » (24/11/2026) : les documents impriment le
+        logo du devis, mais dire si un livrable est à jour ne télécharge ni
+        ne traite aucune image — l'empreinte porte la CLÉ du fichier au
+        profil ; un logo remplacé change l'empreinte."""
+        from unittest import mock
+
+        from apps.calepinage.services import empreinte_livrable
+        from apps.parametres.models import CompanyProfile
+        company = Company.objects.create(nom='Logo Empreinte',
+                                         slug='logo-empreinte')
+        with mock.patch('apps.ventes.selectors.logos_societe_html',
+                        side_effect=AssertionError('fichier du logo lu')):
+            sans_profil = empreinte_livrable._marque(company)
+            profil = CompanyProfile.get(company=company)
+            profil.logo_key = 'logos/premier.png'
+            profil.save()
+            avec = empreinte_livrable._marque(company)
+            profil.logo_key = 'logos/second.png'
+            profil.save()
+            remplace = empreinte_livrable._marque(company)
+        self.assertEqual(sans_profil['logo_cle'], '')
+        self.assertEqual(avec['logo_cle'], 'logos/premier.png')
+        self.assertEqual(remplace['logo_cle'], 'logos/second.png')
+        for marque in (sans_profil, avec, remplace):
+            self.assertEqual((marque['logo_html'], marque['logo_garde_html']),
+                             ('', ''))
+        self.assertEqual(empreinte_livrable._marque(None)['logo_cle'], '')
+        self.assertEqual(empreinte_livrable.VERSION_RENDU, 2)
+
     def test_sensible_a_la_langue_et_aux_sections(self):
         base = self._empreinte('fr', None)
         self.assertNotEqual(base, self._empreinte('en', None))

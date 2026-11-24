@@ -1051,19 +1051,15 @@ def _options_defaut(client, chantier):
     return {
         'consommateur': client.get('type') != 'entreprise',
         'reserve_propriete': True,
-        'raccorde_reseau': _type_installation(chantier) != 'agricole',
         'penalite_retard_pct': None,
         'delai_execution_jours': T.DELAI_EXECUTION_DEFAUT_JOURS,
     }
 
 
 _TEXTES_FIXES = {
-    'fr': {'pieces': 'Les pièces détachées nécessaires sont disponibles '
-                     'pendant toute la durée des garanties.',
-           'demeure': 'huit jours', 'reponse': 'quinze jours'},
+    'fr': {'demeure': 'huit jours', 'reponse': 'quinze jours'},
     # Formes de ``textes_ar.FORMES_CTX``.
-    'ar': {'pieces': 'قطع الغيار اللازمة متوفرة طوال مدة الضمانات.',
-           'demeure': '8 أيام', 'reponse': '15 يومًا'},
+    'ar': {'demeure': '8 أيام', 'reponse': '15 يومًا'},
 }
 
 
@@ -1090,7 +1086,6 @@ def _contexte(contenu, vente, langue, refs, lecture=None):
         'contrat_reference': refs[T.CONTRAT],
         'email_societe': societe.get('email') or None,
         'cndp': '',
-        'pieces_detachees': fixes['pieces'],
         'delai_mise_en_demeure': fixes['demeure'],
         'delai_reponse': fixes['reponse'],
         'modalites_paiement': _modalites_texte(contenu),

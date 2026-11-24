@@ -398,9 +398,9 @@ class ReferencesDeLoiTests(unittest.TestCase):
         options allumées et éteintes (le code est exécuté, jamais lu)."""
         from apps.documents.contrats import textes
         morceaux = []
-        for booleens in itertools.product((True, False), repeat=3):
-            options = dict(zip(('consommateur', 'reserve_propriete',
-                                'raccorde_reseau'), booleens),
+        for booleens in itertools.product((True, False), repeat=2):
+            options = dict(zip(('consommateur', 'reserve_propriete'),
+                               booleens),
                            penalite_retard_pct=5)
             for type_acte, variante in (
                     ('contrat_installation', ''),

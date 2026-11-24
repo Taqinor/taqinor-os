@@ -298,7 +298,7 @@ export const FICHES: Fiche[] = [
     garantie: `Garantie ${BATTERY_WARRANTY_YEARS} ans`,
     warranty: {
       years: BATTERY_WARRANTY_YEARS,
-      // Décision fondateur 27/10/2026 : 7 ans (Dyness Afrique V2-202502), seuil ≥ 70 %.
+      // Décision fondateur 24/11/2026 : 10 ans (DL5.0C d'origine, conditions de garantie Dyness Afrique V2-202502), seuil ≥ 70 %.
       note: '≥ 70 % de capacité',
     },
     pairsWith: ['Onduleurs hybrides', 'Supervision & comptage'],

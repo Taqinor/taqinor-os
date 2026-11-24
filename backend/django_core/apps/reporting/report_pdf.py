@@ -36,6 +36,8 @@ _TEMPLATE_SRC = r"""<!DOCTYPE html>
   .header { display: flex; align-items: center; margin-bottom: 10mm;
              border-bottom: 2px solid {{ color }}; padding-bottom: 4mm; }
   .header img { height: 30mm; margin-right: 8mm; }
+  .header-logo { margin-right: 8mm; }
+  .header-logo img { margin-right: 0; }
   .header-text h1 { margin: 0; font-size: 16pt; color: {{ color }}; }
   .header-text p  { margin: 2px 0; font-size: 8pt; color: #555; }
   .meta { margin-bottom: 6mm; font-size: 8pt; color: #666; }
@@ -58,7 +60,8 @@ _TEMPLATE_SRC = r"""<!DOCTYPE html>
 </head>
 <body>
 <div class="header">
-  {% if logo_uri %}<img src="{{ logo_uri }}" alt="logo">{% endif %}
+  {% if logo_html %}<div class="header-logo">{{ logo_html|safe }}</div>
+  {% elif logo_uri %}<img src="{{ logo_uri }}" alt="logo">{% endif %}
   <div class="header-text">
     <h1>{{ title }}</h1>
     <p>{{ company.nom }}</p>
@@ -163,9 +166,12 @@ def render_report_pdf(
         color = '#2563EB'
         co_ctx = {'nom': '', 'adresse': '', 'email': ''}
 
+    # LE logo des devis (même module image), comme tous les documents PDF.
+    from apps.ventes.utils.pdf import logo_document_html
     html_str = _template.render(
         title=title,
         logo_uri=logo_uri,
+        logo_html=logo_document_html(logo_uri, alt='logo'),
         color=color,
         company=co_ctx,
         today=date.today().strftime('%d/%m/%Y'),

@@ -110,7 +110,7 @@ CLES_SAV = ('telephone', 'whatsapp', 'email', 'horaires')
 #: ``modalites`` se modifie dans un acte (français et arabe).
 CLES_PAIEMENT_TEXTE = ('modalites', 'engagement')
 CLES_PAIEMENT_MODIFIABLES = ('modalites',)
-CLES_OPTIONS = ('consommateur', 'reserve_propriete', 'raccorde_reseau',
+CLES_OPTIONS = ('consommateur', 'reserve_propriete',
                 'penalite_retard_pct', 'delai_execution_jours')
 CLES_GARANTIE = ('cle', 'designation', 'duree_mois', 'duree_libelle',
                  'garant', 'detail', 'fin')

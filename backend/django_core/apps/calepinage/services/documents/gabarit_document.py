@@ -8,12 +8,23 @@ ni logo ni raison sociale, et ``core.models.TenantTheme`` (logo, couleurs, nom
 affiché) n'était lu par AUCUN rendu du module. Une pièce technique remise sans
 l'identité de la société qui l'émet est une pièce anonyme.
 
+Un seul logo partout (fondateur, 24/11/2026)
+============================================
+Le logo imprimé est celui du DEVIS : le logo du profil société
+(``CompanyProfile.logo_key``), rendu par le module image du moteur de devis
+(rognage, détourage, taille du rôle) à travers la porte
+``apps.ventes.selectors.logos_societe_html`` — ce module n'importe jamais le
+moteur (règle n° 4). Le thème de marque ne fournit plus que les COULEURS, le
+nom affiché de repli et, SEULEMENT quand la société n'a pas de logo de devis,
+un logo de repli (``logo_url``) : le logo du devis PASSE AVANT celui du thème.
+
 Ce que ce module fait
 =====================
 * ``styles_de_societe(company)`` — la marque de la société, LUE : le thème
-  white-label ``TenantTheme`` d'abord, puis le profil société
+  white-label ``TenantTheme`` d'abord (couleurs, nom), puis le profil société
   (``apps.parametres.selectors.company_identity``) pour le NOM seulement, puis
-  la raison sociale de ``Company`` ;
+  la raison sociale de ``Company`` ; le logo du devis en balise prête
+  (``logo_html`` en-tête courant, ``logo_garde_html`` page de garde) ;
 * ``entete_html`` / ``pied_html`` — deux éléments COURANTS
   (``position: running(...)``) que ``css_du_gabarit`` place dans les boîtes de
   marge ``@top-center`` et ``@bottom-left`` : ils se répètent donc sur CHAQUE
@@ -54,7 +65,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     'NOIR', 'GRIS_TEXTE', 'GRIS_TRAIT', 'GRIS_FOND', 'CHARTE_IMPRESSION',
     'CLES_STYLES',
-    'styles_de_societe', 'pied_html',
+    'styles_de_societe', 'cle_du_logo', 'pied_html',
     'document_html',
     # CALX295 — la page de garde
     'LIBELLES_GARDE_FR', 'CHAMPS_GARDE', 'page_de_garde_html',
@@ -74,8 +85,11 @@ GRIS_FOND = '#f2f2f2'
 CHARTE_IMPRESSION = (NOIR, GRIS_TEXTE, GRIS_TRAIT, GRIS_FOND)
 
 #: Les clés d'une marque société — toujours présentes, ``''`` quand absentes.
+#: ``logo_html`` / ``logo_garde_html`` : la balise PRÊTE du logo du devis
+#: (rôles ``entete`` / ``couverture`` du moteur) ; ``logo_url`` : le logo du
+#: thème, repli quand il n'y a pas de logo de devis.
 CLES_STYLES = ('nom_affiche', 'logo_url', 'couleur_primaire',
-               'couleur_secondaire')
+               'couleur_secondaire', 'logo_html', 'logo_garde_html')
 
 _COULEUR = re.compile(r'^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$')
 _SCHEMAS_LOGO = ('https://', 'http://', 'data:image/')
@@ -168,28 +182,85 @@ def _profil_de(company):
     return profil
 
 
-def styles_de_societe(company, *, theme=_LIRE, profil=_LIRE):
+#: Rôles du moteur de devis : en-tête courant, page de garde.
+ROLES_LOGO = ('entete', 'couverture')
+
+
+def _logos_du_devis(company):
+    """Les balises du logo du DEVIS de ``company`` — ``(en-tête, garde)`` —
+    ou ``('', '')`` ; ne lève jamais. UNE lecture du fichier pour les deux.
+
+    Lu par la porte ``apps.ventes.selectors.logos_societe_html`` : ce module
+    n'importe jamais le moteur de devis (règle n° 4).
+    """
+    if company is None:
+        return '', ''
+    try:
+        from apps.ventes.selectors import logos_societe_html
+
+        balises = logos_societe_html(company, ROLES_LOGO) or {}
+        return tuple(balises.get(role) or '' for role in ROLES_LOGO)
+    except Exception:  # un logo ne fait jamais tomber une pièce
+        logger.warning("logo du devis : échec ignoré, pièce sans ce logo",
+                       exc_info=True)
+        return '', ''
+
+
+def cle_du_logo(company):
+    """L'identité LÉGÈRE du logo du devis : la clé de son fichier au profil
+    société, ou ``''``. C'est elle — jamais le fichier ni ses balises — qui
+    entre dans l'empreinte d'un livrable (``empreinte_livrable._marque``) :
+    savoir si un document est à jour ne télécharge aucune image."""
+    if company is None or isinstance(company, Mapping):
+        return ''
+    try:
+        from apps.parametres.models_company import CompanyProfile
+
+        return (CompanyProfile.objects.filter(company=company)
+                .values_list('logo_key', flat=True).first() or '')
+    except Exception:  # un logo ne fait jamais tomber une pièce
+        logger.warning("cle du logo : échec ignoré, comportement dégradé",
+                       exc_info=True)
+        return ''
+
+
+def styles_de_societe(company, *, theme=_LIRE, profil=_LIRE, logos=True):
     """La marque à imprimer : ``{nom_affiche, logo_url, couleur_primaire,
-    couleur_secondaire}``, chaque clé à ``''`` quand rien n'est saisi.
+    couleur_secondaire, logo_html, logo_garde_html}``, chaque clé à ``''``
+    quand rien n'est saisi.
 
     ``company`` est une ``authentication.Company`` — ou, pour les essais sans
     base, un dictionnaire ``{'theme': …, 'profil': …}`` déjà lu
-    (``styles_de_societe({})`` rend une marque vide). ``theme``/``profil``
-    permettent à l'appelant qui les a déjà lus de ne pas les relire.
+    (``styles_de_societe({})`` rend une marque vide) ; ce dictionnaire peut
+    aussi porter ``logo_html`` / ``logo_garde_html`` tels quels, sans quoi ces
+    deux clés valent ``''``. ``theme``/``profil`` permettent à l'appelant qui
+    les a déjà lus de ne pas les relire.
 
     Repli CHAMP PAR CHAMP : le nom affiché du thème, sinon le nom du profil,
-    sinon la raison sociale ; logo et couleurs viennent du thème SEUL.
+    sinon la raison sociale ; les couleurs viennent du thème SEUL ; le logo
+    vient d'abord du profil par le moteur de devis (``logo_html`` en-tête
+    courant, ``logo_garde_html`` page de garde, pour une vraie société), le
+    thème (``logo_url``) ne servant que de repli à l'impression.
+
+    ``logos=False`` ne lit PAS le fichier du logo (les deux balises valent
+    ``''``) : c'est la lecture de l'empreinte des livrables, qui n'imprime
+    rien et porte ``cle_du_logo`` à la place.
     """
     raison_sociale = ''
+    logo_html = logo_garde_html = ''
     if isinstance(company, Mapping):
         theme = company.get('theme') if theme is _LIRE else theme
         profil = company.get('profil') if profil is _LIRE else profil
+        logo_html = _attr(company, 'logo_html')
+        logo_garde_html = _attr(company, 'logo_garde_html')
     else:
         if theme is _LIRE:
             theme = _theme_de(company)
         if profil is _LIRE:
             profil = _profil_de(company)
         raison_sociale = _attr(company, 'nom')
+        if logos:
+            logo_html, logo_garde_html = _logos_du_devis(company)
     profil = profil or {}
     return {
         'nom_affiche': (_attr(theme, 'nom_affichage') or _attr(profil, 'nom')
@@ -198,6 +269,8 @@ def styles_de_societe(company, *, theme=_LIRE, profil=_LIRE):
         'couleur_primaire': _couleur_valide(_attr(theme, 'couleur_primaire')),
         'couleur_secondaire': _couleur_valide(
             _attr(theme, 'couleur_secondaire')),
+        'logo_html': logo_html,
+        'logo_garde_html': logo_garde_html,
     }
 
 
@@ -208,13 +281,19 @@ def _entete_html(styles, *, titre=''):
 
     Placé dans la boîte ``@top-center`` par ``css_du_gabarit`` : il se répète
     sur chaque page. Rien n'est imprimé pour une valeur absente — ni balise
-    vide, ni texte de remplacement.
+    vide, ni texte de remplacement. Le logo du devis (``logo_html``, balise
+    du moteur imprimée telle quelle, dans un ``<span>`` qui l'aligne) passe
+    AVANT celui du thème (``logo_url``) : un seul logo, jamais les deux.
     """
     styles = styles or {}
     nom = str(styles.get('nom_affiche') or '').strip()
     morceaux = []
-    logo = _logo_valide(styles.get('logo_url'))
-    if logo:
+    logo_devis = str(styles.get('logo_html') or '').strip()
+    logo = '' if logo_devis else _logo_valide(styles.get('logo_url'))
+    if logo_devis:
+        morceaux.append('<span class="gabarit-logo-devis">%s</span>'
+                        % logo_devis)
+    elif logo:
         morceaux.append('<img class="gabarit-logo" src="%s" alt="%s">'
                         % (escape(logo, quote=True),
                            escape(nom or 'logo', quote=True)))
@@ -271,6 +350,11 @@ def _css_du_gabarit(styles, *, format_page='A4'):
         'border-bottom:0.6mm solid ', primaire, ';padding-bottom:1.5mm;',
         'font-size:8pt;color:', NOIR, ';}',
         '.gabarit-logo{max-height:11mm;max-width:40mm;vertical-align:middle;',
+        'margin-right:3mm;}',
+        # Le logo du devis porte SA taille (style en ligne de la balise du
+        # moteur, display:block) : le span ne fait que l'aligner dans la
+        # ligne de l'en-tête, sans max-height ni max-width qui la contredise.
+        '.gabarit-logo-devis{display:inline-block;vertical-align:middle;',
         'margin-right:3mm;}',
         '.gabarit-nom{font-weight:bold;margin-right:3mm;}',
         '.gabarit-titre{color:', GRIS_TEXTE, ';}',
@@ -398,11 +482,18 @@ def page_de_garde_html(identite, site, provenance, styles, *, libelles=None):
                           '</tr>' % (libelle, escape(textes['non_renseigne'])))
 
     titre = _texte(identite.get('titre_document')) or textes['titre_defaut']
-    logo = _logo_valide(styles.get('logo_url'))
-    bloc_logo = ('<p class="garde-logo"><img src="%s" alt="%s"></p>'
-                 % (escape(logo, quote=True),
-                    escape(valeurs['societe'] or 'logo', quote=True))
-                 if logo else '')
+    # Le logo du devis (balise du moteur, rôle ``couverture``) passe AVANT
+    # celui du thème ; sans lui, le comportement d'avant (logo du thème, sinon
+    # rien).
+    logo_devis = _texte(styles.get('logo_garde_html'))
+    logo = '' if logo_devis else _logo_valide(styles.get('logo_url'))
+    if logo_devis:
+        bloc_logo = '<p class="garde-logo">%s</p>' % logo_devis
+    else:
+        bloc_logo = ('<p class="garde-logo"><img src="%s" alt="%s"></p>'
+                     % (escape(logo, quote=True),
+                        escape(valeurs['societe'] or 'logo', quote=True))
+                     if logo else '')
     return ('<section class="page-de-garde" '
             'style="break-after:page;page-break-after:always;">'
             '%s<h1>%s</h1><table class="garde">%s</table></section>'

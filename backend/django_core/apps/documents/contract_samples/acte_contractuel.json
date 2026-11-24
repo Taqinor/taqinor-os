@@ -6,6 +6,7 @@
     "GET /api/django/documents/actes/<int:pk>/pdf/": "le PDF (application/pdf) — vivant pour un brouillon, figé ensuite ; ?langue=fr|ar (défaut fr) : ar = la traduction arabe qui accompagne l'acte (loi n° 31-08, art. 206)",
     "POST /api/django/documents/actes/<int:pk>/emettre/": "fige le contenu et le PDF (statut emis) ; rend le détail",
     "POST /api/django/documents/actes/<int:pk>/rouvrir/": "retour au brouillon d'un acte émis non signé ; rend le détail",
+    "POST /api/django/documents/actes/<int:pk>/regenerer/": "refait un acte émis non signé avec les textes et les données du jour (version suivante), tout ou rien ; rend le détail ; 409 etat_invalide sur un brouillon, deja_signe sur un acte signé",
     "POST /api/django/documents/actes/<int:pk>/signer/": "corps_signer ; signature tracée sur place ; rend le détail",
     "POST /api/django/documents/actes/<int:pk>/marquer-signe/": "corps_marquer_signe ; signature sur papier ; rend le détail",
     "POST /api/django/documents/actes/<int:pk>/modele/": "enregistre les sections texte de l'acte comme modèle de la société (Directeur) ; rend {detail}"
@@ -192,7 +193,6 @@
       "options": {
         "consommateur": true,
         "reserve_propriete": true,
-        "raccorde_reseau": true,
         "penalite_retard_pct": null,
         "delai_execution_jours": 30
       },
@@ -285,7 +285,7 @@
           "paragraphes": [
             "TAQINOR fournit, pose et met en service chez le Client, à l'adresse du chantier, l'installation solaire décrite au devis DEV-202611-0042, que le Client a accepté le 20 novembre 2026.",
             "L'installation est livrée **clé en main** : étude, fourniture du matériel, pose, raccordement à l'installation électrique du Client, mise en service et explication du fonctionnement.",
-            "Le devis accepté fait partie du contrat. Si deux lignes se contredisent, les conditions particulières l'emportent, puis le présent contrat, puis le devis."
+            "Le devis accepté fait partie du contrat."
           ]
         },
         {
@@ -332,14 +332,6 @@
           ]
         },
         {
-          "cle": "demarches",
-          "titre": "Démarches auprès du réseau électrique",
-          "paragraphes": [
-            "La loi n° 82-21 sur l'autoproduction d'électricité demande au propriétaire d'une installation raccordée au réseau de la déclarer au gestionnaire du réseau avant les travaux ou, selon sa puissance, d'obtenir son accord de raccordement.",
-            "Le Client charge TAQINOR de préparer ce dossier et de le suivre pour lui ; il signe les documents demandés. Les frais éventuels du gestionnaire du réseau, dont ceux du compteur, restent à la charge du Client."
-          ]
-        },
-        {
           "cle": "propriete",
           "titre": "Propriété du matériel",
           "paragraphes": [
@@ -350,7 +342,7 @@
           "cle": "garde",
           "titre": "Garde du matériel",
           "paragraphes": [
-            "De la livraison au début de la pose, le Client a la garde du matériel livré : il le conserve à l'abri, dans un lieu fermé, et répond des pertes ou des dégradations dues à son fait ou à un défaut de surveillance. Pendant la pose et jusqu'à la réception, TAQINOR a la garde du chantier ; à la réception, la garde de l'installation passe au Client."
+            "De la livraison au début de la pose, le Client a la garde du matériel livré : il le conserve à l'abri, dans un lieu fermé, et répond des pertes ou des dégradations dues à son fait ou à un défaut de surveillance. À la réception, la garde de l'installation passe au Client."
           ]
         },
         {
@@ -368,7 +360,6 @@
           "titre": "Garanties",
           "paragraphes": [
             "Le Client bénéficie des garanties du tableau « Vos garanties » : celles des fabricants sur le matériel, et celle de TAQINOR sur son travail de pose pendant 2 ans.",
-            "Pendant ces durées, TAQINOR est l'interlocuteur unique du Client : elle fait le diagnostic, traite la demande auprès du fabricant et prend à sa charge les frais de transport du matériel garanti. La durée d'une garantie est prolongée du temps pendant lequel le matériel est immobilisé pour réparation. Les pièces détachées nécessaires sont disponibles pendant toute la durée des garanties.",
             "Ces garanties s'ajoutent à la **garantie légale** des défauts et vices cachés (articles 549 à 575 du Dahir des obligations et des contrats, article 65 de la loi n° 31-08 et, pour le travail de pose, articles 767 et 772 du même Dahir), que TAQINOR doit dans tous les cas.",
             "Elles ne couvrent pas : une intervention ou une modification de l'installation par un tiers sans l'accord de TAQINOR, lorsqu'elle est la cause du dommage ; un choc, un incendie, une inondation, la foudre ou une surtension du réseau, sauf défaut des protections posées par TAQINOR ; un défaut de l'entretien décrit dans les notices remises à la réception, ou un usage contraire à ces notices."
           ]
@@ -575,7 +566,6 @@
       "options": {
         "consommateur": true,
         "reserve_propriete": true,
-        "raccorde_reseau": true,
         "penalite_retard_pct": null,
         "delai_execution_jours": 30
       },
@@ -657,7 +647,7 @@
           "cle": "garde",
           "titre": "Garde du matériel",
           "paragraphes": [
-            "De la livraison au début de la pose, le Client a la garde du matériel livré : il le conserve à l'abri, dans un lieu fermé, sans l'ouvrir ni le déplacer, et répond des pertes ou des dégradations dues à son fait ou à un défaut de surveillance. Pendant la pose et jusqu'à la réception, TAQINOR a la garde du chantier ; à la réception, la garde de l'installation passe au Client."
+            "De la livraison au début de la pose, le Client a la garde du matériel livré : il le conserve à l'abri, dans un lieu fermé, sans l'ouvrir ni le déplacer, et répond des pertes ou des dégradations dues à son fait ou à un défaut de surveillance. À la réception, la garde de l'installation passe au Client."
           ]
         },
         {
@@ -823,7 +813,6 @@
       "options": {
         "consommateur": true,
         "reserve_propriete": true,
-        "raccorde_reseau": true,
         "penalite_retard_pct": null,
         "delai_execution_jours": 30
       },
@@ -905,7 +894,7 @@
           "cle": "garde",
           "titre": "Garde du matériel",
           "paragraphes": [
-            "De la livraison au début de la pose, le Client a la garde du matériel livré : il le conserve à l'abri, dans un lieu fermé, sans l'ouvrir ni le déplacer, et répond des pertes ou des dégradations dues à son fait ou à un défaut de surveillance. Pendant la pose et jusqu'à la réception, TAQINOR a la garde du chantier ; à la réception, la garde de l'installation passe au Client."
+            "De la livraison au début de la pose, le Client a la garde du matériel livré : il le conserve à l'abri, dans un lieu fermé, sans l'ouvrir ni le déplacer, et répond des pertes ou des dégradations dues à son fait ou à un défaut de surveillance. À la réception, la garde de l'installation passe au Client."
           ]
         },
         {
@@ -1069,7 +1058,6 @@
       "options": {
         "consommateur": true,
         "reserve_propriete": true,
-        "raccorde_reseau": true,
         "penalite_retard_pct": null,
         "delai_execution_jours": 30
       },
@@ -1319,7 +1307,6 @@
       "options": {
         "consommateur": true,
         "reserve_propriete": true,
-        "raccorde_reseau": true,
         "penalite_retard_pct": null,
         "delai_execution_jours": 30
       },
@@ -1443,21 +1430,14 @@
           "cle": "contact",
           "titre": "Qui appeler",
           "paragraphes": [
-            "Un seul interlocuteur : le service après-vente de TAQINOR. Décrivez ce que vous constatez et envoyez une photo de l'écran de l'onduleur ou de l'application de suivi."
-          ]
-        },
-        {
-          "cle": "demarche",
-          "titre": "Comment se passe une demande",
-          "paragraphes": [
-            "- TAQINOR fait le diagnostic, à distance ou sur place ;\n- si une garantie joue, TAQINOR répare ou remplace le matériel et traite la demande auprès du fabricant ;\n- les réparations sont faites sur place ou à l'atelier de TAQINOR, 12, rue des Exemples, 20000 Casablanca ;\n- le matériel à renvoyer au fabricant passe par TAQINOR ;\n- les frais de transport du matériel garanti sont à la charge de TAQINOR ;\n- la durée de la garantie est prolongée du temps pendant lequel le matériel est immobilisé ; un reçu daté vous est remis à l'enlèvement et au retour."
+            "En cas de panne, contactez le service après-vente de TAQINOR. Décrivez ce que vous constatez et envoyez une photo de l'écran de l'onduleur ou de l'application de suivi."
           ]
         },
         {
           "cle": "couvert",
           "titre": "Ce qui est couvert",
           "paragraphes": [
-            "Les défauts du matériel, dans les conditions de chaque fabricant, et les défauts de pose pendant la durée de la garantie d'installation. Les pièces détachées nécessaires sont disponibles pendant toute la durée des garanties."
+            "Les défauts du matériel, dans les conditions de chaque fabricant, et les défauts de pose pendant la durée de la garantie d'installation."
           ]
         },
         {

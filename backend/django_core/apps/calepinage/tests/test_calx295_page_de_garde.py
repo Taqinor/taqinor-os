@@ -111,6 +111,31 @@ class GardeCompleteTest(unittest.TestCase):
             STYLES, logo_url='javascript:alert(1)'))
         self.assertNotIn('<img', sans)
 
+    def test_le_logo_du_devis_passe_avant_celui_du_theme(self):
+        # « Un seul logo partout » (24/11/2026) : la balise du moteur, rôle
+        # ``couverture``, est imprimée telle quelle ; celle du thème ne l'est pas.
+        balise = ('<img src="data:image/png;base64,AAAA" alt="logo" '
+                  'style="max-height:6.00mm;display:block;">')
+        html = page_de_garde_html(IDENTITE, SITE, PROVENANCE, dict(
+            STYLES, logo_url='https://cdn.exemple.test/logo.png',
+            logo_garde_html=balise))
+        self.assertIn('<p class="garde-logo">%s</p>' % balise, html)
+        self.assertNotIn('cdn.exemple.test', html)
+        self.assertEqual(html.count('<img'), 1)
+        self.assertLess(html.index('garde-logo'), html.index('<h1>'))
+        self.assertIsNone(BALISE_VIDE.search(html))
+
+    def test_sans_logo_du_devis_le_comportement_d_avant(self):
+        for styles in (dict(STYLES, logo_garde_html=''),
+                       dict(STYLES, logo_garde_html='   '), STYLES):
+            with self.subTest(styles=styles.get('logo_garde_html')):
+                html = page_de_garde_html(IDENTITE, SITE, PROVENANCE, dict(
+                    styles, logo_url='https://cdn.exemple.test/logo.png'))
+                self.assertIn('src="https://cdn.exemple.test/logo.png"', html)
+                sans = page_de_garde_html(IDENTITE, SITE, PROVENANCE, styles)
+                self.assertNotIn('<img', sans)
+                self.assertNotIn('garde-logo', sans)
+
     def test_une_autre_langue_remplace_les_libelles_cle_par_cle(self):
         html = page_de_garde_html({}, {}, {}, {}, libelles={
             'client': 'Customer', 'non_renseigne': 'not provided'})

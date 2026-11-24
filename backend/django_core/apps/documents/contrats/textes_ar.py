@@ -82,7 +82,6 @@ FORMES_CTX = {
     'date_limite': '23 يناير 2027',
     # Au nominatif (« ومدته سنتان ») : duree_mois(…, langue='ar').
     'garantie_installation': 'سنتان',
-    'pieces_detachees': 'قطع الغيار اللازمة متوفرة طوال مدة الضمانات.',
     'delai_mise_en_demeure': '8 أيام',
     'penalite_retard': '10 %',
     'email_societe': 'contact@exemple.ma',
@@ -160,15 +159,13 @@ _GARDE_SANS_OUVRIR = "دون فتحها أو نقلها، "
 _GARDE_REPOND = (
     "ويُسأل عن ضياعها أو تلفها متى كان ذلك ناتجًا عن فعله أو عن تقصير منه "
     "في الحراسة. ")
-_GARDE_POSE = (
-    "وخلال التركيب وإلى حين التسلُّم، تتولى {societe} حراسة الورش؛ وعند "
-    "التسلُّم، ")
+_GARDE_RECEPTION = "عند التسلُّم، "
 _GARDE_TRANSFERT = "تنتقل حراسة المنظومة إلى الزبون."
 
 
 def _regle_de_garde(sans_ouvrir=False):
     return (_GARDE_LIVRAISON + (_GARDE_SANS_OUVRIR if sans_ouvrir else '')
-            + _GARDE_REPOND + _GARDE_POSE + _GARDE_TRANSFERT)
+            + _GARDE_REPOND + _GARDE_RECEPTION + _GARDE_TRANSFERT)
 
 
 # ── Acte 1 — Contrat d'installation ─────────────────────────────────────────
@@ -183,8 +180,7 @@ def _contrat_installation(ctx, options):
             "تُسلَّم المنظومة **بصيغة تسليم المفتاح**: الدراسة، وتوريد "
             "المعدات، والتركيب، والربط بالتركيبات الكهربائية للزبون، "
             "والتشغيل، وشرح طريقة الاشتغال.",
-            "يُعدّ عرض الأثمان المقبول جزءًا من العقد. وإذا تعارض نصّان، "
-            "تُقدَّم الشروط الخاصة، ثم هذا العقد، ثم عرض الأثمان.",
+            "يُعدّ عرض الأثمان المقبول جزءًا من العقد.",
         ]),
         ('prix', 'الثمن', [
             "الثمن **ثابت ونهائي**: {total_ttc} مع احتساب جميع الرسوم. "
@@ -241,16 +237,6 @@ def _contrat_installation(ctx, options):
             "- أداء كل دفعة في الوقت المحدد في بند «الأداء».",
         ]),
     ]
-    if options.get('raccorde_reseau', True):
-        arts.append(('demarches', 'الإجراءات لدى الشبكة الكهربائية', [
-            "يُلزم القانون رقم 82.21 المتعلق بالإنتاج الذاتي للطاقة "
-            "الكهربائية مالكَ منشأة مرتبطة بالشبكة بأن يصرّح بها لدى مسيّر "
-            "الشبكة قبل الأشغال، أو أن يحصل، حسب قدرتها، على موافقته على "
-            "الربط.",
-            "يُكلِّف الزبون {societe} بإعداد هذا الملف وتتبّعه نيابة عنه؛ "
-            "ويوقّع الوثائق المطلوبة. وتبقى المصاريف المحتملة لمسيّر الشبكة، "
-            "ومنها مصاريف العداد، على عاتق الزبون.",
-        ]))
     if options.get('reserve_propriete', True):
         arts.append(('propriete', 'ملكية المعدات', [
             "تبقى المعدات في ملكية {societe} إلى حين الأداء الكامل للثمن "
@@ -281,10 +267,6 @@ def _contrat_installation(ctx, options):
             "يستفيد الزبون من الضمانات المبيَّنة في جدول «ضماناتكم»: "
             "ضمانات الصانعين على المعدات، وضمان {societe} على أشغال التركيب "
             "التي تنجزها، ومدته {garantie_installation}.",
-            "خلال هذه المدد، تكون {societe} المخاطَب الوحيد للزبون: تقوم "
-            "بالتشخيص، وتتولى معالجة الطلب لدى الصانع، وتتحمّل مصاريف نقل "
-            "المعدات المضمونة. وتُمدَّد مدة الضمان بقدر المدة التي تظل فيها "
-            "المعدات متوقفة عن الاشتغال من أجل الإصلاح. {pieces_detachees}",
             _GARANTIE_LEGALE,
             "ولا تشمل هذه الضمانات: " + "؛ ".join(_EXCLUSIONS) + ".",
         ]),
@@ -403,7 +385,7 @@ def _pv_reception(ctx, options):
             "{devis_reference}، وبأن المنظومة مطابقة لهاتين الوثيقتين "
             "وتشتغل، وبأنه لم يلاحظ أي عيب ظاهر خارج التحفظات المكتوبة "
             "أعلاه.",
-            "عند التسلُّم، " + _GARDE_TRANSFERT + " وترفع {societe} "
+            _GARDE_RECEPTION + _GARDE_TRANSFERT + " وترفع {societe} "
             "التحفظات المحتملة داخل الأجل المبيَّن؛ ويُثبَت رفعها في محرَّر "
             "يوقّعه الزبون.",
             "تسري الضمانات المنصوص عليها في العقد **ابتداءً من هذا اليوم**. "
@@ -442,23 +424,12 @@ def _cloture_garanties(ctx, options):
     consommateur = options.get('consommateur', True)
     arts = [
         ('contact', 'بمن تتصلون', [
-            "مخاطَب واحد: خدمة ما بعد البيع لدى {societe}. صِفوا ما "
+            "في حالة عطب، اتصلوا بخدمة ما بعد البيع لدى {societe}. صِفوا ما "
             "تلاحظونه، وأرسلوا صورة لشاشة العاكس أو لتطبيق التتبع.",
-        ]),
-        ('demarche', 'كيف يُعالَج الطلب', [
-            "- تقوم {societe} بالتشخيص، عن بُعد أو في عين المكان؛\n"
-            "- إذا كان العطب مشمولًا بأحد الضمانات، تصلح {societe} المعدات "
-            "أو تستبدلها، وتتولى معالجة الطلب لدى الصانع؛\n"
-            "- تُنجز الإصلاحات في عين المكان أو في مشغل {societe}، "
-            "{adresse_societe}؛\n"
-            "- تمرّ المعدات الواجب إرجاعها إلى الصانع عبر {societe}؛\n"
-            "- مصاريف نقل المعدات المضمونة على عاتق {societe}؛\n"
-            "- تُمدَّد مدة الضمان بقدر المدة التي تظل فيها المعدات متوقفة عن "
-            "الاشتغال؛ ويُسلَّم إليكم وصل مؤرَّخ عند أخذها وعند إرجاعها.",
         ]),
         ('couvert', 'ما يشمله الضمان', [
             "عيوب المعدات، وفق شروط كل صانع، وعيوب التركيب طوال مدة ضمان "
-            "التركيب. {pieces_detachees}",
+            "التركيب.",
         ]),
         ('exclusions', 'ما لا يشمله', [
             "- " + "؛\n- ".join(_EXCLUSIONS) + ".",
@@ -477,7 +448,7 @@ def _cloture_garanties(ctx, options):
 def articles_par_defaut(type_acte, variante='', ctx=None, options=None):
     """Les articles par défaut d'un acte, en arabe. ``ctx`` : repères déjà mis
     en forme pour l'arabe (``FORMES_CTX``) ; ``options`` : ``consommateur``,
-    ``reserve_propriete``, ``raccorde_reseau``, ``penalite_retard_pct``."""
+    ``reserve_propriete``, ``penalite_retard_pct``."""
     ctx = ctx or {}
     options = options or {}
     if type_acte == 'contrat_installation':

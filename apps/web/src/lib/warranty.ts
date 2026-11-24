@@ -33,9 +33,14 @@
  *     hébergée ne contient AUCUNE durée de garantie (WAUD69, contrôle pdftotext) : le
  *     document du distributeur reste attendu (WB5).
  *
- *  BATTERIE (décision fondateur 27/10/2026) : 7 ans, ≥ 70 % de capacité — Dyness
- *   DL5.0C LFP, garantie officielle Dyness Afrique V2-202502 : 7 ans de base ;
- *   10 ans seulement avec une extension payante, NON achetée. Seuil ≥ 70 % à 7 ans.
+ *  BATTERIE (décision fondateur 24/11/2026) : 10 ans, ≥ 70 % de capacité — Dyness
+ *   DL5.0C LFP d'ORIGINE (aucun « V2 » sur l'étiquette des batteries posées).
+ *   Source : conditions de garantie officielles Dyness, version Afrique V2-202502
+ *   (dyness.com, DynessWarrantyTermsDL5.0Cfeizhouban2.pdf) : la DL5.0C d'origine
+ *   est garantie 10 ans ; seule la DL5.0C V2 a 7 ans de base. Le 7 ans posé le
+ *   27/10/2026 (« à revoir ») est retiré. Une garantie montrée au client reste UNE
+ *   durée : ni « selon site », ni « variante », ni « version », ni « extensible ».
+ *   Seuil ≥ 70 % conservé (inchangé depuis avant le 27/10).
  *
  *  STRUCTURE (acier galvanisé) : 20 ans.
  *  POSE / main-d'œuvre Taqinor : 2 ans.
@@ -72,7 +77,7 @@ export const HUAWEI_INVERTER_WARRANTY_YEARS = 10;
 export const INVERTER_WARRANTY_YEARS = HUAWEI_INVERTER_WARRANTY_YEARS;
 
 /** Garantie batterie (durée), en années. */
-export const BATTERY_WARRANTY_YEARS = 7;
+export const BATTERY_WARRANTY_YEARS = 10;
 
 /** Garantie batterie Dyness Powerbox Pro (fondateur 27/10/2026), en années. */
 export const DYNESS_POWERBOX_PRO_WARRANTY_YEARS = 10;

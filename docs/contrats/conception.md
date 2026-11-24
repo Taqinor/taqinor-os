@@ -111,6 +111,10 @@ paiements : signée, elle vaudrait reçu contre la société (revue 1).
   (signature sur papier). Le PDF signé (trace, nom, date, empreinte) remplace le PDF émis en GED (nouvelle version).
   Preuve gardée : empreinte SHA-256 du contenu figé, IP, agent, utilisateur.
 - **Émis → brouillon** (`rouvrir`) tant que l'acte n'est pas signé ; la ré-émission porte `version + 1`.
+- **Émis → émis** (`regenerer`, bouton « Régénérer », 24/11/2026) : un acte émis non signé est refait en un geste avec
+  les textes et les données du jour (`rouvrir` puis `emettre` dans une seule transaction, `version + 1`). Tout ou rien :
+  si la ré-émission est refusée, l'acte émis reste ce qu'il était. Un brouillon ne se régénère pas (son aperçu est
+  toujours à jour) ; un acte signé non plus (la preuve ne se refait pas).
 - **Variantes de livraison** : émettre l'une marque l'autre `ecarte` à l'affichage (calculé, pas un statut).
 - **Prochaine action** (calculée) : contrat à envoyer et faire signer → livraison à faire signer → réception à faire
   signer → quitus à remettre (ou « solde non réglé »).
@@ -194,3 +198,17 @@ existant ; le catalogue réel les range en prestations (D-APDF-4).
   personnalisée en français dont l'arabe est resté au défaut lève un avertissement. Le montant en lettres n'est pas
   imprimé en arabe (aucun convertisseur vérifié) ; les désignations du catalogue restent telles quelles.
   **À faire relire par un arabophone avant un usage réel** — dit à Reda.
+
+**Retraits demandés par Reda après lecture du contrat sur la production (24/11/2026)** — ne pas les remettre :
+- article « Objet » : plus de « si deux lignes se contredisent, les conditions particulières l'emportent… » ; il
+  reste « Le devis accepté fait partie du contrat. » ;
+- l'article « Démarches auprès du réseau électrique » (loi n° 82-21) est retiré du contrat, et l'option
+  `raccorde_reseau`, qui ne pilotait que lui, n'existe plus ;
+- article « Garde du matériel » : plus de « la société a la garde du chantier pendant la pose » ; il reste la garde du
+  Client entre la livraison et la pose, puis le passage de la garde à la réception ;
+- garanties : « we should not be obliged by this contract to take care of his warranty » — aucun acte n'engage la
+  société à être l'interlocuteur unique, à faire le diagnostic, à traiter avec le fabricant, à payer le transport ni
+  à tenir des pièces détachées. Le contrat et le certificat gardent le tableau des garanties et leurs durées, la
+  garantie légale, les exclusions, et « en cas de panne, contactez le service après-vente ». L'article « Comment se
+  passe une demande » du certificat est retiré.
+Ces quatre points sont notés pour un juriste dans `juridique.md` § 4 (points 13 à 16).

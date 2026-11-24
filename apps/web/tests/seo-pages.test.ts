@@ -271,7 +271,7 @@ describe('teaser garanties (W16)', () => {
     for (const fig of ['12 ans', '30 ans', '20 ans', '2 ans']) {
       expect(teaser, fig).toContain(fig);
     }
-    // 5 / 10 / 7 ans : dérivés de lib/warranty.ts (Deye, Huawei, batterie Dyness).
+    // 5 / 10 / 10 ans : dérivés de lib/warranty.ts (Deye, Huawei, batterie Dyness).
     for (const c of ['DEYE_INVERTER_WARRANTY_YEARS', 'HUAWEI_INVERTER_WARRANTY_YEARS', 'BATTERY_WARRANTY_YEARS']) {
       expect(teaser, c).toContain(c);
     }
@@ -776,7 +776,7 @@ describe('WAUD73/74/75 — pages « subvention », « kit ou sur mesure », « l
     expect(garanties).toHaveLength(TABLEAU_GARANTIES_FR.length);
     // ERR-W33-GARANTIES-NOTE — jamais une durée sans son seuil, dans les deux langues.
     expect(garanties).toContainEqual(['Panneaux photovoltaïques (performance)', '30 ans (linéaire, ≥ 87,4 % de la puissance initiale à 30 ans)']);
-    expect(garanties).toContainEqual(['Batteries Dyness LFP', '7 ans (≥ 70 % de capacité)']);
+    expect(garanties).toContainEqual(['Batteries Dyness LFP', '10 ans (≥ 70 % de capacité)']);
     expect(garanties).toContainEqual(['Structure acier galvanisé', '20 ans']);
     const garantiesAr = INFO_PAGES.devis.ar!.blocks[1].table!.rows.flat().join(' ');
     expect(garantiesAr).toContain('≥ 87.4 %');

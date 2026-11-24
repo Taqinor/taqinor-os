@@ -70,7 +70,8 @@ class ApiContratsTests(TestCase):
         self.assertEqual(r.status_code, 404)
         self.assertEqual(autre.acte(T.CONTRAT).statut, T.BROUILLON)
 
-    GESTES = ('emettre/', 'rouvrir/', 'signer/', 'marquer-signe/', 'modele/')
+    GESTES = ('emettre/', 'rouvrir/', 'regenerer/', 'signer/',
+              'marquer-signe/', 'modele/')
 
     def test_id_invisible_404_avant_permission(self):
         """Garde de classe : l'acte est résolu avant le 403 (modèle réservé
@@ -471,6 +472,49 @@ class ApiContratsPdfTests(TestCase):
         self.assertEqual((r.status_code, r.data['code']),
                          (409, T.CODE_CHANTIER_ANNULE))
 
+    def test_regenerer_refait_l_acte_emis_tout_ou_rien(self):
+        """« Régénérer » : un acte émis non signé est refigé avec les textes
+        et les données du jour (version suivante) ; brouillon et acte signé
+        refusés ; si la ré-émission est refusée, l'acte émis ne bouge pas."""
+        acte = self.v.acte(T.CONTRAT)
+        url = ACTE.format(acte.pk) + 'regenerer/'
+        r = self.api.post(url)
+        self.assertEqual((r.status_code, r.data['code']), (409, T.CODE_ETAT))
+        self.assertEqual(self.api.post(
+            ACTE.format(acte.pk) + 'emettre/').status_code, 200)
+        # Le contenu figé vieillit (un texte par défaut a changé depuis).
+        perime = dict(self.v.acte(T.CONTRAT).contenu, titre='Ancien titre')
+        ActeContractuel.objects.filter(pk=acte.pk).update(contenu=perime)
+        self.assertEqual(
+            self.api.get(ACTE.format(acte.pk)).data['contenu']['titre'],
+            'Ancien titre')
+        r = self.api.post(url)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual((r.data['statut'], r.data['version']), (T.EMIS, 2))
+        self.assertNotEqual(r.data['contenu']['titre'], 'Ancien titre')
+        frais = self.v.acte(T.CONTRAT)
+        self.assertEqual(frais.contenu['titre'], r.data['contenu']['titre'])
+        self.assertIsNotNone(frais.emis_le)
+        # Tout ou rien : sans devis la ré-émission est refusée, rien ne bouge.
+        Installation.objects.filter(pk=self.v.chantier.pk).update(devis=None)
+        r = self.api.post(url)
+        self.assertEqual((r.status_code, r.data['code']),
+                         (409, T.CODE_SANS_DEVIS))
+        reste = self.v.acte(T.CONTRAT)
+        self.assertEqual((reste.statut, reste.version), (T.EMIS, 2))
+        self.assertEqual(reste.contenu, frais.contenu)
+        Installation.objects.filter(pk=self.v.chantier.pk).update(
+            devis=self.v.devis)
+        # Signé : la preuve ne se régénère pas.
+        self.assertEqual(self.api.post(
+            ACTE.format(acte.pk) + 'marquer-signe/',
+            {'signataire_nom': 'Youssef EXEMPLE'},
+            format='json').status_code, 200)
+        r = self.api.post(url)
+        self.assertEqual((r.status_code, r.data['code']),
+                         (409, T.CODE_DEJA_SIGNE))
+        self.assertIn('ne se régénère pas', r.data['detail'])
+
     def test_pdf_inline(self):
         acte = self.v.acte(T.CONTRAT)
         for langue, suffixe in (('fr', ''), ('ar', '-ar')):
@@ -572,8 +616,8 @@ class ReponsesConformesAuSchemaTests(TestCase):
                 self._conforme(401, 'get', acte.pk, suite, client=APIClient())
         self._conforme(404, 'patch', 0, data={'surcharges': {}},
                        format='json')
-        for geste in ('emettre/', 'rouvrir/', 'signer/', 'marquer-signe/',
-                      'modele/'):
+        for geste in ('emettre/', 'rouvrir/', 'regenerer/', 'signer/',
+                      'marquer-signe/', 'modele/'):
             with self.subTest(geste=geste):
                 self._conforme(404, 'post', 0, geste)
 
@@ -600,7 +644,9 @@ class ReponsesConformesAuSchemaTests(TestCase):
                        data={'surcharges': {'titre': 'X'}}, **json_)
         self._conforme(200, 'post', acte.pk, 'rouvrir/')
         self._conforme(409, 'post', acte.pk, 'rouvrir/')
+        self._conforme(409, 'post', acte.pk, 'regenerer/')
         self._conforme(200, 'post', acte.pk, 'emettre/')
+        self._conforme(200, 'post', acte.pk, 'regenerer/')
         self._conforme(400, 'post', acte.pk, 'signer/',
                        data={'signature_client': SIG}, **json_)
         self._conforme(200, 'post', acte.pk, 'signer/',

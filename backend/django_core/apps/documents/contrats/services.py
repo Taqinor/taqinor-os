@@ -303,6 +303,24 @@ def rouvrir(acte, user=None):
     return acte
 
 
+def regenerer(acte, user=None):
+    """Émis (non signé) → émis de nouveau, en UN geste : le contenu figé et
+    les PDF sont refaits avec les textes et les données d'aujourd'hui
+    (``version + 1``), sans passer par le brouillon à l'écran. Tout ou rien :
+    si la ré-émission est refusée (montant figé, paiement manquant, devis
+    absent…), l'acte émis reste exactement ce qu'il était. Rend
+    ``(acte, avertissements)``."""
+    try:
+        with transaction.atomic():
+            return emettre(rouvrir(acte, user), user)
+    except ErreurActe as exc:
+        if exc.code == T.CODE_DEJA_SIGNE:
+            raise ErreurActe(T.CODE_DEJA_SIGNE,
+                             'Cet acte est signé : il ne se régénère '
+                             'pas.') from exc
+        raise
+
+
 # ── Signer ──────────────────────────────────────────────────────────────────
 
 def _valider_trace(signature):

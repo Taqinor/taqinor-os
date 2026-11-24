@@ -242,19 +242,33 @@ class ActePdfView(_ActePortee, APIView):
         return reponse
 
 
+def _emission(request, acte, geste):
+    """Un geste qui (ré)émet un acte : son détail avec les avertissements du
+    dépôt, ou le refus servi ``{detail, code}``."""
+    try:
+        acte, avertissements = geste(acte, request.user)
+    except services.ErreurActe as exc:
+        return _erreur(exc)
+    return _detail(acte, avertissements=avertissements, request=request)
+
+
 class ActeEmettreView(_ActeVue):
     """Fige le contenu (français et arabe) et les PDF ; statut « émis »."""
 
     @extend_schema(request=None,
                    responses={200: DetailActeSerializer, **_ERREURS})
     def post(self, request, pk):
-        acte = self.acte
-        try:
-            acte, avertissements = services.emettre(acte, request.user)
-        except services.ErreurActe as exc:
-            return _erreur(exc)
-        return _detail(acte, avertissements=avertissements,
-                       request=request)
+        return _emission(request, self.acte, services.emettre)
+
+
+class ActeRegenererView(_ActeVue):
+    """Refait un acte émis non signé avec les textes et les données du jour
+    (nouvelle version), sans repasser par le brouillon."""
+
+    @extend_schema(request=None,
+                   responses={200: DetailActeSerializer, **_ERREURS})
+    def post(self, request, pk):
+        return _emission(request, self.acte, services.regenerer)
 
 
 class ActeRouvrirView(_ActeVue):
