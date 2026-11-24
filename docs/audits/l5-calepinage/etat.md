@@ -1070,3 +1070,61 @@ réglages vides » : 5 pertes supposées ; météo « plusieurs années réelles
    d'essai » ; B laisser vide ; C ses prix. Aucun prix public n'existe pour les pompes OSP 30 (fabricant Oswal).
 2. Clé de carte : l'orchestrateur ne saisit pas une clé de production ; à poser par le fondateur dans `l5t/l5t.env`
    (`PUBLIC_MAPTILER_KEY=`), sinon le test se joue sur fond gris.
+
+### Point du 24/11, ~17 h 15 UTC (le plus récent — REPRENDRE ICI)
+
+**Règles du fondateur ajoutées dans la journée (toutes en vigueur)**
+- « you push too many CIs » : UNE PR par gros lot, plus de petites PR. Le lot en cours = la branche locale
+  `dev-ecrans-v2` (écrans + suites + moteur étape 2 + déclencheurs + premiers correctifs du test utilisateur).
+- « launch more lanes » puis « keep monitoring ram and cpu » : avant CHAQUE lancement de lane ou de relecteur,
+  `powershell -NoProfile -ExecutionPolicy Bypass -File <scratchpad>/ressources.ps1` — `GO` (≥ 3,0 Go libres et CPU ≤ 85 %),
+  `GO-LEGER` (≥ 2,0 Go et ≤ 92 % : une lane légère seulement), sinon `ATTENDRE`.
+- « don't spend time running local CI tests » : une lane ne joue en local que la classe de test qu'elle écrit ; la CI
+  de la PR (branche `dev-*`, backend compris) est la barrière.
+
+**Moteur unique — état**
+- Sur `main` : PR #1540 (contrat), #1542 (table `ConceptionLead`, entrées, goldens ADEV159), #1546 (ADEV160,
+  extraction du pipeline pur). Fusionnées ; #1546 non déployée à ma connaissance.
+- Sur la branche de lot `dev-ecrans-v2` (PAS sur `main`) : lane déclencheurs pliée (ALEA68, ACAL2011, ALEA69 — « code
+  livré ») ; lane moteur `lane/moteur-e2c` pliée (figeage du journal, ADEV133 `calculer_conception` — 20 goldens sur 21
+  reproduits clé par clé, zéro écriture ; ADEV134 suppositions) — ADEV133 et ADEV134 cochées.
+- EN VOL : lane écrivain/route `lane/moteur-e2d` (worktree `agent-aecb8f14131ba4555`, partie de `lane/moteur-e2c`,
+  base de test `x4`) : ADEV135, ADEV136, ADEV137, ADEV138. Relecteur adverse NEUF (opus, lecture seule) du diff
+  `4f965ebede..27b12494fe` : 9 points (extraction à comportement égal sur les cinq origines, golden recapturé
+  `split_dm_auto_agr.json`, zéro écriture, pas de prix d'achat, cloisonnement société, parité, suppositions, règle 4,
+  budget de `moteur.py` 461 lignes pour 380). Ses constats bloquants se corrigent AVANT la PR du lot.
+- Non rejoués en local, à la charge de la CI du lot : `test_qjr_ecrivain_lignes`, `test_qjr_forfait_par_panneau`,
+  `test_qjr_pipeline_appliquer`, `test_adev25`, `test_pv42`, `test_l_pcmp`, `test_stkcat23`, `test_tva_ligne_produit`,
+  `test_qjr204`, `test_adev30`, `test_qjr220`, `crm.tests_dc11_provenance`, `test_auto_pipeline`, `test_err_qjr570`,
+  `lint-imports`.
+- Reste après ce lot : E3 (ADEV139, ADEV140, ADEV141), E4 (ADEV142-148, ALEA70, AGEN12, ACAL2027), E5 (ACAL2012-2017,
+  ACAL2028), E6 (ACAL2018-2020, ADEV149-151), E7 (ALEA71, ACAL2021-2023, ADEV152-153, AGEN11, ACAL2029), E8 (AGEN13,
+  ACAL2024-2025, ADEP108), E9 (ACAL2026, ADEV154 = liste montrée au fondateur, ADEV155 GATED jusqu'à sa réponse).
+
+**Écrans v2 — état**
+- Relecteur neuf B4 (14 écrans contre les maquettes) : 0 FIDÈLE / 13 PROCHES / 0 ÉLOIGNÉ / 1 non comparé (B3 : 0 / 6 /
+  6 / 2). Rapport `T4/B4.md`, planches `T4/preuves/B4/`. Constats : T4-B4-001 S2 (vue client, « Glissez pour tourner
+  autour » mort — corrigé par la lane suites), T4-B4-002 S2 (chargement du catalogue interrompu juste après « Créer le
+  calepinage », vu une fois), T4-B4-003 S2 (le compte des réglages vides affiche 20 / 6 / 4 / 16 selon l'endroit),
+  8 S3, 2 S4. Le banc API de la spec (`calepinage-maquettes.banc.js`) fausse plusieurs planches (3D vide, toit décalé).
+- EN VOL : lane `suites-ecrans` (worktree `agent-a60912ec13b275fe4`, branche `lane/suites-ecrans`) — six commits posés
+  (vue client à la souris et au doigt, ACAL2032, ACAL2031, colonne des cartes Documents, repères de la carte par
+  étape, bascule de la carte d'accès solaire), planches en cours. À PLIER dans `dev-ecrans-v2` à son retour.
+- Ensuite : lane « correctifs B4 » (constats S2/S3 restants + banc de la spec), partie de la branche pliée.
+
+**Partie 2, test utilisateur — tour 1 EN VOL** (instrument `l5t` sur `dev-ecrans-v2@35eae8c706`, donc AVANT le pli
+des déclencheurs et du moteur étape 2 : à remettre à jour avant le tour 2)
+- U1 résidentiel a-d · U2 commercial et industriel e-h · U3 agricole i-k + l, m · U4 cas limites n-r. Chacun écrit
+  `registre/constats/T4-<code>.jsonl`, `T4/tour1/couverture-<code>.json`, `T4/tour1/<code>.md`.
+- Constats déjà posés : T4-U2-001, T4-U2-002 (S3) ; T4-U3-001 (S3), T4-U3-002 (S2 : origine du débit de pompage
+  « Mesuré en visite » enregistrée, relue « Déclaré par le client » à la réouverture), T4-U3-003 (S4).
+- À lancer quand les ressources le permettent : U5+ (balayages s-w). Puis consolidation en tâches v3, lanes de
+  correction (test rouge d'abord), rejeu par relecteur neuf, tours jusqu'à deux d'affilée sans rien de neuf.
+
+**Choix pris seul par l'orchestrateur ce jour (à dire au fondateur dans le rapport final, réversibles)**
+figer puis extraire le pipeline avant le point d'entrée du moteur ; mode météo « plusieurs années réelles » 2014-2023
+pour la copie d'essai ; en-tête d'étape masqué (lecteur d'écran seulement) là où la maquette n'en dessine pas ;
+l'effacement d'un lead supprime ses versions de conception rangées ; libellé vrai « Production ÷ consommation » gardé
+contre « 82 % de votre facture » de la maquette (formulation = décision du fondateur) ; conteneurs de développement
+partagés `erp-agentique-django_core-1` et `erp-agentique-fastapi_ia-1` arrêtés pour libérer la mémoire (à relancer au
+démontage).
