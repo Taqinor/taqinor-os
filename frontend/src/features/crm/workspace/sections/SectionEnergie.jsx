@@ -139,6 +139,13 @@ export default function SectionEnergie({ state, setField, errors = {} }) {
             <span>L&apos;été est différent de l&apos;hiver ?</span>
           </label>
         </div>
+        {/* T4-U1-022 — l'hiver déclaré en kWh (sans facture) : le lead n'a AUCUN champ « conso d'été (kWh) » ; la fiche
+            le dit au lieu d'offrir en silence un seul montant en MAD (décision fondateur : ajouter le champ ou non). */}
+        {eteDifferente && v('facture_hiver') === '' && v('conso_mensuelle_kwh') !== '' && (
+          <p className="gen-hint" data-testid="energie-ete-kwh-absent">
+            La consommation d’été en kWh ne peut pas encore être saisie : seule une facture d’été en MAD peut l’être ici.
+          </p>
+        )}
         {eteDifferente && (
           <FormField
             label={bimestrielle ? 'Facture Été — montant pour 2 mois (MAD)' : 'Facture Été (MAD/mois)'}
