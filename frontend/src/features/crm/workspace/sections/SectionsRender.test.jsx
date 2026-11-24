@@ -608,6 +608,33 @@ describe('ROUND 5 — repli automatique À L’OUVERTURE (jamais pendant la sess
   })
 })
 
+/* T4-U3-023 — « Phase du site » (groupe servi ['raccordement'], contrat devis_auto_pret.json › exemple_agricole) : le
+   champ COMPTÉ le dit, et la phase déjà lue sur la plaque de la pompe conservée s'y reporte en un geste. */
+describe('T4-U3-023 — la phase du site : le champ compté, la plaque reprise en un geste', () => {
+  const { requis } = documentContrat('crm', 'devis_auto_pret').exemple_agricole.devis_auto
+  const etat = (sur) => initState({
+    lead: { id: 9, nom: 'Fellah', type_installation: 'agricole', mode_pompe: 'existante', raccordement: '',
+      devis_auto: { pret: false, manquants: [], requis }, ...sur },
+    mode: 'edit',
+  })
+
+  it('plaque « Triphasé », phase du site vide : « Reprendre Triphasé de la plaque » pose raccordement = triphase', () => {
+    const setField = vi.fn()
+    render(<SectionEnergie state={etat({ pompe_actuelle_phases: 'tri' })} {...base} setField={setField} />)
+    expect(screen.getByTestId('lf-raccordement-compte')).toHaveTextContent('« Phase du site »')
+    fireEvent.click(screen.getByRole('button', { name: 'Reprendre « Triphasé » de la plaque de la pompe' }))
+    expect(setField).toHaveBeenCalledWith('raccordement', 'triphase')
+  })
+
+  it('phase du site déjà dite, ou plaque muette : aucune reprise proposée', () => {
+    const r = render(<SectionEnergie state={etat({ pompe_actuelle_phases: 'tri', raccordement: 'monophase' })} {...base} />)
+    expect(screen.queryByRole('button', { name: /de la plaque de la pompe/ })).toBeNull()
+    r.unmount()
+    render(<SectionEnergie state={etat({ pompe_actuelle_phases: '' })} {...base} />)
+    expect(screen.queryByRole('button', { name: /de la plaque de la pompe/ })).toBeNull()
+  })
+})
+
 /* AGR415 — la section Pompage complète, contre le contrat partagé
    `lead_pompage.json` (check_api_shapes) : aucun mock inventé. */
 describe('AGR415 — SectionPompage : chaque colonne du contrat a son champ', () => {

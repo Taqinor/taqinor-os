@@ -79,6 +79,11 @@ export default function SectionEnergie({ state, setField, errors = {} }) {
   // T4-U3-001 — l'étoile « requis devis auto » du Raccordement : la règle
   // SERVIE (`devis_auto.requis`), jamais une liste recopiée ici.
   const requisAuto = new Set((state?.server?.devis_auto?.requis ?? []).flat())
+  // T4-U3-023 — la phase lue sur la plaque de la pompe conservée (`pompe_actuelle_phases` mono/tri), proposée pour
+  // le Raccordement tant que la phase du site n'est pas dite.
+  const phasePlaque = { mono: { valeur: 'monophase', libelle: 'Monophasé' }, tri: { valeur: 'triphase', libelle: 'Triphasé' } }[
+    getField(state, 'pompe_actuelle_phases')] ?? null
+  const phaseSiteDite = ['monophase', 'triphase', 'aucun'].includes(getField(state, 'raccordement'))
   // CAD158 — « elle couvre un mois ou deux mois ? » : sur deux mois, la
   // commerciale tape le montant de la FACTURE et c'est le montant MENSUEL
   // (÷ 2) qui part au serveur — et qui s'affiche, pour qu'elle voie ce qui
@@ -193,6 +198,23 @@ export default function SectionEnergie({ state, setField, errors = {} }) {
                 {enumOptions(RACCORDEMENTS)}
               </select>
             </FormField>
+            {/* T4-U3-023 — trois champs proches (Raccordement, Électricité sur place, Plaque : phases) : celui que
+                le devis automatique COMPTE (groupe servi ['raccordement']) le dit ; la phase déjà lue sur la plaque
+                de la pompe s'y reporte en un geste (le serveur, lui, ne lit que ce champ). */}
+            {requisAuto.has('raccordement') && (
+              <p className="gen-hint" data-testid="lf-raccordement-compte">
+                Ce champ est la « Phase du site » que demande le devis automatique.
+                {phasePlaque && !phaseSiteDite && (
+                  <>
+                    {' '}
+                    <button type="button" className="link-button"
+                      onClick={() => setField('raccordement', phasePlaque.valeur)}>
+                      {`Reprendre « ${phasePlaque.libelle} » de la plaque de la pompe`}
+                    </button>
+                  </>
+                )}
+              </p>
+            )}
           </>
         )}
         {pro && (
