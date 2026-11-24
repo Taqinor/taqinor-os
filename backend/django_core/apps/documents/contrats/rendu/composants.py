@@ -443,25 +443,43 @@ def _cin(client, langue):
     return libelle('cin_a_remplir', langue)
 
 
+def _ice(client, langue):
+    """« ICE 001234567000089 », ou la ligne à remplir au stylo (texte brut)."""
+    if client.get('ice'):
+        return f'{libelle("id_ice", langue)}{INSECABLE}{client["ice"]}'
+    return libelle('ice_a_remplir', langue)
+
+
+def _represente(client, langue):
+    """Qui signe pour la société cliente (« nom, qualité »), ou la ligne à
+    remplir au stylo. Seul endroit d'un acte où une personne est nommée pour
+    un client société : le cadre de signature (fondateur, 24/11/2026)."""
+    if client.get('representant'):
+        return libelle('representee_par', langue, nom=client['representant'])
+    return libelle('representee_par_a_remplir', langue)
+
+
 def partie_client(client, role=None, langue='fr'):
     role = role or libelle('le_client', langue)
     entreprise = client.get('type') == 'entreprise'
     if entreprise:
-        ident = ' · '.join(f'{libelle(k, langue)}{INSECABLE}{v}' for k, v in (
-            ('id_rc', client.get('rc')), ('id_ice', client.get('ice')),
-            ('id_if', client.get('if_fiscal'))) if v)
-        represente = (libelle('representee_par', langue,
-                              nom=client['representant'])
-                      if client.get('representant') else '')
+        # Société : sa raison sociale et ses identifiants, l'ICE toujours
+        # (porté, ou à remplir). Aucune personne ici : elle signe plus bas.
+        ident = ' · '.join(x for x in (
+            (f'{libelle("id_rc", langue)}{INSECABLE}{client["rc"]}'
+             if client.get('rc') else ''),
+            _ice(client, langue),
+            (f'{libelle("id_if", langue)}{INSECABLE}{client["if_fiscal"]}'
+             if client.get('if_fiscal') else '')) if x)
     else:
         ident = _cin(client, langue)
-        represente = ''
     contact = ' · '.join(x for x in (client.get('telephone'),
                                      client.get('email')) if x)
+    ci_apres = 'ci_apres_client_societe' if entreprise else 'ci_apres_client'
     return (f'<div class="partie"><div class="lbl">{esc(role)}</div>'
             f'<div class="nom">{esc(client.get("nom_complet"))}</div>'
-            f'{_lignes(ident, client.get("adresse"), contact, represente)}'
-            f'<div class="ci-apres">{libelle("ci_apres_client", langue)}'
+            f'{_lignes(ident, client.get("adresse"), contact)}'
+            f'<div class="ci-apres">{libelle(ci_apres, langue)}'
             f'</div></div>')
 
 
@@ -628,16 +646,20 @@ def lignes_a_ecrire(nombre_lignes=3):
 # ── Signatures ──────────────────────────────────────────────────────────────
 
 def _boite_signature(libelle_boite, qui, mention, signature=None, langue='fr',
-                     ident=''):
+                     ident='', signataire=''):
+    """``ident`` : une ligne, ou plusieurs (client société : son ICE, puis
+    qui la représente). ``signataire`` : la personne qui signe pour ``qui``
+    quand la signature enregistrée ne porte pas de nom."""
     interieur = (f'<div class="lbl">{esc(libelle_boite)}</div>'
                  f'<div class="qui">{esc(qui)}</div>')
-    if ident:
-        interieur += f'<div class="ident">{esc(ident)}</div>'
+    for ligne in ((ident,) if isinstance(ident, str) else ident):
+        if ligne:
+            interieur += f'<div class="ident">{esc(ligne)}</div>'
     if signature and signature.get('image'):
         interieur += (f'<img class="trace" src="{esc(signature["image"])}" '
                       f'alt="{esc(libelle("alt_signature", langue))}">')
     if signature and signature.get('signe_le'):
-        par = signature.get('nom') or qui
+        par = signature.get('nom') or signataire or qui
         quand = esc(date_longue(signature['signe_le'], langue))
         interieur += (f'<div class="sceau">'
                       f'{libelle("signe_le", langue, date=quand)}</div>'
@@ -665,11 +687,16 @@ def signatures(contenu, *, mention_client, client_signe=True,
     if client_signe:
         # Sous le nom du client particulier, son numéro de CIN (ou la ligne à
         # remplir) : qui signe est identifié dans le cadre même (revue 1, R5).
-        ident = ('' if client.get('type') == 'entreprise'
-                 else _cin(client, langue))
+        # Client société (fondateur, 24/11/2026) : le cadre nomme la raison
+        # sociale et son ICE — sur chacun des actes — puis la personne qui
+        # signe pour elle, nommée ici et nulle part ailleurs.
+        entreprise = client.get('type') == 'entreprise'
+        ident = ((_ice(client, langue), _represente(client, langue))
+                 if entreprise else _cin(client, langue))
         boites.append(_boite_signature(
             libelle('le_client', langue), client.get('nom_complet'),
-            mention_client, sig.get('client'), langue, ident))
+            mention_client, sig.get('client'), langue, ident,
+            signataire=client.get('representant') if entreprise else ''))
     boites.append(_boite_signature(
         libelle('pour_societe', langue,
                 nom=societe.get('nom_court') or societe.get('nom') or ''),
