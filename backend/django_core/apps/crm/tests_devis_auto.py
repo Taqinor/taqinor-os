@@ -470,7 +470,12 @@ class TestDevisAutoSerializerField(TestCase):
 class TestCatalogueCiAlea50(TestCase):
     """ALEA50 (D-ACI-5=a / D-ACI-6=a) — « prêt » inclut le CATALOGUE : le bloc
     ``devis_auto.catalogue_ci`` = {pret, manquants} des postes fixes C&I sans
-    prix (forfaits société, coffrets, protection AC, comptage d'injection)."""
+    prix (forfaits société, puis la liste du MOTEUR — ADEV157 : câbles DC / AC,
+    coffrets, protection AC, structure, comptage, protections DC présentes)."""
+
+    #: ADEV157 — les 7 postes fixes que le moteur compose toujours.
+    POSTES = ('cable_dc', 'coffret_dc', 'coffret_ac', 'protection_ac',
+              'cable_ac', 'structure_ci', 'compteur_injection')
 
     FORFAITS = ('etudes_ingenierie', 'pose_structure', 'pose_modules',
                 'raccordement_ac', 'mise_en_service', 'dossier_raccordement',
@@ -492,8 +497,7 @@ class TestCatalogueCiAlea50(TestCase):
             company=self.company, defaults={'forfaits_ci': {
                 cle: {'fixe_ht': '500', 'source': 'grille de test'}
                 for cle in (self.FORFAITS if forfaits is None else forfaits)}})
-        for role in (('coffret_dc', 'coffret_ac', 'protection_ac',
-                      'compteur_injection') if roles is None else roles):
+        for role in (self.POSTES if roles is None else roles):
             Produit.objects.create(
                 company=self.company, nom='Poste %s' % role, role_ci=role,
                 prix_vente=Decimal('900'), prix_achat=Decimal('400'))
@@ -524,7 +528,7 @@ class TestCatalogueCiAlea50(TestCase):
         ligne = next(r for r in rows if r['id'] == lead.id)
         self.assertFalse(ligne['devis_auto']['catalogue_ci']['pret'])
         self.assertEqual(
-            len(ligne['devis_auto']['catalogue_ci']['manquants']), 8 + 4)
+            len(ligne['devis_auto']['catalogue_ci']['manquants']), 8 + 7)
         maj = self.api.patch(f'/api/django/crm/leads/{lead.id}/',
                              {'prenom': 'Karim'}, format='json')
         self.assertEqual(maj.status_code, 200, maj.data)
@@ -533,15 +537,16 @@ class TestCatalogueCiAlea50(TestCase):
     def test_catalogue_vide_nomme_les_postes_sans_prix(self):
         bloc = self._bloc()
         self.assertFalse(bloc['pret'])
-        self.assertEqual(len(bloc['manquants']), 8 + 4)
+        self.assertEqual(len(bloc['manquants']), 8 + 7)
         self.assertIn('Forfait « Pose des modules » (Paramètres › Devis › '
                       'Prestations C&I)', bloc['manquants'])
         self.assertIn('Coffret DC C&I (fiche produit)', bloc['manquants'])
-        self.assertIn("Compteur d'injection ou contrôleur / limiteur "
-                      "d'injection C&I (fiche produit)", bloc['manquants'])
+        # ADEV157 — la désignation du moteur (« Comptage / limitation… »).
+        self.assertIn("Comptage / limitation d'injection (fiche produit)",
+                      bloc['manquants'])
 
     def test_prestation_sans_article_pas_pret(self):
-        # ALEA56 : 8 forfaits réglés + 4 postes, mais aucun article de
+        # ALEA56 : 8 forfaits réglés + 7 postes, mais aucun article de
         # prestation => le moteur refuserait (CORC6) ; « prêt » aussi.
         self._equiper()
         bloc = self._bloc(type_installation='industriel')
@@ -559,15 +564,13 @@ class TestCatalogueCiAlea50(TestCase):
         self.assertEqual(bloc, {'pret': True, 'manquants': []})
 
     def test_un_controleur_tarife_vaut_le_compteur(self):
-        self._equiper(roles=('coffret_dc', 'coffret_ac', 'protection_ac',
-                             'controleur_injection'))
+        self._equiper(roles=self.POSTES[:-1] + ('controleur_injection',))
         self._articles_prestations()
         self.assertTrue(self._bloc()['pret'])
 
     def test_article_sans_prix_ou_archive_ne_compte_pas(self):
         from apps.stock.models import Produit
-        self._equiper(roles=('coffret_ac', 'protection_ac',
-                             'compteur_injection'))
+        self._equiper(roles=[r for r in self.POSTES if r != 'coffret_dc'])
         self._articles_prestations()
         Produit.objects.create(company=self.company, nom='Coffret DC sans prix',
                                role_ci='coffret_dc', prix_vente=Decimal('0'))
@@ -575,7 +578,8 @@ class TestCatalogueCiAlea50(TestCase):
                                role_ci='coffret_dc', prix_vente=Decimal('800'),
                                is_archived=True)
         bloc = self._bloc()
-        self.assertEqual(bloc['manquants'], ['Coffret DC C&I (fiche produit)'])
+        # ADEV157 — l'article RETENU sans prix est nommé, comme au refus.
+        self.assertEqual(bloc['manquants'], ['Coffret DC sans prix (fiche produit)'])
 
     def test_forfait_incomplet_manque(self):
         self._equiper(forfaits=self.FORFAITS[:7])
@@ -618,17 +622,57 @@ class TestCatalogueCiAlea50(TestCase):
             company=self.company, defaults={'forfaits_ci': {
                 cle: {'fixe_ht': '500', 'source': 'grille de test'}
                 for cle in self.FORFAITS}})
-        self.assertEqual(len(self._bloc()['manquants']), 4 + 8)
+        self.assertEqual(len(self._bloc()['manquants']), 7 + 8)
         self._articles_prestations()
-        self.assertEqual(len(self._bloc()['manquants']), 4)
-        for role in ('coffret_dc', 'coffret_ac', 'protection_ac',
-                     'compteur_injection'):
+        self.assertEqual(len(self._bloc()['manquants']), 7)
+        for role in self.POSTES:
             produit = Produit.objects.create(
                 company=self.company, nom='Poste %s' % role, role_ci=role,
                 prix_vente=Decimal('0'))
             produit.prix_vente = Decimal('900')
             produit.save(update_fields=['prix_vente'])
         self.assertEqual(self._bloc(), {'pret': True, 'manquants': []})
+
+    def test_les_cinq_postes_que_le_moteur_refuse_sont_dits_manquants(self):
+        """ADEV157 (T3-VAGUED-008) — forfaits et articles fixes tarifés, mais
+        câble solaire, câble AC, structure lestée, protection et parafoudre DC
+        à prix 0 : la garde les nomme (désignations du refus du moteur), puis,
+        une fois tarifés, le lead est prêt et le moteur ne les refuse plus."""
+        from apps.stock.models import FicheTechnique, Produit
+        from apps.stock.selectors import produits_ci
+        from apps.ventes.moteur_ci.composition import composer_ci
+        self._equiper(roles=('coffret_dc', 'coffret_ac', 'protection_ac', 'compteur_injection'))
+        self._articles_prestations()
+        cinq = []
+        for nom, role, fiche in (
+                ('Câble solaire 4 mm²', 'cable_dc', None),
+                ('Câble AC 5 × 10 mm²', 'cable_ac', {'type_fiche': 'cable', 'cable_cote': 'ac',
+                                                     'cable_section_mm2': 10.0}),
+                ('Structure toit plat lestée C&I', 'structure_ci', {
+                    'type_fiche': 'structure', 'struct_type_pose': 'toit_plat_leste'}),
+                ('Protection DC C&I', 'protection_dc', {'type_fiche': 'protection', 'prot_cote': 'dc'}),
+                ('Parafoudre DC C&I', 'protection_dc', {
+                    'type_fiche': 'protection', 'prot_type': 'parafoudre', 'prot_cote': 'dc'})):
+            cinq.append(Produit.objects.create(company=self.company, nom=nom, role_ci=role,
+                                               prix_vente=Decimal('0')))
+            if fiche:
+                FicheTechnique.objects.create(company=self.company, produit=cinq[-1], **fiche)
+        attendus = ['Câble solaire 4 mm²', 'Câble AC 5 × 10 mm²', 'Structure toit plat lestée C&I',
+                    'Protection DC par chaîne', 'Parafoudre DC par chaîne']
+        self.assertEqual(self._bloc(), {'pret': False, 'manquants': [
+            '%s (fiche produit)' % nom for nom in attendus]})
+
+        def refus_du_moteur():  # 1 onduleur triphasé de 20 kW, 10 m de câble AC : section plancher
+            compo = composer_ci(30, produits_ci(self.company), onduleurs={'combinaison': [
+                {'produit': None, 'nom': 'Onduleur 20 kW', 'quantite': 1, 'kw_ac': 20}], 'chaines': None},
+                entrees={'module': {'pmax_wc': 500, 'prix_connu': True}, 'phase': 'tri'}, forfaits={})
+            return set(compo['prix_a_renseigner'])
+        self.assertTrue(set(attendus) <= refus_du_moteur(), refus_du_moteur())
+        Produit.objects.filter(pk__in=[p.pk for p in cinq]).update(prix_vente=Decimal('300'))
+        from django.core.cache import cache
+        cache.clear()  # ``update()`` ne déclenche pas les receivers (le save d'un article, si)
+        self.assertEqual(self._bloc(), {'pret': True, 'manquants': []})
+        self.assertFalse(set(attendus) & refus_du_moteur())
 
     def test_forme_du_contrat(self):
         exemple = CONTRAT_DEVIS_AUTO['exemple_catalogue_ci']['devis_auto']

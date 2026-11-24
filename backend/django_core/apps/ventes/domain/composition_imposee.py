@@ -474,15 +474,17 @@ def _controle_a_blanc(company, *, lead, imposition, hors_reseau, phase_lead,
                       alertes):
     """La composition À BLANC (sans écriture) de l'imposition : le couple
     panneau/onduleur et la fenêtre de la batterie sont jugés sur les produits
-    RÉELLEMENT composés — jamais un remplacement silencieux."""
+    RÉELLEMENT composés — jamais un remplacement silencieux. ADEV156 : le
+    couple est jugé au froid du site du lead (D-ACAL-80), comme le devis."""
     from apps.ventes.compatibilites import (
-        STATUT_INCOMPATIBLE, avertissement_panneau_onduleur,
+        STATUT_INCOMPATIBLE, avertissement_panneau_onduleur, froid_du_lead,
         verdict_panneau_onduleur)
     from apps.ventes.domain.catalogue import (
         _batterie_compatible, _plage_batterie_de_l_onduleur)
     from apps.ventes.domain.etape_composer import (
         COMPOSITION_AVEC, COMPOSITION_SANS, IntentionComposition, composer)
     nb = imposition.nb_panneaux
+    froid = froid_du_lead(lead)
     lignes = composer(IntentionComposition(
         company=company, kwc=nb * imposition.panel_watt / 1000.0,
         nb_panneaux=nb, panel_watt=imposition.panel_watt,
@@ -492,7 +494,7 @@ def _controle_a_blanc(company, *, lead, imposition, hors_reseau, phase_lead,
         modeles=[{'produit_id': imposition.panneau_id,
                   'watt': imposition.panel_watt, 'count': nb}],
         onduleur_impose=imposition.onduleur_impose,
-        batterie_imposee=imposition.batterie_imposee))
+        batterie_imposee=imposition.batterie_imposee, froid=froid))
     roles = list(getattr(lignes, 'roles', ()) or ())
     par_role = {}
     for index, ligne in enumerate(lignes):
@@ -504,7 +506,7 @@ def _controle_a_blanc(company, *, lead, imposition, hors_reseau, phase_lead,
         if r in par_role), None)
     batterie = par_role.get('batterie')
     if panneau is not None and onduleur is not None:
-        verdict = verdict_panneau_onduleur(panneau, onduleur)
+        verdict = verdict_panneau_onduleur(panneau, onduleur, froid=froid)
         if verdict['statut'] == STATUT_INCOMPATIBLE:
             raise AutoDevisError(
                 avertissement_panneau_onduleur(panneau, onduleur, verdict)

@@ -525,6 +525,42 @@ def prestations_manquantes(forfaits, articles, forfait_regle):
     return manques
 
 
+def postes_fixes_sans_prix(catalogue):
+    """ADEV157 — les désignations des postes FIXES que :func:`composer_ci`
+    compose pour tout devis (mêmes ``_du_role`` et désignations) et dont
+    l'article retenu n'a pas de prix (``postes_non_chiffres``) : la liste du
+    refus « prix à renseigner », lue avant le devis (taille inconnue : câble AC
+    à la section plancher, structure de la pose par défaut, sinon tout article
+    du rôle). Protections et parafoudres DC / AC : seulement quand un article
+    du rôle existe, comme le moteur."""
+    def du_role(role, filtre=None):
+        return _du_role(catalogue, role, filtre) or _du_role(catalogue, role)
+
+    def comptage():
+        roles = [_du_role(catalogue, r) for r in ('controleur_injection', 'compteur_injection')]
+        return next((a for a in roles if a and a.get('prix_connu')), None) or roles[0] or roles[1]
+    non_parafoudre = lambda f, p: not _est_parafoudre(f, p)  # noqa: E731
+    lignes = [_ligne('cable_dc', du_role('cable_dc'), 'Câble solaire DC', 1, 'm')]
+    for role, designation in (('coffret_dc', 'Coffret DC C&I'), ('coffret_ac', 'Coffret AC C&I')):
+        lignes.append(_ligne(role, du_role(role), designation, 1, 'u'))
+        _appliquer_bareme_coffret(lignes[-1], du_role(role), 1, 1)
+    lignes += [
+        _ligne('protection_ac', _du_role(catalogue, 'protection_ac', non_parafoudre), 'Protection AC C&I', 1, 'u'),
+        _ligne('cable_ac', du_role('cable_ac', lambda f, _p: f.get('cable_cote') in ('ac', None, '')
+                                   and _f(f.get('cable_section_mm2')) == SECTION_AC_MIN_MM2), 'Câble AC C&I', 1, 'm'),
+        _ligne('structure_ci', du_role('structure_ci', lambda f, p: (
+            p.get('type_pose') or f.get('struct_type_pose')) == TYPE_POSE_DEFAUT), 'Structure C&I', 1, 'module'),
+        _ligne('compteur_injection', comptage(), "Comptage / limitation d'injection", 1, 'u')]
+    for role, filtre, designation in (
+            ('protection_dc', non_parafoudre, 'Protection DC par chaîne'),
+            ('protection_dc', _est_parafoudre, 'Parafoudre DC par chaîne'),
+            ('protection_ac', _est_parafoudre, 'Parafoudre AC')):
+        article = _du_role(catalogue, role, filtre)
+        if article is not None:
+            lignes.append(_ligne(role, article, designation, 1, 'u', designation_moteur=True))
+    return postes_non_chiffres(lignes)[0]
+
+
 def _du_role_tous(catalogue, role):
     """Tous les articles ÉLIGIBLES du rôle, ordre déterministe (id)."""
     return [p for p in sorted(catalogue, key=lambda x: (x.get('id') or 0))

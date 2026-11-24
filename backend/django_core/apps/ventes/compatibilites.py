@@ -224,7 +224,7 @@ def _distance_au_ratio_cible(n, pmax_wc, ac_kw):
     return abs((n * pmax_wc / 1000.0) / float(ac_kw) - RATIO_DC_AC_CIBLE)
 
 
-def _detail_chaines(n, mod, inv, verdicts):
+def _detail_chaines(n, mod, inv, verdicts, temperatures=None):
     """La PHRASE française qui explique la configuration retenue.
 
     Tous les nombres viennent du noyau (tensions unitaires × longueur de
@@ -233,7 +233,7 @@ def _detail_chaines(n, mod, inv, verdicts):
     from core.electrique.types import fr_a, fr_v
 
     design = string_design(n, module=mod, inverter=inv,
-                           **_TEMPERATURES_DIMENSIONNEMENT)
+                           **(temperatures or _TEMPERATURES_DIMENSIONNEMENT))
     tensions = design.get('voltages') or {}
     longueur = verdicts['longueur_chaine'] or design['panels_per_string']
     nb_chaines = verdicts['nb_chaines'] or design['strings']
@@ -273,7 +273,23 @@ def _detail_chaines(n, mod, inv, verdicts):
     return entete + (' — ' + ', '.join(clauses) if clauses else '')
 
 
-def verdict_panneau_onduleur(panneau, onduleur):
+def froid_du_lead(lead, devis=None):
+    """ADEV156 (D-ACAL-80) — le froid au site d'un lead (GPS, sinon sa ville
+    au gazetier : ``etude_ci._point_du_site``) par LA règle partagée
+    (``etude_ci_visite.froid_du_site``) ; sans point ni année type, −5 °C dit
+    supposé. Nouveaux calculs seulement : ``devis`` envoyé ⇒ ``None`` (−5 °C)."""
+    if devis is not None and (getattr(devis, 'statut', 'brouillon') != 'brouillon'
+                              or getattr(devis, 'date_envoi', None) is not None):
+        return None
+    from apps.crm.selectors import ville_effective
+    from apps.ventes.domain.etude_ci import _point_du_site
+    from apps.ventes.domain.etude_ci_visite import froid_du_site
+    return froid_du_site(_point_du_site({} if lead is None else {
+        'ville': ville_effective(lead) or None, 'lat': getattr(lead, 'gps_lat', None),
+        'lon': getattr(lead, 'gps_lng', None)}))
+
+
+def verdict_panneau_onduleur(panneau, onduleur, froid=None):
     """PVCOMPAT — ce panneau et cet onduleur vont-ils ensemble ?
 
     On balaie les champs PV dont le ratio DC/AC reste plausible pour l'onduleur
@@ -288,6 +304,8 @@ def verdict_panneau_onduleur(panneau, onduleur):
     Retourne ``{statut, raisons, nb_panneaux, nb_chaines, longueur_chaine,
     detail}``. ``statut``/``raisons`` sont le contrat ; les quatre autres clés
     servent au bilan d'installabilité (composition proposée). Ne lève jamais.
+    ``froid`` (ADEV156) : le froid du SITE borne les chaînes et ``detail`` le
+    dit ; ``None`` (catalogue sans site) ⇒ −5 °C, verdict inchangé.
     """
     manquantes_module = module_specs_manquantes(panneau)
     if manquantes_module:
@@ -306,11 +324,18 @@ def verdict_panneau_onduleur(panneau, onduleur):
         return _inconnu(['puissance crête (Wc)', 'puissance AC (kW)'],
                         'puissances non exploitables')
 
+    temperatures = (_TEMPERATURES_DIMENSIONNEMENT if froid is None else
+                    dict(_TEMPERATURES_DIMENSIONNEMENT, cold_temp_c=froid.valeur_c))
+
+    def detail(n, verdicts):
+        phrase = _detail_chaines(n, mod, inv, verdicts, temperatures)
+        return phrase + (' — ' + froid.detail if froid is not None else '')
+
     meilleur_reserve = None
     meilleur_bloque = None
     for n in _comptes_plausibles(pmax_wc, ac_kw):
         verdicts = verdicts_chaines(n, module=mod, inverter=inv,
-                                    **_TEMPERATURES_DIMENSIONNEMENT)
+                                    **temperatures)
         ecart = _distance_au_ratio_cible(n, pmax_wc, ac_kw)
         if verdicts['bloquants']:
             if meilleur_bloque is None or ecart < meilleur_bloque[0]:
@@ -322,7 +347,7 @@ def verdict_panneau_onduleur(panneau, onduleur):
                 nb_panneaux=n,
                 nb_chaines=verdicts['nb_chaines'],
                 longueur_chaine=verdicts['longueur_chaine'],
-                detail=_detail_chaines(n, mod, inv, verdicts))
+                detail=detail(n, verdicts))
         # Départage des configurations « sous réserve » : le moins d'alertes
         # d'abord, puis la plus proche du ratio DC/AC visé.
         cle = (len(verdicts['alertes']), ecart)
@@ -336,7 +361,7 @@ def verdict_panneau_onduleur(panneau, onduleur):
             nb_panneaux=n,
             nb_chaines=verdicts['nb_chaines'],
             longueur_chaine=verdicts['longueur_chaine'],
-            detail=_detail_chaines(n, mod, inv, verdicts))
+            detail=detail(n, verdicts))
 
     if meilleur_bloque is not None:
         _, n, verdicts = meilleur_bloque
