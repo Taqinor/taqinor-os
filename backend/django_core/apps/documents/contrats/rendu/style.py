@@ -16,6 +16,9 @@ Règles tenues (sources : docs/contrats/conception.md § Mise en page) :
 """
 import base64
 import functools
+import logging
+
+logger = logging.getLogger(__name__)
 
 NAVY = '#1A2B4A'
 NAVY_900 = '#12203B'
@@ -69,6 +72,8 @@ def _polices():
         from apps.ventes.quote_engine.residential.theme import font_face_css
         return font_face_css()
     except Exception:  # pragma: no cover - rendu dégradé hors dépôt complet
+        logger.warning('Polices du moteur de devis indisponibles : repli sur '
+                       'les polices système', exc_info=True)
         return ''
 
 

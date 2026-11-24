@@ -3,11 +3,14 @@
 Aucune ne lit la base ni ne calcule un montant : tout chiffre affiché arrive
 déjà calculé dans le ``contenu`` (une seule source par valeur).
 """
+import logging
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from html import escape
 
 from . import style
+
+logger = logging.getLogger(__name__)
 
 ESPACE_FINE = ' '
 INSECABLE = ' '
@@ -185,7 +188,8 @@ def _marque(societe):
                 return (f'<img src="data:image/png;base64,{b64}" '
                         f'alt="{esc(societe.get("nom"))}">')
         except Exception:  # logo illisible : le nom, jamais une image cassée
-            pass
+            logger.warning('Logo de la société illisible : le nom est imprimé '
+                           'à sa place', exc_info=True)
     return esc((societe or {}).get('nom'))
 
 
