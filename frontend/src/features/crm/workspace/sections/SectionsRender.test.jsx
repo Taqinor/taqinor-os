@@ -137,8 +137,10 @@ describe('LW11 — rendu des sections (port 1:1 des champs)', () => {
     render(<SectionEquipements state={createState()} {...base} />)
     expect(screen.getByRole('button', { name: 'Raccordement : monophasé ou triphasé ?' }))
       .toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Facture mensuelle (MAD/kWh)' }))
+    // T4-U1-020 — l'unité du champ qu'elle remplit (« Facture mensuelle (MAD/mois) », #lf-facture-hiver).
+    expect(screen.getByRole('button', { name: 'Facture mensuelle (MAD/mois)' }))
       .toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /MAD\/kWh/ })).toBeNull()
   })
 
   it('cliquer « Raccordement » depuis le questionnaire d\'appel déplie « Énergie » et y focalise le champ', async () => {

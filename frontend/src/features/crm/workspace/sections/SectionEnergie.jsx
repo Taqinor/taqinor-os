@@ -293,7 +293,7 @@ function TriStateSelect({ id, value, onChange, invalid = false }) {
 // commercial saisit la valeur réelle, ou laisse vide.
 const AUTRES_QUESTIONS_APPEL = [
   { label: 'Raccordement : monophasé ou triphasé ?', section: 'energie', field: 'lf-raccordement' },
-  { label: 'Facture mensuelle (MAD/kWh)', section: 'energie', field: 'lf-facture-hiver' },
+  { label: 'Facture mensuelle (MAD/mois)', section: 'energie', field: 'lf-facture-hiver' }, // T4-U1-020 — l'unité du champ rempli
   { label: "L'été est différent de l'hiver ?", section: 'energie', field: 'lf-facture-hiver' },
 ]
 
