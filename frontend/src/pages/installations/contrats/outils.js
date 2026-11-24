@@ -134,6 +134,7 @@ export const LIBELLE_ACTION = {
   emettre: 'Émettre',
   signer: 'Faire signer sur place',
   papier: 'Signé sur papier',
+  regenerer: 'Régénérer',
   rouvrir: 'Rouvrir',
   telecharger: 'Télécharger',
 }

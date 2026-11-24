@@ -623,8 +623,7 @@ def texte_litteral(sources):
 
 #: Les options booléennes qui retirent un article ou un paragraphe, toutes
 #: cochées : sert à nommer un article masqué par une option.
-_OPTIONS_TOUT = {'reserve_propriete': True, 'raccorde_reseau': True,
-                 'penalite_retard_pct': '1'}
+_OPTIONS_TOUT = {'reserve_propriete': True, 'penalite_retard_pct': '1'}
 
 
 def _titre_masque(entree, textes, type_acte, variante, options, ctx, langue):
@@ -783,7 +782,7 @@ def _v_paiement(valeur, langue):
 
 def _v_options(valeur, langue):
     v = _dict_permis(valeur, 'options', T.CLES_OPTIONS)
-    for k in ('consommateur', 'reserve_propriete', 'raccorde_reseau'):
+    for k in ('consommateur', 'reserve_propriete'):
         _booleen(v, k, 'options')
     if 'delai_execution_jours' in v:
         v['delai_execution_jours'] = _entier(v['delai_execution_jours'],

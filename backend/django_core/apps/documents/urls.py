@@ -5,7 +5,8 @@ from .views import (
 )
 from .views_contrats import (
     ActeDetailView, ActeEmettreView, ActeMarquerSigneView, ActeModeleView,
-    ActePdfView, ActeRouvrirView, ActeSignerView, DossierContractuelView,
+    ActePdfView, ActeRegenererView, ActeRouvrirView, ActeSignerView,
+    DossierContractuelView,
 )
 
 urlpatterns = [
@@ -26,6 +27,8 @@ urlpatterns = [
          name='document-acte-emettre'),
     path('actes/<int:pk>/rouvrir/', ActeRouvrirView.as_view(),
          name='document-acte-rouvrir'),
+    path('actes/<int:pk>/regenerer/', ActeRegenererView.as_view(),
+         name='document-acte-regenerer'),
     path('actes/<int:pk>/signer/', ActeSignerView.as_view(),
          name='document-acte-signer'),
     path('actes/<int:pk>/marquer-signe/', ActeMarquerSigneView.as_view(),

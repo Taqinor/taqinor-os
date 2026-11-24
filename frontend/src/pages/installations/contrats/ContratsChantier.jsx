@@ -34,6 +34,7 @@ export default function ContratsChantier({
   const [erreurs, setErreurs] = useState({}) // id d'acte → detail du serveur
   const [aEmettre, setAEmettre] = useState(null)
   const [aRouvrir, setARouvrir] = useState(null)
+  const [aRegenerer, setARegenerer] = useState(null)
   const [aSigner, setASigner] = useState(null)
   const [surPapier, setSurPapier] = useState(null)
   const [aModifier, setAModifier] = useState(null)
@@ -120,6 +121,15 @@ export default function ContratsChantier({
     else if (nom === 'signer') setASigner(acte)
     else if (nom === 'papier') setSurPapier(acte)
     else if (nom === 'rouvrir') setARouvrir(acte)
+    else if (nom === 'regenerer') setARegenerer(acte)
+  }
+
+  const confirmerRegeneration = async () => {
+    const acte = aRegenerer
+    setARegenerer(null)
+    if (acte) {
+      await executer(acte, () => documentsApi.regenererActe(acte.id), 'Acte régénéré : nouvelle version émise.')
+    }
   }
 
   const confirmerReouverture = async () => {
@@ -292,6 +302,16 @@ export default function ContratsChantier({
         libelleConfirmer="Rouvrir l’acte"
         onRester={() => setARouvrir(null)}
         onConfirmer={confirmerReouverture}
+      />
+
+      <Confirmation
+        open={!!aRegenerer}
+        titre={`Régénérer « ${aRegenerer?.titre} » ?`}
+        description="Le document émis est refait avec les textes et les données d’aujourd’hui, puis émis de nouveau en version suivante. La version actuelle est remplacée, y compris pour le client. Vos personnalisations sont gardées."
+        libelleConfirmer="Régénérer l’acte"
+        destructif={false}
+        onRester={() => setARegenerer(null)}
+        onConfirmer={confirmerRegeneration}
       />
 
       {aSigner && (

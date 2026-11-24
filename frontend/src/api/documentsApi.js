@@ -31,6 +31,9 @@ const documentsApi = {
     api.get(`/documents/actes/${id}/pdf/`, { params: { langue }, responseType: 'blob' }),
   emettreActe: (id) => api.post(`/documents/actes/${id}/emettre/`),
   rouvrirActe: (id) => api.post(`/documents/actes/${id}/rouvrir/`),
+  // Refait un acte émis non signé avec les textes et les données du jour
+  // (version suivante) ; tout ou rien côté serveur.
+  regenererActe: (id) => api.post(`/documents/actes/${id}/regenerer/`),
   // corps : { signature_client, signataire_nom, lieu }
   signerActe: (id, corps) => api.post(`/documents/actes/${id}/signer/`, corps),
   // corps : { signataire_nom, signe_le }
