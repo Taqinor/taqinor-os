@@ -6,6 +6,7 @@ Run :
     powershell -File scripts/test-backend.ps1 -RestoreDb \
         -Modules "apps.documents.tests.test_contrats_api"
 """
+import json
 from datetime import date
 
 from django.contrib.auth import get_user_model
@@ -69,36 +70,63 @@ class ApiContratsTests(TestCase):
         self.assertEqual(r.status_code, 404)
         self.assertEqual(autre.acte(T.CONTRAT).statut, T.BROUILLON)
 
-    def test_id_invisible_404_avant_methode_et_permission(self):
-        """Garde de classe : l'acte est résolu avant le 405 (route d'écriture
-        sondée en GET) et avant le 403 (modèle réservé au Directeur)."""
-        autre = Vente(self)
-        acte = autre.acte(T.CONTRAT)
-        for geste in ('emettre/', 'rouvrir/', 'signer/', 'marquer-signe/',
-                      'modele/'):
-            with self.subTest(geste=geste):
-                url = ACTE.format(acte.pk) + geste
-                self.assertEqual(self.api.get(url).status_code, 404)
-                self.assertEqual(self.api.post(url).status_code, 404)
+    GESTES = ('emettre/', 'rouvrir/', 'signer/', 'marquer-signe/', 'modele/')
 
-    def test_chantier_annule_409_a_tout_verbe(self):
+    def test_id_invisible_404_avant_permission(self):
+        """Garde de classe : l'acte est résolu avant le 403 (modèle réservé
+        au Directeur) — un acte d'une autre société répond 404 à l'écriture."""
+        acte = Vente(self).acte(T.CONTRAT)
+        for geste in self.GESTES:
+            with self.subTest(geste=geste):
+                self.assertEqual(
+                    self.api.post(ACTE.format(acte.pk) + geste).status_code,
+                    404)
+
+    def test_verbe_non_servi_405_quel_que_soit_l_id(self):
+        """Règle du fuzz de l'API (« unsupported method ») : un verbe que la
+        route ne sert pas répond 405 — même réponse pour un acte à soi, celui
+        d'une autre société et un id inconnu (rien ne fuit). Le modèle,
+        réservé au Directeur, refuse d'abord le rôle : 403 au responsable,
+        405 au Directeur, là encore quel que soit l'id."""
+        from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
+        role = Role.objects.create(company=self.v.company, nom='Directeur',
+                                   est_systeme=True,
+                                   permissions=list(DIRECTEUR_PERMISSIONS))
+        directeur = api(User.objects.create_user(
+            username=f'ctr-dir-v-{self.v.company.pk}', password='x',
+            company=self.v.company, role=role))
+        for pk in (self.v.acte(T.CONTRAT).pk,
+                   Vente(self).acte(T.CONTRAT).pk, 0):
+            for suite, verbes in (
+                    [('', ('post', 'put', 'delete')),
+                     ('pdf/', ('post', 'put', 'patch', 'delete'))]
+                    + [(g, ('get', 'put', 'patch', 'delete'))
+                       for g in self.GESTES]):
+                for verbe in verbes:
+                    with self.subTest(pk=pk, suite=suite, verbe=verbe):
+                        url = ACTE.format(pk) + suite
+                        if suite == 'modele/':
+                            self.assertEqual(
+                                getattr(self.api, verbe)(url).status_code, 403)
+                        client = directeur if suite == 'modele/' else self.api
+                        self.assertEqual(
+                            getattr(client, verbe)(url).status_code, 405)
+
+    def test_chantier_annule_409_a_chaque_verbe_servi(self):
         """Chantier annulé : 409 ``chantier_annule`` sur le dossier et sur
-        chaque route d'acte, lectures et écritures, avant 405 et 403."""
+        chaque route d'acte, lectures et écritures, avant le 403."""
         acte = self.v.acte(T.CONTRAT)
         Installation.objects.filter(pk=self.v.chantier.pk).update(annule=True)
-        urls = [DOSSIER.format(self.v.chantier.pk)] + [
-            ACTE.format(acte.pk) + suite for suite in (
-                '', 'pdf/', 'emettre/', 'rouvrir/', 'signer/',
-                'marquer-signe/', 'modele/')]
-        for url in urls:
-            with self.subTest(url=url):
-                r = self.api.get(url)
+        sondes = [('get', DOSSIER.format(self.v.chantier.pk))] + [
+            ('get', ACTE.format(acte.pk) + s) for s in ('', 'pdf/')] + [
+            ('patch', ACTE.format(acte.pk))] + [
+            ('post', ACTE.format(acte.pk) + g) for g in self.GESTES]
+        for verbe, url in sondes:
+            with self.subTest(verbe=verbe, url=url):
+                r = getattr(self.api, verbe)(url)
                 self.assertEqual((r.status_code, r.data['code']),
                                  (409, T.CODE_CHANTIER_ANNULE))
                 self.assertEqual(r.data['detail'], 'Chantier annulé')
-        r = self.api.post(ACTE.format(acte.pk) + 'modele/')
-        self.assertEqual((r.status_code, r.data['code']),
-                         (409, T.CODE_CHANTIER_ANNULE))
 
     def test_role_lecture_seule_ne_peut_pas_ecrire(self):
         role = Role.objects.create(company=self.v.company, nom='Lecture',
@@ -454,3 +482,143 @@ class ApiContratsPdfTests(TestCase):
                 self.assertEqual(
                     r['Content-Disposition'],
                     f'inline; filename="{acte.reference}{suffixe}.pdf"')
+
+
+def _schema_json(noeud, composants):
+    """Schéma OpenAPI 3.0 → JSON Schema validable : ``$ref`` résolu sur place,
+    ``nullable`` devient « ou null »."""
+    if isinstance(noeud, list):
+        return [_schema_json(n, composants) for n in noeud]
+    if not isinstance(noeud, dict):
+        return noeud
+    if '$ref' in noeud:
+        return _schema_json(composants[noeud['$ref'].rsplit('/', 1)[1]],
+                            composants)
+    sortie = {k: _schema_json(v, composants) for k, v in noeud.items()
+              if not (k == 'nullable' and isinstance(v, bool))}
+    if noeud.get('nullable') is True:
+        return {'anyOf': [{'type': 'null'}, sortie]}
+    return sortie
+
+
+@tag('pdf')
+class ReponsesConformesAuSchemaTests(TestCase):
+    """Le schéma OpenAPI des neuf routes dit vrai : chaque réponse servie
+    valide le schéma DÉCLARÉ pour son statut, et aucun statut servi n'est
+    absent du schéma. C'est le contrôle « Response violates schema » du fuzz
+    de l'API, joué ici sur de VRAIS actes — le fuzz, qui n'a aucun id d'acte,
+    ne voit que les 404 (file de fusion du 24/11/2026 : neuf 404 déclarés
+    ``{detail, code}`` et servis sans ``code``)."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        import types
+
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+        urls = types.ModuleType('urlconf_dossier_contractuel')
+        urls.urlpatterns = [
+            path('api/django/documents/', include('apps.documents.urls'))]
+        cls.schema = SchemaGenerator(urlconf=urls).get_schema(
+            request=None, public=True)
+
+    def setUp(self):
+        self.v = Vente(self)
+        self.api = api(self.v.user)
+
+    def _conforme(self, attendu, verbe, pk, suite='', client=None, **kw):
+        """Joue la requête, exige le statut, valide le corps sur le schéma
+        déclaré pour ce statut. ``suite=None`` : la route du dossier."""
+        from jsonschema import Draft4Validator
+        gabarit = (DOSSIER.format('{id}') if suite is None
+                   else ACTE.format('{id}') + suite)
+        r = getattr(client or self.api, verbe)(
+            gabarit.replace('{id}', str(pk)), **kw)
+        self.assertEqual(r.status_code, attendu, getattr(r, 'data', r))
+        ou = f'{verbe} {gabarit} {attendu}'
+        declare = self.schema['paths'][gabarit][verbe]['responses']
+        self.assertIn(str(attendu), declare, f'{ou} : statut non déclaré')
+        contenu = declare[str(attendu)]['content']
+        if 'application/json' not in contenu:
+            self.assertIn(r['Content-Type'], contenu, ou)
+            return r
+        schema = _schema_json(contenu['application/json']['schema'],
+                              self.schema['components']['schemas'])
+        self.assertEqual(
+            [f'{"/".join(map(str, e.absolute_path))} : {e.message[:200]}'
+             for e in Draft4Validator(schema).iter_errors(
+                 json.loads(r.content))], [], ou)
+        return r
+
+    def test_lectures(self):
+        self._conforme(200, 'get', self.v.chantier.pk, None)
+        self._conforme(404, 'get', 0, None)
+        self._conforme(401, 'get', self.v.chantier.pk, None,
+                       client=APIClient())
+        for acte in self.v.actes():
+            for langue in T.LANGUES:
+                with self.subTest(acte=acte.type, variante=acte.variante,
+                                  langue=langue):
+                    self._conforme(200, 'get', acte.pk,
+                                   data={'langue': langue})
+        acte = self.v.acte(T.CONTRAT)
+        self._conforme(200, 'get', acte.pk, 'pdf/')
+        for suite in ('', 'pdf/'):
+            with self.subTest(suite=suite):
+                self._conforme(400, 'get', acte.pk, suite,
+                               data={'langue': 'xx'})
+                self._conforme(404, 'get', 0, suite)
+                self._conforme(401, 'get', acte.pk, suite, client=APIClient())
+        self._conforme(404, 'patch', 0, data={'surcharges': {}},
+                       format='json')
+        for geste in ('emettre/', 'rouvrir/', 'signer/', 'marquer-signe/',
+                      'modele/'):
+            with self.subTest(geste=geste):
+                self._conforme(404, 'post', 0, geste)
+
+    def test_ecritures_et_refus(self):
+        from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
+        acte = self.v.acte(T.CONTRAT)
+        json_ = {'format': 'json'}
+        self._conforme(200, 'patch', acte.pk,
+                       data={'surcharges': {'titre': 'Contrat'}}, **json_)
+        self._conforme(400, 'patch', acte.pk,
+                       data={'surcharges': {'articles': 'x'}}, **json_)
+        self._conforme(400, 'patch', acte.pk, data={'surcharges': 'x'},
+                       **json_)
+        self._conforme(403, 'post', acte.pk, 'modele/')
+        role = Role.objects.create(company=self.v.company, nom='Directeur',
+                                   est_systeme=True,
+                                   permissions=list(DIRECTEUR_PERMISSIONS))
+        directeur = User.objects.create_user(
+            username=f'ctr-dir-s-{self.v.company.pk}', password='x',
+            company=self.v.company, role=role)
+        self._conforme(200, 'post', acte.pk, 'modele/', client=api(directeur))
+        self._conforme(200, 'post', acte.pk, 'emettre/')
+        self._conforme(409, 'patch', acte.pk,
+                       data={'surcharges': {'titre': 'X'}}, **json_)
+        self._conforme(200, 'post', acte.pk, 'rouvrir/')
+        self._conforme(409, 'post', acte.pk, 'rouvrir/')
+        self._conforme(200, 'post', acte.pk, 'emettre/')
+        self._conforme(400, 'post', acte.pk, 'signer/',
+                       data={'signature_client': SIG}, **json_)
+        self._conforme(200, 'post', acte.pk, 'signer/',
+                       data={'signature_client': SIG,
+                             'signataire_nom': 'Youssef EXEMPLE'}, **json_)
+        self._conforme(409, 'post', acte.pk, 'marquer-signe/',
+                       data={'signataire_nom': 'Youssef EXEMPLE'}, **json_)
+        self._conforme(200, 'get', acte.pk)
+        self._conforme(200, 'get', self.v.chantier.pk, None)
+        livraison = self.v.acte(T.LIVRAISON, T.RESTE_A_REGLER)
+        self._conforme(200, 'post', livraison.pk, 'emettre/')
+        self._conforme(400, 'post', livraison.pk, 'marquer-signe/',
+                       data={'signataire_nom': 'Youssef EXEMPLE',
+                             'signe_le': '2099-01-01'}, **json_)
+        self._conforme(200, 'post', livraison.pk, 'marquer-signe/',
+                       data={'signataire_nom': 'Youssef EXEMPLE'}, **json_)
+        self._conforme(409, 'post', self.v.acte(T.CLOTURE).pk, 'emettre/')
+        Installation.objects.filter(pk=self.v.chantier.pk).update(annule=True)
+        self._conforme(409, 'get', self.v.chantier.pk, None)
+        self._conforme(409, 'get', acte.pk)
+        self._conforme(409, 'post', acte.pk, 'emettre/')

@@ -56,9 +56,20 @@ urlpatterns = [
 ]
 
 
+def _verbe(p):
+    """Le verbe de la sonde : GET quand la route le sert, sinon son premier
+    verbe d'écriture — une route d'écriture sondée en GET répond 405 à tout le
+    monde (règle du fuzz de l'API) et ne prouverait ni portée ni état."""
+    vue = getattr(p.callback, 'cls', None)
+    return next((v for v in ('get', 'post', 'patch', 'put', 'delete')
+                 if vue is None or hasattr(vue, v)), 'get')
+
+
 def _routes(patterns):
-    """(nom, gabarit de chemin) de chaque route d'un module d'URL documents."""
-    return [(p.name or str(p.pattern), str(p.pattern)) for p in patterns]
+    """(nom, gabarit de chemin, verbe sondé) de chaque route d'un module
+    d'URL documents."""
+    return [(p.name or str(p.pattern), str(p.pattern), _verbe(p))
+            for p in patterns]
 
 
 class GardeClasseEndpointsDocumentsTests(TestCase):
@@ -125,7 +136,7 @@ class GardeClasseEndpointsDocumentsTests(TestCase):
 
     def _violations(self, routes):
         violations = []
-        for nom, gabarit in routes:
+        for nom, gabarit, verbe in routes:
             if '<int:pk>' not in gabarit:
                 violations.append(f'{nom} : route sans <int:pk> de chantier')
                 continue
@@ -144,7 +155,8 @@ class GardeClasseEndpointsDocumentsTests(TestCase):
                  (200, 403)),
             )
             for libelle, user, chantier, attendus in cas:
-                code = self._api(user).get(url(chantier)).status_code
+                code = getattr(self._api(user), verbe)(
+                    url(chantier)).status_code
                 if code not in attendus:
                     violations.append(
                         f'{nom} ({gabarit}) — {libelle} : {code}, '

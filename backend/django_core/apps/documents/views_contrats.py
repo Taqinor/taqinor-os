@@ -8,11 +8,12 @@ modèle de la société : Directeur.
 Refus servis ``{detail, code}`` (409 refus d'état, 400 corps invalide).
 
 Garde de classe (``test_adoc_garde_classe_endpoints``) : l'acte est résolu
-AVANT les permissions et avant le choix de la méthode — un id invisible
-(autre société, hors portée de rôle) répond 404 même sur une route d'écriture
-sondée en GET ou refusée au rôle ; un chantier annulé répond 409
-``chantier_annule`` à tout verbe (ses actes sont annulés : le dossier ne se lit
-ni ne s'écrit, ``conception.md`` § 5).
+AVANT les permissions — un id invisible (autre société, hors portée de rôle)
+répond 404 même sur une route refusée au rôle ; un chantier annulé répond 409
+``chantier_annule`` à chaque verbe SERVI par la route (ses actes sont annulés :
+le dossier ne se lit ni ne s'écrit, ``conception.md`` § 5). Un verbe que la
+route ne sert pas répond 405 quel que soit l'id (règle du fuzz de l'API :
+« unsupported method » ; la réponse ne dépend pas de l'acte, rien ne fuit).
 """
 from django.http import Http404, HttpResponse
 from drf_spectacular.types import OpenApiTypes
@@ -96,16 +97,19 @@ def _acte_ou_404(request, pk):
 class _ActePortee:
     """Résout l'acte (société + portée de rôle de son chantier) AVANT les
     permissions de la vue : un id que l'utilisateur ne peut pas voir répond
-    404 avant tout 403 ou 405 ; un chantier annulé répond 409 à tout verbe,
-    dès que l'utilisateur a le droit de LIRE les chantiers (il voit alors la
-    fiche : rien de nouveau n'est révélé) et avant les droits d'écriture ou de
-    Directeur. Sans cela une route d'écriture sondée en GET répondait 405, une
-    route réservée au Directeur 403."""
+    404 avant tout 403 ; un chantier annulé répond 409 dès que l'utilisateur
+    a le droit de LIRE les chantiers (il voit alors la fiche : rien de nouveau
+    n'est révélé) et avant les droits d'écriture ou de Directeur — sans cela
+    une route réservée au Directeur répondait 403. Un verbe que la vue ne
+    sert pas n'ouvre aucun acte : DRF répond 405, id connu ou non."""
     acte = None
 
     def check_permissions(self, request):
         user = request.user
-        if user and user.is_authenticated:  # sinon : 401 par les permissions
+        verbe = request.method.lower()
+        servi = verbe != 'options' and getattr(self, verbe, None) is not None
+        # Non authentifié : 401 par les permissions.
+        if servi and user and user.is_authenticated:
             self.acte = _acte_ou_404(request, self.kwargs['pk'])
             if self.acte.chantier.annule:
                 if not LectureChantiersOuVentes().has_permission(
