@@ -2,15 +2,26 @@
 
 Aucune ne lit la base ni ne calcule un montant : tout chiffre affiché arrive
 déjà calculé dans le ``contenu`` (une seule source par valeur).
+
+Langue : chaque brique prend ``langue`` (``'fr'`` par défaut, ``'ar'`` pour la
+traduction arabe) et lit ses mots dans ``libelles`` — aucun libellé en dur.
+En arabe, ``isoler_latin`` isole ensuite chaque fragment latin ou chiffré
+(référence, téléphone, montant, adresse) pour que l'algorithme bidi ne le
+retourne pas.
 """
+import logging
+import re
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from html import escape
+from html import escape, unescape
 
 from . import style
+from .libelles import libelle
 
-ESPACE_FINE = ' '
-INSECABLE = ' '
+logger = logging.getLogger(__name__)
+
+ESPACE_FINE = '\u202f'
+INSECABLE = '\u00a0'
 
 MOIS = ('janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet',
         'août', 'septembre', 'octobre', 'novembre', 'décembre')
@@ -21,6 +32,7 @@ DEVISES = {'fr': 'DH', 'ar': 'درهم'}
 A_PRECISER = {'fr': 'à préciser', 'ar': 'يُحدَّد لاحقًا'}
 
 # L'ordre des quatre actes : (type, titre court, sous-titre du parcours).
+# Les mots arabes sont dans ``libelles`` (clés ``etape_<type>``).
 PARCOURS = (
     ('contrat_installation', 'Contrat', 'à la signature'),
     ('pv_livraison', 'Livraison', 'le matériel chez vous'),
@@ -29,8 +41,47 @@ PARCOURS = (
 )
 
 
+def langue_de(contenu):
+    """``'ar'`` pour un contenu arabe ; ``'fr'`` sinon (clé absente comprise)."""
+    return 'ar' if (contenu or {}).get('langue') == 'ar' else 'fr'
+
+
 def esc(valeur):
     return escape('' if valeur is None else str(valeur), quote=True)
+
+
+# ── Isolation bidi (arabe) ──────────────────────────────────────────────────
+# Un fragment latin ou chiffré : commence et finit par une lettre latine ou un
+# chiffre (ou « % » à la fin, « + » au début), peut contenir espaces, points,
+# virgules, tirets, barres, @, apostrophes. Jamais de parenthèse ni de lettre
+# arabe : « 98 500,00 درهم » isole « 98 500,00 » et laisse « درهم » à sa place.
+_LATIN = 'A-Za-z0-9\u00c0-\u024f'
+_FRAGMENT_LATIN = re.compile(
+    f"\\+?[{_LATIN}](?:[{_LATIN}\u202f\u00a0 .,:/@'’_&+#–-]*[{_LATIN}%])?")
+_TEXTE_ENTRE_BALISES = re.compile(r'>([^<]+)<')
+
+
+def _isoler_texte(brut):
+    morceaux, pos = [], 0
+    for m in _FRAGMENT_LATIN.finditer(brut):
+        morceaux.append(escape(brut[pos:m.start()], quote=False))
+        morceaux.append(f'<span class="ltr">{escape(m.group(), quote=False)}'
+                        f'</span>')
+        pos = m.end()
+    morceaux.append(escape(brut[pos:], quote=False))
+    return ''.join(morceaux)
+
+
+def isoler_latin(html):
+    """Isole chaque fragment latin ou chiffré du ``<body>`` dans un
+    ``<span class="ltr">`` (``unicode-bidi:isolate`` dans la feuille arabe).
+    Le ``<head>`` (titre, feuille, polices) n'est pas touché."""
+    tete, sep, corps = html.partition('<body')
+    if not sep:
+        return html
+    corps = _TEXTE_ENTRE_BALISES.sub(
+        lambda m: '>' + _isoler_texte(unescape(m.group(1))) + '<', corps)
+    return tete + sep + corps
 
 
 def _decimal(valeur):
@@ -140,6 +191,12 @@ def duree_mois(mois, langue='fr'):
     return f'{mois}{INSECABLE}mois'
 
 
+def nombre_de_dfaat(n):
+    """Le nombre de paiements après « على » (génitif) : « دفعة واحدة »,
+    « دفعتين », « 3 دفعات », « 12 دفعة »."""
+    return _compte_ar(int(n or 0), 'دفعة واحدة', 'دفعتين', 'دفعات', 'دفعة')
+
+
 def paragraphes(textes):
     """Liste de paragraphes → HTML. Une ligne qui commence par « - » devient
     une puce ; ``**gras**`` devient du gras ; tout le reste est échappé."""
@@ -185,38 +242,50 @@ def _marque(societe):
                 return (f'<img src="data:image/png;base64,{b64}" '
                         f'alt="{esc(societe.get("nom"))}">')
         except Exception:  # logo illisible : le nom, jamais une image cassée
-            pass
+            logger.warning('Logo de la société illisible : le nom est imprimé '
+                           'à sa place', exc_info=True)
     return esc((societe or {}).get('nom'))
 
 
 def bandeau(contenu):
+    langue = langue_de(contenu)
     societe = contenu.get('societe') or {}
     chantier = contenu.get('chantier') or {}
     lignes = [f'<b>{esc(contenu.get("reference"))}</b>']
     if chantier.get('reference'):
-        lignes.append(f'Chantier {esc(chantier["reference"])}')
+        lignes.append(libelle('chantier', langue,
+                              ref=esc(chantier['reference'])))
     if contenu.get('date_document'):
-        lignes.append(esc(date_longue(contenu['date_document'])))
+        lignes.append(esc(date_longue(contenu['date_document'], langue)))
     return (f'<div class="bandeau"><div class="marque">{_marque(societe)}</div>'
             f'<div class="ref">{"<br>".join(lignes)}</div></div>')
 
 
-def parcours(type_acte):
-    rang = [t for t, _, _ in PARCOURS].index(type_acte)
+def _etape(type_acte, langue):
+    """(titre court, sous-titre) d'un acte dans le parcours."""
+    return (libelle(f'etape_{type_acte}', langue),
+            libelle(f'etape_{type_acte}_sous', langue))
+
+
+def parcours(type_acte, langue='fr'):
+    types = [t for t, _, _ in PARCOURS]
+    rang = types.index(type_acte)
     etapes = []
-    for i, (_, titre, sous) in enumerate(PARCOURS):
+    for i, type_i in enumerate(types):
+        titre_i, sous = _etape(type_i, langue)
         classe = 'ici' if i == rang else ('fait' if i < rang else '')
         etapes.append(
             f'<div class="etape {classe}"><span class="n">{i + 1}</span>'
-            f'<span>{esc(titre)}<small>{esc(sous)}</small></span></div>')
+            f'<span>{esc(titre_i)}<small>{esc(sous)}</small></span></div>')
     return f'<div class="parcours">{"".join(etapes)}</div>'
 
 
-def titre(type_acte, h1, chapeau, reference=''):
+def titre(type_acte, h1, chapeau, reference='', langue='fr'):
     rang = [t for t, _, _ in PARCOURS].index(type_acte) + 1
-    court = PARCOURS[rang - 1][1]
-    return (f'<div class="titre"><div class="surtitre">Acte {rang} sur 4 · '
-            f'{esc(court)}</div><div class="reference-cachee">{esc(reference)}'
+    court = _etape(type_acte, langue)[0]
+    surtitre = libelle('surtitre', langue, rang=rang, court=esc(court))
+    return (f'<div class="titre"><div class="surtitre">{surtitre}</div>'
+            f'<div class="reference-cachee">{esc(reference)}'
             f'</div><h1>{esc(h1)}</h1><p class="chapeau">{chapeau}</p></div>')
 
 
@@ -229,10 +298,10 @@ def h2(texte, intro=''):
 
 # ── Cartes de l'essentiel ───────────────────────────────────────────────────
 
-def carte(libelle, valeur, detail='', *, forte=False, large=False):
+def carte(libelle_carte, valeur, detail='', *, forte=False, large=False):
     classes = 'carte' + (' forte' if forte else '') + (' large' if large else '')
     det = f'<div class="det">{detail}</div>' if detail else ''
-    return (f'<div class="{classes}"><div class="lbl">{esc(libelle)}</div>'
+    return (f'<div class="{classes}"><div class="lbl">{esc(libelle_carte)}</div>'
             f'<div class="val">{valeur}</div>{det}</div>')
 
 
@@ -249,7 +318,13 @@ ETATS_TRANCHE = {
 }
 
 
-def frise(echeancier, *, avec_etats=False):
+def _mot_etat(etat, langue):
+    if etat not in ETATS_TRANCHE:
+        etat = 'a_venir'
+    return libelle(f'etat_{etat}', langue)
+
+
+def frise(echeancier, *, avec_etats=False, langue='fr'):
     """La frise des tranches. ``avec_etats`` : pastille + mot d'état (les actes
     2 à 4) ; sans (le contrat), seulement quand et combien."""
     jalons = []
@@ -260,9 +335,10 @@ def frise(echeancier, *, avec_etats=False):
         petit = f' <small>· {pct}</small>' if pct else ''
         bloc_etat = ''
         if avec_etats:
-            mot = ETATS_TRANCHE.get(etat, ETATS_TRANCHE['a_venir'])
+            mot = _mot_etat(etat, langue)
             if etat == 'regle' and tr.get('regle_le'):
-                mot = f'{mot} le {date_courte(tr["regle_le"])}'
+                mot = libelle('regle_le', langue, mot=mot,
+                              date=date_courte(tr['regle_le']))
             bloc_etat = f'<div class="etat">{esc(mot)}</div>'
         note = (f'<div class="note">{esc(tr["note"])}</div>'
                 if tr.get('note') else '')
@@ -271,7 +347,8 @@ def frise(echeancier, *, avec_etats=False):
             f'<span class="pastille">{i + 1}</span><span class="trait"></span>'
             f'</div><div class="quand">{esc(tr.get("exigibilite"))}</div>'
             f'<div class="quoi">{esc(tr.get("libelle"))}</div>'
-            f'<div class="combien">{esc(montant(tr.get("montant_ttc")))}'
+            f'<div class="combien">'
+            f'{esc(montant(tr.get("montant_ttc"), langue=langue))}'
             f'{petit}</div>{bloc_etat}{note}</div>')
     return f'<div class="frise">{"".join(jalons)}</div>'
 
@@ -282,63 +359,80 @@ def _lignes(*valeurs):
     return '<br>'.join(esc(v) for v in valeurs if v)
 
 
-def _identifiants_societe(societe, *, cnss=True):
-    paires = [('RC', societe.get('rc')), ('ICE', societe.get('ice')),
-              ('IF', societe.get('identifiant_fiscal')),
-              ('Patente', societe.get('patente'))]
+def _identifiants_societe(societe, *, cnss=True, langue='fr'):
+    paires = [('id_rc', societe.get('rc')), ('id_ice', societe.get('ice')),
+              ('id_if', societe.get('identifiant_fiscal')),
+              ('id_patente', societe.get('patente'))]
     if cnss:
-        paires.append(('CNSS', societe.get('cnss')))
-    return ' · '.join(f'{k} {v}' for k, v in paires if v)
+        paires.append(('id_cnss', societe.get('cnss')))
+    return ' · '.join(f'{libelle(k, langue)} {v}' for k, v in paires if v)
 
 
-def partie_societe(societe, role="L'installateur"):
-    forme = ' '.join(x for x in (
+def _forme_capital(societe, langue):
+    return ' '.join(x for x in (
         societe.get('forme_juridique'),
-        (f'au capital de {societe["capital_social"]}'
+        (libelle('au_capital', langue, capital=societe['capital_social'])
          if societe.get('capital_social') else '')) if x)
-    represente = (f'Représentée par {societe["representant"]}'
+
+
+def partie_societe(societe, role=None, langue='fr'):
+    role = role or libelle('installateur', langue)
+    forme = _forme_capital(societe, langue)
+    represente = (libelle('representee_par', langue,
+                          nom=societe['representant'])
                   if societe.get('representant') else '')
     lignes = _lignes(forme, societe.get('adresse'),
-                     _identifiants_societe(societe), represente)
+                     _identifiants_societe(societe, langue=langue), represente)
     court = esc(societe.get('nom_court') or societe.get('nom'))
     return (f'<div class="partie"><div class="lbl">{esc(role)}</div>'
             f'<div class="nom">{esc(societe.get("nom"))}</div>{lignes}'
-            f'<div class="ci-apres">ci-après « {court} »</div></div>')
+            f'<div class="ci-apres">{libelle("ci_apres", langue, nom=court)}'
+            f'</div></div>')
 
 
-def partie_client(client, role='Le client'):
+def partie_client(client, role=None, langue='fr'):
+    role = role or libelle('le_client', langue)
     entreprise = client.get('type') == 'entreprise'
     if entreprise:
-        ident = ' · '.join(f'{k} {v}' for k, v in (
-            ('RC', client.get('rc')), ('ICE', client.get('ice')),
-            ('IF', client.get('if_fiscal'))) if v)
-        represente = (f'Représentée par {client["representant"]}'
+        ident = ' · '.join(f'{libelle(k, langue)} {v}' for k, v in (
+            ('id_rc', client.get('rc')), ('id_ice', client.get('ice')),
+            ('id_if', client.get('if_fiscal'))) if v)
+        represente = (libelle('representee_par', langue,
+                              nom=client['representant'])
                       if client.get('representant') else '')
     else:
-        ident = f'CIN {client["cin"]}' if client.get('cin') else 'CIN : ……………………'
+        ident = (f'{libelle("id_cin", langue)} {client["cin"]}'
+                 if client.get('cin') else libelle('cin_a_remplir', langue))
         represente = ''
     contact = ' · '.join(x for x in (client.get('telephone'),
                                      client.get('email')) if x)
     return (f'<div class="partie"><div class="lbl">{esc(role)}</div>'
             f'<div class="nom">{esc(client.get("nom_complet"))}</div>'
             f'{_lignes(ident, client.get("adresse"), contact, represente)}'
-            f'<div class="ci-apres">ci-après « le Client »</div></div>')
+            f'<div class="ci-apres">{libelle("ci_apres_client", langue)}'
+            f'</div></div>')
 
 
 def parties(contenu):
-    return (f'<div class="parties">{partie_societe(contenu.get("societe") or {})}'
-            f'{partie_client(contenu.get("client") or {})}</div>')
+    langue = langue_de(contenu)
+    societe = partie_societe(contenu.get('societe') or {}, langue=langue)
+    client = partie_client(contenu.get('client') or {}, langue=langue)
+    return f'<div class="parties">{societe}{client}</div>'
 
 
 # ── Tableaux ────────────────────────────────────────────────────────────────
 
-def tableau_materiel(lignes, *, avec_series=False):
+def _th(cle, langue, classe=''):
+    attr = f' class="{classe}"' if classe else ''
+    return f'<th{attr}>{libelle(cle, langue)}</th>'
+
+
+def tableau_materiel(lignes, *, avec_series=False, langue='fr'):
     if not lignes:
         return ''
-    tete = '<th>Désignation</th><th>Marque</th><th class="n">Quantité</th>'
-    if avec_series:
-        tete = ('<th>Désignation</th><th>Marque</th><th>N° de série</th>'
-                '<th class="n">Quantité</th>')
+    tete = (_th('th_designation', langue) + _th('th_marque', langue)
+            + (_th('th_serie', langue) if avec_series else '')
+            + _th('th_quantite', langue, 'n'))
     corps = []
     for lg in lignes:
         serie = (f'<td>{esc(lg.get("numeros_serie") or "")}</td>'
@@ -351,18 +445,17 @@ def tableau_materiel(lignes, *, avec_series=False):
             f'</tbody></table>')
 
 
-def tableau_garanties(garanties, *, avec_dates=False):
+def tableau_garanties(garanties, *, avec_dates=False, langue='fr'):
     if not garanties:
         return ''
     plus_long = max([int(g.get('duree_mois') or 0) for g in garanties] or [0])
-    tete = '<th>Ce qui est garanti</th><th>Durée</th><th>Ce que cela couvre</th>'
-    if avec_dates:
-        tete = ('<th>Ce qui est garanti</th><th>Durée</th>'
-                '<th>Jusqu\'au</th><th>Ce que cela couvre</th>')
+    tete = (_th('th_garanti', langue) + _th('th_duree', langue)
+            + (_th('th_jusquau', langue) if avec_dates else '')
+            + _th('th_couvre', langue))
     corps = []
     for g in garanties:
         mois = int(g.get('duree_mois') or 0)
-        duree = g.get('duree_libelle') or duree_mois(mois)
+        duree = g.get('duree_libelle') or duree_mois(mois, langue)
         barre = ''
         if mois and plus_long:
             largeur = max(6, round(100 * mois / plus_long))
@@ -380,38 +473,41 @@ def tableau_garanties(garanties, *, avec_dates=False):
             f'<tbody>{"".join(corps)}</tbody></table>')
 
 
-def tableau_paiements(paiements, total):
+def tableau_paiements(paiements, total, langue='fr'):
     if not paiements:
         return ''
     corps = ''.join(
-        f'<tr><td>{esc(date_longue(p.get("date")))}</td>'
+        f'<tr><td>{esc(date_longue(p.get("date"), langue))}</td>'
         f'<td>{esc(p.get("libelle") or "")}</td>'
         f'<td>{esc(p.get("mode") or "")}</td>'
-        f'<td class="n">{esc(montant(p.get("montant")))}</td></tr>'
-        for p in paiements)
-    return (f'<table><thead><tr><th>Date</th><th>Objet</th><th>Mode</th>'
-            f'<th class="n">Montant</th></tr></thead><tbody>{corps}'
-            f'<tr class="total"><td colspan="3">Total réglé</td>'
-            f'<td class="n">{esc(montant(total))}</td></tr></tbody></table>')
+        f'<td class="n">{esc(montant(p.get("montant"), langue=langue))}</td>'
+        f'</tr>' for p in paiements)
+    tete = (_th('th_date', langue) + _th('th_objet', langue)
+            + _th('th_mode', langue) + _th('th_montant', langue, 'n'))
+    return (f'<table><thead><tr>{tete}</tr></thead><tbody>{corps}'
+            f'<tr class="total"><td colspan="3">'
+            f'{libelle("total_regle", langue)}</td>'
+            f'<td class="n">{esc(montant(total, langue=langue))}</td></tr>'
+            f'</tbody></table>')
 
 
 # ── Articles, encadrés, cases ───────────────────────────────────────────────
 
-def articles(liste):
+def articles(liste, langue='fr'):
     blocs = []
     for i, art in enumerate(liste or []):
         blocs.append(
             f'<div class="article"><div class="marge">'
-            f'<div class="num">Article {i + 1}</div>'
+            f'<div class="num">{libelle("article", langue, n=i + 1)}</div>'
             f'<h3>{esc(art.get("titre"))}</h3></div>'
             f'<div class="texte">{paragraphes(art.get("paragraphes"))}</div>'
             f'</div>')
     return ''.join(blocs)
 
 
-def encadre(libelle, html_interieur, sorte=''):
-    return (f'<div class="encadre {sorte}"><div class="lbl">{esc(libelle)}'
-            f'</div>{html_interieur}</div>')
+def encadre(libelle_encadre, html_interieur, sorte=''):
+    return (f'<div class="encadre {sorte}"><div class="lbl">'
+            f'{esc(libelle_encadre)}</div>{html_interieur}</div>')
 
 
 def cases(liste):
@@ -433,17 +529,19 @@ def lignes_a_ecrire(nombre_lignes=3):
 
 # ── Signatures ──────────────────────────────────────────────────────────────
 
-def _boite_signature(libelle, qui, mention, signature=None):
-    interieur = (f'<div class="lbl">{esc(libelle)}</div>'
+def _boite_signature(libelle_boite, qui, mention, signature=None, langue='fr'):
+    interieur = (f'<div class="lbl">{esc(libelle_boite)}</div>'
                  f'<div class="qui">{esc(qui)}</div>')
     if signature and signature.get('image'):
         interieur += (f'<img class="trace" src="{esc(signature["image"])}" '
-                      f'alt="signature">')
+                      f'alt="{esc(libelle("alt_signature", langue))}">')
     if signature and signature.get('signe_le'):
         par = signature.get('nom') or qui
-        interieur += (f'<div class="sceau">Signé le '
-                      f'{esc(date_longue(signature["signe_le"]))}</div>'
-                      f'<div class="preuve">par {esc(par)}'
+        quand = esc(date_longue(signature['signe_le'], langue))
+        interieur += (f'<div class="sceau">'
+                      f'{libelle("signe_le", langue, date=quand)}</div>'
+                      f'<div class="preuve">'
+                      f'{libelle("signe_par", langue, nom=esc(par))}'
                       f'{esc(signature.get("preuve") or "")}</div>')
     elif mention:
         interieur += f'<div class="mention">{mention}</div>'
@@ -452,24 +550,26 @@ def _boite_signature(libelle, qui, mention, signature=None):
 
 def signatures(contenu, *, mention_client, client_signe=True,
                exemplaires=True):
+    langue = langue_de(contenu)
     societe = contenu.get('societe') or {}
     client = contenu.get('client') or {}
     sig = contenu.get('signatures') or {}
     lieu = esc(contenu.get('lieu')) or '<span class="trou">&nbsp;</span>'
-    quand = (esc(date_longue(contenu.get('date_document')))
+    quand = (esc(date_longue(contenu.get('date_document'), langue))
              or '<span class="trou">&nbsp;</span>')
-    fait = f'Fait à {lieu}, le {quand}'
+    fait = libelle('fait_a', langue, lieu=lieu, quand=quand)
     if exemplaires and client_signe:
-        fait += ', en deux exemplaires originaux, un pour chaque partie'
+        fait += libelle('exemplaires', langue)
     boites = []
     if client_signe:
         boites.append(_boite_signature(
-            'Le client', client.get('nom_complet'), mention_client,
-            sig.get('client')))
+            libelle('le_client', langue), client.get('nom_complet'),
+            mention_client, sig.get('client'), langue))
     boites.append(_boite_signature(
-        f'Pour {societe.get("nom_court") or societe.get("nom") or ""}',
+        libelle('pour_societe', langue,
+                nom=societe.get('nom_court') or societe.get('nom') or ''),
         societe.get('representant') or societe.get('nom'),
-        'Signature et cachet', sig.get('societe')))
+        libelle('signature_cachet', langue), sig.get('societe'), langue))
     classe = 'sig'
     if not client_signe:
         classe = 'sig seule'
@@ -481,11 +581,10 @@ def signatures(contenu, *, mention_client, client_signe=True,
 # ── Pied ────────────────────────────────────────────────────────────────────
 
 def pied(contenu, *, paraphes=True):
+    langue = langue_de(contenu)
     societe = contenu.get('societe') or {}
     tete = ' '.join(x for x in (
-        societe.get('nom'), societe.get('forme_juridique'),
-        (f'au capital de {societe["capital_social"]}'
-         if societe.get('capital_social') else '')) if x)
+        societe.get('nom'), _forme_capital(societe, langue)) if x)
     ligne2 = ' · '.join(x for x in (
         societe.get('adresse'), societe.get('telephone'),
         societe.get('email'), societe.get('site_web')) if x)
@@ -493,11 +592,13 @@ def pied(contenu, *, paraphes=True):
     if paraphes:
         bloc_paraphes = (
             '<div class="paraphes">'
-            '<div class="paraphe"><span>Client</span><i></i></div>'
-            '<div class="paraphe"><span>Société</span><i></i></div></div>')
+            f'<div class="paraphe"><span>{libelle("paraphe_client", langue)}'
+            '</span><i></i></div>'
+            f'<div class="paraphe"><span>{libelle("paraphe_societe", langue)}'
+            '</span><i></i></div></div>')
     return (f'<div class="pied"><div class="pied-in"><div class="pied-legal">'
             f'<b>{esc(tete)}</b><br>'
-            f'{esc(_identifiants_societe(societe, cnss=False))}'
+            f'{esc(_identifiants_societe(societe, cnss=False, langue=langue))}'
             f'<br>{esc(ligne2)}</div><div class="pied-droite">{bloc_paraphes}'
             f'<div class="folio"><b>{esc(contenu.get("reference"))}</b>'
             f'<i></i></div>'
