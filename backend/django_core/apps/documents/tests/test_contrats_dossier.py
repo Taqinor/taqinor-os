@@ -660,3 +660,59 @@ class ArticlesGabaritsTests(TestCase):
         self.assertEqual(ctx.exception.code, T.CODE_MONTANT_FIGE)
         self.assertIn('« Objet du contrat »', ctx.exception.detail)
         self.assertEqual(v.acte(T.CONTRAT).statut, T.BROUILLON)
+
+
+# ── S2 : le quitus dit ce qui a été réellement réglé ────────────────────────
+
+class ReglementsPursTests(SimpleTestCase):
+
+    def test_lignes_somment_au_paye_ecart_nomme(self):
+        rows = [{'date': '2026-12-02', 'libelle': 'Acompte', 'mode': 'Virement',
+                 'montant': '29550.00', '_key': 'acompte'}]
+        lignes = K.reglements(rows, Decimal('29650.00'))
+        self.assertEqual(len(lignes), 2)
+        self.assertEqual(lignes[1]['libelle'], 'Escompte ou avance ventilée')
+        self.assertEqual(sum(Decimal(x['montant']) for x in lignes),
+                         Decimal('29650.00'))
+        lignes = K.reglements(rows, Decimal('29000.00'))
+        self.assertEqual(sum(Decimal(x['montant']) for x in lignes),
+                         Decimal('29000.00'))
+        self.assertEqual(len(K.reglements(rows, Decimal('29550.00'))), 1)
+
+    def test_phrase_de_l_ecart(self):
+        self.assertEqual(K.ecart_regle(Decimal('100'), Decimal('100'),
+                                       Decimal('0'), 'fr'), '')
+        fr = K.ecart_regle(Decimal('1000'), Decimal('500'), Decimal('500'),
+                           'fr')
+        self.assertIn('500,00', fr)
+        self.assertIn('avoir', fr)
+        self.assertIn('إشعار دائن', K.ecart_regle(
+            Decimal('1000'), Decimal('500'), Decimal('500'), 'ar'))
+        self.assertIn('retenue à la source', K.ecart_regle(
+            Decimal('1000'), Decimal('500'), Decimal('0'), 'fr'))
+
+
+class QuitusRegleTests(TestCase):
+
+    def test_tableau_et_total_d_une_meme_source_avec_escompte(self):
+        v = Vente(self)
+        prix = v.plan()['prix_convenu_ttc']
+        facture = v.payer(prix, jour=date(2026, 12, 22))
+        Paiement.objects.filter(facture=facture).update(
+            montant=prix - Decimal('100'), escompte_montant=Decimal('100'))
+        acte = v.acte(T.CLOTURE)
+        for langue in T.LANGUES:
+            with self.subTest(langue=langue):
+                contenu, ctx = K._construire(acte, langue, avec_ctx=True)
+                total = Decimal(contenu['paiement']['total_regle'])
+                self.assertEqual(total, prix)
+                self.assertEqual(
+                    sum(Decimal(p['montant']) for p in contenu['paiements']),
+                    total)
+                self.assertEqual(len(contenu['paiements']), 2)
+                self.assertEqual(set(contenu['paiements'][1]),
+                                 {'date', 'libelle', 'mode', 'montant'})
+                self.assertEqual(ctx['total_regle'],
+                                 K.C.montant(total, langue=langue))
+                self.assertEqual(ctx['ecart_regle'], '')
+        self.assertIsNone(S.motif_refus_emission(acte, K.Lecture(v.chantier)))

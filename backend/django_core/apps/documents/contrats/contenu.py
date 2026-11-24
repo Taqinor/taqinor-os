@@ -204,13 +204,14 @@ class Lecture:
         plan = plan_facturation(devis)
         solde = solde_devis(devis)
         factures = [f for f, _part in plan.get('factures_parts') or []]
-        libelles = {t['facture_id']: t['libelle'] for t in plan['tranches']
-                    if t.get('facture_id')}
+        libelles = {t['facture_id']: (t['libelle'], t['key'])
+                    for t in plan['tranches'] if t.get('facture_id')}
         paiements = [{
             'date': _iso(p['date_paiement']),
-            'libelle': libelles.get(p['facture_id']) or 'Paiement',
+            'libelle': (libelles.get(p['facture_id']) or ('Paiement',))[0],
             'mode': p.get('mode_libelle') or '',
             'montant': _s(p['montant']),
+            '_key': (libelles.get(p['facture_id']) or ('', ''))[1],
         } for p in paiements_des_factures([f.pk for f in factures])]
         tranches = [{
             'cle': t['cle'], 'key': t['key'], 'libelle': t['libelle'],
@@ -218,15 +219,39 @@ class Lecture:
             'cible': _q(t['cible_cumul_ttc']),
             'pourcentage': t['pourcentage'],
         } for t in plan['tranches']]
+        paye = _q(solde['paye'])
         return {
             'prix_ttc': _q(plan['prix_convenu_ttc']),
             'prix_ht': _q(plan['prix_convenu_ht']),
             'tva': _q(plan['prix_convenu_tva']),
-            'paye': _q(solde['paye']),
+            'paye': paye,
             'reste': _q(solde['restant']),
+            'avoirs': _q(solde.get('avoirs') or ZERO),
             'tranches': tranches,
             'paiements': paiements,
+            'reglements': reglements(paiements, paye),
         }
+
+
+def reglements(paiements, paye):
+    """Les lignes du tableau des paiements : chaque encaissement, puis — si
+    le payé canonique (``solde_devis``) en compte davantage (escompte, avance
+    ventilée) ou moins (part d'une facture commune) — une ligne NOMMÉE pour
+    l'écart. La somme des lignes égale toujours ``paye``, la ligne de total
+    du tableau : une seule source."""
+    lignes = [dict(p) for p in paiements]
+    ecart = _q(paye - sum((_d(p['montant']) or ZERO for p in paiements),
+                          ZERO))
+    if ecart > 0:
+        lignes.append({'date': None, 'libelle': 'Escompte ou avance ventilée',
+                       'mode': '', 'montant': _s(ecart),
+                       '_key': '_escompte_avance'})
+    elif ecart < 0:
+        lignes.append({'date': None,
+                       'libelle': 'Part imputée à une autre vente',
+                       'mode': '', 'montant': _s(ecart),
+                       '_key': '_autre_vente'})
+    return lignes
 
 
 # ── Référence, titre ────────────────────────────────────────────────────────
@@ -1088,6 +1113,10 @@ def _contexte(contenu, vente, langue, refs):
     paiement = contenu.get('paiement') or {}
     if paiement.get('total_regle') is not None and vente:
         ctx['total_regle'] = _montant(paiement['total_regle'], langue)
+        ctx['total_regle_lettres'] = _lettres(paiement['total_regle'], langue)
+        if contenu['type'] == T.CLOTURE:
+            ctx['ecart_regle'] = ecart_regle(vente['prix_ttc'], vente['paye'],
+                                             vente.get('avoirs'), langue)
         ctx['pourcentage_regle'] = C.pourcent(paiement.get('pourcentage_regle'))
         ctx['reste_apres_livraison'] = _montant(
             paiement.get('restera_ensuite'), langue)
@@ -1277,6 +1306,45 @@ def _livraison_defaut(chantier, langue):
             'avec_series': False}
 
 
+#: Noms arabes des lignes d'écart du tableau des paiements.
+_ECARTS_AR = {'_escompte_avance': 'خصم أو تسبيق موزَّع',
+              '_autre_vente': 'جزء مُحتسب لبيع آخر'}
+
+
+def _lignes_paiements(vente, langue):
+    """Le tableau des paiements du quitus (``reglements`` : sa somme égale le
+    total réglé), libellés dans la langue."""
+    sortie = []
+    for p in (vente or {}).get('reglements') or []:
+        libelle = p['libelle']
+        if langue == 'ar':
+            libelle = (_ECARTS_AR.get(p.get('_key'))
+                       or _LIBELLES_AR.get(p.get('_key')) or libelle)
+        sortie.append({'date': p['date'], 'libelle': libelle,
+                       'mode': p['mode'], 'montant': p['montant']})
+    return sortie
+
+
+def ecart_regle(prix, paye, avoirs, langue):
+    """La phrase qui nomme ce qui a soldé le prix sans être un paiement
+    (avoir, retenue à la source, abandon de créance) : '' si le payé couvre
+    le prix. Repère ``{ecart_regle}`` du quitus, précédé d'une espace."""
+    ecart = _q((prix or ZERO) - (paye or ZERO))
+    if ecart <= 0:
+        return ''
+    montant = _montant(ecart, langue)
+    par_avoir = (avoirs or ZERO) >= ecart
+    if langue == 'ar':
+        return (f' أما باقي الثمن، أي {montant}، فقد خُصم بموجب إشعار دائن.'
+                if par_avoir else
+                f' أما باقي الثمن، أي {montant}، فقد سُوّي بإشعار دائن أو '
+                f'باقتطاع من المنبع أو بالتنازل عن الدين.')
+    return (f' Le reste du prix, soit {montant}, a été déduit par avoir.'
+            if par_avoir else
+            f' Le reste du prix, soit {montant}, a été soldé par avoir, '
+            f'retenue à la source ou abandon de créance.')
+
+
 def _textes_par_defaut(contenu, textes, vente, langue, refs, lecture=None):
     """Pose les textes par défaut ; rend le contexte (repères) qui les a
     formatés — celui qui rend aussi les gabarits personnalisés."""
@@ -1291,8 +1359,7 @@ def _textes_par_defaut(contenu, textes, vente, langue, refs, lecture=None):
     if type_acte == T.CLOTURE:
         avec_batterie = contenu['systeme']['avec_batterie']
         contenu['quitus'] = textes.quitus_par_defaut(ctx)
-        vente_paiements = (vente or {}).get('paiements') or []
-        contenu['paiements'] = copy.deepcopy(vente_paiements)
+        contenu['paiements'] = _lignes_paiements(vente, langue)
         intro, conseils = textes.conseils_par_defaut(avec_batterie)
         contenu['conseils_intro'] = intro
         contenu['journee'] = textes.journee_solaire(avec_batterie)
