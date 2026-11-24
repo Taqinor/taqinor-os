@@ -56,6 +56,14 @@ class ResultatConception:
     journal: dict = field(default_factory=dict)
     absents: dict = field(default_factory=dict)
     materiel_pompage: dict = field(default_factory=dict)
+    #: ADEV142 — résidentiel : ce que le moteur horaire a rendu à la décision
+    #: (``taille.ResultatTaille``), ``None`` s'il n'a pas été appelé (taille
+    #: demandée). Jamais rangé : le devis né dans la MÊME requête le relit.
+    taille_moteur: object = None
+    #: ADEV142 — C&I : ``(etude, lignes, scenario)`` de ``decider_ci`` ;
+    #: agricole : la ``decider_agricole`` — jamais rangée, relue par le devis
+    #: de la même requête (aucune seconde décision).
+    decision_devis: object = None
 
     def sortie(self):
         return {cle: getattr(self, cle) for cle in CLES_SORTIE}
@@ -238,9 +246,13 @@ def _residentiel(resultat, lead, company, entrees, *, toit, imposes):
         scenario = imposition.scenario
         for alerte in alertes:
             _alerter(journal.setdefault('alertes', []), alerte['code'], alerte['message'], alerte.get('champ'))
+
+    def dimensionner(**kw):  # ADEV142 — la sortie du moteur horaire, gardée pour le devis de cette requête
+        resultat.taille_moteur = R._panneaux_dimensionnement_horaire(**kw)
+        return resultat.taille_moteur
     decision = decider_taille_residentielle(
         lead=lead, company=company, scenario=scenario, imposition=imposition,
-        plafond_toit=getattr(toit, 'plafond_panneaux', None), dimensionner=R._panneaux_dimensionnement_horaire)
+        plafond_toit=getattr(toit, 'plafond_panneaux', None), dimensionner=dimensionner)
     R._verser_au_journal(journal, decision.journal)
     structure_produit_id, structure_type = verifier_composition_residentielle(
         decision, lead=lead, company=company, taux_tva=taux, imposition=imposition)
@@ -267,7 +279,7 @@ def _ci(resultat, lead, company, entrees, *, toit, imposes):
     from apps.ventes.conception.decisions import decider_ci, etude_params_creation_ci
     from apps.ventes.domain.creation_auto import alertes_journal_ci
 
-    etude, lignes, scenario = decider_ci(lead=lead, company=company)
+    etude, lignes, scenario = resultat.decision_devis = decider_ci(lead=lead, company=company)
     params = etude_params_creation_ci(etude, mode=lead.type_installation, scenario=scenario)
     contexte = _lignes_du_moteur(resultat, lead, company, params, lignes)
     resultat.journal = {'alertes': alertes_journal_ci(etude, contexte)}
@@ -277,7 +289,7 @@ def _agricole(resultat, lead, company, entrees, *, toit, imposes):
     from apps.ventes.conception.decisions import decider_agricole
     from apps.ventes.domain.creation_auto_agricole import alertes_journal_agricole, etude_params_creation_agricole
 
-    decision = decider_agricole(lead=lead, company=company)
+    decision = resultat.decision_devis = decider_agricole(lead=lead, company=company)
     params = etude_params_creation_agricole(decision, lead)
     _lignes_du_moteur(resultat, lead, company, params, decision.lignes, sortie=decision.sortie)
     resultat.journal = {'alertes': alertes_journal_agricole(decision.sortie, decision.omises)}

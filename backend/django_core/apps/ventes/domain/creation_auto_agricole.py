@@ -25,7 +25,7 @@ def _fr_nombre(valeur):
 
 def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
                                remise_globale=Decimal('0'), journal_auto=None,
-                               target_kwc=None):
+                               target_kwc=None, conception=None, resultat_moteur=None):
     """AGR124 — devis automatique AGRICOLE (pompage) par le serveur.
 
     Entrées : ``crm.selectors.entrees_pompage_du_lead`` (AGR404), lues par
@@ -39,7 +39,12 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
     entrées carburant du lead partent dans ``saisies_economie_pompage``
     (provenance ``lead``). Le type du lead n'est JAMAIS changé (D-AGR-9) ;
     aucun statut touché (règle #4). ``journal_auto['alertes']`` reçoit les
-    alertes de l'étude et les articles « prix à renseigner » omis."""
+    alertes de l'étude et les articles « prix à renseigner » omis.
+
+    ADEV142 — ``conception`` (version courante, à jour) : ses blocs sont
+    apportés à la création ; la décision est celle que le moteur vient de
+    prendre dans CETTE requête (``resultat_moteur.decision_devis``), sinon UN
+    appel de ``decider_agricole`` compose les lignes."""
     # AGNR39 — une puissance cible n'a aucun sens au pompage (le champ découle
     # de la pompe) : refusée en la NOMMANT (400), jamais ignorée en silence.
     if target_kwc not in (None, ''):
@@ -60,11 +65,12 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
     # alimentation, ``etudier_pompage``, refus HMT / débit / forage et kit
     # minimum chiffré : la décision PURE de ``conception/decisions.py`` (une
     # définition, appelée ici et par le moteur unique).
-    decision = decider_agricole(lead=lead, company=company)
+    decision = ((getattr(resultat_moteur, 'decision_devis', None) if conception is not None else None)
+                or decider_agricole(lead=lead, company=company))
     sortie, lignes, omises, pompe = (decision.sortie, decision.lignes,
                                      decision.omises, decision.pompe)
     client = resolve_client_for_lead(lead)
-    etude = etude_params_creation_agricole(decision, lead)
+    etude = blocs_et_creation(conception, etude_params_creation_agricole(decision, lead))
 
     def _create(ref):
         return Devis.objects.create(
@@ -114,5 +120,6 @@ def alertes_journal_agricole(sortie, omises):
 # Imports EN BAS DE FICHIER, visant le module qui PORTE chaque corps.
 from apps.ventes.domain.creation_auto import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     _ecrire_devis_auto_par_pipeline,
+    blocs_et_creation,
 )
 from apps.ventes.domain.creation import devise_par_defaut  # noqa: E402 — anti-cycle (D-ENF22)

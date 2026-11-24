@@ -700,3 +700,128 @@ class GuardrailTest(TestCase):
     def test_creer_auto_inputs_have_no_company(self):
         from apps.ventes.agent_actions import CREER_AUTO
         self.assertNotIn('company', CREER_AUTO.inputs.get('properties', {}))
+
+
+#: ADEV142 — les noyaux de calcul d'une conception résidentielle (module, nom) :
+#: leurs appelants les importent à l'appel, l'espion du module les compte tous.
+NOYAUX_RESIDENTIELS = (
+    ('apps.ventes.domain.creation_auto_residentiel', '_panneaux_dimensionnement_horaire'),
+    ('apps.ventes.dimensionnement', 'recommander_taille'),
+    ('apps.ventes.etude_horaire', 'etude_horaire_pour_devis'),
+    ('apps.ventes.profils_comparatifs', 'profils_comparatifs_estampilles'),
+)
+
+
+class DevisAutoDepuisLaConceptionTest(TestCase):
+    """ADEV142 (D-ACAL-97) — le devis automatique LIT la conception courante
+    du lead : à jour ⇒ aucun noyau appelé ; absente ou périmée ⇒ UNE relance
+    (le moteur tourne une fois, dans la requête) ; le devis reste brouillon."""
+
+    def setUp(self):
+        from unittest import mock
+
+        self.company = make_company('auto-conception')
+        self.user = User.objects.create_user(
+            username='auto-conception', password='x', role_legacy='responsable',
+            company=self.company)
+        seed_catalogue(self.company)
+        coupure = mock.patch('urllib.request.urlopen', side_effect=OSError('ADEV142 hors réseau'))
+        coupure.start()
+        self.addCleanup(coupure.stop)
+
+    def _lead(self, **extra):
+        return Lead.objects.create(company=self.company, nom='Conception', prenom='Lead',
+                                   ville=VILLE_ANCRE, facture_hiver=Decimal('1800'), **extra)
+
+    def _compter(self, noyaux):
+        """``{nom: espion}`` : chaque noyau espionné (``wraps``) jusqu'à la fin du test."""
+        import importlib
+        from unittest import mock
+
+        compteurs = {}
+        for module, nom in noyaux:
+            cible = importlib.import_module(module)
+            espion = mock.patch.object(cible, nom, wraps=getattr(cible, nom))
+            compteurs[nom] = espion.start()
+            self.addCleanup(espion.stop)
+        return compteurs
+
+    @staticmethod
+    def _espions(noyaux):
+        """Les mêmes espions, le temps d'un bloc (``with``)."""
+        import contextlib
+        import importlib
+        from unittest import mock
+
+        @contextlib.contextmanager
+        def bloc():
+            with contextlib.ExitStack() as pile:
+                yield {nom: pile.enter_context(mock.patch.object(
+                    importlib.import_module(module), nom,
+                    wraps=getattr(importlib.import_module(module), nom))) for module, nom in noyaux}
+        return bloc()
+
+    @staticmethod
+    def _appels(compteurs):
+        return {nom: espion.call_count for nom, espion in compteurs.items()}
+
+    def _relancer(self, lead):
+        from apps.ventes.conception.service import relancer
+        with self.captureOnCommitCallbacks(execute=True):
+            return relancer(lead, company=self.company, declencheur={'origine': 'remplissage', 'champs': []})
+
+    def _creer(self, lead):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        with CaptureQueriesContext(connection) as requetes, self.captureOnCommitCallbacks(execute=True):
+            devis = build_devis_auto(lead=lead, user=self.user, company=self.company)
+        self.requetes = len(requetes)
+        return devis
+
+    def test_conception_a_jour_aucun_noyau_appele(self):
+        from apps.ventes.models import ConceptionLead
+
+        lead = self._lead()
+        version = self._relancer(lead).conception
+        compteurs = self._compter(NOYAUX_RESIDENTIELS)
+        devis = self._creer(lead)
+        self.assertEqual(self._appels(compteurs), {nom: 0 for nom in compteurs})  # mutant « rappeler le moteur »
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+        self.assertEqual(ConceptionLead.objects.filter(lead=lead).count(), 1)  # aucune version de plus
+        panneaux = {li.variante or '': int(li.quantite) for li in devis.lignes.all() if 'Panneau' in li.designation}
+        attendu = {option: valeurs['nb_panneaux']['valeur'] for option, valeurs in version.valeurs.items()}
+        self.assertEqual({option: panneaux.get(option, panneaux.get('')) for option in attendu}, attendu)
+        # Mesuré le 24/11/2026 : 370 requêtes (budget e2e de la route : 15 s).
+        self.assertLess(self.requetes, 450, self.requetes)
+
+    def _absente_ou_perimee(self, perimee):
+        from apps.ventes.models import ConceptionLead
+
+        lead = self._lead()
+        if perimee:
+            self._relancer(lead)
+            Lead.objects.filter(pk=lead.pk).update(facture_hiver=Decimal('2600'))
+            lead.refresh_from_db()
+        from apps.ventes.conception.moteur import calculer_conception
+        with self._espions(NOYAUX_RESIDENTIELS) as compteurs:  # UNE exécution du moteur, rien d'écrit
+            calculer_conception(lead, self.company)
+        une_execution = self._appels(compteurs)
+        with self._espions(NOYAUX_RESIDENTIELS) as compteurs:
+            devis = self._creer(lead)
+        # Le moteur tourne UNE fois (la relance) ; le devis n'appelle aucun noyau de plus.
+        appels = self._appels(compteurs)
+        self.assertEqual(appels, une_execution)  # mutant « dimensionner au devis » : un appel de plus
+        self.assertEqual(appels['_panneaux_dimensionnement_horaire'], 1, appels)
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+        courante = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual(courante.version, 2 if perimee else 1)
+        self.assertEqual(courante.entrees_utilisees['facture_hiver']['valeur'], 2600.0 if perimee else 1800.0)
+        # Mesuré le 24/11/2026 : 527 (absente) / 569 (périmée) requêtes, moteur compris.
+        self.assertLess(self.requetes, 700, self.requetes)
+        return appels
+
+    def test_conception_absente_une_relance_le_moteur_tourne_une_fois(self):
+        self._absente_ou_perimee(False)
+
+    def test_conception_perimee_une_relance_le_moteur_tourne_une_fois(self):
+        self._absente_ou_perimee(True)

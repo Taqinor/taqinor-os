@@ -568,7 +568,9 @@ EMPREINTES_SUR_IDS = frozenset({('etude_ci', 'empreinte'), ('provenance_pompage'
 #: résolution du client (identité, et les signaux du ``Lead.save`` qu'elle
 #: déclenche) et le tampon de provenance recopié sur le devis
 #: (``crm.fiche_selectors.lead_provenance_stamp``). Aucun ne relance le moteur.
-LECTEURS_HORS_CALCUL = frozenset({'resolve_client_for_lead', 'lead_provenance_stamp'})
+#: ADEV142 : la création relance la conception, dont la garde d'effacement
+#: (``crm.selectors.lead_efface``, loi 09-08) lit ``nom`` sans rien calculer.
+LECTEURS_HORS_CALCUL = frozenset({'resolve_client_for_lead', 'lead_provenance_stamp', 'lead_efface'})
 #: Colonnes lues par un sélecteur de calcul sans entrer dans aucun chiffre :
 #: ``crm.devis_selectors.site_location_for_devis`` rend aussi l'adresse du
 #: chantier (``site_adresse``), qu'aucune étude ne lit (ville et GPS seuls).
@@ -2377,8 +2379,10 @@ class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher
         Devis.objects.filter(pk=devis.pk).update(statut='envoye', date_envoi=timezone.now())
         photo = _photo_devis(devis.pk)
 
+        # ADEV142 — le devis automatique de ``premier`` a rangé SA conception (v1).
+        self.assertEqual(list(ConceptionLead.objects.values_list('lead_id', flat=True)), [premier.pk])
         liste = self._commande('--company', str(company.pk))
-        self.assertFalse(ConceptionLead.objects.exists(), liste)  # mutant « écrire sans --appliquer » : rouge
+        self.assertEqual(ConceptionLead.objects.count(), 1, liste)  # mutant « écrire sans --appliquer » : rouge
         for lead in situes:
             self.assertIn(f'lead #{lead.pk} [residentiel] option retenue : ', liste)
         for lead in sans_lieu:
@@ -2387,7 +2391,7 @@ class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher
         self.assertNotIn(f'lead #{lead_b.pk} ', liste)
 
         applique = self._commande('--company', str(company.pk), '--appliquer')
-        self.assertIn('APPLIQUÉ : 7 version(s) rangée(s), 0 inchangée(s), 3 sans ville ni GPS', applique)
+        self.assertIn('APPLIQUÉ : 6 version(s) rangée(s), 1 inchangée(s), 3 sans ville ni GPS', applique)
         rangees = ConceptionLead.objects.filter(company=company, courante=True)
         self.assertEqual(set(rangees.values_list('lead_id', flat=True)), {lead.pk for lead in situes})
         for version in rangees:
@@ -2501,3 +2505,83 @@ class DevisFigesInchangesTests(_emprunt(RelanceConceptionTests, '_relancer'), _e
                 self.assertIn('nb_panneaux', {e['valeur'] for e in ecarts})
                 self.assertEqual(_photo_devis(devis_id), photo)
                 self.assertEqual(ConceptionLead.objects.filter(lead=lead).count(), 2)
+
+
+# ── ADEV142 — le devis automatique C&I et agricole né de la conception ──────
+
+#: Les noyaux d'une conception C&I / agricole (module, nom) ; ``etudier_*`` :
+#: la DÉCISION (taille, lignes ; l'étude pompage relit la sortie de la
+#: décision, ``pompage.etude_precalculee``) ; ``etude_ci_calculee`` : le
+#: recalcul du BLOC ``etude_ci`` sur les lignes ; ``recommander_taille`` : le
+#: bloc ``dimensionnement``. Les profils comparatifs ne sont pas un bloc hors
+#: résidentiel (``calculer_profils_comparatifs`` y rend ``None``, rien rangé).
+NOYAUX_DECISION = (('apps.ventes.domain.etude_ci', 'etudier_ci'), ('apps.ventes.domain.pompage', 'etudier_pompage'))
+NOYAUX_ETUDES = (('apps.ventes.conception.etudes_lignes', 'etude_ci_calculee'),
+                 ('apps.ventes.dimensionnement', 'recommander_taille'))
+
+
+class DevisDepuisLaConceptionMarchesTests(_emprunt(RelanceConceptionTests, '_relancer'),
+                                          _emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_utilisateur',
+                                                   '_residentiel', '_ci', '_agricole', '_fiches_residentielles',
+                                                   '_site_isole', '_structures', '_fiches_ci', '_cas'), TestCase):
+    """ADEV142 — C&I et agricole (forme décidée par l'orchestrateur, dite au
+    fondateur) : la conception rangée ne porte AUCUNE ligne ; conception à
+    jour ⇒ EXACTEMENT UN appel de décision (les lignes, prix du jour) et ZÉRO
+    bloc d'étude recalculé (copiés de la version) ; conception absente ⇒ le
+    moteur tourne UNE fois dans la requête et le devis relit SA décision."""
+
+    @staticmethod
+    def _espions(noyaux):
+        import contextlib
+        import importlib
+
+        @contextlib.contextmanager
+        def bloc():
+            with contextlib.ExitStack() as pile:
+                yield {nom: pile.enter_context(mock.patch.object(
+                    importlib.import_module(module), nom,
+                    wraps=getattr(importlib.import_module(module), nom))) for module, nom in noyaux}
+        return bloc()
+
+    def _creer(self, company, lead):
+        from apps.ventes.services import build_devis_auto
+        with self.captureOnCommitCallbacks(execute=True):
+            return build_devis_auto(lead=lead, user=self._utilisateur(company), company=company)
+
+    def _cas_du_marche(self, nom):
+        company, lead = self._cas(nom)
+        _reglages_de_la_societe(company)
+        return company, lead
+
+    def test_conception_a_jour_une_decision_zero_bloc_recalcule(self):
+        from apps.ventes.models import ConceptionLead
+
+        for nom, decision in (('ci_commercial', 'etudier_ci'), ('agr_pompe_courbe', 'etudier_pompage')):
+            with self.subTest(cas=nom):
+                company, lead = self._cas_du_marche(nom)
+                self._relancer(lead, company, _declencheur())
+                with self._espions(NOYAUX_DECISION + NOYAUX_ETUDES) as espions:
+                    devis = self._creer(company, lead)
+                appels = {k: v.call_count for k, v in espions.items()}
+                self.assertEqual(appels.pop(decision), 1, appels)  # la décision : une fois, jamais deux
+                self.assertEqual(appels, {k: 0 for k in appels})  # mutant « recalculer l'étude » : rouge
+                self.assertEqual(devis.statut, 'brouillon')
+                self.assertEqual(ConceptionLead.objects.filter(lead=lead).count(), 1)
+                self.assertNotIn('profils_comparatifs', devis.etude_params)
+
+    def test_conception_absente_le_moteur_tourne_une_fois(self):
+        from apps.ventes.conception.moteur import calculer_conception
+        from apps.ventes.models import ConceptionLead
+
+        for nom in ('ci_commercial', 'agr_pompe_courbe'):
+            with self.subTest(cas=nom):
+                company, lead = self._cas_du_marche(nom)
+                with self._espions(NOYAUX_DECISION + NOYAUX_ETUDES) as espions:
+                    calculer_conception(lead, company)
+                une_execution = {k: v.call_count for k, v in espions.items()}
+                with self._espions(NOYAUX_DECISION + NOYAUX_ETUDES) as espions:
+                    devis = self._creer(company, lead)
+                appels = {k: v.call_count for k, v in espions.items()}
+                self.assertEqual(appels, une_execution)  # mutant « seconde décision au devis » : rouge
+                self.assertEqual(devis.statut, 'brouillon')
+                self.assertEqual(ConceptionLead.objects.get(lead=lead, courante=True).version, 1)
