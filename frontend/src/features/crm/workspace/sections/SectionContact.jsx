@@ -58,15 +58,18 @@ export default function SectionContact({ state, setField, errors = {}, mode, ref
   const villeTapee = v('ville')
   const villeRattachee = v('ville_reference')
   const [villeStatut, setVilleStatut] = useState(null)
+  // T4-U3-020 — la phrase SERVIE (`raison`, contrat lead_ville_statut.json) imprimée à côté du champ : « maroc »
+  // s'explique là où il est tapé.
+  const [villeRaison, setVilleRaison] = useState('')
   const [villeDialog, setVilleDialog] = useState(false)
   useEffect(() => {
     // Tout setState vit DANS le timer (react-hooks v7 : jamais de setState
     // synchrone dans le corps d'un effet — rendus en cascade).
     const timer = setTimeout(() => {
-      if (!villeTapee || villeTapee.trim().length < 3) { setVilleStatut(null); return }
+      if (!villeTapee || villeTapee.trim().length < 3) { setVilleStatut(null); setVilleRaison(''); return }
       crmApi.villeStatut({ ville: villeTapee })
-        .then((r) => setVilleStatut(r.data?.statut ?? null))
-        .catch(() => setVilleStatut(null))
+        .then((r) => { setVilleStatut(r.data?.statut ?? null); setVilleRaison(r.data?.raison ?? '') })
+        .catch(() => { setVilleStatut(null); setVilleRaison('') })
     }, 700)
     return () => clearTimeout(timer)
   }, [villeTapee])
@@ -181,6 +184,9 @@ export default function SectionContact({ state, setField, errors = {}, mode, ref
               value={v('ville')} onChange={(e) => setField('ville', e.target.value)}
             />
           </FormField>
+          {villeAVerifier && villeRaison && (villeStatut === 'inconnue' || villeStatut === 'ambigue') && (
+            <p className="gen-hint" role="status" data-testid="lf-ville-raison">{villeRaison}</p>
+          )}
           {(villeAVerifier || villeRattachee) && (
             <Button
               type="button" size="sm" variant="outline" className="mt-1.5 self-start"

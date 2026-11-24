@@ -58,6 +58,19 @@ describe('LW11 — rendu des sections (port 1:1 des champs)', () => {
     expect(champVille.contains(document.querySelector('#lf-email'))).toBe(false)
   })
 
+  it('T4-U3-020 — « maroc » (statut inconnue) : la raison SERVIE est imprimée à côté du champ Ville', async () => {
+    const { default: crmApi } = await import('../../../../api/crmApi')
+    const { reponseContrat } = await import('../../../../test/fixtures/contractSamples')
+    const espion = vi.spyOn(crmApi, 'villeStatut').mockResolvedValue(reponseContrat('crm', 'lead_ville_statut', 'exemple_inconnue'))
+    try {
+      const state = initState({ lead: { id: 4, nom: 'Y', ville: 'maroc' }, mode: 'edit' })
+      render(<SectionContact state={state} {...base} />)
+      const raison = await screen.findByTestId('lf-ville-raison', {}, { timeout: 3000 })
+      expect(raison).toHaveTextContent('ville non reconnue : choisissez-la dans la liste ou posez le point GPS')
+      expect(document.querySelector('#lf-ville').closest('.form-group').contains(raison)).toBe(true)
+    } finally { espion.mockRestore() }
+  })
+
   it('SectionPipeline rend type/priorité/canal/tags SANS select d\'étape', () => {
     render(<SectionPipeline state={createState()} {...base} />)
     expect(document.querySelector('#lf-type-installation')).toBeInTheDocument()
