@@ -227,6 +227,38 @@ def bloc_devis_retenu(calepinage, stockee, resolu):
             'longueur_chaine': longueur, 'ecarts': ecarts}
 
 
+def bloc_conception(calepinage):
+    """ACAL2015 (D-ACAL-96) — ``conception`` de ``GET resultat/`` : LE chiffre de production
+    de la conception courante (option du moteur) que l'étape Résultats affiche, et — quand le
+    devis lié a été REÇU par le client (envoyé, accepté) — ce devis NOMMÉ (référence, date
+    d'envoi) avec l'écart que ventes sert (``apps.ventes.selectors.ecart_devis``, l'unique
+    comparaison ; « Réviser le devis » quand ``reviser_possible``). Rien n'est recalculé,
+    rien n'est écrit, le devis n'est jamais touché. ``None`` sans conception complète."""
+    conception = conception_du_calepinage(calepinage)
+    if not conception or conception.get('etat') != 'complet':
+        return None
+    option = conception.get('option_retenue')
+    production = ((conception.get('valeurs') or {}).get(option) or {}).get('production_annuelle') or {}
+    return {'production_annuelle_kwh': production.get('valeur'), 'option': option,
+            'version': conception.get('version'), 'calcule_le': conception.get('calcule_le'),
+            'devis_envoye': _devis_envoye_lie(calepinage)}
+
+
+def _devis_envoye_lie(calepinage):
+    """``{devis, reference, statut, envoye_le, ecart_devis}`` du devis lié REÇU, ou ``None``."""
+    from apps.ventes.selectors import ecart_devis, get_devis_by_pk
+
+    lu = conception_du_devis_lie(calepinage)
+    if not lu or not lu.get('recu'):
+        return None
+    devis = get_devis_by_pk(lu['devis'])
+    if devis is None or devis.company_id != getattr(calepinage, 'company_id', None):
+        return None
+    envoi = getattr(devis, 'date_envoi', None)
+    return {'devis': devis.pk, 'reference': devis.reference or '', 'statut': devis.statut,
+            'envoye_le': envoi.isoformat() if envoi else None, 'ecart_devis': ecart_devis(devis)}
+
+
 def bloc_production_devis(calepinage):
     """ACAL1956 (D-ACAL-90) — ``production_devis`` de ``GET resultat/`` : la
     production annuelle RETENUE PAR LE DEVIS (``conception_retenue_du_devis``,

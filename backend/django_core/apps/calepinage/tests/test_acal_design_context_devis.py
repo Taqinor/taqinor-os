@@ -249,3 +249,61 @@ class CibleOptionRetenueTest(_DevisDeuxOptions):
         calepinage.refresh_from_db()
         self.assertEqual(calepinage.resultat[CLE_OPTION_DESSINEE],
                          {'devis': calepinage.devis_id, 'option': 'sans'})
+
+
+class ResultatsDeLaConceptionTest(_DevisDeuxOptions):
+    """ACAL2015 (C4-E5, D-ACAL-96) — ``conception`` de ``GET resultat/`` : UN chiffre de
+    production (celui de la conception courante) ; un devis lié REÇU par le client
+    (envoyé) est nommé avec l'écart que ventes sert (``ecart_devis``), jamais modifié ;
+    un brouillon ou l'absence de devis ne nomment rien d'autre."""
+
+    def setUp(self):
+        super().setUp()
+        from .test_acal_cible_lead import ranger_conception
+
+        self.version = ranger_conception(lead=self.lead_lie, nb=48, watt=715, option='sans')
+        self.attendu = self.version.valeurs['sans']['production_annuelle']['valeur']
+
+    def _bloc(self, devis=None):
+        from apps.calepinage.services.devis_retenu import bloc_conception
+
+        return bloc_conception(Calepinage.objects.create(
+            company=self.company, lead_id=self.lead_lie.pk, devis=devis, titre='QA-ACAL2015'))
+
+    def test_sans_devis_un_seul_chiffre(self):
+        bloc = self._bloc()
+        self.assertEqual((bloc['production_annuelle_kwh'], bloc['option'], bloc['devis_envoye']),
+                         (self.attendu, 'sans', None))
+        self.assertEqual(bloc['version'], self.version.version)
+
+    def test_brouillon_un_seul_chiffre(self):
+        bloc = self._bloc(self._les_deux('Sans batterie', statut='brouillon'))
+        self.assertEqual((bloc['production_annuelle_kwh'], bloc['devis_envoye']), (self.attendu, None))
+
+    def test_envoye_nomme_le_devis_et_l_ecart_sans_le_toucher(self):
+        from django.utils import timezone
+
+        devis = self._les_deux('Sans batterie', etude={'etude_horaire_sans': {
+            'annuel': {'production_kwh': 6047.0}}}, date_envoi=timezone.now())
+        avant = Devis.objects.filter(pk=devis.pk).values().get()
+        bloc = self._bloc(devis)
+        envoye = bloc['devis_envoye']
+        self.assertEqual((envoye['devis'], envoye['reference'], envoye['statut']),
+                         (devis.pk, devis.reference, 'envoye'))
+        self.assertEqual(envoye['envoye_le'], devis.date_envoi.isoformat())
+        ecarts = {e['valeur']: e for e in envoye['ecart_devis']}
+        self.assertEqual((ecarts['nb_panneaux']['devis'], ecarts['nb_panneaux']['conception']), (35, 48))
+        self.assertTrue(ecarts['nb_panneaux']['reviser_possible'])
+        self.assertEqual(ecarts['production_annuelle']['devis'], 6047)
+        self.assertEqual(bloc['production_annuelle_kwh'], self.attendu)
+        self.assertEqual(Devis.objects.filter(pk=devis.pk).values().get(), avant)
+
+    def test_servi_par_get_resultat_et_contrat(self):
+        calepinage = Calepinage.objects.create(company=self.company, lead_id=self.lead_lie.pk,
+                                               titre='QA-ACAL2015-get')
+        reponse = self.api.get(f'{url_detail(calepinage.pk)}resultat/')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        contrat = json.loads((Path(__file__).resolve().parent.parent / 'contract_samples'
+                              / 'calepinage_resultat.json').read_text(encoding='utf-8'))
+        self.assertEqual(sorted(reponse.data['conception']), sorted(contrat['acal2015_conception']))
+        self.assertIn('conception', contrat['exemple'])

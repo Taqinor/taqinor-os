@@ -61,7 +61,8 @@ from . import (hors_reseau_declaration as _hors_reseau_declaration,  # ACAL790
                suppositions as _suppositions)  # ACAL980
 from .regle_chaine_publiee import _regle_chaine_publiee  # ACAL645 — extraite
 from .valeurs import nombre as _nombre
-from .devis_retenu import bloc_devis_retenu, bloc_production_devis, produits_retenus  # ACAL1952-1956
+from .devis_retenu import (bloc_conception, bloc_devis_retenu, bloc_production_devis,  # ACAL1952-1956, 2015
+                           produits_retenus)
 from .equipements import PROVENANCE_MOTEUR, materiel_de_la_conception, options_de_la_conception  # ACAL2013
 
 __all__ = [
@@ -1925,6 +1926,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         # sans devis lié, sans simulation fraîche ou sans production devis.
         'ecart_devis': _ecart_devis(calepinage, p50 if simule else None),
         'production_devis': bloc_production_devis(calepinage),  # ACAL1956 — le chiffre du devis envoyé
+        'conception': bloc_conception(calepinage),  # ACAL2015 — LE chiffre de la conception (+ devis reçu nommé)
         # ACAL48 — l'en-tête de la simulation STOCKÉE (empreinte, version de
         # simulation, réglages figés, date, durée), servi même périmé : il dit
         # avec quoi le calcul a été fait. Jamais simulé ⇒ l'empreinte
