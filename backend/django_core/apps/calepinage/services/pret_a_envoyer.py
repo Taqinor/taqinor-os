@@ -323,6 +323,52 @@ def _tension_froid(verdicts):
     return controle
 
 
+#: T4-U4-012 — le geste quand la chaîne tombe sous le bas de la plage MPPT à chaud.
+GESTE_TENSION_CHAUD = ('Ajoutez des panneaux à la chaîne ou choisissez un onduleur '
+                       'dont la plage commence plus bas')
+CAUSE_TENSION_CHAUD = ('La chaîne est trop courte : quand les panneaux chauffent, sa '
+                       'tension passe sous le bas de la plage de l’onduleur et la '
+                       'production de ces heures est perdue.')
+
+
+def _tension_chaud(verdicts):
+    """T4-U4-012 — le jumeau de :func:`_tension_froid`, à la température chaude.
+
+    Lit le verdict servi ``vmp_hot_over_mppt_min`` (``electrique._verdicts_electriques``) :
+    une chaîne trop courte sort de la plage MPPT quand les modules chauffent, et la
+    simulation retire ces heures (étape « Fenêtre MPPT », ``etapes/mppt.py``). Même
+    rangement que le froid : non conforme ⇒ bloquant si le verdict l'est, sinon à
+    régler ; borne absente de la fiche ⇒ « non calculé » qui NOMME le champ, jamais vert.
+    """
+    from core.electrique.types import fr
+
+    libelle = 'Tension des chaînes par forte chaleur'
+    ligne = next((v for v in verdicts
+                  if v.get('code') == 'vmp_hot_over_mppt_min'), None)
+    if ligne is None:
+        return _elec('tension_chaud', libelle, 'info',
+                     'Non évaluée : chaînes non calculées')
+    if ligne.get('conforme') is None:
+        return _elec('tension_chaud', libelle, 'info',
+                     'Non calculé : bas de la plage MPPT manquant sur la fiche '
+                     'de l’onduleur', geste='Compléter la fiche de l’onduleur',
+                     cible=CIBLE_MATERIEL)
+    if ligne.get('conforme'):
+        etat = 'ok'
+    else:
+        etat = 'bloquant' if ligne.get('bloquant') else 'a_regler'
+    valeur = ligne.get('detail') or ''
+    if ligne.get('temperature_c') is not None:
+        valeur = '%s à %s °C' % (valeur, fr(ligne['temperature_c'], 1))
+    mention = ligne.get('temperature_mention') or ''
+    cause = mention if etat == 'ok' else ' '.join(
+        filter(None, (CAUSE_TENSION_CHAUD, mention)))
+    controle = _elec('tension_chaud', libelle, etat, valeur, cause=cause,
+                     geste='' if etat == 'ok' else GESTE_TENSION_CHAUD)
+    controle['seuil_source'] = ligne.get('source')
+    return controle
+
+
 #: ACAL1704 — le complément d'un champ de fiche manquant (« module : Vmp » est
 #: le libellé servi par ``chaines.concevoir`` : « <rôle> : <champ> »).
 _DU_ROLE = {'module': ' du module', 'onduleur': ' de l’onduleur'}
@@ -374,7 +420,7 @@ def _chutes(troncons):
 
 
 def controles_electriques(calepinage):
-    """ACAL858 — les sept contrôles électriques, LUS. Ne lève pas.
+    """ACAL858 — les huit contrôles électriques (T4-U4-012 : la chaleur), LUS. Ne lève pas.
 
     Le verdict est celui de ``verdict_publiable`` (``_rapport_publication``
     en est le seul calcul : son matériel est gardé pour ACAL906)."""
@@ -417,7 +463,7 @@ def controles_electriques(calepinage):
     terre = [m for m in motifs if str(m['code']).startswith('TERRE_')]
     return [
         _verdict_electrique(publication), materiel,
-        _tension_froid(verdicts),
+        _tension_froid(verdicts), _tension_chaud(verdicts),
         _depuis_motifs('orientation_mppt', 'Une seule orientation par entrée',
                        poly, geste='Revoir l’affectation des chaînes'),
         _ratio_dc_ac(resultat.get('ratio_dc_ac'), pourquoi=pourquoi_ratio,
