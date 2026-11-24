@@ -54,6 +54,16 @@ chantier → facture → SAV.
 | q | Limite | relevé au téléphone hors ligne, puis synchronisé | rien n'est perdu ; l'état « hors ligne » est dit ; la synchronisation est visible |
 | r | Limite | deux utilisateurs enregistrent le même calepinage | conflit dit, aucune pose écrasée en silence |
 
+### Balayages (ajoutés le 24/11 d'après l'inventaire : 117 éléments qu'aucun scénario a-r n'atteint)
+
+| Code | Balayage | Ce qu'il joue |
+|---|---|---|
+| s | Réglages du calepinage | chaque page de `/calepinage/reglages/…` : Démarrage rapide (« Remplir les réglages vides », « Retirer le profil »), Bibliothèque, Gabarits, Fixation, Allées, Sources, Comparaison — chaque champ écrit, relu, puis son effet vérifié sur un résultat |
+| t | Outils de dessin | chaque outil et mode de l'atelier : poser en série, placement libre, pan existant, repères de chantier, charges à venir, annuler / rétablir, calques, vues 3D et ombres — sur un toit d'essai |
+| u | Fenêtre des PDF | chaque option et chaque format, un par un et combinés : complet, avec étude, une page, planche de calepinage, devis final et acompte personnalisé, détail mensuel, note de calcul agricole, langue — nombre de pages et chiffres relus dans chaque PDF |
+| v | Onglets « Avancé » et mode Expert | chaque onglet (Approbation, Projet, Dossiers réglementaires, Plan importé, Horizon, Photos du site, électrique, pertes, séries, économie…) : ouvert, chaque contrôle joué |
+| w | Chaîne après le devis | « Marquer accepté », « Marquer refusé », dupliquer, réviser, bon de commande, chantier, facture, SAV depuis la liste des devis (ces actions ne sont pas dans l'onglet Devis de la fiche du lead) |
+
 ## 4. Ce que chaque relecteur vérifie à chaque écran (oracles)
 
 1. Chaque valeur montre UN chiffre, le même sur chaque écran et dans chaque PDF (taille, kWc, production, économies,
