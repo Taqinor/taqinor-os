@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: e5320fdd8d0574677dc6ed6b44a3876329bc08cf1b0fe175b5bc34d107e5a90f
+Structure fingerprint: 8d3d0b16518a1b0b968a49993771e0482dd979d62d4e69e25845ae8bad19477b
 Plan fingerprint: 6410847be77575f825907851199fa837049d37abc351c7cf3b4c9dcb770adaf2
 
 
@@ -415,6 +415,10 @@ propose/confirm step, typed result cards; key-gated by the key of `SQL_AGENT_PRO
 commercial section above). Both JWT-protected, both no-op without their key.
 
 ---
+
+### ventes / core — « Un seul moteur » (D-ACAL-97, 24/11/2026, en cours de construction)
+
+- Contrat `apps/ventes/contract_samples/conception_lead.json` ; paquet `apps/ventes/conception/` (`champs.py` : `CHAMPS_ENTREES`, colonnes du lead qui sont des entrées du moteur ; `entrees.py` : `EntreesConception`, porte d'entrée unique des trois marchés) ; modèle `apps/ventes/models_conception.py` (`ConceptionLead` : résultat rangé par lead, ou par calepinage sans lead, une version courante par porteur ; migration `ventes/0161`) ; événements `lead_entrees_modifiees`, `pose_enregistree`, `conception_recalculee` (`core/events/`) ; figeage du devis automatique `apps/ventes/tests/golden/conception/` (9 goldens). Moteur, route et lecteurs : pas encore construits — conception `docs/audits/l5-calepinage/controles/C4-un-seul-moteur.md`, état `docs/audits/l5-calepinage/etat.md`.
 
 ## 5. Frontend
 
