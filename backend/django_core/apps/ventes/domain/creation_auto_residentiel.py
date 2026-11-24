@@ -331,6 +331,28 @@ def _alerter_suppositions(journal_auto, lead, company, devis):
     for champ in filter(None, champs):
         code, texte = SUPPOSITIONS_RESIDENTIEL[champ]
         _ajouter_alerte(journal_auto, code, texte, champ_lead=champ)
+    _alerter_ville_de_reference(journal_auto, lead)
+
+
+def _alerter_ville_de_reference(journal_auto, lead):
+    """T4-U1-002 — sans GPS, une ville qui n'est pas elle-même dans la table
+    d'ensoleillement (« casa », ville voisine) est calculée sur la ville de
+    référence de ``pvgis_profils.ancre_de_reference`` (celle que suit le
+    productible) : c'est DIT, avec le champ qui le lève."""
+    from apps.crm.selectors import repere_toit
+    from apps.parametres.pvgis_profils import ancre_de_reference
+    from apps.parametres.villes_resolution import nom_canonique
+
+    ville = (getattr(lead, 'ville', None) or '').strip()
+    reference = ancre_de_reference(ville) if ville else None
+    if reference is None or reference['exacte'] or repere_toit(lead)[0] is not None:
+        return
+    nom = nom_canonique(reference['cle'])
+    _ajouter_alerte(journal_auto, 'ville_reference', (
+        'Ville du lead « %s » non reconnue telle quelle : calcul fait sur %s '
+        '(ville de référence%s) — corrigez « Ville » ou posez le GPS sur la fiche.'
+        % (ville, nom, '' if reference['proche_km'] is None else ' la plus proche')),
+        champ_lead='ville')
 
 
 def _alerter_taille_demandee(journal_auto, cible, taille_demandee):

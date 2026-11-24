@@ -51,6 +51,35 @@ class SyntheseEconomiesPureTests(SimpleTestCase):
         self.assertIsNone(synthese_economies({**data, "prod_kwh": 0}))
         self.assertIsNone(synthese_economies({**data, "factures_mensuelles": [0] * 12}))
 
+    def test_t4_u1_019_une_economie_un_arrondi_au_niveau_15(self):
+        """T4-U1-019 — « avant → après » de la page 1 ne contredit plus
+        l'économie imprimée (DEV-202611-0097 : 9 977 → 1 989 à côté de
+        7 987) ; sous le niveau 15, le document d'hier à l'octet."""
+        from apps.ventes.quote_engine.etude_restitution import (
+            _facture_avec_affichee)
+        data = sample_data.build("deux")
+        # Douze mois arrondis au dirham dont la somme (7 988) s'écarte d'une
+        # unité de l'économie annuelle arrondie une fois (7 987).
+        eco_m = [665] * 11 + [673]
+        data.update({
+            "factures_mensuelles": [831] * 12,
+            "factures_mensuelles_exactes": [831.4] * 12,
+            "eco_a_monthly": eco_m, "eco_a_ann": 7987,
+            "recommended": "Avec batterie"})
+        hier = synthese_economies(data)
+        self.assertEqual(hier["annual_before"] - hier["annual_after"], 7988)
+
+        synth = synthese_economies({**data, "regles_pose_reelle": True})
+        self.assertEqual(synth["annual_before"], 9977)
+        self.assertEqual(synth["annual_before"] - synth["annual_after"], 7987)
+        # Page 4 (bloc méthode) : la même économie, la même facture « après ».
+        roi = {"facture_sans": 9977, "facture_avec_a": 1989,
+               "facture_avec_s": 4950}
+        self.assertEqual(_facture_avec_affichee(roi, True), 1989)  # hier
+        apres = _facture_avec_affichee(roi, True, economie_unique=7987)
+        self.assertEqual(apres, synth["annual_after"])
+        self.assertEqual(roi["facture_sans"] - apres, data["eco_a_ann"])
+
     def test_conso_reelle_prime_et_le_drapeau_estimation_tombe(self):
         data = sample_data.build("deux")
         reel = synthese_economies({**data, "conso_annuelle_kwh": 15000})

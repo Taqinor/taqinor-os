@@ -101,6 +101,25 @@ def ancrage_reel_absent(data: dict) -> bool:
     return True
 
 
+def _apres_annuel(data, avec, annual_before, factures_exactes, eco_m):
+    """La facture annuelle « après » de la synthèse (ERR-AGNR42 + T4-U1-019).
+
+    Somme EXACTE des mois « après », arrondie une seule fois (ERR-AGNR42).
+    Au niveau 15 (``regles_pose_reelle``, nouveaux rendus), quand aucun mois
+    n'est planché à zéro : « avant » − l'économie annuelle IMPRIMÉE de
+    l'option (``eco_a_ann``/``eco_s_ann``) — une économie, un arrondi, et
+    « avant → après » ne contredit plus l'économie des pages 1-2 (9 977 →
+    1 989 à côté de 7 987).
+    """
+    apres = [b - s for b, s in zip(factures_exactes, eco_m)]
+    economie = data.get("eco_a_ann" if avec else "eco_s_ann")
+    if (data.get("regles_pose_reelle") and all(v >= 0 for v in apres)
+            and isinstance(economie, (int, float)) and economie > 0):
+        return max(0, annual_before - int(round(economie)))
+    return int(Decimal(str(sum(max(0.0, v) for v in apres))).quantize(
+        Decimal("1"), rounding=ROUND_HALF_UP))
+
+
 def synthese_economies(data: dict) -> dict | None:
     """Avant/après facture + couverture solaire, formules de la page 1 du PDF.
 
@@ -150,9 +169,7 @@ def synthese_economies(data: dict) -> dict | None:
                 _ex = [float(v) for v in _exact]
                 annual_before = int(Decimal(str(sum(_ex))).quantize(
                     Decimal("1"), rounding=ROUND_HALF_UP))
-                annual_after = int(Decimal(str(sum(
-                    max(0.0, b - s) for b, s in zip(_ex, eco_m)))).quantize(
-                        Decimal("1"), rounding=ROUND_HALF_UP))
+                annual_after = _apres_annuel(data, _avec, annual_before, _ex, eco_m)  # T4-U1-019
             except (TypeError, ValueError):
                 pass
         if annual_before <= 0:

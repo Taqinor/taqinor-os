@@ -11,8 +11,6 @@ from __future__ import annotations
 
 import datetime
 
-from .valeurs import nombre
-
 __all__ = ['SoleilLegalRefuse', 'MOTIF_SANS_FUSEAU', 'MOTIF_SANS_EPINGLE',
            'correspondance_du_jour']
 
@@ -32,14 +30,13 @@ class SoleilLegalRefuse(ValueError):
 
 
 def _longitude(calepinage):
-    document = getattr(calepinage, 'roof_layout', None)
-    epingle = document.get('pin') if isinstance(document, dict) else None
-    if not isinstance(epingle, dict):
-        from ..selectors import contexte_geographique
+    # T4-U1-003 — LA définition de « site posé », partagée avec la simulation
+    # (un centre de carte par défaut n'est pas une épingle).
+    from ..selectors import contexte_geographique
+    from .site import epingle_posee
 
-        epingle = contexte_geographique(calepinage).get('pin') or {}
-    return nombre(epingle.get('lng') if epingle.get('lng') is not None
-                  else epingle.get('lon'))
+    return epingle_posee(getattr(calepinage, 'roof_layout', None),
+                         lambda: contexte_geographique(calepinage))[1]
 
 
 def correspondance_du_jour(calepinage, jour, *, reglages=None):
