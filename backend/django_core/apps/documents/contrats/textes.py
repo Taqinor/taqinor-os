@@ -433,10 +433,13 @@ def articles_par_defaut(type_acte, variante='', ctx=None, options=None):
 
 def quitus_par_defaut(ctx):
     return [_f(p, ctx) for p in (
+        # {ecart_regle} : phrase complète précédée d'une espace (avoir,
+        # retenue, abandon de créance) ou vide — la somme réellement réglée,
+        # jamais le prix (revue 1, S2).
         "{societe} atteste avoir reçu de {client} la somme totale de "
-        "**{total_ttc}** toutes taxes comprises ({total_lettres}), soit "
-        "l'intégralité du prix de l'installation objet du contrat "
-        "{contrat_reference}.",
+        "**{total_regle}** ({total_regle_lettres}), en règlement complet du "
+        "prix de l'installation objet du contrat "
+        "{contrat_reference}.{ecart_regle}",
         "Le Client est quitte envers {societe} du prix de ce contrat. La "
         "propriété de l'ensemble du matériel lui est "
         "définitivement acquise.",

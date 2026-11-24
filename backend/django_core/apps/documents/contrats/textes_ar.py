@@ -98,6 +98,13 @@ FORMES_CTX = {
     # « في العقد CTR-… وفي عرض الأثمان … »). Pas de virgule : le français
     # n'en met pas.
     'contrat_du': ' المؤرَّخ في 24 نونبر 2026',
+    # Montant en lettres du total réglé : toujours vide en arabe.
+    'total_regle_lettres': '',
+    # Phrase complète précédée d'une espace (avoir, retenue à la source,
+    # abandon de créance), ou vide si le payé couvre le prix :
+    # contenu.ecart_regle(…, langue='ar').
+    'ecart_regle': ' أما باقي الثمن، أي 9 850,00 درهم، فقد خُصم '
+                   'بموجب إشعار دائن.',
     'total_regle': '88 650,00 درهم',
     'pourcentage_regle': '90 %',
     # Plus lus par les textes par défaut depuis la revue 1 (T6, T7) ; gardés
@@ -483,9 +490,11 @@ def articles_par_defaut(type_acte, variante='', ctx=None, options=None):
 
 def quitus_par_defaut(ctx):
     return [_f(p, ctx) for p in (
+        # Sans montant en lettres ; {ecart_regle} : phrase précédée d'une
+        # espace, ou vide (revue 1, S2).
         "تشهد {societe} بأنها توصّلت من {client} بمبلغ إجمالي قدره "
-        "**{total_ttc}** مع احتساب جميع الرسوم، أي كامل ثمن المنظومة موضوع "
-        "العقد {contrat_reference}.",
+        "**{total_regle}**، تسديدًا كاملًا لثمن المنظومة موضوع العقد "
+        "{contrat_reference}.{ecart_regle}",
         "تبرأ ذمة الزبون تجاه {societe} من ثمن هذا العقد. وتؤول إليه ملكية "
         "جميع المعدات بصفة نهائية.",
     )]
