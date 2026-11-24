@@ -264,6 +264,36 @@ class ControlesElectriquesTest(SimpleTestCase):
                          'Bloquant : 2')
         self.assertEqual(self._controles()['verdict_electrique']['etat'], 'ok')
 
+    def test_t4_u4_007_bloquant_sert_ses_points_et_le_geste(self):
+        """T4-U4-007 — « Bloquant : N » sert ses N points : code, phrase du
+        verdict, geste et l'onglet qui le règle ; « À compléter » sert les
+        points à compléter ; un dossier prêt n'en sert aucun."""
+        terre = {'code': 'TERRE_JUSTIFICATION_MANQUANTE', 'statut': 'bloquant',
+                 'libelle': 'prise de terre non fournie au marché', 'source': 'NF C 15-100'}
+        froid = {'code': 'voc_cold_under_vmax', 'statut': 'bloquant',
+                 'libelle': 'Voc à froid 1 050 V au-dessus de 1 000 V', 'source': 'fiche'}
+        omis = {'code': 'TRONCON_NON_CALCULABLE', 'statut': 'omis',
+                'libelle': 'longueur du câble DC non saisie', 'source': ''}
+        verdict = self._controles(motifs=[terre, omis, froid], etat='bloquant',
+                                  points=2)['verdict_electrique']
+        self.assertEqual(verdict['valeur_texte'], 'Bloquant : 2')
+        self.assertEqual(verdict['points'], [
+            {'code': 'TERRE_JUSTIFICATION_MANQUANTE', 'phrase': terre['libelle'],
+             'geste': 'Compléter la check-list de terre',
+             'cible': {'etape': 'electrique', 'onglet': 'decisions-electriques', 'champ': ''}},
+            {'code': 'voc_cold_under_vmax', 'phrase': froid['libelle'],
+             'geste': 'Revoir les chaînes',
+             'cible': {'etape': 'electrique', 'onglet': 'verdict-electrique', 'champ': ''}}])
+        self.assertEqual(verdict['cause'], terre['libelle'])
+        fiche = {'code': 'FICHE_INCOMPLETE', 'statut': 'non_verifiable',
+                 'libelle': 'onduleur : puissance AC', 'source': ''}
+        a_completer = self._controles(motifs=[fiche, omis], etat='a_completer', points=2,
+                                      materiel={'absents': ()})['verdict_electrique']
+        self.assertEqual([(p['code'], p['geste'], p['cible']['onglet']) for p in a_completer['points']], [
+            ('FICHE_INCOMPLETE', 'Compléter la fiche de l’onduleur', 'materiel-electrique'),
+            ('TRONCON_NON_CALCULABLE', 'Revoir les sections de câble', 'cheminement-cables')])
+        self.assertEqual(self._controles()['verdict_electrique']['points'], [])
+
     def test_ratio_juge_par_la_regle_du_devis_jamais_bon_au_dessus(self):
         # ACAL1954 (D-ACAL-91) — 4,26 sur un onduleur réseau : « à régler », jamais « Bon ».
         ratio = {'valeur': 1.25, 'borne': 1.35, 'dans_bornes': True,
