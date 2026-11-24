@@ -1046,6 +1046,13 @@ describe('ACAL1404 — document à pan existant : hydratation fermée, aucun ref
       expect(occupiedCount(ctx.layoutState!)).toBe(5);
       expect(setStatus).not.toHaveBeenCalledWith(motifPanExistant(pan));
       expect(JSON.stringify(pan)).toBe(avantPan); // un simple chargement n'écrit rien
+      // ACAL1920 — l'ombrage relu au boot REDESSINE (shadingUi → redessinerSansReposer → renderActive) : pose affichée,
+      // ce redessin disait le refus dans la barre d'état dès l'ouverture, avant le moindre geste.
+      const { redessinerSansReposer } = await import('./panExistant');
+      const rendrePoseTenue = vi.fn();
+      redessinerSansReposer(ctx as unknown as Parameters<typeof redessinerSansReposer>[0], () => opt.liveResolveFlat(), rendrePoseTenue);
+      expect(setStatus).not.toHaveBeenCalledWith(motifPanExistant(pan)); // ouverture d'un pan existant ⇒ barre d'état vide
+      expect(rendrePoseTenue).toHaveBeenCalledTimes(1); // la pose enregistrée est redessinée telle quelle
       opt.liveResolveFlat(); // un geste de l'utilisateur, pose affichée : refus nommé (ACAL574)
       expect(setStatus).toHaveBeenCalledWith(motifPanExistant(pan));
     } finally {
