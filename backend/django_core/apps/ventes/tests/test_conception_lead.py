@@ -312,6 +312,88 @@ class ChampsEntreesTests(TestCase):
             champs_pour('inconnu')
 
 
+class EntreesConceptionTests(TestCase):
+    """ADEV132 — ``EntreesConception`` : l'adaptateur du marché enveloppé,
+    la provenance de chaque valeur, et l'empreinte résidentielle IDENTIQUE à
+    celle des blocs d'aujourd'hui (``empreinte_entrees``)."""
+
+    _lead = ChampsEntreesTests._lead
+    _colonnes_lues = ChampsEntreesTests._colonnes_lues
+
+    def test_residentiel_empreinte_egale_a_celle_des_blocs(self):
+        from apps.ventes.conception.entrees import entrees_pour
+        from apps.ventes.domain.entrees import empreinte_entrees, entrees_depuis_lead
+
+        company, lead = self._lead('residentiel')
+        lead.occupation_jour = ''
+        lead.save(update_fields=['occupation_jour'])
+        entrees = entrees_pour(lead, company)
+        attendue = entrees_depuis_lead(lead, company)
+        self.assertEqual(entrees.marche, 'residentiel')
+        self.assertEqual(entrees.moteur, attendue)
+        self.assertEqual(entrees.empreinte, empreinte_entrees(attendue))
+        utilisees = entrees.entrees_utilisees
+        self.assertEqual(utilisees['facture_hiver'], {'valeur': 1200.0, 'source': 'lead'})
+        self.assertEqual(utilisees['ville']['source'], 'lead')
+        # Présence jamais posée : la valeur retenue est le défaut, et c'est dit.
+        self.assertEqual(utilisees['occupation_jour']['source'], 'defaut')
+        self._sources_du_contrat(utilisees)
+
+    def test_ci_et_pompage_portent_leur_provenance(self):
+        from apps.ventes.conception.entrees import entrees_pour
+
+        for marche in ('commercial', 'industriel', 'agricole'):
+            with self.subTest(marche=marche):
+                company, lead = self._lead(marche)
+                entrees = entrees_pour(lead, company)
+                self.assertEqual(entrees.marche, marche)
+                self.assertIsNone(entrees.moteur)
+                self.assertIsNotNone(entrees.resolution)
+                self.assertEqual(len(entrees.empreinte), 64)
+                self.assertTrue(entrees.entrees_utilisees)
+                self.assertIn('lead', {e['source'] for e in entrees.entrees_utilisees.values()})
+                self._sources_du_contrat(entrees.entrees_utilisees)
+                # Même lead, mêmes entrées : même empreinte (aucun aléa).
+                self.assertEqual(entrees_pour(lead, company).empreinte, entrees.empreinte)
+
+    def test_empreinte_change_avec_une_entree_et_avec_la_pose(self):
+        from types import SimpleNamespace
+
+        from apps.ventes.conception.entrees import entrees_pour
+
+        company, lead = self._lead('residentiel')
+        avant = entrees_pour(lead, company).empreinte
+        self.assertNotEqual(entrees_pour(lead, company, toit=SimpleNamespace(empreinte='c' * 64)).empreinte,
+                            avant)
+        # Le kWh déclaré prime sur les factures (CAD166) : une facture changée
+        # ne bouge rien tant qu'il est posé ; le kWh, lui, bouge l'empreinte.
+        lead.facture_hiver = Decimal('1500')
+        lead.save(update_fields=['facture_hiver'])
+        self.assertEqual(entrees_pour(lead, company).empreinte, avant)
+        lead.conso_mensuelle_kwh = Decimal('650')
+        lead.save(update_fields=['conso_mensuelle_kwh'])
+        self.assertNotEqual(entrees_pour(lead, company).empreinte, avant)
+
+    def test_lecture_complete_ne_lit_que_des_colonnes_d_entree(self):
+        """Point 2 de la lane : TOUTE colonne du lead lue par ``entrees_pour``
+        est dans ``CHAMPS_ENTREES[marche]`` (ou dans la liste de provenance)."""
+        from apps.ventes.conception.champs import CHAMPS_LUS_HORS_ENTREES, champs_pour
+        from apps.ventes.conception.entrees import entrees_pour
+
+        for marche in ('residentiel', 'commercial', 'industriel', 'agricole'):
+            with self.subTest(marche=marche):
+                company, lead = self._lead(marche)
+                lues = self._colonnes_lues(lambda: entrees_pour(lead, company))
+                hors_liste = lues - set(champs_pour(marche)) - set(CHAMPS_LUS_HORS_ENTREES)
+                self.assertEqual(hors_liste, set(), sorted(hors_liste))
+
+    def _sources_du_contrat(self, utilisees):
+        for champ, entree in utilisees.items():
+            self.assertEqual(set(entree), {'valeur', 'source'}, champ)
+            self.assertIn(entree['source'], SOURCES_ENTREE, champ)
+        json.dumps(utilisees)
+
+
 # ── ADEV131 — le résultat rangé : une seule version courante par porteur ─────
 
 def _champs_version(**extra):
