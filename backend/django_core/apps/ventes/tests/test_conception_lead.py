@@ -1883,3 +1883,144 @@ def _test_de_parite_stockee(nom):
 
 for _nom in sorted(PARITE + tuple(HORS_PARITE)):
     setattr(PariteStockeeTests, f'test_parite_stockee_{_nom}', _test_de_parite_stockee(_nom))
+
+
+# ── ADEV139 — la relance en tâche dédupliquée (abonnés des deux événements) ──
+
+class RelanceEnTacheTests(_emprunt(RelanceConceptionTests, '_relancer'),
+                          _emprunt(FigeageDevisAutoTests, '_patcher', '_utilisateur', '_residentiel',
+                                   '_ci', '_agricole', '_fiches_residentielles', '_site_isole', '_structures',
+                                   '_fiches_ci', '_cas'), TestCase):
+    """ADEV139 — ``conception/receivers.py`` : un événement met UNE tâche en
+    file par porteur ; le calcul tourne dans la tâche (``task_relancer_
+    conception``), jamais dans la requête ; une relance en échec n'empêche pas
+    l'enregistrement de la fiche."""
+
+    def setUp(self):
+        from django.core.cache import cache
+
+        from apps.ventes import tasks
+
+        FigeageDevisAutoTests.setUp(self)
+        cache.clear()
+        self.addCleanup(cache.clear)
+        patcher = mock.patch.object(tasks.task_relancer_conception, 'apply_async')
+        self.en_file = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _enregistrer(self, lead, **valeurs):
+        lead.refresh_from_db()
+        for cle, valeur in valeurs.items():
+            setattr(lead, cle, valeur)
+        with self.captureOnCommitCallbacks(execute=True):
+            lead.save()
+
+    def _executer_les_taches(self, appels=None):
+        """Ce que ferait le worker : chaque tâche mise en file, dans l'ordre."""
+        from apps.ventes.tasks import task_relancer_conception
+
+        rendus = []
+        for appel in list(appels if appels is not None else self.en_file.call_args_list):
+            with self.captureOnCommitCallbacks(execute=True):
+                rendus.append(task_relancer_conception(**appel.kwargs['kwargs']))
+        self.en_file.reset_mock()
+        return rendus
+
+    def test_dix_modifications_une_tache_puis_un_calcul(self):
+        from apps.ventes.conception.receivers import mettre_en_file
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        self._relancer(lead, company, _declencheur())  # conception à jour (version 1)
+        for i in range(10):
+            self._enregistrer(lead, facture_hiver=Decimal('1900') + i * 100)
+        self.assertEqual(self.en_file.call_count, 1)  # mutant « sans déduplication » : 10
+        self.assertGreater(self.en_file.call_args.kwargs['countdown'], 0)
+        self.assertEqual(ConceptionLead.objects.filter(lead=lead).count(), 1)  # rien dans la requête
+
+        self.assertEqual(self._executer_les_taches(), [{'version': 2, 'ecrite': True}])
+        courante = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual(courante.version, 2)
+        self.assertEqual(courante.entrees_utilisees['facture_hiver'], {'valeur': 2800.0, 'source': 'lead'})
+        self.assertEqual(courante.declencheur['origine'], 'lead_entrees_modifiees')
+        self.assertEqual(courante.declencheur['champs'],
+                         [{'champ': 'facture_hiver', 'avant': 1800.0, 'apres': 2800.0}])
+        self.assertIsNone(courante.calcule_par)
+
+        # Un événement sans changement d'empreinte : une tâche, aucune version.
+        self.assertEqual(mettre_en_file(company.pk, lead_id=lead.pk, origine='lead_entrees_modifiees',
+                                        champs=[{'champ': 'facture_hiver', 'avant': 2800, 'apres': 2800}]),
+                         'lancee')
+        self.assertEqual(self._executer_les_taches(), [{'version': 2, 'ecrite': False}])
+        self.assertEqual(ConceptionLead.objects.filter(lead=lead).count(), 2)
+        # Le marqueur est libéré : la modification suivante repart en file.
+        self._enregistrer(lead, facture_hiver=Decimal('3000'))
+        self.assertEqual(self.en_file.call_count, 1)
+
+    def test_import_de_dix_leads_un_calcul_par_lead(self):
+        from apps.crm.models import Lead
+        from apps.ventes.models import ConceptionLead
+
+        company, premier = self._residentiel(facture_hiver=Decimal('1800'))
+        _reglages_de_la_societe(company)
+        leads = [premier] + [Lead.objects.create(company=company, nom='Import', prenom=str(i),
+                                                 ville=premier.ville, facture_hiver=Decimal('1800'))
+                             for i in range(9)]
+        with self.captureOnCommitCallbacks(execute=True):
+            for lead in leads:  # l'import réécrit chaque fiche deux fois (une transaction)
+                lead.facture_hiver = Decimal('2200')
+                lead.save()
+                lead.facture_hiver = Decimal('2400')
+                lead.save()
+        self.assertEqual(self.en_file.call_count, 10)
+        self.assertEqual(sorted(a.kwargs['kwargs']['lead_id'] for a in self.en_file.call_args_list),
+                         sorted(lead.pk for lead in leads))
+        self.assertEqual(self._executer_les_taches(), [{'version': 1, 'ecrite': True}] * 10)
+        for lead in leads:
+            version = ConceptionLead.objects.get(lead=lead, courante=True)
+            self.assertEqual(version.entrees_utilisees['facture_hiver']['valeur'], 2400.0)
+
+    def test_pose_enregistree_relance_le_porteur_avec_sa_pose(self):
+        from apps.calepinage.models import Calepinage
+        from apps.ventes.models import ConceptionLead
+        from core.events import pose_enregistree
+
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'))
+        _reglages_de_la_societe(company)
+        calepinage = Calepinage.objects.create(company=company, lead_id=lead.pk, titre='Toit')
+        for _ in range(3):
+            pose_enregistree.send(sender='calepinage.Calepinage', company_id=company.pk,
+                                  calepinage_id=calepinage.pk, lead_id=lead.pk, empreinte_pose='p' * 64)
+        self.assertEqual(self.en_file.call_count, 1)
+        self.assertEqual(self._executer_les_taches(), [{'version': 1, 'ecrite': True}])
+        version = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual((version.calepinage_id, version.empreinte_pose), (calepinage.pk, 'p' * 64))
+        self.assertTrue(version.declencheur['raison'].endswith(' : pose enregistrée sur le calepinage'))
+        # Une fiche modifiée ensuite garde la pose connue (aucun aller-retour).
+        self._enregistrer(lead, facture_hiver=Decimal('2400'))
+        self._executer_les_taches()
+        suivante = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual((suivante.version, suivante.calepinage_id, suivante.empreinte_pose),
+                         (2, calepinage.pk, 'p' * 64))
+
+    def test_echec_de_la_file_ou_du_calcul_n_empeche_pas_l_enregistrement(self):
+        from apps.ventes.conception import service
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'))
+        self.en_file.side_effect = OSError('courtier injoignable')
+        with self.assertLogs('apps.ventes.conception.receivers', level='WARNING'):
+            self._enregistrer(lead, facture_hiver=Decimal('2000'))
+        lead.refresh_from_db()
+        self.assertEqual(lead.facture_hiver, Decimal('2000'))
+        self.en_file.side_effect = None
+        self._enregistrer(lead, facture_hiver=Decimal('2100'))  # le marqueur a été libéré
+        self.assertEqual(self.en_file.call_count, 2)
+        tache = mock.call(kwargs={'company_id': company.pk, 'lead_id': lead.pk, 'calepinage_id': None,
+                                  'origine': 'lead_entrees_modifiees', 'champs': [], 'empreinte_pose': None,
+                                  'jeton': None})
+        with mock.patch.object(service, 'relancer', side_effect=RuntimeError('moteur en panne')), \
+                self.assertLogs('apps.ventes.conception.receivers', level='ERROR'):
+            self.assertEqual(self._executer_les_taches([tache]), [None])
+        self.assertFalse(ConceptionLead.objects.filter(lead=lead).exists())
