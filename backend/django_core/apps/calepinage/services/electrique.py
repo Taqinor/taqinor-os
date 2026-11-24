@@ -76,7 +76,6 @@ __all__ = [
     'entree_stockee', 'enregistrer_entree', 'resoudre_materiel',
     'entree_electrique_servie', 'CLES_ENTREE_SERVIE',  # ACAL56
     'PROVENANCE_EXPLICITE', 'PROVENANCE_DEVIS', 'ROLES_MATERIEL',  # ACAL56
-    'PROVENANCE_POSE',  # T4-B4-007
     'conception_du_calepinage', 'resultat_calepinage',
     'resultat_electrique_complet',  # ACAL55
     'ecretage_depuis_serie', 'SOURCE_BORNE_MARCHE', 'SOURCE_BORNE_SOCIETE',
@@ -1030,12 +1029,10 @@ def _designation(produit):
     return ('%s %s' % (marque, nom)).strip()
 
 
-#: ACAL56 — les PROVENANCES possibles d'un matériel résolu ; l'absence de
-#: matériel est ``None``. T4-B4-007 : ``'pose'`` = le module CHOISI à l'étape
-#: Panneaux (posé sur les pans), quand rien d'autre n'est désigné.
+#: ACAL56 — les deux PROVENANCES possibles d'un matériel résolu. Une
+#: troisième n'existe pas : l'absence de matériel est ``None``.
 PROVENANCE_EXPLICITE = 'explicite'
 PROVENANCE_DEVIS = 'devis'
-PROVENANCE_POSE = 'pose'
 
 #: Les rôles du matériel électrique, et la famille de l'agrégat
 #: ``services/equipements.py`` (LA lecture des lignes du devis) qui les sert.
@@ -1089,6 +1086,7 @@ def resoudre_materiel(company, entree, *, calepinage=None):
     — ``absents`` nomme EN FRANÇAIS le matériel manquant ou introuvable.
     """
     from apps.stock.selectors import get_produit_scoped, specs_for_produit
+    from .modules_pans import repli_materiel  # T4-B4-007 : devis, puis module posé
 
     blocs = {'module': {}, 'onduleur': {}, 'optimiseur': None}
     designations = {role: '' for role in ROLES_MATERIEL}
@@ -1103,14 +1101,7 @@ def resoudre_materiel(company, entree, *, calepinage=None):
         if identifiant in (None, ''):
             if du_devis is None:
                 du_devis = _produits_du_devis(calepinage)
-            identifiant = du_devis.get(role)
-            provenance = PROVENANCE_DEVIS
-        if identifiant in (None, '') and role == 'module':
-            # T4-B4-007 — le module posé à l'étape Panneaux EST celui du calcul.
-            from .modules_pans import produit_du_module_pose
-            identifiant = produit_du_module_pose(
-                getattr(calepinage, 'roof_layout', None))
-            provenance = PROVENANCE_POSE
+            identifiant, provenance = repli_materiel(role, du_devis, calepinage)
         if identifiant in (None, ''):
             if role != 'optimiseur':
                 absents.append('%s non désigné — %s'

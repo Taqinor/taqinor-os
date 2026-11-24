@@ -63,3 +63,22 @@ def produit_du_module_pose(document):
     if not comptes:
         return None
     return max(comptes, key=lambda cle: comptes[cle])
+
+
+#: T4-B4-007 — provenance du module CHOISI à l'étape Panneaux (posé sur les pans),
+#: quand ni désignation explicite ni ligne de devis n'existe (ACAL56 :
+#: ``electrique.PROVENANCE_EXPLICITE`` / ``PROVENANCE_DEVIS`` sont les deux autres).
+PROVENANCE_POSE = 'pose'
+
+
+def repli_materiel(role, du_devis, calepinage):
+    """T4-B4-007 — ``(identifiant, provenance)`` d'un rôle sans désignation
+    explicite : la ligne du devis lié (``'devis'``), sinon — pour le module
+    seulement — le module posé à l'étape Panneaux (``'pose'``), sinon
+    ``(None, 'devis')`` (le rôle est absent, comme avant)."""
+    identifiant = (du_devis or {}).get(role)
+    if identifiant in (None, '') and role == 'module':
+        pose = produit_du_module_pose(getattr(calepinage, 'roof_layout', None))
+        if pose is not None:
+            return pose, PROVENANCE_POSE
+    return identifiant, 'devis'

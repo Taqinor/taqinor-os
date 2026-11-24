@@ -16,9 +16,10 @@ from decimal import Decimal
 
 from apps.calepinage.models import Calepinage
 from apps.calepinage.services.electrique import (
-    CLE_ENTREE, PROVENANCE_DEVIS, PROVENANCE_EXPLICITE, PROVENANCE_POSE,
+    CLE_ENTREE, PROVENANCE_DEVIS, PROVENANCE_EXPLICITE,
     conception_du_calepinage,
 )
+from apps.calepinage.services.modules_pans import PROVENANCE_POSE
 from apps.calepinage.services.simulation import construire_contexte
 from apps.stock.models import FicheTechnique, Produit
 from apps.ventes.models import Devis, LigneDevis
