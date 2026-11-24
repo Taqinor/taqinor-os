@@ -200,7 +200,8 @@ def catalogue_batterie_ci(objets):
     from apps.ventes.moteur_ci.batterie import TENSION_PORT_BT_MAX_V
 
     from ..compatibilites import est_triphase_produit
-    from .etude_ci_batterie_ht import ajouter_batterie, ajouter_hybride, famille_vide
+    from .etude_ci_batterie_ht import (
+        ROLES_ACCESSOIRES, ajouter_accessoire, ajouter_batterie, ajouter_hybride, famille_vide)
     hybrides, batteries, elements, ecartees, ht = [], [], [], [], famille_vide()
     for produit in objets:
         role = _role(produit)
@@ -226,6 +227,8 @@ def catalogue_batterie_ci(objets):
                 ecartees.append(produit.nom)
                 continue
             batteries.append(batterie)
+        elif getattr(produit, 'role_ci', '') in ROLES_ACCESSOIRES:
+            ajouter_accessoire(ht, produit, produit.role_ci)  # HT24 — boîtier, rack et câblage
     return {'hybrides': hybrides, 'batteries': batteries, 'elements': elements,
             'ecartees': ecartees, 'ht': ht}
 
@@ -758,7 +761,7 @@ def option_imposee_des_lignes(lignes, catalogue, kwc, nb_panneaux=None, devis=No
     hybride HAUTE tension lisent la famille haute tension (devis qui l'ouvre,
     ``regles_calcul.hybrides_ht_ouverts``) : ``famille`` la sert à la
     recomposition ; absente en basse tension (option d'hier, à l'identique)."""
-    from .etude_ci_batterie_ht import famille_des_lignes
+    from .etude_ci_batterie_ht import banque_des_lignes, famille_des_lignes
     bat, famille = famille_des_lignes(catalogue.get('batterie') or {}, lignes, devis)
     hybrides = {h['produit']: h for h in bat.get('hybrides') or []}
     batteries = {b['produit']: b for b in bat.get('batteries') or []}
@@ -778,6 +781,8 @@ def option_imposee_des_lignes(lignes, catalogue, kwc, nb_panneaux=None, devis=No
     capacite = sum(batteries[p]['kwh_utile'] * q for p, q in q_b.items())
     banque = dict(batteries[max(sorted(q_b), key=q_b.get)], quantite=total,
                   kwh_utile=capacite / total)
+    if famille:  # HT24 — grappes et accessoires de la banque haute tension des lignes
+        banque = banque_des_lignes(banque, bat)
     return {'kwc': kwc, 'nb_panneaux': nb_panneaux, 'banque': banque,
             'investissement': _investissement_des_lignes(lignes, devis),
             'onduleurs': {'combinaison': [dict(hybrides[p], quantite=q) for p, q in sorted(q_h.items())]},

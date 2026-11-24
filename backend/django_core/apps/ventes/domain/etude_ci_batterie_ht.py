@@ -28,7 +28,7 @@ CLE = 'ht'
 
 
 def famille_vide():
-    return {'hybrides': [], 'batteries': [], 'elements': [], 'ecartes': []}
+    return {'hybrides': [], 'batteries': [], 'elements': [], 'ecartes': [], 'accessoires': {}}
 
 
 def _num(valeur):
@@ -50,10 +50,29 @@ def ajouter_hybride(famille, produit, plage, triphase):
     publie = regles._entier(specs.get('max_parallele'))
     famille['hybrides'].append(dict(
         _hybride(produit, specs, plage, triphase), bat_nb_entrees=specs.get('bat_nb_entrees'),
+        bat_i_max_entree_a=specs.get('bat_i_max_entree_a'),
         max_parallele_publie=publie, max_parallele=publie or 1))
     famille['elements'].append(_element(produit, 'onduleur_hybride', {
         'ond_phases': specs.get('phases'), 'ond_n_mppt': specs.get('n_mppt'),
         'ond_ac_kw': specs.get('ac_kw')}))
+
+
+#: Les rôles C&I DÉCLARÉS des accessoires de grappe (donnée, jamais le nom).
+ROLES_ACCESSOIRES = regles.ROLES_ACCESSOIRES
+
+
+def ajouter_accessoire(famille, produit, role_ci):
+    """Un accessoire de grappe du catalogue (boîtier de contrôle, rack et
+    câblage), à la forme des éléments de l'option."""
+    from .etude_ci_batterie import _element
+    famille.setdefault('accessoires', {}).setdefault(role_ci, []).append(_element(produit, '', {}))
+
+
+def accessoires_retenus(famille):
+    """``{rôle: article}`` composé par grappe : par rôle, un article tarifé
+    d'abord, puis l'identifiant (déterministe) ; rôle absent sans article."""
+    return {role: min(articles, key=lambda e: (not e.get('prix_connu'), e.get('id') or 0))
+            for role, articles in ((famille or {}).get('accessoires') or {}).items() if articles}
 
 
 def _haute_tension_par_nom_ou_tension(produit, specs):
@@ -103,7 +122,21 @@ def famille_des_lignes(bat_bt, lignes, devis=None):
     if not hybrides_ht_ouverts(devis):
         return bat_bt, False
     return {'hybrides': famille['hybrides'], 'batteries': famille['batteries'],
-            'elements': famille['elements']}, True
+            'elements': famille['elements'], 'accessoires': famille.get('accessoires') or {}}, True
+
+
+def banque_des_lignes(banque, bat_ht):
+    """HT24 — la banque haute tension lue sur les LIGNES, complétée de ses
+    grappes (bornes de série de la fiche) et du boîtier du catalogue : la
+    recomposition compose le boîtier par grappe et borne le port batterie
+    comme l'étude."""
+    retenus = [h for h in bat_ht.get('hybrides') or [] if regles.compatible(h, banque)]
+    if not retenus:
+        return banque
+    grappes = max(regles.grappes_par_appareil(h) * int(h.get('max_parallele') or 1) for h in retenus)
+    tailles = regles.tailles_admissibles(banque, retenus, min(grappes, regles.grappes_max_batterie(banque)
+                                                              or grappes))
+    return dict(banque, grappes_par_taille=tailles, accessoires=accessoires_retenus(bat_ht))
 
 
 def haute_tension_a_essayer(resultat_bt):
@@ -187,7 +220,8 @@ def _preparer(famille, nb_batteries):
                                niveau='bloquant'))
         nb = None
     modele = dict(modele, tailles_admissibles=list(tailles), grappes_par_taille=tailles,
-                  max_modules=max(tailles) if tailles else None)
+                  max_modules=max(tailles) if tailles else None,
+                  accessoires=accessoires_retenus(famille))
     bat = {'hybrides': retenus, 'batteries': [modele], 'elements': famille['elements']}
     return bat, modele, nb, alertes, None if tailles else 'aucune grappe valide commune aux hybrides'
 
@@ -223,11 +257,12 @@ def essayer_haute_tension(resultat_bt, bat_bt, *, regles_ht, nb_batteries, dimen
     resultat = dict(resultat, hypotheses=list(resultat.get('hypotheses') or []) + regles.hypotheses_banque(
         dict(modele, quantite=(evalue.get('batterie') or {}).get('quantite')),
         evalue.get('onduleurs'), bat['hybrides']))
-    if evalue.get('batterie') and int(evalue['batterie'].get('quantite') or 0) > 0:
-        alertes.append(_alerte('BOITIER_HAUTE_TENSION_A_VERIFIER', (
-            'Option « avec batterie » haute tension : %d boîtier(s) de contrôle haute tension (un par '
-            'grappe, fiche Deye BOS-B Pro-A3 p. 2 « BOS-B-PDU-2-A ») non composé(s) en ligne — vérifier '
-            'que le prix de « %s » le comprend.' % (
-                modele['grappes_par_taille'].get(int(evalue['batterie']['quantite']), 0), modele['nom'])),
-            niveau='info'))
+    grappes = modele['grappes_par_taille'].get(int((evalue.get('batterie') or {}).get('quantite') or 0))
+    for role, designation, code in regles.accessoires_absents(modele) if grappes else ():
+        # Aucun article au catalogue : non composé, l'option est SOUS-chiffrée
+        # (avec l'article, la ligne est composée — prix à renseigner sans prix).
+        alertes.append(_alerte(code, (
+            'Option « avec batterie » haute tension : %d × %s (un par grappe) non composé(s) en ligne — '
+            'aucun article de rôle C&I « %s » au catalogue, à créer en Stock.'
+            % (grappes, designation.lower(), role))))
     return resultat, bat, alertes

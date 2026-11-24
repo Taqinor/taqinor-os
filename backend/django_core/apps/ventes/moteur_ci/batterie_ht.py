@@ -138,6 +138,78 @@ def grappes_portees(banque, onduleurs, hybrides):
     return k <= entrees
 
 
+def grappes_de(banque):
+    """Le nombre de grappes de la banque (``None`` hors grappe en série)."""
+    par_taille = (banque or {}).get('grappes_par_taille') or {}
+    return par_taille.get(int((banque or {}).get('quantite') or 0))
+
+
+#: HT24 — les accessoires d'une GRAPPE, UN jeu par grappe : (rôle C&I,
+#: désignation de ligne, clé d'hypothèse, code d'alerte quand l'article manque).
+ACCESSOIRES_GRAPPE = (
+    ('boitier_batterie_ht', 'Boîtier de contrôle haute tension', 'boitier_controle_haute_tension',
+     'BOITIER_HAUTE_TENSION_A_VERIFIER'),
+    ('rack_batterie_ht', 'Rack et câblage de puissance', 'rack_haute_tension',
+     'RACK_HAUTE_TENSION_A_VERIFIER'),
+)
+ROLES_ACCESSOIRES = tuple(role for role, *_reste in ACCESSOIRES_GRAPPE)
+#: Fiche Deye « C&I ESS SOLUTION BOS-B Pro-A3 », p. 2 (accessoire BOS-B-PDU-2-A).
+SOURCE_BOITIER = ('fiche Deye « C&I ESS SOLUTION BOS-B Pro-A3 », p. 2 « Battery Pack Accessories » '
+                  '(BOS-B-PDU-2-A) — un boîtier par grappe')
+#: Le prix du rack : relevé pour UNE grappe de 6 modules — une HYPOTHÈSE pour
+#: toute autre taille (fondateur 24/11/2026), dite, jamais tue.
+SOURCE_RACK = ('prix fournisseur relevé pour une grappe de 6 modules ; à confirmer pour une grappe '
+               'plus grande (devis Solarex Maroc n° S26/001708 du 27/07/2026)')
+
+
+def lignes_accessoires(banque):
+    """HT24 — les lignes des accessoires de grappe de la banque : un par
+    grappe, l'article du catalogue de chaque rôle (``banque['accessoires']``) ;
+    ``[]`` hors grappe (basse tension : composition inchangée) ou sans article
+    (non composé, nommé par l'orchestrateur)."""
+    from apps.ventes.moteur_ci.composition import ligne_accessoire_grappe
+    k, articles = grappes_de(banque), (banque or {}).get('accessoires') or {}
+    return [ligne_accessoire_grappe(role, articles[role], designation, k)
+            for role, designation, _cle, _code in ACCESSOIRES_GRAPPE if k and articles.get(role)]
+
+
+def accessoires_absents(banque):
+    """``[(rôle, désignation, code d'alerte)]`` des accessoires de grappe
+    qu'aucun article du catalogue ne porte."""
+    articles = (banque or {}).get('accessoires') or {}
+    return [(role, designation, code) for role, designation, _cle, code in ACCESSOIRES_GRAPPE
+            if not articles.get(role)]
+
+
+def _port_derive(banque, onduleurs, hybrides):
+    """``(kW, grappes portées, courant A, tension de la grappe V)`` ou ``None``."""
+    k, v = grappes_de(banque), donnees_serie(banque)[2]
+    items = (onduleurs or {}).get('combinaison') or []
+    if not k or not v or not items:
+        return None
+    fiches = {h.get('produit'): h for h in hybrides or []}
+    courants, entrees = [], 0
+    for item in items:
+        h = fiches.get(item.get('produit')) or {}
+        courant = _f(h.get('bat_i_max_entree_a'))
+        if courant is None:
+            return None
+        courants.append(courant)
+        entrees += grappes_par_appareil(h) * int(item.get('quantite') or 0)
+    tension = int(banque['quantite']) // k * v
+    portees = min(k, entrees)
+    return portees * min(courants) * tension / 1000.0, portees, min(courants), tension
+
+
+def borne_port_derivee_kw(banque, onduleurs, hybrides):
+    """HT24 — la borne du port batterie DÉRIVÉE (kW) d'une grappe en série :
+    ``min(grappes, Σ entrées batterie) × courant publié par entrée × tension
+    nominale de la grappe ÷ 1000`` ; ``None`` hors grappe ou si un appareil de
+    la combinaison ne publie pas son courant (port non appliqué, comme avant)."""
+    derive = _port_derive(banque, onduleurs, hybrides)
+    return derive[0] if derive else None
+
+
 def message_nb_impose(nombre, batterie, tailles):
     """D-HYB-4 en haute tension — le refus NOMMÉ d'un nombre de batteries
     choisi que le matériel ne permet pas (bornes de série de la fiche)."""
@@ -174,16 +246,47 @@ def hypotheses_banque(banque, onduleurs, hybrides):
         entrees = _entier(h.get('bat_nb_entrees'))
         hyp.append({'cle': 'port_batterie_haute_tension', 'valeur': entrees,
                     'statut': 'source' if entrees else 'estimation', 'source': (
-                        '« %s » : fenêtre batterie %g–%g V ; %s ; parallèle : %s ; puissance du port '
-                        'batterie non publiée en kW sur la fiche : non appliquée (charge et décharge '
-                        'bornées par les modules et la puissance AC)' % (
+                        '« %s » : fenêtre batterie %g–%g V ; %s ; parallèle : %s ; %s' % (
                             h.get('nom') or '', plage[0] or 0, plage[1] or 0,
                             ('%d entrées batterie publiées' % entrees) if entrees
                             else 'entrées batterie non publiées : une grappe par appareil au plus',
                             ('%d appareils au plus (fiche)' % int(h['max_parallele_publie']))
                             if h.get('max_parallele_publie')
-                            else 'limite non publiée : un seul appareil'))})
-    hyp.append({'cle': 'boitier_controle_haute_tension', 'valeur': k, 'statut': 'estimation', 'source': (
-        'un boîtier de contrôle haute tension par grappe (%d) : non composé en ligne — le prix '
-        'de la batterie du catalogue doit le comprendre (à vérifier sur sa fiche)' % k)})
-    return hyp
+                            else 'limite non publiée : un seul appareil', _texte_port(h)))})
+    derive = _port_derive(banque, onduleurs, hybrides)
+    if derive:
+        kw, portees, courant, tension = derive
+        hyp.append({'cle': 'port_batterie_derive_kw', 'valeur': round(kw, 2), 'statut': 'estimation',
+                    'source': ('dérivée : courant publié × tension nominale de la grappe — %d grappe(s) '
+                               'portée(s) × %g A × %g V = %s kW (borne du port batterie, jamais une '
+                               'puissance publiée)' % (portees, courant, tension,
+                                                       ('%.2f' % kw).replace('.', ',')))})
+    return hyp + _hypotheses_accessoires(banque, k)
+
+
+def _texte_port(hybride):
+    courant = _f((hybride or {}).get('bat_i_max_entree_a'))
+    if courant is None:
+        return ('puissance du port batterie non publiée (ni kW ni courant par entrée sur la fiche) : '
+                'non appliquée (charge et décharge bornées par les modules et la puissance AC)')
+    return ('courant publié %g A par entrée batterie : borne du port DÉRIVÉE (dérivée : courant '
+            'publié × tension nominale de la grappe)' % courant)
+
+
+def _hypotheses_accessoires(banque, k):
+    """Chaque accessoire de grappe : composé en ligne (article au catalogue
+    ; le rack dit que son prix est relevé pour une grappe de 6 modules), ou
+    non composé, à créer en Stock (aucun article : l'option est sous-chiffrée)."""
+    articles, sortie = (banque or {}).get('accessoires') or {}, []
+    for role, designation, cle, _code in ACCESSOIRES_GRAPPE:
+        article = articles.get(role)
+        if article is None:
+            sortie.append({'cle': cle, 'valeur': k, 'statut': 'estimation', 'source': (
+                '%s, un par grappe (%d) : non composé en ligne — aucun article de rôle « %s » au '
+                'catalogue, à créer en Stock' % (designation, k, role))})
+            continue
+        statut, source = ('source', SOURCE_BOITIER) if role == 'boitier_batterie_ht' \
+            else ('estimation', SOURCE_RACK)
+        sortie.append({'cle': cle, 'valeur': k, 'statut': statut, 'source': (
+            '%d × « %s » composé(s) en ligne, un par grappe — %s' % (k, article.get('nom') or '', source))})
+    return sortie

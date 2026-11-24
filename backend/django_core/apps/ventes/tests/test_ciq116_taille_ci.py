@@ -1232,18 +1232,18 @@ class OptionAvecBatterieTests(unittest.TestCase):
 #: fondateur (80 kW AC, 160–1000 V, 140 kWc, 100 000 DH HT ; 2 entrées batterie
 #: et 10 appareils en parallèle publiés par la fiche Deye) et la Deye BOS-B
 #: Pro (seed BAT-DYN-HV-16 : 16,08 kWh × DoD 90 %, 9,22 kW, 5–15 modules de
-#: 51,2 V en série avec un hybride, 16 grappes, 48 000 TTC → 40 000 HT).
+#: 51,2 V en série avec un hybride, 16 grappes ; 43 680 TTC → 36 400 HT, achat + 30 %).
 HYBRIDE_HT = {'produit': 800, 'nom': 'DEYE SUN-80K-SG02HP3-EU-EM6', 'kw_ac': 80,
               'prix': Decimal('100000'), 'triphase': True, 'eligible_ci': True,
               'motif_exclusion': None, 'plage_batterie_v': [160.0, 1000.0], 'dc_max_kwc': 140,
               'bat_max_charge_kw': None, 'bat_max_decharge_kw': None, 'bat_nb_entrees': 2,
               'max_parallele_publie': 10, 'max_parallele': 10}
 BOSB = {'produit': 850, 'nom': 'Batterie Deye BOS-B Pro haute tension — 16 kWh', 'kwh_utile': 14.472,
-        'v_nominal': None, 'prix': Decimal('40000'), 'max_modules': None, 'max_charge_kw': 9.22,
+        'v_nominal': None, 'prix': Decimal('36400'), 'max_modules': None, 'max_charge_kw': 9.22,
         'max_decharge_kw': 9.22, 'rendement': 0.9, 'garantie_mois': 120, 'cycles_publies': 6000,
         'serie_min': 5, 'serie_max': 15, 'v_module': 51.2, 'grappes_max': 16,
         'element': {'id': 850, 'nom': 'Batterie Deye BOS-B Pro haute tension — 16 kWh',
-                    'prix_connu': True, 'prix_vente_ht': Decimal('40000')}}
+                    'prix_connu': True, 'prix_vente_ht': Decimal('36400')}}
 
 
 def _famille_ht(hybrides=(HYBRIDE_HT,), batteries=(BOSB,), ecartes=()):
@@ -1268,13 +1268,19 @@ class HauteTensionOptionAvecTests(unittest.TestCase):
             combiner=partial(combiner_onduleurs, candidats=_catalogue_huawei(), phase='tri'),
             composer=_composer, valoriser=_valoriser(cls.charge), taux_tva_pct=20)['evaluation']
 
-    def _etude(self, bat, choix='avec', ps_kva=630, **kw):
+    def _etude(self, bat, choix='avec', ps_kva=630, chiffree=False, **kw):
         from apps.ventes.domain.etude_ci_batterie import option_avec_de_l_etude
+
+        def composer(kwc, ond, _elements):
+            # ``chiffree`` : la composition de test sans son poste « prix à
+            # renseigner » (seul le boîtier peut alors manquer de prix).
+            lignes = _composer(kwc, ond)['lignes']
+            return {'lignes': [li for li in lignes if li['prix_connu'] or not chiffree]}
         return option_avec_de_l_etude(
             {'module': {'pmax_wc': PANNEAU_WC}, 'batterie': bat}, dict(self.sans), choix=choix,
             lead=None, charge=self.charge, production=self.prod, tension='bt',
             revente_choisie=False, valoriser=_valoriser(self.charge), taux_tva_pct=20, phase='tri',
-            ps_kva=ps_kva, composer=lambda kwc, ond, _elements: _composer(kwc, ond), borne_toit=None,
+            ps_kva=ps_kva, composer=composer, borne_toit=None,
             tva_recuperable={'valeur': 'inconnu'}, **kw)
 
     @staticmethod
@@ -1382,6 +1388,91 @@ class HauteTensionOptionAvecTests(unittest.TestCase):
         self.assertEqual((resultat, bat), (bt, None))
         self.assertIn('envoyé avant la règle haute tension', alertes[0]['message'])
         self.assertIsNone(self._etude(self._bat(ht=_famille_ht()), regles_ht=False)['bloc'])
+
+    #: HT24 — les deux accessoires de grappe seedés (prix de vente HT : achat
+    #: du devis Solarex S26/001708 + 30 %, fondateur 24/11/2026).
+    BOITIER = ('boitier_batterie_ht', 860, 'Boîtier de contrôle haute tension Deye BOS-B-PDU-2-A')
+    RACK = ('rack_batterie_ht', 861, 'Rack et câblage de puissance Deye BOS-B Pro')
+
+    def _accessoires(self, boitier='absent', rack='absent'):
+        famille = _famille_ht()
+        for (role, pid, nom), prix in ((self.BOITIER, boitier), (self.RACK, rack)):
+            if prix == 'absent':
+                continue
+            famille['accessoires'][role] = [dict(
+                {'id': pid, 'nom': nom, 'prix_connu': prix is not None, 'role_ci': role},
+                **({'prix_vente_ht': prix} if prix is not None else {}))]
+        return famille
+
+    def test_accessoires_tarifes_un_jeu_par_grappe_dans_le_cout(self):
+        # HT24 (c) — boîtier ET rack, un PAR GRAPPE, composés en ligne, leurs
+        # prix dans le coût de l'option : modules × batterie + grappes × (boîtier
+        # + rack). Plus d'alerte « à vérifier » ; le rack dit son hypothèse.
+        from apps.ventes.moteur_ci import batterie_ht
+        sortie = self._etude(self._bat(ht=self._accessoires(Decimal('14560'), Decimal('7800'))),
+                             chiffree=True)
+        bloc = sortie['bloc']
+        q = bloc['batterie']['quantite']
+        k = batterie_ht.tailles_admissibles(BOSB, [HYBRIDE_HT], 16)[q]
+        lignes = {li['role']: li for li in bloc['composition']['lignes']}
+        for role, pid, _nom in (self.BOITIER, self.RACK):
+            self.assertEqual((lignes[role]['quantite'], lignes[role]['produit'], lignes[role]['prix_connu']),
+                             (k, pid, True))
+        self.assertEqual(lignes['batterie_ci']['quantite'], q)
+        attendu = sum(float(li['prix_unitaire_ht']) * li['quantite'] for li in lignes.values()
+                      if li['role'] in ('batterie_ci', 'boitier_batterie_ht', 'rack_batterie_ht'))
+        self.assertAlmostEqual(attendu, q * 36400 + k * (14560 + 7800), places=2)
+        codes = {a['code'] for a in sortie['alertes']}
+        self.assertFalse(codes & {'BOITIER_HAUTE_TENSION_A_VERIFIER', 'RACK_HAUTE_TENSION_A_VERIFIER'})
+        hyp = {h['cle']: h for h in sortie['hypotheses']}
+        self.assertEqual(hyp['boitier_controle_haute_tension']['statut'], 'source')
+        self.assertNotIn('vérifier', hyp['boitier_controle_haute_tension']['source'])
+        self.assertEqual(hyp['rack_haute_tension']['statut'], 'estimation')
+        self.assertIn('prix fournisseur relevé pour une grappe de 6 modules ; à confirmer pour une grappe '
+                      'plus grande', hyp['rack_haute_tension']['source'])
+
+    def test_accessoire_sans_prix_ou_absent(self):
+        # HT24 (b) — un article sans prix : « prix à renseigner » nommé ;
+        # « les deux » ⇒ option non proposée (alerte interne qui le nomme).
+        nom = self.RACK[2]
+        avec = self._etude(self._bat(ht=self._accessoires(Decimal('14560'), None)), chiffree=True)
+        self.assertEqual(avec['prix_a_renseigner'], [nom])
+        deux = self._etude(self._bat(ht=self._accessoires(Decimal('14560'), None)), choix='les_deux',
+                           chiffree=True)
+        self.assertIsNone(deux['bloc'])
+        (alerte,) = [a for a in deux['alertes'] if a['code'] == 'OPTION_BATTERIE_PRIX_A_RENSEIGNER']
+        self.assertIn(nom, alerte['message'])
+        # (a) Aucun article : rien en ligne, l'accessoire nommé « à créer en Stock ».
+        aucun = self._etude(self._bat(ht=self._accessoires(boitier=Decimal('14560'))), chiffree=True)
+        self.assertFalse([li for li in aucun['bloc']['composition']['lignes']
+                          if li['role'] == 'rack_batterie_ht'])
+        (alerte,) = [a for a in aucun['alertes'] if a['code'] == 'RACK_HAUTE_TENSION_A_VERIFIER']
+        self.assertIn('à créer en Stock', alerte['message'])
+        self.assertNotIn('BOITIER_HAUTE_TENSION_A_VERIFIER', {a['code'] for a in aucun['alertes']})
+
+    def test_port_batterie_derive_du_courant_publie(self):
+        # HT24 — « 80+80 » A publiés, aucune puissance : borne DÉRIVÉE.
+        from apps.ventes.moteur_ci import batterie_ht
+        from apps.ventes.moteur_ci.batterie import puissance_charge_kw, puissance_decharge_kw
+        hyb = dict(HYBRIDE_HT, bat_i_max_entree_a=80)
+        un = {'combinaison': [{'produit': 800, 'quantite': 1, 'kw_ac': 80}]}
+        cinq = dict(BOSB, quantite=5, grappes_par_taille={5: 1})
+        self.assertAlmostEqual(puissance_charge_kw(cinq, un, [hyb]), 20.48)          # 80 A × 256 V
+        douze = dict(BOSB, quantite=24, grappes_par_taille={24: 2})
+        self.assertAlmostEqual(puissance_charge_kw(douze, un, [hyb]), 98.304)        # 2 × 80 A × 614,4 V
+        self.assertAlmostEqual(puissance_decharge_kw(douze, un, [hyb]), 80.0)        # plafond AC inchangé
+        self.assertAlmostEqual(puissance_charge_kw(cinq, un, [HYBRIDE_HT]), 9.22 * 5)  # non publié : non appliqué
+        (hyp,) = [h for h in batterie_ht.hypotheses_banque(douze, un, [hyb])
+                  if h['cle'] == 'port_batterie_derive_kw']
+        self.assertIn('dérivée : courant publié × tension nominale de la grappe', hyp['source'])
+        self.assertEqual(hyp['valeur'], 98.3)
+        # Basse tension : identique, courant publié ou non.
+        bt = dict(BATTERIES[1], quantite=2)
+        hybrides = _hybrides_bt()
+        ond = {'combinaison': [dict(hybrides[2], quantite=1)]}
+        for fn in (puissance_charge_kw, puissance_decharge_kw):
+            self.assertEqual(fn(bt, ond, hybrides),
+                             fn(bt, ond, [dict(h, bat_i_max_entree_a=80) for h in hybrides]))
 
     def test_tailles_admissibles_et_grappes_portees(self):
         from apps.ventes.moteur_ci import batterie_ht

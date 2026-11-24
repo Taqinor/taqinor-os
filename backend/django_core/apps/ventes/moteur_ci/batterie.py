@@ -53,7 +53,9 @@ import math
 from decimal import Decimal, InvalidOperation
 
 from apps.ventes.moteur_ci.autoconso import HEURES, bilan_horaire, regime_injection
-from apps.ventes.moteur_ci.batterie_ht import grappes_portees, plus_grande_taille
+from apps.ventes.moteur_ci.batterie_ht import (
+    borne_port_derivee_kw, grappes_portees, lignes_accessoires, plus_grande_taille,
+)
 
 #: Port batterie BASSE TENSION : tension maxi (V) de la fenêtre batterie de
 #: l'hybride (famille Deye SG05LP3 : 40–60 V, ``seed_catalogue``
@@ -179,6 +181,9 @@ def puissance_charge_kw(banque, onduleurs, hybrides):
               for item in (onduleurs or {}).get('combinaison') or []]
     if unites and all(p for p, _q in unites):
         bornes.append(sum(p * q for p, q in unites))
+    derivee = borne_port_derivee_kw(banque, onduleurs, hybrides)   # HT24 — grappe en série
+    if derivee:
+        bornes.append(derivee)
     return min(bornes) if bornes else None
 
 
@@ -197,6 +202,9 @@ def puissance_decharge_kw(banque, onduleurs, hybrides):
     ports = [_f(h.get('bat_max_decharge_kw')) for h, _q in items]
     if items and all(ports):
         bornes.append(sum(p * q for p, (_h, q) in zip(ports, items)))
+    derivee = borne_port_derivee_kw(banque, onduleurs, hybrides)   # HT24 — grappe en série
+    if derivee:
+        bornes.append(derivee)
     if not bornes:
         return None
     ac = [_f(h.get('kw_ac')) for h, _q in items]
@@ -429,7 +437,7 @@ def _composer_avec(composer, kwc, onduleurs, banque):
     composition = dict(composer(kwc, onduleurs) or {})
     article = banque.get('element') or {'id': banque.get('produit'), 'nom': banque.get('nom')}
     composition['lignes'] = list(composition.get('lignes') or []) + [
-        ligne_batterie(article, int(banque['quantite']))]
+        ligne_batterie(article, int(banque['quantite']))] + lignes_accessoires(banque)  # HT24
     a_renseigner, visite = postes_non_chiffres(composition['lignes'])
     composition.update(prix_a_renseigner=a_renseigner, a_chiffrer_visite=visite,
                        incomplet=bool(a_renseigner or visite))
