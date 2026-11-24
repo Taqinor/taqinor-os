@@ -1648,13 +1648,55 @@ def avertissements(acte, contenu=None, lecture=None):
         contenu_fr, ctx, etat = _construire(acte, 'fr', lecture, interne=True)
         sortie += message_masques(etat['masques'], ctx, _textes('fr'),
                                   contenu_fr)
-    retard = [T.LIBELLES_SECTIONS[s] for s in T.SECTIONS_MODIFIABLES[acte.type]
-              if s in T.SECTIONS_TEXTE and _texte_a_traduire(acte, s, lecture)
-              and s not in (acte.surcharges_ar or {})]
-    if retard:
+    return sortie + _avertissements_arabe(acte, lecture)
+
+
+#: Textes libres qu'un acte arabe imprime TELS QUE TAPÉS en français tant
+#: qu'ils ne sont pas traduits (``_faits_du_francais``).
+_IMPRIMES_EN_FRANCAIS = {'reserves': 'réserves',
+                         'conditions_particulieres': 'conditions particulières',
+                         'constats': 'constats ajoutés'}
+
+
+def _avertissements_arabe(acte, lecture):
+    """Ce que l'acte arabe imprime autrement que le français personnalisé :
+    les textes libres tapés en français sans version arabe (imprimés en
+    français), puis les sections dont l'arabe reste au texte par défaut.
+    Une case cochée n'est jamais signalée : elle est commune aux deux."""
+    fr, ar = acte.surcharges or {}, acte.surcharges_ar or {}
+    en_francais, par_defaut = [], []
+    for s in T.SECTIONS_MODIFIABLES[acte.type]:
+        if s not in T.SECTIONS_TEXTE or s in ar:
+            continue
+        if s in _IMPRIMES_EN_FRANCAIS:
+            if _texte_libre_francais(acte, s, fr.get(s)):
+                en_francais.append(_IMPRIMES_EN_FRANCAIS[s])
+        elif _texte_a_traduire(acte, s, lecture):
+            par_defaut.append(T.LIBELLES_SECTIONS[s])
+    sortie = []
+    if en_francais:
+        sortie.append("Dans l'acte arabe, ces textes s'impriment en "
+                      'français : ' + ', '.join(en_francais) + '. '
+                      "Traduisez-les si le client lit l'arabe.")
+    if par_defaut:
         sortie.append('La traduction arabe ne reprend pas vos modifications '
-                      'de : ' + ', '.join(retard) + '.')
+                      'de : ' + ', '.join(par_defaut) + '.')
     return sortie
+
+
+def _texte_libre_francais(acte, section, valeur):
+    """La section porte-t-elle un texte tapé en français (une réserve, des
+    conditions, un constat ajouté ou réécrit) ? Les constats par défaut,
+    cochés ou non, ont leur traduction."""
+    if section == 'constats':
+        from . import textes
+        defauts = {k['texte'] for k in textes.constats_par_defaut(acte.type)}
+        return any((k.get('texte') or '').strip()
+                   and k.get('texte') not in defauts
+                   for k in valeur or [] if isinstance(k, dict))
+    if isinstance(valeur, list):
+        return any(isinstance(x, str) and x.strip() for x in valeur)
+    return isinstance(valeur, str) and bool(valeur.strip())
 
 
 def _texte_a_traduire(acte, section, lecture=None):

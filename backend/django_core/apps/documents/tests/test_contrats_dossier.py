@@ -1980,6 +1980,37 @@ class FaitsFrancaisEnArabePursTests(SimpleTestCase):
                          [True, False, True, True])
         self.assertEqual(ar['constats'][0]['texte'], 'نص 0')
 
+    def test_avertissement_arabe_dit_ce_qui_est_vrai(self):
+        """Défaut attrapé (recette finale, S3) : cocher une case suffisait à
+        afficher « La traduction arabe ne reprend pas vos modifications de :
+        constats », alors que les cases sont communes et que les textes
+        libres français s'impriment tels quels dans l'acte arabe."""
+        def arabes(e):
+            return [a for a in K.avertissements(e.acte, None, e.lecture())
+                    if 'arabe' in a]
+        e = Ecran(T.LIVRAISON, T.RESTE_A_REGLER)
+        coches = [dict(k, cochee=True) for k in e.lire()['constats']]
+        e.enregistrer({'constats': coches})
+        self.assertEqual(arabes(e), [])
+        e.enregistrer({'constats': coches + [
+            {'texte': 'Un carton abîmé, contenu intact.', 'cochee': True}],
+            'reserves': ['Rayure sur le coffret onduleur.'],
+            'conditions_particulieres': 'Accès par le portail.'})
+        self.assertEqual(arabes(e), [
+            "Dans l'acte arabe, ces textes s'impriment en français : "
+            "constats ajoutés, réserves, conditions particulières. "
+            "Traduisez-les si le client lit l'arabe."])
+        e.enregistrer({'articles': articles_ecran(e.lire(), {
+            'constat': ajouter(' Vérifié à deux.')})})
+        e.enregistrer({'reserves': ['خدش على علبة العاكس.']}, 'ar')
+        self.assertEqual(arabes(e), [
+            "Dans l'acte arabe, ces textes s'impriment en français : "
+            "constats ajoutés, conditions particulières. Traduisez-les si "
+            "le client lit l'arabe.",
+            'La traduction arabe ne reprend pas vos modifications de : '
+            'articles.'])
+        self.assertFalse(any('case' in a for a in arabes(e)))
+
 
 class EcranAllerRetourTests(SimpleTestCase):
 
