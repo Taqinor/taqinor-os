@@ -485,7 +485,7 @@ describe('ACAL405 — Démarrage rapide', () => {
       expect(ligne('thermique_par_pose')).toHaveTextContent('Pose libre · dos isolé')
     })
 
-    it('ACAL1968 — « Qualité des panneaux » dit qu’elle lit la tolérance de la fiche du module et que, sans tolérance, l’écart est compté à 0 % (supposé)', async () => {
+    it('ACAL1968 — « Qualité des panneaux » dit qu’elle lit la tolérance de la fiche du module et que, sans tolérance, le tri usuel 0 % à +3 % est supposé (D-ACAL-98)', async () => {
       mocks.profilDepart.mockResolvedValue({ data: { ...PROFIL, valeurs: [LIGNE('regle_qualite_module', 'quart_pvsyst')] } })
       servirReglages({})
       rendre()
@@ -493,7 +493,7 @@ describe('ACAL405 — Démarrage rapide', () => {
       expect(ligne).toHaveTextContent('Qualité des panneaux à la sortie d’usine')
       expect(ligne).toHaveTextContent('Un quart de l’écart, comme PVsyst')
       expect(ligne).toHaveTextContent('tolérance de puissance de la fiche du module')
-      expect(ligne).toHaveTextContent('sans tolérance publiée, l’écart est compté à 0 % (supposé)')
+      expect(ligne).toHaveTextContent('sans tolérance publiée, le tri usuel 0 % à +3 % est supposé')
     })
 
     it('jamais de JSON ni de clé technique à l’écran', async () => {

@@ -83,22 +83,32 @@ class ToleranceAbsenteTest(unittest.TestCase):
         etape = cascade(contexte_avec())
         self.assertIn('Module PV 550 Wc', etape['motif_omission'])
 
-    def test_regle_choisie_ecart_nul_suppose_et_dit(self):
-        """Fondateur 23/11/2026 (D-ACAL-82) — la société a choisi sa règle, la
-        fiche ne publie rien : écart compté à 0 %, DIT supposé avec le champ
-        de fiche ; l'étape n'est plus omise (le résultat peut être complet)."""
-        for regle in ('quart_pvsyst', 'borne_basse', 'moyenne'):
+    def test_regle_choisie_tolerance_usuelle_supposee_et_dite(self):
+        """Fondateur 24/11/2026 (D-ACAL-98 : « Assume the usual 0/+3 % ») — la
+        société a choisi sa règle, la fiche ne publie rien : le tri usuel
+        0 % à +3 % est SUPPOSÉ, la règle s'y applique (quart ⇒ +0,75 %, borne
+        basse ⇒ 0 %, moyenne ⇒ +1,5 %), DIT avec le champ de fiche ; l'étape
+        n'est plus omise (le résultat peut être complet)."""
+        attendus = {'quart_pvsyst': 0.75, 'borne_basse': 0.0, 'moyenne': 1.5}
+        for regle, ecart in attendus.items():
             etape = cascade(contexte_avec(regle=regle))
             self.assertEqual(etape['motif_omission'], '', regle)
-            self.assertEqual(etape['perte_pct'], 0.0, regle)
+            self.assertEqual(etape['entree']['pct'], ecart, regle)
+            self.assertIs(etape['gain'], ecart > 0.0, regle)
             self.assertIs(etape['entree']['supposee'], True)
+            self.assertEqual((etape['entree']['tolerance_min_pct'],
+                              etape['entree']['tolerance_max_pct']), (0.0, 3.0))
             self.assertEqual(etape['entree']['champ_manquant'],
                              'FicheTechnique.tolerance_pmax_min_pct')
             self.assertIn('supposé', etape['entree']['mention'])
+            self.assertIn('0 % à +3 %', etape['entree']['mention'])
             self.assertIn('Module PV 550 Wc', etape['entree']['mention'])
             self.assertEqual(etape['source'], 'societe')
         rendue, _ = seule(contexte_avec(regle='quart_pvsyst'))
-        self.assertEqual(etapes.energie_kwh(rendue), 10.0)
+        self.assertAlmostEqual(etapes.energie_kwh(rendue), 10.075)
+        # Une tolérance PUBLIÉE prime : jamais le tri supposé.
+        publiee = cascade(contexte_avec(minimum=-3, maximum=3, regle='quart_pvsyst'))
+        self.assertEqual(publiee['entree'], 'tolerance_pmax_min_pct + tolerance_pmax_max_pct')
 
     def test_regle_aucune_ou_sans_source_reste_omise(self):
         for contexte in (contexte_avec(regle='aucune'),

@@ -19,7 +19,7 @@ export const estProfilDepart = (reference) =>
 export const LIBELLES_REGLAGES = {
   b0_iam: ['Reflets du verre', 'Le soleil rasant rebondit sur la vitre du panneau'],
   modele_iam: ['Façon de calculer les reflets', 'Méthode de calcul de la lumière perdue quand le soleil arrive de biais'],
-  regle_qualite_module: ['Qualité des panneaux à la sortie d’usine', 'Lue dans la tolérance de puissance de la fiche du module ; sans tolérance publiée, l’écart est compté à 0 % (supposé)'],
+  regle_qualite_module: ['Qualité des panneaux à la sortie d’usine', 'Lue dans la tolérance de puissance de la fiche du module ; sans tolérance publiée, le tri usuel 0 % à +3 % est supposé'],
   mismatch_fabricant_pct: ['Écarts entre panneaux', 'Deux panneaux d’une chaîne ne sont jamais tout à fait égaux'],
   thermique_par_pose: ['Échauffement selon la pose', 'Plus le panneau chauffe, moins il produit'],
   albedo_mensuel: ['Réflexion du sol', 'Lumière renvoyée par le sol vers les panneaux'],

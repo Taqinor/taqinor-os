@@ -28,10 +28,12 @@ recherchées », « default for everything »)
 Mesuré en production le 23/11/2026 : aucune des fiches de module ne publie
 sa tolérance ; chaque résultat restait donc « incomplet » et n'alimentait
 aucun devis. Quand la société A CHOISI sa règle mais que la fiche ne publie
-rien, l'écart au nominal est compté à 0 % (ni perte ni gain), DIT « supposé »
-avec le champ de fiche à saisir : les fabricants de premier rang publient un
-tri positif (0/+3 %, 0/+5 W), supposer 0 est donc prudent. Sans règle
-choisie, l'étape reste omise comme avant.
+rien, la tolérance SUPPOSÉE est le tri usuel des fabricants de premier rang,
+0 % à +3 % (réponse du fondateur du 24/11/2026 à D-ACAL-98 : « Assume the
+usual 0/+3 % »), et la règle de la société s'y applique comme à une tolérance
+publiée — le quart de PVsyst donne alors un gain de 0,75 %. L'étape le DIT
+« supposé » avec le champ de fiche à saisir ; une tolérance saisie sur la
+fiche prime. Sans règle choisie, l'étape reste omise comme avant.
 
 LE QUART DE PVsyst EST UNE RÈGLE CITÉE, PAS UNE CONSTANTE
 -----------------------------------------------------------
@@ -108,10 +110,14 @@ MOTIF_TOLERANCE_ABSENTE = (
     "rien ne dit de combien la puissance réelle des modules s'écarte du "
     "nominal. L'étape est OMISE — aucun forfait n'est appliqué à sa place.")
 
+#: D-ACAL-98 (fondateur, 24/11/2026) — la tolérance supposée d'une fiche qui
+#: n'en publie pas : le tri usuel des fabricants de premier rang, en % du nominal.
+TOLERANCE_SUPPOSEE_PCT = (0.0, 3.0)
+
 MENTION_TOLERANCE_SUPPOSEE = (
     'supposé — aucune tolérance de puissance publiée sur la fiche de '
-    '{produit} : écart au nominal compté à 0 % (ni perte ni gain), remplacé '
-    'dès que la tolérance est saisie sur la fiche')
+    '{produit} : tri usuel des fabricants supposé ({minimum} % à +{maximum} %), '
+    'remplacé dès que la tolérance est saisie sur la fiche')
 
 MOTIF_REGLE_ABSENTE = (
     "La tolérance de puissance de {produit} est publiée, mais la société n'a "
@@ -163,7 +169,7 @@ def appliquer(serie, contexte):
 
     minimum = _nombre(_tolerance_min(fiche_module))
     if minimum is None:
-        suppose = _ecart_nul_suppose(serie, contexte, produit, libelle)
+        suppose = _tolerance_supposee(serie, contexte, produit, libelle)
         if suppose is not None:
             return suppose
         return serie, etapes.etape_omise(
@@ -223,28 +229,35 @@ def appliquer(serie, contexte):
         gain=variation > 0.0)
 
 
-def _ecart_nul_suppose(serie, contexte, produit, libelle):
+def _tolerance_supposee(serie, contexte, produit, libelle):
     """Fiche SANS tolérance et règle CHOISIE par la société ⇒ ``(serie,
-    etape)`` d'un écart nul SUPPOSÉ (cf. docstring du module) ; ``None`` sans
+    etape)`` de la règle appliquée à la tolérance SUPPOSÉE
+    (:data:`TOLERANCE_SUPPOSEE_PCT`, cf. docstring du module) ; ``None`` sans
     règle choisie, avec la règle « aucune » ou sans colonne d'énergie :
     l'omission d'avant reste dite."""
     saisie = etapes.reglage(contexte, CLE_REGLAGE)
     nom_regle = _nom_de_regle((saisie or {}).get('valeur'))
     if nom_regle in (None, 'aucune') or etapes.colonne_energie(serie) is None:
         return None
-    mention = MENTION_TOLERANCE_SUPPOSEE.format(produit=produit)
+    minimum, maximum = TOLERANCE_SUPPOSEE_PCT
+    variation = _variation_pct(nom_regle, minimum, maximum)
+    mention = MENTION_TOLERANCE_SUPPOSEE.format(
+        produit=produit, minimum=_texte(minimum), maximum=_texte(maximum))
     entree = {
         'mode': 'tolerance_supposee',
         'supposee': True,
-        'pct': 0.0,
+        'tolerance_min_pct': minimum,
+        'tolerance_max_pct': maximum,
+        'pct': variation,
         'mention': mention,
         'champ_manquant': CHAMP_MIN_AFFICHE,
         'regle': nom_regle,
         'source_du_reglage': saisie.get('source'),
     }
-    return etapes.mettre_a_l_echelle(serie, 1.0), etapes.etape_appliquee(
+    suite = etapes.mettre_a_l_echelle(serie, 1.0 + variation / 100.0)
+    return suite, etapes.etape_appliquee(
         libelle, source=saisie.get('source'), entree=entree,
-        reference=f'{mention}. {REFERENCE_PVSYST}')
+        reference=f'{mention}. {REFERENCE_PVSYST}', gain=variation > 0.0)
 
 
 # ── la règle, et ce qu'elle fait de la tolérance ────────────────────────
