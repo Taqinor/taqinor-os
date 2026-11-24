@@ -1833,7 +1833,7 @@ def _construire(acte, langue='fr', lecture=None, *, avec_modele=True,
                                             modele)
     _sections_derivees(contenu, acte, lecture, vente, langue, date_fixee)
     textes = _textes(langue)
-    ctx = _textes_par_defaut(contenu, textes, vente, langue, refs, lecture)
+    _textes_par_defaut(contenu, textes, vente, langue)
     if modele is not None:
         if langue == 'ar' and 'garanties' in contenu:
             # Les durées du modèle sont communes : réglées en français.
@@ -1848,6 +1848,10 @@ def _construire(acte, langue='fr', lecture=None, *, avec_modele=True,
             contenu, _surcharges_texte(acte, langue), langue,
             garanties_fr=((acte.surcharges or {}).get('garanties')
                           if langue == 'ar' else None))
+    # Le contexte APRÈS les personnalisations de l'acte : {modalites_paiement}
+    # et {garantie_installation} disent ce que disent l'encadré et le
+    # tableau du même document (M4).
+    ctx = _contexte(contenu, vente, langue, refs, lecture)
     etat = _articles_et_quitus(
         contenu, textes, ctx, langue,
         _surcharges_texte(modele, langue) if modele is not None else {},
@@ -1928,12 +1932,11 @@ def ecart_regle(prix, paye, avoirs, langue):
             f'retenue à la source ou abandon de créance.')
 
 
-def _textes_par_defaut(contenu, textes, vente, langue, refs, lecture=None):
+def _textes_par_defaut(contenu, textes, vente, langue):
     """Pose les textes par défaut sans repère (constats, conseils,
-    entretien, paiements) ; rend le contexte (repères) qui formate les
-    articles et le quitus (``_articles_et_quitus``)."""
+    entretien, paiements), avant les personnalisations qui les
+    remplacent."""
     type_acte = contenu['type']
-    ctx = _contexte(contenu, vente, langue, refs, lecture)
     if type_acte in (T.LIVRAISON, T.RECEPTION):
         contenu['constats'] = textes.constats_par_defaut(type_acte)
         contenu['reserves'] = []
@@ -1945,7 +1948,6 @@ def _textes_par_defaut(contenu, textes, vente, langue, refs, lecture=None):
         contenu['journee'] = textes.journee_solaire(avec_batterie)
         contenu['conseils'] = conseils
         contenu['entretien'] = textes.entretien_par_defaut()
-    return ctx
 
 
 # ── API publique du module ──────────────────────────────────────────────────

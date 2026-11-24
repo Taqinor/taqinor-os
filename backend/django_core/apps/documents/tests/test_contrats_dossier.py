@@ -1598,6 +1598,41 @@ class EcranTextesTests(SimpleTestCase):
                       article(e.lire(), 'objet'))
 
 
+class EcranReperesApresPersonnalisationTests(SimpleTestCase):
+    """M4 : les repères lus APRÈS les personnalisations de l'acte."""
+
+    def test_modalites_de_paiement_personnalisees(self):
+        """Défaut attrapé : ``{modalites_paiement}`` était calculé avant la
+        personnalisation « paiement » : l'article Paiement contredisait
+        l'encadré du même contrat."""
+        e = Ecran(T.CONTRAT)
+        e.enregistrer({'paiement': {'modalites': 'Paiement par virement '
+                                                 'sur le compte convenu.'}})
+        c = e.lire()
+        self.assertEqual(c['paiement']['modalites'],
+                         'Paiement par virement sur le compte convenu.')
+        self.assertIn('Paiement par virement sur le compte convenu.',
+                      article(c, 'paiement'))
+
+    def test_garantie_d_installation_personnalisee_deux_langues(self):
+        """Défaut attrapé : ``{garantie_installation}`` était calculé avant
+        la personnalisation des garanties : l'article disait « 2 ans » quand
+        le tableau du même contrat disait 36 mois."""
+        e = Ecran(T.CONTRAT)
+        garanties = [dict(g, duree_mois=36) if g['cle'] == 'installation'
+                     else g for g in e.lire()['garanties']]
+        e.enregistrer({'garanties': garanties})
+        for langue in T.LANGUES:
+            with self.subTest(langue=langue):
+                c = e.lire(langue)
+                pose = next(g for g in c['garanties']
+                            if g['cle'] == 'installation')
+                self.assertEqual(pose['duree_mois'], 36)
+                texte = article(c, 'garanties')
+                self.assertIn(K.C.duree_mois(36, langue=langue), texte)
+                self.assertNotIn(K.C.duree_mois(24, langue=langue), texte)
+
+
 class EcranAllerRetourTests(SimpleTestCase):
 
     def test_rien_change_rien_stocke_cinq_actes_deux_langues(self):
