@@ -761,3 +761,58 @@ est celui d'un autre produit : ce n'est pas le prix de l'article du catalogue.
 | D. Fixations antivol | anti-theft fixings | non | | | | | | | | Nothing found in the CP Tech catalogue (718 products scanned by name) or elsewhere. |
 
 Fabricant identifié des pompes OSP 30 : Oswal Pumps Ltd (Karnal, India) - 'OSP-30' stainless-steel 6-inch submersible pump set, 3-inch (75 mm) outlet, 240-780 LPM (14.4-46.8 m3/h), 1.5-45 kW series (https://oswalpumps.com/stainless-steel-submersible-pump-set-osp--30-6-inch--50-hz.php, read 2026-11-24). Identification is by name + hydraulics: a Ugandan reseller page titled 'OSP-30/22 ... 30m3/hr, H 165m' (seen only in a search-result summary; the page itself returned HTTP 429) fits ~7.5 m per stage, the same as the catalogue curves (30/20 = 150 m at 30 m3/h).. Aucun prix public par modèle.
+
+## 7. Rempli par les écrans de la copie, comme un administrateur (24/11/2026)
+
+Fait par clics réels, compte `anon_admin`, société « TAQINOR Anonymisé (QA) ». Ce qui suit est ce que l'écran a
+affiché : le libellé, la valeur proposée et la source que l'ERP écrit lui-même à côté de chaque valeur.
+
+### 7.1 Calepinage → Réglages → Démarrage rapide
+
+11 des 16 lignes etaient deja 'Posee par le profil (retirable)' AVANT mon clic (case grisee, aria 'Deja en place, non remplace') : un profil avait donc deja ete applique sur cette copie. Les 5 autres : etat 'Vide', case cochee.
+
+| Réglage | Explication de l'écran | Valeur proposée | Source affichée | État avant le clic |
+|---|---|---|---|---|
+| Reflets du verre | Le soleil rasant rebondit sur la vitre du panneau | 0,05 | PVsyst (Array incidence loss IAM) | Posee par le profil (retirable) |
+| Facon de calculer les reflets | Methode de calcul de la lumiere perdue quand le soleil arrive de biais | Fresnel | PVsyst (Array incidence loss IAM) | Posee par le profil (retirable) |
+| Qualite des panneaux a la sortie d'usine | Lue dans la tolerance de puissance de la fiche du module ; sans tolerance publiee, le tri usuel 0 % a +3 % est | Un quart de l'ecart, comme PVsyst | PVsyst (Module quality losses) | Posee par le profil (retirable) |
+| Ecarts entre panneaux | Deux panneaux d'une chaine ne sont jamais tout a fait egaux | 2 % | PVsyst (Array mismatch losses) | Posee par le profil (retirable) |
+| Echauffement selon la pose | Plus le panneau chauffe, moins il produit | 29 · 15 W/m2K (Pose libre · dos isole) | PVsyst (U-value thermal losses) | Posee par le profil (retirable) |
+| Poussiere sur les panneaux | La poussiere retient une part du soleil entre deux nettoyages | 3 % | valeur de depart SUPPOSEE (D-ACAL-82) | Vide |
+| Perte des premieres heures de soleil | Un panneau neuf perd un peu de puissance des sa premiere exposition, selon sa technologie | 1,5 · 1 · 1 · 1,5 % (Cellules PERC · TOPCon · HJT · autre) | valeur de depart SUPPOSEE (D-ACAL-82) | Vide |
+| Arrets de l'installation | Part de la production perdue quand l'installation est a l'arret (panne, entretien) | 2 % | valeur de depart SUPPOSEE (D-ACAL-82) | Vide |
+| Cables entre les panneaux et l'onduleur | Chaleur perdue dans les cables tant que leurs longueurs reelles ne sont pas connues | 1,5 % | valeur de depart SUPPOSEE (D-ACAL-82) | Vide |
+| Cable entre l'onduleur et le tableau | Chaleur perdue dans ce cable tant que sa longueur reelle n'est pas connue | 1 % | valeur de depart SUPPOSEE (D-ACAL-82) | Vide |
+| Reflexion du sol | Lumiere renvoyee par le sol vers les panneaux | 0,2 | PVsyst (Albedo usual coefficients) | Posee par le profil (retirable) |
+| Panneaux double face : ecart de la face arriere | Perte propre aux panneaux qui captent aussi la lumiere par l'arriere | 10 % | PVsyst (Bifacial systems) | Posee par le profil (retirable) |
+| Pas de temps du calcul | Le calcul avance par tranches de temps de cette duree | 60 minutes | PVGIS (API seriescalc) | Posee par le profil (retirable) |
+| Ecart acceptable entre chaines | Ecart de tension tolere entre deux chaines branchees ensemble | 4 % | PV*SOL (Polystring connection) | Posee par le profil (retirable) |
+| Ecart bloquant entre chaines | Au-dela de cet ecart de tension, le cablage est refuse | 10 % | PV*SOL (Polystring connection) | Posee par le profil (retirable) |
+| Taille minimale des panneaux face a l'onduleur | Puissance des panneaux rapportee a celle de l'onduleur | 1 | PV*SOL (Configuration check) | Posee par le profil (retirable) |
+| 48 autres reglages | Rien n'est propose tant qu'aucune page publiee ne donne de valeur | - | Aucune valeur publiee - a saisir par vous | A saisir (lien Saisir -> /calepinage/reglages#calx69-section |
+
+Clic : bouton dore 'Remplir les 5 reglages vides' ; aucune confirmation demandee ; message : '5 valeurs appliquees'.
+
+Remplis par le bouton :
+- Poussiere sur les panneaux -> 3 % (valeur de depart supposee, D-ACAL-82)
+- Perte des premieres heures de soleil -> 1,5 / 1 / 1 / 1,5 % PERC/TOPCon/HJT/autre (valeur de depart supposee)
+- Arrets de l'installation -> 2 % (valeur de depart supposee)
+- Cables entre les panneaux et l'onduleur -> 1,5 % (valeur de depart supposee)
+- Cable entre l'onduleur et le tableau -> 1 % (valeur de depart supposee)
+
+Après rechargement : apres rechargement complet : 16 lignes 'Posee par le profil (retirable)' + ligne '48 autres reglages' ; bouton 'Retirer le profil' ; aucun dialogue. La page /calepinage/reglages montre les memes valeurs (salissure 3, indisponibilite forfaitaire 2, cables DC 1.5, cables AC 1, LID table techno) avec source 'Texte cite'.
+
+### 7.2 Mode météo et années
+
+- Où : /calepinage/reglages, section Simulation, deux lignes en tete : << Fenetre d'annees meteo (annees) >> et << Mode meteo (annee type ou fenetre pluriannuelle) >> ; bouton 'Enregistrer les reglages' en bas de la section
+- Premier essai : Mode = Plusieurs annees reelles, fenetre = [2014, 2023], Source laissee '— aucune —' : refus : << « Fenetre d'annees meteo » doit porter sa provenance « source » : aucune valeur n'est admise sans elle. Provenances admises : societe, mesure, saisie, texte. >> (meme message pour le Mode meteo) ; resume : 'Reglages incomplets — a corriger'.
+- Choix fait : Source = 'Saisie' sur les deux lignes (le seul moyen d'enregistrer ; aucune autre valeur touchee)
+- Enregistré : Message 'Reglages enregistres.' La fenetre 2014-2023 est acceptee telle quelle (pas de refus de la plage).
+- Après rechargement : {"mode_meteo": "Plusieurs annees reelles (source Saisie)", "fenetre_annees": "[2014,2023] (source Saisie) — le champ affiche '[2014,2023]' sans espace"}
+
+Ce choix (plusieurs années réelles, 2014 à 2023) est celui de l'orchestrateur pour le test ; le choix pour la
+production est celui du fondateur.
+
+### 7.3 Comptes aux vrais rôles
+
+
