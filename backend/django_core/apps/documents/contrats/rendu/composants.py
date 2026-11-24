@@ -533,10 +533,11 @@ def tableau_paiements(paiements, total, langue='fr'):
 # ── Articles, encadrés, cases ───────────────────────────────────────────────
 
 # Un article court ne se coupe pas entre deux pages (revue 1, R8) : au plus
-# trois paragraphes, et assez peu de texte pour qu'un bloc insécable ne laisse
-# jamais un grand vide en bas de page.
+# trois paragraphes et 480 signes (six lignes environ, en arabe comme en
+# français) : un bloc insécable plus long laissait jusqu'à 50 mm de blanc en
+# bas de page. Au-delà, orphelines et veuves (2) évitent la ligne isolée.
 ARTICLE_COURT_PARAGRAPHES = 3
-ARTICLE_COURT_SIGNES = 700
+ARTICLE_COURT_SIGNES = 480
 
 
 def _court(art):
