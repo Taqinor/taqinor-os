@@ -118,10 +118,12 @@ CIBLE_KWH = {'etape': 'resultats', 'onglet': 'production',
 
 
 def _controle(code, libelle, etat, valeur_texte, *, cause='', geste='',
-              cible=None):
+              cible=None, points=()):
+    # T4-U4-007 — ``points`` : les points qui font l'état (servi vide ailleurs).
     return {'code': code, 'libelle': libelle, 'etat': etat,
             'valeur_texte': valeur_texte, 'cause': cause, 'geste': geste,
-            'cible': dict(cible or CIBLE_DOCUMENTS), 'seuil_source': None}
+            'cible': dict(cible or CIBLE_DOCUMENTS), 'seuil_source': None,
+            'points': list(points)}
 
 
 def _visite(etat, valeur, **autres):
@@ -282,6 +284,41 @@ def _depuis_motifs(code, libelle, motifs, *, geste):
                  cause=motifs[0]['libelle'], geste=geste)
 
 
+def _geste_et_onglet(code, libelle, defaut):
+    """T4-U4-007 — ``(geste, onglet)`` d'un motif de publication : les gestes
+    des contrôles de cette page, rangés par famille de code ; sinon ``defaut``
+    sur l'onglet du Verdict."""
+    code = str(code or '')
+    if code == 'FICHE_INCOMPLETE':
+        return ('Compléter la fiche%s' % _DU_ROLE.get(_role_et_champ(libelle)[0], ' du matériel'),
+                CIBLE_MATERIEL['onglet'])
+    if code.startswith('TERRE_'):
+        return 'Compléter la check-list de terre', _ONGLET_DU_CONTROLE['terre_protections']
+    if code.startswith(('TRONCON_', 'CHUTE_')):
+        return 'Revoir les sections de câble', _ONGLET_DU_CONTROLE['chutes_tension']
+    if code in ('POLYSTRING', 'CH_PANS_PARTAGENT_UNE_ENTREE', 'AFFECTATION_REFUSEE'):
+        return 'Revoir l’affectation des chaînes', _ONGLET_DU_CONTROLE['verdict_electrique']
+    if code == 'voc_cold_under_vmax':
+        return 'Revoir les chaînes', _ONGLET_DU_CONTROLE['verdict_electrique']
+    if code == 'vmp_hot_over_mppt_min':
+        return GESTE_TENSION_CHAUD, _ONGLET_DU_CONTROLE['verdict_electrique']
+    return defaut, _ONGLET_DU_CONTROLE['verdict_electrique']
+
+
+def _points_du_dossier(motifs, defaut):
+    """T4-U4-007 — les points que « Bloquant : N » / « À compléter » comptent :
+    code, phrase du verdict (servie telle quelle), geste et onglet."""
+    from .etat_dossier_electrique import motifs_comptes
+
+    points = []
+    for motif in motifs_comptes(motifs):
+        geste, onglet = _geste_et_onglet(motif.get('code'), motif.get('libelle'), defaut)
+        points.append({'code': motif.get('code'), 'phrase': motif.get('libelle') or '',
+                       'geste': geste,
+                       'cible': {'etape': 'electrique', 'onglet': onglet, 'champ': ''}})
+    return points
+
+
 def _verdict_electrique(publication):
     from .etat_dossier_electrique import ETATS_DOSSIER
 
@@ -289,13 +326,17 @@ def _verdict_electrique(publication):
     libelle = 'Dossier électrique'
     if etat == ETATS_DOSSIER[0]:
         return _elec('verdict_electrique', libelle, 'ok', 'Prêt')
+    geste = ('Compléter le dossier électrique' if etat == ETATS_DOSSIER[1]
+             else 'Corriger le dossier électrique')
+    detail = _points_du_dossier(publication.get('motifs'), geste)
+    cause = detail[0]['phrase'] if detail else ''
     if etat == ETATS_DOSSIER[1]:
         # ACAL1539 — « À compléter » seul : les motifs sont détaillés au Verdict.
         return _elec('verdict_electrique', libelle, 'a_regler', 'À compléter',
-                     geste='Compléter le dossier électrique')
+                     geste=geste, cause=cause, points=detail)
     return _elec('verdict_electrique', libelle, 'bloquant',
-                 'Bloquant : %d' % points,
-                 geste='Corriger le dossier électrique')
+                 'Bloquant : %d' % points, geste=geste, cause=cause,
+                 points=detail)
 
 
 def _tension_froid(verdicts):

@@ -38,7 +38,8 @@ from apps.ventes.moteur_ci.taille import HORIZON_MARGINAL_CI
 from .etude_ci_batterie import CLE as CLE_OPTION_AVEC, CLE_BANQUE_RECOMMANDEE, option_avec_de_l_etude
 from .sensibilites_option_avec import scenarios_du_devis
 from .regles_calcul import REGLES_CORRIGEES_2710, REGLES_CYCLES_BATTERIE_1911, REGLES_RETOURS_3010B, regles_au_moins
-from .etude_ci_visite import _couche_visite, froid_du_site, hypotheses_de_la_combinaison
+from .etude_ci_visite import (_couche_visite, froid_du_site, hypotheses_de_la_combinaison,
+                              message_consommation_absente)
 
 logger = logging.getLogger(__name__)
 
@@ -1435,9 +1436,8 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
                              bloc_figee=production_figee_rasante, source_figee=source_production_figee)
 
     if conso is None:
-        alertes.append(_alerte('consommation_absente', 'consommation',
-                               'Consommation non déclarée : aucune taille calculée.',
-                               niveau='bloquant'))
+        alertes.append(_alerte('consommation_absente', 'consommation',  # T4-U2-021 : MT + facture
+                               message_consommation_absente(res), niveau='bloquant'))
         etude = _vide_etude(res, alertes, hypotheses)
         etude['production'] = production
         return _sans_cles_interdites(_json(etude))
