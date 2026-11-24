@@ -135,27 +135,27 @@ class CibleDuLeadTest(BaseApiCalepinage):
         self.assertEqual(ConceptionLead.objects.filter(lead=lead).count(), 1)
 
 
-def _valeurs(nb, watt=550, onduleur=None, longueur=None):
+def _valeurs(nb, watt=550, onduleur=None, longueur=None, module=None, ratio=None):
     """La table §2 d'UNE option (contrat ``conception_lead.json``), valeurs posées."""
     def v(valeur, unite=None, source='moteur'):
         return {'valeur': valeur, 'unite': unite, 'source': source}
     onduleurs = [onduleur] if onduleur else []
     return {'nb_panneaux': v(nb, 'panneaux'), 'puissance_kwc': v(round(nb * watt / 1000, 2), 'kWc'),
-            'module': v('Panneau Jinko %sW' % watt), 'onduleurs': v(onduleurs),
+            'module': v(module or 'Panneau Jinko %sW' % watt), 'onduleurs': v(onduleurs),
             'nombre_onduleurs': v(sum(o['quantite'] for o in onduleurs), 'onduleurs'),
             'chaines': v({'nombre': 1, 'longueurs': [longueur], 'longueur': longueur} if longueur else None),
-            'ratio_dc_ac': v(None), 'production_annuelle': v(round(nb * watt * 1.6, 1), 'kWh/an')}
+            'ratio_dc_ac': v(ratio), 'production_annuelle': v(round(nb * watt * 1.6, 1), 'kWh/an')}
 
 
 def ranger_conception(*, lead=None, calepinage=None, nb=10, etat='complet', refus=None, option='sans',
-                      avec=None, **par_option):
+                      avec=None, par_avec=None, **par_option):
     """ACAL2012 — une version COURANTE de la conception rangée par l'écrivain du modèle
     (``ConceptionLead.ranger``), valeurs posées : la fabrique des tests du calepinage."""
     from apps.ventes.models import ConceptionLead
 
     valeurs = {} if etat != 'complet' else {'sans': _valeurs(nb, **par_option)}
     if etat == 'complet' and avec is not None:
-        valeurs['avec'] = _valeurs(avec, **par_option)
+        valeurs['avec'] = _valeurs(avec, **dict(par_option, **(par_avec or {})))
     porteur = ({'lead': lead} if lead is not None
                else {'calepinage_id': calepinage.pk, 'company': calepinage.company})
     return ConceptionLead.ranger(

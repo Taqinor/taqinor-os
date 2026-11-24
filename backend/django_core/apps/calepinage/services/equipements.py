@@ -135,6 +135,66 @@ def conception_retenue_par_id(devis_id, company):
     return conception_retenue_du_devis_id(devis_id, company)
 
 
+#: ACAL2013 — la provenance d'un matériel servi par la conception du moteur unique.
+PROVENANCE_MOTEUR = 'moteur'
+
+
+def _module_par_designation(company, designation):
+    """Le produit MODULE de la société dont le nom est ``designation`` (la conception
+    nomme son module par la désignation de sa ligne), ou ``None`` (absent, ambigu)."""
+    from apps.stock.selectors import produits_par_type_fiche_qs
+
+    nom = (designation or '').strip() if isinstance(designation, str) else ''
+    if company is None or not nom:
+        return None
+    trouves = list(produits_par_type_fiche_qs(company, 'module').filter(nom__iexact=nom)
+                   .values_list('pk', flat=True)[:2])
+    return trouves[0] if len(trouves) == 1 else None
+
+
+def materiel_de_la_conception(calepinage):
+    """ACAL2013 (D-ACAL-97) — le matériel que la conception COURANTE retient (option du
+    moteur), DÉFAUT du calcul électrique quand rien n'est désigné : ``{produits: {module?,
+    onduleur?}, nombre_onduleurs, longueur}`` lus sur ``valeurs`` (contrat
+    ``conception_lead.json`` : ``module``, ``onduleurs``, ``nombre_onduleurs``,
+    ``chaines``) ; ``{}`` sans conception complète. Le devis lié n'est pas lu."""
+    from .devis_retenu import conception_du_calepinage
+
+    conception = conception_du_calepinage(calepinage) if calepinage is not None else None
+    if not conception or conception.get('etat') != 'complet':
+        return {}
+    valeurs = (conception.get('valeurs') or {}).get(conception.get('option_retenue')) or {}
+    cles = ('module', 'onduleurs', 'nombre_onduleurs', 'chaines')
+    lu = {cle: (valeurs.get(cle) or {}).get('valeur') for cle in cles}
+    produits = {}
+    onduleurs = [o for o in lu['onduleurs'] or [] if isinstance(o, dict) and o.get('produit')]
+    if onduleurs:
+        produits['onduleur'] = onduleurs[0]['produit']
+    module = _module_par_designation(getattr(calepinage, 'company', None), lu['module'])
+    if module is not None:
+        produits['module'] = module
+    return {'produits': produits, 'nombre_onduleurs': lu['nombre_onduleurs'] or None,
+            'longueur': (lu['chaines'] or {}).get('longueur') or None}
+
+
+def options_de_la_conception(options, calepinage, donnees):
+    """ACAL2013 — les options du noyau complétées par la CONCEPTION : sans onduleur
+    désigné, le nombre d'onduleurs et la longueur de chaîne sont ceux de la conception
+    courante. Une désignation d'onduleur SAISIE garde la main ; une option saisie n'est
+    jamais remplacée."""
+    if (donnees or {}).get('onduleur_produit') not in (None, ''):
+        return options
+    materiel = materiel_de_la_conception(calepinage)
+    if not (materiel.get('produits') or {}).get('onduleur'):
+        return options
+    options = dict(options)
+    if 'nombre_onduleurs' not in options and (materiel.get('nombre_onduleurs') or 0) >= 1:
+        options['nombre_onduleurs'] = materiel['nombre_onduleurs']
+    if 'longueur_forcee' not in options and materiel.get('longueur'):
+        options['longueur_forcee'] = materiel['longueur']
+    return options
+
+
 def borne_dc_ac_devis(mode_installation=None):
     """ACAL1954 — la borne DC/AC du MOTEUR DE DEVIS (porte de lecture
     ``apps.ventes.selectors_calepinage.borne_dc_ac_du_moteur_devis``)."""

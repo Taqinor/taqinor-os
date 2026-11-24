@@ -998,7 +998,9 @@ class AgregatTest(SimpleTestCase):
                 (PUBLIABLE, (publication, None, materiel)), (SERVI, {}),
                 (TRONCONS, {}), (DOSSIERS, {'dossiers': []}),
                 (MESURES, {'kwc': None, 'pans': []}), (LEAD, object()),
-                (CIBLE, _cible()), (HYPOTHESES, [])):
+                (CIBLE, _cible()), (HYPOTHESES, []),
+                # ACAL2013 — le matériel par défaut vient de la conception (lue en base).
+                ('apps.calepinage.services.electrique.materiel_de_la_conception', {})):
             pile.enter_context(mock.patch(cible, return_value=valeur))
         return pile
 

@@ -62,7 +62,8 @@ from . import (hors_reseau_declaration as _hors_reseau_declaration,  # ACAL790
 from .regle_chaine_publiee import _regle_chaine_publiee  # ACAL645 — extraite
 from .valeurs import nombre as _nombre
 from .devis_retenu import (bloc_devis_retenu, bloc_production_devis,  # ACAL1952-1956
-                           longueur_du_devis_lie, options_avec_devis, produits_retenus)
+                           longueur_du_devis_lie, produits_retenus)
+from .equipements import PROVENANCE_MOTEUR, materiel_de_la_conception, options_de_la_conception  # ACAL2013
 
 __all__ = [
     'SOURCE_SAISIE', 'SOURCE_TMY', 'MENTION_NON_SOURCEE',
@@ -1069,12 +1070,11 @@ def _produits_du_devis(calepinage):
 def resoudre_materiel(company, entree, *, calepinage=None):
     """Les blocs de fiche technique du matériel RETENU, bornés société.
 
-    D-ACAL-10 / ACAL56 — par rôle (module, onduleur, optimiseur) : la
-    désignation EXPLICITE de l'entrée (``<rôle>_produit``) d'abord ; sinon la
-    ligne du DEVIS LIÉ à ``calepinage`` (provenance ``'devis'``, recalculée à
-    chaque lecture : changer la ligne du devis change le calcul) ; sinon le
-    rôle est ABSENT et le message nomme le geste. L'optimiseur n'est jamais
-    réclamé (il est optionnel).
+    D-ACAL-10 / ACAL56 / ACAL2013 — par rôle : la désignation EXPLICITE de
+    l'entrée (``<rôle>_produit``) d'abord ; sinon le matériel de la CONCEPTION
+    courante (provenance ``'moteur'``, ``equipements.materiel_de_la_conception`` :
+    le devis lié n'est plus lu) ; sinon le module POSÉ ; sinon le rôle est ABSENT
+    et le message nomme le geste. L'optimiseur n'est jamais réclamé.
 
     Lecture cross-app par SÉLECTEUR (``apps.stock.selectors``) uniquement :
     ``get_produit_scoped`` (donc jamais un produit d'une autre société) puis
@@ -1086,22 +1086,22 @@ def resoudre_materiel(company, entree, *, calepinage=None):
     — ``absents`` nomme EN FRANÇAIS le matériel manquant ou introuvable.
     """
     from apps.stock.selectors import get_produit_scoped, specs_for_produit
-    from .modules_pans import repli_materiel  # T4-B4-007 : devis, puis module posé
+    from .modules_pans import repli_materiel  # T4-B4-007 : conception, puis module posé
 
     blocs = {'module': {}, 'onduleur': {}, 'optimiseur': None}
     designations = {role: '' for role in ROLES_MATERIEL}
     produits = {role: None for role in ROLES_MATERIEL}
     provenances = {role: None for role in ROLES_MATERIEL}
     skus = {role: None for role in ROLES_MATERIEL}  # ACAL662
-    absents = []
-    du_devis = None
+    absents, du_moteur = [], None
     for role in ROLES_MATERIEL:
         identifiant = (entree or {}).get('%s_produit' % role)
         provenance = PROVENANCE_EXPLICITE
         if identifiant in (None, ''):
-            if du_devis is None:
-                du_devis = _produits_du_devis(calepinage)
-            identifiant, provenance = repli_materiel(role, du_devis, calepinage)
+            if du_moteur is None:
+                du_moteur = materiel_de_la_conception(calepinage).get('produits') or {}
+            identifiant, provenance = repli_materiel(role, du_moteur, calepinage)
+            provenance = PROVENANCE_MOTEUR if provenance == PROVENANCE_DEVIS else provenance
         if identifiant in (None, ''):
             if role != 'optimiseur':
                 absents.append('%s non désigné — %s'
@@ -1390,7 +1390,7 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
         # ACAL650 — tolérance d'orientation SAISIE (sourcée) ou None.
         tolerance_orientation_deg=tolerance_orientation_societe(
             parametres_societe(calepinage)),
-        **options_avec_devis(_options_entree(donnees), calepinage, donnees),  # ACAL1952
+        **options_de_la_conception(_options_entree(donnees), calepinage, donnees),  # ACAL2013
         **_options_batterie(calepinage, donnees, materiel))
     return (_nommer_module_pose(conception, materiel, document), materiel, donnees, document)
 

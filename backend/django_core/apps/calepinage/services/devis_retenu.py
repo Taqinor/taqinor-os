@@ -61,10 +61,13 @@ def conception_du_calepinage(calepinage):
     ``apps.ventes.selectors.conception_courante`` (contrat ``conception_lead.json``) ;
     ``None`` sans version rangée ou pour un dossier d'appel d'offres (hors moteur).
     Lue UNE fois par instance ; rien n'est écrit."""
+    from django.db.models import Model
+
     from apps.ventes.selectors import conception_courante
 
     company = getattr(calepinage, 'company', None)
-    if company is None or getattr(calepinage, 'appel_offre_id', None):
+    # Une société qui n'est pas une ligne enregistrée (double de calcul pur) ne se lit pas en base.
+    if not isinstance(company, Model) or not company.pk or getattr(calepinage, 'appel_offre_id', None):
         return None
     lead_id = getattr(calepinage, 'lead_id', None)
     cle = (lead_id, getattr(calepinage, 'pk', None))
@@ -198,25 +201,6 @@ def longueur_du_devis_lie(calepinage):
     """ACAL1953 — la longueur de chaîne du devis lié (conception électrique
     rangée de l'option retenue), ou ``None`` : sans elle, aucun écart."""
     return _longueur_du_devis(conception_du_devis_lie(calepinage))
-
-
-def options_avec_devis(options, calepinage, donnees):
-    """ACAL1952 — les options du noyau complétées par le DEVIS : sans saisie,
-    le nombre d'onduleurs et la longueur de chaîne sont ceux du devis lié. Une
-    désignation d'onduleur SAISIE garde la main (le devis ne dimensionne plus
-    un autre appareil) ; une option saisie n'est jamais remplacée."""
-    if (donnees or {}).get('onduleur_produit') not in (None, ''):
-        return options
-    conception = conception_du_devis_lie(calepinage)
-    onduleur = _onduleur_retenu(conception)
-    if onduleur is None:
-        return options
-    options = dict(options)
-    if 'nombre_onduleurs' not in options and onduleur['quantite'] >= 1:
-        options['nombre_onduleurs'] = onduleur['quantite']
-    if 'longueur_forcee' not in options and _longueur_du_devis(conception):
-        options['longueur_forcee'] = _longueur_du_devis(conception)
-    return options
 
 
 def bloc_devis_retenu(calepinage, stockee, resolu):
