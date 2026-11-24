@@ -204,8 +204,29 @@ class Lecture:
                 fige = acte.contenu_ar if langue == 'ar' else acte.contenu
                 if fige and isinstance(fige.get('garanties'), list):
                     return fige['garanties']
-            return _construire(acte, langue, self).get('garanties')
+            return self._contrat_vivant(acte, langue).get('garanties')
         return self._une_fois(('garanties_contrat', langue), lire)
+
+    def _contrat_vivant(self, acte, langue):
+        return self._une_fois(('contrat_vivant', langue),
+                              lambda: _construire(acte, langue, self))
+
+    def reserve_du_contrat(self):
+        """La réserve de propriété du CONTRAT du chantier — son contenu figé
+        s'il est émis ou signé, sinon son brouillon ; None sans contrat. Une
+        seule par chantier : livraison, réception et clôture la reprennent,
+        comme les garanties."""
+        def lire():
+            acte = self._acte(T.CONTRAT)
+            if acte is None:
+                return None
+            options = ((acte.contenu or {}).get('options')
+                       if acte.statut in (T.EMIS, T.SIGNE) else None)
+            if not isinstance(options, dict) \
+                    or 'reserve_propriete' not in options:
+                options = self._contrat_vivant(acte, 'fr')['options']
+            return options.get('reserve_propriete') is not False
+        return self._une_fois('reserve_contrat', lire)
 
     def date_reception_signee(self):
         """Le jour où le procès-verbal de réception a été SIGNÉ, ou None."""
@@ -1273,7 +1294,7 @@ def _articles_et_quitus(contenu, textes, ctx, langue, s_modele, s_acte):
                'entrees': entrees or [], 'masques': masques, 'ctx': ctx,
                'connus': connus}
     if contenu['type'] == T.CLOTURE:
-        q_defaut = quitus_en_jetons(textes, ctx)
+        q_defaut = quitus_en_jetons(textes, ctx, contenu['options'])
         q_base = q_defaut
         if isinstance(s_modele.get('quitus'), list):
             q_base = [j for j, _s in resoudre_paragraphes(
@@ -1306,6 +1327,11 @@ def _construire(acte, langue='fr', lecture=None, *, avec_modele=True,
     modele = lecture.modele(acte.type) if avec_modele else None
     date_fixee = _appliquer_modeles_communs(contenu, acte, modele_contrat,
                                             modele)
+    if acte.type != T.CONTRAT:
+        # Une réserve de propriété par chantier : celle du CONTRAT (servie
+        # ici en lecture ; l'acte ne la règle plus — recette finale, S2).
+        contenu['options']['reserve_propriete'] = (
+            lecture.reserve_du_contrat() is not False)
     _sections_derivees(contenu, acte, lecture, vente, langue, date_fixee)
     textes = _textes(langue)
     _textes_par_defaut(contenu, textes, vente, langue)
