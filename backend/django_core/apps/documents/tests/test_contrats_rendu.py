@@ -209,6 +209,28 @@ class RenduPdfTests(unittest.TestCase):
         self.assertNotIn('&#x27;', texte)
         self.assertNotIn('&amp;', texte)
 
+    def test_brouillon_marque_chaque_page_meme_pagination(self):
+        """C2 : chaque page d'un brouillon porte « PROJET — document non
+        émis », sans page de plus ; un acte émis n'en porte aucune."""
+        for cle, contenu in exemples():
+            with self.subTest(exemple=cle):
+                contenu = copy.deepcopy(contenu)
+                contenu['brouillon'] = True
+                pages = pages_pdf(pdf_de(contenu))
+                mini, maxi = PAGES[contenu['type']]
+                self.assertTrue(mini <= len(pages) <= maxi, len(pages))
+                for numero, (texte, _tete) in enumerate(pages, start=1):
+                    self.assertIn('PROJET', texte, f'page {numero}')
+                contenu['brouillon'] = False
+                _n, texte = texte_pdf(pdf_de(contenu))
+                self.assertNotIn('PROJET', texte)
+
+    def test_cloture_non_soldee_trois_pages(self):
+        for langue in ('fr', 'ar'):
+            with self.subTest(langue=langue):
+                pages = pages_pdf(pdf_de(cloture_non_soldee(langue)))
+                self.assertEqual(len(pages), 3)
+
     def test_pdf_signe_porte_le_nom(self):
         contenu = copy.deepcopy(exemples()[0][1])
         contenu['signatures']['client'] = {
@@ -217,6 +239,52 @@ class RenduPdfTests(unittest.TestCase):
         _pages, texte = texte_pdf(pdf_de(contenu))
         self.assertIn('Youssef EL EXEMPLE', texte)
         self.assertIn('24 novembre 2026', texte)
+
+
+def cloture_non_soldee(langue='fr'):
+    """La clôture d'une vente dont 110 400 DH restent dus (recette C2)."""
+    from apps.documents.tests.test_contrats_arabe import _arabiser
+    contenu = exemple('cloture_garanties')
+    contenu['paiement'].update(total_regle='0.00', pourcentage_regle='0',
+                               exigible_maintenant='110400.00',
+                               reste_a_regler='110400.00')
+    return _arabiser(contenu) if langue == 'ar' else contenu
+
+
+class BrouillonEtClotureHtmlTests(unittest.TestCase):
+    """C2 (recette sur écran réel) : le brouillon se voit, la clôture d'une
+    vente non soldée n'atteste rien."""
+
+    def test_filigrane_sur_tout_brouillon_jamais_sur_un_acte_emis(self):
+        """Défaut attrapé : le brouillon du quitus se téléchargeait sans
+        aucune marque de projet."""
+        from apps.documents.contrats.rendu.libelles import libelle
+        for cle, langue, contenu in exemples_deux_langues():
+            with self.subTest(exemple=cle, langue=langue):
+                contenu = copy.deepcopy(contenu)
+                contenu['brouillon'] = True
+                html = html_de(contenu)
+                self.assertIn('class="filigrane-projet"', html)
+                self.assertIn(libelle('filigrane_projet', langue), html)
+                for valeur in (False, None):
+                    contenu['brouillon'] = valeur
+                    self.assertNotIn('class="filigrane-projet"',
+                                     html_de(contenu))
+
+    def test_cloture_non_soldee_n_atteste_rien(self):
+        """Défaut attrapé : avec 110 400 DH dus, le brouillon imprimait
+        « Payé intégralement 0,00 DH », le quitus et « propriété
+        définitivement acquise »."""
+        from apps.documents.contrats.rendu.libelles import libelle
+        for langue in ('fr', 'ar'):
+            with self.subTest(langue=langue):
+                html = html_de(cloture_non_soldee(langue))
+                self.assertIn(libelle('reste_a_regler_carte', langue), html)
+                self.assertIn(libelle('quitus_en_attente', langue,
+                                      montant='')[:20], html)
+                self.assertNotIn(libelle('paye_integralement', langue), html)
+                self.assertNotIn('définitivement acquise', html)
+                self.assertNotIn('class="encadre ok quitus"', html)
 
 
 class ReferencesDeLoiTests(unittest.TestCase):

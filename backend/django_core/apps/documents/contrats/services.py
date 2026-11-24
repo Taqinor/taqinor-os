@@ -215,17 +215,13 @@ def motif_refus_emission(acte, lecture, *, jumelle=None):
 
 # ── Modifier ────────────────────────────────────────────────────────────────
 
-#: Sections stockées en GABARIT (une valeur vivante redevient son repère).
-_SECTIONS_GABARIT = ('articles', 'quitus')
-
-
 def modifier(acte, surcharges, user=None, langue='fr'):
     """Applique des personnalisations à un BROUILLON : chaque section reçue
     remplace la sienne, ``None`` la remet au défaut. Les articles et le quitus
-    sont comparés à la base de l'acte (ses réglages communs — y compris ceux
-    reçus dans ce même corps — appliqués, ses textes non) : un texte non
-    modifié n'est pas stocké, un texte corrigé l'est en gabarit, pour qu'il ne
-    fige jamais une valeur de la vente."""
+    reçus sont la liste que l'écran affichait, corrigée : la correction est
+    rejouée sur les gabarits de ce qui était affiché
+    (``contenu.personnaliser``), pour qu'un texte corrigé ne fige jamais une
+    valeur de la vente et qu'un article non touché suive les options."""
     try:
         propre = K.valider_surcharges(acte.type, surcharges, langue)
     except K.ContenuInvalide as exc:
@@ -235,29 +231,7 @@ def modifier(acte, surcharges, user=None, langue='fr'):
         _garde_chantier(acte)
         _garde_brouillon(acte)
         champ = 'surcharges_ar' if langue == 'ar' else 'surcharges'
-        cible = dict(getattr(acte, champ) or {})
-        textes = {}
-        for section, valeur in propre.items():
-            if valeur is None:
-                cible.pop(section, None)
-            elif section in _SECTIONS_GABARIT:
-                textes[section] = valeur
-            else:
-                cible[section] = valeur
-        setattr(acte, champ, cible)
-        if textes:
-            base = K.base_de_comparaison(acte, langue)
-            if 'articles' in textes:
-                cible['articles'] = K.compacter_articles(
-                    base['articles'], textes['articles'], base['ctx'],
-                    base['reperes'])
-            if 'quitus' in textes:
-                if textes['quitus'] == base['quitus']:
-                    cible.pop('quitus', None)
-                else:
-                    cible['quitus'] = K.gabarits_textes(
-                        textes['quitus'], base['ctx'],
-                        base['reperes'].get(K.CLE_QUITUS, set()))
+        setattr(acte, champ, K.personnaliser(acte, propre, langue))
         acte.save(update_fields=[champ, 'updated_at'])
     return acte
 
@@ -610,27 +584,36 @@ def _cite(texte, valeurs):
 def _modele_de_langue(acte, langue, valeurs, ignores):
     surcharges = (acte.surcharges_ar if langue == 'ar' else acte.surcharges) or {}
     sortie = {}
+    effectifs = None
     for section, valeur in surcharges.items():
         if section in _HORS_MODELE:
             continue
+        if section in ('articles', 'quitus') and effectifs is None:
+            # Les textes effectifs, en gabarits contre les textes par
+            # défaut : les valeurs de ce chantier y sont des repères ; un
+            # texte dont le TEXTE TAPÉ cite encore ce chantier n'est pas
+            # repris.
+            effectifs = K.textes_pour_modele(acte, langue)
         if section == 'articles':
-            # Les articles effectifs, remis en gabarits contre les textes par
-            # défaut : les valeurs de ce chantier redeviennent des repères ;
-            # un texte qui en cite encore une en clair n'est pas repris.
-            effectifs = K.construire_contenu(acte, langue)['articles']
-            base = K.base_de_comparaison(acte, langue, avec_modele=False)
             gardes = []
-            for e in K.compacter_articles(base['articles'], effectifs,
-                                          base['ctx'], base['reperes']):
-                if 'paragraphes' in e and _cite(
-                        ' '.join([e['titre']] + e['paragraphes']), valeurs):
-                    titre = K.rendre_gabarit(e['titre'], base['ctx'], langue)
+            for e in effectifs['articles']:
+                if 'paragraphes' in e and _cite(K.texte_litteral(
+                        [e['titre']] + e['paragraphes']), valeurs):
+                    titre = effectifs['titres'].get(e['cle']) or e['cle']
                     ignores.append(f'article « {titre} »')
                     if e.get('base'):
                         gardes.append({'cle': e['cle']})
                     continue
                 gardes.append(e)
             sortie[section] = gardes
+        elif section == 'quitus':
+            quitus = effectifs['quitus']
+            if quitus is None:
+                continue
+            if _cite(K.texte_litteral(quitus), valeurs):
+                ignores.append(T.LIBELLES_SECTIONS.get(section, section))
+                continue
+            sortie[section] = quitus
         elif section == 'garanties':
             pose = [g for g in valeur if g.get('cle') == 'installation']
             if pose:
@@ -638,8 +621,8 @@ def _modele_de_langue(acte, langue, valeurs, ignores):
         elif section == 'delais':
             if valeur.get('detail'):
                 sortie[section] = {'detail': valeur['detail']}
-        elif section in ('quitus', 'titre', 'conseils_intro', 'entretien',
-                         'constats', 'conseils'):
+        elif section in ('titre', 'conseils_intro', 'entretien', 'constats',
+                         'conseils'):
             if _cite(json.dumps(valeur, ensure_ascii=False), valeurs):
                 ignores.append(T.LIBELLES_SECTIONS.get(section, section))
                 continue

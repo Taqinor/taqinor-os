@@ -15,6 +15,7 @@ Run :
 """
 import itertools
 import json
+import re
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -301,6 +302,35 @@ class MontantsTests(TestCase):
         v = Vente(self)
         self._verifier(v, Decimal('0.00'))
 
+    def test_facture_d_acompte_emise_d_un_autre_montant(self):
+        """C1 (recette sur écran réel) : une facture d'acompte émise d'un
+        montant un peu différent (96 DH de moins) ne réduit jamais la
+        tranche imprimée à « ce qu'il reste à facturer » : les montants des
+        tranches somment au prix et leurs cumuls égalent les cibles."""
+        v = Vente(self)
+        cible0 = v.plan()['tranches'][0]['cible_cumul_ttc']
+        acompte = cible0 - Decimal('96')
+        ht = (acompte / Decimal('1.2')).quantize(Decimal('0.01'))
+        Facture.objects.create(
+            company=v.company, reference=f'FAC-CTR-AC-{next(_seq)}',
+            devis=v.devis, client=v.client, statut=Facture.Statut.EMISE,
+            taux_tva=Decimal('20'), montant_ht=ht, montant_tva=acompte - ht,
+            montant_ttc=acompte)
+        plan = v.plan()
+        prix = plan['prix_convenu_ttc']
+        cibles = [t['cible_cumul_ttc'] for t in plan['tranches']]
+        for acte in v.actes():
+            for langue in T.LANGUES:
+                with self.subTest(acte=acte.type, variante=acte.variante,
+                                  langue=langue):
+                    c = K.construire_contenu(acte, langue)
+                    montants = [Decimal(t['montant_ttc'])
+                                for t in c['echeancier']]
+                    self.assertEqual(sum(montants), prix)
+                    cumuls = list(itertools.accumulate(montants))
+                    self.assertEqual(cumuls[:-1], cibles[:-1])
+                    self.assertGreater(montants[0], Decimal('1000'))
+
     def test_montants_acompte_regle(self):
         v = Vente(self)
         acompte = v.plan()['tranches'][0]['montant_ttc']
@@ -398,6 +428,37 @@ class FormeEtLanguesTests(TestCase):
         pose = [g for g in c['garanties'] if g['cle'] == 'installation'][0]
         self.assertEqual(pose['duree_mois'], 36)
         self.assertEqual(pose['fin'], '2029-12-21')
+
+
+class GarantiesDuContratTests(TestCase):
+
+    def test_cloture_suit_le_contrat_et_la_reception_signee(self):
+        """C3 par la base : la clôture prend les garanties du CONTRAT
+        (brouillon, puis contenu figé une fois signé) et part du jour où la
+        réception a été signée."""
+        v = Vente(self)
+        contrat = v.acte(T.CONTRAT)
+        garanties = [dict(g, duree_mois=36) if g['cle'] == 'installation'
+                     else g for g in K.construire_contenu(contrat)['garanties']]
+        S.modifier(contrat, {'garanties': garanties}, v.user)
+        ActeContractuel.objects.filter(pk=v.acte(T.RECEPTION).pk).update(
+            statut=T.SIGNE,
+            contenu={'signatures': {'client': {'signe_le': '2026-12-18'}}})
+
+        def pose(langue='fr'):
+            c = K.construire_contenu(v.acte(T.CLOTURE), langue)
+            return next(g for g in c['garanties']
+                        if g['cle'] == 'installation'), c
+        for langue in T.LANGUES:
+            ligne, c = pose(langue)
+            self.assertEqual((ligne['duree_mois'], ligne['fin']),
+                             (36, '2029-12-18'))
+            self.assertEqual(c['reception']['date'], '2026-12-18')
+        contrat = v.acte(T.CONTRAT)
+        ActeContractuel.objects.filter(pk=contrat.pk).update(
+            statut=T.SIGNE, contenu=K.construire_contenu(contrat),
+            contenu_ar=K.construire_contenu(contrat, 'ar'), surcharges={})
+        self.assertEqual(pose()[0]['duree_mois'], 36)
 
 
 @tag('pdf')
@@ -524,54 +585,91 @@ NB, FINE = ' ', ' '
 
 
 class GabaritTests(SimpleTestCase):
-    """Fonctions pures du gabarit (aucune base)."""
+    """Fonctions pures du gabarit et de l'alignement (aucune base)."""
 
-    def aller_retour(self, texte, ctx, prefere=()):
-        g = K.gabarit(texte, ctx, prefere)
-        self.assertEqual(K.rendre_gabarit(g, ctx), texte)
-        return g
+    def aligner_un(self, jetons, saisi, ctx):
+        return K.ecrire_gabarit(K.aligner([K.lire_gabarit(jetons)], [saisi],
+                                          ctx)[0])
 
-    def test_valeur_prefixe_d_une_autre(self):
-        petit, grand = f'9{FINE}850,00{NB}DH', f'59{FINE}850,00{NB}DH'
-        texte = f'Reste {petit}, soit sur {grand} au total.'
-        g = self.aller_retour(texte, {'reste': petit, 'total': grand})
-        self.assertEqual(g, 'Reste {reste}, soit sur {total} au total.')
-        # La petite valeur seule ne mord jamais dans la grande.
-        g = self.aller_retour(f'Sur {grand}.', {'reste': petit})
-        self.assertEqual(g, f'Sur {grand}.')
-        g = self.aller_retour(f'Sur 1{FINE}00{petit}.', {'reste': petit})
-        self.assertNotIn('{reste}', g)
+    def test_lecture_stricte_et_accolades(self):
+        """Défaut attrapé : le rendu par ``str.format`` évaluait tout texte
+        stocké ; les accolades tapées doivent survivre au rendu."""
+        ctx = {'societe': 'TAQINOR'}
+        self.assertEqual(K.rendre_gabarit('{societe} {{x}} {inconnu} {0}',
+                                          ctx), 'TAQINOR {x} {inconnu} {0}')
+        self.assertEqual(K.rendre_gabarit('{penalite_retard}', ctx),
+                         'à préciser')
+        texte = 'clause {spéciale} {societe} {{ }}'
+        self.assertEqual(K.rendre_gabarit(
+            K.ecrire_gabarit([('t', texte)]), ctx), texte)
 
-    def test_liste_des_tranches_sur_plusieurs_lignes(self):
-        liste = (f'- **30{NB}%**, soit 29{FINE}550,00{NB}DH, à la signature ;\n'
-                 f'- **70{NB}%**, soit 68{FINE}950,00{NB}DH, à la réception.')
-        ctx = {'liste_tranches': liste, 'acompte': f'29{FINE}550,00{NB}DH'}
-        g = self.aller_retour(f'Le prix est payé ainsi :\n{liste}\nMerci.',
-                              ctx)
-        self.assertEqual(g, 'Le prix est payé ainsi :\n{liste_tranches}\n'
-                            'Merci.')
+    def test_reperes_lus_dans_les_textes(self):
+        noms = K.noms_reperes()
+        for nom in ('liste_tranches', 'ecart_regle', 'contrat_du',
+                    'penalite_retard', 'total_regle', 'reste_a_regler'):
+            self.assertIn(nom, noms)
 
-    def test_valeur_vide_jamais_remplacee_et_accolades_gardees(self):
-        ctx = {'cndp': '', 'blanc': '  ', 'societe': 'TAQINOR'}
-        g = self.aller_retour('TAQINOR garde la clause {spéciale} et {0}.',
-                              ctx)
-        self.assertEqual(g, '{societe} garde la clause {{spéciale}} et {{0}}.')
+    def test_textes_par_defaut_en_jetons_rendus_a_l_identique(self):
+        """Les jetons des textes par défaut, rendus avec le contexte, sont
+        mot pour mot les textes de ``textes`` / ``textes_ar`` (toutes les
+        options)."""
+        from apps.documents.contrats import textes, textes_ar
+        ctx = dict(textes_ar.FORMES_CTX)
+        for module in (textes, textes_ar):
+            for type_acte, variante in CINQ_ACTES:
+                for opts in ({}, {'consommateur': False,
+                                  'reserve_propriete': False,
+                                  'raccorde_reseau': False,
+                                  'penalite_retard_pct': '2'}):
+                    with self.subTest(module=module.__name__,
+                                      acte=type_acte, opts=opts):
+                        attendu = module.articles_par_defaut(
+                            type_acte, variante, ctx, opts)
+                        jetons = K.articles_en_jetons(
+                            module, type_acte, variante, opts, ctx)
+                        self.assertEqual(
+                            [{'cle': a['cle'],
+                              'titre': K.rendre_jetons(a['titre'], ctx),
+                              'paragraphes': [K.rendre_jetons(p, ctx)
+                                              for p in a['paragraphes']]}
+                             for a in jetons], attendu)
 
-    def test_valeur_portee_par_deux_reperes(self):
-        v = f'9{FINE}850,00{NB}DH'
-        ctx = {'reste_a_regler': v, 'reste_apres_livraison': v}
-        self.assertEqual(self.aller_retour(f'Reste {v}.', ctx), f'Reste {v}.')
-        self.assertEqual(
-            self.aller_retour(f'Reste {v}.', ctx, {'reste_a_regler'}),
-            'Reste {reste_a_regler}.')
+    def test_aligner_valeurs_intactes_modifiees_vides(self):
+        """L'alignement : valeur intacte → repère ; valeur modifiée en son
+        milieu → texte ; repère vide ancré à son voisin."""
+        ctx = {'a': f'29{FINE}550,00{NB}DH', 'b': f'29{FINE}550,00{NB}DH',
+               'vide': ''}
+        g = '{a} puis {b}.{vide}'
+        self.assertEqual(self.aligner_un(g, f'29{FINE}550,00{NB}DH puis '
+                                         f'29{FINE}550,00{NB}DH. Merci.', ctx),
+                         '{a} puis {b}.{vide} Merci.')
+        # Valeur modifiée en son milieu : reprise en texte.
+        self.assertEqual(self.aligner_un(g, f'29{FINE}551,00{NB}DH puis '
+                                         f'29{FINE}550,00{NB}DH.', ctx),
+                         f'29{FINE}551,00{NB}DH puis {{b}}.{{vide}}')
+        # Phrase supprimée avec sa valeur.
+        self.assertEqual(self.aligner_un('Total {a}. Fin.', 'Fin.', ctx),
+                         'Fin.')
 
-    def test_contexte_arabe(self):
-        ctx = {'total_ttc': f'98{FINE}500,00{NB}درهم',
-               'societe': 'تاقينور', 'date_limite': '23 يناير 2027'}
-        texte = f'تلتزم تاقينور بثمن 98{FINE}500,00{NB}درهم قبل 23 يناير 2027.'
-        g = self.aller_retour(texte, ctx)
-        self.assertEqual(g, 'تلتزم {societe} بثمن {total_ttc} قبل '
-                            '{date_limite}.')
+    def test_espaces_normales_du_navigateur(self):
+        """Défaut attrapé par la recette sur écran réel : le navigateur
+        renvoie des espaces normales là où les montants portent des espaces
+        insécables et fines ; chaque montant non touché paraissait modifié
+        et devenait du texte figé."""
+        ctx = {'a': f'29{FINE}550,00{NB}DH', 'b': f'68{FINE}950,00{NB}DH'}
+        g = f'Payé{NB}: {{a}}, reste {{b}}.'
+        saisi = 'Payé : 29 550,00 DH, reste 68 950,00 DH. Merci.'
+        self.assertEqual(self.aligner_un(g, saisi, ctx),
+                         f'Payé{NB}: {{a}}, reste {{b}}. Merci.')
+
+    def test_acces_indexe_stocke_jamais_une_erreur(self):
+        """m5 : un texte stocké « {societe[x]} » levait TypeError dans
+        ``rendre_gabarit`` (erreur 500 à chaque lecture du brouillon)."""
+        ctx = {'societe': 'TAQINOR', 'client': 'M. EXEMPLE'}
+        for texte in ('{societe[x]}', '{societe[0][1]}', '{client.nom}',
+                      '{0}', 'accolade { seule'):
+            with self.subTest(texte=texte):
+                self.assertIsInstance(K.rendre_gabarit(texte, ctx), str)
 
     def test_montants_du_texte(self):
         self.assertEqual(
@@ -622,8 +720,8 @@ class ArticlesGabaritsTests(TestCase):
         acte.refresh_from_db()
         stocke = next(a for a in acte.surcharges['articles']
                       if a['cle'] == 'paiement')
-        self.assertTrue(any('{liste_tranches}' in p
-                            for p in stocke['paragraphes']), stocke)
+        # Le paragraphe de la liste, non touché, reste un renvoi vivant.
+        self.assertIn({'defaut': 1}, stocke['paragraphes'])
         Devis.objects.filter(pk=v.devis.pk).update(echeancier=[
             {'libelle': 'Acompte', 'type': 'acompte', 'pct_or_montant': 40},
             {'libelle': 'Livraison du matériel', 'type': 'materiel',
@@ -685,6 +783,27 @@ class ArticlesGabaritsTests(TestCase):
         self.assertIn('propriete', [a['cle'] for a in K.construire_contenu(
             acte)['articles']])
 
+    def test_service_options_et_liste_affichee_meme_corps(self):
+        """B1 par le service réel : le corps de l'écran (options + liste
+        ENTIÈRE affichée, un article corrigé) ne fige plus l'article
+        « Retard » avec sa pénalité retirée."""
+        v = Vente(self)
+        acte = v.acte(T.CONTRAT)
+        S.modifier(acte, {'options': {'penalite_retard_pct': '10'}}, v.user)
+        acte.refresh_from_db()
+        affiches = K.construire_contenu(acte)['articles']
+        S.modifier(acte, {'options': {'reserve_propriete': True,
+                                      'delai_execution_jours': 30,
+                                      'penalite_retard_pct': None},
+                          'articles': corriger(affiches, 'objet')}, v.user)
+        acte.refresh_from_db()
+        contenu = K.construire_contenu(acte)
+        self.assertNotIn('indemnité', texte_article(contenu, 'retard'))
+        self.assertIn('Texte ajouté par le commercial.',
+                      texte_article(contenu, 'objet'))
+        self.assertEqual([e for e in acte.surcharges['articles']
+                          if len(e) > 1][0]['cle'], 'objet')
+
     def test_article_supprime_reste_supprime(self):
         v = Vente(self)
         acte = v.acte(T.CONTRAT)
@@ -724,7 +843,9 @@ class ArticlesGabaritsTests(TestCase):
         envoye = [quitus[0] + ' Merci de votre confiance.'] + quitus[1:]
         S.modifier(acte, {'quitus': envoye}, v.user)
         acte.refresh_from_db()
-        self.assertIn('{client}', acte.surcharges['quitus'][0])
+        self.assertEqual(acte.surcharges['quitus'][0]['defaut'], 0)
+        self.assertIn('{client}', acte.surcharges['quitus'][0]['texte'])
+        self.assertEqual(acte.surcharges['quitus'][1], {'defaut': 1})
         self.assertEqual(K.construire_contenu(acte)['quitus'], envoye)
         S.modifier(acte, {'quitus': quitus}, v.user)  # retour au défaut
         acte.refresh_from_db()
@@ -996,3 +1117,793 @@ class TrancheRegleeTests(TestCase):
                    if 'FOR UPDATE' in q['sql'] and 'pv_livraison' in q['sql']]
         self.assertTrue(verrous, [q['sql'] for q in requetes.captured_queries
                                   if 'FOR UPDATE' in q['sql']])
+
+
+# ── Harnais pur : le contenu d'un acte sans base de données ─────────────────
+# Les lectures vivantes (société, vente, modèles) sont servies par
+# ``LecturePure`` ; l'acte et le chantier sont de simples objets. Tout ce qui
+# suit tourne dans un conteneur sans base (``SimpleTestCase``).
+
+def vente_pure(prix='100000', pcts=(30, 60, 10),
+               cles_=('acompte', 'materiel', 'solde'), paiements=(),
+               avoirs='0'):
+    """Une vente comme ``Lecture.vente`` la rend (montants Decimal)."""
+    from apps.ventes.utils.echeancier import TRANCHE_LABELS
+    prix, cumul, tranches = Decimal(prix), Decimal(0), []
+    for i, (pct, key) in enumerate(zip(pcts, cles_)):
+        montant = (prix * Decimal(pct) / 100).quantize(Decimal('0.01'))
+        if i == len(pcts) - 1:
+            montant = prix - cumul
+        cumul += montant
+        tranches.append({'cle': f't{i + 1}', 'key': key,
+                         'libelle': TRANCHE_LABELS[key], 'montant': montant,
+                         'cible': cumul, 'pourcentage': Decimal(pct)})
+    lignes = [{'date': jour, 'libelle': 'Paiement', 'mode': 'Virement',
+               'montant': f'{Decimal(m):.2f}', '_key': ''}
+              for jour, m in paiements]
+    paye = sum((Decimal(m) for _j, m in paiements), Decimal('0.00'))
+    avoirs = Decimal(avoirs)
+    ht = (prix / Decimal('1.2')).quantize(Decimal('0.01'))
+    return {'prix_ttc': prix, 'prix_ht': ht, 'tva': prix - ht, 'paye': paye,
+            'reste': max(Decimal('0.00'), prix - paye - avoirs),
+            'avoirs': avoirs, 'tranches': tranches, 'paiements': lignes,
+            'reglements': K.reglements(lignes, paye)}
+
+
+class LecturePure(K.Lecture):
+    """Les lectures vivantes d'un chantier, servies sans base."""
+
+    def __init__(self, chantier, vente, *, modeles=None, date_contrat=None,
+                 garanties=None, societe='Solaire Exemple SARL',
+                 garanties_contrat=None, reception_signee=None):
+        super().__init__(chantier)
+        self._societe = societe
+        self._garanties_contrat = garanties_contrat or {}
+        self._reception_signee = reception_signee
+        self._vente = vente
+        self._modeles = modeles or {}
+        self._date_contrat = date_contrat
+        self._garanties = garanties if garanties is not None else [
+            {'designation': 'Onduleur', 'duree': '10 ans', 'detail': ''},
+            {'designation': 'Panneaux', 'duree': '12 ans', 'detail': ''}]
+
+    def profil(self):
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            nom=self._societe, adresse='12, rue des Exemples, '
+            'Casablanca', telephone='+212522000000',
+            email='contact@exemple.ma', instructions_paiement='', rib='',
+            banque='')
+
+    def logo_uri(self):
+        return ''
+
+    def modele(self, type_acte):
+        return self._modeles.get(type_acte)
+
+    def date_du_contrat(self):
+        return self._date_contrat
+
+    def composants(self):
+        return [{'designation': 'Panneau Canadian Solar 590 W',
+                 'marque': 'Canadian Solar', 'quantite': 10},
+                {'designation': 'Onduleur hybride Deye 6 kW',
+                 'marque': 'Deye', 'quantite': 1}]
+
+    def garanties_vente(self, langue):
+        return self._garanties
+
+    def garanties_du_contrat(self, langue):
+        return self._garanties_contrat.get(langue)
+
+    def date_reception_signee(self):
+        return self._reception_signee
+
+    def vente(self):
+        return self._vente
+
+
+def chantier_pur(**champs):
+    from types import SimpleNamespace
+    client = SimpleNamespace(
+        nom='EXEMPLE', prenom='Youssef', email='client@exemple.ma',
+        telephone='+212611223344', adresse='Villa 7, Bouskoura',
+        type_client='particulier', cin='BK000000', ice='', rc='',
+        if_fiscal='', contact_nom='', adresse_siege='')
+    devis = SimpleNamespace(reference='DEV-202611-0042',
+                            date_acceptation=date(2026, 11, 20),
+                            mode_installation='residentiel')
+    valeurs = dict(
+        pk=7, company_id=1, reference='CHT-2026-11-0007', client=client,
+        client_id=3, devis=devis, type_installation='residentiel',
+        site_adresse='Villa 7, Bouskoura', site_ville='Bouskoura',
+        puissance_installee_kwc=Decimal('5.90'),
+        date_pose_prevue=date(2026, 12, 10), duree_pose_jours=2,
+        date_mise_en_service=None, date_reception=date(2026, 12, 21),
+        garantie_installation_mois=None, garantie_installation_perimetre='',
+        annule=False)
+    valeurs.update(champs)
+    return SimpleNamespace(**valeurs)
+
+
+def acte_pur(type_acte, variante='', *, chantier=None, surcharges=None,
+             surcharges_ar=None):
+    from types import SimpleNamespace
+    return SimpleNamespace(type=type_acte, variante=variante, version=1,
+                           statut=T.BROUILLON,
+                           chantier=chantier or chantier_pur(),
+                           surcharges=surcharges or {},
+                           surcharges_ar=surcharges_ar or {})
+
+
+#: Les cinq actes du dossier : (type, variante).
+CINQ_ACTES = tuple((t, var) for t, var, _r in T.LIGNES_DOSSIER)
+
+
+# ── Avoirs : ce qui est dû ne dépasse jamais ce que la vente doit ───────────
+
+class AvoirsPursTests(SimpleTestCase):
+
+    def test_avoir_borne_le_du_dans_chaque_acte_et_langue(self):
+        """Défaut attrapé : ``situation`` ignorait les avoirs — la réception
+        disait « devoir 70 000,00 DH » quand la vente n'en devait plus que
+        50 000 (30 000 payés, avoir de 20 000)."""
+        vente = vente_pure(paiements=[('2026-12-02', '30000')],
+                           avoirs='20000')
+        self.assertEqual(vente['reste'], Decimal('50000.00'))
+        for type_acte, variante in CINQ_ACTES:
+            acte = acte_pur(type_acte, variante)
+            for langue in T.LANGUES:
+                with self.subTest(acte=type_acte, variante=variante,
+                                  langue=langue):
+                    c = K.construire_contenu(acte, langue,
+                                             LecturePure(acte.chantier, vente))
+                    p = c['paiement']
+                    for cle in ('exigible_maintenant', 'reste_a_regler'):
+                        if p.get(cle) is not None:
+                            self.assertLessEqual(Decimal(p[cle]),
+                                                 vente['reste'], cle)
+                    if 'restera_ensuite' in p:
+                        self.assertEqual(
+                            Decimal(p['exigible_maintenant'])
+                            + Decimal(p['restera_ensuite']),
+                            Decimal(p['reste_a_regler']))
+        recep = acte_pur(T.RECEPTION)
+        for langue in T.LANGUES:
+            c = K.construire_contenu(recep, langue,
+                                     LecturePure(recep.chantier, vente))
+            self.assertEqual(c['paiement']['exigible_maintenant'], '50000.00')
+            self.assertEqual(c['paiement']['reste_a_regler'], '50000.00')
+            solde = next(a for a in c['articles'] if a['cle'] == 'solde')
+            texte = '\n'.join(solde['paragraphes'])
+            self.assertIn(K.C.montant('50000', langue=langue), texte)
+            self.assertNotIn(K.C.montant('70000', langue=langue), texte)
+
+    def test_livraison_reste_a_regler_et_tranche_reglee(self):
+        """Défaut attrapé : la livraison « reste à régler » réclamait la
+        tranche entière (60 000) malgré un avoir qui ne laisse que 50 000
+        dus ; la variante « tranche réglée » annonçait un reste qui ignorait
+        l'avoir."""
+        vente = vente_pure(paiements=[('2026-12-02', '30000')],
+                           avoirs='20000')
+        acte = acte_pur(T.LIVRAISON, T.RESTE_A_REGLER)
+        p = K.construire_contenu(acte, 'fr', LecturePure(
+            acte.chantier, vente))['paiement']
+        self.assertEqual((p['exigible_maintenant'], p['restera_ensuite'],
+                          p['reste_a_regler']),
+                         ('50000.00', '0.00', '50000.00'))
+        acte = acte_pur(T.LIVRAISON, T.TRANCHE_REGLEE)
+        p = K.construire_contenu(acte, 'fr', LecturePure(
+            acte.chantier, vente))['paiement']
+        self.assertEqual(p['reste_a_regler'], '0.00')
+        # Sans avoir, rien ne change (30 / 60 / 10, acompte payé).
+        sans = vente_pure(paiements=[('2026-12-02', '30000')])
+        acte = acte_pur(T.LIVRAISON, T.RESTE_A_REGLER)
+        p = K.construire_contenu(acte, 'fr', LecturePure(
+            acte.chantier, sans))['paiement']
+        self.assertEqual((p['exigible_maintenant'], p['restera_ensuite'],
+                          p['reste_a_regler']),
+                         ('60000.00', '10000.00', '70000.00'))
+
+
+# ── L'écran réel : corps envoyés comme l'éditeur les envoie ─────────────────
+# frontend/src/pages/installations/contrats/sections.js : un enregistrement
+# qui touche une option ET un article envoie ``options`` et la liste ENTIÈRE
+# des articles telle que l'écran l'affichait (anciennes options, ancien
+# contexte), paragraphes coupés par ``texteVersParagraphes``.
+
+def texte_vers_paragraphes(texte):
+    """outils.js ``texteVersParagraphes``."""
+    sortie = []
+    for p in re.split(r'\n[ \t]*\n', texte):
+        p = re.sub(r'^\s*\n', '', re.sub(r'\s+$', '', p), count=1)
+        if p.strip():
+            sortie.append(p)
+    return sortie
+
+
+def articles_ecran(contenu, corrections=None):
+    """``SECTIONS.articles.lire`` puis ``ecrire`` ; ``corrections`` :
+    ``{cle: f(titre, texte) -> (titre, texte)}`` (ce que tape l'utilisateur
+    dans la zone de l'article)."""
+    sortie = []
+    for a in contenu['articles']:
+        titre, texte = a['titre'], '\n\n'.join(a['paragraphes'])
+        if corrections and a['cle'] in corrections:
+            titre, texte = corrections[a['cle']](titre, texte)
+        sortie.append({'cle': a['cle'], 'titre': titre,
+                       'paragraphes': texte_vers_paragraphes(texte)})
+    return sortie
+
+
+def options_ecran(contenu, **changements):
+    """``SECTIONS.options.lire`` puis ``ecrire``."""
+    o = contenu['options']
+    d = {'reserve_propriete': bool(o.get('reserve_propriete')),
+         'penalite_retard_pct': o.get('penalite_retard_pct')}
+    if contenu['type'] == T.CONTRAT and 'delai_execution_jours' in o:
+        d['delai_execution_jours'] = o['delai_execution_jours']
+    d.update(changements)
+    return d
+
+
+def ajouter(fin):
+    return lambda titre, texte: (titre, texte + fin)
+
+
+def remplacer(avant, apres):
+    return lambda titre, texte: (titre, texte.replace(avant, apres, 1))
+
+
+def article(contenu, cle):
+    a = next((a for a in contenu['articles'] if a['cle'] == cle), None)
+    return None if a is None else '\n'.join([a['titre']] + a['paragraphes'])
+
+
+class Ecran:
+    """Un brouillon pur, lu et enregistré comme l'écran le fait (même
+    chemin que ``services.modifier`` : validation puis ``personnaliser``)."""
+
+    def __init__(self, type_acte, variante='', vente=None, **lecture):
+        self.acte = acte_pur(type_acte, variante)
+        self.vente = vente or vente_pure()
+        self.lecture_kw = lecture
+
+    def lecture(self):
+        return LecturePure(self.acte.chantier, self.vente, **self.lecture_kw)
+
+    def lire(self, langue='fr'):
+        return K.construire_contenu(self.acte, langue, self.lecture())
+
+    def enregistrer(self, corps, langue='fr'):
+        propre = K.valider_surcharges(self.acte.type, corps, langue)
+        champ = 'surcharges_ar' if langue == 'ar' else 'surcharges'
+        setattr(self.acte, champ, K.personnaliser(self.acte, propre, langue,
+                                                  self.lecture()))
+        return getattr(self.acte, champ)
+
+    def figes(self):
+        return K.montants_figes(self.acte, self.lecture())
+
+
+class EcranOptionsEtArticlesTests(SimpleTestCase):
+    """B1 : options et articles dans le même corps."""
+
+    def test_penalite_retiree_et_autre_article_corrige(self):
+        """Défaut attrapé : l'article « Retard » (non touché) était comparé à
+        une base SANS pénalité, paraissait modifié et restait figé avec son
+        paragraphe de pénalité."""
+        e = Ecran(T.CONTRAT)
+        e.enregistrer({'options': options_ecran(e.lire(),
+                                                penalite_retard_pct=10)})
+        c = e.lire()
+        self.assertIn('indemnité', article(c, 'retard'))
+        e.enregistrer({'options': options_ecran(c, penalite_retard_pct=None),
+                       'articles': articles_ecran(c, {'objet': ajouter(
+                           ' Accès par le portail nord.')})})
+        c = e.lire()
+        self.assertNotIn('indemnité', article(c, 'retard'))
+        self.assertIn('portail nord', article(c, 'objet'))
+        self.assertEqual(e.figes(), [])
+
+    def test_reserve_de_propriete_decochee_puis_recochee(self):
+        """Défaut attrapé : réserve de propriété décochée + un article
+        corrigé dans le même corps → l'article « Propriété » restait
+        imprimé."""
+        e = Ecran(T.CONTRAT)
+        c = e.lire()
+        ordre = [a['cle'] for a in c['articles']]
+        e.enregistrer({'options': options_ecran(c, reserve_propriete=False),
+                       'articles': articles_ecran(c, {'objet': ajouter(
+                           ' Accès nord.')})})
+        c = e.lire()
+        self.assertIsNone(article(c, 'propriete'))
+        self.assertFalse(any(x.get('retire')
+                             for x in e.acte.surcharges['articles']))
+        e.enregistrer({'options': options_ecran(c, reserve_propriete=True)})
+        c = e.lire()
+        self.assertEqual([a['cle'] for a in c['articles']], ordre)
+        self.assertIn('Accès nord.', article(c, 'objet'))
+
+    def test_penalite_changee_retard_intact_puis_corrige(self):
+        """Défaut attrapé : pénalité 0,5 → 2 avec l'article « Retard » non
+        touché : le texte gardait « 0,5 % » ; corrigé, il doit suivre aussi."""
+        pct = K.C.pourcent
+        e = Ecran(T.CONTRAT)
+        e.enregistrer({'options': options_ecran(e.lire(),
+                                                penalite_retard_pct=0.5)})
+        c = e.lire()
+        self.assertIn(pct('0.5'), article(c, 'retard'))
+        e.enregistrer({'options': options_ecran(c, penalite_retard_pct=2),
+                       'articles': articles_ecran(c, {'objet': ajouter(
+                           ' Accès nord.')})})
+        c = e.lire()
+        self.assertIn(pct('2'), article(c, 'retard'))
+        self.assertNotIn(pct('0.5'), article(c, 'retard'))
+        e.enregistrer({'options': options_ecran(c, penalite_retard_pct=3),
+                       'articles': articles_ecran(c, {'retard': remplacer(
+                           'mise en demeure écrite',
+                           'mise en demeure écrite et datée')})})
+        texte = article(e.lire(), 'retard')
+        self.assertIn('et datée', texte)
+        self.assertIn(pct('3'), texte)
+        self.assertNotIn(pct('2'), texte)
+        self.assertEqual(e.figes(), [])
+
+    def test_article_corrige_masque_par_l_option_puis_rendu(self):
+        """Un article corrigé qu'une option retire n'est plus imprimé, un
+        avertissement le dit, et il revient avec l'option — même après un
+        autre enregistrement de la liste (qui ne le montrait pas)."""
+        e = Ecran(T.CONTRAT)
+        e.enregistrer({'articles': articles_ecran(e.lire(), {
+            'propriete': ajouter(' Clause convenue.')})})
+        e.enregistrer({'options': options_ecran(e.lire(),
+                                                reserve_propriete=False)})
+        c = e.lire()
+        self.assertIsNone(article(c, 'propriete'))
+        avert = K.avertissements(e.acte, None, e.lecture())
+        self.assertTrue(any('Propriété du matériel' in a
+                            and "n'est pas imprimé" in a for a in avert),
+                        avert)
+        e.enregistrer({'articles': articles_ecran(c, {'objet': ajouter(
+            ' Accès nord.')})})
+        e.enregistrer({'options': options_ecran(e.lire(),
+                                                reserve_propriete=True)})
+        c = e.lire()
+        self.assertIn('Clause convenue.', article(c, 'propriete'))
+        self.assertIn('Accès nord.', article(c, 'objet'))
+
+
+class EcranMontantsTests(SimpleTestCase):
+    """M2 : une même valeur portée par deux repères ; le filet à
+    l'émission."""
+
+    def test_cinquante_cinquante_tranche_reglee_suit_les_paiements(self):
+        """Défaut attrapé : 50 / 50, article « Paiement » de la livraison
+        « tranche réglée » corrigé avant tout paiement — total réglé et reste
+        valent tous deux 50 000 : la valeur restait écrite en clair, et le
+        contrôle d'émission la laissait passer (égale à une tranche)."""
+        e = Ecran(T.LIVRAISON, T.TRANCHE_REGLEE,
+                  vente=vente_pure(pcts=(50, 50), cles_=('acompte', 'solde')))
+        c = e.lire()
+        cinquante = K.C.montant('50000')
+        self.assertEqual(article(c, 'paiement').count(cinquante), 2)
+        e.enregistrer({'articles': articles_ecran(c, {
+            'paiement': lambda t, x: (t, x.replace('Rien', 'Ainsi, rien', 1)
+                                      + ' Merci.')})})
+        e.vente = vente_pure(pcts=(50, 50), cles_=('acompte', 'solde'),
+                             paiements=[('2026-12-02', '60000')])
+        texte = article(e.lire(), 'paiement')
+        self.assertIn('Ainsi, rien', texte)
+        self.assertIn(K.C.montant('60000'), texte)
+        self.assertIn(K.C.montant('40000'), texte)
+        self.assertNotIn(cinquante, texte)
+        self.assertEqual(e.figes(), [])
+
+    def test_montant_modifie_en_son_milieu_refuse_meme_egal(self):
+        """Défaut attrapé : un montant repris à la main qui égale une autre
+        valeur vivante (une tranche) passait le contrôle d'émission."""
+        e = Ecran(T.LIVRAISON, T.TRANCHE_REGLEE,
+                  vente=vente_pure(pcts=(50, 50), cles_=('acompte', 'solde'),
+                                   paiements=[('2026-12-02', '50000')]))
+        cinquante = K.C.montant('50000')
+        e.enregistrer({'articles': articles_ecran(e.lire(), {
+            'paiement': remplacer(cinquante, cinquante.replace(',00', ''))})})
+        figes = e.figes()
+        self.assertEqual(len(figes), 1, figes)
+        self.assertIn('« Paiement »', figes[0][0])
+        self.assertEqual(figes[0][1], [Decimal('50000.00')])
+        refus = S.motif_refus_emission(e.acte, e.lecture(), jumelle=False)
+        self.assertEqual(refus[0], T.CODE_MONTANT_FIGE)
+        self.assertIn('écrit à la main', refus[1])
+
+    def test_espaces_normales_un_mot_change(self):
+        """Défaut attrapé par la recette sur écran réel : le texte revenu du
+        navigateur porte des espaces normales partout ; un seul mot changé,
+        aucun montant ne doit devenir du texte figé."""
+        e = Ecran(T.CONTRAT)
+
+        def respacer(titre, texte):
+            return titre, texte.replace(NB, ' ').replace(FINE, ' ')
+        corrections = {a['cle']: respacer for a in e.lire()['articles']}
+        corrections['prix'] = lambda t, x: respacer(t, x.replace(
+            'définitif', 'non révisable', 1))
+        e.enregistrer({'articles': articles_ecran(e.lire(), corrections)})
+        stockes = [x for x in e.acte.surcharges['articles'] if len(x) > 1]
+        self.assertEqual([x['cle'] for x in stockes], ['prix'])
+        p0 = stockes[0]['paragraphes'][0]
+        self.assertEqual(p0['defaut'], 0)
+        self.assertIn('{total_ttc}', p0['texte'])
+        self.assertEqual(e.figes(), [])
+        # Le montant garde ses espaces insécables (valeur vivante).
+        self.assertIn(f'**ferme et non révisable** : '
+                      f'{K.C.montant("100000")}', article(e.lire(), 'prix'))
+
+
+class EcranValeursVidesTests(SimpleTestCase):
+    """M3 : un repère dont la valeur était VIDE à l'enregistrement."""
+
+    def test_quitus_personnalise_avant_l_avoir(self):
+        """Défaut attrapé : quitus corrigé sans avoir (``ecart_regle`` vide)
+        puis un avoir : la phrase qui le nomme ne revenait jamais."""
+        payee = vente_pure(paiements=[('2026-12-20', '100000')])
+        e = Ecran(T.CLOTURE, vente=payee)
+        quitus = texte_vers_paragraphes('\n\n'.join(e.lire()['quitus']))
+        envoye = [quitus[0] + ' Merci de votre confiance.'] + quitus[1:]
+        e.enregistrer({'quitus': envoye})
+        self.assertEqual(e.lire()['quitus'], envoye)
+        e.vente = vente_pure(paiements=[('2026-12-20', '90000')],
+                             avoirs='10000')
+        premier = e.lire()['quitus'][0]
+        ecart = K.ecart_regle(Decimal('100000'), Decimal('90000'),
+                              Decimal('10000'), 'fr')
+        self.assertTrue(ecart)
+        self.assertIn(ecart + ' Merci de votre confiance.', premier)
+        e.vente = payee
+        e.enregistrer({'quitus': quitus})  # retour au défaut
+        self.assertNotIn('quitus', e.acte.surcharges)
+
+    def test_date_du_contrat_apparait_une_fois_emis(self):
+        """Défaut attrapé : article « Ce que vaut la réception » corrigé
+        avant l'émission du contrat (``contrat_du`` vide) : la date du
+        contrat n'était jamais imprimée ensuite."""
+        e = Ecran(T.RECEPTION)
+        e.enregistrer({'articles': articles_ecran(e.lire(), {
+            'portee': remplacer('En signant,', 'En signant ce document,')})})
+        e.lecture_kw['date_contrat'] = date(2026, 11, 24)
+        texte = article(e.lire(), 'portee')
+        self.assertIn('En signant ce document,', texte)
+        self.assertIn('CTR-2026-11-0007 du 24 novembre 2026', texte)
+
+
+class EcranTextesTests(SimpleTestCase):
+
+    def test_phrase_supprimee_avec_ses_reperes(self):
+        """Une phrase supprimée emporte ses repères ; le reste du paragraphe
+        suit toujours la société."""
+        e = Ecran(T.CONTRAT)
+        phrase = (' Si elle reste sans effet pendant huit jours, Solaire '
+                  'Exemple SARL peut suspendre')
+        texte = article(e.lire(), 'retard')
+        self.assertIn(phrase, texte)
+        fin = texte.index('propriété.', texte.index(phrase)) + len('propriété.')
+        coupe = texte[texte.index(phrase):fin]
+        e.enregistrer({'articles': articles_ecran(e.lire(), {
+            'retard': remplacer(coupe, '')})})
+        e.lecture_kw['societe'] = 'Nouveau Nom SARL'
+        texte = article(e.lire(), 'retard')
+        self.assertNotIn('sans effet', texte)
+        self.assertIn('date prévue, Nouveau Nom SARL adresse', texte)
+
+    def test_paragraphe_ajoute(self):
+        """Un paragraphe ajouté est du texte ; les autres restent des
+        renvois vivants."""
+        e = Ecran(T.CONTRAT)
+        e.enregistrer({'articles': articles_ecran(e.lire(), {
+            'objet': ajouter('\n\nUn paragraphe ajouté par le commercial.')})})
+        stocke = next(x for x in e.acte.surcharges['articles']
+                      if x['cle'] == 'objet')
+        self.assertEqual(stocke['paragraphes'],
+                         [{'defaut': 0}, {'defaut': 1}, {'defaut': 2},
+                          'Un paragraphe ajouté par le commercial.'])
+        e.lecture_kw['societe'] = 'Nouveau Nom SARL'
+        self.assertIn('Nouveau Nom SARL fournit', article(e.lire(), 'objet'))
+
+    def test_retablir_un_article_puis_tout_retablir(self):
+        """Corps de l'éditeur pour « Rétablir » : la liste ENTIÈRE, l'article
+        rétabli réduit à ``{cle}`` (= retour au texte par défaut, jamais une
+        suppression) ; « Tout rétablir » envoie ``articles: null``."""
+        e = Ecran(T.CONTRAT)
+        e.enregistrer({'articles': articles_ecran(e.lire(), {
+            'objet': ajouter(' Ajout A.'), 'prix': ajouter(' Ajout B.')})})
+        self.assertEqual(K.articles_personnalises(e.acte), ['objet', 'prix'])
+        corps = [{'cle': a['cle']} if a['cle'] == 'objet' else a
+                 for a in articles_ecran(e.lire())]
+        e.enregistrer({'articles': corps})
+        c = e.lire()
+        self.assertIn('objet', [a['cle'] for a in c['articles']])
+        self.assertNotIn('Ajout A.', article(c, 'objet'))
+        self.assertIn('Ajout B.', article(c, 'prix'))
+        self.assertEqual(K.articles_personnalises(e.acte), ['prix'])
+        e.enregistrer({'articles': None})
+        self.assertNotIn('articles', e.acte.surcharges)
+        self.assertEqual(K.articles_personnalises(e.acte), [])
+        self.assertNotIn('Ajout B.', article(e.lire(), 'prix'))
+
+    def test_modele_de_la_societe_garde_les_reperes(self):
+        """Un article corrigé devenu modèle garde ses repères : un autre
+        chantier imprime SA société et la correction."""
+        from types import SimpleNamespace
+        e = Ecran(T.CONTRAT)
+        e.enregistrer({'articles': articles_ecran(e.lire(), {
+            'objet': remplacer('fournit, pose', 'fournit, livre, pose')})})
+        modele = K.textes_pour_modele(e.acte, 'fr', e.lecture())
+        objet = next(x for x in modele['articles'] if x['cle'] == 'objet')
+        self.assertNotIn('Solaire Exemple', K.texte_litteral(
+            [objet['titre']] + objet['paragraphes']))
+        autre = Ecran(T.CONTRAT, societe='Autre Société SARL', modeles={
+            T.CONTRAT: SimpleNamespace(surcharges={'articles': modele[
+                'articles']}, surcharges_ar={})})
+        self.assertIn('Autre Société SARL fournit, livre, pose',
+                      article(autre.lire(), 'objet'))
+
+    def test_accolades_tapees(self):
+        """Des accolades tapées s'impriment telles quelles, jamais
+        substituées (même « {societe} »)."""
+        e = Ecran(T.CONTRAT)
+        e.enregistrer({'articles': articles_ecran(e.lire(), {
+            'objet': ajouter(' Clause {spéciale} et {societe}.')})})
+        self.assertIn(' Clause {spéciale} et {societe}.',
+                      article(e.lire(), 'objet'))
+
+    def test_ancienne_forme_stockee_lue_sans_erreur(self):
+        """Une entrée de l'ancienne forme (gabarit par valeurs) se lit,
+        rendue telle qu'elle est."""
+        e = Ecran(T.CONTRAT)
+        e.acte.surcharges = {'articles': [
+            {'cle': 'objet', 'titre': 'Objet du contrat', 'base': True,
+             'paragraphes': ['{societe} fournit tout. {{x}} {societe[x]}']}]}
+        self.assertIn('Solaire Exemple SARL fournit tout. {x} {societe[x]}',
+                      article(e.lire(), 'objet'))
+
+
+class EcranReperesApresPersonnalisationTests(SimpleTestCase):
+    """M4 : les repères lus APRÈS les personnalisations de l'acte."""
+
+    def test_modalites_de_paiement_personnalisees(self):
+        """Défaut attrapé : ``{modalites_paiement}`` était calculé avant la
+        personnalisation « paiement » : l'article Paiement contredisait
+        l'encadré du même contrat."""
+        e = Ecran(T.CONTRAT)
+        e.enregistrer({'paiement': {'modalites': 'Paiement par virement '
+                                                 'sur le compte convenu.'}})
+        c = e.lire()
+        self.assertEqual(c['paiement']['modalites'],
+                         'Paiement par virement sur le compte convenu.')
+        self.assertIn('Paiement par virement sur le compte convenu.',
+                      article(c, 'paiement'))
+
+    def test_garantie_d_installation_personnalisee_deux_langues(self):
+        """Défaut attrapé : ``{garantie_installation}`` était calculé avant
+        la personnalisation des garanties : l'article disait « 2 ans » quand
+        le tableau du même contrat disait 36 mois."""
+        e = Ecran(T.CONTRAT)
+        garanties = [dict(g, duree_mois=36) if g['cle'] == 'installation'
+                     else g for g in e.lire()['garanties']]
+        e.enregistrer({'garanties': garanties})
+        for langue in T.LANGUES:
+            with self.subTest(langue=langue):
+                c = e.lire(langue)
+                pose = next(g for g in c['garanties']
+                            if g['cle'] == 'installation')
+                self.assertEqual(pose['duree_mois'], 36)
+                texte = article(c, 'garanties')
+                self.assertIn(K.C.duree_mois(36, langue=langue), texte)
+                self.assertNotIn(K.C.duree_mois(24, langue=langue), texte)
+
+
+class EcheancierConvenuPursTests(SimpleTestCase):
+    """C1 (recette sur écran réel) : l'échéancier imprimé est celui CONVENU."""
+
+    def test_facture_d_acompte_d_un_montant_un_peu_different(self):
+        """Défaut attrapé : avec une facture d'acompte émise de 33 024 DH
+        (30 % de 110 400 = 33 120), chaque acte imprimait « Acompte
+        96,00 DH · 0,1 % » (ce qu'il restait à facturer), somme 77 376."""
+        plan = [  # forme de plan_facturation : montant_ttc = reste à faire
+            {'cle': 't1', 'key': 'acompte', 'libelle': 'Acompte',
+             'montant_ttc': Decimal('96.00'),
+             'cible_cumul_ttc': Decimal('33120.00')},
+            {'cle': 't2', 'key': 'materiel',
+             'libelle': 'Livraison du matériel',
+             'montant_ttc': Decimal('66240.00'),
+             'cible_cumul_ttc': Decimal('99360.00')},
+            {'cle': 't3', 'key': 'solde', 'libelle': 'Solde',
+             'montant_ttc': Decimal('11040.00'),
+             'cible_cumul_ttc': Decimal('110400.00')}]
+        tranches = K.tranches_convenues(plan, Decimal('110400'))
+        self.assertEqual([t['montant'] for t in tranches],
+                         [Decimal('33120.00'), Decimal('66240.00'),
+                          Decimal('11040.00')])
+        self.assertEqual(sum(t['montant'] for t in tranches),
+                         Decimal('110400.00'))
+        self.assertEqual([t['pourcentage'] for t in tranches],
+                         [Decimal('30.00'), Decimal('60.00'),
+                          Decimal('10.00')])
+        # La dernière prend le reste au centime, même si sa cible s'arrête
+        # avant le prix (facture d'acompte re-pointée).
+        plan[0]['cible_cumul_ttc'] = Decimal('33024.00')
+        plan[1]['cible_cumul_ttc'] = Decimal('99264.00')
+        plan[2]['cible_cumul_ttc'] = Decimal('110304.00')
+        tranches = K.tranches_convenues(plan, Decimal('110400'))
+        self.assertEqual(sum(t['montant'] for t in tranches),
+                         Decimal('110400.00'))
+        self.assertEqual(tranches[-1]['cible'], Decimal('110400.00'))
+
+    def test_frise_et_liste_des_tranches_deux_langues(self):
+        """La frise (``echeancier``) et la liste de l'article Paiement
+        portent les montants convenus, dans les deux langues."""
+        vente = vente_pure(prix='110400')
+        acte = acte_pur(T.CONTRAT)
+        for langue in T.LANGUES:
+            c = K.construire_contenu(acte, langue, LecturePure(
+                acte.chantier, vente))
+            self.assertEqual([t['montant_ttc'] for t in c['echeancier']],
+                             ['33120.00', '66240.00', '11040.00'])
+            texte = article(c, 'paiement')
+            for m in ('33120', '66240', '11040'):
+                self.assertIn(K.C.montant(m, langue=langue), texte)
+
+
+class ClotureNonSoldeePursTests(SimpleTestCase):
+    """C2 (recette sur écran réel)."""
+
+    def test_ecart_jamais_nomme_pour_une_somme_impayee(self):
+        """Défaut attrapé : 110 400 DH dus, le quitus disait « le reste,
+        110 400,00 DH, a été soldé par avoir, retenue à la source ou abandon
+        de créance »."""
+        self.assertEqual(K.ecart_regle(Decimal('110400'), Decimal('0'),
+                                       Decimal('0'), 'fr',
+                                       reste=Decimal('110400')), '')
+        self.assertTrue(K.ecart_regle(Decimal('100000'), Decimal('90000'),
+                                      Decimal('10000'), 'fr',
+                                      reste=Decimal('0')))
+        e = Ecran(T.CLOTURE, vente=vente_pure(prix='110400'))
+        for langue in T.LANGUES:
+            quitus = ' '.join(e.lire(langue)['quitus'])
+            self.assertNotIn('abandon de créance', quitus)
+            self.assertNotIn('بالتنازل عن الدين', quitus)
+
+    def test_drapeau_brouillon(self):
+        """Le contenu servi d'un brouillon porte ``brouillon: True`` (le PDF
+        se marque « PROJET ») ; le contenu que l'émission fige, False."""
+        acte = acte_pur(T.CLOTURE)
+        lecture = LecturePure(acte.chantier, vente_pure())
+        self.assertIs(K.contenu_de(acte, 'fr', lecture)['brouillon'], True)
+        self.assertIs(K.construire_contenu(acte, 'ar', lecture)['brouillon'],
+                      False)
+        acte.statut, acte.contenu = T.EMIS, {'brouillon': False}
+        self.assertIs(K.contenu_de(acte, 'fr', lecture)['brouillon'], False)
+
+
+class GarantiesDuContratPursTests(SimpleTestCase):
+    """C3 (recette sur écran réel) : une garantie par chantier."""
+
+    def test_cloture_reprend_les_garanties_du_contrat(self):
+        """Défaut attrapé : garantie d'installation portée à 36 mois sur le
+        contrat (signé), le certificat de la clôture imprimait « 2 ans » ;
+        sa date de départ restait « … » alors que la réception était
+        signée."""
+        contrat = Ecran(T.CONTRAT)
+        garanties = [dict(g, duree_mois=36) if g['cle'] == 'installation'
+                     else g for g in contrat.lire()['garanties']]
+        contrat.enregistrer({'garanties': garanties})
+        du_contrat = {langue: contrat.lire(langue)['garanties']
+                      for langue in T.LANGUES}
+        cloture = Ecran(T.CLOTURE, vente=vente_pure(
+            paiements=[('2026-12-21', '100000')]),
+            garanties_contrat=du_contrat,
+            reception_signee=date(2026, 12, 18))
+        # La clôture corrige un texte et tente une durée : seul le texte
+        # passe (les durées sont celles du contrat).
+        perso = [dict(g, detail='Pose et câblage.', duree_mois=6)
+                 if g['cle'] == 'installation' else g
+                 for g in cloture.lire()['garanties']]
+        cloture.enregistrer({'garanties': perso})
+        for langue in T.LANGUES:
+            with self.subTest(langue=langue):
+                c = cloture.lire(langue)
+                self.assertEqual(c['reception']['date'], '2026-12-18')
+                self.assertEqual([g['cle'] for g in c['garanties']],
+                                 [g['cle'] for g in du_contrat[langue]])
+                pose = next(g for g in c['garanties']
+                            if g['cle'] == 'installation')
+                self.assertEqual(pose['duree_mois'], 36)
+                self.assertEqual(pose['fin'], '2029-12-18')
+                if langue == 'fr':
+                    self.assertEqual(pose['detail'], 'Pose et câblage.')
+
+    def test_sans_reception_signee_la_date_du_chantier(self):
+        cloture = Ecran(T.CLOTURE)
+        self.assertEqual(cloture.lire()['reception']['date'], '2026-12-21')
+
+
+class FaitsFrancaisEnArabePursTests(SimpleTestCase):
+    """C4 (recette sur écran réel) : le document arabe n'omet aucun fait."""
+
+    def test_cases_reserves_et_conditions_saisies_en_francais(self):
+        """Défaut attrapé : les cases cochées en français, les réserves et
+        les conditions particulières tapées en français n'apparaissaient
+        pas dans le PDF arabe."""
+        e = Ecran(T.LIVRAISON, T.RESTE_A_REGLER)
+        constats = [dict(k, cochee=True) for k in e.lire()['constats']]
+        constats[1]['cochee'] = False
+        constats.append({'texte': 'Un carton abîmé, contenu intact.',
+                         'cochee': True})
+        e.enregistrer({'constats': constats,
+                       'reserves': ['Rayure sur le coffret onduleur.'],
+                       'conditions_particulieres': 'Accès par le portail.'})
+        defauts_ar = e.lire('ar')
+        self.assertEqual([k['cochee'] for k in defauts_ar['constats']],
+                         [True, False, True, True])
+        self.assertNotEqual(defauts_ar['constats'][0]['texte'],
+                            constats[0]['texte'])  # texte arabe gardé
+        self.assertEqual(defauts_ar['constats'][-1]['texte'],
+                         'Un carton abîmé, contenu intact.')
+        self.assertEqual(defauts_ar['reserves'],
+                         ['Rayure sur le coffret onduleur.'])
+        self.assertEqual(defauts_ar['conditions_particulieres'],
+                         'Accès par le portail.')
+        # Traduits à la main : la traduction l'emporte, les cases restent
+        # celles du français.
+        e.enregistrer({'reserves': ['خدش على علبة العاكس.'],
+                       'constats': [{'texte': f'نص {i}', 'cochee': False}
+                                    for i in range(4)]}, 'ar')
+        ar = e.lire('ar')
+        self.assertEqual(ar['reserves'], ['خدش على علبة العاكس.'])
+        self.assertEqual([k['cochee'] for k in ar['constats']],
+                         [True, False, True, True])
+        self.assertEqual(ar['constats'][0]['texte'], 'نص 0')
+
+
+class EcranAllerRetourTests(SimpleTestCase):
+
+    def test_rien_change_rien_stocke_cinq_actes_deux_langues(self):
+        """Renvoyer ce qui est affiché ne stocke rien et ne change rien."""
+        vente = vente_pure(paiements=[('2026-12-02', '30000')])
+        for type_acte, variante in CINQ_ACTES:
+            for langue in T.LANGUES:
+                with self.subTest(acte=type_acte, variante=variante,
+                                  langue=langue):
+                    e = Ecran(type_acte, variante, vente=vente)
+                    c = e.lire(langue)
+                    corps = {'articles': articles_ecran(c)}
+                    if 'quitus' in c:
+                        corps['quitus'] = texte_vers_paragraphes(
+                            '\n\n'.join(c['quitus']))
+                    s = e.enregistrer(corps, langue)
+                    self.assertTrue(all(set(x) == {'cle'}
+                                        for x in s['articles']), s)
+                    self.assertNotIn('quitus', s)
+                    self.assertEqual(e.lire(langue), c)
+
+    def test_un_mot_change_aller_retour_et_idempotence(self):
+        """Un mot ajouté : le texte servi est celui envoyé ; enregistrer
+        deux fois le même texte stocke la même chose."""
+        vente = vente_pure(paiements=[('2026-12-02', '30000')])
+        mots = {'fr': ' Texte ajouté.', 'ar': ' نص أضافه المستشار.'}
+        for type_acte, variante in CINQ_ACTES:
+            for langue in T.LANGUES:
+                with self.subTest(acte=type_acte, variante=variante,
+                                  langue=langue):
+                    e = Ecran(type_acte, variante, vente=vente)
+                    c = e.lire(langue)
+                    cles_ = [a['cle'] for a in c['articles']]
+                    envoye = articles_ecran(c, {
+                        cle: ajouter(mots[langue]) for cle in cles_})
+                    premier = e.enregistrer({'articles': envoye}, langue)
+                    self.assertEqual(e.lire(langue)['articles'], envoye)
+                    premier = json.loads(json.dumps(premier))
+                    second = e.enregistrer(
+                        {'articles': articles_ecran(e.lire(langue))}, langue)
+                    self.assertEqual(second, premier)
+                    self.assertEqual(e.figes(), [])

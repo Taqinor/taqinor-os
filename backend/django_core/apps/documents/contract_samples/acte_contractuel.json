@@ -81,6 +81,7 @@
     "sections_personnalisees": [
       "conditions_particulieres"
     ],
+    "articles_personnalises": [],
     "sections_modifiables": [
       "titre",
       "lieu",
@@ -96,6 +97,7 @@
     ],
     "contenu": {
       "schema": 1,
+      "brouillon": true,
       "langue": "fr",
       "version": 1,
       "titre": "",
@@ -462,6 +464,7 @@
       "ar"
     ],
     "sections_personnalisees": [],
+    "articles_personnalises": [],
     "sections_modifiables": [
       "titre",
       "lieu",
@@ -477,6 +480,7 @@
     ],
     "contenu": {
       "schema": 1,
+      "brouillon": true,
       "langue": "fr",
       "version": 1,
       "titre": "",
@@ -708,6 +712,7 @@
       "ar"
     ],
     "sections_personnalisees": [],
+    "articles_personnalises": [],
     "sections_modifiables": [
       "titre",
       "lieu",
@@ -723,6 +728,7 @@
     ],
     "contenu": {
       "schema": 1,
+      "brouillon": true,
       "langue": "fr",
       "version": 1,
       "titre": "",
@@ -952,6 +958,7 @@
       "ar"
     ],
     "sections_personnalisees": [],
+    "articles_personnalises": [],
     "sections_modifiables": [
       "titre",
       "lieu",
@@ -967,6 +974,7 @@
     ],
     "contenu": {
       "schema": 1,
+      "brouillon": true,
       "langue": "fr",
       "version": 1,
       "titre": "",
@@ -1201,6 +1209,7 @@
       "ar"
     ],
     "sections_personnalisees": [],
+    "articles_personnalises": [],
     "sections_modifiables": [
       "titre",
       "lieu",
@@ -1215,6 +1224,7 @@
     ],
     "contenu": {
       "schema": 1,
+      "brouillon": true,
       "langue": "fr",
       "version": 1,
       "titre": "",
@@ -1575,6 +1585,7 @@
   },
   "regles": [
     "contenu.schema = 1 ; contenu.type / variante / reference recopient l'acte.",
+    "contenu.brouillon : true pour un acte non émis (son PDF porte « PROJET — document non émis » sur chaque page) ; false dans un contenu figé (émis, signé). articles_personnalises (détail) : les cle des articles qui portent un texte propre dans la langue servie.",
     "Tout montant de contenu est une chaîne décimale ; contenu.prix.total_en_lettres vient de core.nombre_lettres.",
     "contenu.echeancier[].statut ∈ regle | exigible | a_venir, calculé par le serveur depuis les paiements enregistrés (variante tranche_reglee : supposé réglé jusqu'à la tranche de livraison pour l'aperçu ; son émission est refusée 409 paiement_non_enregistre tant que l'encaissement n'est pas enregistré).",
     "contenu.signatures.client = null tant que l'acte n'est pas signé, puis {image, nom, signe_le, preuve}.",

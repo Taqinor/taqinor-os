@@ -15,8 +15,12 @@ Règles fermes :
 - lectures seulement : rien n'est écrit ici.
 """
 import copy
+import difflib
+import functools
 import logging
 import re
+import string
+import types
 import unicodedata
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -194,6 +198,45 @@ class Lecture:
                 if acte.emis_le else None)
         return self._une_fois('date_contrat', lire)
 
+    def _acte(self, type_acte):
+        """L'acte ``type_acte`` (non annulé) du chantier, ou None."""
+        def lire():
+            from ..models import ActeContractuel
+            return (ActeContractuel.objects
+                    .filter(company=self.chantier.company_id,
+                            chantier=self.chantier.pk, type=type_acte)
+                    .exclude(statut=T.ANNULE).order_by('pk').first())
+        return self._une_fois(('acte', type_acte), lire)
+
+    def garanties_du_contrat(self, langue):
+        """Les garanties du CONTRAT du chantier dans la langue — lignes,
+        durées, dates : son contenu figé s'il est émis ou signé, sinon son
+        brouillon ; None sans contrat. Une seule garantie par chantier : la
+        clôture les reprend telles quelles."""
+        def lire():
+            acte = self._acte(T.CONTRAT)
+            if acte is None:
+                return None
+            if acte.statut in (T.EMIS, T.SIGNE):
+                fige = acte.contenu_ar if langue == 'ar' else acte.contenu
+                if fige and isinstance(fige.get('garanties'), list):
+                    return fige['garanties']
+            return _construire(acte, langue, self).get('garanties')
+        return self._une_fois(('garanties_contrat', langue), lire)
+
+    def date_reception_signee(self):
+        """Le jour où le procès-verbal de réception a été SIGNÉ, ou None."""
+        def lire():
+            acte = self._acte(T.RECEPTION)
+            if acte is None or acte.statut != T.SIGNE:
+                return None
+            client = ((acte.contenu or {}).get('signatures') or {}).get(
+                'client') or {}
+            return _date(client.get('signe_le')) or (
+                timezone.localtime(acte.signe_le).date()
+                if acte.signe_le else None)
+        return self._une_fois('reception_signee', lire)
+
     def composants(self):
         def lire():
             from apps.documents.builders import _composants
@@ -231,12 +274,8 @@ class Lecture:
             'montant': _s(p['montant']),
             '_key': (libelles.get(p['facture_id']) or ('', ''))[1],
         } for p in paiements_des_factures([f.pk for f in factures])]
-        tranches = [{
-            'cle': t['cle'], 'key': t['key'], 'libelle': t['libelle'],
-            'montant': _q(t['montant_ttc']),
-            'cible': _q(t['cible_cumul_ttc']),
-            'pourcentage': t['pourcentage'],
-        } for t in plan['tranches']]
+        tranches = tranches_convenues(plan['tranches'],
+                                      plan['prix_convenu_ttc'])
         paye = _q(solde['paye'])
         return {
             'prix_ttc': _q(plan['prix_convenu_ttc']),
@@ -249,6 +288,29 @@ class Lecture:
             'paiements': paiements,
             'reglements': reglements(paiements, paye),
         }
+
+
+def tranches_convenues(tranches_plan, prix):
+    """L'échéancier CONVENU d'une vente, tel qu'un acte l'imprime : le
+    montant de chaque tranche = sa cible cumulée moins la précédente, la
+    dernière prenant le reste du prix au centime ; le pourcentage en découle.
+    Jamais le ``montant_ttc`` du plan, qui dit ce qu'il RESTE à facturer
+    sur une tranche (une facture d'acompte de 33 024 DH pour 33 120 DH
+    convenus laissait « Acompte 96,00 DH · 0,1 % » dans tous les actes)."""
+    prix = _q(prix or ZERO)
+    sortie, precedente = [], ZERO
+    for i, t in enumerate(tranches_plan):
+        cible = _q(t['cible_cumul_ttc'])
+        if i == len(tranches_plan) - 1 and prix > 0:
+            cible = prix
+        montant = max(ZERO, cible - precedente)
+        sortie.append({
+            'cle': t['cle'], 'key': t['key'], 'libelle': t['libelle'],
+            'montant': montant, 'cible': cible,
+            'pourcentage': _q(montant / prix * 100) if prix > 0 else ZERO,
+        })
+        precedente = max(precedente, cible)
+    return sortie
 
 
 def reglements(paiements, paye):
@@ -331,12 +393,21 @@ def situation(type_acte, variante, vente):
     """``(etats, paiement)`` : l'état de chaque tranche (``regle`` /
     ``exigible`` / ``a_venir``, ``regle_le``) et les montants de l'étape,
     calculés depuis les paiements ENREGISTRÉS (variante ``tranche_reglee`` :
-    tranches jusqu'à la livraison supposées réglées)."""
+    tranches jusqu'à la livraison supposées réglées).
+
+    Ce qui est dû ne dépasse jamais ce que la vente doit encore
+    (``solde_devis['restant']`` : prix − payé − avoirs, retenues, abandons) :
+    la part du prix soldée SANS paiement (``deduit``) réduit le reste à
+    régler, et la somme exigible à cette étape en est bornée — dans les deux
+    langues et les deux variantes de livraison, une seule formule."""
     if not vente:
         return [], None
     tranches = vente['tranches']
     prix = vente['prix_ttc']
     paye = vente['paye']
+    restant = vente.get('reste')
+    deduit = ZERO if restant is None else max(
+        ZERO, prix - paye - max(ZERO, restant))
     effectif = paye
     if variante == T.TRANCHE_REGLEE and tranches:
         effectif = max(paye, tranches[index_livraison(tranches)]['cible'])
@@ -357,9 +428,11 @@ def situation(type_acte, variante, vente):
         else:
             etats.append({'statut': 'a_venir', 'regle_le': None})
     cible = tranches[horizon]['cible'] if tranches else prix
-    exigible = max(ZERO, cible - effectif)
-    restera = max(ZERO, prix - cible)
-    reste = max(ZERO, prix - effectif)
+    reste = max(ZERO, prix - effectif - deduit)
+    exigible = min(max(ZERO, cible - effectif), reste)
+    # Ce qui restera après cette étape : le reste moins l'exigible (encadré
+    # « reste à régler » = exigible + restera, toujours).
+    restera = max(ZERO, reste - exigible)
     paiement = {
         'total_regle': _s(effectif),
         'pourcentage_regle': _pct(effectif / prix * 100) if prix else None,
@@ -734,149 +807,289 @@ def _dater_garanties(garanties, depart):
 
 
 # ── Gabarits : un texte personnalisé ne fige jamais une valeur ──────────────
-# Un article ou un quitus corrigé à l'écran est stocké en GABARIT : chaque
-# valeur vivante du contexte qu'il cite (liste des tranches, montants, dates,
-# références, noms) redevient son repère ``{…}``, et le rendu le reformate
-# avec le contexte du moment. Les repères sont ceux du contexte calculé à
-# l'exécution — jamais une liste écrite ici.
+# Un article ou un quitus est une suite de JETONS : texte littéral
+# ``('t', texte)`` ou repère ``('r', nom)`` (la valeur vivante ``ctx[nom]``).
+# Les textes par défaut sont lus en jetons en les rendant avec des
+# SENTINELLES à la place des valeurs. Une correction faite à l'écran est une
+# différence sur le texte que l'écran AFFICHAIT : elle est rejouée sur les
+# jetons de ce texte (``aligner``), jamais devinée en cherchant une valeur
+# dans le texte.
+#
+# Forme stockée d'un texte : une chaîne où « {nom} » est un repère et
+# « {{ » / « }} » des accolades tapées ; le rendu ne substitue que des noms de
+# repères connus (``noms_reperes`` et clés du contexte), jamais par
+# ``str.format`` : aucun accès « {societe[x]} » n'est évalué. Un paragraphe
+# (ou le titre) peut aussi valoir ``{'defaut': j}`` — le paragraphe j de
+# l'article de base, entièrement vivant, y compris si le texte par défaut
+# change — ou ``{'defaut': j, 'texte': …}`` — la version de l'utilisateur du
+# paragraphe j, imprimée tant que ce paragraphe existe (une option qui le
+# retire la masque, la recocher la rend). Un article personnalisé est stocké
+# ``{cle, v: 2, titre, paragraphes[, base]}`` ; l'ancienne forme (chaînes
+# seules, sans ``v``) se lit toujours, rendue telle qu'elle est.
 
+#: Espaces que les montants mis en forme emploient (normale, insécable,
+#: fine insécable).
 _SEPARATEURS = '   '
-_SENTINELLE = re.compile('([^]+)')
-#: Clé des repères du quitus dans ``reperes_par_defaut``.
-CLE_QUITUS = '__quitus__'
+_OUVRE, _FERME = '', ''
+_SENTINELLE = re.compile(f'{_OUVRE}([^{_FERME}]*){_FERME}')
+_NOM_REPERE = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
+_REPERE_STOCKE = re.compile(r'\{\{|\}\}|\{([A-Za-z_][A-Za-z0-9_]*)\}')
+#: Forme stockée d'un article personnalisé.
+FORME_ARTICLE = 2
+#: Séparateur des paragraphes quand plusieurs sont alignés d'un bloc.
+_SEP = '\n\n'
+#: Un repère VIDE ne s'ancre qu'à un voisin resté dans un bloc d'au moins
+#: autant de caractères inchangés — jamais à une lettre isolée qu'un texte
+#: réécrit partage par hasard avec l'ancien.
+_ANCRE_MIN = 3
+_ESPACES = str.maketrans({' ': ' ', ' ': ' '})
 
 
-class _CtxRendu(dict):
-    """Un repère absent du contexte s'imprime « à préciser »."""
-
-    def __init__(self, ctx, langue):
-        super().__init__(ctx or {})
-        self.langue = langue
-
-    def __missing__(self, cle):
-        return A_PRECISER.get(self.langue, A_PRECISER['fr'])
+def _espaces(texte):
+    """Le texte, espaces insécables et fines ramenées à l'espace normale :
+    deux textes qui ne diffèrent que par elles sont le même texte (le
+    navigateur renvoie souvent des espaces normales)."""
+    return texte.translate(_ESPACES)
 
 
-def _echapper(texte):
-    return texte.replace('{', '{{').replace('}', '}}')
+def _memes(a, b):
+    if isinstance(a, list):
+        return isinstance(b, list) and len(a) == len(b) and all(
+            _memes(x, y) for x, y in zip(a, b))
+    return isinstance(b, str) and _espaces(a) == _espaces(b)
+
+
+def _fusionner(jetons):
+    """Jetons normalisés : littéraux voisins réunis, littéraux vides ôtés."""
+    sortie = []
+    for sorte, valeur in jetons:
+        if sorte == 't':
+            if not valeur:
+                continue
+            if sortie and sortie[-1][0] == 't':
+                sortie[-1] = ('t', sortie[-1][1] + valeur)
+                continue
+        sortie.append((sorte, valeur))
+    return sortie
+
+
+def lire_gabarit(texte):
+    """Les jetons d'un texte stocké (« {nom} » repère, « {{ » / « }} »
+    accolades ; toute autre accolade est du texte)."""
+    texte = '' if texte is None else str(texte)
+    jetons, pos = [], 0
+    for m in _REPERE_STOCKE.finditer(texte):
+        jetons.append(('t', texte[pos:m.start()]))
+        if m.group(1):
+            jetons.append(('r', m.group(1)))
+        else:
+            jetons.append(('t', m.group(0)[0]))
+        pos = m.end()
+    jetons.append(('t', texte[pos:]))
+    return _fusionner(jetons)
+
+
+def ecrire_gabarit(jetons):
+    """La forme stockée de jetons (accolades tapées doublées)."""
+    return ''.join(
+        valeur.replace('{', '{{').replace('}', '}}') if sorte == 't'
+        else '{' + valeur + '}' for sorte, valeur in jetons)
+
+
+def _chaines_du_module(module):
+    """Les chaînes écrites dans un module de textes (constantes et corps des
+    fonctions), pour y lire les repères qu'ils citent."""
+    pile = [v for k, v in vars(module).items() if not k.startswith('__')]
+    vus = set()
+    while pile:
+        objet = pile.pop()
+        if id(objet) in vus:
+            continue
+        vus.add(id(objet))
+        if isinstance(objet, str):
+            yield objet
+        elif isinstance(objet, (tuple, list, set, frozenset)):
+            pile.extend(objet)
+        elif isinstance(objet, dict):
+            pile.extend(objet.values())
+        elif isinstance(objet, types.CodeType):
+            pile.extend(objet.co_consts)
+        elif isinstance(objet, types.FunctionType) \
+                and objet.__module__ == module.__name__:
+            pile.append(objet.__code__)
+
+
+def _champs(chaine):
+    try:
+        return {nom for _l, nom, _s, _c in string.Formatter().parse(chaine)
+                if nom and _NOM_REPERE.fullmatch(nom)}
+    except ValueError:
+        return set()
+
+
+@functools.lru_cache(maxsize=1)
+def noms_reperes():
+    """Tous les repères que les textes par défaut citent (lus dans
+    ``textes`` et ``textes_ar``, jamais une liste écrite ici) : un repère
+    connu mais absent du contexte s'imprime « à préciser »."""
+    from . import textes
+    modules, noms = [textes], set()
+    try:
+        from . import textes_ar
+        modules.append(textes_ar)
+        noms |= set(getattr(textes_ar, 'FORMES_CTX', {}))
+    except ImportError:
+        pass
+    for module in modules:
+        for chaine in _chaines_du_module(module):
+            noms |= _champs(chaine)
+    return frozenset(noms)
+
+
+def _valeur(nom, ctx, langue, connus):
+    if nom in ctx:
+        valeur = ctx[nom]
+        return '' if valeur is None else str(valeur)
+    if nom in connus:
+        return A_PRECISER.get(langue, A_PRECISER['fr'])
+    return '{' + nom + '}'
+
+
+def rendre_jetons(jetons, ctx, langue='fr', connus=None):
+    """Le texte de jetons, avec les valeurs vivantes de ``ctx`` (un repère
+    connu absent s'imprime « à préciser » ; un nom inconnu reste écrit)."""
+    ctx = ctx or {}
+    connus = (frozenset(ctx) | noms_reperes()) if connus is None else connus
+    return ''.join(valeur if sorte == 't'
+                   else _valeur(valeur, ctx, langue, connus)
+                   for sorte, valeur in jetons)
 
 
 def rendre_gabarit(gabarit, ctx, langue='fr'):
-    """Le texte d'un gabarit stocké, avec les valeurs vivantes de ``ctx``."""
-    texte = '' if gabarit is None else str(gabarit)
-    try:
-        return texte.format_map(_CtxRendu(ctx, langue))
-    except (ValueError, IndexError, AttributeError):
-        # Texte stocké avant les gabarits (accolade seule) : servi tel quel.
-        return texte
+    """Le texte d'un gabarit stocké, avec les valeurs vivantes de ``ctx`` —
+    substitution stricte des seuls repères connus, jamais d'erreur."""
+    return rendre_jetons(lire_gabarit(gabarit), ctx, langue)
 
 
-def _motif_valeur(valeur):
-    """Motif d'une valeur, borné : « 9 850,00 DH » ne se reconnaît jamais à
-    l'intérieur de « 59 850,00 DH » ni de « 1 009 850,00 DH »."""
-    avant = apres = ''
-    if valeur[0].isalnum() or valeur[0] == '_':
-        avant = r'(?<!\w)'
-    if valeur[0].isdigit():
-        avant += rf'(?<!\d[{_SEPARATEURS},.])'
-    if valeur[-1].isalnum() or valeur[-1] == '_':
-        apres = r'(?!\w)'
-    if valeur[-1].isdigit():
-        apres += rf'(?![,.]\d)(?![{_SEPARATEURS}]\d)'
-    return avant + re.escape(valeur) + apres
-
-
-def _motif_gabarit(ctx, prefere=()):
-    """``(motif, cles)`` : une alternative par valeur du contexte, les plus
-    longues d'abord. Une valeur vide n'est jamais remplacée ; une valeur
-    portée par deux repères ne l'est que si un seul des deux figure dans le
-    texte par défaut (``prefere``) — sinon elle reste écrite (le contrôle des
-    montants figés la rattrape à l'émission si elle change)."""
-    par_valeur = {}
-    for cle, valeur in (ctx or {}).items():
-        if isinstance(valeur, str) and valeur.strip():
-            par_valeur.setdefault(valeur, []).append(cle)
-    retenues = []
-    for valeur, cles in par_valeur.items():
-        if len(cles) > 1:
-            cles = [c for c in cles if c in prefere]
-        if len(cles) == 1:
-            retenues.append((valeur, cles[0]))
-    if not retenues:
-        return None, {}
-    retenues.sort(key=lambda vc: (-len(vc[0]), vc[1]))
-    motif = '|'.join(f'(?P<g{i}>{_motif_valeur(v)})'
-                     for i, (v, _c) in enumerate(retenues))
-    return re.compile(motif), {f'g{i}': c for i, (_v, c) in enumerate(retenues)}
-
-
-def gabarit(texte, ctx, prefere=()):
-    """Le gabarit d'un texte saisi : accolades doublées, chaque valeur vivante
-    remplacée par son repère. ``rendre_gabarit(gabarit(t, ctx), ctx) == t``."""
-    texte = '' if texte is None else str(texte)
-    motif, cles = _motif_gabarit(ctx, prefere)
-    if motif is None:
-        return _echapper(texte)
-    sortie, pos = [], 0
-    for m in motif.finditer(texte):
-        sortie.append(_echapper(texte[pos:m.start()]))
-        sortie.append('{' + cles[m.lastgroup] + '}')
+def _jetons_sentinelles(texte):
+    texte = texte or ''
+    jetons, pos = [], 0
+    for m in _SENTINELLE.finditer(texte):
+        jetons += [('t', texte[pos:m.start()]), ('r', m.group(1))]
         pos = m.end()
-    sortie.append(_echapper(texte[pos:]))
-    return ''.join(sortie)
+    jetons.append(('t', texte[pos:]))
+    return _fusionner(jetons)
 
 
-def reperes_par_defaut(textes, type_acte, variante, options, ctx):
-    """Les repères que cite chaque texte par défaut (par clé d'article,
-    ``CLE_QUITUS`` pour le quitus), lus en rendant les textes avec des
-    sentinelles à la place des valeurs du contexte."""
-    sentinelles = {k: f'{k}' for k in (ctx or {})}
-    reperes = {}
-    for a in textes.articles_par_defaut(type_acte, variante, sentinelles,
-                                        options):
-        brut = '\n'.join([a.get('titre') or ''] + list(a.get('paragraphes')
-                                                       or []))
-        reperes[a['cle']] = set(_SENTINELLE.findall(brut))
-    if type_acte == T.CLOTURE:
-        reperes[CLE_QUITUS] = set(_SENTINELLE.findall(
-            '\n'.join(textes.quitus_par_defaut(sentinelles))))
-    return reperes
+def _sentinelles(ctx):
+    return {nom: f'{_OUVRE}{nom}{_FERME}'
+            for nom in set(ctx or {}) | noms_reperes()}
 
 
-# ── Articles ────────────────────────────────────────────────────────────────
+def articles_en_jetons(textes, type_acte, variante, options, ctx):
+    """Les articles PAR DÉFAUT d'un acte, en jetons (mêmes clés, mêmes
+    paragraphes, mêmes conditions sur ``options`` que ``textes``)."""
+    s = _sentinelles(ctx)
+    return [{'cle': a['cle'], 'titre': _jetons_sentinelles(a.get('titre')),
+             'paragraphes': [_jetons_sentinelles(p)
+                             for p in a.get('paragraphes') or []]}
+            for a in textes.articles_par_defaut(type_acte, variante, s,
+                                                options)]
 
-def _article_rendu(a, ctx, langue):
-    return {'cle': a.get('cle') or '',
-            'titre': rendre_gabarit(a.get('titre') or '', ctx, langue),
-            'paragraphes': [rendre_gabarit(p, ctx, langue)
-                            for p in a.get('paragraphes') or []]}
+
+def quitus_en_jetons(textes, ctx):
+    return [_jetons_sentinelles(p)
+            for p in textes.quitus_par_defaut(_sentinelles(ctx))]
 
 
-def resoudre_articles(base, liste, ctx=None, langue='fr'):
-    """Applique une liste d'articles personnalisée (forme stockée) à la liste
-    ``base``. Entrées : ``{cle}`` reprend l'article de base de même clé
-    (jamais figé) ; ``{cle, retire}`` est un article supprimé à l'écran ;
-    ``{cle, titre, paragraphes[, base]}`` est un GABARIT rendu avec ``ctx``.
-    Une correction d'un article de base (``base``) sort quand une option
-    retire cet article ; un article de base jamais cité par la liste (une
-    option recochée, un article nouveau) reprend sa place dans l'ordre de
-    base."""
+# ── Résolution : textes stockés → jetons ────────────────────────────────────
+
+def _ref(x):
+    """L'indice d'un renvoi ``{'defaut': j}`` (avec ou sans ``texte``)."""
+    if isinstance(x, dict):
+        j = x.get('defaut')
+        if isinstance(j, int) and not isinstance(j, bool):
+            return j
+    return None
+
+
+def _jetons_de(x, base):
+    """Les jetons d'un texte stocké relatif à ``base`` (liste de jetons), ou
+    None quand il ne s'imprime pas (renvoi vers un paragraphe absent)."""
+    if isinstance(x, str):
+        return lire_gabarit(x)
+    j = _ref(x)
+    if j is None or not 0 <= j < len(base):
+        return None
+    if isinstance(x.get('texte'), str):
+        return lire_gabarit(x['texte'])
+    return base[j]
+
+
+def resoudre_paragraphes(base, liste, masques=None):
+    """``[(jetons, source)]`` : une liste stockée de paragraphes appliquée
+    aux paragraphes ``base`` (None : ceux de la base, en renvois)."""
     if not isinstance(liste, list):
-        return base
+        return [(p, {'defaut': j}) for j, p in enumerate(base)]
+    sortie = []
+    for x in liste:
+        jetons = _jetons_de(x, base)
+        if jetons is not None:
+            sortie.append((jetons, x))
+        elif masques is not None and _ref(x) is not None:
+            masques.append(x)
+    return sortie
+
+
+def _en_base(articles):
+    """Des articles résolus devenus la BASE du niveau suivant : chaque
+    paragraphe y est le renvoi ``{'defaut': j}``."""
+    return [{'cle': a['cle'], 'titre': a['titre'],
+             'paragraphes': list(a['paragraphes']),
+             'src_titre': {'defaut': 0},
+             'src': [{'defaut': j} for j in range(len(a['paragraphes']))],
+             'de_base': True, 'entree': None} for a in articles]
+
+
+def resoudre_articles(base, liste, masques=None):
+    """Applique une liste d'articles stockée à ``base`` (articles en jetons).
+    Entrées : ``{cle}`` reprend l'article de base ; ``{cle, retire}`` est un
+    article supprimé à l'écran ; ``{cle, titre, paragraphes[, base]}`` est un
+    article personnalisé. Une personnalisation d'un article de base
+    (``base``) n'est pas imprimée quand une option retire cet article —
+    elle reste stockée et revient avec l'option (``masques`` la reçoit) ; un
+    article de base jamais cité par la liste (une option recochée, un
+    article nouveau) reprend sa place dans l'ordre de base."""
+    if not isinstance(liste, list):
+        return list(base)
     par_cle = {a['cle']: a for a in base}
     citees = {a.get('cle') for a in liste if isinstance(a, dict)}
     sortie = []
-    for a in liste:
-        if not isinstance(a, dict) or a.get('retire'):
+    for e in liste:
+        if not isinstance(e, dict) or e.get('retire'):
             continue
-        cle = a.get('cle') or ''
-        if 'paragraphes' not in a and 'titre' not in a:
-            if cle in par_cle:
-                sortie.append(par_cle[cle])
+        cle = e.get('cle') or ''
+        b = par_cle.get(cle)
+        if 'paragraphes' not in e and 'titre' not in e:
+            if b is not None:
+                sortie.append(b)
             continue
-        if a.get('base') and cle not in par_cle:
+        if e.get('base') and b is None:
+            if masques is not None:
+                masques.append(('article', e))
             continue
-        sortie.append(_article_rendu(a, ctx, langue))
+        titre = _jetons_de(e.get('titre', ''), [b['titre']] if b else [])
+        caches = []
+        paragraphes = resoudre_paragraphes(
+            b['paragraphes'] if b else [], list(e.get('paragraphes') or []),
+            caches)
+        if caches and masques is not None:
+            masques.append(('paragraphe', e))
+        sortie.append({'cle': cle, 'titre': titre or [],
+                       'paragraphes': [j for j, _s in paragraphes],
+                       'src_titre': e.get('titre', ''),
+                       'src': [s for _j, s in paragraphes],
+                       'de_base': b is not None, 'entree': e})
     for i, b in enumerate(base):
         if b['cle'] in citees:
             continue
@@ -889,52 +1102,330 @@ def resoudre_articles(base, liste, ctx=None, langue='fr'):
     return sortie
 
 
-def compacter_articles(base, entrants, ctx=None, reperes=None):
+def _rendre_article(a, ctx, langue, connus):
+    return {'cle': a['cle'],
+            'titre': rendre_jetons(a['titre'], ctx, langue, connus),
+            'paragraphes': [rendre_jetons(p, ctx, langue, connus)
+                            for p in a['paragraphes']]}
+
+
+# ── Alignement : une correction rejouée sur les jetons affichés ─────────────
+
+def _ancre(a, debuts, image, bloc, longueur):
+    """Position, dans le texte saisi, d'un repère VIDE placé en ``a`` du
+    texte affiché : juste après son voisin de gauche s'il est resté (un
+    fragment vide est collé au texte qui le précède : « {devis_reference}
+    {devis_accepte_le} », « {contrat_reference}.{ecart_regle} ») ; en début
+    de paragraphe, juste avant son voisin de droite. None : l'utilisateur a
+    réécrit cet endroit, le repère disparaît."""
+    if a > 0 and a not in debuts:
+        g = image[a - 1]
+        return g + 1 if g is not None and bloc[a - 1] >= _ANCRE_MIN else None
+    if a < longueur and image[a] is not None and bloc[a] >= _ANCRE_MIN:
+        return image[a]
+    return None
+
+
+def aligner(affiches, saisis, ctx, langue='fr', connus=None):
+    """Rejoue sur des jetons la correction faite à l'écran.
+
+    ``affiches`` : les jetons des paragraphes que l'écran a montrés (rendus
+    avec ``ctx``) ; ``saisis`` : les paragraphes renvoyés. Rend une liste de
+    jetons par paragraphe saisi. Les caractères laissés tels quels gardent
+    leur origine ; un repère dont TOUTE la valeur est restée, d'un seul
+    tenant, redevient ``{nom}`` ; un repère dont la valeur a été modifiée
+    en son milieu devient du texte (l'utilisateur l'a reprise à son compte —
+    le contrôle des montants à l'émission s'y applique) ; un repère vide
+    garde sa place tant que son voisin est resté (``_ancre``)."""
+    ctx = ctx or {}
+    connus = (frozenset(ctx) | noms_reperes()) if connus is None else connus
+    morceaux, reperes, debuts, pos = [], [], set(), 0
+    for k, jetons in enumerate(affiches):
+        if k:
+            morceaux.append(_SEP)
+            pos += len(_SEP)
+        debuts.add(pos)
+        for sorte, valeur in jetons:
+            texte = (valeur if sorte == 't'
+                     else _valeur(valeur, ctx, langue, connus))
+            if sorte == 'r':
+                reperes.append((valeur, pos, pos + len(texte)))
+            morceaux.append(texte)
+            pos += len(texte)
+    affiche = ''.join(morceaux)
+    saisi = _SEP.join(saisis)
+    image, bloc = [None] * len(affiche), [0] * len(affiche)
+    inverse = [None] * len(saisi)
+    # Espaces normale, insécable et fine insécable : égales pour
+    # l'alignement (le navigateur rend souvent des espaces normales).
+    for tag, i1, i2, j1, _j2 in difflib.SequenceMatcher(
+            None, _espaces(affiche), _espaces(saisi),
+            autojunk=False).get_opcodes():
+        if tag == 'equal':
+            for k in range(i2 - i1):
+                image[i1 + k], bloc[i1 + k] = j1 + k, i2 - i1
+                inverse[j1 + k] = i1 + k
+
+    def litteral(a, b):
+        # Un caractère resté garde celui du texte affiché (ses espaces).
+        return ''.join(saisi[u] if inverse[u] is None
+                       else affiche[inverse[u]] for u in range(a, b))
+    evenements = []
+    for ordre, (nom, a, b) in enumerate(reperes):
+        if b > a:
+            vues = image[a:b]
+            if None not in vues and vues[-1] - vues[0] == b - a - 1:
+                evenements.append((vues[0], ordre, vues[-1] + 1, nom))
+        else:
+            u = _ancre(a, debuts, image, bloc, len(affiche))
+            if u is not None:
+                evenements.append((u, ordre, u, nom))
+    evenements.sort()
+    sortie, debut = [], 0
+    for texte in saisis:
+        fin, jetons, curseur = debut + len(texte), [], debut
+        for ud, _ordre, uf, nom in evenements:
+            if ud < curseur or ud < debut or uf > fin:
+                continue
+            jetons += [('t', litteral(curseur, ud)), ('r', nom)]
+            curseur = uf
+        jetons.append(('t', litteral(curseur, fin)))
+        sortie.append(_fusionner(jetons))
+        debut = fin + len(_SEP)
+    return sortie
+
+
+def _forme_stockee(jetons, source, base):
+    """La forme stockée d'un paragraphe (ou titre) aligné : le renvoi
+    ``{'defaut': j}`` s'il redevient le paragraphe j de la base, sinon sa
+    chaîne — liée au paragraphe d'origine (``{'defaut': j, 'texte'}``) quand
+    il en vient, pour qu'une option qui retire ce paragraphe la masque."""
+    j = _ref(source)
+    jetons = _fusionner(jetons)
+    candidats = ([j] if j is not None and j < len(base) else []) + list(
+        range(len(base)))
+    for k in candidats:
+        if _fusionner(base[k]) == jetons:
+            return {'defaut': k}
+    texte = ecrire_gabarit(jetons)
+    return {'defaut': j, 'texte': texte} if j is not None else texte
+
+
+def _compacter_paragraphes(affiches, saisis, base, ctx, langue, connus):
+    """Forme stockée d'une liste de paragraphes renvoyée par l'écran.
+    ``affiches`` : ``[(jetons, source)]`` tels que montrés. Même nombre :
+    paragraphe par paragraphe ; sinon les listes sont d'abord alignées
+    (paragraphes inchangés, blocs remplacés alignés d'un tenant). Un
+    paragraphe inchangé garde sa source (renvoi vivant ou texte stocké) ;
+    un paragraphe ajouté est du texte."""
+    rendus = [rendre_jetons(j, ctx, langue, connus) for j, _s in affiches]
+    if len(rendus) == len(saisis):
+        paires = [([i], [i]) for i in range(len(saisis))]
+    else:
+        paires = []
+        for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(
+                None, [_espaces(r) for r in rendus],
+                [_espaces(s) for s in saisis], autojunk=False).get_opcodes():
+            if tag == 'equal':
+                paires += [([i1 + k], [j1 + k]) for k in range(i2 - i1)]
+            elif j2 > j1:
+                paires.append((list(range(i1, i2)), list(range(j1, j2))))
+    sortie = []
+    for ia, ju in paires:
+        seul = len(ia) == 1 and len(ju) == 1
+        if seul and _memes(rendus[ia[0]], saisis[ju[0]]):
+            sortie.append(affiches[ia[0]][1])
+            continue
+        source = affiches[ia[0]][1] if seul else None
+        for jetons in aligner([affiches[i][0] for i in ia],
+                              [saisis[j] for j in ju], ctx, langue, connus):
+            sortie.append(_forme_stockee(jetons, source, base))
+    return sortie
+
+
+def _compacter_article(a, titre, paragraphes, b, ctx, langue, connus):
+    """L'entrée stockée d'un article modifié à l'écran (``a`` : tel
+    qu'affiché, ``b`` : son article de base ou None)."""
+    if _memes(rendre_jetons(a['titre'], ctx, langue, connus), titre):
+        src_titre = a['src_titre']
+    else:
+        src_titre = _forme_stockee(
+            aligner([a['titre']], [titre], ctx, langue, connus)[0],
+            a['src_titre'] if _ref(a['src_titre']) is not None else None,
+            [b['titre']] if b else [])
+    paras = _compacter_paragraphes(list(zip(a['paragraphes'], a['src'])),
+                                   paragraphes,
+                                   b['paragraphes'] if b else [], ctx, langue,
+                                   connus)
+    if b is not None and src_titre == {'defaut': 0} and paras == [
+            {'defaut': j} for j in range(len(b['paragraphes']))]:
+        return {'cle': a['cle']}
+    entree = {'cle': a['cle'], 'v': FORME_ARTICLE, 'titre': src_titre,
+              'paragraphes': paras}
+    if b is not None:
+        entree['base'] = True
+    return entree
+
+
+def _article_neuf(cle, titre, paragraphes):
+    return {'cle': cle, 'v': FORME_ARTICLE,
+            'titre': ecrire_gabarit([('t', titre)]),
+            'paragraphes': [ecrire_gabarit([('t', p)]) for p in paragraphes]}
+
+
+def _remettre_non_affichees(sortie, anciennes, affichees):
+    """Les entrées déjà stockées pour un article que l'écran ne pouvait pas
+    montrer (supprimé, ou personnalisé puis retiré par une option) sont
+    gardées telles quelles, à leur place : la liste reçue ne les connaît
+    pas, elle ne peut pas les défaire."""
+    prises = {e.get('cle') for e in sortie}
+    precedente = None
+    for e in anciennes or []:
+        if not isinstance(e, dict):
+            continue
+        cle = e.get('cle')
+        if cle not in affichees and cle not in prises:
+            pos = next((i + 1 for i, s in enumerate(sortie)
+                        if s.get('cle') == precedente), 0)
+            sortie.insert(pos, e)
+            prises.add(cle)
+        if cle in prises:
+            precedente = cle
+    return sortie
+
+
+def compacter_articles(avant, apres, entrants, langue='fr'):
     """Forme stockée d'une liste d'articles reçue de l'écran.
 
-    ``base`` : les articles de l'acte sans ses propres textes, mais avec ses
-    réglages communs (options, dates) — la base de comparaison. Une liste qui
-    reprend au moins la moitié des articles de ``base`` est une liste
-    COMPLÈTE (elle fixe l'ordre ; un article de base absent est marqué
-    ``retire``) ; une liste plus courte modifie les articles cités par leur
-    clé et ajoute les nouveaux à la fin. Un article identique à celui de base
-    est stocké par sa seule clé ; un article corrigé est stocké en gabarit
-    (``gabarit``) : aucun texte ne fige une valeur de la vente."""
-    reperes = reperes or {}
-    par_cle = {a['cle']: a for a in base}
-    cles_base = [a['cle'] for a in base]
-    communes = {a['cle'] for a in entrants} & set(cles_base)
+    ``avant`` : l'état que l'écran AFFICHAIT (``_construire(...,
+    interne=True)`` AVANT ce corps : anciennes options, anciennes dates,
+    textes stockés) — chaque article reçu est comparé à CET affichage, jamais
+    à une base calculée avec les options du même corps (B1). ``apres`` : le
+    même acte avec les réglages communs du corps : il dit quels articles de
+    base existent désormais. Une liste qui reprend au moins la moitié des
+    articles affichés est COMPLÈTE (elle fixe l'ordre ; un article affiché
+    et toujours dans la base qui en est absent est marqué ``retire``) ; une
+    liste plus courte modifie les articles cités et ajoute les nouveaux à la
+    fin. Un article inchangé garde son entrée (ou ``{cle}``) : il suit les
+    options et la vente ; un article modifié est aligné (``aligner``)."""
+    affiches = avant['articles']
+    par_cle = {a['cle']: a for a in affiches}
+    cles_aff = [a['cle'] for a in affiches]
+    base_avant = {a['cle']: a for a in avant['base']}
+    base_apres = {a['cle']: a for a in apres['base']}
+    communes = {e['cle'] for e in entrants} & set(cles_aff)
     retires = []
-    if base and len(communes) * 2 < len(cles_base):
-        remplaces = {a['cle']: a for a in entrants}
-        liste = [remplaces.get(c, {'cle': c}) for c in cles_base]
-        liste += [a for a in entrants if a['cle'] not in par_cle]
-    else:
+    if not cles_aff or len(communes) * 2 >= len(cles_aff):
         liste = list(entrants)
-        retires = [{'cle': c, 'retire': True} for c in cles_base
-                   if c not in communes]
+        retires = [{'cle': c, 'retire': True} for c in cles_aff
+                   if c not in communes and c in base_apres]
+    else:
+        remplaces = {e['cle']: e for e in entrants}
+        liste = [remplaces.get(c) or {'cle': c, '_garder': True}
+                 for c in cles_aff]
+        liste += [e for e in entrants if e['cle'] not in par_cle]
     sortie = []
-    for a in liste:
-        defaut = par_cle.get(a['cle'])
-        if 'paragraphes' not in a or (
-                defaut is not None and a.get('titre') == defaut['titre']
-                and list(a.get('paragraphes') or []) == defaut['paragraphes']):
-            sortie.append({'cle': a['cle']})
+    for e in liste:
+        cle = e['cle']
+        a = par_cle.get(cle)
+        if e.get('_garder'):
+            sortie.append(a['entree'] or {'cle': cle})
             continue
-        prefere = reperes.get(a['cle'], set())
-        entree = {'cle': a['cle'],
-                  'titre': gabarit(a.get('titre') or '', ctx, prefere),
-                  'paragraphes': [gabarit(p, ctx, prefere)
-                                  for p in a.get('paragraphes') or []]}
-        if defaut is not None:
-            entree['base'] = True
-        sortie.append(entree)
-    return sortie + retires
+        if 'paragraphes' not in e and 'titre' not in e:
+            sortie.append(a['entree'] if a is not None and not a['de_base']
+                          and a['entree'] else {'cle': cle})
+            continue
+        titre, paragraphes = e.get('titre') or '', list(
+            e.get('paragraphes') or [])
+        etat = avant
+        if a is None and cle in base_apres:
+            # Un article qu'une option de ce corps fait apparaître : comparé
+            # à la nouvelle base, avec le nouveau contexte.
+            a, etat = base_apres[cle], apres
+        if a is None:
+            sortie.append(_article_neuf(cle, titre, paragraphes))
+            continue
+        ctx, connus = etat['ctx'], etat['connus']
+        if _memes(rendre_jetons(a['titre'], ctx, langue, connus), titre) \
+                and _memes([rendre_jetons(p, ctx, langue, connus)
+                            for p in a['paragraphes']], paragraphes):
+            sortie.append(a['entree'] or {'cle': cle})
+            continue
+        b = (base_avant if etat is avant else base_apres).get(cle)
+        sortie.append(_compacter_article(a, titre, paragraphes, b, ctx,
+                                         langue, connus))
+    sortie = _remettre_non_affichees(sortie, avant['entrees'], set(cles_aff))
+    return sortie + [r for r in retires
+                     if r['cle'] not in {s.get('cle') for s in sortie}]
 
 
-def gabarits_textes(paragraphes, ctx, prefere=()):
-    """Une liste de paragraphes (le quitus) en gabarits."""
-    return [gabarit(p, ctx, prefere) for p in paragraphes]
+def compacter_quitus(avant, saisis, langue='fr'):
+    """Forme stockée du quitus renvoyé par l'écran, aligné sur le quitus
+    affiché ; None quand il redevient celui de la base."""
+    affiches = avant['quitus']
+    ctx, connus = avant['ctx'], avant['connus']
+    if _memes([rendre_jetons(j, ctx, langue, connus) for j, _s in affiches],
+              list(saisis)):
+        return avant['quitus_stocke']
+    stocke = _compacter_paragraphes(affiches, saisis, avant['quitus_base'],
+                                    ctx, langue, connus)
+    if stocke == [{'defaut': j} for j in range(len(avant['quitus_base']))]:
+        return None
+    return stocke
+
+
+def texte_litteral(sources):
+    """Le texte LITTÉRAL de textes stockés (chaînes ou ``{'defaut', 'texte'}``)
+    : ce que l'utilisateur a tapé ou repris, sans la valeur d'aucun repère.
+    Un renvoi vers la base n'en a pas."""
+    morceaux = []
+    for x in sources:
+        texte = x if isinstance(x, str) else (
+            x.get('texte') if isinstance(x, dict) else None)
+        if isinstance(texte, str):
+            morceaux.append(''.join(v if s == 't' else '\n'
+                                    for s, v in lire_gabarit(texte)))
+    return '\n'.join(morceaux)
+
+
+#: Les options booléennes qui retirent un article ou un paragraphe, toutes
+#: cochées : sert à nommer un article masqué par une option.
+_OPTIONS_TOUT = {'reserve_propriete': True, 'raccorde_reseau': True,
+                 'penalite_retard_pct': '1'}
+
+
+def _titre_masque(entree, textes, type_acte, variante, options, ctx, langue):
+    titre = entree.get('titre')
+    if isinstance(titre, str) or isinstance((titre or {}).get('texte'), str):
+        return rendre_gabarit(titre if isinstance(titre, str)
+                              else titre['texte'], ctx, langue)
+    for a in textes.articles_par_defaut(type_acte, variante, ctx,
+                                        {**options, **_OPTIONS_TOUT}):
+        if a['cle'] == entree.get('cle'):
+            return a['titre']
+    return entree.get('cle') or ''
+
+
+def message_masques(masques, ctx, textes, contenu, langue='fr'):
+    """Les phrases d'avertissement des textes personnalisés qu'une option
+    empêche d'imprimer (ils reviennent avec elle)."""
+    sortie = []
+    for sorte, entree in masques:
+        titre = _titre_masque(entree, textes, contenu['type'],
+                              contenu['variante'], contenu['options'], ctx,
+                              langue)
+        if sorte == 'article':
+            sortie.append(
+                f"L'article « {titre} », que vous avez modifié, n'est pas "
+                f"imprimé : l'option qui le porte est décochée. Votre version "
+                f"reviendra si vous la cochez de nouveau.")
+        else:
+            sortie.append(
+                f"Un paragraphe que vous avez modifié dans l'article « "
+                f"{titre} » n'est pas imprimé : l'option qui le porte est "
+                f"décochée. Votre version reviendra si vous la cochez de "
+                f"nouveau.")
+    return list(dict.fromkeys(sortie))
 
 
 # ── Montants figés (refus ``montant_fige`` à l'émission) ────────────────────
@@ -942,7 +1433,6 @@ def gabarits_textes(paragraphes, ctx, prefere=()):
 _MONTANT_DH = re.compile(
     rf'(?<![\w,.])(\d{{1,3}}(?:[{_SEPARATEURS}]\d{{3}})+|\d+)(?:[,.](\d{{1,2}}))?'
     rf'[{_SEPARATEURS}]*(?:DH|MAD|dirhams?|درهم)(?![A-Za-z])', re.IGNORECASE)
-_DECIMAL_SERVI = re.compile(r'^-?\d+(?:\.\d+)?$')
 
 
 def montants_du_texte(texte):
@@ -954,65 +1444,52 @@ def montants_du_texte(texte):
     return sortie
 
 
-def _montants_vivants(contenu, ctx):
-    """Les montants de la vente : sections chiffrées du contenu et montants
-    des repères du contexte."""
-    vivants = set()
-
-    def parcourir(valeur):
-        if isinstance(valeur, dict):
-            for v in valeur.values():
-                parcourir(v)
-        elif isinstance(valeur, list):
-            for v in valeur:
-                parcourir(v)
-        elif isinstance(valeur, str) and _DECIMAL_SERVI.match(valeur):
-            vivants.add(_q(Decimal(valeur)))
-    for section in ('prix', 'echeancier', 'paiement', 'paiements'):
-        parcourir(contenu.get(section))
-    for valeur in (ctx or {}).values():
-        if isinstance(valeur, str):
-            vivants.update(montants_du_texte(valeur))
-    return vivants
-
-
 def montants_figes(acte, lecture=None):
     """Les textes personnalisés de l'acte (articles, quitus ; français et
-    arabe) qui citent encore un montant en dirhams que la vente ne porte
-    plus : ``[(nom du texte, [montants])]``, vide si tout est vivant."""
+    arabe) IMPRIMÉS qui écrivent un montant en dirhams dans leur texte
+    LITTÉRAL : ``[(nom du texte, [montants])]``, vide sinon.
+
+    Règle du filet (revue 1, S1 ; contre-vérification M2) : avec
+    l'alignement, une valeur que l'utilisateur n'a pas touchée redevient son
+    repère et suit la vente ; un montant resté LITTÉRAL a donc forcément été
+    tapé ou repris à la main (valeur modifiée en son milieu). Il bloque
+    l'émission MÊME s'il égale un montant vivant de l'acte : deux tranches de
+    même montant, ou un total réglé égal au reste, rendent cette égalité
+    trompeuse — rien ne dit que le chiffre désigne la bonne valeur. Un
+    montant ne s'écrit jamais à la main dans un acte : il vient de la vente
+    par son repère."""
     lecture = lecture or Lecture(acte.chantier)
     sortie = []
     for langue in T.LANGUES:
         surcharges = _surcharges_texte(acte, langue)
-        perso = {a.get('cle') for a in surcharges.get('articles') or []
-                 if isinstance(a, dict) and 'paragraphes' in a
-                 and not a.get('retire')}
         quitus = isinstance(surcharges.get('quitus'), list)
-        if not perso and not quitus:
+        if not isinstance(surcharges.get('articles'), list) and not quitus:
             continue
-        contenu, ctx = _construire(acte, langue, lecture, avec_ctx=True)
-        vivants = _montants_vivants(contenu, ctx)
+        contenu, _ctx, interne = _construire(acte, langue, lecture,
+                                             interne=True)
         suffixe = ' (traduction arabe)' if langue == 'ar' else ''
-        textes = [(f'L\'article « {a["titre"]} »{suffixe}',
-                   [a['titre']] + list(a['paragraphes']))
-                  for a in contenu.get('articles') or [] if a['cle'] in perso]
-        if quitus and contenu.get('quitus'):
-            textes.append((f'Le quitus{suffixe}', contenu['quitus']))
-        for nom, morceaux in textes:
-            etrangers = [m for m in montants_du_texte('\n'.join(morceaux))
-                         if m not in vivants]
-            if etrangers:
-                sortie.append((nom, list(dict.fromkeys(etrangers))))
+        textes = [(f'L\'article « {rendu["titre"]} »{suffixe}',
+                   [a['src_titre']] + list(a['src']))
+                  for a, rendu in zip(interne['articles'], contenu['articles'])
+                  if a['entree'] is not None]
+        if quitus:
+            textes.append((f'Le quitus{suffixe}',
+                           [s for _j, s in interne.get('quitus') or []]))
+        for nom, sources in textes:
+            montants = montants_du_texte(texte_litteral(sources))
+            if montants:
+                sortie.append((nom, list(dict.fromkeys(montants))))
     return sortie
 
 
 def message_montants_figes(figes):
     """La phrase du refus ``montant_fige`` (et de son avertissement) : chaque
-    texte nommé, avec le montant qui n'est plus celui de la vente."""
+    texte nommé, avec le montant écrit à la main."""
     morceaux = [f'{nom} cite {", ".join(C.montant(m) for m in montants)}'
                 for nom, montants in figes]
-    return ('; '.join(morceaux) + " : ce montant n'est plus celui de la vente. "
-            "Corrigez ce texte ou remettez-le par défaut avant d'émettre.")
+    return ('; '.join(morceaux) + ', écrit à la main : un montant ne se tape '
+            "pas dans un texte, il vient de la vente. Retirez-le de ce texte, "
+            "ou remettez le texte par défaut, avant d'émettre.")
 
 
 # ── Personnalisations ───────────────────────────────────────────────────────
@@ -1060,11 +1537,11 @@ def _appliquer_communes(contenu, surcharges):
         contenu['_date_limite_fixee'] = s['delais']['date_limite']
 
 
-def _appliquer_textes(contenu, surcharges, langue, ctx=None, *, modele=False,
+def _appliquer_textes(contenu, surcharges, langue, *, modele=False,
                       garanties_fr=None):
-    """Sections de texte d'une langue. ``modele`` : les garanties du modèle
-    s'appliquent par clé (jamais en remplaçant la liste d'une vente). Les
-    articles et le quitus stockés sont des gabarits, rendus avec ``ctx``.
+    """Sections de texte d'une langue, sauf les articles et le quitus
+    (gabarits : ``_articles_et_quitus``). ``modele`` : les garanties du
+    modèle s'appliquent par clé (jamais en remplaçant la liste d'une vente).
     ``garanties_fr`` (traduction arabe) : les lignes françaises de l'acte,
     dont l'arabe ne traduit que les textes."""
     s = surcharges or {}
@@ -1074,13 +1551,13 @@ def _appliquer_textes(contenu, surcharges, langue, ctx=None, *, modele=False,
     for cle in ('constats', 'reserves', 'conseils', 'entretien'):
         if cle in contenu and isinstance(s.get(cle), list):
             contenu[cle] = copy.deepcopy(s[cle])
-    if 'quitus' in contenu and isinstance(s.get('quitus'), list):
-        contenu['quitus'] = [rendre_gabarit(p, ctx, langue)
-                             for p in s['quitus']]
-    if 'articles' in contenu and isinstance(s.get('articles'), list):
-        contenu['articles'] = resoudre_articles(contenu['articles'],
-                                                s['articles'], ctx, langue)
-    if 'garanties' in contenu and langue == 'ar' and not modele and (
+    if 'garanties' in contenu and contenu.get('_garanties_du_contrat'):
+        # Lignes, durées et dates venues du CONTRAT (une garantie par
+        # chantier) : l'acte n'en reprend que ses textes, par clé.
+        if isinstance(s.get('garanties'), list):
+            contenu['garanties'] = _fusion_garanties_modele(
+                contenu['garanties'], s['garanties'], T.CLES_GARANTIE_TEXTE)
+    elif 'garanties' in contenu and langue == 'ar' and not modele and (
             isinstance(garanties_fr, list)
             or isinstance(s.get('garanties'), list)):
         contenu['garanties'] = _garanties_ar(
@@ -1116,6 +1593,40 @@ def _appliquer_textes(contenu, surcharges, langue, ctx=None, *, modele=False,
             if isinstance(s['paiement'].get(k), str) \
                     and k in contenu['paiement']:
                 contenu['paiement'][k] = s['paiement'][k]
+
+
+def _faits_du_francais(contenu, fr, ar):
+    """La traduction arabe n'omet aucun fait saisi en français (recette
+    C4) : les cases cochées des constats sont communes (lues en français) ;
+    un texte libre tapé en français sans équivalent arabe (réserves,
+    conditions particulières, constat ajouté) s'imprime TEL QUEL dans le
+    document arabe — un fait en français vaut mieux qu'un fait absent ;
+    l'avertissement « traduction arabe » demande toujours sa traduction."""
+    if 'constats' in contenu and isinstance(fr.get('constats'), list):
+        arabes = contenu['constats']
+        if isinstance(ar.get('constats'), list):
+            # Traduits à la main : les cases du français, ligne à ligne.
+            sortie = [dict(k, cochee=bool(f.get('cochee')))
+                      for k, f in zip(arabes, fr['constats'])]
+            sortie += [{'texte': f.get('texte') or '',
+                        'cochee': bool(f.get('cochee'))}
+                       for f in fr['constats'][len(arabes):]]
+        else:
+            from . import textes
+            defauts = [k['texte'] for k in
+                       textes.constats_par_defaut(contenu['type'])]
+            sortie = []
+            for f in fr['constats']:
+                j = (defauts.index(f.get('texte'))
+                     if f.get('texte') in defauts else None)
+                texte = (arabes[j]['texte'] if j is not None
+                         and j < len(arabes) else f.get('texte') or '')
+                sortie.append({'texte': texte,
+                               'cochee': bool(f.get('cochee'))})
+        contenu['constats'] = sortie
+    for cle in ('reserves', 'conditions_particulieres'):
+        if cle in contenu and cle not in ar and fr.get(cle):
+            contenu[cle] = copy.deepcopy(fr[cle])
 
 
 def _surcharges_texte(objet, langue):
@@ -1232,7 +1743,8 @@ def _contexte(contenu, vente, langue, refs, lecture=None):
                                          langue)
         if contenu['type'] == T.CLOTURE:
             ctx['ecart_regle'] = ecart_regle(vente['prix_ttc'], vente['paye'],
-                                             vente.get('avoirs'), langue)
+                                             vente.get('avoirs'), langue,
+                                             reste=vente.get('reste'))
         ctx['pourcentage_regle'] = C.pourcent(paiement.get('pourcentage_regle'))
         ctx['reste_apres_livraison'] = _montant(
             paiement.get('restera_ensuite'), langue)
@@ -1306,7 +1818,8 @@ def _engagement(societe, langue):
             f'solde du prix.')
 
 
-def _bloc_paiement(contenu, paiement, modalites, langue, chantier):
+def _bloc_paiement(contenu, paiement, modalites, langue, chantier,
+                   date_reception=None):
     """La section ``paiement`` (et ``reception`` de la clôture) selon le type
     d'acte, depuis la situation calculée — aucun montant recalculé ici."""
     type_acte = contenu['type']
@@ -1314,7 +1827,10 @@ def _bloc_paiement(contenu, paiement, modalites, langue, chantier):
     if type_acte == T.CONTRAT:
         return {'modalites': modalites}
     if type_acte == T.CLOTURE:
-        contenu['reception'] = {'date': _iso(chantier.date_reception)}
+        # Départ des garanties : le jour où le procès-verbal de réception a
+        # été SIGNÉ, à défaut la date de réception du chantier.
+        contenu['reception'] = {'date': _iso(
+            date_reception or chantier.date_reception)}
         return {k: p.get(k) for k in ('total_regle', 'pourcentage_regle',
                                       'exigible_maintenant', 'reste_a_regler')}
     bloc = {
@@ -1342,8 +1858,18 @@ def _sections_derivees(contenu, acte, lecture, vente, langue, date_fixee):
             contenu['options'].get('delai_execution_jours'), date_fixee,
             langue)
     contenu['paiement'] = _bloc_paiement(
-        contenu, paiement, _modalites(lecture, langue), langue, chantier)
-    if acte.type in (T.CONTRAT, T.CLOTURE):
+        contenu, paiement, _modalites(lecture, langue), langue, chantier,
+        lecture.date_reception_signee() if acte.type == T.CLOTURE else None)
+    du_contrat = (lecture.garanties_du_contrat(langue)
+                  if acte.type == T.CLOTURE else None)
+    if isinstance(du_contrat, list):
+        # Une garantie par chantier : celle du CONTRAT (figé s'il est émis
+        # ou signé, sinon son brouillon) — jamais une seconde lecture qui
+        # dirait « 2 ans » quand le contrat signé dit 36 mois.
+        contenu['garanties'] = [{k: g.get(k) for k in T.CLES_GARANTIE}
+                                for g in copy.deepcopy(du_contrat)]
+        contenu['_garanties_du_contrat'] = True
+    elif acte.type in (T.CONTRAT, T.CLOTURE):
         garanties = _garanties_vente(lecture, langue)
         garanties.append(_garantie_installation(chantier, contenu['societe'],
                                                 langue))
@@ -1361,14 +1887,52 @@ def _finaliser(contenu):
     if 'delais' in contenu:
         contenu['delais'].pop('_resume', None)
         contenu['delais'].pop('_detail', None)
+    contenu.pop('_garanties_du_contrat', None)
     return contenu
 
 
+def _articles_et_quitus(contenu, textes, ctx, langue, s_modele, s_acte):
+    """Les articles (et le quitus de la clôture) : textes par défaut en
+    jetons → modèle de la société → textes de l'acte, rendus avec ``ctx``.
+    Rend l'état interne (jetons, sources, base) que l'alignement compare."""
+    connus = frozenset(ctx) | noms_reperes()
+    defaut = articles_en_jetons(textes, contenu['type'], contenu['variante'],
+                                contenu['options'], ctx)
+    base = _en_base(defaut)
+    if isinstance(s_modele.get('articles'), list):
+        base = _en_base(resoudre_articles(base, s_modele['articles']))
+    entrees = s_acte.get('articles')
+    entrees = entrees if isinstance(entrees, list) else None
+    masques = []
+    effectifs = (resoudre_articles(base, entrees, masques)
+                 if entrees is not None else base)
+    contenu['articles'] = [_rendre_article(a, ctx, langue, connus)
+                           for a in effectifs]
+    interne = {'defaut': defaut, 'base': base, 'articles': effectifs,
+               'entrees': entrees or [], 'masques': masques, 'ctx': ctx,
+               'connus': connus}
+    if contenu['type'] == T.CLOTURE:
+        q_defaut = quitus_en_jetons(textes, ctx)
+        q_base = q_defaut
+        if isinstance(s_modele.get('quitus'), list):
+            q_base = [j for j, _s in resoudre_paragraphes(
+                q_defaut, s_modele['quitus'])]
+        q_stocke = s_acte.get('quitus')
+        q_stocke = q_stocke if isinstance(q_stocke, list) else None
+        quitus = resoudre_paragraphes(q_base, q_stocke)
+        contenu['quitus'] = [rendre_jetons(j, ctx, langue, connus)
+                             for j, _s in quitus]
+        interne.update(quitus_defaut=q_defaut, quitus_base=q_base,
+                       quitus=quitus, quitus_stocke=q_stocke)
+    return interne
+
+
 def _construire(acte, langue='fr', lecture=None, *, avec_modele=True,
-                avec_acte_textes=True, avec_ctx=False):
+                avec_acte_textes=True, avec_ctx=False, interne=False):
     """Le contenu d'un acte. ``avec_acte_textes=False`` : sans les textes
     personnalisés de l'acte (ses réglages communs restent appliqués) ;
-    ``avec_ctx`` : rend ``(contenu, ctx)``."""
+    ``avec_ctx`` : rend ``(contenu, ctx)`` ; ``interne`` : rend ``(contenu,
+    ctx, état des articles en jetons)``."""
     if langue not in T.LANGUES:
         raise ValueError(f'Langue inconnue : {langue!r}')
     chantier = acte.chantier
@@ -1382,23 +1946,37 @@ def _construire(acte, langue='fr', lecture=None, *, avec_modele=True,
     date_fixee = _appliquer_modeles_communs(contenu, acte, modele_contrat,
                                             modele)
     _sections_derivees(contenu, acte, lecture, vente, langue, date_fixee)
-    ctx = _textes_par_defaut(contenu, _textes(langue), vente, langue, refs,
-                             lecture)
+    textes = _textes(langue)
+    _textes_par_defaut(contenu, textes, vente, langue)
     if modele is not None:
-        if langue == 'ar' and 'garanties' in contenu:
+        if langue == 'ar' and 'garanties' in contenu \
+                and not contenu.get('_garanties_du_contrat'):
             # Les durées du modèle sont communes : réglées en français.
             contenu['garanties'] = _fusion_garanties_modele(
                 contenu['garanties'],
                 (modele.surcharges or {}).get('garanties'),
                 ('duree_mois', 'duree_libelle'))
         _appliquer_textes(contenu, _surcharges_texte(modele, langue), langue,
-                          ctx, modele=True)
+                          modele=True)
     if avec_acte_textes:
         _appliquer_textes(
-            contenu, _surcharges_texte(acte, langue), langue, ctx,
+            contenu, _surcharges_texte(acte, langue), langue,
             garanties_fr=((acte.surcharges or {}).get('garanties')
                           if langue == 'ar' else None))
+    if langue == 'ar' and avec_acte_textes:
+        _faits_du_francais(contenu, acte.surcharges or {},
+                           acte.surcharges_ar or {})
+    # Le contexte APRÈS les personnalisations de l'acte : {modalites_paiement}
+    # et {garantie_installation} disent ce que disent l'encadré et le
+    # tableau du même document (M4).
+    ctx = _contexte(contenu, vente, langue, refs, lecture)
+    etat = _articles_et_quitus(
+        contenu, textes, ctx, langue,
+        _surcharges_texte(modele, langue) if modele is not None else {},
+        _surcharges_texte(acte, langue) if avec_acte_textes else {})
     contenu = _finaliser(contenu)
+    if interne:
+        return contenu, ctx, etat
     return (contenu, ctx) if avec_ctx else contenu
 
 
@@ -1452,10 +2030,15 @@ def _lignes_paiements(vente, langue):
     return sortie
 
 
-def ecart_regle(prix, paye, avoirs, langue):
+def ecart_regle(prix, paye, avoirs, langue, reste=None):
     """La phrase qui nomme ce qui a soldé le prix sans être un paiement
     (avoir, retenue à la source, abandon de créance) : '' si le payé couvre
-    le prix. Repère ``{ecart_regle}`` du quitus, précédé d'une espace."""
+    le prix. Repère ``{ecart_regle}`` du quitus, précédé d'une espace.
+    ``reste`` (``solde_devis['restant']``) : tant que la vente doit encore
+    quelque chose, rien n'a « soldé » l'écart — '' (jamais une somme impayée
+    présentée comme réglée par avoir ou abandon)."""
+    if reste is not None and _q(reste) > 0:
+        return ''
     ecart = _q((prix or ZERO) - (paye or ZERO))
     if ecart <= 0:
         return ''
@@ -1472,63 +2055,127 @@ def ecart_regle(prix, paye, avoirs, langue):
             f'retenue à la source ou abandon de créance.')
 
 
-def _textes_par_defaut(contenu, textes, vente, langue, refs, lecture=None):
-    """Pose les textes par défaut ; rend le contexte (repères) qui les a
-    formatés — celui qui rend aussi les gabarits personnalisés."""
+def _textes_par_defaut(contenu, textes, vente, langue):
+    """Pose les textes par défaut sans repère (constats, conseils,
+    entretien, paiements), avant les personnalisations qui les
+    remplacent."""
     type_acte = contenu['type']
-    ctx = _contexte(contenu, vente, langue, refs, lecture)
-    options = contenu['options']
-    contenu['articles'] = textes.articles_par_defaut(
-        type_acte, contenu['variante'], ctx, options)
     if type_acte in (T.LIVRAISON, T.RECEPTION):
         contenu['constats'] = textes.constats_par_defaut(type_acte)
         contenu['reserves'] = []
     if type_acte == T.CLOTURE:
         avec_batterie = contenu['systeme']['avec_batterie']
-        contenu['quitus'] = textes.quitus_par_defaut(ctx)
         contenu['paiements'] = _lignes_paiements(vente, langue)
         intro, conseils = textes.conseils_par_defaut(avec_batterie)
         contenu['conseils_intro'] = intro
         contenu['journee'] = textes.journee_solaire(avec_batterie)
         contenu['conseils'] = conseils
         contenu['entretien'] = textes.entretien_par_defaut()
-    return ctx
 
 
 # ── API publique du module ──────────────────────────────────────────────────
 
 def construire_contenu(acte, langue='fr', lecture=None):
-    """Le contenu VIVANT d'un acte (lectures seulement)."""
-    return _construire(acte, langue, lecture)
+    """Le contenu VIVANT d'un acte (lectures seulement). ``brouillon`` vaut
+    False : c'est ce contenu que l'émission fige."""
+    contenu = _construire(acte, langue, lecture)
+    contenu['brouillon'] = False
+    return contenu
 
 
 def contenu_de(acte, langue='fr', lecture=None):
-    """Le contenu servi : figé dès l'émission, vivant pour un brouillon."""
+    """Le contenu servi : figé dès l'émission, vivant pour un brouillon —
+    marqué ``brouillon: True`` (le PDF d'un brouillon porte « PROJET —
+    document non émis » sur chaque page ; un acte émis ou signé jamais)."""
     if acte.statut != T.BROUILLON:
         fige = acte.contenu_ar if langue == 'ar' else acte.contenu
         if fige:
             return fige
-    return construire_contenu(acte, langue, lecture)
+    contenu = construire_contenu(acte, langue, lecture)
+    contenu['brouillon'] = acte.statut not in (T.EMIS, T.SIGNE)
+    return contenu
 
 
-def articles_de_base(acte, langue='fr', lecture=None, *, avec_modele=True):
-    """Les articles de l'acte SANS ses propres textes (avec ou sans ceux du
-    modèle), ses réglages communs appliqués."""
-    return base_de_comparaison(acte, langue, lecture,
-                               avec_modele=avec_modele)['articles']
+#: Sections stockées en gabarit, alignées sur ce que l'écran affichait.
+SECTIONS_GABARIT = ('articles', 'quitus')
 
 
-def base_de_comparaison(acte, langue='fr', lecture=None, *, avec_modele=True):
-    """La base contre laquelle des textes reçus sont compactés et mis en
-    gabarit : ``articles`` et ``quitus`` de l'acte SANS ses propres textes
-    mais avec ses réglages communs (options, dates, signataire), le ``ctx``
-    vivant et les ``reperes`` que cite chaque texte par défaut."""
-    contenu, ctx = _construire(acte, langue, lecture, avec_modele=avec_modele,
-                               avec_acte_textes=False, avec_ctx=True)
-    reperes = reperes_par_defaut(_textes(langue), contenu['type'],
-                                 contenu['variante'], contenu['options'], ctx)
-    return {'articles': contenu.get('articles') or [],
-            'quitus': contenu.get('quitus'), 'ctx': ctx, 'reperes': reperes}
+def personnaliser(acte, propre, langue='fr', lecture=None):
+    """Les personnalisations d'une langue après un enregistrement de
+    l'écran (``propre`` : sections validées ; ``None`` remet une section au
+    défaut). Lectures seulement : rend le nouveau dictionnaire, l'appelant
+    l'écrit.
+
+    Les articles et le quitus reçus sont la liste que l'écran AFFICHAIT,
+    corrigée : ils sont alignés sur l'état d'AVANT ce corps (anciennes
+    options, anciennes dates, textes stockés), jamais sur une base calculée
+    avec les réglages du même corps (B1) ; puis les réglages du corps
+    décident quels articles de base existent."""
+    lecture = lecture or Lecture(acte.chantier)
+    champ = 'surcharges_ar' if langue == 'ar' else 'surcharges'
+    cible = dict(getattr(acte, champ) or {})
+    textes = {}
+    for section, valeur in propre.items():
+        if valeur is None:
+            cible.pop(section, None)
+        elif section in SECTIONS_GABARIT:
+            textes[section] = valeur
+        else:
+            cible[section] = valeur
+    if not textes:
+        return cible
+    avant = _construire(acte, langue, lecture, interne=True)[2]
+    suivant = copy.copy(acte)
+    setattr(suivant, champ, cible)
+    apres = _construire(suivant, langue, lecture, interne=True)[2]
+    if 'articles' in textes:
+        cible['articles'] = compacter_articles(avant, apres,
+                                               textes['articles'], langue)
+    if 'quitus' in textes and 'quitus' in avant:
+        quitus = compacter_quitus(avant, textes['quitus'], langue)
+        if quitus is None:
+            cible.pop('quitus', None)
+        else:
+            cible['quitus'] = quitus
+    return cible
+
+
+def textes_pour_modele(acte, langue='fr', lecture=None):
+    """Les articles et le quitus EFFECTIFS de l'acte, en entrées stockées
+    relatives aux textes PAR DÉFAUT (sans modèle de la société) — la forme
+    d'un modèle : ``{'articles': [...], 'quitus': [...] | None, 'titres':
+    {cle: titre imprimé}}``. Les valeurs du chantier restent des repères ;
+    seul le texte littéral peut citer le chantier (``texte_litteral``)."""
+    contenu, _ctx, etat = _construire(acte, langue, lecture, interne=True)
+    defauts = {a['cle']: a for a in etat['defaut']}
+    articles = []
+    for a in etat['articles']:
+        d = defauts.get(a['cle'])
+        if d is not None and a['titre'] == d['titre'] \
+                and a['paragraphes'] == d['paragraphes']:
+            articles.append({'cle': a['cle']})
+            continue
+        entree = {'cle': a['cle'], 'v': FORME_ARTICLE,
+                  'titre': _forme_stockee(a['titre'], None,
+                                          [d['titre']] if d else []),
+                  'paragraphes': [_forme_stockee(
+                      p, None, d['paragraphes'] if d else [])
+                      for p in a['paragraphes']]}
+        if d is not None:
+            entree['base'] = True
+        articles.append(entree)
+    effectives = {a['cle'] for a in etat['articles']}
+    articles += [{'cle': c, 'retire': True} for c in defauts
+                 if c not in effectives]
+    quitus = None
+    if 'quitus' in etat:
+        quitus = [_forme_stockee(j, None, etat['quitus_defaut'])
+                  for j, _s in etat['quitus']]
+        if quitus == [{'defaut': k}
+                      for k in range(len(etat['quitus_defaut']))]:
+            quitus = None
+    return {'articles': articles, 'quitus': quitus,
+            'titres': {a['cle']: a['titre'] for a in contenu['articles']}}
 
 
 def contexte_de(acte, langue='fr', lecture=None):
@@ -1542,6 +2189,19 @@ def sections_modifiables(type_acte, langue='fr'):
     if langue == 'ar':
         return [s for s in sections if s in T.SECTIONS_TEXTE]
     return list(sections)
+
+
+def articles_personnalises(acte, langue='fr'):
+    """Les ``cle`` des articles dont l'acte stocke un texte propre dans la
+    langue (différent du texte par défaut) : ceux que « Rétablir » peut
+    remettre par défaut. Un article seulement cité (``{cle}``) ou supprimé
+    n'en est pas un."""
+    entrees = _surcharges_texte(acte, langue).get('articles')
+    if not isinstance(entrees, list):
+        return []
+    return list(dict.fromkeys(
+        e['cle'] for e in entrees if isinstance(e, dict) and e.get('cle')
+        and not e.get('retire') and ('paragraphes' in e or 'titre' in e)))
 
 
 def sections_personnalisees(acte, langue='fr'):
@@ -1830,6 +2490,7 @@ def valider_surcharges(type_acte, surcharges, langue='fr'):
 def avertissements(acte, contenu=None, lecture=None):
     """Ce que l'écran doit dire avant l'émission (brouillon seulement) :
     vente absente, paiements non enregistrés, date limite à préciser,
+    montant écrit à la main, article personnalisé masqué par une option,
     traduction arabe en retard sur le français."""
     if acte.statut != T.BROUILLON:
         return []
@@ -1850,7 +2511,7 @@ def avertissements(acte, contenu=None, lecture=None):
                 f"première étape (« {tranches[0]['libelle']} », "
                 f"{C.montant(cible)}).")
         if acte.variante == T.RESTE_A_REGLER:
-            du = max(ZERO, cible - vente['paye'])
+            du = min(max(ZERO, cible - vente['paye']), reste_du(vente))
             if du > 0:
                 sortie.append(
                     f'La tranche « {tranches[i]["libelle"]} » n\'est pas '
@@ -1878,6 +2539,10 @@ def avertissements(acte, contenu=None, lecture=None):
     figes = montants_figes(acte, lecture)
     if figes:
         sortie.append(message_montants_figes(figes))
+    if isinstance((acte.surcharges or {}).get('articles'), list):
+        contenu_fr, ctx, etat = _construire(acte, 'fr', lecture, interne=True)
+        sortie += message_masques(etat['masques'], ctx, _textes('fr'),
+                                  contenu_fr)
     retard = [T.LIBELLES_SECTIONS[s] for s in T.SECTIONS_MODIFIABLES[acte.type]
               if s in T.SECTIONS_TEXTE and _texte_a_traduire(acte, s, lecture)
               and s not in (acte.surcharges_ar or {})]
