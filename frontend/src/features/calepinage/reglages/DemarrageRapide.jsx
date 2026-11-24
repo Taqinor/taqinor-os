@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { CircleCheck, CircleDashed, ExternalLink, Info } from 'lucide-react'
 import calepinageApi from '../../../api/calepinageApi'
 import { useHasPermission } from '../../../hooks/useHasPermission'
@@ -228,6 +228,15 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
   // Seul sur sa route : titre de page et fil d'Ariane ; dans Réglages : une carte parmi les autres.
   const seul = autonome ?? (typeof window !== 'undefined'
     && /\/demarrage-rapide\/?$/.test(window.location.pathname))
+  // T4-B4-003 — venu de Résultats (« Remplir 4 des 6 réglages vides ») : `?reglages=` désigne LES réglages de ce
+  // calepinage ; eux seuls partent cochés, la page annonce donc le même nombre. Les autres restent cochables.
+  const retenues = useMemo(() => {
+    if (!seul || typeof window === 'undefined') return null
+    const liste = new URLSearchParams(window.location.search).get('reglages')
+    return liste ? new Set(liste.split(',').filter(Boolean)) : null
+  }, [seul])
+  // `decoches` garde les cases BASCULÉES par la personne, à partir de l'état de départ (tout coché, ou les retenues).
+  const estCoche = (cle) => (retenues ? retenues.has(cle) : true) !== decoches.has(cle)
 
   useEffect(() => {
     let annule = false
@@ -286,7 +295,7 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
   // N : les réglages vides que « Remplir » va réellement remplir (lus sur l'état servi).
   const vides = valeurs.filter((v) => etatDe(v, reglages) === 'a_appliquer')
   const nbVides = vides.length
-  const choisies = vides.filter((v) => !decoches.has(v.cle)).map((v) => v.cle)
+  const choisies = vides.filter((v) => estCoche(v.cle)).map((v) => v.cle)
   const nbChoisies = choisies.length
   const Titre = seul ? 'h1' : 'h2'
   const enLecture = profil === null && !echecLecture
@@ -358,7 +367,7 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
           ) : null}
           {valeurs.map((v) => (
             <LigneProfil key={`${v.section}-${v.cle}`} v={v} reglages={reglages} peut={peut}
-              coche={!decoches.has(v.cle)} onBascule={() => basculer(v.cle)} />
+              coche={estCoche(v.cle)} onBascule={() => basculer(v.cle)} />
           ))}
           {sansSource.length > 0 && <LigneSansSource sansSource={sansSource} />}
           {sansSource.length > 0 && (

@@ -378,7 +378,7 @@ describe('Étape Résultats — résultat incomplet (maquette ResultatsIncomplet
     rendre()
     const lien = await screen.findByTestId('acal700-lien-reglages')
     expect(lien).toHaveTextContent('Voir les valeurs')
-    expect(lien).toHaveAttribute('href', '/calepinage/reglages/demarrage-rapide')
+    expect(lien).toHaveAttribute('href', expect.stringContaining('/calepinage/reglages/demarrage-rapide?reglages=')) // T4-B4-003 : avec SES réglages
   })
 
   it('carte « au plus » et « Pour un résultat complet » côte à côte, sans tuiles ni pied', async () => {
@@ -463,9 +463,20 @@ describe('Étape Résultats — résultat incomplet (maquette ResultatsIncomplet
     expect(cles).toHaveLength(3) // deux réglages sans valeur publiée ; écarts entre panneaux : valeur publiée
     servir(data)
     rendre()
+    // T4-B4-003 — UN compte, lu partout : « 3 réglages vides » (compteur), dont 1 a une valeur publiée. Chaque « Remplir »
+    // dit « 1 des 3 » (jamais « les 1 réglages vides » à côté de « 3 réglages vides ») et mène à la page Démarrage
+    // rapide avec CE réglage seul coché (`?reglages=`), qui annonce donc le même nombre.
+    expect(await screen.findByTestId('acal1833-compteur')).toHaveTextContent('3 réglages vides')
     const texte = await screen.findByTestId('acal700-demarrage-texte')
-    expect(texte).toHaveTextContent(/^Remplir le réglage vide avec des valeurs publiées/)
-    expect(texte).not.toHaveTextContent('3 réglages')
+    expect(texte).toHaveTextContent(/^Remplir 1 des 3 réglages vides avec des valeurs publiées/)
+    const remplir = screen.getAllByRole('link', { name: /^Remplir/ })
+    expect(remplir.length).toBeGreaterThan(0)
+    for (const lien of remplir) {
+      expect(lien).toHaveTextContent('Remplir 1 des 3 réglages vides')
+      expect(lien).toHaveAttribute('href', '/calepinage/reglages/demarrage-rapide?reglages=lid_par_techno')
+    }
+    expect(screen.getByTestId('acal700-lien-reglages'))
+      .toHaveAttribute('href', '/calepinage/reglages/demarrage-rapide?reglages=lid_par_techno')
     cleanup()
     // Aucune ligne remplissable : jamais « Remplir » promis.
     data.cascade.a_renseigner.lignes = data.cascade.a_renseigner.lignes.filter((l) => SANS_VALEUR.includes(l.cle))
