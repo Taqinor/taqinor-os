@@ -384,6 +384,33 @@ export function moduleShadeReadingsForPanels(
   return panels.map((p) => moduleShadeReading(latitudeDeg, obstructions, p.cx, p.cy));
 }
 
+/** Item 14 (T4-U1-023) — la phrase « Ombrage par module » sur les panneaux POSÉS seulement : les cellules rendues
+ *  (`indicesPoses`, ordre du rendu 3D), sinon les `count` premières cellules du pavage — la même règle que
+ *  `scene3d.ts` pour choisir les cellules posées. Avant : toutes les cellules du pavage (« 3 module(s) sur 6 » pour 3
+ *  panneaux posés). `null` quand aucun panneau n'est posé. */
+export function phraseOmbrageParModule(
+  lectures: readonly ModuleShadeReading[],
+  indicesPoses: readonly number[] | null | undefined,
+  count: number,
+): string | null {
+  const posees = indicesPoses && indicesPoses.length
+    ? indicesPoses.map((i) => lectures[i]).filter((r): r is ModuleShadeReading => Boolean(r))
+    : lectures.slice(0, Math.max(0, count));
+  if (!posees.length) return null;
+  const shaded = posees.filter((r) => r.maskedHours > 0);
+  if (!shaded.length) {
+    return `Ombrage par module (lecture géométrique, ${posees.length} module(s)) : aucune heure masquée — `
+      + 'les obstructions renseignées ne couvrent la trajectoire solaire d’aucun module.';
+  }
+  const hours = shaded.map((r) => r.maskedHours);
+  const firstMonths = shaded.map((r) => r.firstMonthIndex).filter((m): m is number => m != null);
+  const earliestMonth = firstMonths.length ? Math.min(...firstMonths) : null;
+  return 'Ombrage par module (lecture géométrique, sur 288 heures représentatives = 12 mois × 24 h) : '
+    + `${shaded.length} module(s) sur ${posees.length} couvert(s) par une obstruction, de ${Math.min(...hours)} à ${Math.max(...hours)} heure(s)`
+    + (earliestMonth != null ? `, dès ${HEATMAP_MONTH_LABELS[earliestMonth]}` : '')
+    + '. Aucune production n’est calculée ici.';
+}
+
 // ═══════ CALX115 — SEUIL D'ACCÈS SOLAIRE : ÉCARTER DES EMPLACEMENTS, PAS DÉRATER ═══════
 // Jusqu'ici l'ombrage n'agissait QU'APRÈS la pose : la proposition de retrait
 // (`proposeShadedRemoval`, plus bas) attend que les modules soient posés puis attend un
@@ -1229,23 +1256,9 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
         : 'Ombrage par module : non renseigné — aucune obstruction n’a été saisie. Le nombre d’heures est volontairement ABSENT plutôt qu’estimé à zéro.';
       return;
     }
-    const shaded = readings.filter((r) => r.maskedHours > 0);
-    if (!shaded.length) {
-      el.textContent =
-        `Ombrage par module (lecture géométrique, ${readings.length} module(s)) : aucune heure masquée — ` +
-        'les obstructions renseignées ne couvrent la trajectoire solaire d’aucun module.';
-      return;
-    }
-    const hours = shaded.map((r) => r.maskedHours);
-    const minH = Math.min(...hours);
-    const maxH = Math.max(...hours);
-    const firstMonths = shaded.map((r) => r.firstMonthIndex).filter((m): m is number => m != null);
-    const earliestMonth = firstMonths.length ? Math.min(...firstMonths) : null;
-    el.textContent =
-      'Ombrage par module (lecture géométrique, sur 288 heures représentatives = 12 mois × 24 h) : ' +
-      `${shaded.length} module(s) sur ${readings.length} couvert(s) par une obstruction, de ${minH} à ${maxH} heure(s)` +
-      (earliestMonth != null ? `, dès ${HEATMAP_MONTH_LABELS[earliestMonth]}` : '') +
-      '. Aucune production n’est calculée ici.';
+    // Item 14 (T4-U1-023) — sur les panneaux POSÉS (cellules rendues), jamais toutes les cellules du pavage.
+    el.textContent = phraseOmbrageParModule(readings, ctx.activePanelCellIndex, ctx.layoutPlan?.pack?.count ?? 0)
+      ?? 'Ombrage par module : non calculé (aucun module posé sur ce pan).';
   }
 
   const avecCarteDAcces = <T,>(fn: () => Promise<T>) => executerAvecCarte(

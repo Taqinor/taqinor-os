@@ -111,6 +111,9 @@ function AvisLent({ lueA, onReessayer }) {
 
 export default function PretAEnvoyer({
   calepinageId, testIdCompte, groupes = false, filtre = null, pied = null, court = false,
+  // T4-U4-007 — l'écran qui monte la liste peut régler une cible LUI-MÊME (rend `true`) : l'étape Électrique déplie
+  // « Verdict », que l'URL ne peut pas redemander puisque c'est déjà son onglet d'ouverture.
+  surRegler = null,
 }) {
   const [parametres, setParametres] = useSearchParams()
   const naviguer = useNavigate()
@@ -161,6 +164,7 @@ export default function PretAEnvoyer({
   const reussis = controles.filter((c) => c.etat === 'ok')
 
   const regler = (cible) => {
+    if (surRegler?.(cible) === true) return
     // ACAL1703 — `reglages` n'est pas un onglet de l'atelier : c'est la route nommée des réglages
     // (même lien que « Ce qui manque encore », `lienManque`), jamais `?onglet=reglages`.
     if (cible.onglet === 'reglages') {
@@ -175,13 +179,13 @@ export default function PretAEnvoyer({
   }
 
   if (court) {
-    return <GroupesPretAEnvoyer court attente={loading} avis={avis} controles={controles} testIdCompte={testIdCompte} onRegler={regler} />
+    return <GroupesPretAEnvoyer court attente={loading} avis={avis} controles={controles} testIdCompte={testIdCompte} onRegler={regler} calepinageId={calepinageId} />
   }
   if (groupes) {
     const rangees = [...GROUPES, GROUPE_AUTRES]
       .map((g) => ({ ...g, controles: controles.filter((c) => groupeDuControle(c) === g.cle) }))
       .filter((g) => g.controles.length > 0)
-    return <GroupesPretAEnvoyer groupes={rangees} avis={avis} testIdCompte={testIdCompte} pied={pied} onRegler={regler} />
+    return <GroupesPretAEnvoyer groupes={rangees} avis={avis} testIdCompte={testIdCompte} pied={pied} onRegler={regler} calepinageId={calepinageId} />
   }
 
   return (

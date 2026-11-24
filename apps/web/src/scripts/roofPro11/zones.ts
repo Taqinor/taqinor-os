@@ -1166,10 +1166,13 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
         const connu = [...(ctx.modulesDuDocument ?? []), ...catalogueAtelier.grises.map((g) => g.module)]
           .find((m) => (m as ModuleDocument | null)?.id === a.moduleId) as ModuleDocument | undefined;
         const nom = connu?.libelle ? `le module « ${connu.libelle} »` : 'le module de ce pan';
-        direRefusModule(
-          `${nomDuPanActif()} : ${nom} ne figure plus dans le catalogue de la société —`
-            + ' rechargez le catalogue, ou choisissez un module de la liste.',
-        );
+        // T4-U4-026 — `modulesDisponibles: null` = la LECTURE du catalogue a échoué (useAtelierBoot) : le module n'est
+        // pas sorti du catalogue, il n'a pas pu être vérifié. Le geste est « Réessayer » de la barre d'enregistrement.
+        direRefusModule(ctx.opts?.modulesDisponibles === null
+          ? `${nomDuPanActif()} : le catalogue des modules n’a pas pu être lu — ${nom} n’est pas vérifié.`
+            + ' Cliquez sur « Réessayer » pour le relire.'
+          : `${nomDuPanActif()} : ${nom} ne figure plus dans le catalogue de la société —`
+            + ' rechargez le catalogue, ou choisissez un module de la liste.');
       }
     }
     // ACAL913/ACAL1415 — un module posé d'office reste « à confirmer » tant que le pan ne porte pas le drapeau

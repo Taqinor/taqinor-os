@@ -417,9 +417,21 @@ describe('ACAL995 — « Le devis annonce » seulement hors pose réelle', () =>
     calepinageApi.calepinages.resultat.mockResolvedValue(r)
   }
 
-  const rendreAvec = (chiffrage) => render(
-    <MemoryRouter><BandeauProvenanceProduction calepinageId={1} chiffrage={chiffrage} /></MemoryRouter>,
+  // T4-U4-006 — « Le devis annonce » ne parle que d'un devis LIÉ (`calepinage.devis_lie` du contexte).
+  const rendreAvec = (chiffrage, devisLie = true) => render(
+    <MemoryRouter><BandeauProvenanceProduction calepinageId={1} chiffrage={chiffrage} devisLie={devisLie} /></MemoryRouter>,
   )
+
+  it('T4-U4-006 / T4-U4-017 — aucun devis lié ⇒ jamais « Le devis annonce » : le chiffre porte son vrai nom', async () => {
+    simule()
+    rendreAvec(ville, false)
+    const espaces = (t) => t.replace(/\s/g, ' ')
+    const ligne = await screen.findByTestId('acal995-devis-annonce')
+    expect(espaces(ligne.textContent)).toBe(espaces(
+      `Moteur du devis sur cette pose (aucun devis lié) : ${formatNumber(ville.production_annuelle_kwh.valeur, { decimals: 0 })} kWh/an — `
+      + `production standard de la ville (étude technique : −${formatNumber(11.5, { decimals: 1 })} %)`))
+    expect(screen.getByTestId('calx65-bandeau')).not.toHaveTextContent('Le devis annonce')
+  })
 
   it('standard ville ⇒ la ligne et l’écart −11,5 %', async () => {
     simule()

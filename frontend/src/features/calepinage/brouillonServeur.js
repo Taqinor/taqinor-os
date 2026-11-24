@@ -86,7 +86,16 @@ function canonique(valeur) {
   }
   return valeur
 }
-const memeDocument = (a, b) => JSON.stringify(canonique(a)) === JSON.stringify(canonique(b))
+// T4-U1-013 — comparés SANS l'état de vue (`scene`) : le brouillon est écrit sans lui (`sansVue`), le document servi le porte.
+const memeDocument = (a, b) => JSON.stringify(canonique(sansVue(a))) === JSON.stringify(canonique(sansVue(b)))
+
+/** T4-U1-013 — le brouillon LOCAL à proposer au bandeau, ou `null` : un brouillon identique au document que le serveur
+    sert (dernier enregistrement) ne porte rien de non enregistré — il n'est jamais proposé. */
+export function brouillonLocalAProposer(brouillon, layoutServi) {
+  if (!brouillon || brouillon.layout == null) return null
+  if (layoutServi && memeDocument(brouillon.layout, layoutServi)) return null
+  return brouillon
+}
 
 /** Le brouillon local `{layout, horodatage}`, ou `null` s'il est illisible. */
 function lireBrouillonLocal(valeur) {

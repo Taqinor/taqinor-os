@@ -1,4 +1,7 @@
+import { createContext, useContext } from 'react'
 import { ChevronRight, Info } from 'lucide-react'
+import calepinageApi from '../../../api/calepinageApi'
+import useResource from '../../../hooks/useResource'
 import { Popover, PopoverContent, PopoverTrigger } from '../../../ui/Popover'
 import { Icone as Picto } from '../atelier/coque/primitives'
 import { ETAPES, etapeDeOnglet } from '../atelier/parcoursGuide'
@@ -63,8 +66,61 @@ function Anneau({ bons, total }) {
   )
 }
 
+/* T4-U4-007 — le calepinage de la liste, pour le « ? » du dossier électrique (qui relit ses motifs servis). */
+const CalepinageDeLaListe = createContext(null)
+const BLOQUE = new Set(['bloquant'])
+const A_COMPLETER = new Set(['non_verifiable', 'omis', 'sans_source'])
+const MAX_POINTS = 4
+
+/** T4-U4-007 — « Dossier électrique » : le serveur ne sert que « Bloquant : 1 » ; le « ? » NOMME le ou les points en
+    relisant les motifs du verdict publiable (`evaluer-electrique`, corps vide — la lecture de l'onglet Verdict), mot
+    pour mot : bloquant ⇒ motifs bloquants ; à compléter ⇒ motifs non vérifiables, omis ou sans source. */
+function PointsDossier({ calepinageId, etat }) {
+  const { data, loading, error } = useResource(
+    (id) => calepinageApi.calepinages.evaluerElectrique(id, {}), calepinageId,
+    { select: (r) => r?.data?.publication ?? null, errorMessage: 'Les points n’ont pas pu être lus.' },
+  )
+  const retenus = etat === 'bloquant' ? BLOQUE : A_COMPLETER
+  // Une phrase servie deux fois (deux producteurs du même motif) ne se lit qu'une fois ; quatre au plus dans la bulle.
+  const points = [...new Set((Array.isArray(data?.motifs) ? data.motifs : [])
+    .filter((m) => retenus.has(m?.statut) && m.libelle).map((m) => m.libelle))]
+  const visibles = points.slice(0, MAX_POINTS)
+  const titre = etat === 'bloquant' ? 'Ce qui bloque :' : 'À compléter :'
+  return (
+    <div data-testid="cal-pret-points-dossier">
+      {loading && <p className="text-muted-foreground">Lecture des points du dossier…</p>}
+      {!loading && error && <p className="text-muted-foreground">{`${error} « Régler » ouvre le verdict détaillé.`}</p>}
+      {!loading && !error && points.length > 0 && (
+        <>
+          <p className="font-medium">{titre}</p>
+          <ul className="list-disc pl-5">{visibles.map((libelle) => <li key={libelle}>{libelle}</li>)}</ul>
+          {points.length > visibles.length && (
+            <p className="text-muted-foreground">{`… et ${points.length - visibles.length} autre${points.length - visibles.length > 1 ? 's' : ''} : « Régler » ouvre la liste complète.`}</p>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+/* T4-U4-014 — les contrôles dont le geste servi renvoie au lead (« saisissez la facture du lead », « Saisir la
+   facture ») : sur un calepinage SANS lead (créé depuis un client), la bulle relit le rattachement servi
+   (`GET calepinages/<pk>/`) et dit le geste faisable à la place. */
+const GESTE_SANS_LEAD = {
+  taille_sans_facture: 'Ce calepinage n’a pas de lead : aucune facture à lire. Choisissez le nombre de panneaux à '
+    + 'l’étape Panneaux, ou rattachez un lead pour dimensionner sur sa facture.',
+}
+function useSansLead(calepinageId, actif) {
+  const { data } = useResource(
+    (id) => calepinageApi.calepinages.get(id), actif ? calepinageId : null,
+    { select: (r) => r?.data ?? null, enabled: actif && calepinageId != null },
+  )
+  return data ? data.lead == null : null
+}
+
 /** Le « ? » de la ligne : cause servie + phrase du registre + geste, dans UNE bulle. Rien à dire ⇒ rien. */
 function Pourquoi({ controle }) {
+  const calepinageId = useContext(CalepinageDeLaListe)
   const entrees = useExplications()
   const entree = entrees?.find((e) => e.cle === `controle.${controle.code}`) ?? null
   const cause = controle.etat !== 'ok' ? controle.cause : ''
@@ -82,15 +138,29 @@ function Pourquoi({ controle }) {
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-80 text-sm leading-relaxed text-foreground normal-case tracking-normal">
-        <div className="flex flex-col gap-2">
-          {cause && <p>{cause}</p>}
-          {entree && <p>{remplirPhrase(entree, controle)}</p>}
-          {controle.seuil_source && <p className="text-muted-foreground">{`Source du seuil : ${controle.seuil_source}.`}</p>}
-          {gesteServi && <p className="text-muted-foreground">{gesteServi}</p>}
-          {entree?.geste && <p className="text-muted-foreground">{entree.geste}</p>}
-        </div>
+        <ContenuPourquoi controle={controle} calepinageId={calepinageId} cause={cause} entree={entree} gesteServi={gesteServi} />
       </PopoverContent>
     </Popover>
+  )
+}
+
+/* Monté à l'ouverture de la bulle seulement : la lecture du rattachement (T4-U4-014) ne part qu'à ce moment. */
+function ContenuPourquoi({ controle, calepinageId, cause, entree, gesteServi }) {
+  const gesteSansLead = controle.etat !== 'ok' ? GESTE_SANS_LEAD[controle.code] : null
+  const sansLead = useSansLead(calepinageId, Boolean(gesteSansLead))
+  const remplace = Boolean(gesteSansLead) && sansLead === true
+  return (
+        <div className="flex flex-col gap-2">
+          {controle.code === 'verdict_electrique' && controle.etat !== 'ok' && calepinageId != null && (
+            <PointsDossier calepinageId={calepinageId} etat={controle.etat} />
+          )}
+          {cause && <p>{cause}</p>}
+          {entree && !remplace && <p>{remplirPhrase(entree, controle)}</p>}
+          {controle.seuil_source && <p className="text-muted-foreground">{`Source du seuil : ${controle.seuil_source}.`}</p>}
+          {remplace && <p className="text-muted-foreground" data-testid="cal-pret-sans-lead">{gesteSansLead}</p>}
+          {gesteServi && !remplace && <p className="text-muted-foreground">{gesteServi}</p>}
+          {entree?.geste && !remplace && <p className="text-muted-foreground">{entree.geste}</p>}
+        </div>
   )
 }
 
@@ -272,7 +342,15 @@ function AttenteGroupes({ avis, attente, pied }) {
   )
 }
 
-export default function GroupesPretAEnvoyer({
+export default function GroupesPretAEnvoyer({ calepinageId = null, ...props }) {
+  return (
+    <CalepinageDeLaListe.Provider value={calepinageId}>
+      <Groupes {...props} />
+    </CalepinageDeLaListe.Provider>
+  )
+}
+
+function Groupes({
   groupes, testIdCompte, pied, onRegler, court = false, controles = [], attente = false, avis = null,
 }) {
   if (court) return <ListeCourte controles={controles} testIdCompte={testIdCompte} onRegler={onRegler} attente={attente} avis={avis} />

@@ -40,6 +40,7 @@ vi.mock('../../../hooks/useHasPermission', () => ({
 import calepinageApi from '../../../api/calepinageApi'
 import PanneauProduction from './PanneauProduction'
 import PiedResultats from './PiedResultats'
+import { NoteValeursPubliees } from './LigneValeursPubliees'
 import ReglagesSimulation from '../reglages/ReglagesSimulation'
 import sourceBibliotheque from '../Bibliotheque.jsx?raw'
 import { BandeauBorneHaute, EcartPvgis } from './BandeauProvenanceProduction'
@@ -767,7 +768,9 @@ describe('PanneauProduction — valeurs publiées (ACAL698)', () => {
     rendre()
     const texte = await screen.findByTestId('acal698-texte')
     expect(texte).toHaveTextContent('3 réglages utilisent des valeurs publiées, non mesurées sur ce chantier')
-    expect(texte).toHaveTextContent('salissure_mensuelle_pct, lid_par_techno, mismatch_fabricant_pct') // clé brute : registre absent
+    // Item 15 — registre absent : le nom du profil de départ, jamais la clé brute.
+    expect(texte).toHaveTextContent('Poussière sur les panneaux, Perte des premières heures de soleil, Écarts entre panneaux')
+    expect(texte).not.toHaveTextContent('salissure_mensuelle_pct')
     expect(screen.getByTestId('acal52-reglages-utilises')).not.toHaveAttribute('open')
     fireEvent.click(screen.getByTestId('acal698-voir-sources'))
     expect(screen.getByTestId('acal52-reglages-utilises')).toHaveAttribute('open')
@@ -785,6 +788,23 @@ describe('PanneauProduction — valeurs publiées (ACAL698)', () => {
     rendre()
     await screen.findByTestId('cal236-panneau')
     expect(screen.queryByTestId('acal698-ligne')).toBeNull()
+  })
+
+  /* Item 15 (T4-U2-013, T4-U4-009) — la simulation sert les clés PRÉFIXÉES (`electrique_societe.…`) ; les libellés
+     sont tenus SANS préfixe : trois clés brutes s'imprimaient. Un seul résolveur, avec et sans préfixe ; une clé sans
+     libellé ne s'imprime jamais brute. */
+  it('Item 15 — clés préfixées « electrique_societe.… » : leurs noms ; une clé sans libellé : « autre réglage (réglage de la société) »', async () => {
+    render(<MemoryRouter><NoteValeursPubliees onVoirSources={vi.fn()} simulation={{ reglages_utilises: {
+      'electrique_societe.seuil_bas_dc_ac': publie(0.8),
+      'electrique_societe.tolerance_polystring_bloquante_pct': publie(10),
+      'electrique_societe.tolerance_polystring_acceptable_pct': publie(5),
+      'electrique_societe.reglage_sans_libelle_x': publie(1),
+    } }} /></MemoryRouter>)
+    const note = await screen.findByTestId('acal698-texte-note')
+    expect(note).toHaveTextContent('taille minimale des panneaux face à l’onduleur, écart bloquant entre chaînes, '
+      + 'écart acceptable entre chaînes, autre réglage (réglage de la société)')
+    expect(note).not.toHaveTextContent('electrique_societe')
+    expect(note).not.toHaveTextContent('_')
   })
 
   it('l’exemple du contrat (profil de départ appliqué) annonce son réglage publié', async () => {

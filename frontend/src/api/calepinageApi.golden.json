@@ -452,6 +452,7 @@
   "calepinages.enregistrerLayoutCalepinageConditionnel": [
     {
       "config": {
+        "0": "x",
         "headers": {
           "If-Match": {
             "k": 1
@@ -848,7 +849,7 @@
   ],
   "calepinages.modulesDisponibles": [
     {
-      "config": null,
+      "config": 3,
       "data": null,
       "url": "/calepinage/calepinages/7/modules-disponibles/",
       "verbe": "get"
@@ -1105,6 +1106,7 @@
   "calepinages.soleilLegal": [
     {
       "config": {
+        "k": 1,
         "params": 3
       },
       "data": null,

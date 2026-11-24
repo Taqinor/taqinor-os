@@ -751,6 +751,105 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     expect(new URLSearchParams(screen.getByTestId('temoin-url').textContent).get('onglet')).toBe('cheminement-cables')
   })
 
+  /* T4-U4-007 — « Régler » sur « Dossier électrique » ne faisait rien : sa cible est l'onglet d'OUVERTURE de l'étape
+     (`verdict-electrique`), l'URL ne change pas et la section « Verdict » restait repliée sous « Réglages avancés ». */
+  const dossierBloquant = () => {
+    const ok = pret().controles.find((c) => c.code === 'tension_froid')
+    return [ok, { ...ok, code: 'verdict_electrique', libelle: 'Dossier électrique', etat: 'bloquant',
+      valeur_texte: 'Bloquant : 1', cause: '', geste: 'Corriger le dossier électrique',
+      cible: { etape: 'electrique', onglet: 'verdict-electrique', champ: '' } }]
+  }
+
+  it('T4-U4-007 — « Régler » sur « Dossier électrique » ouvre « Verdict » sous « Réglages avancés » et y met le focus', async () => {
+    servirEtape({ p: pret(dossierBloquant()) })
+    servir(REPONSE)
+    rendreEtape()
+    const ligne = await screen.findByTestId('cal-pret-ligne-verdict_electrique')
+    fireEvent.click(within(ligne).getByRole('button', { name: 'Régler' }))
+    await waitFor(() => expect(screen.getByTestId('cal-electrique-avances')).toHaveAttribute('data-state', 'open'))
+    const section = screen.getByTestId('cal-electrique-section-verdict-electrique')
+    expect(section).toHaveAttribute('data-state', 'open')
+    await waitFor(() => expect(document.activeElement).toBe(within(section).getByRole('button', { name: 'Verdict' })))
+    expect(await within(section).findByTestId('calx249-panneau')).toBeTruthy()
+  })
+
+  it('T4-U4-007 — le « ? » de « Dossier électrique » nomme le point qui bloque (motif servi par evaluer-electrique)', async () => {
+    servirEtape({ p: pret(dossierBloquant()) })
+    servir(REPONSE)
+    rendreEtape()
+    const ligne = await screen.findByTestId('cal-pret-ligne-verdict_electrique')
+    fireEvent.click(within(ligne).getByRole('button', { name: 'Pourquoi : Dossier électrique' }))
+    const bulle = await screen.findByTestId('cal-pret-points-dossier')
+    await waitFor(() => expect(within(bulle).getByRole('listitem')).toHaveTextContent('onduleur : fiche technique absente du stock'))
+    expect(bulle).toHaveTextContent('Ce qui bloque :')
+    expect(bulle).not.toHaveTextContent('pan « Sud »') // une alerte ne bloque pas : jamais citée comme bloquante
+    cleanup() // la bulle vit dans un portail : démontée avant que l'afterEach du bloc ne vide le body
+  })
+
+  it('T4-U4-007 — une étape ouverte sur une section (« Régler » d’un autre point) la déplie et y met le focus', async () => {
+    servirEtape()
+    const surCarte = document.createElement('div')
+    document.body.appendChild(surCarte)
+    render(
+      <MemoryRouter initialEntries={['/calepinage/7?onglet=cheminement-cables']}>
+        <ContexteCoque.Provider value={{ noeuds: { surCarte, panneau: null, pied: null }, prendrePied: () => () => {} }}>
+          <EtapeElectrique calepinageId={7} ouvert="cheminement-cables" action={{ libelle: 'Voir les résultats', onClick: () => {} }} />
+        </ContexteCoque.Provider>
+      </MemoryRouter>,
+    )
+    const section = screen.getByTestId('cal-electrique-section-cheminement-cables')
+    expect(section).toHaveAttribute('data-state', 'open')
+    await waitFor(() => expect(document.activeElement).toBe(within(section).getByRole('button', { name: 'Cheminement & câbles' })))
+  })
+
+  /* T4-U4-018 — un champ au sol et une ombrière seuls : le raccordement ne les câble pas (serveur : pans seulement). */
+  const SURFACES = {
+    zones: [],
+    poseSurfaces: [
+      { kind: 'sol', id: 'sol-1', label: 'Champ au sol', moduleWc: 710, engine: { modules: 28 } },
+      { kind: 'ombriere', id: 'omb-1', label: 'Ombrière parking', moduleWc: 710, engine: { modules: 16 } },
+    ],
+  }
+
+  it('T4-U4-018 — champ au sol + ombrière : l’étape dit qu’ils ne sont pas raccordés, et pourquoi', async () => {
+    servirEtape()
+    rendreEtape({ builderApi: { serializeLayout: () => SURFACES } })
+    expect(await screen.findByTestId('cal-elec-surfaces-non-raccordees')).toHaveTextContent(
+      'Champ au sol (28 modules) et Ombrière parking (16 modules) : pas encore raccordés. Le raccordement automatique '
+      + 'ne câble aujourd’hui que les panneaux posés sur les pans de toit, et ce plan ne dessine que les pans.')
+  })
+
+  it('T4-U4-018 — « Raccorder automatiquement » sans pan : la vraie cause, jamais « choisissez le module de ce toit »', async () => {
+    servirEtape()
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: { electrique: { affectation: [] } } })
+    calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: { ...entree(), absents: ['module'] } })
+    const carte = rendreEtape({ builderApi: { serializeLayout: () => SURFACES } })
+    fireEvent.click(within(carte).getByRole('button', { name: 'Raccorder automatiquement' }))
+    const alerte = await within(carte).findByRole('alert')
+    expect(alerte).toHaveTextContent('Aucun panneau de toit à raccorder : Champ au sol (28 modules) et Ombrière parking (16 modules) ne se raccordent pas encore automatiquement.')
+    expect(alerte).not.toHaveTextContent('module de ce toit')
+  })
+
+  /* Item 12 (T4-U4-012, côté écran) — « Raccorder automatiquement » forme des chaînes, mais le serveur les juge hors plage
+     (chaîne trop courte : MPPT hors plage par forte chaleur) : l'écran le DIT avec la phrase servie, jamais un succès muet. */
+  it('« Raccorder automatiquement » : chaînes formées mais verdict servi non conforme ⇒ la phrase servie est dite', async () => {
+    servirEtape()
+    const detail = 'Vmp à chaud 180 V < bas de plage MPPT 200 V — chaîne trop courte, MPPT hors plage en été'
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: { electrique: {
+      affectation: [{ module: 'm1', chaine: 1 }],
+      verdicts: [
+        { code: 'voc_cold_under_vmax', libelle: 'Voc à froid', conforme: true, bloquant: true, detail: '' },
+        { code: 'vmp_hot_over_mppt_min', libelle: 'Vmp à chaud au-dessus du bas de la plage MPPT', conforme: false, bloquant: false, detail },
+      ],
+    } } })
+    const carte = rendreEtape()
+    fireEvent.click(within(carte).getByRole('button', { name: 'Raccorder automatiquement' }))
+    const alerte = await within(carte).findByRole('alert')
+    expect(alerte).toHaveTextContent('Chaînes formées, mais à revoir :')
+    expect(alerte).toHaveTextContent(detail)
+    expect(alerte).not.toHaveTextContent('Voc à froid')
+  })
+
   it('« Voir » ouvre le sous-écran Schéma (`?onglet=schema`)', async () => {
     servirEtape()
     rendreEtape()

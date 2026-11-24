@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useLatitudeDuSite } from './useDocumentCalepinage'
 import calepinageApi from '../../api/calepinageApi'
 import RetourAtelier from './atelier/RetourAtelier'
+import { formatNumber } from '../../lib/format'
 import useSurfacePose from './useSurfacePose'
 import ActionsSurfacePose from './ActionsSurfacePose'
 import TracePlanPose from './TracePlanPose'
@@ -86,8 +87,9 @@ const IDS_TRACE = {
   emprise: 'cal-terrain-emprise',
 }
 
+// T4-U4-019 — le formateur de la maison (virgule française), jamais « 5.2 m » ni « 39.4 % ».
 function auDixieme(v) {
-  return v === null || v === undefined ? '—' : Math.round(v * 10) / 10
+  return v === null || v === undefined ? '—' : formatNumber(v, { maxDecimals: 1 })
 }
 
 /** ACAL345 — ce qui distingue cet écran dans `useSurfacePose` (genre, repère, placeur, libellés). */
@@ -332,7 +334,7 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
             </div>
             <div data-testid="cal-terrain-taux">
               <dd className="fig text-lg text-foreground">
-                {taux === null ? '—' : `${Math.round(taux * 1000) / 10} %`}
+                {taux === null ? '—' : `${formatNumber(taux * 100, { decimals: 1 })} %`}
               </dd>
               <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 {taux === null

@@ -8,6 +8,7 @@ import {
   verifierSectionEcrite, verifierLectureEnEchec, verifierSectionPousseeDansAtelier,
 } from '../../../test/fixtures/calepinageApiMock'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
+import { formatNumber } from '../../../lib/format'
 import { SAISIE_SOL } from '../../../test/fixtures/saisiesSurfacePose'
 import { champPoseMock } from '../../../test/fixtures/champPoseMock'
 import { RACINE_FRONTEND, racineDepot } from '../../../test/fixtures/racineDepot'
@@ -199,10 +200,11 @@ describe('CAL89 — l’écran calcule, enregistre et recharge', () => {
       expect(screen.getByTestId('cal-terrain-modules').textContent)
         .toContain(String(REPONSE.plans[0].modules))
     })
-    // L'écran arrondit le pas au dixième (`auDixieme`), comme le composant.
+    // L'écran arrondit le pas au dixième, avec le formateur de la maison (T4-U4-019 : virgule, jamais « 2.5 »).
     expect(screen.getByTestId('cal-terrain-pas').textContent)
-      .toContain(String(Math.round(PAS_REPONSE * 10) / 10))
-    expect(screen.getByTestId('cal-terrain-taux').textContent).toContain('%')
+      .toContain(formatNumber(PAS_REPONSE, { maxDecimals: 1 }))
+    expect(screen.getByTestId('cal-terrain-taux').textContent).toMatch(/^\d+,\d\s?%/)
+    expect(screen.getByTestId('cal-terrain-taux').textContent).not.toMatch(/\d\.\d/)
   })
 
   it('l’enregistrement écrit SEULEMENT `poseSurfaces` par section (la toiture n’est pas envoyée)', async () => {

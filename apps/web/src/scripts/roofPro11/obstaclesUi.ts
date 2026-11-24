@@ -27,7 +27,7 @@ import {
   type ObstacleType,
   type ObstacleProvenance,
 } from '../../lib/obstacles';
-import { isSimplePolygon, type LngLat } from '../../lib/roof'; // ACAL77
+import { isSimplePolygon, pointInPolygon, type LngLat } from '../../lib/roof'; // ACAL77 ; T4-U1-024
 import { OBSTACLE_TAP_PX, VERTEX_GRAB_PX, DEG2RAD, DEG2M } from './constants';
 import { coinLePlusProche, type PoigneeEcran } from './poigneesSommets3d'; // ACAL1185
 import { insertionSurContour, supprimerSommet, metresParPixel } from './snap';
@@ -294,6 +294,20 @@ export interface ObstaclesUi {
 /** ACAL77 — motif affiché quand un glissé de sommet ferait croiser le contour (même mot que
  *  `snap.ts` pour la suppression : « nœud papillon »). */
 export const MOTIF_SOMMET_CROISE = 'Déplacement refusé : le contour se croiserait (nœud papillon) — rapprochez le sommet de ses voisins.';
+
+
+/** T4-U1-024 — vrai quand le centre de l'obstacle n'est sur AUCUN pan tracé (au moins trois sommets) : il n'a alors aucun
+ *  effet sur le calepinage, et l'atelier doit le dire. Aucun pan tracé : rien n'est signalé (rien à éviter de toute façon). */
+export function obstacleHorsDesPans(
+  o: { centerLng: number; centerLat: number },
+  pans: Array<{ vertices?: LngLat[] | null }>,
+): boolean {
+  const anneaux = pans.map((p) => p?.vertices ?? []).filter((v) => Array.isArray(v) && v.length >= 3);
+  if (!anneaux.length || !Number.isFinite(o.centerLng) || !Number.isFinite(o.centerLat)) return false;
+  return !anneaux.some((anneau) => pointInPolygon([o.centerLng, o.centerLat], anneau as [number, number][]));
+}
+/** T4-U1-024 — la phrase dite à la pose (ou au déplacement) d'un obstacle hors de tout pan. */
+export const MOTIF_OBSTACLE_HORS_PAN = 'Obstacle posé hors du toit : il n’a aucun effet ici. Déplacez-le sur un pan, ou supprimez-le.';
 
 /** ACAL77 — le sommet `idx` d'un contour FERMÉ peut-il aller en `cible` sans que le contour
  *  se croise ? PURE : la garde unique `isSimplePolygon` (lib/roof.ts) sur le candidat. */
@@ -1534,7 +1548,14 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
       addObstacle(obstacleFromDrag(id, start.lngLat, end));
     }
     setObstacleMode(false);
-    setStatus('Obstacle ajouté — le calepinage l’évite. Touchez-le pour l’ajuster, ou ajoutez-en un autre.');
+    const pose = ctx.obstacles.find((x) => x.id === id);
+    setStatus(pose && obstacleHorsDesPans(pose, pansTraces())
+      ? MOTIF_OBSTACLE_HORS_PAN
+      : 'Obstacle ajouté — le calepinage l’évite. Touchez-le pour l’ajuster, ou ajoutez-en un autre.');
+  }
+  /** T4-U1-024 — les pans tracés (fiches + contour fermé en cours). */
+  function pansTraces(): Array<{ vertices?: LngLat[] | null }> {
+    return [...ctx.areas, ...(ctx.closed && ctx.vertices.length >= 3 ? [{ vertices: ctx.vertices }] : [])];
   }
 
   // — Déplacement d'un obstacle (glissé), Change C —
@@ -1589,6 +1610,8 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     ctx.suppressClick = true; // évite la désélection au click de synthèse
     // Re-pavage + recalcul seulement si l'obstacle a réellement bougé.
     if (moved) recalc();
+    const deplace = moved ? ctx.obstacles.find((x) => x.id === moveObs.id) : null;
+    if (deplace && obstacleHorsDesPans(deplace, pansTraces())) setStatus(MOTIF_OBSTACLE_HORS_PAN); // T4-U1-024
   }
 
   // — W92 — Déplacement d'un SOMMET du tracé (généralisation du glissé d'obstacle) —

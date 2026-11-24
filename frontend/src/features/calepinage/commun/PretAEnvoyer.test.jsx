@@ -16,6 +16,7 @@ vi.mock('../../../api/calepinageApi', () => ({
     calepinages: {
       pretAEnvoyer: vi.fn(),
       explications: vi.fn(() => Promise.resolve({ data: { entrees: [] } })),
+      get: vi.fn(),
     },
   },
 }))
@@ -257,5 +258,43 @@ describe('PretAEnvoyer — « Régler » mène à un écran qui existe (ACAL1703
     monterRoutes(202)
     await userEvent.click(await screen.findByTestId('cal-pret-regler-un_seul_chiffre'))
     expect(screen.getByTestId('ou')).toHaveTextContent(/^\/calepinage\/reglages$/)
+  })
+})
+
+/* T4-U4-014 — un calepinage SANS lead (créé depuis un client) : le « ? » de « Taille dimensionnée sur la consommation »
+   ne renvoie plus à « la facture du lead » qui n'existe pas ; le geste proposé est faisable. */
+describe('PretAEnvoyer — un calepinage sans lead ne parle pas du lead (T4-U4-014)', () => {
+  const taille = {
+    ...ligne(modeleARegler, 'taille_sans_facture'), libelle: 'Taille dimensionnée sur la consommation',
+    valeur_texte: 'le toit est rempli : 9 kWc', cause: 'aucune facture ni taille souhaitée : le système n’est pas dimensionné sur la consommation',
+    geste: 'Saisir la facture', cible: { etape: 'toit', onglet: '', champ: 'facture' },
+  }
+  const registreTaille = { entrees: [{ cle: 'controle.taille_sans_facture', phrase: 'Vérifie la facture du lead.', geste: 'Si ce n’est pas bon : saisissez la facture du lead.', valeurs: {} }] }
+
+  it('sans lead : ni « facture du lead » ni « Saisir la facture » ; le geste faisable est dit', async () => {
+    calepinageApi.calepinages.pretAEnvoyer.mockResolvedValue(servi([taille]))
+    calepinageApi.calepinages.explications.mockResolvedValue({ data: registreTaille })
+    calepinageApi.calepinages.get.mockResolvedValue({ data: { id: 205, lead: null, client: 9 } })
+    monter({ calepinageId: 205, groupes: true })
+    const ligneTaille = await screen.findByTestId('cal-pret-ligne-taille_sans_facture')
+    await userEvent.click(within(ligneTaille).getByRole('button', { name: 'Pourquoi : Taille dimensionnée sur la consommation' }))
+    const bulle = await screen.findByTestId('cal-pret-sans-lead')
+    expect(bulle).toHaveTextContent('Ce calepinage n’a pas de lead : aucune facture à lire. Choisissez le nombre de panneaux à l’étape Panneaux, ou rattachez un lead pour dimensionner sur sa facture.')
+    const contenu = bulle.parentElement
+    expect(contenu).not.toHaveTextContent('facture du lead')
+    expect(contenu).not.toHaveTextContent('Saisir la facture')
+    cleanup()
+  })
+
+  it('avec un lead : le texte servi reste tel quel', async () => {
+    calepinageApi.calepinages.pretAEnvoyer.mockResolvedValue(servi([taille]))
+    calepinageApi.calepinages.explications.mockResolvedValue({ data: registreTaille })
+    calepinageApi.calepinages.get.mockResolvedValue({ data: { id: 206, lead: 4, client: null } })
+    monter({ calepinageId: 206, groupes: true })
+    const ligneTaille = await screen.findByTestId('cal-pret-ligne-taille_sans_facture')
+    await userEvent.click(within(ligneTaille).getByRole('button', { name: 'Pourquoi : Taille dimensionnée sur la consommation' }))
+    expect(await screen.findByText('Saisir la facture')).toBeInTheDocument()
+    expect(screen.queryByTestId('cal-pret-sans-lead')).toBeNull()
+    cleanup()
   })
 })

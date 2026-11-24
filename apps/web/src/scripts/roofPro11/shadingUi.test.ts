@@ -20,6 +20,7 @@ import {
   libelleBoutonOsm,
   moduleShadeReading,
   moduleShadeReadingsForPanels,
+  phraseOmbrageParModule, // item 14 (T4-U1-023)
   type ModuleShadeReading,
   matriceOmbrageDesSources, // ACAL27
   htmlProposition, // ACAL714
@@ -207,6 +208,28 @@ describe('CALX122 — lecture géométrique d’ombrage par module (heures + pre
 // CALX88) écarte du posable les emplacements dont l'accès solaire CALCULÉ est sous le
 // seuil, AVANT le pavage. Aucun seuil par défaut : la pose est celle d'aujourd'hui, et
 // sans mesure d'ombrage le seuil est REFUSÉ en nommant sa raison — jamais « plein soleil ».
+/* Item 14 (T4-U1-023) — en Expert, la phrase comptait TOUTES les cellules du pavage (« 3 module(s) sur 6 ») alors que
+   3 panneaux sont posés : elle compte les panneaux POSÉS (cellules rendues, sinon les `count` premières). */
+describe('T4-U1-023 — phraseOmbrageParModule : sur les panneaux posés seulement', () => {
+  const LAT = 33.5;
+  const cheminee: ShadeObstructionENU = {
+    x: 0, y: -3, effHeightM: 5, halfWidthM: Math.hypot(3, 3) / 2,
+    footprint: [[-1.5, -4.5], [1.5, -4.5], [1.5, -1.5], [-1.5, -1.5]],
+  };
+  // 6 cellules : les 3 premières à l'ombre de la cheminée, les 3 suivantes à 40 m ; 3 posées (0, 1, 4).
+  const grille = [{ cx: 0, cy: 0 }, { cx: 0.5, cy: 0 }, { cx: -0.5, cy: 0 }, { cx: 40, cy: 0 }, { cx: 41, cy: 0 }, { cx: 42, cy: 0 }];
+  it('3 posés (dont 2 à l’ombre) sur 6 cellules : « 2 module(s) sur 3 », jamais « sur 6 »', () => {
+    const lectures = moduleShadeReadingsForPanels(LAT, [cheminee], grille, true) as ModuleShadeReading[];
+    const phrase = phraseOmbrageParModule(lectures, [0, 1, 4], 6) as string;
+    expect(phrase).toContain('2 module(s) sur 3 couvert(s)');
+    expect(phrase).not.toContain('sur 6');
+  });
+  it('sans cellules rendues : les `count` premières cellules (règle du rendu 3D)', () => {
+    const lectures = moduleShadeReadingsForPanels(LAT, [cheminee], grille, true) as ModuleShadeReading[];
+    expect(phraseOmbrageParModule(lectures, [], 3)).toContain('3 module(s) sur 3 couvert(s)');
+  });
+});
+
 describe('CALX115 — filtrerEmplacementsSousSeuil : écarter des emplacements, jamais supposer du plein soleil', () => {
   const LAT = 33.5;
   const prod = fallbackPerKwc();

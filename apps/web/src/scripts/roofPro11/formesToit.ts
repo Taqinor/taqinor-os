@@ -134,7 +134,19 @@ export function monterFormesToit(deps: FormesToitDeps): {
   let deduite: RoofShapePreset | null = null; // la forme que portent les pans rouverts (`formeDuToit`)
   let etaitFerme = false;
   let marquer = (): void => {};
+  // T4-U2-005 — la forme choisie AVANT tout contour (ordre de la maquette Main : Forme, puis Dimensions) : retenue, puis
+  // appliquée quand le contour se ferme (« Créer le toit » ou un tracé fermé). Avant, les tuiles restaient grisées.
+  let enAttente: RoofShapePreset | null = null;
   const cliquer = (forme: RoofShapePreset): VerdictForme => {
+    if (deps.contour().length < 3 && deps.obstacles() === 0) {
+      enAttente = forme;
+      choisie = forme;
+      marquer();
+      const libelle = FORMES_TOIT.find((f) => f.forme === forme)?.libelle ?? forme;
+      const motif = `Forme « ${libelle} » choisie : saisissez la longueur et la largeur puis « Créer le toit » — il sera découpé dans cette forme.`;
+      deps.setStatus(motif);
+      return { ok: false, motif };
+    }
     const verdict: VerdictForme =
       deps.obstacles() > 0
         ? { ok: false, motif: 'Forme du toit : ce pan porte des obstacles — retirez-les avant de le découper.' }
@@ -147,8 +159,15 @@ export function monterFormesToit(deps: FormesToitDeps): {
     } else deps.setStatus(verdict.motif);
     return verdict;
   };
+  /** T4-U2-005 — le contour vient de se fermer : la forme retenue s'applique, une fois. */
+  const appliquerEnAttente = () => {
+    if (!enAttente || deps.contour().length < 3) return;
+    const forme = enAttente;
+    enAttente = null;
+    cliquer(forme);
+  };
   const ancre = deps.ancre;
-  if (!ancre || typeof document === 'undefined' || !ancre.parentElement) return { rafraichir: () => {}, cliquer };
+  if (!ancre || typeof document === 'undefined' || !ancre.parentElement) return { rafraichir: appliquerEnAttente, cliquer };
   const enCoque = typeof ancre.closest === 'function' && ancre.closest('.cal-coque') !== null;
   const rangee = document.createElement('div');
   rangee.id = 'rp9-formes-toit';
@@ -187,8 +206,15 @@ export function monterFormesToit(deps: FormesToitDeps): {
       if (etaitFerme && !ferme) choisie = null; // contour effacé ou nouveau pan : plus de forme appliquée
       etaitFerme = ferme;
       deduite = ferme ? formeDuToit(deps.existants()) : null;
-      for (const b of tuiles) if (b.dataset.forme !== 'libre') b.setAttribute('aria-disabled', String(!ferme));
+      // T4-U2-005 — les tuiles restent choisissables avant le contour ; la bulle dit l'ordre.
+      for (const b of tuiles) {
+        if (b.dataset.forme === 'libre') continue;
+        b.removeAttribute('aria-disabled');
+        if (ferme) b.removeAttribute('title');
+        else b.title = 'Choisissez la forme, puis saisissez la longueur et la largeur et « Créer le toit ».';
+      }
       marquer();
+      appliquerEnAttente();
     },
     cliquer,
   };
