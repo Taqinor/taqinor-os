@@ -45,7 +45,7 @@ THEME = SimpleNamespace(nom_affichage='Soleil Atlas', logo_url=LOGO,
 PROVENANCE = {'hash_entree': 'ab' * 32, 'version_moteur': 'calepinage-1.0.0',
               'calcule_le': '2026-09-19'}
 #: « Un seul logo partout » (24/11/2026) : la balise du logo du DEVIS, telle
-#: que la porte ``ventes.selectors.logo_societe_html`` la rend (taille portée
+#: que la porte ``ventes.selectors.logos_societe_html`` la rend (taille portée
 #: par le style en ligne du moteur).
 LOGO_DEVIS = ('<img src="data:image/png;base64,AAAA" alt="logo" '
               'style="max-height:4.50mm;max-width:30.0mm;display:block;">')
@@ -188,16 +188,23 @@ class LogoDuDevisTest(unittest.TestCase):
 
         societe = SimpleNamespace(nom='Atlas Énergie')
         with mock.patch(
-                'apps.ventes.selectors.logo_societe_html',
-                side_effect=lambda company, role='entete', **kw:
-                '<img alt="%s">' % role) as porte:
+                'apps.ventes.selectors.logos_societe_html',
+                side_effect=lambda company, roles, **kw:
+                {role: '<img alt="%s">' % role for role in roles}) as porte:
             styles = styles_de_societe(societe, theme=None, profil={})
+            # L'empreinte des livrables ne lit PAS le fichier du logo.
+            sans = styles_de_societe(societe, theme=None, profil={},
+                                     logos=False)
         self.assertEqual(styles['logo_html'], '<img alt="entete">')
         self.assertEqual(styles['logo_garde_html'], '<img alt="couverture">')
-        self.assertEqual([c.kwargs['role'] for c in porte.call_args_list],
-                         ['entete', 'couverture'])
+        # UNE lecture du fichier pour les deux rôles.
+        self.assertEqual(porte.call_count, 1)
+        self.assertEqual(tuple(porte.call_args.args[1]),
+                         ('entete', 'couverture'))
+        self.assertEqual((sans['logo_html'], sans['logo_garde_html']),
+                         ('', ''))
         # La porte en panne : une marque sans logo du devis, jamais une erreur.
-        with mock.patch('apps.ventes.selectors.logo_societe_html',
+        with mock.patch('apps.ventes.selectors.logos_societe_html',
                         side_effect=RuntimeError('minio')):
             styles = styles_de_societe(societe, theme=None, profil={})
         self.assertEqual((styles['logo_html'], styles['logo_garde_html']),

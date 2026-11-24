@@ -1143,16 +1143,20 @@ def logo_entete_html(uri, *, variante='clair', role='entete', alt='logo'):
     return logo.img_html(logo.pour_role(b64, role), role, alt=alt)
 
 
-def logo_societe_html(company, *, variante='clair', role='entete', alt='logo'):
-    """« Un seul logo partout » (fondateur, 24/11/2026) — la balise du logo du
-    DEVIS pour la société ``company`` : celui du profil
-    (``CompanyProfile.logo_key``), lu en data URI par le contexte des PDF, puis
-    rendu par ``logo_entete_html`` (même module image que les devis). Porte
-    cross-app des documents du calepinage, qui n'importent jamais le moteur
-    (règle n° 4). ``''`` sans société, sans logo ou sur toute erreur —
-    journalisée, jamais levée : un logo ne fait jamais tomber une pièce."""
+def logos_societe_html(company, roles=('entete',), *, variante='clair',
+                       alt='logo'):
+    """« Un seul logo partout » (fondateur, 24/11/2026) — les balises du logo
+    du DEVIS de la société ``company``, une par rôle demandé : ``{rôle:
+    balise}``. Le logo est celui du profil (``CompanyProfile.logo_key``), lu
+    UNE fois en data URI par le contexte des PDF, puis rendu par
+    ``logo_entete_html`` (même module image que les devis). Porte cross-app
+    des documents du calepinage, qui n'importent jamais le moteur (règle
+    n° 4). Chaque balise vaut ``''`` sans société, sans logo ou sur toute
+    erreur — journalisée, jamais levée : un logo ne fait jamais tomber une
+    pièce."""
+    vide = {role: '' for role in roles}
     if company is None:
-        return ''
+        return vide
     try:
         from apps.parametres.models import CompanyProfile
 
@@ -1162,14 +1166,14 @@ def logo_societe_html(company, *, variante='clair', role='entete', alt='logo'):
         # qui CRÉE le profil absent (défauts, dont le fuseau du site) — lire
         # un logo ne doit rien écrire ; sans profil, il n'y a pas de logo.
         if not CompanyProfile.objects.filter(company=company).exists():
-            return ''
+            return vide
         uri = (_company_context(company) or {}).get('logo_uri')
-        return logo_entete_html(uri, variante=variante, role=role,
-                                alt=alt) or ''
+        return {role: logo_entete_html(uri, variante=variante, role=role,
+                                       alt=alt) or '' for role in roles}
     except Exception:  # un logo ne fait jamais tomber une pièce
-        logger.warning("logo societe : échec ignoré, pièce sans logo",
+        logger.warning("logos societe : échec ignoré, pièce sans logo",
                        exc_info=True)
-        return ''
+        return vide
 
 
 def poids_solaires_mensuels():

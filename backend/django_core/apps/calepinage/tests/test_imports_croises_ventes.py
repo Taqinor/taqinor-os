@@ -40,7 +40,7 @@ PLAFONDS = {
     # ``views/chiffrage_contexte.py`` (``ventes.services.chiffrer_conception``).
     # 24/11/2026 : +1 (43 -> 44) — « un seul logo partout » (fondateur) :
     # ``services/documents/gabarit_document.py`` lit le logo du devis par la
-    # porte ``ventes.selectors.logo_societe_html`` (jamais le moteur, règle
+    # porte ``ventes.selectors.logos_societe_html`` (jamais le moteur, règle
     # n° 4) ; hors portes inchangé (5).
     ('calepinage', 'ventes'): (44, 5),
 }

@@ -13,7 +13,7 @@ Un seul logo partout (fondateur, 24/11/2026)
 Le logo imprimé est celui du DEVIS : le logo du profil société
 (``CompanyProfile.logo_key``), rendu par le module image du moteur de devis
 (rognage, détourage, taille du rôle) à travers la porte
-``apps.ventes.selectors.logo_societe_html`` — ce module n'importe jamais le
+``apps.ventes.selectors.logos_societe_html`` — ce module n'importe jamais le
 moteur (règle n° 4). Le thème de marque ne fournit plus que les COULEURS, le
 nom affiché de repli et, SEULEMENT quand la société n'a pas de logo de devis,
 un logo de repli (``logo_url``) : le logo du devis PASSE AVANT celui du thème.
@@ -65,7 +65,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     'NOIR', 'GRIS_TEXTE', 'GRIS_TRAIT', 'GRIS_FOND', 'CHARTE_IMPRESSION',
     'CLES_STYLES',
-    'styles_de_societe', 'pied_html',
+    'styles_de_societe', 'cle_du_logo', 'pied_html',
     'document_html',
     # CALX295 — la page de garde
     'LIBELLES_GARDE_FR', 'CHAMPS_GARDE', 'page_de_garde_html',
@@ -182,26 +182,49 @@ def _profil_de(company):
     return profil
 
 
-def _logo_du_devis(company, role):
-    """La balise du logo du DEVIS de ``company`` pour un ``role`` du moteur
-    (``entete`` | ``couverture``), ou ``''`` — ne lève jamais.
+#: Rôles du moteur de devis : en-tête courant, page de garde.
+ROLES_LOGO = ('entete', 'couverture')
 
-    Lu par la porte ``apps.ventes.selectors.logo_societe_html`` : ce module
+
+def _logos_du_devis(company):
+    """Les balises du logo du DEVIS de ``company`` — ``(en-tête, garde)`` —
+    ou ``('', '')`` ; ne lève jamais. UNE lecture du fichier pour les deux.
+
+    Lu par la porte ``apps.ventes.selectors.logos_societe_html`` : ce module
     n'importe jamais le moteur de devis (règle n° 4).
     """
     if company is None:
-        return ''
+        return '', ''
     try:
-        from apps.ventes.selectors import logo_societe_html
+        from apps.ventes.selectors import logos_societe_html
 
-        return logo_societe_html(company, role=role) or ''
+        balises = logos_societe_html(company, ROLES_LOGO) or {}
+        return tuple(balises.get(role) or '' for role in ROLES_LOGO)
     except Exception:  # un logo ne fait jamais tomber une pièce
         logger.warning("logo du devis : échec ignoré, pièce sans ce logo",
+                       exc_info=True)
+        return '', ''
+
+
+def cle_du_logo(company):
+    """L'identité LÉGÈRE du logo du devis : la clé de son fichier au profil
+    société, ou ``''``. C'est elle — jamais le fichier ni ses balises — qui
+    entre dans l'empreinte d'un livrable (``empreinte_livrable._marque``) :
+    savoir si un document est à jour ne télécharge aucune image."""
+    if company is None or isinstance(company, Mapping):
+        return ''
+    try:
+        from apps.parametres.models_company import CompanyProfile
+
+        return (CompanyProfile.objects.filter(company=company)
+                .values_list('logo_key', flat=True).first() or '')
+    except Exception:  # un logo ne fait jamais tomber une pièce
+        logger.warning("cle du logo : échec ignoré, comportement dégradé",
                        exc_info=True)
         return ''
 
 
-def styles_de_societe(company, *, theme=_LIRE, profil=_LIRE):
+def styles_de_societe(company, *, theme=_LIRE, profil=_LIRE, logos=True):
     """La marque à imprimer : ``{nom_affiche, logo_url, couleur_primaire,
     couleur_secondaire, logo_html, logo_garde_html}``, chaque clé à ``''``
     quand rien n'est saisi.
@@ -218,6 +241,10 @@ def styles_de_societe(company, *, theme=_LIRE, profil=_LIRE):
     vient d'abord du profil par le moteur de devis (``logo_html`` en-tête
     courant, ``logo_garde_html`` page de garde, pour une vraie société), le
     thème (``logo_url``) ne servant que de repli à l'impression.
+
+    ``logos=False`` ne lit PAS le fichier du logo (les deux balises valent
+    ``''``) : c'est la lecture de l'empreinte des livrables, qui n'imprime
+    rien et porte ``cle_du_logo`` à la place.
     """
     raison_sociale = ''
     logo_html = logo_garde_html = ''
@@ -232,8 +259,8 @@ def styles_de_societe(company, *, theme=_LIRE, profil=_LIRE):
         if profil is _LIRE:
             profil = _profil_de(company)
         raison_sociale = _attr(company, 'nom')
-        logo_html = _logo_du_devis(company, 'entete')
-        logo_garde_html = _logo_du_devis(company, 'couverture')
+        if logos:
+            logo_html, logo_garde_html = _logos_du_devis(company)
     profil = profil or {}
     return {
         'nom_affiche': (_attr(theme, 'nom_affichage') or _attr(profil, 'nom')
