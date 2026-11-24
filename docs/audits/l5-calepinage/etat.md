@@ -744,3 +744,32 @@ quatre motifs).
 - 95 correctifs anciens prouvés en partie seulement (`T3/cv/T3-INSUF-*.md`).
 
 **Démontage fait** : voir la fin du rapport (`RAPPORT-FINAL-2026-11-23.md`, section 11) et le message de fin de session.
+
+## SESSION du 24/11 — « un seul moteur » puis test utilisateur complet (REPRENDRE ICI)
+
+Demande de Reda (24/11), mot pour mot : `PROMPT-SESSION-SUIVANTE.md` (le bloc entre les deux lignes), avec deux
+changements dits par lui : les décisions lui arrivent en questions interactives et, sans réponse sous 2 minutes, le
+choix recommandé est pris et listé à la fin ; rien de ce qu'un client lit n'est décidé sans lui.
+
+- Session : poste `DESKTOP-APTAHF6`, worktree `.claude/worktrees/all-plans-loop-work-1b9fa7`, branche locale
+  `claude/l5-calepinage-quote-completion-da59ee` partie d'`origin/main@c99872dda8`.
+- **Branche poussée : `dev-moteur-unique`** (jamais `claude/*` : le run de PR d'une branche `claude/*` est allégé et ne
+  joue PAS le backend — `.github/workflows/ci.yml`, sortie `allege` ; hier la file a retiré la PR deux fois pour cela).
+- Quota au départ (24/11) : **88 % « Weekly · all models », 84 % « Weekly · Fable »**, remise à zéro le 28/11 à 11 h
+  UTC, usage supplémentaire éteint. La campagne ne tient pas dans cette fenêtre : construire dans l'ordre de Reda,
+  état poussé à chaque étape, reprise après la remise à zéro.
+- Poste mesuré : 8 cœurs, 4,6 Go libres sur 15,9, 44 Go de disque, Docker allumé (pile `erp-agentique` + une pile
+  `ctr-*` d'une AUTRE session — PR #1539, ne pas y toucher) ; gabarit de test `test_erp_db_base` présent
+  (`scripts/test-backend.ps1 -RestoreDb`). Plafond : 2 à 3 agents de fond.
+- Claims (propriétaire `DESKTOP-APTAHF6/dev-moteur-unique`) : `file:` PLAN_AUDIT_DEVIS, _CALEPINAGE, _LEAD ;
+  `app:` ventes, core, calepinage, crm. À renouveler toutes les 6 h, à relâcher après la fusion.
+- `plan_lanes.py` sur le groupe seul (55 tâches) : UNE chaîne presque entièrement en série (lane
+  `moteur-unique/contrats`, 42 tâches) + une lane calepinage (10) + 3 acceptations de l'orchestrateur. Fusions prévues :
+  E1 contrat SEUL → E2 moteur (aucun lecteur branché, aucun chiffre ne change) → E3 relance → E4 devis (parité des 104
+  goldens) → E5 calepinage → E6 + E7 → E8 retraits → E9 (ADEV154 liste montrée à Reda, ADEV155 GATED sur sa réponse).
+- Instantané anonymisé local : `C:/dev/taqinor-os/var/anon/latest.anon.json.gz` date du 30/09 — à refaire (lecture
+  seule de la prod, `qa_export_anonymise --out -`) avant la partie 2.
+
+### Déroulé du 24/11 (un point par étape)
+
+1. E1 (ADEV129, ADEV130, ACAL2010) : lane opus lancée depuis `origin/main`.

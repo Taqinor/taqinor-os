@@ -467,6 +467,21 @@ CATALOG = {
         'La simulation d\'un calepinage a abouti et son résultat vient '
         'd\'être enregistré — aucun statut ne bouge.',
         ['calepinage', 'company_id']),
+    # ACAL2010 (D-ACAL-97) — les trois signaux du moteur unique, catalogués
+    # avant leurs émetteurs (ALEA68, ACAL2011, ADEV135) : clés = contrat.
+    'lead_entrees_modifiees': _e(
+        "Une colonne du lead qui est une entrée du moteur unique a changé "
+        "(``champs`` = [{champ, avant, apres}]) — aucun statut ne bouge.",
+        ['company_id', 'lead_id', 'champs']),
+    'pose_enregistree': _e(
+        "Une pose d'empreinte nouvelle est enregistrée sur un calepinage "
+        "(``lead_id`` None sans lead) — aucun statut ne bouge.",
+        ['company_id', 'calepinage_id', 'lead_id', 'empreinte_pose']),
+    'conception_recalculee': _e(
+        "Une nouvelle version de la conception rangée du lead (ou du "
+        "calepinage) est courante ; ``declencheur`` dit pourquoi — aucun "
+        "statut de devis ne bouge.",
+        ['company_id', 'lead_id', 'calepinage_id', 'version', 'declencheur']),
 }
 
 
