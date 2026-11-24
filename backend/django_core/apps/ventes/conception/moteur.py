@@ -188,8 +188,10 @@ def blocs_du_moteur(etude_params):
 
 
 def _fusion(devis, proprietaire, **cles):
-    from apps.ventes.domain.etude_schema import fusionner
-    devis.etude_params = fusionner(devis.etude_params or {}, proprietaire=proprietaire, **cles)
+    # Fusion clé à clé EN MÉMOIRE (aucune écriture en base : le devis n'est
+    # jamais enregistré par le moteur, ADEV133).
+    from apps.ventes.domain.etude_schema import appliquer
+    appliquer(devis, proprietaire=proprietaire, **cles)
 
 
 def _devis_neuf(intention, specs, avertissements):
