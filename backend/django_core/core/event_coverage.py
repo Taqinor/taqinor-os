@@ -168,7 +168,6 @@ ALLOWED_UNCONSUMED = {
     # la tâche qui la retire en abonnant le signal.
     "lead_entrees_modifiees",           # ventes : relance de la conception — retiré par ADEV139
     "pose_enregistree",                 # ventes : relance de la conception — retiré par ADEV139
-    "conception_recalculee",            # crm : ligne « pourquoi » au chatter — retiré par ALEA69
 }
 
 # APAR43 — signaux qui ont un abonné VIVANT mais AUCUN émetteur statique dans

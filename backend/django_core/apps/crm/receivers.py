@@ -15,6 +15,7 @@ from django.dispatch import receiver
 
 from core.events import (
     appointment_effectue,
+    conception_recalculee,
     devis_acceptation_annulee,
     devis_accepted,
     devis_refused,
@@ -48,7 +49,7 @@ from .fiche_funnel import (
 from .cadence_reperes import (
     est_note_de_geste_interne, est_note_de_report, est_note_de_touche_sautee)
 from .leads_premier_contact import marquer_premier_contact
-from .activity import creer_activite
+from .activity import creer_activite, journal_systeme
 
 logger = logging.getLogger(__name__)
 
@@ -297,6 +298,36 @@ def _noter_conception_on_layout_finalise(sender, devis, user=None, **kwargs):
     creer_activite(
         company=lead.company, lead=lead, kind=LeadActivity.Kind.NOTE,
         body=corps, user=user)
+
+
+@receiver(conception_recalculee, dispatch_uid="crm_note_conception_recalculee")
+@_point_de_sauvegarde
+def _noter_conception_recalculee(sender, company_id=None, lead_id=None,
+                                 version=None, declencheur=None, **kwargs):
+    """ALEA69 — dit POURQUOI un chiffre a changé : une nouvelle version de la
+    conception du lead écrit UNE ligne « Conception recalculée : … » au chatter,
+    par le chemin SYSTÈME (``journal_systeme``, ``user = None``). La phrase est
+    celle de l'écrivain (``declencheur['raison']``), recopiée telle quelle.
+    Un événement rejoué (même version) n'écrit pas une seconde ligne ; un
+    calepinage sans lead (``lead_id`` vide) n'a pas de chatter à alimenter."""
+    if not lead_id or not company_id or version is None:
+        return
+    lead = Lead.objects.filter(pk=lead_id, company_id=company_id).first()
+    if lead is None:
+        return
+    raison = ((declencheur or {}).get('raison') or '').strip()
+    if raison.lower().startswith('conception recalculée'):
+        corps = raison
+    else:
+        corps = 'Conception recalculée : %s' % (raison or 'entrées modifiées')
+    if LeadActivity.objects.filter(
+            lead=lead, field='conception_version',
+            new_value=str(version)).exists():
+        return
+    journal_systeme(
+        company=lead.company, lead=lead, kind=LeadActivity.Kind.NOTE,
+        field='conception_version', field_label='Conception recalculée',
+        new_value=str(version), body=corps)
 
 
 @receiver(devis_refused, dispatch_uid="crm_mark_lead_perdu_on_devis_refused")

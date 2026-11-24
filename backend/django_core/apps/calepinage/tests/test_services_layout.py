@@ -256,6 +256,8 @@ class EvenementsDuMoteurUniqueTest(SimpleTestCase):
     # Retirés d'``event_coverage.NO_STATIC_EMITTER`` au fil des émetteurs :
     # ALEA68 (lead_entrees_modifiees), ACAL2011 (pose_enregistree).
     SANS_EMETTEUR_STATIQUE = {'conception_recalculee'}
+    # Réservés jusqu'à ADEV139 (abonné ventes) ; ALEA69 a abonné le CRM.
+    SANS_ABONNE = {'lead_entrees_modifiees', 'pose_enregistree'}
     NOMS = {'lead_entrees_modifiees': 'lead', 'pose_enregistree': 'calepinage',
             'conception_recalculee': 'devis'}
 
@@ -274,7 +276,10 @@ class EvenementsDuMoteurUniqueTest(SimpleTestCase):
                 sous = importlib.import_module(f'core.events.{module}')
                 self.assertIs(getattr(sous, nom), signal)
                 self.assertIn(nom, sous.__all__)
-                self.assertIn(nom, event_coverage.ALLOWED_UNCONSUMED)
+                if nom in self.SANS_ABONNE:
+                    self.assertIn(nom, event_coverage.ALLOWED_UNCONSUMED)
+                else:
+                    self.assertNotIn(nom, event_coverage.ALLOWED_UNCONSUMED)
                 self.assertNotIn(nom, event_coverage.orphan_signals())
                 if nom in self.SANS_EMETTEUR_STATIQUE:
                     self.assertIn(nom, event_coverage.NO_STATIC_EMITTER)

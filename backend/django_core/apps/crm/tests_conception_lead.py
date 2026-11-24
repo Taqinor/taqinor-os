@@ -114,3 +114,70 @@ class EmissionEntreesModifieesTests(TestCase):
         """Une colonne de pompage sur un lead résidentiel : pas une entrée."""
         self._enregistrer(pompe_hmt_m=Decimal('40'))
         self.assertEqual(self.capture.appels, [])
+
+
+DECLENCHEUR = {
+    'raison': "Conception recalculée : facture d'hiver 900 → 1 200 MAD",
+    'champs': [{'champ': 'facture_hiver', 'avant': 900, 'apres': 1200}],
+    'origine': 'lead_entrees_modifiees',
+}
+
+
+class NoteConceptionRecalculeeTests(TestCase):
+    """ALEA69 — une conception recalculée écrit UNE ligne système au chatter."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='Taqinor ALEA69', slug='taqinor-alea69')
+        self.autre = Company.objects.create(
+            nom='Autre ALEA69', slug='autre-alea69')
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Alea', prenom='Soixante-neuf',
+            telephone='+212661690001', facture_hiver=Decimal('1200'))
+
+    def _envoyer(self, version=4, company_id=None, declencheur=DECLENCHEUR):
+        from core.events import conception_recalculee
+        conception_recalculee.send(
+            sender='ventes.ConceptionLead',
+            company_id=company_id or self.company.pk,
+            lead_id=self.lead.pk, calepinage_id=None,
+            version=version, declencheur=declencheur)
+
+    def _lignes(self):
+        from apps.crm.models import LeadActivity
+        return list(LeadActivity.objects.filter(
+            lead=self.lead, field='conception_version'))
+
+    def test_une_ligne_systeme_avec_la_phrase(self):
+        self._envoyer()
+        lignes = self._lignes()
+        self.assertEqual(len(lignes), 1)
+        self.assertIsNone(lignes[0].user)
+        self.assertEqual(lignes[0].company_id, self.company.pk)
+        self.assertEqual(
+            lignes[0].body,
+            "Conception recalculée : facture d'hiver 900 → 1 200 MAD")
+
+    def test_evenement_rejoue_meme_version_une_seule_ligne(self):
+        self._envoyer(version=4)
+        self._envoyer(version=4)
+        self.assertEqual(len(self._lignes()), 1)
+        self._envoyer(version=5)
+        self.assertEqual(len(self._lignes()), 2)
+
+    def test_lead_d_une_autre_societe_n_ecrit_rien(self):
+        self._envoyer(company_id=self.autre.pk)
+        self.assertEqual(self._lignes(), [])
+
+    def test_calepinage_sans_lead_n_ecrit_rien(self):
+        from core.events import conception_recalculee
+        conception_recalculee.send(
+            sender='ventes.ConceptionLead', company_id=self.company.pk,
+            lead_id=None, calepinage_id=7, version=1,
+            declencheur=DECLENCHEUR)
+        self.assertEqual(self._lignes(), [])
+
+    def test_raison_sans_prefixe_est_prefixee(self):
+        self._envoyer(declencheur={**DECLENCHEUR, 'raison': 'pose modifiée'})
+        self.assertEqual(self._lignes()[0].body,
+                         'Conception recalculée : pose modifiée')
