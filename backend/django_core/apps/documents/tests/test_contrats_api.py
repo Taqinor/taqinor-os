@@ -261,7 +261,11 @@ class ApiContratsPdfTests(TestCase):
         self.assertEqual((r.status_code, r.data['code']), (409, T.CODE_ACTE_FIGE))
         r = self.api.post(ACTE.format(acte.pk) + 'marquer-signe/',
                           {'signataire_nom': 'Youssef EXEMPLE',
-                           'signe_le': '2026-11-24'}, format='json')
+                           'signe_le': '2099-01-01'}, format='json')
+        self.assertEqual((r.status_code, r.data['code']),
+                         (400, T.CODE_CONTENU_INVALIDE))  # date future
+        r = self.api.post(ACTE.format(acte.pk) + 'marquer-signe/',
+                          {'signataire_nom': 'Youssef EXEMPLE'}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(r.data['statut'], T.SIGNE)
         self.assertEqual(r.data['mode_signature'], 'papier')
