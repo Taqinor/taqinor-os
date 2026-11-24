@@ -6,7 +6,7 @@
 import { WGS84_RADIUS } from '../../lib/geo';
 import { cadrageAnneaux, type LngLat, type OptionsCadrage as OptionsCadrageToit } from '../../lib/roof';
 import { appliquerVue, cibleVue, type NomVue } from './vuesCamera';
-import { poserPresentation, type CartePresentable } from './presentationCarte';
+import { poserEtapeAtelier, poserPresentation, type CartePresentable, type EtapeAtelier } from './presentationCarte';
 
 /** H1 (tour 3) — `basPx` : hauteur du bas de la carte COUVERTE (tiroir de la tablette) ; le toit est cadré au centre
  *  de la partie VISIBLE, au-dessus. Absent ou 0 : la carte entière, comportement d'avant. */
@@ -165,5 +165,7 @@ export function apiCamera(map: CarteCadrable & CartePresentable, sources: Source
     appliquerVue: (nom: NomVue) => { appliquerVue(map, nom, sources.azimut(), reducedMotion); if (dernier) cadrerToit(map, sources, dernier); },
     cadrerToit: (options?: OptionsCadrage) => cadrerToit(map, sources, (dernier = options ?? {})),
     modePresentation: (actif: boolean, vue?: VueClient) => poserPresentation(map, actif, vue ? tenue(vue) : undefined),
+    /** Suites v2 — l'étape guidée montrée par la coque (`null` : Expert, vue client) : chaque repère à l'étape de sa maquette. */
+    etapeAtelier: (etape: EtapeAtelier | null) => poserEtapeAtelier(map, etape),
   };
 }

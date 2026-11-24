@@ -48,7 +48,7 @@ import { lireGabaritsZone, lireGabaritsObstacle, type AreaRecord } from './types
 import { type LngLat } from '../../lib/roof';
 import { type Obstacle } from '../../lib/obstacles';
 import { CALQUE_CONTOUR, CALQUE_COTES, cotesDesAretes, monterCotesAretes, texteCote } from './cotesAretes'; // ACAL1328, ACAL2042
-import { CALQUES_EDITION, poserPresentation } from './presentationCarte'; // ACAL1328
+import { CALQUES_EDITION, poserEtapeAtelier, poserPresentation } from './presentationCarte'; // ACAL1328 ; suites v2 — l'étape
 import { peindreBande, texteTotalProduction } from './affichageErp'; // ACAL1612
 import { type CardData } from './types'; // ACAL1612
 
@@ -1282,6 +1282,26 @@ describe('ACAL1328 — calque rp9-cotes', () => {
     } finally {
       globalThis.getComputedStyle = avant;
     }
+  });
+
+  // Suites des écrans v2 (24/11) — à l'étape Panneaux la carte montrait cotes, contour or et coins (maquette Main seule).
+  it('étape déclarée par la coque : cotes, contour or et coins à l’étape Toit seulement ; sans étape, comme avant', async () => {
+    const { creerPoignees3d } = await import('./poigneesSommets3d');
+    const t = carteDeTestCotes();
+    t.carte.addLayer({ id: 'rp9-pts' });
+    monterCotesAretes(t.carte, () => [{ sommets: rectRing(12.4, 8.1), ferme: true, actif: true }], true);
+    creerPoignees3d(t.carte as never).poser({ add: () => {} } as never, rectRing(12.4, 8.1), [-7.6, 33.5], 6);
+    const vus = () => [CALQUE_COTES, CALQUE_CONTOUR, 'rp9-pts'].map((id) => t.visibilite.get(id));
+    expect(vus()).toEqual(['visible', 'visible', 'visible']);
+    for (const [etape, attendu] of [['panneaux', 'none'], ['electrique', 'none'], ['toit', 'visible'], ['documents', 'none'], [null, 'visible']] as const) {
+      poserEtapeAtelier(t.carte, etape);
+      expect(vus()).toEqual([attendu, attendu, attendu]);
+    }
+    poserEtapeAtelier(t.carte, 'panneaux');
+    poserPresentation(t.carte, true);
+    poserPresentation(t.carte, false); // la sortie de la vue client ne rallume rien hors de l'étape Toit
+    expect(vus()).toEqual(['none', 'none', 'none']);
+    poserEtapeAtelier(t.carte, null);
   });
 
   it('site public (option de montage absente) : aucun calque posé', () => {

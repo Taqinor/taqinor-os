@@ -315,6 +315,9 @@ export default function CoqueAtelier({
   // H1 (tour 3) — RÈGLE DE LA COQUE : chaque étape à carte s'ouvre en « Plan », le toit cadré et centré (au-dessus
   // du tiroir au téléphone), sauf si l'utilisateur a choisi une vue dans la séance ou touche la carte entre-temps.
   usePlanALEntreeDEtape({ builderRef, actif: carteVisible && !presentation, cle: `${cleEtape}:${tiroir}`, builderApiCoque })
+  // Suites v2 — la carte dessine ce que dessine la maquette de l'étape : cotes, contour or et coins au Toit ; chaînes et
+  // onduleur à l'Électrique. En Expert et au client, aucune étape n'est déclarée : tout reste comme avant.
+  useEffect(() => { builderApiCoque?.etapeAtelier?.(expert || presentation ? null : cleEtape) }, [builderApiCoque, cleEtape, expert, presentation])
 
   // J1 — présentation : ni résultat ni détail pour le bandeau (masqué) — aucune lecture de plus devant le client.
   const resultatServi = useResultatServi(calepinageId, !presentation, enregistreLe)

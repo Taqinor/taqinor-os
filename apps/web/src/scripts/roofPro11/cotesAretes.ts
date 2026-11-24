@@ -4,7 +4,7 @@
 // n'est posé que si l'hôte le demande (atelier ERP), jamais sur le site public ; il se tait en 3D et en présentation.
 import { type LngLat } from '../../lib/roof';
 import { segmentDistanceM } from './mesureUi';
-import { enPresentation, surPresentation } from './presentationCarte';
+import { enPresentation, montreALEtape, surEtape, surPresentation } from './presentationCarte';
 
 export const CALQUE_COTES = 'rp9-cotes';
 /** Pente de caméra (°) au-delà de laquelle la carte est en 3D (même seuil que `EtapeToit.helpers.js::lireVue`). */
@@ -131,7 +131,8 @@ export function monterCotesAretes(map: CarteCotes, contours: () => Array<{ somme
     }
   });
   const visibilite = () => {
-    const vis = map.getPitch() <= PENTE_PLAN_MAX && !enPresentation(map) ? 'visible' : 'none';
+    // Suites v2 — cotes et contour or sont ceux de la maquette Toit (`Main`) : à l'étape Toit seulement quand l'hôte en déclare une.
+    const vis = map.getPitch() <= PENTE_PLAN_MAX && !enPresentation(map) && montreALEtape(map, 'toit') ? 'visible' : 'none';
     for (const id of [CALQUE_COTES, CONTOUR]) if (map.getLayoutProperty(id, 'visibility') !== vis) map.setLayoutProperty(id, 'visibility', vis);
   };
   map.on('sourcedata', (e) => {
@@ -141,5 +142,6 @@ export function monterCotesAretes(map: CarteCotes, contours: () => Array<{ somme
   });
   map.on('pitch', visibilite);
   surPresentation(map, visibilite);
+  surEtape(map, visibilite);
   visibilite();
 }

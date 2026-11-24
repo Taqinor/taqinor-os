@@ -57,7 +57,7 @@ import { boiteObstacle } from './obstacle3d'; // ACAL1820
 import { etiquettesChaines, type ChaineAPoser } from './electrique3d'; // ACAL1944
 import { teintesBatiment, eclatPresentation, TEINTES_PRESENTATION } from './jeuPresentation'; // ACAL1839
 import { geometrieJupe } from './jupePignon'; // ACAL1839
-import { enPresentation, surPresentation } from './presentationCarte'; // ACAL1839
+import { enPresentation, montreALEtape, surEtape, surPresentation } from './presentationCarte'; // ACAL1839 ; suites v2 — l'étape
 import { type Ctx } from './context';
 import { poserEtiquettesNumeros } from './numerotation'; // CALX111
 // CALX94 câblage — couleur d'arête RETENUE (correction manuelle prioritaire), PURE.
@@ -1366,7 +1366,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   function attacherCoucheElectrique() {
     (groupeElectrique?.userData.siOrigineChange as (() => void) | undefined)?.(); // ACAL1944 — dessinée à l'origine de la scène
     if (groupeElectrique && atelierErp) { // ACAL1839 — au client, aucun organe d'édition (onduleur, tracés) ; rendue à la sortie
-      const client = jeuScene() === 'presentation';
+      const client = jeuScene() === 'presentation' || !montreALEtape(map, 'electrique'); // suites v2 — l'onduleur est celui de la maquette Électrique
       if (client && groupeElectrique.visible) { groupeElectrique.visible = false; groupeElectrique.userData.tuAuClient = true; }
       else if (!client && groupeElectrique.userData.tuAuClient) { groupeElectrique.visible = true; groupeElectrique.userData.tuAuClient = false; }
     }
@@ -2418,7 +2418,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   //   octet pour octet identique à pro-5. —
   // ACAL1839 — la scène se reconstruit à l'entrée et à la sortie de la présentation (jeu de matériaux) ; caméra intacte.
   let derniereScene: Parameters<RenderSceneFn> | null = null;
-  surPresentation(map, () => { if (derniereScene && atelierErp) renderScene(...derniereScene); });
+  for (const sur of [surPresentation, surEtape]) sur(map, () => { if (derniereScene && atelierErp) renderScene(...derniereScene); }); // suites v2 — l'étape aussi
   function renderScene(pack: PackResult, grid: PanelGrid, tiltDeg: number, family: ConfigFamily, maxCount: number, flush = false, occupiedSet?: Set<number>) {
     derniereScene = [pack, grid, tiltDeg, family, maxCount, flush, occupiedSet];
     if (!sceneRoot || !sun) return;
@@ -2722,7 +2722,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     if (groupeChaines) { groupeChaines.removeFromParent(); groupeChaines.traverse(disposeObject); groupeChaines = null; }
     const col = ctx.affectationColoration;
     const mesh = ctx.activePanelMesh;
-    if (!montrer || !col || !mesh || !sceneRoot || jeuScene() !== 'atelier') return;
+    if (!montrer || !col || !mesh || !sceneRoot || jeuScene() !== 'atelier' || !montreALEtape(map, 'electrique')) return; // suites v2 — maquette Électrique
     const ids = identifiantsModulesParCellule(ctx.activePanelCellIndex, clePanAffectation(ctx.areas.find((a) => a.id === ctx.activeAreaId), ctx.activeAreaId));
     const parChaine = new Map<string, ChaineAPoser & { points: [number, number, number][] }>();
     const m = new THREE.Matrix4();
