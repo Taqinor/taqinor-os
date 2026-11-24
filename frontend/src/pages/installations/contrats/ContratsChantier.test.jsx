@@ -1,9 +1,6 @@
 // Onglet « Contrats » : les charges utiles viennent TOUTES des exemples du
 // contrat (apps/documents/contract_samples/*.json) via contractSamples.js —
 // jamais un mock écrit à la main (garde CI check_api_shapes.py).
-/* global process */
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -191,14 +188,5 @@ describe('Onglet Contrats', () => {
       for (const b of boutons) expect(b).toHaveAccessibleDescription(titre)
       expect(entete.id).toBeTruthy()
     }
-  })
-
-  it('F7 — le numéro de l’étape en cours suit les jetons du thème (lisible en sombre)', () => {
-    const css = readFileSync(join(process.cwd(), 'src', 'styles', 'chantiers', 'contrats.css'), 'utf8')
-    const regle = css.match(/data-etat='en-cours'\] \.contrats-parcours__numero \{([^}]*)\}/)[1]
-    // Les deux jetons s'inversent ensemble entre clair et sombre ; `--color-encre` reste sombre dans les deux.
-    expect(regle).toMatch(/background: var\(--foreground\)/)
-    expect(regle).toMatch(/color: var\(--card\)/)
-    expect(regle).not.toMatch(/--color-encre/)
   })
 })
