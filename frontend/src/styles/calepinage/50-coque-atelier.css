@@ -403,6 +403,8 @@ body[data-cal-atelier] [data-sonner-toaster][data-y-position='bottom'][data-x-po
   text-overflow: ellipsis;
 }
 .cal-coque .cal-coque-alertes[data-deplie='0'] .cal-coque-alertes-contenu > * > p:first-child { flex: none; max-width: 40%; }
+/* T4-U4-027 — une alerte qui DOIT se lire en entier (conflit d'enregistrement) : jamais tronquée « rechargez ava… ». */
+.cal-coque .cal-coque-alertes .cal-coque-alertes-contenu > .cal-alerte-entiere > p { white-space: normal; max-width: none; flex: 1; overflow: visible; }
 .cal-coque .cal-coque-alertes[data-deplie='0'] .cal-coque-alertes-contenu > * > p + p { flex: 1; }
 .cal-coque .cal-coque-alertes[data-deplie='0'] .cal-coque-alertes-contenu > * > div { flex: none; margin: 0 0 0 auto; flex-wrap: nowrap; }
 .cal-coque .cal-coque-alertes-contenu button { min-height: 36px; padding-top: 4px; padding-bottom: 4px; }

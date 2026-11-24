@@ -180,3 +180,18 @@ export function sortTickets(items, key, dir) {
   if (key === 'priorite') return trierPar(items, dir, (t) => PRIO_RANK[t.priorite] ?? 1)
   return trierPar(items, dir, (t) => t[key] ?? '')
 }
+
+/* T4-U2-016 — le droit « gérer le SAV » (`sav_gerer`, grille des rôles) ouvre un ticket ; rôles qui le portent PAR
+   DÉFAUT (apps/roles/permissions_registre.py) — la grille reste modifiable dans Paramètres. Une seule phrase, lue par la
+   liste des tickets (/sav) et par la fiche du chantier (onglet « Interventions ») : plus de renvoi circulaire. */
+export const SAV_CREATION_RESERVEE = 'Ouvrir un ticket SAV est réservé aux rôles qui ont le droit « Gérer le SAV » '
+  + '(par défaut : Directeur, Administrateur, Commercial responsable, techniciens). Demandez-le à l’un d’eux, ou à '
+  + 'l’administrateur d’ajouter ce droit à votre rôle (Paramètres → Rôles).'
+
+/** La phrase de la liste des tickets VIDE : filtres, droit d'ouvrir un ticket (où), ou pas (qui peut). */
+export function descriptionListeVide(avecFiltres, peutOuvrir) {
+  if (avecFiltres) return 'Aucun ticket ne correspond aux filtres.'
+  return peutOuvrir
+    ? "Aucun ticket ouvert pour le moment. Un ticket s'ouvre depuis la fiche du chantier, onglet « Interventions »."
+    : `Aucun ticket ouvert pour le moment. ${SAV_CREATION_RESERVEE}`
+}

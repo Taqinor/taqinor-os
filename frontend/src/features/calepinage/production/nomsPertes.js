@@ -52,6 +52,8 @@ export const MANQUES_CLAIRS = {
   production_non_simulee: { titre: 'Production à calculer', ligne: 'Lancez la simulation pour la connaître.', bouton: 'Voir' },
   coefficients_non_sources: { titre: 'Températures de référence', ligne: 'Des valeurs standard servent en attendant celles du site.' },
   acces_solaire_absent: { titre: 'Ombrage panneau par panneau', ligne: 'Aucune ombre n’est signalée, mais cela ne prouve pas qu’il n’y en a pas.' },
+  // Item 14 (T4-U1-023) — des obstacles / voisins hauts sont posés : la phrase SERVIE les nomme et dit le geste.
+  ombres_non_mesurees: (m) => ({ titre: 'Ombres à compter sur les panneaux', ligne: m?.message || 'Des objets font de l’ombre : leur ombre n’est pas encore comptée.' }),
   ratio_dc_ac: { titre: 'Rapport panneaux / onduleur', ligne: 'À vérifier dans l’étape Électrique.' },
   longueur_chaine: { titre: 'Longueur des chaînes de panneaux', ligne: 'À vérifier dans l’étape Électrique.' },
   reglage_manquant: { titre: 'Réglage de la société à saisir', ligne: 'Nécessaire au calcul.' },
@@ -86,5 +88,5 @@ export function manqueClair(m) {
   const clair = typeof entree === 'function' ? entree(m) : entree
   const servi = m?.message || ''
   if (!clair) return { titre: servi, ligne: '', bouton: 'Renseigner', technique: '' }
-  return { titre: clair.titre, ligne: clair.ligne, bouton: clair.bouton || 'Renseigner', technique: servi }
+  return { titre: clair.titre, ligne: clair.ligne, bouton: clair.bouton || 'Renseigner', technique: servi === clair.ligne ? '' : servi }
 }

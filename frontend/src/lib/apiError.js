@@ -35,6 +35,18 @@ export function getApiError(error, fallback = 'Une erreur est survenue.') {
   if (error?.message === 'Network Error') {
     return { message: voice.networkError }
   }
+  // T4-U1-011 / T4-U2-018 / T4-U3-014 — un message TECHNIQUE d'axios (« timeout of 20000ms exceeded », « Network
+  // Error », « Request failed with status code 502 ») rangé par un slice (`err.response?.data ?? err.message`) puis relu
+  // comme donnée : jamais affiché tel quel. Corrigé ICI, une fois, pour toutes les listes.
+  const technique = [error?.response?.data, error?.message].find((t) => typeof t === 'string' && MESSAGE_AXIOS.test(t))
+  if (technique && (typeof error?.response?.data === 'string' || !error?.response)) {
+    if (/^timeout of \d+ms exceeded$/.test(technique)) {
+      return { message: 'La connexion a expiré. Vérifiez votre connexion et réessayez.' }
+    }
+    if (technique === 'Network Error') return { message: voice.networkError }
+    return { message: Number(technique.match(/\d+$/)?.[0]) >= 500
+      ? 'Erreur serveur. Réessayez ou contactez le support si le problème persiste.' : fallback }
+  }
 
   const status = error?.response?.status
   if (status === 429) {
@@ -84,6 +96,9 @@ function libelleChamp(cle) {
 }
 
 /** ACNC52 — texte UNIQUE d'une écriture (POST/PUT/PATCH/DELETE) dont la réponse a expiré. */
+/** Les messages techniques anglais d'axios (jamais montrés à l'utilisateur). */
+const MESSAGE_AXIOS = /^(timeout of \d+ms exceeded|Network Error|Request failed with status code \d+)$/
+
 export const MESSAGE_ECRITURE_EXPIREE =
   "La réponse n'est pas arrivée : l'action a peut-être abouti. Vérifiez avant de recommencer."
 

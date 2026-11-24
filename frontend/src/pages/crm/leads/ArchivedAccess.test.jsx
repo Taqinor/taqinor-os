@@ -76,9 +76,12 @@ describe('useDeepLinkedLead — un lien vers un lead archivé ouvre sa fiche', (
     expect(result.current.is_archived).toBe(true)
   })
 
-  it('pendant le chargement de la liste → on attend (aucune requête prématurée)', () => {
-    renderHook(() => useDeepLinkedLead('1569', [], true))
-    expect(crmApi.getLead).not.toHaveBeenCalled()
+  // T4-U3-014 — la fiche ouverte par son lien n'attend JAMAIS la liste (686 leads chargés en 45 s, ou en échec) :
+  // elle est lue tout de suite, seule.
+  it('pendant le chargement de la liste → la fiche est lue tout de suite, sans attendre la liste', async () => {
+    const { result } = renderHook(() => useDeepLinkedLead('1569', [], true))
+    await waitFor(() => expect(result.current?.id).toBe(1569))
+    expect(crmApi.getLead).toHaveBeenCalledWith('1569')
   })
 
   it('aucun lien → null', () => {

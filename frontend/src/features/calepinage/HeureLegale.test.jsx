@@ -39,7 +39,7 @@ describe('ACAL719 — HeureLegale', () => {
     expect(ligne.closest('#rp9-sun-legal')).toHaveTextContent('12 h solaire (13 h 45 heure légale)')
     expect(ligne.closest('#rp9-sun-legal')).toHaveTextContent('heure solaire vraie')
     expect(screen.getByText('solaire')).toHaveAttribute('title', 'heure vraie du lieu : midi = soleil au plus haut')
-    expect(soleilLegal).toHaveBeenCalledWith('7', { date: `${new Date().getFullYear()}-02-11` })
+    expect(soleilLegal).toHaveBeenCalledWith('7', { date: `${new Date().getFullYear()}-02-11` }, { suppressErrorToast: true })
   })
 
   it('un seul appel pour deux changements d’heure ; la ligne suit le curseur', async () => {
@@ -65,6 +65,17 @@ describe('ACAL719 — HeureLegale', () => {
     })
     expect(ligne).not.toHaveTextContent('13 h')
     expect(screen.getByRole('link', { name: /Réglages › site/ })).toHaveAttribute('href', '/calepinage/reglages')
+  })
+
+  // T4-U4-015 / T4-U1-018 — épingle non posée : la phrase dit quoi faire ; aucun toast global « Site.pin : … » en plus.
+  it('409 (épingle non posée) : « posez l’épingle du site », la lecture demande à ne pas être toastée', async () => {
+    soleilLegal.mockRejectedValue({ response: { status: 409, data: { 'site.pin': ['épingle du site non posée : la longitude est inconnue'] } } })
+    barre()
+    rendre()
+    await waitFor(() => expect(document.getElementById('rp9-sun-legal'))
+      .toHaveTextContent('heure légale non calculée : posez d’abord l’épingle du site sur la carte'))
+    expect(document.getElementById('rp9-sun-legal')).not.toHaveTextContent('Site.pin')
+    expect(soleilLegal.mock.calls[0][2]).toEqual({ suppressErrorToast: true })
   })
 
   it('hors d’un calepinage (pas d’identifiant), rien ne s’affiche', () => {

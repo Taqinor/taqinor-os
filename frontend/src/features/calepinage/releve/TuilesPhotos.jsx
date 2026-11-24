@@ -14,13 +14,14 @@ function Appareil() {
   )
 }
 
-export default function TuilesPhotos({ photos, genresEnFile, enCours, message, onDeposer }) {
+export default function TuilesPhotos({ photos, genresEnFile, genresEnvoyes = [], enCours, message, onDeposer }) {
   const tuiles = CATEGORIES_PHOTO.map((c) => ({
     ...c,
     photo: photos.find((p) => p.genre === c.genre) ?? null,
     enFile: genresEnFile.includes(c.genre),
+    envoyee: genresEnvoyes.includes(c.genre),
   }))
-  const faites = tuiles.filter((t) => t.photo || t.enFile).length
+  const faites = tuiles.filter((t) => t.photo || t.enFile || t.envoyee).length
   const total = tuiles.length
   return (
     <section className="cal-tel-section cal-tel-photos" data-testid="releve-photos">
@@ -33,12 +34,20 @@ export default function TuilesPhotos({ photos, genresEnFile, enCours, message, o
         {tuiles.map((t, i) => <span key={t.genre} className="cal-tel-barre-trait" data-fait={i < faites ? '' : undefined} />)}
       </div>
       <div className="cal-tel-tuiles">
-        {tuiles.map((t) => (t.photo || t.enFile ? (
+        {tuiles.map((t) => (t.photo ? (
           <div key={t.genre} className="cal-tel-tuile-photo" data-testid={`releve-photo-${t.genre}`}>
-            {t.photo && (
-              <img src={urlFichierCalepinage(t.photo.url)} crossOrigin={crossOriginFichierCalepinage()} alt="" />
-            )}
-            <span className="cal-tel-tuile-etiquette">{t.enFile && !t.photo ? `${t.libelle} · en attente` : t.libelle}</span>
+            <img src={urlFichierCalepinage(t.photo.url)} crossOrigin={crossOriginFichierCalepinage()} alt="" />
+            <span className="cal-tel-tuile-etiquette">{t.libelle}</span>
+          </div>
+        ) : t.enFile || t.envoyee ? (
+          /* T4-U4-023 — la photo gardée (ou envoyée, en relecture) : le genre et son état sur deux lignes, en encre
+             de la feuille — jamais une pastille blanche coupée sur fond clair. */
+          <div key={t.genre} className="cal-tel-tuile-attente" data-testid={`releve-photo-${t.genre}`}>
+            <Appareil />
+            <span className="cal-tel-tuile-attente-genre">{t.libelle}</span>
+            <span className="cal-tel-tuile-attente-etat" data-testid={`releve-photo-${t.genre}-etat`}>
+              {t.enFile ? 'en attente' : 'envoyée'}
+            </span>
           </div>
         ) : (
           <label key={t.genre} className="cal-tel-tuile-vide" data-testid={`releve-photo-${t.genre}`}>

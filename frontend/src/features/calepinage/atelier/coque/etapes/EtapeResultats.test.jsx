@@ -511,6 +511,25 @@ const rendreAvec = (data) => {
   )
 }
 
+/* Item 14 (T4-U1-023) — obstacles ou voisins hauts posés : le serveur sert `ombres_non_mesurees` (à régler, phrase qui
+   les nomme) au lieu de `acces_solaire_absent` ; la tuile « Ombres proches » et la liste le disent. */
+describe('Étape Résultats — ombres posées mais pas encore comptées (T4-U1-023)', () => {
+  const OMBRES = 'Ce toit porte 1 obstacle et 1 objet voisin qui font de l’ombre, mais cette ombre n’est pas encore comptée sur les panneaux posés : ouvrez le calcul des ombres du toit, puis enregistrez et relancez la simulation.'
+  it('tuile « Ombres proches : à compter » et la phrase servie ; jamais « Aucune ombre n’est signalée »', async () => {
+    servir(JAMAIS())
+    const manque = MANQUE().map((m) => (m.code === 'acces_solaire_absent'
+      ? { ...m, code: 'ombres_non_mesurees', gravite: 'a_regler', message: OMBRES } : m))
+    render(<MemoryRouter><EtapeResultats calepinageId={5} parcours={{ manque }}
+      action={{ libelle: 'Préparer les documents', onClick: vi.fn() }} /></MemoryRouter>)
+    const sur = await screen.findByTestId('acal700-sur')
+    expect(sur).toHaveTextContent('Ombres proches')
+    expect(sur).toHaveTextContent('à compter')
+    expect(sur).not.toHaveTextContent('à renseigner')
+    expect(document.body.textContent).toContain(OMBRES)
+    expect(document.body.textContent).not.toContain('Aucune ombre n’est signalée')
+  })
+})
+
 describe('Étape Résultats — pas encore simulé (jamais lancé)', () => {
   it('carte sombre + « Pour un résultat complet » + « Ce qui est déjà sûr », dans cet ordre, sans jargon', async () => {
     rendreAvec(JAMAIS())

@@ -512,7 +512,8 @@ export default function CalepinageNouveau() {
           onChange={(id) => setResponsableId(id ?? '')}
         />
         <p className="text-xs text-muted-foreground">
-          Laissé vide, le responsable est le propriétaire du lead.
+          {/* T4-U4-014 — sans lead (onglet Client), le serveur laisse le calepinage sans responsable (creation.py::creer_pour_client). */}
+          {surLead ? 'Laissé vide, le responsable est le propriétaire du lead.' : 'Laissé vide, le calepinage reste sans responsable.'}
         </p>
       </div>
 

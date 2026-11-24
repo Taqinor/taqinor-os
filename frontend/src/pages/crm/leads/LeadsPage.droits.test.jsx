@@ -127,3 +127,27 @@ describe('LeadsPage — vue liste, droits métier (ADRG152)', () => {
     }
   })
 })
+
+// T4-U3-014 / T4-U2-018 — la liste ne se lit pas (délai dépassé) : message français + « Réessayer », et la fiche
+// demandée par son lien s'ouvre quand même (elle ne dépend jamais de la liste).
+describe('LeadsPage — liste en échec, fiche par son lien (T4-U3-014)', () => {
+  it('« timeout of 20000ms exceeded » jamais affiché ; la fiche ?lead= est ouverte', async () => {
+    crmApi.getLeads.mockRejectedValue({ code: 'ECONNABORTED', message: 'timeout of 20000ms exceeded' })
+    crmApi.getLead.mockResolvedValue({ data: { ...LEADS[0], id: 42, nom: 'Lead par lien' } })
+    const auth = { role: 'responsable', permissions: COMMERCIAL, user: { id: 5, username: 'moi', is_staff: false } }
+    const store = configureStore({
+      reducer: { crm: crmReducer, auth: (s = auth) => s },
+      middleware: (gdm) => gdm({ serializableCheck: false, immutableCheck: false }),
+    })
+    render(
+      <Provider store={store}>
+        <MemoryRouter initialEntries={['/crm/leads?lead=42']}><LeadsPage /></MemoryRouter>
+      </Provider>,
+    )
+    expect(await screen.findByText(/La connexion a expiré/)).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/timeout of/)
+    expect(screen.getByRole('button', { name: /Réessayer/ })).toBeInTheDocument()
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith('42'))
+    expect(await screen.findByRole('button', { name: 'Fermer' })).toBeInTheDocument()
+  })
+})

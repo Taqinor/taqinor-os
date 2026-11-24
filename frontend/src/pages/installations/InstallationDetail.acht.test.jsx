@@ -180,11 +180,14 @@ describe('InstallationDetail — ACHT3 gestes refusés masqués', () => {
       expect(await screen.findByText(/Le suivi détaillé \(interventions, historique\)/)).toBeInTheDocument()
       expect(screen.queryByRole('button', OUVRIR)).toBeNull()
       expect(screen.queryByLabelText('Équipement concerné')).toBeNull()
+      // T4-U2-016 — sans le droit, l'écran dit QUI peut ouvrir le ticket au lieu de renvoyer à l'autre écran.
+      expect(screen.getByTestId('chantier-sav-creation-reservee')).toHaveTextContent('Ouvrir un ticket SAV est réservé')
       cleanup()
     }
     rendre({ id: 17, reference: 'CH-17', statut: 'installe', annule: false },
       { role: 'responsable', role_nom: 'Technicien responsable', permissions: ['installation_voir', 'installation_gerer', 'sav_gerer'] })
     await user.click(await screen.findByRole('tab', { name: /Interventions/ }))
     expect(await screen.findByRole('button', OUVRIR)).toBeInTheDocument()
+    expect(screen.queryByTestId('chantier-sav-creation-reservee')).toBeNull()
   })
 })

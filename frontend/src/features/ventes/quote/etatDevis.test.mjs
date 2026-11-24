@@ -470,3 +470,21 @@ test('erreurs_bloquantes_toutes_a_la_fois', () => {
   const carte = readFileSync(join(ICI, '../../../pages/ventes/generator/CarteCreation.jsx'), 'utf-8')
   assert.match(carte, /erreursBloquantes\(errors\)/)
 })
+
+test('T4-U2-004 — devis automatique : la catégorie rangée dans rythme est celle de l’édition complète', () => {
+  // Le devis AUTOMATIQUE range la catégorie dans `rythme.categorie_commerciale` (entrées v2), jamais à plat : l'écran
+  // d'édition disait « Non précisée » quand la tête du PDF disait « Boulangerie » (même lecture que
+  // quote_engine/ci/categories.py : à plat, puis le rythme, puis l'étude résolue).
+  const devis = base(41, 'commercial', {
+    ...entreesCi('commercial', {
+      tension: 'bt',
+      consommation: { kwh_mensuels: Array(12).fill(3000), kwh_annuel: null, factures_mad: [], registres_mt: null },
+      rythme: { categorie_commerciale: 'boulangerie', reponses_categorie: { fours: 2 } },
+    }),
+  }, [])
+  assert.equal(devisVersEtat(devis).categorieCommerciale, 'boulangerie')
+  const resolue = base(42, 'commercial', {
+    etude_ci: { entrees_resolues: { categorie_commerciale: { valeur: 'supermarche', source: 'lead' } } },
+  }, [])
+  assert.equal(devisVersEtat(resolue).categorieCommerciale, 'supermarche')
+})

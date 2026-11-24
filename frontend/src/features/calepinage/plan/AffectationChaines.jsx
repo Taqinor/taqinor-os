@@ -24,6 +24,18 @@ function refusAffectation(err, defaut) {
 }
 const REFUS_AUTO = 'Rétablissement refusé par le serveur.'
 
+/** Item 12 (T4-U4-012) — des chaînes formées ne sont pas pour autant BONNES : les verdicts servis non conformes de la
+    réponse (`electrique.verdicts[]`, conforme === false — ex. chaîne trop courte, MPPT hors plage par forte chaleur) et les
+    alertes servies (`electrique.alertes[]`, si le serveur les publie) sont dits avec SES mots. `[]` quand tout est bon. */
+function alertesDuRaccordement(electrique) {
+  const verdicts = (Array.isArray(electrique?.verdicts) ? electrique.verdicts : [])
+    .filter((v) => v && v.conforme === false)
+    .map((v) => (typeof v.detail === 'string' && v.detail.trim()) || v.libelle)
+  const alertes = (Array.isArray(electrique?.alertes) ? electrique.alertes : [])
+    .map((a) => (typeof a === 'string' ? a : (a?.libelle || a?.detail || null)))
+  return [...new Set([...verdicts, ...alertes].filter((t) => typeof t === 'string' && t.trim()))]
+}
+
 /** ACAL1536 — la phrase qui dit pourquoi aucune chaîne n'est apparue, d'après les rôles absents servis. */
 function causeSansChaine(absents) {
   const manque = absents ?? []
@@ -37,7 +49,9 @@ function causeSansChaine(absents) {
    (même requête, même confirmation quand une affectation faite à la main serait effacée, refus du
    serveur affichés tels quels) ; « Modifier une chaîne » ouvre l'écran d'affectation (`onModifier`).
    « Déplacer l'onduleur » n'est PAS proposé : aucune position d'onduleur n'est enregistrée (D-ACAL-70). */
-export function BarreRaccordement({ calepinageId, manuelles = false, lectureSeule = false, onRaccorde, onModifier }) {
+export function BarreRaccordement({
+  calepinageId, manuelles = false, lectureSeule = false, onRaccorde, onModifier, motifSansChaine = null,
+}) {
   const [arme, setArme] = useState(false)
   const [enCours, setEnCours] = useState(false)
   const [refus, setRefus] = useState(null)
@@ -50,7 +64,14 @@ export function BarreRaccordement({ calepinageId, manuelles = false, lectureSeul
       .then((r) => {
         onRaccorde?.(r.data)
         // ACAL1536 — 200 sans chaîne : la CAUSE est dite (matériel absent servi par `entree-electrique`).
-        if ((r.data?.electrique?.affectation ?? []).some((l) => l?.chaine != null)) return undefined
+        if ((r.data?.electrique?.affectation ?? []).some((l) => l?.chaine != null)) {
+          const alertes = alertesDuRaccordement(r.data?.electrique)
+          if (alertes.length) setRefus(['Chaînes formées, mais à revoir :', ...alertes])
+          return undefined
+        }
+        // T4-U4-018 — rien à câbler sur les pans (seulement un champ au sol / une ombrière) : la vraie cause, jamais
+        // « choisissez le module de ce toit » (le module désigné n'y change rien).
+        if (motifSansChaine) { setRefus([motifSansChaine]); return undefined }
         return Promise.resolve(calepinageApi.calepinages.entreeElectrique?.(calepinageId))
           .then((e) => setRefus([causeSansChaine(e?.data?.absents)]))
           .catch(() => setRefus([causeSansChaine(null)]))

@@ -164,6 +164,15 @@ describe('DevisList — relecture en cours ou ratée (AERR2)', () => {
   })
 })
 
+describe('DevisList — un délai dépassé se dit en français (T4-U1-011)', () => {
+  it('« timeout of 20000ms exceeded » rangé par le slice : jamais affiché, phrase claire + Réessayer', () => {
+    renderList({ loading: false, error: 'timeout of 20000ms exceeded', devis: [] })
+    expect(document.body.textContent).not.toMatch(/timeout of/)
+    expect(screen.getByText(/La connexion a expiré/)).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Réessayer' })).toBeVisible()
+  })
+})
+
 describe('DevisList — raccourci « a » sous une boîte (AERR14)', () => {
   it('modale d\'acceptation ouverte : « a » n\'ouvre pas la boîte PDF', async () => {
     const defile = vi.spyOn(window.HTMLElement.prototype, 'scrollIntoView').mockImplementation(() => {})
@@ -1562,6 +1571,47 @@ describe('DevisList — CIQ324 : acceptation C&I (identité d\'entreprise)', () 
     await waitFor(() => expect(ventesApi.accepterDevis).toHaveBeenCalledTimes(1))
     expect(Object.keys(ventesApi.accepterDevis.mock.calls[0][1]).sort())
       .toEqual(['date', 'nom', 'option'])
+  })
+})
+
+// T4-U1-014 — deux options : aucune présélection, sauf l'option que le DEVIS recommande (etude_params.recommended_option),
+// dite « recommandée par le devis » ; sans recommandation, « Confirmer » attend un choix.
+describe('DevisList — acceptation à deux options (T4-U1-014)', () => {
+  function ouvrir(id, etude) {
+    renderList({
+      loading: false,
+      permissions: ['ventes_valider'],
+      devis: [{
+        id, reference: `DEV-U1014-${id}`, client_nom: 'ACME', statut: 'envoye',
+        date_creation: '2026-07-01', total_ttc: 5000, nb_options: 2, version: 1,
+        mode_installation: 'residentiel', etude_params: etude,
+      }],
+    })
+    fireEvent.click(within(screen.getByText(`DEV-U1014-${id}`).closest('tr')).getByRole('button', { name: /Accepter/ }))
+  }
+
+  it('sans recommandation : rien de coché, « Confirmer » désactivé jusqu’au choix', async () => {
+    const user = userEvent.setup()
+    ventesApi.accepterDevis.mockClear()
+    ouvrir(14001, {})
+    const confirmer = await screen.findByRole('button', { name: /Confirmer l'acceptation/ })
+    expect(screen.getByRole('radio', { name: /Sans batterie/ })).not.toBeChecked()
+    expect(screen.getByRole('radio', { name: /Avec batterie/ })).not.toBeChecked()
+    expect(confirmer).toBeDisabled()
+    await user.click(screen.getByRole('radio', { name: /Avec batterie/ }))
+    expect(confirmer).not.toBeDisabled()
+    await user.click(confirmer)
+    await waitFor(() => expect(ventesApi.accepterDevis).toHaveBeenCalledTimes(1))
+    expect(ventesApi.accepterDevis.mock.calls[0][1].option).toBe('avec_batterie')
+  })
+
+  it('le devis recommande « Avec batterie » : elle est cochée et dite « recommandée par le devis »', async () => {
+    ouvrir(14002, { recommended_option: 'Avec batterie' })
+    const avec = await screen.findByRole('radio', { name: /Avec batterie/ })
+    expect(avec).toBeChecked()
+    expect(screen.getByRole('radio', { name: /Sans batterie/ })).not.toBeChecked()
+    expect(screen.getByTestId('accept-option-recommandee')).toHaveTextContent('recommandée par le devis')
+    expect(screen.getByRole('button', { name: /Confirmer l'acceptation/ })).not.toBeDisabled()
   })
 })
 

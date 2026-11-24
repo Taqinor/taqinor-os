@@ -58,6 +58,19 @@ describe('LW11 — rendu des sections (port 1:1 des champs)', () => {
     expect(champVille.contains(document.querySelector('#lf-email'))).toBe(false)
   })
 
+  it('T4-U3-020 — « maroc » (statut inconnue) : la raison SERVIE est imprimée à côté du champ Ville', async () => {
+    const { default: crmApi } = await import('../../../../api/crmApi')
+    const { reponseContrat } = await import('../../../../test/fixtures/contractSamples')
+    const espion = vi.spyOn(crmApi, 'villeStatut').mockResolvedValue(reponseContrat('crm', 'lead_ville_statut', 'exemple_inconnue'))
+    try {
+      const state = initState({ lead: { id: 4, nom: 'Y', ville: 'maroc' }, mode: 'edit' })
+      render(<SectionContact state={state} {...base} />)
+      const raison = await screen.findByTestId('lf-ville-raison', {}, { timeout: 3000 })
+      expect(raison).toHaveTextContent('ville non reconnue : choisissez-la dans la liste ou posez le point GPS')
+      expect(document.querySelector('#lf-ville').closest('.form-group').contains(raison)).toBe(true)
+    } finally { espion.mockRestore() }
+  })
+
   it('SectionPipeline rend type/priorité/canal/tags SANS select d\'étape', () => {
     render(<SectionPipeline state={createState()} {...base} />)
     expect(document.querySelector('#lf-type-installation')).toBeInTheDocument()
@@ -124,8 +137,10 @@ describe('LW11 — rendu des sections (port 1:1 des champs)', () => {
     render(<SectionEquipements state={createState()} {...base} />)
     expect(screen.getByRole('button', { name: 'Raccordement : monophasé ou triphasé ?' }))
       .toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Facture mensuelle (MAD/kWh)' }))
+    // T4-U1-020 — l'unité du champ qu'elle remplit (« Facture mensuelle (MAD/mois) », #lf-facture-hiver).
+    expect(screen.getByRole('button', { name: 'Facture mensuelle (MAD/mois)' }))
       .toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /MAD\/kWh/ })).toBeNull()
   })
 
   it('cliquer « Raccordement » depuis le questionnaire d\'appel déplie « Énergie » et y focalise le champ', async () => {
@@ -590,6 +605,33 @@ describe('ROUND 5 — repli automatique À L’OUVERTURE (jamais pendant la sess
     expect(tete(container, 'visite')).toHaveAttribute('aria-expanded', 'true')
     // Le bandeau non plus n'a rien à faire dans un formulaire vierge.
     expect(screen.queryByLabelText('Informations à compléter')).toBeNull()
+  })
+})
+
+/* T4-U3-023 — « Phase du site » (groupe servi ['raccordement'], contrat devis_auto_pret.json › exemple_agricole) : le
+   champ COMPTÉ le dit, et la phase déjà lue sur la plaque de la pompe conservée s'y reporte en un geste. */
+describe('T4-U3-023 — la phase du site : le champ compté, la plaque reprise en un geste', () => {
+  const { requis } = documentContrat('crm', 'devis_auto_pret').exemple_agricole.devis_auto
+  const etat = (sur) => initState({
+    lead: { id: 9, nom: 'Fellah', type_installation: 'agricole', mode_pompe: 'existante', raccordement: '',
+      devis_auto: { pret: false, manquants: [], requis }, ...sur },
+    mode: 'edit',
+  })
+
+  it('plaque « Triphasé », phase du site vide : « Reprendre Triphasé de la plaque » pose raccordement = triphase', () => {
+    const setField = vi.fn()
+    render(<SectionEnergie state={etat({ pompe_actuelle_phases: 'tri' })} {...base} setField={setField} />)
+    expect(screen.getByTestId('lf-raccordement-compte')).toHaveTextContent('« Phase du site »')
+    fireEvent.click(screen.getByRole('button', { name: 'Reprendre « Triphasé » de la plaque de la pompe' }))
+    expect(setField).toHaveBeenCalledWith('raccordement', 'triphase')
+  })
+
+  it('phase du site déjà dite, ou plaque muette : aucune reprise proposée', () => {
+    const r = render(<SectionEnergie state={etat({ pompe_actuelle_phases: 'tri', raccordement: 'monophase' })} {...base} />)
+    expect(screen.queryByRole('button', { name: /de la plaque de la pompe/ })).toBeNull()
+    r.unmount()
+    render(<SectionEnergie state={etat({ pompe_actuelle_phases: '' })} {...base} />)
+    expect(screen.queryByRole('button', { name: /de la plaque de la pompe/ })).toBeNull()
   })
 })
 

@@ -347,6 +347,20 @@ describe('LW21 — CTA devis automatique', () => {
   })
 })
 
+// T4-U3-017 — le kWh tapé contredit les factures : la fiche SERVIE le dit (`avertissements.kwh_factures`, ACVI97,
+// contrat lead_workspace.json › exemple_avertissement) — le bouton est grisé AVANT le clic, la raison nommée.
+describe('T4-U3-017 — kWh contredit par les factures, dit avant le clic', () => {
+  it('devis_auto.pret mais avertissement servi : « Devis automatique » inactif, la raison saute au champ', async () => {
+    const { avertissements } = exempleContrat('crm', 'lead_workspace', 'exemple_avertissement')
+    const { onAction } = renderTab({ state: leadState({ devis_auto: { pret: true, manquants: [] }, avertissements }) })
+    const bouton = screen.getByRole('button', { name: /Devis automatique/ })
+    expect(bouton).toBeDisabled()
+    expect(bouton).toHaveAttribute('title', avertissements.kwh_factures)
+    expect(screen.getByTestId('lw-devis-kwh-contredit')).toHaveTextContent(avertissements.kwh_factures)
+    expect(onAction).not.toHaveBeenCalled()
+  })
+})
+
 describe('LW21 — cartes devis + actions facture/chantier', () => {
   const devisAccepte = {
     id: 1, reference: 'DEV-2026-001', statut: 'accepte', total_ttc: '15000',

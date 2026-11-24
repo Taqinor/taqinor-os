@@ -75,6 +75,26 @@ class Ciq342Jalons(SimpleTestCase):
         self.assertEqual(len(re.findall(r'class="i2-b[pn]"', page)),
                          len(d["economie_ci"]["flux_ht"]["flux"]))
 
+    def test_t4_u2_020_bases_annoncees_seulement_si_imprimees(self):
+        """T4-U2-020 — « bases du calcul ci-dessous » n'est dit que si le
+        bloc « Bases du calcul » est rendu (niveau 15) ; dessous, la phrase
+        d'hier, même quand le rendu adaptatif a cédé le bloc."""
+        annonce = "bases du calcul ci-dessous"
+        for niveau_15 in (False, True):
+            d = dict(_data(), **({"regles_pose_reelle": True} if niveau_15 else {}))
+            with self.subTest(niveau_15=niveau_15, bloc="rendu"):
+                texte = _texte(_pages(d)[3])
+                self.assertIn("Bases du calcul", texte)
+                self.assertIn(annonce, texte)
+            with self.subTest(niveau_15=niveau_15, bloc="cédé"):
+                texte = _texte(_pages(dict(d, _sans_graphiques={"hypotheses"}))[3])
+                self.assertNotIn("Bases du calcul", texte)
+                if niveau_15:
+                    self.assertNotIn(annonce, texte)
+                    self.assertIn("délai de retour et TRI tirés de la même série.", texte)
+                else:
+                    self.assertIn(annonce, texte)
+
     def test_aucun_solveur_prive(self):
         self.assertFalse(hasattr(finance, "irr_flat"))
         self.assertFalse(hasattr(finance, "irr_series"))

@@ -116,6 +116,22 @@ describe('formats', () => {
   })
 })
 
+/* Item 14 (T4-U1-023) — l'étape Panneaux n'avait « aucune carte d'avis d'ombrage » sur un toit qui porte une cheminée
+   et un voisin haut : la phrase servie (`parcours.manque`, code `ombres_non_mesurees`) y est dite. */
+describe('étape Panneaux — ombres posées mais pas encore comptées (T4-U1-023)', () => {
+  it('la carte dit la phrase servie, sans bouton « Retirer »', async () => {
+    monterConstructeur()
+    servir()
+    const message = 'Ce toit porte 1 obstacle et 1 objet voisin qui font de l’ombre, mais cette ombre n’est pas encore comptée sur les panneaux posés : ouvrez le calcul des ombres du toit, puis enregistrez et relancez la simulation.'
+    rendre({ parcours: { manque: [{ code: 'ombres_non_mesurees', etape: 'resultats', gravite: 'a_regler', nombre: 1, message,
+      cible: { onglet: 'production', champ: '' } }] } })
+    const carte = await screen.findByTestId('cal-panneaux-ombres-non-comptees')
+    expect(carte).toHaveTextContent('Ombres à compter')
+    expect(carte).toHaveTextContent(message)
+    expect(within(carte).queryByRole('button', { name: /Retirer/ })).toBeNull()
+  })
+})
+
 describe('étape Panneaux — panneau de droite', () => {
   it('rend les blocs de la maquette dans l’ordre, libellés mot pour mot', async () => {
     monterConstructeur()
@@ -815,6 +831,22 @@ describe('en-tête de pose — suit la pose affichée tant que la scène n’est
     expect(sousTitrePose(servi, { panneaux: 1, kwc: null })).toBe('1 panneau · 1 onduleur 5 kW') // rien d’inventé : pas de kWc lu
     expect(sousTitrePose(servi, { panneaux: 0, kwc: '0,00 kWc' })).toBe('Aucun panneau posé')
     expect(sousTitrePose(servi, null)).toBe('16 panneaux · 11,36 kWc · 1 onduleur 5 kW')
+  })
+
+  /* T4-U4-016 / T4-U4-024 — UN compte : pans + champ au sol + ombrière, lu sur le DOCUMENT du constructeur (la carte
+     « Recommandation » ne compte que le pan), suivi quand le document change — pas seulement après un rechargement. */
+  it('T4-U4-016 / T4-U4-024 — avec le constructeur : pan 12 + sol 28 + ombrière 16 = « 56 panneaux · 39,76 kWc », suivi', async () => {
+    monterConstructeur({ panneaux: '12 × 710 W', kwc: '8,52 kWc' })
+    const pan = { id: 'z1', vertices: [[0, 0], [1, 0], [1, 1]], geometry: { count: 12, kwc: 8.52 } }
+    const sol = { kind: 'sol', id: 'sol-1', moduleWc: 710, engine: { modules: 28 } }
+    const omb = { kind: 'ombriere', id: 'omb-1', moduleWc: 710, engine: { modules: 16 } }
+    let doc = { zones: [pan], poseSurfaces: [sol] }
+    const builderApi = { serializeLayout: () => doc }
+    const { result } = renderHook(() => usePoseVivante(true, builderApi))
+    expect(result.current).toEqual({ panneaux: 40, kwc: '28,40 kWc' })
+    doc = { zones: [pan], poseSurfaces: [sol, omb] } // « Enregistrer l'ombrière » : la carte du pan ne bouge pas
+    await waitFor(() => expect(result.current).toEqual({ panneaux: 56, kwc: '39,76 kWc' }), { timeout: 3000 })
+    expect(sousTitrePose({ pose: { total_modules: 54, kwc: 38.34 } }, result.current)).toBe('56 panneaux · 39,76 kWc')
   })
 
   it('usePoseVivante : lit la carte du constructeur, la suit quand le module change, se tait hors scène modifiée', async () => {

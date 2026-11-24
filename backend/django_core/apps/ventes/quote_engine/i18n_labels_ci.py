@@ -43,6 +43,15 @@ LIBELLES_CI = {
               'drawn from the same series; calculation basis below.',
         'ar': 'إسقاط على مدى {n} سنة: التدفقات السنوية ومدة الاسترداد ومعدل '
               'العائد الداخلي مستخرجة من نفس السلسلة؛ أسس الحساب أدناه.'},
+    # T4-U2-020 — la même phrase SANS l'annonce, quand « Bases du calcul »
+    # n'est pas rendu (bloc cédé par le rendu adaptatif ou sans ligne).
+    'ci_cpdf_lead_finance_sans_bases': {
+        'fr': 'Projection sur {n} ans : flux annuels, délai de retour et TRI '
+              'tirés de la même série.',
+        'en': 'Projection over {n} years: annual cash flows, payback and IRR '
+              'drawn from the same series.',
+        'ar': 'إسقاط على مدى {n} سنة: التدفقات السنوية ومدة الاسترداد ومعدل '
+              'العائد الداخلي مستخرجة من نفس السلسلة.'},
     # R1 (fondateur 28/10/2026) — taille limitée par le toit en pose rasante.
     'ci_h_taille_toit': {
         'fr': 'Taille limitée par le toit', 'en': 'Size limited by the roof',

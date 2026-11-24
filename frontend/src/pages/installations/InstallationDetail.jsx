@@ -66,7 +66,7 @@ import { garantieLabel, garantieColor } from '../../features/sav/equipement'
 import {
   TICKET_TYPES,
   TICKET_STATUS_LABELS,
-  SOUS_GARANTIE_LABELS,
+  SOUS_GARANTIE_LABELS, SAV_CREATION_RESERVEE,
 } from '../../features/sav/ticketStatuses'
 import { formatDate } from '../../lib/format'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
@@ -1785,7 +1785,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                   ))}
                 </MiniTable>
               )}
-              <Hint>Le suivi détaillé (interventions, historique) se fait dans l&apos;écran « Tickets SAV ».</Hint>
+              <Hint>Le suivi détaillé (interventions, historique) se fait dans l&apos;écran « Tickets SAV ».{!peutSav && <span data-testid="chantier-sav-creation-reservee">{` ${SAV_CREATION_RESERVEE}`}</span>}</Hint>
               {peutSav && <div className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_2fr_auto]">
                 <FormField label="Type" htmlFor="tk-type">
                   <Select value={newTicket.type} onValueChange={(v) => setNewTicket(s => ({ ...s, type: v }))}>

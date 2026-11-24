@@ -78,7 +78,7 @@ import {
   construireAcrotere,
 } from './batiment'; // CALX100/101/102 — hauteur, acrotère et lucarne viennent du DOCUMENT
 import { type PerimeterSetbacks } from '../../lib/roofPro2';
-import { construireMaillagesPose } from './poseSurfaces'; // CALX124
+import { construireMaillagesPose, enMotsDOmbriere } from './poseSurfaces'; // CALX124
 
 import { teinterAllees } from './teinteAllees'; // CALX403
 import { creerCanalTeinte, type CouleurDe } from './canalTeinte'; // ACAL1621
@@ -3068,10 +3068,10 @@ export function construireOmbriere(
 ): ChampPose {
   const hauteurConnue = Number.isFinite(opts.hauteurLibreM as number)
     && (opts.hauteurLibreM as number) > 0;
-  const champ = construireChampPose(plan, {
+  const champ = enMotsDOmbriere(construireChampPose(plan, {
     ...opts,
     hauteurLibreM: hauteurConnue ? opts.hauteurLibreM : 0,
-  });
+  }));
   if (hauteurConnue) return champ;
   return {
     ...champ,

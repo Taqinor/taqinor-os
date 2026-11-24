@@ -1,5 +1,5 @@
 // ENF22 — helpers extraits de ModeTerrain.jsx (react-refresh/only-export-components) : le fichier composant n'exporte plus que des composants.
-import { nombre, contourTerrain, documentSurfacePose, KIND_SOL } from './surfacePose'
+import { nombre, contourTerrain, documentSurfacePose, KIND_OMBRIERE, KIND_SOL } from './surfacePose'
 
 /** Axe des rangées DÉRIVÉ par le serveur (ERR-QAH-CALEPINAGE-SOL-AXE-NORD-SUD). */
 export const AXE_AUTO = 'AUTO'
@@ -9,11 +9,16 @@ export const AXE_AUTO = 'AUTO'
  * un « optimum » à afficher en silence : on DIT qu'aucune table ne tient.
  * `null` quand il y a au moins un module (ou pas de plan).
  */
-export function motifChampVide(reponse) {
+export function motifChampVide(reponse, kind = KIND_SOL) {
   const plan = (reponse?.plans ?? [])[0] ?? null
   if (!plan) return null
   const modules = Number(plan.modules)
   if (!Number.isFinite(modules) || modules > 0) return null
+  // T4-U4-019 — une ombrière se dit avec SES mots (travées, emprise), jamais ceux du champ au sol.
+  if (kind === KIND_OMBRIERE) {
+    return 'Aucune travée ne tient dans cette emprise avec cette saisie : le moteur n’a posé aucun module. '
+      + 'Réduisez le nombre de modules par travée ou agrandissez l’emprise.'
+  }
   return 'Aucune table ne tient dans ce terrain avec cette saisie : le moteur '
     + 'n’a posé aucun module. Réduisez le nombre de modules par table ou '
     + 'agrandissez le terrain.'

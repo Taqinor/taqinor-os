@@ -62,6 +62,8 @@ export function CeQuiEstSur({ data, parcours, avecNote = true }) {
   const electrique = (parcours?.etapes || []).find((e) => e.cle === 'electrique')
   const ombres = (data?.cascade?.postes_lisibles?.postes || [])
     .find((p) => p.poste === 'ombres_proches' && p.statut === 'compte')
+  // Item 14 (T4-U1-023) — des objets hauts sont posés mais leur ombre n'est pas comptée : « à compter », jamais « à renseigner ».
+  const ombresAMesurer = (parcours?.manque || []).some((m) => m?.code === 'ombres_non_mesurees')
   const modules = data?.pose?.total_modules
   // Le kWc dit à côté des panneaux POSÉS est celui de la pose (un fait servi, même sans simulation) : depuis
   // ACAL1602 `production.total.kwc` ne compte que les panneaux raccordés — il ne se lit ici qu'à défaut.
@@ -95,7 +97,7 @@ export function CeQuiEstSur({ data, parcours, avecNote = true }) {
         )}
         {ombres
           ? <Valeur etiquette="Ombres proches" valeur={<GrosChiffre valeur={ombres.perte_pct} decimals={1} unite="%" signe="− " />} />
-          : <Valeur etiquette="Ombres proches" aRenseigner valeur={<span className="cal-resinc-a-renseigner">à renseigner</span>} />}
+          : <Valeur etiquette="Ombres proches" aRenseigner valeur={<span className="cal-resinc-a-renseigner">{ombresAMesurer ? 'à compter' : 'à renseigner'}</span>} />}
       </div>
       {avecNote && (
         <p className="cal-res-sourdine" data-testid="acal700-note">

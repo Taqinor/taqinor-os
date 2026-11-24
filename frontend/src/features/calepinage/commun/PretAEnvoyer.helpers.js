@@ -27,6 +27,7 @@ export const ETAPE_DU_CODE = {
   verdict_electrique: 'electrique',
   materiel_designe: 'electrique',
   tension_froid: 'electrique',
+  tension_chaud: 'electrique', // T4-U4-012 — jumeau du froid : « Tension des chaînes par forte chaleur »
   orientation_mppt: 'electrique',
   ratio_dc_ac: 'electrique',
   chutes_tension: 'electrique',

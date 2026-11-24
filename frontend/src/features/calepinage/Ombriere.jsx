@@ -1,4 +1,5 @@
 import RetourAtelier from './atelier/RetourAtelier'
+import { formatNumber } from '../../lib/format'
 import useSurfacePose from './useSurfacePose'
 import ActionsSurfacePose from './ActionsSurfacePose'
 import TracePlanPose from './TracePlanPose'
@@ -74,8 +75,9 @@ const IDS_TRACE = {
   emprise: 'cal-ombriere-emprise',
 }
 
+// T4-U4-019 — le formateur de la maison (virgule française), jamais « 2.5 m ».
 function auDixieme(v) {
-  return v === null || v === undefined ? '—' : Math.round(v * 10) / 10
+  return v === null || v === undefined ? '—' : formatNumber(v, { maxDecimals: 1 })
 }
 
 /** ACAL345 — ce qui distingue cet écran dans `useSurfacePose` (genre, repère, placeur, libellés). */
