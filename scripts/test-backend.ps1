@@ -23,6 +23,13 @@
 # `--keepdb` n'applique alors que les migrations ajoutees depuis le snapshot.
 # Apres une build a froid propre, lancer -Snapshot pour rafraichir le TEMPLATE.
 #
+# DEPENDANCES DE TEST (ADEP109) : `freezegun` (requirements-dev.txt) n'est
+# installe QUE par ce harnais, dans le conteneur jetable (`pip install -q -r
+# requirements-dev.txt`, plus bas) ; l'image locale n'a que requirements.txt.
+# Un `docker compose run` ecrit a la main ne le trouve donc pas : les modules
+# apps.crm.tests_scission_golden et apps.calepinage.tests.test_releve_terrain
+# « ne se chargent pas » hors harnais. Les lancer par ce script (-Modules ...).
+#
 # GARDE SINGLE-WRITER (critique) : test_erp_db est une base UNIQUE partagee par
 # tout ce qui tourne dans docker compose. Deux runs simultanes se sont deja
 # marche dessus et ont corrompu la base — ce script REFUSE de demarrer si un

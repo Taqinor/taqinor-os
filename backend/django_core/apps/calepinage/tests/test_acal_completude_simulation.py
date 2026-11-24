@@ -67,6 +67,20 @@ def _compte(mention):
     return int(mention.split('—')[1].split()[0])
 
 
+_SERIE_PAN = {'pas_minutes': 60, 'colonne_energie': 'p_w',
+              'points': [{'annee': 2020, 'mois': 6, 'jour': 21,
+                          'heure': heure, 'p_w': 1000.0 * heure,
+                          'gi_w_m2': 100.0 * heure}
+                         for heure in range(8, 16)]}
+
+
+def _chaine_de_pan(postes):
+    """La cascade RÉELLE d'un pan dont seuls ``postes`` sont saisis."""
+    contexte = {'meteo': {'heure': {'base': None}},
+                'postes_saisis': postes, 'hash_entree': 'acal49'}
+    return appliquer_chaine(_SERIE_PAN, contexte, phase='pan')[1]
+
+
 def _simuler(*, pertes=None, layout=None, reglages=None, client=None):
     calepinage = _Calepinage(layout=copy.deepcopy(layout or LAYOUT),
                              pertes=pertes)
@@ -111,27 +125,16 @@ class CompletudeTest(SimpleTestCase):
         self.assertIsNotNone(total['p95_kwh'])
         self.assertEqual(total['performance_ratio_motif'], '')
         self.assertIsNotNone(blocs['incertitude']['quantiles']['p90_kwh'])
-        # Les AUTRES omissions (IAM, horizon… sans entrée) restent comptées.
-        autres = [nom for nom in blocs['cascade']['etapes_omises']
-                  if nom not in ('spectral', 'diodes', 'neige')]
-        if autres:
-            self.assertTrue(total['mention'].startswith('borne haute — '))
+        # ACAL2037 — socle complet : plus aucune « borne haute » ; les autres
+        # omissions (IAM, horizon… sans entrée) restent LISTÉES, jamais
+        # présentées comme une borne.
+        self.assertEqual(total['mention'], '')
 
     def test_omission_d_un_pan_comptee_dans_le_marqueur(self):
         # Deux chaînes de pan RÉELLES : l'IAM s'applique sur la première (un
         # poste « iam » saisi et sourcé), s'omet sur la seconde. La cascade de
         # la SOMME la dit appliquée — mais le marqueur la compte omise.
-        serie = {'pas_minutes': 60, 'colonne_energie': 'p_w',
-                 'points': [{'annee': 2020, 'mois': 6, 'jour': 21,
-                             'heure': heure, 'p_w': 1000.0 * heure,
-                             'gi_w_m2': 100.0 * heure}
-                            for heure in range(8, 16)]}
-
-        def chaine(postes):
-            contexte = {'meteo': {'heure': {'base': None}},
-                        'postes_saisis': postes,
-                        'hash_entree': 'acal49'}
-            return appliquer_chaine(serie, contexte, phase='pan')[1]
+        chaine = _chaine_de_pan
 
         avec_iam = chaine(SOCLE_SAISI + [_poste('iam', 3.0)])
         sans_iam = chaine(SOCLE_SAISI)
@@ -146,9 +149,30 @@ class CompletudeTest(SimpleTestCase):
             somme, {CLE_CASCADES_PAR_PAN: {'A': avec_iam, 'B': sans_iam}})
         seule_a = completude_de_la_chaine(avec_iam)
         # Le marqueur de la somme compte UNE omission de plus que la chaîne
-        # qui a l'IAM : celle du pan qui ne l'a pas.
-        self.assertGreater(_compte(completude['mention']),
-                           _compte(seule_a['mention']))
+        # qui a l'IAM : celle du pan qui ne l'a pas (ACAL2037 : la mention
+        # ne compte plus que le socle, les facultatives sont dans la liste).
+        self.assertGreater(len(completude['non_renseignees']),
+                           len(seule_a['non_renseignees']))
+        self.assertIn('iam', completude['non_renseignees'])
+        self.assertNotIn('iam', seule_a['non_renseignees'])
+
+    def test_phrase_de_completude_juste(self):
+        # ACAL2037 — socle saisi, facultatives omises : complet, mention vide
+        # (les omises restent listées) ; une perte du socle manque : le N de
+        # la mention est la longueur de ``socle_manquant`` servi avec elle.
+        complet = completude_de_la_chaine(_chaine_de_pan(SOCLE_SAISI))
+        self.assertTrue(complet['complete'])
+        self.assertEqual(complet['mention'], '')
+        self.assertTrue(complet['non_renseignees'])
+        incomplet = completude_de_la_chaine(_chaine_de_pan(
+            [p for p in SOCLE_SAISI if p['poste'] != 'lid']))
+        self.assertFalse(incomplet['complete'])
+        self.assertEqual(incomplet['socle_manquant'], ['lid'])
+        self.assertEqual(incomplet['mention'],
+                         'borne haute — 1 perte non renseignée')
+        sans_rien = completude_de_la_chaine(_chaine_de_pan([]))
+        self.assertEqual(_compte(sans_rien['mention']),
+                         len(sans_rien['socle_manquant']))
 
     def test_p75_p95_masques_comme_p90(self):
         total = _simuler()['production']['total']
@@ -203,9 +227,8 @@ class ARenseignerTest(SimpleTestCase):
         comptees = sum(1 for e in cascade['etapes']
                        if not e['motif_omission'])
         self.assertEqual(bloc['etapes_comptees'], comptees)
-        self.assertEqual(bloc['etapes_a_compter'],
-                         comptees + _compte(
-                             blocs['production']['total']['mention']))
+        self.assertEqual(bloc['etapes_a_compter'], comptees + len(
+            completude_de_la_chaine(cascade)['non_renseignees']))
         par_etape = {ligne['etape']: ligne for ligne in bloc['lignes']}
         for etape in ('salissure', 'lid', 'mismatch_fabricant'):
             ligne = par_etape[etape]

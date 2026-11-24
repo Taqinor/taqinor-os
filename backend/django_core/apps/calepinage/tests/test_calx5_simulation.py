@@ -937,12 +937,50 @@ class SimulationAutomatiqueTest(TestCase):
     def test_une_pose_modifiee_relance_une_simulation(self):
         import copy
 
+        from core.models import BackgroundJob
+
         self._enregistrer(LAYOUT)
+        # ACAL2033 — un job EN COURS ne compte pas comme « en attente » : la
+        # pose modifiée en lance un nouveau.
+        self._jobs().update(statut=BackgroundJob.STATUT_RUNNING)
         autre = copy.deepcopy(LAYOUT)
         autre['zones'][0]['geometry']['count'] += 2
         depart = self._enregistrer(autre)
         depart.assert_called_once()
         self.assertEqual(self._jobs().count(), 2)
+
+    def test_une_rafale_d_enregistrements_differents_ne_laisse_qu_un_job_en_file(
+            self):
+        import copy
+
+        from apps.calepinage.services.simulation_auto import (
+            simulation_automatique_en_cours)
+
+        for rang in range(10):
+            pose = copy.deepcopy(LAYOUT)
+            pose['zones'][0]['geometry']['count'] += rang
+            depart = self._enregistrer(pose)
+            if rang:
+                depart.assert_not_called()
+        self.assertEqual(self._jobs().count(), 1)
+        job = self._jobs().get()
+        self.calepinage.refresh_from_db()
+        self.assertEqual(simulation_automatique_en_cours(self.calepinage),
+                         job.pk)
+        # Le marqueur porte la DERNIERE empreinte (le job relit le document).
+        from core import cache as cache_tenant
+
+        from apps.calepinage.services.simulation import construire_contexte
+
+        from .acal_livrables_helpers import patch_materiel
+
+        marqueur = cache_tenant.get(
+            self.societe.pk,
+            'calepinage:simulation_auto:%s' % self.calepinage.pk)
+        with patch_materiel():
+            _contexte, meta = construire_contexte(self.calepinage)
+        self.assertEqual(marqueur['hash_entree'], meta['hash_entree'])
+        self.assertEqual(marqueur['job_id'], job.pk)
 
     def test_le_meme_etat_demande_deux_fois_ne_se_double_pas(self):
         from unittest import mock
