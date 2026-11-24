@@ -307,7 +307,7 @@ export default function ReleveVisite() {
           <TuilesPhotos photos={photos.photos} genresEnFile={photos.genresEnFile} enCours={photos.enCours}
             message={photos.message} onDeposer={deposer} />
 
-          <section className="cal-tel-section" data-testid="releve-mesures">
+          <section className="cal-tel-section cal-tel-mesures" data-testid="releve-mesures">
             <h2 className="cal-tel-h">Mesures</h2>
             <div className="cal-tel-deux">
               <ChampDecimal id="releve-longueur" testId="releve-longueur" libelle="Longueur" unite="m"

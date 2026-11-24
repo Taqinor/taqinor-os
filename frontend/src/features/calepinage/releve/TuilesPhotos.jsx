@@ -23,7 +23,7 @@ export default function TuilesPhotos({ photos, genresEnFile, enCours, message, o
   const faites = tuiles.filter((t) => t.photo || t.enFile).length
   const total = tuiles.length
   return (
-    <section className="cal-tel-section" data-testid="releve-photos">
+    <section className="cal-tel-section cal-tel-photos" data-testid="releve-photos">
       <div className="cal-tel-titre-ligne">
         <h1 className="cal-tel-h">Photos</h1>
         <span className="cal-tel-compte" data-testid="releve-photos-compte"><b>{faites}</b>{` sur ${total}`}</span>
