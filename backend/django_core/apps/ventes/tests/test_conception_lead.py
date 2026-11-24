@@ -33,10 +33,11 @@ CLES_RESULTAT = {
     'suppositions', 'entrees_utilisees', 'empreinte', 'niveau_regles',
     'version_moteur',
 }
-#: Ce que la version RANGÉE ajoute (§4, §5).
+#: Ce que la version RANGÉE ajoute (§4, §5) ; ``lead`` / ``calepinage`` /
+#: ``empreinte_pose`` : le porteur et la pose utilisée (ADEV131).
 CLES_RANGEES = {
     'declencheur', 'version', 'calcule_le', 'perimee', 'ecart_devis',
-    'brouillons_a_mettre_a_jour',
+    'brouillons_a_mettre_a_jour', 'lead', 'calepinage', 'empreinte_pose',
 }
 CLES_VALEUR = {'valeur', 'unite', 'source'}
 SOURCES_VALEUR = {'moteur', 'pose', 'impose', 'devis', 'defaut'}
@@ -108,6 +109,8 @@ class ContratConceptionLeadTests(SimpleTestCase):
                 self.assertIsInstance(ex['niveau_regles'], int)
                 self.assertIsInstance(ex['version'], int)
                 self.assertIsInstance(ex['perimee'], bool)
+                self.assertTrue(ex['lead'] or ex['calepinage'])
+                self.assertIn(len(ex['empreinte_pose']), (0, 64))
                 if ex['etat'] == 'refus':
                     self.assertEqual(set(ex['refus']), CLES_REFUS)
                     self.assertEqual(ex['valeurs'], {})
@@ -307,3 +310,117 @@ class ChampsEntreesTests(TestCase):
         self.assertLessEqual(set(CHAMPS_LUS_HORS_ENTREES), colonnes)
         with self.assertRaises(KeyError):
             champs_pour('inconnu')
+
+
+# ── ADEV131 — le résultat rangé : une seule version courante par porteur ─────
+
+def _champs_version(**extra):
+    """Une version de conception complète (valeurs illustratives)."""
+    champs = {
+        'etat': 'complet', 'refus': None, 'marche': 'residentiel',
+        'option_retenue': 'sans',
+        'valeurs': {'sans': {'nb_panneaux': {'valeur': 10, 'unite': 'panneaux',
+                                             'source': 'moteur'}}},
+        'blocs': {'etude_horaire': {'version': 1, 'kwc': 7.1}},
+        'entrees_utilisees': {'facture_hiver': {'valeur': 1200, 'source': 'lead'}},
+        'suppositions': [{'code': 'occupation_supposee', 'champ': 'occupation_jour',
+                          'valeur': 'presence_jour', 'source': 'defaut',
+                          'message': 'Présence en journée supposée.'}],
+        'empreinte': 'a' * 64, 'empreinte_pose': '', 'niveau_regles': 14,
+        'version_moteur': 'qjr43-2',
+        'declencheur': {'raison': 'remplissage initial', 'champs': [],
+                        'origine': 'remplissage'},
+    }
+    champs.update(extra)
+    return champs
+
+
+class ConceptionLeadModeleTests(TestCase):
+    """ADEV131 — ``ConceptionLead`` : une seule ``courante`` par porteur
+    (lead, ou calepinage sans lead), version = plus haut utilisé + 1, société
+    venue du porteur, rien n'est jamais supprimé."""
+
+    def setUp(self):
+        from apps.crm.models import Lead
+        from authentication.models import Company
+
+        self.company = Company.objects.create(nom='Conception A', slug='conception-a')
+        self.autre = Company.objects.create(nom='Conception B', slug='conception-b')
+        self.lead = Lead.objects.create(company=self.company, nom='Lead', prenom='A',
+                                        telephone='+212600000001')
+
+    def test_deux_versions_la_seconde_devient_seule_courante(self):
+        from apps.ventes.models import ConceptionLead
+
+        v1 = ConceptionLead.ranger(lead=self.lead, **_champs_version())
+        v2 = ConceptionLead.ranger(lead=self.lead, **_champs_version(empreinte='b' * 64))
+        v1.refresh_from_db()
+        self.assertEqual((v1.version, v1.courante), (1, False))
+        self.assertEqual((v2.version, v2.courante), (2, True))
+        self.assertEqual(ConceptionLead.objects.filter(lead=self.lead).count(), 2)
+        self.assertEqual(ConceptionLead.objects.get(lead=self.lead, courante=True).pk, v2.pk)
+
+    def test_contrainte_refuse_deux_courantes_pour_un_lead(self):
+        from django.db import IntegrityError, transaction
+
+        from apps.ventes.models import ConceptionLead
+
+        ConceptionLead.ranger(lead=self.lead, **_champs_version())
+        with transaction.atomic():
+            with self.assertRaises(IntegrityError):
+                ConceptionLead.objects.create(company=self.company, lead=self.lead,
+                                              version=9, courante=True, **_champs_version())
+
+    def test_contrainte_refuse_deux_courantes_pour_un_calepinage_sans_lead(self):
+        from django.db import IntegrityError, transaction
+
+        from apps.ventes.models import ConceptionLead
+
+        ConceptionLead.objects.create(company=self.company, calepinage_id=77, version=1,
+                                      courante=True, **_champs_version())
+        with transaction.atomic():
+            with self.assertRaises(IntegrityError):
+                ConceptionLead.objects.create(company=self.company, calepinage_id=77,
+                                              version=2, courante=True, **_champs_version())
+
+    def test_version_plus_haut_utilise_plus_un_jamais_le_compte(self):
+        from apps.ventes.models import ConceptionLead
+
+        # Une seule ligne, mais de version 5 : un count()+1 rendrait 2.
+        ConceptionLead.objects.create(company=self.company, lead=self.lead, version=5,
+                                      courante=False, **_champs_version())
+        nouvelle = ConceptionLead.ranger(lead=self.lead, **_champs_version())
+        self.assertEqual(nouvelle.version, 6)
+
+    def test_societe_venue_du_lead_jamais_d_ailleurs(self):
+        from apps.ventes.models import ConceptionLead
+
+        version = ConceptionLead.ranger(lead=self.lead, **_champs_version())
+        self.assertEqual(version.company_id, self.company.pk)
+        with self.assertRaises(ValueError):
+            ConceptionLead.ranger(lead=self.lead, company=self.autre, **_champs_version())
+
+    def test_porteur_obligatoire_et_lead_en_chaine_cascade(self):
+        from django.db import models
+
+        from apps.ventes.models import ConceptionLead
+
+        with self.assertRaises(ValueError):
+            ConceptionLead.ranger(company=self.company, **_champs_version())
+        champ = ConceptionLead._meta.get_field('lead')
+        self.assertEqual(champ.related_model._meta.label, 'crm.Lead')
+        self.assertTrue(champ.null)
+        self.assertIs(champ.remote_field.on_delete, models.CASCADE)
+
+    def test_version_relue_champ_pour_champ(self):
+        from apps.ventes.models import ConceptionLead
+
+        champs = _champs_version()
+        rangee = ConceptionLead.ranger(lead=self.lead, **champs)
+        relue = ConceptionLead.objects.get(pk=rangee.pk)
+        for nom in ('valeurs', 'blocs', 'suppositions', 'entrees_utilisees', 'declencheur',
+                    'etat', 'marche', 'option_retenue', 'empreinte', 'niveau_regles',
+                    'version_moteur'):
+            self.assertEqual(getattr(relue, nom), champs[nom], nom)
+        self.assertIsNotNone(relue.calcule_le)
+        self.assertIsNone(relue.calcule_par)

@@ -3,7 +3,8 @@
   "pourquoi": "ADEV129 (D-ACAL-97, « one engine in the whole ERP ») — LA conception COURANTE d'un lead : le résultat du moteur unique `apps/ventes/conception/moteur.py::calculer_conception`, rangé une fois (modèle `ConceptionLead`, porteur = le lead, ou le calepinage sans lead) et relu partout (fiche du lead, devis automatique, calepinage, écran devis, atelier). Forme : §4 de `docs/audits/l5-calepinage/controles/C4-un-seul-moteur.md`. PACT10 — POSÉ SEUL SUR main, AVANT le modèle (ADEV131), le moteur (ADEV133) et la route (ADEV137) ; lecteurs : ADEV137, ALEA71, ACAL2012, AGEN11, ADEV153. Valeurs = PLACEHOLDERS assumés (identifiants à un chiffre, nombres ronds) : ce sont les CLÉS et leurs natures qui font le contrat.",
   "regles": {
     "sortie_du_moteur": "etat, refus, marche, option_retenue, valeurs, blocs, suppositions, entrees_utilisees, empreinte, niveau_regles, version_moteur — c'est aussi, à l'identique, la réponse de l'aperçu (sans écriture).",
-    "version_rangee": "+ declencheur, version, calcule_le, perimee, ecart_devis, brouillons_a_mettre_a_jour.",
+    "version_rangee": "+ lead, calepinage, empreinte_pose, declencheur, version, calcule_le, perimee, ecart_devis, brouillons_a_mettre_a_jour.",
+    "porteur": "lead et calepinage = identifiants du porteur (ADEV131 ; l'un des deux au moins) : lead seul, lead + calepinage dont la pose a servi, ou calepinage seul (dossier sans lead, Q3 du 23/11) ; empreinte_pose = empreinte de la pose utilisée (\"\" sans pose) — le calepinage compare son détail de simulation à la version courante par elle (§4).",
     "etat": "complet | refus ; refus = {code, champ, message} nommé (ex. localisation_inconnue), valeurs et blocs vides ; sinon refus = null.",
     "marche": "residentiel | commercial | industriel | agricole ; option_retenue = sans | avec (null en refus).",
     "valeurs": "la table §2 PAR OPTION ({sans, avec?}) ; chaque valeur = {valeur, unite, source}. Solaire : nb_panneaux, puissance_kwc, module, onduleurs, nombre_onduleurs, chaines, temperature_froid, tension_froid, ratio_dc_ac, production_annuelle, production_mensuelle, autoconsommation, couverture, economies_annuelles, payback, consommation_annuelle, forme_horaire. Agricole : nb_panneaux, puissance_kwc, pompe, variateur, m3_jour (m3_jour = null sans courbe de pompe, D-AMOT-7).",
@@ -64,6 +65,7 @@
     "empreinte": "2222222222222222222222222222222222222222222222222222222222222222",
     "niveau_regles": 14, "version_moteur": "qjr43-2",
     "declencheur": {"raison": "facture d'hiver modifiée", "champs": [{"champ": "facture_hiver", "avant": 900, "apres": 1200}], "origine": "lead_entrees_modifiees"},
+    "lead": 1, "calepinage": null, "empreinte_pose": "",
     "version": 2, "calcule_le": "2026-11-23T14:05:00+01:00", "perimee": false,
     "ecart_devis": [{"valeur": "nb_panneaux", "devis": 14, "conception": 12, "devis_ref": "DEV-202611-0001", "reviser_possible": true, "mise_a_jour_proposee": false}],
     "brouillons_a_mettre_a_jour": [{"devis": 2, "reference": "DEV-202611-0002", "motif": "retouché à la main"}]
@@ -90,6 +92,7 @@
     "empreinte": "4444444444444444444444444444444444444444444444444444444444444444",
     "niveau_regles": 14, "version_moteur": "qjr43-2",
     "declencheur": {"raison": "pose enregistrée sur le calepinage", "champs": [], "origine": "pose_enregistree"},
+    "lead": 2, "calepinage": 3, "empreinte_pose": "8888888888888888888888888888888888888888888888888888888888888888",
     "version": 3, "calcule_le": "2026-11-23T15:00:00+01:00", "perimee": false, "ecart_devis": [], "brouillons_a_mettre_a_jour": []
   },
   "exemple_agricole": {
@@ -104,6 +107,7 @@
     "empreinte": "5555555555555555555555555555555555555555555555555555555555555555",
     "niveau_regles": 14, "version_moteur": "qjr43-2",
     "declencheur": {"raison": "HMT modifiée", "champs": [{"champ": "pompe_hmt_m", "avant": 35, "apres": 40}], "origine": "lead_entrees_modifiees"},
+    "lead": 4, "calepinage": null, "empreinte_pose": "",
     "version": 1, "calcule_le": "2026-11-23T16:00:00+01:00", "perimee": true, "ecart_devis": [], "brouillons_a_mettre_a_jour": []
   },
   "exemple_refus": {
@@ -113,6 +117,7 @@
     "empreinte": "6666666666666666666666666666666666666666666666666666666666666666",
     "niveau_regles": 14, "version_moteur": "qjr43-2",
     "declencheur": {"raison": "remplissage initial", "champs": [], "origine": "remplissage"},
+    "lead": 5, "calepinage": null, "empreinte_pose": "",
     "version": 1, "calcule_le": "2026-11-23T09:00:00+01:00", "perimee": false, "ecart_devis": [], "brouillons_a_mettre_a_jour": []
   },
   "apercu": {

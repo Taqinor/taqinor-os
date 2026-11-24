@@ -2021,9 +2021,9 @@ from .models_regulatory import (  # noqa: E402 — fin de module (anti-cycle) (D
 # models_releve.py ; ré-exporté ici pour la découverte Django).
 from .models_releve import ReleveImportSession  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 
-# QA-COHERENCE — mémoire des violations de l'auditeur nocturne (modèle déporté
-# dans models_coherence.py ; ré-exporté ici pour la découverte Django).
+# Ré-exports pour la découverte Django : QA-COHERENCE ; conception rangée (ADEV131).
 from .models_coherence import ViolationCoherence  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from .models_conception import ConceptionLead  # noqa: E402,F401 — fin de module (anti-cycle) (D-ENF22)
 
 # FG274-FG275 — mise en service & recette IEC 62446 (modèles déportés dans
 # models_commissioning.py).
