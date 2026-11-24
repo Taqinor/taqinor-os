@@ -38,6 +38,11 @@ CHAMP_LEAD_PAR_CODE = {
     'tarif_omis': 'contrat_electricite',
     'conversion_mad_impossible': 'contrat_electricite',
     'consommation_absente': 'conso_mensuelle_kwh',
+    # Fondateur 24/11/2026 — consommation estimée par la puissance maximale :
+    # ce sont les kWh (ou les factures) de la fiche qui la remplacent.
+    'consommation_estimee_puissance': 'conso_mensuelle_kwh',
+    'estimation_puissance_sans_jours': 'jours_ouverture',
+    'estimation_puissance_sans_heures': 'heure_debut',
 }
 
 #: Consigne lisible quand le texte du moteur parlait son jargon.
@@ -177,6 +182,7 @@ def est_supposee(entree):
 ORIGINES_CONSOMMATION = (
     ('factures MAD', ' à partir de la facture en dirhams'),
     ('relevé partiel', " à partir d'un relevé incomplet"),
+    ('puissance maximale', ' à partir de la puissance maximale'),
 )
 
 
