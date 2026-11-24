@@ -2433,7 +2433,13 @@ class RelanceEnTacheTests(_emprunt(RelanceConceptionTests, '_relancer'),
         self.assertEqual((lue['perimee'], lue['version'], lue['declencheur']['origine']), (True, 1, 'remplissage'))
         self.assertEqual(conception_courante(company, lead.pk)['perimee'], True)  # relire : toujours UNE tâche
         self.assertEqual(self.en_file.call_count, 1)  # mutant « toujours perimee: false » : 0
-        self.assertEqual(self.en_file.call_args.kwargs['kwargs']['origine'], 'filet')
+        # Relecture E3 (d) : l'origine vit dans le marqueur, la tâche ne porte que des identifiants.
+        from django.core.cache import cache
+
+        from apps.ventes.conception.receivers import _cle, cle_marqueur
+        self.assertEqual(cache.get(_cle(company.pk, cle_marqueur(lead.pk)))['origine'], 'filet')
+        self.assertEqual(set(self.en_file.call_args.kwargs['kwargs']),
+                         {'company_id', 'lead_id', 'calepinage_id', 'jeton'})  # mutant « valeurs au courtier »
         self.assertEqual(ConceptionLead.objects.count(), avant)  # la lecture n'écrit pas
 
         self.assertEqual(self._executer_les_taches(), [{'version': 2, 'ecrite': True}])
