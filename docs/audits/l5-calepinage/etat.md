@@ -1173,7 +1173,7 @@ articles de pompage (choix A par défaut) AVANT le tour 2 ; mise à jour de l'in
 actifs sans prix de vente (11 pompes à courbe, disjoncteurs, fusibles, parafoudres, sectionneurs, lignes de
 prestation C&I) et six articles au nom aléatoire (« DFASFA », « dsafsdg », « feaf », « gsdg », « sdadg », « SDVGDS »).
 
-### Point du 24/11, 19 h 05 UTC (le plus récent — REPRENDRE ICI)
+### Point du 24/11, 19 h 05 UTC
 
 **PR Taqinor/taqinor-os#1552** — branche `dev-ecrans-v2`, tête `127a07c862` : LE lot du jour (écrans v2, correctifs
 du tour 1 des lanes B4 / site-facture / agri, moteur étape 2 + relectures, portée du rôle). Auto-fix allumé, fusion
@@ -1232,3 +1232,47 @@ facture prêt à deviser — recommandé : garder) ; origines de mesure « essai
 (revient sur AGR400) ; bandeau de l'atelier au nom du calepinage (revient sur ACAL1730) ; `rafraichir_etudes_du_devis`
 réécrit le bloc de dimensionnement d'un devis ENVOYÉ quand la facture du lead change (QJR5 contre D-ACAL-97) ; rôle
 Technicien : 403 sur le calepinage et le relevé ; tarif de pose du pompage ; clé de carte.
+
+### Point du 24/11, 20 h 50 UTC (le plus récent — REPRENDRE ICI)
+
+**PR Taqinor/taqinor-os#1552 FUSIONNÉE à 20 h 40 UTC** (lot 1 : écrans v2, correctifs du tour 1 des lanes B4 /
+site-facture / agri, moteur étape 2 + portée du rôle). Trois tours de CI : (1) gardes ENF22 / ENF23 / PACT159 / QJR6,
+quatre tests backend, api-fuzz, tests web du tracé (vraie régression du correctif B4-005, corrigée dans le CODE),
+goldens front, page « Démarrage rapide » plein écran inconnue de la fumée des écrans ; (2) budget du bundle (4 162,2
+pour 4 160 → 4 175) ; (3) un test e2e instable (`calepinage-parcours.spec.js` ACAL987 : onglet recouvert pendant un
+re-rendu) — vert à la relance du seul job. **À déployer par le fondateur : `scripts/deploy-prod.ps1`.** Non déployé.
+Leçon du fondateur : corriger une CI rouge avec AUTANT de lanes parallèles que possible (six correcteurs lancés).
+Leçon de l'orchestrateur : avant d'ouvrir une PR, jouer les familles qui ont rougi — `node --test "src/**/*.test.mjs"`
+(repères hors contrat, classes héritées), tests front LIÉS aux fichiers changés (`vitest related`) et tous les goldens,
+budget du bundle, gardes hôte (`check_except_larges`, `check_tests_sautes_environnement`, `check_override_registry`,
+`check_services_appeles`, `test_check_choices_declares`), et en docker les tests-cliquets (`test_imports_croises_ventes`,
+`test_adev41_garde_portee_ventes`, `tests_scission_golden`, `test_event_coverage`).
+
+**Lot 2 — branche locale `dev-lot2`** (PAS poussée, PAS de PR) : étape 3 du moteur (ADEV139, 140, 141, 145, 146,
+ALEA70) + ses corrections de relecture (9 commits) ; lanes `calepinage-serveur` (5), `atelier-suite` (15),
+`front-suite` (18 commits) ; repère de test déclaré. Budget du bundle mesuré en local : 4 169,7 Ko pour 4 175
+(roof-tool 645,1 pour 650).
+- **Étape 3 toujours NON fusionnable** — seconde relecture indépendante des corrections : BLOQUANT, une ligne du
+  chatter écrite AVANT l'effacement garde les coordonnées GPS (`_caviarder_historique` ne réécrit pas les lignes
+  `conception_version`) ; MAJEUR, une tâche déjà en cours pendant l'effacement range encore une version avec les
+  anciennes données (verrouiller la ligne du lead dans la transaction de `ranger`) ; MAJEUR, le remplissage calcule la
+  première version sans le toit d'un calepinage déjà posé ; mineurs (arguments de la tâche porteurs de valeurs, tests
+  qui n'épinglent que deux gardes sur cinq, tâche ancienne qui écrase une récente). Tout est parti à la lane du moteur.
+- EN VOL : lane moteur `lane/moteur-e4b` (worktree isolé `agent-ae36ffd66221266fc`, base de test `x4`) — ces
+  corrections puis ADEV142 + 143, 144, 147, 148 ; lane `lane/serveur-suite` (worktree isolé, base `n` : phrases du PDF
+  industriel au niveau 15, blocage électrique qui nomme sa cause, article nommé dans le refus agricole, motif MT ;
+  « sol et ombrière » CONTESTÉ côté serveur : ils sont câblés) ; correcteur `fix/lot2-front` (balayage front avant PR :
+  golden `ToitureDesign` rouge connu) ; relecteurs du tour 2 V1 (rejeux calepinage + scénario b) et V2 (rejeux devis /
+  lead / agricole + scénarios c, d) sur l'instrument à `6633028331`.
+- AVANT la PR du lot 2 : plier `lane/serveur-suite`, `fix/lot2-front`, les corrections de la lane moteur ; intégrer
+  `origin/main` ; CODEMAP (modules neufs : `conception/receivers.py`, tâche `ventes.relancer_conception`, commande
+  `remplir_conceptions`, `calepinage/services/site.py`, `crm/provenances_pompage.py`, `ventes/selectors_calepinage.py`)
+  puis `codemap_fingerprint.py --write` ; `check_api_shapes.py --write` ; instantané OpenAPI en docker ; balayage
+  backend en docker (liste de la leçon ci-dessus + `test_conception_lead`, `tests_devis_auto`, `tests_vref_villes`,
+  `test_pret_a_envoyer`, `test_design_context`, `test_calx297_rapport_etude`, `test_cal223_contrats`).
+
+**Garde morte trouvée** : `frontend/src/features/calepinage/budget.test.mjs` (CAL224) ne joue son contrôle de poids
+que si `dist/` existe, donc jamais en CI ; son budget (73 Ko) date de septembre, le module pèse 133,6 Ko.
+
+**Tâche de 9 h vue par le fondateur** : c'était la lane d'extraction du matin, tenue en vie par deux boucles d'attente
+sur un journal terminé ; boucles arrêtées. Le serveur du front de l'instrument (5251) reste, exprès.
