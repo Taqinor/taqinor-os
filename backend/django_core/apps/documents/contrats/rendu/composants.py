@@ -532,15 +532,19 @@ def tableau_paiements(paiements, total, langue='fr'):
 
 # ── Articles, encadrés, cases ───────────────────────────────────────────────
 
-def articles(liste, langue='fr'):
+def articles(liste, langue='fr', annexes=None):
+    """Les articles, titre en marge. ``annexes`` : ``{cle: html}`` ajouté au
+    bas de la colonne de l'article ``cle`` (la carte du service après-vente
+    sous « Qui appeler »)."""
+    annexes = annexes or {}
     blocs = []
     for i, art in enumerate(liste or []):
         blocs.append(
             f'<div class="article"><div class="marge">'
             f'<div class="num">{libelle("article", langue, n=i + 1)}</div>'
             f'<h3>{esc(art.get("titre"))}</h3></div>'
-            f'<div class="texte">{paragraphes(art.get("paragraphes"))}</div>'
-            f'</div>')
+            f'<div class="texte">{paragraphes(art.get("paragraphes"))}'
+            f'{annexes.get(art.get("cle"), "")}</div></div>')
     return ''.join(blocs)
 
 

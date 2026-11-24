@@ -255,9 +255,9 @@ table.garanties.dates td:nth-child(3){width:20%}
 .partie .ci-apres{margin-top:1.6mm;color:__GRIS__;font-size:8.6pt}
 
 /* ── Articles : titre en marge, colonne de lecture ── */
-.article{position:relative;padding:4mm 0 0 48mm;margin-top:4mm;
+.article{position:relative;padding:4mm 0 0 40mm;margin-top:4mm;
   border-top:.6pt solid __FILET__;min-height:15mm}
-.article .marge{position:absolute;left:0;top:4mm;width:43mm}
+.article .marge{position:absolute;left:0;top:4mm;width:36mm}
 .article .num{font-size:6.9pt;letter-spacing:.16em;text-transform:uppercase;
   color:__BRONZE__;font-weight:700}
 .article h3{font-family:__TITRE__;font-weight:400;font-size:12.4pt;
@@ -281,6 +281,9 @@ table.garanties.dates td:nth-child(3){width:20%}
   color:__BRONZE__;font-weight:700;margin-bottom:1mm}
 .encadre.ok .lbl{color:__VERT__}
 .encadre.net .lbl{color:__NAVY__}
+.encadre.quitus p + p{margin-top:2mm}
+.grand.sav{font-size:15pt}
+.article .texte .encadre{margin:2.6mm 0 0}
 .grand{font-family:__TITRE__;font-size:19pt;color:__NAVY__;line-height:1.2;
   white-space:nowrap}
 .lettres{font-size:8.8pt;color:__GRIS__;font-style:italic}
@@ -362,7 +365,7 @@ body.proces .encadre{padding:3mm 4.2mm;margin:2.4mm 0}
 body.proces .signatures{margin-top:2.8mm}
 body.proces .article .texte{font-size:9.5pt;line-height:1.4}
 body.proces .article{padding:2.4mm 0 0 40mm;margin-top:2.4mm}
-body.proces .article .marge{top:2.4mm;width:36mm}
+body.proces .article .marge{top:2.4mm}
 body.proces .article .texte p{margin-bottom:1.4mm}
 body.proces .article .texte ul{margin-bottom:1.4mm}
 body.proces .jalon .tete{margin-bottom:1.6mm}
@@ -376,17 +379,21 @@ body.proces .grand{font-size:17pt}
 body.proces .fait-a{margin-bottom:2mm}
 body.proces .lignes i{height:6.4mm}
 body.proces .sig .boite{height:38mm}
-body.cloture .article .texte{font-size:9.6pt;line-height:1.45}
-body.cloture .article{padding-top:3.2mm;margin-top:3.2mm}
-body.cloture .article .marge{top:3.2mm}
+body.cloture .article .texte{font-size:9.5pt;line-height:1.42}
+body.cloture .article{padding-top:2.6mm;margin-top:2.6mm}
+body.cloture .article .marge{top:2.6mm}
+body.cloture .article .texte p{margin-bottom:1.6mm}
+body.cloture .article .texte li{margin-bottom:.7mm}
+body.cloture .conseil{margin-bottom:3mm;padding-top:2.2mm}
+body.cloture .conseil p{line-height:1.45}
+body.cloture .journee{margin:1.6mm 0 3.6mm}
 body.cloture .article.plein{padding-left:0}
-body.cloture td{padding-top:1.9mm;padding-bottom:1.9mm}
+body.cloture td{padding-top:1.5mm;padding-bottom:1.5mm}
 .sig.seule .boite{height:27mm}
 body.cloture .signatures{margin-top:4mm}
-body.cloture .titre{padding:7mm 0 2mm}
-body.cloture h2{margin:6mm 0 2.8mm}
+body.cloture .titre{padding:6.5mm 0 2mm}
+body.cloture h2{margin:4.8mm 0 2.4mm}
 .petit{font-size:8.2pt;color:__GRIS__;line-height:1.45}
-.suite{break-before:page}
 .souffle{height:2mm}
 """
 
@@ -477,7 +484,7 @@ td small{font-size:8.8pt}
 .partie .ci-apres{font-size:9pt}
 
 /* Articles : titre en marge à DROITE, colonne de lecture à gauche */
-.article{padding:4mm 48mm 0 0}
+.article{padding:4mm 40mm 0 0}
 .article .marge{left:auto;right:0}
 .article .num{font-family:__AR_LIBELLE__;font-size:7.6pt}
 .article h3{font-family:__AR_TEXTE__;font-weight:700;font-size:12.6pt;

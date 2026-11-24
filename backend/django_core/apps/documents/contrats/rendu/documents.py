@@ -358,7 +358,7 @@ def cloture_garanties(contenu):
     )
     corps += c.h2(libelle('attestation', langue))
     corps += c.encadre(libelle('quitus', langue),
-                       c.paragraphes(contenu.get('quitus')), 'ok')
+                       c.paragraphes(contenu.get('quitus')), 'ok quitus')
     corps += c.tableau_paiements(contenu.get('paiements'),
                                  paiement.get('total_regle'), langue)
     corps += c.signatures(contenu, mention_client='', client_signe=False,
@@ -381,32 +381,45 @@ def cloture_garanties(contenu):
         corps += c.h2(libelle('materiel_couvert', langue))
         corps += c.tableau_materiel(systeme['lignes'], avec_series=True,
                                     langue=langue)
-    corps += c.h2(libelle('si_probleme', langue))
-    corps += c.articles(contenu.get('articles'), langue)
-    contact = ' · '.join(c.esc(x) for x in (
+    # La carte du service après-vente se lit juste sous « Qui appeler »
+    # (revue 1, R2) ; sans cet article, elle suit les articles.
+    articles = contenu.get('articles') or []
+    contact = ' · '.join(c.insecable(c.esc(x)) for x in (
         sav.get('telephone'), sav.get('whatsapp'), sav.get('email')) if x)
+    carte_sav = ''
     if contact:
-        corps += c.encadre(
+        carte_sav = c.encadre(
             libelle('sav', langue,
                     nom=societe.get('nom_court') or societe.get('nom') or ''),
-            f'<div class="grand" style="font-size:15pt">{contact}</div>'
+            f'<div class="grand sav">{contact}</div>'
             f'<p class="petit">{c.esc(sav.get("horaires") or "")}</p>', 'net')
+    sous_contact = any(a.get('cle') == 'contact' for a in articles)
+    corps += c.h2(libelle('si_probleme', langue))
+    corps += c.articles(articles, langue,
+                        annexes={'contact': carte_sav} if sous_contact else None)
+    if not sous_contact:
+        corps += carte_sav
 
     conseils = contenu.get('conseils') or []
     if conseils:
-        corps += '<div class="suite"></div>'
-        corps += c.h2(libelle('bien_consommer', langue),
-                      c.esc(contenu.get('conseils_intro') or ''))
+        # Plus de saut de page forcé : les conseils suivent, et ne passent à
+        # la page suivante que si la place manque. Le titre, l'introduction
+        # et la journée type restent ensemble (jamais un titre seul en bas).
+        tete = c.h2(libelle('bien_consommer', langue),
+                    c.esc(contenu.get('conseils_intro') or ''))
         if contenu.get('journee'):
-            corps += _journee(contenu['journee'])
+            tete += _journee(contenu['journee'])
+        corps += c.bloc_insecable(tete)
         corps += '<div class="conseils">' + ''.join(
             f'<div class="conseil"><div class="lbl">{c.esc(k.get("rubrique"))}'
             f'</div><h3>{c.esc(k.get("titre"))}</h3>'
             f'<p>{c.esc(k.get("texte"))}</p></div>' for k in conseils) + '</div>'
         if contenu.get('entretien'):
-            corps += c.h2(libelle('entretien', langue))
-            corps += ('<div class="article plein"><div class="texte">'
-                      + c.paragraphes(contenu['entretien']) + '</div></div>')
+            # Court : son titre et ses lignes restent ensemble.
+            corps += c.bloc_insecable(
+                c.h2(libelle('entretien', langue))
+                + '<div class="article plein"><div class="texte">'
+                + c.paragraphes(contenu['entretien']) + '</div></div>')
 
     return _page(contenu, corps, paraphes=False, classe='cloture')
 
