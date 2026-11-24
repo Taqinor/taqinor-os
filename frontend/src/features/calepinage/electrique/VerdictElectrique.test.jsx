@@ -751,6 +751,57 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     expect(new URLSearchParams(screen.getByTestId('temoin-url').textContent).get('onglet')).toBe('cheminement-cables')
   })
 
+  /* T4-U4-007 — « Régler » sur « Dossier électrique » ne faisait rien : sa cible est l'onglet d'OUVERTURE de l'étape
+     (`verdict-electrique`), l'URL ne change pas et la section « Verdict » restait repliée sous « Réglages avancés ». */
+  const dossierBloquant = () => {
+    const ok = pret().controles.find((c) => c.code === 'tension_froid')
+    return [ok, { ...ok, code: 'verdict_electrique', libelle: 'Dossier électrique', etat: 'bloquant',
+      valeur_texte: 'Bloquant : 1', cause: '', geste: 'Corriger le dossier électrique',
+      cible: { etape: 'electrique', onglet: 'verdict-electrique', champ: '' } }]
+  }
+
+  it('T4-U4-007 — « Régler » sur « Dossier électrique » ouvre « Verdict » sous « Réglages avancés » et y met le focus', async () => {
+    servirEtape({ p: pret(dossierBloquant()) })
+    servir(REPONSE)
+    rendreEtape()
+    const ligne = await screen.findByTestId('cal-pret-ligne-verdict_electrique')
+    fireEvent.click(within(ligne).getByRole('button', { name: 'Régler' }))
+    await waitFor(() => expect(screen.getByTestId('cal-electrique-avances')).toHaveAttribute('data-state', 'open'))
+    const section = screen.getByTestId('cal-electrique-section-verdict-electrique')
+    expect(section).toHaveAttribute('data-state', 'open')
+    await waitFor(() => expect(document.activeElement).toBe(within(section).getByRole('button', { name: 'Verdict' })))
+    expect(await within(section).findByTestId('calx249-panneau')).toBeTruthy()
+  })
+
+  it('T4-U4-007 — le « ? » de « Dossier électrique » nomme le point qui bloque (motif servi par evaluer-electrique)', async () => {
+    servirEtape({ p: pret(dossierBloquant()) })
+    servir(REPONSE)
+    rendreEtape()
+    const ligne = await screen.findByTestId('cal-pret-ligne-verdict_electrique')
+    fireEvent.click(within(ligne).getByRole('button', { name: 'Pourquoi : Dossier électrique' }))
+    const bulle = await screen.findByTestId('cal-pret-points-dossier')
+    await waitFor(() => expect(within(bulle).getByRole('listitem')).toHaveTextContent('onduleur : fiche technique absente du stock'))
+    expect(bulle).toHaveTextContent('Ce qui bloque :')
+    expect(bulle).not.toHaveTextContent('pan « Sud »') // une alerte ne bloque pas : jamais citée comme bloquante
+    cleanup() // la bulle vit dans un portail : démontée avant que l'afterEach du bloc ne vide le body
+  })
+
+  it('T4-U4-007 — une étape ouverte sur une section (« Régler » d’un autre point) la déplie et y met le focus', async () => {
+    servirEtape()
+    const surCarte = document.createElement('div')
+    document.body.appendChild(surCarte)
+    render(
+      <MemoryRouter initialEntries={['/calepinage/7?onglet=cheminement-cables']}>
+        <ContexteCoque.Provider value={{ noeuds: { surCarte, panneau: null, pied: null }, prendrePied: () => () => {} }}>
+          <EtapeElectrique calepinageId={7} ouvert="cheminement-cables" action={{ libelle: 'Voir les résultats', onClick: () => {} }} />
+        </ContexteCoque.Provider>
+      </MemoryRouter>,
+    )
+    const section = screen.getByTestId('cal-electrique-section-cheminement-cables')
+    expect(section).toHaveAttribute('data-state', 'open')
+    await waitFor(() => expect(document.activeElement).toBe(within(section).getByRole('button', { name: 'Cheminement & câbles' })))
+  })
+
   it('« Voir » ouvre le sous-écran Schéma (`?onglet=schema`)', async () => {
     servirEtape()
     rendreEtape()

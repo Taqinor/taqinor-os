@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
@@ -214,6 +214,28 @@ export default function EtapeElectrique(props) {
   }
 
   const demandee = ouvert !== OUVERTURE && SECTIONS_ELECTRIQUES.some((s) => s.cle === ouvert) ? ouvert : null
+  /* T4-U4-007 — « Régler » mène au point : la section demandée (par l'URL, ou par « Régler » sur « Dossier électrique »
+     dont la cible est l'onglet d'OUVERTURE, que l'URL ne peut pas redemander) est dépliée sous « Réglages avancés »,
+     amenée à l'écran et reçoit le focus — avant, elle s'ouvrait sous le pli, ou pas du tout. */
+  const ecranRef = useRef(null)
+  const [avances, setAvances] = useState(demandee ? ['avances'] : [])
+  const [sections, setSections] = useState(demandee ? [demandee] : [])
+  const [cibleFocus, setCibleFocus] = useState(demandee ? { cle: demandee, n: 0 } : null)
+  useEffect(() => {
+    if (!cibleFocus) return undefined
+    const declencheur = () => ecranRef.current?.querySelector(`[data-testid="cal-electrique-section-${cibleFocus.cle}"] button`)
+    declencheur()?.focus?.({ preventScroll: true })
+    // Les volets se déplient en animant leur hauteur : la section n'est amenée à l'écran qu'une fois dépliée.
+    const id = window.setTimeout(() => declencheur()?.scrollIntoView?.({ block: 'start' }), 320)
+    return () => window.clearTimeout(id)
+  }, [cibleFocus])
+  const reglerIci = (cible) => {
+    if (cible?.onglet !== OUVERTURE) return false // les autres cibles changent l'URL : l'écran se remonte dessus
+    setAvances((a) => (a.includes('avances') ? a : [...a, 'avances']))
+    setSections((s) => (s.includes(OUVERTURE) ? s : [...s, OUVERTURE]))
+    setCibleFocus((c) => ({ cle: OUVERTURE, n: (c?.n ?? 0) + 1 }))
+    return true
+  }
   const calques = (
     <CalquesCarte id={id} resultat={resultat} couleursDessinees={peutColorer} lectureSeule={lectureSeule}
       onRaccorde={relire} onModifier={() => setEditeur(true)} />
@@ -233,10 +255,11 @@ export default function EtapeElectrique(props) {
   }
 
   return (
-    <div data-testid="cal-etape-electrique-ecran" className="cel-ecran">
+    <div data-testid="cal-etape-electrique-ecran" className="cel-ecran" ref={ecranRef}>
       {calques}
       {/* ACAL1830 — la carte « Prêt à envoyer ? » est EN TÊTE du panneau (maquette v2), avant l'onduleur. */}
-      <PretAEnvoyer key={relecture} calepinageId={id} filtre="electrique" court testIdCompte="cal-electrique-synthese" />
+      <PretAEnvoyer key={relecture} calepinageId={id} filtre="electrique" court testIdCompte="cal-electrique-synthese"
+        surRegler={reglerIci} />
       <CarteOnduleur id={id} entree={entree} configs={configs} resultat={resultat} lectureSeule={lectureSeule}
         onApplique={relire} />
       <section className="cel-schema" data-testid="cal-elec-schema-voir">
@@ -253,11 +276,11 @@ export default function EtapeElectrique(props) {
         </span>
         <button type="button" className="cel-bouton-contour" onClick={ouvrirSchema}>Voir</button>
       </section>
-      <Accordion type="multiple" className="cel-avances" defaultValue={demandee ? ['avances'] : []}>
+      <Accordion type="multiple" className="cel-avances" value={avances} onValueChange={setAvances}>
         <AccordionItem value="avances" data-testid="cal-electrique-avances">
           <AccordionTrigger className="cel-avances-lien">Réglages avancés</AccordionTrigger>
           <AccordionContent>
-            <Accordion type="multiple" defaultValue={demandee ? [demandee] : []}>
+            <Accordion type="multiple" value={sections} onValueChange={setSections}>
               {SECTIONS_ELECTRIQUES.map((s) => <Section key={s.cle} {...s} propsDuRail={propsDuRail} />)}
             </Accordion>
           </AccordionContent>
