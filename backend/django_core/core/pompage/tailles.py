@@ -42,6 +42,21 @@ MOTIF_HA_VOLUME = ("besoin déclaré en volume : aucun besoin par hectare connu 
                    "(hectares calculés seulement sur un besoin agronomique)")
 
 
+def _fr(nombre):
+    texte = ("%.1f" % nombre).rstrip("0").rstrip(".")
+    return texte.replace(".", ",")
+
+
+def motif_debit_insuffisant(debit_hmt, debit_demande, hmt_m):
+    """T4-V2-003 — la phrase d'une taille dont la pompe ne délivre pas le
+    débit de conception à cette HMT (champ borné, couverture affichée)."""
+    return ("ne délivre pas le débit demandé à cette hauteur : %s m³/h à %s m "
+            "pour %s m³/h demandés — champ limité à %s fois sa puissance, "
+            "couverture affichée"
+            % (_fr(debit_hmt), _fr(_flottant(hmt_m) or 0), _fr(debit_demande),
+               _fr(valeur("ratio_champ_pompe_bande_alerte").max)))
+
+
 def _couverture(production, besoin, mois):
     """(couverture % par mois, couverture % au mois critique) — NON
     plafonnées ; ``None`` sans production."""
@@ -169,6 +184,8 @@ def proposer_tailles(*, mode_pompe="neuve", choix_pompe=None, plaque=None,
     etape = choix_pompe.get("etape")
     tolerance = valeur("tolerance_conception_pct")
     seuil = 100 + tolerance.min
+    debit_demande = _flottant(
+        (choix_pompe.get("couverture") or {}).get("debit_demande_m3h"))
     cache = {}
 
     def evaluer(i):
@@ -182,15 +199,20 @@ def proposer_tailles(*, mode_pompe="neuve", choix_pompe=None, plaque=None,
             variateurs, kw_plaque=produit.get("pompe_kw"),
             cv=produit.get("pompe_cv"), alimentation=alimentation,
             courant_nominal_a=fiche.get("pompe_i_nominal_a"))
+        debit = (debit_a_hmt(produit["courbe_pompe"], hmt_m)
+                 if etape == "courbe" else None)
+        # T4-V2-003 — une pompe qui ne délivre pas le débit de conception à
+        # cette HMT ne « couvre » plus le besoin en pompant plus longtemps
+        # sous un champ démesuré : champ borné à la bande champ/pompe.
+        insuffisante = bool(debit is not None and debit_demande
+                            and debit < debit_demande - 1e-9)
         champ = dimensionner_champ(
             besoin_m3_jour_mois=besoin_m3_jour_mois, hmt_m=hmt_m,
             panneau=panneau, variateurs_candidats=choix_var["candidats"],
             pompe=produit if etape == "courbe" else None, p_plaque_kw=kw,
-            **commun)
+            recherche_bornee=insuffisante, **commun)
         if etape != "courbe":
             champ = dict(champ, production=None)
-        debit = (debit_a_hmt(produit["courbe_pompe"], hmt_m)
-                 if etape == "courbe" else None)
         sortie = _sortie_pompe(produit, kw=kw, debit_hmt=debit, hmt=hmt_m)
         sortie["prix_ttc"] = produit.get("prix_ttc")
         composition = composer_kit(
@@ -234,6 +256,11 @@ def proposer_tailles(*, mode_pompe="neuve", choix_pompe=None, plaque=None,
         if etape != "courbe":
             motif = ("pompe sans courbe constructeur : couverture non "
                      "calculée (à confirmer sur la courbe)")
+        else:
+            debit_j = debit_a_hmt(paliers[j]["courbe_pompe"], hmt_m)
+            if debit_j is not None and debit_demande \
+                    and debit_j < debit_demande - 1e-9:
+                motif = motif_debit_insuffisant(debit_j, debit_demande, hmt_m)
         tailles.append(_taille(cle, pompe_sortie=sortie, champ=champ,
                                kit=composition, besoin=besoin_m3_jour_mois,
                                mois=mois,

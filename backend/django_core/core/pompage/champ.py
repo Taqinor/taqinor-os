@@ -630,11 +630,18 @@ def dimensionner_champ(*, besoin_m3_jour_mois, hmt_m, panneau,
                        e_d_kwh_kwc_mois=None, temperatures=None,
                        salissure_pct=None, agricole_pump_hours=None,
                        mois_critique=None, coordonnees=None,
-                       reponse_pvgis=None, plafond_m3h=None):
+                       reponse_pvgis=None, plafond_m3h=None,
+                       recherche_bornee=False):
     """AGR115 — nombre de panneaux, chaînes et variateur retenu.
 
     AGQ40 (D-AGQ-9) — ``plafond_m3h`` (débit d'exploitation du forage × part
     du réglage) plafonne la production de chaque heure (AGR114).
+
+    T4-V2-003 — ``recherche_bornee`` (pompe qui ne délivre pas le débit de
+    conception à cette HMT) : la recherche du champ s'arrête à la borne haute
+    de la bande champ/pompe × la plaque. Sans elle, une petite pompe
+    « couvrait » le besoin en pompant plus d'heures sous un champ de 4 à 8 fois
+    sa puissance (OSP 30/8 à 80 m : 83 panneaux contre 23 pour la 30/11).
 
     * ``besoin_m3_jour_mois`` : besoin RETENU (AGR116) ; ``hmt_m`` : HMT ;
     * ``pompe`` : dict produit (``courbe_pompe``, ``fiche``) ou ``None`` pour
@@ -721,7 +728,32 @@ def dimensionner_champ(*, besoin_m3_jour_mois, hmt_m, panneau,
             "production en borne haute (aucune perte variateur comptée)."
             % (("%s " % variateur.get("nom")) if variateur
                and variateur.get("nom") else "")))
-    if heure_par_heure and mois:
+    nb_max = None
+    if recherche_bornee and plaque and plaque > 0:
+        nb_max = max(int(math.floor(
+            valeur("ratio_champ_pompe_bande_alerte").max * plaque * 1000.0
+            / pmax + 1e-9)), 1)
+    if heure_par_heure and mois and nb_max is not None:
+        nb = min(nb or 1, nb_max)
+        prod = _production(nb, pmax, **params)
+        while not _couvre(prod, besoin) and nb < nb_max:
+            nb += 1
+            prod = _production(nb, pmax, **params)
+        while _couvre(prod, besoin) and nb > 1:
+            essai = _production(nb - 1, pmax, **params)
+            if not _couvre(essai, besoin):
+                break
+            nb, prod = nb - 1, essai
+        if not _couvre(prod, besoin):
+            alertes.append(_alerte(
+                "besoin_non_couvert_champ", "pompe",
+                "Cette pompe ne délivre pas le débit demandé à cette hauteur : "
+                "même avec un champ de %s fois sa puissance (%d panneaux), elle "
+                "ne couvre pas le besoin de chaque mois d'irrigation. Couverture"
+                " affichée ; choisir une pompe plus puissante pour couvrir le "
+                "besoin." % (_fr(valeur("ratio_champ_pompe_bande_alerte").max),
+                             nb)))
+    elif heure_par_heure and mois:
         nb = nb or 1
         if _couvre(prod, besoin):
             while nb > 1:
