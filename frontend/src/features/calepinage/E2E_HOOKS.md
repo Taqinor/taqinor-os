@@ -970,6 +970,7 @@ retiré plus un hook ajouté.
 | `cal-pret-ligne` | une ligne de contrôle (suffixe = `code` du contrôle). |
 | `cal-pret-regler` | bouton « Régler » d’un contrôle (suffixe = `code`) : ouvre `?onglet=&champ=`. |
 | `cal-pret-sans-lead` | « ? » d'un contrôle qui renvoie au lead (taille sur facture), calepinage SANS lead : le geste faisable (T4-U4-014). |
+| `cal-panneaux-ombres-non-comptees` | étape Panneaux : carte « Ombres à compter » quand le toit porte des obstacles ou des voisins dont l'ombre n'est pas encore comptée (T4-U1-023). |
 | `cal-pret-points-dossier` | « ? » de « Dossier électrique » : les motifs servis qui bloquent ou restent à compléter (T4-U4-007). |
 | `cal-pret-reussis` | contrôles réussis repliés (« Voir les n contrôles réussis »). |
 
