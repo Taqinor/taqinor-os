@@ -19,7 +19,7 @@ n'est lu ni écrit ici : un devis envoyé ou accepté ne bouge jamais.
 """
 from dataclasses import dataclass
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import json
 
 #: Origines admises d'un déclencheur (contrat, clé ``declencheur.origine``).
@@ -232,9 +232,11 @@ def phrase_du_declencheur(lead, champs, origine, quand):
 
 
 def _champ_du_modele(lead, champ):
+    from django.core.exceptions import FieldDoesNotExist
+
     try:
         return lead._meta.get_field(champ) if lead is not None else None
-    except Exception:  # noqa: BLE001 — colonne inconnue du modèle : libellé brut (D-ENF22-BLE001)
+    except FieldDoesNotExist:  # colonne inconnue du modèle : libellé brut
         return None
 
 
@@ -266,7 +268,7 @@ def _lisible(lead, champ, valeur):
 def _nombre(valeur):
     try:
         nombre = Decimal(str(valeur))
-    except Exception:  # noqa: BLE001 — texte non numérique (D-ENF22-BLE001)
+    except (InvalidOperation, TypeError, ValueError):  # texte non numérique
         return None
     return nombre if nombre.is_finite() else None
 
