@@ -25,9 +25,14 @@ export default function usePhotosReleve(calepinageId) {
       .catch(() => {})
   }, [calepinageId])
 
+  /* Deux retours du réseau rapprochés (événement `online` + réouverture) ne rejouent pas la file deux fois : la même
+     photo partait deux fois (mesuré sur la pile de revue, 24/11). */
+  const rejeuEnCours = useRef(false)
   const envoyerLaFile = useCallback(() => {
     if (!calepinageId || (typeof navigator !== 'undefined' && navigator.onLine === false)) return
-    Promise.resolve(rejouerFile(calepinageId)).then((r) => {
+    if (rejeuEnCours.current) return
+    rejeuEnCours.current = true
+    Promise.resolve(rejouerFile(calepinageId)).finally(() => { rejeuEnCours.current = false }).then((r) => {
       setEnAttente(r?.restantes ?? 0)
       if (r?.envoyees) {
         if (!r.restantes) {

@@ -631,6 +631,18 @@ describe('T4-U4-020..023 — ce qui est tapé n’est jamais perdu, l’écran d
     expect(screen.getByTestId('releve-photos-compte')).toHaveTextContent('2 sur 3')
   })
 
+  it('U4-021 : deux retours du réseau rapprochés ne rejouent la file des photos qu’UNE fois', async () => {
+    rendre()
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(file.rejouerFile).toHaveBeenCalledTimes(1)) // à l'ouverture
+    let liberer
+    file.rejouerFile.mockImplementationOnce(() => new Promise((r) => { liberer = r }))
+    await act(async () => { window.dispatchEvent(new Event('online')) })
+    await act(async () => { window.dispatchEvent(new Event('online')) })
+    expect(file.rejouerFile).toHaveBeenCalledTimes(2)
+    await act(async () => { liberer({ envoyees: 0, refusees: [], restantes: 0 }) })
+  })
+
   it('U4-021 : après « Relevé envoyé. », l’écran relit le relevé du serveur', async () => {
     rendre()
     await screen.findByTestId('releve-projet')
