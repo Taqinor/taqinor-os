@@ -903,11 +903,34 @@ export default function LeadsPage() {
   // AERR100 — la liste ET la fiche restent montées quand une RELECTURE échoue :
   // le bloc plein écran n'est que pour un échec sans aucun lead en mémoire.
   const error = leadsError && leads.length === 0 ? leadsError : null
-  if (error) return (
-    <StateBlock
-      error={`Erreur : ${errorMessageFrom({ response: { data: error } }, 'Impossible de charger les leads.')}`}
-      onRetry={refetch}
+  // T4-U3-014 — la fiche ouverte par son lien (`?lead=<id>`) ne dépend JAMAIS de la liste : elle reste montée même
+  // quand la liste n'a pas pu être lue.
+  const fiche = (showForm || deepLead) && (
+    <LeadWorkspace
+      lead={showForm ? editLead : deepLead}
+      onClose={closeForm}
+      onSaved={onSaved}
+      onSigneRefuse={rouvrirSigne}
+      onOpenDuplicate={onOpenDuplicate}
+      initialDevis={showForm ? formDevisIntent : null}
+      focusSection={showForm ? formFocusSection : null}
+      // VX224 — session de qualification en rafale : `filtered` est déjà
+      // la liste EN MÉMOIRE (même liste que ListView/KanbanView) —
+      // aucune re-requête. `onOpenLead` fait déjà exactement ce qu'une
+      // navigation ◀▶/J-K demande (basculer `editLead` SANS fermer la
+      // fiche), réutilisé tel quel plutôt que dupliqué.
+      leadsQueue={showForm ? filtered : null}
+      onNavigateLead={showForm ? onOpenLead : null}
     />
+  )
+  if (error) return (
+    <>
+      <StateBlock
+        error={`Erreur : ${errorMessageFrom({ response: { data: error } }, 'Impossible de charger les leads.')}`}
+        onRetry={refetch}
+      />
+      {fiche}
+    </>
   )
 
   return (
@@ -1264,24 +1287,7 @@ export default function LeadsPage() {
         )}
       </div>
 
-      {(showForm || deepLead) && (
-        <LeadWorkspace
-          lead={showForm ? editLead : deepLead}
-          onClose={closeForm}
-          onSaved={onSaved}
-          onSigneRefuse={rouvrirSigne}
-          onOpenDuplicate={onOpenDuplicate}
-          initialDevis={showForm ? formDevisIntent : null}
-          focusSection={showForm ? formFocusSection : null}
-          // VX224 — session de qualification en rafale : `filtered` est déjà
-          // la liste EN MÉMOIRE (même liste que ListView/KanbanView) —
-          // aucune re-requête. `onOpenLead` fait déjà exactement ce qu'une
-          // navigation ◀▶/J-K demande (basculer `editLead` SANS fermer la
-          // fiche), réutilisé tel quel plutôt que dupliqué.
-          leadsQueue={showForm ? filtered : null}
-          onNavigateLead={showForm ? onOpenLead : null}
-        />
-      )}
+      {fiche}
 
       {/* EZ1 — LA surface unique de planification rapide. Le MÊME popover que
           le journal d'appel, en mode planification : date libre + objet

@@ -164,6 +164,15 @@ describe('DevisList — relecture en cours ou ratée (AERR2)', () => {
   })
 })
 
+describe('DevisList — un délai dépassé se dit en français (T4-U1-011)', () => {
+  it('« timeout of 20000ms exceeded » rangé par le slice : jamais affiché, phrase claire + Réessayer', () => {
+    renderList({ loading: false, error: 'timeout of 20000ms exceeded', devis: [] })
+    expect(document.body.textContent).not.toMatch(/timeout of/)
+    expect(screen.getByText(/La connexion a expiré/)).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Réessayer' })).toBeVisible()
+  })
+})
+
 describe('DevisList — raccourci « a » sous une boîte (AERR14)', () => {
   it('modale d\'acceptation ouverte : « a » n\'ouvre pas la boîte PDF', async () => {
     const defile = vi.spyOn(window.HTMLElement.prototype, 'scrollIntoView').mockImplementation(() => {})

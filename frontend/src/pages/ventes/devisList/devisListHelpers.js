@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { STATUT_DISPLAY } from './devisListConstants.js'
+import { getApiError } from '../../../lib/apiError.js'
 
 // SPL204 — aides partagées de la liste des devis (DevisList.jsx et ses hooks
 // sous devisList/). Jamais un import circulaire depuis DevisList.jsx.
@@ -8,8 +9,13 @@ import { STATUT_DISPLAY } from './devisListConstants.js'
 // {detail}, les erreurs de champ ({statut: [...]} — ex. garde de remise T17),
 // et retombe sur un message générique sinon. Ne JAMAIS afficher de JSON brut.
 export function frenchError(err, fallback) {
+  // T4-U1-011 — une erreur axios SANS réponse (délai dépassé, réseau coupé) passe par le contrat canonique
+  // (`getApiError`) : jamais « timeout of 20000ms exceeded » à l'écran, ni dans le toast de génération PDF.
+  if (err && typeof err === 'object' && !err.response && (err.code || err.isAxiosError || typeof err.message === 'string')) {
+    return getApiError(err, fallback).message
+  }
   const data = err?.response?.data ?? err
-  if (typeof data === 'string') return data
+  if (typeof data === 'string') return getApiError({ response: { data, headers: err?.response?.headers ?? {} } }, fallback).message
   if (data && typeof data === 'object') {
     if (data.detail) return String(data.detail)
     const first = Object.values(data).find(Boolean)
