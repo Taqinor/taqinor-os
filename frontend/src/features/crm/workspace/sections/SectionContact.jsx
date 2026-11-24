@@ -153,7 +153,9 @@ export default function SectionContact({ state, setField, errors = {}, mode, ref
           <PhoneHint value={v('telephone')} testId="lf-tel-hint" />
         </FormField>
       </div>
-      <div className="form-row">
+      {/* T4-U1-031 — alignée en haut : le bouton sous « Ville » ne décale plus
+          WhatsApp ni Email vers le bas. */}
+      <div className="form-row" style={{ alignItems: 'flex-start' }}>
         <FormField label="WhatsApp" htmlFor="lf-whatsapp" error={errors.whatsapp}>
           <Input
             id="lf-whatsapp" invalid={!!errors.whatsapp} value={v('whatsapp')} disabled={piiMasked} title={piiTitle}
