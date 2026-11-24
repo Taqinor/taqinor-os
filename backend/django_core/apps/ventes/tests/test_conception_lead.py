@@ -1562,6 +1562,52 @@ class RelanceConceptionTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher'
             self._relancer(lead, company, _declencheur('inventee'))
         self.assertFalse(ConceptionLead.objects.filter(lead=lead).exists())
 
+    # ── ADEV136 — le porteur sans lead est le calepinage (réponse Q3 du 23/11) ──
+    def test_porteur_calepinage_avec_et_sans_lead_et_appel_d_offres(self):
+        from authentication.models import Company
+
+        from apps.calepinage.models import Calepinage
+        from apps.crm.models import Client
+        from apps.ventes.conception.service import CODE_APPEL_OFFRES
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'))
+        _reglages_de_la_societe(company)
+        client = Client.objects.create(company=company, nom='Client calepinage seul')
+        du_lead = Calepinage.objects.create(company=company, lead_id=lead.pk, titre='Toit du lead')
+        sans_lead = Calepinage.objects.create(company=company, client=client, titre='Client seul')
+        dossier_ao = Calepinage.objects.create(company=company, client=client, appel_offre_id=7, titre='AO')
+
+        # Calepinage d'un lead : porté par le lead, le calepinage noté.
+        rangee = self._relancer(None, company, _declencheur(), calepinage_id=du_lead.pk).conception
+        self.assertEqual((rangee.lead_id, rangee.calepinage_id, rangee.etat), (lead.pk, du_lead.pk, 'complet'))
+
+        # Sans lead : porté par le calepinage lui-même (jamais un lead inventé) ;
+        # il ne porte ni ville ni consommation : le refus du moteur est rangé, nommé.
+        premiere = self._relancer(None, company, _declencheur(), calepinage_id=sans_lead.pk)
+        relue = ConceptionLead.objects.get(pk=premiere.conception.pk)
+        self.assertEqual((relue.lead_id, relue.calepinage_id, relue.courante, relue.version),
+                         (None, sans_lead.pk, True, 1))
+        self.assertEqual((relue.etat, relue.refus['code']), ('refus', 'localisation_inconnue'))
+        self.assertTrue(relue.declencheur['raison'].endswith(' : premier calcul'))
+        meme = self._relancer(None, company, _declencheur('manuel'), calepinage_id=sans_lead.pk)
+        self.assertFalse(meme.ecrite)
+        forcee = self._relancer(None, company, _declencheur('manuel'), calepinage_id=sans_lead.pk, forcer=True)
+        self.assertEqual(forcee.conception.version, 2)
+        self.assertEqual(ConceptionLead.objects.filter(calepinage_id=sans_lead.pk, lead__isnull=True,
+                                                       courante=True).count(), 1)
+
+        # Dossier d'appel d'offres : jamais calculé par le moteur, rien n'est écrit.
+        ao = self._relancer(None, company, _declencheur(), calepinage_id=dossier_ao.pk)
+        self.assertEqual((ao.conception, ao.ecrite, ao.refus['code']), (None, False, CODE_APPEL_OFFRES))
+        self.assertIn('16 modules par chaîne', ao.refus['message'])
+        self.assertFalse(ConceptionLead.objects.filter(calepinage_id=dossier_ao.pk).exists())
+
+        # Un calepinage d'une autre société est introuvable.
+        autre = Company.objects.create(nom='Autre calepinage', slug='autre-calepinage-conception')
+        with self.assertRaises(ValueError):
+            self._relancer(None, autre, _declencheur(), calepinage_id=sans_lead.pk)
+
     def test_phrase_du_declencheur_choix_lisibles_et_motif_sans_champ(self):
         from datetime import datetime, timezone as tz
 

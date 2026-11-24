@@ -47,37 +47,76 @@ class Relance:
     refus: object = None
 
 
-def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None):
-    """La conception du ``lead`` (de ``company`` seulement) recalculée et, si
+def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None, calepinage_id=None):
+    """La conception du porteur (de ``company`` seulement) recalculée et, si
     son empreinte a changé (ou ``forcer``), rangée en version suivante.
 
+    Porteur (ADEV136, réponse Q3 du 23/11) : le ``lead`` ; sans lead, le
+    calepinage ``calepinage_id`` lui-même (son lead s'il en a un, sinon la
+    version est rangée sur ``calepinage_id`` avec ``lead=None``). Un dossier
+    d'appel d'offres n'est PAS calculé : ses règles de cahier des charges
+    restent hors du moteur (``Relance.refus``, rien n'est écrit).
     ``declencheur`` : ``{champs: [{champ, avant, apres}], origine}`` (``raison``
     est construite ici, une ``raison`` passée est remplacée) ; ``auteur`` :
     l'utilisateur (``None`` = tâche du moteur) ; ``toit`` : la pose servie (son
-    ``empreinte`` et son ``plafond_panneaux`` entrent dans le calcul)."""
+    ``empreinte`` et son ``plafond_panneaux`` entrent dans le calcul). Une
+    empreinte égale n'appelle même pas le calcul (``Relance.resultat`` vaut
+    alors ``None``)."""
     from django.utils import timezone
 
     from apps.ventes.conception.entrees import entrees_pour
-    from apps.ventes.conception.moteur import calculer_conception, reglages_lus_sans_creer
+    from apps.ventes.conception.moteur import calculer_conception, empreinte_conception, reglages_lus_sans_creer
     from apps.ventes.models import ConceptionLead
 
-    if getattr(lead, 'company_id', None) != getattr(company, 'pk', None):
-        raise ValueError('Lead hors de la société : aucune conception.')
     origine, champs = _declencheur_valide(declencheur)
+    lead, porteur, refus = _porteur(lead, company, calepinage_id)
+    if refus is not None:
+        return Relance(None, False, None, refus)
+    courante = ConceptionLead.objects.filter(company=company, courante=True, **porteur).first()
     with reglages_lus_sans_creer(company):
         entrees = entrees_pour(lead, company, toit=toit)
+        if courante is not None and courante.empreinte == empreinte_conception(entrees) and not forcer:
+            return Relance(courante, False, None)
         resultat = calculer_conception(lead, company, entrees=entrees, toit=toit)
-    courante = ConceptionLead.objects.filter(company=company, lead=lead, courante=True).first()
-    if courante is not None and courante.empreinte == resultat.empreinte and not forcer:
-        return Relance(courante, False, resultat)
     maintenant = timezone.now()
     version = ConceptionLead.ranger(
-        lead=lead, calcule_le=maintenant, calcule_par=auteur,
-        declencheur={'raison': phrase_du_declencheur(lead, champs, origine, maintenant),
+        lead=porteur.get('lead'), calepinage_id=calepinage_id, company=company,
+        calcule_le=maintenant, calcule_par=auteur,
+        declencheur={'raison': phrase_du_declencheur(porteur.get('lead'), champs, origine, maintenant),
                      'champs': champs, 'origine': origine},
         empreinte_pose=entrees.empreinte_pose, **_champs_ranges(resultat))
     _annoncer_apres_validation(version)
     return Relance(version, True, resultat)
+
+
+CODE_APPEL_OFFRES = 'appel_offres_hors_moteur'
+
+
+def _porteur(lead, company, calepinage_id):
+    """``(lead du calcul, filtre du porteur, refus)``. Un calepinage d'une
+    autre société est introuvable (``ValueError``, comme un lead étranger)."""
+    if calepinage_id is None:
+        if getattr(lead, 'company_id', None) != getattr(company, 'pk', None):
+            raise ValueError('Lead hors de la société : aucune conception.')
+        return lead, {'lead': lead}, None
+    from apps.calepinage.selectors import calepinage_detail
+    from apps.crm.selectors import get_company_lead
+
+    calepinage = calepinage_detail(calepinage_id, company)
+    if calepinage is None:
+        raise ValueError('Calepinage hors de la société : aucune conception.')
+    if calepinage.appel_offre_id:
+        return None, None, {
+            'code': CODE_APPEL_OFFRES, 'champ': 'appel_offre_id',
+            'message': "Dossier d'appel d'offres : ses règles de cahier des charges (16 modules par chaîne, "
+                       "60 kWc par onduleur) restent hors du moteur unique."}
+    lead = lead or (get_company_lead(company, calepinage.lead_id) if calepinage.lead_id else None)
+    if lead is not None:
+        if lead.company_id != company.pk or (calepinage.lead_id and calepinage.lead_id != lead.pk):
+            raise ValueError("Ce lead n'est pas celui du calepinage : aucune conception.")
+        return lead, {'lead': lead}, None
+    from apps.ventes.conception.moteur import lead_du_calepinage
+    return lead_du_calepinage(calepinage, company), {'lead__isnull': True, 'calepinage_id': calepinage.pk}, None
 
 
 def _declencheur_valide(declencheur):

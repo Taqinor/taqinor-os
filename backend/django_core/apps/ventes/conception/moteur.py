@@ -95,16 +95,14 @@ def reglages_lus_sans_creer(company):
 
 
 def _calculer(lead, company, entrees, toit, imposes, investissement):
-    from apps.ventes.conception.entrees import _empreinte, entrees_pour
+    from apps.ventes.conception.entrees import entrees_pour
     from apps.ventes.domain.regles_calcul import REGLES_COURANTES
     from apps.ventes.domain.taille import AutoDevisError
 
     entrees = entrees or entrees_pour(lead, company, toit=toit)
     resultat = ResultatConception(
         marche=entrees.marche, entrees_utilisees=entrees.entrees_utilisees,
-        niveau_regles=REGLES_COURANTES, empreinte=_empreinte({
-            'entrees': entrees.empreinte, 'version_moteur': VERSION_MOTEUR,
-            'niveau_regles': REGLES_COURANTES, 'imposes': imposes or {}}))
+        niveau_regles=REGLES_COURANTES, empreinte=empreinte_conception(entrees, imposes))
     refus = _refus_localisation(lead)
     if refus is None:
         calcul = {'residentiel': _residentiel, 'agricole': _agricole}.get(entrees.marche, _ci)
@@ -151,6 +149,25 @@ def _sans_cles_interdites_partout(resultat):
         if valeur is not None:
             setattr(resultat, nom, sans_cles_interdites(valeur))
     return resultat
+
+
+def empreinte_conception(entrees, imposes=None):
+    """L'empreinte d'une conception : entrées (pose comprise), version du
+    moteur, niveau de règles, composition imposée — égale ⇒ même calcul."""
+    from apps.ventes.conception.entrees import _empreinte
+    from apps.ventes.domain.regles_calcul import REGLES_COURANTES
+    return _empreinte({'entrees': entrees.empreinte, 'version_moteur': VERSION_MOTEUR,
+                       'niveau_regles': REGLES_COURANTES, 'imposes': imposes or {}})
+
+
+def lead_du_calepinage(calepinage, company):
+    """ADEV136 (Q3) — l'entrée d'un calepinage SANS lead : un lead NON
+    ENREGISTRÉ (jamais sauvegardé) ne portant que ce que le calepinage sait
+    d'une entrée du moteur, le marché de son devis lié. Rien n'est inventé :
+    sans ville ni consommation, le moteur rend son refus nommé."""
+    from django.apps import apps
+    marche = getattr(calepinage.devis, 'mode_installation', None) if calepinage.devis_id else None
+    return apps.get_model('crm', 'Lead')(company=company, type_installation=marche or None)
 
 
 def _refus_localisation(lead):
