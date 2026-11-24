@@ -27,26 +27,29 @@ jamais réécrit (prix, nom, rôle).
 from decimal import Decimal
 
 #: Accessoires d'une grappe, déclarés par leur RÔLE C&I (donnée), jamais par
-#: leur nom. Aucun stock inventé (0). Noms choisis pour ne tomber dans AUCUNE
+#: leur nom. Stock de départ comme tout article chiffré du catalogue (un
+#: article chiffré sans stock bloquerait l'auto-remplissage ; le seeder ne
+#: touche jamais un stock existant). Noms choisis pour ne tomber dans AUCUNE
 #: famille du classement par mots (« câblage », pas « câbles » : un « câble »
 #: serait lu câble DC par le résidentiel).
 #: (nom, sku, role_ci, vente TTC, achat TTC, qte, seuil)
 ACCESSOIRES_GRAPPE_HT = [
     # Achat 11 200 HT (13 440 TTC), vente 14 560 HT (17 472 TTC).
     ('Boîtier de contrôle haute tension Deye BOS-B-PDU-2-A', 'DEY-BOSB-PDU-2-A',
-     'boitier_batterie_ht', 17472, 13440, 0, 0),
+     'boitier_batterie_ht', 17472, 13440, 100, 5),
     # Achat 6 000 HT (7 200 TTC), vente 7 800 HT (9 360 TTC).
     ('Rack et câblage de puissance Deye BOS-B Pro', 'DEY-BOSB-RACK',
-     'rack_batterie_ht', 9360, 7200, 0, 0),
+     'rack_batterie_ht', 9360, 7200, 100, 5),
 ]
 
 #: HT24 (fondateur 24/11/2026 : « pour l'onduleur 80kw fais ça toi-même ») —
 #: l'hybride haute tension du fondateur, seedé comme ses frères SG05LP3.
 #: Prix de VENTE : celui que le fondateur a saisi, 100 000 HT (120 000 TTC) ;
-#: prix d'ACHAT inconnu : 0 (jamais supposé). Aucun stock inventé.
+#: prix d'ACHAT inconnu : 0 (jamais supposé). Stock de départ : celui que le
+#: fondateur a saisi sur sa fiche (100).
 #: (nom, sku, vente TTC, achat TTC, qte, seuil)
 HYBRIDES_DEYE_HT = [
-    ('Onduleur hybride Deye 80kW Triphasé', 'OND-H-DEY-80T', 120000, 0, 0, 0),
+    ('Onduleur hybride Deye 80kW Triphasé', 'OND-H-DEY-80T', 120000, 0, 100, 0),
 ]
 
 #: Achat TTC du pack (28 000 HT, même devis fournisseur).
