@@ -1071,7 +1071,7 @@ réglages vides » : 5 pertes supposées ; météo « plusieurs années réelles
 2. Clé de carte : l'orchestrateur ne saisit pas une clé de production ; à poser par le fondateur dans `l5t/l5t.env`
    (`PUBLIC_MAPTILER_KEY=`), sinon le test se joue sur fond gris.
 
-### Point du 24/11, ~15 h 20 UTC (le plus récent — REPRENDRE ICI)
+### Point du 24/11, ~15 h 20 UTC
 
 **Règles du fondateur ajoutées dans la journée (toutes en vigueur)**
 - « you push too many CIs » : UNE PR par gros lot, plus de petites PR. Le lot en cours = la branche locale
@@ -1128,3 +1128,47 @@ l'effacement d'un lead supprime ses versions de conception rangées ; libellé v
 contre « 82 % de votre facture » de la maquette (formulation = décision du fondateur) ; conteneurs de développement
 partagés `erp-agentique-django_core-1` et `erp-agentique-fastapi_ia-1` arrêtés pour libérer la mémoire (à relancer au
 démontage).
+
+### Point du 24/11, 17 h 15 UTC (le plus récent — REPRENDRE ICI)
+
+**Branche de lot `dev-ecrans-v2` (locale, tête `9ff02bfaa9` + ce point) — PAS encore de PR (une seule PR pour tout le lot)**
+Pliés depuis le point précédent : lane `suites-ecrans` (six correctifs d'écran, ACAL2031 cochée, ACAL2032 « code
+livré ») ; lane moteur `lane/moteur-e2d` = FIN DE L'ÉTAPE 2 : ADEV135 (`relancer`, écrivain unique), ADEV136 (porteur
+calepinage), ADEV137 (sélecteurs, routes `GET ventes/conception/<lead_id>/` et `POST ventes/conception/apercu/`),
+ADEV138 (parité stockée, 20 goldens), corrections de la relecture d'ADEV134 — ADEV133 à ADEV138 cochées. Conflit
+résolu à la main dans `core/event_coverage.py` (trois réservations d'émetteur retirées).
+Gardes du dépôt jouées sur la branche avant ces plis : toutes vertes ; flake8 vert sur les .py changés.
+À FAIRE avant la PR : intégrer `origin/main` (4 commits de retard à 15 h 30), régénérer `docs/api-contracts.md`, le
+schéma OpenAPI (2 routes neuves), le catalogue d'événements, CODEMAP (`codemap_fingerprint.py --write`).
+
+**Lanes EN VOL (9, plafond de la machine — jauge `ressources.ps1` avant tout lancement)**
+- Moteur E3 + E4 : worktree `agent-aecb8f14131ba4555`, branche `lane/moteur-e3e4`, base de test `x4` — ADEV139, 140,
+  141, 142, 143, 144, 145, 146, 147, 148, ALEA70 dans cet ordre. La chaîne du moteur est SÉQUENTIELLE (ACAL2018 attend
+  ACAL2017) : E5 (ACAL2012-2017) ne part qu'à son retour, puis E6, E7, E8, E9.
+- Relecteur adverse neuf (opus, lecture seule) : plage `27b12494fe..19c9d3e050` + déclencheurs `0a1daebcf1`,
+  `7d12f4e406`, `58d1946eb7` — 8 points, dont la PORTÉE DU RÔLE sur les deux routes (`IsAnyRole` + filtre société
+  seulement ?). Ses constats bloquants se corrigent avant la PR.
+- Correctifs d'écran `correctifs-b4` : worktree `agent-a60912ec13b275fe4`, branche `lane/correctifs-b4`, port 5267 —
+  constats B4-002, 003, 010, 007, 005, 009, 006, 008, 013, 012, banc de la spec, + plan décalé (U1-017) et module à
+  désigner deux fois (U1-006, U2-007, U4-007, U4-008).
+- Correctifs agricole et envoi `correctifs-agri` : worktree `agent-a18395c2b0287c783`, branche `lane/correctifs-agri`,
+  port 5268, base de test `i` — U3-002, U3-007 (ligne à 0 : alerte + envoi refusé), U3-006, U3-008, U3-004, U3-009,
+  U2-003 + U3-011, U3-001, textes techniques, U3-005, U2-011.
+- Site et facture `site-facture` : worktree `agent-a57dbc31fa995e57f`, branche `lane/site-facture`, base de test `j` —
+  U1-001 (facture déclarée 900 imprimée 831), U1-003 (simulation au centre de la carte), U1-019, U1-008, U1-002.
+  Son correctif d'arrondi est accroché au niveau de règles 15 (déclaré, NON courant) : rien ne change tant que le
+  fondateur n'a pas activé ce niveau.
+- Relecteurs du test utilisateur, tour 1 : U1 (a-d), U2 (e-h), U3 (i-k, l, m), U4 (n-r) — 66 constats au registre,
+  rapports `T4/tour1/U*.md` pas encore rendus.
+
+**Tour 1 — consolidation** : `T4/tour1/consolidation.md` (17 causes ; deux S1 : facture déclarée restituée plus basse
+au PDF, simulation sur un point que personne n'a choisi). La classe K3 « plusieurs chiffres pour une même valeur » est
+le travail des étapes E4 à E7 du moteur : ses constats deviennent les cas d'acceptation de ces étapes.
+
+**À lancer quand la jauge le permet** : balayages s-w (U5+) ; lane calepinage suivante (K14, K16, U3-012, U1-013,
+présélection de l'option à l'acceptation U1-014) après le retour de `correctifs-b4` ; prix publics d'essai des
+articles de pompage (choix A par défaut) AVANT le tour 2 ; mise à jour de l'instrument `l5t` sur la tête pliée.
+
+**Constats pour le fondateur ajoutés ce jour (production intacte)** : le catalogue copié porte de nombreux articles
+actifs sans prix de vente (11 pompes à courbe, disjoncteurs, fusibles, parafoudres, sectionneurs, lignes de
+prestation C&I) et six articles au nom aléatoire (« DFASFA », « dsafsdg », « feaf », « gsdg », « sdadg », « SDVGDS »).
