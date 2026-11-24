@@ -8,9 +8,12 @@
   forme ``apercu.reponse`` du contrat ; rien n'est écrit.
 
 Même forme que les aperçus d'étude voisins (``etude_horaire_view``) : fonction
-``@api_view``, ``IsAnyRole``, porteur borné à la société de l'appelant — un lead
-ou un calepinage d'une autre société répond 404 AVANT toute lecture du reste du
-corps. Le DÉTAIL des clés reste décrit par le contrat (PACT10) : aucun
+``@api_view``, ``IsAnyRole`` + ``crm_voir`` (comme les routes du lead,
+``crm/roof_views.py``), porteur borné à ce que l'APPELANT voit — un lead hors de
+``crm.selectors.leads_visibles`` (autre société, ou hors de la portée de son
+rôle) ou un calepinage hors de ``calepinage.selectors.calepinages_visibles``
+répond 404 AVANT toute lecture du reste du corps (relecture B1 : la conception
+porte factures, consommation et lieu du client). Le DÉTAIL des clés reste décrit par le contrat (PACT10) : aucun
 sérialiseur imbriqué n'en fait une seconde définition.
 """
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
@@ -19,7 +22,7 @@ from rest_framework.decorators import api_view, parser_classes, permission_class
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole
+from authentication.permissions import HasPermissionOrLegacy, IsAnyRole
 
 _FORME = ("Forme exacte : apps/ventes/contract_samples/conception_lead.json "
           "(clé « exemple » pour la version rangée, « apercu.reponse » pour l'aperçu).")
@@ -38,14 +41,12 @@ def _societe(request):
     description="La version COURANTE de la conception rangée du lead. 404 pour un lead d'une autre "
                 "société, et (code `conception_absente`) tant qu'aucune version n'est calculée. " + _FORME)
 @api_view(['GET'])
-@permission_classes([IsAnyRole])
+@permission_classes([IsAnyRole, HasPermissionOrLegacy('crm_voir')])
 def conception_du_lead(request, lead_id):
-    from apps.crm.selectors import get_company_lead
-
     from ..selectors_conception import conception_courante
 
     company = _societe(request)
-    lead = get_company_lead(company, lead_id) if company is not None else None
+    lead = _lead_visible(request.user, company, lead_id)
     if lead is None:
         return Response({'detail': 'Lead introuvable.'}, status=404)
     forme = conception_courante(company, lead.pk)
@@ -71,7 +72,7 @@ def conception_du_lead(request, lead_id):
                 "n'est écrite. 404 pour un porteur d'une autre société (avant toute lecture du reste du "
                 "corps) ; 409 pour un dossier d'appel d'offres (hors moteur). " + _FORME)
 @api_view(['POST'])
-@permission_classes([IsAnyRole])
+@permission_classes([IsAnyRole, HasPermissionOrLegacy('crm_voir')])
 @parser_classes([JSONParser])
 def apercu_conception(request):
     from ..conception.service import SaisieRefusee, apercu_conception as apercu
@@ -80,7 +81,7 @@ def apercu_conception(request):
     if corps is None:
         return Response({'detail': 'Corps de requête invalide : un objet JSON est attendu.'}, status=400)
     company = _societe(request)
-    lead, calepinage_id, introuvable = _porteur_du_corps(company, corps)
+    lead, calepinage, introuvable = _porteur_du_corps(request.user, company, corps)
     if introuvable is not None:
         return introuvable
     entrees, imposes = corps.get('entrees') or {}, corps.get('imposes') or {}
@@ -93,7 +94,7 @@ def apercu_conception(request):
         return Response({'detail': 'Champ imposé inconnu : %s.' % ', '.join(inconnus), 'champ': inconnus[0]},
                         status=400)
     try:
-        sortie, refus = apercu(lead, company, calepinage_id=calepinage_id, saisies=entrees, imposes=imposes)
+        sortie, refus = apercu(lead, company, calepinage=calepinage, saisies=entrees, imposes=imposes)
     except SaisieRefusee as exc:
         return Response({'detail': str(exc), 'champ': exc.champ}, status=400)
     if refus is not None:
@@ -101,23 +102,36 @@ def apercu_conception(request):
     return Response(sortie)
 
 
-def _porteur_du_corps(company, corps):
-    """``(lead, calepinage_id, réponse 4xx)`` : le porteur borné société, lu
-    AVANT le reste du corps (404 pour une autre société)."""
-    from apps.calepinage.selectors import calepinage_detail
-    from apps.crm.selectors import get_company_lead
+def _lead_visible(user, company, lead_id):
+    """Le lead si l'appelant le VOIT (société + portée de son rôle), sinon ``None``."""
+    from apps.crm.selectors import leads_visibles
+
+    if company is None or not lead_id:
+        return None
+    return leads_visibles(user, company).filter(pk=lead_id).first()
+
+
+def _porteur_du_corps(user, company, corps):
+    """``(lead, calepinage, réponse 4xx)`` : le porteur que l'appelant VOIT,
+    résolu AVANT le reste du corps (404 hors société ou hors portée). Un
+    calepinage d'un lead hors de sa portée est introuvable comme le lead."""
+    from apps.calepinage.selectors import calepinages_visibles
 
     lead_id, calepinage_id = _entier(corps.get('lead')), _entier(corps.get('calepinage'))
     if lead_id is False or calepinage_id is False:
         return None, None, Response({'detail': '« lead » et « calepinage » sont des identifiants.'}, status=400)
     if not lead_id and not calepinage_id:
         return None, None, Response({'detail': 'Porteur requis : « lead » ou « calepinage ».'}, status=400)
-    lead = get_company_lead(company, lead_id) if lead_id and company is not None else None
+    lead = _lead_visible(user, company, lead_id) if lead_id else None
     if lead_id and lead is None:
         return None, None, Response({'detail': 'Lead introuvable.'}, status=404)
-    if calepinage_id and (company is None or calepinage_detail(calepinage_id, company) is None):
+    if lead is not None:
+        return lead, None, None
+    calepinage = (calepinages_visibles(user).filter(pk=calepinage_id, company=company).first()
+                  if company is not None else None)
+    if calepinage is None or (calepinage.lead_id and _lead_visible(user, company, calepinage.lead_id) is None):
         return None, None, Response({'detail': 'Calepinage introuvable.'}, status=404)
-    return lead, (None if lead is not None else calepinage_id), None
+    return None, calepinage, None
 
 
 def _entier(valeur):

@@ -1711,6 +1711,57 @@ class ServirConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
         absente = api.get(URL_CONCEPTION % sans_version.pk)
         self.assertEqual((absente.status_code, absente.json()['code']), (404, 'conception_absente'))
 
+    def _avec_role(self, company, nom, permissions):
+        """Un utilisateur portant un VRAI rôle du registre (portée comprise)."""
+        from django.contrib.auth import get_user_model
+
+        from apps.roles.models import Role
+
+        role = Role.objects.create(company=company, nom=f'B1 {nom}', permissions=list(permissions))
+        return get_user_model().objects.create_user(username=f'b1-{nom}-{company.pk}', password='x',
+                                                    company=company, role=role)
+
+    def test_portee_du_role_sur_les_deux_routes(self):
+        """Relecture B1 — la conception porte factures, consommation et lieu :
+        un Commercial (portée « les siens ») ne lit pas le lead d'un collègue,
+        ni par la route, ni par l'aperçu (lead ou calepinage) : 404 comme une
+        autre société ; un rôle sans ``crm_voir`` est refusé ; le propriétaire,
+        le Commercial responsable et l'administrateur lisent comme avant."""
+        from apps.calepinage.models import Calepinage
+        from apps.crm.models import Lead
+        from apps.roles.permissions_registre import (
+            ADMIN_PERMISSIONS, COMMERCIAL_PERMISSIONS, COMMERCIAL_RESP_PERMISSIONS,
+            COMMERCIAL_TERRAIN_PERMISSIONS)
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        proprietaire = self._avec_role(company, 'proprietaire', COMMERCIAL_PERMISSIONS)
+        Lead.objects.filter(pk=lead.pk).update(owner=proprietaire)
+        lead.refresh_from_db()
+        self._relancer(lead, company, _declencheur())
+        calepinage = Calepinage.objects.create(company=company, lead_id=lead.pk, titre='Toit B1')
+        par_lead = {'lead': lead.pk, 'entrees': {'facture_hiver': 3600}}
+        par_calepinage = {'calepinage': calepinage.pk, 'entrees': {'facture_hiver': 3600}}
+
+        collegue = self._api(self._avec_role(company, 'collegue', COMMERCIAL_PERMISSIONS))
+        self.assertEqual(collegue.get(URL_CONCEPTION % lead.pk).status_code, 404)  # mutant « société seule » : 200
+        self.assertEqual(collegue.post(URL_APERCU, par_lead, format='json').status_code, 404)
+        self.assertEqual(collegue.post(URL_APERCU, par_calepinage, format='json').status_code, 404)
+        terrain = self._api(self._avec_role(company, 'terrain', COMMERCIAL_TERRAIN_PERMISSIONS))
+        self.assertEqual(terrain.get(URL_CONCEPTION % lead.pk).status_code, 403)
+        self.assertEqual(terrain.post(URL_APERCU, par_lead, format='json').status_code, 403)
+
+        responsable = self._avec_role(company, 'responsable', COMMERCIAL_RESP_PERMISSIONS)
+        administrateur = self._avec_role(company, 'administrateur', ADMIN_PERMISSIONS)
+        for user in (proprietaire, responsable, administrateur):
+            with self.subTest(utilisateur=user.username):
+                api = self._api(user)
+                self.assertEqual(api.get(URL_CONCEPTION % lead.pk).status_code, 200)
+                reponse = api.post(URL_APERCU, par_lead, format='json')
+                self.assertEqual(reponse.status_code, 200, reponse.content[:200])
+        reponse = self._api(proprietaire).post(URL_APERCU, par_calepinage, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.content[:200])
+
     def test_manques_du_moteur_et_champs_entrees(self):
         from apps.ventes.conception.champs import CHAMPS_ENTREES
         from apps.ventes.selectors import champs_entrees, manques_du_moteur
