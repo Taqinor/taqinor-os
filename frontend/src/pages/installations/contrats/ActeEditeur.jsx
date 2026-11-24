@@ -72,8 +72,18 @@ function ChampsSection({ cle, v, m, contenu }) {
     case 'delais':
       return (
         <>
-          <Texte id={`${p}-date`} libelle="Date limite" type="date" valeur={v.date_limite}
-                 onChange={(x) => m({ ...v, date_limite: x })} />
+          {/* En arabe la date limite est commune aux deux langues : lecture seule. */}
+          {langue === 'ar'
+            ? (
+              <p className="contrats-editeur__lecture-seule">
+                <span>Date limite (réglée en français)</span>
+                <strong dir="ltr">{v.date_limite || 'à préciser'}</strong>
+              </p>
+            )
+            : (
+              <Texte id={`${p}-date`} libelle="Date limite" type="date" valeur={v.date_limite}
+                     onChange={(x) => m({ ...v, date_limite: x })} />
+            )}
           <Zone id={`${p}-detail`} libelle="Détail" lignes={2} valeur={v.detail}
                 onChange={(x) => m({ ...v, detail: x })} />
         </>
@@ -123,26 +133,41 @@ function ChampsSection({ cle, v, m, contenu }) {
                 <Texte id={`${p}-${i}-d`} libelle={`Désignation (garantie ${i + 1})`}
                        valeur={g.designation} onChange={set('designation')} />
                 <div className="contrats-editeur__duo">
-                  <Texte id={`${p}-${i}-m`} libelle="Durée en mois" type="number" step="any"
-                         valeur={g.duree_mois} onChange={set('duree_mois')} />
+                  {/* En arabe, durée et fin viennent du français : lecture seule. */}
+                  {langue === 'ar'
+                    ? (
+                      <p className="contrats-editeur__lecture-seule">
+                        <span>Durée en mois (réglée en français)</span>
+                        <strong dir="ltr">{g.duree_mois || 'à préciser'}</strong>
+                        {g.fin && <span dir="ltr">Fin : {g.fin}</span>}
+                      </p>
+                    )
+                    : (
+                      <Texte id={`${p}-${i}-m`} libelle="Durée en mois" type="number" step="any"
+                             valeur={g.duree_mois} onChange={set('duree_mois')} />
+                    )}
                   <Texte id={`${p}-${i}-g`} libelle="Garant" valeur={g.garant} onChange={set('garant')} />
                 </div>
                 <Zone id={`${p}-${i}-c`} libelle="Ce que cela couvre" lignes={2}
                       valeur={g.detail ?? ''} onChange={set('detail')} />
-                <Button type="button" size="sm" variant="ghost" className="contrats-acte__bouton"
-                        onClick={() => m(v.filter((_, j) => j !== i))}>
-                  <Trash2 className="size-4" aria-hidden="true" /> Retirer cette garantie
-                </Button>
+                {langue !== 'ar' && (
+                  <Button type="button" size="sm" variant="ghost" className="contrats-acte__bouton"
+                          onClick={() => m(v.filter((_, j) => j !== i))}>
+                    <Trash2 className="size-4" aria-hidden="true" /> Retirer cette garantie
+                  </Button>
+                )}
               </div>
             )
           })}
-          <Button type="button" size="sm" variant="outline" className="contrats-acte__bouton"
-                  onClick={() => m([...v, {
-                    cle: '', designation: '', duree_mois: '', duree_libelle: '',
-                    garant: '', detail: '', fin: null,
-                  }])}>
-            <Plus className="size-4" aria-hidden="true" /> Ajouter une garantie
-          </Button>
+          {langue !== 'ar' && (
+            <Button type="button" size="sm" variant="outline" className="contrats-acte__bouton"
+                    onClick={() => m([...v, {
+                      cle: '', designation: '', duree_mois: '', duree_libelle: '',
+                      garant: '', detail: '', fin: null,
+                    }])}>
+              <Plus className="size-4" aria-hidden="true" /> Ajouter une garantie
+            </Button>
+          )}
         </>
       )
     case 'conditions_particulieres':
@@ -269,7 +294,7 @@ export default function ActeEditeur({
   }, [open, acteId, langue, setErreur])
 
   const sections = ORDRE_SECTIONS.filter((k) => (acte?.sections_modifiables ?? []).includes(k))
-  const surcharges = acte ? surchargesModifiees(base, brouillon, sections) : {}
+  const surcharges = acte ? surchargesModifiees(base, brouillon, sections, langue) : {}
   const modifie = Object.keys(surcharges).length > 0
   const personnalisees = acte?.sections_personnalisees ?? []
 

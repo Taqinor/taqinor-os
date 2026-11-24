@@ -1,6 +1,8 @@
 // Les sections que l'éditeur d'un acte sait modifier. Pour chacune :
 //   lire(contenu)  → le brouillon de saisie (chaînes pour les champs texte),
-//   ecrire(brouillon) → la valeur envoyée dans `surcharges[<section>]`.
+//   ecrire(brouillon, langue) → la valeur envoyée dans `surcharges[<section>]`
+//   (en arabe, seuls les TEXTES partent : dates, durées et fins de garantie
+//   viennent du français et ne sont jamais renvoyées).
 // Les clés viennent du contrat (acte_contractuel.json : `sections_modifiables`) ;
 // une section que le serveur ne liste pas pour l'acte n'est jamais montrée.
 // Aucun montant ici : l'échéancier n'expose que « quand » et « note ».
@@ -37,7 +39,10 @@ export const SECTIONS = {
       date_limite: chaine(c.delais?.date_limite),
       detail: chaine(c.delais?.detail),
     }),
-    ecrire: (d) => ({ date_limite: d.date_limite || null, detail: d.detail }),
+    // En arabe la date limite est commune : seul le détail se règle.
+    ecrire: (d, langue) => (langue === 'ar'
+      ? { detail: d.detail }
+      : { date_limite: d.date_limite || null, detail: d.detail }),
   },
   echeancier_textes: {
     libelle: 'Échéancier : les mots',
@@ -49,7 +54,9 @@ export const SECTIONS = {
   garanties: {
     libelle: 'Garanties',
     lire: (c) => (c.garanties ?? []).map((g) => ({ ...g, duree_mois: chaine(g.duree_mois) })),
-    ecrire: (d) => d.map((g) => ({ ...g, duree_mois: nombreTape(g.duree_mois) })),
+    ecrire: (d, langue) => d.map((g) => (langue === 'ar'
+      ? { cle: g.cle, designation: g.designation, garant: g.garant, detail: g.detail }
+      : { ...g, duree_mois: nombreTape(g.duree_mois) })),
   },
   articles: {
     libelle: 'Articles',
@@ -156,12 +163,12 @@ export function brouillonDe(contenu, sections) {
 }
 
 /** `{ section: valeur }` pour les seules sections modifiées par la saisie. */
-export function surchargesModifiees(base, brouillon, sections) {
+export function surchargesModifiees(base, brouillon, sections, langue = 'fr') {
   const surcharges = {}
   for (const cle of sections) {
     if (!SECTIONS[cle]) continue
     if (JSON.stringify(base[cle]) !== JSON.stringify(brouillon[cle])) {
-      surcharges[cle] = SECTIONS[cle].ecrire(brouillon[cle])
+      surcharges[cle] = SECTIONS[cle].ecrire(brouillon[cle], langue)
     }
   }
   return surcharges

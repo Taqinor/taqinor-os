@@ -22,6 +22,19 @@ function monter(props = {}) {
   return { onSaved }
 }
 
+// Le détail servi en arabe : le MÊME exemple, dont `sections_modifiables` est dérivé
+// de l'exemple (jamais d'une liste écrite à la main) en écartant les sections
+// COMMUNES aux deux langues (dates, options, signataire — `corps_patch._note`).
+const COMMUNES = ['lieu', 'date_document', 'societe', 'options', 'livraison', 'reception', 'sav', 'paiement']
+function acteAr(base = acte()) {
+  const ar = structuredClone(base)
+  ar.langue = 'ar'
+  ar.contenu.langue = 'ar'
+  ar.sections_modifiables = base.sections_modifiables.filter((k) => !COMMUNES.includes(k))
+  ar.sections_personnalisees = []
+  return ar
+}
+
 const section = (nom) => screen.getByRole('group', { name: nom })
 
 beforeEach(() => {
@@ -91,11 +104,7 @@ describe('Éditeur d’un acte', () => {
   })
 
   it('le choix de l’arabe redemande l’acte en langue ar et enregistre avec langue ar', async () => {
-    const ar = acte()
-    ar.langue = 'ar'
-    ar.sections_modifiables = ['titre', 'conditions_particulieres']
-    ar.sections_personnalisees = []
-    ar.contenu.langue = 'ar'
+    const ar = acteAr()
     ar.contenu.titre = 'عقد'
     documentsApiMock.acte.mockImplementation((id, langue) => Promise.resolve({
       data: langue === 'ar' ? ar : acte(),
@@ -109,12 +118,41 @@ describe('Éditeur d’un acte', () => {
       .findByLabelText('Titre')
     expect(zone).toHaveAttribute('dir', 'rtl')
     expect(zone).toHaveAttribute('lang', 'ar')
-    // En arabe, seules les sections listées par CE détail sont montrées.
+    // En arabe, seules les sections listées par CE détail (dérivé de l'exemple) sont montrées.
     expect(screen.queryByRole('group', { name: 'Options' })).toBeNull()
+    expect(screen.getByRole('group', { name: 'Conditions particulières' })).toBeInTheDocument()
     await user.clear(zone)
     await user.type(zone, 'عقد جديد')
     await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
     expect(documentsApiMock.modifierActe).toHaveBeenCalledWith(31, { titre: 'عقد جديد' }, 'ar')
+  })
+
+  it('F1 — en arabe : date limite, durées et fins de garantie en lecture seule, jamais envoyées', async () => {
+    const ar = acteAr()
+    ar.contenu.garanties = ar.contenu.garanties.map((g, i) => ({ ...g, fin: i === 0 ? '2037-01-23' : g.fin }))
+    documentsApiMock.acte.mockImplementation((id, langue) => Promise.resolve({
+      data: langue === 'ar' ? ar : acte(),
+    }))
+    const user = userEvent.setup()
+    monter()
+    await screen.findByRole('group', { name: 'Délais' })
+    await user.click(screen.getByRole('button', { name: 'العربية' }))
+    const delais = await screen.findByRole('group', { name: 'Délais' })
+    expect(within(delais).queryByLabelText('Date limite')).toBeNull()
+    expect(within(delais).getByText(ar.contenu.delais.date_limite)).toBeInTheDocument()
+    const garanties = screen.getByRole('group', { name: 'Garanties' })
+    expect(within(garanties).queryByLabelText('Durée en mois')).toBeNull()
+    expect(within(garanties).queryByRole('button', { name: /Ajouter une garantie|Retirer/ })).toBeNull()
+    expect(within(garanties).getByText(/2037-01-23/)).toBeInTheDocument()
+    await user.type(within(delais).getByLabelText('Détail'), ' x')
+    await user.type(within(garanties).getByLabelText('Désignation (garantie 1)'), ' x')
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    const envoye = documentsApiMock.modifierActe.mock.calls[0][1]
+    expect(Object.keys(envoye.delais)).toEqual(['detail'])
+    for (const g of envoye.garanties) {
+      expect(Object.keys(g).sort()).toEqual(['cle', 'designation', 'detail', 'garant'])
+    }
+    expect(documentsApiMock.modifierActe.mock.calls[0][2]).toBe('ar')
   })
 
   it('demande confirmation avant de changer de langue avec des modifications en cours', async () => {
