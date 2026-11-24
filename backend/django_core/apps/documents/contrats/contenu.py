@@ -331,12 +331,21 @@ def situation(type_acte, variante, vente):
     """``(etats, paiement)`` : l'état de chaque tranche (``regle`` /
     ``exigible`` / ``a_venir``, ``regle_le``) et les montants de l'étape,
     calculés depuis les paiements ENREGISTRÉS (variante ``tranche_reglee`` :
-    tranches jusqu'à la livraison supposées réglées)."""
+    tranches jusqu'à la livraison supposées réglées).
+
+    Ce qui est dû ne dépasse jamais ce que la vente doit encore
+    (``solde_devis['restant']`` : prix − payé − avoirs, retenues, abandons) :
+    la part du prix soldée SANS paiement (``deduit``) réduit le reste à
+    régler, et la somme exigible à cette étape en est bornée — dans les deux
+    langues et les deux variantes de livraison, une seule formule."""
     if not vente:
         return [], None
     tranches = vente['tranches']
     prix = vente['prix_ttc']
     paye = vente['paye']
+    restant = vente.get('reste')
+    deduit = ZERO if restant is None else max(
+        ZERO, prix - paye - max(ZERO, restant))
     effectif = paye
     if variante == T.TRANCHE_REGLEE and tranches:
         effectif = max(paye, tranches[index_livraison(tranches)]['cible'])
@@ -357,9 +366,11 @@ def situation(type_acte, variante, vente):
         else:
             etats.append({'statut': 'a_venir', 'regle_le': None})
     cible = tranches[horizon]['cible'] if tranches else prix
-    exigible = max(ZERO, cible - effectif)
-    restera = max(ZERO, prix - cible)
-    reste = max(ZERO, prix - effectif)
+    reste = max(ZERO, prix - effectif - deduit)
+    exigible = min(max(ZERO, cible - effectif), reste)
+    # Ce qui restera après cette étape : le reste moins l'exigible (encadré
+    # « reste à régler » = exigible + restera, toujours).
+    restera = max(ZERO, reste - exigible)
     paiement = {
         'total_regle': _s(effectif),
         'pourcentage_regle': _pct(effectif / prix * 100) if prix else None,
@@ -1851,7 +1862,7 @@ def avertissements(acte, contenu=None, lecture=None):
                 f"première étape (« {tranches[0]['libelle']} », "
                 f"{C.montant(cible)}).")
         if acte.variante == T.RESTE_A_REGLER:
-            du = max(ZERO, cible - vente['paye'])
+            du = min(max(ZERO, cible - vente['paye']), reste_du(vente))
             if du > 0:
                 sortie.append(
                     f'La tranche « {tranches[i]["libelle"]} » n\'est pas '

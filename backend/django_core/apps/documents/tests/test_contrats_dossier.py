@@ -1005,3 +1005,180 @@ class TrancheRegleeTests(TestCase):
                    if 'FOR UPDATE' in q['sql'] and 'pv_livraison' in q['sql']]
         self.assertTrue(verrous, [q['sql'] for q in requetes.captured_queries
                                   if 'FOR UPDATE' in q['sql']])
+
+
+# ── Harnais pur : le contenu d'un acte sans base de données ─────────────────
+# Les lectures vivantes (société, vente, modèles) sont servies par
+# ``LecturePure`` ; l'acte et le chantier sont de simples objets. Tout ce qui
+# suit tourne dans un conteneur sans base (``SimpleTestCase``).
+
+def vente_pure(prix='100000', pcts=(30, 60, 10),
+               cles_=('acompte', 'materiel', 'solde'), paiements=(),
+               avoirs='0'):
+    """Une vente comme ``Lecture.vente`` la rend (montants Decimal)."""
+    from apps.ventes.utils.echeancier import TRANCHE_LABELS
+    prix, cumul, tranches = Decimal(prix), Decimal(0), []
+    for i, (pct, key) in enumerate(zip(pcts, cles_)):
+        montant = (prix * Decimal(pct) / 100).quantize(Decimal('0.01'))
+        if i == len(pcts) - 1:
+            montant = prix - cumul
+        cumul += montant
+        tranches.append({'cle': f't{i + 1}', 'key': key,
+                         'libelle': TRANCHE_LABELS[key], 'montant': montant,
+                         'cible': cumul, 'pourcentage': Decimal(pct)})
+    lignes = [{'date': jour, 'libelle': 'Paiement', 'mode': 'Virement',
+               'montant': f'{Decimal(m):.2f}', '_key': ''}
+              for jour, m in paiements]
+    paye = sum((Decimal(m) for _j, m in paiements), Decimal('0.00'))
+    avoirs = Decimal(avoirs)
+    ht = (prix / Decimal('1.2')).quantize(Decimal('0.01'))
+    return {'prix_ttc': prix, 'prix_ht': ht, 'tva': prix - ht, 'paye': paye,
+            'reste': max(Decimal('0.00'), prix - paye - avoirs),
+            'avoirs': avoirs, 'tranches': tranches, 'paiements': lignes,
+            'reglements': K.reglements(lignes, paye)}
+
+
+class LecturePure(K.Lecture):
+    """Les lectures vivantes d'un chantier, servies sans base."""
+
+    def __init__(self, chantier, vente, *, modeles=None, date_contrat=None,
+                 garanties=None):
+        super().__init__(chantier)
+        self._vente = vente
+        self._modeles = modeles or {}
+        self._date_contrat = date_contrat
+        self._garanties = garanties if garanties is not None else [
+            {'designation': 'Onduleur', 'duree': '10 ans', 'detail': ''},
+            {'designation': 'Panneaux', 'duree': '12 ans', 'detail': ''}]
+
+    def profil(self):
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            nom='Solaire Exemple SARL', adresse='12, rue des Exemples, '
+            'Casablanca', telephone='+212522000000',
+            email='contact@exemple.ma', instructions_paiement='', rib='',
+            banque='')
+
+    def logo_uri(self):
+        return ''
+
+    def modele(self, type_acte):
+        return self._modeles.get(type_acte)
+
+    def date_du_contrat(self):
+        return self._date_contrat
+
+    def composants(self):
+        return [{'designation': 'Panneau Canadian Solar 590 W',
+                 'marque': 'Canadian Solar', 'quantite': 10},
+                {'designation': 'Onduleur hybride Deye 6 kW',
+                 'marque': 'Deye', 'quantite': 1}]
+
+    def garanties_vente(self, langue):
+        return self._garanties
+
+    def vente(self):
+        return self._vente
+
+
+def chantier_pur(**champs):
+    from types import SimpleNamespace
+    client = SimpleNamespace(
+        nom='EXEMPLE', prenom='Youssef', email='client@exemple.ma',
+        telephone='+212611223344', adresse='Villa 7, Bouskoura',
+        type_client='particulier', cin='BK000000', ice='', rc='',
+        if_fiscal='', contact_nom='', adresse_siege='')
+    devis = SimpleNamespace(reference='DEV-202611-0042',
+                            date_acceptation=date(2026, 11, 20),
+                            mode_installation='residentiel')
+    valeurs = dict(
+        pk=7, company_id=1, reference='CHT-2026-11-0007', client=client,
+        client_id=3, devis=devis, type_installation='residentiel',
+        site_adresse='Villa 7, Bouskoura', site_ville='Bouskoura',
+        puissance_installee_kwc=Decimal('5.90'),
+        date_pose_prevue=date(2026, 12, 10), duree_pose_jours=2,
+        date_mise_en_service=None, date_reception=date(2026, 12, 21),
+        garantie_installation_mois=None, garantie_installation_perimetre='',
+        annule=False)
+    valeurs.update(champs)
+    return SimpleNamespace(**valeurs)
+
+
+def acte_pur(type_acte, variante='', *, chantier=None, surcharges=None,
+             surcharges_ar=None):
+    from types import SimpleNamespace
+    return SimpleNamespace(type=type_acte, variante=variante, version=1,
+                           statut=T.BROUILLON,
+                           chantier=chantier or chantier_pur(),
+                           surcharges=surcharges or {},
+                           surcharges_ar=surcharges_ar or {})
+
+
+#: Les cinq actes du dossier : (type, variante).
+CINQ_ACTES = tuple((t, var) for t, var, _r in T.LIGNES_DOSSIER)
+
+
+# ── Avoirs : ce qui est dû ne dépasse jamais ce que la vente doit ───────────
+
+class AvoirsPursTests(SimpleTestCase):
+
+    def test_avoir_borne_le_du_dans_chaque_acte_et_langue(self):
+        """Défaut attrapé : ``situation`` ignorait les avoirs — la réception
+        disait « devoir 70 000,00 DH » quand la vente n'en devait plus que
+        50 000 (30 000 payés, avoir de 20 000)."""
+        vente = vente_pure(paiements=[('2026-12-02', '30000')],
+                           avoirs='20000')
+        self.assertEqual(vente['reste'], Decimal('50000.00'))
+        for type_acte, variante in CINQ_ACTES:
+            acte = acte_pur(type_acte, variante)
+            for langue in T.LANGUES:
+                with self.subTest(acte=type_acte, variante=variante,
+                                  langue=langue):
+                    c = K.construire_contenu(acte, langue,
+                                             LecturePure(acte.chantier, vente))
+                    p = c['paiement']
+                    for cle in ('exigible_maintenant', 'reste_a_regler'):
+                        if p.get(cle) is not None:
+                            self.assertLessEqual(Decimal(p[cle]),
+                                                 vente['reste'], cle)
+                    if 'restera_ensuite' in p:
+                        self.assertEqual(
+                            Decimal(p['exigible_maintenant'])
+                            + Decimal(p['restera_ensuite']),
+                            Decimal(p['reste_a_regler']))
+        recep = acte_pur(T.RECEPTION)
+        for langue in T.LANGUES:
+            c = K.construire_contenu(recep, langue,
+                                     LecturePure(recep.chantier, vente))
+            self.assertEqual(c['paiement']['exigible_maintenant'], '50000.00')
+            self.assertEqual(c['paiement']['reste_a_regler'], '50000.00')
+            solde = next(a for a in c['articles'] if a['cle'] == 'solde')
+            texte = '\n'.join(solde['paragraphes'])
+            self.assertIn(K.C.montant('50000', langue=langue), texte)
+            self.assertNotIn(K.C.montant('70000', langue=langue), texte)
+
+    def test_livraison_reste_a_regler_et_tranche_reglee(self):
+        """Défaut attrapé : la livraison « reste à régler » réclamait la
+        tranche entière (60 000) malgré un avoir qui ne laisse que 50 000
+        dus ; la variante « tranche réglée » annonçait un reste qui ignorait
+        l'avoir."""
+        vente = vente_pure(paiements=[('2026-12-02', '30000')],
+                           avoirs='20000')
+        acte = acte_pur(T.LIVRAISON, T.RESTE_A_REGLER)
+        p = K.construire_contenu(acte, 'fr', LecturePure(
+            acte.chantier, vente))['paiement']
+        self.assertEqual((p['exigible_maintenant'], p['restera_ensuite'],
+                          p['reste_a_regler']),
+                         ('50000.00', '0.00', '50000.00'))
+        acte = acte_pur(T.LIVRAISON, T.TRANCHE_REGLEE)
+        p = K.construire_contenu(acte, 'fr', LecturePure(
+            acte.chantier, vente))['paiement']
+        self.assertEqual(p['reste_a_regler'], '0.00')
+        # Sans avoir, rien ne change (30 / 60 / 10, acompte payé).
+        sans = vente_pure(paiements=[('2026-12-02', '30000')])
+        acte = acte_pur(T.LIVRAISON, T.RESTE_A_REGLER)
+        p = K.construire_contenu(acte, 'fr', LecturePure(
+            acte.chantier, sans))['paiement']
+        self.assertEqual((p['exigible_maintenant'], p['restera_ensuite'],
+                          p['reste_a_regler']),
+                         ('60000.00', '10000.00', '70000.00'))
