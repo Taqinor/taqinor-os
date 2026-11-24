@@ -10,7 +10,7 @@
     .header-left { display: block; flex: 1 1 auto; min-width: 0; }
     .header-left > * { display: block; }
     /* Colonne en bloc (une colonne flex chevauche un titre sur deux
-       lignes au rendu PDF) : l'écart de 6 px devient une marge. */
+       lignes au rendu PDF) ; l'écart de 6 px entre enfants est conservé. */
     .header-left > * + * { margin-top: 6px; }
     .header-left > * + .doc-title { margin-top: 14px; }
     .header-left > * + .internal-tag { margin-top: 12px; }
