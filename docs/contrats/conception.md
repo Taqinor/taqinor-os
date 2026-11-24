@@ -143,8 +143,10 @@ des quatre actes sous l'en-tête, motif khatam dans l'en-tête et en puce des in
 (contraste) ; aucun état porté par la seule couleur (photocopie). Pagination de référence, données d'exemple :
 contrat 6 pages, procès-verbaux 2 pages, clôture 4 pages.
 
-Rendu : `rendu.html_de(contenu)` (fonction pure) puis `core.pdf.render_pdf` — jamais le moteur de devis (règle n° 4),
-dont seules les polices et le traitement du logo sont importés.
+Rendu : `rendu.html_de(contenu)` puis `core.pdf.render_pdf` — jamais le moteur de devis (règle n° 4) : ses polices
+sont lues par leur chemin, et le logo est CELUI DES DEVIS (décision de Reda du 24/11/2026 : même module image, même
+bloc et même taille que la bande d'en-tête d'un devis), lu par la porte de ventes `selectors.logo_entete_html` ; le
+fichier téléversé n'est jamais imprimé tel quel.
 
 ## 8. Choix pris seul (réversibles, à confirmer par Reda)
 

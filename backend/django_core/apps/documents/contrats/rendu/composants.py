@@ -259,18 +259,32 @@ def _gras(texte):
 
 # ── En-tête, parcours, titre ────────────────────────────────────────────────
 
+#: Emplacement du logo dans la bande d'en-tête, au sens du module image des
+#: devis (``quote_engine.logo.CAPITALE_MM``) : « onepage » = la bande bleu nuit
+#: d'un document d'une page — mot-marque et signature de marque, capitale 5 mm.
+ROLE_LOGO = 'onepage'
+
+
 def _marque(societe):
-    """Le logo de la société tel quel, sur une pastille claire dans l'en-tête
-    bleu nuit (un logo sombre y reste lisible) ; sans logo, son nom."""
-    uri = (societe or {}).get('logo_uri')
-    try:
-        if isinstance(uri, str) and uri.startswith('data:image/'):
-            return (f'<span class="puce"><img src="{esc(uri)}" '
-                    f'alt="{esc(societe.get("nom"))}"></span>')
-    except Exception:  # logo inexploitable : le nom, jamais une image cassée
-        logger.warning('Logo de la société inexploitable : le nom est '
-                       'imprimé à sa place', exc_info=True)
-    return esc((societe or {}).get('nom'))
+    """LE logo des devis dans l'en-tête bleu nuit : même module image (rogné
+    au trait, détouré, encre sombre passée en blanc, couleurs vives gardées),
+    même bloc et même taille que la bande d'en-tête d'un devis — lu par la
+    porte de ventes (``selectors.logo_entete_html``), jamais par un import du
+    moteur (règle n° 4). Le fichier téléversé n'est JAMAIS imprimé tel quel :
+    sans logo exploitable (aucun, SVG, corrompu), c'est le nom de la société."""
+    societe = societe or {}
+    uri = societe.get('logo_uri')
+    if isinstance(uri, str) and uri:
+        try:
+            from apps.ventes.selectors import logo_entete_html
+            image = logo_entete_html(uri, variante='sombre', role=ROLE_LOGO,
+                                     alt=str(societe.get('nom') or 'logo'))
+            if image:
+                return image
+        except Exception:  # logo inexploitable : le nom, jamais une image cassée
+            logger.warning('Logo de la société inexploitable : le nom est '
+                           'imprimé à sa place', exc_info=True)
+    return esc(societe.get('nom'))
 
 
 def bandeau(contenu):

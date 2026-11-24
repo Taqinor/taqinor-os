@@ -153,9 +153,7 @@ strong,b{font-weight:700;color:__NAVY__}
   align-items:flex-start;border-bottom:1.1mm solid __OR__}
 .bandeau .marque{font-size:15pt;font-weight:700;letter-spacing:.06em;
   color:#FFFFFF;line-height:1.1}
-.bandeau .marque .puce{display:inline-block;background:#FFFFFF;
-  border-radius:2mm;padding:1.2mm 2.6mm;line-height:0}
-.bandeau .marque img{display:block;height:9mm;width:auto}
+.bandeau .marque img{display:block}
 .bandeau .ref{text-align:right;font-size:8pt;line-height:1.55;color:#C9D2E0}
 .bandeau .ref b{display:block;color:__OR__;font-size:9.6pt;
   letter-spacing:.08em;font-weight:700}

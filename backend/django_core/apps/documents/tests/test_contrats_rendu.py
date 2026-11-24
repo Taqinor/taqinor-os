@@ -118,18 +118,48 @@ class RenduHtmlTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             html_de({'type': 'inconnu'})
 
-    def test_logo_tel_quel_sur_pastille_claire_sinon_le_nom(self):
-        """Règle #4 : le logo n'est plus traité par le moteur de devis ; il
-        s'imprime tel quel sur une pastille claire, sans logo c'est le nom."""
-        logo = 'data:image/png;base64,iVBORw0KGgo='
+    def test_logo_des_devis_dans_l_en_tete_sinon_le_nom(self):
+        """Décision de Reda (24/11/2026) : le logo des actes est CELUI DES
+        DEVIS, partout — la balise que le moteur de devis imprime dans une
+        bande d'en-tête bleu nuit (variante sombre, rôle « onepage »), octet
+        pour octet ; le fichier téléversé n'est jamais imprimé tel quel, et la
+        pastille claire n'existe plus. Sans logo exploitable : le nom."""
+        import base64
+
+        from apps.ventes.quote_engine import logo as moteur
+        brut = ('data:image/png;base64,'
+                + base64.b64encode(moteur.CHEMIN_LOGO.read_bytes()).decode())
         for cle, contenu in exemples():
             with self.subTest(exemple=cle):
-                contenu['societe']['logo_uri'] = logo
+                contenu['societe']['logo_uri'] = brut
                 html = html_de(contenu)
-                self.assertIn(f'<span class="puce"><img src="{logo}"', html)
+                attendu = moteur.img_html(
+                    moteur.pour_role(moteur.societe_b64(brut, 'sombre'),
+                                     'onepage'),
+                    'onepage', alt=contenu['societe']['nom'])
+                self.assertTrue(attendu)
+                self.assertIn(f'<div class="marque">{attendu}</div>', html)
+                # Le logo officiel téléversé = l'asset du devis, au même bloc.
+                self.assertIn(moteur.taqinor_b64('sombre', 'lockup'), html)
+                self.assertNotIn(brut, html)
+                self.assertNotIn('class="puce"', html)
+                self.assertNotIn('.puce', html)
                 self.assertIn("font-family:'DM Sans'", html)
-                contenu['societe']['logo_uri'] = ''
-                self.assertNotIn('class="puce"><img', html_de(contenu))
+                for inexploitable in ('', 'data:image/svg+xml;base64,PHN2Zz4=',
+                                      'data:image/png;base64,iVBORw0KGgo='):
+                    contenu['societe']['logo_uri'] = inexploitable
+                    html = html_de(contenu)
+                    self.assertIn(
+                        f'<div class="marque">{contenu["societe"]["nom"]}'
+                        '</div>', html)
+                    self.assertNotIn('<img', html.split('class="ref"')[0])
+        # Même logo dans la traduction arabe (une seule brique d'en-tête).
+        for cle, langue, contenu in exemples_deux_langues():
+            with self.subTest(exemple=cle, langue=langue):
+                contenu['societe']['logo_uri'] = brut
+                html = html_de(contenu)
+                self.assertIn(moteur.taqinor_b64('sombre', 'lockup'), html)
+                self.assertNotIn(brut, html)
 
     def test_aucun_double_echappement(self):
         """R9 — un nom à apostrophe ne s'imprime jamais « &amp;#x27; »."""

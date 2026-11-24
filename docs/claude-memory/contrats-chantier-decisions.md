@@ -23,6 +23,10 @@ bien terminés, signé par le client (protection si le solde n'est pas payé), (
   sur les contrats — le devis reste sans nom de gérant (D-APDF-1 inchangée).
 - **Version arabe dans la même vague** (choisi contre « seconde vague » recommandé) : chaque acte se rend en français
   et en arabe ; la traduction arabe accompagne l'acte français (loi n° 31-08, art. 206).
+- **Logo : celui du devis, partout** (24/11/2026, « this should be the logo used everywhere, and the logo you just
+  added should not be used anywhere ») : tout acte imprime le logo que le moteur de devis imprime (détouré, lettres
+  blanches et soleil doré sur l'en-tête bleu nuit), lu par la porte `apps.ventes.selectors.logo_entete_html`. Jamais
+  le fichier téléversé posé tel quel, jamais de pastille blanche autour — ni dans un nouveau document.
 
 **Why :** Reda a des soldes impayés sur des chantiers posés (≈ 50 090 DH au 23/11) ; son avocat lui a dit de faire
 signer la bonne exécution des travaux.
