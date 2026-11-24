@@ -6,14 +6,16 @@ références de loi des textes par défaut (sans base de données).
 - palier « pdf » : pagination de référence (contrat ≤ 6 pages, procès-verbaux
   ≤ 2, clôture ≤ 4 — docs/contrats/conception.md § 7) et PDF signé portant le
   nom du signataire ;
-- toute référence de loi écrite dans ``textes.py`` (« article », « loi n° »)
-  figure dans docs/contrats/juridique.md § 2 (critère K9).
+- toute référence de loi que PRODUISENT les fabriques de ``textes.py``
+  (« article », « loi n° »), toutes options, figure dans
+  docs/contrats/juridique.md § 2 (critère K9).
 
 Run :
     powershell -File scripts/test-backend.ps1 \
         -Modules "apps.documents.tests.test_contrats_rendu"
 """
 import copy
+import itertools
 import json
 import re
 import unittest
@@ -26,7 +28,6 @@ from apps.documents.contrats.rendu import html_de, pdf_de
 
 ECHANTILLON = (Path(__file__).resolve().parents[1] / 'contract_samples'
                / 'acte_contractuel.json')
-TEXTES = Path(__file__).resolve().parents[1] / 'contrats' / 'textes.py'
 
 
 def juridique():
@@ -109,8 +110,30 @@ class ReferencesDeLoiTests(unittest.TestCase):
         fin = texte.index('## 3.', debut)
         return texte[debut:fin]
 
+    @staticmethod
+    def _textes_produits():
+        """Tout le texte que les fabriques de ``textes.py`` PRODUISENT, toutes
+        options allumées et éteintes (le code est exécuté, jamais lu)."""
+        from apps.documents.contrats import textes
+        morceaux = []
+        for booleens in itertools.product((True, False), repeat=3):
+            options = dict(zip(('consommateur', 'reserve_propriete',
+                                'raccorde_reseau'), booleens),
+                           penalite_retard_pct=5)
+            for type_acte, variante in (
+                    ('contrat_installation', ''),
+                    ('pv_livraison', 'reste_a_regler'),
+                    ('pv_livraison', 'tranche_reglee'),
+                    ('pv_reception', ''), ('cloture_garanties', '')):
+                for art in textes.articles_par_defaut(type_acte, variante, {},
+                                                      options):
+                    morceaux += [art['titre']] + art['paragraphes']
+        morceaux += textes.quitus_par_defaut({})
+        morceaux += textes.entretien_par_defaut()
+        return '\n'.join(morceaux)
+
     def test_references_de_textes_dans_juridique(self):
-        source = TEXTES.read_text(encoding='utf-8')
+        source = self._textes_produits()
         section = self._section_2()
         lois = set(re.findall(r'loi\s+n°\s*(\d{2}-\d{2})', source))
         self.assertTrue(lois)
