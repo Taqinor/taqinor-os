@@ -351,18 +351,20 @@ owners. As you chose, it is built in a fresh session: start it with « work on a
 « un seul moteur ». It is the biggest remaining piece: until it is built, the calepinage reads the quote's design
 when a quote exists (wave C) and still calculates by itself otherwise.
 
-### 11.6 To confirm — four choices I had to take tonight
+### 11.6 The four choices I had to take — answered by you on 24/11
 
-They are recorded as D-ACAL-98 to 101 with their alternatives. Each changes a number or a status a client can read
-on NEW quotes only; nothing sent changes.
+They are recorded as D-ACAL-98 to 101. Each changes a number or a status a client can read on NEW quotes only;
+nothing sent changes.
 
-1. **Panel sheet without power tolerance → 0 %** (D-ACAL-98). The alternative is to assume the usual 0/+3 %
-   (a 0.75 % gain). Better still: type the tolerance on your 3 panel sheets.
-2. **Shift start hour assumed: 8 h for one shift, 6 h for two** (D-ACAL-99).
-3. **Assumed low-voltage tariff: « BT patenté » for a shop, « BT force motrice » for a factory** (D-ACAL-100).
-4. **C&I quotes are printed « estimate, subject to a visit » for four reasons** (assumed contract, no hourly
-   profile, unknown surface, the lead's visit flag) — the PDF already had this rule but never received the flag
-   (D-ACAL-101).
+1. **Panel sheet without power tolerance** (D-ACAL-98): you chose « assume the usual 0/+3 % » — a 0.75 % gain,
+   shown as « assumed ». I had set 0 %; changed on 24/11 (PR after #1537). Typing the real tolerance on your 3
+   panel sheets replaces the assumption.
+2. **Shift start hour assumed: 8 h for one shift, 6 h for two** (D-ACAL-99): kept.
+3. **Assumed low-voltage tariff: « BT patenté » for a shop, « BT force motrice » for a factory** (D-ACAL-100): kept.
+4. **C&I quotes printed « estimate, subject to a visit » for four reasons** (D-ACAL-101): kept.
+
+The full user test you asked for will run on an anonymised copy of production, never on production itself (your
+answer of 24/11); the prompt for that session is `docs/audits/l5-calepinage/PROMPT-SESSION-SUIVANTE.md`.
 
 ### 11.7 What you have to do
 
@@ -371,7 +373,7 @@ on NEW quotes only; nothing sent changes.
 2. After the deploy, in this order: Calepinage → Settings → Quick start → « Fill the empty settings » (it shows each
    value and its source before writing). Then `manage.py relier_calepinages_devis_envoye` lists the calepinages to
    re-attach to their sent quote (today: one, on the lead CPE Go Plus); `--appliquer` does it.
-3. Answer the four confirmations above when you have a minute.
+3. Start the next session with the prompt in `docs/audits/l5-calepinage/PROMPT-SESSION-SUIVANTE.md`.
 
 ### 11.8 What remains
 

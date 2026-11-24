@@ -726,7 +726,7 @@ fusion joue : `apps.crm.tests_agr411_questionnaire_pompage` (phase exigée d'un 
 `apps.ventes.tests.test_split_devis_domaine` (empreinte `split_dm_auto` de `build_devis_auto`, modifiée exprès).
 Leçons rangées dans la mémoire (`plan-drain-ci-bug-classes`, entrée 15).
 
-**À CONFIRMER par Reda** (`docs/audits/decisions.yml`) : D-ACAL-98 (fiche de module sans tolérance = 0 % supposé —
+**RÉPONDU par Reda le 24/11** (D-ACAL-98 = tri usuel 0/+3 % supposé, code changé le 24/11 ; D-ACAL-99, 100, 101 confirmées ; test utilisateur complet sur une copie anonymisée de la production ; prompt de la session suivante : `PROMPT-SESSION-SUIVANTE.md`). Texte du 23/11 (`docs/audits/decisions.yml`) : D-ACAL-98 (fiche de module sans tolérance = 0 % supposé —
 aucune des 3 fiches de la production ne publie sa tolérance), D-ACAL-99 (heure de début d'équipe supposée 8 h / 6 h),
 D-ACAL-100 (tarif basse tension supposé : BT patenté / BT force motrice), D-ACAL-101 (réserve de visite imprimée pour
 quatre motifs).
