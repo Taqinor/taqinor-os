@@ -158,11 +158,14 @@ def _prendre(cle, jeton):
 
 
 def _liberer(cle, jeton):
-    """Fin de la tâche : son marqueur part, sauf si une suivante l'a remplacé."""
+    """Fin de la tâche : son marqueur part, sauf si une suivante l'a remplacé
+    (autre jeton). Relecture E3 m-a : QUEL QUE SOIT son état — une fusion lue
+    avant ``_prendre`` et écrite après le remet « en file » sous ce jeton ;
+    gardé, il resterait orphelin (aucune tâche ne le prendrait plus)."""
     from django.core.cache import cache
 
     marqueur = cache.get(cle)
-    if isinstance(marqueur, dict) and marqueur.get('jeton') == jeton and marqueur.get('etat') == EN_COURS:
+    if isinstance(marqueur, dict) and marqueur.get('jeton') == jeton:
         cache.delete(cle)
 
 

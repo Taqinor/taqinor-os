@@ -2196,6 +2196,32 @@ class RelanceEnTacheTests(_emprunt(RelanceConceptionTests, '_relancer'),
         for version in ConceptionLead.objects.filter(company=company):
             self.assertNotIn('33.57', _json_mod.dumps(version.declencheur))
 
+    def test_fusion_ecrite_apres_la_prise_le_marqueur_est_libere(self):
+        """Relecture E3 m-a — une fusion lue AVANT la prise de la tâche et
+        écrite APRÈS remet le marqueur « en file » sous le jeton de la tâche :
+        la fin de la tâche le libère quand même (sinon il reste orphelin et
+        chaque modification rafraîchit son délai : plus aucune relance)."""
+        from django.core.cache import cache
+
+        from apps.ventes.conception import receivers, service
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        self._relancer(lead, company, _declencheur())
+        self._enregistrer(lead, facture_hiver=Decimal('2400'))
+        cle = receivers._cle(company.pk, receivers.cle_marqueur(lead.pk))
+        vrai = service.relancer
+
+        def course(*args, **kwargs):
+            fusion = dict(cache.get(cle), etat=receivers.EN_FILE)  # l'écriture tardive de la fusion
+            cache.set(cle, fusion, receivers.DUREE_MARQUEUR_S)
+            return vrai(*args, **kwargs)
+        with mock.patch.object(service, 'relancer', side_effect=course):
+            self.assertEqual(self._executer_les_taches(), [{'version': 2, 'ecrite': True}])
+        self.assertIsNone(cache.get(cle))  # mutant « libérer seulement EN_COURS » : marqueur orphelin
+        self._enregistrer(lead, facture_hiver=Decimal('2600'))
+        self.assertEqual(self.en_file.call_count, 1)
+
     def test_geste_regroupe_dans_un_filet_en_file_le_rend_parlant(self):
         """Relecture E3 M3 — un filet en file (muet) puis une fiche modifiée
         regroupée dedans : l'origine devient celle du geste, le chatter le dit."""
