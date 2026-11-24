@@ -45,9 +45,30 @@ interface CarteCotes {
   /** ACAL1924 — passer au-dessus de la couche 3D ; la pilule blanche de la cote. Absents (carte de test) : sans effet. */
   getLayer?(id: string): unknown;
   moveLayer?(id: string): unknown;
-  getStyle?(): { layers?: Array<{ id: string }> } | undefined;
+  getLayersOrder?(): string[];
   hasImage?(id: string): boolean;
   addImage?(id: string, image: { width: number; height: number; data: Uint8ClampedArray }, o: Record<string, unknown>): unknown;
+  setPaintProperty?(id: string, nom: string, v: unknown): unknown;
+  getContainer?(): Element;
+}
+
+/** ACAL2042 — le contour FERMÉ du toit choisi (calque propre : la ligne du tracé `rp9-line` est vidée à la fermeture, « la 3D
+ *  la remplace ») et ses coins (`rp9-pts`) : trait or plein 2 px, poignée ronde à fond de surface et filet or (maquettes
+ *  Main / ToitSombre), aux jetons du thème lus sur la carte. Sommets inchangés ; en Plan seulement, comme les cotes. */
+export const CALQUE_CONTOUR = 'rp9-contour-choisi';
+const CONTOUR = CALQUE_CONTOUR;
+const COINS = 'rp9-pts';
+const rgb = (v: string): string | null => {
+  const m = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/.exec(v.trim());
+  return m ? `rgb(${m[1]}, ${m[2]}, ${m[3]})` : null;
+};
+function styleContour(el: Element | undefined): Array<[string, string, unknown]> {
+  const jeton = (nom: string, repli: string) => (el && typeof getComputedStyle === 'function' ? rgb(getComputedStyle(el).getPropertyValue(nom)) : null) ?? repli;
+  return [
+    [CONTOUR, 'line-color', jeton('--cal-action', 'rgb(226, 181, 74)')],
+    [COINS, 'circle-radius', 6], [COINS, 'circle-color', jeton('--cal-surface', 'rgb(255, 255, 255)')],
+    [COINS, 'circle-stroke-color', jeton('--cal-or-trait', 'rgb(201, 154, 43)')], [COINS, 'circle-stroke-width', 2.5],
+  ];
 }
 
 /** ACAL1924 — la couche 3D (bâtiment, dalle, panneaux : `scene3d.ts`, id `rp9-3d`) ajoutée APRÈS ce calque le couvrait :
@@ -69,7 +90,7 @@ function pilule(): { width: number; height: number; data: Uint8ClampedArray } {
 }
 
 /** Monte le calque (si `demande`) : re-pose des sommets (`rp9-pts`) ⇒ cotes recalculées ; pente ⇒ visibilité. */
-export function monterCotesAretes(map: CarteCotes, contours: () => Array<{ sommets: readonly LngLat[]; ferme: boolean }>, demande: boolean): void {
+export function monterCotesAretes(map: CarteCotes, contours: () => Array<{ sommets: readonly LngLat[]; ferme: boolean; actif?: boolean }>, demande: boolean): void {
   if (!demande) return;
   // ACAL1924 — une arête PARTAGÉE par deux pans (faîtage) n'est cotée qu'une fois.
   const unique = (c: CoteArete, i: number, toutes: CoteArete[]) => toutes.findIndex((d) => Math.abs(d.milieu[0] - c.milieu[0]) < 1e-7 && Math.abs(d.milieu[1] - c.milieu[1]) < 1e-7) === i;
@@ -80,6 +101,11 @@ export function monterCotesAretes(map: CarteCotes, contours: () => Array<{ somme
     })),
   });
   map.addSource(CALQUE_COTES, { type: 'geojson', data: donnees() as never });
+  const contour = () => ({ type: 'FeatureCollection', features: contours().filter((c) => c.actif && c.ferme && c.sommets.length >= 3).map((c) => ({
+    type: 'Feature', geometry: { type: 'LineString', coordinates: [...c.sommets, c.sommets[0]] }, properties: {},
+  })) });
+  map.addSource(CONTOUR, { type: 'geojson', data: contour() as never }); // ACAL2042
+  map.addLayer({ id: CONTOUR, type: 'line', source: CONTOUR, layout: { 'line-join': 'round' }, paint: { 'line-color': 'rgb(226, 181, 74)', 'line-width': 2 } });
   // Même police et même halo que les étiquettes de mesure (`rp9-mesure-label`).
   const poserPilule = () => { if (map.addImage && !map.hasImage?.(PILULE)) map.addImage(PILULE, pilule(), { pixelRatio: 2, stretchX: [[16, 32]], stretchY: [[15, 17]], content: [10, 6, 38, 26] }); };
   poserPilule();
@@ -90,16 +116,29 @@ export function monterCotesAretes(map: CarteCotes, contours: () => Array<{ somme
       'icon-image': PILULE, 'icon-text-fit': 'both', 'icon-text-fit-padding': [3, 8, 3, 8], 'icon-allow-overlap': true }, // ACAL1924
     paint: { 'text-color': '#0c1335' },
   });
-  // ACAL1924 — au-dessus de la couche 3D (ajoutée après), à chaque repos de la carte où elle est passée dessus.
+  // ACAL1924 / ACAL2042 — contour, coins puis cotes au-dessus de la couche 3D (ajoutée après), à chaque repos de la carte où
+  // elle est passée dessus ; le style du contour suit le thème (posé seulement s'il change : pas de boucle de rendu).
+  const pose = new Map<string, unknown>();
   map.on('idle', () => {
-    const calques = map.getStyle?.()?.layers ?? [];
-    if (map.getLayer?.(COUCHE_3D) && calques[calques.length - 1]?.id !== CALQUE_COTES) map.moveLayer?.(CALQUE_COTES);
+    // `getLayersOrder` compte la couche 3D (personnalisée, absente de `getStyle().layers`) : nos trois calques en FIN de pile.
+    const voulus = [CONTOUR, COINS, CALQUE_COTES].filter((id) => map.getLayer?.(id));
+    const ordre = map.getLayersOrder?.() ?? [];
+    if (ordre.includes(COUCHE_3D) && ordre.slice(-voulus.length).join() !== voulus.join()) for (const id of voulus) map.moveLayer?.(id);
+    for (const [id, nom, v] of styleContour(map.getContainer?.())) {
+      if (!map.getLayer?.(id) || pose.get(`${id}|${nom}`) === v) continue;
+      map.setPaintProperty?.(id, nom, v);
+      pose.set(`${id}|${nom}`, v);
+    }
   });
   const visibilite = () => {
     const vis = map.getPitch() <= PENTE_PLAN_MAX && !enPresentation(map) ? 'visible' : 'none';
-    if (map.getLayoutProperty(CALQUE_COTES, 'visibility') !== vis) map.setLayoutProperty(CALQUE_COTES, 'visibility', vis);
+    for (const id of [CALQUE_COTES, CONTOUR]) if (map.getLayoutProperty(id, 'visibility') !== vis) map.setLayoutProperty(id, 'visibility', vis);
   };
-  map.on('sourcedata', (e) => { if (e?.sourceId === 'rp9-pts') map.getSource(CALQUE_COTES)?.setData(donnees() as never); });
+  map.on('sourcedata', (e) => {
+    if (e?.sourceId !== 'rp9-pts') return;
+    map.getSource(CALQUE_COTES)?.setData(donnees() as never);
+    map.getSource(CONTOUR)?.setData(contour() as never);
+  });
   map.on('pitch', visibilite);
   surPresentation(map, visibilite);
   visibilite();

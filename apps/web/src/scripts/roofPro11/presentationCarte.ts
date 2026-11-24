@@ -10,6 +10,7 @@ export const CALQUES_EDITION = [
   'rp9-ref-contour-fill', 'rp9-ref-contour-line', 'rp9-zones-label', 'rp9-reperes-cercle', 'rp9-reperes-point',
   'rp9-setback-lateral', 'rp9-setback-extremity', 'rp9-setback-parapet', 'rp9-setback-joint',
   'rp9-cotes', // ACAL1328 — cotes d'arêtes
+  'rp9-contour-choisi', // ACAL2042 — contour or du toit choisi
 ] as const;
 
 /** Degrés de cap par pixel glissé d'un doigt. */

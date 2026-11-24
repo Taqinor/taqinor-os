@@ -1812,7 +1812,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       },
       paint: { 'text-color': '#ffffff', 'text-halo-color': '#070b1d', 'text-halo-width': 1.6 },
     });
-    monterCotesAretes(map as never, () => areas.map((a) => (a.id === activeAreaId ? { sommets: vertices, ferme: closed } : { sommets: a.vertices, ferme: true })), opts.chiffrage !== undefined); // ACAL1328 — atelier ERP seul
+    monterCotesAretes(map as never, () => areas.map((a) => (a.id === activeAreaId ? { sommets: vertices, ferme: closed, actif: true } : { sommets: a.vertices, ferme: true })), opts.chiffrage !== undefined); // ACAL1328 — atelier ERP seul
     // ACAL233 — calque de la parcelle (pointillés), distinct du tracé du toit.
     map.addSource('rp9-parcelle', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } as never });
     map.addLayer({

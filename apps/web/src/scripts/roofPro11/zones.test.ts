@@ -47,7 +47,7 @@ import { type Ctx } from './context'; // ACAL64
 import { lireGabaritsZone, lireGabaritsObstacle, type AreaRecord } from './types';
 import { type LngLat } from '../../lib/roof';
 import { type Obstacle } from '../../lib/obstacles';
-import { CALQUE_COTES, cotesDesAretes, monterCotesAretes, texteCote } from './cotesAretes'; // ACAL1328
+import { CALQUE_CONTOUR, CALQUE_COTES, cotesDesAretes, monterCotesAretes, texteCote } from './cotesAretes'; // ACAL1328, ACAL2042
 import { CALQUES_EDITION, poserPresentation } from './presentationCarte'; // ACAL1328
 import { peindreBande, texteTotalProduction } from './affichageErp'; // ACAL1612
 import { type CardData } from './types'; // ACAL1612
@@ -1173,7 +1173,7 @@ function carteDeTestCotes() {
   };
   const emettre = (t: string, e: { sourceId?: string } = {}) => (ecoute.get(t) ?? []).forEach((fn) => fn(e));
   const textes = () => (donnees.get('rp9-cotes')?.features ?? []).map((f) => f.properties.texte);
-  return { carte, emettre, textes, visibilite, pencher: (p: number) => { pente = p; emettre('pitch'); } };
+  return { carte, emettre, textes, visibilite, donnees, pencher: (p: number) => { pente = p; emettre('pitch'); } };
 }
 
 describe('ACAL1328 — cotesDesAretes', () => {
@@ -1227,7 +1227,7 @@ describe('ACAL1328 — calque rp9-cotes', () => {
       ...t.carte,
       addLayer: (l: { id: string; layout?: { visibility?: string } }) => { t.carte.addLayer(l); ordre.push(l.id); couches.push(l as never); },
       getLayer: (id: string) => (ordre.includes(id) ? {} : undefined),
-      getStyle: () => ({ layers: ordre.map((id) => ({ id })) }),
+      getLayersOrder: () => [...ordre],
       moveLayer: (id: string) => { ordre.splice(ordre.indexOf(id), 1); ordre.push(id); },
       hasImage: () => false, addImage: vi.fn(),
     };
@@ -1241,6 +1241,47 @@ describe('ACAL1328 — calque rp9-cotes', () => {
     const cotes = couches.find((l) => l.id === CALQUE_COTES) as { layout: Record<string, unknown>; paint: Record<string, unknown> };
     expect([cotes.layout['icon-image'], cotes.layout['icon-text-fit'], cotes.paint['text-color']]).toEqual(['rp9-cote-pilule', 'both', '#0c1335']);
     expect(carte.addImage).toHaveBeenCalledTimes(1);
+  });
+
+  // ACAL2042 — la ligne du tracé (rp9-line) est VIDÉE à la fermeture (« la 3D la remplace ») et les sommets (rp9-pts), ajoutés
+  // AVANT la couche 3D, étaient couverts par la dalle : aucun contour or (maquettes Main / ToitSombre : or plein 2 px + coins).
+  it('contour du toit en or plein au-dessus de la 3D, poignées de coin aux jetons du thème', () => {
+    const t = carteDeTestCotes();
+    const ordre = ['rp9-line', 'rp9-pts'];
+    const couches: Array<{ id: string; paint?: Record<string, unknown> }> = [];
+    const peint: Record<string, unknown> = {};
+    const conteneur = {} as Element;
+    let theme: Record<string, string> = { '--cal-action': 'rgb(226 181 74)', '--cal-surface': 'rgb(255 255 255)', '--cal-or-trait': 'rgb(201 154 43)' };
+    const avant = globalThis.getComputedStyle;
+    globalThis.getComputedStyle = ((el: Element) => ({ getPropertyValue: (n: string) => (el === conteneur ? theme[n] ?? '' : '') })) as never;
+    try {
+      const carte = {
+        ...t.carte,
+        addLayer: (l: { id: string; layout?: { visibility?: string } }) => { t.carte.addLayer(l); ordre.push(l.id); couches.push(l); },
+        getLayer: (id: string) => (ordre.includes(id) ? {} : undefined),
+        getLayersOrder: () => [...ordre],
+        moveLayer: (id: string) => { ordre.splice(ordre.indexOf(id), 1); ordre.push(id); },
+        setPaintProperty: (id: string, nom: string, v: unknown) => { peint[`${id}|${nom}`] = v; },
+        getContainer: () => conteneur,
+      };
+      const toit = rectRing(12.4, 8.1);
+      monterCotesAretes(carte, () => [{ sommets: toit, ferme: true, actif: true }, { sommets: rectRing(4, 3), ferme: true }], true);
+      carte.addLayer({ id: 'rp9-3d' });
+      t.emettre('idle');
+      expect(ordre.slice(ordre.indexOf('rp9-3d'))).toEqual(['rp9-3d', CALQUE_CONTOUR, 'rp9-pts', CALQUE_COTES]); // au-dessus de la dalle
+      const contour = t.donnees.get(CALQUE_CONTOUR) as unknown as { features: Array<{ geometry: { coordinates: LngLat[] } }> };
+      expect(contour.features.map((f) => f.geometry.coordinates)).toEqual([[...toit, toit[0]]]); // le pan CHOISI seul, fermé
+      expect(couches.find((l) => l.id === CALQUE_CONTOUR)?.paint?.['line-width']).toBe(2);
+      expect(peint[`${CALQUE_CONTOUR}|line-color`]).toBe('rgb(226, 181, 74)');
+      expect([peint['rp9-pts|circle-color'], peint['rp9-pts|circle-stroke-color']]).toEqual(['rgb(255, 255, 255)', 'rgb(201, 154, 43)']);
+      theme = { '--cal-action': 'rgb(226 181 74)', '--cal-surface': 'rgb(18 26 63)', '--cal-or-trait': 'rgb(226 181 74)' }; // thème sombre
+      t.emettre('idle');
+      expect([peint['rp9-pts|circle-color'], peint['rp9-pts|circle-stroke-color']]).toEqual(['rgb(18, 26, 63)', 'rgb(226, 181, 74)']);
+      t.pencher(60); // en 3D, le contour au sol se tait comme les cotes
+      expect(t.visibilite.get(CALQUE_CONTOUR)).toBe('none');
+    } finally {
+      globalThis.getComputedStyle = avant;
+    }
   });
 
   it('site public (option de montage absente) : aucun calque posé', () => {
