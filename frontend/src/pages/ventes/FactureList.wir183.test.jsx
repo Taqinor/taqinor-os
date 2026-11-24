@@ -38,6 +38,7 @@ const api = vi.hoisted(() => ({
   encaissementGroupeFactures: vi.fn(() => Promise.resolve({ data: [{ id: 1 }, { id: 2 }] })),
   // AERR3 — tuiles d'argent relues après un geste d'argent.
   getFacturesKpis: vi.fn(() => Promise.resolve({ data: { encaisse_mois: '0' } })),
+  emettreFacture: vi.fn(() => Promise.resolve({ data: {} })),
   getNotesDebit: vi.fn(() => Promise.resolve({ data: [] })),
   creerNoteDebit: vi.fn(() => Promise.resolve({ data: { id: 5, reference: 'ND-1' } })),
   patchFacture: vi.fn(() => Promise.resolve({ data: {} })),
@@ -102,13 +103,12 @@ const ouvrirMenu = async (user, reference) => {
 }
 
 // Store ventes RÉEL (kpis relus par `fetchFacturesKpis`) + une facture émise de 12 000 MAD.
-async function monterAvecKpis() {
+async function monterAvecKpis(factures = [{ ...emise, total_ttc: 12000, montant_du: 12000 }]) {
   const { configureStore } = await import('@reduxjs/toolkit')
   const { Provider } = await import('react-redux')
   const { MemoryRouter } = await import('react-router-dom')
   const { render } = await import('@testing-library/react')
   const ventes = (await import('../../features/ventes/store/ventesSlice')).default
-  const factures = [{ ...emise, total_ttc: 12000, montant_du: 12000 }]
   const store = configureStore({
     reducer: { ventes, auth: (s = { role: 'admin' }) => s },
     preloadedState: { ventes: { ...ventes(undefined, { type: 'init' }), factures } },
@@ -384,6 +384,25 @@ describe('WIR183 — ZFAC6 : encaissement groupé', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Encaisser' }))
     await waitFor(() => expect(api.getFacturesKpis).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(tuile()).toHaveTextContent(/12\s?000/))
+  })
+
+  // T4-V2-023 — après « Émettre », la carte « Total dû » restait à l'ancien chiffre
+  // (acompte émis absent) pendant que « Reste à encaisser (onglet) » le comptait.
+  it('après « Émettre », la tuile Total dû relit le serveur', async () => {
+    const brouillon = { ...emise, id: 7, reference: 'BROUILLON-7', statut: 'brouillon', total_ttc: 21960, montant_du: 21960 }
+    api.emettreFacture.mockResolvedValueOnce({ data: { ...brouillon, reference: 'FAC-7', statut: 'emise' } })
+    api.getFacturesKpis
+      .mockResolvedValueOnce({ data: { total_du: '0' } })
+      .mockResolvedValueOnce({ data: { total_du: '21960' } })
+    await monterAvecKpis([brouillon])
+    const tuile = () => screen.getByText('Total dû').parentElement.parentElement
+    await waitFor(() => expect(api.getFacturesKpis).toHaveBeenCalledTimes(1))
+    const user = userEvent.setup()
+    const row = screen.getByText('BROUILLON-7').closest('tr')
+    await user.click(within(row).getAllByRole('button', { name: /Émettre/ })[0])
+    await waitFor(() => expect(api.emettreFacture).toHaveBeenCalledWith(7))
+    await waitFor(() => expect(api.getFacturesKpis).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(tuile()).toHaveTextContent(/21\s?960/))
   })
 
   it('est désactivé si la sélection mélange plusieurs clients', async () => {

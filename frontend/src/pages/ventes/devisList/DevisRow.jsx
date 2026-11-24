@@ -421,10 +421,11 @@ export default function DevisRow({ d, ctx }) {
             type="button"
             className="mt-1 block text-left text-xs text-muted-foreground underline-offset-2 hover:underline"
             aria-expanded={panneauVenteOpenId === d.id}
-            aria-label={`Vente de ${d.reference} : facturé ${formatMAD(d.vente.emis_ttc)}, payé ${formatMAD(d.vente.paye_ttc)}, reste ${formatMAD(d.vente.reste_a_facturer_ttc)}`}
+            aria-label={`Vente de ${d.reference} : facturé ${formatMAD(d.vente.emis_ttc)}${Number(d.vente.brouillons_ttc) > 0 ? `, en brouillon ${formatMAD(d.vente.brouillons_ttc)}` : ''}, payé ${formatMAD(d.vente.paye_ttc)}, reste à facturer ${formatMAD(d.vente.reste_a_facturer_ttc)}`}
             onClick={() => setPanneauVenteOpenId?.(panneauVenteOpenId === d.id ? null : d.id)}
           >
-            Facturé {formatMAD(d.vente.emis_ttc)} · Payé {formatMAD(d.vente.paye_ttc)} · Reste {formatMAD(d.vente.reste_a_facturer_ttc)}
+            {/* T4-V1-007 — la facture en BROUILLON (non émise) n'est ni « facturée » ni « reste à facturer » : nommée à part. */}
+            Facturé {formatMAD(d.vente.emis_ttc)}{Number(d.vente.brouillons_ttc) > 0 && <> · En brouillon {formatMAD(d.vente.brouillons_ttc)}</>} · Payé {formatMAD(d.vente.paye_ttc)} · Reste à facturer {formatMAD(d.vente.reste_a_facturer_ttc)}
           </button>
         )}
       </td>
