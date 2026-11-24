@@ -7,7 +7,7 @@ import { cibleVue, appliquerVue } from './vuesCamera';
 import { dimensionsTexture, makeCanadianPanelTexture } from './panelTexture'; // ACAL1839
 import { teintesBatiment, TEINTES_PRESENTATION } from './jeuPresentation'; // ACAL1839
 import * as THREE from 'three'; // ACAL1984
-import { poserOeil } from './oeilCamera'; // ACAL1984
+import { aplatirEnPlan, poserOeil } from './oeilCamera'; // ACAL1984, T4-U1-017
 import { boiteObstacle } from './obstacle3d'; // ACAL1820
 import {
   generateRoofShapePans,
@@ -482,6 +482,35 @@ describe('ACAL1984 — l’œil de la caméra de la couche est celui de la carte
     const intacte = new THREE.Camera();
     expect(poserOeil(intacte, new THREE.Matrix4().makeScale(0, 0, 0))).toBe(false);
     expect(intacte.position.toArray()).toEqual([0, 0, 0]);
+  });
+});
+
+// T4-U1-017 — vue Plan (pente 0) : la caméra de la carte est une PERSPECTIVE (œil ≈ 1,5 hauteur d'écran au-dessus du centre) ;
+// la dalle et les panneaux posés à la hauteur du bâtiment sortaient grossis autour du centre de la carte — décalés d'environ
+// 1 m vers la gauche et le haut d'un toit posé à gauche du panneau d'étape, hors du contour or et des cotes tracés au sol.
+// En Plan la scène est aplatie (hauteurs × 0,01) : un point du toit retombe sur son empreinte au sol. En 3D, rien ne change.
+describe('T4-U1-017 — vue Plan : la dalle du toit retombe sur le contour tracé au sol', () => {
+  const carte = () => {
+    const oeil = new THREE.PerspectiveCamera(36.87, 1440 / 900, 1, 4000);
+    oeil.position.set(0, 0, 167); // pente 0 : l'œil à la verticale du centre de la carte (zoom 20)
+    oeil.lookAt(0, 0, 0);
+    oeil.updateMatrixWorld(true);
+    return oeil.projectionMatrix.clone().multiply(oeil.matrixWorldInverse);
+  };
+  const ecran = (m: THREE.Matrix4, x: number, y: number, z: number) => new THREE.Vector3(x, y, z).applyMatrix4(m);
+  const ecartPx = (m: THREE.Matrix4) => {
+    // un coin du toit à 30 m à gauche et 8 m au-dessus du centre, la dalle à 6 m de haut
+    const sol = ecran(m, -30, 8, 0);
+    const dalle = ecran(m, -30, 8, 6);
+    return Math.hypot((dalle.x - sol.x) * 720, (dalle.y - sol.y) * 450);
+  };
+
+  it('Plan : moins d’un demi-pixel entre la dalle et son empreinte ; 3D (pente 60°) : la hauteur est gardée', () => {
+    const m = carte();
+    expect(ecartPx(m)).toBeGreaterThan(8); // le défaut : ≈ 1 m (≈ 8 px à 0,12 m/px)
+    expect(ecartPx(m.clone().multiply(aplatirEnPlan(0)))).toBeLessThan(0.5);
+    expect(aplatirEnPlan(60).equals(new THREE.Matrix4())).toBe(true);
+    expect(poserOeil(new THREE.Camera(), m.clone().multiply(aplatirEnPlan(0)))).toBe(true); // l'éclairage garde son œil
   });
 });
 

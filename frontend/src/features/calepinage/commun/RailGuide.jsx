@@ -1,5 +1,6 @@
 import { ETAPES, aReglerDeLEtape } from '../atelier/parcoursGuide'
 import { Icone } from '../atelier/coque/primitives'
+import { useAReglerPret } from './lecturePretAEnvoyer'
 
 /* ============================================================================
    ACAL393 — LES CINQ BOUTONS D'ÉTAPE DU PARCOURS GUIDÉ.
@@ -17,13 +18,17 @@ const LIBELLE_ETAT = {
   a_faire: 'à faire', en_cours: 'en cours', fait: 'fait', bloque: 'bloqué',
 }
 
-function RailVertical({ etapeActive, etats, manque, onChoisir, avance, onAvance, cache }) {
+function RailVertical({ calepinageId, etapeActive, etats, manque, onChoisir, avance, onAvance, cache }) {
+  // T4-B4-010 — quand « Prêt à envoyer ? » a été lu, le rail compte SUR CETTE liste (même compte que la colonne) :
+  // une étape qui y a un point à régler n'est jamais dite « fait ». Sans lecture : le parcours servi, comme avant.
+  const pret = useAReglerPret(calepinageId)
   return (
     <nav aria-label="Étapes" data-testid="cal-rail-etapes" className="cal-rail" hidden={cache || undefined}>
       {ETAPES.map((etape) => {
-        const etat = etats[etape.cle]
+        const nPret = pret?.[etape.cle]
+        const etat = nPret > 0 && etats[etape.cle] === 'fait' ? 'en_cours' : etats[etape.cle]
         const actif = etape.cle === etapeActive
-        const aRegler = aReglerDeLEtape(manque, etape.cle)
+        const aRegler = typeof nPret === 'number' ? nPret : aReglerDeLEtape(manque, etape.cle)
         return (
           <button key={etape.cle} type="button" data-testid={`cal-etape-${etape.cle}`}
             data-etat={etat ?? ''} aria-current={actif ? 'step' : undefined}
@@ -50,10 +55,10 @@ function RailVertical({ etapeActive, etats, manque, onChoisir, avance, onAvance,
 
 export default function RailGuide({
   etapeActive, etats, onChoisir, expert = false, onBasculerExpert = null,
-  vertical = false, manque = [], avance = false, onAvance = () => {}, cache = false,
+  vertical = false, manque = [], avance = false, onAvance = () => {}, cache = false, calepinageId = null,
 }) {
   if (vertical) {
-    return <RailVertical etapeActive={etapeActive} etats={etats} manque={manque}
+    return <RailVertical calepinageId={calepinageId} etapeActive={etapeActive} etats={etats} manque={manque}
       onChoisir={onChoisir} avance={avance} onAvance={onAvance} cache={cache} />
   }
   return (

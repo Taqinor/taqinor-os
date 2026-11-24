@@ -52,17 +52,34 @@ function documentDuBanc(exemple, variante, module) {
   const coin = (x, y) => [LONGITUDE + x * dLng, LATITUDE + y * dLat]
   zone.vertices = [coin(0, 0), coin(12.4, 0), coin(12.4, 8.6), coin(0, 8.6)]
   doc.outline = [...zone.vertices].map(([lng, lat]) => [lat, lng])
+  // T4-B4 (banc) — l'exemple du contrat décrit plusieurs objets EN MÈTRES (obstacle, zone d'exclusion, mesure) : posés
+  // tels quels, ils tombaient à (lng 3, lat 2) / (0, 0) — le cadrage de la carte, de la 3D et de l'aperçu du plan de pose
+  // englobait l'Afrique (« un point vert », échelle 1/13 660 116). Ils sont ramenés au toit, en [lng, lat] ; ce qui n'a
+  // pas de sens sur la pile (fond de plan sans pièce jointe → 409, parcelle de 200 m, repère à 2 km) est retiré.
+  zone.obstacles = (zone.obstacles || []).map((o) => {
+    const [centerLng, centerLat] = coin(Number(o.centerLng) || 0, Number(o.centerLat) || 0)
+    return { ...o, centerLng, centerLat }
+  })
+  doc.exclusionZones = (doc.exclusionZones || []).map((z) => ({ ...z, vertices: z.vertices.map(([x, y]) => coin(x, y)) }))
+  doc.measurements = (doc.measurements || []).map((m) => ({ ...m, points: m.points.map(([x, y]) => coin(x, y)) }))
+  delete doc.underlay
+  delete doc.parcelle
+  doc.reperesChantier = []
+  doc.activeAreaId = zone.id
   const modules = []
   for (let rangee = 0; rangee < 2; rangee += 1) {
-    for (let i = 0; i < 6; i += 1) modules.push({ n: rangee * 6 + i + 1, cx: 1.2 * i + 1, cy: 1.8 * rangee + 1, rangee: rangee === 0 ? 'A' : 'B' })
+    // Pas des rangées 3,0 m (> 2,4 m de longueur du module) : à 1,8 m les deux rangées se chevauchaient sur la planche.
+    for (let i = 0; i < 6; i += 1) modules.push({ n: rangee * 6 + i + 1, cx: 1.2 * i + 1.2, cy: 3.0 * rangee + 1.6, rangee: rangee === 0 ? 'A' : 'B' })
   }
-  zone.geometry = { ...zone.geometry, panels: modules, count: modules.length }
+  // Les centres des panneaux sont en mètres (est, nord) dans le repère `geometry.origin` = le coin (0, 0) du toit.
+  zone.geometry = { ...zone.geometry, origin: coin(0, 0), panels: modules, count: modules.length }
   zone.neededPanels = modules.length
   if (module) {
-    // Le module du pan = une ligne du catalogue `modules[]` de la racine, désignée par `moduleId` et CHOISIE (`moduleChoisi`).
-    doc.modules = [{ ...doc.modules[0], produitId: module.id, libelle: module.libelle, source: 'catalogue' }]
-    zone.moduleId = doc.modules[0].id
-    zone.moduleChoisi = true
+    // Le module du pan = une ligne du catalogue `modules[]` de la racine, désignée par `geometry.moduleId` (là où l'atelier
+    // et le serveur le lisent : `pans_du_document`) et CHOISIE (`geometry.moduleChoisi`, ACAL1415).
+    doc.modules = [{ ...doc.modules[0], id: `produit-${module.id}`, produitId: module.id, libelle: module.libelle, source: 'catalogue' }]
+    zone.geometry.moduleId = doc.modules[0].id
+    zone.geometry.moduleChoisi = true
   }
   if (variante === 'releve') {
     zone.pitchDeg = 24
@@ -72,6 +89,8 @@ function documentDuBanc(exemple, variante, module) {
     zone.pitchDeg = 22 // valeur de départ : jamais confirmée, jamais mesurée
     delete zone.pitchSource
   }
+  // La pose suit la pente du pan (l'exemple gardait 15° : l'aperçu du plan de pose disait 15° quand l'écran disait 22°).
+  zone.geometry.tiltDeg = zone.pitchDeg
   return doc
 }
 

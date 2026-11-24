@@ -19,6 +19,7 @@ from apps.calepinage.services.electrique import (
     CLE_ENTREE, PROVENANCE_DEVIS, PROVENANCE_EXPLICITE,
     conception_du_calepinage,
 )
+from apps.calepinage.services.modules_pans import PROVENANCE_POSE
 from apps.calepinage.services.simulation import construire_contexte
 from apps.stock.models import FicheTechnique, Produit
 from apps.ventes.models import Devis, LigneDevis
@@ -144,6 +145,50 @@ class SansDevis(BaseMateriel):
         self.assertTrue(conception.fiche_incomplete)
         self.assertFalse(conception.chaines)
         self.assertFalse(conception.bloquants)
+
+
+class ModulePose(BaseMateriel):
+    """T4-B4-007 / T4-U1-006 — le module CHOISI à l'étape Panneaux (posé sur
+    les pans, ``geometry.moduleId`` → ``modules[].produitId``) EST le module du
+    calcul électrique quand rien d'autre n'est désigné : jamais redemandé dans
+    « Matériel électrique », jamais « Aucun module n'est désigné »."""
+
+    def _layout_pose(self, produit):
+        module = {'id': 'produit-%s' % produit.pk, 'produitId': produit.pk,
+                  'libelle': produit.nom, 'source': 'fiche produit',
+                  'longueurMm': 2384.0, 'largeurMm': 1303.0, 'pmaxWc': 710.0}
+        zone = dict(LAYOUT['zones'][0])
+        zone['geometry'] = {'moduleId': module['id'],
+                            'panels': [{'n': i + 1} for i in range(12)]}
+        return {**LAYOUT, 'modules': [module], 'zones': [zone]}
+
+    def test_le_module_pose_est_le_module_du_calcul(self):
+        calepinage = self._calepinage()
+        calepinage.roof_layout = self._layout_pose(self.module_devis)
+        calepinage.save(update_fields=['roof_layout'])
+        _c, materiel, _d, _doc = conception_du_calepinage(calepinage)
+        self.assertEqual(materiel['produits']['module'], self.module_devis.pk)
+        self.assertEqual(materiel['provenances']['module'], PROVENANCE_POSE)
+        self.assertFalse([a for a in materiel['absents']
+                          if a.startswith('module PV')], materiel['absents'])
+        reponse = self.api.get(url_entree(calepinage.pk))
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(reponse.data['materiel']['module']['provenance'],
+                         PROVENANCE_POSE)
+        # Lu, jamais écrit : l'entrée stockée ne gagne aucun `module_produit`.
+        calepinage.refresh_from_db()
+        self.assertNotIn('module_produit', calepinage.resultat[CLE_ENTREE])
+
+    def test_une_designation_explicite_gagne_sur_le_module_pose(self):
+        calepinage = self._calepinage(
+            entree={'module_produit': self.module_explicite.pk})
+        calepinage.roof_layout = self._layout_pose(self.module_devis)
+        calepinage.save(update_fields=['roof_layout'])
+        _c, materiel, _d, _doc = conception_du_calepinage(calepinage)
+        self.assertEqual(materiel['produits']['module'],
+                         self.module_explicite.pk)
+        self.assertEqual(materiel['provenances']['module'],
+                         PROVENANCE_EXPLICITE)
 
 
 class GetEntree(BaseMateriel):

@@ -13,7 +13,7 @@ import {
 import { BandeauAlertes } from './BandeauxCoque'
 import BarreProjet from './BarreProjet'
 import { usePoseVivante } from './etapes/panneaux/constructeur'
-import { nomClientServi, sousTitrePose } from './projet'
+import { sousTitrePose } from './projet'
 import { ContexteCoque, ContextePresentation } from './contexteCoque'
 import PanneauEtape from './PanneauEtape'
 import { BoutonOr } from './primitives'
@@ -202,19 +202,20 @@ function useResultatServi(calepinageId, actif, relecture) {
   return actif ? data : null
 }
 
-/** Le détail servi (une seule lecture) : l'heure de la dernière version (`versions.derniere_le`) et le nom du
-    lead ou du client (ACAL1730, titre du bandeau). */
+/** Le détail servi (une seule lecture) : l'heure de la dernière version (`versions.derniere_le`). T4-B4-009 : le
+    bandeau ne lit plus le nom du lead ici (il remplaçait le nom du calepinage APRÈS le chargement, puis à chaque
+    relecture) — un seul nom, celui du calepinage. */
 function useDetailServi(calepinageId, relecture) {
-  const [detail, setDetail] = useState({ le: null, nom: '' })
+  const [detail, setDetail] = useState({ le: null })
   useEffect(() => {
     if (!calepinageId) return undefined
     let vivant = true
     Promise.resolve()
       .then(() => calepinageApi.calepinages.get(calepinageId))
       .then((rep) => {
-        if (vivant) setDetail({ le: rep?.data?.versions?.derniere_le ?? null, nom: nomClientServi(rep?.data) })
+        if (vivant) setDetail({ le: rep?.data?.versions?.derniere_le ?? null })
       })
-      .catch(() => { if (vivant) setDetail({ le: null, nom: '' }) })
+      .catch(() => { if (vivant) setDetail({ le: null }) })
     return () => { vivant = false }
   }, [calepinageId, relecture])
   return detail
@@ -324,7 +325,7 @@ export default function CoqueAtelier({
   // La ligne de pose du bandeau suit la pose de la carte tant que la scène est modifiée (module changé, retraits, remplissage).
   const poseVivante = usePoseVivante(!presentation && enregistrement?.modifiee === true)
   const etatPropre = cleEtape === 'resultats' && !expert ? etatSimulation(resultatServi) : null
-  const { le: derniereVersionLe, nom: nomClient } = useDetailServi(presentation ? null : calepinageId, enregistreLe)
+  const { le: derniereVersionLe } = useDetailServi(presentation ? null : calepinageId, enregistreLe)
 
   // ACAL1437 — un bouton qui dit « Générer » génère quand son bloc est à l'écran (Documents, ou Expert), même route.
   const onDevis = () => {
@@ -366,14 +367,14 @@ export default function CoqueAtelier({
       <div className="rp9-host cal-coque" data-testid="cal-coque" data-etape={cleEtape} data-cadre={cadre}
         data-avance={expert ? '1' : '0'} data-expert={expert ? '1' : '0'} data-feuille={feuille ? '1' : undefined}
         data-presentation={presentation ? '1' : undefined}>
-        <BarreProjet cache={!!presentation} retour={retour} titre={calepinageId && nomClient ? nomClient : titre} expert={expert} onExpert={basculerExpert}
+        <BarreProjet cache={!!presentation} retour={retour} titre={titre} expert={expert} onExpert={basculerExpert}
           sousTitre={sousTitrePose(resultatServi, poseVivante) || sousTitre}
           libelleDevis={libelleDevis} onDevis={devisPossible ? onDevis : null}
           enregistrement={enregistrement && <BarreEnregistrement {...enregistrement} etatPropre={etatPropre}
             derniereVersionLe={derniereVersionLe} />} />
         <BandeauAlertes cache={!!presentation}>{alertes}</BandeauAlertes>
         <div id="rp9-studio" className="cal-coque-corps">
-          <RailEtapes cache={!!presentation} etapeActive={cleEtape} parcours={parcours} onChoisir={allerA}
+          <RailEtapes calepinageId={calepinageId} cache={!!presentation} etapeActive={cleEtape} parcours={parcours} onChoisir={allerA}
             avance={avance} onAvance={setAvanceOuvert} />
           <main className="cal-coque-centre">
             <div id="rp9-studio-scene" className="cal-coque-scene" hidden={!carteVisible}>

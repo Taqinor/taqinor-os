@@ -1259,8 +1259,9 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
     const barre = screen.getByTestId('cal-barre-projet')
     // Le bandeau : « Calepinages », le nom servi (+ ville servie), la ligne lead + facture servie, Guidé | Expert, devis.
     expect(screen.getByTestId('cal-retour-liste')).toHaveTextContent('Calepinages')
-    // ACAL1730 : le nom du lead servi par le détail, plus « titre — ville ».
-    await waitFor(() => expect(screen.getByTestId('cal-projet-titre').textContent).toBe("Lead d'essai"))
+    // T4-B4-009 (remplace ACAL1730) : UN nom de l'ouverture à la fin — celui du calepinage (+ ville servie), comme la
+    // maquette (« Villa Bennani — Casablanca »), le cartouche du schéma, « Montrer au client » et le plan PDF.
+    await waitFor(() => expect(screen.getByTestId('cal-projet-titre').textContent).toBe('Toiture — bâtiment principal — Casablanca'))
     expect(screen.getByTestId('cal-projet-sous-titre')).toHaveTextContent(/^Lead · facture 900 MAD \/ mois$/)
     const mode = within(barre).getByRole('group', { name: 'Mode' })
     expect(within(mode).getAllByRole('button').map((b) => b.textContent)).toEqual(['Guidé', 'Expert'])
@@ -1521,15 +1522,21 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
     }
   })
 
-  it('ACAL1730 — bandeau : le nom du lead en titre ; la ligne dit la pose SERVIE (panneaux · kWc · onduleur), la même à toute étape et dans les deux modes', async () => {
+  it('T4-B4-009 — bandeau : le nom du calepinage, le même de l’ouverture à la fin (jamais le lead) ; la ligne dit la pose SERVIE (panneaux · kWc · onduleur), la même à toute étape et dans les deux modes', async () => {
     amorcer()
     const res = reponseContrat('calepinage', 'calepinage_resultat')
     calepinageApi.calepinages.resultat.mockResolvedValue(res)
     calepinageApi.calepinages.get.mockResolvedValue(reponseContrat('calepinage', 'calepinage_detail'))
     rendreCalepinage(CTX.calepinage.id)
     await screen.findByTestId('cal-coque')
-    // Le titre : le nom du lead servi par le détail (« Lead d'essai »), jamais « Calepinage N — ville ».
-    await waitFor(() => expect(screen.getByTestId('cal-projet-titre').textContent).toBe('Lead d\'essai'))
+    // Le titre : le nom du calepinage servi (+ ville), dès qu'il est lu — jamais « Calepinage N », jamais le nom du lead
+    // qui arrivait ensuite par le détail et faisait CHANGER le bandeau en cours de séance.
+    const NOM = 'Toiture — bâtiment principal — Casablanca'
+    const vus = new Set()
+    const veilleur = new MutationObserver(() => { const t = document.querySelector('[data-testid="cal-projet-titre"]')?.textContent; if (t) vus.add(t) })
+    veilleur.observe(document.body, { subtree: true, childList: true, characterData: true })
+    await waitFor(() => expect(screen.getByTestId('cal-projet-titre').textContent).toBe(NOM))
+    await waitFor(() => expect(calepinageApi.calepinages.get).toHaveBeenCalled())
     const { total_modules: n } = res.data.pose
     const o = res.data.electrique.onduleurs[0]
     const kwc = res.data.pose.kwc.toLocaleString('fr-FR', { minimumFractionDigits: 2 })
@@ -1541,7 +1548,9 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
     await userEvent.click(within(screen.getByTestId('cal-barre-projet')).getByRole('button', { name: 'Expert' }))
     await waitFor(() => expect(screen.getByTestId('cal-coque')).toHaveAttribute('data-expert', '1'))
     expect(screen.getByTestId('cal-projet-sous-titre').textContent).toBe(ligne)
-    expect(screen.getByTestId('cal-projet-titre').textContent).toBe('Lead d\'essai')
+    expect(screen.getByTestId('cal-projet-titre').textContent).toBe(NOM)
+    veilleur.disconnect()
+    expect([...vus]).toEqual([NOM])
   })
 
   it('H1 — les boutons de zoom de la carte sont nommés en français même quand la carte se monte tard', async () => {

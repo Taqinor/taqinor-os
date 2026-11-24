@@ -1086,6 +1086,7 @@ def resoudre_materiel(company, entree, *, calepinage=None):
     — ``absents`` nomme EN FRANÇAIS le matériel manquant ou introuvable.
     """
     from apps.stock.selectors import get_produit_scoped, specs_for_produit
+    from .modules_pans import repli_materiel  # T4-B4-007 : devis, puis module posé
 
     blocs = {'module': {}, 'onduleur': {}, 'optimiseur': None}
     designations = {role: '' for role in ROLES_MATERIEL}
@@ -1100,8 +1101,7 @@ def resoudre_materiel(company, entree, *, calepinage=None):
         if identifiant in (None, ''):
             if du_devis is None:
                 du_devis = _produits_du_devis(calepinage)
-            identifiant = du_devis.get(role)
-            provenance = PROVENANCE_DEVIS
+            identifiant, provenance = repli_materiel(role, du_devis, calepinage)
         if identifiant in (None, ''):
             if role != 'optimiseur':
                 absents.append('%s non désigné — %s'

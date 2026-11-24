@@ -623,6 +623,24 @@ describe('ACAL1415 — module de départ « à confirmer » / module choisi, apr
   }
   const pan = () => [panDeTest('area-1', { renderPlan: plan, roofType: 'flat', moduleId: 'produit-7' })];
 
+  // T4-U4-007 — un pan dont le module n'est pas dans ce sélecteur : le refus NOMME le module (libellé du document),
+  // jamais l'identifiant interne `produit-<id>`.
+  it('module absent du sélecteur, connu du document : le refus dit son libellé, jamais « produit-<id> »', () => {
+    const m715 = { ...m710, id: 'produit-23019', produitId: 23019, libelle: 'Module 715 W', epaisseurMm: null }
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><div id="rp9-areas"></div></body>').window.document;
+    try {
+      const areas = [panDeTest('area-1', { renderPlan: plan, roofType: 'flat', moduleId: 'produit-23019' })];
+      const ctx = { ...ctxDeBase(areas, 'area-1'), opts: { modulesDisponibles: catalogue }, modulesDuDocument: [m715],
+        activeArea: () => areas[0], closed: true, dom: { areasWindowEl: document.getElementById('rp9-areas') } } as unknown as Ctx;
+      createZones(ctx, { recalc: vi.fn(), setStatus: vi.fn() }); // le sélecteur se synchronise à la création
+      const refus = document.getElementById('rp9-pan-module-erreur')?.textContent ?? '';
+      expect(refus).toContain('« Module 715 W »');
+      expect(refus).not.toContain('produit-23019');
+    } finally { g.document = avant; }
+  });
+
   it('pan jamais choisi : aucun drapeau écrit, « à confirmer » après rechargement', () => {
     const { doc } = monter(pan());
     expect('moduleChoisi' in (doc.zones[0].geometry ?? {})).toBe(false);
@@ -1279,6 +1297,42 @@ describe('ACAL1328 — calque rp9-cotes', () => {
       expect([peint['rp9-pts|circle-color'], peint['rp9-pts|circle-stroke-color']]).toEqual(['rgb(18, 26, 63)', 'rgb(226, 181, 74)']);
       t.pencher(60); // en 3D, le contour au sol se tait comme les cotes
       expect(t.visibilite.get(CALQUE_CONTOUR)).toBe('none');
+    } finally {
+      globalThis.getComputedStyle = avant;
+    }
+  });
+
+  // T4-B4-008 — en thème sombre la pilule des cotes restait BLANCHE (image figée, texte bleu nuit codé) ; maquette ToitSombre :
+  // pilule bleu nuit (rgba 12,19,53), filet clair, texte clair. Fond, filet et texte suivent les jetons du thème.
+  it('pilule des cotes aux jetons du thème : blanche en clair, bleu nuit à texte clair en sombre', () => {
+    const t = carteDeTestCotes();
+    const peint: Record<string, unknown> = {};
+    const images = new Map<string, { width: number; data: Uint8ClampedArray }>();
+    const conteneur = {} as Element;
+    let theme: Record<string, string> = { '--cal-texte-1': 'rgb(12 19 53)', '--cal-flottante': 'rgba(255, 255, 255, 0.86)', '--cal-flottante-filet': 'rgba(255, 255, 255, 0.7)' };
+    const avant = globalThis.getComputedStyle;
+    globalThis.getComputedStyle = ((el: Element) => ({ getPropertyValue: (n: string) => (el === conteneur ? theme[n] ?? '' : '') })) as never;
+    const centre = (img: { width: number; data: Uint8ClampedArray }) => [...img.data.slice((16 * img.width + 24) * 4, (16 * img.width + 24) * 4 + 4)];
+    try {
+      const carte = {
+        ...t.carte,
+        setPaintProperty: (id: string, nom: string, v: unknown) => { peint[`${id}|${nom}`] = v; },
+        getContainer: () => conteneur,
+        hasImage: (id: string) => images.has(id),
+        addImage: (id: string, img: { width: number; data: Uint8ClampedArray }) => { images.set(id, img); },
+        updateImage: (id: string, img: { width: number; data: Uint8ClampedArray }) => { images.set(id, img); },
+      };
+      monterCotesAretes(carte, () => [{ sommets: rectRing(12.4, 8.1), ferme: true, actif: true }], true);
+      const [idPilule] = [...images.keys()];
+      expect(centre(images.get(idPilule)!)).toEqual([255, 255, 255, 219]);
+      t.emettre('idle');
+      expect(peint[`${CALQUE_COTES}|text-color`]).toBe('rgb(12, 19, 53)');
+      // La feuille de style CONSTRUITE (minifiée) sert les jetons en hexadécimal (relevé au navigateur : `#0c1335d1`, `#f3f5fb`) :
+      // un lecteur qui ne comprenait que `rgb(…)` retombait toujours sur la pilule blanche.
+      theme = { '--cal-texte-1': '#f3f5fb', '--cal-flottante': '#0c1335d1', '--cal-flottante-filet': '#ffffff1a' };
+      t.emettre('idle');
+      expect(peint[`${CALQUE_COTES}|text-color`]).toBe('rgb(243, 245, 251)');
+      expect(centre(images.get(idPilule)!)).toEqual([12, 19, 53, 209]);
     } finally {
       globalThis.getComputedStyle = avant;
     }

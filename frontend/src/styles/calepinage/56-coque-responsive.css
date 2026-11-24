@@ -377,4 +377,16 @@
   .cal-coque .cal-carte-soleil .cal-pan-curseur { flex: 1 1 0; width: auto; min-width: 0; }
   /* La ligne d'état au-dessus de la légende (lecteur 56 + légende 80 + écarts), sur toute la largeur de la zone. */
   .cal-coque.cal-coque[data-cadre='carte']:not([data-presentation='1']) .cal-coque-statut { bottom: 172px; max-width: calc(100% - 32px); }
+  /* T4-B4-006 — le bandeau à 820 px : « ‹ Calepinages » et « Relevé / Montrer au client » en pictogramme seul (44 × 44, le
+     libellé reste lu par les lecteurs d'écran), le nom du projet prend la place libre ; nom et pose sur UNE ligne chacun
+     (points de suspension, jamais six lignes qui débordent du bandeau), « ✓ Enregistré à HH:MM » sur une ligne. */
+  .cal-coque .cal-retour { min-width: 44px; justify-content: center; }
+  .cal-coque :is(.cal-retour-texte, .cal-barre-entree-texte) {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+  }
+  .cal-coque .cal-barre-entree { width: 44px; padding: 0; }
+  .cal-coque .cal-barre-projet .cal-projet { flex: 1 1 0; }
+  .cal-coque .cal-barre-projet .cal-barre-espace { display: none; }
+  .cal-coque .cal-projet-sous-titre { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cal-coque .cal-barre-enregistrement, .cal-coque .cal-etat-ok { white-space: nowrap; flex: none; }
 }

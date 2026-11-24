@@ -743,6 +743,29 @@ describe('ACAL405 — Démarrage rapide', () => {
       }
     })
 
+    // T4-B4-003 — arrivée depuis Résultats (« Remplir 2 des … réglages vides ») : seuls CES réglages sont cochés, la page
+    // annonce le même nombre ; les autres réglages vides de la société restent là, décochés, cochables.
+    it('`?reglages=` (venu de Résultats) : seuls ces réglages sont cochés, le bouton dit le même nombre', async () => {
+      window.history.replaceState(null, '', '/calepinage/reglages/demarrage-rapide?reglages=b0_iam,modele_iam')
+      try {
+        mocks.profilDepart.mockResolvedValue({ data: PROFIL_RICHE })
+        servirReglages({})
+        const { default: DemarrageRapide } = await import('./DemarrageRapide')
+        render(<DemarrageRapide />)
+        await screen.findByTestId('acal405-valeur-b0_iam')
+        const caseDe = (cle) => within(screen.getByTestId(`acal405-valeur-${cle}`)).getByRole('checkbox')
+        expect(caseDe('b0_iam')).toBeChecked()
+        expect(caseDe('modele_iam')).toBeChecked()
+        expect(caseDe('mismatch_fabricant_pct')).not.toBeChecked()
+        expect(caseDe('mismatch_fabricant_pct')).toBeEnabled()
+        await waitFor(() => expect(screen.getByTestId('acal405-appliquer')).toHaveTextContent('Remplir les 2 réglages cochés'))
+        fireEvent.click(caseDe('mismatch_fabricant_pct'))
+        expect(screen.getByTestId('acal405-appliquer')).toHaveTextContent('Remplir les 3 réglages cochés')
+      } finally {
+        window.history.replaceState(null, '', '/')
+      }
+    })
+
     it('seul sur sa route : titre de page 28 px, sans second fil d’Ariane (la page en porte déjà un) ; `autonome` le rend', async () => {
       window.history.replaceState(null, '', '/calepinage/reglages/demarrage-rapide')
       try {

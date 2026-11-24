@@ -457,6 +457,32 @@ describe('ACAL507 — « Vouliez-vous dire » ne s’applique jamais seul', () =
   });
 });
 
+// T4-B4-005 — recliquer le PREMIER coin pour fermer posait un 5ᵉ sommet (doublon du 1ᵉʳ) : le pan enregistré avait 5 sommets,
+// le rectangle 4 coins, et Longueur/Largeur restaient désactivés. Un clic sur le 1ᵉʳ coin FERME le tracé, sans sommet ajouté.
+describe('T4-B4-005 — recliquer le premier coin ferme le tracé, jamais un sommet en double', () => {
+  function monter() {
+    document.body.innerHTML = '<button id="rp9-finish" type="button"></button>';
+    const map = { getSource: () => undefined, ...methodesCarteInertes(), getZoom: () => 20, getCenter: () => ({ lng: -7.6, lat: 33.5 }), getCanvas: () => ({ clientWidth: 800, clientHeight: 600 }) };
+    const coins: [number, number][] = [[-7.6, 33.5], [-7.5999, 33.5], [-7.5999, 33.50008]];
+    const ctx = { opts: { maptilerKey: 'K', reducedMotion: true }, vertices: coins.map((c) => [...c]), obstacles: [], areas: [], activeAreaId: 'a1', closed: false, centroid: [-7.6, 33.5] } as unknown as Ctx;
+    const draw = createMapDraw(ctx, { map: map as never, setStatus: vi.fn(), updateAreaReadout: vi.fn() });
+    const fermer = vi.fn(() => { (ctx as { closed: boolean }).closed = true; });
+    document.getElementById('rp9-finish')!.addEventListener('click', fermer);
+    return { draw, ctx, fermer };
+  }
+
+  it('un clic à 0,2 m du premier coin ferme le tracé à 3 sommets ; un clic ailleurs pose un coin', () => {
+    const { draw, ctx, fermer } = monter();
+    draw.addVertex([-7.6 + 0.000002, 33.5 + 0.000001]); // ≈ 0,2 m du premier coin
+    expect(ctx.vertices).toHaveLength(3);
+    expect(fermer).toHaveBeenCalledTimes(1);
+    const autre = monter();
+    autre.draw.addVertex([-7.6, 33.50008]); // le 4ᵉ coin du rectangle, à ~9 m du premier
+    expect(autre.ctx.vertices).toHaveLength(4);
+    expect(autre.fermer).not.toHaveBeenCalled();
+  });
+});
+
 describe('ACAL506 / ACAL507 — geocode dans le champ « Adresse »', () => {
   function monter() {
     document.body.innerHTML =
