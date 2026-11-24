@@ -297,7 +297,7 @@ describe('PV81 — polish : rien de vide, rien qui se contredit', () => {
     // et que le client a droit aux deux.
     expect(bloc).toContain('PANEL_PRODUCT_WARRANTY_YEARS');
     expect(bloc).toContain('PANEL_PERFORMANCE_WARRANTY_YEARS');
-    // RWEB2 (fondateur 27/10) — onduleur/batterie par MARQUE posée (Deye 5, Huawei 10, Dyness DL5.0C 7).
+    // RWEB2 (fondateur 27/10) — onduleur/batterie par MARQUE posée (Deye 5, Huawei 10, Dyness DL5.0C 10).
     expect(bloc).toContain('garantieOnduleurAns(garantieLignes)');
     // RWEB19 — 12/30 ans panneaux seulement pour Canadian Solar / Jinko (PDF theme.py).
     expect(bloc).toContain('equipPresence.panneaux && garantiesPanneauxAns(garantieLignes)');

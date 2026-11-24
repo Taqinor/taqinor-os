@@ -3,7 +3,7 @@
  * /proposition, selon la MARQUE réellement posée (décision fondateur
  * 27/10/2026 : une seule durée, celle qui vaut au Maroc).
  *
- * Deye → 5 ans, Huawei → 10 ans, batterie : `garantie_mois` servi (comme le PDF), sinon Dyness → 7 ans (`lib/warranty.ts`).
+ * Deye → 5 ans, Huawei → 10 ans, batterie : `garantie_mois` servi (comme le PDF), sinon Dyness → 10 ans (`lib/warranty.ts`).
  * Marque non reconnue → `null` : la durée est OMISE plutôt que supposée.
  */
 import {
@@ -44,7 +44,7 @@ export function garantieOnduleurAns(lignes: readonly LigneMarque[]): number | nu
 /**
  * Garantie batterie en années, ou null. FIX-WEB A : d'abord `garantie_mois` de la PREMIÈRE ligne « batterie »
  * qui la porte — la lecture du PDF (`theme.py::warranties_for`, `_first_warranty`) : « Batterie Dyness 10 kWh »
- * à 120 mois = 10 ans des deux côtés. Repli (aucune ligne ne la porte) : Dyness DL5.0C 7, Powerbox Pro 10.
+ * à 120 mois = 10 ans des deux côtés. Repli (aucune ligne ne la porte) : Dyness DL5.0C 10, Powerbox Pro 10.
  */
 export function garantieBatterieAns(lignes: readonly LigneMarque[]): number | null {
   for (const l of lignes) {

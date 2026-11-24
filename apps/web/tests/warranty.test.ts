@@ -59,15 +59,15 @@ describe('warranty.ts — source unique de garantie (WB3)', () => {
 });
 
 describe('garanties onduleur / batterie — une durée, celle du Maroc (décision fondateur 27/10/2026)', () => {
-  it('Deye = 5 ans, Huawei = 10 ans, Dyness = 7 ans', () => {
+  it('Deye = 5 ans, Huawei = 10 ans, Dyness DL5.0C d’origine = 10 ans (fondateur 24/11/2026)', () => {
     expect(DEYE_INVERTER_WARRANTY_YEARS).toBe(5);
     expect(HUAWEI_INVERTER_WARRANTY_YEARS).toBe(10);
-    expect(BATTERY_WARRANTY_YEARS).toBe(7);
+    expect(BATTERY_WARRANTY_YEARS).toBe(10);
   });
 
-  it('aucune source (pages, fiches) n’associe Dyness à « 10 ans » / « 10 years » / « 10 سنوات » sur une même ligne', () => {
+  it('aucune source (pages, fiches) n’associe Dyness à « 7 ans » / « 7 years » / « 7 سنوات » sur une même ligne (DL5.0C d’origine = 10 ans, fondateur 24/11/2026)', () => {
     const offenders: string[] = [];
-    const re = /Dyness[^.;]{0,80}(10 ?ans|10[ -]years?|10 سنوات)|(10 ?ans|10[ -]years?|10 سنوات)[^.;]{0,80}Dyness/;
+    const re = /Dyness[^.;]{0,80}(\b7 ?ans|\b7[ -]years?|\b7 سنوات)|(\b7 ?ans|\b7[ -]years?|\b7 سنوات)[^.;]{0,80}Dyness/;
     const cibles = walkSrc(srcDir).filter((abs) => {
       const rel = abs.slice(srcDir.length + 1).replace(/\\/g, '/');
       return rel.startsWith('pages/') || rel.startsWith('content/') || rel === 'lib/fiches.ts';
@@ -116,14 +116,14 @@ describe('garanties onduleur / batterie — une durée, celle du Maroc (décisio
 });
 
 describe('RWEB2 — garanties /proposition par marque posée', () => {
-  it('Deye 5, Huawei 10, Dyness DL5.0C 7, Powerbox Pro 10, marque inconnue omise', async () => {
+  it('Deye 5, Huawei 10, Dyness DL5.0C 10, Powerbox Pro 10, marque inconnue omise', async () => {
     const { garantieOnduleurAns, garantieBatterieAns } = await import('../src/lib/proposition/garanties');
     expect(garantieOnduleurAns([{ designation: 'Onduleur hybride Deye SUN-8K-SG05LP1' }])).toBe(5);
     expect(garantieOnduleurAns([{ designation: 'Onduleur réseau', marque: 'Huawei' }])).toBe(10);
     expect(garantieOnduleurAns([{ designation: 'Onduleur X' }])).toBeNull();
-    expect(garantieBatterieAns([{ designation: 'Batterie Dyness DL5.0C 5,12 kWh' }])).toBe(7);
+    expect(garantieBatterieAns([{ designation: 'Batterie Dyness DL5.0C 5,12 kWh' }])).toBe(10);
     expect(garantieBatterieAns([{ designation: 'Dyness Powerbox Pro 10.24' }])).toBe(10);
-    expect(garantieBatterieAns([{ designation: 'Dyness Powerbox Pro 10.24' }, { designation: 'Dyness DL5.0C' }])).toBe(7);
+    expect(garantieBatterieAns([{ designation: 'Dyness Powerbox Pro 10.24' }, { designation: 'Dyness DL5.0C' }])).toBe(10);
     expect(garantieBatterieAns([{ designation: 'Panneau 710 Wc' }])).toBeNull();
   });
 
@@ -134,7 +134,7 @@ describe('RWEB2 — garanties /proposition par marque posée', () => {
     expect(garantieBatterieAns([{ designation: 'Batterie Dyness PowerBrick SC 16 kWh', garantie_mois: 120 }])).toBe(10);
     // Première ligne batterie qui la porte ; mois ÷ 12 arrondi vers le bas ; < 12 mois ou null ⇒ repli table.
     expect(garantieBatterieAns([{ designation: 'Batterie A', garantie_mois: null }, { designation: 'Batterie Dyness DL5.0C', garantie_mois: 90 }])).toBe(7);
-    expect(garantieBatterieAns([{ designation: 'Batterie Dyness DL5.0C', garantie_mois: 6 }])).toBe(7);
+    expect(garantieBatterieAns([{ designation: 'Batterie Dyness DL5.0C', garantie_mois: 6 }])).toBe(10);
     expect(garantieBatterieAns([{ designation: 'Kit de fixation', garantie_mois: 240 }])).toBeNull();
     // Le contrat partagé (proposal_data.json) sert la clé sur la ligne : la page lit 10 ans, comme le PDF.
     const contrat = JSON.parse(readFileSync(fileURLToPath(new URL('../src/contract_samples/proposal_data.json', import.meta.url)), 'utf-8'));
