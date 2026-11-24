@@ -209,6 +209,14 @@ const fieldLabels = {
   compteur_puissance_kva: {
     label: 'Puissance souscrite du compteur (kVA)', section: 'pro', inputId: 'lf-compteur-puissance-kva',
   },
+  // Fondateur 24/11/2026 — sans consommation connue, le moteur C&I l'ESTIME
+  // depuis la puissance maximale (DISTINCTE de la puissance souscrite).
+  puissance_max_appelee_kva: {
+    label: 'Puissance maximale appelée (kVA)', section: 'pro', inputId: 'lf-puissance-max-appelee-kva',
+  },
+  charge_moyenne_pct: {
+    label: "Charge moyenne pendant les heures d'ouverture (%)", section: 'pro', inputId: 'lf-charge-moyenne-pct',
+  },
   puissance_souscrite_source: {
     label: 'Provenance de la puissance souscrite', section: 'pro', inputId: 'lf-puissance-souscrite-source',
   },
