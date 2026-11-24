@@ -50,6 +50,13 @@ bien terminés, signé par le client (protection si le solde n'est pas payé), (
   (`logo-embleme.png`) = soleil doré à huit rayons + éclair bleu nuit, géométrie de `Logo.astro`. `logo.png` reste
   le logo complet téléchargeable de la page « à propos ».
 
+- **Icônes de l'application ERP : fond bleu nuit, jamais blanc** (24/11/2026 soir, « the only logo I had a problem
+  with was the one with white background » ; « the blue background is ok ») : l'icône des notifications, de
+  l'application installée, de l'onglet et d'Apple (`frontend/public/pwa-*.png`, `favicon.*`,
+  `apple-touch-icon-180.png`) reste le soleil et l'éclair sur fond bleu nuit. « Un seul logo partout » visait le
+  logo sur fond blanc ; régénérer ces icônes sur fond blanc ou transparent était l'inverse de la demande (fait
+  puis annulé le même jour).
+
 - **Client société (Reda, 24/11 soir)** : « on ne montre le nom du client (le gérant ou le responsable) que pour
   signer, mais pour le nom du client il devient le nom de la société » + « l'ICE sur les 4 contrats ». Donc, pour
   une fiche client `entreprise` : « le Client » = la raison sociale (`Client.nom`, jamais prénom + nom) ; l'ICE
