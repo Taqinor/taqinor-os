@@ -1,15 +1,26 @@
 # Dossier contractuel — état du chantier L5 (à lire EN PREMIER pour reprendre)
 
 Dernière écriture : 24/11/2026 par la session du poste fixe · branche `claude/erp-lead-contracts-e2fdab`.
-**Prochaine action unique** : les cinq causes du refus de la file de fusion (run 45342555496, tête `350f91e7c8`)
-sont corrigées le 24/11 à la demande de Reda (« tu les corriges maintenant »). PR Taqinor/taqinor-os#1539 remise en
-file de fusion : SUIVRE le run `merge_group` — c'est le seul qui joue les lots complets et le fuzz de l'API. S'il
-rougit, lire son journal (`gh run view <id> --log-failed`), corriger, re-pousser, re-mettre en file. Rien n'est
-déployé par Claude : une fois la PR mergée, dire « mergé — à déployer par toi : `scripts/deploy-prod.ps1` ».
+**Prochaine action unique** : la PR Taqinor/taqinor-os#1539 est MERGÉE dans `main` (24/11/2026, commit
+`07a1f76f21`, run complet de la file vert, run de `main` après fusion vert). Rien n'est en ligne tant que Reda n'a
+pas déployé (`scripts/deploy-prod.ps1`). Suite : (1) Reda saisit son nom et sa qualité dans le modèle du contrat,
+fait relire `juridique.md` § 4 par un juriste et l'arabe par un arabophone ; (2) tour 2 de relecteurs sur la liste
+« Restes » en bas de ce fichier ; (3) étage « vraie vie ».
+
+### Logo des actes = logo des devis (décision de Reda, 24/11/2026)
+Reda : « le logo du devis doit être celui utilisé partout, et le logo ajouté ne doit plus servir nulle part ». La
+correction de la règle n° 4 avait remplacé le traitement du logo par le fichier téléversé posé tel quel sur une
+pastille blanche. Les actes impriment désormais LE logo des devis — même module image (rogné, détouré, lettres
+blanches et soleil doré sur l'en-tête bleu nuit), bloc et taille de la bande d'en-tête (`ROLE_LOGO = 'onepage'`) —
+lu par la porte de ventes `apps.ventes.selectors.logo_entete_html(uri, variante='sombre', role=…)`, jamais par un
+import du moteur. La pastille est supprimée (style et rendu) ; sans logo exploitable, le nom de la société.
+Preuve : `test_logo_des_devis_dans_l_en_tete_sinon_le_nom` (balise identique, octet pour octet, à celle du moteur de
+devis ; aucun fichier brut ni pastille, en français et en arabe) et dix actes d'exemple rendus et regardés.
 
 ### Ce qui a été corrigé après le refus de la file (24/11) et comment c'est prouvé
-1. **Règle n° 4** (une app importait le moteur de devis) : le rendu lit les polices par leur chemin, le logo est
-   montré tel quel sur une pastille claire. Preuve : `test_cal195_schema_unifilaire` vert en local.
+1. **Règle n° 4** (une app importait le moteur de devis) : le rendu lit les polices par leur chemin ; le logo, d'abord
+   montré tel quel sur une pastille claire, est depuis le même jour celui des devis, lu par la porte de ventes (voir
+   ci-dessus). Preuve : `test_cal195_schema_unifilaire` vert en local.
 2. **Garde de classe des routes de `documents`** : l'acte est résolu avant les permissions (404 avant 403), un
    chantier annulé répond 409 à chaque verbe SERVI. La garde sonde désormais chaque route avec un verbe qu'elle sert
    (GET, sinon son verbe d'écriture). Preuve : `test_adoc_garde_classe_endpoints` vert en local.

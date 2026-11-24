@@ -1126,17 +1126,21 @@ def contexte_conception_devis(devis, company):
     return contexte
 
 
-def logo_entete_html(uri):
+def logo_entete_html(uri, *, variante='clair', role='entete', alt='logo'):
     """ACHT112 — le logo société en en-tête d'un document hors devis (rapport
-    énergie du chantier) : MÊME module image que les devis (rognage, détourage,
-    bloc du rôle « entete »), par la porte cross-app de ventes — jamais un import
-    du moteur de devis depuis une autre app (CAL195). ``None`` si l'image n'est
-    pas un raster lisible (SVG, corrompu) : l'appelant garde son repli."""
+    énergie du chantier, actes du dossier contractuel) : MÊME module image que
+    les devis (rognage, détourage, bloc et taille du rôle), par la porte
+    cross-app de ventes — jamais un import du moteur de devis depuis une autre
+    app (CAL195). ``variante`` : ``clair`` sur fond clair, ``sombre`` sur un
+    en-tête bleu nuit (encre sombre passée en blanc, comme la couverture du
+    devis) ; ``role`` : un emplacement de ``quote_engine.logo.CAPITALE_MM``.
+    ``None`` si l'image n'est pas un raster lisible (SVG, corrompu) :
+    l'appelant garde son repli."""
     from .quote_engine import logo
-    b64 = logo.societe_b64(uri, variante='clair') if uri else None
+    b64 = logo.societe_b64(uri, variante=variante) if uri else None
     if not b64:
         return None
-    return logo.img_html(logo.pour_role(b64, 'entete'), 'entete', alt='logo')
+    return logo.img_html(logo.pour_role(b64, role), role, alt=alt)
 
 
 def poids_solaires_mensuels():
