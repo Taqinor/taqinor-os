@@ -971,3 +971,58 @@ calepinage, crm, web.
 - Catalogue de la copie : 6 panneaux, 13 onduleurs réseau, 10 hybrides, 7 batteries, 20 pompes (11 sans prix), 22
   variateurs, 99 « Protection & accessoires » (66 sans prix), 24 câbles (5 sans prix), 15 structures (6 sans prix), 8
   prestations (4 sans prix). Liste par produit et par usage : scratchpad `produits-anon.txt`.
+
+### Point du 24/11, ~12 h 30 UTC (le plus récent)
+
+**Branches locales d'intégration** (worktree de l'orchestrateur ; sauvegarde poussée sur `notes-l5-2411`) :
+`dev-ecrans-v2` = `origin/main@cdaf0d30b1` + les documents de la partie 2 + les lanes `releve-client` et `documents`
+pliées ; `dev-moteur-e2b` = point de départ de la suite du moteur (rien de plié encore).
+
+**Écrans sur les maquettes v2 (étape 3 de la demande)** — planches sous `T4/preuves/`, regardées par l'orchestrateur :
+- PLIÉES : `releve-client` [ACAL1814, 1836, 1817, 1837, 1838] — relevé, vue client téléphone et Présentation PROCHES :
+  les cadres, cartes, boutons et la barre du soleil sont à la maquette ; ce qui manque est la SCÈNE 3D (un grand bloc
+  gris au lieu d'une maison, panneaux noirs) — fichiers du moteur de dessin. `documents` [ACAL1725, 1726, 1834 ;
+  ACAL1943 contestée : ses prémisses sont fausses] — Documents PROCHE : trois colonnes, aperçu, pastilles, anneau ;
+  reste la tête « Étape 5 sur 5 » de la coque (88 px que la maquette n'a pas) et le pied du devis à plusieurs surfaces.
+- EN VOL : `coque` (opus, port 5263, `rev_c`) [ACAL1835 Tablette — livrée —, ACAL1826 Démarrage rapide, ACAL2030
+  Expert, puis trois demandes croisées : tête d'étape retirée là où la maquette n'en a pas, pied du devis compact,
+  une seule règle `flex` pour la vue client] ; `dessin` (opus, port 5264, `rev_d`, branche `lane/dessin` partie de
+  `dev-ecrans-v2`) [ACAL1984 teinte, 1981, 1820, 1839 scène 3D présentable et cadrage, 1944 chaînes, 1920, 1924 cotes,
+  ACAL2042 contour doré — tâche NEUVE que la lane écrit au plan avant de la construire] ; `spec-maquettes` (sonnet,
+  port 5265, `rev_a`) [ACAL1748, ACAL1806 : la spec permanente rend les 14 planches v2 | réel].
+- RESTENT : ACAL2031, ACAL2032 (`apps/web`, après la lane `dessin` : mêmes fichiers) ; un relecteur NEUF pour juger
+  les 14 planches (aucune lane ne se dit FIDÈLE : chacune s'est jugée seule).
+- À la fusion : couture sur l'arbre plié (vitest du module, eslint, build, gardes), PR `dev-ecrans-v2`, puis
+  l'instrument est remis sur le code poussé.
+
+**Moteur unique** : extraction ADEV160 EN VOL (opus) — figeage étendu livré (`ef400a21f8`), extraction en cours.
+
+**Partie 2, préparation — faite sur la pile `l5t`**
+- Copie anonymisée de la production importée (société `taqinor-anon`, compte `anon_admin` ; 10 420 lignes, 0 rejet).
+- Miroir de la production (lecture seule du 24/11) : 93 fiches techniques, réglages du calepinage, forfaits C&I,
+  délais. Scripts : scratchpad `prod_reglages.py` (sonde, lecture seule), `l5t/miroir_prod.py`.
+- Fiches techniques complétées d'après les fiches publiques des fabricants : 184 valeurs remplies, 22 corrigées,
+  chacune avec sa source — registre `T4/preremplissage.md` (écrit par script) ; journal `var/anon/journal-fiches-…`.
+- Inventaire de couverture `T4/couverture.md` (449 éléments) ; plan `T4/plan-test-utilisateur.md` (scénarios a-r et
+  balayages s-w).
+- EN VOL : recherche de prix publics des articles de pompage sans prix (sortie `var/anon/prix-sources-pompage.json`).
+- RESTE : « Remplir les réglages vides » par l'écran, mode météo et années, comptes aux quatre rôles, clé de carte,
+  prix sourcés à appliquer, puis les relecteurs.
+
+**Constats pour le fondateur (à dire au rapport ; la production n'est pas modifiée)**
+1. Fiches techniques de production en désaccord avec le fabricant (12 produits, détail `T4/preremplissage.md` § 5.1) :
+   Canadian Solar 715 W — courant de court-circuit 22,30 A sur la fiche, 18,64 A chez le fabricant ; deux panneaux
+   bifaciaux marqués non bifaciaux ; Deye 10 kW monophasé — tension maximale 600 V sur la fiche, 500 V imprimés ;
+   Deye 5 kW triphasé — la fiche décrit un autre produit (1 MPPT, 52 V) ; Huawei 5 kW — 22 A au lieu de 12,5 / 18 A ;
+   Huawei 50 kW — 6 MPPT au lieu de 4. Ces valeurs entrent dans le verdict panneau / onduleur et la longueur des chaînes.
+2. Réglages du calepinage de la production : ni mode météo, ni salissure, ni dégradation initiale, ni indisponibilité,
+   ni pertes de câbles — « Remplir les réglages vides » n'a pas été appliqué en production après le déploiement.
+3. Aucune des 11 pompes à courbe (OSP 30) n'a de prix ; seules les pompes sans courbe en ont : un devis automatique de
+   pompage avec pompe neuve ne peut pas être complet sur le catalogue réel.
+4. Modèles à identifier par le fondateur (plusieurs générations correspondent) : Deye 5 kW monophasé, Huawei 10 kW
+   triphasé (standard ou « High Current »), Deye hors réseau 6 kW.
+
+**Défauts candidats notés en passant (à rejouer en partie 2)**
+- Une simulation lancée sur un calepinage SANS point GPS échoue dans le worker à 5 % (`EntreeInvalide`, « sans point
+  GPS, aucune production ne peut être demandée ») au lieu d'être refusée avant le lancement — deux lanes l'ont prise
+  pour une panne de PVGIS (PVGIS et NASA POWER répondent bien depuis la pile : 200, série horaire 2014-2023 en 6,6 s).
