@@ -198,6 +198,45 @@ class Lecture:
                 if acte.emis_le else None)
         return self._une_fois('date_contrat', lire)
 
+    def _acte(self, type_acte):
+        """L'acte ``type_acte`` (non annulé) du chantier, ou None."""
+        def lire():
+            from ..models import ActeContractuel
+            return (ActeContractuel.objects
+                    .filter(company=self.chantier.company_id,
+                            chantier=self.chantier.pk, type=type_acte)
+                    .exclude(statut=T.ANNULE).order_by('pk').first())
+        return self._une_fois(('acte', type_acte), lire)
+
+    def garanties_du_contrat(self, langue):
+        """Les garanties du CONTRAT du chantier dans la langue — lignes,
+        durées, dates : son contenu figé s'il est émis ou signé, sinon son
+        brouillon ; None sans contrat. Une seule garantie par chantier : la
+        clôture les reprend telles quelles."""
+        def lire():
+            acte = self._acte(T.CONTRAT)
+            if acte is None:
+                return None
+            if acte.statut in (T.EMIS, T.SIGNE):
+                fige = acte.contenu_ar if langue == 'ar' else acte.contenu
+                if fige and isinstance(fige.get('garanties'), list):
+                    return fige['garanties']
+            return _construire(acte, langue, self).get('garanties')
+        return self._une_fois(('garanties_contrat', langue), lire)
+
+    def date_reception_signee(self):
+        """Le jour où le procès-verbal de réception a été SIGNÉ, ou None."""
+        def lire():
+            acte = self._acte(T.RECEPTION)
+            if acte is None or acte.statut != T.SIGNE:
+                return None
+            client = ((acte.contenu or {}).get('signatures') or {}).get(
+                'client') or {}
+            return _date(client.get('signe_le')) or (
+                timezone.localtime(acte.signe_le).date()
+                if acte.signe_le else None)
+        return self._une_fois('reception_signee', lire)
+
     def composants(self):
         def lire():
             from apps.documents.builders import _composants
@@ -1512,7 +1551,13 @@ def _appliquer_textes(contenu, surcharges, langue, *, modele=False,
     for cle in ('constats', 'reserves', 'conseils', 'entretien'):
         if cle in contenu and isinstance(s.get(cle), list):
             contenu[cle] = copy.deepcopy(s[cle])
-    if 'garanties' in contenu and langue == 'ar' and not modele and (
+    if 'garanties' in contenu and contenu.get('_garanties_du_contrat'):
+        # Lignes, durées et dates venues du CONTRAT (une garantie par
+        # chantier) : l'acte n'en reprend que ses textes, par clé.
+        if isinstance(s.get('garanties'), list):
+            contenu['garanties'] = _fusion_garanties_modele(
+                contenu['garanties'], s['garanties'], T.CLES_GARANTIE_TEXTE)
+    elif 'garanties' in contenu and langue == 'ar' and not modele and (
             isinstance(garanties_fr, list)
             or isinstance(s.get('garanties'), list)):
         contenu['garanties'] = _garanties_ar(
@@ -1739,7 +1784,8 @@ def _engagement(societe, langue):
             f'solde du prix.')
 
 
-def _bloc_paiement(contenu, paiement, modalites, langue, chantier):
+def _bloc_paiement(contenu, paiement, modalites, langue, chantier,
+                   date_reception=None):
     """La section ``paiement`` (et ``reception`` de la clôture) selon le type
     d'acte, depuis la situation calculée — aucun montant recalculé ici."""
     type_acte = contenu['type']
@@ -1747,7 +1793,10 @@ def _bloc_paiement(contenu, paiement, modalites, langue, chantier):
     if type_acte == T.CONTRAT:
         return {'modalites': modalites}
     if type_acte == T.CLOTURE:
-        contenu['reception'] = {'date': _iso(chantier.date_reception)}
+        # Départ des garanties : le jour où le procès-verbal de réception a
+        # été SIGNÉ, à défaut la date de réception du chantier.
+        contenu['reception'] = {'date': _iso(
+            date_reception or chantier.date_reception)}
         return {k: p.get(k) for k in ('total_regle', 'pourcentage_regle',
                                       'exigible_maintenant', 'reste_a_regler')}
     bloc = {
@@ -1775,8 +1824,18 @@ def _sections_derivees(contenu, acte, lecture, vente, langue, date_fixee):
             contenu['options'].get('delai_execution_jours'), date_fixee,
             langue)
     contenu['paiement'] = _bloc_paiement(
-        contenu, paiement, _modalites(lecture, langue), langue, chantier)
-    if acte.type in (T.CONTRAT, T.CLOTURE):
+        contenu, paiement, _modalites(lecture, langue), langue, chantier,
+        lecture.date_reception_signee() if acte.type == T.CLOTURE else None)
+    du_contrat = (lecture.garanties_du_contrat(langue)
+                  if acte.type == T.CLOTURE else None)
+    if isinstance(du_contrat, list):
+        # Une garantie par chantier : celle du CONTRAT (figé s'il est émis
+        # ou signé, sinon son brouillon) — jamais une seconde lecture qui
+        # dirait « 2 ans » quand le contrat signé dit 36 mois.
+        contenu['garanties'] = [{k: g.get(k) for k in T.CLES_GARANTIE}
+                                for g in copy.deepcopy(du_contrat)]
+        contenu['_garanties_du_contrat'] = True
+    elif acte.type in (T.CONTRAT, T.CLOTURE):
         garanties = _garanties_vente(lecture, langue)
         garanties.append(_garantie_installation(chantier, contenu['societe'],
                                                 langue))
@@ -1794,6 +1853,7 @@ def _finaliser(contenu):
     if 'delais' in contenu:
         contenu['delais'].pop('_resume', None)
         contenu['delais'].pop('_detail', None)
+    contenu.pop('_garanties_du_contrat', None)
     return contenu
 
 
@@ -1855,7 +1915,8 @@ def _construire(acte, langue='fr', lecture=None, *, avec_modele=True,
     textes = _textes(langue)
     _textes_par_defaut(contenu, textes, vente, langue)
     if modele is not None:
-        if langue == 'ar' and 'garanties' in contenu:
+        if langue == 'ar' and 'garanties' in contenu \
+                and not contenu.get('_garanties_du_contrat'):
             # Les durées du modèle sont communes : réglées en français.
             contenu['garanties'] = _fusion_garanties_modele(
                 contenu['garanties'],

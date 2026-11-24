@@ -430,6 +430,37 @@ class FormeEtLanguesTests(TestCase):
         self.assertEqual(pose['fin'], '2029-12-21')
 
 
+class GarantiesDuContratTests(TestCase):
+
+    def test_cloture_suit_le_contrat_et_la_reception_signee(self):
+        """C3 par la base : la clôture prend les garanties du CONTRAT
+        (brouillon, puis contenu figé une fois signé) et part du jour où la
+        réception a été signée."""
+        v = Vente(self)
+        contrat = v.acte(T.CONTRAT)
+        garanties = [dict(g, duree_mois=36) if g['cle'] == 'installation'
+                     else g for g in K.construire_contenu(contrat)['garanties']]
+        S.modifier(contrat, {'garanties': garanties}, v.user)
+        ActeContractuel.objects.filter(pk=v.acte(T.RECEPTION).pk).update(
+            statut=T.SIGNE,
+            contenu={'signatures': {'client': {'signe_le': '2026-12-18'}}})
+
+        def pose(langue='fr'):
+            c = K.construire_contenu(v.acte(T.CLOTURE), langue)
+            return next(g for g in c['garanties']
+                        if g['cle'] == 'installation'), c
+        for langue in T.LANGUES:
+            ligne, c = pose(langue)
+            self.assertEqual((ligne['duree_mois'], ligne['fin']),
+                             (36, '2029-12-18'))
+            self.assertEqual(c['reception']['date'], '2026-12-18')
+        contrat = v.acte(T.CONTRAT)
+        ActeContractuel.objects.filter(pk=contrat.pk).update(
+            statut=T.SIGNE, contenu=K.construire_contenu(contrat),
+            contenu_ar=K.construire_contenu(contrat, 'ar'), surcharges={})
+        self.assertEqual(pose()[0]['duree_mois'], 36)
+
+
 @tag('pdf')
 class EmissionTests(TestCase):
     """Émission et signature réelles : rendu WeasyPrint, GED et MinIO de
@@ -1123,9 +1154,12 @@ class LecturePure(K.Lecture):
     """Les lectures vivantes d'un chantier, servies sans base."""
 
     def __init__(self, chantier, vente, *, modeles=None, date_contrat=None,
-                 garanties=None, societe='Solaire Exemple SARL'):
+                 garanties=None, societe='Solaire Exemple SARL',
+                 garanties_contrat=None, reception_signee=None):
         super().__init__(chantier)
         self._societe = societe
+        self._garanties_contrat = garanties_contrat or {}
+        self._reception_signee = reception_signee
         self._vente = vente
         self._modeles = modeles or {}
         self._date_contrat = date_contrat
@@ -1158,6 +1192,12 @@ class LecturePure(K.Lecture):
 
     def garanties_vente(self, langue):
         return self._garanties
+
+    def garanties_du_contrat(self, langue):
+        return self._garanties_contrat.get(langue)
+
+    def date_reception_signee(self):
+        return self._reception_signee
 
     def vente(self):
         return self._vente
@@ -1743,6 +1783,48 @@ class ClotureNonSoldeePursTests(SimpleTestCase):
                       False)
         acte.statut, acte.contenu = T.EMIS, {'brouillon': False}
         self.assertIs(K.contenu_de(acte, 'fr', lecture)['brouillon'], False)
+
+
+class GarantiesDuContratPursTests(SimpleTestCase):
+    """C3 (recette sur écran réel) : une garantie par chantier."""
+
+    def test_cloture_reprend_les_garanties_du_contrat(self):
+        """Défaut attrapé : garantie d'installation portée à 36 mois sur le
+        contrat (signé), le certificat de la clôture imprimait « 2 ans » ;
+        sa date de départ restait « … » alors que la réception était
+        signée."""
+        contrat = Ecran(T.CONTRAT)
+        garanties = [dict(g, duree_mois=36) if g['cle'] == 'installation'
+                     else g for g in contrat.lire()['garanties']]
+        contrat.enregistrer({'garanties': garanties})
+        du_contrat = {langue: contrat.lire(langue)['garanties']
+                      for langue in T.LANGUES}
+        cloture = Ecran(T.CLOTURE, vente=vente_pure(
+            paiements=[('2026-12-21', '100000')]),
+            garanties_contrat=du_contrat,
+            reception_signee=date(2026, 12, 18))
+        # La clôture corrige un texte et tente une durée : seul le texte
+        # passe (les durées sont celles du contrat).
+        perso = [dict(g, detail='Pose et câblage.', duree_mois=6)
+                 if g['cle'] == 'installation' else g
+                 for g in cloture.lire()['garanties']]
+        cloture.enregistrer({'garanties': perso})
+        for langue in T.LANGUES:
+            with self.subTest(langue=langue):
+                c = cloture.lire(langue)
+                self.assertEqual(c['reception']['date'], '2026-12-18')
+                self.assertEqual([g['cle'] for g in c['garanties']],
+                                 [g['cle'] for g in du_contrat[langue]])
+                pose = next(g for g in c['garanties']
+                            if g['cle'] == 'installation')
+                self.assertEqual(pose['duree_mois'], 36)
+                self.assertEqual(pose['fin'], '2029-12-18')
+                if langue == 'fr':
+                    self.assertEqual(pose['detail'], 'Pose et câblage.')
+
+    def test_sans_reception_signee_la_date_du_chantier(self):
+        cloture = Ecran(T.CLOTURE)
+        self.assertEqual(cloture.lire()['reception']['date'], '2026-12-21')
 
 
 class EcranAllerRetourTests(SimpleTestCase):
