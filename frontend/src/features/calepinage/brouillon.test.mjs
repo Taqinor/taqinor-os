@@ -19,7 +19,7 @@ import {
   brouillonPertinent, creerGestionnaireBrouillon,
   purgerBrouillonsOrphelins, memoriserReprise, consommerReprise, estPanneReseau,
 } from './brouillon.js'
-import { baseServeur, creerStockageMiroir, empreinteSansVue, lireBrouillonServeur, sansVue } from './brouillonServeur.js'
+import { baseServeur, brouillonLocalAProposer, creerStockageMiroir, empreinteSansVue, lireBrouillonServeur, sansVue } from './brouillonServeur.js'
 import { documentContrat } from '../../test/fixtures/contractSamples.js'
 
 /** Stockage en mémoire — MÊME contrat que `localStorage` (getItem/setItem/removeItem). */
@@ -774,4 +774,22 @@ test('H1 — gestionnaire de brouillon nourri par sansVue : changer de saison n�
   doc = { ...doc, zones: [{ id: 'z1' }] }
   tic()
   assert.equal(storage.has(g.cle), true)
+})
+
+/* T4-U1-013 — « Brouillon local du 15:12 » revenait à chaque réouverture juste après « Conception enregistrée » : un
+   brouillon IDENTIQUE au document servi (vue et clés dans un autre ordre comprises) n'a rien de non enregistré. */
+test('T4-U1-013 — brouillon local identique au document servi ⇒ jamais proposé ; différent ⇒ proposé', () => {
+  const servi = { scene: { jour: 172, heure: 12 }, zones: [{ id: 'z1', geometry: { count: 12, kwc: 8.52 } }], version: 2 }
+  const identique = { layout: { version: 2, zones: [{ geometry: { kwc: 8.52, count: 12 }, id: 'z1' }] }, horodatage: '2026-11-24T15:12:00Z' }
+  assert.equal(brouillonLocalAProposer(identique, servi), null)
+  const different = { layout: { version: 2, zones: [{ id: 'z1', geometry: { count: 13, kwc: 9.23 } }] }, horodatage: '2026-11-24T15:12:00Z' }
+  assert.equal(brouillonLocalAProposer(different, servi), different)
+  assert.equal(brouillonLocalAProposer(null, servi), null)
+  assert.equal(brouillonLocalAProposer(different, null), different)
+})
+
+test('T4-U1-013 — brouillon SERVEUR identique au document servi à l’état de vue près ⇒ jamais proposé', async () => {
+  const servi = { scene: { jour: 172, heure: 12 }, zones: [{ id: 'z1' }] }
+  const lire = () => Promise.resolve({ data: { layout: { zones: [{ id: 'z1' }] }, horodatage: 'h', base_empreinte: 'E1' } })
+  assert.equal(await lireBrouillonServeur({ lire, calepinageId: 1, hashBase: 'E1', layoutServi: servi }), null)
 })
