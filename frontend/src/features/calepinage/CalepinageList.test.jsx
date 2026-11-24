@@ -252,6 +252,25 @@ describe('CalepinageList (CAL35)', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Accès refusé à ce module.')
   })
 
+  // T4-B4-002 — une lecture restée SANS réponse (délai dépassé : « annulée » au réseau) est relancée par l'écran monté.
+  it('une première lecture sans réponse est relancée : la liste s’affiche, aucun message mort', async () => {
+    mocks.list.mockRejectedValueOnce({ code: 'ECONNABORTED', message: 'timeout of 20000ms exceeded' })
+    rendre()
+    expect(await screen.findByText('2 projets')).toBeInTheDocument()
+    expect(mocks.list).toHaveBeenCalledTimes(2)
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('un échec qui dure propose « Réessayer », qui relance la lecture', async () => {
+    mocks.list.mockRejectedValue({ response: { status: 503, data: { detail: 'Service indisponible.' } } })
+    rendre()
+    const alerte = await screen.findByRole('alert')
+    mocks.list.mockResolvedValue({ data: { count: 2, next: null, previous: null, results: [AVEC_IMAGE, SANS_IMAGE] } })
+    fireEvent.click(within(alerte).getByRole('button', { name: 'Réessayer' }))
+    expect(await screen.findByText('2 projets')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
   // CALX32 — le sélecteur de tri, limité aux 4 champs de `ordering_fields`
   // (`views/calepinages.py:173-174`) : created_at, updated_at, statut, titre.
   describe('CALX32 — le tri', () => {

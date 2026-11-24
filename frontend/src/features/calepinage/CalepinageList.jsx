@@ -15,6 +15,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '../../ui'
 import { urlImage } from './urlImage'
+import { lireAvecReprise } from './delaiReseau'
 // CAL188 — le badge « calepinage périmé », lu du MÊME champ serveur que la
 // fiche devis et l'en-tête de l'atelier (CAL189), jamais recalculé ici.
 import BadgePerime from './BadgePerime'
@@ -318,8 +319,9 @@ export default function CalepinageList() {
     [q, statut, depuis, lead, client, page, ordering, etiquettes, responsable],
   )
 
-  const { data, loading, error } = useResource(
-    (p) => calepinageApi.calepinages.list(p),
+  // T4-B4-002 — une lecture restée sans réponse (délai dépassé) est relancée une fois ; un échec qui dure garde « Réessayer ».
+  const { data, loading, error, refetch } = useResource(
+    (p) => lireAvecReprise(() => calepinageApi.calepinages.list(p)),
     params,
     {
       initialData: null,
@@ -585,7 +587,10 @@ export default function CalepinageList() {
       </Card>
 
       {error ? (
-        <Card className="p-4 text-sm text-destructive" role="alert">{error}</Card>
+        <Card className="flex flex-wrap items-center gap-3 p-4 text-sm text-destructive" role="alert">
+          <span className="flex-1">{error}</span>
+          <Button type="button" variant="outline" className="h-11" onClick={() => refetch()}>Réessayer</Button>
+        </Card>
       ) : null}
 
       {loading ? (
