@@ -744,6 +744,50 @@ class GarantiesArabesPursTests(SimpleTestCase):
         self.assertEqual(K._garanties_ar(defauts_ar, None, trad), defauts_ar)
 
 
+# ── S4 : la livraison sans tranche « livraison » ────────────────────────────
+
+def _tr(*cles_):
+    return [{'key': c, 'cible': Decimal(i + 1)} for i, c in enumerate(cles_)]
+
+
+class IndexLivraisonTests(SimpleTestCase):
+
+    def test_derniere_tranche_commande_ou_livraison_sinon_la_premiere(self):
+        self.assertEqual(K.index_livraison(_tr('acompte', 'materiel', 'solde')),
+                         1)
+        self.assertEqual(K.index_livraison(_tr(
+            'commande', 'livraison_materiel', 'mise_en_service',
+            'reception_definitive')), 1)
+        self.assertEqual(K.index_livraison(_tr(
+            'commande', 'mise_en_service', 'reception_definitive')), 0)
+        # 50 / 50 : ni commande ni livraison → la seule première tranche,
+        # jamais « l'avant-dernière ».
+        self.assertEqual(K.index_livraison(_tr('acompte', 'solde')), 0)
+        self.assertTrue(K.livraison_sans_etape(_tr('acompte', 'solde')))
+        self.assertEqual(K.index_livraison(_tr(
+            'acompte', 'acompte', 'acompte', 'solde')), 0)
+        self.assertFalse(K.livraison_sans_etape(_tr('acompte', 'materiel')))
+        self.assertFalse(K.livraison_sans_etape([]))
+
+
+class LivraisonSansEtapeTests(TestCase):
+
+    def test_cinquante_cinquante(self):
+        v = Vente(self)
+        Devis.objects.filter(pk=v.devis.pk).update(echeancier=[
+            {'libelle': 'Acompte', 'type': 'acompte', 'pct_or_montant': 50},
+            {'libelle': 'Solde', 'type': 'solde', 'pct_or_montant': 50}])
+        acte = v.acte(T.LIVRAISON, T.RESTE_A_REGLER)
+        premiere = v.plan()['tranches'][0]['cible_cumul_ttc']
+        c = K.construire_contenu(acte)
+        self.assertEqual(c['paiement']['exigible_maintenant'],
+                         f'{premiere:.2f}')
+        self.assertEqual([t['statut'] for t in c['echeancier']],
+                         ['exigible', 'a_venir'])
+        self.assertTrue(any('ne correspond à la commande' in a
+                            for a in K.avertissements(acte)))
+
+
 # ── S3 : la version « tranche réglée » ne s'émet pas sur une supposition ────
 
 class TrancheRegleeTests(TestCase):

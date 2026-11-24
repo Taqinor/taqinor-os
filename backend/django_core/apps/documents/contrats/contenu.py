@@ -268,12 +268,21 @@ def reference_acte(type_acte, reference_chantier, chantier_id=None):
 
 
 def index_livraison(tranches):
-    """Index de la tranche « livraison du matériel » ; à défaut l'avant-
-    dernière tranche (ou la première s'il n'y en a qu'une)."""
-    for i, t in enumerate(tranches):
-        if t['key'] in T.CLES_TRANCHE_LIVRAISON:
-            return i
-    return max(0, len(tranches) - 2)
+    """Index de la DERNIÈRE tranche due à la livraison : celle dont la clé
+    désigne la commande ou la livraison du matériel (la somme due à la
+    livraison est sa cible cumulée) ; sans aucune, la seule première tranche
+    (``livraison_sans_etape`` le signale). Jamais « l'avant-dernière » : avec
+    50 / 50 ou quatre tranches, ce n'est pas l'étape de la livraison."""
+    trouvees = [i for i, t in enumerate(tranches)
+                if t['key'] in T.CLES_TRANCHE_LIVRAISON]
+    return trouvees[-1] if trouvees else 0
+
+
+def livraison_sans_etape(tranches):
+    """Aucune tranche de l'échéancier ne désigne la commande ni la
+    livraison."""
+    return bool(tranches) and not any(
+        t['key'] in T.CLES_TRANCHE_LIVRAISON for t in tranches)
 
 
 def titre_acte(type_acte, variante, vente):
@@ -1759,6 +1768,12 @@ def avertissements(acte, contenu=None, lecture=None):
     if acte.type == T.LIVRAISON and tranches:
         i = index_livraison(tranches)
         cible = tranches[i]['cible']
+        if livraison_sans_etape(tranches):
+            sortie.append(
+                "Aucune étape de l'échéancier ne correspond à la commande ni "
+                "à la livraison : la somme due à la livraison est la seule "
+                f"première étape (« {tranches[0]['libelle']} », "
+                f"{C.montant(cible)}).")
         if acte.variante == T.RESTE_A_REGLER:
             du = max(ZERO, cible - vente['paye'])
             if du > 0:

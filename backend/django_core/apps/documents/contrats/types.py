@@ -120,9 +120,10 @@ CLES_CONSEIL = ('rubrique', 'titre', 'texte')
 DELAI_EXECUTION_DEFAUT_JOURS = 30
 GARANTIE_INSTALLATION_DEFAUT_MOIS = 24
 
-#: Clés de tranche qui désignent la livraison du matériel (échéancier
-#: résidentiel ``materiel``, jalons C&I ``livraison_materiel``).
-CLES_TRANCHE_LIVRAISON = ('materiel', 'livraison_materiel')
+#: Clés de tranche dues au plus tard à la livraison : la commande et la
+#: livraison du matériel (échéancier résidentiel ``materiel``, jalons C&I
+#: ``commande`` et ``livraison_materiel``).
+CLES_TRANCHE_LIVRAISON = ('commande', 'materiel', 'livraison_materiel')
 
 #: Codes d'erreur servis (contrat d'API).
 CODE_ACTE_FIGE = 'acte_fige'
