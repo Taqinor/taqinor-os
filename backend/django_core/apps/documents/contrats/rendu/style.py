@@ -35,6 +35,10 @@ PAPIER = '#FFFFFF'
 
 POLICE_TITRE = "'DM Serif Display', Georgia, serif"
 POLICE_TEXTE = "'DM Sans', 'Noto Sans', system-ui, sans-serif"
+# Traduction arabe : polices système de l'image (DM Serif / DM Sans n'ont aucun
+# glyphe arabe). Naskh pour lire, Kufi pour les petits libellés.
+POLICE_AR_TEXTE = "'Noto Naskh Arabic', 'Noto Sans Arabic', 'DM Sans', serif"
+POLICE_AR_LIBELLE = "'Noto Kufi Arabic', 'Noto Sans Arabic', 'DM Sans', sans-serif"
 
 
 def _uri_svg(svg):
@@ -355,19 +359,166 @@ body.cloture h2{margin:6mm 0 2.8mm}
 .souffle{height:2mm}
 """
 
+# ── Traduction arabe : la même page, en miroir ──────────────────────────────
+# Ajoutée APRÈS la feuille commune (mêmes sélecteurs, donc elle l'emporte).
+# Règles : Naskh plus grand que le latin et interligne ~1,8 ; aucun espacement
+# de lettres ni capitales forcées (ils cassent la liaison) — les petits
+# libellés se distinguent par le Kufi, la graisse et le bronze ; tout ce qui
+# était à gauche passe à droite (titre d'article en marge, filets d'encadré,
+# puces, colonnes de chiffres à gauche) ; les fragments latins (``.ltr``) sont
+# isolés de gauche à droite et gardent les polices latines du français.
+_CSS_AR = """
+@page{
+  @top-left{content:string(reference);font-family:__TEXTE__;font-size:7.4pt;
+    letter-spacing:0;text-transform:none;color:__GRIS__;padding-left:20mm;
+    padding-right:0;vertical-align:bottom;padding-bottom:4mm}
+  @top-right{content:string(acte);font-family:__AR_LIBELLE__;font-size:7.6pt;
+    letter-spacing:0;text-transform:none;color:__GRIS__;padding-right:20mm;
+    padding-left:0;vertical-align:bottom;padding-bottom:4mm}}
+@page:first{@top-left{content:none}@top-right{content:none}}
+html{font-family:__AR_TEXTE__;font-size:11.4pt;line-height:1.8;
+  direction:rtl;text-align:right}
+body *{letter-spacing:0 !important;text-transform:none !important}
+.ltr{unicode-bidi:isolate;direction:ltr;font-family:__TEXTE__;font-size:.9em}
+strong .ltr,b .ltr{font-weight:700}
 
-@functools.lru_cache(maxsize=1)
-def css():
-    """La feuille complète (polices embarquées comprises), calculée une fois."""
-    remplacements = {
-        '__NAVY_900__': NAVY_900, '__NAVY__': NAVY, '__OR__': OR,
-        '__BRONZE__': BRONZE, '__ENCRE__': ENCRE, '__GRIS__': GRIS,
-        '__FILET__': FILET, '__LAVIS_OR__': LAVIS_OR, '__LAVIS__': LAVIS,
-        '__VERT_FOND__': VERT_FOND, '__VERT__': VERT, '__PAPIER__': PAPIER,
-        '__TITRE__': POLICE_TITRE, '__TEXTE__': POLICE_TEXTE,
-        '__KHATAM__': _MOTIF_KHATAM,
-    }
-    feuille = _CSS
-    for jeton, valeur in remplacements.items():
+/* Pied */
+.pied{font-size:7pt;line-height:1.6}
+.pied-legal{padding-right:0;padding-left:6mm}
+.pied-legal b{font-size:7.4pt}
+.paraphes{margin-right:0;margin-left:5mm}
+.paraphes span{font-family:__AR_LIBELLE__;font-size:6.4pt}
+.paraphe{margin-left:0;margin-right:2mm}
+.folio{text-align:left}
+.folio i::after{content:"صفحة " counter(page) " من " counter(pages)}
+.folio i{font-family:__AR_LIBELLE__}
+
+/* En-tête et parcours */
+.bandeau .ref{text-align:left}
+.etape{font-family:__AR_LIBELLE__;font-size:8pt;line-height:1.45}
+.etape .n{margin-right:0;margin-left:2mm;font-family:__TEXTE__;
+  line-height:5.1mm}
+.etape small{font-family:__AR_TEXTE__;font-size:7pt}
+
+/* Titres */
+.surtitre{font-family:__AR_LIBELLE__;font-size:8.2pt}
+h1{font-family:__AR_TEXTE__;font-weight:700;font-size:25pt;line-height:1.45}
+.chapeau{font-size:11.6pt;line-height:1.75}
+h2{font-family:__AR_TEXTE__;font-weight:700;font-size:15.5pt;line-height:1.5}
+h2 .etoile{margin-right:0;margin-left:2.4mm}
+.intro{font-size:10.6pt;line-height:1.7}
+h1 .ltr,h2 .ltr{font-family:__TITRE__;font-weight:400}
+
+/* Cartes */
+.carte .lbl{font-family:__AR_LIBELLE__;font-size:7.6pt}
+.carte .val{font-family:__AR_TEXTE__;font-weight:700;font-size:17pt;
+  line-height:1.4}
+.carte .val .ltr{font-family:__TITRE__;font-weight:400;font-size:1em}
+.carte .det{font-size:9.6pt;line-height:1.65}
+
+/* Frise : de droite à gauche */
+.jalon{padding:0 0 0 3mm}
+.jalon .trait{margin-left:0;margin-right:2mm}
+.jalon .pastille{font-family:__TEXTE__}
+.jalon .quand{font-family:__AR_LIBELLE__;font-size:7.6pt}
+.jalon .quoi{font-size:11pt;line-height:1.5}
+.jalon .combien{font-family:__AR_TEXTE__;font-size:14pt;line-height:1.45}
+.jalon .combien .ltr{font-family:__TITRE__;font-size:1.07em}
+.jalon .combien small .ltr{font-family:__TEXTE__;font-size:1em}
+.jalon .combien small{font-family:__AR_TEXTE__;font-size:8.8pt}
+.jalon .etat{font-family:__AR_LIBELLE__;font-size:7.6pt}
+.jalon .note{font-size:8.8pt}
+
+/* Tableaux : texte à droite, chiffres au bord gauche */
+table{font-size:10pt;line-height:1.6}
+th{font-family:__AR_LIBELLE__;font-size:7.6pt;text-align:right;
+  padding:0 0 1.8mm 2.4mm}
+td{padding:2.3mm 0 2.3mm 2.4mm}
+td.n,th.n{text-align:left;padding-left:0;padding-right:0}
+td small{font-size:8.8pt}
+.duree{font-family:__AR_TEXTE__;font-weight:700;font-size:12.6pt;
+  line-height:1.4}
+
+/* Parties */
+.partie{font-size:10pt;line-height:1.7}
+.partie .lbl{font-family:__AR_LIBELLE__;font-size:7.6pt}
+.partie .nom{font-family:__TITRE__;font-size:13.5pt}
+.partie .ci-apres{font-size:9pt}
+
+/* Articles : titre en marge à DROITE, colonne de lecture à gauche */
+.article{padding:4mm 48mm 0 0}
+.article .marge{left:auto;right:0}
+.article .num{font-family:__AR_LIBELLE__;font-size:7.6pt}
+.article h3{font-family:__AR_TEXTE__;font-weight:700;font-size:12.6pt;
+  line-height:1.45}
+.article .texte{font-size:11pt}
+.article.plein{padding-right:0}
+.article .texte li{padding-left:0;padding-right:4.4mm}
+.article .texte li::before{left:auto;right:.4mm;top:3mm}
+
+/* Encadrés : filet à droite */
+.encadre{border-left:none;border-right:1.1mm solid __OR__;
+  border-radius:2mm 0 0 2mm;font-size:10.4pt;line-height:1.7}
+.encadre.net{border-right-color:__NAVY__}
+.encadre.ok{border-right-color:__VERT__}
+.encadre .lbl{font-family:__AR_LIBELLE__;font-size:7.6pt}
+.grand{font-family:__AR_TEXTE__;font-weight:700;line-height:1.45}
+.grand .ltr{font-family:__TITRE__;font-weight:400;font-size:1em}
+
+/* Cases */
+.case{font-size:10.6pt;line-height:1.65}
+.case i{margin:1.4mm 0 0 2.8mm}
+
+/* Signatures */
+.fait-a{font-size:10.6pt}
+.sig .cellule{padding-right:0;padding-left:2mm}
+.sig .cellule + .cellule{padding-left:0;padding-right:2mm}
+.sig .lbl{font-family:__AR_LIBELLE__;font-size:7.6pt}
+.sig .qui{font-size:11pt}
+.sig .mention{font-size:9pt;line-height:1.6}
+.sig .preuve{font-size:8pt}
+.sceau{font-family:__AR_LIBELLE__}
+
+/* Conseils */
+.conseil .lbl{font-family:__AR_LIBELLE__;font-size:7.6pt}
+.conseil h3{font-family:__AR_TEXTE__;font-weight:700;font-size:12.6pt;
+  line-height:1.45}
+.conseil p{font-size:10.2pt;line-height:1.7}
+.journee .rail div{font-family:__AR_LIBELLE__;font-size:7.6pt}
+.journee .sous{font-size:8.2pt;line-height:1.5}
+
+.petit{font-size:9pt;line-height:1.65}
+body.proces h1{font-size:22pt}
+body.proces .chapeau{font-size:10.8pt}
+body.proces h2{font-size:14pt}
+body.proces .carte .val{font-size:15pt}
+body.proces .article .texte{font-size:10.4pt;line-height:1.65}
+body.cloture .article .texte{font-size:10.4pt;line-height:1.65}
+body.cloture .article.plein{padding-right:0}
+"""
+
+_REMPLACEMENTS = {
+    '__NAVY_900__': NAVY_900, '__NAVY__': NAVY, '__OR__': OR,
+    '__BRONZE__': BRONZE, '__ENCRE__': ENCRE, '__GRIS__': GRIS,
+    '__FILET__': FILET, '__LAVIS_OR__': LAVIS_OR, '__LAVIS__': LAVIS,
+    '__VERT_FOND__': VERT_FOND, '__VERT__': VERT, '__PAPIER__': PAPIER,
+    '__TITRE__': POLICE_TITRE, '__TEXTE__': POLICE_TEXTE,
+    '__AR_TEXTE__': POLICE_AR_TEXTE, '__AR_LIBELLE__': POLICE_AR_LIBELLE,
+    '__KHATAM__': _MOTIF_KHATAM,
+}
+
+
+def _remplir(feuille):
+    for jeton, valeur in _REMPLACEMENTS.items():
         feuille = feuille.replace(jeton, valeur)
+    return feuille
+
+
+@functools.lru_cache(maxsize=2)
+def css(langue='fr'):
+    """La feuille complète (polices embarquées comprises), calculée une fois
+    par langue. ``'ar'`` ajoute la feuille de droite à gauche."""
+    feuille = _remplir(_CSS)
+    if langue == 'ar':
+        feuille += _remplir(_CSS_AR)
     return _polices() + feuille
