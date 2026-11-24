@@ -103,7 +103,7 @@ def _calculer(lead, company, entrees, toit, imposes, investissement):
     resultat = ResultatConception(
         marche=entrees.marche, entrees_utilisees=entrees.entrees_utilisees,
         niveau_regles=REGLES_COURANTES, empreinte=empreinte_conception(entrees, imposes))
-    refus = _refus_localisation(lead)
+    refus = refus_localisation(lead)
     if refus is None:
         calcul = {'residentiel': _residentiel, 'agricole': _agricole}.get(entrees.marche, _ci)
         try:
@@ -170,7 +170,7 @@ def lead_du_calepinage(calepinage, company):
     return apps.get_model('crm', 'Lead')(company=company, type_installation=marche or None)
 
 
-def _refus_localisation(lead):
+def refus_localisation(lead):
     from apps.crm.selectors import ville_effective
     if ville_effective(lead) or (getattr(lead, 'gps_lat', None) is not None
                                  and getattr(lead, 'gps_lng', None) is not None):

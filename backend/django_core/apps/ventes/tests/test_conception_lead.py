@@ -61,8 +61,9 @@ VALEURS_SOLAIRES = {
 #: La table §2 en agricole (la pompe remplace taille / matériel / bilan).
 VALEURS_POMPAGE = {'nb_panneaux', 'puissance_kwc', 'pompe', 'variateur', 'm3_jour'}
 CLES_CORPS_APERCU = {'lead', 'calepinage', 'entrees', 'imposes'}
-CLES_IMPOSES = {'nb_panneaux', 'module_id', 'onduleur_id', 'nombre_onduleurs',
-                'batterie'}
+#: ADEV137 — la forme des champs imposés de ``POST devis/auto/`` (celle du moteur).
+CLES_IMPOSES = {'nb_panneaux', 'panneau_produit_id', 'onduleur_produit_id', 'onduleur_kw',
+                'onduleur_phase', 'batterie_produit_id', 'batterie_kwh'}
 
 
 def _lire(nom):
@@ -157,6 +158,8 @@ class ContratConceptionLeadTests(SimpleTestCase):
                          'POST /api/django/ventes/conception/apercu/')
         self.assertEqual(set(apercu['corps']), CLES_CORPS_APERCU)
         self.assertEqual(set(apercu['corps']['imposes']), CLES_IMPOSES)
+        from apps.ventes.domain.composition_imposee import CHAMPS_IMPOSES
+        self.assertEqual(CLES_IMPOSES, set(CHAMPS_IMPOSES))  # une seule forme : celle du moteur
         self.assertEqual(set(apercu['reponse']), CLES_RESULTAT)
         # Une valeur tapée et non enregistrée n'est jamais dite « du lead ».
         for champ, entree in apercu['reponse']['entrees_utilisees'].items():
@@ -1626,3 +1629,180 @@ class RelanceConceptionTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher'
             % choix['absent']), phrase)
         self.assertTrue(phrase_du_declencheur(lead, [], 'pose_enregistree', quand).endswith(
             ' : pose enregistrée sur le calepinage'))
+
+
+# ── ADEV137 — les lecteurs et les routes de la conception rangée ─────────────
+
+URL_CONCEPTION = '/api/django/ventes/conception/%d/'
+URL_APERCU = '/api/django/ventes/conception/apercu/'
+
+
+def _photo_devis(devis_id):
+    """Le devis et ses lignes tels qu'en base (preuve « jamais touché »)."""
+    from apps.ventes.models import Devis, LigneDevis
+
+    return _json({'devis': Devis.objects.filter(pk=devis_id).values()[0],
+                  'lignes': list(LigneDevis.objects.filter(devis_id=devis_id).order_by('pk').values())})
+
+
+class ServirConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
+                            _emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_utilisateur', '_residentiel',
+                                     '_ci', '_agricole', '_fiches_residentielles', '_site_isole', '_structures',
+                                     '_fiches_ci', '_cas'), TestCase):
+    """ADEV137 — ``selectors_conception`` (bornés société, lecture seule) et
+    les routes ``GET conception/<lead_id>/`` et ``POST conception/apercu/``."""
+
+    def _api(self, user):
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        return api
+
+    def _autre_societe(self):
+        """Société B : un lead et une version rangée (aucun calcul)."""
+        from authentication.models import Company
+
+        from apps.crm.models import Lead
+        from apps.ventes.models import ConceptionLead
+
+        autre = Company.objects.create(nom='Conception B route', slug='conception-b-route')
+        lead_b = Lead.objects.create(company=autre, nom='B', prenom='Lead', telephone='+212600000099')
+        ConceptionLead.ranger(lead=lead_b, **_champs_version())
+        return autre, lead_b
+
+    def test_route_et_selecteurs_bornes_a_la_societe(self):
+        from apps.crm.models import Lead
+        from apps.ventes.models import ConceptionLead
+        from apps.ventes.selectors import conception_courante, historique_conception
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        self._relancer(lead, company, _declencheur())
+        Lead.objects.filter(pk=lead.pk).update(facture_hiver=Decimal('2400'))
+        lead.refresh_from_db()
+        self._relancer(lead, company, _declencheur('lead_entrees_modifiees',
+                                                   facture_hiver=(Decimal('1800'), Decimal('2400'))))
+        autre, lead_b = self._autre_societe()
+
+        self.assertEqual(conception_courante(company, lead.pk)['version'], 2)
+        self.assertIsNone(conception_courante(company, lead_b.pk))  # mutant « sans filtre société » : rouge
+        self.assertEqual([v['version'] for v in historique_conception(company, lead.pk)], [2, 1])
+        self.assertEqual(historique_conception(company, lead_b.pk), [])
+
+        api = self._api(self._utilisateur(company))
+        avant = ConceptionLead.objects.count()
+        reponse = api.get(URL_CONCEPTION % lead.pk)
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        corps = reponse.json()
+        self.assertEqual(set(corps), CLES_RESULTAT | CLES_RANGEES)
+        self.assertEqual((corps['version'], corps['lead'], corps['calepinage'], corps['perimee']),
+                         (2, lead.pk, None, False))
+        self.assertEqual((corps['etat'], corps['option_retenue'], corps['ecart_devis']), ('complet', 'avec', []))
+        self.assertTrue(corps['declencheur']['raison'].endswith(' : Facture hiver 1 800 → 2 400'))
+        self.assertEqual(_cles_interdites(corps), [])
+        self.assertEqual(api.get(URL_CONCEPTION % lead.pk).json(), corps)  # relire = même version
+        self.assertEqual(ConceptionLead.objects.count(), avant)  # la lecture n'écrit rien
+        self.assertEqual(api.get(URL_CONCEPTION % lead_b.pk).status_code, 404)
+        self.assertEqual(self._api(self._utilisateur(autre)).get(URL_CONCEPTION % lead.pk).status_code, 404)
+        sans_version = Lead.objects.create(company=company, nom='Sans', prenom='Version',
+                                           telephone='+212600000098')
+        absente = api.get(URL_CONCEPTION % sans_version.pk)
+        self.assertEqual((absente.status_code, absente.json()['code']), (404, 'conception_absente'))
+
+    def test_manques_du_moteur_et_champs_entrees(self):
+        from apps.ventes.conception.champs import CHAMPS_ENTREES
+        from apps.ventes.selectors import champs_entrees, manques_du_moteur
+
+        from apps.crm.models import Lead
+
+        company, complet = self._residentiel(facture_hiver=Decimal('1800'))
+        self.assertEqual(manques_du_moteur(complet), [])
+        sans_ville = Lead.objects.create(company=company, nom='Sans', prenom='Ville', facture_hiver=Decimal('1800'))
+        self.assertEqual(manques_du_moteur(sans_ville), [{'champ': 'ville', 'label': 'Ville'}])
+        sans_conso = Lead.objects.create(company=company, nom='Sans', prenom='Conso', ville=complet.ville)
+        self.assertTrue(manques_du_moteur(sans_conso))
+        self.assertNotIn('ville', {m['champ'] for m in manques_du_moteur(sans_conso)})
+        self.assertEqual(champs_entrees('agricole'), CHAMPS_ENTREES['agricole'])
+        with self.assertRaises(KeyError):
+            champs_entrees('inconnu')
+
+    def test_ecart_devis_lit_le_devis_envoye_sans_jamais_le_toucher(self):
+        from django.utils import timezone
+
+        from apps.crm.models import Lead
+        from apps.ventes.models import Devis
+        from apps.ventes.selectors import ecart_devis
+        from apps.ventes.services import build_devis_auto
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        user = self._utilisateur(company)
+        devis = build_devis_auto(lead=lead, user=user, company=company)
+        Devis.objects.filter(pk=devis.pk).update(statut='envoye', date_envoi=timezone.now())
+        devis.refresh_from_db()
+        lead.refresh_from_db()
+        self._relancer(lead, company, _declencheur())
+        self.assertEqual(ecart_devis(devis), [], 'conception = devis : aucun écart')
+
+        photo = _photo_devis(devis.pk)
+        Lead.objects.filter(pk=lead.pk).update(facture_hiver=Decimal('3600'))
+        lead.refresh_from_db()
+        self._relancer(lead, company, _declencheur('lead_entrees_modifiees',
+                                                   facture_hiver=(Decimal('1800'), Decimal('3600'))))
+        ecarts = ecart_devis(devis)
+        self.assertLessEqual({'nb_panneaux', 'production_annuelle'}, {e['valeur'] for e in ecarts}, ecarts)
+        for ecart in ecarts:
+            self.assertEqual(set(ecart), CLES_ECART)
+            self.assertNotEqual(ecart['devis'], ecart['conception'])
+            self.assertEqual((ecart['devis_ref'], ecart['reviser_possible'], ecart['mise_a_jour_proposee']),
+                             (devis.reference, True, False))
+        self.assertEqual(self._api(user).get(URL_CONCEPTION % lead.pk).json()['ecart_devis'], ecarts)
+        Devis.objects.filter(pk=devis.pk).update(statut='accepte')
+        photo_acceptee = _photo_devis(devis.pk)
+        devis.refresh_from_db()
+        self.assertEqual(ecart_devis(devis), ecarts)
+        self.assertEqual(ecart_devis(devis), ecarts)  # relire deux fois : même liste
+        self.assertEqual(_photo_devis(devis.pk), photo_acceptee)  # jamais touché (accepté)
+        photo_acceptee['devis']['statut'] = 'envoye'
+        self.assertEqual(photo_acceptee, photo)  # rien d'autre n'a bougé depuis l'envoi
+
+    def test_apercu_sans_ecriture_404_et_corps_refuse(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from apps.calepinage.models import Calepinage
+        from apps.crm.models import Client
+        from apps.ventes.conception.service import apercu_conception
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        _autre, lead_b = self._autre_societe()
+        api = self._api(self._utilisateur(company))
+        avant = ConceptionLead.objects.count()
+        reponse = api.post(URL_APERCU, {'lead': lead.pk, 'entrees': {'facture_hiver': 3600}}, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        tapee = reponse.json()
+        self.assertEqual(set(tapee), CLES_RESULTAT)
+        self.assertEqual(tapee['entrees_utilisees']['facture_hiver'], {'valeur': 3600.0, 'source': 'saisie'})
+        with CaptureQueriesContext(connection) as requetes:
+            fiche, _refus = apercu_conception(lead, company)
+        self.assertEqual(_ecritures(requetes), [])
+        self.assertNotEqual(tapee['valeurs'], fiche['valeurs'])  # la saisie a bien été calculée
+        self.assertEqual(tapee['valeurs'], api.post(URL_APERCU, {'lead': lead.pk, 'entrees': {
+            'facture_hiver': 3600}}, format='json').json()['valeurs'])  # rappeler = même réponse
+        self.assertEqual(ConceptionLead.objects.count(), avant)
+        lead.refresh_from_db()
+        self.assertEqual(lead.facture_hiver, Decimal('1800'))  # la fiche n'est jamais écrite
+
+        self.assertEqual(api.post(URL_APERCU, {'lead': lead_b.pk, 'entrees': 'x'}, format='json').status_code, 404)
+        refus = api.post(URL_APERCU, {'lead': lead.pk, 'entrees': {'nom': 'X'}}, format='json')
+        self.assertEqual((refus.status_code, refus.json()['champ']), (400, 'nom'))
+        impose = api.post(URL_APERCU, {'lead': lead.pk, 'imposes': {'module_id': 3}}, format='json')
+        self.assertEqual((impose.status_code, impose.json()['champ']), (400, 'module_id'))
+        self.assertEqual(api.post(URL_APERCU, {'entrees': {}}, format='json').status_code, 400)
+        client = Client.objects.create(company=company, nom='Client AO')
+        dossier = Calepinage.objects.create(company=company, client=client, appel_offre_id=3, titre='AO')
+        self.assertEqual(api.post(URL_APERCU, {'calepinage': dossier.pk}, format='json').status_code, 409)

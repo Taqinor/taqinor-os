@@ -119,6 +119,56 @@ def _porteur(lead, company, calepinage_id):
     return lead_du_calepinage(calepinage, company), {'lead__isnull': True, 'calepinage_id': calepinage.pk}, None
 
 
+class SaisieRefusee(ValueError):
+    """Une valeur tapée de l'aperçu inexploitable : ``champ`` la nomme."""
+
+    def __init__(self, message, champ):
+        super().__init__(message)
+        self.champ = champ
+
+
+def apercu_conception(lead, company, *, calepinage_id=None, saisies=None, imposes=None):
+    """ADEV137/ADEV152 — la sortie du moteur (contrat, clés ``CLES_SORTIE``)
+    pour des valeurs TAPÉES et non enregistrées, SANS AUCUNE ÉCRITURE : le
+    porteur (lead, ou calepinage sans lead) est copié en mémoire, ses colonnes
+    d'entrée (``CHAMPS_ENTREES`` du marché) reçoivent ``saisies`` (provenance
+    ``saisie``), ``imposes`` = champs imposés de ``POST devis/auto/``
+    (``composition_imposee.CHAMPS_IMPOSES``, résidentiel). Rend ``(sortie,
+    refus du porteur)`` ; ``SaisieRefusee`` pour une saisie hors liste ou
+    illisible."""
+    import copy
+
+    from django.core.exceptions import ValidationError
+
+    from apps.ventes.conception.champs import CHAMPS_ENTREES
+    from apps.ventes.conception.entrees import marche_du_lead
+    from apps.ventes.conception.moteur import calculer_conception, reglages_lus_sans_creer, sans_cles_interdites
+    from apps.ventes.domain.composition_imposee import imposition_du_corps
+
+    lead, _filtre, refus = _porteur(lead, company, calepinage_id)
+    if refus is not None:
+        return None, refus
+    copie, saisies = copy.copy(lead), dict(saisies or {})  # jamais enregistrée
+    if 'type_installation' in saisies:
+        copie.type_installation = saisies['type_installation']
+    try:
+        admis = CHAMPS_ENTREES[marche_du_lead(copie)]
+    except ValueError as exc:
+        raise SaisieRefusee(str(exc), 'type_installation')
+    for champ, valeur in saisies.items():
+        if champ not in admis:
+            raise SaisieRefusee('« %s » n\'est pas une entrée du moteur pour ce marché.' % champ, champ)
+        try:
+            setattr(copie, champ, copie._meta.get_field(champ).to_python(valeur))
+        except (ValidationError, TypeError, ValueError):
+            raise SaisieRefusee('Valeur illisible pour « %s ».' % champ, champ)
+    with reglages_lus_sans_creer(company):
+        resultat = calculer_conception(copie, company, imposes=imposition_du_corps(imposes or {}) or None)
+    for champ in saisies:
+        resultat.entrees_utilisees[champ] = {'valeur': _en_json(getattr(copie, champ)), 'source': 'saisie'}
+    return sans_cles_interdites(_en_json(resultat.sortie())), None
+
+
 def _declencheur_valide(declencheur):
     declencheur = declencheur or {}
     origine = declencheur.get('origine')
@@ -171,7 +221,7 @@ def phrase_du_declencheur(lead, champs, origine, quand):
     debut = 'Recalculé le %s à %d h %02d' % (moment.strftime('%d/%m'), moment.hour, moment.minute)
     if not champs:
         return '%s : %s' % (debut, MOTIFS_ORIGINE[origine])
-    morceaux = ['%s %s → %s' % (_libelle(lead, c['champ']), _lisible(lead, c['champ'], c['avant']),
+    morceaux = ['%s %s → %s' % (libelle_champ(lead, c['champ']), _lisible(lead, c['champ'], c['avant']),
                                 _lisible(lead, c['champ'], c['apres'])) for c in champs]
     return '%s : %s' % (debut, ' ; '.join(morceaux))
 
@@ -183,7 +233,7 @@ def _champ_du_modele(lead, champ):
         return None
 
 
-def _libelle(lead, champ):
+def libelle_champ(lead, champ):
     # Le libellé de l'historique du lead : la ligne « pourquoi » s'y pose (ALEA69).
     from apps.crm.activity import TRACKED_FIELDS
 
