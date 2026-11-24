@@ -1026,3 +1026,47 @@ pliées ; `dev-moteur-e2b` = point de départ de la suite du moteur (rien de pli
 - Une simulation lancée sur un calepinage SANS point GPS échoue dans le worker à 5 % (`EntreeInvalide`, « sans point
   GPS, aucune production ne peut être demandée ») au lieu d'être refusée avant le lancement — deux lanes l'ont prise
   pour une panne de PVGIS (PVGIS et NASA POWER répondent bien depuis la pile : 200, série horaire 2014-2023 en 6,6 s).
+
+### Point du 24/11, ~14 h 00 UTC (le plus récent — REPRENDRE ICI)
+
+**Moteur unique**
+- **PR Taqinor/taqinor-os#1546** (branche `dev-moteur-e2b`) : ADEV160, figeage étendu (16 goldens) puis extraction du
+  pipeline pur (`apps/ventes/conception/decisions.py`, `etudes_lignes.py`). Relecture adverse indépendante (opus neuf,
+  même code) : fusionnable, aucun constat bloquant. CI de PR : 31 verts, 0 rouge ; en file de fusion (14 h). À
+  VÉRIFIER : `gh pr view 1546 --json state,mergedAt`. Aucune migration.
+- **Lane du moteur EN VOL** (opus, worktree `agent-a57dbc31fa995e57f`, branche `lane/moteur-e2c` partie de
+  `dev-moteur-e2b`, base de test `x2`) : (0) figer le journal du devis automatique (alertes `taille_demandee`,
+  `batterie_hors_reseau`, clés `plafond_applique`, `contour_client`), capturé sur le code d'AVANT l'extraction ;
+  (1) ADEV133 `calculer_conception` sans écriture, avec la parité au niveau du moteur contre les goldens ;
+  (2) ADEV134 suppositions. ENSUITE, autre lane : ADEV135 (écrivain), ADEV136, ADEV137 (route), ADEV138 (parité rangée).
+- Leçon appliquée : une lane ne joue plus une suite entière en local (`apps.crm` = une heure en un processus sur ce
+  poste ; l'extraction y a perdu ~50 min) ; la CI de PR d'une branche `dev-*` joue tout le backend. Brief corrigé.
+
+**Écrans sur les maquettes v2 — branche `dev-ecrans-v2`, poussée (`35eae8c706`), pas encore de PR** (un seul CI à la
+fois : la PR s'ouvre dès la fusion de #1546)
+- Cinq lanes pliées : `releve-client`, `documents`, `coque`, `spec-maquettes`, `dessin` — 21 tâches (20 « code livré,
+  preuve en direct due », ACAL1748 cochée ; ACAL1943 contestée, laissée ouverte). `main` intégré (jusqu'à
+  `77807d6d1b`, PR #1539, #1544, #1545 d'autres sessions), empreinte CODEMAP recalculée.
+- Couture : vitest du module, eslint, build verts sur A + B + C + E ; rejouée sur l'arbre complet (sortie
+  `l5t/couture2-*.log`).
+- L'instrument `l5t` sert `dev-ecrans-v2@35eae8c706` depuis 13 h 52 UTC (base migrée, serveur relancé, front rebâti).
+- EN VOL : relecteur NEUF `B4` (opus, navigateur) — les 14 écrans contre les maquettes v2, verdicts et constats dans
+  `T4/B4.md`, planches `T4/preuves/B4/` ; lane `suites-ecrans` (opus, worktree `agent-a60912ec13b275fe4`, branche
+  `lane/suites-ecrans`, port 5266) — « Glissez pour tourner autour » mort à la souris en vue client, ACAL2032,
+  ACAL2031, colonne des cartes Documents (23 px), calques du dessin selon l'étape, bascule de la carte d'accès solaire.
+- Verdicts des lanes (elles se sont jugées seules) : Démarrage rapide FIDÈLE en mise en page ; Documents, Tablette,
+  Relevé, Vue client, Présentation, Toit, Panneaux, Électrique PROCHES. La scène 3D montre maintenant une maison
+  entière (murs clairs, toit tuile, panneaux bleus à cellules) — il manque le décor (jardin, soleil) et la taille.
+- Commande de la spec permanente (14 planches) : depuis `frontend`,
+  `E2E_BASE_URL=http://127.0.0.1:<port> CAL_MAQUETTES_SORTIE=<dossier> node node_modules/@playwright/test/cli.js test e2e/calepinage-maquettes.spec.js --project=chromium`.
+
+**Partie 2, préparation** : voir le point de 12 h 30 ; en plus — préremplissage par les écrans FAIT (« Remplir les
+réglages vides » : 5 pertes supposées ; météo « plusieurs années réelles » 2014-2023, source « Saisie » ; comptes
+`anon_commercial`, `anon_resp`, `anon_tech`, `anon_admin2`, mot de passe = `REV_PW`), registre
+`T4/preremplissage.md` §§ 1-7, constats de préparation `T4/constats-preparation.md` (16 candidats).
+
+**Questions posées au fondateur, en attente (le choix par défaut s'applique sinon)**
+1. Prix des articles de pompage dans la copie d'essai : A (défaut) prix publics les plus proches, étiquetés « valeur
+   d'essai » ; B laisser vide ; C ses prix. Aucun prix public n'existe pour les pompes OSP 30 (fabricant Oswal).
+2. Clé de carte : l'orchestrateur ne saisit pas une clé de production ; à poser par le fondateur dans `l5t/l5t.env`
+   (`PUBLIC_MAPTILER_KEY=`), sinon le test se joue sur fond gris.
