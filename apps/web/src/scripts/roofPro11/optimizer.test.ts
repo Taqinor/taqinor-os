@@ -456,14 +456,14 @@ describe('ACAL470 : objectif de production tapé', () => {
 // jamais les deux sens de la seule pose affichée ; la production annoncée est celle de CE maximum.
 describe('ACAL1903 — « Production visée » : le maximum est celui que « + » atteint', () => {
   /** Plat 12 × 8 m, cible 5 (la pose affichée) ; `plus()` pousse « + » jusqu'au bout et rend le compte dessiné. */
-  const atelier = (verrou: 'portrait' | null, reglagesAtelier?: unknown) => {
+  const atelier = (verrou: 'portrait' | null, reglagesAtelier?: unknown, sansChiffrage = false) => {
     const g = globalThis as unknown as { document?: Document };
     const avant = g.document;
     g.document = new JSDOM('<!doctype html><body><dd id="rp9-reco-prod"></dd><p id="rp9-need-note"></p></body>').window.document;
     const vertices = rectRing(12, 8);
     const [cLng, cLat] = [(vertices[0][0] + vertices[2][0]) / 2, (vertices[0][1] + vertices[2][1]) / 2];
     const pan = { id: 'area-1', vertices, obstacles: [], roofType: 'flat' };
-    const ctx = { opts: { chiffrage: null, reglagesAtelier }, centroidLat: cLat, centroid: [cLng, cLat], neededPanels: 5, neededAuto: false, batiments: [], environment: [],
+    const ctx = { opts: sansChiffrage ? { reglagesAtelier } : { chiffrage: null, reglagesAtelier }, centroidLat: cLat, centroid: [cLng, cLat], neededPanels: 5, neededAuto: false, batiments: [], environment: [],
       shadeObstructions: [], obstacles: [], areas: [pan], activeAreaId: 'area-1', activeArea: () => pan, vertices, roofType: 'flat', closed: true,
       pinned: new Set(verrou ? ['orient'] : []), sel: { family: 'south', tilt: 'reco', orient: verrou ?? 'auto', azimuth: 'south', margin: 'keep' },
       v4YieldCache: new Map(), overhangM: 0, documentRelu: null, shadeAnnualFactor: 1, horizonAnnualFactor: 1, dom: {}, useRecommended: true } as unknown as Ctx;
@@ -493,6 +493,19 @@ describe('ACAL1903 — « Production visée » : le maximum est celui que « + �
     const a = atelier(null, { simulation: { seuil_acces_retrait: { valeur: 0.6 } } });
     try {
       const r = cibleDepuisCarte(1e6, a.opt.etatCarte(), clampNeeded)!;
+      const atteint = a.plus();
+      expect(atteint).toBeGreaterThan(5);
+      expect(r.panneaux).toBe(atteint);
+      expect(r.maxKwhAn).toBe(Math.round(a.opt.etatCarte()!.kwhParPanneau * atteint));
+    } finally { a.fin(); }
+  });
+  // ACAL2031 — figé SANS `opts.chiffrage` (site public ; l'aperçu `/preview/toiture-3d-pro-11` est retiré du build, ACAL332) :
+  // le maximum de « Production visée » n'est pas réservé à l'ERP — même règle, même compte que « + » atteint.
+  it('sans chiffrage : « au plus N » = le compte que « + » pose, avec la production de CETTE pose', () => {
+    const a = atelier(null, undefined, true);
+    try {
+      const r = cibleDepuisCarte(1e6, a.opt.etatCarte(), clampNeeded)!;
+      expect(r.plafonne).toBe(true);
       const atteint = a.plus();
       expect(atteint).toBeGreaterThan(5);
       expect(r.panneaux).toBe(atteint);
