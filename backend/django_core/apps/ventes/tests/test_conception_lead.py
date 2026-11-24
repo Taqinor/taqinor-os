@@ -2310,6 +2310,57 @@ class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher
         self.assertEqual(ConceptionLead.objects.filter(company=company).count(), 7)
         self.assertEqual(_photo_devis(devis.pk), photo)
 
+    def test_appliquer_ne_touche_pas_une_version_courante_venue_d_un_toit(self):
+        """Relecture E3 M2 — un remplissage, pas un rafraîchissement : le lead
+        dont la version courante vient d'une pose (empreinte du toit) n'est
+        pas recalculé sans elle ; ``--appliquer`` exige ``--company``."""
+        from types import SimpleNamespace
+
+        from django.core.management.base import CommandError
+
+        from apps.ventes.conception.service import relancer
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'))
+        _reglages_de_la_societe(company)
+        with self.captureOnCommitCallbacks(execute=True):
+            relancer(lead, company=company, declencheur={'origine': 'pose_enregistree', 'champs': []},
+                     toit=SimpleNamespace(empreinte='p' * 64, plafond_panneaux=None))
+        avant = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual(avant.empreinte_pose, 'p' * 64)
+
+        self.assertIn('APPLIQUÉ : 0 version(s) rangée(s), 1 inchangée(s)',
+                      self._commande('--company', str(company.pk), '--appliquer'))
+        apres = ConceptionLead.objects.get(lead=lead, courante=True)  # mutant « relancer sans toit » : v2, ''
+        self.assertEqual((apres.pk, apres.version, apres.empreinte_pose), (avant.pk, 1, 'p' * 64))
+        with self.assertRaises(CommandError):
+            self._commande('--appliquer')
+
+    def test_liste_une_erreur_de_base_n_empoisonne_pas_les_leads_suivants(self):
+        """Relecture E3 M2 — la liste ouvre un point de sauvegarde par lead :
+        une erreur de base sur un lead ne fait pas échouer tous les suivants."""
+        from django.db import connection
+
+        from apps.crm.models import Lead
+        from apps.ventes.conception import moteur
+
+        company, premier = self._residentiel(facture_hiver=Decimal('1800'))
+        _reglages_de_la_societe(company)
+        second = Lead.objects.create(company=company, nom='Second', prenom='Lead', ville=premier.ville,
+                                     facture_hiver=Decimal('1800'))
+        vrai = moteur.calculer_conception
+
+        def calcul(lead, company, **kw):
+            if lead.pk == premier.pk:
+                with connection.cursor() as curseur:
+                    curseur.execute('SELECT * FROM table_qui_n_existe_pas_m2')
+            return vrai(lead, company, **kw)
+        self._patcher(moteur, 'calculer_conception', side_effect=calcul)
+        liste = self._commande('--company', str(company.pk))
+        self.assertIn(f'lead #{premier.pk} : calcul impossible', liste)
+        self.assertIn(f'lead #{second.pk} [residentiel] option retenue : ', liste)  # mutant « sans point » : rouge
+        self.assertIn('LISTE : 1 conception(s) complète(s), 0 refus, 1 erreur(s)', liste)
+
 
 # ── ADEV145 — PARITÉ : aucun devis envoyé ou accepté ne change ─────────────
 

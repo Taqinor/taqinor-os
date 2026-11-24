@@ -14,11 +14,15 @@ n'est lu en écriture : le moteur ne lit aucun devis, ``relancer`` n'en écrit
 aucun. Un lead d'une société n'est jamais lu pour une autre (la société est
 celle du lead, filtrée à la requête).
 
-    python manage.py remplir_conceptions [--company <id>] [--appliquer]
+Un lead qui a déjà une version courante n'est pas recalculé (relecture E3 M2 :
+une version née d'une pose serait refaite sans son toit). ``--appliquer`` exige
+``--company`` ; la liste ouvre un point de sauvegarde par lead.
+
+    python manage.py remplir_conceptions [--company <id>] [--appliquer]   (--appliquer : --company requis)
 """
 import logging
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 logger = logging.getLogger(__name__)
@@ -31,6 +35,13 @@ def _leads(company):
     du modèle du CRM)."""
     from django.apps import apps
     return apps.get_model('crm', 'Lead').objects.filter(company=company).order_by('pk')
+
+
+def _leads_deja_ranges(company):
+    """Les leads de ``company`` qui ont déjà une version courante."""
+    from apps.ventes.models import ConceptionLead
+    return set(ConceptionLead.objects.filter(company=company, courante=True, lead__isnull=False)
+               .values_list('lead_id', flat=True))
 
 
 def _ligne(lead, resultat):
@@ -52,6 +63,9 @@ class Command(BaseCommand):
     def handle(self, *args, **opts):
         from authentication.models import Company
 
+        if opts['appliquer'] and not opts['company']:
+            # Relecture E3 M2 — une écriture se fait société par société, nommée.
+            raise CommandError('--appliquer exige --company <id> : une société à la fois.')
         societes = Company.objects.order_by('pk')
         if opts['company']:
             societes = societes.filter(pk=opts['company'])
@@ -69,7 +83,8 @@ class Command(BaseCommand):
         with transaction.atomic():
             for lead in _leads(company).iterator():
                 try:
-                    resultat = calculer_conception(lead, company)
+                    with transaction.atomic():  # relecture E3 M2 : une erreur de base reste à ce lead
+                        resultat = calculer_conception(lead, company)
                 except Exception as exc:  # noqa: BLE001 — lead illisible signalé (D-ENF22-BLE001)
                     logger.warning('remplir_conceptions : lead #%s illisible', lead.pk, exc_info=True)
                     erreurs += 1
@@ -87,9 +102,16 @@ class Command(BaseCommand):
         from apps.ventes.conception.service import relancer
 
         ecrites = inchangees = sans_lieu = erreurs = 0
+        deja = _leads_deja_ranges(company)
         for lead in _leads(company).iterator():
             if refus_localisation(lead) is not None:  # listé comme refus : rien à ranger sans lieu
                 sans_lieu += 1
+                continue
+            if lead.pk in deja:
+                # Relecture E3 M2 — un REMPLISSAGE, pas un rafraîchissement : une
+                # version courante (peut-être née d'une pose) n'est pas refaite
+                # sans son toit ; le filet de la lecture la tient à jour.
+                inchangees += 1
                 continue
             try:
                 relance = relancer(lead, company=company, declencheur=dict(DECLENCHEUR))
