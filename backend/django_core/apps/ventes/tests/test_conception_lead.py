@@ -2227,3 +2227,53 @@ class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher
         self.assertIn('APPLIQUÉ : 0 version(s) rangée(s), 7 inchangée(s)', rejoue)
         self.assertEqual(ConceptionLead.objects.filter(company=company).count(), 7)
         self.assertEqual(_photo_devis(devis.pk), photo)
+
+
+# ── ADEV145 — PARITÉ : aucun devis envoyé ou accepté ne change ─────────────
+
+class DevisFigesInchangesTests(_emprunt(RelanceConceptionTests, '_relancer'), _emprunt(ServirConceptionTests, '_api'),
+                               _emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_utilisateur', '_residentiel',
+                                        '_ci', '_agricole', '_fiches_residentielles', '_site_isole', '_structures',
+                                        '_fiches_ci', '_cas'), TestCase):
+    """ADEV145 — un devis ``envoye`` ou ``accepte`` garde ``etude_params``,
+    ``electrical_design``, ses lignes et ses totaux octet pour octet quand le
+    moteur de son lead écrit une version nouvelle (règle du 08/10/2026,
+    D-ACAL-96) ; ``ecart_devis`` nomme la différence sans rien écrire."""
+
+    def test_envoye_et_accepte_inchanges_apres_une_relance_du_moteur(self):
+        from django.utils import timezone
+
+        from apps.crm.models import Lead
+        from apps.ventes.models import ConceptionLead, Devis
+        from apps.ventes.selectors import ecart_devis
+        from apps.ventes.services import build_devis_auto
+
+        figes = {}
+        company, premier = self._cas('res_conception_electrique')  # fiches complètes : conception électrique rangée
+        _reglages_de_la_societe(company)
+        user = self._utilisateur(company)
+        second = Lead.objects.create(company=company, nom='Second', prenom='Lead', ville=premier.ville,
+                                     facture_hiver=Decimal('1800'))
+        for statut, lead in (('envoye', premier), ('accepte', second)):
+            devis = build_devis_auto(lead=lead, user=user, company=company)
+            Devis.objects.filter(pk=devis.pk).update(statut=statut, date_envoi=timezone.now())
+            self._relancer(lead, company, _declencheur())
+            figes[statut] = (company, lead, devis.pk, _photo_devis(devis.pk))
+
+        for statut, (company, lead, devis_id, photo) in figes.items():
+            with self.subTest(statut=statut):
+                Lead.objects.filter(pk=lead.pk).update(facture_hiver=Decimal('3600'))
+                lead.refresh_from_db()
+                relance = self._relancer(lead, company, _declencheur(
+                    'lead_entrees_modifiees', facture_hiver=(Decimal('1800'), Decimal('3600'))))
+                self.assertEqual((relance.ecrite, relance.conception.version), (True, 2))
+                self.assertEqual(_ecarts_figeage(photo, _photo_devis(devis_id))[:12], [])  # mutant « suivre » : rouge
+                # Un nouveau devis automatique du même lead (brouillon) et la
+                # lecture de la conception ne touchent pas le figé non plus.
+                build_devis_auto(lead=lead, user=user, company=company)
+                self.assertEqual(self._api(user).get(URL_CONCEPTION % lead.pk).status_code, 200)
+                self.assertEqual(_ecarts_figeage(photo, _photo_devis(devis_id))[:12], [])
+                ecarts = ecart_devis(Devis.objects.get(pk=devis_id))
+                self.assertIn('nb_panneaux', {e['valeur'] for e in ecarts})
+                self.assertEqual(_photo_devis(devis_id), photo)
+                self.assertEqual(ConceptionLead.objects.filter(lead=lead).count(), 2)
