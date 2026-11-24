@@ -346,6 +346,21 @@ export function routesParModule(options) {
 // are not valid as a React child »…). Sa présence EST le défaut.
 export const TITRE_ECRAN_ERREUR = 'Une erreur est survenue'
 
+// Écrans PLEIN ÉCRAN VOULUS : la route est servie sans la coquille ERP (donc sans
+// `.header-title`) parce que sa maquette l'exige. Déclarés UN PAR UN, chacun avec
+// sa preuve de vie (un `data-testid` stable de la page elle-même) et sa raison ;
+// la fumée des écrans attend alors coquille OU écran d'erreur OU ce marqueur, et
+// accuse toujours « page blanche » si rien n'apparaît. Une clé qui ne serait plus
+// une route lue par `routesParModule()` fait échouer la garde d'union de la fumée
+// (`declarerGardeUnion`, groupe 1).
+export const ECRANS_PLEIN_ECRAN = {
+  '/calepinage/reglages/demarrage-rapide': {
+    marqueur: '[data-testid="cal-demarrage-rapide"]',
+    raison: 'ACAL1826 — maquette v2 « Démarrage rapide » plein écran, sans coquille '
+      + '(sortie par le fil d’Ariane « Réglages / Calepinage »)',
+  },
+}
+
 // ── Rail guidé du calepinage (ACAL395/ACAL396) ──────────────────────────────
 // En mode guidé, certains panneaux ne sont PAS des onglets : ils s'ouvrent dans
 // l'ÉCRAN d'étape porté par un onglet « ouverture » (Électrique → synthèse,

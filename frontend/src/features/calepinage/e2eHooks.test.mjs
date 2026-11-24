@@ -129,6 +129,8 @@ export const ALL_HOOKS = [
   'cal-course-soleil-obstruction-hauteur',
   'cal-course-soleil-obstructions-hauteur',
   'cal-course-soleil-scene',
+  // ── DemarrageRapidePage.jsx ──
+  'cal-demarrage-rapide',
   // ── FicheCalepinage.jsx ──
   'cal-fiche',
   'cal-fiche-actions',

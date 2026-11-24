@@ -28,7 +28,8 @@ export default function DemarrageRapidePage() {
     return () => { annule = true }
   }, [relecture])
   return (
-    <div className="cal-reglages fixed inset-0 flex flex-col gap-4 bg-[var(--cal-papier)] pt-4 text-[color:var(--cal-texte-1)]">
+    <div className="cal-reglages fixed inset-0 flex flex-col gap-4 bg-[var(--cal-papier)] pt-4 text-[color:var(--cal-texte-1)]"
+      data-testid="cal-demarrage-rapide">
       <nav aria-label="Fil d’Ariane"
         className="mx-4 flex h-14 flex-none items-center gap-2.5 rounded-[var(--cal-rayon-piece)] bg-[var(--cal-surface)] pl-2 pr-4 text-sm shadow-[var(--cal-ombre-posee)]">
         <Link to="/calepinage/reglages" className={`${LIEN} gap-1.5 pl-1.5 pr-2.5`}>
