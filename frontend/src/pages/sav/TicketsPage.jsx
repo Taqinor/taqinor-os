@@ -48,7 +48,6 @@ import { buildCopyTSVAction } from '../../ui/datatable/BulkActionBar'
 // NTUX37 — toast « Annuler » (NTUX6) après une édition en masse réussie.
 import { notifyBulkUpdateWithUndo } from '../../ui/datatable/notifyBulkUpdateWithUndo'
 import { telHref } from '../../lib/contactLinks'
-import { SAV_CREATION_RESERVEE } from '../../features/sav/creationTicket'
 import { useIsMobile } from '../../ui/ResponsiveDialog'
 import { INTERVENTION_TYPES } from '../../features/installations/statuses'
 import {
@@ -68,7 +67,7 @@ import {
   statusLabel,
   ticketAgeDays,
   statusCountsIndependants,
-  filtresPourStatut,
+  filtresPourStatut, descriptionListeVide,
 } from '../../features/sav/ticketStatuses'
 import {
   TooltipProvider,
@@ -1614,8 +1613,7 @@ export default function TicketsPage() {
   const { createView: createTicketView } = useServerSavedViews(TP_ECRAN)
   // PACT174 — l'assistant ne propose « Partagée à l'équipe » qu'aux rôles qui
   // ont réellement ce droit (SavedViewViewSet répond 403 sinon).
-  const peutPartagerVue = useIsAdminOrResponsable(), peutGerer = useDroitMetier('sav_gerer'), peutReassigner = useDroitMetier('sav_reassign') // ADRG22
-  const peutLireChantiersListe = useDroitMetier('installation_voir') // T4-U2-016 — le lien « Choisir le chantier »
+  const peutPartagerVue = useIsAdminOrResponsable(), peutGerer = useDroitMetier('sav_gerer'), peutReassigner = useDroitMetier('sav_reassign'), peutLireChantiersListe = useDroitMetier('installation_voir') // ADRG22 ; T4-U2-016
   const saveCurrentTicketView = () => {
     const name = window.prompt('Nom de la vue enregistrée :')
     const trimmed = (name || '').trim()
@@ -2087,17 +2085,10 @@ export default function TicketsPage() {
               <EmptyState
                 icon={TicketIcon}
                 title={hasFilters ? 'Aucun résultat' : 'Aucun ticket ouvert'}
-                description={hasFilters
-                  ? 'Aucun ticket ne correspond aux filtres.'
-                  // T4-U2-016 — avec le droit : où s'ouvre un ticket (lien) ; sans : QUI peut, jamais un renvoi circulaire.
-                  : peutGerer
-                    ? "Aucun ticket ouvert pour le moment. Un ticket s'ouvre depuis la fiche du chantier, onglet « Interventions »."
-                    : `Aucun ticket ouvert pour le moment. ${SAV_CREATION_RESERVEE}`}
+                description={descriptionListeVide(hasFilters, peutGerer)} // T4-U2-016 — où (avec le droit), qui (sans)
                 action={hasFilters
                   ? <Button size="sm" variant="outline" onClick={() => setFilters(EMPTY_TICKET_FILTERS)}><RotateCcw /> Réinitialiser</Button>
-                  : peutGerer && peutLireChantiersListe
-                    ? <Button size="sm" variant="outline" asChild><Link to="/chantiers">Choisir le chantier</Link></Button>
-                    : undefined}
+                  : (peutGerer && peutLireChantiersListe ? <Button size="sm" variant="outline" asChild><Link to="/chantiers">Choisir le chantier</Link></Button> : undefined)}
               />
             ) : view === 'kanban' ? (
               // L295 — vue Kanban : colonnes Nouveau → Clôturé via TICKET_STATUSES.
