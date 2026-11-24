@@ -360,6 +360,44 @@
 .rp9-host.cal-coque .rp9-btn { border-radius: var(--cal-rayon-bouton); }
 .rp9-host.cal-coque .rp9-input,
 .rp9-host.cal-coque .rp9-image-capture-input { border-radius: var(--cal-rayon-champ); }
+/* ACAL2030 — EXPERT (et feuille « Avancé ») : l'éditeur de l'ancienne disposition prend LE CADRE DU CHAMP DU GUIDÉ
+   (`.cal-toit-saisie` : 44 px, filet fort, surface, texte 1 ; rayon de champ) — une seule définition, étendue de celle
+   d'ACAL1443, pour tout champ saisissable du constructeur (adresse, date de la photo, châssis, retraits, VE…) : plus
+   aucun champ nu ou au fond du site public. Libellés lisibles ; « Adresse » devient visible. Le markup partagé avec
+   le site public n'est pas touché : tout passe par `.cal-coque`. */
+.rp9-host.cal-coque:is([data-expert='1'], [data-feuille='1']) #rp9-studio :is(input[type='text'], input[type='number'], input:not([type])) {
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--cal-filet-fort);
+  border-radius: var(--cal-rayon-champ);
+  background: var(--cal-surface);
+  color: var(--cal-texte-1);
+}
+.rp9-host.cal-coque:is([data-expert='1'], [data-feuille='1']) #rp9-studio :is(input[type='text'], input[type='number'], input:not([type])):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+.rp9-host.cal-coque:is([data-expert='1'], [data-feuille='1']) #rp9-search label[for='rp9-address'] {
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  clip-path: none;
+  display: flex;
+  align-items: center;
+  align-self: flex-start;
+  min-height: 44px; /* à hauteur du champ d'adresse (premier de la colonne), pas au milieu des champs de date */
+  white-space: nowrap;
+}
+.rp9-host.cal-coque:is([data-expert='1'], [data-feuille='1']) :is(#rp9-search label[for='rp9-address'], .rp9-image-capture) {
+  color: var(--cal-texte-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.rp9-host.cal-coque:is([data-expert='1'], [data-feuille='1']) #rp9-studio-inspecteur details > label { margin-top: 6px; }
 .rp9-host.cal-coque .rp9-chip[aria-pressed='true'],
 .rp9-host.cal-coque .rp9-btn[aria-pressed='true'] {
   border-color: var(--cal-actif);

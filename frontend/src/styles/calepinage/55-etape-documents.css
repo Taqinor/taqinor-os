@@ -128,12 +128,11 @@
 .cdoc-legende { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--cal-texte-2); }
 .cdoc-legende > span { display: inline-flex; align-items: center; gap: 5px; }
 /* « Générer le devis » (BoutonDevis, reçu tel quel) : le bouton doré v2 (`.cal-bouton-or.cal-bouton-or-grand`, posé par
-   `actionEtape`, 52 px rayon 14) — aucune règle ici ne le redessine ; seule sa flèche « → » est ajoutée (ACAL1726). */
+   `actionEtape`, 52 px rayon 14) — aucune règle ici ne le redessine ; sa flèche est le pictogramme passé par `fleche`. */
 .cdoc-devis { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; min-width: 0; }
 /* Plusieurs surfaces chiffrables : les cases se rangent sur deux colonnes, pas une pile qui mange la liste des contrôles. */
 .cdoc-devis fieldset { display: flex; flex-wrap: wrap; column-gap: 18px; margin: 0; padding: 0; border: 0; }
 .cdoc-devis legend { width: 100%; padding: 0; }
-.cdoc-devis .cal-bouton-or::after { content: '→'; font-size: 1.25em; line-height: 1; }
 /* ACAL1943 — le bouton de la maquette Documents : 52 de haut, 24 de marge (188 × 52), à largeur de contenu dans le pied de la carte. */
 .cdoc-devis .cal-bouton-or-grand { padding: 0 24px; }
 /* — colonne « Documents du projet » : aperçu (320) puis cartes (386) — */

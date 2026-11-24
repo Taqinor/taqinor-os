@@ -1,13 +1,13 @@
 /* ============================================================================
    COQUE DE L'ATELIER — TOUTES SES RÈGLES @media (tablette, téléphone, mouvement réduit).
-   Maquette Tablette (1 180 × 820) : bandeau 64 px, rail replié en pictogrammes (72 px,
-   tuiles 56 px, pictos 26 px), carte sur toute la largeur, panneau d'étape en TIROIR DU BAS
-   (280 px, coins hauts arrondis 16 px, poignée qui l'agrandit) : une rangée « Étape N sur 5 ·
-   titre · contrôle principal · bouton d'action », les cartes de l'étape dessous.
-   Téléphone (< 640 px, pas de maquette de l'atelier) : même tiroir, rail en barre du bas,
-   bandeau sur deux rangées ; cibles ≥ 44 px, aucun défilement horizontal de la page.
+   ACAL1835 — maquette v2 Tablette (1 180 × 820) : la coque FLOTTANTE du bureau (carte en décor) aux
+   mesures de la tablette — bandeau 16,16 · 60 px · rayon 18 ; rail de pictogrammes 68 px (tuiles 52,
+   rayon 14) ; panneau d'étape à DROITE 344 px · rayon 22, carte visible sur toute la hauteur ; légende
+   et soleil en bas de la carte. Plus de tiroir sur tablette.
+   Téléphone (< 640 px) : panneau d'étape en TIROIR DU BAS (poignée qui l'agrandit), rail en barre du
+   bas, bandeau sur deux rangées ; cibles ≥ 44 px, aucun défilement horizontal de la page.
    Jetons uniquement. Importée par atelier/coque/CoqueAtelier.jsx après 50-coque-atelier.css.
-   Le seuil 1 279 px est aussi celui de `useTiroir` (CoqueAtelier.jsx).
+   Le seuil 639 px est aussi celui de `useTiroir` (CoqueAtelier.jsx).
    ========================================================================== */
 
 @media (prefers-reduced-motion: reduce) {
@@ -20,8 +20,9 @@
    (`.rp9-map-wrap`) sort de cette zone et couvre toute la fenêtre, SOUS les pièces : ce qui est posé « sur la carte »
    (`.cal-coque-sur-carte`) reste dans la zone libre ; les contrôles internes de la carte sont décalés d'autant
    (`--cal-libre-*`). Expert, « Avancé » et la présentation gardent la carte dans le centre. Étapes sans carte : papier,
-   pièces opaques. Tablette et téléphone (au-dessous) : inchangés. */
-@media (min-width: 1280px) {
+   pièces opaques. ACAL1835 : dès 640 px — la tablette prend la même coque, à ses mesures (bloc tablette plus bas) ;
+   le téléphone (au-dessous) garde son tiroir. */
+@media (min-width: 640px) {
   .rp9-host.cal-coque:not([data-presentation='1']) {
     padding: 16px;
     gap: 16px;
@@ -129,7 +130,11 @@
   .cal-coque .cal-rail-avance svg { width: 24px; height: 24px; }
   .cal-coque .cal-rail-libelle,
   .cal-coque .cal-rail-a-regler { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}
 
+@media (max-width: 639px) {
+  /* ACAL1835 — le TIROIR du bas est celui du téléphone seul (règles venues du bloc < 1 280 px, ordre gardé : les
+     règles du téléphone qui suivent les précisent). */
   /* Le centre prend toute la largeur ; le tiroir se pose dessus, en bas. Les calques de la carte
      (légende, lecteur du soleil, barre d'outils, ligne d'état) se posent AU-DESSUS du tiroir fermé. */
   .cal-coque { --cal-tiroir: 280px; --cal-haut-barre: 64px; }
@@ -195,9 +200,7 @@
   .cal-coque .cal-panneau-etape[data-tiroir='1'] .cal-panneau-etape-pied { grid-area: pied; padding: 0; border-top: 0; align-self: center; }
   .cal-coque .cal-panneau-etape[data-tiroir='1'] .cal-panneau-etape-pied:empty { display: block; }
   .cal-coque .cal-panneau-etape[data-tiroir='1'] .cal-bouton-or-plein { width: auto; height: 52px; padding: 0 20px; }
-}
 
-@media (max-width: 639px) {
   /* Bandeau sur deux rangées (H7 — ordre de lecture) : retour · nom · Guidé | Expert, puis l'état d'enregistrement
      À GAUCHE et « Générer le devis » à droite (l'enregistrement précède le devis, comme sur la barre large ; s'ils
      ne tiennent pas sur une ligne, le devis passe dessous, jamais au-dessus). */
@@ -329,58 +332,49 @@
   .cal-coque .cal-coque-alertes-plus { min-height: 44px; }
 }
 
-/* Maquette Tablette, étape Panneaux (guidé) : le tiroir est UNE rangée « Étape 2 sur 5 / Les panneaux · Panneau
-   [liste] · Raccorder les panneaux → », puis les cartes CÔTE À CÔTE (Couvrir la facture | Le plus de panneaux |
-   alerte d'ombre), le reste (sens de pose…) dessous. Même écran, mêmes éléments : le corps du tiroir et l'écran
-   passent en `display: contents` pour que leurs blocs se rangent dans la grille du tiroir (aucun déplacement DOM).
-   Les crochets sont les hooks de l'écran (`cal-panneaux-*`). */
+/* ── ACAL1835 — TABLETTE (640 à 1 279 px, maquette v2 Tablette 1 180 × 820) : la coque flottante du bloc ≥ 640 px à
+   ses mesures. Bandeau 16,16 · 60 px · rayon 18 ; rail 68 px (tuiles 52 · rayon 14) à 16 px sous le bandeau ; panneau
+   d'étape à droite 344 px · rayon 22, de 92 px jusqu'à 16 px du bas ; la zone libre de la carte en suit les bords
+   (100 px à gauche, 376 à droite) ; légende 238 px et lecteur du soleil (curseur 190 px) côte à côte en bas. ── */
 @media (min-width: 640px) and (max-width: 1279px) {
-  .cal-coque[data-etape='panneaux'][data-expert='0'] .cal-panneau-etape[data-tiroir='1']:not([hidden]) {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.35fr);
-    grid-template-areas: none;
-    grid-template-rows: none;
-    grid-auto-rows: max-content;
-    align-content: start;
-    overflow-y: auto;
-    overscroll-behavior: contain;
+  .rp9-host.cal-coque:not([data-presentation='1']) {
+    --cal-haut-barre: 92px;
+    --cal-libre-haut: calc(92px + var(--cal-alertes-h, 0px));
+    --cal-libre-gauche: 100px;
+    --cal-libre-droite: 376px;
   }
-  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] :is(.cal-panneau-etape-corps, .cal-coque-ecran-hote, .cal-pan,
-    .cal-pan-section:has(> [data-testid='cal-panneaux-option-facture'])) { display: contents; }
-  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] :is(.cal-panneau-etape-controle, .cal-panneau-etape-emplacement,
-    .cal-pan-section:has(> [data-testid='cal-panneaux-option-facture']) > h2) { display: none; }
-  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] > * ,
-  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] .cal-pan > *,
-  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] .cal-pan-section:has(> [data-testid='cal-panneaux-option-facture']) > *,
-  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] .cal-panneau-etape-corps > * { grid-column: 1 / -1; }
-  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] > .cal-tiroir-poignee { grid-row: 1; }
-  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] > .cal-panneau-etape-tete { grid-row: 2; grid-column: 1; }
-  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] [data-testid='cal-panneaux-module'] {
-    grid-row: 2;
-    grid-column: 2 / 4;
-    justify-self: end;
-    align-self: center;
-    margin-right: 296px; /* la place du bouton d'action, à droite sur la même rangée */
-    flex-direction: row;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 4px 16px;
+  body[data-cal-atelier] { --cal-toast-droite: 376px; }
+  .cal-coque .cal-barre-projet { height: 60px; gap: 12px; padding: 0 8px 0 6px; border-radius: 18px; }
+  .cal-coque .cal-barre-projet .cal-segmente { border-radius: 13px; }
+  .cal-coque .cal-barre-projet .cal-segmente > button { height: 44px; border-radius: 10px; }
+  .cal-coque .cal-barre-projet .cal-bouton-devis { border-radius: 12px; }
+  .cal-coque .cal-rail { width: 68px; padding: 8px 0; }
+  .cal-coque .cal-rail-etape { width: 52px; height: 52px; min-height: 52px; border-radius: 14px; }
+  .cal-coque .cal-rail-etape[data-etat='fait']:not([aria-current='step'])::after { top: 5px; right: 5px; }
+  .cal-coque .cal-panneau-etape { width: 344px; border-radius: 22px; }
+  .cal-coque .cal-panneau-etape-tete { padding: 18px 20px 12px; }
+  .cal-coque .cal-panneau-etape-corps { padding: 0 20px 12px; }
+  .cal-coque .cal-panneau-etape-pied { padding: 12px 20px 18px; }
+  .cal-coque .cal-pan-legende { width: 238px; }
+  .cal-coque .cal-pan-lecteur { left: calc(16px + 238px + 12px); gap: 12px; }
+  .cal-coque .cal-pan-curseur { width: 190px; }
+}
+
+/* ACAL1835 — tablette ÉTROITE (portrait 820 × 1 180 : zone libre de 344 px) : les chiffres prennent la largeur de la
+   zone (« De la consommation » sous le pli, comme au téléphone), la pile de zoom passe dessous ; la légende se pose
+   au-dessus du lecteur du soleil, qui tient la largeur de la zone (curseur élastique). Rien ne passe sous le panneau. */
+@media (min-width: 640px) and (max-width: 1023px) {
+  .cal-coque[data-expert='0'] .cal-coque-sur-carte :is(.cal-sur-carte-resume, .cal-pan-puce) {
+    right: 16px; width: auto; max-width: none; justify-content: space-between;
   }
-  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] [data-testid='cal-panneaux-module'] .cal-pan-liste-hote { width: 300px; }
-  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] > .cal-panneau-etape-pied { grid-row: 2; grid-column: 3; justify-self: end; }
-  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] .cal-bouton-or-plein { width: 280px; }
-  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] [data-testid='cal-panneaux-option-facture'].cal-pan-option-pose { grid-row: 3; grid-column: 1; }
-  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] [data-testid='cal-panneaux-option-max'].cal-pan-option-pose { grid-row: 3; grid-column: 2; }
-  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] [data-testid='cal-panneaux-ombre'] { grid-row: 3; grid-column: 3; }
-  /* Maquette Tablette : la rangée des cartes REMPLIT le tiroir fermé (280 − 10 − 16 de marges − 20 de poignée + 4
-     − 52 de rangée de titre − 2 × 12 d'écart ≈ 160 px) ; ce qui suit (sens de pose…) commence SOUS le pli, entier, et
-     se lit en faisant défiler le tiroir ou en l'agrandissant — jamais une section coupée à mi-hauteur. */
-  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'] .cal-pan-option-pose {
-    min-height: calc(var(--cal-tiroir) - 120px);
-    justify-content: center;
-  }
-  /* Tiroir FERMÉ : la rangée du titre est celle de la maquette (libellé + liste, 52 px) ; les notes de la liste (ce que
-     l'étude utilise, « choisissez… ») se lisent tiroir agrandi — sinon elles poussent les cartes sous le pli. */
-  .cal-coque[data-etape='panneaux'][data-expert='0'] [data-tiroir='1'][data-deplie='0'] [data-testid='cal-panneaux-module'] .cal-pan-note {
-    display: none;
-  }
+  .cal-coque[data-expert='0'] .cal-coque-sur-carte :is(.cal-sur-carte-resume, .cal-pan-puce) > * { flex: 1 1 auto; min-width: 0; }
+  .cal-coque[data-expert='0'] .cal-coque-sur-carte .cal-pan-puce > :nth-child(n + 4) { display: none; }
+  .cal-coque[data-expert='0'] .cal-coque-sur-carte :is(.cal-sur-carte-resume, .cal-pan-puce) .cal-indicateur { padding: 0 10px; min-width: 0; }
+  .cal-coque[data-avance='0'] .maplibregl-ctrl-top-right { top: calc(var(--cal-libre-haut) + 74px); }
+  .rp9-host.cal-coque[data-avance='0'] .rp9-chip.rp9-carte-puce.cal-carte-plein-ecran { top: calc(var(--cal-libre-haut) + 74px + 89px); }
+  .cal-coque .cal-carte-soleil .cal-pan-legende { bottom: calc(28px + 56px + 12px); }
+  .cal-coque .cal-carte-soleil .cal-pan-lecteur { left: 16px; right: 16px; }
+  .cal-coque .cal-carte-soleil .cal-pan-curseur { flex: 1 1 0; width: auto; min-width: 0; }
+  /* La ligne d'état au-dessus de la légende (lecteur 56 + légende 80 + écarts), sur toute la largeur de la zone. */
+  .cal-coque.cal-coque[data-cadre='carte']:not([data-presentation='1']) .cal-coque-statut { bottom: 172px; max-width: calc(100% - 32px); }
 }

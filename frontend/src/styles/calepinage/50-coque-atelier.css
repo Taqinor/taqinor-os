@@ -440,13 +440,12 @@ body[data-cal-atelier] [data-sonner-toaster][data-y-position='bottom'][data-x-po
 }
 .cal-coque .cal-panneau-etape[hidden] { display: none; }
 /* ACAL1803 — tête v2 : cinq traits de progression (4 px ; ACAL2003 : l'or marque l'étape COURANTE seule, les faites sont d'un neutre soutenu), « Étape N sur 5 »
-   12 px, titre Archivo 24 px (même tête au-dessus des écrans pleins, ACAL1727). */
+   12 px, titre Archivo 24 px (écrans pleins : aucune tête visible, maquettes v2 Resultats et Documents). */
 .cal-coque .cal-panneau-etape-tete { padding: 18px 22px 14px; }
 .cal-coque .cal-progression-etapes { display: flex; gap: 4px; margin-bottom: 14px; }
 .cal-coque .cal-progression-etapes > span { flex: 1; height: 4px; border-radius: 2px; background: var(--cal-progression-a-venir); }
 .cal-coque .cal-progression-etapes > span[data-etat='fait'] { background: var(--cal-progression-faite); }
 .cal-coque .cal-progression-etapes > span[data-etat='actif'] { background: var(--cal-action); }
-.cal-coque .cal-plein-etape-tete .cal-progression-etapes { max-width: 340px; }
 .cal-coque .cal-panneau-etape-rang { margin: 0; font-size: 0.75rem; font-weight: 500; color: var(--cal-texte-3); }
 .cal-coque .cal-panneau-etape-titre {
   margin: 2px 0 0;
@@ -658,8 +657,7 @@ body[data-cal-atelier] [data-sonner-toaster][data-y-position='bottom'][data-x-po
    Le MÊME atelier : la carte 3D seule, bord à bord, en haut (464 px sur 844) ; bandeau, rail,
    panneau et calques d'étape sont `hidden` (jamais démontés) ; les commandes propres à la carte
    (boussole, plein écran, zoom, fin de tracé, poignées) sont masquées : rien à éditer ici. */
-.cal-coque[data-presentation='1'] { font-size: 1rem; }
-.cal-coque[data-presentation='1'] .cal-coque-corps { flex: 0 0 55%; min-height: 0; }
+.cal-coque[data-presentation='1'] { font-size: 1rem; } /* hauteur de la scène (`.cal-coque-corps`) : UNE règle, 58-telephone.css */
 .cal-coque[data-presentation='1'] .cal-coque-statut,
 .cal-coque[data-presentation='1'] .rp9-map-wrap > :not(#rp9-map),
 .cal-coque[data-presentation='1'] .maplibregl-control-container,
