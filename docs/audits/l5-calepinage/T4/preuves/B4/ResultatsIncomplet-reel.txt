@@ -1,0 +1,93 @@
+Calepinages
+K2 — Maquettes mwurafpp1
+12 panneaux · 8,52 kWc · 1 onduleur 10 kW
+Simulation à jour · 13:55
+Mode expert
+Guidé
+Expert
+Montrer au client
+Générer le devis
+Toit
+fait
+Panneaux
+fait
+Électrique
+fait
+3 à régler
+Résultats
+fait
+Documents
+en cours
+Avancé
+
+Étape 4 sur 5
+
+Les résultats
+
+Production la première année · au plus
+
+Plafond
+
+7 094
+kWh
+
+C'est un plafond : 20 pertes ne sont pas encore comptées. Le chiffre réel sera plus bas.
+
+Étapes du calcul
+2 étapes sur 22
+Poussière sur les panneaux
+Chaleur des panneaux
+Vieillissement de la première année
+Écarts entre panneaux
+Ce qui est déjà sûr
+Panneaux
+12
+Puissance
+8,52
+kWc
+Ombres proches
+à renseigner
+—
+Indice de performance
+À renseigner
+S'affiche dès que le résultat est complet.
+Remplir les 4 réglages vides
+Pour un résultat complet
+6 réglages vides
+1
+Poussière sur les panneaux
+Aucune valeur pour votre société
+Renseigner
+2
+Chaleur des panneaux
+Aucune valeur pour votre société
+Renseigner
+3
+Vieillissement de la première année
+Aucune valeur pour votre société
+Renseigner
+4
+Écarts entre panneaux
+Aucune valeur pour votre société
+Renseigner
+5
+Écarts entre panneaux dus à l’ombre
+Aucune valeur pour votre société
+Renseigner
+6
+Pannes et arrêts
+Aucune valeur pour votre société
+Renseigner
+et 14 autres
+pertes pas encore comptées, dans le détail du calcul
+Voir les étapes
+Démarrage rapide
+Remplir les 4 réglages vides avec des valeurs publiées, chacune avec sa source. Vous pourrez les remplacer par vos mesures.
+Voir les valeurs
+Années basses
+À renseigner
+9 fois sur 10 au-dessus. S'affiche dès que le résultat est complet.
+Remplir les 4 réglages vides
+Préparer les documents
+Détail des pertes et réglages
+La pièce jointe désignée comme plan de fond n’est pas rattachée à ce calepinage : rien n’est servi, et aucune autre pièce n’est proposée à sa place.

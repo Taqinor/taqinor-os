@@ -1,0 +1,99 @@
+{
+  "ecran": "Liste",
+  "taille": "1440x900",
+  "tactile": false,
+  "theme": "clair",
+  "v1_disponible": true,
+  "url_reelle": "/calepinage",
+  "banc": null,
+  "etat_atteint": true,
+  "raison_non_atteint": null,
+  "libelles_attendus": 7,
+  "libelles_trouves": [
+    "Calepinages",
+    "Rechercher un calepinage",
+    "Client, ville ou lead",
+    "Nouveau calepinage",
+    "Tous",
+    "Brouillon",
+    "Mes calepinages"
+  ],
+  "libelles_manquants": [],
+  "libelles_non_evalues": [],
+  "acceptes_absents": [
+    {
+      "libelle": "Ventes",
+      "raison": "Accepté (ACAL1748) : « Ventes » est le fil d’Ariane de la maquette ; l’écran réel n’en a pas, son en-tête dit « Calepinages ».",
+      "present": false
+    },
+    {
+      "libelle": "Ctrl K",
+      "raison": "Accepté (D-ACAL-71, ACAL1825) : l’indice « Ctrl K » n’est pas affiché tant qu’aucune palette de commandes n’existe.",
+      "present": false
+    },
+    {
+      "libelle": "Prêt à envoyer",
+      "raison": "Accepté (ACAL1825) : les pastilles d’état sont les vrais statuts servis (Brouillon / Validé / Périmé / Refusé), pas les statuts du devis de la maquette (règle n° 4).",
+      "present": false
+    },
+    {
+      "libelle": "Devis envoyé",
+      "raison": "Accepté (ACAL1825) : statut du devis, pas du calepinage — les statuts servis sont gardés.",
+      "present": false
+    },
+    {
+      "libelle": "Signé",
+      "raison": "Accepté (ACAL1825) : statut du devis, pas du calepinage — les statuts servis sont gardés.",
+      "present": false
+    }
+  ],
+  "controles_visibles": {
+    "maquette": 16,
+    "reel": 45
+  },
+  "debordement_horizontal_reel": false,
+  "boites": {
+    "titre": {
+      "maquette": {
+        "x": 48,
+        "y": 68,
+        "l": 193,
+        "h": 37
+      },
+      "reel": {
+        "x": 272,
+        "y": 87,
+        "l": 189,
+        "h": 37
+      }
+    },
+    "contenu": {
+      "maquette": {
+        "x": 0,
+        "y": 56,
+        "l": 1440,
+        "h": 844
+      },
+      "reel": {
+        "x": 240,
+        "y": 52,
+        "l": 1200,
+        "h": 848
+      }
+    },
+    "premier_bouton": {
+      "maquette": {
+        "x": 1195,
+        "y": 64,
+        "l": 197,
+        "h": 46
+      },
+      "reel": {
+        "x": 203,
+        "y": 14,
+        "l": 27,
+        "h": 27
+      }
+    }
+  }
+}

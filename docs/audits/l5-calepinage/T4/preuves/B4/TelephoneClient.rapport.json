@@ -1,0 +1,77 @@
+{
+  "ecran": "TelephoneClient",
+  "taille": "390x844",
+  "tactile": true,
+  "theme": "clair",
+  "v1_disponible": true,
+  "url_reelle": "/calepinage/1929/client",
+  "banc": {
+    "calepinage": 1929,
+    "variante": "complet",
+    "materiel": {
+      "ok": true,
+      "module": "Panneau Canadien Solar 710W",
+      "onduleur": "Onduleur hybride Deye 10kW Monophasé"
+    },
+    "simulation": {
+      "etat": "terminee",
+      "raison": null
+    }
+  },
+  "etat_atteint": true,
+  "raison_non_atteint": null,
+  "libelles_attendus": 13,
+  "libelles_trouves": [
+    "Glissez un doigt pour tourner autour",
+    "Faire passer la journée",
+    "Saison",
+    "Hiver",
+    "Été",
+    "Estimation",
+    "kWh par an",
+    "panneaux",
+    "Les montants figurent dans le devis",
+    "Retour au relevé",
+    "Envoyer le lien"
+  ],
+  "libelles_manquants": [
+    "de votre facture",
+    "Estimation pour une année moyenne à"
+  ],
+  "libelles_non_evalues": [],
+  "acceptes_absents": [],
+  "controles_visibles": {
+    "maquette": 5,
+    "reel": 6
+  },
+  "debordement_horizontal_reel": false,
+  "boites": {
+    "titre": {
+      "maquette": null,
+      "reel": null
+    },
+    "contenu": {
+      "maquette": null,
+      "reel": {
+        "x": 0,
+        "y": 0,
+        "l": 390,
+        "h": 392
+      }
+    },
+    "premier_bouton": {
+      "maquette": {
+        "x": 24,
+        "y": 451,
+        "l": 48,
+        "h": 48
+      },
+      "reel": {
+        "x": 24,
+        "y": 395,
+        "l": 48,
+        "h": 48
+      }
+    }
+  }
+}

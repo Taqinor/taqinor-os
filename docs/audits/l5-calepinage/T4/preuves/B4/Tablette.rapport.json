@@ -1,0 +1,170 @@
+{
+  "ecran": "Tablette",
+  "taille": "1180x820",
+  "tactile": true,
+  "theme": "clair",
+  "v1_disponible": true,
+  "url_reelle": "/calepinage/1929?onglet=fiches",
+  "banc": {
+    "calepinage": 1929,
+    "variante": "complet",
+    "materiel": {
+      "ok": true,
+      "module": "Panneau Canadien Solar 710W",
+      "onduleur": "Onduleur hybride Deye 10kW Monophasé"
+    },
+    "simulation": {
+      "etat": "terminee",
+      "raison": null
+    }
+  },
+  "etat_atteint": true,
+  "raison_non_atteint": null,
+  "libelles_attendus": 29,
+  "libelles_trouves": [
+    "Calepinages",
+    "Guidé",
+    "Expert",
+    "Générer le devis",
+    "Étapes",
+    "Panneaux",
+    "Puissance",
+    "Production · estimation",
+    "Zoomer",
+    "Dézoomer",
+    "Ensoleillement de chaque panneau",
+    "Ombragé",
+    "Plein soleil",
+    "Lire la journée",
+    "Saison",
+    "Hiver",
+    "Été",
+    "Étape 2 sur 5",
+    "Les panneaux",
+    "Panneau",
+    "Combien de panneaux ?",
+    "Couvrir la facture",
+    "Recommandé",
+    "Le plus de panneaux",
+    "Raccorder les panneaux"
+  ],
+  "libelles_manquants": [
+    "De la facture",
+    "Soleil",
+    "Replier le panneau de l'étape",
+    "dépasse la consommation"
+  ],
+  "libelles_non_evalues": [],
+  "acceptes_absents": [
+    {
+      "libelle": "En stock",
+      "raison": "Accepté (D-ACAL-70, BRIEF-M4) : « En stock » n’est pas affiché tant que le stock n’est pas servi par le catalogue.",
+      "present": false
+    },
+    {
+      "libelle": "Retirer ces 2 panneaux",
+      "raison": "Dépend de l’état : le bloc n’existe que si des panneaux reçoivent moins de soleil que le seuil de la société (l’ombre de la cheminée dans la maquette) ; le banc n’a pas posé de panneau à l’ombre.",
+      "present": false
+    },
+    {
+      "libelle": "Garder",
+      "raison": "Dépend de l’état : le bloc n’existe que si des panneaux reçoivent moins de soleil que le seuil de la société (l’ombre de la cheminée dans la maquette) ; le banc n’a pas posé de panneau à l’ombre.",
+      "present": false
+    },
+    {
+      "libelle": "les retirer coûte peu de production",
+      "raison": "Dépend de l’état : le bloc n’existe que si des panneaux reçoivent moins de soleil que le seuil de la société (l’ombre de la cheminée dans la maquette) ; le banc n’a pas posé de panneau à l’ombre.",
+      "present": false
+    }
+  ],
+  "controles_visibles": {
+    "maquette": 22,
+    "reel": 27
+  },
+  "debordement_horizontal_reel": false,
+  "boites": {
+    "bandeau": {
+      "maquette": {
+        "x": 16,
+        "y": 16,
+        "l": 1148,
+        "h": 60
+      },
+      "reel": {
+        "x": 16,
+        "y": 16,
+        "l": 1148,
+        "h": 60
+      }
+    },
+    "rail": {
+      "maquette": {
+        "x": 16,
+        "y": 92,
+        "l": 68,
+        "h": 712
+      },
+      "reel": {
+        "x": 16,
+        "y": 92,
+        "l": 68,
+        "h": 712
+      }
+    },
+    "carte": {
+      "maquette": null,
+      "reel": {
+        "x": 100,
+        "y": 92,
+        "l": 704,
+        "h": 712
+      }
+    },
+    "outils_carte": {
+      "maquette": {
+        "x": 350,
+        "y": 736,
+        "l": 402,
+        "h": 60
+      },
+      "reel": null
+    },
+    "panneau": {
+      "maquette": {
+        "x": 820,
+        "y": 92,
+        "l": 344,
+        "h": 712
+      },
+      "reel": {
+        "x": 820,
+        "y": 92,
+        "l": 344,
+        "h": 712
+      }
+    },
+    "bouton_pied_panneau": {
+      "maquette": {
+        "x": 840,
+        "y": 730,
+        "l": 304,
+        "h": 56
+      },
+      "reel": {
+        "x": 840,
+        "y": 734,
+        "l": 304,
+        "h": 52
+      }
+    },
+    "bouton_devis": {
+      "maquette": {
+        "x": 1010,
+        "y": 22,
+        "l": 145,
+        "h": 48
+      },
+      "reel": null
+    }
+  }
+}

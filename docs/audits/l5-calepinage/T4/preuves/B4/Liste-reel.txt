@@ -1,0 +1,418 @@
+Aller au contenu
+Calepinage — Calepinages
+TAQINOR Démo
+ERP SOLAIRE
+CALEPINAGE
+ADMINISTRATEUR
+Calepinages
+Nouveau calepinage
+Bibliothèque
+Sources des paramètres
+Réglages simulation
+Gabarits des dossiers
+Systèmes de fixation
+Allées
+Comparer
+Toutes les apps
+Déconnexion
+CALEPINAGE
+Calepinage
+Calepinage — Calepinages
+Calepinage — Calepinages
+⌘K
+11
+FR
+Clair
+Système
+Sombre
+D
+demo_admin
+Calepinages
+40 projets
+Rechercher un calepinage
+Nouveau calepinage
+Tous
+40
+Brouillon
+40
+Validé
+0
+Périmé
+0
+Refusé
+0
+Mes calepinages
+Comparer
+Filtres
+Brouillon
+B4-Villa Bennani
+Casablanca
+B4-Villa Bennani — Casablanca
+2,84 kWc
+4 panneaux
+CAL-2611-1930 · B4-Villa Bennani
+Modifié aujourd'hui à 14:00
+R
+Responsable : rev_c
+Brouillon
+K2 — Maquettes mwurafpp1
+Casablanca
+K2 — Maquettes mwurak3c2
+12 panneaux · 7 094 kWh/an
+CAL-2611-1929 · K2 — Maquettes mwurafpp1
+Modifié aujourd'hui à 13:55
+6 points à régler
+R
+Responsable : rev_b
+Brouillon
+suites-ecrans- Villa Bennani 528180
+Casablanca
+8,52 kWc
+12 panneaux · 17 967 kWh/an
+CAL-2611-1928 · suites-ecrans- Villa Bennani 528180
+Modifié aujourd'hui à 13:50
+R
+Responsable : rev_a
+Brouillon
+dessin- Toit plat existant 524365
+Casablanca
+10 panneaux
+CAL-2611-1927 · dessin- Toit plat existant 524365
+Modifié aujourd'hui à 12:46
+D
+Responsable : demo_resp
+Brouillon
+K2 — Maquettes mwuncghe1
+Casablanca
+K2 — Maquettes mwunclow2
+12 panneaux
+CAL-2611-1926 · K2 — Maquettes mwuncghe1
+Modifié aujourd'hui à 12:04
+D
+Responsable : demo_admin
+Brouillon
+K2 — Maquettes mwun2sop1
+Casablanca
+K2 — Maquettes mwun2utg2
+12 panneaux · 7 094 kWh/an
+CAL-2611-1925 · K2 — Maquettes mwun2sop1
+Modifié aujourd'hui à 11:57
+6 points à régler
+R
+Responsable : rev_orch
+Brouillon
+K2 — Maquettes mwun0agw1
+Casablanca
+K2 — Maquettes mwun0bwf2
+12 panneaux · 7 094 kWh/an
+CAL-2611-1924 · K2 — Maquettes mwun0agw1
+Modifié aujourd'hui à 11:54
+6 points à régler
+R
+Responsable : rev_d
+Brouillon
+K2 — Maquettes mwumygic1
+Casablanca
+K2 — Maquettes mwumyiqh2
+12 panneaux
+CAL-2611-1923 · K2 — Maquettes mwumygic1
+Modifié aujourd'hui à 11:53
+R
+Responsable : rev_c
+Brouillon
+K2 — Maquettes mwump2mf1
+Casablanca
+K2 — Maquettes mwump36r2
+12 panneaux · 7 094 kWh/an
+CAL-2611-1922 · K2 — Maquettes mwump2mf1
+Modifié aujourd'hui à 11:46
+5 points à régler
+R
+Responsable : rev_b
+Brouillon
+K2 — Maquettes mwumnqj31
+Casablanca
+K2 — Maquettes mwumnr6e2
+12 panneaux · 7 094 kWh/an
+CAL-2611-1921 · K2 — Maquettes mwumnqj31
+Modifié aujourd'hui à 11:45
+R
+Responsable : rev_a
+Brouillon
+spec-maquettes 538996
+Casablanca
+12 panneaux · 7 094 kWh/an
+CAL-2611-1920 · spec-maquettes 538996
+Modifié aujourd'hui à 11:42
+5 points à régler
+D
+Responsable : demo_resp
+Brouillon
+K2 — Maquettes mwumi4j33
+Casablanca
+K2 — Maquettes mwumi67o4
+4 panneaux · 2 365 kWh/an
+CAL-2611-1919 · K2 — Maquettes mwumi4j33
+Modifié aujourd'hui à 11:41
+D
+Responsable : demo_admin
+Brouillon
+K2 — Maquettes mwumhqd11
+Casablanca
+K2 — Maquettes mwumhsrz2
+4 panneaux
+CAL-2611-1918 · K2 — Maquettes mwumhqd11
+Modifié aujourd'hui à 11:40
+R
+Responsable : rev_orch
+Brouillon
+K2 — Maquettes mwumftqj1
+Casablanca
+K2 — Maquettes mwumfvip2
+4 panneaux · 2 365 kWh/an
+CAL-2611-1917 · K2 — Maquettes mwumftqj1
+Modifié aujourd'hui à 11:39
+6 points à régler
+R
+Responsable : rev_d
+Brouillon
+K2 — Maquettes mwumer9y1
+Casablanca
+K2 — Maquettes mwumett72
+4 panneaux · 2 365 kWh/an
+CAL-2611-1916 · K2 — Maquettes mwumer9y1
+Modifié aujourd'hui à 11:38
+R
+Responsable : rev_c
+Brouillon
+K2 — Maquettes mwumcd9p1
+Casablanca
+K2 — Maquettes mwumcii42
+4 panneaux · 2 365 kWh/an
+CAL-2611-1915 · K2 — Maquettes mwumcd9p1
+Modifié aujourd'hui à 11:36
+6 points à régler
+R
+Responsable : rev_b
+Brouillon
+K2 — Maquettes mwumamqa1
+Casablanca
+K2 — Maquettes mwumaon82
+4 panneaux · 2 365 kWh/an
+CAL-2611-1914 · K2 — Maquettes mwumamqa1
+Modifié aujourd'hui à 11:34
+6 points à régler
+R
+Responsable : rev_a
+Brouillon
+K2 — Maquettes mwum9eto1
+Casablanca
+K2 — Maquettes mwum9h7l2
+4 panneaux · 2 365 kWh/an
+CAL-2611-1913 · K2 — Maquettes mwum9eto1
+Modifié aujourd'hui à 11:34
+D
+Responsable : demo_resp
+Brouillon
+K2 — Maquettes mwum7snn1
+Casablanca
+K2 — Maquettes mwum7ywe2
+4 panneaux · 2 365 kWh/an
+CAL-2611-1912 · K2 — Maquettes mwum7snn1
+Modifié aujourd'hui à 11:33
+6 points à régler
+D
+Responsable : demo_admin
+Brouillon
+K2 — Maquettes mwum541a1
+Casablanca
+K2 — Maquettes mwum55pk2
+4 panneaux · 2 365 kWh/an
+CAL-2611-1911 · K2 — Maquettes mwum541a1
+Modifié aujourd'hui à 11:30
+6 points à régler
+R
+Responsable : rev_orch
+Brouillon
+K2 — Maquettes mwum3w791
+Casablanca
+K2 — Maquettes mwum3xv42
+148 panneaux
+CAL-2611-1910 · K2 — Maquettes mwum3w791
+Modifié aujourd'hui à 11:29
+R
+Responsable : rev_d
+Brouillon
+K2 — Maquettes mwum3guc1
+Casablanca
+K2 — Maquettes mwum3jaq2
+148 panneaux
+CAL-2611-1909 · K2 — Maquettes mwum3guc1
+Modifié aujourd'hui à 11:29
+R
+Responsable : rev_c
+Brouillon
+K2 — Maquettes mwum283y1
+Casablanca
+K2 — Maquettes mwum2bdd2
+148 panneaux
+CAL-2611-1908 · K2 — Maquettes mwum283y1
+Modifié aujourd'hui à 11:28
+R
+Responsable : rev_b
+Brouillon
+K2 — Maquettes mwum1rw41
+Casablanca
+K2 — Maquettes mwum1t2m2
+148 panneaux
+CAL-2611-1907 · K2 — Maquettes mwum1rw41
+Modifié aujourd'hui à 11:27
+R
+Responsable : rev_a
+Brouillon
+K2 — Maquettes mwum1d291
+Casablanca
+K2 — Maquettes mwum1exv2
+148 panneaux
+CAL-2611-1906 · K2 — Maquettes mwum1d291
+Modifié aujourd'hui à 11:27
+D
+Responsable : demo_resp
+Brouillon
+K2 — Maquettes mwum0sv81
+Casablanca
+K2 — Maquettes mwum0utf2
+148 panneaux
+CAL-2611-1905 · K2 — Maquettes mwum0sv81
+Modifié aujourd'hui à 11:27
+5 points à régler
+D
+Responsable : demo_admin
+Brouillon
+K2 — Maquettes mwum01b81
+Casablanca
+K2 — Maquettes mwum036b2
+148 panneaux
+CAL-2611-1904 · K2 — Maquettes mwum01b81
+Modifié aujourd'hui à 11:26
+R
+Responsable : rev_orch
+Brouillon
+K2 — Maquettes mwulz8ng1
+Casablanca
+K2 — Maquettes mwulzev82
+148 panneaux
+CAL-2611-1903 · K2 — Maquettes mwulz8ng1
+Modifié aujourd'hui à 11:25
+R
+Responsable : rev_d
+Brouillon
+K2 — Maquettes mwulxpyj1
+Casablanca
+K2 — Maquettes mwulxrc62
+148 panneaux
+CAL-2611-1902 · K2 — Maquettes mwulxpyj1
+Modifié aujourd'hui à 11:25
+R
+Responsable : rev_c
+Brouillon
+K2 — Maquettes mwulu9tk1
+Casablanca
+K2 — Maquettes mwulubwh2
+148 panneaux
+CAL-2611-1901 · K2 — Maquettes mwulu9tk1
+Modifié aujourd'hui à 11:22
+R
+Responsable : rev_b
+Brouillon
+K2 — Maquettes mwultkj31
+Casablanca
+K2 — Maquettes mwultn622
+148 panneaux
+CAL-2611-1900 · K2 — Maquettes mwultkj31
+Modifié aujourd'hui à 11:21
+R
+Responsable : rev_a
+Brouillon
+spec-maquettes 147158
+Casablanca
+4 panneaux · 2 365 kWh/an
+CAL-2611-1899 · spec-maquettes 147158
+Modifié aujourd'hui à 11:19
+5 points à régler
+D
+Responsable : demo_resp
+Brouillon
+spec-maquettes 069616
+Casablanca
+148 panneaux
+CAL-2611-1898 · spec-maquettes 069616
+Modifié aujourd'hui à 11:18
+D
+Responsable : demo_admin
+Brouillon
+dessin- Villa Bennani 519008
+Casablanca
+8,52 kWc
+12 panneaux · 17 967 kWh/an
+CAL-2611-1897 · dessin- Villa Bennani 519008
+Modifié aujourd'hui à 12:36
+6 points à régler
+R
+Responsable : rev_orch
+Brouillon
+coque-tablette 1795517677337
+Casablanca
+coque-tablette 1795517679798
+158 panneaux
+CAL-2611-1896 · coque-tablette 1795517677337
+Modifié aujourd'hui à 10:54
+5 points à régler
+R
+Responsable : rev_d
+Brouillon
+coque-tablette 1795517492338
+Casablanca
+coque-tablette 1795517494114
+148 panneaux
+CAL-2611-1895 · coque-tablette 1795517492338
+Modifié aujourd'hui à 10:51
+R
+Responsable : rev_c
+Brouillon
+releve- Villa Bennani 140099
+Casablanca
+154 panneaux
+CAL-2611-1894 · releve- Villa Bennani 140099
+Modifié aujourd'hui à 10:56
+R
+Responsable : rev_b
+Brouillon
+documents-toiture 944502
+Casablanca
+4 panneaux
+CAL-2611-1893 · documents-toiture 944502
+Modifié aujourd'hui à 10:42
+5 points à régler
+R
+Responsable : rev_a
+Brouillon
+releve- Villa Bennani 461379
+Casablanca
+154 panneaux
+CAL-2611-1892 · releve- Villa Bennani 461379
+Modifié aujourd'hui à 10:34
+D
+Responsable : demo_resp
+Brouillon
+documents-bench 836811
+Casablanca
+148 panneaux · 88 996 kWh/an
+CAL-2611-1891 · documents-bench 836811
+Modifié aujourd'hui à 10:30
+5 points à régler
+D
+Responsable : demo_admin
+40 calepinage(s) affiché(s) sur 40
+Précédent
+Suivant

@@ -1,0 +1,97 @@
+Calepinages
+K2 — Maquettes mwurafpp1
+12 panneaux · 8,52 kWc · 1 onduleur 10 kW
+Enregistré à 13:54
+Mode expert
+Guidé
+Expert
+Montrer au client
+Générer le devis
+Toit
+fait
+Panneaux
+fait
+Électrique
+fait
+3 à régler
+Résultats
+fait
+Documents
+en cours
+Avancé
+
+Étape 5 sur 5
+
+Les documents
+Prêt à envoyer ?
+11 contrôles sur 17 sont bons.
+6 points à régler
+Toit
+Pentes et faces confirmées
+1 hypothèse(s) à confirmer
+?
+Régler dans Toit
+Obstacles dans leur pan
+Cheminée / souche dépasse du pan Pan Sud
+?
+Régler dans Toit
+Autres contrôles — 3 bons · 1 pour information
+Panneaux
+Ombrage proche chiffré
+Omis
+?
+Régler dans Résultats
+Autres contrôles — 1 bon · 4 pour information
+Électrique
+Dossier électrique
+À compléter
+?
+Régler dans Électrique
+Chutes de tension des câbles
+1 point
+?
+Régler dans Électrique
+Terre et protections
+1 point
+?
+Régler dans Électrique
+Autres contrôles — 5 bons
+Résultats — 2 bons · 1 pour information
+Les points à régler n’empêchent pas le devis : ils restent signalés tant qu’ils ne sont pas réglés.
+Bon
+À régler
+Bloque le devis
+Générer le devis
+Documents du projet
+Faits à partir de la version enregistrée à 13:54.
+Plan de pose pour l’équipe
+Modèle de page de ce document
+Aperçu
+Télécharger
+Le devis remis au client ne se fait pas ici : il est créé à partir du devis, avec ses prix. « Générer le devis » prépare ce devis avec ce calepinage.
+Plan de pose pour l’équipe
+
+Place de chaque panneau, distances aux bords du toit, chaînes en couleur. PDF.
+
+Prêt · PDF
+Schéma électrique
+
+Des panneaux au compteur, avec la section de chaque câble. PDF.
+
+Prêt · PDF
+Note de calcul
+
+Tension par temps froid, câbles, protections : chaque chiffre avec sa règle. PDF.
+
+Prêt · PDF
+Rapport d’étude
+
+Production mois par mois, pertes, ombres, et ce que le calcul ne prend pas en compte. PDF.
+
+Prêt · PDF
+Plan au format DXF
+
+Pour AutoCAD ou un autre logiciel de dessin : chaque panneau numéroté, avec son pan et sa chaîne.
+
+Prêt · DXF
+La pièce jointe désignée comme plan de fond n’est pas rattachée à ce calepinage : rien n’est servi, et aucune autre pièce n’est proposée à sa place.

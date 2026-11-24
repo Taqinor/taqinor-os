@@ -1,0 +1,113 @@
+{
+  "ecran": "Telephone",
+  "taille": "390x844",
+  "tactile": true,
+  "theme": "clair",
+  "v1_disponible": true,
+  "url_reelle": "/calepinage/1931/releve",
+  "banc": {
+    "calepinage": 1931,
+    "variante": "releve",
+    "materiel": null,
+    "simulation": {
+      "etat": "non_lancee",
+      "raison": "variante sans simulation"
+    }
+  },
+  "etat_atteint": true,
+  "raison_non_atteint": null,
+  "libelles_attendus": 13,
+  "libelles_trouves": [
+    "Relevé de visite",
+    "Agrandir ou réduire la feuille",
+    "Photos",
+    "Mesures",
+    "Longueur",
+    "Largeur",
+    "Pente du toit",
+    "mesurée",
+    "Mesurer encore",
+    "Le toit regarde vers",
+    "Boussole",
+    "Voir en 3D",
+    "Terminer le relevé"
+  ],
+  "libelles_manquants": [],
+  "libelles_non_evalues": [],
+  "acceptes_absents": [
+    {
+      "libelle": "Hors ligne",
+      "raison": "Dépend de l’état : la pastille n’existe que téléphone hors réseau ; la spec photographie en ligne.",
+      "present": false
+    },
+    {
+      "libelle": "Toit entier",
+      "raison": "Accepté : le relevé téléphone montre les 3 catégories de photos du produit, pas les six sujets de la maquette.",
+      "present": false
+    },
+    {
+      "libelle": "Compteur",
+      "raison": "Accepté : le relevé téléphone montre les 3 catégories de photos du produit, pas les six sujets de la maquette.",
+      "present": false
+    },
+    {
+      "libelle": "Tableau",
+      "raison": "Accepté : le relevé téléphone montre les 3 catégories de photos du produit, pas les six sujets de la maquette.",
+      "present": false
+    },
+    {
+      "libelle": "Obstacles",
+      "raison": "Accepté : le relevé téléphone montre les 3 catégories de photos du produit, pas les six sujets de la maquette.",
+      "present": false
+    },
+    {
+      "libelle": "Passage des câbles",
+      "raison": "Accepté : le relevé téléphone montre les 3 catégories de photos du produit, pas les six sujets de la maquette.",
+      "present": false
+    },
+    {
+      "libelle": "Vue vers le sud",
+      "raison": "Accepté : le relevé téléphone montre les 3 catégories de photos du produit, pas les six sujets de la maquette.",
+      "present": false
+    }
+  ],
+  "controles_visibles": {
+    "maquette": 10,
+    "reel": 11
+  },
+  "debordement_horizontal_reel": false,
+  "boites": {
+    "titre": {
+      "maquette": {
+        "x": 16,
+        "y": 250,
+        "l": 67,
+        "h": 23
+      },
+      "reel": {
+        "x": 16,
+        "y": 250,
+        "l": 65,
+        "h": 22
+      }
+    },
+    "contenu": {
+      "maquette": null,
+      "reel": null
+    },
+    "premier_bouton": {
+      "maquette": {
+        "x": 147,
+        "y": 230,
+        "l": 96,
+        "h": 20
+      },
+      "reel": {
+        "x": 147,
+        "y": 230,
+        "l": 96,
+        "h": 20
+      }
+    }
+  }
+}

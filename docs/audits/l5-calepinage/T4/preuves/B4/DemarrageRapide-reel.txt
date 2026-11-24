@@ -1,0 +1,142 @@
+Réglages
+/
+Calepinage
+/
+Démarrage rapide
+Démarrage rapide
+
+Les réglages encore vides peuvent recevoir une valeur publiée par un logiciel de référence, toujours affichée avec sa source.
+Vous la remplacerez par vos propres mesures quand vous les aurez ; ce que vous avez déjà saisi n’est jamais écrasé.
+
+valeur publiée, non mesurée
+Remplir
+Réglage
+Valeur proposée
+Source
+État
+Reflets du verre
+Le soleil rasant rebondit sur la vitre du panneau
+0,05
+PVsyst
+ouvrir
+Citation complète : Profil de départ — PVsyst, Array incidence loss (IAM) : « measurements on real crystalline modules indicate a value of bo = 0.05 » — https://www.pvsyst.com/help/project-design/array-and-system-losses/array-incidence-loss-iam.html — lu le 20/11/2026
+Vide
+Façon de calculer les reflets
+Méthode de calcul de la lumière perdue quand le soleil arrive de biais
+Fresnel
+PVsyst
+ouvrir
+Citation complète : Profil de départ — PVsyst, Array incidence loss (IAM) : « Fresnel model (recommended with default coefficients) » — https://www.pvsyst.com/help/project-design/array-and-system-losses/array-incidence-loss-iam.html — lu le 20/11/2026
+Vide
+Qualité des panneaux à la sortie d’usine
+Lue dans la tolérance de puissance de la fiche du module ; sans tolérance publiée, le tri usuel 0 % à +3 % est supposé
+Un quart de l’écart, comme PVsyst
+PVsyst
+ouvrir
+Citation complète : Profil de départ — PVsyst, Module quality losses : « PVsyst uses one-quarter of the difference between these values » — https://www.pvsyst.com/help/project-design/array-and-system-losses/module-quality-losses.html — lu le 20/11/2026
+Vide
+Écarts entre panneaux
+Deux panneaux d’une chaîne ne sont jamais tout à fait égaux
+2 %
+PVsyst
+ouvrir
+Citation complète : Profil de départ — PVsyst, Array mismatch losses : « PVsyst considers a maximum default value of 2%, for classic strings length » — https://www.pvsyst.com/help/project-design/array-and-system-losses/array-mismatch-losses/index.html — lu le 20/11/2026
+Vide
+Échauffement selon la pose
+Plus le panneau chauffe, moins il produit
+29 · 15 W/m²K
+Pose libre · dos isolé
+PVsyst
+ouvrir
+Citation complète : Profil de départ — PVsyst, U-value (thermal losses) : deux lignes nommées par les cas chiffrés de la page (pose libre, dos isolé) ; la semi-intégration n'y a pas de valeur (« between these 2 limits »), relu le 20/11/2026 ; aucune correspondance vers les types de pose du document n'est supposée — https://www.pvsyst.com/help/project-design/array-and-system-losses/array-thermal-losses/u-value-measurement.html — lu le 20/11/2026
+Vide
+Poussière sur les panneaux
+La poussière retient une part du soleil entre deux nettoyages
+3 %
+valeur de départ SUPPOSÉE
+ouvrir
+Citation complète : Profil de départ — valeur de départ SUPPOSÉE, acceptée par le fondateur le 23/11/2026 (D-ACAL-82) : salissure de 3 % par an pour un toit raccordé, avec un nettoyage environ deux fois par an en plus de la pluie (fréquence non sourcée, à confirmer) ; repères publiés : 3,0 % dans PVsyst 6.02 (Sandia SAND2013-3880P), 2 % par défaut dans PVWatts v5 (NREL/TP-6A20-62641), 1,95 % avec nettoyage mensuel à Benguerir et 5,8 % sans nettoyage sur un site minier marocain (Abraim 2022, Ghennioui 2026, https://elib.dlr.de/223442/1/Abraim2026online1-s2.0-S2590123026011187-main.pdf) — https://elib.dlr.de/189135/ — lu le 23/11/2026
+Vide
+Perte des premières heures de soleil
+Un panneau neuf perd un peu de puissance dès sa première exposition, selon sa technologie
+1,5 · 1 · 1 · 1,5 %
+Cellules PERC · TOPCon · HJT · autre
+valeur de départ SUPPOSÉE
+ouvrir
+Citation complète : Profil de départ — valeur de départ SUPPOSÉE, acceptée par le fondateur le 23/11/2026 (D-ACAL-82) : dégradation initiale (LID) de 1,5 % pour le PERC et pour une technologie inconnue, de 1 % pour le TOPCon et le HJT ; PVsyst ne propose aucune valeur par défaut et chiffre 1 à 3 % (page LID loss), PVEL/Kiwa 2026 mesure des médianes de 0,4 à 0,7 % — https://www.pvsyst.com/help/project-design/array-and-system-losses/lid-loss.html — lu le 23/11/2026
+Vide
+Arrêts de l’installation
+Part de la production perdue quand l’installation est à l’arrêt (panne, entretien)
+2 %
+valeur de départ SUPPOSÉE
+ouvrir
+Citation complète : Profil de départ — valeur de départ SUPPOSÉE, acceptée par le fondateur le 23/11/2026 (D-ACAL-82) : indisponibilité de 2 % de l'énergie annuelle, appliquée quand aucune fenêtre d'arrêt datée n'est saisie (une fenêtre saisie prime) ; repères publiés : 2 % à 7,3 jours par an dans PVsyst 6.02 (Sandia SAND2013-3880P), 3 % dans PVWatts v5, disponibilité médiane de 0,99 et P90 de 0,95 sur 1 128 systèmes américains (NREL/TP-5K00-88769) ; aucune donnée sur les coupures du réseau marocain — https://www.osti.gov/biblio/2318550 — lu le 23/11/2026
+Vide
+Câbles entre les panneaux et l’onduleur
+Chaleur perdue dans les câbles tant que leurs longueurs réelles ne sont pas connues
+1,5 %
+valeur de départ SUPPOSÉE
+ouvrir
+Citation complète : Profil de départ — valeur de départ SUPPOSÉE, acceptée par le fondateur le 23/11/2026 (D-ACAL-82) : pertes de câbles en continu de 1,5 %, valeur de CONCEPTION appliquée tant que les longueurs réelles des câbles ne sont pas connues (un calcul sur câbles réels prime) ; repères publiés : 1,5 % de fraction continue globale à STC dans PVsyst 6.02 (SAND2013-3880P), 2 % dans PVWatts v5 et dans Solargis, 3 % au maximum côté continu dans la norme UTE C 15-712-1 §11.2 — https://f1atb.fr/wp-content/uploads/2022/10/photovoltaique-norme-UTE-C157-12-1.pdf — lu le 23/11/2026
+Vide
+Câble entre l’onduleur et le tableau
+Chaleur perdue dans ce câble tant que sa longueur réelle n’est pas connue
+1 %
+valeur de départ SUPPOSÉE
+ouvrir
+Citation complète : Profil de départ — valeur de départ SUPPOSÉE, acceptée par le fondateur le 23/11/2026 (D-ACAL-82) : pertes de câbles en alternatif de 1 %, valeur de CONCEPTION appliquée tant que la longueur réelle de la liaison onduleur → tableau général n'est pas connue (un calcul sur câble réel prime) ; repères publiés : 1 % recommandé et 3 % au maximum côté alternatif dans la norme UTE C 15-712-1 §11.3, 1 % en basse tension dans Solargis Evaluate — https://f1atb.fr/wp-content/uploads/2022/10/photovoltaique-norme-UTE-C157-12-1.pdf — lu le 23/11/2026
+Vide
+Réflexion du sol
+Lumière renvoyée par le sol vers les panneaux
+0,2
+PVsyst
+ouvrir
+Citation complète : Profil de départ — PVsyst, Albedo usual coefficients : « The usual value is 0.2 (default in PVsyst). » (une seule valeur pour les douze mois) — https://www.pvsyst.com/help/physical-models-used/irradiation-models/albedo-usual-coefficients.html — lu le 20/11/2026
+Vide
+Panneaux double face : écart de la face arrière
+Perte propre aux panneaux qui captent aussi la lumière par l’arrière
+10 %
+PVsyst
+ouvrir
+Citation complète : Profil de départ — PVsyst, Bifacial systems : « it is set to 10% by default and can be changed by the user » — https://www.pvsyst.com/help/project-design/bifacial-systems/index.html — lu le 20/11/2026
+Vide
+Pas de temps du calcul
+Le calcul avance par tranches de temps de cette durée
+60 minutes
+PVGIS
+ouvrir
+Citation complète : Profil de départ — PVGIS, API non-interactive service, seriescalc (« Hourly radiation ») : « First year of the output of hourly averages » — pas horaire = 60 minutes — https://joint-research-centre.ec.europa.eu/photovoltaic-geographical-information-system-pvgis/getting-started-pvgis/api-non-interactive-service_en — lu le 20/11/2026
+Vide
+Écart acceptable entre chaînes
+Écart de tension toléré entre deux chaînes branchées ensemble
+4 %
+PV*SOL
+ouvrir
+Citation complète : Profil de départ — PV*SOL, Polystring connection : « If the MPP voltages between the strings differ by more than 4%, the wiring is within the tolerance range » (écart de tension MPP entre chaînes) — https://help.valentin-software.com/pvsol/en/pages/inverters/polystring-connection/ — lu le 20/11/2026
+Vide
+Écart bloquant entre chaînes
+Au-delà de cet écart de tension, le câblage est refusé
+10 %
+PV*SOL
+ouvrir
+Citation complète : Profil de départ — PV*SOL, Polystring connection : « if the MPP voltages between the strings differ by more than 10%, the wiring is in the blocking range » (écart de tension MPP entre chaînes) — https://help.valentin-software.com/pvsol/en/pages/inverters/polystring-connection/ — lu le 20/11/2026
+Vide
+Taille minimale des panneaux face à l’onduleur
+Puissance des panneaux rapportée à celle de l’onduleur
+1
+PV*SOL
+ouvrir
+Citation complète : Profil de départ — PV*SOL, Configuration check : facteur de dimensionnement (puissance DC / puissance AC) — « As a rule, it should not be smaller than 100%. » (100 % = 1,0) — https://help.valentin-software.com/pvsol/en/pages/inverters/configuration-check/ — lu le 20/11/2026
+Vide
+48 autres réglages
+Rien n’est proposé tant qu’aucune page publiée ne donne de valeur
+Aucune valeur publiée — à saisir par vous
+Rien n’est proposé : une valeur tapée de mémoire serait inventée
+—
+À saisir
+Saisir
+48 réglages sans valeur publiée (à saisir par vous)
+Tant qu’une valeur publiée sert, le résultat porte la mention « valeur publiée, non mesurée ». Tout reste modifiable dans Réglages › Calepinage.
+Retirer le profil
+Tout saisir à la main
+Remplir les 16 réglages vides

@@ -1,0 +1,74 @@
+Calepinages
+K2 — Maquettes mwurafpp1
+12 panneaux · 8,52 kWc · 1 onduleur 10 kW
+Enregistré à 13:54
+Mode expert
+Guidé
+Expert
+Montrer au client
+Générer le devis
+Toit
+fait
+Panneaux
+fait
+Électrique
+fait
+3 à régler
+Résultats
+fait
+Documents
+en cours
+Avancé
+Schéma électrique
+Des panneaux jusqu’au réseau · sans échelle
+Schéma détaillé
+Raccordement
+Côté panneaux · courant continu
+Côté réseau · courant alternatif
+Choisissez la norme électrique dans les réglages pour dimensionner le côté réseau
+entrée 1
+entrée 2
+Chaîne 1 · 6 panneaux
+6 × 710 Wc
+Chaîne 2 · 6 panneaux
+6 × 710 Wc
+Coffret côté panneaux
+2 chaîne(s)
+raccordée(s)
+Onduleur
+10 kW
+Deye Onduleur hybride
+Deye 10kW Monophasé
+2 entrées : 1 et 2
+continu → alternatif
+Coffret côté réseau
+à calculer
+Compteur
+à calculer
+Réseau du
+distributeur
+à calculer
+Terre : coffret, onduleur et structure
+
+Dessiné tout seul à partir du raccordement : 2 chaînes de 6 panneaux.
+
+Étape 3 sur 5
+
+Le schéma électrique
+Légende
+Chaîne 1 · entrée 1
+Chaîne 2 · entrée 2
+Liaison à la terre
+Cartouche
+Projet
+K2 — Maquettes mwurak3c2 — Casablanca
+Date
+24/11/2026
+Version
+Enregistrée à 13:54
+Auteur
+rev_b
+Le schéma se redessine quand le raccordement change. Cliquez sur un élément pour voir d’où vient sa valeur.
+Télécharger (PDF)
+DXF
+La pièce jointe désignée comme plan de fond n’est pas rattachée à ce calepinage : rien n’est servi, et aucune autre pièce n’est proposée à sa place.

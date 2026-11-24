@@ -1,0 +1,148 @@
+{
+  "ecran": "Documents",
+  "taille": "1440x900",
+  "tactile": false,
+  "theme": "clair",
+  "v1_disponible": true,
+  "url_reelle": "/calepinage/1929?onglet=documents",
+  "banc": {
+    "calepinage": 1929,
+    "variante": "complet",
+    "materiel": {
+      "ok": true,
+      "module": "Panneau Canadien Solar 710W",
+      "onduleur": "Onduleur hybride Deye 10kW Monophasé"
+    },
+    "simulation": {
+      "etat": "terminee",
+      "raison": null
+    }
+  },
+  "etat_atteint": true,
+  "raison_non_atteint": null,
+  "libelles_attendus": 47,
+  "libelles_trouves": [
+    "Guidé",
+    "Expert",
+    "Générer le devis",
+    "Étapes",
+    "Toit",
+    "Panneaux",
+    "Électrique",
+    "Résultats",
+    "Documents",
+    "Avancé",
+    "Enregistré à",
+    "Prêt à envoyer ?",
+    "À régler",
+    "Régler dans Toit",
+    "Bon",
+    "Puissance annoncée",
+    "Tension par temps froid",
+    "Légende",
+    "Bloque le devis",
+    "Documents du projet",
+    "Plan de pose",
+    "Plan de pose pour l’équipe",
+    "Aperçu",
+    "Télécharger",
+    "Le devis remis au client ne se fait pas ici",
+    "Place de chaque panneau, distances aux bords du toit, chaînes en couleur",
+    "Prêt · PDF",
+    "Schéma électrique",
+    "Note de calcul",
+    "Rapport d'étude",
+    "Plan au format DXF",
+    "Prêt · DXF"
+  ],
+  "libelles_manquants": [
+    "Retour aux calepinages",
+    "Pente du toit à confirmer",
+    "Taille adaptée à la facture",
+    "Ombres chiffrées",
+    "Panneaux pour l’onduleur",
+    "Câbles et protections",
+    "Production vérifiée avec PVGIS",
+    "Calcul à jour",
+    "Le point à régler n'empêche pas le devis",
+    "Aperçu de la première page",
+    "Télécharger le plan de pose",
+    "Télécharger le schéma électrique",
+    "Télécharger la note de calcul",
+    "Télécharger le rapport d'étude",
+    "Télécharger le plan DXF"
+  ],
+  "libelles_non_evalues": [],
+  "acceptes_absents": [
+    {
+      "libelle": "Visite technique",
+      "raison": "Dépend de l’état : la ligne « Visite technique » n’existe que si une visite a été faite sur le lead (la maquette montre « Faite et validée ») ; le banc n’en fait pas.",
+      "present": true
+    }
+  ],
+  "controles_visibles": {
+    "maquette": 34,
+    "reel": 54
+  },
+  "debordement_horizontal_reel": false,
+  "boites": {
+    "bandeau": {
+      "maquette": {
+        "x": 16,
+        "y": 16,
+        "l": 1408,
+        "h": 56
+      },
+      "reel": {
+        "x": 16,
+        "y": 16,
+        "l": 1408,
+        "h": 56
+      }
+    },
+    "rail": {
+      "maquette": {
+        "x": 16,
+        "y": 88,
+        "l": 76,
+        "h": 796
+      },
+      "reel": {
+        "x": 16,
+        "y": 88,
+        "l": 76,
+        "h": 796
+      }
+    },
+    "carte": {
+      "maquette": null,
+      "reel": null
+    },
+    "outils_carte": {
+      "maquette": null,
+      "reel": null
+    },
+    "panneau": {
+      "maquette": null,
+      "reel": null
+    },
+    "bouton_pied_panneau": {
+      "maquette": null,
+      "reel": null
+    },
+    "bouton_devis": {
+      "maquette": {
+        "x": 1269,
+        "y": 24,
+        "l": 145,
+        "h": 40
+      },
+      "reel": {
+        "x": 476,
+        "y": 809,
+        "l": 188,
+        "h": 52
+      }
+    }
+  }
+}

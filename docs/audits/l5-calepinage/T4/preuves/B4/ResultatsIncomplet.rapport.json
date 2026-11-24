@@ -1,0 +1,129 @@
+{
+  "ecran": "ResultatsIncomplet",
+  "taille": "1440x900",
+  "tactile": false,
+  "theme": "clair",
+  "v1_disponible": true,
+  "url_reelle": "/calepinage/1929?onglet=production",
+  "banc": {
+    "calepinage": 1929,
+    "variante": "complet",
+    "materiel": {
+      "ok": true,
+      "module": "Panneau Canadien Solar 710W",
+      "onduleur": "Onduleur hybride Deye 10kW Monophasé"
+    },
+    "simulation": {
+      "etat": "terminee",
+      "raison": null
+    }
+  },
+  "etat_atteint": true,
+  "raison_non_atteint": null,
+  "libelles_attendus": 34,
+  "libelles_trouves": [
+    "Générer le devis",
+    "Étapes",
+    "Toit",
+    "Panneaux",
+    "Électrique",
+    "Résultats",
+    "Documents",
+    "Production la première année",
+    "au plus",
+    "Plafond",
+    "C'est un plafond",
+    "Étapes du calcul",
+    "Écarts entre panneaux",
+    "Ce qui est déjà sûr",
+    "Puissance",
+    "Ombres proches",
+    "Indice de performance",
+    "À renseigner",
+    "S'affiche dès que le résultat est complet",
+    "Pour un résultat complet",
+    "réglages vides",
+    "Poussière sur les panneaux",
+    "Aucune valeur pour votre société",
+    "Renseigner",
+    "Vieillissement de la première année",
+    "Démarrage rapide",
+    "Voir les valeurs",
+    "Années basses",
+    "9 fois sur 10 au-dessus"
+  ],
+  "libelles_manquants": [
+    "Retour aux calepinages",
+    "Poussière",
+    "Vieillissement",
+    "Raccordement",
+    "Absent de la fiche du panneau"
+  ],
+  "libelles_non_evalues": [],
+  "acceptes_absents": [],
+  "controles_visibles": {
+    "maquette": 13,
+    "reel": 20
+  },
+  "debordement_horizontal_reel": false,
+  "boites": {
+    "bandeau": {
+      "maquette": {
+        "x": 16,
+        "y": 16,
+        "l": 1408,
+        "h": 56
+      },
+      "reel": {
+        "x": 16,
+        "y": 16,
+        "l": 1408,
+        "h": 56
+      }
+    },
+    "rail": {
+      "maquette": {
+        "x": 16,
+        "y": 88,
+        "l": 76,
+        "h": 796
+      },
+      "reel": {
+        "x": 16,
+        "y": 88,
+        "l": 76,
+        "h": 796
+      }
+    },
+    "carte": {
+      "maquette": {
+        "x": 108,
+        "y": 88,
+        "l": 1316,
+        "h": 796
+      },
+      "reel": null
+    },
+    "outils_carte": {
+      "maquette": null,
+      "reel": null
+    },
+    "panneau": {
+      "maquette": null,
+      "reel": null
+    },
+    "bouton_pied_panneau": {
+      "maquette": null,
+      "reel": null
+    },
+    "bouton_devis": {
+      "maquette": {
+        "x": 1269,
+        "y": 24,
+        "l": 145,
+        "h": 40
+      },
+      "reel": null
+    }
+  }
+}

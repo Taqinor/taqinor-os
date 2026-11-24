@@ -1,0 +1,91 @@
+{
+  "ecran": "DemarrageRapide",
+  "taille": "1440x900",
+  "tactile": false,
+  "theme": "clair",
+  "v1_disponible": true,
+  "url_reelle": "/calepinage/reglages/demarrage-rapide",
+  "banc": null,
+  "etat_atteint": true,
+  "raison_non_atteint": null,
+  "libelles_attendus": 24,
+  "libelles_trouves": [
+    "Réglages",
+    "Calepinage",
+    "Démarrage rapide",
+    "Les réglages encore vides peuvent recevoir une valeur publiée par un logiciel de référence",
+    "valeur publiée, non mesurée",
+    "Valeur proposée",
+    "Source",
+    "État",
+    "Vide",
+    "Écarts entre panneaux",
+    "Échauffement selon la pose",
+    "Plus le panneau chauffe, moins il produit",
+    "Reflets du verre",
+    "Réflexion du sol",
+    "Lumière renvoyée par le sol vers les panneaux",
+    "Poussière sur les panneaux",
+    "Saisir",
+    "Tout saisir à la main",
+    "Tout reste modifiable dans Réglages › Calepinage"
+  ],
+  "libelles_manquants": [
+    "Vieillissement de la première année",
+    "Perte des premières heures au soleil",
+    "Pertes dans les câbles côté panneaux",
+    "Marge de l’onduleur",
+    "Saleté accumulée entre deux nettoyages"
+  ],
+  "libelles_non_evalues": [],
+  "acceptes_absents": [],
+  "controles_visibles": {
+    "maquette": 20,
+    "reel": 25
+  },
+  "debordement_horizontal_reel": false,
+  "boites": {
+    "titre": {
+      "maquette": {
+        "x": 44,
+        "y": 102,
+        "l": 815,
+        "h": 37
+      },
+      "reel": {
+        "x": 44,
+        "y": 102,
+        "l": 830,
+        "h": 37
+      }
+    },
+    "contenu": {
+      "maquette": {
+        "x": 16,
+        "y": 88,
+        "l": 1408,
+        "h": 796
+      },
+      "reel": {
+        "x": 0,
+        "y": 88,
+        "l": 1440,
+        "h": 812
+      }
+    },
+    "premier_bouton": {
+      "maquette": {
+        "x": 933,
+        "y": 820,
+        "l": 185,
+        "h": 52
+      },
+      "reel": {
+        "x": 817,
+        "y": 824,
+        "l": 118,
+        "h": 44
+      }
+    }
+  }
+}
