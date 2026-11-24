@@ -347,18 +347,16 @@ class LogoDesDocumentsTests(SimpleTestCase):
         # Le fichier officiel téléversé = l'asset du devis (lockup clair).
         self.assertIn(logo.taqinor_b64('clair', 'lockup'), balise)
         self.assertNotIn(uri, balise)
-        self.assertTrue(hasattr(balise, '__html__'))
         for intraitable in (None, '', 'data:image/svg+xml;base64,PHN2Zz4=',
                             'data:image/png;base64,iVBORw0KGgo='):
             self.assertEqual(logo_document_html(intraitable), '')
 
     def test_la_piece_imprime_le_logo_des_devis_sinon_l_image_d_origine(self):
         from django.template.loader import get_template
-        from django.utils.safestring import mark_safe
         piece = get_template('_logo.html')
         uri = 'data:image/svg+xml;base64,PHN2Zz4='
         html = piece.render({'logo_uri': uri,
-                             'logo_html': mark_safe('<img data-devis="1">')})
+                             'logo_html': '<img data-devis="1">'})
         self.assertIn('<img data-devis="1">', html)
         self.assertNotIn(uri, html)
         for sans in ({'logo_uri': uri, 'logo_html': ''}, {'logo_uri': uri}):

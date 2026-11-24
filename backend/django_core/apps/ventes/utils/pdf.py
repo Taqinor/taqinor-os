@@ -13,7 +13,6 @@ from io import BytesIO
 
 from django.conf import settings
 from django.template.loader import get_template
-from django.utils.safestring import mark_safe
 import weasyprint
 
 from .minio_client import get_minio_client
@@ -224,19 +223,20 @@ def logo_document_html(logo_uri, alt='Logo'):
     """LE logo des devis pour un document à en-tête clair (décision de Reda du
     24/11/2026 : « use the quote logo on all other documents too ») : même
     module image que les devis (rogné au trait, détouré), même bloc et même
-    taille que sur une couverture claire de devis. Rend la balise ``<img>``,
-    sûre pour un gabarit, ou ``''`` quand l'image est absente ou n'est pas un
-    raster lisible (SVG, fichier corrompu) : la pièce ``_logo.html`` imprime
-    alors l'image d'origine, comme avant."""
+    taille que sur une couverture claire de devis. Rend la balise ``<img>``
+    (fabriquée par le moteur : base64 de son propre PNG, ``alt`` échappé — la
+    pièce ``_logo.html`` l'imprime avec ``|safe``), ou ``''`` quand l'image est
+    absente ou n'est pas un raster lisible (SVG, fichier corrompu) : la pièce
+    imprime alors l'image d'origine, comme avant."""
     if not logo_uri:
         return ''
     try:
         from apps.ventes.quote_engine import logo
         b64 = logo.societe_b64(logo_uri, 'clair')
         if b64:
-            return mark_safe(logo.img_html(
+            return logo.img_html(
                 logo.pour_role(b64, ROLE_LOGO_DOCUMENT), ROLE_LOGO_DOCUMENT,
-                alt=alt))
+                alt=alt)
     except Exception:  # noqa: BLE001 — logo intraitable : l'image d'origine
         logger.warning('logo_document_html : logo intraitable, image '
                        "d'origine imprimée", exc_info=True)
