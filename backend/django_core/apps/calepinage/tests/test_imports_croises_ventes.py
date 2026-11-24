@@ -38,7 +38,11 @@ PLAFONDS = {
     # (``ventes.selectors_calepinage``) ; ``services/pvgis_serie.py``
     # (``ventes.services.orientation_du_pan``, ACAL911) ; ACAL993 +1 :
     # ``views/chiffrage_contexte.py`` (``ventes.services.chiffrer_conception``).
-    ('calepinage', 'ventes'): (43, 5),
+    # 24/11/2026 : +1 (43 -> 44) — « un seul logo partout » (fondateur) :
+    # ``services/documents/gabarit_document.py`` lit le logo du devis par la
+    # porte ``ventes.selectors.logo_societe_html`` (jamais le moteur, règle
+    # n° 4) ; hors portes inchangé (5).
+    ('calepinage', 'ventes'): (44, 5),
 }
 
 PORTES = ('selectors', 'services')
