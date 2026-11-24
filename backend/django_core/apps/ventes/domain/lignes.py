@@ -511,6 +511,13 @@ def creer_ligne(devis, **champs):
     """
     from ..models import LigneDevis
 
+    return LigneDevis.objects.create(devis=devis, **_champs_a_la_creation(devis, champs))
+
+
+def _champs_a_la_creation(devis, champs):
+    """ADEV133 — les champs COMPLETS d'une ligne à créer (contrôles, rôle,
+    taux de TVA) : corps de :func:`creer_ligne`, partagé avec
+    :func:`lignes_neuves` (lignes non enregistrées du moteur unique)."""
     inconnus = sorted(set(champs) - set(CHAMPS_LIGNE))
     if inconnus:
         raise ValueError(
@@ -535,7 +542,7 @@ def creer_ligne(devis, **champs):
             # lui appliquaient de toute façon : total inchangé). Plus aucune
             # ligne NULL dont l'écran devait deviner le taux.
             champs['taux_tva'] = getattr(devis, 'taux_tva', None)
-    return LigneDevis.objects.create(devis=devis, **champs)
+    return champs
 
 
 def _taux_tva_du_produit(champs):
@@ -904,6 +911,16 @@ def retarifer_forfaits_par_panneau(devis, *, avertissements=None,
         # courant, comme hier.
         from apps.ventes.domain.envoi import baremes_forfaits_geles
         geles = baremes_forfaits_geles(_devis_frais(devis))
+    for ligne, attendu in _retarifs(lignes, comptes, geles, messages):
+        ligne.prix_unitaire = attendu
+        ligne.save(update_fields=['prix_unitaire'])
+    return messages
+
+
+def _retarifs(lignes, comptes, geles, messages):
+    """ADEV133 — ``(ligne, prix attendu)`` de chaque forfait au panneau à
+    remettre au barème (abstentions dites dans ``messages``) : boucle de
+    :func:`retarifer_forfaits_par_panneau`, partagée avec :func:`lignes_neuves`."""
     for ligne in lignes:
         produit = getattr(ligne, 'produit', None)
         if not porte_bareme_par_panneau(produit):
@@ -933,9 +950,7 @@ def retarifer_forfaits_par_panneau(devis, *, avertissements=None,
             messages.append(avertissement_forfait_verrouille(
                 ligne.designation, nb_panneaux, attendu))
             continue
-        ligne.prix_unitaire = attendu
-        ligne.save(update_fields=['prix_unitaire'])
-    return messages
+        yield ligne, attendu
 
 
 #: QJR204 — LE REFUS, EN FRANÇAIS, D'UN REMPLACEMENT PAR LE VIDE.
@@ -1086,10 +1101,7 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
     chemins d'écriture, ``ecrire_lignes(composition=None)`` compris. Un futur
     flux de vidage devra le DÉCLARER (``autoriser_vidage=True``), jamais
     l'obtenir par une liste vide."""
-    from decimal import Decimal, InvalidOperation
-    from django.db.models import Q
     from ..models import LigneDevis
-    from apps.stock.selectors import produits_qs  # ADEV56
     if not lignes_in and not autoriser_vidage:
         raise ValueError(MSG_REMPLACEMENT_VIDE)
     # AGR217 — un 0 % sans base légale est refusé AVANT la suppression.
@@ -1103,8 +1115,6 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
     # ADEV30 — compte de panneaux AVANT le remplacement (un envoyé n'est
     # re-tarifé que si ce compte change).
     comptes_avant = comptes_panneaux_du_devis(devis)
-    _VALID_TYPES = {c.value for c in LigneDevis.TypeLigne}
-    _VALID_VARIANTES = {c.value for c in LigneDevis.Variante}
     # QJR667 — un ``lot`` n'est accepté que s'il appartient à CE devis (donc
     # à sa société) ; tout autre id (ou un id illisible) ⇒ ligne hors lot.
     lots_du_devis = {lot.pk: lot for lot in devis.lots.all()}
@@ -1114,11 +1124,39 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
             return lots_du_devis.get(int(valeur))
         except (TypeError, ValueError):
             return None
+    devis.lignes.all().delete()
+    for champs in _champs_des_lignes(lignes_in, company, _lot_emis):
+        creer_ligne(devis, **champs)
+    # ACAL90 — le marqueur suit le geste de l'écran : retirées = avant −
+    # après ; toute classe présente après en sort.
+    classes_apres = {c for c in (
+        _classe_completable(li) for li in LigneDevis.objects.filter(
+            devis_id=devis.pk).select_related('produit')) if c}
+    if classes_avant or classes_apres:
+        noter_kit_retire(devis, retirees=classes_avant - classes_apres,
+                         remises=classes_apres)
+    # QJR83 — les forfaits AU PANNEAU suivent le compte réellement écrit
+    # ci-dessus (jamais celui que l'appelant croyait envoyer).
+    return retarifer_forfaits_par_panneau(devis,
+                                          avertissements=avertissements,
+                                          comptes_avant=comptes_avant)
+
+
+def _champs_des_lignes(lignes_in, company, lot_emis):
+    """ADEV133 — les champs de :func:`creer_ligne` de chaque ligne reçue,
+    contrôlés (produit borné à la société ou au catalogue global, bornes,
+    variante, rôle, groupe) : boucle de :func:`remplacer_lignes`, partagée avec
+    :func:`lignes_neuves`. ``lot_emis`` résout un ``lot`` reçu (ou ``None``)."""
+    from decimal import InvalidOperation
+    from django.db.models import Q
+    from ..models import LigneDevis
+    from apps.stock.selectors import produits_qs  # ADEV56
+    _VALID_TYPES = {c.value for c in LigneDevis.TypeLigne}
+    _VALID_VARIANTES = {c.value for c in LigneDevis.Variante}
     # STKCAT23 (bis) — vocabulaire des rôles : un rôle hors liste n'est
     # jamais écrit tel quel, creer_ligne le résout lui-même.
     from core.product_roles import ROLES_DEVIS
     _VALID_ROLES = set(ROLES_DEVIS)
-    devis.lignes.all().delete()
     for idx, li in enumerate(lignes_in):
         if not isinstance(li, dict):
             continue
@@ -1135,8 +1173,8 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
             if not designation:
                 raise ValueError(
                     'Une ligne de section/note doit porter un intitulé.')
-            creer_ligne(
-                devis, produit=None,
+            yield dict(
+                produit=None,
                 designation=designation[:255],
                 quantite=None, prix_unitaire=None, remise=Decimal('0'),
                 taux_tva=None, type_ligne=type_ligne, ordre=ordre)
@@ -1182,8 +1220,8 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
         # NOMMÉE (aucun écrivain UI : il se pose après coup, à l'écran).
         groupe_index = _groupe_index_emis(li.get('groupe_index'))
         groupe_label = str(li.get('groupe_label') or '')[:_GROUPE_LABEL_MAX]
-        creer_ligne(
-            devis, produit=produit,
+        yield dict(
+            produit=produit,
             designation=(li.get('designation') or produit.nom)[:255],
             quantite=qte, prix_unitaire=pu, remise=remise,
             taux_tva=Decimal(str(taux)) if taux is not None else None,
@@ -1193,7 +1231,7 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
             optionnelle=bool(li.get('optionnelle', False)),
             type_ligne='produit', ordre=ordre, variante=variante,
             groupe_index=groupe_index, groupe_label=groupe_label,
-            lot=_lot_emis(li.get('lot')),
+            lot=lot_emis(li.get('lot')),
             **extra_role,
             # QJR59 / D12 — les marqueurs de saisie MANUELLE font l'aller
             # retour. Sans eux ici, ce chemin (le SEUL chemin d'écriture de
@@ -1210,19 +1248,25 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
             # était pris pour une ligne composée et REMPLACÉ au recalcul.
             # Absente / null ⇒ None (inconnue), comportement d'hier.
             ligne_composee=_ligne_composee_emise(li.get('ligne_composee')))
-    # ACAL90 — le marqueur suit le geste de l'écran : retirées = avant −
-    # après ; toute classe présente après en sort.
-    classes_apres = {c for c in (
-        _classe_completable(li) for li in LigneDevis.objects.filter(
-            devis_id=devis.pk).select_related('produit')) if c}
-    if classes_avant or classes_apres:
-        noter_kit_retire(devis, retirees=classes_avant - classes_apres,
-                         remises=classes_apres)
-    # QJR83 — les forfaits AU PANNEAU suivent le compte réellement écrit
-    # ci-dessus (jamais celui que l'appelant croyait envoyer).
-    return retarifer_forfaits_par_panneau(devis,
-                                          avertissements=avertissements,
-                                          comptes_avant=comptes_avant)
+
+
+def lignes_neuves(devis, lignes_in, company, *, avertissements=None):
+    """ADEV133 (D-ACAL-97) — les lignes que :func:`remplacer_lignes` ÉCRIRAIT
+    sur un devis NEUF (brouillon, sans ligne ni lot), NON enregistrées : mêmes
+    contrôles et mêmes champs (:func:`_champs_des_lignes`,
+    :func:`_champs_a_la_creation`), même remise au barème des forfaits au
+    panneau (:func:`_retarifs`). Rien n'est écrit (moteur unique)."""
+    from ..models import LigneDevis
+    if not lignes_in:
+        raise ValueError(MSG_REMPLACEMENT_VIDE)
+    exiger_base_legale_tva(lignes_in)
+    lignes = [LigneDevis(devis=devis, **_champs_a_la_creation(devis, champs))
+              for champs in _champs_des_lignes(lignes_in, company, lambda _lot: None)]
+    produits = [li for li in lignes if li.type_ligne == 'produit']
+    messages = avertissements if isinstance(avertissements, list) else []
+    for ligne, attendu in _retarifs(produits, _comptes_panneaux(produits), {}, messages):
+        ligne.prix_unitaire = attendu
+    return lignes
 
 
 # ── ACAL90 (C-ACAL-111, D-ACAL-22) — LE KIT RETIRÉ À LA MAIN ────────────────

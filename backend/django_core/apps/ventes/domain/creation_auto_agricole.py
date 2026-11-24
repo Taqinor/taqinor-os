@@ -53,8 +53,7 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
         taux_tva = tva_standard(company)
     from apps.crm.services import resolve_client_for_lead
     from apps.ventes.conception.decisions import decider_agricole
-    from apps.ventes.domain.pompage import (
-        etude_precalculee, saisies_economie_pompage_du_lead)
+    from apps.ventes.domain.pompage import etude_precalculee
     from apps.ventes.models import Devis
 
     # ADEV160 (D-ACAL-97) — champs manquants, relevé du point d'eau,
@@ -65,10 +64,7 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
     sortie, lignes, omises, pompe = (decision.sortie, decision.lignes,
                                      decision.omises, decision.pompe)
     client = resolve_client_for_lead(lead)
-    etude = dict(decision.corps)
-    saisies = saisies_economie_pompage_du_lead(lead)
-    if saisies:
-        etude['saisies_economie_pompage'] = saisies
+    etude = etude_params_creation_agricole(decision, lead)
 
     def _create(ref):
         return Devis.objects.create(
@@ -83,18 +79,35 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
             company=company, user=user, lead=lead, creer=_create,
             lignes=lignes, mode_installation='agricole')
     if journal_auto is not None:
-        alertes = [dict(a) for a in (sortie.get('alertes') or [])]
-        for designation in omises:
-            alertes.append({
-                'code': 'article_prix_a_renseigner', 'champ': 'kit',
-                'message': ('« %s » non ajouté au devis : prix à renseigner '
-                            'au catalogue (jamais un article gratuit).'
-                            % designation)})
-        journal_auto['alertes'] = alertes
+        journal_auto['alertes'] = alertes_journal_agricole(sortie, omises)
     logger.info('Auto-devis agricole %s: pompe %s (lead %s, company %s)',
                 devis.reference, pompe.get('nom'), getattr(lead, 'pk', '?'),
                 getattr(company, 'id', '?'))
     return devis
+
+
+def etude_params_creation_agricole(decision, lead):
+    """ADEV133 — l'``etude_params`` posé à la création agricole (corps d'étude,
+    entrées carburant du lead) : partagé avec le moteur unique."""
+    from apps.ventes.domain.pompage import saisies_economie_pompage_du_lead
+    etude = dict(decision.corps)
+    saisies = saisies_economie_pompage_du_lead(lead)
+    if saisies:
+        etude['saisies_economie_pompage'] = saisies
+    return etude
+
+
+def alertes_journal_agricole(sortie, omises):
+    """ADEV133 — les alertes du journal d'un devis automatique agricole (étude,
+    articles « prix à renseigner » omis) : partagées avec le moteur unique."""
+    alertes = [dict(a) for a in (sortie.get('alertes') or [])]
+    for designation in omises:
+        alertes.append({
+            'code': 'article_prix_a_renseigner', 'champ': 'kit',
+            'message': ('« %s » non ajouté au devis : prix à renseigner '
+                        'au catalogue (jamais un article gratuit).'
+                        % designation)})
+    return alertes
 
 
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────

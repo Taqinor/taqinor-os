@@ -1360,6 +1360,27 @@ def build_electrical_design(devis, *, overrides=None, persister=True):
     return design
 
 
+def conception_electrique_dessinable(devis):
+    """ADEV133 — les trois portails du schéma (modules à répartir, fiches
+    COMPLÈTES, conformité sans bloquant) : la garde de
+    :func:`rafraichir_conception_electrique_devis`, partagée avec le moteur
+    unique. Lecture seule ; peut lever (l'appelant avale)."""
+    entree = construire_entree(devis)
+    if not entree.groupes:
+        return False
+    if fiches_manquantes_du_devis(devis):
+        return False
+    from core.electrique import concevoir
+    resultat = concevoir(entree)
+    if resultat.conformite.bloquants:
+        logger.info(
+            "L-SLD : conception électrique NON rangée pour le devis %s — "
+            "%s", getattr(devis, "reference", "?"),
+            MOTIF_NON_CONFORME % resultat.conformite.bloquants[0])
+        return False
+    return True
+
+
 def rafraichir_conception_electrique_devis(devis):
     """L-SLD (24/08/2026) — pose l'étude électrique À L'ENREGISTREMENT du devis.
 
@@ -1394,18 +1415,7 @@ def rafraichir_conception_electrique_devis(devis):
     étude. Rend le contrat rangé, ou ``None``.
     """
     try:
-        entree = construire_entree(devis)
-        if not entree.groupes:
-            return None
-        if fiches_manquantes_du_devis(devis):
-            return None
-        from core.electrique import concevoir
-        resultat = concevoir(entree)
-        if resultat.conformite.bloquants:
-            logger.info(
-                "L-SLD : conception électrique NON rangée pour le devis %s — "
-                "%s", getattr(devis, "reference", "?"),
-                MOTIF_NON_CONFORME % resultat.conformite.bloquants[0])
+        if not conception_electrique_dessinable(devis):
             return None
         return build_electrical_design(devis)
     except Exception:  # noqa: BLE001 — une étude ratée n'empêche jamais un (D-ENF22-BLE001)

@@ -574,6 +574,20 @@ COLONNES_LUES_SANS_CHIFFRE = frozenset({'adresse'})
 #: Clés d'hypothèse suffixées par l'id d'un produit (``section_ac_<id du câble>``).
 CLE_SUFFIXEE_PAR_UN_ID = r'\b(section_ac)_\d+\b'
 
+#: Le tracé du client des cas « contour » (zone du calepinage).
+CONTOUR_CLIENT = {'roof_outline': [[33.57310, -7.58980], [33.57310, -7.58970],
+                                   [33.57301, -7.58970], [33.57301, -7.58980]],
+                  'roof_point': {'lat': 33.573055, 'lng': -7.58975}}
+#: Ce que l'APPELANT passe à ``build_devis_auto`` pour un cas (hors lead).
+APPELS_FIGEAGE = {
+    'res_contour_plafond': {'plafond_toit': 8},
+    'journal_taille_souhaitee': {'journal': True},
+    'journal_taille_cible': {'journal': True, 'target_kwc': '5'},
+    'journal_site_isole': {'journal': True},
+    'journal_site_isole_sans': {'journal': True},
+    'journal_contour_plafond': {'journal': True, 'plafond_toit': 8},
+}
+
 CHAMPS_DEVIS_FIGES = ('mode_installation', 'statut', 'taux_tva', 'remise_globale', 'devise',
                       'regles_calcul', 'option_acceptee', 'prix_par_kwc', 'prix_cible_kwc',
                       'version', 'is_active', 'overrides', 'echeancier', 'roof_layout',
@@ -735,14 +749,92 @@ class FigeageDevisAutoTests(TestCase):
                 ond_mppt_v_max=Decimal('560'), ond_v_max_abs=Decimal('600'),
                 ond_i_max_mppt_a=Decimal('16'), ond_rendement_euro_pct=Decimal('97.5'))
 
+    def _site_isole(self, **extra):
+        from apps.stock.models import Produit
+
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'), raccordement='aucun', **extra)
+        Produit.objects.create(company=company, nom='Onduleur autonome Deye 5kW Monophasé',
+                               sku=f'ONDA-{company.pk}', prix_vente=Decimal('15000'),
+                               prix_achat=Decimal('1'), quantite_stock=100)
+        return company, lead
+
+    def _structures(self, company):
+        from apps.stock.models import Produit
+
+        for nom, sku in (('Structure acier toiture', 'STR-AC'), ('Structure aluminium toiture', 'STR-AL')):
+            Produit.objects.create(company=company, nom=nom, sku=f'{sku}-{company.pk}',
+                                   prix_vente=Decimal('300'), prix_achat=Decimal('1'), quantite_stock=100)
+
+    def _fiches_ci(self, company):
+        from apps.stock.models import FicheTechnique
+
+        FicheTechnique.objects.filter(company=company, type_fiche='module').update(
+            noct_c=Decimal('45'), temp_coeff_voc_pct_c=Decimal('-0.250'),
+            temp_coeff_pmax_pct_c=Decimal('-0.300'))
+
+    def _cas(self, nom):
+        """``(company, lead)`` du golden ``nom`` — UNE fabrique, lue par les
+        goldens ET par la parité du moteur unique (``MoteurUniqueTests``)."""
+        f = Decimal('1800')
+
+        def _puis(paire, completer):
+            completer(paire[0])
+            return paire
+        cas = {
+            'res_facture_dirhams': lambda: self._residentiel(facture_hiver=f),
+            'res_kwh_declare_ete_different': lambda: self._residentiel(
+                facture_hiver=f, facture_ete=Decimal('2600'), ete_differente=True,
+                conso_mensuelle_kwh=Decimal('700'), occupation_jour='present'),
+            'res_batterie_avec': lambda: self._residentiel(facture_hiver=Decimal('2500'), batterie_souhaitee='avec'),
+            'res_batterie_sans': lambda: self._residentiel(facture_hiver=Decimal('2500'), batterie_souhaitee='sans'),
+            'ci_commercial': lambda: self._ci(conso_mensuelle_kwh=Decimal('6000')),
+            'ci_commercial_deux_options': lambda: self._ci(batteries=True, boulangerie=True),
+            'ci_industriel': lambda: self._ci(
+                conso_mensuelle_kwh=Decimal('20000'), type_installation='industriel',
+                categorie_commerciale=None, jours_ouverture=[1, 2, 3, 4, 5, 6], heure_debut=7, heure_fin=19),
+            'agr_pompe_courbe': lambda: self._agricole(),
+            'agr_pompe_existante': lambda: self._agricole(existante=True),
+            'res_conception_electrique': lambda: _puis(self._residentiel(facture_hiver=f),
+                                                       self._fiches_residentielles),
+            'res_taille_souhaitee': lambda: self._residentiel(facture_hiver=f, taille_souhaitee_kwc=Decimal('4.40')),
+            'res_contour_plafond': lambda: self._residentiel(facture_hiver=f, **CONTOUR_CLIENT),
+            'res_structure_alu': lambda: _puis(self._residentiel(facture_hiver=f, structure_pref='aluminium'),
+                                               self._structures),
+            'res_site_isole': self._site_isole,
+            'ci_taille_souhaitee': lambda: self._ci(conso_mensuelle_kwh=Decimal('6000'),
+                                                    taille_souhaitee_kwc=Decimal('30')),
+            'ci_fiches_completes': lambda: _puis(self._ci(conso_mensuelle_kwh=Decimal('6000')), self._fiches_ci),
+            'journal_taille_souhaitee': lambda: self._residentiel(facture_hiver=f,
+                                                                  taille_souhaitee_kwc=Decimal('4.40')),
+            'journal_taille_cible': lambda: self._residentiel(facture_hiver=f),
+            'journal_site_isole': self._site_isole,
+            'journal_site_isole_sans': lambda: self._site_isole(batterie_souhaitee='sans'),
+            'journal_contour_plafond': lambda: self._residentiel(facture_hiver=f, **CONTOUR_CLIENT),
+        }
+        return cas[nom]()
+
+    def _golden(self, nom):
+        return self._figer(nom, *self._cas(nom), **APPELS_FIGEAGE.get(nom, {}))
+
     # ── capture / comparaison ───────────────────────────────────────────────
-    def _figer(self, nom, company, lead, **appel):
+    def _figer(self, nom, company, lead, *, journal=False, **appel):
+        """``journal`` : l'appel porte un ``journal_auto`` (dict, comme le
+        tunnel et ``POST devis/auto/``) ; le golden fige alors son contenu
+        final ET la liste d'alertes que l'appelant rend (``views/devis.py`` :
+        ``list(journal.get('alertes') or [])``)."""
         import os
 
         from apps.ventes.services import build_devis_auto
 
+        journal_auto = {} if journal else None
+        if journal:
+            appel['journal_auto'] = journal_auto
         devis = build_devis_auto(lead=lead, user=self._utilisateur(company), company=company, **appel)
-        photo = json.loads(json.dumps(_photo_du_devis(devis), default=str))
+        photo = _photo_du_devis(devis)
+        if journal:
+            photo['journal_auto'] = _normaliser_figeage(journal_auto)
+            photo['alertes_appelant'] = _normaliser_figeage(list(journal_auto.get('alertes') or []))
+        photo = json.loads(json.dumps(photo, default=str))
         self.assertEqual(_cles_interdites(photo), [], "prix d'achat ou marge dans le golden")
         fichier = DOSSIER_FIGEAGE / f'{nom}.json'
         if os.environ.get('UPDATE_GOLDEN') == '1':
@@ -756,7 +848,7 @@ class FigeageDevisAutoTests(TestCase):
         return photo
 
     def test_residentiel_facture_en_dirhams_seule(self):
-        photo = self._figer('res_facture_dirhams', *self._residentiel(facture_hiver=Decimal('1800')))
+        photo = self._golden('res_facture_dirhams')
         self.assertIn('etude_horaire', photo['etude_params'])
         self.assertIn('dimensionnement', photo['etude_params'])
         # Le golden n'est pas vide : lignes et totaux réellement figés.
@@ -764,33 +856,26 @@ class FigeageDevisAutoTests(TestCase):
         self.assertGreater(float(photo['champs_devis']['total_ttc']), 0)
 
     def test_residentiel_kwh_declare_ete_different(self):
-        self._figer('res_kwh_declare_ete_different', *self._residentiel(
-            facture_hiver=Decimal('1800'), facture_ete=Decimal('2600'), ete_differente=True,
-            conso_mensuelle_kwh=Decimal('700'), occupation_jour='present'))
+        self._golden('res_kwh_declare_ete_different')
 
     def test_residentiel_batterie_souhaitee_avec(self):
-        self._figer('res_batterie_avec', *self._residentiel(
-            facture_hiver=Decimal('2500'), batterie_souhaitee='avec'))
+        self._golden('res_batterie_avec')
 
     def test_residentiel_batterie_souhaitee_sans(self):
-        self._figer('res_batterie_sans', *self._residentiel(
-            facture_hiver=Decimal('2500'), batterie_souhaitee='sans'))
+        self._golden('res_batterie_sans')
 
     def test_commercial(self):
-        photo = self._figer('ci_commercial', *self._ci(conso_mensuelle_kwh=Decimal('6000')))
+        photo = self._golden('ci_commercial')
         self.assertIn('etude_ci', photo['etude_params'])
 
     def test_commercial_deux_options_batterie(self):
-        self._figer('ci_commercial_deux_options', *self._ci(batteries=True, boulangerie=True))
+        self._golden('ci_commercial_deux_options')
 
     def test_industriel(self):
-        self._figer('ci_industriel', *self._ci(
-            conso_mensuelle_kwh=Decimal('20000'), type_installation='industriel',
-            categorie_commerciale=None, jours_ouverture=[1, 2, 3, 4, 5, 6], heure_debut=7,
-            heure_fin=19))
+        self._golden('ci_industriel')
 
     def test_agricole_pompe_a_courbe(self):
-        photo = self._figer('agr_pompe_courbe', *self._agricole())
+        photo = self._golden('agr_pompe_courbe')
         self.assertTrue(any((li['produit_nom'] or '').startswith('Pompe') for li in photo['lignes']))
 
     def test_creation_complete_ne_lit_que_des_colonnes_connues(self):
@@ -849,22 +934,19 @@ class FigeageDevisAutoTests(TestCase):
         return lues, hors_calcul
 
     def test_agricole_pompe_existante(self):
-        photo = self._figer('agr_pompe_existante', *self._agricole(existante=True))
+        photo = self._golden('agr_pompe_existante')
         self.assertFalse(any((li['produit_nom'] or '').startswith('Pompe') for li in photo['lignes']))
 
     # ── ADEV160 (préalable) — les chemins que les neuf cas ne traversent pas ──
     def test_residentiel_conception_electrique_rangee(self):
         """Fiches complètes ⇒ ``electrical_design`` rangé (chaînes, verdict
         d'onduleur) : le seul cas où le golden fige la conception électrique."""
-        company, lead = self._residentiel(facture_hiver=Decimal('1800'))
-        self._fiches_residentielles(company)
-        photo = self._figer('res_conception_electrique', company, lead)
+        photo = self._golden('res_conception_electrique')
         self.assertIsNotNone(photo['electrical_design'])
 
     def test_residentiel_taille_souhaitee_de_la_fiche(self):
         """``taille_souhaitee_kwc`` souveraine : aucun moteur ne dimensionne."""
-        photo = self._figer('res_taille_souhaitee', *self._residentiel(
-            facture_hiver=Decimal('1800'), taille_souhaitee_kwc=Decimal('4.40')))
+        photo = self._golden('res_taille_souhaitee')
         panneaux = sum(float(li['quantite']) for li in photo['lignes']
                        if (li['produit_nom'] or '').startswith('Panneau'))
         self.assertEqual(panneaux, 7)  # ⌈4 400 / 710⌉ : le compte du panneau de dimensionnement
@@ -872,11 +954,7 @@ class FigeageDevisAutoTests(TestCase):
     def test_residentiel_contour_du_client_et_plafond_du_toit(self):
         """Tracé du client (zone du calepinage) + plafond physique passé par le
         tunnel (``plafond_toit``) qui RÉDUIT le compte du moteur (11 → 8)."""
-        contour = [[33.57310, -7.58980], [33.57310, -7.58970],
-                   [33.57301, -7.58970], [33.57301, -7.58980]]
-        photo = self._figer('res_contour_plafond', *self._residentiel(
-            facture_hiver=Decimal('1800'), roof_outline=contour,
-            roof_point={'lat': 33.573055, 'lng': -7.58975}), plafond_toit=8)
+        photo = self._golden('res_contour_plafond')
         self.assertTrue(photo['champs_devis']['roof_layout'].get('outline'))
         panneaux = sum(float(li['quantite']) for li in photo['lignes']
                        if (li['produit_nom'] or '').startswith('Panneau'))
@@ -885,47 +963,62 @@ class FigeageDevisAutoTests(TestCase):
     def test_residentiel_structure_aluminium_du_lead(self):
         """``structure_pref`` du lead (STKCAT9) : la structure aluminium est
         composée, jamais l'acier par défaut."""
-        from apps.stock.models import Produit
-
-        company, lead = self._residentiel(facture_hiver=Decimal('1800'), structure_pref='aluminium')
-        for nom, sku in (('Structure acier toiture', 'STR-AC'), ('Structure aluminium toiture', 'STR-AL')):
-            Produit.objects.create(company=company, nom=nom, sku=f'{sku}-{company.pk}',
-                                   prix_vente=Decimal('300'), prix_achat=Decimal('1'), quantite_stock=100)
-        photo = self._figer('res_structure_alu', company, lead)
+        photo = self._golden('res_structure_alu')
         noms = [li['produit_nom'] for li in photo['lignes']]
         self.assertIn('Structure aluminium toiture', noms)
         self.assertNotIn('Structure acier toiture', noms)
 
     def test_residentiel_site_isole(self):
         """Raccordement « aucun » : onduleur autonome + batterie, option unique."""
-        from apps.stock.models import Produit
-
-        company, lead = self._residentiel(facture_hiver=Decimal('1800'), raccordement='aucun')
-        Produit.objects.create(company=company, nom='Onduleur autonome Deye 5kW Monophasé',
-                               sku=f'ONDA-{company.pk}', prix_vente=Decimal('15000'),
-                               prix_achat=Decimal('1'), quantite_stock=100)
-        photo = self._figer('res_site_isole', company, lead)
+        photo = self._golden('res_site_isole')
         self.assertTrue(any('autonome' in (li['produit_nom'] or '') for li in photo['lignes']))
 
     def test_commercial_taille_souhaitee(self):
         """C&I : la taille souhaitée de la fiche est SOUVERAINE (taille explicite)."""
-        self._figer('ci_taille_souhaitee', *self._ci(
-            conso_mensuelle_kwh=Decimal('6000'), taille_souhaitee_kwc=Decimal('30')))
+        self._golden('ci_taille_souhaitee')
 
     def test_commercial_fiches_completes(self):
         """C&I aux fiches complètes (coefficients de température du module) :
         la conception électrique est rangée. Les chaînes de l'étude C&I, elles,
         restent nulles à la création (``etude_ci._combinaison_imposee`` : le
         rafraîchisseur étudie les onduleurs DES LIGNES)."""
-        from apps.stock.models import FicheTechnique
-
-        company, lead = self._ci(conso_mensuelle_kwh=Decimal('6000'))
-        FicheTechnique.objects.filter(company=company, type_fiche='module').update(
-            noct_c=Decimal('45'), temp_coeff_voc_pct_c=Decimal('-0.250'),
-            temp_coeff_pmax_pct_c=Decimal('-0.300'))
-        photo = self._figer('ci_fiches_completes', company, lead)
+        photo = self._golden('ci_fiches_completes')
         self.assertIsNotNone(photo['electrical_design'])
         self.assertIsNone(photo['etude_params']['etude_ci']['composition']['onduleurs']['chaines'])
+
+    # ── Le JOURNAL de la décision résidentielle (seul mécanisme que
+    # l'extraction ADEV160 a changé : alertes et clés notées par la décision
+    # pure, versées ensuite au journal de l'appelant). Capturés sur le code de
+    # création d'AVANT l'extraction (ef400a21f8). ───────────────────────────────
+    def _codes(self, photo):
+        return [a['code'] for a in photo['alertes_appelant']]
+
+    def test_journal_taille_souhaitee_de_la_fiche(self):
+        photo = self._golden('journal_taille_souhaitee')
+        self.assertIn('taille_demandee', self._codes(photo))
+        self.assertEqual(photo['journal_auto']['alertes'], photo['alertes_appelant'])
+
+    def test_journal_taille_cible_du_devis(self):
+        photo = self._golden('journal_taille_cible')
+        self.assertIn('taille_demandee', self._codes(photo))
+
+    def test_journal_site_isole_sans_choix_explicite(self):
+        """Hors réseau sans « sans » explicite : batterie d'office, AUCUNE alerte
+        ``batterie_hors_reseau`` (elle ne dit qu'un choix écarté)."""
+        photo = self._golden('journal_site_isole')
+        self.assertNotIn('batterie_hors_reseau', self._codes(photo))
+
+    def test_journal_site_isole_sans_explicite(self):
+        photo = self._golden('journal_site_isole_sans')
+        self.assertIn('batterie_hors_reseau', self._codes(photo))
+
+    def test_journal_contour_et_plafond_du_toit(self):
+        """Clés lues par la note du tunnel : ``contour_client``,
+        ``plafond_applique``, ``panneaux_avant_plafond``."""
+        photo = self._golden('journal_contour_plafond')
+        self.assertEqual((photo['journal_auto']['plafond_applique'],
+                          photo['journal_auto']['contour_client']), (8, 4))
+        self.assertGreater(photo['journal_auto']['panneaux_avant_plafond'], 8)
 
 
 def _ecritures(requetes):
@@ -942,9 +1035,13 @@ def _reglages_de_la_societe(company):
     """Les singletons de réglages société naissent à leur PREMIÈRE lecture
     (``TariffSettings.get`` : ``get_or_create``) — une lecture de réglage, pas
     une écriture du pipeline : matérialisés AVANT la capture."""
+    from apps.parametres.models import CompanyProfile
     from apps.parametres.models_tariff import TariffSettings
 
     TariffSettings.get(company=company)
+    # ADEV133 — le profil société naît aussi à sa première lecture
+    # (``creation.devise_par_defaut`` : ``CompanyProfile.get``).
+    CompanyProfile.get(company=company)
 
 
 class PipelinePurTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_utilisateur',
@@ -1071,3 +1168,200 @@ class PipelinePurTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_ut
         self.assertEqual(derivees['provenance_pompage']['_empreinte'],
                          devis.etude_params['provenance_pompage']['_empreinte'])
         self.assertEqual(_json(derivees), _json(etude_pompage_des_lignes(devis, force=True)[0]))
+
+
+# ── ADEV133 — le point d'entrée unique, sans écriture, à PARITÉ des goldens ───
+#
+# Pour chaque golden de ``FigeageDevisAutoTests`` (même fabrique ``_cas``),
+# ``calculer_conception`` rend, sans une requête d'écriture, l'``etude_params``,
+# les lignes (taille, matériel, prix) et la conception électrique que
+# ``build_devis_auto`` a écrits — clé par clé, la première clé fautive nommée.
+# Le plafond du toit que passe le tunnel voyage par ``toit.plafond_panneaux``.
+
+#: Goldens HORS parité, avec la raison (aucun n'est « assoupli ») :
+HORS_PARITE = {
+    'journal_taille_cible': ("``target_kwc`` est une demande POUR UN devis (corps de POST devis/auto/), "
+                             "pas une entrée du lead : le moteur ne la prend pas (ADEV150, pose souveraine)."),
+}
+PARITE = tuple(sorted({n.stem for n in DOSSIER_FIGEAGE.glob('*.json')} - set(HORS_PARITE)))
+
+
+def _photo_des_lignes(lignes):
+    """Les lignes NON enregistrées du moteur à la forme du golden (décimaux à
+    la précision de leur colonne, comme relus en base)."""
+    from django.db import models
+
+    from apps.ventes.models import LigneDevis
+
+    photos = []
+    for ligne in sorted(lignes, key=lambda li: li.ordre):
+        photo = {}
+        for nom in CHAMPS_LIGNE_FIGES:
+            valeur, champ = getattr(ligne, nom), LigneDevis._meta.get_field(nom)
+            if valeur is not None and isinstance(champ, models.DecimalField):
+                valeur = Decimal(valeur).quantize(Decimal(1).scaleb(-champ.decimal_places))
+            photo[nom] = valeur
+        photo['produit_nom'] = getattr(ligne.produit, 'nom', None)
+        photos.append(photo)
+    return photos
+
+
+class MoteurUniqueTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_utilisateur', '_residentiel',
+                                 '_ci', '_agricole', '_fiches_residentielles', '_site_isole', '_structures',
+                                 '_fiches_ci', '_cas'), TestCase):
+    """ADEV133 — ``calculer_conception`` : un appel par marché, aucune écriture,
+    parité avec ce que le devis automatique écrit ; refus nommé sans lieu."""
+
+    def _calculer(self, company, lead, **kw):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from apps.ventes.conception.moteur import calculer_conception
+
+        _reglages_de_la_societe(company)
+        with CaptureQueriesContext(connection) as requetes:
+            resultat = calculer_conception(lead, company, **kw)
+        self.assertEqual(_ecritures(requetes), [], 'le moteur a écrit en base')
+        return resultat
+
+    def _parite(self, nom):
+        from types import SimpleNamespace
+
+        from apps.ventes.domain.creation_auto import cles_rapides
+
+        appel = APPELS_FIGEAGE.get(nom, {})
+        company, lead = self._cas(nom)
+        toit = (SimpleNamespace(empreinte='', plafond_panneaux=appel['plafond_toit'])
+                if 'plafond_toit' in appel else None)
+        resultat = self._calculer(company, lead, toit=toit)
+        self.assertEqual((resultat.etat, resultat.absents), ('complet', {}), resultat.refus)
+        etude_params = dict(resultat.etude_params)
+        if appel.get('journal'):  # un appelant À JOURNAL fait ranger ses suppositions
+            etude_params.update(cles_rapides(resultat.journal))
+        photo = {'etude_params': etude_params, 'lignes': _photo_des_lignes(resultat.lignes),
+                 'electrical_design': resultat.conception_electrique}
+        if appel.get('journal'):
+            photo.update(journal_auto=resultat.journal, alertes_appelant=list(resultat.journal.get('alertes') or []))
+        golden = json.loads((DOSSIER_FIGEAGE / f'{nom}.json').read_text(encoding='utf-8'))
+        ecarts = _ecarts_figeage({cle: golden[cle] for cle in photo},
+                                 json.loads(json.dumps(_normaliser_figeage(photo), default=str)))
+        self.assertEqual(ecarts, [], f'{nom} : le moteur diffère du devis automatique, première clé : '
+                                     f'{ecarts[0] if ecarts else ""}\n' + '\n'.join(ecarts[:20]))
+        self._forme_du_contrat(resultat)
+        return resultat
+
+    def _forme_du_contrat(self, resultat):
+        sortie = resultat.sortie()
+        self.assertEqual(set(sortie), CLES_RESULTAT)
+        self.assertEqual(_cles_interdites(_json(sortie)) + _cles_interdites(_json(resultat.etude_params)), [])
+        self.assertIn(resultat.option_retenue, sortie['valeurs'])
+        attendues = VALEURS_POMPAGE if resultat.marche == 'agricole' else VALEURS_SOLAIRES
+        for option, valeurs in sortie['valeurs'].items():
+            self.assertEqual(set(valeurs), attendues, option)
+            for cle, valeur in valeurs.items():
+                self.assertEqual(set(valeur), CLES_VALEUR, cle)
+                self.assertIn(valeur['source'], SOURCES_VALEUR, cle)
+        self.assertEqual(len(sortie['empreinte']), 64)
+
+    def test_un_lead_sans_ville_ni_gps_est_refuse_nomme(self):
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'), ville='')
+        resultat = self._calculer(company, lead)
+        self.assertEqual((resultat.etat, resultat.refus['code'], resultat.refus['champ']),
+                         ('refus', 'localisation_inconnue', 'ville'))
+        self.assertEqual((resultat.valeurs, resultat.blocs, resultat.lignes), ({}, {}, []))
+        self.assertEqual(set(resultat.refus), CLES_REFUS)
+
+    def test_un_refus_du_devis_automatique_est_nomme(self):
+        company, lead = self._residentiel()  # aucune consommation déclarée
+        resultat = self._calculer(company, lead)
+        self.assertEqual((resultat.etat, resultat.refus['code']), ('refus', 'refus_moteur'))
+        self.assertTrue(resultat.refus['message'])
+
+    def test_une_autre_societe_n_obtient_rien(self):
+        from authentication.models import Company
+
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'))
+        autre = Company.objects.create(nom='Autre moteur', slug='autre-moteur-unique')
+        with self.assertRaises(ValueError):
+            self._calculer(autre, lead)
+
+    def test_un_devis_accepte_du_lead_n_est_pas_touche(self):
+        from apps.ventes.models import Devis
+        from apps.ventes.services import build_devis_auto
+
+        company, lead = self._cas('res_facture_dirhams')
+        devis = build_devis_auto(lead=lead, user=self._utilisateur(company), company=company)
+        Devis.objects.filter(pk=devis.pk).update(statut='accepte')
+        avant = _json(Devis.objects.filter(pk=devis.pk).values()[0])
+        self._calculer(company, lead)
+        self.assertEqual(_json(Devis.objects.filter(pk=devis.pk).values()[0]), avant)
+
+    def test_blocs_servis_et_deux_options(self):
+        resultat = self._parite('res_kwh_declare_ete_different')
+        self.assertEqual(set(resultat.blocs), {'etude_horaire', 'etude_horaire_sans', 'dimensionnement'})
+        self.assertEqual(set(resultat.valeurs), {'sans', 'avec'})
+        self.assertNotEqual(resultat.valeurs['sans']['puissance_kwc'], resultat.valeurs['avec']['puissance_kwc'])
+
+    # ── ADEV134 — chaque supposition sort avec le champ de la fiche ─────────
+    def _suppositions(self, resultat):
+        for sup in resultat.suppositions:
+            self.assertEqual(set(sup), CLES_SUPPOSITION, sup)
+            self.assertTrue(sup['champ'] and sup['message'], sup)  # mutant « champ retiré » : rouge
+            self.assertEqual(sup['source'], 'defaut', sup)
+        json.dumps(resultat.suppositions)
+        return {sup['code']: (sup['champ'], sup['valeur']) for sup in resultat.suppositions}
+
+    def test_suppositions_residentiel_sans_presence_ni_ete(self):
+        from apps.ventes.domain.creation_auto_residentiel import SUPPOSITIONS_RESIDENTIEL
+
+        resultat = self._calculer(*self._cas('res_facture_dirhams'))
+        dites = self._suppositions(resultat)
+        self.assertEqual({code: champ for code, (champ, _v) in dites.items()},
+                         {'suppose_presence': 'occupation_jour', 'suppose_ete_egal_hiver': 'facture_ete',
+                          'suppose_kwh_depuis_facture': 'conso_mensuelle_kwh',
+                          'suppose_30_plein_sud': 'inclinaison_deg'})
+        self.assertEqual(dites['suppose_presence'][1], 'presence_jour')
+        self.assertEqual(dites['suppose_ete_egal_hiver'][1], 1800.0)
+        # Aucune seconde formulation : la phrase est celle du journal du devis.
+        messages = {sup['code']: sup['message'] for sup in resultat.suppositions}
+        self.assertEqual(messages['suppose_presence'], SUPPOSITIONS_RESIDENTIEL['occupation_jour'][1])
+
+    def test_suppositions_residentiel_renseigne_seule_la_production_reste_supposee(self):
+        """Présence, été et kWh déclarés : plus rien de supposé sur la fiche ;
+        la production à 30° plein sud reste dite (aucune pose au niveau 14)."""
+        dites = self._suppositions(self._calculer(*self._cas('res_kwh_declare_ete_different')))
+        self.assertEqual(set(dites), {'suppose_30_plein_sud'})
+
+    def test_suppositions_ci_sans_contrat_ni_phase_ni_tension(self):
+        from apps.ventes import tarif_ci
+
+        reel = tarif_ci.tarif_applicable  # avant le patch de la fabrique : le tarif « omis » réel
+        company, lead = self._ci(conso_mensuelle_kwh=Decimal('6000'), raccordement='', tension_raccordement='')
+        with mock.patch.object(tarif_ci, 'tarif_applicable', reel):
+            dites = self._suppositions(self._calculer(company, lead))
+        self.assertEqual(dites['supposition_contrat_electricite'], ('contrat_electricite', 'bt_patente'))
+        self.assertEqual(dites['supposition_tension'], ('tension_raccordement', 'bt'))
+        self.assertEqual(dites['supposition_phases'], ('raccordement', 'tri'))
+        self.assertEqual(dites['profil_estime'][0], 'jours_ouverture')
+        self.assertEqual(dites['supposition_inclinaison_deg'], ('gps_lat', 30))
+
+    def test_suppositions_ci_renseigne_aucune_sur_les_champs_declares(self):
+        dites = self._suppositions(self._calculer(*self._ci(
+            conso_mensuelle_kwh=Decimal('6000'), jours_ouverture=[1, 2, 3, 4, 5], heure_debut=8, heure_fin=18,
+            contrat_electricite='bt_patente', compteur_puissance_kva=Decimal('200'),
+            equipements_hors_horaires='aucun')))
+        champs = {champ for champ, _v in dites.values()}
+        self.assertFalse(champs & {'contrat_electricite', 'tension_raccordement', 'raccordement',
+                                   'jours_ouverture', 'heure_debut', 'compteur_puissance_kva',
+                                   'equipements_hors_horaires'}, dites)
+
+
+def _test_de_parite(nom):
+    def test(self):
+        self._parite(nom)
+    test.__doc__ = f'ADEV133 — parité du moteur unique avec le golden « {nom} ».'
+    return test
+
+
+for _nom in PARITE:
+    setattr(MoteurUniqueTests, f'test_parite_{_nom}', _test_de_parite(_nom))
