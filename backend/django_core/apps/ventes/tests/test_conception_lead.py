@@ -736,13 +736,24 @@ class FigeageDevisAutoTests(TestCase):
                 ond_i_max_mppt_a=Decimal('16'), ond_rendement_euro_pct=Decimal('97.5'))
 
     # ── capture / comparaison ───────────────────────────────────────────────
-    def _figer(self, nom, company, lead, **appel):
+    def _figer(self, nom, company, lead, *, journal=False, **appel):
+        """``journal`` : l'appel porte un ``journal_auto`` (dict, comme le
+        tunnel et ``POST devis/auto/``) ; le golden fige alors son contenu
+        final ET la liste d'alertes que l'appelant rend (``views/devis.py`` :
+        ``list(journal.get('alertes') or [])``)."""
         import os
 
         from apps.ventes.services import build_devis_auto
 
+        journal_auto = {} if journal else None
+        if journal:
+            appel['journal_auto'] = journal_auto
         devis = build_devis_auto(lead=lead, user=self._utilisateur(company), company=company, **appel)
-        photo = json.loads(json.dumps(_photo_du_devis(devis), default=str))
+        photo = _photo_du_devis(devis)
+        if journal:
+            photo['journal_auto'] = _normaliser_figeage(journal_auto)
+            photo['alertes_appelant'] = _normaliser_figeage(list(journal_auto.get('alertes') or []))
+        photo = json.loads(json.dumps(photo, default=str))
         self.assertEqual(_cles_interdites(photo), [], "prix d'achat ou marge dans le golden")
         fichier = DOSSIER_FIGEAGE / f'{nom}.json'
         if os.environ.get('UPDATE_GOLDEN') == '1':
@@ -926,6 +937,56 @@ class FigeageDevisAutoTests(TestCase):
         photo = self._figer('ci_fiches_completes', company, lead)
         self.assertIsNotNone(photo['electrical_design'])
         self.assertIsNone(photo['etude_params']['etude_ci']['composition']['onduleurs']['chaines'])
+
+    # ── Le JOURNAL de la décision résidentielle (seul mécanisme que
+    # l'extraction ADEV160 a changé : alertes et clés notées par la décision
+    # pure, versées ensuite au journal de l'appelant). Capturés sur le code de
+    # création d'AVANT l'extraction (ef400a21f8). ───────────────────────────────
+    def _codes(self, photo):
+        return [a['code'] for a in photo['alertes_appelant']]
+
+    def test_journal_taille_souhaitee_de_la_fiche(self):
+        photo = self._figer('journal_taille_souhaitee', *self._residentiel(
+            facture_hiver=Decimal('1800'), taille_souhaitee_kwc=Decimal('4.40')), journal=True)
+        self.assertIn('taille_demandee', self._codes(photo))
+        self.assertEqual(photo['journal_auto']['alertes'], photo['alertes_appelant'])
+
+    def test_journal_taille_cible_du_devis(self):
+        photo = self._figer('journal_taille_cible', *self._residentiel(facture_hiver=Decimal('1800')),
+                            journal=True, target_kwc='5')
+        self.assertIn('taille_demandee', self._codes(photo))
+
+    def _site_isole(self, **extra):
+        from apps.stock.models import Produit
+
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'), raccordement='aucun', **extra)
+        Produit.objects.create(company=company, nom='Onduleur autonome Deye 5kW Monophasé',
+                               sku=f'ONDA-{company.pk}', prix_vente=Decimal('15000'),
+                               prix_achat=Decimal('1'), quantite_stock=100)
+        return company, lead
+
+    def test_journal_site_isole_sans_choix_explicite(self):
+        """Hors réseau sans « sans » explicite : batterie d'office, AUCUNE alerte
+        ``batterie_hors_reseau`` (elle ne dit qu'un choix écarté)."""
+        photo = self._figer('journal_site_isole', *self._site_isole(), journal=True)
+        self.assertNotIn('batterie_hors_reseau', self._codes(photo))
+
+    def test_journal_site_isole_sans_explicite(self):
+        photo = self._figer('journal_site_isole_sans', *self._site_isole(batterie_souhaitee='sans'),
+                            journal=True)
+        self.assertIn('batterie_hors_reseau', self._codes(photo))
+
+    def test_journal_contour_et_plafond_du_toit(self):
+        """Clés lues par la note du tunnel : ``contour_client``,
+        ``plafond_applique``, ``panneaux_avant_plafond``."""
+        contour = [[33.57310, -7.58980], [33.57310, -7.58970],
+                   [33.57301, -7.58970], [33.57301, -7.58980]]
+        photo = self._figer('journal_contour_plafond', *self._residentiel(
+            facture_hiver=Decimal('1800'), roof_outline=contour,
+            roof_point={'lat': 33.573055, 'lng': -7.58975}), journal=True, plafond_toit=8)
+        self.assertEqual((photo['journal_auto']['plafond_applique'],
+                          photo['journal_auto']['contour_client']), (8, 4))
+        self.assertGreater(photo['journal_auto']['panneaux_avant_plafond'], 8)
 
 
 def _ecritures(requetes):
