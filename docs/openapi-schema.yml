@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5320, operations: 8174, components: 4096}
+counts: {paths: 5322, operations: 8176, components: 4096}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -3804,6 +3804,7 @@ operations:
 - get /api/django/ventes/devis/prefill-site/ -> django_ventes_devis_prefill_site_retrieve
 - get /api/django/ventes/devis/variante-config/ -> django_ventes_devis_variante_config_retrieve
 - put /api/django/ventes/devis/variante-config/ -> django_ventes_devis_variante_config_update
+- post /api/django/ventes/devis/{devis_id}/mettre-a-jour-conception/ -> django_ventes_devis_mettre_a_jour_conception_create
 - delete /api/django/ventes/devis/{id}/ -> django_ventes_devis_destroy
 - get /api/django/ventes/devis/{id}/ -> django_ventes_devis_retrieve
 - patch /api/django/ventes/devis/{id}/ -> django_ventes_devis_partial_update
@@ -7895,6 +7896,7 @@ operations:
 - get /api/v1/ventes/devis/prefill-site/ -> v1_ventes_devis_prefill_site_retrieve
 - get /api/v1/ventes/devis/variante-config/ -> v1_ventes_devis_variante_config_retrieve
 - put /api/v1/ventes/devis/variante-config/ -> v1_ventes_devis_variante_config_update
+- post /api/v1/ventes/devis/{devis_id}/mettre-a-jour-conception/ -> v1_ventes_devis_mettre_a_jour_conception_create
 - delete /api/v1/ventes/devis/{id}/ -> v1_ventes_devis_destroy
 - get /api/v1/ventes/devis/{id}/ -> v1_ventes_devis_retrieve
 - patch /api/v1/ventes/devis/{id}/ -> v1_ventes_devis_partial_update
