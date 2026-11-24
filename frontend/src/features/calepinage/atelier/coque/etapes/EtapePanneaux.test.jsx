@@ -116,6 +116,22 @@ describe('formats', () => {
   })
 })
 
+/* Item 14 (T4-U1-023) — l'étape Panneaux n'avait « aucune carte d'avis d'ombrage » sur un toit qui porte une cheminée
+   et un voisin haut : la phrase servie (`parcours.manque`, code `ombres_non_mesurees`) y est dite. */
+describe('étape Panneaux — ombres posées mais pas encore comptées (T4-U1-023)', () => {
+  it('la carte dit la phrase servie, sans bouton « Retirer »', async () => {
+    monterConstructeur()
+    servir()
+    const message = 'Ce toit porte 1 obstacle et 1 objet voisin qui font de l’ombre, mais cette ombre n’est pas encore comptée sur les panneaux posés : ouvrez le calcul des ombres du toit, puis enregistrez et relancez la simulation.'
+    rendre({ parcours: { manque: [{ code: 'ombres_non_mesurees', etape: 'resultats', gravite: 'a_regler', nombre: 1, message,
+      cible: { onglet: 'production', champ: '' } }] } })
+    const carte = await screen.findByTestId('cal-panneaux-ombres-non-comptees')
+    expect(carte).toHaveTextContent('Ombres à compter')
+    expect(carte).toHaveTextContent(message)
+    expect(within(carte).queryByRole('button', { name: /Retirer/ })).toBeNull()
+  })
+})
+
 describe('étape Panneaux — panneau de droite', () => {
   it('rend les blocs de la maquette dans l’ordre, libellés mot pour mot', async () => {
     monterConstructeur()
