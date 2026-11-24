@@ -506,3 +506,305 @@ class ConceptionLeadModeleTests(TestCase):
             self.assertEqual(getattr(relue, nom), champs[nom], nom)
         self.assertIsNotNone(relue.calcule_le)
         self.assertIsNone(relue.calcule_par)
+
+
+# ── ADEV159 — figer avant de toucher : ce que build_devis_auto écrit AUJOURD'HUI ─
+#
+# Goldens de CARACTÉRISATION (un JSON par cas sous ``golden/conception/``) pris
+# sur le code de création INTACT, avant l'extraction du pipeline pur (ADEV160)
+# et le moteur unique (ADEV133) : lignes du devis, TOUTES les clés de
+# ``etude_params``, ``electrical_design`` et les champs du devis que la création
+# écrit. Leads = les fabriques des trois modules de test du devis automatique
+# (``test_devis_auto``, ``test_ciq120_devis_auto_ci``,
+# ``test_agr124_devis_auto_agricole``), leurs patrons hors réseau compris.
+#
+# Capture (une fois, puis à chaque changement VOULU d'un chiffre — jamais pour
+# faire passer une extraction) : ``UPDATE_GOLDEN=1`` dans l'environnement du
+# conteneur de test. Golden absent ⇒ rouge ; un écart nomme les clés fautives.
+
+DOSSIER_FIGEAGE = Path(__file__).resolve().parent / 'golden' / 'conception'
+INSTANT_FIGEAGE = '2026-10-01T10:00:00+01:00'
+
+#: Normalisés (seule instabilité réelle) : identifiants de base et horodatages
+#: (les séquences avancent d'une exécution à l'autre sur la base gardée), la
+#: référence du devis. Les produits des lignes sont nommés, jamais numérotés.
+CLES_IDS_FIGEAGE = frozenset({
+    'id', 'pk', 'uuid', 'token', 'jeton', 'produit', 'produit_id', 'client', 'client_id',
+    'lead', 'lead_id', 'devis', 'devis_id', 'company', 'company_id', 'user', 'user_id',
+    'created_by', 'updated_by', 'created_at', 'updated_at', 'date_creation',
+    'date_modification', 'date_validite', 'ligne_id', '_company_id', 'source_lead_id',
+})
+#: Empreintes calculées SUR des identifiants de base (relevées instables à la
+#: double exécution, ``(bloc parent, clé)``) : la valeur est masquée, la
+#: PRÉSENCE de la clé reste figée. Les empreintes résidentielles
+#: (``_empreinte_entrees``, ``dimensionnement._empreinte``) restent figées.
+EMPREINTES_SUR_IDS = frozenset({('etude_ci', 'empreinte'), ('provenance_pompage', '_empreinte')})
+#: Lecteurs de la création qui ne CALCULENT rien (identifiés par la pile) : la
+#: résolution du client (identité, et les signaux du ``Lead.save`` qu'elle
+#: déclenche) et le tampon de provenance recopié sur le devis
+#: (``crm.fiche_selectors.lead_provenance_stamp``). Aucun ne relance le moteur.
+LECTEURS_HORS_CALCUL = frozenset({'resolve_client_for_lead', 'lead_provenance_stamp'})
+#: Colonnes lues par un sélecteur de calcul sans entrer dans aucun chiffre :
+#: ``crm.devis_selectors.site_location_for_devis`` rend aussi l'adresse du
+#: chantier (``site_adresse``), qu'aucune étude ne lit (ville et GPS seuls).
+COLONNES_LUES_SANS_CHIFFRE = frozenset({'adresse'})
+#: Clés d'hypothèse suffixées par l'id d'un produit (``section_ac_<id du câble>``).
+CLE_SUFFIXEE_PAR_UN_ID = r'\b(section_ac)_\d+\b'
+
+CHAMPS_DEVIS_FIGES = ('mode_installation', 'statut', 'taux_tva', 'remise_globale', 'devise',
+                      'regles_calcul', 'option_acceptee', 'prix_par_kwc', 'prix_cible_kwc',
+                      'version', 'is_active', 'overrides', 'echeancier', 'roof_layout',
+                      'layout_hash', 'offres_tailles_config', 'variante_tier',
+                      'electrical_design_hash')
+CHAMPS_LIGNE_FIGES = ('ordre', 'designation', 'quantite', 'prix_unitaire', 'remise', 'taux_tva',
+                      'tva_base_legale', 'type_ligne', 'variante', 'optionnelle',
+                      'quantite_manuelle', 'prix_manuel', 'ligne_composee', 'role_devis',
+                      'groupe_index', 'groupe_label')
+
+
+def _normaliser_figeage(noeud, parent=None):
+    import re
+    from datetime import date, datetime
+
+    if isinstance(noeud, dict):
+        sortie = {}
+        for cle, valeur in noeud.items():
+            cle = str(cle)
+            if valeur is not None and (cle in CLES_IDS_FIGEAGE or (parent, cle) in EMPREINTES_SUR_IDS):
+                sortie[cle] = '<masque>'
+            else:
+                sortie[cle] = _normaliser_figeage(valeur, cle)
+        return sortie
+    if isinstance(noeud, (list, tuple)):
+        return [_normaliser_figeage(v, parent) for v in noeud]
+    if isinstance(noeud, Decimal):
+        return str(noeud)
+    if isinstance(noeud, (date, datetime)):
+        return '<date>'
+    if isinstance(noeud, str):
+        noeud = re.sub(CLE_SUFFIXEE_PAR_UN_ID, r'\1_<id>', noeud)
+        return re.sub(r'\b(DEV|BROUILLON)-[0-9-]+\b', r'\1-<ref>', noeud)
+    return noeud
+
+
+def _ecarts_figeage(attendu, reel, chemin='$'):
+    """Chemins où ``reel`` diffère d'``attendu``, clé par clé."""
+    if isinstance(attendu, dict) and isinstance(reel, dict):
+        ecarts = []
+        for cle in sorted(set(attendu) | set(reel)):
+            if cle not in attendu or cle not in reel:
+                ecarts.append(f'{chemin}.{cle} ({"ajoutée" if cle in reel else "absente"})')
+            else:
+                ecarts += _ecarts_figeage(attendu[cle], reel[cle], f'{chemin}.{cle}')
+        return ecarts
+    if isinstance(attendu, list) and isinstance(reel, list) and len(attendu) == len(reel):
+        ecarts = []
+        for i, (a, r) in enumerate(zip(attendu, reel)):
+            ecarts += _ecarts_figeage(a, r, f'{chemin}[{i}]')
+        return ecarts
+    return [] if attendu == reel else [f'{chemin} : {attendu!r} -> {reel!r}'[:300]]
+
+
+def _photo_du_devis(devis):
+    """Ce que la création a écrit : champs, lignes (produit NOMMÉ), étude,
+    conception électrique, totaux. Jamais ``marge_snapshot`` (prix d'achat)."""
+    devis.refresh_from_db()
+    lignes = []
+    for ligne in devis.lignes.select_related('produit').order_by('ordre', 'pk'):
+        photo = {nom: getattr(ligne, nom) for nom in CHAMPS_LIGNE_FIGES}
+        photo['produit_nom'] = getattr(ligne.produit, 'nom', None)
+        lignes.append(photo)
+    champs = {nom: getattr(devis, nom) for nom in CHAMPS_DEVIS_FIGES}
+    champs.update(total_ht=devis.total_ht, total_tva=devis.total_tva, total_ttc=devis.total_ttc)
+    return _normaliser_figeage({
+        'champs_devis': champs, 'lignes': lignes, 'etude_params': devis.etude_params or {},
+        'electrical_design': devis.electrical_design})
+
+
+def _emprunt(classe, *noms):
+    """Une classe porteuse des fabriques ``noms`` d'une classe de test voisine
+    (jamais importée dans ce module : le chargeur la rejouerait)."""
+    return type('Fabriques' + classe.__name__, (), {nom: classe.__dict__[nom] for nom in noms})
+
+
+class FigeageDevisAutoTests(TestCase):
+    """ADEV159 — figer avant de toucher : un golden par cas de ``build_devis_auto``."""
+
+    def setUp(self):
+        from freezegun import freeze_time
+
+        figeur = freeze_time(INSTANT_FIGEAGE)
+        figeur.start()
+        self.addCleanup(figeur.stop)
+        # Hors réseau (patron SPL160) : chaque lecture PVGIS prend son repli.
+        coupure = mock.patch('urllib.request.urlopen', side_effect=OSError('ADEV159 hors réseau'))
+        coupure.start()
+        self.addCleanup(coupure.stop)
+
+    def _patcher(self, cible, nom, **kw):
+        patcher = mock.patch.object(cible, nom, **kw)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _utilisateur(self, company):
+        from django.contrib.auth import get_user_model
+
+        return get_user_model().objects.create_user(
+            username=f'figeage-{company.pk}', password='x', role_legacy='responsable',
+            company=company)
+
+    # ── fabriques des trois modules voisins ─────────────────────────────────
+    def _residentiel(self, **extra):
+        from apps.crm.models import Lead
+        from apps.ventes.tests import test_devis_auto as res
+
+        company = res.make_company('auto-co')
+        res.seed_catalogue(company)
+        extra.setdefault('ville', res.VILLE_ANCRE)
+        extra.setdefault('email', 'auto@ex.com')
+        return company, Lead.objects.create(company=company, nom='Auto', prenom='Lead', **extra)
+
+    def _ci(self, *, batteries=False, boulangerie=False, **kw):
+        from apps.ventes import tarif_ci
+        from apps.ventes.domain import etude_ci
+        from apps.ventes.tests import test_ciq120_devis_auto_ci as ci
+
+        fab = _emprunt(ci._Base, 'setUpTestData', '_lead')
+        fab._boulangerie = ci.OptionBatterieCITests.__dict__['_boulangerie']
+        fab.setUpTestData()
+        fab = fab()
+        if batteries:
+            ci._semer_batterie(fab)
+        self._patcher(etude_ci, 'lire_production', side_effect=ci._production_casablanca)
+        self._patcher(tarif_ci, 'tarif_applicable', side_effect=ci._tarif_grille)
+        return fab.co, (fab._boulangerie(**kw) if boulangerie else fab._lead(**kw))
+
+    def _agricole(self, *, existante=False, **kw):
+        from apps.ventes.domain import pompage
+        from apps.ventes.tests import test_agr124_devis_auto_agricole as agr
+
+        fab = _emprunt(agr.DevisAutoAgricoleTests, 'setUpTestData', '_produit', '_pompe', '_lead',
+                       '_lead_existante')
+        fab.setUpTestData()
+        fab = fab()
+        fab._pompe('15000')
+        self._patcher(pompage, 'profils_horaires_site', return_value=agr.PROFILS)
+        self._patcher(pompage, 'temperatures_du_site', return_value=None)
+        return fab.co, (fab._lead_existante(**kw) if existante else fab._lead(**kw))
+
+    # ── capture / comparaison ───────────────────────────────────────────────
+    def _figer(self, nom, company, lead):
+        import os
+
+        from apps.ventes.services import build_devis_auto
+
+        devis = build_devis_auto(lead=lead, user=self._utilisateur(company), company=company)
+        photo = json.loads(json.dumps(_photo_du_devis(devis), default=str))
+        self.assertEqual(_cles_interdites(photo), [], "prix d'achat ou marge dans le golden")
+        fichier = DOSSIER_FIGEAGE / f'{nom}.json'
+        if os.environ.get('UPDATE_GOLDEN') == '1':
+            DOSSIER_FIGEAGE.mkdir(parents=True, exist_ok=True)
+            fichier.write_text(json.dumps(photo, indent=1, sort_keys=True, ensure_ascii=False) + '\n',
+                               encoding='utf-8')
+        self.assertTrue(fichier.is_file(), f'golden {nom} absent : capturer avec UPDATE_GOLDEN=1')
+        ecarts = _ecarts_figeage(json.loads(fichier.read_text(encoding='utf-8')), photo)
+        self.assertEqual(ecarts, [], f'{nom} : ce que build_devis_auto écrit a changé :\n'
+                                     + '\n'.join(ecarts[:40]))
+        return photo
+
+    def test_residentiel_facture_en_dirhams_seule(self):
+        photo = self._figer('res_facture_dirhams', *self._residentiel(facture_hiver=Decimal('1800')))
+        self.assertIn('etude_horaire', photo['etude_params'])
+        self.assertIn('dimensionnement', photo['etude_params'])
+        # Le golden n'est pas vide : lignes et totaux réellement figés.
+        self.assertTrue(photo['lignes'])
+        self.assertGreater(float(photo['champs_devis']['total_ttc']), 0)
+
+    def test_residentiel_kwh_declare_ete_different(self):
+        self._figer('res_kwh_declare_ete_different', *self._residentiel(
+            facture_hiver=Decimal('1800'), facture_ete=Decimal('2600'), ete_differente=True,
+            conso_mensuelle_kwh=Decimal('700'), occupation_jour='present'))
+
+    def test_residentiel_batterie_souhaitee_avec(self):
+        self._figer('res_batterie_avec', *self._residentiel(
+            facture_hiver=Decimal('2500'), batterie_souhaitee='avec'))
+
+    def test_residentiel_batterie_souhaitee_sans(self):
+        self._figer('res_batterie_sans', *self._residentiel(
+            facture_hiver=Decimal('2500'), batterie_souhaitee='sans'))
+
+    def test_commercial(self):
+        photo = self._figer('ci_commercial', *self._ci(conso_mensuelle_kwh=Decimal('6000')))
+        self.assertIn('etude_ci', photo['etude_params'])
+
+    def test_commercial_deux_options_batterie(self):
+        self._figer('ci_commercial_deux_options', *self._ci(batteries=True, boulangerie=True))
+
+    def test_industriel(self):
+        self._figer('ci_industriel', *self._ci(
+            conso_mensuelle_kwh=Decimal('20000'), type_installation='industriel',
+            categorie_commerciale=None, jours_ouverture=[1, 2, 3, 4, 5, 6], heure_debut=7,
+            heure_fin=19))
+
+    def test_agricole_pompe_a_courbe(self):
+        photo = self._figer('agr_pompe_courbe', *self._agricole())
+        self.assertTrue(any((li['produit_nom'] or '').startswith('Pompe') for li in photo['lignes']))
+
+    def test_creation_complete_ne_lit_que_des_colonnes_connues(self):
+        """Point 2 (ADEV133) : toute colonne du lead lue pendant UN
+        ``build_devis_auto`` complet est une entrée du moteur
+        (``CHAMPS_ENTREES[marche]``), une provenance, ou sert la seule
+        RÉSOLUTION DU CLIENT / l'auteur (``LUES_POUR_LE_CLIENT``, jamais un
+        chiffre), ou le TAMPON de provenance du devis
+        (``crm.fiche_selectors.LEAD_PROVENANCE_FIELDS``, recopié sans calcul) —
+        sinon la relance du moteur manquerait ce champ."""
+        from apps.ventes.conception.champs import CHAMPS_LUS_HORS_ENTREES, champs_pour
+
+        cas = (('residentiel', self._residentiel(facture_hiver=Decimal('1800'))),
+               ('commercial', self._ci(conso_mensuelle_kwh=Decimal('6000'))),
+               ('agricole', self._agricole()))
+        for marche, (company, lead) in cas:
+            with self.subTest(marche=marche):
+                lues, hors_calcul = self._lectures_de_la_creation(company, lead)
+                self.assertIn('type_installation', lues)
+                # Les lecteurs hors calcul lisent bien (l'exclusion n'est pas muette).
+                self.assertIn('nom', hors_calcul)
+                hors = (lues - set(champs_pour(marche)) - set(CHAMPS_LUS_HORS_ENTREES)
+                        - COLONNES_LUES_SANS_CHIFFRE)
+                self.assertEqual(hors, set(), f'{marche} : {sorted(hors)}')
+
+    def _lectures_de_la_creation(self, company, lead):
+        """``(colonnes lues par le calcul, colonnes lues par un lecteur hors
+        calcul)`` pendant un ``build_devis_auto`` complet. Le lecteur est
+        identifié par la PILE (jamais par le nom de la colonne) : une colonne
+        lue À LA FOIS par le tampon et par le calcul compte pour le calcul."""
+        import sys
+
+        from apps.crm.models import Lead
+        from apps.ventes.services import build_devis_auto
+
+        user = self._utilisateur(company)
+        colonnes = {f.attname: f.name for f in Lead._meta.concrete_fields}
+        colonnes.update({f.name: f.name for f in Lead._meta.concrete_fields})
+        lues, hors_calcul = set(), set()
+        lecture = object.__getattribute__
+
+        def espion(instance, nom):
+            if nom in colonnes:
+                cadre, profondeur = sys._getframe(1), 0
+                while cadre is not None and profondeur < 60:
+                    if cadre.f_code.co_name in LECTEURS_HORS_CALCUL:
+                        hors_calcul.add(colonnes[nom])
+                        break
+                    cadre, profondeur = cadre.f_back, profondeur + 1
+                else:
+                    lues.add(colonnes[nom])
+            return lecture(instance, nom)
+
+        with mock.patch.object(Lead, '__getattribute__', espion):
+            build_devis_auto(lead=lead, user=user, company=company)
+        return lues, hors_calcul
+
+    def test_agricole_pompe_existante(self):
+        photo = self._figer('agr_pompe_existante', *self._agricole(existante=True))
+        self.assertFalse(any((li['produit_nom'] or '').startswith('Pompe') for li in photo['lignes']))
