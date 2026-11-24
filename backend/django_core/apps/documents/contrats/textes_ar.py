@@ -62,7 +62,7 @@ A_PRECISER = 'يُحدَّد لاحقًا'
 # ``rendu.composants.montant(…, langue='ar')``, les dates de
 # ``date_longue(…, langue='ar')``, les durées de ``duree_mois(…, langue='ar')``.
 FORMES_CTX = {
-    'societe': 'TAQINOR',
+    'societe': 'Société Exemple',
     'client': 'M. Youssef EL EXEMPLE',
     'devis_reference': 'DEV-202611-0042',
     # Fragment collé à la référence (vide si la date manque).
@@ -75,7 +75,7 @@ FORMES_CTX = {
         '- **60 %**، أي 59 100,00 درهم، عند تسليم المعدات '
         'إلى الزبون؛\n'
         '- **10 %**، أي 9 850,00 درهم، عند تسلُّم الأشغال.'),
-    'modalites_paiement': ('يتم الأداء بتحويل بنكي أو بشيك لأمر TAQINOR. '
+    'modalites_paiement': ('يتم الأداء بتحويل بنكي أو بشيك لأمر الشركة. '
                            'RIB : 000 000 0000000000000000 00 — Banque '
                            'Exemple.'),
     # Une date nue : la phrase porte déjà « في أجل أقصاه ».

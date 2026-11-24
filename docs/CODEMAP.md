@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: e5320fdd8d0574677dc6ed6b44a3876329bc08cf1b0fe175b5bc34d107e5a90f
-Plan fingerprint: 6410847be77575f825907851199fa837049d37abc351c7cf3b4c9dcb770adaf2
+Structure fingerprint: e30dd6ca1c117e288438125261d8d369814cd9c2391ed7aa22bab90e888ec3c1
+Plan fingerprint: c879c82382546b15dde3c4995d42dc8102cbfba3c35b8286175cd6839a3dd098
 
 
 
@@ -233,7 +233,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `outillage` | `outillage/` | 3 | Durable tools and loans (`Outillage`, `KitOutillage`). |
 | `sav` | `sav/` | 32 | Equipment registry (`Equipement`, warranty clock), tickets + SLA, `ContratMaintenance`, worksheets, `Probleme`, `KbArticle`, `AlarmeOnduleur`. |
 | `monitoring` | `monitoring/` | 9 | Production supervision: `ProductionReading`, `UnderperformanceFlag`, `SlaDisponibilite`, `CertificatCarbone`. Swappable provider, no-op by default. |
-| `documents` | `documents/` | 0 | Field-execution PDFs (PV de réception, bon de livraison, attestation) — no models. |
+| `documents` | `documents/` | 2 | Field-execution PDFs (PV de réception, bon de livraison, attestation, dossier de remise — no models) **+ dossier contractuel (24/11/2026)** : `ActeContractuel`, `ModeleActe` ; `contrats/` (`contenu.py`, `services.py`, `textes.py` / `textes_ar.py`, `rendu/`) ; routes `documents/chantiers/<id>/contrats/` et `documents/actes/<id>/…` ; écran : onglet « Contrats » de la fiche chantier (`pages/installations/contrats/`). |
 | `ged` | `ged/` | 44 | Document management: `Cabinet`/`Folder`/`Document`/`DocumentVersion`, ACL, retention/legal hold, signature requests, public deposits, `Coffre`, `PieceJointeImportee` (ACEL61 — pièces jointes déjà importées, jamais réimportées). |
 | `portail` | `portail/` | 8 | Client self-service: quotes/invoices/deliveries, e-signature acceptance, online payment, site timeline. **Never financial detail beyond its own scope** (NTPRT14). GED links kept (SOLMVP16b). Demandes portail : `demandes-ticket-portail/<id>/refuser/` (refus motivé, `motif_refus`, ASOC98), résolues au ticket résolu (ASOC44). |
 | `adsengine` | `adsengine/` | 47 | Meta Ads engine: mirrors, propose->approve->apply, creative library, experiments, guardrails, `AssumptionNode` tree. **`installable: True`** (SOLMVP17 — the toggle now gates its API). Campaign creation is always PAUSED (rule #3). `actions/<id>/desapprouver/` (`desapprobation.py`, AERR24). |
@@ -624,7 +624,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1340)**
+**Done (1344)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1232,6 +1232,10 @@ Things this map could not fully verify from source — do not over-trust:
 - `CIQ665` — Aller-retour EN DIRECT du parcours site MT : visite avec supplément MT → chantier MT →…
 - `CIQ666` — Contrat d'électricité déclaré sur le lead pro (BT/MT, contrat/option tarifaire) lu par…
 - `CIQ669` — Contrat d'abord : le contrat O&M C&I (prestations nommées, délai d'intervention en…
+- `CTC1` — [documents/contrats]
+- `CTC2` — [documents/contrats]
+- `CTC3` — [documents/contrats]
+- `CTC4` — [installations/contrats]
 - `ENF1` — Harnais api-fuzz
 - `ENF2` — Plateforme API (causes C2-C6)
 - `ENF3` — Schéma OpenAPI exact — installations
