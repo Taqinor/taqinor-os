@@ -110,15 +110,18 @@ class ContexteConceptionTest(BaseApiCalepinage):
 
     def test_acal1500_lead_industriel_sert_le_refus_nomme(self):
         """ACAL1500 — un lead commercial avec facture : ``cible_factures`` nul
-        ET ``refus`` = la phrase de ``cible_depuis_lead`` (celle de l'exemple) ;
-        un calepinage sans lead sert ``refus`` vide. Mutant : ``refus`` vide ⇒ échec."""
+        ET ``refus`` NOMMÉ — ACAL2012 : celui de sa conception (ici aucune version
+        rangée) ; un calepinage sans lead sert ``refus`` vide. Mutant : ``refus`` vide ⇒ échec."""
+        from apps.calepinage.services.devis_retenu import REFUS_CONCEPTION_ABSENTE
+
         lead = Lead.objects.create(company=self.company, nom='Boulangerie 1500',
                                    type_installation='commercial', facture_hiver=1200)
         ci = Calepinage.objects.create(company=self.company, lead_id=lead.pk,
                                        titre='Boulangerie')
         reponse = self.api.get(f'{url_detail(ci.pk)}cible-factures/')
         self.assertEqual(reponse.status_code, 200, reponse.data)
-        self.assertEqual(reponse.data, CONTRAT_CIBLE['exemple_refus'])
+        self.assertEqual(sorted(reponse.data), sorted(CONTRAT_CIBLE['exemple_refus']))
+        self.assertEqual(reponse.data, {'cible_factures': None, 'refus': REFUS_CONCEPTION_ABSENTE})
         sans_lead = self.api.get(f'{url_detail(self.nu.pk)}cible-factures/')
         self.assertEqual(sans_lead.data['refus'], CONTRAT_CIBLE['exemple_vide']['refus'])
 
@@ -147,10 +150,13 @@ class ContexteConceptionTest(BaseApiCalepinage):
         self.assertEqual(contexte['geometrie']['pin'],
                          {'lat': 33.5731, 'lng': -7.5898})
 
-    def test_cible_du_devis_marquee_a_sa_source(self):
+    def test_cible_avec_devis_lie_vient_de_la_conception(self):
+        # ACAL2012 — le devis lié n'est plus la source de la cible : la conception du lead l'est.
+        from .test_acal_cible_lead import ranger_conception
+
+        ranger_conception(lead=self.lead_lie, nb=14)
         contexte = self._contexte(self.avec_devis)
-        self.assertIsNotNone(contexte['cible'])
-        self.assertEqual(contexte['cible']['source'], 'devis')
+        self.assertEqual((contexte['cible']['source'], contexte['cible']['panneaux']), ('factures', 14))
 
     def test_raison_lecture_seule_reprise_mot_pour_mot(self):
         phrase = 'Devis accepté : la conception ne se modifie plus.'

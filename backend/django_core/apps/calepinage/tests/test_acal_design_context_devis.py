@@ -198,8 +198,9 @@ class ConceptionRetenueTest(_DevisDeuxOptions):
 
 
 class CibleOptionRetenueTest(_DevisDeuxOptions):
-    """ACAL1951 — la cible de l'atelier suit l'option RETENUE par le devis, et
-    l'enregistrement du dessin range l'option qu'il visait."""
+    """ACAL1951 généralisé par ACAL2012 — la cible de l'atelier suit l'option que la
+    CONCEPTION retient (plus le devis lié), et l'enregistrement du dessin range l'option
+    que le devis lié visait."""
 
     def _calepinage(self, devis):
         return Calepinage.objects.create(
@@ -211,14 +212,23 @@ class CibleOptionRetenueTest(_DevisDeuxOptions):
         self.assertEqual(reponse.status_code, 200, reponse.data)
         return reponse.data['cible']
 
-    def test_recommandee_avec_la_cible_est_l_option_avec(self):
-        cible = self._cible(self._calepinage(self._les_deux('Avec batterie')))
-        self.assertEqual((cible['panneaux'], cible['option'], cible['source']), (48, 'avec', 'devis'))
-        self.assertTrue(cible['batterie'])
+    # ACAL2012 (D-ACAL-97) — réalignés : l'option et la taille sont celles de la CONCEPTION
+    # courante du lead, plus celles que le devis lié recommande.
+    def test_devis_recommande_avec_la_cible_suit_la_conception(self):
+        from .test_acal_cible_lead import ranger_conception
 
-    def test_recommandee_sans_la_cible_est_l_option_sans(self):
+        ranger_conception(lead=self.lead_lie, nb=35, avec=48, option='sans')
+        cible = self._cible(self._calepinage(self._les_deux('Avec batterie')))
+        self.assertEqual((cible['panneaux'], cible['option'], cible['source']), (35, 'sans', 'factures'))
+        self.assertFalse(cible['batterie'])
+
+    def test_devis_recommande_sans_la_cible_suit_la_conception(self):
+        from .test_acal_cible_lead import ranger_conception
+
+        ranger_conception(lead=self.lead_lie, nb=35, avec=48, option='avec')
         cible = self._cible(self._calepinage(self._les_deux('Sans batterie')))
-        self.assertEqual((cible['panneaux'], cible['option']), (35, 'sans'))
+        self.assertEqual((cible['panneaux'], cible['option']), (48, 'avec'))
+        self.assertTrue(cible['batterie'])
         self.assertIn('option', CONTRAT['exemple']['cible'])
 
     def test_sans_devis_aucune_option(self):

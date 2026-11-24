@@ -45,22 +45,90 @@ def conception_du_devis_lie(calepinage, devis=None):
     return valeur
 
 
-def cible_de_l_option_retenue(contexte_devis, devis):
-    """ACAL1951 — la cible ``source: 'devis'`` de l'atelier : l'option RETENUE
-    par le devis (plus l'option « sans » en dur). ``option`` dit laquelle.
+#: ACAL2012 — mémoire de la conception COURANTE lue, posée sur l'instance (une requête).
+_MEMOIRE_CONCEPTION = '_acal2012_conception_courante'
+#: ACAL2012 — le refus NOMMÉ d'un porteur sans version rangée : jamais une taille inventée.
+CODE_CONCEPTION_ABSENTE = 'conception_absente'
+REFUS_CONCEPTION_ABSENTE = ("Conception du lead pas encore calculée par le moteur : elle se calcule dès qu'une "
+                            "entrée de la fiche (facture, ville, taille souhaitée…) est enregistrée.")
+#: Refus gardé tel quel (ACAL194) : le champ d'un lead agricole découle de sa pompe, pas d'une facture.
+REFUS_AGRICOLE = "Lead agricole : le pompage se chiffre depuis l'écran devis agricole."
 
-    Le contexte ventes sert déjà les deux vues (``cible`` = option sans,
-    ``cible_avec`` = option avec quand elle est servable, CTX3D) : on choisit,
-    on ne recompte pas. Les clés de ``cible`` absentes de ``cible_avec``
-    (``bill_kwh``) sont gardées."""
-    from .equipements import conception_retenue
 
-    conception = conception_retenue(devis)
-    option = (conception or {}).get('option') or 'sans'
-    cible = dict(contexte_devis['cible'])
-    if option == 'avec' and isinstance(contexte_devis.get('cible_avec'), dict):
-        cible.update(contexte_devis['cible_avec'])
-    return dict(cible, source='devis', refus=None, option=option)
+def conception_du_calepinage(calepinage):
+    """ACAL2012 (D-ACAL-97) — LA conception COURANTE qui sert le calepinage : celle
+    de son lead, sinon celle du calepinage lui-même (porteur sans lead, Q3), lue par
+    ``apps.ventes.selectors.conception_courante`` (contrat ``conception_lead.json``) ;
+    ``None`` sans version rangée ou pour un dossier d'appel d'offres (hors moteur).
+    Lue UNE fois par instance ; rien n'est écrit."""
+    from apps.ventes.selectors import conception_courante
+
+    company = getattr(calepinage, 'company', None)
+    if company is None or getattr(calepinage, 'appel_offre_id', None):
+        return None
+    lead_id = getattr(calepinage, 'lead_id', None)
+    cle = (lead_id, getattr(calepinage, 'pk', None))
+    memoire = getattr(calepinage, _MEMOIRE_CONCEPTION, None)
+    if memoire is not None and memoire[0] == cle:
+        return memoire[1]
+    valeur = (conception_courante(company, lead_id) if lead_id
+              else conception_courante(company, calepinage_id=cle[1]) if cle[1] else None)
+    try:
+        setattr(calepinage, _MEMOIRE_CONCEPTION, (cle, valeur))
+    except AttributeError:  # double de test sans attributs libres : relu à chaque appel
+        pass
+    return valeur
+
+
+def _source_de_la_taille(calepinage):
+    """``'lead'`` quand la taille souhaitée du lead fait la taille (souveraine), sinon ``'factures'``."""
+    from apps.crm.selectors import get_company_lead
+
+    if not getattr(calepinage, 'lead_id', None):
+        return 'factures'
+    lead = get_company_lead(calepinage.company, calepinage.lead_id, avec_corbeille=True)
+    try:
+        return 'lead' if float(getattr(lead, 'taille_souhaitee_kwc', None) or 0) > 0 else 'factures'
+    except (TypeError, ValueError):
+        return 'factures'
+
+
+def _refus(message, code, source='factures'):
+    return {'panneaux': None, 'kwc': None, 'panel_watt': None, 'source': source, 'refus': message,
+            'motif_code': code, 'option': None}
+
+
+def cible_de_la_conception(calepinage):
+    """ACAL2012 — la cible de l'atelier : la taille de la conception COURANTE (option que
+    le moteur retient), avec ou sans devis — un devis lié, même envoyé, n'est plus la
+    source (son écart est servi à part, ACAL2015). ``{panneaux, kwc, panel_watt, source,
+    refus, motif_code, option}`` ; un refus du moteur (ou aucune version rangée) est
+    rendu NOMMÉ, panneaux nuls ; ``None`` pour un dossier d'appel d'offres, ou un
+    calepinage sans lead dont aucune conception n'est rangée (rien ne le dimensionne,
+    comme avant). ``motif_code`` vaut ``facture_absente`` quand le refus nomme la
+    facture d'hiver (question de taille de la génération, ACAL922)."""
+    from apps.ventes.services import MOTIF_FACTURE_ABSENTE
+
+    if getattr(calepinage, 'appel_offre_id', None) or getattr(calepinage, 'company', None) is None:
+        return None
+    conception = conception_du_calepinage(calepinage)
+    if conception is None:
+        if not getattr(calepinage, 'lead_id', None):
+            return None
+        return _refus(REFUS_CONCEPTION_ABSENTE, CODE_CONCEPTION_ABSENTE)
+    if conception.get('marche') == 'agricole':
+        return _refus(REFUS_AGRICOLE, None, 'lead')
+    if conception.get('etat') != 'complet':
+        refus = conception.get('refus') or {}
+        code = MOTIF_FACTURE_ABSENTE if refus.get('champ') == 'facture_hiver' else refus.get('code')
+        return _refus(refus.get('message') or '', code)
+    option = conception.get('option_retenue')
+    valeurs = (conception.get('valeurs') or {}).get(option) or {}
+    panneaux = (valeurs.get('nb_panneaux') or {}).get('valeur')
+    kwc = (valeurs.get('puissance_kwc') or {}).get('valeur')
+    watt = round(float(kwc) * 1000 / panneaux) if panneaux and kwc else None
+    return {'panneaux': panneaux, 'kwc': kwc, 'panel_watt': watt, 'source': _source_de_la_taille(calepinage),
+            'refus': None, 'motif_code': None, 'option': option}
 
 
 def memoriser_option_dessinee(calepinage):

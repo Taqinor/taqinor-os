@@ -697,7 +697,8 @@ class KwcCoherentTest(SimpleTestCase):
 
 
 LEAD = 'apps.crm.selectors.get_company_lead'
-CIBLE = 'apps.ventes.selectors.cible_depuis_lead'
+#: ACAL2012 — la cible se lit sur la conception rangée (plus ``cible_depuis_lead``).
+CIBLE = 'apps.calepinage.services.devis_retenu.cible_de_la_conception'
 
 
 def _cible(motif_code=None, refus=None):

@@ -309,36 +309,36 @@ def _garde_kwh_declare(devis):
 
 
 def _cible_du_calepinage(calepinage):
-    """ACAL194 — la cible que le devis automatique donnerait au lead du
-    calepinage (``cible_depuis_lead``), ou ``None`` sans lead. Lecture seule."""
-    from apps.crm.selectors import get_company_lead
-    from apps.ventes.selectors import cible_depuis_lead
+    """ACAL2012 (règle 5 de la consolidation C4) — LE point de bascule de la cible :
+    la conception COURANTE du lead (ou du calepinage sans lead), jamais un second
+    dimensionnement ni le devis lié (``devis_retenu.cible_de_la_conception``).
+    Lecture seule."""
+    from .devis_retenu import cible_de_la_conception
 
-    if not getattr(calepinage, 'lead_id', None):
-        return None
-    company = getattr(calepinage, 'company', None)
-    lead = get_company_lead(company, calepinage.lead_id, avec_corbeille=True)
-    return cible_depuis_lead(lead, company) if lead is not None else None
+    return cible_de_la_conception(calepinage)
 
 
 def taille_non_dimensionnee(calepinage, *, cible=None):
     """ACAL861/ACAL922 — LA condition « rien ne dimensionne ce devis », écrite
     UNE fois (le contrôle « prêt à envoyer ? » la lit ; la porte 409 d'ACAL922
-    la lira) : sans lead, ou lead résidentiel sans ``taille_souhaitee_kwc``
-    dont ``cible_depuis_lead`` refuse faute de facture (``motif_code`` =
-    ``MOTIF_FACTURE_ABSENTE``). Rend ``{'refus': texte}`` ou ``None``
-    (dimensionné, ou refusé pour une AUTRE raison : C&I, agricole, kWh
-    incohérent ne posent pas cette question). Lecture seule. ``cible`` : la
-    cible déjà lue (``_cible_du_calepinage``), pour ne pas dimensionner deux
-    fois."""
+    la lira) : sans lead, ou lead dont la conception refuse faute de facture
+    (``motif_code`` = ``MOTIF_FACTURE_ABSENTE``), ou n'est pas encore rangée
+    alors que le lead n'a ni facture ni taille (ACAL2012). Rend ``{'refus': texte}`` ou ``None`` (dimensionné, ou refusé
+    pour une AUTRE raison : agricole, kWh incohérent ne posent pas cette
+    question). Lecture seule. ``cible`` : la cible déjà lue
+    (``_cible_du_calepinage``), pour ne pas la relire."""
     from apps.ventes.services import MOTIF_FACTURE_ABSENTE
+
+    from .devis_retenu import CODE_CONCEPTION_ABSENTE
 
     if not getattr(calepinage, 'lead_id', None):
         return {'refus': "Calepinage sans lead : aucune facture ne "
                          "dimensionne le système."}
     if cible is None:
         cible = _cible_du_calepinage(calepinage)
-    if cible and cible.get('motif_code') == MOTIF_FACTURE_ABSENTE:
+    motif = (cible or {}).get('motif_code')
+    if motif == MOTIF_FACTURE_ABSENTE or (motif == CODE_CONCEPTION_ABSENTE
+                                          and lead_sans_facture_ni_taille(calepinage)):
         return {'refus': cible.get('refus') or ''}
     return None
 
