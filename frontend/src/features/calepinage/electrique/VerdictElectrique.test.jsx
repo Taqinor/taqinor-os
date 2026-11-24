@@ -786,6 +786,46 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     cleanup() // la bulle vit dans un portail : démontée avant que l'afterEach du bloc ne vide le body
   })
 
+  /* T4-U4-007 (moitié serveur) — « Prêt à envoyer » SERT les points du dossier (`controles[].points[]`, contrat
+     `calepinage_pret_a_envoyer.json::exemple_points`) : le « ? » les lit tels quels (clé interne finale retirée) sans
+     relire `evaluer-electrique`, et « Régler » suit la `cible` du point servi. */
+  const dossierAvecPoints = () => {
+    const [ok, dossier] = dossierBloquant()
+    const servi = structuredClone(exempleContrat('calepinage', 'calepinage_pret_a_envoyer', 'exemple_points').controle)
+    servi.points[0].phrase = 'Continuité de la terre existante à justifier (terre.justification_continuite)'
+    servi.cause = servi.points[0].phrase
+    return [ok, { ...dossier, ...servi }]
+  }
+
+  it('T4-U4-007 — le « ? » de « Dossier électrique » lit les points SERVIS, sans la clé interne finale', async () => {
+    servirEtape({ p: pret(dossierAvecPoints()) })
+    servir(REPONSE)
+    rendreEtape()
+    const ligne = await screen.findByTestId('cal-pret-ligne-verdict_electrique')
+    const appelsAvant = calepinageApi.calepinages.evaluerElectrique.mock.calls.length
+    fireEvent.click(within(ligne).getByRole('button', { name: 'Pourquoi : Dossier électrique' }))
+    const bulle = await screen.findByTestId('cal-pret-points-dossier')
+    expect(bulle).toHaveAttribute('data-source', 'servi')
+    expect(bulle).toHaveTextContent('Ce qui bloque :')
+    expect(within(bulle).getByRole('listitem')).toHaveTextContent(
+      'Continuité de la terre existante à justifier — Compléter la check-list de terre')
+    expect(document.body).not.toHaveTextContent('terre.justification_continuite')
+    // la cause (= phrase du premier point) n'est pas dite une seconde fois
+    expect(document.body.textContent.split('Continuité de la terre existante à justifier').length - 1).toBe(1)
+    expect(calepinageApi.calepinages.evaluerElectrique.mock.calls.length).toBe(appelsAvant)
+    cleanup()
+  })
+
+  it('T4-U4-007 — « Régler » de « Dossier électrique » suit la cible du point SERVI', async () => {
+    servirEtape({ p: pret(dossierAvecPoints()) })
+    servir(REPONSE)
+    rendreEtape()
+    const ligne = await screen.findByTestId('cal-pret-ligne-verdict_electrique')
+    fireEvent.click(within(ligne).getByRole('button', { name: 'Régler' }))
+    await waitFor(() => expect(new URLSearchParams(screen.getByTestId('temoin-url').textContent).get('onglet'))
+      .toBe('decisions-electriques'))
+  })
+
   it('T4-U4-007 — une étape ouverte sur une section (« Régler » d’un autre point) la déplie et y met le focus', async () => {
     servirEtape()
     const surCarte = document.createElement('div')

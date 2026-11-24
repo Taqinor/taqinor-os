@@ -11,7 +11,7 @@ import { libelleEtat } from '../electrique/etatVerdict'
 import { lienManque } from '../production/lienManque'
 import Pourquoi from './Pourquoi'
 import {
-  GROUPES, GROUPE_AUTRES, MESSAGE_ECHEC, MESSAGE_LENT, estDelaiDepasse, groupeDuControle, heureDe,
+  GROUPES, GROUPE_AUTRES, MESSAGE_ECHEC, MESSAGE_LENT, cibleDuReglage, estDelaiDepasse, groupeDuControle, heureDe,
 } from './PretAEnvoyer.helpers'
 import GroupesPretAEnvoyer from './GroupesPretAEnvoyer'
 
@@ -58,7 +58,8 @@ function pastille(controle) {
 
 function Ligne({ controle, onRegler }) {
   const marque = pastille(controle)
-  const aRegler = Boolean(TON[controle.etat]) && Boolean(controle.cible?.onglet)
+  const cible = cibleDuReglage(controle) // T4-U4-007 — la cible du point servi
+  const aRegler = Boolean(TON[controle.etat]) && Boolean(cible?.onglet)
   const pastilleAffichee = Boolean(marque) && controle.etat !== 'ok'
   return (
     <li data-testid={`cal-pret-ligne-${controle.code}`}
@@ -72,7 +73,7 @@ function Ligne({ controle, onRegler }) {
       <Pourquoi cle={`controle.${controle.code}`} valeurs={controle} />
       {aRegler && (
         <button type="button" data-testid={`cal-pret-regler-${controle.code}`}
-          onClick={() => onRegler(controle.cible)}
+          onClick={() => onRegler(cible)}
           className="ml-auto inline-flex min-h-11 items-center rounded-md px-3 text-sm font-medium text-primary hover:underline focus-ring">
           Régler
         </button>

@@ -5,7 +5,7 @@ import useResource from '../../../hooks/useResource'
 import { Popover, PopoverContent, PopoverTrigger } from '../../../ui/Popover'
 import { Icone as Picto } from '../atelier/coque/primitives'
 import { ETAPES, etapeDeOnglet } from '../atelier/parcoursGuide'
-import { phraseDesBons, rangerControles } from './PretAEnvoyer.helpers'
+import { cibleDuReglage, phraseDesBons, pointsServis, rangerControles, sansCleInterne } from './PretAEnvoyer.helpers'
 import useExplications, { remplirPhrase } from './useExplications'
 
 /* ACAL1193 — la présentation « par étape » de « Prêt à envoyer ? » (maquette `Documents.dc.html`,
@@ -144,17 +144,46 @@ function Pourquoi({ controle }) {
   )
 }
 
+/** T4-U4-007 — les points SERVIS par « Prêt à envoyer » (`controles[].points[]`) : phrase (clé interne retirée) et
+    geste, mot pour mot, quatre au plus dans la bulle. */
+function PointsServis({ points, etat }) {
+  const visibles = points.slice(0, MAX_POINTS)
+  return (
+    <div data-testid="cal-pret-points-dossier" data-source="servi">
+      <p className="font-medium">{etat === 'bloquant' ? 'Ce qui bloque :' : 'À compléter :'}</p>
+      <ul className="list-disc pl-5">
+        {visibles.map((p, i) => (
+          <li key={`${p.code}-${i}`}>
+            {p.phrase}
+            {p.geste ? <span className="text-muted-foreground">{` — ${p.geste}`}</span> : null}
+          </li>
+        ))}
+      </ul>
+      {points.length > visibles.length && (
+        <p className="text-muted-foreground">{`… et ${points.length - visibles.length} autre${points.length - visibles.length > 1 ? 's' : ''} : « Régler » ouvre la liste complète.`}</p>
+      )}
+    </div>
+  )
+}
+
 /* Monté à l'ouverture de la bulle seulement : la lecture du rattachement (T4-U4-014) ne part qu'à ce moment. */
 function ContenuPourquoi({ controle, calepinageId, cause, entree, gesteServi }) {
   const gesteSansLead = controle.etat !== 'ok' ? GESTE_SANS_LEAD[controle.code] : null
   const sansLead = useSansLead(calepinageId, Boolean(gesteSansLead))
   const remplace = Boolean(gesteSansLead) && sansLead === true
+  const dossier = controle.code === 'verdict_electrique' && controle.etat !== 'ok'
+  // Points SERVIS d'abord ; la relecture d'`evaluer-electrique` n'est plus qu'un repli quand le serveur n'en sert pas.
+  const points = dossier ? pointsServis(controle) : []
+  const causeLue = sansCleInterne(cause)
+  // `cause` = la phrase du premier point servi : jamais dite deux fois.
+  const causeAffichee = causeLue && !points.some((p) => p.phrase === causeLue) ? causeLue : ''
   return (
         <div className="flex flex-col gap-2">
-          {controle.code === 'verdict_electrique' && controle.etat !== 'ok' && calepinageId != null && (
+          {points.length > 0 && <PointsServis points={points} etat={controle.etat} />}
+          {dossier && points.length === 0 && calepinageId != null && (
             <PointsDossier calepinageId={calepinageId} etat={controle.etat} />
           )}
-          {cause && <p>{cause}</p>}
+          {causeAffichee && <p>{causeAffichee}</p>}
           {entree && !remplace && <p>{remplirPhrase(entree, controle)}</p>}
           {controle.seuil_source && <p className="text-muted-foreground">{`Source du seuil : ${controle.seuil_source}.`}</p>}
           {remplace && <p className="text-muted-foreground" data-testid="cal-pret-sans-lead">{gesteSansLead}</p>}
@@ -165,8 +194,9 @@ function ContenuPourquoi({ controle, calepinageId, cause, entree, gesteServi }) 
 }
 
 function Ligne({ controle, onRegler }) {
-  const aRegler = (controle.etat === 'a_regler' || controle.etat === 'bloquant') && Boolean(controle.cible?.onglet)
-  const etape = libelleEtape(controle.cible)
+  const cible = cibleDuReglage(controle) // T4-U4-007 — la cible du point servi
+  const aRegler = (controle.etat === 'a_regler' || controle.etat === 'bloquant') && Boolean(cible?.onglet)
+  const etape = libelleEtape(cible)
   return (
     <li data-testid={`cal-pret-ligne-${controle.code}`} data-etat={controle.etat} className="cdoc-ligne">
       <Pastille etat={controle.etat} />
@@ -177,7 +207,7 @@ function Ligne({ controle, onRegler }) {
       <Pourquoi controle={controle} />
       {aRegler && (
         <button type="button" data-testid={`cal-pret-regler-${controle.code}`} className="cdoc-regler"
-          onClick={() => onRegler(controle.cible)}>
+          onClick={() => onRegler(cible)}>
           {etape ? `Régler dans ${etape}` : 'Régler'}
         </button>
       )}
@@ -249,7 +279,8 @@ function messagePied(controles) {
    la liste rangée ; les suivants, discrets) ; puis la section « Contrôles · N bons » REPLIÉE (coches vertes, « ? » rond).
    Tous les contrôles servis restent à l'écran (rien n'est retiré) ; aucun compte n'est calculé hors des états servis. */
 function LigneCourte({ c, premierARegler, onRegler }) {
-  const aRegler = (c.etat === 'a_regler' || c.etat === 'bloquant') && Boolean(c.cible?.onglet)
+  const cible = cibleDuReglage(c) // T4-U4-007 — la cible du point servi
+  const aRegler = (c.etat === 'a_regler' || c.etat === 'bloquant') && Boolean(cible?.onglet)
   return (
     <li data-testid={`cal-pret-ligne-${c.code}`} data-etat={c.etat} className="cel-pret-ligne">
       {c.etat === 'ok'
@@ -263,7 +294,7 @@ function LigneCourte({ c, premierARegler, onRegler }) {
       {aRegler && (
         <button type="button" data-testid={`cal-pret-regler-${c.code}`} className="cel-pret-regler"
           data-recommande={c.code === premierARegler ? 'oui' : 'non'}
-          onClick={() => onRegler(c.cible)}>
+          onClick={() => onRegler(cible)}>
           Régler
         </button>
       )}
