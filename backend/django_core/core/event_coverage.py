@@ -543,7 +543,6 @@ NO_STATIC_EMITTER = {
     # AVANT leurs émetteurs (contrat d'abord, PACT10) : leur entrée de
     # catalogue est le contrat, la parité devient vérifiable à l'émetteur.
     # Chaque entrée nomme la tâche qui la retire en posant le ``send``.
-    "lead_entrees_modifiees",            # émetteur crm — retiré par ALEA68
     "pose_enregistree",                  # émetteur calepinage — retiré par ACAL2011
     "conception_recalculee",             # émetteur ventes — retiré par ADEV135
 }

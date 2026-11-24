@@ -185,6 +185,9 @@ class EvenementsDuMoteurUniqueTest(SimpleTestCase):
     restent réservés sans abonné tant que leurs abonnés n'existent pas
     (ADEV139, ALEA69). La lane calepinage émet ``pose_enregistree`` (ACAL2011)."""
 
+    # Retirés d'``event_coverage.NO_STATIC_EMITTER`` au fil des émetteurs :
+    # ALEA68 (lead_entrees_modifiees), ACAL2011 (pose_enregistree).
+    SANS_EMETTEUR_STATIQUE = {'pose_enregistree', 'conception_recalculee'}
     NOMS = {'lead_entrees_modifiees': 'lead', 'pose_enregistree': 'calepinage',
             'conception_recalculee': 'devis'}
 
@@ -205,7 +208,10 @@ class EvenementsDuMoteurUniqueTest(SimpleTestCase):
                 self.assertIn(nom, sous.__all__)
                 self.assertIn(nom, event_coverage.ALLOWED_UNCONSUMED)
                 self.assertNotIn(nom, event_coverage.orphan_signals())
-                self.assertIn(nom, event_coverage.NO_STATIC_EMITTER)
+                if nom in self.SANS_EMETTEUR_STATIQUE:
+                    self.assertIn(nom, event_coverage.NO_STATIC_EMITTER)
+                else:
+                    self.assertNotIn(nom, event_coverage.NO_STATIC_EMITTER)
                 self.assertNotIn(nom, event_coverage.catalog_payload_mismatches())
                 self.assertIsNotNone(event_catalog.entry(nom))
         self.assertEqual(
