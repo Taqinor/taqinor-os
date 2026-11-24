@@ -12,14 +12,17 @@ export default function ActeEtape({
   // Les gestes d'écriture suivent UNIQUEMENT les `peut_*` du serveur (rôle, droit,
   // état de l'acte, chantier annulé) : aucun drapeau local ne les décide.
   const principal = actionPrincipale(acte)
+  // Une version écartée (la jumelle d'une livraison déjà émise ou signée) ne
+  // propose que l'aperçu : aucun geste d'écriture, aucun avertissement périmé.
+  const ecarte = !!acte.ecarte
   const gestes = [
     ['apercu', true, 'outline'],
-    ['modifier', acte.peut_modifier, 'outline'],
-    ['emettre', acte.peut_emettre, principal === 'emettre' ? 'default' : 'outline'],
-    ['signer', acte.peut_signer, principal === 'signer' ? 'default' : 'outline'],
-    ['papier', acte.peut_signer, 'outline'],
-    ['rouvrir', acte.peut_rouvrir, 'outline'],
-    ['telecharger', true, 'ghost'],
+    ['modifier', !ecarte && acte.peut_modifier, 'outline'],
+    ['emettre', !ecarte && acte.peut_emettre, principal === 'emettre' ? 'default' : 'outline'],
+    ['signer', !ecarte && acte.peut_signer, principal === 'signer' ? 'default' : 'outline'],
+    ['papier', !ecarte && acte.peut_signer, 'outline'],
+    ['rouvrir', !ecarte && acte.peut_rouvrir, 'outline'],
+    ['telecharger', !ecarte, 'ghost'],
   ].filter(([, visible]) => visible)
 
   return (
@@ -41,7 +44,7 @@ export default function ActeEtape({
         {acte.version > 1 && <span className="contrats-acte__version">Version {acte.version}</span>}
       </div>
 
-      {acte.avertissements?.length > 0 && (
+      {!ecarte && acte.avertissements?.length > 0 && (
         <ul className="contrats-acte__avertissements">
           {acte.avertissements.map((a) => (
             <li key={a}>{a}</li>

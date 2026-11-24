@@ -9,9 +9,9 @@ import {
   Button, Input, Label, Textarea, Spinner, toast,
 } from '../../../ui'
 import documentsApi from '../../../api/documentsApi'
-import { confirmLeaveIfDirty } from '../../../ui/useDirtyGuard'
-import { detailErreur, formaterDh } from './outils'
+import { dateLisible, detailErreur, formaterDh, formaterPourcent } from './outils'
 import PiedDialogue from './PiedDialogue'
+import Confirmation from './Confirmation'
 import { useSoumission } from './useSoumission'
 import {
   SECTIONS, ORDRE_SECTIONS, brouillonDe, surchargesModifiees,
@@ -52,15 +52,21 @@ function Zone({ id, libelle, valeur, onChange, lignes = 4, aide }) {
   )
 }
 
+// Le toast ne doit pas recouvrir le bouton « Enregistrer » (pied du dialogue).
+const TOAST_HAUT = { position: 'top-center', duration: 2500 }
+
 const AIDE_PARAGRAPHES = 'Une ligne vide sépare deux paragraphes ; une ligne qui commence par « - » devient une puce ; **gras** reste tel quel.'
 
 /** Les champs d'une section. `v` = brouillon courant, `m` = fixe la valeur. */
-function ChampsSection({ cle, v, m, contenu }) {
+function ChampsSection({
+  cle, v, m, contenu, titreParDefaut = '', articlesPerso = false, onRetablirArticle,
+}) {
   const langue = useContext(LangueContext)
   const p = `contrats-ed-${cle}`
   switch (cle) {
     case 'titre':
-      return <Texte id={p} libelle="Titre" valeur={v} onChange={m} />
+      // Vide = le titre imprimé par défaut : on le montre en indication.
+      return <Texte id={p} libelle="Titre" valeur={v} onChange={m} placeholder={titreParDefaut} />
     case 'lieu':
       return <Texte id={p} libelle="Lieu" valeur={v} onChange={m} />
     case 'date_document':
@@ -78,7 +84,7 @@ function ChampsSection({ cle, v, m, contenu }) {
             ? (
               <p className="contrats-editeur__lecture-seule">
                 <span>Date limite (réglée en français)</span>
-                <strong dir="ltr">{v.date_limite || 'à préciser'}</strong>
+                <strong dir="ltr">{dateLisible(v.date_limite, langue) || 'à préciser'}</strong>
               </p>
             )
             : (
@@ -101,7 +107,7 @@ function ChampsSection({ cle, v, m, contenu }) {
               <p className="contrats-editeur__tranche-titre">
                 <strong>{t.libelle}</strong>
                 <span className="contrats-editeur__lecture">
-                  {t.pourcentage} % · {formaterDh(t.montant_ttc)}
+                  {formaterPourcent(t.pourcentage)} · {formaterDh(t.montant_ttc)}
                 </span>
               </p>
               <Texte id={`${p}-${t.cle}-q`} libelle={`Quand — ${t.libelle}`}
@@ -130,6 +136,13 @@ function ChampsSection({ cle, v, m, contenu }) {
           <Zone id={`${p}-${a.cle}-x`} libelle={`Texte de l’article ${i + 1}`} lignes={6}
                 valeur={a.texte} aide={AIDE_PARAGRAPHES}
                 onChange={(x) => m(v.map((r, j) => (j === i ? { ...r, texte: x } : r)))} />
+          {articlesPerso && onRetablirArticle && (
+            <Button type="button" size="sm" variant="ghost" className="contrats-acte__bouton"
+                    aria-label={`Rétablir l’article ${i + 1} (${a.titre})`}
+                    onClick={() => onRetablirArticle(a.cle)}>
+              <RotateCcw className="size-4" aria-hidden="true" /> Rétablir cet article
+            </Button>
+          )}
         </div>
       ))
     case 'garanties':
@@ -148,7 +161,7 @@ function ChampsSection({ cle, v, m, contenu }) {
                       <p className="contrats-editeur__lecture-seule">
                         <span>Durée en mois (réglée en français)</span>
                         <strong dir="ltr">{g.duree_mois || 'à préciser'}</strong>
-                        {g.fin && <span dir="ltr">Fin : {g.fin}</span>}
+                        {g.fin && <span>Fin : <bdi>{dateLisible(g.fin, langue)}</bdi></span>}
                       </p>
                     )
                     : (
@@ -280,6 +293,8 @@ export default function ActeEditeur({
   const { occupe, erreur, setErreur, soumettre } = useSoumission()
   const [langue, setLangue] = useState('fr')
   const [langueDemandee, setLangueDemandee] = useState(null)
+  const [fermetureDemandee, setFermetureDemandee] = useState(false)
+  const [aRetablir, setARetablir] = useState(null) // { cle, article? } à confirmer
 
   const charger = (detail) => {
     const sections = (detail.sections_modifiables ?? []).filter((k) => SECTIONS[k])
@@ -320,22 +335,35 @@ export default function ActeEditeur({
     await soumettre(async () => {
       const res = await documentsApi.modifierActe(acte.id, surcharges, langue)
       charger(res.data)
-      toast.success('Modifications enregistrées.')
+      toast.success('Enregistré.', TOAST_HAUT)
       onSaved?.(res.data)
     })
   }
 
-  const retablir = async (cle) => {
+  // Rétablit une section (texte par défaut) : `null`. Pour UN article, on renvoie
+  // la liste COMPLÈTE telle qu'enregistrée (`base`), l'article visé réduit à sa
+  // seule clé — le serveur le reprend alors de la base (resoudre_articles) et
+  // garde les autres articles tels quels.
+  const retablir = async (cle, articleCle = null) => {
     await soumettre(async () => {
-      const res = await documentsApi.modifierActe(acte.id, { [cle]: null }, langue)
+      const valeur = articleCle === null
+        ? null
+        : SECTIONS.articles.ecrire(base.articles).map((a) => (a.cle === articleCle ? { cle: a.cle } : a))
+      const res = await documentsApi.modifierActe(acte.id, { [cle]: valeur }, langue)
       const detail = res.data
       const frais = brouillonDe(detail.contenu, [cle])
       setActe((a) => ({ ...a, ...detail }))
       setBase((b) => ({ ...b, [cle]: frais[cle] }))
       setBrouillon((b) => ({ ...b, [cle]: frais[cle] }))
-      toast.success('Texte par défaut rétabli.')
+      toast.success('Texte par défaut rétabli.', TOAST_HAUT)
       onSaved?.(detail)
     })
+  }
+
+  const confirmerRetablir = () => {
+    const cible = aRetablir
+    setARetablir(null)
+    if (cible) retablir(cible.cle, cible.article ?? null)
   }
 
   const basculer = (code) => {
@@ -351,10 +379,12 @@ export default function ActeEditeur({
   }
 
   // Croix, Échap, clic à côté et bouton « Fermer » passent par ICI : des
-  // modifications non enregistrées demandent confirmation avant de partir.
+  // modifications non enregistrées demandent confirmation (boîte à nous, dans
+  // l'arbre de l'éditeur — voir Confirmation.jsx) avant de fermer l'éditeur SEUL.
   const demanderFermeture = (ouvert) => {
     if (ouvert) { onOpenChange?.(true); return }
-    confirmLeaveIfDirty(modifie).then((ok) => { if (ok) onOpenChange?.(false) })
+    if (modifie) setFermetureDemandee(true)
+    else onOpenChange?.(false)
   }
 
   const enregistrerModele = async () => {
@@ -423,17 +453,41 @@ export default function ActeEditeur({
                 v={brouillon[cle]}
                 m={(valeur) => setBrouillon((b) => ({ ...b, [cle]: valeur }))}
                 contenu={acte.contenu}
+                titreParDefaut={acte.titre}
+                articlesPerso={personnalisees.includes('articles')}
+                onRetablirArticle={(articleCle) => setARetablir({ cle: 'articles', article: articleCle })}
               />
             </LangueContext.Provider>
             {personnalisees.includes(cle) && (
               <Button type="button" size="sm" variant="ghost" className="contrats-acte__bouton"
-                      onClick={() => retablir(cle)}>
+                      onClick={() => setARetablir({ cle })}>
                 <RotateCcw className="size-4" aria-hidden="true" />
-                Rétablir le texte par défaut
+                {cle === 'articles' ? 'Tout rétablir' : 'Rétablir le texte par défaut'}
               </Button>
             )}
           </fieldset>
         ))}
+
+        <Confirmation
+          open={fermetureDemandee}
+          titre="Quitter sans enregistrer ?"
+          description="Des modifications ne sont pas enregistrées : fermer l’éditeur les abandonne."
+          libelleRester="Rester"
+          libelleConfirmer="Quitter"
+          onRester={() => setFermetureDemandee(false)}
+          onConfirmer={() => { setFermetureDemandee(false); onOpenChange?.(false) }}
+        />
+        <Confirmation
+          open={!!aRetablir}
+          titre={aRetablir?.article ? 'Rétablir cet article ?' : 'Rétablir le texte par défaut ?'}
+          description={aRetablir?.article
+            ? 'Cet article reprend son texte par défaut ; les autres articles ne changent pas.'
+            : 'Tout le texte personnalisé de cette section est remplacé par le texte par défaut.'}
+          libelleRester="Garder mon texte"
+          libelleConfirmer="Rétablir"
+          onRester={() => setARetablir(null)}
+          onConfirmer={confirmerRetablir}
+        />
 
         <PiedDialogue
           erreur={erreur}

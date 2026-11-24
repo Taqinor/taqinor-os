@@ -189,4 +189,53 @@ describe('Onglet Contrats', () => {
       expect(entete.id).toBeTruthy()
     }
   })
+
+  it('F11 — la confirmation d’émission montre les avertissements de l’acte', async () => {
+    const d = dossier()
+    d.actes[3] = { ...d.actes[3], peut_emettre: true, avertissements: ['La traduction arabe ne suit pas vos changements.'] }
+    documentsApiMock.dossierContrats.mockResolvedValue({ data: d })
+    const user = userEvent.setup()
+    monter()
+    await screen.findByText('Réception des travaux')
+    await user.click(within(carte('Réception des travaux')).getByRole('button', { name: 'Émettre' }))
+    const boite = await screen.findByRole('alertdialog')
+    expect(within(boite).getByText('La traduction arabe ne suit pas vos changements.')).toBeInTheDocument()
+    expect(within(boite).getByRole('button', { name: 'Émettre l’acte' })).toBeInTheDocument()
+  })
+
+  it('F14 — la version écartée n’offre que l’aperçu et aucun avertissement périmé', async () => {
+    const d = dossier()
+    d.actes[1] = { ...d.actes[1], statut: 'emis', emis_le: '2026-12-15T09:00:00Z', peut_emettre: false, peut_signer: true }
+    d.actes[2] = { ...d.actes[2], ecarte: true, peut_modifier: true, peut_emettre: true, avertissements: ['Avertissement périmé.'] }
+    documentsApiMock.dossierContrats.mockResolvedValue({ data: d })
+    monter()
+    await screen.findByText('Livraison du matériel — 90 % réglés')
+    const ecartee = carte('Livraison du matériel — 90 % réglés')
+    expect(within(ecartee).getAllByRole('button').map((b) => b.textContent)).toEqual(['Aperçu (PDF)'])
+    expect(within(ecartee).queryByText('Avertissement périmé.')).toBeNull()
+  })
+
+  it('F14 — « Rouvrir » demande confirmation avant d’appeler le serveur', async () => {
+    const d = dossier()
+    d.actes[1] = { ...d.actes[1], statut: 'emis', emis_le: '2026-12-15T09:00:00Z', peut_rouvrir: true }
+    documentsApiMock.dossierContrats.mockResolvedValue({ data: d })
+    documentsApiMock.rouvrirActe.mockResolvedValue({ data: {} })
+    const user = userEvent.setup()
+    monter()
+    await screen.findByText('Livraison du matériel — reste à régler')
+    await user.click(within(carte('Livraison du matériel — reste à régler')).getByRole('button', { name: 'Rouvrir' }))
+    expect(documentsApiMock.rouvrirActe).not.toHaveBeenCalled()
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Rouvrir l’acte' }))
+    expect(documentsApiMock.rouvrirActe).toHaveBeenCalledWith(d.actes[1].id)
+  })
+
+  it('F16 — l’aperçu s’intitule avec la référence de l’ACTE', async () => {
+    const ouvrirApercu = vi.fn()
+    const user = userEvent.setup()
+    monter({ ouvrirApercu })
+    await screen.findByText('Réception des travaux')
+    const acte = dossier().actes.find((a) => a.titre === 'Réception des travaux')
+    await user.click(within(carte('Réception des travaux')).getByRole('button', { name: 'Aperçu (PDF)' }))
+    expect(ouvrirApercu.mock.calls[0][0]).toBe(`${acte.titre} — ${acte.reference}`)
+  })
 })

@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, within } from '@testing-library/react'
+import { render, screen, cleanup, within, waitFor } from '@testing-library/react'
+import { Dialog, DialogContent } from '../../../ui'
 import userEvent from '@testing-library/user-event'
 import { exempleContrat, documentContrat } from '../../../test/fixtures/contractSamples'
-import { ConfirmProvider } from '../../../providers/ConfirmProvider'
-import { useConfirmationSortie } from '../../../ui/useDirtyGuard'
 
-const { documentsApiMock } = vi.hoisted(() => ({
+const { documentsApiMock, toastMock } = vi.hoisted(() => ({
+  toastMock: { success: vi.fn(), error: vi.fn() },
   documentsApiMock: {
     acte: vi.fn(),
     modifierActe: vi.fn(),
@@ -13,27 +13,16 @@ const { documentsApiMock } = vi.hoisted(() => ({
   },
 }))
 vi.mock('../../../api/documentsApi', () => ({ default: documentsApiMock }))
+vi.mock('../../../ui', async (importOriginal) => ({ ...(await importOriginal()), toast: toastMock }))
 
 import ActeEditeur from './ActeEditeur'
 
 const acte = () => structuredClone(exempleContrat('documents', 'acte_contractuel'))
 
-// Comme dans l'application : la boîte de confirmation de sortie est montée à la racine.
-function Racine({ children }) {
-  useConfirmationSortie()
-  return children
-}
-
 function monter(props = {}) {
   const onSaved = vi.fn()
   const onOpenChange = vi.fn()
-  render(
-    <ConfirmProvider>
-      <Racine>
-        <ActeEditeur open acteId={31} onOpenChange={onOpenChange} onSaved={onSaved} {...props} />
-      </Racine>
-    </ConfirmProvider>,
-  )
+  render(<ActeEditeur open acteId={31} onOpenChange={onOpenChange} onSaved={onSaved} {...props} />)
   return { onSaved, onOpenChange }
 }
 
@@ -91,6 +80,9 @@ describe('Éditeur d’un acte', () => {
     monter()
     const s = await screen.findByRole('group', { name: 'Conditions particulières' })
     await user.click(within(s).getByRole('button', { name: /Rétablir le texte par défaut/ }))
+    // F12 : jamais immédiat, une confirmation d'abord.
+    expect(documentsApiMock.modifierActe).not.toHaveBeenCalled()
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Rétablir' }))
     expect(documentsApiMock.modifierActe).toHaveBeenCalledWith(31, { conditions_particulieres: null }, 'fr')
     // Une section non personnalisée n’offre pas « Rétablir ».
     expect(within(section('Délais')).queryByRole('button', { name: /Rétablir/ })).toBeNull()
@@ -165,11 +157,14 @@ describe('Éditeur d’un acte', () => {
     await user.click(screen.getByRole('button', { name: 'العربية' }))
     const delais = await screen.findByRole('group', { name: 'Délais' })
     expect(within(delais).queryByLabelText('Date limite')).toBeNull()
-    expect(within(delais).getByText(ar.contenu.delais.date_limite)).toBeInTheDocument()
+    // F16 : une date lisible, pas l'ISO brut.
+    expect(delais.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}/)
+    expect(delais.querySelector('strong').textContent).toMatch(/\d/)
     const garanties = screen.getByRole('group', { name: 'Garanties' })
     expect(within(garanties).queryByLabelText('Durée en mois')).toBeNull()
     expect(within(garanties).queryByRole('button', { name: /Ajouter une garantie|Retirer/ })).toBeNull()
-    expect(within(garanties).getByText(/2037-01-23/)).toBeInTheDocument()
+    expect(garanties.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}/)
+    expect(within(garanties).getByText(/Fin :/).textContent).toMatch(/2037/)
     await user.type(within(delais).getByLabelText('Détail'), ' x')
     await user.type(within(garanties).getByLabelText('Désignation (garantie 1)'), ' x')
     await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
@@ -276,11 +271,7 @@ describe('Éditeur d’un acte', () => {
 
   it('F4 — « Délai d’exécution » n’apparaît que sur le contrat, jamais sur un procès-verbal', async () => {
     const user = userEvent.setup()
-    const { unmount } = render(
-      <ConfirmProvider>
-        <ActeEditeur open acteId={31} onOpenChange={vi.fn()} />
-      </ConfirmProvider>,
-    )
+    const { unmount } = render(<ActeEditeur open acteId={31} onOpenChange={vi.fn()} />)
     const contrat = await screen.findByRole('group', { name: 'Options' })
     expect(within(contrat).getByLabelText(/Délai d’exécution/)).toBeInTheDocument()
     unmount()
@@ -464,5 +455,91 @@ describe('Éditeur d’un acte', () => {
     const l = documentsApiMock.modifierActe.mock.calls.at(-1)[1]
     expect(l.livraison).toEqual({ ...liv.contenu.livraison, suite: `${liv.contenu.livraison.suite} !` })
     expect(l.livraison.date).toBe(liv.contenu.livraison.date)
+  })
+
+  describe('lot F10 à F16', () => {
+    // L'éditeur est monté DANS un tiroir hôte (un autre Dialog Radix) : un clic dans
+    // la confirmation ne doit jamais fermer ni l'éditeur ni le tiroir.
+    function monterDansUnTiroir() {
+      const onTiroir = vi.fn()
+      const onOpenChange = vi.fn()
+      render(
+        <Dialog open onOpenChange={onTiroir}>
+          <DialogContent aria-label="Tiroir du chantier">
+            <ActeEditeur open acteId={31} onOpenChange={onOpenChange} onSaved={vi.fn()} />
+          </DialogContent>
+        </Dialog>,
+      )
+      return { onTiroir, onOpenChange }
+    }
+
+    it('F10 — « Rester » ferme la confirmation et garde les modifications ; « Quitter » ne ferme que l’éditeur', async () => {
+      const user = userEvent.setup()
+      const { onTiroir, onOpenChange } = monterDansUnTiroir()
+      await salir(user)
+      await user.click(fermerDuPied())
+      let boite = await screen.findByRole('alertdialog', { name: 'Quitter sans enregistrer ?' })
+      await user.click(within(boite).getByRole('button', { name: 'Rester' }))
+      await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+      expect(onOpenChange).not.toHaveBeenCalled()
+      expect(onTiroir).not.toHaveBeenCalled()
+      const zone = within(section('Conditions particulières')).getByLabelText('Conditions particulières')
+      expect(zone.value).toMatch(/ x$/)
+      await user.click(fermerDuPied())
+      boite = await screen.findByRole('alertdialog', { name: 'Quitter sans enregistrer ?' })
+      await user.click(within(boite).getByRole('button', { name: 'Quitter' }))
+      expect(onOpenChange).toHaveBeenCalledTimes(1)
+      expect(onOpenChange).toHaveBeenCalledWith(false)
+      expect(onTiroir).not.toHaveBeenCalled()
+    })
+
+    it('F12 — « Rétablir cet article » n’envoie que cet article réduit à sa clé, les autres tels quels', async () => {
+      const user = userEvent.setup()
+      const perso = acte()
+      perso.sections_personnalisees = ['articles']
+      documentsApiMock.acte.mockResolvedValue({ data: perso })
+      monter()
+      const groupe = await screen.findByRole('group', { name: 'Articles' })
+      const boutons = within(groupe).getAllByRole('button', { name: /^Rétablir l’article/ })
+      expect(boutons).toHaveLength(perso.contenu.articles.length)
+      expect(within(groupe).getByRole('button', { name: 'Tout rétablir' })).toBeInTheDocument()
+      await user.click(boutons[1])
+      expect(documentsApiMock.modifierActe).not.toHaveBeenCalled()
+      await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Rétablir' }))
+      const liste = documentsApiMock.modifierActe.mock.calls[0][1].articles
+      expect(liste).toHaveLength(perso.contenu.articles.length)
+      expect(liste[1]).toEqual({ cle: perso.contenu.articles[1].cle })
+      expect(liste[0]).toEqual({
+        cle: perso.contenu.articles[0].cle,
+        titre: perso.contenu.articles[0].titre,
+        paragraphes: perso.contenu.articles[0].paragraphes,
+      })
+    })
+
+    it('F13 — le titre par défaut est l’indication du champ « Titre »', async () => {
+      monter()
+      const champ = within(await screen.findByRole('group', { name: 'Titre du document' })).getByLabelText('Titre')
+      expect(champ).toHaveAttribute('placeholder', acte().titre)
+    })
+
+    it('F16 — les pourcentages de l’échéancier sont à la française', async () => {
+      const a = acte()
+      a.contenu.echeancier[0].pourcentage = '0.09'
+      documentsApiMock.acte.mockResolvedValue({ data: a })
+      monter()
+      const s = await screen.findByRole('group', { name: 'Échéancier : les mots' })
+      expect(within(s).getByText(/0,09 %/)).toBeInTheDocument()
+      expect(s.textContent).not.toMatch(/0\.09/)
+    })
+
+    it('F16 — le toast « Enregistré » est court et placé en haut (jamais sur le bouton Enregistrer)', async () => {
+      const user = userEvent.setup()
+      monter()
+      await salir(user)
+      await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+      await waitFor(() => expect(toastMock.success).toHaveBeenCalled())
+      expect(toastMock.success.mock.calls[0][0]).toBe('Enregistré.')
+      expect(toastMock.success.mock.calls[0][1]).toMatchObject({ position: 'top-center' })
+    })
   })
 })

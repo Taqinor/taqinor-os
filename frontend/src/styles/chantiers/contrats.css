@@ -11,6 +11,8 @@
   flex-direction: column;
   gap: 1rem;
   color: var(--foreground);
+  /* le pied collant du tiroir ne doit jamais cacher les boutons de la dernière carte */
+  padding-bottom: calc(6rem + env(safe-area-inset-bottom, 0px));
 }
 
 .contrats-chantier__chargement {
@@ -451,4 +453,18 @@
 .contrats-editeur__confirmer p {
   margin: 0;
   flex: 1 1 14rem;
+}
+
+/* ── Dialogues de signature et éditeur : toutes les cibles ≥ 44 px (téléphone) ──
+   la croix de fermeture (composant partagé) et « Effacer » (tracé) comprises */
+.contrats-dialogue button,
+.contrats-editeur > button[aria-label='Fermer'] {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+}
+
+.contrats-dialogue > button[aria-label='Fermer'],
+.contrats-editeur > button[aria-label='Fermer'] {
+  display: grid;
+  place-items: center;
 }
