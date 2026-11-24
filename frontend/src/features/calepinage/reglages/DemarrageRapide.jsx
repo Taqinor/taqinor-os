@@ -3,6 +3,7 @@ import { CircleCheck, CircleDashed, ExternalLink, Info } from 'lucide-react'
 import calepinageApi from '../../../api/calepinageApi'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { Button, Card } from '../../../ui'
+import { BoutonOr } from '../atelier/coque/primitives'
 import {
   dateFr, libelleReglage, nomSansSource, precisionValeur, sourceCourte, valeurLisible,
 } from './profilDepart'
@@ -37,9 +38,29 @@ const saisie = (reglages, { section, cle }) => {
 /** L'état de la ligne : `a_appliquer` | `posee_par_profil` | `deja_saisie`. */
 const etatDe = (v, reglages) => v.etat ?? (saisie(reglages, v) ? 'deja_saisie' : 'a_appliquer')
 
-/* Les colonnes de la maquette (64 px · 1,3 · 1,35 · 0,8 · 1 fr) sur 1 344 px. Dans le cadre ERP la page n'a que
-   ~1 136 px : « Réglage » reçoit une part plus large pour que les libellés ne se replient pas. */
-const COLONNES = 'grid-cols-[64px_minmax(0,1.55fr)_minmax(0,1.25fr)_minmax(0,0.75fr)_minmax(0,1.05fr)]'
+/* Les colonnes (variable `--dr-colonnes` posée sur la section) : celles de la maquette v2 en page plein écran
+   (72 px · 1,3 · 1,4 · 0,75 · 1 fr, ACAL1826) ; dans la carte des Réglages (~1 136 px) « Réglage » reçoit une part
+   plus large pour que les libellés ne se replient pas. */
+const COLONNES = 'grid-cols-[var(--dr-colonnes)]'
+const COLONNES_PAGE = '72px minmax(0,1.3fr) minmax(0,1.4fr) minmax(0,0.75fr) minmax(0,1fr)'
+const COLONNES_CARTE = '64px minmax(0,1.55fr) minmax(0,1.25fr) minmax(0,0.75fr) minmax(0,1.05fr)'
+const OMBRE = 'bg-[var(--cal-surface)] shadow-[var(--cal-ombre-posee)]'
+
+/** ACAL1826 — la valeur SERVIE (`valeurLisible`, texte inchangé) au style v2 : chiffre Archivo 18/700, unité plus
+    petite, puis la pastille dorée de 7 px « valeur publiée, non mesurée » (nommée par la pilule de légende de la page) —
+    seulement si la référence SERVIE est une publication : une « valeur de départ SUPPOSÉE » n'en porte pas. */
+function ValeurPubliee({ texte, publiee }) {
+  const coupe = /^(.*\d.*?)\s+(\D+)$/.exec(texte)
+  return (
+    <span className="flex items-center gap-2">
+      <span className="font-display text-[18px] font-bold tracking-[-0.01em] tabular-nums">
+        {coupe ? coupe[1] : texte}
+        {coupe ? <span className="font-brand text-[13px] font-medium text-[color:var(--cal-texte-2)]">{` ${coupe[2]}`}</span> : null}
+      </span>
+      {publiee ? <span aria-hidden="true" className="h-[7px] w-[7px] flex-none rounded-full bg-[var(--cal-action)]" /> : null}
+    </span>
+  )
+}
 
 function Etat({ v, etat, reglages }) {
   const saisi = reglages?.[v.section]?.[v.cle]
@@ -106,7 +127,7 @@ function LigneProfil({ v, reglages, coche, peut, onBascule }) {
   const citation = `${v.reference} — ${v.url} — lu le ${dateFr(v.date_lecture)}`
   return (
     <div
-      className={`grid ${COLONNES} items-center border-b border-border px-2 pr-5 text-sm min-h-[60px]`}
+      className={`grid ${COLONNES} items-center border-b border-border px-2 pr-5 text-sm min-h-[var(--dr-ligne)]`}
       data-testid={`acal405-valeur-${v.cle}`}
     >
       <CaseRemplir etat={etat} nom={nom} coche={coche} actif={peut && etat === 'a_appliquer'} onBascule={onBascule} />
@@ -115,7 +136,7 @@ function LigneProfil({ v, reglages, coche, peut, onBascule }) {
         {aide ? <span className="text-xs text-muted-foreground">{aide}</span> : null}
       </span>
       <span className="flex flex-col pr-3">
-        <span className="font-display text-base font-semibold tabular-nums">{valeurLisible(v.valeur, v.unite)}</span>
+        <ValeurPubliee texte={valeurLisible(v.valeur, v.unite)} publiee={!/suppos/i.test(sourceCourte(v.reference))} />
         {precision ? <span className="text-xs text-muted-foreground">{precision}</span> : null}
       </span>
       <span className="flex flex-col pr-3">
@@ -139,7 +160,7 @@ function LigneProfil({ v, reglages, coche, peut, onBascule }) {
 /** La lecture du profil est en cours : des lignes grises à la place des réglages (aucune annonce de résultat). */
 function LignesEnLecture() {
   return Array.from({ length: 6 }, (_, rang) => (
-    <div key={rang} className={`grid ${COLONNES} min-h-[60px] animate-pulse items-center border-b border-border px-2 pr-5`}
+    <div key={rang} className={`grid ${COLONNES} min-h-[var(--dr-ligne)] animate-pulse items-center border-b border-border px-2 pr-5`}
       aria-hidden="true" data-testid="acal405-ligne-en-lecture">
       <span className="mx-auto h-[22px] w-[22px] rounded-md bg-muted" />
       <span className="flex flex-col gap-1.5 pr-3"><span className="h-4 w-3/5 rounded bg-muted" /><span className="h-3 w-4/5 rounded bg-muted" /></span>
@@ -153,7 +174,7 @@ function LignesEnLecture() {
 /** Le réglage tapé À LA MAIN : aucune valeur publiée n'existe, la ligne le dit et mène à la saisie. */
 function LigneSansSource({ sansSource }) {
   return (
-    <div className={`grid ${COLONNES} items-center bg-muted/30 px-2 pr-5 text-sm min-h-[60px]`}>
+    <div className={`grid ${COLONNES} items-center bg-muted/30 px-2 pr-5 text-sm min-h-[var(--dr-ligne)]`}>
       <label className="relative mx-auto flex h-11 w-11 items-center justify-center">
         <input type="checkbox" disabled aria-label="Aucune valeur publiée : à saisir par vous"
           className="absolute inset-0 m-0 opacity-0" />
@@ -279,7 +300,7 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
 
   return (
     <Card ref={racine}
-      className={seul ? 'cal-reglages flex flex-col gap-5 border-0 bg-transparent p-0 shadow-none' : 'cal-reglages mt-5 space-y-4 p-4'}
+      className={seul ? 'cal-reglages flex flex-col gap-[18px] border-0 bg-transparent p-0 shadow-none' : 'cal-reglages mt-5 space-y-4 p-4'}
       style={seul && hauteur ? { height: hauteur } : undefined}
       data-testid="acal405-demarrage">
       {autonome === true ? (
@@ -291,16 +312,23 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
           <span className="font-semibold text-foreground" aria-current="page">Démarrage rapide</span>
         </nav>
       ) : null}
+      <div className={seul ? 'flex items-end justify-between gap-8 px-7 pt-3.5' : ''}>
       <div className="flex flex-col gap-1.5">
-        <Titre className={seul ? 'font-display text-h2 font-semibold text-foreground' : 'text-base font-semibold text-foreground'}>
+        <Titre className={seul ? 'font-display text-[32px] font-bold leading-[1.15] tracking-[-0.02em]' : 'text-base font-semibold text-foreground'}>
           Démarrage rapide
         </Titre>
-        <p className={`max-w-[860px] text-muted-foreground ${seul ? 'text-base leading-normal' : 'text-xs'}`}>
+        <p className={seul ? 'max-w-[1010px] text-[15px] leading-[1.55] text-[color:var(--cal-texte-2)]' : 'max-w-[860px] text-xs text-muted-foreground'}>
           Les réglages encore vides peuvent recevoir une valeur publiée par un logiciel de référence,
           toujours affichée avec sa source.<br />
           Vous la remplacerez par vos propres mesures quand vous les aurez ; ce que vous avez déjà
           saisi n’est jamais écrasé.
         </p>
+      </div>
+      {seul ? (
+        <span className="flex h-[34px] flex-none items-center gap-2 rounded-full border border-[color:var(--cal-surveiller-filet)] bg-[var(--cal-surveiller-fond)] px-3.5 text-[13px] font-medium text-[color:var(--cal-surveiller-texte)]">
+          <span aria-hidden="true" className="h-[7px] w-[7px] rounded-full bg-[var(--cal-action)]" />valeur publiée, non mesurée
+        </span>
+      ) : null}
       </div>
       {erreur && (
         <p role="alert" className="text-xs text-destructive" data-testid="acal405-erreur">{erreur}</p>
@@ -311,9 +339,10 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
           est le bloc conteneur des citations `sr-only` (absolues) de ses lignes — sans cela le défilant de l'ERP
           (`.layout-content`, positionné) les comptait dans son propre défilement : 11 px de page qui défile à 1440 × 900. */}
       <section aria-label="Réglages proposés" aria-busy={enLecture}
-        className={`relative overflow-auto rounded-[14px] border border-border bg-card ${seul ? 'min-h-[180px] min-w-0 shrink' : ''}`}>
+        style={{ '--dr-colonnes': seul ? COLONNES_PAGE : COLONNES_CARTE, '--dr-ligne': seul ? '65px' : '60px' }}
+        className={`relative overflow-auto ${seul ? `min-h-[180px] min-w-0 shrink rounded-[22px] ${OMBRE}` : 'rounded-[14px] border border-border bg-card'}`}>
         <div className="min-w-[760px]">
-          <div className={`sticky top-0 z-10 grid ${COLONNES} h-11 items-center border-b border-border bg-background px-2 pr-5 text-xs font-semibold text-muted-foreground`}>
+          <div className={`sticky top-0 z-10 grid ${COLONNES} h-[46px] items-center border-b border-border ${seul ? 'bg-[var(--cal-surface)]' : 'bg-background'} px-2 pr-5 text-xs font-semibold text-muted-foreground`}>
             <span className="text-center">Remplir</span><span>Réglage</span><span>Valeur proposée</span>
             <span>Source</span><span>État</span>
           </div>
@@ -345,8 +374,8 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
         </div>
       </section>
 
-      <div className="mt-auto flex flex-none flex-wrap items-center gap-4">
-        <span className="flex min-w-[260px] flex-1 items-start gap-2.5 text-sm leading-snug text-muted-foreground">
+      <div className={`mt-auto flex flex-none flex-wrap items-center gap-4 ${seul ? `min-h-[76px] rounded-[var(--cal-rayon-panneau)] py-3 pl-6 pr-3 ${OMBRE}` : ''}`}>
+        <span className={`flex min-w-[260px] flex-1 items-start gap-2.5 text-muted-foreground ${seul ? 'text-[13px] leading-normal' : 'text-sm leading-snug'}`}>
           <Info size={18} className="mt-0.5 flex-none" aria-hidden="true" />
           Tant qu’une valeur publiée sert, le résultat porte la mention « valeur publiée, non mesurée ».
           Tout reste modifiable dans Réglages › Calepinage.
@@ -368,16 +397,16 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
         )}
         <a
           href="/calepinage/reglages#calx69-section-simulation"
-          className="flex h-12 items-center rounded-[10px] border border-border bg-card px-5 text-base font-semibold text-foreground no-underline hover:bg-muted"
+          className="flex h-[52px] items-center rounded-[var(--cal-rayon-pile)] border border-[color:var(--cal-filet-fort)] bg-card px-5 text-[15px] font-semibold text-foreground no-underline hover:bg-muted"
           data-testid="acal405-saisir-main"
         >
           Tout saisir à la main
         </a>
         {peut && (
-          <button
-            type="button"
+          <BoutonOr
+            fleche
             disabled={occupe || enLecture || echecLecture || nbChoisies === 0}
-            className="cal-bouton-or cal-bouton-or-grand"
+            className="cal-bouton-or-grand px-6"
             data-testid="acal405-appliquer"
             onClick={() => agir(
               () => calepinageApi.parametres.appliquerProfilDepart(choisies),
@@ -385,7 +414,7 @@ export default function DemarrageRapide({ reglages, peutApprouver, onChange, aut
             )}
           >
             {libelleAppliquer()}
-          </button>
+          </BoutonOr>
         )}
       </div>
       {message && (

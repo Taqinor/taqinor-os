@@ -69,7 +69,7 @@ const RedirectionOnglet = lazy(() => import('./atelier/RedirectionOnglet'))
    (`plein: true` : ni barre latérale ni en-tête de l'ERP, `router/moduleRoutes.jsx`). */
 const ReleveVisite = lazy(() => import('./releve/ReleveVisite'))
 const VueClient = lazy(() => import('./client/VueClient'))
-// Coque — la page « Démarrage rapide » des réglages (le composant de la lane réglages, dans son cadre).
+// Coque — la page « Démarrage rapide » des réglages (le composant de la lane réglages) ; ACAL1826 : plein écran.
 const DemarrageRapidePage = lazy(() => import('./DemarrageRapidePage'))
 
 // CAL35 — la LISTE réelle : vignettes, filtres RÉELLEMENT servis par CAL16,
@@ -213,7 +213,7 @@ const config = {
     // ACAL893 — AVANT `/calepinage/:id` : « reglages/allees » n'est pas un identifiant.
     { path: '/calepinage/reglages/allees', component: ReglagesAllees, ...GARDE_LECTURE },
     // Coque — AVANT `/calepinage/:id` ; lien depuis le volet « Avancé » de l'atelier.
-    { path: '/calepinage/reglages/demarrage-rapide', component: DemarrageRapidePage, ...GARDE_LECTURE },
+    { path: '/calepinage/reglages/demarrage-rapide', component: DemarrageRapidePage, plein: true, ...GARDE_LECTURE }, // ACAL1826 : plein écran (maquette v2)
     // CALX342 — AVANT `/calepinage/:id` : « comparaison » n'est pas un identifiant.
     { path: '/calepinage/comparaison', component: ComparaisonProjets, ...GARDE_LECTURE },
     /* Atelier d'UN calepinage — deep-link, jamais un item de nav : il est

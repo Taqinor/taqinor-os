@@ -562,6 +562,22 @@ describe('ACAL405 — Démarrage rapide', () => {
       expect(ligne.querySelector('[title]')).toHaveAttribute('title', expect.stringContaining(PROFIL.valeurs[0].url))
     })
 
+    it('ACAL1826 — la valeur servie au style v2 : texte inchangé, pastille dorée sur une publication, aucune sur une valeur SUPPOSÉE', async () => {
+      const publiee = { ...PROFIL.valeurs[0], cle: 'b0_iam', valeur: 0.05, unite: '' }
+      const supposee = { ...PROFIL.valeurs[0], cle: 'salissure_mensuelle_pct', valeur: 3, unite: '%',
+        reference: 'Profil de départ — valeur de départ SUPPOSÉE, acceptée par le fondateur' }
+      mocks.profilDepart.mockResolvedValue({ data: { ...PROFIL, valeurs: [publiee, supposee] } })
+      servirReglages({})
+      rendre()
+      const pastille = (ligne) => ligne.querySelector('.rounded-full.bg-\\[var\\(--cal-action\\)\\]')
+      const lignePubliee = await screen.findByTestId('acal405-valeur-b0_iam')
+      expect(lignePubliee).toHaveTextContent('0,05')
+      expect(pastille(lignePubliee)).not.toBeNull()
+      const ligneSupposee = screen.getByTestId('acal405-valeur-salissure_mensuelle_pct')
+      expect(ligneSupposee).toHaveTextContent('3 %')
+      expect(pastille(ligneSupposee)).toBeNull()
+    })
+
     it('« Remplir les N réglages vides » : N = les lignes vides réellement servies', async () => {
       mocks.profilDepart.mockResolvedValue({ data: PROFIL_RICHE })
       servirReglages({})
