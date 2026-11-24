@@ -176,6 +176,24 @@ class Lecture:
                 company=self.chantier.company, type=type_acte).first()
         return self._une_fois(('modele', type_acte), lire)
 
+    def date_du_contrat(self):
+        """La date du contrat d'installation ÉMIS (ou signé) de ce chantier :
+        la date imprimée sur son contenu figé, à défaut celle de son
+        émission ; None tant qu'il n'est pas émis."""
+        def lire():
+            from ..models import ActeContractuel
+            acte = (ActeContractuel.objects
+                    .filter(company=self.chantier.company_id,
+                            chantier=self.chantier.pk, type=T.CONTRAT,
+                            statut__in=(T.EMIS, T.SIGNE))
+                    .only('contenu', 'emis_le').first())
+            if acte is None:
+                return None
+            return _date((acte.contenu or {}).get('date_document')) or (
+                timezone.localtime(acte.emis_le).date()
+                if acte.emis_le else None)
+        return self._une_fois('date_contrat', lire)
+
     def composants(self):
         def lire():
             from apps.documents.builders import _composants
@@ -1107,7 +1125,14 @@ _TEXTES_FIXES = {
 }
 
 
-def _contexte(contenu, vente, langue, refs):
+#: « ␠du 24 novembre 2026 » / « ␠المؤرَّخ في 24 نونبر 2026 » : la date du
+#: contrat collée à sa référence (formes de ``textes_ar.FORMES_CTX``).
+_CONTRAT_DU = {'fr': ' du {date}',
+               'ar': ' المؤرَّخ '
+                     'في {date}'}
+
+
+def _contexte(contenu, vente, langue, refs, lecture=None):
     """Les repères des textes par défaut, déjà mis en forme dans la langue.
     Un repère inconnu est laissé absent : le texte imprime « à préciser »."""
     societe = contenu['societe']
@@ -1127,7 +1152,13 @@ def _contexte(contenu, vente, langue, refs):
         'delai_mise_en_demeure': fixes['demeure'],
         'delai_reponse': fixes['reponse'],
         'modalites_paiement': _modalites_texte(contenu),
+        # L'adresse telle qu'elle est enregistrée, jamais traduite.
+        'adresse_societe': societe.get('adresse') or None,
     }
+    date_contrat = lecture.date_du_contrat() if lecture is not None else None
+    ctx['contrat_du'] = (_CONTRAT_DU[langue].format(
+        date=C.date_longue(date_contrat, langue=langue)) if date_contrat
+        else '')
     accepte = C.date_longue(chantier.get('devis_accepte_le'), langue=langue)
     if langue == 'ar':
         ctx['devis_accepte_le'] = (f'، الذي قبله الزبون بتاريخ {accepte}'
@@ -1158,6 +1189,9 @@ def _contexte(contenu, vente, langue, refs):
     if paiement.get('total_regle') is not None and vente:
         ctx['total_regle'] = _montant(paiement['total_regle'], langue)
         ctx['total_regle_lettres'] = _lettres(paiement['total_regle'], langue)
+        # Prix − total réglé : la valeur de l'encadré.
+        ctx['reste_a_regler'] = _montant(paiement.get('reste_a_regler'),
+                                         langue)
         if contenu['type'] == T.CLOTURE:
             ctx['ecart_regle'] = ecart_regle(vente['prix_ttc'], vente['paye'],
                                              vente.get('avoirs'), langue)
@@ -1401,7 +1435,7 @@ def _textes_par_defaut(contenu, textes, vente, langue, refs, lecture=None):
     """Pose les textes par défaut ; rend le contexte (repères) qui les a
     formatés — celui qui rend aussi les gabarits personnalisés."""
     type_acte = contenu['type']
-    ctx = _contexte(contenu, vente, langue, refs)
+    ctx = _contexte(contenu, vente, langue, refs, lecture)
     options = contenu['options']
     contenu['articles'] = textes.articles_par_defaut(
         type_acte, contenu['variante'], ctx, options)

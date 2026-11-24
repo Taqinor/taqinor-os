@@ -744,6 +744,42 @@ class GarantiesArabesPursTests(SimpleTestCase):
         self.assertEqual(K._garanties_ar(defauts_ar, None, trad), defauts_ar)
 
 
+# ── S12 : repères du contexte ───────────────────────────────────────────────
+
+class ReperesContexteTests(TestCase):
+
+    def test_contrat_du_adresse_reste_et_vrai_nom_en_arabe(self):
+        from apps.documents.contrats import textes_ar
+        from apps.parametres.models import CompanyProfile
+        v = Vente(self)
+        profil = CompanyProfile.get(company=v.company)
+        profil.nom = 'Solaire Réelle SARL'
+        profil.adresse = '3, rue Réelle, Casablanca'
+        profil.save()
+        acompte = v.plan()['tranches'][0]['montant_ttc']
+        v.payer(acompte)
+        prix = v.plan()['prix_convenu_ttc']
+        recep = v.acte(T.RECEPTION)
+        for langue in T.LANGUES:
+            with self.subTest(langue=langue):
+                ctx = K.contexte_de(recep, langue)
+                self.assertEqual(ctx['contrat_du'], '')
+                self.assertEqual(ctx['adresse_societe'],
+                                 '3, rue Réelle, Casablanca')
+                self.assertEqual(ctx['reste_a_regler'], K.C.montant(
+                    prix - acompte, langue=langue))
+                self.assertEqual(ctx['societe'], 'Solaire Réelle SARL')
+                self.assertNotEqual(ctx['societe'],
+                                    textes_ar.FORMES_CTX['societe'])
+        ActeContractuel.objects.filter(pk=v.acte(T.CONTRAT).pk).update(
+            statut=T.EMIS, contenu={'date_document': '2026-11-24'})
+        self.assertEqual(K.contexte_de(v.acte(T.RECEPTION))['contrat_du'],
+                         ' du 24 novembre 2026')
+        # Même forme que l'exemple des textes (même date : 24 novembre 2026).
+        self.assertEqual(K.contexte_de(v.acte(T.RECEPTION), 'ar')[
+            'contrat_du'], textes_ar.FORMES_CTX['contrat_du'])
+
+
 # ── S4 : la livraison sans tranche « livraison » ────────────────────────────
 
 def _tr(*cles_):
