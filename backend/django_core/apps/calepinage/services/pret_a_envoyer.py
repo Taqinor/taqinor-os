@@ -585,6 +585,14 @@ def controle_obstacle_hors_pan(calepinage):
     layout = getattr(calepinage, 'roof_layout', None) or {}
     projection = _projection(layout)
     hors, illisible, vus = [], False, 0
+    # T4-B4-012 — « du pan A », mais « du pan Sud » pour un pan nommé « Pan Sud »
+    # (jamais « du pan Pan Sud »).
+
+    def _nom_du_pan(zone):
+        nom = str(zone.get('label') or zone.get('id') or '—').strip()
+        if nom[:4].lower() == 'pan ':
+            return 'pan ' + nom[4:].strip()
+        return 'pan ' + nom
     for zone in _zones(layout):
         obstacles = [o for o in zone.get('obstacles') or ()
                      if isinstance(o, dict)]
@@ -600,9 +608,9 @@ def controle_obstacle_hors_pan(calepinage):
             if points is None:
                 illisible = True
             elif not all(point_dans_polygone(p, contour) for p in points):
-                hors.append('%s dépasse du pan %s' % (
+                hors.append('%s dépasse du %s' % (
                     _libelle_obstacle(obstacle.get('type')),
-                    zone.get('label') or zone.get('id') or '—'))
+                    _nom_du_pan(zone)))
     if hors:
         return _controle('obstacle_hors_pan', libelle, 'a_regler',
                          hors[0], cause=' ; '.join(hors),
