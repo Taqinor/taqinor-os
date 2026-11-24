@@ -816,3 +816,43 @@ production est celui du fondateur.
 ### 7.3 Comptes aux vrais rôles
 
 
+
+## 8. Prix d'essai posés sur la copie le 24/11 à 18 h 50 UTC (choix A, annoncé au fondateur ; production intacte)
+
+Règle : un article de pompage sans prix reçoit le prix PUBLIC relevé le plus proche (§ 6), converti en hors taxe
+(prix de vente du catalogue = HT, TVA 20 %). Ce sont des **valeurs d'essai** : elles servent à faire avancer la chaîne
+agricole du test, elles ne disent rien du prix de TAQINOR. Les pompes OSP 30 (fabricant Oswal) n'ont aucun prix public :
+elles reçoivent le prix public d'une pompe Pedrollo de même puissance — autre fabricant, autre courbe.
+
+| Article (id de la copie) | Nom | Prix public TTC (MAD) | Prix de vente HT posé | Source |
+|---|---|---|---|---|
+| 23062 | Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3", 380V) | 18762 | 15635.00 | Pedrollo (autre fabricant), meme puissance, CP Tech Maroc 6SR27T/8 10 CV |
+| 23063 | Pompe immergée OSP 30/11 — 12.5 CV / 9.3 kW (3", 380V) | 30793 | 25660.83 | Pedrollo (autre fabricant), meme puissance, CP Tech Maroc 6SR36T/10 12,5 CV |
+| 23064 | Pompe immergée OSP 30/13 — 15 CV / 11 kW (3", 380V) | 35234 | 29361.67 | Pedrollo (autre fabricant), meme puissance, CP Tech Maroc 6SR36T/11 15 CV |
+| 23065 | Pompe immergée OSP 30/15 — 17.5 CV / 13 kW (3", 380V) | 28145 | 23454.17 | Pedrollo (autre fabricant), meme puissance, CP Tech Maroc 6SR27T/14 20 CV (aucun 17,5 CV publie : puissance voisine) |
+| 23066 | Pompe immergée OSP 30/16 — 20 CV / 15 kW (3", 380V) | 28145 | 23454.17 | Pedrollo (autre fabricant), meme puissance, CP Tech Maroc 6SR27T/14 20 CV |
+| 23067 | Pompe immergée OSP 30/17 — 20 CV / 15 kW (3", 380V) | 28145 | 23454.17 | Pedrollo (autre fabricant), meme puissance, CP Tech Maroc 6SR27T/14 20 CV |
+| 23068 | Pompe immergée OSP 30/20 — 25 CV / 18.5 kW (3", 380V) | 29692 | 24743.33 | Pedrollo (autre fabricant), meme puissance, CP Tech Maroc 6SR27T/17 25 CV |
+| 23069 | Pompe immergée OSP 30/21 — 25 CV / 18.5 kW (3", 380V) | 29692 | 24743.33 | Pedrollo (autre fabricant), meme puissance, CP Tech Maroc 6SR27T/17 25 CV |
+| 23070 | Pompe immergée OSP 30/25 — 30 CV / 22 kW (3", 380V) | 32660 | 27216.67 | Pedrollo (autre fabricant), meme puissance, CP Tech Maroc 6SR27T/20 30 CV |
+| 23071 | Pompe immergée OSP 30/26 — 30 CV / 22 kW (3", 380V) | 32660 | 27216.67 | Pedrollo (autre fabricant), meme puissance, CP Tech Maroc 6SR27T/20 30 CV |
+| 23072 | Pompe immergée OSP 30/35 — 40 CV / 30 kW (3", 380V) | 35114 | 29261.67 | Pedrollo (autre fabricant), meme puissance, CP Tech Maroc 6SR27T/27 40 CV |
+| 23084 | Câble solaire Nexans H1Z2Z2-K 4 mm² (au mètre) | 14 | 11.67 | cable solaire H1Z2Z2-K 4 mm2 au metre, CP Tech Maroc |
+| 23085 | Câble solaire Nexans H1Z2Z2-K 6 mm² (au mètre) | 19 | 15.83 | cable solaire H1Z2Z2-K 6 mm2 au metre, CP Tech Maroc |
+| 23086 | Câble solaire Nexans H1Z2Z2-K 10 mm² (au mètre) | 26 | 21.67 | cable solaire H1Z2Z2-K 10 mm2 au metre, CP Tech Maroc |
+| 23091 | Parafoudre DC type 2 1000 V | 475 | 395.83 | parafoudre DC type 2 1000 V (prix le plus bas releve), Maroc |
+| 23093 | Sectionneur DC 1000 V 25 A | 608 | 506.67 | sectionneur DC 1000 V (prix median releve), Maroc |
+| 23104 | Coffret DC 2 strings | 1550 | 1291.67 | coffret de protection DC 2 strings (prix le plus bas releve), Maroc |
+| 23121 | Câble de descente immergé (au mètre) | 29 | 24.17 | cable de descente immerge au metre, CP Tech Maroc |
+| 23202 | Structure au sol pompage | 1050 | 875.00 | kit de support galvanise sol et toit pour 1 panneau, CP Tech Maroc |
+
+**Laissés SANS prix, faute de source (rien d'inventé)** : « Installation pompage solaire » (prix fixe + prix par panneau :
+c'est le tarif de pose de TAQINOR) ; câble solaire 16 mm² ; fusibles gPV 15 A et 20 A et porte-fusible (prix publics en
+euros seulement) ; sonde de niveau ; clapet anti-retour ; colonne de refoulement et tuyauterie (unité de vente
+différente) ; compteur d'eau ; bassin ; contrat d'entretien ; fixations antivol ; clôture.
+**Sans courbe constructeur (rien d'inventé)** : les quatre pompes monophasées du catalogue.
+
+**Ce que le produit en dit lui-même** (`apps/stock/pret_devis_agricole.py`, joué sur la copie) : avant, 4 postes
+obligatoires manquaient (pompe triphasée, pompe monophasée, structure au sol, installation) ; après ces prix d'essai, il
+en reste 2 — **pompe monophasée à courbe** et **installation pompage**. Tant que le fondateur n'a pas saisi le tarif de
+pose, le devis automatique agricole ne peut pas aboutir, en production comme sur la copie.

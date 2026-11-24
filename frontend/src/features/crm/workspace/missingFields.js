@@ -19,7 +19,7 @@
 // Extensions explicites : ce module est PUR et se teste en `node --test`
 // (résolution ESM stricte) — même convention que stages.js → lib/format.js.
 import { FOLLOW_UP_STAGE, QUOTE_SENT_STAGE } from '../stages.js'
-import { getField } from './draftCore.js'
+import { getField, SEGMENTS_PRO } from './draftCore.js'
 import fieldLabels from './fieldLabels.js'
 
 // QJR601 — la cible d'une puce se résout par le NOM DU CHAMP servi
@@ -34,12 +34,21 @@ import fieldLabels from './fieldLabels.js'
 const MARCHES_PRO = ['commercial', 'industriel']
 const CHAMPS_SECTION_PRO = ['raccordement']
 
+// L'ICE vit dans « Professionnel » pour un lead commercial/industriel, et sous
+// « Société » (section contact) pour tout autre type : une seule section montée.
+export function sectionDuChamp(champ, typeInstallation = null) {
+  const entree = fieldLabels[champ]
+  if (!entree) return null
+  if (champ === 'ice' && !SEGMENTS_PRO.includes(typeInstallation)) return 'contact'
+  return entree.section
+}
+
 export function missingFieldTarget(champ, typeInstallation = null) {
   const entree = fieldLabels[champ]
   if (!entree) return null
   const section = CHAMPS_SECTION_PRO.includes(champ) && MARCHES_PRO.includes(typeInstallation)
     ? 'pro'
-    : entree.section
+    : sectionDuChamp(champ, typeInstallation)
   return { field: entree.inputId, section }
 }
 

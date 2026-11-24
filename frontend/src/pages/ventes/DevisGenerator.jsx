@@ -102,7 +102,8 @@ import {
   // ordre »), appliquée par la composition SERVEUR (`ordre_lignes`) ;
   // ADEV69 — l'ancien composeur JS `autoFillLines` est supprimé.
   COMMERCIAL_CATEGORY_QUESTIONS} from '../../features/ventes/solar'
-import { _hasPrix, defaultProductLines } from '../../features/ventes/calc/lignesDefaut.js' // QJR546 — garde « produit tarifé »
+import { _hasPrix } from '../../features/ventes/calc/lignesDefaut.js' // QJR546 — garde « produit tarifé »
+import { useGabaritMarche } from './generator/hooks/useGabaritMarche' // T4-U3-006 — table par marché
 import {
   optionTotalsTTC, prixParKwc, discountForTarget, computeBuyCostDetail, avecBatterieAvailability,
   multiPropertyPreviewTTC, lignesRemiseesParPanier,
@@ -198,7 +199,6 @@ import { useLeadClientEcran } from './generator/hooks/useLeadClientEcran'
 import { useApercuEtude } from './generator/hooks/useApercuEtude'
 import { useBrouillonEcran } from './generator/hooks/useBrouillonEcran'
 // SPL43 — aides de module déplacées (fabrique de lignes, défauts d'écran).
-import { withKeys } from '../../features/ventes/quote/ligneFabrique.js'
 import {
   partDiurneParDefaut,
   FENETRE_REFERENCE_MS,
@@ -827,14 +827,11 @@ export default function DevisGenerator({
     ]).finally(() => setRefsLoading(false))
   }, [])
 
-  // Table par défaut du simulateur une fois le stock chargé
-  useEffect(() => {
-    if (linesInitialized.current || !produits.length) return
-    linesInitialized.current = true
-    // QJR570 — les lignes par défaut sont une composition (pas une saisie).
-    // ADVS47 — produit sans taux : TVA standard de la société (profil, D-APAR-1).
-    setLines(withKeys(defaultProductLines(produits, undefined, quoteLogic.tvaStandard).map(r => ({ ...r, compose: true }))))
-  }, [produits, quoteLogic.tvaStandard])
+  // Table par défaut du simulateur une fois le stock chargé — T4-U3-006 : celle du MARCHÉ.
+  const { proposerRemplacementLignes } = useGabaritMarche({
+    produits, tvaStandard: quoteLogic.tvaStandard, modeInstallation, lines, setLines, editId,
+    linesInitializedRef: linesInitialized, confirm, modeOptions: MODE_OPTIONS,
+  })
   // Chaque ligne d'un produit À BARÈME suit le compte de panneaux COURANT des
   // lignes (`retarifer_forfaits_par_panneau` du serveur), ajusté PENDANT le
   // rendu (jamais un rendu affiché au mauvais prix) ; le même tableau revient
@@ -987,7 +984,7 @@ export default function DevisGenerator({
     capaciteBatterieInconnue, consoAnnuelleReelle,
     facturesSaisies, moisNonSaisis, leadsListe,
     selectedLead, typeLeadEffectif, marcheSegment,
-    bandeauSegment, rappelIce, changerTypeLead, roi,
+    bandeauSegment, rappelIce, rappelIceAcceptation, changerTypeLead, roi,
     villeCalculLead, etudeHoraireCorps, etudeHoraireDonnees,
     etudeHoraireChargement, etudeHoraireErreur,
     etudeHoraireAnnuel, etudeHoraireSourceServeur,
@@ -1055,6 +1052,7 @@ export default function DevisGenerator({
       if (!ok) return
     }
     appliquerMarcheEcran(m, 'utilisateur')
+    await proposerRemplacementLignes(m) // T4-U3-006 — table ÉDITÉE : on demande
   }
 
   // ── Scénario / recommandation : réinitialisation si incompatible ──
@@ -1614,7 +1612,7 @@ export default function DevisGenerator({
   // SPL44 — persistance et validation (déplacées telles quelles dans le hook).
   const {
     usableLines, enregistrerAvantModele, versionHistorique, revenirAVersion, handleSubmit,
-    ouvrirConception3D,
+    ouvrirConception3D, confirmerSansLignesEcartees,
   } = usePersistanceDevis({
     navigate, confirm, setClients, setLeads, setSaving,
     setErrors, setWarnings, facturesEcartConfirmeRef,
@@ -1962,8 +1960,8 @@ export default function DevisGenerator({
         {rappelIce && (
           <p role="status" data-testid="rappel-ice-manquant"
              className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-            ICE à demander au client — il sera obligatoire à l’acceptation en ligne
-            et à la facture.
+            ICE à demander au client — il sera obligatoire {rappelIceAcceptation
+              ? 'à l’acceptation en ligne et à la facture.' : 'à la facture.'}
           </p>
         )}
         {modeInstallation === 'agricole' && provenancesLead.length > 0 && (
@@ -2103,7 +2101,7 @@ export default function DevisGenerator({
           errorLines={errors.lines}
           accessoiresOnly={accessoiresOnly}
           setAccessoiresOnly={setAccessoiresOnly}
-          lignesRemiseesTtc={lignesRemiseesTtc}
+          lignesRemiseesTtc={lignesRemiseesTtc} optionsLignes={remiseParPanier.options}
           montrerRemise={montrerRemise}
         >
           <RailArgent agricole={modeInstallation === 'agricole'}
@@ -2172,7 +2170,7 @@ export default function DevisGenerator({
           conditions={conditions} setCondition={setCondition}
           setEcheancierSaisie={setEcheancierSaisie} modeInstallation={modeInstallation}
           apercuPompage={apercuPompage} kpiTotal={kpiTotal} handleReset={handleReset}
-          onEnregistre={onEnregistre} onVoirPdf={onVoirPdf}
+          onEnregistre={onEnregistre} onVoirPdf={onVoirPdf} onConfirmerSansLignes={confirmerSansLignesEcartees}
         />
       </form>
 

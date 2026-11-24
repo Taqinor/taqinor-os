@@ -632,6 +632,13 @@ function VisiteAvantDevis({ visite, leadId }) {
   )
 }
 
+// Champ ICE unique : monté dans « Professionnel » (lead pro) ou sous « Société »
+// de la fiche contact (autre type) — même clé, même libellé, même aide.
+export function ChampIce({ state, setField, errors = {} }) {
+  const requis = new Set((state?.server?.devis_auto?.requis ?? []).flat())
+  return <Texte data-field-anchor="lf-ice" cle="ice" ctx={{ state, setField, errors, requis }} />
+}
+
 export default function SectionPro({ state, setField, errors = {} }) {
   // L'étoile « requis devis auto » : les SEULS groupes de la règle servie
   // (`devis_auto.requis`, CIQ404) — jamais une liste recopiée ici.
@@ -695,7 +702,7 @@ export default function SectionPro({ state, setField, errors = {} }) {
 
       <Bloc titre="Société">
         <div className="form-row">
-          <Texte data-field-anchor="lf-ice" cle="ice" ctx={ctx} />
+          <ChampIce state={state} setField={setField} errors={errors} />
           <Texte data-field-anchor="lf-rc" cle="rc" ctx={ctx} />
           <Texte data-field-anchor="lf-if-fiscal" cle="if_fiscal" ctx={ctx} />
         </div>

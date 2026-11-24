@@ -45,6 +45,7 @@ la garde APDF45 refuse tout « taqinor.ma » hors lien de proposition.
 Test-du-test : remettre ``d["site_url"] = d.get("site_url") or "taqinor.ma"``
 dans ``commercial/renderer._augment`` ⇒ les deux cas échouent.
 """
+import re
 from unittest import mock
 
 from django.test import SimpleTestCase, TestCase, tag
@@ -917,3 +918,50 @@ class GardeIdentiteTests(TestCase):
                 doc.close()
             self.assertIn('SOLAIRE EXEMPLE SARL', titre, nom)
             self.assertNotIn('TAQINOR', titre.upper(), nom)
+
+
+class IceClientResidentielTests(SimpleTestCase):
+    """Demande du fondateur (24/11/2026) — un devis RÉSIDENTIEL fait pour une
+    entreprise imprime son ICE (``client_ice``) sur la couverture et au bloc
+    de signature, comme le moteur legacy ; sans ICE, rien ne bouge."""
+
+    ICE_PIEGE = '001234567000089 <b>'
+
+    def _html(self, **surcharges):
+        from apps.ventes.quote_engine.builder import echapper_textes_client
+        from apps.ventes.quote_engine.residential import (
+            render, renderer, sample_data)
+        d = sample_data.build()
+        d.update(surcharges)
+        return render.build_html(renderer._augment(echapper_textes_client(d)))
+
+    def test_l_ice_est_imprime_echappe_couverture_et_signature(self):
+        html = self._html(client_ice=self.ICE_PIEGE)
+        ligne = ('<span class="ice-client" style="white-space:nowrap;">'
+                 '<span style="font-weight:600;">ICE&#160;:</span>&#160;'
+                 '001234567000089 &lt;b&gt;</span>')
+        self.assertNotIn(self.ICE_PIEGE, html)
+        # Couverture : à la suite du méta client, séparé par « · ».
+        meta = re.search(r'<span class="c1-client-meta">(.*?)</span>\s*<span '
+                         r'class="c1-tag-cell">', html, re.S)
+        self.assertIsNotNone(meta)
+        self.assertTrue(meta.group(1).endswith(' · ' + ligne), meta.group(1))
+        # Bloc de signature : en ligne après le nom du client.
+        sig = re.search(r'<div class="p3-sig-name">(.*?)</div>', html, re.S)
+        self.assertIn(ligne, sig.group(1))
+        self.assertEqual(html.count('class="ice-client"'), 2)
+
+    def test_sans_ice_le_html_est_identique_octet_pour_octet(self):
+        """Clé absente, vide ou blanche : même HTML, aucune trace d'ICE."""
+        sans_cle = self._html()
+        self.assertEqual(sans_cle, self._html(client_ice=''))
+        self.assertEqual(sans_cle, self._html(client_ice='  '))
+        self.assertEqual(sans_cle, self._html(client_ice=None))
+        self.assertNotIn('ICE&#160;:', sans_cle)
+        self.assertNotIn('ice-client', sans_cle)
+
+    def test_couverture_sans_meta_pas_de_separateur_orphelin(self):
+        html = self._html(client_ice='001234567000089', client_addr='',
+                          client_city='', client_phone='')
+        self.assertIn('<span class="c1-client-meta"><span class="ice-client"',
+                      html)

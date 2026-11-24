@@ -115,8 +115,8 @@ __all__ = [
     'SOURCE_PVGIS', 'SOURCE_SAISIE', 'altitude_du_site',
     'fuseau_du_site', 'decalage_utc_minutes',
     # T4-U1-003 — jamais un point par défaut anonyme.
-    'CENTRES_CARTE_PAR_DEFAUT', 'SOURCE_VILLE_REFERENCE', 'point_par_defaut',
-    'site_de_reference', 'epingle_posee', 'point_du_site', 'site_dit',
+    'CENTRES_CARTE_PAR_DEFAUT', 'SOURCE_VILLE_REFERENCE',
+    'epingle_posee', 'point_du_site', 'site_dit',
 ]
 
 
@@ -529,7 +529,7 @@ TOLERANCE_CENTRE_DEG = 1e-6
 SOURCE_VILLE_REFERENCE = 'ville_reference'
 
 
-def point_par_defaut(lat, lon):
+def _point_par_defaut(lat, lon):
     """Vrai quand ``(lat, lon)`` est un centre de carte par défaut."""
     if lat is None or lon is None:
         return False
@@ -538,7 +538,7 @@ def point_par_defaut(lat, lon):
                for c_lat, c_lon in CENTRES_CARTE_PAR_DEFAUT)
 
 
-def site_de_reference(ville):
+def _site_de_reference(ville):
     """Le site d'un calepinage SANS épingle : la ville de référence du devis.
 
     Réutilise ``pvgis_profils.ancre_de_reference`` — la résolution que suit
@@ -571,7 +571,7 @@ def epingle_posee(document, lire_geo):
 
     Lue par la simulation ET par ``soleil-legal`` (une seule définition) :
     l'épingle du document prime, SAUF un centre de carte par défaut
-    (:func:`point_par_defaut`, jamais choisi par personne) ; à défaut, celle
+    (:func:`_point_par_defaut`, jamais choisi par personne) ; à défaut, celle
     du lead (``lire_geo()`` : ``selectors.contexte_geographique``, appelé
     seulement s'il le faut, rendu dans ``geo``). ``(None, None, geo)`` quand
     aucune épingle n'est posée.
@@ -580,7 +580,7 @@ def epingle_posee(document, lire_geo):
 
     geo = None
     epingle = document.get('pin') if isinstance(document, dict) else None
-    if isinstance(epingle, dict) and point_par_defaut(
+    if isinstance(epingle, dict) and _point_par_defaut(
             nombre(epingle.get('lat')), nombre(epingle.get('lng'))):
         epingle = None
     if not isinstance(epingle, dict):
@@ -602,7 +602,7 @@ def point_du_site(document, lire_geo):
     lat, lon, geo = epingle_posee(document, lire_geo)
     if lat is not None and lon is not None:
         return lat, lon, None
-    reference = site_de_reference((geo if geo is not None
+    reference = _site_de_reference((geo if geo is not None
                                    else lire_geo() or {}).get('ville'))
     if reference is None:
         return lat, lon, None

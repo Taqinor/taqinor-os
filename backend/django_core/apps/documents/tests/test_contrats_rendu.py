@@ -188,6 +188,70 @@ class RenduHtmlTests(unittest.TestCase):
         contenu['client']['cin'] = ''
         self.assertIn('<div class="ident">CIN : ', html_de(contenu))
 
+    @staticmethod
+    def _societe(type_acte, **champs):
+        contenu = exemple(type_acte)
+        contenu['client'].update({
+            'type': 'entreprise', 'nom_complet': 'K and L building',
+            'cin': '', 'ice': '003456789000021',
+            'representant': 'Khalid Lachraf, Gérant', **champs})
+        return contenu
+
+    def test_client_societe_ice_partout_personne_a_la_signature(self):
+        """Fondateur, 24/11/2026 — pour un client société, « le Client » est
+        la raison sociale, son ICE figure sur les actes, et la personne
+        (gérant, responsable) n'est nommée qu'au cadre de signature."""
+        ice = 'ICE 003456789000021'
+        boite = ('<div class="qui">K and L building</div>'
+                 f'<div class="ident">{ice}</div>'
+                 '<div class="ident">Représentée par Khalid Lachraf, '
+                 'Gérant</div>')
+        for type_acte, nb_ice in (('contrat_installation', 2),
+                                  ('pv_livraison', 1), ('pv_reception', 1)):
+            with self.subTest(type_acte):
+                html = html_de(self._societe(type_acte))
+                self.assertIn(boite, html)
+                # Parties du contrat + signature ; signature seule ailleurs.
+                self.assertEqual(html.count(ice), nb_ice)
+                self.assertEqual(html.count('Khalid Lachraf'), 1)
+                self.assertNotIn('CIN : ', html)
+        # Les parties du contrat : la société, jamais « représentée par ».
+        parties = html_de(self._societe('contrat_installation')).split(
+            'class="parties"')[1].split('<h2>')[0]
+        self.assertIn('<div class="nom">K and L building</div>', parties)
+        self.assertNotIn('Khalid', parties)
+
+    def test_client_societe_sans_ice_ni_signataire_lignes_a_remplir(self):
+        html = html_de(self._societe('pv_livraison', ice='', representant=''))
+        self.assertIn('<div class="ident">ICE : ……', html)
+        self.assertIn('<div class="ident">Représentée par : ……', html)
+
+    def test_client_societe_au_contenu(self):
+        """Le contenu d'un client société : sa raison sociale seule (jamais
+        « prénom + raison sociale »), le signataire « nom, qualité », et le
+        quitus du dernier acte qui le nomme avec son ICE."""
+        from types import SimpleNamespace
+
+        from apps.documents.contrats.contenu import (
+            _bloc_client, _client_nomme)
+        fiche = SimpleNamespace(
+            type_client='entreprise', nom='K and L building', prenom='Khalid',
+            contact_nom='Khalid Lachraf', contact_fonction='Gérant',
+            ice='003456789000021', rc='', if_fiscal='', cin='', email='',
+            telephone='', adresse='', adresse_siege='12, bd Exemple')
+        bloc = _bloc_client(SimpleNamespace(client=fiche))
+        self.assertEqual(bloc['nom_complet'], 'K and L building')
+        self.assertEqual(bloc['representant'], 'Khalid Lachraf, Gérant')
+        self.assertEqual(bloc['adresse'], '12, bd Exemple')
+        self.assertEqual(_client_nomme(bloc),
+                         'K and L building (ICE 003456789000021)')
+        self.assertEqual(_client_nomme(dict(bloc, ice='')), 'K and L building')
+        fiche.type_client, fiche.nom = 'particulier', 'Lachraf'
+        particulier = _bloc_client(SimpleNamespace(client=fiche))
+        self.assertEqual(particulier['nom_complet'], 'Khalid Lachraf')
+        self.assertEqual(particulier['representant'], '')
+        self.assertEqual(_client_nomme(particulier), 'Khalid Lachraf')
+
     def test_insecables_sans_nowrap_dans_les_phrases(self):
         """R3 — « n° 31-08 » et le RIB ne se coupent pas ; le RIB passe à la
         ligne ; aucun span nowrap dans une phrase (WeasyPrint recule alors la

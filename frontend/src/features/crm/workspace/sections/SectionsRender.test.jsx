@@ -5,6 +5,7 @@ import { axe } from 'vitest-axe'
 import * as axeMatchers from 'vitest-axe/matchers'
 import { initState, dirtyKeys, reducer } from '../draftCore'
 import fieldLabels from '../fieldLabels'
+import { sectionDuChamp } from '../missingFields'
 import { nettoyerSectionsPane, sectionsPaneBase } from '../../../../test/sectionsPaneSetup'
 import { documentContrat } from '../../../../test/fixtures/contractSamples'
 import SectionContact from './SectionContact'
@@ -45,6 +46,16 @@ describe('LW11 — rendu des sections (port 1:1 des champs)', () => {
     expect(document.querySelector('#lf-ville')).toBeInTheDocument()
     expect(document.querySelector('#lf-email')).toBeInTheDocument()
     expect(document.querySelector('#lf-gps-lat')).toBeInTheDocument()
+  })
+
+  it('T4-U1-031 — « Vérifier la ville » / « Modifier le rattachement » vit DANS le champ Ville, jamais sur « Email »', () => {
+    const state = initState({ lead: { id: 3, nom: 'X', ville: 'Marrakech', ville_reference: 'Marrakech' }, mode: 'edit' })
+    render(<SectionContact state={state} {...base} />)
+    const bouton = screen.getByRole('button', { name: 'Modifier le rattachement' })
+    const champVille = document.querySelector('#lf-ville').closest('.form-group')
+    expect(champVille).not.toBeNull()
+    expect(champVille.contains(bouton)).toBe(true)
+    expect(champVille.contains(document.querySelector('#lf-email'))).toBe(false)
   })
 
   it('SectionPipeline rend type/priorité/canal/tags SANS select d\'étape', () => {
@@ -622,6 +633,39 @@ describe('AGR415 — SectionPompage : chaque colonne du contrat a son champ', ()
     }
   })
 
+  it('T4-U3-002 — « Mesuré en visite » / « Saisi sur le site » restent visibles mais ne se choisissent pas', () => {
+    monter()
+    const niveau = document.getElementById('lf-niveau-statique-source')
+    const opt = (sel, v) => Array.from(sel.options).find((o) => o.value === v)
+    expect(opt(niveau, 'mesure_visite').disabled).toBe(true)
+    expect(opt(niveau, 'mesure_visite').textContent).toContain('relevé de la visite technique')
+    expect(opt(niveau, 'site_web').disabled).toBe(true)
+    expect(opt(niveau, 'declare').disabled).toBe(false)
+    const debit = document.getElementById('lf-debit-forage-source')
+    expect(opt(debit, 'foreur').disabled).toBe(false)
+    expect(opt(debit, 'mesure_visite').disabled).toBe(true)
+  })
+
+  it('T4-U3-001 — règle servie : * sur HMT et débit, renvoi « Raccordement * » vers Profil énergétique', () => {
+    const requis = [['pompe_hmt_m'], ['pompe_debit_m3h', 'besoin_eau_m3j', 'pompe_actuelle_debit_m3h'], ['raccordement']]
+    monter({ ...leadAgricole, devis_auto: { pret: false, requis } })
+    for (const id of ['lf-pompe-hmt', 'lf-pompe-debit', 'lf-besoin-eau']) {
+      expect(document.querySelector(`label[for="${id}"] .req-auto`), id).not.toBeNull()
+    }
+    expect(document.querySelector('label[for="lf-niveau-statique"] .req-auto')).toBeNull()
+    const renvoi = document.querySelector('[data-renvoi="raccordement"]')
+    expect(renvoi.textContent).toContain('Raccordement')
+    expect(renvoi.textContent).toContain('« Profil énergétique »')
+    expect(renvoi.textContent).toContain('*')
+  })
+
+  it('T4-U3-001 — sans règle servie (fiche pas encore créée), la note ne renvoie pas à des * absents', () => {
+    render(<SectionPompage state={initState({ mode: 'create', currentUserId: 1 })} {...base} />)
+    const note = document.querySelector('[data-note-requis-pompage]')
+    expect(note.textContent).toContain('dès la fiche créée')
+    expect(document.querySelector('[data-renvoi="raccordement"]')).toBeNull()
+  })
+
   it('regroupée en 5 blocs, dans l’ordre de l’appel', () => {
     monter()
     const titres = Array.from(document.querySelectorAll('.lw-bloc-titre')).map((h) => h.textContent)
@@ -901,6 +945,36 @@ describe('CIQ418 — SectionPro : chaque colonne du contrat est atteignable', ()
     expect(document.getElementById('lf-tranche-onee')).toBeInTheDocument()
     expect(document.getElementById('lf-raccordement').closest('[data-nav-id]').dataset.navId).toBe('energie')
     expect(container.querySelector('[data-nav-id="equipements"]')).not.toBeNull()
+  })
+
+  it('lead résidentiel AVEC société : un champ « ICE » sous « Société », dans la section contact', () => {
+    const { container } = monterPane({ id: 9, nom: 'Villa', type_installation: 'residentiel', societe: 'Atlas SARL' })
+    expect(container.querySelectorAll('#lf-ice')).toHaveLength(1)
+    expect(document.getElementById('lf-ice').closest('[data-nav-id]').dataset.navId).toBe('contact')
+  })
+
+  it('lead résidentiel SANS société : pas de champ ICE', () => {
+    const { container } = monterPane({ id: 9, nom: 'Villa', type_installation: 'residentiel', societe: '' })
+    expect(container.querySelector('#lf-ice')).toBeNull()
+  })
+
+  it('lead résidentiel sans société mais ICE déjà saisi : le champ reste visible', () => {
+    const { container } = monterPane({ id: 9, nom: 'Villa', type_installation: 'residentiel', societe: '', ice: '001234567000089' })
+    expect(container.querySelectorAll('#lf-ice')).toHaveLength(1)
+  })
+
+  it('lead professionnel avec société : UN seul champ ICE, dans « Professionnel »', () => {
+    toutDeplier()
+    const { container } = monterPane({ id: 9, nom: 'Usine', type_installation: 'industriel', societe: 'Atlas SARL' })
+    expect(container.querySelectorAll('#lf-ice')).toHaveLength(1)
+    expect(document.getElementById('lf-ice').closest('[data-nav-id]').dataset.navId).toBe('pro')
+  })
+
+  it('« aller au champ ICE » vise le contact hors segment pro, « pro » pour un lead pro', () => {
+    expect(sectionDuChamp('ice', 'residentiel')).toBe('contact')
+    expect(sectionDuChamp('ice', null)).toBe('contact')
+    expect(sectionDuChamp('ice', 'commercial')).toBe('pro')
+    expect(sectionDuChamp('ice', 'industriel')).toBe('pro')
   })
 
   it('un lead résidentiel est rendu à l’identique : aucune section « Professionnel »', () => {

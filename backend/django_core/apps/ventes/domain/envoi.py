@@ -309,6 +309,57 @@ def exiger_contact_permis(devis):
     lead = getattr(devis, 'lead', None)
     if getattr(lead, 'perdu', False) or getattr(lead, 'is_archived', False):
         raise ConflitEtat(MOTIF_LEAD_PERDU_ARCHIVE)
+    exiger_lignes_prix(devis)
+
+
+#: T4-U3-007 — code du refus d'envoi d'un brouillon portant une ligne à 0.
+CODE_LIGNES_PRIX_ZERO = 'lignes_prix_zero'
+
+
+def lignes_prix_zero(devis):
+    """T4-U3-007 — désignations des lignes PRODUIT de quantité > 0 dont le
+    prix unitaire est 0 ou vide, dans l'ordre du devis. Mesuré sur la copie
+    anonymisée de la production : aucun vrai devis n'en porte — une telle
+    ligne est un oubli, que le client lirait « fourni gratuitement »."""
+    from decimal import Decimal
+
+    from apps.ventes.models import LigneDevis
+    noms = []
+    for ligne in devis.lignes.all().order_by('ordre', 'id'):
+        if ligne.type_ligne != LigneDevis.TypeLigne.PRODUIT:
+            continue
+        if (ligne.quantite or Decimal('0')) <= 0:
+            continue
+        if (ligne.prix_unitaire or Decimal('0')) == 0:
+            noms.append(ligne.designation)
+    return noms
+
+
+def exiger_lignes_prix(devis):
+    """T4-U3-007 (décision de l'orchestrateur, comportement interne
+    réversible) — un BROUILLON portant une ligne à prix 0 ne part au client par
+    aucun geste (envoi, lien client, WhatsApp, e-mail, PDF de partage) : 409
+    qui nomme les lignes et dit quoi faire. Appelée par
+    :func:`exiger_contact_permis`, la garde que tous les gestes d'envoi
+    traversent. L'enregistrement du brouillon reste permis ; un devis déjà
+    envoyé (ou au-delà) n'est jamais touché."""
+    from apps.ventes.models import Devis
+    from core.conflit_etat import ConflitEtat
+    if devis.statut != Devis.Statut.BROUILLON:
+        return
+    noms = lignes_prix_zero(devis)
+    if not noms:
+        return
+    liste = ', '.join(f'« {nom} »' for nom in noms)
+    pluriel = len(noms) > 1
+    raise ConflitEtat({
+        'detail': (
+            f"Envoi refusé : {'ces lignes ont' if pluriel else 'cette ligne a'} "
+            f"un prix à 0 : {liste}. Pour chacune, saisissez un prix ou "
+            "retirez la ligne du devis, puis renvoyez."),
+        'code': CODE_LIGNES_PRIX_ZERO,
+        'lignes': noms,
+    })
 
 
 def mark_devis_sent(*, devis, user=None, paire=True):

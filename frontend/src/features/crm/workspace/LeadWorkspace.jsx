@@ -36,8 +36,9 @@ import { useConfirmerRecul } from '../confirmRecul'
 import { useLeadDraft, rememberVille } from './useLeadDraft'
 import { schedulePrefetch } from './leadPrefetch'
 import { getField } from './draftCore'
+import { sectionDuChamp } from './missingFields'
 import { jumpToField } from './jumpToField'
-import fieldLabels from './fieldLabels'
+import fieldLabels, { LIBELLES_SECTIONS } from './fieldLabels'
 import IdentityRail from './IdentityRail'
 import SectionsPane from './SectionsPane'
 import ContextRail from './ContextRail'
@@ -119,7 +120,8 @@ function SaveChip({ saveState, saveError, errorField, onRetry }) {
             title={saveError}
             onClick={() => jumpToField({ section: errorField.section, field: errorField.inputId })}
           >
-            ⚠ {saveError}
+            ⚠ {LIBELLES_SECTIONS[errorField.section]
+              ? `Section « ${LIBELLES_SECTIONS[errorField.section]} » — ` : ''}{saveError}
           </button>
           <button type="button" className="lw-savechip-retry" onClick={onRetry}>
             Réessayer
@@ -192,7 +194,10 @@ export default function LeadWorkspace({
   // la PREMIÈRE clé de `errors` qui a une entrée dans fieldLabels.js (celles sans
   // entrée — `submit`, motif_perte posé par la validation CLIENT de création,
   // etc. — sont ignorées ici, `find(Boolean)` saute silencieusement les `undefined`).
-  const primaryErrorField = Object.keys(errors).map((k) => fieldLabels[k]).find(Boolean) || null
+  const cleErreur = Object.keys(errors).find((k) => fieldLabels[k])
+  const primaryErrorField = cleErreur
+    ? { ...fieldLabels[cleErreur], section: sectionDuChamp(cleErreur, getField(state, 'type_installation')) }
+    : null
   // Primitives STABLES hoistées : le compilateur React (lint v7) refuse de
   // préserver un useCallback dont les deps mêlent optional-chaining et objet
   // entier — on ne dépend que de scalaires.
@@ -734,6 +739,10 @@ export default function LeadWorkspace({
       }
     } catch (err) {
       setFromResponse(err)
+      // T4-U3-001 — un refus du serveur sur un champ d'une AUTRE section :
+      // la section est dépliée et le champ amené sous les yeux, focalisé.
+      const champ = Object.keys(err?.response?.data || {}).map((k) => fieldLabels[k]).find(Boolean)
+      if (champ) setTimeout(() => jumpToField({ section: champ.section, field: champ.inputId }), 0)
     } finally {
       setSaving(false)
     }

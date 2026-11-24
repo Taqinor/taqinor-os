@@ -442,12 +442,40 @@ class SyntheseTest(unittest.TestCase):
         res['production']['total']['mention'] = 'borne haute — 2 pertes'
         self.assertIn('borne haute — 2 pertes', self.synthese(res))
 
+    def test_onduleur_choisi_sans_chaine_ne_dit_pas_aucun_onduleur(self):
+        """T4-U2-014 — calepinage 1933 : Huawei 50 kW choisi à l'étape Électrique
+        (la même ``resoudre_materiel`` que le rapport), mais le module n'est pas
+        désigné : aucune chaîne, donc ``electrique.onduleurs`` vide. Le rapport
+        imprimait « aucun onduleur désigné » ; il dit la VRAIE cause servie."""
+        res = resultat()
+        res['electrique'] = {'chainage': None, 'onduleurs': [],
+                             'affectation': [], 'verdicts': []}
+        absent = "module PV non désigné — désignez-le dans l'onglet Matériel électrique"
+        res['avertissements'] = ['La production n’est pas encore calculée.', absent]
+        page = self.synthese(res)
+        attendu = ('non calculée — aucune chaîne calculée : module PV non désigné '
+                   '— désignez-le dans l&#x27;onglet Matériel électrique')
+        self.assertIn('<tr><th>Onduleurs</th><td>%s</td></tr>' % attendu, page)
+        self.assertIn('<tr><th>Contrôles électriques non conformes</th><td>%s'
+                      '</td></tr>' % attendu, page)
+        self.assertNotIn('aucun onduleur désigné', page)
+        # Fiche de l'onduleur incomplète : la cause est la fiche, pas l'absence.
+        res['avertissements'] = ['onduleur : bas de plage MPPT']
+        self.assertIn('aucune chaîne calculée : onduleur : bas de plage MPPT',
+                      self.synthese(res))
+        # Rien de servi qui l'explique : la chaîne absente est dite, sans inventer.
+        res['avertissements'] = []
+        self.assertIn('non calculée — aucune chaîne calculée</td>', self.synthese(res))
+
     def test_synthese_sans_onduleur_dit_son_motif(self):
         # ACAL1677 - cas 1898 : aucun onduleur désigné, aucun verdict. Les
         # deux lignes disaient « non calculée » SANS motif.
         res = resultat()
         res['electrique'] = {'chainage': None, 'onduleurs': [],
                              'affectation': [], 'verdicts': []}
+        # T4-U2-014 — « aucun onduleur désigné » vient de l'absence SERVIE.
+        res['avertissements'] = [
+            "onduleur non désigné — désignez-le dans l'onglet Matériel électrique"]
         page = self.synthese(res)
         self.assertIn(
             '<tr><th>Onduleurs</th><td>non calculée — aucun onduleur '

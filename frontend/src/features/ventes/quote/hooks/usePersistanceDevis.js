@@ -226,11 +226,17 @@ export function usePersistanceDevis(ctx) {
 
     // AGNR58 — une ligne sans produit (hors « prix à renseigner », qui bloque)
     // ne disparaît plus en silence : annoncée, nommée.
+    // T4-U3-008 — le bandeau dit le geste qui suit : il porte son propre
+    // bouton de confirmation (CarteCreation, `data-testid="lignes-ecartees"`).
     const ecartees = e.lines ? [] : lignesEcartees(lines)
     if (ecartees.length) {
       const noms = ecartees.map(l => l.designation.trim()).join(', ')
-      w.lignes = ecartees.length === 1 ? `1 ligne sans produit ne sera pas enregistrée : ${noms}`
-        : `${ecartees.length} lignes sans produit ne seront pas enregistrées : ${noms}`
+      w.lignes = ecartees.length === 1
+        ? `1 ligne sans produit ne sera pas enregistrée : ${noms}. `
+          + 'Pour la garder, donnez-lui un produit ; sinon confirmez ci-dessous.'
+        : `${ecartees.length} lignes sans produit ne seront pas enregistrées : ${noms}. `
+          + 'Pour les garder, donnez-leur un produit ; sinon confirmez ci-dessous.'
+      w.lignesNombre = ecartees.length
     }
     setWarnings(w)
     setErrors(e)
@@ -708,6 +714,13 @@ export function usePersistanceDevis(ctx) {
     }
   }
 
+  // T4-U3-008 — un 1er clic qui ne fait qu'annoncer des lignes écartées amène
+  // le bandeau (et son bouton de confirmation) sous les yeux.
+  const montrerLignesEcartees = () => setTimeout(() => {
+    globalThis.document?.querySelector('[data-testid="lignes-ecartees"]')
+      ?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+  }, 0)
+
   // R5-01 — un refus de `validate()` amène le bandeau des raisons sous les yeux :
   // le bouton « Créer » de l'en-tête est loin de lui, le clic paraissait muet.
   const montrerRefus = () => setTimeout(() => {
@@ -723,6 +736,7 @@ export function usePersistanceDevis(ctx) {
     const signature = lignesEcartees(lines).map(l => `${l.designation.trim()}×${l.quantite}`).join('|')
     if (signature && lignesEcarteesConfirmeRef.current !== signature) {
       lignesEcarteesConfirmeRef.current = signature
+      montrerLignesEcartees()
       return
     }
     // EDC7 — capturé AVANT l'écriture : `editDevis` décide édition vs création.
@@ -749,6 +763,14 @@ export function usePersistanceDevis(ctx) {
       return
     }
     finish(res.devisId, res.devisCree)
+  }
+
+  // T4-U3-008 — « Créer / Enregistrer sans ces lignes » : la confirmation
+  // EXPLICITE des lignes écartées annoncées (même chemin que le 2e clic).
+  const confirmerSansLignesEcartees = () => {
+    lignesEcarteesConfirmeRef.current = lignesEcartees(lines)
+      .map(l => `${l.designation.trim()}×${l.quantite}`).join('|')
+    return handleSubmit({ preventDefault: () => {} })
   }
 
   // PV23bis (fondateur 20/08) — « Concevoir en 3D » depuis l'écran de devis :
@@ -781,6 +803,6 @@ export function usePersistanceDevis(ctx) {
 
   return {
     usableLines, enregistrerAvantModele, versionHistorique, revenirAVersion, handleSubmit,
-    ouvrirConception3D,
+    ouvrirConception3D, confirmerSansLignesEcartees,
   }
 }

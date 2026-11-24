@@ -236,6 +236,16 @@ export const lignesEnvoyees = (lines) => (lines || []).filter((l) => (estStructu
   : (l.produit && parseFloat(l.quantite) > 0)))
 
 /**
+ * T4-U3-007 — les lignes PRODUIT qui partiront (produit + quantité > 0) avec un
+ * prix unitaire à 0 ou vide. Même règle que le serveur
+ * (`ventes.domain.envoi.lignes_prix_zero`) : le devis s'enregistre, mais il ne
+ * s'envoie pas au client tant qu'une telle ligne existe. Lecture seule : aucun
+ * chiffre tapé n'est jamais modifié.
+ */
+export const lignesPrixZero = (lines) => lignesEnvoyees(lines)
+  .filter((l) => !estStructure(l) && !(parseFloat(l.prix_unit_ttc) > 0))
+
+/**
  * AGNR58 — le COMPLÉMENT exact de `lignesEnvoyees` : les lignes qui ne
  * partiront pas, rangées par cause (`sansProduit`, `quantiteNulle`,
  * `structuresVides` : section / note sans intitulé). L'union des trois +

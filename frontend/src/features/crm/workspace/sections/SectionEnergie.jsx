@@ -76,6 +76,9 @@ export default function SectionEnergie({ state, setField, errors = {} }) {
   const regularisation = !!getField(state, 'regularisation_8221')
   // ALEA53 — lead commercial / industriel : pas de blocs résidentiels ici.
   const pro = ['commercial', 'industriel'].includes(getField(state, 'type_installation'))
+  // T4-U3-001 — l'étoile « requis devis auto » du Raccordement : la règle
+  // SERVIE (`devis_auto.requis`), jamais une liste recopiée ici.
+  const requisAuto = new Set((state?.server?.devis_auto?.requis ?? []).flat())
   // CAD158 — « elle couvre un mois ou deux mois ? » : sur deux mois, la
   // commerciale tape le montant de la FACTURE et c'est le montant MENSUEL
   // (÷ 2) qui part au serveur — et qui s'affiche, pour qu'elle voie ce qui
@@ -170,7 +173,10 @@ export default function SectionEnergie({ state, setField, errors = {} }) {
                 value={v('tranche_onee')} onChange={(e) => setField('tranche_onee', e.target.value)}
               />
             </FormField>
-            <FormField label="Raccordement" htmlFor="lf-raccordement" error={errors.raccordement}>
+            <FormField
+              label={<>Raccordement{requisAuto.has('raccordement') && <span className="req-auto"> *</span>}</>}
+              htmlFor="lf-raccordement" error={errors.raccordement}
+            >
               <select
                 id="lf-raccordement"
                 className={errors.raccordement ? 'form-select is-invalid' : 'form-select'}
@@ -629,7 +635,7 @@ const MOIS_FR = [
 const QUESTIONS_POMPAGE = {
   source_eau: "« D'où vient l'eau : un puits, un forage, un bassin ou une rivière ? »",
   niveau_statique_m: "« À quelle profondeur se trouve l'eau quand la pompe est arrêtée ? »",
-  niveau_statique_source: "« Ce niveau, vous l'avez mesuré, ou on vous l'a dit ? » (posé avec le niveau ; mesure_visite = relevé par notre technicien lors de la visite)",
+  niveau_statique_source: "« Ce niveau, vous l'avez mesuré, ou on vous l'a dit ? » (posé avec le niveau ; « Mesuré en visite » = relevé par notre technicien lors de la visite)",
   profondeur_forage_m: "« Quelle est la profondeur totale du forage ? »",
   debit_forage_m3h: "« Combien d'eau le forage peut-il donner par heure ? »",
   debit_forage_source: "« Ce débit vient d'un essai de pompage, du foreur, ou c'est votre estimation ? »",
@@ -726,10 +732,17 @@ function PompTexte({ 'data-field-anchor': id, cle, ctx, label }) {
   )
 }
 
-function PompChoix({ 'data-field-anchor': id, cle, ctx, label, choix }) {
+// T4-U3-002 — origines posées par leur propre chemin : visibles, jamais
+// choisissables sur la fiche (le serveur les refuse en 409 qui le dit).
+const PROVENANCES_POSEES_AILLEURS = {
+  mesure_visite: 'posé par le relevé de la visite technique',
+  site_web: 'posé par le questionnaire du site',
+}
+
+function PompChoix({ 'data-field-anchor': id, cle, ctx, label, choix, desactives }) {
   return (
     <ChampPompage data-field-anchor={id} cle={cle} ctx={ctx} label={label}>
-      <SelectEnum id={id} cle={cle} ctx={ctx} choix={choix} />
+      <SelectEnum id={id} cle={cle} ctx={ctx} choix={choix} desactives={desactives} />
     </ChampPompage>
   )
 }
@@ -791,6 +804,7 @@ const nombreOuNull = (v) => {
 export function SectionPompage({ state, setField, errors = {} }) {
   // L'étoile « requis devis auto » : les SEULS groupes de la règle servie
   // (`devis_auto.requis`, AGR403) — jamais une liste recopiée ici.
+  const regleServie = Array.isArray(state?.server?.devis_auto?.requis)
   const requis = new Set((state?.server?.devis_auto?.requis ?? []).flat())
   const ctx = { state, setField, errors, requis }
   const debit = nombreOuNull(getField(state, 'pompe_debit_m3h'))
@@ -822,19 +836,19 @@ export function SectionPompage({ state, setField, errors = {} }) {
         <div className="form-row">
           <PompChoix data-field-anchor="lf-source-eau" cle="source_eau" ctx={ctx} choix={SOURCE_EAU} />
           <PompNombre data-field-anchor="lf-niveau-statique" cle="niveau_statique_m" ctx={ctx} placeholder="ex: 32" />
-          <PompChoix data-field-anchor="lf-niveau-statique-source" cle="niveau_statique_source" ctx={ctx} choix={NIVEAU_STATIQUE_SOURCE} />
+          <PompChoix data-field-anchor="lf-niveau-statique-source" cle="niveau_statique_source" ctx={ctx} choix={NIVEAU_STATIQUE_SOURCE} desactives={PROVENANCES_POSEES_AILLEURS} />
         </div>
         <div className="form-row">
           <PompNombre data-field-anchor="lf-profondeur-forage" cle="profondeur_forage_m" ctx={ctx} placeholder="ex: 90" />
           <PompNombre data-field-anchor="lf-debit-forage" cle="debit_forage_m3h" ctx={ctx} placeholder="ex: 36" />
-          <PompChoix data-field-anchor="lf-debit-forage-source" cle="debit_forage_source" ctx={ctx} choix={DEBIT_FORAGE_SOURCE} />
+          <PompChoix data-field-anchor="lf-debit-forage-source" cle="debit_forage_source" ctx={ctx} choix={DEBIT_FORAGE_SOURCE} desactives={PROVENANCES_POSEES_AILLEURS} />
         </div>
       </BlocPompage>
 
       <BlocPompage titre="Besoin">
         <div className="form-row">
           <PompNombre data-field-anchor="lf-besoin-eau" cle="besoin_eau_m3j" ctx={ctx} placeholder="ex: 135" />
-          <PompChoix data-field-anchor="lf-besoin-eau-source" cle="besoin_eau_source" ctx={ctx} choix={BESOIN_EAU_SOURCE} />
+          <PompChoix data-field-anchor="lf-besoin-eau-source" cle="besoin_eau_source" ctx={ctx} choix={BESOIN_EAU_SOURCE} desactives={PROVENANCES_POSEES_AILLEURS} />
           <PompNombre data-field-anchor="lf-pompe-debit" cle="pompe_debit_m3h" ctx={ctx} placeholder="ex: 12" />
         </div>
         {debitEgalHmt && (
@@ -844,7 +858,7 @@ export function SectionPompage({ state, setField, errors = {} }) {
         )}
         <div className="form-row">
           <PompNombre data-field-anchor="lf-pompe-hmt" cle="pompe_hmt_m" ctx={ctx} placeholder="ex: 80" />
-          <PompChoix data-field-anchor="lf-pompe-hmt-source" cle="pompe_hmt_source" ctx={ctx} choix={POMPE_HMT_SOURCE} />
+          <PompChoix data-field-anchor="lf-pompe-hmt-source" cle="pompe_hmt_source" ctx={ctx} choix={POMPE_HMT_SOURCE} desactives={PROVENANCES_POSEES_AILLEURS} />
         </div>
         <div className="form-row">
           <PompTexte data-field-anchor="lf-culture" cle="culture" ctx={ctx} />
@@ -908,10 +922,31 @@ export function SectionPompage({ state, setField, errors = {} }) {
           <PompChoix data-field-anchor="lf-decideur" cle="decideur" ctx={ctx} choix={DECIDEUR} />
         </div>
       </BlocPompage>
-      <p className="gen-hint">
-        <span className="req-auto">*</span> Requis pour le devis automatique en mode agricole (règle
-        servie : l&apos;un des champs de chaque groupe).
-      </p>
+      {/* T4-U3-001 — la phase du site, requise par la règle servie, vit dans
+          « Profil énergétique » : renvoi cliquable, avec son étoile. */}
+      {requis.has('raccordement') && (
+        <p className="gen-hint" data-renvois>
+          Saisi ailleurs :{' '}
+          <button
+            type="button" className="link-button" data-renvoi="raccordement"
+            onClick={() => jumpToField({ section: 'energie', field: fieldLabels.raccordement.inputId })}
+          >
+            {fieldLabels.raccordement.label}<span className="req-auto"> *</span> (phase du site, monophasé ou
+            triphasé) — section « Profil énergétique »
+          </button>
+        </p>
+      )}
+      {regleServie ? (
+        <p className="gen-hint" data-note-requis-pompage>
+          <span className="req-auto">*</span> Requis pour le devis automatique en mode agricole (règle
+          servie : l&apos;un des champs de chaque groupe).
+        </p>
+      ) : (
+        <p className="gen-hint" data-note-requis-pompage>
+          Les champs requis pour le devis automatique sont calculés par le serveur : ils seront
+          marqués d&apos;un <span className="req-auto">*</span> dès la fiche créée.
+        </p>
+      )}
     </>
   )
 }

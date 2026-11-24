@@ -41,6 +41,41 @@ def toiture_du_lead(company, calepinage, *, lire_lead=None):
     return bloc
 
 
+#: T4-U3-012 — clé du panneau Pompage (``PompagePanel.jsx`` ``CHAMPS``, la clé
+#: que ``views/pompage.py`` relit) → (champ du lead, champ de sa provenance).
+#: Le débit souhaité n'a pas de provenance sur la fiche : ``None``.
+POMPAGE_DU_LEAD = (
+    ('niveau_statique_m', 'niveau_statique_m', 'niveau_statique_source'),
+    ('hmt_saisie', 'pompe_hmt_m', 'pompe_hmt_source'),
+    ('debit_exploitation_m3h', 'debit_forage_m3h', 'debit_forage_source'),
+    ('debit_souhaite_m3h', 'pompe_debit_m3h', None),
+)
+
+
+def prefill_du_lead(company, calepinage, *, lire_lead=None):
+    """T4-U3-012 — le bloc ``prefill_lead`` : ce que la fiche du lead dit du
+    pompage, à PRÉREMPLIR dans le panneau Pompage (jamais écrit ici).
+
+    ``{lead, pompage: {<clé du panneau>: {valeur, origine, origine_libelle}}}``
+    — ``valeur`` ``None`` quand la question n'a pas été posée ; ``origine`` est
+    la provenance telle que la fiche la garde (« déclaré », « mesuré en
+    visite »…). ``None`` sans lead, ou pour un lead d'une autre société (le
+    sélecteur CRM est borné société)."""
+    lead = _lead(company, getattr(calepinage, 'lead_id', None), lire_lead)
+    if lead is None:
+        return None
+    pompage = {}
+    for cle, champ, provenance in POMPAGE_DU_LEAD:
+        valeur = nombre(getattr(lead, champ, None))
+        origine = (getattr(lead, provenance, None) or None) if provenance else None
+        pompage[cle] = {
+            'valeur': valeur,
+            'origine': origine if valeur is not None else None,
+            'origine_libelle': (_libelle(lead, provenance)
+                                if origine and valeur is not None else None)}
+    return {'lead': lead.pk, 'pompage': pompage}
+
+
 def _lead(company, lead_id, lire_lead):
     """Le lead de la société (sélecteur CRM), ou ``None``."""
     if company is None or not lead_id:

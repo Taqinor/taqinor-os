@@ -135,9 +135,15 @@ export function useApercuEtude(ctx) {
   const clientDuDevis = clientsConnus.find(c => String(c.id) === String(clientId))
   const identiteEntreprise = clientDuDevis?.identite_entreprise
     ?? selectedLead?.identite_entreprise ?? null
-  const rappelIce = ['commercial', 'industriel'].includes(modeInstallation)
-    && Array.isArray(identiteEntreprise?.manquants)
-    && identiteEntreprise.manquants.some(m => m === 'ice' || m === 'raison_sociale')
+  const manquantsIdentite = Array.isArray(identiteEntreprise?.manquants)
+    ? identiteEntreprise.manquants : []
+  const marchePro = ['commercial', 'industriel'].includes(modeInstallation)
+  // Hors commercial/industriel (résidentiel, agricole) : le rappel ne vaut que
+  // pour un client ENTREPRISE sans ICE — l'ICE n'y est exigé qu'à la facture.
+  const rappelIce = marchePro
+    ? manquantsIdentite.some(m => m === 'ice' || m === 'raison_sociale')
+    : identiteEntreprise?.type_client === 'entreprise' && manquantsIdentite.includes('ice')
+  const rappelIceAcceptation = marchePro
   const changerTypeLead = async () => {
     if (!selectedLead) return
     const ok = await confirm({
@@ -478,7 +484,7 @@ export function useApercuEtude(ctx) {
 
   return {
     capaciteBatterieInconnue, consoAnnuelleReelle, facturesSaisies, moisNonSaisis, leadsListe,
-    selectedLead, typeLeadEffectif, marcheSegment, bandeauSegment, rappelIce, changerTypeLead, roi,
+    selectedLead, typeLeadEffectif, marcheSegment, bandeauSegment, rappelIce, rappelIceAcceptation, changerTypeLead, roi,
     villeCalculLead, etudeHoraireCorps, etudeHoraireDonnees, etudeHoraireChargement,
     etudeHoraireErreur, etudeHoraireAnnuel, etudeHoraireSourceServeur, etudeHoraireAnnuelAvec,
     etudeHoraireLignes, etudeHoraireSourceLabel, etudeHoraireFalaise, etudeHoraireGlitch,

@@ -305,7 +305,7 @@ def conception(*, besoin, profils_horaires=None, agricole_pump_hours=None,
         alertes.append(_alerte(
             "releve_point_eau_requis",
             "niveau_eau_m" if niveau_eau_m is None else "debit_exploitation_m3h",
-            "Relevé du point d'eau requis avant le devis (D-AGR-4) : %s "
+            "Relevé du point d'eau à faire en visite avant le devis : %s "
             "inconnu." % " et ".join(manque)))
 
     # Incohérence physique de la pompe actuelle déclarée : même à 100 % de
@@ -576,11 +576,11 @@ def pompe_existante(*, plaque, variateurs, panneau=None,
     candidats = []
 
     if p["kw"] is None:
-        motif = ("kW de plaque à relever (visite « relevé du point d'eau », "
-                 "D-AGR-4) : variateur non choisi")
+        motif = ("kW de plaque à relever lors de la visite du point d'eau : "
+                 "variateur non choisi")
         alertes.append(_alerte(
             "kw_plaque_a_relever", "plaque.kw",
-            "kW de plaque de la pompe existante à relever (D-AGR-4) : le "
+            "kW de plaque de la pompe existante à relever lors de la visite : le "
             "variateur n'est pas choisi sur le CV (conversion × 0,7355 "
             "affichée seulement)."))
         variateur["motif"] = motif

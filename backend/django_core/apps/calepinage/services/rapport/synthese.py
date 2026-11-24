@@ -68,10 +68,33 @@ def _liste_onduleurs(resultat):
             or () if isinstance(o, dict)]
 
 
+#: T4-U2-014 — les débuts des phrases SERVIES (``electrique.resoudre_materiel``
+#: ``absents`` et ``chaines.concevoir_par_pan`` ``manquantes``, toutes deux dans
+#: ``resultat.avertissements``) qui disent pourquoi aucune chaîne n'est calculée.
+_ONDULEUR_ABSENT = ('onduleur non désigné', 'onduleur introuvable')
+_CAUSES_SANS_CHAINE = ('module PV non désigné', 'module PV introuvable',
+                       'module : ', 'onduleur : ')
+
+
+def _motif_sans_onduleur(resultat):
+    """Pourquoi ``electrique.onduleurs`` est vide, LU dans les avertissements.
+
+    Vide veut dire « aucune chaîne », pas « aucun onduleur » : l'onduleur
+    choisi à l'étape Électrique (la même ``resoudre_materiel``) ne s'évalue
+    qu'avec des chaînes. « aucun onduleur désigné » n'est dit que si
+    l'absence de l'onduleur est SERVIE ; sinon la cause servie, sinon la
+    chaîne absente seule."""
+    servis = [str(a).strip() for a in resultat.get('avertissements') or ()]
+    if any(a.startswith(_ONDULEUR_ABSENT) for a in servis):
+        return MOTIF_SANS_ONDULEUR
+    cause = next((a for a in servis if a.startswith(_CAUSES_SANS_CHAINE)), '')
+    return '%s : %s' % (MOTIF_SANS_CHAINE, cause) if cause else MOTIF_SANS_CHAINE
+
+
 def _onduleurs(resultat):
     liste = _liste_onduleurs(resultat)
     if not liste:
-        return _valeur(None, MOTIF_SANS_ONDULEUR)
+        return _valeur(None, _motif_sans_onduleur(resultat))
     return '<br>'.join(escape('%s × %s (%s kW)' % (
         o.get('reference') or '—', nombre_tel_que_servi(o.get('nombre')),
         nombre_tel_que_servi(o.get('taille_kw')))) for o in liste)
@@ -81,7 +104,7 @@ def _motif_sans_verdict(resultat):
     """Le motif servi sur l'onduleur, sinon ce qui manque (ACAL1677)."""
     liste = _liste_onduleurs(resultat)
     if not liste:
-        return MOTIF_SANS_ONDULEUR
+        return _motif_sans_onduleur(resultat)
     return next((str(o['motif']) for o in liste if o.get('motif')),
                 MOTIF_SANS_CHAINE)
 

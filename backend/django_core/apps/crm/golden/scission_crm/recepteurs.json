@@ -1,6 +1,9 @@
 {
  "hors_fichiers": [],
  "par_signal": {
+  "conception_recalculee": [
+   "crm_note_conception_recalculee"
+  ],
   "devis_acceptation_annulee": [
    "crm_defaire_acceptation_on_acceptation_annulee"
   ],
@@ -35,6 +38,7 @@
    "crm_stop_contact_cadence_on_outcome",
    "crm_emit_appointment_effectue",
    "crm_emit_lead_created",
+   "crm_emit_lead_entrees_modifiees",
    "crm_dispatch_mise_en_attente",
    "crm_stop_cadence_on_archive",
    "crm_empreinte_opposition_lead",
@@ -43,6 +47,7 @@
   ],
   "pre_save": [
    "crm_capture_appointment_old_statut",
+   "crm_photo_entrees_moteur",
    "crm_garde_restauration_corbeille"
   ],
   "salle_vente_signal_interet": [

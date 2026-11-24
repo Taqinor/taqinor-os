@@ -122,4 +122,56 @@ class TestDevisAutoContrat(TestCase):
             ete_differente=True, ville='Casablanca')
         self.assertEqual(champs_manquants(lead), ['facture été'])
         self.assertEqual(champs_requis(lead),
-                         [['facture_hiver'], ['facture_ete'], ['ville', 'gps_lat']])
+                         [['facture_hiver', 'conso_mensuelle_kwh'], ['facture_ete'], ['ville', 'gps_lat']])
+
+
+class GardeEgaleAuMoteurTests(TestCase):
+    """ALEA70 — la garde « devis automatique prêt » dit exactement ce qui
+    manque au MOTEUR : un lead prêt n'est jamais refusé par
+    ``calculer_conception`` ; un lead refusé n'est pas prêt et nomme le même
+    champ. ``manques_du_moteur`` (ventes) lit cette garde : une seule liste.
+    Constat T4-U1-022 : un résidentiel au kWh déclaré sans facture était
+    « Facture manquante » alors que le moteur le calcule."""
+
+    def setUp(self):
+        from unittest import mock
+
+        from apps.ventes.tests import test_devis_auto as res
+
+        coupure = mock.patch('urllib.request.urlopen', side_effect=OSError('ALEA70 hors réseau'))
+        coupure.start()
+        self.addCleanup(coupure.stop)
+        self.company = res.make_company('alea70-co')
+        res.seed_catalogue(self.company)
+        self.ville = res.VILLE_ANCRE
+
+    def _lead(self, **champs):
+        return Lead.objects.create(company=self.company, nom='Alea', prenom='Soixante-dix', **champs)
+
+    def _verdicts(self, lead):
+        from apps.ventes.conception.moteur import calculer_conception
+        from apps.ventes.selectors import manques_du_moteur
+
+        resultat = calculer_conception(lead, self.company)
+        manquants = [e['champ'] for e in champs_manquants_detail(lead)]
+        return not champs_manquants(lead), resultat, manquants, manques_du_moteur(lead)
+
+    def test_pret_si_et_seulement_si_le_moteur_calcule(self):
+        cas = {
+            'facture': dict(facture_hiver=Decimal('1800'), ville=self.ville),
+            'kwh_seul': dict(conso_mensuelle_kwh=Decimal('450'), ville=self.ville),
+            'kwh_ete_different': dict(conso_mensuelle_kwh=Decimal('450'), ete_differente=True, ville=self.ville),
+            'rien': dict(ville=self.ville),
+            'sans_lieu': dict(facture_hiver=Decimal('1800'), ville=''),
+        }
+        for nom, champs in cas.items():
+            with self.subTest(cas=nom):
+                pret, resultat, manquants, manques = self._verdicts(self._lead(**champs))
+                self.assertEqual(pret, resultat.etat == 'complet', (nom, resultat.refus, manquants))
+                if not pret:
+                    self.assertIn(resultat.refus['champ'], manquants)
+                self.assertEqual([m['champ'] for m in manques], manquants)
+        # Le constat : kWh déclaré, aucune facture ⇒ prêt (le moteur calcule).
+        pret, resultat, manquants, _ = self._verdicts(self._lead(conso_mensuelle_kwh=Decimal('450'),
+                                                                 ville=self.ville))
+        self.assertEqual((pret, resultat.etat, manquants), (True, 'complet', []))

@@ -163,11 +163,9 @@ ALLOWED_UNCONSUMED = {
     "rfq_attribuee",                    # automation (RFQ_ATTRIBUEE) — achats avancés parqués
     # ACON41 — ``revision_abandonnee`` : RETIRÉ par ACON91 (abonné vivant
     # ``apps/calepinage/receivers.py``, re-lien à la V1 réactivée).
-    # ACAL2010 (D-ACAL-97) — les trois signaux du moteur unique, posés AVANT
-    # leurs émetteurs et abonnés (contrat d'abord, PACT10). Chaque entrée nomme
-    # la tâche qui la retire en abonnant le signal.
-    "lead_entrees_modifiees",           # ventes : relance de la conception — retiré par ADEV139
-    "pose_enregistree",                 # ventes : relance de la conception — retiré par ADEV139
+    # ACAL2010 (D-ACAL-97) — les signaux du moteur unique étaient réservés ici
+    # avant leurs abonnés : ``lead_entrees_modifiees`` et ``pose_enregistree``
+    # sont RETIRÉS par ADEV139 (abonné vivant ``apps/ventes/conception/receivers.py``).
 }
 
 # APAR43 — signaux qui ont un abonné VIVANT mais AUCUN émetteur statique dans

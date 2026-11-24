@@ -353,4 +353,18 @@ const fieldLabels = {
   },
 }
 
+// T4-U3-001 — le libellé de chaque section du registre SectionsPane (même
+// texte que l'en-tête affiché) : un refus d'enregistrement nomme la section
+// où vit le champ fautif, pas seulement le champ.
+export const LIBELLES_SECTIONS = {
+  contact: 'Contact',
+  pipeline: 'Suivi commercial',
+  pro: 'Professionnel',
+  energie: 'Profil énergétique',
+  equipements: "Questionnaire d'appel",
+  pompage: 'Pompage',
+  toiture: 'Toiture & site',
+  visite: 'Visite technique',
+}
+
 export default fieldLabels

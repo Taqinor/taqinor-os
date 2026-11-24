@@ -334,7 +334,8 @@ def build(ctx) -> str:
     from . import theme
     # APDF8 — libellés FIXES de la page de confiance (fr : littéral d'origine,
     # octet pour octet ; en/ar : ``i18n_labels``), la fonction de la couverture.
-    from .cover import libelle_cat as LC, libelle_fixe as LF, nom_option
+    from .cover import (fragment_ice_client, libelle_cat as LC,
+                        libelle_fixe as LF, nom_option)
 
     d = ctx["d"]
     C = ctx["C"]
@@ -347,6 +348,13 @@ def build(ctx) -> str:
     client_full = (theme.titlecase_name(
         d.get("client_full") or d.get("client_name"))
         or LC(d, "res_le_client"))
+    # 24/11/2026 — ICE d'une entreprise cliente EN LIGNE après son nom au bloc
+    # de signature (plus petit, poids normal) : aucune ligne ajoutée tant que
+    # la colonne a la place ; vide sans ICE (octet pour octet).
+    sig_ice_html = fragment_ice_client(d)
+    if sig_ice_html:
+        sig_ice_html = (f' <span style="font-size:7.6pt;font-weight:400;'
+                        f'color:{C["muted"]};">&middot; {sig_ice_html}</span>')
     # M7 — la validité vient du DEVIS (date_validite, sinon création + réglage
     # société), servie par le builder ; plus de « 30 jours » par défaut.
     validity_days = d.get("validity_days")
@@ -867,7 +875,7 @@ def build(ctx) -> str:
     <div class="p3-accord-bd">
       <div class="p3-sig">
         <div class="p3-sig-who">{_t_bpa_client}</div>
-        <div class="p3-sig-name">{client_full}</div>
+        <div class="p3-sig-name">{client_full}{sig_ice_html}</div>
         <div class="p3-sig-zone"></div>
         <div class="p3-sig-hint">{_t_bpa_mention}</div>
       </div>

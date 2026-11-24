@@ -492,7 +492,17 @@ def _bloc_client(chantier):
     from apps.documents.builders import _client_block
     base = _client_block(client)
     entreprise = getattr(client, 'type_client', '') == 'entreprise'
-    nom = ' '.join(x for x in (base.get('prenom'), base.get('nom')) if x)
+    if entreprise:
+        # Client société (fondateur, 24/11/2026) : « le Client » est la
+        # RAISON SOCIALE, jamais une personne. Le gérant ou le responsable
+        # (« nom, qualité ») ne sert qu'à signer : ``representant``.
+        nom = base.get('nom') or ''
+        representant = ', '.join(x.strip() for x in (
+            getattr(client, 'contact_nom', '') or '',
+            getattr(client, 'contact_fonction', '') or '') if x.strip())
+    else:
+        nom = ' '.join(x for x in (base.get('prenom'), base.get('nom')) if x)
+        representant = ''
     adresse = base.get('adresse') or ''
     if entreprise and not adresse:
         adresse = getattr(client, 'adresse_siege', '') or ''
@@ -503,8 +513,7 @@ def _bloc_client(chantier):
         'ice': getattr(client, 'ice', '') or '',
         'rc': getattr(client, 'rc', '') or '',
         'if_fiscal': getattr(client, 'if_fiscal', '') or '',
-        'representant': (getattr(client, 'contact_nom', '') or '')
-        if entreprise else '',
+        'representant': representant,
         'adresse': adresse,
         'telephone': base.get('telephone') or '',
         'email': base.get('email') or '',
@@ -1070,6 +1079,16 @@ _CONTRAT_DU = {'fr': ' du {date}',
                      'في {date}'}
 
 
+def _client_nomme(client):
+    """Le client tel qu'une phrase le nomme (quitus du dernier acte) : une
+    société y porte son ICE — « K and L building (ICE 001234567000089) » —
+    pour que les quatre actes l'identifient (fondateur, 24/11/2026)."""
+    nom = client.get('nom_complet') or ''
+    if nom and client.get('type') == 'entreprise' and client.get('ice'):
+        return f"{nom} (ICE {client['ice']})"
+    return nom
+
+
 def _contexte(contenu, vente, langue, refs, lecture=None):
     """Les repères des textes par défaut, déjà mis en forme dans la langue.
     Un repère inconnu est laissé absent : le texte imprime « à préciser »."""
@@ -1081,7 +1100,7 @@ def _contexte(contenu, vente, langue, refs, lecture=None):
     pose = next((g for g in garanties if g.get('cle') == 'installation'), None)
     ctx = {
         'societe': societe.get('nom_court') or societe.get('nom') or None,
-        'client': contenu['client'].get('nom_complet') or None,
+        'client': _client_nomme(contenu['client']) or None,
         'devis_reference': chantier.get('devis_reference') or None,
         'contrat_reference': refs[T.CONTRAT],
         'email_societe': societe.get('email') or None,

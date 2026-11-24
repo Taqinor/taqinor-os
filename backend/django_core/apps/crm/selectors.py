@@ -212,3 +212,12 @@ def cibles_du_sujet(company, subject_identifier):
     from .dsr_provider import cibles_du_sujet as _cibles
 
     return _cibles(company, subject_identifier)
+
+
+def libelle_champ_lead(champ):
+    """Le libellé d'une colonne du lead dans son historique
+    (``activity.TRACKED_FIELDS``), ou ``None`` : lu par la phrase « pourquoi »
+    de la conception (ventes, relecture m3) sans importer ``crm.activity``."""
+    from .activity import TRACKED_FIELDS
+
+    return TRACKED_FIELDS.get(champ)

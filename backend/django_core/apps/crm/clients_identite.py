@@ -463,17 +463,102 @@ def _client_synchronisable(lead):
     return client
 
 
+#: Champs d'identité LÉGALE d'une entreprise (hors ceux qu'un particulier suit
+#: déjà) : sur un client promu, ils ne remplacent jamais une valeur déjà
+#: saisie sans ``force``, et une valeur vide du lead n'en efface jamais une.
+_CHAMPS_LEGAUX_PROMOTION = (
+    'contact_nom', 'contact_fonction', 'ice', 'rc', 'if_fiscal',
+    'adresse_siege', 'tva_recuperable',
+)
+
+
+def _raison_sociale_lead(lead):
+    return (getattr(lead, 'societe', None) or '').strip()
+
+
+def _promotion_vers_entreprise(lead, client):
+    """Un lead qui porte une raison sociale NON VIDE et dont le client lié est
+    encore un ``particulier`` : ce client doit devenir l'entreprise (« devis
+    résidentiel pour une société avec ICE »). Jamais l'inverse : un client
+    entreprise ne redevient pas particulier (``societe`` vidée sur le lead).
+    Sans raison sociale (lead commercial/industriel compris) : aucune
+    promotion, comportement inchangé."""
+    return (bool(_raison_sociale_lead(lead))
+            and getattr(client, 'type_client', None)
+            != Client.TypeClient.ENTREPRISE)
+
+
+def _identite_personnelle_non_divergee(client, avant):
+    """Le nom et le prénom du client ÉGALENT ceux qu'avait le lead AVANT
+    (``avant`` absent : jamais) — garde « jamais écraser une fiche corrigée
+    à la main », appliquée à la promotion."""
+    if avant is None:
+        return False
+    return all(
+        _identite_egale(c, getattr(client, c, None), getattr(avant, c, None))
+        for c in ('nom', 'prenom'))
+
+
 def client_ecart(lead):
     """QJR590 — champs d'identité où la fiche Client liée diffère du lead
-    (liste ordonnée, ``[]`` sans client ou client anonymisé). Lecture seule."""
+    (liste ordonnée, ``[]`` sans client ou client anonymisé). Lecture seule.
+
+    Un client ``particulier`` dont le lead porte une raison sociale est
+    comparé à l'identité ENTREPRISE (il serait promu par « Mettre à jour la
+    fiche client ») ; si seule la promotion reste à faire, l'écart est
+    ``['type_client']``."""
     client = _client_synchronisable(lead)
     if client is None:
         return []
-    champs = _champs_identite(client)
+    promotion = _promotion_vers_entreprise(lead, client)
+    champs = (IDENTITE_CLIENT_CHAMPS_ENTREPRISE if promotion
+              else _champs_identite(client))
     cible = identite_client_depuis_lead(
         lead, entreprise=champs is IDENTITE_CLIENT_CHAMPS_ENTREPRISE)
-    return [c for c in champs
-            if not _identite_egale(c, getattr(client, c, None), cible[c])]
+    ecart = [c for c in champs
+             if not _identite_egale(c, getattr(client, c, None), cible[c])]
+    if promotion and not ecart:
+        ecart = ['type_client']
+    return ecart
+
+
+def _champs_a_promouvoir(lead, client, avant, force):
+    """Champs recopiés sur un client PROMU en entreprise, et message éventuel
+    (ICE différent conservé). Garde par champ : e-mail/téléphone/adresse
+    suivent la règle habituelle (valeur du client = valeur d'AVANT du lead) ;
+    le nom est la raison même de la promotion ; l'identité légale ne remplace
+    jamais une valeur déjà saisie (ni n'est effacée par un vide du lead) sans
+    ``force``."""
+    cible = identite_client_depuis_lead(lead, entreprise=True)
+    ancienne = (identite_client_depuis_lead(avant, entreprise=False)
+                if avant is not None else {})
+    champs, message = [], None
+    for c in IDENTITE_CLIENT_CHAMPS_ENTREPRISE:
+        actuelle = getattr(client, c, None)
+        if _identite_egale(c, actuelle, cible[c]):
+            continue
+        a_une_valeur = bool(str(actuelle or '').strip())
+        if c == 'ice' and a_une_valeur and not force:
+            # Règle de ``completer_client_depuis_acceptation`` : un ICE déjà
+            # présent n'est jamais écrasé (ici sans ``force``) ; dit, jamais
+            # une exception. Même ICE à l'espace près : rien à dire.
+            if (_ice_normalise(cible['ice'])
+                    and _ice_normalise(cible['ice'])
+                    != _ice_normalise(actuelle)):
+                message = (f"L'ICE de la fiche client ({client.ice}) diffère "
+                           f"de celui du lead ({cible['ice']}) : il est "
+                           'conservé, à vérifier.')
+            continue
+        if c in _CHAMPS_LEGAUX_PROMOTION:
+            if not str(cible[c] or '').strip() and a_une_valeur:
+                continue  # jamais effacé par un vide du lead
+            if a_une_valeur and not force:
+                continue  # saisie existante préservée
+        elif c in IDENTITE_CLIENT_CHAMPS and c != 'nom':
+            if not (force or _identite_egale(c, actuelle, ancienne.get(c))):
+                continue
+        champs.append(c)
+    return champs, message
 
 
 def synchroniser_identite_client(lead, avant, user, *, force=False):
@@ -485,6 +570,15 @@ def synchroniser_identite_client(lead, avant, user, *, force=False):
     (action « Mettre à jour la fiche client ») recopie tout l'écart. Jamais un
     Client anonymisé, jamais un Client d'une autre société, jamais un Client
     désigné par le corps de requête (``lead.client`` seulement).
+
+    PROMOTION (« devis résidentiel pour une société avec ICE ») : quand le
+    lead porte une raison sociale non vide et que le client lié est encore un
+    ``particulier``, ce client devient une ENTREPRISE (``type_client``, nom ←
+    raison sociale, ``prenom`` vidé, personne → ``contact_nom``, ICE…). Sans
+    ``force``, seulement si le nom et le prénom du client égalent ceux du lead
+    AVANT (client divergé = jamais promu) ; ``avant`` absent et pas ``force`` :
+    pas de promotion. Un ICE déjà présent et différent n'est jamais écrasé
+    sans ``force`` (dit dans le message, aucune exception). Jamais l'inverse.
 
     E-mail déjà pris par un autre client (contrainte
     ``crx24_client_email_unique_ci``) : les autres champs passent, l'e-mail
@@ -499,42 +593,68 @@ def synchroniser_identite_client(lead, avant, user, *, force=False):
     client = _client_synchronisable(lead)
     if client is None:
         return [], None
-    champs_suivis = _champs_identite(client)
-    entreprise = champs_suivis is IDENTITE_CLIENT_CHAMPS_ENTREPRISE
-    cible = identite_client_depuis_lead(lead, entreprise=entreprise)
-    ancienne = (identite_client_depuis_lead(avant, entreprise=entreprise)
-                if avant is not None else {})
-    champs = []
-    for c in champs_suivis:
-        actuelle = getattr(client, c, None)
-        if _identite_egale(c, actuelle, cible[c]):
-            continue
-        if force or _identite_egale(c, actuelle, ancienne.get(c)):
-            champs.append(c)
-    if not champs:
-        return [], None
-    if 'nom' in champs and not (cible['nom'] or '').strip():
-        champs.remove('nom')  # Client.nom est requis : jamais vidé
+    promotion = (_promotion_vers_entreprise(lead, client)
+                 and (force or _identite_personnelle_non_divergee(
+                     client, avant)))
     message = None
+    supplement = []  # colonnes écrites en plus des champs d'identité
+    if promotion:
+        champs, message = _champs_a_promouvoir(lead, client, avant, force)
+        supplement = ['type_client', 'prenom',
+                      'raison_sociale_a_confirmer', 'date_modification']
+    else:
+        champs_suivis = _champs_identite(client)
+        entreprise = champs_suivis is IDENTITE_CLIENT_CHAMPS_ENTREPRISE
+        cible = identite_client_depuis_lead(lead, entreprise=entreprise)
+        ancienne = (identite_client_depuis_lead(avant, entreprise=entreprise)
+                    if avant is not None else {})
+        champs = []
+        for c in champs_suivis:
+            actuelle = getattr(client, c, None)
+            if _identite_egale(c, actuelle, cible[c]):
+                continue
+            if force or _identite_egale(c, actuelle, ancienne.get(c)):
+                champs.append(c)
+        if not champs:
+            return [], None
+        if 'nom' in champs and not (cible['nom'] or '').strip():
+            champs.remove('nom')  # Client.nom est requis : jamais vidé
+    if promotion:
+        cible = identite_client_depuis_lead(lead, entreprise=True)
     anciennes = {c: getattr(client, c, None) for c in champs}
+    prenom_avant = (client.prenom or '').strip()
     for c in champs:
         setattr(client, c, cible[c])
+    if promotion:
+        client.type_client = Client.TypeClient.ENTREPRISE
+        client.prenom = None
+        client.raison_sociale_a_confirmer = False
     try:
         with transaction.atomic():
-            client.save(update_fields=champs)
+            client.save(update_fields=[*champs, *supplement])
     except IntegrityError:
         setattr(client, 'email', anciennes.get('email'))
         champs = [c for c in champs if c != 'email']
-        message = ("La fiche client n'a pas repris l'e-mail : il est déjà "
-                   'utilisé par un autre client.')
-        if champs:
+        message = ' '.join(filter(None, (
+            message,
+            "La fiche client n'a pas repris l'e-mail : il est déjà "
+            'utilisé par un autre client.')))
+        if champs or promotion:
             with transaction.atomic():
-                client.save(update_fields=champs)
+                client.save(update_fields=[*champs, *supplement])
     acteur = getattr(user, 'username', None) or 'système'
+    if promotion:
+        # Le type et le prénom vidé font partie de ce qui a changé.
+        champs = ['type_client', *(['prenom'] if prenom_avant else []),
+                  *champs]
     if champs:
         libelles = ', '.join(champs)
-        corps = (f'Fiche client {client.nom} mise à jour depuis le lead '
-                 f'({libelles}) par {acteur}.')
+        if promotion:
+            corps = (f'Fiche client {client.nom} passée en entreprise et '
+                     f'mise à jour depuis le lead ({libelles}) par {acteur}.')
+        else:
+            corps = (f'Fiche client {client.nom} mise à jour depuis le lead '
+                     f'({libelles}) par {acteur}.')
         for lead_client in client.leads.all():
             creer_activite(
                 company=lead_client.company, lead=lead_client, user=user,

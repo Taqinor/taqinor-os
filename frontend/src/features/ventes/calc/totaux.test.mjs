@@ -6,7 +6,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   optionTotalsTTC, prixParKwc, discountForTarget, computeBuyCost, multiPropertyPreviewTTC,
-  totauxCanoniquesTtc,
+  totauxCanoniquesTtc, optionsDesLignes,
 } from './totaux.js'
 import { PAS_ARRONDI_DEVIS } from '../remise.js'
 
@@ -182,4 +182,37 @@ test('ERR-QJR576 — SCENARIOS_ALTERNATIVE est la liste unique de quote/scenario
   assert.equal(SCENARIOS_ALTERNATIVE, SCENARIOS_VALIDES)
   assert.deepEqual([...SCENARIOS_ALTERNATIVE].sort(),
     ['Avec batterie', 'Les deux (Sans + Avec)', 'Sans batterie'])
+})
+
+// T4-U2-011 — l'écran DIT dans quelle option compte chaque ligne qui ne compte
+// pas dans les deux totaux : même règle que optionTotalsTTC (paniers + règle
+// QF9 des accessoires Huawei, miroir de utils/options.py).
+test('T4-U2-011 — la clé Wi-Fi Huawei ne compte que dans l’option sans batterie, et l’écran le dit', () => {
+  const lines = [
+    L('Panneau Canadien Solar 715W', 8, 1320, { taux_tva: '10', produit: 1 }),
+    L('Onduleur réseau Huawei 5kW', 1, 10800, { produit: 2 }),
+    L('Onduleur hybride Deye 6kW', 1, 16800, { produit: 3 }),
+    L('Batterie lithium 5kWh', 1, 19200, { produit: 4 }),
+    L('Wifi Dongle', 2, 1200, { produit: 5 }),
+    L('Transport', 1, 1000, { produit: 6 }),
+    L('Batterie', 1, 0),
+  ]
+  const o = optionsDesLignes(lines, { scenario: 'Les deux (Sans + Avec)' })
+  assert.equal(o[0], null) // panneaux : les deux
+  assert.equal(o[1].option, 'sans')
+  assert.equal(o[2].option, 'avec')
+  assert.equal(o[3].option, 'avec')
+  assert.equal(o[4].option, 'sans')
+  assert.match(o[4].raison, /Huawei/)
+  assert.equal(o[5], null) // transport : les deux
+  assert.equal(o[6], null) // en attente de produit : ne pèse sur aucun total
+  // Cohérent avec les totaux : retirer la clé ne change QUE le total sans.
+  const avec = optionTotalsTTC(lines, 0, { scenario: 'Les deux (Sans + Avec)' })
+  const sans = optionTotalsTTC(lines.filter((_, i) => i !== 4), 0, { scenario: 'Les deux (Sans + Avec)' })
+  assert.ok(o.every((x, i) => x === null || lines[i].produit), 'que des lignes qui partent')
+  assert.equal(avec.totalAvec, sans.totalAvec)
+  assert.notEqual(avec.totalSans, sans.totalSans)
+  // Devis à UNE option (pas d’alternative) : aucune étiquette.
+  assert.deepEqual(optionsDesLignes([L('Panneaux', 4, 1000, { produit: 1 }), L('Onduleur réseau Huawei', 1, 9000, { produit: 2 })], {}),
+    [null, null])
 })
