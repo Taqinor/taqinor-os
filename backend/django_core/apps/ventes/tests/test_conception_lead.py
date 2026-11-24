@@ -2535,6 +2535,22 @@ class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher
         with self.assertRaises(CommandError):
             self._commande('--appliquer')
 
+    def test_appliquer_premier_calcul_avec_la_pose_deja_enregistree(self):
+        """Relecture E3 M2 (suite) — un lead dont le calepinage ouvert porte
+        déjà une pose, sans version : ``--appliquer`` range sa première
+        version AVEC l'empreinte de cette pose et son calepinage."""
+        from apps.calepinage.models import Calepinage
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'))
+        _reglages_de_la_societe(company)
+        calepinage = Calepinage.objects.create(company=company, lead_id=lead.pk, titre='Toit posé',
+                                               layout_hash='a' * 64)
+        self._commande('--company', str(company.pk), '--appliquer')
+        version = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual((version.calepinage_id, version.empreinte_pose),
+                         (calepinage.pk, 'a' * 64))  # mutant « sans toit » : (None, '')
+
     def test_liste_une_erreur_de_base_n_empoisonne_pas_les_leads_suivants(self):
         """Relecture E3 M2 — la liste ouvre un point de sauvegarde par lead :
         une erreur de base sur un lead ne fait pas échouer tous les suivants."""

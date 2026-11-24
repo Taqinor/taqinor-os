@@ -98,8 +98,11 @@ class Command(BaseCommand):
                           '— rien n\'est écrit ; relancer avec --appliquer pour ranger.')
 
     def _appliquer(self, company):
+        from types import SimpleNamespace
+
         from apps.ventes.conception.moteur import refus_localisation
         from apps.ventes.conception.service import relancer
+        from apps.ventes.selectors_calepinage import pose_du_lead
 
         ecrites = inchangees = sans_lieu = erreurs = 0
         deja = _leads_deja_ranges(company)
@@ -114,7 +117,15 @@ class Command(BaseCommand):
                 inchangees += 1
                 continue
             try:
-                relance = relancer(lead, company=company, declencheur=dict(DECLENCHEUR))
+                # Relecture E3 M2 (suite) — une pose DÉJÀ enregistrée sur le
+                # calepinage ouvert du lead entre dans ce premier calcul, comme
+                # pour un événement ``pose_enregistree`` (jamais émis pour les
+                # poses d'avant le moteur unique).
+                calepinage_id, empreinte_pose = pose_du_lead(company, lead.pk)
+                toit = (SimpleNamespace(empreinte=empreinte_pose, plafond_panneaux=None)
+                        if empreinte_pose else None)
+                relance = relancer(lead, company=company, declencheur=dict(DECLENCHEUR),
+                                   toit=toit, calepinage_id=calepinage_id)
             except Exception as exc:  # noqa: BLE001 — un lead en échec n'arrête pas le remplissage (D-ENF22-BLE001)
                 logger.warning('remplir_conceptions : lead #%s non rangé', lead.pk, exc_info=True)
                 erreurs += 1
