@@ -26,6 +26,14 @@ export function dimensionsTexture(rapport: number): { w: number; h: number; cols
   return best;
 }
 
+/** ACAL1984 — le verre d'un panneau. La couche MapLibre rend avec une caméra Three.js IDENTITÉ : le shader place l'œil à
+ *  l'origine de la scène (sous le toit), la vue du verre est rasante et le Fresnel du vernis (`clearcoat`) vaut 1 — il
+ *  éteint toute couleur de base, teinte comprise (panneaux noirs à l'étape Panneaux et Électrique). L'atelier ERP (`erp`)
+ *  pose donc un verre SANS vernis ; le site public garde le sien, rendu inchangé. */
+export function materiauVerre(map: THREE.Texture | null, erp: boolean): THREE.MeshPhysicalMaterial {
+  return new THREE.MeshPhysicalMaterial({ map, color: 0xffffff, metalness: 0.1, roughness: 0.22, clearcoat: erp ? 0 : 1, clearcoatRoughness: 0.08 });
+}
+
 export function makeCanadianPanelTexture(rapport = 1.83): THREE.Texture {
   const { w: cW, h: cH, cols, rowsHalf } = dimensionsTexture(rapport);
   const c = document.createElement('canvas');

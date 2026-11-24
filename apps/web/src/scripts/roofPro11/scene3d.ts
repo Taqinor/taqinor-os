@@ -51,7 +51,7 @@ import {
   DEG2M,
 } from './constants';
 import { type AreaRecord, type ZoneRenderPlan, type RenderSceneFn } from './types';
-import { makeCanadianPanelTexture } from './panelTexture';
+import { makeCanadianPanelTexture, materiauVerre } from './panelTexture';
 import { type Ctx } from './context';
 import { poserEtiquettesNumeros } from './numerotation'; // CALX111
 // CALX94 câblage — couleur d'arête RETENUE (correction manuelle prioritaire), PURE.
@@ -1396,7 +1396,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     socleMat: THREE.MeshStandardMaterial;
   }
   const buildPanelMatSet = (dim: boolean, rapport: number): PanelMatSet => {
-    const glassMat = new THREE.MeshPhysicalMaterial({ map: panelTexOf(rapport), color: 0xffffff, metalness: 0.1, roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.08 });
+    const glassMat = materiauVerre(panelTexOf(rapport), ctx.opts?.productionAtelier !== undefined); // ACAL1984 — `productionAtelier` : ERP seul (types.ts)
     const frameMat = new THREE.MeshStandardMaterial({ color: 0x9aa0aa, metalness: 0.85, roughness: 0.35 });
     const backMat = new THREE.MeshStandardMaterial({ color: 0xe6e8ee, metalness: 0.1, roughness: 0.6 });
     if (dim) {

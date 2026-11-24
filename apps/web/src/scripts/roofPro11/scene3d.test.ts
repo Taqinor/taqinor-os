@@ -4,7 +4,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { creerCanalTeinte } from './canalTeinte'; // ACAL1621
 import { cibleVue, appliquerVue } from './vuesCamera';
-import { dimensionsTexture } from './panelTexture';
+import { dimensionsTexture, materiauVerre } from './panelTexture'; // ACAL1984
 import {
   generateRoofShapePans,
   computeRidgeLifts,
@@ -425,6 +425,25 @@ describe('ACAL1408 — la teinte d’accès modifie la couleur effective du pann
     expect(lum(soleil) - lum(ombre)).toBeGreaterThan(0.1);
     ecrireTeintesPanneaux(buf, [0, 1, 2], null);
     expect(buf.rgb).toEqual([[1, 1, 1], [1, 1, 1], [1, 1, 1]]);
+  });
+
+  // ACAL1984 — cause lue à l'écran (Chromium sans tête, pile de revue, 24/11) : la teinte atteignait bien l'instance (les
+  // CHANTS du cadre s'allumaient en or) mais le VERRE restait noir. La caméra Three.js de la couche MapLibre est l'identité :
+  // le shader croit l'œil à l'ORIGINE de la scène (sous le toit), la vue du verre est rasante (N·V ≤ 0), le Fresnel du vernis
+  // vaut 1 et `couleur × (1 − clearcoat × F)` éteint la couleur de base. Sans vernis (clearcoat 0), même rendu : panneaux teintés.
+  it('la couleur rendue d’un panneau non ombré n’est pas noire (verre de l’atelier ERP, vue rasante de la caméra identité)', () => {
+    const fresnel = (f0: number, cos: number) => f0 + (1 - f0) * (1 - Math.max(0, cos)) ** 5; // F_Schlick, f90 = 1
+    const rendu = (verre: { clearcoat: number }, teinte: number[]) =>
+      teinte.map((v) => Math.min(1, FOND_PANNEAU * v * GAIN_TEINTE_PANNEAU) * (1 - verre.clearcoat * fresnel(0.04, 0)));
+    const lum = (c: number[]) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    const or = couleurAccesActive(1, 'atelier');
+    const erp = materiauVerre(null, true);
+    expect(lum(rendu(erp, [or.r, or.g, or.b]))).toBeGreaterThan(0.3);
+    expect(erp.clearcoat).toBe(0);
+    // Site public : le verre garde son vernis (son rendu ne change pas).
+    const pub = materiauVerre(null, false);
+    expect([pub.clearcoat, pub.clearcoatRoughness, pub.roughness, pub.metalness]).toEqual([1, 0.08, 0.22, 0.1]);
+    expect(lum(rendu(pub, [or.r, or.g, or.b]))).toBeLessThan(0.01); // la panne d'origine, gardée hors ERP
   });
 
   it('la teinte de chaîne (setStringColoring, même canal) est gainée de la même façon', () => {
