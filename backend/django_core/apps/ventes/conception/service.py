@@ -21,6 +21,9 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 #: Unité dite après « avant → après » (relecture m4 : « … 900 → 1 200 MAD ») ;
 #: les colonnes en kWh portent déjà l'unité dans leur libellé.
@@ -71,10 +74,25 @@ def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None
     from apps.ventes.conception.moteur import calculer_conception, empreinte_conception, reglages_lus_sans_creer
     from apps.ventes.models import ConceptionLead
 
+    from apps.crm.selectors import lead_efface
+
     origine, champs = _declencheur_valide(declencheur)
-    lead, porteur, refus = _porteur(lead, company, calepinage_id)
+    try:
+        lead, porteur, refus = _porteur(lead, company, calepinage_id)
+    except ValueError:
+        if lead is None or calepinage_id is None:
+            raise
+        # Relecture E3 M1 — porteur LEAD : son calepinage archivé, illisible
+        # ou relié à un autre lead n'est pas une erreur ; la conception du lead
+        # continue SANS cette pose (sinon elle ne bougerait plus jamais).
+        logger.warning('Conception du lead #%s : calepinage #%s archivé ou relié ailleurs, '
+                       'recalcul sans cette pose', getattr(lead, 'pk', None), calepinage_id)
+        calepinage_id, toit = None, None
+        lead, porteur, refus = _porteur(lead, company, None)
     if refus is not None:
         return Relance(None, False, None, refus)
+    if lead_efface(lead):  # relecture E3 B1 (loi 09-08) : rien calculé, rangé ni émis
+        return Relance(None, False, None, dict(REFUS_LEAD_EFFACE))
     courante = _courante(ConceptionLead, company, porteur)
     with reglages_lus_sans_creer(company):
         entrees = entrees_pour(lead, company, toit=toit)
@@ -102,6 +120,10 @@ def _courante(modele, company, porteur):
 
 
 CODE_APPEL_OFFRES = 'appel_offres_hors_moteur'
+#: Relecture E3 B1 — un lead effacé (loi 09-08) n'a plus de conception : ses
+#: entrées effacées ne sont jamais recopiées dans une version.
+REFUS_LEAD_EFFACE = {'code': 'lead_efface', 'champ': 'nom',
+                     'message': 'Lead effacé (loi 09-08) : aucune conception.'}
 
 
 def _porteur(lead, company, calepinage_id, calepinage=None):

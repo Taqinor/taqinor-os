@@ -107,6 +107,20 @@ class BalayageTests(TestCase):
         self.assertEqual(
             dsr_provider.sweep_retention_prospects(self.now), 0)
 
+    def test_une_ligne_systeme_de_la_conception_n_est_pas_un_contact(self):
+        """Relecture E3 M3 — « Conception recalculée : … » (ligne système du
+        moteur, ALEA69) ne remet pas l'horloge de rétention à zéro."""
+        lead = self._lead('Vieux sans contact', cree_le=self.vieux,
+                          telephone='0600000029')
+        activite = LeadActivity.objects.create(
+            company=self.company, lead=lead, kind=LeadActivity.Kind.NOTE,
+            field='conception_version', field_label='Conception recalculée',
+            new_value='1', body='Conception recalculée : premier calcul')
+        LeadActivity.objects.filter(pk=activite.pk).update(
+            created_at=self.now - datetime.timedelta(days=2))
+        self.assertIn(lead.pk, [
+            le.pk for le in dsr_provider.prospects_hors_duree(self.now)])
+
     def test_un_lead_devenu_client_est_epargne(self):
         """La déclaration leur oppose la durée légale COMPTABLE, pas 3 ans."""
         client = Client.objects.create(company=self.company, nom='Client')

@@ -47,6 +47,16 @@ class CeleryTaskRoutesTests(SimpleTestCase):
                 settings.CELERY_TASK_ROUTES[name]['queue'], 'scheduled',
                 f'{name} devrait router vers scheduled')
 
+    def test_relance_de_la_conception_hors_default_et_consommee(self):
+        """Relecture E3 m-e — la relance du moteur unique ne partage pas
+        `default` (webhooks) : `bulk`, consommée par `celery_worker`
+        (docker-compose.yml : -Q default,scheduled,bulk)."""
+        from erp_agentique.celery import app
+
+        route = settings.CELERY_TASK_ROUTES.get('ventes.relancer_conception') or {}
+        self.assertEqual(route.get('queue'), 'bulk')
+        self.assertEqual(app.amqp.router.route({}, 'ventes.relancer_conception')['queue'].name, 'bulk')
+
     def test_default_queue_unchanged(self):
         self.assertEqual(settings.CELERY_TASK_DEFAULT_QUEUE, 'default')
 

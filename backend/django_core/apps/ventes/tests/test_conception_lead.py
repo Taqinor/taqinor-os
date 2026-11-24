@@ -1588,6 +1588,25 @@ class RelanceConceptionTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher'
                                    calepinage_id=None, version=2, declencheur=version.declencheur)
         self.assertEqual(lignes.count(), 1)
 
+    def test_chatter_muet_pour_remplissage_filet_et_regles(self):
+        """Relecture E3 M3 — seule une relance causée par un changement de la
+        fiche ou de la pose écrit « Conception recalculée » ; remplissage,
+        filet et règles se taisent (le remplissage écrivait sur CHAQUE lead)."""
+        from apps.crm.models import LeadActivity
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        lignes = LeadActivity.objects.filter(lead=lead, field='conception_version')
+        for origine in ('remplissage', 'filet', 'regles'):
+            with self.subTest(origine=origine):
+                relance = self._relancer(lead, company, _declencheur(origine), forcer=True)
+                self.assertTrue(relance.ecrite)
+                self.assertEqual(lignes.count(), 0)  # mutant « toujours écrire » : rouge
+        for rang, origine in enumerate(('lead_entrees_modifiees', 'pose_enregistree'), start=1):
+            with self.subTest(origine=origine):
+                self._relancer(lead, company, _declencheur(origine), forcer=True)
+                self.assertEqual(lignes.count(), rang)
+
     def test_aucune_cle_d_achat_ni_de_marge_meme_si_le_moteur_en_rendait(self):
         from types import SimpleNamespace
 
@@ -2145,6 +2164,151 @@ class RelanceEnTacheTests(_emprunt(RelanceConceptionTests, '_relancer'),
             self.assertEqual(self._executer_les_taches([tache]), [None])
         self.assertFalse(ConceptionLead.objects.filter(lead=lead).exists())
 
+    def test_effacement_legal_jamais_defait_par_la_relance_en_file(self):
+        """Relecture E3 B1 (loi 09-08) — une relance en file quand le lead est
+        effacé : le scrub (GPS vidé) passe par la fusion du marqueur, les
+        versions sont supprimées, puis la tâche part. Elle ne doit RIEN
+        recalculer, ranger ni écrire au chatter : ni version, ni ligne
+        « Conception recalculée : GPS latitude 33,57 → — »."""
+        import json as _json_mod
+
+        from apps.crm.dsr_provider import anonymiser_lead
+        from apps.crm.models import Lead, LeadActivity
+        from apps.ventes.conception.receivers import _cle, cle_marqueur
+        from apps.ventes.models import ConceptionLead
+        from django.core.cache import cache
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        Lead.objects.filter(pk=lead.pk).update(gps_lat=Decimal('33.5731'), gps_lng=Decimal('-7.5898'))
+        lead.refresh_from_db()
+        self._relancer(lead, company, _declencheur())
+        self.assertTrue(ConceptionLead.objects.filter(lead=lead).exists())
+        self._enregistrer(lead, facture_hiver=Decimal('2400'))  # tâche en file, marqueur EN_FILE
+        self.assertEqual(self.en_file.call_count, 1)
+
+        lead.refresh_from_db()
+        with self.captureOnCommitCallbacks(execute=True):
+            anonymiser_lead(company, lead, motif='Effacement (test B1)')
+        derniere_ligne = LeadActivity.objects.filter(lead_id=lead.pk).order_by('-pk').values_list(
+            'pk', flat=True).first() or 0
+        self.assertFalse(ConceptionLead.objects.filter(lead_id=lead.pk).exists())
+        self.assertIsNone(cache.get(_cle(company.pk, cle_marqueur(lead.pk))))  # marqueur retiré
+
+        rendus = self._executer_les_taches()  # la tâche en file part quand même (worker)
+        self.assertTrue(rendus)
+        self.assertEqual(rendus, [None] * len(rendus))  # mutant « relancer quand même » : version 1
+        self.assertFalse(ConceptionLead.objects.filter(lead_id=lead.pk).exists())
+        self.assertFalse(LeadActivity.objects.filter(lead_id=lead.pk, pk__gt=derniere_ligne).exists())
+        self.assertFalse(LeadActivity.objects.filter(lead_id=lead.pk, field='conception_version',
+                                                     body__contains='33,57').exists())
+        for version in ConceptionLead.objects.filter(company=company):
+            self.assertNotIn('33.57', _json_mod.dumps(version.declencheur))
+
+    def test_fusion_ecrite_apres_la_prise_le_marqueur_est_libere(self):
+        """Relecture E3 m-a — une fusion lue AVANT la prise de la tâche et
+        écrite APRÈS remet le marqueur « en file » sous le jeton de la tâche :
+        la fin de la tâche le libère quand même (sinon il reste orphelin et
+        chaque modification rafraîchit son délai : plus aucune relance)."""
+        from django.core.cache import cache
+
+        from apps.ventes.conception import receivers, service
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        self._relancer(lead, company, _declencheur())
+        self._enregistrer(lead, facture_hiver=Decimal('2400'))
+        cle = receivers._cle(company.pk, receivers.cle_marqueur(lead.pk))
+        vrai = service.relancer
+
+        def course(*args, **kwargs):
+            fusion = dict(cache.get(cle), etat=receivers.EN_FILE)  # l'écriture tardive de la fusion
+            cache.set(cle, fusion, receivers.DUREE_MARQUEUR_S)
+            return vrai(*args, **kwargs)
+        with mock.patch.object(service, 'relancer', side_effect=course):
+            self.assertEqual(self._executer_les_taches(), [{'version': 2, 'ecrite': True}])
+        self.assertIsNone(cache.get(cle))  # mutant « libérer seulement EN_COURS » : marqueur orphelin
+        self._enregistrer(lead, facture_hiver=Decimal('2600'))
+        self.assertEqual(self.en_file.call_count, 1)
+
+    def test_pose_regroupee_dans_une_tache_de_fiche_garde_son_calepinage(self):
+        """Relecture E3 m-b — une pose regroupée dans une tâche née d'une fiche
+        modifiée : la version porte la pose ET son calepinage."""
+        from apps.calepinage.models import Calepinage
+        from apps.ventes.models import ConceptionLead
+        from core.events import pose_enregistree
+
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'))
+        _reglages_de_la_societe(company)
+        calepinage = Calepinage.objects.create(company=company, lead_id=lead.pk, titre='Toit')
+        self._enregistrer(lead, facture_hiver=Decimal('2400'))
+        pose_enregistree.send(sender='calepinage.Calepinage', company_id=company.pk,
+                              calepinage_id=calepinage.pk, lead_id=lead.pk, empreinte_pose='p' * 64)
+        self.assertEqual(self.en_file.call_count, 1)
+        self._executer_les_taches()
+        version = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual((version.calepinage_id, version.empreinte_pose),
+                         (calepinage.pk, 'p' * 64))  # mutant « marqueur sans calepinage » : None
+
+    def test_geste_regroupe_dans_un_filet_en_file_le_rend_parlant(self):
+        """Relecture E3 M3 — un filet en file (muet) puis une fiche modifiée
+        regroupée dedans : l'origine devient celle du geste, le chatter le dit."""
+        from apps.crm.models import LeadActivity
+        from apps.ventes.conception.receivers import mettre_en_file
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        self._relancer(lead, company, _declencheur())
+        self.assertEqual(mettre_en_file(company.pk, lead_id=lead.pk, origine='filet'), 'lancee')
+        self._enregistrer(lead, facture_hiver=Decimal('2400'))
+        self.assertEqual(self.en_file.call_count, 1)
+        self._executer_les_taches()
+        courante = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual(courante.declencheur['origine'], 'lead_entrees_modifiees')  # mutant « garder filet »
+        self.assertEqual(LeadActivity.objects.filter(lead=lead, field='conception_version').count(), 1)
+
+    def test_calepinage_archive_ou_relie_la_conception_du_lead_continue(self):
+        """Relecture E3 M1 — le calepinage de la version courante est archivé
+        (puis relié à un autre lead) : la relance suivante n'échoue pas, elle
+        range la conception du lead SANS cette pose ; ``perimee`` repasse à
+        faux ; une ligne d'avertissement, aucune pile d'erreur."""
+        from django.utils import timezone
+
+        from apps.calepinage.models import Calepinage
+        from apps.crm.models import Lead
+        from apps.ventes.models import ConceptionLead
+        from apps.ventes.selectors import conception_courante
+        from core.events import pose_enregistree
+
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'))
+        _reglages_de_la_societe(company)
+        calepinage = Calepinage.objects.create(company=company, lead_id=lead.pk, titre='Toit')
+        pose_enregistree.send(sender='calepinage.Calepinage', company_id=company.pk,
+                              calepinage_id=calepinage.pk, lead_id=lead.pk, empreinte_pose='p' * 64)
+        self._executer_les_taches()
+        Calepinage.objects.filter(pk=calepinage.pk).update(archive_le=timezone.now())
+
+        self._enregistrer(lead, facture_hiver=Decimal('2400'))
+        with self.assertLogs('apps.ventes.conception', level='WARNING') as journaux:
+            rendus = self._executer_les_taches()
+        self.assertEqual(rendus, [{'version': 2, 'ecrite': True}])  # mutant « ValueError » : [None]
+        self.assertFalse(any(r.exc_info for r in journaux.records))
+        courante = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual((courante.calepinage_id, courante.empreinte_pose), (None, ''))
+        self.assertFalse(conception_courante(company, lead.pk)['perimee'])
+        self.assertEqual(self.en_file.call_count, 0)
+
+        # Relié à un autre lead : même repli, la conception suit la fiche.
+        autre = Lead.objects.create(company=company, nom='Autre', prenom='Lead', ville=lead.ville,
+                                    facture_hiver=Decimal('1800'))
+        Calepinage.objects.filter(pk=calepinage.pk).update(archive_le=None, lead_id=autre.pk)
+        ConceptionLead.objects.filter(pk=courante.pk).update(calepinage_id=calepinage.pk)
+        self._enregistrer(lead, facture_hiver=Decimal('2600'))
+        with self.assertLogs('apps.ventes.conception', level='WARNING'):
+            self.assertEqual(self._executer_les_taches(), [{'version': 3, 'ecrite': True}])
+        self.assertIsNone(ConceptionLead.objects.get(lead=lead, courante=True).calepinage_id)
+
     # ── ADEV140 — le filet d'empreinte à la lecture ─────────────────────────
     def test_entree_changee_sans_evenement_perimee_puis_une_relance(self):
         from apps.crm.models import Lead
@@ -2236,6 +2400,57 @@ class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher
         self.assertIn('APPLIQUÉ : 0 version(s) rangée(s), 7 inchangée(s)', rejoue)
         self.assertEqual(ConceptionLead.objects.filter(company=company).count(), 7)
         self.assertEqual(_photo_devis(devis.pk), photo)
+
+    def test_appliquer_ne_touche_pas_une_version_courante_venue_d_un_toit(self):
+        """Relecture E3 M2 — un remplissage, pas un rafraîchissement : le lead
+        dont la version courante vient d'une pose (empreinte du toit) n'est
+        pas recalculé sans elle ; ``--appliquer`` exige ``--company``."""
+        from types import SimpleNamespace
+
+        from django.core.management.base import CommandError
+
+        from apps.ventes.conception.service import relancer
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'))
+        _reglages_de_la_societe(company)
+        with self.captureOnCommitCallbacks(execute=True):
+            relancer(lead, company=company, declencheur={'origine': 'pose_enregistree', 'champs': []},
+                     toit=SimpleNamespace(empreinte='p' * 64, plafond_panneaux=None))
+        avant = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual(avant.empreinte_pose, 'p' * 64)
+
+        self.assertIn('APPLIQUÉ : 0 version(s) rangée(s), 1 inchangée(s)',
+                      self._commande('--company', str(company.pk), '--appliquer'))
+        apres = ConceptionLead.objects.get(lead=lead, courante=True)  # mutant « relancer sans toit » : v2, ''
+        self.assertEqual((apres.pk, apres.version, apres.empreinte_pose), (avant.pk, 1, 'p' * 64))
+        with self.assertRaises(CommandError):
+            self._commande('--appliquer')
+
+    def test_liste_une_erreur_de_base_n_empoisonne_pas_les_leads_suivants(self):
+        """Relecture E3 M2 — la liste ouvre un point de sauvegarde par lead :
+        une erreur de base sur un lead ne fait pas échouer tous les suivants."""
+        from django.db import connection
+
+        from apps.crm.models import Lead
+        from apps.ventes.conception import moteur
+
+        company, premier = self._residentiel(facture_hiver=Decimal('1800'))
+        _reglages_de_la_societe(company)
+        second = Lead.objects.create(company=company, nom='Second', prenom='Lead', ville=premier.ville,
+                                     facture_hiver=Decimal('1800'))
+        vrai = moteur.calculer_conception
+
+        def calcul(lead, company, **kw):
+            if lead.pk == premier.pk:
+                with connection.cursor() as curseur:
+                    curseur.execute('SELECT * FROM table_qui_n_existe_pas_m2')
+            return vrai(lead, company, **kw)
+        self._patcher(moteur, 'calculer_conception', side_effect=calcul)
+        liste = self._commande('--company', str(company.pk))
+        self.assertIn(f'lead #{premier.pk} : calcul impossible', liste)
+        self.assertIn(f'lead #{second.pk} [residentiel] option retenue : ', liste)  # mutant « sans point » : rouge
+        self.assertIn('LISTE : 1 conception(s) complète(s), 0 refus, 1 erreur(s)', liste)
 
 
 # ── ADEV145 — PARITÉ : aucun devis envoyé ou accepté ne change ─────────────

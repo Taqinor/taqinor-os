@@ -46,6 +46,8 @@ DUREE_MARQUEUR_S = 600
 #: Délai avant départ (s) : les enregistrements rapprochés s'y regroupent.
 DELAI_REGROUPEMENT_S = 5
 EN_FILE, EN_COURS = 'en_file', 'en_cours'
+#: Origines nées d'un geste sur la fiche ou la pose (dites au chatter).
+ORIGINES_GESTE = ('lead_entrees_modifiees', 'pose_enregistree')
 
 
 def cle_marqueur(lead_id=None, calepinage_id=None):
@@ -90,13 +92,20 @@ def mettre_en_file(company_id, *, lead_id=None, calepinage_id=None, origine, cha
         empreinte = _empreinte_evenement(champs, empreinte_pose)
         jeton = uuid.uuid4().hex
         marqueur = {'etat': EN_FILE, 'jeton': jeton, 'empreinte': empreinte, 'origine': origine,
-                    'champs': list(champs or []), 'empreinte_pose': empreinte_pose}
+                    'champs': list(champs or []), 'empreinte_pose': empreinte_pose,
+                    'calepinage_id': calepinage_id}
         if not cache.add(cle, marqueur, DUREE_MARQUEUR_S):
             present = cache.get(cle) or {}
             if present.get('etat') == EN_FILE:
+                # Relecture E3 M3 — un geste (fiche, pose) regroupé dans une
+                # relance muette (filet…) la rend parlante au chatter.
+                origine_fusionnee = origine if origine in ORIGINES_GESTE else present.get('origine')
                 present.update(champs=_fusionner(present.get('champs'), champs), empreinte=empreinte,
+                               origine=origine_fusionnee,
                                empreinte_pose=(empreinte_pose if empreinte_pose is not None
-                                               else present.get('empreinte_pose')))
+                                               else present.get('empreinte_pose')),
+                               # Relecture E3 m-b — la pose regroupée garde son calepinage.
+                               calepinage_id=calepinage_id or present.get('calepinage_id'))
                 cache.set(cle, present, DUREE_MARQUEUR_S)
                 return 'deja_en_file'
             if present.get('etat') == EN_COURS and present.get('empreinte') == empreinte:
@@ -124,7 +133,20 @@ def relance_en_file(company_id, *, lead_id=None, calepinage_id=None):
     try:
         return bool(cache.get(_cle(company_id, cle_marqueur(lead_id, calepinage_id))))
     except Exception:  # noqa: BLE001 — cache indisponible : rien en file (D-ENF22-BLE001)
+        logger.warning('ADEV139 : marqueur de relance illisible (lead #%s, calepinage #%s)',
+                       lead_id, calepinage_id, exc_info=True)
         return False
+
+
+def oublier_relance(company_id, *, lead_id=None, calepinage_id=None):
+    """Relecture E3 B1 — le marqueur du porteur retiré (lead effacé) : une
+    tâche déjà en file ne le retrouve plus, ses champs regroupés (valeurs
+    effacées) partent avec lui. Ne lève jamais."""
+    from django.core.cache import cache
+    try:
+        cache.delete(_cle(company_id, cle_marqueur(lead_id, calepinage_id)))
+    except Exception:  # noqa: BLE001 — cache indisponible : le marqueur expire seul (D-ENF22-BLE001)
+        logger.warning('ADEV139 : marqueur du lead #%s non retiré', lead_id, exc_info=True)
 
 
 def _prendre(cle, jeton):
@@ -141,11 +163,14 @@ def _prendre(cle, jeton):
 
 
 def _liberer(cle, jeton):
-    """Fin de la tâche : son marqueur part, sauf si une suivante l'a remplacé."""
+    """Fin de la tâche : son marqueur part, sauf si une suivante l'a remplacé
+    (autre jeton). Relecture E3 m-a : QUEL QUE SOIT son état — une fusion lue
+    avant ``_prendre`` et écrite après le remet « en file » sous ce jeton ;
+    gardé, il resterait orphelin (aucune tâche ne le prendrait plus)."""
     from django.core.cache import cache
 
     marqueur = cache.get(cle)
-    if isinstance(marqueur, dict) and marqueur.get('jeton') == jeton and marqueur.get('etat') == EN_COURS:
+    if isinstance(marqueur, dict) and marqueur.get('jeton') == jeton:
         cache.delete(cle)
 
 
@@ -172,7 +197,7 @@ def executer_relance(company_id, *, lead_id=None, calepinage_id=None, origine, c
     ecrite}`` ou ``None`` (porteur disparu, échec). Ne lève jamais."""
     from authentication.models import Company
 
-    from apps.crm.selectors import get_company_lead
+    from apps.crm.selectors import get_company_lead, lead_efface
     from apps.ventes.conception.service import relancer
 
     cle = _cle(company_id, cle_marqueur(lead_id, calepinage_id))
@@ -181,10 +206,11 @@ def executer_relance(company_id, *, lead_id=None, calepinage_id=None, origine, c
         if marqueur is not None:
             origine, champs = marqueur.get('origine') or origine, marqueur.get('champs') or []
             empreinte_pose = marqueur.get('empreinte_pose', empreinte_pose)
+            calepinage_id = marqueur.get('calepinage_id') or calepinage_id
         company = Company.objects.filter(pk=company_id).first()
         lead = get_company_lead(company, lead_id) if company is not None and lead_id else None
-        if company is None or (lead_id and lead is None):
-            return None
+        if company is None or (lead_id and lead is None) or lead_efface(lead):
+            return None  # porteur disparu ou effacé (loi 09-08, relecture E3 B1) : rien
         toit, calepinage_id = _pose_servie(company, lead_id, calepinage_id, empreinte_pose)
         relance = relancer(lead, company=company, declencheur={'origine': origine, 'champs': champs or []},
                            toit=toit, calepinage_id=calepinage_id)
