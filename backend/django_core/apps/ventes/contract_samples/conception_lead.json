@@ -144,5 +144,10 @@
       "empreinte": "7777777777777777777777777777777777777777777777777777777777777777",
       "niveau_regles": 14, "version_moteur": "qjr43-2"
     }
+  },
+  "mettre_a_jour_conception": {
+    "endpoint": "POST /api/django/ventes/devis/<id>/mettre-a-jour-conception/",
+    "pourquoi": "ADEV148 (Q2 du 23/11) — « Mettre à jour » un brouillon RETOUCHÉ à la main (listé dans brouillons_a_mettre_a_jour) sur la conception courante complète de son lead. Portée des routes de la conception : crm_voir + lead visible, sinon 404 avant tout. Devis envoyé, accepté, refusé, expiré ou inactif ⇒ 409 code reviser_le_devis. Les quantités saisies à la main restent : nommées dans non_appliquees. Un brouillon déjà né de la version courante n'est pas réécrit (appliquees vide). Corps vide.",
+    "reponse": {"devis_id": 2, "appliquees": ["conception_v5"], "non_appliquees": [{"champ": "quantite", "raison": "Panneau Canadian Solar 710W : quantité saisie à la main, gardée"}]}
   }
 }

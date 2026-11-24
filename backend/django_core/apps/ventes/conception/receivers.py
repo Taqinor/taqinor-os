@@ -113,9 +113,11 @@ def mettre_en_file(company_id, *, lead_id=None, calepinage_id=None, origine, cha
             cache.set(cle, marqueur, DUREE_MARQUEUR_S)
         from apps.ventes.tasks import task_relancer_conception
         try:
+            # Relecture E3 (d) — des IDENTIFIANTS et le jeton seulement : les
+            # valeurs avant / après (GPS, factures) restent dans le marqueur,
+            # que l'effacement retire (``oublier_relance``), jamais au courtier.
             task_relancer_conception.apply_async(kwargs={
                 'company_id': company_id, 'lead_id': lead_id, 'calepinage_id': calepinage_id,
-                'origine': origine, 'champs': list(champs or []), 'empreinte_pose': empreinte_pose,
                 'jeton': jeton}, countdown=DELAI_REGROUPEMENT_S, retry=False)
         except Exception:
             cache.delete(cle)  # une prochaine modification retentera
@@ -203,6 +205,12 @@ def executer_relance(company_id, *, lead_id=None, calepinage_id=None, origine, c
     cle = _cle(company_id, cle_marqueur(lead_id, calepinage_id))
     try:
         marqueur = _prendre(cle, jeton) if jeton else None
+        if jeton and marqueur is None:
+            # Marqueur retiré (lead effacé) ou expiré : la tâche ne porte aucune
+            # valeur à rejouer ; le filet de la lecture (ADEV140) rattrape.
+            logger.info('ADEV139 : relance sans marqueur ignorée (lead #%s, calepinage #%s)',
+                        lead_id, calepinage_id)
+            return None
         if marqueur is not None:
             origine, champs = marqueur.get('origine') or origine, marqueur.get('champs') or []
             empreinte_pose = marqueur.get('empreinte_pose', empreinte_pose)
@@ -214,6 +222,11 @@ def executer_relance(company_id, *, lead_id=None, calepinage_id=None, origine, c
         toit, calepinage_id = _pose_servie(company, lead_id, calepinage_id, empreinte_pose)
         relance = relancer(lead, company=company, declencheur={'origine': origine, 'champs': champs or []},
                            toit=toit, calepinage_id=calepinage_id)
+        if relance.ecrite:
+            # ADEV147 — dans la tâche (jamais dans la requête) : les brouillons
+            # intacts nés d'une version plus ancienne suivent la nouvelle.
+            from apps.ventes.conception.brouillons import suivre_la_conception
+            suivre_la_conception(relance.conception)
         return {'version': getattr(relance.conception, 'version', None), 'ecrite': relance.ecrite}
     except Exception:  # noqa: BLE001 — une relance ratée n'écrit rien ; le filet la rejoue (D-ENF22-BLE001)
         logger.exception('ADEV139 : relance de la conception en échec (lead #%s, calepinage #%s)',

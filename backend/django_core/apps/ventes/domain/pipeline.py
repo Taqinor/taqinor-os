@@ -259,6 +259,18 @@ class IntentionDevis:
     #: première, jetée, coûtait ~35 % de la requête. ``None`` (LE DÉFAUT) ⇒
     #: pipeline strictement inchangé.
     completer_etude: object = None
+    #: ADEV143 — ``{id, version, empreinte}`` de la conception rangée dont le
+    #: devis automatique naît (``Devis.conception_source``) ; ``None`` (LE
+    #: DÉFAUT) ⇒ aucun pointeur.
+    conception_source: object = None
+
+
+def pointeur_de_conception(version):
+    """ADEV143 — le pointeur ``{id, version, empreinte}`` d'une version de
+    conception rangée (``None`` sans version)."""
+    if version is None:
+        return None
+    return {'id': version.pk, 'version': version.version, 'empreinte': version.empreinte}
 
 
 def _scenario_de(intention):
@@ -991,6 +1003,9 @@ def champs_du_brouillon(intention):
         etude_params=(dict(intention.etude_initiale)
                       if intention.etude_initiale else None),
         roof_layout=intention.layout or None,
+        # ADEV143 — la version de conception dont le devis naît (jamais
+        # réécrite ensuite ; ``None`` hors devis automatique).
+        conception_source=intention.conception_source,
     )
 
 

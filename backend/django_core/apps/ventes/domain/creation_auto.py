@@ -103,7 +103,7 @@ def _alertes_brouillons_ci_du_lead(devis):
 
 def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
                          remise_globale=Decimal('0'), journal_auto=None,
-                         target_kwc=None):
+                         target_kwc=None, conception=None, resultat_moteur=None):
     """CIQ120 — devis automatique COMMERCIAL / INDUSTRIEL par le serveur.
 
     Chaîne : ``etude_ci.etudier_ci`` (entrées du lead, CIQ405 ; garde
@@ -114,6 +114,12 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
     Tension, phases et puissance souscrite partent dans les ENTRÉES. Le type
     du lead n'est JAMAIS changé (convention 20). Aucun statut touché (#4).
     Refus ``AutoDevisError`` nommant la donnée manquante ou la cause moteur.
+
+    ADEV142 — ``conception`` (version courante, à jour) : ses blocs sont
+    apportés à la création ; la décision est celle que le moteur vient de
+    prendre dans CETTE requête (``resultat_moteur.decision_devis``), sinon UN
+    appel de ``decider_ci`` compose les lignes (la conception rangée ne porte
+    aucune ligne : les prix du catalogue restent ceux du jour).
     """
     # APAR49 — taux absent ⇒ taux STANDARD de la société (jamais 20 codé).
     if taux_tva is None:
@@ -122,14 +128,17 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
     from apps.crm.services import resolve_client_for_lead
     from apps.ventes.conception.decisions import decider_ci, etude_params_creation_ci
     from apps.ventes.domain.creation import devise_par_defaut
+    from apps.ventes.domain.pipeline import pointeur_de_conception
     from apps.ventes.models import Devis
 
     # ADEV160 (D-ACAL-97) — taille, étude, refus et options batterie : la
     # décision PURE de ``conception/decisions.py`` (une définition, appelée ici
     # et par le moteur unique) ; puis les entrées d'étude posées à la création.
-    etude, lignes, scenario = decider_ci(lead=lead, company=company, target_kwc=target_kwc)
+    decision = getattr(resultat_moteur, 'decision_devis', None) if conception is not None else None
+    etude, lignes, scenario = decision or decider_ci(lead=lead, company=company, target_kwc=target_kwc)
     client = resolve_client_for_lead(lead)
-    entrees = etude_params_creation_ci(etude, mode=lead.type_installation, scenario=scenario)
+    entrees = blocs_et_creation(conception, etude_params_creation_ci(
+        etude, mode=lead.type_installation, scenario=scenario))
 
     def _create(ref):
         return Devis.objects.create(
@@ -138,7 +147,7 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
             taux_tva=taux_tva, devise=devise_par_defaut(company),
             remise_globale=remise_globale,
             mode_installation=lead.type_installation,
-            etude_params=entrees)
+            etude_params=entrees, conception_source=pointeur_de_conception(conception))
 
     devis = _ecrire_devis_auto_par_pipeline(
         company=company, user=user, lead=lead, creer=_create, lignes=lignes,
@@ -149,6 +158,27 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
                 (etude.get('taille') or {}).get('retenue_kwc'), getattr(lead, 'pk', '?'),
                 getattr(company, 'id', '?'))
     return devis
+
+
+#: ADEV142 — clés de la conception rangée JAMAIS apportées à un devis : la
+#: provenance est l'estampille du devis lui-même (``pipeline.
+#: estampiller_provenance``, datée de SA création).
+CLES_NON_APPORTEES = ('provenance',)
+
+
+def blocs_a_apporter(conception):
+    """ADEV142 — les blocs de la conception rangée qu'un devis né d'elle
+    reçoit à sa création (``{}`` sans conception)."""
+    return {cle: valeur for cle, valeur in (getattr(conception, 'blocs', None) or {}).items()
+            if cle not in CLES_NON_APPORTEES}
+
+
+def blocs_et_creation(conception, entrees):
+    """ADEV142 — l'étude posée à la création : les blocs de la conception
+    rangée (:func:`blocs_a_apporter`), sous les entrées que la création
+    arrête elle-même (les mêmes valeurs, calculées à l'identique)."""
+    blocs = blocs_a_apporter(conception)
+    return dict(blocs, **entrees) if blocs else entrees
 
 
 def alertes_journal_ci(etude, devis):
@@ -244,9 +274,12 @@ def build_devis_auto(*, lead, user, company, taux_tva=None,
                 "Le devis automatique depuis le site n'est pas ouvert au "
                 "commercial et à l'industriel : le commercial le lance depuis "
                 "la fiche lead.", field='type_installation')
+        conception, relance = _conception_sans_choix(lead, company, user, taux_tva, remise_globale, target_kwc)
         return marquer_rapide(_build_devis_auto_ci(lead=lead, user=user, company=company,
                                                    taux_tva=taux_tva, remise_globale=remise_globale,
-                                                   journal_auto=journal_auto, target_kwc=target_kwc),
+                                                   journal_auto=journal_auto, target_kwc=target_kwc,
+                                                   conception=conception,
+                                                   resultat_moteur=getattr(relance, 'resultat', None)),
                               journal_auto)
     if marche == 'agricole':
         # AGR124 — l'agricole passe par LE moteur serveur (D-AGR-1), origine
@@ -256,10 +289,12 @@ def build_devis_auto(*, lead, user, company, taux_tva=None,
                 "Le devis automatique depuis le site n'est pas ouvert à "
                 "l'agricole : le commercial le lance depuis la fiche lead.",
                 field='type_installation')
+        conception, relance = _conception_sans_choix(lead, company, user, taux_tva, remise_globale, target_kwc)
         return marquer_rapide(_build_devis_auto_agricole(
             lead=lead, user=user, company=company, taux_tva=taux_tva,
             remise_globale=remise_globale, journal_auto=journal_auto,
-            target_kwc=target_kwc), journal_auto)
+            target_kwc=target_kwc, conception=conception,
+            resultat_moteur=getattr(relance, 'resultat', None)), journal_auto)
     if marche and marche != 'residentiel':
         raise AutoDevisError(
             "L'auto-devis ne gère que le résidentiel pour l'instant. Pour "
@@ -267,6 +302,14 @@ def build_devis_auto(*, lead, user, company, taux_tva=None,
             "de devis.",
             field='type_installation')
 
+    # ADEV142 (D-ACAL-97) — sans choix propre à CE devis, la taille et les
+    # études viennent de la conception COURANTE du lead (relancée une fois si
+    # absente ou périmée) : aucun second calcul. Un choix du devis (taille,
+    # scénario, plafond, structure, étude apportée, taux ou remise) garde le
+    # calcul de ce devis-là : la conception du lead ne le porte pas.
+    conception, relance = _conception_sans_choix(lead, company, user, taux_tva, remise_globale, target_kwc,
+                                                 scenario, etude_extra, plafond_toit, structure_produit_id,
+                                                 structure_type)
     # Le corps résidentiel vit dans ``creation_auto_residentiel`` (déplacé tel quel).
     return marquer_rapide(_build_devis_auto_residentiel(
         lead=lead, user=user, company=company, taux_tva=taux_tva,
@@ -274,7 +317,53 @@ def build_devis_auto(*, lead, user, company, taux_tva=None,
         scenario=scenario, etude_extra=etude_extra, plafond_toit=plafond_toit,
         journal_auto=journal_auto, origine=origine,
         structure_produit_id=structure_produit_id,
-        structure_type=structure_type), journal_auto)
+        structure_type=structure_type, conception=conception,
+        resultat_moteur=getattr(relance, 'resultat', None)), journal_auto)
+
+
+def _conception_sans_choix(lead, company, user, taux_tva, remise_globale, *choix):
+    """ADEV142 — ``(version, relance)`` de :func:`conception_pour_le_devis`
+    quand l'appel ne porte aucun choix propre à CE devis, sinon ``(None, None)``."""
+    if not _sans_choix_du_devis(company, taux_tva, remise_globale, *choix):
+        return None, None
+    return conception_pour_le_devis(lead, company, user)
+
+
+def _sans_choix_du_devis(company, taux_tva, remise_globale, *choix):
+    """ADEV142 — l'appel ne porte aucun choix propre à CE devis : la
+    conception du lead (calculée au taux standard, sans remise) le décrit."""
+    from apps.ventes.utils.company_settings import tva_standard
+    return (all(valeur in (None, '', {}) for valeur in choix)
+            and Decimal(str(remise_globale or 0)) == 0
+            and Decimal(str(taux_tva)) == Decimal(str(tva_standard(company))))
+
+
+def conception_pour_le_devis(lead, company, user):
+    """ADEV142 — ``(version, relance)`` : la conception COURANTE du lead,
+    relancée UNE fois par l'écrivain unique (``conception/service.relancer`` :
+    empreinte égale ⇒ rien n'est recalculé) avec la pose qu'elle portait
+    (sans elle, une version née d'un toit serait refaite sans lui). ``version``
+    vaut ``None`` quand elle n'est pas complète (refus du moteur, porteur
+    refusé) : l'appelant garde alors son chemin d'aujourd'hui, refus compris."""
+    from types import SimpleNamespace
+
+    from apps.ventes.conception.service import relancer
+    from apps.ventes.models import ConceptionLead
+
+    if lead is None or getattr(lead, 'pk', None) is None:
+        return None, None
+    courante = ConceptionLead.objects.filter(company=company, lead=lead, courante=True).only(
+        'pk', 'empreinte_pose', 'calepinage_id').first()
+    toit = (SimpleNamespace(empreinte=courante.empreinte_pose, plafond_panneaux=None)
+            if courante is not None and courante.empreinte_pose else None)
+    relance = relancer(lead, company=company, auteur=user, toit=toit,
+                       calepinage_id=getattr(courante, 'calepinage_id', None),
+                       declencheur={'origine': 'filet' if courante is not None else 'remplissage',
+                                    'champs': []})
+    version = relance.conception
+    if version is None or version.etat != 'complet':
+        return None, relance
+    return version, relance
 
 
 def marquer_rapide(devis, journal_auto=None):  # ACAL1004 — « Devis automatique » : marque `rapide`

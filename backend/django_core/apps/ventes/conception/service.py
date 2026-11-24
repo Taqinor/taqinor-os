@@ -76,6 +76,7 @@ def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None
 
     from apps.crm.selectors import lead_efface
 
+    debut = timezone.now()  # relecture E3 Q5 : avant toute lecture des entrées
     origine, champs = _declencheur_valide(declencheur)
     try:
         lead, porteur, refus = _porteur(lead, company, calepinage_id)
@@ -106,11 +107,36 @@ def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None
         declencheur={'raison': phrase_du_declencheur(porteur.get('lead'), champs, origine, maintenant),
                      'champs': champs, 'origine': origine},
         empreinte_pose=entrees.empreinte_pose, sauf_empreinte=None if forcer else resultat.empreinte,
-        **_champs_ranges(resultat))
+        garde=_garde_de_rangement(company, porteur.get('lead'), debut), **_champs_ranges(resultat))
+    if version is None:  # lead effacé entre-temps, ou version plus récente déjà rangée : rien
+        return Relance(None, False, resultat)
     if not version.ecrite:  # relance simultanée des mêmes entrées : déjà rangée (relecture m1)
         return Relance(version, False, resultat)
     _annoncer_apres_validation(version)
     return Relance(version, True, resultat)
+
+
+def _garde_de_rangement(company, lead, debut):
+    """La garde de ``ConceptionLead.ranger``, SOUS sa transaction :
+
+    * relecture E3 B1(b) — la ligne du lead est VERROUILLÉE et relue : effacé
+      (ou disparu) pendant le calcul ⇒ rien n'est rangé (le scrub prend le
+      même verrou : il passe avant ou après, jamais au milieu) ;
+    * relecture E3 Q5 — une version courante calculée APRÈS le début de cette
+      relance (une relance plus récente, d'autres entrées) n'est jamais
+      recouverte par des entrées plus anciennes."""
+    from apps.crm.selectors import lead_efface_sous_verrou
+
+    def garde(deja):
+        if lead is not None and lead_efface_sous_verrou(company, lead.pk):
+            logger.info('Conception du lead #%s non rangée : lead effacé pendant le calcul', lead.pk)
+            return False
+        courante = deja.filter(courante=True).only('pk', 'calcule_le').first()
+        if courante is not None and courante.calcule_le is not None and courante.calcule_le > debut:
+            logger.info('Conception non rangée : la version #%s, plus récente, est déjà courante', courante.pk)
+            return False
+        return True
+    return garde
 
 
 def _courante(modele, company, porteur):

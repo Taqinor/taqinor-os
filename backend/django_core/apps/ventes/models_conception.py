@@ -89,7 +89,7 @@ class ConceptionLead(TenantModel):
         return f'Conception {porteur} v{self.version}'
 
     @classmethod
-    def ranger(cls, *, lead=None, calepinage_id=None, company=None, sauf_empreinte=None, **champs):
+    def ranger(cls, *, lead=None, calepinage_id=None, company=None, sauf_empreinte=None, garde=None, **champs):
         """Range la version SUIVANTE du porteur et la rend seule courante.
 
         Porteur = ``lead`` (sa société fait foi : une ``company`` différente
@@ -101,7 +101,12 @@ class ConceptionLead(TenantModel):
         ``sauf_empreinte`` (relecture m1) : relu SOUS VERROU des versions du
         porteur — si la courante porte déjà cette empreinte (deux relances
         simultanées des mêmes entrées), elle est rendue telle quelle et rien
-        n'est écrit. L'instance rendue porte ``ecrite`` (``True`` = rangée ici)."""
+        n'est écrit. L'instance rendue porte ``ecrite`` (``True`` = rangée ici).
+
+        ``garde`` (relecture E3 B1(b), Q5) : ``callable(deja)`` appelé SOUS LA
+        MÊME transaction, après le verrou des versions et avant toute écriture ;
+        faux ⇒ rien n'est écrit et ``None`` est rendu (lead effacé entre-temps,
+        version plus récente déjà rangée)."""
         if lead is not None:
             if company is not None and getattr(company, 'pk', company) != lead.company_id:
                 raise ValueError('La société de la conception vient du lead.')
@@ -120,6 +125,8 @@ class ConceptionLead(TenantModel):
                         if courante is not None and courante.empreinte == sauf_empreinte:
                             courante.ecrite = False
                             return courante
+                    if garde is not None and not garde(deja):
+                        return None
                     haut = deja.aggregate(haut=Max('version'))['haut'] or 0
                     deja.filter(courante=True).update(courante=False)
                     version = cls.objects.create(

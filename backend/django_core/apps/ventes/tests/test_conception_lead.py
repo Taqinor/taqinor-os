@@ -568,7 +568,9 @@ EMPREINTES_SUR_IDS = frozenset({('etude_ci', 'empreinte'), ('provenance_pompage'
 #: résolution du client (identité, et les signaux du ``Lead.save`` qu'elle
 #: déclenche) et le tampon de provenance recopié sur le devis
 #: (``crm.fiche_selectors.lead_provenance_stamp``). Aucun ne relance le moteur.
-LECTEURS_HORS_CALCUL = frozenset({'resolve_client_for_lead', 'lead_provenance_stamp'})
+#: ADEV142 : la création relance la conception, dont la garde d'effacement
+#: (``crm.selectors.lead_efface``, loi 09-08) lit ``nom`` sans rien calculer.
+LECTEURS_HORS_CALCUL = frozenset({'resolve_client_for_lead', 'lead_provenance_stamp', 'lead_efface'})
 #: Colonnes lues par un sélecteur de calcul sans entrer dans aucun chiffre :
 #: ``crm.devis_selectors.site_location_for_devis`` rend aussi l'adresse du
 #: chantier (``site_adresse``), qu'aucune étude ne lit (ville et GPS seuls).
@@ -1588,6 +1590,71 @@ class RelanceConceptionTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher'
                                    calepinage_id=None, version=2, declencheur=version.declencheur)
         self.assertEqual(lignes.count(), 1)
 
+    def test_effacement_pendant_le_calcul_rien_n_est_range(self):
+        """Relecture E3 B1(b) — la relance a lu le lead, l'effacement passe
+        pendant son calcul (versions supprimées) : ``ranger`` relit la ligne du
+        lead sous verrou et ne range RIEN, aucun événement."""
+        from apps.crm.dsr_provider import anonymiser_lead
+        from apps.crm.models import Lead
+        from apps.ventes.conception import moteur
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        Lead.objects.filter(pk=lead.pk).update(gps_lat=Decimal('33.5731'), gps_lng=Decimal('-7.5898'))
+        lead.refresh_from_db()
+        evenements = _Evenements(self)
+        vrai = moteur.calculer_conception
+
+        def calcul_puis_effacement(*args, **kwargs):
+            resultat = vrai(*args, **kwargs)
+            with self.captureOnCommitCallbacks(execute=True):
+                anonymiser_lead(company, Lead.all_objects.get(pk=lead.pk), motif='Effacement (test B1b)')
+            return resultat
+        self._patcher(moteur, 'calculer_conception', side_effect=calcul_puis_effacement)
+        relance = self._relancer(lead, company, _declencheur())  # le lead lu AVANT l'effacement
+        self.assertEqual((relance.conception, relance.ecrite), (None, False))  # mutant « sans garde » : v1
+        self.assertFalse(ConceptionLead.objects.filter(lead_id=lead.pk).exists())
+        self.assertEqual(evenements.recus, [])
+
+    def test_une_relance_plus_ancienne_ne_recouvre_pas_une_plus_recente(self):
+        """Relecture E3 Q5 — A part (facture 2 000), une modification range B
+        (facture 2 600) pendant le calcul de A : A ne range pas ses entrées
+        plus anciennes par-dessus ; B reste courante, un seul événement."""
+        import datetime
+
+        from django.utils import timezone
+
+        from apps.crm.models import Lead
+        from apps.ventes.conception import moteur
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        self._relancer(lead, company, _declencheur())
+        evenements = _Evenements(self)
+        Lead.objects.filter(pk=lead.pk).update(facture_hiver=Decimal('2000'))
+        lead_a = Lead.objects.get(pk=lead.pk)
+        vrai = moteur.calculer_conception
+        etat = {'b': False}
+
+        def calcul_de_a(*args, **kwargs):
+            resultat = vrai(*args, **kwargs)
+            if not etat['b']:
+                etat['b'] = True
+                Lead.objects.filter(pk=lead.pk).update(facture_hiver=Decimal('2600'))
+                plus_tard = timezone.now() + datetime.timedelta(seconds=1)
+                with mock.patch('django.utils.timezone.now', return_value=plus_tard):
+                    self._relancer(Lead.objects.get(pk=lead.pk), company, _declencheur('manuel'))
+            return resultat
+        self._patcher(moteur, 'calculer_conception', side_effect=calcul_de_a)
+        relance_a = self._relancer(lead_a, company, _declencheur('manuel'))
+        self.assertEqual((relance_a.conception, relance_a.ecrite), (None, False))  # mutant « ranger A » : v3
+        courante = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual((courante.version, courante.entrees_utilisees['facture_hiver']['valeur']), (2, 2600.0))
+        # (B est annoncée par sa propre capture ET rejouée par celle de A, englobante.)
+        self.assertEqual({e['version'] for e in evenements.recus}, {2})
+
     def test_chatter_muet_pour_remplissage_filet_et_regles(self):
         """Relecture E3 M3 — seule une relance causée par un changement de la
         fiche ou de la pose écrit « Conception recalculée » ; remplissage,
@@ -2205,6 +2272,113 @@ class RelanceEnTacheTests(_emprunt(RelanceConceptionTests, '_relancer'),
         for version in ConceptionLead.objects.filter(company=company):
             self.assertNotIn('33.57', _json_mod.dumps(version.declencheur))
 
+    def _lead_efface(self):
+        """Un lead situé, sa conception rangée, puis effacé (loi 09-08)."""
+        from apps.crm.dsr_provider import anonymiser_lead
+        from apps.crm.models import Lead
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        Lead.objects.filter(pk=lead.pk).update(gps_lat=Decimal('33.5731'), gps_lng=Decimal('-7.5898'))
+        lead.refresh_from_db()
+        self._relancer(lead, company, _declencheur())
+        with self.captureOnCommitCallbacks(execute=True):
+            anonymiser_lead(company, lead, motif='Effacement (garde)')
+        return company, Lead.all_objects.get(pk=lead.pk)
+
+    def test_garde_1_le_save_du_scrub_ne_met_rien_en_file(self):
+        """Relecture E3 (h), garde 1/5 — l'émetteur ALEA68 se tait pour un lead effacé."""
+        self._lead_efface()
+        self.assertEqual(self.en_file.call_count, 0)  # garde retirée : 1 tâche (GPS d'avant)
+
+    def test_garde_2_executer_relance_n_appelle_pas_le_moteur(self):
+        """Relecture E3 (h), garde 2/5 — la tâche d'un lead effacé n'appelle pas ``relancer``."""
+        from apps.ventes.conception import service
+        from apps.ventes.conception.receivers import executer_relance
+
+        company, lead = self._lead_efface()
+        with mock.patch.object(service, 'relancer') as relancer:
+            self.assertIsNone(executer_relance(company.pk, lead_id=lead.pk, origine='filet'))
+        relancer.assert_not_called()
+
+    def test_garde_3_relancer_refuse_sans_calculer(self):
+        """Relecture E3 (h), garde 3/5 — ``relancer`` refuse un lead effacé AVANT tout calcul."""
+        from apps.ventes.conception import moteur
+        from apps.ventes.conception.service import relancer
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._lead_efface()
+        with mock.patch.object(moteur, 'calculer_conception') as calcul:
+            relance = relancer(lead, company=company, declencheur=_declencheur('manuel'))
+        calcul.assert_not_called()
+        self.assertEqual((relance.conception, relance.refus['code']), (None, 'lead_efface'))
+        self.assertFalse(ConceptionLead.objects.filter(lead_id=lead.pk).exists())
+
+    def test_garde_4_le_chatter_n_ecrit_rien_apres_l_effacement(self):
+        """Relecture E3 (h), garde 4/5 — ``conception_recalculee`` d'un lead effacé : aucune ligne."""
+        from apps.crm.models import LeadActivity
+        from core.events import conception_recalculee
+
+        company, lead = self._lead_efface()
+        conception_recalculee.send(
+            sender='ventes.ConceptionLead', company_id=company.pk, lead_id=lead.pk, calepinage_id=None,
+            version=9, declencheur={'raison': 'GPS latitude 33,57 → —', 'champs': [],
+                                    'origine': 'lead_entrees_modifiees'})
+        self.assertFalse(LeadActivity.objects.filter(lead_id=lead.pk, new_value='9').exists())
+
+    def test_garde_5_l_effacement_retire_le_marqueur(self):
+        """Relecture E3 (h), garde 5/5 — ``lead_erased`` retire le marqueur de relance du lead."""
+        from django.core.cache import cache
+
+        from apps.ventes.conception.receivers import _cle, cle_marqueur, mettre_en_file
+        from core.events import lead_erased
+
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'))
+        mettre_en_file(company.pk, lead_id=lead.pk, origine='lead_entrees_modifiees',
+                       champs=[{'champ': 'gps_lat', 'avant': 33.57, 'apres': None}])
+        self.assertIsNotNone(cache.get(_cle(company.pk, cle_marqueur(lead.pk))))
+        lead_erased.send(sender=None, company=company, crm_lead_id=lead.pk, phone_key='')
+        self.assertIsNone(cache.get(_cle(company.pk, cle_marqueur(lead.pk))))
+
+    def test_effacement_caviarde_les_lignes_de_conception_deja_ecrites(self):
+        """Relecture E3 B1(f) — le GPS et la facture DITS au chatter avant
+        l'effacement (« Conception recalculée : GPS latitude 33,57 → … »)
+        sortent de chaque ligne et de chaque ligne archivée du lead."""
+        from apps.crm.dsr_provider import anonymiser_lead
+        from apps.crm.models import Lead, LeadActivity, LeadActivityArchive
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        Lead.objects.filter(pk=lead.pk).update(gps_lat=Decimal('33.5731'), gps_lng=Decimal('-7.5898'))
+        lead.refresh_from_db()
+        self._relancer(lead, company, _declencheur())
+        self._enregistrer(lead, gps_lat=Decimal('33.5801'), facture_hiver=Decimal('2437'))
+        self._executer_les_taches()
+        lignes = LeadActivity.objects.filter(lead=lead, field='conception_version')
+        corps = ' '.join(lignes.values_list('body', flat=True))
+        self.assertIn('33,58', corps)
+        self.assertIn('2 437', corps)
+        ligne = lignes.first()
+        LeadActivityArchive.objects.create(
+            original_id=ligne.pk, company_id=company.pk, lead_id=lead.pk, kind=ligne.kind,
+            field=ligne.field, field_label=ligne.field_label, old_value=ligne.old_value,
+            new_value=ligne.new_value, body=ligne.body, created_at=ligne.created_at)
+
+        lead.refresh_from_db()
+        with self.captureOnCommitCallbacks(execute=True):
+            anonymiser_lead(company, lead, motif='Effacement (test B1f)')
+        textes = []
+        for modele, filtre in ((LeadActivity, {'lead_id': lead.pk, 'field': 'conception_version'}),
+                               (LeadActivityArchive, {'lead_id': lead.pk})):
+            for body, ancien, nouveau in modele.objects.filter(**filtre).values_list(
+                    'body', 'old_value', 'new_value'):
+                textes.append(' '.join(str(t) for t in (body, ancien, nouveau) if t))
+        tout = ' | '.join(textes)
+        for valeur in ('33,57', '33,58', '33.57', '33.58', '7,58', '7.58', '2 437', '2437', '1 800'):
+            self.assertNotIn(valeur, tout)  # mutant « corps gardé » : rouge
+        self.assertEqual(set(LeadActivityArchive.objects.filter(lead_id=lead.pk).values_list('body', flat=True)),
+                         {'Conception recalculée'})
+
     def test_fusion_ecrite_apres_la_prise_le_marqueur_est_libere(self):
         """Relecture E3 m-a — une fusion lue AVANT la prise de la tâche et
         écrite APRÈS remet le marqueur « en file » sous le jeton de la tâche :
@@ -2327,7 +2501,13 @@ class RelanceEnTacheTests(_emprunt(RelanceConceptionTests, '_relancer'),
         self.assertEqual((lue['perimee'], lue['version'], lue['declencheur']['origine']), (True, 1, 'remplissage'))
         self.assertEqual(conception_courante(company, lead.pk)['perimee'], True)  # relire : toujours UNE tâche
         self.assertEqual(self.en_file.call_count, 1)  # mutant « toujours perimee: false » : 0
-        self.assertEqual(self.en_file.call_args.kwargs['kwargs']['origine'], 'filet')
+        # Relecture E3 (d) : l'origine vit dans le marqueur, la tâche ne porte que des identifiants.
+        from django.core.cache import cache
+
+        from apps.ventes.conception.receivers import _cle, cle_marqueur
+        self.assertEqual(cache.get(_cle(company.pk, cle_marqueur(lead.pk)))['origine'], 'filet')
+        self.assertEqual(set(self.en_file.call_args.kwargs['kwargs']),
+                         {'company_id', 'lead_id', 'calepinage_id', 'jeton'})  # mutant « valeurs au courtier »
         self.assertEqual(ConceptionLead.objects.count(), avant)  # la lecture n'écrit pas
 
         self.assertEqual(self._executer_les_taches(), [{'version': 2, 'ecrite': True}])
@@ -2377,8 +2557,10 @@ class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher
         Devis.objects.filter(pk=devis.pk).update(statut='envoye', date_envoi=timezone.now())
         photo = _photo_devis(devis.pk)
 
+        # ADEV142 — le devis automatique de ``premier`` a rangé SA conception (v1).
+        self.assertEqual(list(ConceptionLead.objects.values_list('lead_id', flat=True)), [premier.pk])
         liste = self._commande('--company', str(company.pk))
-        self.assertFalse(ConceptionLead.objects.exists(), liste)  # mutant « écrire sans --appliquer » : rouge
+        self.assertEqual(ConceptionLead.objects.count(), 1, liste)  # mutant « écrire sans --appliquer » : rouge
         for lead in situes:
             self.assertIn(f'lead #{lead.pk} [residentiel] option retenue : ', liste)
         for lead in sans_lieu:
@@ -2387,7 +2569,7 @@ class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher
         self.assertNotIn(f'lead #{lead_b.pk} ', liste)
 
         applique = self._commande('--company', str(company.pk), '--appliquer')
-        self.assertIn('APPLIQUÉ : 7 version(s) rangée(s), 0 inchangée(s), 3 sans ville ni GPS', applique)
+        self.assertIn('APPLIQUÉ : 6 version(s) rangée(s), 1 inchangée(s), 3 sans ville ni GPS', applique)
         rangees = ConceptionLead.objects.filter(company=company, courante=True)
         self.assertEqual(set(rangees.values_list('lead_id', flat=True)), {lead.pk for lead in situes})
         for version in rangees:
@@ -2426,6 +2608,22 @@ class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher
         self.assertEqual((apres.pk, apres.version, apres.empreinte_pose), (avant.pk, 1, 'p' * 64))
         with self.assertRaises(CommandError):
             self._commande('--appliquer')
+
+    def test_appliquer_premier_calcul_avec_la_pose_deja_enregistree(self):
+        """Relecture E3 M2 (suite) — un lead dont le calepinage ouvert porte
+        déjà une pose, sans version : ``--appliquer`` range sa première
+        version AVEC l'empreinte de cette pose et son calepinage."""
+        from apps.calepinage.models import Calepinage
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'))
+        _reglages_de_la_societe(company)
+        calepinage = Calepinage.objects.create(company=company, lead_id=lead.pk, titre='Toit posé',
+                                               layout_hash='a' * 64)
+        self._commande('--company', str(company.pk), '--appliquer')
+        version = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual((version.calepinage_id, version.empreinte_pose),
+                         (calepinage.pk, 'a' * 64))  # mutant « sans toit » : (None, '')
 
     def test_liste_une_erreur_de_base_n_empoisonne_pas_les_leads_suivants(self):
         """Relecture E3 M2 — la liste ouvre un point de sauvegarde par lead :
@@ -2501,3 +2699,233 @@ class DevisFigesInchangesTests(_emprunt(RelanceConceptionTests, '_relancer'), _e
                 self.assertIn('nb_panneaux', {e['valeur'] for e in ecarts})
                 self.assertEqual(_photo_devis(devis_id), photo)
                 self.assertEqual(ConceptionLead.objects.filter(lead=lead).count(), 2)
+
+
+# ── ADEV142 — le devis automatique C&I et agricole né de la conception ──────
+
+#: Les noyaux d'une conception C&I / agricole (module, nom) ; ``etudier_*`` :
+#: la DÉCISION (taille, lignes ; l'étude pompage relit la sortie de la
+#: décision, ``pompage.etude_precalculee``) ; ``etude_ci_calculee`` : le
+#: recalcul du BLOC ``etude_ci`` sur les lignes ; ``recommander_taille`` : le
+#: bloc ``dimensionnement``. Les profils comparatifs ne sont pas un bloc hors
+#: résidentiel (``calculer_profils_comparatifs`` y rend ``None``, rien rangé).
+NOYAUX_DECISION = (('apps.ventes.domain.etude_ci', 'etudier_ci'), ('apps.ventes.domain.pompage', 'etudier_pompage'))
+NOYAUX_ETUDES = (('apps.ventes.conception.etudes_lignes', 'etude_ci_calculee'),
+                 ('apps.ventes.dimensionnement', 'recommander_taille'))
+
+
+class DevisDepuisLaConceptionMarchesTests(_emprunt(RelanceConceptionTests, '_relancer'),
+                                          _emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_utilisateur',
+                                                   '_residentiel', '_ci', '_agricole', '_fiches_residentielles',
+                                                   '_site_isole', '_structures', '_fiches_ci', '_cas'), TestCase):
+    """ADEV142 — C&I et agricole (forme décidée par l'orchestrateur, dite au
+    fondateur) : la conception rangée ne porte AUCUNE ligne ; conception à
+    jour ⇒ EXACTEMENT UN appel de décision (les lignes, prix du jour) et ZÉRO
+    bloc d'étude recalculé (copiés de la version) ; conception absente ⇒ le
+    moteur tourne UNE fois dans la requête et le devis relit SA décision."""
+
+    @staticmethod
+    def _espions(noyaux):
+        import contextlib
+        import importlib
+
+        @contextlib.contextmanager
+        def bloc():
+            with contextlib.ExitStack() as pile:
+                yield {nom: pile.enter_context(mock.patch.object(
+                    importlib.import_module(module), nom,
+                    wraps=getattr(importlib.import_module(module), nom))) for module, nom in noyaux}
+        return bloc()
+
+    def _creer(self, company, lead):
+        from apps.ventes.services import build_devis_auto
+        with self.captureOnCommitCallbacks(execute=True):
+            return build_devis_auto(lead=lead, user=self._utilisateur(company), company=company)
+
+    def _cas_du_marche(self, nom):
+        company, lead = self._cas(nom)
+        _reglages_de_la_societe(company)
+        return company, lead
+
+    def test_conception_a_jour_une_decision_zero_bloc_recalcule(self):
+        from apps.ventes.models import ConceptionLead
+
+        for nom, decision in (('ci_commercial', 'etudier_ci'), ('agr_pompe_courbe', 'etudier_pompage')):
+            with self.subTest(cas=nom):
+                company, lead = self._cas_du_marche(nom)
+                self._relancer(lead, company, _declencheur())
+                with self._espions(NOYAUX_DECISION + NOYAUX_ETUDES) as espions:
+                    devis = self._creer(company, lead)
+                appels = {k: v.call_count for k, v in espions.items()}
+                self.assertEqual(appels.pop(decision), 1, appels)  # la décision : une fois, jamais deux
+                self.assertEqual(appels, {k: 0 for k in appels})  # mutant « recalculer l'étude » : rouge
+                self.assertEqual(devis.statut, 'brouillon')
+                self.assertEqual(ConceptionLead.objects.filter(lead=lead).count(), 1)
+                self.assertNotIn('profils_comparatifs', devis.etude_params)
+
+    def test_conception_absente_le_moteur_tourne_une_fois(self):
+        from apps.ventes.conception.moteur import calculer_conception
+        from apps.ventes.models import ConceptionLead
+
+        for nom in ('ci_commercial', 'agr_pompe_courbe'):
+            with self.subTest(cas=nom):
+                company, lead = self._cas_du_marche(nom)
+                with self._espions(NOYAUX_DECISION + NOYAUX_ETUDES) as espions:
+                    calculer_conception(lead, company)
+                une_execution = {k: v.call_count for k, v in espions.items()}
+                with self._espions(NOYAUX_DECISION + NOYAUX_ETUDES) as espions:
+                    devis = self._creer(company, lead)
+                appels = {k: v.call_count for k, v in espions.items()}
+                self.assertEqual(appels, une_execution)  # mutant « seconde décision au devis » : rouge
+                self.assertEqual(devis.statut, 'brouillon')
+                self.assertEqual(ConceptionLead.objects.get(lead=lead, courante=True).version, 1)
+
+
+# ── ADEV144 — PARITÉ : le devis né de la conception RANGÉE = les goldens ─────
+
+class PariteDevisDepuisConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
+                                       _emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_utilisateur',
+                                                '_residentiel', '_ci', '_agricole', '_fiches_residentielles',
+                                                '_site_isole', '_structures', '_fiches_ci', '_cas', '_figer'),
+                                       TestCase):
+    """ADEV144 — la conception du lead est RANGÉE d'abord (``relancer``), puis
+    le devis automatique est créé : il la LIT (ADEV142, chemin « à jour ») et
+    doit écrire EXACTEMENT ce que figent les goldens ``golden/conception/``
+    (lignes, totaux, ``etude_params``, conception électrique), trois marchés,
+    zéro clé différente. Le chemin « conception absente » est la parité de
+    ``FigeageDevisAutoTests`` (mêmes goldens, même comparaison). Un écart
+    nomme le cas et la clé ; aucun golden n'est régénéré ici."""
+
+    def _parite_depuis_conception(self, nom):
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._cas(nom)
+        _reglages_de_la_societe(company)
+        rangee = self._relancer(lead, company, _declencheur()).conception
+        with self.captureOnCommitCallbacks(execute=True):
+            self._figer(nom, company, lead, **APPELS_FIGEAGE.get(nom, {}))  # compare au golden, clé par clé
+        courante = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual(courante.pk, rangee.pk)  # lue telle quelle : aucune relance écrite
+
+
+def _test_de_parite_depuis_conception(nom):
+    def test(self):
+        self._parite_depuis_conception(nom)
+    test.__doc__ = f'ADEV144 — devis né de la conception rangée = golden « {nom} ».'
+    return test
+
+
+for _nom in PARITE:
+    setattr(PariteDevisDepuisConceptionTests, f'test_parite_depuis_conception_{_nom}',
+            _test_de_parite_depuis_conception(_nom))
+
+
+# ── ADEV147 / ADEV148 — les brouillons suivent la conception (Q2 du 23/11) ───
+
+URL_MISE_A_JOUR = '/api/django/ventes/devis/%d/mettre-a-jour-conception/'
+
+
+class BrouillonsSuiventLaConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
+                                         _emprunt(ServirConceptionTests, '_api'),
+                                         _emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_utilisateur',
+                                                  '_residentiel', '_ci', '_agricole', '_fiches_residentielles',
+                                                  '_site_isole', '_structures', '_fiches_ci', '_cas'), TestCase):
+    """ADEV147 — un brouillon intact né d'une version plus ancienne suit la
+    nouvelle (réaligné, pointeur, ligne d'historique) ; un retouché ne bouge
+    pas ; un envoyé ne bouge pas. ADEV148 — le retouché est listé
+    (``brouillons_a_mettre_a_jour``, ``mise_a_jour_proposee``) et se réaligne
+    SUR DEMANDE (route), quantité tapée gardée et nommée ; envoyé : 409 ;
+    hors portée : 404."""
+
+    def _trois_devis(self):
+        from django.utils import timezone
+
+        from apps.ventes.models import Devis
+        from apps.ventes.services import build_devis_auto
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        user = self._utilisateur(company)
+        with self.captureOnCommitCallbacks(execute=True):
+            intact, retouche, envoye = (build_devis_auto(lead=lead, user=user, company=company) for _ in range(3))
+        panneau = retouche.lignes.filter(designation__icontains='panneau').order_by('ordre', 'pk').first()
+        type(panneau).objects.filter(pk=panneau.pk).update(quantite=panneau.quantite + 2, quantite_manuelle=True)
+        Devis.objects.filter(pk=envoye.pk).update(statut='envoye', date_envoi=timezone.now())
+        return company, lead, user, intact, retouche, envoye
+
+    def _nouvelle_version(self, company, lead):
+        from apps.crm.models import Lead
+
+        Lead.objects.filter(pk=lead.pk).update(facture_hiver=Decimal('3600'))
+        lead.refresh_from_db()
+        return self._relancer(lead, company, _declencheur(
+            'lead_entrees_modifiees', facture_hiver=(Decimal('1800'), Decimal('3600')))).conception
+
+    def test_intact_suit_retouche_et_envoye_ne_bougent_pas(self):
+        from apps.ventes.conception.brouillons import suivre_la_conception
+        from apps.ventes.models import Devis, DevisActivity
+
+        company, lead, _user, intact, retouche, envoye = self._trois_devis()
+        photos = {d.pk: _photo_devis(d.pk) for d in (retouche, envoye)}
+        v2 = self._nouvelle_version(company, lead)
+        self.assertEqual(v2.version, 2)
+        self.assertEqual(suivre_la_conception(v2), [intact.pk])  # mutant « suivre aussi le retouché » : rouge
+        relu = Devis.objects.get(pk=intact.pk)
+        self.assertEqual(relu.conception_source['version'], 2)
+        self.assertEqual(relu.statut, 'brouillon')
+        panneaux = {li.variante or '': int(li.quantite) for li in relu.lignes.all()
+                    if 'panneau' in li.designation.lower()}
+        attendu = {option: valeurs['nb_panneaux']['valeur'] for option, valeurs in v2.valeurs.items()}
+        self.assertEqual({option: panneaux.get(option, panneaux.get('')) for option in attendu}, attendu)
+        ligne = DevisActivity.objects.filter(devis=relu, body__startswith='Mis à jour : panneaux ').get()
+        self.assertTrue(ligne.body.endswith(' (Facture hiver modifié(s))'), ligne.body)
+        for pk, photo in photos.items():
+            self.assertEqual(_photo_devis(pk), photo)
+        # Une seconde relance sans changement ne le touche pas.
+        self.assertEqual(suivre_la_conception(v2), [])
+
+    def test_la_tache_de_relance_fait_suivre_les_brouillons(self):
+        from apps.ventes.conception import brouillons
+        from apps.ventes.conception.receivers import executer_relance
+
+        company, lead, _user, _intact, _retouche, _envoye = self._trois_devis()
+        from apps.crm.models import Lead
+        Lead.objects.filter(pk=lead.pk).update(facture_hiver=Decimal('3600'))
+        with mock.patch.object(brouillons, 'suivre_la_conception') as suivre, \
+                self.captureOnCommitCallbacks(execute=True):
+            rendu = executer_relance(company.pk, lead_id=lead.pk, origine='lead_entrees_modifiees')
+        self.assertEqual(rendu, {'version': 2, 'ecrite': True})
+        self.assertEqual(suivre.call_args.args[0].version, 2)
+
+    def test_retouche_liste_puis_mis_a_jour_sur_demande(self):
+        from authentication.models import Company
+
+        from apps.ventes.models import Devis
+        from apps.ventes.selectors import conception_courante, ecart_devis
+
+        company, lead, user, _intact, retouche, envoye = self._trois_devis()
+        self._nouvelle_version(company, lead)
+        lue = conception_courante(company, lead.pk)
+        self.assertEqual(lue['brouillons_a_mettre_a_jour'],
+                         [{'devis': retouche.pk, 'reference': retouche.reference, 'motif': 'retouché à la main'}])
+        ecarts = ecart_devis(Devis.objects.get(pk=retouche.pk))
+        self.assertTrue(ecarts and all(e['mise_a_jour_proposee'] for e in ecarts), ecarts)
+        photo = _photo_devis(retouche.pk)
+        self.assertEqual(_photo_devis(retouche.pk), photo)  # la lecture n'écrit rien
+
+        api = self._api(user)
+        self.assertEqual(api.post(URL_MISE_A_JOUR % envoye.pk).status_code, 409)
+        autre = Company.objects.create(nom='Autre ADEV148', slug='autre-adev148')
+        self.assertEqual(self._api(self._utilisateur(autre)).post(URL_MISE_A_JOUR % retouche.pk).status_code, 404)
+        reponse = api.post(URL_MISE_A_JOUR % retouche.pk)
+        self.assertEqual(reponse.status_code, 200, reponse.content)
+        corps = reponse.json()
+        self.assertEqual((corps['devis_id'], corps['appliquees']), (retouche.pk, ['conception_v2']))
+        self.assertTrue(any(n['champ'] == 'quantite' for n in corps['non_appliquees']), corps)
+        relu = Devis.objects.get(pk=retouche.pk)
+        self.assertEqual(relu.conception_source['version'], 2)
+        manuelle = relu.lignes.get(quantite_manuelle=True)  # mutant « écraser la quantité tapée » : rouge
+        self.assertEqual(manuelle.quantite, Decimal(photo['lignes'][[li['quantite_manuelle'] for li in
+                                                                     photo['lignes']].index(True)]['quantite']))
+        self.assertEqual(api.post(URL_MISE_A_JOUR % retouche.pk).json()['appliquees'], [])  # rien de plus
+        self.assertEqual(conception_courante(company, lead.pk)['brouillons_a_mettre_a_jour'], [])
