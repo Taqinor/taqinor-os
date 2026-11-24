@@ -12,7 +12,10 @@ Règles tenues (sources : docs/contrats/conception.md § Mise en page) :
   pastilles et au texte sur bleu nuit ; les petits libellés sont en bronze
   (≥ 4,5:1) ;
 - la couleur ne porte jamais seule une information (photocopie noir et blanc) :
-  chaque état a son mot (« Réglé », « À régler », « À venir »).
+  chaque état a son mot (« Réglé », « À régler », « À venir ») ; l'état « à
+  régler » et l'étape en cours portent en plus un anneau bleu nuit épais et un
+  chiffre gras (en gris, l'or seul devient le plus clair des trois) ;
+- toute bordure qui doit se voir en noir et blanc est à ≥ 3:1 (``TRAIT``).
 """
 import base64
 import functools
@@ -29,9 +32,12 @@ GRIS = '#5B6472'
 FILET = '#E3E6EB'
 LAVIS = '#F6F7F9'
 LAVIS_OR = '#FDF6E7'
-VERT = '#157A3C'
+VERT = '#0F6630'
 VERT_FOND = '#E9F5EE'
 PAPIER = '#FFFFFF'
+# Bordures qui doivent se voir en photocopie (paraphes, cadres de signature,
+# lignes à remplir, pastille « À venir ») : contraste ≥ 3:1 sur le blanc.
+TRAIT = '#8A93A1'
 
 POLICE_TITRE = "'DM Serif Display', Georgia, serif"
 POLICE_TEXTE = "'DM Sans', 'Noto Sans', system-ui, sans-serif"
@@ -110,7 +116,7 @@ strong,b{font-weight:700;color:__NAVY__}
 .paraphes span{display:block;font-size:6pt;letter-spacing:.08em;
   text-transform:uppercase;color:__GRIS__;text-align:center;margin-bottom:.8mm}
 .paraphe{width:12.5mm;margin-left:2mm}
-.paraphe i{display:block;height:8.4mm;border:.6pt solid #C9CED6;
+.paraphe i{display:block;height:8.4mm;border:.7pt solid __TRAIT__;
   border-radius:1.2mm;background:__PAPIER__}
 .folio{text-align:right;white-space:nowrap;color:__GRIS__;font-size:7.2pt;
   line-height:1.5;padding-top:2.2mm}
@@ -136,11 +142,13 @@ strong,b{font-weight:700;color:__NAVY__}
 .etape{flex:1;display:flex;align-items:center;font-size:7.6pt;color:__GRIS__;
   line-height:1.25}
 .etape .n{flex:none;width:5.4mm;height:5.4mm;border-radius:50%;
-  border:.7pt solid #B9C0CB;color:__GRIS__;font-weight:700;font-size:7.4pt;
+  border:.7pt solid __TRAIT__;color:__GRIS__;font-weight:500;font-size:7.4pt;
   text-align:center;line-height:5.1mm;margin-right:2mm;background:__PAPIER__}
-.etape.fait .n{background:__NAVY__;border-color:__NAVY__;color:#FFFFFF}
+.etape.fait .n{background:__NAVY__;border-color:__NAVY__;color:#FFFFFF;
+  font-weight:700}
 .etape.ici{color:__NAVY__;font-weight:700}
-.etape.ici .n{background:__OR__;border-color:__OR__;color:__NAVY_900__}
+.etape.ici .n{background:__OR__;border:1.5pt solid __NAVY__;
+  color:__NAVY_900__;font-weight:700;line-height:4.3mm}
 .etape small{display:block;font-size:6.3pt;font-weight:400;color:__GRIS__;
   letter-spacing:.02em}
 
@@ -188,12 +196,13 @@ h2 .etoile{vertical-align:-.25mm;margin-right:2.4mm}
 .jalon .tete{display:flex;align-items:center;margin-bottom:2.6mm}
 .jalon .pastille{flex:none;width:8.6mm;height:8.6mm;border-radius:50%;
   background:__PAPIER__;border:.9pt solid __NAVY__;color:__NAVY__;
-  font-weight:700;font-size:9.4pt;text-align:center;line-height:8.2mm}
+  font-weight:500;font-size:9.4pt;text-align:center;line-height:8.2mm}
 .jalon .trait{flex:1;height:.9pt;background:#C4CAD4;margin-left:2mm}
 .jalon:last-child .trait{background:transparent}
-.jalon.regle .pastille{background:__VERT__;border-color:__VERT__;color:#FFFFFF}
-.jalon.exigible .pastille{background:__OR__;border-color:__OR__;
-  color:__NAVY_900__}
+.jalon.regle .pastille{background:__VERT__;border-color:__VERT__;color:#FFFFFF;
+  font-weight:700}
+.jalon.exigible .pastille{background:__OR__;border:2pt solid __NAVY__;
+  color:__NAVY_900__;font-weight:700;line-height:7.2mm}
 .jalon .quand{font-size:6.9pt;letter-spacing:.14em;text-transform:uppercase;
   color:__BRONZE__;font-weight:700}
 .jalon .quoi{font-weight:700;color:__NAVY__;font-size:10.2pt;line-height:1.3;
@@ -204,7 +213,7 @@ h2 .etoile{vertical-align:-.25mm;margin-right:2.4mm}
   font-weight:500}
 .jalon .etat{display:inline-block;margin-top:1.6mm;font-size:7.2pt;
   font-weight:700;letter-spacing:.06em;padding:.5mm 2.2mm;border-radius:10mm;
-  border:.6pt solid #C4CAD4;color:__GRIS__;background:__PAPIER__}
+  border:.7pt solid __TRAIT__;color:__GRIS__;background:__PAPIER__}
 .jalon.regle .etat{border-color:__VERT__;color:__VERT__;background:__VERT_FOND__}
 .jalon.exigible .etat{border-color:__BRONZE__;color:__BRONZE__;
   background:__LAVIS_OR__}
@@ -286,19 +295,19 @@ table.garanties.dates td:nth-child(3){width:20%}
   line-height:3.5mm;color:__NAVY__}
 .case.oui i{background:__NAVY__;color:#FFFFFF}
 .lignes{margin-top:1.6mm}
-.lignes i{display:block;border-bottom:.6pt dotted #9AA3B0;height:7.4mm}
+.lignes i{display:block;border-bottom:.7pt dotted __TRAIT__;height:7.4mm}
 
 /* ── Signatures ── */
 .signatures{break-inside:avoid;margin-top:7mm}
 .fait-a{font-size:9.8pt;margin-bottom:3.4mm}
 .fait-a .trou{display:inline-block;min-width:38mm;
-  border-bottom:.6pt dotted #9AA3B0}
+  border-bottom:.7pt dotted __TRAIT__}
 .sig{display:table;width:100%;table-layout:fixed;border-collapse:separate;
   border-spacing:0}
 .sig .cellule{display:table-cell;width:50%;vertical-align:top;
   padding-right:2mm}
 .sig .cellule + .cellule{padding-right:0;padding-left:2mm}
-.sig .boite{border:.7pt solid #B9C0CB;border-radius:2.6mm;
+.sig .boite{border:.7pt solid __TRAIT__;border-radius:2.6mm;
   padding:3.6mm 4.4mm 4mm;height:47mm}
 .sig .lbl{font-size:6.9pt;letter-spacing:.16em;text-transform:uppercase;
   color:__BRONZE__;font-weight:700}
@@ -547,6 +556,7 @@ _REMPLACEMENTS = {
     '__BRONZE__': BRONZE, '__ENCRE__': ENCRE, '__GRIS__': GRIS,
     '__FILET__': FILET, '__LAVIS_OR__': LAVIS_OR, '__LAVIS__': LAVIS,
     '__VERT_FOND__': VERT_FOND, '__VERT__': VERT, '__PAPIER__': PAPIER,
+    '__TRAIT__': TRAIT,
     '__TITRE__': POLICE_TITRE, '__TEXTE__': POLICE_TEXTE,
     '__AR_TEXTE__': POLICE_AR_TEXTE, '__AR_LIBELLE__': POLICE_AR_LIBELLE,
     '__KHATAM__': _MOTIF_KHATAM,
