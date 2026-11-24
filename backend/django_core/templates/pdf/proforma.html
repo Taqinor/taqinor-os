@@ -65,7 +65,7 @@
 
   <div class="header">
     <div class="header-left">
-      {% if logo_uri %}<div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>{% endif %}
+      {% if logo_uri %}<div class="logo">{% include "_logo.html" %}</div>{% endif %}
       <div class="doc-title">FACTURE PRO-FORMA</div>
       <div class="doc-ref">{{ reference }} (devis {{ devis.reference }})</div>
     </div>

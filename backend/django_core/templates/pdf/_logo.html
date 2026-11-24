@@ -1,0 +1,6 @@
+{#- LE logo d'un document à en-tête clair, en UNE pièce partagée par tous
+    les gabarits : ``logo_html`` est le logo des devis (même module image,
+    même bloc, même taille — ``utils.pdf.logo_document_html``, décision de
+    Reda du 24/11/2026) ; à défaut (SVG, image illisible, contexte sans la
+    clé) l'image d'origine, dimensionnée par ``.logo img`` du gabarit. -#}
+{% if logo_html %}{{ logo_html }}{% else %}<img src="{{ logo_uri }}" alt="Logo" />{% endif %}
