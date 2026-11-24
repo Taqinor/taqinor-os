@@ -2,7 +2,7 @@
    VX154 — TaqinorMark + SolarLoader (mot-symbole soleil-éclair)
    ----------------------------------------------------------------------------
    Le glyphe est statique par défaut. Sous `.taqinor-mark--animate` (SolarLoader),
-   ses 12 rayons s'illuminent en SÉQUENCE via la keyframe `sun-rise`, chacun
+   ses 8 rayons s'illuminent en SÉQUENCE via la keyframe `sun-rise`, chacun
    décalé par sa variable `--ray-i`. Sous prefers-reduced-motion, on FIGE le
    soleil pleinement éclairé (aucune illumination cyclique).
    ========================================================================== */

@@ -30,8 +30,13 @@ bien terminés, signé par le client (protection si le solde n'est pas payé), (
   Étendu le même jour à TOUS les autres documents PDF (« yes use the quote logo on all other documents too ») :
   factures, avoirs, bons, procès-verbaux, reçus, SAV, rapports — une pièce commune `templates/pdf/_logo.html`,
   alimentée par `apps.ventes.utils.pdf.logo_document_html` (rôle « couverture », variante claire) ; un test refuse
-  tout gabarit qui imprimerait `logo_uri` lui-même. Non couverts, volontairement : le repli hérité `devis.html`
-  (règle n° 4), les pièces du calepinage (logo du thème, `TenantTheme`), les e-mails et le portail.
+  tout gabarit qui imprimerait `logo_uri` lui-même.
+  Reda le même soir, sur les exceptions restantes : « why there is still another logo, i told you, only one
+  everywhere » → AUCUNE exception : l'ancien PDF de devis de secours passe par la pièce ; les documents du
+  calepinage impriment le logo du devis du profil (le thème `TenantTheme` ne donne plus que les couleurs et un
+  logo de repli) ; la marque des écrans de l'ERP (`TaqinorMark`), ses icônes et ses images de démarrage sont
+  l'emblème officiel (8 rayons dorés, éclair bleu nuit `#022F53`). Les e-mails n'ont pas d'image de logo (nom en
+  texte). Ne jamais réintroduire un autre dessin du soleil ni un logo propre à un module.
 - **Textes retirés du contrat après sa lecture en production (24/11/2026)** — ne pas les remettre : la phrase
   « si deux lignes se contredisent… » (article 1) ; l'article « Démarches auprès du réseau électrique » ; « la société
   a la garde du chantier » pendant la pose ; et tout engagement de S'OCCUPER de la garantie (« we should not be

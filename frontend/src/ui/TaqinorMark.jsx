@@ -1,8 +1,10 @@
-/* VX154 — Mot-symbole Taqinor : le soleil rayonnant à éclair azur du
-   public/favicon.svg, porté dans l'app React et TOKENISÉ pour un rendu correct
-   en clair comme en sombre :
-     • rayons + disque solaire = var(--primary) (le brass de marque)
-     • éclair                  = var(--info)    (l'azur de marque)
+/* VX154 — Mot-symbole Taqinor : l'emblème OFFICIEL (celui du devis et du site
+   public, `apps/web/public/favicon.svg`) porté dans l'app React — un seul logo
+   partout (décision fondateur, 24/11/2026) :
+     • 8 rayons dorés (#FEC811) tous les 45°, bouts ronds
+     • disque solaire doré (#FEC811)
+     • éclair bleu nuit (#022F53), posé SUR le disque doré : lisible en clair
+       comme en sombre, donc les couleurs sont fixes (pas de variable de thème).
    Props :
      • size    — côté du glyphe en px (défaut 20)
      • animate — active la séquence d'illumination des rayons (voir SolarLoader
@@ -10,14 +12,14 @@
      • title   — si fourni, le glyphe devient role="img" avec ce nom accessible ;
                  sinon il est purement décoratif (aria-hidden). */
 
-// 12 rayons répartis tous les 30° (géométrie identique au favicon).
-const RAYS = Array.from({ length: 12 }, (unused, i) => i * 30)
+// 8 rayons répartis tous les 45° (géométrie identique au favicon officiel).
+const RAYS = Array.from({ length: 8 }, (unused, i) => i * 45)
 
 export default function TaqinorMark({ size = 20, animate = false, title, className = '', ...rest }) {
   const decorative = !title
   return (
     <svg
-      viewBox="0 0 64 64"
+      viewBox="0 0 100 100"
       width={size}
       height={size}
       className={`taqinor-mark${animate ? ' taqinor-mark--animate' : ''}${className ? ` ${className}` : ''}`}
@@ -27,26 +29,22 @@ export default function TaqinorMark({ size = 20, animate = false, title, classNa
       {...rest}
     >
       {title ? <title>{title}</title> : null}
-      <g stroke="var(--primary)" strokeWidth="3.4" strokeLinecap="round">
+      <g stroke="#FEC811" strokeWidth="6" strokeLinecap="round">
         {RAYS.map((deg, i) => (
           <line
             key={deg}
             className="taqinor-ray"
             style={{ '--ray-i': i }}
-            x1="32"
-            y1="3"
-            x2="32"
-            y2="10"
-            transform={`rotate(${deg} 32 32)`}
+            x1="50"
+            y1="15"
+            x2="50"
+            y2="3"
+            transform={`rotate(${deg} 50 50)`}
           />
         ))}
       </g>
-      <circle cx="32" cy="32" r="17.5" fill="var(--primary)" />
-      {/* Éclair azur (coords dérivées du favicon translate(13.4 13.4) scale(1.16)). */}
-      <polygon
-        points="33.5 18 21.5 34.3 32 34.3 30.5 45.9 42.4 29.6 32 29.6"
-        fill="var(--info)"
-      />
+      <circle cx="50" cy="50" r="28" fill="#FEC811" />
+      <path d="M52.1 28.8 L31.1 54.2 L50 54.2 L47.9 71 L68.9 45.8 L50 45.8 Z" fill="#022F53" />
     </svg>
   )
 }

@@ -321,9 +321,10 @@ class LogoDesDocumentsTests(SimpleTestCase):
     ``_logo.html`` — plus jamais l'image téléversée posée telle quelle, sauf
     quand elle n'est pas traitable (SVG, fichier illisible)."""
 
-    #: Repli hérité du devis (interrupteur ``USE_PREMIUM_QUOTE_ENGINE`` éteint) :
-    #: jamais étendu (règle n° 4), il garde son image d'origine.
-    HORS_PIECE = {'_logo.html', 'devis.html'}
+    #: Seule la pièce elle-même imprime ``logo_uri`` (son repli). Le repli
+    #: hérité du devis (``devis.html``) passe lui aussi par la pièce depuis la
+    #: décision « only one logo everywhere » du 24/11/2026.
+    HORS_PIECE = {'_logo.html'}
 
     def _uri_officiel(self):
         import base64
@@ -385,8 +386,9 @@ class LogoDesDocumentsTests(SimpleTestCase):
                        if n.name == 'logo_uri']
             self.assertEqual(imprime, [], f'{nom} imprime logo_uri lui-même')
         # La garde ne passe pas à vide : les gabarits à logo sont bien là.
-        self.assertGreaterEqual(len(vus), 28, vus)
+        self.assertGreaterEqual(len(vus), 29, vus)
         self.assertIn('facture.html', vus)
+        self.assertIn('devis.html', vus)
 
 
 class LogoDuContexteSocieteTests(TestCase):
