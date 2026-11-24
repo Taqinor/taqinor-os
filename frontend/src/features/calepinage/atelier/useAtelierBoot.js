@@ -439,7 +439,8 @@ export function useAtelierBoot(ctx) {
       // T4-B4-002 — une lecture restée SANS réponse (délai de 20 s dépassé sur une pile chargée : « annulée » au réseau)
       // est relancée une fois ; seul un second échec (ou un refus servi) rend le catalogue indisponible.
       const modulesPromise = Promise.resolve()
-        .then(() => lireAvecReprise(() => calepinageApi.calepinages.modulesDisponibles(calepinageId)))
+        // T4-U4-026 — l'échec est dit par la barre (« Réessayer ») : aucun toast global en plus.
+        .then(() => lireAvecReprise(() => calepinageApi.calepinages.modulesDisponibles(calepinageId, { suppressErrorToast: true })))
         .then((res) => res.data)
         .catch(() => {
           setCatalogueIndisponible?.(true)

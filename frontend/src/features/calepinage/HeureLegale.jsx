@@ -16,7 +16,9 @@ export const viderCacheHeureLegale = () => cache.clear()
 function lire(id, date) {
   const cle = `${id}|${date}`
   if (!cache.has(cle)) {
-    cache.set(cle, Promise.resolve().then(() => calepinageApi.calepinages.soleilLegal(id, { date })).then(
+    // T4-U4-015 — la phrase de l'écran dit le refus : aucun toast global « Site.pin : … » en plus.
+    const config = { suppressErrorToast: true }
+    cache.set(cle, Promise.resolve().then(() => calepinageApi.calepinages.soleilLegal(id, { date }, config)).then(
       (r) => ({ etat: 'ok', ecart: r?.data?.ecart_legal_moins_solaire_min ?? null }),
       (err) => {
         if (err?.response?.status === 409) {
@@ -68,7 +70,7 @@ export function PhraseHeureIndisponible({ etat }) {
         (<Link to="/calepinage/reglages" className="underline">Réglages › site</Link>)</>
     )
   }
-  if (etat === 'pin') return <>heure légale non calculée : emplacement du site non posé</>
+  if (etat === 'pin') return <>heure légale non calculée : posez d’abord l’épingle du site sur la carte</>
   if (etat === 'erreur') return <>heure légale indisponible pour le moment</>
   return null
 }

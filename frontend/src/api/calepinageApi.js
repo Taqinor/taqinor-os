@@ -229,7 +229,7 @@ const calepinageApi = {
     // sans traduction de clés. Une fiche incomplète est LISTÉE avec son motif
     // et n'est pas sélectionnable ; une liste vide porte son propre motif —
     // l'écran affiche CEUX-LÀ, il n'en invente aucun.
-    modulesDisponibles: (id) => api.get(`${pivot(id)}modules-disponibles/`),
+    modulesDisponibles: (id, config = {}) => api.get(`${pivot(id)}modules-disponibles/`, config), // T4-U4-026 : `config`
     // ACAL600 — une variante par module coché (1 à 3 `produit-<id>` servis par
     // `modulesDisponibles`), contrat `calepinage_variantes_par_module.json` ;
     // 400/409 nomment `modules`.
@@ -320,8 +320,9 @@ const calepinageApi = {
     // porte l'empreinte « document » lue au boot (ou rendue par la dernière écriture) dans
     // l'en-tête If-Match : un document modifié ailleurs répond 409 `document_modifie`, rien
     // n'est écrasé. Sans empreinte connue : l'ETag vide (ACAL316 — l'en-tête est obligatoire).
-    enregistrerLayoutCalepinageConditionnel: (id, corps, empreinte) => api.post( // ACAL
-      `${pivot(id)}layout/`, corps, jetonIfMatch(empreinte)),
+    // T4-U4-027 — `config` (ex. `{ suppressErrorToast: true }`) : l'écran qui dit lui-même le refus coupe le toast global.
+    enregistrerLayoutCalepinageConditionnel: (id, corps, empreinte, config = {}) => api.post( // ACAL
+      `${pivot(id)}layout/`, corps, { ...jetonIfMatch(empreinte), ...config }),
     // ACAL23 — l'écriture d'UNE section (`{cle, valeur | zone_id + champs, base_empreinte}`).
     enregistrerSectionLayout: (id, corps) => api.post(`${pivot(id)}layout/section/`, corps), // ACAL
     // ACAL192 (D-ACAL-13, contrat calepinage_design_context.json › geometrie.derive) — le GPS
@@ -383,7 +384,7 @@ const calepinageApi = {
     penteTerrain: (id, surface) => api.get(`${pivot(id)}pente-terrain/`, { params: { surface } }), // ACAL
     // ACAL719 (contrat calepinage_soleil_legal.json, ACAL730) — l'écart heure légale − heure solaire d'un jour
     // (`params = {date}` AAAA-MM-JJ) : 409 `{site.fuseau|site.pin: [motif]}` quand le site ne le permet pas.
-    soleilLegal: (id, params) => api.get(`${pivot(id)}soleil-legal/`, { params }), // ACAL
+    soleilLegal: (id, params, config = {}) => api.get(`${pivot(id)}soleil-legal/`, { params, ...config }), // ACAL ; T4-U4-015 : `config`
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
