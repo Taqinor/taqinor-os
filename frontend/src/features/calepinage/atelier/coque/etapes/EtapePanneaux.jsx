@@ -330,16 +330,19 @@ const degrade = () => `linear-gradient(90deg, ${[0, 0.3, 0.5, 0.72, 1].map((a) =
   return `rgb(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)}) ${Math.round(a * 100)}%`
 }).join(', ')})`
 
+/** La légende de la maquette ; son titre est LE bouton de la carte d'accès solaire. Éteinte, le bouton reste là (sans
+    dégradé ni bornes : ils ne décrivent que des panneaux teintés), pour la rallumer sans connaître « Avancé ». */
 function LegendeSoleil({ carte, g }) {
+  const active = !!carte?.active
   return (
-    <CarteFlottante className="cal-pan-legende">
-      <button type="button" className="cal-pan-legende-titre" aria-pressed={!!carte?.active}
-        title={carte?.active ? 'Retirer les couleurs des panneaux' : 'Colorer les panneaux'}
+    <CarteFlottante className="cal-pan-legende" data-active={active ? 'oui' : 'non'}>
+      <button type="button" className="cal-pan-legende-titre" aria-pressed={active}
+        title={active ? 'Retirer les couleurs des panneaux' : 'Colorer les panneaux'}
         disabled={!carte} onClick={g.carteSoleil}>
         Ensoleillement de chaque panneau
       </button>
-      <div className="cal-pan-degrade" style={{ background: degrade() }} />
-      <div className="cal-pan-legende-bornes"><span>Ombragé</span><span>Plein soleil</span></div>
+      {active && <div className="cal-pan-degrade" style={{ background: degrade() }} />}
+      {active && <div className="cal-pan-legende-bornes"><span>Ombragé</span><span>Plein soleil</span></div>}
     </CarteFlottante>
   )
 }
@@ -418,7 +421,7 @@ export default function EtapePanneaux({ calepinageId, lectureSeule = false, enre
       <SurCarte>
         <PuceResume figures={etat.figures} publiee={servi.publiee} />
         <div className="cal-carte-soleil" data-testid="cal-carte-soleil">
-          {etat.soleil.carte?.active && <LegendeSoleil carte={etat.soleil.carte} g={g} />}
+          {etat.soleil.carte && <LegendeSoleil carte={etat.soleil.carte} g={g} />}
           <LecteurSoleil soleil={etat.soleil} g={g} />
         </div>
       </SurCarte>
