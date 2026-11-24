@@ -17,6 +17,23 @@ const documentsApi = {
     api.get(`/documents/chantiers/${chantierId}/attestation/`, {
       params: { type }, responseType: 'blob',
     }),
+  // Dossier contractuel du chantier (4 actes, 5 lignes) — contrat :
+  // apps/documents/contract_samples/{dossier_contractuel,acte_contractuel}.json.
+  // Un GET prépare le dossier s'il manque ; aucun montant n'est recalculé ici.
+  dossierContrats: (chantierId) =>
+    api.get(`/documents/chantiers/${chantierId}/contrats/`),
+  acte: (id) => api.get(`/documents/actes/${id}/`),
+  // `surcharges` : { <section>: valeur | null } — null remet le défaut.
+  modifierActe: (id, surcharges) =>
+    api.patch(`/documents/actes/${id}/`, { surcharges }),
+  pdfActe: (id) => api.get(`/documents/actes/${id}/pdf/`, { responseType: 'blob' }),
+  emettreActe: (id) => api.post(`/documents/actes/${id}/emettre/`),
+  rouvrirActe: (id) => api.post(`/documents/actes/${id}/rouvrir/`),
+  // corps : { signature_client, signataire_nom, lieu }
+  signerActe: (id, corps) => api.post(`/documents/actes/${id}/signer/`, corps),
+  // corps : { signataire_nom, signe_le }
+  marquerActeSigne: (id, corps) => api.post(`/documents/actes/${id}/marquer-signe/`, corps),
+  enregistrerModeleActe: (id) => api.post(`/documents/actes/${id}/modele/`),
 }
 
 export default documentsApi
