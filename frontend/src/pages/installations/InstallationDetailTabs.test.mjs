@@ -25,12 +25,14 @@ const MATRICE = {
   photos: ['Photos & fichiers'],
   interventions: ['Interventions', 'Tickets SAV', 'Suivi & maintenance'],
   documents: ['Documents après-vente', 'Historique'],
+  contrats: [], // dossier contractuel : composant dédié (voir COMPOSANTS)
 }
 
 // Blocs rendus par un composant dédié (pas un `title=` de Section) : placés une
 // seule fois dans leur onglet.
 const COMPOSANTS = {
   materiel: ['ChantierApprovisionnement'],
+  contrats: ['ContratsChantier'],
 }
 
 function panneau(valeur) {
@@ -41,15 +43,15 @@ function panneau(valeur) {
   return SRC.slice(start, end)
 }
 
-test('les 6 onglets existent, chacun avec son déclencheur', () => {
+test('les 7 onglets existent, chacun avec son déclencheur', () => {
   for (const valeur of Object.keys(MATRICE)) {
     assert.match(SRC, new RegExp(`<TabsTrigger value="${valeur}"`), `déclencheur ${valeur}`)
     assert.match(SRC, new RegExp(`<TabsContent value="${valeur}"`), `panneau ${valeur}`)
   }
   const triggers = SRC.match(/<TabsTrigger value="/g) ?? []
   const panneaux = SRC.match(/<TabsContent value="/g) ?? []
-  assert.equal(triggers.length, 6)
-  assert.equal(panneaux.length, 6)
+  assert.equal(triggers.length, 7)
+  assert.equal(panneaux.length, 7)
 })
 
 test('matrice section → onglet : toutes les sections sont placées, aucune perdue', () => {
@@ -108,6 +110,6 @@ test('les onglets restent tactiles (≥ 44 px) et défilent sur mobile', () => {
   const list = SRC.slice(SRC.indexOf('<TabsList'), SRC.indexOf('</TabsList>'))
   assert.match(list, /overflow-x-auto/)
   const triggers = [...list.matchAll(/<TabsTrigger[^>]*className="([^"]*)"/g)].map((m) => m[1])
-  assert.equal(triggers.length, 6)
+  assert.equal(triggers.length, 7)
   for (const cls of triggers) assert.match(cls, /min-h-11/)
 })

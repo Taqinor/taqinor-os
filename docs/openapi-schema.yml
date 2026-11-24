@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5298, operations: 8150, components: 4078}
+counts: {paths: 5314, operations: 8168, components: 4094}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -1280,8 +1280,17 @@ operations:
 - get /api/django/custom-fields/permissions-role/{id}/ -> django_custom_fields_permissions_role_retrieve
 - patch /api/django/custom-fields/permissions-role/{id}/ -> django_custom_fields_permissions_role_partial_update
 - put /api/django/custom-fields/permissions-role/{id}/ -> django_custom_fields_permissions_role_update
+- get /api/django/documents/actes/{id}/ -> django_documents_actes_retrieve
+- patch /api/django/documents/actes/{id}/ -> django_documents_actes_partial_update
+- post /api/django/documents/actes/{id}/emettre/ -> django_documents_actes_emettre_create
+- post /api/django/documents/actes/{id}/marquer-signe/ -> django_documents_actes_marquer_signe_create
+- post /api/django/documents/actes/{id}/modele/ -> django_documents_actes_modele_create
+- get /api/django/documents/actes/{id}/pdf/ -> django_documents_actes_pdf_retrieve
+- post /api/django/documents/actes/{id}/rouvrir/ -> django_documents_actes_rouvrir_create
+- post /api/django/documents/actes/{id}/signer/ -> django_documents_actes_signer_create
 - get /api/django/documents/chantiers/{id}/attestation/ -> django_documents_chantiers_attestation_retrieve
 - get /api/django/documents/chantiers/{id}/bon-livraison/ -> django_documents_chantiers_bon_livraison_retrieve
+- get /api/django/documents/chantiers/{id}/contrats/ -> django_documents_chantiers_contrats_retrieve
 - get /api/django/documents/chantiers/{id}/dossier-remise/ -> django_documents_chantiers_dossier_remise_retrieve
 - get /api/django/documents/chantiers/{id}/pv-reception/ -> django_documents_chantiers_pv_reception_retrieve
 - get /api/django/entites/entites/ -> django_entites_entites_list
@@ -5396,8 +5405,17 @@ operations:
 - get /api/v1/custom-fields/permissions-role/{id}/ -> v1_custom_fields_permissions_role_retrieve
 - patch /api/v1/custom-fields/permissions-role/{id}/ -> v1_custom_fields_permissions_role_partial_update
 - put /api/v1/custom-fields/permissions-role/{id}/ -> v1_custom_fields_permissions_role_update
+- get /api/v1/documents/actes/{id}/ -> v1_documents_actes_retrieve
+- patch /api/v1/documents/actes/{id}/ -> v1_documents_actes_partial_update
+- post /api/v1/documents/actes/{id}/emettre/ -> v1_documents_actes_emettre_create
+- post /api/v1/documents/actes/{id}/marquer-signe/ -> v1_documents_actes_marquer_signe_create
+- post /api/v1/documents/actes/{id}/modele/ -> v1_documents_actes_modele_create
+- get /api/v1/documents/actes/{id}/pdf/ -> v1_documents_actes_pdf_retrieve
+- post /api/v1/documents/actes/{id}/rouvrir/ -> v1_documents_actes_rouvrir_create
+- post /api/v1/documents/actes/{id}/signer/ -> v1_documents_actes_signer_create
 - get /api/v1/documents/chantiers/{id}/attestation/ -> v1_documents_chantiers_attestation_retrieve
 - get /api/v1/documents/chantiers/{id}/bon-livraison/ -> v1_documents_chantiers_bon_livraison_retrieve
+- get /api/v1/documents/chantiers/{id}/contrats/ -> v1_documents_chantiers_contrats_retrieve
 - get /api/v1/documents/chantiers/{id}/dossier-remise/ -> v1_documents_chantiers_dossier_remise_retrieve
 - get /api/v1/documents/chantiers/{id}/pv-reception/ -> v1_documents_chantiers_pv_reception_retrieve
 - get /api/v1/entites/entites/ -> v1_entites_entites_list
@@ -8423,6 +8441,8 @@ query_params:
   get /api/django/custom-fields/definitions/: module ordering page page_size search
   get /api/django/custom-fields/objects/: ordering page page_size search
   get /api/django/custom-fields/permissions-role/: field_def ordering page page_size search
+  get /api/django/documents/actes/{id}/: langue
+  get /api/django/documents/actes/{id}/pdf/: langue
   get /api/django/documents/chantiers/{id}/attestation/: regenerer type
   get /api/django/documents/chantiers/{id}/pv-reception/: definitive
   get /api/django/entites/entites/: ordering page page_size search tree
@@ -9271,6 +9291,8 @@ query_params:
   get /api/v1/custom-fields/definitions/: module ordering page page_size search
   get /api/v1/custom-fields/objects/: ordering page page_size search
   get /api/v1/custom-fields/permissions-role/: field_def ordering page page_size search
+  get /api/v1/documents/actes/{id}/: langue
+  get /api/v1/documents/actes/{id}/pdf/: langue
   get /api/v1/documents/chantiers/{id}/attestation/: regenerer type
   get /api/v1/documents/chantiers/{id}/pv-reception/: definitive
   get /api/v1/entites/entites/: ordering page page_size search tree
@@ -10516,6 +10538,8 @@ components:
 - ChangelogLu
 - ChangelogNonLues
 - ChangelogToutLu
+- ChantierActe
+- ChantierDossier
 - ChargeApprobateursResponse
 - ChatterActivity
 - ChecklistEtapeModele
@@ -10631,6 +10655,7 @@ components:
 - ContactPreferenceEnum
 - ContactReponse
 - ContactRequeteRequest
+- ContenuActe
 - ContenuConfigRequest
 - ContratElectriciteEnum
 - ContratMaintenance
@@ -10657,6 +10682,8 @@ components:
 - CorbeilleRestauration
 - CorbeilleRestauree
 - CoreDetail
+- CorpsMarquerSigneRequest
+- CorpsSignerRequest
 - CosPhiSourceEnum
 - CoteAcDcEnum
 - CouvertureEnum
@@ -10843,6 +10870,7 @@ components:
 - DepotPublicRequest
 - DestinataireMultiRequest
 - DestinataireMultiRoleEnum
+- DetailActe
 - DetailReponse
 - Devis
 - DevisAccepterRequestRequest
@@ -10999,6 +11027,7 @@ components:
 - DossierChecklistItemStatutEnum
 - DossierChecklistRequeteRequest
 - DossierCibleLienRequest
+- DossierContractuel
 - DossierDelierReponse
 - DossierEtapeCourante
 - DossierExchange
@@ -11076,6 +11105,7 @@ components:
 - EquipementRequest
 - EquipementStatutEnum
 - EquipementsHorsHorairesEnum
+- ErreurActe
 - ErreurApi
 - ErreurAuthentification
 - ErreurCalendrierIcs
@@ -11479,6 +11509,7 @@ components:
 - LandedCostLigne
 - LandedCostLigneRequest
 - LanguageEnum
+- LangueActeEnum
 - LangueEnum
 - LangueInterfaceReponse
 - LanguePortailEnum
@@ -11668,6 +11699,7 @@ components:
 - ModePoseEnum
 - ModeSaisieEnum
 - ModelEnum
+- ModeleActeReponse
 - ModeleBcfGenererCorpsRequest
 - ModeleBonCommandeFournisseur
 - ModeleBonCommandeFournisseurLigne
@@ -12297,6 +12329,7 @@ components:
 - PatchedContratPrixFournisseurRequest
 - PatchedContratPrixLigneRequest
 - PatchedControleQualiteModeleRequest
+- PatchedCorpsPatchRequest
 - PatchedCreativeAssetRequest
 - PatchedCreativeBacklogItemRequest
 - PatchedCreativeGenerationBatchRequest
@@ -12684,6 +12717,7 @@ components:
 - ProblemeClientRequeteRequest
 - ProblemeRequest
 - ProblemeStatutEnum
+- ProchaineAction
 - ProchaineActionEnum
 - ProchaineToucheCrm
 - ProductTour
@@ -12902,6 +12936,7 @@ components:
 - RecurrenceIntervention
 - RecurrenceInterventionRequest
 - RecurrenceMensuelleAnnuelleEnum
+- RefusActe
 - RefusDemandeAchatRequeteRequest
 - RefusTransfertRequeteRequest
 - Regime8221Enum
@@ -13006,6 +13041,7 @@ components:
 - ResoumettreRequest
 - ResourceEnum
 - ResultatCommissioningEnum
+- ResumeActe
 - ResumeProblemesRefus
 - ResumeProblemesService
 - RetenueSubie
@@ -13250,6 +13286,7 @@ components:
 - StageEnum
 - StageModele
 - StageModeleRequest
+- StatutActeEnum
 - StatutActifClosEnum
 - StatutAffectationEnum
 - StatutApprobationEnum
@@ -13733,6 +13770,7 @@ components:
 - TwoFactorStatutReponse
 - TypeAccesEnum
 - TypeAchatEnum
+- TypeActeEnum
 - TypeActionEnum
 - TypeAnnotationEnum
 - TypeApporteurEnum

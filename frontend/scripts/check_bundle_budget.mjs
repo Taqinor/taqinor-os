@@ -254,7 +254,11 @@ const PER_CHUNK_BUDGET_KB = 350
 // Résultats refaits sur leurs maquettes, relevé hors ligne au téléphone, corrections du moteur de dessin) : mesuré
 // 4 133,3 Ko gzip sur le runner (job frontend-static du run 45158204225, tête f7d5f1a7ec), aucune dépendance npm ajoutée
 // (diff package.json vide), aucun autre plafond dépassé. Budget : mesure arrondie aux 5 Ko + 10 : 4130 -> 4145.
-const TOTAL_BUDGET_KB = 4145
+// 24/11/2026 (dossier contractuel d'un chantier, demande du fondateur : onglet « Contrats » de la fiche chantier,
+// éditeur d'acte, signature, bascule français / arabe) : mesuré 4 146,9 Ko gzip sur le runner (job frontend-static du
+// run 45302348976, tête 4d3a068996), aucune dépendance npm ajoutée (diff package.json vide), aucun autre plafond
+// dépassé. Budget : mesure arrondie aux 5 Ko + 10 : 4145 -> 4160.
+const TOTAL_BUDGET_KB = 4160
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,

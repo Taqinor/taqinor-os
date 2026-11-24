@@ -1094,6 +1094,12 @@ SPECTACULAR_SETTINGS = {
         'TypeInstallationChantierEnum':
             'apps.installations.models_installation.Installation.TypeInstallation',
         'MetriqueCommercialeEnum': 'apps.crm.models_clients.ObjectifCommercial.Metric',
+        # CTC2 (24/11/2026) — dossier contractuel : `type`, `statut` et `langue`
+        # d'un acte portent des jeux propres ; sans nom, drf-spectacular signalait
+        # trois collisions. Nommage de schéma uniquement — aucun choix ne change.
+        'TypeActeEnum': 'apps.documents.contrats.types.TYPES',
+        'StatutActeEnum': 'apps.documents.contrats.types.STATUTS',
+        'LangueActeEnum': 'apps.documents.contrats.types.LANGUES',
     },
 }
 

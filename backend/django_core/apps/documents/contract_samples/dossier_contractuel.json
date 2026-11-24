@@ -1,0 +1,282 @@
+{
+  "endpoint": "GET /api/django/documents/chantiers/<int:pk>/contrats/",
+  "pourquoi": "Le dossier contractuel d'un chantier : les quatre actes (cinq lignes, la livraison ayant deux variantes prêtes) créés à la création du chantier, leur état et la prochaine action. Un GET PRÉPARE le dossier s'il manque (idempotent) : un chantier ancien ou créé à la main obtient ses actes à la première ouverture de l'onglet. Les montants viennent de la vente (échéancier figé du devis, paiements) : l'écran n'en recalcule aucun.",
+  "exemple": {
+    "chantier": {
+      "id": 12,
+      "reference": "CHT-2026-11-0007",
+      "annule": false,
+      "devis_id": 5,
+      "devis_reference": "DEV-202611-0042"
+    },
+    "client": "M. Youssef EL EXEMPLE",
+    "prix_ttc": "98500.00",
+    "regle_ttc": "29550.00",
+    "reste_ttc": "68950.00",
+    "prochaine_action": {
+      "acte_id": 32,
+      "type": "pv_livraison",
+      "libelle": "Faire signer la livraison du matériel"
+    },
+    "actes": [
+      {
+        "id": 31,
+        "type": "contrat_installation",
+        "variante": "",
+        "rang": 1,
+        "titre": "Contrat d'installation",
+        "reference": "CTR-2026-11-0007",
+        "statut": "signe",
+        "version": 1,
+        "personnalise": false,
+        "ecarte": false,
+        "emis_le": "2026-11-24T10:12:00Z",
+        "signe_le": "2026-11-24T17:40:00Z",
+        "signataire_nom": "Youssef EL EXEMPLE",
+        "mode_signature": "sur_place",
+        "avertissements": [],
+        "peut_modifier": false,
+        "peut_emettre": false,
+        "peut_signer": false,
+        "peut_rouvrir": false,
+        "document_ged_id": 412
+      },
+      {
+        "id": 32,
+        "type": "pv_livraison",
+        "variante": "reste_a_regler",
+        "rang": 2,
+        "titre": "Livraison du matériel — reste à régler",
+        "reference": "LIV-2026-11-0007",
+        "statut": "brouillon",
+        "version": 1,
+        "personnalise": false,
+        "ecarte": false,
+        "emis_le": null,
+        "signe_le": null,
+        "signataire_nom": "",
+        "mode_signature": "",
+        "avertissements": [
+          "La tranche « Livraison du matériel » n'est pas encore réglée : 59 100,00 DH restent à encaisser."
+        ],
+        "peut_modifier": true,
+        "peut_emettre": true,
+        "peut_signer": false,
+        "peut_rouvrir": false,
+        "document_ged_id": null
+      },
+      {
+        "id": 33,
+        "type": "pv_livraison",
+        "variante": "tranche_reglee",
+        "rang": 2,
+        "titre": "Livraison du matériel — 90 % réglés",
+        "reference": "LIV-2026-11-0007",
+        "statut": "brouillon",
+        "version": 1,
+        "personnalise": false,
+        "ecarte": false,
+        "emis_le": null,
+        "signe_le": null,
+        "signataire_nom": "",
+        "mode_signature": "",
+        "avertissements": [
+          "L'ERP n'a enregistré que 29 550,00 DH de paiements : cette version suppose 88 650,00 DH réglés."
+        ],
+        "peut_modifier": true,
+        "peut_emettre": true,
+        "peut_signer": false,
+        "peut_rouvrir": false,
+        "document_ged_id": null
+      },
+      {
+        "id": 34,
+        "type": "pv_reception",
+        "variante": "",
+        "rang": 3,
+        "titre": "Réception des travaux",
+        "reference": "REC-2026-11-0007",
+        "statut": "brouillon",
+        "version": 1,
+        "personnalise": false,
+        "ecarte": false,
+        "emis_le": null,
+        "signe_le": null,
+        "signataire_nom": "",
+        "mode_signature": "",
+        "avertissements": [],
+        "peut_modifier": true,
+        "peut_emettre": true,
+        "peut_signer": false,
+        "peut_rouvrir": false,
+        "document_ged_id": null
+      },
+      {
+        "id": 35,
+        "type": "cloture_garanties",
+        "variante": "",
+        "rang": 4,
+        "titre": "Quitus et certificat de garantie",
+        "reference": "CLO-2026-11-0007",
+        "statut": "brouillon",
+        "version": 1,
+        "personnalise": false,
+        "ecarte": false,
+        "emis_le": null,
+        "signe_le": null,
+        "signataire_nom": "",
+        "mode_signature": "",
+        "avertissements": [
+          "Le prix n'est pas réglé en totalité : 68 950,00 DH restent dus. Le quitus ne peut pas être émis."
+        ],
+        "peut_modifier": true,
+        "peut_emettre": false,
+        "peut_signer": false,
+        "peut_rouvrir": false,
+        "document_ged_id": null
+      }
+    ]
+  },
+  "exemple_sans_devis": {
+    "chantier": {
+      "id": 14,
+      "reference": "CHT-2026-11-0009",
+      "annule": false,
+      "devis_id": null,
+      "devis_reference": ""
+    },
+    "client": "Mme Salma EXEMPLE",
+    "prix_ttc": null,
+    "regle_ttc": null,
+    "reste_ttc": null,
+    "prochaine_action": null,
+    "actes": [
+      {
+        "id": 51,
+        "type": "contrat_installation",
+        "variante": "",
+        "rang": 1,
+        "titre": "Contrat d'installation",
+        "reference": "CTR-2026-11-0007",
+        "statut": "brouillon",
+        "version": 1,
+        "personnalise": false,
+        "ecarte": false,
+        "emis_le": null,
+        "signe_le": null,
+        "signataire_nom": "",
+        "mode_signature": "",
+        "avertissements": [
+          "Ce chantier n'a pas de devis accepté : le prix et l'échéancier sont à préciser."
+        ],
+        "peut_modifier": true,
+        "peut_emettre": false,
+        "peut_signer": false,
+        "peut_rouvrir": false,
+        "document_ged_id": null
+      },
+      {
+        "id": 52,
+        "type": "pv_livraison",
+        "variante": "reste_a_regler",
+        "rang": 2,
+        "titre": "Livraison du matériel — reste à régler",
+        "reference": "LIV-2026-11-0007",
+        "statut": "brouillon",
+        "version": 1,
+        "personnalise": false,
+        "ecarte": false,
+        "emis_le": null,
+        "signe_le": null,
+        "signataire_nom": "",
+        "mode_signature": "",
+        "avertissements": [
+          "Ce chantier n'a pas de devis accepté : le prix et l'échéancier sont à préciser."
+        ],
+        "peut_modifier": true,
+        "peut_emettre": false,
+        "peut_signer": false,
+        "peut_rouvrir": false,
+        "document_ged_id": null
+      },
+      {
+        "id": 53,
+        "type": "pv_livraison",
+        "variante": "tranche_reglee",
+        "rang": 2,
+        "titre": "Livraison du matériel — 90 % réglés",
+        "reference": "LIV-2026-11-0007",
+        "statut": "brouillon",
+        "version": 1,
+        "personnalise": false,
+        "ecarte": false,
+        "emis_le": null,
+        "signe_le": null,
+        "signataire_nom": "",
+        "mode_signature": "",
+        "avertissements": [
+          "Ce chantier n'a pas de devis accepté : le prix et l'échéancier sont à préciser."
+        ],
+        "peut_modifier": true,
+        "peut_emettre": false,
+        "peut_signer": false,
+        "peut_rouvrir": false,
+        "document_ged_id": null
+      },
+      {
+        "id": 54,
+        "type": "pv_reception",
+        "variante": "",
+        "rang": 3,
+        "titre": "Réception des travaux",
+        "reference": "REC-2026-11-0007",
+        "statut": "brouillon",
+        "version": 1,
+        "personnalise": false,
+        "ecarte": false,
+        "emis_le": null,
+        "signe_le": null,
+        "signataire_nom": "",
+        "mode_signature": "",
+        "avertissements": [
+          "Ce chantier n'a pas de devis accepté : le prix et l'échéancier sont à préciser."
+        ],
+        "peut_modifier": true,
+        "peut_emettre": false,
+        "peut_signer": false,
+        "peut_rouvrir": false,
+        "document_ged_id": null
+      },
+      {
+        "id": 55,
+        "type": "cloture_garanties",
+        "variante": "",
+        "rang": 4,
+        "titre": "Quitus et certificat de garantie",
+        "reference": "CLO-2026-11-0007",
+        "statut": "brouillon",
+        "version": 1,
+        "personnalise": false,
+        "ecarte": false,
+        "emis_le": null,
+        "signe_le": null,
+        "signataire_nom": "",
+        "mode_signature": "",
+        "avertissements": [
+          "Ce chantier n'a pas de devis accepté : le prix et l'échéancier sont à préciser."
+        ],
+        "peut_modifier": true,
+        "peut_emettre": false,
+        "peut_signer": false,
+        "peut_rouvrir": false,
+        "document_ged_id": null
+      }
+    ]
+  },
+  "regles": [
+    "statut ∈ brouillon | emis | signe | annule ; l'acte 4 (cloture_garanties) s'arrête à « emis » (remis au client).",
+    "ecarte = vrai pour la variante de livraison dont la jumelle est émise ou signée.",
+    "prochaine_action = le premier acte non terminé dans l'ordre des rangs, null quand tout est fait ou que le chantier est annulé.",
+    "Montants en chaîne décimale « 98500.00 » (jamais un nombre flottant) ; null quand le chantier n'a pas de devis."
+  ]
+}
