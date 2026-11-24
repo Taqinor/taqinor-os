@@ -353,16 +353,20 @@ def cloture_garanties(contenu):
     reste = paiement.get('reste_a_regler')
     du = c._decimal(reste) is not None and c._decimal(reste) > 0
 
+    # Vente non soldée (brouillon seulement : l'émission est refusée) : pas
+    # une phrase ne dit « payée », « prouve votre paiement » ni « acquise ».
+    montant_du = c.esc(c.montant(reste, langue=langue)) if du else ''
+    chapeau = (libelle('chapeau_cloture_du', langue, reste=montant_du)
+               if du else libelle('chapeau_cloture', langue))
     corps = c.titre(
         'cloture_garanties', contenu.get('titre') or
-        libelle('h1_cloture', langue), libelle('chapeau_cloture', langue),
+        libelle('h1_cloture', langue), chapeau,
         contenu.get('reference'), langue)
     if du:
         # Vente non soldée : le document dit la vérité — ce qui reste dû,
         # et aucune attestation de paiement ni phrase de propriété.
         carte_paiement = c.carte(
-            libelle('reste_a_regler_carte', langue),
-            c.esc(c.montant(reste, langue=langue)),
+            libelle('reste_a_regler_carte', langue), montant_du,
             libelle('reste_du_detail', langue), forte=True)
     else:
         carte_paiement = c.carte(
@@ -376,23 +380,26 @@ def cloture_garanties(contenu):
         c.carte(libelle('votre_installation', langue), valeur_sys, detail_sys),
         carte_paiement,
     )
-    corps += c.h2(libelle('attestation', langue))
+    corps += c.h2(libelle('attestation_du' if du else 'attestation', langue))
     if du:
         corps += c.encadre(libelle('quitus', langue), '<p>' + libelle(
-            'quitus_en_attente', langue,
-            montant=c.esc(c.montant(reste, langue=langue))) + '</p>', 'net')
+            'quitus_en_attente', langue, montant=montant_du) + '</p>', 'net')
     else:
         corps += c.encadre(libelle('quitus', langue),
                            c.paragraphes(contenu.get('quitus')), 'ok quitus')
     corps += c.tableau_paiements(contenu.get('paiements'),
                                  paiement.get('total_regle'), langue)
-    corps += c.signatures(contenu, mention_client='', client_signe=False,
-                          exemplaires=False)
+    if not du:
+        # La signature de la société atteste le paiement : sans paiement
+        # complet, rien à signer (« Fait à… » absent).
+        corps += c.signatures(contenu, mention_client='', client_signe=False,
+                              exemplaires=False)
 
     date_reception = c.date_longue(
         (contenu.get('reception') or {}).get('date'), langue)
     corps += c.h2(libelle('certificat', langue),
-                  libelle('certificat_intro', langue,
+                  libelle('certificat_intro_du' if du else 'certificat_intro',
+                          langue,
                           date=c.esc(date_reception
                                      or libelle('date_inconnue', langue)),
                           adresse=c.esc(

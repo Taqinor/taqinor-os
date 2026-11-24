@@ -223,12 +223,14 @@ def _contrat_installation(ctx, options):
             "ces chiffres ne sont pas une promesse de résultat.",
         ]),
     ]
+    # La restitution du matériel suppose la réserve de propriété.
     retard = [
         "Si un paiement n'est pas fait à la date prévue, {societe} adresse "
         "au Client une mise en demeure écrite. Si elle reste sans effet "
         "pendant {delai_mise_en_demeure}, {societe} peut suspendre les "
-        "travaux, puis demander en justice le paiement des sommes dues ou "
-        "la restitution du matériel resté sa propriété.",
+        "travaux, puis demander en justice le paiement des sommes dues"
+        + (" ou la restitution du matériel resté sa propriété."
+           if options.get('reserve_propriete', True) else "."),
     ]
     if options.get('penalite_retard_pct'):
         retard.append(
@@ -362,8 +364,9 @@ def _pv_reception(ctx, options):
             "Si le solde n'est pas réglé, {societe} adresse au Client une "
             "mise en demeure écrite. Si elle reste sans effet pendant "
             "{delai_mise_en_demeure}, {societe} peut demander en justice "
-            "le paiement du solde ou la restitution du matériel resté sa "
-            "propriété.",
+            "le paiement du solde"
+            + (" ou la restitution du matériel resté sa propriété."
+               if options.get('reserve_propriete', True) else "."),
         ] + (["Passé ce délai, une indemnité forfaitaire de "
               "{penalite_retard} des sommes impayées est due à {societe}, "
               "une seule fois."]
@@ -431,7 +434,11 @@ def articles_par_defaut(type_acte, variante='', ctx=None, options=None):
     raise ValueError(f"Type d'acte inconnu : {type_acte!r}")
 
 
-def quitus_par_defaut(ctx):
+def quitus_par_defaut(ctx, options=None):
+    """Le quitus. ``options['reserve_propriete']`` (celle du contrat) : sans
+    réserve de propriété, la propriété n'a jamais été retenue — le quitus
+    n'en dit rien."""
+    reserve = (options or {}).get('reserve_propriete', True)
     return [_f(p, ctx) for p in (
         # {ecart_regle} : phrase complète précédée d'une espace (avoir,
         # retenue, abandon de créance) ou vide — la somme réellement réglée,
@@ -440,9 +447,9 @@ def quitus_par_defaut(ctx):
         "**{total_regle}** ({total_regle_lettres}), en règlement complet du "
         "prix de l'installation objet du contrat "
         "{contrat_reference}.{ecart_regle}",
-        "Le Client est quitte envers {societe} du prix de ce contrat. La "
-        "propriété de l'ensemble du matériel lui est "
-        "définitivement acquise.",
+        "Le Client est quitte envers {societe} du prix de ce contrat."
+        + (" La propriété de l'ensemble du matériel lui est "
+           "définitivement acquise." if reserve else ""),
     )]
 
 

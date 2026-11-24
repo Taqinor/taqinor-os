@@ -204,8 +204,29 @@ class Lecture:
                 fige = acte.contenu_ar if langue == 'ar' else acte.contenu
                 if fige and isinstance(fige.get('garanties'), list):
                     return fige['garanties']
-            return _construire(acte, langue, self).get('garanties')
+            return self._contrat_vivant(acte, langue).get('garanties')
         return self._une_fois(('garanties_contrat', langue), lire)
+
+    def _contrat_vivant(self, acte, langue):
+        return self._une_fois(('contrat_vivant', langue),
+                              lambda: _construire(acte, langue, self))
+
+    def reserve_du_contrat(self):
+        """La réserve de propriété du CONTRAT du chantier — son contenu figé
+        s'il est émis ou signé, sinon son brouillon ; None sans contrat. Une
+        seule par chantier : livraison, réception et clôture la reprennent,
+        comme les garanties."""
+        def lire():
+            acte = self._acte(T.CONTRAT)
+            if acte is None:
+                return None
+            options = ((acte.contenu or {}).get('options')
+                       if acte.statut in (T.EMIS, T.SIGNE) else None)
+            if not isinstance(options, dict) \
+                    or 'reserve_propriete' not in options:
+                options = self._contrat_vivant(acte, 'fr')['options']
+            return options.get('reserve_propriete') is not False
+        return self._une_fois('reserve_contrat', lire)
 
     def date_reception_signee(self):
         """Le jour où le procès-verbal de réception a été SIGNÉ, ou None."""
@@ -1273,7 +1294,7 @@ def _articles_et_quitus(contenu, textes, ctx, langue, s_modele, s_acte):
                'entrees': entrees or [], 'masques': masques, 'ctx': ctx,
                'connus': connus}
     if contenu['type'] == T.CLOTURE:
-        q_defaut = quitus_en_jetons(textes, ctx)
+        q_defaut = quitus_en_jetons(textes, ctx, contenu['options'])
         q_base = q_defaut
         if isinstance(s_modele.get('quitus'), list):
             q_base = [j for j, _s in resoudre_paragraphes(
@@ -1306,6 +1327,11 @@ def _construire(acte, langue='fr', lecture=None, *, avec_modele=True,
     modele = lecture.modele(acte.type) if avec_modele else None
     date_fixee = _appliquer_modeles_communs(contenu, acte, modele_contrat,
                                             modele)
+    if acte.type != T.CONTRAT:
+        # Une réserve de propriété par chantier : celle du CONTRAT (servie
+        # ici en lecture ; l'acte ne la règle plus — recette finale, S2).
+        contenu['options']['reserve_propriete'] = (
+            lecture.reserve_du_contrat() is not False)
     _sections_derivees(contenu, acte, lecture, vente, langue, date_fixee)
     textes = _textes(langue)
     _textes_par_defaut(contenu, textes, vente, langue)
@@ -1622,13 +1648,55 @@ def avertissements(acte, contenu=None, lecture=None):
         contenu_fr, ctx, etat = _construire(acte, 'fr', lecture, interne=True)
         sortie += message_masques(etat['masques'], ctx, _textes('fr'),
                                   contenu_fr)
-    retard = [T.LIBELLES_SECTIONS[s] for s in T.SECTIONS_MODIFIABLES[acte.type]
-              if s in T.SECTIONS_TEXTE and _texte_a_traduire(acte, s, lecture)
-              and s not in (acte.surcharges_ar or {})]
-    if retard:
+    return sortie + _avertissements_arabe(acte, lecture)
+
+
+#: Textes libres qu'un acte arabe imprime TELS QUE TAPÉS en français tant
+#: qu'ils ne sont pas traduits (``_faits_du_francais``).
+_IMPRIMES_EN_FRANCAIS = {'reserves': 'réserves',
+                         'conditions_particulieres': 'conditions particulières',
+                         'constats': 'constats ajoutés'}
+
+
+def _avertissements_arabe(acte, lecture):
+    """Ce que l'acte arabe imprime autrement que le français personnalisé :
+    les textes libres tapés en français sans version arabe (imprimés en
+    français), puis les sections dont l'arabe reste au texte par défaut.
+    Une case cochée n'est jamais signalée : elle est commune aux deux."""
+    fr, ar = acte.surcharges or {}, acte.surcharges_ar or {}
+    en_francais, par_defaut = [], []
+    for s in T.SECTIONS_MODIFIABLES[acte.type]:
+        if s not in T.SECTIONS_TEXTE or s in ar:
+            continue
+        if s in _IMPRIMES_EN_FRANCAIS:
+            if _texte_libre_francais(acte, s, fr.get(s)):
+                en_francais.append(_IMPRIMES_EN_FRANCAIS[s])
+        elif _texte_a_traduire(acte, s, lecture):
+            par_defaut.append(T.LIBELLES_SECTIONS[s])
+    sortie = []
+    if en_francais:
+        sortie.append("Dans l'acte arabe, ces textes s'impriment en "
+                      'français : ' + ', '.join(en_francais) + '. '
+                      "Traduisez-les si le client lit l'arabe.")
+    if par_defaut:
         sortie.append('La traduction arabe ne reprend pas vos modifications '
-                      'de : ' + ', '.join(retard) + '.')
+                      'de : ' + ', '.join(par_defaut) + '.')
     return sortie
+
+
+def _texte_libre_francais(acte, section, valeur):
+    """La section porte-t-elle un texte tapé en français (une réserve, des
+    conditions, un constat ajouté ou réécrit) ? Les constats par défaut,
+    cochés ou non, ont leur traduction."""
+    if section == 'constats':
+        from . import textes
+        defauts = {k['texte'] for k in textes.constats_par_defaut(acte.type)}
+        return any((k.get('texte') or '').strip()
+                   and k.get('texte') not in defauts
+                   for k in valeur or [] if isinstance(k, dict))
+    if isinstance(valeur, list):
+        return any(isinstance(x, str) and x.strip() for x in valeur)
+    return isinstance(valeur, str) and bool(valeur.strip())
 
 
 def _texte_a_traduire(acte, section, lecture=None):

@@ -207,6 +207,16 @@ LIBELLES = {
         'quitus_en_attente': (
             'Le quitus sera établi lorsque le prix aura été payé en '
             'totalité : il reste {montant} à régler.'),
+        # Clôture d'une vente non soldée : chapeau, titre et certificat qui
+        # n'affirment aucun paiement (recette finale, S1).
+        'chapeau_cloture_du': (
+            'Ce document deviendra votre quitus et votre certificat de '
+            'garantie dès que le prix sera réglé en totalité. Il reste '
+            "aujourd'hui <b>{reste}</b> à régler."),
+        'attestation_du': 'Le paiement du prix',
+        'certificat_intro_du': (
+            'Garanties prévues au contrat, à compter de la réception des '
+            "travaux, le {date}, à l'adresse {adresse}."),
     },
     'ar': {
         'etape_contrat_installation': 'العقد',
@@ -380,6 +390,13 @@ LIBELLES = {
         'quitus_en_attente': (
             'سيُحرَّر إبراء الذمة عند أداء الثمن بكامله: يبقى {montant} '
             'للأداء.'),
+        'chapeau_cloture_du': (
+            'ستصبح هذه الوثيقة إبراءً للذمة وشهادةً للضمان فور أداء الثمن '
+            'بكامله. ويبقى إلى غاية اليوم <b>{reste}</b> للأداء.'),
+        'attestation_du': 'أداء الثمن',
+        'certificat_intro_du': (
+            'الضمانات المنصوص عليها في العقد، ابتداءً من تسلُّم الأشغال '
+            'بتاريخ {date}، في {adresse}.'),
     },
 }
 

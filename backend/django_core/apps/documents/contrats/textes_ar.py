@@ -295,12 +295,14 @@ def _contrat_installation(ctx, options):
             "الاستعمال: فهذه الأرقام ليست وعدًا بتحقيق نتيجة.",
         ]),
     ]
+    # استرجاع المعدات يفترض شرط الاحتفاظ بالملكية.
     retard = [
         "إذا لم يُنجَز أداءٌ في تاريخه المحدد، توجّه {societe} إلى الزبون "
         "إنذارًا كتابيًا. وإذا انقضى أجل {delai_mise_en_demeure} دون أن "
         "يُحدث الإنذار أثرًا، أمكن {societe} أن توقف الأشغال، ثم أن تطالب "
-        "قضائيًا بأداء المبالغ المستحقة أو باسترجاع المعدات التي ظلّت في "
-        "ملكيتها.",
+        "قضائيًا بأداء المبالغ المستحقة"
+        + (" أو باسترجاع المعدات التي ظلّت في ملكيتها."
+           if options.get('reserve_propriete', True) else "."),
     ]
     if options.get('penalite_retard_pct'):
         retard.append(
@@ -424,8 +426,9 @@ def _pv_reception(ctx, options):
         ('retard', 'التأخر في الأداء', [
             "إذا لم يُؤدَّ باقي الثمن، توجّه {societe} إلى الزبون إنذارًا "
             "كتابيًا. وإذا انقضى أجل {delai_mise_en_demeure} دون أن يُحدث "
-            "الإنذار أثرًا، أمكن {societe} أن تطالب قضائيًا بأداء باقي الثمن "
-            "أو باسترجاع المعدات التي ظلّت في ملكيتها.",
+            "الإنذار أثرًا، أمكن {societe} أن تطالب قضائيًا بأداء باقي الثمن"
+            + (" أو باسترجاع المعدات التي ظلّت في ملكيتها."
+               if options.get('reserve_propriete', True) else "."),
         ] + (["بعد انقضاء هذا الأجل، تستحق {societe} تعويضًا جزافيًا قدره "
               "{penalite_retard} من المبالغ غير المؤداة، مرة واحدة فقط."]
              if options.get('penalite_retard_pct') else [])),
@@ -488,15 +491,18 @@ def articles_par_defaut(type_acte, variante='', ctx=None, options=None):
     raise ValueError(f"Type d'acte inconnu : {type_acte!r}")
 
 
-def quitus_par_defaut(ctx):
+def quitus_par_defaut(ctx, options=None):
+    """Jumeau de ``textes.quitus_par_defaut`` : sans réserve de propriété
+    (celle du contrat), aucune phrase sur la propriété."""
+    reserve = (options or {}).get('reserve_propriete', True)
     return [_f(p, ctx) for p in (
         # Sans montant en lettres ; {ecart_regle} : phrase précédée d'une
         # espace, ou vide (revue 1, S2).
         "تشهد {societe} بأنها توصّلت من {client} بمبلغ إجمالي قدره "
         "**{total_regle}**، تسديدًا كاملًا لثمن المنظومة موضوع العقد "
         "{contrat_reference}.{ecart_regle}",
-        "تبرأ ذمة الزبون تجاه {societe} من ثمن هذا العقد. وتؤول إليه ملكية "
-        "جميع المعدات بصفة نهائية.",
+        "تبرأ ذمة الزبون تجاه {societe} من ثمن هذا العقد."
+        + (" وتؤول إليه ملكية جميع المعدات بصفة نهائية." if reserve else ""),
     )]
 
 

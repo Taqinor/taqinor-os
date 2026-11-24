@@ -230,9 +230,9 @@ def articles_en_jetons(textes, type_acte, variante, options, ctx):
                                                 options)]
 
 
-def quitus_en_jetons(textes, ctx):
+def quitus_en_jetons(textes, ctx, options=None):
     return [_jetons_sentinelles(p)
-            for p in textes.quitus_par_defaut(_sentinelles(ctx))]
+            for p in textes.quitus_par_defaut(_sentinelles(ctx), options)]
 
 
 # ── Résolution : textes stockés → jetons ────────────────────────────────────
@@ -914,11 +914,21 @@ _VALIDATEURS = {
 }
 
 
+#: Options qui n'existent qu'au CONTRAT (une par chantier) : les autres actes
+#: les lisent sur lui (``contenu.Lecture.reserve_du_contrat``) ; reçues pour
+#: un autre acte, elles sont ignorées (l'écran les renvoie avec la section).
+OPTIONS_DU_CONTRAT = ('reserve_propriete',)
+
+
 def _valider_section(type_acte, section, valeur, langue):
     validateur = _VALIDATEURS.get(section)
     if validateur is None:
         raise ContenuInvalide(f'Section inconnue : {section}.')
-    return validateur(valeur, langue)
+    propre = validateur(valeur, langue)
+    if section == 'options' and type_acte != T.CONTRAT:
+        for cle in OPTIONS_DU_CONTRAT:
+            propre.pop(cle, None)
+    return propre
 
 
 def valider_surcharges(type_acte, surcharges, langue='fr'):

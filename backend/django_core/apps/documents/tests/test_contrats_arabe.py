@@ -147,6 +147,34 @@ class JumeauDesTextesTests(unittest.TestCase):
             [p.count('\n- ') for p in textes_ar.entretien_par_defaut()],
             [p.count('\n- ') for p in textes.entretien_par_defaut()])
 
+    def test_reserve_de_propriete_conditionne_chaque_phrase(self):
+        """Recette finale, S2 : sans réserve de propriété, aucune phrase des
+        deux langues ne la suppose (« Retard de paiement » du contrat et de
+        la réception sans restitution, quitus sans propriété acquise) ;
+        avec elle, chaque phrase est là, comme avant."""
+        phrases = {textes: ('propriété de', 'sa propriété', 'restitution'),
+                   textes_ar: ('ملكية', 'ملكيتها', 'استرجاع')}
+        for module, (propriete, sienne, restitution) in phrases.items():
+            for (type_acte, variante), reserve in itertools.product(
+                    CAS, (True, False)):
+                with self.subTest(module=module.__name__, type=type_acte,
+                                  variante=variante, reserve=reserve):
+                    options = {'reserve_propriete': reserve}
+                    arts = {a['cle']: ' '.join(a['paragraphes']) for a in
+                            module.articles_par_defaut(type_acte, variante,
+                                                       {}, options)}
+                    quitus = ' '.join(module.quitus_par_defaut({}, options))
+                    tout = ' '.join(arts.values()) + ' ' + quitus
+                    if not reserve:
+                        for phrase in (propriete, sienne, restitution):
+                            self.assertNotIn(phrase, tout)
+                        continue
+                    if 'retard' in arts:
+                        self.assertIn(restitution, arts['retard'])
+                    if type_acte == 'pv_livraison':
+                        self.assertIn(propriete, arts['propriete'])
+                    self.assertIn(propriete, quitus)
+
     def test_consommateur_ou_entreprise_dans_les_deux_langues(self):
         """Revue 1, T13 et T14 : le tribunal du certificat de garantie et la
         clause « traduction arabe » suivent ``consommateur``, en français

@@ -230,6 +230,14 @@ class RenduPdfTests(unittest.TestCase):
             with self.subTest(langue=langue):
                 pages = pages_pdf(pdf_de(cloture_non_soldee(langue)))
                 self.assertEqual(len(pages), 3)
+                if langue == 'fr':
+                    # S1 : le PDF lu ne dit aucun paiement (l'extraction
+                    # du texte arabe d'un PDF n'est pas fiable : l'arabe est
+                    # vérifié sur le HTML).
+                    texte = re.sub(r'\s+', ' ', ' '.join(
+                        t for t, _tete in pages))
+                    for phrase in PAIEMENT_AFFIRME['fr']:
+                        self.assertNotIn(phrase, texte)
 
     def test_pdf_signe_porte_le_nom(self):
         contenu = copy.deepcopy(exemples()[0][1])
@@ -285,6 +293,50 @@ class BrouillonEtClotureHtmlTests(unittest.TestCase):
                 self.assertNotIn(libelle('paye_integralement', langue), html)
                 self.assertNotIn('définitivement acquise', html)
                 self.assertNotIn('class="encadre ok quitus"', html)
+
+    def test_cloture_non_soldee_aucune_phrase_de_paiement(self):
+        """Défaut attrapé (recette finale, S1) : avec un reste dû, le
+        chapeau du brouillon disait encore « Votre installation est payée…
+        il prouve votre paiement », le titre « Attestation de paiement
+        intégral » et la société signait sous le quitus en attente. Payée,
+        la clôture est inchangée."""
+        from apps.documents.contrats.rendu import composants as c
+        from apps.documents.contrats.rendu.libelles import libelle
+        for langue in ('fr', 'ar'):
+            with self.subTest(langue=langue):
+                texte = texte_html(html_de(cloture_non_soldee(langue)))
+                for phrase in PAIEMENT_AFFIRME[langue]:
+                    self.assertNotIn(phrase, texte)
+                reste = c.montant('110400.00', langue=langue)
+                self.assertIn(texte_html(libelle(
+                    'chapeau_cloture_du', langue, reste=reste)), texte)
+                self.assertIn(libelle('attestation_du', langue), texte)
+                self.assertNotIn('class="signatures"', html_de(
+                    cloture_non_soldee(langue)))
+        payee = exemple('cloture_garanties')
+        html = html_de(payee)
+        self.assertIn(libelle('chapeau_cloture'), html)
+        self.assertIn(libelle('attestation'), html)
+        self.assertIn('class="signatures"', html)
+        self.assertIn('class="encadre ok quitus"', html)
+
+
+#: Ce qu'une clôture non soldée ne dit jamais (S1), français et arabe.
+PAIEMENT_AFFIRME = {
+    'fr': ('payée', 'Payé intégralement', 'prouve votre paiement',
+           'plus rien à régler', 'acquise', 'paiement intégral'),
+    'ar': ('مؤدّاة ومضمونة', 'تثبت أداءكم', 'لا شيء يُؤدّى بعد الآن',
+           'بصفة نهائية', 'شهادة الأداء الكامل', 'مؤدّى بالكامل'),
+}
+
+
+def texte_html(html):
+    """Le texte lu d'une page : sans feuille de style ni balises, espaces
+    (insécables comprises) ramenées à une seule."""
+    html = re.sub(r'<style>.*?</style>|<title>.*?</title>', '', html,
+                  flags=re.S)
+    return re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', '', html)).replace(
+        ' ', ' ')
 
 
 class ReferencesDeLoiTests(unittest.TestCase):

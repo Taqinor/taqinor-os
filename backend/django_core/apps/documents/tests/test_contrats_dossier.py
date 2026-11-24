@@ -461,6 +461,21 @@ class GarantiesDuContratTests(TestCase):
             contenu_ar=K.construire_contenu(contrat, 'ar'), surcharges={})
         self.assertEqual(pose()[0]['duree_mois'], 36)
 
+    def test_reserve_de_propriete_lue_sur_le_contrat(self):
+        """S2 par la base : la réserve décochée sur le contrat (brouillon, puis
+        contenu figé une fois signé) vaut pour les trois autres actes."""
+        v = Vente(self)
+        S.modifier(v.acte(T.CONTRAT), {'options': {'reserve_propriete': False}}, v.user)
+        for fige in (False, True):
+            if fige:
+                contrat = v.acte(T.CONTRAT)
+                ActeContractuel.objects.filter(pk=contrat.pk).update(
+                    statut=T.SIGNE, contenu=K.construire_contenu(contrat), surcharges={})
+            for type_acte, variante, _rang in T.LIGNES_DOSSIER[1:]:
+                c = K.construire_contenu(v.acte(type_acte, variante))
+                self.assertIs(c['options']['reserve_propriete'], False)
+                self.assertNotIn('propriete', [a['cle'] for a in c['articles']])
+
 
 @tag('pdf')
 class EmissionTests(TestCase):
@@ -1156,8 +1171,10 @@ class LecturePure(K.Lecture):
 
     def __init__(self, chantier, vente, *, modeles=None, date_contrat=None,
                  garanties=None, societe='Solaire Exemple SARL',
-                 garanties_contrat=None, reception_signee=None):
+                 garanties_contrat=None, reception_signee=None,
+                 reserve_contrat=None):
         super().__init__(chantier)
+        self._reserve_contrat = reserve_contrat
         self._societe = societe
         self._garanties_contrat = garanties_contrat or {}
         self._reception_signee = reception_signee
@@ -1199,6 +1216,9 @@ class LecturePure(K.Lecture):
 
     def date_reception_signee(self):
         return self._reception_signee
+
+    def reserve_du_contrat(self):
+        return self._reserve_contrat
 
     def vente(self):
         return self._vente
@@ -1828,6 +1848,55 @@ class GarantiesDuContratPursTests(SimpleTestCase):
         self.assertEqual(cloture.lire()['reception']['date'], '2026-12-21')
 
 
+#: Les phrases qui supposent la réserve de propriété (S2), par langue.
+RESERVE = {'fr': ('propriété de', 'sa propriété', 'restitution'),
+           'ar': ('ملكية', 'ملكيتها', 'استرجاع')}
+
+
+class ReserveDuContratPursTests(SimpleTestCase):
+    """S2 (recette finale) : une réserve de propriété par chantier."""
+
+    def test_reglee_au_contrat_suivie_par_tout_le_dossier(self):
+        """Défaut attrapé : réserve décochée sur le contrat, livraison et
+        réception imprimaient « Le matériel reste la propriété de… » et les
+        deux « Retard de paiement » « la restitution du matériel resté sa
+        propriété », en français et en arabe. Cochée : chaque acte la dit."""
+        from apps.documents.contrats.rendu import html_de
+        vente = vente_pure(paiements=[('2026-12-21', '100000')])
+        for reserve in (False, True):
+            contrat = Ecran(T.CONTRAT, vente=vente)
+            contrat.enregistrer({'options': options_ecran(
+                contrat.lire(), reserve_propriete=reserve)})
+            lue = contrat.lire()['options']['reserve_propriete']
+            for type_acte, variante in CINQ_ACTES:
+                e = contrat if type_acte == T.CONTRAT else Ecran(
+                    type_acte, variante, vente=vente, reserve_contrat=lue)
+                for langue in T.LANGUES:
+                    with self.subTest(reserve=reserve, acte=type_acte,
+                                      variante=variante, langue=langue):
+                        c = e.lire(langue)
+                        texte = re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', '',
+                                       html_de(c).split('</style>')[-1]))
+                        dit = [p for p in RESERVE[langue] if p in texte]
+                        self.assertIs(c['options']['reserve_propriete'],
+                                      reserve)
+                        self.assertEqual(bool(dit), reserve, dit)
+
+    def test_les_autres_actes_ne_la_reglent_plus(self):
+        """Envoyée par l'écran d'un procès-verbal, l'option est ignorée ; la
+        pénalité de l'acte passe. Le contrat, lui, la règle."""
+        for type_acte, variante in CINQ_ACTES[1:4]:
+            propre = G.valider_surcharges(type_acte, {'options': {
+                'reserve_propriete': False, 'penalite_retard_pct': 2}})
+            self.assertEqual(propre['options'], {'penalite_retard_pct': '2'})
+            e = Ecran(type_acte, variante, reserve_contrat=True)
+            e.enregistrer({'options': options_ecran(e.lire(),
+                                                    reserve_propriete=False)})
+            self.assertIs(e.lire()['options']['reserve_propriete'], True)
+        self.assertIn('reserve_propriete', G.valider_surcharges(
+            T.CONTRAT, {'options': {'reserve_propriete': False}})['options'])
+
+
 class FaitsFrancaisEnArabePursTests(SimpleTestCase):
     """C4 (recette sur écran réel) : le document arabe n'omet aucun fait."""
 
@@ -1864,6 +1933,26 @@ class FaitsFrancaisEnArabePursTests(SimpleTestCase):
         self.assertEqual([k['cochee'] for k in ar['constats']],
                          [True, False, True, True])
         self.assertEqual(ar['constats'][0]['texte'], 'نص 0')
+
+    def test_avertissement_arabe_dit_ce_qui_est_vrai(self):
+        """Défaut attrapé (recette finale, S3) : cocher une case suffisait à
+        afficher « La traduction arabe ne reprend pas vos modifications de :
+        constats » ; les cases sont communes et les textes libres français
+        s'impriment tels quels dans l'acte arabe."""
+        def arabes():
+            return [a for a in K.avertissements(e.acte, None, e.lecture()) if 'arabe' in a]
+        francais = "Dans l'acte arabe, ces textes s'impriment en français : {}. Traduisez-les si le client lit l'arabe."
+        e = Ecran(T.LIVRAISON, T.RESTE_A_REGLER)
+        coches = [dict(k, cochee=True) for k in e.lire()['constats']]
+        e.enregistrer({'constats': coches})
+        self.assertEqual(arabes(), [])
+        e.enregistrer({'constats': coches + [{'texte': 'Un carton abîmé.', 'cochee': True}],
+                       'reserves': ['Rayure sur le coffret.'], 'conditions_particulieres': 'Accès nord.'})
+        self.assertEqual(arabes(), [francais.format('constats ajoutés, réserves, conditions particulières')])
+        e.enregistrer({'articles': articles_ecran(e.lire(), {'constat': ajouter(' Vérifié à deux.')})})
+        e.enregistrer({'reserves': ['خدش على العلبة.']}, 'ar')
+        self.assertEqual(arabes(), [francais.format('constats ajoutés, conditions particulières'),
+                                    'La traduction arabe ne reprend pas vos modifications de : articles.'])
 
 
 class EcranAllerRetourTests(SimpleTestCase):
