@@ -16,8 +16,10 @@ TROIS GARDES, UN SEUL JOB
   réglages et matériel compris) est comparée à celle du résultat déjà
   enregistré : égale ⇒ ``a_jour``, rien n'est lancé.
 * **Pas de double** : un job déjà en file ou en cours pour la même empreinte
-  (marqueur de cache posé au lancement) ⇒ ``deja_en_file``. Dix enregistrements
-  qui se suivent, une seule simulation.
+  (marqueur de cache posé au lancement) ⇒ ``deja_en_file`` ; un job encore EN
+  ATTENTE d'une AUTRE empreinte aussi (ACAL2033 : il relit le document à son
+  départ, donc simule le dernier état). Dix enregistrements en rafale, un
+  seul job.
 * **Pas de boucle** : écrire le résultat (``resultat``) ne passe JAMAIS par
   ``enregistrer_layout`` ; la tâche n'appelle donc jamais ce module.
 
@@ -75,10 +77,8 @@ def _manquants_du_materiel(contexte):
     return manquants
 
 
-def simulation_automatique_en_cours(calepinage):
-    """Le job de simulation PARTI SEUL et encore en file ou en cours pour ce
-    calepinage (identifiant), ou ``None`` : de quoi dire « Simulation en
-    cours… » sans clic. Lecture pure."""
+def _job_du_marqueur(calepinage, *statuts):
+    """Le job du marqueur s'il est dans l'un des ``statuts``, sinon ``None``."""
     from core import cache as cache_tenant
     from core.models import BackgroundJob
 
@@ -87,11 +87,17 @@ def simulation_automatique_en_cours(calepinage):
     job_id = marqueur.get('job_id') if isinstance(marqueur, dict) else None
     if not job_id:
         return None
-    en_cours = BackgroundJob.objects.filter(
+    present = BackgroundJob.objects.filter(
         pk=job_id, company_id=calepinage.company_id,
-        statut__in=(BackgroundJob.STATUT_QUEUED,
-                    BackgroundJob.STATUT_RUNNING)).exists()
-    return job_id if en_cours else None
+        statut__in=[getattr(BackgroundJob, nom) for nom in statuts]).exists()
+    return job_id if present else None
+
+
+def simulation_automatique_en_cours(calepinage):
+    """Le job de simulation PARTI SEUL et encore en file ou en cours pour ce
+    calepinage (identifiant), ou ``None`` : de quoi dire « Simulation en
+    cours… » sans clic. Lecture pure."""
+    return _job_du_marqueur(calepinage, 'STATUT_QUEUED', 'STATUT_RUNNING')
 
 
 def etat_simulation_automatique(calepinage, empreinte):
@@ -190,6 +196,15 @@ def _lancer(calepinage, user, rendu):
             and marqueur.get('hash_entree') == empreinte
             and simulation_automatique_en_cours(calepinage)):
         return dict(rendu, etat=ETAT_EN_FILE, job_id=marqueur.get('job_id'))
+    # ACAL2033 — un job encore EN ATTENTE (pas démarré) relira le document à
+    # son départ : il simulera cet état-ci. Aucun second job ; le marqueur
+    # porte la dernière empreinte. Un job EN COURS ne compte pas ici.
+    en_file = _job_du_marqueur(calepinage, 'STATUT_QUEUED')
+    if en_file:
+        cache_tenant.set(calepinage.company_id, cle,
+                         {'hash_entree': empreinte, 'job_id': en_file},
+                         timeout=DUREE_MARQUEUR_S)
+        return dict(rendu, etat=ETAT_EN_FILE, job_id=en_file)
 
     job = submit(KIND_CALEPINAGE, tache_de_simulation,
                  company=calepinage.company, user=user,
