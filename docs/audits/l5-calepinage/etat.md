@@ -906,3 +906,123 @@ g. Étape 3 de la demande : écrans encore loin des maquettes v2 (Documents, Dé
    client au téléphone, Présentation, dessin sur la carte) — chaque écran réel à côté de sa maquette, même taille.
 h. PARTIE 2 (test utilisateur complet) : rien n'en est commencé. Instantané anonymisé à refaire (celui du poste date
    du 30/09), pile de revue à monter sur le code fusionné, préremplissage sourcé, relecteurs neufs.
+
+## SESSION du 24/11, seconde partie (après la remise à zéro du quota, 10 h UTC) — REPRENDRE ICI
+
+Quota relu à 10 h 06 UTC : 0 % (les deux fenêtres). Les quatre PR du matin sont fusionnées (#1540, #1541, #1542,
+#1543) ET déployées (lu en lecture seule : la prod sert `cdaf0d30b1`). Branche d'intégration locale de cette partie :
+`dev-moteur-e2b` (partie d'`origin/main@cdaf0d30b1`). Claims reprises à 10 h 10 (propriétaire
+`DESKTOP-APTAHF6/dev-moteur-unique`) : plans DEVIS, CALEPINAGE, LEAD, TRANSVERSE, GENERATEUR ; apps ventes, core,
+calepinage, crm, web.
+
+### Instrument de revue `l5t` (pile privée et jetable — fiche)
+
+- Front : http://127.0.0.1:5251 (aperçu Vite du build d'`origin/main@cdaf0d30b1`, relaie `/api/django` vers le
+  serveur) · serveur : http://127.0.0.1:8031 (gunicorn 2 processus × 2 fils, 1,2 Go) · worker Celery à UN processus
+  (`--max-tasks-per-child 1`, 2,3 Go, files default, scheduled, bulk, interactive ; pas de planificateur) · MinIO et
+  Redis à soi (`l5t-minio`, `l5t-redis`, réseau `l5t-net`) · base `l5t` dans le Postgres partagé (clonée de
+  `test_erp_lane_base`, puis `migrate`, `seed_demo`, `seed_catalogue`).
+- Code servi : worktree `C:/dev/taqinor-os/.claude/worktrees/l5t-instr` (détaché, jamais édité ; mise à jour par
+  `git -C … checkout --detach <sha>` puis `bash lancer.sh serveur` et un nouveau build du front).
+- Lanceur : scratchpad `l5t/lancer.sh` (étapes `base`, `serveur`, `tout`) — environnement bâti depuis `.env.example`
+  seul, toutes les variables à clé vidées, seules `DB_USER` et `DB_PASSWORD` viennent du vrai `.env`.
+- Contrôle du tour 0 (24/11, 10 h 40 UTC) : backend d'envoi console, réseau `l5t-net` seul, écoute 127.0.0.1 seule,
+  `ASSISTANT_COPILOTE=aucun`, `FASTAPI_INTERNAL_URL` mort, WhatsApp éteint. Deux variables « à clé » non vides,
+  admises comme le 23/11 : `PUBLIC_MAPTILER_KEY=factice-l5t` (sans clé l'atelier refuse de démarrer ; fond de carte
+  gris) et `GPG_KEY` (empreinte publique de l'image Python).
+- Comptes de revue (rôle « Directeur » de la société de démonstration, copiés de `demo_admin`) : `rev_a`, `rev_b`,
+  `rev_c`, `rev_d`, `rev_orch` ; mot de passe : ligne `REV_PW=` de `l5t/env.local` (scratchpad, jamais écrit ailleurs).
+- Mémoire rendue : `erp-agentique-django_core-1` et `erp-agentique-fastapi_ia-1` (pile de dev partagée, au repos)
+  ARRÊTÉS à 10 h 45 UTC — à relancer au démontage : `docker start erp-agentique-django_core-1 erp-agentique-fastapi_ia-1`.
+- Démontage (à cocher à la fin) : `docker rm -f l5t-django l5t-celery l5t-minio l5t-redis`, `docker network rm
+  l5t-net`, tuer l'aperçu du port 5251, `DROP DATABASE l5t`, effacer `l5t/l5t.env` et `l5t/env.local`, retirer le
+  worktree `l5t-instr`, relancer les deux conteneurs partagés.
+
+### En vol (24/11, 10 h 50 UTC) — au plus 4 agents de fond sur ce poste
+
+- **Extraction ADEV160** (opus) : d'abord le figeage étendu (conception électrique, taille souhaitée, contour du
+  toit…), puis l'extraction du pipeline pur ; base de test privée suffixe `x1`. À son retour : relecture adverse du
+  diff par un opus NEUF avant fusion, puis la lane du moteur ADEV133 → ADEV138.
+- **Écrans sur les maquettes v2** (brief : scratchpad `brief-lane-ecrans.md` ; chaque lane installe et construit le
+  front dans son worktree, le sert sur son port contre le serveur 8031, capture maquette | réel à la taille native
+  et range la planche sous `docs/audits/l5-calepinage/T4/preuves/`) :
+  - lane `documents` (sonnet, port 5261, `rev_a`) : ACAL1725 → ACAL1726 → ACAL1834 → ACAL1943 ;
+  - lane `releve-client` (sonnet, port 5262, `rev_b`) : ACAL1814 → ACAL1836 → ACAL1817 → ACAL1837 → ACAL1838
+    (Présentation = la même route `/calepinage/<id>/client` à 1440 × 900) ;
+  - À LANCER quand une place se libère : lane `coque` (opus, port 5263, `rev_c`) : ACAL1835 (Tablette), ACAL1826
+    (Démarrage rapide), ACAL2030 (mode Expert) ; lane `dessin` (opus, port 5264, `rev_d`, vraie installation
+    d'`apps/web`) : ACAL1984 (teinte des panneaux), ACAL1944 (étiquettes de chaîne), ACAL1981, ACAL1920 → ACAL1924
+    (cotes), contour doré du toit (AUCUNE tâche au plan : à écrire), ACAL2031, ACAL2032 ; puis ACAL1820 → ACAL1839
+    (scène 3D présentable, touche `client/HabillageClient.jsx` : après le pli de `releve-client`) et ACAL1806 (spec
+    des maquettes passée à la v2, 14 planches).
+  - Les prérequis de ces tâches sont « code livré, preuve en direct due » (ACAL1800, 1802, 1803, 1807, 1809, 1812,
+    1705, 1516) : le code est sur `main`, on construit dessus ; leur preuve en direct sera jouée par l'orchestrateur
+    sur l'instrument, et tout sera rejoué au test utilisateur de la partie 2.
+- **Repérage des réglages** (sonnet, lecture seule) : tout ce que les moteurs lisent et que l'instantané anonymisé ne
+  porte pas (réglages du calepinage, fiches techniques, forfaits C&I, rôles…) — pour le préremplissage de la partie 2.
+
+### Partie 2, préparation
+
+- Instantané anonymisé refait le 24/11 à 10 h 12 UTC (lecture seule de la prod, `qa_export_anonymise --out -`) :
+  `C:/dev/taqinor-os/var/anon/2026-11-24.anon.json.gz` (5 Mo, hors dépôt) — 1 207 leads, 270 clients, 542 devis
+  (361 brouillons, 105 expirés, 64 envoyés, 7 acceptés, 5 refusés), 8 057 lignes, 226 produits, 20 factures, 21
+  chantiers. L'instantané ne porte NI les fiches techniques (`stock.FicheTechnique`), NI les réglages du calepinage,
+  NI les calepinages : à préremplir (sourcé) dans la copie.
+- Catalogue de la copie : 6 panneaux, 13 onduleurs réseau, 10 hybrides, 7 batteries, 20 pompes (11 sans prix), 22
+  variateurs, 99 « Protection & accessoires » (66 sans prix), 24 câbles (5 sans prix), 15 structures (6 sans prix), 8
+  prestations (4 sans prix). Liste par produit et par usage : scratchpad `produits-anon.txt`.
+
+### Point du 24/11, ~12 h 30 UTC (le plus récent)
+
+**Branches locales d'intégration** (worktree de l'orchestrateur ; sauvegarde poussée sur `notes-l5-2411`) :
+`dev-ecrans-v2` = `origin/main@cdaf0d30b1` + les documents de la partie 2 + les lanes `releve-client` et `documents`
+pliées ; `dev-moteur-e2b` = point de départ de la suite du moteur (rien de plié encore).
+
+**Écrans sur les maquettes v2 (étape 3 de la demande)** — planches sous `T4/preuves/`, regardées par l'orchestrateur :
+- PLIÉES : `releve-client` [ACAL1814, 1836, 1817, 1837, 1838] — relevé, vue client téléphone et Présentation PROCHES :
+  les cadres, cartes, boutons et la barre du soleil sont à la maquette ; ce qui manque est la SCÈNE 3D (un grand bloc
+  gris au lieu d'une maison, panneaux noirs) — fichiers du moteur de dessin. `documents` [ACAL1725, 1726, 1834 ;
+  ACAL1943 contestée : ses prémisses sont fausses] — Documents PROCHE : trois colonnes, aperçu, pastilles, anneau ;
+  reste la tête « Étape 5 sur 5 » de la coque (88 px que la maquette n'a pas) et le pied du devis à plusieurs surfaces.
+- EN VOL : `coque` (opus, port 5263, `rev_c`) [ACAL1835 Tablette — livrée —, ACAL1826 Démarrage rapide, ACAL2030
+  Expert, puis trois demandes croisées : tête d'étape retirée là où la maquette n'en a pas, pied du devis compact,
+  une seule règle `flex` pour la vue client] ; `dessin` (opus, port 5264, `rev_d`, branche `lane/dessin` partie de
+  `dev-ecrans-v2`) [ACAL1984 teinte, 1981, 1820, 1839 scène 3D présentable et cadrage, 1944 chaînes, 1920, 1924 cotes,
+  ACAL2042 contour doré — tâche NEUVE que la lane écrit au plan avant de la construire] ; `spec-maquettes` (sonnet,
+  port 5265, `rev_a`) [ACAL1748, ACAL1806 : la spec permanente rend les 14 planches v2 | réel].
+- RESTENT : ACAL2031, ACAL2032 (`apps/web`, après la lane `dessin` : mêmes fichiers) ; un relecteur NEUF pour juger
+  les 14 planches (aucune lane ne se dit FIDÈLE : chacune s'est jugée seule).
+- À la fusion : couture sur l'arbre plié (vitest du module, eslint, build, gardes), PR `dev-ecrans-v2`, puis
+  l'instrument est remis sur le code poussé.
+
+**Moteur unique** : extraction ADEV160 EN VOL (opus) — figeage étendu livré (`ef400a21f8`), extraction en cours.
+
+**Partie 2, préparation — faite sur la pile `l5t`**
+- Copie anonymisée de la production importée (société `taqinor-anon`, compte `anon_admin` ; 10 420 lignes, 0 rejet).
+- Miroir de la production (lecture seule du 24/11) : 93 fiches techniques, réglages du calepinage, forfaits C&I,
+  délais. Scripts : scratchpad `prod_reglages.py` (sonde, lecture seule), `l5t/miroir_prod.py`.
+- Fiches techniques complétées d'après les fiches publiques des fabricants : 184 valeurs remplies, 22 corrigées,
+  chacune avec sa source — registre `T4/preremplissage.md` (écrit par script) ; journal `var/anon/journal-fiches-…`.
+- Inventaire de couverture `T4/couverture.md` (449 éléments) ; plan `T4/plan-test-utilisateur.md` (scénarios a-r et
+  balayages s-w).
+- EN VOL : recherche de prix publics des articles de pompage sans prix (sortie `var/anon/prix-sources-pompage.json`).
+- RESTE : « Remplir les réglages vides » par l'écran, mode météo et années, comptes aux quatre rôles, clé de carte,
+  prix sourcés à appliquer, puis les relecteurs.
+
+**Constats pour le fondateur (à dire au rapport ; la production n'est pas modifiée)**
+1. Fiches techniques de production en désaccord avec le fabricant (12 produits, détail `T4/preremplissage.md` § 5.1) :
+   Canadian Solar 715 W — courant de court-circuit 22,30 A sur la fiche, 18,64 A chez le fabricant ; deux panneaux
+   bifaciaux marqués non bifaciaux ; Deye 10 kW monophasé — tension maximale 600 V sur la fiche, 500 V imprimés ;
+   Deye 5 kW triphasé — la fiche décrit un autre produit (1 MPPT, 52 V) ; Huawei 5 kW — 22 A au lieu de 12,5 / 18 A ;
+   Huawei 50 kW — 6 MPPT au lieu de 4. Ces valeurs entrent dans le verdict panneau / onduleur et la longueur des chaînes.
+2. Réglages du calepinage de la production : ni mode météo, ni salissure, ni dégradation initiale, ni indisponibilité,
+   ni pertes de câbles — « Remplir les réglages vides » n'a pas été appliqué en production après le déploiement.
+3. Aucune des 11 pompes à courbe (OSP 30) n'a de prix ; seules les pompes sans courbe en ont : un devis automatique de
+   pompage avec pompe neuve ne peut pas être complet sur le catalogue réel.
+4. Modèles à identifier par le fondateur (plusieurs générations correspondent) : Deye 5 kW monophasé, Huawei 10 kW
+   triphasé (standard ou « High Current »), Deye hors réseau 6 kW.
+
+**Défauts candidats notés en passant (à rejouer en partie 2)**
+- Une simulation lancée sur un calepinage SANS point GPS échoue dans le worker à 5 % (`EntreeInvalide`, « sans point
+  GPS, aucune production ne peut être demandée ») au lieu d'être refusée avant le lancement — deux lanes l'ont prise
+  pour une panne de PVGIS (PVGIS et NASA POWER répondent bien depuis la pile : 200, série horaire 2014-2023 en 6,6 s).

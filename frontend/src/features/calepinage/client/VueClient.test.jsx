@@ -43,6 +43,20 @@ const rendre = (props = { webgl: false }) => render(
   </MemoryRouter>,
 )
 
+/** Les chiffres de la carte bleu nuit, dans l'ordre du DOM : la production en grand d'abord, puis les autres. */
+const chiffres = () => {
+  const carte = screen.queryByTestId('client-tuiles')
+  return carte ? [...carte.querySelectorAll('[data-testid^="client-tuile-"]')] : []
+}
+
+/** Le bureau (grand écran ≥ 1024 px) : `matchMedia` répond « vrai » à sa requête. */
+function auBureau() {
+  window.matchMedia = vi.fn((requete) => ({
+    matches: requete === '(min-width: 1024px)', media: requete,
+    addEventListener: () => {}, removeEventListener: () => {},
+  }))
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   reinitialiserBoot()
@@ -54,7 +68,7 @@ beforeEach(() => {
   })
   api.resultat.mockResolvedValue({ data: RESULTAT })
 })
-afterEach(() => { cleanup(); oublierLecturesServies() })
+afterEach(() => { cleanup(); oublierLecturesServies(); delete window.matchMedia })
 
 describe('Montrer au client — repli 2D, avec les seules données servies', () => {
   it('toit enregistré dessiné, puce du projet, trois tuiles dans l’ordre (la médiane marine), pied', async () => {
@@ -65,12 +79,14 @@ describe('Montrer au client — repli 2D, avec les seules données servies', () 
     expect(await screen.findByTestId('client-projet')).toHaveTextContent('Villa Bennani')
     // J1 — l'orientation lue sur la face SERVIE du pan (azimut 180°), jamais son libellé.
     expect(screen.getByTestId('client-projet')).toHaveTextContent('Casablanca · pan sud')
-    await waitFor(() => expect(screen.getByTestId('client-tuiles').children).toHaveLength(3))
-    const tuiles = [...screen.getByTestId('client-tuiles').children]
-    expect(tuiles.map((t) => t.dataset.testid)).toEqual(['client-tuile-panneaux', 'client-tuile-kwh', 'client-tuile-couverture'])
-    expect(tuiles[0]).toHaveTextContent('2panneaux')
-    expect(tuiles[1].textContent.replace(/\s/g, ' ')).toMatch(/^11.480kWh par an · estimation$/)
-    expect(tuiles[1].className).toContain('cal-client-tuile-marine')
+    await waitFor(() => expect(chiffres()).toHaveLength(3))
+    // ACAL1837 — UNE carte bleu nuit : la production en grand d'abord, puis les panneaux et la couverture.
+    const tuiles = chiffres()
+    expect(tuiles.map((t) => t.dataset.testid)).toEqual(['client-tuile-kwh', 'client-tuile-panneaux', 'client-tuile-couverture'])
+    expect(screen.getByTestId('client-tuiles').tagName).toBe('SECTION')
+    expect(tuiles[0].textContent.replace(/\s/g, ' ')).toMatch(/^11.480Estimation ?kWh par an$/)
+    expect(tuiles[0].querySelector('.cal-client-nuit-gros')).toHaveTextContent(/^11.480$/)
+    expect(tuiles[1]).toHaveTextContent('2panneaux')
     expect(tuiles[2]).toHaveTextContent('82 %')
     expect(screen.getByText('Estimation pour une année moyenne à Casablanca. Les montants figurent dans le devis.')).toBeInTheDocument()
     expect(screen.getByTestId('client-retour-releve')).toHaveTextContent('Retour au relevé')
@@ -84,18 +100,18 @@ describe('Montrer au client — repli 2D, avec les seules données servies', () 
       production: { total: { p50_kwh: 52695.1, complete: false, mention: 'borne haute — 17 pertes non renseignées' } },
     } })
     rendre()
-    await waitFor(() => expect(screen.getByTestId('client-tuiles').children).toHaveLength(2))
-    const tuiles = [...screen.getByTestId('client-tuiles').children]
+    await waitFor(() => expect(chiffres()).toHaveLength(2))
+    const tuiles = chiffres()
     expect(tuiles.map((t) => t.dataset.testid)).toEqual(['client-tuile-panneaux', 'client-tuile-kwc'])
     expect(tuiles[1]).toHaveTextContent('1,10kWc de puissance') // la pose servie du document (2 panneaux dessinés)
-    expect(tuiles[1].className).toContain('cal-client-tuile-marine')
+    expect(screen.getByTestId('client-tuiles').querySelector('.cal-client-pilule')).toBeNull() // pas de production : pas de pilule
     const texte = screen.getByTestId('cal-vue-client').textContent
     expect(texte).not.toMatch(/52.695|kWh|estimation|année moyenne|%/)
   })
 
   it('H2 — les lectures sont partagées : un seul design-context, un seul résultat, un seul document', async () => {
     rendre()
-    await waitFor(() => expect(screen.getByTestId('client-tuiles').children).toHaveLength(3))
+    await waitFor(() => expect(chiffres()).toHaveLength(3))
     expect(api.designContext).toHaveBeenCalledTimes(1)
     expect(api.resultat).toHaveBeenCalledTimes(1)
     expect(api.layout).toHaveBeenCalledTimes(1)
@@ -165,7 +181,7 @@ describe('Montrer au client — l’atelier en mode présentation (vraie 3D)', (
     const scene = document.getElementById('rp9-studio-scene')
     expect(await within(scene).findByTestId('client-projet')).toHaveTextContent('Villa Bennani')
     // Les tuiles et le pied de la maquette.
-    await waitFor(() => expect(screen.getByTestId('client-tuiles').children).toHaveLength(3))
+    await waitFor(() => expect(chiffres()).toHaveLength(3))
     expect(screen.getByTestId('client-envoyer-lien')).toBeDisabled()
     // Aucun bouton d'enregistrement : l'atelier est en lecture seule.
     expect(screen.queryByTestId('cal-enregistrer-calepinage')).toBeNull()
@@ -276,7 +292,7 @@ describe('Montrer au client — l’atelier en mode présentation (vraie 3D)', (
     reinitialiserBoot({ appliquerVue: vi.fn() })
     rendre({ webgl: true })
     await screen.findByTestId('client-soleil', {}, ATTENTE_ATELIER)
-    await waitFor(() => expect(screen.getByTestId('client-tuiles').children.length).toBeGreaterThan(0))
+    await waitFor(() => expect(chiffres().length).toBeGreaterThan(0))
     await new Promise((r) => { setTimeout(r, 300) })
     document.removeEventListener('click', ecoute, true)
     expect(clicEte).not.toHaveBeenCalled()
@@ -294,7 +310,7 @@ describe('Montrer au client — l’atelier en mode présentation (vraie 3D)', (
     reinitialiserBoot({ appliquerVue: vi.fn(), ...apiBuilder() })
     rendre({ webgl: true })
     await screen.findByTestId('client-soleil', {}, ATTENTE_ATELIER)
-    await waitFor(() => expect(screen.getByTestId('client-tuiles').children).toHaveLength(3))
+    await waitFor(() => expect(chiffres()).toHaveLength(3))
     const visible = texteVisible(screen.getByTestId('cal-coque'))
     expect(visible).not.toMatch(/MAD|DH\b|€|prix|marge|achat|Interne|Expert|Avancé|Enregistrer|Générer le devis/i)
     expect(visible).toContain('Envoyer le lien')
@@ -306,8 +322,8 @@ describe('J1 — tuiles tenues hors de l’atelier, orientation certaine', () =>
     api.resultat.mockRejectedValueOnce(Object.assign(new Error('timeout'), { code: 'ECONNABORTED' }))
     api.resultat.mockResolvedValue({ data: { ...RESULTAT, production: { total: { p50_kwh: 1, complete: false } } } })
     rendre()
-    await waitFor(() => expect(screen.getByTestId('client-tuiles').children).toHaveLength(1))
-    await waitFor(() => expect(screen.getByTestId('client-tuiles').children).toHaveLength(2), { timeout: 9000 })
+    await waitFor(() => expect(chiffres()).toHaveLength(1))
+    await waitFor(() => expect(chiffres()).toHaveLength(2), { timeout: 9000 })
     expect(api.resultat).toHaveBeenCalledTimes(2)
     expect(api.layout).toHaveBeenCalledTimes(1) // la lecture réussie n'est pas refaite
   })
@@ -363,10 +379,116 @@ describe('ACAL1840 — la tuile de production avant un résultat complet', () =>
     prod.textContent = '5 571 kWh/an'
     await waitFor(() => expect(screen.getByTestId('client-tuile-kwh')).toBeInTheDocument(), { timeout: 5000 })
     const tuile = screen.getByTestId('client-tuile-kwh')
-    expect(tuile.textContent.replace(/\s/g, ' ')).toMatch(/^5 571kWh par an · estimation de la pose$/)
+    expect(tuile.textContent.replace(/\s/g, ' ')).toMatch(/^5 571Estimation ?kWh par an$/)
     expect(screen.getAllByTestId('client-tuile-kwh')).toHaveLength(1)
     expect(screen.getByTestId('client-mention-estimation')).toHaveTextContent('Estimation de la pose')
     expect(texteVisible(screen.getByTestId('cal-coque'))).not.toMatch(/52.695|au plus|borne haute/)
     prod.textContent = '—'
+  })
+})
+
+/* ACAL1837 — « Montrer au client » au téléphone sur sa maquette v2 : l'attente présentable, la carte bleu nuit,
+   le pied (chevron, partage). Aucun chiffre ni prix de plus : seules les données servies. */
+describe('ACAL1837 — le téléphone sur sa maquette v2', () => {
+  it('en attente de la 3D : un ciel et une silhouette, aucun plan technique ; le plan dessus revient à l’échec', async () => {
+    const modePresentation = vi.fn(() => true) // jamais « prête » : la vue de trois quarts n'est pas posée
+    reinitialiserBoot({ appliquerVue: vi.fn(), modePresentation, cadrerToit: vi.fn(() => true) })
+    rendre({ webgl: true })
+    await screen.findByTestId('client-soleil', {}, ATTENTE_ATELIER)
+    expect(screen.getByTestId('client-repli-2d')).toBeInTheDocument()
+    expect(within(screen.getByTestId('client-repli-2d')).getByTestId('client-attente')).toBeInTheDocument()
+    expect(screen.queryByTestId('client-plan')).toBeNull()
+    expect(screen.getByTestId('client-voir-3d')).toHaveTextContent('La vue 3D se prépare…')
+  })
+
+  it('sans WebGL (aucune 3D à attendre) : le plan dessus du toit enregistré, pas la silhouette', async () => {
+    rendre({ webgl: false })
+    expect(await screen.findByTestId('client-plan')).toBeInTheDocument()
+    expect(screen.queryByTestId('client-attente')).toBeNull()
+  })
+
+  it('la carte bleu nuit groupe les chiffres : production en grand + pilule « Estimation », panneaux, couverture ; la mention est SOUS la carte', async () => {
+    rendre()
+    await waitFor(() => expect(chiffres()).toHaveLength(3))
+    const carte = screen.getByTestId('client-tuiles')
+    expect(carte).toHaveAttribute('aria-label', 'Votre installation en trois chiffres')
+    expect(carte.querySelector('.cal-client-pilule')).toHaveTextContent('Estimation')
+    expect(carte.querySelector('.cal-client-nuit-unite')).toHaveTextContent(/^kWh par an$/)
+    expect(carte.querySelectorAll('.cal-client-nuit-grille [data-testid^="client-tuile-"]')).toHaveLength(2)
+    expect(carte.querySelector('.cal-client-nuit-sur')).toBeNull() // le sur-titre est celui du bureau
+    const mention = screen.getByText('Estimation pour une année moyenne à Casablanca. Les montants figurent dans le devis.')
+    expect(carte.contains(mention)).toBe(false)
+  })
+
+  it('la puce porte le pictogramme maison ; le pied : chevron « Retour au relevé » + « Envoyer le lien » dit pourquoi il est grisé, en entier', async () => {
+    rendre()
+    expect(await screen.findByTestId('client-projet')).toHaveTextContent('Villa Bennani')
+    expect(screen.getByTestId('client-projet').querySelector('.cal-client-puce-icone svg')).not.toBeNull()
+    expect(screen.getByTestId('client-retour-releve').querySelector('svg')).not.toBeNull()
+    expect(screen.getByTestId('client-envoyer-lien').querySelector('svg')).not.toBeNull()
+    expect(screen.getByTestId('client-lien-raison').textContent).toMatch(/Envoyer au client.*sections du devis s’y choisissent\.$/)
+  })
+
+  it('la feuille : rayon 26, carte nuit 22, conseil de geste 32 px, boutons du pied 54 px de rayon 15 — lus dans la feuille de style', async () => {
+    const { readFileSync } = await import('node:fs')
+    const style = document.createElement('style')
+    style.textContent = ['49-jetons-v2.css', '50-coque-atelier.css', '58-telephone.css']
+      .map((f) => readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/${f}`, 'utf8')).join('\n')
+    document.head.appendChild(style)
+    try {
+      rendre()
+      await waitFor(() => expect(chiffres()).toHaveLength(3))
+      expect(getComputedStyle(document.querySelector('.cal-client-corps')).borderRadius).toBe('26px 26px 0 0')
+      expect(getComputedStyle(screen.getByTestId('client-tuiles')).borderRadius).toBe('var(--cal-rayon-carte)')
+      expect(getComputedStyle(screen.getByTestId('client-envoyer-lien')).height).toBe('54px')
+      expect(getComputedStyle(screen.getByTestId('client-envoyer-lien')).borderRadius).toBe('15px')
+      expect(getComputedStyle(screen.getByTestId('client-retour-releve')).height).toBe('54px')
+    } finally {
+      style.remove()
+    }
+  })
+})
+
+/* ACAL1838 — « Montrer au client » au BUREAU (≥ 1024 px, maquette Presentation) : mêmes pièces, autre disposition ; le pied
+   mène à l'atelier ; la carte héros porte son sur-titre et la mention ; la barre du soleil a ses repères ; aucun prix. */
+describe('ACAL1838 — le grand écran sur sa maquette v2', () => {
+  it('au bureau, le pied mène à l’atelier (« Retour à l’atelier »), jamais au relevé ; « Envoyer le lien » reste grisé et dit pourquoi', async () => {
+    auBureau()
+    rendre()
+    const retour = await screen.findByTestId('client-retour-atelier')
+    expect(retour).toHaveTextContent('Retour à l’atelier')
+    expect(retour.getAttribute('href')).toBe('/calepinage/7')
+    expect(screen.queryByTestId('client-retour-releve')).toBeNull()
+    expect(screen.getByTestId('cal-vue-client').textContent).not.toMatch(/Retour au relevé/)
+    expect(screen.getByTestId('client-envoyer-lien')).toBeDisabled()
+    expect(screen.getByTestId('client-lien-raison')).toBeInTheDocument()
+  })
+
+  it('la carte héros : « Votre toit produirait », la production, les chiffres servis et la mention DANS la carte ; aucun prix', async () => {
+    auBureau()
+    rendre()
+    await waitFor(() => expect(chiffres()).toHaveLength(3))
+    const carte = screen.getByTestId('client-tuiles')
+    expect(carte.querySelector('.cal-client-nuit-sur')).toHaveTextContent('Votre toit produirait')
+    expect(carte.querySelector('.cal-client-nuit-gros')).toHaveTextContent(/^11.480$/)
+    expect(carte).toHaveTextContent('Estimation pour une année moyenne à Casablanca. Les montants figurent dans le devis.')
+    expect(carte.textContent).not.toMatch(/MAD|DH\b|€|prix|marge|achat/i)
+    expect(screen.getByTestId('cal-vue-client').textContent).not.toMatch(/MAD|DH\b|€|prix|marge|achat/i)
+  })
+
+  it('la barre du soleil : « Soleil », l’heure, des repères de la borne basse à la borne haute SERVIES, Hiver | Été ; le conseil dit « Glissez pour tourner autour »', async () => {
+    auBureau()
+    let prete = null
+    const modePresentation = vi.fn((actif, vue) => { if (actif) prete = vue.surPrete; return actif })
+    reinitialiserBoot({ appliquerVue: vi.fn(), modePresentation, cadrerToit: vi.fn(() => true) })
+    rendre({ webgl: true })
+    const lecteur = await screen.findByTestId('client-soleil', {}, ATTENTE_ATELIER)
+    expect(within(lecteur).getByText('Soleil')).toBeInTheDocument()
+    const reperes = [...lecteur.querySelectorAll('.cal-client-soleil-reperes span')].map((s) => s.textContent)
+    expect(reperes).toEqual(['6 h', '9 h', '12 h', '15 h', '18 h'])
+    expect(within(lecteur).getByRole('button', { name: 'Hiver' })).toBeInTheDocument()
+    act(() => prete())
+    expect(await screen.findByTestId('client-aide-geste')).toHaveTextContent(/^Glissez pour tourner autour$/)
+    expect(await screen.findByTestId('client-retour-atelier')).toBeInTheDocument()
   })
 })
