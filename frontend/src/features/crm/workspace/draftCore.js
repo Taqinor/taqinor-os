@@ -216,6 +216,10 @@ export function isSuggested(state, key) {
 // Les champs éditables de chaque section du centre (regroupement de
 // TRACKED_KEYS). `origine` en est absente : elle n'affiche que des données
 // serveur, jamais un champ — et elle est déjà repliée par défaut.
+// Segments professionnels : leur fiche porte la section « Professionnel »
+// (donc l'ICE dans cette section) ; les autres types l'ont sous « Société ».
+export const SEGMENTS_PRO = ['commercial', 'industriel']
+
 export const SECTION_FIELDS = {
   contact: ['nom', 'prenom', 'societe', 'email', 'telephone', 'whatsapp',
     'adresse', 'ville', 'gps_lat', 'gps_lng'],

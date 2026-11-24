@@ -5,6 +5,7 @@ import { axe } from 'vitest-axe'
 import * as axeMatchers from 'vitest-axe/matchers'
 import { initState, dirtyKeys, reducer } from '../draftCore'
 import fieldLabels from '../fieldLabels'
+import { sectionDuChamp } from '../missingFields'
 import { nettoyerSectionsPane, sectionsPaneBase } from '../../../../test/sectionsPaneSetup'
 import { documentContrat } from '../../../../test/fixtures/contractSamples'
 import SectionContact from './SectionContact'
@@ -901,6 +902,36 @@ describe('CIQ418 — SectionPro : chaque colonne du contrat est atteignable', ()
     expect(document.getElementById('lf-tranche-onee')).toBeInTheDocument()
     expect(document.getElementById('lf-raccordement').closest('[data-nav-id]').dataset.navId).toBe('energie')
     expect(container.querySelector('[data-nav-id="equipements"]')).not.toBeNull()
+  })
+
+  it('lead résidentiel AVEC société : un champ « ICE » sous « Société », dans la section contact', () => {
+    const { container } = monterPane({ id: 9, nom: 'Villa', type_installation: 'residentiel', societe: 'Atlas SARL' })
+    expect(container.querySelectorAll('#lf-ice')).toHaveLength(1)
+    expect(document.getElementById('lf-ice').closest('[data-nav-id]').dataset.navId).toBe('contact')
+  })
+
+  it('lead résidentiel SANS société : pas de champ ICE', () => {
+    const { container } = monterPane({ id: 9, nom: 'Villa', type_installation: 'residentiel', societe: '' })
+    expect(container.querySelector('#lf-ice')).toBeNull()
+  })
+
+  it('lead résidentiel sans société mais ICE déjà saisi : le champ reste visible', () => {
+    const { container } = monterPane({ id: 9, nom: 'Villa', type_installation: 'residentiel', societe: '', ice: '001234567000089' })
+    expect(container.querySelectorAll('#lf-ice')).toHaveLength(1)
+  })
+
+  it('lead professionnel avec société : UN seul champ ICE, dans « Professionnel »', () => {
+    toutDeplier()
+    const { container } = monterPane({ id: 9, nom: 'Usine', type_installation: 'industriel', societe: 'Atlas SARL' })
+    expect(container.querySelectorAll('#lf-ice')).toHaveLength(1)
+    expect(document.getElementById('lf-ice').closest('[data-nav-id]').dataset.navId).toBe('pro')
+  })
+
+  it('« aller au champ ICE » vise le contact hors segment pro, « pro » pour un lead pro', () => {
+    expect(sectionDuChamp('ice', 'residentiel')).toBe('contact')
+    expect(sectionDuChamp('ice', null)).toBe('contact')
+    expect(sectionDuChamp('ice', 'commercial')).toBe('pro')
+    expect(sectionDuChamp('ice', 'industriel')).toBe('pro')
   })
 
   it('un lead résidentiel est rendu à l’identique : aucune section « Professionnel »', () => {

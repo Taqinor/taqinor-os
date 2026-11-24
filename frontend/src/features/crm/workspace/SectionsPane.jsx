@@ -6,7 +6,7 @@ import {
 import { ErrorBoundary } from '../../../ui'
 import { useKeyboardAwareScroll } from '../../../hooks/useKeyboardAwareScroll'
 import {
-  getField, WEB_ORIGIN_FIELDS, hasWebQuestionnaireData, sectionAutoRepliee,
+  getField, SEGMENTS_PRO, WEB_ORIGIN_FIELDS, hasWebQuestionnaireData, sectionAutoRepliee,
 } from './draftCore'
 // ROUND 5 — « ce qui manque » : une source unique, partagée avec l'onglet Devis.
 import { chipsAComplete, sectionsPointees } from './missingFields'
@@ -31,7 +31,6 @@ import useDroitMetier from '../../sav/useDroitMetier' // ADRG121 — code fin, s
 const SECTIONS_REPLIEES_AGRICOLE = ['energie', 'equipements', 'toiture']
 // CIQ418 — même repli pour un lead COMMERCIAL / INDUSTRIEL : les sections
 // résidentielles s'ouvrent repliées (jamais retirées), « Professionnel » ouverte.
-const SEGMENTS_PRO = ['commercial', 'industriel']
 const SECTIONS_REPLIEES_PRO = ['energie', 'equipements', 'toiture']
 
 const COLLAPSE_KEY = 'taqinor.lw.collapsed'

@@ -987,7 +987,7 @@ export default function DevisGenerator({
     capaciteBatterieInconnue, consoAnnuelleReelle,
     facturesSaisies, moisNonSaisis, leadsListe,
     selectedLead, typeLeadEffectif, marcheSegment,
-    bandeauSegment, rappelIce, changerTypeLead, roi,
+    bandeauSegment, rappelIce, rappelIceAcceptation, changerTypeLead, roi,
     villeCalculLead, etudeHoraireCorps, etudeHoraireDonnees,
     etudeHoraireChargement, etudeHoraireErreur,
     etudeHoraireAnnuel, etudeHoraireSourceServeur,
@@ -1962,8 +1962,8 @@ export default function DevisGenerator({
         {rappelIce && (
           <p role="status" data-testid="rappel-ice-manquant"
              className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-            ICE à demander au client — il sera obligatoire à l’acceptation en ligne
-            et à la facture.
+            ICE à demander au client — il sera obligatoire {rappelIceAcceptation
+              ? 'à l’acceptation en ligne et à la facture.' : 'à la facture.'}
           </p>
         )}
         {modeInstallation === 'agricole' && provenancesLead.length > 0 && (

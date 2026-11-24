@@ -330,6 +330,34 @@ function devisCommercialSurLead(lead) {
   }
 }
 
+describe('Devis résidentiel pour une entreprise — rappel ICE', () => {
+  beforeEach(() => {
+    declarerBeforeEachDevis(makeStore)
+  })
+
+  it('entreprise sans ICE : rappel « obligatoire à la facture » (sans acceptation en ligne)', async () => {
+    crmApi.getLead.mockResolvedValue({ data: {
+      ...LEAD, societe: 'Atlas SARL', identite_entreprise: CLIENT_SANS_ICE.identite_entreprise,
+    } })
+    ventesApi.getDevisById.mockResolvedValue(devisRouvert())
+    renderEdition()
+    const rappel = await screen.findByTestId('rappel-ice-manquant')
+    expect(rappel).toHaveTextContent('il sera obligatoire à la facture.')
+    expect(rappel).not.toHaveTextContent('acceptation en ligne')
+  })
+
+  it('particulier : aucun rappel ICE', async () => {
+    crmApi.getLead.mockResolvedValue({ data: {
+      ...LEAD, identite_entreprise: { type_client: 'particulier', complete: true, manquants: [] },
+    } })
+    ventesApi.getDevisById.mockResolvedValue(devisRouvert())
+    renderEdition()
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalled())
+    await screen.findAllByText(/Khalid Réouvert/)
+    expect(screen.queryByTestId('rappel-ice-manquant')).toBeNull()
+  })
+})
+
 describe('CIQ423 — bandeau de type du lead et rappel ICE en mode commercial', () => {
   beforeEach(() => {
     crmApi.updateLead = vi.fn(() => Promise.resolve({ data: {} }))
