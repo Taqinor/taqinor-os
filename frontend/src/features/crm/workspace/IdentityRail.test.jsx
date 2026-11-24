@@ -239,6 +239,18 @@ describe('LW14 — IdentityRail identité + actions', () => {
     expect(screen.getByText(/Prêt à deviser/)).toBeInTheDocument()
   })
 
+  // T4-U3-017 — l'avertissement SERVI (kWh contredit par les factures) retire « Prêt à deviser » et grise le bouton.
+  it('avertissement kwh_factures servi : « Devis non prêt », bouton grisé avec la raison', () => {
+    const avertissements = { kwh_factures: '« Consommation mensuelle (kWh) » contredit les factures déclarées : corrigez la fiche.' }
+    render(<IdentityRail
+      state={makeState({ facture_hiver: 300, conso_mensuelle_kwh: 2000, devis_auto: { pret: true, manquants: [] }, avertissements })}
+      onAction={onAction}
+      users={[]}
+    />)
+    expect(screen.getByText(/Devis non prêt/)).toBeInTheDocument()
+    expect(screen.queryByText(/Prêt à deviser/)).toBeNull()
+  })
+
   // LW45 — état « manquant » discret RÉTABLI (l'ancien en-tête stylait aussi
   // ces chips en négatif ; le refactor LW14 les avait réduits à une absence
   // silencieuse, seule l'infobulle du CTA « Devis automatique » restait).

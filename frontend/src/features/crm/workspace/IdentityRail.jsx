@@ -297,8 +297,10 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
   const consoKwhSaisie = !factureReady && server.conso_mensuelle_kwh != null && server.conso_mensuelle_kwh !== ''
   // ALEA50 — « prêt » inclut le catalogue C&I (postes fixes sans prix).
   const catalogueBloque = catalogueCiBloque(server.devis_auto)
-  const devisReady = !!(server.devis_auto && server.devis_auto.pret) && !catalogueBloque
-  const devisNotReadyMsg = (catalogueBloque && raisonCatalogueCi(server.devis_auto))
+  // T4-U3-017 — l'avertissement SERVI (kWh contredit par les factures, ACVI97) : pas « prêt », la raison nommée.
+  const kwhContredit = server.avertissements?.kwh_factures || null
+  const devisReady = !!(server.devis_auto && server.devis_auto.pret) && !catalogueBloque && !kwhContredit
+  const devisNotReadyMsg = kwhContredit || (catalogueBloque && raisonCatalogueCi(server.devis_auto))
     || (server.devis_auto && server.devis_auto.message)
     || 'Renseignez la facture du lead pour activer le devis automatique.'
 
