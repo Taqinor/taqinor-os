@@ -126,3 +126,5 @@ CODE_SANS_DEVIS = 'sans_devis'
 CODE_ETAT = 'etat_invalide'
 #: Un texte personnalisé cite un montant que la vente ne porte plus (409).
 CODE_MONTANT_FIGE = 'montant_fige'
+#: Variante « tranche réglée » sans les encaissements qu'elle affirme (409).
+CODE_PAIEMENT_NON_ENREGISTRE = 'paiement_non_enregistre'

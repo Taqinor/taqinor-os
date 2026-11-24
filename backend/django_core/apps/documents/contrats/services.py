@@ -136,8 +136,11 @@ def jumelle_emise(acte):
         statut__in=(T.EMIS, T.SIGNE)).exclude(pk=acte.pk).exists()
 
 
-def motif_refus_emission(acte, lecture):
-    """``(code, detail)`` qui empêche l'émission d'un brouillon, ou None."""
+def motif_refus_emission(acte, lecture, *, jumelle=None):
+    """``(code, detail)`` qui empêche l'émission d'un brouillon, ou None —
+    la même règle sert ``peut_emettre`` (``jumelle`` : déjà connue de
+    l'appelant, sinon lue)."""
+    from .rendu import composants as C
     vente = lecture.vente()
     if vente is None:
         return (T.CODE_SANS_DEVIS,
@@ -146,12 +149,21 @@ def motif_refus_emission(acte, lecture):
     if acte.type == T.CLOTURE:
         reste = K.reste_du(vente)
         if reste and reste > 0:
-            from .rendu import composants as C
             return (T.CODE_SOLDE_NON_REGLE,
                     f'Le prix n\'est pas réglé en totalité : '
                     f'{C.montant(reste)} restent dus. Enregistrez le paiement '
                     f'du solde avant d\'émettre le quitus.')
-    if jumelle_emise(acte):
+    manque = K.paiement_suppose(acte, vente)
+    if manque:
+        # Signée, cette version vaut reçu contre la société : jamais sur une
+        # supposition.
+        return (T.CODE_PAIEMENT_NON_ENREGISTRE,
+                f"Cette version dit que {C.montant(manque['cible'])} sont "
+                f"réglés, mais l'ERP n'a enregistré que "
+                f"{C.montant(manque['paye'])} de paiements. Enregistrez les "
+                f"paiements reçus avant de l'émettre, ou émettez la version "
+                f"« reste à régler ».")
+    if jumelle_emise(acte) if jumelle is None else jumelle:
         return (T.CODE_ETAT,
                 "L'autre version de la livraison est déjà émise : rouvrez-la "
                 "d'abord.")

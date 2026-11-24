@@ -22,10 +22,11 @@ def _drapeaux(acte, lecture, actes_du_chantier):
                   and a.statut in (T.EMIS, T.SIGNE) for a in actes_du_chantier)
     peut_emettre = False
     if not annule and acte.statut == T.BROUILLON and not jumelle:
-        vente = lecture.vente()
-        peut_emettre = vente is not None and not (
-            acte.type == T.CLOTURE and (K.reste_du(vente) or 0) > 0) \
-            and not K.montants_figes(acte, lecture)
+        # La règle même de l'émission : l'écran ne propose jamais un geste
+        # que le serveur refusera.
+        from .services import motif_refus_emission
+        peut_emettre = motif_refus_emission(acte, lecture,
+                                            jumelle=False) is None
     return {
         'ecarte': jumelle,
         'peut_modifier': not annule and acte.statut == T.BROUILLON,

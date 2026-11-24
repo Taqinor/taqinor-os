@@ -1701,10 +1701,12 @@ def avertissements(acte, contenu=None, lecture=None):
                 sortie.append(
                     f'La tranche « {tranches[i]["libelle"]} » n\'est pas '
                     f'encore réglée : {C.montant(du)} restent à encaisser.')
-        elif vente['paye'] < cible:
+        elif paiement_suppose(acte, vente):
             sortie.append(
                 f"L'ERP n'a enregistré que {C.montant(vente['paye'])} de "
-                f'paiements : cette version suppose {C.montant(cible)} réglés.')
+                f'paiements : cette version dit {C.montant(cible)} réglés. '
+                f'Elle ne pourra être émise qu\'une fois ces paiements '
+                f'enregistrés.')
     if acte.type == T.CLOTURE:
         reste = reste_du(vente)
         if reste > 0:
@@ -1729,6 +1731,20 @@ def avertissements(acte, contenu=None, lecture=None):
         sortie.append('La traduction arabe ne reprend pas vos modifications '
                       'de : ' + ', '.join(retard) + '.')
     return sortie
+
+
+def paiement_suppose(acte, vente):
+    """Variante « tranche réglée » dont les paiements ENREGISTRÉS ne couvrent
+    pas la cible cumulée de la livraison : ``{cible, paye}``, sinon None.
+    Le brouillon se prévisualise ; il ne s'émet pas (409
+    ``paiement_non_enregistre``)."""
+    if (acte.type != T.LIVRAISON or acte.variante != T.TRANCHE_REGLEE
+            or not vente or not vente['tranches']):
+        return None
+    cible = vente['tranches'][index_livraison(vente['tranches'])]['cible']
+    if vente['paye'] >= cible:
+        return None
+    return {'cible': cible, 'paye': vente['paye']}
 
 
 def reste_du(vente):

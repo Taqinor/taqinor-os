@@ -413,6 +413,9 @@ class EmissionTests(TestCase):
     def test_variante_jumelle_ecartee(self):
         from apps.documents.contrats.selectors import dossier_du_chantier
         v = Vente(self)
+        # S3 : la version « tranche réglée » ne s'émet qu'une fois les
+        # paiements qu'elle affirme enregistrés.
+        v.payer(v.plan()['tranches'][1]['cible_cumul_ttc'])
         S.emettre(v.acte(T.LIVRAISON, T.TRANCHE_REGLEE), v.user)
         dossier = dossier_du_chantier(v.chantier)
         livraisons = {a['variante']: a for a in dossier['actes']
@@ -716,3 +719,41 @@ class QuitusRegleTests(TestCase):
                                  K.C.montant(total, langue=langue))
                 self.assertEqual(ctx['ecart_regle'], '')
         self.assertIsNone(S.motif_refus_emission(acte, K.Lecture(v.chantier)))
+
+
+# ── S3 : la version « tranche réglée » ne s'émet pas sur une supposition ────
+
+class TrancheRegleeTests(TestCase):
+
+    def _drapeaux(self, v, variante):
+        from apps.documents.contrats.selectors import dossier_du_chantier
+        return next(a for a in dossier_du_chantier(v.chantier)['actes']
+                    if a['type'] == T.LIVRAISON and a['variante'] == variante)
+
+    def test_refusee_tant_que_les_paiements_ne_couvrent_pas_la_cible(self):
+        v = Vente(self)
+        acompte = v.plan()['tranches'][0]['montant_ttc']
+        cible = v.plan()['tranches'][1]['cible_cumul_ttc']
+        v.payer(acompte)
+        acte = v.acte(T.LIVRAISON, T.TRANCHE_REGLEE)
+        # Le brouillon reste prêt et se prévisualise.
+        c = K.construire_contenu(acte)
+        self.assertEqual(c['paiement']['total_regle'], f'{cible:.2f}')
+        self.assertFalse(self._drapeaux(v, T.TRANCHE_REGLEE)['peut_emettre'])
+        self.assertTrue(self._drapeaux(v, T.RESTE_A_REGLER)['peut_emettre'])
+        self.assertTrue(any('ne pourra être émise' in a
+                            for a in K.avertissements(acte)))
+        with self.assertRaises(S.ErreurActe) as ctx:
+            S.emettre(acte, v.user)
+        self.assertEqual(ctx.exception.code, T.CODE_PAIEMENT_NON_ENREGISTRE)
+        self.assertEqual(ctx.exception.statut_http, 409)
+        self.assertIn('reste à régler', ctx.exception.detail)
+        self.assertEqual(v.acte(T.LIVRAISON, T.TRANCHE_REGLEE).statut,
+                         T.BROUILLON)
+        v.payer(cible - acompte)
+        self.assertTrue(self._drapeaux(v, T.TRANCHE_REGLEE)['peut_emettre'])
+        self.assertIsNone(S.motif_refus_emission(
+            v.acte(T.LIVRAISON, T.TRANCHE_REGLEE), K.Lecture(v.chantier)))
+        self.assertFalse(any('ne pourra être émise' in a for a in
+                             K.avertissements(v.acte(T.LIVRAISON,
+                                                     T.TRANCHE_REGLEE))))
