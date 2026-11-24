@@ -488,13 +488,57 @@ td small{font-size:8.8pt}
 .journee .sous{font-size:8.2pt;line-height:1.5}
 
 .petit{font-size:9pt;line-height:1.65}
-body.proces h1{font-size:22pt}
-body.proces .chapeau{font-size:10.8pt}
-body.proces h2{font-size:14pt}
-body.proces .carte .val{font-size:15pt}
-body.proces .article .texte{font-size:10.4pt;line-height:1.65}
-body.cloture .article .texte{font-size:10.4pt;line-height:1.65}
+/* Procès-verbaux : deux pages comme en français — plus serré */
+body.proces h1{font-size:21pt;line-height:1.35}
+body.proces .titre{padding:5.5mm 0 1.5mm}
+body.proces .chapeau{font-size:10.4pt;line-height:1.6;margin-top:1.6mm}
+body.proces h2{font-size:13.6pt;line-height:1.35;margin:4.6mm 0 2mm}
+body.proces .intro{font-size:9.8pt;line-height:1.5;margin-bottom:2.6mm}
+body.proces .carte{padding:2.6mm 4.2mm 2.8mm}
+body.proces .carte .val{font-size:15pt;line-height:1.3}
+body.proces .carte .det{font-size:9pt;line-height:1.45}
+body.proces table{font-size:9.4pt;line-height:1.4}
+body.proces td{padding-top:1.3mm;padding-bottom:1.3mm}
+body.proces .case{font-size:10pt;line-height:1.5;margin-bottom:1.2mm}
+body.proces .case i{margin-top:.9mm}
+body.proces .encadre{font-size:9.8pt;line-height:1.5;padding:2.6mm 4.2mm;
+  margin:2mm 0}
+body.proces .grand{line-height:1.3}
+body.proces .petit{font-size:8.6pt;line-height:1.5}
+body.proces .jalon .tete{margin-bottom:1.6mm}
+body.proces .jalon .quoi{font-size:10.4pt;line-height:1.35}
+body.proces .jalon .combien{font-size:13.4pt;line-height:1.35;margin-top:.4mm}
+body.proces .jalon .etat{margin-top:1mm}
+body.proces .article{padding-top:2.6mm;margin-top:2.6mm}
+body.proces .article .marge{top:2.6mm}
+body.proces .article h3{font-size:12pt;line-height:1.35}
+body.proces .article .texte{font-size:10pt;line-height:1.55}
+body.proces .article .texte p{margin-bottom:1.4mm}
+body.proces .fait-a{font-size:10pt;margin-bottom:2.4mm}
+body.proces .sig .mention{line-height:1.45}
+/* Clôture : le quitus et sa signature tiennent sur la première page */
+body.cloture h1{font-size:24pt;line-height:1.35}
+body.cloture .chapeau{font-size:11pt;line-height:1.6;margin-top:2mm}
+body.cloture h2{line-height:1.35;margin:5mm 0 2.4mm}
+body.cloture .intro{line-height:1.55;margin-bottom:2.8mm}
+body.cloture .barre{margin-top:.9mm}
+body.cloture .carte{padding:3.4mm 4.6mm 3.6mm}
+body.cloture .carte .val{line-height:1.3}
+body.cloture .carte .det{line-height:1.5}
+body.cloture .encadre{line-height:1.6;padding:3mm 4.6mm}
+body.cloture table{line-height:1.45}
+body.cloture td{padding-top:1.2mm;padding-bottom:1.2mm}
+body.cloture .fait-a{margin-bottom:2.4mm}
+body.cloture .article{padding-top:2.6mm;margin-top:2.6mm}
+body.cloture .article .marge{top:2.6mm}
+body.cloture .article h3{font-size:12pt;line-height:1.35}
+body.cloture .article .texte{font-size:10pt;line-height:1.55}
+body.cloture .article .texte p{margin-bottom:1.4mm}
+body.cloture .article .texte li{margin-bottom:.6mm}
+body.cloture .duree{line-height:1.25}
+body.cloture td small{line-height:1.35}
 body.cloture .article.plein{padding-right:0}
+body.cloture .conseil p{line-height:1.6}
 """
 
 _REMPLACEMENTS = {
