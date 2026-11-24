@@ -1664,7 +1664,8 @@ def _contexte(contenu, vente, langue, refs, lecture=None):
                                          langue)
         if contenu['type'] == T.CLOTURE:
             ctx['ecart_regle'] = ecart_regle(vente['prix_ttc'], vente['paye'],
-                                             vente.get('avoirs'), langue)
+                                             vente.get('avoirs'), langue,
+                                             reste=vente.get('reste'))
         ctx['pourcentage_regle'] = C.pourcent(paiement.get('pourcentage_regle'))
         ctx['reste_apres_livraison'] = _montant(
             paiement.get('restera_ensuite'), langue)
@@ -1931,10 +1932,15 @@ def _lignes_paiements(vente, langue):
     return sortie
 
 
-def ecart_regle(prix, paye, avoirs, langue):
+def ecart_regle(prix, paye, avoirs, langue, reste=None):
     """La phrase qui nomme ce qui a soldé le prix sans être un paiement
     (avoir, retenue à la source, abandon de créance) : '' si le payé couvre
-    le prix. Repère ``{ecart_regle}`` du quitus, précédé d'une espace."""
+    le prix. Repère ``{ecart_regle}`` du quitus, précédé d'une espace.
+    ``reste`` (``solde_devis['restant']``) : tant que la vente doit encore
+    quelque chose, rien n'a « soldé » l'écart — '' (jamais une somme impayée
+    présentée comme réglée par avoir ou abandon)."""
+    if reste is not None and _q(reste) > 0:
+        return ''
     ecart = _q((prix or ZERO) - (paye or ZERO))
     if ecart <= 0:
         return ''
@@ -1972,17 +1978,24 @@ def _textes_par_defaut(contenu, textes, vente, langue):
 # ── API publique du module ──────────────────────────────────────────────────
 
 def construire_contenu(acte, langue='fr', lecture=None):
-    """Le contenu VIVANT d'un acte (lectures seulement)."""
-    return _construire(acte, langue, lecture)
+    """Le contenu VIVANT d'un acte (lectures seulement). ``brouillon`` vaut
+    False : c'est ce contenu que l'émission fige."""
+    contenu = _construire(acte, langue, lecture)
+    contenu['brouillon'] = False
+    return contenu
 
 
 def contenu_de(acte, langue='fr', lecture=None):
-    """Le contenu servi : figé dès l'émission, vivant pour un brouillon."""
+    """Le contenu servi : figé dès l'émission, vivant pour un brouillon —
+    marqué ``brouillon: True`` (le PDF d'un brouillon porte « PROJET —
+    document non émis » sur chaque page ; un acte émis ou signé jamais)."""
     if acte.statut != T.BROUILLON:
         fige = acte.contenu_ar if langue == 'ar' else acte.contenu
         if fige:
             return fige
-    return construire_contenu(acte, langue, lecture)
+    contenu = construire_contenu(acte, langue, lecture)
+    contenu['brouillon'] = acte.statut not in (T.EMIS, T.SIGNE)
+    return contenu
 
 
 #: Sections stockées en gabarit, alignées sur ce que l'écran affichait.

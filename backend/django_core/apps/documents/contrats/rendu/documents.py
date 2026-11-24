@@ -21,11 +21,17 @@ def _page(contenu, corps, *, paraphes=True, classe=''):
     titre_doc = c.esc(contenu.get('titre') or libelle('acte', langue))
     racine = ('<html lang="ar" dir="rtl">' if langue == 'ar'
               else '<html lang="fr">')
+    # Un brouillon porte « PROJET — document non émis » sur CHAQUE page
+    # (élément fixe, hors du flux : le nombre de pages ne bouge pas) ; un
+    # acte émis ou signé jamais (``brouillon`` absent ou faux).
+    filigrane = (f'<div class="filigrane-projet">'
+                 f'{c.esc(libelle("filigrane_projet", langue))}</div>'
+                 if contenu.get('brouillon') else '')
     page = (
         f'<!DOCTYPE html>{racine}<head><meta charset="utf-8">'
         f'<title>{titre_doc} — {c.esc(contenu.get("reference"))}</title>'
         f'<style>{style.css(langue)}</style></head><body class="{classe}">'
-        f'{c.pied(contenu, paraphes=paraphes)}'
+        f'{filigrane}{c.pied(contenu, paraphes=paraphes)}'
         f'{c.bandeau(contenu)}{c.parcours(contenu["type"], langue)}'
         f'<div class="corps">{corps}</div></body></html>')
     return c.isoler_latin(page) if langue == 'ar' else page
@@ -344,23 +350,40 @@ def cloture_garanties(contenu):
     paiement = contenu.get('paiement') or {}
     sav = contenu.get('sav') or {}
     valeur_sys, detail_sys = _resume_systeme(systeme, langue)
+    reste = paiement.get('reste_a_regler')
+    du = c._decimal(reste) is not None and c._decimal(reste) > 0
 
     corps = c.titre(
         'cloture_garanties', contenu.get('titre') or
         libelle('h1_cloture', langue), libelle('chapeau_cloture', langue),
         contenu.get('reference'), langue)
+    if du:
+        # Vente non soldée : le document dit la vérité — ce qui reste dû,
+        # et aucune attestation de paiement ni phrase de propriété.
+        carte_paiement = c.carte(
+            libelle('reste_a_regler_carte', langue),
+            c.esc(c.montant(reste, langue=langue)),
+            libelle('reste_du_detail', langue), forte=True)
+    else:
+        carte_paiement = c.carte(
+            libelle('paye_integralement', langue),
+            c.esc(c.montant(paiement.get('total_regle')
+                            or prix.get('total_ttc'), langue=langue)),
+            libelle('solde_zero', langue,
+                    zero=c.esc(c.montant(0, langue=langue))),
+            forte=True)
     corps += c.cartes(
         c.carte(libelle('votre_installation', langue), valeur_sys, detail_sys),
-        c.carte(libelle('paye_integralement', langue),
-                c.esc(c.montant(paiement.get('total_regle')
-                                or prix.get('total_ttc'), langue=langue)),
-                libelle('solde_zero', langue,
-                        zero=c.esc(c.montant(0, langue=langue))),
-                forte=True),
+        carte_paiement,
     )
     corps += c.h2(libelle('attestation', langue))
-    corps += c.encadre(libelle('quitus', langue),
-                       c.paragraphes(contenu.get('quitus')), 'ok quitus')
+    if du:
+        corps += c.encadre(libelle('quitus', langue), '<p>' + libelle(
+            'quitus_en_attente', langue,
+            montant=c.esc(c.montant(reste, langue=langue))) + '</p>', 'net')
+    else:
+        corps += c.encadre(libelle('quitus', langue),
+                           c.paragraphes(contenu.get('quitus')), 'ok quitus')
     corps += c.tableau_paiements(contenu.get('paiements'),
                                  paiement.get('total_regle'), langue)
     corps += c.signatures(contenu, mention_client='', client_signe=False,

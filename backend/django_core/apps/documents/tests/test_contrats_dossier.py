@@ -1714,6 +1714,37 @@ class EcheancierConvenuPursTests(SimpleTestCase):
                 self.assertIn(K.C.montant(m, langue=langue), texte)
 
 
+class ClotureNonSoldeePursTests(SimpleTestCase):
+    """C2 (recette sur écran réel)."""
+
+    def test_ecart_jamais_nomme_pour_une_somme_impayee(self):
+        """Défaut attrapé : 110 400 DH dus, le quitus disait « le reste,
+        110 400,00 DH, a été soldé par avoir, retenue à la source ou abandon
+        de créance »."""
+        self.assertEqual(K.ecart_regle(Decimal('110400'), Decimal('0'),
+                                       Decimal('0'), 'fr',
+                                       reste=Decimal('110400')), '')
+        self.assertTrue(K.ecart_regle(Decimal('100000'), Decimal('90000'),
+                                      Decimal('10000'), 'fr',
+                                      reste=Decimal('0')))
+        e = Ecran(T.CLOTURE, vente=vente_pure(prix='110400'))
+        for langue in T.LANGUES:
+            quitus = ' '.join(e.lire(langue)['quitus'])
+            self.assertNotIn('abandon de créance', quitus)
+            self.assertNotIn('بالتنازل عن الدين', quitus)
+
+    def test_drapeau_brouillon(self):
+        """Le contenu servi d'un brouillon porte ``brouillon: True`` (le PDF
+        se marque « PROJET ») ; le contenu que l'émission fige, False."""
+        acte = acte_pur(T.CLOTURE)
+        lecture = LecturePure(acte.chantier, vente_pure())
+        self.assertIs(K.contenu_de(acte, 'fr', lecture)['brouillon'], True)
+        self.assertIs(K.construire_contenu(acte, 'ar', lecture)['brouillon'],
+                      False)
+        acte.statut, acte.contenu = T.EMIS, {'brouillon': False}
+        self.assertIs(K.contenu_de(acte, 'fr', lecture)['brouillon'], False)
+
+
 class EcranAllerRetourTests(SimpleTestCase):
 
     def test_rien_change_rien_stocke_cinq_actes_deux_langues(self):

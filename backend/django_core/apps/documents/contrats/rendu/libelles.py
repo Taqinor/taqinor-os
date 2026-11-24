@@ -200,6 +200,13 @@ LIBELLES = {
             "Part du solde retenue jusqu'à la levée des réserves : "
             '………… DH'),
         'signature_en_fin': 'Signature en dernière page',
+        # Brouillon et clôture d'une vente non soldée (recette C2).
+        'filigrane_projet': 'PROJET — document non émis',
+        'reste_a_regler_carte': 'Reste à régler',
+        'reste_du_detail': "Le prix n'est pas encore réglé en totalité.",
+        'quitus_en_attente': (
+            'Le quitus sera établi lorsque le prix aura été payé en '
+            'totalité : il reste {montant} à régler.'),
     },
     'ar': {
         'etape_contrat_installation': 'العقد',
@@ -367,6 +374,12 @@ LIBELLES = {
         'part_retenue': (
             'الجزء المحتجز من باقي الثمن إلى حين رفع التحفظات: ………… درهم'),
         'signature_en_fin': 'التوقيع في الصفحة الأخيرة',
+        'filigrane_projet': 'مشروع — وثيقة غير صادرة',
+        'reste_a_regler_carte': 'الباقي للأداء',
+        'reste_du_detail': 'لم يُؤدَّ الثمن بكامله بعد.',
+        'quitus_en_attente': (
+            'سيُحرَّر إبراء الذمة عند أداء الثمن بكامله: يبقى {montant} '
+            'للأداء.'),
     },
 }
 

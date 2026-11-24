@@ -399,6 +399,13 @@ body.cloture h2{margin:4.8mm 0 2.4mm}
   letter-spacing:.14em;text-transform:uppercase;color:__BRONZE__}
 .renvoi::after{content:" →"}
 .souffle{height:2mm}
+
+/* ── Brouillon : « PROJET — document non émis » sur chaque page ──
+   Élément fixe (répété par page, hors du flux : aucune page de plus). */
+.filigrane-projet{position:fixed;top:112mm;left:0;width:210mm;
+  text-align:center;transform:rotate(-28deg);font-family:__TEXTE__;
+  font-size:30pt;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;color:rgba(170,40,40,.17);z-index:50}
 """
 
 # ── Traduction arabe : la même page, en miroir ──────────────────────────────
@@ -599,6 +606,7 @@ body.cloture .duree{line-height:1.25}
 body.cloture td small{line-height:1.35}
 body.cloture .article.plein{padding-right:0}
 body.cloture .conseil p{line-height:1.6}
+.filigrane-projet{font-family:__AR_LIBELLE__;transform:rotate(28deg)}
 """
 
 _REMPLACEMENTS = {
