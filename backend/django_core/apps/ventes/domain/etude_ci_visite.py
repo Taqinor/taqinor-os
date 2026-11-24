@@ -126,6 +126,30 @@ def froid_du_site(point):
     return froid_dimensionnement_au_point(*point)
 
 
+MESSAGE_CONSOMMATION_ABSENTE = 'Consommation non déclarée : aucune taille calculée.'
+#: T4-U2-021 (fondateur) — sur un site MT la facture en MAD ne dimensionne pas :
+#: les kWh des relevés du compteur ou la visite d'abord.
+MESSAGE_CONSOMMATION_MT_FACTURE = (
+    'Site en moyenne tension : la facture en MAD ne suffit pas, il faut les kWh des '
+    'relevés ou la visite. Aucune taille calculée.')
+
+
+def message_consommation_absente(res):
+    """T4-U2-021 — la phrase de l'alerte ``consommation_absente`` : sur un site
+    déclaré MT qui porte une facture en MAD (celle du lead, que la lecture du
+    lead ne passe pas en entrée sur un site MT, ou des factures mensuelles),
+    la vraie raison ; sinon la phrase d'hier."""
+    from .etude_ci import _num  # paresseux : etude_ci importe ce module
+    if res.valeur('tension') != 'mt':
+        return MESSAGE_CONSOMMATION_ABSENTE
+    factures = res.valeur('factures_mad')
+    if any((_num(res.valeur(cle)) or 0) > 0 for cle in ('facture_hiver_mad', '_facture_hiver_lead')) or any(
+            isinstance(ligne, dict) and (_num(ligne.get('montant_ttc')) or 0) > 0
+            for ligne in (factures if isinstance(factures, list) else ())):
+        return MESSAGE_CONSOMMATION_MT_FACTURE
+    return MESSAGE_CONSOMMATION_ABSENTE
+
+
 def hypotheses_de_la_combinaison(onduleurs):
     """ADEV122 — l'hypothèse ``temperature_froid_c`` de la combinaison
     d'onduleurs retenue (liste vide sans elle) : elle sort avec les autres
