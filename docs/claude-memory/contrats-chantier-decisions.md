@@ -45,6 +45,16 @@ bien terminés, signé par le client (protection si le solde n'est pas payé), (
   (`logo-embleme.png`) = soleil doré à huit rayons + éclair bleu nuit, géométrie de `Logo.astro`. `logo.png` reste
   le logo complet téléchargeable de la page « à propos ».
 
+- **Client société (Reda, 24/11 soir)** : « on ne montre le nom du client (le gérant ou le responsable) que pour
+  signer, mais pour le nom du client il devient le nom de la société » + « l'ICE sur les 4 contrats ». Donc, pour
+  une fiche client `entreprise` : « le Client » = la raison sociale (`Client.nom`, jamais prénom + nom) ; l'ICE
+  figure sur les quatre actes (parties du contrat, cadre de signature des actes 1 à 3, quitus de l'acte 4), ou
+  une ligne à remplir s'il manque ; la personne (`contact_nom`, `contact_fonction`) n'est imprimée qu'au cadre de
+  signature (« Représentée par … »). Même soir : « I should be able to make a residential quote but for a company
+  with ICE » → un lead qui porte une raison sociale fait passer son client particulier en entreprise
+  (`synchroniser_identite_client`, jamais une fiche divergée ni un ICE différent sans « Mettre à jour la fiche
+  client »). Un client entreprise reçoit le contrat « professionnel » (option `consommateur` à faux).
+
 **Why :** Reda a des soldes impayés sur des chantiers posés (≈ 50 090 DH au 23/11) ; son avocat lui a dit de faire
 signer la bonne exécution des travaux.
 
