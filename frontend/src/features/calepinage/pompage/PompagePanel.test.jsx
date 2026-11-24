@@ -27,11 +27,16 @@ const RESULTAT_VIDE = exempleContrat('calepinage', 'calepinage_pompage',
 
 const pompage = vi.fn()
 const explications = vi.fn()
+const designContext = vi.fn()
 vi.mock('../../../api/calepinageApi', () => ({
-  default: { calepinages: { pompage: (...a) => pompage(...a), explications: (...a) => explications(...a) } },
+  default: { calepinages: {
+    pompage: (...a) => pompage(...a), explications: (...a) => explications(...a),
+    designContext: (...a) => designContext(...a), // T4-U3-012 — `prefill_lead` servi
+  } },
 }))
 
 const { default: PompagePanel } = await import('./PompagePanel')
+const { oublierLecturesServies } = await import('../atelier/coque/etapes/panneaux/lectures')
 
 const rendre = () => render(
   <MemoryRouter><PompagePanel calepinageId={1} /></MemoryRouter>,
@@ -39,7 +44,11 @@ const rendre = () => render(
 
 const calculer = () => fireEvent.submit(screen.getByTestId('cal-pompage-form'))
 
-beforeEach(() => { vi.clearAllMocks() })
+beforeEach(() => {
+  vi.clearAllMocks()
+  oublierLecturesServies()
+  designContext.mockResolvedValue({ data: { ...exempleContrat('calepinage', 'calepinage_design_context', 'exemple_vide'), prefill_lead: null } })
+})
 afterEach(() => { cleanup() })
 
 describe('CAL159 — la saisie du puits, du besoin et du réservoir', () => {
@@ -469,6 +478,44 @@ describe('AGR125 — la HMT calculée comme au devis (pertes singulières, press
     expect(screen.getByTestId('cal-pompage-bandeau')).toBeInTheDocument()
   })
 })
+/* T4-U3-012 — le panneau PART des valeurs de pompage déclarées sur le lead (`prefill_lead.pompage`, design-context),
+   chacune avec sa provenance ; une valeur tapée l'emporte toujours ; rien n'est préréglé sans lead. */
+describe('T4-U3-012 — préremplissage depuis la fiche du lead', () => {
+  const PREFILL = exempleContrat('calepinage', 'calepinage_design_context').prefill_lead
+  const servirPrefill = () => designContext.mockResolvedValue({ data: { ...exempleContrat('calepinage', 'calepinage_design_context'), prefill_lead: PREFILL } })
+
+  it('les quatre valeurs du lead sont posées, chacune avec « Repris de la fiche du lead » et sa provenance', async () => {
+    servirPrefill()
+    rendre()
+    expect(await screen.findByDisplayValue('40')).toHaveAttribute('name', 'niveau_statique_m')
+    expect(screen.getByLabelText(/HMT saisie/)).toHaveValue(80)
+    expect(screen.getByLabelText(/Débit que donne le forage/)).toHaveValue(25)
+    expect(screen.getByLabelText(/Débit souhaité/)).toHaveValue(20)
+    expect(screen.getByTestId('cal-pompage-champ-niveau_statique_m')).toHaveTextContent('Repris de la fiche du lead · Mesuré en visite')
+    expect(screen.getByTestId('cal-pompage-champ-debit_exploitation_m3h')).toHaveTextContent('Repris de la fiche du lead · Essai de pompage')
+    expect(screen.getByTestId('cal-pompage-champ-debit_souhaite_m3h')).toHaveTextContent(/^.*Repris de la fiche du lead$/)
+  })
+
+  it('une valeur tapée l’emporte (la mention s’efface) ; le calcul envoie les valeurs du lead et la saisie', async () => {
+    servirPrefill()
+    pompage.mockResolvedValue({ data: RESULTAT })
+    rendre()
+    await screen.findByDisplayValue('40')
+    fireEvent.change(screen.getByLabelText(/HMT saisie/), { target: { value: '95' } })
+    expect(screen.getByLabelText(/HMT saisie/)).toHaveValue(95)
+    expect(screen.getByTestId('cal-pompage-champ-hmt_saisie')).not.toHaveTextContent('Repris de la fiche du lead')
+    calculer()
+    expect(pompage.mock.calls[0][1]).toMatchObject({ niveau_statique_m: 40, hmt_saisie: '95', debit_exploitation_m3h: 25, debit_souhaite_m3h: 20 })
+  })
+
+  it('sans lead (`prefill_lead: null`) : aucun champ prérempli, aucune mention', async () => {
+    rendre()
+    await new Promise((r) => { queueMicrotask(r) })
+    expect(screen.getByLabelText(/Niveau statique/)).toHaveValue(null)
+    expect(screen.queryByText(/Repris de la fiche du lead/)).toBeNull()
+  })
+})
+
 describe('ACAL877 — le « ? » des grandeurs du pompage', () => {
   const servirRegistre = async () => {
     const { readFileSync } = await import('node:fs')

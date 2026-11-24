@@ -627,6 +627,7 @@ export const ALL_HOOKS = [
   'cal-pompage-bandeau',
   'cal-pompage-calculer',
   'cal-pompage-champ',
+  'cal-pompage-repris',
   'cal-pompage-courbe',
   'cal-pompage-courbe-absente',
   'cal-pompage-debit',

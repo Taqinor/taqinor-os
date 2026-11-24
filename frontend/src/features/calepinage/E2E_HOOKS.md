@@ -752,6 +752,7 @@ retiré plus un hook ajouté.
 | `cal-pompage-bandeau` | pompage bandeau. |
 | `cal-pompage-calculer` | pompage calculer. |
 | `cal-pompage-champ` | pompage champ. |
+| `cal-pompage-repris` | pompage : « Repris de la fiche du lead · provenance » sous un champ prérempli, suffixé de la clé (T4-U3-012). |
 | `cal-pompage-courbe` | pompage courbe. |
 | `cal-pompage-courbe-absente` | pompage courbe absente. |
 | `cal-pompage-debit` | pompage débit. |

@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import RetourAtelier from '../atelier/RetourAtelier'
 import Pourquoi from '../commun/Pourquoi'
+import { useLectureServie } from '../atelier/coque/etapes/panneaux/lectures'
 
 /* ============================================================================
    CAL159 — L'ÉCRAN POMPAGE DU MODULE : puits, besoin, réservoir, volumes.
@@ -105,7 +106,18 @@ const PHRASE_ALERTE = {
   plafond_forage: 'Le forage ne donne pas assez d\'eau pour ce besoin',
 }
 
-function Champ({ cle, label, type = 'number', valeurSaisie, erreur, alertes = [], onChange }) {
+/* T4-U3-012 — les valeurs de pompage DÉCLARÉES sur le lead (`design-context › prefill_lead.pompage`, clé = clé du
+   champ) : `{cle: {valeur, libelle}}`, seulement celles qui ont une valeur. `{}` sans lead. Rien n'est écrit au lead. */
+const CLES_PREFILL = ['niveau_statique_m', 'hmt_saisie', 'debit_exploitation_m3h', 'debit_souhaite_m3h']
+function prefillPompage(prefillLead) {
+  const bloc = prefillLead?.pompage
+  if (!bloc || typeof bloc !== 'object') return {}
+  return Object.fromEntries(CLES_PREFILL
+    .filter((cle) => bloc[cle]?.valeur !== null && bloc[cle]?.valeur !== undefined && bloc[cle]?.valeur !== '')
+    .map((cle) => [cle, { valeur: bloc[cle].valeur, libelle: bloc[cle].origine_libelle || null }]))
+}
+
+function Champ({ cle, label, type = 'number', valeurSaisie, erreur, alertes = [], onChange, mention = null }) {
   return (
     <label className="block" data-testid={`cal-pompage-champ-${cle}`}>
       <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
@@ -121,6 +133,7 @@ function Champ({ cle, label, type = 'number', valeurSaisie, erreur, alertes = []
         aria-describedby={erreur ? `cal-pompage-erreur-${cle}` : undefined}
         className="mt-1 min-h-[44px] w-full rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
       />
+      {mention && <span className="mt-1 block text-xs text-muted-foreground" data-testid={`cal-pompage-repris-${cle}`}>{mention}</span>}
       {alertes.map((a) => (
         <span key={a.code} data-testid={`cal-pompage-alerte-${a.code}`} role="alert"
           className="mt-1 block text-xs text-amber-200">
@@ -465,6 +478,12 @@ export default function PompagePanel({ calepinageId: idPropose }) {
   const [enCours, setEnCours] = useState(false)
 
   const majChamp = (cle, brut) => setSaisie((s) => ({ ...s, [cle]: brut }))
+  // T4-U3-012 — le panneau PART des valeurs du lead ; une valeur tapée (même effacée) l'emporte toujours.
+  const { donnees: contexte } = useLectureServie('contexte', calepinageId)
+  const prefill = prefillPompage(contexte?.prefill_lead)
+  const valeurDe = (cle) => (saisie[cle] !== undefined ? saisie[cle] : prefill[cle]?.valeur)
+  const mentionDe = (cle) => (saisie[cle] === undefined && prefill[cle]
+    ? `Repris de la fiche du lead${prefill[cle].libelle ? ` · ${prefill[cle].libelle}` : ''}` : null)
 
   const calculer = (evenement) => {
     evenement.preventDefault()
@@ -475,8 +494,9 @@ export default function PompagePanel({ calepinageId: idPropose }) {
     // ACAL821 — une pompe ne garde que ses valeurs saisies ; une ligne vide disparaît.
     const pompes = (saisie.pompes_variateur ?? []).map((p) => Object.fromEntries(
       Object.entries(p).filter(([, v]) => v !== '' && v != null))).filter((p) => Object.keys(p).length)
+    const repris = Object.fromEntries(Object.entries(prefill).map(([cle, p]) => [cle, p.valeur]))
     const corps = Object.fromEntries(
-      Object.entries({ ...saisie, pompes_variateur: pompes }).filter(([, v]) => v !== '' && v != null
+      Object.entries({ ...repris, ...saisie, pompes_variateur: pompes }).filter(([, v]) => v !== '' && v != null
         && !(Array.isArray(v) && v.length === 0)),
     )
     Promise.resolve(calepinageApi.calepinages.pompage(calepinageId, corps))
@@ -542,7 +562,8 @@ export default function PompagePanel({ calepinageId: idPropose }) {
                   cle={cle}
                   label={label}
                   type={type}
-                  valeurSaisie={saisie[cle]}
+                  valeurSaisie={valeurDe(cle)}
+                  mention={mentionDe(cle)}
                   erreur={erreurs[cle]}
                   alertes={alertes.filter((a) => a.champ === cle)}
                   onChange={majChamp}
