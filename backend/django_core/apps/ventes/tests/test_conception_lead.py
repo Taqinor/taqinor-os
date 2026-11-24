@@ -2136,6 +2136,47 @@ class RelanceEnTacheTests(_emprunt(RelanceConceptionTests, '_relancer'),
             self.assertEqual(self._executer_les_taches([tache]), [None])
         self.assertFalse(ConceptionLead.objects.filter(lead=lead).exists())
 
+    def test_effacement_legal_jamais_defait_par_la_relance_en_file(self):
+        """Relecture E3 B1 (loi 09-08) — une relance en file quand le lead est
+        effacé : le scrub (GPS vidé) passe par la fusion du marqueur, les
+        versions sont supprimées, puis la tâche part. Elle ne doit RIEN
+        recalculer, ranger ni écrire au chatter : ni version, ni ligne
+        « Conception recalculée : GPS latitude 33,57 → — »."""
+        import json as _json_mod
+
+        from apps.crm.dsr_provider import anonymiser_lead
+        from apps.crm.models import Lead, LeadActivity
+        from apps.ventes.conception.receivers import _cle, cle_marqueur
+        from apps.ventes.models import ConceptionLead
+        from django.core.cache import cache
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        Lead.objects.filter(pk=lead.pk).update(gps_lat=Decimal('33.5731'), gps_lng=Decimal('-7.5898'))
+        lead.refresh_from_db()
+        self._relancer(lead, company, _declencheur())
+        self.assertTrue(ConceptionLead.objects.filter(lead=lead).exists())
+        self._enregistrer(lead, facture_hiver=Decimal('2400'))  # tâche en file, marqueur EN_FILE
+        self.assertEqual(self.en_file.call_count, 1)
+
+        lead.refresh_from_db()
+        with self.captureOnCommitCallbacks(execute=True):
+            anonymiser_lead(company, lead, motif='Effacement (test B1)')
+        derniere_ligne = LeadActivity.objects.filter(lead_id=lead.pk).order_by('-pk').values_list(
+            'pk', flat=True).first() or 0
+        self.assertFalse(ConceptionLead.objects.filter(lead_id=lead.pk).exists())
+        self.assertIsNone(cache.get(_cle(company.pk, cle_marqueur(lead.pk))))  # marqueur retiré
+
+        rendus = self._executer_les_taches()  # la tâche en file part quand même (worker)
+        self.assertTrue(rendus)
+        self.assertEqual(rendus, [None] * len(rendus))  # mutant « relancer quand même » : version 1
+        self.assertFalse(ConceptionLead.objects.filter(lead_id=lead.pk).exists())
+        self.assertFalse(LeadActivity.objects.filter(lead_id=lead.pk, pk__gt=derniere_ligne).exists())
+        self.assertFalse(LeadActivity.objects.filter(lead_id=lead.pk, field='conception_version',
+                                                     body__contains='33,57').exists())
+        for version in ConceptionLead.objects.filter(company=company):
+            self.assertNotIn('33.57', _json_mod.dumps(version.declencheur))
+
     # ── ADEV140 — le filet d'empreinte à la lecture ─────────────────────────
     def test_entree_changee_sans_evenement_perimee_puis_une_relance(self):
         from apps.crm.models import Lead

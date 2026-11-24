@@ -127,6 +127,17 @@ def relance_en_file(company_id, *, lead_id=None, calepinage_id=None):
         return False
 
 
+def oublier_relance(company_id, *, lead_id=None, calepinage_id=None):
+    """Relecture E3 B1 — le marqueur du porteur retiré (lead effacé) : une
+    tâche déjà en file ne le retrouve plus, ses champs regroupés (valeurs
+    effacées) partent avec lui. Ne lève jamais."""
+    from django.core.cache import cache
+    try:
+        cache.delete(_cle(company_id, cle_marqueur(lead_id, calepinage_id)))
+    except Exception:  # noqa: BLE001 — cache indisponible : le marqueur expire seul (D-ENF22-BLE001)
+        logger.warning('ADEV139 : marqueur du lead #%s non retiré', lead_id, exc_info=True)
+
+
 def _prendre(cle, jeton):
     """La tâche part : son marqueur passe « en cours » ; rend les champs et la
     pose regroupés (``None`` si le marqueur a disparu ou est celui d'une autre)."""
@@ -172,7 +183,7 @@ def executer_relance(company_id, *, lead_id=None, calepinage_id=None, origine, c
     ecrite}`` ou ``None`` (porteur disparu, échec). Ne lève jamais."""
     from authentication.models import Company
 
-    from apps.crm.selectors import get_company_lead
+    from apps.crm.selectors import get_company_lead, lead_efface
     from apps.ventes.conception.service import relancer
 
     cle = _cle(company_id, cle_marqueur(lead_id, calepinage_id))
@@ -183,8 +194,8 @@ def executer_relance(company_id, *, lead_id=None, calepinage_id=None, origine, c
             empreinte_pose = marqueur.get('empreinte_pose', empreinte_pose)
         company = Company.objects.filter(pk=company_id).first()
         lead = get_company_lead(company, lead_id) if company is not None and lead_id else None
-        if company is None or (lead_id and lead is None):
-            return None
+        if company is None or (lead_id and lead is None) or lead_efface(lead):
+            return None  # porteur disparu ou effacé (loi 09-08, relecture E3 B1) : rien
         toit, calepinage_id = _pose_servie(company, lead_id, calepinage_id, empreinte_pose)
         relance = relancer(lead, company=company, declencheur={'origine': origine, 'champs': champs or []},
                            toit=toit, calepinage_id=calepinage_id)

@@ -313,7 +313,8 @@ def _noter_conception_recalculee(sender, company_id=None, lead_id=None,
     if not lead_id or not company_id or version is None:
         return
     lead = Lead.objects.filter(pk=lead_id, company_id=company_id).first()
-    if lead is None:
+    from .selectors import lead_efface
+    if lead is None or lead_efface(lead):  # relecture E3 B1 : rien après l'effacement
         return
     import re
 
@@ -663,6 +664,11 @@ def _emit_lead_entrees_modifiees(sender, instance, created, raw=False,
     avant = getattr(instance, '_entrees_moteur_avant', None)
     instance._entrees_moteur_avant = None
     if created or raw or not avant:
+        return
+    from .selectors import lead_efface
+    if lead_efface(instance):
+        # Relecture E3 B1 — le save du scrub (loi 09-08) ne relance rien :
+        # son « avant » porte les valeurs effacées (GPS…).
         return
     try:
         pertinentes = (_colonnes_du_marche(avant.get('type_installation'))

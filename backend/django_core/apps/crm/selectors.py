@@ -221,3 +221,13 @@ def libelle_champ_lead(champ):
     from .activity import TRACKED_FIELDS
 
     return TRACKED_FIELDS.get(champ)
+
+
+def lead_efface(lead):
+    """Relecture E3 B1 — le lead a-t-il été effacé (loi 09-08, DSR ou
+    rétention) ? ``anonymiser_lead`` pose ``nom`` AVANT le save du scrub :
+    l'état de l'instance suffit (aucun drapeau de fil). Lu par la relance de la
+    conception (ventes) pour ne jamais recopier une valeur effacée."""
+    from .dsr_provider import LEAD_NOM_ANONYMISE
+
+    return lead is not None and getattr(lead, 'nom', None) == LEAD_NOM_ANONYMISE
