@@ -84,6 +84,10 @@ class JumeauDesTextesTests(unittest.TestCase):
                 self.assertEqual([a['cle'] for a in ar],
                                  [a['cle'] for a in fr])
                 self.assertEqual(_structure(ar), _structure(fr))
+                if type_acte in ('contrat_installation', 'pv_livraison'):
+                    # T8 bis : la garde a son article, avec ou sans
+                    # réserve de propriété.
+                    self.assertIn('garde', [a['cle'] for a in fr])
 
     def test_memes_reperes_que_le_francais(self):
         for (type_acte, variante), options in itertools.product(

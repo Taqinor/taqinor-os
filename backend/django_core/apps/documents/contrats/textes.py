@@ -176,8 +176,10 @@ def _contrat_installation(ctx, options):
             "complet du prix (articles 618-21 et suivants du Dahir des "
             "obligations et des contrats). Jusque-là, le Client ne peut ni "
             "le vendre, ni le donner en garantie, ni le faire démonter.",
-            _regle_de_garde(),
         ]))
+    # La garde ne dépend pas de la réserve de propriété : article toujours
+    # présent (revue 1, T8 bis).
+    arts.append(('garde', 'Garde du matériel', [_regle_de_garde()]))
     arts += [
         ('reception', 'Réception des travaux', [
             "À la fin de la pose, {societe} met l'installation en service en "

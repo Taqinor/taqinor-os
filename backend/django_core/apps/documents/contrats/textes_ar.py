@@ -249,8 +249,9 @@ def _contrat_installation(ctx, options):
             "تبقى المعدات في ملكية {societe} إلى حين الأداء الكامل للثمن "
             "(الفصول 618-21 وما يليها من " + _DOC + "). وإلى ذلك الحين، "
             "لا يجوز للزبون بيعها ولا تقديمها ضمانًا ولا العمل على تفكيكها.",
-            _regle_de_garde(),
         ]))
+    # La garde ne dépend pas de la réserve de propriété (revue 1, T8 bis).
+    arts.append(('garde', 'حراسة المعدات', [_regle_de_garde()]))
     arts += [
         ('reception', 'تسلُّم الأشغال', [
             "عند انتهاء التركيب، تشغّل {societe} المنظومة بحضور الزبون "
