@@ -57,7 +57,7 @@ function monterConstructeur(o = {}) {
     <button data-sun-season="winter" aria-pressed="${c.saison === 'winter'}">w</button>
     <button data-sun-season="summer" aria-pressed="${c.saison === 'summer'}">s</button>
     <button id="rp9-sun-play-day" aria-pressed="false">play</button>
-    <button id="rp9-heatmap-toggle" aria-pressed="false">carte</button>
+    <button id="rp9-heatmap-toggle" aria-pressed="${c.carte ? 'true' : 'false'}">carte</button>
     <div id="rp9-solar-access">${c.ombre ? `<div>Proposition — retirer les <span class="fig">${c.ombre}</span> module(s) dont l’accès solaire est sous 80 % (seuil de votre société)</div><button id="rp9-solar-access-apply">Retirer ces modules</button>` : ''}</div>`
   document.body.appendChild(racine)
   const espion = (sel, evt = 'click') => {
@@ -385,7 +385,8 @@ describe('étape Panneaux — panneau de droite', () => {
     rendre()
     await waitFor(() => expect(calepinageApi.calepinages.entreeElectrique).toHaveBeenCalled())
     await new Promise((r) => { setTimeout(r, 1300) }) // > 3 sondages de 400 ms
-    expect(recus).toEqual([])
+    // ACAL1981 — un seul geste, d'AFFICHAGE : la carte d'accès allumée à l'entrée (jamais sérialisée, rien de modifié).
+    expect(recus).toEqual(['click:rp9-heatmap-toggle'])
     expect(document.getElementById('rp9-need-input').value).toBe('60')
     expect(document.getElementById('rp9-pan-module-select').value).toBe('')
   })
@@ -492,9 +493,33 @@ describe('étape Panneaux — sur la carte', () => {
     expect(puce).not.toHaveTextContent('52 695')
   })
 
+  // ACAL1981 — la légende ne décrit que des panneaux TEINTÉS ; l'étape allume la carte d'accès à l'entrée (maquette).
+  // Suites des écrans v2 (24/11) — éteinte d'un clic sur son titre, la carte d'accès ne se rallumait plus qu'en « Avancé » :
+  // la légende disparaissait avec son bouton. Le BOUTON reste où la maquette pose la légende ; dégradé et bornes, eux, ne
+  // décrivent que des panneaux teintés.
+  it('aucun panneau teinté ⇒ ni dégradé ni bornes, mais le bouton « Ensoleillement de chaque panneau » reste ; l’entrée allume, la sortie rend', () => {
+    const { espion } = monterConstructeur()
+    const carte = espion('#rp9-heatmap-toggle')
+    const { unmount } = rendre()
+    expect(carte).toHaveBeenCalledTimes(1) // allumée à l'entrée (le faux script ne bascule pas : rien n'est teinté)
+    const bloc = within(noeudCarte).getByTestId('cal-carte-soleil')
+    expect(bloc.querySelector('.cal-pan-degrade')).toBeNull()
+    expect(bloc).not.toHaveTextContent('Plein soleil')
+    const titre = within(bloc).getByRole('button', { name: 'Ensoleillement de chaque panneau' })
+    expect(titre).toHaveAttribute('aria-pressed', 'false')
+    expect(titre).toHaveAttribute('title', 'Colorer les panneaux')
+    fireEvent.click(titre) // se rallume d'ici, sans passer par « Avancé »
+    expect(carte).toHaveBeenCalledTimes(2)
+    document.getElementById('rp9-heatmap-toggle').setAttribute('aria-pressed', 'false')
+    expect(within(noeudCarte).getByRole('button', { name: 'Lire la journée' })).toBeInTheDocument() // le lecteur reste
+    document.getElementById('rp9-heatmap-toggle').setAttribute('aria-pressed', 'true')
+    unmount()
+    expect(carte).toHaveBeenCalledTimes(3) // éteinte en sortie : l'Électrique teint par chaîne (ACAL1621)
+  })
+
   it('légende d’ensoleillement : titre, dégradé, bornes ; le titre est le vrai bouton « carte d’accès solaire »', () => {
     choisirPaletteAcces('atelier') // posée par le démarrage de l'atelier (useAtelierBoot), plus par l'étape
-    const { espion } = monterConstructeur()
+    const { espion } = monterConstructeur({ carte: true })
     const carte = espion('#rp9-heatmap-toggle')
     rendre()
     const bloc = within(noeudCarte).getByTestId('cal-carte-soleil')
@@ -618,6 +643,34 @@ describe('feuille de l’atelier — boutons refusés et champs de la photo (ACA
     expect(c.background).toContain('--muted')
     expect(parseFloat(c.minHeight)).toBeGreaterThanOrEqual(2.75)
   })
+
+  it('ACAL2030 — Expert : chaque champ du constructeur a un libellé et le cadre du champ du Guidé', () => {
+    document.body.innerHTML = `<div class="rp9-host cal-coque" data-expert="1">
+      <div id="rp9-studio"><form id="rp9-search"><label for="rp9-address" class="sr-only">Adresse</label>
+        <div><input id="rp9-address" type="text">
+          <label class="rp9-image-capture">Date de la photo (AAAA-MM-JJ) <input id="rp9-image-date" type="text" class="rp9-image-capture-input"></label></div></form>
+      <aside id="rp9-studio-inspecteur"><details id="rp9-chassis" open><summary>Avancé — châssis N × M</summary>
+        <label class="flex min-h-11" for="rp9-chassis-rangs">Rangs par châssis<input type="text" id="rp9-chassis-rangs" class="rp9-input w-24"></label>
+        <input data-cons-charge-champ="km_par_jour" aria-label="Kilomètres par jour"></details></aside></div></div>`
+    // La DERNIÈRE règle de la feuille qui vise l'élément et déclare la propriété (jsdom ne déplie pas les raccourcis).
+    const vise = (el, sel) => { try { return el.matches(sel) } catch { return false } } // pseudo-éléments inconnus de jsdom
+    const valeur = (el, prop) => [...style.sheet.cssRules]
+      .filter((r) => r.selectorText && vise(el, r.selectorText) && r.style.getPropertyValue(prop))
+      .map((r) => r.style.getPropertyValue(prop)).pop()
+    for (const champ of document.querySelectorAll('input')) {
+      const nom = (champ.labels?.[0]?.textContent || champ.getAttribute('aria-label') || '').trim()
+      expect(nom, `${champ.id || champ.outerHTML} : libellé`).not.toBe('')
+      expect(valeur(champ, 'border'), `${nom} : cadre`).toBe('1px solid var(--cal-filet-fort)')
+      expect(valeur(champ, 'background'), `${nom} : fond`).toBe('var(--cal-surface)')
+      expect(valeur(champ, 'border-radius'), `${nom} : rayon`).toBe('var(--cal-rayon-champ)')
+      expect(valeur(champ, 'min-height'), `${nom} : hauteur`).toBe('44px')
+    }
+    // L'adresse : son libellé « Adresse » est VISIBLE en Expert (plus seulement pour les lecteurs d'écran).
+    expect(valeur(document.querySelector('label[for="rp9-address"]'), 'position')).toBe('static')
+    // Guidé : rien ne change (le cadre est celui de l'Expert et de la feuille « Avancé » seulement).
+    document.querySelector('.cal-coque').dataset.expert = '0'
+    expect(valeur(document.getElementById('rp9-chassis-rangs'), 'background')).not.toBe('var(--cal-surface)')
+  })
 })
 
 /* ACAL1340 — la palette d'ensoleillement n'est PAS posée par l'étape Panneaux : le démarrage de l'atelier
@@ -708,7 +761,7 @@ describe('ACAL1829 — l’étape Panneaux à sa maquette v2', () => {
   })
 
   it('légende : 268 × 56, rayon 18, mots seuls (aucun accès par module n’est servi, aucun chiffre inventé)', () => {
-    monterConstructeur()
+    monterConstructeur({ carte: true })
     rendre()
     const legende = document.querySelector('.cal-pan-legende')
     expect(cs(legende).width).toBe('268px')

@@ -303,4 +303,33 @@ describe('ACAL2004 — le fond neutre de la carte suit le thème', () => {
     expect(fond(poses[0])).toBe(FOND_SANS_IMAGERIE_SOMBRE);
     expect(themeSombreActif()).toBe(false);
   });
+
+  // T4-B4-008 — le fond neutre était lu UNE fois, au refus du style : passer en thème sombre APRÈS (bascule du thème de
+  // l'ERP, ou `.dark` posé après le refus) laissait le papier clair sous la coque nuit, en vue Plan. Il suit le thème.
+  it('le fond neutre suit le thème après la bascule (clair → sombre → clair), sans recharger le style', () => {
+    let erreur: (e: unknown) => void = () => undefined;
+    const peints: [string, string, unknown][] = [];
+    let observe: (() => void) | null = null;
+    let sombre = false;
+    vi.stubGlobal('document', { documentElement: { classList: { contains: (c: string) => c === 'dark' && sombre } } });
+    vi.stubGlobal('MutationObserver', class { constructor(cb: () => void) { observe = cb; } observe() { /* doublure */ } disconnect() { /* doublure */ } });
+    try {
+      brancherRepliImagerie<object>({
+        on: (_ev, h) => { erreur = h; },
+        once: () => undefined,
+        isStyleLoaded: () => false,
+        setStyle: () => undefined,
+        getLayer: (id: string) => (id === 'fond-sans-imagerie' ? {} : undefined),
+        setPaintProperty: (id: string, prop: string, v: unknown) => { peints.push([id, prop, v]); },
+      }, () => undefined, 'K');
+      erreur({ error: { message: 'refusé' } }); // repli posé en clair
+      expect(observe).not.toBeNull();
+      sombre = true;
+      observe!();
+      expect(peints.at(-1)).toEqual(['fond-sans-imagerie', 'background-color', FOND_SANS_IMAGERIE_SOMBRE]);
+      sombre = false;
+      observe!();
+      expect(peints.at(-1)).toEqual(['fond-sans-imagerie', 'background-color', FOND_SANS_IMAGERIE_CLAIR]);
+    } finally { vi.unstubAllGlobals(); }
+  });
 });

@@ -502,6 +502,21 @@ class ObstacleHorsPanTest(SimpleTestCase):
         self.assertEqual(controle['geste'], "Déplacer l'obstacle")
         self.assertNotRegex(controle['valeur_texte'], r'\d')
 
+    def test_pan_deja_nomme_pan_aucun_mot_double(self):
+        # T4-B4-012 — « dépasse du pan Pan Sud » : un pan dont le nom dit
+        # déjà « Pan » n'est pas re-préfixé.
+        from apps.calepinage.services.pret_a_envoyer import (
+            controle_obstacle_hors_pan,
+        )
+
+        cheminee = {'type': 'cheminee', 'centerLat': 33.57009,
+                    'centerLng': -7.58995, 'lengthM': 4.0, 'widthM': 1.0}
+        zone = {'id': 'a', 'label': 'Pan Sud', 'vertices': PAN_A,
+                'obstacles': [cheminee]}
+        controle = controle_obstacle_hors_pan(_Document([zone]))
+        self.assertEqual(controle['valeur_texte'],
+                         'Cheminée / souche dépasse du pan Sud')
+
     def test_polygone_a_cheval_sur_la_rive(self):
         lucarne = {'type': 'chien_assis', 'forme': 'polygone', 'contour': [
             [-7.59002, 33.57003], [-7.58998, 33.57003],

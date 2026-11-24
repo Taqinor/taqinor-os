@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
@@ -840,7 +840,7 @@ describe('EtapeDocuments — l’écran guidé de la maquette (ACAL1193)', () =>
     expect(await within(gauche).findByRole('heading', { name: 'Prêt à envoyer ?' })).toBeTruthy()
     expect(screen.getByTestId('cal-documents-synthese')).toHaveTextContent('9 contrôles sur 10 sont bons.')
     expect(within(gauche).getAllByRole('heading', { level: 3 }).map((h) => h.textContent))
-      .toEqual(['Toit', 'Panneaux', 'Électrique', 'Résultats'])
+      .toEqual(['Toit', 'Panneaux — 3 bons', 'Électrique — 3 bons', 'Résultats — 2 bons']) // ACAL1725 : sans point ⇒ replié
     expect(gauche).toHaveTextContent('1 point à régler')
     expect(within(screen.getByTestId('cal-pret-ligne-pentes_confirmees'))
       .getByRole('button', { name: 'Régler dans Toit' })).toBeTruthy()
@@ -857,9 +857,86 @@ describe('EtapeDocuments — l’écran guidé de la maquette (ACAL1193)', () =>
       expect(carte.querySelector('svg[aria-hidden="true"]')).toBeTruthy() // la vignette
       expect(within(carte).getByRole('button', { name: /Télécharger/ })).toBeTruthy()
     }
-    expect(within(cartes[0]).getByRole('button', { name: 'Aperçu' })).toBeTruthy()
+    // ACAL1726 — « Aperçu » et « Télécharger » du document choisi vivent dans la colonne d'aperçu, plus sur la carte
+    expect(within(cartes[0]).queryByRole('button', { name: 'Aperçu' })).toBeNull()
+    const apercu = within(droite).getByTestId('cal-docs-colonne-apercu')
+    expect(within(apercu).getByRole('button', { name: 'Aperçu' })).toBeTruthy()
     expect(droite).toHaveTextContent('Le devis remis au client ne se fait pas ici')
-    expect(droite.querySelectorAll('[data-vignette]')).toHaveLength(5)
+    expect(droite.querySelectorAll('[data-vignette]')).toHaveLength(6) // cinq cartes + la feuille de l'aperçu
+  })
+
+  it('ACAL1726 : la colonne d’aperçu montre le document choisi ; un clic sur une carte le change, la note bleue est dans la colonne', async () => {
+    servir()
+    const utilisateur = userEvent.setup()
+    monter()
+    const colonne = await screen.findByTestId('cal-docs-colonne-apercu')
+    expect(colonne).toHaveAttribute('data-document', 'plan_pose')
+    expect(within(colonne).getByText('Plan de pose pour l’équipe')).toBeTruthy()
+    expect(within(colonne).getByTestId('cal-docs-info-devis')).toBeTruthy()
+    expect(screen.getAllByTestId('cal-docs-carte').filter((c) => c.dataset.choisie === 'oui').map((c) => c.dataset.document))
+      .toEqual(['plan_pose'])
+    await utilisateur.click(screen.getByRole('button', { name: 'Schéma électrique' }))
+    expect(screen.getByTestId('cal-docs-colonne-apercu')).toHaveAttribute('data-document', 'schema')
+    expect(screen.getByRole('button', { name: 'Schéma électrique' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Plan de pose pour l’équipe' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('ACAL1726 : chaque carte porte sa pastille « Prêt · PDF » ou « Il manque : … » (le libellé servi)', async () => {
+    servir()
+    monter()
+    await screen.findByTestId('cal-docs-liste')
+    expect(screen.getByTestId('cal-docs-pastille-plan_pose')).toHaveTextContent('Prêt · PDF')
+    expect(screen.getByTestId('cal-docs-pastille-rapport_etude')).toHaveTextContent('Prêt · PDF')
+    // `plan_cablage` n'est pas prêt dans l'exemple du contrat : son manque est celui du serveur, mot pour mot
+    expect(screen.getByTestId('cal-docs-pastille-schema')).toHaveTextContent('Il manque : Schéma unifilaire (chaînage électrique)')
+    expect(documentDe('exemple', 'plan_cablage').manque[0].libelle).toBe('Schéma unifilaire (chaînage électrique)')
+  })
+
+  it('ACAL1726 : une pièce à aperçu HTML montre sa première page réelle (cadre isolé) ; sinon le modèle de page, dit comme tel', async () => {
+    servir()
+    calepinageApi.calepinages.apercuDocument.mockResolvedValue({ data: '<html><body><h1>Rapport servi</h1></body></html>' })
+    const utilisateur = userEvent.setup()
+    monter()
+    const colonne = await screen.findByTestId('cal-docs-colonne-apercu')
+    expect(within(colonne).getByTestId('cal-docs-colonne-legende')).toHaveTextContent('Modèle de page de ce document')
+    expect(within(colonne).queryByTestId('cal-docs-colonne-feuille-reelle')).toBeNull() // PDF de `sorties/` : pas d'aperçu HTML
+    await utilisateur.click(screen.getByRole('button', { name: 'Rapport d’étude' }))
+    const reelle = await screen.findByTestId('cal-docs-colonne-feuille-reelle')
+    const cadre = reelle.querySelector('iframe')
+    expect(cadre.getAttribute('srcdoc')).toContain('Rapport servi')
+    expect(cadre.getAttribute('sandbox')).toBe('') // aucun script du document servi ne s'exécute
+    expect(screen.getByTestId('cal-docs-colonne-legende')).toHaveTextContent('Aperçu de la première page')
+    expect(calepinageApi.calepinages.apercuDocument).toHaveBeenCalledWith(1, 'rapport_etude', { langue: expect.any(String) })
+  })
+
+  it('ACAL1726 : aperçu HTML refusé par le serveur — le modèle de page reste, jamais une feuille vide', async () => {
+    servir()
+    calepinageApi.calepinages.apercuDocument.mockRejectedValue(new Error('500'))
+    const utilisateur = userEvent.setup()
+    monter()
+    await utilisateur.click(await screen.findByRole('button', { name: 'Rapport d’étude' }))
+    await waitFor(() => expect(calepinageApi.calepinages.apercuDocument).toHaveBeenCalled())
+    expect(screen.queryByTestId('cal-docs-colonne-feuille-reelle')).toBeNull()
+    expect(screen.getByTestId('cal-docs-colonne-legende')).toHaveTextContent('Modèle de page de ce document')
+  })
+
+  it('ACAL1726 : une pièce indisponible choisie dit son motif servi en entier dans la colonne, boutons inactifs', async () => {
+    servir()
+    const utilisateur = userEvent.setup()
+    monter()
+    await utilisateur.click(await screen.findByRole('button', { name: 'Schéma électrique' }))
+    const colonne = screen.getByTestId('cal-docs-colonne-apercu')
+    expect(within(colonne).getByTestId('cal-docs-colonne-motif')).toHaveTextContent(screen.getByTestId('cal-docs-motif-schema').textContent)
+    expect(within(colonne).getByTestId('cal-docs-colonne-telecharger-schema')).toBeDisabled()
+    expect(within(colonne).getByTestId('cal-docs-apercu-schema')).toBeDisabled()
+  })
+
+  it('ACAL1834 : l’anneau de progression dit la part de contrôles bons ; la carte ouverte porte l’état « choisie »', async () => {
+    servir()
+    monter()
+    const anneau = await screen.findByTestId('cal-docs-anneau')
+    expect(anneau).toHaveAttribute('aria-label', '9 contrôles bons sur 10')
+    expect(screen.getAllByTestId('cal-docs-carte').filter((c) => c.dataset.choisie === 'oui')).toHaveLength(1)
   })
 
   it('aucune empreinte en guidé ; « Faits à partir de … » seulement si l’heure est relayée', async () => {
@@ -900,15 +977,39 @@ describe('EtapeDocuments — l’écran guidé de la maquette (ACAL1193)', () =>
     expect(screen.queryByTestId('cal-docs-apercu-dxf')).toBeNull() // le DXF n’a pas d’aperçu
   })
 
-  it('ACAL1193 — contrôles visibles de l’écran guidé : au plus 22', async () => {
+  // Suite des écrans v2 (24/11) — à 1440 × 900, trois pièces indisponibles faisaient défiler la colonne des cartes
+  // (769 px dans 746, la carte DXF coupée) : le motif tient sur une ligne dans la carte, la colonne prend toute la hauteur.
+  it('colonne des cartes : la section remplit sa colonne ; le motif d’une carte sur UNE ligne, en entier dans l’aperçu', async () => {
+    const style = document.createElement('style')
+    style.textContent = readFileSync('src/styles/calepinage/55-etape-documents.css', 'utf8')
+    document.head.appendChild(style)
+    try {
+      servir()
+      const sorties = reponseContrat(APP, 'calepinage_sorties', 'exemple')
+      const long = 'Conception enregistrée — il manque le calcul : lancez la simulation à l’étape Résultats, puis revenez ici.'
+      sorties.data.sorties = sorties.data.sorties.map((x) => ({ ...x, disponible: false, motif_indisponible: long }))
+      calepinageApi.calepinages.sorties.mockResolvedValue(sorties)
+      monter()
+      const motif = await screen.findByTestId('cal-docs-motif-dxf')
+      const c = getComputedStyle(motif)
+      expect([c.whiteSpace, c.overflow, c.textOverflow]).toEqual(['nowrap', 'hidden', 'ellipsis'])
+      expect(getComputedStyle(screen.getByTestId('cal-docs-liste')).flexGrow).toBe('1')
+      fireEvent.click(within(motif.closest('[data-testid="cal-docs-carte"]')).getByRole('button', { pressed: false }))
+      expect(await screen.findByTestId('cal-docs-colonne-motif')).toHaveTextContent(long) // le motif servi, en entier
+    } finally {
+      style.remove()
+    }
+  })
+
+  it('ACAL1193 — contrôles visibles de l’écran guidé : au plus 26 (la maquette v2 en dessine 24 ; + les trois lignes de groupe repliées, ACAL1725)', async () => {
     servir()
     const { container } = monter()
     await screen.findByTestId('cal-docs-liste')
     await screen.findByTestId('cal-pret-ligne-visite_validee')
     const n = controlesVisibles(container).length
-    // dix « ? », « Régler dans Toit », « Générer le devis », quatre « Aperçu » (le DXF n’en a pas), cinq « Télécharger »
+    // dix « ? », « Régler dans Toit », trois lignes de groupe repliées, « Générer le devis », « Aperçu » + « Télécharger » de la colonne, cinq titres de carte, cinq icônes de téléchargement
     console.info(`ACAL1193 contrôles visibles (écran guidé, 10 contrôles) : ${n} :: ${controlesVisibles(container).map((e) => e.getAttribute('aria-label') || e.textContent.trim()).join(' | ')}`)
-    expect(n).toBeLessThanOrEqual(22)
+    expect(n).toBeLessThanOrEqual(26)
   })
   it('F4 — gabarit de la maquette : aucune marge propre à l’écran, les contrôles défilent DANS leur carte, vignettes à plat', async () => {
     const css = readFileSync('src/styles/calepinage/55-etape-documents.css', 'utf8')
@@ -924,7 +1025,7 @@ describe('EtapeDocuments — l’écran guidé de la maquette (ACAL1193)', () =>
     servir()
     monter()
     await screen.findByTestId('cal-docs-liste')
-    expect(document.querySelectorAll('[data-vignette]')).toHaveLength(5)
+    expect(document.querySelectorAll('[data-vignette]')).toHaveLength(6) // cinq cartes + la feuille de l'aperçu
   })
   it('PretAEnvoyer `filtre` : seule l’étape demandée, compte compris ; sans `groupes` la présentation d’origine', async () => {
     servir()

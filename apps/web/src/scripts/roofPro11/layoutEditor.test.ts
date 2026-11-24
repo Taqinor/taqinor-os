@@ -474,6 +474,32 @@ describe('ACAL412 — Ctrl+Z hors mode disposition restaure le sommet et redessi
     expect(ctx.obstacles).toEqual([]);
     expect(redessins).toHaveBeenCalledTimes(3);
   });
+
+  // ACAL2031 — figé SANS `opts.chiffrage` (site public, aperçu interne `/preview/toiture-3d-pro-11`, retiré du build par
+  // ACAL332) : l'Annuler de la barre, hors disposition, n'est pas réservé à l'ERP.
+  it('sans chiffrage, Annuler hors disposition passe par annulerGeste puis par undo', () => {
+    document.body.innerHTML = '';
+    const { ctx } = monter();
+    expect((ctx as unknown as { opts?: { chiffrage?: unknown } }).opts?.chiffrage).toBeUndefined();
+    const geste = { annuler: vi.fn(() => true), retablir: vi.fn(() => true) };
+    ctx.annulerGeste = geste; // posé par creerAnnulerAtelier (roof-tool-pro11, ERP comme site public)
+    ctx.pushWorkshopHistory?.();
+    (ctx as unknown as { vertices: [number, number][] }).vertices = [[0, 0], [1, 0], [5, 5]];
+    (document.getElementById('rp9-layout-undo') as HTMLButtonElement).click();
+    expect(geste.annuler).toHaveBeenCalledTimes(1); // le geste unique, pas l'undo de l'éditeur
+    expect(ctx.vertices[2]).toEqual([5, 5]);
+    // Sans annulerGeste posé : le repli est l'undo de l'éditeur, comme avant ACAL1901.
+    document.body.innerHTML = '';
+    const sans = makeFreeCtx(makePlan(40), []);
+    Object.assign(sans, { layoutMode: false, vertices: [[0, 0], [1, 0], [1, 1]] });
+    createLayoutEditor(sans, makeDeps(makeMap().map));
+    sans.pushWorkshopHistory?.();
+    (sans as unknown as { vertices: [number, number][] }).vertices = [[0, 0], [1, 0], [5, 5]];
+    (document.getElementById('rp9-layout-undo') as HTMLButtonElement).click();
+    expect(sans.vertices[2]).toEqual([1, 1]);
+    (document.getElementById('rp9-layout-redo') as HTMLButtonElement).click();
+    expect(sans.vertices[2]).toEqual([5, 5]);
+  });
 });
 
 // ACAL1403 — les boutons Annuler / Rétablir de la barre suivent la pile dès qu'un geste est photographié.

@@ -10,6 +10,7 @@ export const CALQUES_EDITION = [
   'rp9-ref-contour-fill', 'rp9-ref-contour-line', 'rp9-zones-label', 'rp9-reperes-cercle', 'rp9-reperes-point',
   'rp9-setback-lateral', 'rp9-setback-extremity', 'rp9-setback-parapet', 'rp9-setback-joint',
   'rp9-cotes', // ACAL1328 — cotes d'arêtes
+  'rp9-contour-choisi', // ACAL2042 — contour or du toit choisi
 ] as const;
 
 /** Degrés de cap par pixel glissé d'un doigt. */
@@ -193,4 +194,30 @@ export function poserPresentation(map: CartePresentable, actif: boolean, vue?: V
   e.ecouteurs.forEach((fn) => fn());
   map.triggerRepaint?.();
   return actif;
+}
+
+/** Suites des écrans v2 (24/11) — l'ÉTAPE guidée que l'hôte (coque de l'atelier ERP) montre : la carte dessine ce que la
+ *  maquette de cette étape dessine — cotes, contour or et coins au Toit (`Main`), chaînes et onduleur à l'Électrique
+ *  (`Electrique`). `null` (site public, mode Expert, vue client) : tout comme avant. Affichage seul, rien n'est écrit. */
+export type EtapeAtelier = 'toit' | 'panneaux' | 'electrique' | 'resultats' | 'documents';
+const etapes = new WeakMap<object, { etape: EtapeAtelier | null; ecouteurs: Set<() => void> }>();
+const etapeDe = (map: object) => {
+  let e = etapes.get(map);
+  if (!e) { e = { etape: null, ecouteurs: new Set() }; etapes.set(map, e); }
+  return e;
+};
+
+/** Vrai quand l'étape montrée est `etape`, ou qu'aucune étape n'est déclarée. */
+export const montreALEtape = (map: object, etape: EtapeAtelier): boolean => [null, etape].includes(etapes.get(map)?.etape ?? null);
+
+/** Un calque ou un module de scène se ré-applique à chaque changement d'étape. */
+export function surEtape(map: object, fn: () => void): void { etapeDe(map).ecouteurs.add(fn); }
+
+/** L'hôte déclare l'étape montrée (`null` : aucune) ; idempotent. */
+export function poserEtapeAtelier(map: CartePresentable, etape: EtapeAtelier | null): void {
+  const e = etapeDe(map);
+  if (e.etape === etape) return;
+  e.etape = etape;
+  e.ecouteurs.forEach((fn) => fn());
+  map.triggerRepaint?.();
 }

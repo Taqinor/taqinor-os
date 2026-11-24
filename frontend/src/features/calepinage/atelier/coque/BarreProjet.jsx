@@ -58,12 +58,12 @@ export default function BarreProjet({
       {retour.onClick ? (
         <button type="button" onClick={retour.onClick} className="cal-retour" data-testid="cal-retour-liste">
           <Icone nom="retour" taille={18} epaisseur={2} />
-          {retour.libelle}
+          <span className="cal-retour-texte">{retour.libelle}</span>
         </button>
       ) : (
         <Link to={retour.to} className="cal-retour" data-testid="cal-retour-liste">
           <Icone nom="retour" taille={18} epaisseur={2} />
-          {retour.libelle}
+          <span className="cal-retour-texte">{retour.libelle}</span>
         </Link>
       )}
       <h1 className="cal-projet">

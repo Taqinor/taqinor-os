@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 8ca3534cb948769a605cd8bb6e4543b7800fd00ce4afcfc7a5e2a635100887cf
+Structure fingerprint: 8ae29da62f35c15798b269cf2833441c2a4256e73913ef91e27275101f8ee957
 Plan fingerprint: c879c82382546b15dde3c4995d42dc8102cbfba3c35b8286175cd6839a3dd098
 
 
@@ -419,7 +419,7 @@ commercial section above). Both JWT-protected, both no-op without their key.
 
 ### ventes / core — « Un seul moteur » (D-ACAL-97, 24/11/2026, en cours de construction)
 
-- Contrat `apps/ventes/contract_samples/conception_lead.json` ; paquet `apps/ventes/conception/` (`champs.py` : `CHAMPS_ENTREES`, colonnes du lead qui sont des entrées du moteur ; `entrees.py` : `EntreesConception`, porte d'entrée unique des trois marchés) ; modèle `apps/ventes/models_conception.py` (`ConceptionLead` : résultat rangé par lead, ou par calepinage sans lead, une version courante par porteur ; migration `ventes/0161`) ; événements `lead_entrees_modifiees`, `pose_enregistree`, `conception_recalculee` (`core/events/`) ; figeage du devis automatique `apps/ventes/tests/golden/conception/` (9 goldens). Moteur, route et lecteurs : pas encore construits — conception `docs/audits/l5-calepinage/controles/C4-un-seul-moteur.md`, état `docs/audits/l5-calepinage/etat.md`.
+- Contrat `apps/ventes/contract_samples/conception_lead.json` ; paquet `apps/ventes/conception/` (`champs.py` : `CHAMPS_ENTREES`, colonnes du lead qui sont des entrées du moteur ; `entrees.py` : `EntreesConception`, porte d'entrée unique des trois marchés) ; modèle `apps/ventes/models_conception.py` (`ConceptionLead` : résultat rangé par lead, ou par calepinage sans lead, une version courante par porteur ; migration `ventes/0161`) ; événements `lead_entrees_modifiees`, `pose_enregistree`, `conception_recalculee` (`core/events/`) ; figeage du devis automatique `apps/ventes/tests/golden/conception/` (21 goldens). Moteur (étape 2, 24/11/2026) : `conception/decisions.py` et `etudes_lignes.py` (pipeline pur extrait du devis automatique), `conception/moteur.py::calculer_conception` (point d'entrée unique, sans écriture ; `valeurs.py`, `suppositions.py`), `conception/service.py::relancer` (écrivain unique des versions, émet `conception_recalculee`) et `apercu_conception` ; lecture : `apps/ventes/selectors_conception.py` (`conception_courante`, `historique_conception`, `manques_du_moteur`, `ecart_devis`, `champs_entrees`) ; routes `GET /api/django/ventes/conception/<lead_id>/` et `POST /api/django/ventes/conception/apercu/` (`views/conception.py` ; `crm_voir` + portée du rôle : lead par `crm.selectors.leads_visibles`, calepinage par `calepinages_visibles`). Émetteurs : `apps/crm/receivers.py` (`lead_entrees_modifiees`), `apps/calepinage/services/layout.py` (`pose_enregistree`). Lecteurs (devis automatique, calepinage, écrans) : pas encore branchés — conception `docs/audits/l5-calepinage/controles/C4-un-seul-moteur.md`, état `docs/audits/l5-calepinage/etat.md`.
 
 ## 5. Frontend
 

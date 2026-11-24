@@ -26,3 +26,6 @@
 
 # ACSV104 : ligne de FACTURE (LigneFacture) de main-d oeuvre recalee sur les heures du ticket SAV - hors devis, hors famille override.
 backend/django_core/apps/ventes/domain/facturation_ticket_sav.py::completer_brouillon_ticket_sav::ligne::mo.quantite | ACSV104 : ligne de facture (LigneFacture) de main-d oeuvre recalee sur les heures du ticket SAV, brouillon seulement ; aucun lien avec les overrides de devis
+
+# ADEV133 : `resultat` est un ResultatConception (dataclass de sortie du moteur unique), PAS un devis - l'attribut recoit, sans le modifier, le bloc deja fusionne cle a cle (etude_schema.appliquer) du brouillon jamais enregistre.
+backend/django_core/apps/ventes/conception/moteur.py::_lignes_du_moteur::etude_params_bloc::resultat.etude_params | ADEV133 : attribut d'un ResultatConception (dataclass en memoire, jamais un Devis) ; recopie le bloc deja fusionne par etude_schema.appliquer du brouillon non enregistre - le moteur ne fait aucune ecriture (test zero ecriture), aucune cle perdue

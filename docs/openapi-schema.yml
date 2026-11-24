@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5316, operations: 8170, components: 4094}
+counts: {paths: 5320, operations: 8174, components: 4096}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -3778,6 +3778,8 @@ operations:
 - get /api/django/ventes/clients/{client_id}/releve-pdf/ -> django_ventes_clients_releve_pdf_retrieve
 - get /api/django/ventes/clients/{client_id}/releve/ -> django_ventes_clients_releve_retrieve
 - get /api/django/ventes/clients/{client_id}/score-comportement/ -> django_ventes_clients_score_comportement_retrieve
+- post /api/django/ventes/conception/apercu/ -> django_ventes_conception_apercu_create
+- get /api/django/ventes/conception/{lead_id}/ -> django_ventes_conception_retrieve
 - get /api/django/ventes/courbes-iv/ -> django_ventes_courbes_iv_list
 - post /api/django/ventes/courbes-iv/ -> django_ventes_courbes_iv_create
 - delete /api/django/ventes/courbes-iv/{id}/ -> django_ventes_courbes_iv_destroy
@@ -7867,6 +7869,8 @@ operations:
 - get /api/v1/ventes/clients/{client_id}/releve-pdf/ -> v1_ventes_clients_releve_pdf_retrieve
 - get /api/v1/ventes/clients/{client_id}/releve/ -> v1_ventes_clients_releve_retrieve
 - get /api/v1/ventes/clients/{client_id}/score-comportement/ -> v1_ventes_clients_score_comportement_retrieve
+- post /api/v1/ventes/conception/apercu/ -> v1_ventes_conception_apercu_create
+- get /api/v1/ventes/conception/{lead_id}/ -> v1_ventes_conception_retrieve
 - get /api/v1/ventes/courbes-iv/ -> v1_ventes_courbes_iv_list
 - post /api/v1/ventes/courbes-iv/ -> v1_ventes_courbes_iv_create
 - delete /api/v1/ventes/courbes-iv/{id}/ -> v1_ventes_courbes_iv_destroy
@@ -10629,6 +10633,8 @@ components:
 - ComptageLigneRequest
 - ComptePortailClient
 - ComptePortailClientRequest
+- ConceptionApercuRequestRequest
+- ConceptionErreur
 - ConcurrentPerte
 - ConcurrentPerteRequest
 - ConditionPaiement

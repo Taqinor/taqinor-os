@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { creerRepere, lngLatVersMetres, ORDRE_LNGLAT } from '../repere'
 import { modulesDuDocument } from '@roofpro/modulesGeo'
 import { formatNumber } from '../../../lib/format'
@@ -168,6 +168,24 @@ export function useDonneesClient(id, { contexte: contexteServi = null, lireConte
     sousTitre: [ville, ok ? orientationToit(document) : ''].filter(Boolean).join(' · '),
     reessayer,
   }
+}
+
+/** La disposition « bureau » (grand écran à la souris : la présentation de la maquette Presentation). */
+export const MEDIA_BUREAU = '(min-width: 1024px)'
+
+/** Vrai quand la fenêtre a la largeur du bureau ; suit le redimensionnement. Sans `matchMedia` : le téléphone. */
+export function useBureau() {
+  const lire = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(MEDIA_BUREAU).matches
+  const [bureau, setBureau] = useState(lire)
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined
+    const mq = window.matchMedia(MEDIA_BUREAU)
+    const maj = () => setBureau(mq.matches)
+    maj()
+    mq.addEventListener?.('change', maj)
+    return () => mq.removeEventListener?.('change', maj)
+  }, [])
+  return bureau
 }
 
 /** Vrai si le navigateur peut rendre la 3D (WebGL). */

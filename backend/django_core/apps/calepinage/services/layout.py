@@ -35,6 +35,7 @@ import hashlib
 import json
 
 from core.conflit_etat import ConflitEtat
+from core.events import pose_enregistree
 
 #: ACAL39 — les SEULES clés « volatiles » du document : état d'écran qui ne
 #: change rien à la conception, donc hors empreinte « document ». Chaque
@@ -615,6 +616,7 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
     rejouer_apres_layout(calepinage, user=user)
     if not inchange:
         simuler_apres_enregistrement(calepinage, user)
+        _emettre_pose_enregistree(calepinage, nouvelle)
     return {
         'calepinage': calepinage,
         'version': version,
@@ -623,6 +625,32 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
         # ACAL22 — le jeton de la PROCHAINE écriture (If-Match / base).
         'empreinte_document': empreinte_document(roof_layout),
     }
+
+
+def _emettre_pose_enregistree(calepinage, empreinte_pose):
+    """ACAL2011 (D-ACAL-97) — une pose dont l'empreinte a CHANGÉ le dit au
+    moteur unique : ``pose_enregistree`` part UNE fois, après validation de la
+    transaction (``inchange`` ne passe jamais ici). Un calepinage sans lead
+    porte ``lead_id=None``. Best-effort : un abonné en échec ne casse jamais
+    l'enregistrement."""
+    import logging
+
+    from django.db import transaction
+
+    company_id, calepinage_id = calepinage.company_id, calepinage.pk
+    lead_id = calepinage.lead_id
+
+    def _emettre():
+        for _recepteur, erreur in pose_enregistree.send_robust(
+                sender='calepinage.Calepinage', company_id=company_id,
+                calepinage_id=calepinage_id, lead_id=lead_id,
+                empreinte_pose=empreinte_pose):
+            if isinstance(erreur, Exception):
+                logging.getLogger(__name__).warning(
+                    'ACAL2011 : abonné de pose_enregistree en échec '
+                    '(calepinage #%s)', calepinage_id, exc_info=erreur)
+
+    transaction.on_commit(_emettre)
 
 
 def simuler_apres_enregistrement(calepinage, user):

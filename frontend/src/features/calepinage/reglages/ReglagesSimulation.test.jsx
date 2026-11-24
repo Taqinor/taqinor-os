@@ -562,6 +562,22 @@ describe('ACAL405 — Démarrage rapide', () => {
       expect(ligne.querySelector('[title]')).toHaveAttribute('title', expect.stringContaining(PROFIL.valeurs[0].url))
     })
 
+    it('ACAL1826 — la valeur servie au style v2 : texte inchangé, pastille dorée sur une publication, aucune sur une valeur SUPPOSÉE', async () => {
+      const publiee = { ...PROFIL.valeurs[0], cle: 'b0_iam', valeur: 0.05, unite: '' }
+      const supposee = { ...PROFIL.valeurs[0], cle: 'salissure_mensuelle_pct', valeur: 3, unite: '%',
+        reference: 'Profil de départ — valeur de départ SUPPOSÉE, acceptée par le fondateur' }
+      mocks.profilDepart.mockResolvedValue({ data: { ...PROFIL, valeurs: [publiee, supposee] } })
+      servirReglages({})
+      rendre()
+      const pastille = (ligne) => ligne.querySelector('.rounded-full.bg-\\[var\\(--cal-action\\)\\]')
+      const lignePubliee = await screen.findByTestId('acal405-valeur-b0_iam')
+      expect(lignePubliee).toHaveTextContent('0,05')
+      expect(pastille(lignePubliee)).not.toBeNull()
+      const ligneSupposee = screen.getByTestId('acal405-valeur-salissure_mensuelle_pct')
+      expect(ligneSupposee).toHaveTextContent('3 %')
+      expect(pastille(ligneSupposee)).toBeNull()
+    })
+
     it('« Remplir les N réglages vides » : N = les lignes vides réellement servies', async () => {
       mocks.profilDepart.mockResolvedValue({ data: PROFIL_RICHE })
       servirReglages({})
@@ -722,6 +738,29 @@ describe('ACAL405 — Démarrage rapide', () => {
           expect(bloc, 'ancêtre positionné d’une citation sr-only').not.toBeNull()
           expect(section.contains(bloc), 'le bloc conteneur est dans la section qui défile').toBe(true)
         }
+      } finally {
+        window.history.replaceState(null, '', '/')
+      }
+    })
+
+    // T4-B4-003 — arrivée depuis Résultats (« Remplir 2 des … réglages vides ») : seuls CES réglages sont cochés, la page
+    // annonce le même nombre ; les autres réglages vides de la société restent là, décochés, cochables.
+    it('`?reglages=` (venu de Résultats) : seuls ces réglages sont cochés, le bouton dit le même nombre', async () => {
+      window.history.replaceState(null, '', '/calepinage/reglages/demarrage-rapide?reglages=b0_iam,modele_iam')
+      try {
+        mocks.profilDepart.mockResolvedValue({ data: PROFIL_RICHE })
+        servirReglages({})
+        const { default: DemarrageRapide } = await import('./DemarrageRapide')
+        render(<DemarrageRapide />)
+        await screen.findByTestId('acal405-valeur-b0_iam')
+        const caseDe = (cle) => within(screen.getByTestId(`acal405-valeur-${cle}`)).getByRole('checkbox')
+        expect(caseDe('b0_iam')).toBeChecked()
+        expect(caseDe('modele_iam')).toBeChecked()
+        expect(caseDe('mismatch_fabricant_pct')).not.toBeChecked()
+        expect(caseDe('mismatch_fabricant_pct')).toBeEnabled()
+        await waitFor(() => expect(screen.getByTestId('acal405-appliquer')).toHaveTextContent('Remplir les 2 réglages cochés'))
+        fireEvent.click(caseDe('mismatch_fabricant_pct'))
+        expect(screen.getByTestId('acal405-appliquer')).toHaveTextContent('Remplir les 3 réglages cochés')
       } finally {
         window.history.replaceState(null, '', '/')
       }

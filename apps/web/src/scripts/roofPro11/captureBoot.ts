@@ -430,7 +430,10 @@ export function bootCaptureOnly(opts: CaptureOptions): void {
       return;
     }
     if (vertices.length > 0 && !closed) {
-      addVertex(lngLat);
+      // T4-B4-005 — le point écran du clic : sur la pastille du 1ᵉʳ coin (≥ 3 coins), il ferme par « Terminer »
+      // (validations comprises) au lieu de poser un sommet en double ; « Terminer » a déjà tout mis à jour.
+      addVertex(lngLat, e.point);
+      if (closed) return;
       pin = null;
       redrawPin();
       if (finishBtn) finishBtn.disabled = vertices.length < 3;

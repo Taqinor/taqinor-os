@@ -8,6 +8,7 @@ import {
   construireCorpsPompage, manquantsPompage, alertesAffichables,
   libelleProvenance, nombreOuNull, besoinExprime, besoinDepuisDebitSouhaite,
   refusAutoRemplirPompage, etatPompageEcran, POMPAGE_SAISIE_VIDE, poserSaisie,
+  messagePompeSansPrix,
 } from './etudePompagePreviewPur.js'
 
 const CONTRAT = documentContrat('ventes', 'etude_pompage_preview')
@@ -178,4 +179,26 @@ test('site::test_client_sans_lead_transmis_au_serveur', () => {
   const avecLead = construireCorpsPompage(etatPompageEcran(saisie, { ...base, clientId: 12, leadId: 7 }))
   assert.equal(avecLead.lead, 7)
   assert.equal(avecLead.client, 12)
+})
+
+// T4-U3-004 — sans pompe chiffrable, l'écran nomme la pompe que retient le
+// dimensionnement (la PREMIÈRE de `prix_a_renseigner`, servie du plus petit au
+// plus gros kW par `core.pompage.selection.choisir_pompe`) et QUI peut saisir
+// son prix — jamais une liste de dix pompes sans suite.
+test('T4-U3-004 — pompe retenue sans prix : nommée, avec sa raison et qui saisit le prix', () => {
+  const donnees = {
+    pompe: { placeholder: true },
+    hmt: { valeur_m: 80 },
+    conception: { debit_conception_m3h: 20 },
+    prix_a_renseigner: ['Pompe immergée OSP 30/11 — 12.5 CV', 'Pompe immergée OSP 30/13 — 15 CV'],
+  }
+  const m = messagePompeSansPrix(donnees)
+  assert.match(m, /« Pompe immergée OSP 30\/11 — 12\.5 CV »/)
+  assert.match(m, /plus petite pompe de la courbe qui donne 20 m³\/h à 80 m/)
+  assert.match(m, /Modifier les prix du catalogue/)
+  assert.match(m, /Directeur ou Administrateur/)
+  assert.match(m, /OSP 30\/13/)
+  assert.equal(messagePompeSansPrix({ ...donnees, pompe: { placeholder: false } }), null)
+  assert.equal(messagePompeSansPrix({ ...donnees, prix_a_renseigner: [] }), null)
+  assert.equal(messagePompeSansPrix(null), null)
 })

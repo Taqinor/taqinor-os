@@ -18,7 +18,7 @@
 // pendant que la CI reste verte : exactement le défaut que PACT8 combat.
 import { expect } from '@playwright/test'
 
-import { routesParModule, TITRE_ECRAN_ERREUR } from './helpers.js'
+import { ECRANS_PLEIN_ECRAN, routesParModule, TITRE_ECRAN_ERREUR } from './helpers.js'
 
 export const PAR_MODULE = routesParModule()
 
@@ -64,19 +64,23 @@ async function visiter(page, chemin) {
   try {
     await page.goto(chemin, { waitUntil: 'domcontentloaded' })
 
-    // La coquille authentifiée rend TOUJOURS `.header-title` ; l'écran de
-    // récupération rend son titre. On attend le premier des deux : ni
-    // `networkidle` (lent et instable sur les écrans qui interrogent en
-    // continu) ni une attente fixe.
+    // La coquille authentifiée rend `.header-title` ; l'écran de récupération
+    // rend son titre. On attend le premier des deux : ni `networkidle` (lent et
+    // instable sur les écrans qui interrogent en continu) ni une attente fixe.
+    // Seule exception : une route PLEIN ÉCRAN déclarée (`ECRANS_PLEIN_ECRAN`,
+    // une par une, avec sa raison) n'a pas de coquille — son marqueur déclaré
+    // vaut alors preuve de vie. Tous les autres constats restent appliqués.
     const coquille = page.locator('.header-title')
     const ecranErreur = page.getByRole('heading', { name: TITRE_ECRAN_ERREUR })
+    const pleinEcran = ECRANS_PLEIN_ECRAN[chemin]
+    let vivant = coquille.or(ecranErreur)
+    if (pleinEcran) vivant = vivant.or(page.locator(pleinEcran.marqueur))
     try {
-      await coquille.or(ecranErreur).first().waitFor({
-        state: 'visible', timeout: DELAI_ECRAN,
-      })
+      await vivant.first().waitFor({ state: 'visible', timeout: DELAI_ECRAN })
     } catch {
-      defauts.push('page blanche : ni la coquille applicative '
-        + '(.header-title) ni un écran d’erreur n’est apparu')
+      defauts.push('page blanche : ni la coquille applicative (.header-title) '
+        + (pleinEcran ? `ni le marqueur plein écran (${pleinEcran.marqueur}) ` : '')
+        + 'ni un écran d’erreur n’est apparu')
     }
 
     if (await ecranErreur.isVisible().catch(() => false)) {
@@ -180,6 +184,17 @@ export function declarerGardeUnion(test) {
     for (const [i, groupe] of groupes.entries()) {
       expect(groupe.length, `le groupe ${i + 1} est vide — lane gaspillée`)
         .toBeGreaterThan(0)
+    }
+  })
+
+  // Les exceptions plein écran ne pourrissent pas : chaque clé est une route que
+  // la fumée visite réellement, avec un marqueur `data-testid` et une raison.
+  test('PACT8: chaque écran plein écran déclaré est une route visitée', () => {
+    const visitees = new Set([...PAR_MODULE.values()].flat())
+    for (const [chemin, { marqueur, raison }] of Object.entries(ECRANS_PLEIN_ECRAN)) {
+      expect(visitees.has(chemin), `${chemin} n'est plus une route lue`).toBe(true)
+      expect(marqueur, `${chemin} : marqueur data-testid`).toMatch(/^\[data-testid="[^"]+"\]$/)
+      expect(String(raison || '').trim().length, `${chemin} : raison vide`).toBeGreaterThan(0)
     }
   })
 }

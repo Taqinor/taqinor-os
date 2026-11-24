@@ -62,3 +62,21 @@ export async function ecrireOuRelire(ecrire, calepinageId, empreinteEnvoyee, est
     throw err
   }
 }
+
+/**
+ * T4-B4-002 — une LECTURE restée sans réponse (délai de 20 s dépassé sur une pile chargée, réseau coupé : le navigateur
+ * la montre « annulée ») est relancée par l'écran encore monté, au lieu de laisser un message mort. Un refus SERVI
+ * (réponse HTTP avec code) n'est jamais relancé : il se dit tel quel.
+ */
+export async function lireAvecReprise(lire, essais = 2) {
+  let derniere = null
+  for (let essai = 0; essai < essais; essai += 1) {
+    try {
+      return await lire()
+    } catch (err) {
+      if (err?.response) throw err
+      derniere = err
+    }
+  }
+  throw derniere
+}

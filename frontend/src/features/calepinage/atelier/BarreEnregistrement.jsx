@@ -27,6 +27,7 @@ function texteEnregistre(iso) {
 
 export default function BarreEnregistrement({
   libelle, enCours, desactive, onEnregistrer, modifiee, enregistreLe, statut, erreur,
+  actionErreur = null, // T4-B4-002 — `{libelle, onClick}` : le geste qui lève l'erreur (jamais un message mort)
   etatPropre = null,
   derniereVersionLe = null, // l'heure de la DERNIÈRE VERSION servie (`versions.derniere_le`), tant que la session n'a rien écrit
 }) {
@@ -61,7 +62,14 @@ export default function BarreEnregistrement({
         <div className="cal-barre-messages">
           {statut && <p className="text-sm text-muted-foreground" aria-live="polite">{statut}</p>}
           {erreur && (
-            <p className="text-sm text-destructive" role="alert" data-testid="cal-erreur-enregistrement">{erreur}</p>
+            <p className="text-sm text-destructive" role="alert" data-testid="cal-erreur-enregistrement">
+              {erreur}
+              {actionErreur && (
+                <button type="button" className="ml-2 inline-flex min-h-11 items-center font-semibold underline" onClick={actionErreur.onClick}>
+                  {actionErreur.libelle}
+                </button>
+              )}
+            </p>
           )}
         </div>
       )}

@@ -63,6 +63,34 @@ describe('ACAL2002 — « Générer le devis » est le bouton doré v2 quand il 
   })
 })
 
+/* Demande croisée de la lane Documents (24/11) — à l'étape Documents (action de l'étape) les surfaces chiffrées tiennent sur
+   UNE ligne qui se déplie (la liste des contrôles ne défile plus dans la carte), et la flèche du bouton doré est un
+   pictogramme passé par `fleche`, plus un `::after` de feuille. Ailleurs (Expert) : la forme dépliée d'avant. */
+describe('Documents — forme compacte des surfaces et flèche du bouton doré', () => {
+  it('action de l’étape : surfaces repliées sur une ligne (la phrase servie), cases dans le dépli ; flèche dans le bouton', async () => {
+    const vue = rendre({ detail: DETAIL_SANS_SELECTION, actionEtape: true })
+    const repli = screen.getByTestId('cal-devis-surfaces')
+    expect(repli.tagName).toBe('DETAILS')
+    expect(repli.open).toBe(false)
+    const surfaces = DETAIL.surfaces_chiffrables
+    expect(within(repli).getByText(/^Le devis chiffre :/)).toHaveTextContent(
+      `= ${surfaces.reduce((t, s) => t + s.modules, 0)} modules`)
+    expect(within(repli).getAllByRole('checkbox', { hidden: true })).toHaveLength(surfaces.length)
+    expect(screen.getByTestId('cal-resynchroniser-devis').querySelector('svg')).not.toBeNull()
+    vue.unmount()
+    rendre({ detail: DETAIL_SANS_SELECTION })
+    expect(screen.queryByTestId('cal-devis-surfaces')).toBeNull()
+    expect(screen.getByTestId('cal-resynchroniser-devis').querySelector('svg')).toBeNull()
+  })
+
+  it('« Cochez au moins une surface » reste visible, même replié', async () => {
+    rendre({ detail: DETAIL_SANS_SELECTION, actionEtape: true })
+    for (const c of screen.getAllByRole('checkbox', { hidden: true })) await userEvent.click(c)
+    const alerte = screen.getByText('Cochez au moins une surface')
+    expect(screen.getByTestId('cal-devis-surfaces').contains(alerte)).toBe(false)
+  })
+})
+
 describe('BoutonDevis (CAL38)', () => {
   it('détail absent (agrégat pas encore lu) : aucun bouton deviné', async () => {
     rendre({ detail: null })

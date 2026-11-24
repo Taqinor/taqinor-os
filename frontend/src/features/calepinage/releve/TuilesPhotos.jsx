@@ -1,13 +1,13 @@
 import { urlFichierCalepinage, crossOriginFichierCalepinage } from '../../../lib/calage/fichierCalepinage'
 import { CATEGORIES_PHOTO } from './releveTelephone'
 
-/* Maquette Telephone — « Photos » + « N sur M » + barre dorée + tuiles (pointillées avec
+/* Maquette Telephone v2 — « Photos » + « N sur M » + M traits dorés (un par genre) + tuiles de 64 px (pointillées avec
    l'appareil photo quand la catégorie n'a pas encore de photo). Les catégories sont les
-   genres RÉELS de `PhotoSite.Genre` (3, pas les 6 sujets d'exemple de la maquette). */
+   genres RÉELS de `PhotoSite.Genre` (3, pas les 6 sujets d'exemple de la maquette : D-ACAL-68, ACAL1319). */
 
 function Appareil() {
   return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
       strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" />
     </svg>
@@ -23,14 +23,14 @@ export default function TuilesPhotos({ photos, genresEnFile, enCours, message, o
   const faites = tuiles.filter((t) => t.photo || t.enFile).length
   const total = tuiles.length
   return (
-    <section className="cal-tel-section" data-testid="releve-photos">
+    <section className="cal-tel-section cal-tel-photos" data-testid="releve-photos">
       <div className="cal-tel-titre-ligne">
         <h1 className="cal-tel-h">Photos</h1>
-        <span className="cal-tel-compte" data-testid="releve-photos-compte">{`${faites} sur ${total}`}</span>
+        <span className="cal-tel-compte" data-testid="releve-photos-compte"><b>{faites}</b>{` sur ${total}`}</span>
       </div>
       <div className="cal-tel-barre" role="progressbar" aria-label="Photos prises"
         aria-valuemin={0} aria-valuemax={total} aria-valuenow={faites}>
-        <div className="cal-tel-barre-plein" style={{ width: `${Math.round((faites / total) * 100)}%` }} />
+        {tuiles.map((t, i) => <span key={t.genre} className="cal-tel-barre-trait" data-fait={i < faites ? '' : undefined} />)}
       </div>
       <div className="cal-tel-tuiles">
         {tuiles.map((t) => (t.photo || t.enFile ? (

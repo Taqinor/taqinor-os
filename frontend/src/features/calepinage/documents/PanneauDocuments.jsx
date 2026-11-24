@@ -943,6 +943,9 @@ export default function PanneauDocuments({
         erreursDe={(c) => (estDocument(c) ? erreurs[c.code] : erreursSorties[c.code])}
         onTelecharger={(c) => (estDocument(c) ? telecharger(c.code) : telechargerSortie(c.entree))}
         onApercu={(c) => (c.apercu === 'html' ? apercu(c.code) : apercuSortie(c.entree))}
+        // ACAL1726 — la première page réelle d'une pièce à aperçu HTML : le MÊME appel que « Aperçu », lu sans erreur affichée.
+        chargerHtml={(c) => calepinageApi.calepinages
+          .apercuDocument(id, c.code, { langue: langueDe(c.entree) }).then((r) => r.data)}
       />
       {expert ? vueExpert : null}
     </>

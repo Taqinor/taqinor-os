@@ -1,0 +1,782 @@
+[
+ {
+  "id": "LEAD-DEV-010",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-011",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-013",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-015",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-017",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-040",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "PDF-014",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "PDF-017",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "PDF-029",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "PDF-030",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-RTE-011",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-ATL-002",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-ATL-005",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-ATL-006",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-ATL-008",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-ATL-009",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-ATL-010",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-ATL-011",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-ATL-013",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-TOIT-004",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-TOIT-014",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-PAN-001",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-PAN-002",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-PAN-011",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-ELEC-001",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-ELEC-004",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-ELEC-009",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-AV-014",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-AV-019",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-AV-021",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-AV-023",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-RES-006",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-DOC-001",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-TOIT-003",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "bloque",
+  "note": "formes grisées (aria-disabled) tant qu aucun contour n existe, aucun motif affiché ; toit créé par les champs Dimensions"
+ },
+ {
+  "id": "CAL-AV-024",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "bloque",
+  "note": "« Régler » de « Dossier électrique » ouvre ?onglet=verdict-electrique mais rien ne s affiche (T4-U4-007)"
+ },
+ {
+  "id": "CAL-RES-002",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "bloque",
+  "note": "calepinage créé par « Dessiner le toit » non rattaché au devis envoyé (DEVIS —) : ni chiffre du devis ni « Réviser le devis » (T4-U4-005)"
+ },
+ {
+  "id": "CAL-RES-005",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "bloque",
+  "note": "calepinage créé par « Dessiner le toit » non rattaché au devis envoyé (DEVIS —) : ni chiffre du devis ni « Réviser le devis » (T4-U4-005)"
+ },
+ {
+  "id": "CAL-DOC-002",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "bloque",
+  "note": "« Générer le devis » bloqué par « Dossier électrique — Bloquant : 1 » sans chemin pour le lever"
+ },
+ {
+  "id": "CAL-DEV-002",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "bloque",
+  "note": "« Générer le devis » bloqué par « Dossier électrique — Bloquant : 1 » sans chemin pour le lever"
+ },
+ {
+  "id": "CAL-DEV-003",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "bloque",
+  "note": "« Générer le devis » bloqué par « Dossier électrique — Bloquant : 1 » sans chemin pour le lever"
+ },
+ {
+  "id": "CAL-DEV-004",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "bloque",
+  "note": "« Générer le devis » bloqué par « Dossier électrique — Bloquant : 1 » sans chemin pour le lever"
+ },
+ {
+  "id": "CAL-DEV-008",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "bloque",
+  "note": "« Générer le devis » bloqué par « Dossier électrique — Bloquant : 1 » sans chemin pour le lever"
+ },
+ {
+  "id": "CAL-DEV-010",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "bloque",
+  "note": "« Générer le devis » bloqué par « Dossier électrique — Bloquant : 1 » sans chemin pour le lever"
+ },
+ {
+  "id": "CAL-DEV-011",
+  "scenario": "n",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "bloque",
+  "note": "« Générer le devis » bloqué par « Dossier électrique — Bloquant : 1 » sans chemin pour le lever"
+ },
+ {
+  "id": "CAL-LST-001",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-NOU-001",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-NOU-003",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-NOU-005",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-NOU-011",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-TOIT-004",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-PAN-001",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-PAN-002",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-ELEC-001",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-AV-021",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-RES-006",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-DOC-001",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-DOC-003",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-DOC-004",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-TOIT-001",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "bloque",
+  "note": "« Localiser » sans effet : géocodage par la clé de carte factice de la pile ; adresse du client non préremplie"
+ },
+ {
+  "id": "CAL-DOC-002",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "bloque",
+  "note": "« Ces points bloquent le devis » (Dossier électrique) ; et aucun lead lié : « Le devis n est pas encore chiffré : aucun lead lié »"
+ },
+ {
+  "id": "CAL-ATL-003",
+  "scenario": "p",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-AV-003",
+  "scenario": "p",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-AV-004",
+  "scenario": "p",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-DRAW-023",
+  "scenario": "p",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-ELEC-001",
+  "scenario": "p",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-AV-021",
+  "scenario": "p",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-DEV-001",
+  "scenario": "p",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "bloque",
+  "note": "raccordement impossible sur sol + ombrière (T4-U4-018), « Générer le devis » non atteint"
+ },
+ {
+  "id": "CAL-DEV-002",
+  "scenario": "p",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "bloque",
+  "note": "raccordement impossible sur sol + ombrière (T4-U4-018), « Générer le devis » non atteint"
+ },
+ {
+  "id": "CAL-RTE-012",
+  "scenario": "q",
+  "moteur": "webkit",
+  "taille": 390,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-REL-001",
+  "scenario": "q",
+  "moteur": "webkit",
+  "taille": 390,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-REL-002",
+  "scenario": "q",
+  "moteur": "webkit",
+  "taille": 390,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-REL-003",
+  "scenario": "q",
+  "moteur": "webkit",
+  "taille": 390,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-REL-004",
+  "scenario": "q",
+  "moteur": "webkit",
+  "taille": 390,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-REL-005",
+  "scenario": "q",
+  "moteur": "webkit",
+  "taille": 390,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-REL-006",
+  "scenario": "q",
+  "moteur": "webkit",
+  "taille": 390,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-REL-007",
+  "scenario": "q",
+  "moteur": "webkit",
+  "taille": 390,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-RTE-017",
+  "scenario": "q",
+  "moteur": "webkit",
+  "taille": 390,
+  "theme": "clair",
+  "role": "Technicien",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-AV-009",
+  "scenario": "q",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-AV-011",
+  "scenario": "q",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-ATL-006",
+  "scenario": "r",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-ATL-007",
+  "scenario": "r",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-RTE-016",
+  "scenario": "r",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-PAN-002",
+  "scenario": "r",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-ATL-006",
+  "scenario": "r",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-ATL-007",
+  "scenario": "r",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ }
+]

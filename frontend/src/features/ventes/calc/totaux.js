@@ -181,6 +181,38 @@ export function optionTotalsTTC(lines, discountPct, { scenario, produits, montee
   return { totalSansBrut, totalAvecBrut, totalSans, totalAvec }
 }
 
+// T4-U2-011 — DANS QUELLE OPTION COMPTE CHAQUE LIGNE. Même population et
+// même règle que `optionTotalsTTC` (paniers `appartientAuPanierSans/Avec` +
+// QF9 des accessoires Huawei, miroir de `utils/options.py`) : l'écran dit
+// la répartition que le PDF fera (« Spécifique à l'option 1/2 »), au lieu de
+// laisser un total bouger sans étiquette. Rend un tableau ALIGNÉ sur `lines` :
+// `null` (compte dans les deux options, ne compte pas, ou devis à une seule
+// option), sinon `{ option: 'sans' | 'avec' | 'aucune', raison }`. La
+// classification elle-même n'est PAS changée ici.
+export const RAISON_ACCESSOIRE_HUAWEI = 'accessoire de l’onduleur Huawei : '
+  + 'il ne compte que dans l’option dont l’onduleur est un Huawei'
+export function optionsDesLignes(lines, { scenario, produits } = {}) {
+  const tous = lines || []
+  const comptees = tous.filter(ligneCompteDansTotaux)
+  const deuxOptions = comptees.some(l => l?.variante === 'sans' || l?.variante === 'avec')
+    || alternativeDeclareeServable(comptees, scenario, produits)
+  if (!deuxOptions) return tous.map(() => null)
+  const sans = comptees.filter(l => appartientAuPanierSans(l, produits))
+  const avec = comptees.filter(l => appartientAuPanierAvec(l, produits))
+  const sansFinal = new Set(_retirerAccessoiresHuawei(sans, produits))
+  const avecFinal = new Set(_retirerAccessoiresHuawei(avec, produits))
+  return tous.map((l) => {
+    // Seules les lignes qui PARTENT (produit + quantité > 0) sont étiquetées :
+    // une ligne en attente de produit ou à 0 ne pèse sur aucun total.
+    if (!comptees.includes(l) || !l?.produit || !((parseFloat(l?.quantite) || 0) > 0)) return null
+    const s = sansFinal.has(l)
+    const a = avecFinal.has(l)
+    if (s && a) return null
+    const huawei = (sans.includes(l) && !s) || (avec.includes(l) && !a)
+    return { option: s ? 'sans' : a ? 'avec' : 'aucune', raison: huawei ? RAISON_ACCESSOIRE_HUAWEI : null }
+  })
+}
+
 // ATOT25 — LA REMISE « PAR LIGNE » DE L'ÉCRAN = CELLE DU PDF, PAR PANIER.
 // Miroir de `builder._annoter_remise` : chaque option (panier Sans / Avec,
 // même population que `optionTotalsTTC`) répartit SA remise sur les HT
@@ -241,7 +273,8 @@ export function lignesRemiseesParPanier(lines, discountPct, { scenario, option =
   const parLigne = tous.map((l) => (premier.valeurs.has(l) ? premier.valeurs.get(l)
     : (second.valeurs.has(l) ? second.valeurs.get(l) : null)))
   const resume = ({ total, sommeLignes, arrondi }) => ({ total, sommeLignes, arrondi })
-  return { parLigne, sans: resume(sans), avec: resume(avec) }
+  // T4-U2-011 — `options` : l'option où compte chaque ligne (optionsDesLignes).
+  return { parLigne, sans: resume(sans), avec: resume(avec), options: optionsDesLignes(tous, { scenario, produits }) }
 }
 
 // ── QJ31 — Multi-propriétés : aperçu écran (TTC) miroir du backend QJ29 ──────

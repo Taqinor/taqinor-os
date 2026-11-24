@@ -1812,7 +1812,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       },
       paint: { 'text-color': '#ffffff', 'text-halo-color': '#070b1d', 'text-halo-width': 1.6 },
     });
-    monterCotesAretes(map as never, () => areas.map((a) => (a.id === activeAreaId ? { sommets: vertices, ferme: closed } : { sommets: a.vertices, ferme: true })), opts.chiffrage !== undefined); // ACAL1328 — atelier ERP seul
+    monterCotesAretes(map as never, () => areas.map((a) => (a.id === activeAreaId ? { sommets: vertices, ferme: closed, actif: true } : { sommets: a.vertices, ferme: true })), opts.chiffrage !== undefined); // ACAL1328 — atelier ERP seul
     // ACAL233 — calque de la parcelle (pointillés), distinct du tracé du toit.
     map.addSource('rp9-parcelle', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } as never });
     map.addLayer({
@@ -2211,13 +2211,13 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // posés à la main AVANT le recalc : recompute()/pitchedRecompute() re-pavent le toit
     // (nouvelle lattice via renderScene → layoutState nullé), ce qui sinon ferait retomber
     // silencieusement la pose personnalisée sur l'optimum et périmerait les readouts.
-    const prevCenters = layoutMode ? occupiedCenters() : null;
+    const prevCenters = layoutMode || (freeMode && freeState) ? occupiedCenters() : null, origineAvant = layoutPlan?.pack.origin; // ACAL2032 — le placement libre aussi, même panneau fermé
     if (roofType === 'pitched') pitchedRecompute();
     else recompute();
     // W79 — après le re-pavage, on RE-ENTRE la disposition personnalisée : re-snap de chaque
     // centre capturé vers la cellule valide la plus proche de la NOUVELLE lattice (les
     // panneaux survivent, re-snappés), puis re-rendu panneaux/grille/note (readouts à jour).
-    if (prevCenters) reenterCustomLayout(prevCenters);
+    if (prevCenters) reenterCustomLayout(prevCenters, origineAvant);
   }
   function renderActive() {
     if (roofType === 'pitched') liveResolvePitched();
@@ -2842,9 +2842,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     }
     if (pendingVertex) {
       const v = pendingVertex;
+      const pt = pendingVertexPt;
       pendingVertex = null;
       pendingVertexPt = null;
-      addVertex(v);
+      addVertex(v, pt); // T4-B4-005 — le point écran du clic : sur la pastille du 1ᵉʳ coin, il ferme
     }
   }
   /** Annule le sommet en attente SANS le poser (geste « terminer » : double-clic / double-tap). */
@@ -2984,9 +2985,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     clickTimer = setTimeout(() => {
       clickTimer = null;
       const v = pendingVertex;
+      const pt = pendingVertexPt;
       pendingVertex = null;
       pendingVertexPt = null;
-      if (v) addVertex(v);
+      if (v) addVertex(v, pt); // T4-B4-005 — le point écran du clic : sur la pastille du 1ᵉʳ coin, il ferme
     }, 240);
   });
   map.on('dblclick', (e) => {
@@ -4285,7 +4287,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     renderCarteAccesHd: (scale) => shadingUi.avecCarteDAcces(() => scene3d.renderOffscreen(scale)), // ACAL726
     exporterSceneGltf: () => scene3d.exporterSceneGltf(), // ACAL537
     enregistrerOrbite: (o) => enregistrerOrbite(map, o), // ACAL896 — vidéo d'orbite, hors /proposal
-    ...apiCamera(map, { anneaux: () => [vertices, ...areas.filter((a) => a.id !== activeAreaId).map((a) => a.vertices)], azimut: () => facingAzimuthDeg, trace: () => drawing }, !!opts.reducedMotion), // ACAL435 + F6
+    ...apiCamera(map, { anneaux: () => [vertices, ...areas.filter((a) => a.id !== activeAreaId).map((a) => a.vertices)], azimut: () => facingAzimuthDeg, trace: () => drawing, volume: () => scene3d.volumeScene() }, !!opts.reducedMotion), // ACAL435 + F6 ; ACAL1839 — volume
     // CAL104 — vue 2D plan : on PROJETTE la géométrie déjà posée (contour de la zone
     // active + centres de modules du plan gagnant), on ne re-pave rien. Le compte et les
     // cotes de la 2D sont donc ceux de la 3D, par construction.

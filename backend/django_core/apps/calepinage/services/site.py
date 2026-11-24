@@ -114,6 +114,9 @@ __all__ = [
     # la longitude).
     'SOURCE_PVGIS', 'SOURCE_SAISIE', 'altitude_du_site',
     'fuseau_du_site', 'decalage_utc_minutes',
+    # T4-U1-003 — jamais un point par défaut anonyme.
+    'CENTRES_CARTE_PAR_DEFAUT', 'SOURCE_VILLE_REFERENCE',
+    'epingle_posee', 'point_du_site', 'site_dit',
 ]
 
 
@@ -502,3 +505,116 @@ def decalage_utc_minutes(fuseau, moment):
     if decalage is None:
         return None
     return int(decalage.total_seconds() // 60)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# T4-U1-003 — JAMAIS UN POINT PAR DÉFAUT ANONYME
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Un toit créé « par ses dimensions » sur une carte jamais localisée est posé
+# au CENTRE PAR DÉFAUT de la carte (outil de dessin : ``MOROCCO_CENTER`` de
+# ``apps/web/src/scripts/roofPro11/constants.ts`` ; ``DEFAULT_CENTER`` de
+# ``frontend/src/components/MapView.jsx``), et ce centre arrivait comme
+# épingle : la simulation calculait alors au milieu du Maroc (737 m
+# d'altitude), sans que rien ne le nomme. Ces points ne sont pas un site.
+
+#: Les centres de carte par défaut (lat, lon) des outils de dessin.
+CENTRES_CARTE_PAR_DEFAUT = ((31.79, -7.09), (31.7917, -7.0926))
+
+#: Tolérance (degrés, ≈ 0,1 m) : seul le centre EXACT (au bruit flottant près)
+#: est écarté, jamais un point posé à la main à côté.
+TOLERANCE_CENTRE_DEG = 1e-6
+
+#: La provenance d'un site résolu par la ville du lead (``site.source``).
+SOURCE_VILLE_REFERENCE = 'ville_reference'
+
+
+def _point_par_defaut(lat, lon):
+    """Vrai quand ``(lat, lon)`` est un centre de carte par défaut."""
+    if lat is None or lon is None:
+        return False
+    return any(abs(lat - c_lat) <= TOLERANCE_CENTRE_DEG
+               and abs(lon - c_lon) <= TOLERANCE_CENTRE_DEG
+               for c_lat, c_lon in CENTRES_CARTE_PAR_DEFAUT)
+
+
+def _site_de_reference(ville):
+    """Le site d'un calepinage SANS épingle : la ville de référence du devis.
+
+    Réutilise ``pvgis_profils.ancre_de_reference`` — la résolution que suit
+    le productible du devis pour ce lead (orthographes courantes comprises,
+    sinon ancre la plus proche du gazetier). Rend ``{lat, lon, source,
+    ville_reference, libelle}``, ou ``None`` quand aucune ville de référence
+    ne se résout (la simulation est alors refusée en le disant).
+    """
+    from apps.parametres.pvgis_profils import ancre_de_reference
+    from apps.parametres.villes_resolution import nom_canonique
+
+    reference = ancre_de_reference(ville)
+    if reference is None:
+        return None
+    nom = nom_canonique(reference['cle'])
+    libelle = ('%s (ville de référence)' % nom
+               if reference['proche_km'] is None
+               else '%s (ville de référence la plus proche)' % nom)
+    return {
+        'lat': float(reference['lat']),
+        'lon': float(reference['lon']),
+        'source': SOURCE_VILLE_REFERENCE,
+        'ville_reference': nom,
+        'libelle': libelle,
+    }
+
+
+def epingle_posee(document, lire_geo):
+    """``(lat, lon, geo)`` — L'épingle du site, au sens unique « site posé ».
+
+    Lue par la simulation ET par ``soleil-legal`` (une seule définition) :
+    l'épingle du document prime, SAUF un centre de carte par défaut
+    (:func:`_point_par_defaut`, jamais choisi par personne) ; à défaut, celle
+    du lead (``lire_geo()`` : ``selectors.contexte_geographique``, appelé
+    seulement s'il le faut, rendu dans ``geo``). ``(None, None, geo)`` quand
+    aucune épingle n'est posée.
+    """
+    from .valeurs import nombre
+
+    geo = None
+    epingle = document.get('pin') if isinstance(document, dict) else None
+    if isinstance(epingle, dict) and _point_par_defaut(
+            nombre(epingle.get('lat')), nombre(epingle.get('lng'))):
+        epingle = None
+    if not isinstance(epingle, dict):
+        geo = lire_geo() or {}
+        epingle = geo.get('pin') or {}
+    lat = nombre(epingle.get('lat'))
+    lon = nombre(epingle.get('lng') if epingle.get('lng') is not None
+                 else epingle.get('lon'))
+    return lat, lon, geo
+
+
+def point_du_site(document, lire_geo):
+    """``(lat, lon, reference)`` du site simulé — T4-U1-003.
+
+    L'épingle posée (:func:`epingle_posee`) ; sans elle, la ville de
+    référence de la ville du lead (``reference`` = ``{source,
+    ville_reference, libelle}``), sinon ``(None, None, None)``.
+    """
+    lat, lon, geo = epingle_posee(document, lire_geo)
+    if lat is not None and lon is not None:
+        return lat, lon, None
+    reference = _site_de_reference((geo if geo is not None
+                                   else lire_geo() or {}).get('ville'))
+    if reference is None:
+        return lat, lon, None
+    return reference['lat'], reference['lon'], {
+        cle: reference[cle] for cle in ('source', 'ville_reference', 'libelle')}
+
+
+def site_dit(meteo, site):
+    """Le bloc ``meteo`` publié : tel quel, sauf quand le site vient d'une
+    ville de référence — ``meteo.site`` dit alors sa provenance, son nom, son
+    libellé et le point demandé."""
+    if not site.get('source'):
+        return meteo
+    return dict(meteo, site={cle: site.get(cle) for cle in (
+        'source', 'ville_reference', 'libelle', 'lat', 'lon')})

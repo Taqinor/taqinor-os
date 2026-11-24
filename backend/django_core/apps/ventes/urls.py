@@ -74,6 +74,7 @@ from .etude_pompage_view import etude_pompage_preview  # AGR121
 from .etude_ci_view import (devis_recomposer_batteries, devis_reviser_apres_visite,  # D-HYB-4, CORC2
                             etude_ci_preview)  # CIQ118
 from .views.economie_pompage import economie_pompage_preview  # AGR206
+from .views.conception import apercu_conception, conception_du_lead  # ADEV137
 from .economie_ci_view import economie_ci_preview  # CIQ210
 from .roof_load_view import roof_load_check  # FG253
 from .connection_declaration_view import declaration_raccordement  # FG272
@@ -266,6 +267,12 @@ urlpatterns = [
     # (``domain/pompage.etudier_pompage``), aucune écriture.
     path('etude-pompage/preview/', etude_pompage_preview,
          name='etude-pompage-preview'),
+    # ADEV137 (D-ACAL-97) — la conception rangée du lead (moteur unique) et
+    # son aperçu sans écriture.
+    # headless: aperçu lu par l'écran devis à venir (AGEN11), aucun écran avant
+    path('conception/apercu/', apercu_conception, name='conception-apercu'),
+    # headless: lue par la fiche du lead (ALEA71) et le calepinage (ACAL2012), à venir
+    path('conception/<int:lead_id>/', conception_du_lead, name='conception-lead'),
     # AGR206 — aperçu de l'économie DÉCLARÉE de pompage (même calcul que
     # ``GET devis/<pk>/economie-pompage/``), aucune écriture.
     path('economie-pompage/preview/', economie_pompage_preview,

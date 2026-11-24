@@ -11,6 +11,7 @@ import { fallbackPerKwc } from '@rooflib/productionEngine'
 import { choisirPaletteAcces } from '@rooflib/shadingEngine'
 import { brouillonPertinent, consommerReprise, purgerBrouillonsOrphelins } from '../brouillon.js'
 import { lireBrouillonServeur } from '../brouillonServeur.js'
+import { lireAvecReprise } from '../delaiReseau'
 import { contourExploitable } from '../../crm/workspace/traceToit.js'
 import {
   repereDuLead, leadToBuilderPayload,
@@ -435,8 +436,10 @@ export function useAtelierBoot(ctx) {
       // ACAL30 — un catalogue ILLISIBLE ne bloque pas l'ouverture (on regarde la
       // conception), mais il INTERDIT l'enregistrement : sans lui, le module de chaque
       // pan retomberait en silence sur le module par défaut (720 Wc).
+      // T4-B4-002 — une lecture restée SANS réponse (délai de 20 s dépassé sur une pile chargée : « annulée » au réseau)
+      // est relancée une fois ; seul un second échec (ou un refus servi) rend le catalogue indisponible.
       const modulesPromise = Promise.resolve()
-        .then(() => calepinageApi.calepinages.modulesDisponibles(calepinageId))
+        .then(() => lireAvecReprise(() => calepinageApi.calepinages.modulesDisponibles(calepinageId)))
         .then((res) => res.data)
         .catch(() => {
           setCatalogueIndisponible?.(true)

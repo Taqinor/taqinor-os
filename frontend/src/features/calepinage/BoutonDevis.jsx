@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import CarteDevisCree from './CarteDevisCree'
+import { Icone } from './atelier/coque/primitives'
 import { libelleEtat } from './electrique/etatVerdict'
 import calepinageApi from '../../api/calepinageApi'
 import { toastWarning } from '../../lib/toast'
@@ -125,6 +126,11 @@ export default function BoutonDevis({
   // ACAL2002 — vrai quand ce bouton EST l'action de l'étape (Documents en Guidé) : il prend alors le bouton doré v2.
   // Ailleurs (panneau Expert) il reste un bouton à filet : l'or est réservé à la seule action suivante (ACAL1802).
   actionEtape = false,
+  // Étape Documents (demande croisée du 24/11) : `compact` replie les surfaces chiffrées sur UNE ligne qui se déplie
+  // (la liste des contrôles ne défile plus dans la carte) ; `fleche` met le pictogramme « suivant » dans le bouton.
+  // Par défaut : ceux de l'action de l'étape ; le panneau Expert garde la forme dépliée, sans flèche.
+  compact = actionEtape,
+  fleche = actionEtape,
 }) {
   const navigate = useNavigate()
   const classeDuBouton = actionEtape ? 'cal-bouton-or cal-bouton-or-grand'
@@ -408,23 +414,35 @@ export default function BoutonDevis({
     )
   }
 
+  const casesSurfaces = (
+    <fieldset>
+      <legend className="text-xs font-semibold text-muted-foreground">Surfaces chiffrées par le devis</legend>
+      {surfaces.map((s) => (
+        <label key={s.cle} className="flex min-h-[44px] items-center gap-2 text-xs text-foreground">
+          <input type="checkbox" className="h-5 w-5" checked={!decochees.includes(s.cle)}
+            onChange={() => setDecochees((d) => (d.includes(s.cle)
+              ? d.filter((c) => c !== s.cle) : [...d, s.cle]))} />
+          {`${s.libelle} (${s.modules} modules)`}
+        </label>
+      ))}
+    </fieldset>
+  )
+  const pictoFleche = fleche ? <Icone nom="suivant" taille={18} epaisseur={2.2} /> : null
   return (
-    <div className="space-y-2" data-testid="cal-bouton-devis">
-      {choixSurfaces && (
-        <fieldset>
-          <legend className="text-xs font-semibold text-muted-foreground">Surfaces chiffrées par le devis</legend>
-          {surfaces.map((s) => (
-            <label key={s.cle} className="flex min-h-[44px] items-center gap-2 text-xs text-foreground">
-              <input type="checkbox" className="h-5 w-5" checked={!decochees.includes(s.cle)}
-                onChange={() => setDecochees((d) => (d.includes(s.cle)
-                  ? d.filter((c) => c !== s.cle) : [...d, s.cle]))} />
-              {`${s.libelle} (${s.modules} modules)`}
-            </label>
-          ))}
-          {aucuneCochee && <p className="text-xs text-destructive" role="status">Cochez au moins une surface</p>}
-        </fieldset>
-      )}
-      {phraseSurfaces && <p className="text-xs text-foreground" role="status">{phraseSurfaces}</p>}
+    <div data-testid="cal-bouton-devis" className={compact
+      ? 'flex flex-wrap items-center justify-end gap-x-4 gap-y-2 [&>*:not(details):not(button)]:basis-full' : 'space-y-2'}>
+      {choixSurfaces && compact ? (
+        <details className="group min-w-0 flex-1 text-xs open:basis-full" data-testid="cal-devis-surfaces">
+          <summary className="flex min-h-[44px] cursor-pointer list-none items-center gap-2 text-foreground">
+            <span role="status" className="line-clamp-2 min-w-0 group-open:line-clamp-none">{phraseSurfaces || 'Surfaces chiffrées par le devis'}</span>
+            <Icone nom="chevron" taille={16} className="flex-none" />
+          </summary>
+          {casesSurfaces}
+        </details>
+      ) : null}
+      {choixSurfaces && !compact ? casesSurfaces : null}
+      {choixSurfaces && aucuneCochee && <p className="text-xs text-destructive" role="status">Cochez au moins une surface</p>}
+      {phraseSurfaces && !(choixSurfaces && compact) && <p className="text-xs text-foreground" role="status">{phraseSurfaces}</p>}
       {devisLie ? (
         <button
           type="button"
@@ -434,6 +452,7 @@ export default function BoutonDevis({
           className={classeDuBouton}
         >
           {enCours ? 'Resynchronisation…' : 'Resynchroniser le devis'}
+          {pictoFleche}
         </button>
       ) : (
         <button
@@ -444,6 +463,7 @@ export default function BoutonDevis({
           className={classeDuBouton}
         >
           {enCours ? 'Génération…' : 'Générer le devis'}
+          {pictoFleche}
         </button>
       )}
 

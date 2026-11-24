@@ -13,9 +13,9 @@ import {
 import { BandeauAlertes } from './BandeauxCoque'
 import BarreProjet from './BarreProjet'
 import { usePoseVivante } from './etapes/panneaux/constructeur'
-import { nomClientServi, sousTitrePose } from './projet'
+import { sousTitrePose } from './projet'
 import { ContexteCoque, ContextePresentation } from './contexteCoque'
-import PanneauEtape, { ProgressionEtapes } from './PanneauEtape'
+import PanneauEtape from './PanneauEtape'
 import { BoutonOr } from './primitives'
 import RailEtapes from './RailEtapes'
 import { useToastsHorsDuBouton } from './toastsAtelier'
@@ -40,9 +40,10 @@ import { useToastsHorsDuBouton } from './toastsAtelier'
    Guidé : l'écran de l'étape (`ECRANS_ETAPE`, champs `cadre` / `titre`) ; Expert
    et « Avancé » : l'ancien inspecteur entier (`avance`), rail d'onglets compris.
 
-   TABLETTE / TÉLÉPHONE (< 1 280 px, maquette Tablette) : le panneau d'étape devient le
-   TIROIR du bas (`tiroir`, poignée pour l'agrandir) ; le rail se replie en pictogrammes
-   (en barre du bas au téléphone). Mise en page : 56-coque-responsive.css.
+   TABLETTE (640 à 1 279 px, maquette v2 Tablette, ACAL1835) : la coque flottante du bureau,
+   panneau d'étape à DROITE (344 px), rail replié en pictogrammes. TÉLÉPHONE (< 640 px) : le
+   panneau d'étape devient le TIROIR du bas (`tiroir`, poignée pour l'agrandir), le rail une
+   barre du bas. Mise en page : 56-coque-responsive.css.
 
    PRÉSENTATION (« Montrer au client », `ContextePresentation` posé par client/VueClient) :
    le MÊME atelier, sa carte 3D seule visible ; bandeau, rail, panneau et calques d'étape
@@ -50,7 +51,8 @@ import { useToastsHorsDuBouton } from './toastsAtelier'
    soleil leur est renvoyé) ; l'habillage client (`presentation.rendu`) est rendu autour.
    ========================================================================== */
 
-const REQUETE_TIROIR = '(max-width: 1279px)'
+// ACAL1835 — le tiroir du bas est celui du TÉLÉPHONE seul : la tablette garde le panneau flottant à droite.
+const REQUETE_TIROIR = '(max-width: 639px)'
 
 /** Vrai quand la largeur range le panneau d'étape en tiroir du bas (même seuil que la feuille 56). */
 function useTiroir() {
@@ -200,19 +202,20 @@ function useResultatServi(calepinageId, actif, relecture) {
   return actif ? data : null
 }
 
-/** Le détail servi (une seule lecture) : l'heure de la dernière version (`versions.derniere_le`) et le nom du
-    lead ou du client (ACAL1730, titre du bandeau). */
+/** Le détail servi (une seule lecture) : l'heure de la dernière version (`versions.derniere_le`). T4-B4-009 : le
+    bandeau ne lit plus le nom du lead ici (il remplaçait le nom du calepinage APRÈS le chargement, puis à chaque
+    relecture) — un seul nom, celui du calepinage. */
 function useDetailServi(calepinageId, relecture) {
-  const [detail, setDetail] = useState({ le: null, nom: '' })
+  const [detail, setDetail] = useState({ le: null })
   useEffect(() => {
     if (!calepinageId) return undefined
     let vivant = true
     Promise.resolve()
       .then(() => calepinageApi.calepinages.get(calepinageId))
       .then((rep) => {
-        if (vivant) setDetail({ le: rep?.data?.versions?.derniere_le ?? null, nom: nomClientServi(rep?.data) })
+        if (vivant) setDetail({ le: rep?.data?.versions?.derniere_le ?? null })
       })
-      .catch(() => { if (vivant) setDetail({ le: null, nom: '' }) })
+      .catch(() => { if (vivant) setDetail({ le: null }) })
     return () => { vivant = false }
   }, [calepinageId, relecture])
   return detail
@@ -311,15 +314,18 @@ export default function CoqueAtelier({
     carteAvant.current = carteVisible
   }, [carteVisible])
   // H1 (tour 3) — RÈGLE DE LA COQUE : chaque étape à carte s'ouvre en « Plan », le toit cadré et centré (au-dessus
-  // du tiroir sur tablette), sauf si l'utilisateur a choisi une vue dans la séance ou touche la carte entre-temps.
+  // du tiroir au téléphone), sauf si l'utilisateur a choisi une vue dans la séance ou touche la carte entre-temps.
   usePlanALEntreeDEtape({ builderRef, actif: carteVisible && !presentation, cle: `${cleEtape}:${tiroir}`, builderApiCoque })
+  // Suites v2 — la carte dessine ce que dessine la maquette de l'étape : cotes, contour or et coins au Toit ; chaînes et
+  // onduleur à l'Électrique. En Expert et au client, aucune étape n'est déclarée : tout reste comme avant.
+  useEffect(() => { builderApiCoque?.etapeAtelier?.(expert || presentation ? null : cleEtape) }, [builderApiCoque, cleEtape, expert, presentation])
 
   // J1 — présentation : ni résultat ni détail pour le bandeau (masqué) — aucune lecture de plus devant le client.
   const resultatServi = useResultatServi(calepinageId, !presentation, enregistreLe)
   // La ligne de pose du bandeau suit la pose de la carte tant que la scène est modifiée (module changé, retraits, remplissage).
   const poseVivante = usePoseVivante(!presentation && enregistrement?.modifiee === true)
   const etatPropre = cleEtape === 'resultats' && !expert ? etatSimulation(resultatServi) : null
-  const { le: derniereVersionLe, nom: nomClient } = useDetailServi(presentation ? null : calepinageId, enregistreLe)
+  const { le: derniereVersionLe } = useDetailServi(presentation ? null : calepinageId, enregistreLe)
 
   // ACAL1437 — un bouton qui dit « Générer » génère quand son bloc est à l'écran (Documents, ou Expert), même route.
   const onDevis = () => {
@@ -361,14 +367,14 @@ export default function CoqueAtelier({
       <div className="rp9-host cal-coque" data-testid="cal-coque" data-etape={cleEtape} data-cadre={cadre}
         data-avance={expert ? '1' : '0'} data-expert={expert ? '1' : '0'} data-feuille={feuille ? '1' : undefined}
         data-presentation={presentation ? '1' : undefined}>
-        <BarreProjet cache={!!presentation} retour={retour} titre={calepinageId && nomClient ? nomClient : titre} expert={expert} onExpert={basculerExpert}
+        <BarreProjet cache={!!presentation} retour={retour} titre={titre} expert={expert} onExpert={basculerExpert}
           sousTitre={sousTitrePose(resultatServi, poseVivante) || sousTitre}
           libelleDevis={libelleDevis} onDevis={devisPossible ? onDevis : null}
           enregistrement={enregistrement && <BarreEnregistrement {...enregistrement} etatPropre={etatPropre}
             derniereVersionLe={derniereVersionLe} />} />
         <BandeauAlertes cache={!!presentation}>{alertes}</BandeauAlertes>
         <div id="rp9-studio" className="cal-coque-corps">
-          <RailEtapes cache={!!presentation} etapeActive={cleEtape} parcours={parcours} onChoisir={allerA}
+          <RailEtapes calepinageId={calepinageId} cache={!!presentation} etapeActive={cleEtape} parcours={parcours} onChoisir={allerA}
             avance={avance} onAvance={setAvanceOuvert} />
           <main className="cal-coque-centre">
             <div id="rp9-studio-scene" className="cal-coque-scene" hidden={!carteVisible}>
@@ -379,13 +385,13 @@ export default function CoqueAtelier({
             </div>
             {!carteVisible && (
               <div className="cal-coque-plein">
-                {/* ACAL1727 — la même tête que le panneau d'étape : « Étape N sur 5 » + titre (cadre plein seulement ;
-                    le Schéma garde son panneau à droite). */}
+                {/* ACAL1727 — « Étape N sur 5 » + titre (cadre plein seulement ; le Schéma garde son panneau à droite).
+                    Maquettes v2 Resultats et Documents : AUCUNE tête visible — la position reste dite aux lecteurs
+                    d'écran (`sr-only`), le rail montre déjà l'étape active (`aria-current="step"`). */}
                 {pleine && rang >= 0 && ecran?.titre && (
-                  <div className="cal-plein-etape-tete" data-testid="cal-plein-etape-tete">
-                    <ProgressionEtapes numero={rang + 1} etats={parcours.etats} />
-                    <p className="cal-panneau-etape-rang">{`Étape ${rang + 1} sur ${TOTAL}`}</p>
-                    <h2 className="cal-panneau-etape-titre">{ecran.titre}</h2>
+                  <div className="sr-only" data-testid="cal-plein-etape-tete">
+                    <p>{`Étape ${rang + 1} sur ${TOTAL}`}</p>
+                    <h2>{ecran.titre}</h2>
                   </div>
                 )}
                 {ecranMonte}

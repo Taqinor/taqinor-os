@@ -94,6 +94,7 @@ import { useAtelierVues } from '../../features/calepinage/atelier/useAtelierVues
 import { useAtelierBoot, pousserAffectationAtelier, MESSAGE_ACCES_REFUSE } from '../../features/calepinage/atelier/useAtelierBoot.js'
 import '../../styles/roofbuilder.css'
 const MESSAGE_INTROUVABLE = 'Calepinage introuvable.' // = le texte posé par useAtelierBoot sur un 404
+const MESSAGE_CATALOGUE_INDISPONIBLE = 'Catalogue des modules indisponible : rien n’est enregistré. « Réessayer » le relit sans perdre votre tracé.'
 /** Lot 2 critique #23 — la conception est enregistrée, la resynchro du devis
  *  est refusée : le motif SERVEUR, jamais un « données invalides » générique. */
 const messageResyncRefusee = (raison) => (
@@ -388,6 +389,16 @@ function AtelierToiture({
       return
     }
     setBrouillonPropose(null)
+    window.location.reload()
+  }
+  // T4-B4-002 — catalogue illisible : « Réessayer » garde le tracé courant pour la reprise (même porte que
+  // « Reprendre le brouillon ») puis recharge l'atelier, qui relit le catalogue. Jamais un message mort.
+  const reessayerCatalogue = () => {
+    let layout = null
+    try { layout = builderApi.current?.serializeLayout?.() ?? null } catch { layout = null }
+    if (layout != null) {
+      memoriserReprise(stockageSessionLocal(), { calepinageId, utilisateurId: utilisateurCourantId }, layout)
+    }
     window.location.reload()
   }
   const ignorerBrouillon = () => {
@@ -738,7 +749,7 @@ function AtelierToiture({
       return false
     }
     if (catalogueIndisponible) {
-      setGenError('Catalogue des modules indisponible : rien n’est enregistré, rechargez la page.')
+      setGenError(MESSAGE_CATALOGUE_INDISPONIBLE)
       return false
     }
     setSending(true)
@@ -1381,6 +1392,7 @@ function AtelierToiture({
           libelle: devisSynchronise ? 'Enregistrer la conception' : 'Enregistrer le calepinage',
           enCours: sending, desactive: sending || !sceneHydratee || !!loadError, onEnregistrer: enregistrerCalepinage,
           modifiee: sceneModifiee && !loadError, enregistreLe, statut: genStatus, erreur: genError,
+          actionErreur: genError === MESSAGE_CATALOGUE_INDISPONIBLE ? { libelle: 'Réessayer', onClick: reessayerCatalogue } : null,
         }}
         proprietesBuilder={proprietesBuilder} enregistreLe={enregistreLe} onEtape={setEtapeAtelier} onFermer={fermer}
         ecranProps={{

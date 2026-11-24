@@ -976,7 +976,7 @@
       {
         "code": "releve_point_eau_requis",
         "champ": "source.niveau_statique_m",
-        "message": "Niveau d'eau du forage inconnu : relevé du point d'eau requis avant le devis (D-AGR-4)."
+        "message": "Niveau d'eau du forage inconnu : relevé du point d'eau à faire en visite avant le devis."
       }
     ],
     "hypotheses": [

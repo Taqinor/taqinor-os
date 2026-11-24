@@ -915,6 +915,30 @@ def ancre_la_plus_proche(lat, lon):
     return cle, _distance_km(lat, lon, entree['lat'], entree['lon'])
 
 
+def ancre_de_reference(ville):
+    """T4-U1-003 — LA ville de référence de la table PVGIS pour ``ville``.
+
+    Même résolution que :func:`productible_mensuel` sans point GPS (le devis
+    la suit) : la ville de la table (orthographes courantes comprises), sinon
+    l'ancre la plus proche de la position gazetier de la ville. Rend
+    ``{'cle', 'lat', 'lon', 'proche_km', 'exacte'}`` (``proche_km`` à ``None``
+    quand la ville est dans la table, orthographe courante comprise ;
+    ``exacte`` vrai quand elle y est sous son propre nom), ou ``None`` : aucune
+    ville devinée.
+    """
+    cle = cle_ville(ville)
+    km = None
+    if not cle:
+        coords = _coordonnees_gazetier(ville)
+        if coords is None:
+            return None
+        cle, km = ancre_la_plus_proche(coords[0], coords[1])
+    entree = PRODUCTIBLE_MENSUEL_VILLE[cle]
+    return {'cle': cle, 'lat': entree['lat'], 'lon': entree['lon'],
+            'proche_km': None if km is None else round(km),
+            'exacte': km is None and cle == _normaliser(ville)}
+
+
 def _normaliser_forme(valeurs):
     """Ramène 24 valeurs positives à une somme de 1,0 (ou ``None`` si vide).
 
@@ -1362,13 +1386,23 @@ def productible_mensuel(ville=None, lat=None, lon=None):
             # Copie : l'appelant ne peut pas muter l'entrée de cache.
             return list(valeurs), 'pvgis_live'
 
+    if coords is None:
+        # T4-U1-003 — sans GPS, la ville passe par LA résolution que le
+        # calepinage réutilise : une seule ville de référence par lead.
+        reference = ancre_de_reference(ville)
+        if reference is None:
+            return None
+        entree = PRODUCTIBLE_MENSUEL_VILLE[reference['cle']]
+        if reference['proche_km'] is None:
+            return list(entree['e_m']), 'pvgis_ville:%s' % reference['cle']
+        return (list(entree['e_m']), 'pvgis_ville_proche:%s~%dkm' % (
+            reference['cle'], reference['proche_km']))
+
     cle = cle_ville(ville)
     if cle:
         entree = PRODUCTIBLE_MENSUEL_VILLE[cle]
         return list(entree['e_m']), 'pvgis_ville:%s' % cle
 
-    if coords is None:
-        coords = _coordonnees_gazetier(ville)
     if coords is not None:
         cle_ancre, km = ancre_la_plus_proche(coords[0], coords[1])
         entree = PRODUCTIBLE_MENSUEL_VILLE[cle_ancre]

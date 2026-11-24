@@ -882,6 +882,20 @@ describe('ACAL1407 + ACAL1501 — ombre proche mesurée sur les panneaux posés'
     expect(apres.shadeAnnualFactor).toBeGreaterThan(0.5); // jamais la saturation du centroïde (≈ 0,28)
   });
 
+  // ACAL2031 — figé SANS `opts.chiffrage` (site public ; l'aperçu `/preview/toiture-3d-pro-11` est retiré du build,
+  // ACAL332) : la moyenne sur les panneaux POSÉS (D-ACAL-83) n'est pas réservée à l'ERP.
+  it('sans chiffrage : l’ombrage recalculé est la moyenne des panneaux posés, pas la grille du pan', () => {
+    const ctx = ctxPan(cheminee(0, 0.5));
+    expect((ctx as unknown as { opts?: { chiffrage?: unknown } }).opts?.chiffrage).toBeUndefined();
+    Object.assign(ctx, { layoutPlan: { grid: { panels: rangee(1.5).map((p) => ({ cx: p.x, cy: p.y })) } }, layoutOptimalCount: 5 });
+    const ui = createShadingUi(ctx, {
+      map: new Proxy({}, { get: () => () => undefined }) as never, setStatus: () => {}, recalcDisplays: () => {}, applyHeatmap: () => {},
+    });
+    ui.recomputeShading();
+    expect(ctx.shadeFactors).toEqual(matriceOmbrageDesSources(ctx, 6, rangee(1.5)).factors);
+    expect(ctx.shadeFactors).not.toEqual(matriceOmbrageDesSources(ctx, 6).factors);
+  });
+
   it('« Effacer les ombres » recalcule sur les sources restantes : la cheminée garde son ombre', () => {
     const ctx = ctxPan(cheminee(0, 0));
     const ui = createShadingUi(ctx, {

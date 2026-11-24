@@ -115,6 +115,14 @@ describe('calepinage — module.config (CAL34)', () => {
     expect(config.titles.map(([prefixe]) => prefixe)).toContain('/calepinage/reglages/allees')
   })
 
+  it('ACAL1826 — démarrage rapide en plein écran (maquette v2) ; les autres réglages restent dans la coque de l’ERP', async () => {
+    const { default: config } = await import('./module.config.jsx')
+    const route = (p) => config.routes.find((r) => r.path === p)
+    expect(route('/calepinage/reglages/demarrage-rapide')?.plein).toBe(true)
+    expect(route('/calepinage/reglages')?.plein).toBeFalsy()
+    expect(route('/calepinage/reglages/fixation')?.plein).toBeFalsy()
+  })
+
   it('les trois routes du module vivent toutes sous le préfixe `/calepinage`', async () => {
     const { default: config } = await import('./module.config.jsx')
     for (const route of config.routes) {

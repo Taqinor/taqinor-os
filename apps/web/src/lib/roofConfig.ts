@@ -270,6 +270,9 @@ export function brancherRepliImagerie<S>(
     // Générique : `maplibregl.Map#setStyle` attend un StyleSpecification (module pur,
     // aucun import maplibre-gl) — un paramètre `object` le rendait non assignable.
     setStyle(style: S): unknown;
+    // T4-B4-008 — de quoi repeindre le fond neutre quand le thème change (facultatif : doublures de test).
+    getLayer?(id: string): unknown;
+    setPaintProperty?(id: string, prop: string, valeur: unknown): unknown;
   },
   setStatus: (msg: string) => void,
   maptilerKey = '',
@@ -283,6 +286,15 @@ export function brancherRepliImagerie<S>(
     setStatus(STATUT_IMAGERIE_INDISPONIBLE);
     map.setStyle(styleSansImagerie(maptilerKey, themeSombreActif()) as S);
     map.once('load', () => setStatus(STATUT_IMAGERIE_INDISPONIBLE));
+    // T4-B4-008 — le fond neutre SUIT le thème de l'ERP (`.dark` sur <html>) après le repli : il était lu une seule
+    // fois, au refus du style, et restait clair sous la coque nuit quand le thème passait en sombre ensuite.
+    if (typeof MutationObserver === 'function' && typeof document !== 'undefined' && document.documentElement) {
+      new MutationObserver(() => {
+        if (!map.getLayer?.('fond-sans-imagerie')) return;
+        map.setPaintProperty?.('fond-sans-imagerie', 'background-color',
+          themeSombreActif() ? FOND_SANS_IMAGERIE_SOMBRE : FOND_SANS_IMAGERIE_CLAIR);
+      }).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    }
   });
 }
 
