@@ -715,13 +715,33 @@ class FigeageDevisAutoTests(TestCase):
         self._patcher(pompage, 'temperatures_du_site', return_value=None)
         return fab.co, (fab._lead_existante(**kw) if existante else fab._lead(**kw))
 
+    def _fiches_residentielles(self, company):
+        """ADEV160 (préalable) — fiches COMPLÈTES du panneau et des deux
+        onduleurs de ``seed_catalogue`` (valeurs de fiche de test, 550 Wc
+        mono, onduleurs 5 kW mono à 2 MPPT) : sans elles la conception
+        électrique n'est jamais rangée (``fiches_manquantes_du_devis``)."""
+        from apps.stock.models import FicheTechnique, Produit
+
+        produits = Produit.objects.filter(company=company)
+        FicheTechnique.objects.create(
+            company=company, produit=produits.get(nom='Panneau Jinko 550W'), type_fiche='module',
+            pmax_wc=Decimal('550'), voc_v=Decimal('49.90'), isc_a=Decimal('14.02'),
+            vmp_v=Decimal('41.80'), imp_a=Decimal('13.16'), noct_c=Decimal('45'),
+            temp_coeff_voc_pct_c=Decimal('-0.270'), temp_coeff_pmax_pct_c=Decimal('-0.350'))
+        for nom in ('Onduleur réseau Huawei 5kW Monophasé', 'Onduleur hybride Deye 5kW Monophasé'):
+            FicheTechnique.objects.create(
+                company=company, produit=produits.get(nom=nom), type_fiche='onduleur',
+                ond_ac_kw=Decimal('5'), ond_phases=1, ond_n_mppt=2, ond_mppt_v_min=Decimal('90'),
+                ond_mppt_v_max=Decimal('560'), ond_v_max_abs=Decimal('600'),
+                ond_i_max_mppt_a=Decimal('16'), ond_rendement_euro_pct=Decimal('97.5'))
+
     # ── capture / comparaison ───────────────────────────────────────────────
-    def _figer(self, nom, company, lead):
+    def _figer(self, nom, company, lead, **appel):
         import os
 
         from apps.ventes.services import build_devis_auto
 
-        devis = build_devis_auto(lead=lead, user=self._utilisateur(company), company=company)
+        devis = build_devis_auto(lead=lead, user=self._utilisateur(company), company=company, **appel)
         photo = json.loads(json.dumps(_photo_du_devis(devis), default=str))
         self.assertEqual(_cles_interdites(photo), [], "prix d'achat ou marge dans le golden")
         fichier = DOSSIER_FIGEAGE / f'{nom}.json'
@@ -831,3 +851,78 @@ class FigeageDevisAutoTests(TestCase):
     def test_agricole_pompe_existante(self):
         photo = self._figer('agr_pompe_existante', *self._agricole(existante=True))
         self.assertFalse(any((li['produit_nom'] or '').startswith('Pompe') for li in photo['lignes']))
+
+    # ── ADEV160 (préalable) — les chemins que les neuf cas ne traversent pas ──
+    def test_residentiel_conception_electrique_rangee(self):
+        """Fiches complètes ⇒ ``electrical_design`` rangé (chaînes, verdict
+        d'onduleur) : le seul cas où le golden fige la conception électrique."""
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'))
+        self._fiches_residentielles(company)
+        photo = self._figer('res_conception_electrique', company, lead)
+        self.assertIsNotNone(photo['electrical_design'])
+
+    def test_residentiel_taille_souhaitee_de_la_fiche(self):
+        """``taille_souhaitee_kwc`` souveraine : aucun moteur ne dimensionne."""
+        photo = self._figer('res_taille_souhaitee', *self._residentiel(
+            facture_hiver=Decimal('1800'), taille_souhaitee_kwc=Decimal('4.40')))
+        panneaux = sum(float(li['quantite']) for li in photo['lignes']
+                       if (li['produit_nom'] or '').startswith('Panneau'))
+        self.assertEqual(panneaux, 7)  # ⌈4 400 / 710⌉ : le compte du panneau de dimensionnement
+
+    def test_residentiel_contour_du_client_et_plafond_du_toit(self):
+        """Tracé du client (zone du calepinage) + plafond physique passé par le
+        tunnel (``plafond_toit``) qui RÉDUIT le compte du moteur (11 → 8)."""
+        contour = [[33.57310, -7.58980], [33.57310, -7.58970],
+                   [33.57301, -7.58970], [33.57301, -7.58980]]
+        photo = self._figer('res_contour_plafond', *self._residentiel(
+            facture_hiver=Decimal('1800'), roof_outline=contour,
+            roof_point={'lat': 33.573055, 'lng': -7.58975}), plafond_toit=8)
+        self.assertTrue(photo['champs_devis']['roof_layout'].get('outline'))
+        panneaux = sum(float(li['quantite']) for li in photo['lignes']
+                       if (li['produit_nom'] or '').startswith('Panneau'))
+        self.assertEqual(panneaux, 8)
+
+    def test_residentiel_structure_aluminium_du_lead(self):
+        """``structure_pref`` du lead (STKCAT9) : la structure aluminium est
+        composée, jamais l'acier par défaut."""
+        from apps.stock.models import Produit
+
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'), structure_pref='aluminium')
+        for nom, sku in (('Structure acier toiture', 'STR-AC'), ('Structure aluminium toiture', 'STR-AL')):
+            Produit.objects.create(company=company, nom=nom, sku=f'{sku}-{company.pk}',
+                                   prix_vente=Decimal('300'), prix_achat=Decimal('1'), quantite_stock=100)
+        photo = self._figer('res_structure_alu', company, lead)
+        noms = [li['produit_nom'] for li in photo['lignes']]
+        self.assertIn('Structure aluminium toiture', noms)
+        self.assertNotIn('Structure acier toiture', noms)
+
+    def test_residentiel_site_isole(self):
+        """Raccordement « aucun » : onduleur autonome + batterie, option unique."""
+        from apps.stock.models import Produit
+
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'), raccordement='aucun')
+        Produit.objects.create(company=company, nom='Onduleur autonome Deye 5kW Monophasé',
+                               sku=f'ONDA-{company.pk}', prix_vente=Decimal('15000'),
+                               prix_achat=Decimal('1'), quantite_stock=100)
+        photo = self._figer('res_site_isole', company, lead)
+        self.assertTrue(any('autonome' in (li['produit_nom'] or '') for li in photo['lignes']))
+
+    def test_commercial_taille_souhaitee(self):
+        """C&I : la taille souhaitée de la fiche est SOUVERAINE (taille explicite)."""
+        self._figer('ci_taille_souhaitee', *self._ci(
+            conso_mensuelle_kwh=Decimal('6000'), taille_souhaitee_kwc=Decimal('30')))
+
+    def test_commercial_fiches_completes(self):
+        """C&I aux fiches complètes (coefficients de température du module) :
+        la conception électrique est rangée. Les chaînes de l'étude C&I, elles,
+        restent nulles à la création (``etude_ci._combinaison_imposee`` : le
+        rafraîchisseur étudie les onduleurs DES LIGNES)."""
+        from apps.stock.models import FicheTechnique
+
+        company, lead = self._ci(conso_mensuelle_kwh=Decimal('6000'))
+        FicheTechnique.objects.filter(company=company, type_fiche='module').update(
+            noct_c=Decimal('45'), temp_coeff_voc_pct_c=Decimal('-0.250'),
+            temp_coeff_pmax_pct_c=Decimal('-0.300'))
+        photo = self._figer('ci_fiches_completes', company, lead)
+        self.assertIsNotNone(photo['electrical_design'])
+        self.assertIsNone(photo['etude_params']['etude_ci']['composition']['onduleurs']['chaines'])

@@ -1,0 +1,3414 @@
+{
+ "champs_devis": {
+  "devise": "MAD",
+  "echeancier": null,
+  "electrical_design_hash": null,
+  "is_active": true,
+  "layout_hash": null,
+  "mode_installation": "residentiel",
+  "offres_tailles_config": null,
+  "option_acceptee": "",
+  "overrides": null,
+  "prix_cible_kwc": null,
+  "prix_par_kwc": "12987.01",
+  "regles_calcul": 14,
+  "remise_globale": "0.00",
+  "roof_layout": {
+   "panelWatt": 710,
+   "result": {
+    "kwc": 4.97,
+    "panels": 7
+   },
+   "scenario": "reseau"
+  },
+  "statut": "brouillon",
+  "taux_tva": "20.00",
+  "total_ht": "41666.67",
+  "total_ttc": "50000.00",
+  "total_tva": "8333.33",
+  "variante_tier": "",
+  "version": 1
+ },
+ "electrical_design": null,
+ "etude_params": {
+  "dimensionnement": {
+   "_empreinte": "3ef29784a6616a7112aa0ea65210a19150c793d3da67860c1b06ede7f4bb4d4d",
+   "critere": "meilleur_payback",
+   "criteres_disponibles": [
+    "meilleur_payback",
+    "meilleure_couverture",
+    "economie_max"
+   ],
+   "falaise": {
+    "cible_kwh_mois": 500.0,
+    "tranche_actuelle": {
+     "borne_basse_kwh": 510.0,
+     "borne_haute_kwh": null,
+     "libelle": "> 510 kWh/mois",
+     "prix_mad_kwh": 1.622856,
+     "rang": 6,
+     "regime": "selectif"
+    },
+    "tranche_visee": {
+     "borne_basse_kwh": 310.0,
+     "borne_haute_kwh": 510.0,
+     "libelle": "310-510 kWh/mois",
+     "prix_mad_kwh": 1.381704,
+     "rang": 5,
+     "regime": "selectif"
+    }
+   },
+   "horizon_marginal_batterie_annees": 7,
+   "horizon_marginal_pv_annees": 10,
+   "max_paliers_stockage": 16,
+   "meilleure_falaise": {
+    "batterie_kwh": 5.0,
+    "cible_kwh_mois": 500.0,
+    "cout_ttc": 54110.0,
+    "couverture": 0.614,
+    "economie_mad": 13679.8,
+    "kwc": 6.05,
+    "lignes_batterie": [
+     {
+      "designation": "Batterie Dyness 5 kWh",
+      "prix_unitaire_ht": 17000.0,
+      "quantite": 1,
+      "role": "batterie"
+     }
+    ],
+    "onduleur": "Onduleur réseau Huawei 5kW Monophasé",
+    "panneaux": 11,
+    "payback_annees": 3.96,
+    "remplissage": {
+     "moyen": 1.0,
+     "pire_mois": {
+      "charge_jour_kwh": 5.0,
+      "mois": 1,
+      "ratio": 1.0,
+      "surplus_jour_kwh": 7.98
+     }
+    },
+    "residuel_kwh_mois": 394.8,
+    "tranche_apres": {
+     "borne_basse_kwh": 310.0,
+     "borne_haute_kwh": 510.0,
+     "libelle": "310-510 kWh/mois",
+     "prix_mad_kwh": 1.381704,
+     "rang": 5,
+     "regime": "selectif"
+    }
+   },
+   "motivation": "meilleur payback (2.9 ans, 6 tailles à égalité à moins de 0.25 an près) puis meilleure couverture (48 %) ; aucun panneau de plus ne se rembourse dans l'horizon de 10 ans — critère « meilleur_payback »",
+   "motivation_avec": "meilleur payback AVEC batterie (4.0 ans) : 11 panneaux + 5 kWh de stockage, résiduel 394.8 kWh/mois (310-510 kWh/mois) ; aucun pas de plus ne se rembourse dans son horizon (10 ans pour des panneaux, 7 ans pour du stockage)",
+   "recommandation": {
+    "avertissements": [],
+    "avertissements_avec": [],
+    "avertissements_sans": [],
+    "balayage_stockage": [
+     {
+      "capacite_cible_kwh": 5.0,
+      "capacite_kwh": 5.0,
+      "cout_ttc": 54110.0,
+      "couverture": 0.614,
+      "economie_mad": 13679.8,
+      "economie_marginale_mad": 3269.91,
+      "lignes": [
+       {
+        "designation": "Onduleur hybride Deye 5kW Monophasé",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "onduleur_hybride"
+       },
+       {
+        "designation": "Panneau Jinko 550W",
+        "prix_unitaire_ht": 1100.0,
+        "quantite": 11,
+        "role": "panneau"
+       },
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "batterie"
+       }
+      ],
+      "lignes_batterie": [
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "batterie"
+       }
+      ],
+      "payback_annees": 3.96,
+      "remplissage": {
+       "moyen": 1.0,
+       "pire_mois": {
+        "charge_jour_kwh": 5.0,
+        "mois": 1,
+        "ratio": 1.0,
+        "surplus_jour_kwh": 7.98
+       }
+      },
+      "residuel_kwh_mois": 394.8,
+      "taux_autoconso": 0.779,
+      "tranche_apres": {
+       "borne_basse_kwh": 310.0,
+       "borne_haute_kwh": 510.0,
+       "libelle": "310-510 kWh/mois",
+       "prix_mad_kwh": 1.381704,
+       "rang": 5,
+       "regime": "selectif"
+      }
+     }
+    ],
+    "batterie_disponible": true,
+    "batterie_kwh": 5.0,
+    "composable": true,
+    "consommation_annuelle_kwh": 12274.8,
+    "cout_avec_ttc": 54110.0,
+    "cout_sans_ttc": 30110.0,
+    "couverture_avec": 0.614,
+    "couverture_sans": 0.4802,
+    "economie_avec_mad": 13679.8,
+    "economie_sans_mad": 10409.89,
+    "kwc": 6.05,
+    "lignes_avec": [
+     {
+      "designation": "Onduleur hybride Deye 5kW Monophasé",
+      "prix_unitaire_ht": 17000.0,
+      "quantite": 1,
+      "role": "onduleur_hybride"
+     },
+     {
+      "designation": "Panneau Jinko 550W",
+      "prix_unitaire_ht": 1100.0,
+      "quantite": 11,
+      "role": "panneau"
+     },
+     {
+      "designation": "Batterie Dyness 5 kWh",
+      "prix_unitaire_ht": 17000.0,
+      "quantite": 1,
+      "role": "batterie"
+     }
+    ],
+    "lignes_sans": [
+     {
+      "designation": "Onduleur réseau Huawei 5kW Monophasé",
+      "prix_unitaire_ht": 14000.0,
+      "quantite": 1,
+      "role": "onduleur_reseau"
+     },
+     {
+      "designation": "Panneau Jinko 550W",
+      "prix_unitaire_ht": 1100.0,
+      "quantite": 11,
+      "role": "panneau"
+     }
+    ],
+    "onduleur": "Onduleur réseau Huawei 5kW Monophasé",
+    "onduleur_kw": 5.0,
+    "onduleur_kw_unitaire": 5.0,
+    "onduleur_quantite": 1,
+    "onduleur_triphase": false,
+    "panel_watt": 550.0,
+    "panneaux": 11,
+    "payback_avec_annees": 3.96,
+    "payback_sans_annees": 2.89,
+    "production_annuelle_kwh": 9675.27,
+    "ratio_onduleur_kwc": 0.826,
+    "regle_80_pct_respectee": true,
+    "remplissage": {
+     "moyen": 1.0,
+     "pire_mois": {
+      "charge_jour_kwh": 5.0,
+      "mois": 1,
+      "ratio": 1.0,
+      "surplus_jour_kwh": 7.98
+     }
+    },
+    "residuel_avec_kwh_mois": 394.8,
+    "residuel_kwh_mois": 394.8,
+    "residuel_sans_kwh_mois": 531.68,
+    "stockage_plafond_kwh": 5.81,
+    "stockage_plafond_motif": "remplissage_quotidien",
+    "stockage_refuse": {
+     "capacite_cible_kwh": 10.0,
+     "capacite_kwh": 10.0,
+     "cout_ttc": 74510.0,
+     "couverture": 0.726,
+     "economie_mad": 16382.87,
+     "economie_marginale_mad": 2703.07,
+     "lignes": [
+      {
+       "designation": "Onduleur hybride Deye 5kW Monophasé",
+       "prix_unitaire_ht": 17000.0,
+       "quantite": 1,
+       "role": "onduleur_hybride"
+      },
+      {
+       "designation": "Panneau Jinko 550W",
+       "prix_unitaire_ht": 1100.0,
+       "quantite": 11,
+       "role": "panneau"
+      },
+      {
+       "designation": "Batterie Dyness 5 kWh",
+       "prix_unitaire_ht": 17000.0,
+       "quantite": 2,
+       "role": "batterie"
+      }
+     ],
+     "lignes_batterie": [
+      {
+       "designation": "Batterie Dyness 5 kWh",
+       "prix_unitaire_ht": 17000.0,
+       "quantite": 2,
+       "role": "batterie"
+      }
+     ],
+     "motif_refus": "10 kWh refusé : capacité utile 10.00 kWh au-dessus du plafond de remplissage 5.81 kWh (le surplus quotidien du mois 11, le plus faible de l'année) — la batterie n'y serait chargée qu'à 58.1 %, et on n'ajoute pas du stockage qu'on ne charge pas.",
+     "payback_annees": 4.55,
+     "remplissage": {
+      "moyen": 0.9187,
+      "pire_mois": {
+       "charge_jour_kwh": 5.81,
+       "mois": 11,
+       "ratio": 0.5814,
+       "surplus_jour_kwh": 5.81
+      }
+     },
+     "residuel_kwh_mois": 280.28,
+     "taux_autoconso": 0.921,
+     "tranche_apres": {
+      "borne_basse_kwh": 210.0,
+      "borne_haute_kwh": 310.0,
+      "libelle": "210-310 kWh/mois",
+      "prix_mad_kwh": 1.187388,
+      "rang": 4,
+      "regime": "selectif"
+     }
+    },
+    "stockage_surplus_jour_min_kwh": 5.81,
+    "stockage_surplus_jour_min_mois": 11,
+    "stockage_tronque": false,
+    "taux_autoconso_avec": 0.779,
+    "taux_autoconso_sans": 0.6093,
+    "tranche_apres": {
+     "borne_basse_kwh": 310.0,
+     "borne_haute_kwh": 510.0,
+     "libelle": "310-510 kWh/mois",
+     "prix_mad_kwh": 1.381704,
+     "rang": 5,
+     "regime": "selectif"
+    },
+    "tranche_apres_avec": {
+     "borne_basse_kwh": 310.0,
+     "borne_haute_kwh": 510.0,
+     "libelle": "310-510 kWh/mois",
+     "prix_mad_kwh": 1.381704,
+     "rang": 5,
+     "regime": "selectif"
+    },
+    "tranche_apres_sans": {
+     "borne_basse_kwh": 510.0,
+     "borne_haute_kwh": null,
+     "libelle": "> 510 kWh/mois",
+     "prix_mad_kwh": 1.622856,
+     "rang": 6,
+     "regime": "selectif"
+    },
+    "verdicts_bloquants_avec": [],
+    "verdicts_bloquants_sans": []
+   },
+   "recommandation_avec": {
+    "avertissements": [],
+    "avertissements_avec": [],
+    "avertissements_sans": [],
+    "balayage_stockage": [
+     {
+      "capacite_cible_kwh": 5.0,
+      "capacite_kwh": 5.0,
+      "cout_ttc": 54110.0,
+      "couverture": 0.614,
+      "economie_mad": 13679.8,
+      "economie_marginale_mad": 3269.91,
+      "lignes": [
+       {
+        "designation": "Onduleur hybride Deye 5kW Monophasé",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "onduleur_hybride"
+       },
+       {
+        "designation": "Panneau Jinko 550W",
+        "prix_unitaire_ht": 1100.0,
+        "quantite": 11,
+        "role": "panneau"
+       },
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "batterie"
+       }
+      ],
+      "lignes_batterie": [
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "batterie"
+       }
+      ],
+      "payback_annees": 3.96,
+      "remplissage": {
+       "moyen": 1.0,
+       "pire_mois": {
+        "charge_jour_kwh": 5.0,
+        "mois": 1,
+        "ratio": 1.0,
+        "surplus_jour_kwh": 7.98
+       }
+      },
+      "residuel_kwh_mois": 394.8,
+      "taux_autoconso": 0.779,
+      "tranche_apres": {
+       "borne_basse_kwh": 310.0,
+       "borne_haute_kwh": 510.0,
+       "libelle": "310-510 kWh/mois",
+       "prix_mad_kwh": 1.381704,
+       "rang": 5,
+       "regime": "selectif"
+      }
+     }
+    ],
+    "batterie_disponible": true,
+    "batterie_kwh": 5.0,
+    "composable": true,
+    "consommation_annuelle_kwh": 12274.8,
+    "cout_avec_ttc": 54110.0,
+    "cout_sans_ttc": 30110.0,
+    "couverture_avec": 0.614,
+    "couverture_sans": 0.4802,
+    "economie_avec_mad": 13679.8,
+    "economie_sans_mad": 10409.89,
+    "kwc": 6.05,
+    "lignes_avec": [
+     {
+      "designation": "Onduleur hybride Deye 5kW Monophasé",
+      "prix_unitaire_ht": 17000.0,
+      "quantite": 1,
+      "role": "onduleur_hybride"
+     },
+     {
+      "designation": "Panneau Jinko 550W",
+      "prix_unitaire_ht": 1100.0,
+      "quantite": 11,
+      "role": "panneau"
+     },
+     {
+      "designation": "Batterie Dyness 5 kWh",
+      "prix_unitaire_ht": 17000.0,
+      "quantite": 1,
+      "role": "batterie"
+     }
+    ],
+    "lignes_sans": [
+     {
+      "designation": "Onduleur réseau Huawei 5kW Monophasé",
+      "prix_unitaire_ht": 14000.0,
+      "quantite": 1,
+      "role": "onduleur_reseau"
+     },
+     {
+      "designation": "Panneau Jinko 550W",
+      "prix_unitaire_ht": 1100.0,
+      "quantite": 11,
+      "role": "panneau"
+     }
+    ],
+    "onduleur": "Onduleur réseau Huawei 5kW Monophasé",
+    "onduleur_kw": 5.0,
+    "onduleur_kw_unitaire": 5.0,
+    "onduleur_quantite": 1,
+    "onduleur_triphase": false,
+    "panel_watt": 550.0,
+    "panneaux": 11,
+    "payback_avec_annees": 3.96,
+    "payback_sans_annees": 2.89,
+    "production_annuelle_kwh": 9675.27,
+    "ratio_onduleur_kwc": 0.826,
+    "regle_80_pct_respectee": true,
+    "remplissage": {
+     "moyen": 1.0,
+     "pire_mois": {
+      "charge_jour_kwh": 5.0,
+      "mois": 1,
+      "ratio": 1.0,
+      "surplus_jour_kwh": 7.98
+     }
+    },
+    "residuel_avec_kwh_mois": 394.8,
+    "residuel_kwh_mois": 394.8,
+    "residuel_sans_kwh_mois": 531.68,
+    "stockage_plafond_kwh": 5.81,
+    "stockage_plafond_motif": "remplissage_quotidien",
+    "stockage_refuse": {
+     "capacite_cible_kwh": 10.0,
+     "capacite_kwh": 10.0,
+     "cout_ttc": 74510.0,
+     "couverture": 0.726,
+     "economie_mad": 16382.87,
+     "economie_marginale_mad": 2703.07,
+     "lignes": [
+      {
+       "designation": "Onduleur hybride Deye 5kW Monophasé",
+       "prix_unitaire_ht": 17000.0,
+       "quantite": 1,
+       "role": "onduleur_hybride"
+      },
+      {
+       "designation": "Panneau Jinko 550W",
+       "prix_unitaire_ht": 1100.0,
+       "quantite": 11,
+       "role": "panneau"
+      },
+      {
+       "designation": "Batterie Dyness 5 kWh",
+       "prix_unitaire_ht": 17000.0,
+       "quantite": 2,
+       "role": "batterie"
+      }
+     ],
+     "lignes_batterie": [
+      {
+       "designation": "Batterie Dyness 5 kWh",
+       "prix_unitaire_ht": 17000.0,
+       "quantite": 2,
+       "role": "batterie"
+      }
+     ],
+     "motif_refus": "10 kWh refusé : capacité utile 10.00 kWh au-dessus du plafond de remplissage 5.81 kWh (le surplus quotidien du mois 11, le plus faible de l'année) — la batterie n'y serait chargée qu'à 58.1 %, et on n'ajoute pas du stockage qu'on ne charge pas.",
+     "payback_annees": 4.55,
+     "remplissage": {
+      "moyen": 0.9187,
+      "pire_mois": {
+       "charge_jour_kwh": 5.81,
+       "mois": 11,
+       "ratio": 0.5814,
+       "surplus_jour_kwh": 5.81
+      }
+     },
+     "residuel_kwh_mois": 280.28,
+     "taux_autoconso": 0.921,
+     "tranche_apres": {
+      "borne_basse_kwh": 210.0,
+      "borne_haute_kwh": 310.0,
+      "libelle": "210-310 kWh/mois",
+      "prix_mad_kwh": 1.187388,
+      "rang": 4,
+      "regime": "selectif"
+     }
+    },
+    "stockage_surplus_jour_min_kwh": 5.81,
+    "stockage_surplus_jour_min_mois": 11,
+    "stockage_tronque": false,
+    "taux_autoconso_avec": 0.779,
+    "taux_autoconso_sans": 0.6093,
+    "tranche_apres": {
+     "borne_basse_kwh": 310.0,
+     "borne_haute_kwh": 510.0,
+     "libelle": "310-510 kWh/mois",
+     "prix_mad_kwh": 1.381704,
+     "rang": 5,
+     "regime": "selectif"
+    },
+    "tranche_apres_avec": {
+     "borne_basse_kwh": 310.0,
+     "borne_haute_kwh": 510.0,
+     "libelle": "310-510 kWh/mois",
+     "prix_mad_kwh": 1.381704,
+     "rang": 5,
+     "regime": "selectif"
+    },
+    "tranche_apres_sans": {
+     "borne_basse_kwh": 510.0,
+     "borne_haute_kwh": null,
+     "libelle": "> 510 kWh/mois",
+     "prix_mad_kwh": 1.622856,
+     "rang": 6,
+     "regime": "selectif"
+    },
+    "verdicts_bloquants_avec": [],
+    "verdicts_bloquants_sans": []
+   },
+   "regle_onduleur_min": 0.8,
+   "regle_optimum": "l'optimum est la PLUS GRANDE taille atteignable depuis celle du meilleur payback par des pas dont chaque dirham ajouté se rembourse dans la vie de ce qu'il achète — 10 ans pour des panneaux, 7 ans pour du stockage : la facture baisse le plus possible, le ROI reste raisonnable, et la montée s'arrête d'elle-même quand un panneau (ou une batterie) de plus n'apporte plus assez (doctrine du 25/08/2026)",
+   "regle_stockage": "un palier de stockage n'est candidat que si la batterie se remplit TOUS LES JOURS : capacité utile ≤ surplus quotidien du mois le plus faible (ordre fondateur du 24/08/2026)",
+   "tableau": [
+    {
+     "avertissements": [],
+     "avertissements_avec": [],
+     "avertissements_sans": [],
+     "balayage_stockage": [],
+     "batterie_disponible": false,
+     "batterie_kwh": 0.0,
+     "composable": true,
+     "consommation_annuelle_kwh": 12274.8,
+     "cout_avec_ttc": null,
+     "cout_sans_ttc": 18010.0,
+     "couverture_avec": null,
+     "couverture_sans": 0.0717,
+     "economie_avec_mad": null,
+     "economie_sans_mad": 1427.37,
+     "kwc": 0.55,
+     "lignes_avec": [],
+     "lignes_sans": [
+      {
+       "designation": "Onduleur réseau Huawei 5kW Monophasé",
+       "prix_unitaire_ht": 14000.0,
+       "quantite": 1,
+       "role": "onduleur_reseau"
+      },
+      {
+       "designation": "Panneau Jinko 550W",
+       "prix_unitaire_ht": 1100.0,
+       "quantite": 1,
+       "role": "panneau"
+      }
+     ],
+     "onduleur": "Onduleur réseau Huawei 5kW Monophasé",
+     "onduleur_kw": 5.0,
+     "onduleur_kw_unitaire": 5.0,
+     "onduleur_quantite": 1,
+     "onduleur_triphase": false,
+     "panel_watt": 550.0,
+     "panneaux": 1,
+     "payback_avec_annees": null,
+     "payback_sans_annees": 12.62,
+     "production_annuelle_kwh": 879.57,
+     "ratio_onduleur_kwc": 9.091,
+     "regle_80_pct_respectee": true,
+     "remplissage": null,
+     "residuel_avec_kwh_mois": null,
+     "residuel_kwh_mois": 949.61,
+     "residuel_sans_kwh_mois": 949.61,
+     "stockage_plafond_kwh": 0.0,
+     "stockage_plafond_motif": "remplissage_quotidien",
+     "stockage_refuse": {
+      "capacite_cible_kwh": 5.0,
+      "capacite_kwh": 5.0,
+      "cout_ttc": 42010.0,
+      "couverture": 0.0717,
+      "economie_mad": 1427.37,
+      "economie_marginale_mad": 0.0,
+      "lignes": [
+       {
+        "designation": "Onduleur hybride Deye 5kW Monophasé",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "onduleur_hybride"
+       },
+       {
+        "designation": "Panneau Jinko 550W",
+        "prix_unitaire_ht": 1100.0,
+        "quantite": 1,
+        "role": "panneau"
+       },
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "batterie"
+       }
+      ],
+      "lignes_batterie": [
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "batterie"
+       }
+      ],
+      "motif_refus": "5 kWh refusé : capacité utile 5.00 kWh au-dessus du plafond de remplissage 0.00 kWh (le surplus quotidien du mois 2, le plus faible de l'année) — la batterie n'y serait chargée qu'à 0.0 %, et on n'ajoute pas du stockage qu'on ne charge pas.",
+      "payback_annees": 29.43,
+      "remplissage": {
+       "moyen": 0.0,
+       "pire_mois": {
+        "charge_jour_kwh": 0.0,
+        "mois": 1,
+        "ratio": 0.0,
+        "surplus_jour_kwh": 0.0
+       }
+      },
+      "residuel_kwh_mois": 949.6,
+      "taux_autoconso": 1.0,
+      "tranche_apres": {
+       "borne_basse_kwh": 510.0,
+       "borne_haute_kwh": null,
+       "libelle": "> 510 kWh/mois",
+       "prix_mad_kwh": 1.622856,
+       "rang": 6,
+       "regime": "selectif"
+      }
+     },
+     "stockage_surplus_jour_min_kwh": 0.0,
+     "stockage_surplus_jour_min_mois": 2,
+     "stockage_tronque": false,
+     "taux_autoconso_avec": null,
+     "taux_autoconso_sans": 1.0,
+     "tranche_apres": {
+      "borne_basse_kwh": 510.0,
+      "borne_haute_kwh": null,
+      "libelle": "> 510 kWh/mois",
+      "prix_mad_kwh": 1.622856,
+      "rang": 6,
+      "regime": "selectif"
+     },
+     "tranche_apres_avec": null,
+     "tranche_apres_sans": {
+      "borne_basse_kwh": 510.0,
+      "borne_haute_kwh": null,
+      "libelle": "> 510 kWh/mois",
+      "prix_mad_kwh": 1.622856,
+      "rang": 6,
+      "regime": "selectif"
+     },
+     "verdicts_bloquants_avec": [],
+     "verdicts_bloquants_sans": []
+    },
+    {
+     "avertissements": [],
+     "avertissements_avec": [],
+     "avertissements_sans": [],
+     "balayage_stockage": [],
+     "batterie_disponible": false,
+     "batterie_kwh": 0.0,
+     "composable": true,
+     "consommation_annuelle_kwh": 12274.8,
+     "cout_avec_ttc": null,
+     "cout_sans_ttc": 19220.0,
+     "couverture_avec": null,
+     "couverture_sans": 0.1433,
+     "economie_avec_mad": null,
+     "economie_sans_mad": 2854.76,
+     "kwc": 1.1,
+     "lignes_avec": [],
+     "lignes_sans": [
+      {
+       "designation": "Onduleur réseau Huawei 5kW Monophasé",
+       "prix_unitaire_ht": 14000.0,
+       "quantite": 1,
+       "role": "onduleur_reseau"
+      },
+      {
+       "designation": "Panneau Jinko 550W",
+       "prix_unitaire_ht": 1100.0,
+       "quantite": 2,
+       "role": "panneau"
+      }
+     ],
+     "onduleur": "Onduleur réseau Huawei 5kW Monophasé",
+     "onduleur_kw": 5.0,
+     "onduleur_kw_unitaire": 5.0,
+     "onduleur_quantite": 1,
+     "onduleur_triphase": false,
+     "panel_watt": 550.0,
+     "panneaux": 2,
+     "payback_avec_annees": null,
+     "payback_sans_annees": 6.73,
+     "production_annuelle_kwh": 1759.14,
+     "ratio_onduleur_kwc": 4.545,
+     "regle_80_pct_respectee": true,
+     "remplissage": null,
+     "residuel_avec_kwh_mois": null,
+     "residuel_kwh_mois": 876.31,
+     "residuel_sans_kwh_mois": 876.31,
+     "stockage_plafond_kwh": 0.0,
+     "stockage_plafond_motif": "remplissage_quotidien",
+     "stockage_refuse": {
+      "capacite_cible_kwh": 5.0,
+      "capacite_kwh": 5.0,
+      "cout_ttc": 43220.0,
+      "couverture": 0.1433,
+      "economie_mad": 2854.76,
+      "economie_marginale_mad": 0.0,
+      "lignes": [
+       {
+        "designation": "Onduleur hybride Deye 5kW Monophasé",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "onduleur_hybride"
+       },
+       {
+        "designation": "Panneau Jinko 550W",
+        "prix_unitaire_ht": 1100.0,
+        "quantite": 2,
+        "role": "panneau"
+       },
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "batterie"
+       }
+      ],
+      "lignes_batterie": [
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "batterie"
+       }
+      ],
+      "motif_refus": "5 kWh refusé : capacité utile 5.00 kWh au-dessus du plafond de remplissage 0.00 kWh (le surplus quotidien du mois 2, le plus faible de l'année) — la batterie n'y serait chargée qu'à 0.0 %, et on n'ajoute pas du stockage qu'on ne charge pas.",
+      "payback_annees": 15.14,
+      "remplissage": {
+       "moyen": 0.0,
+       "pire_mois": {
+        "charge_jour_kwh": 0.0,
+        "mois": 1,
+        "ratio": 0.0,
+        "surplus_jour_kwh": 0.0
+       }
+      },
+      "residuel_kwh_mois": 876.31,
+      "taux_autoconso": 1.0,
+      "tranche_apres": {
+       "borne_basse_kwh": 510.0,
+       "borne_haute_kwh": null,
+       "libelle": "> 510 kWh/mois",
+       "prix_mad_kwh": 1.622856,
+       "rang": 6,
+       "regime": "selectif"
+      }
+     },
+     "stockage_surplus_jour_min_kwh": 0.0,
+     "stockage_surplus_jour_min_mois": 2,
+     "stockage_tronque": false,
+     "taux_autoconso_avec": null,
+     "taux_autoconso_sans": 1.0,
+     "tranche_apres": {
+      "borne_basse_kwh": 510.0,
+      "borne_haute_kwh": null,
+      "libelle": "> 510 kWh/mois",
+      "prix_mad_kwh": 1.622856,
+      "rang": 6,
+      "regime": "selectif"
+     },
+     "tranche_apres_avec": null,
+     "tranche_apres_sans": {
+      "borne_basse_kwh": 510.0,
+      "borne_haute_kwh": null,
+      "libelle": "> 510 kWh/mois",
+      "prix_mad_kwh": 1.622856,
+      "rang": 6,
+      "regime": "selectif"
+     },
+     "verdicts_bloquants_avec": [],
+     "verdicts_bloquants_sans": []
+    },
+    {
+     "avertissements": [],
+     "avertissements_avec": [],
+     "avertissements_sans": [],
+     "balayage_stockage": [],
+     "batterie_disponible": false,
+     "batterie_kwh": 0.0,
+     "composable": true,
+     "consommation_annuelle_kwh": 12274.8,
+     "cout_avec_ttc": null,
+     "cout_sans_ttc": 20430.0,
+     "couverture_avec": null,
+     "couverture_sans": 0.215,
+     "economie_avec_mad": null,
+     "economie_sans_mad": 4282.18,
+     "kwc": 1.65,
+     "lignes_avec": [],
+     "lignes_sans": [
+      {
+       "designation": "Onduleur réseau Huawei 5kW Monophasé",
+       "prix_unitaire_ht": 14000.0,
+       "quantite": 1,
+       "role": "onduleur_reseau"
+      },
+      {
+       "designation": "Panneau Jinko 550W",
+       "prix_unitaire_ht": 1100.0,
+       "quantite": 3,
+       "role": "panneau"
+      }
+     ],
+     "onduleur": "Onduleur réseau Huawei 5kW Monophasé",
+     "onduleur_kw": 5.0,
+     "onduleur_kw_unitaire": 5.0,
+     "onduleur_quantite": 1,
+     "onduleur_triphase": false,
+     "panel_watt": 550.0,
+     "panneaux": 3,
+     "payback_avec_annees": null,
+     "payback_sans_annees": 4.77,
+     "production_annuelle_kwh": 2638.71,
+     "ratio_onduleur_kwc": 3.03,
+     "regle_80_pct_respectee": true,
+     "remplissage": null,
+     "residuel_avec_kwh_mois": null,
+     "residuel_kwh_mois": 803.01,
+     "residuel_sans_kwh_mois": 803.01,
+     "stockage_plafond_kwh": 0.0,
+     "stockage_plafond_motif": "remplissage_quotidien",
+     "stockage_refuse": {
+      "capacite_cible_kwh": 5.0,
+      "capacite_kwh": 5.0,
+      "cout_ttc": 44430.0,
+      "couverture": 0.215,
+      "economie_mad": 4282.18,
+      "economie_marginale_mad": 0.0,
+      "lignes": [
+       {
+        "designation": "Onduleur hybride Deye 5kW Monophasé",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "onduleur_hybride"
+       },
+       {
+        "designation": "Panneau Jinko 550W",
+        "prix_unitaire_ht": 1100.0,
+        "quantite": 3,
+        "role": "panneau"
+       },
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "batterie"
+       }
+      ],
+      "lignes_batterie": [
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "batterie"
+       }
+      ],
+      "motif_refus": "5 kWh refusé : capacité utile 5.00 kWh au-dessus du plafond de remplissage 0.00 kWh (le surplus quotidien du mois 3, le plus faible de l'année) — la batterie n'y serait chargée qu'à 0.0 %, et on n'ajoute pas du stockage qu'on ne charge pas.",
+      "payback_annees": 10.38,
+      "remplissage": {
+       "moyen": 0.0,
+       "pire_mois": {
+        "charge_jour_kwh": 0.0,
+        "mois": 1,
+        "ratio": 0.0,
+        "surplus_jour_kwh": 0.0
+       }
+      },
+      "residuel_kwh_mois": 803.01,
+      "taux_autoconso": 1.0,
+      "tranche_apres": {
+       "borne_basse_kwh": 510.0,
+       "borne_haute_kwh": null,
+       "libelle": "> 510 kWh/mois",
+       "prix_mad_kwh": 1.622856,
+       "rang": 6,
+       "regime": "selectif"
+      }
+     },
+     "stockage_surplus_jour_min_kwh": 0.0,
+     "stockage_surplus_jour_min_mois": 3,
+     "stockage_tronque": false,
+     "taux_autoconso_avec": null,
+     "taux_autoconso_sans": 1.0,
+     "tranche_apres": {
+      "borne_basse_kwh": 510.0,
+      "borne_haute_kwh": null,
+      "libelle": "> 510 kWh/mois",
+      "prix_mad_kwh": 1.622856,
+      "rang": 6,
+      "regime": "selectif"
+     },
+     "tranche_apres_avec": null,
+     "tranche_apres_sans": {
+      "borne_basse_kwh": 510.0,
+      "borne_haute_kwh": null,
+      "libelle": "> 510 kWh/mois",
+      "prix_mad_kwh": 1.622856,
+      "rang": 6,
+      "regime": "selectif"
+     },
+     "verdicts_bloquants_avec": [],
+     "verdicts_bloquants_sans": []
+    },
+    {
+     "avertissements": [],
+     "avertissements_avec": [],
+     "avertissements_sans": [],
+     "balayage_stockage": [],
+     "batterie_disponible": false,
+     "batterie_kwh": 0.0,
+     "composable": true,
+     "consommation_annuelle_kwh": 12274.8,
+     "cout_avec_ttc": null,
+     "cout_sans_ttc": 21640.0,
+     "couverture_avec": null,
+     "couverture_sans": 0.2866,
+     "economie_avec_mad": null,
+     "economie_sans_mad": 5709.59,
+     "kwc": 2.2,
+     "lignes_avec": [],
+     "lignes_sans": [
+      {
+       "designation": "Onduleur réseau Huawei 5kW Monophasé",
+       "prix_unitaire_ht": 14000.0,
+       "quantite": 1,
+       "role": "onduleur_reseau"
+      },
+      {
+       "designation": "Panneau Jinko 550W",
+       "prix_unitaire_ht": 1100.0,
+       "quantite": 4,
+       "role": "panneau"
+      }
+     ],
+     "onduleur": "Onduleur réseau Huawei 5kW Monophasé",
+     "onduleur_kw": 5.0,
+     "onduleur_kw_unitaire": 5.0,
+     "onduleur_quantite": 1,
+     "onduleur_triphase": false,
+     "panel_watt": 550.0,
+     "panneaux": 4,
+     "payback_avec_annees": null,
+     "payback_sans_annees": 3.79,
+     "production_annuelle_kwh": 3518.28,
+     "ratio_onduleur_kwc": 2.273,
+     "regle_80_pct_respectee": true,
+     "remplissage": null,
+     "residuel_avec_kwh_mois": null,
+     "residuel_kwh_mois": 729.71,
+     "residuel_sans_kwh_mois": 729.71,
+     "stockage_plafond_kwh": 0.0,
+     "stockage_plafond_motif": "remplissage_quotidien",
+     "stockage_refuse": {
+      "capacite_cible_kwh": 5.0,
+      "capacite_kwh": 5.0,
+      "cout_ttc": 45640.0,
+      "couverture": 0.2866,
+      "economie_mad": 5709.59,
+      "economie_marginale_mad": 0.0,
+      "lignes": [
+       {
+        "designation": "Onduleur hybride Deye 5kW Monophasé",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "onduleur_hybride"
+       },
+       {
+        "designation": "Panneau Jinko 550W",
+        "prix_unitaire_ht": 1100.0,
+        "quantite": 4,
+        "role": "panneau"
+       },
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "batterie"
+       }
+      ],
+      "lignes_batterie": [
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "batterie"
+       }
+      ],
+      "motif_refus": "5 kWh refusé : capacité utile 5.00 kWh au-dessus du plafond de remplissage 0.00 kWh (le surplus quotidien du mois 4, le plus faible de l'année) — la batterie n'y serait chargée qu'à 0.0 %, et on n'ajoute pas du stockage qu'on ne charge pas.",
+      "payback_annees": 7.99,
+      "remplissage": {
+       "moyen": 0.0,
+       "pire_mois": {
+        "charge_jour_kwh": 0.0,
+        "mois": 1,
+        "ratio": 0.0,
+        "surplus_jour_kwh": 0.0
+       }
+      },
+      "residuel_kwh_mois": 729.71,
+      "taux_autoconso": 1.0,
+      "tranche_apres": {
+       "borne_basse_kwh": 510.0,
+       "borne_haute_kwh": null,
+       "libelle": "> 510 kWh/mois",
+       "prix_mad_kwh": 1.622856,
+       "rang": 6,
+       "regime": "selectif"
+      }
+     },
+     "stockage_surplus_jour_min_kwh": 0.0,
+     "stockage_surplus_jour_min_mois": 4,
+     "stockage_tronque": false,
+     "taux_autoconso_avec": null,
+     "taux_autoconso_sans": 1.0,
+     "tranche_apres": {
+      "borne_basse_kwh": 510.0,
+      "borne_haute_kwh": null,
+      "libelle": "> 510 kWh/mois",
+      "prix_mad_kwh": 1.622856,
+      "rang": 6,
+      "regime": "selectif"
+     },
+     "tranche_apres_avec": null,
+     "tranche_apres_sans": {
+      "borne_basse_kwh": 510.0,
+      "borne_haute_kwh": null,
+      "libelle": "> 510 kWh/mois",
+      "prix_mad_kwh": 1.622856,
+      "rang": 6,
+      "regime": "selectif"
+     },
+     "verdicts_bloquants_avec": [],
+     "verdicts_bloquants_sans": []
+    },
+    {
+     "avertissements": [],
+     "avertissements_avec": [],
+     "avertissements_sans": [],
+     "balayage_stockage": [],
+     "batterie_disponible": false,
+     "batterie_kwh": 0.0,
+     "composable": true,
+     "consommation_annuelle_kwh": 12274.8,
+     "cout_avec_ttc": null,
+     "cout_sans_ttc": 22850.0,
+     "couverture_avec": null,
+     "couverture_sans": 0.3572,
+     "economie_avec_mad": null,
+     "economie_sans_mad": 7114.61,
+     "kwc": 2.75,
+     "lignes_avec": [],
+     "lignes_sans": [
+      {
+       "designation": "Onduleur réseau Huawei 5kW Monophasé",
+       "prix_unitaire_ht": 14000.0,
+       "quantite": 1,
+       "role": "onduleur_reseau"
+      },
+      {
+       "designation": "Panneau Jinko 550W",
+       "prix_unitaire_ht": 1100.0,
+       "quantite": 5,
+       "role": "panneau"
+      }
+     ],
+     "onduleur": "Onduleur réseau Huawei 5kW Monophasé",
+     "onduleur_kw": 5.0,
+     "onduleur_kw_unitaire": 5.0,
+     "onduleur_quantite": 1,
+     "onduleur_triphase": false,
+     "panel_watt": 550.0,
+     "panneaux": 5,
+     "payback_avec_annees": null,
+     "payback_sans_annees": 3.21,
+     "production_annuelle_kwh": 4397.85,
+     "ratio_onduleur_kwc": 1.818,
+     "regle_80_pct_respectee": true,
+     "remplissage": null,
+     "residuel_avec_kwh_mois": null,
+     "residuel_kwh_mois": 657.57,
+     "residuel_sans_kwh_mois": 657.57,
+     "stockage_plafond_kwh": 0.0,
+     "stockage_plafond_motif": "remplissage_quotidien",
+     "stockage_refuse": {
+      "capacite_cible_kwh": 5.0,
+      "capacite_kwh": 5.0,
+      "cout_ttc": 46850.0,
+      "couverture": 0.3582,
+      "economie_mad": 7134.84,
+      "economie_marginale_mad": 20.23,
+      "lignes": [
+       {
+        "designation": "Onduleur hybride Deye 5kW Monophasé",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "onduleur_hybride"
+       },
+       {
+        "designation": "Panneau Jinko 550W",
+        "prix_unitaire_ht": 1100.0,
+        "quantite": 5,
+        "role": "panneau"
+       },
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "batterie"
+       }
+      ],
+      "lignes_batterie": [
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "batterie"
+       }
+      ],
+      "motif_refus": "5 kWh refusé : capacité utile 5.00 kWh au-dessus du plafond de remplissage 0.00 kWh (le surplus quotidien du mois 6, le plus faible de l'année) — la batterie n'y serait chargée qu'à 0.0 %, et on n'ajoute pas du stockage qu'on ne charge pas.",
+      "payback_annees": 6.57,
+      "remplissage": {
+       "moyen": 0.0078,
+       "pire_mois": {
+        "charge_jour_kwh": 0.0,
+        "mois": 1,
+        "ratio": 0.0,
+        "surplus_jour_kwh": 0.0
+       }
+      },
+      "residuel_kwh_mois": 656.53,
+      "taux_autoconso": 0.9997,
+      "tranche_apres": {
+       "borne_basse_kwh": 510.0,
+       "borne_haute_kwh": null,
+       "libelle": "> 510 kWh/mois",
+       "prix_mad_kwh": 1.622856,
+       "rang": 6,
+       "regime": "selectif"
+      }
+     },
+     "stockage_surplus_jour_min_kwh": 0.0,
+     "stockage_surplus_jour_min_mois": 6,
+     "stockage_tronque": false,
+     "taux_autoconso_avec": null,
+     "taux_autoconso_sans": 0.9969,
+     "tranche_apres": {
+      "borne_basse_kwh": 510.0,
+      "borne_haute_kwh": null,
+      "libelle": "> 510 kWh/mois",
+      "prix_mad_kwh": 1.622856,
+      "rang": 6,
+      "regime": "selectif"
+     },
+     "tranche_apres_avec": null,
+     "tranche_apres_sans": {
+      "borne_basse_kwh": 510.0,
+      "borne_haute_kwh": null,
+      "libelle": "> 510 kWh/mois",
+      "prix_mad_kwh": 1.622856,
+      "rang": 6,
+      "regime": "selectif"
+     },
+     "verdicts_bloquants_avec": [],
+     "verdicts_bloquants_sans": []
+    },
+    {
+     "avertissements": [],
+     "avertissements_avec": [],
+     "avertissements_sans": [],
+     "balayage_stockage": [],
+     "batterie_disponible": false,
+     "batterie_kwh": 0.0,
+     "composable": true,
+     "consommation_annuelle_kwh": 12274.8,
+     "cout_avec_ttc": null,
+     "cout_sans_ttc": 24060.0,
+     "couverture_avec": null,
+     "couverture_sans": 0.4089,
+     "economie_avec_mad": null,
+     "economie_sans_mad": 8158.17,
+     "kwc": 3.3,
+     "lignes_avec": [],
+     "lignes_sans": [
+      {
+       "designation": "Onduleur réseau Huawei 5kW Monophasé",
+       "prix_unitaire_ht": 14000.0,
+       "quantite": 1,
+       "role": "onduleur_reseau"
+      },
+      {
+       "designation": "Panneau Jinko 550W",
+       "prix_unitaire_ht": 1100.0,
+       "quantite": 6,
+       "role": "panneau"
+      }
+     ],
+     "onduleur": "Onduleur réseau Huawei 5kW Monophasé",
+     "onduleur_kw": 5.0,
+     "onduleur_kw_unitaire": 5.0,
+     "onduleur_quantite": 1,
+     "onduleur_triphase": false,
+     "panel_watt": 550.0,
+     "panneaux": 6,
+     "payback_avec_annees": null,
+     "payback_sans_annees": 2.95,
+     "production_annuelle_kwh": 5277.42,
+     "ratio_onduleur_kwc": 1.515,
+     "regle_80_pct_respectee": true,
+     "remplissage": null,
+     "residuel_avec_kwh_mois": null,
+     "residuel_kwh_mois": 604.63,
+     "residuel_sans_kwh_mois": 604.63,
+     "stockage_plafond_kwh": 0.0,
+     "stockage_plafond_motif": "remplissage_quotidien",
+     "stockage_refuse": {
+      "capacite_cible_kwh": 5.0,
+      "capacite_kwh": 5.0,
+      "cout_ttc": 48060.0,
+      "couverture": 0.4278,
+      "economie_mad": 8565.9,
+      "economie_marginale_mad": 407.73,
+      "lignes": [
+       {
+        "designation": "Onduleur hybride Deye 5kW Monophasé",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "onduleur_hybride"
+       },
+       {
+        "designation": "Panneau Jinko 550W",
+        "prix_unitaire_ht": 1100.0,
+        "quantite": 6,
+        "role": "panneau"
+       },
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "batterie"
+       }
+      ],
+      "lignes_batterie": [
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "batterie"
+       }
+      ],
+      "motif_refus": "5 kWh refusé : capacité utile 5.00 kWh au-dessus du plafond de remplissage 0.00 kWh (le surplus quotidien du mois 11, le plus faible de l'année) — la batterie n'y serait chargée qu'à 0.0 %, et on n'ajoute pas du stockage qu'on ne charge pas.",
+      "payback_annees": 5.61,
+      "remplissage": {
+       "moyen": 0.1425,
+       "pire_mois": {
+        "charge_jour_kwh": 0.0,
+        "mois": 11,
+        "ratio": 0.0,
+        "surplus_jour_kwh": 0.0
+       }
+      },
+      "residuel_kwh_mois": 585.26,
+      "taux_autoconso": 0.9951,
+      "tranche_apres": {
+       "borne_basse_kwh": 510.0,
+       "borne_haute_kwh": null,
+       "libelle": "> 510 kWh/mois",
+       "prix_mad_kwh": 1.622856,
+       "rang": 6,
+       "regime": "selectif"
+      }
+     },
+     "stockage_surplus_jour_min_kwh": 0.0,
+     "stockage_surplus_jour_min_mois": 11,
+     "stockage_tronque": false,
+     "taux_autoconso_avec": null,
+     "taux_autoconso_sans": 0.9511,
+     "tranche_apres": {
+      "borne_basse_kwh": 510.0,
+      "borne_haute_kwh": null,
+      "libelle": "> 510 kWh/mois",
+      "prix_mad_kwh": 1.622856,
+      "rang": 6,
+      "regime": "selectif"
+     },
+     "tranche_apres_avec": null,
+     "tranche_apres_sans": {
+      "borne_basse_kwh": 510.0,
+      "borne_haute_kwh": null,
+      "libelle": "> 510 kWh/mois",
+      "prix_mad_kwh": 1.622856,
+      "rang": 6,
+      "regime": "selectif"
+     },
+     "verdicts_bloquants_avec": [],
+     "verdicts_bloquants_sans": []
+    },
+    {
+     "avertissements": [],
+     "avertissements_avec": [],
+     "avertissements_sans": [],
+     "balayage_stockage": [],
+     "batterie_disponible": false,
+     "batterie_kwh": 0.0,
+     "composable": true,
+     "consommation_annuelle_kwh": 12274.8,
+     "cout_avec_ttc": null,
+     "cout_sans_ttc": 25270.0,
+     "couverture_avec": null,
+     "couverture_sans": 0.437,
+     "economie_avec_mad": null,
+     "economie_sans_mad": 8749.02,
+     "kwc": 3.85,
+     "lignes_avec": [],
+     "lignes_sans": [
+      {
+       "designation": "Onduleur réseau Huawei 5kW Monophasé",
+       "prix_unitaire_ht": 14000.0,
+       "quantite": 1,
+       "role": "onduleur_reseau"
+      },
+      {
+       "designation": "Panneau Jinko 550W",
+       "prix_unitaire_ht": 1100.0,
+       "quantite": 7,
+       "role": "panneau"
+      }
+     ],
+     "onduleur": "Onduleur réseau Huawei 5kW Monophasé",
+     "onduleur_kw": 5.0,
+     "onduleur_kw_unitaire": 5.0,
+     "onduleur_quantite": 1,
+     "onduleur_triphase": false,
+     "panel_watt": 550.0,
+     "panneaux": 7,
+     "payback_avec_annees": null,
+     "payback_sans_annees": 2.89,
+     "production_annuelle_kwh": 6156.99,
+     "ratio_onduleur_kwc": 1.299,
+     "regle_80_pct_respectee": true,
+     "remplissage": null,
+     "residuel_avec_kwh_mois": null,
+     "residuel_kwh_mois": 575.87,
+     "residuel_sans_kwh_mois": 575.87,
+     "stockage_plafond_kwh": 0.13,
+     "stockage_plafond_motif": "remplissage_quotidien",
+     "stockage_refuse": {
+      "capacite_cible_kwh": 5.0,
+      "capacite_kwh": 5.0,
+      "cout_ttc": 49270.0,
+      "couverture": 0.4951,
+      "economie_mad": 10816.57,
+      "economie_marginale_mad": 2067.55,
+      "lignes": [
+       {
+        "designation": "Onduleur hybride Deye 5kW Monophasé",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "onduleur_hybride"
+       },
+       {
+        "designation": "Panneau Jinko 550W",
+        "prix_unitaire_ht": 1100.0,
+        "quantite": 7,
+        "role": "panneau"
+       },
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "batterie"
+       }
+      ],
+      "lignes_batterie": [
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "batterie"
+       }
+      ],
+      "motif_refus": "5 kWh refusé : capacité utile 5.00 kWh au-dessus du plafond de remplissage 0.13 kWh (le surplus quotidien du mois 11, le plus faible de l'année) — la batterie n'y serait chargée qu'à 2.5 %, et on n'ajoute pas du stockage qu'on ne charge pas.",
+      "payback_annees": 4.56,
+      "remplissage": {
+       "moyen": 0.4356,
+       "pire_mois": {
+        "charge_jour_kwh": 0.13,
+        "mois": 11,
+        "ratio": 0.0254,
+        "surplus_jour_kwh": 0.13
+       }
+      },
+      "residuel_kwh_mois": 516.42,
+      "taux_autoconso": 0.9871,
+      "tranche_apres": {
+       "borne_basse_kwh": 510.0,
+       "borne_haute_kwh": null,
+       "libelle": "> 510 kWh/mois",
+       "prix_mad_kwh": 1.622856,
+       "rang": 6,
+       "regime": "selectif"
+      }
+     },
+     "stockage_surplus_jour_min_kwh": 0.13,
+     "stockage_surplus_jour_min_mois": 11,
+     "stockage_tronque": false,
+     "taux_autoconso_avec": null,
+     "taux_autoconso_sans": 0.8713,
+     "tranche_apres": {
+      "borne_basse_kwh": 510.0,
+      "borne_haute_kwh": null,
+      "libelle": "> 510 kWh/mois",
+      "prix_mad_kwh": 1.622856,
+      "rang": 6,
+      "regime": "selectif"
+     },
+     "tranche_apres_avec": null,
+     "tranche_apres_sans": {
+      "borne_basse_kwh": 510.0,
+      "borne_haute_kwh": null,
+      "libelle": "> 510 kWh/mois",
+      "prix_mad_kwh": 1.622856,
+      "rang": 6,
+      "regime": "selectif"
+     },
+     "verdicts_bloquants_avec": [],
+     "verdicts_bloquants_sans": []
+    },
+    {
+     "avertissements": [],
+     "avertissements_avec": [],
+     "avertissements_sans": [],
+     "balayage_stockage": [],
+     "batterie_disponible": false,
+     "batterie_kwh": 0.0,
+     "composable": true,
+     "consommation_annuelle_kwh": 12274.8,
+     "cout_avec_ttc": null,
+     "cout_sans_ttc": 26480.0,
+     "couverture_avec": null,
+     "couverture_sans": 0.4522,
+     "economie_avec_mad": null,
+     "economie_sans_mad": 9076.06,
+     "kwc": 4.4,
+     "lignes_avec": [],
+     "lignes_sans": [
+      {
+       "designation": "Onduleur réseau Huawei 5kW Monophasé",
+       "prix_unitaire_ht": 14000.0,
+       "quantite": 1,
+       "role": "onduleur_reseau"
+      },
+      {
+       "designation": "Panneau Jinko 550W",
+       "prix_unitaire_ht": 1100.0,
+       "quantite": 8,
+       "role": "panneau"
+      }
+     ],
+     "onduleur": "Onduleur réseau Huawei 5kW Monophasé",
+     "onduleur_kw": 5.0,
+     "onduleur_kw_unitaire": 5.0,
+     "onduleur_quantite": 1,
+     "onduleur_triphase": false,
+     "panel_watt": 550.0,
+     "panneaux": 8,
+     "payback_avec_annees": null,
+     "payback_sans_annees": 2.92,
+     "production_annuelle_kwh": 7036.56,
+     "ratio_onduleur_kwc": 1.136,
+     "regle_80_pct_respectee": true,
+     "remplissage": null,
+     "residuel_avec_kwh_mois": null,
+     "residuel_kwh_mois": 560.3,
+     "residuel_sans_kwh_mois": 560.3,
+     "stockage_plafond_kwh": 1.01,
+     "stockage_plafond_motif": "remplissage_quotidien",
+     "stockage_refuse": {
+      "capacite_cible_kwh": 5.0,
+      "capacite_kwh": 5.0,
+      "cout_ttc": 50480.0,
+      "couverture": 0.5576,
+      "economie_mad": 12194.06,
+      "economie_marginale_mad": 3118.0,
+      "lignes": [
+       {
+        "designation": "Onduleur hybride Deye 5kW Monophasé",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "onduleur_hybride"
+       },
+       {
+        "designation": "Panneau Jinko 550W",
+        "prix_unitaire_ht": 1100.0,
+        "quantite": 8,
+        "role": "panneau"
+       },
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "batterie"
+       }
+      ],
+      "lignes_batterie": [
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "batterie"
+       }
+      ],
+      "motif_refus": "5 kWh refusé : capacité utile 5.00 kWh au-dessus du plafond de remplissage 1.01 kWh (le surplus quotidien du mois 11, le plus faible de l'année) — la batterie n'y serait chargée qu'à 20.3 %, et on n'ajoute pas du stockage qu'on ne charge pas.",
+      "payback_annees": 4.14,
+      "remplissage": {
+       "moyen": 0.7883,
+       "pire_mois": {
+        "charge_jour_kwh": 1.01,
+        "mois": 11,
+        "ratio": 0.2027,
+        "surplus_jour_kwh": 1.01
+       }
+      },
+      "residuel_kwh_mois": 452.56,
+      "taux_autoconso": 0.9727,
+      "tranche_apres": {
+       "borne_basse_kwh": 310.0,
+       "borne_haute_kwh": 510.0,
+       "libelle": "310-510 kWh/mois",
+       "prix_mad_kwh": 1.381704,
+       "rang": 5,
+       "regime": "selectif"
+      }
+     },
+     "stockage_surplus_jour_min_kwh": 1.01,
+     "stockage_surplus_jour_min_mois": 11,
+     "stockage_tronque": false,
+     "taux_autoconso_avec": null,
+     "taux_autoconso_sans": 0.7889,
+     "tranche_apres": {
+      "borne_basse_kwh": 510.0,
+      "borne_haute_kwh": null,
+      "libelle": "> 510 kWh/mois",
+      "prix_mad_kwh": 1.622856,
+      "rang": 6,
+      "regime": "selectif"
+     },
+     "tranche_apres_avec": null,
+     "tranche_apres_sans": {
+      "borne_basse_kwh": 510.0,
+      "borne_haute_kwh": null,
+      "libelle": "> 510 kWh/mois",
+      "prix_mad_kwh": 1.622856,
+      "rang": 6,
+      "regime": "selectif"
+     },
+     "verdicts_bloquants_avec": [],
+     "verdicts_bloquants_sans": []
+    },
+    {
+     "avertissements": [],
+     "avertissements_avec": [],
+     "avertissements_sans": [],
+     "balayage_stockage": [],
+     "batterie_disponible": false,
+     "batterie_kwh": 0.0,
+     "composable": true,
+     "consommation_annuelle_kwh": 12274.8,
+     "cout_avec_ttc": null,
+     "cout_sans_ttc": 27690.0,
+     "couverture_avec": null,
+     "couverture_sans": 0.4627,
+     "economie_avec_mad": null,
+     "economie_sans_mad": 9549.12,
+     "kwc": 4.95,
+     "lignes_avec": [],
+     "lignes_sans": [
+      {
+       "designation": "Onduleur réseau Huawei 5kW Monophasé",
+       "prix_unitaire_ht": 14000.0,
+       "quantite": 1,
+       "role": "onduleur_reseau"
+      },
+      {
+       "designation": "Panneau Jinko 550W",
+       "prix_unitaire_ht": 1100.0,
+       "quantite": 9,
+       "role": "panneau"
+      }
+     ],
+     "onduleur": "Onduleur réseau Huawei 5kW Monophasé",
+     "onduleur_kw": 5.0,
+     "onduleur_kw_unitaire": 5.0,
+     "onduleur_quantite": 1,
+     "onduleur_triphase": false,
+     "panel_watt": 550.0,
+     "panneaux": 9,
+     "payback_avec_annees": null,
+     "payback_sans_annees": 2.9,
+     "production_annuelle_kwh": 7916.13,
+     "ratio_onduleur_kwc": 1.01,
+     "regle_80_pct_respectee": true,
+     "remplissage": null,
+     "residuel_avec_kwh_mois": null,
+     "residuel_kwh_mois": 549.6,
+     "residuel_sans_kwh_mois": 549.6,
+     "stockage_plafond_kwh": 2.48,
+     "stockage_plafond_motif": "remplissage_quotidien",
+     "stockage_refuse": {
+      "capacite_cible_kwh": 5.0,
+      "capacite_kwh": 5.0,
+      "cout_ttc": 51690.0,
+      "couverture": 0.5866,
+      "economie_mad": 13145.75,
+      "economie_marginale_mad": 3596.63,
+      "lignes": [
+       {
+        "designation": "Onduleur hybride Deye 5kW Monophasé",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "onduleur_hybride"
+       },
+       {
+        "designation": "Panneau Jinko 550W",
+        "prix_unitaire_ht": 1100.0,
+        "quantite": 9,
+        "role": "panneau"
+       },
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "batterie"
+       }
+      ],
+      "lignes_batterie": [
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "batterie"
+       }
+      ],
+      "motif_refus": "5 kWh refusé : capacité utile 5.00 kWh au-dessus du plafond de remplissage 2.48 kWh (le surplus quotidien du mois 11, le plus faible de l'année) — la batterie n'y serait chargée qu'à 49.6 %, et on n'ajoute pas du stockage qu'on ne charge pas.",
+      "payback_annees": 3.93,
+      "remplissage": {
+       "moyen": 0.9261,
+       "pire_mois": {
+        "charge_jour_kwh": 2.48,
+        "mois": 11,
+        "ratio": 0.4962,
+        "surplus_jour_kwh": 2.48
+       }
+      },
+      "residuel_kwh_mois": 422.85,
+      "taux_autoconso": 0.9096,
+      "tranche_apres": {
+       "borne_basse_kwh": 310.0,
+       "borne_haute_kwh": 510.0,
+       "libelle": "310-510 kWh/mois",
+       "prix_mad_kwh": 1.381704,
+       "rang": 5,
+       "regime": "selectif"
+      }
+     },
+     "stockage_surplus_jour_min_kwh": 2.48,
+     "stockage_surplus_jour_min_mois": 11,
+     "stockage_tronque": false,
+     "taux_autoconso_avec": null,
+     "taux_autoconso_sans": 0.7175,
+     "tranche_apres": {
+      "borne_basse_kwh": 510.0,
+      "borne_haute_kwh": null,
+      "libelle": "> 510 kWh/mois",
+      "prix_mad_kwh": 1.622856,
+      "rang": 6,
+      "regime": "selectif"
+     },
+     "tranche_apres_avec": null,
+     "tranche_apres_sans": {
+      "borne_basse_kwh": 510.0,
+      "borne_haute_kwh": null,
+      "libelle": "> 510 kWh/mois",
+      "prix_mad_kwh": 1.622856,
+      "rang": 6,
+      "regime": "selectif"
+     },
+     "verdicts_bloquants_avec": [],
+     "verdicts_bloquants_sans": []
+    },
+    {
+     "avertissements": [],
+     "avertissements_avec": [],
+     "avertissements_sans": [],
+     "balayage_stockage": [],
+     "batterie_disponible": false,
+     "batterie_kwh": 0.0,
+     "composable": true,
+     "consommation_annuelle_kwh": 12274.8,
+     "cout_avec_ttc": null,
+     "cout_sans_ttc": 28900.0,
+     "couverture_avec": null,
+     "couverture_sans": 0.4722,
+     "economie_avec_mad": null,
+     "economie_sans_mad": 9872.45,
+     "kwc": 5.5,
+     "lignes_avec": [],
+     "lignes_sans": [
+      {
+       "designation": "Onduleur réseau Huawei 5kW Monophasé",
+       "prix_unitaire_ht": 14000.0,
+       "quantite": 1,
+       "role": "onduleur_reseau"
+      },
+      {
+       "designation": "Panneau Jinko 550W",
+       "prix_unitaire_ht": 1100.0,
+       "quantite": 10,
+       "role": "panneau"
+      }
+     ],
+     "onduleur": "Onduleur réseau Huawei 5kW Monophasé",
+     "onduleur_kw": 5.0,
+     "onduleur_kw_unitaire": 5.0,
+     "onduleur_quantite": 1,
+     "onduleur_triphase": false,
+     "panel_watt": 550.0,
+     "panneaux": 10,
+     "payback_avec_annees": null,
+     "payback_sans_annees": 2.93,
+     "production_annuelle_kwh": 8795.7,
+     "ratio_onduleur_kwc": 0.909,
+     "regle_80_pct_respectee": true,
+     "remplissage": null,
+     "residuel_avec_kwh_mois": null,
+     "residuel_kwh_mois": 539.92,
+     "residuel_sans_kwh_mois": 539.92,
+     "stockage_plafond_kwh": 4.04,
+     "stockage_plafond_motif": "remplissage_quotidien",
+     "stockage_refuse": {
+      "capacite_cible_kwh": 5.0,
+      "capacite_kwh": 5.0,
+      "cout_ttc": 52900.0,
+      "couverture": 0.6039,
+      "economie_mad": 13481.63,
+      "economie_marginale_mad": 3609.18,
+      "lignes": [
+       {
+        "designation": "Onduleur hybride Deye 5kW Monophasé",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "onduleur_hybride"
+       },
+       {
+        "designation": "Panneau Jinko 550W",
+        "prix_unitaire_ht": 1100.0,
+        "quantite": 10,
+        "role": "panneau"
+       },
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "batterie"
+       }
+      ],
+      "lignes_batterie": [
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "batterie"
+       }
+      ],
+      "motif_refus": "5 kWh refusé : capacité utile 5.00 kWh au-dessus du plafond de remplissage 4.04 kWh (le surplus quotidien du mois 11, le plus faible de l'année) — la batterie n'y serait chargée qu'à 80.8 %, et on n'ajoute pas du stockage qu'on ne charge pas.",
+      "payback_annees": 3.92,
+      "remplissage": {
+       "moyen": 0.984,
+       "pire_mois": {
+        "charge_jour_kwh": 4.04,
+        "mois": 11,
+        "ratio": 0.8083,
+        "surplus_jour_kwh": 4.04
+       }
+      },
+      "residuel_kwh_mois": 405.2,
+      "taux_autoconso": 0.8427,
+      "tranche_apres": {
+       "borne_basse_kwh": 310.0,
+       "borne_haute_kwh": 510.0,
+       "libelle": "310-510 kWh/mois",
+       "prix_mad_kwh": 1.381704,
+       "rang": 5,
+       "regime": "selectif"
+      }
+     },
+     "stockage_surplus_jour_min_kwh": 4.04,
+     "stockage_surplus_jour_min_mois": 11,
+     "stockage_tronque": false,
+     "taux_autoconso_avec": null,
+     "taux_autoconso_sans": 0.6589,
+     "tranche_apres": {
+      "borne_basse_kwh": 510.0,
+      "borne_haute_kwh": null,
+      "libelle": "> 510 kWh/mois",
+      "prix_mad_kwh": 1.622856,
+      "rang": 6,
+      "regime": "selectif"
+     },
+     "tranche_apres_avec": null,
+     "tranche_apres_sans": {
+      "borne_basse_kwh": 510.0,
+      "borne_haute_kwh": null,
+      "libelle": "> 510 kWh/mois",
+      "prix_mad_kwh": 1.622856,
+      "rang": 6,
+      "regime": "selectif"
+     },
+     "verdicts_bloquants_avec": [],
+     "verdicts_bloquants_sans": []
+    },
+    {
+     "avertissements": [],
+     "avertissements_avec": [],
+     "avertissements_sans": [],
+     "balayage_stockage": [
+      {
+       "capacite_cible_kwh": 5.0,
+       "capacite_kwh": 5.0,
+       "cout_ttc": 54110.0,
+       "couverture": 0.614,
+       "economie_mad": 13679.8,
+       "economie_marginale_mad": 3269.91,
+       "lignes": [
+        {
+         "designation": "Onduleur hybride Deye 5kW Monophasé",
+         "prix_unitaire_ht": 17000.0,
+         "quantite": 1,
+         "role": "onduleur_hybride"
+        },
+        {
+         "designation": "Panneau Jinko 550W",
+         "prix_unitaire_ht": 1100.0,
+         "quantite": 11,
+         "role": "panneau"
+        },
+        {
+         "designation": "Batterie Dyness 5 kWh",
+         "prix_unitaire_ht": 17000.0,
+         "quantite": 1,
+         "role": "batterie"
+        }
+       ],
+       "lignes_batterie": [
+        {
+         "designation": "Batterie Dyness 5 kWh",
+         "prix_unitaire_ht": 17000.0,
+         "quantite": 1,
+         "role": "batterie"
+        }
+       ],
+       "payback_annees": 3.96,
+       "remplissage": {
+        "moyen": 1.0,
+        "pire_mois": {
+         "charge_jour_kwh": 5.0,
+         "mois": 1,
+         "ratio": 1.0,
+         "surplus_jour_kwh": 7.98
+        }
+       },
+       "residuel_kwh_mois": 394.8,
+       "taux_autoconso": 0.779,
+       "tranche_apres": {
+        "borne_basse_kwh": 310.0,
+        "borne_haute_kwh": 510.0,
+        "libelle": "310-510 kWh/mois",
+        "prix_mad_kwh": 1.381704,
+        "rang": 5,
+        "regime": "selectif"
+       }
+      }
+     ],
+     "batterie_disponible": true,
+     "batterie_kwh": 5.0,
+     "composable": true,
+     "consommation_annuelle_kwh": 12274.8,
+     "cout_avec_ttc": 54110.0,
+     "cout_sans_ttc": 30110.0,
+     "couverture_avec": 0.614,
+     "couverture_sans": 0.4802,
+     "economie_avec_mad": 13679.8,
+     "economie_sans_mad": 10409.89,
+     "kwc": 6.05,
+     "lignes_avec": [
+      {
+       "designation": "Onduleur hybride Deye 5kW Monophasé",
+       "prix_unitaire_ht": 17000.0,
+       "quantite": 1,
+       "role": "onduleur_hybride"
+      },
+      {
+       "designation": "Panneau Jinko 550W",
+       "prix_unitaire_ht": 1100.0,
+       "quantite": 11,
+       "role": "panneau"
+      },
+      {
+       "designation": "Batterie Dyness 5 kWh",
+       "prix_unitaire_ht": 17000.0,
+       "quantite": 1,
+       "role": "batterie"
+      }
+     ],
+     "lignes_sans": [
+      {
+       "designation": "Onduleur réseau Huawei 5kW Monophasé",
+       "prix_unitaire_ht": 14000.0,
+       "quantite": 1,
+       "role": "onduleur_reseau"
+      },
+      {
+       "designation": "Panneau Jinko 550W",
+       "prix_unitaire_ht": 1100.0,
+       "quantite": 11,
+       "role": "panneau"
+      }
+     ],
+     "onduleur": "Onduleur réseau Huawei 5kW Monophasé",
+     "onduleur_kw": 5.0,
+     "onduleur_kw_unitaire": 5.0,
+     "onduleur_quantite": 1,
+     "onduleur_triphase": false,
+     "panel_watt": 550.0,
+     "panneaux": 11,
+     "payback_avec_annees": 3.96,
+     "payback_sans_annees": 2.89,
+     "production_annuelle_kwh": 9675.27,
+     "ratio_onduleur_kwc": 0.826,
+     "regle_80_pct_respectee": true,
+     "remplissage": {
+      "moyen": 1.0,
+      "pire_mois": {
+       "charge_jour_kwh": 5.0,
+       "mois": 1,
+       "ratio": 1.0,
+       "surplus_jour_kwh": 7.98
+      }
+     },
+     "residuel_avec_kwh_mois": 394.8,
+     "residuel_kwh_mois": 394.8,
+     "residuel_sans_kwh_mois": 531.68,
+     "stockage_plafond_kwh": 5.81,
+     "stockage_plafond_motif": "remplissage_quotidien",
+     "stockage_refuse": {
+      "capacite_cible_kwh": 10.0,
+      "capacite_kwh": 10.0,
+      "cout_ttc": 74510.0,
+      "couverture": 0.726,
+      "economie_mad": 16382.87,
+      "economie_marginale_mad": 2703.07,
+      "lignes": [
+       {
+        "designation": "Onduleur hybride Deye 5kW Monophasé",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 1,
+        "role": "onduleur_hybride"
+       },
+       {
+        "designation": "Panneau Jinko 550W",
+        "prix_unitaire_ht": 1100.0,
+        "quantite": 11,
+        "role": "panneau"
+       },
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 2,
+        "role": "batterie"
+       }
+      ],
+      "lignes_batterie": [
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 2,
+        "role": "batterie"
+       }
+      ],
+      "motif_refus": "10 kWh refusé : capacité utile 10.00 kWh au-dessus du plafond de remplissage 5.81 kWh (le surplus quotidien du mois 11, le plus faible de l'année) — la batterie n'y serait chargée qu'à 58.1 %, et on n'ajoute pas du stockage qu'on ne charge pas.",
+      "payback_annees": 4.55,
+      "remplissage": {
+       "moyen": 0.9187,
+       "pire_mois": {
+        "charge_jour_kwh": 5.81,
+        "mois": 11,
+        "ratio": 0.5814,
+        "surplus_jour_kwh": 5.81
+       }
+      },
+      "residuel_kwh_mois": 280.28,
+      "taux_autoconso": 0.921,
+      "tranche_apres": {
+       "borne_basse_kwh": 210.0,
+       "borne_haute_kwh": 310.0,
+       "libelle": "210-310 kWh/mois",
+       "prix_mad_kwh": 1.187388,
+       "rang": 4,
+       "regime": "selectif"
+      }
+     },
+     "stockage_surplus_jour_min_kwh": 5.81,
+     "stockage_surplus_jour_min_mois": 11,
+     "stockage_tronque": false,
+     "taux_autoconso_avec": 0.779,
+     "taux_autoconso_sans": 0.6093,
+     "tranche_apres": {
+      "borne_basse_kwh": 310.0,
+      "borne_haute_kwh": 510.0,
+      "libelle": "310-510 kWh/mois",
+      "prix_mad_kwh": 1.381704,
+      "rang": 5,
+      "regime": "selectif"
+     },
+     "tranche_apres_avec": {
+      "borne_basse_kwh": 310.0,
+      "borne_haute_kwh": 510.0,
+      "libelle": "310-510 kWh/mois",
+      "prix_mad_kwh": 1.381704,
+      "rang": 5,
+      "regime": "selectif"
+     },
+     "tranche_apres_sans": {
+      "borne_basse_kwh": 510.0,
+      "borne_haute_kwh": null,
+      "libelle": "> 510 kWh/mois",
+      "prix_mad_kwh": 1.622856,
+      "rang": 6,
+      "regime": "selectif"
+     },
+     "verdicts_bloquants_avec": [],
+     "verdicts_bloquants_sans": []
+    },
+    {
+     "avertissements": [],
+     "avertissements_avec": [],
+     "avertissements_sans": [],
+     "balayage_stockage": [
+      {
+       "capacite_cible_kwh": 5.0,
+       "capacite_kwh": 5.0,
+       "cout_ttc": 75720.0,
+       "couverture": 0.6211,
+       "economie_mad": 13816.95,
+       "economie_marginale_mad": 3141.04,
+       "lignes": [
+        {
+         "designation": "Onduleur hybride Deye 5kW Monophasé",
+         "prix_unitaire_ht": 17000.0,
+         "quantite": 2,
+         "role": "onduleur_hybride"
+        },
+        {
+         "designation": "Panneau Jinko 550W",
+         "prix_unitaire_ht": 1100.0,
+         "quantite": 12,
+         "role": "panneau"
+        },
+        {
+         "designation": "Batterie Dyness 5 kWh",
+         "prix_unitaire_ht": 17000.0,
+         "quantite": 1,
+         "role": "batterie"
+        }
+       ],
+       "lignes_batterie": [
+        {
+         "designation": "Batterie Dyness 5 kWh",
+         "prix_unitaire_ht": 17000.0,
+         "quantite": 1,
+         "role": "batterie"
+        }
+       ],
+       "payback_annees": 5.48,
+       "remplissage": {
+        "moyen": 1.0,
+        "pire_mois": {
+         "charge_jour_kwh": 5.0,
+         "mois": 1,
+         "ratio": 1.0,
+         "surplus_jour_kwh": 9.91
+        }
+       },
+       "residuel_kwh_mois": 387.62,
+       "taux_autoconso": 0.7223,
+       "tranche_apres": {
+        "borne_basse_kwh": 310.0,
+        "borne_haute_kwh": 510.0,
+        "libelle": "310-510 kWh/mois",
+        "prix_mad_kwh": 1.381704,
+        "rang": 5,
+        "regime": "selectif"
+       }
+      }
+     ],
+     "batterie_disponible": true,
+     "batterie_kwh": 5.0,
+     "composable": true,
+     "consommation_annuelle_kwh": 12274.8,
+     "cout_avec_ttc": 75720.0,
+     "cout_sans_ttc": 48120.0,
+     "couverture_avec": 0.6211,
+     "couverture_sans": 0.4872,
+     "economie_avec_mad": 13816.95,
+     "economie_sans_mad": 10675.91,
+     "kwc": 6.6,
+     "lignes_avec": [
+      {
+       "designation": "Onduleur hybride Deye 5kW Monophasé",
+       "prix_unitaire_ht": 17000.0,
+       "quantite": 2,
+       "role": "onduleur_hybride"
+      },
+      {
+       "designation": "Panneau Jinko 550W",
+       "prix_unitaire_ht": 1100.0,
+       "quantite": 12,
+       "role": "panneau"
+      },
+      {
+       "designation": "Batterie Dyness 5 kWh",
+       "prix_unitaire_ht": 17000.0,
+       "quantite": 1,
+       "role": "batterie"
+      }
+     ],
+     "lignes_sans": [
+      {
+       "designation": "Onduleur réseau Huawei 5kW Monophasé",
+       "prix_unitaire_ht": 14000.0,
+       "quantite": 2,
+       "role": "onduleur_reseau"
+      },
+      {
+       "designation": "Panneau Jinko 550W",
+       "prix_unitaire_ht": 1100.0,
+       "quantite": 12,
+       "role": "panneau"
+      }
+     ],
+     "onduleur": "Onduleur réseau Huawei 5kW Monophasé",
+     "onduleur_kw": 10.0,
+     "onduleur_kw_unitaire": 5.0,
+     "onduleur_quantite": 2,
+     "onduleur_triphase": false,
+     "panel_watt": 550.0,
+     "panneaux": 12,
+     "payback_avec_annees": 5.48,
+     "payback_sans_annees": 4.51,
+     "production_annuelle_kwh": 10554.84,
+     "ratio_onduleur_kwc": 1.515,
+     "regle_80_pct_respectee": true,
+     "remplissage": {
+      "moyen": 1.0,
+      "pire_mois": {
+       "charge_jour_kwh": 5.0,
+       "mois": 1,
+       "ratio": 1.0,
+       "surplus_jour_kwh": 9.91
+      }
+     },
+     "residuel_avec_kwh_mois": 387.62,
+     "residuel_kwh_mois": 387.62,
+     "residuel_sans_kwh_mois": 524.49,
+     "stockage_plafond_kwh": 7.59,
+     "stockage_plafond_motif": "remplissage_quotidien",
+     "stockage_refuse": {
+      "capacite_cible_kwh": 10.0,
+      "capacite_kwh": 10.0,
+      "cout_ttc": 96120.0,
+      "couverture": 0.7476,
+      "economie_mad": 16838.4,
+      "economie_marginale_mad": 3021.45,
+      "lignes": [
+       {
+        "designation": "Onduleur hybride Deye 5kW Monophasé",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 2,
+        "role": "onduleur_hybride"
+       },
+       {
+        "designation": "Panneau Jinko 550W",
+        "prix_unitaire_ht": 1100.0,
+        "quantite": 12,
+        "role": "panneau"
+       },
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 2,
+        "role": "batterie"
+       }
+      ],
+      "lignes_batterie": [
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 2,
+        "role": "batterie"
+       }
+      ],
+      "motif_refus": "10 kWh refusé : capacité utile 10.00 kWh au-dessus du plafond de remplissage 7.59 kWh (le surplus quotidien du mois 11, le plus faible de l'année) — la batterie n'y serait chargée qu'à 75.9 %, et on n'ajoute pas du stockage qu'on ne charge pas.",
+      "payback_annees": 5.71,
+      "remplissage": {
+       "moyen": 0.9726,
+       "pire_mois": {
+        "charge_jour_kwh": 7.59,
+        "mois": 11,
+        "ratio": 0.7587,
+        "surplus_jour_kwh": 7.59
+       }
+      },
+      "residuel_kwh_mois": 258.21,
+      "taux_autoconso": 0.8694,
+      "tranche_apres": {
+       "borne_basse_kwh": 210.0,
+       "borne_haute_kwh": 310.0,
+       "libelle": "210-310 kWh/mois",
+       "prix_mad_kwh": 1.187388,
+       "rang": 4,
+       "regime": "selectif"
+      }
+     },
+     "stockage_surplus_jour_min_kwh": 7.59,
+     "stockage_surplus_jour_min_mois": 11,
+     "stockage_tronque": false,
+     "taux_autoconso_avec": 0.7223,
+     "taux_autoconso_sans": 0.5666,
+     "tranche_apres": {
+      "borne_basse_kwh": 310.0,
+      "borne_haute_kwh": 510.0,
+      "libelle": "310-510 kWh/mois",
+      "prix_mad_kwh": 1.381704,
+      "rang": 5,
+      "regime": "selectif"
+     },
+     "tranche_apres_avec": {
+      "borne_basse_kwh": 310.0,
+      "borne_haute_kwh": 510.0,
+      "libelle": "310-510 kWh/mois",
+      "prix_mad_kwh": 1.381704,
+      "rang": 5,
+      "regime": "selectif"
+     },
+     "tranche_apres_sans": {
+      "borne_basse_kwh": 510.0,
+      "borne_haute_kwh": null,
+      "libelle": "> 510 kWh/mois",
+      "prix_mad_kwh": 1.622856,
+      "rang": 6,
+      "regime": "selectif"
+     },
+     "verdicts_bloquants_avec": [],
+     "verdicts_bloquants_sans": []
+    },
+    {
+     "avertissements": [],
+     "avertissements_avec": [],
+     "avertissements_sans": [],
+     "balayage_stockage": [
+      {
+       "capacite_cible_kwh": 5.0,
+       "capacite_kwh": 5.0,
+       "cout_ttc": 76930.0,
+       "couverture": 0.6262,
+       "economie_mad": 13917.77,
+       "economie_marginale_mad": 3136.95,
+       "lignes": [
+        {
+         "designation": "Onduleur hybride Deye 5kW Monophasé",
+         "prix_unitaire_ht": 17000.0,
+         "quantite": 2,
+         "role": "onduleur_hybride"
+        },
+        {
+         "designation": "Panneau Jinko 550W",
+         "prix_unitaire_ht": 1100.0,
+         "quantite": 13,
+         "role": "panneau"
+        },
+        {
+         "designation": "Batterie Dyness 5 kWh",
+         "prix_unitaire_ht": 17000.0,
+         "quantite": 1,
+         "role": "batterie"
+        }
+       ],
+       "lignes_batterie": [
+        {
+         "designation": "Batterie Dyness 5 kWh",
+         "prix_unitaire_ht": 17000.0,
+         "quantite": 1,
+         "role": "batterie"
+        }
+       ],
+       "payback_annees": 5.53,
+       "remplissage": {
+        "moyen": 1.0,
+        "pire_mois": {
+         "charge_jour_kwh": 5.0,
+         "mois": 1,
+         "ratio": 1.0,
+         "surplus_jour_kwh": 11.84
+        }
+       },
+       "residuel_kwh_mois": 382.35,
+       "taux_autoconso": 0.6722,
+       "tranche_apres": {
+        "borne_basse_kwh": 310.0,
+        "borne_haute_kwh": 510.0,
+        "libelle": "310-510 kWh/mois",
+        "prix_mad_kwh": 1.381704,
+        "rang": 5,
+        "regime": "selectif"
+       }
+      }
+     ],
+     "batterie_disponible": true,
+     "batterie_kwh": 5.0,
+     "composable": true,
+     "consommation_annuelle_kwh": 12274.8,
+     "cout_avec_ttc": 76930.0,
+     "cout_sans_ttc": 49330.0,
+     "couverture_avec": 0.6262,
+     "couverture_sans": 0.4924,
+     "economie_avec_mad": 13917.77,
+     "economie_sans_mad": 10780.82,
+     "kwc": 7.15,
+     "lignes_avec": [
+      {
+       "designation": "Onduleur hybride Deye 5kW Monophasé",
+       "prix_unitaire_ht": 17000.0,
+       "quantite": 2,
+       "role": "onduleur_hybride"
+      },
+      {
+       "designation": "Panneau Jinko 550W",
+       "prix_unitaire_ht": 1100.0,
+       "quantite": 13,
+       "role": "panneau"
+      },
+      {
+       "designation": "Batterie Dyness 5 kWh",
+       "prix_unitaire_ht": 17000.0,
+       "quantite": 1,
+       "role": "batterie"
+      }
+     ],
+     "lignes_sans": [
+      {
+       "designation": "Onduleur réseau Huawei 5kW Monophasé",
+       "prix_unitaire_ht": 14000.0,
+       "quantite": 2,
+       "role": "onduleur_reseau"
+      },
+      {
+       "designation": "Panneau Jinko 550W",
+       "prix_unitaire_ht": 1100.0,
+       "quantite": 13,
+       "role": "panneau"
+      }
+     ],
+     "onduleur": "Onduleur réseau Huawei 5kW Monophasé",
+     "onduleur_kw": 10.0,
+     "onduleur_kw_unitaire": 5.0,
+     "onduleur_quantite": 2,
+     "onduleur_triphase": false,
+     "panel_watt": 550.0,
+     "panneaux": 13,
+     "payback_avec_annees": 5.53,
+     "payback_sans_annees": 4.58,
+     "production_annuelle_kwh": 11434.41,
+     "ratio_onduleur_kwc": 1.399,
+     "regle_80_pct_respectee": true,
+     "remplissage": {
+      "moyen": 1.0,
+      "pire_mois": {
+       "charge_jour_kwh": 5.0,
+       "mois": 1,
+       "ratio": 1.0,
+       "surplus_jour_kwh": 11.84
+      }
+     },
+     "residuel_avec_kwh_mois": 382.35,
+     "residuel_kwh_mois": 382.35,
+     "residuel_sans_kwh_mois": 519.23,
+     "stockage_plafond_kwh": 9.36,
+     "stockage_plafond_motif": "remplissage_quotidien",
+     "stockage_refuse": {
+      "capacite_cible_kwh": 10.0,
+      "capacite_kwh": 10.0,
+      "cout_ttc": 97330.0,
+      "couverture": 0.7586,
+      "economie_mad": 17168.81,
+      "economie_marginale_mad": 3251.04,
+      "lignes": [
+       {
+        "designation": "Onduleur hybride Deye 5kW Monophasé",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 2,
+        "role": "onduleur_hybride"
+       },
+       {
+        "designation": "Panneau Jinko 550W",
+        "prix_unitaire_ht": 1100.0,
+        "quantite": 13,
+        "role": "panneau"
+       },
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 2,
+        "role": "batterie"
+       }
+      ],
+      "lignes_batterie": [
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 2,
+        "role": "batterie"
+       }
+      ],
+      "motif_refus": "10 kWh refusé : capacité utile 10.00 kWh au-dessus du plafond de remplissage 9.36 kWh (le surplus quotidien du mois 11, le plus faible de l'année) — la batterie n'y serait chargée qu'à 93.6 %, et on n'ajoute pas du stockage qu'on ne charge pas.",
+      "payback_annees": 5.67,
+      "remplissage": {
+       "moyen": 0.9947,
+       "pire_mois": {
+        "charge_jour_kwh": 9.36,
+        "mois": 11,
+        "ratio": 0.9359,
+        "surplus_jour_kwh": 9.36
+       }
+      },
+      "residuel_kwh_mois": 246.92,
+      "taux_autoconso": 0.8144,
+      "tranche_apres": {
+       "borne_basse_kwh": 210.0,
+       "borne_haute_kwh": 310.0,
+       "libelle": "210-310 kWh/mois",
+       "prix_mad_kwh": 1.187388,
+       "rang": 4,
+       "regime": "selectif"
+      }
+     },
+     "stockage_surplus_jour_min_kwh": 9.36,
+     "stockage_surplus_jour_min_mois": 11,
+     "stockage_tronque": false,
+     "taux_autoconso_avec": 0.6722,
+     "taux_autoconso_sans": 0.5286,
+     "tranche_apres": {
+      "borne_basse_kwh": 310.0,
+      "borne_haute_kwh": 510.0,
+      "libelle": "310-510 kWh/mois",
+      "prix_mad_kwh": 1.381704,
+      "rang": 5,
+      "regime": "selectif"
+     },
+     "tranche_apres_avec": {
+      "borne_basse_kwh": 310.0,
+      "borne_haute_kwh": 510.0,
+      "libelle": "310-510 kWh/mois",
+      "prix_mad_kwh": 1.381704,
+      "rang": 5,
+      "regime": "selectif"
+     },
+     "tranche_apres_sans": {
+      "borne_basse_kwh": 510.0,
+      "borne_haute_kwh": null,
+      "libelle": "> 510 kWh/mois",
+      "prix_mad_kwh": 1.622856,
+      "rang": 6,
+      "regime": "selectif"
+     },
+     "verdicts_bloquants_avec": [],
+     "verdicts_bloquants_sans": []
+    },
+    {
+     "avertissements": [],
+     "avertissements_avec": [],
+     "avertissements_sans": [],
+     "balayage_stockage": [
+      {
+       "capacite_cible_kwh": 5.0,
+       "capacite_kwh": 5.0,
+       "cout_ttc": 78140.0,
+       "couverture": 0.6302,
+       "economie_mad": 13995.41,
+       "economie_marginale_mad": 3010.88,
+       "lignes": [
+        {
+         "designation": "Onduleur hybride Deye 5kW Monophasé",
+         "prix_unitaire_ht": 17000.0,
+         "quantite": 2,
+         "role": "onduleur_hybride"
+        },
+        {
+         "designation": "Panneau Jinko 550W",
+         "prix_unitaire_ht": 1100.0,
+         "quantite": 14,
+         "role": "panneau"
+        },
+        {
+         "designation": "Batterie Dyness 5 kWh",
+         "prix_unitaire_ht": 17000.0,
+         "quantite": 1,
+         "role": "batterie"
+        }
+       ],
+       "lignes_batterie": [
+        {
+         "designation": "Batterie Dyness 5 kWh",
+         "prix_unitaire_ht": 17000.0,
+         "quantite": 1,
+         "role": "batterie"
+        }
+       ],
+       "payback_annees": 5.58,
+       "remplissage": {
+        "moyen": 1.0,
+        "pire_mois": {
+         "charge_jour_kwh": 5.0,
+         "mois": 1,
+         "ratio": 1.0,
+         "surplus_jour_kwh": 13.77
+        }
+       },
+       "residuel_kwh_mois": 378.3,
+       "taux_autoconso": 0.6282,
+       "tranche_apres": {
+        "borne_basse_kwh": 310.0,
+        "borne_haute_kwh": 510.0,
+        "libelle": "310-510 kWh/mois",
+        "prix_mad_kwh": 1.381704,
+        "rang": 5,
+        "regime": "selectif"
+       }
+      },
+      {
+       "capacite_cible_kwh": 10.0,
+       "capacite_kwh": 10.0,
+       "cout_ttc": 98540.0,
+       "couverture": 0.764,
+       "economie_mad": 17279.34,
+       "economie_marginale_mad": 3283.93,
+       "lignes": [
+        {
+         "designation": "Onduleur hybride Deye 5kW Monophasé",
+         "prix_unitaire_ht": 17000.0,
+         "quantite": 2,
+         "role": "onduleur_hybride"
+        },
+        {
+         "designation": "Panneau Jinko 550W",
+         "prix_unitaire_ht": 1100.0,
+         "quantite": 14,
+         "role": "panneau"
+        },
+        {
+         "designation": "Batterie Dyness 5 kWh",
+         "prix_unitaire_ht": 17000.0,
+         "quantite": 2,
+         "role": "batterie"
+        }
+       ],
+       "lignes_batterie": [
+        {
+         "designation": "Batterie Dyness 5 kWh",
+         "prix_unitaire_ht": 17000.0,
+         "quantite": 2,
+         "role": "batterie"
+        }
+       ],
+       "payback_annees": 5.7,
+       "remplissage": {
+        "moyen": 1.0,
+        "pire_mois": {
+         "charge_jour_kwh": 10.0,
+         "mois": 1,
+         "ratio": 1.0,
+         "surplus_jour_kwh": 13.77
+        }
+       },
+       "residuel_kwh_mois": 241.43,
+       "taux_autoconso": 0.7615,
+       "tranche_apres": {
+        "borne_basse_kwh": 210.0,
+        "borne_haute_kwh": 310.0,
+        "libelle": "210-310 kWh/mois",
+        "prix_mad_kwh": 1.187388,
+        "rang": 4,
+        "regime": "selectif"
+       }
+      }
+     ],
+     "batterie_disponible": true,
+     "batterie_kwh": 10.0,
+     "composable": true,
+     "consommation_annuelle_kwh": 12274.8,
+     "cout_avec_ttc": 98540.0,
+     "cout_sans_ttc": 50540.0,
+     "couverture_avec": 0.764,
+     "couverture_sans": 0.4964,
+     "economie_avec_mad": 17279.34,
+     "economie_sans_mad": 10984.53,
+     "kwc": 7.7,
+     "lignes_avec": [
+      {
+       "designation": "Onduleur hybride Deye 5kW Monophasé",
+       "prix_unitaire_ht": 17000.0,
+       "quantite": 2,
+       "role": "onduleur_hybride"
+      },
+      {
+       "designation": "Panneau Jinko 550W",
+       "prix_unitaire_ht": 1100.0,
+       "quantite": 14,
+       "role": "panneau"
+      },
+      {
+       "designation": "Batterie Dyness 5 kWh",
+       "prix_unitaire_ht": 17000.0,
+       "quantite": 2,
+       "role": "batterie"
+      }
+     ],
+     "lignes_sans": [
+      {
+       "designation": "Onduleur réseau Huawei 5kW Monophasé",
+       "prix_unitaire_ht": 14000.0,
+       "quantite": 2,
+       "role": "onduleur_reseau"
+      },
+      {
+       "designation": "Panneau Jinko 550W",
+       "prix_unitaire_ht": 1100.0,
+       "quantite": 14,
+       "role": "panneau"
+      }
+     ],
+     "onduleur": "Onduleur réseau Huawei 5kW Monophasé",
+     "onduleur_kw": 10.0,
+     "onduleur_kw_unitaire": 5.0,
+     "onduleur_quantite": 2,
+     "onduleur_triphase": false,
+     "panel_watt": 550.0,
+     "panneaux": 14,
+     "payback_avec_annees": 5.7,
+     "payback_sans_annees": 4.6,
+     "production_annuelle_kwh": 12313.98,
+     "ratio_onduleur_kwc": 1.299,
+     "regle_80_pct_respectee": true,
+     "remplissage": {
+      "moyen": 1.0,
+      "pire_mois": {
+       "charge_jour_kwh": 10.0,
+       "mois": 1,
+       "ratio": 1.0,
+       "surplus_jour_kwh": 13.77
+      }
+     },
+     "residuel_avec_kwh_mois": 241.43,
+     "residuel_kwh_mois": 241.43,
+     "residuel_sans_kwh_mois": 515.18,
+     "stockage_plafond_kwh": 11.13,
+     "stockage_plafond_motif": "remplissage_quotidien",
+     "stockage_refuse": {
+      "capacite_cible_kwh": 15.0,
+      "capacite_kwh": 15.0,
+      "cout_ttc": 118940.0,
+      "couverture": 0.8818,
+      "economie_mad": 19448.44,
+      "economie_marginale_mad": 2169.1,
+      "lignes": [
+       {
+        "designation": "Onduleur hybride Deye 5kW Monophasé",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 2,
+        "role": "onduleur_hybride"
+       },
+       {
+        "designation": "Panneau Jinko 550W",
+        "prix_unitaire_ht": 1100.0,
+        "quantite": 14,
+        "role": "panneau"
+       },
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 3,
+        "role": "batterie"
+       }
+      ],
+      "lignes_batterie": [
+       {
+        "designation": "Batterie Dyness 5 kWh",
+        "prix_unitaire_ht": 17000.0,
+        "quantite": 3,
+        "role": "batterie"
+       }
+      ],
+      "motif_refus": "15 kWh refusé : capacité utile 15.00 kWh au-dessus du plafond de remplissage 11.13 kWh (le surplus quotidien du mois 11, le plus faible de l'année) — la batterie n'y serait chargée qu'à 74.2 %, et on n'ajoute pas du stockage qu'on ne charge pas.",
+      "payback_annees": 6.12,
+      "remplissage": {
+       "moyen": 0.9603,
+       "pire_mois": {
+        "charge_jour_kwh": 11.13,
+        "mois": 11,
+        "ratio": 0.7421,
+        "surplus_jour_kwh": 11.13
+       }
+      },
+      "residuel_kwh_mois": 120.88,
+      "taux_autoconso": 0.879,
+      "tranche_apres": {
+       "borne_basse_kwh": 100.0,
+       "borne_haute_kwh": 150.0,
+       "libelle": "100-150 kWh/mois",
+       "prix_mad_kwh": 1.091388,
+       "rang": 2,
+       "regime": "progressif"
+      }
+     },
+     "stockage_surplus_jour_min_kwh": 11.13,
+     "stockage_surplus_jour_min_mois": 11,
+     "stockage_tronque": false,
+     "taux_autoconso_avec": 0.7615,
+     "taux_autoconso_sans": 0.4948,
+     "tranche_apres": {
+      "borne_basse_kwh": 210.0,
+      "borne_haute_kwh": 310.0,
+      "libelle": "210-310 kWh/mois",
+      "prix_mad_kwh": 1.187388,
+      "rang": 4,
+      "regime": "selectif"
+     },
+     "tranche_apres_avec": {
+      "borne_basse_kwh": 210.0,
+      "borne_haute_kwh": 310.0,
+      "libelle": "210-310 kWh/mois",
+      "prix_mad_kwh": 1.187388,
+      "rang": 4,
+      "regime": "selectif"
+     },
+     "tranche_apres_sans": {
+      "borne_basse_kwh": 510.0,
+      "borne_haute_kwh": null,
+      "libelle": "> 510 kWh/mois",
+      "prix_mad_kwh": 1.622856,
+      "rang": 6,
+      "regime": "selectif"
+     },
+     "verdicts_bloquants_avec": [],
+     "verdicts_bloquants_sans": []
+    }
+   ]
+  },
+  "etude_horaire": {
+   "_empreinte_entrees": "3ef29784a6616a7112aa0ea65210a19150c793d3da67860c1b06ede7f4bb4d4d",
+   "annuel": {
+    "autoconsomme_avec_kwh": 6077.75,
+    "autoconsomme_sans_kwh": 5364.4,
+    "consommation_kwh": 12274.8,
+    "couverture_avec": 0.4951,
+    "couverture_sans": 0.437,
+    "economie_avec_mad": 10816.57,
+    "economie_sans_mad": 8749.02,
+    "facture_apres_avec_mad": 10782.9,
+    "facture_apres_sans_mad": 12850.44,
+    "facture_avant_mad": 21599.46,
+    "import_sans_kwh": 6910.4,
+    "production_kwh": 6156.99,
+    "surplus_sans_kwh": 792.59,
+    "taux_autoconso_avec": 0.9871,
+    "taux_autoconso_sans": 0.8713
+   },
+   "avertissements": [],
+   "bandeau_profil": "Profil supposé, à confirmer",
+   "batterie_kwh_utile": 5.0,
+   "detail_consommation": {
+    "charges_fixes_mad": 39.94,
+    "charges_fixes_source": "factures SRM Casablanca-Settat du fondateur (08/05/2026, 20/12/2025, 20/01/2026) — location du compteur 18,28 HT + entretien du branchement 15,00 HT ; montants identiques sur les trois relevés",
+    "distributeur": "srm_casablanca",
+    "methode": "inversion_bareme_tranches",
+    "millesime": 2026,
+    "tppan_source": "art. 16 dahir 1-96-77 (BO 4391 bis, relayé HACA) ; barème progressif, bornes proratisées aux jours et montant TTC VÉRIFIÉS sur la facture SRM du 08/05/2026 (56,80 MAD à 359 kWh sur 30 jours) ; seuil d'exonération retenu à 50 kWh/mois (celui du texte de 1996) — une page de régie annonce 200 kWh sans texte modificatif localisable, et aucune facture disponible ne départage : on retient la lecture prouvée, qui est aussi celle qui MINORE l'économie annoncée"
+   },
+   "equipements_actifs": [],
+   "kwc": 3.85,
+   "mois": [
+    {
+     "autoconsomme_avec_kwh": 439.98,
+     "autoconsomme_sans_kwh": 411.77,
+     "consommation_kwh": 1022.9,
+     "couverture_avec": 0.4301,
+     "couverture_sans": 0.4026,
+     "economie_avec_mad": 714.03,
+     "economie_sans_mad": 668.25,
+     "facture_apres_avec_mad": 1085.92,
+     "facture_apres_sans_mad": 1131.71,
+     "facture_avant_mad": 1799.96,
+     "import_sans_kwh": 611.13,
+     "jours": 31,
+     "mois": 1,
+     "production_kwh": 443.13,
+     "saison": "hiver",
+     "surplus_sans_kwh": 31.35,
+     "taux_autoconso_avec": 0.9929,
+     "taux_autoconso_sans": 0.9292
+    },
+    {
+     "autoconsomme_avec_kwh": 426.77,
+     "autoconsomme_sans_kwh": 341.35,
+     "consommation_kwh": 1022.9,
+     "couverture_avec": 0.4172,
+     "couverture_sans": 0.3337,
+     "economie_avec_mad": 692.58,
+     "economie_sans_mad": 553.96,
+     "facture_apres_avec_mad": 1107.37,
+     "facture_apres_sans_mad": 1246.0,
+     "facture_avant_mad": 1799.96,
+     "import_sans_kwh": 681.55,
+     "jours": 28,
+     "mois": 2,
+     "production_kwh": 436.25,
+     "saison": "hiver",
+     "surplus_sans_kwh": 94.9,
+     "taux_autoconso_avec": 0.9783,
+     "taux_autoconso_sans": 0.7825
+    },
+    {
+     "autoconsomme_avec_kwh": 518.28,
+     "autoconsomme_sans_kwh": 442.4,
+     "consommation_kwh": 1022.9,
+     "couverture_avec": 0.5067,
+     "couverture_sans": 0.4325,
+     "economie_avec_mad": 977.36,
+     "economie_sans_mad": 717.95,
+     "facture_apres_avec_mad": 822.59,
+     "facture_apres_sans_mad": 1082.0,
+     "facture_avant_mad": 1799.96,
+     "import_sans_kwh": 580.5,
+     "jours": 31,
+     "mois": 3,
+     "production_kwh": 526.72,
+     "saison": "mi_saison",
+     "surplus_sans_kwh": 84.31,
+     "taux_autoconso_avec": 0.984,
+     "taux_autoconso_sans": 0.8399
+    },
+    {
+     "autoconsomme_avec_kwh": 543.48,
+     "autoconsomme_sans_kwh": 472.41,
+     "consommation_kwh": 1022.9,
+     "couverture_avec": 0.5313,
+     "couverture_sans": 0.4618,
+     "economie_avec_mad": 1016.72,
+     "economie_sans_mad": 771.56,
+     "facture_apres_avec_mad": 783.23,
+     "facture_apres_sans_mad": 1028.4,
+     "facture_avant_mad": 1799.96,
+     "import_sans_kwh": 550.49,
+     "jours": 30,
+     "mois": 4,
+     "production_kwh": 551.39,
+     "saison": "mi_saison",
+     "surplus_sans_kwh": 78.98,
+     "taux_autoconso_avec": 0.9857,
+     "taux_autoconso_sans": 0.8568
+    },
+    {
+     "autoconsomme_avec_kwh": 559.89,
+     "autoconsomme_sans_kwh": 477.25,
+     "consommation_kwh": 1022.9,
+     "couverture_avec": 0.5474,
+     "couverture_sans": 0.4666,
+     "economie_avec_mad": 1043.18,
+     "economie_sans_mad": 780.87,
+     "facture_apres_avec_mad": 756.78,
+     "facture_apres_sans_mad": 1019.09,
+     "facture_avant_mad": 1799.96,
+     "import_sans_kwh": 545.65,
+     "jours": 31,
+     "mois": 5,
+     "production_kwh": 569.08,
+     "saison": "mi_saison",
+     "surplus_sans_kwh": 91.84,
+     "taux_autoconso_avec": 0.9838,
+     "taux_autoconso_sans": 0.8386
+    },
+    {
+     "autoconsomme_avec_kwh": 547.87,
+     "autoconsomme_sans_kwh": 481.5,
+     "consommation_kwh": 1022.9,
+     "couverture_avec": 0.5356,
+     "couverture_sans": 0.4707,
+     "economie_avec_mad": 1023.67,
+     "economie_sans_mad": 788.13,
+     "facture_apres_avec_mad": 776.29,
+     "facture_apres_sans_mad": 1011.83,
+     "facture_avant_mad": 1799.96,
+     "import_sans_kwh": 541.4,
+     "jours": 30,
+     "mois": 6,
+     "production_kwh": 555.22,
+     "saison": "ete",
+     "surplus_sans_kwh": 73.72,
+     "taux_autoconso_avec": 0.9868,
+     "taux_autoconso_sans": 0.8672
+    },
+    {
+     "autoconsomme_avec_kwh": 583.12,
+     "autoconsomme_sans_kwh": 492.28,
+     "consommation_kwh": 1022.9,
+     "couverture_avec": 0.5701,
+     "couverture_sans": 0.4813,
+     "economie_avec_mad": 1079.91,
+     "economie_sans_mad": 808.28,
+     "facture_apres_avec_mad": 720.04,
+     "facture_apres_sans_mad": 991.68,
+     "facture_avant_mad": 1799.96,
+     "import_sans_kwh": 530.62,
+     "jours": 31,
+     "mois": 7,
+     "production_kwh": 593.19,
+     "saison": "ete",
+     "surplus_sans_kwh": 100.91,
+     "taux_autoconso_avec": 0.983,
+     "taux_autoconso_sans": 0.8299
+    },
+    {
+     "autoconsomme_avec_kwh": 580.0,
+     "autoconsomme_sans_kwh": 491.44,
+     "consommation_kwh": 1022.9,
+     "couverture_avec": 0.567,
+     "couverture_sans": 0.4804,
+     "economie_avec_mad": 1074.98,
+     "economie_sans_mad": 806.75,
+     "facture_apres_avec_mad": 724.98,
+     "facture_apres_sans_mad": 993.21,
+     "facture_avant_mad": 1799.96,
+     "import_sans_kwh": 531.46,
+     "jours": 31,
+     "mois": 8,
+     "production_kwh": 589.82,
+     "saison": "ete",
+     "surplus_sans_kwh": 98.38,
+     "taux_autoconso_avec": 0.9833,
+     "taux_autoconso_sans": 0.8332
+    },
+    {
+     "autoconsomme_avec_kwh": 529.44,
+     "autoconsomme_sans_kwh": 468.27,
+     "consommation_kwh": 1022.9,
+     "couverture_avec": 0.5176,
+     "couverture_sans": 0.4578,
+     "economie_avec_mad": 994.5,
+     "economie_sans_mad": 764.01,
+     "facture_apres_avec_mad": 805.45,
+     "facture_apres_sans_mad": 1035.95,
+     "facture_avant_mad": 1799.96,
+     "import_sans_kwh": 554.63,
+     "jours": 30,
+     "mois": 9,
+     "production_kwh": 536.24,
+     "saison": "mi_saison",
+     "surplus_sans_kwh": 67.97,
+     "taux_autoconso_avec": 0.9873,
+     "taux_autoconso_sans": 0.8732
+    },
+    {
+     "autoconsomme_avec_kwh": 498.0,
+     "autoconsomme_sans_kwh": 459.02,
+     "consommation_kwh": 1022.9,
+     "couverture_avec": 0.4869,
+     "couverture_sans": 0.4487,
+     "economie_avec_mad": 818.7,
+     "economie_sans_mad": 747.64,
+     "facture_apres_avec_mad": 981.25,
+     "facture_apres_sans_mad": 1052.31,
+     "facture_avant_mad": 1799.96,
+     "import_sans_kwh": 563.88,
+     "jours": 31,
+     "mois": 10,
+     "production_kwh": 502.33,
+     "saison": "mi_saison",
+     "surplus_sans_kwh": 43.31,
+     "taux_autoconso_avec": 0.9914,
+     "taux_autoconso_sans": 0.9138
+    },
+    {
+     "autoconsomme_avec_kwh": 423.61,
+     "autoconsomme_sans_kwh": 420.18,
+     "consommation_kwh": 1022.9,
+     "couverture_avec": 0.4141,
+     "couverture_sans": 0.4108,
+     "economie_avec_mad": 687.46,
+     "economie_sans_mad": 681.89,
+     "facture_apres_avec_mad": 1112.5,
+     "facture_apres_sans_mad": 1118.06,
+     "facture_avant_mad": 1799.96,
+     "import_sans_kwh": 602.72,
+     "jours": 30,
+     "mois": 11,
+     "production_kwh": 424.0,
+     "saison": "mi_saison",
+     "surplus_sans_kwh": 3.82,
+     "taux_autoconso_avec": 0.9991,
+     "taux_autoconso_sans": 0.991
+    },
+    {
+     "autoconsomme_avec_kwh": 427.31,
+     "autoconsomme_sans_kwh": 406.53,
+     "consommation_kwh": 1022.9,
+     "couverture_avec": 0.4177,
+     "couverture_sans": 0.3974,
+     "economie_avec_mad": 693.47,
+     "economie_sans_mad": 659.75,
+     "facture_apres_avec_mad": 1106.49,
+     "facture_apres_sans_mad": 1140.21,
+     "facture_avant_mad": 1799.96,
+     "import_sans_kwh": 616.37,
+     "jours": 31,
+     "mois": 12,
+     "production_kwh": 429.62,
+     "saison": "hiver",
+     "surplus_sans_kwh": 23.09,
+     "taux_autoconso_avec": 0.9946,
+     "taux_autoconso_sans": 0.9463
+    }
+   ],
+   "occupation": "presence_jour",
+   "occupation_source": "defaut_residentiel_fondateur",
+   "part_non_solarisable": {
+    "libelle": "Location du compteur et entretien du branchement : non solarisables, ils restent sur chaque facture, avant comme après les panneaux.",
+    "montant_mad_mois": 39.94,
+    "source": "factures SRM Casablanca-Settat du fondateur (08/05/2026, 20/12/2025, 20/01/2026) — location du compteur 18,28 HT + entretien du branchement 15,00 HT ; montants identiques sur les trois relevés"
+   },
+   "profil_suppose": true,
+   "saisons": {
+    "ete": {
+     "autoconsomme_avec_kwh": 1710.99,
+     "autoconsomme_sans_kwh": 1465.22,
+     "consommation_kwh": 3068.7,
+     "couverture_avec": 0.5576,
+     "couverture_sans": 0.4775,
+     "economie_avec_mad": 3178.56,
+     "economie_sans_mad": 2403.15,
+     "facture_apres_avec_mad": 2221.31,
+     "facture_apres_sans_mad": 2996.72,
+     "facture_avant_mad": 5399.87,
+     "import_sans_kwh": 1603.48,
+     "production_kwh": 1738.23,
+     "surplus_sans_kwh": 273.01,
+     "taux_autoconso_avec": 0.9843,
+     "taux_autoconso_sans": 0.8429
+    },
+    "hiver": {
+     "autoconsomme_avec_kwh": 1294.06,
+     "autoconsomme_sans_kwh": 1159.65,
+     "consommation_kwh": 3068.7,
+     "couverture_avec": 0.4217,
+     "couverture_sans": 0.3779,
+     "economie_avec_mad": 2100.08,
+     "economie_sans_mad": 1881.95,
+     "facture_apres_avec_mad": 3299.79,
+     "facture_apres_sans_mad": 3517.91,
+     "facture_avant_mad": 5399.87,
+     "import_sans_kwh": 1909.04,
+     "production_kwh": 1309.0,
+     "surplus_sans_kwh": 149.35,
+     "taux_autoconso_avec": 0.9886,
+     "taux_autoconso_sans": 0.8859
+    },
+    "mi_saison": {
+     "autoconsomme_avec_kwh": 3072.7,
+     "autoconsomme_sans_kwh": 2739.52,
+     "consommation_kwh": 6137.4,
+     "couverture_avec": 0.5007,
+     "couverture_sans": 0.4464,
+     "economie_avec_mad": 5537.93,
+     "economie_sans_mad": 4463.92,
+     "facture_apres_avec_mad": 5261.81,
+     "facture_apres_sans_mad": 6335.81,
+     "facture_avant_mad": 10799.73,
+     "import_sans_kwh": 3397.88,
+     "production_kwh": 3109.76,
+     "surplus_sans_kwh": 370.24,
+     "taux_autoconso_avec": 0.9881,
+     "taux_autoconso_sans": 0.8809
+    }
+   },
+   "source_consommation": "facture_hiver",
+   "source_productible": "pvgis_ville:casablanca",
+   "source_production": "pvgis_ville:casablanca",
+   "version": 1
+  },
+  "origine_conception": "rapide",
+  "profils_comparatifs": {
+   "_empreinte": "3ef29784a6616a7112aa0ea65210a19150c793d3da67860c1b06ede7f4bb4d4d|3.85|5.0",
+   "avec_batterie": true,
+   "batterie_kwh_devis": 5.0,
+   "kwc_devis": 3.85,
+   "profil_reel": "presence_jour",
+   "profil_reel_source": "defaut_residentiel_fondateur",
+   "profils": [
+    {
+     "couverture_avec": 0.4951,
+     "couverture_sans": 0.437,
+     "economie_avec_mad": 10816.57,
+     "economie_sans_mad": 8749.02,
+     "economies_mois_avec": [
+      714.03,
+      692.58,
+      977.36,
+      1016.72,
+      1043.18,
+      1023.67,
+      1079.91,
+      1074.98,
+      994.5,
+      818.7,
+      687.46,
+      693.47
+     ],
+     "economies_mois_sans": [
+      668.25,
+      553.96,
+      717.95,
+      771.56,
+      780.87,
+      788.13,
+      808.28,
+      806.75,
+      764.01,
+      747.64,
+      681.89,
+      659.75
+     ],
+     "est_profil_reel": true,
+     "occupation": "presence_jour",
+     "optimal": {
+      "avec_batterie": true,
+      "batterie_kwh": 5.0,
+      "economie_mad": 13679.8,
+      "identique_au_devis": false,
+      "kwc": 6.05,
+      "motivation": "meilleur payback AVEC batterie (4.0 ans) : 11 panneaux + 5 kWh de stockage, résiduel 394.8 kWh/mois (310-510 kWh/mois) ; aucun pas de plus ne se rembourse dans son horizon (10 ans pour des panneaux, 7 ans pour du stockage)",
+      "panneaux": 11
+     },
+     "taux_autoconso_avec": 0.9871,
+     "taux_autoconso_sans": 0.8713
+    },
+    {
+     "couverture_avec": 0.3599,
+     "couverture_sans": 0.2261,
+     "economie_avec_mad": 7168.81,
+     "economie_sans_mad": 4503.27,
+     "economies_mois_avec": [
+      556.06,
+      458.67,
+      595.65,
+      618.45,
+      629.26,
+      633.4,
+      649.23,
+      648.48,
+      615.48,
+      616.03,
+      593.24,
+      554.85
+     ],
+     "economies_mois_sans": [
+      329.67,
+      254.19,
+      369.26,
+      399.37,
+      402.87,
+      414.32,
+      422.84,
+      422.09,
+      396.4,
+      389.64,
+      374.15,
+      328.46
+     ],
+     "est_profil_reel": false,
+     "occupation": "absence_jour",
+     "optimal": {
+      "avec_batterie": true,
+      "batterie_kwh": 10.0,
+      "economie_mad": 11704.61,
+      "identique_au_devis": false,
+      "kwc": 6.05,
+      "motivation": "meilleur payback AVEC batterie (6.4 ans) : 11 panneaux + 10 kWh de stockage, résiduel 484.98 kWh/mois (310-510 kWh/mois) ; aucun pas de plus ne se rembourse dans son horizon (10 ans pour des panneaux, 7 ans pour du stockage)",
+      "panneaux": 11
+     },
+     "taux_autoconso_avec": 0.7175,
+     "taux_autoconso_sans": 0.4507
+    },
+    {
+     "couverture_avec": 0.4854,
+     "couverture_sans": 0.3751,
+     "economie_avec_mad": 10501.68,
+     "economie_sans_mad": 7472.2,
+     "economies_mois_avec": [
+      703.77,
+      665.56,
+      843.78,
+      1006.34,
+      1025.18,
+      1013.3,
+      1044.6,
+      1043.86,
+      984.44,
+      807.17,
+      680.04,
+      683.63
+     ],
+     "economies_mois_sans": [
+      565.57,
+      461.08,
+      612.1,
+      660.23,
+      663.77,
+      675.17,
+      683.69,
+      682.94,
+      656.77,
+      642.24,
+      607.5,
+      561.14
+     ],
+     "est_profil_reel": false,
+     "occupation": "presence_partielle",
+     "optimal": {
+      "avec_batterie": true,
+      "batterie_kwh": 5.0,
+      "economie_mad": 12342.7,
+      "identique_au_devis": false,
+      "kwc": 6.05,
+      "motivation": "meilleur payback AVEC batterie (4.4 ans) : 11 panneaux + 5 kWh de stockage, résiduel 464.76 kWh/mois (310-510 kWh/mois) ; aucun pas de plus ne se rembourse dans son horizon (10 ans pour des panneaux, 7 ans pour du stockage)",
+      "panneaux": 11
+     },
+     "taux_autoconso_avec": 0.9678,
+     "taux_autoconso_sans": 0.7478
+    }
+   ],
+   "source": "moteur_horaire_dimensionnement"
+  },
+  "provenance": {
+   "captured_at": "2026-10-01T09:00:00+00:00",
+   "source_lead_id": "<masque>",
+   "valeurs": {
+    "batterie_souhaitee": null,
+    "bill_kwh": null,
+    "conso_mensuelle_kwh": null,
+    "ete_differente": false,
+    "facture_ete": null,
+    "facture_hiver": "1800",
+    "gps_lat": null,
+    "gps_lng": null,
+    "inclinaison_deg": null,
+    "orientation": null,
+    "pompe_actuelle_cv": null,
+    "pompe_alim_actuelle": null,
+    "pompe_debit_m3h": null,
+    "pompe_hmt_m": null,
+    "raccordement": null,
+    "structure_pref": null,
+    "structure_produit": null,
+    "surface_toiture_m2": null,
+    "taille_souhaitee_kwc": "4.40",
+    "type_installation": null,
+    "type_toiture": null,
+    "ville": "Casablanca",
+    "ville_reference": ""
+   }
+  },
+  "puissance_kwc": 3.85,
+  "scenario": "Les deux (Sans + Avec)",
+  "ville_calcul": {
+   "reference": "Casablanca",
+   "ville": "Casablanca"
+  }
+ },
+ "lignes": [
+  {
+   "designation": "Onduleur réseau Huawei 5kW Monophasé",
+   "groupe_index": null,
+   "groupe_label": "",
+   "ligne_composee": true,
+   "optionnelle": false,
+   "ordre": 0,
+   "prix_manuel": false,
+   "prix_unitaire": "14000.00",
+   "produit_nom": "Onduleur réseau Huawei 5kW Monophasé",
+   "quantite": "1.00",
+   "quantite_manuelle": false,
+   "remise": "0.00",
+   "role_devis": "onduleur_reseau",
+   "taux_tva": "20.00",
+   "tva_base_legale": "",
+   "type_ligne": "produit",
+   "variante": "sans"
+  },
+  {
+   "designation": "Onduleur hybride Deye 5kW Monophasé",
+   "groupe_index": null,
+   "groupe_label": "",
+   "ligne_composee": true,
+   "optionnelle": false,
+   "ordre": 1,
+   "prix_manuel": false,
+   "prix_unitaire": "17000.00",
+   "produit_nom": "Onduleur hybride Deye 5kW Monophasé",
+   "quantite": "1.00",
+   "quantite_manuelle": false,
+   "remise": "0.00",
+   "role_devis": "onduleur_hybride",
+   "taux_tva": "20.00",
+   "tva_base_legale": "",
+   "type_ligne": "produit",
+   "variante": "avec"
+  },
+  {
+   "designation": "Panneau Jinko 550W",
+   "groupe_index": null,
+   "groupe_label": "",
+   "ligne_composee": true,
+   "optionnelle": false,
+   "ordre": 2,
+   "prix_manuel": false,
+   "prix_unitaire": "1100.00",
+   "produit_nom": "Panneau Jinko 550W",
+   "quantite": "7.00",
+   "quantite_manuelle": false,
+   "remise": "0.00",
+   "role_devis": "panneau",
+   "taux_tva": "20.00",
+   "tva_base_legale": "",
+   "type_ligne": "produit",
+   "variante": ""
+  },
+  {
+   "designation": "Batterie Dyness 5 kWh",
+   "groupe_index": null,
+   "groupe_label": "",
+   "ligne_composee": true,
+   "optionnelle": false,
+   "ordre": 3,
+   "prix_manuel": false,
+   "prix_unitaire": "17000.00",
+   "produit_nom": "Batterie Dyness 5 kWh",
+   "quantite": "1.00",
+   "quantite_manuelle": false,
+   "remise": "0.00",
+   "role_devis": "batterie",
+   "taux_tva": "20.00",
+   "tva_base_legale": "",
+   "type_ligne": "produit",
+   "variante": "avec"
+  }
+ ]
+}
