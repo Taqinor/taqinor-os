@@ -346,27 +346,6 @@ body.cloture .signatures{margin-top:4mm}
 body.cloture .titre{padding:7mm 0 2mm}
 body.cloture h2{margin:6mm 0 2.8mm}
 .petit{font-size:8.2pt;color:__GRIS__;line-height:1.45}
-.conclusion{margin-top:3mm;font-size:8.8pt;color:__GRIS__}
-.conclusion b{color:__NAVY__}
-
-/* ── Annexe : rétractation ── */
-.loi{margin-bottom:1.8mm;font-size:7.8pt;line-height:1.4}
-.annexe h2{margin:5mm 0 2.4mm}
-.annexe .intro{font-size:9.2pt;margin-bottom:2.4mm}
-.loi b{display:block;font-size:6.9pt;letter-spacing:.16em;
-  text-transform:uppercase;color:__BRONZE__;margin-bottom:.6mm}
-.loi p{margin-bottom:.7mm}
-.bordereau{break-inside:avoid;margin-top:4mm;border:.9pt dashed __NAVY__;
-  border-radius:2.6mm;padding:3.6mm 5mm 4.4mm;font-size:9.2pt;line-height:1.5}
-.bordereau .ciseaux{font-size:6.9pt;letter-spacing:.16em;
-  text-transform:uppercase;color:__BRONZE__;font-weight:700;margin-bottom:1.6mm}
-.bordereau h3{font-family:__TITRE__;font-weight:400;font-size:13pt;
-  color:__NAVY__;margin-bottom:2mm}
-.bordereau .trou{display:inline-block;min-width:52mm;
-  border-bottom:.6pt dotted #9AA3B0}
-.bordereau .trou.long{min-width:112mm}
-.bordereau .bas{display:table;width:100%;margin-top:3mm}
-.bordereau .bas div{display:table-cell;width:50%;vertical-align:top}
 .suite{break-before:page}
 .souffle{height:2mm}
 """

@@ -30,7 +30,8 @@
         }
       },
       "options": {
-        "retractation": false
+        "reserve_propriete": true,
+        "penalite_retard_pct": null
       },
       "delais": null
     },
@@ -78,7 +79,6 @@
       "lieu",
       "date_document",
       "societe",
-      "conclusion",
       "delais",
       "echeancier_textes",
       "paiement",
@@ -182,7 +182,6 @@
       },
       "options": {
         "consommateur": true,
-        "retractation": true,
         "reserve_propriete": true,
         "raccorde_reseau": true,
         "penalite_retard_pct": null
@@ -196,7 +195,7 @@
           "libelle": "Acompte",
           "pourcentage": "30",
           "montant_ttc": "29550.00",
-          "exigibilite": "Après le délai de 7 jours",
+          "exigibilite": "À la signature",
           "statut": "a_venir",
           "regle_le": null,
           "note": ""
@@ -293,9 +292,8 @@
           "titre": "Paiement",
           "paragraphes": [
             "Le prix est payé en trois étapes, chacune liée à un moment précis du chantier :",
-            "- **30 %**, soit 29 550,00 DH, à la fin du délai de rétractation de sept jours ;\n- **60 %**, soit 59 100,00 DH, à la livraison du matériel chez le Client ;\n- **10 %**, soit 9 850,00 DH, à la réception des travaux.",
+            "- **30 %**, soit 29 550,00 DH, à la signature du présent contrat ;\n- **60 %**, soit 59 100,00 DH, à la livraison du matériel chez le Client ;\n- **10 %**, soit 9 850,00 DH, à la réception des travaux.",
             "Chaque paiement donne lieu à une facture. Paiement par virement ou par chèque à l'ordre de TAQINOR. RIB : 000 000 0000000000000000 00 — Banque Exemple.",
-            "Le contrat étant signé au domicile du Client, aucun paiement n'est demandé ni encaissé avant la fin du délai de rétractation de sept jours (article « Droit de rétractation »).",
             "La commande du matériel est lancée dès l'encaissement du premier paiement."
           ]
         },
@@ -365,14 +363,6 @@
           ]
         },
         {
-          "cle": "retractation",
-          "titre": "Droit de rétractation",
-          "paragraphes": [
-            "Le contrat étant signé au domicile du Client, celui-ci peut y renoncer **pendant sept jours** à compter de sa signature, sans motif et sans frais, en renvoyant à TAQINOR le formulaire détachable joint, par tout moyen qui en prouve la réception (articles 47 à 50 de la loi n° 31-08, reproduits en annexe).",
-            "Pendant ces sept jours, TAQINOR ne demande et n'encaisse aucun paiement et ne commence aucun travail. Tout chèque ou ordre de paiement remis est restitué au Client dans les quinze jours qui suivent sa rétractation."
-          ]
-        },
-        {
           "cle": "retard",
           "titre": "Retard de paiement",
           "paragraphes": [
@@ -383,7 +373,7 @@
           "cle": "fin_anticipee",
           "titre": "Fin anticipée du contrat",
           "paragraphes": [
-            "Si le Client renonce au contrat après le délai de rétractation alors que le matériel est commandé ou les travaux commencés, TAQINOR conserve, sur les sommes versées et sur justificatifs, le coût du matériel commandé pour lui et des travaux déjà réalisés ; le reste lui est remboursé.",
+            "Si le Client renonce au contrat alors que le matériel est commandé ou les travaux commencés, TAQINOR conserve, sur les sommes versées et sur justificatifs, le coût du matériel commandé pour lui et des travaux déjà réalisés ; le reste lui est remboursé.",
             "Si TAQINOR ne peut pas exécuter le contrat, elle rembourse au Client l'intégralité des sommes versées."
           ]
         },
@@ -418,33 +408,6 @@
       },
       "paiement": {
         "modalites": "Paiement par virement ou par chèque à l'ordre de TAQINOR. RIB : 000 000 0000000000000000 00 — Banque Exemple."
-      },
-      "conclusion": {
-        "conseiller": "Salma EXEMPLE",
-        "a_domicile": true,
-        "lieu": "domicile du Client, Villa 7, lotissement Exemple, Bouskoura"
-      },
-      "retractation": {
-        "actif": true,
-        "jours": 7,
-        "articles": [
-          [
-            "Article 47",
-            "Les opérations de démarchage visées à l'article 45 doivent faire l'objet d'un contrat écrit dont un exemplaire doit être remis au consommateur au moment de la conclusion de ce contrat, lequel doit comprendre un formulaire détachable destiné à faciliter l'exercice de la faculté de rétractation dans les conditions prévues à l'article 49.\nTous les exemplaires du contrat doivent être signés et datés de la main même du consommateur.\nLes mentions que doit contenir le formulaire visé au 1er alinéa sont fixées par voie réglementaire."
-          ],
-          [
-            "Article 48",
-            "Le contrat doit, à peine de nullité, mentionner :\nA. le nom ou la dénomination sociale du fournisseur et du démarcheur ;\nB. l'adresse du fournisseur ;\nC. l'adresse du lieu de conclusion du contrat ;\nD. la désignation précise de la nature et des caractéristiques des produits, biens ou services ;\nE. les conditions d'exécution du contrat, notamment les modalités et le délai de livraison des biens, produits ou d'exécution de la prestation de services, le prix global à payer ;\nF. les modalités de paiement ;\nG. la faculté de rétractation prévue à l'article 49 ci-dessous, ainsi que les conditions d'exercice de cette faculté et, de façon apparente, le texte intégral des articles 47 à 50 de la présente loi.\nCe contrat ne peut comporter aucune clause attributive de compétence."
-          ],
-          [
-            "Article 49",
-            "Par dérogation aux dispositions de l'article 604 du dahir du 9 ramadan 1331 (12 août 1913) formant code des obligations et des contrats, dans un délai maximum de sept jours à compter de la commande ou de l'engagement d'achat, le consommateur a la faculté de se rétracter par l'envoi du formulaire détachable au contrat par n'importe quel moyen justifiant la réception.\nToute clause du contrat par laquelle le consommateur abandonne son droit de se rétracter est nulle et non avenue.\nLe présent article ne s'applique pas aux contrats conclus dans les conditions prévues à l'article 51."
-          ],
-          [
-            "Article 50",
-            "Avant l'expiration du délai de rétractation prévu à l'article 49, nul ne peut exiger ou obtenir du consommateur, directement ou indirectement, à quelque titre ni sous quelque forme que ce soit une contrepartie quelconque ni aucun engagement ni effectuer des prestations de services de quelque nature que ce soit.\nEn outre, les engagements ou ordres de paiement ne doivent pas être exécutés avant l'expiration du délai prévu à l'article 49 et doivent être retournés au consommateur dans les quinze jours qui suivent sa rétractation."
-          ]
-        ]
       }
     }
   },
@@ -584,7 +547,6 @@
       },
       "options": {
         "consommateur": true,
-        "retractation": true,
         "reserve_propriete": true,
         "raccorde_reseau": true,
         "penalite_retard_pct": null
@@ -824,7 +786,6 @@
       },
       "options": {
         "consommateur": true,
-        "retractation": true,
         "reserve_propriete": true,
         "raccorde_reseau": true,
         "penalite_retard_pct": null
@@ -1062,7 +1023,6 @@
       },
       "options": {
         "consommateur": true,
-        "retractation": true,
         "reserve_propriete": true,
         "raccorde_reseau": true,
         "penalite_retard_pct": null
@@ -1300,7 +1260,6 @@
       },
       "options": {
         "consommateur": true,
-        "retractation": true,
         "reserve_propriete": true,
         "raccorde_reseau": true,
         "penalite_retard_pct": null

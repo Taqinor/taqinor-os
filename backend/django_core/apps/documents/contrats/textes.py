@@ -42,7 +42,6 @@ def _article(cle, titre, paragraphes, ctx):
 
 def _contrat_installation(ctx, options):
     consommateur = options.get('consommateur', True)
-    retractation = bool(options.get('retractation')) and consommateur
     arts = [
         ('objet', 'Objet du contrat', [
             "{societe} fournit, pose et met en service chez le Client, à "
@@ -72,10 +71,6 @@ def _contrat_installation(ctx, options):
             "précis du chantier :",
             "{liste_tranches}",
             "Chaque paiement donne lieu à une facture. {modalites_paiement}",
-            ("Le contrat étant signé au domicile du Client, aucun paiement "
-             "n'est demandé ni encaissé avant la fin du délai de "
-             "rétractation de sept jours (article « Droit de "
-             "rétractation »)." if retractation else ''),
             "La commande du matériel est lancée dès l'encaissement du "
             "premier paiement.",
         ]),
@@ -176,19 +171,6 @@ def _contrat_installation(ctx, options):
             "ces chiffres ne sont pas une promesse de résultat.",
         ]),
     ]
-    if retractation:
-        arts.append(('retractation', 'Droit de rétractation', [
-            "Le contrat étant signé au domicile du Client, celui-ci peut y "
-            "renoncer **pendant sept jours** à compter de sa signature, "
-            "sans motif et sans frais, en renvoyant à {societe} le "
-            "formulaire détachable joint, par tout moyen qui en prouve la "
-            "réception (articles 47 à 50 de la loi n° 31-08, reproduits en "
-            "annexe).",
-            "Pendant ces sept jours, {societe} ne demande et n'encaisse "
-            "aucun paiement et ne commence aucun travail. Tout chèque ou "
-            "ordre de paiement remis est restitué au Client dans les quinze "
-            "jours qui suivent sa rétractation.",
-        ]))
     retard = [
         "Si un paiement n'est pas fait à la date prévue, {societe} adresse "
         "au Client une mise en demeure écrite. Si elle reste sans effet "
@@ -204,8 +186,8 @@ def _contrat_installation(ctx, options):
     arts += [
         ('retard', 'Retard de paiement', retard),
         ('fin_anticipee', 'Fin anticipée du contrat', [
-            "Si le Client renonce au contrat{apres_retractation} alors que "
-            "le matériel est commandé ou les travaux commencés, {societe} "
+            "Si le Client renonce au contrat alors que le matériel est "
+            "commandé ou les travaux commencés, {societe} "
             "conserve, sur les sommes versées et sur justificatifs, le coût "
             "du matériel commandé pour lui et des travaux déjà réalisés ; "
             "le reste lui est remboursé.",
@@ -372,8 +354,7 @@ def _cloture_garanties(ctx, options):
 def articles_par_defaut(type_acte, variante='', ctx=None, options=None):
     """Les articles par défaut d'un acte. ``ctx`` : repères déjà mis en forme
     (montants, dates, noms) ; ``options`` : ``consommateur``,
-    ``retractation``, ``reserve_propriete``, ``raccorde_reseau``,
-    ``penalite_retard_pct``."""
+    ``reserve_propriete``, ``raccorde_reseau``, ``penalite_retard_pct``."""
     ctx = ctx or {}
     options = options or {}
     if type_acte == 'contrat_installation':
@@ -517,59 +498,3 @@ def entretien_par_defaut():
         "- avant tout travail sur la toiture ou sur l'installation "
         "électrique, prévenez-nous.",
     ]
-
-
-# ── Annexe : rétractation (démarchage à domicile, loi n° 31-08) ─────────────
-# Texte des articles 47 à 50, que l'article 48 impose de reproduire « de façon
-# apparente » dans le contrat signé au domicile. Recopié du texte consolidé
-# publié par le ministère de la Justice (adala.justice.gov.ma).
-
-ARTICLES_47_A_50 = [
-    ('Article 47',
-     "Les opérations de démarchage visées à l'article 45 doivent faire "
-     "l'objet d'un contrat écrit dont un exemplaire doit être remis au "
-     "consommateur au moment de la conclusion de ce contrat, lequel doit "
-     "comprendre un formulaire détachable destiné à faciliter l'exercice de "
-     "la faculté de rétractation dans les conditions prévues à l'article 49.\n"
-     "Tous les exemplaires du contrat doivent être signés et datés de la "
-     "main même du consommateur.\n"
-     "Les mentions que doit contenir le formulaire visé au 1er alinéa sont "
-     "fixées par voie réglementaire."),
-    ('Article 48',
-     "Le contrat doit, à peine de nullité, mentionner :\n"
-     "A. le nom ou la dénomination sociale du fournisseur et du "
-     "démarcheur ;\n"
-     "B. l'adresse du fournisseur ;\n"
-     "C. l'adresse du lieu de conclusion du contrat ;\n"
-     "D. la désignation précise de la nature et des caractéristiques des "
-     "produits, biens ou services ;\n"
-     "E. les conditions d'exécution du contrat, notamment les modalités et "
-     "le délai de livraison des biens, produits ou d'exécution de la "
-     "prestation de services, le prix global à payer ;\n"
-     "F. les modalités de paiement ;\n"
-     "G. la faculté de rétractation prévue à l'article 49 ci-dessous, ainsi "
-     "que les conditions d'exercice de cette faculté et, de façon "
-     "apparente, le texte intégral des articles 47 à 50 de la présente loi.\n"
-     "Ce contrat ne peut comporter aucune clause attributive de compétence."),
-    ('Article 49',
-     "Par dérogation aux dispositions de l'article 604 du dahir du 9 "
-     "ramadan 1331 (12 août 1913) formant code des obligations et des "
-     "contrats, dans un délai maximum de sept jours à compter de la "
-     "commande ou de l'engagement d'achat, le consommateur a la faculté de "
-     "se rétracter par l'envoi du formulaire détachable au contrat par "
-     "n'importe quel moyen justifiant la réception.\n"
-     "Toute clause du contrat par laquelle le consommateur abandonne son "
-     "droit de se rétracter est nulle et non avenue.\n"
-     "Le présent article ne s'applique pas aux contrats conclus dans les "
-     "conditions prévues à l'article 51."),
-    ('Article 50',
-     "Avant l'expiration du délai de rétractation prévu à l'article 49, nul "
-     "ne peut exiger ou obtenir du consommateur, directement ou "
-     "indirectement, à quelque titre ni sous quelque forme que ce soit une "
-     "contrepartie quelconque ni aucun engagement ni effectuer des "
-     "prestations de services de quelque nature que ce soit.\n"
-     "En outre, les engagements ou ordres de paiement ne doivent pas être "
-     "exécutés avant l'expiration du délai prévu à l'article 49 et doivent "
-     "être retournés au consommateur dans les quinze jours qui suivent sa "
-     "rétractation."),
-]
