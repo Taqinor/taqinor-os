@@ -1595,6 +1595,40 @@ def _appliquer_textes(contenu, surcharges, langue, *, modele=False,
                 contenu['paiement'][k] = s['paiement'][k]
 
 
+def _faits_du_francais(contenu, fr, ar):
+    """La traduction arabe n'omet aucun fait saisi en français (recette
+    C4) : les cases cochées des constats sont communes (lues en français) ;
+    un texte libre tapé en français sans équivalent arabe (réserves,
+    conditions particulières, constat ajouté) s'imprime TEL QUEL dans le
+    document arabe — un fait en français vaut mieux qu'un fait absent ;
+    l'avertissement « traduction arabe » demande toujours sa traduction."""
+    if 'constats' in contenu and isinstance(fr.get('constats'), list):
+        arabes = contenu['constats']
+        if isinstance(ar.get('constats'), list):
+            # Traduits à la main : les cases du français, ligne à ligne.
+            sortie = [dict(k, cochee=bool(f.get('cochee')))
+                      for k, f in zip(arabes, fr['constats'])]
+            sortie += [{'texte': f.get('texte') or '',
+                        'cochee': bool(f.get('cochee'))}
+                       for f in fr['constats'][len(arabes):]]
+        else:
+            from . import textes
+            defauts = [k['texte'] for k in
+                       textes.constats_par_defaut(contenu['type'])]
+            sortie = []
+            for f in fr['constats']:
+                j = (defauts.index(f.get('texte'))
+                     if f.get('texte') in defauts else None)
+                texte = (arabes[j]['texte'] if j is not None
+                         and j < len(arabes) else f.get('texte') or '')
+                sortie.append({'texte': texte,
+                               'cochee': bool(f.get('cochee'))})
+        contenu['constats'] = sortie
+    for cle in ('reserves', 'conditions_particulieres'):
+        if cle in contenu and cle not in ar and fr.get(cle):
+            contenu[cle] = copy.deepcopy(fr[cle])
+
+
 def _surcharges_texte(objet, langue):
     if objet is None:
         return {}
@@ -1929,6 +1963,9 @@ def _construire(acte, langue='fr', lecture=None, *, avec_modele=True,
             contenu, _surcharges_texte(acte, langue), langue,
             garanties_fr=((acte.surcharges or {}).get('garanties')
                           if langue == 'ar' else None))
+    if langue == 'ar' and avec_acte_textes:
+        _faits_du_francais(contenu, acte.surcharges or {},
+                           acte.surcharges_ar or {})
     # Le contexte APRÈS les personnalisations de l'acte : {modalites_paiement}
     # et {garantie_installation} disent ce que disent l'encadré et le
     # tableau du même document (M4).

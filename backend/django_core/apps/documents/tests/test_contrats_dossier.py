@@ -1827,6 +1827,44 @@ class GarantiesDuContratPursTests(SimpleTestCase):
         self.assertEqual(cloture.lire()['reception']['date'], '2026-12-21')
 
 
+class FaitsFrancaisEnArabePursTests(SimpleTestCase):
+    """C4 (recette sur écran réel) : le document arabe n'omet aucun fait."""
+
+    def test_cases_reserves_et_conditions_saisies_en_francais(self):
+        """Défaut attrapé : les cases cochées en français, les réserves et
+        les conditions particulières tapées en français n'apparaissaient
+        pas dans le PDF arabe."""
+        e = Ecran(T.LIVRAISON, T.RESTE_A_REGLER)
+        constats = [dict(k, cochee=True) for k in e.lire()['constats']]
+        constats[1]['cochee'] = False
+        constats.append({'texte': 'Un carton abîmé, contenu intact.',
+                         'cochee': True})
+        e.enregistrer({'constats': constats,
+                       'reserves': ['Rayure sur le coffret onduleur.'],
+                       'conditions_particulieres': 'Accès par le portail.'})
+        defauts_ar = e.lire('ar')
+        self.assertEqual([k['cochee'] for k in defauts_ar['constats']],
+                         [True, False, True, True])
+        self.assertNotEqual(defauts_ar['constats'][0]['texte'],
+                            constats[0]['texte'])  # texte arabe gardé
+        self.assertEqual(defauts_ar['constats'][-1]['texte'],
+                         'Un carton abîmé, contenu intact.')
+        self.assertEqual(defauts_ar['reserves'],
+                         ['Rayure sur le coffret onduleur.'])
+        self.assertEqual(defauts_ar['conditions_particulieres'],
+                         'Accès par le portail.')
+        # Traduits à la main : la traduction l'emporte, les cases restent
+        # celles du français.
+        e.enregistrer({'reserves': ['خدش على علبة العاكس.'],
+                       'constats': [{'texte': f'نص {i}', 'cochee': False}
+                                    for i in range(4)]}, 'ar')
+        ar = e.lire('ar')
+        self.assertEqual(ar['reserves'], ['خدش على علبة العاكس.'])
+        self.assertEqual([k['cochee'] for k in ar['constats']],
+                         [True, False, True, True])
+        self.assertEqual(ar['constats'][0]['texte'], 'نص 0')
+
+
 class EcranAllerRetourTests(SimpleTestCase):
 
     def test_rien_change_rien_stocke_cinq_actes_deux_langues(self):
