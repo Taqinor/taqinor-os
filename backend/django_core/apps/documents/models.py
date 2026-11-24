@@ -6,7 +6,8 @@ portent le DOSSIER CONTRACTUEL (docs/contrats/conception.md § 3) : les quatre
 actes d'un chantier (cinq lignes, la livraison ayant deux variantes prêtes) et
 les textes par défaut de la société.
 
-Règles : ``company`` toujours posée côté serveur (jamais lue d'un corps de
+Socle ``core.models.TenantModel`` (FK ``company`` + ``created_at`` /
+``updated_at``). Règles : ``company`` toujours posée côté serveur (jamais lue d'un corps de
 requête) ; le chantier est une FK chaîne (``installations.Installation``),
 jamais un import de modèle ; un acte n'est jamais supprimé (annulé, avec son
 statut d'avant gardé) ; un acte signé ne perd jamais sa preuve.
@@ -14,8 +15,10 @@ statut d'avant gardé) ; un acte signé ne perd jamais sa preuve.
 from django.conf import settings
 from django.db import models
 
+from core.models import TenantModel
 
-class ActeContractuel(models.Model):
+
+class ActeContractuel(TenantModel):
     """Un acte du dossier contractuel d'un chantier (une ligne par acte et par
     variante : cinq lignes par chantier)."""
 
@@ -42,11 +45,6 @@ class ActeContractuel(models.Model):
         PAPIER = 'papier', 'Sur papier'
         DISTANCE = 'distance', 'À distance'
 
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
-        related_name='actes_contractuels',
-    )
     chantier = models.ForeignKey(
         'installations.Installation', on_delete=models.PROTECT,
         related_name='actes_contractuels',
@@ -86,8 +84,6 @@ class ActeContractuel(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='actes_contractuels_crees',
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         constraints = [
@@ -104,15 +100,10 @@ class ActeContractuel(models.Model):
         return f'{self.reference or self.type} ({self.get_statut_display()})'
 
 
-class ModeleActe(models.Model):
+class ModeleActe(TenantModel):
     """Textes par défaut d'un type d'acte pour une société (sections texte
     seulement — jamais un montant)."""
 
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
-        related_name='modeles_actes',
-    )
     type = models.CharField(max_length=30, choices=ActeContractuel.Type.choices)
     surcharges = models.JSONField(default=dict, blank=True)
     surcharges_ar = models.JSONField(default=dict, blank=True)
@@ -120,7 +111,6 @@ class ModeleActe(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='modeles_actes_modifies',
     )
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         constraints = [

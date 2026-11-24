@@ -76,8 +76,6 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/dataimport/models.py::ExternalRef.company` | backend/django_core/apps/dataimport/models.py:19 | authentication.Company | CASCADE |
 | `backend/django_core/apps/dataimport/models.py::ImportMapping.company` | backend/django_core/apps/dataimport/models.py:56 | authentication.Company | CASCADE |
 | `backend/django_core/apps/dataimport/models.py::ImportJob.company` | backend/django_core/apps/dataimport/models.py:87 | authentication.Company | CASCADE |
-| `backend/django_core/apps/documents/models.py::ActeContractuel.company` | backend/django_core/apps/documents/models.py:45 | authentication.Company | CASCADE |
-| `backend/django_core/apps/documents/models.py::ModeleActe.company` | backend/django_core/apps/documents/models.py:111 | authentication.Company | CASCADE |
 | `backend/django_core/apps/facturation/models.py::Facture.company` | backend/django_core/apps/facturation/models.py:53 | authentication.Company | CASCADE |
 | `backend/django_core/apps/facturation/models.py::Facture.bon_commande` | backend/django_core/apps/facturation/models.py:61 | ventes.BonCommande | SET_NULL |
 | `backend/django_core/apps/facturation/models.py::Facture.devis` | backend/django_core/apps/facturation/models.py:72 | ventes.Devis | SET_NULL |
