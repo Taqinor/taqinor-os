@@ -48,7 +48,7 @@ CLES_CHAMP_MODIFIE = {'champ', 'avant', 'apres'}
 ORIGINES = {'lead_entrees_modifiees', 'pose_enregistree', 'regles',
             'remplissage', 'manuel', 'filet'}
 CLES_ECART = {'valeur', 'devis', 'conception', 'devis_ref',
-              'reviser_possible', 'mise_a_jour_proposee'}
+              'reviser_possible', 'mise_a_jour_proposee', 'courante_refusee'}
 CLES_REFUS = {'code', 'champ', 'message'}
 #: La table §2, par option (résidentiel, commercial, industriel).
 VALEURS_SOLAIRES = {
@@ -1513,7 +1513,7 @@ class RelanceConceptionTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher'
         self.assertEqual(relue.entrees_utilisees['facture_hiver'], {'valeur': 2400.0, 'source': 'lead'})
         moment = timezone.localtime(relue.calcule_le)
         self.assertEqual(relue.declencheur, {
-            'raison': 'Recalculé le %s à %d h %02d : Facture hiver 1 800 → 2 400' % (
+            'raison': 'Recalculé le %s à %d h %02d : Facture hiver 1 800 → 2 400 MAD' % (
                 moment.strftime('%d/%m'), moment.hour, moment.minute),
             'champs': [{'champ': 'facture_hiver', 'avant': 1800.0, 'apres': 2400.0}],
             'origine': 'lead_entrees_modifiees'})
@@ -1531,6 +1531,52 @@ class RelanceConceptionTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher'
         forcee = self._relancer(lead, company, _declencheur('manuel'), forcer=True)
         self.assertEqual((forcee.ecrite, forcee.conception.version), (True, 3))
         self.assertTrue(forcee.conception.declencheur['raison'].endswith(' : recalcul demandé'))
+
+    def test_relances_simultanees_des_memes_entrees_une_seule_version(self):
+        """Relecture m1 — deux relances parties ensemble lisent toutes deux
+        l'ancienne courante (empreinte différente) ; la seconde, qui range
+        APRÈS la première, retrouve sous verrou la même empreinte : rien
+        d'écrit, aucun second événement."""
+        from apps.crm.models import Lead
+        from apps.ventes.conception import service
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        evenements = _Evenements(self)
+        self._relancer(lead, company, _declencheur())
+        Lead.objects.filter(pk=lead.pk).update(facture_hiver=Decimal('2400'))
+        lead.refresh_from_db()
+        v1 = ConceptionLead.objects.get(lead=lead, courante=True)
+        premiere = self._relancer(lead, company, _declencheur('manuel'))
+        with mock.patch.object(service, '_courante', return_value=v1):  # lecture d'avant la première
+            seconde = self._relancer(lead, company, _declencheur('manuel'))
+        self.assertEqual((premiere.ecrite, seconde.ecrite), (True, False))  # mutant « sans relecture » : v3
+        self.assertEqual(seconde.conception.pk, premiere.conception.pk)
+        self.assertEqual(list(ConceptionLead.objects.filter(lead=lead).order_by('version')
+                              .values_list('version', 'courante')), [(1, False), (2, True)])
+        self.assertEqual([e['version'] for e in evenements.recus], [1, 2])
+
+    def test_chaine_reelle_une_ligne_au_chatter_avec_la_phrase_exacte(self):
+        """Relecture m4 — la VRAIE chaîne : facture changée → ``relancer`` →
+        ``conception_recalculee`` → UNE ligne système au chatter du lead, un
+        seul préfixe, l'unité dite ; une seconde livraison n'en écrit pas."""
+        from apps.crm.models import Lead, LeadActivity
+        from core.events import conception_recalculee
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        self._relancer(lead, company, _declencheur())
+        Lead.objects.filter(pk=lead.pk).update(facture_hiver=Decimal('2400'))
+        lead.refresh_from_db()
+        version = self._relancer(lead, company, _declencheur(
+            'lead_entrees_modifiees', facture_hiver=(Decimal('1800'), Decimal('2400')))).conception
+        lignes = LeadActivity.objects.filter(lead=lead, field='conception_version', new_value='2')
+        self.assertEqual([(li.body, li.user_id) for li in lignes],
+                         [('Conception recalculée : Facture hiver 1 800 → 2 400 MAD', None)])
+        conception_recalculee.send(sender='ventes.ConceptionLead', company_id=company.pk, lead_id=lead.pk,
+                                   calepinage_id=None, version=2, declencheur=version.declencheur)
+        self.assertEqual(lignes.count(), 1)
 
     def test_aucune_cle_d_achat_ni_de_marge_meme_si_le_moteur_en_rendait(self):
         from types import SimpleNamespace
@@ -1700,7 +1746,7 @@ class ServirConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
         self.assertEqual((corps['version'], corps['lead'], corps['calepinage'], corps['perimee']),
                          (2, lead.pk, None, False))
         self.assertEqual((corps['etat'], corps['option_retenue'], corps['ecart_devis']), ('complet', 'avec', []))
-        self.assertTrue(corps['declencheur']['raison'].endswith(' : Facture hiver 1 800 → 2 400'))
+        self.assertTrue(corps['declencheur']['raison'].endswith(' : Facture hiver 1 800 → 2 400 MAD'))
         self.assertEqual(_cles_interdites(corps), [])
         self.assertEqual(api.get(URL_CONCEPTION % lead.pk).json(), corps)  # relire = même version
         self.assertEqual(ConceptionLead.objects.count(), avant)  # la lecture n'écrit rien
@@ -1807,8 +1853,8 @@ class ServirConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
         for ecart in ecarts:
             self.assertEqual(set(ecart), CLES_ECART)
             self.assertNotEqual(ecart['devis'], ecart['conception'])
-            self.assertEqual((ecart['devis_ref'], ecart['reviser_possible'], ecart['mise_a_jour_proposee']),
-                             (devis.reference, True, False))
+            self.assertEqual((ecart['devis_ref'], ecart['reviser_possible'], ecart['mise_a_jour_proposee'],
+                              ecart['courante_refusee']), (devis.reference, True, False, False))
         self.assertEqual(self._api(user).get(URL_CONCEPTION % lead.pk).json()['ecart_devis'], ecarts)
         Devis.objects.filter(pk=devis.pk).update(statut='accepte')
         photo_acceptee = _photo_devis(devis.pk)
@@ -1818,6 +1864,20 @@ class ServirConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
         self.assertEqual(_photo_devis(devis.pk), photo_acceptee)  # jamais touché (accepté)
         photo_acceptee['devis']['statut'] = 'envoye'
         self.assertEqual(photo_acceptee, photo)  # rien d'autre n'a bougé depuis l'envoi
+
+        # ADEV146 (relecture m5) — la version courante devient un REFUS (lieu
+        # effacé) : l'écart ne disparaît pas, il est comparé à la dernière
+        # version complète et le refus est dit.
+        Lead.objects.filter(pk=lead.pk).update(ville='')
+        lead.refresh_from_db()
+        refusee = self._relancer(lead, company, _declencheur('manuel')).conception
+        self.assertEqual(refusee.etat, 'refus')
+        apres_refus = ecart_devis(devis)
+        self.assertEqual([(e['valeur'], e['devis'], e['conception']) for e in apres_refus],
+                         [(e['valeur'], e['devis'], e['conception']) for e in ecarts])  # mutant « courante seule » : []
+        self.assertTrue(all(e['courante_refusee'] for e in apres_refus))
+        self.assertEqual(_photo_devis(devis.pk), photo_acceptee | {'devis': dict(photo_acceptee['devis'],
+                                                                                 statut='accepte')})
 
     def test_apercu_sans_ecriture_404_et_corps_refuse(self):
         from django.db import connection
@@ -1934,3 +1994,286 @@ def _test_de_parite_stockee(nom):
 
 for _nom in sorted(PARITE + tuple(HORS_PARITE)):
     setattr(PariteStockeeTests, f'test_parite_stockee_{_nom}', _test_de_parite_stockee(_nom))
+
+
+# ── ADEV139 — la relance en tâche dédupliquée (abonnés des deux événements) ──
+
+class RelanceEnTacheTests(_emprunt(RelanceConceptionTests, '_relancer'),
+                          _emprunt(FigeageDevisAutoTests, '_patcher', '_utilisateur', '_residentiel',
+                                   '_ci', '_agricole', '_fiches_residentielles', '_site_isole', '_structures',
+                                   '_fiches_ci', '_cas'), TestCase):
+    """ADEV139 — ``conception/receivers.py`` : un événement met UNE tâche en
+    file par porteur ; le calcul tourne dans la tâche (``task_relancer_
+    conception``), jamais dans la requête ; une relance en échec n'empêche pas
+    l'enregistrement de la fiche."""
+
+    def setUp(self):
+        from django.core.cache import cache
+
+        from apps.ventes import tasks
+
+        FigeageDevisAutoTests.setUp(self)
+        cache.clear()
+        self.addCleanup(cache.clear)
+        patcher = mock.patch.object(tasks.task_relancer_conception, 'apply_async')
+        self.en_file = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _enregistrer(self, lead, **valeurs):
+        lead.refresh_from_db()
+        for cle, valeur in valeurs.items():
+            setattr(lead, cle, valeur)
+        with self.captureOnCommitCallbacks(execute=True):
+            lead.save()
+
+    def _executer_les_taches(self, appels=None):
+        """Ce que ferait le worker : chaque tâche mise en file, dans l'ordre."""
+        from apps.ventes.tasks import task_relancer_conception
+
+        rendus = []
+        for appel in list(appels if appels is not None else self.en_file.call_args_list):
+            with self.captureOnCommitCallbacks(execute=True):
+                rendus.append(task_relancer_conception(**appel.kwargs['kwargs']))
+        self.en_file.reset_mock()
+        return rendus
+
+    def test_dix_modifications_une_tache_puis_un_calcul(self):
+        from apps.ventes.conception.receivers import mettre_en_file
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        self._relancer(lead, company, _declencheur())  # conception à jour (version 1)
+        for i in range(10):
+            self._enregistrer(lead, facture_hiver=Decimal('1900') + i * 100)
+        self.assertEqual(self.en_file.call_count, 1)  # mutant « sans déduplication » : 10
+        self.assertGreater(self.en_file.call_args.kwargs['countdown'], 0)
+        self.assertEqual(ConceptionLead.objects.filter(lead=lead).count(), 1)  # rien dans la requête
+
+        self.assertEqual(self._executer_les_taches(), [{'version': 2, 'ecrite': True}])
+        courante = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual(courante.version, 2)
+        self.assertEqual(courante.entrees_utilisees['facture_hiver'], {'valeur': 2800.0, 'source': 'lead'})
+        self.assertEqual(courante.declencheur['origine'], 'lead_entrees_modifiees')
+        self.assertEqual(courante.declencheur['champs'],
+                         [{'champ': 'facture_hiver', 'avant': 1800.0, 'apres': 2800.0}])
+        self.assertIsNone(courante.calcule_par)
+
+        # Un événement sans changement d'empreinte : une tâche, aucune version.
+        self.assertEqual(mettre_en_file(company.pk, lead_id=lead.pk, origine='lead_entrees_modifiees',
+                                        champs=[{'champ': 'facture_hiver', 'avant': 2800, 'apres': 2800}]),
+                         'lancee')
+        self.assertEqual(self._executer_les_taches(), [{'version': 2, 'ecrite': False}])
+        self.assertEqual(ConceptionLead.objects.filter(lead=lead).count(), 2)
+        # Le marqueur est libéré : la modification suivante repart en file.
+        self._enregistrer(lead, facture_hiver=Decimal('3000'))
+        self.assertEqual(self.en_file.call_count, 1)
+
+    def test_import_de_dix_leads_un_calcul_par_lead(self):
+        from apps.crm.models import Lead
+        from apps.ventes.models import ConceptionLead
+
+        company, premier = self._residentiel(facture_hiver=Decimal('1800'))
+        _reglages_de_la_societe(company)
+        leads = [premier] + [Lead.objects.create(company=company, nom='Import', prenom=str(i),
+                                                 ville=premier.ville, facture_hiver=Decimal('1800'))
+                             for i in range(9)]
+        with self.captureOnCommitCallbacks(execute=True):
+            for lead in leads:  # l'import réécrit chaque fiche deux fois (une transaction)
+                lead.facture_hiver = Decimal('2200')
+                lead.save()
+                lead.facture_hiver = Decimal('2400')
+                lead.save()
+        self.assertEqual(self.en_file.call_count, 10)
+        self.assertEqual(sorted(a.kwargs['kwargs']['lead_id'] for a in self.en_file.call_args_list),
+                         sorted(lead.pk for lead in leads))
+        self.assertEqual(self._executer_les_taches(), [{'version': 1, 'ecrite': True}] * 10)
+        for lead in leads:
+            version = ConceptionLead.objects.get(lead=lead, courante=True)
+            self.assertEqual(version.entrees_utilisees['facture_hiver']['valeur'], 2400.0)
+
+    def test_pose_enregistree_relance_le_porteur_avec_sa_pose(self):
+        from apps.calepinage.models import Calepinage
+        from apps.ventes.models import ConceptionLead
+        from core.events import pose_enregistree
+
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'))
+        _reglages_de_la_societe(company)
+        calepinage = Calepinage.objects.create(company=company, lead_id=lead.pk, titre='Toit')
+        for _ in range(3):
+            pose_enregistree.send(sender='calepinage.Calepinage', company_id=company.pk,
+                                  calepinage_id=calepinage.pk, lead_id=lead.pk, empreinte_pose='p' * 64)
+        self.assertEqual(self.en_file.call_count, 1)
+        self.assertEqual(self._executer_les_taches(), [{'version': 1, 'ecrite': True}])
+        version = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual((version.calepinage_id, version.empreinte_pose), (calepinage.pk, 'p' * 64))
+        self.assertTrue(version.declencheur['raison'].endswith(' : pose enregistrée sur le calepinage'))
+        # Une fiche modifiée ensuite garde la pose connue (aucun aller-retour).
+        self._enregistrer(lead, facture_hiver=Decimal('2400'))
+        self._executer_les_taches()
+        suivante = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual((suivante.version, suivante.calepinage_id, suivante.empreinte_pose),
+                         (2, calepinage.pk, 'p' * 64))
+
+    def test_echec_de_la_file_ou_du_calcul_n_empeche_pas_l_enregistrement(self):
+        from apps.ventes.conception import service
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'))
+        self.en_file.side_effect = OSError('courtier injoignable')
+        with self.assertLogs('apps.ventes.conception.receivers', level='WARNING'):
+            self._enregistrer(lead, facture_hiver=Decimal('2000'))
+        lead.refresh_from_db()
+        self.assertEqual(lead.facture_hiver, Decimal('2000'))
+        self.en_file.side_effect = None
+        self._enregistrer(lead, facture_hiver=Decimal('2100'))  # le marqueur a été libéré
+        self.assertEqual(self.en_file.call_count, 2)
+        tache = mock.call(kwargs={'company_id': company.pk, 'lead_id': lead.pk, 'calepinage_id': None,
+                                  'origine': 'lead_entrees_modifiees', 'champs': [], 'empreinte_pose': None,
+                                  'jeton': None})
+        with mock.patch.object(service, 'relancer', side_effect=RuntimeError('moteur en panne')), \
+                self.assertLogs('apps.ventes.conception.receivers', level='ERROR'):
+            self.assertEqual(self._executer_les_taches([tache]), [None])
+        self.assertFalse(ConceptionLead.objects.filter(lead=lead).exists())
+
+    # ── ADEV140 — le filet d'empreinte à la lecture ─────────────────────────
+    def test_entree_changee_sans_evenement_perimee_puis_une_relance(self):
+        from apps.crm.models import Lead
+        from apps.ventes.models import ConceptionLead
+        from apps.ventes.selectors import conception_courante
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        self._relancer(lead, company, _declencheur())
+        self.assertFalse(conception_courante(company, lead.pk)['perimee'])  # à jour : rien en file
+        self.assertEqual(self.en_file.call_count, 0)
+
+        Lead.objects.filter(pk=lead.pk).update(facture_hiver=Decimal('2400'))  # écriture directe : aucun événement
+        avant = ConceptionLead.objects.count()
+        lue = conception_courante(company, lead.pk)
+        self.assertEqual((lue['perimee'], lue['version'], lue['declencheur']['origine']), (True, 1, 'remplissage'))
+        self.assertEqual(conception_courante(company, lead.pk)['perimee'], True)  # relire : toujours UNE tâche
+        self.assertEqual(self.en_file.call_count, 1)  # mutant « toujours perimee: false » : 0
+        self.assertEqual(self.en_file.call_args.kwargs['kwargs']['origine'], 'filet')
+        self.assertEqual(ConceptionLead.objects.count(), avant)  # la lecture n'écrit pas
+
+        self.assertEqual(self._executer_les_taches(), [{'version': 2, 'ecrite': True}])
+        relue = conception_courante(company, lead.pk)
+        self.assertEqual((relue['perimee'], relue['version'], relue['declencheur']['origine']), (False, 2, 'filet'))
+        self.assertEqual(relue['entrees_utilisees']['facture_hiver']['valeur'], 2400.0)
+        self.assertEqual(self.en_file.call_count, 0)
+
+
+# ── ADEV141 — remplir les conceptions des leads existants, liste d'abord ─────
+
+class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_utilisateur', '_residentiel',
+                                       '_ci', '_agricole', '_fiches_residentielles', '_site_isole', '_structures',
+                                       '_fiches_ci', '_cas'), TestCase):
+    """ADEV141 — ``manage.py remplir_conceptions`` : sans option, la LISTE
+    (rien n'est écrit) ; ``--appliquer`` range par l'écrivain unique, société
+    par société ; aucun devis n'est modifié ; rejouer n'écrit rien."""
+
+    def _commande(self, *args):
+        import io
+
+        from django.core.management import call_command
+
+        sortie = io.StringIO()
+        with self.captureOnCommitCallbacks(execute=True):
+            call_command('remplir_conceptions', *args, stdout=sortie)
+        return sortie.getvalue()
+
+    def test_liste_puis_appliquer_societe_isolee_aucun_devis_touche(self):
+        from django.utils import timezone
+
+        from apps.crm.models import Lead
+        from apps.ventes.models import ConceptionLead, Devis
+        from apps.ventes.services import build_devis_auto
+        from authentication.models import Company
+
+        company, premier = self._residentiel(facture_hiver=Decimal('1800'))
+        _reglages_de_la_societe(company)
+        situes = [premier] + [Lead.objects.create(company=company, nom='Situe', prenom=str(i), ville=premier.ville,
+                                                  facture_hiver=Decimal('1500') + i * 100) for i in range(6)]
+        sans_lieu = [Lead.objects.create(company=company, nom='SansLieu', prenom=str(i), ville='',
+                                         facture_hiver=Decimal('1800')) for i in range(3)]
+        autre = Company.objects.create(nom='Autre remplissage', slug='autre-remplissage-conception')
+        lead_b = Lead.objects.create(company=autre, nom='B', prenom='Lead', ville=premier.ville,
+                                     facture_hiver=Decimal('1800'))
+        devis = build_devis_auto(lead=premier, user=self._utilisateur(company), company=company)
+        Devis.objects.filter(pk=devis.pk).update(statut='envoye', date_envoi=timezone.now())
+        photo = _photo_devis(devis.pk)
+
+        liste = self._commande('--company', str(company.pk))
+        self.assertFalse(ConceptionLead.objects.exists(), liste)  # mutant « écrire sans --appliquer » : rouge
+        for lead in situes:
+            self.assertIn(f'lead #{lead.pk} [residentiel] option retenue : ', liste)
+        for lead in sans_lieu:
+            self.assertIn(f'lead #{lead.pk} [residentiel] REFUS localisation_inconnue (ville)', liste)
+        self.assertIn('LISTE : 7 conception(s) complète(s), 3 refus, 0 erreur(s)', liste)
+        self.assertNotIn(f'lead #{lead_b.pk} ', liste)
+
+        applique = self._commande('--company', str(company.pk), '--appliquer')
+        self.assertIn('APPLIQUÉ : 7 version(s) rangée(s), 0 inchangée(s), 3 sans ville ni GPS', applique)
+        rangees = ConceptionLead.objects.filter(company=company, courante=True)
+        self.assertEqual(set(rangees.values_list('lead_id', flat=True)), {lead.pk for lead in situes})
+        for version in rangees:
+            self.assertEqual((version.etat, version.declencheur['origine'], version.version),
+                             ('complet', 'remplissage', 1))
+        self.assertFalse(ConceptionLead.objects.filter(company=autre).exists())
+        self.assertEqual(_photo_devis(devis.pk), photo)  # le devis envoyé n'a pas bougé
+
+        rejoue = self._commande('--company', str(company.pk), '--appliquer')
+        self.assertIn('APPLIQUÉ : 0 version(s) rangée(s), 7 inchangée(s)', rejoue)
+        self.assertEqual(ConceptionLead.objects.filter(company=company).count(), 7)
+        self.assertEqual(_photo_devis(devis.pk), photo)
+
+
+# ── ADEV145 — PARITÉ : aucun devis envoyé ou accepté ne change ─────────────
+
+class DevisFigesInchangesTests(_emprunt(RelanceConceptionTests, '_relancer'), _emprunt(ServirConceptionTests, '_api'),
+                               _emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_utilisateur', '_residentiel',
+                                        '_ci', '_agricole', '_fiches_residentielles', '_site_isole', '_structures',
+                                        '_fiches_ci', '_cas'), TestCase):
+    """ADEV145 — un devis ``envoye`` ou ``accepte`` garde ``etude_params``,
+    ``electrical_design``, ses lignes et ses totaux octet pour octet quand le
+    moteur de son lead écrit une version nouvelle (règle du 08/10/2026,
+    D-ACAL-96) ; ``ecart_devis`` nomme la différence sans rien écrire."""
+
+    def test_envoye_et_accepte_inchanges_apres_une_relance_du_moteur(self):
+        from django.utils import timezone
+
+        from apps.crm.models import Lead
+        from apps.ventes.models import ConceptionLead, Devis
+        from apps.ventes.selectors import ecart_devis
+        from apps.ventes.services import build_devis_auto
+
+        figes = {}
+        company, premier = self._cas('res_conception_electrique')  # fiches complètes : conception électrique rangée
+        _reglages_de_la_societe(company)
+        user = self._utilisateur(company)
+        second = Lead.objects.create(company=company, nom='Second', prenom='Lead', ville=premier.ville,
+                                     facture_hiver=Decimal('1800'))
+        for statut, lead in (('envoye', premier), ('accepte', second)):
+            devis = build_devis_auto(lead=lead, user=user, company=company)
+            Devis.objects.filter(pk=devis.pk).update(statut=statut, date_envoi=timezone.now())
+            self._relancer(lead, company, _declencheur())
+            figes[statut] = (company, lead, devis.pk, _photo_devis(devis.pk))
+
+        for statut, (company, lead, devis_id, photo) in figes.items():
+            with self.subTest(statut=statut):
+                Lead.objects.filter(pk=lead.pk).update(facture_hiver=Decimal('3600'))
+                lead.refresh_from_db()
+                relance = self._relancer(lead, company, _declencheur(
+                    'lead_entrees_modifiees', facture_hiver=(Decimal('1800'), Decimal('3600'))))
+                self.assertEqual((relance.ecrite, relance.conception.version), (True, 2))
+                self.assertEqual(_ecarts_figeage(photo, _photo_devis(devis_id))[:12], [])  # mutant « suivre » : rouge
+                # Un nouveau devis automatique du même lead (brouillon) et la
+                # lecture de la conception ne touchent pas le figé non plus.
+                build_devis_auto(lead=lead, user=user, company=company)
+                self.assertEqual(self._api(user).get(URL_CONCEPTION % lead.pk).status_code, 200)
+                self.assertEqual(_ecarts_figeage(photo, _photo_devis(devis_id))[:12], [])
+                ecarts = ecart_devis(Devis.objects.get(pk=devis_id))
+                self.assertIn('nb_panneaux', {e['valeur'] for e in ecarts})
+                self.assertEqual(_photo_devis(devis_id), photo)
+                self.assertEqual(ConceptionLead.objects.filter(lead=lead).count(), 2)

@@ -953,3 +953,20 @@ def audit_coherence_nuit():
             'audit_coherence_nuit : %d règle(s) sans verdict — %s'
             % (len({e.get('rule') for e in report.rule_errors}), resume))
     return resume
+
+
+# ── ADEV139 (D-ACAL-97) — relance de la conception rangée, hors requête ─────
+# Mise en file par les abonnés de ``lead_entrees_modifiees`` / ``pose_enregistree``
+# (``conception/receivers.py``, dédupliquée par porteur) et par le filet
+# d'empreinte de la lecture ; jamais périodique (aucune entrée de beat). AUCUN
+# RETRY : ``relancer`` est idempotent (empreinte égale ⇒ rien n'est écrit) et
+# une relance ratée est rattrapée par le filet à la prochaine lecture.
+@shared_task(name='ventes.relancer_conception', acks_late=True, soft_time_limit=300, time_limit=360)
+def task_relancer_conception(company_id, lead_id=None, calepinage_id=None, origine='lead_entrees_modifiees',
+                             champs=None, empreinte_pose=None, jeton=None):
+    """Recalcule la conception du porteur (lead, sinon calepinage sans lead)
+    par l'écrivain unique ; ne prend que des identifiants, relus en base."""
+    from .conception.receivers import executer_relance
+
+    return executer_relance(company_id, lead_id=lead_id, calepinage_id=calepinage_id, origine=origine,
+                            champs=champs, empreinte_pose=empreinte_pose, jeton=jeton)

@@ -315,19 +315,30 @@ def _noter_conception_recalculee(sender, company_id=None, lead_id=None,
     lead = Lead.objects.filter(pk=lead_id, company_id=company_id).first()
     if lead is None:
         return
+    import re
+
+    from django.db import transaction
+
     raison = ((declencheur or {}).get('raison') or '').strip()
+    # Relecture m4 — la ligne du chatter porte déjà son heure : le préfixe
+    # « Recalculé le JJ/MM à H h MM : » de l'écrivain n'est pas redit.
+    raison = re.sub(r'^Recalculé le \d{2}/\d{2} à \d{1,2} h \d{2} : ', '', raison)
     if raison.lower().startswith('conception recalculée'):
         corps = raison
     else:
         corps = 'Conception recalculée : %s' % (raison or 'entrées modifiées')
-    if LeadActivity.objects.filter(
-            lead=lead, field='conception_version',
-            new_value=str(version)).exists():
-        return
-    journal_systeme(
-        company=lead.company, lead=lead, kind=LeadActivity.Kind.NOTE,
-        field='conception_version', field_label='Conception recalculée',
-        new_value=str(version), body=corps)
+    with transaction.atomic():
+        # Double livraison du même événement : le verrou de la ligne du lead
+        # sérialise les deux livraisons, la seconde voit la première ligne.
+        Lead.objects.select_for_update().filter(pk=lead.pk).values_list('pk', flat=True).first()
+        if LeadActivity.objects.filter(
+                lead=lead, field='conception_version',
+                new_value=str(version)).exists():
+            return
+        journal_systeme(
+            company=lead.company, lead=lead, kind=LeadActivity.Kind.NOTE,
+            field='conception_version', field_label='Conception recalculée',
+            new_value=str(version), body=corps)
 
 
 @receiver(devis_refused, dispatch_uid="crm_mark_lead_perdu_on_devis_refused")
@@ -574,23 +585,28 @@ def _emit_lead_created(sender, instance, created, **kwargs):
 # Un SEUL point de sauvegarde (``Lead.save``) voit toutes les portes d'écriture
 # du lead (fiche, cadence, API publique, doublons…). ``pre_save`` photographie
 # les colonnes d'entrée du moteur ; ``post_save`` compare et émet UN événement
-# par sauvegarde, après le commit. La liste des colonnes vient de
-# ``apps.ventes.conception.champs`` (constantes pures, ADEV130) — jamais copiée
-# ici. Nom, téléphone, notes, étape, responsable n'y figurent pas : rien n'est
+# par sauvegarde, après le commit. La liste des colonnes vient du sélecteur
+# de ventes ``champs_entrees`` (ADEV137, frontière M3 — relecture m3) — jamais
+# copiée ici. Nom, téléphone, notes, étape, responsable n'y figurent pas : rien n'est
 # émis pour eux. Un ``QuerySet.update`` ne passe pas par ``save`` : hors champ.
+
+_MARCHES_MOTEUR = ('residentiel', 'commercial', 'industriel', 'agricole')
+
 
 def _colonnes_entrees_du_lead():
     """Colonnes d'entrée (tous marchés) qui sont de vraies colonnes du lead."""
-    from apps.ventes.conception.champs import CHAMPS_ENTREES
     reelles = {f.name for f in Lead._meta.concrete_fields}
-    return sorted({c for liste in CHAMPS_ENTREES.values() for c in liste} & reelles)
+    return sorted(set().union(*(_colonnes_du_marche(m) for m in _MARCHES_MOTEUR)) & reelles)
 
 
 def _colonnes_du_marche(type_installation):
     """Colonnes d'entrée d'un marché (vide ⇒ résidentiel) ; inconnu ⇒ vide."""
-    from apps.ventes.conception.champs import CHAMPS_ENTREES
+    from apps.ventes.selectors import champs_entrees
     marche = (type_installation or '').strip().lower() or 'residentiel'
-    return set(CHAMPS_ENTREES.get(marche, ()))
+    try:
+        return set(champs_entrees(marche))
+    except KeyError:
+        return set()
 
 
 def _valeur_json(valeur):
@@ -605,6 +621,21 @@ def _valeur_json(valeur):
     if isinstance(valeur, dict):
         return {str(k): _valeur_json(v) for k, v in valeur.items()}
     return valeur
+
+
+def _differente(colonne, avant, apres):
+    """Relecture m2 — deux valeurs d'une colonne comparées APRÈS
+    ``to_python`` du champ (``Decimal('900.00')`` lu en base et ``900.0``
+    posé par un formulaire sont égales) ; ``None`` et ``''`` sont la même
+    absence."""
+    champ = Lead._meta.get_field(colonne)
+    try:
+        avant, apres = champ.to_python(avant), champ.to_python(apres)
+    except Exception:  # noqa: BLE001 — valeur illisible : comparaison brute (D-ENF22-BLE001)
+        logger.debug('ALEA68 : %s non normalisée', colonne, exc_info=True)
+    if avant in (None, '') and apres in (None, ''):
+        return False
+    return avant != apres
 
 
 @receiver(pre_save, sender=Lead, dispatch_uid='crm_photo_entrees_moteur')
@@ -640,7 +671,7 @@ def _emit_lead_entrees_modifiees(sender, instance, created, raw=False,
             {'champ': c, 'avant': _valeur_json(avant[c]),
              'apres': _valeur_json(getattr(instance, c))}
             for c in sorted(pertinentes)
-            if c in avant and avant[c] != getattr(instance, c)
+            if c in avant and _differente(c, avant[c], getattr(instance, c))
         ]
         if not champs:
             return

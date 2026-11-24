@@ -39,6 +39,10 @@ ON_DEMAND_ALLOWLIST = {
     # après le commit d'une acceptation (``transaction.on_commit`` dans
     # ``domain/pdf_signe.py``) : jamais périodique, une signature le déclenche.
     'ventes.rendre_pdf_signe',
+    # ADEV139 (D-ACAL-97) — relance de la conception rangée : mise en file par
+    # les abonnés de ``lead_entrees_modifiees`` / ``pose_enregistree`` et par le
+    # filet d'empreinte de la lecture ; jamais périodique.
+    'ventes.relancer_conception',
     # ENG18 — génération de variantes créatives : déclenchée à la demande
     # depuis la bibliothèque créative (jamais périodique).
     'adsengine.generate_creative_variants',
