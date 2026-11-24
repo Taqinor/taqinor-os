@@ -1806,3 +1806,80 @@ class ServirConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
         client = Client.objects.create(company=company, nom='Client AO')
         dossier = Calepinage.objects.create(company=company, client=client, appel_offre_id=3, titre='AO')
         self.assertEqual(api.post(URL_APERCU, {'calepinage': dossier.pk}, format='json').status_code, 409)
+
+
+# ── ADEV138 — PARITÉ STOCKÉE : ce que relancer RANGE = ce qu'écrit le devis auto ─
+#
+# Pour chaque golden de ``FigeageDevisAutoTests`` (même fabrique ``_cas``) : les
+# ``blocs`` RELUS en base après ``relancer`` égalent, clé par clé, l'``etude_params``
+# du golden ET celui d'un devis automatique fraîchement écrit (mêmes
+# normalisations, sans les notes vendeur ``journal_auto`` que la version ne
+# range pas) ; la taille et le module de chaque option égalent les lignes
+# panneau du golden. Un écart nomme la première clé fautive ; aucun golden
+# n'est réécrit.
+
+def _sans_journal(etude_params):
+    return {cle: valeur for cle, valeur in etude_params.items() if cle != 'journal_auto'}
+
+
+def _panneaux_de_l_option(golden, option):
+    lignes = [li for li in golden['lignes'] if (li['produit_nom'] or '').startswith('Panneau')
+              and not li['optionnelle'] and (li['variante'] or '') in ('', option)]
+    return sum(int(float(li['quantite'])) for li in lignes), sorted({li['designation'] for li in lignes})
+
+
+class PariteStockeeTests(_emprunt(RelanceConceptionTests, '_relancer'),
+                         _emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_utilisateur', '_residentiel',
+                                  '_ci', '_agricole', '_fiches_residentielles', '_site_isole', '_structures',
+                                  '_fiches_ci', '_cas'), TestCase):
+    """ADEV138 — la version rangée par ``relancer`` = le devis automatique."""
+
+    def _parite_stockee(self, nom):
+        from types import SimpleNamespace
+
+        from apps.ventes.models import ConceptionLead
+        from apps.ventes.services import build_devis_auto
+
+        appel = dict(APPELS_FIGEAGE.get(nom, {}))
+        company, lead = self._cas(nom)
+        _reglages_de_la_societe(company)
+        toit = (SimpleNamespace(empreinte='', plafond_panneaux=appel['plafond_toit'])
+                if 'plafond_toit' in appel else None)
+        relance = self._relancer(lead, company, _declencheur(), toit=toit)
+        rangee = ConceptionLead.objects.get(pk=relance.conception.pk)
+        self.assertEqual(rangee.etat, 'complet', rangee.refus)
+        self.assertEqual(_cles_interdites(rangee.blocs) + _cles_interdites(rangee.valeurs), [])
+        stockes = json.loads(json.dumps(_normaliser_figeage(rangee.blocs), default=str))
+
+        golden = json.loads((DOSSIER_FIGEAGE / f'{nom}.json').read_text(encoding='utf-8'))
+        ecarts = _ecarts_figeage(_sans_journal(golden['etude_params']), stockes, '$.blocs')
+        self.assertEqual(ecarts, [], f'{nom} : rangé ≠ golden, première clé : {ecarts[0] if ecarts else ""}\n'
+                                     + '\n'.join(ecarts[:20]))
+
+        if appel.pop('journal', False):
+            appel['journal_auto'] = {}
+        devis = build_devis_auto(lead=lead, user=self._utilisateur(company), company=company, **appel)
+        frais = json.loads(json.dumps(_photo_du_devis(devis)['etude_params'], default=str))
+        ecarts = _ecarts_figeage(_sans_journal(frais), stockes, '$.blocs')
+        self.assertEqual(ecarts, [], f'{nom} : rangé ≠ devis frais, première clé : {ecarts[0] if ecarts else ""}\n'
+                                     + '\n'.join(ecarts[:20]))
+
+        for option, valeurs in rangee.valeurs.items():
+            with self.subTest(cas=nom, option=option):
+                nombre, designations = _panneaux_de_l_option(golden, option)
+                self.assertEqual(valeurs['nb_panneaux']['valeur'], nombre)
+                if rangee.marche != 'agricole':
+                    self.assertEqual([valeurs['module']['valeur']], designations)
+
+
+def _test_de_parite_stockee(nom):
+    def test(self):
+        if nom in HORS_PARITE:  # exclusion VISIBLE, même raison que la parité du moteur
+            self.skipTest(HORS_PARITE[nom])
+        self._parite_stockee(nom)
+    test.__doc__ = f'ADEV138 — parité STOCKÉE de la conception avec le golden « {nom} ».'
+    return test
+
+
+for _nom in sorted(PARITE + tuple(HORS_PARITE)):
+    setattr(PariteStockeeTests, f'test_parite_stockee_{_nom}', _test_de_parite_stockee(_nom))
