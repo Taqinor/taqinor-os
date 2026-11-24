@@ -348,6 +348,37 @@ export function refusAutoRemplirPompage(donnees) {
   return `Auto-remplir indisponible — kit incomplet (${causes.join(' ; ')}).`
 }
 
+const nombreFr = (v) => (Number.isFinite(Number(v)) && v !== null && v !== ''
+  ? String(Math.round(Number(v) * 10) / 10).replace('.', ',') : null)
+
+/**
+ * T4-U3-004 — aucune pompe CHIFFRABLE (le serveur pose un placeholder) alors
+ * que des pompes à courbe conviennent sans prix : la pompe que retiendrait le
+ * dimensionnement est la PREMIÈRE de `prix_a_renseigner` (liste servie du plus
+ * petit au plus gros kW, `core/pompage/selection.py::choisir_pompe`). Le
+ * message la nomme, dit pourquoi, et dit QUI peut saisir son prix : le droit
+ * « Modifier les prix du catalogue » (`catalogue_prix_modifier`,
+ * apps/roles/permissions_registre.py — Directeur et Administrateur par
+ * défaut). `null` quand une pompe est chiffrée ou que rien ne manque.
+ */
+export function messagePompeSansPrix(donnees) {
+  const d = donnees || {}
+  const noms = Array.isArray(d.prix_a_renseigner) ? d.prix_a_renseigner.filter(Boolean) : []
+  if (!d.pompe?.placeholder || !noms.length) return null
+  const [retenue, ...autres] = noms
+  const debit = nombreFr(d.conception?.debit_conception_m3h)
+  const hmt = nombreFr(d.hmt?.valeur_m)
+  const pourquoi = debit && hmt
+    ? `c'est la plus petite pompe de la courbe qui donne ${debit} m³/h à ${hmt} m`
+    : "c'est la plus petite pompe de la courbe qui couvre ce besoin"
+  return `Pompe retenue par le dimensionnement : « ${retenue} » — ${pourquoi}. `
+    + "Son prix de vente n'est pas saisi, elle ne peut donc pas être chiffrée. "
+    + 'Seul un utilisateur qui a le droit « Modifier les prix du catalogue » '
+    + '(par défaut Directeur ou Administrateur) peut saisir ce prix dans Stock : '
+    + 'demandez-le-lui.'
+    + (autres.length ? ` Autres pompes qui conviendraient, aussi sans prix : ${autres.join(', ')}.` : '')
+}
+
 /** AGQ26 (C-AGQ-025) — le site du lead pour l'aperçu : ville de calcul + GPS, jamais inventés. */
 export function siteDuLead(villeCalcul, lead) {
   return { ville: villeCalcul || '', lat: lead?.gps_lat ?? '', lon: lead?.gps_lng ?? '' }

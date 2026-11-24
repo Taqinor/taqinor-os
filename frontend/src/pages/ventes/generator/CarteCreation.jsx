@@ -12,6 +12,7 @@ import { GenCardHeader } from './CarteMetrique'
 import { FileText, RotateCcw, StickyNote, Sun } from 'lucide-react'
 import { formatMoney } from '../../../features/ventes/solar'
 import { erreursBloquantes } from '../../../features/ventes/quote/etatDevis'
+import { messagePompeSansPrix } from '../../../features/ventes/etudePompagePreviewPur'
 
 export default function CarteCreation({
   embedded, clients, saving, errors, warnings, cancel, editDevis, superieurBusy, superieurMsg,
@@ -116,12 +117,12 @@ export default function CarteCreation({
               : 'Vérifiez les informations ci-dessus puis créez le devis. Le PDF '
                 + 'premium 3 pages se génère ensuite depuis la liste des devis (bouton « PDF »).'}
           </p>
-          {modeInstallation === 'agricole' && (apercuPompage?.donnees?.prix_a_renseigner || []).length > 0 && (
+          {/* T4-U3-004 — la pompe que retient le dimensionnement, pourquoi, et
+              QUI peut saisir son prix (jamais une liste sans suite). */}
+          {modeInstallation === 'agricole' && messagePompeSansPrix(apercuPompage?.donnees) && (
             <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
                  data-testid="pompage-prix-a-renseigner">
-              Attention : seules des pompes <strong>sans prix renseigné</strong> conviennent
-              ({apercuPompage.donnees.prix_a_renseigner.join(', ')}). Aucune pompe ne sera chiffrée
-              au devis tant que leur prix n'est pas saisi dans Stock.
+              {messagePompeSansPrix(apercuPompage.donnees)}
             </div>
           )}
           {superieurMsg && (
