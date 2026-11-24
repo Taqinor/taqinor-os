@@ -3,7 +3,8 @@
 Portée : société de l'utilisateur ET portée de rôle de la fiche chantier
 (``views._get_chantier_or_404``) — un acte d'une autre société, ou d'un
 chantier hors portée, répond 404. Lecture : ``LectureChantiersOuVentes`` ;
-écriture : + ``IsResponsableOrAdmin`` ; modèle de la société : Directeur.
+écriture : + ``IsResponsableOrAdmin`` + le code de grille ``installation_gerer`` ;
+modèle de la société : Directeur.
 Refus servis ``{detail, code}`` (409 refus d'état, 400 corps invalide).
 """
 from django.http import Http404, HttpResponse
@@ -14,6 +15,7 @@ from rest_framework.permissions import SAFE_METHODS, BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.roles.permissions import DroitDeLaGrille
 from authentication.permissions import IsResponsableOrAdmin
 
 from .contrats import selectors, services
@@ -31,6 +33,10 @@ PARAM_LANGUE = OpenApiParameter(
                 "arabe).")
 _ERREURS = {400: ErreurActeSerializer, 404: ErreurActeSerializer,
             409: ErreurActeSerializer}
+#: Code de la grille des écritures d'un acte : celui des chantiers (un acte
+#: est un document du chantier) — décocher « Modifier » dans l'éditeur de
+#: rôles retire le geste.
+CODE_ECRITURE = 'installation_gerer'
 
 
 class EstDirecteur(BasePermission):
@@ -101,7 +107,8 @@ class DossierContractuelView(APIView):
 
 
 class _ActeVue(APIView):
-    permission_classes = [LectureChantiersOuVentes, IsResponsableOrAdmin]
+    permission_classes = [LectureChantiersOuVentes, IsResponsableOrAdmin,
+                          DroitDeLaGrille(CODE_ECRITURE)]
 
 
 class ActeDetailView(APIView):
@@ -111,7 +118,8 @@ class ActeDetailView(APIView):
     def get_permissions(self):
         if self.request.method in SAFE_METHODS:
             return [LectureChantiersOuVentes()]
-        return [LectureChantiersOuVentes(), IsResponsableOrAdmin()]
+        return [LectureChantiersOuVentes(), IsResponsableOrAdmin(),
+                DroitDeLaGrille(CODE_ECRITURE)()]
 
     @extend_schema(parameters=[PARAM_LANGUE],
                    responses={200: DetailActeSerializer, **_ERREURS})

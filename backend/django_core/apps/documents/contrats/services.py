@@ -53,12 +53,12 @@ def preparer_dossier(chantier, user=None):
     Idempotent. Rend la liste des actes du dossier."""
     if chantier is None or chantier.company_id is None:
         return []
-    Acte = _modele_acte()
+    from ..models import ActeContractuel
     with transaction.atomic():
         for type_acte, variante, _rang in T.LIGNES_DOSSIER:
             reference = K.reference_acte(type_acte, chantier.reference,
                                          chantier.pk)
-            acte, cree = Acte.objects.get_or_create(
+            acte, cree = ActeContractuel.objects.get_or_create(
                 company=chantier.company, chantier=chantier, type=type_acte,
                 variante=variante,
                 defaults={'reference': reference, 'created_by': user})
@@ -76,7 +76,7 @@ def preparer_dossier(chantier, user=None):
                 champs.append('reference')
             if champs:
                 acte.save(update_fields=champs + ['updated_at'])
-    return list(Acte.objects.filter(
+    return list(ActeContractuel.objects.filter(
         company=chantier.company, chantier=chantier).order_by('id'))
 
 
@@ -223,8 +223,10 @@ def emettre(acte, user=None):
 
 def rouvrir(acte, user=None):
     """Émis (non signé) → brouillon ; la ré-émission portera ``version + 1``."""
+    from ..models import ActeContractuel
     with transaction.atomic():
-        acte = _verrouiller(acte)
+        acte = (ActeContractuel.objects.select_for_update(of=('self',))
+                .select_related('chantier').get(pk=acte.pk))
         _garde_chantier(acte)
         if acte.statut == T.SIGNE:
             raise ErreurActe(T.CODE_DEJA_SIGNE,

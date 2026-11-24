@@ -872,20 +872,11 @@ def _modalites_texte(contenu):
         '_modalites') or None
 
 
-def _construire(acte, langue='fr', lecture=None, *, avec_modele=True,
-                avec_acte=True):
-    if langue not in T.LANGUES:
-        raise ValueError(f'Langue inconnue : {langue!r}')
+def _contenu_vivant(acte, langue, lecture, vente, refs):
+    """Le squelette vivant d'un acte : identités, système, prix, options."""
     chantier = acte.chantier
-    lecture = lecture or Lecture(chantier)
-    type_acte, variante = acte.type, acte.variante or ''
-    textes = _textes(langue)
-    vente = lecture.vente()
     societe = _bloc_societe(lecture)
     client = _bloc_client(chantier)
-    refs = {t: reference_acte(t, chantier.reference, chantier.pk)
-            for t in T.TYPES}
-
     contenu = {
         'schema': SCHEMA, 'langue': langue, 'version': acte.version,
         'titre': '', 'lieu': chantier.site_ville or '',
@@ -897,94 +888,124 @@ def _construire(acte, langue='fr', lecture=None, *, avec_modele=True,
         'conditions_particulieres': '',
         'signatures': {'client': None, 'societe': None},
         'options': _options_defaut(client, chantier),
-        'type': type_acte, 'variante': variante,
-        'reference': refs[type_acte],
+        'type': acte.type, 'variante': acte.variante or '',
+        'reference': refs[acte.type],
     }
-    if type_acte == T.LIVRAISON:
+    if acte.type == T.LIVRAISON:
         contenu['livraison'] = _livraison_defaut(chantier, langue)
-    if type_acte == T.RECEPTION:
+    if acte.type == T.RECEPTION:
         contenu['reception'] = {
             'date_mise_en_service': _iso(chantier.date_mise_en_service),
             'prononcee': False, 'delai_levee_reserves': ''}
-    if type_acte == T.CLOTURE:
+    if acte.type == T.CLOTURE:
         contenu['sav'] = {'telephone': societe['telephone'], 'whatsapp': '',
                           'email': societe['email'], 'horaires': ''}
+    return contenu
 
-    # 1. Sections communes : modèle « contrat » (signataire des quatre actes),
-    #    modèle du type, puis l'acte — toujours les surcharges françaises.
-    modele_contrat = lecture.modele(T.CONTRAT) if avec_modele else None
-    modele = lecture.modele(type_acte) if avec_modele else None
+
+def _appliquer_modeles_communs(contenu, acte, modele_contrat, modele,
+                               avec_acte):
+    """Sections communes : modèle « contrat » (signataire des quatre actes),
+    modèle du type, puis l'acte — toujours les surcharges françaises. Rend
+    la date limite fixée à la main, s'il y en a une."""
     if modele_contrat is not None:
         rep = ((modele_contrat.surcharges or {}).get('societe') or {})
         if isinstance(rep, dict) and not _vide(rep.get('representant')):
-            societe['representant'] = rep['representant']
+            contenu['societe']['representant'] = rep['representant']
     for objet in (modele, acte if avec_acte else None):
         if objet is not None:
             _appliquer_communes(contenu, objet.surcharges)
-    date_fixee = contenu.pop('_date_limite_fixee', None)
+    return contenu.pop('_date_limite_fixee', None)
 
-    # 2. Valeurs dérivées (situation de paiement, délais, garanties).
-    etats, paiement = situation(type_acte, variante, vente)
-    modalites = _modalites(lecture, langue)
-    if type_acte in (T.CONTRAT, T.LIVRAISON, T.RECEPTION, T.CLOTURE):
-        contenu['echeancier'] = _echeancier(vente, etats, langue)
+
+def _engagement(societe, langue):
+    nom = societe.get('nom_court') or societe.get('nom') or ''
+    if langue == 'ar':
+        return f'يُقرّ الزبون بأنه مدين بهذا المبلغ لـ {nom} برسم رصيد الثمن.'
+    return (f'Le Client reconnaît devoir cette somme à {nom} au titre du '
+            f'solde du prix.')
+
+
+def _bloc_paiement(contenu, paiement, modalites, langue, chantier):
+    """La section ``paiement`` (et ``reception`` de la clôture) selon le type
+    d'acte, depuis la situation calculée — aucun montant recalculé ici."""
+    type_acte = contenu['type']
+    p = paiement or {}
     if type_acte == T.CONTRAT:
+        return {'modalites': modalites}
+    if type_acte == T.CLOTURE:
+        contenu['reception'] = {'date': _iso(chantier.date_reception)}
+        return {k: p.get(k) for k in ('total_regle', 'pourcentage_regle',
+                                      'exigible_maintenant', 'reste_a_regler')}
+    bloc = {
+        'total_regle': p.get('total_regle'),
+        'pourcentage_regle': p.get('pourcentage_regle'),
+        'exigible_maintenant': p.get('exigible_maintenant'),
+        'exigible_en_lettres': _lettres(p.get('exigible_maintenant'), langue),
+        'restera_ensuite': p.get('restera_ensuite'),
+        'reste_a_regler': p.get('reste_a_regler'),
+    }
+    if type_acte == T.RECEPTION:
+        bloc['engagement'] = _engagement(contenu['societe'], langue)
+    bloc['modalites'] = modalites
+    return bloc
+
+
+def _sections_derivees(contenu, acte, lecture, vente, langue, date_fixee):
+    """Échéancier et état des tranches, délais, paiement, garanties."""
+    chantier = acte.chantier
+    etats, paiement = situation(acte.type, acte.variante or '', vente)
+    contenu['echeancier'] = _echeancier(vente, etats, langue)
+    if acte.type == T.CONTRAT:
         contenu['delais'] = _delais(
             contenu['date_document'],
             contenu['options'].get('delai_execution_jours'), date_fixee,
             langue)
-        contenu['paiement'] = {'modalites': modalites}
-    elif type_acte in (T.LIVRAISON, T.RECEPTION):
-        p = paiement or {}
-        contenu['paiement'] = {
-            'total_regle': p.get('total_regle'),
-            'pourcentage_regle': p.get('pourcentage_regle'),
-            'exigible_maintenant': p.get('exigible_maintenant'),
-            'exigible_en_lettres': _lettres(p.get('exigible_maintenant'),
-                                            langue),
-            'restera_ensuite': p.get('restera_ensuite'),
-            'reste_a_regler': p.get('reste_a_regler'),
-        }
-        if type_acte == T.RECEPTION:
-            nom = societe.get('nom_court') or societe.get('nom') or ''
-            contenu['paiement']['engagement'] = (
-                f'يُقرّ الزبون بأنه مدين بهذا المبلغ لـ {nom} برسم رصيد الثمن.'
-                if langue == 'ar' else
-                f'Le Client reconnaît devoir cette somme à {nom} au titre du '
-                f'solde du prix.')
-        contenu['paiement']['modalites'] = modalites
-    else:
-        p = paiement or {}
-        contenu['reception'] = {'date': _iso(chantier.date_reception)}
-        contenu['paiement'] = {
-            'total_regle': p.get('total_regle'),
-            'pourcentage_regle': p.get('pourcentage_regle'),
-            'exigible_maintenant': p.get('exigible_maintenant'),
-            'reste_a_regler': p.get('reste_a_regler'),
-        }
-    if type_acte in (T.CONTRAT, T.CLOTURE):
+    contenu['paiement'] = _bloc_paiement(
+        contenu, paiement, _modalites(lecture, langue), langue, chantier)
+    if acte.type in (T.CONTRAT, T.CLOTURE):
         garanties = _garanties_vente(lecture, langue)
-        garanties.append(_garantie_installation(chantier, societe, langue))
+        garanties.append(_garantie_installation(chantier, contenu['societe'],
+                                                langue))
         contenu['garanties'] = garanties
 
-    # 3. Textes par défaut de la langue.
-    _textes_par_defaut(contenu, textes, vente, langue, refs)
 
-    # 4. Textes personnalisés : modèle de la société puis acte.
-    if modele is not None:
-        _appliquer_textes(contenu, _surcharges_texte(modele, langue), langue,
-                          modele=True)
-    if avec_acte:
-        _appliquer_textes(contenu, _surcharges_texte(acte, langue), langue)
+def _finaliser(contenu):
+    """Clés stables des garanties, dates de fin (clôture), drapeaux internes
+    retirés."""
     if 'garanties' in contenu:
         _completer_cles_garanties(contenu['garanties'])
-        depart = (contenu.get('reception') or {}).get('date') \
-            if type_acte == T.CLOTURE else None
+        depart = ((contenu.get('reception') or {}).get('date')
+                  if contenu['type'] == T.CLOTURE else None)
         _dater_garanties(contenu['garanties'], depart)
     if 'delais' in contenu:
         contenu['delais'].pop('_resume', None)
         contenu['delais'].pop('_detail', None)
     return contenu
+
+
+def _construire(acte, langue='fr', lecture=None, *, avec_modele=True,
+                avec_acte=True):
+    if langue not in T.LANGUES:
+        raise ValueError(f'Langue inconnue : {langue!r}')
+    chantier = acte.chantier
+    lecture = lecture or Lecture(chantier)
+    vente = lecture.vente()
+    refs = {t: reference_acte(t, chantier.reference, chantier.pk)
+            for t in T.TYPES}
+    contenu = _contenu_vivant(acte, langue, lecture, vente, refs)
+    modele_contrat = lecture.modele(T.CONTRAT) if avec_modele else None
+    modele = lecture.modele(acte.type) if avec_modele else None
+    date_fixee = _appliquer_modeles_communs(contenu, acte, modele_contrat,
+                                            modele, avec_acte)
+    _sections_derivees(contenu, acte, lecture, vente, langue, date_fixee)
+    _textes_par_defaut(contenu, _textes(langue), vente, langue, refs)
+    if modele is not None:
+        _appliquer_textes(contenu, _surcharges_texte(modele, langue), langue,
+                          modele=True)
+    if avec_acte:
+        _appliquer_textes(contenu, _surcharges_texte(acte, langue), langue)
+    return _finaliser(contenu)
 
 
 def _completer_cles_garanties(garanties):
@@ -1124,158 +1145,185 @@ def _dict_permis(valeur, section, cles):
     return {k: v for k, v in valeur.items() if k in cles}
 
 
-def _valider_section(type_acte, section, valeur, langue):
-    if section in ('titre', 'conditions_particulieres', 'conseils_intro',
-                   'lieu'):
-        return _texte(valeur, section)
-    if section == 'date_document':
-        return _date_texte(valeur, section)
-    if section in ('reserves', 'quitus', 'entretien'):
-        return _liste_textes(valeur, section)
-    if section == 'societe':
-        v = _dict_permis(valeur, section, T.CLES_SOCIETE)
-        _exiger(isinstance(v.get('representant', ''), str),
-                'Section « societe » : texte attendu pour le représentant.')
-        return v
-    if section == 'delais':
-        v = _dict_permis(valeur, section, T.CLES_DELAIS if langue == 'fr'
-                         else T.CLES_DELAIS_AR)
-        if 'date_limite' in v:
-            v['date_limite'] = _date_texte(v['date_limite'], section)
-        for k in ('resume', 'detail'):
-            if k in v and v[k] is not None:
-                _texte(v[k], section)
-        return v
-    if section == 'livraison':
-        v = _dict_permis(valeur, section, T.CLES_LIVRAISON)
-        if 'date' in v:
-            v['date'] = _date_texte(v['date'], section)
-        for k in ('suite', 'suite_detail'):
-            if k in v and v[k] is not None:
-                _texte(v[k], section)
-        if 'avec_series' in v:
-            _exiger(isinstance(v['avec_series'], bool),
-                    'Section « livraison » : vrai ou faux attendu.')
-        return v
-    if section == 'reception':
-        v = _dict_permis(valeur, section, T.CLES_RECEPTION)
-        if 'date_mise_en_service' in v:
-            v['date_mise_en_service'] = _date_texte(
-                v['date_mise_en_service'], section)
-        if 'prononcee' in v:
-            _exiger(isinstance(v['prononcee'], bool),
-                    'Section « reception » : vrai ou faux attendu.')
-        if v.get('delai_levee_reserves') is not None:
-            _texte(v['delai_levee_reserves'], section)
-        return v
-    if section == 'sav':
-        v = _dict_permis(valeur, section, T.CLES_SAV)
-        for k, x in v.items():
-            if x is not None:
-                _texte(x, section)
-        return v
-    if section == 'paiement':
-        _exiger(isinstance(valeur, dict), 'Section « paiement » : objet attendu.')
-        montants = [k for k in valeur if k not in T.CLES_PAIEMENT_TEXTE]
-        _exiger(not montants,
+def _textes_du_dict(v, cles, section):
+    for k in cles:
+        if v.get(k) is not None:
+            _texte(v[k], section)
+    return v
+
+
+def _booleen(v, cle, section):
+    if cle in v and v[cle] is not None:
+        _exiger(isinstance(v[cle], bool),
+                f'Section « {section} » : vrai ou faux attendu ({cle}).')
+
+
+def _v_societe(valeur, langue):
+    v = _dict_permis(valeur, 'societe', T.CLES_SOCIETE)
+    return _textes_du_dict(v, T.CLES_SOCIETE, 'societe')
+
+
+def _v_delais(valeur, langue):
+    v = _dict_permis(valeur, 'delais', T.CLES_DELAIS if langue == 'fr'
+                     else T.CLES_DELAIS_AR)
+    if 'date_limite' in v:
+        v['date_limite'] = _date_texte(v['date_limite'], 'delais')
+    return _textes_du_dict(v, ('resume', 'detail'), 'delais')
+
+
+def _v_livraison(valeur, langue):
+    v = _dict_permis(valeur, 'livraison', T.CLES_LIVRAISON)
+    if 'date' in v:
+        v['date'] = _date_texte(v['date'], 'livraison')
+    _booleen(v, 'avec_series', 'livraison')
+    return _textes_du_dict(v, ('suite', 'suite_detail'), 'livraison')
+
+
+def _v_reception(valeur, langue):
+    v = _dict_permis(valeur, 'reception', T.CLES_RECEPTION)
+    if 'date_mise_en_service' in v:
+        v['date_mise_en_service'] = _date_texte(
+            v['date_mise_en_service'], 'reception')
+    _booleen(v, 'prononcee', 'reception')
+    return _textes_du_dict(v, ('delai_levee_reserves',), 'reception')
+
+
+def _v_sav(valeur, langue):
+    v = _dict_permis(valeur, 'sav', T.CLES_SAV)
+    return _textes_du_dict(v, T.CLES_SAV, 'sav')
+
+
+def _v_paiement(valeur, langue):
+    _exiger(isinstance(valeur, dict), 'Section « paiement » : objet attendu.')
+    montants = [k for k in valeur if k not in T.CLES_PAIEMENT_TEXTE]
+    _exiger(not montants,
+            "Les montants ne se modifient pas dans un acte : corrigez "
+            "l'échéancier de la vente (" + ', '.join(sorted(montants)) + ').')
+    return _textes_du_dict(dict(valeur), T.CLES_PAIEMENT_TEXTE, 'paiement')
+
+
+def _v_options(valeur, langue):
+    v = _dict_permis(valeur, 'options', T.CLES_OPTIONS)
+    for k in ('consommateur', 'reserve_propriete', 'raccorde_reseau'):
+        _booleen(v, k, 'options')
+    if 'delai_execution_jours' in v:
+        v['delai_execution_jours'] = _entier(v['delai_execution_jours'],
+                                             'options')
+    if v.get('penalite_retard_pct') is not None:
+        d = _d(str(v['penalite_retard_pct']).replace(',', '.'))
+        _exiger(d is not None and d.is_finite() and ZERO <= d <= 100,
+                'Option « penalite_retard_pct » : pourcentage entre 0 et 100 '
+                'attendu.')
+        v['penalite_retard_pct'] = f'{d.normalize():f}'
+    return v
+
+
+def _v_echeancier_textes(valeur, langue):
+    _exiger(isinstance(valeur, dict),
+            'Section « echeancier_textes » : objet attendu.')
+    sortie = {}
+    for cle, mots in valeur.items():
+        _exiger(isinstance(mots, dict),
+                'Section « echeancier_textes » : objet attendu par tranche.')
+        _exiger(all(k in ('exigibilite', 'note') for k in mots),
                 "Les montants ne se modifient pas dans un acte : corrigez "
-                "l'échéancier de la vente (" + ', '.join(sorted(montants)) + ').')
-        for x in valeur.values():
-            if x is not None:
-                _texte(x, section)
-        return dict(valeur)
-    if section == 'options':
-        v = _dict_permis(valeur, section, T.CLES_OPTIONS)
-        for k in ('consommateur', 'reserve_propriete', 'raccorde_reseau'):
-            if k in v and v[k] is not None:
-                _exiger(isinstance(v[k], bool),
-                        f'Option « {k} » : vrai ou faux attendu.')
-        if 'delai_execution_jours' in v:
-            v['delai_execution_jours'] = _entier(
-                v['delai_execution_jours'], 'options')
-        if 'penalite_retard_pct' in v and v['penalite_retard_pct'] is not None:
-            d = _d(str(v['penalite_retard_pct']).replace(',', '.'))
-            _exiger(d is not None and d.is_finite() and ZERO <= d <= 100,
-                    'Option « penalite_retard_pct » : pourcentage entre 0 et '
-                    '100 attendu.')
-            v['penalite_retard_pct'] = f'{d.normalize():f}'
-        return v
-    if section == 'echeancier_textes':
-        _exiger(isinstance(valeur, dict),
-                'Section « echeancier_textes » : objet attendu.')
-        sortie = {}
-        for cle, mots in valeur.items():
-            _exiger(isinstance(mots, dict),
-                    'Section « echeancier_textes » : objet attendu par tranche.')
-            interdits = [k for k in mots if k not in ('exigibilite', 'note')]
-            _exiger(not interdits,
-                    "Les montants ne se modifient pas dans un acte : corrigez "
-                    "l'échéancier de la vente.")
-            sortie[str(cle)] = {k: _texte(v, section) for k, v in mots.items()
-                                if v is not None}
-        return sortie
-    if section == 'articles':
-        _exiger(isinstance(valeur, list),
-                'Section « articles » : liste attendue.')
-        sortie = []
-        for a in valeur:
-            _exiger(isinstance(a, dict),
-                    'Section « articles » : un objet par article attendu.')
-            cle = a.get('cle')
-            _exiger(cle is None or isinstance(cle, str),
-                    'Section « articles » : clé texte attendue.')
-            entree = {'cle': cle or ''}
-            if 'titre' in a or 'paragraphes' in a:
-                entree['titre'] = _texte(a.get('titre') or '', section)
-                entree['paragraphes'] = _liste_textes(
-                    a.get('paragraphes') or [], section)
-            sortie.append(entree)
-        n = 1
-        prises = {a['cle'] for a in sortie if a['cle']}
-        for a in sortie:
-            if not a['cle']:
-                while f'perso_{n}' in prises:
-                    n += 1
-                a['cle'] = f'perso_{n}'
-                prises.add(a['cle'])
-        return sortie
-    if section == 'constats':
-        _exiger(isinstance(valeur, list),
-                'Section « constats » : liste attendue.')
-        sortie = []
-        for k in valeur:
-            _exiger(isinstance(k, dict) and isinstance(k.get('texte'), str),
-                    'Section « constats » : {texte, cochee} attendu.')
-            sortie.append({'texte': k['texte'], 'cochee': bool(k.get('cochee'))})
-        return sortie
-    if section == 'conseils':
-        _exiger(isinstance(valeur, list),
-                'Section « conseils » : liste attendue.')
-        sortie = []
-        for k in valeur:
-            _exiger(isinstance(k, dict), 'Section « conseils » : objet attendu.')
-            sortie.append({c: _texte(k.get(c) or '', section)
-                           for c in T.CLES_CONSEIL})
-        return sortie
-    if section == 'garanties':
-        _exiger(isinstance(valeur, list),
-                'Section « garanties » : liste attendue.')
-        sortie = []
-        for g in valeur:
-            _exiger(isinstance(g, dict), 'Section « garanties » : objet attendu.')
-            ligne = {
-                'cle': g.get('cle') if isinstance(g.get('cle'), str) else '',
-                'designation': _texte(g.get('designation') or '', section),
-                'duree_mois': _entier(g.get('duree_mois'), 'garanties'),
-                'duree_libelle': _texte(g.get('duree_libelle') or '', section),
-                'garant': _texte(g.get('garant') or '', section),
-                'detail': _texte(g.get('detail') or '', section),
-                'fin': _date_texte(g.get('fin'), section),
-            }
-            sortie.append(ligne)
-        _completer_cles_garanties(sortie)
-        return sortie
-    raise ContenuInvalide(f'Section inconnue : {section}.')
+                "l'échéancier de la vente.")
+        sortie[str(cle)] = {k: _texte(v, 'echeancier_textes')
+                            for k, v in mots.items() if v is not None}
+    return sortie
+
+
+def _cles_perso(entrees):
+    """Une entrée sans clé (ajoutée à l'écran) reçoit ``perso_<n>``."""
+    n = 1
+    prises = {e['cle'] for e in entrees if e['cle']}
+    for e in entrees:
+        if not e['cle']:
+            while f'perso_{n}' in prises:
+                n += 1
+            e['cle'] = f'perso_{n}'
+            prises.add(e['cle'])
+    return entrees
+
+
+def _v_articles(valeur, langue):
+    _exiger(isinstance(valeur, list), 'Section « articles » : liste attendue.')
+    sortie = []
+    for a in valeur:
+        _exiger(isinstance(a, dict),
+                'Section « articles » : un objet par article attendu.')
+        cle = a.get('cle')
+        _exiger(cle is None or isinstance(cle, str),
+                'Section « articles » : clé texte attendue.')
+        entree = {'cle': cle or ''}
+        if 'titre' in a or 'paragraphes' in a:
+            entree['titre'] = _texte(a.get('titre') or '', 'articles')
+            entree['paragraphes'] = _liste_textes(a.get('paragraphes') or [],
+                                                  'articles')
+        sortie.append(entree)
+    return _cles_perso(sortie)
+
+
+def _v_constats(valeur, langue):
+    _exiger(isinstance(valeur, list), 'Section « constats » : liste attendue.')
+    sortie = []
+    for k in valeur:
+        _exiger(isinstance(k, dict) and isinstance(k.get('texte'), str),
+                'Section « constats » : {texte, cochee} attendu.')
+        sortie.append({'texte': k['texte'], 'cochee': bool(k.get('cochee'))})
+    return sortie
+
+
+def _v_conseils(valeur, langue):
+    _exiger(isinstance(valeur, list), 'Section « conseils » : liste attendue.')
+    sortie = []
+    for k in valeur:
+        _exiger(isinstance(k, dict), 'Section « conseils » : objet attendu.')
+        sortie.append({c: _texte(k.get(c) or '', 'conseils')
+                       for c in T.CLES_CONSEIL})
+    return sortie
+
+
+def _v_garanties(valeur, langue):
+    _exiger(isinstance(valeur, list), 'Section « garanties » : liste attendue.')
+    sortie = []
+    for g in valeur:
+        _exiger(isinstance(g, dict), 'Section « garanties » : objet attendu.')
+        sortie.append({
+            'cle': g.get('cle') if isinstance(g.get('cle'), str) else '',
+            'designation': _texte(g.get('designation') or '', 'garanties'),
+            'duree_mois': _entier(g.get('duree_mois'), 'garanties'),
+            'duree_libelle': _texte(g.get('duree_libelle') or '', 'garanties'),
+            'garant': _texte(g.get('garant') or '', 'garanties'),
+            'detail': _texte(g.get('detail') or '', 'garanties'),
+            'fin': _date_texte(g.get('fin'), 'garanties'),
+        })
+    return _cles_perso(sortie)
+
+
+_VALIDATEURS = {
+    'titre': lambda v, langue: _texte(v, 'titre'),
+    'conditions_particulieres': lambda v, langue: _texte(
+        v, 'conditions_particulieres'),
+    'conseils_intro': lambda v, langue: _texte(v, 'conseils_intro'),
+    'lieu': lambda v, langue: _texte(v, 'lieu'),
+    'date_document': lambda v, langue: _date_texte(v, 'date_document'),
+    'reserves': lambda v, langue: _liste_textes(v, 'reserves'),
+    'quitus': lambda v, langue: _liste_textes(v, 'quitus'),
+    'entretien': lambda v, langue: _liste_textes(v, 'entretien'),
+    'societe': _v_societe, 'delais': _v_delais, 'livraison': _v_livraison,
+    'reception': _v_reception, 'sav': _v_sav, 'paiement': _v_paiement,
+    'options': _v_options, 'echeancier_textes': _v_echeancier_textes,
+    'articles': _v_articles, 'constats': _v_constats, 'conseils': _v_conseils,
+    'garanties': _v_garanties,
+}
+
+
+def _valider_section(type_acte, section, valeur, langue):
+    validateur = _VALIDATEURS.get(section)
+    if validateur is None:
+        raise ContenuInvalide(f'Section inconnue : {section}.')
+    return validateur(valeur, langue)
 
 
 def valider_surcharges(type_acte, surcharges, langue='fr'):
