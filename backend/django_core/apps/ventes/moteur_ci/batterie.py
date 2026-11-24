@@ -53,6 +53,7 @@ import math
 from decimal import Decimal, InvalidOperation
 
 from apps.ventes.moteur_ci.autoconso import HEURES, bilan_horaire, regime_injection
+from apps.ventes.moteur_ci.batterie_ht import grappes_portees, plus_grande_taille
 
 #: Port batterie BASSE TENSION : tension maxi (V) de la fenêtre batterie de
 #: l'hybride (famille Deye SG05LP3 : 40–60 V, ``seed_catalogue``
@@ -409,6 +410,10 @@ def _champ_et_banque(banque, *, n_bas, n_haut, bilan_de):
     unite = _f(banque.get('kwh_utile')) or 0.0
     quantite = min(int(banque['quantite']),
                    int(math.floor(surplus_jour_min(bilan_de(n_haut))[0] / unite + 1e-9)))
+    if banque.get('tailles_admissibles'):
+        # HT24 — une grappe en série ne se réduit qu'à une taille que le
+        # matériel permet (bornes de série, grappes identiques).
+        quantite = plus_grande_taille(banque['tailles_admissibles'], quantite)
     if quantite < 1:
         return n_haut, None, True
     reduite = dict(banque, quantite=quantite)
@@ -596,7 +601,9 @@ def _monter_banque(modele, *, n_bas, n_haut, pmax_wc, bilan_de, combiner, ps_kva
     if cout_depart is not None and economie_depart is not None:
         depart = {'cout': _f(cout_depart) or 0.0, 'economie': _f(economie_depart) or 0.0}
     evals, banques, reduite, refus = [], {}, False, 0
-    for q in range(1, min(maxi, MAX_MODULES_BALAYAGE) + 1):
+    # HT24 — une banque haute tension ne monte que par les tailles que le
+    # matériel permet (première grappe complète, puis module par module).
+    for q in modele.get('tailles_admissibles') or range(1, min(maxi, MAX_MODULES_BALAYAGE) + 1):
         champ = _champ_rempli(dict(modele, quantite=q), n_bas=n_bas, n_haut=n_haut,
                               pmax_wc=pmax_wc, bilan_de=bilan_de, combiner=combiner,
                               ps_kva=ps_kva)
@@ -759,7 +766,8 @@ def dimensionner_option_avec(*, kwc_depart, pmax_wc, charge, production, tension
                              revente_choisie, combiner, composer, valoriser, batteries, simuler,
                              hybrides=(), kwc_max=None, ps_kva=None, taux_tva_pct=None,
                              production_de=None, cout_depart=None, economie_depart=None,
-                             remplacement=None, modules_choisis=None, combiner_impose=None):
+                             remplacement=None, modules_choisis=None, combiner_impose=None,
+                             parallele=None):
     """L'option « avec batterie » : banque montée module par module par la
     règle marginale (:func:`_monter_banque`, fondateur 30/10/2026 —
     chaque module avec les panneaux qu'il tire pour se remplir, QJR612), puis,
@@ -770,7 +778,9 @@ def dimensionner_option_avec(*, kwc_depart, pmax_wc, charge, production, tension
     « sans » (le point n = 0 de la règle). Rend ``{evaluation, motif,
     prix_a_renseigner, alertes, hypotheses}`` — ``evaluation`` ``None`` ⇒
     ``motif`` nommé (aucune option « avec »). ``remplacement`` : voir
-    :func:`_monter_banque` (D-CI-BATTERIE-NON-RENTABLE, niveau 5)."""
+    :func:`_monter_banque` (D-CI-BATTERIE-NON-RENTABLE, niveau 5).
+    ``parallele`` (HT24) : ``(appareils, source)`` de la borne de parallèle
+    dite par l'alerte ; ``None`` ⇒ celle des hybrides basse tension."""
     if not pmax_wc or not kwc_depart:
         return _sans_option('module sans puissance publiée : option batterie non calculée')
     # La MÊME lecture que la taille (``taille.dimensionner_ci``) : une
@@ -807,7 +817,7 @@ def dimensionner_option_avec(*, kwc_depart, pmax_wc, charge, production, tension
         # D-HYB-4 : ``comb`` / ``cablage`` forcés à l'onduleur gardé.
         m, onduleurs, ajout = cablage(m, n_haut, pmax_wc, comb, ps_kva)
         kwc = _kwc(m, pmax_wc)
-        if not _combinaison_tenue(onduleurs, ps_kva):
+        if not _combinaison_tenue(onduleurs, ps_kva) or not grappes_portees(banque, onduleurs, hybrides):
             return None
         e = dict(evaluer_option_avec(
             kwc, onduleurs, _composer_avec(composer, kwc, onduleurs, banque), banque,
@@ -836,10 +846,10 @@ def dimensionner_option_avec(*, kwc_depart, pmax_wc, charge, production, tension
     if choisie:
         depart, reduite = {}, False
     mord = _borne_parallele_mord(combiner, evaluation['n'] + 1, pmax_wc)
+    appareils, source = parallele or (MAX_HYBRIDES_PARALLELE, SOURCE_PARALLELE)
     borne_parallele = [_alerte('HYBRIDES_PARALLELE_MAX', (
         'Champ « avec batterie » borné à %.1f kWc : le plus grand champ porté par au plus '
-        '%d hybrides en parallèle (%s).' % (evaluation['kwc'], MAX_HYBRIDES_PARALLELE,
-                                            SOURCE_PARALLELE)))] if mord else []
+        '%d hybrides en parallèle (%s).' % (evaluation['kwc'], appareils, source)))] if mord else []
     n_final = evaluation.pop('n')
     # La montée des panneaux ré-évalue le départ à son nombre DÉJÀ câblable :
     # le panneau ajouté reste celui du départ quand le champ n'a pas bougé.

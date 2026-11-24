@@ -120,8 +120,38 @@ REGLES_SENSIBILITES_1911 = 14
 #: vague ACAL ; rendu courant, avec sa migration des seuls brouillons jamais
 #: envoyés, par ACAL1001 après le dry-run des écarts (ACAL1000).
 REGLES_POSE_REELLE_2111 = 15
+#: Niveau 16 (HT24, fondateur 24/11/2026 « With battery now also picks from HV
+#: inverters », DÉCLARÉ, PAS courant — il suit le 15) : l'option C&I « avec
+#: batterie » se compose aussi sur un hybride HAUTE tension quand la basse
+#: tension n'en compose aucune. Un devis qui le porte l'ouvre ; en attendant
+#: qu'il devienne courant (il ne peut pas l'être sans rendre le 15 courant),
+#: :func:`hybrides_ht_ouverts` l'ouvre aussi aux devis CRÉÉS à partir de
+#: :data:`COUPURE_HYBRIDES_HT` — un devis créé avant garde ce qu'il a reçu.
+REGLES_HYBRIDES_HT_2411 = 16
+#: Date de création (incluse) à partir de laquelle un devis ouvre la haute
+#: tension sans porter le niveau 16 (le lendemain de la décision).
+COUPURE_HYBRIDES_HT = (2026, 11, 25)
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
 REGLES_COURANTES = REGLES_SENSIBILITES_1911
+
+
+def hybrides_ht_ouverts(devis) -> bool:
+    """HT24 — l'option « avec batterie » peut-elle se composer en HAUTE
+    tension pour ce devis ? « Nouveaux rendus seulement », par LA seule
+    propriété figée d'un devis : sa date de création (ou le niveau 16).
+
+    ``None`` (aperçu, aucun devis) ou une doublure sans date : oui (règles
+    courantes). Un devis créé avant :data:`COUPURE_HYBRIDES_HT` et resté sous
+    le niveau 16 : non — un devis envoyé garde l'option que le client a reçue.
+    """
+    from datetime import date
+    if devis is not None and regles_au_moins(devis, REGLES_HYBRIDES_HT_2411):
+        return True
+    creation = getattr(devis, 'date_creation', None)
+    if creation is None:
+        return True
+    jour = creation.date() if hasattr(creation, 'date') else creation
+    return jour >= date(*COUPURE_HYBRIDES_HT)
 
 
 def regles_au_moins(devis, niveau: int) -> bool:

@@ -1228,6 +1228,206 @@ class OptionAvecBatterieTests(unittest.TestCase):
         self.assertEqual(force(25.0, 11, 1)['combinaison'], libre(25.0)['combinaison'])
 
 
+#: HT24 (fondateur 24/11/2026) — DEYE SUN-80K-SG02HP3-EU-EM6 à la fiche du
+#: fondateur (80 kW AC, 160–1000 V, 140 kWc, 100 000 DH HT ; 2 entrées batterie
+#: et 10 appareils en parallèle publiés par la fiche Deye) et la Deye BOS-B
+#: Pro (seed BAT-DYN-HV-16 : 16,08 kWh × DoD 90 %, 9,22 kW, 5–15 modules de
+#: 51,2 V en série avec un hybride, 16 grappes, 48 000 TTC → 40 000 HT).
+HYBRIDE_HT = {'produit': 800, 'nom': 'DEYE SUN-80K-SG02HP3-EU-EM6', 'kw_ac': 80,
+              'prix': Decimal('100000'), 'triphase': True, 'eligible_ci': True,
+              'motif_exclusion': None, 'plage_batterie_v': [160.0, 1000.0], 'dc_max_kwc': 140,
+              'bat_max_charge_kw': None, 'bat_max_decharge_kw': None, 'bat_nb_entrees': 2,
+              'max_parallele_publie': 10, 'max_parallele': 10}
+BOSB = {'produit': 850, 'nom': 'Batterie Deye BOS-B Pro haute tension — 16 kWh', 'kwh_utile': 14.472,
+        'v_nominal': None, 'prix': Decimal('40000'), 'max_modules': None, 'max_charge_kw': 9.22,
+        'max_decharge_kw': 9.22, 'rendement': 0.9, 'garantie_mois': 120, 'cycles_publies': 6000,
+        'serie_min': 5, 'serie_max': 15, 'v_module': 51.2, 'grappes_max': 16,
+        'element': {'id': 850, 'nom': 'Batterie Deye BOS-B Pro haute tension — 16 kWh',
+                    'prix_connu': True, 'prix_vente_ht': Decimal('40000')}}
+
+
+def _famille_ht(hybrides=(HYBRIDE_HT,), batteries=(BOSB,), ecartes=()):
+    from apps.ventes.domain.etude_ci_batterie_ht import famille_vide
+    return dict(famille_vide(), hybrides=[dict(h) for h in hybrides],
+                batteries=[dict(b) for b in batteries], ecartes=list(ecartes),
+                elements=[{'id': h['produit'], 'nom': h['nom'], 'prix_connu': True,
+                           'prix_vente_ht': h['prix']} for h in hybrides])
+
+
+class HauteTensionOptionAvecTests(unittest.TestCase):
+    """HT24 — « With battery now also picks from HV inverters » : la famille
+    haute tension (hybride + grappe en série) n'est essayée que quand la basse
+    tension ne compose aucune option ; l'appairage se prouve par la tension."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.prod, _ = _production()
+        cls.charge = _charge('boulangerie', 20000)
+        cls.sans = dimensionner_ci(
+            charge_jours_types=cls.charge, production_jours_types=cls.prod, tension='bt',
+            combiner=partial(combiner_onduleurs, candidats=_catalogue_huawei(), phase='tri'),
+            composer=_composer, valoriser=_valoriser(cls.charge), taux_tva_pct=20)['evaluation']
+
+    def _etude(self, bat, choix='avec', ps_kva=630, **kw):
+        from apps.ventes.domain.etude_ci_batterie import option_avec_de_l_etude
+        return option_avec_de_l_etude(
+            {'module': {'pmax_wc': PANNEAU_WC}, 'batterie': bat}, dict(self.sans), choix=choix,
+            lead=None, charge=self.charge, production=self.prod, tension='bt',
+            revente_choisie=False, valoriser=_valoriser(self.charge), taux_tva_pct=20, phase='tri',
+            ps_kva=ps_kva, composer=lambda kwc, ond, _elements: _composer(kwc, ond), borne_toit=None,
+            tva_recuperable={'valeur': 'inconnu'}, **kw)
+
+    @staticmethod
+    def _bat(hybrides=(), batteries=(), ht=None):
+        return {'hybrides': list(hybrides), 'batteries': list(batteries), 'elements': [],
+                'ecartees': [], **({'ht': ht} if ht is not None else {})}
+
+    def test_basse_tension_composee_resultat_identique(self):
+        # (a) La basse tension compose : la famille haute tension (moins chère
+        # au kWh, plus puissante) n'est jamais essayée — résultat IDENTIQUE.
+        bt = self._bat(_hybrides_bt(), BATTERIES)
+        seule = self._etude(bt, ps_kva=None)
+        self.assertIsNotNone(seule['bloc'])
+        avec_ht = self._etude(dict(bt, ht=_famille_ht(batteries=[dict(BOSB, prix=Decimal('1'))])),
+                              ps_kva=None)
+        self.assertEqual(avec_ht, seule)
+
+    def test_haute_tension_composee_quand_la_basse_tension_ne_compose_rien(self):
+        # (b) Aucun hybride basse tension : N × 80 kW, grappes valides.
+        from apps.ventes.moteur_ci import batterie_ht
+        sortie = self._etude(self._bat(ht=_famille_ht()))
+        bloc = sortie['bloc']
+        combinaison = bloc['onduleurs']['combinaison']
+        self.assertEqual({x['produit'] for x in combinaison}, {800})
+        unites = sum(x['quantite'] for x in combinaison)
+        self.assertLessEqual(unites * 80, 630)
+        self.assertLessEqual(bloc['puissance_ac_kw'], 630)
+        self.assertEqual(bloc['batterie']['produit'], 850)
+        q = bloc['batterie']['quantite']
+        tailles = batterie_ht.tailles_admissibles(BOSB, [HYBRIDE_HT], 16)
+        k = tailles[q]
+        self.assertLessEqual(k, 2 * unites)                   # 2 entrées batterie par appareil
+        self.assertTrue(5 <= q // k <= 15 and q % k == 0)
+        self.assertTrue(160 <= q // k * 51.2 <= 1000)
+        (hyp,) = [h for h in sortie['hypotheses'] if h['cle'] == 'grappes_haute_tension']
+        self.assertIn('%d modules en série' % (q // k), hyp['source'])
+        codes = {a['code'] for a in sortie['alertes']}
+        self.assertIn('BOITIER_HAUTE_TENSION_A_VERIFIER', codes)
+        self.assertNotIn('HYBRIDE_HAUTE_TENSION_ECARTE', codes)
+
+    def test_jamais_une_batterie_basse_tension_sous_un_hybride_haute_tension(self):
+        # (d) Une Dyness 48 V bien moins chère au kWh ne passe jamais sous le
+        # 80 kW, ni le BOS-B Pro sous un SG05LP3 : les familles ne se mêlent pas.
+        from apps.ventes.moteur_ci import batterie_ht
+        dyness = dict(BATTERIES[1], prix=Decimal('1'))
+        sortie = self._etude(self._bat(batteries=[dyness], ht=_famille_ht()))
+        self.assertEqual(sortie['bloc']['batterie']['produit'], 850)
+        self.assertFalse(batterie_ht.compatible(HYBRIDE_HT, dyness))
+        self.assertFalse(batterie_ht.compatible(_hybrides_bt()[2], BOSB))   # 40–60 V
+        sans_couple = self._etude(self._bat(hybrides=_hybrides_bt(), ht=_famille_ht(hybrides=())))
+        self.assertIsNone(sans_couple['bloc'])
+
+    def test_fiche_incomplete_aucune_option_articles_nommes(self):
+        # (c) Pack haute tension sans tension de module : aucune option, le
+        # pack ET l'hybride nommés avec leur motif ; rien n'est dimensionné.
+        from unittest import mock
+
+        from apps.ventes.domain.etude_ci_batterie_ht import essayer_haute_tension
+        ecarte = ('batterie', 'BOS-B incomplète', "fiche incomplète : tension d'un module")
+        dimensionner = mock.Mock()
+        resultat, bat, alertes = essayer_haute_tension(
+            {'evaluation': None, 'motif': 'basse tension : rien', 'alertes': []},
+            {'ht': _famille_ht(batteries=(), ecartes=[ecarte])}, regles_ht=True,
+            nb_batteries=None, dimensionner=dimensionner)
+        dimensionner.assert_not_called()
+        self.assertIsNone(bat)
+        messages = {a['code']: a['message'] for a in alertes}
+        self.assertIn("BOS-B incomplète (fiche incomplète : tension d'un module)",
+                      messages['BATTERIE_HAUTE_TENSION_ECARTEE'])
+        self.assertIn('DEYE SUN-80K-SG02HP3-EU-EM6 (aucune batterie haute tension',
+                      messages['HYBRIDE_HAUTE_TENSION_ECARTE'])
+        self.assertIn('haute tension :', resultat['motif'])
+
+    def test_nombre_de_batteries_impose_hors_grappe_refuse(self):
+        # (e) D-HYB-4 : 3 ou 17 modules ne forment aucune grappe (5 à 15, puis
+        # 2 grappes identiques) — refus bloquant qui nomme les bornes.
+        from unittest import mock
+
+        from apps.ventes.domain.etude_ci_batterie_ht import essayer_haute_tension
+        for nombre in (3, 17):
+            dimensionner = mock.Mock(return_value={'evaluation': None, 'motif': 'x', 'alertes': []})
+            _r, _b, alertes = essayer_haute_tension(
+                {'evaluation': None, 'motif': 'bt', 'alertes': []}, {'ht': _famille_ht()},
+                regles_ht=True, nb_batteries=nombre, dimensionner=dimensionner)
+            (refus,) = [a for a in alertes if a['code'] == 'NB_BATTERIES_HORS_GRAPPE']
+            self.assertEqual(refus['niveau'], 'bloquant')
+            self.assertIn('(%d) impossible en haute tension' % nombre, refus['message'])
+            self.assertIn('de 5 à 15 modules de 51,2 V en série', refus['message'])
+            self.assertIsNone(dimensionner.call_args.kwargs['nb_batteries'])
+        dimensionner = mock.Mock(return_value={'evaluation': None, 'motif': 'x', 'alertes': []})
+        essayer_haute_tension({'evaluation': None, 'motif': 'bt', 'alertes': []}, {'ht': _famille_ht()},
+                              regles_ht=True, nb_batteries=16, dimensionner=dimensionner)
+        self.assertEqual(dimensionner.call_args.kwargs['nb_batteries'], 16)   # 2 × 8
+
+    def test_devis_anterieur_a_la_regle_haute_tension_non_essayee(self):
+        # (f) Niveau de règles : un devis créé avant garde l'option reçue.
+        from unittest import mock
+
+        from apps.ventes.domain.etude_ci_batterie_ht import essayer_haute_tension
+        dimensionner = mock.Mock()
+        bt = {'evaluation': None, 'motif': 'bt', 'alertes': []}
+        resultat, bat, alertes = essayer_haute_tension(bt, {'ht': _famille_ht()}, regles_ht=False,
+                                                       nb_batteries=None, dimensionner=dimensionner)
+        dimensionner.assert_not_called()
+        self.assertEqual((resultat, bat), (bt, None))
+        self.assertIn('créé avant la règle haute tension', alertes[0]['message'])
+        self.assertIsNone(self._etude(self._bat(ht=_famille_ht()), regles_ht=False)['bloc'])
+
+    def test_tailles_admissibles_et_grappes_portees(self):
+        from apps.ventes.moteur_ci import batterie_ht
+        tailles = batterie_ht.tailles_admissibles(BOSB, [HYBRIDE_HT], 2)
+        self.assertEqual(list(tailles)[:12], [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16])
+        self.assertEqual((tailles[15], tailles[16], tailles[30]), (1, 2, 2))
+        self.assertNotIn(17, tailles)
+        etroite = dict(HYBRIDE_HT, plage_batterie_v=[160.0, 500.0])        # 9 × 51,2 = 460,8 V
+        self.assertEqual(batterie_ht.series_valides(BOSB, etroite['plage_batterie_v']),
+                         [5, 6, 7, 8, 9])
+        banque = dict(BOSB, quantite=16, grappes_par_taille=tailles)
+        un = {'combinaison': [{'produit': 800, 'quantite': 1}]}
+        self.assertTrue(batterie_ht.grappes_portees(banque, un, [HYBRIDE_HT]))
+        sans_entrees = dict(HYBRIDE_HT, bat_nb_entrees=None)
+        self.assertFalse(batterie_ht.grappes_portees(banque, un, [sans_entrees]))   # 1 grappe / appareil
+        self.assertTrue(batterie_ht.grappes_portees(dict(BOSB, quantite=16), un, [HYBRIDE_HT]))  # BT
+
+    def test_seed_bosb_reconnu_pack_serie_haute_tension(self):
+        # (h) La fiche seedée de BAT-DYN-HV-16 forme un pack en série complet,
+        # rangé dans la famille haute tension (jamais en basse tension).
+        from types import SimpleNamespace
+
+        from apps.stock.management.commands.seed_catalogue import FICHES_TECHNIQUES
+        from apps.ventes.domain.etude_ci_batterie_ht import ajouter_batterie, famille_vide
+        fiche = FICHES_TECHNIQUES['BAT-DYN-HV-16']
+        self.assertEqual((fiche['bat_serie_min_modules'], fiche['bat_serie_max_modules'],
+                          fiche['bat_v_module'], fiche['bat_grappes_max_parallele']),
+                         (5, 15, Decimal('51.2'), 16))
+        self.assertNotIn('bat_v_nominal', fiche)
+        specs = {'kwh_nominal': fiche['bat_kwh_nominal'], 'dod_pct': fiche['bat_dod_pct'],
+                 'max_charge_kw': fiche['bat_max_charge_kw'], 'serie_min_modules': 5,
+                 'serie_max_modules': 15, 'v_module': Decimal('51.2'), 'grappes_max_parallele': 16}
+        produit = SimpleNamespace(id=850, pk=850, nom='Batterie Deye BOS-B Pro haute tension — 16 kWh',
+                                  marque='Deye', prix_vente=Decimal('40000'), garantie_mois=120,
+                                  tva=None, paliers_prix_vente=None, role_ci='')
+        famille = famille_vide()
+        self.assertTrue(ajouter_batterie(famille, produit, specs))
+        (pack,) = famille['batteries']
+        self.assertAlmostEqual(pack['kwh_utile'], 14.472)
+        self.assertEqual((pack['serie_min'], pack['serie_max'], pack['grappes_max']), (5, 15, 16))
+        # Repli : la même batterie sans grappe publiée est NOMMÉE, lue en basse tension comme avant.
+        famille = famille_vide()
+        self.assertFalse(ajouter_batterie(famille, produit, {'kwh_nominal': 16.08, 'dod_pct': 90}))
+        self.assertIn('grappe en série non publiée', famille['ecartes'][0][2])
+
+
 class PoseRasanteR1Tests(unittest.TestCase):
     """R1 — décision fondateur du 28/10/2026 (toit plat SANS pente déclarée) :
     la taille est choisie par l'économie sans être bornée par la pose à 30° ;

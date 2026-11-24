@@ -37,7 +37,8 @@ from apps.ventes.moteur_ci.taille import HORIZON_MARGINAL_CI
 
 from .etude_ci_batterie import CLE as CLE_OPTION_AVEC, CLE_BANQUE_RECOMMANDEE, option_avec_de_l_etude
 from .sensibilites_option_avec import scenarios_du_devis
-from .regles_calcul import REGLES_CORRIGEES_2710, REGLES_CYCLES_BATTERIE_1911, REGLES_RETOURS_3010B, regles_au_moins
+from .regles_calcul import (
+    REGLES_CORRIGEES_2710, REGLES_CYCLES_BATTERIE_1911, REGLES_RETOURS_3010B, hybrides_ht_ouverts, regles_au_moins)
 from .etude_ci_visite import _couche_visite, froid_du_site, hypotheses_de_la_combinaison
 
 logger = logging.getLogger(__name__)
@@ -1532,6 +1533,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         regles_3010b=regles_au_moins(devis, REGLES_RETOURS_3010B),  # D-CI-BATTERIE-NON-RENTABLE
         talon_inconnu=(prov_charge.get('talon') or {}).get('statut') == 'borne_conservatrice',
         nb_batteries=res.valeur('nb_batteries'), regles_cycles=regles_au_moins(devis, REGLES_CYCLES_BATTERIE_1911),
+        regles_ht=hybrides_ht_ouverts(devis),  # HT24 : haute tension, devis créés depuis le 25/11/2026
         sensibilites=scenarios_du_devis(company, devis))  # niveau 14 (D-SENS-1)
     alertes.extend(_alertes_postes(composition, avec))
     hypotheses.extend(avec['hypotheses'])
