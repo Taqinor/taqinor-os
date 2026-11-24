@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   documentSurfacePose, saisieDepuisSurface, reponseDepuisSurface,
   remplacerSurface, retirerSurface, repereLibre, surfacesDuGenre,
-  entreeMoteurChangee, nombre, pasMesure, tauxOccupation, contourTerrain,
+  entreeMoteurChangee, nombre, pasMesure, tauxOccupation, contourTerrain, totalPose,
 } from './surfacePose.js'
 import { SAISIE_SOL } from '../../test/fixtures/saisiesSurfacePose.js'
 
@@ -130,4 +130,35 @@ test('les mesures pures restent : nombre, contour, pas, taux', () => {
   assert.equal(contourTerrain('0', '10'), null)
   assert.equal(pasMesure([{ y0: 0 }]), null)
   assert.equal(tauxOccupation(REPONSE.plans[0].tables, 200), 16 / 200)
+})
+
+/* T4-U4-016 / T4-U4-024 / T4-U4-018 — UN compte : pans + champs au sol + ombrières, lu sur le document. */
+const PAN = (count, kwc) => ({ id: `z${count}`, vertices: [[0, 0], [1, 0], [1, 1]], geometry: { count, kwc } })
+const SURF_SOL = { kind: 'sol', id: 'sol-1', label: 'Champ au sol', moduleWc: 710, engine: { modules: 28 } }
+const SURF_OMB = { kind: 'ombriere', id: 'omb-1', label: 'Ombrière parking', moduleWc: 710, engine: { modules: 16 } }
+
+test('totalPose — pan (12) + champ au sol (28) + ombrière (16) = 56 panneaux, le kWc de chacun', () => {
+  const t = totalPose({ zones: [PAN(12, 8.52)], poseSurfaces: [SURF_SOL, SURF_OMB] })
+  assert.equal(t.panneaux, 56)
+  assert.equal(Math.round(t.kwc * 100) / 100, 39.76)
+  assert.deepEqual(t.toit, { panneaux: 12, kwc: 8.52 })
+  assert.deepEqual(t.surfaces.map((s) => [s.kind, s.libelle, s.modules]), [['sol', 'Champ au sol', 28], ['ombriere', 'Ombrière parking', 16]])
+})
+
+test('totalPose — surfaces seules (aucun pan tracé) : 44 panneaux, 31,24 kWc ; un pan vide ne compte pas', () => {
+  const vide = { id: 'z0', vertices: [], geometry: null }
+  const t = totalPose({ zones: [vide], poseSurfaces: [SURF_SOL, SURF_OMB] })
+  assert.equal(t.panneaux, 44)
+  assert.equal(Math.round(t.kwc * 100) / 100, 31.24)
+  assert.deepEqual(t.toit, { panneaux: 0, kwc: 0 })
+})
+
+test('totalPose — une surface sans puissance de module : le compte reste, le kWc n’est pas affirmé', () => {
+  const t = totalPose({ zones: [PAN(10, 7.1)], poseSurfaces: [{ ...SURF_SOL, moduleWc: null }] })
+  assert.equal(t.panneaux, 38)
+  assert.equal(t.kwc, null)
+})
+
+test('totalPose — aucun document : null', () => {
+  assert.equal(totalPose(null), null)
 })

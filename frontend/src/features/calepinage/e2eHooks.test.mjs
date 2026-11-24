@@ -824,6 +824,7 @@ export const ALL_HOOKS = [
   'cal-pret-erreur',
   'cal-pret-ligne',
   'cal-pret-regler',
+  'cal-pret-points-dossier',
   'cal-pret-reussis',
   // ── PhotoSiteCalage.jsx (complément L5) ──
   'cal-photo-calage-monde',
@@ -869,6 +870,7 @@ export const ALL_HOOKS = [
   'cal-elec-devis-retenu',
   'cal-elec-onduleur',
   'cal-elec-schema-voir',
+  'cal-elec-surfaces-non-raccordees',
   'cal-elec-actions-carte',
   'cal-schema-legende',
   'cal-schema-cartouche',

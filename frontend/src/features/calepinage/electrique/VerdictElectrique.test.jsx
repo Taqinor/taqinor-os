@@ -802,6 +802,34 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     await waitFor(() => expect(document.activeElement).toBe(within(section).getByRole('button', { name: 'Cheminement & câbles' })))
   })
 
+  /* T4-U4-018 — un champ au sol et une ombrière seuls : le raccordement ne les câble pas (serveur : pans seulement). */
+  const SURFACES = {
+    zones: [],
+    poseSurfaces: [
+      { kind: 'sol', id: 'sol-1', label: 'Champ au sol', moduleWc: 710, engine: { modules: 28 } },
+      { kind: 'ombriere', id: 'omb-1', label: 'Ombrière parking', moduleWc: 710, engine: { modules: 16 } },
+    ],
+  }
+
+  it('T4-U4-018 — champ au sol + ombrière : l’étape dit qu’ils ne sont pas raccordés, et pourquoi', async () => {
+    servirEtape()
+    rendreEtape({ builderApi: { serializeLayout: () => SURFACES } })
+    expect(await screen.findByTestId('cal-elec-surfaces-non-raccordees')).toHaveTextContent(
+      'Champ au sol (28 modules) et Ombrière parking (16 modules) : pas encore raccordés. Le raccordement automatique '
+      + 'ne câble aujourd’hui que les panneaux posés sur les pans de toit, et ce plan ne dessine que les pans.')
+  })
+
+  it('T4-U4-018 — « Raccorder automatiquement » sans pan : la vraie cause, jamais « choisissez le module de ce toit »', async () => {
+    servirEtape()
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: { electrique: { affectation: [] } } })
+    calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: { ...entree(), absents: ['module'] } })
+    const carte = rendreEtape({ builderApi: { serializeLayout: () => SURFACES } })
+    fireEvent.click(within(carte).getByRole('button', { name: 'Raccorder automatiquement' }))
+    const alerte = await within(carte).findByRole('alert')
+    expect(alerte).toHaveTextContent('Aucun panneau de toit à raccorder : Champ au sol (28 modules) et Ombrière parking (16 modules) ne se raccordent pas encore automatiquement.')
+    expect(alerte).not.toHaveTextContent('module de ce toit')
+  })
+
   it('« Voir » ouvre le sous-écran Schéma (`?onglet=schema`)', async () => {
     servirEtape()
     rendreEtape()

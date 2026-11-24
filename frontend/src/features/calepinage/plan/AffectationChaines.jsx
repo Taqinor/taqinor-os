@@ -37,7 +37,9 @@ function causeSansChaine(absents) {
    (même requête, même confirmation quand une affectation faite à la main serait effacée, refus du
    serveur affichés tels quels) ; « Modifier une chaîne » ouvre l'écran d'affectation (`onModifier`).
    « Déplacer l'onduleur » n'est PAS proposé : aucune position d'onduleur n'est enregistrée (D-ACAL-70). */
-export function BarreRaccordement({ calepinageId, manuelles = false, lectureSeule = false, onRaccorde, onModifier }) {
+export function BarreRaccordement({
+  calepinageId, manuelles = false, lectureSeule = false, onRaccorde, onModifier, motifSansChaine = null,
+}) {
   const [arme, setArme] = useState(false)
   const [enCours, setEnCours] = useState(false)
   const [refus, setRefus] = useState(null)
@@ -51,6 +53,9 @@ export function BarreRaccordement({ calepinageId, manuelles = false, lectureSeul
         onRaccorde?.(r.data)
         // ACAL1536 — 200 sans chaîne : la CAUSE est dite (matériel absent servi par `entree-electrique`).
         if ((r.data?.electrique?.affectation ?? []).some((l) => l?.chaine != null)) return undefined
+        // T4-U4-018 — rien à câbler sur les pans (seulement un champ au sol / une ombrière) : la vraie cause, jamais
+        // « choisissez le module de ce toit » (le module désigné n'y change rien).
+        if (motifSansChaine) { setRefus([motifSansChaine]); return undefined }
         return Promise.resolve(calepinageApi.calepinages.entreeElectrique?.(calepinageId))
           .then((e) => setRefus([causeSansChaine(e?.data?.absents)]))
           .catch(() => setRefus([causeSansChaine(null)]))

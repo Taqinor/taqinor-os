@@ -252,3 +252,53 @@ export function repereLibre(surfaces, kind) {
     if (!pris.has(`${base}-${n}`)) return `${base}-${n}`
   }
 }
+
+/* ============================================================================
+   T4-U4-016 / T4-U4-024 / T4-U4-018 — UN SEUL COMPTE DE LA POSE : pans de toit + champs au sol + ombrières.
+   ----------------------------------------------------------------------------
+   La barre du projet disait « 28 panneaux » après l'ombrière enregistrée (total 44), « 12 » en éditant le pan
+   (sans les 44 du sol et de l'ombrière), l'ancien total juste après l'enregistrement. Ce compte se LIT sur le
+   document (celui que l'atelier sérialise, ou celui que le serveur sert) : `zones[].geometry.{count,kwc}` pour les
+   pans tracés, `poseSurfaces[].engine.modules` × `moduleWc` pour les surfaces. Rien n'est recalculé : un kWc qui ne
+   peut pas être dit (une surface sans puissance de module saisie) rend `kwc: null`, jamais une valeur supposée.
+   ========================================================================== */
+
+const LIBELLE_GENRE = { [KIND_SOL]: 'Champ au sol', [KIND_OMBRIERE]: 'Ombrière', facade: 'Façade' }
+
+/** Un pan TRACÉ (au moins trois sommets) : un pan vide n'est ni compté ni affiché. */
+export function estPanTrace(zone) {
+  return Array.isArray(zone?.vertices) && zone.vertices.length >= 3
+}
+
+/** `{ panneaux, kwc, toit: {panneaux, kwc}, surfaces: [{kind, id, libelle, modules, kwc}] }`, ou `null` sans document. */
+export function totalPose(layout) {
+  if (!layout || typeof layout !== 'object') return null
+  const toit = { panneaux: 0, kwc: 0 }
+  for (const zone of Array.isArray(layout.zones) ? layout.zones : []) {
+    const count = Number(zone?.geometry?.count)
+    if (!estPanTrace(zone) || !(count > 0)) continue
+    toit.panneaux += count
+    const kwc = Number(zone.geometry.kwc)
+    toit.kwc = toit.kwc === null || !Number.isFinite(kwc) ? null : toit.kwc + kwc
+  }
+  const surfaces = (Array.isArray(layout.poseSurfaces) ? layout.poseSurfaces : [])
+    .map((s) => {
+      const modules = Number(s?.engine?.modules)
+      const wc = Number(s?.moduleWc)
+      return {
+        kind: s?.kind ?? null,
+        id: s?.id ?? null,
+        libelle: (typeof s?.label === 'string' && s.label.trim()) || LIBELLE_GENRE[s?.kind] || 'Surface de pose',
+        modules: modules > 0 ? modules : 0,
+        kwc: modules > 0 && wc > 0 ? (modules * wc) / 1000 : (modules > 0 ? null : 0),
+      }
+    })
+    .filter((s) => s.modules > 0)
+  const kwcs = [toit.kwc, ...surfaces.map((s) => s.kwc)]
+  return {
+    panneaux: toit.panneaux + surfaces.reduce((n, s) => n + s.modules, 0),
+    kwc: kwcs.some((k) => k === null) ? null : kwcs.reduce((a, k) => a + k, 0),
+    toit,
+    surfaces,
+  }
+}
