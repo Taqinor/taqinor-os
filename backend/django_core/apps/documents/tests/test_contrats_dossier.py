@@ -21,7 +21,7 @@ from pathlib import Path
 
 import fitz
 from django.contrib.auth import get_user_model
-from django.test import TestCase, tag
+from django.test import SimpleTestCase, TestCase, tag
 
 from apps.crm.models import Client
 from apps.documents.contrats import contenu as K
@@ -216,6 +216,40 @@ class CycleDeVieTests(TestCase):
                                     K.avertissements(acte, contenu)))
                 self.assertIsNotNone(S.motif_refus_emission(
                     acte, K.Lecture(chantier)))
+
+
+class SuppressionChantierTests(TestCase):
+    """S7 : brouillons et actes annulés partent avec le chantier ; un acte
+    émis ou signé l'empêche."""
+
+    def _chantier(self):
+        n = next(_seq)
+        company = Company.objects.create(slug=f'ctr-del-{n}', nom=f'Del {n}')
+        chantier = Installation.objects.create(
+            company=company, reference=f'CHT-2026-11-{n:04d}')
+        S.preparer_dossier(chantier)
+        return chantier
+
+    def test_brouillons_et_annules_supprimes_avec_le_chantier(self):
+        chantier = self._chantier()
+        ActeContractuel.objects.filter(chantier=chantier,
+                                       type=T.CLOTURE).update(statut=T.ANNULE)
+        pk = chantier.pk
+        chantier.delete()
+        self.assertFalse(ActeContractuel.objects.filter(
+            chantier_id=pk).exists())
+
+    def test_acte_emis_ou_signe_protege_le_chantier(self):
+        from django.db.models import ProtectedError
+        for statut in (T.EMIS, T.SIGNE):
+            with self.subTest(statut=statut):
+                chantier = self._chantier()
+                ActeContractuel.objects.filter(
+                    chantier=chantier, type=T.CONTRAT).update(statut=statut)
+                with self.assertRaises(ProtectedError):
+                    chantier.delete()
+                self.assertEqual(ActeContractuel.objects.filter(
+                    chantier=chantier).count(), 5)
 
 
 class MontantsTests(TestCase):
@@ -413,6 +447,9 @@ class EmissionTests(TestCase):
     def test_variante_jumelle_ecartee(self):
         from apps.documents.contrats.selectors import dossier_du_chantier
         v = Vente(self)
+        # S3 : la version « tranche réglée » ne s'émet qu'une fois les
+        # paiements qu'elle affirme enregistrés.
+        v.payer(v.plan()['tranches'][1]['cible_cumul_ttc'])
         S.emettre(v.acte(T.LIVRAISON, T.TRANCHE_REGLEE), v.user)
         dossier = dossier_du_chantier(v.chantier)
         livraisons = {a['variante']: a for a in dossier['actes']
@@ -420,6 +457,54 @@ class EmissionTests(TestCase):
         self.assertTrue(livraisons[T.RESTE_A_REGLER]['ecarte'])
         self.assertFalse(livraisons[T.RESTE_A_REGLER]['peut_emettre'])
         self.assertFalse(livraisons[T.TRANCHE_REGLEE]['ecarte'])
+
+    def test_pdf_servi_toujours_celui_du_contenu_fige(self):
+        """S6 : un dépôt GED raté ne fait jamais servir l'ancienne version."""
+        from unittest import mock
+
+        from apps.ged import services as ged_services
+        v = Vente(self)
+        acte, _ = S.emettre(v.acte(T.CONTRAT), v.user)
+        acte = S.rouvrir(acte, v.user)
+        S.modifier(acte, {'conditions_particulieres':
+                          'Accès par le portail nord.'}, v.user)
+        with mock.patch.object(ged_services, 'deposit_document',
+                               side_effect=RuntimeError('stockage muet')):
+            acte, avert = S.emettre(v.acte(T.CONTRAT), v.user)
+        self.assertEqual(acte.version, 2)
+        self.assertTrue(any('rangé' in a for a in avert))
+        document = S.document_ged(acte)
+        self.assertFalse(S.document_a_jour(document, acte, acte.contenu))
+        self.assertIn('portail nord', texte_pdf(S.pdf_de_l_acte(acte)))
+        # Le dépôt a été retenté : la GED porte désormais la version 2.
+        document = S.document_ged(acte)
+        self.assertTrue(S.document_a_jour(document, acte, acte.contenu))
+        self.assertIn('portail nord', texte_pdf(S.pdf_de_l_acte(acte)))
+
+    def test_portail_ne_montre_ni_acte_rouvert_ni_acte_annule(self):
+        """S8 : rouvrir ou annuler retire le partage portail ; ré-émettre ou
+        rétablir le remet."""
+        from apps.ged.models import AclGed
+
+        v = Vente(self)
+
+        def partages(acte):
+            return {langue: AclGed.objects.filter(
+                document=S.document_ged(acte, langue),
+                client_id=v.client.pk).count() for langue in T.LANGUES}
+
+        acte, _ = S.emettre(v.acte(T.CONTRAT), v.user)
+        self.assertEqual(partages(acte), {'fr': 1, 'ar': 1})
+        acte = S.rouvrir(acte, v.user)
+        self.assertEqual(partages(acte), {'fr': 0, 'ar': 0})
+        acte, _ = S.emettre(acte, v.user)
+        self.assertEqual(partages(acte), {'fr': 1, 'ar': 1})
+        v.desaccepter()
+        self.assertEqual(v.acte(T.CONTRAT).statut, T.ANNULE)
+        self.assertEqual(partages(acte), {'fr': 0, 'ar': 0})
+        v.accepter()
+        self.assertEqual(v.acte(T.CONTRAT).statut, T.EMIS)
+        self.assertEqual(partages(acte), {'fr': 1, 'ar': 1})
 
     def test_quitus_refuse_tant_que_solde_non_regle(self):
         v = Vente(self)
@@ -431,3 +516,483 @@ class EmissionTests(TestCase):
         self.assertEqual(acte.statut, T.EMIS)
         self.assertEqual(acte.contenu['paiement']['reste_a_regler'], '0.00')
         self.assertEqual(len(acte.contenu['paiements']), 1)
+
+
+# ── S1 : un texte personnalisé ne fige jamais une valeur ────────────────────
+
+NB, FINE = ' ', ' '
+
+
+class GabaritTests(SimpleTestCase):
+    """Fonctions pures du gabarit (aucune base)."""
+
+    def aller_retour(self, texte, ctx, prefere=()):
+        g = K.gabarit(texte, ctx, prefere)
+        self.assertEqual(K.rendre_gabarit(g, ctx), texte)
+        return g
+
+    def test_valeur_prefixe_d_une_autre(self):
+        petit, grand = f'9{FINE}850,00{NB}DH', f'59{FINE}850,00{NB}DH'
+        texte = f'Reste {petit}, soit sur {grand} au total.'
+        g = self.aller_retour(texte, {'reste': petit, 'total': grand})
+        self.assertEqual(g, 'Reste {reste}, soit sur {total} au total.')
+        # La petite valeur seule ne mord jamais dans la grande.
+        g = self.aller_retour(f'Sur {grand}.', {'reste': petit})
+        self.assertEqual(g, f'Sur {grand}.')
+        g = self.aller_retour(f'Sur 1{FINE}00{petit}.', {'reste': petit})
+        self.assertNotIn('{reste}', g)
+
+    def test_liste_des_tranches_sur_plusieurs_lignes(self):
+        liste = (f'- **30{NB}%**, soit 29{FINE}550,00{NB}DH, à la signature ;\n'
+                 f'- **70{NB}%**, soit 68{FINE}950,00{NB}DH, à la réception.')
+        ctx = {'liste_tranches': liste, 'acompte': f'29{FINE}550,00{NB}DH'}
+        g = self.aller_retour(f'Le prix est payé ainsi :\n{liste}\nMerci.',
+                              ctx)
+        self.assertEqual(g, 'Le prix est payé ainsi :\n{liste_tranches}\n'
+                            'Merci.')
+
+    def test_valeur_vide_jamais_remplacee_et_accolades_gardees(self):
+        ctx = {'cndp': '', 'blanc': '  ', 'societe': 'TAQINOR'}
+        g = self.aller_retour('TAQINOR garde la clause {spéciale} et {0}.',
+                              ctx)
+        self.assertEqual(g, '{societe} garde la clause {{spéciale}} et {{0}}.')
+
+    def test_valeur_portee_par_deux_reperes(self):
+        v = f'9{FINE}850,00{NB}DH'
+        ctx = {'reste_a_regler': v, 'reste_apres_livraison': v}
+        self.assertEqual(self.aller_retour(f'Reste {v}.', ctx), f'Reste {v}.')
+        self.assertEqual(
+            self.aller_retour(f'Reste {v}.', ctx, {'reste_a_regler'}),
+            'Reste {reste_a_regler}.')
+
+    def test_contexte_arabe(self):
+        ctx = {'total_ttc': f'98{FINE}500,00{NB}درهم',
+               'societe': 'تاقينور', 'date_limite': '23 يناير 2027'}
+        texte = f'تلتزم تاقينور بثمن 98{FINE}500,00{NB}درهم قبل 23 يناير 2027.'
+        g = self.aller_retour(texte, ctx)
+        self.assertEqual(g, 'تلتزم {societe} بثمن {total_ttc} قبل '
+                            '{date_limite}.')
+
+    def test_montants_du_texte(self):
+        self.assertEqual(
+            K.montants_du_texte(f'29{FINE}550,00{NB}DH, 1 234 DH, 12,5 dirhams'
+                                f' et 59{FINE}100,00{NB}درهم ; 10 % ; 2026'),
+            [Decimal('29550.00'), Decimal('1234.00'), Decimal('12.50'),
+             Decimal('59100.00')])
+
+
+def texte_article(contenu, cle):
+    a = next(a for a in contenu['articles'] if a['cle'] == cle)
+    return '\n'.join([a['titre']] + a['paragraphes'])
+
+
+def corriger(articles, cle, ajout=' Texte ajouté par le commercial.'):
+    """La liste servie, avec l'article ``cle`` corrigé (un mot ajouté au
+    premier paragraphe)."""
+    sortie = json.loads(json.dumps(articles))
+    for a in sortie:
+        if a['cle'] == cle:
+            a['paragraphes'][0] += ajout
+    return sortie
+
+
+class ArticlesGabaritsTests(TestCase):
+    """Un article corrigé suit la vente, les options et les dates."""
+
+    def test_aller_retour_identique_dans_chaque_acte_et_langue(self):
+        v = Vente(self)
+        v.payer(v.plan()['tranches'][0]['montant_ttc'])
+        for acte in v.actes():
+            for langue in T.LANGUES:
+                with self.subTest(acte=acte.type, variante=acte.variante,
+                                  langue=langue):
+                    acte.refresh_from_db()
+                    avant = K.construire_contenu(acte, langue)['articles']
+                    envoye = corriger(avant, avant[-1]['cle'])
+                    S.modifier(acte, {'articles': envoye}, v.user, langue)
+                    acte.refresh_from_db()
+                    self.assertEqual(
+                        K.construire_contenu(acte, langue)['articles'], envoye)
+
+    def test_paiement_corrige_suit_l_echeancier_de_la_vente(self):
+        v = Vente(self)
+        acte = v.acte(T.CONTRAT)
+        envoye = corriger(K.construire_contenu(acte)['articles'], 'paiement')
+        S.modifier(acte, {'articles': envoye}, v.user)
+        acte.refresh_from_db()
+        stocke = next(a for a in acte.surcharges['articles']
+                      if a['cle'] == 'paiement')
+        self.assertTrue(any('{liste_tranches}' in p
+                            for p in stocke['paragraphes']), stocke)
+        Devis.objects.filter(pk=v.devis.pk).update(echeancier=[
+            {'libelle': 'Acompte', 'type': 'acompte', 'pct_or_montant': 40},
+            {'libelle': 'Livraison du matériel', 'type': 'materiel',
+             'pct_or_montant': 50},
+            {'libelle': 'Solde', 'type': 'solde', 'pct_or_montant': 10}])
+        acte = v.acte(T.CONTRAT)
+        contenu, ctx = K._construire(acte, avec_ctx=True)
+        apres = texte_article(contenu, 'paiement')
+        self.assertIn('Texte ajouté par le commercial.', apres)
+        self.assertIn(ctx['liste_tranches'], apres)
+        self.assertIn(f'40{NB}%', ctx['liste_tranches'])
+
+    def test_penalite_reglee_puis_retiree_apres_correction(self):
+        v = Vente(self)
+        acte = v.acte(T.CONTRAT)
+        S.modifier(acte, {'options': {'penalite_retard_pct': '10'}}, v.user)
+        acte.refresh_from_db()
+        self.assertIn('indemnité', texte_article(
+            K.construire_contenu(acte), 'retard'))
+        envoye = corriger(K.construire_contenu(acte)['articles'], 'objet')
+        S.modifier(acte, {'articles': envoye}, v.user)
+        acte.refresh_from_db()
+        S.modifier(acte, {'options': {'penalite_retard_pct': None}}, v.user)
+        acte.refresh_from_db()
+        contenu = K.construire_contenu(acte)
+        self.assertNotIn('indemnité', texte_article(contenu, 'retard'))
+        self.assertIn('Texte ajouté par le commercial.',
+                      texte_article(contenu, 'objet'))
+
+    def test_reserve_propriete_decochee_puis_recochee(self):
+        v = Vente(self)
+        acte = v.acte(T.CONTRAT)
+        ordre = [a['cle'] for a in K.construire_contenu(acte)['articles']]
+        S.modifier(acte, {'options': {'reserve_propriete': False}}, v.user)
+        acte.refresh_from_db()
+        sans = K.construire_contenu(acte)['articles']
+        self.assertNotIn('propriete', [a['cle'] for a in sans])
+        S.modifier(acte, {'articles': corriger(sans, 'objet')}, v.user)
+        acte.refresh_from_db()
+        S.modifier(acte, {'options': {'reserve_propriete': True}}, v.user)
+        acte.refresh_from_db()
+        contenu = K.construire_contenu(acte)
+        self.assertEqual([a['cle'] for a in contenu['articles']], ordre)
+        self.assertIn('Texte ajouté par le commercial.',
+                      texte_article(contenu, 'objet'))
+
+    def test_options_et_articles_dans_le_meme_corps(self):
+        v = Vente(self)
+        acte = v.acte(T.CONTRAT)
+        sans = [a for a in K.construire_contenu(acte)['articles']
+                if a['cle'] != 'propriete']
+        S.modifier(acte, {'options': {'reserve_propriete': False},
+                          'articles': corriger(sans, 'objet')}, v.user)
+        acte.refresh_from_db()
+        self.assertFalse(any(e.get('retire')
+                             for e in acte.surcharges['articles']))
+        S.modifier(acte, {'options': {'reserve_propriete': True}}, v.user)
+        acte.refresh_from_db()
+        self.assertIn('propriete', [a['cle'] for a in K.construire_contenu(
+            acte)['articles']])
+
+    def test_article_supprime_reste_supprime(self):
+        v = Vente(self)
+        acte = v.acte(T.CONTRAT)
+        avant = K.construire_contenu(acte)['articles']
+        envoye = [a for a in corriger(avant, 'objet')
+                  if a['cle'] != 'estimations']
+        S.modifier(acte, {'articles': envoye}, v.user)
+        acte.refresh_from_db()
+        S.modifier(acte, {'options': {'penalite_retard_pct': '5'}}, v.user)
+        acte.refresh_from_db()
+        apres = K.construire_contenu(acte)['articles']
+        self.assertNotIn('estimations', [a['cle'] for a in apres])
+        self.assertEqual(len(apres), len(avant) - 1)
+
+    def test_arabe_corrige_suit_la_vente(self):
+        v = Vente(self)
+        acte = v.acte(T.CONTRAT)
+        envoye = corriger(K.construire_contenu(acte, 'ar')['articles'],
+                          'paiement', ' نص أضافه المستشار.')
+        S.modifier(acte, {'articles': envoye}, v.user, 'ar')
+        acte.refresh_from_db()
+        self.assertEqual(acte.surcharges, {})
+        self.assertEqual(K.construire_contenu(acte, 'ar')['articles'], envoye)
+        Devis.objects.filter(pk=v.devis.pk).update(echeancier=[
+            {'libelle': 'Acompte', 'type': 'acompte', 'pct_or_montant': 50},
+            {'libelle': 'Solde', 'type': 'solde', 'pct_or_montant': 50}])
+        contenu, ctx = K._construire(v.acte(T.CONTRAT), 'ar', avec_ctx=True)
+        apres = texte_article(contenu, 'paiement')
+        self.assertIn('نص أضافه المستشار.', apres)
+        self.assertIn(ctx['liste_tranches'], apres)
+        self.assertNotIn(f'60{NB}%', apres)
+
+    def test_quitus_corrige_en_gabarit(self):
+        v = Vente(self)
+        acte = v.acte(T.CLOTURE)
+        quitus = K.construire_contenu(acte)['quitus']
+        envoye = [quitus[0] + ' Merci de votre confiance.'] + quitus[1:]
+        S.modifier(acte, {'quitus': envoye}, v.user)
+        acte.refresh_from_db()
+        self.assertIn('{client}', acte.surcharges['quitus'][0])
+        self.assertEqual(K.construire_contenu(acte)['quitus'], envoye)
+        S.modifier(acte, {'quitus': quitus}, v.user)  # retour au défaut
+        acte.refresh_from_db()
+        self.assertNotIn('quitus', acte.surcharges)
+
+    def test_montant_ecrit_en_clair_refuse_a_l_emission(self):
+        v = Vente(self)
+        acte = v.acte(T.CONTRAT)
+        envoye = corriger(K.construire_contenu(acte)['articles'], 'objet',
+                          f' Frais de dossier : 12{FINE}345,67{NB}DH.')
+        S.modifier(acte, {'articles': envoye}, v.user)
+        acte.refresh_from_db()
+        self.assertEqual(len(K.montants_figes(acte)), 1)
+        self.assertTrue(any('Objet du contrat' in a
+                            for a in K.avertissements(acte)))
+        with self.assertRaises(S.ErreurActe) as ctx:
+            S.emettre(acte, v.user)
+        self.assertEqual(ctx.exception.code, T.CODE_MONTANT_FIGE)
+        self.assertIn('« Objet du contrat »', ctx.exception.detail)
+        self.assertEqual(v.acte(T.CONTRAT).statut, T.BROUILLON)
+
+
+# ── S2 : le quitus dit ce qui a été réellement réglé ────────────────────────
+
+class ReglementsPursTests(SimpleTestCase):
+
+    def test_lignes_somment_au_paye_ecart_nomme(self):
+        rows = [{'date': '2026-12-02', 'libelle': 'Acompte', 'mode': 'Virement',
+                 'montant': '29550.00', '_key': 'acompte'}]
+        lignes = K.reglements(rows, Decimal('29650.00'))
+        self.assertEqual(len(lignes), 2)
+        self.assertEqual(lignes[1]['libelle'], 'Escompte ou avance ventilée')
+        self.assertEqual(sum(Decimal(x['montant']) for x in lignes),
+                         Decimal('29650.00'))
+        lignes = K.reglements(rows, Decimal('29000.00'))
+        self.assertEqual(sum(Decimal(x['montant']) for x in lignes),
+                         Decimal('29000.00'))
+        self.assertEqual(len(K.reglements(rows, Decimal('29550.00'))), 1)
+
+    def test_phrase_de_l_ecart(self):
+        self.assertEqual(K.ecart_regle(Decimal('100'), Decimal('100'),
+                                       Decimal('0'), 'fr'), '')
+        fr = K.ecart_regle(Decimal('1000'), Decimal('500'), Decimal('500'),
+                           'fr')
+        self.assertIn('500,00', fr)
+        self.assertIn('avoir', fr)
+        self.assertIn('إشعار دائن', K.ecart_regle(
+            Decimal('1000'), Decimal('500'), Decimal('500'), 'ar'))
+        self.assertIn('retenue à la source', K.ecart_regle(
+            Decimal('1000'), Decimal('500'), Decimal('0'), 'fr'))
+
+
+class QuitusRegleTests(TestCase):
+
+    def test_tableau_et_total_d_une_meme_source_avec_escompte(self):
+        v = Vente(self)
+        prix = v.plan()['prix_convenu_ttc']
+        facture = v.payer(prix, jour=date(2026, 12, 22))
+        Paiement.objects.filter(facture=facture).update(
+            montant=prix - Decimal('100'), escompte_montant=Decimal('100'))
+        acte = v.acte(T.CLOTURE)
+        for langue in T.LANGUES:
+            with self.subTest(langue=langue):
+                contenu, ctx = K._construire(acte, langue, avec_ctx=True)
+                total = Decimal(contenu['paiement']['total_regle'])
+                self.assertEqual(total, prix)
+                self.assertEqual(
+                    sum(Decimal(p['montant']) for p in contenu['paiements']),
+                    total)
+                self.assertEqual(len(contenu['paiements']), 2)
+                self.assertEqual(set(contenu['paiements'][1]),
+                                 {'date', 'libelle', 'mode', 'montant'})
+                self.assertEqual(ctx['total_regle'],
+                                 K.C.montant(total, langue=langue))
+                self.assertEqual(ctx['ecart_regle'], '')
+        self.assertIsNone(S.motif_refus_emission(acte, K.Lecture(v.chantier)))
+
+
+# ── S5 : les garanties sont les mêmes dans les deux langues ─────────────────
+
+class GarantiesArabesPursTests(SimpleTestCase):
+
+    def test_lignes_et_durees_du_francais_textes_arabes(self):
+        def ligne(cle, designation, mois):
+            return {'cle': cle, 'designation': designation, 'duree_mois': mois,
+                    'duree_libelle': '', 'garant': 'g', 'detail': 'd',
+                    'fin': None}
+        defauts_ar = [ligne('onduleur', 'العاكس', 120),
+                      ligne('installation', 'التركيب', 24)]
+        fr = [ligne('installation', 'Installation', 36),
+              ligne('perso_1', 'Toiture', 120)]
+        trad = [{'cle': 'perso_1', 'designation': 'السقف'},
+                {'cle': 'inconnue', 'designation': 'زائد'}]
+        sortie = K._garanties_ar(defauts_ar, fr, trad)
+        self.assertEqual([(g['cle'], g['designation'], g['duree_mois'])
+                          for g in sortie],
+                         [('installation', 'التركيب', 36),
+                          ('perso_1', 'السقف', 120)])
+        self.assertEqual(K._garanties_ar(defauts_ar, None, trad), defauts_ar)
+
+
+# ── S12 : repères du contexte ───────────────────────────────────────────────
+
+class ReperesContexteTests(TestCase):
+
+    def test_contrat_du_adresse_reste_et_vrai_nom_en_arabe(self):
+        from apps.documents.contrats import textes_ar
+        from apps.parametres.models import CompanyProfile
+        v = Vente(self)
+        profil = CompanyProfile.get(company=v.company)
+        profil.nom = 'Solaire Réelle SARL'
+        profil.adresse = '3, rue Réelle, Casablanca'
+        profil.save()
+        acompte = v.plan()['tranches'][0]['montant_ttc']
+        v.payer(acompte)
+        prix = v.plan()['prix_convenu_ttc']
+        recep = v.acte(T.RECEPTION)
+        for langue in T.LANGUES:
+            with self.subTest(langue=langue):
+                ctx = K.contexte_de(recep, langue)
+                self.assertEqual(ctx['contrat_du'], '')
+                self.assertEqual(ctx['adresse_societe'],
+                                 '3, rue Réelle, Casablanca')
+                self.assertEqual(ctx['reste_a_regler'], K.C.montant(
+                    prix - acompte, langue=langue))
+                self.assertEqual(ctx['societe'], 'Solaire Réelle SARL')
+                self.assertNotEqual(ctx['societe'],
+                                    textes_ar.FORMES_CTX['societe'])
+        ActeContractuel.objects.filter(pk=v.acte(T.CONTRAT).pk).update(
+            statut=T.EMIS, contenu={'date_document': '2026-11-24'})
+        self.assertEqual(K.contexte_de(v.acte(T.RECEPTION))['contrat_du'],
+                         ' du 24 novembre 2026')
+        # Même forme que l'exemple des textes (même date : 24 novembre 2026).
+        self.assertEqual(K.contexte_de(v.acte(T.RECEPTION), 'ar')[
+            'contrat_du'], textes_ar.FORMES_CTX['contrat_du'])
+
+
+# ── S13 : arabe de contenu.py ───────────────────────────────────────────────
+
+#: Formes écartées : « الرصيد » pour le solde, « تسلّم » sans damma.
+RASEED, TASALLUM_SANS_DAMMA = 'الرصيد', \
+    'تسلّم'
+
+
+class ArabeTranchesPursTests(SimpleTestCase):
+
+    def test_chaque_cle_de_tranche_a_ses_mots_dans_les_deux_langues(self):
+        from apps.ventes.utils.echeancier import TRANCHE_LABELS
+        for cle in TRANCHE_LABELS:
+            with self.subTest(cle=cle):
+                self.assertIn(cle, K._LIBELLES_AR)
+                for table in (K._EXIGIBILITE, K._MOMENT):
+                    self.assertIn(cle, table['fr'])
+                    self.assertIn(cle, table['ar'])
+        self.assertEqual(K._LIBELLES_AR['solde'], 'باقي الثمن')
+        brut = json.dumps([K._EXIGIBILITE, K._MOMENT, K._LIBELLES_AR],
+                          ensure_ascii=False)
+        self.assertNotIn(RASEED, brut)
+        self.assertNotIn(TASALLUM_SANS_DAMMA, brut)
+
+
+class ArabeContenuTests(TestCase):
+
+    def test_solde_et_reception_ecrits_d_une_seule_facon(self):
+        v = Vente(self)
+        for acte in v.actes():
+            with self.subTest(acte=acte.type, variante=acte.variante):
+                c = K.construire_contenu(acte, 'ar')
+                brut = json.dumps({k: c.get(k) for k in (
+                    'echeancier', 'paiement')}, ensure_ascii=False)
+                self.assertNotIn(RASEED, brut)
+                self.assertNotIn(TASALLUM_SANS_DAMMA, brut)
+        c = K.construire_contenu(v.acte(T.RECEPTION), 'ar')
+        self.assertIn('باقي الثمن', c['paiement']['engagement'])
+        self.assertEqual(c['echeancier'][2]['libelle'], 'باقي الثمن')
+
+
+# ── S4 : la livraison sans tranche « livraison » ────────────────────────────
+
+def _tr(*cles_):
+    return [{'key': c, 'cible': Decimal(i + 1)} for i, c in enumerate(cles_)]
+
+
+class IndexLivraisonTests(SimpleTestCase):
+
+    def test_derniere_tranche_commande_ou_livraison_sinon_la_premiere(self):
+        self.assertEqual(K.index_livraison(_tr('acompte', 'materiel', 'solde')),
+                         1)
+        self.assertEqual(K.index_livraison(_tr(
+            'commande', 'livraison_materiel', 'mise_en_service',
+            'reception_definitive')), 1)
+        self.assertEqual(K.index_livraison(_tr(
+            'commande', 'mise_en_service', 'reception_definitive')), 0)
+        # 50 / 50 : ni commande ni livraison → la seule première tranche,
+        # jamais « l'avant-dernière ».
+        self.assertEqual(K.index_livraison(_tr('acompte', 'solde')), 0)
+        self.assertTrue(K.livraison_sans_etape(_tr('acompte', 'solde')))
+        self.assertEqual(K.index_livraison(_tr(
+            'acompte', 'acompte', 'acompte', 'solde')), 0)
+        self.assertFalse(K.livraison_sans_etape(_tr('acompte', 'materiel')))
+        self.assertFalse(K.livraison_sans_etape([]))
+
+
+class LivraisonSansEtapeTests(TestCase):
+
+    def test_cinquante_cinquante(self):
+        v = Vente(self)
+        Devis.objects.filter(pk=v.devis.pk).update(echeancier=[
+            {'libelle': 'Acompte', 'type': 'acompte', 'pct_or_montant': 50},
+            {'libelle': 'Solde', 'type': 'solde', 'pct_or_montant': 50}])
+        acte = v.acte(T.LIVRAISON, T.RESTE_A_REGLER)
+        premiere = v.plan()['tranches'][0]['cible_cumul_ttc']
+        c = K.construire_contenu(acte)
+        self.assertEqual(c['paiement']['exigible_maintenant'],
+                         f'{premiere:.2f}')
+        self.assertEqual([t['statut'] for t in c['echeancier']],
+                         ['exigible', 'a_venir'])
+        self.assertTrue(any('ne correspond à la commande' in a
+                            for a in K.avertissements(acte)))
+
+
+# ── S3 : la version « tranche réglée » ne s'émet pas sur une supposition ────
+
+class TrancheRegleeTests(TestCase):
+
+    def _drapeaux(self, v, variante):
+        from apps.documents.contrats.selectors import dossier_du_chantier
+        return next(a for a in dossier_du_chantier(v.chantier)['actes']
+                    if a['type'] == T.LIVRAISON and a['variante'] == variante)
+
+    def test_refusee_tant_que_les_paiements_ne_couvrent_pas_la_cible(self):
+        v = Vente(self)
+        acompte = v.plan()['tranches'][0]['montant_ttc']
+        cible = v.plan()['tranches'][1]['cible_cumul_ttc']
+        v.payer(acompte)
+        acte = v.acte(T.LIVRAISON, T.TRANCHE_REGLEE)
+        # Le brouillon reste prêt et se prévisualise.
+        c = K.construire_contenu(acte)
+        self.assertEqual(c['paiement']['total_regle'], f'{cible:.2f}')
+        self.assertFalse(self._drapeaux(v, T.TRANCHE_REGLEE)['peut_emettre'])
+        self.assertTrue(self._drapeaux(v, T.RESTE_A_REGLER)['peut_emettre'])
+        self.assertTrue(any('ne pourra être émise' in a
+                            for a in K.avertissements(acte)))
+        with self.assertRaises(S.ErreurActe) as ctx:
+            S.emettre(acte, v.user)
+        self.assertEqual(ctx.exception.code, T.CODE_PAIEMENT_NON_ENREGISTRE)
+        self.assertEqual(ctx.exception.statut_http, 409)
+        self.assertIn('reste à régler', ctx.exception.detail)
+        self.assertEqual(v.acte(T.LIVRAISON, T.TRANCHE_REGLEE).statut,
+                         T.BROUILLON)
+        v.payer(cible - acompte)
+        self.assertTrue(self._drapeaux(v, T.TRANCHE_REGLEE)['peut_emettre'])
+        self.assertIsNone(S.motif_refus_emission(
+            v.acte(T.LIVRAISON, T.TRANCHE_REGLEE), K.Lecture(v.chantier)))
+        self.assertFalse(any('ne pourra être émise' in a for a in
+                             K.avertissements(v.acte(T.LIVRAISON,
+                                                     T.TRANCHE_REGLEE))))
+
+    def test_emission_verrouille_les_deux_variantes(self):
+        """S9 : toutes les lignes de livraison du chantier sont verrouillées
+        avant le contrôle de la jumelle."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        v = Vente(self)
+        with CaptureQueriesContext(connection) as requetes:
+            with self.assertRaises(S.ErreurActe):
+                S.emettre(v.acte(T.LIVRAISON, T.TRANCHE_REGLEE), v.user)
+        verrous = [q['sql'] for q in requetes.captured_queries
+                   if 'FOR UPDATE' in q['sql'] and 'pv_livraison' in q['sql']]
+        self.assertTrue(verrous, [q['sql'] for q in requetes.captured_queries
+                                  if 'FOR UPDATE' in q['sql']])

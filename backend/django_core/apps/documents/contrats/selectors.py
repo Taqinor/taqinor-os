@@ -16,15 +16,26 @@ def _iso_dt(valeur):
     return texte[:-6] + 'Z' if texte.endswith('+00:00') else texte
 
 
-def _drapeaux(acte, lecture, actes_du_chantier):
-    annule = acte.chantier.annule or acte.statut == T.ANNULE
+#: Droits de l'utilisateur sur les gestes d'écriture (calculés par la vue
+#: avec les MÊMES permissions que ses routes d'écriture) ; sans vue : tout.
+DROITS_COMPLETS = {'ecrire': True, 'enregistrer_modele': True}
+
+
+def _drapeaux(acte, lecture, actes_du_chantier, droits=None):
+    """Les gestes possibles : état de l'acte ET droits de l'utilisateur —
+    l'écran ne propose jamais un geste que le serveur refusera."""
+    droits = droits or DROITS_COMPLETS
+    annule = (acte.chantier.annule or acte.statut == T.ANNULE
+              or not droits.get('ecrire'))
     jumelle = any(a.pk != acte.pk and a.type == T.LIVRAISON == acte.type
                   and a.statut in (T.EMIS, T.SIGNE) for a in actes_du_chantier)
     peut_emettre = False
     if not annule and acte.statut == T.BROUILLON and not jumelle:
-        vente = lecture.vente()
-        peut_emettre = vente is not None and not (
-            acte.type == T.CLOTURE and (K.reste_du(vente) or 0) > 0)
+        # La règle même de l'émission : l'écran ne propose jamais un geste
+        # que le serveur refusera.
+        from .services import motif_refus_emission
+        peut_emettre = motif_refus_emission(acte, lecture,
+                                            jumelle=False) is None
     return {
         'ecarte': jumelle,
         'peut_modifier': not annule and acte.statut == T.BROUILLON,
@@ -35,12 +46,13 @@ def _drapeaux(acte, lecture, actes_du_chantier):
     }
 
 
-def resume_acte(acte, lecture, actes_du_chantier, *, contenu_fr=None):
+def resume_acte(acte, lecture, actes_du_chantier, *, contenu_fr=None,
+                droits=None):
     """Le résumé d'un acte (une ligne du dossier)."""
     from .services import document_ged
     document = (document_ged(acte) if acte.statut in (T.EMIS, T.SIGNE)
                 else None)
-    drapeaux = _drapeaux(acte, lecture, actes_du_chantier)
+    drapeaux = _drapeaux(acte, lecture, actes_du_chantier, droits)
     return {
         'id': acte.pk,
         'type': acte.type,
@@ -107,7 +119,7 @@ def _prochaine_action(chantier, actes, vente):
     return None
 
 
-def dossier_du_chantier(chantier, user=None):
+def dossier_du_chantier(chantier, user=None, *, droits=None):
     """Le dossier contractuel d'un chantier (forme de
     ``dossier_contractuel.json``) ; prépare les cinq actes s'ils manquent."""
     from .services import preparer_dossier
@@ -131,18 +143,22 @@ def dossier_du_chantier(chantier, user=None):
         'regle_ttc': K._s(vente['paye']) if vente else None,
         'reste_ttc': K._s(K.reste_du(vente)) if vente else None,
         'prochaine_action': _prochaine_action(chantier, actes, vente),
-        'actes': [resume_acte(a, lecture, actes) for a in actes],
+        'actes': [resume_acte(a, lecture, actes, droits=droits)
+                  for a in actes],
     }
 
 
-def detail_acte(acte, langue='fr'):
+def detail_acte(acte, langue='fr', *, droits=None):
     """Le détail d'un acte dans une langue (résumé + contenu)."""
     lecture = K.Lecture(acte.chantier)
     actes = _actes(acte.chantier)
     contenu = K.contenu_de(acte, langue, lecture)
     contenu_fr = contenu if langue == 'fr' else None
-    detail = resume_acte(acte, lecture, actes, contenu_fr=contenu_fr)
+    detail = resume_acte(acte, lecture, actes, contenu_fr=contenu_fr,
+                         droits=droits)
     detail.update({
+        'peut_enregistrer_modele': bool(
+            (droits or DROITS_COMPLETS).get('enregistrer_modele')),
         'chantier': {'id': acte.chantier_id,
                      'reference': acte.chantier.reference or ''},
         'langue': langue,

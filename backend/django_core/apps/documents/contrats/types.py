@@ -73,7 +73,7 @@ SECTIONS_MODIFIABLES = {
 SECTIONS_TEXTE = frozenset({
     'titre', 'articles', 'conditions_particulieres', 'constats', 'reserves',
     'quitus', 'conseils_intro', 'conseils', 'entretien', 'garanties',
-    'echeancier_textes', 'delais',
+    'echeancier_textes', 'delais', 'paiement',
 })
 SECTIONS_COMMUNES = frozenset({
     'lieu', 'date_document', 'societe', 'options', 'livraison', 'reception',
@@ -97,11 +97,19 @@ LIBELLES_SECTIONS = {
 #: montant : un montant ne se modifie jamais dans un acte (choix C1).
 CLES_SOCIETE = ('representant',)
 CLES_DELAIS = ('resume', 'detail', 'date_limite')
-CLES_DELAIS_AR = ('resume', 'detail')
+#: En arabe, seul le détail des délais se traduit : la date limite est
+#: commune (le résumé arabe se recalcule depuis elle).
+CLES_DELAIS_AR = ('detail',)
+#: En arabe, une ligne de garantie ne traduit que ses textes : les lignes,
+#: les durées et les dates de fin viennent du français.
+CLES_GARANTIE_TEXTE = ('designation', 'garant', 'detail')
 CLES_LIVRAISON = ('date', 'suite', 'suite_detail', 'avec_series')
 CLES_RECEPTION = ('date_mise_en_service', 'prononcee', 'delai_levee_reserves')
 CLES_SAV = ('telephone', 'whatsapp', 'email', 'horaires')
+#: Clés de texte du bloc ``paiement`` (jamais un montant) ; seule
+#: ``modalites`` se modifie dans un acte (français et arabe).
 CLES_PAIEMENT_TEXTE = ('modalites', 'engagement')
+CLES_PAIEMENT_MODIFIABLES = ('modalites',)
 CLES_OPTIONS = ('consommateur', 'reserve_propriete', 'raccorde_reseau',
                 'penalite_retard_pct', 'delai_execution_jours')
 CLES_GARANTIE = ('cle', 'designation', 'duree_mois', 'duree_libelle',
@@ -112,9 +120,10 @@ CLES_CONSEIL = ('rubrique', 'titre', 'texte')
 DELAI_EXECUTION_DEFAUT_JOURS = 30
 GARANTIE_INSTALLATION_DEFAUT_MOIS = 24
 
-#: Clés de tranche qui désignent la livraison du matériel (échéancier
-#: résidentiel ``materiel``, jalons C&I ``livraison_materiel``).
-CLES_TRANCHE_LIVRAISON = ('materiel', 'livraison_materiel')
+#: Clés de tranche dues au plus tard à la livraison : la commande et la
+#: livraison du matériel (échéancier résidentiel ``materiel``, jalons C&I
+#: ``commande`` et ``livraison_materiel``).
+CLES_TRANCHE_LIVRAISON = ('commande', 'materiel', 'livraison_materiel')
 
 #: Codes d'erreur servis (contrat d'API).
 CODE_ACTE_FIGE = 'acte_fige'
@@ -124,3 +133,7 @@ CODE_DEJA_SIGNE = 'deja_signe'
 CODE_CONTENU_INVALIDE = 'contenu_invalide'
 CODE_SANS_DEVIS = 'sans_devis'
 CODE_ETAT = 'etat_invalide'
+#: Un texte personnalisé cite un montant que la vente ne porte plus (409).
+CODE_MONTANT_FIGE = 'montant_fige'
+#: Variante « tranche réglée » sans les encaissements qu'elle affirme (409).
+CODE_PAIEMENT_NON_ENREGISTRE = 'paiement_non_enregistre'

@@ -77,6 +77,8 @@ def preparer_dossier(chantier, user=None):
                 champs.append('reference')
             if champs:
                 acte.save(update_fields=champs + ['updated_at'])
+                if acte.statut == T.EMIS:
+                    remettre_au_portail(acte)
     return list(ActeContractuel.objects.filter(
         company=chantier.company, chantier=chantier).order_by('id'))
 
@@ -94,13 +96,51 @@ def annuler_dossier(chantier, motif=''):
               .filter(company=chantier.company, chantier=chantier)
               .exclude(statut__in=(T.SIGNE, T.ANNULE)))
         for acte in qs:
+            etait_emis = acte.statut == T.EMIS
             acte.statut_avant_annulation = acte.statut
             acte.statut = T.ANNULE
             acte.motif_annulation = (motif or '')[:255]
             acte.save(update_fields=['statut', 'statut_avant_annulation',
                                      'motif_annulation', 'updated_at'])
+            if etait_emis:
+                retirer_du_portail(acte)
             nb += 1
     return nb
+
+
+def remettre_au_portail(acte):
+    """Un acte émis rétabli (ré-acceptation) est de nouveau partagé au
+    portail du client. Best-effort."""
+    if not acte.chantier.client_id:
+        return
+    for langue in T.LANGUES:
+        document = document_ged(acte, langue)
+        if document is None:
+            continue
+        try:
+            from apps.ged import services as ged_services
+            ged_services.partager_document_avec_client_portail(
+                document, acte.chantier.client_id)
+        except Exception:  # noqa: BLE001 — partage best-effort
+            logger.exception('contrats : partage portail impossible '
+                             '(acte %s, %s)', acte.pk, langue)
+
+
+def retirer_du_portail(acte):
+    """Retire du portail client le PDF (français et arabe) d'un acte qui
+    n'est plus en vigueur (rouvert, annulé) : le client ne voit jamais un
+    acte annulé ni deux livraisons contradictoires. Le document reste en GED
+    (l'historique ne se supprime pas). Best-effort."""
+    for langue in T.LANGUES:
+        document = document_ged(acte, langue)
+        if document is None:
+            continue
+        try:
+            from apps.ged import services as ged_services
+            ged_services.retirer_partage_client_portail(document)
+        except Exception:  # noqa: BLE001 — partage best-effort
+            logger.exception('contrats : retrait du portail impossible '
+                             '(acte %s, %s)', acte.pk, langue)
 
 
 # ── Gardes ──────────────────────────────────────────────────────────────────
@@ -136,8 +176,11 @@ def jumelle_emise(acte):
         statut__in=(T.EMIS, T.SIGNE)).exclude(pk=acte.pk).exists()
 
 
-def motif_refus_emission(acte, lecture):
-    """``(code, detail)`` qui empêche l'émission d'un brouillon, ou None."""
+def motif_refus_emission(acte, lecture, *, jumelle=None):
+    """``(code, detail)`` qui empêche l'émission d'un brouillon, ou None —
+    la même règle sert ``peut_emettre`` (``jumelle`` : déjà connue de
+    l'appelant, sinon lue)."""
+    from .rendu import composants as C
     vente = lecture.vente()
     if vente is None:
         return (T.CODE_SANS_DEVIS,
@@ -146,25 +189,43 @@ def motif_refus_emission(acte, lecture):
     if acte.type == T.CLOTURE:
         reste = K.reste_du(vente)
         if reste and reste > 0:
-            from .rendu import composants as C
             return (T.CODE_SOLDE_NON_REGLE,
                     f'Le prix n\'est pas réglé en totalité : '
                     f'{C.montant(reste)} restent dus. Enregistrez le paiement '
                     f'du solde avant d\'émettre le quitus.')
-    if jumelle_emise(acte):
+    manque = K.paiement_suppose(acte, vente)
+    if manque:
+        # Signée, cette version vaut reçu contre la société : jamais sur une
+        # supposition.
+        return (T.CODE_PAIEMENT_NON_ENREGISTRE,
+                f"Cette version dit que {C.montant(manque['cible'])} sont "
+                f"réglés, mais l'ERP n'a enregistré que "
+                f"{C.montant(manque['paye'])} de paiements. Enregistrez les "
+                f"paiements reçus avant de l'émettre, ou émettez la version "
+                f"« reste à régler ».")
+    if jumelle_emise(acte) if jumelle is None else jumelle:
         return (T.CODE_ETAT,
                 "L'autre version de la livraison est déjà émise : rouvrez-la "
                 "d'abord.")
+    figes = K.montants_figes(acte, lecture)
+    if figes:
+        return (T.CODE_MONTANT_FIGE, K.message_montants_figes(figes))
     return None
 
 
 # ── Modifier ────────────────────────────────────────────────────────────────
 
+#: Sections stockées en GABARIT (une valeur vivante redevient son repère).
+_SECTIONS_GABARIT = ('articles', 'quitus')
+
+
 def modifier(acte, surcharges, user=None, langue='fr'):
     """Applique des personnalisations à un BROUILLON : chaque section reçue
-    remplace la sienne, ``None`` la remet au défaut. Les articles sont stockés
-    sous forme compacte (un article non modifié = sa seule clé), pour qu'un
-    texte inchangé ne fige jamais un montant de la vente."""
+    remplace la sienne, ``None`` la remet au défaut. Les articles et le quitus
+    sont comparés à la base de l'acte (ses réglages communs — y compris ceux
+    reçus dans ce même corps — appliqués, ses textes non) : un texte non
+    modifié n'est pas stocké, un texte corrigé l'est en gabarit, pour qu'il ne
+    fige jamais une valeur de la vente."""
     try:
         propre = K.valider_surcharges(acte.type, surcharges, langue)
     except K.ContenuInvalide as exc:
@@ -175,15 +236,28 @@ def modifier(acte, surcharges, user=None, langue='fr'):
         _garde_brouillon(acte)
         champ = 'surcharges_ar' if langue == 'ar' else 'surcharges'
         cible = dict(getattr(acte, champ) or {})
+        textes = {}
         for section, valeur in propre.items():
             if valeur is None:
                 cible.pop(section, None)
-            elif section == 'articles':
-                base = K.articles_de_base(acte, langue)
-                cible[section] = K.compacter_articles(base, valeur)
+            elif section in _SECTIONS_GABARIT:
+                textes[section] = valeur
             else:
                 cible[section] = valeur
         setattr(acte, champ, cible)
+        if textes:
+            base = K.base_de_comparaison(acte, langue)
+            if 'articles' in textes:
+                cible['articles'] = K.compacter_articles(
+                    base['articles'], textes['articles'], base['ctx'],
+                    base['reperes'])
+            if 'quitus' in textes:
+                if textes['quitus'] == base['quitus']:
+                    cible.pop('quitus', None)
+                else:
+                    cible['quitus'] = K.gabarits_textes(
+                        textes['quitus'], base['ctx'],
+                        base['reperes'].get(K.CLE_QUITUS, set()))
         acte.save(update_fields=[champ, 'updated_at'])
     return acte
 
@@ -205,6 +279,14 @@ def emettre(acte, user=None):
     rend et dépose les deux PDF en GED, les partage au portail du client.
     Rend ``(acte, avertissements)``."""
     with transaction.atomic():
+        if acte.type == T.LIVRAISON:
+            # Les deux variantes verrouillées (ordre stable) AVANT le
+            # contrôle de la jumelle : deux émissions simultanées ne peuvent
+            # pas passer chacune de leur côté.
+            list(_modele_acte().objects.select_for_update()
+                 .filter(company=acte.company_id, chantier=acte.chantier_id,
+                         type=T.LIVRAISON)
+                 .order_by('pk').values_list('pk', flat=True))
         acte = _verrouiller(acte)
         _garde_chantier(acte)
         _garde_brouillon(acte)
@@ -242,6 +324,7 @@ def rouvrir(acte, user=None):
         acte.version += 1
         acte.save(update_fields=['statut', 'contenu', 'contenu_ar', 'emis_le',
                                  'emis_par', 'version', 'updated_at'])
+        retirer_du_portail(acte)
     return acte
 
 
@@ -389,10 +472,8 @@ def deposer_pdfs(acte, user=None):
     """Rend les PDF figés (français et arabe), les dépose en GED (nouvelle
     version si le contenu a changé) et les partage au portail du client.
     Best-effort : rend la liste des avertissements (vide si tout est passé)."""
-    from apps.documents.builders import GED_CABINET_CHANTIERS
     from .rendu import pdf_de
     avertissements = []
-    chantier = acte.chantier
     for langue, contenu in (('fr', acte.contenu), ('ar', acte.contenu_ar)):
         if not contenu:
             continue
@@ -406,62 +487,87 @@ def deposer_pdfs(acte, user=None):
                 f'Le PDF{suffixe} n\'a pas pu être produit : réessayez le '
                 f'téléchargement.')
             continue
-        try:
-            from apps.ged import services as ged_services
-            nom = f'{T.TITRES[acte.type]} {acte.reference}{suffixe}'
-            fichier = acte.reference + ('-ar' if langue == 'ar' else '')
-            document, _cree = ged_services.deposit_document(
-                company=acte.company, nom=nom,
-                source_type=source_ged(acte, langue), source_id=acte.pk,
-                contenu_bytes=pdf, mime='application/pdf',
-                filename=f'{fichier}.pdf', cabinet_nom=GED_CABINET_CHANTIERS,
-                folder_nom=chantier.reference or f'Chantier {chantier.pk}',
-                description='Acte du dossier contractuel, figé.',
-                created_by=user if getattr(user, 'pk', None) else None,
-                versionner_si_modifie=True)
-            document.custom_data = {
-                **(document.custom_data or {}),
-                'acte_statut': acte.statut, 'acte_version': acte.version,
-                'empreinte_sha256': empreinte(contenu), 'langue': langue}
-            document.save(update_fields=['custom_data'])
-        except Exception:  # noqa: BLE001 — l'acte reste émis / signé
-            logger.exception('contrats : dépôt GED impossible (acte %s, %s)',
-                             acte.pk, langue)
-            avertissements.append(
-                f'Le PDF{suffixe} n\'a pas pu être rangé dans les documents '
-                f'du chantier : l\'acte reste {acte.get_statut_display().lower()}.')
-            continue
-        if chantier.client_id:
-            try:
-                ged_services.partager_document_avec_client_portail(
-                    document, chantier.client_id)
-            except Exception:  # noqa: BLE001 — partage best-effort
-                logger.exception('contrats : partage portail impossible '
-                                 '(acte %s, %s)', acte.pk, langue)
-                avertissements.append(
-                    f'Le PDF{suffixe} n\'a pas pu être partagé sur l\'espace '
-                    f'du client.')
+        avertissements += _deposer_langue(acte, langue, contenu, pdf, user)
     return avertissements
 
 
+def _deposer_langue(acte, langue, contenu, pdf, user=None):
+    """Dépose le PDF figé d'une langue en GED (marqué de la version, du statut
+    et de l'empreinte du contenu) et le partage au portail. Best-effort :
+    rend les avertissements."""
+    from apps.documents.builders import GED_CABINET_CHANTIERS
+    chantier = acte.chantier
+    suffixe = ' (traduction arabe)' if langue == 'ar' else ''
+    try:
+        from apps.ged import services as ged_services
+        nom = f'{T.TITRES[acte.type]} {acte.reference}{suffixe}'
+        fichier = acte.reference + ('-ar' if langue == 'ar' else '')
+        document, _cree = ged_services.deposit_document(
+            company=acte.company, nom=nom,
+            source_type=source_ged(acte, langue), source_id=acte.pk,
+            contenu_bytes=pdf, mime='application/pdf',
+            filename=f'{fichier}.pdf', cabinet_nom=GED_CABINET_CHANTIERS,
+            folder_nom=chantier.reference or f'Chantier {chantier.pk}',
+            description='Acte du dossier contractuel, figé.',
+            created_by=user if getattr(user, 'pk', None) else None,
+            versionner_si_modifie=True)
+        document.custom_data = {
+            **(document.custom_data or {}),
+            'acte_statut': acte.statut, 'acte_version': acte.version,
+            'empreinte_sha256': empreinte(contenu), 'langue': langue}
+        document.save(update_fields=['custom_data'])
+    except Exception:  # noqa: BLE001 — l'acte reste émis / signé
+        logger.exception('contrats : dépôt GED impossible (acte %s, %s)',
+                         acte.pk, langue)
+        return [f'Le PDF{suffixe} n\'a pas pu être rangé dans les documents '
+                f'du chantier : l\'acte reste '
+                f'{acte.get_statut_display().lower()}.']
+    if chantier.client_id:
+        try:
+            ged_services.partager_document_avec_client_portail(
+                document, chantier.client_id)
+        except Exception:  # noqa: BLE001 — partage best-effort
+            logger.exception('contrats : partage portail impossible '
+                             '(acte %s, %s)', acte.pk, langue)
+            return [f'Le PDF{suffixe} n\'a pas pu être partagé sur l\'espace '
+                    f'du client.']
+    return []
+
+
+def document_a_jour(document, acte, contenu):
+    """Le document GED porte-t-il le PDF de CE contenu figé (même empreinte,
+    même version, même statut) ? Un dépôt raté laisse en GED l'ancienne
+    version : elle n'est alors jamais servie."""
+    marque = getattr(document, 'custom_data', None) or {}
+    return (marque.get('empreinte_sha256') == empreinte(contenu)
+            and marque.get('acte_version') == acte.version
+            and marque.get('acte_statut') == acte.statut)
+
+
 def pdf_de_l_acte(acte, langue='fr'):
-    """Octets PDF servis : la version figée en GED d'un acte émis ou signé
-    (re-rendue depuis le contenu figé si le stockage ne répond pas), le rendu
-    vivant d'un brouillon."""
+    """Octets PDF servis. Acte émis ou signé : le PDF rangé en GED s'il est
+    bien celui du contenu figé ; sinon (dépôt raté, stockage muet) le contenu
+    figé est re-rendu et le dépôt retenté. Brouillon : le rendu vivant."""
     from .rendu import pdf_de
-    if acte.statut in (T.EMIS, T.SIGNE):
-        document = document_ged(acte, langue)
-        if document is not None:
-            from apps.documents.builders import _octets_en_vigueur
-            try:
-                octets = _octets_en_vigueur(document)
-            except Exception:  # noqa: BLE001 — repli : rendu du contenu figé
-                logger.warning('contrats : octets GED illisibles (acte %s)',
-                               acte.pk, exc_info=True)
-                octets = None
-            if octets:
-                return octets
-    return pdf_de(K.contenu_de(acte, langue))
+    contenu = (acte.contenu_ar if langue == 'ar' else acte.contenu) \
+        if acte.statut in (T.EMIS, T.SIGNE) else None
+    if not contenu:
+        return pdf_de(K.contenu_de(acte, langue))
+    document = document_ged(acte, langue)
+    if document is not None and document_a_jour(document, acte, contenu):
+        from apps.documents.builders import _octets_en_vigueur
+        try:
+            octets = _octets_en_vigueur(document)
+        except Exception:  # noqa: BLE001 — repli : rendu du contenu figé
+            logger.warning('contrats : octets GED illisibles (acte %s)',
+                           acte.pk, exc_info=True)
+            octets = None
+        if octets:
+            return octets
+    pdf = pdf_de(contenu)
+    if document is None or not document_a_jour(document, acte, contenu):
+        _deposer_langue(acte, langue, contenu, pdf)
+    return pdf
 
 
 # ── Modèle de la société ────────────────────────────────────────────────────
@@ -508,21 +614,23 @@ def _modele_de_langue(acte, langue, valeurs, ignores):
         if section in _HORS_MODELE:
             continue
         if section == 'articles':
+            # Les articles effectifs, remis en gabarits contre les textes par
+            # défaut : les valeurs de ce chantier redeviennent des repères ;
+            # un texte qui en cite encore une en clair n'est pas repris.
             effectifs = K.construire_contenu(acte, langue)['articles']
-            purs = K.articles_de_base(acte, langue, avec_modele=False)
-            par_cle = {a['cle']: a for a in purs}
+            base = K.base_de_comparaison(acte, langue, avec_modele=False)
             gardes = []
-            for a in effectifs:
-                texte = ' '.join([a['titre']] + a['paragraphes'])
-                if a['cle'] not in par_cle and _cite(texte, valeurs):
-                    ignores.append(f'article « {a["titre"]} »')
+            for e in K.compacter_articles(base['articles'], effectifs,
+                                          base['ctx'], base['reperes']):
+                if 'paragraphes' in e and _cite(
+                        ' '.join([e['titre']] + e['paragraphes']), valeurs):
+                    titre = K.rendre_gabarit(e['titre'], base['ctx'], langue)
+                    ignores.append(f'article « {titre} »')
+                    if e.get('base'):
+                        gardes.append({'cle': e['cle']})
                     continue
-                if _cite(texte, valeurs) and a != par_cle.get(a['cle']):
-                    ignores.append(f'article « {a["titre"]} »')
-                    gardes.append({'cle': a['cle']})
-                    continue
-                gardes.append(a)
-            sortie[section] = K.compacter_articles(purs, gardes)
+                gardes.append(e)
+            sortie[section] = gardes
         elif section == 'garanties':
             pose = [g for g in valeur if g.get('cle') == 'installation']
             if pose:
@@ -536,7 +644,7 @@ def _modele_de_langue(acte, langue, valeurs, ignores):
                 ignores.append(T.LIBELLES_SECTIONS.get(section, section))
                 continue
             sortie[section] = valeur
-        elif section == 'echeancier_textes':
+        elif section in ('echeancier_textes', 'paiement'):
             sortie[section] = valeur
         elif langue == 'fr':
             sortie[section] = valeur

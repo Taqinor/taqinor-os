@@ -67,6 +67,7 @@
     "peut_emettre": true,
     "peut_signer": false,
     "peut_rouvrir": false,
+    "peut_enregistrer_modele": false,
     "document_ged_id": null,
     "chantier": {
       "id": 12,
@@ -440,6 +441,7 @@
     "peut_emettre": true,
     "peut_signer": false,
     "peut_rouvrir": false,
+    "peut_enregistrer_modele": false,
     "document_ged_id": null,
     "chantier": {
       "id": 12,
@@ -685,6 +687,7 @@
     "peut_emettre": true,
     "peut_signer": false,
     "peut_rouvrir": false,
+    "peut_enregistrer_modele": false,
     "document_ged_id": null,
     "chantier": {
       "id": 12,
@@ -928,6 +931,7 @@
     "peut_emettre": true,
     "peut_signer": false,
     "peut_rouvrir": false,
+    "peut_enregistrer_modele": false,
     "document_ged_id": null,
     "chantier": {
       "id": 12,
@@ -1172,6 +1176,7 @@
     "peut_emettre": false,
     "peut_signer": false,
     "peut_rouvrir": false,
+    "peut_enregistrer_modele": false,
     "document_ged_id": null,
     "chantier": {
       "id": 12,
@@ -1542,6 +1547,14 @@
   "exemple_409_deja_signe": {
     "detail": "Cet acte est déjà signé.",
     "code": "deja_signe"
+  },
+  "exemple_409_paiement_non_enregistre": {
+    "detail": "Cette version dit que 88 650,00 DH sont réglés, mais l'ERP n'a enregistré que 29 550,00 DH de paiements. Enregistrez les paiements reçus avant de l'émettre, ou émettez la version « reste à régler ».",
+    "code": "paiement_non_enregistre"
+  },
+  "exemple_409_montant_fige": {
+    "detail": "L'article « Paiement » cite 29 550,00 DH : ce montant n'est plus celui de la vente. Corrigez ce texte ou remettez-le par défaut avant d'émettre.",
+    "code": "montant_fige"
   },
   "exemple_400_contenu_invalide": {
     "detail": "Section inconnue : montants.",

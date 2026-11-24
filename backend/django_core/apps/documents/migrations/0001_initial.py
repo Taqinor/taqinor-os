@@ -2,6 +2,7 @@
 # Docker de la session de construction était arrêté. Additive : deux tables
 # neuves, aucune table existante touchée.
 
+import apps.documents.models
 import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
@@ -41,7 +42,7 @@ class Migration(migrations.Migration):
                 ('preuve', models.JSONField(blank=True, default=dict)),
                 ('statut_avant_annulation', models.CharField(blank=True, default='', max_length=20)),
                 ('motif_annulation', models.CharField(blank=True, default='', max_length=255)),
-                ('chantier', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='actes_contractuels', to='installations.installation')),
+                ('chantier', models.ForeignKey(on_delete=apps.documents.models.proteger_actes_engages, related_name='actes_contractuels', to='installations.installation')),
                 ('company', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='%(app_label)s_%(class)s_set', to='authentication.company', verbose_name='Société')),
                 ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='actes_contractuels_crees', to=settings.AUTH_USER_MODEL)),
                 ('emis_par', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='actes_contractuels_emis', to=settings.AUTH_USER_MODEL)),
