@@ -301,6 +301,7 @@
           "paragraphes": [
             "Le prix est payé en trois étapes, chacune liée à un moment précis du chantier :",
             "- **30 %**, soit 29 550,00 DH, à la signature du présent contrat ;\n- **60 %**, soit 59 100,00 DH, à la livraison du matériel chez le Client ;\n- **10 %**, soit 9 850,00 DH, à la réception des travaux.",
+            "« À la signature » : le jour où le contrat est signé. « À la livraison » : le jour où le matériel est déposé à l'adresse du chantier, constaté par le procès-verbal de livraison. « À la réception » : le jour où le procès-verbal de réception est signé.",
             "Chaque paiement donne lieu à une facture. Paiement par virement ou par chèque à l'ordre de TAQINOR. RIB : 000 000 0000000000000000 00 — Banque Exemple.",
             "La commande du matériel est lancée dès l'encaissement du premier paiement."
           ]
@@ -309,23 +310,23 @@
           "cle": "delais",
           "titre": "Délais",
           "paragraphes": [
-            "TAQINOR s'engage à avoir livré le matériel, posé l'installation et l'avoir mise en service **au plus tard le 23 janvier 2027**.",
-            "Ce délai est suspendu pendant un cas de force majeure, pendant les intempéries qui rendent le travail en toiture dangereux, et pendant tout retard dû au Client (accès au chantier impossible, paiement en attente, travaux préalables à sa charge non terminés). TAQINOR prévient le Client par écrit de toute suspension.",
-            "Si la date limite est dépassée de plus de sept jours sans cas de force majeure, le Client peut mettre fin au contrat dans les conditions des articles 12 à 14 de la loi n° 31-08 ; les sommes versées lui sont alors remboursées dans les sept jours."
+            "TAQINOR s'engage à avoir livré le matériel, posé l'installation et l'avoir mise en service **au plus tard le 24 décembre 2026**.",
+            "Ce délai est suspendu pendant un cas de force majeure, pendant les intempéries qui rendent le travail en toiture dangereux, pendant tout retard dû au Client (accès au chantier impossible, paiement en attente, travaux préalables à sa charge non terminés) et pendant l'attente de la réponse du gestionnaire du réseau, lorsque son accord est requis avant les travaux. TAQINOR prévient le Client par écrit de toute suspension.",
+            "Si la date limite, prolongée des suspensions ci-dessus, est dépassée de plus de sept jours, le Client peut, dans les cinq jours qui suivent, mettre fin au contrat par écrit (articles 12 à 14 de la loi n° 31-08) ; TAQINOR lui rembourse alors les sommes versées dans les sept jours."
           ]
         },
         {
           "cle": "engagements_societe",
           "titre": "Ce que TAQINOR s'engage à faire",
           "paragraphes": [
-            "- réaliser les travaux dans les règles de l'art et selon les normes de sécurité électrique en vigueur ;\n- employer un personnel qualifié et le matériel prévu au devis, neuf et garanti par son fabricant ;\n- protéger les lieux pendant le chantier et les laisser propres à la fin ;\n- remettre au Client, à la clôture, les notices, les fiches techniques et le certificat de garantie."
+            "- réaliser les travaux dans les règles de l'art et selon les normes de sécurité électrique en vigueur ;\n- employer un personnel qualifié et le matériel prévu au devis, neuf et garanti par son fabricant ;\n- protéger les lieux pendant le chantier et les laisser propres à la fin ;\n- remettre au Client, à la réception, les notices et les fiches techniques et, à la clôture, le certificat de garantie."
           ]
         },
         {
           "cle": "engagements_client",
           "titre": "Ce que le Client s'engage à faire",
           "paragraphes": [
-            "- donner accès au chantier, à l'eau et à l'électricité aux dates convenues ;\n- garantir qu'il est propriétaire des lieux ou qu'il a obtenu l'autorisation nécessaire (propriétaire, copropriété) ;\n- signaler avant le début des travaux tout ce qui peut les gêner ou les rendre dangereux : état de la toiture, étanchéité, installation électrique ancienne ;\n- payer chaque étape à la date prévue."
+            "- donner accès au chantier, à l'eau et à l'électricité aux dates convenues ;\n- garantir qu'il est propriétaire des lieux ou qu'il a obtenu l'autorisation nécessaire (propriétaire, copropriété) ;\n- signaler avant le début des travaux tout ce qui peut les gêner ou les rendre dangereux : état de la toiture, étanchéité, installation électrique ancienne ;\n- payer chaque étape au moment prévu à l'article Paiement."
           ]
         },
         {
@@ -340,8 +341,14 @@
           "cle": "propriete",
           "titre": "Propriété du matériel",
           "paragraphes": [
-            "Le matériel reste la propriété de TAQINOR jusqu'au paiement complet du prix (articles 618-21 et suivants du Dahir des obligations et des contrats). Jusque-là, le Client ne peut ni le vendre, ni le donner en garantie, ni le faire démonter.",
-            "Dès la livraison chez lui, le Client a la garde du matériel : il le conserve à l'abri, dans un lieu fermé, et répond des pertes ou des dégradations dues à son fait ou à un défaut de surveillance."
+            "Le matériel reste la propriété de TAQINOR jusqu'au paiement complet du prix (articles 618-21 et suivants du Dahir des obligations et des contrats). Jusque-là, le Client ne peut ni le vendre, ni le donner en garantie, ni le faire démonter."
+          ]
+        },
+        {
+          "cle": "garde",
+          "titre": "Garde du matériel",
+          "paragraphes": [
+            "De la livraison au début de la pose, le Client a la garde du matériel livré : il le conserve à l'abri, dans un lieu fermé, et répond des pertes ou des dégradations dues à son fait ou à un défaut de surveillance. Pendant la pose et jusqu'à la réception, TAQINOR a la garde du chantier ; à la réception, la garde de l'installation passe au Client."
           ]
         },
         {
@@ -349,7 +356,8 @@
           "titre": "Réception des travaux",
           "paragraphes": [
             "À la fin de la pose, TAQINOR met l'installation en service en présence du Client et lui en explique le fonctionnement. Les deux parties signent alors un procès-verbal de réception.",
-            "Le Client peut y inscrire des réserves ; TAQINOR les lève dans le délai noté au procès-verbal. Des réserves n'empêchent pas d'utiliser l'installation.",
+            "Le Client peut y inscrire des réserves ; TAQINOR les lève dans le délai noté au procès-verbal. Des réserves n'empêchent pas d'utiliser l'installation. Si des réserves sont inscrites, les parties peuvent y chiffrer, d'un commun accord, une part du solde retenue jusqu'à leur levée, sans dépasser la valeur des travaux qui restent à faire ; sans montant chiffré, aucune retenue ne s'applique.",
+            "Si le Client refuse de signer le procès-verbal, il indique par écrit, dans les sept jours qui suivent la mise en service, les défauts qui motivent son refus ; TAQINOR y remédie, puis une nouvelle réception est proposée. Sans réponse écrite dans ce délai, TAQINOR peut mettre le Client en demeure de recevoir les travaux (article 774 du Dahir des obligations et des contrats).",
             "La réception marque le point de départ des garanties et rend exigible le solde du prix."
           ]
         },
@@ -359,8 +367,8 @@
           "paragraphes": [
             "Le Client bénéficie des garanties du tableau « Vos garanties » : celles des fabricants sur le matériel, et celle de TAQINOR sur son travail de pose pendant 2 ans.",
             "Pendant ces durées, TAQINOR est l'interlocuteur unique du Client : elle fait le diagnostic, traite la demande auprès du fabricant et prend à sa charge les frais de transport du matériel garanti. La durée d'une garantie est prolongée du temps pendant lequel le matériel est immobilisé pour réparation. Les pièces détachées nécessaires sont disponibles pendant toute la durée des garanties.",
-            "Ces garanties s'ajoutent à la **garantie légale** des défauts et vices cachés (articles 549 à 575 du Dahir des obligations et des contrats, article 65 de la loi n° 31-08), que TAQINOR doit dans tous les cas.",
-            "Elles ne couvrent pas les dommages dus à une intervention ou à une modification par un tiers, à un choc, un incendie, une inondation, la foudre ou une surtension du réseau, ni à un défaut d'entretien ou à un usage contraire aux notices."
+            "Ces garanties s'ajoutent à la **garantie légale** des défauts et vices cachés (articles 549 à 575 du Dahir des obligations et des contrats, article 65 de la loi n° 31-08 et, pour le travail de pose, articles 767 et 772 du même Dahir), que TAQINOR doit dans tous les cas.",
+            "Elles ne couvrent pas : une intervention ou une modification de l'installation par un tiers sans l'accord de TAQINOR, lorsqu'elle est la cause du dommage ; un choc, un incendie, une inondation, la foudre ou une surtension du réseau, sauf défaut des protections posées par TAQINOR ; un défaut de l'entretien décrit dans les notices remises à la réception, ou un usage contraire à ces notices."
           ]
         },
         {
@@ -381,7 +389,7 @@
           "cle": "fin_anticipee",
           "titre": "Fin anticipée du contrat",
           "paragraphes": [
-            "Si le Client renonce au contrat alors que le matériel est commandé ou les travaux commencés, TAQINOR conserve, sur les sommes versées et sur justificatifs, le coût du matériel commandé pour lui et des travaux déjà réalisés ; le reste lui est remboursé.",
+            "Si le Client renonce au contrat alors que le matériel est commandé ou les travaux commencés, TAQINOR conserve, sur les sommes versées et sur justificatifs, le coût du matériel commandé pour lui et des travaux déjà réalisés ; le reste lui est remboursé. Le matériel ainsi payé est remis au Client ; si TAQINOR peut le rendre à son fournisseur ou le réutiliser, elle ne retient que les frais de retour justifiés.",
             "Si TAQINOR ne peut pas exécuter le contrat, elle rembourse au Client l'intégralité des sommes versées."
           ]
         },
@@ -389,7 +397,7 @@
           "cle": "donnees",
           "titre": "Données personnelles",
           "paragraphes": [
-            "TAQINOR utilise les données du Client (identité, coordonnées, adresse, consommation d'électricité) pour établir le devis, exécuter le contrat, assurer les garanties et le service après-vente. Elles ne sont transmises qu'à ceux qui interviennent sur le chantier ou sur les garanties : fabricants, gestionnaire du réseau.",
+            "TAQINOR utilise les données du Client (identité, coordonnées, adresse, consommation d'électricité) pour établir le devis, exécuter le contrat, assurer les garanties et le service après-vente. Elles ne sont transmises qu'à ceux qui interviennent sur le chantier ou sur les garanties (fabricants, gestionnaire du réseau), au fabricant de l'onduleur, dont l'application de suivi peut héberger les données de production et de consommation hors du Maroc, et aux autorités ou conseils lorsque la loi ou le recouvrement d'une somme due l'exige.",
             "Conformément à la loi n° 09-08, le Client peut accéder à ses données, les faire rectifier ou s'opposer à leur utilisation en écrivant à contact@exemple.ma."
           ]
         },
@@ -405,14 +413,15 @@
           "cle": "dispositions_finales",
           "titre": "Modifications et exemplaires",
           "paragraphes": [
-            "Toute modification du contrat fait l'objet d'un avenant écrit, signé des deux parties. Le contrat est établi en deux exemplaires originaux, un pour chaque partie."
+            "Toute modification du contrat fait l'objet d'un avenant écrit, signé des deux parties. Le contrat est établi en deux exemplaires originaux, un pour chaque partie.",
+            "Le contrat est accompagné de sa traduction en arabe, remise en même temps (loi n° 31-08, article 206). En cas de différence entre les deux textes, l'interprétation la plus favorable au Client s'applique (article 9 de la même loi)."
           ]
         }
       ],
       "delais": {
-        "resume": "Au plus tard le 23 janvier 2027",
+        "resume": "Au plus tard le 24 décembre 2026",
         "detail": "Livraison, pose et mise en service comprises.",
-        "date_limite": "2027-01-23"
+        "date_limite": "2026-12-24"
       },
       "paiement": {
         "modalites": "Paiement par virement ou par chèque à l'ordre de TAQINOR. RIB : 000 000 0000000000000000 00 — Banque Exemple."
@@ -644,7 +653,7 @@
           "cle": "garde",
           "titre": "Garde du matériel",
           "paragraphes": [
-            "À compter de ce jour et jusqu'à la pose, le matériel livré est sous la garde du Client. Il le conserve à l'abri, dans un lieu fermé, sans l'ouvrir ni le déplacer, et répond des pertes ou des dégradations dues à son fait ou à un défaut de surveillance."
+            "De la livraison au début de la pose, le Client a la garde du matériel livré : il le conserve à l'abri, dans un lieu fermé, sans l'ouvrir ni le déplacer, et répond des pertes ou des dégradations dues à son fait ou à un défaut de surveillance. Pendant la pose et jusqu'à la réception, TAQINOR a la garde du chantier ; à la réception, la garde de l'installation passe au Client."
           ]
         },
         {
@@ -658,7 +667,7 @@
           "cle": "paiement",
           "titre": "Paiement de cette étape",
           "paragraphes": [
-            "L'étape « Livraison du matériel » est exigible à la livraison : 59 100,00 DH (cinquante-neuf mille cent dirhams) restent à régler ce jour.",
+            "Selon l'échéancier du contrat CTR-2026-11-0007, les sommes dues à la date de ce procès-verbal s'élèvent à 59 100,00 DH (cinquante-neuf mille cent dirhams). Le Client reconnaît avoir reçu le matériel listé ci-dessus et devoir cette somme à TAQINOR.",
             "La pose est programmée dès l'encaissement de cette somme."
           ]
         }
@@ -890,7 +899,7 @@
           "cle": "garde",
           "titre": "Garde du matériel",
           "paragraphes": [
-            "À compter de ce jour et jusqu'à la pose, le matériel livré est sous la garde du Client. Il le conserve à l'abri, dans un lieu fermé, sans l'ouvrir ni le déplacer, et répond des pertes ou des dégradations dues à son fait ou à un défaut de surveillance."
+            "De la livraison au début de la pose, le Client a la garde du matériel livré : il le conserve à l'abri, dans un lieu fermé, sans l'ouvrir ni le déplacer, et répond des pertes ou des dégradations dues à son fait ou à un défaut de surveillance. Pendant la pose et jusqu'à la réception, TAQINOR a la garde du chantier ; à la réception, la garde de l'installation passe au Client."
           ]
         },
         {
@@ -904,8 +913,8 @@
           "cle": "paiement",
           "titre": "Paiement",
           "paragraphes": [
-            "Le Client a réglé à ce jour 88 650,00 DH, soit 90 % du prix. Rien n'est à payer à la livraison.",
-            "Le solde, soit 9 850,00 DH, sera exigible à la réception des travaux."
+            "TAQINOR confirme avoir encaissé à ce jour 88 650,00 DH, soit 90 % du prix. Rien n'est à payer à la livraison.",
+            "Le reste du prix, soit 9 850,00 DH, sera exigible à la réception des travaux."
           ]
         }
       ]
@@ -1110,6 +1119,10 @@
           "cochee": true
         },
         {
+          "texte": "J'ai **reçu les notices et les fiches techniques** de mon installation.",
+          "cochee": true
+        },
+        {
           "texte": "Le chantier a été **laissé propre** ; je n'ai constaté aucun dégât sur ma toiture ni dans ma maison.",
           "cochee": true
         }
@@ -1130,17 +1143,17 @@
           "cle": "portee",
           "titre": "Ce que vaut la réception",
           "paragraphes": [
-            "En signant, le Client reconnaît que TAQINOR a exécuté les travaux prévus au contrat CTR-2026-11-0007 et au devis DEV-202611-0042, et que l'installation fonctionne, sous les seules réserves écrites ci-dessus.",
-            "L'installation est désormais sous la garde du Client. TAQINOR lève les réserves éventuelles dans le délai indiqué ; leur levée est constatée par écrit et signée du Client.",
-            "Les garanties prévues au contrat **commencent ce jour**. Le certificat de garantie est remis au Client avec l'acte de clôture, au paiement du solde."
+            "En signant, le Client reconnaît que TAQINOR a achevé les travaux prévus au contrat CTR-2026-11-0007 du 24 novembre 2026 et au devis DEV-202611-0042, que l'installation est conforme à ces documents et fonctionne, et qu'il n'a constaté aucun défaut apparent en dehors des réserves écrites ci-dessus.",
+            "À la réception, la garde de l'installation passe au Client. TAQINOR lève les réserves éventuelles dans le délai indiqué ; leur levée est constatée par écrit et signée du Client.",
+            "Les garanties prévues au contrat **commencent ce jour**. Les notices et les fiches techniques sont remises au Client ce jour ; le certificat de garantie récapitulatif lui est remis avec l'acte de clôture."
           ]
         },
         {
           "cle": "solde",
           "titre": "Solde du prix",
           "paragraphes": [
-            "Le solde du prix, soit 9 850,00 DH (neuf mille huit cent cinquante dirhams), est exigible à la signature du présent procès-verbal. Le Client reconnaît devoir cette somme à TAQINOR.",
-            "Si des réserves sont inscrites, les parties notent ci-dessus la part du solde éventuellement retenue jusqu'à leur levée ; à défaut de mention, le solde est exigible en totalité.",
+            "Le Client reconnaît devoir à TAQINOR la somme de 9 850,00 DH (neuf mille huit cent cinquante dirhams), reste du prix du contrat CTR-2026-11-0007 encore dû à ce jour, payable à la signature du présent procès-verbal.",
+            "Si des réserves sont inscrites, les parties chiffrent ci-dessus, d'un commun accord, la part du solde retenue jusqu'à leur levée ; elle ne peut dépasser la valeur des travaux qui restent à faire. Le reste est payable à la signature ; la part retenue est payable dans les huit jours qui suivent le constat écrit de la levée. Sans montant chiffré, aucune retenue ne s'applique.",
             "Jusqu'au paiement complet, le matériel reste la propriété de TAQINOR."
           ]
         },
@@ -1345,8 +1358,8 @@
         "reste_a_regler": "0.00"
       },
       "quitus": [
-        "TAQINOR atteste avoir reçu de M. Youssef EL EXEMPLE la somme totale de **98 500,00 DH** toutes taxes comprises (quatre-vingt-dix-huit mille cinq cents dirhams), soit l'intégralité du prix de l'installation objet du contrat CTR-2026-11-0007.",
-        "Le Client est quitte de toute somme envers TAQINOR au titre de ce contrat. La propriété de l'ensemble du matériel lui est définitivement acquise."
+        "TAQINOR atteste avoir reçu de M. Youssef EL EXEMPLE la somme totale de **98 500,00 DH** (quatre-vingt-dix-huit mille cinq cents dirhams), en règlement complet du prix de l'installation objet du contrat CTR-2026-11-0007.",
+        "Le Client est quitte envers TAQINOR du prix de ce contrat. La propriété de l'ensemble du matériel lui est définitivement acquise."
       ],
       "paiements": [
         {
@@ -1427,7 +1440,7 @@
           "cle": "demarche",
           "titre": "Comment se passe une demande",
           "paragraphes": [
-            "- TAQINOR fait le diagnostic, à distance ou sur place ;\n- si une garantie joue, TAQINOR répare ou remplace le matériel et traite la demande auprès du fabricant ;\n- les frais de transport du matériel garanti sont à la charge de TAQINOR ;\n- la durée de la garantie est prolongée du temps pendant lequel le matériel est immobilisé ; un reçu daté vous est remis à l'enlèvement et au retour."
+            "- TAQINOR fait le diagnostic, à distance ou sur place ;\n- si une garantie joue, TAQINOR répare ou remplace le matériel et traite la demande auprès du fabricant ;\n- les réparations sont faites sur place ou à l'atelier de TAQINOR, 12, rue des Exemples, 20000 Casablanca ;\n- le matériel à renvoyer au fabricant passe par TAQINOR ;\n- les frais de transport du matériel garanti sont à la charge de TAQINOR ;\n- la durée de la garantie est prolongée du temps pendant lequel le matériel est immobilisé ; un reçu daté vous est remis à l'enlèvement et au retour."
           ]
         },
         {
@@ -1441,14 +1454,14 @@
           "cle": "exclusions",
           "titre": "Ce qui ne l'est pas",
           "paragraphes": [
-            "- une intervention ou une modification par une personne étrangère à TAQINOR ;\n- un choc, un incendie, une inondation, la foudre ou une surtension du réseau ;\n- un défaut d'entretien ou un usage contraire aux notices."
+            "- une intervention ou une modification de l'installation par un tiers sans l'accord de TAQINOR, lorsqu'elle est la cause du dommage ;\n- un choc, un incendie, une inondation, la foudre ou une surtension du réseau, sauf défaut des protections posées par TAQINOR ;\n- un défaut de l'entretien décrit dans les notices remises à la réception, ou un usage contraire à ces notices."
           ]
         },
         {
           "cle": "garantie_legale",
           "titre": "Vos droits dans tous les cas",
           "paragraphes": [
-            "Ces garanties s'ajoutent à la **garantie légale** des défauts et vices cachés (articles 549 à 575 du Dahir des obligations et des contrats, article 65 de la loi n° 31-08), que TAQINOR doit dans tous les cas.",
+            "Ces garanties s'ajoutent à la **garantie légale** des défauts et vices cachés (articles 549 à 575 du Dahir des obligations et des contrats, article 65 de la loi n° 31-08 et, pour le travail de pose, articles 767 et 772 du même Dahir), que TAQINOR doit dans tous les cas.",
             "En cas de désaccord sur une garantie, écrivez à TAQINOR, qui vous répond dans les quinze jours ; à défaut d'accord, vous pouvez saisir le tribunal de votre domicile."
           ]
         }
@@ -1459,7 +1472,7 @@
         "email": "sav@exemple.ma",
         "horaires": "Du lundi au samedi, de 9 h à 18 h."
       },
-      "conseils_intro": "Le jour, vos panneaux alimentent la maison et chargent la batterie ; le soir, la batterie prend le relais. Plus vos gros appareils tournent au soleil, plus la batterie reste pleine pour la nuit.",
+      "conseils_intro": "Le jour, vos panneaux alimentent la maison et chargent la batterie ; le soir, la batterie prend le relais. Plus vos gros appareils tournent au soleil, plus la batterie reste pleine pour la nuit. Pendant une coupure du réseau, seuls les circuits secourus restent alimentés, si votre installation en comporte.",
       "journee": {
         "plages": [
           {
@@ -1499,12 +1512,12 @@
         {
           "rubrique": "Gros appareils",
           "titre": "Lancez-les en milieu de journée",
-          "texte": "Lave-linge, lave-vaisselle, sèche-linge, four : faites-les tourner quand la production est la plus forte. Le départ différé le fait pour vous quand vous êtes absent."
+          "texte": "Lave-linge, lave-vaisselle, four, fer à repasser, pompe ou surpresseur d'eau : faites-les tourner quand la production est la plus forte. Le départ différé le fait pour vous quand vous êtes absent."
         },
         {
           "rubrique": "Un à la fois",
           "titre": "Étalez plutôt que cumuler",
-          "texte": "Deux gros appareils en même temps peuvent dépasser ce que les panneaux produisent : lancez la lessive le matin, le lave-vaisselle l'après-midi."
+          "texte": "Deux gros appareils en même temps peuvent dépasser ce que les panneaux produisent : lancez la lessive en fin de matinée, le lave-vaisselle en début d'après-midi."
         },
         {
           "rubrique": "Eau chaude",
@@ -1528,7 +1541,7 @@
         }
       ],
       "entretien": [
-        "- un coup d'œil à l'application chaque semaine : une production à zéro en plein jour doit nous être signalée ;\n- des panneaux propres : un rinçage à l'eau claire quand la poussière s'accumule ;\n- rien ne doit faire de l'ombre aux panneaux : antenne, linge, végétation qui pousse ;\n- avant tout travail sur la toiture ou sur l'installation électrique, prévenez-nous."
+        "- un coup d'œil à l'application chaque semaine : une production à zéro en plein jour doit nous être signalée ;\n- des panneaux propres : quand la poussière s'accumule, rincez à l'eau claire, sans nettoyeur haute pression ni produit, sans monter ni marcher sur les panneaux ; sur un toit en pente, appelez-nous ;\n- rien ne doit faire de l'ombre aux panneaux : antenne, linge, végétation qui pousse ;\n- avant tout travail sur la toiture ou sur l'installation électrique, prévenez-nous."
       ]
     }
   },
@@ -1563,7 +1576,7 @@
   "regles": [
     "contenu.schema = 1 ; contenu.type / variante / reference recopient l'acte.",
     "Tout montant de contenu est une chaîne décimale ; contenu.prix.total_en_lettres vient de core.nombre_lettres.",
-    "contenu.echeancier[].statut ∈ regle | exigible | a_venir, calculé par le serveur depuis les paiements enregistrés (variante tranche_reglee : supposé réglé jusqu'à la tranche de livraison).",
+    "contenu.echeancier[].statut ∈ regle | exigible | a_venir, calculé par le serveur depuis les paiements enregistrés (variante tranche_reglee : supposé réglé jusqu'à la tranche de livraison pour l'aperçu ; son émission est refusée 409 paiement_non_enregistre tant que l'encaissement n'est pas enregistré).",
     "contenu.signatures.client = null tant que l'acte n'est pas signé, puis {image, nom, signe_le, preuve}.",
     "Un acte signé ne se rouvre pas ; un acte émis non signé se rouvre (version + 1 à la ré-émission).",
     "?langue=ar sert le MÊME schéma (mêmes clés, mêmes natures) : seuls les textes changent (contenu.langue = 'ar') ; les montants, dates, références et noms propres sont identiques dans les deux langues. sections_personnalisees et sections_modifiables valent pour la langue servie.",
