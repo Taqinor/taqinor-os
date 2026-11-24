@@ -113,60 +113,17 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
         from apps.ventes.utils.company_settings import tva_standard
         taux_tva = tva_standard(company)
     from apps.crm.services import resolve_client_for_lead
-    from apps.ventes.domain.etude_ci import (
-        CLE_TAILLE_CREATION, entrees_pour_etude_params, etudier_ci, refus_devis_auto_ci,
-        verdict_taille_creation)
+    from apps.ventes.conception.decisions import decider_ci, etude_params_creation_ci
     from apps.ventes.domain.creation import devise_par_defaut
-    from apps.ventes.domain.etude_ci_batterie import (
-        CLE_BANQUE_RECOMMANDEE, banque_recommandee, lignes_des_options)
     from apps.ventes.domain.suppositions_ci import alertes_du_journal
     from apps.ventes.models import Devis
 
-    taille = target_kwc if target_kwc not in (None, '') else getattr(
-        lead, 'taille_souhaitee_kwc', None)
-    corps = {'mode': lead.type_installation}
-    if taille not in (None, ''):
-        try:
-            taille = float(taille)
-        except (TypeError, ValueError):
-            raise AutoDevisError('Puissance cible invalide.', field='target_kwc')
-        if taille <= 0:
-            raise AutoDevisError('La puissance cible doit être supérieure à zéro.',
-                                 field='target_kwc')
-        corps['taille_explicite_kwc'] = taille
-    etude = etudier_ci(company, corps, lead=lead)
-    refus = refus_devis_auto_ci(etude)
-    if refus:
-        raise AutoDevisError(refus[0], field=refus[1])
-    # Fondateur 26/10/2026 — « sans » et « avec batterie » par défaut, comme
-    # le résidentiel ; le choix du lead (``batterie_souhaitee``) restreint.
-    lignes, scenario = lignes_des_options(etude, lead)
-    if not any(ligne['produit_id'] for ligne in lignes):
-        raise AutoDevisError('Aucun article C&I chiffré à composer.',
-                             field='composition')
-
+    # ADEV160 (D-ACAL-97) — taille, étude, refus et options batterie : la
+    # décision PURE de ``conception/decisions.py`` (une définition, appelée ici
+    # et par le moteur unique) ; puis les entrées d'étude posées à la création.
+    etude, lignes, scenario = decider_ci(lead=lead, company=company, target_kwc=target_kwc)
     client = resolve_client_for_lead(lead)
-    entrees = entrees_pour_etude_params(etude.get('entrees_resolues'))
-    entrees['mode'] = lead.type_installation
-    # R1 (B1) — le verdict de taille CALCULÉ (raison d'arrêt, pose retenue,
-    # « limitée par le toit ») part avec le devis : le rafraîchisseur, qui
-    # retrouve la taille depuis les LIGNES, le relit tant qu'elles ne changent pas.
-    verdict = verdict_taille_creation(etude)
-    if verdict:
-        entrees[CLE_TAILLE_CREATION] = verdict
-    if scenario:
-        entrees['scenario'] = scenario
-        # D4 (17/11/2026) — la banque recommandée reste connue du devis quand le
-        # vendeur en chiffre moins (« prêt pour plus »).
-        recommandee = banque_recommandee(etude)
-        if recommandee:
-            entrees[CLE_BANQUE_RECOMMANDEE] = recommandee
-        if scenario == SCENARIO_LES_DEUX:
-            # CORC9 (27/10/2026) — CIQ302 (convention 5) : un C&I à deux
-            # options MET EN AVANT l'offre réseau (``options.
-            # option_mise_en_avant``) ; sans cette clé, le PDF retombait sur
-            # la règle résidentielle et marquait « Avec batterie » RECOMMANDÉ.
-            entrees['recommended_option'] = SCENARIO_SANS_BATTERIE
+    entrees = etude_params_creation_ci(etude, mode=lead.type_installation, scenario=scenario)
 
     def _create(ref):
         return Devis.objects.create(
@@ -623,10 +580,6 @@ from apps.ventes.domain.pipeline import (  # noqa: E402 — fin de module (anti-
     ORIGINE_TUNNEL,
     IntentionDevis,
     appliquer,
-)
-from apps.ventes.domain.scenario import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
-    SCENARIO_LES_DEUX,
-    SCENARIO_SANS_BATTERIE,
 )
 from apps.ventes.domain.taille import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     AutoDevisError,

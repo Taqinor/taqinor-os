@@ -1854,7 +1854,9 @@ def _option_avec_du_devis(devis, catalogue, kwc_avec, kwc_sans):
     (aucun champ « sans » distinct, aucun onduleur string C&I en ligne)."""
     from .etude_ci_batterie import option_imposee_des_lignes
     lignes = list(devis.lignes.all())
-    imposee = option_imposee_des_lignes(lignes, catalogue, kwc_avec)
+    # ADEV160 — le devis lui-même (le contexte des lignes, ``etudes_lignes.
+    # DevisAuxLignes`` compris) : jamais relu par ``ligne.devis``.
+    imposee = option_imposee_des_lignes(lignes, catalogue, kwc_avec, devis=devis)
     string = {o['produit'] for o in catalogue['onduleurs']}
     mono = imposee is not None and not kwc_sans and not any(
         li.produit_id in string for li in lignes)
@@ -1930,57 +1932,30 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
     aucune écriture. Plus aucun panneau ⇒ dérivées RETIRÉES, jamais périmées.
     Ne lève jamais : une étude n'empêche pas d'enregistrer un devis.
     """
-    from .depart_une_batterie_ci import empreinte_depart, poser_depart  # fondateur 19/11/2026
+    from apps.ventes.conception.etudes_lignes import etude_ci_calculee, preparation_etude_ci
+    from .depart_une_batterie_ci import poser_depart  # fondateur 19/11/2026
     from .etude_schema import MOTEUR_CI, ecrire
-    from .etudes import puissances_etude_horaire
     try:
-        mode = (getattr(devis, 'mode_installation', None) or '').strip().lower()
-        if mode not in MODES:
+        # ADEV160 — la moitié CALCUL (lecture des lignes, empreinte, étude en
+        # taille donnée) est ``conception/etudes_lignes`` ; les gardes, le
+        # relèvement des règles (CMP12) et les écritures restent ici.
+        preparation = preparation_etude_ci(devis)
+        if preparation is None:
             return None
-        params = dict(getattr(devis, 'etude_params', None) or {})
-        kwc = _kwc_option_servie(devis, *puissances_etude_horaire(devis))
-        if not kwc:
+        params, etude, bloc = preparation['params'], None, None
+        existant = preparation.get('existant')
+        if preparation['kwc']:
+            if not force and existant.get('empreinte') == preparation['empreinte']:
+                return existant
+            if force:
+                _passer_aux_regles_2710(devis)
+            etude, bloc = etude_ci_calculee(devis, preparation)
+        if bloc is None:
             if CLE_ETUDE_CI in params or CLE_PRODUCTION_FIGEE in params:
                 ecrire(devis, proprietaire=MOTEUR_CI,
                        **{CLE_ETUDE_CI: None, CLE_PRODUCTION_FIGEE: None,
                           CLE_PRODUCTION_FIGEE_RASANTE: None})
             return None
-        company = getattr(devis, 'company', None)
-        catalogue = lire_catalogue_ci(company)
-        onduleurs = _onduleurs_des_lignes(devis, catalogue)
-        # Fondateur 26/10/2026 — l'option « avec batterie » des lignes.
-        imposee, mono = _option_avec_du_devis(devis, catalogue, *puissances_etude_horaire(devis))
-        # CIQ129 + ERR-AGNR-CI-ETUDE-AJOUTEE-AU-REENREGISTREMENT — seules
-        # les ENTRÉES entrent dans l'empreinte (``cles_hors_empreinte``).
-        hors = cles_hors_empreinte()
-        stockees = {k: v for k, v in params.items() if k not in hors}
-        from apps.ventes.horaire.productible_pose import base_etude_ci  # ACAL1195 (D-ACAL-44)
-        base, hyp_base = base_etude_ci(devis, kwc=kwc)
-        empreinte = empreinte_depart(devis, _empreinte(stockees, kwc, onduleurs, imposee, base))
-        existant = params.get(CLE_ETUDE_CI) or {}
-        if not force and existant.get('empreinte') == empreinte:
-            return existant
-        if force:
-            _passer_aux_regles_2710(devis)
-        etude = etudier_ci(
-            company, {'mode': mode, 'taille_explicite_kwc': kwc}, devis=devis,
-            lead=getattr(devis, 'lead', None),
-            production_figee=None if base else params.get(CLE_PRODUCTION_FIGEE),
-            onduleurs_imposes=onduleurs or None,
-            source_production_figee=_source_production(existant),
-            option_avec_imposee=imposee,
-            production_figee_rasante=params.get(CLE_PRODUCTION_FIGEE_RASANTE),
-            verdict_creation=params.get(CLE_TAILLE_CREATION),
-            provenance_corps=provenance_lignes_du_devis(), base_production=base)
-        if hyp_base and etude.get('bilan') is not None:
-            etude['hypotheses'] = list(etude.get('hypotheses') or []) + [hyp_base]
-        if etude.get('bilan') is None:
-            if CLE_ETUDE_CI in params or CLE_PRODUCTION_FIGEE in params:
-                ecrire(devis, proprietaire=MOTEUR_CI,
-                       **{CLE_ETUDE_CI: None, CLE_PRODUCTION_FIGEE: None,
-                          CLE_PRODUCTION_FIGEE_RASANTE: None})
-            return None
-        bloc = dict(bloc_etude_ci_stocke(etude, mono=mono), version=VERSION_MOTEUR, empreinte=empreinte)
         bloc = poser_depart(devis, bloc, existant)  # « une seule batterie » (case cochée)
         ecrire(devis, proprietaire=MOTEUR_CI,
                **{CLE_ETUDE_CI: bloc, CLE_PRODUCTION_FIGEE: etude.get('production'),
