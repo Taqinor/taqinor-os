@@ -301,6 +301,8 @@ table.garanties.dates td:nth-child(3){width:20%}
 .case.oui i{background:__NAVY__;color:#FFFFFF}
 .lignes{margin-top:1.6mm}
 .part-retenue{margin-top:2.4mm;font-weight:700;color:__NAVY__;font-size:9.2pt}
+.a-remplir{display:inline-block;min-width:34mm;height:4mm;margin:0 1mm;
+  border-bottom:.7pt dotted __TRAIT__;vertical-align:baseline}
 .insecable{break-inside:avoid}
 .lignes i{display:block;border-bottom:.7pt dotted __TRAIT__;height:7.4mm}
 

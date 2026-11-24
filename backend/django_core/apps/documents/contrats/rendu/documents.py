@@ -184,13 +184,9 @@ def _encadre_paiement_livraison(contenu):
 
 def pv_livraison(contenu):
     langue = c.langue_de(contenu)
-    societe = contenu.get('societe') or {}
     chantier = contenu.get('chantier') or {}
     systeme = contenu.get('systeme') or {}
     livraison = contenu.get('livraison') or {}
-    # Nom BRUT : ``c.h2`` échappe son texte une fois (revue 1, R9 — le nom
-    # déjà échappé l'était deux fois : « L&amp;#x27;… » à l'impression).
-    nom_brut = societe.get('nom_court') or societe.get('nom') or ''
 
     corps = c.titre(
         'pv_livraison', contenu.get('titre') or libelle('h1_livraison', langue),
@@ -223,7 +219,9 @@ def pv_livraison(contenu):
         + c.frise(contenu.get('echeancier'), avec_etats=True, langue=langue)
         + _encadre_paiement_livraison(contenu))
 
-    corps += c.h2(c.libelle_sur('ce_que_vous_convenez', langue, nom=nom_brut))
+    # Le titre ne porte plus le nom de la société (revue 1, R9 : il était
+    # échappé deux fois, « L&amp;#x27;… » à l'impression).
+    corps += c.h2(libelle('ce_que_vous_convenez', langue))
     corps += c.articles(contenu.get('articles'), langue)
     corps += _conditions_particulieres(contenu)
     corps += c.signatures(
@@ -277,8 +275,8 @@ def pv_reception(contenu):
         + (libelle('a_lever_sous', langue, delai=delai) if delai else ''),
         (c.paragraphes(contenu.get('reserves')) if contenu.get('reserves')
          else c.lignes_a_ecrire(4))
-        + f'<p class="part-retenue">{c.libelle_sur("part_retenue", langue)}'
-        f'</p>', 'net')
+        + f'<p class="part-retenue">'
+        f'{c.a_remplir(libelle("part_retenue", langue))}</p>', 'net')
 
     # Titre, frise et encadré du montant dû : un seul bloc insécable — en
     # arabe, le titre et la frise restaient en bas de page 1, l'encadré

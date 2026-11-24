@@ -46,34 +46,6 @@ def langue_de(contenu):
     return 'ar' if (contenu or {}).get('langue') == 'ar' else 'fr'
 
 
-# Libellés posés par la lane des textes (revue 1, docs/contrats/revue-1.md,
-# noms partagés) : tant qu'un libellé n'est pas encore dans ``libelles``, le
-# rendu imprime ce repli — jamais une KeyError, jamais un mot français dans
-# l'acte arabe.
-_REPLIS = {
-    'part_retenue': {
-        'fr': ("Part du solde retenue jusqu'à la levée des réserves : "
-               "………… DH"),
-        'ar': ('الجزء المحتجز من باقي الثمن إلى حين رفع التحفظات: '
-               '………… درهم'),
-    },
-    'signature_en_fin': {
-        'fr': 'Signature en dernière page',
-        'ar': 'التوقيع في الصفحة الأخيرة',
-    },
-}
-
-
-def libelle_sur(cle, langue='fr', **valeurs):
-    """``libelle`` avec le repli de ``_REPLIS`` quand la clé manque encore."""
-    try:
-        return libelle(cle, langue, **valeurs)
-    except KeyError:
-        repli = _REPLIS[cle]
-        texte = repli.get(langue, repli['fr'])
-        return texte.format(**valeurs) if valeurs else texte
-
-
 def esc(valeur):
     return escape('' if valeur is None else str(valeur), quote=True)
 
@@ -608,6 +580,13 @@ def cases(liste):
             f'<i>{"✓" if cochee else ""}</i>'
             f'<span>{_gras(c.get("texte") or "")}</span></div>')
     return f'<div class="cases">{"".join(lignes)}</div>'
+
+
+def a_remplir(texte):
+    """Un libellé dont les points de suspension (« ………… ») sont à remplir au
+    stylo : échappé, puis chaque suite de points devient un trait pointillé
+    sur lequel on écrit."""
+    return re.sub('…{2,}', '<span class="a-remplir"></span>', esc(texte))
 
 
 def lignes_a_ecrire(nombre_lignes=3):
