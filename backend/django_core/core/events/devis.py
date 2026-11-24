@@ -140,6 +140,19 @@ document_pdf_generated = django.dispatch.Signal()
 # ``core.event_coverage.ALLOWED_UNCONSUMED``.
 revision_abandonnee = django.dispatch.Signal()
 
+# ACAL2010 (D-ACAL-97, « un seul moteur ») — Émis par l'écrivain unique de la
+# conception (``apps.ventes.conception.service.relancer``) quand une NOUVELLE
+# version de la conception rangée devient courante — jamais quand l'empreinte
+# est inchangée. Émetteur prévu : ADEV135 (ventes). Arguments : ``company_id``,
+# ``lead_id``, ``calepinage_id`` (entiers ; l'un des deux porteurs peut valoir
+# ``None``), ``version`` (entier) et ``declencheur`` (``{raison, champs:
+# [{champ, avant, apres}], origine}``, contrat
+# ``apps/ventes/contract_samples/conception_lead.json``). Abonné prévu : crm,
+# qui pose la ligne « pourquoi » au chatter du lead (ALEA69) ; d'ici là,
+# réservé dans ``core.event_coverage.ALLOWED_UNCONSUMED``. Aucun statut de
+# devis n'est écrit (règle #4).
+conception_recalculee = django.dispatch.Signal()
+
 __all__ = [
     'devis_accepted',
     'devis_acceptation_annulee',
@@ -150,4 +163,5 @@ __all__ = [
     'devis_expired',
     'document_pdf_generated',
     'revision_abandonnee',
+    'conception_recalculee',
 ]
