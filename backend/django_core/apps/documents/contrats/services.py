@@ -279,6 +279,14 @@ def emettre(acte, user=None):
     rend et dépose les deux PDF en GED, les partage au portail du client.
     Rend ``(acte, avertissements)``."""
     with transaction.atomic():
+        if acte.type == T.LIVRAISON:
+            # Les deux variantes verrouillées (ordre stable) AVANT le
+            # contrôle de la jumelle : deux émissions simultanées ne peuvent
+            # pas passer chacune de leur côté.
+            list(_modele_acte().objects.select_for_update()
+                 .filter(company=acte.company_id, chantier=acte.chantier_id,
+                         type=T.LIVRAISON)
+                 .order_by('pk').values_list('pk', flat=True))
         acte = _verrouiller(acte)
         _garde_chantier(acte)
         _garde_brouillon(acte)

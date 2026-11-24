@@ -982,3 +982,17 @@ class TrancheRegleeTests(TestCase):
         self.assertFalse(any('ne pourra être émise' in a for a in
                              K.avertissements(v.acte(T.LIVRAISON,
                                                      T.TRANCHE_REGLEE))))
+
+    def test_emission_verrouille_les_deux_variantes(self):
+        """S9 : toutes les lignes de livraison du chantier sont verrouillées
+        avant le contrôle de la jumelle."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        v = Vente(self)
+        with CaptureQueriesContext(connection) as requetes:
+            with self.assertRaises(S.ErreurActe):
+                S.emettre(v.acte(T.LIVRAISON, T.TRANCHE_REGLEE), v.user)
+        verrous = [q['sql'] for q in requetes.captured_queries
+                   if 'FOR UPDATE' in q['sql'] and 'pv_livraison' in q['sql']]
+        self.assertTrue(verrous, [q['sql'] for q in requetes.captured_queries
+                                  if 'FOR UPDATE' in q['sql']])
