@@ -475,7 +475,11 @@ def _bloc_prix(vente, langue):
     }
 
 
-# Textes courts des tranches, par clé.
+# Textes courts des tranches : une entrée par clé d'échéancier (résidentiel
+# acompte / materiel / solde, jalons C&I), dans les deux langues.
+#: « تسلُّم » (réception) écrit d'une seule façon partout, comme dans les
+#: textes arabes : damma puis chadda.
+TASALLUM = 'تسلُّم'
 _EXIGIBILITE = {
     'fr': {'acompte': 'À la signature',
            'materiel': 'À la livraison chez vous',
@@ -483,27 +487,51 @@ _EXIGIBILITE = {
            'solde': 'À la réception des travaux',
            'commande': 'À la commande',
            'mise_en_service': 'À la mise en service',
-           'reception_definitive': 'À la réception définitive'},
+           'reception_definitive': 'À la réception définitive',
+           'reception_financeur': 'À la réception signée (organisme '
+                                  'financeur)',
+           'liberation_retenue': 'À la libération de la retenue de garantie'},
     'ar': {'acompte': 'عند التوقيع',
            'materiel': 'عند تسليم المعدات',
            'livraison_materiel': 'عند تسليم المعدات',
-           'solde': 'عند تسلّم الأشغال',
+           'solde': f'عند {TASALLUM} الأشغال',
            'commande': 'عند الطلب',
            'mise_en_service': 'عند التشغيل',
-           'reception_definitive': 'عند التسلّم النهائي'},
+           'reception_definitive': f'عند ال{TASALLUM} النهائي',
+           'reception_financeur': f'عند ال{TASALLUM} الموقَّع (الجهة '
+                                  f'المموِّلة)',
+           'liberation_retenue': 'عند الإفراج عن اقتطاع الضمان'},
 }
 _MOMENT = {
     'fr': {'acompte': 'à la signature du présent contrat',
            'materiel': 'à la livraison du matériel chez le Client',
            'livraison_materiel': 'à la livraison du matériel chez le Client',
-           'solde': 'à la réception des travaux'},
+           'solde': 'à la réception des travaux',
+           'commande': 'à la commande du matériel',
+           'mise_en_service': "à la mise en service de l'installation",
+           'reception_definitive': 'à la réception définitive des travaux',
+           'reception_financeur': "à la réception signée, par l'organisme "
+                                  "financeur",
+           'liberation_retenue': 'à la libération de la retenue de garantie'},
     'ar': {'acompte': 'عند توقيع هذا العقد',
            'materiel': 'عند تسليم المعدات إلى الزبون',
            'livraison_materiel': 'عند تسليم المعدات إلى الزبون',
-           'solde': 'عند تسلُّم الأشغال'},
+           'solde': f'عند {TASALLUM} الأشغال',
+           'commande': 'عند طلب المعدات',
+           'mise_en_service': 'عند تشغيل المنظومة',
+           'reception_definitive': f'عند ال{TASALLUM} النهائي للأشغال',
+           'reception_financeur': f'عند ال{TASALLUM} الموقَّع، من طرف الجهة '
+                                  f'المموِّلة',
+           'liberation_retenue': 'عند الإفراج عن اقتطاع الضمان'},
 }
+#: Libellé arabe de chaque tranche ; « solde » = « باقي الثمن » partout.
 _LIBELLES_AR = {'acompte': 'التسبيق', 'materiel': 'تسليم المعدات',
-                'livraison_materiel': 'تسليم المعدات', 'solde': 'الرصيد'}
+                'livraison_materiel': 'تسليم المعدات',
+                'solde': 'باقي الثمن', 'commande': 'الطلبية',
+                'mise_en_service': 'التشغيل',
+                'reception_definitive': f'ال{TASALLUM} النهائي',
+                'reception_financeur': 'أداء الجهة المموِّلة',
+                'liberation_retenue': 'الإفراج عن اقتطاع الضمان'}
 _ETAPES_FR = {1: 'une étape', 2: 'deux étapes', 3: 'trois étapes',
               4: 'quatre étapes', 5: 'cinq étapes', 6: 'six étapes'}
 
@@ -1263,7 +1291,7 @@ def _appliquer_modeles_communs(contenu, acte, modele_contrat, modele):
 def _engagement(societe, langue):
     nom = societe.get('nom_court') or societe.get('nom') or ''
     if langue == 'ar':
-        return f'يُقرّ الزبون بأنه مدين بهذا المبلغ لـ {nom} برسم رصيد الثمن.'
+        return f'يُقرّ الزبون بأنه مدين بهذا المبلغ لـ {nom} برسم باقي الثمن.'
     return (f'Le Client reconnaît devoir cette somme à {nom} au titre du '
             f'solde du prix.')
 

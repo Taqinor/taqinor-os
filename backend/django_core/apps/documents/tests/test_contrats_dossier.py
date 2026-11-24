@@ -780,6 +780,46 @@ class ReperesContexteTests(TestCase):
             'contrat_du'], textes_ar.FORMES_CTX['contrat_du'])
 
 
+# ── S13 : arabe de contenu.py ───────────────────────────────────────────────
+
+#: Formes écartées : « الرصيد » pour le solde, « تسلّم » sans damma.
+RASEED, TASALLUM_SANS_DAMMA = 'الرصيد', \
+    'تسلّم'
+
+
+class ArabeTranchesPursTests(SimpleTestCase):
+
+    def test_chaque_cle_de_tranche_a_ses_mots_dans_les_deux_langues(self):
+        from apps.ventes.utils.echeancier import TRANCHE_LABELS
+        for cle in TRANCHE_LABELS:
+            with self.subTest(cle=cle):
+                self.assertIn(cle, K._LIBELLES_AR)
+                for table in (K._EXIGIBILITE, K._MOMENT):
+                    self.assertIn(cle, table['fr'])
+                    self.assertIn(cle, table['ar'])
+        self.assertEqual(K._LIBELLES_AR['solde'], 'باقي الثمن')
+        brut = json.dumps([K._EXIGIBILITE, K._MOMENT, K._LIBELLES_AR],
+                          ensure_ascii=False)
+        self.assertNotIn(RASEED, brut)
+        self.assertNotIn(TASALLUM_SANS_DAMMA, brut)
+
+
+class ArabeContenuTests(TestCase):
+
+    def test_solde_et_reception_ecrits_d_une_seule_facon(self):
+        v = Vente(self)
+        for acte in v.actes():
+            with self.subTest(acte=acte.type, variante=acte.variante):
+                c = K.construire_contenu(acte, 'ar')
+                brut = json.dumps({k: c.get(k) for k in (
+                    'echeancier', 'paiement')}, ensure_ascii=False)
+                self.assertNotIn(RASEED, brut)
+                self.assertNotIn(TASALLUM_SANS_DAMMA, brut)
+        c = K.construire_contenu(v.acte(T.RECEPTION), 'ar')
+        self.assertIn('باقي الثمن', c['paiement']['engagement'])
+        self.assertEqual(c['echeancier'][2]['libelle'], 'باقي الثمن')
+
+
 # ── S4 : la livraison sans tranche « livraison » ────────────────────────────
 
 def _tr(*cles_):
