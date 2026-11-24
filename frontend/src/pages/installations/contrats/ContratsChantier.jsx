@@ -12,7 +12,7 @@ import {
 import documentsApi from '../../../api/documentsApi'
 import { downloadBlob } from '../../../utils/downloadBlob'
 import { useHasPermission, useIsAdmin } from '../../../hooks/useHasPermission'
-import ActeEtape from './ActeEtape'
+import ActeEtape, { idTitreActe } from './ActeEtape'
 import ActeEditeur from './ActeEditeur'
 import SignatureActeDialog from './SignatureActeDialog'
 import SignaturePapierDialog from './SignaturePapierDialog'
@@ -224,6 +224,7 @@ export default function ContratsChantier({
               <Button
                 className="contrats-acte__bouton"
                 disabled={occupe === acteProchain.id}
+                aria-describedby={idTitreActe(acteProchain)}
                 onClick={() => surAction(gestePrincipal, acteProchain)}
               >
                 {gestePrincipal === 'emettre' ? 'Émettre cet acte' : 'Faire signer sur place'}

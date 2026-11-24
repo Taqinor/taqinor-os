@@ -6,6 +6,8 @@ import { render, screen, cleanup, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 
 const { documentsApiMock } = vi.hoisted(() => ({
@@ -162,5 +164,26 @@ describe('Onglet Contrats', () => {
     await user.click(screen.getByRole('button', { name: 'Réessayer' }))
     await waitFor(() => expect(screen.getByText('Contrat d\'installation')).toBeInTheDocument())
     expect(documentsApiMock.dossierContrats).toHaveBeenCalledTimes(2)
+  })
+
+  it('F7 — chaque bouton d’une carte est relié au titre de son acte (aria-describedby)', async () => {
+    monter()
+    await screen.findByText("Contrat d'installation")
+    for (const titre of ['Réception des travaux', "Contrat d'installation"]) {
+      const entete = screen.getByRole('heading', { name: titre })
+      const boutons = within(carte(titre)).getAllByRole('button')
+      expect(boutons.length).toBeGreaterThan(0)
+      for (const b of boutons) expect(b).toHaveAccessibleDescription(titre)
+      expect(entete.id).toBeTruthy()
+    }
+  })
+
+  it('F7 — le numéro de l’étape en cours suit les jetons du thème (lisible en sombre)', () => {
+    const css = readFileSync(join(process.cwd(), 'src', 'styles', 'chantiers', 'contrats.css'), 'utf8')
+    const regle = css.match(/data-etat='en-cours'\] \.contrats-parcours__numero \{([^}]*)\}/)[1]
+    // Les deux jetons s'inversent ensemble entre clair et sombre ; `--color-encre` reste sombre dans les deux.
+    expect(regle).toMatch(/background: var\(--foreground\)/)
+    expect(regle).toMatch(/color: var\(--card\)/)
+    expect(regle).not.toMatch(/--color-encre/)
   })
 })

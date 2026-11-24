@@ -144,8 +144,10 @@
 }
 
 .contrats-parcours__etape[data-etat='en-cours'] .contrats-parcours__numero {
-  border-color: var(--color-encre);
-  background: var(--color-encre);
+  /* `--foreground` / `--card` s'inversent ensemble : le chiffre reste lisible en
+     thème clair (nuit sur fond blanc) comme en sombre (clair sur fond sombre). */
+  border-color: var(--foreground);
+  background: var(--foreground);
   color: var(--card);
 }
 
@@ -394,6 +396,25 @@
   height: 1.5rem;
   margin-top: 0.5rem;
   accent-color: var(--primary);
+}
+
+/* case d'un constat : la cible tactile fait 44 px, la case 24 px */
+.contrats-editeur__cible {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  cursor: pointer;
+}
+
+.contrats-editeur__cible input[type='checkbox'] {
+  margin-top: 0;
+}
+
+.contrats-editeur__constat > textarea {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 @media (min-width: 40rem) {

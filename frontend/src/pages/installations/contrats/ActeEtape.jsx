@@ -5,6 +5,9 @@ import {
   actionPrincipale, LIBELLE_ACTION, libelleStatut, tonStatut,
 } from './outils'
 
+/** Id du titre d'un acte : les boutons de sa carte y sont reliés (aria-describedby). */
+export const idTitreActe = (acte) => `contrats-acte-${acte.id}-titre`
+
 export default function ActeEtape({
   acte, peutEcrire, occupe, erreur, onAction, enVariante = false,
 }) {
@@ -27,7 +30,7 @@ export default function ActeEtape({
       data-variante={enVariante ? 'oui' : 'non'}
     >
       <div className="contrats-acte__tete">
-        <h4 className="contrats-acte__titre">{acte.titre}</h4>
+        <h4 className="contrats-acte__titre" id={idTitreActe(acte)}>{acte.titre}</h4>
         <span className="contrats-acte__ref">{acte.reference}</span>
       </div>
 
@@ -59,6 +62,7 @@ export default function ActeEtape({
               variant={variante}
               className="contrats-acte__bouton"
               disabled={occupe}
+              aria-describedby={idTitreActe(acte)}
               onClick={() => onAction(nom, acte)}
             >
               {LIBELLE_ACTION[nom]}

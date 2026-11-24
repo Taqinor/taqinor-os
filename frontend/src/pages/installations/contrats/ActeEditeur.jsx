@@ -228,9 +228,14 @@ function ChampsSection({ cle, v, m, contenu }) {
     case 'constats':
       return v.map((k, i) => (
         <div key={i} className="contrats-editeur__constat">
-          <input type="checkbox" aria-label={`Constat ${i + 1} coché`} checked={k.cochee}
-                 onChange={(e) => m(v.map((r, j) => (j === i ? { ...r, cochee: e.target.checked } : r)))} />
-          <Textarea aria-label={`Constat ${i + 1}`} rows={2} value={k.texte} {...attrsLangue(langue)}
+          {/* Case nommée par le texte du constat ; cible ≥ 44 px (label qui l'enveloppe). */}
+          <label className="contrats-editeur__cible">
+            <input type="checkbox" aria-label={`Constat ${i + 1} coché : ${k.texte.replace(/\*\*/g, '')}`}
+                   checked={k.cochee}
+                   onChange={(e) => m(v.map((r, j) => (j === i ? { ...r, cochee: e.target.checked } : r)))} />
+          </label>
+          <Label htmlFor={`${p}-${i}`} className="sr-only">{`Texte du constat ${i + 1}`}</Label>
+          <Textarea id={`${p}-${i}`} rows={2} value={k.texte} {...attrsLangue(langue)}
                     onChange={(e) => m(v.map((r, j) => (j === i ? { ...r, texte: e.target.value } : r)))} />
         </div>
       ))

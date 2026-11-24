@@ -319,4 +319,22 @@ describe('Éditeur d’un acte', () => {
     expect(Object.keys(envoye)).toEqual(['conseils_intro'])
     expect(envoye.conseils_intro).toMatch(/ Merci\.$/)
   })
+
+  it('F7 — chaque case de constat est nommée par son texte, dans une cible de 44 px, et sa zone est étiquetée', async () => {
+    const pv = structuredClone(exempleContrat('documents', 'acte_contractuel', 'exemple_pv_reception'))
+    documentsApiMock.acte.mockResolvedValue({ data: pv })
+    const user = userEvent.setup()
+    monter()
+    const groupe = await screen.findByRole('group', { name: 'Constats' })
+    for (const [i, k] of pv.contenu.constats.entries()) {
+      const nom = `Constat ${i + 1} coché : ${k.texte.replace(/\*\*/g, '')}`
+      const case_ = within(groupe).getByRole('checkbox', { name: nom })
+      expect(case_.closest('label')).toHaveClass('contrats-editeur__cible')
+      expect(within(groupe).getByLabelText(`Texte du constat ${i + 1}`).tagName).toBe('TEXTAREA')
+    }
+    // Décocher la première case l'envoie bien (la case reste un vrai contrôle).
+    await user.click(within(groupe).getAllByRole('checkbox')[0])
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    expect(documentsApiMock.modifierActe.mock.calls[0][1].constats[0].cochee).toBe(false)
+  })
 })
