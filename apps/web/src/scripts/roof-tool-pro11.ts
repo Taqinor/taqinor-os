@@ -2211,13 +2211,13 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // posés à la main AVANT le recalc : recompute()/pitchedRecompute() re-pavent le toit
     // (nouvelle lattice via renderScene → layoutState nullé), ce qui sinon ferait retomber
     // silencieusement la pose personnalisée sur l'optimum et périmerait les readouts.
-    const prevCenters = layoutMode ? occupiedCenters() : null;
+    const prevCenters = layoutMode || (freeMode && freeState) ? occupiedCenters() : null, origineAvant = layoutPlan?.pack.origin; // ACAL2032 — le placement libre aussi, même panneau fermé
     if (roofType === 'pitched') pitchedRecompute();
     else recompute();
     // W79 — après le re-pavage, on RE-ENTRE la disposition personnalisée : re-snap de chaque
     // centre capturé vers la cellule valide la plus proche de la NOUVELLE lattice (les
     // panneaux survivent, re-snappés), puis re-rendu panneaux/grille/note (readouts à jour).
-    if (prevCenters) reenterCustomLayout(prevCenters);
+    if (prevCenters) reenterCustomLayout(prevCenters, origineAvant);
   }
   function renderActive() {
     if (roofType === 'pitched') liveResolvePitched();

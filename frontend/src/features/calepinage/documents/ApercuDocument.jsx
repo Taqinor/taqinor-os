@@ -49,7 +49,7 @@ export default function ApercuDocument({ carte, enCours, onApercu, onTelecharger
             <span className="cdoc-apercu-sous" data-testid="cal-docs-colonne-legende">
               {html ? 'Aperçu de la première page' : 'Modèle de page de ce document'}
             </span>
-            {/* le motif SERVI en entier (la carte le coupe à deux lignes) */}
+            {/* le motif SERVI en entier (la carte le coupe à une ligne) */}
             {!carte.disponible && carte.motif
               ? <span className="cdoc-apercu-motif" data-testid="cal-docs-colonne-motif">{carte.motif}</span> : null}
           </div>

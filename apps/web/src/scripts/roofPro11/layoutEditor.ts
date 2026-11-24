@@ -98,7 +98,7 @@ import { DEFAULT_FREE_MARGINS, FREE_STEP_M, freeGeomFrom, freeStateFromCenters, 
 import { cm, peindreSilhouette, silhouetteDuLot, texteDeMesure, violationLabel } from './silhouetteGlisse'; import { direPoseIndisponible } from './structurePose'; // ACAL551, ACAL1530
 import { resnapEnMasse } from './layoutResnap'; // ACAL510 — sorti de ce fichier, ré-exporté ci-dessous
 export { resnapEnMasse, resnapNaif, type CentreASnapper } from './layoutResnap';
-import { motifPanExistant, direEcartPoseRelue } from './panExistant'; import { suiteAuDevis } from './affichageErp'; // ACAL510, ACAL1900, ACAL1951
+import { motifPanExistant, direEcartPoseRelue, phrasePoseLibreTenue, tenirPoseLibre } from './panExistant'; import { suiteAuDevis } from './affichageErp'; // ACAL510, ACAL1900, ACAL1951
 import { EVT_POSE_RELUE } from './alignementRangees'; // ACAL1521
 import { catalogueAvecModulesDuDocument, estRefus, kwcDuPan, lireModulesDisponibles, resoudreModuleDuPan } from './moduleSelect'; // ACAL1520
 
@@ -153,7 +153,7 @@ export interface LayoutEditor {
   occupiedCenters: () => { cx: number; cy: number }[];
   /** W79 — après un recalc (nouvelle lattice), re-entre la disposition personnalisée en
    *  re-snappant les centres fournis vers les cellules valides les plus proches. */
-  reenterCustomLayout: (prevCenters: { cx: number; cy: number }[]) => void;
+  reenterCustomLayout: (prevCenters: { cx: number; cy: number }[], origineAvant?: readonly [number, number]) => void;
   /** PV25 — indices actuellement SÉLECTIONNÉS (sélection multiple), triés. */
   selection: () => number[];
   /** PV25 — remplace la sélection multiple (indices non occupés ignorés). */
@@ -1673,14 +1673,14 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
    *  les panneaux survivent (re-snappés, jamais effacés). Si un centre n'a plus de cellule
    *  valide proche (toit rétréci), le panneau est simplement perdu (honnête : moins de place).
    *  Puis on re-rend panneaux/grille/note. No-op hors mode disposition ou sans plan. */
-  function reenterCustomLayout(prevCenters: { cx: number; cy: number }[]) {
-    if (!ctx.layoutMode || !ctx.layoutPlan) return;
-    // PV30 — en placement LIBRE, les positions sont absolues : un re-pavage ne les
-    // concerne pas. On les garde telles quelles (aucun re-snap) et on re-rend.
+  function reenterCustomLayout(prevCenters: { cx: number; cy: number }[], origineAvant?: readonly [number, number]) {
+    if (!ctx.layoutPlan || (!ctx.layoutMode && !freeActive())) return;
+    // PV30 + ACAL2032 — en placement LIBRE, chaque panneau qui tient encore (contour, obstacles, module) garde sa place
+    // au même endroit du toit ; les autres sont remis sur le plan ou retirés — et la note le DIT (`tenirPoseLibre`).
     if (freeActive()) {
-      if (layoutNoteEl) {
-        layoutNoteEl.textContent = `Placement libre conservé — ${fmt(ctx.freeState!.panels.length)} panneaux inchangés.`;
-      }
+      const g = freeGeom(), r = g ? tenirPoseLibre(ctx.freeState!, g, ctx.layoutPlan, origineAvant) : null;
+      if (r) ctx.freeState = r.etat;
+      if (layoutNoteEl) layoutNoteEl.textContent = phrasePoseLibreTenue(r ?? { gardes: ctx.freeState!.panels.length, deplaces: 0, retires: 0 }, fmt);
       renderCustomLayout();
       renderLayoutPanel();
       return;

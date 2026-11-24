@@ -280,6 +280,27 @@ describe('Montrer au client — l’atelier en mode présentation (vraie 3D)', (
     expect(document.getElementById('rp9-sun-hour').closest('[inert]')).not.toBeNull()
   })
 
+  it('« Glissez pour tourner autour » — la toile de la carte créée APRÈS l’ouverture (MapLibre tardif) redevient vivante ; l’atelier reste inerte', async () => {
+    reinitialiserBoot({ appliquerVue: vi.fn() })
+    rendre({ webgl: true })
+    await screen.findByTestId('client-soleil', {}, ATTENTE_ATELIER)
+    const carte = document.getElementById('rp9-map')
+    // La carte encore vide à l'ouverture : sa branche est rendue inerte (aucune garde dedans).
+    await waitFor(() => expect(carte.closest('[inert]')).not.toBeNull())
+    // MapLibre crée sa toile ensuite, DANS la carte : la souris et le doigt doivent pouvoir la tourner.
+    const toile = document.createElement('div')
+    toile.className = 'maplibregl-canvas-container'
+    toile.appendChild(document.createElement('canvas'))
+    carte.appendChild(toile)
+    await waitFor(() => expect(toile.closest('[inert]')).toBeNull())
+    expect(carte.closest('[aria-hidden="true"]')).toBeNull()
+    // Rien de ce qui édite ne redevient atteignable.
+    for (const t of ['cal-rail-etapes', 'cal-barre-projet', 'cal-panneau-etape']) {
+      expect(screen.getByTestId(t).closest('[inert]')).not.toBeNull()
+    }
+    expect(document.getElementById('rp9-sun-hour').closest('[inert]')).not.toBeNull()
+  })
+
   it('J1 — ouverture en été à midi quand la scène porte l’instant par défaut du constructeur', async () => {
     api.layout.mockResolvedValue({ data: {
       roof_layout: { zones: [ZONE], activeAreaId: 'z1', scene: { sunDay: 355, sunHour: 12 } }, empreinte_document: 'e',

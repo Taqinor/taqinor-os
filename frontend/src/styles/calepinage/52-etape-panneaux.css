@@ -128,6 +128,8 @@
   color: var(--cal-texte-1); font-size: 0.75rem; font-weight: 600; line-height: 16px; text-align: left;
 }
 .cal-coque .cal-pan-legende-titre[aria-pressed='true'] { text-decoration: underline; text-underline-offset: 3px; }
+/* Carte d'accès éteinte : le titre reste le bouton qui la rallume (souligné en pointillé). */
+.cal-coque .cal-pan-legende-titre[aria-pressed='false'] { text-decoration: underline dotted; text-underline-offset: 3px; }
 @media (pointer: coarse) { .cal-coque .cal-pan-legende-titre { min-height: 44px; } }
 .cal-coque .cal-pan-legende-titre:disabled { cursor: default; }
 .cal-coque .cal-pan-degrade { height: 8px; border-radius: 4px; }

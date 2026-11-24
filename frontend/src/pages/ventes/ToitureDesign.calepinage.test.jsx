@@ -1284,6 +1284,23 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
     expect(coque).toHaveAttribute('data-cadre', 'carte')
   })
 
+  // Suites des écrans v2 (24/11) — la carte montrait à Panneaux les cotes, le contour or et l'onduleur (maquettes Main et
+  // Électrique seulement) : la coque déclare l'étape au constructeur ; en Expert, aucune (tout comme avant).
+  it('la coque déclare au constructeur l’étape montrée ; en Expert, aucune', async () => {
+    const etapeAtelier = vi.fn()
+    reinitialiserBoot({ etapeAtelier })
+    amorcer()
+    rendreCalepinage(CTX.calepinage.id)
+    await screen.findByTestId('cal-coque')
+    await waitFor(() => expect(etapeAtelier).toHaveBeenLastCalledWith('toit'))
+    await userEvent.click(screen.getByTestId('cal-etape-panneaux'))
+    await waitFor(() => expect(etapeAtelier).toHaveBeenLastCalledWith('panneaux'))
+    await userEvent.click(screen.getByTestId('cal-etape-electrique'))
+    await waitFor(() => expect(etapeAtelier).toHaveBeenLastCalledWith('electrique'))
+    await userEvent.click(within(screen.getByTestId('cal-barre-projet')).getByRole('button', { name: 'Expert' }))
+    await waitFor(() => expect(etapeAtelier).toHaveBeenLastCalledWith(null))
+  })
+
   it('ACAL1727 — Résultats et Documents disent « Étape N sur 5 » et leur titre aux lecteurs d’écran, sans tête visible (maquettes v2)', async () => {
     amorcer()
     rendreCalepinage(CTX.calepinage.id)

@@ -137,6 +137,8 @@
 .cdoc-devis .cal-bouton-or-grand { padding: 0 24px; }
 /* — colonne « Documents du projet » : aperçu (320) puis cartes (386) — */
 .cdoc-docs { display: flex; flex-direction: column; gap: 14px; min-width: 0; min-height: 0; }
+/* La colonne des documents prend toute la hauteur de l'écran, comme la maquette (les cartes vont jusqu'en bas). */
+.cdoc-colonne > .cdoc-docs { flex: 1 1 auto; }
 .cdoc-docs-tete { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 6px 4px 0; }
 .cdoc-docs-corps { flex: 1 1 auto; min-height: 0; display: flex; gap: 14px; }
 .cdoc-apercu-col { width: 320px; flex: none; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
@@ -181,9 +183,11 @@
 .cdoc-carte-titre:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 4px; }
 @media (pointer: coarse) { .cdoc-carte-titre { min-height: 44px; } }
 .cdoc-carte-description { margin: 0; font-size: 12px; line-height: 1.4; color: var(--cal-texte-2); }
+/* Le motif servi tient sur UNE ligne dans la carte (la pastille dit déjà ce qui manque) : la colonne d'aperçu le dit en
+   entier. Sans cela trois pièces indisponibles faisaient défiler la colonne des cartes à 1440 × 900 (769 px dans 746). */
 .cdoc-carte-motif {
   margin: 0; font-size: 12px; line-height: 1.4; color: var(--cal-texte-3);
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+  max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .cdoc-apercu-motif { margin-top: 4px; font-size: 12px; line-height: 1.4; color: var(--cal-surveiller-texte); }
 .cdoc-erreurs { margin: 4px 0 0; padding: 0; list-style: none; font-size: 12px; color: var(--cal-refus); }

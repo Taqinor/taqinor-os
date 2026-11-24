@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
@@ -975,6 +975,30 @@ describe('EtapeDocuments — l’écran guidé de la maquette (ACAL1193)', () =>
     expect(await screen.findByTestId('cal-docs-telecharger-dxf')).toBeDisabled()
     expect(screen.getByTestId('cal-docs-motif-dxf')).toHaveTextContent('Aucune conception enregistrée.')
     expect(screen.queryByTestId('cal-docs-apercu-dxf')).toBeNull() // le DXF n’a pas d’aperçu
+  })
+
+  // Suite des écrans v2 (24/11) — à 1440 × 900, trois pièces indisponibles faisaient défiler la colonne des cartes
+  // (769 px dans 746, la carte DXF coupée) : le motif tient sur une ligne dans la carte, la colonne prend toute la hauteur.
+  it('colonne des cartes : la section remplit sa colonne ; le motif d’une carte sur UNE ligne, en entier dans l’aperçu', async () => {
+    const style = document.createElement('style')
+    style.textContent = readFileSync('src/styles/calepinage/55-etape-documents.css', 'utf8')
+    document.head.appendChild(style)
+    try {
+      servir()
+      const sorties = reponseContrat(APP, 'calepinage_sorties', 'exemple')
+      const long = 'Conception enregistrée — il manque le calcul : lancez la simulation à l’étape Résultats, puis revenez ici.'
+      sorties.data.sorties = sorties.data.sorties.map((x) => ({ ...x, disponible: false, motif_indisponible: long }))
+      calepinageApi.calepinages.sorties.mockResolvedValue(sorties)
+      monter()
+      const motif = await screen.findByTestId('cal-docs-motif-dxf')
+      const c = getComputedStyle(motif)
+      expect([c.whiteSpace, c.overflow, c.textOverflow]).toEqual(['nowrap', 'hidden', 'ellipsis'])
+      expect(getComputedStyle(screen.getByTestId('cal-docs-liste')).flexGrow).toBe('1')
+      fireEvent.click(within(motif.closest('[data-testid="cal-docs-carte"]')).getByRole('button', { pressed: false }))
+      expect(await screen.findByTestId('cal-docs-colonne-motif')).toHaveTextContent(long) // le motif servi, en entier
+    } finally {
+      style.remove()
+    }
   })
 
   it('ACAL1193 — contrôles visibles de l’écran guidé : au plus 26 (la maquette v2 en dessine 24 ; + les trois lignes de groupe repliées, ACAL1725)', async () => {

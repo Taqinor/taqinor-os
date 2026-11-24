@@ -494,16 +494,27 @@ describe('étape Panneaux — sur la carte', () => {
   })
 
   // ACAL1981 — la légende ne décrit que des panneaux TEINTÉS ; l'étape allume la carte d'accès à l'entrée (maquette).
-  it('aucun panneau teinté ⇒ légende absente ; l’entrée de l’étape allume la carte d’accès, la sortie la rend', () => {
+  // Suites des écrans v2 (24/11) — éteinte d'un clic sur son titre, la carte d'accès ne se rallumait plus qu'en « Avancé » :
+  // la légende disparaissait avec son bouton. Le BOUTON reste où la maquette pose la légende ; dégradé et bornes, eux, ne
+  // décrivent que des panneaux teintés.
+  it('aucun panneau teinté ⇒ ni dégradé ni bornes, mais le bouton « Ensoleillement de chaque panneau » reste ; l’entrée allume, la sortie rend', () => {
     const { espion } = monterConstructeur()
     const carte = espion('#rp9-heatmap-toggle')
     const { unmount } = rendre()
     expect(carte).toHaveBeenCalledTimes(1) // allumée à l'entrée (le faux script ne bascule pas : rien n'est teinté)
-    expect(within(noeudCarte).getByTestId('cal-carte-soleil').querySelector('.cal-pan-legende')).toBeNull()
+    const bloc = within(noeudCarte).getByTestId('cal-carte-soleil')
+    expect(bloc.querySelector('.cal-pan-degrade')).toBeNull()
+    expect(bloc).not.toHaveTextContent('Plein soleil')
+    const titre = within(bloc).getByRole('button', { name: 'Ensoleillement de chaque panneau' })
+    expect(titre).toHaveAttribute('aria-pressed', 'false')
+    expect(titre).toHaveAttribute('title', 'Colorer les panneaux')
+    fireEvent.click(titre) // se rallume d'ici, sans passer par « Avancé »
+    expect(carte).toHaveBeenCalledTimes(2)
+    document.getElementById('rp9-heatmap-toggle').setAttribute('aria-pressed', 'false')
     expect(within(noeudCarte).getByRole('button', { name: 'Lire la journée' })).toBeInTheDocument() // le lecteur reste
     document.getElementById('rp9-heatmap-toggle').setAttribute('aria-pressed', 'true')
     unmount()
-    expect(carte).toHaveBeenCalledTimes(2) // éteinte en sortie : l'Électrique teint par chaîne (ACAL1621)
+    expect(carte).toHaveBeenCalledTimes(3) // éteinte en sortie : l'Électrique teint par chaîne (ACAL1621)
   })
 
   it('légende d’ensoleillement : titre, dégradé, bornes ; le titre est le vrai bouton « carte d’accès solaire »', () => {
