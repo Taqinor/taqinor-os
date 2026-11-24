@@ -258,7 +258,12 @@ const PER_CHUNK_BUDGET_KB = 350
 // éditeur d'acte, signature, bascule français / arabe) : mesuré 4 146,9 Ko gzip sur le runner (job frontend-static du
 // run 45302348976, tête 4d3a068996), aucune dépendance npm ajoutée (diff package.json vide), aucun autre plafond
 // dépassé. Budget : mesure arrondie aux 5 Ko + 10 : 4145 -> 4160.
-const TOTAL_BUDGET_KB = 4160
+// 24/11/2026 (calepinage L5, lot du jour : écrans v2 — relevé et vue client, documents, coque, dessin —, correctifs
+// du relecteur des maquettes et du tour 1 du test utilisateur : reprise des lectures, étiquettes d'option des lignes,
+// gabarit agricole du générateur, lien d'envoi affiché) : mesuré 4 162,2 Ko gzip sur le runner (job frontend-static du
+// run 45475331155, tête 6633028331), aucune dépendance npm ajoutée (diff package.json vide), aucun autre plafond
+// dépassé (roof-tool 644,5 pour 650). Budget : mesure arrondie aux 5 Ko + 10 : 4160 -> 4175.
+const TOTAL_BUDGET_KB = 4175
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
