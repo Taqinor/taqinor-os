@@ -445,16 +445,20 @@ _MOMENT = {
     'ar': {'acompte': 'عند توقيع هذا العقد',
            'materiel': 'عند تسليم المعدات إلى الزبون',
            'livraison_materiel': 'عند تسليم المعدات إلى الزبون',
-           'solde': 'عند تسلّم الأشغال'},
+           'solde': 'عند تسلُّم الأشغال'},
 }
 _LIBELLES_AR = {'acompte': 'التسبيق', 'materiel': 'تسليم المعدات',
                 'livraison_materiel': 'تسليم المعدات', 'solde': 'الرصيد'}
-_ETAPES = {
-    'fr': {1: 'une étape', 2: 'deux étapes', 3: 'trois étapes',
-           4: 'quatre étapes', 5: 'cinq étapes', 6: 'six étapes'},
-    'ar': {1: 'دفعة واحدة', 2: 'دفعتين', 3: 'ثلاث دفعات', 4: 'أربع دفعات',
-           5: 'خمس دفعات', 6: 'ست دفعات'},
-}
+_ETAPES_FR = {1: 'une étape', 2: 'deux étapes', 3: 'trois étapes',
+              4: 'quatre étapes', 5: 'cinq étapes', 6: 'six étapes'}
+
+
+def _nombre_etapes(n, langue):
+    """« trois étapes » ; en arabe le nombre de paiements qui suit « على »
+    (``composants.nombre_de_dfaat``, forme ``textes_ar.FORMES_CTX``)."""
+    if langue == 'ar':
+        return C.nombre_de_dfaat(n)
+    return _ETAPES_FR.get(n, f'{n} étapes')
 
 
 def _echeancier(vente, etats, langue):
@@ -488,7 +492,7 @@ def _liste_tranches(echeancier, vente, langue):
             lignes.append(f'- **{pct}**، أي {montant}، {quand}')
         else:
             lignes.append(f'- **{pct}**, soit {montant}, {quand}')
-    fin = ' ؛' if langue == 'ar' else ' ;'
+    fin = '؛' if langue == 'ar' else ' ;'
     texte = '\n'.join(lg + (fin if i < len(lignes) - 1 else '.')
                       for i, lg in enumerate(lignes))
     return texte or None
@@ -503,9 +507,9 @@ def _modalites(lecture, langue):
     rib = (getattr(p, 'rib', '') or '').strip()
     banque = (getattr(p, 'banque', '') or '').strip()
     if langue == 'ar':
-        texte = f'الأداء بتحويل بنكي أو بشيك باسم {nom}.'
+        texte = f'يتم الأداء بتحويل بنكي أو بشيك لأمر {nom}.'
         if rib:
-            texte += f' رقم الحساب البنكي: {rib}' + (f' — {banque}' if banque else '') + '.'
+            texte += f' RIB : {rib}' + (f' — {banque}' if banque else '') + '.'
         return texte
     texte = f"Paiement par virement ou par chèque à l'ordre de {nom}."
     if rib:
@@ -572,7 +576,7 @@ def _garanties_vente(lecture, langue):
         designation = connu[1] if connu else designation_fr
         detail = connu[2] if connu else ''
         if g.get('detail') and connu:
-            detail = f'{detail} ({g["detail"]})'
+            detail = f'{detail.rstrip(".")} ({g["detail"]}).'
         if langue != 'fr':
             autre = loc[i] if i < len(loc) else {}
             designation = autre.get('designation') or designation
@@ -791,8 +795,9 @@ _TEXTES_FIXES = {
     'fr': {'pieces': 'Les pièces détachées nécessaires sont disponibles '
                      'pendant toute la durée des garanties.',
            'demeure': 'huit jours', 'reponse': 'quinze jours'},
-    'ar': {'pieces': 'تتوفر قطع الغيار اللازمة طوال مدة الضمانات.',
-           'demeure': 'ثمانية أيام', 'reponse': 'خمسة عشر يومًا'},
+    # Formes de ``textes_ar.FORMES_CTX``.
+    'ar': {'pieces': 'قطع الغيار اللازمة متوفرة طوال مدة الضمانات.',
+           'demeure': '8 أيام', 'reponse': '15 يومًا'},
 }
 
 
@@ -819,7 +824,7 @@ def _contexte(contenu, vente, langue, refs):
     }
     accepte = C.date_longue(chantier.get('devis_accepte_le'), langue=langue)
     if langue == 'ar':
-        ctx['devis_accepte_le'] = (f'، الذي وافق عليه الزبون بتاريخ {accepte}'
+        ctx['devis_accepte_le'] = (f'، الذي قبله الزبون بتاريخ {accepte}'
                                    if accepte else '')
     else:
         ctx['devis_accepte_le'] = (f', que le Client a accepté le {accepte}'
@@ -841,7 +846,7 @@ def _contexte(contenu, vente, langue, refs):
     echeancier = contenu.get('echeancier') or []
     if echeancier:
         n = len(echeancier)
-        ctx['nombre_etapes'] = _ETAPES[langue].get(n, str(n))
+        ctx['nombre_etapes'] = _nombre_etapes(n, langue)
         ctx['liste_tranches'] = _liste_tranches(echeancier, vente, langue)
     paiement = contenu.get('paiement') or {}
     if paiement.get('total_regle') is not None and vente:
