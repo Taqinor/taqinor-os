@@ -75,7 +75,7 @@ LIBELLES = {
         'conditions_particulieres': 'Conditions particulières',
         'conditions_particulieres_intro': (
             'Ce qui a été convenu en plus pour votre chantier ; ces lignes '
-            'priment sur les conditions générales ci-dessus.'),
+            'priment sur les articles ci-dessus.'),
         'convenu_entre_nous': 'Convenu entre nous',
         'votre_installation': 'Votre installation',
         'date_a_porter': 'Date à porter',
@@ -87,7 +87,8 @@ LIBELLES = {
             'Ce contrat fixe ce que {nom} installe chez vous, à quel prix, en '
             'combien de paiements, dans quels délais et avec quelles '
             "garanties. <b>L'essentiel tient sur cette page</b> ; le détail "
-            'suit.'),
+            'suit. Dans ce contrat, « vous » et « le Client » désignent la '
+            'même personne.'),
         'lessentiel': "L'essentiel",
         'ttc_long': 'toutes taxes comprises',
         'ttc_detail': 'TTC · soit {ht} hors taxes et {tva} de TVA',
@@ -99,8 +100,9 @@ LIBELLES = {
         'paiement_en_1': 'Votre paiement en {n} étape',
         'paiement_en_n': 'Votre paiement en {n} étapes',
         'paiement_intro': (
-            'Chaque étape correspond à un moment précis du chantier : vous ne '
-            'payez jamais en avance sur ce qui a été fait.'),
+            'Chaque étape correspond à un moment précis du chantier : '
+            "l'acompte lance la commande de votre matériel, les paiements "
+            'suivants suivent la livraison puis la fin des travaux.'),
         'entre_soussignes': 'Entre les soussignés',
         'ce_que_nous_installons': 'Ce que nous installons',
         'ce_que_nous_installons_intro': (
@@ -129,7 +131,7 @@ LIBELLES = {
             'Colis abîmé, pièce manquante, référence différente : notez-le '
             'ici, nous le corrigeons avant la pose.'),
         'paiement_cette_etape': 'Votre paiement à cette étape',
-        'ce_que_vous_convenez': 'Ce que {nom} et vous convenez',
+        'ce_que_vous_convenez': 'Ce que nous convenons ensemble',
         'mention_livraison': (
             'Signature précédée de la mention manuscrite « Reçu le matériel '
             'ci-dessus »'),
@@ -154,7 +156,9 @@ LIBELLES = {
         'mise_en_service': 'Mise en service',
         'verifie_ensemble': 'Ce que nous avons vérifié ensemble',
         'la_reception': 'La réception',
-        'une_seule_case': 'Cochez une seule des deux cases.',
+        'une_seule_case': (
+            'Cochez une seule des deux cases. Si aucune case n\'est cochée, '
+            'la signature vaut réception sans réserve.'),
         'sans_reserve': (
             '**Je prononce la réception sans réserve.** Les travaux sont '
             'conformes au contrat et au devis accepté.'),
@@ -191,6 +195,11 @@ LIBELLES = {
         'sav': 'Service après-vente {nom}',
         'bien_consommer': 'Bien consommer votre énergie solaire',
         'entretien': "L'entretien, en peu de mots",
+        # Ajouts de la revue 1 (noms partagés, docs/contrats/revue-1.md).
+        'part_retenue': (
+            "Part du solde retenue jusqu'à la levée des réserves : "
+            '………… DH'),
+        'signature_en_fin': 'Signature en dernière page',
     },
     'ar': {
         'etape_contrat_installation': 'العقد',
@@ -215,12 +224,12 @@ LIBELLES = {
         'ci_apres': 'المشار إليها فيما يلي بـ«{nom}»',
         'ci_apres_client': 'المشار إليه فيما يلي بـ«الزبون»',
         'id_rc': 'السجل التجاري',
-        'id_ice': 'ICE',
+        'id_ice': 'التعريف الموحد للمقاولة (ICE)',
         'id_if': 'التعريف الضريبي',
         'id_patente': 'الرسم المهني',
         'id_cnss': 'الضمان الاجتماعي',
-        'id_cin': 'البطاقة الوطنية',
-        'cin_a_remplir': 'البطاقة الوطنية: ……………………',
+        'id_cin': 'البطاقة الوطنية للتعريف',
+        'cin_a_remplir': 'البطاقة الوطنية للتعريف: ……………………',
         'th_designation': 'البيان',
         'th_marque': 'العلامة',
         'th_quantite': 'الكمية',
@@ -248,8 +257,8 @@ LIBELLES = {
         'installation_solaire': 'منظومة شمسية',
         'conditions_particulieres': 'الشروط الخاصة',
         'conditions_particulieres_intro': (
-            'ما اتُّفق عليه زيادةً لورشكم؛ وتُقدَّم هذه السطور على الشروط '
-            'العامة أعلاه.'),
+            'ما اتُّفق عليه زيادةً لورشكم؛ وتُقدَّم هذه السطور على البنود '
+            'أعلاه.'),
         'convenu_entre_nous': 'المتفق عليه بيننا',
         'votre_installation': 'منظومتكم',
         'date_a_porter': 'يُدوَّن التاريخ',
@@ -259,21 +268,23 @@ LIBELLES = {
         'chapeau_contrat': (
             'يحدد هذا العقد ما تركّبه {nom} لديكم، وبأي ثمن، وعلى كم دفعة، '
             'وفي أي أجل، وبأي ضمانات. <b>الأساسي في هذه الصفحة</b>، '
-            'والتفاصيل بعدها.'),
+            'والتفاصيل بعدها. وفي هذا العقد، يُقصد بـ«أنتم» وبـ«الزبون» الشخص '
+            'نفسه.'),
         'lessentiel': 'الأساسي',
         'ttc_long': 'مع احتساب جميع الرسوم',
-        'ttc_detail': 'مع احتساب الرسوم · منها {ht} دون الرسوم و{tva} '
-                      'للضريبة على القيمة المضافة',
+        'ttc_detail': 'مع احتساب الرسوم · أي {ht} دون الرسوم و{tva} '
+                      'برسم الضريبة على القيمة المضافة',
         'prix_convenu': 'الثمن المتفق عليه',
         'termine_au_plus_tard': 'الإنجاز في أجل أقصاه',
         'a_preciser_maj': 'يُحدَّد لاحقًا',
-        'jusqua': 'إلى غاية {duree}',
+        'jusqua': 'المدة القصوى: {duree}',
         'garanties_fabricant': 'ضمانات الصانع',
         'paiement_en_1': 'أداء الثمن على {n}',
         'paiement_en_n': 'أداء الثمن على {n}',
         'paiement_intro': (
-            'تقابل كل دفعة مرحلة محددة من الورش: لا تؤدّون أبدًا مقابل '
-            'ما لم يُنجَز بعد.'),
+            'تقابل كل دفعة مرحلة محددة من الورش: يُطلق التسبيق طلب '
+            'معداتكم، وتأتي الدفعات الموالية بعد التسليم ثم بعد انتهاء '
+            'الأشغال.'),
         'entre_soussignes': 'بين الموقعين أدناه',
         'ce_que_nous_installons': 'ما نركّبه لكم',
         'ce_que_nous_installons_intro': (
@@ -298,7 +309,7 @@ LIBELLES = {
             'طرد متضرر، قطعة ناقصة، مرجع مختلف: دوّنوه هنا، ونصلحه قبل '
             'التركيب.'),
         'paiement_cette_etape': 'أداؤكم في هذه المرحلة',
-        'ce_que_vous_convenez': 'ما تتفقون عليه مع {nom}',
+        'ce_que_vous_convenez': 'ما نتفق عليه معًا',
         'mention_livraison': (
             'التوقيع مسبوقًا بعبارة بخط اليد: «توصلتُ بالمعدات المبيَّنة '
             'أعلاه»'),
@@ -317,7 +328,9 @@ LIBELLES = {
         'mise_en_service': 'التشغيل',
         'verifie_ensemble': 'ما تحققنا منه معًا',
         'la_reception': 'التسلُّم',
-        'une_seule_case': 'ضعوا علامة في خانة واحدة فقط من الخانتين.',
+        'une_seule_case': (
+            'ضعوا علامة في خانة واحدة فقط من الخانتين. وإذا لم توضع علامة في '
+            'أي خانة، يُعدّ التوقيع تسلُّمًا للأشغال دون تحفظ.'),
         'sans_reserve': (
             '**أصرّح بتسلُّم الأشغال دون تحفظ.** الأشغال مطابقة للعقد ولعرض '
             'الأثمان المقبول.'),
@@ -348,9 +361,12 @@ LIBELLES = {
         'adresse_du_chantier': 'عنوان الورش',
         'materiel_couvert': 'المعدات المشمولة بالضمان',
         'si_probleme': 'إذا حدث خلل',
-        'sav': 'خدمة ما بعد البيع {nom}',
+        'sav': 'خدمة ما بعد البيع لدى {nom}',
         'bien_consommer': 'استهلكوا طاقتكم الشمسية على النحو الأمثل',
         'entretien': 'الصيانة في كلمات قليلة',
+        'part_retenue': (
+            'الجزء المحتجز من باقي الثمن إلى حين رفع التحفظات: ………… درهم'),
+        'signature_en_fin': 'التوقيع في الصفحة الأخيرة',
     },
 }
 

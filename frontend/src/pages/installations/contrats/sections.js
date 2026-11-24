@@ -1,12 +1,16 @@
 // Les sections que l'éditeur d'un acte sait modifier. Pour chacune :
 //   lire(contenu)  → le brouillon de saisie (chaînes pour les champs texte),
-//   ecrire(brouillon) → la valeur envoyée dans `surcharges[<section>]`.
+//   ecrire(brouillon, langue) → la valeur envoyée dans `surcharges[<section>]`
+//   (en arabe, seuls les TEXTES partent : dates, durées et fins de garantie
+//   viennent du français et ne sont jamais renvoyées).
 // Les clés viennent du contrat (acte_contractuel.json : `sections_modifiables`) ;
 // une section que le serveur ne liste pas pour l'acte n'est jamais montrée.
 // Aucun montant ici : l'échéancier n'expose que « quand » et « note ».
 import {
   nombreTape, paragraphesVersTexte, texteVersParagraphes,
 } from './outils'
+
+const TYPE_CONTRAT = 'contrat_installation'
 
 const chaine = (v) => (v === null || v === undefined ? '' : String(v))
 
@@ -37,7 +41,10 @@ export const SECTIONS = {
       date_limite: chaine(c.delais?.date_limite),
       detail: chaine(c.delais?.detail),
     }),
-    ecrire: (d) => ({ date_limite: d.date_limite || null, detail: d.detail }),
+    // En arabe la date limite est commune : seul le détail se règle.
+    ecrire: (d, langue) => (langue === 'ar'
+      ? { detail: d.detail }
+      : { date_limite: d.date_limite || null, detail: d.detail }),
   },
   echeancier_textes: {
     libelle: 'Échéancier : les mots',
@@ -49,7 +56,9 @@ export const SECTIONS = {
   garanties: {
     libelle: 'Garanties',
     lire: (c) => (c.garanties ?? []).map((g) => ({ ...g, duree_mois: chaine(g.duree_mois) })),
-    ecrire: (d) => d.map((g) => ({ ...g, duree_mois: nombreTape(g.duree_mois) })),
+    ecrire: (d, langue) => d.map((g) => (langue === 'ar'
+      ? { cle: g.cle, designation: g.designation, garant: g.garant, detail: g.detail }
+      : { ...g, duree_mois: nombreTape(g.duree_mois) })),
   },
   articles: {
     libelle: 'Articles',
@@ -60,6 +69,12 @@ export const SECTIONS = {
       cle: a.cle, titre: a.titre, paragraphes: texteVersParagraphes(a.texte),
     })),
   },
+  paiement: {
+    libelle: 'Paiement : les modalités',
+    // Seul le texte des modalités se modifie ; les montants viennent de la vente.
+    lire: (c) => ({ modalites: chaine(c.paiement?.modalites) }),
+    ecrire: (d) => ({ modalites: d.modalites }),
+  },
   conditions_particulieres: {
     libelle: 'Conditions particulières',
     lire: (c) => chaine(c.conditions_particulieres),
@@ -67,10 +82,11 @@ export const SECTIONS = {
   },
   options: {
     libelle: 'Options',
-    // `delai_execution_jours` n'est lu / envoyé que si le serveur le sert.
+    // `delai_execution_jours` n'est lu / envoyé que sur le CONTRAT (les procès-verbaux
+    // et la clôture le portent dans `options` mais ne le règlent pas).
     lire: (c) => ({
       reserve_propriete: !!c.options?.reserve_propriete,
-      ...('delai_execution_jours' in (c.options ?? {})
+      ...(c.type === TYPE_CONTRAT && 'delai_execution_jours' in (c.options ?? {})
         ? { delai_execution_jours: chaine(c.options.delai_execution_jours) } : {}),
       penalite_retard_pct: chaine(c.options?.penalite_retard_pct),
     }),
@@ -127,6 +143,11 @@ export const SECTIONS = {
     }),
     ecrire: (d) => d,
   },
+  conseils_intro: {
+    libelle: 'Conseils : introduction',
+    lire: (c) => chaine(c.conseils_intro),
+    ecrire: (d) => d,
+  },
   conseils: {
     libelle: 'Conseils de consommation',
     lire: (c) => (c.conseils ?? []).map((k) => ({
@@ -144,9 +165,9 @@ export const SECTIONS = {
 // Ordre de lecture dans l'éditeur (celui du document imprimé).
 export const ORDRE_SECTIONS = [
   'titre', 'lieu', 'date_document', 'societe', 'delais', 'echeancier_textes',
-  'articles', 'garanties', 'conditions_particulieres', 'options',
+  'paiement', 'articles', 'garanties', 'conditions_particulieres', 'options',
   'livraison', 'reception', 'constats', 'reserves', 'quitus', 'sav',
-  'conseils', 'entretien',
+  'conseils_intro', 'conseils', 'entretien',
 ]
 
 export function brouillonDe(contenu, sections) {
@@ -156,12 +177,12 @@ export function brouillonDe(contenu, sections) {
 }
 
 /** `{ section: valeur }` pour les seules sections modifiées par la saisie. */
-export function surchargesModifiees(base, brouillon, sections) {
+export function surchargesModifiees(base, brouillon, sections, langue = 'fr') {
   const surcharges = {}
   for (const cle of sections) {
     if (!SECTIONS[cle]) continue
     if (JSON.stringify(base[cle]) !== JSON.stringify(brouillon[cle])) {
-      surcharges[cle] = SECTIONS[cle].ecrire(brouillon[cle])
+      surcharges[cle] = SECTIONS[cle].ecrire(brouillon[cle], langue)
     }
   }
   return surcharges
