@@ -311,3 +311,112 @@ class LogoDetourageTests(SimpleTestCase):
         self.assertEqual(logo.pour_role(rouge, 'entete'), rouge)
         self.assertEqual(logo.image_qr(rouge).size, logo.image_qr_societe(rouge).size)
         self.assertIsNone(logo.est_taqinor(''))
+
+
+class LogoDesDocumentsTests(SimpleTestCase):
+    """Décision de Reda (24/11/2026) : « use the quote logo on all other
+    documents too ». Tout document PDF à en-tête clair imprime LE logo des
+    devis (``utils.pdf.logo_document_html`` : même module image, même bloc,
+    même taille qu'une couverture claire de devis), par UNE pièce partagée,
+    ``_logo.html`` — plus jamais l'image téléversée posée telle quelle, sauf
+    quand elle n'est pas traitable (SVG, fichier illisible)."""
+
+    #: Repli hérité du devis (interrupteur ``USE_PREMIUM_QUOTE_ENGINE`` éteint) :
+    #: jamais étendu (règle n° 4), il garde son image d'origine.
+    HORS_PIECE = {'_logo.html', 'devis.html'}
+
+    def _uri_officiel(self):
+        import base64
+
+        from apps.ventes.quote_engine import logo
+        rogne, ext = _trim_image_whitespace(logo.CHEMIN_LOGO.read_bytes())
+        return ('data:image/png;base64,' + base64.b64encode(rogne).decode(),
+                logo)
+
+    def test_balise_du_moteur_de_devis(self):
+        from apps.ventes.utils.pdf import (
+            ROLE_LOGO_DOCUMENT, logo_document_html,
+        )
+        uri, logo = self._uri_officiel()
+        balise = logo_document_html(uri)
+        self.assertEqual(ROLE_LOGO_DOCUMENT, 'couverture')
+        # Octet pour octet la balise d'une couverture claire de devis.
+        self.assertEqual(str(balise), logo.img_html(
+            logo.pour_role(logo.societe_b64(uri, 'clair'), 'couverture'),
+            'couverture', alt='Logo'))
+        # Le fichier officiel téléversé = l'asset du devis (lockup clair).
+        self.assertIn(logo.taqinor_b64('clair', 'lockup'), balise)
+        self.assertNotIn(uri, balise)
+        for intraitable in (None, '', 'data:image/svg+xml;base64,PHN2Zz4=',
+                            'data:image/png;base64,iVBORw0KGgo='):
+            self.assertEqual(logo_document_html(intraitable), '')
+
+    def test_la_piece_imprime_le_logo_des_devis_sinon_l_image_d_origine(self):
+        from django.template.loader import get_template
+        piece = get_template('_logo.html')
+        uri = 'data:image/svg+xml;base64,PHN2Zz4='
+        html = piece.render({'logo_uri': uri,
+                             'logo_html': '<img data-devis="1">'})
+        self.assertIn('<img data-devis="1">', html)
+        self.assertNotIn(uri, html)
+        for sans in ({'logo_uri': uri, 'logo_html': ''}, {'logo_uri': uri}):
+            self.assertIn(f'<img src="{uri}" alt="Logo" />',
+                          piece.render(sans))
+
+    def test_tout_gabarit_a_logo_passe_par_la_piece(self):
+        """Garde de classe : un gabarit PDF qui lit ``logo_uri`` inclut
+        ``_logo.html`` et n'imprime jamais ``logo_uri`` lui-même — un nouveau
+        document ne peut pas réintroduire l'image brute."""
+        from django.template import engines
+        from jinja2 import meta, nodes
+        env = engines['jinja2'].env
+        vus = []
+        for nom in env.list_templates(extensions=['html']):
+            arbre = env.parse(env.loader.get_source(env, nom)[0])
+            if 'logo_uri' not in meta.find_undeclared_variables(arbre):
+                continue
+            if nom in self.HORS_PIECE:
+                continue
+            vus.append(nom)
+            self.assertIn('_logo.html', set(meta.find_referenced_templates(
+                arbre)), f"{nom} : logo sans la pièce _logo.html")
+            imprime = [n.name for sortie in arbre.find_all(nodes.Output)
+                       for n in sortie.find_all(nodes.Name)
+                       if n.name == 'logo_uri']
+            self.assertEqual(imprime, [], f'{nom} imprime logo_uri lui-même')
+        # La garde ne passe pas à vide : les gabarits à logo sont bien là.
+        self.assertGreaterEqual(len(vus), 28, vus)
+        self.assertIn('facture.html', vus)
+
+
+class LogoDuContexteSocieteTests(TestCase):
+    """``_company_context`` sert la balise du logo des devis à côté de
+    l'image téléversée, et l'identité FIGÉE d'une facture la recalcule."""
+
+    def test_contexte_vivant_et_identite_figee(self):
+        from unittest import mock
+
+        from apps.parametres.models import CompanyProfile
+        from apps.ventes.quote_engine import logo
+        from apps.ventes.utils import pdf
+        from authentication.models import Company
+        company = Company.objects.create(slug='logo-doc', nom='Logo Doc')
+        profil = CompanyProfile.get(company=company)
+        profil.logo_key = 'logos/officiel.png'
+        profil.save()
+        officiel = logo.CHEMIN_LOGO.read_bytes()
+        with mock.patch.object(pdf, '_download', return_value=officiel):
+            ctx = pdf._company_context(company=company)
+        self.assertTrue(ctx['logo_uri'])
+        self.assertEqual(ctx['logo_html'],
+                         pdf.logo_document_html(ctx['logo_uri']))
+        self.assertIn(logo.taqinor_b64('clair', 'lockup'), ctx['logo_html'])
+        # Identité figée SANS logo : plus de balise ; avec un autre fichier :
+        # la balise suit le fichier figé.
+        pdf._appliquer_identite_figee(ctx, {'logo_key': ''})
+        self.assertEqual((ctx['logo_uri'], ctx['logo_html']), (None, ''))
+        autre = _png_with_white_margin()[0]
+        with mock.patch.object(pdf, '_download', return_value=autre):
+            pdf._appliquer_identite_figee(ctx, {'logo_key': 'logos/autre.png'})
+        self.assertTrue(ctx['logo_html'])
+        self.assertNotIn(logo.taqinor_b64('clair', 'lockup'), ctx['logo_html'])

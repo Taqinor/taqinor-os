@@ -27,7 +27,7 @@
  * pages réellement visitées par CE visiteur entrent dans le cache.
  */
 
-const CACHE_VERSION = 'taqinor-v1';
+const CACHE_VERSION = 'taqinor-v2';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const PAGES_CACHE = `${CACHE_VERSION}-pages`;
 const KNOWN_CACHES = [SHELL_CACHE, PAGES_CACHE];

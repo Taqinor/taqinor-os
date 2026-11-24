@@ -92,7 +92,7 @@
   <div class="header">
     <div class="header-left">
       {% if logo_uri %}
-      <div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>
+      <div class="logo">{% include "_logo.html" %}</div>
       {% endif %}
       <div class="doc-title">{{ _L("NOTE DE DÉBIT") }}</div>
       <div class="doc-ref">{{ note_debit.reference }}</div>

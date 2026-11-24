@@ -26,7 +26,7 @@
 <div class="page">
   <div class="header">
     <div>
-      {% if logo_uri %}<div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>{% endif %}
+      {% if logo_uri %}<div class="logo">{% include "_logo.html" %}</div>{% endif %}
     </div>
     <div class="company-info">
       <strong>{{ entreprise_nom }}</strong><br />
