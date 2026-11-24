@@ -27,6 +27,8 @@ import string
 import unittest
 from pathlib import Path
 
+from django.test import tag
+
 from apps.documents.contrats import textes, textes_ar
 from apps.documents.contrats.rendu import composants
 from apps.documents.contrats.rendu.documents import html_de
@@ -274,6 +276,11 @@ class RenduArabeTests(unittest.TestCase):
         self.assertIn('<span class="ltr">+212 6 00 00 00 00</span>', html)
         self.assertIn('&amp;', html)
         self.assertIn('<title>x</title>', html)
+
+
+@tag('pdf')
+class PdfArabeTests(unittest.TestCase):
+    """Rendu WeasyPrint réel (lourd : palier « pdf », hors gate rapide)."""
 
     def test_pdf_arabe_rendu_et_lisible(self):
         import pymupdf
