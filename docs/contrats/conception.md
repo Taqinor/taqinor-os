@@ -160,3 +160,17 @@ dont seules les polices et le traitement du logo sont importés.
   « démarchage » de la loi n° 31-08 vise la vente à domicile, pas une société que le client contacte de lui-même ; à
   oublier, ne pas l'intégrer. Retirés : l'option, l'article, l'annexe, le formulaire détachable. L'acompte est
   exigible à la signature. Le point reste, pour mémoire seulement, dans `juridique.md` § 4.
+- **24/11/2026 — date limite d'exécution : 30 jours après la date du contrat, par défaut** (modifiable sur chaque
+  acte et dans le modèle de la société : `options.delai_execution_jours`, défaut 30).
+- **24/11/2026 — retard de paiement : sans pénalité chiffrée.** Mise en demeure, puis après huit jours suspension des
+  travaux, action en justice ou reprise du matériel. `options.penalite_retard_pct` reste `null` par défaut.
+- **24/11/2026 — signataire : le nom et la qualité de Reda**, saisis une fois dans le modèle de la société
+  (`societe.representant`), imprimés « Représentée par … ». Le devis, lui, reste sans nom de gérant (D-APDF-1).
+- **24/11/2026 — version arabe DANS cette vague** (contre la recommandation « seconde vague »). Chaque acte se rend
+  en français et en arabe : `?langue=ar` sert le même contenu avec les textes arabes (`contrats/textes_ar.py`), le
+  rendu passe de droite à gauche. La traduction arabe ACCOMPAGNE l'acte français (loi n° 31-08, art. 206) : les deux
+  PDF sont figés, déposés et signés ensemble. Les personnalisations de TEXTE se font par langue
+  (`surcharges` / `surcharges_ar`, `contenu` / `contenu_ar`) ; dates, options et signataire sont communs. Une section
+  personnalisée en français dont l'arabe est resté au défaut lève un avertissement. Le montant en lettres n'est pas
+  imprimé en arabe (aucun convertisseur vérifié) ; les désignations du catalogue restent telles quelles.
+  **À faire relire par un arabophone avant un usage réel** — dit à Reda.

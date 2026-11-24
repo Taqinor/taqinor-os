@@ -1,9 +1,9 @@
 {
   "endpoint": "GET /api/django/documents/actes/<int:pk>/",
   "endpoints": {
-    "GET /api/django/documents/actes/<int:pk>/": "le détail ci-dessous (résumé + contenu)",
-    "PATCH /api/django/documents/actes/<int:pk>/": "corps_patch ; rend le détail ; 409 acte_fige hors brouillon",
-    "GET /api/django/documents/actes/<int:pk>/pdf/": "le PDF (application/pdf) — vivant pour un brouillon, figé ensuite",
+    "GET /api/django/documents/actes/<int:pk>/": "le détail ci-dessous (résumé + contenu) ; ?langue=fr|ar (défaut fr) choisit la langue du contenu servi",
+    "PATCH /api/django/documents/actes/<int:pk>/": "corps_patch ; rend le détail dans la langue du corps ; 409 acte_fige hors brouillon",
+    "GET /api/django/documents/actes/<int:pk>/pdf/": "le PDF (application/pdf) — vivant pour un brouillon, figé ensuite ; ?langue=fr|ar (défaut fr) : ar = la traduction arabe qui accompagne l'acte (loi n° 31-08, art. 206)",
     "POST /api/django/documents/actes/<int:pk>/emettre/": "fige le contenu et le PDF (statut emis) ; rend le détail",
     "POST /api/django/documents/actes/<int:pk>/rouvrir/": "retour au brouillon d'un acte émis non signé ; rend le détail",
     "POST /api/django/documents/actes/<int:pk>/signer/": "corps_signer ; signature tracée sur place ; rend le détail",
@@ -12,6 +12,7 @@
   },
   "pourquoi": "Un acte du dossier contractuel et son CONTENU : le dictionnaire que l'écran modifie et que le PDF imprime, à l'identique. Pour un brouillon le contenu est recalculé à chaque lecture (données vivantes de la vente + modèle de la société + personnalisations de l'acte) ; à l'émission il est figé avec le PDF. Aucun montant n'est modifiable ici : l'échéancier se corrige sur la vente (PUT ventes/devis/<id>/echeancier/), l'acte n'en personnalise que les mots (echeancier_textes).",
   "corps_patch": {
+    "langue": "fr",
     "surcharges": {
       "conditions_particulieres": "Le Client fournit l'accès à la terrasse.",
       "articles": [
@@ -35,7 +36,7 @@
       },
       "delais": null
     },
-    "_note": "Chaque clé REMPLACE sa section ; null la remet au défaut. « articles » : liste complète OU articles isolés fusionnés par cle. Clés hors sections_modifiables → 400 contenu_invalide."
+    "_note": "Chaque clé REMPLACE sa section ; null la remet au défaut. « articles » : liste complète OU articles isolés fusionnés par cle. Clés hors sections_modifiables → 400 contenu_invalide. « langue » (défaut fr) : avec ar, seules les sections de TEXTE se modifient (sections_modifiables du détail servi en ar) ; dates, options et signataire sont communs aux deux langues et se règlent en fr."
   },
   "corps_signer": {
     "signature_client": "data:image/png;base64,iVBORw0KGgo=",
@@ -71,6 +72,11 @@
       "id": 12,
       "reference": "CHT-2026-11-0007"
     },
+    "langue": "fr",
+    "langues": [
+      "fr",
+      "ar"
+    ],
     "sections_personnalisees": [
       "conditions_particulieres"
     ],
@@ -438,6 +444,11 @@
       "id": 12,
       "reference": "CHT-2026-11-0007"
     },
+    "langue": "fr",
+    "langues": [
+      "fr",
+      "ar"
+    ],
     "sections_personnalisees": [],
     "sections_modifiables": [
       "titre",
@@ -677,6 +688,11 @@
       "id": 12,
       "reference": "CHT-2026-11-0007"
     },
+    "langue": "fr",
+    "langues": [
+      "fr",
+      "ar"
+    ],
     "sections_personnalisees": [],
     "sections_modifiables": [
       "titre",
@@ -914,6 +930,11 @@
       "id": 12,
       "reference": "CHT-2026-11-0007"
     },
+    "langue": "fr",
+    "langues": [
+      "fr",
+      "ar"
+    ],
     "sections_personnalisees": [],
     "sections_modifiables": [
       "titre",
@@ -1152,6 +1173,11 @@
       "id": 12,
       "reference": "CHT-2026-11-0007"
     },
+    "langue": "fr",
+    "langues": [
+      "fr",
+      "ar"
+    ],
     "sections_personnalisees": [],
     "sections_modifiables": [
       "titre",
@@ -1521,6 +1547,9 @@
     "Tout montant de contenu est une chaîne décimale ; contenu.prix.total_en_lettres vient de core.nombre_lettres.",
     "contenu.echeancier[].statut ∈ regle | exigible | a_venir, calculé par le serveur depuis les paiements enregistrés (variante tranche_reglee : supposé réglé jusqu'à la tranche de livraison).",
     "contenu.signatures.client = null tant que l'acte n'est pas signé, puis {image, nom, signe_le, preuve}.",
-    "Un acte signé ne se rouvre pas ; un acte émis non signé se rouvre (version + 1 à la ré-émission)."
+    "Un acte signé ne se rouvre pas ; un acte émis non signé se rouvre (version + 1 à la ré-émission).",
+    "?langue=ar sert le MÊME schéma (mêmes clés, mêmes natures) : seuls les textes changent (contenu.langue = 'ar') ; les montants, dates, références et noms propres sont identiques dans les deux langues. sections_personnalisees et sections_modifiables valent pour la langue servie.",
+    "avertissements signale une section de texte personnalisée en français dont la traduction arabe est restée au texte par défaut.",
+    "À l'émission, l'acte français ET sa traduction arabe sont figés et déposés ; la signature est portée sur les deux PDF."
   ]
 }
