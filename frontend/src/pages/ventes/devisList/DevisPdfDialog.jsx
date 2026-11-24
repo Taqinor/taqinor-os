@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react'
 import { FileText } from 'lucide-react'
+import parametresApi from '../../../api/parametresApi.js'
 import {
   Button,
   RadioGroup, RadioGroupItem, Checkbox, Label, Input,
@@ -11,6 +13,17 @@ import { libelleFormatComplet } from './devisListHelpers.js'
 // mêmes libellés, MÊMES options envoyées à `generer-pdf`/`clean_pdf_options`
 // (règle #4 — la migration ne touche QUE le découpage du rendu, jamais le flux
 // PDF). Toute la logique de valeur reste dans `buildPdfOptions` côté parent.
+/* T4-U1-009 — le « Devis final (paiement + RIB) » d'une société IDENTIFIÉE sans RIB ni banque sort sans RIB, en
+   silence (`quote_engine/identite.py::ligne_rib` rend "" ; un profil entièrement vide garde, lui, la ligne historique).
+   L'écran le dit AVANT de générer, en interne ; le PDF n'est jamais touché (règle #4). Champs lus sur le profil servi
+   (GET /parametres/, toute personne connectée) — les mêmes que `CHAMPS_IDENTITE`. */
+const IDENTITE_SOCIETE = ['nom', 'adresse', 'email', 'telephone', 'ice', 'rc', 'identifiant_fiscal', 'patente']
+const rempli = (v) => typeof v === 'string' && v.trim() !== ''
+function ribSocieteManquant(profil) {
+  if (!profil || typeof profil !== 'object' || Array.isArray(profil)) return false
+  return !rempli(profil.rib) && !rempli(profil.banque) && IDENTITE_SOCIETE.some((k) => rempli(profil[k]))
+}
+
 export default function DevisPdfDialog({
   pdfTarget, batchPdf, selectedIds,
   pdfMode, setPdfMode, pdfModeAutoOnepage, targetIsAgricole,
@@ -23,9 +36,20 @@ export default function DevisPdfDialog({
   customAcompte, setCustomAcompte,
   onClose, onGenererLot, onGenererUn,
 }) {
+  const ouvert = !!pdfTarget || batchPdf
+  const [profil, setProfil] = useState(null)
+  useEffect(() => {
+    if (!ouvert || !devisFinal) return undefined
+    let vivant = true
+    Promise.resolve(parametresApi.getProfile())
+      .then((r) => { if (vivant) setProfil(r?.data ?? null) })
+      .catch(() => {})
+    return () => { vivant = false }
+  }, [ouvert, devisFinal])
+  const ribManquant = devisFinal && !targetIsCi && !targetIsAgricole && ribSocieteManquant(profil)
   return (
     <ResponsiveDialog
-      open={!!pdfTarget || batchPdf}
+      open={ouvert}
       onOpenChange={(o) => { if (!o) onClose() }}
       title={batchPdf
         ? `Générer le PDF — ${selectedIds.length} devis (format partagé)`
@@ -157,6 +181,13 @@ export default function DevisPdfDialog({
                 : targetIsAgricole ? '(visite faite — retire « à confirmer par la visite »)'
                   : '(ajoute modalités de paiement + RIB)'}</span></span>
           </label>
+
+          {ribManquant && (
+            <p role="status" className="text-xs text-warning" data-testid="pdf-rib-manquant">
+              Le RIB de la société n’est pas renseigné : le devis final sortira sans RIB —{' '}
+              <a href="/parametres" className="underline">Paramètres → Société</a>
+            </p>
+          )}
 
           {devisFinal && (
             <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/40 p-3">
