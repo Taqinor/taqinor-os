@@ -8,7 +8,9 @@ avant de pouvoir lancer le générateur de devis automatique :
     si le toggle « été différent » est actif (sinon la facture hiver vaut
     pour toute l'année) ;
   - Industriel / Commercial (CIQ404, contrat CIQ1) : l'un de
-    conso_mensuelle_kwh, bill_kwh, releve_conso, ou facture_hiver (MAD) —
+    conso_mensuelle_kwh, bill_kwh, releve_conso, facture_hiver (MAD) ou —
+    fondateur 24/11/2026 — puissance_max_appelee_kva (consommation ESTIMÉE,
+    qui exige alors des heures d'ouverture déclarées) —
     pour un commercial si la tension n'est pas « mt », pour un industriel
     si la moyenne tension n'est pas DÉCLARÉE (D-ACAL-92 : basse tension
     supposée et dite), avec un contrat BT déclaré ou supposé ; ALEA47 — + le rythme, par LA règle du moteur
@@ -255,6 +257,11 @@ def _groupes_rythme(lead):
 
     mode = lead.type_installation
     rythme = _rythme_ci(lead)
+    if conso_par_puissance_seule(lead):
+        # Fondateur 24/11/2026 — l'estimation par la puissance maximale lit des
+        # HEURES déclarées : ni l'archétype ni le profil société n'en donnent.
+        champs = profil_charge_prerequis_ci(rythme, None, en_champs_lead=True)
+        return [list(_GROUPES_RYTHME[champ]) for champ in champs]
     categorie = (rythme.get('categorie_commerciale') if mode == 'commercial'
                  else 'industriel')
     champs = profil_charge_prerequis_ci(rythme, categorie, en_champs_lead=True)
@@ -266,9 +273,23 @@ def _groupes_rythme(lead):
     return [list(_GROUPES_RYTHME[champ]) for champ in champs]
 
 
-#: CIQ404 (contrat CIQ1 ``regles_devis_auto.groupe_pro``).
+#: CIQ404 (contrat CIQ1 ``regles_devis_auto.groupe_pro``). Fondateur
+#: 24/11/2026 — la puissance maximale appelée y compte aussi : sans autre
+#: consommation, le moteur l'ESTIME (``ventes/domain/estimation_puissance_ci``).
+CHAMP_PUISSANCE_MAX = 'puissance_max_appelee_kva'
 GROUPE_CONSO_PRO = ('conso_mensuelle_kwh', 'bill_kwh', 'releve_conso',
-                    'facture_hiver')
+                    'facture_hiver', CHAMP_PUISSANCE_MAX)
+
+
+def conso_par_puissance_seule(lead):
+    """Fondateur 24/11/2026 — lead pro dont la SEULE consommation est la
+    puissance maximale appelée : le devis automatique part sur l'estimation
+    (toute donnée réelle du groupe pro passe devant elle)."""
+    return ((lead.type_installation or '') in _MODES_ETUDE
+            and _rempli(lead, CHAMP_PUISSANCE_MAX)
+            and not any(_rempli(lead, champ) for champ in GROUPE_CONSO_PRO
+                        if champ != CHAMP_PUISSANCE_MAX))
+
 
 #: CIQ404 — libellés du groupe pro, par segment (contrat
 #: ``devis_auto_pret.json`` → ``exemple_industriel``).
@@ -282,7 +303,7 @@ _LIBELLES_PRO = {
 #: Ordre de préférence de la source de consommation : le relevé prime, puis
 #: le kWh mensuel, puis la facture en MAD (convertie par QJR665, jamais ici).
 _ORDRE_SOURCE_CONSO = ('releve_conso', 'conso_mensuelle_kwh', 'bill_kwh',
-                       'facture_hiver')
+                       'facture_hiver', CHAMP_PUISSANCE_MAX)
 
 #: Libellé affiché d'un groupe manquant, indexé sur le PREMIER champ du
 #: groupe (celui que la puce « manquant » vise). Libellés inchangés.
