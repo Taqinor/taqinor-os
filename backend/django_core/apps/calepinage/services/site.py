@@ -610,8 +610,11 @@ def point_du_site(document, lire_geo):
         cle: reference[cle] for cle in ('source', 'ville_reference', 'libelle')}
 
 
-def site_dit(site):
-    """Le bloc ``meteo.site`` publié quand le site vient d'une ville de
-    référence : sa provenance, son nom, son libellé et le point demandé."""
-    return {cle: site.get(cle) for cle in (
-        'source', 'ville_reference', 'libelle', 'lat', 'lon')}
+def site_dit(meteo, site):
+    """Le bloc ``meteo`` publié : tel quel, sauf quand le site vient d'une
+    ville de référence — ``meteo.site`` dit alors sa provenance, son nom, son
+    libellé et le point demandé."""
+    if not site.get('source'):
+        return meteo
+    return dict(meteo, site={cle: site.get(cle) for cle in (
+        'source', 'ville_reference', 'libelle', 'lat', 'lon')})

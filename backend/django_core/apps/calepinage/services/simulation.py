@@ -1532,9 +1532,7 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         raise _refus_nomme(refus) from refus
     # ACAL49 — la « borne haute » ouvre les avertissements (D-ACAL-7).
     entete = _annoter_cascade(blocs, cascade, contexte)
-    blocs['meteo'] = ecrit['meteo']
-    if site.get('source'):  # T4-U1-003 — le site de référence, DIT
-        blocs['meteo'] = dict(blocs['meteo'], site=site_dit(site))
+    blocs['meteo'] = site_dit(ecrit['meteo'], site)  # T4-U1-003
     blocs['production'] = ecrit['production']
     blocs['serie_horaire'] = ecrit['serie_horaire']
     # CALX58 — le bloc TOF/TSRF par pan, publié par la chaîne (elle seule
