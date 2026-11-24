@@ -667,6 +667,11 @@ CLES_DERIVEES_NON_COPIEES = (
     # RECALCULE sur sa propre composition, jamais héritées du source.
     'etude_ci',
     'production_figee',
+    # ADEV158 — le journal des suppositions est écrit UNE fois, à la création
+    # automatique du devis source : vrai pour lui, peut-être faux pour une
+    # copie dont les entrées changent ; il ne se recalcule pas, donc il se
+    # purge (une copie refaite par le chemin automatique reçoit le sien).
+    'journal_auto',
 ) + tuple(
     # AGR122 — TOUTES les dérivées du moteur pompage (v2 + les sept clés v1
     # lues par le rendu) : une copie/V2 les RECALCULE (AGR123) sur ses

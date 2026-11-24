@@ -1432,7 +1432,7 @@ def completude_de_la_chaine(cascade, contexte=None):
     socle = [nom for nom in SOCLE_PHYSIQUE if nom in omises]
     from .a_renseigner import textes_de_completude  # ACAL699 — extrait
     return {'complete': not socle, 'socle_manquant': socle,
-            **textes_de_completude(socle, len(non_renseignees)),
+            **textes_de_completude(socle),
             'non_renseignees': sorted(non_renseignees)}
 
 
