@@ -1421,7 +1421,10 @@ def _livraison_defaut(chantier, langue):
     if langue == 'ar':
         suite = (f'التركيب يوم {C.date_longue(pose, langue="ar")}'
                  if pose else 'التركيب')
-        detail = f'المدة المتوقعة: {jours} أيام عمل.' if jours else ''
+        # Accord du nom compté (1, 2, 3 à 10, 11 et plus).
+        detail = ('المدة المتوقعة: ' + C._compte_ar(
+            int(jours), 'يوم عمل واحد', 'يوما عمل', 'أيام عمل', 'يوم عمل')
+            + '.') if jours else ''
     else:
         suite = f'Pose le {C.date_longue(pose)}' if pose else 'La pose'
         detail = (f'Durée prévue : {jours} jour{"s" if jours > 1 else ""} '
