@@ -152,7 +152,12 @@ def _arabiser(contenu):
     lane du contenu sert avec ``?langue=ar``)."""
     ar = copy.deepcopy(contenu)
     ar['langue'] = 'ar'
-    ctx = textes_ar.FORMES_CTX
+    # Le vrai nom de la société et du client, comme le serveur les pose
+    # (jamais les exemples de ``FORMES_CTX``, dont « Société » est aussi un
+    # libellé français).
+    ctx = dict(textes_ar.FORMES_CTX,
+               societe=ar['societe'].get('nom_court') or ar['societe']['nom'],
+               client=ar['client'].get('nom_complet') or '')
     options = ar.get('options') or {}
     ar['articles'] = textes_ar.articles_par_defaut(
         ar['type'], ar.get('variante', ''), ctx, options)

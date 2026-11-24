@@ -76,3 +76,8 @@ imprimés ne portent **aucun chiffre** (ni pourcentage, ni kilowattheure, ni heu
    justificatifs.
 9. Mentions de la société sur les documents (loi 5-96, ICE) : règle exacte non retrouvée dans un texte (N).
 10. Taux légal d'intérêt en vigueur (DOC art. 875) : non trouvé (N) — sans objet tant qu'aucun intérêt n'est stipulé.
+11. Réception refusée ou non cochée (revue 1, 25/11/2026) : le contrat demande au Client qui refuse de signer le
+    procès-verbal d'indiquer par écrit, dans les sept jours qui suivent la mise en service, les défauts qui motivent
+    son refus, puis permet à la société de le mettre en demeure de recevoir les travaux (DOC art. 774) ; le
+    procès-verbal dit qu'une signature sans case cochée vaut réception sans réserve. Ces deux règles tiennent-elles
+    face aux articles 768, 771 et 774 du DOC et à l'article 9 de la loi 31-08 (le doute profite au consommateur) ?

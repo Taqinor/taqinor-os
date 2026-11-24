@@ -97,8 +97,8 @@ def _contrat_installation(ctx, options):
             "neuf et garanti par son fabricant ;\n"
             "- protéger les lieux pendant le chantier et les laisser propres "
             "à la fin ;\n"
-            "- remettre au Client, à la clôture, les notices, les fiches "
-            "techniques et le certificat de garantie.",
+            "- remettre au Client, à la réception, les notices et les fiches "
+            "techniques et, à la clôture, le certificat de garantie.",
         ]),
         ('engagements_client', "Ce que le Client s'engage à faire", [
             "- donner accès au chantier, à l'eau et à l'électricité aux "
@@ -140,7 +140,18 @@ def _contrat_installation(ctx, options):
             "deux parties signent alors un procès-verbal de réception.",
             "Le Client peut y inscrire des réserves ; {societe} les lève "
             "dans le délai noté au procès-verbal. Des réserves n'empêchent "
-            "pas d'utiliser l'installation.",
+            "pas d'utiliser l'installation. Si des réserves sont inscrites, "
+            "les parties peuvent y chiffrer, d'un commun accord, une part du "
+            "solde retenue jusqu'à leur levée, sans dépasser la valeur des "
+            "travaux qui restent à faire ; sans montant chiffré, aucune "
+            "retenue ne s'applique.",
+            "Si le Client refuse de signer le procès-verbal, il indique par "
+            "écrit, dans les sept jours qui suivent la mise en service, les "
+            "défauts qui motivent son refus ; {societe} y remédie, puis une "
+            "nouvelle réception est proposée. Sans réponse écrite dans ce "
+            "délai, {societe} peut mettre le Client en demeure de recevoir "
+            "les travaux (article 774 du Dahir des obligations et des "
+            "contrats).",
             "La réception marque le point de départ des garanties et rend "
             "exigible le solde du prix.",
         ]),
@@ -270,26 +281,32 @@ def _pv_livraison(ctx, options, variante):
 def _pv_reception(ctx, options):
     arts = [
         ('portee', 'Ce que vaut la réception', [
-            "En signant, le Client reconnaît que {societe} a exécuté les "
-            "travaux prévus au contrat {contrat_reference} et au devis "
-            "{devis_reference}, et que l'installation fonctionne, sous les "
-            "seules réserves écrites ci-dessus.",
+            "En signant, le Client reconnaît que {societe} a achevé les "
+            "travaux prévus au contrat {contrat_reference}{contrat_du} et au "
+            "devis {devis_reference}, que l'installation est conforme à ces "
+            "documents et fonctionne, et qu'il n'a constaté aucun défaut "
+            "apparent en dehors des réserves écrites ci-dessus.",
             "L'installation est désormais sous la garde du Client. "
             "{societe} lève les réserves éventuelles dans le délai "
             "indiqué ; leur levée est constatée par écrit et signée du "
             "Client.",
-            "Les garanties prévues au contrat **commencent ce jour**. Le "
-            "certificat de garantie est remis au Client avec l'acte de "
-            "clôture, au paiement du solde.",
+            "Les garanties prévues au contrat **commencent ce jour**. Les "
+            "notices et les fiches techniques sont remises au Client ce "
+            "jour ; le certificat de garantie récapitulatif lui est remis "
+            "avec l'acte de clôture.",
         ]),
         ('solde', 'Solde du prix', [
-            "Le solde du prix, soit {exigible_maintenant} "
-            "({exigible_lettres}), est exigible à la signature du présent "
-            "procès-verbal. Le Client reconnaît devoir cette somme à "
-            "{societe}.",
-            "Si des réserves sont inscrites, les parties notent ci-dessus "
-            "la part du solde éventuellement retenue jusqu'à leur levée ; "
-            "à défaut de mention, le solde est exigible en totalité.",
+            "Le Client reconnaît devoir à {societe} la somme de "
+            "{exigible_maintenant} ({exigible_lettres}), reste du prix du "
+            "contrat {contrat_reference} encore dû à ce jour, payable à la "
+            "signature du présent procès-verbal.",
+            "Si des réserves sont inscrites, les parties chiffrent "
+            "ci-dessus, d'un commun accord, la part du solde retenue jusqu'à "
+            "leur levée ; elle ne peut dépasser la valeur des travaux qui "
+            "restent à faire. Le reste est payable à la signature ; la part "
+            "retenue est payable dans les huit jours qui suivent le constat "
+            "écrit de la levée. Sans montant chiffré, aucune retenue ne "
+            "s'applique.",
         ] + (["Jusqu'au paiement complet, le matériel reste la propriété "
               "de {societe}."]
              if options.get('reserve_propriete', True) else [])),
@@ -398,6 +415,8 @@ def constats_par_defaut(type_acte):
             "Elle a été **mise en service et fonctionne**, en ma présence.",
             "Son fonctionnement, l'application de suivi et les gestes de "
             "sécurité m'ont été **expliqués**.",
+            "J'ai **reçu les notices et les fiches techniques** de mon "
+            "installation.",
             "Le chantier a été **laissé propre** ; je n'ai constaté aucun "
             "dégât sur ma toiture ni dans ma maison.",
         )

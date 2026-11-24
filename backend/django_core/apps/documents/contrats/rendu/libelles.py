@@ -154,7 +154,9 @@ LIBELLES = {
         'mise_en_service': 'Mise en service',
         'verifie_ensemble': 'Ce que nous avons vérifié ensemble',
         'la_reception': 'La réception',
-        'une_seule_case': 'Cochez une seule des deux cases.',
+        'une_seule_case': (
+            'Cochez une seule des deux cases. Si aucune case n\'est cochée, '
+            'la signature vaut réception sans réserve.'),
         'sans_reserve': (
             '**Je prononce la réception sans réserve.** Les travaux sont '
             'conformes au contrat et au devis accepté.'),
@@ -191,6 +193,10 @@ LIBELLES = {
         'sav': 'Service après-vente {nom}',
         'bien_consommer': 'Bien consommer votre énergie solaire',
         'entretien': "L'entretien, en peu de mots",
+        # Ajouts de la revue 1 (noms partagés, docs/contrats/revue-1.md).
+        'part_retenue': (
+            "Part du solde retenue jusqu'à la levée des réserves : "
+            '………… DH'),
     },
     'ar': {
         'etape_contrat_installation': 'العقد',
@@ -317,7 +323,9 @@ LIBELLES = {
         'mise_en_service': 'التشغيل',
         'verifie_ensemble': 'ما تحققنا منه معًا',
         'la_reception': 'التسلُّم',
-        'une_seule_case': 'ضعوا علامة في خانة واحدة فقط من الخانتين.',
+        'une_seule_case': (
+            'ضعوا علامة في خانة واحدة فقط من الخانتين. وإذا لم توضع علامة في '
+            'أي خانة، يُعدّ التوقيع تسلُّمًا للأشغال دون تحفظ.'),
         'sans_reserve': (
             '**أصرّح بتسلُّم الأشغال دون تحفظ.** الأشغال مطابقة للعقد ولعرض '
             'الأثمان المقبول.'),
@@ -351,6 +359,8 @@ LIBELLES = {
         'sav': 'خدمة ما بعد البيع {nom}',
         'bien_consommer': 'استهلكوا طاقتكم الشمسية على النحو الأمثل',
         'entretien': 'الصيانة في كلمات قليلة',
+        'part_retenue': (
+            'الجزء المحتجز من باقي الثمن إلى حين رفع التحفظات: ………… درهم'),
     },
 }
 
