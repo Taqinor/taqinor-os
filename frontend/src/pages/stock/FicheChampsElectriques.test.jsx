@@ -42,12 +42,21 @@ describe('FicheChampsElectriques (ACAL663)', () => {
     expect(champsFichePourType('onduleur_hybride', dernier).ond_pnom_pente_pct_c).toBeNull()
   })
 
-  it('module : 144 cellules en série partent en 144 ; rien pour une batterie', () => {
-    const { unmount } = render(<Hote ficheType="panneau" />)
+  it('module : 144 cellules en série partent en 144', () => {
+    render(<Hote ficheType="panneau" />)
     fireEvent.change(screen.getByLabelText('Cellules en série'), { target: { value: '144' } })
     expect(champsFichePourType('panneau', dernier).cellules_serie).toBe(144)
-    unmount()
-    const { container } = render(<Hote ficheType="batterie" />)
-    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('HT24 — batterie : la grappe haute tension se saisit (vide ⇒ null, jamais 0)', () => {
+    render(<Hote ficheType="batterie" />)
+    fireEvent.change(screen.getByLabelText('Haute tension — modules en série par grappe (mini)'),
+      { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText("Haute tension — tension d'un module (V)"),
+      { target: { value: '51.2' } })
+    const payload = champsFichePourType('batterie', dernier)
+    expect(payload.bat_serie_min_modules).toBe(5)
+    expect(payload.bat_v_module).toBe(51.2)
+    expect(payload.bat_serie_max_modules).toBeNull()
   })
 })

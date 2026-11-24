@@ -215,6 +215,7 @@ const CHAMPS_PAR_TYPE = {
     // borne « panneaux » d'un onduleur hybride (« Max. PV access power »).
     'ond_dc_max_kwc',
     'ond_pnom_reduite_debut_c', 'ond_pnom_pente_pct_c', // ACAL663 — réduction de puissance en chaleur
+    'ond_bat_nb_entrees', 'ond_max_parallele', // HT24 — port batterie haute tension
   ],
   module: [
     'pmax_wc', 'voc_v', 'isc_a', 'vmp_v', 'imp_a',
@@ -234,7 +235,10 @@ const CHAMPS_PAR_TYPE = {
              // CALX355 — C-rate et plage de température (CALX60) ; la
              // chimie est un CHOIX : CHAMPS_CHOIX_PAR_TYPE.
              'bat_c_rate_charge', 'bat_c_rate_decharge',
-             'bat_temp_min_c', 'bat_temp_max_c'],
+             'bat_temp_min_c', 'bat_temp_max_c',
+             // HT24 (24/11/2026) — grappe en SÉRIE d'un pack haute tension.
+             'bat_serie_min_modules', 'bat_serie_max_modules', 'bat_v_module',
+             'bat_grappes_max_parallele'],
   // CALX355 — la SORTIE de l'optimiseur / du micro-onduleur (CALX60) : les
   // `opt_ac_*` ne se remplissent que sur un micro-onduleur, les `opt_v_out_*`
   // / `opt_i_out_*` que sur un optimiseur — aucune valeur n'est déduite de
@@ -291,8 +295,16 @@ const CHAMPS_LISTE_PAR_TYPE = {
 export const CHAMPS_ELECTRIQUES_FICHE = {
   module: { numeriques: ['cellules_serie', 'temp_coeff_isc_pct_c'], tri: [], liste: [] },
   onduleur: {
-    numeriques: ['ond_pnom_reduite_debut_c', 'ond_pnom_pente_pct_c'],
+    numeriques: ['ond_pnom_reduite_debut_c', 'ond_pnom_pente_pct_c',
+      'ond_bat_nb_entrees', 'ond_max_parallele'], // HT24 — hybride haute tension
     tri: ['ond_mppt_independants'], liste: [],
+  },
+  // HT24 (24/11/2026) — grappe en série d'un pack haute tension (vide = pack
+  // basse tension ou non publié).
+  batterie: {
+    numeriques: ['bat_serie_min_modules', 'bat_serie_max_modules', 'bat_v_module',
+      'bat_grappes_max_parallele'],
+    tri: [], liste: [],
   },
   optimiseur: { numeriques: [], tri: [], liste: CHAMPS_LISTE_PAR_TYPE.optimiseur },
 }
@@ -559,6 +571,13 @@ export const LIBELLES_FICHE = {
   bat_temp_min_c: 'Température de fonctionnement mini (°C)',
   bat_temp_max_c: 'Température de fonctionnement maxi (°C)',
   bat_chimie: 'Chimie de cellule',
+  // HT24 (24/11/2026) — haute tension
+  bat_serie_min_modules: 'Haute tension — modules en série par grappe (mini)',
+  bat_serie_max_modules: 'Haute tension — modules en série par grappe (maxi, avec un hybride)',
+  bat_v_module: "Haute tension — tension d'un module (V)",
+  bat_grappes_max_parallele: 'Haute tension — grappes en parallèle (maxi)',
+  ond_bat_nb_entrees: 'Entrées batterie',
+  ond_max_parallele: 'Appareils en parallèle (maxi)',
   // CALX355 — optimiseur / micro-onduleur (SORTIE)
   opt_ac_kw: 'Micro-onduleur — puissance AC nominale (kW)',
   opt_ac_tension_v: 'Micro-onduleur — tension AC de sortie (V)',

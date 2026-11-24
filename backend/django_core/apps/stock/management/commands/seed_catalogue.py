@@ -1888,11 +1888,39 @@ FICHES_TECHNIQUES = {
         #   et la règle des 100 A décrit ces derniers (elle est vérifiée à
         #   l'ampère près sur les deux Dyness ci-dessus). Écart SIGNALÉ au
         #   fondateur, jamais lissé.
-        # RAPPEL : ce produit reste HORS de toute auto-composition (aucune
-        # ``bat_v_nominal`` — cf. le commentaire PVLV ci-dessus), donc cette
-        # valeur ne borne aucun devis aujourd'hui ; elle est fichée pour le
-        # jour où la décision fondateur sur les HV tombera.
+        # HT24 (fondateur 24/11/2026, « With battery now also picks from HV
+        # inverters ») : la décision HV est tombée — ce pack reste HORS du
+        # résidentiel et de l'option C&I BASSE tension (toujours aucune
+        # ``bat_v_nominal``), et entre dans l'option C&I « avec batterie »
+        # HAUTE tension, où cette puissance PAR MODULE borne la grappe
+        # (n modules en série × 180 A × 51,2 V = n × 9,216 kW — la fiche
+        # publie « Max DC Power » 46,08 kW à 5 modules … 138,24 kW à 15).
         'bat_max_decharge_kw': Decimal('9.22'),
+        # ── HT24 — la GRAPPE en série, chaque valeur sourcée. Document :
+        # Deye « C&I ESS SOLUTION BOS-B Pro-A3 » (fiche officielle, 6 pages,
+        # sans date imprimée ; publiée le 2026-06-05 :
+        # https://au.deyeinverter.com/deyeinverter/2026/06/05/BOS-BPro-A3Datasheet.pdf).
+        # p. 3, « Matching Mode — PCS or Hybrid Inverter » : « 5-15 units for
+        # hybrid inverter systems » (la ligne générale dit « 5~16 », le 16
+        # étant réservé au PCS) → 5 à 15 modules en série par grappe.
+        'bat_serie_min_modules': 5,
+        'bat_serie_max_modules': 15,
+        # p. 2, « BOS-B-Pack16-A3 — Nominal Voltage 51.2Vdc » et p. 3,
+        # « Battery Module Nominal Voltage (V) 51.2 » : la tension d'UN
+        # module (grappe de 5 = 256 V … de 15 = 768 V, p. 3).
+        'bat_v_module': Decimal('51.2'),
+        # p. 1, « Support up to 16 units in parallel » ; p. 4, « One PCS can
+        # support up to 16 racks of batteries in parallel ». Recoupé par la
+        # brochure Deye « 60-80kW C&I Hybrid Inverter Solution » (imprimée en
+        # août 2026, https://www.deyeinverter.com/deyeinverter/2026/11/04/
+        # 80kWCIESSSolution.pdf), p. 4 : « Up to 16 battery clusters of BOS-B
+        # Pro […] in parallel ».
+        'bat_grappes_max_parallele': 16,
+        # p. 3, « Cycle Life 25±2°C, 0.5C / 0.5C, EOL70%≥6000 » et
+        # « Warranty Period 10 years ».
+        'bat_cycles_publies': 6000,
+        'bat_retention_fin_de_vie_pct': Decimal('70.0'),
+        'bat_garantie_annees': 10,
     },
 }
 
