@@ -74,6 +74,20 @@ class LeJeuPurgeEstCoherentAvecLeSchema(SimpleTestCase):
         self.assertEqual(bloc, {'scenario': 'Les deux (Sans + Avec)',
                                 'factures_mensuelles_reelles': [1800] * 12})
 
+    def test_journal_auto_n_est_pas_copie(self):
+        """ADEV158 - le journal des suppositions d'un devis automatique ne se
+        recalcule pas (ecrit une seule fois a la creation) : une copie, une
+        variante ou une V2 repartent SANS lui ; la source garde le sien."""
+        source = {'scenario': 'Sans batterie',
+                  'journal_auto': {'alertes': [
+                      {'code': 'suppose_presence', 'message': 'supposé',
+                       'champ_lead': 'presence'}]}}
+        copie = etude_params_pour_copie(source)
+        self.assertEqual(copie, {'scenario': 'Sans batterie'})
+        self.assertIn('journal_auto', source)
+        self.assertEqual(
+            etude_params_pour_copie({'journal_auto': {'alertes': []}}), None)
+
     def test_un_bloc_sans_configuration_rend_none(self):
         """``Devis.etude_params`` est ``null=True`` : un devis dont l'étude
         n'était QUE dérivée repart sans étude, pas avec un dict vide."""
