@@ -2585,3 +2585,42 @@ class DevisDepuisLaConceptionMarchesTests(_emprunt(RelanceConceptionTests, '_rel
                 self.assertEqual(appels, une_execution)  # mutant « seconde décision au devis » : rouge
                 self.assertEqual(devis.statut, 'brouillon')
                 self.assertEqual(ConceptionLead.objects.get(lead=lead, courante=True).version, 1)
+
+
+# ── ADEV144 — PARITÉ : le devis né de la conception RANGÉE = les goldens ─────
+
+class PariteDevisDepuisConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
+                                       _emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_utilisateur',
+                                                '_residentiel', '_ci', '_agricole', '_fiches_residentielles',
+                                                '_site_isole', '_structures', '_fiches_ci', '_cas', '_figer'),
+                                       TestCase):
+    """ADEV144 — la conception du lead est RANGÉE d'abord (``relancer``), puis
+    le devis automatique est créé : il la LIT (ADEV142, chemin « à jour ») et
+    doit écrire EXACTEMENT ce que figent les goldens ``golden/conception/``
+    (lignes, totaux, ``etude_params``, conception électrique), trois marchés,
+    zéro clé différente. Le chemin « conception absente » est la parité de
+    ``FigeageDevisAutoTests`` (mêmes goldens, même comparaison). Un écart
+    nomme le cas et la clé ; aucun golden n'est régénéré ici."""
+
+    def _parite_depuis_conception(self, nom):
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._cas(nom)
+        _reglages_de_la_societe(company)
+        rangee = self._relancer(lead, company, _declencheur()).conception
+        with self.captureOnCommitCallbacks(execute=True):
+            self._figer(nom, company, lead, **APPELS_FIGEAGE.get(nom, {}))  # compare au golden, clé par clé
+        courante = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual(courante.pk, rangee.pk)  # lue telle quelle : aucune relance écrite
+
+
+def _test_de_parite_depuis_conception(nom):
+    def test(self):
+        self._parite_depuis_conception(nom)
+    test.__doc__ = f'ADEV144 — devis né de la conception rangée = golden « {nom} ».'
+    return test
+
+
+for _nom in PARITE:
+    setattr(PariteDevisDepuisConceptionTests, f'test_parite_depuis_conception_{_nom}',
+            _test_de_parite_depuis_conception(_nom))
