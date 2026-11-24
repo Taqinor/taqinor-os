@@ -1578,6 +1578,25 @@ class RelanceConceptionTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher'
                                    calepinage_id=None, version=2, declencheur=version.declencheur)
         self.assertEqual(lignes.count(), 1)
 
+    def test_chatter_muet_pour_remplissage_filet_et_regles(self):
+        """Relecture E3 M3 — seule une relance causée par un changement de la
+        fiche ou de la pose écrit « Conception recalculée » ; remplissage,
+        filet et règles se taisent (le remplissage écrivait sur CHAQUE lead)."""
+        from apps.crm.models import LeadActivity
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        lignes = LeadActivity.objects.filter(lead=lead, field='conception_version')
+        for origine in ('remplissage', 'filet', 'regles'):
+            with self.subTest(origine=origine):
+                relance = self._relancer(lead, company, _declencheur(origine), forcer=True)
+                self.assertTrue(relance.ecrite)
+                self.assertEqual(lignes.count(), 0)  # mutant « toujours écrire » : rouge
+        for rang, origine in enumerate(('lead_entrees_modifiees', 'pose_enregistree'), start=1):
+            with self.subTest(origine=origine):
+                self._relancer(lead, company, _declencheur(origine), forcer=True)
+                self.assertEqual(lignes.count(), rang)
+
     def test_aucune_cle_d_achat_ni_de_marge_meme_si_le_moteur_en_rendait(self):
         from types import SimpleNamespace
 
@@ -2176,6 +2195,24 @@ class RelanceEnTacheTests(_emprunt(RelanceConceptionTests, '_relancer'),
                                                      body__contains='33,57').exists())
         for version in ConceptionLead.objects.filter(company=company):
             self.assertNotIn('33.57', _json_mod.dumps(version.declencheur))
+
+    def test_geste_regroupe_dans_un_filet_en_file_le_rend_parlant(self):
+        """Relecture E3 M3 — un filet en file (muet) puis une fiche modifiée
+        regroupée dedans : l'origine devient celle du geste, le chatter le dit."""
+        from apps.crm.models import LeadActivity
+        from apps.ventes.conception.receivers import mettre_en_file
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        self._relancer(lead, company, _declencheur())
+        self.assertEqual(mettre_en_file(company.pk, lead_id=lead.pk, origine='filet'), 'lancee')
+        self._enregistrer(lead, facture_hiver=Decimal('2400'))
+        self.assertEqual(self.en_file.call_count, 1)
+        self._executer_les_taches()
+        courante = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual(courante.declencheur['origine'], 'lead_entrees_modifiees')  # mutant « garder filet »
+        self.assertEqual(LeadActivity.objects.filter(lead=lead, field='conception_version').count(), 1)
 
     def test_calepinage_archive_ou_relie_la_conception_du_lead_continue(self):
         """Relecture E3 M1 — le calepinage de la version courante est archivé

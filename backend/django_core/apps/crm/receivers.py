@@ -300,6 +300,12 @@ def _noter_conception_on_layout_finalise(sender, devis, user=None, **kwargs):
         body=corps, user=user)
 
 
+#: Relecture E3 M3 — origines d'une relance qu'AUCUN geste sur la fiche ou la
+#: pose n'a causée (remplissage des leads existants, filet de la lecture,
+#: règles de calcul) : rien au chatter, qui ne parle que des changements.
+ORIGINES_CONCEPTION_MUETTES = ('remplissage', 'filet', 'regles')
+
+
 @receiver(conception_recalculee, dispatch_uid="crm_note_conception_recalculee")
 @_point_de_sauvegarde
 def _noter_conception_recalculee(sender, company_id=None, lead_id=None,
@@ -311,6 +317,8 @@ def _noter_conception_recalculee(sender, company_id=None, lead_id=None,
     Un événement rejoué (même version) n'écrit pas une seconde ligne ; un
     calepinage sans lead (``lead_id`` vide) n'a pas de chatter à alimenter."""
     if not lead_id or not company_id or version is None:
+        return
+    if (declencheur or {}).get('origine') in ORIGINES_CONCEPTION_MUETTES:
         return
     lead = Lead.objects.filter(pk=lead_id, company_id=company_id).first()
     from .selectors import lead_efface

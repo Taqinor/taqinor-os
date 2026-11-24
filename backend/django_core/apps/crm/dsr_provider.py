@@ -520,8 +520,12 @@ def prospects_hors_duree(now=None):
             .distinct()
             .exclude(stage=stages.SIGNED)
             .exclude(nom=LEAD_NOM_ANONYMISE)
-            .annotate(dernier_contact=Coalesce(Max('activites__created_at'),
-                                               'date_creation'))
+            # Relecture E3 M3 — la ligne SYSTÈME de la conception (« Conception
+            # recalculée », ALEA69) n'est le contact de personne.
+            .annotate(dernier_contact=Coalesce(
+                Max('activites__created_at',
+                    filter=~Q(activites__field='conception_version')),
+                'date_creation'))
             .filter(dernier_contact__lt=limite))
 
 

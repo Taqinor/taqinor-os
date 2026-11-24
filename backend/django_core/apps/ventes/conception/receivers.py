@@ -46,6 +46,8 @@ DUREE_MARQUEUR_S = 600
 #: Délai avant départ (s) : les enregistrements rapprochés s'y regroupent.
 DELAI_REGROUPEMENT_S = 5
 EN_FILE, EN_COURS = 'en_file', 'en_cours'
+#: Origines nées d'un geste sur la fiche ou la pose (dites au chatter).
+ORIGINES_GESTE = ('lead_entrees_modifiees', 'pose_enregistree')
 
 
 def cle_marqueur(lead_id=None, calepinage_id=None):
@@ -94,7 +96,11 @@ def mettre_en_file(company_id, *, lead_id=None, calepinage_id=None, origine, cha
         if not cache.add(cle, marqueur, DUREE_MARQUEUR_S):
             present = cache.get(cle) or {}
             if present.get('etat') == EN_FILE:
+                # Relecture E3 M3 — un geste (fiche, pose) regroupé dans une
+                # relance muette (filet…) la rend parlante au chatter.
+                origine_fusionnee = origine if origine in ORIGINES_GESTE else present.get('origine')
                 present.update(champs=_fusionner(present.get('champs'), champs), empreinte=empreinte,
+                               origine=origine_fusionnee,
                                empreinte_pose=(empreinte_pose if empreinte_pose is not None
                                                else present.get('empreinte_pose')))
                 cache.set(cle, present, DUREE_MARQUEUR_S)
