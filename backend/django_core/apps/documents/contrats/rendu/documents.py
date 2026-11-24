@@ -44,64 +44,6 @@ def _conditions_particulieres(contenu):
                         c.paragraphes([texte]), 'net'))
 
 
-def _conclusion(contenu):
-    """Le conseiller et le lieu de conclusion (mentions de l'article 48 de la
-    loi n° 31-08 pour un contrat signé au domicile du client)."""
-    conclusion = contenu.get('conclusion') or {}
-    morceaux = []
-    if conclusion.get('conseiller'):
-        morceaux.append(f'Votre conseiller : <b>{c.esc(conclusion["conseiller"])}</b>')
-    if conclusion.get('lieu'):
-        morceaux.append(f'Contrat conclu à : <b>{c.esc(conclusion["lieu"])}</b>')
-    if not morceaux:
-        return ''
-    return f'<p class="conclusion">{" · ".join(morceaux)}</p>'
-
-
-def _annexe_retractation(contenu):
-    """Annexe du contrat signé à domicile : le droit de rétractation, le texte
-    des articles 47 à 50 et le formulaire détachable."""
-    retractation = contenu.get('retractation') or {}
-    if not retractation.get('actif'):
-        return ''
-    societe = contenu.get('societe') or {}
-    client = contenu.get('client') or {}
-    nom = c.esc(societe.get('nom_court') or societe.get('nom'))
-    lois = ''.join(
-        f'<div class="loi"><b>{c.esc(titre)}</b>'
-        + ''.join(f'<p>{c.esc(ligne)}</p>' for ligne in texte.split('\n'))
-        + '</div>'
-        for titre, texte in retractation.get('articles') or [])
-    trou = '<span class="trou">&nbsp;</span>'
-    bordereau = (
-        '<div class="bordereau"><div class="ciseaux">✂ Formulaire détachable'
-        ' — à renvoyer seulement si vous renoncez au contrat</div>'
-        '<h3>Rétractation</h3>'
-        f'<p>À l\'attention de <b>{c.esc(societe.get("nom"))}</b>, '
-        f'{c.esc(societe.get("adresse"))}.</p>'
-        f'<p>Je soussigné(e) <b>{c.esc(client.get("nom_complet"))}</b>, '
-        f'demeurant {c.esc(client.get("adresse")) or trou}, déclare me '
-        f'rétracter du contrat <b>{c.esc(contenu.get("reference"))}</b> '
-        f'signé le {c.esc(c.date_longue(contenu.get("date_document"))) or trou}'
-        f', portant sur une installation solaire photovoltaïque.</p>'
-        f'<div class="bas"><div>Fait à {trou}<br>le {trou}</div>'
-        f'<div>Signature du client :</div></div></div>')
-    return (
-        '<div class="suite"></div><div class="annexe">'
-        + c.h2('Annexe — Votre droit de rétractation',
-               f'Vous avez signé ce contrat chez vous : la loi vous laisse '
-               f'<b>sept jours</b> pour changer d\'avis, sans motif et sans '
-               f'frais. Pendant ces sept jours, {nom} ne vous demande aucun '
-               f'paiement et ne commence aucun travail. Pour renoncer, '
-               f'remplissez ce formulaire et faites-le parvenir à {nom} par '
-               f'un moyen qui prouve sa réception : lettre recommandée, '
-               f'remise contre signature ou message écrit dont vous gardez '
-               f'la trace.')
-        + bordereau
-        + c.h2('Loi n° 31-08, articles 47 à 50')
-        + lois + '</div>')
-
-
 # ── Acte 1 — Contrat d'installation ─────────────────────────────────────────
 
 def contrat_installation(contenu):
@@ -156,7 +98,6 @@ def contrat_installation(contenu):
 
     corps += c.h2('Entre les soussignés')
     corps += c.parties(contenu)
-    corps += _conclusion(contenu)
 
     corps += c.h2('Ce que nous installons',
                   f'Le matériel et les prestations sont ceux du devis '
@@ -175,7 +116,6 @@ def contrat_installation(contenu):
         contenu,
         mention_client='Signature précédée de la mention manuscrite '
                        '« Lu et approuvé, bon pour accord »')
-    corps += _annexe_retractation(contenu)
     return _page(contenu, corps)
 
 

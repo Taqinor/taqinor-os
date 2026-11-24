@@ -14,6 +14,11 @@ INSECABLE = ' '
 
 MOIS = ('janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet',
         'août', 'septembre', 'octobre', 'novembre', 'décembre')
+# Noms des mois en usage au Maroc.
+MOIS_AR = ('يناير', 'فبراير', 'مارس', 'أبريل', 'ماي', 'يونيو', 'يوليوز',
+           'غشت', 'شتنبر', 'أكتوبر', 'نونبر', 'دجنبر')
+DEVISES = {'fr': 'DH', 'ar': 'درهم'}
+A_PRECISER = {'fr': 'à préciser', 'ar': 'يُحدَّد لاحقًا'}
 
 # L'ordre des quatre actes : (type, titre court, sous-titre du parcours).
 PARCOURS = (
@@ -55,11 +60,14 @@ def nombre(valeur, decimales=2):
     return f'{texte},{frac}' if decimales else texte
 
 
-def montant(valeur, devise='DH'):
-    """« 45 000,00 DH », ou « à préciser » quand le montant manque."""
+def montant(valeur, devise=None, langue='fr'):
+    """« 45 000,00 DH » (« 45 000,00 درهم » en arabe), ou « à préciser »
+    quand le montant manque. Les chiffres restent les mêmes dans les deux
+    langues : c'est le même montant, écrit pareil."""
     texte = nombre(valeur, 2)
     if not texte:
-        return 'à préciser'
+        return A_PRECISER.get(langue, A_PRECISER['fr'])
+    devise = devise or DEVISES.get(langue, 'DH')
     return f'{texte}{INSECABLE}{devise}'
 
 
@@ -86,11 +94,13 @@ def _date(valeur):
         return None
 
 
-def date_longue(valeur):
-    """« 24 novembre 2026 » ('' si la date manque)."""
+def date_longue(valeur, langue='fr'):
+    """« 24 novembre 2026 » / « 24 نونبر 2026 » ('' si la date manque)."""
     d = _date(valeur)
     if d is None:
         return ''
+    if langue == 'ar':
+        return f'{d.day} {MOIS_AR[d.month - 1]} {d.year}'
     jour = '1er' if d.day == 1 else str(d.day)
     return f'{jour} {MOIS[d.month - 1]} {d.year}'
 
@@ -100,14 +110,30 @@ def date_courte(valeur):
     return d.strftime('%d/%m/%Y') if d else ''
 
 
-def duree_mois(mois):
-    """24 → « 2 ans » ; 18 → « 18 mois » ; None → ''."""
+def _compte_ar(n, un, deux, pluriel, singulier):
+    """Accord arabe du nom compté : 1, 2, 3 à 10, puis 11 et plus."""
+    if n == 1:
+        return un
+    if n == 2:
+        return deux
+    if 3 <= n <= 10:
+        return f'{n}{INSECABLE}{pluriel}'
+    return f'{n}{INSECABLE}{singulier}'
+
+
+def duree_mois(mois, langue='fr'):
+    """24 → « 2 ans » ; 18 → « 18 mois » ; None → ''. En arabe : « سنتان »,
+    « 5 سنوات », « 30 سنة », « 18 شهرًا »."""
     try:
         mois = int(mois)
     except (TypeError, ValueError):
         return ''
     if mois <= 0:
         return ''
+    if langue == 'ar':
+        if mois % 12 == 0:
+            return _compte_ar(mois // 12, 'سنة واحدة', 'سنتان', 'سنوات', 'سنة')
+        return _compte_ar(mois, 'شهر واحد', 'شهران', 'أشهر', 'شهرًا')
     if mois % 12 == 0:
         ans = mois // 12
         return f'{ans}{INSECABLE}an' + ('s' if ans > 1 else '')

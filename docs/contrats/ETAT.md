@@ -32,7 +32,7 @@ Références nommées : le devis premium (`/proposal`, même famille visuelle), 
 |---|---|---|---|
 | K1 | constats S1-S2 ouverts | 0 | registre des tours |
 | K2 | tout montant imprimé = celui de la vente (`plan_facturation`, `solde_devis`) | au centime, 4 actes × 2 variantes | test serveur |
-| K3 | pagination sur les données de référence | contrat ≤ 8 p. (annexe comprise), PV ≤ 2 p., clôture ≤ 4 p. | test serveur (rendu réel) |
+| K3 | pagination sur les données de référence | contrat ≤ 7 p., PV ≤ 2 p., clôture ≤ 4 p. | test serveur (rendu réel) |
 | K4 | prix d'achat, marge | 0 occurrence dans le contenu et le texte des PDF | test serveur |
 | K5 | parcours : acceptation → 5 brouillons → modifier → émettre → signer → PDF signé en GED ; dés-acceptation → annulés ; ré-acceptation → rétablis | 100 % ; L5 : 3 essais verts | tests serveur + spec e2e |
 | K6 | envoyer le premier contrat depuis la fiche chantier | ≤ 4 gestes | relecteur |
@@ -45,7 +45,7 @@ Références nommées : le devis premium (`/proposal`, même famille visuelle), 
 ## Déroulé
 - [x] Tour 0 — éclaireurs (flux chantier et paiements, moteur PDF et écrans, droit marocain, mise en page de
       contrats), conception, contrat d'API, moteur de rendu et textes par défaut, PDF réels tirés et regardés
-      (contrat 8 p., PV 2 p., clôture 4 p.).
+      (contrat 6 p., PV 2 p., clôture 4 p.). Décision de Reda en cours de route : pas de rétractation à domicile.
 - [ ] Construction — lane serveur (modèles, contenu, services, récepteurs, API, tests) et lane écran (onglet,
       éditeur, signature), pliées sur cette branche.
 - [ ] Vérification finale — un rejeu sur l'écran réel (pile privée), une critique adverse du diff serveur, puis le
@@ -55,8 +55,8 @@ Références nommées : le devis premium (`/proposal`, même famille visuelle), 
 - [ ] Étage « vraie vie » — Reda : deploy, un vrai chantier, relecture d'un juriste (`juridique.md` § 4).
 
 ## Décisions posées à Reda (24/11) — réponses recopiées ici puis dans `docs/claude-memory/`
-Voir `conception.md` § 8 pour les choix pris seul. Questions posées : délai de rétractation de 7 jours à domicile,
-date limite d'exécution par défaut, retard de paiement, version arabe.
+Voir `conception.md` § 8 pour les choix pris seul et § 9 pour les décisions de Reda (24/11 : pas de rétractation
+à domicile). Questions posées : date limite d'exécution par défaut, retard de paiement, version arabe.
 
 ## Où sont les choses
 - Spécification : `docs/contrats/conception.md` · droit : `docs/contrats/juridique.md` · contrat d'API :

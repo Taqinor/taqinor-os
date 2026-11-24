@@ -120,9 +120,7 @@ Ordre de lecture (preuves : `docs/contrats/juridique.md` § Mise en page) : l'es
 quand), le détail ensuite, les clauses de risque à la fin, la signature en dernier.
 
 1. **Contrat d'installation** — l'essentiel en quatre cartes, la frise de paiement, les parties, le matériel, les
-   garanties, 15 à 17 articles en français simple, les conditions particulières, les signatures, et — pour un
-   particulier qui signe chez lui — l'annexe de rétractation (formulaire détachable + articles 47 à 50 de la loi
-   n° 31-08, que la loi impose de reproduire).
+   garanties, une quinzaine d'articles en français simple, les conditions particulières, les signatures.
 2. **Procès-verbal de livraison** — le matériel livré, trois constats à cocher, les réserves, la frise avec l'état de
    chaque tranche, l'encadré « à régler à la livraison » (ou « réglé à ce jour »), garde et propriété du matériel.
 3. **Procès-verbal de réception** — quatre constats (conforme, mis en service, expliqué, chantier propre), réception
@@ -139,7 +137,7 @@ mise en page de texte : pages qui s'enchaînent, titre d'article en marge, colon
 signes, corps 10,2 à 10,5 pt aligné à gauche, pied répété (identité légale, référence, pagination, paraphes), parcours
 des quatre actes sous l'en-tête, motif khatam dans l'en-tête et en puce des intertitres. Aucun texte en or sur blanc
 (contraste) ; aucun état porté par la seule couleur (photocopie). Pagination de référence, données d'exemple :
-contrat 8 pages annexe comprise, procès-verbaux 2 pages, clôture 4 pages.
+contrat 6 pages, procès-verbaux 2 pages, clôture 4 pages.
 
 Rendu : `rendu.html_de(contenu)` (fonction pure) puis `core.pdf.render_pdf` — jamais le moteur de devis (règle n° 4),
 dont seules les polices et le traitement du logo sont importés.
@@ -155,3 +153,24 @@ dont seules les polices et le traitement du logo sont importés.
 | C5 | Garantie d'installation à 24 mois quand rien n'est saisi | c'est la promesse « Installation 2 ans » imprimée sur le devis | une valeur du modèle |
 | C6 | Signature à distance par lien : seconde vague (la cérémonie GED existe : `ged.services.demander_signature`) | d'abord la signature sur place et papier | — |
 | C7 | Version arabe : seconde vague | l'article 206 de la loi n° 31-08 demande une traduction arabe ; elle doit être relue par un arabophone | à faire avant un usage large |
+
+## 9. Décisions de Reda pendant la construction
+
+- **24/11/2026 — pas de droit de rétractation « signature à domicile » dans les actes.** Reda : le chapitre
+  « démarchage » de la loi n° 31-08 vise la vente à domicile, pas une société que le client contacte de lui-même ; à
+  oublier, ne pas l'intégrer. Retirés : l'option, l'article, l'annexe, le formulaire détachable. L'acompte est
+  exigible à la signature. Le point reste, pour mémoire seulement, dans `juridique.md` § 4.
+- **24/11/2026 — date limite d'exécution : 30 jours après la date du contrat, par défaut** (modifiable sur chaque
+  acte et dans le modèle de la société : `options.delai_execution_jours`, défaut 30).
+- **24/11/2026 — retard de paiement : sans pénalité chiffrée.** Mise en demeure, puis après huit jours suspension des
+  travaux, action en justice ou reprise du matériel. `options.penalite_retard_pct` reste `null` par défaut.
+- **24/11/2026 — signataire : le nom et la qualité de Reda**, saisis une fois dans le modèle de la société
+  (`societe.representant`), imprimés « Représentée par … ». Le devis, lui, reste sans nom de gérant (D-APDF-1).
+- **24/11/2026 — version arabe DANS cette vague** (contre la recommandation « seconde vague »). Chaque acte se rend
+  en français et en arabe : `?langue=ar` sert le même contenu avec les textes arabes (`contrats/textes_ar.py`), le
+  rendu passe de droite à gauche. La traduction arabe ACCOMPAGNE l'acte français (loi n° 31-08, art. 206) : les deux
+  PDF sont figés, déposés et signés ensemble. Les personnalisations de TEXTE se font par langue
+  (`surcharges` / `surcharges_ar`, `contenu` / `contenu_ar`) ; dates, options et signataire sont communs. Une section
+  personnalisée en français dont l'arabe est resté au défaut lève un avertissement. Le montant en lettres n'est pas
+  imprimé en arabe (aucun convertisseur vérifié) ; les désignations du catalogue restent telles quelles.
+  **À faire relire par un arabophone avant un usage réel** — dit à Reda.

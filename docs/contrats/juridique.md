@@ -33,7 +33,7 @@ Niveaux : **P** = lu dans le texte officiel ; **S** = source secondaire (cabinet
 | Prix affiché toutes taxes comprises | 31-08 art. 5 | P | prix TTC, HT et TVA en détail |
 | Au-delà de 3 000 DH, une **date limite d'exécution** écrite est obligatoire ; dépassée de plus de 7 jours hors force majeure, le consommateur peut résoudre dans les 5 jours suivants ; remboursement sous 7 jours | 31-08 art. 12-14, décret art. 28 | P | carte « Terminé au plus tard le », article Délais |
 | Clauses abusives : modification unilatérale, pénalité disproportionnée, conformité jugée par le seul fournisseur, clause non lue, etc. ; nulles, d'ordre public | 31-08 art. 15-20 | P | aucune de ces clauses ; matériel de remplacement seulement avec accord écrit et sans supplément |
-| **Démarchage** : contrat signé au domicile, « même à sa demande » → contrat écrit avec formulaire détachable, signé et daté de la main du consommateur, mentions obligatoires à peine de nullité (dont le nom du démarcheur, le lieu de conclusion et le texte intégral des art. 47 à 50), 7 jours de rétractation, **aucun paiement ni prestation pendant ces 7 jours**, aucune clause attributive de compétence | 31-08 art. 45-50 | P | option « rétractation » (activée par défaut pour un particulier) : annexe, acompte exigible après les 7 jours, conseiller et lieu imprimés |
+| Démarchage : contrat signé au domicile, « même à sa demande » → formulaire détachable, 7 jours de rétractation, aucun paiement pendant ces 7 jours | 31-08 art. 45-50 | P | **rien — décision de Reda du 24/11/2026** : ce chapitre vise la vente à domicile, pas une société que le client contacte ; non intégré (§ 4 point 2, pour mémoire) |
 | Arrhes : imputées sur le prix | DOC art. 288-290 | P | le mot « acompte », à valoir sur le prix |
 | Garantie légale des défauts applicable, « sans garantie » exclu, action dans l'année (meubles) ou les 2 ans (immeubles), non réductible | 31-08 art. 65 ; DOC art. 549-575 | P | rappelée dans le contrat et le certificat |
 | Garantie conventionnelle : durée, portée, conditions précises ; garantie légale mentionnée ; frais de transport au fournisseur ; durée prolongée du temps d'immobilisation, reçus à l'enlèvement et au retour | 31-08 art. 66-68, 71-73 | P | tableau des garanties, articles Garanties et « Comment se passe une demande » |
@@ -61,9 +61,9 @@ imprimés ne portent **aucun chiffre** (ni pourcentage, ni kilowattheure, ni heu
 ## 4. À faire trancher par un juriste (dans cet ordre)
 
 1. **Version arabe** (31-08 art. 206) : obligatoire pour un contrat en français ? sanction si elle manque ?
-2. **Démarchage** : une visite de devis suivie d'une signature à domicile entre-t-elle toujours dans le chapitre
-   (« même à sa demande ») ? Le modèle officiel du formulaire détachable (décret art. 29) existe-t-il ? Une signature
-   tracée sur écran satisfait-elle « de la main même du consommateur » (art. 47) ?
+2. **Démarchage** (pour mémoire — non intégré, décision de Reda du 24/11/2026) : une signature au domicile d'un
+   client qui a lui-même contacté la société entre-t-elle dans le chapitre (l'article 45 dit « même à sa
+   demande ») ?
 3. **Contrat conclu à distance** (signature par lien) : régime des articles 25 à 44 de la loi 31-08 (non étudié ici),
    dont son propre délai de rétractation — à lire avant d'ouvrir la signature par lien.
 4. Réserve de propriété sur des panneaux fixés à une toiture (DOC art. 618-23) ; intérêt de l'inscription au registre.
