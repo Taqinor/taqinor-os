@@ -862,17 +862,19 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     return contraindreAngle(ctx.vertices[n - 1], ctx.vertices[n - 2], v, pasAngleDeg());
   }
 
-  /** T4-B4-005 — le CLIC (point écran `pt`) tombe-t-il sur la pastille du PREMIER coin ? Même saisie que la
-   *  poignée de sommet que l'utilisateur voit (`VERTEX_GRAB_PX` autour de son point écran, `obstaclesUi.ts`
-   *  `vertexAtPoint`), mesurée en PIXELS. Sans point écran (clavier, appel programmatique) ou sans projection
-   *  lisible : jamais une fermeture — un coin se pose comme avant. */
-  function clicSurLePremierCoin(pt: { x: number; y: number } | null | undefined): boolean {
+  /** T4-B4-005 — un CLIC (il porte son point écran `pt`) tombe-t-il sur la pastille du PREMIER coin ? Même rayon que
+   *  la poignée de sommet que l'utilisateur voit (`VERTEX_GRAB_PX`), converti en mètres au zoom courant (convention
+   *  de `aimantTolM` / snap.ts). Sans point écran (clavier, appel programmatique) ou sans zoom lisible : jamais une
+   *  fermeture — un coin se pose comme avant. */
+  function clicSurLePremierCoin(p: LngLat, pt: { x: number; y: number } | null | undefined): boolean {
     const premier = ctx.vertices[0];
-    if (!premier || !pt || !Number.isFinite(pt.x) || !Number.isFinite(pt.y)) return false;
-    if (typeof map.project !== 'function') return false;
-    const ecran = map.project(premier as [number, number]);
-    if (!ecran || !Number.isFinite(ecran.x) || !Number.isFinite(ecran.y)) return false;
-    return Math.hypot(ecran.x - pt.x, ecran.y - pt.y) <= VERTEX_GRAB_PX;
+    if (!premier || !pt) return false;
+    const zoom = typeof map.getZoom === 'function' ? map.getZoom() : Number.NaN;
+    if (!Number.isFinite(zoom)) return false;
+    const rayonM = VERTEX_GRAB_PX * metresParPixel(premier[1], zoom);
+    const dx = (p[0] - premier[0]) * DEG2M * Math.cos(premier[1] * DEG2RAD);
+    const dy = (p[1] - premier[1]) * DEG2M;
+    return Math.hypot(dx, dy) <= rayonM;
   }
 
   function addVertex(v: LngLat, pointEcran?: { x: number; y: number } | null) {
@@ -881,7 +883,7 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     // 4 coins, et la saisie Longueur/Largeur — réservée aux pans à 4 côtés — restait désactivée). Seul un CLIC sur
     // la pastille du 1ᵉʳ coin ferme (à partir de 3 coins), par le bouton « Terminer » — donc avec TOUTES ses
     // validations (contour croisé refusé…). Un point voisin, un appel sans point écran, le clavier : un coin, comme avant.
-    if (ctx.vertices.length >= 3 && clicSurLePremierCoin(pointEcran)) {
+    if (ctx.vertices.length >= 3 && clicSurLePremierCoin(v, pointEcran)) {
       if (finishBtn && !finishBtn.disabled) finishBtn.click();
       return;
     }

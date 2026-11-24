@@ -461,7 +461,8 @@ describe('ACAL507 — « Vouliez-vous dire » ne s’applique jamais seul', () =
 // le rectangle 4 coins, et Longueur/Largeur restaient désactivés. Un clic sur le 1ᵉʳ coin FERME le tracé, sans sommet ajouté.
 describe('T4-B4-005 — recliquer le premier coin ferme le tracé, jamais un sommet en double', () => {
   // Projection Web Mercator (tuiles de 512 px, comme `metresParPixel`) : le point ÉCRAN d'un clic, comme MapLibre le
-  // donne (`e.point`). La fermeture se décide sur la pastille du 1ᵉʳ coin, en pixels (VERTEX_GRAB_PX = 14).
+  // donne (`e.point`). Seul un clic (il porte son point écran) peut fermer, sur la pastille du 1ᵉʳ coin
+  // (VERTEX_GRAB_PX = 14 px au zoom courant).
   const ZOOM = 20;
   const projeter = (ll: [number, number] | { lng: number; lat: number }) => {
     const [lng, lat] = Array.isArray(ll) ? ll : [ll.lng, ll.lat];
@@ -473,7 +474,7 @@ describe('T4-B4-005 — recliquer le premier coin ferme le tracé, jamais un som
     draw.addVertex(ll, projeter(ll));
   function monter() {
     document.body.innerHTML = '<button id="rp9-finish" type="button"></button>';
-    const map = { getSource: () => undefined, ...methodesCarteInertes(), getZoom: () => ZOOM, project: projeter, getCenter: () => ({ lng: -7.6, lat: 33.5 }), getCanvas: () => ({ clientWidth: 800, clientHeight: 600 }) };
+    const map = { getSource: () => undefined, ...methodesCarteInertes(), getZoom: () => ZOOM, getCenter: () => ({ lng: -7.6, lat: 33.5 }), getCanvas: () => ({ clientWidth: 800, clientHeight: 600 }) };
     const coins: [number, number][] = [[-7.6, 33.5], [-7.5999, 33.5], [-7.5999, 33.50008]];
     const ctx = { opts: { maptilerKey: 'K', reducedMotion: true }, vertices: coins.map((c) => [...c]), obstacles: [], areas: [], activeAreaId: 'a1', closed: false, centroid: [-7.6, 33.5] } as unknown as Ctx;
     const draw = createMapDraw(ctx, { map: map as never, setStatus: vi.fn(), updateAreaReadout: vi.fn() });
