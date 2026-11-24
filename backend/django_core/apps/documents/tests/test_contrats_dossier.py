@@ -261,14 +261,14 @@ class MontantsTests(TestCase):
         plan, solde = v.plan(), v.solde()
         self.assertEqual(solde['paye'], paye)
         prix = plan['prix_convenu_ttc']
-        cibles = [t['cible_cumul_ttc'] for t in plan['tranches']]
+        # Le CONVENU (30 / 60 / reste) — jamais l'état de la facturation.
+        convenu = [K._q(prix * 30 / 100), K._q(prix * 60 / 100)]
+        convenu.append(prix - sum(convenu))
+        cibles = [sum(convenu[:i + 1]) for i in range(3)]
         attendus = {
-            (T.CONTRAT, ''): cibles[0],
+            (T.CONTRAT, ''): cibles[0], (T.RECEPTION, ''): prix,
             (T.LIVRAISON, T.RESTE_A_REGLER): cibles[1],
-            (T.LIVRAISON, T.TRANCHE_REGLEE): cibles[1],
-            (T.RECEPTION, ''): prix,
-            (T.CLOTURE, ''): prix,
-        }
+            (T.LIVRAISON, T.TRANCHE_REGLEE): cibles[1], (T.CLOTURE, ''): prix}
         for (type_acte, variante), cible in attendus.items():
             acte = v.acte(type_acte, variante)
             for langue in T.LANGUES:
@@ -282,7 +282,7 @@ class MontantsTests(TestCase):
                                      f'{plan["prix_convenu_tva"]:.2f}')
                     self.assertEqual(
                         [t['montant_ttc'] for t in c['echeancier']],
-                        [f'{t["montant_ttc"]:.2f}' for t in plan['tranches']])
+                        [f'{m:.2f}' for m in convenu])
                     if type_acte == T.CONTRAT:
                         continue
                     effectif = paye
@@ -1067,7 +1067,7 @@ class LivraisonSansEtapeTests(TestCase):
             {'libelle': 'Acompte', 'type': 'acompte', 'pct_or_montant': 50},
             {'libelle': 'Solde', 'type': 'solde', 'pct_or_montant': 50}])
         acte = v.acte(T.LIVRAISON, T.RESTE_A_REGLER)
-        premiere = v.plan()['tranches'][0]['cible_cumul_ttc']
+        premiere = K._q(v.plan()['prix_convenu_ttc'] / 2)  # le convenu : 50 %
         c = K.construire_contenu(acte)
         self.assertEqual(c['paiement']['exigible_maintenant'],
                          f'{premiere:.2f}')
