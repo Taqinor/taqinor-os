@@ -44,14 +44,16 @@ def specs_for_produit(produit):
         isc_max_mppt_a, bat_max_charge_kw, bat_max_decharge_kw,
         entrees_par_mppt, chaines_max_par_mppt, s_max_kva, dc_max_kwc,
         rendement_par_charge, rendement_max_pct, rendement_cec_pct,
-        conso_nuit_w}`` (CAL115 pour les quatre du milieu ; les quatre
+        conso_nuit_w, bat_nb_entrees, max_parallele,
+        bat_i_max_entree_a}`` (CAL115 pour les quatre du milieu ; les quatre
         dernières, CALX60 — ``rendement_par_charge`` porte le champ
         ``ond_courbe_rendement``) ;
       * ``batterie`` → ``{kwh_nominal, kwh_usable, dod_pct, v_nominal,
         max_charge_kw, max_decharge_kw, max_modules_par_banc,
         rendement_ar_pct, cycles_publies, retention_fin_de_vie_pct,
         garantie_annees, c_rate_charge, c_rate_decharge, chimie,
-        temp_min_c, temp_max_c, eol_pct}`` (CAL118 au milieu ; les six
+        temp_min_c, temp_max_c, eol_pct, serie_min_modules,
+        serie_max_modules, v_module, grappes_max_parallele}`` (CAL118 au milieu ; les six
         dernières, CALX60 — ``eol_pct`` est le MÊME champ que
         ``retention_fin_de_vie_pct``, publié sous le nom que lit
         l'électrique) ;
@@ -196,6 +198,11 @@ def specs_for_produit(produit):
             ('pnom_pente_pct_c', getattr(fiche, 'ond_pnom_pente_pct_c', None)),
             ('mppt_independants',
              getattr(fiche, 'ond_mppt_independants', None)),
+            # HT24 (24/11/2026) — port batterie haute tension : entrées
+            # batterie et appareils en parallèle publiés (vide = non publié).
+            ('bat_nb_entrees', getattr(fiche, 'ond_bat_nb_entrees', None)),
+            ('max_parallele', getattr(fiche, 'ond_max_parallele', None)),
+            ('bat_i_max_entree_a', getattr(fiche, 'ond_bat_i_max_a', None)),
         ):
             _put(out, key, value)
     elif fiche.type_fiche == 'batterie':
@@ -246,6 +253,14 @@ def specs_for_produit(produit):
             ('temp_max_c', getattr(fiche, 'bat_temp_max_c', None)),
             ('eol_pct',
              getattr(fiche, 'bat_retention_fin_de_vie_pct', None)),
+            # HT24 (24/11/2026) — grappe en SÉRIE d'un pack haute tension :
+            # bornes de modules en série, tension d'UN module, grappes en
+            # parallèle. Absentes ⇒ pack basse tension (ou fiche à compléter).
+            ('serie_min_modules', getattr(fiche, 'bat_serie_min_modules', None)),
+            ('serie_max_modules', getattr(fiche, 'bat_serie_max_modules', None)),
+            ('v_module', getattr(fiche, 'bat_v_module', None)),
+            ('grappes_max_parallele',
+             getattr(fiche, 'bat_grappes_max_parallele', None)),
         ):
             _put(out, key, value)
     elif fiche.type_fiche == 'optimiseur':

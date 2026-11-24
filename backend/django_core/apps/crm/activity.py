@@ -132,6 +132,10 @@ TRACKED_FIELDS = {
     'frein_principal': 'Frein principal',
     'declencheur': 'Ce qui a accroché',
     'compteur_puissance_kva': 'Puissance souscrite du compteur (kVA)',
+    # Décision fondateur 24/11/2026 — elles chiffrent l'estimation de
+    # consommation d'un lead pro sans facture : un changement se trace.
+    'puissance_max_appelee_kva': 'Puissance maximale appelée (kVA)',
+    'charge_moyenne_pct': "Charge moyenne pendant les heures d'ouverture (%)",
     'chauffage_electrique_hiver': 'Chauffage électrique en hiver',
     # AGR400 — colonnes de pompage (contrat AGR1) : une réponse changée sans
     # trace, c'est un dimensionnement qui bouge sans explication. Libellés =

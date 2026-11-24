@@ -61,6 +61,33 @@ class ReglesCalculTests(SimpleTestCase):
         self.assertTrue(regles_au_moins(
             SimpleNamespace(regles_calcul=15), REGLES_POSE_REELLE_2111))
 
+    def test_niveau_16_haute_tension_nouveaux_devis_seulement(self):
+        # HT24 (fondateur 24/11/2026) — l'option « avec batterie » haute
+        # tension : niveau 16 déclaré (il suit le 15, pas courant) ; seul un
+        # devis ENVOYÉ avant le 25/11/2026 garde l'option qu'il a reçue.
+        from datetime import datetime, timezone
+
+        from apps.ventes.domain.regles_calcul import (
+            REGLES_HYBRIDES_HT_2411, hybrides_ht_ouverts)
+        self.assertEqual(REGLES_HYBRIDES_HT_2411, 16)
+        self.assertGreater(REGLES_HYBRIDES_HT_2411, REGLES_POSE_REELLE_2111)
+        avant = datetime(2026, 11, 24, 23, 0, tzinfo=timezone.utc)
+        apres = datetime(2026, 11, 25, 8, 0, tzinfo=timezone.utc)
+
+        def devis(**champs):
+            return SimpleNamespace(**dict({'regles_calcul': 14, 'date_creation': avant}, **champs))
+        # Envoyé (ou sorti du brouillon sans envoi) avant la coupure : fermé.
+        self.assertFalse(hybrides_ht_ouverts(devis(statut='envoye', date_envoi=avant)))
+        self.assertFalse(hybrides_ht_ouverts(devis(statut='accepte', date_envoi=None)))
+        # Brouillon jamais envoyé, même créé avant : rien n'a été montré, ouvert.
+        self.assertTrue(hybrides_ht_ouverts(devis(statut='brouillon', date_envoi=None)))
+        # Le même devis, envoyé après la coupure : le client l'a reçu avec, ouvert.
+        self.assertTrue(hybrides_ht_ouverts(devis(statut='envoye', date_envoi=apres)))
+        self.assertTrue(hybrides_ht_ouverts(devis(statut='accepte', date_envoi=None, date_creation=apres)))
+        self.assertTrue(hybrides_ht_ouverts(devis(regles_calcul=16, statut='envoye', date_envoi=avant)))
+        for apercu in (None, SimpleNamespace()):
+            self.assertTrue(hybrides_ht_ouverts(apercu))
+
     # ── Niveau 3 (corrections résidentielles du 27/10/2026) ──
     def test_devis_envoye_au_niveau_2_hors_corrections_2710(self):
         envoye = SimpleNamespace(regles_calcul=REGLES_CORRIGEES)

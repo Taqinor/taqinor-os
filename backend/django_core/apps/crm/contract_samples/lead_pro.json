@@ -12,6 +12,8 @@
     "contrat_electricite": "bt_patente",
     "option_tarifaire_bt": null,
     "compteur_puissance_kva": null,
+    "puissance_max_appelee_kva": null,
+    "charge_moyenne_pct": null,
     "puissance_souscrite_source": null,
     "raccordement": "triphase",
     "categorie_commerciale": "hotel",
@@ -249,6 +251,8 @@
     "tension_raccordement": "mt",
     "tension_source": "facture",
     "compteur_puissance_kva": "250.00",
+    "puissance_max_appelee_kva": null,
+    "charge_moyenne_pct": null,
     "puissance_souscrite_source": "facture",
     "secteur_industriel": "agroalimentaire",
     "export_ue_declare": "non",
@@ -358,6 +362,26 @@
       "segment": "commun",
       "etape_appel": 2,
       "question": "« Quelle est votre puissance souscrite, en kVA ? Elle est écrite sur votre facture ou votre contrat. »"
+    },
+    {
+      "nom": "puissance_max_appelee_kva",
+      "type": "décimal",
+      "unite": "kVA",
+      "segment": "commun",
+      "etape_appel": null,
+      "question": "« Quelle est la puissance maximale que votre site appelle, en kVA ? »"
+    },
+    {
+      "nom": "charge_moyenne_pct",
+      "type": "entier",
+      "unite": "%",
+      "bornes": [
+        1,
+        100
+      ],
+      "segment": "commun",
+      "etape_appel": null,
+      "question": "« Pendant vos heures d'ouverture, le site tourne en moyenne à quel pourcentage de cette puissance maximale ? »"
     },
     {
       "nom": "puissance_souscrite_source",
@@ -853,6 +877,7 @@
       "contrat_electricite / option_tarifaire_bt": "tarif_declare {contrat, option_bi_horaire?} (CIQ666, vocabulaire `tarifs_ci.json`) — le moteur résout la grille ONEE de CE contrat au lieu de « tarif_omis » ; ne_sait_pas → aucune entrée ; manquant seulement hors MT (la MT n'a qu'un Tarif Général) ; option_bi_horaire transmis pour la force motrice seule",
       "raccordement": "phases (monophase → mono, triphase → tri, inconnu → inconnu)",
       "compteur_puissance_kva": "puissance_souscrite_kva",
+      "puissance_max_appelee_kva / charge_moyenne_pct": "consommation.puissance_max_kva / consommation.charge_moyenne_pct — facultatives, jamais dans `manquants` ; lues par le moteur seulement pour ESTIMER une consommation en dernier recours. Décision fondateur du 24/11/2026 (lead « Karim Hasnaoui », 380 kVA connus seulement) : sans AUCUNE consommation réelle, le moteur C&I ESTIME 12 kWh mensuels = kVA max × cos φ (déclaré, sinon 0,90 supposé) × charge moyenne (déclarée, sinon 50 % supposés) / 100 × heures d'ouverture du mois (calendrier du profil déclaré). Estimation dite : hypothèse `consommation` au statut `estimation`, alerte interne `consommation_estimee_puissance` (formule chiffrée, `champ_lead` = `conso_mensuelle_kwh`), niveau de données `estimation`, réserve de visite. Toute consommation réelle passe devant. DISTINCTE de `compteur_puissance_kva` (puissance souscrite, plafond AC des onduleurs).",
       "jours_ouverture": "rythme.jours_ouverts (7 drapeaux lun→dim)",
       "heure_debut / heure_fin": "rythme.plages",
       "regime_equipes": "rythme.equipes",
@@ -871,13 +896,15 @@
         "conso_mensuelle_kwh",
         "bill_kwh",
         "releve_conso",
-        "facture_hiver"
+        "facture_hiver",
+        "puissance_max_appelee_kva"
       ]
     ],
     "facture_hiver": "En MAD : ne compte, pour un COMMERCIAL, que si `tension_raccordement` ≠ « mt » ; pour un INDUSTRIEL, que si la moyenne tension n'est pas DÉCLARÉE (D-ACAL-92, fondateur 23/11/2026 : tension vide, « ne sait pas » ou défaut du site ⇒ basse tension supposée et dite). Raison : une facture MT porte une prime fixe — diviser ses MAD par un prix gonflerait les kWh.",
     "releve_conso": "Les 12 factures ne sont JAMAIS exigées (W5-VB-07) : un mois suffit à remplir le groupe.",
-    "source_conso": "colonne qui a rempli le groupe (conso_mensuelle_kwh | bill_kwh | releve_conso | facture_hiver), null si aucune",
-    "visite_avant_devis": "{requise, motifs} (D-CIQ-5) — requise si la tension vaut « mt », est vide, « ne_sait_pas » ou de source `site_defaut_visible` ; si la puissance souscrite est vide ; si le type de surface ou la surface sont vides. `pret` ne mesure que les DONNÉES : un devis indicatif reste possible, marqué « estimation sous réserve de visite »."
+    "source_conso": "colonne qui a rempli le groupe (conso_mensuelle_kwh | bill_kwh | releve_conso | facture_hiver | puissance_max_appelee_kva), null si aucune",
+    "visite_avant_devis": "{requise, motifs} (D-CIQ-5) — requise si la tension vaut « mt », est vide, « ne_sait_pas » ou de source `site_defaut_visible` ; si la puissance souscrite est vide ; si le type de surface ou la surface sont vides. `pret` ne mesure que les DONNÉES : un devis indicatif reste possible, marqué « estimation sous réserve de visite ».",
+    "puissance_max_appelee_kva": "Compte dans le groupe : sans autre consommation, le devis automatique part sur l'ESTIMATION ; il exige alors des heures d'ouverture DÉCLARÉES (jours + heures ou régime d'équipes) — ni l'archétype de l'activité ni le profil société n'en donnent. Décision fondateur du 24/11/2026 (lead « Karim Hasnaoui », 380 kVA connus seulement) : sans AUCUNE consommation réelle, le moteur C&I ESTIME 12 kWh mensuels = kVA max × cos φ (déclaré, sinon 0,90 supposé) × charge moyenne (déclarée, sinon 50 % supposés) / 100 × heures d'ouverture du mois (calendrier du profil déclaré). Estimation dite : hypothèse `consommation` au statut `estimation`, alerte interne `consommation_estimee_puissance` (formule chiffrée, `champ_lead` = `conso_mensuelle_kwh`), niveau de données `estimation`, réserve de visite. Toute consommation réelle passe devant. DISTINCTE de `compteur_puissance_kva` (puissance souscrite, plafond AC des onduleurs)."
   },
   "incoherence_segment": "null ou {segment_lead, mode_devis, devis: [{id, reference}], message} — même forme qu'AGR1. Un devis C&I ne change JAMAIS automatiquement le type du lead (bandeau).",
   "segment_suggere": "null ou {valeur: commercial|industriel, raison} — même forme qu'AGR1",

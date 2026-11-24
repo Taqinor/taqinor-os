@@ -333,6 +333,26 @@ class TestTableMentions(SimpleTestCase):
         self.assertEqual([e for e in entrees if e["cle"] != "consommation_estimee"],
                          synthese_ci(_data(sans))["hypotheses"])
 
+    def test_consommation_estimee_par_la_puissance_maximale_dite_au_client(self):
+        # Fondateur 24/11/2026 — la consommation estimée depuis la puissance
+        # maximale appelée est dite au client (même entrée, trilingue), sans
+        # la formule interne ni la mention d'une décision du fondateur.
+        from apps.ventes.domain.estimation_puissance_ci import estimer_consommation
+        from apps.ventes.tests.test_ciq118_etude_ci_preview import RYTHME_HASNAOUI, _resolution
+        hypotheses = []
+        kwh, _feuille = estimer_consommation(
+            _resolution(_puissance_max_kva=380, **RYTHME_HASNAOUI), 2025, [], hypotheses)
+        self.assertEqual(len(kwh or []), 12)
+        etude = _etude("mt")
+        etude["sous_reserve_visite"] = {"valeur": True, "motif": None}
+        etude["hypotheses"] = hypotheses
+        h = _par_cle(synthese_ci(_data(etude))["hypotheses"])["consommation_estimee"]
+        self.assertEqual(h["textes"]["fr"],
+                         "Consommation : estimation à partir de la puissance maximale déclarée (380 kVA).")
+        self.assertEqual(set(h["textes"]), {"fr", "en", "ar"})
+        self.assertTrue(all("380" in t for t in h["textes"].values()))
+        self.assertNotIn("fondateur", h["source"])
+
     def test_visite_si_sous_reserve(self):
         etude = _etude("bt")
         etude["sous_reserve_visite"] = {"valeur": True, "motif": None}

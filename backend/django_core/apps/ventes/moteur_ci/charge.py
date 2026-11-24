@@ -862,6 +862,32 @@ def profil_charge_prerequis(rythme, categorie=None, profil_societe=None):
     return ([] if jours_declares else [FEUILLE_JOURS]) + [FEUILLE_PLAGES]
 
 
+def heures_ouverture_par_mois(rythme, *, annee_reference, feries=None):
+    """Décision fondateur du 24/11/2026 — ``(heures[12], [])`` : les heures
+    d'ouverture de chaque mois de ``annee_reference``, lues sur LE calendrier
+    de :func:`courbe_declaree` (mêmes jours ouverts — supposés lundi→samedi
+    pour un régime d'équipes —, plages, équipes — 3×8 / continu = 24 h —,
+    heure de début supposée, fermetures, Ramadan, fériés saisis). Aucun
+    second calendrier.
+
+    Sans heures déclarées : ``(None, feuilles manquantes)`` — la règle
+    :func:`profil_charge_prerequis` SANS archétype ni profil société (une
+    forme de journée ne dit aucune heure d'ouverture)."""
+    rythme = rythme or {}
+    manquants = profil_charge_prerequis(rythme)
+    if manquants:
+        return None, manquants
+    alertes = []
+    fusionne, _non_consommees = _fusionner_categorie(rythme, rythme.get('categorie_commerciale'), alertes)
+    fusionne = _avec_heure_supposee(_avec_jours_supposes(fusionne, alertes), alertes)
+    calendrier, _jours, _plages = _calendrier(fusionne, annee_reference, feries, alertes)
+    heures = [0.0] * 12
+    for jour, ouvert, _type, plages in calendrier:
+        if ouvert and plages:
+            heures[jour.month - 1] += sum(_occupation(plages))
+    return heures, []
+
+
 def _signaler_cellules_completees(cellules, archetype, profil_societe, provenance, alertes):
     """CLD16 — un profil société PARTIEL (CAL149 : saisons ou types de jour
     absents) retombe sur l'archétype pour les cellules manquantes : les liste

@@ -12,7 +12,7 @@ Elle LIT seulement (aucun INSERT ni UPDATE) et assemble le noyau pur
    ``crm.selectors.entrees_ci_du_lead``, CIQ405) > réglage société ;
 2. consommation résolue UNE fois : kWh mensuels saisis > 12 kWh de factures
    > factures MAD converties au tarif C&I (CIQ203, jamais sans tarif) >
-   ``bill_kwh`` en lecture seule ;
+   ``bill_kwh`` en lecture seule > estimation par la puissance maximale (24/11/2026) ;
 3. production PVGIS (CIQ109), profil déclaré (CIQ108, profil société puis
    archétype sourcé CIQ107), autoconsommation horaire (CIQ110), onduleurs
    (CIQ111), composition (CIQ115), taille par la règle marginale (CIQ116)
@@ -37,8 +37,11 @@ from apps.ventes.moteur_ci.taille import HORIZON_MARGINAL_CI
 
 from .etude_ci_batterie import CLE as CLE_OPTION_AVEC, CLE_BANQUE_RECOMMANDEE, option_avec_de_l_etude
 from .sensibilites_option_avec import scenarios_du_devis
-from .regles_calcul import REGLES_CORRIGEES_2710, REGLES_CYCLES_BATTERIE_1911, REGLES_RETOURS_3010B, regles_au_moins
+from .regles_calcul import (
+    REGLES_CORRIGEES_2710, REGLES_CYCLES_BATTERIE_1911, REGLES_RETOURS_3010B, hybrides_ht_ouverts, regles_au_moins)
 from .etude_ci_visite import _couche_visite, froid_du_site, hypotheses_de_la_combinaison
+from .estimation_puissance_ci import (FEUILLE_ESTIMEE, MARQUEUR, MOTIF_SOUS_RESERVE, estimer_consommation,
+                                      refus_sans_rythme)
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +167,8 @@ CHEMINS_LEAD = {
     'tva_recuperable': 'tva_recuperable',
     # CIQ666 — le contrat d'électricité déclaré au lead (vocabulaire CIQ222).
     'tarif_declare': 'tarif_declare',
+    # Fondateur 24/11/2026 — feuilles PRIVÉES de l'estimation par la puissance maximale.
+    'consommation.puissance_max_kva': '_puissance_max_kva', 'consommation.charge_moyenne_pct': '_charge_moyenne_pct',
 }
 
 REGIMES_CONTRAT = {
@@ -1049,8 +1054,9 @@ def _sous_reserve_visite(res, lead, niveau_donnees):
             motifs.append('puissance souscrite inconnue')
         if _num(res.valeur('surface_utile_m2')) is None:
             motifs.append('surface disponible inconnue')
-    if niveau_donnees == 'estimation':
-        motifs.append('profil horaire non déclaré : estimation sous réserve de visite')
+    if niveau_donnees == 'estimation':  # fondateur 24/11/2026 : une consommation estimée le dit
+        motifs.append(MOTIF_SOUS_RESERVE if res.valeur(MARQUEUR) else
+                      'profil horaire non déclaré : estimation sous réserve de visite')
     # ADEV125 (D-ACAL-92) — un contrat SUPPOSÉ fait du devis une estimation.
     from .suppositions_ci import est_supposee
     suppose = est_supposee({'provenance': res.provenance('tarif_declare')})
@@ -1242,6 +1248,8 @@ def _consommation_retenue(res, tarif, alertes, hypotheses):
         from apps.ventes.moteur_ci.charge import POSTES_MT, _registre
         conso = [sum(_registre(m, p) for p in POSTES_MT) for m in registres]
         feuille = 'registres_mt'
+    if conso is None:  # fondateur 24/11/2026 — dernier recours : la puissance maximale
+        conso, feuille = estimer_consommation(res, _aujourdhui().year - 1, alertes, hypotheses)
     return conso, feuille, registres, mesuree
 
 
@@ -1451,7 +1459,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     jours_types, prov_charge, al_charge = _jours_types_de_charge(
         company, res, mode, categorie, rythme, mesuree, registres, conso, production)
     alertes.extend(al_charge)
-    niveau = (prov_charge or {}).get('niveau_donnees')
+    niveau = 'estimation' if feuille_retenue == FEUILLE_ESTIMEE else (prov_charge or {}).get('niveau_donnees')
     sous_reserve = _sous_reserve_visite(res, lead, niveau)
     if not jours_types:
         etude = _vide_etude(res, alertes, hypotheses, sous_reserve)
@@ -1532,6 +1540,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         regles_3010b=regles_au_moins(devis, REGLES_RETOURS_3010B),  # D-CI-BATTERIE-NON-RENTABLE
         talon_inconnu=(prov_charge.get('talon') or {}).get('statut') == 'borne_conservatrice',
         nb_batteries=res.valeur('nb_batteries'), regles_cycles=regles_au_moins(devis, REGLES_CYCLES_BATTERIE_1911),
+        regles_ht=hybrides_ht_ouverts(devis),  # HT24 : haute tension, hors devis envoyés avant le 25/11/2026
         sensibilites=scenarios_du_devis(company, devis))  # niveau 14 (D-SENS-1)
     alertes.extend(_alertes_postes(composition, avec))
     hypotheses.extend(avec['hypotheses'])
@@ -1675,6 +1684,8 @@ def refus_devis_auto_ci(etude):
         return codes['kwh_incoherent_factures']['message'], 'conso_mensuelle_kwh'
     if 'conversion_mad_impossible' in codes:
         return MESSAGE_MAD_SANS_CONTRAT, 'contrat_electricite'
+    if 'consommation_absente' in codes and refus_sans_rythme(codes):  # fondateur 24/11/2026
+        return refus_sans_rythme(codes)
     if 'consommation_absente' in codes:
         return ('Consommation (kWh) ou facture mensuelle (MAD) manquante : '
                 'aucun devis automatique sans consommation.', 'conso_mensuelle_kwh')

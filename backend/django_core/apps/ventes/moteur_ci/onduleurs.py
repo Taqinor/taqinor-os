@@ -429,7 +429,10 @@ def _combiner_homogene(kwc, candidats, **kw):
     puissance AC, l'identifiant (déterministe)."""
     resultats = []
     for c in candidats or []:
-        r = combiner_onduleurs(kwc, [c], **kw)
+        # HT24 — un hybride haute tension porte SA limite de parallèle
+        # (``max_parallele``, fiche du modèle) ; absente : la borne commune.
+        r = combiner_onduleurs(kwc, [c], **dict(kw, max_appareils=c.get('max_parallele')
+                                                or kw.get('max_appareils')))
         if r.get('combinaison'):
             cle = (sum(int(x['quantite']) for x in r['combinaison']),
                    Decimal(r['prix_vente_total_ht'] or '0'),

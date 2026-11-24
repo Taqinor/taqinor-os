@@ -1586,7 +1586,7 @@ export default function DevisGenerator({
   // seule saisie est le profil déclaré — sa moyenne mensuelle nourrit encore
   // l'étude locale jusqu'à sa suppression.
   // Disponibilité de l'option « avec batterie » (règle : jamais sans onduleur)
-  const avecDispo = avecBatterieAvailability(lines, produits, kwp)
+  const avecDispo = avecBatterieAvailability(lines, produits, kwp, { ci: ['commercial', 'industriel'].includes(modeInstallation) })
   const showAvecWarning = showAvec && modeInstallation !== 'agricole' && lines.length > 0 && !avecDispo.available
 
   // (Dimensionnement pompage : déclaré plus haut, avant handleAutoFill —

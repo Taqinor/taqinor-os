@@ -1,6 +1,6 @@
 {
   "ast": {
-    "FicheTechnique": "2c31f51be9df15d2fb7ffb70d4f51ef3d64606a1",
+    "FicheTechnique": "06c07736dba29f714f58687dc47f60be665ae6b7",
     "_est_nombre": "5d18c0bef90e040ff010a635babf0336bbe24585",
     "_valider_courbe": "bfa8fece7cfe0c8262df1bb3994254992b14c056",
     "valider_courbe_irradiance": "1569e31152555f78800b28b078b5ba0ff5c2a04f",
@@ -1103,6 +1103,123 @@
         "max_digits": 4,
         "max_length": null,
         "nom": "bat_temp_max_c",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "PositiveSmallIntegerField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "41bf69ae96be95666eeb187717e8e7b650e8ac64",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "bat_serie_min_modules",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "PositiveSmallIntegerField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "3f72d9bfc61093ef0ef2bd647a02d4b03428927f",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "bat_serie_max_modules",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "feef11ea6c5d7834630dd88880739179f83cbc6c",
+        "max_digits": 5,
+        "max_length": null,
+        "nom": "bat_v_module",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "DecimalValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "PositiveSmallIntegerField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "0401b4ed2cc2b37846afbbadd708527c45d60704",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "bat_grappes_max_parallele",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "PositiveSmallIntegerField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "f29d13d3c7f318cac1146013a94880015facdd30",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "ond_bat_nb_entrees",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "PositiveSmallIntegerField",
+        "decimal_places": null,
+        "defaut": null,
+        "help_text_sha1": "c332da81419ba2daea81a3e748aa4727267522b4",
+        "max_digits": null,
+        "max_length": null,
+        "nom": "ond_max_parallele",
+        "null": true,
+        "on_delete": null,
+        "related_name": null,
+        "validateurs": [
+          "MinValueValidator",
+          "MaxValueValidator"
+        ]
+      },
+      {
+        "blank": true,
+        "classe": "DecimalField",
+        "decimal_places": 1,
+        "defaut": null,
+        "help_text_sha1": "8e6e6456a864a3e200e25762e470aa5244da1f21",
+        "max_digits": 6,
+        "max_length": null,
+        "nom": "ond_bat_i_max_a",
         "null": true,
         "on_delete": null,
         "related_name": null,

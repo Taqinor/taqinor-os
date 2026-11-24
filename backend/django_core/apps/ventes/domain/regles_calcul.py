@@ -123,8 +123,44 @@ REGLES_SENSIBILITES_1911 = 14
 #: « avec solaire » (page 1 et exemple de la page 4) = « avant » − l'économie
 #: imprimée (``renderer._apres_annuel``, ``etude_restitution._facture_avec_affichee``).
 REGLES_POSE_REELLE_2111 = 15
+#: Niveau 16 (HT24, fondateur 24/11/2026 « With battery now also picks from HV
+#: inverters », DÉCLARÉ, PAS courant — il suit le 15) : l'option C&I « avec
+#: batterie » se compose aussi sur un hybride HAUTE tension quand la basse
+#: tension n'en compose aucune. Un devis qui le porte l'ouvre ; en attendant
+#: qu'il devienne courant (il ne peut pas l'être sans rendre le 15 courant),
+#: :func:`hybrides_ht_ouverts` fait ce que la migration d'un niveau courant
+#: ferait : ouverte aux brouillons jamais envoyés et aux devis envoyés à partir
+#: de :data:`COUPURE_HYBRIDES_HT`, fermée aux devis envoyés avant.
+REGLES_HYBRIDES_HT_2411 = 16
+#: Jour (inclus) à partir duquel un devis ENVOYÉ a pu recevoir la haute tension
+#: (le lendemain de la décision ; rien n'était en ligne avant).
+COUPURE_HYBRIDES_HT = (2026, 11, 25)
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
 REGLES_COURANTES = REGLES_SENSIBILITES_1911
+
+
+def hybrides_ht_ouverts(devis) -> bool:
+    """HT24 — l'option « avec batterie » peut-elle se composer en HAUTE
+    tension pour ce devis ? « Nouveaux rendus seulement » : seul un devis que
+    le client a DÉJÀ reçu sans elle la garde fermée.
+
+    Ouverte pour ``None`` (aperçu), une doublure sans champ, le niveau 16, un
+    BROUILLON jamais envoyé (rien n'a été montré au client) et tout devis
+    envoyé à partir de :data:`COUPURE_HYBRIDES_HT`. Fermée pour un devis sorti
+    du brouillon avant cette date (envoyé, accepté, refusé, expiré — repère :
+    ``date_envoi``, à défaut ``date_creation``) : il garde ce qu'il a reçu.
+    """
+    from datetime import date
+    if devis is None or regles_au_moins(devis, REGLES_HYBRIDES_HT_2411):
+        return True
+    envoi = getattr(devis, 'date_envoi', None)
+    if envoi is None and getattr(devis, 'statut', None) in (None, '', 'brouillon'):
+        return True
+    repere = envoi or getattr(devis, 'date_creation', None)
+    if repere is None:
+        return True
+    jour = repere.date() if hasattr(repere, 'date') else repere
+    return jour >= date(*COUPURE_HYBRIDES_HT)
 
 
 def regles_au_moins(devis, niveau: int) -> bool:

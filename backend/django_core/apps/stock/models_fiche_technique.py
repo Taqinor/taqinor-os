@@ -630,6 +630,62 @@ class FicheTechnique(models.Model):
         help_text='Température de fonctionnement MAXIMALE publiée (°C). '
                   'Vide = non publiée.')
 
+    # ── HT24 (fondateur 24/11/2026) — HAUTE TENSION : la grappe en SÉRIE et
+    # le port batterie de l'hybride. ──
+    #
+    # « With battery now also picks from HV inverters » : l'option C&I « avec
+    # batterie » peut se composer sur un hybride haute tension (Deye
+    # SUN-80K-SG02HP3, fenêtre 160–1000 V) avec un pack empilé EN SÉRIE (Deye
+    # BOS-B Pro-A3 : modules de 51,2 V, 5 à 15 en série par grappe derrière une
+    # control box). L'appairage se PROUVE par la tension : une grappe de n
+    # modules vaut n × la tension du module, et doit tomber dans la fenêtre
+    # batterie de l'hybride (``ond_bat_v_min``/``ond_bat_v_max``).
+    #
+    # Pourquoi un champ ``bat_v_module`` et pas ``bat_v_nominal`` : la tension
+    # nominale est celle que VOIT l'onduleur (le résidentiel et l'option basse
+    # tension l'appairent à la fenêtre 40–60 V). Y poser les 51,2 V d'un
+    # module série ferait entrer le pack HT dans la fenêtre des hybrides BASSE
+    # tension — le contresens que ``seed_catalogue`` (BAT-DYN-HV-16) écarte en
+    # laissant cette tension vide. Les bornes de série MARQUENT le pack HT ;
+    # le mot-clé « haute tension » du nom reste un repli pour les fiches non
+    # complétées.
+    #
+    # TOUS OPTIONNELS — vide = non publié : le moteur NOMME le champ manquant
+    # (alerte interne), jamais un défaut inventé.
+    bat_serie_min_modules = models.PositiveSmallIntegerField(
+        null=True, blank=True, validators=[MinValueValidator(1)],
+        help_text='Batterie haute tension — nombre MINIMUM de modules en '
+                  'série dans une grappe (fiche constructeur). Vide = pack '
+                  'basse tension ou non publié.')
+    bat_serie_max_modules = models.PositiveSmallIntegerField(
+        null=True, blank=True, validators=[MinValueValidator(1)],
+        help_text='Batterie haute tension — nombre MAXIMUM de modules en '
+                  'série dans une grappe avec un onduleur hybride (fiche '
+                  'constructeur). Vide = non publié.')
+    bat_v_module = models.DecimalField(
+        max_digits=5, decimal_places=1, null=True, blank=True,
+        help_text='Batterie haute tension — tension nominale d’UN module '
+                  '(V) ; la grappe vaut n × cette tension. Vide = non publié.')
+    bat_grappes_max_parallele = models.PositiveSmallIntegerField(
+        null=True, blank=True, validators=[MinValueValidator(1)],
+        help_text='Batterie haute tension — nombre maximum de grappes en '
+                  'parallèle (fiche constructeur). Vide = non publié.')
+    ond_bat_nb_entrees = models.PositiveSmallIntegerField(
+        null=True, blank=True, validators=[MinValueValidator(1)],
+        help_text="Onduleur hybride — nombre d'entrées batterie (« Number "
+                  'of Battery Input »). Vide = non publié.')
+    ond_max_parallele = models.PositiveSmallIntegerField(
+        null=True, blank=True, validators=[MinValueValidator(1)],
+        help_text='Onduleur hybride — nombre maximum d’appareils en '
+                  'parallèle publié par la fiche. Vide = non publié.')
+    # HT24 — le COURANT maximal par entrée batterie (« 80+80 » A sur le Deye
+    # SUN-80K-SG02HP3) : la fiche ne publie aucune puissance en kW ; la borne du
+    # port se DÉRIVE de ce courant × la tension nominale de la grappe.
+    ond_bat_i_max_a = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True,
+        help_text='Onduleur hybride — courant maximal de charge/décharge '
+                  'PAR ENTRÉE batterie (A). Vide = non publié.')
+
     # ── CAL116 — Optimiseur de puissance / micro-onduleur
     # (``type_fiche='optimiseur'``). ──
     #

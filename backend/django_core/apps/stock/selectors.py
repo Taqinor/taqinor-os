@@ -2198,15 +2198,15 @@ def specs_solaire_produit(produit):
                    if famille == 'batterie' else None)
     return {
         'famille': famille or None,
-        # Onduleur : [min, max] V, [0, 0] = « aucune batterie » (ligne
-        # « aucune » DÉCLARÉE, ou famille RÉSEAU qui l'implique), None = non
-        # déclarée sur un hybride (le garde retombe sur son repli mot-clé).
+        # Onduleur : [min, max] V ; [0, 0] = « aucune batterie » (déclarée, ou
+        # famille RÉSEAU) ; None = non déclarée sur un hybride (repli mot-clé).
         'plage_batterie_v': list(plage) if plage is not None else None,
+        # Onduleur : puissance AC (kW) de SA fiche — l'écran ne la lit plus dans le nom.
+        'ac_kw': float(specs['ac_kw']) if famille == 'onduleur' and specs.get('ac_kw') else None,
         # Batterie : tension nominale (V) de sa fiche technique.
         'v_nominal': float(v_nominal) if v_nominal is not None else None,
         # Batterie : plafond de modules IDENTIQUES par banc, None = illimité.
-        'max_modules_par_banc': (int(max_modules)
-                                 if max_modules is not None else None),
+        'max_modules_par_banc': int(max_modules) if max_modules is not None else None,
         # Onduleur : libellés des variables de contrat absentes (verrou).
         'manquantes': onduleur_specs_manquantes(produit),
     }

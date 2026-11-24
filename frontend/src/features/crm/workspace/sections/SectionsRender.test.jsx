@@ -842,6 +842,24 @@ describe('CIQ418 — SectionPro : chaque colonne du contrat est atteignable', ()
     expect(setField).toHaveBeenCalledWith('compteur_puissance_kva', '12.5')
   })
 
+  // Fondateur 24/11/2026 — la puissance maximale et la charge moyenne, à côté
+  // de la puissance souscrite (lead Hasnaoui : 380 kVA connus seulement).
+  it('industriel : puissance maximale et charge moyenne sous la puissance souscrite, « vide = 50 % » dit', () => {
+    const setField = vi.fn()
+    monterPro(leadIndustriel, { setField })
+    const souscrite = document.getElementById('lf-compteur-puissance-kva')
+    const maximale = document.getElementById('lf-puissance-max-appelee-kva')
+    const charge = document.getElementById('lf-charge-moyenne-pct')
+    expect(maximale).toBeInTheDocument()
+    expect(charge).toBeInTheDocument()
+    expect(souscrite.compareDocumentPosition(maximale) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(document.querySelector('[data-charge-supposee]').textContent).toContain('vide = 50 % supposés')
+    fireEvent.change(maximale, { target: { value: '380' } })
+    expect(setField).toHaveBeenCalledWith('puissance_max_appelee_kva', '380')
+    // Une saisie ici ne pose JAMAIS la provenance de la puissance souscrite.
+    expect(setField).not.toHaveBeenCalledWith('puissance_souscrite_source', 'declare')
+  })
+
   it('enregistrer → rouvrir → enregistrer sans toucher : aucun écart avec le serveur', () => {
     const state = initState({ lead: leadCommercial, mode: 'edit' })
     render(<SectionPro state={state} {...base} />)

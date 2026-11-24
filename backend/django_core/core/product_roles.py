@@ -134,6 +134,10 @@ ROLES_CI = (
     'onduleur_string_mono',
     # ADEV87 — câble solaire DC (H1Z2Z2-K) : quantifié par les chaînes.
     'cable_dc',
+    # HT24 (fondateur 24/11/2026) — accessoires d'une GRAPPE de batterie haute
+    # tension, un jeu par grappe de l'option « avec batterie » : le boîtier de
+    # contrôle (Deye BOS-B-PDU-2-A) et le rack avec son câblage de puissance.
+    'boitier_batterie_ht', 'rack_batterie_ht',
 )
 
 #: ADEV86 — les rôles C&I d'onduleur string et la phase PUBLIÉE (``ond_phases``)
@@ -180,6 +184,8 @@ LIBELLES_ROLES_CI = {
     'batterie_ci': 'Batterie C&I',
     'onduleur_string_mono': 'Onduleur string monophasé',
     'cable_dc': 'Câble DC',
+    'boitier_batterie_ht': 'Boîtier de contrôle batterie haute tension',
+    'rack_batterie_ht': 'Rack et câblage de batterie haute tension',
 }
 
 #: CIQ101 — types de pose d'une STRUCTURE (et des prestations de pose) : les

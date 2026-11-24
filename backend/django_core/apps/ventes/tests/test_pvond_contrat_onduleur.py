@@ -201,6 +201,16 @@ class VerrouDeCompletudeTests(PvOndBase):
         self.assertEqual(onduleur_specs_manquantes(onduleur), [])
         self.assertEqual(specs_solaire_produit(onduleur)['manquantes'], [])
 
+    def test_la_puissance_ac_de_la_fiche_est_servie_a_l_ecran(self):
+        """Fondateur 24/11/2026 (fiche « DEYE SUN-80K-SG02HP3-EU-EM6 ») — un nom
+        de référence ne dit pas « 80 kW » : l'écran lit la puissance sur la
+        fiche, servie dans ``specs_solaire.ac_kw`` (onduleurs seulement)."""
+        onduleur = self._onduleur('DEYE SUN-80K-SG02HP3-EU-EM6', 'PVOND-80K', plage='160-1000 V',
+                                  fiche={'ond_ac_kw': Decimal('80')})
+        self.assertEqual(specs_solaire_produit(onduleur)['ac_kw'], 80.0)
+        batterie = self._batterie('Batterie Dyness 5 kWh', 'PVOND-ACKW-BAT')
+        self.assertIsNone(specs_solaire_produit(batterie)['ac_kw'])
+
     def test_chaque_variable_absente_est_nommee_en_francais(self):
         onduleur = self._onduleur(
             'Onduleur hybride Deye 15kW Triphasé', 'PVOND-KO',

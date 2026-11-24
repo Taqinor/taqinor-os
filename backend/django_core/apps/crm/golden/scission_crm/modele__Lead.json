@@ -224,6 +224,55 @@
    "args": [],
    "kwargs": {
     "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « Quelle est la puissance maximale que votre site appelle, en kVA ? » (vide = pas encore posée). DISTINCTE de la puissance souscrite du compteur : elle ne sert qu'à ESTIMER la consommation quand aucune n'est connue (estimation dite, sous réserve de visite).",
+    "max_digits": 7,
+    "null": true,
+    "validators": [
+     {
+      "args": [
+       "Decimal(0.01)"
+      ],
+      "kwargs": {},
+      "objet": "MinValueValidator"
+     }
+    ],
+    "verbose_name": "Puissance maximale appelée (kVA)"
+   },
+   "nom": "puissance_max_appelee_kva",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Pendant vos heures d'ouverture, le site tourne en moyenne à quel pourcentage de cette puissance maximale ? » (1 à 100 ; vide = 50 % supposés par le calcul, décision fondateur du 24/11/2026).",
+    "null": true,
+    "validators": [
+     {
+      "args": [
+       1
+      ],
+      "kwargs": {},
+      "objet": "MinValueValidator"
+     },
+     {
+      "args": [
+       100
+      ],
+      "kwargs": {},
+      "objet": "MaxValueValidator"
+     }
+    ],
+    "verbose_name": "Charge moyenne pendant les heures d'ouverture (%)"
+   },
+   "nom": "charge_moyenne_pct",
+   "type": "PositiveSmallIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
     "null": true,
     "on_delete": "callable:CASCADE",
     "related_name": "leads",

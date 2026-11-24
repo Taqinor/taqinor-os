@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 2c4ba9002efbc74eb6e4fd83fcd02533b81dc1b6d09bc30798ed68016bab8c35
+Structure fingerprint: 8ae29da62f35c15798b269cf2833441c2a4256e73913ef91e27275101f8ee957
 Plan fingerprint: c879c82382546b15dde3c4995d42dc8102cbfba3c35b8286175cd6839a3dd098
 
 
@@ -352,6 +352,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 - **core** : `core/reglementaire/` (`regime_8221.py` : régime loi 82-21) ; `core/calepinage/contenance_declaree.py` + `ilots.py` (contenance déclarée, îlots de toiture).
 - **frontend** : `features/crm/workspace/sections/SectionPro.jsx` (section PRO du lead), `features/ventes/etudePompagePreview.js` + `etudePompagePreviewPur.js` (client de l'aperçu serveur ; remplace le jumeau JS `agronomy.js`, SUPPRIMÉ — AGR131), `PanneauAgricole.jsx` consomme l'aperçu.
 - **Groupe AGQ (audit agricole L3, 23/10/2026, `docs/audits/2026-10-23-agricole.md`)** : `apps/crm/models_lead_pompage.py` (`LeadPompageMixin`, base abstraite de `Lead` : `mode_pompe`, plaque de la pompe actuelle, `jours_irrigation_semaine`, validateur `valider_mois_irrigation` ; migrations crm 0138-0139) ; `quote_engine/agricole/garanties.py::garantie_ligne_onepage` ; frontend `pages/crm/leads/AlertesDevisAuto.jsx` (journal du devis auto, partagé fiche lead ↔ générateur), `features/ventes/quote/entreesPompageLead.js` (saisie pompage du lead → générateur) ; phase 2 (24/10, `docs/audits/2026-10-24-agricole-phase2.md`) : `features/ventes/quote/forfaitsPanneau.js` (prix des forfaits au panneau à l'écran = `catalogue.py::prix_forfait_ht`, re-tarif au compte de panneaux, jumeau de `lignes.py::retarifer_forfaits_par_panneau`).
+- **Puissance maximale appelée (fondateur 24/11/2026)** : `apps/crm/models_lead_puissance.py` (`LeadPuissanceMaxMixin`, base abstraite de `Lead` : `puissance_max_appelee_kva`, `charge_moyenne_pct` ; `valider_cos_phi` y vit, ré-importé par `models.py` ; migration crm 0166) ; `apps/ventes/domain/estimation_puissance_ci.py` (consommation C&I ESTIMÉE en dernier recours = kVA max × cos φ × charge × heures d'ouverture du mois, `moteur_ci/charge.py::heures_ouverture_par_mois`).
 
 ### crm / apps/web — Suivi Google Ads (06/10/2026)
 
