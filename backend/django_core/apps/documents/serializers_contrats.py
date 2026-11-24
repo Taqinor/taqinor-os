@@ -36,8 +36,7 @@ class ResumeActeSerializer(serializers.Serializer):
     rang = serializers.IntegerField()
     titre = serializers.CharField()
     reference = serializers.CharField()
-    statut = serializers.ChoiceField(
-        choices=(T.BROUILLON, T.EMIS, T.SIGNE, T.ANNULE))
+    statut = serializers.ChoiceField(choices=T.STATUTS)
     version = serializers.IntegerField()
     personnalise = serializers.BooleanField()
     ecarte = serializers.BooleanField()

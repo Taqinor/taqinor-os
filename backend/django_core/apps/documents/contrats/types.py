@@ -20,6 +20,7 @@ BROUILLON = 'brouillon'
 EMIS = 'emis'
 SIGNE = 'signe'
 ANNULE = 'annule'
+STATUTS = (BROUILLON, EMIS, SIGNE, ANNULE)
 
 #: Les cinq lignes du dossier : (type, variante, rang).
 LIGNES_DOSSIER = (
