@@ -178,9 +178,6 @@ def build(ctx):
                  else d.get("inst_type", ""))
     # One clean meta line — no dangling comma when address or city is empty.
     client_meta = theme.join_meta(client_addr, client_city, client_phone)
-    # 24/11/2026 — ICE d'une entreprise cliente à la suite du méta, séparé
-    # comme lui (« · ») ; vide sans ICE (octet pour octet).
-    client_ice_html = fragment_ice_client(d, " · " if client_meta else "")
     kwc = d["puissance_kwc"]
     nb_pan = d["nb_panneaux"]
     wp = d["watt_par_panneau"]
@@ -980,7 +977,7 @@ def build(ctx):
   <!-- CLIENT LINE ──────────────────────────────────────────────────────── -->
   <div class="c1-client">
     <b class="c1-client-nom">{client_full}</b>
-    <span class="c1-client-meta">{client_meta}{client_ice_html}</span>
+    <span class="c1-client-meta">{client_meta}{fragment_ice_client(d, ' · ' if client_meta else '')}</span>
     <span class="c1-tag-cell"><span class="c1-tag">{inst_type}</span></span>
   </div>
 
