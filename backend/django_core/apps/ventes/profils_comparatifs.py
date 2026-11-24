@@ -327,6 +327,17 @@ def _empreinte_profils(devis):
     return '%s|%s|%s' % (base, round(float(kwc), 3), round(batterie, 3))
 
 
+def profils_comparatifs_estampilles(devis, empreinte=None):
+    """ADEV133 — le bloc ``profils_comparatifs`` estampillé (``_empreinte``,
+    QJR44 ; calculée ici quand l'appelant ne la tient pas), ou ``None`` :
+    moitié calcul de :func:`rafraichir_profils_comparatifs_devis`, partagée avec
+    le moteur unique. Aucune écriture."""
+    bloc = calculer_profils_comparatifs(devis)
+    if bloc is None:
+        return None
+    return dict(bloc, _empreinte=_empreinte_profils(devis) if empreinte is None else empreinte)
+
+
 def rafraichir_profils_comparatifs_devis(devis, *, force=False):
     """Pose ``etude_params['profils_comparatifs']`` — best-effort, jamais
     bloquant, n'écrit QUE ``etude_params`` (règle #4 : ni statut, ni lignes,
@@ -355,15 +366,12 @@ def rafraichir_profils_comparatifs_devis(devis, *, force=False):
                 and rangee.get('_empreinte') == empreinte):
             return rangee
 
-        bloc = calculer_profils_comparatifs(devis)
+        bloc = profils_comparatifs_estampilles(devis, empreinte)
         if bloc is None:
             if 'profils_comparatifs' not in etude:
                 return None
-        else:
-            bloc = dict(bloc)
-            bloc['_empreinte'] = empreinte
-            if not force and rangee == bloc:
-                return bloc
+        elif not force and rangee == bloc:
+            return bloc
         # QJR62 — ÉCRIVAIN UNIQUE : la fusion et le retrait d'une clé posée à
         # ``None`` (règle Z2) vivent dans ``domain.etude_schema``, plus ici.
         ecrire(devis, proprietaire=MOTEUR_PROFILS, profils_comparatifs=bloc)

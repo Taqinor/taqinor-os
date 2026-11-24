@@ -421,10 +421,8 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
         decision, lead=lead, company=company, taux_tva=taux_tva,
         structure_produit_id=structure_produit_id, structure_type=structure_type,
         imposition=imposition)
-    panneaux, kwc, watt_dimensionnement = decision.panneaux, decision.kwc, decision.watt
-    source_dimensionnement, optimum_avec = decision.source, decision.optimum_avec
+    source_dimensionnement = decision.source
     deux_options, wants_battery = decision.deux_options, decision.avec_batterie
-    phase_client, hors_reseau, layout = decision.phase, decision.hors_reseau, decision.layout
 
     # ── QJR96 (M5, bascule 4/5) — LE PIPELINE, DANS SON ORDRE UNIQUE ────────
     # Ce chemin RECONSTRUISAIT un layout pour le repasser à
@@ -451,16 +449,6 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
     # signerait d'une main humaine un chiffre que personne n'a tapé, et ferait
     # publier la puissance DEMANDÉE là où QJR63 a établi que seules les LIGNES
     # font foi.
-    from apps.ventes.models import Devis
-
-    toiture = extract_roof_config(layout)
-    # COP2-V3 — le compte IMPOSÉ ne passe pas par l'arbitrage : jamais un
-    # nombre de panneaux changé en silence.
-    panneaux, kwc = (_arbitrage_du_calepinage(
-        layout, panneaux, kwc, company=company) if imposition is None
-        else (panneaux, kwc))
-    layout_range, etude_initiale = _calepinage_range(layout, toiture, kwc)
-
     # U3/PACT10 — les clés d'étude apportées par l'appelant (factures
     # mensuelles réelles, consommation annuelle, distributeur) COMPLÈTENT
     # l'étude déjà écrite par la construction.
@@ -478,42 +466,18 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
     # (:func:`_completeur_etude`) ; même fermeture, mêmes refus.
     _completer_etude = _completeur_etude(etude_extra, refus_extra)
 
-    resultat = appliquer(None, IntentionDevis(
-        origine=origine or ORIGINE_AUTO,
-        company=company,
-        user=user,
-        lead=lead,
-        mode_installation=Devis.ModeInstallation.RESIDENTIEL,
-        # QJR42 — LES ENTRÉES DU MOTEUR, LUES UNE FOIS. Sans elles l'étape 1 les
-        # relirait pour son compte : deux lectures de la même fiche, donc deux
-        # occasions de dimensionner un même lead différemment.
-        entrees=entrees_depuis_lead(lead, company),
-        cible=CibleDevis(
-            nb_panneaux=panneaux,
-            panel_watt=watt_dimensionnement,
-            kwc=kwc,
-            source=source_dimensionnement,
-            dimensionnement_avec=optimum_avec,
-            # COP2-V3 — le kit IMPOSÉ ({} hors imposition : cible inchangée).
-            **_champs_imposes(imposition)),
-        scenario=(COMPOSITION_LES_DEUX if deux_options
-                  else (COMPOSITION_AVEC if wants_battery
-                        else COMPOSITION_SANS)),
-        layout=layout_range,
-        etude_initiale=etude_initiale or None,
-        taux_tva=taux_tva,
-        remise_globale=remise_globale,
-        phase=phase_client,
-        hors_reseau=hors_reseau,
-        # STKCAT8 — le SECOND point de composition de ce chemin (cf. le
-        # dry-run ci-dessus) : la MÊME structure, sinon l'aperçu contrôlé et
-        # le devis écrit ne seraient plus le même kit.
-        structure_produit_id=structure_produit_id,
-        structure_type=structure_type,
+    # ADEV133 — l'intention (layout, arbitrage, cible souveraine) est arrêtée
+    # par :func:`intention_auto_residentielle`, partagée avec le moteur unique.
+    intention = intention_auto_residentielle(
+        decision, lead=lead, company=company, user=user, taux_tva=taux_tva,
+        remise_globale=remise_globale, origine=origine,
+        structure_produit_id=structure_produit_id, structure_type=structure_type,
+        imposition=imposition,
         completer_etude=(_completer_etude
                          if isinstance(etude_extra, dict) and etude_extra
-                         else None),
-    ))
+                         else None))
+    panneaux, kwc = intention.cible.nb_panneaux, intention.cible.kwc
+    resultat = appliquer(None, intention)
     devis = resultat['devis']
     # U3 — ce que la composition ET l'écrivain de lignes ont REFUSÉ de faire
     # (vivier batterie vide, forfait au panneau non re-tarifé…). Sur un chemin
@@ -562,6 +526,46 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
         devis.reference, panneaux, kwc, wants_battery, deux_options,
         source_dimensionnement, getattr(company, 'id', '?'))
     return devis
+
+
+def intention_auto_residentielle(decision, *, lead, company, taux_tva, user=None,
+                                 remise_globale=Decimal('0'), origine=None,
+                                 structure_produit_id=None, structure_type=None,
+                                 imposition=None, completer_etude=None, entrees=None):
+    """ADEV133 (D-ACAL-97) — l'``IntentionDevis`` du devis automatique
+    résidentiel, arrêtée depuis la décision pure : le LAYOUT lu par le lecteur
+    du calepinage 3D (``_calepinage_range`` : le tracé du client est une donnée
+    réelle), l'arbitrage du compte, et la cible SOUVERAINE (une puissance
+    demandée gagne sur le moteur sans jamais réécrire le lead ni passer par
+    ``Devis.overrides``). Partagée avec le moteur unique ; aucune écriture.
+    ``entrees`` : l'``EntreesMoteur`` déjà lu (QJR42), sinon lu ici."""
+    from apps.ventes.models import Devis
+
+    layout = decision.layout
+    toiture = extract_roof_config(layout)
+    # COP2-V3 — le compte IMPOSÉ ne passe pas par l'arbitrage : jamais un
+    # nombre de panneaux changé en silence.
+    panneaux, kwc = (_arbitrage_du_calepinage(
+        layout, decision.panneaux, decision.kwc, company=company) if imposition is None
+        else (decision.panneaux, decision.kwc))
+    layout_range, etude_initiale = _calepinage_range(layout, toiture, kwc)
+    return IntentionDevis(
+        origine=origine or ORIGINE_AUTO, company=company, user=user, lead=lead,
+        mode_installation=Devis.ModeInstallation.RESIDENTIEL,
+        # QJR42 — LES ENTRÉES DU MOTEUR, LUES UNE FOIS.
+        entrees=entrees if entrees is not None else entrees_depuis_lead(lead, company),
+        cible=CibleDevis(
+            nb_panneaux=panneaux, panel_watt=decision.watt, kwc=kwc, source=decision.source,
+            dimensionnement_avec=decision.optimum_avec,
+            # COP2-V3 — le kit IMPOSÉ ({} hors imposition : cible inchangée).
+            **_champs_imposes(imposition)),
+        scenario=decision.scenario_composition(),
+        layout=layout_range, etude_initiale=etude_initiale or None,
+        taux_tva=taux_tva, remise_globale=remise_globale,
+        phase=decision.phase, hors_reseau=decision.hors_reseau,
+        # STKCAT8 — la MÊME structure que le contrôle à blanc.
+        structure_produit_id=structure_produit_id, structure_type=structure_type,
+        completer_etude=completer_etude)
 
 
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────

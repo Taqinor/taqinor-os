@@ -455,8 +455,19 @@ def ecrire_lignes(devis, composition, *, company, avertissements=None):
     # pergola (nom sans mot-clé, rôle non déclaré) est ainsi stockée avec son
     # rôle ``structure`` au lieu de NULL. Un dict passé par l'écran reste
     # TEL QUEL (il porte, ou non, son propre ``role_devis``).
+    lignes_in = specs_de_composition(composition)
+    _appliquer_preseance_quantite(devis, lignes_in,
+                                  avertissements=avertissements)
+    return remplacer_lignes(devis, lignes_in, company,
+                            avertissements=avertissements)
+
+
+def specs_de_composition(composition):
+    """ADEV133 — une composition (``LigneKit`` traduites, dicts de l'écran
+    tels quels) au format de l'écrivain de lignes : corps de
+    :func:`ecrire_lignes`, partagé avec le moteur unique."""
     roles_emis = list(getattr(composition, 'roles', None) or ())
-    lignes_in = [
+    return [
         spec if isinstance(spec, dict) else {
             'produit': getattr(spec.produit, 'id', None),
             'designation': spec.designation,
@@ -472,10 +483,6 @@ def ecrire_lignes(devis, composition, *, company, avertissements=None):
         }
         for index, spec in enumerate(composition or ())
     ]
-    _appliquer_preseance_quantite(devis, lignes_in,
-                                  avertissements=avertissements)
-    return remplacer_lignes(devis, lignes_in, company,
-                            avertissements=avertissements)
 
 
 class _SpecCommeLigne:
@@ -610,6 +617,18 @@ def ecrire_etude_params(devis, intention, composition):
     (``poser_puissance_kwc``, QJR63) : il est posé à l'étape 8, sur les lignes
     RÉELLEMENT écrites.
     """
+    bloc = ecrire_etude(devis, proprietaire=CALEPINAGE,
+                        **cles_etude_de_composition(devis, intention, composition))
+    # DC11 / QJR106 — la PROVENANCE fait partie de l'étape 6 : c'est une clé
+    # d'``etude_params``, écrite par le MÊME écrivain unique, dans la même
+    # étape. Elle n'ouvre pas une neuvième étape (le journal des étapes est un
+    # contrat) — elle est le dernier geste de celle-ci.
+    return estampiller_provenance(devis, intention) or bloc
+
+
+def cles_etude_de_composition(devis, intention, composition):
+    """ADEV133 — les clés d'étude de l'étape 6 (scénario servable, clés du
+    layout) : corps de :func:`ecrire_etude_params`, partagé avec le moteur."""
     # QJR97 — LA GARDE ANTI-MENSONGE EST ÉCRITE UNE FOIS, dans
     # ``domain/scenario``. Ce site et la resynchronisation la portaient tous
     # deux EN ENTIER, sous deux formulations : les deux appellent désormais la
@@ -636,12 +655,7 @@ def ecrire_etude_params(devis, intention, composition):
     cles.update(cles_etude_du_layout(
         getattr(intention, 'mode_installation', None)
         or getattr(devis, 'mode_installation', None), resultat, intention.layout))
-    bloc = ecrire_etude(devis, proprietaire=CALEPINAGE, **cles)
-    # DC11 / QJR106 — la PROVENANCE fait partie de l'étape 6 : c'est une clé
-    # d'``etude_params``, écrite par le MÊME écrivain unique, dans la même
-    # étape. Elle n'ouvre pas une neuvième étape (le journal des étapes est un
-    # contrat) — elle est le dernier geste de celle-ci.
-    return estampiller_provenance(devis, intention) or bloc
+    return cles
 
 
 def estampiller_provenance(devis, intention):
@@ -671,6 +685,15 @@ def estampiller_provenance(devis, intention):
     Rend le bloc ``etude_params`` écrit, ou ``None`` quand il n'y avait rien à
     estampiller (pas de lead, ou dérive en cours à préserver).
     """
+    stamp = estampille_de_provenance(devis, intention)
+    if stamp is None:
+        return None
+    return ecrire_etude(devis, proprietaire=PIPELINE, provenance=stamp)
+
+
+def estampille_de_provenance(devis, intention):
+    """ADEV133 — l'estampille que :func:`estampiller_provenance` poserait
+    (``None`` : rien à estampiller, ou dérive à préserver) ; aucune écriture."""
     from apps.crm.selectors import (lead_du_devis, lead_provenance_stamp,
                                     lead_values_changed_since)
 
@@ -703,7 +726,7 @@ def estampiller_provenance(devis, intention):
                 and set(ancienne.get('valeurs') or {})
                 == set(stamp.get('valeurs') or {})):
             return None
-    return ecrire_etude(devis, proprietaire=PIPELINE, provenance=stamp)
+    return stamp
 
 
 def restamper_provenance(devis):
@@ -853,14 +876,9 @@ def consigner_ville_calcul(devis):
     du devis) et la ville tapée qui l'accompagne. N'écrit que si elle a
     changé ; best-effort, jamais le statut (règle #4)."""
     try:
-        from apps.crm.selectors import lead_du_devis, ville_effective
-        lead = lead_du_devis(devis)
-        if lead is None:
+        valeur = ville_calcul_du_devis(devis)
+        if valeur is None:
             return None
-        valeur = {
-            'ville': (getattr(lead, 'ville', '') or '').strip(),
-            'reference': ville_effective(lead),
-        }
         if (getattr(devis, 'etude_params', None) or {}).get(
                 'ville_calcul') == valeur:
             return valeur
@@ -870,6 +888,17 @@ def consigner_ville_calcul(devis):
         logger.warning('QJR591 : ville de calcul non consignée',
                        exc_info=True)
         return None
+
+
+def ville_calcul_du_devis(devis):
+    """ADEV133 — la ``ville_calcul`` que :func:`consigner_ville_calcul`
+    consigne (``None`` sans lead) ; aucune écriture."""
+    from apps.crm.selectors import lead_du_devis, ville_effective
+    lead = lead_du_devis(devis)
+    if lead is None:
+        return None
+    return {'ville': (getattr(lead, 'ville', '') or '').strip(),
+            'reference': ville_effective(lead)}
 
 
 def finaliser_caches(devis):
@@ -921,7 +950,6 @@ def _creer_brouillon(intention):
     Le client est résolu depuis le lead par ``crm.services`` — la frontière
     cross-app sanctionnée, jamais un import de ``crm.models``.
     """
-    from apps.ventes.domain.creation import devise_par_defaut
     from apps.ventes.models import Devis
     from apps.ventes.utils.company_settings import create_numbered
 
@@ -935,25 +963,35 @@ def _creer_brouillon(intention):
 
     def _create(reference):
         return Devis.objects.create(
-            company=intention.company, reference=reference,
-            client=client, lead=intention.lead,
-            statut=Devis.Statut.BROUILLON,
-            taux_tva=intention.taux_tva,
-            devise=devise_par_defaut(intention.company),  # ADVS28
-            remise_globale=intention.remise_globale,
-            created_by=intention.user,
-            mode_installation=intention.mode_installation,
-            # QJR95 — l'étude que l'appelant APPORTE (la toiture du calepinage
-            # et son kWc de toit) est posée à la création, comme le faisait le
-            # corps de ``build_devis_from_layout``. Le pipeline n'en dérive
-            # rien : il la transporte. Ce que le pipeline arrête LUI-MÊME est
-            # écrit à l'étape 6, par l'écrivain unique.
-            etude_params=(dict(intention.etude_initiale)
-                          if intention.etude_initiale else None),
-            roof_layout=intention.layout or None,
-        )
+            reference=reference, client=client, created_by=intention.user,
+            **champs_du_brouillon(intention))
 
     return create_numbered(Devis, intention.company, 'devis', _create)
+
+
+def champs_du_brouillon(intention):
+    """ADEV133 — les champs du BROUILLON que :func:`_creer_brouillon` crée
+    (hors référence, client et auteur) : partagés avec le moteur unique, qui
+    tient un ``Devis`` non enregistré."""
+    from apps.ventes.domain.creation import devise_par_defaut
+    from apps.ventes.models import Devis
+
+    return dict(
+        company=intention.company, lead=intention.lead,
+        statut=Devis.Statut.BROUILLON,
+        taux_tva=intention.taux_tva,
+        devise=devise_par_defaut(intention.company),  # ADVS28
+        remise_globale=intention.remise_globale,
+        mode_installation=intention.mode_installation,
+        # QJR95 — l'étude que l'appelant APPORTE (la toiture du calepinage
+        # et son kWc de toit) est posée à la création, comme le faisait le
+        # corps de ``build_devis_from_layout``. Le pipeline n'en dérive
+        # rien : il la transporte. Ce que le pipeline arrête LUI-MÊME est
+        # écrit à l'étape 6, par l'écrivain unique.
+        etude_params=(dict(intention.etude_initiale)
+                      if intention.etude_initiale else None),
+        roof_layout=intention.layout or None,
+    )
 
 
 def appliquer(devis, intention):
@@ -992,23 +1030,8 @@ def appliquer(devis, intention):
     journal = []
     avertissements = []
 
-    entrees = resoudre_entrees(devis, intention)
-    journal.append('resoudre_entrees')
-
-    # QJR304 — le devis (quand il existe déjà) voyage jusqu'à l'étape 2 : c'est
-    # SON registre qui porte ``taille.nb_panneaux``, la cible de niveau devis.
-    cible = decider_taille(intention, devis)
-    journal.append('decider_taille')
-
-    intention_compo = intention_de_composition(
-        intention, cible, avertissements=avertissements, devis=devis)
-    composition = composer(intention_compo)
-    journal.append('composer')
-
-    refus = verifier(intention_compo)
-    journal.append('verifier')
-    if refus:
-        raise AutoDevisError(refus[0], field='composition')
+    entrees, cible, composition = composer_l_intention(devis, intention, avertissements)
+    journal.extend(('resoudre_entrees', 'decider_taille', 'composer', 'verifier'))
 
     # Passe Fable M5a (30/08/2026) — LA FRONTIÈRE TRANSACTIONNELLE DE L'ANCIEN
     # CHEMIN EST PRÉSERVÉE : `build_devis_from_layout` créait le Devis ET ses
@@ -1054,6 +1077,23 @@ def appliquer(devis, intention):
         'composition': composition,
         'avertissements': avertissements,
     }
+
+
+def composer_l_intention(devis, intention, avertissements):
+    """ADEV133 — étapes 1 à 4 d':func:`appliquer` (entrées, champ PV,
+    composition, refus de l'étape 4 levé en ``AutoDevisError``), sans écriture,
+    partagées avec le moteur unique. Rend ``(entrees, cible, composition)``."""
+    entrees = resoudre_entrees(devis, intention)
+    # QJR304 — le devis (quand il existe déjà) voyage jusqu'à l'étape 2 : c'est
+    # SON registre qui porte ``taille.nb_panneaux``, la cible de niveau devis.
+    cible = decider_taille(intention, devis)
+    intention_compo = intention_de_composition(
+        intention, cible, avertissements=avertissements, devis=devis)
+    composition = composer(intention_compo)
+    refus = verifier(intention_compo)
+    if refus:
+        raise AutoDevisError(refus[0], field='composition')
+    return entrees, cible, composition
 
 
 def _appliquer_sur_devis_existant(devis, intention, mode):
