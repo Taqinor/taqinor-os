@@ -9,6 +9,9 @@ import { annualSavingsMad } from '../../lib/estimatorBrainV2'; // ACAL1900 — �
 import type { Ctx } from './context';
 import { createLayoutState, type LayoutState } from '../../lib/layoutVariability'; // ACAL1900
 import { resnapEnMasse } from './layoutResnap'; // ACAL1900 — même re-snap que W79
+import { hardViolationsFor, panelCornersFor, toUV, type FreeGeom, type FreeLayoutState, type FreePanel, type Vec2 } from '../../lib/freeLayout'; // ACAL2032
+import type { LayoutPlan } from './types'; // ACAL2032
+import { DEG2M, DEG2RAD } from './constants'; // ACAL2032
 
 /** ACAL1900 — l'atelier ERP (`opts.chiffrage` défini, `null` compris) affiche une pose à TENIR face à
  *  un recalcul de fond : une disposition posée (relue du document, éditée, remplie) ou un placement libre.
@@ -43,6 +46,40 @@ export function remettreSurLePlan(tenue: LayoutState, panneaux: readonly { cx: n
   const neuf = createLayoutState(panneaux, 0);
   for (const i of resnapEnMasse(neuf.cells, [...tenue.occupied].map((k) => tenue.cells[k]))) neuf.occupied.add(i);
   return neuf;
+}
+
+/** ACAL2032 — une pose en PLACEMENT LIBRE face au re-pavage d'un toit, d'un module ou d'un obstacle changé (`recalc`) :
+ *  chaque panneau est d'abord ramené au repère du nouveau pavage (l'origine suit le centre du toit), puis GARDÉ s'il
+ *  respecte encore les contraintes dures (contour, obstacles, panneaux déjà gardés) ; les autres sont remis sur les
+ *  cellules libres du plan rendu (`remettreSurLePlan`, le re-snap unique), et ceux qui n'y trouvent plus de place sont
+ *  retirés. Jamais un panneau laissé hors du pan en silence : la phrase dit combien ont bougé. */
+export function tenirPoseLibre(etat: FreeLayoutState, g: FreeGeom, plan: Pick<LayoutPlan, 'pack' | 'grid'>, origineAvant?: readonly [number, number]): { etat: FreeLayoutState; gardes: number; deplaces: number; retires: number } {
+  const o = plan.pack.origin;
+  const [dx, dy] = origineAvant ? [(origineAvant[0] - o[0]) * DEG2M * Math.cos(o[1] * DEG2RAD), (origineAvant[1] - o[1]) * DEG2M] : [0, 0];
+  const ringUV = g.ringENU.map(([x, y]) => toUV(g, x, y));
+  const gardes: FreePanel[] = [];
+  const coins: Vec2[][] = [];
+  const aReposer: FreePanel[] = [];
+  for (const p of etat.panels) {
+    const q = dx || dy ? { ...p, cx: p.cx + dx, cy: p.cy + dy } : p;
+    const c = panelCornersFor(g, q);
+    if (hardViolationsFor(g, ringUV, c, coins, []).length) aReposer.push(q);
+    else { gardes.push(q); coins.push(c); }
+  }
+  const libres = plan.grid.panels.filter((c) => !hardViolationsFor(g, ringUV, panelCornersFor(g, c), coins, []).length);
+  const remis = aReposer.length ? remettreSurLePlan(createLayoutState(aReposer, aReposer.length), libres) : null;
+  const deplaces = remis ? [...remis.occupied].map((i) => ({ cx: remis.cells[i].cx, cy: remis.cells[i].cy, ...(remis.cells[i].face ? { face: remis.cells[i].face } : {}) })) : [];
+  return { etat: { panels: [...gardes, ...deplaces] }, gardes: gardes.length, deplaces: deplaces.length, retires: aReposer.length - deplaces.length };
+}
+
+/** ACAL2032 — la phrase de `tenirPoseLibre` (note de la disposition). */
+export function phrasePoseLibreTenue(r: { gardes: number; deplaces: number; retires: number }, fmt: (n: number) => string): string {
+  if (!r.deplaces && !r.retires) return `Placement libre conservé — ${fmt(r.gardes)} panneaux inchangés.`;
+  const s = (n: number) => (n > 1 ? 's' : '');
+  const parts = [`${fmt(r.gardes)} panneau${r.gardes > 1 ? 'x' : ''} gardé${s(r.gardes)} à ${r.gardes > 1 ? 'leur' : 'sa'} place`];
+  if (r.deplaces) parts.push(`${fmt(r.deplaces)} déplacé${s(r.deplaces)} sur l’emplacement libre le plus proche`);
+  if (r.retires) parts.push(`${fmt(r.retires)} retiré${s(r.retires)} (plus de place sur le toit)`);
+  return `Placement libre après la modification — ${parts.join(', ')}.`;
 }
 
 /** ACAL1900 — la carte de résultat d'une pose TENUE de `n` panneaux, tirée de la carte du MÊME plan (même rendement par

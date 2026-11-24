@@ -24,6 +24,11 @@ import {
   type EntreeDepartage,
 } from './optimizer';
 import { rectRing } from './harnaisAtelier';
+import { freeGeomFrom } from './freeMode'; // ACAL2032
+import { hardViolationsFor, panelCornersFor, toUV } from '../../lib/freeLayout'; // ACAL2032
+import type { Obstacle } from '../../lib/obstacles'; // ACAL2032
+import type { LayoutPlan } from './types'; // ACAL2032
+import { DEG2M as DEG2M_TEST } from './constants'; // ACAL2032
 import { fmt, fmtKwc, fmtMad } from './dom'; // ACAL994 + R2-09
 import { phraseSurplus } from './affichageErp'; // R2-17
 import { createZones } from './zones'; // ACAL1418
@@ -756,6 +761,115 @@ describe('ACAL1900 — une pose relue n’est pas re-posée par le recalcul de f
       expect(document.getElementById('rp9-need-note')!.textContent).toBe('');
       direEcartPoseRelue(16, 5, fmt);
       expect(document.getElementById('rp9-need-note')!.textContent).toBe(noteEcartPoseRelue(16, 5, fmt));
+    } finally { remettre(); }
+  });
+});
+
+// ACAL2032 — une pose en PLACEMENT LIBRE face au recalcul d'un toit, d'un module ou d'un obstacle changé (chemin réel :
+// roof-tool-pro11::recalc → occupiedCenters → re-pavage → reenterCustomLayout). Pan plat de 12 × 8 m (ENU, azimut 0 :
+// u = −x, v = y), 6 panneaux libres de 2 × 1 m sur deux rangées.
+describe('ACAL2032 — placement libre : la pose tenue suit un changement de toit, de module, d’obstacle', () => {
+  const ORIGINE: [number, number] = [-7.6, 33.5];
+  const rangees = [-2, 1].flatMap((v) => [-3.5, 0, 3.5].map((u) => ({ cx: 0 - u, cy: v })));
+  /** Les cellules du pavage d'un pan rectangulaire (demi-côtés hu × hv), retrait 0,50 m, jeu 2 cm. */
+  const cellules = (hu: number, hv: number, w: number, d: number) => {
+    const out: { cx: number; cy: number }[] = [];
+    for (let v = -hv + 0.5 + d / 2; v + d / 2 <= hv - 0.5 + 1e-9; v += d + 0.02) {
+      for (let u = -hu + 0.5 + w / 2; u + w / 2 <= hu - 0.5 + 1e-9; u += w + 0.02) out.push({ cx: -u, cy: v });
+    }
+    return out;
+  };
+  const plan = (hu: number, hv: number, w = 2, d = 1, origin: [number, number] = ORIGINE, dx = 0) => ({
+    pack: { origin, azimuthDeg: 0, ringENU: [[-hu + dx, -hv], [hu + dx, -hv], [hu + dx, hv], [-hu + dx, hv]] },
+    grid: { rowWidthM: w, footprintPerPanelM2: w * d, slopeLenM: d, panels: cellules(hu, hv, w, d).map((c) => ({ ...c, cx: c.cx + dx })) },
+    tiltDeg: 0, family: 'S', flush: false,
+  }) as unknown as LayoutPlan;
+  const ouvrir = async (obstacles: Obstacle[] = []) => {
+    const g = globalThis as unknown as { document?: Document; window?: Window };
+    const avant = { document: g.document, window: g.window };
+    const dom = new JSDOM('<!doctype html><body><p id="rp9-layout-note"></p></body>');
+    Object.assign(g, { document: dom.window.document, window: dom.window });
+    const { createLayoutEditor } = await import('./layoutEditor');
+    const { carteEditeurFactice, depsEditeur } = await import('./harnaisAtelier');
+    const conteneur = dom.window.document.createElement('div');
+    dom.window.document.body.appendChild(conteneur);
+    const ctx = {
+      layoutMode: true, closed: true, vertices: [], obstacles, areas: [], roofType: 'flat', pitchDeg: 0, facingAzimuthDeg: 0,
+      facingManual: false, neededPanels: 0, layoutPlan: plan(6, 4), layoutState: null, layoutSel: null, layoutOptimalCount: 0,
+      freeMode: true, freeState: { panels: rangees.map((p) => ({ ...p })) }, opts: { chiffrage: null },
+    } as unknown as Ctx;
+    const editeur = createLayoutEditor(ctx, depsEditeur(carteEditeurFactice(conteneur)));
+    const remettre = () => Object.assign(g, avant);
+    /** Le recalcul de l'entrée : centres capturés, plan re-pavé, pose re-entrée. */
+    const recalculer = (neuf: LayoutPlan) => {
+      const origineAvant = ctx.layoutPlan!.pack.origin;
+      const centres = editeur.occupiedCenters();
+      ctx.layoutPlan = neuf;
+      editeur.reenterCustomLayout(centres, origineAvant);
+    };
+    const note = () => dom.window.document.getElementById('rp9-layout-note')!.textContent ?? '';
+    return { ctx, editeur, recalculer, note, remettre };
+  };
+  /** Aucun panneau hors du pan, sur un obstacle ou sur un autre : les contraintes DURES du placement libre. */
+  const fautes = (ctx: Ctx) => {
+    const g = freeGeomFrom(ctx.layoutPlan, ctx.obstacles ?? [])!;
+    const ringUV = g.ringENU.map(([x, y]) => toUV(g, x, y));
+    const coins = ctx.freeState!.panels.map((p) => panelCornersFor(g, p));
+    return coins.flatMap((c, i) => hardViolationsFor(g, ringUV, c, coins.filter((_, j) => j !== i), []));
+  };
+
+  it('toit rétréci (12 → 8 m) : les 2 panneaux qui tiennent restent à leur place, les 4 autres sont DITS déplacés, aucun hors du pan', async () => {
+    const { ctx, recalculer, note, remettre } = await ouvrir();
+    try {
+      recalculer(plan(4, 4));
+      expect(fautes(ctx)).toEqual([]);
+      const poses = ctx.freeState!.panels;
+      expect(poses.filter((p) => p.cx === 0)).toEqual([{ cx: 0, cy: -2 }, { cx: 0, cy: 1 }]); // gardés, au centimètre
+      expect(poses).toHaveLength(6);
+      expect(note()).toBe('Placement libre après la modification — 2 panneaux gardés à leur place, 4 déplacés sur l’emplacement libre le plus proche.');
+    } finally { remettre(); }
+  });
+
+  it('module plus large (2 → 3,6 m) : les panneaux qui se chevauchent sont déplacés, et la phrase le dit', async () => {
+    const { ctx, recalculer, note, remettre } = await ouvrir();
+    try {
+      recalculer(plan(6, 4, 3.6));
+      expect(fautes(ctx)).toEqual([]);
+      expect(ctx.freeState!.panels).toHaveLength(6);
+      expect(note()).toBe('Placement libre après la modification — 4 panneaux gardés à leur place, 2 déplacés sur l’emplacement libre le plus proche.');
+    } finally { remettre(); }
+  });
+
+  it('obstacle posé sur un panneau : celui-là seul est déplacé ; plus de place ⇒ RETIRÉ et dit', async () => {
+    const lat = ORIGINE[1] + 1 / DEG2M_TEST;
+    const cheminee = { id: 'o1', centerLng: ORIGINE[0], centerLat: lat, lengthM: 0.6, widthM: 0.6, type: 'cheminee' } as Obstacle;
+    const { ctx, recalculer, note, remettre } = await ouvrir([cheminee]);
+    try {
+      recalculer(plan(6, 4));
+      expect(fautes(ctx)).toEqual([]);
+      expect(ctx.freeState!.panels.filter((p) => p.cy === -2 || (p.cy === 1 && p.cx !== 0))).toHaveLength(5);
+      expect(note()).toBe('Placement libre après la modification — 5 panneaux gardés à leur place, 1 déplacé sur l’emplacement libre le plus proche.');
+    } finally { remettre(); }
+    const plein = await ouvrir([cheminee]);
+    try {
+      plein.recalculer({ ...plan(6, 4), grid: { ...plan(6, 4).grid, panels: [] } } as LayoutPlan); // aucun emplacement libre
+      expect(fautes(plein.ctx)).toEqual([]);
+      expect(plein.ctx.freeState!.panels).toHaveLength(5);
+      expect(plein.note()).toBe('Placement libre après la modification — 5 panneaux gardés à leur place, 1 retiré (plus de place sur le toit).');
+    } finally { plein.remettre(); }
+  });
+
+  it('rien ne change de place : la pose telle quelle, même quand le repère du pan se déplace (sommet déplacé ailleurs)', async () => {
+    const { ctx, recalculer, note, remettre } = await ouvrir();
+    try {
+      recalculer(plan(6, 4));
+      expect(ctx.freeState!.panels).toEqual(rangees);
+      expect(note()).toBe('Placement libre conservé — 6 panneaux inchangés.');
+      // L'origine du pavage suit le centre du toit : 1 m plus à l'est, les panneaux restent au MÊME endroit du toit.
+      const est: [number, number] = [ORIGINE[0] + 1 / (DEG2M_TEST * Math.cos(ORIGINE[1] * Math.PI / 180)), ORIGINE[1]];
+      recalculer(plan(6, 4, 2, 1, est, -1));
+      expect(ctx.freeState!.panels.map((p) => [Number(p.cx.toFixed(6)), p.cy])).toEqual(rangees.map((p) => [Number((p.cx - 1).toFixed(6)), p.cy]));
+      expect(note()).toBe('Placement libre conservé — 6 panneaux inchangés.');
     } finally { remettre(); }
   });
 });
