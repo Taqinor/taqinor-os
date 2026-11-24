@@ -30,6 +30,9 @@
 }
 
 .ldp-ref {
+  /* T4-U3-016 — la pastille ne se plie jamais (à 390 px elle s'écrasait en cercle sur trois lignes). */
+  white-space: nowrap;
+  flex-shrink: 0;
   font-size: 0.78rem;
   font-weight: 700;
   color: var(--info, #1d4ed8);
@@ -214,10 +217,19 @@
     padding: 10px 12px;
   }
   .ldp-format { justify-content: space-between; }
-  .ldp-toolbar-actions { width: 100%; }
-  .ldp-toolbar-actions > * { flex: 1; }
+  /* T4-U3-016 — trois ou quatre actions sur 390 px : elles passent à la ligne au lieu de couper « Télécharger le PDF ». */
+  .ldp-toolbar-actions { width: 100%; flex-wrap: wrap; }
+  .ldp-toolbar-actions > * { flex: 1 1 auto; }
 
   .ldp-fallback { padding: 16px; }
   .ldp-fallback-actions { width: 100%; flex-direction: column; }
 }
 
+
+/* T4-U1-029 / T4-U3-016 — au toucher, la règle de l'ERP (`button { min-height: 44px }`, deploy/01-base.css) étirait la
+   case Radix (un <button role="checkbox">) en haut rectangle vide : la case garde sa taille, le LIBELLÉ qui l'enveloppe
+   porte la cible tactile de 44 px. */
+@media (pointer: coarse) {
+  .ldp-etude-toggle { min-height: 44px; }
+  .ldp-etude-toggle [role="checkbox"] { min-height: 0; }
+}
