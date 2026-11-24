@@ -57,7 +57,7 @@ function monterConstructeur(o = {}) {
     <button data-sun-season="winter" aria-pressed="${c.saison === 'winter'}">w</button>
     <button data-sun-season="summer" aria-pressed="${c.saison === 'summer'}">s</button>
     <button id="rp9-sun-play-day" aria-pressed="false">play</button>
-    <button id="rp9-heatmap-toggle" aria-pressed="false">carte</button>
+    <button id="rp9-heatmap-toggle" aria-pressed="${c.carte ? 'true' : 'false'}">carte</button>
     <div id="rp9-solar-access">${c.ombre ? `<div>Proposition — retirer les <span class="fig">${c.ombre}</span> module(s) dont l’accès solaire est sous 80 % (seuil de votre société)</div><button id="rp9-solar-access-apply">Retirer ces modules</button>` : ''}</div>`
   document.body.appendChild(racine)
   const espion = (sel, evt = 'click') => {
@@ -385,7 +385,8 @@ describe('étape Panneaux — panneau de droite', () => {
     rendre()
     await waitFor(() => expect(calepinageApi.calepinages.entreeElectrique).toHaveBeenCalled())
     await new Promise((r) => { setTimeout(r, 1300) }) // > 3 sondages de 400 ms
-    expect(recus).toEqual([])
+    // ACAL1981 — un seul geste, d'AFFICHAGE : la carte d'accès allumée à l'entrée (jamais sérialisée, rien de modifié).
+    expect(recus).toEqual(['click:rp9-heatmap-toggle'])
     expect(document.getElementById('rp9-need-input').value).toBe('60')
     expect(document.getElementById('rp9-pan-module-select').value).toBe('')
   })
@@ -492,9 +493,22 @@ describe('étape Panneaux — sur la carte', () => {
     expect(puce).not.toHaveTextContent('52 695')
   })
 
+  // ACAL1981 — la légende ne décrit que des panneaux TEINTÉS ; l'étape allume la carte d'accès à l'entrée (maquette).
+  it('aucun panneau teinté ⇒ légende absente ; l’entrée de l’étape allume la carte d’accès, la sortie la rend', () => {
+    const { espion } = monterConstructeur()
+    const carte = espion('#rp9-heatmap-toggle')
+    const { unmount } = rendre()
+    expect(carte).toHaveBeenCalledTimes(1) // allumée à l'entrée (le faux script ne bascule pas : rien n'est teinté)
+    expect(within(noeudCarte).getByTestId('cal-carte-soleil').querySelector('.cal-pan-legende')).toBeNull()
+    expect(within(noeudCarte).getByRole('button', { name: 'Lire la journée' })).toBeInTheDocument() // le lecteur reste
+    document.getElementById('rp9-heatmap-toggle').setAttribute('aria-pressed', 'true')
+    unmount()
+    expect(carte).toHaveBeenCalledTimes(2) // éteinte en sortie : l'Électrique teint par chaîne (ACAL1621)
+  })
+
   it('légende d’ensoleillement : titre, dégradé, bornes ; le titre est le vrai bouton « carte d’accès solaire »', () => {
     choisirPaletteAcces('atelier') // posée par le démarrage de l'atelier (useAtelierBoot), plus par l'étape
-    const { espion } = monterConstructeur()
+    const { espion } = monterConstructeur({ carte: true })
     const carte = espion('#rp9-heatmap-toggle')
     rendre()
     const bloc = within(noeudCarte).getByTestId('cal-carte-soleil')
@@ -708,7 +722,7 @@ describe('ACAL1829 — l’étape Panneaux à sa maquette v2', () => {
   })
 
   it('légende : 268 × 56, rayon 18, mots seuls (aucun accès par module n’est servi, aucun chiffre inventé)', () => {
-    monterConstructeur()
+    monterConstructeur({ carte: true })
     rendre()
     const legende = document.querySelector('.cal-pan-legende')
     expect(cs(legende).width).toBe('268px')

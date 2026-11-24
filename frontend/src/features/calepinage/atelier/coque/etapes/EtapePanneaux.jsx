@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { couleurAccesActive } from '@rooflib/shadingEngine'
 import { MODULE_PAR_DEFAUT_ATELIER } from '@roofpro/moduleSelect'
@@ -370,6 +370,17 @@ function LecteurSoleil({ soleil, g }) {
   )
 }
 
+/** ACAL1981 — l'étape montre l'ensoleillement de chaque panneau (maquette Panneaux) : la carte d'accès est allumée à
+    l'entrée et éteinte à la sortie (l'Électrique teint par chaîne, ACAL1621) ; la bascule reste dans « Avancé ». */
+function useEnsoleillementALEntree(carteLue, rafraichir) {
+  useEffect(() => {
+    const allumee = () => document.getElementById('rp9-heatmap-toggle')?.getAttribute('aria-pressed') === 'true'
+    if (!carteLue || allumee()) return undefined
+    gestes.carteSoleil(); rafraichir()
+    return () => { if (allumee()) gestes.carteSoleil() }
+  }, [carteLue, rafraichir])
+}
+
 export default function EtapePanneaux({ calepinageId, lectureSeule = false, enregistreLe = null, contexte = null, contexteEnCours = false }) {
   const [etat, rafraichir] = useConstructeur()
   // Chaque geste part au vrai contrôle, puis la lecture est refaite tout de suite (sinon elle suit 0,4 s plus tard).
@@ -377,6 +388,7 @@ export default function EtapePanneaux({ calepinageId, lectureSeule = false, enre
     nom, (...args) => { geste(...args); rafraichir() },
   ]))
   const servi = useServi(calepinageId, enregistreLe, contexte, contexteEnCours)
+  useEnsoleillementALEntree(etat.soleil.carte != null, rafraichir)
   // Un clic sur une carte de taille peut faire passer le constructeur d'un sens de pose à l'autre : l'écran le dit.
   const [avant, setAvant] = useState(null)
   const bascule = avant && etat.orientation && etat.orientation !== avant ? { de: avant, vers: etat.orientation } : null
@@ -406,7 +418,7 @@ export default function EtapePanneaux({ calepinageId, lectureSeule = false, enre
       <SurCarte>
         <PuceResume figures={etat.figures} publiee={servi.publiee} />
         <div className="cal-carte-soleil" data-testid="cal-carte-soleil">
-          <LegendeSoleil carte={etat.soleil.carte} g={g} />
+          {etat.soleil.carte?.active && <LegendeSoleil carte={etat.soleil.carte} g={g} />}
           <LecteurSoleil soleil={etat.soleil} g={g} />
         </div>
       </SurCarte>
