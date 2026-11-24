@@ -906,3 +906,68 @@ g. Étape 3 de la demande : écrans encore loin des maquettes v2 (Documents, Dé
    client au téléphone, Présentation, dessin sur la carte) — chaque écran réel à côté de sa maquette, même taille.
 h. PARTIE 2 (test utilisateur complet) : rien n'en est commencé. Instantané anonymisé à refaire (celui du poste date
    du 30/09), pile de revue à monter sur le code fusionné, préremplissage sourcé, relecteurs neufs.
+
+## SESSION du 24/11, seconde partie (après la remise à zéro du quota, 10 h UTC) — REPRENDRE ICI
+
+Quota relu à 10 h 06 UTC : 0 % (les deux fenêtres). Les quatre PR du matin sont fusionnées (#1540, #1541, #1542,
+#1543) ET déployées (lu en lecture seule : la prod sert `cdaf0d30b1`). Branche d'intégration locale de cette partie :
+`dev-moteur-e2b` (partie d'`origin/main@cdaf0d30b1`). Claims reprises à 10 h 10 (propriétaire
+`DESKTOP-APTAHF6/dev-moteur-unique`) : plans DEVIS, CALEPINAGE, LEAD, TRANSVERSE, GENERATEUR ; apps ventes, core,
+calepinage, crm, web.
+
+### Instrument de revue `l5t` (pile privée et jetable — fiche)
+
+- Front : http://127.0.0.1:5251 (aperçu Vite du build d'`origin/main@cdaf0d30b1`, relaie `/api/django` vers le
+  serveur) · serveur : http://127.0.0.1:8031 (gunicorn 2 processus × 2 fils, 1,2 Go) · worker Celery à UN processus
+  (`--max-tasks-per-child 1`, 2,3 Go, files default, scheduled, bulk, interactive ; pas de planificateur) · MinIO et
+  Redis à soi (`l5t-minio`, `l5t-redis`, réseau `l5t-net`) · base `l5t` dans le Postgres partagé (clonée de
+  `test_erp_lane_base`, puis `migrate`, `seed_demo`, `seed_catalogue`).
+- Code servi : worktree `C:/dev/taqinor-os/.claude/worktrees/l5t-instr` (détaché, jamais édité ; mise à jour par
+  `git -C … checkout --detach <sha>` puis `bash lancer.sh serveur` et un nouveau build du front).
+- Lanceur : scratchpad `l5t/lancer.sh` (étapes `base`, `serveur`, `tout`) — environnement bâti depuis `.env.example`
+  seul, toutes les variables à clé vidées, seules `DB_USER` et `DB_PASSWORD` viennent du vrai `.env`.
+- Contrôle du tour 0 (24/11, 10 h 40 UTC) : backend d'envoi console, réseau `l5t-net` seul, écoute 127.0.0.1 seule,
+  `ASSISTANT_COPILOTE=aucun`, `FASTAPI_INTERNAL_URL` mort, WhatsApp éteint. Deux variables « à clé » non vides,
+  admises comme le 23/11 : `PUBLIC_MAPTILER_KEY=factice-l5t` (sans clé l'atelier refuse de démarrer ; fond de carte
+  gris) et `GPG_KEY` (empreinte publique de l'image Python).
+- Comptes de revue (rôle « Directeur » de la société de démonstration, copiés de `demo_admin`) : `rev_a`, `rev_b`,
+  `rev_c`, `rev_d`, `rev_orch` ; mot de passe : ligne `REV_PW=` de `l5t/env.local` (scratchpad, jamais écrit ailleurs).
+- Mémoire rendue : `erp-agentique-django_core-1` et `erp-agentique-fastapi_ia-1` (pile de dev partagée, au repos)
+  ARRÊTÉS à 10 h 45 UTC — à relancer au démontage : `docker start erp-agentique-django_core-1 erp-agentique-fastapi_ia-1`.
+- Démontage (à cocher à la fin) : `docker rm -f l5t-django l5t-celery l5t-minio l5t-redis`, `docker network rm
+  l5t-net`, tuer l'aperçu du port 5251, `DROP DATABASE l5t`, effacer `l5t/l5t.env` et `l5t/env.local`, retirer le
+  worktree `l5t-instr`, relancer les deux conteneurs partagés.
+
+### En vol (24/11, 10 h 50 UTC) — au plus 4 agents de fond sur ce poste
+
+- **Extraction ADEV160** (opus) : d'abord le figeage étendu (conception électrique, taille souhaitée, contour du
+  toit…), puis l'extraction du pipeline pur ; base de test privée suffixe `x1`. À son retour : relecture adverse du
+  diff par un opus NEUF avant fusion, puis la lane du moteur ADEV133 → ADEV138.
+- **Écrans sur les maquettes v2** (brief : scratchpad `brief-lane-ecrans.md` ; chaque lane installe et construit le
+  front dans son worktree, le sert sur son port contre le serveur 8031, capture maquette | réel à la taille native
+  et range la planche sous `docs/audits/l5-calepinage/T4/preuves/`) :
+  - lane `documents` (sonnet, port 5261, `rev_a`) : ACAL1725 → ACAL1726 → ACAL1834 → ACAL1943 ;
+  - lane `releve-client` (sonnet, port 5262, `rev_b`) : ACAL1814 → ACAL1836 → ACAL1817 → ACAL1837 → ACAL1838
+    (Présentation = la même route `/calepinage/<id>/client` à 1440 × 900) ;
+  - À LANCER quand une place se libère : lane `coque` (opus, port 5263, `rev_c`) : ACAL1835 (Tablette), ACAL1826
+    (Démarrage rapide), ACAL2030 (mode Expert) ; lane `dessin` (opus, port 5264, `rev_d`, vraie installation
+    d'`apps/web`) : ACAL1984 (teinte des panneaux), ACAL1944 (étiquettes de chaîne), ACAL1981, ACAL1920 → ACAL1924
+    (cotes), contour doré du toit (AUCUNE tâche au plan : à écrire), ACAL2031, ACAL2032 ; puis ACAL1820 → ACAL1839
+    (scène 3D présentable, touche `client/HabillageClient.jsx` : après le pli de `releve-client`) et ACAL1806 (spec
+    des maquettes passée à la v2, 14 planches).
+  - Les prérequis de ces tâches sont « code livré, preuve en direct due » (ACAL1800, 1802, 1803, 1807, 1809, 1812,
+    1705, 1516) : le code est sur `main`, on construit dessus ; leur preuve en direct sera jouée par l'orchestrateur
+    sur l'instrument, et tout sera rejoué au test utilisateur de la partie 2.
+- **Repérage des réglages** (sonnet, lecture seule) : tout ce que les moteurs lisent et que l'instantané anonymisé ne
+  porte pas (réglages du calepinage, fiches techniques, forfaits C&I, rôles…) — pour le préremplissage de la partie 2.
+
+### Partie 2, préparation
+
+- Instantané anonymisé refait le 24/11 à 10 h 12 UTC (lecture seule de la prod, `qa_export_anonymise --out -`) :
+  `C:/dev/taqinor-os/var/anon/2026-11-24.anon.json.gz` (5 Mo, hors dépôt) — 1 207 leads, 270 clients, 542 devis
+  (361 brouillons, 105 expirés, 64 envoyés, 7 acceptés, 5 refusés), 8 057 lignes, 226 produits, 20 factures, 21
+  chantiers. L'instantané ne porte NI les fiches techniques (`stock.FicheTechnique`), NI les réglages du calepinage,
+  NI les calepinages : à préremplir (sourcé) dans la copie.
+- Catalogue de la copie : 6 panneaux, 13 onduleurs réseau, 10 hybrides, 7 batteries, 20 pompes (11 sans prix), 22
+  variateurs, 99 « Protection & accessoires » (66 sans prix), 24 câbles (5 sans prix), 15 structures (6 sans prix), 8
+  prestations (4 sans prix). Liste par produit et par usage : scratchpad `produits-anon.txt`.
