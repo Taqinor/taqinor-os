@@ -1948,13 +1948,8 @@ def profil_charge_prerequis_ci(rythme, categorie=None, *, company=None, mode=Non
     return [CHAMP_LEAD_DES_ALERTES[f] for f in feuilles]
 
 
-#: ALEA50 (D-ACI-5=a / D-ACI-6=a) — postes FIXES du moteur C&I qu'un devis
-#: automatique doit pouvoir CHIFFRER : chaque groupe est un « l'un des » de
-#: rôles d'article (``core.product_roles.ROLES_CI``) dont au moins un article
-#: actif doit porter un prix de vente > 0. Les 8 prestations viennent de
-#: ``moteur_ci.composition.PRESTATIONS_CI`` (forfaits société).
-_POSTES_FIXES_CI = (('coffret_dc',), ('coffret_ac',), ('protection_ac',),
-                    ('compteur_injection', 'controleur_injection'))
+#: ALEA50 / ADEV157 — les postes fixes viennent du moteur
+#: (``moteur_ci.composition.postes_fixes_sans_prix``), jamais d'une liste ici.
 _TTL_CATALOGUE_CI_S = 300
 CLE_CATALOGUE_CI = 'ventes:catalogue_ci_pret:%s'  # vidée par receivers.py
 
@@ -1994,22 +1989,15 @@ def _calculer_catalogue_ci_pret(company_id):
     from core.product_roles import LIBELLES_ROLES_CI
 
     from .domain.etude_ci import _reglages_societe
-    from .moteur_ci.composition import prestations_manquantes
+    from .moteur_ci.composition import postes_fixes_sans_prix, prestations_manquantes
 
     company = Company.objects.get(pk=company_id)
     forfaits = getattr(_reglages_societe(company), 'forfaits_ci', None) or {}
+    articles = produits_ci(company)
     manquants = [
         (MANQUE_ARTICLE_CI if article else MANQUE_FORFAIT_CI) % LIBELLES_ROLES_CI[cle]
-        for cle, article in prestations_manquantes(
-            forfaits, produits_ci(company), _forfait_regle)]
-    tarifes = {role for p in produits_ci(company, avec_prix=True)
-               if p.get('eligible_ci') is not False
-               for role in (p.get('role_ci'), p.get('role_devis'))}
-    for groupe in _POSTES_FIXES_CI:
-        if not tarifes.intersection(groupe):
-            noms = [LIBELLES_ROLES_CI[r] for r in groupe]
-            manquants.append('%s C&I (fiche produit)' % ' ou '.join(
-                [noms[0]] + [n[0].lower() + n[1:] for n in noms[1:]]))
+        for cle, article in prestations_manquantes(forfaits, articles, _forfait_regle)]
+    manquants += ['%s (fiche produit)' % nom for nom in postes_fixes_sans_prix(articles)]
     return {'pret': not manquants, 'manquants': manquants}
 
 
