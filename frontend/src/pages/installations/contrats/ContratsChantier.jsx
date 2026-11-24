@@ -4,15 +4,12 @@
 // états, avertissements, gestes permis, montants (chaînes décimales). L'écran
 // ne recalcule rien et ne montre qu'en mots l'état de chaque acte.
 import { useEffect, useState } from 'react'
-import {
-  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
-  Button, Spinner, toast,
-} from '../../../ui'
+import { Button, Spinner, toast } from '../../../ui'
 import documentsApi from '../../../api/documentsApi'
 import { downloadBlob } from '../../../utils/downloadBlob'
 import ActeEtape from './ActeEtape'
 import ActeEditeur from './ActeEditeur'
+import Confirmation from './Confirmation'
 import SignatureActeDialog from './SignatureActeDialog'
 import SignaturePapierDialog from './SignaturePapierDialog'
 import {
@@ -36,6 +33,7 @@ export default function ContratsChantier({
   const [occupe, setOccupe] = useState(null) // id de l'acte en cours d'action
   const [erreurs, setErreurs] = useState({}) // id d'acte → detail du serveur
   const [aEmettre, setAEmettre] = useState(null)
+  const [aRouvrir, setARouvrir] = useState(null)
   const [aSigner, setASigner] = useState(null)
   const [surPapier, setSurPapier] = useState(null)
   const [aModifier, setAModifier] = useState(null)
@@ -92,7 +90,9 @@ export default function ContratsChantier({
 
   const apercu = (acte, langue = langueApercu) => {
     if (ouvrirApercu) {
-      ouvrirApercu(acte.titre, nomFichier(acte, langue), () => documentsApi.pdfActe(acte.id, langue))
+      // La référence de l'ACTE (CTR-… / LIV-…) accompagne le titre : l'en-tête de
+      // l'aperçu y ajoute celle du chantier.
+      ouvrirApercu(`${acte.titre} — ${acte.reference}`, nomFichier(acte, langue), () => documentsApi.pdfActe(acte.id, langue))
       return
     }
     telecharger(acte, langue)
@@ -119,8 +119,14 @@ export default function ContratsChantier({
     else if (nom === 'emettre') setAEmettre(acte)
     else if (nom === 'signer') setASigner(acte)
     else if (nom === 'papier') setSurPapier(acte)
-    else if (nom === 'rouvrir') {
-      executer(acte, () => documentsApi.rouvrirActe(acte.id), 'Acte rouvert : il redevient un brouillon.')
+    else if (nom === 'rouvrir') setARouvrir(acte)
+  }
+
+  const confirmerReouverture = async () => {
+    const acte = aRouvrir
+    setARouvrir(null)
+    if (acte) {
+      await executer(acte, () => documentsApi.rouvrirActe(acte.id), 'Acte rouvert : il redevient un brouillon.')
     }
   }
 
@@ -264,23 +270,29 @@ export default function ContratsChantier({
         })}
       </ol>
 
-      <AlertDialog open={!!aEmettre} onOpenChange={(o) => { if (!o) setAEmettre(null) }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Émettre « {aEmettre?.titre} » ?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Émettre fige le texte et le PDF. Tant que l’acte n’est pas signé, vous pourrez
-              le rouvrir ; il repartira alors en version suivante.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction variant="default" onClick={confirmerEmission}>
-              Émettre l’acte
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <Confirmation
+        open={!!aEmettre}
+        titre={`Émettre « ${aEmettre?.titre} » ?`}
+        description="Émettre fige le texte et le PDF. Tant que l’acte n’est pas signé, vous pourrez le rouvrir ; il repartira alors en version suivante."
+        enfants={aEmettre?.avertissements?.length > 0 && (
+          <ul className="contrats-acte__avertissements" aria-label="À savoir avant d’émettre">
+            {aEmettre.avertissements.map((a) => <li key={a}>{a}</li>)}
+          </ul>
+        )}
+        libelleConfirmer="Émettre l’acte"
+        destructif={false}
+        onRester={() => setAEmettre(null)}
+        onConfirmer={confirmerEmission}
+      />
+
+      <Confirmation
+        open={!!aRouvrir}
+        titre={`Rouvrir « ${aRouvrir?.titre} » ?`}
+        description="Rouvrir dégèle le document émis : il redevient un brouillon modifiable, et repartira en version suivante à la prochaine émission. Le client ne le verra plus tel qu’il est."
+        libelleConfirmer="Rouvrir l’acte"
+        onRester={() => setARouvrir(null)}
+        onConfirmer={confirmerReouverture}
+      />
 
       {aSigner && (
         <SignatureActeDialog

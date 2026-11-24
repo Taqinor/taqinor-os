@@ -22,6 +22,25 @@ export function dateCourte(valeur) {
   }).format(d)
 }
 
+/** Date ISO (« 2037-01-23 ») → forme lisible dans la langue (affichage seul, rien n'est recalculé). */
+export function dateLisible(iso, langue = 'fr') {
+  if (!iso) return ''
+  const d = new Date(`${String(iso).slice(0, 10)}T00:00:00Z`)
+  if (Number.isNaN(d.getTime())) return String(iso)
+  return new Intl.DateTimeFormat(langue === 'ar' ? 'ar-MA' : 'fr-FR', {
+    day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
+  }).format(d)
+}
+
+/** « 0.09 » → « 0,09 % » ; « 30.00 » → « 30 % » (mise en forme d'une chaîne du serveur, jamais un calcul). */
+export function formaterPourcent(valeur) {
+  if (valeur === null || valeur === undefined || valeur === '') return ''
+  const texte = String(valeur).replace(',', '.')
+  const [entier, decimales = ''] = texte.split('.')
+  const utile = decimales.replace(/0+$/, '')
+  return `${entier}${utile ? `,${utile}` : ''} %`
+}
+
 /** Le statut d'un acte, TOUJOURS en mots (jamais la couleur seule). */
 export function libelleStatut(acte) {
   switch (acte.statut) {
@@ -100,6 +119,7 @@ export function grouperParRang(actes) {
 
 /** Le geste principal d'un acte (celui que « prochaine action » met en avant). */
 export function actionPrincipale(acte) {
+  if (acte.ecarte) return null
   if (acte.peut_emettre) return 'emettre'
   if (acte.peut_signer) return 'signer'
   return null
