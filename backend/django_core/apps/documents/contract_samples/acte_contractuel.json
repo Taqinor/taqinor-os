@@ -190,7 +190,8 @@
         "consommateur": true,
         "reserve_propriete": true,
         "raccorde_reseau": true,
-        "penalite_retard_pct": null
+        "penalite_retard_pct": null,
+        "delai_execution_jours": 30
       },
       "type": "contrat_installation",
       "variante": "",
@@ -560,7 +561,8 @@
         "consommateur": true,
         "reserve_propriete": true,
         "raccorde_reseau": true,
-        "penalite_retard_pct": null
+        "penalite_retard_pct": null,
+        "delai_execution_jours": 30
       },
       "type": "pv_livraison",
       "variante": "reste_a_regler",
@@ -804,7 +806,8 @@
         "consommateur": true,
         "reserve_propriete": true,
         "raccorde_reseau": true,
-        "penalite_retard_pct": null
+        "penalite_retard_pct": null,
+        "delai_execution_jours": 30
       },
       "type": "pv_livraison",
       "variante": "tranche_reglee",
@@ -1046,7 +1049,8 @@
         "consommateur": true,
         "reserve_propriete": true,
         "raccorde_reseau": true,
-        "penalite_retard_pct": null
+        "penalite_retard_pct": null,
+        "delai_execution_jours": 30
       },
       "type": "pv_reception",
       "variante": "",
@@ -1288,7 +1292,8 @@
         "consommateur": true,
         "reserve_propriete": true,
         "raccorde_reseau": true,
-        "penalite_retard_pct": null
+        "penalite_retard_pct": null,
+        "delai_execution_jours": 30
       },
       "type": "cloture_garanties",
       "variante": "",
@@ -1549,6 +1554,7 @@
     "contenu.signatures.client = null tant que l'acte n'est pas signé, puis {image, nom, signe_le, preuve}.",
     "Un acte signé ne se rouvre pas ; un acte émis non signé se rouvre (version + 1 à la ré-émission).",
     "?langue=ar sert le MÊME schéma (mêmes clés, mêmes natures) : seuls les textes changent (contenu.langue = 'ar') ; les montants, dates, références et noms propres sont identiques dans les deux langues. sections_personnalisees et sections_modifiables valent pour la langue servie.",
+    "contenu.reserves = liste de chaînes (une réserve par ligne) ; une ligne de garanties ajoutée arrive avec cle vide : le serveur lui en donne une ; contenu.options.delai_execution_jours fixe delais.date_limite quand celle-ci n'est pas personnalisée.",
     "avertissements signale une section de texte personnalisée en français dont la traduction arabe est restée au texte par défaut.",
     "À l'émission, l'acte français ET sa traduction arabe sont figés et déposés ; la signature est portée sur les deux PDF."
   ]
