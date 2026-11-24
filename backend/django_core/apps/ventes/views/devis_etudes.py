@@ -14,9 +14,9 @@ import logging
 from django.db import transaction
 from rest_framework import status
 from rest_framework import serializers
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
-from authentication.permissions import IsResponsableOrAdmin
+from authentication.permissions import HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin
 from .devis_gardes import (
     _refus_modifiabilite,
     _reponse_non_modifiable,
@@ -565,3 +565,35 @@ class DevisEtudesActionsMixin:
         reponse['applique'] = resume
         reponse['updated_at'] = _jeton(devis)
         return Response(reponse)
+
+
+# ── ADEV148 (D-ACAL-97, Q2 du 23/11) — « Mettre à jour » un brouillon retouché ─
+
+@extend_schema(
+    request=None,
+    responses={200: serializers.DictField(), 404: serializers.DictField(), 409: serializers.DictField()},
+    summary='ADEV148 — réaligner un brouillon sur la conception courante de son lead',
+    description=("Brouillon actif seulement (envoyé, accepté… : 409 « Réviser le devis »). Les quantités "
+                 "saisies à la main restent et sont nommées. Forme : apps/ventes/contract_samples/"
+                 "conception_lead.json (clé « mettre_a_jour_conception »). 404 hors société ou hors portée."))
+@api_view(['POST'])
+@permission_classes([IsAnyRole, HasPermissionOrLegacy('crm_voir')])
+def mettre_a_jour_conception(request, devis_id):
+    """Portée des routes de la conception (``crm_voir`` + ``leads_visibles``) :
+    le devis d'un lead que l'appelant ne voit pas répond 404, avant tout."""
+    from apps.crm.selectors import leads_visibles
+
+    from ..conception.brouillons import MiseAJourRefusee, appliquer_a_la_demande
+    from ..models import Devis
+
+    company = getattr(request.user, 'company', None)
+    devis = Devis.objects.filter(company=company, pk=devis_id).first() if company is not None else None
+    if devis is None or not devis.lead_id or not leads_visibles(request.user, company).filter(
+            pk=devis.lead_id).exists():
+        return Response({'detail': 'Devis introuvable.'}, status=404)
+    try:
+        with transaction.atomic():
+            resultat = appliquer_a_la_demande(devis, request.user)
+    except MiseAJourRefusee as exc:
+        return Response({'detail': str(exc), 'code': 'reviser_le_devis'}, status=409)
+    return Response(resultat)

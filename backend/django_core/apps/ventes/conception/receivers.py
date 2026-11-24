@@ -222,6 +222,11 @@ def executer_relance(company_id, *, lead_id=None, calepinage_id=None, origine, c
         toit, calepinage_id = _pose_servie(company, lead_id, calepinage_id, empreinte_pose)
         relance = relancer(lead, company=company, declencheur={'origine': origine, 'champs': champs or []},
                            toit=toit, calepinage_id=calepinage_id)
+        if relance.ecrite:
+            # ADEV147 — dans la tâche (jamais dans la requête) : les brouillons
+            # intacts nés d'une version plus ancienne suivent la nouvelle.
+            from apps.ventes.conception.brouillons import suivre_la_conception
+            suivre_la_conception(relance.conception)
         return {'version': getattr(relance.conception, 'version', None), 'ecrite': relance.ecrite}
     except Exception:  # noqa: BLE001 — une relance ratée n'écrit rien ; le filet la rejoue (D-ENF22-BLE001)
         logger.exception('ADEV139 : relance de la conception en échec (lead #%s, calepinage #%s)',

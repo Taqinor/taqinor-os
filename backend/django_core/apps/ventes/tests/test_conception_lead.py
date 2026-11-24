@@ -2818,3 +2818,114 @@ def _test_de_parite_depuis_conception(nom):
 for _nom in PARITE:
     setattr(PariteDevisDepuisConceptionTests, f'test_parite_depuis_conception_{_nom}',
             _test_de_parite_depuis_conception(_nom))
+
+
+# ── ADEV147 / ADEV148 — les brouillons suivent la conception (Q2 du 23/11) ───
+
+URL_MISE_A_JOUR = '/api/django/ventes/devis/%d/mettre-a-jour-conception/'
+
+
+class BrouillonsSuiventLaConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
+                                         _emprunt(ServirConceptionTests, '_api'),
+                                         _emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_utilisateur',
+                                                  '_residentiel', '_ci', '_agricole', '_fiches_residentielles',
+                                                  '_site_isole', '_structures', '_fiches_ci', '_cas'), TestCase):
+    """ADEV147 — un brouillon intact né d'une version plus ancienne suit la
+    nouvelle (réaligné, pointeur, ligne d'historique) ; un retouché ne bouge
+    pas ; un envoyé ne bouge pas. ADEV148 — le retouché est listé
+    (``brouillons_a_mettre_a_jour``, ``mise_a_jour_proposee``) et se réaligne
+    SUR DEMANDE (route), quantité tapée gardée et nommée ; envoyé : 409 ;
+    hors portée : 404."""
+
+    def _trois_devis(self):
+        from django.utils import timezone
+
+        from apps.ventes.models import Devis
+        from apps.ventes.services import build_devis_auto
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        user = self._utilisateur(company)
+        with self.captureOnCommitCallbacks(execute=True):
+            intact, retouche, envoye = (build_devis_auto(lead=lead, user=user, company=company) for _ in range(3))
+        panneau = retouche.lignes.filter(designation__icontains='panneau').order_by('ordre', 'pk').first()
+        type(panneau).objects.filter(pk=panneau.pk).update(quantite=panneau.quantite + 2, quantite_manuelle=True)
+        Devis.objects.filter(pk=envoye.pk).update(statut='envoye', date_envoi=timezone.now())
+        return company, lead, user, intact, retouche, envoye
+
+    def _nouvelle_version(self, company, lead):
+        from apps.crm.models import Lead
+
+        Lead.objects.filter(pk=lead.pk).update(facture_hiver=Decimal('3600'))
+        lead.refresh_from_db()
+        return self._relancer(lead, company, _declencheur(
+            'lead_entrees_modifiees', facture_hiver=(Decimal('1800'), Decimal('3600')))).conception
+
+    def test_intact_suit_retouche_et_envoye_ne_bougent_pas(self):
+        from apps.ventes.conception.brouillons import suivre_la_conception
+        from apps.ventes.models import Devis, DevisActivity
+
+        company, lead, _user, intact, retouche, envoye = self._trois_devis()
+        photos = {d.pk: _photo_devis(d.pk) for d in (retouche, envoye)}
+        v2 = self._nouvelle_version(company, lead)
+        self.assertEqual(v2.version, 2)
+        self.assertEqual(suivre_la_conception(v2), [intact.pk])  # mutant « suivre aussi le retouché » : rouge
+        relu = Devis.objects.get(pk=intact.pk)
+        self.assertEqual(relu.conception_source['version'], 2)
+        self.assertEqual(relu.statut, 'brouillon')
+        panneaux = {li.variante or '': int(li.quantite) for li in relu.lignes.all()
+                    if 'panneau' in li.designation.lower()}
+        attendu = {option: valeurs['nb_panneaux']['valeur'] for option, valeurs in v2.valeurs.items()}
+        self.assertEqual({option: panneaux.get(option, panneaux.get('')) for option in attendu}, attendu)
+        ligne = DevisActivity.objects.filter(devis=relu, body__startswith='Mis à jour : panneaux ').get()
+        self.assertTrue(ligne.body.endswith(' (Facture hiver modifié(s))'), ligne.body)
+        for pk, photo in photos.items():
+            self.assertEqual(_photo_devis(pk), photo)
+        # Une seconde relance sans changement ne le touche pas.
+        self.assertEqual(suivre_la_conception(v2), [])
+
+    def test_la_tache_de_relance_fait_suivre_les_brouillons(self):
+        from apps.ventes.conception import brouillons
+        from apps.ventes.conception.receivers import executer_relance
+
+        company, lead, _user, _intact, _retouche, _envoye = self._trois_devis()
+        from apps.crm.models import Lead
+        Lead.objects.filter(pk=lead.pk).update(facture_hiver=Decimal('3600'))
+        with mock.patch.object(brouillons, 'suivre_la_conception') as suivre, \
+                self.captureOnCommitCallbacks(execute=True):
+            rendu = executer_relance(company.pk, lead_id=lead.pk, origine='lead_entrees_modifiees')
+        self.assertEqual(rendu, {'version': 2, 'ecrite': True})
+        self.assertEqual(suivre.call_args.args[0].version, 2)
+
+    def test_retouche_liste_puis_mis_a_jour_sur_demande(self):
+        from authentication.models import Company
+
+        from apps.ventes.models import Devis
+        from apps.ventes.selectors import conception_courante, ecart_devis
+
+        company, lead, user, _intact, retouche, envoye = self._trois_devis()
+        self._nouvelle_version(company, lead)
+        lue = conception_courante(company, lead.pk)
+        self.assertEqual(lue['brouillons_a_mettre_a_jour'],
+                         [{'devis': retouche.pk, 'reference': retouche.reference, 'motif': 'retouché à la main'}])
+        ecarts = ecart_devis(Devis.objects.get(pk=retouche.pk))
+        self.assertTrue(ecarts and all(e['mise_a_jour_proposee'] for e in ecarts), ecarts)
+        photo = _photo_devis(retouche.pk)
+        self.assertEqual(_photo_devis(retouche.pk), photo)  # la lecture n'écrit rien
+
+        api = self._api(user)
+        self.assertEqual(api.post(URL_MISE_A_JOUR % envoye.pk).status_code, 409)
+        autre = Company.objects.create(nom='Autre ADEV148', slug='autre-adev148')
+        self.assertEqual(self._api(self._utilisateur(autre)).post(URL_MISE_A_JOUR % retouche.pk).status_code, 404)
+        reponse = api.post(URL_MISE_A_JOUR % retouche.pk)
+        self.assertEqual(reponse.status_code, 200, reponse.content)
+        corps = reponse.json()
+        self.assertEqual((corps['devis_id'], corps['appliquees']), (retouche.pk, ['conception_v2']))
+        self.assertTrue(any(n['champ'] == 'quantite' for n in corps['non_appliquees']), corps)
+        relu = Devis.objects.get(pk=retouche.pk)
+        self.assertEqual(relu.conception_source['version'], 2)
+        manuelle = relu.lignes.get(quantite_manuelle=True)  # mutant « écraser la quantité tapée » : rouge
+        self.assertEqual(manuelle.quantite, Decimal(photo['lignes'][[li['quantite_manuelle'] for li in
+                                                                     photo['lignes']].index(True)]['quantite']))
+        self.assertEqual(api.post(URL_MISE_A_JOUR % retouche.pk).json()['appliquees'], [])  # rien de plus
+        self.assertEqual(conception_courante(company, lead.pk)['brouillons_a_mettre_a_jour'], [])

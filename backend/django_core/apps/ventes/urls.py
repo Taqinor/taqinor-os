@@ -75,6 +75,7 @@ from .etude_ci_view import (devis_recomposer_batteries, devis_reviser_apres_visi
                             etude_ci_preview)  # CIQ118
 from .views.economie_pompage import economie_pompage_preview  # AGR206
 from .views.conception import apercu_conception, conception_du_lead  # ADEV137
+from .views.devis_etudes import mettre_a_jour_conception  # ADEV148
 from .economie_ci_view import economie_ci_preview  # CIQ210
 from .roof_load_view import roof_load_check  # FG253
 from .connection_declaration_view import declaration_raccordement  # FG272
@@ -273,6 +274,10 @@ urlpatterns = [
     path('conception/apercu/', apercu_conception, name='conception-apercu'),
     # headless: lue par la fiche du lead (ALEA71) et le calepinage (ACAL2012), à venir
     path('conception/<int:lead_id>/', conception_du_lead, name='conception-lead'),
+    # ADEV148 — « Mettre à jour » un brouillon retouché sur la conception courante.
+    # headless: bouton de l'écran devis à venir (AGEN12), aucun écran avant
+    path('devis/<int:devis_id>/mettre-a-jour-conception/', mettre_a_jour_conception,
+         name='devis-mettre-a-jour-conception'),
     # AGR206 — aperçu de l'économie DÉCLARÉE de pompage (même calcul que
     # ``GET devis/<pk>/economie-pompage/``), aucune écriture.
     path('economie-pompage/preview/', economie_pompage_preview,
