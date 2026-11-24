@@ -53,7 +53,7 @@
   <div class="header">
     <div class="header-left">
       {% if logo_uri %}
-      <div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>
+      <div class="logo">{% include "_logo.html" %}</div>
       {% endif %}
       <div class="doc-title">BON DE COMMANDE</div>
       <div class="doc-ref">{{ bc.reference }}{% if bc.revision and bc.revision > 0 %} — Rév. {{ bc.revision }}{% endif %}</div>

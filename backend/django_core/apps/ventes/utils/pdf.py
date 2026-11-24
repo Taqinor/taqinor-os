@@ -211,6 +211,38 @@ def virement_de_la_facture(facture):
             'rib': (figee.get('rib') or '').strip()}
 
 
+#: Emplacement du logo des documents à en-tête CLAIR (factures, avoirs, bons,
+#: procès-verbaux, reçus…), au sens du module image des devis
+#: (``quote_engine.logo.CAPITALE_MM``) : « couverture » = le logo d'une
+#: couverture de devis sur fond clair — mot-marque et signature de marque,
+#: capitale 6 mm.
+ROLE_LOGO_DOCUMENT = 'couverture'
+
+
+def logo_document_html(logo_uri, alt='Logo'):
+    """LE logo des devis pour un document à en-tête clair (décision de Reda du
+    24/11/2026 : « use the quote logo on all other documents too ») : même
+    module image que les devis (rogné au trait, détouré), même bloc et même
+    taille que sur une couverture claire de devis. Rend la balise ``<img>``
+    (fabriquée par le moteur : base64 de son propre PNG, ``alt`` échappé — la
+    pièce ``_logo.html`` l'imprime avec ``|safe``), ou ``''`` quand l'image est
+    absente ou n'est pas un raster lisible (SVG, fichier corrompu) : la pièce
+    imprime alors l'image d'origine, comme avant."""
+    if not logo_uri:
+        return ''
+    try:
+        from apps.ventes.quote_engine import logo
+        b64 = logo.societe_b64(logo_uri, 'clair')
+        if b64:
+            return logo.img_html(
+                logo.pour_role(b64, ROLE_LOGO_DOCUMENT), ROLE_LOGO_DOCUMENT,
+                alt=alt)
+    except Exception:  # noqa: BLE001 — logo intraitable : l'image d'origine
+        logger.warning('logo_document_html : logo intraitable, image '
+                       "d'origine imprimée", exc_info=True)
+    return ''
+
+
 def _appliquer_identite_figee(ctx, identite, company=None):
     """APAR61 — le contexte de rendu reprend l'identité FIGÉE (textes + logo
     du jour de l'émission) à la place du profil vivant."""
@@ -233,6 +265,8 @@ def _appliquer_identite_figee(ctx, identite, company=None):
             ctx[cle_uri] = _to_data_uri(trimmed, ext or cle)
         elif raw:
             ctx[cle_uri] = _to_data_uri(raw, cle)
+    # Le logo figé change la balise imprimée : même traitement que le vivant.
+    ctx['logo_html'] = logo_document_html(ctx.get('logo_uri'))
     return ctx
 
 
@@ -338,6 +372,8 @@ def _company_context(company=None):
                 raw, profile.signature_key
             )
 
+    # LE logo des devis, prêt pour la pièce ``_logo.html`` des gabarits.
+    ctx['logo_html'] = logo_document_html(ctx['logo_uri'])
     return ctx
 
 

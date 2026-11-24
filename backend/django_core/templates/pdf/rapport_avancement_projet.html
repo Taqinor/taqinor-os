@@ -34,7 +34,7 @@
     <div class="header">
       <div class="header-left">
         <div class="logo">
-          {% if logo_uri %}<img src="{{ logo_uri }}" alt="logo" />{% endif %}
+          {% if logo_uri %}{% include "_logo.html" %}{% endif %}
         </div>
         <div class="doc-title">Point d'avancement projet</div>
         <div class="doc-sub">{{ projet.code }} — {{ projet.nom }}</div>
