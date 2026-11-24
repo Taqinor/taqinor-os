@@ -51,3 +51,40 @@ du fondateur. **État** = corrigé (commit) / en lane / à l'étape En / décisi
   (mesuré sur la copie : aucun devis réel n'en porte ; seuls les devis d'essai du jour). Le brouillon reste enregistrable.
 - Sans épingle de site posée, la simulation ne part jamais sur le centre de la carte : ville de référence du lead, dite
   dans le résultat, sinon refus qui dit quoi faire.
+
+## État des corrections au 24/11, 20 h 15 UTC
+
+**Dans la PR Taqinor/taqinor-os#1552 (lot 1)** — lanes `correctifs-b4`, `site-facture`, `correctifs-agri` :
+K2 (site, côté serveur), K4 (module désigné une fois), K5 (plan aplati), K6 et K7 (agricole, envoi), K8 (textes
+techniques, pour l'essentiel), K10, K11, K17 (en partie), K19. Le correctif « fermer le tracé au premier coin » (B4-005)
+avait une régression (un 4e coin proche du premier était avalé) : vue par la CI, corrigée avant fusion — seul un CLIC
+sur la pastille du premier coin ferme.
+
+**Sur la branche du lot 2 (`dev-lot2`, pas encore en PR)** :
+- lane `calepinage-serveur` — K16 : la chute de 51 % venait de la chaîne de 4 panneaux qui passe sous le bas de la
+  plage de l'onduleur dès 51,7 °C de cellule (9 368 heures sur 43 295 hors plage sur le calepinage rejoué) ; un
+  contrôle « Tension des chaînes par forte chaleur » le dit maintenant, jumeau de celui du grand froid ; ombres non
+  mesurées dites quand le toit porte des obstacles ; cause vraie quand aucune chaîne n'est calculée ; UN résolveur de
+  ville (« casa », « kech » reconnus par la table d'orthographes du fondateur ; plus de point posé à 600 km) ; valeurs de
+  pompage du lead servies au calepinage.
+- lane `atelier-suite` (15 points) — l'atelier renvoyait TOUT le document chaque seconde sans changement (un horodatage
+  refait à chaque sérialisation) : 15 envois par minute au repos → 0 ; « Le devis annonce » seulement quand un devis est
+  lié ; chaque « Régler » mène à son point ; un seul compte toit + sol + ombrière ; brouillon local effacé après
+  l'enregistrement ; obstacle hors du toit signalé ; forme du toit choisie avant « Créer le toit » ; phrases du conflit
+  d'enregistrement dites une fois ; panneau Pompage prérempli depuis la fiche ; clés brutes remplacées par les noms.
+- lane `front-suite` (18 commits) — K15 : la liste des leads lisait des pages de 200 et la fiche attendait la liste
+  (première ligne plus tôt, fiche indépendante, message de délai en français) ; relevé au téléphone : plus rien de tapé
+  hors ligne n'est perdu (K : U4-020 à 023) ; SAV : chaque écran dit qui peut ouvrir un ticket ; acceptation : aucune
+  option présélectionnée sauf celle que le devis recommande ; dialogue de ville : rien de coché d'office ; alerte interne
+  quand le RIB manque au « Devis final ».
+- étape 3 du moteur (relance, filet, remplissage, garde du CRM) — relue par un relecteur indépendant : NON fusionnable
+  en l'état (un effacement légal était défait par la relance en file) ; corrections en cours dans la lane du moteur.
+
+**Reste côté serveur (lane `serveur-suite`, en vol)** : champ au sol et ombrière dans le raccordement électrique ;
+blocage électrique qui nomme sa cause ; deux phrases du PDF industriel (« horaires déclarés » quand ils sont supposés ;
+« bases du calcul ci-dessous » sans section) — accrochées au niveau de règles 15, donc dormantes ; nom de l'article
+sans prix dans le refus agricole ; motif vrai d'un site en moyenne tension.
+
+**Pas encore traité** : K3, K13, K18, K20 (étapes E4 à E7 du moteur) ; U3-015 (devis manuel d'un site à phase
+inconnue : décision) ; U3-022 (débit de la pompe actuelle non repris) ; « Enregistré à 16:10 » pour un
+enregistrement de 16:20 (U4-015) ; colonne technique de « Réglages utilisés » en mode Expert.
