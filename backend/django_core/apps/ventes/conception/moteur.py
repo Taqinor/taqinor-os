@@ -95,6 +95,7 @@ def calculer_conception(lead, company, *, entrees=None, toit=None, imposes=None,
         resultat.etude_params, resultat.lignes, resultat.conception_electrique = {}, [], None
         return resultat
     resultat.blocs = blocs_du_moteur(resultat.etude_params)
+    resultat.suppositions = suppositions_de(resultat)
     resultat.option_retenue, options = _options(resultat)
     resultat.valeurs = {option: _valeurs(resultat, lead, option, investissement) for option in options}
     return resultat
@@ -324,6 +325,40 @@ def _conception_electrique(resultat, contexte, *, garde):
         logger.warning('Conception électrique non calculée (moteur unique)', exc_info=True)
         resultat.absents['conception_electrique'] = 'erreur : %s' % type(exc).__name__
         return None
+
+
+# ── ADEV134 — les suppositions, chacune avec le champ de la fiche ───────────
+
+def suppositions_de(resultat):
+    """ADEV134 (règle du 17/11/2026) — ce que le calcul a SUPPOSÉ :
+    ``[{code, champ, valeur, source, message}]``. Ce sont les suppositions que
+    le devis automatique dit déjà au vendeur, avec leur champ de la fiche
+    (résidentiel : ``creation_auto_residentiel.SUPPOSITIONS_RESIDENTIEL`` ;
+    C&I : ``suppositions_ci.alertes_du_journal``) — mêmes codes, mêmes phrases,
+    aucune seconde formulation ; ``valeur`` = ce que le calcul a retenu à la
+    place, lu sur ses blocs. Une alerte qui ne nomme aucun champ n'en est pas
+    une (le journal la garde)."""
+    return [{'code': alerte['code'], 'champ': alerte['champ_lead'], 'valeur': _valeur_supposee(resultat, alerte),
+             'source': 'defaut', 'message': alerte['message']}
+            for alerte in resultat.journal.get('alertes') or [] if alerte.get('champ_lead')]
+
+
+def _valeur_supposee(resultat, alerte):
+    params = resultat.etude_params
+    if resultat.marche == 'residentiel':
+        bloc = params.get('etude_horaire') or {}
+        return {'occupation_jour': bloc.get('occupation'),
+                'facture_ete': (resultat.entrees_utilisees.get('facture_hiver') or {}).get('valeur'),
+                'conso_mensuelle_kwh': (bloc.get('annuel') or {}).get('consommation_kwh'),
+                'inclinaison_deg': bloc.get('source_production')}.get(alerte['champ_lead'])
+    etude = params.get('etude_ci') or {}
+    hypothese = next((h for h in etude.get('hypotheses') or [] if isinstance(h, dict)
+                      and 'supposition_%s' % h.get('cle') == alerte['code']), None)
+    if hypothese is not None:
+        return hypothese.get('valeur')
+    if alerte['champ_lead'] == 'jours_ouverture':  # profil estimé : l'archétype retenu
+        return (etude.get('profil_charge') or {}).get('archetype')
+    return ((etude.get('entrees_resolues') or {}).get(alerte.get('champ')) or {}).get('valeur')
 
 
 # ── La table §2 de la conception, PAR OPTION ({valeur, unite, source}) ──────

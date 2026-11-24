@@ -1302,6 +1302,59 @@ class MoteurUniqueTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_u
         self.assertEqual(set(resultat.valeurs), {'sans', 'avec'})
         self.assertNotEqual(resultat.valeurs['sans']['puissance_kwc'], resultat.valeurs['avec']['puissance_kwc'])
 
+    # ── ADEV134 — chaque supposition sort avec le champ de la fiche ─────────
+    def _suppositions(self, resultat):
+        for sup in resultat.suppositions:
+            self.assertEqual(set(sup), CLES_SUPPOSITION, sup)
+            self.assertTrue(sup['champ'] and sup['message'], sup)  # mutant « champ retiré » : rouge
+            self.assertEqual(sup['source'], 'defaut', sup)
+        json.dumps(resultat.suppositions)
+        return {sup['code']: (sup['champ'], sup['valeur']) for sup in resultat.suppositions}
+
+    def test_suppositions_residentiel_sans_presence_ni_ete(self):
+        from apps.ventes.domain.creation_auto_residentiel import SUPPOSITIONS_RESIDENTIEL
+
+        resultat = self._calculer(*self._cas('res_facture_dirhams'))
+        dites = self._suppositions(resultat)
+        self.assertEqual({code: champ for code, (champ, _v) in dites.items()},
+                         {'suppose_presence': 'occupation_jour', 'suppose_ete_egal_hiver': 'facture_ete',
+                          'suppose_kwh_depuis_facture': 'conso_mensuelle_kwh',
+                          'suppose_30_plein_sud': 'inclinaison_deg'})
+        self.assertEqual(dites['suppose_presence'][1], 'presence_jour')
+        self.assertEqual(dites['suppose_ete_egal_hiver'][1], 1800.0)
+        # Aucune seconde formulation : la phrase est celle du journal du devis.
+        messages = {sup['code']: sup['message'] for sup in resultat.suppositions}
+        self.assertEqual(messages['suppose_presence'], SUPPOSITIONS_RESIDENTIEL['occupation_jour'][1])
+
+    def test_suppositions_residentiel_renseigne_seule_la_production_reste_supposee(self):
+        """Présence, été et kWh déclarés : plus rien de supposé sur la fiche ;
+        la production à 30° plein sud reste dite (aucune pose au niveau 14)."""
+        dites = self._suppositions(self._calculer(*self._cas('res_kwh_declare_ete_different')))
+        self.assertEqual(set(dites), {'suppose_30_plein_sud'})
+
+    def test_suppositions_ci_sans_contrat_ni_phase_ni_tension(self):
+        from apps.ventes import tarif_ci
+
+        reel = tarif_ci.tarif_applicable  # avant le patch de la fabrique : le tarif « omis » réel
+        company, lead = self._ci(conso_mensuelle_kwh=Decimal('6000'), raccordement='', tension_raccordement='')
+        with mock.patch.object(tarif_ci, 'tarif_applicable', reel):
+            dites = self._suppositions(self._calculer(company, lead))
+        self.assertEqual(dites['supposition_contrat_electricite'], ('contrat_electricite', 'bt_patente'))
+        self.assertEqual(dites['supposition_tension'], ('tension_raccordement', 'bt'))
+        self.assertEqual(dites['supposition_phases'], ('raccordement', 'tri'))
+        self.assertEqual(dites['profil_estime'][0], 'jours_ouverture')
+        self.assertEqual(dites['supposition_inclinaison_deg'], ('gps_lat', 30))
+
+    def test_suppositions_ci_renseigne_aucune_sur_les_champs_declares(self):
+        dites = self._suppositions(self._calculer(*self._ci(
+            conso_mensuelle_kwh=Decimal('6000'), jours_ouverture=[1, 2, 3, 4, 5], heure_debut=8, heure_fin=18,
+            contrat_electricite='bt_patente', compteur_puissance_kva=Decimal('200'),
+            equipements_hors_horaires='aucun')))
+        champs = {champ for champ, _v in dites.values()}
+        self.assertFalse(champs & {'contrat_electricite', 'tension_raccordement', 'raccordement',
+                                   'jours_ouverture', 'heure_debut', 'compteur_puissance_kva',
+                                   'equipements_hors_horaires'}, dites)
+
 
 def _test_de_parite(nom):
     def test(self):
