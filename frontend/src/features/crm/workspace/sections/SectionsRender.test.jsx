@@ -635,6 +635,26 @@ describe('AGR415 — SectionPompage : chaque colonne du contrat a son champ', ()
     expect(opt(debit, 'mesure_visite').disabled).toBe(true)
   })
 
+  it('T4-U3-001 — règle servie : * sur HMT et débit, renvoi « Raccordement * » vers Profil énergétique', () => {
+    const requis = [['pompe_hmt_m'], ['pompe_debit_m3h', 'besoin_eau_m3j', 'pompe_actuelle_debit_m3h'], ['raccordement']]
+    monter({ ...leadAgricole, devis_auto: { pret: false, requis } })
+    for (const id of ['lf-pompe-hmt', 'lf-pompe-debit', 'lf-besoin-eau']) {
+      expect(document.querySelector(`label[for="${id}"] .req-auto`), id).not.toBeNull()
+    }
+    expect(document.querySelector('label[for="lf-niveau-statique"] .req-auto')).toBeNull()
+    const renvoi = document.querySelector('[data-renvoi="raccordement"]')
+    expect(renvoi.textContent).toContain('Raccordement')
+    expect(renvoi.textContent).toContain('« Profil énergétique »')
+    expect(renvoi.textContent).toContain('*')
+  })
+
+  it('T4-U3-001 — sans règle servie (fiche pas encore créée), la note ne renvoie pas à des * absents', () => {
+    render(<SectionPompage state={initState({ mode: 'create', currentUserId: 1 })} {...base} />)
+    const note = document.querySelector('[data-note-requis-pompage]')
+    expect(note.textContent).toContain('dès la fiche créée')
+    expect(document.querySelector('[data-renvoi="raccordement"]')).toBeNull()
+  })
+
   it('regroupée en 5 blocs, dans l’ordre de l’appel', () => {
     monter()
     const titres = Array.from(document.querySelectorAll('.lw-bloc-titre')).map((h) => h.textContent)

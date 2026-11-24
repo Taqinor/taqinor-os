@@ -52,6 +52,8 @@ describe('RÈGLE FONDATEUR 08/09/2026 — le chip d’échec d’autosauvegarde 
       { timeout: 3000 },
     )
     expect(chip).toHaveTextContent("Assurez-vous qu'il n'y a pas plus de 3 chiffres avant la virgule.")
+    // T4-U3-001 — le refus nomme aussi la SECTION où vit le champ.
+    expect(chip).toHaveTextContent("Section « Questionnaire d'appel »")
     // « Réessayer » reste une action DISTINCTE, jamais absorbée par le clic
     // qui nomme/navigue vers le champ.
     expect(screen.getByRole('button', { name: 'Réessayer' })).toBeInTheDocument()

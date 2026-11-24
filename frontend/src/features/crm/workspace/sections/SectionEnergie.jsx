@@ -76,6 +76,9 @@ export default function SectionEnergie({ state, setField, errors = {} }) {
   const regularisation = !!getField(state, 'regularisation_8221')
   // ALEA53 — lead commercial / industriel : pas de blocs résidentiels ici.
   const pro = ['commercial', 'industriel'].includes(getField(state, 'type_installation'))
+  // T4-U3-001 — l'étoile « requis devis auto » du Raccordement : la règle
+  // SERVIE (`devis_auto.requis`), jamais une liste recopiée ici.
+  const requisAuto = new Set((state?.server?.devis_auto?.requis ?? []).flat())
   // CAD158 — « elle couvre un mois ou deux mois ? » : sur deux mois, la
   // commerciale tape le montant de la FACTURE et c'est le montant MENSUEL
   // (÷ 2) qui part au serveur — et qui s'affiche, pour qu'elle voie ce qui
@@ -170,7 +173,10 @@ export default function SectionEnergie({ state, setField, errors = {} }) {
                 value={v('tranche_onee')} onChange={(e) => setField('tranche_onee', e.target.value)}
               />
             </FormField>
-            <FormField label="Raccordement" htmlFor="lf-raccordement" error={errors.raccordement}>
+            <FormField
+              label={<>Raccordement{requisAuto.has('raccordement') && <span className="req-auto"> *</span>}</>}
+              htmlFor="lf-raccordement" error={errors.raccordement}
+            >
               <select
                 id="lf-raccordement"
                 className={errors.raccordement ? 'form-select is-invalid' : 'form-select'}
@@ -798,6 +804,7 @@ const nombreOuNull = (v) => {
 export function SectionPompage({ state, setField, errors = {} }) {
   // L'étoile « requis devis auto » : les SEULS groupes de la règle servie
   // (`devis_auto.requis`, AGR403) — jamais une liste recopiée ici.
+  const regleServie = Array.isArray(state?.server?.devis_auto?.requis)
   const requis = new Set((state?.server?.devis_auto?.requis ?? []).flat())
   const ctx = { state, setField, errors, requis }
   const debit = nombreOuNull(getField(state, 'pompe_debit_m3h'))
@@ -915,10 +922,31 @@ export function SectionPompage({ state, setField, errors = {} }) {
           <PompChoix data-field-anchor="lf-decideur" cle="decideur" ctx={ctx} choix={DECIDEUR} />
         </div>
       </BlocPompage>
-      <p className="gen-hint">
-        <span className="req-auto">*</span> Requis pour le devis automatique en mode agricole (règle
-        servie : l&apos;un des champs de chaque groupe).
-      </p>
+      {/* T4-U3-001 — la phase du site, requise par la règle servie, vit dans
+          « Profil énergétique » : renvoi cliquable, avec son étoile. */}
+      {requis.has('raccordement') && (
+        <p className="gen-hint" data-renvois>
+          Saisi ailleurs :{' '}
+          <button
+            type="button" className="link-button" data-renvoi="raccordement"
+            onClick={() => jumpToField({ section: 'energie', field: fieldLabels.raccordement.inputId })}
+          >
+            {fieldLabels.raccordement.label}<span className="req-auto"> *</span> (phase du site, monophasé ou
+            triphasé) — section « Profil énergétique »
+          </button>
+        </p>
+      )}
+      {regleServie ? (
+        <p className="gen-hint" data-note-requis-pompage>
+          <span className="req-auto">*</span> Requis pour le devis automatique en mode agricole (règle
+          servie : l&apos;un des champs de chaque groupe).
+        </p>
+      ) : (
+        <p className="gen-hint" data-note-requis-pompage>
+          Les champs requis pour le devis automatique sont calculés par le serveur : ils seront
+          marqués d&apos;un <span className="req-auto">*</span> dès la fiche créée.
+        </p>
+      )}
     </>
   )
 }
