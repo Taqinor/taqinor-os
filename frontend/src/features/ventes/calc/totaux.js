@@ -272,7 +272,8 @@ export function lignesRemiseesParPanier(lines, discountPct, { scenario, option =
   const parLigne = tous.map((l) => (premier.valeurs.has(l) ? premier.valeurs.get(l)
     : (second.valeurs.has(l) ? second.valeurs.get(l) : null)))
   const resume = ({ total, sommeLignes, arrondi }) => ({ total, sommeLignes, arrondi })
-  return { parLigne, sans: resume(sans), avec: resume(avec) }
+  // T4-U2-011 — `options` : l'option où compte chaque ligne (optionsDesLignes).
+  return { parLigne, sans: resume(sans), avec: resume(avec), options: optionsDesLignes(tous, { scenario, produits }) }
 }
 
 // ── QJ31 — Multi-propriétés : aperçu écran (TTC) miroir du backend QJ29 ──────

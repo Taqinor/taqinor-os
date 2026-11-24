@@ -102,12 +102,11 @@ import {
   // ordre »), appliquée par la composition SERVEUR (`ordre_lignes`) ;
   // ADEV69 — l'ancien composeur JS `autoFillLines` est supprimé.
   COMMERCIAL_CATEGORY_QUESTIONS} from '../../features/ventes/solar'
-import {
-  _hasPrix, lignesParDefautDuMarche, signatureGabarit, tableIntacte,
-} from '../../features/ventes/calc/lignesDefaut.js' // QJR546 — garde « produit tarifé » ; T4-U3-006 — table par marché
+import { _hasPrix } from '../../features/ventes/calc/lignesDefaut.js' // QJR546 — garde « produit tarifé »
+import { useGabaritMarche } from './generator/hooks/useGabaritMarche' // T4-U3-006 — table par marché
 import {
   optionTotalsTTC, prixParKwc, discountForTarget, computeBuyCostDetail, avecBatterieAvailability,
-  multiPropertyPreviewTTC, lignesRemiseesParPanier, optionsDesLignes,
+  multiPropertyPreviewTTC, lignesRemiseesParPanier,
 } from '../../features/ventes/calc/totaux.js'
 import { MESSAGE_KWH_INCOHERENT, baremeDepuisProfil } from '../../features/ventes/calc/tarifs.js'
 import { todayLocalIso } from '../../lib/format'
@@ -200,7 +199,6 @@ import { useLeadClientEcran } from './generator/hooks/useLeadClientEcran'
 import { useApercuEtude } from './generator/hooks/useApercuEtude'
 import { useBrouillonEcran } from './generator/hooks/useBrouillonEcran'
 // SPL43 — aides de module déplacées (fabrique de lignes, défauts d'écran).
-import { withKeys } from '../../features/ventes/quote/ligneFabrique.js'
 import {
   partDiurneParDefaut,
   FENETRE_REFERENCE_MS,
@@ -829,33 +827,11 @@ export default function DevisGenerator({
     ]).finally(() => setRefsLoading(false))
   }, [])
 
-  // Table par défaut du simulateur une fois le stock chargé
-  // T4-U3-006 — la table de départ est celle du MARCHÉ courant (pompage en
-  // agricole : jamais d'onduleur ni de batterie) ; son empreinte est gardée
-  // pour qu'un changement de marché remplace une table encore INTACTE.
-  const gabaritRef = useRef(null)
-  const lignesDuMarche = (mode) => withKeys(lignesParDefautDuMarche(
-    produits, mode, undefined, quoteLogic.tvaStandard).map(r => ({ ...r, compose: true })))
-  const poserGabarit = (mode) => {
-    const lignes = lignesDuMarche(mode)
-    gabaritRef.current = { mode, signature: signatureGabarit(lignes) }
-    setLines(lignes)
-  }
-  useEffect(() => {
-    if (linesInitialized.current || !produits.length) return
-    linesInitialized.current = true
-    // QJR570 — les lignes par défaut sont une composition (pas une saisie).
-    // ADVS47 — produit sans taux : TVA standard de la société (profil, D-APAR-1).
-    poserGabarit(modeInstallation)
-  }, [produits, quoteLogic.tvaStandard]) // eslint-disable-line react-hooks/exhaustive-deps
-  // T4-U3-006 — marché changé (par le vendeur ou par le lead) sur une table
-  // INTACTE : elle devient la table du nouveau marché. Une table éditée n'est
-  // jamais remplacée ici (le vendeur est interrogé dans `onModeChangeUi`).
-  useEffect(() => {
-    const g = gabaritRef.current
-    if (editId || !g || g.mode === modeInstallation || !tableIntacte(lines, g.signature)) return
-    poserGabarit(modeInstallation)
-  }, [modeInstallation]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Table par défaut du simulateur une fois le stock chargé — T4-U3-006 : celle du MARCHÉ.
+  const { proposerRemplacementLignes } = useGabaritMarche({
+    produits, tvaStandard: quoteLogic.tvaStandard, modeInstallation, lines, setLines, editId,
+    linesInitializedRef: linesInitialized, confirm, modeOptions: MODE_OPTIONS,
+  })
   // Chaque ligne d'un produit À BARÈME suit le compte de panneaux COURANT des
   // lignes (`retarifer_forfaits_par_panneau` du serveur), ajusté PENDANT le
   // rendu (jamais un rendu affiché au mauvais prix) ; le même tableau revient
@@ -988,12 +964,6 @@ export default function DevisGenerator({
     [lines, discountPct, scenario, optionArgent, produits, centaineMontee],
   )
   const lignesRemiseesTtc = remiseParPanier.parLigne
-  // T4-U2-011 — l'option où compte chaque ligne qui ne compte pas dans les
-  // deux totaux (même règle que les totaux du rail et le PDF).
-  const optionsLignes = useMemo(
-    () => optionsDesLignes(lines, { scenario, produits }),
-    [lines, scenario, produits],
-  )
   // Condition d'affichage = remise > 0 (jamais « montant ≠ catalogue ») :
   // remise nulle ⇒ écran inchangé à l'octet (le miroir rend le catalogue).
   const montrerRemise = (parseFloat(discountPct) || 0) > 0
@@ -1082,21 +1052,7 @@ export default function DevisGenerator({
       if (!ok) return
     }
     appliquerMarcheEcran(m, 'utilisateur')
-    // T4-U3-006 — table ÉDITÉE : jamais remplacée en silence, on demande.
-    const g = gabaritRef.current
-    if (!editId && g && !tableIntacte(lines, g.signature)) {
-      const libelle = (MODE_OPTIONS.find(o => o.value === m)?.label || m).replace(/^\S+\s/, '')
-      const remplacer = await confirm({
-        title: `Repartir des lignes du marché « ${libelle} » ?`,
-        description: m === 'agricole'
-          ? 'Vos lignes actuelles seront remplacées par celles du pompage (pompe, variateur, '
-            + 'panneaux… sans onduleur ni batterie).'
-          : 'Vos lignes actuelles seront remplacées par les lignes de départ de ce marché.',
-        confirmLabel: 'Remplacer les lignes',
-        cancelLabel: 'Garder mes lignes',
-      })
-      if (remplacer) poserGabarit(m)
-    }
+    await proposerRemplacementLignes(m) // T4-U3-006 — table ÉDITÉE : on demande
   }
 
   // ── Scénario / recommandation : réinitialisation si incompatible ──
@@ -2145,7 +2101,7 @@ export default function DevisGenerator({
           errorLines={errors.lines}
           accessoiresOnly={accessoiresOnly}
           setAccessoiresOnly={setAccessoiresOnly}
-          lignesRemiseesTtc={lignesRemiseesTtc} optionsLignes={optionsLignes}
+          lignesRemiseesTtc={lignesRemiseesTtc} optionsLignes={remiseParPanier.options}
           montrerRemise={montrerRemise}
         >
           <RailArgent agricole={modeInstallation === 'agricole'}
