@@ -295,6 +295,18 @@
    "required": false
   },
   {
+   "classe": "LeadDecimalField",
+   "nom": "puissance_max_appelee_kva",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "charge_moyenne_pct",
+   "read_only": false,
+   "required": false
+  },
+  {
    "classe": "ChaineStricte",
    "nom": "nom",
    "read_only": false,

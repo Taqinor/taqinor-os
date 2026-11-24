@@ -12,6 +12,7 @@ from .stages import STAGE_CHOICES, NEW
 from .categories_commerciales import (CategorieCommerciale, EquipementsHorsHoraires,
                                       REPONSES_CATEGORIE_CLES)
 from .models_lead_pompage import LeadPompageMixin, valider_mois_irrigation
+from .models_lead_puissance import LeadPuissanceMaxMixin, valider_cos_phi
 
 
 def _valider_entiers_distincts(valeur, borne_max, message):
@@ -41,16 +42,6 @@ def valider_fermeture_mois(valeur):
     _valider_entiers_distincts(
         valeur, 12, '« Mois de fermeture » : une liste de mois distincts, '
         'chacun entre 1 et 12.')
-
-
-def valider_cos_phi(valeur):
-    """CIQ401 — un cos φ est dans ]0 ; 1] (jamais supposé : vide sinon)."""
-    from django.core.exceptions import ValidationError
-    if valeur is None:
-        return
-    if not 0 < valeur <= 1:
-        raise ValidationError(
-            '« Cos φ » : une valeur strictement positive, au plus 1.')
 
 
 #: CIQ401 (contrat CIQ1 ``lead_pro.json``) — vocabulaire de la provenance
@@ -221,7 +212,7 @@ def valider_facture_tranche_declaree(valeur):
 Client = 'crm.Client'
 
 
-class Lead(LeadPompageMixin, VerrouOptimisteMixin, RechercheFTSMixin, SoftDeleteModel):
+class Lead(LeadPompageMixin, LeadPuissanceMaxMixin, VerrouOptimisteMixin, RechercheFTSMixin, SoftDeleteModel):
     """A sales lead / opportunity — distinct from a Client (customer) record.
 
     Leads carry a pipeline stage (canonical from STAGES.py) and a source/origin
