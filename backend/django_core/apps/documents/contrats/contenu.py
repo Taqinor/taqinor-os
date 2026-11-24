@@ -631,46 +631,186 @@ def _dater_garanties(garanties, depart):
     return garanties
 
 
+# ── Gabarits : un texte personnalisé ne fige jamais une valeur ──────────────
+# Un article ou un quitus corrigé à l'écran est stocké en GABARIT : chaque
+# valeur vivante du contexte qu'il cite (liste des tranches, montants, dates,
+# références, noms) redevient son repère ``{…}``, et le rendu le reformate
+# avec le contexte du moment. Les repères sont ceux du contexte calculé à
+# l'exécution — jamais une liste écrite ici.
+
+_SEPARATEURS = '   '
+_SENTINELLE = re.compile('([^]+)')
+#: Clé des repères du quitus dans ``reperes_par_defaut``.
+CLE_QUITUS = '__quitus__'
+
+
+class _CtxRendu(dict):
+    """Un repère absent du contexte s'imprime « à préciser »."""
+
+    def __init__(self, ctx, langue):
+        super().__init__(ctx or {})
+        self.langue = langue
+
+    def __missing__(self, cle):
+        return A_PRECISER.get(self.langue, A_PRECISER['fr'])
+
+
+def _echapper(texte):
+    return texte.replace('{', '{{').replace('}', '}}')
+
+
+def rendre_gabarit(gabarit, ctx, langue='fr'):
+    """Le texte d'un gabarit stocké, avec les valeurs vivantes de ``ctx``."""
+    texte = '' if gabarit is None else str(gabarit)
+    try:
+        return texte.format_map(_CtxRendu(ctx, langue))
+    except (ValueError, IndexError, AttributeError):
+        # Texte stocké avant les gabarits (accolade seule) : servi tel quel.
+        return texte
+
+
+def _motif_valeur(valeur):
+    """Motif d'une valeur, borné : « 9 850,00 DH » ne se reconnaît jamais à
+    l'intérieur de « 59 850,00 DH » ni de « 1 009 850,00 DH »."""
+    avant = apres = ''
+    if valeur[0].isalnum() or valeur[0] == '_':
+        avant = r'(?<!\w)'
+    if valeur[0].isdigit():
+        avant += rf'(?<!\d[{_SEPARATEURS},.])'
+    if valeur[-1].isalnum() or valeur[-1] == '_':
+        apres = r'(?!\w)'
+    if valeur[-1].isdigit():
+        apres += rf'(?![,.]\d)(?![{_SEPARATEURS}]\d)'
+    return avant + re.escape(valeur) + apres
+
+
+def _motif_gabarit(ctx, prefere=()):
+    """``(motif, cles)`` : une alternative par valeur du contexte, les plus
+    longues d'abord. Une valeur vide n'est jamais remplacée ; une valeur
+    portée par deux repères ne l'est que si un seul des deux figure dans le
+    texte par défaut (``prefere``) — sinon elle reste écrite (le contrôle des
+    montants figés la rattrape à l'émission si elle change)."""
+    par_valeur = {}
+    for cle, valeur in (ctx or {}).items():
+        if isinstance(valeur, str) and valeur.strip():
+            par_valeur.setdefault(valeur, []).append(cle)
+    retenues = []
+    for valeur, cles in par_valeur.items():
+        if len(cles) > 1:
+            cles = [c for c in cles if c in prefere]
+        if len(cles) == 1:
+            retenues.append((valeur, cles[0]))
+    if not retenues:
+        return None, {}
+    retenues.sort(key=lambda vc: (-len(vc[0]), vc[1]))
+    motif = '|'.join(f'(?P<g{i}>{_motif_valeur(v)})'
+                     for i, (v, _c) in enumerate(retenues))
+    return re.compile(motif), {f'g{i}': c for i, (_v, c) in enumerate(retenues)}
+
+
+def gabarit(texte, ctx, prefere=()):
+    """Le gabarit d'un texte saisi : accolades doublées, chaque valeur vivante
+    remplacée par son repère. ``rendre_gabarit(gabarit(t, ctx), ctx) == t``."""
+    texte = '' if texte is None else str(texte)
+    motif, cles = _motif_gabarit(ctx, prefere)
+    if motif is None:
+        return _echapper(texte)
+    sortie, pos = [], 0
+    for m in motif.finditer(texte):
+        sortie.append(_echapper(texte[pos:m.start()]))
+        sortie.append('{' + cles[m.lastgroup] + '}')
+        pos = m.end()
+    sortie.append(_echapper(texte[pos:]))
+    return ''.join(sortie)
+
+
+def reperes_par_defaut(textes, type_acte, variante, options, ctx):
+    """Les repères que cite chaque texte par défaut (par clé d'article,
+    ``CLE_QUITUS`` pour le quitus), lus en rendant les textes avec des
+    sentinelles à la place des valeurs du contexte."""
+    sentinelles = {k: f'{k}' for k in (ctx or {})}
+    reperes = {}
+    for a in textes.articles_par_defaut(type_acte, variante, sentinelles,
+                                        options):
+        brut = '\n'.join([a.get('titre') or ''] + list(a.get('paragraphes')
+                                                       or []))
+        reperes[a['cle']] = set(_SENTINELLE.findall(brut))
+    if type_acte == T.CLOTURE:
+        reperes[CLE_QUITUS] = set(_SENTINELLE.findall(
+            '\n'.join(textes.quitus_par_defaut(sentinelles))))
+    return reperes
+
+
 # ── Articles ────────────────────────────────────────────────────────────────
 
-def resoudre_articles(base, liste):
+def _article_rendu(a, ctx, langue):
+    return {'cle': a.get('cle') or '',
+            'titre': rendre_gabarit(a.get('titre') or '', ctx, langue),
+            'paragraphes': [rendre_gabarit(p, ctx, langue)
+                            for p in a.get('paragraphes') or []]}
+
+
+def resoudre_articles(base, liste, ctx=None, langue='fr'):
     """Applique une liste d'articles personnalisée (forme stockée) à la liste
-    ``base`` : une entrée ``{cle}`` seule reprend l'article de base de même
-    clé (jamais figé : ses montants restent vivants), une entrée complète le
-    remplace ; l'ordre et les suppressions sont ceux de la liste."""
+    ``base``. Entrées : ``{cle}`` reprend l'article de base de même clé
+    (jamais figé) ; ``{cle, retire}`` est un article supprimé à l'écran ;
+    ``{cle, titre, paragraphes[, base]}`` est un GABARIT rendu avec ``ctx``.
+    Une correction d'un article de base (``base``) sort quand une option
+    retire cet article ; un article de base jamais cité par la liste (une
+    option recochée, un article nouveau) reprend sa place dans l'ordre de
+    base."""
     if not isinstance(liste, list):
         return base
     par_cle = {a['cle']: a for a in base}
+    citees = {a.get('cle') for a in liste if isinstance(a, dict)}
     sortie = []
     for a in liste:
-        if not isinstance(a, dict):
+        if not isinstance(a, dict) or a.get('retire'):
             continue
+        cle = a.get('cle') or ''
         if 'paragraphes' not in a and 'titre' not in a:
-            if a.get('cle') in par_cle:
-                sortie.append(par_cle[a['cle']])
+            if cle in par_cle:
+                sortie.append(par_cle[cle])
             continue
-        sortie.append({'cle': a.get('cle') or '', 'titre': a.get('titre') or '',
-                       'paragraphes': list(a.get('paragraphes') or [])})
+        if a.get('base') and cle not in par_cle:
+            continue
+        sortie.append(_article_rendu(a, ctx, langue))
+    for i, b in enumerate(base):
+        if b['cle'] in citees:
+            continue
+        avant = {x['cle'] for x in base[:i]}
+        pos = 0
+        for j, s in enumerate(sortie):
+            if s['cle'] in avant:
+                pos = j + 1
+        sortie.insert(pos, b)
     return sortie
 
 
-def compacter_articles(base, entrants):
+def compacter_articles(base, entrants, ctx=None, reperes=None):
     """Forme stockée d'une liste d'articles reçue de l'écran.
 
-    Une liste qui reprend au moins la moitié des articles de ``base`` est une
-    liste COMPLÈTE (elle fixe l'ordre et les suppressions) ; une liste plus
-    courte modifie les articles cités par leur clé et ajoute les nouveaux à la
-    fin. Un article identique à celui de base est stocké par sa seule clé :
-    ainsi un texte non modifié ne fige jamais un montant de la vente."""
+    ``base`` : les articles de l'acte sans ses propres textes, mais avec ses
+    réglages communs (options, dates) — la base de comparaison. Une liste qui
+    reprend au moins la moitié des articles de ``base`` est une liste
+    COMPLÈTE (elle fixe l'ordre ; un article de base absent est marqué
+    ``retire``) ; une liste plus courte modifie les articles cités par leur
+    clé et ajoute les nouveaux à la fin. Un article identique à celui de base
+    est stocké par sa seule clé ; un article corrigé est stocké en gabarit
+    (``gabarit``) : aucun texte ne fige une valeur de la vente."""
+    reperes = reperes or {}
     par_cle = {a['cle']: a for a in base}
     cles_base = [a['cle'] for a in base]
     communes = {a['cle'] for a in entrants} & set(cles_base)
+    retires = []
     if base and len(communes) * 2 < len(cles_base):
         remplaces = {a['cle']: a for a in entrants}
         liste = [remplaces.get(c, {'cle': c}) for c in cles_base]
         liste += [a for a in entrants if a['cle'] not in par_cle]
     else:
         liste = list(entrants)
+        retires = [{'cle': c, 'retire': True} for c in cles_base
+                   if c not in communes]
     sortie = []
     for a in liste:
         defaut = par_cle.get(a['cle'])
@@ -678,9 +818,99 @@ def compacter_articles(base, entrants):
                 defaut is not None and a.get('titre') == defaut['titre']
                 and list(a.get('paragraphes') or []) == defaut['paragraphes']):
             sortie.append({'cle': a['cle']})
-        else:
-            sortie.append(a)
+            continue
+        prefere = reperes.get(a['cle'], set())
+        entree = {'cle': a['cle'],
+                  'titre': gabarit(a.get('titre') or '', ctx, prefere),
+                  'paragraphes': [gabarit(p, ctx, prefere)
+                                  for p in a.get('paragraphes') or []]}
+        if defaut is not None:
+            entree['base'] = True
+        sortie.append(entree)
+    return sortie + retires
+
+
+def gabarits_textes(paragraphes, ctx, prefere=()):
+    """Une liste de paragraphes (le quitus) en gabarits."""
+    return [gabarit(p, ctx, prefere) for p in paragraphes]
+
+
+# ── Montants figés (refus ``montant_fige`` à l'émission) ────────────────────
+
+_MONTANT_DH = re.compile(
+    rf'(?<![\w,.])(\d{{1,3}}(?:[{_SEPARATEURS}]\d{{3}})+|\d+)(?:[,.](\d{{1,2}}))?'
+    rf'[{_SEPARATEURS}]*(?:DH|MAD|dirhams?|درهم)(?![A-Za-z])', re.IGNORECASE)
+_DECIMAL_SERVI = re.compile(r'^-?\d+(?:\.\d+)?$')
+
+
+def montants_du_texte(texte):
+    """Les montants en dirhams écrits dans un texte (Decimal au centime)."""
+    sortie = []
+    for m in _MONTANT_DH.finditer(str(texte or '')):
+        entier = re.sub(f'[{_SEPARATEURS}]', '', m.group(1))
+        sortie.append(_q(Decimal(f'{entier}.{m.group(2) or "0"}')))
     return sortie
+
+
+def _montants_vivants(contenu, ctx):
+    """Les montants de la vente : sections chiffrées du contenu et montants
+    des repères du contexte."""
+    vivants = set()
+
+    def parcourir(valeur):
+        if isinstance(valeur, dict):
+            for v in valeur.values():
+                parcourir(v)
+        elif isinstance(valeur, list):
+            for v in valeur:
+                parcourir(v)
+        elif isinstance(valeur, str) and _DECIMAL_SERVI.match(valeur):
+            vivants.add(_q(Decimal(valeur)))
+    for section in ('prix', 'echeancier', 'paiement', 'paiements'):
+        parcourir(contenu.get(section))
+    for valeur in (ctx or {}).values():
+        if isinstance(valeur, str):
+            vivants.update(montants_du_texte(valeur))
+    return vivants
+
+
+def montants_figes(acte, lecture=None):
+    """Les textes personnalisés de l'acte (articles, quitus ; français et
+    arabe) qui citent encore un montant en dirhams que la vente ne porte
+    plus : ``[(nom du texte, [montants])]``, vide si tout est vivant."""
+    lecture = lecture or Lecture(acte.chantier)
+    sortie = []
+    for langue in T.LANGUES:
+        surcharges = _surcharges_texte(acte, langue)
+        perso = {a.get('cle') for a in surcharges.get('articles') or []
+                 if isinstance(a, dict) and 'paragraphes' in a
+                 and not a.get('retire')}
+        quitus = isinstance(surcharges.get('quitus'), list)
+        if not perso and not quitus:
+            continue
+        contenu, ctx = _construire(acte, langue, lecture, avec_ctx=True)
+        vivants = _montants_vivants(contenu, ctx)
+        suffixe = ' (traduction arabe)' if langue == 'ar' else ''
+        textes = [(f'L\'article « {a["titre"]} »{suffixe}',
+                   [a['titre']] + list(a['paragraphes']))
+                  for a in contenu.get('articles') or [] if a['cle'] in perso]
+        if quitus and contenu.get('quitus'):
+            textes.append((f'Le quitus{suffixe}', contenu['quitus']))
+        for nom, morceaux in textes:
+            etrangers = [m for m in montants_du_texte('\n'.join(morceaux))
+                         if m not in vivants]
+            if etrangers:
+                sortie.append((nom, list(dict.fromkeys(etrangers))))
+    return sortie
+
+
+def message_montants_figes(figes):
+    """La phrase du refus ``montant_fige`` (et de son avertissement) : chaque
+    texte nommé, avec le montant qui n'est plus celui de la vente."""
+    morceaux = [f'{nom} cite {", ".join(C.montant(m) for m in montants)}'
+                for nom, montants in figes]
+    return ('; '.join(morceaux) + " : ce montant n'est plus celui de la vente. "
+            "Corrigez ce texte ou remettez-le par défaut avant d'émettre.")
 
 
 # ── Personnalisations ───────────────────────────────────────────────────────
@@ -718,19 +948,23 @@ def _appliquer_communes(contenu, surcharges):
         contenu['_date_limite_fixee'] = s['delais']['date_limite']
 
 
-def _appliquer_textes(contenu, surcharges, langue, *, modele=False):
+def _appliquer_textes(contenu, surcharges, langue, ctx=None, *, modele=False):
     """Sections de texte d'une langue. ``modele`` : les garanties du modèle
-    s'appliquent par clé (jamais en remplaçant la liste d'une vente)."""
+    s'appliquent par clé (jamais en remplaçant la liste d'une vente). Les
+    articles et le quitus stockés sont des gabarits, rendus avec ``ctx``."""
     s = surcharges or {}
     for cle in ('titre', 'conditions_particulieres', 'conseils_intro'):
         if cle in contenu and isinstance(s.get(cle), str):
             contenu[cle] = s[cle]
-    for cle in ('constats', 'reserves', 'quitus', 'conseils', 'entretien'):
+    for cle in ('constats', 'reserves', 'conseils', 'entretien'):
         if cle in contenu and isinstance(s.get(cle), list):
             contenu[cle] = copy.deepcopy(s[cle])
+    if 'quitus' in contenu and isinstance(s.get('quitus'), list):
+        contenu['quitus'] = [rendre_gabarit(p, ctx, langue)
+                             for p in s['quitus']]
     if 'articles' in contenu and isinstance(s.get('articles'), list):
         contenu['articles'] = resoudre_articles(contenu['articles'],
-                                                s['articles'])
+                                                s['articles'], ctx, langue)
     if 'garanties' in contenu and isinstance(s.get('garanties'), list):
         if modele:
             contenu['garanties'] = _fusion_garanties_modele(
@@ -903,16 +1137,17 @@ def _contenu_vivant(acte, langue, lecture, vente, refs):
     return contenu
 
 
-def _appliquer_modeles_communs(contenu, acte, modele_contrat, modele,
-                               avec_acte):
+def _appliquer_modeles_communs(contenu, acte, modele_contrat, modele):
     """Sections communes : modèle « contrat » (signataire des quatre actes),
-    modèle du type, puis l'acte — toujours les surcharges françaises. Rend
-    la date limite fixée à la main, s'il y en a une."""
+    modèle du type, puis l'acte — toujours les surcharges françaises, y
+    compris pour la base de comparaison des articles (une option ou une date
+    de l'acte n'est jamais prise pour une correction de texte). Rend la date
+    limite fixée à la main, s'il y en a une."""
     if modele_contrat is not None:
         rep = ((modele_contrat.surcharges or {}).get('societe') or {})
         if isinstance(rep, dict) and not _vide(rep.get('representant')):
             contenu['societe']['representant'] = rep['representant']
-    for objet in (modele, acte if avec_acte else None):
+    for objet in (modele, acte):
         if objet is not None:
             _appliquer_communes(contenu, objet.surcharges)
     return contenu.pop('_date_limite_fixee', None)
@@ -985,7 +1220,10 @@ def _finaliser(contenu):
 
 
 def _construire(acte, langue='fr', lecture=None, *, avec_modele=True,
-                avec_acte=True):
+                avec_acte_textes=True, avec_ctx=False):
+    """Le contenu d'un acte. ``avec_acte_textes=False`` : sans les textes
+    personnalisés de l'acte (ses réglages communs restent appliqués) ;
+    ``avec_ctx`` : rend ``(contenu, ctx)``."""
     if langue not in T.LANGUES:
         raise ValueError(f'Langue inconnue : {langue!r}')
     chantier = acte.chantier
@@ -997,15 +1235,18 @@ def _construire(acte, langue='fr', lecture=None, *, avec_modele=True,
     modele_contrat = lecture.modele(T.CONTRAT) if avec_modele else None
     modele = lecture.modele(acte.type) if avec_modele else None
     date_fixee = _appliquer_modeles_communs(contenu, acte, modele_contrat,
-                                            modele, avec_acte)
+                                            modele)
     _sections_derivees(contenu, acte, lecture, vente, langue, date_fixee)
-    _textes_par_defaut(contenu, _textes(langue), vente, langue, refs)
+    ctx = _textes_par_defaut(contenu, _textes(langue), vente, langue, refs,
+                             lecture)
     if modele is not None:
         _appliquer_textes(contenu, _surcharges_texte(modele, langue), langue,
-                          modele=True)
-    if avec_acte:
-        _appliquer_textes(contenu, _surcharges_texte(acte, langue), langue)
-    return _finaliser(contenu)
+                          ctx, modele=True)
+    if avec_acte_textes:
+        _appliquer_textes(contenu, _surcharges_texte(acte, langue), langue,
+                          ctx)
+    contenu = _finaliser(contenu)
+    return (contenu, ctx) if avec_ctx else contenu
 
 
 def _completer_cles_garanties(garanties):
@@ -1036,7 +1277,9 @@ def _livraison_defaut(chantier, langue):
             'avec_series': False}
 
 
-def _textes_par_defaut(contenu, textes, vente, langue, refs):
+def _textes_par_defaut(contenu, textes, vente, langue, refs, lecture=None):
+    """Pose les textes par défaut ; rend le contexte (repères) qui les a
+    formatés — celui qui rend aussi les gabarits personnalisés."""
     type_acte = contenu['type']
     ctx = _contexte(contenu, vente, langue, refs)
     options = contenu['options']
@@ -1055,6 +1298,7 @@ def _textes_par_defaut(contenu, textes, vente, langue, refs):
         contenu['journee'] = textes.journee_solaire(avec_batterie)
         contenu['conseils'] = conseils
         contenu['entretien'] = textes.entretien_par_defaut()
+    return ctx
 
 
 # ── API publique du module ──────────────────────────────────────────────────
@@ -1074,11 +1318,29 @@ def contenu_de(acte, langue='fr', lecture=None):
 
 
 def articles_de_base(acte, langue='fr', lecture=None, *, avec_modele=True):
-    """Les articles de l'acte SANS ses propres personnalisations (avec ou sans
-    celles du modèle) : la base contre laquelle une liste reçue est
-    compactée."""
-    return _construire(acte, langue, lecture, avec_modele=avec_modele,
-                       avec_acte=False)['articles']
+    """Les articles de l'acte SANS ses propres textes (avec ou sans ceux du
+    modèle), ses réglages communs appliqués."""
+    return base_de_comparaison(acte, langue, lecture,
+                               avec_modele=avec_modele)['articles']
+
+
+def base_de_comparaison(acte, langue='fr', lecture=None, *, avec_modele=True):
+    """La base contre laquelle des textes reçus sont compactés et mis en
+    gabarit : ``articles`` et ``quitus`` de l'acte SANS ses propres textes
+    mais avec ses réglages communs (options, dates, signataire), le ``ctx``
+    vivant et les ``reperes`` que cite chaque texte par défaut."""
+    contenu, ctx = _construire(acte, langue, lecture, avec_modele=avec_modele,
+                               avec_acte_textes=False, avec_ctx=True)
+    reperes = reperes_par_defaut(_textes(langue), contenu['type'],
+                                 contenu['variante'], contenu['options'], ctx)
+    return {'articles': contenu.get('articles') or [],
+            'quitus': contenu.get('quitus'), 'ctx': ctx, 'reperes': reperes}
+
+
+def contexte_de(acte, langue='fr', lecture=None):
+    """Les repères vivants d'un acte (le ``ctx`` des textes), dans la
+    langue."""
+    return _construire(acte, langue, lecture, avec_ctx=True)[1]
 
 
 def sections_modifiables(type_acte, langue='fr'):
@@ -1390,6 +1652,9 @@ def avertissements(acte, contenu=None, lecture=None):
     if not (acte.chantier.client_id):
         sortie.append("Ce chantier n'a pas de client : l'identité du Client "
                       "est à préciser.")
+    figes = montants_figes(acte, lecture)
+    if figes:
+        sortie.append(message_montants_figes(figes))
     retard = [T.LIBELLES_SECTIONS[s] for s in T.SECTIONS_MODIFIABLES[acte.type]
               if s in T.SECTIONS_TEXTE and s in (acte.surcharges or {})
               and s not in (acte.surcharges_ar or {})]

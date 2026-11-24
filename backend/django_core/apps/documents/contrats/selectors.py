@@ -24,7 +24,8 @@ def _drapeaux(acte, lecture, actes_du_chantier):
     if not annule and acte.statut == T.BROUILLON and not jumelle:
         vente = lecture.vente()
         peut_emettre = vente is not None and not (
-            acte.type == T.CLOTURE and (K.reste_du(vente) or 0) > 0)
+            acte.type == T.CLOTURE and (K.reste_du(vente) or 0) > 0) \
+            and not K.montants_figes(acte, lecture)
     return {
         'ecarte': jumelle,
         'peut_modifier': not annule and acte.statut == T.BROUILLON,

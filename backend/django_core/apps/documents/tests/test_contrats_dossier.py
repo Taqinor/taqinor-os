@@ -21,7 +21,7 @@ from pathlib import Path
 
 import fitz
 from django.contrib.auth import get_user_model
-from django.test import TestCase, tag
+from django.test import SimpleTestCase, TestCase, tag
 
 from apps.crm.models import Client
 from apps.documents.contrats import contenu as K
@@ -431,3 +431,232 @@ class EmissionTests(TestCase):
         self.assertEqual(acte.statut, T.EMIS)
         self.assertEqual(acte.contenu['paiement']['reste_a_regler'], '0.00')
         self.assertEqual(len(acte.contenu['paiements']), 1)
+
+
+# ── S1 : un texte personnalisé ne fige jamais une valeur ────────────────────
+
+NB, FINE = ' ', ' '
+
+
+class GabaritTests(SimpleTestCase):
+    """Fonctions pures du gabarit (aucune base)."""
+
+    def aller_retour(self, texte, ctx, prefere=()):
+        g = K.gabarit(texte, ctx, prefere)
+        self.assertEqual(K.rendre_gabarit(g, ctx), texte)
+        return g
+
+    def test_valeur_prefixe_d_une_autre(self):
+        petit, grand = f'9{FINE}850,00{NB}DH', f'59{FINE}850,00{NB}DH'
+        texte = f'Reste {petit}, soit sur {grand} au total.'
+        g = self.aller_retour(texte, {'reste': petit, 'total': grand})
+        self.assertEqual(g, 'Reste {reste}, soit sur {total} au total.')
+        # La petite valeur seule ne mord jamais dans la grande.
+        g = self.aller_retour(f'Sur {grand}.', {'reste': petit})
+        self.assertEqual(g, f'Sur {grand}.')
+        g = self.aller_retour(f'Sur 1{FINE}00{petit}.', {'reste': petit})
+        self.assertNotIn('{reste}', g)
+
+    def test_liste_des_tranches_sur_plusieurs_lignes(self):
+        liste = (f'- **30{NB}%**, soit 29{FINE}550,00{NB}DH, à la signature ;\n'
+                 f'- **70{NB}%**, soit 68{FINE}950,00{NB}DH, à la réception.')
+        ctx = {'liste_tranches': liste, 'acompte': f'29{FINE}550,00{NB}DH'}
+        g = self.aller_retour(f'Le prix est payé ainsi :\n{liste}\nMerci.',
+                              ctx)
+        self.assertEqual(g, 'Le prix est payé ainsi :\n{liste_tranches}\n'
+                            'Merci.')
+
+    def test_valeur_vide_jamais_remplacee_et_accolades_gardees(self):
+        ctx = {'cndp': '', 'blanc': '  ', 'societe': 'TAQINOR'}
+        g = self.aller_retour('TAQINOR garde la clause {spéciale} et {0}.',
+                              ctx)
+        self.assertEqual(g, '{societe} garde la clause {{spéciale}} et {{0}}.')
+
+    def test_valeur_portee_par_deux_reperes(self):
+        v = f'9{FINE}850,00{NB}DH'
+        ctx = {'reste_a_regler': v, 'reste_apres_livraison': v}
+        self.assertEqual(self.aller_retour(f'Reste {v}.', ctx), f'Reste {v}.')
+        self.assertEqual(
+            self.aller_retour(f'Reste {v}.', ctx, {'reste_a_regler'}),
+            'Reste {reste_a_regler}.')
+
+    def test_contexte_arabe(self):
+        ctx = {'total_ttc': f'98{FINE}500,00{NB}درهم',
+               'societe': 'تاقينور', 'date_limite': '23 يناير 2027'}
+        texte = f'تلتزم تاقينور بثمن 98{FINE}500,00{NB}درهم قبل 23 يناير 2027.'
+        g = self.aller_retour(texte, ctx)
+        self.assertEqual(g, 'تلتزم {societe} بثمن {total_ttc} قبل '
+                            '{date_limite}.')
+
+    def test_montants_du_texte(self):
+        self.assertEqual(
+            K.montants_du_texte(f'29{FINE}550,00{NB}DH, 1 234 DH, 12,5 dirhams'
+                                f' et 59{FINE}100,00{NB}درهم ; 10 % ; 2026'),
+            [Decimal('29550.00'), Decimal('1234.00'), Decimal('12.50'),
+             Decimal('59100.00')])
+
+
+def texte_article(contenu, cle):
+    a = next(a for a in contenu['articles'] if a['cle'] == cle)
+    return '\n'.join([a['titre']] + a['paragraphes'])
+
+
+def corriger(articles, cle, ajout=' Texte ajouté par le commercial.'):
+    """La liste servie, avec l'article ``cle`` corrigé (un mot ajouté au
+    premier paragraphe)."""
+    sortie = json.loads(json.dumps(articles))
+    for a in sortie:
+        if a['cle'] == cle:
+            a['paragraphes'][0] += ajout
+    return sortie
+
+
+class ArticlesGabaritsTests(TestCase):
+    """Un article corrigé suit la vente, les options et les dates."""
+
+    def test_aller_retour_identique_dans_chaque_acte_et_langue(self):
+        v = Vente(self)
+        v.payer(v.plan()['tranches'][0]['montant_ttc'])
+        for acte in v.actes():
+            for langue in T.LANGUES:
+                with self.subTest(acte=acte.type, variante=acte.variante,
+                                  langue=langue):
+                    acte.refresh_from_db()
+                    avant = K.construire_contenu(acte, langue)['articles']
+                    envoye = corriger(avant, avant[-1]['cle'])
+                    S.modifier(acte, {'articles': envoye}, v.user, langue)
+                    acte.refresh_from_db()
+                    self.assertEqual(
+                        K.construire_contenu(acte, langue)['articles'], envoye)
+
+    def test_paiement_corrige_suit_l_echeancier_de_la_vente(self):
+        v = Vente(self)
+        acte = v.acte(T.CONTRAT)
+        envoye = corriger(K.construire_contenu(acte)['articles'], 'paiement')
+        S.modifier(acte, {'articles': envoye}, v.user)
+        acte.refresh_from_db()
+        stocke = next(a for a in acte.surcharges['articles']
+                      if a['cle'] == 'paiement')
+        self.assertTrue(any('{liste_tranches}' in p
+                            for p in stocke['paragraphes']), stocke)
+        Devis.objects.filter(pk=v.devis.pk).update(echeancier=[
+            {'libelle': 'Acompte', 'type': 'acompte', 'pct_or_montant': 40},
+            {'libelle': 'Livraison du matériel', 'type': 'materiel',
+             'pct_or_montant': 50},
+            {'libelle': 'Solde', 'type': 'solde', 'pct_or_montant': 10}])
+        acte = v.acte(T.CONTRAT)
+        contenu, ctx = K._construire(acte, avec_ctx=True)
+        apres = texte_article(contenu, 'paiement')
+        self.assertIn('Texte ajouté par le commercial.', apres)
+        self.assertIn(ctx['liste_tranches'], apres)
+        self.assertIn(f'40{NB}%', ctx['liste_tranches'])
+
+    def test_penalite_reglee_puis_retiree_apres_correction(self):
+        v = Vente(self)
+        acte = v.acte(T.CONTRAT)
+        S.modifier(acte, {'options': {'penalite_retard_pct': '10'}}, v.user)
+        acte.refresh_from_db()
+        self.assertIn('indemnité', texte_article(
+            K.construire_contenu(acte), 'retard'))
+        envoye = corriger(K.construire_contenu(acte)['articles'], 'objet')
+        S.modifier(acte, {'articles': envoye}, v.user)
+        acte.refresh_from_db()
+        S.modifier(acte, {'options': {'penalite_retard_pct': None}}, v.user)
+        acte.refresh_from_db()
+        contenu = K.construire_contenu(acte)
+        self.assertNotIn('indemnité', texte_article(contenu, 'retard'))
+        self.assertIn('Texte ajouté par le commercial.',
+                      texte_article(contenu, 'objet'))
+
+    def test_reserve_propriete_decochee_puis_recochee(self):
+        v = Vente(self)
+        acte = v.acte(T.CONTRAT)
+        ordre = [a['cle'] for a in K.construire_contenu(acte)['articles']]
+        S.modifier(acte, {'options': {'reserve_propriete': False}}, v.user)
+        acte.refresh_from_db()
+        sans = K.construire_contenu(acte)['articles']
+        self.assertNotIn('propriete', [a['cle'] for a in sans])
+        S.modifier(acte, {'articles': corriger(sans, 'objet')}, v.user)
+        acte.refresh_from_db()
+        S.modifier(acte, {'options': {'reserve_propriete': True}}, v.user)
+        acte.refresh_from_db()
+        contenu = K.construire_contenu(acte)
+        self.assertEqual([a['cle'] for a in contenu['articles']], ordre)
+        self.assertIn('Texte ajouté par le commercial.',
+                      texte_article(contenu, 'objet'))
+
+    def test_options_et_articles_dans_le_meme_corps(self):
+        v = Vente(self)
+        acte = v.acte(T.CONTRAT)
+        sans = [a for a in K.construire_contenu(acte)['articles']
+                if a['cle'] != 'propriete']
+        S.modifier(acte, {'options': {'reserve_propriete': False},
+                          'articles': corriger(sans, 'objet')}, v.user)
+        acte.refresh_from_db()
+        self.assertFalse(any(e.get('retire')
+                             for e in acte.surcharges['articles']))
+        S.modifier(acte, {'options': {'reserve_propriete': True}}, v.user)
+        acte.refresh_from_db()
+        self.assertIn('propriete', [a['cle'] for a in K.construire_contenu(
+            acte)['articles']])
+
+    def test_article_supprime_reste_supprime(self):
+        v = Vente(self)
+        acte = v.acte(T.CONTRAT)
+        avant = K.construire_contenu(acte)['articles']
+        envoye = [a for a in corriger(avant, 'objet')
+                  if a['cle'] != 'estimations']
+        S.modifier(acte, {'articles': envoye}, v.user)
+        acte.refresh_from_db()
+        S.modifier(acte, {'options': {'penalite_retard_pct': '5'}}, v.user)
+        acte.refresh_from_db()
+        apres = K.construire_contenu(acte)['articles']
+        self.assertNotIn('estimations', [a['cle'] for a in apres])
+        self.assertEqual(len(apres), len(avant) - 1)
+
+    def test_arabe_corrige_suit_la_vente(self):
+        v = Vente(self)
+        acte = v.acte(T.CONTRAT)
+        envoye = corriger(K.construire_contenu(acte, 'ar')['articles'],
+                          'paiement', ' نص أضافه المستشار.')
+        S.modifier(acte, {'articles': envoye}, v.user, 'ar')
+        acte.refresh_from_db()
+        self.assertEqual(acte.surcharges, {})
+        self.assertEqual(K.construire_contenu(acte, 'ar')['articles'], envoye)
+        Devis.objects.filter(pk=v.devis.pk).update(echeancier=[
+            {'libelle': 'Acompte', 'type': 'acompte', 'pct_or_montant': 50},
+            {'libelle': 'Solde', 'type': 'solde', 'pct_or_montant': 50}])
+        contenu, ctx = K._construire(v.acte(T.CONTRAT), 'ar', avec_ctx=True)
+        apres = texte_article(contenu, 'paiement')
+        self.assertIn('نص أضافه المستشار.', apres)
+        self.assertIn(ctx['liste_tranches'], apres)
+        self.assertNotIn(f'60{NB}%', apres)
+
+    def test_quitus_corrige_en_gabarit(self):
+        v = Vente(self)
+        acte = v.acte(T.CLOTURE)
+        quitus = K.construire_contenu(acte)['quitus']
+        envoye = [quitus[0] + ' Merci de votre confiance.'] + quitus[1:]
+        S.modifier(acte, {'quitus': envoye}, v.user)
+        acte.refresh_from_db()
+        self.assertIn('{client}', acte.surcharges['quitus'][0])
+        self.assertEqual(K.construire_contenu(acte)['quitus'], envoye)
+        S.modifier(acte, {'quitus': quitus}, v.user)  # retour au défaut
+        acte.refresh_from_db()
+        self.assertNotIn('quitus', acte.surcharges)
+
+    def test_montant_ecrit_en_clair_refuse_a_l_emission(self):
+        v = Vente(self)
+        acte = v.acte(T.CONTRAT)
+        envoye = corriger(K.construire_contenu(acte)['articles'], 'objet',
+                          f' Frais de dossier : 12{FINE}345,67{NB}DH.')
+        S.modifier(acte, {'articles': envoye}, v.user)
+        acte.refresh_from_db()
+        self.assertEqual(len(K.montants_figes(acte)), 1)
+        self.assertTrue(any('Objet du contrat' in a
+                            for a in K.avertissements(acte)))
+        with self.assertRaises(S.ErreurActe) as ctx:
+            S.emettre(acte, v.user)
+        self.assertEqual(ctx.exception.code, T.CODE_MONTANT_FIGE)
+        self.assertIn('« Objet du contrat »', ctx.exception.detail)
+        self.assertEqual(v.acte(T.CONTRAT).statut, T.BROUILLON)

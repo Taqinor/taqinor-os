@@ -155,16 +155,25 @@ def motif_refus_emission(acte, lecture):
         return (T.CODE_ETAT,
                 "L'autre version de la livraison est déjà émise : rouvrez-la "
                 "d'abord.")
+    figes = K.montants_figes(acte, lecture)
+    if figes:
+        return (T.CODE_MONTANT_FIGE, K.message_montants_figes(figes))
     return None
 
 
 # ── Modifier ────────────────────────────────────────────────────────────────
 
+#: Sections stockées en GABARIT (une valeur vivante redevient son repère).
+_SECTIONS_GABARIT = ('articles', 'quitus')
+
+
 def modifier(acte, surcharges, user=None, langue='fr'):
     """Applique des personnalisations à un BROUILLON : chaque section reçue
-    remplace la sienne, ``None`` la remet au défaut. Les articles sont stockés
-    sous forme compacte (un article non modifié = sa seule clé), pour qu'un
-    texte inchangé ne fige jamais un montant de la vente."""
+    remplace la sienne, ``None`` la remet au défaut. Les articles et le quitus
+    sont comparés à la base de l'acte (ses réglages communs — y compris ceux
+    reçus dans ce même corps — appliqués, ses textes non) : un texte non
+    modifié n'est pas stocké, un texte corrigé l'est en gabarit, pour qu'il ne
+    fige jamais une valeur de la vente."""
     try:
         propre = K.valider_surcharges(acte.type, surcharges, langue)
     except K.ContenuInvalide as exc:
@@ -175,15 +184,28 @@ def modifier(acte, surcharges, user=None, langue='fr'):
         _garde_brouillon(acte)
         champ = 'surcharges_ar' if langue == 'ar' else 'surcharges'
         cible = dict(getattr(acte, champ) or {})
+        textes = {}
         for section, valeur in propre.items():
             if valeur is None:
                 cible.pop(section, None)
-            elif section == 'articles':
-                base = K.articles_de_base(acte, langue)
-                cible[section] = K.compacter_articles(base, valeur)
+            elif section in _SECTIONS_GABARIT:
+                textes[section] = valeur
             else:
                 cible[section] = valeur
         setattr(acte, champ, cible)
+        if textes:
+            base = K.base_de_comparaison(acte, langue)
+            if 'articles' in textes:
+                cible['articles'] = K.compacter_articles(
+                    base['articles'], textes['articles'], base['ctx'],
+                    base['reperes'])
+            if 'quitus' in textes:
+                if textes['quitus'] == base['quitus']:
+                    cible.pop('quitus', None)
+                else:
+                    cible['quitus'] = K.gabarits_textes(
+                        textes['quitus'], base['ctx'],
+                        base['reperes'].get(K.CLE_QUITUS, set()))
         acte.save(update_fields=[champ, 'updated_at'])
     return acte
 
@@ -508,21 +530,23 @@ def _modele_de_langue(acte, langue, valeurs, ignores):
         if section in _HORS_MODELE:
             continue
         if section == 'articles':
+            # Les articles effectifs, remis en gabarits contre les textes par
+            # défaut : les valeurs de ce chantier redeviennent des repères ;
+            # un texte qui en cite encore une en clair n'est pas repris.
             effectifs = K.construire_contenu(acte, langue)['articles']
-            purs = K.articles_de_base(acte, langue, avec_modele=False)
-            par_cle = {a['cle']: a for a in purs}
+            base = K.base_de_comparaison(acte, langue, avec_modele=False)
             gardes = []
-            for a in effectifs:
-                texte = ' '.join([a['titre']] + a['paragraphes'])
-                if a['cle'] not in par_cle and _cite(texte, valeurs):
-                    ignores.append(f'article « {a["titre"]} »')
+            for e in K.compacter_articles(base['articles'], effectifs,
+                                          base['ctx'], base['reperes']):
+                if 'paragraphes' in e and _cite(
+                        ' '.join([e['titre']] + e['paragraphes']), valeurs):
+                    titre = K.rendre_gabarit(e['titre'], base['ctx'], langue)
+                    ignores.append(f'article « {titre} »')
+                    if e.get('base'):
+                        gardes.append({'cle': e['cle']})
                     continue
-                if _cite(texte, valeurs) and a != par_cle.get(a['cle']):
-                    ignores.append(f'article « {a["titre"]} »')
-                    gardes.append({'cle': a['cle']})
-                    continue
-                gardes.append(a)
-            sortie[section] = K.compacter_articles(purs, gardes)
+                gardes.append(e)
+            sortie[section] = gardes
         elif section == 'garanties':
             pose = [g for g in valeur if g.get('cle') == 'installation']
             if pose:
