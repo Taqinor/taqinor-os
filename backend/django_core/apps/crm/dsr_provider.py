@@ -51,6 +51,9 @@ MODELES_LEAD_TRAITES = {
     'crm.Parrainage': 'nom du filleul vidé',
     'crm.LeadActivity': "lignes gardées, valeurs d'identité caviardées "
                         '(D-ASOC-3)',
+    'ventes.ConceptionLead': 'versions de conception supprimées (copies des '
+                             'entrées du lead : factures, ville, GPS ; '
+                             'abonné ventes à lead_erased, ADEV131)',
 }
 MODELES_LEAD_EXEMPTES = {
     'crm.RelanceEtape': 'touches de cadence : libellés et échéances, aucune '

@@ -1,0 +1,147 @@
+"""ADEV132 — les entrées du moteur unique, une seule porte pour les trois marchés.
+
+``entrees_pour(lead, company)`` enveloppe, SANS les réécrire, les trois
+adaptateurs existants : ``domain/entrees.py::entrees_depuis_lead``
+(résidentiel), ``domain/etude_ci.py::resoudre_entrees`` (commercial,
+industriel) et ``domain/pompage.py::resoudre_entrees`` (agricole). Il n'y a
+aucune seconde lecture de la consommation, du lieu ni de l'occupation : la
+provenance (``entrees_utilisees``, forme du contrat ``conception_lead.json``)
+est relevée sur ce que l'adaptateur a résolu.
+
+* résidentiel : ``empreinte`` = ``empreinte_entrees`` de l'adaptateur, à
+  l'identique (même cache que les blocs des devis) ; ``champ`` = la colonne
+  du lead, ou le réglage société nommé ;
+* C&I et agricole : ``champ`` = l'entrée nommée de la résolution (ses
+  feuilles agrègent plusieurs colonnes du lead), ``source`` lue sur sa
+  provenance ; ``empreinte`` = SHA-256 des entrées résolues.
+
+Lecture pure : rien n'est écrit (règle n° 4).
+"""
+from dataclasses import dataclass, field
+from datetime import date, datetime
+from decimal import Decimal
+import hashlib
+import json
+
+MARCHES_CI = ('commercial', 'industriel')
+
+#: Colonnes du lead lues par l'adaptateur résidentiel et rendues telles quelles.
+_COLONNES_RESIDENTIEL = ('facture_hiver', 'facture_ete', 'ete_differente',
+                         'conso_mensuelle_kwh', 'gps_lat', 'gps_lng', 'raccordement')
+
+#: Origine d'une provenance de résolution (C&I, pompage) → source du contrat.
+_SOURCES = {'lead': 'lead', 'reglage_societe': 'reglage_societe', 'saisie': 'saisie',
+            'calepinage': 'calepinage'}
+
+
+@dataclass(frozen=True)
+class EntreesConception:
+    """Les entrées d'UNE conception : l'objet de l'adaptateur de son marché,
+    la provenance de chaque valeur et l'empreinte."""
+
+    marche: str
+    moteur: object = None      # résidentiel : ``EntreesMoteur``
+    resolution: object = None  # C&I : ``_Resolution`` ; agricole : ``(_Resolution, reglages)``
+    entrees_utilisees: dict = field(default_factory=dict)
+    empreinte: str = ''
+    empreinte_pose: str = ''
+    toit: object = None
+
+
+def _json(valeur):
+    if isinstance(valeur, Decimal):
+        return float(valeur)
+    if isinstance(valeur, (date, datetime)):
+        return valeur.isoformat()
+    if isinstance(valeur, (list, tuple)):
+        return [_json(v) for v in valeur]
+    if isinstance(valeur, dict):
+        return {str(k): _json(v) for k, v in valeur.items()}
+    return valeur
+
+
+def _vide(valeur):
+    return valeur in (None, '', [], {})
+
+
+def marche_du_lead(lead):
+    """Le marché du lead (vide ⇒ résidentiel, comme le devis automatique)."""
+    marche = (getattr(lead, 'type_installation', '') or '').strip().lower() or 'residentiel'
+    if marche not in ('residentiel', 'agricole') + MARCHES_CI:
+        raise ValueError('Marché inconnu du moteur : « %s ».' % marche)
+    return marche
+
+
+def _provenance_residentielle(lead, moteur):
+    """``{champ: {valeur, source}}`` de ce que l'adaptateur résidentiel a lu."""
+    sortie = {}
+    for colonne in _COLONNES_RESIDENTIEL:
+        valeur = getattr(lead, colonne, None)
+        if not _vide(valeur):
+            sortie[colonne] = {'valeur': _json(valeur), 'source': 'lead'}
+    if moteur is None:
+        return sortie
+    if moteur.ville:
+        sortie['ville'] = {'valeur': moteur.ville, 'source': 'lead'}
+    if moteur.occupation is not None:
+        declaree = not _vide(getattr(lead, 'occupation_jour', None))
+        sortie['occupation_jour'] = {'valeur': moteur.occupation,
+                                     'source': 'lead' if declaree else 'defaut'}
+    if moteur.equipements:
+        sortie['equipements'] = {'valeur': sorted(moteur.equipements), 'source': 'lead'}
+    if moteur.tranches is not None:
+        sortie['bareme_tarifaire'] = {'valeur': 'bareme_societe', 'source': 'reglage_societe'}
+    for reglage in ('charges_fixes_mad', 'productible_kwh_kwc'):
+        if moteur[reglage] is not None:
+            sortie[reglage] = {'valeur': _json(moteur[reglage]), 'source': 'reglage_societe'}
+    return sortie
+
+
+def _provenance_resolue(resolution, reglages=None):
+    """``{champ: {valeur, source}}`` des entrées résolues (C&I, pompage)."""
+    sortie = {}
+    for cle, entree in sorted(resolution.entrees_resolues().items()):
+        origine = (entree.get('provenance') or {}).get('origine')
+        sortie[cle] = {'valeur': entree.get('valeur'), 'source': _SOURCES.get(origine, 'defaut')}
+    for cle, (valeur, _prov) in sorted((reglages or {}).items()):
+        sortie[cle] = {'valeur': _json(valeur), 'source': 'reglage_societe'}
+    return sortie
+
+
+def _empreinte(charge):
+    canonique = json.dumps(charge, sort_keys=True, separators=(',', ':'), default=str,
+                           ensure_ascii=False)
+    return hashlib.sha256(canonique.encode('utf-8')).hexdigest()
+
+
+def entrees_pour(lead, company, *, toit=None):
+    """L'``EntreesConception`` du lead, par l'adaptateur de son marché.
+
+    ``toit`` : la pose servie par le calepinage (entrée du moteur à l'étape
+    6) ; son ``empreinte`` entre dans l'empreinte quand elle est donnée."""
+    from apps.ventes.domain.entrees import empreinte_entrees, entrees_depuis_lead
+
+    marche = marche_du_lead(lead)
+    empreinte_pose = (getattr(toit, 'empreinte', '') or '') if toit is not None else ''
+    if marche == 'residentiel':
+        moteur = entrees_depuis_lead(lead, company)
+        utilisees = _provenance_residentielle(lead, moteur)
+        empreinte = empreinte_entrees(moteur) if moteur is not None else _empreinte(utilisees)
+        resolution = None
+    elif marche in MARCHES_CI:
+        from apps.ventes.domain.etude_ci import resoudre_entrees
+        # Le marché est posé par la couche lead elle-même : aucun corps.
+        moteur, resolution = None, resoudre_entrees({}, lead=lead)
+        utilisees = _provenance_resolue(resolution)
+        empreinte = _empreinte({'marche': marche, 'entrees': utilisees})
+    else:
+        from apps.ventes.domain.pompage import resoudre_entrees
+        moteur = None
+        resolution = resoudre_entrees(company, {}, lead=lead)
+        utilisees = _provenance_resolue(*resolution)
+        empreinte = _empreinte({'marche': marche, 'entrees': utilisees})
+    if empreinte_pose:
+        empreinte = _empreinte({'entrees': empreinte, 'pose': empreinte_pose})
+    return EntreesConception(marche=marche, moteur=moteur, resolution=resolution,
+                             entrees_utilisees=utilisees, empreinte=empreinte,
+                             empreinte_pose=empreinte_pose, toit=toit)
