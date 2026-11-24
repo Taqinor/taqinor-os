@@ -1,0 +1,419 @@
+/* ── Onglet « Contrats » de la fiche chantier ─────────────────────────────
+   Le parcours des quatre actes (contrat → livraison → réception → clôture).
+   Une seule idée visuelle : le RAIL (numéro, trait, état). Jetons uniquement
+   (aucune couleur ni z-index en dur) ; l'état est toujours aussi écrit en mots
+   (badge), jamais porté par la seule couleur. Trois racines : `.contrats-chantier`
+   (l'onglet), `.contrats-dialogue` et `.contrats-editeur` (les dialogues, rendus
+   dans un portail hors de l'onglet). */
+
+.contrats-chantier {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  color: var(--foreground);
+}
+
+.contrats-chantier__chargement {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted-foreground);
+}
+
+.contrats-chantier__refus {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--destructive);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+
+.contrats-chantier__bandeau {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-inline-start: 4px solid var(--warning);
+  border-radius: var(--radius);
+  background: var(--muted);
+}
+
+/* ── Résumé : prix, réglé, reste, prochaine action ── */
+.contrats-chantier__resume {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+
+.contrats-chantier__chiffres {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.contrats-chantier__chiffres dt {
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
+
+.contrats-chantier__chiffres dd {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.contrats-chantier__client {
+  margin: 0;
+  color: var(--muted-foreground);
+}
+
+.contrats-chantier__langue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted-foreground);
+}
+
+.contrats-chantier__prochaine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.contrats-chantier__prochaine p {
+  margin: 0;
+}
+
+/* ── Le parcours : un rail vertical ── */
+.contrats-parcours {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.contrats-parcours__etape {
+  position: relative;
+  display: grid;
+  grid-template-columns: 2.75rem minmax(0, 1fr);
+  gap: 0.75rem;
+}
+
+/* le trait qui relie un numéro au suivant */
+.contrats-parcours__etape:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  inset-block: 2.75rem calc(-1.25rem);
+  inset-inline-start: calc(1.375rem - 1px);
+  width: 2px;
+  background: var(--border);
+}
+
+.contrats-parcours__etape[data-etat='fait']:not(:last-child)::before {
+  background: var(--success);
+}
+
+.contrats-parcours__numero {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--muted-foreground);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.contrats-parcours__etape[data-etat='en-cours'] .contrats-parcours__numero {
+  border-color: var(--color-encre);
+  background: var(--color-encre);
+  color: var(--card);
+}
+
+.contrats-parcours__etape[data-etat='fait'] .contrats-parcours__numero {
+  border-color: var(--success);
+  background: var(--success);
+  color: var(--success-foreground);
+}
+
+.contrats-parcours__corps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.contrats-parcours__rang {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
+
+.contrats-parcours__seul {
+  display: block;
+}
+
+/* Étape 2 : les deux versions de la livraison côte à côte */
+.contrats-parcours__variantes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+}
+
+/* ── Un acte ── */
+.contrats-acte {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  height: 100%;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+
+.contrats-acte[data-ecarte='oui'] {
+  border-style: dashed;
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+.contrats-acte__tete {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+}
+
+.contrats-acte__titre {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.contrats-acte__ref {
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+
+.contrats-acte__etat {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.contrats-acte__version {
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
+
+.contrats-acte__avertissements {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.875rem;
+  color: var(--warning-text);
+}
+
+.contrats-acte__erreur {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--destructive);
+  border-radius: var(--radius);
+  color: var(--destructive);
+  font-size: 0.875rem;
+}
+
+.contrats-acte__gestes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: auto;
+}
+
+/* cible tactile ≥ 44 px (aussi pour les boutons des dialogues) */
+.contrats-acte__bouton {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+}
+
+@media (min-width: 64rem) {
+  .contrats-parcours__variantes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 30rem) {
+  .contrats-chantier__chiffres {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── Dialogues (signature, papier) ── */
+.contrats-dialogue {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.contrats-dialogue .contrats-champ,
+.contrats-editeur .contrats-champ {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.contrats-dialogue__pied,
+.contrats-editeur .contrats-dialogue__pied {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.contrats-dialogue .contrats-acte__erreur,
+.contrats-editeur .contrats-acte__erreur {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--destructive);
+  border-radius: var(--radius);
+  color: var(--destructive);
+  font-size: 0.875rem;
+}
+
+/* ── Éditeur d'un acte ── */
+.contrats-editeur {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 48rem;
+  max-height: calc(100dvh - 1rem);
+}
+
+.contrats-editeur__section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0.75rem 1rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.contrats-editeur__section > legend {
+  padding-inline: 0.5rem;
+  font-weight: 600;
+  color: var(--accent-foreground);
+}
+
+.contrats-editeur__aide {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
+
+.contrats-editeur__bloc,
+.contrats-editeur__tranche {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.contrats-editeur__tranche-titre {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+  margin: 0;
+}
+
+.contrats-editeur__lecture {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+
+.contrats-editeur__duo {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.5rem;
+}
+
+.contrats-editeur__case,
+.contrats-editeur__constat {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  min-height: 2.75rem;
+}
+
+.contrats-editeur__case input[type='checkbox'],
+.contrats-editeur__constat input[type='checkbox'] {
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-top: 0.5rem;
+  accent-color: var(--primary);
+}
+
+@media (min-width: 40rem) {
+  .contrats-editeur__duo {
+    grid-template-columns: 10rem minmax(0, 1fr);
+  }
+}
+
+@media (hover: hover) {
+  .contrats-acte:not([data-ecarte='oui']):hover {
+    border-color: var(--primary);
+  }
+}
+
+/* Éditeur : sélecteur de langue et confirmation avant de changer */
+.contrats-editeur__langue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.contrats-editeur__confirmer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--warning);
+  border-radius: var(--radius);
+  background: var(--muted);
+}
+
+.contrats-editeur__confirmer p {
+  margin: 0;
+  flex: 1 1 14rem;
+}
