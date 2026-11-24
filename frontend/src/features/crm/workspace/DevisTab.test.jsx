@@ -230,6 +230,10 @@ describe('LW21 — CTA devis automatique', () => {
       })
       const bouton = screen.getByTestId('lw-devis-auto-visite')
       expect(bouton).toBeDisabled()
+      // T4-U3-003 — des mots d'utilisateur : jamais le code de décision.
+      expect(bouton.getAttribute('title')).not.toContain('D-AGR-4')
+      expect(document.body.textContent).not.toContain('D-AGR-4')
+      expect(document.body.textContent).toContain("relevé du point d'eau à faire en visite avant le devis")
       await user.click(screen.getByText('débit du forage (visite)'))
       await waitFor(() => expect(focusSpy).toHaveBeenCalled())
       expect(onAction).not.toHaveBeenCalledWith('open-devis', 'auto')

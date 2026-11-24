@@ -28,7 +28,7 @@
         "site_web",
         "mesure_visite"
       ],
-      "question": "« Ce niveau, vous l'avez mesuré, ou on vous l'a dit ? » (posé avec le niveau ; mesure_visite = relevé par notre technicien lors de la visite)"
+      "question": "« Ce niveau, vous l'avez mesuré, ou on vous l'a dit ? » (posé avec le niveau ; « Mesuré en visite » = relevé par notre technicien lors de la visite)"
     },
     {
       "nom": "profondeur_forage_m",

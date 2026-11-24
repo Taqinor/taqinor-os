@@ -12,8 +12,8 @@ logger = logging.getLogger("apps.ventes.services")
 
 #: AGR124 — refus D-AGR-4 : le relevé du point d'eau d'abord.
 MESSAGE_RELEVE_POINT_EAU = (
-    "Relevé du point d'eau requis avant devis (D-AGR-4) : niveau d'eau et "
-    "débit du forage à mesurer lors d'une visite.")
+    "Relevé du point d'eau à faire avant le devis : le niveau d'eau et le "
+    "débit du forage se mesurent lors d'une visite technique.")
 
 
 def _fr_nombre(valeur):
