@@ -137,6 +137,15 @@ def contrat_installation(contenu):
 
 # ── Acte 2 — Procès-verbal de livraison du matériel ─────────────────────────
 
+def _montant_du(montant, en_lettres, langue):
+    """La colonne du chiffre d'un encadré de montant : le montant en grand,
+    puis en lettres s'il est connu."""
+    html = f'<div class="grand">{c.esc(c.montant(montant, langue=langue))}</div>'
+    if en_lettres:
+        html += f'<p class="lettres">{c.esc(en_lettres)}</p>'
+    return html
+
+
 def _encadre_paiement_livraison(contenu):
     langue = c.langue_de(contenu)
     paiement = contenu.get('paiement') or {}
@@ -145,32 +154,32 @@ def _encadre_paiement_livraison(contenu):
         part = c.pourcent(paiement.get('pourcentage_regle'))
         quoi = (libelle('part_du_prix', langue, part=c.esc(part)) if part
                 else libelle('sommes_dues', langue))
-        texte = (
-            f'<div class="grand">{c.esc(c.montant(regle, langue=langue))}</div>'
-            f'<p>{libelle("vous_avez_regle", langue, quoi=quoi)}</p>')
+        explication = f'<p>{libelle("vous_avez_regle", langue, quoi=quoi)}</p>'
         reste = paiement.get('reste_a_regler')
         if reste not in (None, '', 0, '0', '0.00'):
-            texte += (f'<p>{libelle("il_restera", langue, montant=c.esc(c.montant(reste, langue=langue)))}'
-                      f'</p>')
-        return c.encadre(libelle('regle_a_ce_jour', langue), texte, 'ok')
-    du = paiement.get('exigible_maintenant')
-    texte = f'<div class="grand">{c.esc(c.montant(du, langue=langue))}</div>'
-    if paiement.get('exigible_en_lettres'):
-        texte += f'<p class="lettres">{c.esc(paiement["exigible_en_lettres"])}</p>'
-    lignes = []
+            explication += (f'<p>{libelle("il_restera", langue, montant=c.esc(c.montant(reste, langue=langue)))}'
+                            f'</p>')
+        return c.encadre_montant(libelle('regle_a_ce_jour', langue),
+                                 _montant_du(regle, '', langue), explication,
+                                 'ok')
+    explication = ''
     if regle not in (None, ''):
-        lignes.append(libelle('deja_regle', langue,
-                              montant=c.esc(c.montant(regle, langue=langue))))
+        explication += '<p>' + libelle(
+            'deja_regle', langue,
+            montant=c.esc(c.montant(regle, langue=langue))) + '</p>'
     if paiement.get('restera_ensuite') not in (None, ''):
-        lignes.append(libelle(
+        explication += '<p>' + libelle(
             'restera_reception', langue,
             montant=c.esc(c.montant(paiement['restera_ensuite'],
-                                    langue=langue))))
-    if lignes:
-        texte += '<p>' + ' · '.join(lignes) + '</p>'
+                                    langue=langue))) + '</p>'
     if paiement.get('modalites'):
-        texte += f'<p class="petit">{c.texte_libre(paiement["modalites"])}</p>'
-    return c.encadre(libelle('a_regler_livraison', langue), texte)
+        explication += (f'<p class="petit">'
+                        f'{c.texte_libre(paiement["modalites"])}</p>')
+    return c.encadre_montant(
+        libelle('a_regler_livraison', langue),
+        _montant_du(paiement.get('exigible_maintenant'),
+                    paiement.get('exigible_en_lettres'), langue),
+        explication)
 
 
 def pv_livraison(contenu):
@@ -179,7 +188,9 @@ def pv_livraison(contenu):
     chantier = contenu.get('chantier') or {}
     systeme = contenu.get('systeme') or {}
     livraison = contenu.get('livraison') or {}
-    nom = c.esc(societe.get('nom_court') or societe.get('nom'))
+    # Nom BRUT : ``c.h2`` échappe son texte une fois (revue 1, R9 — le nom
+    # déjà échappé l'était deux fois : « L&amp;#x27;… » à l'impression).
+    nom_brut = societe.get('nom_court') or societe.get('nom') or ''
 
     corps = c.titre(
         'pv_livraison', contenu.get('titre') or libelle('h1_livraison', langue),
@@ -205,13 +216,14 @@ def pv_livraison(contenu):
         libelle('reserves_eventuelles', langue),
         f'<p class="petit">{libelle("reserves_eventuelles_aide", langue)}</p>'
         + (c.paragraphes(contenu.get('reserves'))
-           if contenu.get('reserves') else c.lignes_a_ecrire(2)), 'net')
+           if contenu.get('reserves') else c.lignes_a_ecrire(3)), 'net')
 
-    corps += c.h2(libelle('paiement_cette_etape', langue))
-    corps += c.frise(contenu.get('echeancier'), avec_etats=True, langue=langue)
-    corps += _encadre_paiement_livraison(contenu)
+    corps += c.bloc_insecable(
+        c.h2(libelle('paiement_cette_etape', langue))
+        + c.frise(contenu.get('echeancier'), avec_etats=True, langue=langue)
+        + _encadre_paiement_livraison(contenu))
 
-    corps += c.h2(libelle('ce_que_vous_convenez', langue, nom=nom))
+    corps += c.h2(c.libelle_sur('ce_que_vous_convenez', langue, nom=nom_brut))
     corps += c.articles(contenu.get('articles'), langue)
     corps += _conditions_particulieres(contenu)
     corps += c.signatures(
@@ -258,31 +270,39 @@ def pv_reception(contenu):
          'cochee': bool(reception.get('prononcee')) and not sans},
     ])
     delai = reception.get('delai_levee_reserves')
+    # Quatre lignes pour écrire les réserves, puis la part du solde retenue
+    # jusqu'à leur levée, chiffrée à la main (revue 1, R1 ; texte T2).
     corps += c.encadre(
         libelle('reserves', langue)
         + (libelle('a_lever_sous', langue, delai=delai) if delai else ''),
         (c.paragraphes(contenu.get('reserves')) if contenu.get('reserves')
-         else c.lignes_a_ecrire(2)), 'net')
+         else c.lignes_a_ecrire(4))
+        + f'<p class="part-retenue">{c.libelle_sur("part_retenue", langue)}'
+        f'</p>', 'net')
 
-    corps += c.h2(libelle('solde_installation', langue))
-    corps += c.frise(contenu.get('echeancier'), avec_etats=True, langue=langue)
+    # Titre, frise et encadré du montant dû : un seul bloc insécable — en
+    # arabe, le titre et la frise restaient en bas de page 1, l'encadré
+    # partait seul en page 2 (revue 1, R10).
+    solde = c.h2(libelle('solde_installation', langue))
+    solde += c.frise(contenu.get('echeancier'), avec_etats=True, langue=langue)
     du = paiement.get('exigible_maintenant')
     if du in (None, '', 0, '0', '0.00'):
-        regle = c.montant(paiement.get('total_regle'), langue=langue)
-        corps += c.encadre(
+        solde += c.encadre_montant(
             libelle('paye_integralement', langue),
-            f'<div class="grand">{c.esc(regle)}</div>'
+            _montant_du(paiement.get('total_regle'), '', langue),
             f'<p>{libelle("regle_totalite", langue)}</p>', 'ok')
     else:
-        texte = f'<div class="grand">{c.esc(c.montant(du, langue=langue))}</div>'
-        if paiement.get('exigible_en_lettres'):
-            texte += (f'<p class="lettres">'
-                      f'{c.esc(paiement["exigible_en_lettres"])}</p>')
-        texte += (f'<p>{c.texte_libre(paiement.get("engagement") or "")}</p>'
-                  if paiement.get('engagement') else '')
+        explication = (
+            f'<p>{c.texte_libre(paiement.get("engagement") or "")}</p>'
+            if paiement.get('engagement') else '')
         if paiement.get('modalites'):
-            texte += f'<p class="petit">{c.texte_libre(paiement["modalites"])}</p>'
-        corps += c.encadre(libelle('solde_a_regler', langue), texte)
+            explication += (f'<p class="petit">'
+                            f'{c.texte_libre(paiement["modalites"])}</p>')
+        solde += c.encadre_montant(
+            libelle('solde_a_regler', langue),
+            _montant_du(du, paiement.get('exigible_en_lettres'), langue),
+            explication)
+    corps += c.bloc_insecable(solde)
 
     corps += c.h2(libelle('ce_que_reception_change', langue))
     corps += c.articles(contenu.get('articles'), langue)

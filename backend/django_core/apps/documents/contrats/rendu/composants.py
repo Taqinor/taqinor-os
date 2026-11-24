@@ -79,27 +79,28 @@ def esc(valeur):
 
 
 # ── Ce qui ne se coupe jamais (texte déjà échappé) ──────────────────────────
-# Une référence de document (CTR-…, DEV-…), « n° 31-08 » (« رقم 31.08 »), un
-# RIB : coupés en fin de ligne, ils deviennent illisibles ou faux. Chacun
-# passe dans un ``<span class="nb">`` (``white-space:nowrap``) ; le RIB part
-# en plus sur sa propre ligne. Ne s'applique qu'à du texte DÉJÀ échappé : les
-# balises ajoutées ne contiennent que le texte trouvé, lui-même déjà échappé.
-_REFERENCE = re.compile(r'\b[A-Z]{2,5}-\d[\d-]*\d\b')
+# « n° 31-08 » (« رقم 31.08 » en arabe), un RIB, « IF 00000000 » : coupés en
+# fin de ligne, ils deviennent illisibles. Leurs espaces deviennent
+# insécables (le moteur de lignes les traite nativement) et le RIB part sur sa
+# propre ligne. PAS de ``white-space:nowrap`` sur un morceau de phrase :
+# WeasyPrint recule alors la coupure au premier mot de la ligne (« En » resté
+# seul sur sa ligne, vu en faisant la revue 1). Une référence CTR-…/DEV-… n'a besoin de rien :
+# un trait d'union suivi d'un chiffre n'est jamais une coupure (UAX 14, LB25).
 _NUMERO_LOI = re.compile(r'(?:n°|رقم)[\s\u00a0]*\d+(?:[-.]\d+)*')
 _RIB = re.compile(r'(?<=\S)[ \u00a0]+(RIB[ \u00a0]*:[ \u00a0]*'
                   r'[\d \u00a0\u202f]*\d)')
 
 
-def _insecable(texte):
-    return (f'<span class="nb">'
-            f'{re.sub(r"[ ]+", INSECABLE, texte)}</span>')
+def insecable(texte):
+    """Les espaces d'un morceau qui ne doit pas se couper → insécables."""
+    return texte.replace(' ', INSECABLE)
 
 
 def insecables(html_echappe):
-    """Pose les ``<span class="nb">`` sur un texte déjà échappé."""
-    sortie = _RIB.sub(lambda m: '<br>' + _insecable(m.group(1)), html_echappe)
-    sortie = _NUMERO_LOI.sub(lambda m: _insecable(m.group()), sortie)
-    return _REFERENCE.sub(lambda m: _insecable(m.group()), sortie)
+    """Rend insécables les morceaux d'un texte déjà échappé qui ne doivent
+    pas se couper ; le RIB passe à la ligne."""
+    sortie = _RIB.sub(lambda m: '<br>' + insecable(m.group(1)), html_echappe)
+    return _NUMERO_LOI.sub(lambda m: insecable(m.group()), sortie)
 
 
 def texte_libre(valeur):
@@ -571,6 +572,26 @@ def articles(liste, langue='fr'):
     return ''.join(blocs)
 
 
+def bloc_insecable(html_interieur):
+    """Un bloc qui ne se coupe pas entre deux pages (titre + frise + encadré
+    du montant). Un bloc, jamais un flex : WeasyPrint pousse à la page
+    suivante un conteneur flex insécable même quand il tient."""
+    return f'<div class="insecable">{html_interieur}</div>'
+
+
+def encadre_montant(libelle_encadre, chiffre, explication, sorte=''):
+    """L'encadré d'un montant : son libellé et le chiffre d'un côté, ce qu'il
+    veut dire de l'autre (une table : jamais un flex insécable) — la place
+    d'une ligne gagnée sur les procès-verbaux. Sans explication, le chiffre
+    seul, comme un encadré ordinaire."""
+    tete = f'<div class="lbl">{esc(libelle_encadre)}</div>'
+    if not explication:
+        return f'<div class="encadre montant {sorte}">{tete}{chiffre}</div>'
+    return (f'<div class="encadre montant {sorte}"><div class="deux">'
+            f'<div class="chiffre">{tete}{chiffre}</div>'
+            f'<div class="explication">{explication}</div></div></div>')
+
+
 def encadre(libelle_encadre, html_interieur, sorte=''):
     return (f'<div class="encadre {sorte}"><div class="lbl">'
             f'{esc(libelle_encadre)}</div>{html_interieur}</div>')
@@ -595,9 +616,12 @@ def lignes_a_ecrire(nombre_lignes=3):
 
 # ── Signatures ──────────────────────────────────────────────────────────────
 
-def _boite_signature(libelle_boite, qui, mention, signature=None, langue='fr'):
+def _boite_signature(libelle_boite, qui, mention, signature=None, langue='fr',
+                     ident=''):
     interieur = (f'<div class="lbl">{esc(libelle_boite)}</div>'
                  f'<div class="qui">{esc(qui)}</div>')
+    if ident:
+        interieur += f'<div class="ident">{esc(ident)}</div>'
     if signature and signature.get('image'):
         interieur += (f'<img class="trace" src="{esc(signature["image"])}" '
                       f'alt="{esc(libelle("alt_signature", langue))}">')
@@ -628,9 +652,13 @@ def signatures(contenu, *, mention_client, client_signe=True,
         fait += libelle('exemplaires', langue)
     boites = []
     if client_signe:
+        # Sous le nom du client particulier, son numéro de CIN (ou la ligne à
+        # remplir) : qui signe est identifié dans le cadre même (revue 1, R5).
+        ident = ('' if client.get('type') == 'entreprise'
+                 else _cin(client, langue))
         boites.append(_boite_signature(
             libelle('le_client', langue), client.get('nom_complet'),
-            mention_client, sig.get('client'), langue))
+            mention_client, sig.get('client'), langue, ident))
     boites.append(_boite_signature(
         libelle('pour_societe', langue,
                 nom=societe.get('nom_court') or societe.get('nom') or ''),
@@ -653,11 +681,10 @@ def pied(contenu, *, paraphes=True):
         societe.get('nom'), _forme_capital(societe, langue)) if x)
     # Quatre lignes voulues (identité, identifiants, adresse, contact), dont
     # chaque élément est insécable : la ligne se coupe ENTRE deux éléments,
-    # jamais au milieu d'un téléphone ou d'une adresse électronique.
+    # jamais au milieu d'un numéro de téléphone.
 
     def ligne(*valeurs):
-        return ' · '.join(f'<span class="nb">{esc(v)}</span>'
-                          for v in valeurs if v)
+        return ' · '.join(insecable(esc(v)) for v in valeurs if v)
     lignes_legales = [x for x in (
         f'<b>{esc(tete)}</b>',
         esc(_identifiants_societe(societe, cnss=False, langue=langue)),
