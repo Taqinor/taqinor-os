@@ -10,6 +10,8 @@ import {
 } from '../../../ui'
 import documentsApi from '../../../api/documentsApi'
 import { detailErreur, formaterDh } from './outils'
+import PiedDialogue from './PiedDialogue'
+import { useSoumission } from './useSoumission'
 import {
   SECTIONS, ORDRE_SECTIONS, brouillonDe, surchargesModifiees,
 } from './sections'
@@ -236,8 +238,7 @@ export default function ActeEditeur({
   const [base, setBase] = useState({})
   const [brouillon, setBrouillon] = useState({})
   const [chargement, setChargement] = useState(true)
-  const [erreur, setErreur] = useState('')
-  const [occupe, setOccupe] = useState(false)
+  const { occupe, erreur, setErreur, soumettre } = useSoumission()
   const [langue, setLangue] = useState('fr')
   const [langueDemandee, setLangueDemandee] = useState(null)
 
@@ -265,7 +266,7 @@ export default function ActeEditeur({
         setChargement(false)
       })
     return () => { annule = true }
-  }, [open, acteId, langue])
+  }, [open, acteId, langue, setErreur])
 
   const sections = ORDRE_SECTIONS.filter((k) => (acte?.sections_modifiables ?? []).includes(k))
   const surcharges = acte ? surchargesModifiees(base, brouillon, sections) : {}
@@ -273,24 +274,16 @@ export default function ActeEditeur({
   const personnalisees = acte?.sections_personnalisees ?? []
 
   const enregistrer = async () => {
-    setOccupe(true)
-    setErreur('')
-    try {
+    await soumettre(async () => {
       const res = await documentsApi.modifierActe(acte.id, surcharges, langue)
       charger(res.data)
       toast.success('Modifications enregistrées.')
       onSaved?.(res.data)
-    } catch (err) {
-      setErreur(await detailErreur(err))
-    } finally {
-      setOccupe(false)
-    }
+    })
   }
 
   const retablir = async (cle) => {
-    setOccupe(true)
-    setErreur('')
-    try {
+    await soumettre(async () => {
       const res = await documentsApi.modifierActe(acte.id, { [cle]: null }, langue)
       const detail = res.data
       const frais = brouillonDe(detail.contenu, [cle])
@@ -299,11 +292,7 @@ export default function ActeEditeur({
       setBrouillon((b) => ({ ...b, [cle]: frais[cle] }))
       toast.success('Texte par défaut rétabli.')
       onSaved?.(detail)
-    } catch (err) {
-      setErreur(await detailErreur(err))
-    } finally {
-      setOccupe(false)
-    }
+    })
   }
 
   const basculer = (code) => {
@@ -319,16 +308,10 @@ export default function ActeEditeur({
   }
 
   const enregistrerModele = async () => {
-    setOccupe(true)
-    setErreur('')
-    try {
+    await soumettre(async () => {
       const res = await documentsApi.enregistrerModeleActe(acte.id)
       toast.success(res.data?.detail || 'Modèle de la société enregistré.')
-    } catch (err) {
-      setErreur(await detailErreur(err))
-    } finally {
-      setOccupe(false)
-    }
+    })
   }
 
   return (
@@ -402,29 +385,32 @@ export default function ActeEditeur({
           </fieldset>
         ))}
 
-        {erreur && <p className="contrats-acte__erreur" role="alert">{erreur}</p>}
-
-        <div className="contrats-dialogue__pied">
-          {acte && onApercu && (
-            <Button variant="ghost" className="contrats-acte__bouton" onClick={() => onApercu(langue)}>
-              Aperçu (PDF)
-            </Button>
+        <PiedDialogue
+          erreur={erreur}
+          annuler={() => onOpenChange(false)}
+          libelleAnnuler="Fermer"
+          avant={(
+            <>
+              {acte && onApercu && (
+                <Button variant="ghost" className="contrats-acte__bouton" onClick={() => onApercu(langue)}>
+                  Aperçu (PDF)
+                </Button>
+              )}
+              {acte && peutModele && (
+                <Button variant="outline" className="contrats-acte__bouton" disabled={occupe}
+                        onClick={enregistrerModele}>
+                  Enregistrer comme modèle de la société
+                </Button>
+              )}
+            </>
           )}
-          {acte && peutModele && (
-            <Button variant="outline" className="contrats-acte__bouton" disabled={occupe}
-                    onClick={enregistrerModele}>
-              Enregistrer comme modèle de la société
-            </Button>
-          )}
-          <Button variant="ghost" className="contrats-acte__bouton" onClick={() => onOpenChange(false)}>
-            Fermer
-          </Button>
+        >
           <Button className="contrats-acte__bouton"
                   disabled={occupe || chargement || !modifie || !acte?.peut_modifier}
                   onClick={enregistrer}>
             Enregistrer
           </Button>
-        </div>
+        </PiedDialogue>
       </DialogContent>
     </Dialog>
   )
