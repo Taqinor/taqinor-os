@@ -55,3 +55,13 @@ describe('libelleSuccesDevisAuto — option avec batterie', () => {
     expect(t).toContain('avec batterie : économie ≈ 15 000 MAD/an · retour ≈ 6,1 ans')
   })
 })
+
+// T4-U1-026 — le bandeau dit la MÊME puissance que le devis et son PDF
+// (« 5,5 kWc »), jamais un entier arrondi (« 6 kWc »).
+describe('T4-U1-026 — kWc du bandeau de succès', () => {
+  const normaliser = (t) => t.replace(/\s/g, ' ')
+  it.each([[5.5, '5,5 kWc'], [3.85, '3,85 kWc'], [6, '6 kWc']])('%s → %s', (kwc, attendu) => {
+    expect(normaliser(libelleSuccesDevisAuto({ reference: 'DEV-1', kwc })))
+      .toBe(`DEV-1 · ${attendu}`)
+  })
+})

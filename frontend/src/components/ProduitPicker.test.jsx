@@ -8,7 +8,7 @@
 // donc par un Provider Redux minimal (voir renderPicker + ProduitPicker.qg6).
 
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import authReducer from '../features/auth/store/authSlice'
@@ -397,5 +397,25 @@ describe('ProduitPicker — STKCAT24 Recommandé via le rôle effectif', () => {
     expect(screen.queryByText('Module ABC-550')).not.toBeInTheDocument()
     expect(screen.queryByText('Pergola sans mot-clé matière')).not.toBeInTheDocument()
     expect(screen.queryByText('Charpente sur mesure')).not.toBeInTheDocument()
+  })
+})
+
+// T4-U3-005 — une pompe sans prix : son NOM et la RAISON de l'option
+// désactivée restent lisibles (jamais coupés par la puce de spécifications).
+describe('T4-U3-005 — option sans prix lisible', () => {
+  const POMPE = {
+    id: 9, nom: 'Pompe immergée OSP 30/11 — 12.5 CV / 9.3 kW (3", 380V)', prix_vente: 0, tva: 20,
+    is_archived: false, pompe_cv: 12.5, courbe_pompe: { debits_m3h: [0, 30], hmt_m: [125, 40] },
+  }
+  it('le nom est sur sa propre ligne (jamais tronqué) et la raison est écrite et dans le title', () => {
+    renderPicker({ produits: [POMPE], value: '', onChange: () => {} })
+    openPicker()
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'OSP 30/11' } })
+    const option = screen.getByRole('option', { name: /OSP 30\/11/ })
+    expect(option).toBeDisabled()
+    const nom = within(option).getByText(POMPE.nom)
+    expect(nom.className).not.toMatch(/\btruncate\b/)
+    expect(option.textContent).toContain('prix à renseigner')
+    expect(option.getAttribute('title')).toMatch(/sans prix de vente/)
   })
 })

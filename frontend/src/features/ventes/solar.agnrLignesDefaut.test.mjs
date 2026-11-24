@@ -10,7 +10,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { defaultProductLines } from './calc/lignesDefaut.js'
+import {
+  defaultProductLines, lignesParDefautDuMarche, signatureGabarit, tableIntacte,
+} from './calc/lignesDefaut.js'
 
 const P = (id, nom, prix_vente, extra = {}) => ({ id, nom, prix_vente: String(prix_vente), tva: '20.00', ...extra })
 const CATALOGUE = [
@@ -70,4 +72,33 @@ test('ADVS47 — réglages société tardifs : ligne composée suit 14 %, saisie
   assert.ok(Math.abs(out[0].prix_unit_ttc - 2500 * 1.14) < 0.01)
   assert.equal(out[1].taux_tva, 20)
   assert.equal(retauxerLignesSansTva(out, cat, 14), out)
+})
+
+// T4-U3-006 — le marché « Agricole (pompage) » part de SES lignes : jamais
+// d'onduleur ni de batterie (CLAUDE.md « Pompage compositions contain NO
+// inverter and NO battery »), ni de forfait au panneau tarifé à 0.
+test('T4-U3-006 — modèle agricole : pompe, variateur, panneaux… sans onduleur ni batterie', () => {
+  const lignes = lignesParDefautDuMarche(CATALOGUE, 'agricole')
+  const noms = lignes.map((l) => l.designation)
+  for (const attendu of ['Pompe', 'Variateur', 'Afficheur du variateur', 'Panneaux', 'Structure au sol']) {
+    assert.ok(noms.includes(attendu), attendu)
+  }
+  for (const l of lignes) {
+    assert.doesNotMatch(l.designation, /onduleur|batterie|smart meter|wifi|dongle/i, l.designation)
+    assert.equal(l.produit, '', `${l.designation} : aucun produit imposé (auto-remplir ou choix)`)
+  }
+  assert.deepEqual(
+    lignesParDefautDuMarche(CATALOGUE, 'residentiel').map((l) => l.designation),
+    defaultProductLines(CATALOGUE).map((l) => l.designation))
+})
+
+test('T4-U3-006 — changer de marché remplace une table INTACTE, jamais une table éditée', () => {
+  const avec = (ls) => ls.map((l, i) => ({ ...l, _key: `k${i}`, compose: true }))
+  const residentiel = avec(lignesParDefautDuMarche(CATALOGUE, 'residentiel'))
+  const signature = signatureGabarit(residentiel)
+  assert.equal(tableIntacte(residentiel, signature), true)
+  const editee = residentiel.map((l, i) => (i === 0 ? { ...l, quantite: 3, quantiteManuelle: true } : l))
+  assert.equal(tableIntacte(editee, signature), false)
+  assert.equal(tableIntacte([...residentiel, { designation: 'Ajout', produit: '7', quantite: 1 }], signature), false)
+  assert.equal(tableIntacte(residentiel, null), false)
 })

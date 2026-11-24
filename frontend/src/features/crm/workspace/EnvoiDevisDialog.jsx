@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Check, ExternalLink, Eye, Layers3, Link2, Mail, MessageCircle } from 'lucide-react'
 import {
-  Button, Checkbox, Segmented,
+  Button, Checkbox, Input, Segmented,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '../../../ui'
 // LANE E (fondateur 28/08/2026, spec_3_options.md) — réutilise TEL QUEL l'écran
@@ -67,6 +67,39 @@ function CanauxEnvoi({ devis: d, envoi }) {
         <ExternalLink size={14} aria-hidden="true" />
       </Button>
     </div>
+  )
+}
+
+// T4-U3-011 — un canal grisé dit POURQUOI dans la boîte (pas seulement au survol).
+function CanauxIndisponibles({ envoi }) {
+  const raisons = [
+    envoi.raisonWhatsApp && `WhatsApp indisponible : ${envoi.raisonWhatsApp}.`,
+    envoi.raisonEmail && `E-mail indisponible : ${envoi.raisonEmail}.`,
+  ].filter(Boolean)
+  if (!raisons.length) return null
+  return (
+    <div className="gen-hint" data-testid="envoi-canaux-indisponibles">
+      {raisons.map((r) => <p key={r}>{r}</p>)}
+      <p>Complétez la fiche du lead, ou copiez le lien pour l’envoyer vous-même.</p>
+    </div>
+  )
+}
+
+// T4-U2-003 — le lien envoyé, sélectionnable : la copie peut échouer
+// (navigateur, permission), le lien reste toujours lisible et copiable.
+function LienEnvoye({ devis: d, envoi }) {
+  const url = envoi.lienEnvoye?.(d)
+  if (!url) return null
+  return (
+    <label className="grid gap-1 text-sm">
+      <span>Lien de la page client</span>
+      <Input
+        type="text" readOnly value={url}
+        data-testid="envoi-lien-client"
+        aria-label={`Lien de la page client de ${d.reference}`}
+        onFocus={(e) => e.target.select()}
+      />
+    </label>
   )
 }
 
@@ -260,8 +293,10 @@ export default function EnvoiDevisDialog({ devis: d, envoi, ouvert, onOuvertChan
             </DialogDescription>
           </DialogHeader>
           <CanauxEnvoi devis={d} envoi={envoi} />
+          <CanauxIndisponibles envoi={envoi} />
           <RelanceJ3 relance={envoi.relance} />
           {envoi.actionMsg && <p className="gen-hint" role="status">{envoi.actionMsg}</p>}
+          <LienEnvoye devis={d} envoi={envoi} />
           <Button
             type="button" size="sm" variant="link"
             aria-expanded={avance}

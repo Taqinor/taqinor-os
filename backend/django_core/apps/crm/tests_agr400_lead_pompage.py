@@ -197,13 +197,73 @@ class SaisieParLApi(TestCase):
         self.assertEqual(self.lead.carburant_prix_declare_le,
                          aujourd_hui_local())
 
-    def test_les_colonnes_serveur_ne_se_saisissent_pas(self):
-        resp = self._patch({'niveau_statique_source': 'mesure_visite',
-                            'carburant_prix_declare_le': '2020-01-01'})
+    def test_la_date_du_prix_ne_se_saisit_pas(self):
+        resp = self._patch({'carburant_prix_declare_le': '2020-01-01'})
         self.assertEqual(resp.status_code, 200, resp.data)
         self.lead.refresh_from_db()
-        self.assertIsNone(self.lead.niveau_statique_source)
         self.assertIsNone(self.lead.carburant_prix_declare_le)
+
+    def test_mesure_en_visite_choisie_sur_la_fiche_est_refusee_en_le_disant(self):
+        # T4-U3-002 — le choix « Mesuré en visite » était avalé (200) puis
+        # remplacé par « Déclaré par le client » : il est REFUSÉ, avec le
+        # chemin qui le pose, et rien n'est écrit (ni valeur ni historique).
+        resp = self._patch({'niveau_statique_m': '40',
+                            'niveau_statique_source': 'mesure_visite'})
+        self.assertEqual(resp.status_code, 409, resp.data)
+        message = str(resp.data['niveau_statique_source'][0])
+        self.assertIn('Mesuré en visite', message)
+        self.assertIn("relevé du point d'eau", message)
+        self.lead.refresh_from_db()
+        self.assertIsNone(self.lead.niveau_statique_m)
+        self.assertIsNone(self.lead.niveau_statique_source)
+        resp = self._patch({'debit_forage_m3h': '25',
+                            'debit_forage_source': 'mesure_visite'})
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('debit_forage_source', resp.data)
+        resp = self._patch({'pompe_hmt_m': '60', 'pompe_hmt_source': 'site_web'})
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('questionnaire du site',
+                      str(resp.data['pompe_hmt_source'][0]))
+
+    def test_l_origine_declaree_choisie_est_gardee_et_journalisee(self):
+        # La question de l'appel (« essai, foreur ou votre estimation ? ») a
+        # enfin une réponse qui tient : PATCH puis GET rendent le choix.
+        resp = self._patch({'debit_forage_m3h': '25',
+                            'debit_forage_source': 'foreur'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        lu = self.api.get(self.url).data
+        self.assertEqual(lu['debit_forage_m3h'], '25.00')
+        self.assertEqual(lu['debit_forage_source'], 'foreur')
+        resp = self._patch({'debit_forage_source': 'essai'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(self.api.get(self.url).data['debit_forage_source'],
+                         'essai')
+        from apps.crm.models import LeadActivity
+        journal = ' | '.join(
+            f'{a.old_value} -> {a.new_value}' for a in
+            LeadActivity.objects.filter(lead=self.lead,
+                                        field='debit_forage_source'))
+        self.assertIn('Donné par le foreur', journal)
+        self.assertIn('Essai de pompage', journal)
+        self.assertNotIn('Estimation du client', journal)
+
+    def test_une_origine_inchangee_renvoyee_ne_bloque_rien(self):
+        # La fiche renvoie la provenance serveur telle quelle : ni refus ni
+        # écrasement (lead venu du site ou mesuré en visite).
+        Lead.objects.filter(pk=self.lead.pk).update(
+            niveau_statique_m=Decimal('30'),
+            niveau_statique_source='mesure_visite')
+        resp = self._patch({'niveau_statique_source': 'mesure_visite',
+                            'culture': 'agrumes'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.niveau_statique_source, 'mesure_visite')
+
+    def test_une_origine_sans_valeur_est_refusee(self):
+        resp = self._patch({'debit_forage_source': 'foreur'})
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('Débit du forage',
+                      str(resp.data['debit_forage_source'][0]))
 
     def test_une_valeur_effacee_efface_sa_provenance(self):
         self._patch({'niveau_statique_m': '12'})

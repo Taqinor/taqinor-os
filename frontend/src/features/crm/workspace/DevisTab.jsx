@@ -304,14 +304,14 @@ export default function DevisTab({
           {visiteRequise && (
             <Button
               type="button" variant="default" disabled data-testid="lw-devis-auto-visite"
-              title="Relevé du point d'eau requis avant devis (D-AGR-4)"
+              title="Relevé du point d'eau à faire en visite avant le devis"
             >
               <Zap size={14} aria-hidden="true" /> Devis automatique
             </Button>
           )}
           <p className="gen-hint">
             {visiteRequise
-              ? "Devis automatique — relevé du point d'eau requis avant devis (D-AGR-4) ; à compléter :"
+              ? "Devis automatique — relevé du point d'eau à faire en visite avant le devis ; à compléter :"
               : 'Devis automatique — champs manquants :'}
           </p>
           <ul className="lw-context-missing-list">

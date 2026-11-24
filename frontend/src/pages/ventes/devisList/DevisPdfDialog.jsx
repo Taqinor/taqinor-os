@@ -88,7 +88,7 @@ export default function DevisPdfDialog({
                 className="mt-0.5"
               />
               <span>
-                Inclure l'étude <span className="text-muted-foreground">(page autoconsommation — devis industriel)</span>
+                Inclure l'étude <span className="text-muted-foreground">(une page d'étude en plus)</span>
                 {!targetHasEtude && (
                   <span className="block text-xs text-muted-foreground">
                     Aucune donnée d'étude sur ce devis — option indisponible.
@@ -102,8 +102,12 @@ export default function DevisPdfDialog({
               n'invente aucune valeur par défaut, parce qu'il ne sait pas si ce
               devis porte un calepinage dessinable — le serveur, lui, le sait.
               « Automatique » lui laisse la main ; « Oui »/« Non » tranchent et
-              priment sur l'auto (whitelist `include_calepinage`, CAL183). */}
-          {pdfMode === 'full' && (
+              priment sur l'auto (whitelist `include_calepinage`, CAL183).
+              T4-U3-009 — jamais proposé pour un devis AGRICOLE : son document
+              de 3 pages n'a pas de page calepinage (CLAUDE.md « Quote PDFs »,
+              builder.py : `include_calepinage` sans effet). L'étude suit la même
+              règle plus haut (sans effet en commercial / industriel / agricole). */}
+          {pdfMode === 'full' && !targetIsAgricole && (
             <div className="grid gap-2" data-testid="cal184-calepinage">
               <Label>Calepinage</Label>
               <RadioGroup

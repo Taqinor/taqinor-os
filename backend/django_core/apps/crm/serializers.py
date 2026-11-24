@@ -1249,34 +1249,11 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
             raise ConflitEtat(
                 {'dossier_subvention_le': [self.MESSAGE_DATE_SUBVENTION]})
 
-    # AGR400 — une valeur de pompage SAISIE dans l'ERP porte sa provenance,
-    # posée ici (jamais par le corps : les colonnes ``*_source`` et
-    # ``carburant_prix_declare_le`` sont en lecture seule). Une valeur effacée
-    # efface sa provenance ; une valeur inchangée ne touche à rien.
-    _PROVENANCES_POMPAGE_SAISIE = (
-        ('niveau_statique_m', 'niveau_statique_source', 'declare'),
-        ('debit_forage_m3h', 'debit_forage_source', 'client'),
-        ('besoin_eau_m3j', 'besoin_eau_source', 'client'),
-        ('pompe_hmt_m', 'pompe_hmt_source', 'declaree'),
-    )
-
+    # AGR400 / T4-U3-002 — provenances pompage et date du prix carburant :
+    # la règle vit dans ``provenances_pompage`` (fichier-mur, C20).
     def _poser_provenances_pompage(self, attrs):
-        instance = self.instance
-
-        def _change(champ):
-            return champ in attrs and (
-                instance is None or getattr(instance, champ) != attrs[champ])
-
-        for valeur, source, origine in self._PROVENANCES_POMPAGE_SAISIE:
-            if _change(valeur):
-                attrs[source] = origine if attrs[valeur] is not None else None
-        # Q17 — le prix du carburant est DÉCLARÉ et DATÉ : la date est celle
-        # du jour où le prix change, posée par le serveur.
-        if _change('carburant_prix_unitaire_mad'):
-            from core.dates import aujourd_hui_local
-            attrs['carburant_prix_declare_le'] = (
-                aujourd_hui_local()
-                if attrs['carburant_prix_unitaire_mad'] is not None else None)
+        from .provenances_pompage import poser_provenances_pompage
+        poser_provenances_pompage(self.instance, attrs)
 
     class Meta:
         model = Lead
@@ -1307,11 +1284,10 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
             # les champs captés par le site sont TOUJOURS éditables par la
             # commerciale, leur provenance reste visible (`provenance_site`).
             'roof_point', 'roof_outline',
-            # AGR400 — provenances et date du prix : posées par le serveur
-            # (sérialiseur, webhook du site, validation de visite), jamais
-            # saisissables à la main.
-            'niveau_statique_source', 'debit_forage_source',
-            'besoin_eau_source', 'pompe_hmt_source',
+            # AGR400 — date du prix : posée par le serveur. T4-U3-002 — les
+            # provenances pompage ne sont plus en lecture seule (le choix
+            # était avalé en silence) : ``_poser_provenances_pompage`` garde
+            # celles que la fiche peut choisir et REFUSE les autres.
             'carburant_prix_declare_le',
             # CIQ401 — provenances des colonnes pro : posées par le serveur
             # selon le chemin d'écriture (fiche, webhook, visite).

@@ -55,10 +55,11 @@ ROLE_VARIATEUR = "variateur_pompage"
 
 #: Mention qui accompagne les températures de repli du noyau électrique quand
 #: l'appelant ne fournit pas les températures TMY du site.
+#: T4-U3-013 — des mots d'utilisateur : ni chemin de fichier ni « TMY ».
 MENTION_TEMPERATURES_REPLI = (
-    "températures de référence du noyau électrique (%s °C / %s °C, "
-    "core/electrique/types.py), non sourcées : températures TMY du site "
-    "absentes" % (int(TEMP_FROID_DEFAUT_C), int(TEMP_CHAUD_DEFAUT_C)))
+    "températures de référence par défaut (%s °C / %s °C), non sourcées : "
+    "les températures du site ne sont pas connues"
+    % (int(TEMP_FROID_DEFAUT_C), int(TEMP_CHAUD_DEFAUT_C)))
 
 #: Garde de BOUCLE de la recherche du nombre de panneaux (pas une valeur de
 #: dimensionnement) : au-delà, le besoin est déclaré non couvert.

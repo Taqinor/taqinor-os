@@ -37,7 +37,7 @@ import { useLeadDraft, rememberVille } from './useLeadDraft'
 import { schedulePrefetch } from './leadPrefetch'
 import { getField } from './draftCore'
 import { jumpToField } from './jumpToField'
-import fieldLabels from './fieldLabels'
+import fieldLabels, { LIBELLES_SECTIONS } from './fieldLabels'
 import IdentityRail from './IdentityRail'
 import SectionsPane from './SectionsPane'
 import ContextRail from './ContextRail'
@@ -119,7 +119,8 @@ function SaveChip({ saveState, saveError, errorField, onRetry }) {
             title={saveError}
             onClick={() => jumpToField({ section: errorField.section, field: errorField.inputId })}
           >
-            ⚠ {saveError}
+            ⚠ {LIBELLES_SECTIONS[errorField.section]
+              ? `Section « ${LIBELLES_SECTIONS[errorField.section]} » — ` : ''}{saveError}
           </button>
           <button type="button" className="lw-savechip-retry" onClick={onRetry}>
             Réessayer
@@ -734,6 +735,10 @@ export default function LeadWorkspace({
       }
     } catch (err) {
       setFromResponse(err)
+      // T4-U3-001 — un refus du serveur sur un champ d'une AUTRE section :
+      // la section est dépliée et le champ amené sous les yeux, focalisé.
+      const champ = Object.keys(err?.response?.data || {}).map((k) => fieldLabels[k]).find(Boolean)
+      if (champ) setTimeout(() => jumpToField({ section: champ.section, field: champ.inputId }), 0)
     } finally {
       setSaving(false)
     }
