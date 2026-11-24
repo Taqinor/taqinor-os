@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
+import { SAV_CREATION_RESERVEE } from '../../features/sav/creationTicket'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -1786,6 +1787,9 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 </MiniTable>
               )}
               <Hint>Le suivi détaillé (interventions, historique) se fait dans l&apos;écran « Tickets SAV ».</Hint>
+              {/* T4-U2-016 — sans le droit d'ouvrir un ticket (`sav_gerer`), dire QUI peut : plus de renvoi circulaire
+                  entre cet onglet et l'écran « Tickets SAV ». */}
+              {!peutSav && <Hint><span data-testid="chantier-sav-creation-reservee">{SAV_CREATION_RESERVEE}</span></Hint>}
               {peutSav && <div className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_2fr_auto]">
                 <FormField label="Type" htmlFor="tk-type">
                   <Select value={newTicket.type} onValueChange={(v) => setNewTicket(s => ({ ...s, type: v }))}>

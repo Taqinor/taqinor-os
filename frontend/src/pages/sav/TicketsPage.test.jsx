@@ -438,6 +438,31 @@ describe('TicketsPage — AERR32 liste gardée pendant/après une relecture', ()
   }, 60000)
 })
 
+/* T4-U2-016 — liste vide : avec le droit d'ouvrir un ticket, le chemin est un lien vers les chantiers ; sans, l'écran
+   dit QUI peut (jamais un renvoi vers la fiche du chantier qui renvoie ici). */
+describe('TicketsPage — liste vide, qui peut ouvrir un ticket (T4-U2-016)', () => {
+  function rendreVide(auth) {
+    const store = configureStore({
+      reducer: { tickets: (state = { items: [], loading: false, error: null }) => state, auth: (state = auth) => state },
+    })
+    render(<ThemeProvider><Provider store={store}><MemoryRouter>
+      <TicketsPage />
+    </MemoryRouter></Provider></ThemeProvider>)
+  }
+
+  it('Commercial (sans sav_gerer) : « réservé » + qui, aucun renvoi vers le chantier', async () => {
+    rendreVide({ role: 'normal', permissions: ['sav_voir', 'installation_voir'] })
+    expect(await screen.findByText(/Ouvrir un ticket SAV est réservé/)).toBeInTheDocument()
+    expect(screen.queryByText(/Ouvrez-en un depuis la fiche d.un chantier/)).toBeNull()
+  }, 60000)
+
+  it('avec sav_gerer : un lien vers les chantiers, là où le ticket s’ouvre', async () => {
+    rendreVide({ role: 'normal', permissions: ['sav_voir', 'sav_gerer', 'installation_voir'] })
+    const lien = await screen.findByRole('link', { name: /Choisir le chantier/ })
+    expect(lien.getAttribute('href')).toBe('/chantiers')
+  }, 60000)
+})
+
 /* AERR82 — retirer une pièce (déjà sortie du stock) d'un ticket passe par une
    confirmation qui nomme la pièce et sa quantité. */
 describe('TicketDetail — AERR82 retrait de pièce confirmé', () => {
