@@ -14,6 +14,7 @@ stockage MinIO n'est pas l'objet de ces essais.
 Run :
     python manage.py test apps.calepinage.tests.test_acal_rapport_etude_servi
 """
+import copy
 import importlib
 import unittest
 from html import escape
@@ -21,17 +22,22 @@ from unittest import mock
 
 from django.test import tag
 
+from apps.calepinage.models import ParametresCalepinage
 from apps.calepinage.services.documents import mise_en_page
 from apps.calepinage.services.rapport import (
     construire_rapport, html_du_rapport, rendre_rapport,
 )
 from apps.calepinage.services.rapport import systeme
 from apps.calepinage.services.rapport.mise_en_page import _pages_attendues
+from apps.calepinage.services.simulation import simuler_calepinage
 
 from .acal_livrables_helpers import (
     calepinage_simule_reel, exiger_bibliotheques_pdf, patch_materiel,
 )
 from .test_acal_sld_conception_reelle import BaseConceptionReelle
+from .test_calx5_simulation import (
+    LAYOUT as LAYOUT_SIMULABLE, REGLAGES, _ClientRejoue,
+)
 
 OPTIONS = dict(site={}, identite={}, styles={}, etat={})
 ANNEXE_AVEC_PDF = {'famille': 'onduleur', 'designation': 'ONDULEUR-ESSAI',
@@ -148,6 +154,20 @@ class SchemaJointAuRapportTest(BaseConceptionReelle):
         exiger_bibliotheques_pdf()
         super().setUp()
         self._norme_francaise()
+        # ACAL2041 - le rapport ne se rend que d'un calcul qui a eu lieu
+        # (ACAL111 / ACAL959) : la simulation est ecrite par le vrai ecrivain,
+        # sur les reglages SAISIS de la societe (mode et fenetre meteo) et
+        # une pose simulable ; la meteo est REJOUEE, le materiel reste reel.
+        ParametresCalepinage.objects.filter(company=self.company).update(
+            simulation=copy.deepcopy(REGLAGES['simulation']))
+        self.calepinage.roof_layout = copy.deepcopy(LAYOUT_SIMULABLE)
+        self.calepinage.save(update_fields=['roof_layout'])
+        self._simuler(self.calepinage)
+
+    def _simuler(self, calepinage):
+        simuler_calepinage(calepinage, client=_ClientRejoue(),
+                           enregistrer=True)
+        calepinage.refresh_from_db()
 
     def _corps_seul(self, calepinage):
         import core.pdf
@@ -182,10 +202,15 @@ class SchemaJointAuRapportTest(BaseConceptionReelle):
         muet = Calepinage.objects.create(
             company=self.company, lead_id=self.lead.pk, titre='Sans onduleur',
             roof_layout=self.calepinage.roof_layout)
-        enregistrer_entree(muet, {
-            'module_produit': self.module.pk,
-            'temperature_min_c': -5.0, 'temperature_max_c': 70.0,
-        })
+        entree = {'module_produit': self.module.pk,
+                  'temperature_min_c': -5.0, 'temperature_max_c': 70.0}
+        # La simulation exige les deux appareils ; l'onduleur est ensuite
+        # retire (le resultat enregistre reste celui d'un calcul qui a eu lieu).
+        enregistrer_entree(muet, dict(entree,
+                                      onduleur_produit=self.onduleur.pk))
+        self._simuler(muet)
+        enregistrer_entree(muet, dict(entree, onduleur_produit=None))
+        muet.refresh_from_db()
         octets = rendre_rapport(muet, **OPTIONS)
         self.assertEqual(_pages(octets), _pages(self._corps_seul(muet)))
         html = html_du_rapport(muet, paginer=False, **OPTIONS)
