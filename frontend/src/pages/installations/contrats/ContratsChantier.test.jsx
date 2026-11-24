@@ -60,7 +60,7 @@ describe('Onglet Contrats', () => {
     expect(titres).toEqual(dossier().actes.map((a) => a.titre))
     expect(titres).toHaveLength(5)
     expect(within(carte('Contrat d\'installation')).getByText('Signé le 24/11/2026 par Youssef EL EXEMPLE')).toBeInTheDocument()
-    expect(within(carte('Réception des travaux')).getByText('Brouillon')).toBeInTheDocument()
+    expect(within(carte('Réception des travaux')).getByText('Brouillon — le PDF porte la mention PROJET')).toBeInTheDocument()
     expect(documentsApiMock.dossierContrats).toHaveBeenCalledWith(12)
   })
 
@@ -236,6 +236,6 @@ describe('Onglet Contrats', () => {
     await screen.findByText('Réception des travaux')
     const acte = dossier().actes.find((a) => a.titre === 'Réception des travaux')
     await user.click(within(carte('Réception des travaux')).getByRole('button', { name: 'Aperçu (PDF)' }))
-    expect(ouvrirApercu.mock.calls[0][0]).toBe(`${acte.titre} — ${acte.reference}`)
+    expect(ouvrirApercu.mock.calls[0][0]).toBe(`${acte.titre} — ${acte.reference} (brouillon — mention PROJET)`)
   })
 })

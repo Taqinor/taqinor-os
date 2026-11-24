@@ -497,13 +497,16 @@ describe('Éditeur d’un acte', () => {
       const user = userEvent.setup()
       const perso = acte()
       perso.sections_personnalisees = ['articles']
+      perso.articles_personnalises = [perso.contenu.articles[1].cle]
       documentsApiMock.acte.mockResolvedValue({ data: perso })
       monter()
       const groupe = await screen.findByRole('group', { name: 'Articles' })
       const boutons = within(groupe).getAllByRole('button', { name: /^Rétablir l’article/ })
-      expect(boutons).toHaveLength(perso.contenu.articles.length)
+      // Seul l'article listé par `articles_personnalises` est rétablissable, et il est marqué « Modifié ».
+      expect(boutons).toHaveLength(1)
+      expect(within(groupe).getAllByText('Modifié')).toHaveLength(1)
       expect(within(groupe).getByRole('button', { name: 'Tout rétablir' })).toBeInTheDocument()
-      await user.click(boutons[1])
+      await user.click(boutons[0])
       expect(documentsApiMock.modifierActe).not.toHaveBeenCalled()
       await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Rétablir' }))
       const liste = documentsApiMock.modifierActe.mock.calls[0][1].articles
