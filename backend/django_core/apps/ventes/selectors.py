@@ -40,6 +40,7 @@ __all__ = [
     'resume_portail_client', 'schema_unifilaire_svg', 'logo_entete_html', 'signature_velocity_by_month_and_mode',
     'signed_clients_cross_sell_segments', 'totaux_multi_proprietes', 'tranche_facturee', 'tranches_facturees',
     'tva_buckets', 'verdict_batterie_onduleur', 'verdict_panneau_onduleur',
+    'conception_courante', 'historique_conception', 'manques_du_moteur', 'ecart_devis', 'champs_entrees',
 ]
 
 logger = logging.getLogger(__name__)
@@ -1802,6 +1803,9 @@ from .selectors_stock import (  # noqa: E402 — ré-export (SPL147) (D-ENF22)
     verdict_batterie_onduleur,
     classer_produit_nom,
     devis_utilisant_produit,
+)
+from .selectors_conception import (  # noqa: E402 — ré-export (ADEV137) (D-ENF22)
+    conception_courante, historique_conception, manques_du_moteur, ecart_devis, champs_entrees,
 )
 from .selectors_sorties_vente import sorties_de_la_vente  # noqa: E402,F401 — ré-export (ASTK257) (D-ENF22)
 

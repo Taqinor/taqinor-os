@@ -275,6 +275,7 @@ SURFACE_PUBLIQUE = (
     "refresh_marge_snapshot",
     "regler_envoi_gamme",
     "rejeter_paiement",
+    "relancer",
     "renouveler_devis",
     "request_esign_otp",
     "request_otp_lecture",

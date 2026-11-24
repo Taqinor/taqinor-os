@@ -96,6 +96,11 @@ PAR_PROPRIETAIRE = {
         'verdict_panneau_onduleur', 'verdict_batterie_onduleur',
         'classer_produit_nom', 'devis_utilisant_produit',
     ],
+    # ADEV137 → selectors_conception.py (5) — la conception rangée (D-ACAL-97)
+    'conception': [
+        'conception_courante', 'historique_conception', 'manques_du_moteur',
+        'ecart_devis', 'champs_entrees',
+    ],
 }
 
 #: Noms déplacés mais NON ré-exportés par la façade (0 référence hors
@@ -127,6 +132,7 @@ PLACE = {
     'publicite': 'apps.ventes.selectors_publicite',  # SPL146
     'portail': 'apps.ventes.selectors_portail',  # SPL147
     'stock': 'apps.ventes.selectors_stock',  # SPL147
+    'conception': 'apps.ventes.selectors_conception',  # ADEV137
 }
 
 
@@ -162,7 +168,7 @@ class SurfaceSelectorsVentes(SimpleTestCase):
         comptes = {p: len(n) for p, n in PAR_PROPRIETAIRE.items()}
         self.assertEqual(comptes, {
             'facturation': 28, 'calepinage': 14, 'cadence': 10,
-            'publicite': 9, 'portail': 8, 'stock': 6})
+            'publicite': 9, 'portail': 8, 'stock': 6, 'conception': 5})
         tous = [n for noms in PAR_PROPRIETAIRE.values() for n in noms]
         self.assertEqual(len(tous), len(set(tous)))
         self.assertLessEqual(PRIVES, set(tous))

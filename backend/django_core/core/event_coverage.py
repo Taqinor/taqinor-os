@@ -542,7 +542,9 @@ NO_STATIC_EMITTER = {
     # AVANT leurs émetteurs (contrat d'abord, PACT10) : leur entrée de
     # catalogue est le contrat, la parité devient vérifiable à l'émetteur.
     # Chaque entrée nomme la tâche qui la retire en posant le ``send``.
-    "conception_recalculee",             # émetteur ventes — retiré par ADEV135
+    # Les trois entrées sont RETIRÉES, émetteurs vivants : ``lead_entrees_modifiees``
+    # (ALEA68, crm), ``pose_enregistree`` (ACAL2011, calepinage),
+    # ``conception_recalculee`` (ADEV135, ``apps/ventes/conception/service.py::relancer``).
 }
 
 

@@ -14,6 +14,7 @@ Ce que le moteur NE reproduit PAS est DIT dans ``absents`` (``{clé: raison}``),
 jamais simulé : « une seule batterie » C&I (``poser_depart`` simule dans une
 transaction) et toute étude qui lève (le devis l'aurait avalée).
 """
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 import logging
 
@@ -71,19 +72,38 @@ def calculer_conception(lead, company, *, entrees=None, toit=None, imposes=None,
     le prix de référence du payback. Un lead sans ville ni GPS ⇒ refus
     ``localisation_inconnue`` ; un refus du devis automatique ⇒ refus
     ``refus_moteur`` nommant son champ."""
-    from apps.ventes.conception.entrees import _empreinte, entrees_pour
+    if getattr(lead, 'company_id', None) != getattr(company, 'pk', None):
+        raise ValueError('Lead hors de la société : aucune conception.')
+    with reglages_lus_sans_creer(company):
+        return _calculer(lead, company, entrees, toit, imposes, investissement)
+
+
+@contextmanager
+def reglages_lus_sans_creer(company):
+    """Relecture ADEV134 — ``TariffSettings.get`` / ``CompanyProfile.get``
+    (``get_or_create``) rendent, le temps du calcul, la ligne existante sinon une
+    instance NON enregistrée (``CompanyProfile.lire``) : aucune écriture."""
+    from apps.parametres.models import CompanyProfile
+    from apps.parametres.models_tariff import TariffSettings
+    from core import request_cache
+
+    with request_cache.request_scope():
+        request_cache.memoize(TariffSettings._cle_memo_id(company.pk), lambda: (
+            TariffSettings.objects.filter(company=company).first() or TariffSettings(company=company)))
+        request_cache.memoize(CompanyProfile._cle_memo_id(company.pk), lambda: CompanyProfile.lire(company))
+        yield
+
+
+def _calculer(lead, company, entrees, toit, imposes, investissement):
+    from apps.ventes.conception.entrees import entrees_pour
     from apps.ventes.domain.regles_calcul import REGLES_COURANTES
     from apps.ventes.domain.taille import AutoDevisError
 
-    if getattr(lead, 'company_id', None) != getattr(company, 'pk', None):
-        raise ValueError('Lead hors de la société : aucune conception.')
     entrees = entrees or entrees_pour(lead, company, toit=toit)
     resultat = ResultatConception(
         marche=entrees.marche, entrees_utilisees=entrees.entrees_utilisees,
-        niveau_regles=REGLES_COURANTES, empreinte=_empreinte({
-            'entrees': entrees.empreinte, 'version_moteur': VERSION_MOTEUR,
-            'niveau_regles': REGLES_COURANTES, 'imposes': imposes or {}}))
-    refus = _refus_localisation(lead)
+        niveau_regles=REGLES_COURANTES, empreinte=empreinte_conception(entrees, imposes))
+    refus = refus_localisation(lead)
     if refus is None:
         calcul = {'residentiel': _residentiel, 'agricole': _agricole}.get(entrees.marche, _ci)
         try:
@@ -94,14 +114,63 @@ def calculer_conception(lead, company, *, entrees=None, toit=None, imposes=None,
         resultat.etat, resultat.refus = 'refus', refus
         resultat.etude_params, resultat.lignes, resultat.conception_electrique = {}, [], None
         return resultat
+    from apps.ventes.conception import valeurs as V
+    from apps.ventes.compatibilites import froid_du_lead
+    froid = None if entrees.marche == 'agricole' else froid_du_lead(lead)
     resultat.blocs = blocs_du_moteur(resultat.etude_params)
-    resultat.suppositions = suppositions_de(resultat)
-    resultat.option_retenue, options = _options(resultat)
-    resultat.valeurs = {option: _valeurs(resultat, lead, option, investissement) for option in options}
+    from apps.ventes.conception.suppositions import suppositions_de
+    resultat.suppositions = suppositions_de(resultat, froid=froid)
+    resultat.option_retenue, options = V.options(resultat)
+    resultat.valeurs = {option: V.valeurs(resultat, option, investissement, froid=froid) for option in options}
+    return _sans_cles_interdites_partout(resultat)
+
+
+def sans_cles_interdites(noeud):
+    """Retire, à toute profondeur, toute clé d'achat ou de marge : la liste
+    ``domain/etude_ci.py::CLES_INTERDITES`` (``prix_achat``, ``marge``) et leurs
+    variantes (``prix_achat_ht``, ``marge_snapshot``). Seule définition du
+    paquet (l'écrivain l'applique aussi à ce qu'il range)."""
+    from apps.ventes.domain.etude_ci import CLES_INTERDITES
+
+    if isinstance(noeud, dict):
+        return {cle: sans_cles_interdites(valeur) for cle, valeur in noeud.items()
+                if not any(str(cle).startswith(i) or i == 'prix_achat' and i in str(cle) for i in CLES_INTERDITES)}
+    if isinstance(noeud, (list, tuple)):
+        return [sans_cles_interdites(valeur) for valeur in noeud]
+    return noeud
+
+
+def _sans_cles_interdites_partout(resultat):
+    """Tout ce que le résultat EXPOSE (les ``lignes``, instances non
+    enregistrées, ne sont jamais sérialisées : l'écrivain n'en lit rien)."""
+    for nom in ('valeurs', 'blocs', 'suppositions', 'entrees_utilisees', 'etude_params', 'journal',
+                'conception_electrique', 'materiel_pompage'):
+        valeur = getattr(resultat, nom)
+        if valeur is not None:
+            setattr(resultat, nom, sans_cles_interdites(valeur))
     return resultat
 
 
-def _refus_localisation(lead):
+def empreinte_conception(entrees, imposes=None):
+    """L'empreinte d'une conception : entrées (pose comprise), version du
+    moteur, niveau de règles, composition imposée — égale ⇒ même calcul."""
+    from apps.ventes.conception.entrees import _empreinte
+    from apps.ventes.domain.regles_calcul import REGLES_COURANTES
+    return _empreinte({'entrees': entrees.empreinte, 'version_moteur': VERSION_MOTEUR,
+                       'niveau_regles': REGLES_COURANTES, 'imposes': imposes or {}})
+
+
+def lead_du_calepinage(calepinage, company):
+    """ADEV136 (Q3) — l'entrée d'un calepinage SANS lead : un lead NON
+    ENREGISTRÉ (jamais sauvegardé) ne portant que ce que le calepinage sait
+    d'une entrée du moteur, le marché de son devis lié. Rien n'est inventé :
+    sans ville ni consommation, le moteur rend son refus nommé."""
+    from django.apps import apps
+    marche = getattr(calepinage.devis, 'mode_installation', None) if calepinage.devis_id else None
+    return apps.get_model('crm', 'Lead')(company=company, type_installation=marche or None)
+
+
+def refus_localisation(lead):
     from apps.crm.selectors import ville_effective
     if ville_effective(lead) or (getattr(lead, 'gps_lat', None) is not None
                                  and getattr(lead, 'gps_lng', None) is not None):
@@ -110,12 +179,12 @@ def _refus_localisation(lead):
 
 
 def blocs_du_moteur(etude_params):
-    """Les clés DÉRIVÉES des quatre moteurs d'étude (contrat ``blocs``)."""
-    from apps.ventes.domain import etude_schema as es
-    proprietaires = {es.MOTEUR_HORAIRE, es.MOTEUR_DIMENSIONNEMENT, es.MOTEUR_CI, es.MOTEUR_POMPAGE}
-    return {cle: valeur for cle, valeur in etude_params.items()
-            if (es.SCHEMA.get(cle) or {}).get('nature') == es.DERIVEE
-            and es.SCHEMA[cle]['proprietaire'] in proprietaires}
+    """ADEV135 — contrat ``blocs`` : le contenu COMPLET d'``etude_params`` tel
+    que le devis automatique né de cette conception le porterait (blocs
+    d'étude, ``profils_comparatifs``, ``puissance_kwc``, ``ville_calcul``,
+    ``origine_conception``…), pour qu'un devis créé de la version rangée n'ait
+    rien à recalculer ; jamais les notes vendeur ``journal_auto``."""
+    return {cle: valeur for cle, valeur in etude_params.items() if cle != 'journal_auto'}
 
 
 def _fusion(devis, proprietaire, **cles):
@@ -325,137 +394,3 @@ def _conception_electrique(resultat, contexte, *, garde):
         logger.warning('Conception électrique non calculée (moteur unique)', exc_info=True)
         resultat.absents['conception_electrique'] = 'erreur : %s' % type(exc).__name__
         return None
-
-
-# ── ADEV134 — les suppositions, chacune avec le champ de la fiche ───────────
-
-def suppositions_de(resultat):
-    """ADEV134 (règle du 17/11/2026) — ce que le calcul a SUPPOSÉ :
-    ``[{code, champ, valeur, source, message}]``. Ce sont les suppositions que
-    le devis automatique dit déjà au vendeur, avec leur champ de la fiche
-    (résidentiel : ``creation_auto_residentiel.SUPPOSITIONS_RESIDENTIEL`` ;
-    C&I : ``suppositions_ci.alertes_du_journal``) — mêmes codes, mêmes phrases,
-    aucune seconde formulation ; ``valeur`` = ce que le calcul a retenu à la
-    place, lu sur ses blocs. Une alerte qui ne nomme aucun champ n'en est pas
-    une (le journal la garde)."""
-    return [{'code': alerte['code'], 'champ': alerte['champ_lead'], 'valeur': _valeur_supposee(resultat, alerte),
-             'source': 'defaut', 'message': alerte['message']}
-            for alerte in resultat.journal.get('alertes') or [] if alerte.get('champ_lead')]
-
-
-def _valeur_supposee(resultat, alerte):
-    params = resultat.etude_params
-    if resultat.marche == 'residentiel':
-        bloc = params.get('etude_horaire') or {}
-        return {'occupation_jour': bloc.get('occupation'),
-                'facture_ete': (resultat.entrees_utilisees.get('facture_hiver') or {}).get('valeur'),
-                'conso_mensuelle_kwh': (bloc.get('annuel') or {}).get('consommation_kwh'),
-                'inclinaison_deg': bloc.get('source_production')}.get(alerte['champ_lead'])
-    etude = params.get('etude_ci') or {}
-    hypothese = next((h for h in etude.get('hypotheses') or [] if isinstance(h, dict)
-                      and 'supposition_%s' % h.get('cle') == alerte['code']), None)
-    if hypothese is not None:
-        return hypothese.get('valeur')
-    if alerte['champ_lead'] == 'jours_ouverture':  # profil estimé : l'archétype retenu
-        return (etude.get('profil_charge') or {}).get('archetype')
-    return ((etude.get('entrees_resolues') or {}).get(alerte.get('champ')) or {}).get('valeur')
-
-
-# ── La table §2 de la conception, PAR OPTION ({valeur, unite, source}) ──────
-# Lue sur les blocs, les lignes et la conception électrique : aucun calcul.
-
-def _v(valeur, unite=None, source='moteur'):
-    return {'valeur': valeur, 'unite': unite, 'source': source}
-
-
-def _options(resultat):
-    """``(option retenue, options)`` : agricole ``sans`` ; sinon le scénario
-    servable (« Les deux » ⇒ les deux) ; retenue = la recommandée (C&I), sinon
-    l'option que décrit le bloc principal (``avec`` à deux options, I7)."""
-    from apps.ventes.domain import scenario as S
-    params = resultat.etude_params
-    if resultat.marche == 'agricole':
-        return 'sans', ('sans',)
-    scenario = params.get('scenario')
-    if scenario == S.SCENARIO_LES_DEUX:
-        recommandee = params.get('recommended_option')
-        return ('sans' if recommandee == S.SCENARIO_SANS_BATTERIE else 'avec'), ('sans', 'avec')
-    option = 'avec' if scenario == S.SCENARIO_AVEC_BATTERIE else 'sans'
-    return option, (option,)
-
-
-def _materiel(resultat, option):
-    from apps.ventes.domain.catalogue import classer_produit
-    from apps.ventes.quote_engine.lignes_classement import panneaux_et_watt_lu
-    lignes = [li for li in resultat.lignes if li.type_ligne == 'produit' and not li.optionnelle
-              and (li.variante or '') in ('', option)]
-    classes = [(li, classer_produit(getattr(li.produit, 'nom', '') or li.designation) or '') for li in lignes]
-    panneaux = [li for li, c in classes if c == 'panneau']
-    onduleurs = [{'produit': li.produit_id, 'designation': li.designation, 'quantite': int(li.quantite)}
-                 for li, c in classes if c.startswith('onduleur')]
-    return panneaux, panneaux_et_watt_lu(panneaux), onduleurs
-
-
-def _electrique(design, onduleurs):
-    """Chaînes, tension à froid, ratio : seulement pour l'option dont la
-    conception électrique rangée porte l'onduleur ; sinon ``None``."""
-    onduleur = ((design or {}).get('materiel') or {}).get('onduleur') or {}
-    if not design or onduleur.get('designation') not in {o['designation'] for o in onduleurs}:
-        return None, None, None
-    chaines = design.get('chaines') or []
-    longueurs = [c.get('nb_modules') for c in chaines]
-    return ({'nombre': len(chaines), 'longueurs': longueurs, 'longueur': max(longueurs, default=None)},
-            max((c.get('voc_froid_v') or 0 for c in chaines), default=None), design.get('ratio_dc_ac'))
-
-
-def _bilan(resultat, option):
-    """``(production, mensuelle, autoconso, couverture, économies, conso,
-    forme, source de la forme)`` lus sur le bloc de l'option."""
-    params = resultat.etude_params
-    if resultat.marche == 'residentiel':
-        bloc = (params.get('etude_horaire_sans') if option == 'sans' else None) or params.get('etude_horaire') or {}
-        annuel = bloc.get('annuel') or {}
-        return (annuel.get('production_kwh'), [m.get('production_kwh') for m in bloc.get('mois') or []],
-                annuel.get('taux_autoconso_%s' % option), annuel.get('couverture_%s' % option),
-                annuel.get('economie_%s_mad' % option), annuel.get('consommation_kwh'),
-                bloc.get('occupation'), 'defaut' if bloc.get('profil_suppose') else 'moteur')
-    etude = params.get('etude_ci') or {}
-    source = (etude.get('option_avec') or {}) if option == 'avec' else etude
-    bilan, economie = source.get('bilan') or {}, source.get('economie_ci') or {}
-    mois = bilan.get('par_mois') or []
-    return (bilan.get('production_kwh'), [m.get('production_kwh') for m in mois], bilan.get('taux_autoconso'),
-            bilan.get('taux_couverture'), (economie.get('economie_annee1') or {}).get('total_mad'),
-            sum(m.get('consommation_kwh') or 0 for m in mois) if mois else None,
-            (etude.get('profil_charge') or {}).get('archetype'), 'moteur')
-
-
-def _valeurs(resultat, lead, option, investissement):
-    if resultat.marche == 'agricole':
-        champ, params = resultat.etude_params.get('champ') or {}, resultat.etude_params
-        return {'nb_panneaux': _v(champ.get('nb_panneaux'), 'panneaux'), 'puissance_kwc': _v(champ.get('kwc'), 'kWc'),
-                'pompe': _v(resultat.materiel_pompage.get('pompe')),
-                'variateur': _v(resultat.materiel_pompage.get('variateur_pompage')),
-                'm3_jour': _v(params.get('m3_jour'), 'm³/jour')}
-    from apps.ventes.compatibilites import froid_du_lead
-    from apps.ventes.quote_engine.lignes_classement import kwc_des_lignes
-    from apps.ventes.quote_engine.pricing import payback_publiable
-    panneaux, (nb, watt), onduleurs = _materiel(resultat, option)
-    chaines, tension, ratio = _electrique(resultat.conception_electrique, onduleurs)
-    froid = froid_du_lead(lead)
-    production, mensuelle, autoconso, couverture, economies, conso, forme, source_forme = _bilan(resultat, option)
-    payback = (payback_publiable(investissement, economies, stockage=option == 'avec')['payback_years']
-               if investissement is not None else None)
-    devis = resultat.lignes[0].devis if resultat.lignes else None
-    return {
-        'nb_panneaux': _v(nb, 'panneaux'), 'puissance_kwc': _v(kwc_des_lignes(panneaux, nb, watt, devis), 'kWc'),
-        'module': _v(panneaux[0].designation if panneaux else None), 'onduleurs': _v(onduleurs),
-        'nombre_onduleurs': _v(sum(o['quantite'] for o in onduleurs), 'onduleurs'),
-        'chaines': _v(chaines, 'panneaux'), 'tension_froid': _v(tension, 'V'), 'ratio_dc_ac': _v(ratio),
-        'temperature_froid': _v(getattr(froid, 'valeur_c', None), '°C',
-                                'moteur' if getattr(froid, 'source', None) else 'defaut'),
-        'production_annuelle': _v(production, 'kWh/an'), 'production_mensuelle': _v(mensuelle or None, 'kWh'),
-        'autoconsommation': _v(autoconso, 'ratio'), 'couverture': _v(couverture, 'ratio'),
-        'economies_annuelles': _v(economies, 'MAD/an'),
-        'payback': _v(payback, 'ans', 'devis' if investissement is not None else 'moteur'),
-        'consommation_annuelle': _v(conso, 'kWh/an'), 'forme_horaire': _v(forme, None, source_forme),
-    }
