@@ -1021,9 +1021,13 @@ class FigeageDevisAutoTests(TestCase):
 
 
 def _ecritures(requetes):
-    """Les requêtes d'ÉCRITURE capturées (un pipeline pur n'en émet aucune)."""
+    """Les requêtes d'ÉCRITURE capturées (un pipeline pur n'en émet aucune),
+    blancs et commentaires SQL de tête ignorés."""
+    import re
+
+    tete = re.compile(r'^(?:\s+|/\*.*?\*/|--[^\n]*(?:\n|$))*', re.S)
     return [q['sql'][:160] for q in requetes.captured_queries
-            if q['sql'].lstrip().upper().startswith(('INSERT', 'UPDATE', 'DELETE'))]
+            if tete.sub('', q['sql'], count=1).upper().startswith(('INSERT', 'UPDATE', 'DELETE', 'MERGE'))]
 
 
 def _json(valeur):
@@ -1180,7 +1184,7 @@ class PipelinePurTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_ut
 #: Goldens HORS parité, avec la raison (aucun n'est « assoupli ») :
 HORS_PARITE = {
     'journal_taille_cible': ("``target_kwc`` est une demande POUR UN devis (corps de POST devis/auto/), "
-                             "pas une entrée du lead : le moteur ne la prend pas (ADEV150, pose souveraine)."),
+                             "pas une entrée du lead : le moteur ne la prend pas (tâche ADEV150, pose souveraine)."),
 }
 PARITE = tuple(sorted({n.stem for n in DOSSIER_FIGEAGE.glob('*.json')} - set(HORS_PARITE)))
 
@@ -1252,7 +1256,9 @@ class MoteurUniqueTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_u
     def _forme_du_contrat(self, resultat):
         sortie = resultat.sortie()
         self.assertEqual(set(sortie), CLES_RESULTAT)
-        self.assertEqual(_cles_interdites(_json(sortie)) + _cles_interdites(_json(resultat.etude_params)), [])
+        self.assertEqual(_cles_interdites(_json(sortie)) + _cles_interdites(_json(resultat.etude_params))
+                         + _cles_interdites(_json(resultat.conception_electrique))
+                         + _cles_interdites(_json(resultat.journal)), [])
         self.assertIn(resultat.option_retenue, sortie['valeurs'])
         attendues = VALEURS_POMPAGE if resultat.marche == 'agricole' else VALEURS_SOLAIRES
         for option, valeurs in sortie['valeurs'].items():
@@ -1314,16 +1320,25 @@ class MoteurUniqueTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_u
         return {sup['code']: (sup['champ'], sup['valeur']) for sup in resultat.suppositions}
 
     def test_suppositions_residentiel_sans_presence_ni_ete(self):
+        from apps.parametres.pvgis_profils import PVGIS_ANGLE_DEG, PVGIS_ASPECT_DEG
         from apps.ventes.domain.creation_auto_residentiel import SUPPOSITIONS_RESIDENTIEL
+        from core.electrique.types import TEMP_FROID_DEFAUT_C
 
         resultat = self._calculer(*self._cas('res_facture_dirhams'))
         dites = self._suppositions(resultat)
         self.assertEqual({code: champ for code, (champ, _v) in dites.items()},
                          {'suppose_presence': 'occupation_jour', 'suppose_ete_egal_hiver': 'facture_ete',
                           'suppose_kwh_depuis_facture': 'conso_mensuelle_kwh',
-                          'suppose_30_plein_sud': 'inclinaison_deg'})
+                          'suppose_30_plein_sud': 'inclinaison_deg', 'froid_suppose': 'gps_lat'})
         self.assertEqual(dites['suppose_presence'][1], 'presence_jour')
         self.assertEqual(dites['suppose_ete_egal_hiver'][1], 1800.0)
+        # La valeur RETENUE à la place : la consommation MENSUELLE du calcul
+        # (golden : 12 × 1 022,9 kWh), le plan de la production par ville, le froid.
+        self.assertEqual(dites['suppose_kwh_depuis_facture'][1], 1022.9)
+        self.assertEqual(dites['suppose_30_plein_sud'][1],
+                         {'inclinaison_deg': PVGIS_ANGLE_DEG, 'azimut_deg': PVGIS_ASPECT_DEG})
+        self.assertEqual(dites['froid_suppose'][1], TEMP_FROID_DEFAUT_C)
+        self.assertEqual(resultat.valeurs['avec']['temperature_froid']['source'], 'defaut')
         # Aucune seconde formulation : la phrase est celle du journal du devis.
         messages = {sup['code']: sup['message'] for sup in resultat.suppositions}
         self.assertEqual(messages['suppose_presence'], SUPPOSITIONS_RESIDENTIEL['occupation_jour'][1])
@@ -1332,7 +1347,65 @@ class MoteurUniqueTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_u
         """Présence, été et kWh déclarés : plus rien de supposé sur la fiche ;
         la production à 30° plein sud reste dite (aucune pose au niveau 14)."""
         dites = self._suppositions(self._calculer(*self._cas('res_kwh_declare_ete_different')))
-        self.assertEqual(set(dites), {'suppose_30_plein_sud'})
+        self.assertEqual(set(dites), {'suppose_30_plein_sud', 'froid_suppose'})
+
+    def test_cles_d_achat_retirees_de_tout_ce_que_le_resultat_expose(self):
+        """Relecture ADEV134, point 5 : le retrait récursif (liste
+        ``etude_ci.CLES_INTERDITES``) s'applique aussi à la conception
+        électrique et au journal ; les lignes (instances) ne sont pas exposées."""
+        from apps.ventes.conception import moteur
+
+        resultat = moteur.ResultatConception(
+            marche='residentiel', entrees_utilisees={'x': {'prix_achat': 1}}, empreinte='e' * 64, niveau_regles=14,
+            journal={'alertes': [{'code': 'a', 'marge_brute': 2}]},
+            conception_electrique={'materiel': {'onduleur': {'prix_achat_ht': 3, 'designation': 'O'}}},
+            etude_params={'etude_ci': {'marge': 4, 'bilan': {}}})
+        moteur._sans_cles_interdites_partout(resultat)
+        self.assertEqual((resultat.entrees_utilisees, resultat.journal, resultat.conception_electrique,
+                          resultat.etude_params),
+                         ({'x': {}}, {'alertes': [{'code': 'a'}]}, {'materiel': {'onduleur': {'designation': 'O'}}},
+                          {'etude_ci': {'bilan': {}}}))
+
+    def test_suppositions_inclinaison_de_la_fiche_non_lue_reste_dite(self):
+        """Relecture ADEV134, point 2 (contesté) : au niveau de règles courant,
+        sans pose servie, la production résidentielle est calculée au plan de
+        ``pvgis_profils`` QUELLE QUE SOIT la pente de la fiche — la taire quand
+        ``inclinaison_deg`` est rempli cacherait un défaut réellement appliqué.
+        Le résultat ne change pas avec la pente déclarée : preuve qu'elle n'est
+        pas lue."""
+        from apps.crm.models import Lead
+
+        company, lead = self._cas('res_kwh_declare_ete_different')
+        sans = self._calculer(company, lead)
+        Lead.objects.filter(pk=lead.pk).update(inclinaison_deg=Decimal('15'))
+        lead.refresh_from_db()
+        avec = self._calculer(company, lead)
+        self.assertIn('suppose_30_plein_sud', self._suppositions(avec))
+        self.assertEqual(_json(avec.valeurs), _json(sans.valeurs))
+
+    def test_sans_reglages_societe_aucune_ecriture_meme_resultat(self):
+        """Relecture ADEV134, point 4 : une société sans réglages tarifaires
+        ni profil — le moteur les LIT sans les créer (zéro écriture), et rend
+        le même résultat qu'avec les lignes par défaut."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from apps.parametres.models import CompanyProfile
+        from apps.parametres.models_tariff import TariffSettings
+        from apps.ventes.conception.moteur import calculer_conception
+
+        for nom in ('res_facture_dirhams', 'ci_commercial'):
+            with self.subTest(cas=nom):
+                company, lead = self._cas(nom)
+                TariffSettings.objects.filter(company=company).delete()
+                CompanyProfile.objects.filter(company=company).delete()
+                with CaptureQueriesContext(connection) as requetes:
+                    sans_lignes = calculer_conception(lead, company)
+                self.assertEqual(_ecritures(requetes), [], 'le moteur a écrit en base')
+                self.assertFalse(TariffSettings.objects.filter(company=company).exists())
+                self.assertFalse(CompanyProfile.objects.filter(company=company).exists())
+                avec_lignes = self._calculer(company, lead)
+                self.assertEqual(_json(sans_lignes.sortie()), _json(avec_lignes.sortie()))
 
     def test_suppositions_ci_sans_contrat_ni_phase_ni_tension(self):
         from apps.ventes import tarif_ci
@@ -1360,12 +1433,14 @@ class MoteurUniqueTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_u
 
 def _test_de_parite(nom):
     def test(self):
+        if nom in HORS_PARITE:  # exclusion VISIBLE, avec sa raison (relecture ADEV134)
+            self.skipTest(HORS_PARITE[nom])
         self._parite(nom)
     test.__doc__ = f'ADEV133 — parité du moteur unique avec le golden « {nom} ».'
     return test
 
 
-for _nom in PARITE:
+for _nom in sorted(PARITE + tuple(HORS_PARITE)):
     setattr(MoteurUniqueTests, f'test_parite_{_nom}', _test_de_parite(_nom))
 
 

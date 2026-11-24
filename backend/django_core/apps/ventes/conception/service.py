@@ -58,14 +58,15 @@ def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None
     from django.utils import timezone
 
     from apps.ventes.conception.entrees import entrees_pour
-    from apps.ventes.conception.moteur import calculer_conception
+    from apps.ventes.conception.moteur import calculer_conception, reglages_lus_sans_creer
     from apps.ventes.models import ConceptionLead
 
     if getattr(lead, 'company_id', None) != getattr(company, 'pk', None):
         raise ValueError('Lead hors de la société : aucune conception.')
     origine, champs = _declencheur_valide(declencheur)
-    entrees = entrees_pour(lead, company, toit=toit)
-    resultat = calculer_conception(lead, company, entrees=entrees, toit=toit)
+    with reglages_lus_sans_creer(company):
+        entrees = entrees_pour(lead, company, toit=toit)
+        resultat = calculer_conception(lead, company, entrees=entrees, toit=toit)
     courante = ConceptionLead.objects.filter(company=company, lead=lead, courante=True).first()
     if courante is not None and courante.empreinte == resultat.empreinte and not forcer:
         return Relance(courante, False, resultat)
@@ -91,7 +92,9 @@ def _declencheur_valide(declencheur):
 
 def _champs_ranges(resultat):
     """La sortie du moteur à la forme des colonnes (JSON pur, sans achat ni
-    marge). ``blocs`` est celui du moteur (``etude_params`` complet)."""
+    marge : ``moteur.sans_cles_interdites``, seule définition du paquet).
+    ``blocs`` est celui du moteur (``etude_params`` complet)."""
+    from apps.ventes.conception.moteur import sans_cles_interdites as _sans_achat_ni_marge
     return {
         'etat': resultat.etat, 'refus': _en_json(resultat.refus), 'marche': resultat.marche,
         'option_retenue': resultat.option_retenue or '',
@@ -181,7 +184,7 @@ def _nombre_francais(nombre):
     return texte.replace(',', ' ').replace('.', ',')
 
 
-# ── JSON pur, sans clé d'achat ni de marge ──────────────────────────────────
+# ── JSON pur ────────────────────────────────────────────────────────────────
 
 def _defaut_json(valeur):
     if isinstance(valeur, Decimal):
@@ -194,18 +197,3 @@ def _defaut_json(valeur):
 
 def _en_json(valeur):
     return json.loads(json.dumps(valeur, default=_defaut_json))
-
-
-def _interdite(cle):
-    # Même règle que ``domain/etude_ci.py::CLES_INTERDITES``, à toute profondeur
-    # et sur les variantes (``prix_achat_ht``, ``marge_snapshot``).
-    cle = str(cle)
-    return 'prix_achat' in cle or cle.startswith('marge')
-
-
-def _sans_achat_ni_marge(noeud):
-    if isinstance(noeud, dict):
-        return {k: _sans_achat_ni_marge(v) for k, v in noeud.items() if not _interdite(k)}
-    if isinstance(noeud, list):
-        return [_sans_achat_ni_marge(v) for v in noeud]
-    return noeud
