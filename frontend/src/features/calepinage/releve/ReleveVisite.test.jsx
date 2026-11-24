@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, act, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import process from 'node:process'
+import { resolve } from 'node:path'
+import { creerRepere, metresVersLngLat } from '../repere'
 import { ConfirmProvider } from '../../../providers/ConfirmProvider'
 
 /* Écran neuf « Relevé de visite » au téléphone (maquette Telephone) : structure, ordre et
@@ -97,7 +99,7 @@ describe('Relevé de visite — la maquette, dans son ordre', () => {
 })
 
 describe('ACAL2002 — « Terminer le relevé » est le bouton doré v2', () => {
-  it('lit les jetons du bouton d’étape : fond d’action, rayon 14, 700, ombre dorée', async () => {
+  it('lit les jetons du bouton d’étape : fond d’action, rayon 15, 700, ombre dorée', async () => {
     const { readFileSync } = await import('node:fs')
     const { resolve } = await import('node:path')
     const style = document.createElement('style')
@@ -109,7 +111,7 @@ describe('ACAL2002 — « Terminer le relevé » est le bouton doré v2', () => 
       const bouton = await screen.findByTestId('releve-terminer')
       const cs = getComputedStyle(bouton)
       expect(cs.background).toContain('--cal-action')
-      expect(cs.borderRadius).toBe('var(--cal-rayon-pile)')
+      expect(cs.borderRadius).toBe('15px')
       expect(cs.boxShadow).toBe('var(--cal-action-ombre)')
       expect(cs.font).toContain('700')
     } finally { style.remove() }
@@ -134,7 +136,7 @@ describe('Relevé de visite — « mesurée » seulement depuis le capteur', () 
     rendre()
     await waitFor(() => expect(screen.getByTestId('releve-pente-bouton')).not.toBeDisabled())
     fireEvent.click(screen.getByTestId('releve-pente-bouton'))
-    await waitFor(() => expect(screen.getByTestId('releve-pente-valeur')).toHaveTextContent('24° · mesurée'))
+    await waitFor(() => expect(screen.getByTestId('releve-pente-valeur')).toHaveTextContent('24° mesurée'))
     fireEvent.click(screen.getByTestId('releve-terminer'))
     await waitFor(() => expect(api.corrigerReleve).toHaveBeenCalled())
     const [, corpsPente] = api.enregistrerSectionLayout.mock.calls[0]
@@ -398,6 +400,101 @@ describe('Relevé de visite — terminé hors ligne : gardé sur le téléphone,
   })
 })
 
+describe('ACAL1836 — le relevé sur la maquette v2 : la carte du toit, les cotes reprises, la feuille', () => {
+  // Un toit RECTANGLE créé 12,4 × 8,6 m (sommets servis en [lng, lat] autour de Casablanca).
+  const rectangle = () => {
+    const repere = creerRepere({ origine_lnglat: [-7.6, 33.5], ordre: 'lnglat' })
+    return [[0, 0], [12.4, 0], [12.4, 8.6], [0, 8.6]].map(([x, y]) => metresVersLngLat(repere, { x, y }))
+  }
+  const avecToit = (vertices) => api.layout.mockResolvedValue({
+    data: { roof_layout: { zones: [{ ...ZONE, id: 'z1', vertices }] }, empreinte_document: 'emp-1' },
+  })
+
+  it('un toit rectangle déjà créé préremplit Longueur et Largeur, DITES « reprises du toit » ; elles partent avec « Terminer »', async () => {
+    avecToit(rectangle())
+    rendre()
+    await waitFor(() => expect(screen.getByTestId('releve-longueur')).toHaveValue('12,4'))
+    expect(screen.getByTestId('releve-largeur')).toHaveValue('8,6')
+    expect(screen.getByTestId('releve-cotes-reprises')).toHaveTextContent('Reprises du toit')
+    // La carte du toit porte le plan servi et les mêmes cotes en pilules.
+    expect(within(screen.getByTestId('releve-carte-toit')).getByTestId('client-plan')).toBeInTheDocument()
+    expect(screen.getByTestId('releve-cote-longueur')).toHaveTextContent('12,4')
+    expect(screen.getByTestId('releve-cote-largeur')).toHaveTextContent('8,6')
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(api.corrigerReleve).toHaveBeenCalledTimes(1))
+    expect(api.corrigerReleve.mock.calls[0][2].chaines).toEqual([
+      { nom: 'Longueur', total_mesure: null, tolerance_m: null, cotes: [{ nom: 'Longueur', valeur: 12.4 }] },
+      { nom: 'Largeur', total_mesure: null, tolerance_m: null, cotes: [{ nom: 'Largeur', valeur: 8.6 }] },
+    ])
+  })
+
+  it('une saisie remplace la reprise (et la note disparaît) ; un champ vidé reste vide ; un contour non rectangle ne reprend rien', async () => {
+    avecToit(rectangle())
+    rendre()
+    await waitFor(() => expect(screen.getByTestId('releve-longueur')).toHaveValue('12,4'))
+    taper('releve-longueur', '12,6')
+    taper('releve-largeur', '')
+    expect(screen.queryByTestId('releve-cotes-reprises')).toBeNull()
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(api.corrigerReleve).toHaveBeenCalledTimes(1))
+    expect(api.corrigerReleve.mock.calls[0][2].chaines).toEqual([
+      { nom: 'Longueur', total_mesure: null, tolerance_m: null, cotes: [{ nom: 'Longueur', valeur: 12.6 }] },
+    ])
+    cleanup()
+    avecToit([[-7.6, 33.5], [-7.5999, 33.5], [-7.5999, 33.5001]]) // triangle
+    rendre()
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(api.layout).toHaveBeenCalledTimes(2))
+    expect(screen.getByTestId('releve-longueur')).toHaveValue('')
+    expect(screen.queryByTestId('releve-cotes-reprises')).toBeNull()
+  })
+
+  it('une mesure déjà relevée prime sur le toit dessiné', async () => {
+    api.releve.mockResolvedValue({ data: { releves: [{ ...RELEVE_COURANT, chaines: [
+      { nom: 'Longueur', total_mesure: null, tolerance_m: null, cotes: [{ nom: 'Longueur', valeur: 13.1 }] },
+    ] }], releve_courant_id: 9 } })
+    avecToit(rectangle())
+    rendre()
+    await waitFor(() => expect(screen.getByTestId('releve-largeur')).toHaveValue('8,6'))
+    expect(screen.getByTestId('releve-longueur')).toHaveValue('13,1')
+  })
+
+  it('la poignée réduit puis agrandit la feuille (aria-expanded), sans rien perdre', async () => {
+    rendre()
+    const poignee = await screen.findByTestId('releve-poignee')
+    expect(poignee).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.click(poignee)
+    expect(poignee).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByTestId('cal-releve')).toHaveAttribute('data-feuille-reduite', '1')
+    expect(screen.getByTestId('releve-terminer')).toBeInTheDocument()
+    fireEvent.click(poignee)
+    expect(screen.getByTestId('cal-releve')).not.toHaveAttribute('data-feuille-reduite')
+  })
+
+  it('« Photos » dit N sur M avec un trait par genre servi (M = 3), pris = or', async () => {
+    rendre()
+    expect(await screen.findByTestId('releve-photos-compte')).toHaveTextContent('1 sur 3')
+    const traits = [...screen.getByRole('progressbar', { name: 'Photos prises' }).querySelectorAll('.cal-tel-barre-trait')]
+    expect(traits).toHaveLength(3)
+    expect(traits.filter((t) => t.hasAttribute('data-fait'))).toHaveLength(1)
+  })
+
+  it('la feuille : arrondie en haut (26 px), l’en-tête flotte, l’action fait 54 px — lus dans la feuille de style', async () => {
+    const { readFileSync } = await import('node:fs')
+    const style = document.createElement('style')
+    style.textContent = ['49-jetons-v2.css', '58-telephone.css']
+      .map((f) => readFileSync(resolve(process.cwd(), `src/styles/calepinage/${f}`), 'utf8')).join('\n')
+    document.head.appendChild(style)
+    try {
+      rendre()
+      await screen.findByTestId('releve-projet')
+      expect(getComputedStyle(document.querySelector('.cal-tel-feuille')).borderRadius).toBe('26px 26px 0 0')
+      expect(getComputedStyle(document.querySelector('.cal-tel-entete')).position).toBe('absolute')
+      expect(getComputedStyle(screen.getByTestId('releve-terminer')).height).toBe('54px')
+    } finally { style.remove() }
+  })
+})
+
 describe('Relevé de visite — la pente est celle du PAN, lue comme l’atelier la lit', () => {
   const avecZone = (zone) => api.layout.mockResolvedValue({ data: { roof_layout: { zones: [{ ...ZONE, ...zone }] }, empreinte_document: 'emp-1' } })
 
@@ -421,7 +518,7 @@ describe('Relevé de visite — la pente est celle du PAN, lue comme l’atelier
     cleanup()
     avecZone({ roofType: 'pitched', pitchDeg: 24, pitchSource: { mode: 'degres', degres: 24, provenance: 'telephone' } })
     rendre()
-    await waitFor(() => expect(screen.getByTestId('releve-pente-valeur')).toHaveTextContent('24° · mesurée'))
+    await waitFor(() => expect(screen.getByTestId('releve-pente-valeur')).toHaveTextContent('24° mesurée'))
     expect(screen.getByTestId('releve-pente-bouton')).toHaveTextContent('Mesurer encore')
   })
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import useDocumentCalepinage from '../useDocumentCalepinage'
@@ -7,15 +7,17 @@ import { demarrerCapteurs, lireInclinaison, lireVisee, arreter as arreterCapteur
 import { messageRefus, refusServeur } from '../commun/refusServeur'
 import { lireConflit } from '../conflitEcriture'
 import { Icone } from '../atelier/coque/primitives'
+import { PlanDessus } from '../client/partiesClient'
+import { planDessus } from '../client/vueClient.helpers'
 import { champsDuReleve, corpsDuReleve, validerAvantEnvoi } from './corpsReleve'
 import {
   LARGEUR, LONGUEUR, avecMesure, chainesSaisies, dateDuJour, mesureDesChaines, mesureDuCapteur,
-  ligneProjet, noteHorsLigne, nomDirection, penteDuPan, versPoint, versVirgule,
+  cotesDuToit, ligneProjet, noteHorsLigne, nomDirection, penteDuPan, versPoint, versVirgule,
 } from './releveTelephone'
 import usePhotosReleve from './usePhotosReleve'
 import useReleveEnFile from './useReleveEnFile'
 import TuilesPhotos from './TuilesPhotos'
-import { CarteMesure, ChampDecimal } from './CarteMesure'
+import { CarteMesure, ChampDecimal, PictoBoussole } from './CarteMesure'
 
 /* ============================================================================
    « RELEVÉ DE VISITE » AU TÉLÉPHONE (`/calepinage/:id/releve`, maquette Telephone, 390×844).
@@ -83,6 +85,7 @@ export default function ReleveVisite() {
   const [motifs, setMotifs] = useState({})
   const [erreurs, setErreurs] = useState({})
   const [enCours, setEnCours] = useState(false)
+  const [feuilleReduite, setFeuilleReduite] = useState(false) // la poignée : la feuille descend, la carte du toit grandit
   const [message, setMessage] = useState(null) // { texte, ton: 'ok' | 'refus', champ: identifiant du champ fautif à ramener en vue }
   const reponse = useRef(null)
   /* ACAL1810 — le relevé terminé hors ligne attend dans la file des photos ; au retour du réseau il part SEUL. */
@@ -125,7 +128,18 @@ export default function ReleveVisite() {
   const majMesure = (nom, valeur) => setReleve((r) => ({
     ...r, chaines: avecMesure(r.chaines, nom, valeur), [`saisie${nom}`]: valeur,
   }))
-  const valeurChamp = (nom) => releve[`saisie${nom}`] ?? versVirgule(mesureDesChaines(releve.chaines, nom))
+  /* ACAL1836 — sans mesure du relevé ni saisie, les cotes du toit DÉJÀ CRÉÉ (pan rectangulaire servi) sont reprises et DITES
+     telles : elles partent avec « Terminer » comme n'importe quelle mesure ; une saisie (même vide) les remplace. */
+  const cotesToit = useMemo(() => (zone ? cotesDuToit(zone) : null), [zone])
+  const repriseDuToit = (nom) => (releve[`saisie${nom}`] === undefined && mesureDesChaines(releve.chaines, nom) === ''
+    ? cotesToit?.[nom] ?? null : null)
+  const valeurChamp = (nom) => releve[`saisie${nom}`] ?? versVirgule(mesureDesChaines(releve.chaines, nom) || repriseDuToit(nom) || '')
+  const reprises = [LONGUEUR, LARGEUR].some((nom) => repriseDuToit(nom) !== null)
+  const chainesEnvoyees = () => [LONGUEUR, LARGEUR].reduce((chaines, nom) => {
+    const reprise = repriseDuToit(nom)
+    return reprise === null ? chaines : avecMesure(chaines, nom, String(reprise))
+  }, releve.chaines)
+  const plan = useMemo(() => (doc.etat === 'ok' ? planDessus(doc.document) : null), [doc.etat, doc.document])
 
   /* Le capteur, démarré par le geste ; refusé ou absent ⇒ la saisie à la main, dite telle. */
   const lireCapteur = async (champ) => {
@@ -198,7 +212,8 @@ export default function ReleveVisite() {
     const precision = versPoint(precisionDeg)
     const tape = versPoint(azimutMain)
     const azimutTape = tape !== '' && Number.isFinite(Number(tape)) && tape !== azimutEcrit ? Number(tape) : null
-    const fautes = validerAvantEnvoi(releve.chaines, azimut, precision)
+    const chaines = chainesEnvoyees()
+    const fautes = validerAvantEnvoi(chaines, azimut, precision)
     setErreurs(fautes)
     setMessage(null)
     if (Object.keys(fautes).length) {
@@ -207,7 +222,7 @@ export default function ReleveVisite() {
     }
     setEnCours(true)
     const corps = corpsDuReleve({
-      releveLe: releve.releveLe || dateDuJour(), chaines: releve.chaines, azimutDeg: azimut,
+      releveLe: releve.releveLe || dateDuJour(), chaines, azimutDeg: azimut,
       precisionDeg: precision, notes: releve.notes, photoIds: releve.photoIds,
     })
     const pretAEcrire = !!zone && doc.etat === 'ok'
@@ -260,8 +275,17 @@ export default function ReleveVisite() {
   }
 
   const sansPan = doc.etat === 'ok' && !zone
+  const longueur = valeurChamp(LONGUEUR)
+  const largeur = valeurChamp(LARGEUR)
   return (
-    <div className="cal-tel" data-testid="cal-releve">
+    <div className="cal-tel cal-tel-releve" data-testid="cal-releve" data-feuille-reduite={feuilleReduite ? '1' : undefined}>
+      {/* ACAL1836 — le toit relevé, derrière la feuille : son plan servi (le même que « Montrer au client »), ses cotes. */}
+      <div className="cal-tel-carte-toit" data-testid="releve-carte-toit">
+        {plan && <PlanDessus plan={plan} />}
+        {longueur && <span className="cal-tel-cote cal-tel-cote-longueur" data-testid="releve-cote-longueur">{longueur}<small>m</small></span>}
+        {largeur && <span className="cal-tel-cote cal-tel-cote-largeur" data-testid="releve-cote-largeur">{largeur}<small>m</small></span>}
+      </div>
+
       <header className="cal-tel-entete">
         <Link to={`/calepinage/${id}`} aria-label="Retour" className="cal-tel-retour">
           <Icone nom="retour" taille={22} epaisseur={2} />
@@ -273,72 +297,87 @@ export default function ReleveVisite() {
         {(!enLigne || photos.enAttente > 0 || fileReleve.enAttente) && <PastilleHorsLigne />}
       </header>
 
-      <div className="cal-tel-corps">
-        <TuilesPhotos photos={photos.photos} genresEnFile={photos.genresEnFile} enCours={photos.enCours}
-          message={photos.message} onDeposer={deposer} />
-
-        <section className="cal-tel-section" data-testid="releve-mesures">
-          <h2 className="cal-tel-h">Mesures</h2>
-          <div className="cal-tel-deux">
-            <ChampDecimal id="releve-longueur" testId="releve-longueur" libelle="Longueur" unite="m"
-              valeur={valeurChamp(LONGUEUR)} onChange={(v) => majMesure(LONGUEUR, v)} />
-            <ChampDecimal id="releve-largeur" testId="releve-largeur" libelle="Largeur" unite="m"
-              valeur={valeurChamp(LARGEUR)} onChange={(v) => majMesure(LARGEUR, v)} />
-          </div>
-
-          <CarteMesure testId="releve-pente" libelle="Pente du toit"
-            valeur={carteP.valeur ?? 'à mesurer'} bouton={carteP.bouton} onBouton={mesurerPente} desactive={!zone}>
-            {carteP.aide && <p className="cal-tel-aide" data-testid="releve-pente-aide">{carteP.aide}</p>}
-            {sansPan && <p className="cal-tel-aide" data-testid="releve-pente-sans-pan">Aucun pan dessiné : la pente s’enregistre sur un pan, tracez le toit dans l’atelier.</p>}
-            {motifs.pente && <p role="alert" className="cal-tel-aide">{motifs.pente}</p>}
-            {manuel.pente && zone && (
-              <ChampDecimal id="releve-pente-main" testId="releve-pente-main" libelle="Pente saisie à la main" unite="°" compact
-                valeur={pente && !pente.capteur ? versVirgule(pente.saisie) : ''}
-                onChange={(v) => { const n = Number(versPoint(v)); setPente(v.trim() === '' || !Number.isFinite(n) ? null : { degres: n, capteur: false, saisie: versPoint(v) }) }} />
-            )}
-          </CarteMesure>
-
-          <CarteMesure testId="releve-orientation" libelle="Le toit regarde vers"
-            valeur={direction ? `${direction}${aMain ? ' · saisie à la main' : ''}` : 'à relever'}
-            bouton="Boussole" onBouton={mesurerAzimut}>
-            {motifs.azimut && <p role="alert" className="cal-tel-aide">{motifs.azimut}</p>}
-            {manuel.azimut && (
-              <ChampDecimal id="releve-azimut-main" testId="releve-azimut-main" libelle="Orientation saisie à la main (0 = nord)" unite="°" compact
-                valeur={versVirgule(azimutMain !== '' ? azimutMain : azimutDuPan)}
-                onChange={(v) => { setAzimutMain(versPoint(v)); setCapteurLu(false) }} />
-            )}
-            {azimutDeg !== '' && !aMain && (
-              <ChampDecimal id="releve-precision" testId="releve-precision" libelle="Précision de la boussole (±)" unite="°" compact
-                valeur={versVirgule(precisionDeg)} onChange={(v) => setPrecisionDeg(versPoint(v))} />
-            )}
-            {erreurs.precision_azimut_deg && <p role="alert" className="cal-tel-erreur" data-testid="releve-erreur-precision">{erreurs.precision_azimut_deg}</p>}
-          </CarteMesure>
-          {Object.keys(erreurs).filter((c) => c.startsWith('chaines')).map((c) => (
-            <p key={c} role="alert" className="cal-tel-erreur">{erreurs[c]}</p>
-          ))}
-        </section>
-
-        {(photos.enAttente > 0 || fileReleve.enAttente || !enLigne) && (
-          <section className="cal-tel-note" data-testid="releve-note-hors-ligne">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-              strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14" /></svg>
-            <span>{noteHorsLigne(photos.enAttente, enLigne, fileReleve.enAttente)}</span>
-          </section>
-        )}
-      </div>
-
-      {/* ACAL1812 — la réponse vit ENTRE le corps défilant et le pied fixe : jamais sous la barre du bas. */}
-      {message && (
-        <p ref={reponse} tabIndex={-1} role={message.ton === 'refus' ? 'alert' : 'status'} className="cal-tel-message"
-          data-ton={message.ton} data-testid="releve-message">{message.texte}</p>
-      )}
-
-      <footer className="cal-tel-pied">
-        <Link to={`/calepinage/${id}/client`} className="cal-tel-pied-secondaire" data-testid="releve-voir-3d">Voir en 3D</Link>
-        <button type="button" className="cal-tel-pied-or" onClick={terminer} disabled={enCours} data-testid="releve-terminer">
-          {enCours ? 'Enregistrement…' : 'Terminer le relevé'}
+      <div className="cal-tel-feuille">
+        <button type="button" className="cal-tel-poignee" data-testid="releve-poignee" aria-expanded={!feuilleReduite}
+          aria-label="Agrandir ou réduire la feuille" onClick={() => setFeuilleReduite((r) => !r)}>
+          <span />
         </button>
-      </footer>
+
+        <div className="cal-tel-corps">
+          <TuilesPhotos photos={photos.photos} genresEnFile={photos.genresEnFile} enCours={photos.enCours}
+            message={photos.message} onDeposer={deposer} />
+
+          <section className="cal-tel-section" data-testid="releve-mesures">
+            <h2 className="cal-tel-h">Mesures</h2>
+            <div className="cal-tel-deux">
+              <ChampDecimal id="releve-longueur" testId="releve-longueur" libelle="Longueur" unite="m"
+                valeur={longueur} onChange={(v) => majMesure(LONGUEUR, v)} />
+              <ChampDecimal id="releve-largeur" testId="releve-largeur" libelle="Largeur" unite="m"
+                valeur={largeur} onChange={(v) => majMesure(LARGEUR, v)} />
+            </div>
+            {reprises && (
+              <p className="cal-tel-aide" data-testid="releve-cotes-reprises">
+                Reprises du toit dessiné : corrigez-les si votre mesure sur place diffère.
+              </p>
+            )}
+
+            <div className="cal-tel-cartes">
+              <CarteMesure testId="releve-pente" libelle="Pente du toit"
+                valeur={carteP.nombre ?? 'à mesurer'} provenance={carteP.provenance} provenanceOk={carteP.provenance === 'mesurée'}
+                bouton={carteP.bouton} onBouton={mesurerPente} desactive={!zone}>
+                {carteP.aide && <p className="cal-tel-aide" data-testid="releve-pente-aide">{carteP.aide}</p>}
+                {sansPan && <p className="cal-tel-aide" data-testid="releve-pente-sans-pan">Aucun pan dessiné : la pente s’enregistre sur un pan, tracez le toit dans l’atelier.</p>}
+                {motifs.pente && <p role="alert" className="cal-tel-aide">{motifs.pente}</p>}
+                {manuel.pente && zone && (
+                  <ChampDecimal id="releve-pente-main" testId="releve-pente-main" libelle="Pente saisie à la main" unite="°" compact
+                    valeur={pente && !pente.capteur ? versVirgule(pente.saisie) : ''}
+                    onChange={(v) => { const n = Number(versPoint(v)); setPente(v.trim() === '' || !Number.isFinite(n) ? null : { degres: n, capteur: false, saisie: versPoint(v) }) }} />
+                )}
+              </CarteMesure>
+
+              <CarteMesure testId="releve-orientation" libelle="Le toit regarde vers"
+                valeur={direction || 'à relever'} provenance={direction && aMain ? 'saisie à la main' : null}
+                bouton="Boussole" icone={<PictoBoussole />} onBouton={mesurerAzimut}>
+                {motifs.azimut && <p role="alert" className="cal-tel-aide">{motifs.azimut}</p>}
+                {manuel.azimut && (
+                  <ChampDecimal id="releve-azimut-main" testId="releve-azimut-main" libelle="Orientation saisie à la main (0 = nord)" unite="°" compact
+                    valeur={versVirgule(azimutMain !== '' ? azimutMain : azimutDuPan)}
+                    onChange={(v) => { setAzimutMain(versPoint(v)); setCapteurLu(false) }} />
+                )}
+                {azimutDeg !== '' && !aMain && (
+                  <ChampDecimal id="releve-precision" testId="releve-precision" libelle="Précision de la boussole (±)" unite="°" compact
+                    valeur={versVirgule(precisionDeg)} onChange={(v) => setPrecisionDeg(versPoint(v))} />
+                )}
+                {erreurs.precision_azimut_deg && <p role="alert" className="cal-tel-erreur" data-testid="releve-erreur-precision">{erreurs.precision_azimut_deg}</p>}
+              </CarteMesure>
+            </div>
+            {Object.keys(erreurs).filter((c) => c.startsWith('chaines')).map((c) => (
+              <p key={c} role="alert" className="cal-tel-erreur">{erreurs[c]}</p>
+            ))}
+          </section>
+
+          {(photos.enAttente > 0 || fileReleve.enAttente || !enLigne) && (
+            <section className="cal-tel-note" data-testid="releve-note-hors-ligne">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14" /></svg>
+              <span>{noteHorsLigne(photos.enAttente, enLigne, fileReleve.enAttente)}</span>
+            </section>
+          )}
+        </div>
+
+        {/* ACAL1812 — la réponse vit ENTRE le corps défilant et le pied fixe : jamais sous la barre du bas. */}
+        {message && (
+          <p ref={reponse} tabIndex={-1} role={message.ton === 'refus' ? 'alert' : 'status'} className="cal-tel-message"
+            data-ton={message.ton} data-testid="releve-message">{message.texte}</p>
+        )}
+
+        <footer className="cal-tel-pied">
+          <Link to={`/calepinage/${id}/client`} className="cal-tel-pied-secondaire" data-testid="releve-voir-3d">Voir en 3D</Link>
+          <button type="button" className="cal-tel-pied-or" onClick={terminer} disabled={enCours} data-testid="releve-terminer">
+            {enCours ? 'Enregistrement…' : 'Terminer le relevé'}
+          </button>
+        </footer>
+      </div>
     </div>
   )
 }
