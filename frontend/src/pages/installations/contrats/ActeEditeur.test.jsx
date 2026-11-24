@@ -43,7 +43,7 @@ describe('Éditeur d’un acte', () => {
     expect(documentsApiMock.modifierActe).toHaveBeenCalledTimes(1)
     expect(documentsApiMock.modifierActe).toHaveBeenCalledWith(31, {
       conditions_particulieres: 'Accès par le garage.',
-    })
+    }, 'fr')
     expect(onSaved).toHaveBeenCalled()
   })
 
@@ -52,7 +52,7 @@ describe('Éditeur d’un acte', () => {
     monter()
     const s = await screen.findByRole('group', { name: 'Conditions particulières' })
     await user.click(within(s).getByRole('button', { name: /Rétablir le texte par défaut/ }))
-    expect(documentsApiMock.modifierActe).toHaveBeenCalledWith(31, { conditions_particulieres: null })
+    expect(documentsApiMock.modifierActe).toHaveBeenCalledWith(31, { conditions_particulieres: null }, 'fr')
     // Une section non personnalisée n’offre pas « Rétablir ».
     expect(within(section('Délais')).queryByRole('button', { name: /Rétablir/ })).toBeNull()
   })
@@ -69,11 +69,11 @@ describe('Éditeur d’un acte', () => {
     }
     const quand = within(s).getByLabelText('Quand — Acompte')
     await user.clear(quand)
-    await user.type(quand, 'À la signature')
+    await user.type(quand, 'Le jour de la livraison')
     await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
     const envoye = documentsApiMock.modifierActe.mock.calls[0][1]
     expect(Object.keys(envoye)).toEqual(['echeancier_textes'])
-    expect(envoye.echeancier_textes.acompte).toEqual({ exigibilite: 'À la signature', note: '' })
+    expect(envoye.echeancier_textes.acompte).toEqual({ exigibilite: 'Le jour de la livraison', note: '' })
     for (const tranche of Object.values(envoye.echeancier_textes)) {
       expect(Object.keys(tranche).sort()).toEqual(['exigibilite', 'note'])
     }
@@ -88,6 +88,46 @@ describe('Éditeur d’un acte', () => {
     await user.type(champ, '0.125')
     await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
     expect(documentsApiMock.modifierActe.mock.calls[0][1].options.penalite_retard_pct).toBe(0.125)
+  })
+
+  it('le choix de l’arabe redemande l’acte en langue ar et enregistre avec langue ar', async () => {
+    const ar = acte()
+    ar.langue = 'ar'
+    ar.sections_modifiables = ['titre', 'conditions_particulieres']
+    ar.sections_personnalisees = []
+    ar.contenu.langue = 'ar'
+    ar.contenu.titre = 'عقد'
+    documentsApiMock.acte.mockImplementation((id, langue) => Promise.resolve({
+      data: langue === 'ar' ? ar : acte(),
+    }))
+    const user = userEvent.setup()
+    monter()
+    await screen.findByRole('group', { name: 'Conditions particulières' })
+    await user.click(screen.getByRole('button', { name: 'العربية' }))
+    expect(documentsApiMock.acte).toHaveBeenLastCalledWith(31, 'ar')
+    const zone = await within(await screen.findByRole('group', { name: 'Titre du document' }))
+      .findByLabelText('Titre')
+    expect(zone).toHaveAttribute('dir', 'rtl')
+    expect(zone).toHaveAttribute('lang', 'ar')
+    // En arabe, seules les sections listées par CE détail sont montrées.
+    expect(screen.queryByRole('group', { name: 'Options' })).toBeNull()
+    await user.clear(zone)
+    await user.type(zone, 'عقد جديد')
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    expect(documentsApiMock.modifierActe).toHaveBeenCalledWith(31, { titre: 'عقد جديد' }, 'ar')
+  })
+
+  it('demande confirmation avant de changer de langue avec des modifications en cours', async () => {
+    const user = userEvent.setup()
+    monter()
+    const zone = await within(await screen.findByRole('group', { name: 'Conditions particulières' }))
+      .findByLabelText('Conditions particulières')
+    await user.type(zone, ' x')
+    await user.click(screen.getByRole('button', { name: 'العربية' }))
+    expect(screen.getByText(/changer de langue les abandonne/)).toBeInTheDocument()
+    expect(documentsApiMock.acte).toHaveBeenCalledTimes(1)
+    await user.click(screen.getByRole('button', { name: 'Rester ici' }))
+    expect(documentsApiMock.acte).toHaveBeenCalledTimes(1)
   })
 
   it('ne propose ni droit de rétractation ni section « conclusion »', async () => {

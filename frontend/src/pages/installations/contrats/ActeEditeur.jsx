@@ -2,7 +2,7 @@
 // modifiables (`sections_modifiables`) et n'envoie que `{ surcharges: { … } }`
 // — une clé par section modifiée, `null` pour rétablir le texte par défaut.
 // Aucun montant ne se modifie ici : l'échéancier se corrige sur la vente.
-import { useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import { Plus, Trash2, RotateCcw } from 'lucide-react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -14,6 +14,10 @@ import {
   SECTIONS, ORDRE_SECTIONS, brouillonDe, surchargesModifiees,
 } from './sections'
 
+// Langue de saisie : en arabe, champs de droite à gauche (dir="rtl" lang="ar").
+const LangueContext = createContext('fr')
+const attrsLangue = (langue) => (langue === 'ar' ? { dir: 'rtl', lang: 'ar' } : {})
+
 function Champ({ id, libelle, children }) {
   return (
     <div className="contrats-champ">
@@ -24,17 +28,22 @@ function Champ({ id, libelle, children }) {
 }
 
 function Texte({ id, libelle, valeur, onChange, type = 'text', ...reste }) {
+  const langue = useContext(LangueContext)
+  // Une date ou un nombre reste lisible de gauche à droite.
+  const attrs = type === 'text' ? attrsLangue(langue) : {}
   return (
     <Champ id={id} libelle={libelle}>
-      <Input id={id} type={type} value={valeur} onChange={(e) => onChange(e.target.value)} {...reste} />
+      <Input id={id} type={type} value={valeur} onChange={(e) => onChange(e.target.value)} {...attrs} {...reste} />
     </Champ>
   )
 }
 
 function Zone({ id, libelle, valeur, onChange, lignes = 4, aide }) {
+  const langue = useContext(LangueContext)
   return (
     <Champ id={id} libelle={libelle}>
-      <Textarea id={id} rows={lignes} value={valeur} onChange={(e) => onChange(e.target.value)} />
+      <Textarea id={id} rows={lignes} value={valeur} onChange={(e) => onChange(e.target.value)}
+                {...attrsLangue(langue)} />
       {aide && <p className="contrats-editeur__aide">{aide}</p>}
     </Champ>
   )
@@ -44,6 +53,7 @@ const AIDE_PARAGRAPHES = 'Une ligne vide sépare deux paragraphes ; une ligne qu
 
 /** Les champs d'une section. `v` = brouillon courant, `m` = fixe la valeur. */
 function ChampsSection({ cle, v, m, contenu }) {
+  const langue = useContext(LangueContext)
   const p = `contrats-ed-${cle}`
   switch (cle) {
     case 'titre':
@@ -143,6 +153,11 @@ function ChampsSection({ cle, v, m, contenu }) {
                    onChange={(e) => m({ ...v, reserve_propriete: e.target.checked })} />
             <span>Réserve de propriété jusqu’au paiement complet</span>
           </label>
+          {'delai_execution_jours' in v && (
+            <Texte id={`${p}-delai`} libelle="Délai d’exécution (jours après la date du contrat)"
+                   type="number" step="any" valeur={v.delai_execution_jours}
+                   onChange={(x) => m({ ...v, delai_execution_jours: x })} />
+          )}
           <Texte id={`${p}-pen`} libelle="Pénalité de retard (%) — vide : aucune" type="number"
                  step="any" valeur={v.penalite_retard_pct}
                  onChange={(x) => m({ ...v, penalite_retard_pct: x })} />
@@ -179,7 +194,7 @@ function ChampsSection({ cle, v, m, contenu }) {
         <div key={i} className="contrats-editeur__constat">
           <input type="checkbox" aria-label={`Constat ${i + 1} coché`} checked={k.cochee}
                  onChange={(e) => m(v.map((r, j) => (j === i ? { ...r, cochee: e.target.checked } : r)))} />
-          <Textarea aria-label={`Constat ${i + 1}`} rows={2} value={k.texte}
+          <Textarea aria-label={`Constat ${i + 1}`} rows={2} value={k.texte} {...attrsLangue(langue)}
                     onChange={(e) => m(v.map((r, j) => (j === i ? { ...r, texte: e.target.value } : r)))} />
         </div>
       ))
@@ -223,6 +238,8 @@ export default function ActeEditeur({
   const [chargement, setChargement] = useState(true)
   const [erreur, setErreur] = useState('')
   const [occupe, setOccupe] = useState(false)
+  const [langue, setLangue] = useState('fr')
+  const [langueDemandee, setLangueDemandee] = useState(null)
 
   const charger = (detail) => {
     const sections = (detail.sections_modifiables ?? []).filter((k) => SECTIONS[k])
@@ -235,7 +252,7 @@ export default function ActeEditeur({
   useEffect(() => {
     if (!open || !acteId) return undefined
     let annule = false
-    documentsApi.acte(acteId)
+    documentsApi.acte(acteId, langue)
       .then((res) => {
         if (annule) return
         charger(res.data)
@@ -248,7 +265,7 @@ export default function ActeEditeur({
         setChargement(false)
       })
     return () => { annule = true }
-  }, [open, acteId])
+  }, [open, acteId, langue])
 
   const sections = ORDRE_SECTIONS.filter((k) => (acte?.sections_modifiables ?? []).includes(k))
   const surcharges = acte ? surchargesModifiees(base, brouillon, sections) : {}
@@ -259,7 +276,7 @@ export default function ActeEditeur({
     setOccupe(true)
     setErreur('')
     try {
-      const res = await documentsApi.modifierActe(acte.id, surcharges)
+      const res = await documentsApi.modifierActe(acte.id, surcharges, langue)
       charger(res.data)
       toast.success('Modifications enregistrées.')
       onSaved?.(res.data)
@@ -274,7 +291,7 @@ export default function ActeEditeur({
     setOccupe(true)
     setErreur('')
     try {
-      const res = await documentsApi.modifierActe(acte.id, { [cle]: null })
+      const res = await documentsApi.modifierActe(acte.id, { [cle]: null }, langue)
       const detail = res.data
       const frais = brouillonDe(detail.contenu, [cle])
       setActe((a) => ({ ...a, ...detail }))
@@ -287,6 +304,18 @@ export default function ActeEditeur({
     } finally {
       setOccupe(false)
     }
+  }
+
+  const basculer = (code) => {
+    setLangueDemandee(null)
+    setErreur('')
+    setChargement(true)
+    setLangue(code)
+  }
+  const changerLangue = (code) => {
+    if (code === langue) return
+    if (modifie) { setLangueDemandee(code); return }
+    basculer(code)
   }
 
   const enregistrerModele = async () => {
@@ -314,25 +343,55 @@ export default function ActeEditeur({
           </DialogDescription>
         </DialogHeader>
 
+        <div className="contrats-editeur__langue" role="group" aria-label="Langue de l’acte">
+          <span>Langue :</span>
+          {[['fr', 'Français'], ['ar', 'العربية']].map(([code, libelle]) => (
+            <Button key={code} type="button" size="sm" lang={code}
+                    variant={langue === code ? 'default' : 'outline'}
+                    aria-pressed={langue === code}
+                    className="contrats-acte__bouton"
+                    disabled={occupe}
+                    onClick={() => changerLangue(code)}>
+              {libelle}
+            </Button>
+          ))}
+        </div>
+
+        {langueDemandee && (
+          <div className="contrats-editeur__confirmer" role="alertdialog" aria-label="Changer de langue">
+            <p>Des modifications ne sont pas enregistrées : changer de langue les abandonne.</p>
+            <Button type="button" size="sm" variant="outline" className="contrats-acte__bouton"
+                    onClick={() => setLangueDemandee(null)}>
+              Rester ici
+            </Button>
+            <Button type="button" size="sm" className="contrats-acte__bouton"
+                    onClick={() => basculer(langueDemandee)}>
+              Changer de langue
+            </Button>
+          </div>
+        )}
+
         {chargement && (
           <p role="status"><Spinner /> Chargement de l’acte…</p>
         )}
 
-        {acte && !acte.peut_modifier && (
+        {acte && !chargement && !acte.peut_modifier && (
           <p className="contrats-acte__erreur" role="alert">
             Cet acte n’est plus modifiable : rouvrez-le pour le modifier.
           </p>
         )}
 
-        {acte && sections.map((cle) => (
+        {acte && !chargement && sections.map((cle) => (
           <fieldset key={cle} className="contrats-editeur__section" disabled={!acte.peut_modifier || occupe}>
             <legend>{SECTIONS[cle].libelle}</legend>
-            <ChampsSection
-              cle={cle}
-              v={brouillon[cle]}
-              m={(valeur) => setBrouillon((b) => ({ ...b, [cle]: valeur }))}
-              contenu={acte.contenu}
-            />
+            <LangueContext.Provider value={langue}>
+              <ChampsSection
+                cle={cle}
+                v={brouillon[cle]}
+                m={(valeur) => setBrouillon((b) => ({ ...b, [cle]: valeur }))}
+                contenu={acte.contenu}
+              />
+            </LangueContext.Provider>
             {personnalisees.includes(cle) && (
               <Button type="button" size="sm" variant="ghost" className="contrats-acte__bouton"
                       onClick={() => retablir(cle)}>
@@ -347,7 +406,7 @@ export default function ActeEditeur({
 
         <div className="contrats-dialogue__pied">
           {acte && onApercu && (
-            <Button variant="ghost" className="contrats-acte__bouton" onClick={onApercu}>
+            <Button variant="ghost" className="contrats-acte__bouton" onClick={() => onApercu(langue)}>
               Aperçu (PDF)
             </Button>
           )}
@@ -361,7 +420,7 @@ export default function ActeEditeur({
             Fermer
           </Button>
           <Button className="contrats-acte__bouton"
-                  disabled={occupe || !modifie || !acte?.peut_modifier}
+                  disabled={occupe || chargement || !modifie || !acte?.peut_modifier}
                   onClick={enregistrer}>
             Enregistrer
           </Button>

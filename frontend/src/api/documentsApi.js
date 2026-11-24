@@ -22,11 +22,13 @@ const documentsApi = {
   // Un GET prépare le dossier s'il manque ; aucun montant n'est recalculé ici.
   dossierContrats: (chantierId) =>
     api.get(`/documents/chantiers/${chantierId}/contrats/`),
-  acte: (id) => api.get(`/documents/actes/${id}/`),
+  // `langue` : 'fr' (défaut) | 'ar' — l'arabe est la traduction qui accompagne l'acte.
+  acte: (id, langue = 'fr') => api.get(`/documents/actes/${id}/`, { params: { langue } }),
   // `surcharges` : { <section>: valeur | null } — null remet le défaut.
-  modifierActe: (id, surcharges) =>
-    api.patch(`/documents/actes/${id}/`, { surcharges }),
-  pdfActe: (id) => api.get(`/documents/actes/${id}/pdf/`, { responseType: 'blob' }),
+  modifierActe: (id, surcharges, langue = 'fr') =>
+    api.patch(`/documents/actes/${id}/`, { langue, surcharges }),
+  pdfActe: (id, langue = 'fr') =>
+    api.get(`/documents/actes/${id}/pdf/`, { params: { langue }, responseType: 'blob' }),
   emettreActe: (id) => api.post(`/documents/actes/${id}/emettre/`),
   rouvrirActe: (id) => api.post(`/documents/actes/${id}/rouvrir/`),
   // corps : { signature_client, signataire_nom, lieu }

@@ -20,9 +20,10 @@ import {
   actionPrincipale, detailErreur, formaterDh, grouperParRang,
 } from './outils'
 
-function nomFichier(acte) {
+function nomFichier(acte, langue = 'fr') {
   const variante = acte.variante ? `-${acte.variante}` : ''
-  return `${acte.reference}${variante}.pdf`
+  const suffixe = langue === 'ar' ? '-ar' : ''
+  return `${acte.reference}${variante}${suffixe}.pdf`
 }
 
 export default function ContratsChantier({
@@ -39,6 +40,7 @@ export default function ContratsChantier({
   const [aSigner, setASigner] = useState(null)
   const [surPapier, setSurPapier] = useState(null)
   const [aModifier, setAModifier] = useState(null)
+  const [langueApercu, setLangueApercu] = useState('fr') // Aperçu / Télécharger
 
   // Le Directeur (ou le palier admin) enregistre un modèle de société ; sinon
   // le serveur refuse et son `detail` s'affiche dans l'éditeur.
@@ -96,20 +98,20 @@ export default function ContratsChantier({
     }
   }
 
-  const apercu = (acte) => {
+  const apercu = (acte, langue = langueApercu) => {
     if (ouvrirApercu) {
-      ouvrirApercu(acte.titre, nomFichier(acte), () => documentsApi.pdfActe(acte.id))
+      ouvrirApercu(acte.titre, nomFichier(acte, langue), () => documentsApi.pdfActe(acte.id, langue))
       return
     }
-    telecharger(acte)
+    telecharger(acte, langue)
   }
 
-  const telecharger = async (acte) => {
+  const telecharger = async (acte, langue = langueApercu) => {
     setOccupe(acte.id)
     effacerErreur(acte.id)
     try {
-      const res = await documentsApi.pdfActe(acte.id)
-      downloadBlob(res.data, nomFichier(acte))
+      const res = await documentsApi.pdfActe(acte.id, langue)
+      downloadBlob(res.data, nomFichier(acte, langue))
     } catch (err) {
       noterErreur(acte.id, await detailErreur(err))
     } finally {
@@ -197,6 +199,22 @@ export default function ContratsChantier({
           </div>
         </dl>
         <p className="contrats-chantier__client">{dossier.client}</p>
+        <div className="contrats-chantier__langue" role="group" aria-label="Langue des documents">
+          <span>Documents :</span>
+          {[['fr', 'Français'], ['ar', 'العربية']].map(([code, libelle]) => (
+            <Button
+              key={code}
+              size="sm"
+              variant={langueApercu === code ? 'default' : 'outline'}
+              className="contrats-acte__bouton"
+              aria-pressed={langueApercu === code}
+              lang={code}
+              onClick={() => setLangueApercu(code)}
+            >
+              {libelle}
+            </Button>
+          ))}
+        </div>
         {prochaine && !annule && (
           <div className="contrats-chantier__prochaine">
             <p>
@@ -295,7 +313,7 @@ export default function ContratsChantier({
           peutModele={peutModele}
           onOpenChange={(o) => { if (!o) setAModifier(null) }}
           onSaved={() => { recharger(); rechargerApercu?.() }}
-          onApercu={() => apercu(aModifier)}
+          onApercu={(langue) => apercu(aModifier, langue)}
         />
       )}
     </div>

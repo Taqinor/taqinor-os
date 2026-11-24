@@ -67,12 +67,17 @@ export const SECTIONS = {
   },
   options: {
     libelle: 'Options',
+    // `delai_execution_jours` n'est lu / envoyé que si le serveur le sert.
     lire: (c) => ({
       reserve_propriete: !!c.options?.reserve_propriete,
+      ...('delai_execution_jours' in (c.options ?? {})
+        ? { delai_execution_jours: chaine(c.options.delai_execution_jours) } : {}),
       penalite_retard_pct: chaine(c.options?.penalite_retard_pct),
     }),
     ecrire: (d) => ({
       reserve_propriete: d.reserve_propriete,
+      ...('delai_execution_jours' in d
+        ? { delai_execution_jours: nombreTape(d.delai_execution_jours) } : {}),
       penalite_retard_pct: nombreTape(d.penalite_retard_pct),
     }),
   },

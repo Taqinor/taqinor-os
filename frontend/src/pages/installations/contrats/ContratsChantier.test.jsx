@@ -110,6 +110,22 @@ describe('Onglet Contrats', () => {
     expect(documentsApiMock.emettreActe).toHaveBeenCalledWith(35)
   })
 
+  it('le sélecteur de langue demande le PDF arabe (langue ar), français par défaut', async () => {
+    documentsApiMock.pdfActe.mockResolvedValue({ data: new Blob(['x']) })
+    const ouvrirApercu = vi.fn()
+    const user = userEvent.setup()
+    monter({ ouvrirApercu })
+    await screen.findByText('Contrat d\'installation')
+    expect(screen.getByRole('button', { name: 'Français' })).toHaveAttribute('aria-pressed', 'true')
+    await user.click(within(carte('Réception des travaux')).getByRole('button', { name: 'Aperçu (PDF)' }))
+    await ouvrirApercu.mock.calls[0][2]()
+    expect(documentsApiMock.pdfActe).toHaveBeenLastCalledWith(34, 'fr')
+    await user.click(screen.getByRole('button', { name: 'العربية' }))
+    await user.click(within(carte('Réception des travaux')).getByRole('button', { name: 'Aperçu (PDF)' }))
+    await ouvrirApercu.mock.calls[1][2]()
+    expect(documentsApiMock.pdfActe).toHaveBeenLastCalledWith(34, 'ar')
+  })
+
   it('un rôle en lecture seule ne voit aucun bouton d’écriture', async () => {
     monter({ peutGerer: false })
     await screen.findByText('Contrat d\'installation')

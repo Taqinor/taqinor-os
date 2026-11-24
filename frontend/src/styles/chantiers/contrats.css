@@ -75,6 +75,14 @@
   color: var(--muted-foreground);
 }
 
+.contrats-chantier__langue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted-foreground);
+}
+
 .contrats-chantier__prochaine {
   display: flex;
   flex-wrap: wrap;
@@ -384,4 +392,28 @@
   .contrats-acte:not([data-ecarte='oui']):hover {
     border-color: var(--primary);
   }
+}
+
+/* Éditeur : sélecteur de langue et confirmation avant de changer */
+.contrats-editeur__langue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.contrats-editeur__confirmer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--warning);
+  border-radius: var(--radius);
+  background: var(--muted);
+}
+
+.contrats-editeur__confirmer p {
+  margin: 0;
+  flex: 1 1 14rem;
 }
