@@ -6,6 +6,7 @@ Contrat partagé : ``contract_samples/produit_ci.json``. Vide = « non publié �
 jamais une valeur par défaut.
 """
 import json
+from decimal import Decimal
 from importlib import import_module
 from pathlib import Path
 
@@ -449,9 +450,12 @@ class TestCCAT2OptionBatterie(CIQ101Base):
         self.assertEqual(
             etat['motif_exclusion'], 'plage de tension batterie non publiée')
 
-    def test_hybride_haute_tension_hors_option(self):
-        self.assertIsNone(self._etat(
-            self._hybride(prix=9000, ond_bat_v_min=150, ond_bat_v_max=600)))
+    def test_hybride_haute_tension_famille_haute_tension(self):
+        # HT24 (24/11/2026) — plus jamais « sans état » : la famille haute
+        # tension de l'option, avec le champ précis qui manque.
+        etat = self._etat(self._hybride(prix=9000, ond_bat_v_min=150, ond_bat_v_max=600))
+        self.assertEqual(etat['libelle'], 'Onduleur hybride haute tension (option avec batterie)')
+        self.assertEqual(etat['motif_exclusion'], 'fiche incomplète : puissance AC')
 
     def test_hybride_bt_complet_eligible(self):
         etat = self._etat(self._hybride(
@@ -480,15 +484,19 @@ class TestCCAT2OptionBatterie(CIQ101Base):
             'Onduleur hybride sans fiche', 'onduleur_hybride', 9000))
         self.assertEqual(etat['motif_exclusion'], 'fiche onduleur absente')
 
-    def test_batterie_haute_tension_hors_option_bt(self):
-        # R4 Fable — le pack HV garde sa tension OMISE exprès (seed BAT-DYN-HV-16) :
-        # jamais « à compléter », hors option basse tension comme le moteur.
-        self.assertIsNone(self._etat(self._produit(
+    def test_batterie_haute_tension_nomme_la_grappe_manquante(self):
+        # HT24 — le pack HV garde sa tension OMISE exprès (seed BAT-DYN-HV-16) ;
+        # hors option basse tension, il dit ce qui manque à sa grappe en série.
+        grappe = ("modules en série par grappe (mini), modules en série par grappe (maxi), "
+                  "tension d'un module")
+        bosb = self._etat(self._produit(
             'Batterie Deye BOS-B Pro haute tension — 16 kWh', 'batterie', 48000,
-            type_fiche='batterie', bat_kwh_nominal=16)))
-        self.assertIsNone(self._etat(self._produit(
-            'Batterie HV', 'batterie', 48000, type_fiche='batterie',
-            bat_kwh_usable=14, bat_v_nominal=409.6)))
+            type_fiche='batterie', bat_kwh_nominal=16))
+        self.assertEqual(bosb['libelle'], 'Batterie haute tension (option avec batterie)')
+        self.assertEqual(bosb['motif_exclusion'], 'fiche incomplète : %s, capacité utile' % grappe)
+        hv = self._etat(self._produit('Batterie HV', 'batterie', 48000, type_fiche='batterie',
+                                      bat_kwh_usable=14, bat_v_nominal=409.6))
+        self.assertEqual(hv['motif_exclusion'], 'fiche incomplète : ' + grappe)
 
     def test_batterie_sans_capacite_utile(self):
         etat = self._etat(self._produit(
@@ -539,6 +547,62 @@ class TestCCAT2OptionBatterie(CIQ101Base):
         from apps.ventes.moteur_ci import batterie
         self.assertEqual(product_roles.TENSION_PORT_BT_MAX_V,
                          batterie.TENSION_PORT_BT_MAX_V)
+
+
+class _FicheHT:
+    """Fiche technique en mémoire (aucune base) : un champ non posé vaut
+    ``None``, comme une colonne vide."""
+
+    def __init__(self, **champs):
+        self.__dict__.update(champs)
+
+    def __getattr__(self, nom):
+        return None
+
+
+class TestHT24EtatHauteTension(SimpleTestCase):
+    """HT24 (fondateur 24/11/2026) — l'état C&I d'un hybride et d'une
+    batterie HAUTE tension (écran Stock) : utilisable, ou le champ précis qui
+    manque ; la fiche seedée de BAT-DYN-HV-16 forme une grappe complète."""
+
+    def _produit(self, nom, prix, **fiche):
+        from types import SimpleNamespace
+        return SimpleNamespace(pk=1, nom=nom, prix_vente=Decimal(prix), role_devis=(
+            'onduleur_hybride' if fiche.get('type_fiche') == 'onduleur' else 'batterie'),
+            categorie=None, role_ci='', description='', fiche_technique=_FicheHT(**fiche))
+
+    def _etat(self, produit):
+        from apps.stock.etat_ci import etat_option_batterie
+        return etat_option_batterie(produit)
+
+    def test_hybride_80kw(self):
+        fiche = dict(type_fiche='onduleur', ond_bat_v_min=Decimal('160'), ond_bat_v_max=Decimal('1000'),
+                     ond_ac_kw=Decimal('80'), ond_phases=3)
+        incomplet = self._etat(self._produit('DEYE SUN-80K-SG02HP3-EU-EM6', 100000, **fiche))
+        self.assertEqual(incomplet['motif_exclusion'],
+                         'fiche incomplète : entrées batterie, appareils en parallèle (maxi)')
+        complet = self._etat(self._produit('DEYE SUN-80K-SG02HP3-EU-EM6', 100000, ond_bat_nb_entrees=2,
+                                           ond_max_parallele=10, **fiche))
+        self.assertTrue(complet['eligible_ci'])
+        self.assertEqual(complet['libelle'], 'Onduleur hybride haute tension (option avec batterie)')
+        sans_prix = self._etat(self._produit('DEYE SUN-80K', 0, ond_bat_nb_entrees=2, ond_max_parallele=10,
+                                             **fiche))
+        self.assertEqual(sans_prix['motif_exclusion'], 'prix de vente non saisi')
+
+    def test_bosb_fiche_seedee_eligible(self):
+        from apps.stock.management.commands.seed_catalogue import FICHES_TECHNIQUES
+        fiche = {k: v for k, v in FICHES_TECHNIQUES['BAT-DYN-HV-16'].items()
+                 if k.startswith('bat_') or k == 'type_fiche'}
+        self.assertEqual((fiche['bat_serie_min_modules'], fiche['bat_serie_max_modules'],
+                          fiche['bat_v_module'], fiche['bat_grappes_max_parallele'],
+                          fiche['bat_cycles_publies']), (5, 15, Decimal('51.2'), 16, 6000))
+        self.assertNotIn('bat_v_nominal', fiche)
+        etat = self._etat(self._produit('Batterie Deye BOS-B Pro haute tension — 16 kWh', 40000, **fiche))
+        self.assertEqual(etat['libelle'], 'Batterie haute tension (option avec batterie)')
+        self.assertTrue(etat['eligible_ci'])
+        partielle = dict(fiche, bat_v_module=None)
+        etat = self._etat(self._produit('Pack HV', 40000, **partielle))
+        self.assertEqual(etat['motif_exclusion'], "fiche incomplète : tension d'un module")
 
 
 class TestCCAT11Panneau(CIQ101Base):

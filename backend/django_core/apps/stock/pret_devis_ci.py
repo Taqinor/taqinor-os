@@ -82,7 +82,7 @@ def _candidats_options(company):
 
     from apps.ventes.selectors import classer_produit_nom
 
-    from .etat_ci import etat_ci_complet
+    from .etat_ci import LIBELLE_BATTERIE_HT, LIBELLE_HYBRIDE_HT, etat_ci_complet
     from .models import Produit
     from .selectors import plage_batterie_onduleur, specs_for_produit
 
@@ -97,8 +97,8 @@ def _candidats_options(company):
                 p.id, p.nom, 'socle', True, bool(p.prix_vente and p.prix_vente > 0), None))
             continue
         etat = etat_ci_complet(p)
-        if etat is None:
-            continue
+        if etat is None or etat['libelle'] in (LIBELLE_HYBRIDE_HT, LIBELLE_BATTERIE_HT):
+            continue      # HT24 — les postes d'ici sont ceux de la basse tension
         role = {'batterie_ci': 'batterie'}.get(etat['role_ci'], etat['role_ci'])
         if role not in sortie:
             continue
