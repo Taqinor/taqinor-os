@@ -39,7 +39,7 @@ ECHANTILLON = (Path(__file__).resolve().parents[1] / 'contract_samples'
 EXEMPLES = ('exemple', 'exemple_pv_livraison_reste_a_regler',
             'exemple_pv_livraison_tranche_reglee', 'exemple_pv_reception',
             'exemple_cloture_garanties')
-EN_LETTRES = {'total_lettres', 'exigible_lettres'}
+EN_LETTRES = {'total_lettres', 'exigible_lettres', 'total_regle_lettres'}
 ARABE = re.compile('[؀-ۿ]')
 CAS = (('contrat_installation', ''), ('pv_livraison', 'reste_a_regler'),
        ('pv_livraison', 'tranche_reglee'), ('pv_reception', ''),
