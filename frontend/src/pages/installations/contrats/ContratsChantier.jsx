@@ -12,12 +12,12 @@ import {
 import documentsApi from '../../../api/documentsApi'
 import { downloadBlob } from '../../../utils/downloadBlob'
 import { useHasPermission, useIsAdmin } from '../../../hooks/useHasPermission'
-import ActeEtape, { idTitreActe } from './ActeEtape'
+import ActeEtape from './ActeEtape'
 import ActeEditeur from './ActeEditeur'
 import SignatureActeDialog from './SignatureActeDialog'
 import SignaturePapierDialog from './SignaturePapierDialog'
 import {
-  actionPrincipale, detailErreur, formaterDh, grouperParRang,
+  actionPrincipale, detailErreur, formaterDh, grouperParRang, idTitreActe,
 } from './outils'
 
 function nomFichier(acte, langue = 'fr') {

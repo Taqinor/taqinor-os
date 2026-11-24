@@ -105,6 +105,9 @@ export function actionPrincipale(acte) {
   return null
 }
 
+/** Id du titre d'un acte : les boutons de sa carte y sont reliés (aria-describedby). */
+export const idTitreActe = (acte) => `contrats-acte-${acte.id}-titre`
+
 export const LIBELLE_ACTION = {
   apercu: 'Aperçu (PDF)',
   modifier: 'Modifier',

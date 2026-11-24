@@ -2,11 +2,8 @@
 // MOTS, avertissements du serveur et les gestes que le serveur autorise.
 import { Badge, Button } from '../../../ui'
 import {
-  actionPrincipale, LIBELLE_ACTION, libelleStatut, tonStatut,
+  actionPrincipale, idTitreActe, LIBELLE_ACTION, libelleStatut, tonStatut,
 } from './outils'
-
-/** Id du titre d'un acte : les boutons de sa carte y sont reliés (aria-describedby). */
-export const idTitreActe = (acte) => `contrats-acte-${acte.id}-titre`
 
 export default function ActeEtape({
   acte, occupe, erreur, onAction, enVariante = false,

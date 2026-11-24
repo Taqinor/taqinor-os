@@ -1,13 +1,14 @@
 // Onglet « Contrats » : les charges utiles viennent TOUTES des exemples du
 // contrat (apps/documents/contract_samples/*.json) via contractSamples.js —
 // jamais un mock écrit à la main (garde CI check_api_shapes.py).
+/* global process */
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 
 const { documentsApiMock } = vi.hoisted(() => ({
