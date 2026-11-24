@@ -174,10 +174,14 @@
 .cal-tel-tuile-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .cal-tel-tuile-etiquette {
   position: relative;
-  height: 22px;
+  /* T4-U4-023 — un libellé sur deux lignes (« Oblique (aérienne) » sur une tuile de 110 px) reste DANS sa pastille. */
+  min-height: 22px;
+  max-width: 100%;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
-  padding: 0 7px;
+  padding: 2px 7px;
+  line-height: 1.2;
   border-radius: 7px;
   background: color-mix(in oklch, var(--color-encre) 80%, transparent);
   color: var(--app-tile-glyph);
