@@ -38,6 +38,27 @@ def _article(cle, titre, paragraphes, ctx):
             'paragraphes': [_f(p, ctx) for p in paragraphes if p]}
 
 
+# Une seule règle de garde, la même au contrat (Propriété), à l'acte 2
+# (Garde, avec « sans l'ouvrir ni le déplacer ») et à l'acte 3 (la dernière
+# proposition seule) — revue 1, T8.
+_GARDE_LIVRAISON = (
+    "De la livraison au début de la pose, le Client a la garde du matériel "
+    "livré : il le conserve à l'abri, dans un lieu fermé, ")
+_GARDE_SANS_OUVRIR = "sans l'ouvrir ni le déplacer, "
+_GARDE_REPOND = (
+    "et répond des pertes ou des dégradations dues à son fait ou à un "
+    "défaut de surveillance. ")
+_GARDE_POSE = (
+    "Pendant la pose et jusqu'à la réception, {societe} a la garde du "
+    "chantier ; à la réception, ")
+_GARDE_TRANSFERT = "la garde de l'installation passe au Client."
+
+
+def _regle_de_garde(sans_ouvrir=False):
+    return (_GARDE_LIVRAISON + (_GARDE_SANS_OUVRIR if sans_ouvrir else '')
+            + _GARDE_REPOND + _GARDE_POSE + _GARDE_TRANSFERT)
+
+
 # ── Acte 1 — Contrat d'installation ─────────────────────────────────────────
 
 def _contrat_installation(ctx, options):
@@ -128,10 +149,7 @@ def _contrat_installation(ctx, options):
             "complet du prix (articles 618-21 et suivants du Dahir des "
             "obligations et des contrats). Jusque-là, le Client ne peut ni "
             "le vendre, ni le donner en garantie, ni le faire démonter.",
-            "Dès la livraison chez lui, le Client a la garde du matériel : "
-            "il le conserve à l'abri, dans un lieu fermé, et répond des "
-            "pertes ou des dégradations dues à son fait ou à un défaut de "
-            "surveillance.",
+            _regle_de_garde(),
         ]))
     arts += [
         ('reception', 'Réception des travaux', [
@@ -246,11 +264,7 @@ def _pv_livraison(ctx, options, variante):
             "couvert par les garanties du contrat.",
         ]),
         ('garde', 'Garde du matériel', [
-            "À compter de ce jour et jusqu'à la pose, le matériel livré est "
-            "sous la garde du Client. Il le conserve à l'abri, dans un lieu "
-            "fermé, sans l'ouvrir ni le déplacer, et répond des pertes ou "
-            "des dégradations dues à son fait ou à un défaut de "
-            "surveillance.",
+            _regle_de_garde(sans_ouvrir=True),
         ]),
     ]
     if options.get('reserve_propriete', True):
@@ -260,17 +274,19 @@ def _pv_livraison(ctx, options, variante):
         ]))
     if variante == 'tranche_reglee':
         arts.append(('paiement', 'Paiement', [
-            "Le Client a réglé à ce jour {total_regle}, soit "
+            "{societe} confirme avoir encaissé à ce jour {total_regle}, soit "
             "{pourcentage_regle} du prix. Rien n'est à payer à la "
             "livraison.",
-            "Le solde, soit {reste_apres_livraison}, sera exigible à la "
+            "Le reste du prix, soit {reste_a_regler}, sera exigible à la "
             "réception des travaux.",
         ]))
     else:
         arts.append(('paiement', 'Paiement de cette étape', [
-            "L'étape « {libelle_tranche_livraison} » est exigible à la "
-            "livraison : {exigible_maintenant} ({exigible_lettres}) "
-            "restent à régler ce jour.",
+            "Selon l'échéancier du contrat {contrat_reference}, les sommes "
+            "dues à la date de ce procès-verbal s'élèvent à "
+            "{exigible_maintenant} ({exigible_lettres}). Le Client reconnaît "
+            "avoir reçu le matériel listé ci-dessus et devoir cette somme à "
+            "{societe}.",
             "La pose est programmée dès l'encaissement de cette somme.",
         ]))
     return [_article(cle, titre, par, ctx) for cle, titre, par in arts]
@@ -286,7 +302,7 @@ def _pv_reception(ctx, options):
             "devis {devis_reference}, que l'installation est conforme à ces "
             "documents et fonctionne, et qu'il n'a constaté aucun défaut "
             "apparent en dehors des réserves écrites ci-dessus.",
-            "L'installation est désormais sous la garde du Client. "
+            "À la réception, " + _GARDE_TRANSFERT + " "
             "{societe} lève les réserves éventuelles dans le délai "
             "indiqué ; leur levée est constatée par écrit et signée du "
             "Client.",
