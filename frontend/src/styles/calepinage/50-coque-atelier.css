@@ -657,8 +657,7 @@ body[data-cal-atelier] [data-sonner-toaster][data-y-position='bottom'][data-x-po
    Le MÊME atelier : la carte 3D seule, bord à bord, en haut (464 px sur 844) ; bandeau, rail,
    panneau et calques d'étape sont `hidden` (jamais démontés) ; les commandes propres à la carte
    (boussole, plein écran, zoom, fin de tracé, poignées) sont masquées : rien à éditer ici. */
-.cal-coque[data-presentation='1'] { font-size: 1rem; }
-.cal-coque[data-presentation='1'] .cal-coque-corps { flex: 0 0 55%; min-height: 0; }
+.cal-coque[data-presentation='1'] { font-size: 1rem; } /* hauteur de la scène (`.cal-coque-corps`) : UNE règle, 58-telephone.css */
 .cal-coque[data-presentation='1'] .cal-coque-statut,
 .cal-coque[data-presentation='1'] .rp9-map-wrap > :not(#rp9-map),
 .cal-coque[data-presentation='1'] .maplibregl-control-container,
