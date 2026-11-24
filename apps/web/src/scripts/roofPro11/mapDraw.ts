@@ -860,8 +860,25 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     return contraindreAngle(ctx.vertices[n - 1], ctx.vertices[n - 2], v, pasAngleDeg());
   }
 
+  /** T4-B4-005 — le point tombe-t-il sur le PREMIER coin (rayon de saisie d'un sommet, en mètres au zoom courant) ? */
+  function surLePremierCoin(p: LngLat): boolean {
+    const premier = ctx.vertices[0];
+    const zoom = typeof map.getZoom === 'function' ? map.getZoom() : Number.NaN;
+    if (!premier || !Number.isFinite(zoom)) return false;
+    const rayonM = VERTEX_GRAB_PX * metresParPixel(premier[1], zoom);
+    const dx = (p[0] - premier[0]) * DEG2M * Math.cos(premier[1] * DEG2RAD);
+    const dy = (p[1] - premier[1]) * DEG2M;
+    return Math.hypot(dx, dy) <= rayonM;
+  }
+
   function addVertex(v: LngLat) {
     if (ctx.closed) return;
+    // T4-B4-005 — recliquer le premier coin FERME le tracé : aucun sommet en double (le pan gardait 5 sommets pour
+    // 4 coins, et la saisie Longueur/Largeur — réservée aux pans à 4 côtés — restait désactivée).
+    if (ctx.vertices.length >= 3 && surLePremierCoin(v)) {
+      if (finishBtn && !finishBtn.disabled) finishBtn.click();
+      return;
+    }
     // CALX89 — le point cliqué passe d'abord par les AIDES AU TRACÉ (magnétisme angulaire).
     // Puce éteinte (ou Alt maintenue) ⇒ `v` revient tel quel, donc le tracé est identique à
     // celui d'aujourd'hui, point pour point.
