@@ -8,7 +8,7 @@
    ne compose et n'étudie plus rien : plus de balayage C&I par paliers, plus
    d'étude locale, plus de `createDevisAtomic`. Lit le lead directement (pas d'état React). */
 import ventesApi from '../../api/ventesApi'
-import { formatMAD, formatNumber } from '../../lib/format'
+import { formatKwc, formatMAD, formatNumber } from '../../lib/format'
 import {
   panneauxPourKwc,
   // QJR576 — UNE conversion panneaux ↔ kWc et UN wattage par défaut.
@@ -222,7 +222,8 @@ export function libelleSuccesDevisAuto(resultat) {
   const optionAvec = resultat.economie_an_1_ht_avec != null && Number.isFinite(avecBatterie) && avecBatterie > 0
   if (resultat.reference) morceaux.push(resultat.reference)
   const kwc = Number(resultat.kwc)
-  if (Number.isFinite(kwc) && kwc > 0) morceaux.push(`${formatNumber(kwc, { decimals: 0 })} kWc`)
+  // T4-U1-026 — la puissance du devis, jamais arrondie à l'entier.
+  if (Number.isFinite(kwc) && kwc > 0) morceaux.push(formatKwc(kwc))
   const ttc = Number(resultat.total_ttc)
   if (resultat.total_ttc != null && Number.isFinite(ttc)) {
     morceaux.push(`${formatMAD(ttc, { decimals: 0 })} TTC`)

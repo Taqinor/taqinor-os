@@ -127,6 +127,16 @@ export function formatNumber(value, { decimals, maxDecimals, locale } = {}) {
   return new Intl.NumberFormat(resolveLocaleTag(locale), opts).format(n)
 }
 
+/**
+ * T4-U1-026 — une puissance crête telle que le devis et son PDF l'impriment :
+ * au plus 2 décimales, sans zéro inutile, jamais arrondie à l'entier
+ * (`formatKwc(5.5)` → « 5,5 kWc », `formatKwc(3.85)` → « 3,85 kWc »,
+ * `formatKwc(6)` → « 6 kWc »).
+ */
+export function formatKwc(value, { locale } = {}) {
+  return `${formatNumber(value, { maxDecimals: 2, locale })} kWc`
+}
+
 /** Pourcentage : `formatPercent(19)` → « 19 % » ; `formatPercent(0.5,{decimals:1})` → « 0,5 % ». */
 export function formatPercent(value, { decimals = 0, locale } = {}) {
   const n = toNumber(value)
