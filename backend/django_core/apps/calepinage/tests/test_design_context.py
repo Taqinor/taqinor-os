@@ -406,6 +406,40 @@ class ContexteConceptionTest(BaseApiCalepinage):
         self.assertIsNone(servi['surface_toiture_m2'])
         self.assertEqual(set(self._contexte(self.nu)['toiture_lead'].values()), {None})
 
+    def test_t4_u3_012_pompage_du_lead_servi_en_preremplissage(self):
+        """T4-U3-012 — le lead dit HMT 80 m (déclarée), débit souhaité 20 m³/h,
+        niveau statique 40 m (mesuré en visite), débit du forage 25 m³/h (essai) :
+        ``prefill_lead.pompage`` les sert sous les clés du panneau Pompage, chacune
+        avec SA provenance telle que la fiche la garde. Sans lead : ``null`` ; un
+        lead d'une autre société n'est jamais lu."""
+        from decimal import Decimal
+
+        Lead.objects.filter(pk=self.lead_lie.pk).update(
+            pompe_hmt_m=Decimal('80'), pompe_hmt_source='declaree',
+            pompe_debit_m3h=Decimal('20'), niveau_statique_m=Decimal('40'),
+            niveau_statique_source='mesure_visite', debit_forage_m3h=Decimal('25'),
+            debit_forage_source='essai')
+        servi = self._contexte(self.avec_devis)['prefill_lead']
+        self.assertEqual(set(servi), set(CONTRAT['exemple']['prefill_lead']))
+        self.assertEqual(servi['lead'], self.lead_lie.pk)
+        pompage = servi['pompage']
+        self.assertEqual(set(pompage), set(CONTRAT['exemple']['prefill_lead']['pompage']))
+        self.assertEqual(pompage['hmt_saisie'], {
+            'valeur': 80.0, 'origine': 'declaree', 'origine_libelle': 'Déclarée'})
+        self.assertEqual(pompage['niveau_statique_m'], {
+            'valeur': 40.0, 'origine': 'mesure_visite',
+            'origine_libelle': 'Mesuré en visite'})
+        self.assertEqual(pompage['debit_exploitation_m3h'], {
+            'valeur': 25.0, 'origine': 'essai', 'origine_libelle': 'Essai de pompage'})
+        self.assertEqual(pompage['debit_souhaite_m3h'], {
+            'valeur': 20.0, 'origine': None, 'origine_libelle': None})
+        self.assertIsNone(self._contexte(self.nu)['prefill_lead'])
+        lead_voisin = Lead.objects.create(
+            company=self.autre, nom='Voisin', pompe_hmt_m=Decimal('99'))
+        piege = Calepinage.objects.create(
+            company=self.company, lead_id=lead_voisin.pk, titre='Lead voisin')
+        self.assertIsNone(self._contexte(piege)['prefill_lead'])
+
     def test_autre_societe_introuvable(self):
         reponse = self.api.get(url_contexte(self.etranger.pk))
         self.assertEqual(reponse.status_code, 404)
