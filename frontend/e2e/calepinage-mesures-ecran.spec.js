@@ -519,3 +519,45 @@ test('ACAL1818: curseur « Heure du soleil » ≥ 44 px de haut à 390 × 844 (p
     await contexte.close()
   }
 })
+
+// ACAL1817 — le relevé de visite occupe la tablette (1180 × 820, tactile) : la carte du toit et les photos dans la colonne
+// de gauche, les mesures dans celle de droite, la barre du bas sur toute la largeur ; à 390 px le relevé reste une seule
+// colonne (la feuille du bas). Mesure DOM des boîtes : aucune moitié de l'écran n'est vide.
+test('ACAL1817: relevé à 1180 × 820 — deux colonnes, barre du bas pleine largeur ; à 390 px une seule colonne', async ({ browser }) => {
+  test.setTimeout(300_000)
+  const contexte = await browser.newContext({ viewport: { width: 1180, height: 820 }, hasTouch: true, isMobile: true })
+  try {
+    const page = await contexte.newPage()
+    await amorcerSession(page)
+    const id = await calepinageParApi(page.request, 'ACAL1817 Relevé', { layout: true })
+    const boites = () => page.evaluate(() => {
+      const b = (sel) => {
+        const r = document.querySelector(sel)?.getBoundingClientRect()
+        return r ? { x: Math.round(r.x), y: Math.round(r.y), l: Math.round(r.width), h: Math.round(r.height) } : null
+      }
+      return {
+        carte: b('[data-testid="releve-carte-toit"]'), photos: b('[data-testid="releve-photos"]'),
+        mesures: b('[data-testid="releve-mesures"]'), pied: b('.cal-tel-pied'),
+        vw: window.innerWidth, debordement: document.documentElement.scrollWidth - window.innerWidth,
+      }
+    })
+    await page.goto(`/calepinage/${id}/releve`)
+    await expect(page.getByTestId('releve-mesures')).toBeVisible({ timeout: 120_000 })
+    const t = await boites()
+    expect(t.carte.x, 'carte du toit : colonne de gauche').toBe(0)
+    expect(t.carte.l, 'carte du toit : la moitié gauche').toBeGreaterThanOrEqual(t.vw / 2 - 2)
+    expect(t.photos.x + t.photos.l, 'photos : dans la colonne de gauche').toBeLessThanOrEqual(t.vw / 2 + 2)
+    expect(t.mesures.x, 'mesures : colonne de droite').toBeGreaterThanOrEqual(t.vw / 2 - 2)
+    expect(t.pied.x, 'barre du bas : depuis le bord gauche').toBe(0)
+    expect(t.pied.l, 'barre du bas : toute la largeur').toBe(t.vw)
+    expect(t.debordement, 'défilement horizontal').toBeLessThanOrEqual(0)
+    // À 390 px rien ne change : la feuille du bas, une colonne.
+    await page.setViewportSize({ width: 390, height: 844 })
+    await expect(page.getByTestId('releve-poignee')).toBeVisible()
+    const m = await boites()
+    expect(m.mesures.x, 'mesures à 390 px : colonne unique').toBeLessThan(40)
+    expect(m.debordement, 'défilement horizontal à 390 px').toBeLessThanOrEqual(0)
+  } finally {
+    await contexte.close()
+  }
+})

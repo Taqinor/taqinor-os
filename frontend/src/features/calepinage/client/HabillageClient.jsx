@@ -3,8 +3,8 @@ import { createPortal } from 'react-dom'
 import { Icone, Segmente } from '../atelier/coque/primitives'
 import { gestes, useConstructeur } from '../atelier/coque/etapes/panneaux/constructeur'
 import { jourMois } from '../atelier/coque/etapes/panneaux/formats'
-import { AvisEchec3D, PastilleAttente, PiedClient, PlanDessus, PuceProjet, TuilesClient, IconeTourner } from './partiesClient'
-import { estimationPose, instantSoleilChoisi } from './vueClient.helpers'
+import { AttenteScene, AvisEchec3D, PastilleAttente, PiedClient, PlanDessus, PuceProjet, TuilesClient, IconeTourner } from './partiesClient'
+import { estimationPose, instantSoleilChoisi, useBureau } from './vueClient.helpers'
 import { useHorsVueClientInerte } from './inerteHorsClient'
 
 /* ============================================================================
@@ -74,13 +74,17 @@ function useEteAMidi(pret, doc) {
   }, [pret, doc])
 }
 
-function LecteurSoleil() {
+/** ACAL1838 — les repères de la barre du soleil du bureau : de la borne basse à la borne haute SERVIES par le curseur du constructeur. */
+const reperes = (min, max) => [0, 1, 2, 3, 4].map((i) => Math.round(min + ((max - min) * i) / 4))
+
+function LecteurSoleil({ bureau = false }) {
   const [etat, rafraichir] = useConstructeur()
-  const { heure, date, saison, lecture } = etat.soleil
+  const { heure, date, saison, lecture, min, max } = etat.soleil
   const saisonReelle = useSaisonReelle(saison, date)
   if (heure == null) return null
   const g = (geste) => (...a) => { geste(...a); rafraichir() }
   const quand = [jourMois(date), `${heure} h`].filter(Boolean).join(' · ')
+  const rempli = max > min ? ((Number(heure) - min) / (max - min)) * 100 : 0
   return (
     <div className="cal-client-soleil" data-testid="client-soleil">
       <button type="button" className="cal-client-soleil-lecture" aria-label="Faire passer la journée"
@@ -88,10 +92,18 @@ function LecteurSoleil() {
         <Icone nom="lecture" taille={18} epaisseur={2} />
       </button>
       <div className="cal-client-soleil-curseur">
+        {bureau && <span className="cal-client-soleil-etiquette">Soleil</span>}
         <span className="cal-client-soleil-quand">{quand}</span>
-        <input type="range" min="6" max="18" step="1" value={heure} aria-label="Heure du soleil"
-          className="cal-pan-heure" style={{ '--cal-pan-rempli': `${((Number(heure) - 6) / 12) * 100}%` }}
+      </div>
+      <div className="cal-client-soleil-piste">
+        <input type="range" min={min} max={max} step="1" value={heure} aria-label="Heure du soleil"
+          className="cal-pan-heure" style={{ '--cal-pan-rempli': `${rempli}%` }}
           onChange={(e) => g(gestes.heure)(e.target.value)} />
+        {bureau && (
+          <div className="cal-client-soleil-reperes" aria-hidden="true">
+            {reperes(min, max).map((h) => <span key={h} data-courant={h === Number(heure) ? '' : undefined}>{`${h} h`}</span>)}
+          </div>
+        )}
       </div>
       <Segmente libelle="Saison" options={SAISONS} valeur={saisonReelle} onChange={g(gestes.saison)} />
     </div>
@@ -128,6 +140,7 @@ export default function HabillageClient({
   // les tuiles déjà montrées restent.
   const reessayer = () => { setEssai((n) => n + 1); onReessayer?.() }
   // ACAL1840 (D-ACAL-88) — sans résultat complet, la production montrée est l'estimation de la pose de l'atelier.
+  const bureau = useBureau()
   const [constructeur] = useConstructeur()
   const tuiles = donnees.tuilesAvec ? donnees.tuilesAvec(estimationPose(constructeur.figures)) : donnees.tuiles
   return (
@@ -136,7 +149,8 @@ export default function HabillageClient({
         <>
           {!pret && (
             <div className="cal-client-repli" data-testid="client-repli-2d">
-              {donnees.plan && <PlanDessus plan={donnees.plan} />}
+              {/* ACAL1837 — l'attente est présentable (ciel, silhouette) ; le plan dessus ne sert qu'à l'échec de la 3D. */}
+              {retard ? donnees.plan && <PlanDessus plan={donnees.plan} /> : <AttenteScene />}
             </div>
           )}
           <PuceProjet titre={donnees.titre} sousTitre={donnees.sousTitre} />
@@ -144,17 +158,17 @@ export default function HabillageClient({
           {pret && tourne && (
             <span className="cal-client-pastille cal-client-geste" data-testid="client-aide-geste">
               <IconeTourner />
-              Glissez un doigt pour tourner autour
+              {bureau ? 'Glissez pour tourner autour' : 'Glissez un doigt pour tourner autour'}
             </span>
           )}
         </>,
         noeudScene,
       )}
       <div className="cal-client-corps" data-testid="cal-vue-client" data-vue-client="">
-        <LecteurSoleil />
-        <TuilesClient tuiles={tuiles} ville={donnees.ville} />
+        <LecteurSoleil bureau={bureau} />
+        <TuilesClient tuiles={tuiles} ville={donnees.ville} bureau={bureau} />
       </div>
-      <PiedClient id={calepinageId} />
+      <PiedClient id={calepinageId} bureau={bureau} />
     </>
   )
 }
