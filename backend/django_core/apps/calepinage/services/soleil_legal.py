@@ -17,8 +17,11 @@ __all__ = ['SoleilLegalRefuse', 'MOTIF_SANS_FUSEAU', 'MOTIF_SANS_EPINGLE',
 #: Motifs servis tels quels (409) : la donnée manquante est NOMMÉE.
 MOTIF_SANS_FUSEAU = ("fuseau du site non renseigné : aucune heure légale "
                      "n'est calculée")
-MOTIF_SANS_EPINGLE = ("épingle du site non posée : la longitude est "
-                      "inconnue, aucune heure solaire n'est calculée")
+MOTIF_SANS_EPINGLE = (
+    "Position du site inconnue : cherchez l'adresse du client puis cliquez "
+    "« Localiser » (ou zoomez jusqu'au toit avant de le tracer), ou "
+    "renseignez la ville du lead — sans elle, aucune heure solaire n'est "
+    "calculée.")
 
 
 class SoleilLegalRefuse(ValueError):
@@ -29,14 +32,17 @@ class SoleilLegalRefuse(ValueError):
         self.champ, self.motif = champ, motif
 
 
-def _longitude(calepinage):
-    # T4-U1-003 — LA définition de « site posé », partagée avec la simulation
-    # (un centre de carte par défaut n'est pas une épingle).
+def _site(calepinage):
+    """``(longitude, reference)`` — T4-U4-013 : LA MÊME fonction que la
+    simulation (``site.point_du_site``) : l'épingle posée, sinon la ville de
+    référence du lead ou du client (dite), sinon ``(None, None)``."""
     from ..selectors import contexte_geographique
-    from .site import epingle_posee
+    from .site import point_du_site
 
-    return epingle_posee(getattr(calepinage, 'roof_layout', None),
-                         lambda: contexte_geographique(calepinage))[1]
+    _lat, lon, reference = point_du_site(
+        getattr(calepinage, 'roof_layout', None),
+        lambda: contexte_geographique(calepinage))
+    return lon, reference
 
 
 def correspondance_du_jour(calepinage, jour, *, reglages=None):
@@ -50,7 +56,7 @@ def correspondance_du_jour(calepinage, jour, *, reglages=None):
 
     from .site import decalage_utc_minutes, fuseau_du_site
 
-    longitude = _longitude(calepinage)
+    longitude, reference = _site(calepinage)
     if longitude is None:
         raise SoleilLegalRefuse('site.pin', MOTIF_SANS_EPINGLE)
     if reglages is None:
@@ -81,4 +87,9 @@ def correspondance_du_jour(calepinage, jour, *, reglages=None):
         # Heure décimale au dixième de minute (1/600 h).
         'midi_solaire_legal_h': round(calcul.midi_solaire_legal_h * 600) / 600,
         'mention': fuseau['mention'],
+        # T4-U4-013 — sans épingle posée, le site est la ville de référence :
+        # DITE (``{ville_reference, libelle}``), ``None`` quand l'épingle sert.
+        'site_reference': (None if reference is None else {
+            'ville_reference': reference['ville_reference'],
+            'libelle': reference['libelle']}),
     }

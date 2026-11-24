@@ -398,6 +398,74 @@ class SiteSansEpingleTest(SimpleTestCase):
             self.assertIn('ville du lead', refus.exception.motif)
             self.assertIsNone(calepinage.resultat)
 
+    # T4-U4-013 — un toit tracé par clics à l'échelle du pays : l'épingle est
+    # le centre du tracé, À CÔTÉ du centre par défaut (pas dessus), et le
+    # document dit que personne n'a localisé le site (``siteLocalise: null``).
+    TRACE_PAYS = {'lat': 31.6123, 'lng': -7.3456}
+
+    def _trace_sans_site(self, provenance=None):
+        calepinage = self._sans_pin(self.TRACE_PAYS)
+        calepinage.roof_layout['siteLocalise'] = provenance
+        return calepinage
+
+    def test_t4_u4_013_trace_au_niveau_pays_sans_lead_refuse_rien_ecrit(self):
+        calepinage = self._trace_sans_site()
+        client = _ClientRejoue()
+        with mock.patch('apps.calepinage.selectors.contexte_geographique',
+                        return_value={'pin': None, 'outline': None,
+                                      'adresse': None, 'ville': None,
+                                      'source': None}), \
+                self.assertRaises(SimulationRefusee) as refus:
+            _simuler(calepinage, client=client, enregistrer=True)
+        self.assertEqual(refus.exception.champ, 'site.pin')
+        self.assertEqual(client.demandes, [])
+        self.assertIsNone(calepinage.resultat)
+
+    def test_t4_u4_013_trace_au_niveau_pays_lead_a_marrakech_dit(self):
+        client, resultat = self._sur_ville(self._trace_sans_site(),
+                                           'Marrakech')
+        self.assertEqual(client.demandes[0]['lat'], 31.63)
+        site = resultat['blocs']['meteo']['site']
+        self.assertEqual(site['ville_reference'], 'Marrakech')
+        self.assertEqual(site['libelle'], 'Marrakech (ville de référence)')
+
+    def test_t4_u4_013_client_sans_lead_adresse_casablanca_dite(self):
+        calepinage = self._trace_sans_site()
+        client = _ClientRejoue()
+        with mock.patch('apps.calepinage.selectors.contexte_geographique',
+                        return_value={'pin': None, 'outline': None,
+                                      'adresse': 'Casablanca', 'ville': None,
+                                      'source': None}):
+            resultat = _simuler(calepinage, client=client)
+        self.assertEqual(client.demandes[0]['lat'], 33.573)
+        self.assertEqual(resultat['blocs']['meteo']['site']['ville_reference'],
+                         'Casablanca')
+
+    def test_t4_u4_013_epingle_localisee_par_l_utilisateur_inchangee(self):
+        for provenance in ('adresse', 'epingle', 'trace', 'lead'):
+            client = _ClientRejoue()
+            with self.subTest(provenance=provenance), mock.patch(
+                    'apps.calepinage.selectors.contexte_geographique',
+                    return_value=_geo('Marrakech')):
+                resultat = _simuler(self._trace_sans_site(provenance),
+                                    client=client)
+                self.assertEqual((client.demandes[0]['lat'],
+                                  client.demandes[0]['lon']),
+                                 (31.6123, -7.3456))
+                self.assertNotIn('site', resultat['blocs']['meteo'])
+
+    def test_t4_u4_013_document_ancien_sans_provenance(self):
+        """Règle sans migration : sans ``siteLocalise``, une épingle à moins de
+        2 km d'un centre par défaut n'est pas un site, plus loin elle l'est."""
+        pres = {'lat': 31.795, 'lng': -7.085}
+        client, resultat = self._sur_ville(self._sans_pin(pres), 'Marrakech')
+        self.assertEqual(resultat['blocs']['meteo']['site']['ville_reference'],
+                         'Marrakech')
+        client, resultat = self._sur_ville(self._sans_pin(self.TRACE_PAYS),
+                                           'Marrakech')
+        self.assertEqual(client.demandes[0]['lat'], 31.6123)
+        self.assertNotIn('site', resultat['blocs']['meteo'])
+
 
 class SiteDuLeadEnBaseTest(TestCase):
     """T4-U1-003, le cas réel en base : la géométrie porte le centre de carte

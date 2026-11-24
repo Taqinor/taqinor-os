@@ -68,6 +68,31 @@ class SoleilLegalApiTests(BaseApiCalepinage):
         self.assertEqual(r.status_code, 409)
         self.assertEqual(r.data, {'site.pin': [MOTIF_SANS_EPINGLE]})
 
+    def test_t4_u4_013_trace_sans_site_localise_meme_regle_que_la_simulation(self):
+        """Un toit tracé à l'échelle du pays (épingle = centre du tracé, à côté
+        du centre par défaut, ``siteLocalise: null``) : sans ville, refus qui
+        dit quoi faire ; lead à Marrakech, calcul sur Marrakech, DIT."""
+        self._profil()
+        self.cal.roof_layout = {'version': 2, 'siteLocalise': None,
+                                'pin': {'lat': 31.6123, 'lng': -7.3456}}
+        self.cal.save(update_fields=['roof_layout'])
+        r = self.api.get(_url(self.cal.pk, '2026-02-11'))
+        self.assertEqual(r.status_code, 409)
+        self.assertIn('Localiser', r.data['site.pin'][0])
+        self.lead.ville = 'Marrakech'
+        self.lead.save(update_fields=['ville'])
+        r = self.api.get(_url(self.cal.pk, '2026-02-11'))
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['longitude_deg'], -8.01)
+        self.assertEqual(r.data['site_reference'], {
+            'ville_reference': 'Marrakech',
+            'libelle': 'Marrakech (ville de référence)'})
+        self.cal.roof_layout = dict(self.cal.roof_layout, siteLocalise='adresse')
+        self.cal.save(update_fields=['roof_layout'])
+        r = self.api.get(_url(self.cal.pk, '2026-02-11'))
+        self.assertEqual(r.data['longitude_deg'], -7.3456)
+        self.assertIsNone(r.data['site_reference'])
+
     def test_409_sans_fuseau_jamais_deduit_de_la_longitude(self):
         r = self.api.get(_url(self.cal.pk, '2026-02-11'))
         self.assertEqual(r.status_code, 409)

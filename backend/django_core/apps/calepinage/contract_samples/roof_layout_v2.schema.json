@@ -223,6 +223,13 @@
         "manuel"
       ]
     },
+    "siteLocalise": {
+      "description": "T4-U4-013 — d'où vient le SITE (l'épingle `pin` n'est que le centre du pan tracé) : 'lead' (GPS ou repère de la fiche), 'adresse' (recherche d'adresse, « Localiser », coordonnées collées), 'epingle' (épingle déplacée à la main), 'trace' (toit tracé ou créé sur la carte zoomée au niveau du toit, zoom ≥ 17) ; `null` = personne n'a localisé le site. Le serveur (`services/site.py::epingle_posee`, simulation ET soleil-legal) n'utilise `pin` que s'il porte une provenance ; sans épingle posée, la ville de référence du lead (ou de l'adresse du lead / du client), DITE, sinon refus. Clé ABSENTE (document antérieur, ou écrit par le serveur) : `pin` compte comme posé s'il est le repère du lead ou à plus de 2 km de tout centre de carte par défaut. Écrite par l'atelier du calepinage de l'ERP seulement (`suiviSite` de l'outil) ; le site public n'écrit jamais la clé.",
+      "oneOf": [
+        {"type": "string", "enum": ["lead", "adresse", "epingle", "trace"]},
+        {"type": "null"}
+      ]
+    },
     "repereAcquitte": {
       "description": "ACAL2 (D-ACAL-13) — le repère {lat, lng} dont la dérive GPS a été ACQUITTÉE (décision prise : on ne la re-propose plus).",
       "oneOf": [
@@ -3135,6 +3142,7 @@
       ]
     },
     "pinSource": "lead",
+    "siteLocalise": "lead",
     "repereAcquitte": {
       "lat": 33.5,
       "lng": -7.6
