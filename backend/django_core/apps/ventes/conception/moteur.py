@@ -90,12 +90,19 @@ def calculer_conception(lead, company, *, entrees=None, toit=None, imposes=None,
 def reglages_lus_sans_creer(company):
     """Relecture ADEV134 — ``TariffSettings.get`` / ``CompanyProfile.get``
     (``get_or_create``) rendent, le temps du calcul, la ligne existante sinon une
-    instance NON enregistrée (``CompanyProfile.lire``) : aucune écriture."""
+    instance NON enregistrée (``CompanyProfile.lire``) : aucune écriture.
+
+    Relecture E4 B1 — l'empreinte du catalogue est lue dans le mémo de la
+    requête ENGLOBANTE (une page de 50 leads la calcule une fois) puis reposée
+    dans le mémo neuf de ce calcul."""
     from apps.parametres.models import CompanyProfile
     from apps.parametres.models_tariff import TariffSettings
+    from apps.ventes.conception.societe import cle_memo_catalogue, empreinte_catalogue
     from core import request_cache
 
+    catalogue = empreinte_catalogue(company)
     with request_cache.request_scope():
+        request_cache.memoize(cle_memo_catalogue(company.pk), lambda: catalogue)
         request_cache.memoize(TariffSettings._cle_memo_id(company.pk), lambda: (
             TariffSettings.objects.filter(company=company).first() or TariffSettings(company=company)))
         request_cache.memoize(CompanyProfile._cle_memo_id(company.pk), lambda: CompanyProfile.lire(company))

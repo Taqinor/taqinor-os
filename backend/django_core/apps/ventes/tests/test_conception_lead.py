@@ -323,7 +323,7 @@ class EntreesConceptionTests(TestCase):
     _colonnes_lues = ChampsEntreesTests._colonnes_lues
 
     def test_residentiel_empreinte_egale_a_celle_des_blocs(self):
-        from apps.ventes.conception.entrees import entrees_pour
+        from apps.ventes.conception.entrees import completer, entrees_pour
         from apps.ventes.domain.entrees import empreinte_entrees, entrees_depuis_lead
 
         company, lead = self._lead('residentiel')
@@ -333,7 +333,8 @@ class EntreesConceptionTests(TestCase):
         attendue = entrees_depuis_lead(lead, company)
         self.assertEqual(entrees.marche, 'residentiel')
         self.assertEqual(entrees.moteur, attendue)
-        self.assertEqual(entrees.empreinte, empreinte_entrees(attendue))
+        # Base = l'empreinte des blocs ; relecture E4 B1 : + raccordement, TVA, catalogue.
+        self.assertEqual(entrees.empreinte, completer(empreinte_entrees(attendue), lead, company, {}))
         utilisees = entrees.entrees_utilisees
         self.assertEqual(utilisees['facture_hiver'], {'valeur': 1200.0, 'source': 'lead'})
         self.assertEqual(utilisees['ville']['source'], 'lead')
@@ -2779,6 +2780,99 @@ class DevisDepuisLaConceptionMarchesTests(_emprunt(RelanceConceptionTests, '_rel
                 self.assertEqual(appels, une_execution)  # mutant « seconde décision au devis » : rouge
                 self.assertEqual(devis.statut, 'brouillon')
                 self.assertEqual(ConceptionLead.objects.get(lead=lead, courante=True).version, 1)
+
+
+# ── Relecture E4 B1 — ce que les noyaux lisent hors du lead entre dans l'empreinte ─
+
+_FABRIQUES = ('setUp', '_patcher', '_utilisateur', '_residentiel', '_ci', '_agricole', '_fiches_residentielles',
+              '_site_isole', '_structures', '_fiches_ci', '_cas')
+
+
+class EntreesHorsLeadTests(_emprunt(RelanceConceptionTests, '_relancer'), _emprunt(FigeageDevisAutoTests, *_FABRIQUES),
+                           TestCase):
+    """Raccordement, catalogue (prix, archivage) et TVA de la société : une
+    version rangée avant leur changement est PÉRIMÉE, recalculée paresseusement
+    (devis demandé, lecture) avec la raison dite ; rien n'a changé ⇒ rien écrit."""
+
+    def _ancien_chemin(self, company, lead, user):
+        """Le devis du chemin d'AVANT la conception (calcul propre au devis)."""
+        from apps.ventes.domain.creation_auto import marquer_rapide
+        from apps.ventes.domain.creation_auto_residentiel import _build_devis_auto_residentiel
+        from apps.ventes.utils.company_settings import tva_standard
+
+        return marquer_rapide(_build_devis_auto_residentiel(
+            lead=lead, user=user, company=company, taux_tva=tva_standard(company)))
+
+    def _devis_auto(self, company, lead, user):
+        from apps.ventes.services import build_devis_auto
+        with self.captureOnCommitCallbacks(execute=True):
+            return build_devis_auto(lead=lead, user=user, company=company)
+
+    def test_raccordement_change_le_devis_demande_relance_et_egale_l_ancien_chemin(self):
+        from apps.crm.models import Lead
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        Lead.objects.filter(pk=lead.pk).update(raccordement='monophase')
+        lead.refresh_from_db()
+        self._relancer(lead, company, _declencheur())
+        Lead.objects.filter(pk=lead.pk).update(raccordement='triphase')
+        lead.refresh_from_db()
+        user = self._utilisateur(company)
+        devis = self._devis_auto(company, lead, user)
+        courante = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual(courante.version, 2)  # mutant « phase hors empreinte » : 1
+        self.assertTrue(courante.declencheur['raison'].endswith(' : Raccordement Monophasé → Triphasé'),
+                        courante.declencheur)
+        ancien = self._ancien_chemin(company, lead, user)
+        self.assertEqual(_ecarts_figeage(_photo_du_devis(ancien), _photo_du_devis(devis)), [])
+
+    def test_prix_archivage_et_tva_perimes_et_dits_rien_change_rien_ecrit(self):
+        from apps.parametres.models import CompanyProfile
+        from apps.stock.models import Produit
+        from apps.ventes.conception import receivers
+        from apps.ventes.models import ConceptionLead
+        from apps.ventes.selectors import conception_courante
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        self._relancer(lead, company, _declencheur())
+        rien = self._relancer(lead, company, _declencheur('filet'))
+        self.assertEqual((rien.ecrite, ConceptionLead.objects.filter(lead=lead).count()), (False, 1))
+        panneau = Produit.objects.filter(company=company, nom__icontains='panneau').order_by('pk').first()
+        autre = Produit.objects.filter(company=company).exclude(pk=panneau.pk).order_by('-pk').first()
+        changements = (
+            (lambda: Produit.objects.filter(pk=panneau.pk).update(prix_vente=panneau.prix_vente + 100),
+             'catalogue modifié'),
+            (lambda: Produit.objects.filter(pk=autre.pk).update(is_archived=True), 'catalogue modifié'),
+            (lambda: CompanyProfile.objects.filter(company=company).update(tva_standard=Decimal('10')),
+             'TVA modifiée (20 → 10 %)'),
+        )
+        for version, (changer, raison) in enumerate(changements, start=2):
+            with self.subTest(raison=raison, version=version):
+                changer()
+                with mock.patch.object(receivers, 'mettre_en_file') as en_file:
+                    self.assertTrue(conception_courante(company, lead.pk)['perimee'])  # filet : paresseux
+                self.assertEqual(en_file.call_args.kwargs['origine'], 'filet')
+                relance = self._relancer(lead, company, _declencheur('filet'))
+                self.assertEqual((relance.ecrite, relance.conception.version), (True, version))
+                self.assertTrue(relance.conception.declencheur['raison'].endswith(' : ' + raison),
+                                relance.conception.declencheur)
+                self.assertEqual(_cles_interdites(relance.conception.entrees_utilisees), [])
+
+    def test_empreinte_du_catalogue_une_fois_par_requete(self):
+        from apps.ventes.conception import societe
+        from apps.ventes.conception.moteur import reglages_lus_sans_creer
+        from core import request_cache
+
+        company, _lead = self._cas('res_facture_dirhams')
+        with mock.patch.object(societe, '_empreinte_catalogue', wraps=societe._empreinte_catalogue) as calcul:
+            with request_cache.request_scope():  # la requête d'une page de leads
+                for _ in range(3):
+                    with reglages_lus_sans_creer(company):
+                        societe.entrees_de_la_societe(company)
+        self.assertEqual(calcul.call_count, 1)
 
 
 # ── ADEV144 — PARITÉ : le devis né de la conception RANGÉE = les goldens ─────
