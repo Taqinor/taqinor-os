@@ -31,7 +31,7 @@ def seed(company, **options):
 #: Articles créés par ``seed_catalogue`` sur une société vide (AGQ36 :
 #: + STR-SOL-PMP ; D-BAT-2710 : + BAT-DYN-PB-SC-16 ; CCAT10 : + 7 postes C&I
 #: composés par le devis — protections, parafoudres, terre, structures).
-NB_ARTICLES_SEMES = 186  # R3 (29/10/2026) : + 3 Smart Meter Huawei ; ACAL1172 : + KIT-FIX-INCL
+NB_ARTICLES_SEMES = 189  # R3 : + 3 Smart Meter Huawei ; ACAL1172 : + KIT-FIX-INCL ; HT24 : + boîtier, rack, 80 kW
 
 
 class TestSeedCatalogue(TestCase):
@@ -1811,7 +1811,9 @@ class TestPvfchDescriptionSansSpecs(TestCase):
 
         fautes = []
         for sku, fiche in FICHES_TECHNIQUES.items():
-            description = (FICHES.get(sku) or {}).get('description') or ''
+            description = chr(10).join(  # hors ligne marquée « Plage batterie : », miroir déclaré de ond_bat_v_*
+                ligne for ligne in ((FICHES.get(sku) or {}).get('description') or '').splitlines()
+                if not ligne.startswith('Plage batterie :'))
             if not description:
                 continue
             for champ, unite in self.UNITES.items():

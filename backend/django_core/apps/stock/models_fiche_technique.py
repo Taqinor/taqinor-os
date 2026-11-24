@@ -664,7 +664,6 @@ class FicheTechnique(models.Model):
                   'constructeur). Vide = non publié.')
     bat_v_module = models.DecimalField(
         max_digits=5, decimal_places=1, null=True, blank=True,
-        validators=[MinValueValidator(Decimal('0.1'))],
         help_text='Batterie haute tension — tension nominale d’UN module '
                   '(V) ; la grappe vaut n × cette tension. Vide = non publié.')
     bat_grappes_max_parallele = models.PositiveSmallIntegerField(
@@ -684,7 +683,6 @@ class FicheTechnique(models.Model):
     # port se DÉRIVE de ce courant × la tension nominale de la grappe.
     ond_bat_i_max_a = models.DecimalField(
         max_digits=6, decimal_places=1, null=True, blank=True,
-        validators=[MinValueValidator(Decimal('0.1'))],
         help_text='Onduleur hybride — courant maximal de charge/décharge '
                   'PAR ENTRÉE batterie (A). Vide = non publié.')
 

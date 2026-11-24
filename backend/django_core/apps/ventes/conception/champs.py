@@ -46,6 +46,8 @@ _RESIDENTIEL = _LIEU + (
 _CI = _LIEU + (
     # Consommation et contrat.
     'facture_hiver', 'conso_mensuelle_kwh', 'bill_kwh', 'releve_conso',
+    # Fondateur 24/11/2026 — consommation estimée par la puissance maximale.
+    'puissance_max_appelee_kva', 'charge_moyenne_pct',
     'tension_raccordement', 'tension_source', 'contrat_electricite',
     'option_tarifaire_bt', 'raccordement', 'compteur_puissance_kva',
     'puissance_souscrite_source', 'tva_recuperable',

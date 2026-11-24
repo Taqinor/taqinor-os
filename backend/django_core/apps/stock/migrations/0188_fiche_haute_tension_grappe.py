@@ -9,7 +9,6 @@ et câblage de puissance d'une grappe).
 Additive : sept ``AddField`` nullables et un ``AlterField`` de ``choices``
 (aucun effet SQL), aucune donnée écrite ; réversible.
 """
-import decimal
 
 import django.core.validators
 from django.db import migrations, models
@@ -61,8 +60,6 @@ class Migration(migrations.Migration):
             name='bat_v_module',
             field=models.DecimalField(
                 blank=True, decimal_places=1, max_digits=5, null=True,
-                validators=[django.core.validators.MinValueValidator(
-                    decimal.Decimal('0.1'))],
                 help_text='Batterie haute tension — tension nominale d’UN '
                           'module (V) ; la grappe vaut n × cette tension. '
                           'Vide = non publié.'),
@@ -93,8 +90,6 @@ class Migration(migrations.Migration):
             name='ond_bat_i_max_a',
             field=models.DecimalField(
                 blank=True, decimal_places=1, max_digits=6, null=True,
-                validators=[django.core.validators.MinValueValidator(
-                    decimal.Decimal('0.1'))],
                 help_text='Onduleur hybride — courant maximal de charge/'
                           'décharge PAR ENTRÉE batterie (A). Vide = non publié.'),
         ),

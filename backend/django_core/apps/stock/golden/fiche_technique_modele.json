@@ -1,6 +1,6 @@
 {
   "ast": {
-    "FicheTechnique": "d1463d1d8e0bdf4fcd8760ec6f210b2977b061dd",
+    "FicheTechnique": "06c07736dba29f714f58687dc47f60be665ae6b7",
     "_est_nombre": "5d18c0bef90e040ff010a635babf0336bbe24585",
     "_valider_courbe": "bfa8fece7cfe0c8262df1bb3994254992b14c056",
     "valider_courbe_irradiance": "1569e31152555f78800b28b078b5ba0ff5c2a04f",
@@ -1157,7 +1157,6 @@
         "on_delete": null,
         "related_name": null,
         "validateurs": [
-          "MinValueValidator",
           "DecimalValidator"
         ]
       },
@@ -1225,7 +1224,6 @@
         "on_delete": null,
         "related_name": null,
         "validateurs": [
-          "MinValueValidator",
           "DecimalValidator"
         ]
       },
