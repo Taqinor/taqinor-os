@@ -273,3 +273,112 @@ class ForceRetireTests(_EmpreintesBase):
         self.assertNotEqual(
             devis.etude_params['dimensionnement']['_empreinte'],
             empreinte_avant)
+
+
+class PointeurConceptionTests(_EmpreintesBase):
+    """ADEV143 (D-ACAL-97) — un devis automatique né de la conception porte
+    ``conception_source = {id, version, empreinte}`` ; ses études sont à jour
+    (aucun noyau rappelé par ``rafraichir_etudes_du_devis``) ; le pointeur
+    n'est jamais réécrit (envoi, relance) ; une copie, une révision n'en
+    portent pas. Mesure « pour le fondateur » : un ENVOYÉ rafraîchi après un
+    changement de facture voit son bloc ``dimensionnement`` réécrit — avec ou
+    sans pointeur, à l'identique (ADEV143 ne change rien à ce comportement)."""
+
+    def setUp(self):
+        coupure = mock.patch('urllib.request.urlopen', side_effect=OSError('ADEV143 hors réseau'))
+        coupure.start()
+        self.addCleanup(coupure.stop)
+
+    def _lead_et_devis(self, slug):
+        from apps.ventes.services import build_devis_auto
+        from apps.ventes.tests.test_devis_auto import seed_catalogue
+
+        company = self._company(slug)
+        seed_catalogue(company)
+        user = User.objects.get(username=f'{slug}-user')
+        lead = Lead.objects.create(company=company, nom='Lead', prenom=slug, ville='Casablanca',
+                                   facture_hiver=Decimal('1800'))
+        with self.captureOnCommitCallbacks(execute=True):
+            devis = build_devis_auto(lead=lead, user=user, company=company)
+        return company, user, lead, devis
+
+    def _noyaux(self):
+        from apps.ventes import dimensionnement, etude_horaire, profils_comparatifs
+        espions = {}
+        for module, nom in ((dimensionnement, 'recommander_taille'), (etude_horaire, 'etude_horaire_pour_devis'),
+                            (profils_comparatifs, 'profils_comparatifs_estampilles')):
+            patch = mock.patch.object(module, nom, wraps=getattr(module, nom))
+            espions[nom] = patch.start()
+            self.addCleanup(patch.stop)
+        return espions
+
+    def test_pointeur_pose_a_la_creation_et_etudes_a_jour(self):
+        from apps.ventes.models import ConceptionLead
+
+        company, _user, lead, devis = self._lead_et_devis('adev143-a')
+        courante = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual(devis.conception_source,
+                         {'id': courante.pk, 'version': courante.version, 'empreinte': courante.empreinte})
+        espions = self._noyaux()
+        rafraichir_etudes_du_devis(Devis.objects.get(pk=devis.pk))
+        self.assertEqual({k: v.call_count for k, v in espions.items()},
+                         {k: 0 for k in espions})  # mutant « études non apportées » : rouge
+
+        # La version suivante : un second devis la suit, le premier garde la sienne.
+        Lead.objects.filter(pk=lead.pk).update(facture_hiver=Decimal('2600'))
+        lead.refresh_from_db()
+        second = self._lead_et_devis_suivant(company, lead)
+        v2 = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual((v2.version, second.conception_source['version']), (2, 2))
+        devis.refresh_from_db()
+        self.assertEqual(devis.conception_source['version'], 1)
+
+    def _lead_et_devis_suivant(self, company, lead):
+        from apps.ventes.services import build_devis_auto
+        with self.captureOnCommitCallbacks(execute=True):
+            return build_devis_auto(lead=lead, user=User.objects.filter(company=company).first(), company=company)
+
+    def test_envoye_pointeur_intact_copie_et_revision_sans_pointeur(self):
+        from django.utils import timezone
+
+        from apps.ventes.conception.service import relancer
+        from apps.ventes.domain.creation_clone import dupliquer_devis
+        from apps.ventes.domain.revision import reviser_devis
+
+        company, user, lead, devis = self._lead_et_devis('adev143-b')
+        pointeur = dict(devis.conception_source)
+        Devis.objects.filter(pk=devis.pk).update(statut='envoye', date_envoi=timezone.now())
+        Lead.objects.filter(pk=lead.pk).update(facture_hiver=Decimal('3600'))
+        lead.refresh_from_db()
+        with self.captureOnCommitCallbacks(execute=True):
+            relancer(lead, company=company, declencheur={'origine': 'manuel', 'champs': []})
+        envoye = Devis.objects.get(pk=devis.pk)
+        avant = envoye.etude_params['dimensionnement']['_empreinte']
+        rafraichir_etudes_du_devis(envoye)
+        envoye.refresh_from_db()
+        self.assertEqual(envoye.conception_source, pointeur)  # mutant « réécrire à l'envoi » : rouge
+        # Pour le fondateur (mesure, inchangée par ADEV143) : l'envoyé rafraîchi
+        # après la facture changée a son tableau de dimensionnement RÉÉCRIT.
+        self.assertNotEqual(envoye.etude_params['dimensionnement']['_empreinte'], avant)
+
+        copie = dupliquer_devis(envoye, user=user)
+        self.assertIsNone(Devis.objects.get(pk=copie.pk).conception_source)
+        revision = reviser_devis(envoye, user=user)
+        self.assertIsNone(Devis.objects.get(pk=revision.pk).conception_source)
+
+    def test_envoye_sans_pointeur_meme_reecriture(self):
+        """Pour le fondateur — le même envoyé SANS pointeur (devis d'avant
+        ADEV143) : même réécriture du dimensionnement ; ADEV143 ne change ce
+        comportement dans aucun sens."""
+        from django.utils import timezone
+
+        _company, _user, lead, devis = self._lead_et_devis('adev143-c')
+        Devis.objects.filter(pk=devis.pk).update(statut='envoye', date_envoi=timezone.now(),
+                                                 conception_source=None)
+        Lead.objects.filter(pk=lead.pk).update(facture_hiver=Decimal('3600'))
+        envoye = Devis.objects.get(pk=devis.pk)
+        avant = envoye.etude_params['dimensionnement']['_empreinte']
+        rafraichir_etudes_du_devis(envoye)
+        envoye.refresh_from_db()
+        self.assertNotEqual(envoye.etude_params['dimensionnement']['_empreinte'], avant)
+        self.assertIsNone(envoye.conception_source)

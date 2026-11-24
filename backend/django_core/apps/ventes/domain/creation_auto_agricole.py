@@ -58,6 +58,7 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
         taux_tva = tva_standard(company)
     from apps.crm.services import resolve_client_for_lead
     from apps.ventes.conception.decisions import decider_agricole
+    from apps.ventes.domain.pipeline import pointeur_de_conception
     from apps.ventes.domain.pompage import etude_precalculee
     from apps.ventes.models import Devis
 
@@ -78,7 +79,7 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
             statut=Devis.Statut.BROUILLON, created_by=user,
             taux_tva=taux_tva, devise=devise_par_defaut(company),
             remise_globale=remise_globale, mode_installation='agricole',
-            etude_params=etude)
+            etude_params=etude, conception_source=pointeur_de_conception(conception))
 
     with etude_precalculee(lead, sortie):
         devis = _ecrire_devis_auto_par_pipeline(

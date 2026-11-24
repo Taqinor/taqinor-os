@@ -128,6 +128,7 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
     from apps.crm.services import resolve_client_for_lead
     from apps.ventes.conception.decisions import decider_ci, etude_params_creation_ci
     from apps.ventes.domain.creation import devise_par_defaut
+    from apps.ventes.domain.pipeline import pointeur_de_conception
     from apps.ventes.models import Devis
 
     # ADEV160 (D-ACAL-97) — taille, étude, refus et options batterie : la
@@ -146,7 +147,7 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
             taux_tva=taux_tva, devise=devise_par_defaut(company),
             remise_globale=remise_globale,
             mode_installation=lead.type_installation,
-            etude_params=entrees)
+            etude_params=entrees, conception_source=pointeur_de_conception(conception))
 
     devis = _ecrire_devis_auto_par_pipeline(
         company=company, user=user, lead=lead, creer=_create, lignes=lignes,

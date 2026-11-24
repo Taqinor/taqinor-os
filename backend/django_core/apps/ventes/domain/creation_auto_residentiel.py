@@ -510,7 +510,8 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
         completer_etude=(_completer_etude
                          if isinstance(etude_extra, dict) and etude_extra
                          else None),
-        blocs_conception=blocs_a_apporter(conception))
+        blocs_conception=blocs_a_apporter(conception),
+        conception_source=pointeur_de_conception(conception))
     panneaux, kwc = intention.cible.nb_panneaux, intention.cible.kwc
     resultat = appliquer(None, intention)
     devis = resultat['devis']
@@ -590,7 +591,7 @@ def intention_auto_residentielle(decision, *, lead, company, taux_tva, user=None
                                  remise_globale=Decimal('0'), origine=None,
                                  structure_produit_id=None, structure_type=None,
                                  imposition=None, completer_etude=None, entrees=None,
-                                 blocs_conception=None):
+                                 blocs_conception=None, conception_source=None):
     """ADEV133 (D-ACAL-97) — l'``IntentionDevis`` du devis automatique
     résidentiel, arrêtée depuis la décision pure : le LAYOUT lu par le lecteur
     du calepinage 3D (``_calepinage_range`` : le tracé du client est une donnée
@@ -599,7 +600,8 @@ def intention_auto_residentielle(decision, *, lead, company, taux_tva, user=None
     ``Devis.overrides``). Partagée avec le moteur unique ; aucune écriture.
     ``entrees`` : l'``EntreesMoteur`` déjà lu (QJR42), sinon lu ici.
     ``blocs_conception`` (ADEV142) : les blocs de la conception rangée,
-    apportés à la création sous ce que le calepinage apporte lui-même."""
+    apportés à la création sous ce que le calepinage apporte lui-même ;
+    ``conception_source`` (ADEV143) : le pointeur posé sur le devis créé."""
     from apps.ventes.models import Devis
 
     layout = decision.layout
@@ -628,7 +630,7 @@ def intention_auto_residentielle(decision, *, lead, company, taux_tva, user=None
         phase=decision.phase, hors_reseau=decision.hors_reseau,
         # STKCAT8 — la MÊME structure que le contrôle à blanc.
         structure_produit_id=structure_produit_id, structure_type=structure_type,
-        completer_etude=completer_etude)
+        completer_etude=completer_etude, conception_source=conception_source)
 
 
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────
@@ -642,6 +644,7 @@ from apps.ventes.domain.pipeline import (  # noqa: E402 — fin de module (anti-
     CibleDevis,
     IntentionDevis,
     appliquer,
+    pointeur_de_conception,
 )
 from apps.ventes.domain.etape_composer import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     COMPOSITION_AVEC,
