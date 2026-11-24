@@ -11,12 +11,17 @@ from .contrats import types as T
 
 
 class ErreurActeSerializer(serializers.Serializer):
+    """400 : ``{detail, code}`` pour un corps ou une langue refusés par la vue ;
+    un 400 posé par l'enveloppe commune (JSON illisible, paramètre inconnu)
+    n'a pas de ``code`` — d'où ``code`` facultatif. Le 404 n'est jamais déclaré
+    ici : il vient du crochet ``ErreurApi`` (``{detail, error}``)."""
     detail = serializers.CharField()
-    code = serializers.CharField()
+    code = serializers.CharField(required=False)
 
 
 class RefusActeSerializer(serializers.Serializer):
-    """409 : refus d'état, toujours ``{detail, code}``."""
+    """409 : refus d'état, toujours ``{detail, code}`` (contract_samples
+    ``exemple_409_*``) ; ``error`` (enveloppe commune) s'y ajoute."""
     detail = serializers.CharField()
     code = serializers.CharField()
 
@@ -94,8 +99,12 @@ class ContenuActeSerializer(serializers.Serializer):
     type = serializers.ChoiceField(choices=T.TYPES)
     variante = serializers.CharField(allow_blank=True)
     reference = serializers.CharField()
-    echeancier = serializers.ListField(child=serializers.DictField())
-    articles = serializers.ListField(child=serializers.DictField())
+    #: Brouillon vivant (``True``) ; absent d'un contenu figé à l'émission.
+    brouillon = serializers.BooleanField(required=False)
+    echeancier = serializers.ListField(child=serializers.DictField(),
+                                       required=False)
+    articles = serializers.ListField(child=serializers.DictField(),
+                                     required=False)
 
 
 class DetailActeSerializer(ResumeActeSerializer):
@@ -106,6 +115,9 @@ class DetailActeSerializer(ResumeActeSerializer):
     langue = serializers.ChoiceField(choices=T.LANGUES)
     langues = serializers.ListField(child=serializers.CharField())
     sections_personnalisees = serializers.ListField(
+        child=serializers.CharField())
+    #: Clés des articles dont le texte a été personnalisé.
+    articles_personnalises = serializers.ListField(
         child=serializers.CharField())
     sections_modifiables = serializers.ListField(
         child=serializers.CharField())
