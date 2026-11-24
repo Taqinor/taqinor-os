@@ -222,6 +222,9 @@ function ResultatPompage({ donnees, saisie, majPompage }) {
                 <div>Couverture au mois critique : {t.couverture_mois_critique_pct} %</div>
               )}
               {!t.prix_connu && <div className="text-warning">prix à renseigner</div>}
+              {/* T4-V2-003 — le motif SERVI de la taille (pompe qui ne délivre
+                  pas le débit à cette HMT, pompe sans courbe…) se lit sur sa carte. */}
+              {t.motif && <div className="text-warning" data-testid={`taille-motif-${t.cle}`}>{t.motif}</div>}
             </button>
           ))}
           {(d.tailles_omises || []).map((t) => (
