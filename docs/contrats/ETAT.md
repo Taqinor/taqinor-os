@@ -1,7 +1,9 @@
 # Dossier contractuel — état du chantier L5 (à lire EN PREMIER pour reprendre)
 
 Dernière écriture : 24/11/2026 par la session du poste fixe · branche `claude/erp-lead-contracts-e2fdab`.
-**Prochaine action unique** : voir « Déroulé » — la dernière ligne non cochée.
+**Prochaine action unique** : lire le résultat de la CI de la PR Taqinor/taqinor-os#1539 sur la tête
+`57ce4b8135` (ou plus récente), corriger ses rouges, puis jouer la **vérification finale** (ci-dessous) AVANT tout
+merge. Rien n'est mergé.
 
 ## Demande et cadre
 - Demande de Reda, mot pour mot (24/11/2026) : « i want you make ERP create 4 contract for each lead signed was we
@@ -46,17 +48,50 @@ Références nommées : le devis premium (`/proposal`, même famille visuelle), 
 - [x] Tour 0 — éclaireurs (flux chantier et paiements, moteur PDF et écrans, droit marocain, mise en page de
       contrats), conception, contrat d'API, moteur de rendu et textes par défaut, PDF réels tirés et regardés
       (contrat 6 p., PV 2 p., clôture 4 p.). Décision de Reda en cours de route : pas de rétractation à domicile.
-- [ ] Construction — lane serveur (modèles, contenu, services, récepteurs, API, tests) et lane écran (onglet,
-      éditeur, signature), pliées sur cette branche.
-- [ ] Vérification finale — un rejeu sur l'écran réel (pile privée), une critique adverse du diff serveur, puis le
-      premier merge.
+- [x] Construction — trois lanes pliées sur la branche (tête `57ce4b8135`) : **serveur** (modèles
+      `ActeContractuel` / `ModeleActe`, contenu fr / ar, cycle de vie, récepteurs, API, commande `apercu_actes`,
+      tests), **écran** (onglet « Contrats », éditeur par section, signature sur place et sur papier, bascule
+      français / arabe), **arabe** (`textes_ar.py`, table de libellés, rendu de droite à gauche ; sortie française
+      identique avant / après). Groupe CTC coché dans `docs/PLAN.md`, carte du code et empreintes à jour.
+      Exécuté : rendu réel des cinq actes en français (6 / 2 / 2 / 2 / 4 pages) et en arabe (6 / 2 / 2 / 2 / 3),
+      `test_contrats_rendu` 5/5 et `test_contrats_arabe` 10/10 dans un conteneur hors réseau, vitest de l'écran
+      22/22, gardes hôte `backend-lint-fast` et les huit gardes de `stage-names` rejouées vertes.
+      **Écrit mais PAS encore exécuté** : `test_contrats_dossier.py` et `test_contrats_api.py` (base de test
+      nécessaire — la CI les joue).
+- [ ] CI de la PR #1539 — première tête complète poussée le 24/11 ; rouges à corriger avant la suite.
+- [ ] Vérification finale (jamais sautée, rien ne merge sans elle) — (1) un rejeu sur l'écran réel : accepter un
+      devis → cinq brouillons → modifier → émettre → signer → PDF signé en GED, en français et en arabe, à 390 px
+      et à 1440 px ; (2) une critique adverse neuve du diff serveur `git diff 854d2adfe..HEAD -- backend/`
+      (isolation société, argent, perte de données, récepteur d'acceptation) ; (3) une relecture neuve de la
+      traduction arabe contre le français (retraduction). Puis le premier merge par la file.
 - [ ] Tours de relecteurs (après le 28/11) — fonction / simplicité / beauté × téléphone / bureau, K1 à K11.
 - [ ] Seconde vague — signature par lien (cérémonie GED existante), version arabe, raccourci depuis la fiche lead.
 - [ ] Étage « vraie vie » — Reda : deploy, un vrai chantier, relecture d'un juriste (`juridique.md` § 4).
 
-## Décisions posées à Reda (24/11) — réponses recopiées ici puis dans `docs/claude-memory/`
-Voir `conception.md` § 8 pour les choix pris seul et § 9 pour les décisions de Reda (24/11 : pas de rétractation
-à domicile). Questions posées : date limite d'exécution par défaut, retard de paiement, version arabe.
+## Décisions de Reda (24/11) — recopiées dans `docs/claude-memory/contrats-chantier-decisions.md`
+Pas de rétractation à domicile ; date limite 30 jours ; pas de pénalité chiffrée ; signataire nommé ; version arabe
+dans cette vague. Choix pris seul : `conception.md` § 8.
+
+## Quota et points de contrôle
+| Point | Quota hebdo (tous modèles / Fable) | Décision |
+|---|---|---|
+| départ | 82 % / 74 % | tour 0 + construction |
+| fin du tour 0 (4 éclaireurs, conception, PDF réels) | 84 % / 78 % | lancer les lanes |
+| lanes en cours (écran pliée) | 87 % / 82 % | continuer |
+| trois lanes pliées, tête poussée | **90 % / 85 %** | **ligne d'arrêt de la méthode atteinte** : état écrit, arrêt ; la suite sur décision de Reda ou après la remise à zéro du 28/11 |
+
+Mesuré (à recaler) : tour 0 ≈ 2 points, construction à trois lanes (deux opus, une sonnet) + orchestration ≈ 6
+points. Régime MIXTE annoncé : tenu.
+
+## Instrument de revue (pile privée `ctr`)
+Conteneurs `ctr-django` (127.0.0.1:8017), `ctr-redis`, `ctr-minio`, réseau `ctr-net`, base `ctr` dans le Postgres
+partagé (créée vide, migration complète lancée le 24/11 — à finir par `migrate` : la migration `documents.0001`
+est arrivée après son démarrage). Contrôle du tour 0 : « instrument sur » le 24/11 (seule exception : `GPG_KEY`,
+empreinte publique posée par l'image Python). Front compilé une fois (`frontend/dist`), jonction
+`frontend/node_modules` posée dans ce worktree (à retirer par `cmd /c rmdir`, jamais `rm -rf`). Scripts :
+scratchpad de la session, dossier `instrument/` (`lancer.sh`, `controle.sh`) — à réécrire depuis le gabarit si le
+scratchpad a été vidé. **À démonter si la reprise n'est pas immédiate** : `docker rm -f ctr-django ctr-redis
+ctr-minio`, `docker network rm ctr-net`, `DROP DATABASE ctr`.
 
 ## Où sont les choses
 - Spécification : `docs/contrats/conception.md` · droit : `docs/contrats/juridique.md` · contrat d'API :
