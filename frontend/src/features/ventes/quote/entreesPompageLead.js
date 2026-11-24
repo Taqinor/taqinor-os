@@ -8,7 +8,14 @@
 //
 // Jamais recopiés : `pompe_actuelle_cv` dans un CV CIBLE (le CV du générateur
 // reste la plaque de la pompe ACTUELLE) ni `pompage_heures_jour` dans les
-// heures de pompage SOLAIRE (celles-ci ne viennent d'aucun lead).
+// heures de pompage SOLAIRE (celles-ci ne viennent d'aucun lead) — T4-U3-022 :
+// elles vont dans « Heures de pompage actuelles / jour » du besoin, leur place.
+//
+// T4-U3-022 — le BESOIN EN EAU du lead suit l'ordre du serveur
+// (`core/pompage/conception.py::besoin_retenu`, celui du devis automatique) :
+// volume déclaré (`besoin_eau_m3j`, jamais sa version DÉDUITE) ⇒ « Volume
+// déclaré » ; sinon débit × heures de la pompe actuelle ⇒ « Pompe actuelle » ;
+// sinon le débit souhaité seul (mode laissé vide, parité AGQ41).
 
 // colonne du lead → état d'écran du générateur (texte tel que tapé)
 const ECRAN_PAR_COLONNE = {
@@ -49,6 +56,16 @@ export const LIBELLES_ENTREES_LEAD = {
   pompe_actuelle_tension_v: 'Plaque : tension (V)',
   pompe_actuelle_phases: 'Plaque : phases',
   debit_forage_m3h: 'Débit d’exploitation du forage (m³/h)',
+  besoin_eau_m3j: 'Volume par jour (m³/jour)',
+  pompe_actuelle_debit_m3h: 'Débit de la pompe actuelle (m³/h)',
+  pompage_heures_jour: 'Heures de pompage actuelles / jour',
+}
+
+// T4-U3-022 — colonnes du besoin déclaré → chemin de `pompageSaisie.besoin`.
+const BESOIN_PAR_COLONNE = {
+  besoin_eau_m3j: 'besoin.volume_m3_jour',
+  pompe_actuelle_debit_m3h: 'besoin.debit_actuel_m3h',
+  pompage_heures_jour: 'besoin.heures_actuelles_jour',
 }
 
 // AGQ39 (D-AGQ-10) — colonne du lead → chemin de `pompageSaisie` (mode de
@@ -128,6 +145,11 @@ export function entreesPompageDuLead(lead) {
       if (ORIGINES_DEBIT_FORAGE.includes(e.origine)) {
         saisie['source.debit_exploitation_origine'] = e.origine
       }
+    } else if (BESOIN_PAR_COLONNE[col]) {
+      // Le volume DÉDUIT (débit × heures, `provenance: 'derive'`) n'est pas
+      // une déclaration : ses deux facteurs arrivent par leurs colonnes.
+      if (col === 'besoin_eau_m3j' && e.provenance === 'derive') continue
+      saisie[BESOIN_PAR_COLONNE[col]] = String(e.valeur)
     } else if (SAISIE_PAR_COLONNE[col]) {
       const valeur = col === 'pompe_actuelle_phases'
         ? PHASES_ECRAN[Number(e.valeur)] : String(e.valeur)
@@ -144,6 +166,11 @@ export function entreesPompageDuLead(lead) {
     })
   }
   if (provenances.length === 0) return null
+  if (saisie['besoin.volume_m3_jour']) {
+    saisie['besoin.mode'] = 'volume_declare'
+  } else if (saisie['besoin.debit_actuel_m3h'] && saisie['besoin.heures_actuelles_jour']) {
+    saisie['besoin.mode'] = 'pompe_actuelle'
+  }
   return { ecran, eco, saisie, provenances }
 }
 
