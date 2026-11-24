@@ -110,7 +110,15 @@ test('ligne_sans_produit_deux_clics', () => {
   const garde = corps.indexOf('lignesEcarteesConfirmeRef.current !== signature')
   assert.ok(garde > 0, 'la garde des deux clics vit dans handleSubmit')
   assert.ok(garde < corps.indexOf('persisterDevis()'), 'avant toute écriture')
-  assert.match(corps, /lignesEcarteesConfirmeRef\.current = signature\s*\n\s*return/)
+  // T4-U3-008 — le 1er clic n'écrit toujours rien : il arme la signature, amène
+  // le bandeau (et son bouton « … sans ces lignes ») sous les yeux, puis sort.
+  assert.match(corps, /lignesEcarteesConfirmeRef\.current = signature\s*\n\s*montrerLignesEcartees\(\)\s*\n\s*return/)
+  // …et la confirmation EXPLICITE du bandeau passe par la même garde de handleSubmit
+  // (signature des lignes écartées posée, puis handleSubmit) : jamais une écriture directe.
+  const confirmer = src.slice(src.indexOf('const confirmerSansLignesEcartees'), src.indexOf('const ouvrirConception3D'))
+  assert.match(confirmer, /lignesEcarteesConfirmeRef\.current = lignesEcartees\(lines\)/)
+  assert.match(confirmer, /return handleSubmit\(/)
+  assert.equal(/persisterDevis\(/.test(confirmer), false, 'la confirmation ne court-circuite pas handleSubmit')
   assert.match(src, /const ecartees = e\.lines \? \[\] : lignesEcartees\(lines\)/)
   const lignes = [
     { produit: '', quantite: '2', prix_unit_ttc: '0', designation: 'Câble' },

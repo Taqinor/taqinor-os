@@ -64,6 +64,11 @@ ROUTES_SONDEES = {
     # D-HYB-4 — batteries d'un brouillon C&I recomposées (``devis`` du corps).
     'etude-ci-recomposer-batteries',
     'ventes-dashboard',
+    # ADEV137 — conception rangée du lead (``<lead_id>``) et son aperçu
+    # (``lead`` du corps) : portée ``crm.selectors.leads_visibles``, 404 hors
+    # portée (refus de portée distingué de ``conception_absente`` par
+    # ``test_conception_du_lead_hors_portee``).
+    'conception-lead', 'conception-apercu',
 }
 
 #: Routes sondées dont la fuite est CONNUE et portée par une tâche ouverte :
@@ -240,7 +245,7 @@ class GardePorteeVentesTests(TestCase):
         client_hors = Client.objects.create(
             company=self.company, nom=CLIENT_HORS, prenom='Hors',
             telephone=TEL_HORS, email=EMAIL_HORS)
-        lead_hors = Lead.objects.create(
+        self.lead_hors = lead_hors = Lead.objects.create(
             company=self.company, nom=CLIENT_HORS, prenom='Hors',
             telephone=TEL_HORS, owner=self.collegue, client=client_hors)
         self.d1 = Devis.objects.create(
@@ -323,7 +328,8 @@ class GardePorteeVentesTests(TestCase):
                     non_classees.append(f'{nom} ({classe})')
                 continue
             pk = l1 if classe == 'LigneDevisViewSet' else d1
-            url = _url(motif, {'pk': pk, 'token': '0' * 32, 'chemin': 'scenario'})
+            url = _url(motif, {'pk': pk, 'token': '0' * 32, 'chemin': 'scenario',
+                               'lead_id': self.lead_hors.pk})
             detail = bool(re.search(r'<(?:\w+:)?pk>|\(\?P<pk>', motif))
             for verbe in _methodes(callback):
                 if verbe == 'get':
@@ -333,6 +339,9 @@ class GardePorteeVentesTests(TestCase):
                     charge = {'devis': d1, 'produit': self.produit.pk,
                               'designation': 'Intrus', 'quantite': '1',
                               'prix_unitaire': '1', 'remise': '0'}
+                elif nom == 'conception-apercu':
+                    # Le porteur désigné est le lead de D1 (hors portée).
+                    charge = {'lead': self.lead_hors.pk, 'entrees': {}}
                 else:
                     charge = {} if detail else designer_post
                 sondes.append((nom, verbe, url, charge))
@@ -379,6 +388,32 @@ class GardePorteeVentesTests(TestCase):
         self.assertEqual(fuites, [], '\n'.join(fuites))
         # CLAUSE PERSISTANCE — D1 relu après le balayage : identique.
         self.assertEqual(self._instantane(), avant)
+
+    def test_conception_du_lead_hors_portee(self):
+        """ADEV137 — le lead de D1 (collègue) est INTROUVABLE pour le
+        Commercial sur ``conception/<lead_id>/`` et ``conception/apercu/`` :
+        404 « Lead introuvable. » SANS ``code`` — jamais le 404
+        ``conception_absente`` (qui dit que la portée est passée). Test-du-test :
+        le propriétaire du lead (même rôle) passe la portée — GET → 404
+        ``conception_absente`` (aucune version rangée), aperçu → 400 sur le
+        champ imposé inconnu, lu APRÈS la résolution du porteur."""
+        url_lead = BASE + 'conception/%s/' % self.lead_hors.pk
+        url_apercu = BASE + 'conception/apercu/'
+        corps = {'lead': self.lead_hors.pk, 'imposes': {'champ_inconnu_adev41': 1}}
+
+        hors = self._api(self.commercial)
+        for resp in (hors.get(url_lead), hors.post(url_apercu, corps, format='json')):
+            self.assertEqual(resp.status_code, 404, resp.content[:300])
+            self.assertEqual(resp.json(), {'detail': 'Lead introuvable.'})
+            self.assertEqual(self._fuites(resp), [])
+
+        proprio = self._api(self.collegue)
+        resp = proprio.get(url_lead)
+        self.assertEqual((resp.status_code, resp.json().get('code')),
+                         (404, 'conception_absente'), resp.content[:300])
+        resp = proprio.post(url_apercu, corps, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content[:300])
+        self.assertEqual(resp.json().get('champ'), 'champ_inconnu_adev41')
 
     def test_sonde_voit_hors_portee_en_portee_all(self):
         """Test-du-test : en Directeur (portée ``all``), la liste ``devis/``

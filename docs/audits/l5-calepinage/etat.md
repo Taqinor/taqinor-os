@@ -1129,7 +1129,7 @@ contre « 82 % de votre facture » de la maquette (formulation = décision du fo
 partagés `erp-agentique-django_core-1` et `erp-agentique-fastapi_ia-1` arrêtés pour libérer la mémoire (à relancer au
 démontage).
 
-### Point du 24/11, 17 h 15 UTC (le plus récent — REPRENDRE ICI)
+### Point du 24/11, 17 h 15 UTC
 
 **Branche de lot `dev-ecrans-v2` (locale, tête `9ff02bfaa9` + ce point) — PAS encore de PR (une seule PR pour tout le lot)**
 Pliés depuis le point précédent : lane `suites-ecrans` (six correctifs d'écran, ACAL2031 cochée, ACAL2032 « code
@@ -1172,3 +1172,63 @@ articles de pompage (choix A par défaut) AVANT le tour 2 ; mise à jour de l'in
 **Constats pour le fondateur ajoutés ce jour (production intacte)** : le catalogue copié porte de nombreux articles
 actifs sans prix de vente (11 pompes à courbe, disjoncteurs, fusibles, parafoudres, sectionneurs, lignes de
 prestation C&I) et six articles au nom aléatoire (« DFASFA », « dsafsdg », « feaf », « gsdg », « sdadg », « SDVGDS »).
+
+### Point du 24/11, 19 h 05 UTC (le plus récent — REPRENDRE ICI)
+
+**PR Taqinor/taqinor-os#1552** — branche `dev-ecrans-v2`, tête `127a07c862` : LE lot du jour (écrans v2, correctifs
+du tour 1 des lanes B4 / site-facture / agri, moteur étape 2 + relectures, portée du rôle). Auto-fix allumé, fusion
+automatique demandée. **CI ROUGE, 1er tour — liste complète, à corriger en UN seul push :**
+- gardes : ENF22 (`except` silencieux `conception/service.py::_champ_du_modele`, `::_nombre`), ENF23 (deux `skipTest`
+  non signés, `HORS_PARITE`), PACT159 (promesse en prose `frontend/.../calc/totaux.js` ~185), QJR6 (deux écritures en
+  bloc d'`etude_params` dans `conception/moteur.py` — objets en mémoire) ;
+- tests backend (4 sur ~27 000) : cliquet des imports ventes → calepinage (24 pour 22), `test_qjr243` (site d'appel
+  déplacé par l'extraction), grep « prix carburant » sur un commentaire de `crm/serializers.py:1252`, garde de portée
+  ADEV41 (deux routes de la conception à classer « sondées ») ;
+- api-fuzz : `POST ventes/conception/apercu/` refuse un corps conforme au schéma déclaré ;
+- front : `web-build-test` (4 tests de tracé : le correctif B4-005 « fermer au premier coin » avale probablement un
+  4e coin — régression de code à corriger, pas les tests), `frontend-static` (classe héritée du site public ;
+  golden de geste « deux clics »), vitest (bandeau « 7,1 kWc », golden DOM de `ToitureDesign`), **e2e : la page
+  « Démarrage rapide » est BLANCHE** (`/calepinage/reglages/demarrage-rapide`).
+- Deux correcteurs EN VOL, chacun dans son worktree isolé, branches `fix/ci-gardes` (gardes + tests backend + fuzz)
+  et `fix/ci-front` (front + page blanche), parties de `origin/dev-ecrans-v2`. À leur retour : plier les deux dans
+  `dev-ecrans-v2` (le worktree de l'orchestrateur est sur `dev-lot2` : `git checkout dev-ecrans-v2` d'abord),
+  régénérer l'instantané OpenAPI si un composant nommé est ajouté (commande docker du point 17 h 15), pousser UNE
+  fois, puis refondre `dev-ecrans-v2` dans `dev-lot2`.
+- Journaux de la CI : `%TEMP%/ci1552-*.log`.
+
+**Lot suivant — branche locale `dev-lot2`** (PAS poussée) = `dev-ecrans-v2` + étape 3 du moteur (ADEV139, 140, 141,
+145, 146, ALEA70, corrections m1-m5 — cochées) + lane `calepinage-serveur` (5 correctifs). **L'étape 3 n'est PAS
+fusionnable en l'état** (relecture adverse indépendante) : BLOQUANT — un effacement légal (loi 09-08) est défait
+5 s après par la relance en file (l'ancien GPS réécrit dans `ConceptionLead` et au chatter) ; MAJEURS — calepinage
+archivé = conception figée pour toujours ; `remplir_conceptions --appliquer` écrase une version née d'une pose ; le
+remplissage écrit une ligne d'historique sur chaque lead et relance l'horloge de conservation ; ALEA70 change ce
+que l'utilisateur peut faire (lead en kWh sans facture = prêt) sans décision enregistrée.
+- EN VOL : lane moteur E4 relancée en worktree ISOLÉ (branche `lane/moteur-e4b`, base de test `x4`) : d'abord ces
+  corrections, puis ADEV142 + 143 ensemble, 144, 147, 148. Arbitrage de l'orchestrateur pour le C&I et l'agricole :
+  la conception rangée ne porte pas les lignes du devis ; le devis automatique rejoue UNE décision pour composer
+  les lignes et copie les blocs rangés (même moteur, mêmes entrées, parité testée) — à dire au fondateur.
+- Leçon : une lane lancée SANS `isolation: worktree` peut se voir refuser l'écriture dans un autre worktree ;
+  lancer les lanes qui écrivent avec `isolation: worktree` puis `git checkout -b <branche> dev-lot2`.
+- EN VOL aussi : `atelier-suite` (worktree `agent-a60912ec13b275fe4`, 11 constats + 4 suites du serveur) et
+  `front-suite` (worktree `agent-a18395c2b0287c783` : relevé au téléphone hors ligne, liste des leads, SAV,
+  acceptation, garde kWh, dialogue de ville, RIB, petits).
+
+**Test utilisateur**
+- Tour 1 TERMINÉ : 101 constats (2 S1, 30 S2, 51 S3, 18 S4), rapports `T4/tour1/U1.md` à `U4.md`, consolidation
+  `T4/tour1/consolidation.md`. La pile était saturée (quatre relecteurs + lanes) : scénarios b, c, d, f, g, h, j
+  coupés. LEÇON : deux relecteurs à la fois, pas quatre.
+- Instrument `l5t` mis à jour à 18 h 40 sur `dev-ecrans-v2@127a07c862` (gunicorn 2 × 6 fils), `SITE_URL` et
+  `VITE_PUBLIC_SITE_URL` = `http://site-public.invalid` (un relecteur avait ouvert UNE page publique de production
+  par « Ouvrir la page client » : aucune donnée envoyée, jeton local inconnu là-bas).
+- Prix d'essai posés sur la copie (19 articles de pompage, sources publiques, `T4/preremplissage.md` § 8). Restent
+  sans source : tarif de pose « Installation pompage solaire » et courbes des pompes monophasées → le devis
+  automatique agricole ne peut pas aboutir sans le fondateur.
+- Tour 2 PAS ENCORE LANCÉ (attend la fin des correcteurs de CI : ressources) : V1 = rejeu des correctifs côté
+  calepinage + scénario b ; V2 = rejeu des correctifs devis / lead / agricole + scénarios c, d ; puis agricole
+  avec prix d'essai, balayages s-w, relecteur des maquettes B5.
+
+**Décisions à porter au fondateur** (liste tenue dans `T4/tour1/consolidation.md`) + : ALEA70 (lead en kWh sans
+facture prêt à deviser — recommandé : garder) ; origines de mesure « essai / foreur » choisissables sur la fiche
+(revient sur AGR400) ; bandeau de l'atelier au nom du calepinage (revient sur ACAL1730) ; `rafraichir_etudes_du_devis`
+réécrit le bloc de dimensionnement d'un devis ENVOYÉ quand la facture du lead change (QJR5 contre D-ACAL-97) ; rôle
+Technicien : 403 sur le calepinage et le relevé ; tarif de pose du pompage ; clé de carte.

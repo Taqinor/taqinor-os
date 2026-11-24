@@ -2842,9 +2842,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     }
     if (pendingVertex) {
       const v = pendingVertex;
+      const pt = pendingVertexPt;
       pendingVertex = null;
       pendingVertexPt = null;
-      addVertex(v);
+      addVertex(v, pt); // T4-B4-005 — le point écran du clic : sur la pastille du 1ᵉʳ coin, il ferme
     }
   }
   /** Annule le sommet en attente SANS le poser (geste « terminer » : double-clic / double-tap). */
@@ -2984,9 +2985,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     clickTimer = setTimeout(() => {
       clickTimer = null;
       const v = pendingVertex;
+      const pt = pendingVertexPt;
       pendingVertex = null;
       pendingVertexPt = null;
-      if (v) addVertex(v);
+      if (v) addVertex(v, pt); // T4-B4-005 — le point écran du clic : sur la pastille du 1ᵉʳ coin, il ferme
     }, 240);
   });
   map.on('dblclick', (e) => {

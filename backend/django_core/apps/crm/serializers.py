@@ -1249,7 +1249,7 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
             raise ConflitEtat(
                 {'dossier_subvention_le': [self.MESSAGE_DATE_SUBVENTION]})
 
-    # AGR400 / T4-U3-002 — provenances pompage et date du prix carburant :
+    # AGR400 / T4-U3-002 — provenances pompage et date de la déclaration du carburant :
     # la règle vit dans ``provenances_pompage`` (fichier-mur, C20).
     def _poser_provenances_pompage(self, attrs):
         from .provenances_pompage import poser_provenances_pompage

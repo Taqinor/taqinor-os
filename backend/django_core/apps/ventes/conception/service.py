@@ -19,7 +19,7 @@ n'est lu ni écrit ici : un devis envoyé ou accepté ne bouge jamais.
 """
 from dataclasses import dataclass
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import json
 import logging
 
@@ -138,10 +138,10 @@ def _porteur(lead, company, calepinage_id, calepinage=None):
         if getattr(lead, 'company_id', None) != getattr(company, 'pk', None):
             raise ValueError('Lead hors de la société : aucune conception.')
         return lead, {'lead': lead}, None
-    from apps.calepinage.selectors import calepinage_detail
     from apps.crm.selectors import get_company_lead
+    from apps.ventes.selectors_calepinage import calepinage_de_societe
 
-    calepinage = calepinage if calepinage is not None else calepinage_detail(calepinage_id, company)
+    calepinage = calepinage if calepinage is not None else calepinage_de_societe(calepinage_id, company)
     if calepinage is None or calepinage.company_id != company.pk:
         raise ValueError('Calepinage hors de la société : aucune conception.')
     if calepinage.appel_offre_id:
@@ -267,9 +267,11 @@ def phrase_du_declencheur(lead, champs, origine, quand):
 
 
 def _champ_du_modele(lead, champ):
+    from django.core.exceptions import FieldDoesNotExist
+
     try:
         return lead._meta.get_field(champ) if lead is not None else None
-    except Exception:  # noqa: BLE001 — colonne inconnue du modèle : libellé brut (D-ENF22-BLE001)
+    except FieldDoesNotExist:  # colonne inconnue du modèle : libellé brut
         return None
 
 
@@ -302,7 +304,7 @@ def _lisible(lead, champ, valeur):
 def _nombre(valeur):
     try:
         nombre = Decimal(str(valeur))
-    except Exception:  # noqa: BLE001 — texte non numérique (D-ENF22-BLE001)
+    except (InvalidOperation, TypeError, ValueError):  # texte non numérique
         return None
     return nombre if nombre.is_finite() else None
 

@@ -441,7 +441,9 @@ export interface MapDraw {
    *  `mesureUi.ts`) sans que ce module ait à connaître ce mode. Un mode sans gestes
    *  enregistrés annonce, touche par touche, que le geste n'y est pas disponible. */
   enregistrerGestesClavier: (mode: ModeClavier, gestes: GestesAtelier) => void;
-  addVertex: (v: LngLat) => void;
+  /** `pointEcran` : le point ÉCRAN du clic qui pose ce coin (T4-B4-005 — un clic sur la pastille du 1ᵉʳ coin ferme
+   *  le tracé). Absent (clavier, appel programmatique) : le coin est posé, jamais une fermeture. */
+  addVertex: (v: LngLat, pointEcran?: { x: number; y: number } | null) => void;
   /** W92 — retire le dernier sommet posé (pendant le tracé, avant fermeture). */
   undoLastPoint: () => void;
   /** CALX90 — pose le sommet coté au clavier (longueur + cap depuis le sommet précédent).
@@ -860,22 +862,28 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     return contraindreAngle(ctx.vertices[n - 1], ctx.vertices[n - 2], v, pasAngleDeg());
   }
 
-  /** T4-B4-005 — le point tombe-t-il sur le PREMIER coin (rayon de saisie d'un sommet, en mètres au zoom courant) ? */
-  function surLePremierCoin(p: LngLat): boolean {
+  /** T4-B4-005 — un CLIC (il porte son point écran `pt`) tombe-t-il sur la pastille du PREMIER coin ? Même rayon que
+   *  la poignée de sommet que l'utilisateur voit (`VERTEX_GRAB_PX`), converti en mètres au zoom courant (convention
+   *  de `aimantTolM` / snap.ts). Sans point écran (clavier, appel programmatique) ou sans zoom lisible : jamais une
+   *  fermeture — un coin se pose comme avant. */
+  function clicSurLePremierCoin(p: LngLat, pt: { x: number; y: number } | null | undefined): boolean {
     const premier = ctx.vertices[0];
+    if (!premier || !pt) return false;
     const zoom = typeof map.getZoom === 'function' ? map.getZoom() : Number.NaN;
-    if (!premier || !Number.isFinite(zoom)) return false;
+    if (!Number.isFinite(zoom)) return false;
     const rayonM = VERTEX_GRAB_PX * metresParPixel(premier[1], zoom);
     const dx = (p[0] - premier[0]) * DEG2M * Math.cos(premier[1] * DEG2RAD);
     const dy = (p[1] - premier[1]) * DEG2M;
     return Math.hypot(dx, dy) <= rayonM;
   }
 
-  function addVertex(v: LngLat) {
+  function addVertex(v: LngLat, pointEcran?: { x: number; y: number } | null) {
     if (ctx.closed) return;
     // T4-B4-005 — recliquer le premier coin FERME le tracé : aucun sommet en double (le pan gardait 5 sommets pour
-    // 4 coins, et la saisie Longueur/Largeur — réservée aux pans à 4 côtés — restait désactivée).
-    if (ctx.vertices.length >= 3 && surLePremierCoin(v)) {
+    // 4 coins, et la saisie Longueur/Largeur — réservée aux pans à 4 côtés — restait désactivée). Seul un CLIC sur
+    // la pastille du 1ᵉʳ coin ferme (à partir de 3 coins), par le bouton « Terminer » — donc avec TOUTES ses
+    // validations (contour croisé refusé…). Un point voisin, un appel sans point écran, le clavier : un coin, comme avant.
+    if (ctx.vertices.length >= 3 && clicSurLePremierCoin(v, pointEcran)) {
       if (finishBtn && !finishBtn.disabled) finishBtn.click();
       return;
     }
