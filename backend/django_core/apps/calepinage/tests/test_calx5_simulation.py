@@ -399,6 +399,46 @@ class SiteSansEpingleTest(SimpleTestCase):
             self.assertIsNone(calepinage.resultat)
 
 
+class SiteDuLeadEnBaseTest(TestCase):
+    """T4-U1-003, le cas réel en base : la géométrie porte le centre de carte
+    par défaut, aucune épingle n'a été posée, le lead dit sa ville."""
+
+    CENTRE = {'lat': 31.789999999984182, 'lng': -7.089999999999918}
+
+    def _site(self, ville, pin):
+        from authentication.models import Company
+
+        from apps.calepinage.models import Calepinage
+        from apps.crm.models import Lead
+
+        societe = Company.objects.create(nom='T4U1003', slug='t4u1003')
+        lead = Lead.objects.create(company=societe, nom='Villa U1',
+                                   ville=ville)
+        layout = dict(LAYOUT, pin=pin)
+        calepinage = Calepinage.objects.create(
+            company=societe, lead_id=lead.pk, titre='Pose U1',
+            roof_layout=layout)
+        contexte, _meta = construire_contexte(calepinage, materiel=MATERIEL,
+                                              reglages=REGLAGES)
+        return contexte['site']
+
+    def test_centre_par_defaut_et_lead_a_casablanca_site_de_reference(self):
+        site = self._site('Casablanca', self.CENTRE)
+        self.assertEqual((site['lat'], site['lon']), (33.573, -7.59))
+        self.assertEqual(site['source'], 'ville_reference')
+        self.assertEqual(site['libelle'], 'Casablanca (ville de référence)')
+
+    def test_centre_par_defaut_sans_ville_aucun_point(self):
+        site = self._site('', self.CENTRE)
+        self.assertIsNone(site['lat'])
+        self.assertNotIn('source', site)
+
+    def test_epingle_posee_inchangee(self):
+        site = self._site('Casablanca', {'lat': 33.5731, 'lng': -7.5898})
+        self.assertEqual((site['lat'], site['lon']), (33.5731, -7.5898))
+        self.assertNotIn('source', site)
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # 3. LA CHAÎNE RÉELLE — la production est un NOMBRE, la cascade est complète
 # ═══════════════════════════════════════════════════════════════════════════

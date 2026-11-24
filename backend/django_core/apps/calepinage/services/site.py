@@ -116,7 +116,7 @@ __all__ = [
     'fuseau_du_site', 'decalage_utc_minutes',
     # T4-U1-003 — jamais un point par défaut anonyme.
     'CENTRES_CARTE_PAR_DEFAUT', 'SOURCE_VILLE_REFERENCE', 'point_par_defaut',
-    'site_de_reference', 'point_du_site', 'site_dit',
+    'site_de_reference', 'epingle_posee', 'point_du_site', 'site_dit',
 ]
 
 
@@ -566,14 +566,15 @@ def site_de_reference(ville):
     }
 
 
-def point_du_site(document, lire_geo):
-    """``(lat, lon, reference)`` du site d'un calepinage — T4-U1-003.
+def epingle_posee(document, lire_geo):
+    """``(lat, lon, geo)`` — L'épingle du site, au sens unique « site posé ».
 
-    L'épingle du document prime, SAUF un centre de carte par défaut ; à
-    défaut, celle du lead (``lire_geo()`` : ``selectors.contexte_geographique``,
-    appelé seulement s'il le faut) ; sans aucune épingle, la ville de
-    référence de la ville du lead (``reference`` = ``{source,
-    ville_reference, libelle}``), sinon ``(None, None, None)``.
+    Lue par la simulation ET par ``soleil-legal`` (une seule définition) :
+    l'épingle du document prime, SAUF un centre de carte par défaut
+    (:func:`point_par_defaut`, jamais choisi par personne) ; à défaut, celle
+    du lead (``lire_geo()`` : ``selectors.contexte_geographique``, appelé
+    seulement s'il le faut, rendu dans ``geo``). ``(None, None, geo)`` quand
+    aucune épingle n'est posée.
     """
     from .valeurs import nombre
 
@@ -588,6 +589,17 @@ def point_du_site(document, lire_geo):
     lat = nombre(epingle.get('lat'))
     lon = nombre(epingle.get('lng') if epingle.get('lng') is not None
                  else epingle.get('lon'))
+    return lat, lon, geo
+
+
+def point_du_site(document, lire_geo):
+    """``(lat, lon, reference)`` du site simulé — T4-U1-003.
+
+    L'épingle posée (:func:`epingle_posee`) ; sans elle, la ville de
+    référence de la ville du lead (``reference`` = ``{source,
+    ville_reference, libelle}``), sinon ``(None, None, None)``.
+    """
+    lat, lon, geo = epingle_posee(document, lire_geo)
     if lat is not None and lon is not None:
         return lat, lon, None
     reference = site_de_reference((geo if geo is not None

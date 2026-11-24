@@ -56,6 +56,18 @@ class SoleilLegalApiTests(BaseApiCalepinage):
         self.assertEqual(r.status_code, 409)
         self.assertEqual(r.data, {'site.pin': [MOTIF_SANS_EPINGLE]})
 
+    def test_t4_u1_003_centre_de_carte_par_defaut_n_est_pas_une_epingle(self):
+        """Le toit créé sur la carte « niveau Maroc » arrive avec l'épingle au
+        centre par défaut (31,79 ; -7,09) : même refus que sans épingle (une
+        seule définition de « site posé », partagée avec la simulation)."""
+        self._profil()
+        self.cal.roof_layout = {'version': 2, 'pin': {
+            'lat': 31.789999999984182, 'lng': -7.089999999999918}}
+        self.cal.save(update_fields=['roof_layout'])
+        r = self.api.get(_url(self.cal.pk, '2026-02-11'))
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(r.data, {'site.pin': [MOTIF_SANS_EPINGLE]})
+
     def test_409_sans_fuseau_jamais_deduit_de_la_longitude(self):
         r = self.api.get(_url(self.cal.pk, '2026-02-11'))
         self.assertEqual(r.status_code, 409)
