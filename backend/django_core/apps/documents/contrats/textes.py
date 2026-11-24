@@ -1,0 +1,575 @@
+"""Textes PAR DÉFAUT des quatre actes — tous modifiables dans l'ERP.
+
+Règles de rédaction (docs/contrats/conception.md § Contenu) :
+
+- français simple, phrases courtes, « le Client » et le nom de la société ;
+- aucune clause que la loi n° 31-08 range parmi les clauses abusives : pas de
+  modification unilatérale du prix ou du matériel, pas de pénalité à sens
+  unique, pas de clause attributive de compétence, la garantie légale toujours
+  rappelée ;
+- aucun chiffre inventé : une durée, un montant ou un délai vient du devis, des
+  fiches produit, des réglages de la société ou du ``contexte`` ; ce qui manque
+  s'imprime « à préciser » et se complète dans l'ERP avant l'envoi ;
+- les références de loi citées ont été lues dans le texte consolidé officiel
+  (loi n° 31-08, Dahir des obligations et des contrats, loi n° 82-21, loi
+  n° 09-08) — la liste et les points laissés à un juriste sont dans
+  docs/contrats/juridique.md.
+
+Chaque fabrique rend des dictionnaires simples (``cle``, ``titre``,
+``paragraphes``) : ce sont eux que l'écran modifie et que le rendu imprime.
+"""
+
+A_PRECISER = 'à préciser'
+
+
+class _Contexte(dict):
+    """Un repère absent s'imprime « à préciser », jamais une accolade."""
+
+    def __missing__(self, cle):
+        return A_PRECISER
+
+
+def _f(texte, ctx):
+    return texte.format_map(_Contexte(ctx or {}))
+
+
+def _article(cle, titre, paragraphes, ctx):
+    return {'cle': cle, 'titre': _f(titre, ctx),
+            'paragraphes': [_f(p, ctx) for p in paragraphes if p]}
+
+
+# ── Acte 1 — Contrat d'installation ─────────────────────────────────────────
+
+def _contrat_installation(ctx, options):
+    consommateur = options.get('consommateur', True)
+    retractation = bool(options.get('retractation')) and consommateur
+    arts = [
+        ('objet', 'Objet du contrat', [
+            "{societe} fournit, pose et met en service chez le Client, à "
+            "l'adresse du chantier, l'installation solaire décrite au devis "
+            "{devis_reference}{devis_accepte_le}.",
+            "L'installation est livrée **clé en main** : étude, fourniture "
+            "du matériel, pose, raccordement à l'installation électrique du "
+            "Client, mise en service et explication du fonctionnement.",
+            "Le devis accepté fait partie du contrat. Si deux lignes se "
+            "contredisent, les conditions particulières l'emportent, puis le "
+            "présent contrat, puis le devis.",
+        ]),
+        ('prix', 'Prix', [
+            "Le prix est **ferme et définitif** : {total_ttc} toutes taxes "
+            "comprises ({total_lettres}). Il comprend le matériel, la pose, "
+            "la mise en service et les taxes.",
+            "Tout travail qui ne figure pas au devis fait l'objet d'un devis "
+            "complémentaire, accepté par écrit par le Client avant d'être "
+            "réalisé.",
+            "{societe} ne modifie seule ni le prix ni le matériel prévu. Si "
+            "un matériel devient indisponible, elle propose au Client un "
+            "matériel de qualité au moins équivalente, sans supplément de "
+            "prix ; le Client donne son accord par écrit.",
+        ]),
+        ('paiement', 'Paiement', [
+            "Le prix est payé en {nombre_etapes}, chacune liée à un moment "
+            "précis du chantier :",
+            "{liste_tranches}",
+            "Chaque paiement donne lieu à une facture. {modalites_paiement}",
+            ("Le contrat étant signé au domicile du Client, aucun paiement "
+             "n'est demandé ni encaissé avant la fin du délai de "
+             "rétractation de sept jours (article « Droit de "
+             "rétractation »)." if retractation else ''),
+            "La commande du matériel est lancée dès l'encaissement du "
+            "premier paiement.",
+        ]),
+        ('delais', 'Délais', [
+            "{societe} s'engage à avoir livré le matériel, posé "
+            "l'installation et l'avoir mise en service **au plus tard "
+            "{date_limite}**.",
+            "Ce délai est suspendu pendant un cas de force majeure, pendant "
+            "les intempéries qui rendent le travail en toiture dangereux, et "
+            "pendant tout retard dû au Client (accès au chantier impossible, "
+            "paiement en attente, travaux préalables à sa charge non "
+            "terminés). {societe} prévient le Client par écrit de toute "
+            "suspension.",
+            ("Si la date limite est dépassée de plus de sept jours sans cas "
+             "de force majeure, le Client peut mettre fin au contrat dans "
+             "les conditions des articles 12 à 14 de la loi n° 31-08 ; les "
+             "sommes versées lui sont alors remboursées dans les sept jours."
+             if consommateur else ''),
+        ]),
+        ('engagements_societe', "Ce que {societe} s'engage à faire", [
+            "- réaliser les travaux dans les règles de l'art et selon les "
+            "normes de sécurité électrique en vigueur ;\n"
+            "- employer un personnel qualifié et le matériel prévu au devis, "
+            "neuf et garanti par son fabricant ;\n"
+            "- protéger les lieux pendant le chantier et les laisser propres "
+            "à la fin ;\n"
+            "- remettre au Client, à la clôture, les notices, les fiches "
+            "techniques et le certificat de garantie.",
+        ]),
+        ('engagements_client', "Ce que le Client s'engage à faire", [
+            "- donner accès au chantier, à l'eau et à l'électricité aux "
+            "dates convenues ;\n"
+            "- garantir qu'il est propriétaire des lieux ou qu'il a obtenu "
+            "l'autorisation nécessaire (propriétaire, copropriété) ;\n"
+            "- signaler avant le début des travaux tout ce qui peut les "
+            "gêner ou les rendre dangereux : état de la toiture, étanchéité, "
+            "installation électrique ancienne ;\n"
+            "- payer chaque étape à la date prévue.",
+        ]),
+    ]
+    if options.get('raccorde_reseau', True):
+        arts.append(('demarches', "Démarches auprès du réseau électrique", [
+            "La loi n° 82-21 sur l'autoproduction d'électricité demande au "
+            "propriétaire d'une installation raccordée au réseau de la "
+            "déclarer au gestionnaire du réseau avant les travaux ou, selon "
+            "sa puissance, d'obtenir son accord de raccordement.",
+            "Le Client charge {societe} de préparer ce dossier et de le "
+            "suivre pour lui ; il signe les documents demandés. Les frais "
+            "éventuels du gestionnaire du réseau, dont ceux du compteur, "
+            "restent à la charge du Client.",
+        ]))
+    if options.get('reserve_propriete', True):
+        arts.append(('propriete', 'Propriété du matériel', [
+            "Le matériel reste la propriété de {societe} jusqu'au paiement "
+            "complet du prix (articles 618-21 et suivants du Dahir des "
+            "obligations et des contrats). Jusque-là, le Client ne peut ni "
+            "le vendre, ni le donner en garantie, ni le faire démonter.",
+            "Dès la livraison chez lui, le Client a la garde du matériel : "
+            "il le conserve à l'abri, dans un lieu fermé, et répond des "
+            "pertes ou des dégradations dues à son fait ou à un défaut de "
+            "surveillance.",
+        ]))
+    arts += [
+        ('reception', 'Réception des travaux', [
+            "À la fin de la pose, {societe} met l'installation en service en "
+            "présence du Client et lui en explique le fonctionnement. Les "
+            "deux parties signent alors un procès-verbal de réception.",
+            "Le Client peut y inscrire des réserves ; {societe} les lève "
+            "dans le délai noté au procès-verbal. Des réserves n'empêchent "
+            "pas d'utiliser l'installation.",
+            "La réception marque le point de départ des garanties et rend "
+            "exigible le solde du prix.",
+        ]),
+        ('garanties', 'Garanties', [
+            "Le Client bénéficie des garanties du tableau « Vos garanties » : "
+            "celles des fabricants sur le matériel, et celle de {societe} "
+            "sur son travail de pose pendant {garantie_installation}.",
+            "Pendant ces durées, {societe} est l'interlocuteur unique du "
+            "Client : elle fait le diagnostic, traite la demande auprès du "
+            "fabricant et prend à sa charge les frais de transport du "
+            "matériel garanti. La durée d'une garantie est prolongée du "
+            "temps pendant lequel le matériel est immobilisé pour "
+            "réparation. {pieces_detachees}",
+            "Ces garanties s'ajoutent à la **garantie légale** des défauts "
+            "et vices cachés (articles 549 à 575 du Dahir des obligations et "
+            "des contrats, article 65 de la loi n° 31-08), que {societe} "
+            "doit dans tous les cas.",
+            "Elles ne couvrent pas les dommages dus à une intervention ou à "
+            "une modification par un tiers, à un choc, un incendie, une "
+            "inondation, la foudre ou une surtension du réseau, ni à un "
+            "défaut d'entretien ou à un usage contraire aux notices.",
+        ]),
+        ('estimations', 'Production et économies estimées', [
+            "Les chiffres de production et d'économies du devis sont des "
+            "estimations, calculées à partir de l'ensoleillement moyen du "
+            "site et de la consommation déclarée par le Client. La "
+            "production réelle varie avec la météo, l'ombrage et l'usage : "
+            "ces chiffres ne sont pas une promesse de résultat.",
+        ]),
+    ]
+    if retractation:
+        arts.append(('retractation', 'Droit de rétractation', [
+            "Le contrat étant signé au domicile du Client, celui-ci peut y "
+            "renoncer **pendant sept jours** à compter de sa signature, "
+            "sans motif et sans frais, en renvoyant à {societe} le "
+            "formulaire détachable joint, par tout moyen qui en prouve la "
+            "réception (articles 47 à 50 de la loi n° 31-08, reproduits en "
+            "annexe).",
+            "Pendant ces sept jours, {societe} ne demande et n'encaisse "
+            "aucun paiement et ne commence aucun travail. Tout chèque ou "
+            "ordre de paiement remis est restitué au Client dans les quinze "
+            "jours qui suivent sa rétractation.",
+        ]))
+    retard = [
+        "Si un paiement n'est pas fait à la date prévue, {societe} adresse "
+        "au Client une mise en demeure écrite. Si elle reste sans effet "
+        "pendant {delai_mise_en_demeure}, {societe} peut suspendre les "
+        "travaux, puis demander en justice le paiement des sommes dues ou "
+        "la restitution du matériel resté sa propriété.",
+    ]
+    if options.get('penalite_retard_pct'):
+        retard.append(
+            "Passé ce délai, une indemnité forfaitaire de {penalite_retard} "
+            "des sommes impayées est due à {societe}, une seule fois, quels "
+            "que soient la durée du retard et le nombre de relances.")
+    arts += [
+        ('retard', 'Retard de paiement', retard),
+        ('fin_anticipee', 'Fin anticipée du contrat', [
+            "Si le Client renonce au contrat{apres_retractation} alors que "
+            "le matériel est commandé ou les travaux commencés, {societe} "
+            "conserve, sur les sommes versées et sur justificatifs, le coût "
+            "du matériel commandé pour lui et des travaux déjà réalisés ; "
+            "le reste lui est remboursé.",
+            "Si {societe} ne peut pas exécuter le contrat, elle rembourse "
+            "au Client l'intégralité des sommes versées.",
+        ]),
+        ('donnees', 'Données personnelles', [
+            "{societe} utilise les données du Client (identité, "
+            "coordonnées, adresse, consommation d'électricité) pour établir "
+            "le devis, exécuter le contrat, assurer les garanties et le "
+            "service après-vente. Elles ne sont transmises qu'à ceux qui "
+            "interviennent sur le chantier ou sur les garanties : "
+            "fabricants, gestionnaire du réseau.",
+            "Conformément à la loi n° 09-08, le Client peut accéder à ses "
+            "données, les faire rectifier ou s'opposer à leur utilisation "
+            "en écrivant à {email_societe}.{cndp}",
+        ]),
+        ('differends', 'En cas de désaccord', [
+            "Les parties cherchent d'abord une solution amiable : le Client "
+            "écrit à {societe}, qui lui répond dans les {delai_reponse}.",
+            ("À défaut d'accord, le litige est porté devant le tribunal "
+             "compétent selon la loi ; le Client peut saisir celui de son "
+             "domicile (article 202 de la loi n° 31-08)." if consommateur
+             else "À défaut d'accord, le litige est porté devant le "
+                  "tribunal compétent du siège de {societe}."),
+        ]),
+        ('dispositions_finales', 'Modifications et exemplaires', [
+            "Toute modification du contrat fait l'objet d'un avenant écrit, "
+            "signé des deux parties. Le contrat est établi en deux "
+            "exemplaires originaux, un pour chaque partie.",
+        ]),
+    ]
+    return [_article(cle, titre, par, ctx) for cle, titre, par in arts]
+
+
+# ── Acte 2 — Procès-verbal de livraison ─────────────────────────────────────
+
+def _pv_livraison(ctx, options, variante):
+    arts = [
+        ('constat', 'Ce que constate ce procès-verbal', [
+            "Le Client a vérifié, en présence de {societe}, le matériel "
+            "listé ci-dessus. Ce qui est coché est constaté ; toute "
+            "anomalie visible est notée dans les réserves.",
+            "Un défaut qui ne pouvait pas se voir à la livraison reste "
+            "couvert par les garanties du contrat.",
+        ]),
+        ('garde', 'Garde du matériel', [
+            "À compter de ce jour et jusqu'à la pose, le matériel livré est "
+            "sous la garde du Client. Il le conserve à l'abri, dans un lieu "
+            "fermé, sans l'ouvrir ni le déplacer, et répond des pertes ou "
+            "des dégradations dues à son fait ou à un défaut de "
+            "surveillance.",
+        ]),
+    ]
+    if options.get('reserve_propriete', True):
+        arts.append(('propriete', 'Propriété', [
+            "Le matériel reste la propriété de {societe} jusqu'au paiement "
+            "complet du prix, comme prévu au contrat {contrat_reference}.",
+        ]))
+    if variante == 'tranche_reglee':
+        arts.append(('paiement', 'Paiement', [
+            "Le Client a réglé à ce jour {total_regle}, soit "
+            "{pourcentage_regle} du prix. Rien n'est à payer à la "
+            "livraison.",
+            "Le solde, soit {reste_apres_livraison}, sera exigible à la "
+            "réception des travaux.",
+        ]))
+    else:
+        arts.append(('paiement', 'Paiement de cette étape', [
+            "L'étape « {libelle_tranche_livraison} » est exigible à la "
+            "livraison : {exigible_maintenant} ({exigible_lettres}) "
+            "restent à régler ce jour.",
+            "La pose est programmée dès l'encaissement de cette somme.",
+        ]))
+    return [_article(cle, titre, par, ctx) for cle, titre, par in arts]
+
+
+# ── Acte 3 — Procès-verbal de réception ─────────────────────────────────────
+
+def _pv_reception(ctx, options):
+    arts = [
+        ('portee', 'Ce que vaut la réception', [
+            "En signant, le Client reconnaît que {societe} a exécuté les "
+            "travaux prévus au contrat {contrat_reference} et au devis "
+            "{devis_reference}, et que l'installation fonctionne, sous les "
+            "seules réserves écrites ci-dessus.",
+            "L'installation est désormais sous la garde du Client. "
+            "{societe} lève les réserves éventuelles dans le délai "
+            "indiqué ; leur levée est constatée par écrit et signée du "
+            "Client.",
+            "Les garanties prévues au contrat **commencent ce jour**. Le "
+            "certificat de garantie est remis au Client avec l'acte de "
+            "clôture, au paiement du solde.",
+        ]),
+        ('solde', 'Solde du prix', [
+            "Le solde du prix, soit {exigible_maintenant} "
+            "({exigible_lettres}), est exigible à la signature du présent "
+            "procès-verbal. Le Client reconnaît devoir cette somme à "
+            "{societe}.",
+            "Si des réserves sont inscrites, les parties notent ci-dessus "
+            "la part du solde éventuellement retenue jusqu'à leur levée ; "
+            "à défaut de mention, le solde est exigible en totalité.",
+        ] + (["Jusqu'au paiement complet, le matériel reste la propriété "
+              "de {societe}."]
+             if options.get('reserve_propriete', True) else [])),
+        ('retard', 'Retard de paiement', [
+            "Si le solde n'est pas réglé, {societe} adresse au Client une "
+            "mise en demeure écrite. Si elle reste sans effet pendant "
+            "{delai_mise_en_demeure}, {societe} peut demander en justice "
+            "le paiement du solde ou la restitution du matériel resté sa "
+            "propriété.",
+        ] + (["Passé ce délai, une indemnité forfaitaire de "
+              "{penalite_retard} des sommes impayées est due à {societe}, "
+              "une seule fois."]
+             if options.get('penalite_retard_pct') else [])),
+    ]
+    return [_article(cle, titre, par, ctx) for cle, titre, par in arts]
+
+
+# ── Acte 4 — Quitus, certificat de garantie, conseils ───────────────────────
+
+def _cloture_garanties(ctx, options):
+    arts = [
+        ('contact', 'Qui appeler', [
+            "Un seul interlocuteur : le service après-vente de {societe}. "
+            "Décrivez ce que vous constatez et envoyez une photo de l'écran "
+            "de l'onduleur ou de l'application de suivi.",
+        ]),
+        ('demarche', 'Comment se passe une demande', [
+            "- {societe} fait le diagnostic, à distance ou sur place ;\n"
+            "- si une garantie joue, {societe} répare ou remplace le "
+            "matériel et traite la demande auprès du fabricant ;\n"
+            "- les frais de transport du matériel garanti sont à la charge "
+            "de {societe} ;\n"
+            "- la durée de la garantie est prolongée du temps pendant "
+            "lequel le matériel est immobilisé ; un reçu daté vous est "
+            "remis à l'enlèvement et au retour.",
+        ]),
+        ('couvert', 'Ce qui est couvert', [
+            "Les défauts du matériel, dans les conditions de chaque "
+            "fabricant, et les défauts de pose pendant la durée de la "
+            "garantie d'installation. {pieces_detachees}",
+        ]),
+        ('exclusions', "Ce qui ne l'est pas", [
+            "- une intervention ou une modification par une personne "
+            "étrangère à {societe} ;\n"
+            "- un choc, un incendie, une inondation, la foudre ou une "
+            "surtension du réseau ;\n"
+            "- un défaut d'entretien ou un usage contraire aux notices.",
+        ]),
+        ('garantie_legale', 'Vos droits dans tous les cas', [
+            "Ces garanties s'ajoutent à la **garantie légale** des défauts "
+            "et vices cachés (articles 549 à 575 du Dahir des obligations "
+            "et des contrats, article 65 de la loi n° 31-08), que "
+            "{societe} doit dans tous les cas.",
+            "En cas de désaccord sur une garantie, écrivez à {societe}, "
+            "qui vous répond dans les {delai_reponse} ; à défaut d'accord, "
+            "vous pouvez saisir le tribunal de votre domicile.",
+        ]),
+    ]
+    return [_article(cle, titre, par, ctx) for cle, titre, par in arts]
+
+
+def articles_par_defaut(type_acte, variante='', ctx=None, options=None):
+    """Les articles par défaut d'un acte. ``ctx`` : repères déjà mis en forme
+    (montants, dates, noms) ; ``options`` : ``consommateur``,
+    ``retractation``, ``reserve_propriete``, ``raccorde_reseau``,
+    ``penalite_retard_pct``."""
+    ctx = ctx or {}
+    options = options or {}
+    if type_acte == 'contrat_installation':
+        return _contrat_installation(ctx, options)
+    if type_acte == 'pv_livraison':
+        return _pv_livraison(ctx, options, variante)
+    if type_acte == 'pv_reception':
+        return _pv_reception(ctx, options)
+    if type_acte == 'cloture_garanties':
+        return _cloture_garanties(ctx, options)
+    raise ValueError(f"Type d'acte inconnu : {type_acte!r}")
+
+
+def quitus_par_defaut(ctx):
+    return [_f(p, ctx) for p in (
+        "{societe} atteste avoir reçu de {client} la somme totale de "
+        "**{total_ttc}** toutes taxes comprises ({total_lettres}), soit "
+        "l'intégralité du prix de l'installation objet du contrat "
+        "{contrat_reference}.",
+        "Le Client est quitte de toute somme envers {societe} au titre de "
+        "ce contrat. La propriété de l'ensemble du matériel lui est "
+        "définitivement acquise.",
+    )]
+
+
+# ── Constats à cocher ───────────────────────────────────────────────────────
+
+def constats_par_defaut(type_acte):
+    if type_acte == 'pv_livraison':
+        textes = (
+            "Le matériel livré correspond au devis accepté.",
+            "Les colis sont arrivés fermés et en bon état apparent.",
+            "Le matériel est entreposé à l'abri, dans un lieu fermé, à "
+            "l'adresse du chantier.",
+        )
+        return [{'texte': t, 'cochee': False} for t in textes]
+    if type_acte == 'pv_reception':
+        textes = (
+            "L'installation posée est **conforme au devis accepté et au "
+            "contrat**.",
+            "Elle a été **mise en service et fonctionne**, en ma présence.",
+            "Son fonctionnement, l'application de suivi et les gestes de "
+            "sécurité m'ont été **expliqués**.",
+            "Le chantier a été **laissé propre** ; je n'ai constaté aucun "
+            "dégât sur ma toiture ni dans ma maison.",
+        )
+        return [{'texte': t, 'cochee': False} for t in textes]
+    return []
+
+
+# ── Conseils d'usage (acte 4) ───────────────────────────────────────────────
+# Sources lues (docs/contrats/juridique.md § Conseils) : guide ADEME « Comment
+# réduire sa facture d'électricité », NSW Government « Get the most from solar
+# energy », Solar Victoria « Making the most of solar » et « Tips for winter »,
+# Home Energy Scotland « Solar panels ». Aucun pourcentage ni kilowattheure
+# n'est imprimé : les conseils disent quoi faire, pas combien on gagne.
+
+def journee_solaire(avec_batterie):
+    nuit = 'batterie, puis réseau' if avec_batterie else 'réseau'
+    return {
+        'plages': [
+            {'sorte': 'nuit', 'part': 4, 'libelle': 'Nuit', 'sous': nuit},
+            {'sorte': 'bord', 'part': 3, 'libelle': 'Matin',
+             'sous': 'la production monte'},
+            {'sorte': 'plein', 'part': 7, 'libelle': 'Milieu de journée',
+             'sous': 'le meilleur moment pour vos gros appareils'},
+            {'sorte': 'bord', 'part': 3, 'libelle': 'Fin de journée',
+             'sous': 'la production baisse'},
+            {'sorte': 'nuit', 'part': 5, 'libelle': 'Soir et nuit',
+             'sous': nuit},
+        ],
+        'legende': "Votre installation produit du lever au coucher du "
+                   "soleil, avec un maximum en milieu de journée.",
+    }
+
+
+def conseils_par_defaut(avec_batterie):
+    """``(intro, conseils)`` : le texte d'ouverture et les fiches conseil."""
+    if avec_batterie:
+        intro = ("Le jour, vos panneaux alimentent la maison et chargent la "
+                 "batterie ; le soir, la batterie prend le relais. Plus vos "
+                 "gros appareils tournent au soleil, plus la batterie reste "
+                 "pleine pour la nuit.")
+    else:
+        intro = ("Sans batterie, l'électricité solaire se consomme au moment "
+                 "où elle est produite : le bon réflexe est de faire tourner "
+                 "vos appareils quand le soleil brille.")
+    conseils = [
+        {'rubrique': 'Gros appareils',
+         'titre': 'Lancez-les en milieu de journée',
+         'texte': "Lave-linge, lave-vaisselle, sèche-linge, four : "
+                  "faites-les tourner quand la production est la plus "
+                  "forte. Le départ différé le fait pour vous quand vous "
+                  "êtes absent."},
+        {'rubrique': 'Un à la fois',
+         'titre': 'Étalez plutôt que cumuler',
+         'texte': "Deux gros appareils en même temps peuvent dépasser ce "
+                  "que les panneaux produisent : lancez la lessive le "
+                  "matin, le lave-vaisselle l'après-midi."},
+        {'rubrique': 'Eau chaude',
+         'titre': "Chauffez l'eau au soleil",
+         'texte': "Si votre chauffe-eau est électrique, réglez sa plage de "
+                  "chauffe sur le milieu de journée plutôt que la nuit."},
+        {'rubrique': 'Climatisation',
+         'titre': 'Rafraîchissez avant le soir',
+         'texte': "Faites tourner la climatisation l'après-midi, tant que "
+                  "les panneaux produisent, plutôt que de la démarrer à la "
+                  "nuit tombée."},
+    ]
+    if avec_batterie:
+        conseils.append(
+            {'rubrique': 'Batterie',
+             'titre': 'Gardez-la pour le soir',
+             'texte': "Elle se charge le jour avec le surplus et vous "
+                      "alimente après le coucher du soleil : évitez de la "
+                      "vider l'après-midi avec de gros appareils."})
+    else:
+        conseils.append(
+            {'rubrique': 'Veilles',
+             'titre': 'Éteignez ce qui ne sert pas la nuit',
+             'texte': "La nuit, tout ce qui reste branché est payé au "
+                      "réseau : coupez les appareils en veille avec une "
+                      "multiprise à interrupteur."})
+    conseils.append(
+        {'rubrique': 'Suivi',
+         'titre': "Regardez l'application une fois par semaine",
+         'texte': "Elle montre ce que vous produisez et ce que vous "
+                  "consommez : c'est le meilleur moyen de caler vos "
+                  "habitudes sur le soleil et de repérer une anomalie."})
+    return intro, conseils
+
+
+def entretien_par_defaut():
+    return [
+        "- un coup d'œil à l'application chaque semaine : une production à "
+        "zéro en plein jour doit nous être signalée ;\n"
+        "- des panneaux propres : un rinçage à l'eau claire quand la "
+        "poussière s'accumule ;\n"
+        "- rien ne doit faire de l'ombre aux panneaux : antenne, linge, "
+        "végétation qui pousse ;\n"
+        "- avant tout travail sur la toiture ou sur l'installation "
+        "électrique, prévenez-nous.",
+    ]
+
+
+# ── Annexe : rétractation (démarchage à domicile, loi n° 31-08) ─────────────
+# Texte des articles 47 à 50, que l'article 48 impose de reproduire « de façon
+# apparente » dans le contrat signé au domicile. Recopié du texte consolidé
+# publié par le ministère de la Justice (adala.justice.gov.ma).
+
+ARTICLES_47_A_50 = [
+    ('Article 47',
+     "Les opérations de démarchage visées à l'article 45 doivent faire "
+     "l'objet d'un contrat écrit dont un exemplaire doit être remis au "
+     "consommateur au moment de la conclusion de ce contrat, lequel doit "
+     "comprendre un formulaire détachable destiné à faciliter l'exercice de "
+     "la faculté de rétractation dans les conditions prévues à l'article 49.\n"
+     "Tous les exemplaires du contrat doivent être signés et datés de la "
+     "main même du consommateur.\n"
+     "Les mentions que doit contenir le formulaire visé au 1er alinéa sont "
+     "fixées par voie réglementaire."),
+    ('Article 48',
+     "Le contrat doit, à peine de nullité, mentionner :\n"
+     "A. le nom ou la dénomination sociale du fournisseur et du "
+     "démarcheur ;\n"
+     "B. l'adresse du fournisseur ;\n"
+     "C. l'adresse du lieu de conclusion du contrat ;\n"
+     "D. la désignation précise de la nature et des caractéristiques des "
+     "produits, biens ou services ;\n"
+     "E. les conditions d'exécution du contrat, notamment les modalités et "
+     "le délai de livraison des biens, produits ou d'exécution de la "
+     "prestation de services, le prix global à payer ;\n"
+     "F. les modalités de paiement ;\n"
+     "G. la faculté de rétractation prévue à l'article 49 ci-dessous, ainsi "
+     "que les conditions d'exercice de cette faculté et, de façon "
+     "apparente, le texte intégral des articles 47 à 50 de la présente loi.\n"
+     "Ce contrat ne peut comporter aucune clause attributive de compétence."),
+    ('Article 49',
+     "Par dérogation aux dispositions de l'article 604 du dahir du 9 "
+     "ramadan 1331 (12 août 1913) formant code des obligations et des "
+     "contrats, dans un délai maximum de sept jours à compter de la "
+     "commande ou de l'engagement d'achat, le consommateur a la faculté de "
+     "se rétracter par l'envoi du formulaire détachable au contrat par "
+     "n'importe quel moyen justifiant la réception.\n"
+     "Toute clause du contrat par laquelle le consommateur abandonne son "
+     "droit de se rétracter est nulle et non avenue.\n"
+     "Le présent article ne s'applique pas aux contrats conclus dans les "
+     "conditions prévues à l'article 51."),
+    ('Article 50',
+     "Avant l'expiration du délai de rétractation prévu à l'article 49, nul "
+     "ne peut exiger ou obtenir du consommateur, directement ou "
+     "indirectement, à quelque titre ni sous quelque forme que ce soit une "
+     "contrepartie quelconque ni aucun engagement ni effectuer des "
+     "prestations de services de quelque nature que ce soit.\n"
+     "En outre, les engagements ou ordres de paiement ne doivent pas être "
+     "exécutés avant l'expiration du délai prévu à l'article 49 et doivent "
+     "être retournés au consommateur dans les quinze jours qui suivent sa "
+     "rétractation."),
+]

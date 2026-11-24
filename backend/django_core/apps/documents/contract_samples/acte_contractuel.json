@@ -1,0 +1,1567 @@
+{
+  "endpoint": "GET /api/django/documents/actes/<int:pk>/",
+  "endpoints": {
+    "GET /api/django/documents/actes/<int:pk>/": "le détail ci-dessous (résumé + contenu)",
+    "PATCH /api/django/documents/actes/<int:pk>/": "corps_patch ; rend le détail ; 409 acte_fige hors brouillon",
+    "GET /api/django/documents/actes/<int:pk>/pdf/": "le PDF (application/pdf) — vivant pour un brouillon, figé ensuite",
+    "POST /api/django/documents/actes/<int:pk>/emettre/": "fige le contenu et le PDF (statut emis) ; rend le détail",
+    "POST /api/django/documents/actes/<int:pk>/rouvrir/": "retour au brouillon d'un acte émis non signé ; rend le détail",
+    "POST /api/django/documents/actes/<int:pk>/signer/": "corps_signer ; signature tracée sur place ; rend le détail",
+    "POST /api/django/documents/actes/<int:pk>/marquer-signe/": "corps_marquer_signe ; signature sur papier ; rend le détail",
+    "POST /api/django/documents/actes/<int:pk>/modele/": "enregistre les sections texte de l'acte comme modèle de la société (Directeur) ; rend {detail}"
+  },
+  "pourquoi": "Un acte du dossier contractuel et son CONTENU : le dictionnaire que l'écran modifie et que le PDF imprime, à l'identique. Pour un brouillon le contenu est recalculé à chaque lecture (données vivantes de la vente + modèle de la société + personnalisations de l'acte) ; à l'émission il est figé avec le PDF. Aucun montant n'est modifiable ici : l'échéancier se corrige sur la vente (PUT ventes/devis/<id>/echeancier/), l'acte n'en personnalise que les mots (echeancier_textes).",
+  "corps_patch": {
+    "surcharges": {
+      "conditions_particulieres": "Le Client fournit l'accès à la terrasse.",
+      "articles": [
+        {
+          "cle": "delais",
+          "titre": "Délais",
+          "paragraphes": [
+            "Texte modifié."
+          ]
+        }
+      ],
+      "echeancier_textes": {
+        "acompte": {
+          "exigibilite": "À la signature",
+          "note": ""
+        }
+      },
+      "options": {
+        "retractation": false
+      },
+      "delais": null
+    },
+    "_note": "Chaque clé REMPLACE sa section ; null la remet au défaut. « articles » : liste complète OU articles isolés fusionnés par cle. Clés hors sections_modifiables → 400 contenu_invalide."
+  },
+  "corps_signer": {
+    "signature_client": "data:image/png;base64,iVBORw0KGgo=",
+    "signataire_nom": "Youssef EL EXEMPLE",
+    "lieu": "Bouskoura"
+  },
+  "corps_marquer_signe": {
+    "signataire_nom": "Youssef EL EXEMPLE",
+    "signe_le": "2026-11-24"
+  },
+  "exemple": {
+    "id": 31,
+    "type": "contrat_installation",
+    "variante": "",
+    "rang": 1,
+    "titre": "Contrat d'installation",
+    "reference": "CTR-2026-11-0007",
+    "statut": "brouillon",
+    "version": 1,
+    "personnalise": false,
+    "ecarte": false,
+    "emis_le": null,
+    "signe_le": null,
+    "signataire_nom": "",
+    "mode_signature": "",
+    "avertissements": [],
+    "peut_modifier": true,
+    "peut_emettre": true,
+    "peut_signer": false,
+    "peut_rouvrir": false,
+    "document_ged_id": null,
+    "chantier": {
+      "id": 12,
+      "reference": "CHT-2026-11-0007"
+    },
+    "sections_personnalisees": [
+      "conditions_particulieres"
+    ],
+    "sections_modifiables": [
+      "titre",
+      "lieu",
+      "date_document",
+      "societe",
+      "conclusion",
+      "delais",
+      "echeancier_textes",
+      "paiement",
+      "garanties",
+      "articles",
+      "conditions_particulieres",
+      "options"
+    ],
+    "contenu": {
+      "schema": 1,
+      "langue": "fr",
+      "version": 1,
+      "titre": "",
+      "lieu": "Bouskoura",
+      "date_document": "2026-11-24",
+      "societe": {
+        "nom": "TAQINOR",
+        "nom_court": "TAQINOR",
+        "forme_juridique": "SARL",
+        "capital_social": "100 000 DH",
+        "adresse": "12, rue des Exemples, 20000 Casablanca",
+        "rc": "000000",
+        "ice": "000000000000000",
+        "identifiant_fiscal": "00000000",
+        "patente": "00000000",
+        "cnss": "0000000",
+        "telephone": "+212 6 00 00 00 00",
+        "email": "contact@exemple.ma",
+        "site_web": "exemple.ma",
+        "representant": "",
+        "logo_uri": ""
+      },
+      "client": {
+        "type": "particulier",
+        "nom_complet": "M. Youssef EL EXEMPLE",
+        "cin": "BK000000",
+        "ice": "",
+        "rc": "",
+        "if_fiscal": "",
+        "representant": "",
+        "adresse": "Villa 7, lotissement Exemple, Bouskoura",
+        "telephone": "+212 6 11 22 33 44",
+        "email": "client@exemple.ma"
+      },
+      "chantier": {
+        "id": 12,
+        "reference": "CHT-2026-11-0007",
+        "adresse": "Villa 7, lotissement Exemple, Bouskoura",
+        "ville": "Bouskoura",
+        "devis_reference": "DEV-202611-0042",
+        "devis_accepte_le": "2026-11-20",
+        "type_installation": "residentiel"
+      },
+      "systeme": {
+        "puissance_kwc": "5.90",
+        "resume": "10 panneaux 590 Wc · onduleur hybride 6 kW · batterie 10 kWh",
+        "avec_batterie": true,
+        "lignes": [
+          {
+            "designation": "Panneau photovoltaïque TOPCon 590 Wc",
+            "marque": "Canadian Solar",
+            "quantite": "10",
+            "numeros_serie": ""
+          },
+          {
+            "designation": "Onduleur hybride monophasé 6 kW",
+            "marque": "Deye",
+            "quantite": "1",
+            "numeros_serie": ""
+          },
+          {
+            "designation": "Batterie lithium LFP 5 kWh",
+            "marque": "Dyness",
+            "quantite": "2",
+            "numeros_serie": ""
+          },
+          {
+            "designation": "Structure de pose aluminium, toiture terrasse",
+            "marque": "",
+            "quantite": "1",
+            "numeros_serie": ""
+          },
+          {
+            "designation": "Coffrets de protection AC/DC et câblage",
+            "marque": "",
+            "quantite": "1",
+            "numeros_serie": ""
+          }
+        ]
+      },
+      "prix": {
+        "total_ttc": "98500.00",
+        "total_ht": "86160.71",
+        "tva": "12339.29",
+        "total_en_lettres": "quatre-vingt-dix-huit mille cinq cents dirhams"
+      },
+      "conditions_particulieres": "Le Client fournit l'accès à la terrasse par l'escalier intérieur. Les panneaux sont posés sur la partie sud de la terrasse, comme sur le plan joint au devis.",
+      "signatures": {
+        "client": null,
+        "societe": null
+      },
+      "options": {
+        "consommateur": true,
+        "retractation": true,
+        "reserve_propriete": true,
+        "raccorde_reseau": true,
+        "penalite_retard_pct": null
+      },
+      "type": "contrat_installation",
+      "variante": "",
+      "reference": "CTR-2026-11-0007",
+      "echeancier": [
+        {
+          "cle": "acompte",
+          "libelle": "Acompte",
+          "pourcentage": "30",
+          "montant_ttc": "29550.00",
+          "exigibilite": "Après le délai de 7 jours",
+          "statut": "a_venir",
+          "regle_le": null,
+          "note": ""
+        },
+        {
+          "cle": "materiel",
+          "libelle": "Livraison du matériel",
+          "pourcentage": "60",
+          "montant_ttc": "59100.00",
+          "exigibilite": "À la livraison chez vous",
+          "statut": "a_venir",
+          "regle_le": null,
+          "note": ""
+        },
+        {
+          "cle": "solde",
+          "libelle": "Solde",
+          "pourcentage": "10",
+          "montant_ttc": "9850.00",
+          "exigibilite": "À la réception des travaux",
+          "statut": "a_venir",
+          "regle_le": null,
+          "note": ""
+        }
+      ],
+      "garanties": [
+        {
+          "cle": "panneaux_performance",
+          "designation": "Panneaux — performance",
+          "duree_mois": 360,
+          "duree_libelle": "",
+          "garant": "Garantie du fabricant",
+          "detail": "Puissance garantie dans le temps, selon la courbe du fabricant.",
+          "fin": null
+        },
+        {
+          "cle": "panneaux_produit",
+          "designation": "Panneaux — produit",
+          "duree_mois": 144,
+          "duree_libelle": "",
+          "garant": "Garantie du fabricant",
+          "detail": "Défauts de fabrication et de matériaux.",
+          "fin": null
+        },
+        {
+          "cle": "batterie",
+          "designation": "Batterie",
+          "duree_mois": 84,
+          "duree_libelle": "",
+          "garant": "Garantie du fabricant",
+          "detail": "Défauts de fabrication, dans les conditions du fabricant.",
+          "fin": null
+        },
+        {
+          "cle": "onduleur",
+          "designation": "Onduleur",
+          "duree_mois": 60,
+          "duree_libelle": "",
+          "garant": "Garantie du fabricant",
+          "detail": "Défauts de fabrication ; réparation ou remplacement.",
+          "fin": null
+        },
+        {
+          "cle": "installation",
+          "designation": "Installation",
+          "duree_mois": 24,
+          "duree_libelle": "",
+          "garant": "Garantie TAQINOR",
+          "detail": "Pose, câblage et raccordements réalisés par nos équipes.",
+          "fin": null
+        }
+      ],
+      "articles": [
+        {
+          "cle": "objet",
+          "titre": "Objet du contrat",
+          "paragraphes": [
+            "TAQINOR fournit, pose et met en service chez le Client, à l'adresse du chantier, l'installation solaire décrite au devis DEV-202611-0042, que le Client a accepté le 20 novembre 2026.",
+            "L'installation est livrée **clé en main** : étude, fourniture du matériel, pose, raccordement à l'installation électrique du Client, mise en service et explication du fonctionnement.",
+            "Le devis accepté fait partie du contrat. Si deux lignes se contredisent, les conditions particulières l'emportent, puis le présent contrat, puis le devis."
+          ]
+        },
+        {
+          "cle": "prix",
+          "titre": "Prix",
+          "paragraphes": [
+            "Le prix est **ferme et définitif** : 98 500,00 DH toutes taxes comprises (quatre-vingt-dix-huit mille cinq cents dirhams). Il comprend le matériel, la pose, la mise en service et les taxes.",
+            "Tout travail qui ne figure pas au devis fait l'objet d'un devis complémentaire, accepté par écrit par le Client avant d'être réalisé.",
+            "TAQINOR ne modifie seule ni le prix ni le matériel prévu. Si un matériel devient indisponible, elle propose au Client un matériel de qualité au moins équivalente, sans supplément de prix ; le Client donne son accord par écrit."
+          ]
+        },
+        {
+          "cle": "paiement",
+          "titre": "Paiement",
+          "paragraphes": [
+            "Le prix est payé en trois étapes, chacune liée à un moment précis du chantier :",
+            "- **30 %**, soit 29 550,00 DH, à la fin du délai de rétractation de sept jours ;\n- **60 %**, soit 59 100,00 DH, à la livraison du matériel chez le Client ;\n- **10 %**, soit 9 850,00 DH, à la réception des travaux.",
+            "Chaque paiement donne lieu à une facture. Paiement par virement ou par chèque à l'ordre de TAQINOR. RIB : 000 000 0000000000000000 00 — Banque Exemple.",
+            "Le contrat étant signé au domicile du Client, aucun paiement n'est demandé ni encaissé avant la fin du délai de rétractation de sept jours (article « Droit de rétractation »).",
+            "La commande du matériel est lancée dès l'encaissement du premier paiement."
+          ]
+        },
+        {
+          "cle": "delais",
+          "titre": "Délais",
+          "paragraphes": [
+            "TAQINOR s'engage à avoir livré le matériel, posé l'installation et l'avoir mise en service **au plus tard le 23 janvier 2027**.",
+            "Ce délai est suspendu pendant un cas de force majeure, pendant les intempéries qui rendent le travail en toiture dangereux, et pendant tout retard dû au Client (accès au chantier impossible, paiement en attente, travaux préalables à sa charge non terminés). TAQINOR prévient le Client par écrit de toute suspension.",
+            "Si la date limite est dépassée de plus de sept jours sans cas de force majeure, le Client peut mettre fin au contrat dans les conditions des articles 12 à 14 de la loi n° 31-08 ; les sommes versées lui sont alors remboursées dans les sept jours."
+          ]
+        },
+        {
+          "cle": "engagements_societe",
+          "titre": "Ce que TAQINOR s'engage à faire",
+          "paragraphes": [
+            "- réaliser les travaux dans les règles de l'art et selon les normes de sécurité électrique en vigueur ;\n- employer un personnel qualifié et le matériel prévu au devis, neuf et garanti par son fabricant ;\n- protéger les lieux pendant le chantier et les laisser propres à la fin ;\n- remettre au Client, à la clôture, les notices, les fiches techniques et le certificat de garantie."
+          ]
+        },
+        {
+          "cle": "engagements_client",
+          "titre": "Ce que le Client s'engage à faire",
+          "paragraphes": [
+            "- donner accès au chantier, à l'eau et à l'électricité aux dates convenues ;\n- garantir qu'il est propriétaire des lieux ou qu'il a obtenu l'autorisation nécessaire (propriétaire, copropriété) ;\n- signaler avant le début des travaux tout ce qui peut les gêner ou les rendre dangereux : état de la toiture, étanchéité, installation électrique ancienne ;\n- payer chaque étape à la date prévue."
+          ]
+        },
+        {
+          "cle": "demarches",
+          "titre": "Démarches auprès du réseau électrique",
+          "paragraphes": [
+            "La loi n° 82-21 sur l'autoproduction d'électricité demande au propriétaire d'une installation raccordée au réseau de la déclarer au gestionnaire du réseau avant les travaux ou, selon sa puissance, d'obtenir son accord de raccordement.",
+            "Le Client charge TAQINOR de préparer ce dossier et de le suivre pour lui ; il signe les documents demandés. Les frais éventuels du gestionnaire du réseau, dont ceux du compteur, restent à la charge du Client."
+          ]
+        },
+        {
+          "cle": "propriete",
+          "titre": "Propriété du matériel",
+          "paragraphes": [
+            "Le matériel reste la propriété de TAQINOR jusqu'au paiement complet du prix (articles 618-21 et suivants du Dahir des obligations et des contrats). Jusque-là, le Client ne peut ni le vendre, ni le donner en garantie, ni le faire démonter.",
+            "Dès la livraison chez lui, le Client a la garde du matériel : il le conserve à l'abri, dans un lieu fermé, et répond des pertes ou des dégradations dues à son fait ou à un défaut de surveillance."
+          ]
+        },
+        {
+          "cle": "reception",
+          "titre": "Réception des travaux",
+          "paragraphes": [
+            "À la fin de la pose, TAQINOR met l'installation en service en présence du Client et lui en explique le fonctionnement. Les deux parties signent alors un procès-verbal de réception.",
+            "Le Client peut y inscrire des réserves ; TAQINOR les lève dans le délai noté au procès-verbal. Des réserves n'empêchent pas d'utiliser l'installation.",
+            "La réception marque le point de départ des garanties et rend exigible le solde du prix."
+          ]
+        },
+        {
+          "cle": "garanties",
+          "titre": "Garanties",
+          "paragraphes": [
+            "Le Client bénéficie des garanties du tableau « Vos garanties » : celles des fabricants sur le matériel, et celle de TAQINOR sur son travail de pose pendant 2 ans.",
+            "Pendant ces durées, TAQINOR est l'interlocuteur unique du Client : elle fait le diagnostic, traite la demande auprès du fabricant et prend à sa charge les frais de transport du matériel garanti. La durée d'une garantie est prolongée du temps pendant lequel le matériel est immobilisé pour réparation. Les pièces détachées nécessaires sont disponibles pendant toute la durée des garanties.",
+            "Ces garanties s'ajoutent à la **garantie légale** des défauts et vices cachés (articles 549 à 575 du Dahir des obligations et des contrats, article 65 de la loi n° 31-08), que TAQINOR doit dans tous les cas.",
+            "Elles ne couvrent pas les dommages dus à une intervention ou à une modification par un tiers, à un choc, un incendie, une inondation, la foudre ou une surtension du réseau, ni à un défaut d'entretien ou à un usage contraire aux notices."
+          ]
+        },
+        {
+          "cle": "estimations",
+          "titre": "Production et économies estimées",
+          "paragraphes": [
+            "Les chiffres de production et d'économies du devis sont des estimations, calculées à partir de l'ensoleillement moyen du site et de la consommation déclarée par le Client. La production réelle varie avec la météo, l'ombrage et l'usage : ces chiffres ne sont pas une promesse de résultat."
+          ]
+        },
+        {
+          "cle": "retractation",
+          "titre": "Droit de rétractation",
+          "paragraphes": [
+            "Le contrat étant signé au domicile du Client, celui-ci peut y renoncer **pendant sept jours** à compter de sa signature, sans motif et sans frais, en renvoyant à TAQINOR le formulaire détachable joint, par tout moyen qui en prouve la réception (articles 47 à 50 de la loi n° 31-08, reproduits en annexe).",
+            "Pendant ces sept jours, TAQINOR ne demande et n'encaisse aucun paiement et ne commence aucun travail. Tout chèque ou ordre de paiement remis est restitué au Client dans les quinze jours qui suivent sa rétractation."
+          ]
+        },
+        {
+          "cle": "retard",
+          "titre": "Retard de paiement",
+          "paragraphes": [
+            "Si un paiement n'est pas fait à la date prévue, TAQINOR adresse au Client une mise en demeure écrite. Si elle reste sans effet pendant huit jours, TAQINOR peut suspendre les travaux, puis demander en justice le paiement des sommes dues ou la restitution du matériel resté sa propriété."
+          ]
+        },
+        {
+          "cle": "fin_anticipee",
+          "titre": "Fin anticipée du contrat",
+          "paragraphes": [
+            "Si le Client renonce au contrat après le délai de rétractation alors que le matériel est commandé ou les travaux commencés, TAQINOR conserve, sur les sommes versées et sur justificatifs, le coût du matériel commandé pour lui et des travaux déjà réalisés ; le reste lui est remboursé.",
+            "Si TAQINOR ne peut pas exécuter le contrat, elle rembourse au Client l'intégralité des sommes versées."
+          ]
+        },
+        {
+          "cle": "donnees",
+          "titre": "Données personnelles",
+          "paragraphes": [
+            "TAQINOR utilise les données du Client (identité, coordonnées, adresse, consommation d'électricité) pour établir le devis, exécuter le contrat, assurer les garanties et le service après-vente. Elles ne sont transmises qu'à ceux qui interviennent sur le chantier ou sur les garanties : fabricants, gestionnaire du réseau.",
+            "Conformément à la loi n° 09-08, le Client peut accéder à ses données, les faire rectifier ou s'opposer à leur utilisation en écrivant à contact@exemple.ma."
+          ]
+        },
+        {
+          "cle": "differends",
+          "titre": "En cas de désaccord",
+          "paragraphes": [
+            "Les parties cherchent d'abord une solution amiable : le Client écrit à TAQINOR, qui lui répond dans les quinze jours.",
+            "À défaut d'accord, le litige est porté devant le tribunal compétent selon la loi ; le Client peut saisir celui de son domicile (article 202 de la loi n° 31-08)."
+          ]
+        },
+        {
+          "cle": "dispositions_finales",
+          "titre": "Modifications et exemplaires",
+          "paragraphes": [
+            "Toute modification du contrat fait l'objet d'un avenant écrit, signé des deux parties. Le contrat est établi en deux exemplaires originaux, un pour chaque partie."
+          ]
+        }
+      ],
+      "delais": {
+        "resume": "Au plus tard le 23 janvier 2027",
+        "detail": "Livraison, pose et mise en service comprises.",
+        "date_limite": "2027-01-23"
+      },
+      "paiement": {
+        "modalites": "Paiement par virement ou par chèque à l'ordre de TAQINOR. RIB : 000 000 0000000000000000 00 — Banque Exemple."
+      },
+      "conclusion": {
+        "conseiller": "Salma EXEMPLE",
+        "a_domicile": true,
+        "lieu": "domicile du Client, Villa 7, lotissement Exemple, Bouskoura"
+      },
+      "retractation": {
+        "actif": true,
+        "jours": 7,
+        "articles": [
+          [
+            "Article 47",
+            "Les opérations de démarchage visées à l'article 45 doivent faire l'objet d'un contrat écrit dont un exemplaire doit être remis au consommateur au moment de la conclusion de ce contrat, lequel doit comprendre un formulaire détachable destiné à faciliter l'exercice de la faculté de rétractation dans les conditions prévues à l'article 49.\nTous les exemplaires du contrat doivent être signés et datés de la main même du consommateur.\nLes mentions que doit contenir le formulaire visé au 1er alinéa sont fixées par voie réglementaire."
+          ],
+          [
+            "Article 48",
+            "Le contrat doit, à peine de nullité, mentionner :\nA. le nom ou la dénomination sociale du fournisseur et du démarcheur ;\nB. l'adresse du fournisseur ;\nC. l'adresse du lieu de conclusion du contrat ;\nD. la désignation précise de la nature et des caractéristiques des produits, biens ou services ;\nE. les conditions d'exécution du contrat, notamment les modalités et le délai de livraison des biens, produits ou d'exécution de la prestation de services, le prix global à payer ;\nF. les modalités de paiement ;\nG. la faculté de rétractation prévue à l'article 49 ci-dessous, ainsi que les conditions d'exercice de cette faculté et, de façon apparente, le texte intégral des articles 47 à 50 de la présente loi.\nCe contrat ne peut comporter aucune clause attributive de compétence."
+          ],
+          [
+            "Article 49",
+            "Par dérogation aux dispositions de l'article 604 du dahir du 9 ramadan 1331 (12 août 1913) formant code des obligations et des contrats, dans un délai maximum de sept jours à compter de la commande ou de l'engagement d'achat, le consommateur a la faculté de se rétracter par l'envoi du formulaire détachable au contrat par n'importe quel moyen justifiant la réception.\nToute clause du contrat par laquelle le consommateur abandonne son droit de se rétracter est nulle et non avenue.\nLe présent article ne s'applique pas aux contrats conclus dans les conditions prévues à l'article 51."
+          ],
+          [
+            "Article 50",
+            "Avant l'expiration du délai de rétractation prévu à l'article 49, nul ne peut exiger ou obtenir du consommateur, directement ou indirectement, à quelque titre ni sous quelque forme que ce soit une contrepartie quelconque ni aucun engagement ni effectuer des prestations de services de quelque nature que ce soit.\nEn outre, les engagements ou ordres de paiement ne doivent pas être exécutés avant l'expiration du délai prévu à l'article 49 et doivent être retournés au consommateur dans les quinze jours qui suivent sa rétractation."
+          ]
+        ]
+      }
+    }
+  },
+  "exemple_pv_livraison_reste_a_regler": {
+    "id": 32,
+    "type": "pv_livraison",
+    "variante": "reste_a_regler",
+    "rang": 2,
+    "titre": "Livraison du matériel — reste à régler",
+    "reference": "LIV-2026-11-0007",
+    "statut": "brouillon",
+    "version": 1,
+    "personnalise": false,
+    "ecarte": false,
+    "emis_le": null,
+    "signe_le": null,
+    "signataire_nom": "",
+    "mode_signature": "",
+    "avertissements": [
+      "La tranche « Livraison du matériel » n'est pas encore réglée : 59 100,00 DH restent à encaisser."
+    ],
+    "peut_modifier": true,
+    "peut_emettre": true,
+    "peut_signer": false,
+    "peut_rouvrir": false,
+    "document_ged_id": null,
+    "chantier": {
+      "id": 12,
+      "reference": "CHT-2026-11-0007"
+    },
+    "sections_personnalisees": [],
+    "sections_modifiables": [
+      "titre",
+      "lieu",
+      "date_document",
+      "livraison",
+      "constats",
+      "reserves",
+      "echeancier_textes",
+      "paiement",
+      "articles",
+      "conditions_particulieres",
+      "options"
+    ],
+    "contenu": {
+      "schema": 1,
+      "langue": "fr",
+      "version": 1,
+      "titre": "",
+      "lieu": "Bouskoura",
+      "date_document": "2026-12-15",
+      "societe": {
+        "nom": "TAQINOR",
+        "nom_court": "TAQINOR",
+        "forme_juridique": "SARL",
+        "capital_social": "100 000 DH",
+        "adresse": "12, rue des Exemples, 20000 Casablanca",
+        "rc": "000000",
+        "ice": "000000000000000",
+        "identifiant_fiscal": "00000000",
+        "patente": "00000000",
+        "cnss": "0000000",
+        "telephone": "+212 6 00 00 00 00",
+        "email": "contact@exemple.ma",
+        "site_web": "exemple.ma",
+        "representant": "",
+        "logo_uri": ""
+      },
+      "client": {
+        "type": "particulier",
+        "nom_complet": "M. Youssef EL EXEMPLE",
+        "cin": "BK000000",
+        "ice": "",
+        "rc": "",
+        "if_fiscal": "",
+        "representant": "",
+        "adresse": "Villa 7, lotissement Exemple, Bouskoura",
+        "telephone": "+212 6 11 22 33 44",
+        "email": "client@exemple.ma"
+      },
+      "chantier": {
+        "id": 12,
+        "reference": "CHT-2026-11-0007",
+        "adresse": "Villa 7, lotissement Exemple, Bouskoura",
+        "ville": "Bouskoura",
+        "devis_reference": "DEV-202611-0042",
+        "devis_accepte_le": "2026-11-20",
+        "type_installation": "residentiel"
+      },
+      "systeme": {
+        "puissance_kwc": "5.90",
+        "resume": "10 panneaux 590 Wc · onduleur hybride 6 kW · batterie 10 kWh",
+        "avec_batterie": true,
+        "lignes": [
+          {
+            "designation": "Panneau photovoltaïque TOPCon 590 Wc",
+            "marque": "Canadian Solar",
+            "quantite": "10",
+            "numeros_serie": ""
+          },
+          {
+            "designation": "Onduleur hybride monophasé 6 kW",
+            "marque": "Deye",
+            "quantite": "1",
+            "numeros_serie": ""
+          },
+          {
+            "designation": "Batterie lithium LFP 5 kWh",
+            "marque": "Dyness",
+            "quantite": "2",
+            "numeros_serie": ""
+          },
+          {
+            "designation": "Structure de pose aluminium, toiture terrasse",
+            "marque": "",
+            "quantite": "1",
+            "numeros_serie": ""
+          },
+          {
+            "designation": "Coffrets de protection AC/DC et câblage",
+            "marque": "",
+            "quantite": "1",
+            "numeros_serie": ""
+          }
+        ]
+      },
+      "prix": {
+        "total_ttc": "98500.00",
+        "total_ht": "86160.71",
+        "tva": "12339.29",
+        "total_en_lettres": "quatre-vingt-dix-huit mille cinq cents dirhams"
+      },
+      "conditions_particulieres": "",
+      "signatures": {
+        "client": null,
+        "societe": null
+      },
+      "options": {
+        "consommateur": true,
+        "retractation": true,
+        "reserve_propriete": true,
+        "raccorde_reseau": true,
+        "penalite_retard_pct": null
+      },
+      "type": "pv_livraison",
+      "variante": "reste_a_regler",
+      "reference": "LIV-2026-11-0007",
+      "echeancier": [
+        {
+          "cle": "acompte",
+          "libelle": "Acompte",
+          "pourcentage": "30",
+          "montant_ttc": "29550.00",
+          "exigibilite": "À la signature",
+          "statut": "regle",
+          "regle_le": "2026-12-02",
+          "note": ""
+        },
+        {
+          "cle": "materiel",
+          "libelle": "Livraison du matériel",
+          "pourcentage": "60",
+          "montant_ttc": "59100.00",
+          "exigibilite": "À la livraison chez vous",
+          "statut": "exigible",
+          "regle_le": null,
+          "note": ""
+        },
+        {
+          "cle": "solde",
+          "libelle": "Solde",
+          "pourcentage": "10",
+          "montant_ttc": "9850.00",
+          "exigibilite": "À la réception des travaux",
+          "statut": "a_venir",
+          "regle_le": null,
+          "note": ""
+        }
+      ],
+      "livraison": {
+        "date": "2026-12-15",
+        "suite": "Pose le 18 décembre",
+        "suite_detail": "Durée prévue : 3 jours ouvrés.",
+        "avec_series": false
+      },
+      "constats": [
+        {
+          "texte": "Le matériel livré correspond au devis accepté.",
+          "cochee": false
+        },
+        {
+          "texte": "Les colis sont arrivés fermés et en bon état apparent.",
+          "cochee": false
+        },
+        {
+          "texte": "Le matériel est entreposé à l'abri, dans un lieu fermé, à l'adresse du chantier.",
+          "cochee": false
+        }
+      ],
+      "reserves": [],
+      "paiement": {
+        "total_regle": "29550.00",
+        "pourcentage_regle": "30",
+        "exigible_maintenant": "59100.00",
+        "exigible_en_lettres": "cinquante-neuf mille cent dirhams",
+        "restera_ensuite": "9850.00",
+        "reste_a_regler": "68950.00",
+        "modalites": "Paiement par virement ou par chèque à l'ordre de TAQINOR. RIB : 000 000 0000000000000000 00 — Banque Exemple."
+      },
+      "articles": [
+        {
+          "cle": "constat",
+          "titre": "Ce que constate ce procès-verbal",
+          "paragraphes": [
+            "Le Client a vérifié, en présence de TAQINOR, le matériel listé ci-dessus. Ce qui est coché est constaté ; toute anomalie visible est notée dans les réserves.",
+            "Un défaut qui ne pouvait pas se voir à la livraison reste couvert par les garanties du contrat."
+          ]
+        },
+        {
+          "cle": "garde",
+          "titre": "Garde du matériel",
+          "paragraphes": [
+            "À compter de ce jour et jusqu'à la pose, le matériel livré est sous la garde du Client. Il le conserve à l'abri, dans un lieu fermé, sans l'ouvrir ni le déplacer, et répond des pertes ou des dégradations dues à son fait ou à un défaut de surveillance."
+          ]
+        },
+        {
+          "cle": "propriete",
+          "titre": "Propriété",
+          "paragraphes": [
+            "Le matériel reste la propriété de TAQINOR jusqu'au paiement complet du prix, comme prévu au contrat CTR-2026-11-0007."
+          ]
+        },
+        {
+          "cle": "paiement",
+          "titre": "Paiement de cette étape",
+          "paragraphes": [
+            "L'étape « Livraison du matériel » est exigible à la livraison : 59 100,00 DH (cinquante-neuf mille cent dirhams) restent à régler ce jour.",
+            "La pose est programmée dès l'encaissement de cette somme."
+          ]
+        }
+      ]
+    }
+  },
+  "exemple_pv_livraison_tranche_reglee": {
+    "id": 33,
+    "type": "pv_livraison",
+    "variante": "tranche_reglee",
+    "rang": 2,
+    "titre": "Livraison du matériel — 90 % réglés",
+    "reference": "LIV-2026-11-0007",
+    "statut": "brouillon",
+    "version": 1,
+    "personnalise": false,
+    "ecarte": false,
+    "emis_le": null,
+    "signe_le": null,
+    "signataire_nom": "",
+    "mode_signature": "",
+    "avertissements": [
+      "L'ERP n'a enregistré que 29 550,00 DH de paiements : cette version suppose 88 650,00 DH réglés."
+    ],
+    "peut_modifier": true,
+    "peut_emettre": true,
+    "peut_signer": false,
+    "peut_rouvrir": false,
+    "document_ged_id": null,
+    "chantier": {
+      "id": 12,
+      "reference": "CHT-2026-11-0007"
+    },
+    "sections_personnalisees": [],
+    "sections_modifiables": [
+      "titre",
+      "lieu",
+      "date_document",
+      "livraison",
+      "constats",
+      "reserves",
+      "echeancier_textes",
+      "paiement",
+      "articles",
+      "conditions_particulieres",
+      "options"
+    ],
+    "contenu": {
+      "schema": 1,
+      "langue": "fr",
+      "version": 1,
+      "titre": "",
+      "lieu": "Bouskoura",
+      "date_document": "2026-12-15",
+      "societe": {
+        "nom": "TAQINOR",
+        "nom_court": "TAQINOR",
+        "forme_juridique": "SARL",
+        "capital_social": "100 000 DH",
+        "adresse": "12, rue des Exemples, 20000 Casablanca",
+        "rc": "000000",
+        "ice": "000000000000000",
+        "identifiant_fiscal": "00000000",
+        "patente": "00000000",
+        "cnss": "0000000",
+        "telephone": "+212 6 00 00 00 00",
+        "email": "contact@exemple.ma",
+        "site_web": "exemple.ma",
+        "representant": "",
+        "logo_uri": ""
+      },
+      "client": {
+        "type": "particulier",
+        "nom_complet": "M. Youssef EL EXEMPLE",
+        "cin": "BK000000",
+        "ice": "",
+        "rc": "",
+        "if_fiscal": "",
+        "representant": "",
+        "adresse": "Villa 7, lotissement Exemple, Bouskoura",
+        "telephone": "+212 6 11 22 33 44",
+        "email": "client@exemple.ma"
+      },
+      "chantier": {
+        "id": 12,
+        "reference": "CHT-2026-11-0007",
+        "adresse": "Villa 7, lotissement Exemple, Bouskoura",
+        "ville": "Bouskoura",
+        "devis_reference": "DEV-202611-0042",
+        "devis_accepte_le": "2026-11-20",
+        "type_installation": "residentiel"
+      },
+      "systeme": {
+        "puissance_kwc": "5.90",
+        "resume": "10 panneaux 590 Wc · onduleur hybride 6 kW · batterie 10 kWh",
+        "avec_batterie": true,
+        "lignes": [
+          {
+            "designation": "Panneau photovoltaïque TOPCon 590 Wc",
+            "marque": "Canadian Solar",
+            "quantite": "10",
+            "numeros_serie": ""
+          },
+          {
+            "designation": "Onduleur hybride monophasé 6 kW",
+            "marque": "Deye",
+            "quantite": "1",
+            "numeros_serie": ""
+          },
+          {
+            "designation": "Batterie lithium LFP 5 kWh",
+            "marque": "Dyness",
+            "quantite": "2",
+            "numeros_serie": ""
+          },
+          {
+            "designation": "Structure de pose aluminium, toiture terrasse",
+            "marque": "",
+            "quantite": "1",
+            "numeros_serie": ""
+          },
+          {
+            "designation": "Coffrets de protection AC/DC et câblage",
+            "marque": "",
+            "quantite": "1",
+            "numeros_serie": ""
+          }
+        ]
+      },
+      "prix": {
+        "total_ttc": "98500.00",
+        "total_ht": "86160.71",
+        "tva": "12339.29",
+        "total_en_lettres": "quatre-vingt-dix-huit mille cinq cents dirhams"
+      },
+      "conditions_particulieres": "",
+      "signatures": {
+        "client": null,
+        "societe": null
+      },
+      "options": {
+        "consommateur": true,
+        "retractation": true,
+        "reserve_propriete": true,
+        "raccorde_reseau": true,
+        "penalite_retard_pct": null
+      },
+      "type": "pv_livraison",
+      "variante": "tranche_reglee",
+      "reference": "LIV-2026-11-0007",
+      "echeancier": [
+        {
+          "cle": "acompte",
+          "libelle": "Acompte",
+          "pourcentage": "30",
+          "montant_ttc": "29550.00",
+          "exigibilite": "À la signature",
+          "statut": "regle",
+          "regle_le": "2026-12-02",
+          "note": ""
+        },
+        {
+          "cle": "materiel",
+          "libelle": "Livraison du matériel",
+          "pourcentage": "60",
+          "montant_ttc": "59100.00",
+          "exigibilite": "À la livraison chez vous",
+          "statut": "regle",
+          "regle_le": "2026-12-15",
+          "note": ""
+        },
+        {
+          "cle": "solde",
+          "libelle": "Solde",
+          "pourcentage": "10",
+          "montant_ttc": "9850.00",
+          "exigibilite": "À la réception des travaux",
+          "statut": "a_venir",
+          "regle_le": null,
+          "note": ""
+        }
+      ],
+      "livraison": {
+        "date": "2026-12-15",
+        "suite": "Pose le 18 décembre",
+        "suite_detail": "Durée prévue : 3 jours ouvrés.",
+        "avec_series": false
+      },
+      "constats": [
+        {
+          "texte": "Le matériel livré correspond au devis accepté.",
+          "cochee": false
+        },
+        {
+          "texte": "Les colis sont arrivés fermés et en bon état apparent.",
+          "cochee": false
+        },
+        {
+          "texte": "Le matériel est entreposé à l'abri, dans un lieu fermé, à l'adresse du chantier.",
+          "cochee": false
+        }
+      ],
+      "reserves": [],
+      "paiement": {
+        "total_regle": "88650.00",
+        "pourcentage_regle": "90",
+        "exigible_maintenant": "0.00",
+        "exigible_en_lettres": "",
+        "restera_ensuite": "9850.00",
+        "reste_a_regler": "9850.00",
+        "modalites": "Paiement par virement ou par chèque à l'ordre de TAQINOR. RIB : 000 000 0000000000000000 00 — Banque Exemple."
+      },
+      "articles": [
+        {
+          "cle": "constat",
+          "titre": "Ce que constate ce procès-verbal",
+          "paragraphes": [
+            "Le Client a vérifié, en présence de TAQINOR, le matériel listé ci-dessus. Ce qui est coché est constaté ; toute anomalie visible est notée dans les réserves.",
+            "Un défaut qui ne pouvait pas se voir à la livraison reste couvert par les garanties du contrat."
+          ]
+        },
+        {
+          "cle": "garde",
+          "titre": "Garde du matériel",
+          "paragraphes": [
+            "À compter de ce jour et jusqu'à la pose, le matériel livré est sous la garde du Client. Il le conserve à l'abri, dans un lieu fermé, sans l'ouvrir ni le déplacer, et répond des pertes ou des dégradations dues à son fait ou à un défaut de surveillance."
+          ]
+        },
+        {
+          "cle": "propriete",
+          "titre": "Propriété",
+          "paragraphes": [
+            "Le matériel reste la propriété de TAQINOR jusqu'au paiement complet du prix, comme prévu au contrat CTR-2026-11-0007."
+          ]
+        },
+        {
+          "cle": "paiement",
+          "titre": "Paiement",
+          "paragraphes": [
+            "Le Client a réglé à ce jour 88 650,00 DH, soit 90 % du prix. Rien n'est à payer à la livraison.",
+            "Le solde, soit 9 850,00 DH, sera exigible à la réception des travaux."
+          ]
+        }
+      ]
+    }
+  },
+  "exemple_pv_reception": {
+    "id": 34,
+    "type": "pv_reception",
+    "variante": "",
+    "rang": 3,
+    "titre": "Réception des travaux",
+    "reference": "REC-2026-11-0007",
+    "statut": "brouillon",
+    "version": 1,
+    "personnalise": false,
+    "ecarte": false,
+    "emis_le": null,
+    "signe_le": null,
+    "signataire_nom": "",
+    "mode_signature": "",
+    "avertissements": [],
+    "peut_modifier": true,
+    "peut_emettre": true,
+    "peut_signer": false,
+    "peut_rouvrir": false,
+    "document_ged_id": null,
+    "chantier": {
+      "id": 12,
+      "reference": "CHT-2026-11-0007"
+    },
+    "sections_personnalisees": [],
+    "sections_modifiables": [
+      "titre",
+      "lieu",
+      "date_document",
+      "reception",
+      "constats",
+      "reserves",
+      "echeancier_textes",
+      "paiement",
+      "articles",
+      "conditions_particulieres",
+      "options"
+    ],
+    "contenu": {
+      "schema": 1,
+      "langue": "fr",
+      "version": 1,
+      "titre": "",
+      "lieu": "Bouskoura",
+      "date_document": "2026-12-21",
+      "societe": {
+        "nom": "TAQINOR",
+        "nom_court": "TAQINOR",
+        "forme_juridique": "SARL",
+        "capital_social": "100 000 DH",
+        "adresse": "12, rue des Exemples, 20000 Casablanca",
+        "rc": "000000",
+        "ice": "000000000000000",
+        "identifiant_fiscal": "00000000",
+        "patente": "00000000",
+        "cnss": "0000000",
+        "telephone": "+212 6 00 00 00 00",
+        "email": "contact@exemple.ma",
+        "site_web": "exemple.ma",
+        "representant": "",
+        "logo_uri": ""
+      },
+      "client": {
+        "type": "particulier",
+        "nom_complet": "M. Youssef EL EXEMPLE",
+        "cin": "BK000000",
+        "ice": "",
+        "rc": "",
+        "if_fiscal": "",
+        "representant": "",
+        "adresse": "Villa 7, lotissement Exemple, Bouskoura",
+        "telephone": "+212 6 11 22 33 44",
+        "email": "client@exemple.ma"
+      },
+      "chantier": {
+        "id": 12,
+        "reference": "CHT-2026-11-0007",
+        "adresse": "Villa 7, lotissement Exemple, Bouskoura",
+        "ville": "Bouskoura",
+        "devis_reference": "DEV-202611-0042",
+        "devis_accepte_le": "2026-11-20",
+        "type_installation": "residentiel"
+      },
+      "systeme": {
+        "puissance_kwc": "5.90",
+        "resume": "10 panneaux 590 Wc · onduleur hybride 6 kW · batterie 10 kWh",
+        "avec_batterie": true,
+        "lignes": [
+          {
+            "designation": "Panneau photovoltaïque TOPCon 590 Wc",
+            "marque": "Canadian Solar",
+            "quantite": "10",
+            "numeros_serie": ""
+          },
+          {
+            "designation": "Onduleur hybride monophasé 6 kW",
+            "marque": "Deye",
+            "quantite": "1",
+            "numeros_serie": ""
+          },
+          {
+            "designation": "Batterie lithium LFP 5 kWh",
+            "marque": "Dyness",
+            "quantite": "2",
+            "numeros_serie": ""
+          },
+          {
+            "designation": "Structure de pose aluminium, toiture terrasse",
+            "marque": "",
+            "quantite": "1",
+            "numeros_serie": ""
+          },
+          {
+            "designation": "Coffrets de protection AC/DC et câblage",
+            "marque": "",
+            "quantite": "1",
+            "numeros_serie": ""
+          }
+        ]
+      },
+      "prix": {
+        "total_ttc": "98500.00",
+        "total_ht": "86160.71",
+        "tva": "12339.29",
+        "total_en_lettres": "quatre-vingt-dix-huit mille cinq cents dirhams"
+      },
+      "conditions_particulieres": "",
+      "signatures": {
+        "client": null,
+        "societe": null
+      },
+      "options": {
+        "consommateur": true,
+        "retractation": true,
+        "reserve_propriete": true,
+        "raccorde_reseau": true,
+        "penalite_retard_pct": null
+      },
+      "type": "pv_reception",
+      "variante": "",
+      "reference": "REC-2026-11-0007",
+      "echeancier": [
+        {
+          "cle": "acompte",
+          "libelle": "Acompte",
+          "pourcentage": "30",
+          "montant_ttc": "29550.00",
+          "exigibilite": "À la signature",
+          "statut": "regle",
+          "regle_le": "2026-12-02",
+          "note": ""
+        },
+        {
+          "cle": "materiel",
+          "libelle": "Livraison du matériel",
+          "pourcentage": "60",
+          "montant_ttc": "59100.00",
+          "exigibilite": "À la livraison chez vous",
+          "statut": "regle",
+          "regle_le": "2026-12-15",
+          "note": ""
+        },
+        {
+          "cle": "solde",
+          "libelle": "Solde",
+          "pourcentage": "10",
+          "montant_ttc": "9850.00",
+          "exigibilite": "À la réception des travaux",
+          "statut": "exigible",
+          "regle_le": null,
+          "note": ""
+        }
+      ],
+      "reception": {
+        "date_mise_en_service": "2026-12-21",
+        "prononcee": false,
+        "delai_levee_reserves": "15 jours"
+      },
+      "constats": [
+        {
+          "texte": "L'installation posée est **conforme au devis accepté et au contrat**.",
+          "cochee": true
+        },
+        {
+          "texte": "Elle a été **mise en service et fonctionne**, en ma présence.",
+          "cochee": true
+        },
+        {
+          "texte": "Son fonctionnement, l'application de suivi et les gestes de sécurité m'ont été **expliqués**.",
+          "cochee": true
+        },
+        {
+          "texte": "Le chantier a été **laissé propre** ; je n'ai constaté aucun dégât sur ma toiture ni dans ma maison.",
+          "cochee": true
+        }
+      ],
+      "reserves": [],
+      "paiement": {
+        "total_regle": "88650.00",
+        "pourcentage_regle": "90",
+        "exigible_maintenant": "9850.00",
+        "exigible_en_lettres": "neuf mille huit cent cinquante dirhams",
+        "restera_ensuite": "0.00",
+        "reste_a_regler": "9850.00",
+        "engagement": "Le Client reconnaît devoir cette somme à TAQINOR au titre du solde du prix.",
+        "modalites": "Paiement par virement ou par chèque à l'ordre de TAQINOR. RIB : 000 000 0000000000000000 00 — Banque Exemple."
+      },
+      "articles": [
+        {
+          "cle": "portee",
+          "titre": "Ce que vaut la réception",
+          "paragraphes": [
+            "En signant, le Client reconnaît que TAQINOR a exécuté les travaux prévus au contrat CTR-2026-11-0007 et au devis DEV-202611-0042, et que l'installation fonctionne, sous les seules réserves écrites ci-dessus.",
+            "L'installation est désormais sous la garde du Client. TAQINOR lève les réserves éventuelles dans le délai indiqué ; leur levée est constatée par écrit et signée du Client.",
+            "Les garanties prévues au contrat **commencent ce jour**. Le certificat de garantie est remis au Client avec l'acte de clôture, au paiement du solde."
+          ]
+        },
+        {
+          "cle": "solde",
+          "titre": "Solde du prix",
+          "paragraphes": [
+            "Le solde du prix, soit 9 850,00 DH (neuf mille huit cent cinquante dirhams), est exigible à la signature du présent procès-verbal. Le Client reconnaît devoir cette somme à TAQINOR.",
+            "Si des réserves sont inscrites, les parties notent ci-dessus la part du solde éventuellement retenue jusqu'à leur levée ; à défaut de mention, le solde est exigible en totalité.",
+            "Jusqu'au paiement complet, le matériel reste la propriété de TAQINOR."
+          ]
+        },
+        {
+          "cle": "retard",
+          "titre": "Retard de paiement",
+          "paragraphes": [
+            "Si le solde n'est pas réglé, TAQINOR adresse au Client une mise en demeure écrite. Si elle reste sans effet pendant huit jours, TAQINOR peut demander en justice le paiement du solde ou la restitution du matériel resté sa propriété."
+          ]
+        }
+      ]
+    }
+  },
+  "exemple_cloture_garanties": {
+    "id": 35,
+    "type": "cloture_garanties",
+    "variante": "",
+    "rang": 4,
+    "titre": "Quitus et certificat de garantie",
+    "reference": "CLO-2026-11-0007",
+    "statut": "brouillon",
+    "version": 1,
+    "personnalise": false,
+    "ecarte": false,
+    "emis_le": null,
+    "signe_le": null,
+    "signataire_nom": "",
+    "mode_signature": "",
+    "avertissements": [
+      "Le prix n'est pas réglé en totalité : 68 950,00 DH restent dus. Le quitus ne peut pas être émis."
+    ],
+    "peut_modifier": true,
+    "peut_emettre": false,
+    "peut_signer": false,
+    "peut_rouvrir": false,
+    "document_ged_id": null,
+    "chantier": {
+      "id": 12,
+      "reference": "CHT-2026-11-0007"
+    },
+    "sections_personnalisees": [],
+    "sections_modifiables": [
+      "titre",
+      "lieu",
+      "date_document",
+      "quitus",
+      "garanties",
+      "articles",
+      "sav",
+      "conseils_intro",
+      "conseils",
+      "entretien"
+    ],
+    "contenu": {
+      "schema": 1,
+      "langue": "fr",
+      "version": 1,
+      "titre": "",
+      "lieu": "Bouskoura",
+      "date_document": "2026-12-22",
+      "societe": {
+        "nom": "TAQINOR",
+        "nom_court": "TAQINOR",
+        "forme_juridique": "SARL",
+        "capital_social": "100 000 DH",
+        "adresse": "12, rue des Exemples, 20000 Casablanca",
+        "rc": "000000",
+        "ice": "000000000000000",
+        "identifiant_fiscal": "00000000",
+        "patente": "00000000",
+        "cnss": "0000000",
+        "telephone": "+212 6 00 00 00 00",
+        "email": "contact@exemple.ma",
+        "site_web": "exemple.ma",
+        "representant": "",
+        "logo_uri": ""
+      },
+      "client": {
+        "type": "particulier",
+        "nom_complet": "M. Youssef EL EXEMPLE",
+        "cin": "BK000000",
+        "ice": "",
+        "rc": "",
+        "if_fiscal": "",
+        "representant": "",
+        "adresse": "Villa 7, lotissement Exemple, Bouskoura",
+        "telephone": "+212 6 11 22 33 44",
+        "email": "client@exemple.ma"
+      },
+      "chantier": {
+        "id": 12,
+        "reference": "CHT-2026-11-0007",
+        "adresse": "Villa 7, lotissement Exemple, Bouskoura",
+        "ville": "Bouskoura",
+        "devis_reference": "DEV-202611-0042",
+        "devis_accepte_le": "2026-11-20",
+        "type_installation": "residentiel"
+      },
+      "systeme": {
+        "puissance_kwc": "5.90",
+        "resume": "10 panneaux 590 Wc · onduleur hybride 6 kW · batterie 10 kWh",
+        "avec_batterie": true,
+        "lignes": [
+          {
+            "designation": "Panneau photovoltaïque TOPCon 590 Wc",
+            "marque": "Canadian Solar",
+            "quantite": "10",
+            "numeros_serie": ""
+          },
+          {
+            "designation": "Onduleur hybride monophasé 6 kW",
+            "marque": "Deye",
+            "quantite": "1",
+            "numeros_serie": ""
+          },
+          {
+            "designation": "Batterie lithium LFP 5 kWh",
+            "marque": "Dyness",
+            "quantite": "2",
+            "numeros_serie": ""
+          },
+          {
+            "designation": "Structure de pose aluminium, toiture terrasse",
+            "marque": "",
+            "quantite": "1",
+            "numeros_serie": ""
+          },
+          {
+            "designation": "Coffrets de protection AC/DC et câblage",
+            "marque": "",
+            "quantite": "1",
+            "numeros_serie": ""
+          }
+        ]
+      },
+      "prix": {
+        "total_ttc": "98500.00",
+        "total_ht": "86160.71",
+        "tva": "12339.29",
+        "total_en_lettres": "quatre-vingt-dix-huit mille cinq cents dirhams"
+      },
+      "conditions_particulieres": "",
+      "signatures": {
+        "client": null,
+        "societe": null
+      },
+      "options": {
+        "consommateur": true,
+        "retractation": true,
+        "reserve_propriete": true,
+        "raccorde_reseau": true,
+        "penalite_retard_pct": null
+      },
+      "type": "cloture_garanties",
+      "variante": "",
+      "reference": "CLO-2026-11-0007",
+      "reception": {
+        "date": "2026-12-21"
+      },
+      "echeancier": [
+        {
+          "cle": "acompte",
+          "libelle": "Acompte",
+          "pourcentage": "30",
+          "montant_ttc": "29550.00",
+          "exigibilite": "À la signature",
+          "statut": "regle",
+          "regle_le": "2026-12-02",
+          "note": ""
+        },
+        {
+          "cle": "materiel",
+          "libelle": "Livraison du matériel",
+          "pourcentage": "60",
+          "montant_ttc": "59100.00",
+          "exigibilite": "À la livraison chez vous",
+          "statut": "regle",
+          "regle_le": "2026-12-15",
+          "note": ""
+        },
+        {
+          "cle": "solde",
+          "libelle": "Solde",
+          "pourcentage": "10",
+          "montant_ttc": "9850.00",
+          "exigibilite": "À la réception des travaux",
+          "statut": "regle",
+          "regle_le": "2026-12-22",
+          "note": ""
+        }
+      ],
+      "paiement": {
+        "total_regle": "98500.00",
+        "pourcentage_regle": "100",
+        "exigible_maintenant": "0.00",
+        "reste_a_regler": "0.00"
+      },
+      "quitus": [
+        "TAQINOR atteste avoir reçu de M. Youssef EL EXEMPLE la somme totale de **98 500,00 DH** toutes taxes comprises (quatre-vingt-dix-huit mille cinq cents dirhams), soit l'intégralité du prix de l'installation objet du contrat CTR-2026-11-0007.",
+        "Le Client est quitte de toute somme envers TAQINOR au titre de ce contrat. La propriété de l'ensemble du matériel lui est définitivement acquise."
+      ],
+      "paiements": [
+        {
+          "date": "2026-12-02",
+          "libelle": "Acompte",
+          "mode": "Virement",
+          "montant": "29550.00"
+        },
+        {
+          "date": "2026-12-15",
+          "libelle": "Livraison du matériel",
+          "mode": "Chèque",
+          "montant": "59100.00"
+        },
+        {
+          "date": "2026-12-22",
+          "libelle": "Solde",
+          "mode": "Virement",
+          "montant": "9850.00"
+        }
+      ],
+      "garanties": [
+        {
+          "cle": "panneaux_performance",
+          "designation": "Panneaux — performance",
+          "duree_mois": 360,
+          "duree_libelle": "",
+          "garant": "Garantie du fabricant",
+          "detail": "Puissance garantie dans le temps, selon la courbe du fabricant.",
+          "fin": "2056-12-21"
+        },
+        {
+          "cle": "panneaux_produit",
+          "designation": "Panneaux — produit",
+          "duree_mois": 144,
+          "duree_libelle": "",
+          "garant": "Garantie du fabricant",
+          "detail": "Défauts de fabrication et de matériaux.",
+          "fin": "2038-12-21"
+        },
+        {
+          "cle": "batterie",
+          "designation": "Batterie",
+          "duree_mois": 84,
+          "duree_libelle": "",
+          "garant": "Garantie du fabricant",
+          "detail": "Défauts de fabrication, dans les conditions du fabricant.",
+          "fin": "2033-12-21"
+        },
+        {
+          "cle": "onduleur",
+          "designation": "Onduleur",
+          "duree_mois": 60,
+          "duree_libelle": "",
+          "garant": "Garantie du fabricant",
+          "detail": "Défauts de fabrication ; réparation ou remplacement.",
+          "fin": "2031-12-21"
+        },
+        {
+          "cle": "installation",
+          "designation": "Installation",
+          "duree_mois": 24,
+          "duree_libelle": "",
+          "garant": "Garantie TAQINOR",
+          "detail": "Pose, câblage et raccordements réalisés par nos équipes.",
+          "fin": "2028-12-21"
+        }
+      ],
+      "articles": [
+        {
+          "cle": "contact",
+          "titre": "Qui appeler",
+          "paragraphes": [
+            "Un seul interlocuteur : le service après-vente de TAQINOR. Décrivez ce que vous constatez et envoyez une photo de l'écran de l'onduleur ou de l'application de suivi."
+          ]
+        },
+        {
+          "cle": "demarche",
+          "titre": "Comment se passe une demande",
+          "paragraphes": [
+            "- TAQINOR fait le diagnostic, à distance ou sur place ;\n- si une garantie joue, TAQINOR répare ou remplace le matériel et traite la demande auprès du fabricant ;\n- les frais de transport du matériel garanti sont à la charge de TAQINOR ;\n- la durée de la garantie est prolongée du temps pendant lequel le matériel est immobilisé ; un reçu daté vous est remis à l'enlèvement et au retour."
+          ]
+        },
+        {
+          "cle": "couvert",
+          "titre": "Ce qui est couvert",
+          "paragraphes": [
+            "Les défauts du matériel, dans les conditions de chaque fabricant, et les défauts de pose pendant la durée de la garantie d'installation. Les pièces détachées nécessaires sont disponibles pendant toute la durée des garanties."
+          ]
+        },
+        {
+          "cle": "exclusions",
+          "titre": "Ce qui ne l'est pas",
+          "paragraphes": [
+            "- une intervention ou une modification par une personne étrangère à TAQINOR ;\n- un choc, un incendie, une inondation, la foudre ou une surtension du réseau ;\n- un défaut d'entretien ou un usage contraire aux notices."
+          ]
+        },
+        {
+          "cle": "garantie_legale",
+          "titre": "Vos droits dans tous les cas",
+          "paragraphes": [
+            "Ces garanties s'ajoutent à la **garantie légale** des défauts et vices cachés (articles 549 à 575 du Dahir des obligations et des contrats, article 65 de la loi n° 31-08), que TAQINOR doit dans tous les cas.",
+            "En cas de désaccord sur une garantie, écrivez à TAQINOR, qui vous répond dans les quinze jours ; à défaut d'accord, vous pouvez saisir le tribunal de votre domicile."
+          ]
+        }
+      ],
+      "sav": {
+        "telephone": "+212 6 00 00 00 00",
+        "whatsapp": "",
+        "email": "sav@exemple.ma",
+        "horaires": "Du lundi au samedi, de 9 h à 18 h."
+      },
+      "conseils_intro": "Le jour, vos panneaux alimentent la maison et chargent la batterie ; le soir, la batterie prend le relais. Plus vos gros appareils tournent au soleil, plus la batterie reste pleine pour la nuit.",
+      "journee": {
+        "plages": [
+          {
+            "sorte": "nuit",
+            "part": 4,
+            "libelle": "Nuit",
+            "sous": "batterie, puis réseau"
+          },
+          {
+            "sorte": "bord",
+            "part": 3,
+            "libelle": "Matin",
+            "sous": "la production monte"
+          },
+          {
+            "sorte": "plein",
+            "part": 7,
+            "libelle": "Milieu de journée",
+            "sous": "le meilleur moment pour vos gros appareils"
+          },
+          {
+            "sorte": "bord",
+            "part": 3,
+            "libelle": "Fin de journée",
+            "sous": "la production baisse"
+          },
+          {
+            "sorte": "nuit",
+            "part": 5,
+            "libelle": "Soir et nuit",
+            "sous": "batterie, puis réseau"
+          }
+        ],
+        "legende": "Votre installation produit du lever au coucher du soleil, avec un maximum en milieu de journée."
+      },
+      "conseils": [
+        {
+          "rubrique": "Gros appareils",
+          "titre": "Lancez-les en milieu de journée",
+          "texte": "Lave-linge, lave-vaisselle, sèche-linge, four : faites-les tourner quand la production est la plus forte. Le départ différé le fait pour vous quand vous êtes absent."
+        },
+        {
+          "rubrique": "Un à la fois",
+          "titre": "Étalez plutôt que cumuler",
+          "texte": "Deux gros appareils en même temps peuvent dépasser ce que les panneaux produisent : lancez la lessive le matin, le lave-vaisselle l'après-midi."
+        },
+        {
+          "rubrique": "Eau chaude",
+          "titre": "Chauffez l'eau au soleil",
+          "texte": "Si votre chauffe-eau est électrique, réglez sa plage de chauffe sur le milieu de journée plutôt que la nuit."
+        },
+        {
+          "rubrique": "Climatisation",
+          "titre": "Rafraîchissez avant le soir",
+          "texte": "Faites tourner la climatisation l'après-midi, tant que les panneaux produisent, plutôt que de la démarrer à la nuit tombée."
+        },
+        {
+          "rubrique": "Batterie",
+          "titre": "Gardez-la pour le soir",
+          "texte": "Elle se charge le jour avec le surplus et vous alimente après le coucher du soleil : évitez de la vider l'après-midi avec de gros appareils."
+        },
+        {
+          "rubrique": "Suivi",
+          "titre": "Regardez l'application une fois par semaine",
+          "texte": "Elle montre ce que vous produisez et ce que vous consommez : c'est le meilleur moyen de caler vos habitudes sur le soleil et de repérer une anomalie."
+        }
+      ],
+      "entretien": [
+        "- un coup d'œil à l'application chaque semaine : une production à zéro en plein jour doit nous être signalée ;\n- des panneaux propres : un rinçage à l'eau claire quand la poussière s'accumule ;\n- rien ne doit faire de l'ombre aux panneaux : antenne, linge, végétation qui pousse ;\n- avant tout travail sur la toiture ou sur l'installation électrique, prévenez-nous."
+      ]
+    }
+  },
+  "exemple_409_acte_fige": {
+    "detail": "Cet acte est émis : rouvrez-le pour le modifier.",
+    "code": "acte_fige"
+  },
+  "exemple_409_solde_non_regle": {
+    "detail": "Le prix n'est pas réglé en totalité : 68 950,00 DH restent dus. Enregistrez le paiement du solde avant d'émettre le quitus.",
+    "code": "solde_non_regle"
+  },
+  "exemple_409_chantier_annule": {
+    "detail": "Chantier annulé",
+    "code": "chantier_annule"
+  },
+  "exemple_409_deja_signe": {
+    "detail": "Cet acte est déjà signé.",
+    "code": "deja_signe"
+  },
+  "exemple_400_contenu_invalide": {
+    "detail": "Section inconnue : montants.",
+    "code": "contenu_invalide"
+  },
+  "regles": [
+    "contenu.schema = 1 ; contenu.type / variante / reference recopient l'acte.",
+    "Tout montant de contenu est une chaîne décimale ; contenu.prix.total_en_lettres vient de core.nombre_lettres.",
+    "contenu.echeancier[].statut ∈ regle | exigible | a_venir, calculé par le serveur depuis les paiements enregistrés (variante tranche_reglee : supposé réglé jusqu'à la tranche de livraison).",
+    "contenu.signatures.client = null tant que l'acte n'est pas signé, puis {image, nom, signe_le, preuve}.",
+    "Un acte signé ne se rouvre pas ; un acte émis non signé se rouvre (version + 1 à la ré-émission)."
+  ]
+}
