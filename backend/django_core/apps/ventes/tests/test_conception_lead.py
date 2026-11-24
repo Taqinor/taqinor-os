@@ -926,3 +926,148 @@ class FigeageDevisAutoTests(TestCase):
         photo = self._figer('ci_fiches_completes', company, lead)
         self.assertIsNotNone(photo['electrical_design'])
         self.assertIsNone(photo['etude_params']['etude_ci']['composition']['onduleurs']['chaines'])
+
+
+def _ecritures(requetes):
+    """Les requêtes d'ÉCRITURE capturées (un pipeline pur n'en émet aucune)."""
+    return [q['sql'][:160] for q in requetes.captured_queries
+            if q['sql'].lstrip().upper().startswith(('INSERT', 'UPDATE', 'DELETE'))]
+
+
+def _json(valeur):
+    return json.loads(json.dumps(valeur, default=str, sort_keys=True))
+
+
+def _reglages_de_la_societe(company):
+    """Les singletons de réglages société naissent à leur PREMIÈRE lecture
+    (``TariffSettings.get`` : ``get_or_create``) — une lecture de réglage, pas
+    une écriture du pipeline : matérialisés AVANT la capture."""
+    from apps.parametres.models_tariff import TariffSettings
+
+    TariffSettings.get(company=company)
+
+
+class PipelinePurTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_utilisateur',
+                                '_residentiel', '_ci', '_agricole'), TestCase):
+    """ADEV160 — le pipeline PUR extrait du devis automatique : les décisions
+    des trois marchés et les moitiés « calcul » des études, PAR LIGNES. Elles
+    n'écrivent rien, et des lignes passées en argument ne sont jamais relues
+    en base (la parité avec le devis écrit est celle des goldens ci-dessus)."""
+
+    def _panneaux_du_golden(self, nom):
+        golden = json.loads((DOSSIER_FIGEAGE / f'{nom}.json').read_text(encoding='utf-8'))
+        return sum(float(li['quantite']) for li in golden['lignes']
+                   if (li['produit_nom'] or '').startswith('Panneau'))
+
+    def test_decisions_des_trois_marches_sans_aucune_ecriture(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from apps.ventes.conception.decisions import (
+            decider_agricole, decider_ci, decider_taille_residentielle, etude_params_creation_ci,
+            verifier_composition_residentielle)
+
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'))
+        _reglages_de_la_societe(company)
+        with CaptureQueriesContext(connection) as requetes:
+            decision = decider_taille_residentielle(lead=lead, company=company)
+            structure = verifier_composition_residentielle(decision, lead=lead, company=company)
+        self.assertEqual(_ecritures(requetes), [])
+        self.assertEqual((decision.source, decision.deux_options, structure),
+                         ('moteur_horaire', True, (None, 'acier')))
+        self.assertEqual(decision.panneaux, self._panneaux_du_golden('res_facture_dirhams'))
+
+        company, lead = self._ci(conso_mensuelle_kwh=Decimal('6000'))
+        _reglages_de_la_societe(company)
+        with CaptureQueriesContext(connection) as requetes:
+            etude, lignes, scenario = decider_ci(lead=lead, company=company)
+            entrees = etude_params_creation_ci(etude, mode=lead.type_installation, scenario=scenario)
+        self.assertEqual(_ecritures(requetes), [])
+        self.assertEqual(sum(float(li['quantite']) for li in lignes if li['designation'].startswith('Panneau')),
+                         self._panneaux_du_golden('ci_commercial'))
+        self.assertEqual(entrees['mode'], 'commercial')
+
+        company, lead = self._agricole()
+        _reglages_de_la_societe(company)
+        with CaptureQueriesContext(connection) as requetes:
+            agricole = decider_agricole(lead=lead, company=company)
+        self.assertEqual(_ecritures(requetes), [])
+        golden = json.loads((DOSSIER_FIGEAGE / 'agr_pompe_courbe.json').read_text(encoding='utf-8'))
+        self.assertEqual([li['designation'] for li in agricole.lignes],
+                         [li['designation'] for li in golden['lignes']])
+
+    def _devis_et_lignes(self, company, lead):
+        from apps.ventes.models import Devis
+        from apps.ventes.services import build_devis_auto
+
+        devis = build_devis_auto(lead=lead, user=self._utilisateur(company), company=company)
+        # Même un devis ACCEPTÉ : le calcul par lignes ne le modifie jamais.
+        Devis.objects.filter(pk=devis.pk).update(statut='accepte')
+        devis.refresh_from_db()
+        return devis, list(devis.lignes.select_related('produit', 'produit__fiche_technique').all())
+
+    def _par_lignes(self, devis, calcul):
+        """``calcul()`` sous capture : aucune écriture, aucune lecture des lignes."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from apps.ventes.models import LigneDevis
+
+        avant = (devis.statut, _json(devis.etude_params))
+        with CaptureQueriesContext(connection) as requetes:
+            resultat = calcul()
+        self.assertEqual(_ecritures(requetes), [])
+        table = LigneDevis._meta.db_table
+        self.assertEqual([q['sql'][:120] for q in requetes.captured_queries if table in q['sql']], [])
+        devis.refresh_from_db()
+        self.assertEqual((devis.statut, _json(devis.etude_params)), avant)
+        return resultat
+
+    def test_etudes_residentielles_par_lignes_egales_au_devis_ecrit(self):
+        from apps.ventes.conception.etudes_lignes import (
+            avec_lignes, blocs_horaires_des_lignes, dimensionnement_des_lignes, puissances_des_lignes)
+        from apps.ventes.domain.etudes import puissances_etude_horaire
+
+        devis, lignes = self._devis_et_lignes(*self._residentiel(
+            facture_hiver=Decimal('1800'), facture_ete=Decimal('2600'), ete_differente=True,
+            conso_mensuelle_kwh=Decimal('700'), occupation_jour='present'))
+
+        def calcul():
+            kwc, kwc_sans = puissances_des_lignes(devis, lignes)
+            return ((kwc, kwc_sans),
+                    blocs_horaires_des_lignes(devis, lignes, kwc=kwc, kwc_sans=kwc_sans),
+                    dimensionnement_des_lignes(devis, lignes, force=True))
+        puissances, (bloc, bloc_sans), (etat, dimensionnement) = self._par_lignes(devis, calcul)
+        self.assertEqual(puissances, puissances_etude_horaire(devis))
+        self.assertIsNotNone(puissances[1], 'cas L-2OPT divergent attendu (deux blocs)')
+        etude = devis.etude_params
+        self.assertEqual(_json(bloc), _json(etude['etude_horaire']))
+        self.assertEqual(_json(bloc_sans), _json(etude['etude_horaire_sans']))
+        self.assertEqual((etat, _json(dimensionnement)), ('calcule', _json(etude['dimensionnement'])))
+        with self.assertRaises(AttributeError):
+            avec_lignes(devis, lignes).statut = 'brouillon'
+
+    def test_etude_ci_par_lignes_egale_au_chemin_du_devis(self):
+        from apps.ventes.conception.etudes_lignes import etude_ci_calculee, preparation_etude_ci
+
+        devis, lignes = self._devis_et_lignes(*self._ci(batteries=True, boulangerie=True))
+
+        def calcul():
+            preparation = preparation_etude_ci(devis, lignes)
+            return preparation, etude_ci_calculee(devis, preparation, lignes)
+        preparation, (_etude, bloc) = self._par_lignes(devis, calcul)
+        attendu = preparation_etude_ci(devis)
+        self.assertIsNotNone(preparation['imposee'], 'option « avec » des lignes attendue')
+        self.assertEqual(preparation['empreinte'], attendu['empreinte'])
+        self.assertEqual(preparation['empreinte'], devis.etude_params['etude_ci']['empreinte'])
+        self.assertEqual(_json(bloc), _json(etude_ci_calculee(devis, attendu)[1]))
+
+    def test_etude_pompage_par_lignes_egale_au_chemin_du_devis(self):
+        from apps.ventes.conception.etudes_lignes import etude_pompage_des_lignes
+
+        devis, lignes = self._devis_et_lignes(*self._agricole())
+        derivees, _a_ecrire = self._par_lignes(
+            devis, lambda: etude_pompage_des_lignes(devis, lignes, force=True))
+        self.assertEqual(derivees['provenance_pompage']['_empreinte'],
+                         devis.etude_params['provenance_pompage']['_empreinte'])
+        self.assertEqual(_json(derivees), _json(etude_pompage_des_lignes(devis, force=True)[0]))
