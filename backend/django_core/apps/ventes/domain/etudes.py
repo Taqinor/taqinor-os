@@ -75,27 +75,13 @@ def rafraichir_etude_horaire(devis, *, kwc=None, batterie_kwh_utile=None,
     (tout devis non divergent) ⇒ cette clé est RETIRÉE si elle traînait :
     un bloc qui décrit une option disparue n'est jamais laissé en place.
     """
-    from apps.ventes.domain.entrees import empreinte_entrees, entrees_depuis_devis
+    from apps.ventes.conception.etudes_lignes import blocs_horaires_des_lignes
     from apps.ventes.domain.etude_schema import MOTEUR_HORAIRE, ecrire
-    from apps.ventes.etude_horaire import etude_horaire_pour_devis
     try:
-        entrees = entrees_depuis_devis(devis)
-        empreinte = (empreinte_entrees(entrees)
-                     if entrees is not None and entrees.conso_kwh_mensuelles
-                     else None)
-
-        def _calculer(puissance):
-            bloc_calcule = etude_horaire_pour_devis(
-                devis, kwc=puissance, batterie_kwh_utile=batterie_kwh_utile,
-                jour_reference=(entrees.jour_reference if entrees else None))
-            if bloc_calcule is None:
-                return None
-            bloc_calcule = dict(bloc_calcule)
-            bloc_calcule['_empreinte_entrees'] = empreinte
-            return bloc_calcule
-
-        bloc = _calculer(kwc)
-        bloc_sans = _calculer(kwc_sans) if kwc_sans else None
+        # ADEV160 — la moitié CALCUL (entrées lues une fois, deux blocs
+        # estampillés) est ``conception/etudes_lignes``, sur les lignes du devis.
+        bloc, bloc_sans = blocs_horaires_des_lignes(
+            devis, kwc=kwc, batterie_kwh_utile=batterie_kwh_utile, kwc_sans=kwc_sans)
         existant = getattr(devis, 'etude_params', None) or {}
         if (bloc is None and bloc_sans is None
                 and 'etude_horaire' not in existant
@@ -259,34 +245,10 @@ def puissances_etude_horaire(devis):
     option ne vend (aucun devis de prod dans ce cas au 30/09/2026 sur 77 devis
     variantés). Le défaut est côté builder, pas ici.
     """
-    from apps.ventes.quote_engine.builder import (
-        _scalaires_par_option, _variante_de_ligne, panneaux_et_watt_lu)
-    from apps.ventes.quote_engine.lignes_classement import kwc_des_lignes
-    lignes = [
-        li for li in devis.lignes.select_related(
-            'produit', 'produit__fiche_technique').all()
-        if getattr(li, 'type_ligne', 'produit') == 'produit'
-        and not getattr(li, 'optionnelle', False)
-    ]
-    par_option = _scalaires_par_option(
-        [li for li in lignes if _variante_de_ligne(li) in ('', 'sans')],
-        [li for li in lignes if _variante_de_ligne(li) in ('', 'avec')],
-        devis)  # AGNR70 — kWc Σ quantité × watt lu au niveau 12
-    if par_option['divergents']:
-        return par_option['kwc_avec'], par_option['kwc_sans']
-    # ERR-ETUDE-KWC-DOUBLE — panneaux VARIANTÉS à comptes ÉGAUX (8 « sans » +
-    # 8 « avec ») : ``divergents`` est faux (drapeau de COMPTES), mais la
-    # lecture sur TOUTES les lignes additionnait les deux paniers — le bloc
-    # portait EXACTEMENT LE DOUBLE du kWc des lignes (16 panneaux pour un
-    # tableau qui en liste 8), refusé ensuite par la garde de fraîcheur. Même
-    # correctif que le builder (ACAL-NB2OPT) : dès qu'une ligne panneau porte
-    # une variante, le bloc décrit UNE option (les deux étant égales).
-    # Sans variante, le panier AVEC = toutes les lignes : lecture inchangée.
-    if any(_variante_de_ligne(li) in ('sans', 'avec')
-           for li in lignes if panneaux_et_watt_lu([li])[0]):
-        return par_option['kwc_avec'] or par_option['kwc_sans'], None
-    nb_panneaux, watt = panneaux_et_watt_lu(lignes)
-    return kwc_des_lignes(lignes, nb_panneaux, watt, devis), None
+    # ADEV160 — corps déplacé dans ``conception/etudes_lignes`` (version PAR
+    # LIGNES, appelée aussi par le moteur unique) ; ici, les lignes du devis.
+    from apps.ventes.conception.etudes_lignes import puissances_des_lignes
+    return puissances_des_lignes(devis)
 
 
 def _blocs_horaires_deja_a_jour(devis, kwc, kwc_sans):
@@ -473,61 +435,22 @@ def rafraichir_dimensionnement_devis(devis, *, force=False):
     localisation non résolue) — jamais un tableau inventé.
     """
     try:
-        from apps.ventes.domain.entrees import empreinte_entrees
+        from apps.ventes.conception.etudes_lignes import dimensionnement_des_lignes
         from apps.ventes.domain.etude_schema import (
             MOTEUR_DIMENSIONNEMENT, ecrire)
 
-        # P2-A / QJR42 — LECTURE UNIQUE des entrées : l'échelle de paliers
-        # batterie part exactement des mêmes. Elle est faite AVEC contexte
-        # parce que l'empreinte a besoin de la localisation, de l'occupation
-        # et des équipements — c'est le prix (une lecture, pas un balayage)
-        # d'un cache qui se périme vraiment, et il remplace les DEUX lectures
-        # que faisait l'ancien chemin quand il recalculait.
-        entrees = entrees_dimensionnement_du_devis(devis)
-        if entrees is None:
-            return None
-        etude_params = entrees['etude_params']
-        conso = entrees['conso_kwh_mensuelles']
-        if not conso:
-            if not force and 'dimensionnement' not in etude_params:
-                return None
-            # QJR62 — ÉCRIVAIN UNIQUE : ``None`` RETIRE la clé (règle Z2).
+        # ADEV160 — la moitié CALCUL (lecture unique des entrées, empreinte,
+        # ``recommander_taille``) est ``conception/etudes_lignes`` ; l'écriture
+        # (et le retrait de la clé, règle Z2) reste ici, par l'écrivain unique.
+        etat, bloc = dimensionnement_des_lignes(devis, force=force)
+        if etat == 'retirer':
             ecrire(devis, proprietaire=MOTEUR_DIMENSIONNEMENT,
                    dimensionnement=None)
             return None
-
-        empreinte = empreinte_entrees(entrees)
-        bloc = etude_params.get('dimensionnement')
-        if (not force and isinstance(bloc, dict)
-                and bloc.get('_empreinte') == empreinte):
-            return bloc
-
-        from apps.ventes.dimensionnement import recommander_taille
-        from apps.ventes.domain.regles_calcul import (
-            REGLES_CORRIGEES_2710, regles_au_moins)
-        resultat = recommander_taille(
-            company=entrees['company'], conso_kwh_mensuelles=conso,
-            ville=entrees['ville'], lat=entrees['lat'], lon=entrees['lon'],
-            occupation=entrees['occupation'],
-            equipements=entrees['equipements'],
-            source_conso=entrees['source_conso'],
-            jour_reference=entrees['jour_reference'],
-            # QJR46 — le barème de la SOCIÉTÉ, celui que le devis appliquera.
-            tranches=entrees['tranches'],
-            charges_fixes_mad=entrees['charges_fixes_mad'],
-            # QJR606 — la phase et la gamme du devis, lues par l'adaptateur.
-            phase=entrees['phase'],
-            gamme_nom_devis=entrees['gamme_nom_devis'],
-            # ERR-QJR605 — site isolé et paires MPPT du devis.
-            hors_reseau=entrees['hors_reseau'],
-            mppt_paires=entrees['mppt_paires'],
-            # RSIZ2/3/5 — les sondes d'un devis aux règles < 3 gardent ses
-            # règles (``balayer_tailles`` → ``ContexteSonde``).
-            regles_2710=regles_au_moins(devis, REGLES_CORRIGEES_2710), devis=devis)  # AMOT130
-        resultat['_empreinte'] = empreinte
-        ecrire(devis, proprietaire=MOTEUR_DIMENSIONNEMENT,
-               dimensionnement=resultat)
-        return resultat
+        if etat == 'calcule':
+            ecrire(devis, proprietaire=MOTEUR_DIMENSIONNEMENT,
+                   dimensionnement=bloc)
+        return bloc
     except Exception:  # noqa: BLE001 — un rafraîchissement raté n'empêche (D-ENF22-BLE001)
         # jamais une sauvegarde de devis/ligne.
         logger.warning('rafraichir_dimensionnement_devis indisponible sur %s',
