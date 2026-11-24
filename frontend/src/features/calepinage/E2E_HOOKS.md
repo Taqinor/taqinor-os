@@ -147,6 +147,12 @@ retiré plus un hook ajouté.
 | `cal-course-soleil-obstructions-hauteur` | course soleil obstructions hauteur. |
 | `cal-course-soleil-scene` | course soleil scène. |
 
+## DemarrageRapidePage (`DemarrageRapidePage.jsx`)
+
+| Hook | Sémantique |
+|---|---|
+| `cal-demarrage-rapide` | racine de la page plein écran « Démarrage rapide » (ACAL1826, sans coquille ERP) — preuve de vie déclarée de la fumée des écrans (`e2e/helpers.js::ECRANS_PLEIN_ECRAN`). |
+
 ## FicheCalepinage (`FicheCalepinage.jsx`)
 
 | Hook | Sémantique |

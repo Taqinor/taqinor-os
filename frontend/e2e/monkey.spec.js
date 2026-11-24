@@ -40,6 +40,7 @@ import { expect } from '@playwright/test'
 import { createRequire } from 'node:module'
 import { setTimeout as attendre } from 'node:timers/promises'
 import {
+  ECRANS_PLEIN_ECRAN,
   routesParModule, TITRE_ECRAN_ERREUR,
   // CAD177 — session partagée vérifiée au démarrage de chaque module, et
   // reprise entre deux écrans si un gremlin a cliqué « Déconnexion ».
@@ -294,8 +295,14 @@ for (const [module, chemins] of PAR_MODULE) {
         // (lent/instable sur des écrans qui interrogent en continu).
         const coquille = page.locator('.header-title')
         const ecranErreur = page.getByRole('heading', { name: TITRE_ECRAN_ERREUR })
+        // Même exception que la fumée : une route PLEIN ÉCRAN déclarée
+        // (`ECRANS_PLEIN_ECRAN`, helpers.js) n'a pas de coquille — son marqueur
+        // déclaré vaut preuve de vie.
+        const pleinEcran = ECRANS_PLEIN_ECRAN[chemin]
+        let vivant = coquille.or(ecranErreur)
+        if (pleinEcran) vivant = vivant.or(page.locator(pleinEcran.marqueur))
         try {
-          await coquille.or(ecranErreur).first().waitFor({ state: 'visible', timeout: 15_000 })
+          await vivant.first().waitFor({ state: 'visible', timeout: 15_000 })
         } catch {
           consigner(
             'page blanche avant même le lâcher des gremlins : ni la coquille '
