@@ -133,6 +133,8 @@ def relance_en_file(company_id, *, lead_id=None, calepinage_id=None):
     try:
         return bool(cache.get(_cle(company_id, cle_marqueur(lead_id, calepinage_id))))
     except Exception:  # noqa: BLE001 — cache indisponible : rien en file (D-ENF22-BLE001)
+        logger.warning('ADEV139 : marqueur de relance illisible (lead #%s, calepinage #%s)',
+                       lead_id, calepinage_id, exc_info=True)
         return False
 
 
