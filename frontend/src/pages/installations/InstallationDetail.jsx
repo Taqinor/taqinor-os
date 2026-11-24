@@ -53,6 +53,7 @@ import CalepinageRetenuCard from '../../features/installations/CalepinageRetenuC
 // `ChantierGateTimeline` (une seule timeline dans la fiche).
 import ChantierGateTimeline from './ChantierGateTimeline'
 import ChantierPhotos from './ChantierPhotos'
+import ContratsChantier from './contrats/ContratsChantier' // dossier contractuel (4 actes)
 import RecurrencesInterventionSection from './RecurrencesInterventionSection' // ACEL46
 // NTMOB16 — signature client tracée sur le bon de livraison chantier.
 import SignatureLivraisonDialog from './SignatureLivraisonDialog'
@@ -1000,6 +1001,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 photos —               Photos & fichiers
                 interventions —        Interventions · Tickets SAV · Suivi & maintenance
                 documents —            Documents après-vente · Historique
+                contrats —             Dossier contractuel (4 actes : contrat, livraison, réception, clôture)
               Radix démonte le panneau inactif : le scroll d'un onglet vaut ~1/3
               du mur précédent, et chaque sous-écran ne charge que ses données. */}
           <Tabs value={tab} onValueChange={setTab} className="flex flex-col gap-2">
@@ -1027,6 +1029,10 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
               <TabsTrigger value="documents" className="min-h-11 shrink-0">
                 <FileText className="size-4" aria-hidden="true" />
                 Documents & historique
+              </TabsTrigger>
+              <TabsTrigger value="contrats" className="min-h-11 shrink-0">
+                <FileText className="size-4" aria-hidden="true" />
+                Contrats
               </TabsTrigger>
             </TabsList>
 
@@ -1915,6 +1921,10 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 ))}
               </div>
             </Section>
+            </TabsContent>
+
+            <TabsContent value="contrats" className="flex flex-col gap-4">
+              <ContratsChantier installation={current} peutGerer={peutGerer} ouvrirApercu={openPreview} rechargerApercu={reloadPreview} />
             </TabsContent>
           </Tabs>
         </div>

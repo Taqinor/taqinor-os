@@ -22,6 +22,19 @@ const VIEWPORTS = [
 ]
 const BARRE_AJOUT = (page) => page.getByRole('button', { name: 'Ajouter une tâche', exact: true }).first()
 
+/** Attend la FIN des animations et transitions CSS finies en cours dans `.tch` (les infinies — le squelette — sont ignorées).
+ *  Cause mesurée du rouge du 24/11 (file de fusion, « saisie » à 1440 × 900, `.vide > span`) : au bureau la feuille de
+ *  saisie s'ouvre par un fondu de 260 ms (`saisie.css`, `@starting-style` : opacité 0 → 1) ; `toBeVisible()` est déjà vrai
+ *  à l'opacité 0 et axe, lancé ~140 ms plus tard, mesurait le texte doux (5,81:1 au repos) fondu à 79 % sur blanc :
+ *  #7c84a1, soit 3,7:1. Sans cette attente, la mesure ne passe que si axe démarre plus de 160 ms après l'ouverture — c'est
+ *  la vitesse du coureur qui décide. Une CONDITION (les animations ont fini), jamais `waitForTimeout`. */
+const attendreFinDesAnimations = (page) => page.evaluate(() => Promise.all(
+  [...document.querySelectorAll('.tch')]
+    .flatMap((el) => el.getAnimations({ subtree: true }))
+    .filter((a) => Number.isFinite(a.effect?.getComputedTiming().endTime))
+    .map((a) => a.finished.catch(() => {})),
+))
+
 /** Le jeu de départ commun : de quoi qu'aucun écran ne soit vide. */
 async function semer(page) {
   await reinitialiser(page)
@@ -407,6 +420,8 @@ for (const vp of VIEWPORTS) {
         await page.setViewportSize({ width: vp.width, height: vp.height })
         const donnees = await semer(page)
         await ecran.ouvrir(page, donnees)
+        // une feuille qui s'ouvre fond en 260 ms (opacité) : on mesure l'écran POSÉ, pas son entrée (voir l'aide)
+        await attendreFinDesAnimations(page)
 
         // (6) axe-core : 0 violation WCAG A/AA, quelle que soit la gravité
         const axe = await new AxeBuilder({ page })

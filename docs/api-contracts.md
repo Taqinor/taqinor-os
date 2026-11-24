@@ -162,6 +162,10 @@
     count:nombre, ok:booleen
 - frontend/src/api/demoApi.js :: resetDemo -> /api/django/companies/<>/reset-demo
     detail:texte, slug:inconnu
+- frontend/src/api/documentsApi.js :: dossierContrats -> /api/django/documents/chantiers/<>/contrats
+    actes:liste, chantier:objet, client:inconnu, prix_ttc:inconnu, prochaine_action:inconnu, regle_ttc:inconnu, reste_ttc:inconnu
+- frontend/src/api/documentsApi.js :: enregistrerModeleActe -> /api/django/documents/actes/<>/modele
+    detail:inconnu
 - frontend/src/api/gedApi.js :: comparerVersions -> /api/django/ged/documents/<>/comparer
     detail:texte, diff_texte:liste, message:texte, metadonnees:inconnu, texte_disponible:booleen
 - frontend/src/api/gedApi.js :: deposerLotScansSepare -> /api/django/ged/documents/deposer-lot-scans-separe

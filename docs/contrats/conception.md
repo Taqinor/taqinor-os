@@ -1,0 +1,196 @@
+# Dossier contractuel d'un chantier — conception (24/11/2026)
+
+Demande de Reda (24/11/2026) : l'ERP crée, pour chaque lead signé, **quatre contrats** au moment où le chantier est
+créé — (1) le contrat de démarrage, envoyé en premier, avec les paiements du devis final (modifiables) et les
+garanties (modifiables) ; (2) le matériel livré au domicile, avec la part à payer à ce stade, en **deux versions
+prêtes** (reste à régler / le client a payé ses 90 %) ; (3) les travaux bien terminés, signé par le client à la fin
+(protection si le solde n'est pas payé) ; (4) le contrat final au paiement complet, avec les garanties et des
+conseils de consommation. Le meilleur contenu, et surtout la beauté.
+
+Ce fichier est LA spécification de construction. Le contrat d'API est dans
+`backend/django_core/apps/documents/contract_samples/` (il fait foi pour toute forme servie), le droit dans
+`docs/contrats/juridique.md`, l'état du chantier L5 dans `docs/contrats/ETAT.md`.
+
+## 1. Ce qui existait, ce qui est neuf (régime MIXTE, lu sur `origin/main@854d2adfe`)
+
+| Promesse | Avant | Verdict |
+|---|---|---|
+| Un contrat de démarrage | rien (`apps/contrats` est une coquille parquée, à ne jamais toucher) | absent |
+| Actes créés avec le chantier | rien | absent |
+| Livraison + part à payer, deux versions | `documents.builders.generate_bon_livraison` : liste du matériel, aucun montant | partiel |
+| Travaux terminés, signé | `generate_pv_reception` : « constate la réception », ni conformité, ni solde, ni réserves (résidentiel) | partiel |
+| Document final : payé, garanties, conseils | `generate_dossier_remise` : garanties + conseils d'ENTRETIEN ; aucun quitus, aucun conseil de consommation | partiel |
+| Textes modifiables par acte | `parametres.DocumentTemplates` (textes du devis seulement) | absent |
+
+P = 1,5 / 6 → MIXTE. Les quatre documents existants (`pv-reception`, `bon-livraison`, `dossier-remise`,
+`attestation`) restent tels quels : **liste à ne pas changer** = `apps/documents/builders.py`, `views.py`, leurs
+gabarits `templates/pdf/document_*.html`, leurs tests, `signer-client`. Le dossier contractuel est une famille NEUVE à
+côté, dans la même app.
+
+## 2. Où vit le code
+
+- **Serveur** — tout dans `backend/django_core/apps/documents/` (propriétaire `documents`) :
+  `models.py` (les deux modèles), `migrations/0001_…`, `contrats/` (`textes.py`, `contenu.py`, `services.py`,
+  `selectors.py`, `rendu/`), `receivers.py`, `views_contrats.py`, `serializers_contrats.py`, `urls.py` (ajout),
+  `contract_samples/`, `tests/test_contrats_*.py`.
+- **Écran** — `frontend/src/pages/installations/contrats/**` (propriétaire `chantiers`), un onglet « Contrats » dans
+  `InstallationDetail.jsx` (deux insertions seulement : le déclencheur et le contenu), les appels dans
+  `frontend/src/api/documentsApi.js`, les styles dans `frontend/src/styles/chantiers/contrats.css`.
+- Aucun fichier de `ventes`, `facturation`, `crm`, `stock`, `sav`, `installations` (serveur) n'est modifié : lecture
+  par leurs sélecteurs et services existants, événements existants de `core/events`.
+
+## 3. Modèle de données (`apps/documents/models.py`)
+
+`ActeContractuel` — une ligne par acte et par variante (cinq lignes par chantier) :
+`company` (FK, jamais lue du corps), `chantier` (FK chaîne `installations.Installation`, PROTECT,
+`related_name='actes_contractuels'`), `type` (`contrat_installation` | `pv_livraison` | `pv_reception` |
+`cloture_garanties`), `variante` (`''` | `reste_a_regler` | `tranche_reglee`), `reference`, `statut` (`brouillon` |
+`emis` | `signe` | `annule`), `version` (1…), `surcharges` (JSON : personnalisations de l'acte, par section),
+`contenu` (JSON figé à l'émission, `null` en brouillon), `emis_le`, `emis_par`, `signe_le`, `signataire_nom`,
+`signature_client` (PNG en data-URL), `mode_signature` (`''` | `sur_place` | `papier` | `distance`), `preuve` (JSON :
+empreinte SHA-256 du contenu figé, adresse IP, agent, utilisateur qui a recueilli), `statut_avant_annulation`,
+`motif_annulation`, `created_by`, `created_at`, `updated_at`. Unicité `(company, chantier, type, variante)`.
+
+`ModeleActe` — les textes par défaut de la société : `company`, `type`, `surcharges` (sections texte seulement),
+`updated_by`, `updated_at` ; unicité `(company, type)`.
+
+**Référence** = le préfixe de l'acte + la référence du chantier sans son préfixe : chantier `CHT-2026-11-0007` →
+`CTR-2026-11-0007`, `LIV-…`, `REC-…`, `CLO-…`. Aucun compteur (règle maison : jamais `count()+1`), unique puisque la
+référence du chantier l'est ; les deux variantes de livraison partagent `LIV-…` (une seule sera émise).
+
+## 4. Le contenu : une seule source par valeur
+
+`contenu` est le dictionnaire que l'écran modifie et que le PDF imprime, à l'identique (formes :
+`contract_samples/acte_contractuel.json`). Brouillon : recalculé à chaque lecture ; émis : figé.
+
+Fusion, dans cet ordre : **valeurs vivantes** (lues) → **textes par défaut** (`contrats/textes.py`) →
+**modèle de la société** (`ModeleActe.surcharges`) → **personnalisations de l'acte** (`ActeContractuel.surcharges`).
+
+| Section | Source vivante (lecture seule) | Modifiable dans l'acte |
+|---|---|---|
+| `societe` | `apps.ventes.utils.pdf._company_context` (profil société, logo) | `representant` seulement |
+| `client` | client du chantier (`documents.builders._client_block` + CIN / ICE / RC) | non (se corrige sur la fiche) |
+| `chantier`, `systeme` | chantier, nomenclature vendue (mêmes lignes que le PV existant, prestations exclues — D-APDF-4) | non |
+| `prix` | `ventes.vente_facturation.plan_facturation(devis)` | **non** |
+| `echeancier` (montants, %) | `plan_facturation(devis)['tranches']` | **non** — se corrige sur la vente (`PUT ventes/devis/<id>/echeancier/`) |
+| `echeancier` (mots : quand, note) | défauts par clé de tranche | oui (`echeancier_textes`) |
+| état des tranches, `paiement` | `ventes.utils.echeancier.solde_devis(devis)` | non |
+| `garanties` | `ventes.utils.garanties.garanties_de_la_vente(devis)` + garantie d'installation (champ du chantier, sinon modèle société, sinon 24 mois : la promesse « Installation 2 ans » du devis) | oui |
+| `articles`, `constats`, `quitus`, `conseils`, `entretien`, `conditions_particulieres` | `textes.py` | oui |
+| `delais` | date limite = date du contrat + délai du modèle société | oui |
+| `options` | particulier / entreprise, type d'installation | oui |
+
+Règles fermes : aucun montant n'est modifiable dans un acte (un contrat qui dit 40 / 50 / 10 quand les factures
+disent 30 / 60 / 10 est le défaut à ne pas créer) ; aucun prix d'achat, aucune marge, nulle part ; une valeur absente
+s'imprime « à préciser » et lève un avertissement à l'écran, jamais un chiffre inventé.
+
+**État d'une tranche** : `regle` si le payé cumulé couvre sa cible cumulée (au centime) ; `exigible` pour la première
+tranche non réglée dont le moment est arrivé pour CET acte (contrat : la première ; livraison : jusqu'à la tranche de
+livraison ; réception et clôture : toutes) ; `a_venir` sinon. Variante `tranche_reglee` : les tranches jusqu'à la
+livraison comprise sont SUPPOSÉES réglées pour l'aperçu (c'est la version « le client a payé ses 90 % », prête à
+l'avance) ; son ÉMISSION est refusée (409 `paiement_non_enregistre`) tant que l'ERP n'a pas enregistré ces
+paiements : signée, elle vaudrait reçu contre la société (revue 1).
+
+## 5. Cycle de vie
+
+- **Création** : à `core.events.devis_accepted`, après le commit de l'acceptation (`transaction.on_commit`,
+  jamais dans la transaction de signature, jamais bloquant), `services.preparer_dossier(chantier)` crée les cinq
+  brouillons — idempotent. Un `GET …/contrats/` prépare aussi le dossier s'il manque (chantiers anciens ou créés à la
+  main).
+- **Dés-acceptation** (`devis_acceptation_annulee`) et **chantier annulé** (`chantier_annule`) : les actes non signés
+  passent `annule` (jamais supprimés, `statut_avant_annulation` gardé) ; une ré-acceptation les rétablit. Un acte
+  signé reste signé (la preuve ne se supprime jamais) et l'écran le signale. Sur un chantier annulé, les neuf routes
+  du dossier répondent 409 « Chantier annulé » à chaque verbe qu'elles servent, lectures comprises (un verbe non
+  servi répond 405, quel que soit l'id), comme les quatre documents existants (garde de
+  classe de l'app `documents`) : l'onglet affiche ce message ; un acte signé reste en GED.
+- **Brouillon → émis** (`emettre`) : contenu et PDF figés, PDF déposé en GED (armoire « Chantiers », dossier = la
+  référence du chantier, `source_type='documents.acte_<type>'`), partagé au portail client. Garde : le quitus
+  (`cloture_garanties`) n'est émis que si la vente est réglée en totalité (409 `solde_non_regle`) — une attestation de
+  paiement doit être vraie.
+- **Émis → signé** : `signer` (signature tracée sur place, composant `SignaturePad` existant) ou `marquer-signe`
+  (signature sur papier). Le PDF signé (trace, nom, date, empreinte) remplace le PDF émis en GED (nouvelle version).
+  Preuve gardée : empreinte SHA-256 du contenu figé, IP, agent, utilisateur.
+- **Émis → brouillon** (`rouvrir`) tant que l'acte n'est pas signé ; la ré-émission porte `version + 1`.
+- **Variantes de livraison** : émettre l'une marque l'autre `ecarte` à l'affichage (calculé, pas un statut).
+- **Prochaine action** (calculée) : contrat à envoyer et faire signer → livraison à faire signer → réception à faire
+  signer → quitus à remettre (ou « solde non réglé »).
+
+Droits : lecture comme les documents de chantier existants (`LectureChantiersOuVentes` + portée de la fiche) ;
+écriture `IsResponsableOrAdmin` ; `modele` réservé au Directeur.
+
+## 6. Contenu des quatre actes
+
+Ordre de lecture (preuves : `docs/contrats/juridique.md` § Mise en page) : l'essentiel d'abord (quoi, combien,
+quand), le détail ensuite, les clauses de risque à la fin, la signature en dernier.
+
+1. **Contrat d'installation** — l'essentiel en quatre cartes, la frise de paiement, les parties, le matériel, les
+   garanties, une quinzaine d'articles en français simple, les conditions particulières, les signatures.
+2. **Procès-verbal de livraison** — le matériel livré, trois constats à cocher, les réserves, la frise avec l'état de
+   chaque tranche, l'encadré « à régler à la livraison » (ou « réglé à ce jour »), garde et propriété du matériel.
+3. **Procès-verbal de réception** — quatre constats (conforme, mis en service, expliqué, chantier propre), réception
+   sans ou avec réserves, le solde exigible et la reconnaissance de la somme due, le début des garanties.
+4. **Quitus et certificat de garantie** — attestation de paiement intégral avec l'historique des paiements, levée de
+   la réserve de propriété, certificat de garantie (durée, date de fin, ce qui est couvert, comment faire une
+   demande, la garantie légale rappelée), puis une page de conseils de consommation selon que l'installation a ou non
+   une batterie.
+
+## 7. Mise en page (`contrats/rendu/`)
+
+Même famille que le devis (bleu nuit `#1A2B4A`, or `#F5A623`, DM Serif Display / DM Sans, logo société), mais une
+mise en page de texte : pages qui s'enchaînent, titre d'article en marge, colonne de lecture d'une soixantaine de
+signes, corps 10,2 à 10,5 pt aligné à gauche, pied répété (identité légale, référence, pagination, paraphes), parcours
+des quatre actes sous l'en-tête, motif khatam dans l'en-tête et en puce des intertitres. Aucun texte en or sur blanc
+(contraste) ; aucun état porté par la seule couleur (photocopie). Pagination de référence, données d'exemple :
+contrat 6 pages, procès-verbaux 2 pages, clôture 4 pages.
+
+Rendu : `rendu.html_de(contenu)` puis `core.pdf.render_pdf` — jamais le moteur de devis (règle n° 4) : ses polices
+sont lues par leur chemin, et le logo est CELUI DES DEVIS (décision de Reda du 24/11/2026 : même module image, même
+bloc et même taille que la bande d'en-tête d'un devis), lu par la porte de ventes `selectors.logo_entete_html` ; le
+fichier téléversé n'est jamais imprimé tel quel.
+
+## 8. Choix pris seul (réversibles, à confirmer par Reda)
+
+| # | Choix | Pourquoi | Coût si faux |
+|---|---|---|---|
+| C1 | Les montants de l'échéancier ne se modifient que sur la vente ; l'acte n'en change que les mots | une seule vérité entre contrat et factures | un bouton à ajouter |
+| C2 | Le quitus est refusé tant que la vente n'est pas réglée dans l'ERP | une attestation de paiement doit être vraie | saisir le paiement avant d'émettre |
+| C3 | Référence dérivée de celle du chantier (`CTR-2026-11-0007`) | pas de compteur, lisible, les 4 actes se retrouvent | renommer un préfixe |
+| C4 | Écriture réservée Responsable / Admin (comme la signature de livraison existante) | même règle que l'existant | ouvrir à un autre rôle |
+| C5 | Garantie d'installation à 24 mois quand rien n'est saisi | c'est la promesse « Installation 2 ans » imprimée sur le devis | une valeur du modèle |
+| C6 | Signature à distance par lien : seconde vague (la cérémonie GED existe : `ged.services.demander_signature`) | d'abord la signature sur place et papier | — |
+| C7 | ~~Version arabe : seconde vague~~ — tranché par Reda le 24/11 : dans cette vague (§ 9) | | |
+| C8 | La version « 90 % réglés » de la livraison ne s'émet que si l'encaissement est enregistré dans l'ERP (elle reste prête et se prévisualise) | signée sur une supposition, elle prouverait contre la société un paiement jamais reçu (revue 1) | saisir le paiement avant d'émettre |
+| C9 | Un article ou un quitus corrigé à la main garde ses valeurs VIVANTES : la correction est ALIGNÉE sur le texte que l'écran affichait et reportée sur le gabarit (un paragraphe non touché reste entièrement vivant, un repère non touché reste un repère, même vide). Un montant en dirhams TAPÉ ou repris à la main dans un article personnalisé bloque l'émission (409 `montant_fige`) | un contrat ne doit jamais dire autre chose que la vente (revue 1, puis contre-vérification : la reconnaissance des valeurs par recherche figeait options et montants) | corriger un mot DANS la liste des paiements reprend toute la liste à la main : « Rétablir cet article » |
+| C10 | Réception : sans case cochée, la signature vaut réception sans réserve ; une retenue sur le solde n'existe que chiffrée, plafonnée aux travaux restants, payable huit jours après la levée ; en cas de refus de signer, mise en demeure de recevoir (DOC art. 774) | c'est l'acte qui protège le solde (revue 1) | un texte du modèle |
+| C11 | Durées et dates de fin des garanties, date limite : communes aux deux langues (réglées en français) ; l'arabe ne personnalise que les mots | deux versions signées ensemble ne doivent pas se contredire sur un chiffre (revue 1) | — |
+| C12 | Supprimer un chantier emporte ses brouillons et ses actes annulés ; un acte émis ou signé l'empêche | la preuve ne se supprime pas, un brouillon ne bloque pas | — |
+| C13 | L'échéancier imprimé est l'échéancier CONVENU (cible cumulée d'une tranche moins la précédente, la dernière prend le reste), jamais « ce qui reste à facturer » de la tranche | rejeu sur écran réel : avec une facture d'acompte déjà émise, l'acte imprimait « Acompte 96,00 DH · 0,1 % » | — |
+| C14 | Tout PDF d'un acte non émis porte la mention « PROJET — document non émis » sur chaque page ; tant qu'une somme reste due, le brouillon du quitus affiche « Reste à régler » et n'atteste rien | rejeu sur écran réel : le brouillon du quitus se téléchargeait en « payé intégralement » | — |
+| C15 | Les garanties sont UNE par chantier : le certificat de clôture reprend les lignes, durées et dates de fin du CONTRAT (figé s'il est émis ou signé) ; sa date de départ est celle de la réception signée | rejeu sur écran réel : garantie portée à 3 ans au contrat signé, « 2 ans » au certificat | — |
+| C16 | Dans l'acte arabe, les cases cochées suivent le français ; un texte libre saisi en français sans traduction (réserves, conditions particulières) s'imprime tel que saisi | deux documents signés ensemble ne doivent pas différer sur un fait | traduire le texte |
+| C17 | Le rappel des sommes dues tient compte des avoirs : jamais plus que ce que la vente doit encore | contre-vérification | — |
+
+Constat laissé tel quel (données, pas produit) : sur la société de démonstration, « Installation » et « Transport »
+sont rangés en accessoires par `seed_demo` et sortent donc dans « Le matériel livré », comme sur le bon de livraison
+existant ; le catalogue réel les range en prestations (D-APDF-4).
+
+## 9. Décisions de Reda pendant la construction
+
+- **24/11/2026 — pas de droit de rétractation « signature à domicile » dans les actes.** Reda : le chapitre
+  « démarchage » de la loi n° 31-08 vise la vente à domicile, pas une société que le client contacte de lui-même ; à
+  oublier, ne pas l'intégrer. Retirés : l'option, l'article, l'annexe, le formulaire détachable. L'acompte est
+  exigible à la signature. Le point reste, pour mémoire seulement, dans `juridique.md` § 4.
+- **24/11/2026 — date limite d'exécution : 30 jours après la date du contrat, par défaut** (modifiable sur chaque
+  acte et dans le modèle de la société : `options.delai_execution_jours`, défaut 30).
+- **24/11/2026 — retard de paiement : sans pénalité chiffrée.** Mise en demeure, puis après huit jours suspension des
+  travaux, action en justice ou reprise du matériel. `options.penalite_retard_pct` reste `null` par défaut.
+- **24/11/2026 — signataire : le nom et la qualité de Reda**, saisis une fois dans le modèle de la société
+  (`societe.representant`), imprimés « Représentée par … ». Le devis, lui, reste sans nom de gérant (D-APDF-1).
+- **24/11/2026 — version arabe DANS cette vague** (contre la recommandation « seconde vague »). Chaque acte se rend
+  en français et en arabe : `?langue=ar` sert le même contenu avec les textes arabes (`contrats/textes_ar.py`), le
+  rendu passe de droite à gauche. La traduction arabe ACCOMPAGNE l'acte français (loi n° 31-08, art. 206) : les deux
+  PDF sont figés, déposés et signés ensemble. Les personnalisations de TEXTE se font par langue
+  (`surcharges` / `surcharges_ar`, `contenu` / `contenu_ar`) ; dates, options et signataire sont communs. Une section
+  personnalisée en français dont l'arabe est resté au défaut lève un avertissement. Le montant en lettres n'est pas
+  imprimé en arabe (aucun convertisseur vérifié) ; les désignations du catalogue restent telles quelles.
+  **À faire relire par un arabophone avant un usage réel** — dit à Reda.

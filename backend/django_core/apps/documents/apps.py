@@ -15,3 +15,9 @@ class DocumentsConfig(AppConfig):
         'description': 'Documents liés au parc et au SAV.',
         'categorie': 'Services',
     }
+
+    def ready(self):
+        # Dossier contractuel — abonne documents aux événements du devis et du
+        # chantier (core.events) : préparation des actes, annulation.
+        from importlib import import_module
+        import_module(f'{self.name}.receivers')
