@@ -572,7 +572,7 @@ def _modele_de_langue(acte, langue, valeurs, ignores):
                 ignores.append(T.LIBELLES_SECTIONS.get(section, section))
                 continue
             sortie[section] = valeur
-        elif section == 'echeancier_textes':
+        elif section in ('echeancier_textes', 'paiement'):
             sortie[section] = valeur
         elif langue == 'fr':
             sortie[section] = valeur

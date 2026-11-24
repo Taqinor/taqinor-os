@@ -637,15 +637,37 @@ def _garantie_installation(chantier, societe, langue):
                                    'par nos équipes.', 'fin': None}
 
 
-def _fusion_garanties_modele(garanties, modele):
+def _fusion_garanties_modele(garanties, modele, cles=None):
     """Le modèle de la société s'applique PAR CLÉ (sa garantie d'installation,
-    ses textes) : il ne remplace jamais les durées du matériel d'une vente."""
+    ses textes) : il ne remplace jamais les durées du matériel d'une vente.
+    ``cles`` : les champs repris (tous sauf ``cle`` / ``fin`` par défaut)."""
     if not isinstance(modele, list):
         return garanties
+    cles = cles or tuple(k for k in T.CLES_GARANTIE if k not in ('cle', 'fin'))
     par_cle = {g.get('cle'): g for g in modele if isinstance(g, dict)}
-    return [{**g, **{k: v for k, v in par_cle[g['cle']].items()
-                     if k in T.CLES_GARANTIE and k not in ('cle', 'fin')}}
+    return [{**g, **{k: v for k, v in par_cle[g['cle']].items() if k in cles}}
             if g['cle'] in par_cle else g for g in garanties]
+
+
+def _garanties_ar(defauts_ar, lignes_fr, traductions):
+    """Les garanties de la traduction arabe : les LIGNES, durées et dates de
+    fin du français (personnalisées ou non) ; pour chaque ligne, la
+    désignation, le garant et le détail traduits à la main (même ``cle``),
+    sinon la traduction par défaut, sinon le texte français. Une traduction
+    dont la ``cle`` n'est pas une ligne française n'ajoute rien."""
+    par_cle_defaut = {g.get('cle'): g for g in defauts_ar}
+    par_cle_trad = {g.get('cle'): g for g in traductions or []
+                    if isinstance(g, dict) and g.get('cle')}
+    sortie = []
+    for g in (lignes_fr if lignes_fr is not None else defauts_ar):
+        ligne = {k: g.get(k) for k in T.CLES_GARANTIE}
+        for source in (par_cle_defaut.get(g.get('cle')),
+                       par_cle_trad.get(g.get('cle'))):
+            for k in T.CLES_GARANTIE_TEXTE:
+                if source is not None and isinstance(source.get(k), str):
+                    ligne[k] = source[k]
+        sortie.append(ligne)
+    return sortie
 
 
 def _dater_garanties(garanties, depart):
@@ -973,10 +995,13 @@ def _appliquer_communes(contenu, surcharges):
         contenu['_date_limite_fixee'] = s['delais']['date_limite']
 
 
-def _appliquer_textes(contenu, surcharges, langue, ctx=None, *, modele=False):
+def _appliquer_textes(contenu, surcharges, langue, ctx=None, *, modele=False,
+                      garanties_fr=None):
     """Sections de texte d'une langue. ``modele`` : les garanties du modèle
     s'appliquent par clé (jamais en remplaçant la liste d'une vente). Les
-    articles et le quitus stockés sont des gabarits, rendus avec ``ctx``."""
+    articles et le quitus stockés sont des gabarits, rendus avec ``ctx``.
+    ``garanties_fr`` (traduction arabe) : les lignes françaises de l'acte,
+    dont l'arabe ne traduit que les textes."""
     s = surcharges or {}
     for cle in ('titre', 'conditions_particulieres', 'conseils_intro'):
         if cle in contenu and isinstance(s.get(cle), str):
@@ -990,10 +1015,18 @@ def _appliquer_textes(contenu, surcharges, langue, ctx=None, *, modele=False):
     if 'articles' in contenu and isinstance(s.get('articles'), list):
         contenu['articles'] = resoudre_articles(contenu['articles'],
                                                 s['articles'], ctx, langue)
-    if 'garanties' in contenu and isinstance(s.get('garanties'), list):
+    if 'garanties' in contenu and langue == 'ar' and not modele and (
+            isinstance(garanties_fr, list)
+            or isinstance(s.get('garanties'), list)):
+        contenu['garanties'] = _garanties_ar(
+            contenu['garanties'],
+            garanties_fr if isinstance(garanties_fr, list) else None,
+            s.get('garanties'))
+    elif 'garanties' in contenu and isinstance(s.get('garanties'), list):
         if modele:
             contenu['garanties'] = _fusion_garanties_modele(
-                contenu['garanties'], s['garanties'])
+                contenu['garanties'], s['garanties'],
+                T.CLES_GARANTIE_TEXTE if langue == 'ar' else None)
         else:
             contenu['garanties'] = [
                 {k: g.get(k) for k in T.CLES_GARANTIE}
@@ -1010,9 +1043,11 @@ def _appliquer_textes(contenu, surcharges, langue, ctx=None, *, modele=False):
             if isinstance(s['delais'].get(k), str):
                 contenu['delais'][k] = s['delais'][k]
                 contenu['delais']['_' + k] = True
-    if langue == 'fr' and isinstance(s.get('paiement'), dict) \
+    if isinstance(s.get('paiement'), dict) \
             and isinstance(contenu.get('paiement'), dict):
-        for k in T.CLES_PAIEMENT_TEXTE:
+        # Les moyens de paiement sont une phrase de la langue : chaque
+        # langue règle la sienne.
+        for k in T.CLES_PAIEMENT_MODIFIABLES:
             if isinstance(s['paiement'].get(k), str) \
                     and k in contenu['paiement']:
                 contenu['paiement'][k] = s['paiement'][k]
@@ -1269,11 +1304,19 @@ def _construire(acte, langue='fr', lecture=None, *, avec_modele=True,
     ctx = _textes_par_defaut(contenu, _textes(langue), vente, langue, refs,
                              lecture)
     if modele is not None:
+        if langue == 'ar' and 'garanties' in contenu:
+            # Les durées du modèle sont communes : réglées en français.
+            contenu['garanties'] = _fusion_garanties_modele(
+                contenu['garanties'],
+                (modele.surcharges or {}).get('garanties'),
+                ('duree_mois', 'duree_libelle'))
         _appliquer_textes(contenu, _surcharges_texte(modele, langue), langue,
                           ctx, modele=True)
     if avec_acte_textes:
-        _appliquer_textes(contenu, _surcharges_texte(acte, langue), langue,
-                          ctx)
+        _appliquer_textes(
+            contenu, _surcharges_texte(acte, langue), langue, ctx,
+            garanties_fr=((acte.surcharges or {}).get('garanties')
+                          if langue == 'ar' else None))
     contenu = _finaliser(contenu)
     return (contenu, ctx) if avec_ctx else contenu
 
@@ -1528,7 +1571,12 @@ def _v_paiement(valeur, langue):
     _exiger(not montants,
             "Les montants ne se modifient pas dans un acte : corrigez "
             "l'échéancier de la vente (" + ', '.join(sorted(montants)) + ').')
-    return _textes_du_dict(dict(valeur), T.CLES_PAIEMENT_TEXTE, 'paiement')
+    autres = [k for k in valeur if k not in T.CLES_PAIEMENT_MODIFIABLES]
+    _exiger(not autres,
+            'Section « paiement » : seuls les moyens de paiement '
+            '(modalites) se modifient.')
+    return _textes_du_dict(dict(valeur), T.CLES_PAIEMENT_MODIFIABLES,
+                           'paiement')
 
 
 def _v_options(valeur, langue):
@@ -1615,6 +1663,22 @@ def _v_conseils(valeur, langue):
 
 def _v_garanties(valeur, langue):
     _exiger(isinstance(valeur, list), 'Section « garanties » : liste attendue.')
+    if langue == 'ar':
+        # La traduction ne porte que les textes d'une ligne française (même
+        # clé) : durées et dates de fin reçues sont ignorées.
+        sortie = []
+        for g in valeur:
+            _exiger(isinstance(g, dict),
+                    'Section « garanties » : objet attendu.')
+            _exiger(isinstance(g.get('cle'), str) and g['cle'],
+                    'Section « garanties » : en arabe, chaque ligne porte la '
+                    'clé de sa ligne française.')
+            ligne = {'cle': g['cle']}
+            for k in T.CLES_GARANTIE_TEXTE:
+                if g.get(k) is not None:
+                    ligne[k] = _texte(g[k], 'garanties')
+            sortie.append(ligne)
+        return sortie
     sortie = []
     for g in valeur:
         _exiger(isinstance(g, dict), 'Section « garanties » : objet attendu.')
@@ -1725,12 +1789,32 @@ def avertissements(acte, contenu=None, lecture=None):
     if figes:
         sortie.append(message_montants_figes(figes))
     retard = [T.LIBELLES_SECTIONS[s] for s in T.SECTIONS_MODIFIABLES[acte.type]
-              if s in T.SECTIONS_TEXTE and s in (acte.surcharges or {})
+              if s in T.SECTIONS_TEXTE and _texte_a_traduire(acte, s, lecture)
               and s not in (acte.surcharges_ar or {})]
     if retard:
         sortie.append('La traduction arabe ne reprend pas vos modifications '
                       'de : ' + ', '.join(retard) + '.')
     return sortie
+
+
+def _texte_a_traduire(acte, section, lecture=None):
+    """La personnalisation française de ``section`` porte-t-elle un TEXTE à
+    traduire ? Une date limite (commune) ou une durée de garantie (reprise
+    telle quelle en arabe) n'en est pas un."""
+    valeur = (acte.surcharges or {}).get(section)
+    if valeur is None:
+        return False
+    if section == 'delais':
+        return any(isinstance(valeur, dict) and valeur.get(k)
+                   for k in ('resume', 'detail'))
+    if section == 'garanties':
+        defauts = {g['cle']: g for g in _construire(
+            acte, 'fr', lecture, avec_acte_textes=False).get('garanties')
+            or []}
+        return any(g.get('cle') not in defauts or any(
+            (g.get(k) or '') != (defauts[g['cle']].get(k) or '')
+            for k in T.CLES_GARANTIE_TEXTE) for g in valeur)
+    return True
 
 
 def paiement_suppose(acte, vente):

@@ -721,6 +721,29 @@ class QuitusRegleTests(TestCase):
         self.assertIsNone(S.motif_refus_emission(acte, K.Lecture(v.chantier)))
 
 
+# ── S5 : les garanties sont les mêmes dans les deux langues ─────────────────
+
+class GarantiesArabesPursTests(SimpleTestCase):
+
+    def test_lignes_et_durees_du_francais_textes_arabes(self):
+        def ligne(cle, designation, mois):
+            return {'cle': cle, 'designation': designation, 'duree_mois': mois,
+                    'duree_libelle': '', 'garant': 'g', 'detail': 'd',
+                    'fin': None}
+        defauts_ar = [ligne('onduleur', 'العاكس', 120),
+                      ligne('installation', 'التركيب', 24)]
+        fr = [ligne('installation', 'Installation', 36),
+              ligne('perso_1', 'Toiture', 120)]
+        trad = [{'cle': 'perso_1', 'designation': 'السقف'},
+                {'cle': 'inconnue', 'designation': 'زائد'}]
+        sortie = K._garanties_ar(defauts_ar, fr, trad)
+        self.assertEqual([(g['cle'], g['designation'], g['duree_mois'])
+                          for g in sortie],
+                         [('installation', 'التركيب', 36),
+                          ('perso_1', 'السقف', 120)])
+        self.assertEqual(K._garanties_ar(defauts_ar, None, trad), defauts_ar)
+
+
 # ── S3 : la version « tranche réglée » ne s'émet pas sur une supposition ────
 
 class TrancheRegleeTests(TestCase):

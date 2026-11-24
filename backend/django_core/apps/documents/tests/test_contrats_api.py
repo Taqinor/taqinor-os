@@ -191,6 +191,87 @@ class ApiContratsTests(TestCase):
         self.assertNotIn('options', self._detail(acte, langue='ar')[
             'sections_modifiables'])
 
+    # ── S5 / S14 : corps envoyés par l'écran en arabe ───────────────────
+
+    def test_arabe_delais_detail_seul_date_commune(self):
+        acte = self.v.acte(T.CONTRAT)
+        r = self._patch(acte, {'delais': {'date_limite': '2027-02-10'}})
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertFalse(any('traduction arabe' in a
+                             for a in r.data['avertissements']))
+        r = self._patch(acte, {'delais': {'detail': 'يشمل كل شيء.'}},
+                        langue='ar')
+        self.assertEqual(r.status_code, 200, r.data)
+        delais = r.data['contenu']['delais']
+        self.assertEqual(delais['detail'], 'يشمل كل شيء.')
+        self.assertEqual(delais['date_limite'], '2027-02-10')
+        # Une date ou un résumé reçus en arabe ne changent rien.
+        r = self._patch(acte, {'delais': {'detail': 'نص', 'resume': 'x',
+                                          'date_limite': '2030-01-01'}},
+                        langue='ar')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['contenu']['delais']['date_limite'],
+                         '2027-02-10')
+        self.assertNotEqual(r.data['contenu']['delais']['resume'], 'x')
+        self.assertEqual(self._detail(acte)['contenu']['delais'][
+            'date_limite'], '2027-02-10')
+
+    def test_arabe_garanties_textes_seulement(self):
+        acte = self.v.acte(T.CONTRAT)
+        fr = self._detail(acte)['contenu']['garanties']
+        lignes = [dict(g, duree_mois=36) if g['cle'] == 'installation' else g
+                  for g in fr]
+        r = self._patch(acte, {'garanties': lignes})
+        self.assertEqual(r.status_code, 200, r.data)
+        ar = self._detail(acte, langue='ar')['contenu']['garanties']
+        self.assertEqual([(g['cle'], g['duree_mois']) for g in ar],
+                         [(g['cle'], g['duree_mois'])
+                          for g in r.data['contenu']['garanties']])
+        corps = [{'cle': g['cle'], 'designation': g['designation'],
+                  'garant': g['garant'], 'detail': g['detail']} for g in ar]
+        corps[0] = dict(corps[0], designation='تسمية معدلة', duree_mois=1,
+                        fin='2030-01-01')
+        corps = corps[:-1] + [{'cle': 'inconnue', 'designation': 'زائد',
+                               'garant': '', 'detail': ''}]
+        r = self._patch(acte, {'garanties': corps}, langue='ar')
+        self.assertEqual(r.status_code, 200, r.data)
+        servi = r.data['contenu']['garanties']
+        self.assertEqual([g['cle'] for g in servi], [g['cle'] for g in ar])
+        self.assertEqual(servi[0]['designation'], 'تسمية معدلة')
+        self.assertEqual(servi[0]['duree_mois'], ar[0]['duree_mois'])
+        self.assertEqual(servi[-1]['designation'], ar[-1]['designation'])
+        pose = [g for g in servi if g['cle'] == 'installation'][0]
+        self.assertEqual(pose['duree_mois'], 36)
+        r = self._patch(acte, {'garanties': [{'designation': 'بلا مفتاح'}]},
+                        langue='ar')
+        self.assertEqual((r.status_code, r.data['code']),
+                         (400, T.CODE_CONTENU_INVALIDE))
+
+    def test_paiement_modalites_seules_dans_les_deux_langues(self):
+        acte = self.v.acte(T.CONTRAT)
+        r = self._patch(acte, {'paiement': {'modalites': 'Par chèque.'}})
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['contenu']['paiement']['modalites'],
+                         'Par chèque.')
+        self.assertIn('paiement', self._detail(acte, langue='ar')[
+            'sections_modifiables'])
+        r = self._patch(acte, {'paiement': {'modalites': 'بشيك.'}},
+                        langue='ar')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['contenu']['paiement']['modalites'], 'بشيك.')
+        self.assertEqual(self._detail(acte)['contenu']['paiement'][
+            'modalites'], 'Par chèque.')
+        r = self._patch(acte, {'paiement': {'engagement': 'Autre.'}})
+        self.assertEqual((r.status_code, r.data['code']),
+                         (400, T.CODE_CONTENU_INVALIDE))
+        cloture = self.v.acte(T.CLOTURE)
+        for langue, texte in (('fr', 'Bienvenue.'), ('ar', 'مرحبًا.')):
+            with self.subTest(langue=langue):
+                r = self._patch(cloture, {'conseils_intro': texte},
+                                langue=langue)
+                self.assertEqual(r.status_code, 200, r.data)
+                self.assertEqual(r.data['contenu']['conseils_intro'], texte)
+
     # ── Formes servies = contrat d'API ──────────────────────────────────
 
     def test_formes_egales_aux_echantillons(self):
