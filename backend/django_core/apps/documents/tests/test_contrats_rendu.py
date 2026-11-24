@@ -118,6 +118,19 @@ class RenduHtmlTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             html_de({'type': 'inconnu'})
 
+    def test_logo_tel_quel_sur_pastille_claire_sinon_le_nom(self):
+        """Règle #4 : le logo n'est plus traité par le moteur de devis ; il
+        s'imprime tel quel sur une pastille claire, sans logo c'est le nom."""
+        logo = 'data:image/png;base64,iVBORw0KGgo='
+        for cle, contenu in exemples():
+            with self.subTest(exemple=cle):
+                contenu['societe']['logo_uri'] = logo
+                html = html_de(contenu)
+                self.assertIn(f'<span class="puce"><img src="{logo}"', html)
+                self.assertIn("font-family:'DM Sans'", html)
+                contenu['societe']['logo_uri'] = ''
+                self.assertNotIn('class="puce"><img', html_de(contenu))
+
     def test_aucun_double_echappement(self):
         """R9 — un nom à apostrophe ne s'imprime jamais « &amp;#x27; »."""
         for cle, langue, contenu in exemples_deux_langues():

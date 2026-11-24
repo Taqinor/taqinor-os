@@ -260,17 +260,16 @@ def _gras(texte):
 # ── En-tête, parcours, titre ────────────────────────────────────────────────
 
 def _marque(societe):
+    """Le logo de la société tel quel, sur une pastille claire dans l'en-tête
+    bleu nuit (un logo sombre y reste lisible) ; sans logo, son nom."""
     uri = (societe or {}).get('logo_uri')
-    if uri:
-        try:
-            from apps.ventes.quote_engine import logo as _logo
-            b64 = _logo.societe_b64(uri, 'sombre')
-            if b64:
-                return (f'<img src="data:image/png;base64,{b64}" '
-                        f'alt="{esc(societe.get("nom"))}">')
-        except Exception:  # logo illisible : le nom, jamais une image cassée
-            logger.warning('Logo de la société illisible : le nom est imprimé '
-                           'à sa place', exc_info=True)
+    try:
+        if isinstance(uri, str) and uri.startswith('data:image/'):
+            return (f'<span class="puce"><img src="{esc(uri)}" '
+                    f'alt="{esc(societe.get("nom"))}"></span>')
+    except Exception:  # logo inexploitable : le nom, jamais une image cassée
+        logger.warning('Logo de la société inexploitable : le nom est '
+                       'imprimé à sa place', exc_info=True)
     return esc((societe or {}).get('nom'))
 
 

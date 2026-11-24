@@ -20,6 +20,7 @@ Règles tenues (sources : docs/contrats/conception.md § Mise en page) :
 import base64
 import functools
 import logging
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -75,16 +76,37 @@ def etoile_svg(taille_mm=3.2, couleur=OR):
         f"<circle cx='12' cy='12' r='3.1' fill='#FFFFFF'/></svg>")
 
 
+#: Dossier des polices woff2 de la famille visuelle du devis, lues par CHEMIN
+#: (règle #4 : cette app n'importe jamais le moteur de devis).
+DOSSIER_POLICES = (Path(__file__).resolve().parents[3] / 'ventes'
+                   / 'quote_engine' / 'assets' / 'fonts')
+#: (famille, graisse, fichier) — les seules polices que cette feuille emploie.
+_POLICES = (
+    ('DM Serif Display', 400, 'DMSerifDisplay-400.woff2'),
+    ('DM Sans', 400, 'DMSans-400.woff2'),
+    ('DM Sans', 500, 'DMSans-500.woff2'),
+    ('DM Sans', 700, 'DMSans-700.woff2'),
+)
+
+
+@functools.lru_cache(maxsize=1)
 def _polices():
-    """@font-face du moteur de devis (woff2 embarqués), sinon rien : le repli
-    Georgia / système garde le document lisible."""
-    try:
-        from apps.ventes.quote_engine.residential.theme import font_face_css
-        return font_face_css()
-    except Exception:  # pragma: no cover - rendu dégradé hors dépôt complet
-        logger.warning('Polices du moteur de devis indisponibles : repli sur '
-                       'les polices système', exc_info=True)
-        return ''
+    """@font-face (woff2 en base64, calculé une fois par processus), sinon
+    rien : le repli Georgia / système garde le document lisible."""
+    faces = []
+    for famille, graisse, fichier in _POLICES:
+        try:
+            b64 = base64.b64encode(
+                (DOSSIER_POLICES / fichier).read_bytes()).decode('ascii')
+        except OSError:  # pragma: no cover - rendu dégradé hors dépôt complet
+            logger.warning('Police %s illisible : repli sur les polices '
+                           'système', fichier, exc_info=True)
+            continue
+        faces.append(
+            f"@font-face{{font-family:'{famille}';font-weight:{graisse};"
+            "font-style:normal;"
+            f"src:url('data:font/woff2;base64,{b64}') format('woff2');}}")
+    return '\n'.join(faces)
 
 
 _CSS = """
@@ -131,7 +153,9 @@ strong,b{font-weight:700;color:__NAVY__}
   align-items:flex-start;border-bottom:1.1mm solid __OR__}
 .bandeau .marque{font-size:15pt;font-weight:700;letter-spacing:.06em;
   color:#FFFFFF;line-height:1.1}
-.bandeau .marque img{display:block;height:11mm;width:auto}
+.bandeau .marque .puce{display:inline-block;background:#FFFFFF;
+  border-radius:2mm;padding:1.2mm 2.6mm;line-height:0}
+.bandeau .marque img{display:block;height:9mm;width:auto}
 .bandeau .ref{text-align:right;font-size:8pt;line-height:1.55;color:#C9D2E0}
 .bandeau .ref b{display:block;color:__OR__;font-size:9.6pt;
   letter-spacing:.08em;font-weight:700}

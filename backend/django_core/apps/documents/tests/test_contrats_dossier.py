@@ -304,33 +304,27 @@ class MontantsTests(TestCase):
         self._verifier(v, Decimal('0.00'))
 
     def test_facture_d_acompte_emise_d_un_autre_montant(self):
-        """C1 (recette sur écran réel) : une facture d'acompte émise d'un
-        montant un peu différent (96 DH de moins) ne réduit jamais la
-        tranche imprimée à « ce qu'il reste à facturer » : les montants des
-        tranches somment au prix et leurs cumuls égalent les cibles."""
+        """C1 (recette sur écran réel) : une facture d'acompte émise de 96 DH
+        de moins ne change pas les tranches imprimées : elles somment au
+        prix et suivent l'échéancier convenu."""
         v = Vente(self)
-        cible0 = v.plan()['tranches'][0]['cible_cumul_ttc']
-        acompte = cible0 - Decimal('96')
+        prix = v.plan()['prix_convenu_ttc']
+        acompte = K._q(prix * 30 / 100) - Decimal('96')
         ht = (acompte / Decimal('1.2')).quantize(Decimal('0.01'))
         Facture.objects.create(
             company=v.company, reference=f'FAC-CTR-AC-{next(_seq)}',
             devis=v.devis, client=v.client, statut=Facture.Statut.EMISE,
             taux_tva=Decimal('20'), montant_ht=ht, montant_tva=acompte - ht,
             montant_ttc=acompte)
-        plan = v.plan()
-        prix = plan['prix_convenu_ttc']
-        cibles = [t['cible_cumul_ttc'] for t in plan['tranches']]
         for acte in v.actes():
             for langue in T.LANGUES:
                 with self.subTest(acte=acte.type, variante=acte.variante,
                                   langue=langue):
                     c = K.construire_contenu(acte, langue)
-                    montants = [Decimal(t['montant_ttc'])
-                                for t in c['echeancier']]
-                    self.assertEqual(sum(montants), prix)
-                    cumuls = list(itertools.accumulate(montants))
-                    self.assertEqual(cumuls[:-1], cibles[:-1])
-                    self.assertGreater(montants[0], Decimal('1000'))
+                    m = [Decimal(t['montant_ttc']) for t in c['echeancier']]
+                    self.assertEqual(sum(m), prix)
+                    self.assertEqual(
+                        m[:2], [K._q(prix * p / 100) for p in (30, 60)])
 
     def test_montants_acompte_regle(self):
         v = Vente(self)
@@ -1726,39 +1720,45 @@ class EcranReperesApresPersonnalisationTests(SimpleTestCase):
 class EcheancierConvenuPursTests(SimpleTestCase):
     """C1 (recette sur écran réel) : l'échéancier imprimé est celui CONVENU."""
 
-    def test_facture_d_acompte_d_un_montant_un_peu_different(self):
-        """Défaut attrapé : avec une facture d'acompte émise de 33 024 DH
-        (30 % de 110 400 = 33 120), chaque acte imprimait « Acompte
-        96,00 DH · 0,1 % » (ce qu'il restait à facturer), somme 77 376."""
-        plan = [  # forme de plan_facturation : montant_ttc = reste à faire
-            {'cle': 't1', 'key': 'acompte', 'libelle': 'Acompte',
-             'montant_ttc': Decimal('96.00'),
-             'cible_cumul_ttc': Decimal('33120.00')},
-            {'cle': 't2', 'key': 'materiel',
-             'libelle': 'Livraison du matériel',
-             'montant_ttc': Decimal('66240.00'),
-             'cible_cumul_ttc': Decimal('99360.00')},
-            {'cle': 't3', 'key': 'solde', 'libelle': 'Solde',
-             'montant_ttc': Decimal('11040.00'),
-             'cible_cumul_ttc': Decimal('110400.00')}]
-        tranches = K.tranches_convenues(plan, Decimal('110400'))
-        self.assertEqual([t['montant'] for t in tranches],
-                         [Decimal('33120.00'), Decimal('66240.00'),
-                          Decimal('11040.00')])
-        self.assertEqual(sum(t['montant'] for t in tranches),
-                         Decimal('110400.00'))
+    def test_montants_convenus_dans_chaque_etat_de_la_facturation(self):
+        """Défaut attrapé (CI) : les montants venaient de ``cible_cumul_ttc``
+        (l'état de la FACTURATION : acompte réglé → 16 560 / 16 560 / 5 520
+        pour 30 / 60 / 10 de 55 200). Seuls l'échéancier figé et le prix
+        font foi."""
+        D, pct, mad = Decimal, 'pct', 'montant'
+        cas = (  # (état, prix, [(unité, valeur, cible du plan)], convenu)
+            ('rien facturé', '55200', [(pct, 30, 16560), (pct, 60, 49680),
+                                       (pct, 10, 55200)],
+             ['16560', '33120', '5520']),
+            ('acompte facturé 33 024', '110400', [
+                (pct, 30, 33024), (pct, 60, 99264), (pct, 10, 110304)],
+             ['33120', '66240', '11040']),
+            ('acompte réglé', '55200', [(pct, 30, 16560), (pct, 60, 33120),
+                                        (pct, 10, 38640)],
+             ['16560', '33120', '5520']),
+            ('en dirhams', '100000', [(mad, 25000, 1), (mad, 50000, 2),
+                                      (mad, 25000, 3)],
+             ['25000', '50000', '25000']),
+            ('une tranche', '55200', [(pct, 100, 5)], ['55200']),
+            ('quatre tranches', '1000.01', [(pct, 25, 9)] * 4,
+             ['250.00', '250.00', '250.00', '250.01']),
+            ('changé en 40 / 50 / 10', '55200', [
+                (pct, 40, 16560), (pct, 50, 44160), (pct, 10, 55200)],
+             ['22080', '27600', '5520']),
+        )
+        for etat, prix, lignes, convenu in cas:
+            with self.subTest(etat):
+                plan = [{'cle': f't{i}', 'key': f'k{i}', 'libelle': f'T{i}',
+                         'unite': u, 'valeur': D(v), 'montant_ttc': D('1'),
+                         'cible_cumul_ttc': D(c)}
+                        for i, (u, v, c) in enumerate(lignes)]
+                tranches = K.tranches_convenues(plan, D(prix))
+                montants = [t['montant'] for t in tranches]
+                self.assertEqual(montants, [D(m) for m in convenu])
+                self.assertEqual(sum(montants), D(prix))
+                self.assertEqual(tranches[-1]['cible'], D(prix))
         self.assertEqual([t['pourcentage'] for t in tranches],
-                         [Decimal('30.00'), Decimal('60.00'),
-                          Decimal('10.00')])
-        # La dernière prend le reste au centime, même si sa cible s'arrête
-        # avant le prix (facture d'acompte re-pointée).
-        plan[0]['cible_cumul_ttc'] = Decimal('33024.00')
-        plan[1]['cible_cumul_ttc'] = Decimal('99264.00')
-        plan[2]['cible_cumul_ttc'] = Decimal('110304.00')
-        tranches = K.tranches_convenues(plan, Decimal('110400'))
-        self.assertEqual(sum(t['montant'] for t in tranches),
-                         Decimal('110400.00'))
-        self.assertEqual(tranches[-1]['cible'], Decimal('110400.00'))
+                         [D(40), D(50), D(10)])
 
     def test_frise_et_liste_des_tranches_deux_langues(self):
         """La frise (``echeancier``) et la liste de l'article Paiement
