@@ -830,6 +830,26 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     expect(alerte).not.toHaveTextContent('module de ce toit')
   })
 
+  /* Item 12 (T4-U4-012, côté écran) — « Raccorder automatiquement » forme des chaînes, mais le serveur les juge hors plage
+     (chaîne trop courte : MPPT hors plage par forte chaleur) : l'écran le DIT avec la phrase servie, jamais un succès muet. */
+  it('« Raccorder automatiquement » : chaînes formées mais verdict servi non conforme ⇒ la phrase servie est dite', async () => {
+    servirEtape()
+    const detail = 'Vmp à chaud 180 V < bas de plage MPPT 200 V — chaîne trop courte, MPPT hors plage en été'
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: { electrique: {
+      affectation: [{ module: 'm1', chaine: 1 }],
+      verdicts: [
+        { code: 'voc_cold_under_vmax', libelle: 'Voc à froid', conforme: true, bloquant: true, detail: '' },
+        { code: 'vmp_hot_over_mppt_min', libelle: 'Vmp à chaud au-dessus du bas de la plage MPPT', conforme: false, bloquant: false, detail },
+      ],
+    } } })
+    const carte = rendreEtape()
+    fireEvent.click(within(carte).getByRole('button', { name: 'Raccorder automatiquement' }))
+    const alerte = await within(carte).findByRole('alert')
+    expect(alerte).toHaveTextContent('Chaînes formées, mais à revoir :')
+    expect(alerte).toHaveTextContent(detail)
+    expect(alerte).not.toHaveTextContent('Voc à froid')
+  })
+
   it('« Voir » ouvre le sous-écran Schéma (`?onglet=schema`)', async () => {
     servirEtape()
     rendreEtape()
