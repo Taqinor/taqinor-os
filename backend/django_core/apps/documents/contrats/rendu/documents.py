@@ -114,6 +114,8 @@ def contrat_installation(contenu):
     corps += c.frise(echeancier, langue=langue)
     if contenu.get('paiement', {}).get('modalites'):
         corps += f'<p class="petit">{c.texte_libre(contenu["paiement"]["modalites"])}</p>'
+    # Page 1 : qui la lit seule sait que la signature est à la fin (R11).
+    corps += f'<p class="renvoi">{c.esc(libelle("signature_en_fin", langue))}</p>'
 
     corps += c.h2(libelle('entre_soussignes', langue))
     corps += c.parties(contenu)
@@ -132,7 +134,7 @@ def contrat_installation(contenu):
     corps += _conditions_particulieres(contenu)
     corps += c.signatures(
         contenu, mention_client=libelle('mention_contrat', langue))
-    return _page(contenu, corps)
+    return _page(contenu, corps, classe='contrat')
 
 
 # ── Acte 2 — Procès-verbal de livraison du matériel ─────────────────────────

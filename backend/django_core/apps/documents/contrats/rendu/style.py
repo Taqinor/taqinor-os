@@ -154,7 +154,7 @@ strong,b{font-weight:700;color:__NAVY__}
 
 /* ── Corps ── */
 .corps{padding:0 20mm}
-.titre{padding:8.5mm 0 3mm}
+.titre{padding:7.5mm 0 2.4mm}
 .surtitre{font-size:7.6pt;letter-spacing:.2em;text-transform:uppercase;
   color:__BRONZE__;font-weight:700;margin-bottom:2.2mm;string-set:acte content()}
 .reference-courante{string-set:reference content();height:0;overflow:hidden;
@@ -166,7 +166,7 @@ h1{font-family:__TITRE__;font-weight:400;font-size:27pt;line-height:1.12;
 .chapeau b{color:__NAVY__}
 
 h2{font-family:__TITRE__;font-weight:400;font-size:15.5pt;line-height:1.2;
-  color:__NAVY__;margin:7.5mm 0 3.4mm;break-after:avoid}
+  color:__NAVY__;margin:6.6mm 0 3.2mm;break-after:avoid}
 h2 .etoile{vertical-align:-.25mm;margin-right:2.4mm}
 .intro{color:__GRIS__;margin:-1.4mm 0 4mm;max-width:150mm;font-size:9.8pt}
 
@@ -264,6 +264,7 @@ table.garanties.dates td:nth-child(3){width:20%}
   line-height:1.22;color:__NAVY__;margin-top:.8mm}
 .article .texte{font-size:10.2pt}
 .article.plein{padding-left:0;min-height:0}
+.article.court{break-inside:avoid}
 .article .texte p{margin-bottom:2.2mm;orphans:2;widows:2}
 .article .texte p:last-child{margin-bottom:0}
 .article .texte ul{margin:0 0 2.4mm 0;list-style:none}
@@ -394,6 +395,9 @@ body.cloture .signatures{margin-top:4mm}
 body.cloture .titre{padding:6.5mm 0 2mm}
 body.cloture h2{margin:4.8mm 0 2.4mm}
 .petit{font-size:8.2pt;color:__GRIS__;line-height:1.45}
+.renvoi{margin-top:2mm;text-align:right;font-size:7.4pt;font-weight:700;
+  letter-spacing:.14em;text-transform:uppercase;color:__BRONZE__}
+.renvoi::after{content:" →"}
 .souffle{height:2mm}
 """
 
@@ -528,6 +532,22 @@ td small{font-size:8.8pt}
 .journee .sous{font-size:8.2pt;line-height:1.5}
 
 .petit{font-size:9pt;line-height:1.65}
+.renvoi{text-align:left;font-family:__AR_LIBELLE__;font-size:8pt;
+  margin-top:1.2mm;line-height:1.5}
+.renvoi::after{content:" ←"}
+/* Contrat : la page 1 garde l'essentiel, les modalités et le renvoi vers
+   la signature (le Naskh, plus haut que le latin, la faisait déborder) */
+body.contrat .titre{padding:6.5mm 0 2mm}
+body.contrat h1{line-height:1.3}
+body.contrat .chapeau{line-height:1.6;margin-top:2.4mm}
+body.contrat h2{line-height:1.35}
+body.contrat .intro{line-height:1.55}
+body.contrat .carte{padding:3.4mm 4.6mm 3.6mm}
+body.contrat .carte .val{line-height:1.3}
+body.contrat .carte .det{line-height:1.5}
+body.contrat .jalon .quoi{line-height:1.35}
+body.contrat .jalon .combien{line-height:1.3}
+body.contrat .petit{line-height:1.5}
 /* Procès-verbaux : deux pages comme en français — plus serré */
 body.proces h1{font-size:21pt;line-height:1.35}
 body.proces .titre{padding:5.5mm 0 1.5mm}

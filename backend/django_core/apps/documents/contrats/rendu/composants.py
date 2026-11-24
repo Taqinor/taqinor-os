@@ -532,6 +532,19 @@ def tableau_paiements(paiements, total, langue='fr'):
 
 # ── Articles, encadrés, cases ───────────────────────────────────────────────
 
+# Un article court ne se coupe pas entre deux pages (revue 1, R8) : au plus
+# trois paragraphes, et assez peu de texte pour qu'un bloc insécable ne laisse
+# jamais un grand vide en bas de page.
+ARTICLE_COURT_PARAGRAPHES = 3
+ARTICLE_COURT_SIGNES = 700
+
+
+def _court(art):
+    textes = [str(p) for p in art.get('paragraphes') or []]
+    return (len(textes) <= ARTICLE_COURT_PARAGRAPHES
+            and sum(len(t) for t in textes) <= ARTICLE_COURT_SIGNES)
+
+
 def articles(liste, langue='fr', annexes=None):
     """Les articles, titre en marge. ``annexes`` : ``{cle: html}`` ajouté au
     bas de la colonne de l'article ``cle`` (la carte du service après-vente
@@ -539,8 +552,9 @@ def articles(liste, langue='fr', annexes=None):
     annexes = annexes or {}
     blocs = []
     for i, art in enumerate(liste or []):
+        classe = 'article court' if _court(art) else 'article'
         blocs.append(
-            f'<div class="article"><div class="marge">'
+            f'<div class="{classe}"><div class="marge">'
             f'<div class="num">{libelle("article", langue, n=i + 1)}</div>'
             f'<h3>{esc(art.get("titre"))}</h3></div>'
             f'<div class="texte">{paragraphes(art.get("paragraphes"))}'
