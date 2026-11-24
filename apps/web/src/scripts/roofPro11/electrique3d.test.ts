@@ -22,6 +22,7 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as THREE from 'three';
+import type { LngLat } from '../../lib/roof'; // ACAL1944
 import {
   ID_CALQUE_ELECTRIQUE,
   TYPES_EQUIPEMENT,
@@ -29,6 +30,7 @@ import {
   NOM_TYPE_FR,
   creerCoucheElectrique,
   creerMarqueur,
+  etiquettesChaines, // ACAL1944
   estTypeEquipement,
   lireCoucheElectrique,
   versScene,
@@ -206,6 +208,43 @@ describe('CALX219 — un document sans couche électrique n’invente rien', () 
       expect(() => lireCoucheElectrique(brut)).not.toThrow();
       expect(lireCoucheElectrique(brut).equipements).toEqual([]);
     }
+  });
+});
+
+// ACAL1944 — sur la carte réelle de l'étape Électrique, ni « Chaîne n » ni pastille « Onduleur » (maquette Electrique).
+describe('ACAL1944 — chaîne servie ⇒ étiquette « Chaîne n » et pastille « Onduleur »', () => {
+  it('une pilule par chaîne servie, à sa couleur, au nord de ses modules ; aucune chaîne ⇒ rien', () => {
+    const bleu = { r: 36 / 255, g: 130 / 255, b: 214 / 255 };
+    const groupe = etiquettesChaines([
+      { libelle: 'Chaîne 1', couleur: bleu, points: [[0, 0, 7], [2, 0, 7], [0, 2, 7], [2, 2, 7.4]] },
+      { libelle: 'Chaîne 2', couleur: { r: 1, g: 0.5, b: 0 }, points: [[10, 0, 7]] },
+    ]);
+    expect(groupe.children.map((e) => e.userData.texte)).toEqual(['Chaîne 1', 'Chaîne 2']);
+    expect(groupe.children[0].userData.pastille).toBe('rgb(36, 130, 214)');
+    expect(groupe.children[0].position.x).toBeCloseTo(1, 9);
+    expect(groupe.children[0].position.y).toBeGreaterThan(2); // hors des modules, au nord de la rangée la plus haute
+    expect(groupe.children[0].position.z).toBeGreaterThan(7.4);
+    expect(etiquettesChaines([]).children).toHaveLength(0);
+  });
+  it('l’onduleur posé porte la pastille « Onduleur » ; les autres organes gardent leur cartouche', () => {
+    const base = { lng: -7.6002, lat: 33.5001, altitudeM: null, source: 'saisie' as const };
+    const ond = creerMarqueur({ ...base, id: 'o1', type: 'onduleur', label: '' }, ORIGINE).children[0];
+    expect([ond.userData.texte, ond.userData.pastille]).toEqual(['Onduleur', '#0c1335']);
+    expect(creerMarqueur({ ...base, id: 't1', type: 'tgbt', label: 'TGBT' }, ORIGINE).children[0].userData.pastille).toBeUndefined();
+  });
+  it('la couche hydratée avant la première scène se redessine à l’origine de la scène (l’onduleur revient sur la carte)', () => {
+    const ctx: { electrical: DocumentElectrique; sceneOrigin: LngLat | null } = {
+      electrical: { equipements: [{ id: 'o1', type: 'onduleur', label: 'Onduleur', lng: -7.6002, lat: 33.5001, altitudeM: null, source: 'saisie' }] },
+      sceneOrigin: null,
+    };
+    const couche = creerCoucheElectrique(ctx as never);
+    couche.rafraichir(); // hydratation : aucune origine de scène encore
+    expect(Math.abs(couche.groupe.children[0].position.x)).toBeGreaterThan(1e5); // dessinée autour de [0, 0] : hors carte
+    ctx.sceneOrigin = ORIGINE;
+    (couche.groupe.userData.siOrigineChange as () => void)(); // la scène se rattache après son rendu
+    const [est, nord] = versScene(-7.6002, 33.5001, ORIGINE);
+    expect(couche.groupe.children[0].position.x).toBeCloseTo(est, 9);
+    expect(couche.groupe.children[0].position.y).toBeCloseTo(nord, 9);
   });
 });
 

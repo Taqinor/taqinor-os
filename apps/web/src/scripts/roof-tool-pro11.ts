@@ -1812,7 +1812,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       },
       paint: { 'text-color': '#ffffff', 'text-halo-color': '#070b1d', 'text-halo-width': 1.6 },
     });
-    monterCotesAretes(map as never, () => areas.map((a) => (a.id === activeAreaId ? { sommets: vertices, ferme: closed } : { sommets: a.vertices, ferme: true })), opts.chiffrage !== undefined); // ACAL1328 — atelier ERP seul
+    monterCotesAretes(map as never, () => areas.map((a) => (a.id === activeAreaId ? { sommets: vertices, ferme: closed, actif: true } : { sommets: a.vertices, ferme: true })), opts.chiffrage !== undefined); // ACAL1328 — atelier ERP seul
     // ACAL233 — calque de la parcelle (pointillés), distinct du tracé du toit.
     map.addSource('rp9-parcelle', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } as never });
     map.addLayer({
@@ -4285,7 +4285,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     renderCarteAccesHd: (scale) => shadingUi.avecCarteDAcces(() => scene3d.renderOffscreen(scale)), // ACAL726
     exporterSceneGltf: () => scene3d.exporterSceneGltf(), // ACAL537
     enregistrerOrbite: (o) => enregistrerOrbite(map, o), // ACAL896 — vidéo d'orbite, hors /proposal
-    ...apiCamera(map, { anneaux: () => [vertices, ...areas.filter((a) => a.id !== activeAreaId).map((a) => a.vertices)], azimut: () => facingAzimuthDeg, trace: () => drawing }, !!opts.reducedMotion), // ACAL435 + F6
+    ...apiCamera(map, { anneaux: () => [vertices, ...areas.filter((a) => a.id !== activeAreaId).map((a) => a.vertices)], azimut: () => facingAzimuthDeg, trace: () => drawing, volume: () => scene3d.volumeScene() }, !!opts.reducedMotion), // ACAL435 + F6 ; ACAL1839 — volume
     // CAL104 — vue 2D plan : on PROJETTE la géométrie déjà posée (contour de la zone
     // active + centres de modules du plan gagnant), on ne re-pave rien. Le compte et les
     // cotes de la 2D sont donc ceux de la 3D, par construction.

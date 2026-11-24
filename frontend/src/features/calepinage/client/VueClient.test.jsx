@@ -242,8 +242,17 @@ describe('Montrer au client — l’atelier en mode présentation (vraie 3D)', (
     const { unmount } = rendre({ webgl: true })
     await screen.findByTestId('client-soleil', {}, ATTENTE_ATELIER)
     await waitFor(() => expect(modePresentation).toHaveBeenCalledWith(true, expect.objectContaining({
-      vue: 'trois-quarts', cadrage: { zoomMax: 22, part: 0.62, cielPx: 190 },
+      vue: 'trois-quarts', cadrage: expect.objectContaining({ zoomMax: 22, part: 0.8, cielPx: 150 }),
     })))
+    // ACAL1839 — la zone libre est MESURÉE à chaque cadrage : au téléphone, le corps couvre le bas de la carte.
+    const cadrage = modePresentation.mock.calls[0][1].cadrage
+    const boite = (top, left, width, height) => ({ top, left, width, height, bottom: top + height, right: left + width, x: left, y: top })
+    const carteEl = document.getElementById('rp9-map')
+    const corps = screen.getByTestId('cal-vue-client')
+    vi.spyOn(carteEl, 'getBoundingClientRect').mockReturnValue(boite(0, 0, 390, 844))
+    vi.spyOn(corps, 'getBoundingClientRect').mockReturnValue(boite(385, 0, 390, 459))
+    vi.spyOn(screen.getByTestId('client-projet'), 'getBoundingClientRect').mockReturnValue(boite(20, 20, 280, 56))
+    expect(cadrage.margesPx).toEqual({ haut: 76, gauche: 0, droite: 0, bas: 459 })
     // Tant que la vue n'est pas posée et le toit cadré : le toit enregistré de dessus, dit en mots de client.
     expect(screen.getByTestId('client-repli-2d')).toBeInTheDocument()
     expect(screen.getByTestId('client-voir-3d')).toHaveTextContent('La vue 3D se prépare…')
@@ -251,6 +260,7 @@ describe('Montrer au client — l’atelier en mode présentation (vraie 3D)', (
     act(() => prete())
     expect(await screen.findByTestId('client-aide-geste')).toHaveTextContent('Glissez un doigt pour tourner autour')
     expect(screen.queryByTestId('client-repli-2d')).toBeNull()
+    expect(screen.getByTestId('client-ciel').style.background).toContain('var(--cal-lien)') // ACAL1839 — le ciel, aux jetons
     unmount()
     expect(modePresentation).toHaveBeenLastCalledWith(false)
   })

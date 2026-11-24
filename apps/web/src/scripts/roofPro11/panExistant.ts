@@ -23,7 +23,10 @@ export function poseTenue(ctx: Pick<Ctx, 'layoutState' | 'freeMode' | 'freeState
  *  les chiffres du plan sont recalculés (`resoudre` = renderActive : dérate, horizon, bande climatique), puis la pose
  *  tenue est REMISE (`remettreSurLePlan`) et re-rendue (`rendrePoseTenue` = renderCustomLayout, la carte la suit).
  *  Sans pose tenue, ou sans `rendrePoseTenue` (site public) : `resoudre` seul, comme avant. */
-export function redessinerSansReposer(ctx: Parameters<typeof poseTenue>[0] & Pick<Ctx, 'layoutPlan'>, resoudre: () => void, rendrePoseTenue?: () => void): void {
+export function redessinerSansReposer(ctx: Parameters<typeof poseTenue>[0] & Pick<Ctx, 'layoutPlan'> & Partial<Pick<Ctx, 'areas' | 'activeAreaId'>>, resoudre: () => void, rendrePoseTenue?: () => void): void {
+  // ACAL1920 — pan EXISTANT, pose affichée : le solveur ne fait que refuser (`refusPanExistant`) et le DIRE dans la barre
+  // d'état — dès l'ouverture, l'ombrage relu redessinant. Un redessin n'est pas un geste : la pose est redessinée, muette.
+  if (ctx.layoutPlan && motifPanExistant(ctx.areas?.find((a) => a.id === ctx.activeAreaId))) return void rendrePoseTenue?.();
   if (!rendrePoseTenue || !poseTenue(ctx)) return void resoudre();
   const tenue = ctx.layoutState;
   resoudre();
