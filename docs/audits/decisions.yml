@@ -5767,9 +5767,9 @@ decisions:
         texte: "Supposer le tri usuel des fabricants (0/+3 %) : un gain de 0,75 % par la règle du quart"
       - cle: omettre
         texte: "Comme avant : étape omise, résultat « incomplet » tant que la fiche n'est pas complétée"
-    reponse: zero_suppose
+    reponse: tri_positif_usuel
     date: "2026-11-23"
-    source: "décision PRISE PAR L'ORCHESTRATEUR, À CONFIRMER, sous la réponse du fondateur à D-ACAL-82 (« search yourself on right values to be added ») et sa demande « have default for everything » ; rejeu en direct T3-VAGUED du 23/11/2026 : après le profil de départ le résultat restait incomplet (socle manquant : qualité module) ; mesure en lecture seule sur la production le même jour : 3 fiches de module, AUCUNE ne publie sa tolérance — sans ce défaut aucun résultat de calepinage n'est complet et la production de la pose réelle n'atteint aucun devis ; 0 est le choix prudent (les fabricants de premier rang publient un tri positif) ; change la production d'au plus 0,75 % par rapport au tri usuel"
+    source: "décision PRISE PAR L'ORCHESTRATEUR, À CONFIRMER, sous la réponse du fondateur à D-ACAL-82 (« search yourself on right values to be added ») et sa demande « have default for everything » ; rejeu en direct T3-VAGUED du 23/11/2026 : après le profil de départ le résultat restait incomplet (socle manquant : qualité module) ; mesure en lecture seule sur la production le même jour : 3 fiches de module, AUCUNE ne publie sa tolérance — sans ce défaut aucun résultat de calepinage n'est complet et la production de la pose réelle n'atteint aucun devis ; 0 est le choix prudent (les fabricants de premier rang publient un tri positif) ; change la production d'au plus 0,75 % par rapport au tri usuel ; RÉPONSE DU FONDATEUR le 24/11/2026 (questions interactives) : « Assume the usual 0/+3 % » — la tolérance supposée est le tri usuel 0 % à +3 % (un gain de 0,75 % par la règle du quart), dite « supposé » ; le 0 % posé le 23/11 par l'orchestrateur est remplacé"
     taches: [ACAL1968]
 
   - id: D-ACAL-99
@@ -5781,7 +5781,7 @@ decisions:
         texte: "Exiger l'heure de début, comme avant (le régime seul ne suffit qu'en 3 × 8)"
     reponse: huit_et_six
     date: "2026-11-23"
-    source: "décision PRISE PAR L'ORCHESTRATEUR, À CONFIRMER, pour appliquer la réponse du fondateur à D-ACAL-94 (« The shift pattern is enough ») ; rejeu en direct T3-VAGUED du 23/11/2026 : un lead industriel en 2 × 8 sans heure de début était encore refusé ; change la part de la consommation couverte par le soleil (autoconsommation) du devis industriel ; 1 seul lead industriel en production"
+    source: "décision PRISE PAR L'ORCHESTRATEUR, À CONFIRMER, pour appliquer la réponse du fondateur à D-ACAL-94 (« The shift pattern is enough ») ; rejeu en direct T3-VAGUED du 23/11/2026 : un lead industriel en 2 × 8 sans heure de début était encore refusé ; change la part de la consommation couverte par le soleil (autoconsommation) du devis industriel ; 1 seul lead industriel en production ; RÉPONSE DU FONDATEUR le 24/11/2026 (questions interactives) : CONFIRMÉ"
     taches: [ADEV127]
 
   - id: D-ACAL-100
@@ -5793,7 +5793,7 @@ decisions:
         texte: "Un autre tarif par défaut (à donner)"
     reponse: patente_et_force_motrice
     date: "2026-11-23"
-    source: "choix de la lane devis-auto-ci en appliquant la réponse du fondateur à D-ACAL-92 (« Assume low voltage ») : la décision dit « basse tension » sans nommer le tarif ; PRIS PAR L'ORCHESTRATEUR, À CONFIRMER ; étendu le même jour au lead industriel dont la TENSION n'est pas déclarée (la question D-ACAL-92 portait sur « un lead commercial ou industriel ») ; change les kWh tirés d'une facture en dirhams, donc la taille et les économies"
+    source: "choix de la lane devis-auto-ci en appliquant la réponse du fondateur à D-ACAL-92 (« Assume low voltage ») : la décision dit « basse tension » sans nommer le tarif ; PRIS PAR L'ORCHESTRATEUR, À CONFIRMER ; étendu le même jour au lead industriel dont la TENSION n'est pas déclarée (la question D-ACAL-92 portait sur « un lead commercial ou industriel ») ; change les kWh tirés d'une facture en dirhams, donc la taille et les économies ; RÉPONSE DU FONDATEUR le 24/11/2026 (questions interactives) : CONFIRMÉ"
     taches: [ADEV125]
 
   - id: D-ACAL-101
@@ -5805,5 +5805,5 @@ decisions:
         texte: "Seulement quand le contrat ou la tension est supposé (la mission d'origine d'ADEV125)"
     reponse: quatre_motifs
     date: "2026-11-23"
-    source: "relevé par la critique finale des vagues C et D (docs/audits/l5-calepinage/T3/critique-finale-vagues-C-D.md, point 2) : le bloc d'étude rangé porte désormais la réserve de visite, que le PDF lisait déjà sans jamais la trouver ; tout devis C&I créé ou recalculé après la vague D est donc marqué estimation pour les quatre motifs ; un devis déjà rangé ou envoyé ne bouge pas ; PRIS PAR L'ORCHESTRATEUR, À CONFIRMER (statut imprimé au client)"
+    source: "relevé par la critique finale des vagues C et D (docs/audits/l5-calepinage/T3/critique-finale-vagues-C-D.md, point 2) : le bloc d'étude rangé porte désormais la réserve de visite, que le PDF lisait déjà sans jamais la trouver ; tout devis C&I créé ou recalculé après la vague D est donc marqué estimation pour les quatre motifs ; un devis déjà rangé ou envoyé ne bouge pas ; PRIS PAR L'ORCHESTRATEUR, À CONFIRMER (statut imprimé au client) ; RÉPONSE DU FONDATEUR le 24/11/2026 (questions interactives) : CONFIRMÉ"
     taches: [ADEV125]

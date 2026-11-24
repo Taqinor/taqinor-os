@@ -71,6 +71,9 @@ test('CIQ126 — commercial : Auto-remplir (moteur serveur), enregistrer, rouvri
     && /\/ventes\/etude-ci\/preview\/$/.test(new URL(r.url()).pathname))
   await page.getByTestId('btn-auto-remplir').click()
   const apercu = await (await auto).json()
+  // Le POST etude-ci/preview de l'aperçu en direct peut répondre AVANT celui d'Auto-remplir (course vue le 24/11/2026,
+  // quand l'aperçu complet lit le froid du site) : attendre la fin d'Auto-remplir (lignes posées), comme `helpers.js`.
+  await expect(page.getByTestId('btn-auto-remplir')).not.toHaveAttribute('aria-busy', 'true', { timeout: 180_000 })
 
   // CAD177 — AGNR31 : les lignes « prix à renseigner » bloquent la création.
   await retirerLignesPrixARenseigner(page)

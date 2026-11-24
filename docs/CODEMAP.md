@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 1f5c23273ab6867aa368ab261a262e5421b3cfe13a998118a77a8ad2858a3dfc
+Structure fingerprint: 07d5cdb2d01805964d8b63770d94362358407a7b2082bf6a07f7317436bba2ac
 Plan fingerprint: c879c82382546b15dde3c4995d42dc8102cbfba3c35b8286175cd6839a3dd098
 
 
@@ -233,7 +233,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `outillage` | `outillage/` | 3 | Durable tools and loans (`Outillage`, `KitOutillage`). |
 | `sav` | `sav/` | 32 | Equipment registry (`Equipement`, warranty clock), tickets + SLA, `ContratMaintenance`, worksheets, `Probleme`, `KbArticle`, `AlarmeOnduleur`. |
 | `monitoring` | `monitoring/` | 9 | Production supervision: `ProductionReading`, `UnderperformanceFlag`, `SlaDisponibilite`, `CertificatCarbone`. Swappable provider, no-op by default. |
-| `documents` | `documents/` | 2 | Field-execution PDFs (PV de réception, bon de livraison, attestation, dossier de remise — no models) **+ dossier contractuel (24/11/2026)** : `ActeContractuel`, `ModeleActe` ; `contrats/` (`contenu.py`, `services.py`, `textes.py` / `textes_ar.py`, `rendu/`) ; routes `documents/chantiers/<id>/contrats/` et `documents/actes/<id>/…` ; écran : onglet « Contrats » de la fiche chantier (`pages/installations/contrats/`). |
+| `documents` | `documents/` | 2 | Field-execution PDFs (PV de réception, bon de livraison, attestation, dossier de remise — no models) **+ dossier contractuel (24/11/2026)** : `ActeContractuel`, `ModeleActe` ; `contrats/` (`contenu.py`, `gabarits.py`, `services.py`, `textes.py` / `textes_ar.py`, `rendu/`) ; routes `documents/chantiers/<id>/contrats/` et `documents/actes/<id>/…` ; écran : onglet « Contrats » de la fiche chantier (`pages/installations/contrats/`). |
 | `ged` | `ged/` | 44 | Document management: `Cabinet`/`Folder`/`Document`/`DocumentVersion`, ACL, retention/legal hold, signature requests, public deposits, `Coffre`, `PieceJointeImportee` (ACEL61 — pièces jointes déjà importées, jamais réimportées). |
 | `portail` | `portail/` | 8 | Client self-service: quotes/invoices/deliveries, e-signature acceptance, online payment, site timeline. **Never financial detail beyond its own scope** (NTPRT14). GED links kept (SOLMVP16b). Demandes portail : `demandes-ticket-portail/<id>/refuser/` (refus motivé, `motif_refus`, ASOC98), résolues au ticket résolu (ASOC44). |
 | `adsengine` | `adsengine/` | 47 | Meta Ads engine: mirrors, propose->approve->apply, creative library, experiments, guardrails, `AssumptionNode` tree. **`installable: True`** (SOLMVP17 — the toggle now gates its API). Campaign creation is always PAUSED (rule #3). `actions/<id>/desapprouver/` (`desapprobation.py`, AERR24). |
@@ -415,6 +415,10 @@ propose/confirm step, typed result cards; key-gated by the key of `SQL_AGENT_PRO
 commercial section above). Both JWT-protected, both no-op without their key.
 
 ---
+
+### ventes / core — « Un seul moteur » (D-ACAL-97, 24/11/2026, en cours de construction)
+
+- Contrat `apps/ventes/contract_samples/conception_lead.json` ; paquet `apps/ventes/conception/` (`champs.py` : `CHAMPS_ENTREES`, colonnes du lead qui sont des entrées du moteur ; `entrees.py` : `EntreesConception`, porte d'entrée unique des trois marchés) ; modèle `apps/ventes/models_conception.py` (`ConceptionLead` : résultat rangé par lead, ou par calepinage sans lead, une version courante par porteur ; migration `ventes/0161`) ; événements `lead_entrees_modifiees`, `pose_enregistree`, `conception_recalculee` (`core/events/`) ; figeage du devis automatique `apps/ventes/tests/golden/conception/` (9 goldens). Moteur, route et lecteurs : pas encore construits — conception `docs/audits/l5-calepinage/controles/C4-un-seul-moteur.md`, état `docs/audits/l5-calepinage/etat.md`.
 
 ## 5. Frontend
 

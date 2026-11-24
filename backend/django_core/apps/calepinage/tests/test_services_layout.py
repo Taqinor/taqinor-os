@@ -18,7 +18,7 @@ Ce qui est prouvé ici :
 Run :
     python manage.py test apps.calepinage.tests.test_services_layout -v2
 """
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.calepinage.models import Calepinage
 from apps.calepinage.services.layout import LayoutRefuse, enregistrer_layout
@@ -177,3 +177,43 @@ class RefusTest(BaseLayout):
         with self.assertRaises(LayoutRefuse) as capture:
             enregistrer_layout(self.pivot, ['zones'])
         self.assertEqual(capture.exception.champ, 'roof_layout')
+
+
+class EvenementsDuMoteurUniqueTest(SimpleTestCase):
+    """ACAL2010 (D-ACAL-97, contrat d'abord) — les trois signaux du moteur
+    unique existent, sont des ``Signal``, sont exportés par ``core.events`` et
+    restent réservés sans abonné tant que leurs abonnés n'existent pas
+    (ADEV139, ALEA69). La lane calepinage émet ``pose_enregistree`` (ACAL2011)."""
+
+    NOMS = {'lead_entrees_modifiees': 'lead', 'pose_enregistree': 'calepinage',
+            'conception_recalculee': 'devis'}
+
+    def test_trois_signaux_exportes_par_le_bus(self):
+        import importlib
+
+        import django.dispatch
+
+        from core import event_catalog, event_coverage, events
+
+        for nom, module in self.NOMS.items():
+            with self.subTest(signal=nom):
+                signal = getattr(events, nom)
+                self.assertIsInstance(signal, django.dispatch.Signal)
+                self.assertIn(nom, events.__all__)
+                sous = importlib.import_module(f'core.events.{module}')
+                self.assertIs(getattr(sous, nom), signal)
+                self.assertIn(nom, sous.__all__)
+                self.assertIn(nom, event_coverage.ALLOWED_UNCONSUMED)
+                self.assertNotIn(nom, event_coverage.orphan_signals())
+                self.assertIn(nom, event_coverage.NO_STATIC_EMITTER)
+                self.assertNotIn(nom, event_coverage.catalog_payload_mismatches())
+                self.assertIsNotNone(event_catalog.entry(nom))
+        self.assertEqual(
+            event_catalog.entry('lead_entrees_modifiees')['payload'],
+            ['company_id', 'lead_id', 'champs'])
+        self.assertEqual(
+            event_catalog.entry('pose_enregistree')['payload'],
+            ['company_id', 'calepinage_id', 'lead_id', 'empreinte_pose'])
+        self.assertEqual(
+            event_catalog.entry('conception_recalculee')['payload'],
+            ['company_id', 'lead_id', 'calepinage_id', 'version', 'declencheur'])

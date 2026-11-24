@@ -116,11 +116,16 @@ def construire(cascade, non_renseignees):
             'lignes': lignes, 'non_localisables': ailleurs}
 
 
-def textes_de_completude(socle, n):
-    """``{mention, motif, avertissement}`` de ``completude_de_la_chaine``."""
+def textes_de_completude(socle):
+    """``{mention, motif, avertissement}`` de ``completude_de_la_chaine``.
+
+    ACAL2037 — le N annonce la LONGUEUR du socle manquant servi avec la
+    mention (une seule définition du compte) ; socle complet ⇒ mention vide
+    (les pertes facultatives omises restent dans ``non_renseignees``)."""
     from .chaine_pertes import (
         AVERTISSEMENT_BORNE_HAUTE, MENTION_BORNE_HAUTE, MOTIF_SOCLE_MANQUANT)
 
+    n = len(socle)
     mention = (MENTION_BORNE_HAUTE.format(
         n=n, pertes='perte' if n == 1 else 'pertes',
         s='' if n == 1 else 's') if n else '')
