@@ -2177,6 +2177,47 @@ class RelanceEnTacheTests(_emprunt(RelanceConceptionTests, '_relancer'),
         for version in ConceptionLead.objects.filter(company=company):
             self.assertNotIn('33.57', _json_mod.dumps(version.declencheur))
 
+    def test_calepinage_archive_ou_relie_la_conception_du_lead_continue(self):
+        """Relecture E3 M1 — le calepinage de la version courante est archivé
+        (puis relié à un autre lead) : la relance suivante n'échoue pas, elle
+        range la conception du lead SANS cette pose ; ``perimee`` repasse à
+        faux ; une ligne d'avertissement, aucune pile d'erreur."""
+        from django.utils import timezone
+
+        from apps.calepinage.models import Calepinage
+        from apps.crm.models import Lead
+        from apps.ventes.models import ConceptionLead
+        from apps.ventes.selectors import conception_courante
+        from core.events import pose_enregistree
+
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'))
+        _reglages_de_la_societe(company)
+        calepinage = Calepinage.objects.create(company=company, lead_id=lead.pk, titre='Toit')
+        pose_enregistree.send(sender='calepinage.Calepinage', company_id=company.pk,
+                              calepinage_id=calepinage.pk, lead_id=lead.pk, empreinte_pose='p' * 64)
+        self._executer_les_taches()
+        Calepinage.objects.filter(pk=calepinage.pk).update(archive_le=timezone.now())
+
+        self._enregistrer(lead, facture_hiver=Decimal('2400'))
+        with self.assertLogs('apps.ventes.conception', level='WARNING') as journaux:
+            rendus = self._executer_les_taches()
+        self.assertEqual(rendus, [{'version': 2, 'ecrite': True}])  # mutant « ValueError » : [None]
+        self.assertFalse(any(r.exc_info for r in journaux.records))
+        courante = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual((courante.calepinage_id, courante.empreinte_pose), (None, ''))
+        self.assertFalse(conception_courante(company, lead.pk)['perimee'])
+        self.assertEqual(self.en_file.call_count, 0)
+
+        # Relié à un autre lead : même repli, la conception suit la fiche.
+        autre = Lead.objects.create(company=company, nom='Autre', prenom='Lead', ville=lead.ville,
+                                    facture_hiver=Decimal('1800'))
+        Calepinage.objects.filter(pk=calepinage.pk).update(archive_le=None, lead_id=autre.pk)
+        ConceptionLead.objects.filter(pk=courante.pk).update(calepinage_id=calepinage.pk)
+        self._enregistrer(lead, facture_hiver=Decimal('2600'))
+        with self.assertLogs('apps.ventes.conception', level='WARNING'):
+            self.assertEqual(self._executer_les_taches(), [{'version': 3, 'ecrite': True}])
+        self.assertIsNone(ConceptionLead.objects.get(lead=lead, courante=True).calepinage_id)
+
     # ── ADEV140 — le filet d'empreinte à la lecture ─────────────────────────
     def test_entree_changee_sans_evenement_perimee_puis_une_relance(self):
         from apps.crm.models import Lead
