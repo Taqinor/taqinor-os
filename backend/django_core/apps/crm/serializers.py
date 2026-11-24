@@ -1249,84 +1249,11 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
             raise ConflitEtat(
                 {'dossier_subvention_le': [self.MESSAGE_DATE_SUBVENTION]})
 
-    # AGR400 — une valeur de pompage SAISIE dans l'ERP porte sa provenance,
-    # posée ici (jamais par le corps : les colonnes ``*_source`` et
-    # ``carburant_prix_declare_le`` sont en lecture seule). Une valeur effacée
-    # efface sa provenance ; une valeur inchangée ne touche à rien.
-    _PROVENANCES_POMPAGE_SAISIE = (
-        ('niveau_statique_m', 'niveau_statique_source', 'declare'),
-        ('debit_forage_m3h', 'debit_forage_source', 'client'),
-        ('besoin_eau_m3j', 'besoin_eau_source', 'client'),
-        ('pompe_hmt_m', 'pompe_hmt_source', 'declaree'),
-    )
-
-    #: T4-U3-002 — les origines que la question de l'appel fait choisir sur
-    #: la fiche. « Mesuré en visite » et « Saisi sur le site » sont posées par
-    #: leur propre chemin (validation du relevé de visite, questionnaire du
-    #: site) : choisies ici, elles sont REFUSÉES en le disant, jamais
-    #: remplacées en silence par l'origine déclarée.
-    _PROVENANCES_POMPAGE_CHOISISSABLES = {
-        'niveau_statique_source': ('declare',),
-        'debit_forage_source': ('essai', 'foreur', 'client'),
-        'besoin_eau_source': ('client', 'pompe_actuelle'),
-        'pompe_hmt_source': ('declaree',),
-    }
-    _PROVENANCES_POMPAGE_RESERVEES = {
-        'mesure_visite': (
-            "« Mesuré en visite » ne se choisit pas sur la fiche : il se pose "
-            "seul quand le technicien valide le relevé du point d'eau de la "
-            "visite technique. Planifiez la visite depuis la fiche, ou "
-            "choisissez ici l'origine que le client a donnée."),
-        'site_web': (
-            "« Saisi sur le site » ne se choisit pas sur la fiche : il se pose "
-            "seul quand le client remplit le questionnaire du site. "
-            "Choisissez ici l'origine que le client a donnée."),
-    }
-
+    # AGR400 / T4-U3-002 — provenances pompage et date du prix carburant :
+    # la règle vit dans ``provenances_pompage`` (fichier-mur, C20).
     def _poser_provenances_pompage(self, attrs):
-        instance = self.instance
-
-        def _avant(champ):
-            return getattr(instance, champ, None) if instance else None
-
-        def _change(champ):
-            return champ in attrs and (
-                instance is None or getattr(instance, champ) != attrs[champ])
-
-        for valeur, source, origine in self._PROVENANCES_POMPAGE_SAISIE:
-            choisie = attrs.get(source) or None
-            if source in attrs and choisie != _avant(source):
-                # Origine CHOISIE sur la fiche (elle diffère de l'enregistrée).
-                if choisie is not None:
-                    self._refuser_provenance_pompage(
-                        attrs, valeur, source, choisie)
-                attrs[source] = choisie
-            elif _change(valeur):
-                attrs[source] = origine if attrs[valeur] is not None else None
-            else:
-                # Renvoyée telle quelle : rien ne change.
-                attrs.pop(source, None)
-        # Q17 — le prix du carburant est DÉCLARÉ et DATÉ : la date est celle
-        # du jour où le prix change, posée par le serveur.
-        if _change('carburant_prix_unitaire_mad'):
-            from core.dates import aujourd_hui_local
-            attrs['carburant_prix_declare_le'] = (
-                aujourd_hui_local()
-                if attrs['carburant_prix_unitaire_mad'] is not None else None)
-
-    def _refuser_provenance_pompage(self, attrs, valeur, source, choisie):
-        motif = self._PROVENANCES_POMPAGE_RESERVEES.get(choisie)
-        if motif is None and choisie not in (
-                self._PROVENANCES_POMPAGE_CHOISISSABLES[source]):
-            motif = "Cette origine n'est pas proposée pour ce champ."
-        if motif:
-            raise ConflitEtat({source: [motif]})
-        finale = (attrs[valeur] if valeur in attrs
-                  else getattr(self.instance, valeur, None))
-        if finale is None:
-            libelle = Lead._meta.get_field(valeur).verbose_name
-            raise ConflitEtat({source: [
-                f"Saisissez d'abord « {libelle} », puis son origine."]})
+        from .provenances_pompage import poser_provenances_pompage
+        poser_provenances_pompage(self.instance, attrs)
 
     class Meta:
         model = Lead
