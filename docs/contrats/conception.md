@@ -100,7 +100,8 @@ paiements : signée, elle vaudrait reçu contre la société (revue 1).
 - **Dés-acceptation** (`devis_acceptation_annulee`) et **chantier annulé** (`chantier_annule`) : les actes non signés
   passent `annule` (jamais supprimés, `statut_avant_annulation` gardé) ; une ré-acceptation les rétablit. Un acte
   signé reste signé (la preuve ne se supprime jamais) et l'écran le signale. Sur un chantier annulé, les neuf routes
-  du dossier répondent 409 « Chantier annulé », lectures comprises, comme les quatre documents existants (garde de
+  du dossier répondent 409 « Chantier annulé » à chaque verbe qu'elles servent, lectures comprises (un verbe non
+  servi répond 405, quel que soit l'id), comme les quatre documents existants (garde de
   classe de l'app `documents`) : l'onglet affiche ce message ; un acte signé reste en GED.
 - **Brouillon → émis** (`emettre`) : contenu et PDF figés, PDF déposé en GED (armoire « Chantiers », dossier = la
   référence du chantier, `source_type='documents.acte_<type>'`), partagé au portail client. Garde : le quitus
