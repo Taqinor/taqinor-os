@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
@@ -15,7 +15,6 @@ import DevisRetenu from './DevisRetenu'
 import { refusParChamp } from './entreeElectrique'
 import { ROLES } from './MaterielElectrique.helpers'
 import { casesPastille, chainesServies, libelleChaine } from './resumeRaccordement'
-import { totalPose } from '../surfacePose'
 
 /* ============================================================================
    ACAL1299 / ACAL1300 — L'ÉTAPE « ÉLECTRIQUE » DE LA COQUE (maquette `Electrique.dc.html`).
@@ -146,23 +145,9 @@ function CarteOnduleur({ id, entree, configs, resultat, lectureSeule, onApplique
   )
 }
 
-/* T4-U4-018 — le raccordement (serveur : `services/electrique.py::conception_du_calepinage`, qui ne lit que les pans du
-   document) ne câble ni les champs au sol ni les ombrières (`poseSurfaces[]`), et ce plan ne dessine que les pans : on le
-   DIT, avec le nom et le nombre de modules de chaque surface, au lieu de laisser croire qu'ils sont raccordés. */
-const nomsSurfaces = (surfaces) => surfaces
-  .map((s) => `${s.libelle} (${nb(s.modules)} module${s.modules > 1 ? 's' : ''})`).join(' et ')
-function phraseSurfacesNonRaccordees(surfaces) {
-  if (!surfaces.length) return null
-  return `${nomsSurfaces(surfaces)} : pas encore raccordé${surfaces.length > 1 ? 's' : ''}. Le raccordement automatique `
-    + 'ne câble aujourd’hui que les panneaux posés sur les pans de toit, et ce plan ne dessine que les pans.'
-}
-const motifSansToit = (pose) => (pose && pose.toit.panneaux === 0 && pose.surfaces.length > 0
-  ? `Aucun panneau de toit à raccorder : ${nomsSurfaces(pose.surfaces)} ne se raccorde${pose.surfaces.length > 1 ? 'nt' : ''} pas encore automatiquement.`
-  : null)
-
 /** Sur la carte : la pastille du haut, la légende des chaînes (seulement si le constructeur les
     colore), la barre d'actions du bas. */
-function CalquesCarte({ id, resultat, couleursDessinees, lectureSeule, onRaccorde, onModifier, pose = null }) {
+function CalquesCarte({ id, resultat, couleursDessinees, lectureSeule, onRaccorde, onModifier }) {
   const cases = casesPastille(resultat)
   const chaines = couleursDessinees ? chainesServies(resultat).filter((c) => c.couleur) : []
   const manuelles = (resultat?.electrique?.affectation ?? []).some((l) => l?.source === 'affectation manuelle')
@@ -190,7 +175,7 @@ function CalquesCarte({ id, resultat, couleursDessinees, lectureSeule, onRaccord
         </CarteFlottante>
       )}
       <BarreRaccordement calepinageId={id} manuelles={manuelles} lectureSeule={lectureSeule}
-        onRaccorde={onRaccorde} onModifier={onModifier} motifSansChaine={motifSansToit(pose)} />
+        onRaccorde={onRaccorde} onModifier={onModifier} />
     </SurCarte>
   )
 }
@@ -208,11 +193,6 @@ export default function EtapeElectrique(props) {
   const [editeur, setEditeur] = useState(false)
   const relire = () => setRelecture((n) => n + 1)
   const cle = { id, relecture }
-  // T4-U4-018 — la pose du document (pans + surfaces), relue à l'ouverture et après chaque raccordement.
-  const pose = useMemo(() => {
-    try { return totalPose(builderApi?.serializeLayout?.() ?? null) } catch { return null }
-  }, [builderApi, relecture]) // eslint-disable-line react-hooks/exhaustive-deps -- `relecture` : relire le document
-  const phraseSurfaces = phraseSurfacesNonRaccordees(pose?.surfaces ?? [])
   const { data: resultat } = useResource((p) => calepinageApi.calepinages.resultat(p.id), cle, { select: (r) => r?.data ?? null })
   const { data: entree } = useResource((p) => calepinageApi.calepinages.entreeElectrique(p.id), cle, { select: (r) => r?.data ?? null })
   const { data: configs } = useResource((p) => calepinageApi.calepinages.configurationsOnduleur(p.id), cle, { select: (r) => r?.data ?? null })
@@ -258,7 +238,7 @@ export default function EtapeElectrique(props) {
   }
   const calques = (
     <CalquesCarte id={id} resultat={resultat} couleursDessinees={peutColorer} lectureSeule={lectureSeule}
-      onRaccorde={relire} onModifier={() => setEditeur(true)} pose={pose} />
+      onRaccorde={relire} onModifier={() => setEditeur(true)} />
   )
 
   if (editeur) {
@@ -280,9 +260,6 @@ export default function EtapeElectrique(props) {
       {/* ACAL1830 — la carte « Prêt à envoyer ? » est EN TÊTE du panneau (maquette v2), avant l'onduleur. */}
       <PretAEnvoyer key={relecture} calepinageId={id} filtre="electrique" court testIdCompte="cal-electrique-synthese"
         surRegler={reglerIci} />
-      {phraseSurfaces && (
-        <p role="note" className="cel-surfaces-hors-toit" data-testid="cal-elec-surfaces-non-raccordees">{phraseSurfaces}</p>
-      )}
       <CarteOnduleur id={id} entree={entree} configs={configs} resultat={resultat} lectureSeule={lectureSeule}
         onApplique={relire} />
       <section className="cel-schema" data-testid="cal-elec-schema-voir">

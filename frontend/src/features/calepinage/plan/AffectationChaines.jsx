@@ -36,6 +36,14 @@ function alertesDuRaccordement(electrique) {
   return [...new Set([...verdicts, ...alertes].filter((t) => typeof t === 'string' && t.trim()))]
 }
 
+/** T4-U4-018 — les causes SERVIES par l'évaluation (`manquantes`, puis `bloquants`, `alertes`) et les alertes de la
+    réponse du raccordement, chacune une fois, telles quelles. */
+function causesServies(evaluation, alertesReponse = []) {
+  const phrases = (cle) => (Array.isArray(evaluation?.[cle]) ? evaluation[cle] : [])
+  return [...new Set([...phrases('manquantes'), ...phrases('bloquants'), ...phrases('alertes'), ...alertesReponse]
+    .filter((t) => typeof t === 'string' && t.trim()))]
+}
+
 /** ACAL1536 — la phrase qui dit pourquoi aucune chaîne n'est apparue, d'après les rôles absents servis. */
 function causeSansChaine(absents) {
   const manque = absents ?? []
@@ -50,7 +58,7 @@ function causeSansChaine(absents) {
    serveur affichés tels quels) ; « Modifier une chaîne » ouvre l'écran d'affectation (`onModifier`).
    « Déplacer l'onduleur » n'est PAS proposé : aucune position d'onduleur n'est enregistrée (D-ACAL-70). */
 export function BarreRaccordement({
-  calepinageId, manuelles = false, lectureSeule = false, onRaccorde, onModifier, motifSansChaine = null,
+  calepinageId, manuelles = false, lectureSeule = false, onRaccorde, onModifier,
 }) {
   const [arme, setArme] = useState(false)
   const [enCours, setEnCours] = useState(false)
@@ -69,12 +77,19 @@ export function BarreRaccordement({
           if (alertes.length) setRefus(['Chaînes formées, mais à revoir :', ...alertes])
           return undefined
         }
-        // T4-U4-018 — rien à câbler sur les pans (seulement un champ au sol / une ombrière) : la vraie cause, jamais
-        // « choisissez le module de ce toit » (le module désigné n'y change rien).
-        if (motifSansChaine) { setRefus([motifSansChaine]); return undefined }
-        return Promise.resolve(calepinageApi.calepinages.entreeElectrique?.(calepinageId))
-          .then((e) => setRefus([causeSansChaine(e?.data?.absents)]))
-          .catch(() => setRefus([causeSansChaine(null)]))
+        // T4-U4-018 — aucune chaîne : la cause SERVIE (`manquantes` de la conception — matériel non désigné ou fiche
+        // incomplète — puis bloquants/alertes, et les alertes de la réponse), jamais une phrase devinée ici. Le serveur
+        // câble pans, champs au sol et ombrières (`chaines.py::_pans_poses`). Rien de servi : repli ACAL1536.
+        const alertesReponse = alertesDuRaccordement(r.data?.electrique)
+        return Promise.resolve(calepinageApi.calepinages.evaluerElectrique?.(calepinageId, {}))
+          .then((ev) => causesServies(ev?.data, alertesReponse))
+          .catch(() => alertesReponse)
+          .then((causes) => {
+            if (causes.length) { setRefus(['Aucune chaîne formée :', ...causes]); return undefined }
+            return Promise.resolve(calepinageApi.calepinages.entreeElectrique?.(calepinageId))
+              .then((e) => setRefus([causeSansChaine(e?.data?.absents)]))
+              .catch(() => setRefus([causeSansChaine(null)]))
+          })
       })
       .catch((err) => setRefus(Object.values(refusAffectation(err, REFUS_AUTO)).map(String)))
       .finally(() => setEnCours(false))

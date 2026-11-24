@@ -875,7 +875,6 @@ export const ALL_HOOKS = [
   'cal-elec-devis-retenu',
   'cal-elec-onduleur',
   'cal-elec-schema-voir',
-  'cal-elec-surfaces-non-raccordees',
   'cal-elec-actions-carte',
   'cal-schema-legende',
   'cal-schema-cartouche',

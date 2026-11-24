@@ -53,8 +53,6 @@
 .cel-devis-retenu { display: flex; flex-direction: column; gap: 4px; font-size: 0.75rem; line-height: 1.4; color: var(--cal-texte-3); }
 .cel-devis-retenu p { margin: 0; }
 .cel-devis-retenu .cel-devis-ecart { color: var(--cal-surveiller-texte); }
-/* T4-U4-018 — champ au sol / ombrière : « pas encore raccordés » (le raccordement ne câble que les pans). */
-.cel-surfaces-hors-toit { margin: 0; padding: 10px 12px; border-radius: var(--cal-rayon-pile); font-size: 0.8125rem; line-height: 1.45; color: var(--cal-surveiller-texte); background: color-mix(in srgb, var(--cal-production) 14%, var(--cal-surface)); }
 
 /* « Prêt à envoyer ? » EN TÊTE : la carte (or pâle quand il reste un point, verte pâle quand tout est bon) porte le
    titre, la pastille et le point à régler avec son « Régler » bleu nuit ; les contrôles bons sont dans une section
