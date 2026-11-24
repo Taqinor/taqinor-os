@@ -61,8 +61,8 @@ export const CALQUE_CONTOUR = 'rp9-contour-choisi';
 const CONTOUR = CALQUE_CONTOUR;
 const COINS = 'rp9-pts';
 const rgb = (v: string): string | null => {
-  const m = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/.exec(v.trim());
-  return m ? `rgb(${m[1]}, ${m[2]}, ${m[3]})` : null;
+  const c = rgbaDe(v);
+  return c ? `rgb(${c[0]}, ${c[1]}, ${c[2]})` : null;
 };
 function styleContour(el: Element | undefined): Array<[string, string, unknown]> {
   const jeton = (nom: string, repli: string) => (el && typeof getComputedStyle === 'function' ? rgb(getComputedStyle(el).getPropertyValue(nom)) : null) ?? repli;
@@ -76,9 +76,17 @@ function styleContour(el: Element | undefined): Array<[string, string, unknown]>
 }
 
 type Rgba = [number, number, number, number];
-/** `rgb(…)` / `rgba(…)` (virgules ou espaces, alpha 0-1) → [r, g, b, a 0-255] ; illisible : `null`. */
+/** `rgb(…)` / `rgba(…)` (virgules ou espaces, alpha 0-1) ou hexadécimal `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa` (la feuille
+ *  CONSTRUITE sert les jetons ainsi — T4-B4-008) → [r, g, b, a 0-255] ; illisible : `null`. */
 function rgbaDe(v: string): Rgba | null {
-  const m = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)(?:[\s,/]+([\d.]+))?/.exec(v.trim());
+  const t = v.trim();
+  const h = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(t);
+  if (h) {
+    const x = h[1].length <= 4 ? [...h[1]].map((c) => c + c).join('') : h[1];
+    const n = (i: number) => Number.parseInt(x.slice(i, i + 2), 16);
+    return [n(0), n(2), n(4), x.length === 8 ? n(6) : 255];
+  }
+  const m = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)(?:[\s,/]+([\d.]+))?/.exec(t);
   return m ? [Number(m[1]), Number(m[2]), Number(m[3]), Math.round((m[4] === undefined ? 1 : Number(m[4])) * 255)] : null;
 }
 /** T4-B4-008 — fond et filet de la pilule aux jetons du thème (`--cal-flottante`, `--cal-flottante-filet`) : blanche en

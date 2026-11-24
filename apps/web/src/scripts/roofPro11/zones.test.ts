@@ -1327,7 +1327,9 @@ describe('ACAL1328 — calque rp9-cotes', () => {
       expect(centre(images.get(idPilule)!)).toEqual([255, 255, 255, 219]);
       t.emettre('idle');
       expect(peint[`${CALQUE_COTES}|text-color`]).toBe('rgb(12, 19, 53)');
-      theme = { '--cal-texte-1': 'rgb(243 245 251)', '--cal-flottante': 'rgba(12, 19, 53, 0.82)', '--cal-flottante-filet': 'rgba(255, 255, 255, 0.1)' };
+      // La feuille de style CONSTRUITE (minifiée) sert les jetons en hexadécimal (relevé au navigateur : `#0c1335d1`, `#f3f5fb`) :
+      // un lecteur qui ne comprenait que `rgb(…)` retombait toujours sur la pilule blanche.
+      theme = { '--cal-texte-1': '#f3f5fb', '--cal-flottante': '#0c1335d1', '--cal-flottante-filet': '#ffffff1a' };
       t.emettre('idle');
       expect(peint[`${CALQUE_COTES}|text-color`]).toBe('rgb(243, 245, 251)');
       expect(centre(images.get(idPilule)!)).toEqual([12, 19, 53, 209]);
