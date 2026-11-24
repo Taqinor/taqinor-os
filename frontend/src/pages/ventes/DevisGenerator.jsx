@@ -2170,8 +2170,7 @@ export default function DevisGenerator({
           conditions={conditions} setCondition={setCondition}
           setEcheancierSaisie={setEcheancierSaisie} modeInstallation={modeInstallation}
           apercuPompage={apercuPompage} kpiTotal={kpiTotal} handleReset={handleReset}
-          onEnregistre={onEnregistre} onVoirPdf={onVoirPdf}
-          onConfirmerSansLignes={confirmerSansLignesEcartees}
+          onEnregistre={onEnregistre} onVoirPdf={onVoirPdf} onConfirmerSansLignes={confirmerSansLignesEcartees}
         />
       </form>
 
