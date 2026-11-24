@@ -49,7 +49,7 @@ from .valeurs import nombre as _nombre
 
 __all__ = ['MOTIF_SANS_ACCES', 'acces_des_modules', 'acces_par_bande',
            'acces_par_module', 'modules_sous_seuil', 'motif_ombres_non_mesurees',
-           'ombrage_des_chaines', 'sources_d_ombre']
+           'ombrage_des_chaines']
 
 MOTIF_SANS_ACCES = (
     "L'ombre sur chaque panneau n'est pas encore calculée : l'écart d'ombre "
@@ -65,7 +65,7 @@ def _hauts(objets):
                and (_nombre(objet.get('heightM')) or 0) > 0)
 
 
-def sources_d_ombre(layout):
+def _sources_d_ombre(layout):
     """T4-U1-023 — ``(obstacles, voisins)`` du document qui portent une ombre.
 
     ``zones[].obstacles[]`` et ``environment[]`` (arbres, bâtiments voisins)
@@ -87,7 +87,7 @@ def motif_ombres_non_mesurees(layout):
     """T4-U1-023 — la phrase servie quand des objets hauts sont posés mais
     qu'aucune lecture d'ombre n'est enregistrée ; ``None`` sans objet haut
     (« pas encore calculée » reste alors vrai tel quel)."""
-    obstacles, voisins = sources_d_ombre(layout)
+    obstacles, voisins = _sources_d_ombre(layout)
     if not (obstacles or voisins):
         return None
     objets = ' et '.join(filter(None, (
