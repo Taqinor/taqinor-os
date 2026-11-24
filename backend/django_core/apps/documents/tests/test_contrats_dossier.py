@@ -302,6 +302,35 @@ class MontantsTests(TestCase):
         v = Vente(self)
         self._verifier(v, Decimal('0.00'))
 
+    def test_facture_d_acompte_emise_d_un_autre_montant(self):
+        """C1 (recette sur écran réel) : une facture d'acompte émise d'un
+        montant un peu différent (96 DH de moins) ne réduit jamais la
+        tranche imprimée à « ce qu'il reste à facturer » : les montants des
+        tranches somment au prix et leurs cumuls égalent les cibles."""
+        v = Vente(self)
+        cible0 = v.plan()['tranches'][0]['cible_cumul_ttc']
+        acompte = cible0 - Decimal('96')
+        ht = (acompte / Decimal('1.2')).quantize(Decimal('0.01'))
+        Facture.objects.create(
+            company=v.company, reference=f'FAC-CTR-AC-{next(_seq)}',
+            devis=v.devis, client=v.client, statut=Facture.Statut.EMISE,
+            taux_tva=Decimal('20'), montant_ht=ht, montant_tva=acompte - ht,
+            montant_ttc=acompte)
+        plan = v.plan()
+        prix = plan['prix_convenu_ttc']
+        cibles = [t['cible_cumul_ttc'] for t in plan['tranches']]
+        for acte in v.actes():
+            for langue in T.LANGUES:
+                with self.subTest(acte=acte.type, variante=acte.variante,
+                                  langue=langue):
+                    c = K.construire_contenu(acte, langue)
+                    montants = [Decimal(t['montant_ttc'])
+                                for t in c['echeancier']]
+                    self.assertEqual(sum(montants), prix)
+                    cumuls = list(itertools.accumulate(montants))
+                    self.assertEqual(cumuls[:-1], cibles[:-1])
+                    self.assertGreater(montants[0], Decimal('1000'))
+
     def test_montants_acompte_regle(self):
         v = Vente(self)
         acompte = v.plan()['tranches'][0]['montant_ttc']
@@ -1631,6 +1660,58 @@ class EcranReperesApresPersonnalisationTests(SimpleTestCase):
                 texte = article(c, 'garanties')
                 self.assertIn(K.C.duree_mois(36, langue=langue), texte)
                 self.assertNotIn(K.C.duree_mois(24, langue=langue), texte)
+
+
+class EcheancierConvenuPursTests(SimpleTestCase):
+    """C1 (recette sur écran réel) : l'échéancier imprimé est celui CONVENU."""
+
+    def test_facture_d_acompte_d_un_montant_un_peu_different(self):
+        """Défaut attrapé : avec une facture d'acompte émise de 33 024 DH
+        (30 % de 110 400 = 33 120), chaque acte imprimait « Acompte
+        96,00 DH · 0,1 % » (ce qu'il restait à facturer), somme 77 376."""
+        plan = [  # forme de plan_facturation : montant_ttc = reste à faire
+            {'cle': 't1', 'key': 'acompte', 'libelle': 'Acompte',
+             'montant_ttc': Decimal('96.00'),
+             'cible_cumul_ttc': Decimal('33120.00')},
+            {'cle': 't2', 'key': 'materiel',
+             'libelle': 'Livraison du matériel',
+             'montant_ttc': Decimal('66240.00'),
+             'cible_cumul_ttc': Decimal('99360.00')},
+            {'cle': 't3', 'key': 'solde', 'libelle': 'Solde',
+             'montant_ttc': Decimal('11040.00'),
+             'cible_cumul_ttc': Decimal('110400.00')}]
+        tranches = K.tranches_convenues(plan, Decimal('110400'))
+        self.assertEqual([t['montant'] for t in tranches],
+                         [Decimal('33120.00'), Decimal('66240.00'),
+                          Decimal('11040.00')])
+        self.assertEqual(sum(t['montant'] for t in tranches),
+                         Decimal('110400.00'))
+        self.assertEqual([t['pourcentage'] for t in tranches],
+                         [Decimal('30.00'), Decimal('60.00'),
+                          Decimal('10.00')])
+        # La dernière prend le reste au centime, même si sa cible s'arrête
+        # avant le prix (facture d'acompte re-pointée).
+        plan[0]['cible_cumul_ttc'] = Decimal('33024.00')
+        plan[1]['cible_cumul_ttc'] = Decimal('99264.00')
+        plan[2]['cible_cumul_ttc'] = Decimal('110304.00')
+        tranches = K.tranches_convenues(plan, Decimal('110400'))
+        self.assertEqual(sum(t['montant'] for t in tranches),
+                         Decimal('110400.00'))
+        self.assertEqual(tranches[-1]['cible'], Decimal('110400.00'))
+
+    def test_frise_et_liste_des_tranches_deux_langues(self):
+        """La frise (``echeancier``) et la liste de l'article Paiement
+        portent les montants convenus, dans les deux langues."""
+        vente = vente_pure(prix='110400')
+        acte = acte_pur(T.CONTRAT)
+        for langue in T.LANGUES:
+            c = K.construire_contenu(acte, langue, LecturePure(
+                acte.chantier, vente))
+            self.assertEqual([t['montant_ttc'] for t in c['echeancier']],
+                             ['33120.00', '66240.00', '11040.00'])
+            texte = article(c, 'paiement')
+            for m in ('33120', '66240', '11040'):
+                self.assertIn(K.C.montant(m, langue=langue), texte)
 
 
 class EcranAllerRetourTests(SimpleTestCase):

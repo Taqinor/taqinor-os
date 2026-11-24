@@ -235,12 +235,8 @@ class Lecture:
             'montant': _s(p['montant']),
             '_key': (libelles.get(p['facture_id']) or ('', ''))[1],
         } for p in paiements_des_factures([f.pk for f in factures])]
-        tranches = [{
-            'cle': t['cle'], 'key': t['key'], 'libelle': t['libelle'],
-            'montant': _q(t['montant_ttc']),
-            'cible': _q(t['cible_cumul_ttc']),
-            'pourcentage': t['pourcentage'],
-        } for t in plan['tranches']]
+        tranches = tranches_convenues(plan['tranches'],
+                                      plan['prix_convenu_ttc'])
         paye = _q(solde['paye'])
         return {
             'prix_ttc': _q(plan['prix_convenu_ttc']),
@@ -253,6 +249,29 @@ class Lecture:
             'paiements': paiements,
             'reglements': reglements(paiements, paye),
         }
+
+
+def tranches_convenues(tranches_plan, prix):
+    """L'échéancier CONVENU d'une vente, tel qu'un acte l'imprime : le
+    montant de chaque tranche = sa cible cumulée moins la précédente, la
+    dernière prenant le reste du prix au centime ; le pourcentage en découle.
+    Jamais le ``montant_ttc`` du plan, qui dit ce qu'il RESTE à facturer
+    sur une tranche (une facture d'acompte de 33 024 DH pour 33 120 DH
+    convenus laissait « Acompte 96,00 DH · 0,1 % » dans tous les actes)."""
+    prix = _q(prix or ZERO)
+    sortie, precedente = [], ZERO
+    for i, t in enumerate(tranches_plan):
+        cible = _q(t['cible_cumul_ttc'])
+        if i == len(tranches_plan) - 1 and prix > 0:
+            cible = prix
+        montant = max(ZERO, cible - precedente)
+        sortie.append({
+            'cle': t['cle'], 'key': t['key'], 'libelle': t['libelle'],
+            'montant': montant, 'cible': cible,
+            'pourcentage': _q(montant / prix * 100) if prix > 0 else ZERO,
+        })
+        precedente = max(precedente, cible)
+    return sortie
 
 
 def reglements(paiements, paye):
