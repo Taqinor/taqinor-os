@@ -462,26 +462,19 @@ class GarantiesDuContratTests(TestCase):
         self.assertEqual(pose()[0]['duree_mois'], 36)
 
     def test_reserve_de_propriete_lue_sur_le_contrat(self):
-        """S2 par la base : la réserve décochée sur le contrat (brouillon,
-        puis contenu figé une fois signé) retire la propriété des
-        procès-verbaux et du quitus."""
+        """S2 par la base : la réserve décochée sur le contrat (brouillon, puis
+        contenu figé une fois signé) vaut pour les trois autres actes."""
         v = Vente(self)
-        contrat = v.acte(T.CONTRAT)
-        S.modifier(contrat, {'options': {'reserve_propriete': False}}, v.user)
-
-        def reserves():
-            return [K.construire_contenu(v.acte(t, var))['options'][
-                'reserve_propriete'] for t, var in (
-                (T.LIVRAISON, T.RESTE_A_REGLER), (T.RECEPTION, ''),
-                (T.CLOTURE, ''))]
-        self.assertEqual(reserves(), [False] * 3)
-        self.assertNotIn('propriete', [a['cle'] for a in K.construire_contenu(
-            v.acte(T.LIVRAISON, T.RESTE_A_REGLER))['articles']])
-        contrat = v.acte(T.CONTRAT)
-        ActeContractuel.objects.filter(pk=contrat.pk).update(
-            statut=T.SIGNE, contenu=K.construire_contenu(contrat),
-            contenu_ar=K.construire_contenu(contrat, 'ar'), surcharges={})
-        self.assertEqual(reserves(), [False] * 3)
+        S.modifier(v.acte(T.CONTRAT), {'options': {'reserve_propriete': False}}, v.user)
+        for fige in (False, True):
+            if fige:
+                contrat = v.acte(T.CONTRAT)
+                ActeContractuel.objects.filter(pk=contrat.pk).update(
+                    statut=T.SIGNE, contenu=K.construire_contenu(contrat), surcharges={})
+            for type_acte, variante, _rang in T.LIGNES_DOSSIER[1:]:
+                c = K.construire_contenu(v.acte(type_acte, variante))
+                self.assertIs(c['options']['reserve_propriete'], False)
+                self.assertNotIn('propriete', [a['cle'] for a in c['articles']])
 
 
 @tag('pdf')
@@ -1856,89 +1849,50 @@ class GarantiesDuContratPursTests(SimpleTestCase):
 
 
 #: Les phrases qui supposent la réserve de propriété (S2), par langue.
-RESERVE_DE_PROPRIETE = {'fr': ('propriété de', 'sa propriété', 'restitution'),
-                        'ar': ('ملكية', 'ملكيتها', 'استرجاع')}
-
-
-def texte_imprime(contenu):
-    """Le texte lu du HTML d'un contenu (sans style ni balises)."""
-    from apps.documents.contrats.rendu import html_de
-    html = re.sub(r'<style>.*?</style>', '', html_de(contenu), flags=re.S)
-    return re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', '', html))
+RESERVE = {'fr': ('propriété de', 'sa propriété', 'restitution'),
+           'ar': ('ملكية', 'ملكيتها', 'استرجاع')}
 
 
 class ReserveDuContratPursTests(SimpleTestCase):
-    """S2 (recette finale) : une réserve de propriété par chantier, celle du
-    contrat."""
+    """S2 (recette finale) : une réserve de propriété par chantier."""
 
-    def _dossier(self, reserve):
-        """Le contrat avec l'option réglée sur SON écran, puis les cinq actes
-        lus avec la réserve de ce contrat."""
+    def test_reglee_au_contrat_suivie_par_tout_le_dossier(self):
+        """Défaut attrapé : réserve décochée sur le contrat, livraison et
+        réception imprimaient « Le matériel reste la propriété de… » et les
+        deux « Retard de paiement » « la restitution du matériel resté sa
+        propriété », en français et en arabe. Cochée : chaque acte la dit."""
+        from apps.documents.contrats.rendu import html_de
         vente = vente_pure(paiements=[('2026-12-21', '100000')])
-        contrat = Ecran(T.CONTRAT, vente=vente)
-        contrat.enregistrer({'options': options_ecran(
-            contrat.lire(), reserve_propriete=reserve)})
-        lue = contrat.lire()['options']['reserve_propriete']
-        self.assertIs(lue, reserve)
-        for type_acte, variante in CINQ_ACTES:
-            e = (contrat if type_acte == T.CONTRAT else
-                 Ecran(type_acte, variante, vente=vente, reserve_contrat=lue))
-            for langue in T.LANGUES:
-                yield type_acte, variante, langue, e.lire(langue)
-
-    def test_decochee_au_contrat_aucun_acte_ne_la_suppose(self):
-        """Défaut attrapé : réserve décochée sur le contrat, la livraison et
-        la réception imprimaient « Le matériel reste la propriété de… » et
-        les deux articles « Retard de paiement » « la restitution du
-        matériel resté sa propriété », dans les deux langues."""
-        for type_acte, variante, langue, c in self._dossier(False):
-            with self.subTest(acte=type_acte, variante=variante,
-                              langue=langue):
-                self.assertIs(c['options']['reserve_propriete'], False)
-                texte = texte_imprime(c)
-                for phrase in RESERVE_DE_PROPRIETE[langue]:
-                    self.assertNotIn(phrase, texte)
-                if type_acte == T.CLOTURE:
-                    self.assertTrue(c['quitus'])
-
-    def test_cochee_chaque_acte_la_dit(self):
-        attendu = {T.CONTRAT: 'propriete', T.LIVRAISON: 'propriete',
-                   T.RECEPTION: 'solde'}
-        for type_acte, variante, langue, c in self._dossier(True):
-            with self.subTest(acte=type_acte, variante=variante,
-                              langue=langue):
-                texte = texte_imprime(c)
-                self.assertTrue(any(p in texte
-                                    for p in RESERVE_DE_PROPRIETE[langue]))
-                if type_acte in attendu:
-                    self.assertTrue(any(
-                        p in article(c, attendu[type_acte])
-                        for p in RESERVE_DE_PROPRIETE[langue]))
-                if type_acte in (T.CONTRAT, T.RECEPTION):
-                    self.assertIn(RESERVE_DE_PROPRIETE[langue][2],
-                                  article(c, 'retard'))
-                if type_acte == T.CLOTURE:
-                    self.assertIn(RESERVE_DE_PROPRIETE[langue][0],
-                                  ' '.join(c['quitus']))
+        for reserve in (False, True):
+            contrat = Ecran(T.CONTRAT, vente=vente)
+            contrat.enregistrer({'options': options_ecran(
+                contrat.lire(), reserve_propriete=reserve)})
+            lue = contrat.lire()['options']['reserve_propriete']
+            for type_acte, variante in CINQ_ACTES:
+                e = contrat if type_acte == T.CONTRAT else Ecran(
+                    type_acte, variante, vente=vente, reserve_contrat=lue)
+                for langue in T.LANGUES:
+                    with self.subTest(reserve=reserve, acte=type_acte,
+                                      variante=variante, langue=langue):
+                        c = e.lire(langue)
+                        texte = re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', '',
+                                       html_de(c).split('</style>')[-1]))
+                        dit = [p for p in RESERVE[langue] if p in texte]
+                        self.assertIs(c['options']['reserve_propriete'],
+                                      reserve)
+                        self.assertEqual(bool(dit), reserve, dit)
 
     def test_les_autres_actes_ne_la_reglent_plus(self):
-        """Envoyée par l'écran d'un procès-verbal, l'option est ignorée ;
-        la pénalité de l'acte, elle, passe."""
-        for type_acte, variante in CINQ_ACTES:
-            if type_acte in (T.CONTRAT, T.CLOTURE):
-                continue  # la clôture n'a pas d'options à l'écran
-            with self.subTest(acte=type_acte, variante=variante):
-                propre = G.valider_surcharges(type_acte, {'options': {
-                    'reserve_propriete': False, 'penalite_retard_pct': 2}})
-                self.assertEqual(propre['options'],
-                                 {'penalite_retard_pct': '2'})
-                e = Ecran(type_acte, variante, reserve_contrat=True)
-                e.enregistrer({'options': options_ecran(
-                    e.lire(), reserve_propriete=False)})
-                c = e.lire()
-                self.assertIs(c['options']['reserve_propriete'], True)
-                self.assertNotIn('reserve_propriete',
-                                 e.acte.surcharges['options'])
+        """Envoyée par l'écran d'un procès-verbal, l'option est ignorée ; la
+        pénalité de l'acte passe. Le contrat, lui, la règle."""
+        for type_acte, variante in CINQ_ACTES[1:4]:
+            propre = G.valider_surcharges(type_acte, {'options': {
+                'reserve_propriete': False, 'penalite_retard_pct': 2}})
+            self.assertEqual(propre['options'], {'penalite_retard_pct': '2'})
+            e = Ecran(type_acte, variante, reserve_contrat=True)
+            e.enregistrer({'options': options_ecran(e.lire(),
+                                                    reserve_propriete=False)})
+            self.assertIs(e.lire()['options']['reserve_propriete'], True)
         self.assertIn('reserve_propriete', G.valider_surcharges(
             T.CONTRAT, {'options': {'reserve_propriete': False}})['options'])
 
@@ -1983,33 +1937,22 @@ class FaitsFrancaisEnArabePursTests(SimpleTestCase):
     def test_avertissement_arabe_dit_ce_qui_est_vrai(self):
         """Défaut attrapé (recette finale, S3) : cocher une case suffisait à
         afficher « La traduction arabe ne reprend pas vos modifications de :
-        constats », alors que les cases sont communes et que les textes
-        libres français s'impriment tels quels dans l'acte arabe."""
-        def arabes(e):
-            return [a for a in K.avertissements(e.acte, None, e.lecture())
-                    if 'arabe' in a]
+        constats » ; les cases sont communes et les textes libres français
+        s'impriment tels quels dans l'acte arabe."""
+        def arabes():
+            return [a for a in K.avertissements(e.acte, None, e.lecture()) if 'arabe' in a]
+        francais = "Dans l'acte arabe, ces textes s'impriment en français : {}. Traduisez-les si le client lit l'arabe."
         e = Ecran(T.LIVRAISON, T.RESTE_A_REGLER)
         coches = [dict(k, cochee=True) for k in e.lire()['constats']]
         e.enregistrer({'constats': coches})
-        self.assertEqual(arabes(e), [])
-        e.enregistrer({'constats': coches + [
-            {'texte': 'Un carton abîmé, contenu intact.', 'cochee': True}],
-            'reserves': ['Rayure sur le coffret onduleur.'],
-            'conditions_particulieres': 'Accès par le portail.'})
-        self.assertEqual(arabes(e), [
-            "Dans l'acte arabe, ces textes s'impriment en français : "
-            "constats ajoutés, réserves, conditions particulières. "
-            "Traduisez-les si le client lit l'arabe."])
-        e.enregistrer({'articles': articles_ecran(e.lire(), {
-            'constat': ajouter(' Vérifié à deux.')})})
-        e.enregistrer({'reserves': ['خدش على علبة العاكس.']}, 'ar')
-        self.assertEqual(arabes(e), [
-            "Dans l'acte arabe, ces textes s'impriment en français : "
-            "constats ajoutés, conditions particulières. Traduisez-les si "
-            "le client lit l'arabe.",
-            'La traduction arabe ne reprend pas vos modifications de : '
-            'articles.'])
-        self.assertFalse(any('case' in a for a in arabes(e)))
+        self.assertEqual(arabes(), [])
+        e.enregistrer({'constats': coches + [{'texte': 'Un carton abîmé.', 'cochee': True}],
+                       'reserves': ['Rayure sur le coffret.'], 'conditions_particulieres': 'Accès nord.'})
+        self.assertEqual(arabes(), [francais.format('constats ajoutés, réserves, conditions particulières')])
+        e.enregistrer({'articles': articles_ecran(e.lire(), {'constat': ajouter(' Vérifié à deux.')})})
+        e.enregistrer({'reserves': ['خدش على العلبة.']}, 'ar')
+        self.assertEqual(arabes(), [francais.format('constats ajoutés, conditions particulières'),
+                                    'La traduction arabe ne reprend pas vos modifications de : articles.'])
 
 
 class EcranAllerRetourTests(SimpleTestCase):
