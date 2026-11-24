@@ -500,23 +500,26 @@ def conseils_par_defaut(avec_batterie):
         intro = ("Le jour, vos panneaux alimentent la maison et chargent la "
                  "batterie ; le soir, la batterie prend le relais. Plus vos "
                  "gros appareils tournent au soleil, plus la batterie reste "
-                 "pleine pour la nuit.")
+                 "pleine pour la nuit. Pendant une coupure du réseau, seuls "
+                 "les circuits secourus restent alimentés, si votre "
+                 "installation en comporte.")
     else:
         intro = ("Sans batterie, l'électricité solaire se consomme au moment "
                  "où elle est produite : le bon réflexe est de faire tourner "
-                 "vos appareils quand le soleil brille.")
+                 "vos appareils quand le soleil brille. Pendant une coupure "
+                 "du réseau, l'installation s'arrête : c'est une sécurité.")
     conseils = [
         {'rubrique': 'Gros appareils',
          'titre': 'Lancez-les en milieu de journée',
-         'texte': "Lave-linge, lave-vaisselle, sèche-linge, four : "
-                  "faites-les tourner quand la production est la plus "
-                  "forte. Le départ différé le fait pour vous quand vous "
-                  "êtes absent."},
+         'texte': "Lave-linge, lave-vaisselle, four, fer à repasser, pompe "
+                  "ou surpresseur d'eau : faites-les tourner quand la "
+                  "production est la plus forte. Le départ différé le fait "
+                  "pour vous quand vous êtes absent."},
         {'rubrique': 'Un à la fois',
          'titre': 'Étalez plutôt que cumuler',
          'texte': "Deux gros appareils en même temps peuvent dépasser ce "
-                  "que les panneaux produisent : lancez la lessive le "
-                  "matin, le lave-vaisselle l'après-midi."},
+                  "que les panneaux produisent : lancez la lessive en fin "
+                  "de matinée, le lave-vaisselle en début d'après-midi."},
         {'rubrique': 'Eau chaude',
          'titre': "Chauffez l'eau au soleil",
          'texte': "Si votre chauffe-eau est électrique, réglez sa plage de "
@@ -540,7 +543,9 @@ def conseils_par_defaut(avec_batterie):
              'titre': 'Éteignez ce qui ne sert pas la nuit',
              'texte': "La nuit, tout ce qui reste branché est payé au "
                       "réseau : coupez les appareils en veille avec une "
-                      "multiprise à interrupteur."})
+                      "multiprise à interrupteur, sauf réfrigérateur, "
+                      "congélateur et box internet ; ne coupez jamais "
+                      "l'onduleur ni ses disjoncteurs."})
     conseils.append(
         {'rubrique': 'Suivi',
          'titre': "Regardez l'application une fois par semaine",
@@ -554,8 +559,9 @@ def entretien_par_defaut():
     return [
         "- un coup d'œil à l'application chaque semaine : une production à "
         "zéro en plein jour doit nous être signalée ;\n"
-        "- des panneaux propres : un rinçage à l'eau claire quand la "
-        "poussière s'accumule ;\n"
+        "- des panneaux propres : quand la poussière s'accumule, rincez à "
+        "l'eau claire, sans nettoyeur haute pression ni produit, sans monter "
+        "ni marcher sur les panneaux ; sur un toit en pente, appelez-nous ;\n"
         "- rien ne doit faire de l'ombre aux panneaux : antenne, linge, "
         "végétation qui pousse ;\n"
         "- avant tout travail sur la toiture ou sur l'installation "
