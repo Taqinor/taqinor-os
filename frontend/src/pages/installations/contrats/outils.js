@@ -99,12 +99,14 @@ export function grouperParRang(actes) {
 }
 
 /** Le geste principal d'un acte (celui que « prochaine action » met en avant). */
-export function actionPrincipale(acte, peutEcrire) {
-  if (!peutEcrire) return null
+export function actionPrincipale(acte) {
   if (acte.peut_emettre) return 'emettre'
   if (acte.peut_signer) return 'signer'
   return null
 }
+
+/** Id du titre d'un acte : les boutons de sa carte y sont reliés (aria-describedby). */
+export const idTitreActe = (acte) => `contrats-acte-${acte.id}-titre`
 
 export const LIBELLE_ACTION = {
   apercu: 'Aperçu (PDF)',

@@ -2,20 +2,23 @@
 // MOTS, avertissements du serveur et les gestes que le serveur autorise.
 import { Badge, Button } from '../../../ui'
 import {
-  actionPrincipale, LIBELLE_ACTION, libelleStatut, tonStatut,
+  actionPrincipale, idTitreActe, LIBELLE_ACTION, libelleStatut, tonStatut,
 } from './outils'
 
 export default function ActeEtape({
-  acte, peutEcrire, occupe, erreur, onAction, enVariante = false,
+  acte, occupe, erreur, onAction, enVariante = false,
 }) {
   const annule = acte.statut === 'annule'
+  // Les gestes d'écriture suivent UNIQUEMENT les `peut_*` du serveur (rôle, droit,
+  // état de l'acte, chantier annulé) : aucun drapeau local ne les décide.
+  const principal = actionPrincipale(acte)
   const gestes = [
     ['apercu', true, 'outline'],
-    ['modifier', peutEcrire && acte.peut_modifier, 'outline'],
-    ['emettre', peutEcrire && acte.peut_emettre, actionPrincipale(acte, peutEcrire) === 'emettre' ? 'default' : 'outline'],
-    ['signer', peutEcrire && acte.peut_signer, actionPrincipale(acte, peutEcrire) === 'signer' ? 'default' : 'outline'],
-    ['papier', peutEcrire && acte.peut_signer, 'outline'],
-    ['rouvrir', peutEcrire && acte.peut_rouvrir, 'outline'],
+    ['modifier', acte.peut_modifier, 'outline'],
+    ['emettre', acte.peut_emettre, principal === 'emettre' ? 'default' : 'outline'],
+    ['signer', acte.peut_signer, principal === 'signer' ? 'default' : 'outline'],
+    ['papier', acte.peut_signer, 'outline'],
+    ['rouvrir', acte.peut_rouvrir, 'outline'],
     ['telecharger', true, 'ghost'],
   ].filter(([, visible]) => visible)
 
@@ -27,7 +30,7 @@ export default function ActeEtape({
       data-variante={enVariante ? 'oui' : 'non'}
     >
       <div className="contrats-acte__tete">
-        <h4 className="contrats-acte__titre">{acte.titre}</h4>
+        <h4 className="contrats-acte__titre" id={idTitreActe(acte)}>{acte.titre}</h4>
         <span className="contrats-acte__ref">{acte.reference}</span>
       </div>
 
@@ -59,6 +62,7 @@ export default function ActeEtape({
               variant={variante}
               className="contrats-acte__bouton"
               disabled={occupe}
+              aria-describedby={idTitreActe(acte)}
               onClick={() => onAction(nom, acte)}
             >
               {LIBELLE_ACTION[nom]}
