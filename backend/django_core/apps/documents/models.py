@@ -9,13 +9,33 @@ les textes par défaut de la société.
 Socle ``core.models.TenantModel`` (FK ``company`` + ``created_at`` /
 ``updated_at``). Règles : ``company`` toujours posée côté serveur (jamais lue d'un corps de
 requête) ; le chantier est une FK chaîne (``installations.Installation``),
-jamais un import de modèle ; un acte n'est jamais supprimé (annulé, avec son
-statut d'avant gardé) ; un acte signé ne perd jamais sa preuve.
+jamais un import de modèle ; un acte n'est jamais supprimé par un geste
+(annulé, avec son statut d'avant gardé) ; un acte émis ou signé ne perd
+jamais sa preuve : il empêche la suppression de son chantier, alors que des
+brouillons ou des actes annulés partent avec lui.
 """
 from django.conf import settings
 from django.db import models
+from django.db.models.deletion import CASCADE, ProtectedError
 
 from core.models import TenantModel
+
+#: Statuts d'un acte qui engage la société ou le client (preuve à garder).
+STATUTS_ENGAGES = ('emis', 'signe')
+
+
+def proteger_actes_engages(collector, field, sub_objs, using):
+    """``on_delete`` du chantier d'un acte : un acte émis ou signé empêche la
+    suppression du chantier (comme ``PROTECT``) ; des brouillons ou des actes
+    annulés sont supprimés avec lui (comme ``CASCADE``). Fonction de module :
+    la migration la référence."""
+    engages = [a for a in sub_objs if a.statut in STATUTS_ENGAGES]
+    if engages:
+        raise ProtectedError(
+            'Ce chantier porte des actes du dossier contractuel émis ou '
+            'signés : il ne peut pas être supprimé (annulez-le plutôt).',
+            engages)
+    CASCADE(collector, field, sub_objs, using)
 
 
 class ActeContractuel(TenantModel):
@@ -46,7 +66,7 @@ class ActeContractuel(TenantModel):
         DISTANCE = 'distance', 'À distance'
 
     chantier = models.ForeignKey(
-        'installations.Installation', on_delete=models.PROTECT,
+        'installations.Installation', on_delete=proteger_actes_engages,
         related_name='actes_contractuels',
     )
     type = models.CharField(max_length=30, choices=Type.choices)

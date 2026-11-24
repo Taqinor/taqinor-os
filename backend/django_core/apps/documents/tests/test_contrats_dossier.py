@@ -218,6 +218,40 @@ class CycleDeVieTests(TestCase):
                     acte, K.Lecture(chantier)))
 
 
+class SuppressionChantierTests(TestCase):
+    """S7 : brouillons et actes annulés partent avec le chantier ; un acte
+    émis ou signé l'empêche."""
+
+    def _chantier(self):
+        n = next(_seq)
+        company = Company.objects.create(slug=f'ctr-del-{n}', nom=f'Del {n}')
+        chantier = Installation.objects.create(
+            company=company, reference=f'CHT-2026-11-{n:04d}')
+        S.preparer_dossier(chantier)
+        return chantier
+
+    def test_brouillons_et_annules_supprimes_avec_le_chantier(self):
+        chantier = self._chantier()
+        ActeContractuel.objects.filter(chantier=chantier,
+                                       type=T.CLOTURE).update(statut=T.ANNULE)
+        pk = chantier.pk
+        chantier.delete()
+        self.assertFalse(ActeContractuel.objects.filter(
+            chantier_id=pk).exists())
+
+    def test_acte_emis_ou_signe_protege_le_chantier(self):
+        from django.db.models import ProtectedError
+        for statut in (T.EMIS, T.SIGNE):
+            with self.subTest(statut=statut):
+                chantier = self._chantier()
+                ActeContractuel.objects.filter(
+                    chantier=chantier, type=T.CONTRAT).update(statut=statut)
+                with self.assertRaises(ProtectedError):
+                    chantier.delete()
+                self.assertEqual(ActeContractuel.objects.filter(
+                    chantier=chantier).count(), 5)
+
+
 class MontantsTests(TestCase):
     """Chaque montant d'un contenu égale la vente au centime."""
 
