@@ -13,7 +13,7 @@ sortie du moteur, dont ``blocs`` = le contenu COMPLET de ``etude_params`` tel
 que le devis automatique né de cette conception le porterait (sans les notes
 vendeur ``journal_auto``), et ``declencheur`` dont la ``raison`` est LA phrase
 que lit l'utilisateur (« Recalculé le 23/11 à 14 h 05 : Facture hiver 900 →
-1 200 »), recopiée telle quelle par le chatter du CRM. Aucune clé d'achat ni de
+1 200 MAD »), recopiée telle quelle par le chatter du CRM. Aucune clé d'achat ni de
 marge n'entre dans ``valeurs`` ni ``blocs`` (parcours récursif). Aucun devis
 n'est lu ni écrit ici : un devis envoyé ou accepté ne bouge jamais.
 """
@@ -22,6 +22,9 @@ from datetime import date, datetime
 from decimal import Decimal
 import json
 
+#: Unité dite après « avant → après » (relecture m4 : « … 900 → 1 200 MAD ») ;
+#: les colonnes en kWh portent déjà l'unité dans leur libellé.
+UNITES = {'facture_hiver': 'MAD', 'facture_ete': 'MAD'}
 #: Origines admises d'un déclencheur (contrat, clé ``declencheur.origine``).
 ORIGINES = ('lead_entrees_modifiees', 'pose_enregistree', 'regles', 'remplissage', 'manuel', 'filet')
 #: La fin de la phrase « pourquoi » quand aucun champ n'est nommé.
@@ -72,7 +75,7 @@ def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None
     lead, porteur, refus = _porteur(lead, company, calepinage_id)
     if refus is not None:
         return Relance(None, False, None, refus)
-    courante = ConceptionLead.objects.filter(company=company, courante=True, **porteur).first()
+    courante = _courante(ConceptionLead, company, porteur)
     with reglages_lus_sans_creer(company):
         entrees = entrees_pour(lead, company, toit=toit)
         if courante is not None and courante.empreinte == empreinte_conception(entrees) and not forcer:
@@ -84,9 +87,18 @@ def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None
         calcule_le=maintenant, calcule_par=auteur,
         declencheur={'raison': phrase_du_declencheur(porteur.get('lead'), champs, origine, maintenant),
                      'champs': champs, 'origine': origine},
-        empreinte_pose=entrees.empreinte_pose, **_champs_ranges(resultat))
+        empreinte_pose=entrees.empreinte_pose, sauf_empreinte=None if forcer else resultat.empreinte,
+        **_champs_ranges(resultat))
+    if not version.ecrite:  # relance simultanée des mêmes entrées : déjà rangée (relecture m1)
+        return Relance(version, False, resultat)
     _annoncer_apres_validation(version)
     return Relance(version, True, resultat)
+
+
+def _courante(modele, company, porteur):
+    """La version courante lue AVANT le calcul (sans verrou : la décision
+    d'écrire est reprise sous verrou par ``ConceptionLead.ranger``)."""
+    return modele.objects.filter(company=company, courante=True, **porteur).first()
 
 
 CODE_APPEL_OFFRES = 'appel_offres_hors_moteur'
@@ -217,7 +229,7 @@ def _annoncer_apres_validation(version):
 # ── La phrase « pourquoi » (lue telle quelle au chatter du lead) ─────────────
 
 def phrase_du_declencheur(lead, champs, origine, quand):
-    """« Recalculé le 23/11 à 14 h 05 : Facture hiver 900 → 1 200 » — date et
+    """« Recalculé le 23/11 à 14 h 05 : Facture hiver 900 → 1 200 MAD » — date et
     heure locales, chaque champ changé sous le libellé que montrent la fiche et
     l'historique du lead (``crm.activity.TRACKED_FIELDS``), avant → après."""
     from django.utils import timezone
@@ -226,8 +238,9 @@ def phrase_du_declencheur(lead, champs, origine, quand):
     debut = 'Recalculé le %s à %d h %02d' % (moment.strftime('%d/%m'), moment.hour, moment.minute)
     if not champs:
         return '%s : %s' % (debut, MOTIFS_ORIGINE[origine])
-    morceaux = ['%s %s → %s' % (libelle_champ(lead, c['champ']), _lisible(lead, c['champ'], c['avant']),
-                                _lisible(lead, c['champ'], c['apres'])) for c in champs]
+    morceaux = [('%s %s → %s' % (libelle_champ(lead, c['champ']), _lisible(lead, c['champ'], c['avant']),
+                                 _lisible(lead, c['champ'], c['apres']))
+                 + (' ' + UNITES[c['champ']] if c['champ'] in UNITES else '')) for c in champs]
     return '%s : %s' % (debut, ' ; '.join(morceaux))
 
 
@@ -240,10 +253,11 @@ def _champ_du_modele(lead, champ):
 
 def libelle_champ(lead, champ):
     # Le libellé de l'historique du lead : la ligne « pourquoi » s'y pose (ALEA69).
-    from apps.crm.activity import TRACKED_FIELDS
+    from apps.crm.selectors import libelle_champ_lead
 
-    if champ in TRACKED_FIELDS:
-        return TRACKED_FIELDS[champ]
+    libelle = libelle_champ_lead(champ)
+    if libelle:
+        return libelle
     modele = _champ_du_modele(lead, champ)
     return str(modele.verbose_name).capitalize() if modele is not None else champ
 

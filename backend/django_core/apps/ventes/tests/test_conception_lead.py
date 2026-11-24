@@ -1513,7 +1513,7 @@ class RelanceConceptionTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher'
         self.assertEqual(relue.entrees_utilisees['facture_hiver'], {'valeur': 2400.0, 'source': 'lead'})
         moment = timezone.localtime(relue.calcule_le)
         self.assertEqual(relue.declencheur, {
-            'raison': 'Recalculé le %s à %d h %02d : Facture hiver 1 800 → 2 400' % (
+            'raison': 'Recalculé le %s à %d h %02d : Facture hiver 1 800 → 2 400 MAD' % (
                 moment.strftime('%d/%m'), moment.hour, moment.minute),
             'champs': [{'champ': 'facture_hiver', 'avant': 1800.0, 'apres': 2400.0}],
             'origine': 'lead_entrees_modifiees'})
@@ -1531,6 +1531,52 @@ class RelanceConceptionTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher'
         forcee = self._relancer(lead, company, _declencheur('manuel'), forcer=True)
         self.assertEqual((forcee.ecrite, forcee.conception.version), (True, 3))
         self.assertTrue(forcee.conception.declencheur['raison'].endswith(' : recalcul demandé'))
+
+    def test_relances_simultanees_des_memes_entrees_une_seule_version(self):
+        """Relecture m1 — deux relances parties ensemble lisent toutes deux
+        l'ancienne courante (empreinte différente) ; la seconde, qui range
+        APRÈS la première, retrouve sous verrou la même empreinte : rien
+        d'écrit, aucun second événement."""
+        from apps.crm.models import Lead
+        from apps.ventes.conception import service
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        evenements = _Evenements(self)
+        self._relancer(lead, company, _declencheur())
+        Lead.objects.filter(pk=lead.pk).update(facture_hiver=Decimal('2400'))
+        lead.refresh_from_db()
+        v1 = ConceptionLead.objects.get(lead=lead, courante=True)
+        premiere = self._relancer(lead, company, _declencheur('manuel'))
+        with mock.patch.object(service, '_courante', return_value=v1):  # lecture d'avant la première
+            seconde = self._relancer(lead, company, _declencheur('manuel'))
+        self.assertEqual((premiere.ecrite, seconde.ecrite), (True, False))  # mutant « sans relecture » : v3
+        self.assertEqual(seconde.conception.pk, premiere.conception.pk)
+        self.assertEqual(list(ConceptionLead.objects.filter(lead=lead).order_by('version')
+                              .values_list('version', 'courante')), [(1, False), (2, True)])
+        self.assertEqual([e['version'] for e in evenements.recus], [1, 2])
+
+    def test_chaine_reelle_une_ligne_au_chatter_avec_la_phrase_exacte(self):
+        """Relecture m4 — la VRAIE chaîne : facture changée → ``relancer`` →
+        ``conception_recalculee`` → UNE ligne système au chatter du lead, un
+        seul préfixe, l'unité dite ; une seconde livraison n'en écrit pas."""
+        from apps.crm.models import Lead, LeadActivity
+        from core.events import conception_recalculee
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        self._relancer(lead, company, _declencheur())
+        Lead.objects.filter(pk=lead.pk).update(facture_hiver=Decimal('2400'))
+        lead.refresh_from_db()
+        version = self._relancer(lead, company, _declencheur(
+            'lead_entrees_modifiees', facture_hiver=(Decimal('1800'), Decimal('2400')))).conception
+        lignes = LeadActivity.objects.filter(lead=lead, field='conception_version', new_value='2')
+        self.assertEqual([(li.body, li.user_id) for li in lignes],
+                         [('Conception recalculée : Facture hiver 1 800 → 2 400 MAD', None)])
+        conception_recalculee.send(sender='ventes.ConceptionLead', company_id=company.pk, lead_id=lead.pk,
+                                   calepinage_id=None, version=2, declencheur=version.declencheur)
+        self.assertEqual(lignes.count(), 1)
 
     def test_aucune_cle_d_achat_ni_de_marge_meme_si_le_moteur_en_rendait(self):
         from types import SimpleNamespace
@@ -1700,7 +1746,7 @@ class ServirConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
         self.assertEqual((corps['version'], corps['lead'], corps['calepinage'], corps['perimee']),
                          (2, lead.pk, None, False))
         self.assertEqual((corps['etat'], corps['option_retenue'], corps['ecart_devis']), ('complet', 'avec', []))
-        self.assertTrue(corps['declencheur']['raison'].endswith(' : Facture hiver 1 800 → 2 400'))
+        self.assertTrue(corps['declencheur']['raison'].endswith(' : Facture hiver 1 800 → 2 400 MAD'))
         self.assertEqual(_cles_interdites(corps), [])
         self.assertEqual(api.get(URL_CONCEPTION % lead.pk).json(), corps)  # relire = même version
         self.assertEqual(ConceptionLead.objects.count(), avant)  # la lecture n'écrit rien

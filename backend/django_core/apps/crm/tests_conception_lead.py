@@ -110,6 +110,17 @@ class EmissionEntreesModifieesTests(TestCase):
         self.assertEqual(self.lead.facture_hiver, Decimal('1600'))
         self.assertEqual(len(self.capture.appels), 1)
 
+    def test_valeurs_egales_apres_normalisation_n_emettent_rien(self):
+        """Relecture m2 — ``Decimal('900.00')`` relu en base et ``900.0``
+        posé par un formulaire, ``''`` et ``None`` : la même valeur."""
+        self._enregistrer(facture_hiver=900.0)
+        self._enregistrer(occupation_jour='')
+        self.assertEqual(self.capture.appels, [])
+        self._enregistrer(facture_hiver=Decimal('1200'))
+        self.assertEqual(len(self.capture.appels), 1)
+        self.assertEqual(self.capture.appels[0]['champs'],
+                         [{'champ': 'facture_hiver', 'avant': 900.0, 'apres': 1200.0}])
+
     def test_champ_hors_marche_n_emet_rien(self):
         """Une colonne de pompage sur un lead résidentiel : pas une entrée."""
         self._enregistrer(pompe_hmt_m=Decimal('40'))
