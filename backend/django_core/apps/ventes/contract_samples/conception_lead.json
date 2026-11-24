@@ -15,7 +15,7 @@
     "empreinte": "SHA-256 (64 hex) des entrées + version_moteur + niveau_regles + empreinte de la pose ; égale ⇒ aucune nouvelle version.",
     "declencheur": "{raison, champs: [{champ, avant, apres}], origine} ; origine = lead_entrees_modifiees | pose_enregistree | regles | remplissage | manuel | filet (empreinte des entrées différente relevée en lecture) ; raison = LA phrase que lit l'utilisateur, construite par l'écrivain (`conception/service.py::phrase_du_declencheur`) et recopiée telle quelle au chatter : « Recalculé le JJ/MM à H h MM : <libellé> <avant> → <après>[ <unité>] ; … » (heure locale, unité MAD des factures, libellés de l'historique du lead `crm.activity.TRACKED_FIELDS`, choix lisibles, nombres à la française) ou, sans champ nommé, « Recalculé le JJ/MM à H h MM : <motif de l'origine> ».",
     "perimee": "true quand l'empreinte des entrées du lead ne correspond plus à la version courante : l'écran garde les valeurs et dit « Recalcul en cours ».",
-    "ecart_devis": "[{valeur, devis, conception, devis_ref, reviser_possible, mise_a_jour_proposee}] : la valeur (clé de `valeurs`) qui diffère entre le devis ENVOYÉ lié et la conception courante (D-ACAL-96 : les deux chiffres nommés, « Réviser le devis ») ; mise_a_jour_proposee = brouillon retouché à la main (Q2).",
+    "ecart_devis": "[{valeur, devis, conception, devis_ref, reviser_possible, mise_a_jour_proposee, courante_refusee}] : la valeur (clé de `valeurs`) qui diffère entre le devis ENVOYÉ lié et la dernière version COMPLÈTE de la conception (D-ACAL-96 : les deux chiffres nommés, « Réviser le devis ») ; mise_a_jour_proposee = brouillon retouché à la main (Q2) ; courante_refusee = la version courante est un refus : l'écart reste comparé à la dernière version complète (ADEV146, relecture m5).",
     "brouillons_a_mettre_a_jour": "[{devis, reference, motif}] : brouillons retouchés à la main qui gardent leurs valeurs et proposent « Mettre à jour » (Q2, 23/11) ; un brouillon non retouché suit seul et n'y figure pas."
   },
   "interdit": ["prix_achat", "marge"],
@@ -69,7 +69,7 @@
     "declencheur": {"raison": "Recalculé le 23/11 à 14 h 05 : Facture hiver 900 → 1 200 MAD", "champs": [{"champ": "facture_hiver", "avant": 900, "apres": 1200}], "origine": "lead_entrees_modifiees"},
     "lead": 1, "calepinage": null, "empreinte_pose": "",
     "version": 2, "calcule_le": "2026-11-23T14:05:00+01:00", "perimee": false,
-    "ecart_devis": [{"valeur": "nb_panneaux", "devis": 14, "conception": 12, "devis_ref": "DEV-202611-0001", "reviser_possible": true, "mise_a_jour_proposee": false}],
+    "ecart_devis": [{"valeur": "nb_panneaux", "devis": 14, "conception": 12, "devis_ref": "DEV-202611-0001", "reviser_possible": true, "mise_a_jour_proposee": false, "courante_refusee": false}],
     "brouillons_a_mettre_a_jour": [{"devis": 2, "reference": "DEV-202611-0002", "motif": "retouché à la main"}]
   },
   "exemple_industriel": {

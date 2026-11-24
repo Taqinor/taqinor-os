@@ -140,11 +140,13 @@ def manques_du_moteur(lead):
 
 def ecart_devis(devis):
     """``[{valeur, devis, conception, devis_ref, reviser_possible,
-    mise_a_jour_proposee}]`` — chaque valeur de :data:`VALEURS_COMPAREES` qui
-    diffère entre ``devis`` (lu tel qu'il est FIGÉ :
-    ``selectors_calepinage.conception_retenue_du_devis``, rien n'est
-    recalculé ni écrit) et la conception courante COMPLÈTE de son lead, pour
-    l'option que le devis a retenue. ``reviser_possible`` : la révision existe
+    mise_a_jour_proposee, courante_refusee}]`` — chaque valeur de
+    :data:`VALEURS_COMPAREES` qui diffère entre ``devis`` (lu tel qu'il est
+    FIGÉ : ``selectors_calepinage.conception_retenue_du_devis``, rien n'est
+    recalculé ni écrit) et la DERNIÈRE version COMPLÈTE de son lead, pour
+    l'option que le devis a retenue. ADEV146 (relecture m5) : une version
+    courante en REFUS ne fait pas disparaître l'écart — il reste comparé à la
+    dernière version complète et ``courante_refusee`` le dit. ``reviser_possible`` : la révision existe
     pour ce devis (actif, pas un brouillon — ``domain/revision.py``) ;
     ``mise_a_jour_proposee`` : ``False`` tant que le brouillon retouché n'est
     pas servi (ADEV148). Vide sans devis, sans lead, sans conception."""
@@ -153,8 +155,9 @@ def ecart_devis(devis):
 
     if devis is None or not devis.lead_id:
         return []
-    version = ConceptionLead.objects.filter(company_id=devis.company_id, lead_id=devis.lead_id, courante=True,
-                                            etat=ConceptionLead.Etat.COMPLET).first()
+    versions = ConceptionLead.objects.filter(company_id=devis.company_id, lead_id=devis.lead_id)
+    version = versions.filter(etat=ConceptionLead.Etat.COMPLET).order_by('-version').first()
+    courante_refusee = versions.filter(courante=True, etat=ConceptionLead.Etat.REFUS).exists()
     retenue = conception_retenue_du_devis(devis) if version is not None else None
     if not retenue:
         return []
@@ -170,7 +173,8 @@ def ecart_devis(devis):
         if a is None or b is None or _egales(a, b):
             continue
         ecarts.append({'valeur': cle, 'devis': _lisible(a), 'conception': _lisible(b), 'devis_ref': devis.reference,
-                       'reviser_possible': revisable, 'mise_a_jour_proposee': False})
+                       'reviser_possible': revisable, 'mise_a_jour_proposee': False,
+                       'courante_refusee': courante_refusee})
     return ecarts
 
 

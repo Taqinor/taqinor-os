@@ -48,7 +48,7 @@ CLES_CHAMP_MODIFIE = {'champ', 'avant', 'apres'}
 ORIGINES = {'lead_entrees_modifiees', 'pose_enregistree', 'regles',
             'remplissage', 'manuel', 'filet'}
 CLES_ECART = {'valeur', 'devis', 'conception', 'devis_ref',
-              'reviser_possible', 'mise_a_jour_proposee'}
+              'reviser_possible', 'mise_a_jour_proposee', 'courante_refusee'}
 CLES_REFUS = {'code', 'champ', 'message'}
 #: La table §2, par option (résidentiel, commercial, industriel).
 VALEURS_SOLAIRES = {
@@ -1853,8 +1853,8 @@ class ServirConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
         for ecart in ecarts:
             self.assertEqual(set(ecart), CLES_ECART)
             self.assertNotEqual(ecart['devis'], ecart['conception'])
-            self.assertEqual((ecart['devis_ref'], ecart['reviser_possible'], ecart['mise_a_jour_proposee']),
-                             (devis.reference, True, False))
+            self.assertEqual((ecart['devis_ref'], ecart['reviser_possible'], ecart['mise_a_jour_proposee'],
+                              ecart['courante_refusee']), (devis.reference, True, False, False))
         self.assertEqual(self._api(user).get(URL_CONCEPTION % lead.pk).json()['ecart_devis'], ecarts)
         Devis.objects.filter(pk=devis.pk).update(statut='accepte')
         photo_acceptee = _photo_devis(devis.pk)
@@ -1864,6 +1864,20 @@ class ServirConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
         self.assertEqual(_photo_devis(devis.pk), photo_acceptee)  # jamais touché (accepté)
         photo_acceptee['devis']['statut'] = 'envoye'
         self.assertEqual(photo_acceptee, photo)  # rien d'autre n'a bougé depuis l'envoi
+
+        # ADEV146 (relecture m5) — la version courante devient un REFUS (lieu
+        # effacé) : l'écart ne disparaît pas, il est comparé à la dernière
+        # version complète et le refus est dit.
+        Lead.objects.filter(pk=lead.pk).update(ville='')
+        lead.refresh_from_db()
+        refusee = self._relancer(lead, company, _declencheur('manuel')).conception
+        self.assertEqual(refusee.etat, 'refus')
+        apres_refus = ecart_devis(devis)
+        self.assertEqual([(e['valeur'], e['devis'], e['conception']) for e in apres_refus],
+                         [(e['valeur'], e['devis'], e['conception']) for e in ecarts])  # mutant « courante seule » : []
+        self.assertTrue(all(e['courante_refusee'] for e in apres_refus))
+        self.assertEqual(_photo_devis(devis.pk), photo_acceptee | {'devis': dict(photo_acceptee['devis'],
+                                                                                 statut='accepte')})
 
     def test_apercu_sans_ecriture_404_et_corps_refuse(self):
         from django.db import connection
