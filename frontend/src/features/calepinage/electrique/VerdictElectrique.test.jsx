@@ -786,6 +786,46 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     cleanup() // la bulle vit dans un portail : démontée avant que l'afterEach du bloc ne vide le body
   })
 
+  /* T4-U4-007 (moitié serveur) — « Prêt à envoyer » SERT les points du dossier (`controles[].points[]`, contrat
+     `calepinage_pret_a_envoyer.json::exemple_points`) : le « ? » les lit tels quels (clé interne finale retirée) sans
+     relire `evaluer-electrique`, et « Régler » suit la `cible` du point servi. */
+  const dossierAvecPoints = () => {
+    const [ok, dossier] = dossierBloquant()
+    const servi = structuredClone(exempleContrat('calepinage', 'calepinage_pret_a_envoyer', 'exemple_points').controle)
+    servi.points[0].phrase = 'Continuité de la terre existante à justifier (terre.justification_continuite)'
+    servi.cause = servi.points[0].phrase
+    return [ok, { ...dossier, ...servi }]
+  }
+
+  it('T4-U4-007 — le « ? » de « Dossier électrique » lit les points SERVIS, sans la clé interne finale', async () => {
+    servirEtape({ p: pret(dossierAvecPoints()) })
+    servir(REPONSE)
+    rendreEtape()
+    const ligne = await screen.findByTestId('cal-pret-ligne-verdict_electrique')
+    const appelsAvant = calepinageApi.calepinages.evaluerElectrique.mock.calls.length
+    fireEvent.click(within(ligne).getByRole('button', { name: 'Pourquoi : Dossier électrique' }))
+    const bulle = await screen.findByTestId('cal-pret-points-dossier')
+    expect(bulle).toHaveAttribute('data-source', 'servi')
+    expect(bulle).toHaveTextContent('Ce qui bloque :')
+    expect(within(bulle).getByRole('listitem')).toHaveTextContent(
+      'Continuité de la terre existante à justifier — Compléter la check-list de terre')
+    expect(document.body).not.toHaveTextContent('terre.justification_continuite')
+    // la cause (= phrase du premier point) n'est pas dite une seconde fois
+    expect(document.body.textContent.split('Continuité de la terre existante à justifier').length - 1).toBe(1)
+    expect(calepinageApi.calepinages.evaluerElectrique.mock.calls.length).toBe(appelsAvant)
+    cleanup()
+  })
+
+  it('T4-U4-007 — « Régler » de « Dossier électrique » suit la cible du point SERVI', async () => {
+    servirEtape({ p: pret(dossierAvecPoints()) })
+    servir(REPONSE)
+    rendreEtape()
+    const ligne = await screen.findByTestId('cal-pret-ligne-verdict_electrique')
+    fireEvent.click(within(ligne).getByRole('button', { name: 'Régler' }))
+    await waitFor(() => expect(new URLSearchParams(screen.getByTestId('temoin-url').textContent).get('onglet'))
+      .toBe('decisions-electriques'))
+  })
+
   it('T4-U4-007 — une étape ouverte sur une section (« Régler » d’un autre point) la déplie et y met le focus', async () => {
     servirEtape()
     const surCarte = document.createElement('div')
@@ -802,7 +842,9 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     await waitFor(() => expect(document.activeElement).toBe(within(section).getByRole('button', { name: 'Cheminement & câbles' })))
   })
 
-  /* T4-U4-018 — un champ au sol et une ombrière seuls : le raccordement ne les câble pas (serveur : pans seulement). */
+  /* T4-U4-018 — le serveur câble pans, champs au sol et ombrières (`chaines.py::_pans_poses`, test serveur
+     `SurfacesDePoseSeules`) : l'étape n'annonce plus rien de faux sur les surfaces. Quand le raccordement ne forme
+     aucune chaîne (matériel non désigné), l'écran dit la cause SERVIE (`manquantes` de l'évaluation). */
   const SURFACES = {
     zones: [],
     poseSurfaces: [
@@ -811,23 +853,29 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     ],
   }
 
-  it('T4-U4-018 — champ au sol + ombrière : l’étape dit qu’ils ne sont pas raccordés, et pourquoi', async () => {
+  it('T4-U4-018 — champ au sol + ombrière : aucun avis « pas encore raccordés » (le serveur les câble)', async () => {
     servirEtape()
-    rendreEtape({ builderApi: { serializeLayout: () => SURFACES } })
-    expect(await screen.findByTestId('cal-elec-surfaces-non-raccordees')).toHaveTextContent(
-      'Champ au sol (28 modules) et Ombrière parking (16 modules) : pas encore raccordés. Le raccordement automatique '
-      + 'ne câble aujourd’hui que les panneaux posés sur les pans de toit, et ce plan ne dessine que les pans.')
+    const carte = rendreEtape({ builderApi: { serializeLayout: () => SURFACES } })
+    expect(within(carte).getByRole('button', { name: 'Raccorder automatiquement' })).toBeInTheDocument()
+    await waitFor(() => expect(calepinageApi.calepinages.resultat).toHaveBeenCalled())
+    expect(document.body).not.toHaveTextContent('pas encore raccordé')
+    expect(document.body).not.toHaveTextContent('ne câble aujourd’hui que')
   })
 
-  it('T4-U4-018 — « Raccorder automatiquement » sans pan : la vraie cause, jamais « choisissez le module de ce toit »', async () => {
+  it('T4-U4-018 — « Raccorder automatiquement » sans chaîne : la cause SERVIE (manquantes), jamais une phrase devinée', async () => {
     servirEtape()
+    const manque = 'Onduleur : aucun onduleur désigné.'
     calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: { electrique: { affectation: [] } } })
-    calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: { ...entree(), absents: ['module'] } })
+    calepinageApi.calepinages.evaluerElectrique.mockResolvedValue({ data: {
+      ...exempleContrat('calepinage', 'calepinage_evaluation_electrique', 'exemple_a_completer'), manquantes: [manque] } })
     const carte = rendreEtape({ builderApi: { serializeLayout: () => SURFACES } })
     fireEvent.click(within(carte).getByRole('button', { name: 'Raccorder automatiquement' }))
     const alerte = await within(carte).findByRole('alert')
-    expect(alerte).toHaveTextContent('Aucun panneau de toit à raccorder : Champ au sol (28 modules) et Ombrière parking (16 modules) ne se raccordent pas encore automatiquement.')
+    await waitFor(() => expect(alerte).toHaveTextContent(manque))
+    expect(alerte).toHaveTextContent('Aucune chaîne formée :')
+    expect(calepinageApi.calepinages.evaluerElectrique).toHaveBeenCalledWith(7, {})
     expect(alerte).not.toHaveTextContent('module de ce toit')
+    expect(alerte).not.toHaveTextContent('pas encore')
   })
 
   /* Item 12 (T4-U4-012, côté écran) — « Raccorder automatiquement » forme des chaînes, mais le serveur les juge hors plage

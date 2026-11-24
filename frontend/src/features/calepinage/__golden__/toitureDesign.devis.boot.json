@@ -121,6 +121,10 @@
       "args": [
         true
       ]
+    },
+    {
+      "appel": "serializeLayout",
+      "args": []
     }
   ]
 }

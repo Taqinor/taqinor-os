@@ -1015,7 +1015,6 @@ retiré plus un hook ajouté.
 | `cal-elec-devis-retenu` | étape Électrique : « Repris du devis <référence> (option …) » sous la carte de l’onduleur, avec l’écart d’une saisie contraire (ACAL1952). |
 | `cal-elec-onduleur` | étape Électrique : carte de l’onduleur. |
 | `cal-elec-schema-voir` | étape Électrique : carte « Schéma électrique — Voir ». |
-| `cal-elec-surfaces-non-raccordees` | étape Électrique : « Champ au sol (N modules) … : pas encore raccordés » (T4-U4-018). |
 | `cal-elec-actions-carte` | étape Électrique : barre d’actions sur la carte (« Raccorder automatiquement »…). |
 | `cal-schema-legende` | sous-écran Schéma : légende dans le panneau. |
 | `cal-schema-cartouche` | sous-écran Schéma : cartouche (projet, date, version, auteur servis). |

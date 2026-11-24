@@ -649,7 +649,7 @@ describe('ToitureDesign — PV21 / ACAL37 : enregistrer la conception', () => {
       .toHaveBeenCalledWith(String(CTX_CAL.calepinage.id), {}))
     expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel)
       .toHaveBeenCalledWith(String(CTX_CAL.calepinage.id), LAYOUT,
-        CTX_CAL.geometrie.empreinte_document)
+        CTX_CAL.geometrie.empreinte_document, { suppressErrorToast: true }) // T4-U4-027 — l'écran dit lui-même les refus
     // L'aperçu va sur le CALEPINAGE (jamais `roof-image` du devis).
     expect(calepinageApi.calepinages.envoyerImage).toHaveBeenCalledTimes(1)
     expect(api.post).not.toHaveBeenCalled()

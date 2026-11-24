@@ -1415,7 +1415,7 @@ describe('parcours utilisateur pro-11 — tuiles « Forme du toit » de la coque
     }
   });
 
-  it('coque : la forme appliquée est choisie (aria-pressed) ; contour ouvert ⇒ formes aria-disabled, Tracé libre le dit', async () => {
+  it('coque : la forme appliquée est choisie (aria-pressed) ; contour ouvert ⇒ formes choisissables, la bulle dit l’ordre (T4-U2-005), Tracé libre le dit', async () => {
     let ferme = true;
     const { f, statuts, appliques, tuiles } = await monter(true, () => (ferme ? carre() : []));
     f.rafraichir();
@@ -1425,7 +1425,10 @@ describe('parcours utilisateur pro-11 — tuiles « Forme du toit » de la coque
     ferme = false;
     f.rafraichir();
     expect(tuiles().every((b) => b.getAttribute('aria-pressed') === 'false')).toBe(true);
-    expect(tuiles().filter((b) => b.getAttribute('aria-disabled') === 'true').length).toBe(6);
+    // T4-U2-005 (4aa4a6800e) — la forme se choisit AVANT « Créer le toit » : plus aucune tuile grisée, les six formes
+    // disent l'ordre dans leur bulle ; Tracé libre n'en porte pas.
+    expect(tuiles().filter((b) => b.hasAttribute('aria-disabled')).length).toBe(0);
+    expect(tuiles().filter((b) => b.title === 'Choisissez la forme, puis saisissez la longueur et la largeur et « Créer le toit ».').length).toBe(6);
     expect(document.getElementById('rp9-formes-toit')!.hidden, 'coque : la grille reste visible contour ouvert').toBe(false);
     tuiles().find((b) => b.dataset.forme === 'libre')!.click();
     expect(statuts.at(-1)).toMatch(/^Tracé libre : cliquez sur la carte/);
