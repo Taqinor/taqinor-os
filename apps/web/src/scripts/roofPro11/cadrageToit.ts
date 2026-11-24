@@ -60,30 +60,35 @@ export interface SourcesCamera {
   volume?: () => readonly (readonly [number, number, number])[];
 }
 
-/** ACAL1839 — la part de la zone libre (largeur ET hauteur) que le volume occupe au plus : l'air autour de la maison. */
+/** ACAL1839 — la part de la zone libre (largeur ET hauteur) que le volume occupe au plus : l'air autour de la maison ; sans
+ *  `part` demandée (atelier), un peu moins, ses cartes flottantes n'étant pas toutes comptées dans ses marges. */
 const PART_VOLUME_MAX = 0.8;
+const PART_VOLUME_ATELIER = 0.72;
 const M_PAR_DEG = (Math.PI / 180) * WGS84_RADIUS;
 
 /**
  * ACAL1839 — en vue INCLINÉE, le cadrage du contour au sol coupait les murs (maison de 6 m : un mur qui remplit l'écran).
  * Le volume entier — chaque sommet au sol et à sa hauteur — est projeté par la caméra posée, puis zoom et centre
- * sont corrigés (3 passes, la perspective change avec le zoom) pour qu'il tienne dans la zone libre, centré, à au plus
+ * sont corrigés (4 passes, la perspective change avec le zoom) pour qu'il tienne dans la zone libre, centré, à au plus
  * `part` de sa largeur et de sa hauteur. Caméra seule ; faux si la carte ne sait pas projeter.
  */
 function cadrerVolume(map: CarteCadrable, sommets: readonly (readonly [number, number, number])[], libre: { x0: number; y0: number; x1: number; y1: number }, part: number, zoomMax: number): boolean {
   const { project, unproject, getZoom, getPitch } = map;
   if (!project || !unproject || !getZoom || !getPitch || sommets.length === 0) return false;
-  const pente = (getPitch.call(map) * Math.PI) / 180;
-  const [lng0, lat0] = sommets.reduce((a, p) => [a[0] + p[0] / sommets.length, a[1] + p[1] / sommets.length], [0, 0]);
-  const cos = Math.cos((lat0 * Math.PI) / 180);
-  for (let passe = 0; passe < 3; passe++) {
-    const p0 = project.call(map, [lng0, lat0]);
-    const pe = project.call(map, [lng0 + 1 / (M_PAR_DEG * cos), lat0]);
-    const pn = project.call(map, [lng0, lat0 + 1 / M_PAR_DEG]);
-    // 1 m² au sol couvre s²·cos(pente) px² ; 1 m vertical monte de s·sin(pente) px.
-    const aire = Math.abs((pe.x - p0.x) * (pn.y - p0.y) - (pe.y - p0.y) * (pn.x - p0.x));
-    const parMetre = Math.sqrt(aire / Math.max(0.05, Math.cos(pente))) * Math.sin(pente);
-    const pts = sommets.flatMap(([lng, lat, z]) => { const p = project.call(map, [lng, lat]); return [p, { x: p.x, y: p.y - z * parMetre }]; });
+  const cos = Math.cos((sommets[0][1] * Math.PI) / 180);
+  for (let passe = 0; passe < 4; passe++) {
+    // En CHAQUE sommet (la perspective grossit ce qui est près de l'œil, et l'angle du rayon y diffère de la pente) : le sol
+    // s'y projette par une application linéaire M (1 m est, 1 m nord) de valeurs singulières s (en travers du rayon) et
+    // s·cos θ (le long) ; 1 m vertical y monte de s·sin θ = (‖M‖² ² − 4·det²)^¼.
+    const pts = sommets.flatMap(([lng, lat, z]) => {
+      const p = project.call(map, [lng, lat]);
+      const e = project.call(map, [lng + 1 / (M_PAR_DEG * cos), lat]);
+      const n = project.call(map, [lng, lat + 1 / M_PAR_DEG]);
+      const [ex, ey, nx, ny] = [e.x - p.x, e.y - p.y, n.x - p.x, n.y - p.y];
+      const f2 = ex * ex + ey * ey + nx * nx + ny * ny;
+      const det = ex * ny - ey * nx;
+      return [p, { x: p.x, y: p.y - z * Math.pow(Math.max(0, f2 * f2 - 4 * det * det), 0.25) }];
+    });
     const [x0, x1] = [Math.min(...pts.map((p) => p.x)), Math.max(...pts.map((p) => p.x))];
     const [y0, y1] = [Math.min(...pts.map((p) => p.y)), Math.max(...pts.map((p) => p.y))];
     const f = Math.min((part * (libre.x1 - libre.x0)) / Math.max(1, x1 - x0), (part * (libre.y1 - libre.y0)) / Math.max(1, y1 - y0));
@@ -121,7 +126,7 @@ export function cadrerToit(map: CarteCadrable, sources: SourcesCamera, options: 
     if (volume.length >= 3 && (map.getPitch?.() ?? 0) > 1 && map.project) { // ACAL1839 — vue inclinée : le volume entier, avec de l'air
       map.jumpTo({ ...pose, padding: { top: 0, bottom: 0, left: 0, right: 0 } });
       const libre = { x0: gauche, y0: Math.max(haut, ciel), x1: clientWidth - droite, y1: clientHeight - bas };
-      if (cadrerVolume(map, volume, libre, Math.min(PART_VOLUME_MAX, options.part ?? PART_VOLUME_MAX), options.zoomMax ?? 19)) return true;
+      if (cadrerVolume(map, volume, libre, Math.min(PART_VOLUME_MAX, options.part ?? PART_VOLUME_ATELIER), options.zoomMax ?? 19)) return true;
     }
     map.jumpTo(ciel > 0 ? { ...pose, padding: { top: ciel, bottom: 0, left: 0, right: 0 } } : pose);
     return true;
@@ -153,9 +158,12 @@ export function apiCamera(map: CarteCadrable & CartePresentable, sources: Source
     },
     surPrete: v.surPrete,
   });
+  // ACAL1839 — changer de vue (Plan ↔ 3D) recadre le VOLUME avec le dernier cadrage demandé par l'hôte : en 3D la maison
+  // entière (murs compris) reste visible, jamais coupée sous les pièces flottantes de l'atelier.
+  let dernier: OptionsCadrage | null = null;
   return {
-    appliquerVue: (nom: NomVue) => appliquerVue(map, nom, sources.azimut(), reducedMotion),
-    cadrerToit: (options?: OptionsCadrage) => cadrerToit(map, sources, options),
+    appliquerVue: (nom: NomVue) => { appliquerVue(map, nom, sources.azimut(), reducedMotion); if (dernier) cadrerToit(map, sources, dernier); },
+    cadrerToit: (options?: OptionsCadrage) => cadrerToit(map, sources, (dernier = options ?? {})),
     modePresentation: (actif: boolean, vue?: VueClient) => poserPresentation(map, actif, vue ? tenue(vue) : undefined),
   };
 }

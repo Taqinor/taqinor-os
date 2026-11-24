@@ -1365,6 +1365,11 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   };
   function attacherCoucheElectrique() {
     (groupeElectrique?.userData.siOrigineChange as (() => void) | undefined)?.(); // ACAL1944 — dessinée à l'origine de la scène
+    if (groupeElectrique && atelierErp) { // ACAL1839 — au client, aucun organe d'édition (onduleur, tracés) ; rendue à la sortie
+      const client = jeuScene() === 'presentation';
+      if (client && groupeElectrique.visible) { groupeElectrique.visible = false; groupeElectrique.userData.tuAuClient = true; }
+      else if (!client && groupeElectrique.userData.tuAuClient) { groupeElectrique.visible = true; groupeElectrique.userData.tuAuClient = false; }
+    }
     if (groupeElectrique && sceneRoot && groupeElectrique.parent !== sceneRoot) sceneRoot.add(groupeElectrique);
   }
 

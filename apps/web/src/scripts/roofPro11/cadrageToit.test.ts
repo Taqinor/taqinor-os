@@ -100,6 +100,16 @@ describe('ACAL1839 — cadrage du VOLUME en vue inclinée (vue client, atelier)'
     expect(v.y0).toBeGreaterThan(76); expect(v.y1).toBeLessThan(385);
     expect(v.x0).toBeGreaterThan(0); expect(v.x1).toBeLessThan(390);
   });
+  it('changer de vue (Plan → 3D) recadre avec le dernier cadrage de l’hôte ; sans cadrage demandé, la vue seule', () => {
+    const { map } = carte();
+    const api = apiCamera(map, sources(), true);
+    api.appliquerVue('trois-quarts');
+    expect(map.jumpTo).toHaveBeenCalledTimes(1); // la vue seule (site public : aucun cadrage demandé)
+    api.cadrerToit({ zoomMax: 22 });
+    api.appliquerVue('trois-quarts');
+    expect(map.jumpTo).toHaveBeenCalledTimes(4); // cadrage, vue, puis le même cadrage
+    expect(map.jumpTo.mock.calls[3][0].zoom).toBeCloseTo(map.jumpTo.mock.calls[1][0].zoom, 9);
+  });
   it('sans hauteur de scène (site public) ou vue de dessus : le cadrage du contour d’avant', () => {
     const { map } = carteInclinee(1440, 900);
     cadrerToit(map, sources([maison]), { zoomMax: 22 });
