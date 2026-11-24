@@ -8,7 +8,8 @@ import {
 } from '../../../ui'
 import documentsApi from '../../../api/documentsApi'
 import useActeContenu from './useActeContenu'
-import { detailErreur } from './outils'
+import PiedDialogue from './PiedDialogue'
+import { useSoumission } from './useSoumission'
 
 function aujourdhui() {
   const d = new Date()
@@ -20,25 +21,18 @@ export default function SignaturePapierDialog({ open, onOpenChange, acte, onDone
   const { acte: detail } = useActeContenu(acte?.id, open)
   const [nomSaisi, setNomSaisi] = useState(null)
   const [date, setDate] = useState(aujourdhui)
-  const [occupe, setOccupe] = useState(false)
-  const [erreur, setErreur] = useState('')
+  const { occupe, erreur, soumettre } = useSoumission()
 
   const nom = nomSaisi ?? detail?.contenu?.client?.nom_complet ?? ''
 
   const enregistrer = async () => {
-    setOccupe(true)
-    setErreur('')
-    try {
-      await documentsApi.marquerActeSigne(acte.id, {
-        signataire_nom: nom.trim(),
-        signe_le: date,
-      })
+    const ok = await soumettre(() => documentsApi.marquerActeSigne(acte.id, {
+      signataire_nom: nom.trim(),
+      signe_le: date,
+    }))
+    if (ok) {
       toast.success('Acte marqué signé sur papier.')
       onDone?.()
-    } catch (err) {
-      setErreur(await detailErreur(err))
-    } finally {
-      setOccupe(false)
     }
   }
 
@@ -62,12 +56,7 @@ export default function SignaturePapierDialog({ open, onOpenChange, acte, onDone
           <Input id="contrats-pap-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </div>
 
-        {erreur && <p className="contrats-acte__erreur" role="alert">{erreur}</p>}
-
-        <div className="contrats-dialogue__pied">
-          <Button variant="ghost" className="contrats-acte__bouton" onClick={() => onOpenChange(false)}>
-            Annuler
-          </Button>
+        <PiedDialogue erreur={erreur} annuler={() => onOpenChange(false)}>
           <Button
             className="contrats-acte__bouton"
             disabled={occupe || !nom.trim() || !date}
@@ -75,7 +64,7 @@ export default function SignaturePapierDialog({ open, onOpenChange, acte, onDone
           >
             Marquer signé
           </Button>
-        </div>
+        </PiedDialogue>
       </DialogContent>
     </Dialog>
   )

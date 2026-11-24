@@ -11,35 +11,29 @@ import {
 import documentsApi from '../../../api/documentsApi'
 import SignaturePad from '../../../features/installations/SignaturePad'
 import useActeContenu from './useActeContenu'
-import { detailErreur } from './outils'
+import PiedDialogue from './PiedDialogue'
+import { useSoumission } from './useSoumission'
 
 export default function SignatureActeDialog({ open, onOpenChange, acte, onSigned }) {
   const { acte: detail } = useActeContenu(acte?.id, open)
   const [signature, setSignature] = useState(null)
   const [nomSaisi, setNomSaisi] = useState(null)
   const [lieuSaisi, setLieuSaisi] = useState(null)
-  const [occupe, setOccupe] = useState(false)
-  const [erreur, setErreur] = useState('')
+  const { occupe, erreur, soumettre } = useSoumission()
 
   // Préremplis depuis l'acte, tant que l'utilisateur n'a rien tapé.
   const nom = nomSaisi ?? detail?.contenu?.client?.nom_complet ?? ''
   const lieu = lieuSaisi ?? detail?.contenu?.lieu ?? ''
 
   const enregistrer = async () => {
-    setOccupe(true)
-    setErreur('')
-    try {
-      await documentsApi.signerActe(acte.id, {
-        signature_client: signature,
-        signataire_nom: nom.trim(),
-        lieu: lieu.trim(),
-      })
+    const ok = await soumettre(() => documentsApi.signerActe(acte.id, {
+      signature_client: signature,
+      signataire_nom: nom.trim(),
+      lieu: lieu.trim(),
+    }))
+    if (ok) {
       toast.success('Signature enregistrée : l’acte est signé.')
       onSigned?.()
-    } catch (err) {
-      setErreur(await detailErreur(err))
-    } finally {
-      setOccupe(false)
     }
   }
 
@@ -64,12 +58,7 @@ export default function SignatureActeDialog({ open, onOpenChange, acte, onSigned
         </div>
         <SignaturePad onChange={setSignature} />
 
-        {erreur && <p className="contrats-acte__erreur" role="alert">{erreur}</p>}
-
-        <div className="contrats-dialogue__pied">
-          <Button variant="ghost" className="contrats-acte__bouton" onClick={() => onOpenChange(false)}>
-            Annuler
-          </Button>
+        <PiedDialogue erreur={erreur} annuler={() => onOpenChange(false)}>
           <Button
             className="contrats-acte__bouton"
             disabled={occupe || !signature || !nom.trim()}
@@ -77,7 +66,7 @@ export default function SignatureActeDialog({ open, onOpenChange, acte, onSigned
           >
             <PenLine className="size-4" aria-hidden="true" /> Enregistrer la signature
           </Button>
-        </div>
+        </PiedDialogue>
       </DialogContent>
     </Dialog>
   )
