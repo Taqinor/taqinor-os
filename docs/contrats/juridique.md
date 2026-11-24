@@ -84,3 +84,14 @@ imprimés ne portent **aucun chiffre** (ni pourcentage, ni kilowattheure, ni heu
 12. Délai d'exécution suspendu pendant l'attente de la réponse du gestionnaire du réseau, lorsque son accord est
     requis avant les travaux (loi 82-21) — revue 1, 25/11/2026 : cette suspension, que la société ne maîtrise pas,
     est-elle compatible avec la date limite écrite et la faculté de résolution des articles 12 à 14 de la loi 31-08 ?
+13. **Retraits décidés par Reda le 24/11/2026** — à faire confirmer : le contrat ne dit plus quel texte l'emporte
+    en cas de contradiction entre le devis et le contrat (l'interprétation revient alors au droit commun, et pour un
+    consommateur à la lecture qui lui est la plus favorable, loi 31-08 art. 9).
+14. L'article sur la déclaration au gestionnaire du réseau (loi 82-21) est retiré : le contrat ne dit plus qui
+    prépare le dossier ni qui paie les frais du gestionnaire. L'obligation légale du propriétaire ne disparaît pas.
+15. L'article « Garde du matériel » ne dit plus qui a la garde pendant la pose : la responsabilité de l'entrepreneur
+    sur son ouvrage jusqu'à la réception relève alors du seul Dahir des obligations et des contrats.
+16. Garantie conventionnelle : la loi 31-08 énumère les mentions de l'écrit de garantie (obligations du garant,
+    démarches et qui les supporte, disponibilité des pièces — § 2 ci-dessus). Les actes ne les portent plus, à la
+    demande de Reda : dire si un certificat réduit au tableau des durées, aux exclusions et à la garantie légale
+    suffit, ou ce qu'il faut y remettre au minimum.

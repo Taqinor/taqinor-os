@@ -72,7 +72,9 @@ jamais « selon site » ni « variante régionale ».** Onduleur Deye = **5 ans*
 « 5 Years (10 Years Optional) », option non achetée) ; même règle (durée de base, extension payante non
 achetée) → batterie Dyness DL5.0C V2 = **7 ans** (garantie Afrique V2-202502), Powerbox Pro = 10 ans.
 Catalogue + migration stock 0174 ; si une extension est un jour achetée, repasser à 10. Décision Dyness
-prise pour le fondateur (à revoir).
+prise pour le fondateur (à revoir). **Revue par Reda le 24/11/2026 : ses batteries Dyness 5 kWh sont des DL5.0C
+d'ORIGINE (« je ne vois pas de V2 sur mes Dyness ») → 10 ans** (conditions Dyness, version Afrique : 10 ans pour la
+DL5.0C d'origine, 7 ans de base pour la seule V2). Catalogue, migration stock 0187 et site remis à 10 ans.
 
 Related: [[calepinage-decisions-fondateur]] (D-ACAL-6, D-ACAL-12), [[dimensionnement-decisions-2310]],
 [[devis-envoyes-nouveaux-rendus]].
