@@ -46,7 +46,7 @@ def modules_par_pan_servis(calepinage, materiel, resolu, fiches, manquants,
         getattr(calepinage, 'roof_layout', None), defaut, fiches, manquants)
 
 
-def produit_du_module_pose(document):
+def _produit_du_module_pose(document):
     """T4-B4-007 — le ``produit_id`` du module CHOISI à l'étape Panneaux : celui
     qui couvre le PLUS de modules posés (``geometry.moduleId`` →
     ``modules[].produitId``), ou ``None`` (aucun pan posé avec un produit du
@@ -78,7 +78,7 @@ def repli_materiel(role, du_devis, calepinage):
     ``(None, 'devis')`` (le rôle est absent, comme avant)."""
     identifiant = (du_devis or {}).get(role)
     if identifiant in (None, '') and role == 'module':
-        pose = produit_du_module_pose(getattr(calepinage, 'roof_layout', None))
+        pose = _produit_du_module_pose(getattr(calepinage, 'roof_layout', None))
         if pose is not None:
             return pose, PROVENANCE_POSE
     return identifiant, 'devis'
