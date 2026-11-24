@@ -2272,6 +2272,74 @@ class RelanceEnTacheTests(_emprunt(RelanceConceptionTests, '_relancer'),
         for version in ConceptionLead.objects.filter(company=company):
             self.assertNotIn('33.57', _json_mod.dumps(version.declencheur))
 
+    def _lead_efface(self):
+        """Un lead situé, sa conception rangée, puis effacé (loi 09-08)."""
+        from apps.crm.dsr_provider import anonymiser_lead
+        from apps.crm.models import Lead
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        Lead.objects.filter(pk=lead.pk).update(gps_lat=Decimal('33.5731'), gps_lng=Decimal('-7.5898'))
+        lead.refresh_from_db()
+        self._relancer(lead, company, _declencheur())
+        with self.captureOnCommitCallbacks(execute=True):
+            anonymiser_lead(company, lead, motif='Effacement (garde)')
+        return company, Lead.all_objects.get(pk=lead.pk)
+
+    def test_garde_1_le_save_du_scrub_ne_met_rien_en_file(self):
+        """Relecture E3 (h), garde 1/5 — l'émetteur ALEA68 se tait pour un lead effacé."""
+        self._lead_efface()
+        self.assertEqual(self.en_file.call_count, 0)  # garde retirée : 1 tâche (GPS d'avant)
+
+    def test_garde_2_executer_relance_n_appelle_pas_le_moteur(self):
+        """Relecture E3 (h), garde 2/5 — la tâche d'un lead effacé n'appelle pas ``relancer``."""
+        from apps.ventes.conception import service
+        from apps.ventes.conception.receivers import executer_relance
+
+        company, lead = self._lead_efface()
+        with mock.patch.object(service, 'relancer') as relancer:
+            self.assertIsNone(executer_relance(company.pk, lead_id=lead.pk, origine='filet'))
+        relancer.assert_not_called()
+
+    def test_garde_3_relancer_refuse_sans_calculer(self):
+        """Relecture E3 (h), garde 3/5 — ``relancer`` refuse un lead effacé AVANT tout calcul."""
+        from apps.ventes.conception import moteur
+        from apps.ventes.conception.service import relancer
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._lead_efface()
+        with mock.patch.object(moteur, 'calculer_conception') as calcul:
+            relance = relancer(lead, company=company, declencheur=_declencheur('manuel'))
+        calcul.assert_not_called()
+        self.assertEqual((relance.conception, relance.refus['code']), (None, 'lead_efface'))
+        self.assertFalse(ConceptionLead.objects.filter(lead_id=lead.pk).exists())
+
+    def test_garde_4_le_chatter_n_ecrit_rien_apres_l_effacement(self):
+        """Relecture E3 (h), garde 4/5 — ``conception_recalculee`` d'un lead effacé : aucune ligne."""
+        from apps.crm.models import LeadActivity
+        from core.events import conception_recalculee
+
+        company, lead = self._lead_efface()
+        conception_recalculee.send(
+            sender='ventes.ConceptionLead', company_id=company.pk, lead_id=lead.pk, calepinage_id=None,
+            version=9, declencheur={'raison': 'GPS latitude 33,57 → —', 'champs': [],
+                                    'origine': 'lead_entrees_modifiees'})
+        self.assertFalse(LeadActivity.objects.filter(lead_id=lead.pk, new_value='9').exists())
+
+    def test_garde_5_l_effacement_retire_le_marqueur(self):
+        """Relecture E3 (h), garde 5/5 — ``lead_erased`` retire le marqueur de relance du lead."""
+        from django.core.cache import cache
+
+        from apps.ventes.conception.receivers import _cle, cle_marqueur, mettre_en_file
+        from core.events import lead_erased
+
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'))
+        mettre_en_file(company.pk, lead_id=lead.pk, origine='lead_entrees_modifiees',
+                       champs=[{'champ': 'gps_lat', 'avant': 33.57, 'apres': None}])
+        self.assertIsNotNone(cache.get(_cle(company.pk, cle_marqueur(lead.pk))))
+        lead_erased.send(sender=None, company=company, crm_lead_id=lead.pk, phone_key='')
+        self.assertIsNone(cache.get(_cle(company.pk, cle_marqueur(lead.pk))))
+
     def test_effacement_caviarde_les_lignes_de_conception_deja_ecrites(self):
         """Relecture E3 B1(f) — le GPS et la facture DITS au chatter avant
         l'effacement (« Conception recalculée : GPS latitude 33,57 → … »)
