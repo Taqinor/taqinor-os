@@ -423,10 +423,8 @@ def deposer_pdfs(acte, user=None):
     """Rend les PDF figés (français et arabe), les dépose en GED (nouvelle
     version si le contenu a changé) et les partage au portail du client.
     Best-effort : rend la liste des avertissements (vide si tout est passé)."""
-    from apps.documents.builders import GED_CABINET_CHANTIERS
     from .rendu import pdf_de
     avertissements = []
-    chantier = acte.chantier
     for langue, contenu in (('fr', acte.contenu), ('ar', acte.contenu_ar)):
         if not contenu:
             continue
@@ -440,62 +438,87 @@ def deposer_pdfs(acte, user=None):
                 f'Le PDF{suffixe} n\'a pas pu être produit : réessayez le '
                 f'téléchargement.')
             continue
-        try:
-            from apps.ged import services as ged_services
-            nom = f'{T.TITRES[acte.type]} {acte.reference}{suffixe}'
-            fichier = acte.reference + ('-ar' if langue == 'ar' else '')
-            document, _cree = ged_services.deposit_document(
-                company=acte.company, nom=nom,
-                source_type=source_ged(acte, langue), source_id=acte.pk,
-                contenu_bytes=pdf, mime='application/pdf',
-                filename=f'{fichier}.pdf', cabinet_nom=GED_CABINET_CHANTIERS,
-                folder_nom=chantier.reference or f'Chantier {chantier.pk}',
-                description='Acte du dossier contractuel, figé.',
-                created_by=user if getattr(user, 'pk', None) else None,
-                versionner_si_modifie=True)
-            document.custom_data = {
-                **(document.custom_data or {}),
-                'acte_statut': acte.statut, 'acte_version': acte.version,
-                'empreinte_sha256': empreinte(contenu), 'langue': langue}
-            document.save(update_fields=['custom_data'])
-        except Exception:  # noqa: BLE001 — l'acte reste émis / signé
-            logger.exception('contrats : dépôt GED impossible (acte %s, %s)',
-                             acte.pk, langue)
-            avertissements.append(
-                f'Le PDF{suffixe} n\'a pas pu être rangé dans les documents '
-                f'du chantier : l\'acte reste {acte.get_statut_display().lower()}.')
-            continue
-        if chantier.client_id:
-            try:
-                ged_services.partager_document_avec_client_portail(
-                    document, chantier.client_id)
-            except Exception:  # noqa: BLE001 — partage best-effort
-                logger.exception('contrats : partage portail impossible '
-                                 '(acte %s, %s)', acte.pk, langue)
-                avertissements.append(
-                    f'Le PDF{suffixe} n\'a pas pu être partagé sur l\'espace '
-                    f'du client.')
+        avertissements += _deposer_langue(acte, langue, contenu, pdf, user)
     return avertissements
 
 
+def _deposer_langue(acte, langue, contenu, pdf, user=None):
+    """Dépose le PDF figé d'une langue en GED (marqué de la version, du statut
+    et de l'empreinte du contenu) et le partage au portail. Best-effort :
+    rend les avertissements."""
+    from apps.documents.builders import GED_CABINET_CHANTIERS
+    chantier = acte.chantier
+    suffixe = ' (traduction arabe)' if langue == 'ar' else ''
+    try:
+        from apps.ged import services as ged_services
+        nom = f'{T.TITRES[acte.type]} {acte.reference}{suffixe}'
+        fichier = acte.reference + ('-ar' if langue == 'ar' else '')
+        document, _cree = ged_services.deposit_document(
+            company=acte.company, nom=nom,
+            source_type=source_ged(acte, langue), source_id=acte.pk,
+            contenu_bytes=pdf, mime='application/pdf',
+            filename=f'{fichier}.pdf', cabinet_nom=GED_CABINET_CHANTIERS,
+            folder_nom=chantier.reference or f'Chantier {chantier.pk}',
+            description='Acte du dossier contractuel, figé.',
+            created_by=user if getattr(user, 'pk', None) else None,
+            versionner_si_modifie=True)
+        document.custom_data = {
+            **(document.custom_data or {}),
+            'acte_statut': acte.statut, 'acte_version': acte.version,
+            'empreinte_sha256': empreinte(contenu), 'langue': langue}
+        document.save(update_fields=['custom_data'])
+    except Exception:  # noqa: BLE001 — l'acte reste émis / signé
+        logger.exception('contrats : dépôt GED impossible (acte %s, %s)',
+                         acte.pk, langue)
+        return [f'Le PDF{suffixe} n\'a pas pu être rangé dans les documents '
+                f'du chantier : l\'acte reste '
+                f'{acte.get_statut_display().lower()}.']
+    if chantier.client_id:
+        try:
+            ged_services.partager_document_avec_client_portail(
+                document, chantier.client_id)
+        except Exception:  # noqa: BLE001 — partage best-effort
+            logger.exception('contrats : partage portail impossible '
+                             '(acte %s, %s)', acte.pk, langue)
+            return [f'Le PDF{suffixe} n\'a pas pu être partagé sur l\'espace '
+                    f'du client.']
+    return []
+
+
+def document_a_jour(document, acte, contenu):
+    """Le document GED porte-t-il le PDF de CE contenu figé (même empreinte,
+    même version, même statut) ? Un dépôt raté laisse en GED l'ancienne
+    version : elle n'est alors jamais servie."""
+    marque = getattr(document, 'custom_data', None) or {}
+    return (marque.get('empreinte_sha256') == empreinte(contenu)
+            and marque.get('acte_version') == acte.version
+            and marque.get('acte_statut') == acte.statut)
+
+
 def pdf_de_l_acte(acte, langue='fr'):
-    """Octets PDF servis : la version figée en GED d'un acte émis ou signé
-    (re-rendue depuis le contenu figé si le stockage ne répond pas), le rendu
-    vivant d'un brouillon."""
+    """Octets PDF servis. Acte émis ou signé : le PDF rangé en GED s'il est
+    bien celui du contenu figé ; sinon (dépôt raté, stockage muet) le contenu
+    figé est re-rendu et le dépôt retenté. Brouillon : le rendu vivant."""
     from .rendu import pdf_de
-    if acte.statut in (T.EMIS, T.SIGNE):
-        document = document_ged(acte, langue)
-        if document is not None:
-            from apps.documents.builders import _octets_en_vigueur
-            try:
-                octets = _octets_en_vigueur(document)
-            except Exception:  # noqa: BLE001 — repli : rendu du contenu figé
-                logger.warning('contrats : octets GED illisibles (acte %s)',
-                               acte.pk, exc_info=True)
-                octets = None
-            if octets:
-                return octets
-    return pdf_de(K.contenu_de(acte, langue))
+    contenu = (acte.contenu_ar if langue == 'ar' else acte.contenu) \
+        if acte.statut in (T.EMIS, T.SIGNE) else None
+    if not contenu:
+        return pdf_de(K.contenu_de(acte, langue))
+    document = document_ged(acte, langue)
+    if document is not None and document_a_jour(document, acte, contenu):
+        from apps.documents.builders import _octets_en_vigueur
+        try:
+            octets = _octets_en_vigueur(document)
+        except Exception:  # noqa: BLE001 — repli : rendu du contenu figé
+            logger.warning('contrats : octets GED illisibles (acte %s)',
+                           acte.pk, exc_info=True)
+            octets = None
+        if octets:
+            return octets
+    pdf = pdf_de(contenu)
+    if document is None or not document_a_jour(document, acte, contenu):
+        _deposer_langue(acte, langue, contenu, pdf)
+    return pdf
 
 
 # ── Modèle de la société ────────────────────────────────────────────────────

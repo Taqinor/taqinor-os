@@ -424,6 +424,29 @@ class EmissionTests(TestCase):
         self.assertFalse(livraisons[T.RESTE_A_REGLER]['peut_emettre'])
         self.assertFalse(livraisons[T.TRANCHE_REGLEE]['ecarte'])
 
+    def test_pdf_servi_toujours_celui_du_contenu_fige(self):
+        """S6 : un dépôt GED raté ne fait jamais servir l'ancienne version."""
+        from unittest import mock
+
+        from apps.ged import services as ged_services
+        v = Vente(self)
+        acte, _ = S.emettre(v.acte(T.CONTRAT), v.user)
+        acte = S.rouvrir(acte, v.user)
+        S.modifier(acte, {'conditions_particulieres':
+                          'Accès par le portail nord.'}, v.user)
+        with mock.patch.object(ged_services, 'deposit_document',
+                               side_effect=RuntimeError('stockage muet')):
+            acte, avert = S.emettre(v.acte(T.CONTRAT), v.user)
+        self.assertEqual(acte.version, 2)
+        self.assertTrue(any('rangé' in a for a in avert))
+        document = S.document_ged(acte)
+        self.assertFalse(S.document_a_jour(document, acte, acte.contenu))
+        self.assertIn('portail nord', texte_pdf(S.pdf_de_l_acte(acte)))
+        # Le dépôt a été retenté : la GED porte désormais la version 2.
+        document = S.document_ged(acte)
+        self.assertTrue(S.document_a_jour(document, acte, acte.contenu))
+        self.assertIn('portail nord', texte_pdf(S.pdf_de_l_acte(acte)))
+
     def test_quitus_refuse_tant_que_solde_non_regle(self):
         v = Vente(self)
         with self.assertRaises(S.ErreurActe) as ctx:
