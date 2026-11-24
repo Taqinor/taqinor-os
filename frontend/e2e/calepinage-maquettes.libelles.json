@@ -14,7 +14,6 @@
       "Surface du toit",
       "Pans",
       "Besoin d’après la facture",
-      "Contour tracé",
       "Plan",
       "3D",
       "Étape 1 sur 5",
@@ -50,6 +49,10 @@
       {
         "libelle": "Je ne la connais pas",
         "raison": "Dépend de l’état : le bloc n’existe que tant que la pente du toit est une valeur de départ non confirmée ; le toit posé par l’API a sa pente saisie."
+      },
+      {
+        "libelle": "Contour tracé",
+        "raison": "Dépend de l’état : bulle passagère montrée seulement après la fermeture d’un tracé fait dans la séance ; la spec pose le toit par l’API (le tracé à la souris n’est pas son objet)."
       }
     ]
   },
@@ -68,7 +71,6 @@
       "Surface du toit",
       "Pans",
       "Besoin d’après la facture",
-      "Contour tracé",
       "Plan",
       "3D",
       "Étape 1 sur 5",
@@ -104,6 +106,10 @@
       {
         "libelle": "Je ne la connais pas",
         "raison": "Dépend de l’état : le bloc n’existe que tant que la pente du toit est une valeur de départ non confirmée ; le toit posé par l’API a sa pente saisie."
+      },
+      {
+        "libelle": "Contour tracé",
+        "raison": "Dépend de l’état : bulle passagère montrée seulement après la fermeture d’un tracé fait dans la séance ; la spec pose le toit par l’API (le tracé à la souris n’est pas son objet)."
       }
     ]
   },
@@ -291,8 +297,6 @@
     "etat_ancre": "Pour un résultat complet",
     "attendus": [
       "Calepinages",
-      "Guidé",
-      "Expert",
       "Générer le devis",
       "Toit",
       "Panneaux",
@@ -361,7 +365,6 @@
   },
   "Liste": {
     "attendus": [
-      "Ventes",
       "Calepinages",
       "Rechercher un calepinage",
       "Nouveau calepinage",
@@ -381,10 +384,15 @@
       {
         "libelle": "Signé",
         "raison": "Accepté : les pastilles d’état sont les vrais états du produit (Brouillon / Validé / Périmé / Refusé), pas ceux de la maquette."
+      },
+      {
+        "libelle": "Ventes",
+        "raison": "Accepté (maquette de la liste) : « Ventes » est le fil d’Ariane de la maquette ; l’écran réel n’en a pas, son en-tête dit « Calepinages »."
       }
     ]
   },
   "DemarrageRapide": {
+    "etat_ancre": "Vide",
     "attendus": [
       "Réglages",
       "Calepinage",

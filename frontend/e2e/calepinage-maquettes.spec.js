@@ -1,3 +1,5 @@
+// ACAL1748 — le banc (état de départ de chaque écran : point de site, matériel, simulation, pente mesurée) vit dans
+// `calepinage-maquettes.banc.js` ; un état que la pile ne peut pas atteindre est écrit « non atteint », jamais un échec.
 // ACAL1315 — Comparaison PERMANENTE de l'écran réel avec les 13 maquettes du module Calepinage.
 // Pour chaque maquette (`docs/audits/l5-calepinage/maquettes/<Nom>.dc.html`) :
 //   1. la maquette est rendue en `file://` à sa taille native (1440×900 ; Tablette 1180×820 ; Telephone et
@@ -17,14 +19,13 @@ import { test, expect } from '@playwright/test'
 import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { uniq, API_DJANGO, lireJson, telephoneMobileUnique } from './helpers'
+import { poserBanc } from './calepinage-maquettes.banc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const DOSSIER_MAQUETTES = join(here, '../../docs/audits/l5-calepinage/maquettes')
 const SORTIE = join(here, '../test-results/maquettes')
 const LIBELLES = JSON.parse(readFileSync(join(here, 'calepinage-maquettes.libelles.json'), 'utf8'))
 const SCHEMA_LAYOUT = join(here, '../../backend/django_core/apps/calepinage/contract_samples/roof_layout_v2.schema.json')
-const CAL = `${API_DJANGO}/calepinage`
 const GRAND = [1440, 900]
 
 // Blocs du cadre : sélecteur réel (data-testid / id) et sélecteur de la maquette (balises sémantiques).
@@ -57,7 +58,7 @@ const ECRANS = [
   { nom: 'DemarrageRapide', type: 'page', blocs: BLOCS_PAGE, chemin: () => '/calepinage/reglages/demarrage-rapide', pret: 'text=Démarrage rapide' },
   { nom: 'ToitSombre', ...ATELIER('toit', { sombre: true }) },
   { nom: 'Tablette', vp: [1180, 820], ...ATELIER('panneaux') },
-  { nom: 'Telephone', vp: [390, 844], type: 'page', blocs: BLOCS_PAGE, chemin: (id) => `/calepinage/${id}/releve`, pret: '[data-testid="releve-projet"]' },
+  { nom: 'Telephone', vp: [390, 844], variante: 'releve', type: 'page', blocs: BLOCS_PAGE, chemin: (id) => `/calepinage/${id}/releve`, pret: '[data-testid="releve-projet"]' },
   { nom: 'TelephoneClient', vp: [390, 844], type: 'page', blocs: BLOCS_PAGE, chemin: (id) => `/calepinage/${id}/client`, pret: '[data-testid="client-projet"]' },
 ]
 
@@ -132,26 +133,16 @@ async function attendreAtelier(page) {
   await expect(page.locator('#rp9-status')).not.toHaveText(/^Chargement/, { timeout: 60_000 }).catch(() => { /* carte absente */ })
 }
 
-// Lead + calepinage + toit posé PAR L'API (le tracé à la souris n'est pas l'objet de cette spec).
-let calId = null
-async function assurerCalepinage(page) {
-  if (calId) return calId
+// Lead (avec point de site) + calepinage + toit posé PAR L'API (le tracé à la souris n'est pas l'objet de cette spec) :
+// un banc par variante (voir `calepinage-maquettes.banc.js`), posé une fois et partagé entre les écrans.
+const bancs = {}
+async function assurerBanc(page, variante) {
+  if (bancs[variante]) return bancs[variante]
   await page.goto('/apps')
   await expect(page.getByRole('heading', { name: 'Mes applications' })).toBeVisible({ timeout: 60_000 })
-  const T = { timeout: 120_000 }
-  const request = page.request
-  const lead = await lireJson(await request.post(`${API_DJANGO}/crm/leads/`, {
-    ...T, data: { nom: uniq('K2 — Maquettes'), ville: 'Casablanca', telephone: telephoneMobileUnique(), type_installation: 'residentiel', facture_hiver: '900' },
-  }), 'lead')
-  const cal = await lireJson(await request.post(`${CAL}/calepinages/`, { ...T, data: { lead: lead.id, titre: uniq('K2 — Maquettes') } }), 'calepinage')
-  await lireJson(await request.get(`${CAL}/calepinages/${cal.id}/design-context/`, T), 'design-context (amorce)')
-  const lu = await lireJson(await request.get(`${CAL}/calepinages/${cal.id}/layout/`, T), 'layout')
-  const document = JSON.parse(readFileSync(SCHEMA_LAYOUT, 'utf8')).exemple
-  await lireJson(await request.post(`${CAL}/calepinages/${cal.id}/layout/`, {
-    ...T, headers: { 'If-Match': `"${lu.empreinte_document || ''}"` }, data: { roof_layout: document },
-  }), 'écriture du layout')
-  calId = cal.id
-  return calId
+  const exemple = JSON.parse(readFileSync(SCHEMA_LAYOUT, 'utf8')).exemple
+  bancs[variante] = await poserBanc(page.request, { exemple, variante })
+  return bancs[variante]
 }
 
 async function rendreMaquette(context, ecran, vp) {
@@ -221,15 +212,16 @@ for (const ecran of ECRANS) {
       try { localStorage.setItem('taqinor:welcome:seen:v1', '1') } catch { /* ignoré */ }
       try { localStorage.setItem('taqinor-pwa-install-dismissed', '1') } catch { /* ignoré */ }
     })
-    const id = await assurerCalepinage(page)
-    await ouvrirReel(page, ecran, id)
+    const banc = await assurerBanc(page, ecran.variante || 'complet')
+    await ouvrirReel(page, ecran, banc.calId)
     await page.screenshot({ path: join(SORTIE, `${ecran.nom}-reel.png`) })
     const brut = await page.evaluate(lirePage, { blocs: ecran.blocs, cote: 'reel', sel: SEL_CONTROLES })
     writeFileSync(join(SORTIE, `${ecran.nom}-reel.txt`), brut.plein)
     const reel = preparer(brut)
 
     // État de la maquette atteint ? (résultat complet / incomplet : inatteignable sur une pile semée)
-    const atteint = donnees.etat_ancre ? trouve(donnees.etat_ancre, reel) : true
+    const simulationManquante = donnees.etat_ancre && banc.simulation.etat !== 'terminee' ? banc.simulation : null
+    const atteint = !simulationManquante && (donnees.etat_ancre ? trouve(donnees.etat_ancre, reel) : true)
     const trouves = donnees.attendus.filter((l) => trouve(l, reel))
     const manquants = donnees.attendus.filter((l) => !trouve(l, reel))
     const rapport = {
@@ -237,7 +229,7 @@ for (const ecran of ECRANS) {
       taille: `${vp[0]}x${vp[1]}`,
       url_reelle: page.url().replace(/^https?:\/\/[^/]+/, ''),
       etat_atteint: atteint,
-      raison_non_atteint: atteint ? null : `l'écran réel ne montre pas l'état de la maquette (« ${donnees.etat_ancre} » absent) : aucun calepinage de la pile semée n'a de résultat de ce genre`,
+      raison_non_atteint: atteint ? null : (simulationManquante ? `le banc n'a pas de simulation terminée : ${simulationManquante.raison}` : `l'écran réel ne montre pas l'état de la maquette (« ${donnees.etat_ancre} » absent) : les réglages de la société de la pile ne donnent pas ce résultat, ou elle est déjà réglée`),
       libelles_attendus: donnees.attendus.length,
       libelles_trouves: trouves,
       libelles_manquants: atteint ? manquants : [],
