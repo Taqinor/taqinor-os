@@ -587,6 +587,21 @@ describe('T4-U4-020..023 — ce qui est tapé n’est jamais perdu, l’écran d
     expect(api.enregistrerSectionLayout.mock.calls[0][1].champs.pitchDeg).toBe(18)
   })
 
+  it('EZ16 : stockage du téléphone indisponible — l’écran le dit au lieu de promettre que les mesures sont gardées', async () => {
+    const refus = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('QuotaExceededError') })
+    try {
+      rendre()
+      await screen.findByTestId('releve-projet')
+      await waitFor(() => expect(api.releve).toHaveBeenCalled())
+      expect(screen.queryByTestId('releve-stockage-indisponible')).toBeNull()
+      taper('releve-longueur', '9,5')
+      expect(await screen.findByTestId('releve-stockage-indisponible'))
+        .toHaveTextContent('Ce téléphone ne peut pas garder vos mesures : terminez le relevé tant que vous avez du réseau.')
+    } finally {
+      refus.mockRestore()
+    }
+  })
+
   it('U4-022 : en ligne, les mesures tapées sont gardées sur le téléphone, dites telles, et relues à la réouverture', async () => {
     rendre()
     await screen.findByTestId('releve-projet')

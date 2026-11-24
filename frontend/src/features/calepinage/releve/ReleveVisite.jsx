@@ -476,6 +476,11 @@ export default function ReleveVisite() {
               <span>{noteHorsLigne(photos.enAttente, enLigne, fileReleve.enAttente, mesuresGardees)}</span>
             </section>
           )}
+          {brouillons.stockageIndisponible && (
+            <section className="cal-tel-note" data-testid="releve-stockage-indisponible" role="status">
+              <span>Ce téléphone ne peut pas garder vos mesures : terminez le relevé tant que vous avez du réseau.</span>
+            </section>
+          )}
           {lignesEnvois.length > 0 && (
             <ul className="cal-tel-envois" data-testid="releve-envois" aria-label="État des envois">
               {lignesEnvois.map((l) => <li key={l.cle} data-etat={l.envoye ? 'envoye' : 'attente'}>{l.texte}</li>)}

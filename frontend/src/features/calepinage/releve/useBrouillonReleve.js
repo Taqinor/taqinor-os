@@ -18,12 +18,15 @@ function lire(k) {
   }
 }
 
+/** Écrit (ou retire) la clé ; rend `false` quand le téléphone refuse (stockage plein, navigation privée) —
+  * l'écran garde alors la valeur en mémoire et le DIT (`stockageIndisponible`). */
 function ecrire(k, valeur) {
   try {
     if (valeur === null) window.localStorage.removeItem(k)
     else window.localStorage.setItem(k, JSON.stringify(valeur))
+    return true
   } catch {
-    /* stockage indisponible : l'écran garde la valeur en mémoire */
+    return false
   }
 }
 
@@ -44,6 +47,8 @@ export function compterMesures(brouillon) {
 export default function useBrouillonReleve(calepinageId) {
   const [brouillon, setBrouillon] = useState(() => (calepinageId ? lireBrouillon(calepinageId) : {}))
   const [pan, setPan] = useState(() => (calepinageId ? lirePanEnAttente(calepinageId) : null))
+  const [stockageIndisponible, setStockageIndisponible] = useState(false)
+  const noter = useCallback((ecrit) => { if (!ecrit) setStockageIndisponible(true) }, [])
 
   /** Pose (ou retire, valeur vide) des champs du brouillon. */
   const garder = useCallback((champs) => {
@@ -51,10 +56,10 @@ export default function useBrouillonReleve(calepinageId) {
     setBrouillon((courant) => {
       const suivant = { ...courant }
       Object.entries(champs).forEach(([k, v]) => { if (videOuNul(v)) delete suivant[k]; else suivant[k] = v })
-      ecrire(cle(calepinageId, 'brouillon'), Object.keys(suivant).length ? suivant : null)
+      noter(ecrire(cle(calepinageId, 'brouillon'), Object.keys(suivant).length ? suivant : null))
       return suivant
     })
-  }, [calepinageId])
+  }, [calepinageId, noter])
 
   /** Retire les champs nommés (tous si `noms` est absent) : le serveur les a pris. */
   const oublier = useCallback((noms = null) => {
@@ -68,9 +73,9 @@ export default function useBrouillonReleve(calepinageId) {
 
   const garderPan = useCallback((attente) => {
     if (!calepinageId) return
-    ecrire(cle(calepinageId, 'pan'), attente)
+    noter(ecrire(cle(calepinageId, 'pan'), attente))
     setPan(attente)
-  }, [calepinageId])
+  }, [calepinageId, noter])
 
   const oublierPan = useCallback(() => {
     if (!calepinageId) return
@@ -78,5 +83,5 @@ export default function useBrouillonReleve(calepinageId) {
     setPan(null)
   }, [calepinageId])
 
-  return { brouillon, garder, oublier, pan, garderPan, oublierPan }
+  return { brouillon, garder, oublier, pan, garderPan, oublierPan, stockageIndisponible }
 }
