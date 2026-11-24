@@ -10,6 +10,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 // APX31 — MÊME garde champ-de-saisie que la file J/K des leads (LW) : une
 // seule définition dans tout l'ERP, jamais une copie locale.
 import { isTypingTarget } from '../../providers/shortcuts'
+import { openQuickCreate } from '../../features/uxviews/quickcreate/quickCreateEvents'
 import { dialogueParDessus } from '../../providers/focusedRecordShortcuts'
 import { useConfirm } from '../../providers/confirm-context'
 // EZ15 — dictée INLINE navigateur, surface BUREAU.
@@ -1935,9 +1936,9 @@ export default function TicketsPage() {
               {rows.length} ticket{rows.length > 1 ? 's' : ''}
             </p>
           </div>
-          {/* MB5 — segmenté + bouton export : passe sur deux lignes sous 375px
-              au lieu de déborder horizontalement. */}
+          {/* MB5 — segmenté + bouton export : deux lignes sous 375px au lieu de déborder horizontalement. */}
           <div className="flex flex-wrap items-center gap-2">
+            {peutGerer && <Button size="sm" onClick={() => openQuickCreate('ticket')}><Plus /> Nouveau ticket</Button>}{/* T4-V2-025 */}
             {/* L295 — bascule Table / Kanban. */}
             <Segmented
               size="sm"
@@ -1949,8 +1950,7 @@ export default function TicketsPage() {
                 { value: 'calendrier', label: 'Calendrier' },
               ]}
             />
-            {/* VX79 — « Copier le lien » du ticket ouvert : URL INTERNE
-                partageable (/sav?id=<pk>), pour l'envoyer à un collègue. */}
+            {/* VX79 — « Copier le lien » du ticket ouvert : URL INTERNE partageable (/sav?id=<pk>), pour un collègue. */}
             {detailTicket && (
               <Button variant="ghost" size="sm"
                       onClick={() => copierLien(detailTicket)}

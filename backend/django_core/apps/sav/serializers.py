@@ -468,9 +468,33 @@ class TicketListSerializer(serializers.ListSerializer):
                 c, a, lus, registre_cache)
 
 
+_DESCRIPTION_TICKET_REQUISE = (
+    'Décrivez le problème signalé ou la demande du client pour ouvrir le '
+    'ticket.')
+
+
+class DescriptionTicket(ChaineStricte):
+    """T4-V1-008 — la description du problème est OBLIGATOIRE pour ouvrir un
+    ticket (le bouton du chantier créait un ticket vide, POST 201 description
+    null). Un ancien ticket sans description est servi en texte vide : le
+    schéma publié n'est pas nullable (``null`` est refusé en écriture)."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault('error_messages', {
+            cle: _DESCRIPTION_TICKET_REQUISE
+            for cle in ('required', 'blank', 'null')})
+        super().__init__(required=True, allow_blank=False, allow_null=False,
+                         **kwargs)
+
+    def get_attribute(self, instance):
+        valeur = super().get_attribute(instance)
+        return '' if valeur is None else valeur
+
+
 class TicketSerializer(MasqueMontantsAchatMixin, IdInconnu404Mixin,
                        SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     champs_montants_achat = ('cout',)  # ALEC17 — coût interne : ``prix_achat_voir``
+    description = DescriptionTicket()
     # api-fuzz-full 24/10 — textes de modèle STRICTS (chaîne JSON seulement) :
     # leur motif publié exclut le caractère nul que DRF refuse (400).
     serializer_field_mapping = {

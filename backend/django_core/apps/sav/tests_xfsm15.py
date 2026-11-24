@@ -62,6 +62,7 @@ class XFSM15RecidiveTest(TestCase):
         self._intervention(date.today() - timedelta(days=10))
         api = auth(self.admin)
         resp = api.post('/api/django/sav/tickets/', {
+            'description': 'Panne signalée',
             'client': self.client_obj.id, 'installation': self.inst.id,
             'type': Ticket.Type.CORRECTIF,
         })
@@ -76,6 +77,7 @@ class XFSM15RecidiveTest(TestCase):
         self._intervention(date.today() - timedelta(days=60))
         api = auth(self.admin)
         resp = api.post('/api/django/sav/tickets/', {
+            'description': 'Panne signalée',
             'client': self.client_obj.id, 'installation': self.inst.id,
             'type': Ticket.Type.CORRECTIF,
         })
@@ -93,6 +95,7 @@ class XFSM15RecidiveTest(TestCase):
             date_realisee=date.today() - timedelta(days=5))
         api = auth(self.admin)
         resp = api.post('/api/django/sav/tickets/', {
+            'description': 'Panne signalée',
             'client': self.client_obj.id, 'installation': self.inst.id,
             'type': Ticket.Type.CORRECTIF,
         })
@@ -106,6 +109,7 @@ class XFSM15RecidiveTest(TestCase):
         self._intervention(date.today() - timedelta(days=1))
         api = auth(self.admin)
         resp = api.post('/api/django/sav/tickets/', {
+            'description': 'Panne signalée',
             'client': self.client_obj.id, 'installation': self.inst.id,
             'type': Ticket.Type.CORRECTIF,
         })
@@ -116,6 +120,7 @@ class XFSM15RecidiveTest(TestCase):
         self._intervention(date.today() - timedelta(days=5))
         api = auth(self.admin)
         resp = api.post('/api/django/sav/tickets/', {
+            'description': 'Panne signalée',
             'client': self.client_obj.id, 'installation': self.inst.id,
             'type': Ticket.Type.CORRECTIF,
         })

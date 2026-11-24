@@ -66,6 +66,7 @@ class XSAV7ContratSlaOverrideTest(TestCase):
             actif=True, sla_resolution_days=1)
 
         resp = self.api.post('/api/django/sav/tickets/', {
+            'description': 'Panne signalée',
             'client': self.client_premium.id, 'installation': self.inst_premium.id,
             'date_ouverture': '2024-06-10',
         }, format='json')
@@ -75,6 +76,7 @@ class XSAV7ContratSlaOverrideTest(TestCase):
 
     def test_client_sans_contrat_comportement_actuel(self):
         resp = self.api.post('/api/django/sav/tickets/', {
+            'description': 'Panne signalée',
             'client': self.client_standard.id, 'installation': self.inst_standard.id,
             'date_ouverture': '2024-06-10',
         }, format='json')
@@ -89,6 +91,7 @@ class XSAV7ContratSlaOverrideTest(TestCase):
             actif=True)  # aucun override SLA posé.
 
         resp = self.api.post('/api/django/sav/tickets/', {
+            'description': 'Panne signalée',
             'client': self.client_standard.id, 'installation': self.inst_standard.id,
             'date_ouverture': '2024-06-10',
         }, format='json')
@@ -102,6 +105,7 @@ class XSAV7ContratSlaOverrideTest(TestCase):
             actif=False, sla_resolution_days=1)
 
         resp = self.api.post('/api/django/sav/tickets/', {
+            'description': 'Panne signalée',
             'client': self.client_premium.id, 'installation': self.inst_premium.id,
             'date_ouverture': '2024-06-10',
         }, format='json')
@@ -118,6 +122,7 @@ class XSAV7ContratSlaOverrideTest(TestCase):
             actif=True, sla_resolution_days=1)
 
         resp = self.api.post('/api/django/sav/tickets/', {
+            'description': 'Panne signalée',
             'client': self.client_premium.id, 'installation': self.inst_premium.id,
             'date_ouverture': '2024-06-10', 'priorite': 'urgente',
         }, format='json')

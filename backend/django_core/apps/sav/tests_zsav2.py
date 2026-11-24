@@ -75,6 +75,7 @@ class ZSAV2CategorieTicketTest(TestCase):
             company=self.company, libelle='Demande information', ordre=1)
         api = auth(self.admin)
         resp = api.post('/api/django/sav/tickets/', {
+            'description': 'Panne signalée',
             'client': self.client_obj.id, 'type': Ticket.Type.CORRECTIF,
             'categorie': cat.id,
         })
@@ -86,6 +87,7 @@ class ZSAV2CategorieTicketTest(TestCase):
     def test_ticket_sans_categorie_reste_valide(self):
         api = auth(self.admin)
         resp = api.post('/api/django/sav/tickets/', {
+            'description': 'Panne signalée',
             'client': self.client_obj.id, 'type': Ticket.Type.PREVENTIF,
         })
         self.assertEqual(resp.status_code, 201, resp.content)

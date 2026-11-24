@@ -70,6 +70,7 @@ class XSAV9AffectationAutoTest(TestCase):
         sla = SavSlaSettings.get(self.company)
         self.assertFalse(sla.affectation_auto_sav)
         resp = self.api.post('/api/django/sav/tickets/', {
+            'description': 'Panne signalée',
             'client': self.client_obj.id, 'installation': self.inst.id,
         }, format='json')
         self.assertEqual(resp.status_code, 201, resp.content)
@@ -101,6 +102,7 @@ class XSAV9AffectationAutoTest(TestCase):
         sla.save(update_fields=['affectation_auto_sav'])
 
         resp = self.api.post('/api/django/sav/tickets/', {
+            'description': 'Panne signalée',
             'client': self.client_obj.id, 'installation': self.inst.id,
             'technicien_responsable': self.tech_a.id,
         }, format='json')

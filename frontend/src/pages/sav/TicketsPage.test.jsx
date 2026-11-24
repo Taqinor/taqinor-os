@@ -461,6 +461,27 @@ describe('TicketsPage — liste vide, qui peut ouvrir un ticket (T4-U2-016)', ()
     const lien = await screen.findByRole('link', { name: /Choisir le chantier/ })
     expect(lien.getAttribute('href')).toBe('/chantiers')
   }, 60000)
+
+  // T4-V2-025 — liste NON vide : aucun bouton de création, même pour un Directeur/Administrateur.
+  it('liste non vide : « Nouveau ticket » avec sav_gerer (ouvre la création rapide), absent sans', async () => {
+    const vu = []
+    const ecoute = (e) => vu.push(e.detail?.type)
+    window.addEventListener('taqinor:quick-create', ecoute)
+    const monter = (permissions) => {
+      const store = configureStore({ reducer: {
+        tickets: (state = { items: [T1], loading: false, error: null }) => state,
+        auth: (state = { role: 'normal', permissions }) => state } })
+      return render(<ThemeProvider><Provider store={store}><MemoryRouter><TicketsPage /></MemoryRouter></Provider></ThemeProvider>)
+    }
+    const { unmount } = monter(['sav_voir', 'sav_gerer'])
+    fireEvent.click(await screen.findByRole('button', { name: /Nouveau ticket/ }))
+    expect(vu).toEqual(['ticket'])
+    unmount()
+    monter(['sav_voir'])
+    await screen.findAllByText('SAV-1', { exact: false })
+    expect(screen.queryByRole('button', { name: /Nouveau ticket/ })).toBeNull()
+    window.removeEventListener('taqinor:quick-create', ecoute)
+  }, 60000)
 })
 
 /* AERR82 — retirer une pièce (déjà sortie du stock) d'un ticket passe par une
