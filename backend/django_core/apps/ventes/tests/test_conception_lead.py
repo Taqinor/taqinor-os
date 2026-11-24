@@ -2075,3 +2075,30 @@ class RelanceEnTacheTests(_emprunt(RelanceConceptionTests, '_relancer'),
                 self.assertLogs('apps.ventes.conception.receivers', level='ERROR'):
             self.assertEqual(self._executer_les_taches([tache]), [None])
         self.assertFalse(ConceptionLead.objects.filter(lead=lead).exists())
+
+    # ── ADEV140 — le filet d'empreinte à la lecture ─────────────────────────
+    def test_entree_changee_sans_evenement_perimee_puis_une_relance(self):
+        from apps.crm.models import Lead
+        from apps.ventes.models import ConceptionLead
+        from apps.ventes.selectors import conception_courante
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        self._relancer(lead, company, _declencheur())
+        self.assertFalse(conception_courante(company, lead.pk)['perimee'])  # à jour : rien en file
+        self.assertEqual(self.en_file.call_count, 0)
+
+        Lead.objects.filter(pk=lead.pk).update(facture_hiver=Decimal('2400'))  # écriture directe : aucun événement
+        avant = ConceptionLead.objects.count()
+        lue = conception_courante(company, lead.pk)
+        self.assertEqual((lue['perimee'], lue['version'], lue['declencheur']['origine']), (True, 1, 'remplissage'))
+        self.assertEqual(conception_courante(company, lead.pk)['perimee'], True)  # relire : toujours UNE tâche
+        self.assertEqual(self.en_file.call_count, 1)  # mutant « toujours perimee: false » : 0
+        self.assertEqual(self.en_file.call_args.kwargs['kwargs']['origine'], 'filet')
+        self.assertEqual(ConceptionLead.objects.count(), avant)  # la lecture n'écrit pas
+
+        self.assertEqual(self._executer_les_taches(), [{'version': 2, 'ecrite': True}])
+        relue = conception_courante(company, lead.pk)
+        self.assertEqual((relue['perimee'], relue['version'], relue['declencheur']['origine']), (False, 2, 'filet'))
+        self.assertEqual(relue['entrees_utilisees']['facture_hiver']['valeur'], 2400.0)
+        self.assertEqual(self.en_file.call_count, 0)

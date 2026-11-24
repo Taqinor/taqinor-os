@@ -15,9 +15,12 @@ version rangée). Ré-exportés par ``selectors.py``.
 * ``champs_entrees(marche)`` — les colonnes du lead entrées du moteur
   (``conception/champs.py::CHAMPS_ENTREES``), lues par l'émetteur du CRM.
 
-``perimee`` vaut ``False`` tant que le filet d'empreinte (ADEV140) n'existe pas
-et ``brouillons_a_mettre_a_jour`` ``[]`` tant que les brouillons ne suivent pas
-la conception (ADEV147/148) : clés présentes, jamais inventées.
+``perimee`` (ADEV140, le FILET d'empreinte) : l'empreinte des ENTRÉES
+actuelles du porteur (jamais le calcul) comparée à celle de la version ; un
+écart (écriture hors du chemin normal, événement perdu) sert la version telle
+quelle avec ``perimee: true`` et met UNE relance en file (origine ``filet``) —
+la lecture n'écrit rien. ``brouillons_a_mettre_a_jour`` vaut ``[]`` tant que
+les brouillons ne suivent pas la conception (ADEV147/148).
 """
 
 #: Les valeurs comparées entre un devis et la conception (clés de ``valeurs``).
@@ -60,9 +63,50 @@ def _forme(version):
     forme.update(
         option_retenue=version.option_retenue or None, lead=version.lead_id, calepinage=version.calepinage_id,
         empreinte_pose=version.empreinte_pose, declencheur=version.declencheur, version=version.version,
-        calcule_le=version.calcule_le.isoformat(), perimee=False, brouillons_a_mettre_a_jour=[],
+        calcule_le=version.calcule_le.isoformat(), perimee=_perimee(version), brouillons_a_mettre_a_jour=[],
         ecart_devis=ecart_devis(_devis_envoye_du_lead(version)) if version.lead_id else [])
     return forme
+
+
+def _empreinte_des_entrees(version):
+    """L'empreinte des entrées ACTUELLES du porteur de ``version`` (la pose
+    qu'elle a utilisée comprise), par les mêmes fonctions que l'écrivain —
+    aucune seconde comparaison, aucun calcul, aucune écriture."""
+    from types import SimpleNamespace
+
+    from .conception.entrees import entrees_pour
+    from .conception.moteur import empreinte_conception, reglages_lus_sans_creer
+    from .conception.service import _porteur
+
+    company = version.company
+    lead, _filtre, refus = _porteur(version.lead, company, None if version.lead_id else version.calepinage_id)
+    if refus is not None or lead is None:
+        return None
+    pose = version.empreinte_pose
+    toit = SimpleNamespace(empreinte=pose, plafond_panneaux=None) if pose else None
+    with reglages_lus_sans_creer(company):
+        return empreinte_conception(entrees_pour(lead, company, toit=toit))
+
+
+def _perimee(version):
+    """ADEV140 — ``True`` quand les entrées du porteur ne sont plus celles de
+    la version ; la relance (``conception/receivers.py::mettre_en_file``,
+    dédupliquée) part alors une fois. Une lecture illisible ne dit rien."""
+    import logging
+
+    from .conception.receivers import mettre_en_file
+
+    try:
+        actuelle = _empreinte_des_entrees(version)
+    except Exception:  # noqa: BLE001 — une lecture ne tombe jamais pour le filet (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning('ADEV140 : empreinte des entrées illisible (conception #%s)',
+                                            version.pk, exc_info=True)
+        return False
+    if actuelle is None or actuelle == version.empreinte:
+        return False
+    mettre_en_file(version.company_id, lead_id=version.lead_id,
+                   calepinage_id=None if version.lead_id else version.calepinage_id, origine='filet', champs=[])
+    return True
 
 
 def _devis_envoye_du_lead(version):
