@@ -688,6 +688,24 @@ describe('AGR415 — SectionPompage : chaque colonne du contrat a son champ', ()
     expect(opt(debit, 'mesure_visite').disabled).toBe(true)
   })
 
+  it('T4-V2-001 — une origine CHOISIE dans la liste n’a pas une seconde étiquette sous le chiffre', () => {
+    // « Estimation du client » dans la liste et « Provenance : déclaré » sous
+    // le champ disaient la même chose en deux mots : la liste suffit.
+    const entrees = [
+      { colonne: 'debit_forage_m3h', valeur: 30, provenance: 'client', origine: 'client' },
+      { colonne: 'besoin_eau_m3j', valeur: 135, provenance: 'client' },
+      { colonne: 'niveau_statique_m', valeur: 32, provenance: 'mesure_visite' },
+    ]
+    monter({ ...leadAgricole, debit_forage_m3h: '30.00', debit_forage_source: 'client',
+      entrees_pompage: { entrees, manquants: [] } })
+    expect(document.querySelector('[data-provenance="debit_forage_m3h"]')).toBeNull()
+    expect(document.querySelector('[data-provenance="besoin_eau_m3j"]')).toBeNull()
+    expect(document.getElementById('lf-debit-forage-source').value).toBe('client')
+    // Une origine posée AILLEURS (visite, site) reste dite sous le chiffre.
+    expect(document.querySelector('[data-provenance="niveau_statique_m"]').textContent)
+      .toContain('mesuré en visite')
+  })
+
   it('T4-U3-001 — règle servie : * sur HMT et débit, renvoi « Raccordement * » vers Profil énergétique', () => {
     const requis = [['pompe_hmt_m'], ['pompe_debit_m3h', 'besoin_eau_m3j', 'pompe_actuelle_debit_m3h'], ['raccordement']]
     monter({ ...leadAgricole, devis_auto: { pret: false, requis } })
