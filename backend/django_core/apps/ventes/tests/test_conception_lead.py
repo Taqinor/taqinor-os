@@ -2222,6 +2222,25 @@ class RelanceEnTacheTests(_emprunt(RelanceConceptionTests, '_relancer'),
         self._enregistrer(lead, facture_hiver=Decimal('2600'))
         self.assertEqual(self.en_file.call_count, 1)
 
+    def test_pose_regroupee_dans_une_tache_de_fiche_garde_son_calepinage(self):
+        """Relecture E3 m-b — une pose regroupée dans une tâche née d'une fiche
+        modifiée : la version porte la pose ET son calepinage."""
+        from apps.calepinage.models import Calepinage
+        from apps.ventes.models import ConceptionLead
+        from core.events import pose_enregistree
+
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'))
+        _reglages_de_la_societe(company)
+        calepinage = Calepinage.objects.create(company=company, lead_id=lead.pk, titre='Toit')
+        self._enregistrer(lead, facture_hiver=Decimal('2400'))
+        pose_enregistree.send(sender='calepinage.Calepinage', company_id=company.pk,
+                              calepinage_id=calepinage.pk, lead_id=lead.pk, empreinte_pose='p' * 64)
+        self.assertEqual(self.en_file.call_count, 1)
+        self._executer_les_taches()
+        version = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual((version.calepinage_id, version.empreinte_pose),
+                         (calepinage.pk, 'p' * 64))  # mutant « marqueur sans calepinage » : None
+
     def test_geste_regroupe_dans_un_filet_en_file_le_rend_parlant(self):
         """Relecture E3 M3 — un filet en file (muet) puis une fiche modifiée
         regroupée dedans : l'origine devient celle du geste, le chatter le dit."""

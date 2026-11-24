@@ -92,7 +92,8 @@ def mettre_en_file(company_id, *, lead_id=None, calepinage_id=None, origine, cha
         empreinte = _empreinte_evenement(champs, empreinte_pose)
         jeton = uuid.uuid4().hex
         marqueur = {'etat': EN_FILE, 'jeton': jeton, 'empreinte': empreinte, 'origine': origine,
-                    'champs': list(champs or []), 'empreinte_pose': empreinte_pose}
+                    'champs': list(champs or []), 'empreinte_pose': empreinte_pose,
+                    'calepinage_id': calepinage_id}
         if not cache.add(cle, marqueur, DUREE_MARQUEUR_S):
             present = cache.get(cle) or {}
             if present.get('etat') == EN_FILE:
@@ -102,7 +103,9 @@ def mettre_en_file(company_id, *, lead_id=None, calepinage_id=None, origine, cha
                 present.update(champs=_fusionner(present.get('champs'), champs), empreinte=empreinte,
                                origine=origine_fusionnee,
                                empreinte_pose=(empreinte_pose if empreinte_pose is not None
-                                               else present.get('empreinte_pose')))
+                                               else present.get('empreinte_pose')),
+                               # Relecture E3 m-b — la pose regroupée garde son calepinage.
+                               calepinage_id=calepinage_id or present.get('calepinage_id'))
                 cache.set(cle, present, DUREE_MARQUEUR_S)
                 return 'deja_en_file'
             if present.get('etat') == EN_COURS and present.get('empreinte') == empreinte:
@@ -201,6 +204,7 @@ def executer_relance(company_id, *, lead_id=None, calepinage_id=None, origine, c
         if marqueur is not None:
             origine, champs = marqueur.get('origine') or origine, marqueur.get('champs') or []
             empreinte_pose = marqueur.get('empreinte_pose', empreinte_pose)
+            calepinage_id = marqueur.get('calepinage_id') or calepinage_id
         company = Company.objects.filter(pk=company_id).first()
         lead = get_company_lead(company, lead_id) if company is not None and lead_id else None
         if company is None or (lead_id and lead is None) or lead_efface(lead):
