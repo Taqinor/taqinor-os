@@ -395,7 +395,8 @@ export default function CalepinageList() {
         <div className="flex flex-1 items-baseline gap-3">
           <h1 className="cliste-titre">Calepinages</h1>
           <span className="text-sm text-muted-foreground">
-            {nombreProjets(total)}
+            {/* T4-B4-013 — rien de lu (lecture en cours, ou échec dit plus bas) : jamais un faux « 0 projet ». */}
+            {data == null ? (loading ? 'Chargement…' : '') : nombreProjets(total)}
           </span>
         </div>
         <div className="cliste-recherche relative flex h-11 w-full items-center gap-2 px-3 sm:w-[340px]">

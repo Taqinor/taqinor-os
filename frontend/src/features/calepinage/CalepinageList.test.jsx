@@ -261,6 +261,18 @@ describe('CalepinageList (CAL35)', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
+  // T4-B4-013 — « 0 projet » s'affichait pendant la lecture, avant « 40 projets » : jamais un faux zéro.
+  it('pendant la lecture : « Chargement… » à la place du compte, jamais « 0 projet »', async () => {
+    let servir
+    mocks.list.mockReturnValueOnce(new Promise((ok) => { servir = ok }))
+    rendre()
+    await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+    expect(screen.queryByText('0 projet')).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Calepinages' }).parentElement).toHaveTextContent('Chargement…')
+    servir({ data: { count: 2, next: null, previous: null, results: [AVEC_IMAGE, SANS_IMAGE] } })
+    expect(await screen.findByText('2 projets')).toBeInTheDocument()
+  })
+
   it('un échec qui dure propose « Réessayer », qui relance la lecture', async () => {
     mocks.list.mockRejectedValue({ response: { status: 503, data: { detail: 'Service indisponible.' } } })
     rendre()
