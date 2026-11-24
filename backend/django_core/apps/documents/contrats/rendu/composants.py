@@ -50,6 +50,37 @@ def esc(valeur):
     return escape('' if valeur is None else str(valeur), quote=True)
 
 
+# ── Ce qui ne se coupe jamais (texte déjà échappé) ──────────────────────────
+# « n° 31-08 » (« رقم 31.08 » en arabe), un RIB, « IF 00000000 » : coupés en
+# fin de ligne, ils deviennent illisibles. Leurs espaces deviennent
+# insécables (le moteur de lignes les traite nativement) et le RIB part sur sa
+# propre ligne. PAS de ``white-space:nowrap`` sur un morceau de phrase :
+# WeasyPrint recule alors la coupure au premier mot de la ligne (« En » resté
+# seul sur sa ligne, vu en faisant la revue 1). Une référence CTR-…/DEV-… n'a besoin de rien :
+# un trait d'union suivi d'un chiffre n'est jamais une coupure (UAX 14, LB25).
+_NUMERO_LOI = re.compile(r'(?:n°|رقم)[\s\u00a0]*\d+(?:[-.]\d+)*')
+_RIB = re.compile(r'(?<=\S)[ \u00a0]+(RIB[ \u00a0]*:[ \u00a0]*'
+                  r'[\d \u00a0\u202f]*\d)')
+
+
+def insecable(texte):
+    """Les espaces d'un morceau qui ne doit pas se couper → insécables."""
+    return texte.replace(' ', INSECABLE)
+
+
+def insecables(html_echappe):
+    """Rend insécables les morceaux d'un texte déjà échappé qui ne doivent
+    pas se couper ; le RIB passe à la ligne."""
+    sortie = _RIB.sub(lambda m: '<br>' + insecable(m.group(1)), html_echappe)
+    return _NUMERO_LOI.sub(lambda m: insecable(m.group()), sortie)
+
+
+def texte_libre(valeur):
+    """Un texte libre du ``contenu`` (modalités, engagement) : échappé, puis
+    rendu insécable là où une coupure le fausserait."""
+    return insecables(esc(valeur))
+
+
 # ── Isolation bidi (arabe) ──────────────────────────────────────────────────
 # Un fragment latin ou chiffré : commence et finit par une lettre latine ou un
 # chiffre (ou « % » à la fin, « + » au début), peut contenir espaces, points,
@@ -156,11 +187,6 @@ def date_longue(valeur, langue='fr'):
     return f'{jour} {MOIS[d.month - 1]} {d.year}'
 
 
-def date_courte(valeur):
-    d = _date(valeur)
-    return d.strftime('%d/%m/%Y') if d else ''
-
-
 def _compte_ar(n, un, deux, pluriel, singulier):
     """Accord arabe du nom compté : 1, 2, 3 à 10, puis 11 et plus."""
     if n == 1:
@@ -225,8 +251,9 @@ def paragraphes(textes):
 def _gras(texte):
     morceaux = esc(texte).split('**')
     if len(morceaux) < 3 or len(morceaux) % 2 == 0:
-        return esc(texte)
-    return ''.join(m if i % 2 == 0 else f'<strong>{m}</strong>'
+        return insecables(esc(texte))
+    return ''.join(insecables(m) if i % 2 == 0
+                   else f'<strong>{insecables(m)}</strong>'
                    for i, m in enumerate(morceaux))
 
 
@@ -284,8 +311,11 @@ def titre(type_acte, h1, chapeau, reference='', langue='fr'):
     rang = [t for t, _, _ in PARCOURS].index(type_acte) + 1
     court = _etape(type_acte, langue)[0]
     surtitre = libelle('surtitre', langue, rang=rang, court=esc(court))
+    # La référence de l'en-tête courant (pages 2 et suivantes) : ``string-set``
+    # n'est lu que sur un élément MIS EN PAGE — d'où un élément visible de
+    # hauteur nulle, jamais un ``display:none`` (revue 1, R7).
     return (f'<div class="titre"><div class="surtitre">{surtitre}</div>'
-            f'<div class="reference-cachee">{esc(reference)}'
+            f'<div class="reference-courante">{esc(reference)}'
             f'</div><h1>{esc(h1)}</h1><p class="chapeau">{chapeau}</p></div>')
 
 
@@ -338,7 +368,7 @@ def frise(echeancier, *, avec_etats=False, langue='fr'):
             mot = _mot_etat(etat, langue)
             if etat == 'regle' and tr.get('regle_le'):
                 mot = libelle('regle_le', langue, mot=mot,
-                              date=date_courte(tr['regle_le']))
+                              date=date_longue(tr['regle_le'], langue))
             bloc_etat = f'<div class="etat">{esc(mot)}</div>'
         note = (f'<div class="note">{esc(tr["note"])}</div>'
                 if tr.get('note') else '')
@@ -365,7 +395,10 @@ def _identifiants_societe(societe, *, cnss=True, langue='fr'):
               ('id_patente', societe.get('patente'))]
     if cnss:
         paires.append(('id_cnss', societe.get('cnss')))
-    return ' · '.join(f'{libelle(k, langue)} {v}' for k, v in paires if v)
+    # Libellé et numéro liés par une espace insécable : « IF 00000000 » ne se
+    # coupe jamais en fin de ligne.
+    return ' · '.join(f'{libelle(k, langue)}{INSECABLE}{v}'
+                      for k, v in paires if v)
 
 
 def _forme_capital(societe, langue):
@@ -390,19 +423,25 @@ def partie_societe(societe, role=None, langue='fr'):
             f'</div></div>')
 
 
+def _cin(client, langue):
+    """« CIN BK000000 », ou la ligne à remplir au stylo (texte brut)."""
+    if client.get('cin'):
+        return f'{libelle("id_cin", langue)}{INSECABLE}{client["cin"]}'
+    return libelle('cin_a_remplir', langue)
+
+
 def partie_client(client, role=None, langue='fr'):
     role = role or libelle('le_client', langue)
     entreprise = client.get('type') == 'entreprise'
     if entreprise:
-        ident = ' · '.join(f'{libelle(k, langue)} {v}' for k, v in (
+        ident = ' · '.join(f'{libelle(k, langue)}{INSECABLE}{v}' for k, v in (
             ('id_rc', client.get('rc')), ('id_ice', client.get('ice')),
             ('id_if', client.get('if_fiscal'))) if v)
         represente = (libelle('representee_par', langue,
                               nom=client['representant'])
                       if client.get('representant') else '')
     else:
-        ident = (f'{libelle("id_cin", langue)} {client["cin"]}'
-                 if client.get('cin') else libelle('cin_a_remplir', langue))
+        ident = _cin(client, langue)
         represente = ''
     contact = ' · '.join(x for x in (client.get('telephone'),
                                      client.get('email')) if x)
@@ -462,7 +501,7 @@ def tableau_garanties(garanties, *, avec_dates=False, langue='fr'):
             barre = f'<div class="barre"><i style="width:{largeur}%"></i></div>'
         garant = (f'<small>{esc(g["garant"])}</small>'
                   if g.get('garant') else '')
-        fin = (f'<td class="nb">{esc(date_courte(g.get("fin")))}</td>'
+        fin = (f'<td class="nb">{esc(date_longue(g.get("fin"), langue))}</td>'
                if avec_dates else '')
         corps.append(
             f'<tr><td><b>{esc(g.get("designation"))}</b>{garant}</td>'
@@ -493,16 +532,55 @@ def tableau_paiements(paiements, total, langue='fr'):
 
 # ── Articles, encadrés, cases ───────────────────────────────────────────────
 
-def articles(liste, langue='fr'):
+# Un article court ne se coupe pas entre deux pages (revue 1, R8) : au plus
+# trois paragraphes et 480 signes (six lignes environ, en arabe comme en
+# français) : un bloc insécable plus long laissait jusqu'à 50 mm de blanc en
+# bas de page. Au-delà, orphelines et veuves (2) évitent la ligne isolée.
+ARTICLE_COURT_PARAGRAPHES = 3
+ARTICLE_COURT_SIGNES = 480
+
+
+def _court(art):
+    textes = [str(p) for p in art.get('paragraphes') or []]
+    return (len(textes) <= ARTICLE_COURT_PARAGRAPHES
+            and sum(len(t) for t in textes) <= ARTICLE_COURT_SIGNES)
+
+
+def articles(liste, langue='fr', annexes=None):
+    """Les articles, titre en marge. ``annexes`` : ``{cle: html}`` ajouté au
+    bas de la colonne de l'article ``cle`` (la carte du service après-vente
+    sous « Qui appeler »)."""
+    annexes = annexes or {}
     blocs = []
     for i, art in enumerate(liste or []):
+        classe = 'article court' if _court(art) else 'article'
         blocs.append(
-            f'<div class="article"><div class="marge">'
+            f'<div class="{classe}"><div class="marge">'
             f'<div class="num">{libelle("article", langue, n=i + 1)}</div>'
             f'<h3>{esc(art.get("titre"))}</h3></div>'
-            f'<div class="texte">{paragraphes(art.get("paragraphes"))}</div>'
-            f'</div>')
+            f'<div class="texte">{paragraphes(art.get("paragraphes"))}'
+            f'{annexes.get(art.get("cle"), "")}</div></div>')
     return ''.join(blocs)
+
+
+def bloc_insecable(html_interieur):
+    """Un bloc qui ne se coupe pas entre deux pages (titre + frise + encadré
+    du montant). Un bloc, jamais un flex : WeasyPrint pousse à la page
+    suivante un conteneur flex insécable même quand il tient."""
+    return f'<div class="insecable">{html_interieur}</div>'
+
+
+def encadre_montant(libelle_encadre, chiffre, explication, sorte=''):
+    """L'encadré d'un montant : son libellé et le chiffre d'un côté, ce qu'il
+    veut dire de l'autre (une table : jamais un flex insécable) — la place
+    d'une ligne gagnée sur les procès-verbaux. Sans explication, le chiffre
+    seul, comme un encadré ordinaire."""
+    tete = f'<div class="lbl">{esc(libelle_encadre)}</div>'
+    if not explication:
+        return f'<div class="encadre montant {sorte}">{tete}{chiffre}</div>'
+    return (f'<div class="encadre montant {sorte}"><div class="deux">'
+            f'<div class="chiffre">{tete}{chiffre}</div>'
+            f'<div class="explication">{explication}</div></div></div>')
 
 
 def encadre(libelle_encadre, html_interieur, sorte=''):
@@ -523,15 +601,25 @@ def cases(liste):
     return f'<div class="cases">{"".join(lignes)}</div>'
 
 
+def a_remplir(texte):
+    """Un libellé dont les points de suspension (« ………… ») sont à remplir au
+    stylo : échappé, puis chaque suite de points devient un trait pointillé
+    sur lequel on écrit."""
+    return re.sub('…{2,}', '<span class="a-remplir"></span>', esc(texte))
+
+
 def lignes_a_ecrire(nombre_lignes=3):
     return '<div class="lignes">' + '<i></i>' * nombre_lignes + '</div>'
 
 
 # ── Signatures ──────────────────────────────────────────────────────────────
 
-def _boite_signature(libelle_boite, qui, mention, signature=None, langue='fr'):
+def _boite_signature(libelle_boite, qui, mention, signature=None, langue='fr',
+                     ident=''):
     interieur = (f'<div class="lbl">{esc(libelle_boite)}</div>'
                  f'<div class="qui">{esc(qui)}</div>')
+    if ident:
+        interieur += f'<div class="ident">{esc(ident)}</div>'
     if signature and signature.get('image'):
         interieur += (f'<img class="trace" src="{esc(signature["image"])}" '
                       f'alt="{esc(libelle("alt_signature", langue))}">')
@@ -562,9 +650,13 @@ def signatures(contenu, *, mention_client, client_signe=True,
         fait += libelle('exemplaires', langue)
     boites = []
     if client_signe:
+        # Sous le nom du client particulier, son numéro de CIN (ou la ligne à
+        # remplir) : qui signe est identifié dans le cadre même (revue 1, R5).
+        ident = ('' if client.get('type') == 'entreprise'
+                 else _cin(client, langue))
         boites.append(_boite_signature(
             libelle('le_client', langue), client.get('nom_complet'),
-            mention_client, sig.get('client'), langue))
+            mention_client, sig.get('client'), langue, ident))
     boites.append(_boite_signature(
         libelle('pour_societe', langue,
                 nom=societe.get('nom_court') or societe.get('nom') or ''),
@@ -585,9 +677,18 @@ def pied(contenu, *, paraphes=True):
     societe = contenu.get('societe') or {}
     tete = ' '.join(x for x in (
         societe.get('nom'), _forme_capital(societe, langue)) if x)
-    ligne2 = ' · '.join(x for x in (
-        societe.get('adresse'), societe.get('telephone'),
-        societe.get('email'), societe.get('site_web')) if x)
+    # Quatre lignes voulues (identité, identifiants, adresse, contact), dont
+    # chaque élément est insécable : la ligne se coupe ENTRE deux éléments,
+    # jamais au milieu d'un numéro de téléphone.
+
+    def ligne(*valeurs):
+        return ' · '.join(insecable(esc(v)) for v in valeurs if v)
+    lignes_legales = [x for x in (
+        f'<b>{esc(tete)}</b>',
+        esc(_identifiants_societe(societe, cnss=False, langue=langue)),
+        esc(societe.get('adresse') or ''),
+        ligne(societe.get('telephone'), societe.get('email'),
+              societe.get('site_web'))) if x]
     bloc_paraphes = ''
     if paraphes:
         bloc_paraphes = (
@@ -597,9 +698,8 @@ def pied(contenu, *, paraphes=True):
             f'<div class="paraphe"><span>{libelle("paraphe_societe", langue)}'
             '</span><i></i></div></div>')
     return (f'<div class="pied"><div class="pied-in"><div class="pied-legal">'
-            f'<b>{esc(tete)}</b><br>'
-            f'{esc(_identifiants_societe(societe, cnss=False, langue=langue))}'
-            f'<br>{esc(ligne2)}</div><div class="pied-droite">{bloc_paraphes}'
+            f'{"<br>".join(lignes_legales)}'
+            f'</div><div class="pied-droite">{bloc_paraphes}'
             f'<div class="folio"><b>{esc(contenu.get("reference"))}</b>'
             f'<i></i></div>'
             f'</div></div></div>')

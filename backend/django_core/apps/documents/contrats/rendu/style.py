@@ -12,7 +12,10 @@ Règles tenues (sources : docs/contrats/conception.md § Mise en page) :
   pastilles et au texte sur bleu nuit ; les petits libellés sont en bronze
   (≥ 4,5:1) ;
 - la couleur ne porte jamais seule une information (photocopie noir et blanc) :
-  chaque état a son mot (« Réglé », « À régler », « À venir »).
+  chaque état a son mot (« Réglé », « À régler », « À venir ») ; l'état « à
+  régler » et l'étape en cours portent en plus un anneau bleu nuit épais et un
+  chiffre gras (en gris, l'or seul devient le plus clair des trois) ;
+- toute bordure qui doit se voir en noir et blanc est à ≥ 3:1 (``TRAIT``).
 """
 import base64
 import functools
@@ -29,9 +32,12 @@ GRIS = '#5B6472'
 FILET = '#E3E6EB'
 LAVIS = '#F6F7F9'
 LAVIS_OR = '#FDF6E7'
-VERT = '#157A3C'
+VERT = '#0F6630'
 VERT_FOND = '#E9F5EE'
 PAPIER = '#FFFFFF'
+# Bordures qui doivent se voir en photocopie (paraphes, cadres de signature,
+# lignes à remplir, pastille « À venir ») : contraste ≥ 3:1 sur le blanc.
+TRAIT = '#8A93A1'
 
 POLICE_TITRE = "'DM Serif Display', Georgia, serif"
 POLICE_TEXTE = "'DM Sans', 'Noto Sans', system-ui, sans-serif"
@@ -110,7 +116,7 @@ strong,b{font-weight:700;color:__NAVY__}
 .paraphes span{display:block;font-size:6pt;letter-spacing:.08em;
   text-transform:uppercase;color:__GRIS__;text-align:center;margin-bottom:.8mm}
 .paraphe{width:12.5mm;margin-left:2mm}
-.paraphe i{display:block;height:8.4mm;border:.6pt solid #C9CED6;
+.paraphe i{display:block;height:8.4mm;border:.7pt solid __TRAIT__;
   border-radius:1.2mm;background:__PAPIER__}
 .folio{text-align:right;white-space:nowrap;color:__GRIS__;font-size:7.2pt;
   line-height:1.5;padding-top:2.2mm}
@@ -136,20 +142,23 @@ strong,b{font-weight:700;color:__NAVY__}
 .etape{flex:1;display:flex;align-items:center;font-size:7.6pt;color:__GRIS__;
   line-height:1.25}
 .etape .n{flex:none;width:5.4mm;height:5.4mm;border-radius:50%;
-  border:.7pt solid #B9C0CB;color:__GRIS__;font-weight:700;font-size:7.4pt;
+  border:.7pt solid __TRAIT__;color:__GRIS__;font-weight:500;font-size:7.4pt;
   text-align:center;line-height:5.1mm;margin-right:2mm;background:__PAPIER__}
-.etape.fait .n{background:__NAVY__;border-color:__NAVY__;color:#FFFFFF}
+.etape.fait .n{background:__NAVY__;border-color:__NAVY__;color:#FFFFFF;
+  font-weight:700}
 .etape.ici{color:__NAVY__;font-weight:700}
-.etape.ici .n{background:__OR__;border-color:__OR__;color:__NAVY_900__}
+.etape.ici .n{background:__OR__;border:1.5pt solid __NAVY__;
+  color:__NAVY_900__;font-weight:700;line-height:4.3mm}
 .etape small{display:block;font-size:6.3pt;font-weight:400;color:__GRIS__;
   letter-spacing:.02em}
 
 /* ── Corps ── */
 .corps{padding:0 20mm}
-.titre{padding:8.5mm 0 3mm}
+.titre{padding:7.5mm 0 2.4mm}
 .surtitre{font-size:7.6pt;letter-spacing:.2em;text-transform:uppercase;
   color:__BRONZE__;font-weight:700;margin-bottom:2.2mm;string-set:acte content()}
-.reference-cachee{string-set:reference content();display:none}
+.reference-courante{string-set:reference content();height:0;overflow:hidden;
+  line-height:0;font-size:1pt;color:__PAPIER__}
 h1{font-family:__TITRE__;font-weight:400;font-size:27pt;line-height:1.12;
   color:__NAVY__;letter-spacing:-.005em}
 .chapeau{margin-top:3.2mm;font-size:11pt;line-height:1.5;color:__GRIS__;
@@ -157,7 +166,7 @@ h1{font-family:__TITRE__;font-weight:400;font-size:27pt;line-height:1.12;
 .chapeau b{color:__NAVY__}
 
 h2{font-family:__TITRE__;font-weight:400;font-size:15.5pt;line-height:1.2;
-  color:__NAVY__;margin:7.5mm 0 3.4mm;break-after:avoid}
+  color:__NAVY__;margin:6.6mm 0 3.2mm;break-after:avoid}
 h2 .etoile{vertical-align:-.25mm;margin-right:2.4mm}
 .intro{color:__GRIS__;margin:-1.4mm 0 4mm;max-width:150mm;font-size:9.8pt}
 
@@ -187,12 +196,13 @@ h2 .etoile{vertical-align:-.25mm;margin-right:2.4mm}
 .jalon .tete{display:flex;align-items:center;margin-bottom:2.6mm}
 .jalon .pastille{flex:none;width:8.6mm;height:8.6mm;border-radius:50%;
   background:__PAPIER__;border:.9pt solid __NAVY__;color:__NAVY__;
-  font-weight:700;font-size:9.4pt;text-align:center;line-height:8.2mm}
+  font-weight:500;font-size:9.4pt;text-align:center;line-height:8.2mm}
 .jalon .trait{flex:1;height:.9pt;background:#C4CAD4;margin-left:2mm}
 .jalon:last-child .trait{background:transparent}
-.jalon.regle .pastille{background:__VERT__;border-color:__VERT__;color:#FFFFFF}
-.jalon.exigible .pastille{background:__OR__;border-color:__OR__;
-  color:__NAVY_900__}
+.jalon.regle .pastille{background:__VERT__;border-color:__VERT__;color:#FFFFFF;
+  font-weight:700}
+.jalon.exigible .pastille{background:__OR__;border:2pt solid __NAVY__;
+  color:__NAVY_900__;font-weight:700;line-height:7.2mm}
 .jalon .quand{font-size:6.9pt;letter-spacing:.14em;text-transform:uppercase;
   color:__BRONZE__;font-weight:700}
 .jalon .quoi{font-weight:700;color:__NAVY__;font-size:10.2pt;line-height:1.3;
@@ -203,7 +213,7 @@ h2 .etoile{vertical-align:-.25mm;margin-right:2.4mm}
   font-weight:500}
 .jalon .etat{display:inline-block;margin-top:1.6mm;font-size:7.2pt;
   font-weight:700;letter-spacing:.06em;padding:.5mm 2.2mm;border-radius:10mm;
-  border:.6pt solid #C4CAD4;color:__GRIS__;background:__PAPIER__}
+  border:.7pt solid __TRAIT__;color:__GRIS__;background:__PAPIER__}
 .jalon.regle .etat{border-color:__VERT__;color:__VERT__;background:__VERT_FOND__}
 .jalon.exigible .etat{border-color:__BRONZE__;color:__BRONZE__;
   background:__LAVIS_OR__}
@@ -225,9 +235,9 @@ tr.total td{border-bottom:none;border-top:.9pt solid __NAVY__;font-weight:700;
   color:__NAVY__;padding-top:2.6mm}
 table.garanties td:first-child{width:33%}
 table.garanties td:nth-child(2){width:21%}
-table.garanties.dates td:first-child{width:29%}
-table.garanties.dates td:nth-child(2){width:19%}
-table.garanties.dates td:nth-child(3){width:15%}
+table.garanties.dates td:first-child{width:27%}
+table.garanties.dates td:nth-child(2){width:17%}
+table.garanties.dates td:nth-child(3){width:20%}
 .duree{font-family:__TITRE__;font-size:13pt;color:__NAVY__;white-space:nowrap;
   line-height:1.2}
 .barre{height:1.5mm;border-radius:1mm;background:#E9ECF1;margin-top:1.4mm;
@@ -245,15 +255,16 @@ table.garanties.dates td:nth-child(3){width:15%}
 .partie .ci-apres{margin-top:1.6mm;color:__GRIS__;font-size:8.6pt}
 
 /* ── Articles : titre en marge, colonne de lecture ── */
-.article{position:relative;padding:4mm 0 0 48mm;margin-top:4mm;
+.article{position:relative;padding:4mm 0 0 40mm;margin-top:4mm;
   border-top:.6pt solid __FILET__;min-height:15mm}
-.article .marge{position:absolute;left:0;top:4mm;width:43mm}
+.article .marge{position:absolute;left:0;top:4mm;width:36mm}
 .article .num{font-size:6.9pt;letter-spacing:.16em;text-transform:uppercase;
   color:__BRONZE__;font-weight:700}
 .article h3{font-family:__TITRE__;font-weight:400;font-size:12.4pt;
   line-height:1.22;color:__NAVY__;margin-top:.8mm}
 .article .texte{font-size:10.2pt}
 .article.plein{padding-left:0;min-height:0}
+.article.court{break-inside:avoid}
 .article .texte p{margin-bottom:2.2mm;orphans:2;widows:2}
 .article .texte p:last-child{margin-bottom:0}
 .article .texte ul{margin:0 0 2.4mm 0;list-style:none}
@@ -271,9 +282,17 @@ table.garanties.dates td:nth-child(3){width:15%}
   color:__BRONZE__;font-weight:700;margin-bottom:1mm}
 .encadre.ok .lbl{color:__VERT__}
 .encadre.net .lbl{color:__NAVY__}
+.encadre.quitus p + p{margin-top:2mm}
+.grand.sav{font-size:15pt}
+.article .texte .encadre{margin:2.6mm 0 0}
 .grand{font-family:__TITRE__;font-size:19pt;color:__NAVY__;line-height:1.2;
   white-space:nowrap}
 .lettres{font-size:8.8pt;color:__GRIS__;font-style:italic}
+.deux{display:table;width:100%;table-layout:fixed}
+.deux .chiffre,.deux .explication{display:table-cell;vertical-align:top}
+.deux .chiffre{width:40%;padding-right:5mm}
+.deux .explication{padding-top:1.4mm}
+.deux .explication p + p{margin-top:.8mm}
 
 /* ── Cases à cocher (imprimées) ── */
 .cases{margin:1.6mm 0 0}
@@ -285,23 +304,28 @@ table.garanties.dates td:nth-child(3){width:15%}
   line-height:3.5mm;color:__NAVY__}
 .case.oui i{background:__NAVY__;color:#FFFFFF}
 .lignes{margin-top:1.6mm}
-.lignes i{display:block;border-bottom:.6pt dotted #9AA3B0;height:7.4mm}
+.part-retenue{margin-top:2.4mm;font-weight:700;color:__NAVY__;font-size:9.2pt}
+.a-remplir{display:inline-block;min-width:34mm;height:4mm;margin:0 1mm;
+  border-bottom:.7pt dotted __TRAIT__;vertical-align:baseline}
+.insecable{break-inside:avoid}
+.lignes i{display:block;border-bottom:.7pt dotted __TRAIT__;height:7.4mm}
 
 /* ── Signatures ── */
-.signatures{break-inside:avoid;margin-top:7mm}
+.signatures{break-inside:avoid;break-before:avoid;margin-top:7mm}
 .fait-a{font-size:9.8pt;margin-bottom:3.4mm}
 .fait-a .trou{display:inline-block;min-width:38mm;
-  border-bottom:.6pt dotted #9AA3B0}
+  border-bottom:.7pt dotted __TRAIT__}
 .sig{display:table;width:100%;table-layout:fixed;border-collapse:separate;
   border-spacing:0}
 .sig .cellule{display:table-cell;width:50%;vertical-align:top;
   padding-right:2mm}
 .sig .cellule + .cellule{padding-right:0;padding-left:2mm}
-.sig .boite{border:.7pt solid #B9C0CB;border-radius:2.6mm;
+.sig .boite{border:.7pt solid __TRAIT__;border-radius:2.6mm;
   padding:3.6mm 4.4mm 4mm;height:47mm}
 .sig .lbl{font-size:6.9pt;letter-spacing:.16em;text-transform:uppercase;
   color:__BRONZE__;font-weight:700}
 .sig .qui{font-weight:700;color:__NAVY__;font-size:10.4pt;margin-top:.6mm}
+.sig .ident{font-size:8.4pt;color:__GRIS__;line-height:1.35}
 .sig .mention{font-size:8.2pt;color:__GRIS__;line-height:1.4;margin-top:1.4mm}
 .sig .trace{display:block;max-height:22mm;max-width:62mm;margin-top:2mm}
 .sig .preuve{font-size:7.4pt;color:__GRIS__;line-height:1.4;margin-top:1.6mm}
@@ -334,28 +358,46 @@ table.garanties.dates td:nth-child(3){width:15%}
 body.proces h1{font-size:23pt}
 body.proces .titre{padding:6.5mm 0 2mm}
 body.proces .chapeau{font-size:10pt;margin-top:2.2mm}
-body.proces h2{margin:5.4mm 0 2.6mm;font-size:14pt}
+body.proces h2{margin:4.2mm 0 2.2mm;font-size:14pt}
 body.proces .carte{padding:3.2mm 4.2mm 3.4mm}
 body.proces .carte .val{font-size:15pt}
 body.proces td{padding-top:1.7mm;padding-bottom:1.7mm}
 body.proces .encadre{padding:3mm 4.2mm;margin:2.4mm 0}
-body.proces .signatures{margin-top:4mm}
-body.proces .article .texte{font-size:9.5pt;line-height:1.45}
-body.proces .article{padding-top:3.2mm;margin-top:3.2mm}
-body.proces .article .marge{top:3.2mm}
+body.proces .signatures{margin-top:2.8mm}
+body.proces .article .texte{font-size:9.5pt;line-height:1.4}
+body.proces .article{padding:2.4mm 0 0 40mm;margin-top:2.4mm}
+body.proces .article .marge{top:2.4mm}
+body.proces .article .texte p{margin-bottom:1.4mm}
+body.proces .article .texte ul{margin-bottom:1.4mm}
+body.proces .jalon .tete{margin-bottom:1.6mm}
+body.proces .jalon .pastille{width:7.6mm;height:7.6mm;line-height:7.2mm;
+  font-size:8.8pt}
+body.proces .jalon.exigible .pastille{line-height:6.2mm}
+body.proces .jalon .combien{font-size:14pt;margin-top:.6mm}
+body.proces .jalon .etat{margin-top:.9mm}
+body.proces .jalon .quoi{margin-top:.2mm}
+body.proces .grand{font-size:17pt}
+body.proces .fait-a{margin-bottom:2mm}
 body.proces .lignes i{height:6.4mm}
-body.proces .sig .boite{height:29mm}
-body.cloture .article .texte{font-size:9.6pt;line-height:1.45}
-body.cloture .article{padding-top:3.2mm;margin-top:3.2mm}
-body.cloture .article .marge{top:3.2mm}
+body.proces .sig .boite{height:38mm}
+body.cloture .article .texte{font-size:9.5pt;line-height:1.42}
+body.cloture .article{padding-top:2.6mm;margin-top:2.6mm}
+body.cloture .article .marge{top:2.6mm}
+body.cloture .article .texte p{margin-bottom:1.6mm}
+body.cloture .article .texte li{margin-bottom:.7mm}
+body.cloture .conseil{margin-bottom:3mm;padding-top:2.2mm}
+body.cloture .conseil p{line-height:1.45}
+body.cloture .journee{margin:1.6mm 0 3.6mm}
 body.cloture .article.plein{padding-left:0}
-body.cloture td{padding-top:1.9mm;padding-bottom:1.9mm}
+body.cloture td{padding-top:1.5mm;padding-bottom:1.5mm}
 .sig.seule .boite{height:27mm}
 body.cloture .signatures{margin-top:4mm}
-body.cloture .titre{padding:7mm 0 2mm}
-body.cloture h2{margin:6mm 0 2.8mm}
+body.cloture .titre{padding:6.5mm 0 2mm}
+body.cloture h2{margin:4.8mm 0 2.4mm}
 .petit{font-size:8.2pt;color:__GRIS__;line-height:1.45}
-.suite{break-before:page}
+.renvoi{margin-top:2mm;text-align:right;font-size:7.4pt;font-weight:700;
+  letter-spacing:.14em;text-transform:uppercase;color:__BRONZE__}
+.renvoi::after{content:" →"}
 .souffle{height:2mm}
 """
 
@@ -446,7 +488,7 @@ td small{font-size:8.8pt}
 .partie .ci-apres{font-size:9pt}
 
 /* Articles : titre en marge à DROITE, colonne de lecture à gauche */
-.article{padding:4mm 48mm 0 0}
+.article{padding:4mm 40mm 0 0}
 .article .marge{left:auto;right:0}
 .article .num{font-family:__AR_LIBELLE__;font-size:7.6pt}
 .article h3{font-family:__AR_TEXTE__;font-weight:700;font-size:12.6pt;
@@ -464,6 +506,7 @@ td small{font-size:8.8pt}
 .encadre .lbl{font-family:__AR_LIBELLE__;font-size:7.6pt}
 .grand{font-family:__AR_TEXTE__;font-weight:700;line-height:1.45}
 .grand .ltr{font-family:__TITRE__;font-weight:400;font-size:1em}
+.deux .chiffre{padding-right:0;padding-left:5mm}
 
 /* Cases */
 .case{font-size:10.6pt;line-height:1.65}
@@ -475,6 +518,7 @@ td small{font-size:8.8pt}
 .sig .cellule + .cellule{padding-left:0;padding-right:2mm}
 .sig .lbl{font-family:__AR_LIBELLE__;font-size:7.6pt}
 .sig .qui{font-size:11pt}
+.sig .ident{font-size:9pt}
 .sig .mention{font-size:9pt;line-height:1.6}
 .sig .preuve{font-size:8pt}
 .sceau{font-family:__AR_LIBELLE__}
@@ -488,6 +532,22 @@ td small{font-size:8.8pt}
 .journee .sous{font-size:8.2pt;line-height:1.5}
 
 .petit{font-size:9pt;line-height:1.65}
+.renvoi{text-align:left;font-family:__AR_LIBELLE__;font-size:8pt;
+  margin-top:1.2mm;line-height:1.5}
+.renvoi::after{content:" ←"}
+/* Contrat : la page 1 garde l'essentiel, les modalités et le renvoi vers
+   la signature (le Naskh, plus haut que le latin, la faisait déborder) */
+body.contrat .titre{padding:6.5mm 0 2mm}
+body.contrat h1{line-height:1.3}
+body.contrat .chapeau{line-height:1.6;margin-top:2.4mm}
+body.contrat h2{line-height:1.35}
+body.contrat .intro{line-height:1.55}
+body.contrat .carte{padding:3.4mm 4.6mm 3.6mm}
+body.contrat .carte .val{line-height:1.3}
+body.contrat .carte .det{line-height:1.5}
+body.contrat .jalon .quoi{line-height:1.35}
+body.contrat .jalon .combien{line-height:1.3}
+body.contrat .petit{line-height:1.5}
 /* Procès-verbaux : deux pages comme en français — plus serré */
 body.proces h1{font-size:21pt;line-height:1.35}
 body.proces .titre{padding:5.5mm 0 1.5mm}
@@ -509,8 +569,8 @@ body.proces .jalon .tete{margin-bottom:1.6mm}
 body.proces .jalon .quoi{font-size:10.4pt;line-height:1.35}
 body.proces .jalon .combien{font-size:13.4pt;line-height:1.35;margin-top:.4mm}
 body.proces .jalon .etat{margin-top:1mm}
-body.proces .article{padding-top:2.6mm;margin-top:2.6mm}
-body.proces .article .marge{top:2.6mm}
+body.proces .article{padding:2.4mm 40mm 0 0;margin-top:2.4mm}
+body.proces .article .marge{top:2.4mm}
 body.proces .article h3{font-size:12pt;line-height:1.35}
 body.proces .article .texte{font-size:10pt;line-height:1.55}
 body.proces .article .texte p{margin-bottom:1.4mm}
@@ -546,6 +606,7 @@ _REMPLACEMENTS = {
     '__BRONZE__': BRONZE, '__ENCRE__': ENCRE, '__GRIS__': GRIS,
     '__FILET__': FILET, '__LAVIS_OR__': LAVIS_OR, '__LAVIS__': LAVIS,
     '__VERT_FOND__': VERT_FOND, '__VERT__': VERT, '__PAPIER__': PAPIER,
+    '__TRAIT__': TRAIT,
     '__TITRE__': POLICE_TITRE, '__TEXTE__': POLICE_TEXTE,
     '__AR_TEXTE__': POLICE_AR_TEXTE, '__AR_LIBELLE__': POLICE_AR_LIBELLE,
     '__KHATAM__': _MOTIF_KHATAM,
