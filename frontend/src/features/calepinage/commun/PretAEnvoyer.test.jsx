@@ -179,6 +179,11 @@ describe('PretAEnvoyer par étape — quinze contrôles sans défilement interne
     expect([...groupes.children].map((n) => n.dataset.testid))
       .toEqual(['cal-pret-groupe-electrique', 'cal-pret-groupe-resultats', 'cal-pret-groupe-toit', 'cal-pret-groupe-panneaux'])
     expect(groupes.querySelectorAll('li[data-etat="a_regler"]')).toHaveLength(6)
+    // plus de dix contrôles : un groupe déplié ne montre que ses points, le reste suit sur une ligne repliée
+    const reste = within(screen.getByTestId('cal-pret-groupe-electrique')).getByText('Autres contrôles — 2 bons').closest('details')
+    expect(reste).not.toHaveAttribute('open')
+    expect(codesAffiches(reste)).toEqual(['tension_froid', 'orientation_mppt'])
+    expect(within(screen.getByTestId('cal-pret-groupe-resultats')).getByText('Autres contrôles — 1 bon')).toBeTruthy()
     expect(groupes.style.height).toBe('')
     expect(groupes.style.maxHeight).toBe('')
   })
