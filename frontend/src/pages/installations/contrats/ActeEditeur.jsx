@@ -9,6 +9,7 @@ import {
   Button, Input, Label, Textarea, Spinner, toast,
 } from '../../../ui'
 import documentsApi from '../../../api/documentsApi'
+import { confirmLeaveIfDirty } from '../../../ui/useDirtyGuard'
 import { detailErreur, formaterDh } from './outils'
 import PiedDialogue from './PiedDialogue'
 import { useSoumission } from './useSoumission'
@@ -287,6 +288,10 @@ export default function ActeEditeur({
       .catch(async (err) => {
         const detail = await detailErreur(err)
         if (annule) return
+        // Aucun brouillon d'une autre langue ne reste sous la nouvelle étiquette.
+        setActe(null)
+        setBase({})
+        setBrouillon({})
         setErreur(detail)
         setChargement(false)
       })
@@ -332,6 +337,13 @@ export default function ActeEditeur({
     basculer(code)
   }
 
+  // Croix, Échap, clic à côté et bouton « Fermer » passent par ICI : des
+  // modifications non enregistrées demandent confirmation avant de partir.
+  const demanderFermeture = (ouvert) => {
+    if (ouvert) { onOpenChange?.(true); return }
+    confirmLeaveIfDirty(modifie).then((ok) => { if (ok) onOpenChange?.(false) })
+  }
+
   const enregistrerModele = async () => {
     await soumettre(async () => {
       const res = await documentsApi.enregistrerModeleActe(acte.id)
@@ -340,7 +352,7 @@ export default function ActeEditeur({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={demanderFermeture}>
       <DialogContent aria-label="Modifier l’acte" className="contrats-editeur">
         <DialogHeader>
           <DialogTitle>Modifier « {acte?.titre ?? 'l’acte'} »</DialogTitle>
@@ -412,7 +424,7 @@ export default function ActeEditeur({
 
         <PiedDialogue
           erreur={erreur}
-          annuler={() => onOpenChange(false)}
+          annuler={() => demanderFermeture(false)}
           libelleAnnuler="Fermer"
           avant={(
             <>
@@ -422,7 +434,8 @@ export default function ActeEditeur({
                 </Button>
               )}
               {acte && peutModele && (
-                <Button variant="outline" className="contrats-acte__bouton" disabled={occupe}
+                <Button variant="outline" className="contrats-acte__bouton" disabled={occupe || modifie}
+                        title={modifie ? 'Enregistrez d’abord vos modifications.' : undefined}
                         onClick={enregistrerModele}>
                   Enregistrer comme modèle de la société
                 </Button>

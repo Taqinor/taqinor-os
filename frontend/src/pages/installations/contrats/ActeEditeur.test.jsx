@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
+import { ConfirmProvider } from '../../../providers/ConfirmProvider'
+import { useConfirmationSortie } from '../../../ui/useDirtyGuard'
 
 const { documentsApiMock } = vi.hoisted(() => ({
   documentsApiMock: {
@@ -16,10 +18,34 @@ import ActeEditeur from './ActeEditeur'
 
 const acte = () => structuredClone(exempleContrat('documents', 'acte_contractuel'))
 
+// Comme dans l'application : la boîte de confirmation de sortie est montée à la racine.
+function Racine({ children }) {
+  useConfirmationSortie()
+  return children
+}
+
 function monter(props = {}) {
   const onSaved = vi.fn()
-  render(<ActeEditeur open acteId={31} onOpenChange={vi.fn()} onSaved={onSaved} {...props} />)
-  return { onSaved }
+  const onOpenChange = vi.fn()
+  render(
+    <ConfirmProvider>
+      <Racine>
+        <ActeEditeur open acteId={31} onOpenChange={onOpenChange} onSaved={onSaved} {...props} />
+      </Racine>
+    </ConfirmProvider>,
+  )
+  return { onSaved, onOpenChange }
+}
+
+// Deux boutons « Fermer » : la croix du dialogue et celui du pied.
+const boutonsFermer = () => screen.getAllByRole('button', { name: 'Fermer' })
+const croix = () => boutonsFermer().find((b) => !b.closest('.contrats-dialogue__pied'))
+const fermerDuPied = () => boutonsFermer().find((b) => b.closest('.contrats-dialogue__pied'))
+
+async function salir(user) {
+  const zone = await within(await screen.findByRole('group', { name: 'Conditions particulières' }))
+    .findByLabelText('Conditions particulières')
+  await user.type(zone, ' x')
 }
 
 // Le détail servi en arabe : le MÊME exemple, dont `sections_modifiables` est dérivé
@@ -194,5 +220,55 @@ describe('Éditeur d’un acte', () => {
     documentsApiMock.enregistrerModeleActe.mockResolvedValue({ data: { detail: 'ok' } })
     await user.click(await screen.findByRole('button', { name: 'Enregistrer comme modèle de la société' }))
     expect(documentsApiMock.enregistrerModeleActe).toHaveBeenCalledWith(31)
+  })
+
+  it('F2 — fermer avec des modifications non enregistrées demande confirmation (bouton, Échap)', async () => {
+    const user = userEvent.setup()
+    const { onOpenChange } = monter()
+    await salir(user)
+    await user.click(fermerDuPied())
+    const boite = await screen.findByRole('alertdialog')
+    expect(within(boite).getByText('Quitter sans enregistrer ?')).toBeInTheDocument()
+    expect(onOpenChange).not.toHaveBeenCalled()
+    await user.click(within(boite).getByRole('button', { name: 'Rester' }))
+    expect(onOpenChange).not.toHaveBeenCalled()
+    // La croix et Échap passent par la même garde.
+    await user.click(croix())
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Rester' }))
+    expect(onOpenChange).not.toHaveBeenCalled()
+    await user.keyboard('{Escape}')
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Quitter' }))
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it('F2 — sans modification, la fermeture est immédiate', async () => {
+    const user = userEvent.setup()
+    const { onOpenChange } = monter()
+    await screen.findByRole('group', { name: 'Conditions particulières' })
+    await user.click(fermerDuPied())
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+  })
+
+  it('F3 — « Enregistrer comme modèle » est désactivé tant que des modifications ne sont pas enregistrées', async () => {
+    const user = userEvent.setup()
+    monter({ peutModele: true })
+    const modele = await screen.findByRole('button', { name: 'Enregistrer comme modèle de la société' })
+    expect(modele).toBeEnabled()
+    await salir(user)
+    expect(modele).toBeDisabled()
+  })
+
+  it('F6 — si l’arabe ne se charge pas, le brouillon français ne reste pas sous l’étiquette arabe', async () => {
+    documentsApiMock.acte.mockImplementation((id, langue) => (langue === 'ar'
+      ? Promise.reject({ response: { data: { detail: 'Traduction indisponible.', code: 'x' } } })
+      : Promise.resolve({ data: acte() })))
+    const user = userEvent.setup()
+    monter()
+    await screen.findByRole('group', { name: 'Conditions particulières' })
+    await user.click(screen.getByRole('button', { name: 'العربية' }))
+    expect(await screen.findByText('Traduction indisponible.')).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Conditions particulières' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Enregistrer' })).toBeDisabled()
   })
 })
