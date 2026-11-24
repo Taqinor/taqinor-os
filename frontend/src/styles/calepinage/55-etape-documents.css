@@ -1,138 +1,230 @@
-/* ACAL1193 — l'étape Documents guidée (maquette `Documents.dc.html`) et « Prêt à envoyer ? » par étape.
-   Jetons seulement (themeAtelier / langageVisuel) : le thème sombre suit sans règle propre. */
+/* ACAL1193 / ACAL1726 / ACAL1834 — l'étape Documents guidée et « Prêt à envoyer ? » par étape (maquette v2
+   `Documents.dc.html`, 1440 × 900 : contrôles 580 · aperçu 320 · cartes 386). Jetons `--cal-*` seulement
+   (49-jetons-v2.css) : le thème sombre suit sans règle propre ; aucune couleur écrite ici. */
 
 .cdoc-ecran {
   display: grid;
-  grid-template-columns: minmax(0, 600px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 580px) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
-  gap: 20px;
+  gap: 16px;
   align-items: stretch;
   /* Le centre (`.cal-coque-plein`) donne déjà 24 / 28 px : aucune marge ici. L'écran prend la hauteur
-     du centre ; les contrôles défilent DANS leur carte, l'en-tête et le pied de carte restent fixes. */
+     du centre ; les contrôles défilent DANS leur carte seulement s'ils ne tiennent pas (les groupes sans
+     point à régler sont repliés), l'en-tête et le pied de carte restent fixes. */
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
+  color: var(--cal-texte-1);
 }
 .cdoc-colonne { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; min-height: 0; }
 .cdoc-colonne:last-child { overflow-y: auto; }
 .cdoc-colonne > .cdoc-pret { flex: 1 1 auto; min-height: 0; }
+@media (max-width: 1300px) {
+  /* Pas la place des trois colonnes : l'aperçu passe AU-DESSUS des cartes, la colonne de droite défile. */
+  .cdoc-docs-corps { flex-direction: column; flex: none; }
+  .cdoc-apercu-col { width: auto; }
+  .cdoc-apercu { flex: none; }
+  .cdoc-cartes { overflow-y: visible; }
+}
+@media (max-width: 520px) {
+  /* Téléphone : « Régler dans … » passe sous le texte de la ligne, qui garde toute sa largeur. */
+  .cdoc-ligne[data-etat='a_regler'], .cdoc-ligne[data-etat='bloquant'] { flex-wrap: wrap; }
+  .cdoc-ligne .cdoc-ligne-texte { flex: 1 1 140px; }
+  .cdoc-ligne .cdoc-regler { flex: 1 0 100%; margin: 0 8px 4px 0; }
+  .cdoc-ecran .cdoc-pret { padding: 18px 16px 16px; }
+}
 @media (max-width: 900px) {
   .cdoc-ecran { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; flex: none; min-height: auto; }
   .cdoc-colonne:last-child { overflow-y: visible; }
   .cdoc-groupes { overflow-y: visible; }
 }
 
-.cdoc-titre { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 20px; line-height: 1.2; }
-.cdoc-sous { font-size: 14px; color: var(--muted-foreground); }
+.cdoc-titre {
+  margin: 0; font-family: var(--cal-police-titres, var(--font-display)); font-weight: 600; font-size: 24px; line-height: 1.25;
+  letter-spacing: -0.015em; color: var(--cal-texte-1);
+}
+.cdoc-sous { font-size: 13px; color: var(--cal-texte-2); }
 
 /* — carte « Prêt à envoyer ? » — */
 .cdoc-pret {
-  display: flex; flex-direction: column; gap: 0.75rem;
-  padding: 1.25rem 1.25rem 1rem;
-  background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+  display: flex; flex-direction: column; gap: 14px;
+  padding: 22px 24px 20px;
+  background: var(--cal-surface); border-radius: var(--cal-rayon-carte); box-shadow: var(--cal-ombre-posee);
 }
-.cdoc-pret-tete { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
-.cdoc-pret-titres { display: flex; flex-direction: column; gap: 2px; }
+.cdoc-pret-tete { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.cdoc-pret-titres { display: flex; flex-direction: column; gap: 3px; }
+.cdoc-pret-etat { display: flex; align-items: center; gap: 12px; }
+.cdoc-anneau { flex: none; display: block; }
 .cdoc-badge {
-  display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px;
-  font-size: 14px; font-weight: 600;
-  background: color-mix(in oklch, var(--warning) 18%, var(--card)); color: var(--warning-text);
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 14px;
+  font-size: 12px; font-weight: 600;
+  background: color-mix(in srgb, var(--cal-production) 38%, var(--cal-surface)); color: var(--cal-surveiller-texte);
 }
-.cdoc-badge[data-ton='ok'] { background: color-mix(in oklch, var(--success) 14%, var(--card)); color: var(--success-text); }
-.cdoc-groupes { display: flex; flex: 1 1 auto; min-height: 0; overflow-y: auto; flex-direction: column; gap: 10px; }
-.cdoc-groupe { display: flex; flex-direction: column; gap: 4px; }
-.cdoc-groupe-titre { margin: 0; font-size: 12px; font-weight: 600; color: var(--muted-foreground); }
-.cdoc-lignes { margin: 0; padding: 0; list-style: none; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.cdoc-badge[data-ton='ok'] { background: color-mix(in srgb, var(--cal-ok) 14%, var(--cal-surface)); color: var(--cal-ok); }
+.cdoc-groupes {
+  display: flex; flex: 1 1 auto; min-height: 0; overflow-y: auto; flex-direction: column; gap: 10px;
+}
+.cdoc-groupe { display: flex; flex-direction: column; gap: 5px; }
+.cdoc-groupe-titre { margin: 0; font-size: 12px; font-weight: 600; color: var(--cal-texte-3); }
+/* ACAL1725 — un groupe sans point à régler : une ligne « Électrique — 4 bons » qui se déplie (cible tactile 44 px). */
+.cdoc-groupe-replie > summary {
+  display: flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 4px; cursor: pointer; list-style: none;
+}
+.cdoc-groupe-replie > summary::-webkit-details-marker { display: none; }
+.cdoc-groupe-replie > summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 8px; }
+.cdoc-chevron { flex: none; color: var(--cal-texte-3); transition: transform 120ms; }
+.cdoc-groupe-replie[open] > summary .cdoc-chevron { transform: rotate(90deg); }
+@media (pointer: coarse) { .cdoc-groupe-replie > summary { min-height: 44px; } }
+.cdoc-lignes {
+  margin: 0; padding: 0; list-style: none; overflow: hidden;
+  border: 1px solid var(--cal-filet-fort); border-radius: var(--cal-rayon-pile);
+}
 .cdoc-ligne {
-  display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 2px 8px 2px 14px;
-  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 0 4px 0 14px;
+  border-bottom: 1px solid var(--cal-filet);
 }
 .cdoc-ligne:last-child { border-bottom: 0; }
 .cdoc-ligne[data-etat='a_regler'], .cdoc-ligne[data-etat='bloquant'] {
-  background: color-mix(in oklch, var(--warning) 9%, var(--card));
-  border-bottom-color: color-mix(in oklch, var(--warning) 30%, var(--card));
+  min-height: 52px; padding: 4px 8px 4px 14px;
+  background: var(--cal-surveiller-fond); border-bottom-color: var(--cal-surveiller-filet);
 }
-.cdoc-ligne-texte { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.cdoc-ligne-texte { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .cdoc-ligne-titre { font-weight: 500; }
 .cdoc-ligne[data-etat='a_regler'] .cdoc-ligne-titre, .cdoc-ligne[data-etat='bloquant'] .cdoc-ligne-titre { font-weight: 600; }
-.cdoc-ligne-detail { font-size: 12px; color: var(--muted-foreground); }
+.cdoc-ligne-detail { font-size: 12px; line-height: 1.35; color: var(--cal-texte-2); }
 .cdoc-ligne[data-etat='a_regler'] .cdoc-ligne-detail, .cdoc-ligne[data-etat='bloquant'] .cdoc-ligne-detail {
-  color: var(--warning-text);
+  color: var(--cal-surveiller-texte);
 }
 .cdoc-ico { flex: none; }
-.cdoc-ico[data-etat='ok'] { color: var(--success-text); }
-.cdoc-ico[data-etat='a_regler'] { color: var(--warning-text); }
-.cdoc-ico[data-etat='bloquant'] { color: var(--destructive); }
-.cdoc-ico[data-etat='info'] { color: var(--muted-foreground); }
 
-/* « ? » : zone tactile 44 × 44, cercle de 28 */
+/* « ? » : zone tactile 44 × 44, cercle de 26 */
 .cdoc-aide {
   flex: none; width: 44px; height: 44px; padding: 0; border: 0; background: transparent;
   display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
 .cdoc-aide > span {
-  width: 28px; height: 28px; box-sizing: border-box; border: 1px solid var(--border); border-radius: 14px;
+  width: 26px; height: 26px; box-sizing: border-box; border: 1px solid var(--cal-filet-fort); border-radius: 13px;
   display: flex; align-items: center; justify-content: center;
-  font: 600 14px var(--font-brand); color: var(--muted-foreground); background: var(--card);
+  font: 600 13px var(--font-brand); color: var(--cal-texte-2); background: transparent;
 }
 .cdoc-ligne[data-etat='a_regler'] .cdoc-aide > span, .cdoc-ligne[data-etat='bloquant'] .cdoc-aide > span {
-  border-color: color-mix(in oklch, var(--warning) 40%, var(--card)); color: var(--warning-text);
+  border-color: var(--cal-surveiller-filet); color: var(--cal-surveiller-texte); background: var(--cal-surface);
 }
 .cdoc-aide:focus-visible { outline: 2px solid var(--ring); outline-offset: -4px; border-radius: 10px; }
 
-/* « Régler dans <étape> » : marine (le texte de page, inversé), jamais l'or */
+/* « Régler dans <étape> » : bleu nuit (--cal-marine), jamais l'or */
 .cdoc-regler {
-  flex: none; height: 44px; padding: 0 14px; border: 0; border-radius: 10px; white-space: nowrap;
-  background: var(--foreground); color: var(--background); font-weight: 600; font-size: 14px; cursor: pointer;
+  flex: none; height: 44px; padding: 0 14px; border: 0; border-radius: var(--cal-rayon-bouton); white-space: nowrap;
+  background: var(--cal-marine); color: var(--cal-marine-texte); font-weight: 600; font-size: 14px; cursor: pointer;
 }
 .cdoc-regler:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 
-.cdoc-pied { flex: none; display: flex; align-items: center; gap: 16px; padding-top: 12px; border-top: 1px solid var(--border); flex-wrap: wrap; }
-.cdoc-pied-texte { flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 6px; }
-.cdoc-note { font-size: 12px; color: var(--muted-foreground); }
-.cdoc-legende { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted-foreground); }
+.cdoc-pied {
+  flex: none; display: flex; align-items: center; gap: 16px; margin-top: 2px; padding-top: 14px;
+  border-top: 1px solid var(--cal-filet); flex-wrap: wrap;
+}
+.cdoc-pied-texte { flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 7px; }
+.cdoc-note { font-size: 12px; line-height: 1.4; color: var(--cal-texte-2); }
+.cdoc-legende { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--cal-texte-2); }
 .cdoc-legende > span { display: inline-flex; align-items: center; gap: 5px; }
 /* « Générer le devis » (BoutonDevis, reçu tel quel) : le bouton doré v2 (`.cal-bouton-or.cal-bouton-or-grand`, posé par
-   `actionEtape`) — aucune règle ici ne le redessine (ACAL1985 : l'ancienne pastille `--primary` rayon 10 le masquait). */
-
-/* — colonne « Documents du projet » — */
-.cdoc-docs { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-.cdoc-docs-tete { display: flex; flex-direction: column; gap: 2px; padding: 4px 4px 0; }
-.cdoc-carte {
-  display: flex; align-items: center; gap: 16px; padding: 12px 16px 12px 12px; flex: none;
-  background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+   `actionEtape`, 52 px rayon 14) — aucune règle ici ne le redessine ; seule sa flèche « → » est ajoutée (ACAL1726). */
+.cdoc-devis { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; min-width: 0; }
+/* Plusieurs surfaces chiffrables : les cases se rangent sur deux colonnes, pas une pile qui mange la liste des contrôles. */
+.cdoc-devis fieldset { display: flex; flex-wrap: wrap; column-gap: 18px; margin: 0; padding: 0; border: 0; }
+.cdoc-devis legend { width: 100%; padding: 0; }
+.cdoc-devis .cal-bouton-or::after { content: '→'; font-size: 1.25em; line-height: 1; }
+/* ACAL1943 — le bouton de la maquette Documents : 52 de haut, 24 de marge (188 × 52), à largeur de contenu dans le pied de la carte. */
+.cdoc-devis .cal-bouton-or-grand { padding: 0 24px; }
+/* — colonne « Documents du projet » : aperçu (320) puis cartes (386) — */
+.cdoc-docs { display: flex; flex-direction: column; gap: 14px; min-width: 0; min-height: 0; }
+.cdoc-docs-tete { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 6px 4px 0; }
+.cdoc-docs-corps { flex: 1 1 auto; min-height: 0; display: flex; gap: 14px; }
+.cdoc-apercu-col { width: 320px; flex: none; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+.cdoc-apercu {
+  flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden;
+  background: var(--cal-surface); border-radius: var(--cal-rayon-carte); box-shadow: var(--cal-ombre-posee);
 }
+.cdoc-apercu-feuille {
+  flex: 1 1 auto; min-height: 220px; display: flex; align-items: center; justify-content: center; overflow: hidden;
+  background: var(--cal-surface-2);
+}
+.cdoc-apercu-feuille[data-disponible='non'] .cdoc-vignette { opacity: 0.55; }
+.cdoc-feuille-reelle {
+  position: relative; display: block; width: 304px; aspect-ratio: 1 / 1.414; overflow: hidden; flex: none;
+  background: var(--cal-surface); box-shadow: var(--cal-ombre-flottante);
+}
+.cdoc-feuille-reelle > iframe { position: absolute; left: 0; top: 0; border: 0; transform-origin: 0 0; pointer-events: none; background: var(--cal-surface); }
+.cdoc-apercu-pied { flex: none; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 16px; }
+.cdoc-apercu-titres { display: flex; flex-direction: column; gap: 2px; }
+.cdoc-apercu-titre { font-family: var(--font-display); font-weight: 600; font-size: 15px; }
+.cdoc-apercu-sous { font-size: 12px; color: var(--cal-texte-2); }
+.cdoc-apercu-actions { display: flex; gap: 8px; }
+.cdoc-apercu-actions > .cdoc-bouton { flex: 1; justify-content: center; }
+
+.cdoc-cartes { flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; padding: 2px; }
+.cdoc-carte {
+  display: flex; align-items: center; gap: 14px; flex: 1 0 auto; min-height: 124px; padding: 10px 6px 10px 13px;
+  background: var(--cal-surface); border-radius: var(--cal-rayon-piece); box-shadow: var(--cal-ombre-posee);
+}
+.cdoc-carte[data-choisie='oui'] { box-shadow: 0 0 0 2px var(--cal-choisi-filet), var(--cal-ombre-posee); }
 .cdoc-carte[data-disponible='non'] .cdoc-vignette { opacity: 0.55; }
 .cdoc-vignette {
-  flex: none; width: 112px; height: 80px; display: block; border-radius: 8px; box-sizing: border-box;
-  background: var(--background); border: 1px solid var(--border);
+  flex: none; display: block; width: 66px; height: 89px; filter: drop-shadow(0 3px 5px var(--cal-filet-fort));
 }
 .cdoc-vignette > svg { display: block; width: 100%; height: 100%; }
-.cdoc-carte-texte { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.cdoc-carte-titre { margin: 0; font-weight: 600; font-size: 16px; }
-.cdoc-carte-description { margin: 0; font-size: 14px; color: var(--muted-foreground); }
-.cdoc-carte-motif { margin: 4px 0 0; font-size: 12px; color: var(--muted-foreground); }
-.cdoc-erreurs { margin: 4px 0 0; padding: 0; list-style: none; font-size: 12px; color: var(--destructive); }
-.cdoc-bouton {
-  display: inline-flex; align-items: center; gap: 6px; height: 44px; padding: 0 14px; cursor: pointer;
-  border: 1px solid var(--border); border-radius: 10px; background: transparent; color: var(--foreground);
-  font-weight: 600; font-size: 14px;
+.cdoc-vignette-grande { width: 232px; height: 312px; filter: drop-shadow(0 10px 18px var(--cal-filet-fort)); }
+.cdoc-carte-texte { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.cdoc-carte-titre {
+  padding: 0; border: 0; background: transparent; color: var(--cal-texte-1); text-align: left; cursor: pointer;
+  font: 600 15px var(--font-brand);
 }
+.cdoc-carte-titre:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 4px; }
+@media (pointer: coarse) { .cdoc-carte-titre { min-height: 44px; } }
+.cdoc-carte-description { margin: 0; font-size: 12px; line-height: 1.4; color: var(--cal-texte-2); }
+.cdoc-carte-motif {
+  margin: 0; font-size: 12px; line-height: 1.4; color: var(--cal-texte-3);
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+}
+.cdoc-apercu-motif { margin-top: 4px; font-size: 12px; line-height: 1.4; color: var(--cal-surveiller-texte); }
+.cdoc-erreurs { margin: 4px 0 0; padding: 0; list-style: none; font-size: 12px; color: var(--cal-refus); }
+.cdoc-pastille {
+  display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: 11px;
+  font-size: 12px; font-weight: 600;
+  background: color-mix(in srgb, var(--cal-ok) 14%, var(--cal-surface)); color: var(--cal-ok);
+}
+.cdoc-pastille[data-ton='manque'] { height: auto; min-height: 22px; background: var(--cal-surveiller-fond); color: var(--cal-surveiller-texte); }
+.cdoc-pastille-point { flex: none; width: 6px; height: 6px; border-radius: 3px; background: currentColor; }
+.cdoc-icone {
+  flex: none; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 12px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; background: transparent; color: var(--cal-texte-1);
+}
+.cdoc-icone:disabled { opacity: 0.4; cursor: not-allowed; }
+.cdoc-icone:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.cdoc-bouton {
+  display: inline-flex; align-items: center; gap: 7px; height: 44px; padding: 0 14px; cursor: pointer;
+  border: 1px solid var(--cal-filet-fort); border-radius: var(--cal-rayon-bouton); background: transparent;
+  color: var(--cal-texte-1); font-weight: 600; font-size: 14px;
+}
+.cdoc-bouton-marine { border-color: transparent; background: var(--cal-marine); color: var(--cal-marine-texte); }
 @media (hover: hover) {
-  .cdoc-bouton:hover:not(:disabled) { background: var(--muted); }
+  .cdoc-bouton:hover:not(:disabled) { background: var(--cal-piste); }
+  .cdoc-bouton-marine:hover:not(:disabled) { background: var(--cal-marine); opacity: 0.9; }
+  .cdoc-icone:hover:not(:disabled) { background: var(--cal-piste); }
 }
 .cdoc-bouton:disabled { opacity: 0.5; cursor: not-allowed; }
 .cdoc-bouton:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .cdoc-info {
-  display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; font-size: 14px; line-height: 1.45;
-  background: color-mix(in oklch, var(--info) 8%, var(--card));
-  border: 1px solid color-mix(in oklch, var(--info) 25%, var(--card)); border-radius: 10px;
+  display: flex; align-items: flex-start; gap: 10px; padding: 14px 16px; font-size: 13px; line-height: 1.5; flex: none;
+  background: color-mix(in srgb, var(--cal-lien) 9%, var(--cal-surface)); border-radius: var(--cal-rayon-piece);
 }
-.cdoc-info > svg { flex: none; margin-top: 2px; color: var(--info); }
+.cdoc-info > svg { flex: none; margin-top: 1px; color: var(--cal-lien); }
 
 @media (prefers-reduced-motion: reduce) {
-  .cdoc-bouton, .cdoc-regler { transition: none; }
+  .cdoc-bouton, .cdoc-regler, .cdoc-chevron { transition: none; }
 }
 /* J6 — l'inventaire des documents lu trop lentement / refusé : phrase + « Réessayer », dans la colonne. */
-.cdoc-inventaire-attente { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 16px; font-size: 14px;
-  background: var(--card); border: 1px solid var(--border); border-radius: 14px; }
+.cdoc-inventaire-attente {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 16px; font-size: 14px;
+  background: var(--cal-surface); border-radius: var(--cal-rayon-piece); box-shadow: var(--cal-ombre-posee);
+}
