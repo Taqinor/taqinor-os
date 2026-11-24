@@ -104,10 +104,10 @@ def _porteur(lead, company, calepinage_id, calepinage=None):
         if getattr(lead, 'company_id', None) != getattr(company, 'pk', None):
             raise ValueError('Lead hors de la société : aucune conception.')
         return lead, {'lead': lead}, None
-    from apps.calepinage.selectors import calepinage_detail
     from apps.crm.selectors import get_company_lead
+    from apps.ventes.selectors_calepinage import calepinage_de_societe
 
-    calepinage = calepinage if calepinage is not None else calepinage_detail(calepinage_id, company)
+    calepinage = calepinage if calepinage is not None else calepinage_de_societe(calepinage_id, company)
     if calepinage is None or calepinage.company_id != company.pk:
         raise ValueError('Calepinage hors de la société : aucune conception.')
     if calepinage.appel_offre_id:

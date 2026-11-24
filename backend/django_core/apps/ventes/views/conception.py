@@ -115,7 +115,7 @@ def _porteur_du_corps(user, company, corps):
     """``(lead, calepinage, réponse 4xx)`` : le porteur que l'appelant VOIT,
     résolu AVANT le reste du corps (404 hors société ou hors portée). Un
     calepinage d'un lead hors de sa portée est introuvable comme le lead."""
-    from apps.calepinage.selectors import calepinages_visibles
+    from apps.ventes.selectors_calepinage import calepinage_visible_pour
 
     lead_id, calepinage_id = _entier(corps.get('lead')), _entier(corps.get('calepinage'))
     if lead_id is False or calepinage_id is False:
@@ -127,8 +127,7 @@ def _porteur_du_corps(user, company, corps):
         return None, None, Response({'detail': 'Lead introuvable.'}, status=404)
     if lead is not None:
         return lead, None, None
-    calepinage = (calepinages_visibles(user).filter(pk=calepinage_id, company=company).first()
-                  if company is not None else None)
+    calepinage = calepinage_visible_pour(user, company, calepinage_id)
     if calepinage is None or (calepinage.lead_id and _lead_visible(user, company, calepinage.lead_id) is None):
         return None, None, Response({'detail': 'Calepinage introuvable.'}, status=404)
     return None, calepinage, None
