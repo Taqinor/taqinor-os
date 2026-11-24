@@ -51,9 +51,12 @@ import {
   DEG2M,
 } from './constants';
 import { type AreaRecord, type ZoneRenderPlan, type RenderSceneFn } from './types';
-import { makeCanadianPanelTexture, materiauVerre } from './panelTexture';
+import { makeCanadianPanelTexture, type JeuPanneau } from './panelTexture';
 import { poserOeil } from './oeilCamera'; // ACAL1984
 import { boiteObstacle } from './obstacle3d'; // ACAL1820
+import { teintesBatiment, eclatPresentation, TEINTES_PRESENTATION } from './jeuPresentation'; // ACAL1839
+import { geometrieJupe } from './jupePignon'; // ACAL1839
+import { enPresentation, surPresentation } from './presentationCarte'; // ACAL1839
 import { type Ctx } from './context';
 import { poserEtiquettesNumeros } from './numerotation'; // CALX111
 // CALX94 câblage — couleur d'arête RETENUE (correction manuelle prioritaire), PURE.
@@ -123,6 +126,8 @@ export interface Scene3d {
   appendOtherZones: (activeOrigin: LngLat) => [number, number][][];
   /** Rendu complet de la zone ACTIVE (bâtiment + dalle + panneaux + obstacles + soleil). */
   renderScene: RenderSceneFn;
+  /** ACAL1839 — sommets du volume de la maison `[lng, lat, hauteur m]` (atelier ERP ; vide sinon) : le cadrage du volume. */
+  volumeScene: () => [number, number, number][];
   /** Réinitialise la photo de toit + la matrice modèle (appelé par clearEditorState). */
   resetTextures: () => void;
   /**
@@ -1039,6 +1044,14 @@ export function formeDuContour(ring: readonly (readonly [number, number])[]): TH
   return shape;
 }
 
+/** ACAL1984 — le verre d'un panneau. La couche MapLibre rend avec une caméra Three.js IDENTITÉ (hors atelier ERP,
+ *  `oeilCamera.ts`) : le shader place l'œil sous le toit, la vue du verre est rasante et le Fresnel du vernis (`clearcoat`)
+ *  vaut 1 — il éteint toute couleur de base, teinte comprise. L'atelier ERP (`erp`) pose un verre SANS vernis ; le site
+ *  public garde le sien, rendu inchangé. Seul matériau physique de la scène (garde W71). */
+export function materiauVerre(map: THREE.Texture | null, erp: boolean): THREE.MeshPhysicalMaterial {
+  return new THREE.MeshPhysicalMaterial({ map, color: 0xffffff, metalness: 0.1, roughness: 0.22, clearcoat: erp ? 0 : 1, clearcoatRoughness: 0.08 });
+}
+
 /** ACAL1408 — `instanceColor` MULTIPLIE la texture du panneau, quasi noire (≈ 0,05, `panelTexture.ts`) : une teinte
  *  0–1 brute y restait noire (carte d'accès et chaînes invisibles). Même gain que le surlignage (PV31). */
 export const GAIN_TEINTE_PANNEAU = 14;
@@ -1309,13 +1322,22 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   const panelTex = makeCanadianPanelTexture();
   // ACAL433 — une texture de verre par rapport de panneau (arrondi 0,01), partagée ; lowEnd : l'unique d'avant.
   const panelTexParRapport = new Map<number, THREE.Texture>();
-  const panelTexOf = (rapport: number): THREE.Texture => {
+  const panelTexParJeu = new Map<string, THREE.Texture>(); // ACAL1839 — verre « présentation », par rapport
+  const panelTexOf = (rapport: number, jeu: JeuPanneau = 'atelier'): THREE.Texture => {
     const k = Math.round(rapport * 100) / 100;
+    if (jeu === 'presentation') {
+      const cle = String(lowEnd || !(k > 0) ? 1.83 : k);
+      let t = panelTexParJeu.get(cle);
+      if (!t) panelTexParJeu.set(cle, (t = makeCanadianPanelTexture(Number(cle), jeu)));
+      return t;
+    }
     if (lowEnd || !(k > 0) || k === 1.83) return panelTex;
     let t = panelTexParRapport.get(k);
     if (!t) panelTexParRapport.set(k, (t = makeCanadianPanelTexture(k)));
     return t;
   };
+  /** ACAL1839 — le jeu de matériaux de la scène : « presentation » quand la carte est montrée au client. */
+  const jeuScene = (): JeuPanneau => (atelierErp && enPresentation(map) ? 'presentation' : 'atelier');
   // Texture du profilé galvanisé PERFORÉ, PARTAGÉE par toutes les pièces de structure et
   // bakée une seule fois (patron W71 : jamais dans le chemin de rendu). En mode bas de
   // gamme on ne la fabrique PAS — le profilé garde une couleur galva unie : zéro canvas,
@@ -1398,9 +1420,11 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     /** Plot béton carré préfabriqué (le socle discontinu sous chaque pied). */
     socleMat: THREE.MeshStandardMaterial;
   }
-  const buildPanelMatSet = (dim: boolean, rapport: number): PanelMatSet => {
-    const glassMat = materiauVerre(panelTexOf(rapport), atelierErp); // ACAL1984
-    const frameMat = new THREE.MeshStandardMaterial({ color: 0x9aa0aa, metalness: 0.85, roughness: 0.35 });
+  const buildPanelMatSet = (dim: boolean, rapport: number, jeu: JeuPanneau = 'atelier'): PanelMatSet => {
+    const glassMat = materiauVerre(panelTexOf(rapport, jeu), atelierErp); // ACAL1984
+    const frameMat = jeu === 'presentation' // ACAL1839 — cadre alu clair, pas un métal noirci sans reflet
+      ? new THREE.MeshStandardMaterial({ color: TEINTES_PRESENTATION.cadre, metalness: 0.2, roughness: 0.5 })
+      : new THREE.MeshStandardMaterial({ color: 0x9aa0aa, metalness: 0.85, roughness: 0.35 });
     const backMat = new THREE.MeshStandardMaterial({ color: 0xe6e8ee, metalness: 0.1, roughness: 0.6 });
     if (dim) {
       // Panneaux légèrement désaturés/assombris pour les zones non actives.
@@ -1422,13 +1446,13 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     for (const m of [glassMat, frameMat, backMat, jboxMat, rackMat, socleMat]) sharedResources.add(m);
     return { glassMat, frameMat, backMat, panelMats: [frameMat, frameMat, frameMat, frameMat, glassMat, backMat], jboxMat, rackMat, socleMat };
   };
-  const panelMatsActive = new Map<number, PanelMatSet>();
-  const panelMatsDim = new Map<number, PanelMatSet>();
-  const panelMatSet = (dim: boolean, rapport: number): PanelMatSet => {
+  const panelMatsActive = new Map<string, PanelMatSet>();
+  const panelMatsDim = new Map<string, PanelMatSet>();
+  const panelMatSet = (dim: boolean, rapport: number, jeu: JeuPanneau = 'atelier'): PanelMatSet => {
     const cache = dim ? panelMatsDim : panelMatsActive;
     const k = Math.round(rapport * 100) / 100;
-    let set = cache.get(k);
-    if (!set) cache.set(k, (set = buildPanelMatSet(dim, k)));
+    let set = cache.get(`${jeu}:${k}`);
+    if (!set) cache.set(`${jeu}:${k}`, (set = buildPanelMatSet(dim, k, jeu)));
     return set;
   };
 
@@ -1467,7 +1491,8 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       set.rackMat.dispose();
       set.socleMat.dispose();
     }
-    for (const t of panelTexParRapport.values()) t.dispose();
+    for (const t of [...panelTexParRapport.values(), ...panelTexParJeu.values()]) t.dispose();
+    panelTexParJeu.clear();
     panelTexParRapport.clear();
     panelMatsActive.clear();
     panelMatsDim.clear();
@@ -1790,7 +1815,9 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       geo.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
       return { deck: new THREE.Mesh(geo, vide), deckMat: vide, ring };
     }
-    const buildingMat = new THREE.MeshStandardMaterial({ color: 0xe2e7f2, roughness: 0.85, metalness: 0 });
+    const jeu = jeuScene(); // ACAL1839
+    const teintes = teintesBatiment(jeu, flush);
+    const buildingMat = new THREE.MeshStandardMaterial({ color: teintes?.mur ?? 0xe2e7f2, roughness: 0.85, metalness: 0, ...eclatPresentation(teintes?.mur) });
     if (dim) {
       // Zone NON active : bâtiment subdué (plus sombre + légèrement transparent) pour
       // que la zone ACTIVE (en cours d'édition) ressorte clairement.
@@ -1820,7 +1847,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     // FIX 1 (V6) — en pente (flush), réf. d'égout (le point le plus AVAL du tracé) :
     // la pente monte à partir de l'égout, rien ne passe sous le toit.
     const pitchEaveCoord = flush ? eaveUpSlopeCoord(ring, pack.azimuthDeg) : 0;
-    const deckMat = new THREE.MeshStandardMaterial({ color: 0xb9bfca, roughness: 0.95, metalness: 0 });
+    const deckMat = new THREE.MeshStandardMaterial({ color: teintes?.dalle ?? 0xb9bfca, roughness: 0.95, metalness: 0 });
     if (dim) {
       deckMat.color.set(0x8b9099);
       deckMat.transparent = true;
@@ -1898,10 +1925,11 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       skirtGeo.computeVertexNormals();
       // Murs de pignon = même teinte que le bâtiment (continuité du volume), double face.
       const skirtMat = new THREE.MeshStandardMaterial({
-        color: dim ? 0x9aa3b4 : 0xe2e7f2,
+        color: dim ? 0x9aa3b4 : teintes?.pignon ?? 0xe2e7f2,
         roughness: 0.85,
         metalness: 0,
         side: THREE.DoubleSide,
+        ...eclatPresentation(dim ? undefined : teintes?.pignon), // ACAL1839
         transparent: dim,
         opacity: dim ? 0.55 : 1,
       });
@@ -1920,7 +1948,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     // lng/lat désaccordés (aucun appariement à deviner) ⇒ rien n'est ajouté, rendu
     // inchangé. Le trait est posé à ras de la dalle (convention de dessin).
     if (!isOtherZone) { // CALX94 câblage
-      const actif = ctx.activeArea();
+      const actif = teintes ? null : ctx.activeArea(); // ACAL1839 — aucun trait d'édition montré au client
       const contour = ctx.vertices.length >= 3 ? ctx.vertices : (actif?.vertices ?? []);
       if (actif && contour.length === ring.length) {
         const pourDeduction = (a: AreaRecord, v: LngLat[]): EdgeDeductionZone => ({
@@ -1984,7 +2012,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     // W71 — matériaux du système panneau réutilisés depuis le cache (variante active ou
     // `dim`) au lieu d'être ré-alloués à chaque rendu (plus de recompilation de shader
     // MeshPhysicalMaterial sur un simple glissé). Rendu visuel identique.
-    const { glassMat, frameMat, backMat, panelMats, jboxMat, rackMat, socleMat } = panelMatSet(dim, alongRow / slope);
+    const { glassMat, frameMat, backMat, panelMats, jboxMat, rackMat, socleMat } = panelMatSet(dim, alongRow / slope, jeu);
     const panelGeo = new THREE.BoxGeometry(alongRow, slope, PANEL2_THICK_M);
     const jboxGeo = jboxGeoOf();
 
@@ -2195,6 +2223,8 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     // CALX100 — hauteur d'extrusion de CE pan (saisie du document, sinon dessin). Absente
     // (appelant antérieur à CALX100) = hauteur de dessin, le rendu d'aujourd'hui.
     hauteurMurM: number = HAUTEUR_DESSIN_M,
+    // ACAL1839 — pan EN PENTE sans panneaux (atelier ERP) : sa dalle inclinée et ses pignons, plus une boîte à toit plat.
+    pente: { tiltDeg: number; azimuthDeg: number } | null = null,
   ): [number, number][] | null {
     if (vertices.length < 3) return null;
     const cosLat = Math.cos(activeOrigin[1] * DEG2RAD);
@@ -2205,17 +2235,31 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     const wallH = hauteurMurM; // CALX100
     const shape = formeDuContour(ring)!; // ACAL1503 — même forme, garde « < 3 sommets » ci-dessus
     // Zone NON active sans panneaux : bâtiment subdué (même teinte que les autres zones).
-    const buildingMat = new THREE.MeshStandardMaterial({ color: 0x9aa3b4, roughness: 0.85, metalness: 0, transparent: true, opacity: 0.55 });
+    const enPente = atelierErp && pente != null && pente.tiltDeg > 0;
+    const teintes = teintesBatiment(jeuScene(), enPente); // ACAL1839 — client : mêmes teintes que le pan actif
+    const buildingMat = new THREE.MeshStandardMaterial({ color: teintes?.mur ?? 0x9aa3b4, roughness: 0.85, metalness: 0, transparent: !teintes, opacity: teintes ? 1 : 0.55, ...eclatPresentation(teintes?.mur) });
     const building = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: wallH, bevelEnabled: false }), buildingMat);
     building.castShadow = true;
     building.receiveShadow = true;
     sceneRoot!.add(building);
     // Dalle nue subduée posée sur le toit (lecture « toit plat sans panneaux »).
-    const deckMat = new THREE.MeshStandardMaterial({ color: 0x8b9099, roughness: 0.95, metalness: 0, transparent: true, opacity: 0.7 });
+    const deckMat = new THREE.MeshStandardMaterial({ color: teintes?.dalle ?? 0x8b9099, roughness: 0.95, metalness: 0, transparent: !teintes, opacity: teintes ? 1 : 0.7 });
     const deck = new THREE.Mesh(new THREE.ShapeGeometry(shape), deckMat);
     deck.position.z = wallH + 0.02;
     deck.receiveShadow = true;
     sceneRoot!.add(deck);
+    if (enPente) {
+      const egout = eaveUpSlopeCoord(ring, pente.azimuthDeg);
+      const monte = (x: number, y: number) => pitchedDeckZ(x, y, egout, 0, pente.tiltDeg, pente.azimuthDeg);
+      const pos = deck.geometry.attributes.position as THREE.BufferAttribute;
+      for (let i = 0; i < pos.count; i++) pos.setZ(i, monte(pos.getX(i), pos.getY(i)));
+      deck.geometry.computeVertexNormals();
+      const jupe = new THREE.Mesh(geometrieJupe(ring, (x, y) => 0.02 + monte(x, y)), new THREE.MeshStandardMaterial({
+        color: teintes?.pignon ?? 0x9aa3b4, roughness: 0.85, metalness: 0, side: THREE.DoubleSide, transparent: !teintes, opacity: teintes ? 1 : 0.55, ...eclatPresentation(teintes?.pignon) }));
+      jupe.position.z = wallH;
+      jupe.castShadow = true;
+      sceneRoot!.add(jupe);
+    }
     return ring;
   }
 
@@ -2293,7 +2337,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         // VISIONNEUSE : `dim` false → ce pan est bâti avec les MÊMES matériaux que
         // le pan actif (verre, cadres, rails, châssis) ; `isOtherZone` reste true →
         // il ne touche pas la référence de pick et garde ses propres obstacles.
-        const built = buildZoneMeshes(liftedPlan, offX, offY, !readOnly, undefined, true);
+        const built = buildZoneMeshes(liftedPlan, offX, offY, !readOnly && jeuScene() === 'atelier', undefined, true); // ACAL1839 — client : tous les pans au même rendu
         rings.push(built.ring);
       } else {
         // W78 — pas de plan de rendu (zone finie à 0 panneau) : on dessine son volume nu.
@@ -2302,6 +2346,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
           a.vertices,
           activeOrigin,
           hauteurExtrusion(batimentDuPan(ctx.batiments, a.buildingId)).hauteurM, // CALX100
+          a.roofType === 'flat' ? null : { tiltDeg: a.pitchDeg, azimuthDeg: a.facingAzimuthDeg }, // ACAL1839
         );
         if (bare) rings.push(bare);
       }
@@ -2364,7 +2409,11 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   //   toit en pente) pose les panneaux AFFLEURANTS sur la pente : pas de châssis ni
   //   de lest, panneau couché à l'inclinaison du toit. flush=false ⇒ rendu toit plat
   //   octet pour octet identique à pro-5. —
+  // ACAL1839 — la scène se reconstruit à l'entrée et à la sortie de la présentation (jeu de matériaux) ; caméra intacte.
+  let derniereScene: Parameters<RenderSceneFn> | null = null;
+  surPresentation(map, () => { if (derniereScene && atelierErp) renderScene(...derniereScene); });
   function renderScene(pack: PackResult, grid: PanelGrid, tiltDeg: number, family: ConfigFamily, maxCount: number, flush = false, occupiedSet?: Set<number>) {
+    derniereScene = [pack, grid, tiltDeg, family, maxCount, flush, occupiedSet];
     if (!sceneRoot || !sun) return;
     // W69 — un rendu SANS occupation explicite vient de l'optimiseur : on mémorise le
     // plan gagnant (pack/grid/tilt/family/flush) + le comptage optimal, pour pouvoir
@@ -2416,7 +2465,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     const built = buildZoneMeshes(activePlan, 0, 0, false, occupiedSet);
     // Change B : pose la photo satellite (géo-alignée, détourée au tracé) sur la
     // face supérieure. L'origine de la scène sert à reprojeter les sommets en lng/lat.
-    applyRoofPhoto(built.deck, built.deckMat, pack.origin);
+    if (jeuScene() === 'atelier') applyRoofPhoto(built.deck, built.deckMat, pack.origin); // ACAL1839 — client : le toit à sa couleur
 
     // Obstacles marqués (Change C) : volume SEMI-TRANSPARENT à la VRAIE taille
     // (largeur E-O × longueur N-S), posé sur le toit, avec une arête visible — la
@@ -2432,12 +2481,13 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         const tint = selected ? 0xf3cc66 : 0xff6b6b;
         // CAL66 — hauteur SAISIE, sinon le repli visuel ; ACAL1820 — assise sur la dalle, porte et reçoit les ombres (ERP).
         const boxH = o.heightM ?? OBSTACLE_BOX_H_M;
-        const mesh = boiteObstacle(o, { x: ox, y: oy, murM: wallH, dessusDalleM: built.dessusDalle?.(ox, oy), teinte: tint, opacite: selected ? 0.5 : 0.42, ombres: atelierErp });
+        const client = jeuScene() === 'presentation'; // ACAL1839 — au client : une cheminée en brique, sans cote
+        const mesh = boiteObstacle(o, { x: ox, y: oy, murM: wallH, dessusDalleM: built.dessusDalle?.(ox, oy), teinte: client ? TEINTES_PRESENTATION.cheminee : tint, opacite: client ? 1 : selected ? 0.5 : 0.42, ombres: atelierErp });
         // Change B : taille affichée SUR la boîte, en 3D (plus de libellé « en
         // dessous » sur la carte). Enfant du mesh → suit la boîte au déplacement.
         // VISIONNEUSE : aucune étiquette de cote — c'est une aide au PLACEMENT
         // (l'obstacle lui-même reste visible, à sa vraie taille).
-        if (!readOnly) {
+        if (!readOnly && !client) {
           const label = makeDimSprite(dimsLabel(o));
           label.position.set(0, 0, boxH / 2 + 0.6);
           mesh.add(label);
@@ -2657,7 +2707,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     if (ctx.activePanelMesh?.instanceColor) ecrireTeintesPanneaux(ctx.activePanelMesh.instanceColor as THREE.InstancedBufferAttribute, ctx.activePanelCellIndex, c); // ACAL1408
     map3dRepaint();
   });
-  const couleurAffectation = () => couleurParAffectation(ctx.affectationColoration, ctx.activePanelCellIndex, clePanAffectation(ctx.areas.find((a) => a.id === ctx.activeAreaId), ctx.activeAreaId)); // ACAL1516
+  const couleurAffectation = () => jeuScene() === 'presentation' ? null : couleurParAffectation(ctx.affectationColoration, ctx.activePanelCellIndex, clePanAffectation(ctx.areas.find((a) => a.id === ctx.activeAreaId), ctx.activeAreaId)); // ACAL1516
   /** WJ21 — teinte les instances de panneaux de la zone active par leur accès solaire ; `null` l'éteint (la teinte par
    *  chaîne revient, sinon la teinte d'origine). Réutilise le buffer instanceColor. */
   function setSolarAccessHeatmap(colorFor: CouleurDe) { canal.acces(colorFor, couleurAffectation); }
@@ -2755,7 +2805,29 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     attacherCoucheElectrique();
   }
 
-  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setCoucheElectrique, setPanelHighlight, setPanelSelection, setSolarAccessHeatmap, setStringColoring, rafraichirAffectation, snapshot, renderOffscreen, exporterSceneGltf, positionsPoigneesEcran: poignees3d.ecran };
+  /** ACAL1839 — le VOLUME de la maison d'après ses DONNÉES, connu avant le premier rendu : chaque sommet de pan à la
+   *  hauteur de sa dalle (mur saisi ou de dessin + montée du plan incliné), et le haut de chaque obstacle saisi. */
+  const volumeScene = (): [number, number, number][] => {
+    if (!atelierErp) return [];
+    const points: [number, number, number][] = [];
+    for (const a of ctx.areas) {
+      if (a.vertices.length < 3) continue;
+      const [o0, o1] = a.vertices[0];
+      const cos = Math.cos(o1 * DEG2RAD);
+      const enu = ([lng, lat]: LngLat): [number, number] => [(lng - o0) * DEG2M * cos, (lat - o1) * DEG2M];
+      const ring = a.vertices.map(enu);
+      const mur = hauteurExtrusion(batimentDuPan(ctx.batiments, a.buildingId)).hauteurM;
+      const enPente = a.roofType !== 'flat' && a.pitchDeg > 0;
+      const egout = enPente ? eaveUpSlopeCoord(ring, a.facingAzimuthDeg) : 0;
+      const dalle = ([x, y]: [number, number]) => mur + (enPente ? pitchedDeckZ(x, y, egout, 0, a.pitchDeg, a.facingAzimuthDeg) : 0);
+      a.vertices.forEach((v, i) => points.push([v[0], v[1], dalle(ring[i])]));
+      for (const o of a.id === ctx.activeAreaId ? ctx.obstacles : a.obstacles ?? []) {
+        if (o.heightM) points.push([o.centerLng, o.centerLat, dalle(enu([o.centerLng, o.centerLat])) + o.heightM]);
+      }
+    }
+    return points;
+  };
+  return { volumeScene, customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setCoucheElectrique, setPanelHighlight, setPanelSelection, setSolarAccessHeatmap, setStringColoring, rafraichirAffectation, snapshot, renderOffscreen, exporterSceneGltf, positionsPoigneesEcran: poignees3d.ecran };
 }
 
 /* ════════════════════════════════════════════════════════════════════════════

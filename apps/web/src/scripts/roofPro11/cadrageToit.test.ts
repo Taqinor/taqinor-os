@@ -40,6 +40,76 @@ function carte({ moving = false } = {}) {
 const toit = rect(-7.62, 33.59, 9, 6);
 const sources = (anneaux: LngLat[][] = [toit], trace = false) => ({ anneaux: () => anneaux, azimut: () => 180, trace: () => trace });
 
+// ACAL1839 — vue inclinée : la maison de 6 m ENTIÈRE (murs compris) tient dans la zone libre, avec de l'air — jamais un mur
+// qui remplit l'écran ni une maison sous la carte de chiffres. Carte simulée : projection inclinée (pente, cap 45°).
+function carteInclinee(W: number, H: number, pitch = 58) {
+  const cam = { center: [-7.62, 33.59] as LngLat, zoom: 19, pitch, bearing: 45 };
+  const s = () => 2 ** (cam.zoom - 17) * 3; // px par mètre
+  const b = (cam.bearing * Math.PI) / 180;
+  const cp = Math.cos((pitch * Math.PI) / 180);
+  const cos = Math.cos((cam.center[1] * Math.PI) / 180);
+  const map = {
+    resize: vi.fn(), easeTo: vi.fn(), isMoving: () => false, once: vi.fn(), on: vi.fn(), off: vi.fn(),
+    getContainer: () => ({ clientWidth: W, clientHeight: H }),
+    getPitch: () => cam.pitch, getZoom: () => cam.zoom,
+    jumpTo: vi.fn((o: { center?: LngLat; zoom?: number }) => { if (o.center) cam.center = o.center; if (o.zoom != null) cam.zoom = o.zoom; }),
+    project: ([lng, lat]: LngLat) => {
+      const dx = (lng - cam.center[0]) * DEG2M * cos;
+      const dy = (lat - cam.center[1]) * DEG2M;
+      const u = dx * Math.cos(b) - dy * Math.sin(b);
+      const v = dx * Math.sin(b) + dy * Math.cos(b);
+      return { x: W / 2 + u * s(), y: H / 2 - v * s() * cp };
+    },
+    unproject: ([x, y]: [number, number]) => {
+      const u = (x - W / 2) / s();
+      const v = -(y - H / 2) / (s() * cp);
+      const dx = u * Math.cos(b) + v * Math.sin(b);
+      const dy = -u * Math.sin(b) + v * Math.cos(b);
+      return { lng: cam.center[0] + dx / (DEG2M * cos), lat: cam.center[1] + dy / DEG2M };
+    },
+  };
+  // Le volume projeté : sommets au sol et leur verticale à `h` (1 m vertical = s·sin(pente) px).
+  const boite = (anneau: LngLat[], h: number) => {
+    const pts = anneau.map((p) => map.project(p)).flatMap((p) => [p, { x: p.x, y: p.y - h * s() * Math.sin((pitch * Math.PI) / 180) }]);
+    const xs = pts.map((p) => p.x); const ys = pts.map((p) => p.y);
+    return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+  };
+  return { map: map as unknown as CarteCadrable & typeof map, boite };
+}
+
+describe('ACAL1839 — cadrage du VOLUME en vue inclinée (vue client, atelier)', () => {
+  const maison = rect(-7.62, 33.59, 12.4, 8.6);
+  const avecHauteur = (h: number) => ({ ...sources([maison]), volume: () => maison.map(([lng, lat]) => [lng, lat, h] as const) });
+  it('grand écran : la maison entière dans la zone libre (carte de chiffres à droite, barre en bas), centrée, avec de l’air', () => {
+    const { map, boite } = carteInclinee(1440, 900);
+    const marges = { haut: 94, gauche: 0, droite: 400, bas: 104 };
+    expect(cadrerToit(map, avecHauteur(9.4), { zoomMax: 22, part: 0.62, cielPx: 190, margesPx: marges })).toBe(true);
+    const v = boite(maison, 9.4);
+    const libre = { x0: 0, x1: 1040, y0: 190, y1: 796 };
+    expect(v.x0).toBeGreaterThan(libre.x0); expect(v.x1).toBeLessThan(libre.x1);
+    expect(v.y0).toBeGreaterThan(libre.y0); expect(v.y1).toBeLessThan(libre.y1);
+    const part = Math.max((v.x1 - v.x0) / (libre.x1 - libre.x0), (v.y1 - v.y0) / (libre.y1 - libre.y0));
+    expect(part).toBeCloseTo(0.62, 1); // ni un mur qui remplit l'écran, ni une maison minuscule
+    expect((v.x0 + v.x1) / 2).toBeCloseTo((libre.x0 + libre.x1) / 2, -1);
+    expect((v.y0 + v.y1) / 2).toBeCloseTo((libre.y0 + libre.y1) / 2, -1);
+  });
+  it('téléphone : la maison tient au-dessus du corps (haut ~45 % de l’écran)', () => {
+    const { map, boite } = carteInclinee(390, 844);
+    cadrerToit(map, avecHauteur(9.4), { zoomMax: 22, part: 0.62, cielPx: 0, margesPx: { haut: 76, gauche: 0, droite: 0, bas: 459 } });
+    const v = boite(maison, 9.4);
+    expect(v.y0).toBeGreaterThan(76); expect(v.y1).toBeLessThan(385);
+    expect(v.x0).toBeGreaterThan(0); expect(v.x1).toBeLessThan(390);
+  });
+  it('sans hauteur de scène (site public) ou vue de dessus : le cadrage du contour d’avant', () => {
+    const { map } = carteInclinee(1440, 900);
+    cadrerToit(map, sources([maison]), { zoomMax: 22 });
+    expect(map.jumpTo).toHaveBeenCalledTimes(1);
+    const dessus = carteInclinee(1440, 900, 0);
+    cadrerToit(dessus.map, avecHauteur(9.4), { zoomMax: 22 });
+    expect(dessus.map.jumpTo).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('cadrerToit — le toit remplit la carte (F6)', () => {
   it('pose centre + zoom SANS animation, pente et cap non fournis (vue courante gardée)', () => {
     const { map } = carte();

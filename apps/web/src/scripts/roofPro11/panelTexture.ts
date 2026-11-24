@@ -26,23 +26,24 @@ export function dimensionsTexture(rapport: number): { w: number; h: number; cols
   return best;
 }
 
-/** ACAL1984 — le verre d'un panneau. La couche MapLibre rend avec une caméra Three.js IDENTITÉ : le shader place l'œil à
- *  l'origine de la scène (sous le toit), la vue du verre est rasante et le Fresnel du vernis (`clearcoat`) vaut 1 — il
- *  éteint toute couleur de base, teinte comprise (panneaux noirs à l'étape Panneaux et Électrique). L'atelier ERP (`erp`)
- *  pose donc un verre SANS vernis ; le site public garde le sien, rendu inchangé. */
-export function materiauVerre(map: THREE.Texture | null, erp: boolean): THREE.MeshPhysicalMaterial {
-  return new THREE.MeshPhysicalMaterial({ map, color: 0xffffff, metalness: 0.1, roughness: 0.22, clearcoat: erp ? 0 : 1, clearcoatRoughness: 0.08 });
-}
+/** ACAL1839 — le jeu « presentation » (vue client, maquettes TelephoneClient / Presentation) : verre bleu nuit, cellules
+ *  et cadre clairs, couleurs en sRGB ; « atelier » : le verre de travail d'origine, octet pour octet. */
+export type JeuPanneau = 'atelier' | 'presentation';
+const TEINTES_VERRE: Record<JeuPanneau, { haut: string; bas: string; cellules: string; couture: string; cadre: string }> = {
+  atelier: { haut: '#0c0c0f', bas: '#050507', cellules: 'rgba(40,46,60,0.55)', couture: 'rgba(20,24,34,0.9)', cadre: 'rgba(150,156,168,0.85)' },
+  presentation: { haut: '#22306d', bas: '#0f1a48', cellules: 'rgba(223,229,243,0.3)', couture: 'rgba(223,229,243,0.55)', cadre: '#dfe5f3' },
+};
 
-export function makeCanadianPanelTexture(rapport = 1.83): THREE.Texture {
+export function makeCanadianPanelTexture(rapport = 1.83, jeu: JeuPanneau = 'atelier'): THREE.Texture {
+  const t = TEINTES_VERRE[jeu];
   const { w: cW, h: cH, cols, rowsHalf } = dimensionsTexture(rapport);
   const c = document.createElement('canvas');
   c.width = cW;
   c.height = cH;
   const ctx = c.getContext('2d')!;
   const g = ctx.createLinearGradient(0, 0, cW, cH);
-  g.addColorStop(0, '#0c0c0f');
-  g.addColorStop(1, '#050507');
+  g.addColorStop(0, t.haut);
+  g.addColorStop(1, t.bas);
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, cW, cH);
   const pad = 14;
@@ -51,7 +52,7 @@ export function makeCanadianPanelTexture(rapport = 1.83): THREE.Texture {
   const hHalf = (cH - pad * 2 - seam) / 2;
   const cw = w / cols;
   const ch = hHalf / rowsHalf;
-  ctx.strokeStyle = 'rgba(40,46,60,0.55)';
+  ctx.strokeStyle = t.cellules;
   ctx.lineWidth = 1;
   for (let half = 0; half < 2; half++) {
     const y0 = half === 0 ? pad : pad + hHalf + seam;
@@ -70,17 +71,18 @@ export function makeCanadianPanelTexture(rapport = 1.83): THREE.Texture {
       ctx.stroke();
     }
   }
-  ctx.strokeStyle = 'rgba(20,24,34,0.9)';
+  ctx.strokeStyle = t.couture;
   ctx.lineWidth = seam;
   ctx.beginPath();
   ctx.moveTo(pad, cH / 2);
   ctx.lineTo(cW - pad, cH / 2);
   ctx.stroke();
-  ctx.strokeStyle = 'rgba(150,156,168,0.85)';
+  ctx.strokeStyle = t.cadre;
   ctx.lineWidth = 10;
   ctx.strokeRect(5, 5, cW - 10, cH - 10);
   const tex = new THREE.Texture(c);
   tex.needsUpdate = true;
   tex.anisotropy = 8;
+  if (jeu === 'presentation') tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }

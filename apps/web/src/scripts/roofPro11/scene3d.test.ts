@@ -4,7 +4,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { creerCanalTeinte } from './canalTeinte'; // ACAL1621
 import { cibleVue, appliquerVue } from './vuesCamera';
-import { dimensionsTexture, materiauVerre } from './panelTexture'; // ACAL1984
+import { dimensionsTexture, makeCanadianPanelTexture } from './panelTexture'; // ACAL1839
+import { teintesBatiment, TEINTES_PRESENTATION } from './jeuPresentation'; // ACAL1839
 import * as THREE from 'three'; // ACAL1984
 import { poserOeil } from './oeilCamera'; // ACAL1984
 import { boiteObstacle } from './obstacle3d'; // ACAL1820
@@ -35,6 +36,7 @@ import {
   ecrireTeintesPanneaux, // ACAL1408
   GAIN_TEINTE_PANNEAU, // ACAL1408
   clePanAffectation, // ACAL1516
+  materiauVerre, // ACAL1984
 } from './scene3d';
 import { couleurAccesActive } from '../../lib/shadingEngine'; // ACAL1408
 import { buildAreasFromShape } from './zones';
@@ -473,7 +475,7 @@ describe('ACAL1984 — l’œil de la caméra de la couche est celui de la carte
     expect(poserOeil(couche, carte)).toBe(true);
     expect(couche.position.distanceTo(vraie.position)).toBeLessThan(1e-6);
     const recomposee = couche.projectionMatrix.clone().multiply(couche.matrixWorldInverse);
-    recomposee.elements.forEach((v, i) => expect(v).toBeCloseTo(carte.elements[i], 9));
+    recomposee.elements.forEach((v: number, i: number) => expect(v).toBeCloseTo(carte.elements[i], 9));
     // un panneau au-dessus de l'origine est vu d'en haut (N·V > 0), plus de vue rasante
     const versOeil = couche.position.clone().sub(new THREE.Vector3(0, 0, 6)).normalize();
     expect(versOeil.dot(new THREE.Vector3(0, 0, 1))).toBeGreaterThan(0.5);
@@ -497,6 +499,43 @@ describe('ACAL1820 — un obstacle de la zone active porte et reçoit les ombres
     expect(pub.position.z).toBe(6 + 0.6 + 0.05);
     // sans hauteur saisie : le repli visuel d'avant (0,8 m), même en ERP
     expect((boiteObstacle({ widthM: 1, lengthM: 1 }, { x: 0, y: 0, murM: 3, teinte: 0, opacite: 0.4, ombres: true }).geometry as THREE.BoxGeometry).parameters.depth).toBe(0.8);
+  });
+});
+
+// ACAL1839 — la vue client réutilisait la scène de l'atelier telle quelle : boîte grise, dalle grise, panneaux noirs.
+describe('ACAL1839 — jeu « présentation » : maison à murs clairs, toit coloré, panneaux bleu nuit à cellules', () => {
+  /** Un canevas qui ENREGISTRE ce qui y est peint (le canevas 2D n'existe pas sous vitest). */
+  const peint = (jeu?: 'atelier' | 'presentation') => {
+    const traces: string[] = [];
+    const ctx2d = {
+      createLinearGradient: () => ({ addColorStop: (_: number, c: string) => traces.push(`degrade:${c}`) }),
+      fillRect: () => {}, beginPath: () => {}, moveTo: () => {}, lineTo: () => {}, stroke: () => {}, strokeRect: () => {},
+      set fillStyle(_v: unknown) {}, set lineWidth(_v: unknown) {},
+      set strokeStyle(v: string) { traces.push(`trait:${v}`); },
+    };
+    const avant = globalThis.document;
+    (globalThis as { document?: unknown }).document = { createElement: () => ({ width: 0, height: 0, getContext: () => ctx2d }) };
+    try {
+      const tex = makeCanadianPanelTexture(1.83, jeu);
+      return { traces, tex };
+    } finally {
+      (globalThis as { document?: unknown }).document = avant;
+    }
+  };
+  it('jeu présentation : matériau de panneau à texture de cellules, distinct du jeu atelier', () => {
+    const atelier = peint();
+    const client = peint('presentation');
+    expect(atelier.traces).toEqual(['degrade:#0c0c0f', 'degrade:#050507', 'trait:rgba(40,46,60,0.55)', 'trait:rgba(20,24,34,0.9)', 'trait:rgba(150,156,168,0.85)']); // atelier : octet pour octet
+    expect(client.traces.slice(0, 2)).toEqual(['degrade:#22306d', 'degrade:#0f1a48']); // verre bleu nuit (maquette)
+    expect(client.traces).toContain('trait:#dfe5f3'); // cadre clair
+    expect(client.traces).not.toEqual(atelier.traces);
+    expect(client.tex.colorSpace).toBe(THREE.SRGBColorSpace);
+    expect(atelier.tex.colorSpace).not.toBe(THREE.SRGBColorSpace);
+  });
+  it('murs clairs, toit tuile en pente et béton à plat ; l’atelier garde ses matériaux de travail', () => {
+    expect(teintesBatiment('presentation', true)).toEqual({ mur: TEINTES_PRESENTATION.mur, pignon: TEINTES_PRESENTATION.pignon, dalle: TEINTES_PRESENTATION.tuile });
+    expect(teintesBatiment('presentation', false)?.dalle).toBe(TEINTES_PRESENTATION.beton);
+    expect(teintesBatiment('atelier', true)).toBeNull();
   });
 });
 
