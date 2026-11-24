@@ -24,10 +24,13 @@ Run :
     DB_NAME=erp_ventes python manage.py test \
         apps.ventes.tests.test_pvcompat_verdicts -v 2
 """
+from dataclasses import replace
 from functools import partial
 import json
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
@@ -214,6 +217,19 @@ def _onduleur_isc_etroit_fictif(pk=98):
         ond_v_demarrage_v=Decimal('125.0'),
         ond_isc_max_mppt_a=Decimal('17.0'),
         ond_bat_v_min=Decimal('40.0'), ond_bat_v_max=Decimal('60.0'))
+
+
+def _onduleur_305v_fictif(pk=61):
+    """ADEV156 — onduleur réseau **fictif** à 305 V absolus, une entrée MPPT :
+    le 710 Wc y tient 5 par chaîne à −5 °C, 6 à +8 °C (le froid change le
+    verdict). La règle seule, aucun produit réel."""
+    return _onduleur(
+        pk, 'Onduleur réseau 5kW 305 V fictif', ond_ac_kw=Decimal('5.00'),
+        ond_phases=1, ond_n_mppt=1, ond_mppt_v_min=Decimal('125.0'),
+        ond_mppt_v_max=Decimal('305.0'), ond_v_max_abs=Decimal('305.0'),
+        ond_v_demarrage_v=Decimal('125.0'), ond_i_max_mppt_a=Decimal('22.0'),
+        ond_isc_max_mppt_a=Decimal('22.0'), ond_bat_aucune=True,
+        ond_bat_v_min=None, ond_bat_v_max=None)
 
 
 def _batterie(pk=7, nom='Batterie Dyness 10 kWh', v_nominal='51.2'):
@@ -404,6 +420,30 @@ class VerdictPanneauOnduleurTest(SimpleTestCase):
         self.assertEqual(verdict['statut'], cp.STATUT_INCONNU)
         self.assertIn('courant maxi par MPPT (A)',
                       ' '.join(verdict['raisons']))
+
+    def test_froid_du_site_plus_doux_change_la_chaine_et_se_dit(self):
+        """ADEV156 (D-ACAL-80) — avec un froid du site plus doux que −5 °C,
+        la longueur de chaîne du verdict change et la phrase le dit. 710 Wc
+        (Voc 48,3 V, β −0,25 %/°C) sous 305 V : 51,9 V par module à −5 °C ⇒
+        5 au plus ; 50,4 V à +8 °C ⇒ 6 tiennent. Sans ``froid`` : −5 °C."""
+        from core.electrique.types import froid_de_dimensionnement
+        onduleur = _onduleur_305v_fictif()
+        catalogue = cp.verdict_panneau_onduleur(_panneau_710(), onduleur)
+        site = cp.verdict_panneau_onduleur(
+            _panneau_710(), onduleur, froid=froid_de_dimensionnement(8.0))
+        suppose = cp.verdict_panneau_onduleur(
+            _panneau_710(), onduleur, froid=froid_de_dimensionnement(None))
+        self.assertEqual((catalogue['statut'], catalogue['longueur_chaine']),
+                         (cp.STATUT_RESERVE, 5))
+        self.assertNotIn('D-ACAL-80', catalogue['detail'])
+        self.assertEqual((site['statut'], site['longueur_chaine']),
+                         (cp.STATUT_COMPATIBLE, 6))
+        self.assertIn("froid : minimum de l'année type du lieu (règle "
+                      "D-ACAL-80)", site['detail'])
+        self.assertEqual(
+            {k: suppose[k] for k in ('statut', 'longueur_chaine', 'raisons')},
+            {k: catalogue[k] for k in ('statut', 'longueur_chaine', 'raisons')})
+        self.assertIn('supposé', suppose['detail'])
 
 
 class VerdictBatterieOnduleurTest(SimpleTestCase):
@@ -820,6 +860,68 @@ class CompositionRaccordementTest(SimpleTestCase):
         self.assertIsNone(cp.normaliser_phase('inconnu'))
         self.assertIsNone(cp.normaliser_phase(None))
         self.assertIsNone(cp.normaliser_phase(''))
+
+
+class FroidDuSiteDevisResidentielTest(SimpleTestCase):
+    """ADEV156 (D-ACAL-80) — le devis résidentiel lit le froid du SITE (point
+    de la ville au gazetier, minimum de l'année type) comme le devis C&I ; un
+    devis envoyé garde −5 °C ; sans point ni année type, −5 °C dit supposé."""
+
+    LEAD = SimpleNamespace(ville='Casablanca', ville_reference='',
+                           gps_lat=None, gps_lng=None)
+
+    def setUp(self):
+        def douce(lat, lon):  # année type simulée : jamais le réseau
+            self.points.append((lat, lon))
+            return {'temperature_min_c': 8.0, 'temperature_max_c': 38.0,
+                    'base': 'PVGIS-SARAH3'}
+        self.points = []
+        patcher = mock.patch(
+            'apps.calepinage.services.electrique._fournisseur_temperatures',
+            return_value=douce)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _composer(self, devis):
+        from apps.ventes.domain.etape_composer import (
+            ReglagesComposition, composer)
+        from apps.ventes.domain.pipeline import intention_de_composition
+        intention = SimpleNamespace(
+            company=None, lead=self.LEAD, structure_type='acier',
+            taux_tva=Decimal('20'), mppt_paires=1, phase=None,
+            gamme_nom_devis=None, scenario='sans', hors_reseau=False)
+        compo = replace(
+            intention_de_composition(intention, None, devis=devis),
+            kwc=4.26, nb_panneaux=6, panel_watt=710, avertissements=[],
+            reglages=ReglagesComposition(
+                [_panneau_710(), _onduleur_305v_fictif()], {}, None))
+        composer(compo)
+        return compo.froid, compo.avertissements
+
+    def test_le_devis_neuf_compose_au_froid_de_l_annee_type(self):
+        from apps.parametres.villes_maroc import coordonnees_ville
+        froid, avertissements = self._composer(devis=None)
+        self.assertEqual((froid.valeur_c, froid.source), (8.0, 'tmy'))
+        self.assertEqual(self.points, [tuple(coordonnees_ville('Casablanca'))])
+        # À −5 °C le couple serait « à vérifier » (5 par chaîne) : plus ici.
+        self.assertEqual(avertissements, [])
+
+    def test_un_devis_envoye_garde_son_verdict_a_moins_cinq(self):
+        envoye = SimpleNamespace(statut='envoye', date_envoi='2026-11-20',
+                                 regles_calcul=14)
+        froid, avertissements = self._composer(devis=envoye)
+        self.assertIsNone(froid)
+        self.assertTrue(any('à vérifier' in a for a in avertissements),
+                        avertissements)
+        brouillon = SimpleNamespace(statut='brouillon', date_envoi=None)
+        self.assertEqual(cp.froid_du_lead(self.LEAD, brouillon).valeur_c, 8.0)
+
+    def test_sans_point_ni_annee_type_moins_cinq_dit_suppose(self):
+        froid = cp.froid_du_lead(SimpleNamespace(
+            ville='', ville_reference='', gps_lat=None, gps_lng=None))
+        self.assertEqual((froid.valeur_c, froid.source), (-5.0, None))
+        self.assertIn('supposé', froid.detail)
+        self.assertEqual(self.points, [])
 
 
 class MatchInverterSansMicroOnduleurTest(SimpleTestCase):

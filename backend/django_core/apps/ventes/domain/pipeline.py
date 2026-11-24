@@ -389,6 +389,7 @@ def intention_de_composition(intention, cible, *, avertissements=None,
     de la cible que l'étape 2 a arrêtée. ``devis`` (RSIZ5) : le devis
     recomposé, ``None`` à la création — seul son niveau de règles est lu.
     """
+    from apps.ventes.compatibilites import froid_du_lead
     cible = cible or CibleDevis()
     return IntentionComposition(
         company=intention.company,
@@ -417,6 +418,8 @@ def intention_de_composition(intention, cible, *, avertissements=None,
         # règles, comme ses cartes de taille (``contexte_sonde_du_devis``).
         regles_2710=regles_au_moins(devis, REGLES_CORRIGEES_2710),
         modules_affleurants=_affleurants_au_niveau(devis, getattr(intention, 'layout', None)),
+        # ADEV156 (D-ACAL-80) — le froid du site du lead ; un devis envoyé garde −5 °C.
+        froid=froid_du_lead(intention.lead, devis),
     )
 
 
