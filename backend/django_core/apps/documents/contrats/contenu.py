@@ -766,8 +766,9 @@ def rendre_gabarit(gabarit, ctx, langue='fr'):
     texte = '' if gabarit is None else str(gabarit)
     try:
         return texte.format_map(_CtxRendu(ctx, langue))
-    except (ValueError, IndexError, AttributeError):
-        # Texte stocké avant les gabarits (accolade seule) : servi tel quel.
+    except (ValueError, IndexError, AttributeError, TypeError, KeyError):
+        # Texte stocké avant les gabarits (accolade seule) ou accès indexé
+        # (« {societe[x]} ») : servi tel quel, jamais une erreur 500.
         return texte
 
 

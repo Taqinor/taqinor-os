@@ -573,6 +573,15 @@ class GabaritTests(SimpleTestCase):
         self.assertEqual(g, 'تلتزم {societe} بثمن {total_ttc} قبل '
                             '{date_limite}.')
 
+    def test_acces_indexe_stocke_jamais_une_erreur(self):
+        """m5 : un texte stocké « {societe[x]} » levait TypeError dans
+        ``rendre_gabarit`` (erreur 500 à chaque lecture du brouillon)."""
+        ctx = {'societe': 'TAQINOR', 'client': 'M. EXEMPLE'}
+        for texte in ('{societe[x]}', '{societe[0][1]}', '{client.nom}',
+                      '{0}', 'accolade { seule'):
+            with self.subTest(texte=texte):
+                self.assertIsInstance(K.rendre_gabarit(texte, ctx), str)
+
     def test_montants_du_texte(self):
         self.assertEqual(
             K.montants_du_texte(f'29{FINE}550,00{NB}DH, 1 234 DH, 12,5 dirhams'
