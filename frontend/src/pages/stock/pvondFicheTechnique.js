@@ -216,6 +216,7 @@ const CHAMPS_PAR_TYPE = {
     'ond_dc_max_kwc',
     'ond_pnom_reduite_debut_c', 'ond_pnom_pente_pct_c', // ACAL663 — réduction de puissance en chaleur
     'ond_bat_nb_entrees', 'ond_max_parallele', // HT24 — port batterie haute tension
+    'ond_bat_i_max_a',
   ],
   module: [
     'pmax_wc', 'voc_v', 'isc_a', 'vmp_v', 'imp_a',
@@ -296,7 +297,7 @@ export const CHAMPS_ELECTRIQUES_FICHE = {
   module: { numeriques: ['cellules_serie', 'temp_coeff_isc_pct_c'], tri: [], liste: [] },
   onduleur: {
     numeriques: ['ond_pnom_reduite_debut_c', 'ond_pnom_pente_pct_c',
-      'ond_bat_nb_entrees', 'ond_max_parallele'], // HT24 — hybride haute tension
+      'ond_bat_nb_entrees', 'ond_max_parallele', 'ond_bat_i_max_a'], // HT24 — hybride haute tension
     tri: ['ond_mppt_independants'], liste: [],
   },
   // HT24 (24/11/2026) — grappe en série d'un pack haute tension (vide = pack
@@ -578,6 +579,7 @@ export const LIBELLES_FICHE = {
   bat_grappes_max_parallele: 'Haute tension — grappes en parallèle (maxi)',
   ond_bat_nb_entrees: 'Entrées batterie',
   ond_max_parallele: 'Appareils en parallèle (maxi)',
+  ond_bat_i_max_a: 'Courant maxi par entrée batterie (A)',
   // CALX355 — optimiseur / micro-onduleur (SORTIE)
   opt_ac_kw: 'Micro-onduleur — puissance AC nominale (kW)',
   opt_ac_tension_v: 'Micro-onduleur — tension AC de sortie (V)',

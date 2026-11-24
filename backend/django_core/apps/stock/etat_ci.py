@@ -241,4 +241,8 @@ def etat_ci_complet(produit):
                  else _motif_batterie(produit))
         if motif:
             etat = dict(etat, eligible_ci=False, motif_exclusion=motif)
+    if etat['role_ci'] in ('boitier_batterie_ht', 'rack_batterie_ht') and not etat['prix_connu']:
+        # HT24 — boîtier de contrôle et rack d'une grappe haute tension, composés
+        # en LIGNE de l'option « avec batterie » : sans prix, ils la bloquent.
+        etat = dict(etat, eligible_ci=False, motif_exclusion=MOTIF_SANS_PRIX)
     return etat

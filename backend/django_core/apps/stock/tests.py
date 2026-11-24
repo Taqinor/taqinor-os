@@ -792,13 +792,13 @@ class TestSeedCatalogue(TestCase):
         seed(self.company)
         p = Produit.objects.get(company=self.company, sku='BAT-DYN-HV-16')
         self.assertEqual(p.nom, 'Batterie Deye BOS-B Pro haute tension — 16 kWh')
-        self.assertEqual(p.prix_vente, Decimal('40000.00'))   # 48 000 TTC / tranche
+        self.assertEqual(p.prix_vente, Decimal('36400.00'))   # HT24 : achat + 30 % (43 680 TTC)
         self.assertEqual(p.prix_achat, Decimal('28000.00'))   # 33 600 TTC (facture)
         self.assertEqual(p.tva, Decimal('20.00'))
         self.assertEqual(p.categorie.nom, 'Batteries')
         self.assertEqual(p.marque, 'Deye')
         self.assertEqual(p.unite_stock, 'tranche')
-        self.assertIn('rack et control box', p.description.lower())
+        self.assertIn('chiffrés à part (un jeu par grappe)', p.description)
         self.assertIn('BOS-B-Pack16-A3', p.description)
         self.assertIn('10 ans', p.garantie)
         # Un vrai prix de vente → PAS exclu de l'auto-composition par _has_price
@@ -825,7 +825,7 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(
             Produit.objects.filter(company=self.company, sku='BAT-DYN-HV-16').count(), 1)
         bat = Produit.objects.get(company=self.company, sku='BAT-DYN-HV-16')
-        self.assertEqual(bat.prix_vente, Decimal('40000.00'))
+        self.assertEqual(bat.prix_vente, Decimal('36400.00'))
 
     def test_pvg4_batterie_dyness_hv_never_auto_selected_low_voltage(self):
         """Garde fondateur (2026-08-18) : la batterie HAUTE TENSION ne doit

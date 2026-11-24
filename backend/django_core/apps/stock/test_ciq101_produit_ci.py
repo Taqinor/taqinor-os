@@ -589,6 +589,46 @@ class TestHT24EtatHauteTension(SimpleTestCase):
                                              **fiche))
         self.assertEqual(sans_prix['motif_exclusion'], 'prix de vente non saisi')
 
+    def test_boitier_de_controle_haute_tension(self):
+        # HT24 — le boîtier déclaré par son RÔLE C&I : sans prix, à compléter.
+        from types import SimpleNamespace
+
+        from apps.stock.etat_ci import etat_ci_complet
+
+        def boitier(prix):
+            return SimpleNamespace(pk=1, nom='Boîtier de contrôle haute tension Deye BOS-B-PDU-2-A',
+                                   prix_vente=Decimal(prix), role_ci='boitier_batterie_ht', role_devis='',
+                                   categorie=None, description='', fiche_technique=None,
+                                   prix_fixe_ht=None, prix_par_panneau_ht=None)
+        sans_prix = etat_ci_complet(boitier(0))
+        self.assertEqual((sans_prix['libelle'], sans_prix['motif_exclusion']),
+                         ('Boîtier de contrôle batterie haute tension', 'prix de vente non saisi'))
+        self.assertTrue(etat_ci_complet(boitier(11000))['eligible_ci'])
+        rack = boitier(0)
+        rack.role_ci = 'rack_batterie_ht'
+        self.assertEqual(etat_ci_complet(rack)['motif_exclusion'], 'prix de vente non saisi')
+
+    def test_migration_0189_prix_batterie_et_adoption_80kw(self):
+        # HT24 — logique pure de la migration (sans base) : gardes exactes.
+        m = import_module('apps.stock.migrations.0189_hybride_80kw_et_prix_batterie_ht')
+        ancienne = 'Module…\nRack et control box inclus dans le prix de la tranche\nC3'
+        champs = m.batterie_corrigee(Decimal('40000.00'), ancienne)
+        self.assertEqual(champs['prix_vente'], Decimal('36400.00'))
+        self.assertIn('chiffrés à part (un jeu par grappe)\nC3', champs['description'])
+        self.assertEqual(m.batterie_corrigee(Decimal('41000.00'), 'autre'), {})   # prix retouché : intact
+        retour = m.batterie_corrigee(champs['prix_vente'], champs['description'], sens=-1)
+        self.assertEqual((retour['prix_vente'], retour['description']), (Decimal('40000.00'), ancienne))
+        self.assertTrue(m.a_adopter({'DEYE SUN-80K-SG02HP3-EU-EM6', 'X'}))
+        self.assertFalse(m.a_adopter({'DEYE SUN-80K-SG02HP3-EU-EM6', 'OND-H-DEY-80T'}))   # jamais fusion
+        self.assertFalse(m.a_adopter(set()))                                             # base neuve
+        saisie = {'ond_dc_max_kwc': Decimal('140.00'), 'ond_n_mppt': 6, 'ond_bat_nb_entrees': None}
+        completee = m.fiche_completee(saisie)
+        self.assertEqual(completee['ond_dc_max_kwc'], Decimal('160.00'))
+        self.assertEqual((completee['ond_bat_nb_entrees'], completee['ond_bat_i_max_a'],
+                          completee['ond_max_parallele']), (2, Decimal('80.0'), 10))
+        self.assertNotIn('ond_n_mppt', completee)                                    # saisi : intact
+        self.assertNotIn('ond_dc_max_kwc', m.fiche_completee({'ond_dc_max_kwc': Decimal('150.00')}))
+
     def test_bosb_fiche_seedee_eligible(self):
         from apps.stock.management.commands.seed_catalogue import FICHES_TECHNIQUES
         fiche = {k: v for k, v in FICHES_TECHNIQUES['BAT-DYN-HV-16'].items()

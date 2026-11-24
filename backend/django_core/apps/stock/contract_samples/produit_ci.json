@@ -58,7 +58,9 @@
     "om_ci": "Exploitation et maintenance (O&M)",
     "batterie_ci": "Batterie C&I",
     "onduleur_string_mono": "Onduleur string monophasé",
-    "cable_dc": "Câble DC"
+    "cable_dc": "Câble DC",
+    "boitier_batterie_ht": "Boîtier de contrôle batterie haute tension",
+    "rack_batterie_ht": "Rack et câblage de batterie haute tension"
   },
   "libelles_types_pose": {"toiture_inclinee": "Toiture inclinée", "bac_acier": "Bac acier", "toit_plat_leste": "Toit plat — lesté", "toit_plat_fixe": "Toit plat — fixé", "ombriere": "Ombrière", "sol": "Au sol"},
   "fiches": {

@@ -44,7 +44,8 @@ def specs_for_produit(produit):
         isc_max_mppt_a, bat_max_charge_kw, bat_max_decharge_kw,
         entrees_par_mppt, chaines_max_par_mppt, s_max_kva, dc_max_kwc,
         rendement_par_charge, rendement_max_pct, rendement_cec_pct,
-        conso_nuit_w, bat_nb_entrees, max_parallele}`` (CAL115 pour les quatre du milieu ; les quatre
+        conso_nuit_w, bat_nb_entrees, max_parallele,
+        bat_i_max_entree_a}`` (CAL115 pour les quatre du milieu ; les quatre
         dernières, CALX60 — ``rendement_par_charge`` porte le champ
         ``ond_courbe_rendement``) ;
       * ``batterie`` → ``{kwh_nominal, kwh_usable, dod_pct, v_nominal,
@@ -201,6 +202,7 @@ def specs_for_produit(produit):
             # batterie et appareils en parallèle publiés (vide = non publié).
             ('bat_nb_entrees', getattr(fiche, 'ond_bat_nb_entrees', None)),
             ('max_parallele', getattr(fiche, 'ond_max_parallele', None)),
+            ('bat_i_max_entree_a', getattr(fiche, 'ond_bat_i_max_a', None)),
         ):
             _put(out, key, value)
     elif fiche.type_fiche == 'batterie':

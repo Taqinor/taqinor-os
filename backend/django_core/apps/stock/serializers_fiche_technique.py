@@ -217,6 +217,7 @@ class FicheTechniqueSerializer(IdInconnu404Mixin,
             # port batterie de l'hybride (vide = non publié).
             'bat_serie_min_modules', 'bat_serie_max_modules', 'bat_v_module',
             'bat_grappes_max_parallele', 'ond_bat_nb_entrees', 'ond_max_parallele',
+            'ond_bat_i_max_a',
             'opt_ac_kw', 'opt_ac_tension_v', 'opt_ac_i_max_a',
             'opt_ac_unites_max_par_branche', 'opt_v_out_nominal_v',
             'opt_v_out_min', 'opt_v_out_max', 'opt_i_out_max_a',

@@ -635,8 +635,9 @@ SKU_POMPAGE_PRIX_A_RENSEIGNER = [
 # migration stock 0126 pour les bases existantes.
 
 # ── Batterie HAUTE TENSION — 16 kWh (fondateur 18/08, IDENTITÉ 21/08) ──────
-# Vendue PAR TRANCHE de 16 kWh, 3 000 DH/kWh (prix fondateur) → 48 000 DH TTC
-# la tranche ; rack et control box inclus dans le prix.
+# Vendue PAR TRANCHE de 16 kWh. Jusqu'au 24/11/2026 : 3 000 DH/kWh → 48 000 DH
+# TTC la tranche, rack et control box inclus ; depuis (HT24) : achat + 30 %,
+# boîtier de contrôle et rack chiffrés à part (``_articles_ht``).
 # PVLV (21/08/2026) — le produit N'EST PAS une Dyness : la facture
 # fournisseur Solarex S26/001708 (27/07/2026) le nomme « 16kWh BOS-B-Pro
 # Battery Pack-deye » = module officiel **Deye BOS-B-Pack16-A3** (système
@@ -659,14 +660,20 @@ SKU_POMPAGE_PRIX_A_RENSEIGNER = [
 # apps/ventes/services.py (mot-clé « haute tension » exclu du vivier
 # batterie, cf. ``_is_battery_basse_tension`` et le filtre dans
 # ``composition_residentielle``) : le mot-clé RESTE dans le nom ci-dessous.
+# HT24 (fondateur, 24/11/2026 : « add 30% on top and add the right prices ») —
+# vente = achat HT du devis Solarex Maroc n° S26/001708 du 27/07/2026 + 30 % :
+# 36 400 HT = 43 680 TTC (48 000 TTC avant : le pack AVEC sa part du boîtier et
+# du rack, désormais articles à part — ``_articles_ht``, migration stock 0189).
 # (nom, sku, sell_ttc, qte, seuil)
 BATTERIE_DEYE_HV = [
-    ('Batterie Deye BOS-B Pro haute tension — 16 kWh', 'BAT-DYN-HV-16', 48000, 500, 5),
+    ('Batterie Deye BOS-B Pro haute tension — 16 kWh', 'BAT-DYN-HV-16', 43680, 500, 5),
 ]
 
 
 from apps.stock.management.commands._articles_ci import (  # noqa: E402
     ARTICLES_CI_PRIX_A_RENSEIGNER)
+from apps.stock.management.commands._articles_ht import (  # noqa: E402
+    ACCESSOIRES_GRAPPE_HT, HYBRIDES_DEYE_HT, semer_haute_tension)
 
 #: CIQ103 — rôle C&I des articles DÉJÀ seedés (``lim_mode`` laissé vide : la
 #: fiche du Smart Meter ne publie pas son mode de raccordement).
@@ -692,7 +699,7 @@ SKUS_SEMES = frozenset(
         *CATALOGUE, *POMPAGE, *VEICHI, *OSP,
         *CABLES_PROTECTIONS_VIDES, *OPTIONS_POMPAGE, *KIT_FIXATION_PRIX_A_RENSEIGNER,
         *SKU_POMPAGE_PRIX_A_RENSEIGNER, *BATTERIE_DEYE_HV,
-        *ARTICLES_CI_PRIX_A_RENSEIGNER,
+        *ARTICLES_CI_PRIX_A_RENSEIGNER, *ACCESSOIRES_GRAPPE_HT, *HYBRIDES_DEYE_HT,
     )
 )
 
@@ -788,6 +795,21 @@ FICHES = {
                         'Monitoring Wi-Fi via Solarman Smart / Deye Cloud'),
     } for sku in ('OND-H-DEY-5M', 'OND-H-DEY-10M', 'OND-H-DEY-10T',
                   'OND-H-DEY-15T', 'OND-H-DEY-20T')},
+    # HT24 (fondateur 24/11/2026) — l'hybride HAUTE tension 80 kW, garantie
+    # telle que le fondateur l'a saisie (« Garantie 5 ans », 60 mois). Description
+    # sans chiffre porté par un champ (PVFCH) : fenêtre batterie, parallèle et
+    # courant vivent dans la fiche. Source : datasheet Deye SUN-60/70/75/80K-
+    # SG02HP3-EU-EM6 (fr, 2025-10-30), p. 2 « Interface de communication
+    # RS485/RS232/CAN », « Mode de surveillance GPRS/WIFI/Bluetooth/4G/LAN (en
+    # option) ».
+    'OND-H-DEY-80T': {
+        'marque': 'Deye',
+        'garantie': 'Garantie 5 ans',
+        'garantie_mois': 60,
+        'description': ('Onduleur hybride Deye SUN-80K-SG02HP3-EU-EM6\n'
+                        'Compatible batteries lithium haute tension (BMS CAN/RS485)\n'
+                        'Supervision GPRS / Wi-Fi / Bluetooth / 4G / LAN (en option)'),
+    },
     # PVLV2 (21/08/2026) — les fiches commerciales des SKU doublons
     # OND-DEY-15K-LV/20K-LV sont retirées : produits ARCHIVÉS (cf.
     # ``ARTEFACTS_ONDULEUR_SKUS``) — les 15/20 kW réels (OND-H-DEY-15T/20T,
@@ -921,8 +943,34 @@ FICHES = {
         'description': ('Batterie Deye BOS-B Pro haute tension, vendue par tranche de 16 kWh\n'
                         'Module BOS-B-Pack16-A3 : LiFePO4, 51,2 V, 314 Ah — empilage série '
                         'de 5 à 15 modules derrière control box BOS-B-PDU-2-A\n'
-                        'Rack et control box inclus dans le prix de la tranche\n'
+                        'Rack, câbles et boîtier de contrôle haute tension chiffrés à part '
+                        '(un jeu par grappe)\n'
                         'Niveau anticorrosion C3 : installation à plus de 5 km du littoral (manuel Deye)'),
+    },
+    # HT24 (fondateur 24/11/2026) — boîtier de contrôle haute tension Deye
+    # BOS-B-PDU-2-A. Source : fiche Deye « C&I ESS SOLUTION BOS-B Pro-A3 »
+    # (6 p., sans date imprimée ; publiée le 2026-06-05,
+    # https://au.deyeinverter.com/deyeinverter/2026/06/05/BOS-BPro-A3Datasheet.pdf),
+    # p. 2, tableau « BOS-B-PDU-2-A » : « Operating Voltage 200~1000Vdc »,
+    # « Nominal Charge/Discharge Current 180A », « AC Input Rating
+    # 220±10%VAC/2A », « Details 788.6×526×167.2(W×D×H),32kg ». Aucune
+    # garantie publiée pour ce boîtier : champ laissé vide.
+    # HT24 — rack et câblage de puissance d'une grappe : ligne « Racks, Power
+    # Cables Etc. » du devis Solarex Maroc n° S26/001708 du 27/07/2026, chiffrée
+    # pour une grappe de 6 modules (aucune fiche constructeur : description
+    # sans chiffre).
+    'DEY-BOSB-RACK': {
+        'marque': 'Deye',
+        'description': ('Rack et câblage de puissance d\'une grappe de batterie Deye BOS-B Pro\n'
+                        'Un jeu par grappe de modules en série'),
+    },
+    'DEY-BOSB-PDU-2-A': {
+        'marque': 'Deye',
+        'description': ('Boîtier de contrôle haute tension de la batterie Deye BOS-B Pro, un par grappe\n'
+                        'Tension de fonctionnement 200 à 1000 Vdc, courant nominal de charge et '
+                        'décharge 180 A\n'
+                        'Alimentation auxiliaire 220 V AC ±10 %, 2 A\n'
+                        'Dimensions 788,6 × 526 × 167,2 mm, 32 kg'),
     },
     # D-BAT-2710 (27/10/2026) — datasheet officielle Dyness PowerBrick SC
     # (20260520) : 16,08 kWh / 51,2 V / 314 Ah, « Usable Battery Energy
@@ -1228,6 +1276,8 @@ MODELE_SUPPOSE_PVG4 = {
     # deye.com ; le suffixe -A3 exact reste une identification recherche,
     # d'où « supposé » et pas « confirmé fondateur ».
     'BAT-DYN-HV-16': 'Deye BOS-B-Pack16-A3 (BOS-B Pro-A3)',  # deye.com BOS-B Pro-A3 + facture Solarex 27/07/2026
+    # HT24 — l'article du fondateur portait ce modèle pour NOM (24/11/2026).
+    'OND-H-DEY-80T': 'Deye SUN-80K-SG02HP3-EU-EM6',
 }
 # PV85 — SKU dont le modèle constructeur n'est PLUS une supposition : le
 # fondateur a tranché. Leur addendum de description dit « Modèle confirmé
@@ -1236,7 +1286,8 @@ MODELE_SUPPOSE_PVG4 = {
 # PVLV2 (21/08/2026) — les 15/20 kW CONFIRMÉS par le fondateur : basse
 # tension SG05LP3 (« i only know 15 and 20kw on LV »), famille dont il a
 # lui-même donné le modèle le 18/08.
-MODELES_CONFIRMES_FONDATEUR = ('OND-H-DEY-10T', 'OND-H-DEY-15T', 'OND-H-DEY-20T')
+MODELES_CONFIRMES_FONDATEUR = ('OND-H-DEY-10T', 'OND-H-DEY-15T', 'OND-H-DEY-20T',
+                               'OND-H-DEY-80T')  # HT24 : modèle saisi par le fondateur
 
 # Ajoute la mention du modèle (supposé ou confirmé) à la description
 # commerciale existante (SKU déjà présent dans FICHES ci-dessus) — additif,
@@ -1307,6 +1358,9 @@ PLAGE_BATTERIE_ONDULEUR = {
     # accrochent, exactement le parc réel du fondateur.
     'OND-H-DEY-15T': (40, 60),
     'OND-H-DEY-20T': (40, 60),
+    # HT24 — datasheet SUN-60/70/75/80K-SG02HP3-EU-EM6 (fr, 2025-10-30), p. 2
+    # « Plage de tension de la batterie (V) 160-1000 ».
+    'OND-H-DEY-80T': (160, 1000),
 }
 
 for _sku_bat, _plage_bat in PLAGE_BATTERIE_ONDULEUR.items():
@@ -1747,6 +1801,46 @@ FICHES_TECHNIQUES = {
         # 40 000 W.
         'ond_dc_max_kwc': Decimal('40.0'),
         'ond_chaines_max_par_mppt': 2,
+    },
+    # ── HT24 (fondateur 24/11/2026) — Deye SUN-80K-SG02HP3-EU-EM6, colonne
+    # SUN-80K. Sources : (D) datasheet « SUN-60/70/75/80K-SG02HP3-EU-EM6 »
+    # (fr, 2025-10-30, https://fr.deyeinverter.com/deyeinverter/2025/10/30/
+    # 【B】Datasheet_SUN-60-80K-SG02HP3-EU-EM6_20251030_fr.pdf) ; (B) brochure
+    # « 60-80kW C&I Hybrid Inverter Solution » (imprimée en août 2026,
+    # https://www.deyeinverter.com/deyeinverter/2026/11/04/80kWCIESSSolution.pdf).
+    'OND-H-DEY-80T': {
+        'type_fiche': 'onduleur',
+        # (D) p. 2 « Nombre de trackers MPPT / Nombre de chaînes par tracker
+        # MPPT 6/2+2+2+2+2+2 ».
+        'ond_n_mppt': 6, 'ond_chaines_max_par_mppt': 2,
+        # (D) p. 2 « Plage de tension MPPT (V) 150-850 », « Tension d'entrée
+        # PV max. (V) 1000 », « Tension de démarrage (V) 180 ».
+        'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('850.0'),
+        'ond_v_max_abs': Decimal('1000.0'), 'ond_v_demarrage_v': Decimal('180.0'),
+        # (D) p. 2 « Courant d'entrée PV max. en fonctionnement (A)
+        # 36+36+36+36+36+36 », « Courant de court-circuit d'entrée max. (A)
+        # 54+54+54+54+54+54 » : 36 A / 54 A par MPPT.
+        'ond_i_max_mppt_a': Decimal('36.0'), 'ond_isc_max_mppt_a': Decimal('54.0'),
+        # (D) p. 2, SUN-80K : « Rated AC Input/Output Active Power (W) 80000 »,
+        # « Puissance apparente max. … (VA) 88000 » ; « Forme de connexion au
+        # réseau 3L+N+PE ».
+        'ond_ac_kw': Decimal('80'), 'ond_s_max_kva': Decimal('88.00'), 'ond_phases': 3,
+        # (D) p. 2 « Rendement max 98.7% », « Rendement Euro 98.1% ».
+        'ond_rendement_max_pct': Decimal('98.7'), 'ond_rendement_euro_pct': Decimal('98.1'),
+        # Fondateur 24/11/2026 (« met 160 kw ») — la MÊME ligne que les SG05LP3
+        # ci-dessus : (D) p. 2 « Puissance d'accès PV max. (W) », SUN-80K :
+        # 160 000 W (« Puissance d'entrée PV max. (W) » 128 000 n'est PAS cette
+        # ligne).
+        'ond_dc_max_kwc': Decimal('160.0'),
+        # (B) p. 1 « 6 independent MPPTs with 2 strings per MPPT ».
+        'ond_mppt_independants': True,
+        # (D) p. 2 « Nombre d'entrées de batterie 2 », « Courant de charge max.
+        # (A) 80+80 » (décharge « 80+80 » aussi) : 80 A PAR entrée ; aucune
+        # puissance en kW publiée (``ond_bat_max_*_kw`` laissés vides).
+        'ond_bat_nb_entrees': 2, 'ond_bat_i_max_a': Decimal('80.0'),
+        # (D) p. 1 « Jusqu'à 10 unités en parallèle pour une utilisation en
+        # réseau et hors réseau » ; (B) p. 1 « max. 10 units in parallel ».
+        'ond_max_parallele': 10,
     },
     # ── PVG4 — Batteries Dyness ──
     'BAT-DEY-5': {
@@ -2361,42 +2455,13 @@ class Command(BaseCommand):
         # leurs prix fondateur (le transfert sur bases existantes est
         # l'affaire de la migration stock 0126, pas du seeder).
 
-        # ── Batterie Deye BOS-B Pro haute tension — 16 kWh : prix RÉELS ──
-        # (3 000 DH/kWh, fondateur). PVLV (21/08/2026) — prix ACHAT désormais
-        # COMMUNIQUÉ : facture fournisseur Solarex Maroc S26/001708 du
-        # 27/07/2026 — « 16kWh BOS-B-Pro Battery Pack » à 28 000 DH HT le pack
-        # (33 600 TTC). Le pack SEUL : la control box HV (11 200 HT) et les
-        # racks/câbles (6 000 HT) de la même facture couvrent une pile de 6
-        # packs et ne sont PAS amortis ici (l'amortissement dépend de la
-        # taille de pile — au fondateur d'ajuster s'il le souhaite).
-        for nom, sku, sell_ttc, qte, seuil in BATTERIE_DEYE_HV:
-            if (Produit.objects.filter(company=company, sku=sku).exists()
-                    or Produit.objects.filter(
-                        company=company, nom__iexact=nom,
-                        is_archived=False).exists()):
-                skipped.append(nom)
-                continue
-            produit = Produit.objects.create(
-                company=company, nom=nom, sku=sku,
-                categorie=get_categorie(classify_categorie(nom)),
-                # PVLV — 28 000 HT le pack 16 kWh (facture Solarex S26/001708).
-                prix_achat=ht(Decimal('33600')),
-                prix_vente=ht(sell_ttc),
-                quantite_stock=qte, seuil_alerte=seuil,
-                tva=Decimal('20.00'),
-                unite_stock='tranche',
-            )
-            record_stock_movement(
-                company=company, produit=produit,
-                type_mouvement=MouvementStock.TypeMouvement.ENTREE,
-                quantite=qte, quantite_avant=0, quantite_apres=qte,
-                reference='SEED-CATALOGUE',
-                note='Stock initial (batterie Dyness haute tension — 16 kWh)',
-                # Le produit est créé DÉJÀ à sa quantité : on trace
-                # l'entrée sans la ré-écrire (AUD223).
-                created_by=None, save_produit=False,
-            )
-            created.append(nom)
+        # ── Batterie Deye BOS-B Pro haute tension et accessoires de grappe
+        # (boîtier de contrôle, rack et câblage) : prix RÉELS (HT24,
+        # ``_articles_ht`` — devis Solarex Maroc n° S26/001708, + 30 %).
+        semer_haute_tension(
+            company, BATTERIE_DEYE_HV, Produit=Produit, MouvementStock=MouvementStock,
+            record_stock_movement=record_stock_movement, ht=ht, created=created, skipped=skipped,
+            categorie_de=lambda nom: get_categorie(classify_categorie(nom)))
 
         # ── Archivage des coffrets variateurs PLACEHOLDER (prix estimés) ──
         # Exception ponctuelle à la règle "additif uniquement", explicitement

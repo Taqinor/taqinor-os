@@ -307,7 +307,7 @@ test('champsFichePourType ne garde que les champs du type, en nombres', () => {
     // ACAL663 — champs électriques : vides → null, MPPT indépendants non renseigné → null.
     ond_pnom_reduite_debut_c: null, ond_pnom_pente_pct_c: null, ond_mppt_independants: null,
     // HT24 — port batterie haute tension : vides → null.
-    ond_bat_nb_entrees: null, ond_max_parallele: null,
+    ond_bat_nb_entrees: null, ond_max_parallele: null, ond_bat_i_max_a: null,
     // Champ booléen du bloc onduleur : converti en `false`, jamais `null`.
     ond_bat_aucune: false,
     ond_courbe_rendement: null,
@@ -384,7 +384,7 @@ test('une valeur non numérique devient null plutôt que NaN', () => {
 // Le visualiseur produit (ProduitDetail) lit ces fonctions ; elles garantissent
 // qu'un champ VIDE se voit comme un trou, jamais comme une valeur.
 
-test('groupeFicheAffichage(onduleur) : les 20 variables, dans l’ordre du formulaire', () => {
+test('groupeFicheAffichage(onduleur) : les 21 variables, dans l’ordre du formulaire', () => {
   const groupe = groupeFicheAffichage({ type_fiche: 'onduleur', ond_n_mppt: 2 })
   assert.equal(groupe.type, 'onduleur')
   assert.equal(groupe.titre, 'Onduleur')
@@ -397,7 +397,7 @@ test('groupeFicheAffichage(onduleur) : les 20 variables, dans l’ordre du formu
     'ond_rendement_max_pct', 'ond_rendement_cec_pct', 'ond_dc_max_kwc',
     // ACAL663 — champs électriques (le choix MPPT après les numériques).
     'ond_pnom_reduite_debut_c', 'ond_pnom_pente_pct_c',
-    'ond_bat_nb_entrees', 'ond_max_parallele', // HT24
+    'ond_bat_nb_entrees', 'ond_max_parallele', 'ond_bat_i_max_a', // HT24
     'ond_mppt_independants',
     'ond_courbe_rendement',
   ])
@@ -412,7 +412,7 @@ test('groupeFicheAffichage(onduleur) : les 20 variables, dans l’ordre du formu
 test('un champ non renseigné affiche « à renseigner », JAMAIS un défaut ni un zéro', () => {
   const groupe = groupeFicheAffichage({ type_fiche: 'onduleur', ond_n_mppt: 2 })
   const vides = groupe.lignes.filter((l) => l.absente)
-  assert.equal(vides.length, 20)
+  assert.equal(vides.length, 21)
   for (const ligne of vides) assert.equal(ligne.valeur, VALEUR_ABSENTE)
   // La règle « never invent numbers » à l'écran : aucune valeur de repli.
   assert.equal(valeurFicheAffichee('ond_v_max_abs', { type_fiche: 'onduleur' }),

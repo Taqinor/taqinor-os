@@ -679,6 +679,14 @@ class FicheTechnique(models.Model):
         null=True, blank=True, validators=[MinValueValidator(1)],
         help_text='Onduleur hybride — nombre maximum d’appareils en '
                   'parallèle publié par la fiche. Vide = non publié.')
+    # HT24 — le COURANT maximal par entrée batterie (« 80+80 » A sur le Deye
+    # SUN-80K-SG02HP3) : la fiche ne publie aucune puissance en kW ; la borne du
+    # port se DÉRIVE de ce courant × la tension nominale de la grappe.
+    ond_bat_i_max_a = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True,
+        validators=[MinValueValidator(Decimal('0.1'))],
+        help_text='Onduleur hybride — courant maximal de charge/décharge '
+                  'PAR ENTRÉE batterie (A). Vide = non publié.')
 
     # ── CAL116 — Optimiseur de puissance / micro-onduleur
     # (``type_fiche='optimiseur'``). ──
