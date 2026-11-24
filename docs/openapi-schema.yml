@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5314, operations: 8168, components: 4093}
+counts: {paths: 5314, operations: 8168, components: 4094}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -12936,6 +12936,7 @@ components:
 - RecurrenceIntervention
 - RecurrenceInterventionRequest
 - RecurrenceMensuelleAnnuelleEnum
+- RefusActe
 - RefusDemandeAchatRequeteRequest
 - RefusTransfertRequeteRequest
 - Regime8221Enum

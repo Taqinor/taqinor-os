@@ -6,6 +6,13 @@ chantier hors portée, répond 404. Lecture : ``LectureChantiersOuVentes`` ;
 écriture : + ``IsResponsableOrAdmin`` + le code de grille ``installation_gerer`` ;
 modèle de la société : Directeur.
 Refus servis ``{detail, code}`` (409 refus d'état, 400 corps invalide).
+
+Garde de classe (``test_adoc_garde_classe_endpoints``) : l'acte est résolu
+AVANT les permissions et avant le choix de la méthode — un id invisible
+(autre société, hors portée de rôle) répond 404 même sur une route d'écriture
+sondée en GET ou refusée au rôle ; un chantier annulé répond 409
+``chantier_annule`` à tout verbe (ses actes sont annulés : le dossier ne se lit
+ni ne s'écrit, ``conception.md`` § 5).
 """
 from django.http import Http404, HttpResponse
 from drf_spectacular.types import OpenApiTypes
@@ -17,13 +24,14 @@ from rest_framework.views import APIView
 
 from apps.roles.permissions import DroitDeLaGrille
 from authentication.permissions import IsResponsableOrAdmin
+from core.conflit_etat import ConflitEtat
 
 from .contrats import selectors, services
 from .contrats import types as T
 from .serializers_contrats import (
     CorpsMarquerSigneSerializer, CorpsPatchSerializer, CorpsSignerSerializer,
     DetailActeSerializer, DossierContractuelSerializer, ErreurActeSerializer,
-    ModeleActeReponseSerializer,
+    ModeleActeReponseSerializer, RefusActeSerializer,
 )
 from .views import LectureChantiersOuVentes, _get_chantier_or_404
 
@@ -31,8 +39,12 @@ PARAM_LANGUE = OpenApiParameter(
     'langue', OpenApiTypes.STR, required=False, enum=list(T.LANGUES),
     description="Langue du contenu servi : fr (défaut) ou ar (traduction "
                 "arabe).")
-_ERREURS = {400: ErreurActeSerializer, 404: ErreurActeSerializer,
-            409: ErreurActeSerializer}
+#: Erreurs servies (401, 403, 404, 429 : ajoutés par le crochet ``ErreurApi``
+#: de ``core.openapi_erreurs`` — enveloppe ``{detail, error}``, sans ``code``,
+#: d'où aucun 404 déclaré ici). Le 409 « chantier annulé » est servi à TOUT
+#: verbe, lectures comprises.
+_ERR_409 = {409: RefusActeSerializer}
+_ERREURS = {400: ErreurActeSerializer, **_ERR_409}
 #: Code de la grille des écritures d'un acte : celui des chantiers (un acte
 #: est un document du chantier) — décocher « Modifier » dans l'éditeur de
 #: rôles retire le geste.
@@ -66,6 +78,12 @@ def _langue(request):
     return langue if langue in T.LANGUES else None
 
 
+def _chantier_annule_409():
+    return ConflitEtat({'detail': 'Chantier annulé',
+                        'code': T.CODE_CHANTIER_ANNULE},
+                       code=T.CODE_CHANTIER_ANNULE)
+
+
 def _acte_ou_404(request, pk):
     acte = selectors.acte_de_la_societe(
         getattr(request.user, 'company', None), pk)
@@ -73,6 +91,28 @@ def _acte_ou_404(request, pk):
         raise Http404
     acte.chantier = _get_chantier_or_404(request, acte.chantier_id)
     return acte
+
+
+class _ActePortee:
+    """Résout l'acte (société + portée de rôle de son chantier) AVANT les
+    permissions de la vue : un id que l'utilisateur ne peut pas voir répond
+    404 avant tout 403 ou 405 ; un chantier annulé répond 409 à tout verbe,
+    dès que l'utilisateur a le droit de LIRE les chantiers (il voit alors la
+    fiche : rien de nouveau n'est révélé) et avant les droits d'écriture ou de
+    Directeur. Sans cela une route d'écriture sondée en GET répondait 405, une
+    route réservée au Directeur 403."""
+    acte = None
+
+    def check_permissions(self, request):
+        user = request.user
+        if user and user.is_authenticated:  # sinon : 401 par les permissions
+            self.acte = _acte_ou_404(request, self.kwargs['pk'])
+            if self.acte.chantier.annule:
+                if not LectureChantiersOuVentes().has_permission(
+                        request, self):
+                    self.permission_denied(request)
+                raise _chantier_annule_409()
+        super().check_permissions(request)
 
 
 def _erreur(exc):
@@ -126,20 +166,21 @@ class DossierContractuelView(APIView):
     Prépare le dossier s'il manque (idempotent)."""
     permission_classes = [LectureChantiersOuVentes]
 
-    @extend_schema(responses={200: DossierContractuelSerializer,
-                              404: ErreurActeSerializer})
+    @extend_schema(responses={200: DossierContractuelSerializer, **_ERR_409})
     def get(self, request, pk):
         chantier = _get_chantier_or_404(request, pk)
+        if chantier.annule:
+            raise _chantier_annule_409()
         return Response(selectors.dossier_du_chantier(
             chantier, request.user, droits=_droits(request)))
 
 
-class _ActeVue(APIView):
+class _ActeVue(_ActePortee, APIView):
     permission_classes = [LectureChantiersOuVentes, IsResponsableOrAdmin,
                           DroitDeLaGrille(CODE_ECRITURE)]
 
 
-class ActeDetailView(APIView):
+class ActeDetailView(_ActePortee, APIView):
     """Détail d'un acte (résumé + contenu) ; PATCH = personnaliser un
     brouillon."""
 
@@ -156,7 +197,7 @@ class ActeDetailView(APIView):
         if langue is None:
             return _refus(T.CODE_CONTENU_INVALIDE,
                           'Langue inconnue : fr ou ar attendu.')
-        acte = _acte_ou_404(request, pk)
+        acte = self.acte
         return Response(selectors.detail_acte(acte, langue,
                                               droits=_droits(request)))
 
@@ -166,7 +207,7 @@ class ActeDetailView(APIView):
         corps = CorpsPatchSerializer(data=request.data)
         if not corps.is_valid():
             return _corps_invalide(corps)
-        acte = _acte_ou_404(request, pk)
+        acte = self.acte
         langue = corps.validated_data['langue']
         try:
             acte = services.modifier(acte, corps.validated_data['surcharges'],
@@ -176,7 +217,7 @@ class ActeDetailView(APIView):
         return _detail(acte, langue, request=request)
 
 
-class ActePdfView(APIView):
+class ActePdfView(_ActePortee, APIView):
     """Le PDF d'un acte : vivant pour un brouillon, figé ensuite."""
     permission_classes = [LectureChantiersOuVentes]
 
@@ -188,7 +229,7 @@ class ActePdfView(APIView):
         if langue is None:
             return _refus(T.CODE_CONTENU_INVALIDE,
                           'Langue inconnue : fr ou ar attendu.')
-        acte = _acte_ou_404(request, pk)
+        acte = self.acte
         pdf = services.pdf_de_l_acte(acte, langue)
         nom = (acte.reference or f'acte-{acte.pk}') + (
             '-ar' if langue == 'ar' else '')
@@ -203,7 +244,7 @@ class ActeEmettreView(_ActeVue):
     @extend_schema(request=None,
                    responses={200: DetailActeSerializer, **_ERREURS})
     def post(self, request, pk):
-        acte = _acte_ou_404(request, pk)
+        acte = self.acte
         try:
             acte, avertissements = services.emettre(acte, request.user)
         except services.ErreurActe as exc:
@@ -218,7 +259,7 @@ class ActeRouvrirView(_ActeVue):
     @extend_schema(request=None,
                    responses={200: DetailActeSerializer, **_ERREURS})
     def post(self, request, pk):
-        acte = _acte_ou_404(request, pk)
+        acte = self.acte
         try:
             acte = services.rouvrir(acte, request.user)
         except services.ErreurActe as exc:
@@ -244,7 +285,7 @@ class ActeSignerView(_ActeVue):
         corps = CorpsSignerSerializer(data=request.data)
         if not corps.is_valid():
             return _corps_invalide(corps)
-        acte = _acte_ou_404(request, pk)
+        acte = self.acte
         try:
             acte, avertissements = services.signer_sur_place(
                 acte, user=request.user, ip=_ip(request), agent=_agent(request),
@@ -264,7 +305,7 @@ class ActeMarquerSigneView(_ActeVue):
         corps = CorpsMarquerSigneSerializer(data=request.data)
         if not corps.is_valid():
             return _corps_invalide(corps)
-        acte = _acte_ou_404(request, pk)
+        acte = self.acte
         signe_le = corps.validated_data.get('signe_le')
         try:
             acte, avertissements = services.marquer_signe_papier(
@@ -277,14 +318,14 @@ class ActeMarquerSigneView(_ActeVue):
                        request=request)
 
 
-class ActeModeleView(APIView):
+class ActeModeleView(_ActePortee, APIView):
     """Enregistre les sections de texte de l'acte comme modèle de la société
     (Directeur)."""
     permission_classes = [LectureChantiersOuVentes, EstDirecteur]
 
     @extend_schema(request=None,
-                   responses={200: ModeleActeReponseSerializer, **_ERREURS})
+                   responses={200: ModeleActeReponseSerializer, **_ERR_409})
     def post(self, request, pk):
-        acte = _acte_ou_404(request, pk)
+        acte = self.acte
         return Response({'detail': services.enregistrer_modele(
             acte, request.user)})
