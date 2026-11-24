@@ -632,3 +632,83 @@ Non publié par le fabricant : ond_dc_max_kwc.
 
 Aucune fiche publique n'existe pour ces articles génériques ; rien n'est inventé pour eux : Panneau mono 550W (PAN-550M); Panneau mono 450W (PAN-450M); Panneau poly 330W (PAN-330P); Batterie 5 kWh (BAT-5K); Batterie Lithium 5 kWh (BAT-LIT-5); Batterie Gel 2.2 kWh (BAT-GEL-22); Onduleur réseau Huawei 10kW Monophasé (OND-R-HUA-10M); Onduleur réseau Huawei 12kW Monophasé (OND-R-HUA-12M); Onduleur réseau 10kW (OND-10KR); Onduleur hybride 5kW (OND-5KH); Micro-onduleur 800W (OND-800M).
 
+## 5. Appliqué aux fiches de la COPIE le 24/11/2026 (journal de l'application)
+
+184 valeurs remplies (champ vide en production), 22 valeurs corrigées (la fiche de production disait autre chose que le fabricant), 11 valeurs de production gardées en face d'une valeur du fabricant en attente de correction, 37 valeurs sautées (raison écrite), 11 produits sans fabricant.
+
+### 5.1 Corrections — à décider par le fondateur pour la production (dans la copie, c'est la valeur du fabricant qui sert)
+
+| Produit | Champ | Fiche de production | Fabricant |
+|---|---|---|---|
+| Panneau Canadien Solar 715W (pk 128, sku null) | `imp_a` | 18.00 | 17.63 |
+| Panneau Canadien Solar 715W (pk 128, sku null) | `isc_a` | 22.30 | 18.64 |
+| Panneau Canadien Solar 715W (pk 128, sku null) | `bifacial` | False | True |
+| Panneau Canadien Solar 715W (pk 128, sku null) | `rendement_pct` | None | 23.00 |
+| PAN-JK-710 | `bifacial` | False | True |
+| BAT-DEY-5 | `bat_max_modules_par_banc` | 200 | 50 |
+| BAT-DEY-10 | `bat_max_modules_par_banc` | 5 | 10 |
+| Batterie Dyness PowerBrick SC 16 kWh (pk 215, sku null) | `bat_kwh_usable` | 15.27 | 15.28 |
+| Batterie Dyness PowerBrick SC 16 kWh (pk 215, sku null) | `bat_max_charge_kw` | 7.17 | 10.24 |
+| Batterie Dyness PowerBrick SC 16 kWh (pk 215, sku null) | `bat_max_decharge_kw` | 7.17 | 10.24 |
+| SUN-5K-SG05LP3 | `ond_n_mppt` | 1 | 2 |
+| SUN-5K-SG05LP3 | `ond_mppt_v_min` | 150.0 | 200.0 |
+| SUN-5K-SG05LP3 | `ond_mppt_v_max` | 450.0 | 650.0 |
+| SUN-5K-SG05LP3 | `ond_v_max_abs` | 52.0 | 800.0 |
+| SUN-5K-SG05LP3 | `ond_i_max_mppt_a` | 27.0 | 20.0 |
+| SUN-5K-SG05LP3 | `ond_rendement_euro_pct` | 98.0 | 97.0 |
+| OND-H-DEY-10M | `ond_n_mppt` | 2 | 3 |
+| OND-H-DEY-10M | `ond_v_max_abs` | 600.0 | 500.0 |
+| OND-H-DEY-10M | `ond_rendement_euro_pct` | 97.0 | 96.5 |
+| OND-R-HUA-5M | `ond_i_max_mppt_a` | 22.0 | 12.5 |
+| OND-R-HUA-5M | `ond_isc_max_mppt_a` | 22.0 | 18.0 |
+| OND-R-HUA-50T | `ond_n_mppt` | 6 | 4 |
+
+### 5.2 Sauté, et pourquoi (rien n'est choisi en silence)
+
+- PAN-CS-710 — `noct_c` : le fabricant publie le NMOT, pas le NOCT (valeur lue : 41)
+- PAN-CS-710 — `cellules_serie` : conversion impossible (could not convert string to float: '132 [2x (11 x6)]') (valeur lue : 132 [2x (11 x6)])
+- Panneau Canadien Solar 715W (pk 128, sku null) — `noct_c` : le fabricant publie le NMOT, pas le NOCT (valeur lue : 41)
+- Panneau Canadien Solar 715W (pk 128, sku null) — `cellules_serie` : conversion impossible (could not convert string to float: '132 [2x (11 x6)]') (valeur lue : 132 [2x (11 x6)])
+- Panneau Canadien Solar 715W (pk 128, sku null) — `epaisseur_mm_variante_V1.9_EN` : champ absent du modele
+- Panneau Canadien Solar 715W (pk 128, sku null) — `poids_kg_variante_V1.9_EN` : champ absent du modele
+- Panneau Canadien Solar 715W (pk 128, sku null) — `epaisseur_mm_confirmation_V1.9_NA` : champ absent du modele
+- PAN-JK-710 — `cellules_serie` : conversion impossible (could not convert string to float: '132 (66×2)') (valeur lue : 132 (66×2))
+- BAT-DEY-5 — `bat_garantie_annees_Afrique_DL5.0C` : champ absent du modele
+- BAT-DEY-5 — `bat_garantie_annees_Afrique_DL5.0C_V2` : champ absent du modele
+- BAT-DEY-5 — `bat_kwh_usable` : correction fragile selon la recherche (valeur lue : 4.61)
+- Batterie Dyness PowerBrick SC 16 kWh (pk 215, sku null) — `puissance_recommandee_kw` : champ absent du modele
+- Batterie Dyness PowerBrick SC 16 kWh (pk 215, sku null) — `puissance_max_charge_decharge_kw` : champ absent du modele
+- BAT-DYN-HV-16 — `bat_kwh_usable_systeme_5_modules` : champ absent du modele
+- BAT-DYN-HV-16 — `bat_courant_max_a` : champ absent du modele
+- OND-H-DEY-5M — `*` : modele ambigu : Deye SUN-5K-SG05LP1-EU(-SM2) - exact generation unknown
+- OND-H-DEY-10M — `ond_n_mppt` : valeur non scalaire (valeur lue : {'AM3 (240802)': 3, 'AM3-P (20260911)': 3})
+- OND-H-DEY-10M — `ond_mppt_v_min` : valeur non scalaire (valeur lue : {'AM3 (240802)': 150, 'AM3-P (20260911)': 150})
+- OND-H-DEY-10M — `ond_mppt_v_max` : valeur non scalaire (valeur lue : {'AM3 (240802)': 425, 'AM3-P (20260911)': 425})
+- OND-H-DEY-10M — `ond_v_max_abs` : valeur non scalaire (valeur lue : {'AM3 (240802)': 500, 'AM3-P (20260911)': 500})
+- OND-H-DEY-10M — `ond_i_max_mppt_a` : valeur non scalaire (valeur lue : {'AM3 (240802)': 26, 'AM3-P (20260911)': 32})
+- OND-H-DEY-10M — `ond_isc_max_mppt_a` : valeur non scalaire (valeur lue : {'AM3 (240802)': 44, 'AM3-P (20260911)': 60})
+- OND-H-DEY-10M — `ond_ac_kw` : valeur non scalaire (valeur lue : {'AM3 (240802)': 10.0, 'AM3-P (20260911)': 10.0})
+- OND-H-DEY-10M — `ond_phases` : valeur non scalaire (valeur lue : {'AM3 (240802)': 1, 'AM3-P (20260911)': 1})
+- OND-H-DEY-10M — `ond_rendement_euro_pct` : valeur non scalaire (valeur lue : {'AM3 (240802)': 96.5, 'AM3-P (20260911)': 96.5})
+- OND-H-DEY-10M — `ond_dc_max_kwc` : valeur non scalaire (valeur lue : {'AM3 (240802)': {'max_pv_access_power_kwp': 20.0, 'max_pv_input_power_kwp': 15.)
+- OND-H-DEY-10M — `ond_bat_v_min` : valeur non scalaire (valeur lue : {'AM3 (240802)': 40, 'AM3-P (20260911)': 40})
+- OND-H-DEY-10M — `ond_bat_v_max` : valeur non scalaire (valeur lue : {'AM3 (240802)': 60, 'AM3-P (20260911)': 60})
+- OND-OG-DEY-6M — `*` : modele ambigu : Deye SUN-6K-OG01LP1-EU-AM2 (unconfirmed)
+- Deye off grid 6kw — `*` : modele ambigu : Deye SUN-6K-OG01LP1-EU-AM2 (unconfirmed) - archived entry, same name as pk 119
+- OND-R-HUA-10T — `*` : modele ambigu : Huawei SUN2000-10KTL-M1 (two versions: standard / High Current)
+- OND-R-HUA-15T — `ond_i_max_mppt_a` : valeur non scalaire (valeur lue : {'two_strings': 30, 'single_string': 20})
+- OND-R-HUA-20T — `ond_i_max_mppt_a` : valeur non scalaire (valeur lue : {'two_strings': 30, 'single_string': 20})
+- OND-R-HUA-25T — `ond_i_max_mppt_a` : valeur non scalaire (valeur lue : {'two_strings': 30, 'single_string': 20})
+
+### 5.3 Arrondis et conventions
+
+- PAN-CS-710 — `tolerance_pmax_max_pct` = 1.41 : arrondi a 2 decimales (imprime : 1.408)
+- Panneau Canadien Solar 715W (pk 128, sku null) — `tolerance_pmax_max_pct` = 1.40 : arrondi a 2 decimales (imprime : 1.399)
+- BAT-DEY-10 — `bat_kwh_usable` = 9.22 : arrondi a 2 decimales (imprime : 9.216)
+- OND-H-DEY-10T — `ond_dc_max_kwc` = 20.00 : puissance PV d acces (meme convention que les fiches existantes) ; le fabricant imprime aussi : {'max_pv_input_power_kwp': 16.0}
+- SUN-5K-SG05LP3 — `ond_dc_max_kwc` = 10.00 : puissance PV d acces (meme convention que les fiches existantes) ; le fabricant imprime aussi : {'max_pv_input_power_kwp': 8.0}
+- SUN-12K-SG05LP3 — `ond_dc_max_kwc` = 24.00 : puissance PV d acces (meme convention que les fiches existantes) ; le fabricant imprime aussi : {'max_pv_input_power_kwp': 19.2}
+- OND-H-DEY-15T — `ond_dc_max_kwc` = 30.00 : puissance PV d acces (meme convention que les fiches existantes) ; le fabricant imprime aussi : {'max_pv_input_power_kwp': 24.0}
+- OND-H-DEY-20T — `ond_dc_max_kwc` = 40.00 : puissance PV d acces (meme convention que les fiches existantes) ; le fabricant imprime aussi : {'max_pv_input_power_kwp': 32.0}
+- SUN-30K-SG02HP3-EU-BM3 — `ond_dc_max_kwc` = 60.00 : puissance PV d acces (meme convention que les fiches existantes) ; le fabricant imprime aussi : {'max_pv_input_power_kwp': 48.0}
+
