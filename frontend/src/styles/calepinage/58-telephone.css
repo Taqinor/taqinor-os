@@ -547,7 +547,7 @@
 .cal-coque .cal-client-soleil .cal-pan-heure::-moz-range-thumb { width: 20px; height: 20px; background: var(--cal-surface); border: 3px solid var(--cal-action); }
 
 /* ACAL1837 — LA CARTE BLEU NUIT : la production en grand, sa pilule « Estimation », puis les autres chiffres servis. */
-.cal-client-nuit-bloc { display: flex; flex-direction: column; gap: 12px; }
+.cal-client-marine-bloc { display: flex; flex-direction: column; gap: 12px; }
 .cal-client-nuit {
   position: relative;
   box-sizing: border-box;
@@ -566,9 +566,9 @@
   pointer-events: none;
 }
 .cal-client-nuit > * { position: relative; }
-.cal-client-nuit-kwh { display: flex; flex-direction: column; }
-.cal-client-nuit-tete { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.cal-client-nuit-gros { font: 700 2.875rem/1 var(--font-display); letter-spacing: -0.025em; white-space: nowrap; }
+.cal-client-marine-kwh { display: flex; flex-direction: column; }
+.cal-client-marine-tete { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cal-client-marine-gros { font: 700 2.875rem/1 var(--font-display); letter-spacing: -0.025em; white-space: nowrap; }
 .cal-client-pilule {
   display: flex;
   align-items: center;
@@ -582,13 +582,13 @@
   font-weight: 600;
 }
 .cal-client-pilule i { width: 6px; height: 6px; border-radius: 3px; background: var(--cal-action); }
-.cal-client-nuit-unite { margin-top: 6px; font: 500 0.9375rem var(--font-brand); color: var(--cal-bulle-texte); }
-.cal-client-nuit-filet { height: 1px; margin: 12px 0; border: 0; background: color-mix(in srgb, var(--app-tile-glyph) 12%, transparent); }
-.cal-client-nuit-grille { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-.cal-client-nuit-chiffre { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.cal-client-nuit-valeur { font: 700 1.875rem/1 var(--font-display); letter-spacing: -0.02em; white-space: nowrap; }
-.cal-client-nuit-valeur small { font: 500 1rem var(--font-brand); letter-spacing: 0; color: var(--cal-bulle-texte); }
-.cal-client-nuit-libelle { font-size: 0.875rem; line-height: 1.3; color: var(--cal-bulle-texte); }
+.cal-client-marine-unite { margin-top: 6px; font: 500 0.9375rem var(--font-brand); color: var(--cal-bulle-texte); }
+.cal-client-marine-filet { height: 1px; margin: 12px 0; border: 0; background: color-mix(in srgb, var(--app-tile-glyph) 12%, transparent); }
+.cal-client-marine-grille { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.cal-client-marine-chiffre { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cal-client-marine-valeur { font: 700 1.875rem/1 var(--font-display); letter-spacing: -0.02em; white-space: nowrap; }
+.cal-client-marine-valeur small { font: 500 1rem var(--font-brand); letter-spacing: 0; color: var(--cal-bulle-texte); }
+.cal-client-marine-libelle { font-size: 0.875rem; line-height: 1.3; color: var(--cal-bulle-texte); }
 .cal-client-mention { margin: 0; padding: 0 4px; font-size: 0.75rem; line-height: 1.5; color: var(--cal-texte-2); }
 /* H2 — la 3D n'a pas démarré (atelier en échec de chargement) : dit en bas de la scène, le toit enregistré reste. */
 .cal-client-repli-retard {
@@ -624,7 +624,7 @@
   }
   .cal-client-pastille { bottom: 132px; }
   /* La carte héros, à droite : 372 de large, le chiffre à 72 px. */
-  :is(.cal-coque[data-presentation='1'], .cal-tel:not(.cal-tel-releve)) .cal-client-nuit-bloc {
+  :is(.cal-coque[data-presentation='1'], .cal-tel:not(.cal-tel-releve)) .cal-client-marine-bloc {
     position: absolute; right: 28px; top: 196px; width: 372px; z-index: calc(var(--z-base) + 13);
   }
   .cal-client-nuit {
@@ -635,16 +635,16 @@
     backdrop-filter: var(--cal-flou);
     box-shadow: 0 22px 54px color-mix(in srgb, var(--color-encre) 36%, transparent);
   }
-  .cal-client-nuit-tete { display: contents; }
-  .cal-client-nuit-sur { order: 0; font-size: 0.875rem; font-weight: 500; color: var(--cal-bulle-texte); }
-  .cal-client-nuit-gros { order: 1; margin-top: 4px; font-size: 4.5rem; letter-spacing: -0.03em; }
-  .cal-client-nuit-unite { order: 2; margin-top: 6px; font-size: 1.125rem; }
+  .cal-client-marine-tete { display: contents; }
+  .cal-client-marine-sur { order: 0; font-size: 0.875rem; font-weight: 500; color: var(--cal-bulle-texte); }
+  .cal-client-marine-gros { order: 1; margin-top: 4px; font-size: 4.5rem; letter-spacing: -0.03em; }
+  .cal-client-marine-unite { order: 2; margin-top: 6px; font-size: 1.125rem; }
   .cal-client-pilule { order: 3; align-self: flex-start; height: 26px; margin-top: 14px; padding: 0 11px; border-radius: 13px; }
-  .cal-client-nuit-filet { margin: 22px 0; }
-  .cal-client-nuit-grille { gap: 18px; }
-  .cal-client-nuit-valeur { font-size: 2.5rem; }
-  .cal-client-nuit-valeur small { font-size: 1.25rem; }
-  .cal-client-nuit-mentions { display: flex; flex-direction: column; gap: 6px; margin-top: 22px; }
+  .cal-client-marine-filet { margin: 22px 0; }
+  .cal-client-marine-grille { gap: 18px; }
+  .cal-client-marine-valeur { font-size: 2.5rem; }
+  .cal-client-marine-valeur small { font-size: 1.25rem; }
+  .cal-client-marine-mentions { display: flex; flex-direction: column; gap: 6px; margin-top: 22px; }
   .cal-client-nuit .cal-client-mention { padding: 0; font-size: 0.8125rem; line-height: 1.5; color: var(--cal-bulle-texte); }
   /* Pourquoi « Envoyer le lien » est grisé : sous les boutons, entière (la maquette montre un bouton actif, le lien ne se prépare pas ici). */
   :is(.cal-coque[data-presentation='1'], .cal-tel:not(.cal-tel-releve)) .cal-client-raison {

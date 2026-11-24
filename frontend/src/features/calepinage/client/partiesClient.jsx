@@ -114,9 +114,9 @@ function Chiffre({ tuile }) {
   const pourcent = /^(.*\S)\s%$/.exec(tuile.valeur)
   const [nombre, unite] = pourcent ? [pourcent[1], '%'] : [tuile.valeur, null]
   return (
-    <div className="cal-client-nuit-chiffre" data-testid={`client-tuile-${tuile.cle}`}>
-      <span className="cal-client-nuit-valeur">{nombre}{unite && <small>{` ${unite}`}</small>}</span>
-      <span className="cal-client-nuit-libelle">{tuile.libelle}</span>
+    <div className="cal-client-marine-chiffre" data-testid={`client-tuile-${tuile.cle}`}>
+      <span className="cal-client-marine-valeur">{nombre}{unite && <small>{` ${unite}`}</small>}</span>
+      <span className="cal-client-marine-libelle">{tuile.libelle}</span>
     </div>
   )
 }
@@ -132,25 +132,25 @@ export function TuilesClient({ tuiles, ville, bureau = false }) {
   return (
     <>
       {tuiles.length > 0 && (
-        <div className="cal-client-nuit-bloc">
+        <div className="cal-client-marine-bloc">
           <section className="cal-client-nuit" data-testid="client-tuiles" aria-label="Votre installation en trois chiffres">
             {kwh && (
-              <div className="cal-client-nuit-kwh" data-testid="client-tuile-kwh">
-                {bureau && <span className="cal-client-nuit-sur">Votre toit produirait</span>}
-                <div className="cal-client-nuit-tete">
-                  <span className="cal-client-nuit-gros">{kwh.valeur}</span>
+              <div className="cal-client-marine-kwh" data-testid="client-tuile-kwh">
+                {bureau && <span className="cal-client-marine-sur">Votre toit produirait</span>}
+                <div className="cal-client-marine-tete">
+                  <span className="cal-client-marine-gros">{kwh.valeur}</span>
                   <span className="cal-client-pilule"><i aria-hidden="true" />Estimation</span>
                 </div>
-                <span className="cal-client-nuit-unite">{kwh.libelle.split(' · ')[0]}</span>
+                <span className="cal-client-marine-unite">{kwh.libelle.split(' · ')[0]}</span>
               </div>
             )}
-            {kwh && autres.length > 0 && <hr className="cal-client-nuit-filet" />}
+            {kwh && autres.length > 0 && <hr className="cal-client-marine-filet" />}
             {autres.length > 0 && (
-              <div className="cal-client-nuit-grille">
+              <div className="cal-client-marine-grille">
                 {autres.map((t) => <Chiffre key={t.cle} tuile={t} />)}
               </div>
             )}
-            {bureau && <div className="cal-client-nuit-mentions"><Mentions tuiles={tuiles} ville={ville} /></div>}
+            {bureau && <div className="cal-client-marine-mentions"><Mentions tuiles={tuiles} ville={ville} /></div>}
           </section>
           {!bureau && <Mentions tuiles={tuiles} ville={ville} />}
         </div>
