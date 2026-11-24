@@ -1021,6 +1021,11 @@ def _vide(valeur):
     return valeur is None or valeur == ''
 
 
+#: Dates facultatives des sections communes : vidées à l'écran, elles sont
+#: effacées (jamais remplacées par la date du chantier).
+_DATES_FACULTATIVES = ('date', 'date_mise_en_service')
+
+
 def _appliquer_communes(contenu, surcharges):
     """Sections communes aux deux langues (dates, options, signataire,
     livraison, réception, service après-vente) — toujours réglées en
@@ -1029,8 +1034,9 @@ def _appliquer_communes(contenu, surcharges):
     for cle in ('lieu', 'date_document'):
         if not _vide(s.get(cle)):
             contenu[cle] = s[cle]
-    if isinstance(s.get('societe'), dict) and not _vide(
-            s['societe'].get('representant')):
+    # Champs facultatifs : une chaîne vide EFFACE (le défaut ne revient pas).
+    if isinstance(s.get('societe'), dict) and isinstance(
+            s['societe'].get('representant'), str):
         contenu['societe']['representant'] = s['societe']['representant']
     if isinstance(s.get('options'), dict):
         for k, v in s['options'].items():
@@ -1042,9 +1048,13 @@ def _appliquer_communes(contenu, surcharges):
                           ('sav', T.CLES_SAV)):
         if section in contenu and isinstance(s.get(section), dict):
             for k, v in s[section].items():
-                if k in cles and v is not None:
-                    contenu[section][k] = (None if v == '' and k in (
-                        'date', 'date_mise_en_service') else v)
+                if k not in cles:
+                    continue
+                if k in _DATES_FACULTATIVES:
+                    # Une date vidée (stockée None) est effacée.
+                    contenu[section][k] = v or None
+                elif v is not None:
+                    contenu[section][k] = v
     if isinstance(s.get('delais'), dict) and not _vide(
             s['delais'].get('date_limite')):
         contenu['_date_limite_fixee'] = s['delais']['date_limite']

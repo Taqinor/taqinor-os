@@ -203,6 +203,40 @@ class ApiContratsTests(TestCase):
         self.assertNotIn('options', self._detail(acte, langue='ar')[
             'sections_modifiables'])
 
+    # ── S10 : vider un champ facultatif l'efface ────────────────────────
+
+    def test_champ_vide_efface_le_defaut_ne_revient_pas(self):
+        Installation.objects.filter(pk=self.v.chantier.pk).update(
+            date_mise_en_service=date(2026, 12, 20))
+        recep = self.v.acte(T.RECEPTION)
+        self.assertEqual(self._detail(recep)['contenu']['reception'][
+            'date_mise_en_service'], '2026-12-20')
+        r = self._patch(recep, {'reception': {
+            'date_mise_en_service': '', 'delai_levee_reserves': ''}})
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIsNone(r.data['contenu']['reception'][
+            'date_mise_en_service'])
+        self.assertEqual(r.data['contenu']['reception'][
+            'delai_levee_reserves'], '')
+        livraison = self.v.acte(T.LIVRAISON, T.RESTE_A_REGLER)
+        self._patch(livraison, {'livraison': {'date': '2026-12-02'}})
+        r = self._patch(livraison, {'livraison': {'date': ''}})
+        self.assertIsNone(r.data['contenu']['livraison']['date'])
+        cloture = self.v.acte(T.CLOTURE)
+        self._patch(cloture, {'sav': {'horaires': '9 h – 18 h'}})
+        r = self._patch(cloture, {'sav': {'horaires': ''}})
+        self.assertEqual(r.data['contenu']['sav']['horaires'], '')
+        from apps.documents.models import ModeleActe
+        ModeleActe.objects.create(
+            company=self.v.company, type=T.CONTRAT,
+            surcharges={'societe': {'representant': 'Reda, gérant'}})
+        contrat = self.v.acte(T.CONTRAT)
+        self.assertEqual(self._detail(contrat)['contenu']['societe'][
+            'representant'], 'Reda, gérant')
+        r = self._patch(contrat, {'societe': {'representant': ''}})
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['contenu']['societe']['representant'], '')
+
     # ── S5 / S14 : corps envoyés par l'écran en arabe ───────────────────
 
     def test_arabe_delais_detail_seul_date_commune(self):
