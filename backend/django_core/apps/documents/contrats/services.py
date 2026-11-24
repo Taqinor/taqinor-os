@@ -21,6 +21,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from . import contenu as K
+from . import gabarits as G
 from . import types as T
 
 logger = logging.getLogger(__name__)
@@ -223,8 +224,8 @@ def modifier(acte, surcharges, user=None, langue='fr'):
     (``contenu.personnaliser``), pour qu'un texte corrigé ne fige jamais une
     valeur de la vente et qu'un article non touché suive les options."""
     try:
-        propre = K.valider_surcharges(acte.type, surcharges, langue)
-    except K.ContenuInvalide as exc:
+        propre = G.valider_surcharges(acte.type, surcharges, langue)
+    except G.ContenuInvalide as exc:
         raise ErreurActe(T.CODE_CONTENU_INVALIDE, str(exc), 400)
     with transaction.atomic():
         acte = _verrouiller(acte)
@@ -402,7 +403,7 @@ def marquer_signe_papier(acte, *, signataire_nom, signe_le=None, user=None,
     nom = _valider_nom(signataire_nom)
     quand = timezone.now()
     if signe_le not in (None, ''):
-        jour = K._date(signe_le) if isinstance(signe_le, str) else None
+        jour = G._date(signe_le) if isinstance(signe_le, str) else None
         if jour is None or len(signe_le) != 10:
             raise ErreurActe(T.CODE_CONTENU_INVALIDE,
                              'Date de signature : AAAA-MM-JJ attendue.', 400)
@@ -563,7 +564,7 @@ def _valeurs_du_chantier(contenus):
         montants += [v for k, v in (contenu.get('paiement') or {}).items()
                      if k not in T.CLES_PAIEMENT_TEXTE and isinstance(v, str)]
         for m in montants:
-            if K._d(m):
+            if G._d(m):
                 valeurs.add(C.nombre(m, 2))
         for v in (contenu['reference'], contenu['chantier'].get('reference'),
                   contenu['chantier'].get('devis_reference'),
@@ -597,7 +598,7 @@ def _modele_de_langue(acte, langue, valeurs, ignores):
         if section == 'articles':
             gardes = []
             for e in effectifs['articles']:
-                if 'paragraphes' in e and _cite(K.texte_litteral(
+                if 'paragraphes' in e and _cite(G.texte_litteral(
                         [e['titre']] + e['paragraphes']), valeurs):
                     titre = effectifs['titres'].get(e['cle']) or e['cle']
                     ignores.append(f'article « {titre} »')
@@ -610,7 +611,7 @@ def _modele_de_langue(acte, langue, valeurs, ignores):
             quitus = effectifs['quitus']
             if quitus is None:
                 continue
-            if _cite(K.texte_litteral(quitus), valeurs):
+            if _cite(G.texte_litteral(quitus), valeurs):
                 ignores.append(T.LIBELLES_SECTIONS.get(section, section))
                 continue
             sortie[section] = quitus
