@@ -52,7 +52,9 @@ body[data-cal-atelier] [data-sonner-toaster][data-y-position='bottom'][data-x-po
   background: var(--cal-surface);
   border-bottom: 1px solid var(--cal-filet);
   position: relative;
-  z-index: calc(var(--z-base) + 20);
+  /* T4-B4-002 — +21 : les messages d'enregistrement (et leur « Réessayer ») qui tombent sous le bandeau passent
+     AU-DESSUS de la recherche d'adresse de la carte (+20), qui les cachait. */
+  z-index: calc(var(--z-base) + 21);
 }
 .cal-coque .cal-retour {
   border: 0;
