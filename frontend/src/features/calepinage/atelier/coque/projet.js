@@ -2,14 +2,12 @@ import { formatNumber } from '../../../../lib/format'
 
 /* Coque — les textes du bandeau du projet, lus sur le contexte servi (jamais inventés). */
 
-/** ACAL1730 — le nom du lead (sinon du client) que sert le détail du calepinage ; `''` s'il n'en sert pas. */
-export function nomClientServi(detail) {
-  return String(detail?.lead?.nom || detail?.client?.nom || '').trim()
-}
-
-/** Le nom du projet à défaut du nom du lead : le titre servi (+ la ville servie quand il ne la dit pas). */
+/** T4-B4-009 — LE nom du projet, de l'ouverture à la fin : le titre servi du calepinage (+ la ville servie quand il
+    ne la dit pas) — celui du cartouche du schéma, de « Montrer au client » et du plan PDF, et la forme de la maquette
+    (« Villa Bennani — Casablanca »). Tant que le contexte n'est pas lu : rien (jamais « Calepinage N » remplacé ensuite). */
 export function titreProjet({ devisId, devisReference, calepinageTitre, calepinageId, contexte }) {
   if (devisId) return `Devis ${devisReference || devisId}`
+  if (calepinageId && contexte == null) return ''
   const titre = calepinageTitre || `Calepinage ${calepinageId || '—'}`
   const ville = (contexte?.calepinage?.client_ville ?? '').trim()
   return ville && !titre.includes(ville) ? `${titre} — ${ville}` : titre
