@@ -168,7 +168,6 @@ ALLOWED_UNCONSUMED = {
     # la tâche qui la retire en abonnant le signal.
     "lead_entrees_modifiees",           # ventes : relance de la conception — retiré par ADEV139
     "pose_enregistree",                 # ventes : relance de la conception — retiré par ADEV139
-    "conception_recalculee",            # crm : ligne « pourquoi » au chatter — retiré par ALEA69
 }
 
 # APAR43 — signaux qui ont un abonné VIVANT mais AUCUN émetteur statique dans
@@ -543,8 +542,6 @@ NO_STATIC_EMITTER = {
     # AVANT leurs émetteurs (contrat d'abord, PACT10) : leur entrée de
     # catalogue est le contrat, la parité devient vérifiable à l'émetteur.
     # Chaque entrée nomme la tâche qui la retire en posant le ``send``.
-    "lead_entrees_modifiees",            # émetteur crm — retiré par ALEA68
-    "pose_enregistree",                  # émetteur calepinage — retiré par ACAL2011
     "conception_recalculee",             # émetteur ventes — retiré par ADEV135
 }
 
