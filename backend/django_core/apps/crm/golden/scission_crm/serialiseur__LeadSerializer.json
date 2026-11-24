@@ -621,7 +621,7 @@
   {
    "classe": "ChoiceField",
    "nom": "niveau_statique_source",
-   "read_only": true,
+   "read_only": false,
    "required": false
   },
   {
@@ -639,7 +639,7 @@
   {
    "classe": "ChoiceField",
    "nom": "debit_forage_source",
-   "read_only": true,
+   "read_only": false,
    "required": false
   },
   {
@@ -651,7 +651,7 @@
   {
    "classe": "ChoiceField",
    "nom": "besoin_eau_source",
-   "read_only": true,
+   "read_only": false,
    "required": false
   },
   {
@@ -753,7 +753,7 @@
   {
    "classe": "ChoiceField",
    "nom": "pompe_hmt_source",
-   "read_only": true,
+   "read_only": false,
    "required": false
   },
   {

@@ -622,6 +622,19 @@ describe('AGR415 — SectionPompage : chaque colonne du contrat a son champ', ()
     }
   })
 
+  it('T4-U3-002 — « Mesuré en visite » / « Saisi sur le site » restent visibles mais ne se choisissent pas', () => {
+    monter()
+    const niveau = document.getElementById('lf-niveau-statique-source')
+    const opt = (sel, v) => Array.from(sel.options).find((o) => o.value === v)
+    expect(opt(niveau, 'mesure_visite').disabled).toBe(true)
+    expect(opt(niveau, 'mesure_visite').textContent).toContain('relevé de la visite technique')
+    expect(opt(niveau, 'site_web').disabled).toBe(true)
+    expect(opt(niveau, 'declare').disabled).toBe(false)
+    const debit = document.getElementById('lf-debit-forage-source')
+    expect(opt(debit, 'foreur').disabled).toBe(false)
+    expect(opt(debit, 'mesure_visite').disabled).toBe(true)
+  })
+
   it('regroupée en 5 blocs, dans l’ordre de l’appel', () => {
     monter()
     const titres = Array.from(document.querySelectorAll('.lw-bloc-titre')).map((h) => h.textContent)

@@ -726,10 +726,17 @@ function PompTexte({ 'data-field-anchor': id, cle, ctx, label }) {
   )
 }
 
-function PompChoix({ 'data-field-anchor': id, cle, ctx, label, choix }) {
+// T4-U3-002 — origines posées par leur propre chemin : visibles, jamais
+// choisissables sur la fiche (le serveur les refuse en 409 qui le dit).
+const PROVENANCES_POSEES_AILLEURS = {
+  mesure_visite: 'posé par le relevé de la visite technique',
+  site_web: 'posé par le questionnaire du site',
+}
+
+function PompChoix({ 'data-field-anchor': id, cle, ctx, label, choix, desactives }) {
   return (
     <ChampPompage data-field-anchor={id} cle={cle} ctx={ctx} label={label}>
-      <SelectEnum id={id} cle={cle} ctx={ctx} choix={choix} />
+      <SelectEnum id={id} cle={cle} ctx={ctx} choix={choix} desactives={desactives} />
     </ChampPompage>
   )
 }
@@ -822,19 +829,19 @@ export function SectionPompage({ state, setField, errors = {} }) {
         <div className="form-row">
           <PompChoix data-field-anchor="lf-source-eau" cle="source_eau" ctx={ctx} choix={SOURCE_EAU} />
           <PompNombre data-field-anchor="lf-niveau-statique" cle="niveau_statique_m" ctx={ctx} placeholder="ex: 32" />
-          <PompChoix data-field-anchor="lf-niveau-statique-source" cle="niveau_statique_source" ctx={ctx} choix={NIVEAU_STATIQUE_SOURCE} />
+          <PompChoix data-field-anchor="lf-niveau-statique-source" cle="niveau_statique_source" ctx={ctx} choix={NIVEAU_STATIQUE_SOURCE} desactives={PROVENANCES_POSEES_AILLEURS} />
         </div>
         <div className="form-row">
           <PompNombre data-field-anchor="lf-profondeur-forage" cle="profondeur_forage_m" ctx={ctx} placeholder="ex: 90" />
           <PompNombre data-field-anchor="lf-debit-forage" cle="debit_forage_m3h" ctx={ctx} placeholder="ex: 36" />
-          <PompChoix data-field-anchor="lf-debit-forage-source" cle="debit_forage_source" ctx={ctx} choix={DEBIT_FORAGE_SOURCE} />
+          <PompChoix data-field-anchor="lf-debit-forage-source" cle="debit_forage_source" ctx={ctx} choix={DEBIT_FORAGE_SOURCE} desactives={PROVENANCES_POSEES_AILLEURS} />
         </div>
       </BlocPompage>
 
       <BlocPompage titre="Besoin">
         <div className="form-row">
           <PompNombre data-field-anchor="lf-besoin-eau" cle="besoin_eau_m3j" ctx={ctx} placeholder="ex: 135" />
-          <PompChoix data-field-anchor="lf-besoin-eau-source" cle="besoin_eau_source" ctx={ctx} choix={BESOIN_EAU_SOURCE} />
+          <PompChoix data-field-anchor="lf-besoin-eau-source" cle="besoin_eau_source" ctx={ctx} choix={BESOIN_EAU_SOURCE} desactives={PROVENANCES_POSEES_AILLEURS} />
           <PompNombre data-field-anchor="lf-pompe-debit" cle="pompe_debit_m3h" ctx={ctx} placeholder="ex: 12" />
         </div>
         {debitEgalHmt && (
@@ -844,7 +851,7 @@ export function SectionPompage({ state, setField, errors = {} }) {
         )}
         <div className="form-row">
           <PompNombre data-field-anchor="lf-pompe-hmt" cle="pompe_hmt_m" ctx={ctx} placeholder="ex: 80" />
-          <PompChoix data-field-anchor="lf-pompe-hmt-source" cle="pompe_hmt_source" ctx={ctx} choix={POMPE_HMT_SOURCE} />
+          <PompChoix data-field-anchor="lf-pompe-hmt-source" cle="pompe_hmt_source" ctx={ctx} choix={POMPE_HMT_SOURCE} desactives={PROVENANCES_POSEES_AILLEURS} />
         </div>
         <div className="form-row">
           <PompTexte data-field-anchor="lf-culture" cle="culture" ctx={ctx} />
