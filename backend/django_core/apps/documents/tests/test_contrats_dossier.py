@@ -481,6 +481,31 @@ class EmissionTests(TestCase):
         self.assertTrue(S.document_a_jour(document, acte, acte.contenu))
         self.assertIn('portail nord', texte_pdf(S.pdf_de_l_acte(acte)))
 
+    def test_portail_ne_montre_ni_acte_rouvert_ni_acte_annule(self):
+        """S8 : rouvrir ou annuler retire le partage portail ; ré-émettre ou
+        rétablir le remet."""
+        from apps.ged.models import AclGed
+
+        v = Vente(self)
+
+        def partages(acte):
+            return {langue: AclGed.objects.filter(
+                document=S.document_ged(acte, langue),
+                client_id=v.client.pk).count() for langue in T.LANGUES}
+
+        acte, _ = S.emettre(v.acte(T.CONTRAT), v.user)
+        self.assertEqual(partages(acte), {'fr': 1, 'ar': 1})
+        acte = S.rouvrir(acte, v.user)
+        self.assertEqual(partages(acte), {'fr': 0, 'ar': 0})
+        acte, _ = S.emettre(acte, v.user)
+        self.assertEqual(partages(acte), {'fr': 1, 'ar': 1})
+        v.desaccepter()
+        self.assertEqual(v.acte(T.CONTRAT).statut, T.ANNULE)
+        self.assertEqual(partages(acte), {'fr': 0, 'ar': 0})
+        v.accepter()
+        self.assertEqual(v.acte(T.CONTRAT).statut, T.EMIS)
+        self.assertEqual(partages(acte), {'fr': 1, 'ar': 1})
+
     def test_quitus_refuse_tant_que_solde_non_regle(self):
         v = Vente(self)
         with self.assertRaises(S.ErreurActe) as ctx:

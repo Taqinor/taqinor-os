@@ -77,6 +77,8 @@ def preparer_dossier(chantier, user=None):
                 champs.append('reference')
             if champs:
                 acte.save(update_fields=champs + ['updated_at'])
+                if acte.statut == T.EMIS:
+                    remettre_au_portail(acte)
     return list(ActeContractuel.objects.filter(
         company=chantier.company, chantier=chantier).order_by('id'))
 
@@ -94,13 +96,51 @@ def annuler_dossier(chantier, motif=''):
               .filter(company=chantier.company, chantier=chantier)
               .exclude(statut__in=(T.SIGNE, T.ANNULE)))
         for acte in qs:
+            etait_emis = acte.statut == T.EMIS
             acte.statut_avant_annulation = acte.statut
             acte.statut = T.ANNULE
             acte.motif_annulation = (motif or '')[:255]
             acte.save(update_fields=['statut', 'statut_avant_annulation',
                                      'motif_annulation', 'updated_at'])
+            if etait_emis:
+                retirer_du_portail(acte)
             nb += 1
     return nb
+
+
+def remettre_au_portail(acte):
+    """Un acte émis rétabli (ré-acceptation) est de nouveau partagé au
+    portail du client. Best-effort."""
+    if not acte.chantier.client_id:
+        return
+    for langue in T.LANGUES:
+        document = document_ged(acte, langue)
+        if document is None:
+            continue
+        try:
+            from apps.ged import services as ged_services
+            ged_services.partager_document_avec_client_portail(
+                document, acte.chantier.client_id)
+        except Exception:  # noqa: BLE001 — partage best-effort
+            logger.exception('contrats : partage portail impossible '
+                             '(acte %s, %s)', acte.pk, langue)
+
+
+def retirer_du_portail(acte):
+    """Retire du portail client le PDF (français et arabe) d'un acte qui
+    n'est plus en vigueur (rouvert, annulé) : le client ne voit jamais un
+    acte annulé ni deux livraisons contradictoires. Le document reste en GED
+    (l'historique ne se supprime pas). Best-effort."""
+    for langue in T.LANGUES:
+        document = document_ged(acte, langue)
+        if document is None:
+            continue
+        try:
+            from apps.ged import services as ged_services
+            ged_services.retirer_partage_client_portail(document)
+        except Exception:  # noqa: BLE001 — partage best-effort
+            logger.exception('contrats : retrait du portail impossible '
+                             '(acte %s, %s)', acte.pk, langue)
 
 
 # ── Gardes ──────────────────────────────────────────────────────────────────
@@ -276,6 +316,7 @@ def rouvrir(acte, user=None):
         acte.version += 1
         acte.save(update_fields=['statut', 'contenu', 'contenu_ar', 'emis_le',
                                  'emis_par', 'version', 'updated_at'])
+        retirer_du_portail(acte)
     return acte
 
 
