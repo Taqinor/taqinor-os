@@ -8,6 +8,8 @@ import { Icone } from '../atelier/coque/primitives'
    jamais un montant. PARTAGE : le lien client est celui de la proposition du DEVIS,
    préparé depuis la fiche du lead (niveau et sections choisis là, L-SECT) — le bouton
    dit pourquoi il est désactivé ici ; aucune porte publique neuve (D-ACAL-69).
+   Deux dispositions, mêmes pièces : le téléphone (390 px, feuille du bas) et le BUREAU
+   (≥ 1024 px, maquette Presentation : scène plein écran, carte héros à droite, barre du soleil en bas).
    ========================================================================== */
 
 const RAISON_LIEN = 'Le lien se prépare depuis la fiche du lead, onglet Devis, « Envoyer au client » : '
@@ -26,6 +28,20 @@ export function PlanDessus({ plan }) {
       {plan.pans.map((pan, i) => <polygon key={`p${i}`} className="cal-client-pan" points={pan.map(pt).join(' ')} />)}
       {plan.modules.map((q, i) => <polygon key={`m${i}`} className="cal-client-module" points={q.map(pt).join(' ')} />)}
     </svg>
+  )
+}
+
+/** ACAL1837 — l'attente de la 3D, présentable : un ciel et la silhouette d'une maison (aucune donnée, aucun plan technique).
+ *  Le plan dessus reste pour l'échec de la 3D et pour un navigateur sans WebGL. */
+export function AttenteScene() {
+  return (
+    <div className="cal-client-attente" data-testid="client-attente" aria-hidden="true">
+      <svg viewBox="0 0 320 200" preserveAspectRatio="xMidYMax meet" focusable="false">
+        <path className="cal-client-attente-colline" d="M0 200V164c70-14 140-18 210-8s80 2 110-4v48z" />
+        <path className="cal-client-attente-maison" d="M88 176V116h144v60z" />
+        <path className="cal-client-attente-toit" d="M72 118L160 62l88 56z" />
+      </svg>
+    </div>
   )
 }
 
@@ -58,32 +74,27 @@ export function PastilleAttente() {
   )
 }
 
-/** La puce du projet (titre ; ville · pan), en haut à gauche de la scène. */
+/** La puce du projet (pictogramme maison sur carré bleu nuit ; titre ; ville · pan), en haut à gauche de la scène. */
 export function PuceProjet({ titre, sousTitre }) {
   if (!titre && !sousTitre) return null
   return (
     <div className="cal-client-puce" data-testid="client-projet">
-      {titre && <span className="cal-client-puce-titre">{titre}</span>}
-      {sousTitre && <span className="cal-client-puce-ligne">{sousTitre}</span>}
+      <span className="cal-client-puce-icone" aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+          strokeLinecap="round" strokeLinejoin="round"><path d="M3 11.5L12 4l9 7.5" /><path d="M5.5 10v9.5h13V10" /></svg>
+      </span>
+      <span className="cal-client-puce-texte">
+        {titre && <span className="cal-client-puce-titre">{titre}</span>}
+        {sousTitre && <span className="cal-client-puce-ligne">{sousTitre}</span>}
+      </span>
     </div>
   )
 }
 
-/** Les trois tuiles (médiane marine) et la mention, seulement avec leurs données servies. */
-export function TuilesClient({ tuiles, ville }) {
+/** La mention sous les chiffres, seulement avec ses données servies (jamais un montant). */
+function Mentions({ tuiles, ville }) {
   return (
     <>
-      {tuiles.length > 0 && (
-        <div className={`cal-client-tuiles cal-client-tuiles-${tuiles.length}`} data-testid="client-tuiles">
-          {tuiles.map((t) => (
-            <div key={t.cle} className={t.marine ? 'cal-client-tuile cal-client-tuile-marine' : 'cal-client-tuile'}
-              data-testid={`client-tuile-${t.cle}`}>
-              <span className="cal-client-tuile-valeur">{t.valeur}</span>
-              <span className="cal-client-tuile-libelle">{t.libelle}</span>
-            </div>
-          ))}
-        </div>
-      )}
       {tuiles.some((t) => t.cle === 'kwh' && !t.nature) && (
         <span className="cal-client-mention">
           {`Estimation pour une année moyenne${ville ? ` à ${ville}` : ''}. Les montants figurent dans le devis.`}
@@ -94,16 +105,76 @@ export function TuilesClient({ tuiles, ville }) {
           {'Estimation de la pose, avant le calcul complet. Les montants figurent dans le devis.'}
         </span>
       )}
-      <p id="client-lien-raison" className="cal-client-mention" data-testid="client-lien-raison">{RAISON_LIEN}</p>
     </>
   )
 }
 
-/** Le pied : « Retour au relevé » + « Envoyer le lien » doré, désactivé avec sa raison. */
-export function PiedClient({ id }) {
+/** Un chiffre de la carte bleu nuit : la valeur, son libellé (le « % » est une unité, plus petite). */
+function Chiffre({ tuile }) {
+  const pourcent = /^(.*\S)\s%$/.exec(tuile.valeur)
+  const [nombre, unite] = pourcent ? [pourcent[1], '%'] : [tuile.valeur, null]
+  return (
+    <div className="cal-client-nuit-chiffre" data-testid={`client-tuile-${tuile.cle}`}>
+      <span className="cal-client-nuit-valeur">{nombre}{unite && <small>{` ${unite}`}</small>}</span>
+      <span className="cal-client-nuit-libelle">{tuile.libelle}</span>
+    </div>
+  )
+}
+
+/**
+ * ACAL1837 — LA CARTE BLEU NUIT (maquette TelephoneClient : 358 × 178 r22) : la production en grand (46 px ; 72 px au
+ * bureau) avec sa pilule « Estimation », puis les autres chiffres SERVIS (panneaux, couverture ou puissance) ; une
+ * donnée non servie est omise, jamais fabriquée. Au bureau, le sur-titre et les mentions entrent dans la carte.
+ */
+export function TuilesClient({ tuiles, ville, bureau = false }) {
+  const kwh = tuiles.find((t) => t.cle === 'kwh') ?? null
+  const autres = tuiles.filter((t) => t.cle !== 'kwh')
+  return (
+    <>
+      {tuiles.length > 0 && (
+        <div className="cal-client-nuit-bloc">
+          <section className="cal-client-nuit" data-testid="client-tuiles" aria-label="Votre installation en trois chiffres">
+            {kwh && (
+              <div className="cal-client-nuit-kwh" data-testid="client-tuile-kwh">
+                {bureau && <span className="cal-client-nuit-sur">Votre toit produirait</span>}
+                <div className="cal-client-nuit-tete">
+                  <span className="cal-client-nuit-gros">{kwh.valeur}</span>
+                  <span className="cal-client-pilule"><i aria-hidden="true" />Estimation</span>
+                </div>
+                <span className="cal-client-nuit-unite">{kwh.libelle.split(' · ')[0]}</span>
+              </div>
+            )}
+            {kwh && autres.length > 0 && <hr className="cal-client-nuit-filet" />}
+            {autres.length > 0 && (
+              <div className="cal-client-nuit-grille">
+                {autres.map((t) => <Chiffre key={t.cle} tuile={t} />)}
+              </div>
+            )}
+            {bureau && <div className="cal-client-nuit-mentions"><Mentions tuiles={tuiles} ville={ville} /></div>}
+          </section>
+          {!bureau && <Mentions tuiles={tuiles} ville={ville} />}
+        </div>
+      )}
+      <p id="client-lien-raison" className="cal-client-mention cal-client-raison" data-testid="client-lien-raison">{RAISON_LIEN}</p>
+    </>
+  )
+}
+
+/** Le pied : « Retour au relevé » (au bureau : « Retour à l'atelier ») + « Envoyer le lien » doré, désactivé avec sa raison. */
+export function PiedClient({ id, bureau = false }) {
   return (
     <footer className="cal-tel-pied" data-vue-client="">
-      <Link to={`/calepinage/${id}/releve`} className="cal-tel-pied-secondaire" data-testid="client-retour-releve">Retour au relevé</Link>
+      {bureau ? (
+        <Link to={`/calepinage/${id}`} className="cal-tel-pied-secondaire" data-testid="client-retour-atelier">
+          <Icone nom="retour" taille={18} epaisseur={2} />
+          {'Retour à l’atelier'}
+        </Link>
+      ) : (
+        <Link to={`/calepinage/${id}/releve`} className="cal-tel-pied-secondaire" data-testid="client-retour-releve">
+          <Icone nom="retour" taille={18} epaisseur={2} />
+          Retour au relevé
+        </Link>
+      )}
       <button type="button" className="cal-tel-pied-or" disabled aria-describedby="client-lien-raison"
         data-testid="client-envoyer-lien">
         <Icone nom="partager" taille={18} epaisseur={2} />
