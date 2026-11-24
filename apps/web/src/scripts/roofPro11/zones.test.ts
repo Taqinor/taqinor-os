@@ -1217,6 +1217,32 @@ describe('ACAL1328 — calque rp9-cotes', () => {
     expect(t.visibilite.get(CALQUE_COTES)).toBe('visible');
   });
 
+  // ACAL1924 — calepinage 2057 : aucune cote lisible en Plan (la couche 3D, ajoutée après, couvrait le calque) ;
+  // calepinage 2030 : la cote du faîtage imprimée deux fois (une par pan) ; cotes sans pilule blanche.
+  it('les cotes d’arêtes sont au-dessus du remplissage du pan, une fois par bord, dans une pilule blanche', () => {
+    const t = carteDeTestCotes();
+    const ordre: string[] = [];
+    const couches: Array<Record<string, unknown>> = [];
+    const carte = {
+      ...t.carte,
+      addLayer: (l: { id: string; layout?: { visibility?: string } }) => { t.carte.addLayer(l); ordre.push(l.id); couches.push(l as never); },
+      getLayer: (id: string) => (ordre.includes(id) ? {} : undefined),
+      getStyle: () => ({ layers: ordre.map((id) => ({ id })) }),
+      moveLayer: (id: string) => { ordre.splice(ordre.indexOf(id), 1); ordre.push(id); },
+      hasImage: () => false, addImage: vi.fn(),
+    };
+    const sud = rectRing(12.4, 4.3);
+    const nord = sud.map(([lng, lat]) => [lng, lat + (4.3 / 111194.9266)] as LngLat); // même faîtage, 4,3 m plus au nord
+    monterCotesAretes(carte, () => [{ sommets: sud, ferme: true }, { sommets: nord, ferme: true }], true);
+    carte.addLayer({ id: 'rp9-3d' }); // la couche 3D arrive APRÈS (roof-tool-pro11.ts)
+    t.emettre('idle');
+    expect(ordre.indexOf(CALQUE_COTES)).toBeGreaterThan(ordre.indexOf('rp9-3d'));
+    expect(t.textes()).toEqual(['12,4 m', '4,3 m', '12,4 m', '4,3 m', '4,3 m', '12,4 m', '4,3 m']); // faîtage commun : une fois
+    const cotes = couches.find((l) => l.id === CALQUE_COTES) as { layout: Record<string, unknown>; paint: Record<string, unknown> };
+    expect([cotes.layout['icon-image'], cotes.layout['icon-text-fit'], cotes.paint['text-color']]).toEqual(['rp9-cote-pilule', 'both', '#0c1335']);
+    expect(carte.addImage).toHaveBeenCalledTimes(1);
+  });
+
   it('site public (option de montage absente) : aucun calque posé', () => {
     const t = carteDeTestCotes();
     monterCotesAretes(t.carte, () => [{ sommets: rectRing(12.4, 8.1), ferme: true }], false);
