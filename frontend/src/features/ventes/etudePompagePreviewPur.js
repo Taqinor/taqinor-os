@@ -343,7 +343,11 @@ export function refusAutoRemplirPompage(donnees) {
   if (!absents.length) return null
   const causes = absents.map((r) => {
     const cause = r.cle === 'variateur' && d.variateur?.motif ? d.variateur.motif : r.motif
-    return `${r.libelle || r.cle}${cause ? ` : ${cause}` : ''}`
+    // T4-U3-021 — l'article en cause SERVI (`articles[] = {id, nom}`, jamais un prix) est nommé.
+    const noms = (Array.isArray(r.articles) ? r.articles : []).map((a) => a?.nom).filter(Boolean)
+    const articles = noms.length
+      ? ` — article${noms.length > 1 ? 's' : ''} ${noms.map((n) => `« ${n} »`).join(', ')}` : ''
+    return `${r.libelle || r.cle}${cause ? ` : ${cause}` : ''}${articles}`
   })
   return `Auto-remplir indisponible — kit incomplet (${causes.join(' ; ')}).`
 }

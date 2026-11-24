@@ -157,6 +157,25 @@ test('refus::test_kit_sans_variateur_refuse_auto_remplir_avec_la_cause', () => {
   assert.equal(refusAutoRemplirPompage(sansPrix), null)
 })
 
+test('refus::T4-U3-021 — le rôle manquant nomme l’article SERVI en cause (jamais un prix)', () => {
+  // Forme servie : contrat `etude_pompage_preview.json`, `roles_minimum_manquants[].articles[] = {id, nom}`.
+  const servis = CONTRAT.exemple_aucune_pompe_chiffrable.roles_minimum_manquants
+  assert.ok(servis.every((r) => Array.isArray(r.articles)))
+  const donnees = {
+    kit: { inclus: [] },
+    roles_minimum_manquants: [
+      { cle: 'structure', libelle: 'Structure au sol', motif: 'prix à renseigner au catalogue',
+        articles: [{ id: 42, nom: 'Structure au sol pompage' }] },
+      { cle: 'installation', libelle: 'Installation', motif: 'aucun article au catalogue', articles: [] },
+    ],
+  }
+  const refus = refusAutoRemplirPompage(donnees)
+  assert.match(refus, /Structure au sol : prix à renseigner au catalogue — article « Structure au sol pompage »/)
+  // Sans article servi : rien d'ajouté.
+  assert.match(refus, /Installation : aucun article au catalogue\)/)
+  assert.doesNotMatch(refus, /42/)
+})
+
 test('libellés de provenance', () => {
   assert.equal(libelleProvenance({ origine: 'saisie', detail: null, date: null }), 'saisi')
   assert.equal(libelleProvenance({ origine: 'lead', detail: 'mesure_visite', date: '2026-09-15' }),
