@@ -57,14 +57,14 @@ def _entier_ou_none(valeur):
         return None
 
 
-def _statut_couple_panneau(panneau, onduleurs):
+def _statut_couple_panneau(panneau, onduleurs, froid=None):
     """PVCOMPAT — le PIRE verdict d'un panneau face aux onduleurs VENDUS.
 
     En forme deux options les DEUX onduleurs partent au devis : un panneau qui
     coince avec l'un des deux coince pour le devis entier. L'ordre de sévérité
     est celui du noyau — ``incompatible`` (bloquant matériel) l'emporte sur
     ``reserve`` (production dégradée), qui l'emporte sur ``inconnu`` (fiche
-    incomplète), qui l'emporte sur ``compatible``.
+    incomplète), qui l'emporte sur ``compatible``. ``froid`` : ADEV156.
     """
     from apps.ventes.compatibilites import (
         STATUT_COMPATIBLE, STATUT_INCOMPATIBLE, STATUT_INCONNU,
@@ -73,7 +73,7 @@ def _statut_couple_panneau(panneau, onduleurs):
                 STATUT_INCONNU: 1, STATUT_COMPATIBLE: 0}
     pire = (0, STATUT_COMPATIBLE, None)
     for onduleur in onduleurs:
-        verdict = verdict_panneau_onduleur(panneau, onduleur)
+        verdict = verdict_panneau_onduleur(panneau, onduleur, froid=froid)
         rang = severite.get(verdict['statut'], 0)
         if rang > pire[0]:
             pire = (rang, verdict['statut'], (onduleur, verdict))
@@ -242,8 +242,12 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                               batterie_module_kwh=None,
                               hors_reseau=False, modeles=None,
                               regles_2710=True, onduleur_impose=None,
-                              batterie_imposee=None, modules_affleurants=0):
+                              batterie_imposee=None, modules_affleurants=0,
+                              froid=None):
     """Le KIT résidentiel COMPLET composé depuis un catalogue.
+
+    ``froid`` (ADEV156) — le froid du SITE (``compatibilites.froid_du_lead``)
+    du verdict panneau / onduleur ; ``None`` (LE DÉFAUT) ⇒ −5 °C, inchangé.
 
     ``modules_affleurants`` (ACAL927, D-ACAL-39 ; l'appelant ne le passe qu'au
     niveau de règles 15) — modules posés à plat sur un toit en pente : ni
@@ -698,7 +702,7 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         from apps.ventes.compatibilites import (
             STATUT_INCOMPATIBLE, STATUT_RESERVE,
             avertissement_panneau_onduleur)
-        statut, coince = _statut_couple_panneau(panneau, onduleurs_vendus)
+        statut, coince = _statut_couple_panneau(panneau, onduleurs_vendus, froid)
         if statut == STATUT_INCOMPATIBLE:
             # Repli ORDONNÉ : d'abord les wattages exacts (l'ordre de départage
             # de l'écran), puis les plus proches — la même préférence que le
@@ -712,7 +716,7 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                     continue
                 vus.add(id(candidat))
                 statut_bis, coince_bis = _statut_couple_panneau(
-                    candidat, onduleurs_vendus)
+                    candidat, onduleurs_vendus, froid)
                 if statut_bis != STATUT_INCOMPATIBLE:
                     _avertir(
                         'Panneau remplacé pour compatibilité électrique : '
@@ -771,7 +775,7 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                     STATUT_INCOMPATIBLE, STATUT_RESERVE,
                     avertissement_panneau_onduleur)
                 statut_m, coince_m = _statut_couple_panneau(
-                    choisi, onduleurs_vendus)
+                    choisi, onduleurs_vendus, froid)
                 if statut_m in (STATUT_INCOMPATIBLE, STATUT_RESERVE) \
                         and coince_m:
                     _avertir(avertissement_panneau_onduleur(

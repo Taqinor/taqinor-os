@@ -235,7 +235,10 @@ class PagesCiTests(SimpleTestCase):
                 doc = fitz.open(stream=renderer.render_pdf_bytes(data), filetype="pdf")
                 self.assertEqual(len(doc), pages)
                 texte = " ".join(page.get_text() for page in doc)
-                self.assertIn("PROPRES À CETTE OPTION", texte)
+                # ACAL2040 — page 2 « deux options » (71d25d6d70, Reda 13/11) : le bloc
+                # des équipements propres s'intitule « Spécifique à l'option 2 — Avec
+                # batterie » ; comparé sans espaces (titres espacés lettre à lettre).
+                self.assertIn("Spécifiqueàl'option2—Avecbatterie", "".join(texte.split()))
                 self.assertIn("964 000,00 MAD", texte)
                 self.assertIn("Batterie Dyness 10 kWh", texte)
                 self.assertIn("Retour sur investissement", texte)

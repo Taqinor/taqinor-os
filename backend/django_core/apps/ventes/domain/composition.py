@@ -516,7 +516,8 @@ def composition_deux_optimiseurs(produits, *, panel_watt,
                                  marques=None, ordre_lignes=None,
                                  mppt_paires=1, phase=None, modeles=None,
                                  batterie_module_kwh=None,
-                                 regles_2710=True, modules_affleurants=0):
+                                 regles_2710=True, modules_affleurants=0,
+                                 froid=None):
     """L-2OPT — LE devis « Les deux » quand les deux optimums DIVERGENT.
 
     Compose DEUX kits complets par ``composition_residentielle`` (la source de
@@ -572,7 +573,8 @@ def composition_deux_optimiseurs(produits, *, panel_watt,
         taux_tva=taux_tva, avertissements=avertissements, marques=marques,
         ordre_lignes=ordre_lignes, mppt_paires=mppt_paires, phase=phase,
         # RSIZ2/RSIZ5 — les deux kits suivent les mêmes règles (27/10).
-        regles_2710=regles_2710, modules_affleurants=modules_affleurants)  # ACAL927
+        regles_2710=regles_2710, modules_affleurants=modules_affleurants,  # ACAL927
+        froid=froid)  # ADEV156 — le froid du site, aux deux kits
 
     if not regles_2710:
         # Règles d'origine (< 3) : un devis envoyé garde ses lignes servies.
@@ -1098,8 +1100,9 @@ def _refuser_couple_panneau_onduleur_impossible(devis, lignes, lignes_panneau,
     Lève ``SyncLayoutError`` AVANT toute écriture — la transaction reste
     intacte. Un couple ``compatible``/``sous réserve``/``inconnu`` passe : une
     fiche muette ne fait pas un refus (c'est le domaine de PVFCH).
+    ADEV156 — jugé au froid du site du lead ; un devis envoyé garde −5 °C.
     """
-    from apps.ventes.compatibilites import (STATUT_INCOMPATIBLE,
+    from apps.ventes.compatibilites import (STATUT_INCOMPATIBLE, froid_du_lead,
                                             verdict_panneau_onduleur)
 
     if cible_panneaux <= 0:
@@ -1135,9 +1138,10 @@ def _refuser_couple_panneau_onduleur_impossible(devis, lignes, lignes_panneau,
                  if getattr(li, 'produit', None) is not None
                  and (_classe_ligne(li, _is_hybrid_inverter)
                       or _classe_ligne(li, _is_reseau_inverter))]
+    froid = froid_du_lead(getattr(devis, 'lead', None), devis) if onduleurs else None
     for panneau, compte_juge in juges:
         for onduleur in onduleurs:
-            verdict = verdict_panneau_onduleur(panneau, onduleur)
+            verdict = verdict_panneau_onduleur(panneau, onduleur, froid=froid)
             if verdict.get('statut') != STATUT_INCOMPATIBLE:
                 continue
             raisons = verdict.get('raisons') or []

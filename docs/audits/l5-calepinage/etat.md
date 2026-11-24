@@ -857,3 +857,52 @@ choix recommandé est pris et listé à la fin ; rien de ce qu'un client lit n'e
    ADEP109 et ACAL2041 cochées ; ACAL2037, ACAL2033, ADEV158 « code livré, preuve en direct due »), Auto-fix allumé,
    mise en file automatique demandée. La lane A (ADEV156 livrée ; ADEV157, ACAL2040 en cours) partira dans la PR
    suivante.
+10. **PR Taqinor/taqinor-os#1541 FUSIONNÉE le 24/11 à 05 h 13 UTC** (5 restes de la vague D, lane B).
+11. **Étape 2a : PR Taqinor/taqinor-os#1542** (branche `dev-moteur-e2a`) — ADEV131 (modèle `ConceptionLead`, migration
+    `ventes/0161_conceptionlead`), ADEV132 (`EntreesConception`), ADEV159 (figeage : 9 goldens sous
+    `apps/ventes/tests/golden/conception/` — résidentiel ×4, C&I ×3, agricole ×2 ; un arrondi changé rend le test
+    rouge en nommant la clé), `CHAMPS_ENTREES` complété par un espion sur un passage entier du devis automatique,
+    tâche ADEV160 (extraction) écrite au plan TRANSVERSE (`check_ownership` la refuse au plan devis :
+    `etude_horaire.py` appartient à « moteur »), ADEV133 et ADEV138 corrigées. Premier passage de CI ROUGE sur UN
+    test que seul le backend complet joue : `apps.crm.tests_acrm_dsr_copies_brutes` exige que tout modèle à clé vers
+    `crm.Lead` soit déclaré au registre d'effacement. Corrigé pour de bon, pas exempté (`c52aaf20ed`) : un lead effacé
+    (demande de droit ou rétention) emporte ses versions de conception — elles copient ses factures, sa ville, son
+    point GPS — par un abonné `ventes` à `lead_erased`, borné à la société ; modèle déclaré dans
+    `crm/dsr_provider.py` (`MODELES_LEAD_TRAITES`) ; test rouge puis vert. Second passage : VERT, en file de fusion
+    (06 h 35 UTC). À VÉRIFIER à la reprise : `gh pr view 1542 --json state,mergedAt`.
+12. **Restes de la vague D, second lot (lane A) : branche locale `dev-restes-a`** = étape 2a + ADEV156
+    (`3649ec1184`, golden `split_dm_comp.json` recapturé `382ae7bc0e`), ADEV157 (`ed9df1dde7`), ACAL2040
+    (`ab7206cc95`, prémisse contestée : le libellé attendu n'est plus imprimé depuis le commit `71d25d6d70` du 13/11,
+    le test relit le titre actuel). Rejoué sur l'arbre plié : 194 tests verts, les 9 goldens de figeage INCHANGÉS.
+    À pousser dans SA PR dès la fusion de #1542 (un seul CI à la fois).
+    Suites notées par la lane, pas faites : `frontend/e2e/acceptation/alea.spec.js` attend « les 8 prestations » sur
+    une société amorcée — la garde nomme maintenant aussi câbles, structures et protections DC à prix 0 (spec à
+    mettre à jour, elle ne tourne pas en CI) ; restent à −5 °C l'aperçu `composer_devis_residentiel` et l'écran du
+    générateur sans lead.
+
+### À FAIRE À LA REPRISE (après la remise à zéro du quota, 28/11 à 11 h UTC), dans l'ordre
+
+a. Se repérer : `git fetch`, `gh pr view 1542` et la PR des restes A, relire ce bloc ; reprendre les claims
+   (`plan_claims.py claim`, propriétaire `<poste>/<branche>`) ; refaire les outils de test du point 5 s'ils ont
+   disparu (image `lane-test:dev`, gabarit `test_erp_lane_base` — vérifier d'abord qu'ils existent).
+b. **ADEV160 — l'extraction** (plan transverse, `@atomique: devis, moteur`), UNE lane opus effort haut, depuis `main` :
+   symboles et plages au point 8 ; preuve = les 9 goldens d'ADEV159 identiques à l'octet, `build_devis_auto` appelle
+   les fonctions extraites (une définition chacune), empreintes `split_dm_auto*` recapturées avec le motif nommé,
+   `etude_ci.py` (2 013 lignes) maigrit. Limites connues du figeage : `electrical_design` est nul dans les 9 goldens
+   (la conception électrique n'est pas protégée : ajouter une fabrique qui la remplit AVANT d'extraire) ; les
+   empreintes `etude_ci.empreinte` et `provenance_pompage._empreinte` sont normalisées (calculées sur des ids).
+   Puis relecture adverse du diff par un opus neuf AVANT fusion (cœur de la création de devis).
+c. ADEV133 → ADEV138 (moteur, suppositions, écrivain `relancer`, porteur calepinage, sélecteurs et route, PARITÉ),
+   une lane opus ; la capture des goldens passe par `UPDATE_GOLDEN=1` (le lanceur de lane ne transmet pas les
+   variables : ajouter `-e UPDATE_GOLDEN`).
+d. Étapes 3 à 8 du chemin (`controles/C4-consolidation.md`) ; étape 3 : chaque entrée du moteur qui n'est pas une
+   colonne du lead (liste au point 8) reçoit son déclencheur ou passe par le filet d'empreinte (ADEV140).
+e. Étape 9 : ADEV154 (liste des devis dont les chiffres changeraient) MONTRÉE à Reda en question interactive ;
+   ADEV155 reste GATED jusqu'à sa réponse (rien de ce qu'un client lit n'est décidé sans lui).
+f. Restes de la vague D non lancés : ACAL2030 (CSS du mode Expert), ACAL2031 et ACAL2032 (`apps/web`, vraie
+   installation de `node_modules`) ; rejeux en direct de l'orchestrateur ACAL2034, 2035, 2036, 2038 et les trois
+   « code livré » de la PR #1541 (ACAL2037, ACAL2033, ADEV158).
+g. Étape 3 de la demande : écrans encore loin des maquettes v2 (Documents, Démarrage rapide, Tablette, relevé et vue
+   client au téléphone, Présentation, dessin sur la carte) — chaque écran réel à côté de sa maquette, même taille.
+h. PARTIE 2 (test utilisateur complet) : rien n'en est commencé. Instantané anonymisé à refaire (celui du poste date
+   du 30/09), pile de revue à monter sur le code fusionné, préremplissage sourcé, relecteurs neufs.
