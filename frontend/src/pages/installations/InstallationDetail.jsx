@@ -1785,7 +1785,6 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                   ))}
                 </MiniTable>
               )}
-              {/* T4-U2-016 — sans le droit d'ouvrir un ticket (`sav_gerer`) : QUI peut, jamais un renvoi circulaire. */}
               <Hint>Le suivi détaillé (interventions, historique) se fait dans l&apos;écran « Tickets SAV ».{!peutSav && <span data-testid="chantier-sav-creation-reservee">{` ${SAV_CREATION_RESERVEE}`}</span>}</Hint>
               {peutSav && <div className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_2fr_auto]">
                 <FormField label="Type" htmlFor="tk-type">
