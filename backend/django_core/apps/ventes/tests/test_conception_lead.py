@@ -2207,6 +2207,45 @@ class RelanceEnTacheTests(_emprunt(RelanceConceptionTests, '_relancer'),
         for version in ConceptionLead.objects.filter(company=company):
             self.assertNotIn('33.57', _json_mod.dumps(version.declencheur))
 
+    def test_effacement_caviarde_les_lignes_de_conception_deja_ecrites(self):
+        """Relecture E3 B1(f) — le GPS et la facture DITS au chatter avant
+        l'effacement (« Conception recalculée : GPS latitude 33,57 → … »)
+        sortent de chaque ligne et de chaque ligne archivée du lead."""
+        from apps.crm.dsr_provider import anonymiser_lead
+        from apps.crm.models import Lead, LeadActivity, LeadActivityArchive
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        Lead.objects.filter(pk=lead.pk).update(gps_lat=Decimal('33.5731'), gps_lng=Decimal('-7.5898'))
+        lead.refresh_from_db()
+        self._relancer(lead, company, _declencheur())
+        self._enregistrer(lead, gps_lat=Decimal('33.5801'), facture_hiver=Decimal('2437'))
+        self._executer_les_taches()
+        lignes = LeadActivity.objects.filter(lead=lead, field='conception_version')
+        corps = ' '.join(lignes.values_list('body', flat=True))
+        self.assertIn('33,58', corps)
+        self.assertIn('2 437', corps)
+        ligne = lignes.first()
+        LeadActivityArchive.objects.create(
+            original_id=ligne.pk, company_id=company.pk, lead_id=lead.pk, kind=ligne.kind,
+            field=ligne.field, field_label=ligne.field_label, old_value=ligne.old_value,
+            new_value=ligne.new_value, body=ligne.body, created_at=ligne.created_at)
+
+        lead.refresh_from_db()
+        with self.captureOnCommitCallbacks(execute=True):
+            anonymiser_lead(company, lead, motif='Effacement (test B1f)')
+        textes = []
+        for modele, filtre in ((LeadActivity, {'lead_id': lead.pk, 'field': 'conception_version'}),
+                               (LeadActivityArchive, {'lead_id': lead.pk})):
+            for body, ancien, nouveau in modele.objects.filter(**filtre).values_list(
+                    'body', 'old_value', 'new_value'):
+                textes.append(' '.join(str(t) for t in (body, ancien, nouveau) if t))
+        tout = ' | '.join(textes)
+        for valeur in ('33,57', '33,58', '33.57', '33.58', '7,58', '7.58', '2 437', '2437', '1 800'):
+            self.assertNotIn(valeur, tout)  # mutant « corps gardé » : rouge
+        self.assertEqual(set(LeadActivityArchive.objects.filter(lead_id=lead.pk).values_list('body', flat=True)),
+                         {'Conception recalculée'})
+
     def test_fusion_ecrite_apres_la_prise_le_marqueur_est_libere(self):
         """Relecture E3 m-a — une fusion lue AVANT la prise de la tâche et
         écrite APRÈS remet le marqueur « en file » sous le jeton de la tâche :
