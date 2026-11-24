@@ -24,11 +24,21 @@ from django.test import tag
 
 from apps.documents.contrats.rendu import html_de, pdf_de
 
-RACINE = Path(__file__).resolve().parents[5]
 ECHANTILLON = (Path(__file__).resolve().parents[1] / 'contract_samples'
                / 'acte_contractuel.json')
 TEXTES = Path(__file__).resolve().parents[1] / 'contrats' / 'textes.py'
-JURIDIQUE = RACINE / 'docs' / 'contrats' / 'juridique.md'
+
+
+def juridique():
+    """docs/contrats/juridique.md, cherché en remontant depuis ce fichier
+    (.../backend/django_core/apps/documents/tests/ → racine du dépôt)."""
+    for dossier in Path(__file__).resolve().parents:
+        chemin = dossier / 'docs' / 'contrats' / 'juridique.md'
+        if chemin.exists():
+            return chemin
+    raise AssertionError('docs/contrats/juridique.md introuvable')
+
+
 PAGES_MAX = {'contrat_installation': 6, 'pv_livraison': 2, 'pv_reception': 2,
              'cloture_garanties': 4}
 SIG = ('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAf'
@@ -94,7 +104,7 @@ class ReferencesDeLoiTests(unittest.TestCase):
     juridique.md § 2 (lue au niveau P)."""
 
     def _section_2(self):
-        texte = JURIDIQUE.read_text(encoding='utf-8')
+        texte = juridique().read_text(encoding="utf-8")
         debut = texte.index('## 2.')
         fin = texte.index('## 3.', debut)
         return texte[debut:fin]
