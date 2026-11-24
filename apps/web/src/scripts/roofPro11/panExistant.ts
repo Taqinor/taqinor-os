@@ -9,7 +9,7 @@ import { annualSavingsMad } from '../../lib/estimatorBrainV2'; // ACAL1900 — �
 import type { Ctx } from './context';
 import { createLayoutState, type LayoutState } from '../../lib/layoutVariability'; // ACAL1900
 import { resnapEnMasse } from './layoutResnap'; // ACAL1900 — même re-snap que W79
-import { hardViolationsFor, panelCornersFor, toUV, type FreeGeom, type FreeLayoutState, type FreePanel, type Vec2 } from '../../lib/freeLayout'; // ACAL2032
+import { checkRect, FREE_EDGE_EPS_M, hardViolationsFor, panelCornersFor, rectOfPanel, toUV, type FreeGeom, type FreeLayoutState, type FreePanel } from '../../lib/freeLayout'; // ACAL2032
 import type { LayoutPlan } from './types'; // ACAL2032
 import { DEG2M, DEG2RAD } from './constants'; // ACAL2032
 
@@ -57,19 +57,25 @@ export function tenirPoseLibre(etat: FreeLayoutState, g: FreeGeom, plan: Pick<La
   const o = plan.pack.origin;
   const [dx, dy] = origineAvant ? [(origineAvant[0] - o[0]) * DEG2M * Math.cos(o[1] * DEG2RAD), (origineAvant[1] - o[1]) * DEG2M] : [0, 0];
   const ringUV = g.ringENU.map(([x, y]) => toUV(g, x, y));
-  const gardes: FreePanel[] = [];
-  const coins: Vec2[][] = [];
+  const gardes: FreeLayoutState = { panels: [] };
   const aReposer: FreePanel[] = [];
+  // Mêmes contrôles DURS que le glissé libre (`checkRect`), le rectangle rentré d'un millimètre : le pavage pose ses rangées
+  // BORD CONTRE BORD avec le contour, et le bruit des axes (azimut 180°) y voyait une arête « traversante ». Panneau tourné :
+  // ses quatre coins.
+  const e = FREE_EDGE_EPS_M;
+  const tient = (q: FreePanel) => {
+    if (q.angleDeg) return !hardViolationsFor(g, ringUV, panelCornersFor(g, q), gardes.panels.map((k) => panelCornersFor(g, k)), []).length;
+    const r = rectOfPanel(g, q);
+    return !checkRect(gardes, g, { u0: r.u0 + e, u1: r.u1 - e, v0: r.v0 + e, v1: r.v1 - e }, { setbackM: 0, gapM: 0 }).hard;
+  };
   for (const p of etat.panels) {
     const q = dx || dy ? { ...p, cx: p.cx + dx, cy: p.cy + dy } : p;
-    const c = panelCornersFor(g, q);
-    if (hardViolationsFor(g, ringUV, c, coins, []).length) aReposer.push(q);
-    else { gardes.push(q); coins.push(c); }
+    (tient(q) ? gardes.panels : aReposer).push(q);
   }
-  const libres = plan.grid.panels.filter((c) => !hardViolationsFor(g, ringUV, panelCornersFor(g, c), coins, []).length);
+  const libres = plan.grid.panels.filter((c) => tient(c));
   const remis = aReposer.length ? remettreSurLePlan(createLayoutState(aReposer, aReposer.length), libres) : null;
   const deplaces = remis ? [...remis.occupied].map((i) => ({ cx: remis.cells[i].cx, cy: remis.cells[i].cy, ...(remis.cells[i].face ? { face: remis.cells[i].face } : {}) })) : [];
-  return { etat: { panels: [...gardes, ...deplaces] }, gardes: gardes.length, deplaces: deplaces.length, retires: aReposer.length - deplaces.length };
+  return { etat: { panels: [...gardes.panels, ...deplaces] }, gardes: gardes.panels.length, deplaces: deplaces.length, retires: aReposer.length - deplaces.length };
 }
 
 /** ACAL2032 — la phrase de `tenirPoseLibre` (note de la disposition). */

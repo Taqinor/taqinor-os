@@ -792,8 +792,8 @@ describe('ACAL2032 — placement libre : la pose tenue suit un changement de toi
     }
     return out;
   };
-  const plan = (hu: number, hv: number, w = 2, d = 1, origin: [number, number] = ORIGINE, dx = 0) => ({
-    pack: { origin, azimuthDeg: 0, ringENU: [[-hu + dx, -hv], [hu + dx, -hv], [hu + dx, hv], [-hu + dx, hv]] },
+  const plan = (hu: number, hv: number, w = 2, d = 1, origin: [number, number] = ORIGINE, dx = 0, azimuthDeg = 0) => ({
+    pack: { origin, azimuthDeg, ringENU: [[-hu + dx, -hv], [hu + dx, -hv], [hu + dx, hv], [-hu + dx, hv]] },
     grid: { rowWidthM: w, footprintPerPanelM2: w * d, slopeLenM: d, panels: cellules(hu, hv, w, d).map((c) => ({ ...c, cx: c.cx + dx })) },
     tiltDeg: 0, family: 'S', flush: false,
   }) as unknown as LayoutPlan;
@@ -870,6 +870,22 @@ describe('ACAL2032 — placement libre : la pose tenue suit un changement de toi
       expect(plein.ctx.freeState!.panels).toHaveLength(5);
       expect(plein.note()).toBe('Placement libre après la modification — 5 panneaux gardés à leur place, 1 retiré (plus de place sur le toit).');
     } finally { plein.remettre(); }
+  });
+
+  // Rejeu en direct (calepinage 1928, pan en pente) : le pavage pose sa rangée d'égout BORD CONTRE BORD avec le contour ; un
+  // recalcul sans aucun changement disait « 3 retirés » (contrôle au contour sans la tolérance du glissé libre).
+  it('panneaux posés bord contre bord avec le contour : gardés tels quels par un recalcul sans changement', async () => {
+    const { ctx, recalculer, note, remettre } = await ouvrir();
+    try {
+      const auBord = [{ cx: 5, cy: -3.5 }, { cx: -5, cy: 3.5 }, { cx: 0, cy: -3.5 }]; // u = −6…−4 / v = −4…−3, etc.
+      ctx.freeState = { panels: auBord.map((p) => ({ ...p })) };
+      recalculer(plan(6, 4));
+      expect(ctx.freeState!.panels).toEqual(auBord);
+      expect(note()).toBe('Placement libre conservé — 3 panneaux inchangés.');
+      recalculer(plan(6, 4, 2, 1, ORIGINE, 0, 180)); // pan plein sud du rejeu : axes à 1e-16 près
+      expect(ctx.freeState!.panels).toEqual(auBord);
+      expect(note()).toBe('Placement libre conservé — 3 panneaux inchangés.');
+    } finally { remettre(); }
   });
 
   it('rien ne change de place : la pose telle quelle, même quand le repère du pan se déplace (sommet déplacé ailleurs)', async () => {
