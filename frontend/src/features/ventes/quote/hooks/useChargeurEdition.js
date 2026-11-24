@@ -15,6 +15,17 @@ import { withKeys } from '../ligneFabrique.js'
 import { ATTESTATION_VIDE, ECO_CI_VIDE, TARIF_SAISIE_VIDE, ecoDepuisSaisies } from '../etudeMarcheBloc'
 import { etudeParamsBatteries } from '../../calc/batteriesDepart.js'
 
+// T4-V2-002 — les états d'écran agricoles du devis rouvert (forme de
+// `courantPompage` du générateur) : ce que la reprise du lead ne doit pas écraser.
+const valeursPompageDuDevis = (etat) => ({
+  pompeHmt: etat.pompe?.hmt, pompeDebit: etat.pompe?.debit, pompeCv: etat.pompe?.cv,
+  pompeType: etat.pompe?.type, pompeProfondeur: etat.pompe?.profondeur,
+  pompeDistance: etat.pompe?.distance, farmHmtStatic: etat.farm?.hmtStatic,
+  farmRegion: etat.farm?.region, farmCrop: etat.farm?.crop,
+  farmSurfaceHa: etat.farm?.surfaceHa, farmIrrigation: etat.farm?.irrigation,
+  eco: etat.saisiesEco || {},
+})
+
 export function useChargeurEdition(ctx) {
   const {
     setLeadDuDevis, setErrors, dispatchSizing, cancel, editId, setEditDevis, jetonRef,
@@ -29,6 +40,7 @@ export function useChargeurEdition(ctx) {
     setPompeDebit, setPompeProfondeur, setPompeDistance, setFarmRegion, setFarmCrop,
     setFarmSurfaceHa, setFarmIrrigation, setEcoPompage, setAttestationAgricole, setFarmHmtStatic,
     setFarmHmtDrawdown, setPompageSaisie, clear, baremeSociete, setMoisDerives = null,
+    appliquerEntreesPompage = null,
   } = ctx
 
   // QJR548 — le chargeur `?edit=` se relance quand le devis a été recomposé
@@ -100,6 +112,15 @@ export function useChargeurEdition(ctx) {
           // QJR581 — hydratation serveur tardive : re-capture de la référence.
           captureReferenceJusqua.current = Date.now() + FENETRE_REFERENCE_MS
           setLeadDuDevis(lead)
+          // T4-V2-002 — un devis AGRICOLE (le devis automatique n'enregistre
+          // que taille et alimentation : le reste, le moteur l'a lu sur le
+          // lead) se rouvre sur les entrées de pompage du lead, posées dans
+          // les seuls champs que le devis laisse VIDES (règle AGR420). Les
+          // valeurs du devis sont passées telles quelles : la relecture du
+          // lead peut arriver avant que l'écran les ait rendues.
+          if (etat.mode === 'agricole' && appliquerEntreesPompage) {
+            appliquerEntreesPompage(lead, valeursPompageDuDevis(etat))
+          }
           if (parseFloat(lead.facture_hiver) > 0) {
             setFHiver(prev => prev || String(lead.facture_hiver))
             setFEte(prev => prev || (lead.ete_differente && lead.facture_ete
