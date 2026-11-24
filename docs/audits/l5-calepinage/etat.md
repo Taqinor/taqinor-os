@@ -1277,7 +1277,7 @@ que si `dist/` existe, donc jamais en CI ; son budget (73 Ko) date de septembre,
 **Tâche de 9 h vue par le fondateur** : c'était la lane d'extraction du matin, tenue en vie par deux boucles d'attente
 sur un journal terminé ; boucles arrêtées. Le serveur du front de l'instrument (5251) reste, exprès.
 
-### Point du 24/11, 23 h 00 UTC (le plus récent — REPRENDRE ICI)
+### Point du 24/11, 23 h 00 UTC
 
 **Lot 2 — branche locale `dev-lot2`** (PAS poussée, PAS de PR) contient maintenant : étape 3 du moteur + ses deux vagues
 de corrections de relecture (effacement légal fermé sur tous les chemins lus : lignes du chatter caviardées, lead relu
@@ -1312,3 +1312,37 @@ qui ne filtre pas, Entrée ajoute le premier article), T4-V1-003 (deux totaux du
 sans description), T4-V1-010 (pivot de la vue client), T4-V1-011 (le commercial ne trouve pas son client),
 T4-V1-012 (« SoftTimeLimitExceeded() » brut), T4-V1-004, ACAL2032 (placement libre : « + Ajouter un panneau » sans
 effet vu).
+
+### Point du 24/11, 23 h 40 UTC (le plus récent — REPRENDRE ICI)
+
+**PR Taqinor/taqinor-os#1554 — BROUILLON** (branche `dev-lot2` poussée, Auto-fix allumé, PAS de fusion automatique) :
+lot 2 = étapes 3 et 4 du moteur + lanes `calepinage-serveur`, `atelier-suite`, `front-suite`, `serveur-suite`, balayage
+front. Ouverte en brouillon pour connaître la liste des rouges pendant que les corrections se font. Rouges ATTENDUS :
+schéma OpenAPI (un avertissement sur `mettre_a_jour_conception` : `DictField()` nu), garde de portée ADEV41 (route
+neuve non classée). **Ne pas fusionner avant** : les corrections de la relecture adverse de l'étape 4.
+- Relecture adverse de l'étape 4 (lecture seule) : BLOQUANT — l'empreinte de la conception ne couvre ni la phase du site
+  (`raccordement`), ni le catalogue, ni la TVA : un devis automatique neuf pouvait sortir sur des entrées périmées ;
+  MAJEURS — brouillon envoyé pendant un réalignement réécrit (pas de verrou ni de re-contrôle), le suivi des brouillons
+  ne part que si la TÂCHE a écrit, brouillons C&I / agricoles dont le pointeur avance sans que les lignes suivent, route
+  de mise à jour ouverte à `crm_voir` (la route voisine exige responsable ou administrateur : même garde posée, décision
+  à confirmer par le fondateur), ligne du chatter écrite après un effacement.
+- EN VOL (worktrees isolés, partis de `dev-lot2`) : `lane/moteur-e4-fix` (ces corrections + schéma de la route, base de
+  test `x4`) ; `lane/moteur-e5` (ACAL2012 fait ; 2013 à 2017 ; base `x5`) ; correctifs du tour 2 — `lane/agri-2`
+  (pompage : trois pompes proposées incohérentes, origine remise à zéro, étude vide à la modification… base `p1`,
+  port 5270), `lane/devis-2` (sélecteur de produit, totaux, bandeau des options, clic mort d'envoi, restes à payer,
+  révision, SAV, dialogue PDF ; base `p2`, port 5271), `lane/calepinage-2` (épingle réellement posée — T4-U4-013 —,
+  message de délai, pivot de la vue client, est-ouest, placement libre, plan de pose coupé, recherche de client ;
+  base `q`, port 5272). Brief commun : `<scratchpad>/brief-lane-correctifs-tour2.md`.
+- À leur retour : plier dans `dev-lot2`, rejouer les gardes hôte + l'instantané OpenAPI + `--strict` en docker, pousser
+  UNE fois (corrections de CI comprises), passer la PR « prête », `gh pr merge --auto --merge`.
+
+**Instrument `l5t`** : sur `dev-lot2@4f73d97828` depuis 23 h 25 (migration ventes 0162 appliquée, serveur relancé,
+front rebâti, `l5t-django` à 1 700 Mo). ATTENTION : cette version porte encore le défaut d'empreinte de l'étape 4.
+
+**Tour 2 TERMINÉ** : V1 (12 constats) + V2 (25 constats) = 37, aucun S1, 10 S2 ; rejeux : 28 « corrigé », 5 « pas
+corrigé » (dont 3 déjà traités dans le lot 2), 4 « autre », 1 non rejoué. Rapports `T4/tour2/V1.md`, `V2.md`.
+Scénarios joués jusqu'au bout ou presque : a (tour 1), b (jusqu'au SAV), c (jusqu'à l'acompte), e (tour 1) ; d arrêté
+aux résultats ; f, g, h arrêtés après les PDF ; i joué sans pompe ; j, k, l, m partiels ; n à r joués (tour 1).
+PAS ENCORE JOUÉ : balayages s à w ; rôle Technicien (403) ; agricole avec les prix d'essai jusqu'au bout ; relecteur des
+maquettes B5 ; rejeux d'acceptation des tâches « code livré » (ACAL2027, 2028, 2034, 2035, 2036, 2038 et les tâches
+d'écran) ; mesure des lenteurs AU CALME (les relecteurs ont mesuré une pile saturée par les lanes).
