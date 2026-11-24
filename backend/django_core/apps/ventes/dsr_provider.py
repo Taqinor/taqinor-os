@@ -224,3 +224,29 @@ def register():
     from core import dsr
     dsr.register_dsr_provider(
         PROVIDER_NAME, export=export_ventes, erase=erase_ventes)
+
+    # ADEV131 — l'abonnement à l'effacement d'un lead (rétention comprise).
+    from core.events import lead_erased
+
+    lead_erased.connect(on_lead_erased, dispatch_uid='ventes_lead_erased')
+
+
+def on_lead_erased(sender, **kwargs):
+    """ADEV131 (D-ACAL-97) — un lead CRM est effacé (DSR ou rétention) : ses
+    versions de conception rangées (``ConceptionLead``) portent des COPIES de
+    ses entrées (factures, ville, point GPS, contour du toit) ; elles sont
+    SUPPRIMÉES — résultat recalculable, aucune obligation de conservation
+    (un devis garde sa propre étude figée). Borné à la société de
+    l'événement. Best-effort journalisé, jamais propagé : l'effacement CRM ne
+    casse jamais à cause d'un abonné."""
+    company = kwargs.get('company')
+    lead_id = kwargs.get('crm_lead_id')
+    if company is None or not lead_id:
+        return
+    try:
+        from .models import ConceptionLead
+
+        ConceptionLead.objects.filter(company=company, lead_id=lead_id).delete()
+    except Exception:  # journalisé, jamais propagé
+        logger.exception('ADEV131 : conceptions du lead %s non supprimées '
+                         '(lead effacé)', lead_id)

@@ -442,6 +442,29 @@ class ConceptionLeadModeleTests(TestCase):
         self.assertEqual(ConceptionLead.objects.filter(lead=self.lead).count(), 2)
         self.assertEqual(ConceptionLead.objects.get(lead=self.lead, courante=True).pk, v2.pk)
 
+    def test_lead_efface_ses_versions_partent_les_autres_restent(self):
+        """Effacement d'un lead (DSR, rétention) : ses versions rangées, qui
+        copient ses entrées (factures, ville, GPS), sont supprimées ; celles
+        d'un autre lead restent, et une autre société n'efface rien."""
+        from apps.crm.models import Lead
+        from apps.ventes.models import ConceptionLead
+        from core.events import lead_erased
+
+        voisin = Lead.objects.create(company=self.company, nom='Voisin', prenom='B',
+                                     telephone='+212600000002')
+        ConceptionLead.ranger(lead=self.lead, **_champs_version())
+        ConceptionLead.ranger(lead=self.lead, **_champs_version(empreinte='b' * 64))
+        garde = ConceptionLead.ranger(lead=voisin, **_champs_version())
+
+        lead_erased.send(sender=None, company=self.autre,
+                         crm_lead_id=self.lead.pk, phone_key='')
+        self.assertEqual(ConceptionLead.objects.filter(lead=self.lead).count(), 2)
+
+        lead_erased.send(sender=None, company=self.company,
+                         crm_lead_id=self.lead.pk, phone_key='')
+        self.assertFalse(ConceptionLead.objects.filter(lead=self.lead).exists())
+        self.assertTrue(ConceptionLead.objects.filter(pk=garde.pk).exists())
+
     def test_contrainte_refuse_deux_courantes_pour_un_lead(self):
         from django.db import IntegrityError, transaction
 
