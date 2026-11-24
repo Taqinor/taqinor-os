@@ -143,6 +143,33 @@ class JumeauDesTextesTests(unittest.TestCase):
             [p.count('\n- ') for p in textes_ar.entretien_par_defaut()],
             [p.count('\n- ') for p in textes.entretien_par_defaut()])
 
+    def test_consommateur_ou_entreprise_dans_les_deux_langues(self):
+        """Revue 1, T13 et T14 : le tribunal du certificat de garantie et la
+        clause « traduction arabe » suivent ``consommateur``, en français
+        comme en arabe."""
+        ctx_ar = textes_ar.FORMES_CTX
+        ctx_fr = dict(ctx_ar, societe='TAQINOR')
+        siege = {'fr': 'tribunal compétent du siège de TAQINOR',
+                 'ar': 'مقر Société Exemple'}
+        domicile = {'fr': 'tribunal de votre domicile', 'ar': 'محكمة موطنكم'}
+        traduction = {'fr': 'traduction en arabe', 'ar': 'بترجمته إلى اللغة'}
+        for langue, module, ctx in (('fr', textes, ctx_fr),
+                                    ('ar', textes_ar, ctx_ar)):
+            for conso in (True, False):
+                with self.subTest(langue=langue, consommateur=conso):
+                    options = {'consommateur': conso}
+                    cloture = {a['cle']: a for a in module.articles_par_defaut(
+                        'cloture_garanties', '', ctx, options)}
+                    tribunal = cloture['garantie_legale']['paragraphes'][1]
+                    self.assertEqual(domicile[langue] in tribunal, conso)
+                    self.assertEqual(siege[langue] in tribunal, not conso)
+                    contrat = {a['cle']: a for a in module.articles_par_defaut(
+                        'contrat_installation', '', ctx, options)}
+                    finales = contrat['dispositions_finales']['paragraphes']
+                    self.assertEqual(len(finales), 2 if conso else 1)
+                    self.assertEqual(
+                        any(traduction[langue] in p for p in finales), conso)
+
     def test_a_preciser_identique_au_rendu(self):
         self.assertEqual(textes_ar.A_PRECISER, composants.A_PRECISER['ar'])
 
@@ -152,7 +179,12 @@ def _arabiser(contenu):
     lane du contenu sert avec ``?langue=ar``)."""
     ar = copy.deepcopy(contenu)
     ar['langue'] = 'ar'
-    ctx = textes_ar.FORMES_CTX
+    # Le vrai nom de la société et du client, comme le serveur les pose
+    # (jamais les exemples de ``FORMES_CTX``, dont « Société » est aussi un
+    # libellé français).
+    ctx = dict(textes_ar.FORMES_CTX,
+               societe=ar['societe'].get('nom_court') or ar['societe']['nom'],
+               client=ar['client'].get('nom_complet') or '')
     options = ar.get('options') or {}
     ar['articles'] = textes_ar.articles_par_defaut(
         ar['type'], ar.get('variante', ''), ctx, options)

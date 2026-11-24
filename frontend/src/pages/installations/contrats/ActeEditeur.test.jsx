@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { exempleContrat } from '../../../test/fixtures/contractSamples'
+import { exempleContrat, documentContrat } from '../../../test/fixtures/contractSamples'
+import { ConfirmProvider } from '../../../providers/ConfirmProvider'
+import { useConfirmationSortie } from '../../../ui/useDirtyGuard'
 
 const { documentsApiMock } = vi.hoisted(() => ({
   documentsApiMock: {
@@ -16,10 +18,47 @@ import ActeEditeur from './ActeEditeur'
 
 const acte = () => structuredClone(exempleContrat('documents', 'acte_contractuel'))
 
+// Comme dans l'application : la boîte de confirmation de sortie est montée à la racine.
+function Racine({ children }) {
+  useConfirmationSortie()
+  return children
+}
+
 function monter(props = {}) {
   const onSaved = vi.fn()
-  render(<ActeEditeur open acteId={31} onOpenChange={vi.fn()} onSaved={onSaved} {...props} />)
-  return { onSaved }
+  const onOpenChange = vi.fn()
+  render(
+    <ConfirmProvider>
+      <Racine>
+        <ActeEditeur open acteId={31} onOpenChange={onOpenChange} onSaved={onSaved} {...props} />
+      </Racine>
+    </ConfirmProvider>,
+  )
+  return { onSaved, onOpenChange }
+}
+
+// Deux boutons « Fermer » : la croix du dialogue et celui du pied.
+const boutonsFermer = () => screen.getAllByRole('button', { name: 'Fermer' })
+const croix = () => boutonsFermer().find((b) => !b.closest('.contrats-dialogue__pied'))
+const fermerDuPied = () => boutonsFermer().find((b) => b.closest('.contrats-dialogue__pied'))
+
+async function salir(user) {
+  const zone = await within(await screen.findByRole('group', { name: 'Conditions particulières' }))
+    .findByLabelText('Conditions particulières')
+  await user.type(zone, ' x')
+}
+
+// Le détail servi en arabe : le MÊME exemple, dont `sections_modifiables` est dérivé
+// de l'exemple (jamais d'une liste écrite à la main) en écartant les sections
+// COMMUNES aux deux langues (dates, options, signataire — `corps_patch._note`).
+const COMMUNES = ['lieu', 'date_document', 'societe', 'options', 'livraison', 'reception', 'sav', 'paiement']
+function acteAr(base = acte()) {
+  const ar = structuredClone(base)
+  ar.langue = 'ar'
+  ar.contenu.langue = 'ar'
+  ar.sections_modifiables = base.sections_modifiables.filter((k) => !COMMUNES.includes(k))
+  ar.sections_personnalisees = []
+  return ar
 }
 
 const section = (nom) => screen.getByRole('group', { name: nom })
@@ -91,11 +130,7 @@ describe('Éditeur d’un acte', () => {
   })
 
   it('le choix de l’arabe redemande l’acte en langue ar et enregistre avec langue ar', async () => {
-    const ar = acte()
-    ar.langue = 'ar'
-    ar.sections_modifiables = ['titre', 'conditions_particulieres']
-    ar.sections_personnalisees = []
-    ar.contenu.langue = 'ar'
+    const ar = acteAr()
     ar.contenu.titre = 'عقد'
     documentsApiMock.acte.mockImplementation((id, langue) => Promise.resolve({
       data: langue === 'ar' ? ar : acte(),
@@ -109,12 +144,41 @@ describe('Éditeur d’un acte', () => {
       .findByLabelText('Titre')
     expect(zone).toHaveAttribute('dir', 'rtl')
     expect(zone).toHaveAttribute('lang', 'ar')
-    // En arabe, seules les sections listées par CE détail sont montrées.
+    // En arabe, seules les sections listées par CE détail (dérivé de l'exemple) sont montrées.
     expect(screen.queryByRole('group', { name: 'Options' })).toBeNull()
+    expect(screen.getByRole('group', { name: 'Conditions particulières' })).toBeInTheDocument()
     await user.clear(zone)
     await user.type(zone, 'عقد جديد')
     await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
     expect(documentsApiMock.modifierActe).toHaveBeenCalledWith(31, { titre: 'عقد جديد' }, 'ar')
+  })
+
+  it('F1 — en arabe : date limite, durées et fins de garantie en lecture seule, jamais envoyées', async () => {
+    const ar = acteAr()
+    ar.contenu.garanties = ar.contenu.garanties.map((g, i) => ({ ...g, fin: i === 0 ? '2037-01-23' : g.fin }))
+    documentsApiMock.acte.mockImplementation((id, langue) => Promise.resolve({
+      data: langue === 'ar' ? ar : acte(),
+    }))
+    const user = userEvent.setup()
+    monter()
+    await screen.findByRole('group', { name: 'Délais' })
+    await user.click(screen.getByRole('button', { name: 'العربية' }))
+    const delais = await screen.findByRole('group', { name: 'Délais' })
+    expect(within(delais).queryByLabelText('Date limite')).toBeNull()
+    expect(within(delais).getByText(ar.contenu.delais.date_limite)).toBeInTheDocument()
+    const garanties = screen.getByRole('group', { name: 'Garanties' })
+    expect(within(garanties).queryByLabelText('Durée en mois')).toBeNull()
+    expect(within(garanties).queryByRole('button', { name: /Ajouter une garantie|Retirer/ })).toBeNull()
+    expect(within(garanties).getByText(/2037-01-23/)).toBeInTheDocument()
+    await user.type(within(delais).getByLabelText('Détail'), ' x')
+    await user.type(within(garanties).getByLabelText('Désignation (garantie 1)'), ' x')
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    const envoye = documentsApiMock.modifierActe.mock.calls[0][1]
+    expect(Object.keys(envoye.delais)).toEqual(['detail'])
+    for (const g of envoye.garanties) {
+      expect(Object.keys(g).sort()).toEqual(['cle', 'designation', 'detail', 'garant'])
+    }
+    expect(documentsApiMock.modifierActe.mock.calls[0][2]).toBe('ar')
   })
 
   it('demande confirmation avant de changer de langue avec des modifications en cours', async () => {
@@ -156,5 +220,213 @@ describe('Éditeur d’un acte', () => {
     documentsApiMock.enregistrerModeleActe.mockResolvedValue({ data: { detail: 'ok' } })
     await user.click(await screen.findByRole('button', { name: 'Enregistrer comme modèle de la société' }))
     expect(documentsApiMock.enregistrerModeleActe).toHaveBeenCalledWith(31)
+  })
+
+  it('F2 — fermer avec des modifications non enregistrées demande confirmation (bouton, Échap)', async () => {
+    const user = userEvent.setup()
+    const { onOpenChange } = monter()
+    await salir(user)
+    await user.click(fermerDuPied())
+    const boite = await screen.findByRole('alertdialog')
+    expect(within(boite).getByText('Quitter sans enregistrer ?')).toBeInTheDocument()
+    expect(onOpenChange).not.toHaveBeenCalled()
+    await user.click(within(boite).getByRole('button', { name: 'Rester' }))
+    expect(onOpenChange).not.toHaveBeenCalled()
+    // La croix et Échap passent par la même garde.
+    await user.click(croix())
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Rester' }))
+    expect(onOpenChange).not.toHaveBeenCalled()
+    await user.keyboard('{Escape}')
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Quitter' }))
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it('F2 — sans modification, la fermeture est immédiate', async () => {
+    const user = userEvent.setup()
+    const { onOpenChange } = monter()
+    await screen.findByRole('group', { name: 'Conditions particulières' })
+    await user.click(fermerDuPied())
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+  })
+
+  it('F3 — « Enregistrer comme modèle » est désactivé tant que des modifications ne sont pas enregistrées', async () => {
+    const user = userEvent.setup()
+    monter({ peutModele: true })
+    const modele = await screen.findByRole('button', { name: 'Enregistrer comme modèle de la société' })
+    expect(modele).toBeEnabled()
+    await salir(user)
+    expect(modele).toBeDisabled()
+  })
+
+  it('F6 — si l’arabe ne se charge pas, le brouillon français ne reste pas sous l’étiquette arabe', async () => {
+    documentsApiMock.acte.mockImplementation((id, langue) => (langue === 'ar'
+      ? Promise.reject({ response: { data: { detail: 'Traduction indisponible.', code: 'x' } } })
+      : Promise.resolve({ data: acte() })))
+    const user = userEvent.setup()
+    monter()
+    await screen.findByRole('group', { name: 'Conditions particulières' })
+    await user.click(screen.getByRole('button', { name: 'العربية' }))
+    expect(await screen.findByText('Traduction indisponible.')).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Conditions particulières' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Enregistrer' })).toBeDisabled()
+  })
+
+  it('F4 — « Délai d’exécution » n’apparaît que sur le contrat, jamais sur un procès-verbal', async () => {
+    const user = userEvent.setup()
+    const { unmount } = render(
+      <ConfirmProvider>
+        <ActeEditeur open acteId={31} onOpenChange={vi.fn()} />
+      </ConfirmProvider>,
+    )
+    const contrat = await screen.findByRole('group', { name: 'Options' })
+    expect(within(contrat).getByLabelText(/Délai d’exécution/)).toBeInTheDocument()
+    unmount()
+    cleanup()
+    documentsApiMock.acte.mockResolvedValue({
+      data: structuredClone(exempleContrat('documents', 'acte_contractuel', 'exemple_pv_reception')),
+    })
+    monter()
+    const pv = await screen.findByRole('group', { name: 'Options' })
+    expect(within(pv).queryByLabelText(/Délai d’exécution/)).toBeNull()
+    await user.click(within(pv).getByLabelText(/Réserve de propriété/))
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    expect(Object.keys(documentsApiMock.modifierActe.mock.calls[0][1].options).sort())
+      .toEqual(['penalite_retard_pct', 'reserve_propriete'])
+  })
+
+  it('F5 — les modalités de paiement et l’introduction des conseils se modifient', async () => {
+    const user = userEvent.setup()
+    monter()
+    const paiement = await screen.findByRole('group', { name: 'Paiement : les modalités' })
+    const zone = within(paiement).getByLabelText('Modalités de paiement')
+    await user.clear(zone)
+    await user.type(zone, 'Virement uniquement.')
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    expect(documentsApiMock.modifierActe).toHaveBeenLastCalledWith(31, {
+      paiement: { modalites: 'Virement uniquement.' },
+    }, 'fr')
+    cleanup()
+    documentsApiMock.acte.mockResolvedValue({
+      data: structuredClone(exempleContrat('documents', 'acte_contractuel', 'exemple_cloture_garanties')),
+    })
+    monter()
+    const intro = within(await screen.findByRole('group', { name: 'Conseils : introduction' }))
+      .getByLabelText('Introduction des conseils')
+    await user.type(intro, ' Merci.')
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    const envoye = documentsApiMock.modifierActe.mock.calls.at(-1)[1]
+    expect(Object.keys(envoye)).toEqual(['conseils_intro'])
+    expect(envoye.conseils_intro).toMatch(/ Merci\.$/)
+  })
+
+  it('F7 — chaque case de constat est nommée par son texte, dans une cible de 44 px, et sa zone est étiquetée', async () => {
+    const pv = structuredClone(exempleContrat('documents', 'acte_contractuel', 'exemple_pv_reception'))
+    documentsApiMock.acte.mockResolvedValue({ data: pv })
+    const user = userEvent.setup()
+    monter()
+    const groupe = await screen.findByRole('group', { name: 'Constats' })
+    for (const [i, k] of pv.contenu.constats.entries()) {
+      const nom = `Constat ${i + 1} coché : ${k.texte.replace(/\*\*/g, '')}`
+      const case_ = within(groupe).getByRole('checkbox', { name: nom })
+      expect(case_.closest('label')).toHaveClass('contrats-editeur__cible')
+      expect(within(groupe).getByLabelText(`Texte du constat ${i + 1}`).tagName).toBe('TEXTAREA')
+    }
+    // Décocher la première case l'envoie bien (la case reste un vrai contrôle).
+    await user.click(within(groupe).getAllByRole('checkbox')[0])
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    expect(documentsApiMock.modifierActe.mock.calls[0][1].constats[0].cochee).toBe(false)
+  })
+
+  // F9 — la forme du corps envoyé vient de l'exemple (`corps_patch`, sinon le
+  // `contenu` servi), jamais d'une forme écrite dans le test.
+  describe('forme du corps envoyé = forme de l’exemple', () => {
+    const corpsPatch = documentContrat('documents', 'acte_contractuel').corps_patch.surcharges
+
+    // Chaque clé envoyée existe dans la référence, avec la même nature (null permis).
+    function memeForme(envoye, reference, chemin) {
+      if (envoye === null || reference === null || reference === undefined) return
+      if (Array.isArray(reference)) {
+        expect(Array.isArray(envoye), `${chemin} : liste attendue`).toBe(true)
+        for (const e of envoye) if (reference[0] !== undefined) memeForme(e, reference[0], `${chemin}[]`)
+        return
+      }
+      if (typeof reference === 'object') {
+        expect(typeof envoye, `${chemin} : objet attendu`).toBe('object')
+        for (const [k, v] of Object.entries(envoye)) {
+          expect(Object.keys(reference), `${chemin}.${k} absent de l'exemple`).toContain(k)
+          memeForme(v, reference[k], `${chemin}.${k}`)
+        }
+        return
+      }
+      expect(typeof envoye, chemin).toBe(typeof reference)
+    }
+
+    async function modifierEtLire(user, ouvrir) {
+      await ouvrir()
+      await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+      return documentsApiMock.modifierActe.mock.calls.at(-1)[1]
+    }
+
+    it('conditions_particulieres : un texte', async () => {
+      const user = userEvent.setup()
+      monter()
+      const envoye = await modifierEtLire(user, () => salir(user))
+      memeForme(envoye.conditions_particulieres, corpsPatch.conditions_particulieres, 'conditions_particulieres')
+    })
+
+    it('articles : { cle, titre, paragraphes[] }', async () => {
+      const user = userEvent.setup()
+      monter()
+      const envoye = await modifierEtLire(user, async () => {
+        const zone = await within(await screen.findByRole('group', { name: 'Articles' }))
+          .findByLabelText('Texte de l’article 1')
+        await user.type(zone, ' Un mot de plus.')
+      })
+      memeForme(envoye.articles, corpsPatch.articles, 'articles')
+      expect(Object.keys(envoye.articles[0]).sort()).toEqual(Object.keys(corpsPatch.articles[0]).sort())
+    })
+
+    it('echeancier_textes : { <tranche>: { exigibilite, note } }', async () => {
+      const user = userEvent.setup()
+      monter()
+      const envoye = await modifierEtLire(user, async () => {
+        const quand = await within(await screen.findByRole('group', { name: 'Échéancier : les mots' }))
+          .findByLabelText('Quand — Acompte')
+        await user.type(quand, ' x')
+      })
+      for (const tranche of Object.values(envoye.echeancier_textes)) {
+        memeForme(tranche, corpsPatch.echeancier_textes.acompte, 'echeancier_textes.<tranche>')
+        expect(Object.keys(tranche).sort()).toEqual(Object.keys(corpsPatch.echeancier_textes.acompte).sort())
+      }
+    })
+
+    it('options : { reserve_propriete, penalite_retard_pct, … }', async () => {
+      const user = userEvent.setup()
+      monter()
+      const envoye = await modifierEtLire(user, async () => {
+        await user.click(within(await screen.findByRole('group', { name: 'Options' }))
+          .getByLabelText(/Réserve de propriété/))
+      })
+      // Référence : le corps d'exemple, complété par le `contenu` servi (délai d'exécution).
+      memeForme(envoye.options, { ...acte().contenu.options, ...corpsPatch.options }, 'options')
+      expect(typeof envoye.options.reserve_propriete).toBe('boolean')
+    })
+
+    it('delais, paiement, garanties : mêmes clés et mêmes natures que le contenu servi', async () => {
+      const user = userEvent.setup()
+      monter()
+      const envoye = await modifierEtLire(user, async () => {
+        const g = await screen.findByRole('group', { name: 'Garanties' })
+        await user.type(within(g).getByLabelText('Désignation (garantie 1)'), ' x')
+        await user.type(within(screen.getByRole('group', { name: 'Délais' })).getByLabelText('Détail'), ' x')
+        await user.type(within(screen.getByRole('group', { name: 'Paiement : les modalités' }))
+          .getByLabelText('Modalités de paiement'), ' x')
+      })
+      const contenu = acte().contenu
+      memeForme(envoye.delais, contenu.delais, 'delais')
+      memeForme(envoye.paiement, contenu.paiement, 'paiement')
+      memeForme(envoye.garanties, contenu.garanties, 'garanties')
+    })
   })
 })

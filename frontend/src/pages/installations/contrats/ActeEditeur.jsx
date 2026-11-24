@@ -9,6 +9,7 @@ import {
   Button, Input, Label, Textarea, Spinner, toast,
 } from '../../../ui'
 import documentsApi from '../../../api/documentsApi'
+import { confirmLeaveIfDirty } from '../../../ui/useDirtyGuard'
 import { detailErreur, formaterDh } from './outils'
 import PiedDialogue from './PiedDialogue'
 import { useSoumission } from './useSoumission'
@@ -72,8 +73,18 @@ function ChampsSection({ cle, v, m, contenu }) {
     case 'delais':
       return (
         <>
-          <Texte id={`${p}-date`} libelle="Date limite" type="date" valeur={v.date_limite}
-                 onChange={(x) => m({ ...v, date_limite: x })} />
+          {/* En arabe la date limite est commune aux deux langues : lecture seule. */}
+          {langue === 'ar'
+            ? (
+              <p className="contrats-editeur__lecture-seule">
+                <span>Date limite (réglée en français)</span>
+                <strong dir="ltr">{v.date_limite || 'à préciser'}</strong>
+              </p>
+            )
+            : (
+              <Texte id={`${p}-date`} libelle="Date limite" type="date" valeur={v.date_limite}
+                     onChange={(x) => m({ ...v, date_limite: x })} />
+            )}
           <Zone id={`${p}-detail`} libelle="Détail" lignes={2} valeur={v.detail}
                 onChange={(x) => m({ ...v, detail: x })} />
         </>
@@ -103,6 +114,14 @@ function ChampsSection({ cle, v, m, contenu }) {
           ))}
         </>
       )
+    case 'paiement':
+      return (
+        <Zone id={p} libelle="Modalités de paiement" lignes={3} valeur={v.modalites}
+              aide="Le texte seulement : les montants et les échéances viennent de la vente."
+              onChange={(x) => m({ ...v, modalites: x })} />
+      )
+    case 'conseils_intro':
+      return <Zone id={p} libelle="Introduction des conseils" lignes={4} valeur={v} onChange={m} />
     case 'articles':
       return v.map((a, i) => (
         <div key={a.cle} className="contrats-editeur__bloc">
@@ -123,26 +142,41 @@ function ChampsSection({ cle, v, m, contenu }) {
                 <Texte id={`${p}-${i}-d`} libelle={`Désignation (garantie ${i + 1})`}
                        valeur={g.designation} onChange={set('designation')} />
                 <div className="contrats-editeur__duo">
-                  <Texte id={`${p}-${i}-m`} libelle="Durée en mois" type="number" step="any"
-                         valeur={g.duree_mois} onChange={set('duree_mois')} />
+                  {/* En arabe, durée et fin viennent du français : lecture seule. */}
+                  {langue === 'ar'
+                    ? (
+                      <p className="contrats-editeur__lecture-seule">
+                        <span>Durée en mois (réglée en français)</span>
+                        <strong dir="ltr">{g.duree_mois || 'à préciser'}</strong>
+                        {g.fin && <span dir="ltr">Fin : {g.fin}</span>}
+                      </p>
+                    )
+                    : (
+                      <Texte id={`${p}-${i}-m`} libelle="Durée en mois" type="number" step="any"
+                             valeur={g.duree_mois} onChange={set('duree_mois')} />
+                    )}
                   <Texte id={`${p}-${i}-g`} libelle="Garant" valeur={g.garant} onChange={set('garant')} />
                 </div>
                 <Zone id={`${p}-${i}-c`} libelle="Ce que cela couvre" lignes={2}
                       valeur={g.detail ?? ''} onChange={set('detail')} />
-                <Button type="button" size="sm" variant="ghost" className="contrats-acte__bouton"
-                        onClick={() => m(v.filter((_, j) => j !== i))}>
-                  <Trash2 className="size-4" aria-hidden="true" /> Retirer cette garantie
-                </Button>
+                {langue !== 'ar' && (
+                  <Button type="button" size="sm" variant="ghost" className="contrats-acte__bouton"
+                          onClick={() => m(v.filter((_, j) => j !== i))}>
+                    <Trash2 className="size-4" aria-hidden="true" /> Retirer cette garantie
+                  </Button>
+                )}
               </div>
             )
           })}
-          <Button type="button" size="sm" variant="outline" className="contrats-acte__bouton"
-                  onClick={() => m([...v, {
-                    cle: '', designation: '', duree_mois: '', duree_libelle: '',
-                    garant: '', detail: '', fin: null,
-                  }])}>
-            <Plus className="size-4" aria-hidden="true" /> Ajouter une garantie
-          </Button>
+          {langue !== 'ar' && (
+            <Button type="button" size="sm" variant="outline" className="contrats-acte__bouton"
+                    onClick={() => m([...v, {
+                      cle: '', designation: '', duree_mois: '', duree_libelle: '',
+                      garant: '', detail: '', fin: null,
+                    }])}>
+              <Plus className="size-4" aria-hidden="true" /> Ajouter une garantie
+            </Button>
+          )}
         </>
       )
     case 'conditions_particulieres':
@@ -194,9 +228,14 @@ function ChampsSection({ cle, v, m, contenu }) {
     case 'constats':
       return v.map((k, i) => (
         <div key={i} className="contrats-editeur__constat">
-          <input type="checkbox" aria-label={`Constat ${i + 1} coché`} checked={k.cochee}
-                 onChange={(e) => m(v.map((r, j) => (j === i ? { ...r, cochee: e.target.checked } : r)))} />
-          <Textarea aria-label={`Constat ${i + 1}`} rows={2} value={k.texte} {...attrsLangue(langue)}
+          {/* Case nommée par le texte du constat ; cible ≥ 44 px (label qui l'enveloppe). */}
+          <label className="contrats-editeur__cible">
+            <input type="checkbox" aria-label={`Constat ${i + 1} coché : ${k.texte.replace(/\*\*/g, '')}`}
+                   checked={k.cochee}
+                   onChange={(e) => m(v.map((r, j) => (j === i ? { ...r, cochee: e.target.checked } : r)))} />
+          </label>
+          <Label htmlFor={`${p}-${i}`} className="sr-only">{`Texte du constat ${i + 1}`}</Label>
+          <Textarea id={`${p}-${i}`} rows={2} value={k.texte} {...attrsLangue(langue)}
                     onChange={(e) => m(v.map((r, j) => (j === i ? { ...r, texte: e.target.value } : r)))} />
         </div>
       ))
@@ -262,6 +301,10 @@ export default function ActeEditeur({
       .catch(async (err) => {
         const detail = await detailErreur(err)
         if (annule) return
+        // Aucun brouillon d'une autre langue ne reste sous la nouvelle étiquette.
+        setActe(null)
+        setBase({})
+        setBrouillon({})
         setErreur(detail)
         setChargement(false)
       })
@@ -269,7 +312,7 @@ export default function ActeEditeur({
   }, [open, acteId, langue, setErreur])
 
   const sections = ORDRE_SECTIONS.filter((k) => (acte?.sections_modifiables ?? []).includes(k))
-  const surcharges = acte ? surchargesModifiees(base, brouillon, sections) : {}
+  const surcharges = acte ? surchargesModifiees(base, brouillon, sections, langue) : {}
   const modifie = Object.keys(surcharges).length > 0
   const personnalisees = acte?.sections_personnalisees ?? []
 
@@ -307,6 +350,13 @@ export default function ActeEditeur({
     basculer(code)
   }
 
+  // Croix, Échap, clic à côté et bouton « Fermer » passent par ICI : des
+  // modifications non enregistrées demandent confirmation avant de partir.
+  const demanderFermeture = (ouvert) => {
+    if (ouvert) { onOpenChange?.(true); return }
+    confirmLeaveIfDirty(modifie).then((ok) => { if (ok) onOpenChange?.(false) })
+  }
+
   const enregistrerModele = async () => {
     await soumettre(async () => {
       const res = await documentsApi.enregistrerModeleActe(acte.id)
@@ -315,7 +365,7 @@ export default function ActeEditeur({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={demanderFermeture}>
       <DialogContent aria-label="Modifier l’acte" className="contrats-editeur">
         <DialogHeader>
           <DialogTitle>Modifier « {acte?.titre ?? 'l’acte'} »</DialogTitle>
@@ -387,7 +437,7 @@ export default function ActeEditeur({
 
         <PiedDialogue
           erreur={erreur}
-          annuler={() => onOpenChange(false)}
+          annuler={() => demanderFermeture(false)}
           libelleAnnuler="Fermer"
           avant={(
             <>
@@ -397,7 +447,8 @@ export default function ActeEditeur({
                 </Button>
               )}
               {acte && peutModele && (
-                <Button variant="outline" className="contrats-acte__bouton" disabled={occupe}
+                <Button variant="outline" className="contrats-acte__bouton" disabled={occupe || modifie}
+                        title={modifie ? 'Enregistrez d’abord vos modifications.' : undefined}
                         onClick={enregistrerModele}>
                   Enregistrer comme modèle de la société
                 </Button>

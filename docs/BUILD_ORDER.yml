@@ -657,3 +657,6 @@ unmapped_ok:
   # docs/boucle-problemes-quotidienne.md) : observabilité/reporting + skill de tri ;
   # auto-ordonné par ses @after (BPQ1 -> BPQ3 -> BPQ4 -> BPQ5…), aucun prérequis de vague.
   - BPQ
+  # CTC — Dossier contractuel d'un chantier (demande du fondateur du 24/11/2026,
+  # conception docs/contrats/conception.md) : groupe autonome, aucun prerequis de vague.
+  - CTC

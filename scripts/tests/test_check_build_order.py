@@ -189,7 +189,11 @@ class MainEndToEndTests(unittest.TestCase):
         sections manquantes, au CLI comme au chargement."""
         import subprocess
         texte = cbo.BUILD_ORDER_FILE.read_text(encoding="utf-8")
-        path = _write(texte[: int(len(texte) * 0.3)])
+        # Coupe AVANT la section ``aliases`` (le cas d'origine : ``waves`` seul)
+        # et non plus à 30 % des caractères : la proportion glissait dès que la
+        # fin du fichier grossissait (un préfixe ajouté à ``unmapped_ok``
+        # faisait entrer l'en-tête ``aliases:`` dans le morceau gardé).
+        path = _write(texte[: texte.index("\naliases:")])
         with self.assertRaises(ValueError) as ctx:
             plan_lanes.load_build_order(path)
         attendu = ("section(s) obligatoire(s) absente(s) : "

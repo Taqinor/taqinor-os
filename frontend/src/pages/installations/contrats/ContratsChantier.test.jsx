@@ -1,6 +1,9 @@
 // Onglet « Contrats » : les charges utiles viennent TOUTES des exemples du
 // contrat (apps/documents/contract_samples/*.json) via contractSamples.js —
 // jamais un mock écrit à la main (garde CI check_api_shapes.py).
+/* global process */
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -126,23 +129,37 @@ describe('Onglet Contrats', () => {
     expect(documentsApiMock.pdfActe).toHaveBeenLastCalledWith(34, 'ar')
   })
 
-  it('un rôle en lecture seule ne voit aucun bouton d’écriture', async () => {
-    monter({ peutGerer: false })
-    await screen.findByText('Contrat d\'installation')
-    for (const nom of ['Modifier', 'Émettre', 'Faire signer sur place', 'Signé sur papier', 'Rouvrir']) {
-      expect(screen.queryByRole('button', { name: nom })).toBeNull()
-    }
+  const sansDroits = (d) => {
+    d.actes = d.actes.map((a) => ({
+      ...a, peut_modifier: false, peut_emettre: false, peut_signer: false, peut_rouvrir: false,
+    }))
+    return d
+  }
+  const GESTES_ECRITURE = ['Modifier', 'Émettre', 'Faire signer sur place', 'Signé sur papier', 'Rouvrir']
+
+  it('F8 — un rôle en lecture seule (peut_* à false côté serveur) ne voit aucun bouton d’écriture', async () => {
+    documentsApiMock.dossierContrats.mockResolvedValue({ data: sansDroits(dossier()) })
+    monter()
+    await screen.findByText("Contrat d'installation")
+    for (const nom of GESTES_ECRITURE) expect(screen.queryByRole('button', { name: nom })).toBeNull()
     expect(screen.getAllByRole('button', { name: 'Aperçu (PDF)' })).toHaveLength(5)
   })
 
-  it('chantier annulé : bandeau et aucun geste', async () => {
-    const d = dossier()
+  it('F8 — les gestes suivent les peut_* du serveur, jamais un drapeau local (peutGerer)', async () => {
+    monter({ peutGerer: false })
+    await screen.findByText("Contrat d'installation")
+    expect(within(carte('Réception des travaux')).getByRole('button', { name: 'Modifier' })).toBeInTheDocument()
+    expect(within(carte('Réception des travaux')).getByRole('button', { name: 'Émettre' })).toBeInTheDocument()
+  })
+
+  it('chantier annulé : bandeau, et les gestes que le serveur retire (peut_* à false) disparaissent', async () => {
+    const d = sansDroits(dossier())
     d.chantier.annule = true
     d.prochaine_action = null
     documentsApiMock.dossierContrats.mockResolvedValue({ data: d })
     monter()
     expect(await screen.findByText(/Ce chantier est annulé/)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Modifier' })).toBeNull()
+    for (const nom of GESTES_ECRITURE) expect(screen.queryByRole('button', { name: nom })).toBeNull()
   })
 
   it('chantier sans devis : prix à préciser et avertissement serveur', async () => {
@@ -162,5 +179,26 @@ describe('Onglet Contrats', () => {
     await user.click(screen.getByRole('button', { name: 'Réessayer' }))
     await waitFor(() => expect(screen.getByText('Contrat d\'installation')).toBeInTheDocument())
     expect(documentsApiMock.dossierContrats).toHaveBeenCalledTimes(2)
+  })
+
+  it('F7 — chaque bouton d’une carte est relié au titre de son acte (aria-describedby)', async () => {
+    monter()
+    await screen.findByText("Contrat d'installation")
+    for (const titre of ['Réception des travaux', "Contrat d'installation"]) {
+      const entete = screen.getByRole('heading', { name: titre })
+      const boutons = within(carte(titre)).getAllByRole('button')
+      expect(boutons.length).toBeGreaterThan(0)
+      for (const b of boutons) expect(b).toHaveAccessibleDescription(titre)
+      expect(entete.id).toBeTruthy()
+    }
+  })
+
+  it('F7 — le numéro de l’étape en cours suit les jetons du thème (lisible en sombre)', () => {
+    const css = readFileSync(join(process.cwd(), 'src', 'styles', 'chantiers', 'contrats.css'), 'utf8')
+    const regle = css.match(/data-etat='en-cours'\] \.contrats-parcours__numero \{([^}]*)\}/)[1]
+    // Les deux jetons s'inversent ensemble entre clair et sombre ; `--color-encre` reste sombre dans les deux.
+    expect(regle).toMatch(/background: var\(--foreground\)/)
+    expect(regle).toMatch(/color: var\(--card\)/)
+    expect(regle).not.toMatch(/--color-encre/)
   })
 })
