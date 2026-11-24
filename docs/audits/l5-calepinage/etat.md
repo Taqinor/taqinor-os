@@ -1233,7 +1233,7 @@ facture prêt à deviser — recommandé : garder) ; origines de mesure « essai
 réécrit le bloc de dimensionnement d'un devis ENVOYÉ quand la facture du lead change (QJR5 contre D-ACAL-97) ; rôle
 Technicien : 403 sur le calepinage et le relevé ; tarif de pose du pompage ; clé de carte.
 
-### Point du 24/11, 20 h 50 UTC (le plus récent — REPRENDRE ICI)
+### Point du 24/11, 20 h 50 UTC
 
 **PR Taqinor/taqinor-os#1552 FUSIONNÉE à 20 h 40 UTC** (lot 1 : écrans v2, correctifs du tour 1 des lanes B4 /
 site-facture / agri, moteur étape 2 + portée du rôle). Trois tours de CI : (1) gardes ENF22 / ENF23 / PACT159 / QJR6,
@@ -1276,3 +1276,39 @@ que si `dist/` existe, donc jamais en CI ; son budget (73 Ko) date de septembre,
 
 **Tâche de 9 h vue par le fondateur** : c'était la lane d'extraction du matin, tenue en vie par deux boucles d'attente
 sur un journal terminé ; boucles arrêtées. Le serveur du front de l'instrument (5251) reste, exprès.
+
+### Point du 24/11, 23 h 00 UTC (le plus récent — REPRENDRE ICI)
+
+**Lot 2 — branche locale `dev-lot2`** (PAS poussée, PAS de PR) contient maintenant : étape 3 du moteur + ses deux vagues
+de corrections de relecture (effacement légal fermé sur tous les chemins lus : lignes du chatter caviardées, lead relu
+sous verrou dans `ranger`, tâche aux seuls identifiants, une garde = un test) ; **étape 4** (ADEV142 le devis
+automatique naît de la conception rangée, ADEV143 colonne `Devis.conception_source` — **migration ventes 0162** —,
+ADEV144 parité 20 goldens zéro clé différente, ADEV147 + ADEV148 brouillons qui suivent, route
+`POST ventes/devis/<id>/mettre-a-jour-conception/`) ; lanes `calepinage-serveur`, `atelier-suite`, `front-suite`,
+`serveur-suite` ; CODEMAP à jour pour l'étape 3 (PAS encore pour l'étape 4 ni la route neuve).
+Gardes hôte vertes sur la branche (`check_forme_code` avec deux exceptions C20 motivées sur ADEV139 et ADEV143).
+Balayage backend en docker vert (403 tests + les deux relancés avec le dossier front monté).
+- EN VOL : relecteur adverse NEUF de l'étape 4 (lecture seule) ; lane moteur **E5** (`lane/moteur-e5`, worktree
+  isolé, base de test `x5` : ACAL2012 à ACAL2017 — le calepinage lit la conception) ; correcteur `fix/lot2-front`
+  (balayage front avant PR + trois ajouts : avis faux « sol et ombrière pas encore raccordés » à retirer, points
+  servis du blocage électrique, article nommé du kit agricole) ; relecteur V2 du tour 2.
+- AVANT la PR du lot 2 : verdict du relecteur de l'étape 4 (et ses corrections) ; plier `fix/lot2-front` ; CODEMAP
+  (étape 4, route neuve) + `codemap_fingerprint.py --write` ; `check_api_shapes.py --write` ; instantané OpenAPI en
+  docker (route neuve) ; garde de portée ADEV41 (la route neuve doit être sondée : la lane dit l'avoir fait ?
+  À VÉRIFIER : `test_adev41_garde_portee_ventes`) ; rejouer en docker `test_conception_lead`, `test_devis_auto`,
+  `test_split_devis_domaine`, `test_adev41_garde_portee_ventes`, `test_imports_croises_ventes`.
+- **Parité sur données réelles (à faire avant toute bascule visible)** : quand V2 a fini, mettre l'instrument `l5t`
+  sur `dev-lot2` (migration 0162) et rejouer, transaction annulée, le devis automatique par l'ancien chemin et par la
+  conception sur les leads de la copie ; ne sortir que des comptes et des noms de clés (aucun montant).
+
+**Tour 2 du test utilisateur** : V1 rendu (`T4/tour2/V1.md`) — 16 rejeux « corrigé » sur 21 ; scénario b joué
+jusqu'au SAV ; 12 constats (3 S2). « Pas corrigé » qui compte : T4-U4-013 — un calepinage SANS lead, tracé à l'échelle
+du pays sans épingle, simule encore au milieu du Maroc (les coordonnées du tracé ne sont pas le centre exact : le
+serveur ne peut pas les distinguer d'une épingle posée → il faut que l'atelier dise si l'épingle a été posée).
+V2 en cours (rejeux : 12 corrigés, 4 « autre », 1 pas corrigé déjà traité dans le lot 2).
+Constats du tour 2 à donner aux prochaines lanes de correction : T4-U4-013 (suite), T4-V1-002 (sélecteur de produit
+qui ne filtre pas, Entrée ajoute le premier article), T4-V1-003 (deux totaux du même nom), T4-V1-005 (saison perdue :
+étape E5), T4-V1-006 (bloc du plan de pose coupé), T4-V1-007 (reste de la liste des devis), T4-V1-008 (ticket SAV
+sans description), T4-V1-010 (pivot de la vue client), T4-V1-011 (le commercial ne trouve pas son client),
+T4-V1-012 (« SoftTimeLimitExceeded() » brut), T4-V1-004, ACAL2032 (placement libre : « + Ajouter un panneau » sans
+effet vu).
