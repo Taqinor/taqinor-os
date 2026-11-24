@@ -109,6 +109,7 @@ retiré plus un hook ajouté.
 | `cal-devis-refus` | devis refus serveur. |
 | `cal-devis-reviser` | devis réviser. |
 | `cal-devis-variante-manquante` | devis variante manquant. |
+| `cal-devis-surfaces` | étape Documents : surfaces chiffrées par le devis repliées sur une ligne qui se déplie (`<details>`, BoutonDevis `compact`). |
 | `cal-devis-reviser-lecture-seule` | devis réviser (v2) depuis la lecture seule (ACAL93). |
 | `cal-devis-retouches` | devis retouches non enregistrées / lignes ajoutées (ACAL94/95). |
 | `cal-devis-avertissements` | devis avertissements et marques manquantes (ACAL95). |
