@@ -818,3 +818,42 @@ choix recommandé est pris et listé à la fin ; rien de ce qu'un client lit n'e
      paquets de test à chaque passage.
 6. Quota : 94 % à 04 h 20 UTC le 24/11 (88 % au départ, environ 2 points par heure, une autre session du même compte
    tourne aussi). Fable hebdomadaire : 89 %.
+7. **PR #1540 (E1, le contrat) FUSIONNÉE le 24/11 à 04 h 44 UTC** (`f9d03181e3`). Rien à déployer pour elle seule.
+8. **CONSTAT D'ARCHITECTURE de la lane E2 (24/11, 04 h 50 UTC) — la prémisse d'ADEV133 est fausse.** Les blocs que
+   `build_devis_auto` range dans `Devis.etude_params` ne sont PAS des sorties de noyaux : ils sont recalculés depuis les
+   LIGNES du devis écrit par les rafraîchisseurs d'étude (`domain/etudes.py::rafraichir_etudes_du_devis`, qui lit
+   `devis.lignes` pour la batterie, la puissance, le rendement, le kWc par option et les onduleurs C&I, plus
+   `regles_au_moins(devis)`), et chaque marché a du code de décision autour de l'appel de son noyau. « Appeler les
+   noyaux tels quels » ne peut donc pas rendre les mêmes blocs. Les goldens `split_dm_auto*.json` sont des empreintes
+   AST des fonctions de création, pas des leads (prémisse d'ADEV138 fausse aussi).
+   **CHOIX PRIS SEUL par l'orchestrateur (technique, aucun chiffre client ne change ; réversible)** : extraire un
+   pipeline PUR plutôt que faire tourner le devis automatique « à blanc » dans une transaction annulée. Pourquoi : le
+   calepinage sans lead (Q3) et l'aperçu sans écriture ne peuvent pas passer par la création d'un devis ; un seul
+   pipeline appelé à la fois par le moteur et par `build_devis_auto` ne peut pas dériver. Coût si faux : un refactor
+   des trois fonctions de création à défaire (les goldens de figeage le protègent). Ordre :
+   (a) **ADEV159 — figer avant de toucher** : goldens de caractérisation de ce que `build_devis_auto` produit
+   AUJOURD'HUI (lignes, toutes les clés dérivées d'`etude_params`, `electrical_design`), par marché, sur les leads de
+   fabrique de `test_devis_auto.py`, `test_ciq120_devis_auto_ci.py`, `test_agr124_devis_auto_agricole.py` ;
+   (b) **ADEV160 — extraction** : code de décision de `creation_auto_residentiel.py::_build_devis_auto_residentiel`
+   (L391-560 taille et options, L609-655 contrôle et passage à blanc), `creation_auto.py::_build_devis_auto_ci`
+   (L125-146), `creation_auto_agricole.py::_build_devis_auto_agricole` (L63-128), et versions « par lignes » (lignes
+   passées en argument) de `etude_horaire.py::_etude_horaire_pour_devis` (L1975-2086), `etudes.py::rafraichir_etude_horaire`
+   (L78-110), `::puissances_etude_horaire` (L262-289), `::rafraichir_dimensionnement_devis` (L486-527),
+   `etude_ci.py::rafraichir_etude_ci_devis` (L1937-1987, fichier de 2 013 lignes : il doit maigrir),
+   `pompage.py::rafraichir_etude_pompage_devis` (L1504+) ; goldens d'ADEV159 identiques à l'octet après ; empreintes
+   `split_dm_auto*` recapturées EXPRÈS, motif nommé au commit ;
+   (c) ADEV133 compose le pipeline extrait ; ADEV134 → ADEV138 ensuite (la parité se juge contre les goldens
+   d'ADEV159 ET un devis automatique fraîchement écrit).
+   La lane E2 a livré : **ADEV131** `f39a59ca44` (modèle `ConceptionLead`, migration `ventes/0161_conceptionlead`,
+   additive ; clés `lead`, `calepinage`, `empreinte_pose` ajoutées au contrat) et **ADEV132** `e53de9f132`
+   (`conception/entrees.py` : `EntreesConception`, `entrees_pour`). Elle est REPRISE (04 h 55 UTC) pour ADEV159 et
+   pour écrire au plan ADEV159, ADEV160 et les corrections d'ADEV133 et d'ADEV138. Entrées du moteur qui ne sont pas
+   des colonnes du lead (à traiter à l'étape 3, déclencheurs) : barèmes et réglages de la société, catalogue (prix,
+   fiches, courbes de pompe), mesures de visite (`visites.selectors.mesures_point_eau_pour_lead`), données PVGIS,
+   date de référence (fenêtre du ramadan), niveau de règles, pose du calepinage. Colonnes du lead lues hors des
+   adaptateurs : `taille_souhaitee_kwc`, `batterie_souhaitee`, `structure_produit_id`, `structure_pref`, `roof_outline`.
+   Piège noté : avec un kWh déclaré, changer la facture d'hiver ne change pas l'empreinte (CAD166) — pas de version neuve.
+9. **Restes de la vague D, premier lot : PR Taqinor/taqinor-os#1541** (branche `dev-restes-vague-d`, lane B, 5 tâches :
+   ADEP109 et ACAL2041 cochées ; ACAL2037, ACAL2033, ADEV158 « code livré, preuve en direct due »), Auto-fix allumé,
+   mise en file automatique demandée. La lane A (ADEV156 livrée ; ADEV157, ACAL2040 en cours) partira dans la PR
+   suivante.
