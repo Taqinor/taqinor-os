@@ -562,6 +562,28 @@ describe('Étape Résultats — pas encore simulé (jamais lancé)', () => {
     expect(calepinageApi.calepinages.simuler).toHaveBeenCalledWith(5)
   })
 
+  // T4-B4-007 — les phrases servies pour l'étape Électrique (relevées sur 1930, pile de revue) : chaque ligne dit en
+  // clair « À compléter : <quoi> » et le geste ; aucune phrase de développeur, aucune ligne « À compléter » sans objet.
+  it('étape Électrique : chaque ligne nomme ce qui est à compléter, jamais de phrase de développeur', async () => {
+    servir(JAMAIS())
+    const SERVI_1930 = [
+      { code: 'verdict_electrique', message: 'À compléter', etape: 'electrique', gravite: 'a_regler', nombre: 1, cible: { onglet: 'verdict-electrique', champ: '' } },
+      { code: 'materiel_designe', message: "module PV non désigné — désignez-le dans l'onglet Matériel électrique ; onduleur non désigné — désignez-le dans l'onglet Matériel électrique", etape: 'electrique', gravite: 'a_regler', nombre: 1, cible: { onglet: 'materiel-electrique', champ: '' } },
+      { code: 'chutes_tension', message: "aucun cheminement n'est tracé sur ce plan : il n'y a pas de tronçon à mesurer. Tracez les liaisons dans l'atelier, ou saisissez leurs longueurs — un calepinage sans tracé n'a pas 0 % de chute, il n'a PAS de chute calculable.", etape: 'electrique', gravite: 'a_regler', nombre: 1, cible: { onglet: 'cheminement-cables', champ: '' } },
+      { code: 'terre_protections', message: "Aucune norme électrique n'est choisie : les câbles et les protections ne sont pas calculés. Choisissez une norme dans les réglages du calepinage de votre société pour les calculer.", etape: 'electrique', gravite: 'a_regler', nombre: 1, cible: { onglet: 'decisions-electriques', champ: '' } },
+      { code: 'divers', message: 'longueur de dossier (16 modules par chaîne) : les fiches ne permettent pas de calculer la fenêtre de tension — repli assumé, jamais présenté comme un calcul', etape: 'resultats', gravite: 'info', nombre: 14, cible: { onglet: 'production', champ: '' } },
+    ]
+    render(<MemoryRouter><EtapeResultats calepinageId={5} parcours={{ manque: SERVI_1930 }} /></MemoryRouter>)
+    const lignes = await screen.findAllByTestId('cal-avant-ligne')
+    const titres = lignes.map((l) => l.querySelector('.cal-resinc-nom').textContent.replace('?', '').trim())
+    expect(titres).toEqual([
+      'À compléter : le verdict électrique', 'À compléter : le panneau et l’onduleur', 'À compléter : le tracé des câbles',
+      'Choisir la norme électrique de votre société', 'À vérifier : 14 valeurs supposées par le calcul'])
+    const visible = lignes.map((l) => [...l.querySelectorAll('.cal-resinc-nom, .cal-resinc-raison')].map((n) => n.textContent).join(' ')).join(' ')
+    expect(visible).not.toMatch(/PAS de chute|repli assumé|jamais présenté|désignez-le dans l'onglet/)
+    expect(within(lignes[1]).getByText('Choisissez-les dans « Matériel électrique » (étape Électrique).')).toBeInTheDocument()
+  })
+
   it('aucun poste à renseigner : la liste le dit au lieu de rester vide', async () => {
     servir(JAMAIS())
     render(<MemoryRouter><EtapeResultats calepinageId={5} parcours={{ manque: [] }} /></MemoryRouter>)

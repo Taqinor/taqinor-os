@@ -623,6 +623,24 @@ describe('ACAL1415 — module de départ « à confirmer » / module choisi, apr
   }
   const pan = () => [panDeTest('area-1', { renderPlan: plan, roofType: 'flat', moduleId: 'produit-7' })];
 
+  // T4-U4-007 — un pan dont le module n'est pas dans ce sélecteur : le refus NOMME le module (libellé du document),
+  // jamais l'identifiant interne `produit-<id>`.
+  it('module absent du sélecteur, connu du document : le refus dit son libellé, jamais « produit-<id> »', () => {
+    const m715 = { ...m710, id: 'produit-23019', produitId: 23019, libelle: 'Module 715 W', epaisseurMm: null }
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><div id="rp9-areas"></div></body>').window.document;
+    try {
+      const areas = [panDeTest('area-1', { renderPlan: plan, roofType: 'flat', moduleId: 'produit-23019' })];
+      const ctx = { ...ctxDeBase(areas, 'area-1'), opts: { modulesDisponibles: catalogue }, modulesDuDocument: [m715],
+        activeArea: () => areas[0], closed: true, dom: { areasWindowEl: document.getElementById('rp9-areas') } } as unknown as Ctx;
+      createZones(ctx, { recalc: vi.fn(), setStatus: vi.fn() }); // le sélecteur se synchronise à la création
+      const refus = document.getElementById('rp9-pan-module-erreur')?.textContent ?? '';
+      expect(refus).toContain('« Module 715 W »');
+      expect(refus).not.toContain('produit-23019');
+    } finally { g.document = avant; }
+  });
+
   it('pan jamais choisi : aucun drapeau écrit, « à confirmer » après rechargement', () => {
     const { doc } = monter(pan());
     expect('moduleChoisi' in (doc.zones[0].geometry ?? {})).toBe(false);
