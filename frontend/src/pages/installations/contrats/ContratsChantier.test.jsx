@@ -42,7 +42,7 @@ function monter(props = {}) {
   })
   return render(
     <Provider store={store}>
-      <ContratsChantier installation={{ id: 12 }} peutGerer {...props} />
+      <ContratsChantier installation={{ id: 12 }} {...props} />
     </Provider>,
   )
 }
@@ -145,8 +145,8 @@ describe('Onglet Contrats', () => {
     expect(screen.getAllByRole('button', { name: 'Aperçu (PDF)' })).toHaveLength(5)
   })
 
-  it('F8 — les gestes suivent les peut_* du serveur, jamais un drapeau local (peutGerer)', async () => {
-    monter({ peutGerer: false })
+  it('F8 — les gestes suivent les peut_* du serveur, jamais un drapeau local', async () => {
+    monter()
     await screen.findByText("Contrat d'installation")
     expect(within(carte('Réception des travaux')).getByRole('button', { name: 'Modifier' })).toBeInTheDocument()
     expect(within(carte('Réception des travaux')).getByRole('button', { name: 'Émettre' })).toBeInTheDocument()

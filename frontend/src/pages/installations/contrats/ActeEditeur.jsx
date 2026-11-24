@@ -271,7 +271,7 @@ function ChampsSection({ cle, v, m, contenu }) {
 }
 
 export default function ActeEditeur({
-  open, onOpenChange, acteId, peutModele = false, onSaved, onApercu,
+  open, onOpenChange, acteId, onSaved, onApercu,
 }) {
   const [acte, setActe] = useState(null)
   const [base, setBase] = useState({})
@@ -446,7 +446,7 @@ export default function ActeEditeur({
                   Aperçu (PDF)
                 </Button>
               )}
-              {acte && peutModele && (
+              {acte && acte.peut_enregistrer_modele && (
                 <Button variant="outline" className="contrats-acte__bouton" disabled={occupe || modifie}
                         title={modifie ? 'Enregistrez d’abord vos modifications.' : undefined}
                         onClick={enregistrerModele}>

@@ -11,7 +11,6 @@ import {
 } from '../../../ui'
 import documentsApi from '../../../api/documentsApi'
 import { downloadBlob } from '../../../utils/downloadBlob'
-import { useHasPermission, useIsAdmin } from '../../../hooks/useHasPermission'
 import ActeEtape from './ActeEtape'
 import ActeEditeur from './ActeEditeur'
 import SignatureActeDialog from './SignatureActeDialog'
@@ -27,7 +26,7 @@ function nomFichier(acte, langue = 'fr') {
 }
 
 export default function ContratsChantier({
-  installation, peutGerer = false, ouvrirApercu, rechargerApercu,
+  installation, ouvrirApercu, rechargerApercu,
 }) {
   const chantierId = installation?.id
   const [dossier, setDossier] = useState(null)
@@ -41,14 +40,6 @@ export default function ContratsChantier({
   const [surPapier, setSurPapier] = useState(null)
   const [aModifier, setAModifier] = useState(null)
   const [langueApercu, setLangueApercu] = useState('fr') // Aperçu / Télécharger
-
-  // Seul garde local : « Enregistrer comme modèle » (le serveur ne donne aucun
-  // `peut_*` pour lui). Le Directeur (ou le palier admin) l'enregistre ; sinon
-  // le serveur refuse et son `detail` s'affiche dans l'éditeur. Tous les autres
-  // gestes d'écriture suivent les `peut_*` de chaque acte, rien d'autre.
-  const estDirecteur = useHasPermission(null, ['Directeur'])
-  const estAdmin = useIsAdmin()
-  const peutModele = peutGerer && (estDirecteur || estAdmin)
 
   useEffect(() => {
     if (!chantierId) return undefined
@@ -311,7 +302,6 @@ export default function ContratsChantier({
         <ActeEditeur
           open
           acteId={aModifier.id}
-          peutModele={peutModele}
           onOpenChange={(o) => { if (!o) setAModifier(null) }}
           onSaved={() => { recharger(); rechargerApercu?.() }}
           onApercu={(langue) => apercu(aModifier, langue)}
