@@ -3959,7 +3959,7 @@
       },
       {
         "champ": "site.pin",
-        "motif": "Le site de ce calepinage n'a pas de point GPS : la météo se demande à une latitude et une longitude, elles ne se devinent pas. Posez l'épingle du site sur la carte (« roof_layout.pin »).",
+        "motif": "Position du site manquante : posez l'épingle du site sur la carte ou renseignez la ville du lead. La météo se demande à une latitude et une longitude, elles ne se devinent pas.",
         "cible": null
       }
     ]

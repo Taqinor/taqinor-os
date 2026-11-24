@@ -70,6 +70,7 @@ from . import production_parties as _parties
 from .a_renseigner import construire as construire_a_renseigner
 from .bifacial_sheds import CLE_HORIZONTALE_LEGALE
 from .horizon import profil_depuis_document
+from .site import site_dit
 from .simulation_modules import production_module_par_module
 from .validation import ecart_vs_pvcalc
 from .valeurs import nombre as _nombre
@@ -157,9 +158,9 @@ MOTIF_SANS_PAN_EQUIPE = (
     'devis qui porte une ligne module) avant de lancer la simulation.')
 
 MOTIF_SANS_POINT = (
-    "Le site de ce calepinage n'a pas de point GPS : la météo se demande à "
-    'une latitude et une longitude, elles ne se devinent pas. Posez '
-    "l'épingle du site sur la carte (« roof_layout.pin »).")
+    "Position du site manquante : posez l'épingle du site sur la carte ou "
+    'renseignez la ville du lead. La météo se demande à une latitude et une '
+    'longitude, elles ne se devinent pas.')
 
 MOTIF_FICHIER_PLUSIEURS_PANS = (
     'La série météo déposée décrit UN plan ; ce calepinage en porte '
@@ -345,14 +346,12 @@ def _site_du_calepinage(calepinage, document, imagerie):
     et ``lon`` restent ``None`` et la simulation est refusée en le disant.
     """
     from ..selectors import contexte_geographique
-    from .site import altitude_du_site, fuseau_du_site
+    from .site import altitude_du_site, fuseau_du_site, point_du_site
 
-    epingle = (document.get('pin') if isinstance(document, dict) else None)
-    if not isinstance(epingle, dict):
-        epingle = contexte_geographique(calepinage).get('pin') or {}
-    lat = _nombre(epingle.get('lat'))
-    lon = _nombre(epingle.get('lng') if epingle.get('lng') is not None
-                  else epingle.get('lon'))
+    # T4-U1-003 — centre de carte par défaut écarté ; sans épingle, la ville
+    # de référence du devis, DITE (``source``/``libelle``), sinon ``None``.
+    lat, lon, reference = point_du_site(
+        document, lambda: contexte_geographique(calepinage))
     # ACAL129 — le fuseau des réglages d'imagerie, sinon celui du PROFIL de
     # la société (repli déclaré), avec sa provenance.
     fuseau = fuseau_du_site(imagerie,
@@ -363,6 +362,7 @@ def _site_du_calepinage(calepinage, document, imagerie):
         'altitude_m': altitude_du_site(imagerie)['altitude_m'],
         'fuseau': fuseau['fuseau'],
         'fuseau_source': fuseau['provenance'],
+        **(reference or {}),
     }
 
 
@@ -1533,6 +1533,8 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     # ACAL49 — la « borne haute » ouvre les avertissements (D-ACAL-7).
     entete = _annoter_cascade(blocs, cascade, contexte)
     blocs['meteo'] = ecrit['meteo']
+    if site.get('source'):  # T4-U1-003 — le site de référence, DIT
+        blocs['meteo'] = dict(blocs['meteo'], site=site_dit(site))
     blocs['production'] = ecrit['production']
     blocs['serie_horaire'] = ecrit['serie_horaire']
     # CALX58 — le bloc TOF/TSRF par pan, publié par la chaîne (elle seule

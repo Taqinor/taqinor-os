@@ -31,6 +31,7 @@ Run :
 """
 import json
 import pathlib
+from unittest import mock
 
 from django.test import SimpleTestCase, TestCase
 
@@ -323,6 +324,79 @@ class RefusTest(SimpleTestCase):
             _simuler(_Calepinage(sans_pin))
 
         self.assertEqual(refus.exception.champ, 'site.pin')
+
+
+def _geo(ville):
+    """Le contexte géographique d'un lead SANS repère, de ville ``ville``."""
+    return {'pin': None, 'outline': None, 'adresse': ville, 'ville': ville,
+            'source': None}
+
+
+class SiteSansEpingleTest(SimpleTestCase):
+    """T4-U1-003 — jamais une simulation sur un point par défaut anonyme.
+
+    Le toit créé « par ses dimensions » sur une carte jamais localisée
+    arrivait avec l'épingle au CENTRE PAR DÉFAUT de la carte (31,79 ; −7,09) :
+    le rapport imprimait « Coordonnées — », 737 m d'altitude et 1 832 kWh/kWc
+    contre 1 599 au devis. Sans épingle, le site est la ville de référence du
+    devis (dite) ; sans ville résolue, la simulation est refusée.
+    """
+
+    CENTRE = {'lat': 31.789999999984182, 'lng': -7.089999999999918}
+
+    def _sans_pin(self, pin=None):
+        layout = {cle: valeur for cle, valeur in LAYOUT.items()
+                  if cle != 'pin'}
+        if pin is not None:
+            layout['pin'] = pin
+        return _Calepinage(layout)
+
+    def test_epingle_posee_simulee_telle_quelle_sans_site_de_reference(self):
+        client = _ClientRejoue()
+        resultat = _simuler(client=client)
+
+        self.assertEqual(client.demandes[0]['lat'], 33.5731)
+        self.assertEqual(client.demandes[0]['lon'], -7.5898)
+        self.assertNotIn('site', resultat['blocs']['meteo'])
+
+    def _sur_ville(self, calepinage, ville):
+        client = _ClientRejoue()
+        with mock.patch('apps.calepinage.selectors.contexte_geographique',
+                        return_value=_geo(ville)):
+            resultat = _simuler(calepinage, client=client)
+        return client, resultat
+
+    def test_centre_par_defaut_et_ville_connue_ville_de_reference_dite(self):
+        client, resultat = self._sur_ville(self._sans_pin(self.CENTRE),
+                                           'casa')
+
+        self.assertEqual((client.demandes[0]['lat'],
+                          client.demandes[0]['lon']), (33.573, -7.59))
+        site = resultat['blocs']['meteo']['site']
+        self.assertEqual(site['source'], 'ville_reference')
+        self.assertEqual(site['ville_reference'], 'Casablanca')
+        self.assertEqual(site['libelle'], 'Casablanca (ville de référence)')
+
+    def test_sans_epingle_et_ville_connue_ville_de_reference_dite(self):
+        client, resultat = self._sur_ville(self._sans_pin(), 'casa')
+
+        self.assertEqual(client.demandes[0]['lat'], 33.573)
+        self.assertEqual(resultat['blocs']['meteo']['site']['libelle'],
+                         'Casablanca (ville de référence)')
+
+    def test_sans_epingle_ni_ville_refus_dit_quoi_faire_rien_ecrit(self):
+        for pin in (None, self.CENTRE):
+            calepinage = self._sans_pin(pin)
+            with self.subTest(pin=pin), mock.patch(
+                    'apps.calepinage.selectors.contexte_geographique',
+                    return_value=_geo('')), \
+                    self.assertRaises(SimulationRefusee) as refus:
+                _simuler(calepinage, enregistrer=True)
+            self.assertEqual(refus.exception.champ, 'site.pin')
+            self.assertTrue(refus.exception.motif.startswith(
+                "Position du site manquante : posez l'épingle du site"))
+            self.assertIn('ville du lead', refus.exception.motif)
+            self.assertIsNone(calepinage.resultat)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
