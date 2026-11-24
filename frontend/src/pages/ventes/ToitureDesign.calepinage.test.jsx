@@ -1554,9 +1554,26 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
     expect(await screen.findByText('Faits à partir de la version enregistrée à 14:41.', {}, { timeout: 5000 })).toBeTruthy()
   })
 
-  it('tablette (< 1 280 px) : le panneau devient le tiroir du bas, poignée qui l’agrandit ; titre et pied dans le même tiroir', async () => {
+  it('ACAL1835 — tablette (640 à 1 279 px) : plus de tiroir, le panneau d’étape reste le panneau de droite', async () => {
     const avant = window.matchMedia
-    window.matchMedia = (q) => ({ matches: q === '(max-width: 1279px)', media: q, addEventListener() {}, removeEventListener() {} })
+    const largeur = 1180
+    window.matchMedia = (q) => {
+      const max = /max-width:\s*(\d+)px/.exec(q)
+      return { matches: max ? largeur <= Number(max[1]) : false, media: q, addEventListener() {}, removeEventListener() {} }
+    }
+    try {
+      amorcer()
+      rendreCalepinage(CTX.calepinage.id)
+      const panneau = await screen.findByTestId('cal-panneau-etape')
+      expect(panneau).not.toHaveAttribute('data-tiroir')
+      expect(within(panneau).queryByRole('button', { name: 'Agrandir ou réduire le panneau du bas' })).toBeNull()
+      expect(await within(panneau).findByTestId('cal-action-etape-suivante')).toHaveTextContent(/\S/)
+    } finally { window.matchMedia = avant }
+  })
+
+  it('téléphone (< 640 px) : le panneau devient le tiroir du bas, poignée qui l’agrandit ; titre et pied dans le même tiroir', async () => {
+    const avant = window.matchMedia
+    window.matchMedia = (q) => ({ matches: q === '(max-width: 639px)', media: q, addEventListener() {}, removeEventListener() {} })
     try {
       amorcer()
       rendreCalepinage(CTX.calepinage.id)
@@ -1577,7 +1594,7 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
 
   it('ACAL1807 — téléphone (< 640 px), guidé : le tiroir s’ouvre RÉDUIT et la feuille lui donne 96 px, la carte garde ≥ 45 % de la hauteur', async () => {
     const avant = window.matchMedia
-    window.matchMedia = (q) => ({ matches: q === '(max-width: 1279px)', media: q, addEventListener() {}, removeEventListener() {} })
+    window.matchMedia = (q) => ({ matches: q === '(max-width: 639px)', media: q, addEventListener() {}, removeEventListener() {} })
     const { readFileSync } = await import('node:fs')
     const style = document.createElement('style')
     style.textContent = readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/56-coque-responsive.css`, 'utf8')
@@ -1669,10 +1686,11 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
       document.head.appendChild(style)
     })
     afterEach(() => { style.remove(); document.documentElement.classList.remove('dark') })
-    // Les règles du BUREAU (@media (min-width: 1280px)) lues dans la feuille chargée (jsdom n'évalue pas @media) :
+    // Les règles de la COQUE FLOTTANTE (@media (min-width: 640px) — bureau, et tablette depuis ACAL1835 qui n'en
+    // précise que les mesures dans son propre bloc) lues dans la feuille chargée (jsdom n'évalue pas @media) :
     // la dernière règle qui vise l'élément et déclare la propriété (ordre de la feuille).
     const auBureau = (el, prop, bureau = true) => {
-      const regles = bureau ? [...style.sheet.cssRules].filter((r) => r.media && r.conditionText?.includes('min-width: 1280px'))
+      const regles = bureau ? [...style.sheet.cssRules].filter((r) => r.media && r.conditionText === '(min-width: 640px)')
         .flatMap((m) => [...m.cssRules]) : [...style.sheet.cssRules].filter((r) => r.selectorText)
       let valeur = ''
       for (const r of regles) {

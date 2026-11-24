@@ -40,9 +40,10 @@ import { useToastsHorsDuBouton } from './toastsAtelier'
    Guidé : l'écran de l'étape (`ECRANS_ETAPE`, champs `cadre` / `titre`) ; Expert
    et « Avancé » : l'ancien inspecteur entier (`avance`), rail d'onglets compris.
 
-   TABLETTE / TÉLÉPHONE (< 1 280 px, maquette Tablette) : le panneau d'étape devient le
-   TIROIR du bas (`tiroir`, poignée pour l'agrandir) ; le rail se replie en pictogrammes
-   (en barre du bas au téléphone). Mise en page : 56-coque-responsive.css.
+   TABLETTE (640 à 1 279 px, maquette v2 Tablette, ACAL1835) : la coque flottante du bureau,
+   panneau d'étape à DROITE (344 px), rail replié en pictogrammes. TÉLÉPHONE (< 640 px) : le
+   panneau d'étape devient le TIROIR du bas (`tiroir`, poignée pour l'agrandir), le rail une
+   barre du bas. Mise en page : 56-coque-responsive.css.
 
    PRÉSENTATION (« Montrer au client », `ContextePresentation` posé par client/VueClient) :
    le MÊME atelier, sa carte 3D seule visible ; bandeau, rail, panneau et calques d'étape
@@ -50,7 +51,8 @@ import { useToastsHorsDuBouton } from './toastsAtelier'
    soleil leur est renvoyé) ; l'habillage client (`presentation.rendu`) est rendu autour.
    ========================================================================== */
 
-const REQUETE_TIROIR = '(max-width: 1279px)'
+// ACAL1835 — le tiroir du bas est celui du TÉLÉPHONE seul : la tablette garde le panneau flottant à droite.
+const REQUETE_TIROIR = '(max-width: 639px)'
 
 /** Vrai quand la largeur range le panneau d'étape en tiroir du bas (même seuil que la feuille 56). */
 function useTiroir() {
@@ -311,7 +313,7 @@ export default function CoqueAtelier({
     carteAvant.current = carteVisible
   }, [carteVisible])
   // H1 (tour 3) — RÈGLE DE LA COQUE : chaque étape à carte s'ouvre en « Plan », le toit cadré et centré (au-dessus
-  // du tiroir sur tablette), sauf si l'utilisateur a choisi une vue dans la séance ou touche la carte entre-temps.
+  // du tiroir au téléphone), sauf si l'utilisateur a choisi une vue dans la séance ou touche la carte entre-temps.
   usePlanALEntreeDEtape({ builderRef, actif: carteVisible && !presentation, cle: `${cleEtape}:${tiroir}`, builderApiCoque })
 
   // J1 — présentation : ni résultat ni détail pour le bandeau (masqué) — aucune lecture de plus devant le client.
