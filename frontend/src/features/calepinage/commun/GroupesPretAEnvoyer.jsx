@@ -103,6 +103,21 @@ function PointsDossier({ calepinageId, etat }) {
   )
 }
 
+/* T4-U4-014 — les contrôles dont le geste servi renvoie au lead (« saisissez la facture du lead », « Saisir la
+   facture ») : sur un calepinage SANS lead (créé depuis un client), la bulle relit le rattachement servi
+   (`GET calepinages/<pk>/`) et dit le geste faisable à la place. */
+const GESTE_SANS_LEAD = {
+  taille_sans_facture: 'Ce calepinage n’a pas de lead : aucune facture à lire. Choisissez le nombre de panneaux à '
+    + 'l’étape Panneaux, ou rattachez un lead pour dimensionner sur sa facture.',
+}
+function useSansLead(calepinageId, actif) {
+  const { data } = useResource(
+    (id) => calepinageApi.calepinages.get(id), actif ? calepinageId : null,
+    { select: (r) => r?.data ?? null, enabled: actif && calepinageId != null },
+  )
+  return data ? data.lead == null : null
+}
+
 /** Le « ? » de la ligne : cause servie + phrase du registre + geste, dans UNE bulle. Rien à dire ⇒ rien. */
 function Pourquoi({ controle }) {
   const calepinageId = useContext(CalepinageDeLaListe)
@@ -123,18 +138,29 @@ function Pourquoi({ controle }) {
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-80 text-sm leading-relaxed text-foreground normal-case tracking-normal">
+        <ContenuPourquoi controle={controle} calepinageId={calepinageId} cause={cause} entree={entree} gesteServi={gesteServi} />
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+/* Monté à l'ouverture de la bulle seulement : la lecture du rattachement (T4-U4-014) ne part qu'à ce moment. */
+function ContenuPourquoi({ controle, calepinageId, cause, entree, gesteServi }) {
+  const gesteSansLead = controle.etat !== 'ok' ? GESTE_SANS_LEAD[controle.code] : null
+  const sansLead = useSansLead(calepinageId, Boolean(gesteSansLead))
+  const remplace = Boolean(gesteSansLead) && sansLead === true
+  return (
         <div className="flex flex-col gap-2">
           {controle.code === 'verdict_electrique' && controle.etat !== 'ok' && calepinageId != null && (
             <PointsDossier calepinageId={calepinageId} etat={controle.etat} />
           )}
           {cause && <p>{cause}</p>}
-          {entree && <p>{remplirPhrase(entree, controle)}</p>}
+          {entree && !remplace && <p>{remplirPhrase(entree, controle)}</p>}
           {controle.seuil_source && <p className="text-muted-foreground">{`Source du seuil : ${controle.seuil_source}.`}</p>}
-          {gesteServi && <p className="text-muted-foreground">{gesteServi}</p>}
-          {entree?.geste && <p className="text-muted-foreground">{entree.geste}</p>}
+          {remplace && <p className="text-muted-foreground" data-testid="cal-pret-sans-lead">{gesteSansLead}</p>}
+          {gesteServi && !remplace && <p className="text-muted-foreground">{gesteServi}</p>}
+          {entree?.geste && !remplace && <p className="text-muted-foreground">{entree.geste}</p>}
         </div>
-      </PopoverContent>
-    </Popover>
   )
 }
 

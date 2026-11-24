@@ -825,6 +825,7 @@ export const ALL_HOOKS = [
   'cal-pret-ligne',
   'cal-pret-regler',
   'cal-pret-points-dossier',
+  'cal-pret-sans-lead',
   'cal-pret-reussis',
   // ── PhotoSiteCalage.jsx (complément L5) ──
   'cal-photo-calage-monde',
