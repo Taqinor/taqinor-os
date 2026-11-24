@@ -230,6 +230,10 @@ describe('LW21 — CTA devis automatique', () => {
       })
       const bouton = screen.getByTestId('lw-devis-auto-visite')
       expect(bouton).toBeDisabled()
+      // T4-U3-003 — des mots d'utilisateur : jamais le code de décision.
+      expect(bouton.getAttribute('title')).not.toContain('D-AGR-4')
+      expect(document.body.textContent).not.toContain('D-AGR-4')
+      expect(document.body.textContent).toContain("relevé du point d'eau à faire en visite avant le devis")
       await user.click(screen.getByText('débit du forage (visite)'))
       await waitFor(() => expect(focusSpy).toHaveBeenCalled())
       expect(onAction).not.toHaveBeenCalledWith('open-devis', 'auto')
@@ -839,6 +843,34 @@ describe('L5 — Page client / WhatsApp / Aperçu interne (par devis, via le dia
       'https://taqinor.ma/proposition/karim/tok-abc',
     ))
     expect(await screen.findByText('Copié')).toBeInTheDocument()
+  })
+
+  it('T4-U2-003 / T4-U3-011 — copie refusée : le lien s’affiche dans un champ sélectionnable ; canaux grisés expliqués', async () => {
+    const user = userEvent.setup()
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn(() => Promise.reject(new Error('NotAllowedError'))) },
+      configurable: true, writable: true,
+    })
+    renderTab({ state: leadState({ telephone: '', email: '', devis: [devis1] }) })
+    await ouvrirEnvoi(user, { avance: false })
+    // Sans numéro ni e-mail : la boîte DIT pourquoi les deux canaux sont grisés.
+    const raisons = screen.getByTestId('envoi-canaux-indisponibles')
+    expect(raisons.textContent).toContain('aucun numéro de téléphone sur la fiche du lead')
+    expect(raisons.textContent).toContain('aucune adresse e-mail sur la fiche du lead')
+    expect(screen.queryByTestId('envoi-lien-client')).toBeNull()
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
+    const champ = await screen.findByTestId('envoi-lien-client')
+    expect(champ).toHaveValue('https://taqinor.ma/proposition/karim/tok-abc')
+    expect(champ).toHaveAttribute('readonly')
+    expect(screen.getByText(/Copie impossible/).textContent).toContain('ci-dessous')
+  })
+
+  it('T4-U3-011 — un numéro illisible est nommé comme raison', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ telephone: '12', devis: [devis1] }) })
+    await ouvrirEnvoi(user, { avance: false })
+    expect(screen.getByTestId('envoi-canaux-indisponibles').textContent)
+      .toContain('« 12 » n’est pas un numéro exploitable')
   })
 
   it('« Ouvrir dans un nouvel onglet » mint le même lien et l’ouvre', async () => {

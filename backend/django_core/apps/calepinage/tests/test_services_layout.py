@@ -27,6 +27,7 @@ from apps.crm.models import Client
 from apps.ventes.models import Devis
 from apps.ventes.services import layout_hash
 from authentication.models import Company
+from core.events import pose_enregistree
 
 LAYOUT = {'zones': [{'id': 'z1', 'panels': 12}], 'result': {'kwc': 6.9},
           'panelWatt': 575}
@@ -179,12 +180,85 @@ class RefusTest(BaseLayout):
         self.assertEqual(capture.exception.champ, 'roof_layout')
 
 
+class PoseEnregistreeEmissionTest(BaseLayout):
+    """ACAL2011 — un enregistrement qui change la pose émet UNE fois
+    ``pose_enregistree`` après le commit ; un renvoi identique n'émet rien."""
+
+    def setUp(self):
+        super().setUp()
+        self.capture = _Capture()
+        pose_enregistree.connect(self.capture, dispatch_uid='test_acal2011',
+                                 weak=False)
+        self.addCleanup(pose_enregistree.disconnect,
+                        dispatch_uid='test_acal2011')
+
+    def _enregistrer(self, pivot, layout):
+        with self.captureOnCommitCallbacks(execute=True):
+            return enregistrer_layout(pivot, layout)
+
+    def test_un_geste_un_evenement_puis_aucun_sans_geste(self):
+        pivot = Calepinage.objects.create(company=self.company, lead_id=4242)
+        self._enregistrer(pivot, LAYOUT)
+        self.capture.appels.clear()
+        rendu = self._enregistrer(pivot, LAYOUT_MODIFIE)
+        self.assertEqual(len(self.capture.appels), 1)
+        self.assertEqual(self.capture.appels[0], {
+            'signal': pose_enregistree, 'company_id': self.company.pk,
+            'calepinage_id': pivot.pk, 'lead_id': 4242,
+            'empreinte_pose': layout_hash(LAYOUT_MODIFIE)})
+        self.assertEqual(rendu['layout_hash'], layout_hash(LAYOUT_MODIFIE))
+        self.capture.appels.clear()
+        rendu = self._enregistrer(pivot, LAYOUT_MODIFIE)
+        self.assertTrue(rendu['inchange'])
+        self.assertEqual(self.capture.appels, [])
+
+    def test_sans_lead_porte_lead_id_none(self):
+        self._enregistrer(self.pivot, LAYOUT)
+        self.assertEqual(len(self.capture.appels), 1)
+        self.assertIsNone(self.capture.appels[0]['lead_id'])
+
+    def test_emission_apres_le_commit_seulement(self):
+        with self.captureOnCommitCallbacks(execute=False) as rappels:
+            enregistrer_layout(self.pivot, LAYOUT)
+        self.assertEqual(self.capture.appels, [])
+        for rappel in rappels:
+            rappel()
+        self.assertEqual(len(self.capture.appels), 1)
+
+    def test_abonne_en_echec_ne_casse_pas_l_enregistrement(self):
+        def _casse(sender, **kwargs):
+            raise RuntimeError('abonné en échec')
+        pose_enregistree.connect(_casse, dispatch_uid='test_acal2011_casse',
+                                 weak=False)
+        self.addCleanup(pose_enregistree.disconnect,
+                        dispatch_uid='test_acal2011_casse')
+        with self.assertLogs('apps.calepinage.services.layout', 'WARNING'):
+            rendu = self._enregistrer(self.pivot, LAYOUT)
+        self.assertFalse(rendu['inchange'])
+        self.assertEqual(Calepinage.objects.get(pk=self.pivot.pk).roof_layout,
+                         LAYOUT)
+
+
+class _Capture:
+    def __init__(self):
+        self.appels = []
+
+    def __call__(self, signal, sender, **kwargs):
+        self.appels.append({'signal': signal, **kwargs})
+
+
 class EvenementsDuMoteurUniqueTest(SimpleTestCase):
     """ACAL2010 (D-ACAL-97, contrat d'abord) — les trois signaux du moteur
     unique existent, sont des ``Signal``, sont exportés par ``core.events`` et
     restent réservés sans abonné tant que leurs abonnés n'existent pas
     (ADEV139, ALEA69). La lane calepinage émet ``pose_enregistree`` (ACAL2011)."""
 
+    # Retirés d'``event_coverage.NO_STATIC_EMITTER`` au fil des émetteurs :
+    # ALEA68 (lead_entrees_modifiees), ACAL2011 (pose_enregistree).
+    # ADEV135 a posé le dernier émetteur : ``conception/service.py::relancer``.
+    SANS_EMETTEUR_STATIQUE = set()
+    # Réservés jusqu'à ADEV139 (abonné ventes) ; ALEA69 a abonné le CRM.
+    SANS_ABONNE = {'lead_entrees_modifiees', 'pose_enregistree'}
     NOMS = {'lead_entrees_modifiees': 'lead', 'pose_enregistree': 'calepinage',
             'conception_recalculee': 'devis'}
 
@@ -203,9 +277,15 @@ class EvenementsDuMoteurUniqueTest(SimpleTestCase):
                 sous = importlib.import_module(f'core.events.{module}')
                 self.assertIs(getattr(sous, nom), signal)
                 self.assertIn(nom, sous.__all__)
-                self.assertIn(nom, event_coverage.ALLOWED_UNCONSUMED)
+                if nom in self.SANS_ABONNE:
+                    self.assertIn(nom, event_coverage.ALLOWED_UNCONSUMED)
+                else:
+                    self.assertNotIn(nom, event_coverage.ALLOWED_UNCONSUMED)
                 self.assertNotIn(nom, event_coverage.orphan_signals())
-                self.assertIn(nom, event_coverage.NO_STATIC_EMITTER)
+                if nom in self.SANS_EMETTEUR_STATIQUE:
+                    self.assertIn(nom, event_coverage.NO_STATIC_EMITTER)
+                else:
+                    self.assertNotIn(nom, event_coverage.NO_STATIC_EMITTER)
                 self.assertNotIn(nom, event_coverage.catalog_payload_mismatches())
                 self.assertIsNotNone(event_catalog.entry(nom))
         self.assertEqual(

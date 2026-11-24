@@ -1162,8 +1162,12 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
       // <select> retombe sur le défaut tout seul. On le DIT, plutôt que de laisser croire
       // que ce pan est revenu au module par défaut de son plein gré.
       if (a.moduleId && moduleSelectEl.value !== a.moduleId) {
+        // T4-U4-007 — le module est NOMMÉ par son libellé (document, sinon catalogue), jamais par l'identifiant interne.
+        const connu = [...(ctx.modulesDuDocument ?? []), ...catalogueAtelier.grises.map((g) => g.module)]
+          .find((m) => (m as ModuleDocument | null)?.id === a.moduleId) as ModuleDocument | undefined;
+        const nom = connu?.libelle ? `le module « ${connu.libelle} »` : 'le module de ce pan';
         direRefusModule(
-          `${nomDuPanActif()} : le module « ${a.moduleId} » ne figure plus dans le catalogue de la société —`
+          `${nomDuPanActif()} : ${nom} ne figure plus dans le catalogue de la société —`
             + ' rechargez le catalogue, ou choisissez un module de la liste.',
         );
       }

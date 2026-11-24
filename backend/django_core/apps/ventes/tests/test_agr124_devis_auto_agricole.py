@@ -111,7 +111,9 @@ class DevisAutoAgricoleTests(TestCase):
         lead = self._lead(niveau_statique_m=None, debit_forage_m3h=None)
         rep = self._post(lead)
         self.assertEqual(rep.status_code, 409, rep.data)  # CI #997 fuzz : refus d'état, 409
-        self.assertIn('D-AGR-4', rep.data['detail'])
+        # T4-U3-003 — des mots d'utilisateur, jamais le code de décision.
+        self.assertIn("Relevé du point d'eau", rep.data['detail'])
+        self.assertNotIn('D-AGR-4', rep.data['detail'])
         self.assertIn("relevé du point d'eau", rep.data['detail'].lower())
         self.assertFalse(Devis.objects.filter(lead=lead).exists())
 
@@ -146,7 +148,9 @@ class DevisAutoAgricoleTests(TestCase):
         lead = self._lead(debit_forage_m3h=None)
         rep = self._post(lead)
         self.assertEqual(rep.status_code, 409, rep.data)
-        self.assertIn('D-AGR-4', rep.data['detail'])
+        # T4-U3-003 — des mots d'utilisateur, jamais le code de décision.
+        self.assertIn("Relevé du point d'eau", rep.data['detail'])
+        self.assertNotIn('D-AGR-4', rep.data['detail'])
         self.assertEqual(rep.data['field'], 'debit_forage_m3h')
         lead = self._lead(niveau_statique_m=None, debit_forage_m3h=None)
         self.assertEqual(self._post(lead).data['field'], 'niveau_statique_m')

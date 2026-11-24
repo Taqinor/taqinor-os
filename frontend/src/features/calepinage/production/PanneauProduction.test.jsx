@@ -831,7 +831,7 @@ describe('PanneauProduction — résultat incomplet (ACAL700)', () => {
     expect(lignes[0]).toHaveTextContent('Aucune valeur pour votre société')
     const renseigner = within(lignes[0]).getByTestId('acal700-renseigner')
     expect(renseigner).toHaveAttribute('href', '/calepinage/reglages#calx69-salissure_mensuelle_pct')
-    expect(within(bloc).getByTestId('acal700-lien-reglages')).toHaveAttribute('href', '/calepinage/reglages/demarrage-rapide')
+    expect(within(bloc).getByTestId('acal700-lien-reglages')).toHaveAttribute('href', expect.stringContaining('/calepinage/reglages/demarrage-rapide?reglages=')) // T4-B4-003
     const sur = within(bloc).getByTestId('acal700-sur')
     for (const t of ['Panneaux', 'Puissance', 'Raccordement', 'Conforme', 'Ombres proches']) {
       expect(within(sur).getByText(t)).toBeInTheDocument()

@@ -90,11 +90,27 @@ def factures_mensuelles_exactes(etude, factures_source, devis=None):
     return serie if len(serie) == 12 else None
 
 
+def _facture_avec_affichee(roi, avec, economie_unique=None):
+    """T4-U1-019 — la facture « avec solaire » de l'exemple chiffré.
+
+    Sans ``economie_unique`` (devis sous le niveau 15) : celle du moteur,
+    arrondie à part — l'exemple d'hier, octet pour octet. Avec : UNE économie,
+    UN arrondi — celle des pages 1-2 (``eco_*_ann``), et la facture « avec
+    solaire » en découle (deux arrondis indépendants imprimaient 7 988 en page
+    4 contre 7 987 en pages 1-2 pour la même économie).
+    """
+    facture_avec = roi.get("facture_avec_a") if avec else roi.get("facture_avec_s")
+    facture_sans = roi.get("facture_sans")
+    if economie_unique is None or not facture_sans or facture_avec is None:
+        return facture_avec
+    return max(0, facture_sans - economie_unique)
+
+
 def restituer_etude(*, _client_city, _co_productible, _corrige, _utility,
                     _bareme_horaire=False,
                     etude, puissance_kwc, roi, savings_model,
                     savings_model_avec, savings_model_sans, scenario, recommended=None,
-                    libelle_avec=None):
+                    libelle_avec=None, _economie_unique=False):
     # ── QF3 — bloc « Comment nous calculons vos économies » ──────────────────
     # Méthode + exemple chiffré compact, calculés UNE fois ici : le PDF premium
     # et la proposition web (/proposal) rendent EXACTEMENT le même bloc.
@@ -138,7 +154,7 @@ def restituer_etude(*, _client_city, _co_productible, _corrige, _utility,
         # couverture du même PDF affichait « calculée ». Une phrase de méthode
         # fausse, plus une demande d'un document déjà reçu.
         _sm_sans_h = roi.get("facture_sans")
-        _sm_avec_h = roi.get("facture_avec_a") if _avec else roi.get("facture_avec_s")
+        _sm_avec_h = _facture_avec_affichee(roi, _avec, _sm_eco_ref if _economie_unique else None)
         # L'exemple chiffré n'existe que si les DEUX factures sont lisibles :
         # sans elles on garde la phrase de méthode, jamais un montant fabriqué.
         _paire_h = bool(_sm_sans_h) and _sm_avec_h is not None

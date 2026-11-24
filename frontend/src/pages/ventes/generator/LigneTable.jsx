@@ -28,7 +28,7 @@ import { formatMoney } from '../../../features/ventes/solar'
 // HT » / « Installation clé en main — total HT » au-dessus des composants d'un
 // même `groupe_client` (servi par le serializer). Calcul dans le module PUR
 // `lignesEcran` (aucune règle métier ici), rendu seul dans ce composant.
-import { sequenceGroupesClient, bornesDeplacement } from '../../../features/ventes/quote/lignesEcran'
+import { sequenceGroupesClient, bornesDeplacement, lignesPrixZero } from '../../../features/ventes/quote/lignesEcran'
 
 export default function LigneTable({
   // ── Lignes ──
@@ -48,6 +48,9 @@ export default function LigneTable({
   // ici : « AUCUNE règle métier ici »). `lignesRemiseesTtc` est ALIGNÉ sur
   // `lines` ; `montrerRemise` gate l'affichage (remise > 0).
   lignesRemiseesTtc, montrerRemise,
+  // T4-U2-011 — option de chaque ligne (`optionsDesLignes`, ALIGNÉ sur
+  // `lines`, calculé dans la coquille : aucune règle métier ici).
+  optionsLignes = null,
   // Le RAIL D'ARGENT (`RailArgent`) vit DANS cette même carte, sous la table :
   // c'est le contrat visuel historique (mêmes `CardContent`, même bordure).
   // Il est passé en `children` pour que le DOM rendu soit inchangé à l'octet.
@@ -56,6 +59,8 @@ export default function LigneTable({
   // R2 — séquence affichée et bornes de déplacement calculées UNE fois par rendu.
   const sequence = sequenceGroupesClient(lines, lignesRemiseesTtc)
   const bornes = bornesDeplacement(lines)
+  // T4-U3-007 — lignes à prix 0 nommées (calcul dans le module pur).
+  const prixZero = lignesPrixZero(lines)
   return (
     <Card>
       <GenCardHeader icon={ShoppingCart} title="Lignes de Produits">
@@ -178,6 +183,14 @@ export default function LigneTable({
         </details>
 
         {errorLines && <div role="alert" className="px-4 py-2 text-xs text-destructive">{errorLines}</div>}
+        {prixZero.length > 0 && (
+          <div role="status" data-testid="lignes-prix-zero"
+               className="mx-4 my-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning sm:mx-5">
+            Prix à 0 : {prixZero.map((l) => `« ${(l.designation || '—').trim()} »`).join(', ')} — saisissez
+            un prix ou retirez la ligne. Le devis s&apos;enregistre, mais il ne pourra pas être envoyé au
+            client tant qu&apos;une ligne est à 0.
+          </div>
+        )}
         {/* QX20 — échappatoire documentée à la garde d'équipement solaire.
             Relibellée (incident fondateur 01/09 round 2) : ce même état
             EST le mode « Composition libre » — le libellé d'origine
@@ -256,6 +269,8 @@ export default function LigneTable({
                   // tableau/objet recréé à chaque rendu).
                   totalTtcRemise={lignesRemiseesTtc?.[i] ?? null}
                   montrerRemise={montrerRemise}
+                  optionLigne={optionsLignes?.[i]?.option ?? null}
+                  raisonOption={optionsLignes?.[i]?.raison ?? null}
                   onSetField={onSetField}
                   onDesignationBlur={onDesignationBlur}
                   onProduitChange={onProduitChange}

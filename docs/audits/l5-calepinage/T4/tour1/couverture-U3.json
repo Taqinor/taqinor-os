@@ -1,0 +1,890 @@
+[
+ {
+  "id": "LEAD-DEV-001",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-002",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-005",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-006",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-010",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-013",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-016",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-017",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-025",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-032",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-040",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-042",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-020",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-021",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "chantier ouvert par « Voir le chantier » du menu de la liste des devis (créé seul à l acceptation)"
+ },
+ {
+  "id": "GEN-MKT-001",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-LEAD-001",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-LEAD-005",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-AGR-001",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-AGR-011",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-LIG-001",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-LIG-002",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-LIG-003",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-LIG-006",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-ARG-002",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-ARG-003",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-ARG-007",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-SAV-002",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-BAR-001",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-BAR-003",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-BAR-006",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-DOC-004",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "PDF-001",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "PDF-003",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "PDF-004",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "PDF-005",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "PDF-009",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "PDF-010",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "PDF-011",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "PDF-017",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "PDF-018",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "PDF-019",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "PDF-021",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "PDF-022",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "PDF-029",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-RTE-011",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-RTE-015",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-AV-015",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-ATL-001",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-ATL-008",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-TOIT-003",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "non-atteint",
+  "note": "pompe non chiffrable : aucun champ dessiné ni simulé dans le temps de la passe (pile partagée lente) ; rapport d étude non produit"
+ },
+ {
+  "id": "CAL-PAN-001",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "non-atteint",
+  "note": "pompe non chiffrable : aucun champ dessiné ni simulé dans le temps de la passe (pile partagée lente) ; rapport d étude non produit"
+ },
+ {
+  "id": "CAL-ELEC-001",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "non-atteint",
+  "note": "pompe non chiffrable : aucun champ dessiné ni simulé dans le temps de la passe (pile partagée lente) ; rapport d étude non produit"
+ },
+ {
+  "id": "CAL-RES-001",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "non-atteint",
+  "note": "pompe non chiffrable : aucun champ dessiné ni simulé dans le temps de la passe (pile partagée lente) ; rapport d étude non produit"
+ },
+ {
+  "id": "CAL-DOC-001",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "non-atteint",
+  "note": "pompe non chiffrable : aucun champ dessiné ni simulé dans le temps de la passe (pile partagée lente) ; rapport d étude non produit"
+ },
+ {
+  "id": "CAL-DOC-003",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "non-atteint",
+  "note": "pompe non chiffrable : aucun champ dessiné ni simulé dans le temps de la passe (pile partagée lente) ; rapport d étude non produit"
+ },
+ {
+  "id": "LEAD-DEV-019",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "facture d acompte FAC-202611-0001 émise depuis « Facturer… » de la liste"
+ },
+ {
+  "id": "GEN-AGR-012",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "bloque",
+  "note": "aucune pompe chiffrable (pompes à courbe sans prix) : kit et économie non calculés"
+ },
+ {
+  "id": "GEN-AGR-016",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "bloque",
+  "note": "aucune pompe chiffrable (pompes à courbe sans prix) : kit et économie non calculés"
+ },
+ {
+  "id": "LEAD-DEV-002",
+  "scenario": "j",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-005",
+  "scenario": "j",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-006",
+  "scenario": "j",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-032",
+  "scenario": "j",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-MKT-001",
+  "scenario": "j",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-MKT-002",
+  "scenario": "j",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-AGR-001",
+  "scenario": "j",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-AGR-005",
+  "scenario": "j",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-AGR-006",
+  "scenario": "j",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-LEAD-005",
+  "scenario": "j",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-LEAD-001",
+  "scenario": "j",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "bloque",
+  "note": "/ventes/devis/nouveau : « Échec du chargement : clients, leads, produits » 5 fois sur 6 pour le Commercial responsable"
+ },
+ {
+  "id": "GEN-AGR-011",
+  "scenario": "j",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "bloque",
+  "note": "devis automatique refusé (« Structure au sol : prix à renseigner au catalogue ») et générateur ne chargeant pas : aucun devis pour la pompe gardée"
+ },
+ {
+  "id": "PDF-010",
+  "scenario": "j",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "sombre",
+  "role": "Commercial responsable",
+  "resultat": "bloque",
+  "note": "devis automatique refusé (« Structure au sol : prix à renseigner au catalogue ») et générateur ne chargeant pas : aucun devis pour la pompe gardée"
+ },
+ {
+  "id": "LEAD-DEV-005",
+  "scenario": "k",
+  "moteur": "webkit",
+  "taille": 390,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-006",
+  "scenario": "k",
+  "moteur": "webkit",
+  "taille": 390,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-001",
+  "scenario": "k",
+  "moteur": "webkit",
+  "taille": 390,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-AGR-004",
+  "scenario": "k",
+  "moteur": "webkit",
+  "taille": 390,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-LIG-002",
+  "scenario": "k",
+  "moteur": "webkit",
+  "taille": 390,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-SAV-002",
+  "scenario": "k",
+  "moteur": "webkit",
+  "taille": 390,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "PDF-001",
+  "scenario": "k",
+  "moteur": "webkit",
+  "taille": 390,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "PDF-003",
+  "scenario": "k",
+  "moteur": "webkit",
+  "taille": 390,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "PDF-004",
+  "scenario": "k",
+  "moteur": "webkit",
+  "taille": 390,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "PDF-017",
+  "scenario": "k",
+  "moteur": "webkit",
+  "taille": 390,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-002",
+  "scenario": "l",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-032",
+  "scenario": "l",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-030",
+  "scenario": "l",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-033",
+  "scenario": "l",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-MKT-005",
+  "scenario": "l",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-RES-001",
+  "scenario": "l",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-SIM-002",
+  "scenario": "l",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-SAV-002",
+  "scenario": "l",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-005",
+  "scenario": "m",
+  "moteur": "chromium",
+  "taille": 1180,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-002",
+  "scenario": "m",
+  "moteur": "chromium",
+  "taille": 1180,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-030",
+  "scenario": "m",
+  "moteur": "chromium",
+  "taille": 1180,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-033",
+  "scenario": "m",
+  "moteur": "chromium",
+  "taille": 1180,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "PDF-001",
+  "scenario": "m",
+  "moteur": "chromium",
+  "taille": 1180,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "PDF-003",
+  "scenario": "m",
+  "moteur": "chromium",
+  "taille": 1180,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "PDF-029",
+  "scenario": "m",
+  "moteur": "chromium",
+  "taille": 1180,
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "bloque",
+  "note": "génération du PDF de DEV-202611-0110 encore en file après 300 s (un seul processus de fond) : PDF non obtenu"
+ },
+ {
+  "id": "CAL-RTE-001",
+  "scenario": "m",
+  "moteur": "chromium",
+  "taille": 1180,
+  "theme": "clair",
+  "role": "Technicien",
+  "resultat": "joue",
+  "note": "Technicien : pas de tuile Calepinage ; tuile CRM présente mais Leads en 403"
+ }
+]

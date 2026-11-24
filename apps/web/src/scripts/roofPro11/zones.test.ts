@@ -47,8 +47,8 @@ import { type Ctx } from './context'; // ACAL64
 import { lireGabaritsZone, lireGabaritsObstacle, type AreaRecord } from './types';
 import { type LngLat } from '../../lib/roof';
 import { type Obstacle } from '../../lib/obstacles';
-import { CALQUE_COTES, cotesDesAretes, monterCotesAretes, texteCote } from './cotesAretes'; // ACAL1328
-import { CALQUES_EDITION, poserPresentation } from './presentationCarte'; // ACAL1328
+import { CALQUE_CONTOUR, CALQUE_COTES, cotesDesAretes, monterCotesAretes, texteCote } from './cotesAretes'; // ACAL1328, ACAL2042
+import { CALQUES_EDITION, poserEtapeAtelier, poserPresentation } from './presentationCarte'; // ACAL1328 ; suites v2 — l'étape
 import { peindreBande, texteTotalProduction } from './affichageErp'; // ACAL1612
 import { type CardData } from './types'; // ACAL1612
 
@@ -623,6 +623,24 @@ describe('ACAL1415 — module de départ « à confirmer » / module choisi, apr
   }
   const pan = () => [panDeTest('area-1', { renderPlan: plan, roofType: 'flat', moduleId: 'produit-7' })];
 
+  // T4-U4-007 — un pan dont le module n'est pas dans ce sélecteur : le refus NOMME le module (libellé du document),
+  // jamais l'identifiant interne `produit-<id>`.
+  it('module absent du sélecteur, connu du document : le refus dit son libellé, jamais « produit-<id> »', () => {
+    const m715 = { ...m710, id: 'produit-23019', produitId: 23019, libelle: 'Module 715 W', epaisseurMm: null }
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><div id="rp9-areas"></div></body>').window.document;
+    try {
+      const areas = [panDeTest('area-1', { renderPlan: plan, roofType: 'flat', moduleId: 'produit-23019' })];
+      const ctx = { ...ctxDeBase(areas, 'area-1'), opts: { modulesDisponibles: catalogue }, modulesDuDocument: [m715],
+        activeArea: () => areas[0], closed: true, dom: { areasWindowEl: document.getElementById('rp9-areas') } } as unknown as Ctx;
+      createZones(ctx, { recalc: vi.fn(), setStatus: vi.fn() }); // le sélecteur se synchronise à la création
+      const refus = document.getElementById('rp9-pan-module-erreur')?.textContent ?? '';
+      expect(refus).toContain('« Module 715 W »');
+      expect(refus).not.toContain('produit-23019');
+    } finally { g.document = avant; }
+  });
+
   it('pan jamais choisi : aucun drapeau écrit, « à confirmer » après rechargement', () => {
     const { doc } = monter(pan());
     expect('moduleChoisi' in (doc.zones[0].geometry ?? {})).toBe(false);
@@ -1046,6 +1064,13 @@ describe('ACAL1404 — document à pan existant : hydratation fermée, aucun ref
       expect(occupiedCount(ctx.layoutState!)).toBe(5);
       expect(setStatus).not.toHaveBeenCalledWith(motifPanExistant(pan));
       expect(JSON.stringify(pan)).toBe(avantPan); // un simple chargement n'écrit rien
+      // ACAL1920 — l'ombrage relu au boot REDESSINE (shadingUi → redessinerSansReposer → renderActive) : pose affichée,
+      // ce redessin disait le refus dans la barre d'état dès l'ouverture, avant le moindre geste.
+      const { redessinerSansReposer } = await import('./panExistant');
+      const rendrePoseTenue = vi.fn();
+      redessinerSansReposer(ctx as unknown as Parameters<typeof redessinerSansReposer>[0], () => opt.liveResolveFlat(), rendrePoseTenue);
+      expect(setStatus).not.toHaveBeenCalledWith(motifPanExistant(pan)); // ouverture d'un pan existant ⇒ barre d'état vide
+      expect(rendrePoseTenue).toHaveBeenCalledTimes(1); // la pose enregistrée est redessinée telle quelle
       opt.liveResolveFlat(); // un geste de l'utilisateur, pose affichée : refus nommé (ACAL574)
       expect(setStatus).toHaveBeenCalledWith(motifPanExistant(pan));
     } finally {
@@ -1166,7 +1191,7 @@ function carteDeTestCotes() {
   };
   const emettre = (t: string, e: { sourceId?: string } = {}) => (ecoute.get(t) ?? []).forEach((fn) => fn(e));
   const textes = () => (donnees.get('rp9-cotes')?.features ?? []).map((f) => f.properties.texte);
-  return { carte, emettre, textes, visibilite, pencher: (p: number) => { pente = p; emettre('pitch'); } };
+  return { carte, emettre, textes, visibilite, donnees, pencher: (p: number) => { pente = p; emettre('pitch'); } };
 }
 
 describe('ACAL1328 — cotesDesAretes', () => {
@@ -1208,6 +1233,129 @@ describe('ACAL1328 — calque rp9-cotes', () => {
     expect(t.visibilite.get(CALQUE_COTES)).toBe('none');
     poserPresentation(t.carte, false);
     expect(t.visibilite.get(CALQUE_COTES)).toBe('visible');
+  });
+
+  // ACAL1924 — calepinage 2057 : aucune cote lisible en Plan (la couche 3D, ajoutée après, couvrait le calque) ;
+  // calepinage 2030 : la cote du faîtage imprimée deux fois (une par pan) ; cotes sans pilule blanche.
+  it('les cotes d’arêtes sont au-dessus du remplissage du pan, une fois par bord, dans une pilule blanche', () => {
+    const t = carteDeTestCotes();
+    const ordre: string[] = [];
+    const couches: Array<Record<string, unknown>> = [];
+    const carte = {
+      ...t.carte,
+      addLayer: (l: { id: string; layout?: { visibility?: string } }) => { t.carte.addLayer(l); ordre.push(l.id); couches.push(l as never); },
+      getLayer: (id: string) => (ordre.includes(id) ? {} : undefined),
+      getLayersOrder: () => [...ordre],
+      moveLayer: (id: string) => { ordre.splice(ordre.indexOf(id), 1); ordre.push(id); },
+      hasImage: () => false, addImage: vi.fn(),
+    };
+    const sud = rectRing(12.4, 4.3);
+    const nord = sud.map(([lng, lat]) => [lng, lat + (4.3 / 111194.9266)] as LngLat); // même faîtage, 4,3 m plus au nord
+    monterCotesAretes(carte, () => [{ sommets: sud, ferme: true }, { sommets: nord, ferme: true }], true);
+    carte.addLayer({ id: 'rp9-3d' }); // la couche 3D arrive APRÈS (roof-tool-pro11.ts)
+    t.emettre('idle');
+    expect(ordre.indexOf(CALQUE_COTES)).toBeGreaterThan(ordre.indexOf('rp9-3d'));
+    expect(t.textes()).toEqual(['12,4 m', '4,3 m', '12,4 m', '4,3 m', '4,3 m', '12,4 m', '4,3 m']); // faîtage commun : une fois
+    const cotes = couches.find((l) => l.id === CALQUE_COTES) as { layout: Record<string, unknown>; paint: Record<string, unknown> };
+    expect([cotes.layout['icon-image'], cotes.layout['icon-text-fit'], cotes.paint['text-color']]).toEqual(['rp9-cote-pilule', 'both', '#0c1335']);
+    expect(carte.addImage).toHaveBeenCalledTimes(1);
+  });
+
+  // ACAL2042 — la ligne du tracé (rp9-line) est VIDÉE à la fermeture (« la 3D la remplace ») et les sommets (rp9-pts), ajoutés
+  // AVANT la couche 3D, étaient couverts par la dalle : aucun contour or (maquettes Main / ToitSombre : or plein 2 px + coins).
+  it('contour du toit en or plein au-dessus de la 3D, poignées de coin aux jetons du thème', () => {
+    const t = carteDeTestCotes();
+    const ordre = ['rp9-line', 'rp9-pts'];
+    const couches: Array<{ id: string; paint?: Record<string, unknown> }> = [];
+    const peint: Record<string, unknown> = {};
+    const conteneur = {} as Element;
+    let theme: Record<string, string> = { '--cal-action': 'rgb(226 181 74)', '--cal-surface': 'rgb(255 255 255)', '--cal-or-trait': 'rgb(201 154 43)' };
+    const avant = globalThis.getComputedStyle;
+    globalThis.getComputedStyle = ((el: Element) => ({ getPropertyValue: (n: string) => (el === conteneur ? theme[n] ?? '' : '') })) as never;
+    try {
+      const carte = {
+        ...t.carte,
+        addLayer: (l: { id: string; layout?: { visibility?: string } }) => { t.carte.addLayer(l); ordre.push(l.id); couches.push(l); },
+        getLayer: (id: string) => (ordre.includes(id) ? {} : undefined),
+        getLayersOrder: () => [...ordre],
+        moveLayer: (id: string) => { ordre.splice(ordre.indexOf(id), 1); ordre.push(id); },
+        setPaintProperty: (id: string, nom: string, v: unknown) => { peint[`${id}|${nom}`] = v; },
+        getContainer: () => conteneur,
+      };
+      const toit = rectRing(12.4, 8.1);
+      monterCotesAretes(carte, () => [{ sommets: toit, ferme: true, actif: true }, { sommets: rectRing(4, 3), ferme: true }], true);
+      carte.addLayer({ id: 'rp9-3d' });
+      t.emettre('idle');
+      expect(ordre.slice(ordre.indexOf('rp9-3d'))).toEqual(['rp9-3d', CALQUE_CONTOUR, 'rp9-pts', CALQUE_COTES]); // au-dessus de la dalle
+      const contour = t.donnees.get(CALQUE_CONTOUR) as unknown as { features: Array<{ geometry: { coordinates: LngLat[] } }> };
+      expect(contour.features.map((f) => f.geometry.coordinates)).toEqual([[...toit, toit[0]]]); // le pan CHOISI seul, fermé
+      expect(couches.find((l) => l.id === CALQUE_CONTOUR)?.paint?.['line-width']).toBe(2);
+      expect(peint[`${CALQUE_CONTOUR}|line-color`]).toBe('rgb(226, 181, 74)');
+      expect([peint['rp9-pts|circle-color'], peint['rp9-pts|circle-stroke-color']]).toEqual(['rgb(255, 255, 255)', 'rgb(201, 154, 43)']);
+      theme = { '--cal-action': 'rgb(226 181 74)', '--cal-surface': 'rgb(18 26 63)', '--cal-or-trait': 'rgb(226 181 74)' }; // thème sombre
+      t.emettre('idle');
+      expect([peint['rp9-pts|circle-color'], peint['rp9-pts|circle-stroke-color']]).toEqual(['rgb(18, 26, 63)', 'rgb(226, 181, 74)']);
+      t.pencher(60); // en 3D, le contour au sol se tait comme les cotes
+      expect(t.visibilite.get(CALQUE_CONTOUR)).toBe('none');
+    } finally {
+      globalThis.getComputedStyle = avant;
+    }
+  });
+
+  // T4-B4-008 — en thème sombre la pilule des cotes restait BLANCHE (image figée, texte bleu nuit codé) ; maquette ToitSombre :
+  // pilule bleu nuit (rgba 12,19,53), filet clair, texte clair. Fond, filet et texte suivent les jetons du thème.
+  it('pilule des cotes aux jetons du thème : blanche en clair, bleu nuit à texte clair en sombre', () => {
+    const t = carteDeTestCotes();
+    const peint: Record<string, unknown> = {};
+    const images = new Map<string, { width: number; data: Uint8ClampedArray }>();
+    const conteneur = {} as Element;
+    let theme: Record<string, string> = { '--cal-texte-1': 'rgb(12 19 53)', '--cal-flottante': 'rgba(255, 255, 255, 0.86)', '--cal-flottante-filet': 'rgba(255, 255, 255, 0.7)' };
+    const avant = globalThis.getComputedStyle;
+    globalThis.getComputedStyle = ((el: Element) => ({ getPropertyValue: (n: string) => (el === conteneur ? theme[n] ?? '' : '') })) as never;
+    const centre = (img: { width: number; data: Uint8ClampedArray }) => [...img.data.slice((16 * img.width + 24) * 4, (16 * img.width + 24) * 4 + 4)];
+    try {
+      const carte = {
+        ...t.carte,
+        setPaintProperty: (id: string, nom: string, v: unknown) => { peint[`${id}|${nom}`] = v; },
+        getContainer: () => conteneur,
+        hasImage: (id: string) => images.has(id),
+        addImage: (id: string, img: { width: number; data: Uint8ClampedArray }) => { images.set(id, img); },
+        updateImage: (id: string, img: { width: number; data: Uint8ClampedArray }) => { images.set(id, img); },
+      };
+      monterCotesAretes(carte, () => [{ sommets: rectRing(12.4, 8.1), ferme: true, actif: true }], true);
+      const [idPilule] = [...images.keys()];
+      expect(centre(images.get(idPilule)!)).toEqual([255, 255, 255, 219]);
+      t.emettre('idle');
+      expect(peint[`${CALQUE_COTES}|text-color`]).toBe('rgb(12, 19, 53)');
+      // La feuille de style CONSTRUITE (minifiée) sert les jetons en hexadécimal (relevé au navigateur : `#0c1335d1`, `#f3f5fb`) :
+      // un lecteur qui ne comprenait que `rgb(…)` retombait toujours sur la pilule blanche.
+      theme = { '--cal-texte-1': '#f3f5fb', '--cal-flottante': '#0c1335d1', '--cal-flottante-filet': '#ffffff1a' };
+      t.emettre('idle');
+      expect(peint[`${CALQUE_COTES}|text-color`]).toBe('rgb(243, 245, 251)');
+      expect(centre(images.get(idPilule)!)).toEqual([12, 19, 53, 209]);
+    } finally {
+      globalThis.getComputedStyle = avant;
+    }
+  });
+
+  // Suites des écrans v2 (24/11) — à l'étape Panneaux la carte montrait cotes, contour or et coins (maquette Main seule).
+  it('étape déclarée par la coque : cotes, contour or et coins à l’étape Toit seulement ; sans étape, comme avant', async () => {
+    const { creerPoignees3d } = await import('./poigneesSommets3d');
+    const t = carteDeTestCotes();
+    t.carte.addLayer({ id: 'rp9-pts' });
+    monterCotesAretes(t.carte, () => [{ sommets: rectRing(12.4, 8.1), ferme: true, actif: true }], true);
+    creerPoignees3d(t.carte as never).poser({ add: () => {} } as never, rectRing(12.4, 8.1), [-7.6, 33.5], 6);
+    const vus = () => [CALQUE_COTES, CALQUE_CONTOUR, 'rp9-pts'].map((id) => t.visibilite.get(id));
+    expect(vus()).toEqual(['visible', 'visible', 'visible']);
+    for (const [etape, attendu] of [['panneaux', 'none'], ['electrique', 'none'], ['toit', 'visible'], ['documents', 'none'], [null, 'visible']] as const) {
+      poserEtapeAtelier(t.carte, etape);
+      expect(vus()).toEqual([attendu, attendu, attendu]);
+    }
+    poserEtapeAtelier(t.carte, 'panneaux');
+    poserPresentation(t.carte, true);
+    poserPresentation(t.carte, false); // la sortie de la vue client ne rallume rien hors de l'étape Toit
+    expect(vus()).toEqual(['none', 'none', 'none']);
+    poserEtapeAtelier(t.carte, null);
   });
 
   it('site public (option de montage absente) : aucun calque posé', () => {

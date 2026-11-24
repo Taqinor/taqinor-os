@@ -71,6 +71,8 @@ describe('MaterielElectrique (ACAL149)', () => {
     await screen.findByTestId('acal149-formulaire')
     expect(screen.getByTestId('acal149-provenance-onduleur')).toHaveTextContent('ligne du devis')
     expect(libelleProvenance(EXEMPLE.materiel.onduleur)).toBe('ligne du devis')
+    // T4-B4-007 — le module posé à l'étape Panneaux sert le calcul électrique (provenance `pose`) : jamais « à désigner ».
+    expect(libelleProvenance({ ...EXEMPLE.materiel.module, provenance: 'pose' })).toBe('posé à l’étape Panneaux')
 
     // On surcharge le module par un autre choix : le corps le porte.
     await userEvent.selectOptions(document.getElementById('acal149-champ-module_produit'), '')

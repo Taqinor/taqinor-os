@@ -1,4 +1,6 @@
+import { useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { publierLecturePret } from './lecturePretAEnvoyer'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { Badge } from '../../../ui'
@@ -117,6 +119,10 @@ export default function PretAEnvoyer({
     (id) => calepinageApi.calepinages.pretAEnvoyer(id, filtre ? { etape: filtre } : undefined), calepinageId,
     { select: (r) => r.data, errorMessage: (err) => (estDelaiDepasse(err) ? MESSAGE_LENT : MESSAGE_ECHEC) },
   )
+  // T4-B4-010 — la lecture servie est publiée pour le rail des étapes (même liste, même compte par étape).
+  useEffect(() => {
+    if (typeof lue?.pret === 'boolean') publierLecturePret(calepinageId, filtre, lue.controles ?? [])
+  }, [lue, calepinageId, filtre])
   const cle = `${calepinageId}|${filtre ?? ''}`
   if (typeof lue?.pret === 'boolean' && !loading && DERNIERES_LECTURES.get(cle)?.data !== lue) {
     DERNIERES_LECTURES.set(cle, { data: lue, lueA: new Date() })

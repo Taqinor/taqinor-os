@@ -6,14 +6,14 @@
     "version_rangee": "+ lead, calepinage, empreinte_pose, declencheur, version, calcule_le, perimee, ecart_devis, brouillons_a_mettre_a_jour.",
     "porteur": "lead et calepinage = identifiants du porteur (ADEV131 ; l'un des deux au moins) : lead seul, lead + calepinage dont la pose a servi, ou calepinage seul (dossier sans lead, Q3 du 23/11) ; empreinte_pose = empreinte de la pose utilisée (\"\" sans pose) — le calepinage compare son détail de simulation à la version courante par elle (§4).",
     "etat": "complet | refus ; refus = {code, champ, message} nommé (ex. localisation_inconnue), valeurs et blocs vides ; sinon refus = null.",
-    "marche": "residentiel | commercial | industriel | agricole ; option_retenue = sans | avec (null en refus).",
+    "marche": "residentiel | commercial | industriel | agricole ; option_retenue = sans | avec (null en refus) : l'option que le MOTEUR met en avant, jamais le choix du client (`Devis.option_acceptee`) — une seule option servie : celle-là ; deux options : la recommandée quand l'étude en nomme une (`recommended_option`, C&I), sinon `avec`, l'option que décrit le bloc horaire principal (`etude_horaire`, résidentiel « Les deux ») ; agricole : sans.",
     "valeurs": "la table §2 PAR OPTION ({sans, avec?}) ; chaque valeur = {valeur, unite, source}. Solaire : nb_panneaux, puissance_kwc, module, onduleurs, nombre_onduleurs, chaines, temperature_froid, tension_froid, ratio_dc_ac, production_annuelle, production_mensuelle, autoconsommation, couverture, economies_annuelles, payback, consommation_annuelle, forme_horaire. Agricole : nb_panneaux, puissance_kwc, pompe, variateur, m3_jour (m3_jour = null sans courbe de pompe, D-AMOT-7).",
     "source_valeur": "moteur (calculé sur les entrées) | pose (simulation de la pose du toit tracé) | impose (posé par un humain : pose ajustée, matériel désigné — souverain) | devis (lu sur le devis de référence, ex. l'investissement du payback) | defaut (supposé : une supposition le dit).",
-    "blocs": "les blocs d'étude dans la forme ACTUELLE des clés de `Devis.etude_params` (clés dérivées de `domain/etude_schema.py::SCHEMA` : etude_horaire, etude_horaire_sans, dimensionnement, etude_ci et ses dérivées, les dérivées du pompage), copiés tels quels dans le devis créé ; sous-clés = celles de `etude_horaire.json`, `etude_ci_preview.json` (cles_etude_params_ci_v2) et `etude_pompage_preview.json` (cles_etude_params_v2), ABRÉGÉES ici, jamais redéfinies.",
+    "blocs": "ADEV135 — le contenu COMPLET de `Devis.etude_params` tel que le devis automatique né de cette conception le porterait, copié tel quel dans le devis créé (rien à recalculer) : chaque clé est une clé de `domain/etude_schema.py::SCHEMA` — blocs d'étude (etude_horaire, etude_horaire_sans, dimensionnement, etude_ci et ses dérivées, les dérivées du pompage), profils_comparatifs, puissance_kwc, ville_calcul, provenance, scenario, origine_conception… — JAMAIS les notes vendeur `journal_auto`, jamais `prix_achat` ni marge (parcours récursif) ; sous-clés des blocs d'étude = celles de `etude_horaire.json`, `etude_ci_preview.json` (cles_etude_params_ci_v2) et `etude_pompage_preview.json` (cles_etude_params_v2), ABRÉGÉES ici, jamais redéfinies. Vide en refus.",
     "entrees_utilisees": "{champ: {valeur, source}} ; source = lead | calepinage | reglage_societe | defaut | saisie (aperçu seulement : valeur tapée, non enregistrée) ; champ = colonne du lead (liste `apps/ventes/conception/champs.py::CHAMPS_ENTREES`, ADEV130) ou réglage nommé.",
     "suppositions": "[{code, champ, valeur, source, message}] : tout défaut est dit avec le champ de la fiche (règle du 17/11).",
     "empreinte": "SHA-256 (64 hex) des entrées + version_moteur + niveau_regles + empreinte de la pose ; égale ⇒ aucune nouvelle version.",
-    "declencheur": "{raison (la phrase « pourquoi »), champs: [{champ, avant, apres}], origine} ; origine = lead_entrees_modifiees | pose_enregistree | regles | remplissage | manuel | filet (empreinte des entrées différente relevée en lecture).",
+    "declencheur": "{raison, champs: [{champ, avant, apres}], origine} ; origine = lead_entrees_modifiees | pose_enregistree | regles | remplissage | manuel | filet (empreinte des entrées différente relevée en lecture) ; raison = LA phrase que lit l'utilisateur, construite par l'écrivain (`conception/service.py::phrase_du_declencheur`) et recopiée telle quelle au chatter : « Recalculé le JJ/MM à H h MM : <libellé> <avant> → <après> ; … » (heure locale, libellés de l'historique du lead `crm.activity.TRACKED_FIELDS`, choix lisibles, nombres à la française) ou, sans champ nommé, « Recalculé le JJ/MM à H h MM : <motif de l'origine> ».",
     "perimee": "true quand l'empreinte des entrées du lead ne correspond plus à la version courante : l'écran garde les valeurs et dit « Recalcul en cours ».",
     "ecart_devis": "[{valeur, devis, conception, devis_ref, reviser_possible, mise_a_jour_proposee}] : la valeur (clé de `valeurs`) qui diffère entre le devis ENVOYÉ lié et la conception courante (D-ACAL-96 : les deux chiffres nommés, « Réviser le devis ») ; mise_a_jour_proposee = brouillon retouché à la main (Q2).",
     "brouillons_a_mettre_a_jour": "[{devis, reference, motif}] : brouillons retouchés à la main qui gardent leurs valeurs et proposent « Mettre à jour » (Q2, 23/11) ; un brouillon non retouché suit seul et n'y figure pas."
@@ -50,7 +50,9 @@
     "blocs": {
       "etude_horaire": {"version": 1, "kwc": 7.2, "source_production": "pvgis_ville:casablanca", "batterie_kwh_utile": 10.0, "_empreinte_entrees": "1111111111111111111111111111111111111111111111111111111111111111"},
       "etude_horaire_sans": {"version": 1, "kwc": 6.0, "source_production": "pvgis_ville:casablanca", "batterie_kwh_utile": null, "_empreinte_entrees": "1111111111111111111111111111111111111111111111111111111111111111"},
-      "dimensionnement": {"critere": "meilleur_payback", "recommandation": {"panneaux": 10, "kwc": 6.0}, "recommandation_avec": {"panneaux": 12, "kwc": 7.2}, "_empreinte_entrees": "1111111111111111111111111111111111111111111111111111111111111111"}
+      "dimensionnement": {"critere": "meilleur_payback", "recommandation": {"panneaux": 10, "kwc": 6.0}, "recommandation_avec": {"panneaux": 12, "kwc": 7.2}, "_empreinte_entrees": "1111111111111111111111111111111111111111111111111111111111111111"},
+      "profils_comparatifs": {"source": "moteur_horaire", "profils": []}, "puissance_kwc": 7.2, "ville_calcul": {"reference": "Casablanca", "ville": "Casablanca"},
+      "scenario": "Les deux (Sans + Avec)", "origine_conception": "rapide"
     },
     "suppositions": [
       {"code": "occupation_supposee", "champ": "occupation_jour", "valeur": "presence_jour", "source": "defaut", "message": "Présence en journée supposée : renseigner « Occupation en journée » sur la fiche du lead."},
@@ -64,7 +66,7 @@
     },
     "empreinte": "2222222222222222222222222222222222222222222222222222222222222222",
     "niveau_regles": 14, "version_moteur": "qjr43-2",
-    "declencheur": {"raison": "facture d'hiver modifiée", "champs": [{"champ": "facture_hiver", "avant": 900, "apres": 1200}], "origine": "lead_entrees_modifiees"},
+    "declencheur": {"raison": "Recalculé le 23/11 à 14 h 05 : Facture hiver 900 → 1 200", "champs": [{"champ": "facture_hiver", "avant": 900, "apres": 1200}], "origine": "lead_entrees_modifiees"},
     "lead": 1, "calepinage": null, "empreinte_pose": "",
     "version": 2, "calcule_le": "2026-11-23T14:05:00+01:00", "perimee": false,
     "ecart_devis": [{"valeur": "nb_panneaux", "devis": 14, "conception": 12, "devis_ref": "DEV-202611-0001", "reviser_possible": true, "mise_a_jour_proposee": false}],
@@ -85,13 +87,14 @@
     }},
     "blocs": {
       "etude_ci": {"version": 1, "taille": {"retenue_kwc": 24.0, "nb_panneaux": 40}, "bilan": {"production_kwh": 40000.0, "taux_autoconso": 0.9}, "empreinte": "3333333333333333333333333333333333333333333333333333333333333333"},
-      "taille_creation_ci": {"retenue_kwc": 24.0, "nb_panneaux": 40}
+      "taille_creation_ci": {"retenue_kwc": 24.0, "nb_panneaux": 40},
+      "puissance_kwc": 24.0, "mode": "industriel", "origine_conception": "rapide"
     },
     "suppositions": [{"code": "tension_bt_supposee", "champ": "tension_raccordement", "valeur": "bt", "source": "defaut", "message": "Basse tension supposée : renseigner la tension de raccordement du lead (D-ACAL-92)."}],
     "entrees_utilisees": {"conso_mensuelle_kwh": {"valeur": 8000, "source": "lead"}, "regime_equipes": {"valeur": "2x8", "source": "lead"}, "pose": {"valeur": 40, "source": "calepinage"}},
     "empreinte": "4444444444444444444444444444444444444444444444444444444444444444",
     "niveau_regles": 14, "version_moteur": "qjr43-2",
-    "declencheur": {"raison": "pose enregistrée sur le calepinage", "champs": [], "origine": "pose_enregistree"},
+    "declencheur": {"raison": "Recalculé le 23/11 à 15 h 00 : pose enregistrée sur le calepinage", "champs": [], "origine": "pose_enregistree"},
     "lead": 2, "calepinage": 3, "empreinte_pose": "8888888888888888888888888888888888888888888888888888888888888888",
     "version": 3, "calcule_le": "2026-11-23T15:00:00+01:00", "perimee": false, "ecart_devis": [], "brouillons_a_mettre_a_jour": []
   },
@@ -102,11 +105,11 @@
       "pompe": {"valeur": {"produit": 6, "nom": "Pompe 3 kW"}, "unite": null, "source": "moteur"}, "variateur": {"valeur": {"produit": 7, "nom": "Variateur 4 kW"}, "unite": null, "source": "moteur"},
       "m3_jour": {"valeur": 30.0, "unite": "m³/jour", "source": "moteur"}
     }},
-    "blocs": {"champ": {"kwc": 4.8, "nb_panneaux": 8}, "production": {"m3_jour_mois": [30.0], "mode": "courbe"}, "m3_jour": 30.0, "pompe_kw": 3.0},
+    "blocs": {"champ": {"kwc": 4.8, "nb_panneaux": 8}, "production": {"m3_jour_mois": [30.0], "mode": "courbe"}, "m3_jour": 30.0, "pompe_kw": 3.0, "puissance_kwc": 4.8, "origine_conception": "rapide"},
     "suppositions": [], "entrees_utilisees": {"pompe_hmt_m": {"valeur": 40, "source": "lead"}, "pompe_debit_m3h": {"valeur": 5, "source": "lead"}},
     "empreinte": "5555555555555555555555555555555555555555555555555555555555555555",
     "niveau_regles": 14, "version_moteur": "qjr43-2",
-    "declencheur": {"raison": "HMT modifiée", "champs": [{"champ": "pompe_hmt_m", "avant": 35, "apres": 40}], "origine": "lead_entrees_modifiees"},
+    "declencheur": {"raison": "Recalculé le 23/11 à 16 h 00 : HMT (m) 35 → 40", "champs": [{"champ": "pompe_hmt_m", "avant": 35, "apres": 40}], "origine": "lead_entrees_modifiees"},
     "lead": 4, "calepinage": null, "empreinte_pose": "",
     "version": 1, "calcule_le": "2026-11-23T16:00:00+01:00", "perimee": true, "ecart_devis": [], "brouillons_a_mettre_a_jour": []
   },
@@ -116,14 +119,14 @@
     "entrees_utilisees": {"facture_hiver": {"valeur": 1200, "source": "lead"}},
     "empreinte": "6666666666666666666666666666666666666666666666666666666666666666",
     "niveau_regles": 14, "version_moteur": "qjr43-2",
-    "declencheur": {"raison": "remplissage initial", "champs": [], "origine": "remplissage"},
+    "declencheur": {"raison": "Recalculé le 23/11 à 9 h 00 : premier calcul", "champs": [], "origine": "remplissage"},
     "lead": 5, "calepinage": null, "empreinte_pose": "",
     "version": 1, "calcule_le": "2026-11-23T09:00:00+01:00", "perimee": false, "ecart_devis": [], "brouillons_a_mettre_a_jour": []
   },
   "apercu": {
     "endpoint": "POST /api/django/ventes/conception/apercu/",
-    "pourquoi": "Aperçu SANS ÉCRITURE d'une saisie non enregistrée (écran devis, ADEV152) : même moteur, aucune version rangée. Porteur = lead, ou calepinage sans lead (l'autre à null).",
-    "corps": {"lead": 1, "calepinage": null, "entrees": {"facture_hiver": 1500}, "imposes": {"nb_panneaux": 12, "module_id": null, "onduleur_id": null, "nombre_onduleurs": null, "batterie": null}},
+    "pourquoi": "Aperçu SANS ÉCRITURE d'une saisie non enregistrée (écran devis, ADEV152) : même moteur, aucune version rangée. Porteur = lead, ou calepinage sans lead (l'autre à null) ; un porteur d'une autre société ⇒ 404 avant toute lecture du reste du corps ; dossier d'appel d'offres ⇒ 409 (hors moteur). entrees = {colonne du lead : valeur tapée}, colonnes de `apps/ventes/conception/champs.py::CHAMPS_ENTREES` du marché seulement (sinon 400 nommant le champ), provenance `saisie` dans entrees_utilisees. ADEV137 — imposes a LA forme des champs imposés de `POST devis/auto/` (`domain/composition_imposee.py::CHAMPS_IMPOSES`, celle que le moteur reçoit, résidentiel seulement) : une seule forme dans l'ERP, aucune traduction de noms (un champ hors liste ⇒ 400).",
+    "corps": {"lead": 1, "calepinage": null, "entrees": {"facture_hiver": 1500}, "imposes": {"nb_panneaux": 12, "panneau_produit_id": null, "onduleur_produit_id": null, "onduleur_kw": null, "onduleur_phase": null, "batterie_produit_id": null, "batterie_kwh": null}},
     "reponse": {
       "etat": "complet", "refus": null, "marche": "residentiel", "option_retenue": "sans",
       "valeurs": {"sans": {

@@ -708,7 +708,22 @@ REFUS = {
         # tableau rendu : aucune liste de valeurs.
         ("Miroir de `builder._annoter_remise`", "COMPORTEMENT"),
         ("par `repartirRemiseParLigne` (miroir de", "COMPORTEMENT"),
-        ("`parLigne` est ALIGNÉ sur `lines`", "COMPORTEMENT")],
+        ("`parLigne` est ALIGNÉ sur `lines`", "COMPORTEMENT"),
+        # T4-U2-011 (24/11/2026) — `optionsDesLignes` : miroir d'une FONCTION
+        # serveur (la regle QF9 `utils/options.retirer_accessoires_huawei`,
+        # appliquee aux paniers Sans/Avec) et tableau ALIGNE sur les indices de
+        # `lines` ; le vocabulaire rendu ('sans'/'avec'/'aucune') n'est pas une
+        # liste de choix a l'ecran. La coherence avec `optionTotalsTTC` (meme
+        # population, meme QF9) est executee par le test T4-U2-011 de
+        # totaux.test.mjs ; QF9 cote ecran par solarOptionTotaux.test.mjs.
+        ("QF9 des accessoires Huawei, miroir de `utils/options.py`) : l'écran dit",
+         "COMPORTEMENT"),
+        ("laisser un total bouger sans étiquette. Rend un tableau ALIGNÉ sur",
+         "COMPORTEMENT")],
+    # T4-U2-011 — fichier de test : il CITE la regle QF9 du noyau pour la
+    # rendre verifiable cote ecran ; il ne rend aucun choix a l'ecran.
+    "frontend/src/features/ventes/calc/totaux.test.mjs": [
+        ("QF9 des accessoires Huawei, miroir de utils/options.py).", "TEST")],
     # SPL200 — la recomposition des lignes (et sa promesse L-2OPT) a quitté solar.js.
     "frontend/src/features/ventes/calc/recomposition.js": [
         # L-2OPT (25/08) — la fusion role-aware decrit un COMPORTEMENT aligne
@@ -800,7 +815,10 @@ REFUS = {
     "frontend/src/pages/ventes/devisList/useDevisEnvoi.js": [
         ("copie des liens", "COMPORTEMENT")],
     "frontend/src/pages/ventes/generator/LigneTable.jsx": [
-        ("est ALIGNÉ sur", "COMPORTEMENT")],
+        ("est ALIGNÉ sur", "COMPORTEMENT"),
+        # T4-U2-011 — prop `optionsLignes` : tableau aligne sur les INDICES de
+        # `lines` (comportement), aucune liste de valeurs.
+        ("(`optionsDesLignes`, ALIGNÉ sur", "COMPORTEMENT")],
     "frontend/src/router/moduleRoutes.jsx": [
         ("AUCUNE copie de cette règle", "COMPORTEMENT")],
     # MRY14 06/09/2026 — OUTCOME_CHOICES reflète OUTCOME_LABELS de

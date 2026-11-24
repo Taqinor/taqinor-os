@@ -223,11 +223,23 @@ def html_de_section(contexte):
     base = production.get('base') or {}
     meteo = resultat.get('meteo') or {}
 
+    # T4-U1-003 — sans épingle, la simulation a tourné sur la ville de
+    # référence : ses coordonnées (``meteo.point``, le point réellement
+    # demandé) et son libellé (``meteo.site.libelle``), TELS QUE SERVIS.
+    reference = meteo.get('site') if isinstance(meteo.get('site'), dict) else {}
+    point = meteo.get('point') if isinstance(meteo.get('point'), dict) else {}
+    if reference.get('libelle') and _coordonnees(site.get('pin')) == '—':
+        coordonnees = _coordonnees({'lat': point.get('lat'),
+                                    'lng': point.get('lon')})
+        source_repere = escape(str(reference['libelle']))
+    else:
+        coordonnees = _coordonnees(site.get('pin'))
+        source_repere = _source_repere(site.get('source'))
     lignes = [
         _ligne('Ville', _texte_ou_tiret(site.get('ville'))),
         _ligne('Adresse', _texte_ou_tiret(site.get('adresse'))),
-        _ligne('Coordonnées', _coordonnees(site.get('pin'))),
-        _ligne('Source du repère', _source_repere(site.get('source'))),
+        _ligne('Coordonnées', coordonnees),
+        _ligne('Source du repère', source_repere),
         _ligne('Altitude', _altitude(meteo.get('point'))),
         _ligne('Fuseau horaire', _fuseau(meteo.get('heure'))),
         # CAL238 — la source d'irradiance publiée TELLE QUELLE, jamais un

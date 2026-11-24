@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { couleurAccesActive } from '@rooflib/shadingEngine'
 import { MODULE_PAR_DEFAUT_ATELIER } from '@roofpro/moduleSelect'
@@ -330,16 +330,19 @@ const degrade = () => `linear-gradient(90deg, ${[0, 0.3, 0.5, 0.72, 1].map((a) =
   return `rgb(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)}) ${Math.round(a * 100)}%`
 }).join(', ')})`
 
+/** La légende de la maquette ; son titre est LE bouton de la carte d'accès solaire. Éteinte, le bouton reste là (sans
+    dégradé ni bornes : ils ne décrivent que des panneaux teintés), pour la rallumer sans connaître « Avancé ». */
 function LegendeSoleil({ carte, g }) {
+  const active = !!carte?.active
   return (
-    <CarteFlottante className="cal-pan-legende">
-      <button type="button" className="cal-pan-legende-titre" aria-pressed={!!carte?.active}
-        title={carte?.active ? 'Retirer les couleurs des panneaux' : 'Colorer les panneaux'}
+    <CarteFlottante className="cal-pan-legende" data-active={active ? 'oui' : 'non'}>
+      <button type="button" className="cal-pan-legende-titre" aria-pressed={active}
+        title={active ? 'Retirer les couleurs des panneaux' : 'Colorer les panneaux'}
         disabled={!carte} onClick={g.carteSoleil}>
         Ensoleillement de chaque panneau
       </button>
-      <div className="cal-pan-degrade" style={{ background: degrade() }} />
-      <div className="cal-pan-legende-bornes"><span>Ombragé</span><span>Plein soleil</span></div>
+      {active && <div className="cal-pan-degrade" style={{ background: degrade() }} />}
+      {active && <div className="cal-pan-legende-bornes"><span>Ombragé</span><span>Plein soleil</span></div>}
     </CarteFlottante>
   )
 }
@@ -370,6 +373,17 @@ function LecteurSoleil({ soleil, g }) {
   )
 }
 
+/** ACAL1981 — l'étape montre l'ensoleillement de chaque panneau (maquette Panneaux) : la carte d'accès est allumée à
+    l'entrée et éteinte à la sortie (l'Électrique teint par chaîne, ACAL1621) ; la bascule reste dans « Avancé ». */
+function useEnsoleillementALEntree(carteLue, rafraichir) {
+  useEffect(() => {
+    const allumee = () => document.getElementById('rp9-heatmap-toggle')?.getAttribute('aria-pressed') === 'true'
+    if (!carteLue || allumee()) return undefined
+    gestes.carteSoleil(); rafraichir()
+    return () => { if (allumee()) gestes.carteSoleil() }
+  }, [carteLue, rafraichir])
+}
+
 export default function EtapePanneaux({ calepinageId, lectureSeule = false, enregistreLe = null, contexte = null, contexteEnCours = false }) {
   const [etat, rafraichir] = useConstructeur()
   // Chaque geste part au vrai contrôle, puis la lecture est refaite tout de suite (sinon elle suit 0,4 s plus tard).
@@ -377,6 +391,7 @@ export default function EtapePanneaux({ calepinageId, lectureSeule = false, enre
     nom, (...args) => { geste(...args); rafraichir() },
   ]))
   const servi = useServi(calepinageId, enregistreLe, contexte, contexteEnCours)
+  useEnsoleillementALEntree(etat.soleil.carte != null, rafraichir)
   // Un clic sur une carte de taille peut faire passer le constructeur d'un sens de pose à l'autre : l'écran le dit.
   const [avant, setAvant] = useState(null)
   const bascule = avant && etat.orientation && etat.orientation !== avant ? { de: avant, vers: etat.orientation } : null
@@ -406,7 +421,7 @@ export default function EtapePanneaux({ calepinageId, lectureSeule = false, enre
       <SurCarte>
         <PuceResume figures={etat.figures} publiee={servi.publiee} />
         <div className="cal-carte-soleil" data-testid="cal-carte-soleil">
-          <LegendeSoleil carte={etat.soleil.carte} g={g} />
+          {etat.soleil.carte && <LegendeSoleil carte={etat.soleil.carte} g={g} />}
           <LecteurSoleil soleil={etat.soleil} g={g} />
         </div>
       </SurCarte>

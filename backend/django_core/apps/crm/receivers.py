@@ -15,6 +15,7 @@ from django.dispatch import receiver
 
 from core.events import (
     appointment_effectue,
+    conception_recalculee,
     devis_acceptation_annulee,
     devis_accepted,
     devis_refused,
@@ -22,6 +23,7 @@ from core.events import (
     facture_emise,
     layout_finalise,
     lead_created,
+    lead_entrees_modifiees,
     lead_stage_changed,
     salle_vente_signal_interet,
     ticket_resolu,
@@ -47,7 +49,7 @@ from .fiche_funnel import (
 from .cadence_reperes import (
     est_note_de_geste_interne, est_note_de_report, est_note_de_touche_sautee)
 from .leads_premier_contact import marquer_premier_contact
-from .activity import creer_activite
+from .activity import creer_activite, journal_systeme
 
 logger = logging.getLogger(__name__)
 
@@ -298,6 +300,36 @@ def _noter_conception_on_layout_finalise(sender, devis, user=None, **kwargs):
         body=corps, user=user)
 
 
+@receiver(conception_recalculee, dispatch_uid="crm_note_conception_recalculee")
+@_point_de_sauvegarde
+def _noter_conception_recalculee(sender, company_id=None, lead_id=None,
+                                 version=None, declencheur=None, **kwargs):
+    """ALEA69 — dit POURQUOI un chiffre a changé : une nouvelle version de la
+    conception du lead écrit UNE ligne « Conception recalculée : … » au chatter,
+    par le chemin SYSTÈME (``journal_systeme``, ``user = None``). La phrase est
+    celle de l'écrivain (``declencheur['raison']``), recopiée telle quelle.
+    Un événement rejoué (même version) n'écrit pas une seconde ligne ; un
+    calepinage sans lead (``lead_id`` vide) n'a pas de chatter à alimenter."""
+    if not lead_id or not company_id or version is None:
+        return
+    lead = Lead.objects.filter(pk=lead_id, company_id=company_id).first()
+    if lead is None:
+        return
+    raison = ((declencheur or {}).get('raison') or '').strip()
+    if raison.lower().startswith('conception recalculée'):
+        corps = raison
+    else:
+        corps = 'Conception recalculée : %s' % (raison or 'entrées modifiées')
+    if LeadActivity.objects.filter(
+            lead=lead, field='conception_version',
+            new_value=str(version)).exists():
+        return
+    journal_systeme(
+        company=lead.company, lead=lead, kind=LeadActivity.Kind.NOTE,
+        field='conception_version', field_label='Conception recalculée',
+        new_value=str(version), body=corps)
+
+
 @receiver(devis_refused, dispatch_uid="crm_mark_lead_perdu_on_devis_refused")
 def _marquer_lead_perdu_on_devis_refused(sender, devis, user, motif_refus,
                                          **kwargs):
@@ -535,6 +567,100 @@ def _emit_lead_created(sender, instance, created, **kwargs):
         logger.warning(
             'NTGRC9 : émission lead_created échouée pour le lead #%s',
             getattr(instance, 'pk', '?'), exc_info=True)
+
+
+# ── ALEA68 — « une entrée du moteur unique a changé » (D-ACAL-97) ─────────────
+#
+# Un SEUL point de sauvegarde (``Lead.save``) voit toutes les portes d'écriture
+# du lead (fiche, cadence, API publique, doublons…). ``pre_save`` photographie
+# les colonnes d'entrée du moteur ; ``post_save`` compare et émet UN événement
+# par sauvegarde, après le commit. La liste des colonnes vient de
+# ``apps.ventes.conception.champs`` (constantes pures, ADEV130) — jamais copiée
+# ici. Nom, téléphone, notes, étape, responsable n'y figurent pas : rien n'est
+# émis pour eux. Un ``QuerySet.update`` ne passe pas par ``save`` : hors champ.
+
+def _colonnes_entrees_du_lead():
+    """Colonnes d'entrée (tous marchés) qui sont de vraies colonnes du lead."""
+    from apps.ventes.conception.champs import CHAMPS_ENTREES
+    reelles = {f.name for f in Lead._meta.concrete_fields}
+    return sorted({c for liste in CHAMPS_ENTREES.values() for c in liste} & reelles)
+
+
+def _colonnes_du_marche(type_installation):
+    """Colonnes d'entrée d'un marché (vide ⇒ résidentiel) ; inconnu ⇒ vide."""
+    from apps.ventes.conception.champs import CHAMPS_ENTREES
+    marche = (type_installation or '').strip().lower() or 'residentiel'
+    return set(CHAMPS_ENTREES.get(marche, ()))
+
+
+def _valeur_json(valeur):
+    import datetime
+    import decimal
+    if isinstance(valeur, decimal.Decimal):
+        return float(valeur)
+    if isinstance(valeur, (datetime.date, datetime.datetime, datetime.time)):
+        return valeur.isoformat()
+    if isinstance(valeur, (list, tuple)):
+        return [_valeur_json(v) for v in valeur]
+    if isinstance(valeur, dict):
+        return {str(k): _valeur_json(v) for k, v in valeur.items()}
+    return valeur
+
+
+@receiver(pre_save, sender=Lead, dispatch_uid='crm_photo_entrees_moteur')
+def _photographier_entrees_moteur(sender, instance, update_fields=None,
+                                  raw=False, **kwargs):
+    instance._entrees_moteur_avant = None
+    if raw or instance._state.adding or not instance.pk:
+        return
+    try:
+        colonnes = _colonnes_entrees_du_lead()
+        if update_fields is not None:
+            colonnes = [c for c in colonnes if c in set(update_fields)]
+        if not colonnes:
+            return
+        instance._entrees_moteur_avant = sender._base_manager.filter(
+            pk=instance.pk).values(*colonnes, 'type_installation').first()
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
+        logger.warning('ALEA68 : photo des entrées échouée pour le lead #%s',
+                       getattr(instance, 'pk', '?'), exc_info=True)
+
+
+@receiver(post_save, sender=Lead, dispatch_uid='crm_emit_lead_entrees_modifiees')
+def _emit_lead_entrees_modifiees(sender, instance, created, raw=False,
+                                 **kwargs):
+    avant = getattr(instance, '_entrees_moteur_avant', None)
+    instance._entrees_moteur_avant = None
+    if created or raw or not avant:
+        return
+    try:
+        pertinentes = (_colonnes_du_marche(avant.get('type_installation'))
+                       | _colonnes_du_marche(instance.type_installation))
+        champs = [
+            {'champ': c, 'avant': _valeur_json(avant[c]),
+             'apres': _valeur_json(getattr(instance, c))}
+            for c in sorted(pertinentes)
+            if c in avant and avant[c] != getattr(instance, c)
+        ]
+        if not champs:
+            return
+        company_id, lead_id = instance.company_id, instance.pk
+
+        from django.db import transaction
+
+        def _emettre():
+            for _recepteur, erreur in lead_entrees_modifiees.send_robust(
+                    sender='crm.Lead', company_id=company_id,
+                    lead_id=lead_id, champs=champs):
+                if isinstance(erreur, Exception):
+                    logger.warning('ALEA68 : abonné de lead_entrees_modifiees '
+                                   'en échec (lead #%s)', lead_id,
+                                   exc_info=erreur)
+        transaction.on_commit(_emettre)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
+        logger.warning('ALEA68 : émission lead_entrees_modifiees échouée '
+                       'pour le lead #%s', getattr(instance, 'pk', '?'),
+                       exc_info=True)
 
 
 @receiver(post_save, sender=Lead, dispatch_uid='crm_dispatch_mise_en_attente')

@@ -94,11 +94,14 @@ class CavalierBEtape2SansParametreMort(SimpleTestCase):
         self.assertIsNone(_pipeline.decider_taille(intention))
 
     def test_le_site_d_appel_ne_passe_plus_les_entrees(self):
-        source = inspect.getsource(_pipeline.appliquer)
+        # ADEV133/160 — la composition de l'intention a quitté ``appliquer``
+        # pour ``composer_l_intention`` : le site d'appel vit là désormais.
+        source = inspect.getsource(_pipeline.composer_l_intention)
         # QJR304 — le site d'appel passe désormais le DEVIS (jamais les
         # entrées) : c'est son registre qui porte la cible de niveau devis.
         self.assertIn('decider_taille(intention, devis)', source)
         self.assertNotIn('decider_taille(intention, entrees)', source)
+        self.assertNotIn('entrees', source.split('decider_taille(')[1].split(')')[0])
 
 
 class CavalierCLectureUniqueDuWattage(SimpleTestCase):

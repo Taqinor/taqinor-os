@@ -119,6 +119,9 @@ REGLES_SENSIBILITES_1911 = 14
 #: affleurants ne vend que le kit de fixation. Un seul niveau pour toute la
 #: vague ACAL ; rendu courant, avec sa migration des seuls brouillons jamais
 #: envoyés, par ACAL1001 après le dry-run des écarts (ACAL1000).
+#: Porte aussi T4-U1-019 : une économie résidentielle, un arrondi — la facture
+#: « avec solaire » (page 1 et exemple de la page 4) = « avant » − l'économie
+#: imprimée (``renderer._apres_annuel``, ``etude_restitution._facture_avec_affichee``).
 REGLES_POSE_REELLE_2111 = 15
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
 REGLES_COURANTES = REGLES_SENSIBILITES_1911

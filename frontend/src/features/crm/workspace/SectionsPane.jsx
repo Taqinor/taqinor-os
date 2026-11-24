@@ -20,6 +20,7 @@ import SectionDivers, { SectionOrigine, SectionWebQuestionnaire } from './sectio
 import SectionPro from './sections/SectionPro'
 import { ecrireStockage } from '../../../lib/stockageBestEffort.js'
 import useDroitMetier from '../../sav/useDroitMetier' // ADRG121 — code fin, sinon palier
+import { LIBELLES_SECTIONS } from './fieldLabels'
 
 // LW11 — Le centre : registre de sections + nav-chips sticky (scroll-spy rAF,
 // aria-current), repli persisté par section, wrapper `<form>` en création.
@@ -107,12 +108,12 @@ export default function SectionsPane({
   // (Devis/Activités/Pièces/Doublons/Historique) ont quitté le centre pour le
   // rail contexte (blueprint D3) : ici, uniquement ce qui se SAISIT.
   const registry = [
-    { id: 'contact', label: 'Contact', Icon: User, Comp: SectionContact },
-    { id: 'pipeline', label: 'Suivi commercial', Icon: TrendingUp, Comp: SectionPipeline },
+    { id: 'contact', label: LIBELLES_SECTIONS.contact, Icon: User, Comp: SectionContact },
+    { id: 'pipeline', label: LIBELLES_SECTIONS.pipeline, Icon: TrendingUp, Comp: SectionPipeline },
     // CIQ418 — lead commercial / industriel : la section « Professionnel »
     // (contrat `lead_pro.json`), montée seulement pour ces segments.
-    ...(pro ? [{ id: 'pro', label: 'Professionnel', Icon: Building2, Comp: SectionPro }] : []),
-    { id: 'energie', label: 'Profil énergétique', Icon: Zap, Comp: SectionEnergie },
+    ...(pro ? [{ id: 'pro', label: LIBELLES_SECTIONS.pro, Icon: Building2, Comp: SectionPro }] : []),
+    { id: 'energie', label: LIBELLES_SECTIONS.energie, Icon: Zap, Comp: SectionEnergie },
     // L4 (+ extension fondateur) — questionnaire d'appel : occupation en
     // journée + équipements (piscine/VE/clim/chauffe-eau), regroupés avec un
     // renvoi vers les autres questions du même appel (raccordement, factures)
@@ -121,10 +122,10 @@ export default function SectionsPane({
     // ALEA53 — le questionnaire d'appel RÉSIDENTIEL (présence en journée,
     // piscine / VE / clim / chauffe-eau) ne s'applique pas à un lead commercial
     // ou industriel : son rythme se pose dans « Professionnel ».
-    ...(pro ? [] : [{ id: 'equipements', label: "Questionnaire d'appel", Icon: Phone, Comp: SectionEquipements }]),
-    ...(agricole ? [{ id: 'pompage', label: 'Pompage', Icon: Droplet, Comp: SectionPompage }] : []),
-    { id: 'toiture', label: 'Toiture & site', Icon: Home, Comp: SectionSite },
-    { id: 'visite', label: 'Visite technique', Icon: ClipboardList, Comp: SectionVisite },
+    ...(pro ? [] : [{ id: 'equipements', label: LIBELLES_SECTIONS.equipements, Icon: Phone, Comp: SectionEquipements }]),
+    ...(agricole ? [{ id: 'pompage', label: LIBELLES_SECTIONS.pompage, Icon: Droplet, Comp: SectionPompage }] : []),
+    { id: 'toiture', label: LIBELLES_SECTIONS.toiture, Icon: Home, Comp: SectionSite },
+    { id: 'visite', label: LIBELLES_SECTIONS.visite, Icon: ClipboardList, Comp: SectionVisite },
     ...(hasWebOrigin ? [{ id: 'origine', label: 'Origine web', Icon: Globe, Comp: SectionOrigine }] : []),
     ...(hasWebQuestionnaire
       ? [{

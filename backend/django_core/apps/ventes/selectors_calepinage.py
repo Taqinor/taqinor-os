@@ -105,6 +105,22 @@ def _calepinage_ouvert_mesure(company, lead_id, avec_kwc=True):
         return None
 
 
+def calepinage_de_societe(calepinage_id, company):
+    """ADEV136 — UN calepinage borné SOCIÉTÉ (appelants système), ou ``None`` ;
+    passe par ``apps.calepinage.selectors.calepinage_detail``."""
+    from apps.calepinage.selectors import calepinage_detail
+    return calepinage_detail(calepinage_id, company)
+
+
+def calepinage_visible_pour(user, company, calepinage_id):
+    """ADEV137 — le calepinage que ``user`` VOIT dans ``company``, ou ``None``
+    (``apps.calepinage.selectors.calepinages_visibles``, le prédicat d'accès)."""
+    from apps.calepinage.selectors import calepinages_visibles
+    if company is None:
+        return None
+    return calepinages_visibles(user).filter(pk=calepinage_id, company=company).first()
+
+
 def calepinage_du_devis(devis, company=None):
     """CAL28 — le calepinage qui PILOTE ce devis, ou ``None``.
 

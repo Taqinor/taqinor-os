@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Info, OctagonX } from 'lucide-react'
+import { ChevronRight, Info } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '../../../ui/Popover'
 import { Icone as Picto } from '../atelier/coque/primitives'
 import { ETAPES, etapeDeOnglet } from '../atelier/parcoursGuide'
@@ -10,15 +10,57 @@ import useExplications, { remplirPhrase } from './useExplications'
    cible vient du contrôle SERVI ; les longues explications (cause, registre, geste) sont derrière
    le « ? » de la ligne — rien n'est supprimé. */
 
-const ICONE = { ok: CheckCircle2, a_regler: AlertTriangle, bloquant: OctagonX, info: Info }
 const LEGENDE = [
   ['ok', 'Bon'], ['a_regler', 'À régler'], ['bloquant', 'Bloque le devis'],
 ]
 const libelleEtape = (cible) => ETAPES.find((e) => e.cle === etapeDeOnglet(cible?.onglet))?.libelle ?? null
 
+/* ACAL1834 — les pastilles d'état de la maquette v2 : rond plein clair + coche (bon), triangle (à régler), octogone
+   (bloque le devis) ; `info` garde son pictogramme. Teintes en jetons `--cal-*`, jamais une couleur écrite ici. */
 function Pastille({ etat, taille = 22 }) {
-  const Icone = ICONE[etat] ?? ICONE.info
-  return <Icone size={taille} className="cdoc-ico" data-etat={etat} aria-hidden="true" />
+  if (etat === 'ok') {
+    return (
+      <svg width={taille} height={taille} viewBox="0 0 24 24" className="cdoc-ico" data-etat={etat} aria-hidden="true">
+        <circle cx="12" cy="12" r="10" fill="color-mix(in srgb, var(--cal-ok) 16%, var(--cal-surface))" />
+        <path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="var(--cal-ok)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    )
+  }
+  if (etat === 'a_regler') {
+    return (
+      <svg width={taille} height={taille} viewBox="0 0 24 24" className="cdoc-ico" data-etat={etat} aria-hidden="true">
+        <path d="M12 2.8l10 17.7H2z" fill="color-mix(in srgb, var(--cal-production) 45%, var(--cal-surface))" stroke="var(--cal-or-texte)" strokeWidth="1.6" strokeLinejoin="round" />
+        <path d="M12 9.5v5M12 17.4v.3" stroke="var(--cal-surveiller-texte)" strokeWidth="2.2" strokeLinecap="round" />
+      </svg>
+    )
+  }
+  if (etat === 'bloquant') {
+    return (
+      <svg width={taille} height={taille} viewBox="0 0 24 24" className="cdoc-ico" data-etat={etat} aria-hidden="true">
+        <path d="M8 2h8l6 6v8l-6 6H8l-6-6V8z" fill="color-mix(in srgb, var(--cal-refus) 14%, var(--cal-surface))" stroke="var(--cal-refus)" strokeWidth="1.6" strokeLinejoin="round" />
+        <path d="M9 9l6 6M15 9l-6 6" stroke="var(--cal-refus)" strokeWidth="2.2" strokeLinecap="round" />
+      </svg>
+    )
+  }
+  return <Info size={taille} className="cdoc-ico" data-etat={etat} aria-hidden="true" />
+}
+
+/* ACAL1834 — l'anneau de progression à côté de la pastille : la part de contrôles bons (vert) puis la part à
+   régler (or), sur les contrôles qui portent un verdict ; rien n'est tracé sans verdict servi. */
+function Anneau({ bons, total }) {
+  const C = 100.53
+  const part = total > 0 ? (bons / total) * C : 0
+  const reste = total > 0 ? C - part : 0
+  return (
+    <svg width="40" height="40" viewBox="0 0 40 40" className="cdoc-anneau" role="img" data-testid="cal-docs-anneau"
+      aria-label={total > 0 ? `${bons} ${bons > 1 ? 'contrôles bons' : 'contrôle bon'} sur ${total}` : 'Aucun verdict'}>
+      <circle cx="20" cy="20" r="16" fill="none" stroke="var(--cal-surface-2)" strokeWidth="5" />
+      {part > 0 && <circle cx="20" cy="20" r="16" fill="none" stroke="var(--cal-ok)" strokeWidth="5"
+        strokeDasharray={`${Math.max(part - 2, 0)} ${C}`} transform="rotate(-90 20 20)" />}
+      {reste > 0 && <circle cx="20" cy="20" r="16" fill="none" stroke="var(--cal-production)" strokeWidth="5"
+        strokeDasharray={`${Math.max(reste - 2, 0)} ${C}`} strokeDashoffset={-part} transform="rotate(-90 20 20)" />}
+    </svg>
+  )
 }
 
 /** Le « ? » de la ligne : cause servie + phrase du registre + geste, dans UNE bulle. Rien à dire ⇒ rien. */
@@ -70,6 +112,52 @@ function Ligne({ controle, onRegler }) {
         </button>
       )}
     </li>
+  )
+}
+
+const estPoint = (c) => c.etat === 'a_regler' || c.etat === 'bloquant'
+
+/* ACAL1725 — un groupe qui porte un point à régler reste déplié (ses points d'abord) ; un groupe SANS point se
+   replie sur UNE ligne « Électrique — 4 bons » (ses contrôles restent là, un clic les ouvre) : les quinze
+   contrôles tiennent dans la carte sans liste à défilement. Le compte ne vient que des états servis. */
+/* `serre` (plus de dix contrôles : la maquette en dessine dix) : un groupe déplié ne montre que ses points, le
+   reste suit sur une ligne « Autres contrôles — 3 bons ». Les comptes ne viennent que des états servis. */
+const compteDe = (controles) => {
+  const bons = controles.filter((c) => c.etat === 'ok').length
+  const infos = controles.length - bons
+  return [bons > 0 && `${bons} ${bons > 1 ? 'bons' : 'bon'}`, infos > 0 && `${infos} pour information`].filter(Boolean).join(' · ')
+}
+
+function Repliable({ titre, controles, onRegler, className = '', ...props }) {
+  return (
+    <details className={`cdoc-groupe-replie ${className}`} {...props}>
+      <summary>
+        <ChevronRight size={16} className="cdoc-chevron" aria-hidden="true" />
+        <h3 className="cdoc-groupe-titre">{`${titre} — ${compteDe(controles)}`}</h3>
+      </summary>
+      <ul className="cdoc-lignes">
+        {controles.map((c) => <Ligne key={c.code} controle={c} onRegler={onRegler} />)}
+      </ul>
+    </details>
+  )
+}
+
+function Groupe({ groupe, onRegler, serre = false }) {
+  const rangees = rangerControles(groupe.controles)
+  const testid = `cal-pret-groupe-${groupe.cle}`
+  if (!rangees.some(estPoint)) {
+    return <Repliable titre={groupe.libelle} controles={rangees} onRegler={onRegler} className="cdoc-groupe" data-testid={testid} />
+  }
+  const visibles = serre ? rangees.filter(estPoint) : rangees
+  const reste = serre ? rangees.filter((c) => !estPoint(c)) : []
+  return (
+    <div className="cdoc-groupe" data-testid={testid}>
+      <h3 className="cdoc-groupe-titre">{groupe.libelle}</h3>
+      <ul className="cdoc-lignes">
+        {visibles.map((c) => <Ligne key={c.code} controle={c} onRegler={onRegler} />)}
+      </ul>
+      {reste.length > 0 && <Repliable titre="Autres contrôles" controles={reste} onRegler={onRegler} />}
+    </div>
   )
 }
 
@@ -207,21 +295,17 @@ export default function GroupesPretAEnvoyer({
             {avecVerdict.length > 0 ? phraseDesBons(bons, avecVerdict.length) : 'Aucun contrôle publié pour l’instant.'}
           </span>
         </div>
-        <span className="cdoc-badge" data-ton={n > 0 ? 'a_regler' : 'ok'}>
-          <Pastille etat={n > 0 ? 'a_regler' : 'ok'} taille={16} />
-          {n > 0 ? `${n} point${n > 1 ? 's' : ''} à régler` : 'Prêt à envoyer'}
-        </span>
+        <div className="cdoc-pret-etat">
+          <Anneau bons={bons} total={avecVerdict.length} />
+          <span className="cdoc-badge" data-ton={n > 0 ? 'a_regler' : 'ok'}>
+            <Pastille etat={n > 0 ? 'a_regler' : 'ok'} taille={16} />
+            {n > 0 ? `${n} point${n > 1 ? 's' : ''} à régler` : 'Prêt à envoyer'}
+          </span>
+        </div>
       </div>
       {avis}
-      <div className="cdoc-groupes">
-        {ranges.map((g) => (
-          <div key={g.cle} className="cdoc-groupe" data-testid={`cal-pret-groupe-${g.cle}`}>
-            <h3 className="cdoc-groupe-titre">{g.libelle}</h3>
-            <ul className="cdoc-lignes">
-              {rangerControles(g.controles).map((c) => <Ligne key={c.code} controle={c} onRegler={onRegler} />)}
-            </ul>
-          </div>
-        ))}
+      <div className="cdoc-groupes" data-testid="cal-pret-groupes">
+        {ranges.map((g) => <Groupe key={g.cle} groupe={g} onRegler={onRegler} serre={tous.length > 10} />)}
       </div>
       <div className="cdoc-pied">
         <div className="cdoc-pied-texte">

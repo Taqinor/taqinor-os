@@ -59,6 +59,30 @@ describe('EDC3 — LigneTable : en-tête collant, table separate, barre proxy', 
     expect(proxy.hidden).toBe(true)
   })
 
+  it('T4-U3-007 — une ligne produit de quantité > 0 au prix 0 est nommée, sans toucher au chiffre tapé', () => {
+    const lines = [
+      { _key: 'a', produit: 1, designation: 'Tableau De Protection AC/DC', quantite: '1', prix_unit_ttc: '0' },
+      { _key: 'b', produit: 2, designation: 'Accessoires', quantite: '1', prix_unit_ttc: '' },
+      { _key: 'c', produit: 3, designation: 'Pompe OSP', quantite: '1', prix_unit_ttc: '15000' },
+      { _key: 'd', produit: 4, designation: 'Retirée', quantite: '0', prix_unit_ttc: '0' },
+      { _key: 'e', produit: null, designation: 'Onduleur réseau', quantite: '1', prix_unit_ttc: '0' },
+      { _key: 'f', type_ligne: 'section', designation: 'Matériel' },
+    ]
+    const { container, unmount } = rendre({ lines })
+    const alerte = container.querySelector('[data-testid="lignes-prix-zero"]')
+    expect(alerte).not.toBeNull()
+    expect(alerte.textContent).toContain('« Tableau De Protection AC/DC »')
+    expect(alerte.textContent).toContain('« Accessoires »')
+    expect(alerte.textContent).toContain('saisissez un prix ou retirez la ligne')
+    for (const absent of ['Pompe OSP', 'Retirée', 'Onduleur réseau', 'Matériel']) {
+      expect(alerte.textContent).not.toContain(absent)
+    }
+    expect(noop).not.toHaveBeenCalledWith('a', 'prix_unit_ttc', expect.anything())
+    unmount()
+    const prix = [{ _key: 'c', produit: 3, designation: 'Pompe OSP', quantite: '1', prix_unit_ttc: '15000' }]
+    expect(rendre({ lines: prix }).container.querySelector('[data-testid="lignes-prix-zero"]')).toBeNull()
+  })
+
   it('ACAL1326 — errorLines ⇒ un role=alert qui porte le message ; sans erreur, aucun role=alert', () => {
     const { container, unmount } = rendre({ errorLines: 'Enregistrement bloqué : 1 ligne « prix à renseigner »' })
     const alertes = container.querySelectorAll('[role="alert"]')

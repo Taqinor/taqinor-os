@@ -55,6 +55,11 @@ function DevisLineRowImpl({
   // plus bas) reste efficace.
   totalTtcRemise,
   montrerRemise,
+  // T4-U2-011 — option où compte la ligne quand elle ne compte pas dans les
+  // deux totaux ('sans' | 'avec' | 'aucune' | null), et pourquoi ; calculé
+  // dans DevisGenerator.jsx (`optionsDesLignes`). Deux props SCALAIRES.
+  optionLigne = null,
+  raisonOption = null,
   // PVORD (fondateur 19/08/2026) — réordonnancement manuel des lignes
   // (monter/descendre). `canMoveUp`/`canMoveDown` bornent le premier/dernier
   // rang ; les callbacks reçoivent la clé de ligne (même patron que
@@ -198,6 +203,27 @@ function DevisLineRowImpl({
           <span className="mt-0.5 inline-block rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary"
                 title="Cette ligne n'appartient qu'à l'option AVEC batterie">
             Option avec batterie
+          </span>
+        )}
+        {/* T4-U2-011 — ligne SANS variante déclarée qui ne compte que dans
+            une option (paniers + accessoires Huawei, la répartition du PDF) :
+            l'écran le dit, avec la raison. */}
+        {!l.variante && optionLigne === 'sans' && (
+          <span className="mt-0.5 inline-block rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground"
+                title={`Cette ligne ne compte que dans l'option SANS batterie${raisonOption ? ` — ${raisonOption}` : ''}`}>
+            Option sans batterie
+          </span>
+        )}
+        {!l.variante && optionLigne === 'avec' && (
+          <span className="mt-0.5 inline-block rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary"
+                title={`Cette ligne ne compte que dans l'option AVEC batterie${raisonOption ? ` — ${raisonOption}` : ''}`}>
+            Option avec batterie
+          </span>
+        )}
+        {!l.variante && optionLigne === 'aucune' && (
+          <span className="mt-0.5 inline-block rounded bg-warning/10 px-1.5 py-0.5 text-[11px] font-medium text-warning"
+                title={`Cette ligne n'entre dans aucun des deux totaux${raisonOption ? ` — ${raisonOption}` : ''}`}>
+            Ne compte dans aucune option
           </span>
         )}
         {/* QJR529 — remise PAR LIGNE stockée (modèle, Copilote, API) :
@@ -400,6 +426,8 @@ function areEqual(prev, next) {
     // son ANCIEN montant après remise — le memo doit voir ce changement.
     && prev.totalTtcRemise === next.totalTtcRemise
     && prev.montrerRemise === next.montrerRemise
+    && prev.optionLigne === next.optionLigne
+    && prev.raisonOption === next.raisonOption
     // PVORD — canMoveUp/canMoveDown dépendent de la POSITION de la ligne
     // (index dans `lines`), donc changent bien quand l'ordre bouge : à
     // inclure explicitement, sinon une ligne déplacée garderait ses

@@ -2,8 +2,8 @@ import { Component, Suspense, lazy, useCallback, useMemo, useState } from 'react
 import { useParams } from 'react-router-dom'
 import { ContextePresentation } from '../atelier/coque/contexteCoque'
 import HabillageClient from './HabillageClient'
-import { AvisEchec3D, IconeTourner, PastilleAttente, PiedClient, PlanDessus, PuceProjet, TuilesClient } from './partiesClient'
-import { useDonneesClient, webglDisponible } from './vueClient.helpers'
+import { AttenteScene, AvisEchec3D, IconeTourner, PastilleAttente, PiedClient, PlanDessus, PuceProjet, TuilesClient } from './partiesClient'
+import { useBureau, useDonneesClient, webglDisponible } from './vueClient.helpers'
 
 /* ============================================================================
    « MONTRER AU CLIENT » AU TÉLÉPHONE (`/calepinage/:id/client`, maquette TelephoneClient).
@@ -29,10 +29,12 @@ const chargerAtelier = () => import('../../../pages/ventes/ToitureDesign')
 /** Le repli 2D : le toit enregistré dessiné de dessus, les tuiles et le pied (écran L7). `etat` : `attente` (la 3D se
  *  prépare), `echec` (elle n'a pas pu démarrer : « Réessayer »), `sans3d` (navigateur sans WebGL). */
 function VueClient2D({ id, donnees: d, etat, onReessayer = null }) {
+  const bureau = useBureau()
   return (
     <div className="cal-tel" data-testid="cal-vue-client">
       <div className="cal-client-scene" data-testid="client-scene">
-        {d.plan ? <PlanDessus plan={d.plan} /> : (
+        {/* ACAL1837 — l'attente de la 3D : un ciel et une silhouette, jamais le plan technique brut. */}
+        {etat === 'attente' ? <AttenteScene /> : d.plan ? <PlanDessus plan={d.plan} /> : (
           <p className="cal-client-vide" data-testid="client-sans-toit">
             {d.doc.etat === 'chargement' ? 'Lecture du toit enregistré…' : 'Aucun toit enregistré pour ce calepinage.'}
           </p>
@@ -45,9 +47,9 @@ function VueClient2D({ id, donnees: d, etat, onReessayer = null }) {
         )}
       </div>
       <div className="cal-client-corps">
-        <TuilesClient tuiles={d.tuiles} ville={d.ville} />
+        <TuilesClient tuiles={d.tuiles} ville={d.ville} bureau={bureau} />
       </div>
-      <PiedClient id={id} />
+      <PiedClient id={id} bureau={bureau} />
     </div>
   )
 }

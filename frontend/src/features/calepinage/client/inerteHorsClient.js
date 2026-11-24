@@ -21,6 +21,13 @@ export function rendreInerteHorsClient(racine, poses = new Map()) {
     for (let n = g; n && n !== racine; n = n.parentElement) chemin.add(n)
   }
   const gardeesOuSous = (n) => gardes.some((g) => g === n || g.contains(n))
+  // Une garde apparue APRÈS la pose (MapLibre crée sa toile tard, dans une carte déjà rendue inerte) : la branche qui
+  // y mène, et ce qui est sous elle, redevient tel qu'il était — sinon `inert` hérité tue la souris et le doigt.
+  for (const [n, avant] of poses) {
+    if (!chemin.has(n) && !gardeesOuSous(n)) continue
+    rendre(n, avant)
+    poses.delete(n)
+  }
   const visiter = (parent) => {
     for (const enfant of parent.children) {
       if (gardeesOuSous(enfant)) continue
@@ -34,13 +41,15 @@ export function rendreInerteHorsClient(racine, poses = new Map()) {
   return poses
 }
 
+function rendre(n, avant) {
+  if (!avant.inert) n.removeAttribute('inert')
+  if (avant.cache === null) n.removeAttribute('aria-hidden')
+  else n.setAttribute('aria-hidden', avant.cache)
+}
+
 /** Rend chaque nœud posé tel qu'il était. */
 export function rendreVivant(poses) {
-  for (const [n, avant] of poses) {
-    if (!avant.inert) n.removeAttribute('inert')
-    if (avant.cache === null) n.removeAttribute('aria-hidden')
-    else n.setAttribute('aria-hidden', avant.cache)
-  }
+  for (const [n, avant] of poses) rendre(n, avant)
   poses.clear()
 }
 

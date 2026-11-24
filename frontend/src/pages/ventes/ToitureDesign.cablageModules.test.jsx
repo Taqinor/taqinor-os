@@ -78,9 +78,30 @@ describe('CALX109 câblage — le catalogue de modules atteint le constructeur',
     // `null` = aucun catalogue transmis : rien n'est inventé côté atelier.
     expect(initRoofToolPro8.mock.calls[0][0].modulesDisponibles).toBeNull()
     await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
-    expect(await screen.findByText(/Catalogue des modules indisponible : rien n’est enregistré, rechargez/))
-      .toBeTruthy()
+    const refus = await screen.findByTestId('cal-erreur-enregistrement')
+    expect(refus.textContent).toMatch(/Catalogue des modules indisponible : rien n’est enregistré/)
+    // T4-B4-002 — jamais un message mort : « Réessayer » relit le catalogue (le tracé est gardé pour la reprise).
+    expect(screen.getByRole('button', { name: 'Réessayer' })).toBeTruthy()
     expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel).not.toHaveBeenCalled()
+  })
+
+  // T4-B4-002 — sur une pile chargée, la première lecture du catalogue restait SANS réponse (délai de 20 s, « annulée »
+  // au réseau) : le catalogue passait « indisponible » pour toute la session et Enregistrer était refusé. Le boot relance.
+  it('une première lecture du catalogue SANS réponse est relancée : le catalogue atteint le constructeur, Enregistrer part', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.modulesDisponibles
+      .mockRejectedValueOnce({ code: 'ECONNABORTED', message: 'timeout of 20000ms exceeded' })
+      .mockResolvedValue(reponseContrat('calepinage', 'calepinage_modules_disponibles'))
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
+      { data: { inchange: true, version: null } })
+
+    rendreCalepinage(CTX.calepinage.id)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(calepinageApi.calepinages.modulesDisponibles).toHaveBeenCalledTimes(2)
+    expect(initRoofToolPro8.mock.calls[0][0].modulesDisponibles).toEqual(MODULES)
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
+    await waitFor(() => expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel).toHaveBeenCalled())
   })
 
   it('catalogue lu : Enregistrer part normalement (le refus ne vaut que pour l’échec)', async () => {

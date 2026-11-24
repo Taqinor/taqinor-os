@@ -109,6 +109,7 @@ retiré plus un hook ajouté.
 | `cal-devis-refus` | devis refus serveur. |
 | `cal-devis-reviser` | devis réviser. |
 | `cal-devis-variante-manquante` | devis variante manquant. |
+| `cal-devis-surfaces` | étape Documents : surfaces chiffrées par le devis repliées sur une ligne qui se déplie (`<details>`, BoutonDevis `compact`). |
 | `cal-devis-reviser-lecture-seule` | devis réviser (v2) depuis la lecture seule (ACAL93). |
 | `cal-devis-retouches` | devis retouches non enregistrées / lignes ajoutées (ACAL94/95). |
 | `cal-devis-avertissements` | devis avertissements et marques manquantes (ACAL95). |
@@ -145,6 +146,12 @@ retiré plus un hook ajouté.
 | `cal-course-soleil-obstruction-hauteur` | course soleil obstruction hauteur. |
 | `cal-course-soleil-obstructions-hauteur` | course soleil obstructions hauteur. |
 | `cal-course-soleil-scene` | course soleil scène. |
+
+## DemarrageRapidePage (`DemarrageRapidePage.jsx`)
+
+| Hook | Sémantique |
+|---|---|
+| `cal-demarrage-rapide` | racine de la page plein écran « Démarrage rapide » (ACAL1826, sans coquille ERP) — preuve de vie déclarée de la fumée des écrans (`e2e/helpers.js::ECRANS_PLEIN_ECRAN`). |
 
 ## FicheCalepinage (`FicheCalepinage.jsx`)
 
@@ -984,7 +991,7 @@ retiré plus un hook ajouté.
 | `cal-rail-avance` | coque : bouton « Avancé » en bas du rail (ouvre l’ancien inspecteur entier ; `aria-expanded`). |
 | `cal-panneau-etape` | coque : panneau d’étape de droite (`#rp9-studio-inspecteur`). |
 | `cal-panneau-etape-titre` | coque : titre du panneau d’étape (« Le toit »), sous « Étape N sur 5 ». |
-| `cal-plein-etape-tete` | coque : en-tête « Étape N sur 5 » + titre au-dessus d’un écran pleine largeur (Résultats, Documents). |
+| `cal-plein-etape-tete` | coque : « Étape N sur 5 » + titre d’un écran pleine largeur (Résultats, Documents), lu par les lecteurs d’écran seulement (`sr-only`, maquettes v2 sans tête visible). |
 | `cal-progression-etapes` | coque : les cinq traits de progression en tête du panneau d’étape (et de l’écran plein) ; un `span[data-etat]` par étape : `fait`, `actif`, `a-venir` (ACAL1803). |
 | `cal-sur-carte-resume` | étape Toit/Panneaux : puce blanche posée sur la carte (indicateurs servis). |
 | `cal-barre-outils-carte` | étape Toit : barre d’outils flottante au bas de la carte. |
@@ -1032,13 +1039,21 @@ retiré plus un hook ajouté.
 | `cal-docs-carte` | étape Documents : carte d’un document (suffixe = clé). |
 | `cal-docs-apercu` | étape Documents : bouton « Aperçu » d’un document (suffixe = clé). |
 | `cal-docs-telecharger` | étape Documents : bouton « Télécharger » d’un document (suffixe = clé). |
+| `cal-docs-colonne-apercu` | étape Documents : la colonne d’aperçu du document choisi (`data-document` = clé de la pièce ; « Aperçu » et « Télécharger » dedans, ACAL1726). |
+| `cal-docs-colonne-feuille-reelle` | étape Documents : la première page RÉELLE (aperçu HTML servi, cadre isolé) ; absente quand seul le modèle de page est montré. |
+| `cal-docs-colonne-legende` | étape Documents : la légende de la feuille d’aperçu (« Aperçu de la première page » ou « Modèle de page de ce document »). |
+| `cal-docs-colonne-motif` | étape Documents : le motif SERVI, en entier, d’un document indisponible choisi (la carte le coupe à deux lignes). |
+| `cal-docs-colonne-telecharger` | étape Documents : « Télécharger » de la colonne d’aperçu (suffixe = clé du document choisi). |
+| `cal-docs-pastille` | étape Documents : pastille d’état d’une carte, « Prêt · PDF » ou « Il manque : … » (suffixe = clé). |
+| `cal-docs-anneau` | « Prêt à envoyer ? » par étape : l’anneau de progression (part des contrôles bons). |
 | `cal-docs-motif` | étape Documents : motif servi d’un document indisponible (suffixe = clé). |
 | `cal-docs-erreurs` | étape Documents : erreurs de lecture des documents. |
 | `cal-doc-reessayer` | étape Documents : relancer la lecture de la liste des documents quand elle est lente ou en échec. |
 | `cal-docs-attente` | étape Documents : documents en cours de lecture. |
 | `cal-docs-vide` | étape Documents : aucun document servi. |
 | `cal-docs-info-devis` | étape Documents : bandeau d’information sur le devis. |
-| `cal-pret-groupe` | « Prêt à envoyer ? » : groupe de contrôles d’une étape (suffixe = clé de l’étape). |
+| `cal-pret-groupe` | « Prêt à envoyer ? » : groupe de contrôles d’une étape (suffixe = clé de l’étape) ; un groupe sans point à régler est un `<details>` replié « Électrique — 4 bons » (ACAL1725). |
+| `cal-pret-groupes` | « Prêt à envoyer ? » par étape : la liste des groupes (sans hauteur fixe, ACAL1725). |
 | `cal-liste-filtres-etat` | liste : puces de filtre par état (comptes servis). |
 | `cal-vignette-toit` | liste : vignette du toit sur la carte d’un calepinage (contours des pans, ou « Aucun aperçu »). |
 | `cal-signal` | liste : pastille « N point à régler » d’une carte (suffixe = identifiant du calepinage). |

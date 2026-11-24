@@ -55,12 +55,35 @@ export const MANQUES_CLAIRS = {
   ratio_dc_ac: { titre: 'Rapport panneaux / onduleur', ligne: 'À vérifier dans l’étape Électrique.' },
   longueur_chaine: { titre: 'Longueur des chaînes de panneaux', ligne: 'À vérifier dans l’étape Électrique.' },
   reglage_manquant: { titre: 'Réglage de la société à saisir', ligne: 'Nécessaire au calcul.' },
+  // T4-B4-007 — les codes de l'étape Électrique servis avant toute simulation : une phrase d'utilisateur qui NOMME
+  // ce qui est à compléter et dit le geste ; la phrase servie (d'ingénieur) reste derrière le « ? ».
+  verdict_electrique: { titre: 'À compléter : le verdict électrique', ligne: 'Terminez l’étape Électrique : le raccordement y est vérifié.' },
+  materiel_designe: (m) => {
+    const module = /module/i.test(m?.message || '')
+    const onduleur = /onduleur/i.test(m?.message || '')
+    const quoi = module && onduleur ? 'le panneau et l’onduleur' : (onduleur ? 'l’onduleur' : 'le panneau')
+    return { titre: `À compléter : ${quoi}`, ligne: `Choisissez-${module && onduleur ? 'les' : 'le'} dans « Matériel électrique » (étape Électrique).` }
+  },
+  chutes_tension: (m) => (/cheminement|tracé|tronçon/i.test(m?.message || '')
+    ? { titre: 'À compléter : le tracé des câbles', ligne: 'Tracez les liaisons dans l’atelier ou saisissez leurs longueurs : la chute de tension se calcule ensuite.' }
+    : { titre: 'À vérifier : les chutes de tension', ligne: 'À vérifier dans l’étape Électrique.' }),
+  terre_protections: (m) => (/norme/i.test(m?.message || '')
+    ? { titre: 'Choisir la norme électrique de votre société', ligne: 'Sans elle, les câbles et les protections ne sont pas calculés.' }
+    : { titre: 'À vérifier : la terre et les protections', ligne: 'À vérifier dans l’étape Électrique.' }),
+  divers: (m) => {
+    const n = Number(m?.nombre) > 1 ? Number(m.nombre) : 1
+    return {
+      titre: `À vérifier : ${n > 1 ? `${n} valeurs supposées` : 'une valeur supposée'} par le calcul`,
+      ligne: 'Faute de donnée, le calcul les suppose : remplacez-les par vos valeurs quand vous les avez.',
+    }
+  },
 }
 
 /** `{titre, ligne, bouton, technique}` d'une ligne de `parcours.manque` ; `technique` = la phrase servie
     (pour le « ? »), vide quand elle serait identique au titre. */
 export function manqueClair(m) {
-  const clair = MANQUES_CLAIRS[m?.code]
+  const entree = MANQUES_CLAIRS[m?.code]
+  const clair = typeof entree === 'function' ? entree(m) : entree
   const servi = m?.message || ''
   if (!clair) return { titre: servi, ligne: '', bouton: 'Renseigner', technique: '' }
   return { titre: clair.titre, ligne: clair.ligne, bouton: clair.bouton || 'Renseigner', technique: servi }

@@ -186,6 +186,26 @@ class SiteGeographiqueTest(unittest.TestCase):
         self.assertIn('33,5', html)
         self.assertIn('épingle posée par le client', html)
 
+    def test_t4_u1_003_ville_de_reference_imprime_son_point_et_la_dit(self):
+        """Sans épingle, la simulation a tourné sur la ville de référence :
+        la ligne Coordonnées imprime le point DEMANDÉ (``meteo.point``) et la
+        source du repère dit « ville de référence » — jamais « — »."""
+        resultat = resultat_de_base()
+        resultat['meteo']['point'] = {'lat': 33.573, 'lon': -7.59,
+                                      'altitude_m': 57.0}
+        resultat['meteo']['site'] = {
+            'source': 'ville_reference', 'ville_reference': 'Casablanca',
+            'libelle': 'Casablanca (ville de référence)',
+            'lat': 33.573, 'lon': -7.59}
+        html = html_de_section(contexte(resultat, site={'ville': 'casa'}))
+        coord = re.search(r'<tr><th>Coordonnées</th><td>(.*?)</td></tr>',
+                          html).group(1)
+        self.assertIn('33,573', coord)
+        self.assertIn('-7,59', coord)
+        repere = re.search(r'<tr><th>Source du repère</th><td>(.*?)</td>',
+                           html).group(1)
+        self.assertEqual(repere, escape('Casablanca (ville de référence)'))
+
     def test_site_vide_imprime_des_tirets_jamais_une_valeur_inventee(self):
         html = html_de_section(contexte(resultat_de_base(), site={}))
         self.assertIn('<tr><th>Ville</th><td>—</td></tr>', html)

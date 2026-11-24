@@ -44,3 +44,41 @@ def modules_par_pan_servis(calepinage, materiel, resolu, fiches, manquants,
               'fiche_complete': module.get('fiche_complete')}
     return modules_par_pan(
         getattr(calepinage, 'roof_layout', None), defaut, fiches, manquants)
+
+
+def _produit_du_module_pose(document):
+    """T4-B4-007 — le ``produit_id`` du module CHOISI à l'étape Panneaux : celui
+    qui couvre le PLUS de modules posés (``geometry.moduleId`` →
+    ``modules[].produitId``), ou ``None`` (aucun pan posé avec un produit du
+    catalogue). Lecture pure ; rien n'est supposé."""
+    from apps.ventes.services import pans_du_document
+
+    comptes = {}
+    for pan in pans_du_document(document):
+        produit_id = pan.get('produit_id')
+        modules = int(pan.get('modules') or 0)
+        if produit_id in (None, '') or modules <= 0:
+            continue
+        comptes[produit_id] = comptes.get(produit_id, 0) + modules
+    if not comptes:
+        return None
+    return max(comptes, key=lambda cle: comptes[cle])
+
+
+#: T4-B4-007 — provenance du module CHOISI à l'étape Panneaux (posé sur les pans),
+#: quand ni désignation explicite ni ligne de devis n'existe (ACAL56 :
+#: ``electrique.PROVENANCE_EXPLICITE`` / ``PROVENANCE_DEVIS`` sont les deux autres).
+PROVENANCE_POSE = 'pose'
+
+
+def repli_materiel(role, du_devis, calepinage):
+    """T4-B4-007 — ``(identifiant, provenance)`` d'un rôle sans désignation
+    explicite : la ligne du devis lié (``'devis'``), sinon — pour le module
+    seulement — le module posé à l'étape Panneaux (``'pose'``), sinon
+    ``(None, 'devis')`` (le rôle est absent, comme avant)."""
+    identifiant = (du_devis or {}).get(role)
+    if identifiant in (None, '') and role == 'module':
+        pose = _produit_du_module_pose(getattr(calepinage, 'roof_layout', None))
+        if pose is not None:
+            return pose, PROVENANCE_POSE
+    return identifiant, 'devis'

@@ -48,15 +48,7 @@ def _ecrire_devis_auto_par_pipeline(*, company, user, lead, creer, lignes,
     from apps.ventes.models import Devis
     from apps.ventes.utils.company_settings import create_numbered
 
-    composition = [
-        {'produit': ligne['produit_id'],
-         'designation': ligne['designation'],
-         'quantite': str(ligne['quantite']),
-         'prix_unitaire': str(ligne['prix_unitaire']),
-         'ordre': ordre,
-         # Fondateur 26/10/2026 — C&I à deux options : la ligne dit son option.
-         **({'variante': ligne['variante']} if ligne.get('variante') else {})}
-        for ordre, ligne in enumerate(lignes)]
+    composition = specs_des_lignes_moteur(lignes)
     with transaction.atomic():
         devis = create_numbered(Devis, company, 'devis', creer)
         appliquer(devis, IntentionDevis(
@@ -68,6 +60,21 @@ def _ecrire_devis_auto_par_pipeline(*, company, user, lead, creer, lignes,
         user=user, lead=lead, mode_installation=mode_installation))
     devis.refresh_from_db()
     return devis
+
+
+def specs_des_lignes_moteur(lignes):
+    """ADEV133 — les lignes arrêtées par le moteur C&I / agricole au format de
+    l'écrivain : corps de :func:`_ecrire_devis_auto_par_pipeline`, partagé avec
+    le moteur unique."""
+    return [
+        {'produit': ligne['produit_id'],
+         'designation': ligne['designation'],
+         'quantite': str(ligne['quantite']),
+         'prix_unitaire': str(ligne['prix_unitaire']),
+         'ordre': ordre,
+         # Fondateur 26/10/2026 — C&I à deux options : la ligne dit son option.
+         **({'variante': ligne['variante']} if ligne.get('variante') else {})}
+        for ordre, ligne in enumerate(lignes)]
 
 
 #: CORC7 (27/10/2026) — nombre de références nommées dans l'alerte.
@@ -115,7 +122,6 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
     from apps.crm.services import resolve_client_for_lead
     from apps.ventes.conception.decisions import decider_ci, etude_params_creation_ci
     from apps.ventes.domain.creation import devise_par_defaut
-    from apps.ventes.domain.suppositions_ci import alertes_du_journal
     from apps.ventes.models import Devis
 
     # ADEV160 (D-ACAL-97) — taille, étude, refus et options batterie : la
@@ -138,22 +144,28 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
         company=company, user=user, lead=lead, creer=_create, lignes=lignes,
         mode_installation=lead.type_installation)
     if journal_auto is not None:
-        # ADEV79 (D-ACI-2=a) — même forme que l'agricole : les postes « à
-        # chiffrer après visite » hors total, NOMMÉS, puis les alertes de l'étude.
-        alertes = [{'code': 'a_chiffrer_visite', 'champ': 'composition',
-                    'message': ('« %s » à chiffrer après la visite technique : hors '
-                                'total, devis estimé sous réserve de visite.' % poste)}
-                   for poste in (etude.get('composition') or {}).get('a_chiffrer_visite') or []]
-        # ADEV124 — les suppositions qui changent un chiffre (profil estimé
-        # compris, même de niveau « info ») sortent au journal avec leur champ.
-        alertes += [dict(a) for a in alertes_du_journal(etude)
-                    if a.get('code') != 'a_chiffrer_visite']
-        alertes += _alertes_brouillons_ci_du_lead(devis)
-        journal_auto['alertes'] = alertes
+        journal_auto['alertes'] = alertes_journal_ci(etude, devis)
     logger.info('Auto-devis C&I %s: %s kWc (lead %s, company %s)', devis.reference,
                 (etude.get('taille') or {}).get('retenue_kwc'), getattr(lead, 'pk', '?'),
                 getattr(company, 'id', '?'))
     return devis
+
+
+def alertes_journal_ci(etude, devis):
+    """ADEV133 — les alertes du journal d'un devis automatique C&I : partagées
+    avec le moteur unique (lecture seule)."""
+    from apps.ventes.domain.suppositions_ci import alertes_du_journal
+    # ADEV79 (D-ACI-2=a) — même forme que l'agricole : les postes « à
+    # chiffrer après visite » hors total, NOMMÉS, puis les alertes de l'étude.
+    alertes = [{'code': 'a_chiffrer_visite', 'champ': 'composition',
+                'message': ('« %s » à chiffrer après la visite technique : hors '
+                            'total, devis estimé sous réserve de visite.' % poste)}
+               for poste in (etude.get('composition') or {}).get('a_chiffrer_visite') or []]
+    # ADEV124 — les suppositions qui changent un chiffre (profil estimé
+    # compris, même de niveau « info ») sortent au journal avec leur champ.
+    alertes += [dict(a) for a in alertes_du_journal(etude)
+                if a.get('code') != 'a_chiffrer_visite']
+    return alertes + _alertes_brouillons_ci_du_lead(devis)
 
 
 def build_devis_auto(*, lead, user, company, taux_tva=None,
@@ -272,14 +284,21 @@ def marquer_rapide(devis, journal_auto=None):  # ACAL1004 — « Devis automatiq
     Clé DÉRIVÉE hors empreinte, jamais lue par le PDF ; écrite à la création
     (brouillon) seulement."""
     from apps.ventes.domain.etude_schema import AUTO_DEVIS, ecrire
+    ecrire(devis, proprietaire=AUTO_DEVIS, **cles_rapides(journal_auto))
+    return devis
+
+
+def cles_rapides(journal_auto):
+    """ADEV133 — les clés que :func:`marquer_rapide` range (``origine_conception``
+    et les suppositions du journal qui nomment un champ de la fiche) ; partagées
+    avec le moteur unique, aucune écriture."""
     cles = {'origine_conception': 'rapide'}
     suppositions = [dict({'code': a.get('code'), 'message': a.get('message'), 'champ_lead': a['champ_lead']},
                          **({'interne': True} if a.get('interne') else {}))
                     for a in (journal_auto or {}).get('alertes') or [] if a.get('champ_lead')]
     if suppositions:
         cles['journal_auto'] = {'alertes': suppositions}
-    ecrire(devis, proprietaire=AUTO_DEVIS, **cles)
-    return devis
+    return cles
 
 
 def auto_devis_tunnel_actif(company):

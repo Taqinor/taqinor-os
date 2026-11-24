@@ -232,7 +232,8 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
           // ligne), on empêche Radix de reprendre la main en refocalisant le
           // bouton déclencheur à la fermeture (comportement par défaut).
           onCloseAutoFocus={(e) => { if (onPicked) e.preventDefault() }}
-          className="z-[var(--z-popover)] w-[max(var(--radix-popover-trigger-width),18rem)] overflow-hidden rounded-lg border border-border bg-popover p-0 text-popover-foreground shadow-ui-lg data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out focus:outline-none"
+          // T4-U3-005 — assez large pour un nom de pompe ET sa raison (bornée à l'écran).
+          className="z-[var(--z-popover)] w-[max(var(--radix-popover-trigger-width),min(30rem,calc(100vw-2rem)))] overflow-hidden rounded-lg border border-border bg-popover p-0 text-popover-foreground shadow-ui-lg data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out focus:outline-none"
         >
           <div className="flex items-center gap-1 border-b border-border p-1.5">
             <input
@@ -315,26 +316,39 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
                   data-cursor={dispo && isCur ? 'true' : undefined}
                   onMouseEnter={() => dispo && setCursor(index)}
                   onClick={() => dispo && pick(p)}
+                  // T4-U3-005 — une option désactivée DIT pourquoi (title + texte).
+                  title={dispo ? undefined
+                    : 'Produit sans prix de vente : il ne peut pas être choisi tant que son prix n’est pas saisi dans Stock.'}
                   className={cn(
-                    'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none',
+                    'flex w-full flex-col items-stretch gap-0.5 rounded-md px-2 py-1.5 text-left text-sm outline-none',
                     dispo && isCur && 'bg-accent text-accent-foreground',
-                    !dispo && 'cursor-not-allowed opacity-50',
+                    !dispo && 'cursor-not-allowed opacity-70',
                   )}
                 >
-                  <span className="flex-1 truncate">{p.nom}</span>
+                  {/* T4-U3-005 — le nom a sa propre ligne et passe à la ligne
+                      (jamais écrasé par la spec) ; le prix (ou sa raison) reste
+                      visible à droite. */}
+                  <span className="flex w-full items-start gap-2">
+                    <span className="min-w-0 flex-1 break-words">{p.nom}</span>
+                    <span className={cn('shrink-0 text-xs tabular-nums', dispo ? 'font-medium text-foreground' : 'italic text-muted-foreground')}>
+                      {dispo ? `${formatMAD(prixTtc(p), { withSymbol: false })} DH` : 'prix à renseigner'}
+                    </span>
+                  </span>
                   {/* STKCAT12 — puce du type de catégorie (categorie_type_display,
                       quand le backend l'a renseigné) EN PLUS de la spec clé
                       existante (keySpec) : deux informations différentes, ni
                       l'une ne remplace l'autre. */}
-                  {p.categorie_type_display && (
-                    <span className="shrink-0 rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                      {p.categorie_type_display}
+                  {(p.categorie_type_display || spec || !dispo) && (
+                    <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                      {p.categorie_type_display && (
+                        <span className="rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium">
+                          {p.categorie_type_display}
+                        </span>
+                      )}
+                      {spec && <span className="min-w-0 break-words">{spec}</span>}
+                      {!dispo && <span className="italic">sans prix de vente : non sélectionnable</span>}
                     </span>
                   )}
-                  {spec && <span className="shrink-0 text-xs text-muted-foreground">{spec}</span>}
-                  <span className={cn('shrink-0 text-xs tabular-nums', dispo ? 'font-medium text-foreground' : 'italic text-muted-foreground')}>
-                    {dispo ? `${formatMAD(prixTtc(p), { withSymbol: false })} DH` : 'prix à renseigner'}
-                  </span>
                 </button>
               )
             })}

@@ -4,7 +4,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { creerCanalTeinte } from './canalTeinte'; // ACAL1621
 import { cibleVue, appliquerVue } from './vuesCamera';
-import { dimensionsTexture } from './panelTexture';
+import { dimensionsTexture, makeCanadianPanelTexture } from './panelTexture'; // ACAL1839
+import { teintesBatiment, TEINTES_PRESENTATION } from './jeuPresentation'; // ACAL1839
+import * as THREE from 'three'; // ACAL1984
+import { aplatirEnPlan, poserOeil } from './oeilCamera'; // ACAL1984, T4-U1-017
+import { boiteObstacle } from './obstacle3d'; // ACAL1820
 import {
   generateRoofShapePans,
   computeRidgeLifts,
@@ -32,6 +36,7 @@ import {
   ecrireTeintesPanneaux, // ACAL1408
   GAIN_TEINTE_PANNEAU, // ACAL1408
   clePanAffectation, // ACAL1516
+  materiauVerre, // ACAL1984
 } from './scene3d';
 import { couleurAccesActive } from '../../lib/shadingEngine'; // ACAL1408
 import { buildAreasFromShape } from './zones';
@@ -427,6 +432,25 @@ describe('ACAL1408 — la teinte d’accès modifie la couleur effective du pann
     expect(buf.rgb).toEqual([[1, 1, 1], [1, 1, 1], [1, 1, 1]]);
   });
 
+  // ACAL1984 — cause lue à l'écran (Chromium sans tête, pile de revue, 24/11) : la teinte atteignait bien l'instance (les
+  // CHANTS du cadre s'allumaient en or) mais le VERRE restait noir. La caméra Three.js de la couche MapLibre est l'identité :
+  // le shader croit l'œil à l'ORIGINE de la scène (sous le toit), la vue du verre est rasante (N·V ≤ 0), le Fresnel du vernis
+  // vaut 1 et `couleur × (1 − clearcoat × F)` éteint la couleur de base. Sans vernis (clearcoat 0), même rendu : panneaux teintés.
+  it('la couleur rendue d’un panneau non ombré n’est pas noire (verre de l’atelier ERP, vue rasante de la caméra identité)', () => {
+    const fresnel = (f0: number, cos: number) => f0 + (1 - f0) * (1 - Math.max(0, cos)) ** 5; // F_Schlick, f90 = 1
+    const rendu = (verre: { clearcoat: number }, teinte: number[]) =>
+      teinte.map((v) => Math.min(1, FOND_PANNEAU * v * GAIN_TEINTE_PANNEAU) * (1 - verre.clearcoat * fresnel(0.04, 0)));
+    const lum = (c: number[]) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    const or = couleurAccesActive(1, 'atelier');
+    const erp = materiauVerre(null, true);
+    expect(lum(rendu(erp, [or.r, or.g, or.b]))).toBeGreaterThan(0.3);
+    expect(erp.clearcoat).toBe(0);
+    // Site public : le verre garde son vernis (son rendu ne change pas).
+    const pub = materiauVerre(null, false);
+    expect([pub.clearcoat, pub.clearcoatRoughness, pub.roughness, pub.metalness]).toEqual([1, 0.08, 0.22, 0.1]);
+    expect(lum(rendu(pub, [or.r, or.g, or.b]))).toBeLessThan(0.01); // la panne d'origine, gardée hors ERP
+  });
+
   it('la teinte de chaîne (setStringColoring, même canal) est gainée de la même façon', () => {
     const buf = tampon(1);
     const bleu = lireCouleurServie(BLEU)!;
@@ -438,6 +462,112 @@ describe('ACAL1408 — la teinte d’accès modifie la couleur effective du pann
 
 // Demande croisée (ACAL1621) — la carte d'accès et la teinte par chaîne écrivent le MÊME tampon : un maillage reconstruit
 // (ou une table de chaînes arrivée) pendant la capture de la carte de chaleur repeignait les chaînes par-dessus l'accès.
+// ACAL1984 (suite) — même cause, second symptôme : une TACHE sombre sur les panneaux teintés au-dessus de l'origine de la
+// scène (diffus éteint par la vue rasante). L'atelier pose l'œil RÉEL tiré de la matrice de la carte.
+describe('ACAL1984 — l’œil de la caméra de la couche est celui de la carte, l’image reste la même', () => {
+  it('œil retrouvé, vue × projection = matrice de la carte ; une matrice dégénérée laisse la caméra', () => {
+    const vraie = new THREE.PerspectiveCamera(36, 1.6, 0.5, 4000);
+    vraie.position.set(12, -40, 55);
+    vraie.lookAt(0, 0, 6);
+    vraie.updateMatrixWorld(true);
+    const carte = vraie.projectionMatrix.clone().multiply(vraie.matrixWorldInverse);
+    const couche = new THREE.Camera();
+    expect(poserOeil(couche, carte)).toBe(true);
+    expect(couche.position.distanceTo(vraie.position)).toBeLessThan(1e-6);
+    const recomposee = couche.projectionMatrix.clone().multiply(couche.matrixWorldInverse);
+    recomposee.elements.forEach((v: number, i: number) => expect(v).toBeCloseTo(carte.elements[i], 9));
+    // un panneau au-dessus de l'origine est vu d'en haut (N·V > 0), plus de vue rasante
+    const versOeil = couche.position.clone().sub(new THREE.Vector3(0, 0, 6)).normalize();
+    expect(versOeil.dot(new THREE.Vector3(0, 0, 1))).toBeGreaterThan(0.5);
+    const intacte = new THREE.Camera();
+    expect(poserOeil(intacte, new THREE.Matrix4().makeScale(0, 0, 0))).toBe(false);
+    expect(intacte.position.toArray()).toEqual([0, 0, 0]);
+  });
+});
+
+// T4-U1-017 — vue Plan (pente 0) : la caméra de la carte est une PERSPECTIVE (œil ≈ 1,5 hauteur d'écran au-dessus du centre) ;
+// la dalle et les panneaux posés à la hauteur du bâtiment sortaient grossis autour du centre de la carte — décalés d'environ
+// 1 m vers la gauche et le haut d'un toit posé à gauche du panneau d'étape, hors du contour or et des cotes tracés au sol.
+// En Plan la scène est aplatie (hauteurs × 0,01) : un point du toit retombe sur son empreinte au sol. En 3D, rien ne change.
+describe('T4-U1-017 — vue Plan : la dalle du toit retombe sur le contour tracé au sol', () => {
+  const carte = () => {
+    const oeil = new THREE.PerspectiveCamera(36.87, 1440 / 900, 1, 4000);
+    oeil.position.set(0, 0, 167); // pente 0 : l'œil à la verticale du centre de la carte (zoom 20)
+    oeil.lookAt(0, 0, 0);
+    oeil.updateMatrixWorld(true);
+    return oeil.projectionMatrix.clone().multiply(oeil.matrixWorldInverse);
+  };
+  const ecran = (m: THREE.Matrix4, x: number, y: number, z: number) => new THREE.Vector3(x, y, z).applyMatrix4(m);
+  const ecartPx = (m: THREE.Matrix4) => {
+    // un coin du toit à 30 m à gauche et 8 m au-dessus du centre, la dalle à 6 m de haut
+    const sol = ecran(m, -30, 8, 0);
+    const dalle = ecran(m, -30, 8, 6);
+    return Math.hypot((dalle.x - sol.x) * 720, (dalle.y - sol.y) * 450);
+  };
+
+  it('Plan : moins d’un demi-pixel entre la dalle et son empreinte ; 3D (pente 60°) : la hauteur est gardée', () => {
+    const m = carte();
+    expect(ecartPx(m)).toBeGreaterThan(8); // le défaut : ≈ 1 m (≈ 8 px à 0,12 m/px)
+    expect(ecartPx(m.clone().multiply(aplatirEnPlan(0)))).toBeLessThan(0.5);
+    expect(aplatirEnPlan(60).equals(new THREE.Matrix4())).toBe(true);
+    expect(poserOeil(new THREE.Camera(), m.clone().multiply(aplatirEnPlan(0)))).toBe(true); // l'éclairage garde son œil
+  });
+});
+
+// ACAL1820 — la cheminée de 1,2 m d'un pan en pente était ENFOUIE sous le plan incliné (assise au mur) et ne portait
+// aucune ombre : rien ne changeait à 12 h ni à 16 h.
+describe('ACAL1820 — un obstacle de la zone active porte et reçoit les ombres', () => {
+  const cheminee = { widthM: 0.6, lengthM: 0.6, heightM: 1.2 };
+  it('atelier ERP : posé SUR la dalle inclinée, ombre portée et reçue ; site public : la boîte d’avant', () => {
+    const erp = boiteObstacle(cheminee, { x: 4, y: 3.3, murM: 6, dessusDalleM: 7.49, teinte: 0xff6b6b, opacite: 0.42, ombres: true });
+    expect([erp.castShadow, erp.receiveShadow]).toEqual([true, true]);
+    expect(erp.position.z - 0.6).toBeGreaterThan(7.49); // la base est au-dessus du toit : la cheminée dépasse de 1,2 m
+    expect(erp.position.toArray()).toEqual([4, 3.3, 7.49 + 0.6 + 0.05]);
+    const pub = boiteObstacle(cheminee, { x: 4, y: 3.3, murM: 6, dessusDalleM: 7.49, teinte: 0xff6b6b, opacite: 0.42, ombres: false });
+    expect([pub.castShadow, pub.receiveShadow]).toEqual([false, false]);
+    expect(pub.position.z).toBe(6 + 0.6 + 0.05);
+    // sans hauteur saisie : le repli visuel d'avant (0,8 m), même en ERP
+    expect((boiteObstacle({ widthM: 1, lengthM: 1 }, { x: 0, y: 0, murM: 3, teinte: 0, opacite: 0.4, ombres: true }).geometry as THREE.BoxGeometry).parameters.depth).toBe(0.8);
+  });
+});
+
+// ACAL1839 — la vue client réutilisait la scène de l'atelier telle quelle : boîte grise, dalle grise, panneaux noirs.
+describe('ACAL1839 — jeu « présentation » : maison à murs clairs, toit coloré, panneaux bleu nuit à cellules', () => {
+  /** Un canevas qui ENREGISTRE ce qui y est peint (le canevas 2D n'existe pas sous vitest). */
+  const peint = (jeu?: 'atelier' | 'presentation') => {
+    const traces: string[] = [];
+    const ctx2d = {
+      createLinearGradient: () => ({ addColorStop: (_: number, c: string) => traces.push(`degrade:${c}`) }),
+      fillRect: () => {}, beginPath: () => {}, moveTo: () => {}, lineTo: () => {}, stroke: () => {}, strokeRect: () => {},
+      set fillStyle(_v: unknown) {}, set lineWidth(_v: unknown) {},
+      set strokeStyle(v: string) { traces.push(`trait:${v}`); },
+    };
+    const avant = globalThis.document;
+    (globalThis as { document?: unknown }).document = { createElement: () => ({ width: 0, height: 0, getContext: () => ctx2d }) };
+    try {
+      const tex = makeCanadianPanelTexture(1.83, jeu);
+      return { traces, tex };
+    } finally {
+      (globalThis as { document?: unknown }).document = avant;
+    }
+  };
+  it('jeu présentation : matériau de panneau à texture de cellules, distinct du jeu atelier', () => {
+    const atelier = peint();
+    const client = peint('presentation');
+    expect(atelier.traces).toEqual(['degrade:#0c0c0f', 'degrade:#050507', 'trait:rgba(40,46,60,0.55)', 'trait:rgba(20,24,34,0.9)', 'trait:rgba(150,156,168,0.85)']); // atelier : octet pour octet
+    expect(client.traces.slice(0, 2)).toEqual(['degrade:#22306d', 'degrade:#0f1a48']); // verre bleu nuit (maquette)
+    expect(client.traces).toContain('trait:#dfe5f3'); // cadre clair
+    expect(client.traces).not.toEqual(atelier.traces);
+    expect(client.tex.colorSpace).toBe(THREE.SRGBColorSpace);
+    expect(atelier.tex.colorSpace).not.toBe(THREE.SRGBColorSpace);
+  });
+  it('murs clairs, toit tuile en pente et béton à plat ; l’atelier garde ses matériaux de travail', () => {
+    expect(teintesBatiment('presentation', true)).toEqual({ mur: TEINTES_PRESENTATION.mur, pignon: TEINTES_PRESENTATION.pignon, dalle: TEINTES_PRESENTATION.tuile });
+    expect(teintesBatiment('presentation', false)?.dalle).toBe(TEINTES_PRESENTATION.beton);
+    expect(teintesBatiment('atelier', true)).toBeNull();
+  });
+});
+
 describe('ACAL1621 — canal de teinte : la carte d’accès allumée passe avant la teinte par chaîne', () => {
   it('accès allumé : la reconstruction / les chaînes réécrivent l’accès ; éteint : les chaînes reviennent', () => {
     const ecrits: Array<string | null> = [];

@@ -3,8 +3,8 @@ import { createPortal } from 'react-dom'
 import { Icone, Segmente } from '../atelier/coque/primitives'
 import { gestes, useConstructeur } from '../atelier/coque/etapes/panneaux/constructeur'
 import { jourMois } from '../atelier/coque/etapes/panneaux/formats'
-import { AvisEchec3D, PastilleAttente, PiedClient, PlanDessus, PuceProjet, TuilesClient, IconeTourner } from './partiesClient'
-import { estimationPose, instantSoleilChoisi } from './vueClient.helpers'
+import { AttenteScene, AvisEchec3D, PastilleAttente, PiedClient, PlanDessus, PuceProjet, TuilesClient, IconeTourner } from './partiesClient'
+import { estimationPose, instantSoleilChoisi, useBureau } from './vueClient.helpers'
 import { useHorsVueClientInerte } from './inerteHorsClient'
 
 /* ============================================================================
@@ -25,14 +25,42 @@ import { useHorsVueClientInerte } from './inerteHorsClient'
    Aucune écriture : des lectures (GET) et des gestes d'affichage.
    ========================================================================== */
 
-/** H6 — la maison remplit la scène comme sur la maquette ; J1 — posée plus bas (le ciel gardé en haut). Caméra seule. */
-const CADRAGE_CLIENT = { zoomMax: 22, part: 0.62, cielPx: 190 }
+/** ACAL1839 — la zone de la carte que les pièces flottantes laissent LIBRE : la puce en haut ; au bureau la carte de chiffres
+    à droite et la barre du soleil en bas ; au téléphone le corps en bas. Relue à chaque cadrage (la mise en page s'installe
+    après l'ouverture), pour que la maison entière tienne dans cette zone, avec de l'air, jamais sous une carte. */
+const PIECES_CLIENT = '[data-testid="client-projet"], [data-testid="client-soleil"], [data-testid="client-tuiles"], [data-testid="cal-vue-client"], [data-testid="client-envoyer-lien"]'
+function margesClient(doc = document) {
+  const carte = doc.getElementById('rp9-map')?.getBoundingClientRect()
+  const m = { haut: 0, gauche: 0, droite: 0, bas: 0 }
+  if (!carte?.width || !carte.height) return m
+  for (const el of doc.querySelectorAll(PIECES_CLIENT)) {
+    const r = el.getBoundingClientRect()
+    if (!r.width || !r.height) continue
+    if (r.top > carte.top + 0.4 * carte.height && r.width > 0.6 * carte.width) m.bas = Math.max(m.bas, carte.bottom - r.top)
+    else if (r.left > carte.left + 0.5 * carte.width && r.top < carte.top + 0.7 * carte.height) m.droite = Math.max(m.droite, carte.right - r.left)
+    else if (r.bottom < carte.top + 0.35 * carte.height) m.haut = Math.max(m.haut, r.bottom - carte.top)
+  }
+  return m
+}
+
+/** H6 — la maison remplit la scène comme sur la maquette ; J1 — posée plus bas (le ciel gardé en haut).
+    ACAL1839 — en vue inclinée, le constructeur cadre le VOLUME (murs compris) dans la zone libre ; au téléphone, sous la
+    puce et l'aide « Glissez un doigt » (150 px), sur 80 % de la scène qui reste. Caméra seule. */
+const cadrageClient = (bureau) => ({
+  zoomMax: 22, part: bureau ? 0.62 : 0.8, cielPx: bureau ? 190 : 150, get margesPx() { return margesClient() },
+})
+
+/** ACAL1839 — le ciel de la scène : dégradé de la maquette (bleu clair vers transparent), aux jetons du module, sans geste. */
+const CIEL_CLIENT = {
+  position: 'absolute', insetInline: 0, top: 0, height: '34%', pointerEvents: 'none',
+  background: 'linear-gradient(to bottom, color-mix(in srgb, var(--cal-lien) 30%, var(--cal-surface)), color-mix(in srgb, var(--cal-lien) 10%, transparent) 60%, transparent)',
+}
 
 const SAISONS = [{ valeur: 'winter', libelle: 'Hiver' }, { valeur: 'summer', libelle: 'Été' }]
 
 /** La vue de trois-quarts TENUE par le constructeur ; `pret` quand elle est posée et le toit cadré. Un constructeur
  *  sans mode présentation : la vue et le cadrage une fois, `pret` aussitôt (rien de plus à attendre). */
-function useVueTroisQuarts(builderApi, essai) {
+function useVueTroisQuarts(builderApi, essai, bureau) {
   // `pret` vaut pour UN essai et UNE instance du constructeur (« Réessayer » repart de zéro).
   const [pretPour, setPretPour] = useState(null)
   const disponible = typeof builderApi?.appliquerVue === 'function'
@@ -41,15 +69,15 @@ function useVueTroisQuarts(builderApi, essai) {
     if (!disponible) return undefined
     if (!tenue) {
       builderApi.appliquerVue('trois-quarts')
-      builderApi.cadrerToit?.(CADRAGE_CLIENT)
+      builderApi.cadrerToit?.(cadrageClient(bureau))
       return undefined
     }
     let vivant = true
     builderApi.modePresentation(true, {
-      vue: 'trois-quarts', cadrage: CADRAGE_CLIENT, surPrete: () => { if (vivant) setPretPour({ builderApi, essai }) },
+      vue: 'trois-quarts', cadrage: cadrageClient(bureau), surPrete: () => { if (vivant) setPretPour({ builderApi, essai }) },
     })
     return () => { vivant = false; builderApi.modePresentation(false) }
-  }, [builderApi, essai, disponible, tenue])
+  }, [builderApi, essai, disponible, tenue, bureau])
   const pret = disponible && (!tenue || (pretPour?.builderApi === builderApi && pretPour?.essai === essai))
   return { pret, tourne: tenue }
 }
@@ -74,13 +102,17 @@ function useEteAMidi(pret, doc) {
   }, [pret, doc])
 }
 
-function LecteurSoleil() {
+/** ACAL1838 — les repères de la barre du soleil du bureau : de la borne basse à la borne haute SERVIES par le curseur du constructeur. */
+const reperes = (min, max) => [0, 1, 2, 3, 4].map((i) => Math.round(min + ((max - min) * i) / 4))
+
+function LecteurSoleil({ bureau = false }) {
   const [etat, rafraichir] = useConstructeur()
-  const { heure, date, saison, lecture } = etat.soleil
+  const { heure, date, saison, lecture, min, max } = etat.soleil
   const saisonReelle = useSaisonReelle(saison, date)
   if (heure == null) return null
   const g = (geste) => (...a) => { geste(...a); rafraichir() }
   const quand = [jourMois(date), `${heure} h`].filter(Boolean).join(' · ')
+  const rempli = max > min ? ((Number(heure) - min) / (max - min)) * 100 : 0
   return (
     <div className="cal-client-soleil" data-testid="client-soleil">
       <button type="button" className="cal-client-soleil-lecture" aria-label="Faire passer la journée"
@@ -88,10 +120,18 @@ function LecteurSoleil() {
         <Icone nom="lecture" taille={18} epaisseur={2} />
       </button>
       <div className="cal-client-soleil-curseur">
+        {bureau && <span className="cal-client-soleil-etiquette">Soleil</span>}
         <span className="cal-client-soleil-quand">{quand}</span>
-        <input type="range" min="6" max="18" step="1" value={heure} aria-label="Heure du soleil"
-          className="cal-pan-heure" style={{ '--cal-pan-rempli': `${((Number(heure) - 6) / 12) * 100}%` }}
+      </div>
+      <div className="cal-client-soleil-piste">
+        <input type="range" min={min} max={max} step="1" value={heure} aria-label="Heure du soleil"
+          className="cal-pan-heure" style={{ '--cal-pan-rempli': `${rempli}%` }}
           onChange={(e) => g(gestes.heure)(e.target.value)} />
+        {bureau && (
+          <div className="cal-client-soleil-reperes" aria-hidden="true">
+            {reperes(min, max).map((h) => <span key={h} data-courant={h === Number(heure) ? '' : undefined}>{`${h} h`}</span>)}
+          </div>
+        )}
       </div>
       <Segmente libelle="Saison" options={SAISONS} valeur={saisonReelle} onChange={g(gestes.saison)} />
     </div>
@@ -117,7 +157,8 @@ export default function HabillageClient({
   donnees, onContexte = null, onRetard = null, onReessayer = null,
 }) {
   const [essai, setEssai] = useState(0)
-  const { pret, tourne } = useVueTroisQuarts(builderApi, essai)
+  const bureau = useBureau()
+  const { pret, tourne } = useVueTroisQuarts(builderApi, essai, bureau)
   const retard = useTroisDEnRetard(pret, essai)
   useEteAMidi(pret, donnees.doc)
   useHorsVueClientInerte(noeudScene)
@@ -134,9 +175,12 @@ export default function HabillageClient({
     <>
       {noeudScene && createPortal(
         <>
+          {/* ACAL1839 — le ciel dégradé au-dessus de la maison (la carte, en vue inclinée, n'atteint pas l'horizon). */}
+          {pret && <div aria-hidden="true" data-testid="client-ciel" style={CIEL_CLIENT} />}
           {!pret && (
             <div className="cal-client-repli" data-testid="client-repli-2d">
-              {donnees.plan && <PlanDessus plan={donnees.plan} />}
+              {/* ACAL1837 — l'attente est présentable (ciel, silhouette) ; le plan dessus ne sert qu'à l'échec de la 3D. */}
+              {retard ? donnees.plan && <PlanDessus plan={donnees.plan} /> : <AttenteScene />}
             </div>
           )}
           <PuceProjet titre={donnees.titre} sousTitre={donnees.sousTitre} />
@@ -144,17 +188,17 @@ export default function HabillageClient({
           {pret && tourne && (
             <span className="cal-client-pastille cal-client-geste" data-testid="client-aide-geste">
               <IconeTourner />
-              Glissez un doigt pour tourner autour
+              {bureau ? 'Glissez pour tourner autour' : 'Glissez un doigt pour tourner autour'}
             </span>
           )}
         </>,
         noeudScene,
       )}
       <div className="cal-client-corps" data-testid="cal-vue-client" data-vue-client="">
-        <LecteurSoleil />
-        <TuilesClient tuiles={tuiles} ville={donnees.ville} />
+        <LecteurSoleil bureau={bureau} />
+        <TuilesClient tuiles={tuiles} ville={donnees.ville} bureau={bureau} />
       </div>
-      <PiedClient id={calepinageId} />
+      <PiedClient id={calepinageId} bureau={bureau} />
     </>
   )
 }

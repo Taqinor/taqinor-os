@@ -752,33 +752,52 @@ describe('pro-11 — W79 : la disposition personnalisée survit à une édition 
 
   it('recalc() CAPTURE les centres posés AVANT le re-pavage, puis RE-ENTRE la disposition', () => {
     const fn = script.slice(script.indexOf('function recalc()'), script.indexOf('function recalc()') + 1100);
-    // capture conditionnée au mode disposition, AVANT recompute/pitchedRecompute.
-    expect(fn).toContain('const prevCenters = layoutMode ? occupiedCenters() : null');
+    // capture conditionnée au mode disposition (ACAL2032 : ou au placement libre), AVANT recompute/pitchedRecompute,
+    // avec l'origine du pavage d'avant (le placement libre reste au même endroit du toit).
+    expect(fn).toContain('const prevCenters = layoutMode || (freeMode && freeState) ? occupiedCenters() : null, origineAvant = layoutPlan?.pack.origin');
     // re-entrée APRÈS le re-pavage (re-snap sur la nouvelle lattice).
-    expect(fn).toContain('if (prevCenters) reenterCustomLayout(prevCenters)');
-    // l'ordre : la CAPTURE des centres précède la RE-ENTRÉE (capture avant, re-snap après).
-    expect(fn.indexOf('const prevCenters = layoutMode ? occupiedCenters()')).toBeLessThan(
-      fn.indexOf('if (prevCenters) reenterCustomLayout(prevCenters)'),
-    );
+    expect(fn).toContain('if (prevCenters) reenterCustomLayout(prevCenters, origineAvant)');
+    // l'ordre : la CAPTURE des centres précède le re-pavage, qui précède la RE-ENTRÉE.
+    expect(fn.indexOf('const prevCenters =')).toBeLessThan(fn.indexOf('else recompute();'));
+    expect(fn.indexOf('else recompute();')).toBeLessThan(fn.indexOf('if (prevCenters) reenterCustomLayout(prevCenters'));
   });
 
-  it('reenterCustomLayout re-snappe en masse (re-snap, pas wipe) et re-rend tout', () => {
-    expect(editor).toContain('function reenterCustomLayout(');
-    const fn = editor.slice(editor.indexOf('function reenterCustomLayout'));
-    // garde-fou : no-op hors mode disposition ou sans plan.
-    expect(fn).toMatch(/if \(!ctx\.layoutMode \|\| !ctx\.layoutPlan\) return/);
-    // reconstruit l'état sur la NOUVELLE lattice puis remplace l'occupation par les re-snaps.
-    expect(fn).toContain('ensureLayoutState()');
-    expect(fn).toContain('st.occupied.clear()');
-    // CAL106 — le balayage centre-par-centre est devenu un re-snap INDEXÉ
-    // (`resnapEnMasse`), dont l'équivalence stricte avec la version naïve
-    // est prouvée dans `src/scripts/roofPro11/perf.test.ts`. Ce qui compte
-    // ici reste : l'occupation est REMPLACÉE par des re-snaps, jamais vidée.
-    expect(fn).toContain('resnapEnMasse(st.cells, prevCenters)');
-    expect(fn).toContain('st.occupied.add(idx)');
-    // readouts à jour : re-rendu de la 3D (panneaux) + de la grille/note.
-    expect(fn).toContain('renderCustomLayout()');
-    expect(fn).toContain('renderLayoutPanel()');
+  // ACAL2032 — exécuté sur l'éditeur réel (plus lu dans le source) : no-op hors disposition, re-snap (pas wipe), re-rendu.
+  it('reenterCustomLayout re-snappe en masse (re-snap, pas wipe) et re-rend tout', async () => {
+    const { JSDOM } = await import('jsdom');
+    const g = globalThis as unknown as { document?: Document; window?: Window };
+    const avant = { document: g.document, window: g.window };
+    const dom = new JSDOM('<!doctype html><body></body>');
+    Object.assign(g, { document: dom.window.document, window: dom.window });
+    try {
+      const { createLayoutEditor } = await import('../src/scripts/roofPro11/layoutEditor');
+      const { carteEditeurFactice, depsEditeur } = await import('../src/scripts/roofPro11/harnaisAtelier');
+      const conteneur = dom.window.document.createElement('div');
+      dom.window.document.body.appendChild(conteneur);
+      const plan = (dx: number) => ({
+        pack: { origin: [-7.6, 33.5], azimuthDeg: 0, ringENU: [[-1, -1], [7, -1], [7, 1], [-1, 1]] },
+        grid: { rowWidthM: 1, footprintPerPanelM2: 1, slopeLenM: 1, panels: [0, 1, 2, 3, 4, 5].map((i) => ({ cx: i + dx, cy: 0 })) },
+        tiltDeg: 0, family: 'S', flush: false,
+      });
+      const ctx = {
+        layoutMode: false, closed: true, vertices: [], obstacles: [], areas: [], roofType: 'flat', neededPanels: 2, layoutPlan: plan(0),
+        layoutState: null, layoutSel: null, layoutOptimalCount: 2, freeMode: false, freeState: null,
+      } as Record<string, unknown>;
+      const deps = depsEditeur(carteEditeurFactice(conteneur));
+      const editeur = createLayoutEditor(ctx as never, deps);
+      editeur.reenterCustomLayout([{ cx: 3, cy: 0 }]); // hors mode disposition : rien
+      expect(ctx.layoutState).toBeNull();
+      expect(deps.renderScene).not.toHaveBeenCalled();
+      ctx.layoutMode = true;
+      ctx.layoutPlan = plan(0.2); // la NOUVELLE lattice (re-pavée, décalée de 20 cm)
+      editeur.reenterCustomLayout([{ cx: 1, cy: 0 }, { cx: 3, cy: 0 }]);
+      const st = ctx.layoutState as { occupied: Set<number> };
+      expect([...st.occupied].sort()).toEqual([1, 3]); // re-snappés sur la cellule la plus proche, jamais vidés
+      expect(deps.renderScene).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), 0, 'S', 2, false, new Set([1, 3])); // la 3D re-rendue
+      expect(dom.window.document.getElementById('rp9-layout-note')?.textContent).toBe('Disposition personnalisée conservée — 2 panneaux re-positionnés après la modification.');
+    } finally {
+      Object.assign(g, avant);
+    }
   });
 
   it('occupiedCenters expose les centres ENU des cellules posées (pour le re-snap)', () => {

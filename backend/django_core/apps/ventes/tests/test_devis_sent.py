@@ -127,6 +127,69 @@ class TestMarkDevisSentService(TestCase):
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
 
+    def test_ligne_a_prix_zero_refuse_l_envoi_en_nommant_les_lignes(self):
+        """T4-U3-007 — une ligne de quantité > 0 au prix 0 ne part au client
+        par aucun geste : 409 qui nomme les lignes et dit quoi faire ; le
+        brouillon s'enregistre toujours ; prix saisi : envoyé ; un devis DÉJÀ
+        envoyé n'est jamais touché."""
+        from decimal import Decimal
+
+        from django.core import mail
+        from apps.ventes.models import LigneDevis
+        from core.conflit_etat import ConflitEtat
+        self.client_obj.email = 'alaoui@example.com'
+        self.client_obj.save(update_fields=['email'])
+        devis = self._devis(lead=self.lead)
+        LigneDevis.objects.create(devis=devis, designation='Panneaux 550 W',
+                                  quantite=Decimal('10'), prix_unitaire=Decimal('900'))
+        tableau = LigneDevis.objects.create(
+            devis=devis, designation='Tableau De Protection AC/DC',
+            quantite=Decimal('1'), prix_unitaire=Decimal('0'))
+        LigneDevis.objects.create(devis=devis, designation='Accessoires',
+                                  quantite=Decimal('1'), prix_unitaire=None)
+        LigneDevis.objects.create(devis=devis, designation='Matériel',
+                                  type_ligne=LigneDevis.TypeLigne.SECTION)
+        LigneDevis.objects.create(devis=devis, designation='Option retirée',
+                                  quantite=Decimal('0'), prix_unitaire=Decimal('0'))
+        with self.assertRaises(ConflitEtat) as refus:
+            mark_devis_sent(devis=devis, user=None)
+        detail = str(refus.exception.detail['detail'])
+        self.assertIn('« Tableau De Protection AC/DC »', detail)
+        self.assertIn('« Accessoires »', detail)
+        self.assertNotIn('Matériel', detail)
+        self.assertNotIn('Option retirée', detail)
+        self.assertIn('saisissez un prix ou retirez la ligne', detail)
+        api = make_api(User.objects.create_user(
+            username='t4u3007-resp', password='x', company=self.company,
+            role_legacy='responsable'))
+        base = f'/api/django/ventes/devis/{devis.id}/'
+        for chemin, corps in (('share-link/', {'envoi': True}), ('envoyer-email/', {}),
+                              ('whatsapp/', {}), ('pdf-partage/', {})):
+            with self.subTest(chemin=chemin):
+                resp = api.post(base + chemin, corps, format='json')
+                self.assertEqual(resp.status_code, 409, resp.content)
+                self.assertEqual(str(resp.data['code']), 'lignes_prix_zero')
+                self.assertEqual(resp.data['lignes'],
+                                 ['Tableau De Protection AC/DC', 'Accessoires'])
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+        self.assertEqual(len(mail.outbox), 0)
+        # Le brouillon s'enregistre toujours (aucun refus à la sauvegarde).
+        resp = api.patch(base, {'notes': 'à compléter'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        # Prix saisis : il part.
+        LigneDevis.objects.filter(pk=tableau.pk).update(prix_unitaire=Decimal('1500'))
+        LigneDevis.objects.filter(devis=devis, designation='Accessoires').update(
+            prix_unitaire=Decimal('300'))
+        mark_devis_sent(devis=devis, user=None)
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+        # Un devis déjà envoyé n'est jamais touché : re-partage sans refus.
+        LigneDevis.objects.filter(pk=tableau.pk).update(prix_unitaire=Decimal('0'))
+        mark_devis_sent(devis=devis, user=None)
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+
     def test_brouillon_flips_to_envoye_and_stamps_date(self):
         devis = self._devis()
         self.assertIsNone(devis.date_envoi)

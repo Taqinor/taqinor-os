@@ -135,6 +135,47 @@ export function defaultProductLines(produits, ordreLignes, tvaStandard) {
   return orderLinesByRolePreference(tagged, ordreLignes)
 }
 
+// T4-U3-006 — le modèle de lignes du marché AGRICOLE (pompage). Les rôles et
+// libellés sont ceux du kit que compose le serveur (contrat
+// `ventes/contract_samples/etude_pompage_preview.json` : pompe, variateur,
+// panneaux, structure au sol, installation ; options afficheur, protections,
+// câble). JAMAIS d'onduleur ni de batterie (règle pompage). Tout est
+// placeholder : le produit et sa quantité viennent d'« Auto-remplir » (le kit
+// du serveur) ou du choix du vendeur — aucun article du kit résidentiel, dont
+// les forfaits au panneau se tariferaient à 0 sans ligne panneau.
+export function defaultProductLinesPompage(tvaStandard) {
+  return [
+    placeholder('Pompe', 1, tvaStandard),
+    placeholder('Variateur', 1, tvaStandard),
+    placeholder('Afficheur du variateur', 1, tvaStandard),
+    placeholder('Panneaux', 0, tvaStandard),
+    placeholder('Structure au sol', 0, tvaStandard),
+    placeholder('Câble solaire', 0, tvaStandard),
+    placeholder('Protections DC/AC', 1, tvaStandard),
+    placeholder('Installation pompage', 1, tvaStandard),
+  ]
+}
+
+// T4-U3-006 — LA table de départ d'un marché : pompage pour l'agricole, le
+// modèle historique (résidentiel, C&I) sinon.
+export function lignesParDefautDuMarche(produits, mode, ordreLignes, tvaStandard) {
+  return mode === 'agricole'
+    ? defaultProductLinesPompage(tvaStandard)
+    : defaultProductLines(produits, ordreLignes, tvaStandard)
+}
+
+// T4-U3-006 — empreinte d'une table de départ : ce que le vendeur peut changer
+// (désignation, produit, quantité, verrous, nombre de lignes).
+export const signatureGabarit = (lignes) => JSON.stringify((lignes || []).map((l) => [
+  l._key, String(l.produit ?? ''), l.designation, String(l.quantite ?? ''),
+  Boolean(l.prixManuel), Boolean(l.quantiteManuelle)]))
+
+// Une table est INTACTE quand elle est encore exactement le modèle posé : un
+// changement de marché peut alors la remplacer sans rien demander ; une table
+// éditée ne l'est jamais en silence.
+export const tableIntacte = (lignes, signature) => (
+  signature != null && signatureGabarit(lignes) === signature)
+
 // ADVS47 — les réglages société arrivent APRÈS le stock : quand la TVA standard
 // change, les lignes COMPOSÉES jamais éditées (ni taux, ni prix tapés, ni base
 // légale) dont le produit n'a pas de taux propre suivent le nouveau standard.

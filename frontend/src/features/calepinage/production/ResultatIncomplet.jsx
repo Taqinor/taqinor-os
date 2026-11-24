@@ -6,7 +6,7 @@ import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 import { nomDePerte } from './nomsPertes'
 import { kwh } from './ResultatHeros.helpers'
 import { GrosChiffre } from './TuilesResultat'
-import { estSansSource } from '../reglages/profilDepart'
+import { compteDuResultat } from './ResultatIncomplet.helpers'
 
 /* ACAL700 / ACAL1833 — L'ÉTAT « RÉSULTAT INCOMPLET » (maquette v2 ResultatsIncomplet.dc.html) :
    un plafond, pas un résultat. Tout est SERVI (`production.total`, `cascade.a_renseigner`,
@@ -24,20 +24,25 @@ const RAISON = {
   fiche_panneau: 'Absent de la fiche du panneau',
 }
 
-/* R3-06 — UN seul compte, celui du serveur : les pertes non renseignées sont
-   `etapes_a_compter − etapes_comptees` (même ensemble que la mention « borne
-   haute ») ; `lignes` n'en est que la part rattachable à un réglage ici. */
-function phraseDuCompte(aRenseigner, ici) {
-  const total = Math.max(
-    (aRenseigner?.etapes_a_compter ?? 0) - (aRenseigner?.etapes_comptees ?? 0), ici)
+/** « Remplir les 3 réglages vides » quand « Remplir » les remplit tous ; sinon « Remplir 1 des 3 réglages vides ». */
+function libelleRemplir(compte) {
+  const n = compte.remplissables.length
+  if (n === compte.reglagesVides) return `Remplir ${n > 1 ? `les ${n} réglages vides` : 'le réglage vide'}`
+  return `Remplir ${n} des ${compte.reglagesVides} réglages vides`
+}
+
+/** La page Démarrage rapide, avec CES réglages seuls cochés : elle annonce le même nombre. */
+const lienDemarrage = (compte) => `/calepinage/reglages/demarrage-rapide?reglages=${compte.remplissables.join(',')}`
+
+function phraseDuCompte(compte) {
+  const total = compte.pertes
   return `${total} ${total > 1 ? 'pertes ne sont pas encore comptées' : 'perte n’est pas encore comptée'}.`
 }
 
 /* La part de ce compte qu'on règle ICI (les lignes de la liste) — dite à côté, pas dans la phrase de 14 px
    qui doit tenir sur UNE ligne comme celle de la maquette. */
-function partIci(aRenseigner, ici) {
-  const total = Math.max(
-    (aRenseigner?.etapes_a_compter ?? 0) - (aRenseigner?.etapes_comptees ?? 0), ici)
+function partIci(compte) {
+  const { pertes: total, lignes: ici } = compte
   return ici === total ? `${total > 1 ? 'Toutes sont' : 'Elle est'} à renseigner ici.` : `${ici} à renseigner ici.`
 }
 
@@ -125,24 +130,13 @@ function Progression({ aRenseigner }) {
   )
 }
 
-/* Les réglages que « Remplir » (page Démarrage rapide) remplit : des réglages de la SOCIÉTÉ (`nature === 'reglage_societe'` ;
-   une donnée de la fiche du panneau n'est pas un réglage vide) pour lesquels une valeur publiée existe
-   (`estSansSource` : la liste `sans_source` servie par le profil). Un seul compte, partagé par l'encart, le titre
-   de la carte et les blocs absents. */
-const reglagesRemplissables = (lignes) => lignes.filter((l) => l.nature === 'reglage_societe' && !estSansSource(l.cle))
-
-function LienRemplir({ lignes }) {
-  const n = reglagesRemplissables(lignes).length
-  return n > 0
-    ? (
-      <Link to="/calepinage/reglages/demarrage-rapide" className="cal-resinc-remplir">
-        {`Remplir ${n > 1 ? `les ${n} réglages vides` : 'le réglage vide'}`}
-      </Link>
-    )
+function LienRemplir({ compte }) {
+  return compte.remplissables.length > 0
+    ? <Link to={lienDemarrage(compte)} className="cal-resinc-remplir">{libelleRemplir(compte)}</Link>
     : <Link to="/calepinage/reglages" className="cal-resinc-remplir">Saisir mes mesures</Link>
 }
 
-function BlocAbsent({ titre, phrase, lignes, children, classe }) {
+function BlocAbsent({ titre, phrase, compte, children, classe }) {
   return (
     <section className={`cal-resinc-absent cal-resinc-absent-${classe}`} data-testid={`acal1833-absent-${classe}`}>
       {children}
@@ -152,15 +146,15 @@ function BlocAbsent({ titre, phrase, lignes, children, classe }) {
           <span className="cal-resinc-pastille-vide">À renseigner</span>
         </div>
         <span className="cal-resinc-absent-phrase">{phrase}</span>
-        <LienRemplir lignes={lignes} />
+        <LienRemplir compte={compte} />
       </div>
     </section>
   )
 }
 
-function IndiceAbsent({ lignes }) {
+function IndiceAbsent({ compte }) {
   return (
-    <BlocAbsent titre="Indice de performance" phrase="S'affiche dès que le résultat est complet." lignes={lignes}
+    <BlocAbsent titre="Indice de performance" phrase="S'affiche dès que le résultat est complet." compte={compte}
       classe="indice">
       <svg width="120" height="66" viewBox="0 0 120 66" aria-hidden="true" className="cal-resinc-jauge">
         <path d="M10 60a50 50 0 01100 0" fill="none" className="cal-resinc-jauge-piste" strokeWidth="12" strokeLinecap="round" />
@@ -171,10 +165,10 @@ function IndiceAbsent({ lignes }) {
   )
 }
 
-function AnneesBassesAbsentes({ lignes }) {
+function AnneesBassesAbsentes({ compte }) {
   return (
     <BlocAbsent titre="Années basses" phrase="9 fois sur 10 au-dessus. S'affiche dès que le résultat est complet."
-      lignes={lignes} classe="annees">
+      compte={compte} classe="annees">
       <div className="cal-resinc-hachures" aria-hidden="true">
         {[38, 54, 70, 54, 38].map((h, i) => <span key={i} style={{ height: `${h}%` }} />)}
       </div>
@@ -184,10 +178,10 @@ function AnneesBassesAbsentes({ lignes }) {
 
 /* « Démarrage rapide » : MÊME décompte que la page Démarrage rapide — « Remplir » ne remplit que les réglages
    pour lesquels une valeur publiée existe ; ceux qu'il laisse sans valeur ne sont jamais annoncés comme « à remplir ». */
-function DemarrageRapideBloc({ lignes }) {
-  const remplissables = reglagesRemplissables(lignes).length
+function DemarrageRapideBloc({ compte }) {
+  const remplissables = compte.remplissables.length
   const texte = remplissables > 0
-    ? `Remplir ${remplissables > 1 ? `les ${remplissables} réglages vides` : 'le réglage vide'} avec des valeurs publiées, chacune avec sa source. Vous pourrez les remplacer par vos mesures.`
+    ? `${libelleRemplir(compte)} avec des valeurs publiées, chacune avec sa source. Vous pourrez les remplacer par vos mesures.`
     : 'Aucune valeur publiée n’existe pour ces réglages : le démarrage rapide ne peut pas les remplir, saisissez vos mesures.'
   return (
     <div className="cal-resinc-demarrage" data-testid="acal700-demarrage">
@@ -200,7 +194,7 @@ function DemarrageRapideBloc({ lignes }) {
         <span data-testid="acal700-demarrage-texte">{texte}</span>
       </span>
       {remplissables > 0 ? (
-        <Link to="/calepinage/reglages/demarrage-rapide" className="cal-res-cta"
+        <Link to={lienDemarrage(compte)} className="cal-res-cta"
           data-testid="acal700-lien-reglages">
           Voir les valeurs
           <Icone nom="suivant" taille={18} epaisseur={2.4} />
@@ -224,10 +218,9 @@ export default function ResultatIncomplet({ calepinageId, data, parcours = null,
   const lignes = Array.isArray(aRenseigner?.lignes) ? aRenseigner.lignes : []
   if (lignes.length === 0) return <BandeauBorneHaute total={total} />
   const manquantes = lignes.slice(0, MAX_PASTILLES).map((l) => nomDePerte(l.etape, l.libelle).nom)
-  const societe = lignes.filter((l) => l.nature === 'reglage_societe').length
   // Le compte annoncé (« N pertes ») égale les lignes listées, sinon « et K autres » avec « Voir les étapes ».
-  const annoncees = Math.max((aRenseigner?.etapes_a_compter ?? 0) - (aRenseigner?.etapes_comptees ?? 0), lignes.length)
-  const autres = annoncees - lignes.length
+  const compte = compteDuResultat(aRenseigner)
+  const { autres, reglagesVides: societe } = compte
   return (
     <div className="cal-resinc" data-testid="acal700-incomplet">
       <div className="cal-resinc-haut">
@@ -247,8 +240,8 @@ export default function ResultatIncomplet({ calepinageId, data, parcours = null,
               {typeof total.p50_kwh === 'number'
                 ? <GrosChiffre valeur={total.p50_kwh} decimals={0} unite="kWh" /> : kwh(total.p50_kwh)}
             </p>
-            <p className="cal-resinc-phrase" data-testid="acal700-plafond" title={partIci(aRenseigner, lignes.length)}>
-              {`C'est un plafond : ${phraseDuCompte(aRenseigner, lignes.length)} Le chiffre réel sera plus bas.`}
+            <p className="cal-resinc-phrase" data-testid="acal700-plafond" title={partIci(compte)}>
+              {`C'est un plafond : ${phraseDuCompte(compte)} Le chiffre réel sera plus bas.`}
             </p>
             <Progression aRenseigner={aRenseigner} />
             <div className="cal-resinc-manques" data-testid="acal1833-manques">
@@ -256,7 +249,7 @@ export default function ResultatIncomplet({ calepinageId, data, parcours = null,
             </div>
           </section>
           <CeQuiEstSur data={data} parcours={parcours} avecNote={false} />
-          <IndiceAbsent lignes={lignes} />
+          <IndiceAbsent compte={compte} />
         </div>
         <div className="cal-resinc-colonne">
           <section className="cal-res-carte" data-testid="acal700-liste">
@@ -296,9 +289,9 @@ export default function ResultatIncomplet({ calepinageId, data, parcours = null,
                 </li>
               )}
             </ol>
-            <DemarrageRapideBloc lignes={lignes} />
+            <DemarrageRapideBloc compte={compte} />
           </section>
-          <AnneesBassesAbsentes lignes={lignes} />
+          <AnneesBassesAbsentes compte={compte} />
         </div>
       </div>
     </div>

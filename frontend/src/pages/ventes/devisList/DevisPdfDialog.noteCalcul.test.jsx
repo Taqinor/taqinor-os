@@ -131,6 +131,23 @@ describe('AMOT68 — note de calcul FDA demandable', () => {
     expect(screen.getByText('(ajoute modalités de paiement + RIB)')).toBeInTheDocument()
   })
 
+  it('T4-U3-009 — seules les options qui agissent sur le document du marché sont proposées', () => {
+    // Agricole : le document de 3 pages n'a ni page calepinage ni page étude.
+    const r1 = dialogue({ targetIsAgricole: true, targetMode: 'agricole' })
+    expect(screen.queryByTestId('cal184-calepinage')).toBeNull()
+    expect(screen.queryByText(/Inclure l.étude/)).toBeNull()
+    r1.unmount()
+    // Commercial / industriel : étude intégrée (pas de case), calepinage proposé.
+    const r2 = dialogue({ targetIsAgricole: false, targetIsCi: true, targetMode: 'commercial' })
+    expect(screen.getByTestId('cal184-calepinage')).toBeInTheDocument()
+    expect(screen.queryByText(/Inclure l.étude/)).toBeNull()
+    r2.unmount()
+    // Résidentiel : les deux, et l'étude dit ce qu'elle ajoute (plus « devis industriel »).
+    dialogue({ targetIsAgricole: false, targetMode: 'residentiel', targetHasEtude: true })
+    expect(screen.getByTestId('cal184-calepinage')).toBeInTheDocument()
+    expect(screen.getByText(/Inclure l.étude/).textContent).not.toMatch(/industriel/)
+  })
+
   it('aucune case hors agricole', () => {
     dialogue({ targetIsAgricole: false, targetMode: 'residentiel' })
     expect(screen.queryByRole('checkbox', { name: /note de calcul/i })).toBeNull()

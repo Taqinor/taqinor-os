@@ -942,7 +942,7 @@ describe('ACAL1907 — pièces de la carte', () => {
       const coque = document.createElement('div')
       coque.className = 'rp9-host cal-coque'
       document.body.appendChild(coque)
-      const [regle] = regleMedia('min-width: 1280px', coque).filter((r) => r.style.getPropertyValue('--cal-libre-haut'))
+      const [regle] = regleMedia('min-width: 640px', coque).filter((r) => r.style.getPropertyValue('--cal-libre-haut'))
       expect(regle, 'règle du décalage haut au bureau').toBeTruthy()
       expect(regle.style.getPropertyValue('--cal-libre-haut')).toContain('var(--cal-alertes-h')
     } finally {
@@ -955,7 +955,7 @@ describe('ACAL1907 — pièces de la carte', () => {
   it('Expert > Résultats : la carte reste montée mais n’est plus visible autour du panneau plein', () => {
     document.body.innerHTML = '<div class="rp9-host cal-coque" data-expert="1" data-etape="resultats"><main class="cal-coque-centre"></main></div>'
     const centre = document.querySelector('.cal-coque-centre')
-    const regles = regleMedia('min-width: 1280px', centre).filter((r) => r.style.getPropertyValue('visibility'))
+    const regles = regleMedia('min-width: 640px', centre).filter((r) => r.style.getPropertyValue('visibility'))
     expect(regles.map((r) => r.style.getPropertyValue('visibility'))).toEqual(['hidden'])
     expect(centre).toBeInTheDocument() // jamais démonté
   })

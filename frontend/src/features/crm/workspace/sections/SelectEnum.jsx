@@ -3,7 +3,7 @@ import { enumOptions } from './enumOptions'
 
 // ACAL345 — UN seul <select> d'énumération de la fiche lead (auparavant
 // recopié dans SectionEnergie et SectionPro).
-export default function SelectEnum({ id, cle, ctx, choix }) {
+export default function SelectEnum({ id, cle, ctx, choix, desactives }) {
   const { state, setField, errors } = ctx
   return (
     <select
@@ -11,7 +11,7 @@ export default function SelectEnum({ id, cle, ctx, choix }) {
       aria-invalid={errors[cle] ? true : undefined}
       value={getField(state, cle) ?? ''} onChange={(e) => setField(cle, e.target.value)}
     >
-      {enumOptions(choix)}
+      {enumOptions(choix, desactives)}
     </select>
   )
 }

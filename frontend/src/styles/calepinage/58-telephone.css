@@ -1,36 +1,82 @@
 /* ============================================================================
-   ÉCRANS TÉLÉPHONE DU CALEPINAGE (maquettes Telephone et TelephoneClient, 390×844).
+   ÉCRANS TÉLÉPHONE DU CALEPINAGE (maquettes v2 Telephone et TelephoneClient, 390×844).
    « Relevé de visite » (`releve/ReleveVisite.jsx`) et « Montrer au client »
-   (`client/VueClient.jsx`). Jetons uniquement (thème sombre par les jetons seuls) ;
-   tailles des maquettes : 12 / 14 / 16 / 20 / 28 px ; cibles ≥ 44 px.
+   (`client/VueClient.jsx`). Jetons v2 uniquement (`--cal-*`, 49-jetons-v2.css : thème sombre par
+   les jetons seuls) ; tailles des maquettes : 12 / 13 / 14 / 16 / 20 px ; cibles ≥ 44 px.
    ========================================================================== */
 
 .cal-tel {
-  /* J3 — le bord APPUYÉ de la maquette (tuiles photo, boutons secondaires) : un cran sous `--input`,
-     tiré vers `--muted-foreground` (aucun jeton n'en porte la valeur ; clair ≈ rgb(186,194,214)
-     pour rgb(184,193,217) maquette ; en sombre, le même mélange éclaircit le bord). */
-  --cal-tel-bord: color-mix(in srgb, var(--input) 80%, var(--muted-foreground));
+  /* Le bord APPUYÉ de la maquette v2 : le texte à 24 % (tuiles photo pointillées) ou 18 % (boutons secondaires). */
+  --cal-tel-bord: color-mix(in srgb, var(--cal-texte-1) 24%, transparent);
+  --cal-tel-bord-bouton: color-mix(in srgb, var(--cal-texte-1) 18%, transparent);
+  /* L'ombre de la feuille du bas (vers le haut) : le bleu nuit du thème, jamais un noir. */
+  --cal-ombre-feuille: 0 -12px 30px color-mix(in srgb, var(--cal-bulle) 22%, transparent);
+  /* Où commence la feuille du bas (la poignée la descend). */
+  --cal-tel-feuille-haut: 230px;
+  width: 100%;
   height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--cal-papier);
+  color: var(--cal-texte-1);
   font-family: var(--font-brand);
   font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+/* Les mêmes jetons locaux pour la vue client posée dans la coque (mode présentation). */
+.cal-coque[data-presentation='1'] {
+  --cal-tel-bord: color-mix(in srgb, var(--cal-texte-1) 24%, transparent);
+  --cal-tel-bord-bouton: color-mix(in srgb, var(--cal-texte-1) 18%, transparent);
 }
 .cal-tel :focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
-/* ── En-tête ─────────────────────────────────────────────────────────────── */
-.cal-tel-entete {
-  flex: none;
+/* ── Relevé de visite : la carte du toit derrière une feuille ─────────────── */
+.cal-tel-releve { position: relative; }
+.cal-tel-releve[data-feuille-reduite='1'] { --cal-tel-feuille-haut: 440px; }
+.cal-tel-carte-toit {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: calc(var(--cal-tel-feuille-haut) + 40px);
+  overflow: hidden;
+  background: var(--cal-surface-2);
+}
+/* Le plan servi du toit (celui de « Montrer au client »), ici entre l'en-tête et la feuille : contour doré. */
+.cal-tel-carte-toit .cal-client-plan { position: absolute; inset: 76px auto auto 20px; width: calc(100% - 40px); height: calc(100% - 124px); }
+.cal-tel-cote {
+  position: absolute;
+  height: 26px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: calc(60px + env(safe-area-inset-top, 0px));
-  padding: env(safe-area-inset-top, 0px) 8px 0 4px;
-  background: var(--card);
-  border-bottom: 1px solid var(--border);
+  padding: 0 10px;
+  border-radius: 13px;
+  background: var(--cal-flottante-dense);
+  box-shadow: var(--cal-ombre-flottante);
+  font: 600 0.8125rem var(--font-brand);
+  color: var(--cal-texte-1);
+}
+.cal-tel-cote small { margin-left: 3px; font-size: inherit; font-weight: 500; color: var(--cal-texte-2); }
+.cal-tel-cote-longueur { top: 86px; left: 50%; transform: translateX(-50%); }
+.cal-tel-cote-largeur { right: 24px; top: 138px; }
+
+/* ── En-tête : une pièce flottante (366 × 58 à 390), jamais une barre pleine ── */
+.cal-tel-entete {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: max(12px, env(safe-area-inset-top, 0px));
+  height: 58px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 4px;
+  border-radius: var(--cal-rayon-outils);
+  background: var(--cal-flottante);
+  border: 1px solid var(--cal-flottante-filet);
+  box-shadow: var(--cal-ombre-flottante);
+  -webkit-backdrop-filter: var(--cal-flou);
+  backdrop-filter: var(--cal-flou);
 }
 .cal-tel-retour {
   width: 44px;
@@ -38,55 +84,88 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--foreground);
-  border-radius: 10px;
+  color: var(--cal-texte-1);
+  border-radius: var(--cal-rayon-tuile);
 }
-.cal-tel-projet { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.cal-tel-projet-titre { font-family: var(--font-display); font-weight: 600; font-size: 1rem; line-height: 1.2; }
+.cal-tel-projet { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.cal-tel-projet-titre { font-family: var(--font-display); font-weight: 600; font-size: 1rem; line-height: 1.2; letter-spacing: -0.01em; }
 .cal-tel-projet-ligne {
   font-size: 0.75rem;
-  color: var(--muted-foreground);
+  color: var(--cal-texte-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .cal-tel-pastille {
   flex: none;
+  height: 30px;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--warning) 18%, var(--card));
-  color: var(--warning-text);
+  padding: 0 11px;
+  border-radius: 15px;
+  background: var(--cal-surveiller-fond);
+  color: var(--cal-surveiller-texte);
   font-size: 0.75rem;
   font-weight: 600;
 }
+
+/* ── La feuille du bas : poignée, corps défilant, réponse, pied ───────────── */
+.cal-tel-feuille {
+  position: absolute;
+  inset: var(--cal-tel-feuille-haut) 0 0 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: 26px 26px 0 0;
+  background: var(--cal-papier);
+  box-shadow: var(--cal-ombre-feuille);
+  overflow: hidden;
+}
+.cal-tel-poignee {
+  position: relative;
+  flex: none;
+  align-self: center;
+  width: 96px;
+  height: 20px;
+  min-height: 0; /* la règle tactile globale (44 px) ne vaut pas ici : la cible de 44 px est celle du ::after */
+  padding: 0;
+  border: 0;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* La cible tactile de la poignée : 44 px de haut, le trait reste de 5 px. */
+.cal-tel-poignee::after { content: ''; position: absolute; inset: -12px 0; }
+.cal-tel-poignee span { width: 40px; height: 5px; border-radius: 3px; background: color-mix(in srgb, var(--cal-texte-1) 20%, transparent); }
 
 /* ── Corps ───────────────────────────────────────────────────────────────── */
 .cal-tel-corps {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 16px;
+  padding: 0 16px 12px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 .cal-tel-section { display: flex; flex-direction: column; gap: 8px; }
 .cal-tel-titre-ligne { display: flex; align-items: baseline; justify-content: space-between; }
-.cal-tel-h { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 1.25rem; line-height: 1.1; }
-.cal-tel-compte { font-size: 0.875rem; color: var(--muted-foreground); }
-.cal-tel-barre { height: 6px; border-radius: 3px; background: var(--border); }
-.cal-tel-barre-plein { height: 6px; border-radius: 3px; background: var(--primary); }
+.cal-tel-h { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 1.25rem; line-height: normal; letter-spacing: -0.01em; }
+.cal-tel-compte { font-size: 0.875rem; color: var(--cal-texte-2); }
+.cal-tel-compte b { font: 700 0.9375rem var(--font-display); color: var(--cal-texte-1); }
+/* Un trait doré par genre de photo servi : pris = or, à prendre = piste. */
+.cal-tel-barre { display: flex; gap: 3px; }
+.cal-tel-barre-trait { flex: 1; height: 5px; border-radius: 3px; background: var(--cal-progression-a-venir); }
+.cal-tel-barre-trait[data-fait] { background: var(--cal-production); }
 
 .cal-tel-tuiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .cal-tel-tuile-photo {
   position: relative;
-  height: 84px;
-  border-radius: 10px;
+  height: 64px;
+  border-radius: var(--cal-rayon-tuile);
   overflow: hidden;
-  background: var(--muted);
+  background: var(--cal-surface-2);
   display: flex;
   align-items: flex-end;
   padding: 6px;
@@ -95,42 +174,51 @@
 .cal-tel-tuile-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .cal-tel-tuile-etiquette {
   position: relative;
-  padding: 2px 6px;
-  border-radius: 6px;
-  background: color-mix(in oklch, var(--color-encre) 78%, transparent);
+  height: 22px;
+  display: flex;
+  align-items: center;
+  padding: 0 7px;
+  border-radius: 7px;
+  background: color-mix(in oklch, var(--color-encre) 80%, transparent);
   color: var(--app-tile-glyph);
   font-size: 0.75rem;
+  font-weight: 500;
 }
 .cal-tel-tuile-vide {
-  height: 84px;
+  height: 64px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 3px;
   padding: 4px;
+  box-sizing: border-box;
   text-align: center;
   border: 1.5px dashed var(--cal-tel-bord);
-  border-radius: 10px;
-  background: var(--card);
-  color: var(--foreground);
+  border-radius: var(--cal-rayon-tuile);
+  background: var(--cal-surface);
+  color: var(--cal-texte-1);
   font-weight: 600;
   font-size: 0.75rem;
+  line-height: 1.25;
   cursor: pointer;
 }
+.cal-tel-tuile-vide svg { color: var(--cal-or-texte); }
 .cal-tel-tuile-vide:focus-within { box-shadow: var(--focus-ring); }
 
 .cal-tel-deux { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .cal-tel-champ { display: flex; flex-direction: column; gap: 4px; }
-.cal-tel-libelle { font-size: 0.875rem; color: var(--muted-foreground); }
+.cal-tel-libelle { font-size: 0.8125rem; color: var(--cal-texte-2); }
 .cal-tel-saisie {
   display: flex;
   align-items: center;
-  height: 52px;
-  padding: 0 12px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  gap: 6px;
+  height: 48px;
+  padding: 0 14px;
+  box-sizing: border-box;
+  background: var(--cal-surface);
+  border: 1px solid var(--cal-filet-fort);
+  border-radius: var(--cal-rayon-tuile);
 }
 .cal-tel-saisie input {
   width: 100%;
@@ -138,38 +226,61 @@
   border: 0;
   outline: 0;
   background: transparent;
-  font: 600 1.25rem var(--font-brand);
-  color: var(--foreground);
+  font: 600 1.25rem var(--font-display);
+  color: var(--cal-texte-1);
+  font-variant-numeric: tabular-nums;
 }
 .cal-tel-saisie:focus-within { box-shadow: var(--focus-ring); }
 .cal-tel-saisie-compacte { height: 44px; }
 .cal-tel-saisie-compacte input { font-size: 1rem; }
-.cal-tel-unite { color: var(--muted-foreground); }
+.cal-tel-unite { font-size: 0.875rem; color: var(--cal-texte-2); }
 
-.cal-tel-carte {
+/* Les cartes de mesure (pente, orientation) ne font qu'UNE carte blanche, une ligne chacune, un filet entre. */
+.cal-tel-cartes {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px 14px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--cal-rayon-pile);
+  background: var(--cal-surface);
+  border: 1px solid var(--cal-filet);
+  box-shadow: var(--cal-ombre-posee);
 }
-.cal-tel-carte-ligne { display: flex; align-items: center; gap: 12px; }
-.cal-tel-carte-texte { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.cal-tel-valeur { font-family: var(--font-display); font-weight: 600; font-size: 1.25rem; }
+.cal-tel-carte { display: flex; flex-direction: column; gap: 8px; padding: 4px 8px 4px 14px; }
+.cal-tel-carte + .cal-tel-carte {
+  background: linear-gradient(var(--cal-filet), var(--cal-filet)) 14px 0 / calc(100% - 28px) 1px no-repeat;
+}
+.cal-tel-carte-ligne { display: flex; align-items: center; gap: 12px; min-height: 48px; }
+.cal-tel-carte-texte { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.cal-tel-valeur {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 8px;
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.25rem;
+  letter-spacing: -0.01em;
+}
+.cal-tel-provenance { display: flex; align-items: center; gap: 4px; font: 500 0.8125rem var(--font-brand); letter-spacing: 0; color: var(--cal-texte-2); }
+.cal-tel-provenance[data-ok] { font-weight: 600; color: var(--cal-ok); }
 .cal-tel-bouton {
   flex: none;
   height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 0 14px;
-  border: 1px solid var(--cal-tel-bord);
-  border-radius: 10px;
-  background: var(--card);
-  color: var(--foreground);
+  border: 1px solid var(--cal-tel-bord-bouton);
+  border-radius: var(--cal-rayon-bouton);
+  background: var(--cal-surface);
+  color: var(--cal-texte-1);
   font: 600 0.875rem var(--font-brand);
 }
+.cal-tel-bouton:has(svg) { padding-left: 10px; }
 .cal-tel-bouton:disabled { opacity: 0.55; cursor: not-allowed; }
-.cal-tel-aide { margin: 0; font-size: 0.875rem; color: var(--muted-foreground); }
+.cal-tel-boussole-nord { fill: var(--cal-refus); }
+.cal-tel-boussole-sud { fill: var(--cal-texte-3); }
+.cal-tel-aide { margin: 0; font-size: 0.875rem; color: var(--cal-texte-2); }
 .cal-tel-erreur { margin: 0; font-size: 0.875rem; color: var(--destructive); }
 /* ACAL1812 — la réponse de « Terminer le relevé » : une bannière ENTRE le corps défilant et le pied fixe (jamais sous la
    barre du bas) ; fond teinté de son ton, 14 px, texte lisible en clair comme en sombre. */
@@ -179,13 +290,13 @@
   padding: 10px 16px;
   font-size: 0.875rem;
   line-height: 1.4;
-  color: var(--foreground);
-  background: color-mix(in oklch, var(--success) 12%, var(--card));
-  border-top: 1px solid color-mix(in oklch, var(--success) 35%, var(--card));
+  color: var(--cal-texte-1);
+  background: color-mix(in oklch, var(--success) 12%, var(--cal-surface));
+  border-top: 1px solid color-mix(in oklch, var(--success) 35%, var(--cal-surface));
 }
 .cal-tel-message[data-ton='refus'] {
-  background: color-mix(in oklch, var(--destructive) 10%, var(--card));
-  border-top-color: color-mix(in oklch, var(--destructive) 40%, var(--card));
+  background: color-mix(in oklch, var(--destructive) 10%, var(--cal-surface));
+  border-top-color: color-mix(in oklch, var(--destructive) 40%, var(--cal-surface));
 }
 .cal-tel-message:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 
@@ -194,37 +305,37 @@
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
-  background: color-mix(in oklch, var(--info) 6%, var(--card));
-  border: 1px solid color-mix(in oklch, var(--info) 25%, var(--card));
-  border-radius: 10px;
-  color: var(--info);
-  font-size: 0.875rem;
-  line-height: 1.4;
+  background: color-mix(in srgb, var(--cal-lien) 9%, var(--cal-surface));
+  border-radius: var(--cal-rayon-pile);
+  font-size: 0.8125rem;
+  line-height: 1.45;
 }
-.cal-tel-note svg { flex: none; }
-.cal-tel-note span { color: var(--foreground); }
+.cal-tel-note svg { flex: none; color: var(--cal-lien); }
+.cal-tel-note span { color: var(--cal-texte-1); }
 
-/* ── Pied ────────────────────────────────────────────────────────────────── */
+/* ── Pied : « Voir en 3D » à filet, l'action dorée (54 px, rayon 15) ────────── */
 .cal-tel-pied {
   flex: none;
   display: flex;
   gap: 8px;
-  padding: 12px 16px max(env(safe-area-inset-bottom), 20px);
-  background: var(--card);
-  border-top: 1px solid var(--border);
+  padding: 12px 16px max(env(safe-area-inset-bottom), 18px);
+  background: var(--cal-surface);
+  box-shadow: 0 -1px 0 var(--cal-filet);
 }
 .cal-tel-pied-secondaire {
   flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  /* Maquette : 52 px de contenu + 1 px de bord de chaque côté = 54 px (le doré, sans bord, fait 52). */
-  box-sizing: content-box;
-  height: 52px;
-  padding: 0 16px;
-  border: 1px solid var(--cal-tel-bord);
-  border-radius: 12px;
-  color: var(--foreground);
+  gap: 6px;
+  box-sizing: border-box;
+  height: 54px;
+  padding: 0 18px;
+  border: 1px solid var(--cal-tel-bord-bouton);
+  border-radius: 15px;
+  background: transparent;
+  color: var(--cal-texte-1);
+  font-size: 0.9375rem;
   font-weight: 600;
   text-decoration: none;
 }
@@ -234,49 +345,118 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 52px;
+  height: 54px;
   border: 0;
-  border-radius: var(--cal-rayon-pile);
+  border-radius: 15px;
   background: var(--cal-action);
   color: var(--cal-action-texte);
   box-shadow: var(--cal-action-ombre);
-  font: 700 0.9375rem var(--font-brand);
+  font: 700 1rem var(--font-brand);
 }
 .cal-tel-pied-or:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
 
-/* ── Montrer au client ───────────────────────────────────────────────────── */
+/* ── ACAL1817 — Relevé sur tablette (au-delà de 900 px) : deux colonnes, la barre du bas sur toute la largeur ──
+   Gauche : la carte du toit, les photos posées en bas de la carte. Droite : les mesures. La feuille n'est plus une
+   feuille : elle devient transparente et sa poignée disparaît ; à 390 px rien ne change. */
+@media (min-width: 900px) {
+  .cal-tel-releve .cal-tel-carte-toit { inset: 0 50% calc(66px + max(env(safe-area-inset-bottom, 0px), 18px)) 0; height: auto; }
+  .cal-tel-releve .cal-tel-carte-toit .cal-client-plan { inset: 84px auto auto 32px; width: calc(100% - 64px); height: calc(100% - 300px); }
+  .cal-tel-releve .cal-tel-cote-largeur { top: 40%; right: 36px; }
+  .cal-tel-releve .cal-tel-entete { right: calc(50% + 12px); }
+  .cal-tel-releve .cal-tel-feuille { inset: 0; border-radius: 0; background: transparent; box-shadow: none; overflow: visible; }
+  .cal-tel-releve .cal-tel-poignee { display: none; }
+  .cal-tel-releve .cal-tel-corps {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: 0;
+    padding: 0;
+    overflow: visible;
+  }
+  .cal-tel-releve .cal-tel-photos {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: end;
+    margin: 0 24px 24px;
+    padding: 16px;
+    border-radius: var(--cal-rayon-carte);
+    background: var(--cal-papier);
+    box-shadow: var(--cal-ombre-flottante);
+  }
+  .cal-tel-releve .cal-tel-mesures { grid-column: 2; grid-row: 1; min-height: 0; overflow-y: auto; padding: 24px 32px 12px; }
+  .cal-tel-releve .cal-tel-note { grid-column: 2; grid-row: 2; margin: 0 32px 12px; }
+}
+
+/* ── Montrer au client — téléphone (maquette TelephoneClient v2, 390 × 844) ───────────────────────────────────
+   La scène 3D en haut ; en bas une FEUILLE (rayon 26, ombre vers le haut) qui porte le soleil, la carte BLEU NUIT des chiffres
+   et le pied. Les mêmes pièces, au bureau (≥ 1024 px, maquette Presentation), se posent sur la scène plein écran (voir plus bas). */
+.cal-coque[data-presentation='1'] { --cal-ombre-feuille: 0 -12px 30px color-mix(in srgb, var(--cal-bulle) 22%, transparent); }
+/* La scène prend ce que la feuille laisse (la feuille grandit avec ses chiffres), jamais moins de 260 px. */
+.cal-coque[data-presentation='1'] .cal-coque-corps { flex: 1 1 0; min-height: 260px; }
 .cal-client-scene {
   position: relative;
   height: 464px;
   flex: none;
   overflow: hidden;
-  background: var(--muted);
+  background: var(--cal-surface-2);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 .cal-client-plan { position: absolute; inset: 72px 16px 56px; width: calc(100% - 32px); height: calc(100% - 128px); }
-.cal-client-pan { fill: var(--card); stroke: var(--muted-foreground); stroke-width: 0.15; }
+.cal-client-pan {
+  fill: color-mix(in srgb, var(--cal-action) 24%, var(--cal-surface));
+  stroke: var(--cal-or-trait);
+  stroke-width: 3px;
+  vector-effect: non-scaling-stroke;
+}
 .cal-client-module { fill: var(--color-encre); stroke: var(--color-lune); stroke-width: 0.05; }
-.cal-client-vide { margin: 0; padding: 0 24px; text-align: center; color: var(--muted-foreground); font-size: 0.875rem; }
+.cal-client-vide { margin: 0; padding: 0 24px; text-align: center; color: var(--cal-texte-2); font-size: 0.875rem; }
+/* ACAL1837 — l'attente de la 3D : un ciel et la silhouette d'une maison (rien de technique), jamais le plan brut. */
+.cal-client-attente {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--cal-lien) 22%, var(--cal-surface)), color-mix(in srgb, var(--cal-lien) 6%, var(--cal-papier)) 72%);
+}
+.cal-client-attente svg { width: 100%; height: 72%; }
+.cal-client-attente-colline { fill: color-mix(in srgb, var(--cal-ok) 24%, var(--cal-papier)); }
+.cal-client-attente-maison { fill: color-mix(in srgb, var(--cal-texte-3) 30%, var(--cal-papier)); }
+.cal-client-attente-toit { fill: color-mix(in srgb, var(--cal-refus) 42%, var(--cal-papier)); }
 .cal-client-puce {
   position: absolute;
   top: 16px;
   left: 16px;
   display: flex;
-  flex-direction: column;
-  padding: 8px 12px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: var(--shadow-tile);
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px 8px 8px;
+  background: var(--cal-flottante);
+  border: 1px solid var(--cal-flottante-filet);
+  border-radius: var(--cal-rayon-piece);
+  box-shadow: var(--cal-ombre-flottante);
+  -webkit-backdrop-filter: var(--cal-flou);
+  backdrop-filter: var(--cal-flou);
 }
-.cal-client-puce-titre { font-family: var(--font-display); font-weight: 600; font-size: 1rem; line-height: 1.2; }
-.cal-client-puce-ligne { font-size: 0.75rem; line-height: 1.35; color: var(--muted-foreground); }
+.cal-client-puce-icone {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--cal-rayon-puce);
+  background: var(--cal-actif);
+  color: var(--cal-actif-picto);
+}
+.cal-client-puce-texte { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.cal-client-puce-titre { font-family: var(--font-display); font-weight: 600; font-size: 1rem; line-height: 1.2; letter-spacing: -0.01em; }
+.cal-client-puce-ligne { font-size: 0.75rem; line-height: 1.35; color: var(--cal-texte-2); }
 .cal-client-pastille {
   position: absolute;
   left: 50%;
-  bottom: 14px;
+  bottom: 40px;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
@@ -290,53 +470,220 @@
   white-space: nowrap;
   text-decoration: none;
 }
-/* H6 — l'aide de geste sur la 3D (maquette : 6 × 12 px) : un texte, pas une cible — le doigt passe à la carte. */
-.cal-coque .cal-client-pastille.cal-client-geste { min-height: 0; padding: 6px 12px; line-height: 1.35; pointer-events: none; }
+/* ACAL1837 — le conseil de geste, en haut sous la puce (maquette : 32 px, rayon 16, bleu nuit à 72 %) : un texte, pas une
+   cible — le doigt passe à la carte. */
+.cal-coque .cal-client-pastille.cal-client-geste {
+  left: 16px;
+  bottom: auto;
+  top: calc(max(16px, env(safe-area-inset-top)) + 64px);
+  transform: none;
+  min-height: 0;
+  height: 32px;
+  gap: 7px;
+  padding: 0 12px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--color-encre) 72%, transparent);
+  font-weight: 500;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  pointer-events: none;
+}
 /* H6 — zones sûres du téléphone (encoche, barre d'accueil ; `viewport-fit=cover`) : vue client seulement. */
 .cal-coque[data-presentation='1'] .cal-client-puce,
 .cal-tel .cal-client-puce { top: max(16px, env(safe-area-inset-top)); left: max(16px, env(safe-area-inset-left)); }
 .cal-coque[data-presentation='1'] .cal-tel-pied,
 .cal-tel .cal-client-corps ~ .cal-tel-pied { padding-bottom: max(1.25rem, env(safe-area-inset-bottom)); }
+/* La feuille du bas : papier, rayon 26 qui recouvre le pied de la scène, ombre vers le haut. */
 .cal-client-corps {
-  flex: 1;
+  position: relative;
+  z-index: calc(var(--z-base) + 13);
+  flex: 0 1 auto;
   min-height: 0;
+  margin-top: -26px;
   overflow-y: auto;
-  padding: 12px 16px;
+  padding: 16px 16px 12px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  border-radius: 26px 26px 0 0;
+  background: var(--cal-papier);
+  box-shadow: var(--cal-ombre-feuille);
 }
-.cal-client-tuiles { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); }
-.cal-client-tuiles-3 { grid-template-columns: 0.8fr 1.25fr 0.95fr; }
-.cal-client-tuile {
+/* Le soleil : UNE carte blanche (rayon 18) — lecture 48 × 48, l'heure au-dessus de la piste, Hiver | Été. */
+.cal-coque .cal-client-soleil {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 9px;
+  padding: 8px;
+  background: var(--cal-surface);
+  border: 0;
+  border-radius: var(--cal-rayon-outils);
+  box-shadow: var(--cal-ombre-posee);
+}
+.cal-coque .cal-client-soleil-lecture {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--cal-rayon-pile);
+  background: var(--cal-marine);
+  color: var(--cal-marine-texte);
+  box-shadow: var(--cal-actif-ombre);
+}
+.cal-coque .cal-client-soleil-lecture[aria-pressed='true'] { background: var(--cal-action); color: var(--cal-action-texte); }
+.cal-coque .cal-client-soleil-curseur { grid-column: 2; grid-row: 1; display: flex; flex-direction: column; gap: 2px; align-self: end; }
+.cal-coque .cal-client-soleil-quand { font: 600 0.9375rem var(--font-display); line-height: 1.2; }
+.cal-client-soleil-etiquette { font-size: 0.75rem; color: var(--cal-texte-2); }
+.cal-coque .cal-client-soleil-piste { grid-column: 2; grid-row: 2; position: relative; min-width: 0; align-self: start; }
+.cal-coque .cal-client-soleil .cal-segmente { grid-column: 3; grid-row: 1 / span 2; border-radius: 13px; }
+.cal-coque .cal-client-soleil .cal-segmente > button { height: 44px; padding: 0 11px; border-radius: var(--cal-rayon-puce); font-size: 0.875rem; }
+/* Le bouton du curseur : blanc liseré d'or (maquette : 20 px, 3 px d'or) — celui de l'étape Panneaux reste or liseré de blanc. */
+.cal-coque .cal-client-soleil .cal-pan-heure::-webkit-slider-thumb {
+  width: 20px; height: 20px; background: var(--cal-surface); border: 3px solid var(--cal-action); box-shadow: 0 3px 8px var(--cal-filet-fort);
+}
+.cal-coque .cal-client-soleil .cal-pan-heure::-moz-range-thumb { width: 20px; height: 20px; background: var(--cal-surface); border: 3px solid var(--cal-action); }
+
+/* ACAL1837 — LA CARTE BLEU NUIT : la production en grand, sa pilule « Estimation », puis les autres chiffres servis. */
+.cal-client-marine-bloc { display: flex; flex-direction: column; gap: 12px; }
+.cal-client-nuit {
+  position: relative;
+  box-sizing: border-box;
+  padding: 16px 20px;
+  border-radius: var(--cal-rayon-carte);
+  background: var(--color-encre);
+  color: var(--app-tile-glyph);
+  overflow: hidden;
+  box-shadow: 0 16px 36px color-mix(in srgb, var(--color-encre) 30%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--app-tile-glyph) 9%, transparent);
+}
+.cal-client-nuit::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 88% 0%, color-mix(in srgb, var(--cal-action) 24%, transparent), transparent 58%);
+  pointer-events: none;
+}
+.cal-client-nuit > * { position: relative; }
+.cal-client-marine-kwh { display: flex; flex-direction: column; }
+.cal-client-marine-tete { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cal-client-marine-gros { font: 700 2.875rem/1 var(--font-display); letter-spacing: -0.025em; white-space: nowrap; }
+.cal-client-pilule {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 14px 12px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--cal-action) 18%, transparent);
+  color: color-mix(in srgb, var(--cal-action) 60%, var(--app-tile-glyph));
+  font-size: 0.75rem;
+  font-weight: 600;
 }
-.cal-client-tuile-marine { background: var(--color-encre); border-color: var(--color-encre); color: var(--app-tile-glyph); }
-.cal-client-tuile-valeur { font-family: var(--font-display); font-weight: 700; font-size: 1.75rem; line-height: 1.1; white-space: nowrap; }
-.cal-client-tuile-libelle { font-size: 0.875rem; line-height: 1.3; color: var(--muted-foreground); }
-.cal-client-tuile-marine .cal-client-tuile-libelle { color: var(--color-lune); }
-.cal-client-mention { margin: 0; font-size: 0.75rem; line-height: 1.45; color: var(--muted-foreground); }
+.cal-client-pilule i { width: 6px; height: 6px; border-radius: 3px; background: var(--cal-action); }
+.cal-client-marine-unite { margin-top: 6px; font: 500 0.9375rem var(--font-brand); color: var(--cal-bulle-texte); }
+.cal-client-marine-filet { height: 1px; margin: 12px 0; border: 0; background: color-mix(in srgb, var(--app-tile-glyph) 12%, transparent); }
+.cal-client-marine-grille { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.cal-client-marine-chiffre { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cal-client-marine-valeur { font: 700 1.875rem/1 var(--font-display); letter-spacing: -0.02em; white-space: nowrap; }
+.cal-client-marine-valeur small { font: 500 1rem var(--font-brand); letter-spacing: 0; color: var(--cal-bulle-texte); }
+.cal-client-marine-libelle { font-size: 0.875rem; line-height: 1.3; color: var(--cal-bulle-texte); }
+.cal-client-mention { margin: 0; padding: 0 4px; font-size: 0.75rem; line-height: 1.5; color: var(--cal-texte-2); }
 /* H2 — la 3D n'a pas démarré (atelier en échec de chargement) : dit en bas de la scène, le toit enregistré reste. */
 .cal-client-repli-retard {
-  position: absolute; left: 16px; right: 16px; bottom: 16px; margin: 0; padding: 8px 12px;
-  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
-  font-size: 0.8125rem; line-height: 1.4; color: var(--foreground);
+  position: absolute; left: 16px; right: 16px; bottom: 40px; margin: 0; padding: 8px 12px;
+  background: var(--cal-surface); border: 1px solid var(--cal-filet); border-radius: var(--cal-rayon-puce);
+  font-size: 0.8125rem; line-height: 1.4; color: var(--cal-texte-1);
 }
 .cal-client-repli-reessayer {
-  background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--info);
+  background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--cal-lien);
   text-decoration: underline; cursor: pointer; min-height: 44px;
 }
+/* Le pied de la vue client : « Retour au relevé » porte son chevron (padding resserré côté pictogramme). */
+.cal-tel-pied-secondaire:has(svg) { padding: 0 16px 0 12px; }
+.cal-tel-pied-or { gap: 9px; }
 
-/* J1 — tuiles de la maquette (101 px) : le libellé tient deux lignes, même court (une seule rangée, même hauteur). */
-.cal-client-tuile-libelle { min-height: calc(2 * 1.3em); }
-/* J1 / ACAL1906 — curseur d'heure : la zone de 44 px et sa marge négative viennent de .cal-pan-heure (52-etape-panneaux.css). */
+/* ACAL1838 — « Montrer au client » au BUREAU (≥ 1024 px, maquette Presentation, 1440 × 900) : la scène occupe tout l'écran ;
+   le soleil, la carte héros et les deux boutons FLOTTENT dessus. Mêmes pièces que le téléphone, autre disposition. Valable pour
+   l'atelier en présentation et pour son repli 2D (sans WebGL). Aucun prix, aucun bandeau ni rail de l'atelier. */
+@media (min-width: 1024px) {
+  .cal-tel:not(.cal-tel-releve) { position: relative; }
+  .cal-tel:not(.cal-tel-releve) .cal-client-scene { position: absolute; inset: 0; height: auto; }
+  .cal-coque[data-presentation='1'] .cal-coque-corps { flex: 1 1 auto; }
+  :is(.cal-coque[data-presentation='1'], .cal-tel:not(.cal-tel-releve)) .cal-client-corps { display: contents; }
+  :is(.cal-coque[data-presentation='1'], .cal-tel:not(.cal-tel-releve)) .cal-client-puce {
+    top: 28px; left: 28px; gap: 14px; padding: 12px 18px 12px 14px; border-radius: var(--cal-rayon-outils);
+    box-shadow: var(--cal-ombre-flottante);
+  }
+  :is(.cal-coque[data-presentation='1'], .cal-tel:not(.cal-tel-releve)) .cal-client-puce-icone { width: 40px; height: 40px; border-radius: var(--cal-rayon-tuile); }
+  :is(.cal-coque[data-presentation='1'], .cal-tel:not(.cal-tel-releve)) .cal-client-puce-titre { font-size: 1.125rem; }
+  :is(.cal-coque[data-presentation='1'], .cal-tel:not(.cal-tel-releve)) .cal-client-puce-ligne { font-size: 0.8125rem; }
+  .cal-coque .cal-client-pastille.cal-client-geste {
+    top: 34px; left: 50%; transform: translateX(-50%); height: 36px; gap: 8px; padding: 0 14px; border-radius: 18px; font-size: 0.8125rem;
+  }
+  .cal-client-pastille { bottom: 132px; }
+  /* La carte héros, à droite : 372 de large, le chiffre à 72 px. */
+  :is(.cal-coque[data-presentation='1'], .cal-tel:not(.cal-tel-releve)) .cal-client-marine-bloc {
+    position: absolute; right: 28px; top: 196px; width: 372px; z-index: calc(var(--z-base) + 13);
+  }
+  .cal-client-nuit {
+    padding: 26px 28px;
+    border-radius: 24px;
+    background: color-mix(in srgb, var(--color-encre) 90%, transparent);
+    -webkit-backdrop-filter: var(--cal-flou);
+    backdrop-filter: var(--cal-flou);
+    box-shadow: 0 22px 54px color-mix(in srgb, var(--color-encre) 36%, transparent);
+  }
+  .cal-client-marine-tete { display: contents; }
+  .cal-client-marine-sur { order: 0; font-size: 0.875rem; font-weight: 500; color: var(--cal-bulle-texte); }
+  .cal-client-marine-gros { order: 1; margin-top: 4px; font-size: 4.5rem; letter-spacing: -0.03em; }
+  .cal-client-marine-unite { order: 2; margin-top: 6px; font-size: 1.125rem; }
+  .cal-client-pilule { order: 3; align-self: flex-start; height: 26px; margin-top: 14px; padding: 0 11px; border-radius: 13px; }
+  .cal-client-marine-filet { margin: 22px 0; }
+  .cal-client-marine-grille { gap: 18px; }
+  .cal-client-marine-valeur { font-size: 2.5rem; }
+  .cal-client-marine-valeur small { font-size: 1.25rem; }
+  .cal-client-marine-mentions { display: flex; flex-direction: column; gap: 6px; margin-top: 22px; }
+  .cal-client-nuit .cal-client-mention { padding: 0; font-size: 0.8125rem; line-height: 1.5; color: var(--cal-bulle-texte); }
+  /* Pourquoi « Envoyer le lien » est grisé : sous les boutons, entière (la maquette montre un bouton actif, le lien ne se prépare pas ici). */
+  :is(.cal-coque[data-presentation='1'], .cal-tel:not(.cal-tel-releve)) .cal-client-raison {
+    position: absolute; right: 28px; top: 88px; width: 372px; box-sizing: border-box; padding: 8px 14px;
+    border-radius: var(--cal-rayon-pile); background: var(--cal-flottante); border: 1px solid var(--cal-flottante-filet);
+    box-shadow: var(--cal-ombre-flottante); -webkit-backdrop-filter: var(--cal-flou); backdrop-filter: var(--cal-flou);
+    z-index: calc(var(--z-base) + 13);
+  }
+  /* La barre du soleil, pleine largeur en bas (1384 × 76 à 1440) : lecture · « Soleil · 21 juin · 12 h » · curseur et repères · saison. */
+  .cal-coque .cal-client-soleil {
+    position: absolute; left: 28px; right: 28px; bottom: 28px; height: 76px; box-sizing: border-box; z-index: calc(var(--z-base) + 13);
+    grid-template-columns: 50px 118px minmax(0, 1fr) auto; grid-template-rows: auto; column-gap: 20px; row-gap: 0; padding: 0 18px 0 14px;
+    border-radius: var(--cal-rayon-carte); background: var(--cal-flottante-dense); border: 1px solid var(--cal-flottante-filet);
+    box-shadow: var(--cal-ombre-outils); -webkit-backdrop-filter: var(--cal-flou); backdrop-filter: var(--cal-flou);
+  }
+  .cal-coque .cal-client-soleil-lecture { grid-row: 1; width: 50px; height: 50px; border-radius: var(--cal-rayon-piece); }
+  .cal-coque .cal-client-soleil-curseur { grid-column: 2; grid-row: 1; align-self: center; gap: 2px; }
+  .cal-coque .cal-client-soleil-quand { font-size: 1.0625rem; font-weight: 600; }
+  .cal-coque .cal-client-soleil-piste { grid-column: 3; grid-row: 1; align-self: center; }
+  .cal-client-soleil-reperes { display: flex; justify-content: space-between; margin-top: 10px; font-size: 0.75rem; color: var(--cal-texte-3); }
+  .cal-client-soleil-reperes span[data-courant] { font-weight: 700; color: var(--cal-texte-1); }
+  .cal-coque .cal-client-soleil .cal-segmente { grid-column: 4; grid-row: 1; padding: 4px; border-radius: var(--cal-rayon-pile); }
+  .cal-coque .cal-client-soleil .cal-segmente > button { height: 42px; padding: 0 18px; }
+  .cal-coque .cal-client-soleil .cal-pan-heure::-webkit-slider-thumb { width: 24px; height: 24px; }
+  .cal-coque .cal-client-soleil .cal-pan-heure::-moz-range-thumb { width: 24px; height: 24px; }
+  /* « Retour à l'atelier » et « Envoyer le lien » : deux boutons de 48 de haut en haut à droite, sans barre. */
+  :is(.cal-coque[data-presentation='1'], .cal-tel:not(.cal-tel-releve)) .cal-tel-pied {
+    position: absolute; right: 28px; top: 28px; z-index: calc(var(--z-base) + 13);
+    gap: 10px; padding: 0; background: transparent; box-shadow: none;
+  }
+  :is(.cal-coque[data-presentation='1'], .cal-tel:not(.cal-tel-releve)) .cal-tel-pied-secondaire {
+    height: 48px; padding: 0 18px; gap: 8px; border-radius: var(--cal-rayon-pile); font-size: 0.875rem;
+    background: var(--cal-flottante); border: 1px solid var(--cal-flottante-filet);
+    box-shadow: var(--cal-ombre-flottante); -webkit-backdrop-filter: var(--cal-flou); backdrop-filter: var(--cal-flou);
+  }
+  :is(.cal-coque[data-presentation='1'], .cal-tel:not(.cal-tel-releve)) .cal-tel-pied-or {
+    flex: none; height: 48px; padding: 0 20px; border-radius: var(--cal-rayon-pile); font-size: 0.875rem;
+  }
+}
 
 /* ACAL1809 — l'entrée du bandeau de l'atelier : « Relevé » au doigt, « Montrer au client » à la souris (BarreProjet.jsx).
    Bouton secondaire (filet, texte bleu nuit) : jamais un second aplat doré ni bleu nuit à côté de « Générer le devis ». */

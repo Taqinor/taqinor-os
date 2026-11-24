@@ -13,6 +13,8 @@
        par `fileEnvoiPhotos.deposerOuMettreEnFile` (la file hors ligne existante).
    ========================================================================== */
 
+import { creerRepere, lngLatVersMetres, ORDRE_LNGLAT } from '../repere'
+
 export const LONGUEUR = 'Longueur'
 export const LARGEUR = 'Largeur'
 
@@ -75,6 +77,31 @@ export function mesureDuCapteur(inclinaison, visee) {
   }
 }
 
+/**
+ * ACAL1836 — les cotes du toit DÉJÀ CRÉÉ, reprises dans « Longueur » et « Largeur » : seulement quand le pan est
+ * un RECTANGLE lu sur ses sommets servis (4 coins à angle droit, côtés opposés égaux) ; la longueur est le grand côté.
+ * Tout autre contour : `null` (rien n'est repris, rien n'est inventé). { Longueur, Largeur } en mètres au dixième.
+ */
+export function cotesDuToit(zone) {
+  const brut = Array.isArray(zone?.vertices) ? zone.vertices : []
+  const sommets = brut.length === 5 && brut[0][0] === brut[4][0] && brut[0][1] === brut[4][1] ? brut.slice(0, 4) : brut
+  if (sommets.length !== 4 || sommets.some((p) => !Array.isArray(p) || !Number.isFinite(Number(p[0])) || !Number.isFinite(Number(p[1])))) return null
+  const repere = creerRepere({ origine_lnglat: sommets[0], ordre: ORDRE_LNGLAT })
+  const m = sommets.map((p) => lngLatVersMetres(repere, p, ORDRE_LNGLAT))
+  const cote = (i) => ({ x: m[(i + 1) % 4].x - m[i].x, y: m[(i + 1) % 4].y - m[i].y })
+  const long = (v) => Math.hypot(v.x, v.y)
+  const aretes = [0, 1, 2, 3].map(cote)
+  const droits = [0, 1, 2, 3].every((i) => {
+    const a = aretes[i]
+    const b = aretes[(i + 1) % 4]
+    return long(a) > 0 && long(b) > 0 && Math.abs(a.x * b.x + a.y * b.y) / (long(a) * long(b)) < 0.03
+  })
+  const [a, b, c, d] = aretes.map(long)
+  if (!droits || Math.abs(a - c) > 0.02 * Math.max(a, c) || Math.abs(b - d) > 0.02 * Math.max(b, d)) return null
+  const dixieme = (v) => Math.round(v * 10) / 10
+  return { [LONGUEUR]: dixieme(Math.max(a, b)), [LARGEUR]: dixieme(Math.min(a, b)) }
+}
+
 /** D'où vient la pente enregistrée sur le pan — jamais « mesurée » sans le capteur. */
 function provenancePente(zone) {
   const source = zone?.pitchSource
@@ -96,16 +123,23 @@ function provenancePente(zone) {
  */
 export function penteDuPan(zone, pente = null) {
   if (pente) {
-    return { valeur: `${degres(pente.degres)} · ${pente.capteur ? 'mesurée' : 'saisie à la main'}`, aide: null, bouton: 'Mesurer encore' }
+    const provenance = pente.capteur ? 'mesurée' : 'saisie à la main'
+    return { valeur: `${degres(pente.degres)} · ${provenance}`, nombre: degres(pente.degres), provenance, aide: null, bouton: 'Mesurer encore' }
   }
-  if (zone?.roofType === 'flat') return { valeur: 'Toit plat', aide: null, bouton: 'Mesurer' }
+  if (zone?.roofType === 'flat') return { valeur: 'Toit plat', nombre: 'Toit plat', provenance: null, aide: null, bouton: 'Mesurer' }
   const deg = zone?.pitchDeg === null || zone?.pitchDeg === undefined ? NaN : Number(zone.pitchDeg)
-  if (!Number.isFinite(deg)) return { valeur: null, aide: null, bouton: 'Mesurer' }
+  if (!Number.isFinite(deg)) return { valeur: null, nombre: null, provenance: null, aide: null, bouton: 'Mesurer' }
   const provenance = provenancePente(zone)
   if (!provenance) {
-    return { valeur: `${degres(deg)} · à confirmer`, aide: 'Valeur de départ du pan, jamais mesurée.', bouton: 'Mesurer' }
+    return {
+      valeur: `${degres(deg)} · à confirmer`, nombre: degres(deg), provenance: 'à confirmer',
+      aide: 'Valeur de départ du pan, jamais mesurée.', bouton: 'Mesurer',
+    }
   }
-  return { valeur: `${degres(deg)} · ${provenance}`, aide: null, bouton: provenance === 'mesurée' ? 'Mesurer encore' : 'Mesurer' }
+  return {
+    valeur: `${degres(deg)} · ${provenance}`, nombre: degres(deg), provenance, aide: null,
+    bouton: provenance === 'mesurée' ? 'Mesurer encore' : 'Mesurer',
+  }
 }
 
 /** La ligne sous « Relevé de visite » : le client (ou le lead) — ville, lus sur le détail servi

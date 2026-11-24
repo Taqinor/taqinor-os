@@ -457,6 +457,55 @@ describe('ACAL507 — « Vouliez-vous dire » ne s’applique jamais seul', () =
   });
 });
 
+// T4-B4-005 — recliquer le PREMIER coin pour fermer posait un 5ᵉ sommet (doublon du 1ᵉʳ) : le pan enregistré avait 5 sommets,
+// le rectangle 4 coins, et Longueur/Largeur restaient désactivés. Un clic sur le 1ᵉʳ coin FERME le tracé, sans sommet ajouté.
+describe('T4-B4-005 — recliquer le premier coin ferme le tracé, jamais un sommet en double', () => {
+  // Projection Web Mercator (tuiles de 512 px, comme `metresParPixel`) : le point ÉCRAN d'un clic, comme MapLibre le
+  // donne (`e.point`). Seul un clic (il porte son point écran) peut fermer, sur la pastille du 1ᵉʳ coin
+  // (VERTEX_GRAB_PX = 14 px au zoom courant).
+  const ZOOM = 20;
+  const projeter = (ll: [number, number] | { lng: number; lat: number }) => {
+    const [lng, lat] = Array.isArray(ll) ? ll : [ll.lng, ll.lat];
+    const monde = 512 * 2 ** ZOOM;
+    const phi = (lat * Math.PI) / 180;
+    return { x: ((lng + 180) / 360) * monde, y: ((1 - Math.log(Math.tan(phi) + 1 / Math.cos(phi)) / Math.PI) / 2) * monde };
+  };
+  const cliquer = (draw: { addVertex: (v: [number, number], pt?: { x: number; y: number }) => void }, ll: [number, number]) =>
+    draw.addVertex(ll, projeter(ll));
+  function monter() {
+    document.body.innerHTML = '<button id="rp9-finish" type="button"></button>';
+    const map = { getSource: () => undefined, ...methodesCarteInertes(), getZoom: () => ZOOM, getCenter: () => ({ lng: -7.6, lat: 33.5 }), getCanvas: () => ({ clientWidth: 800, clientHeight: 600 }) };
+    const coins: [number, number][] = [[-7.6, 33.5], [-7.5999, 33.5], [-7.5999, 33.50008]];
+    const ctx = { opts: { maptilerKey: 'K', reducedMotion: true }, vertices: coins.map((c) => [...c]), obstacles: [], areas: [], activeAreaId: 'a1', closed: false, centroid: [-7.6, 33.5] } as unknown as Ctx;
+    const draw = createMapDraw(ctx, { map: map as never, setStatus: vi.fn(), updateAreaReadout: vi.fn() });
+    const fermer = vi.fn(() => { (ctx as { closed: boolean }).closed = true; });
+    document.getElementById('rp9-finish')!.addEventListener('click', fermer);
+    return { draw, ctx, fermer };
+  }
+
+  it('un clic à 0,2 m du premier coin ferme le tracé à 3 sommets ; un clic ailleurs pose un coin', () => {
+    const { draw, ctx, fermer } = monter();
+    cliquer(draw, [-7.6 + 0.000002, 33.5 + 0.000001]); // ≈ 0,2 m du premier coin : sur sa pastille
+    expect(ctx.vertices).toHaveLength(3);
+    expect(fermer).toHaveBeenCalledTimes(1);
+    const autre = monter();
+    cliquer(autre.draw, [-7.6, 33.50008]); // le 4ᵉ coin du rectangle, à ~9 m du premier
+    expect(autre.ctx.vertices).toHaveLength(4);
+    expect(autre.fermer).not.toHaveBeenCalled();
+  });
+
+  it('hors de la pastille (≈ 20 px) ou sans point écran (clavier) : un coin est posé, jamais une fermeture', () => {
+    const pres = monter();
+    cliquer(pres.draw, [-7.6 - 0.0000135, 33.5 + 0.000001]); // ≈ 1,25 m ≈ 20 px à l'ouest au zoom 20 : voisin, pas sur la pastille
+    expect(pres.ctx.vertices).toHaveLength(4);
+    expect(pres.fermer).not.toHaveBeenCalled();
+    const clavier = monter();
+    clavier.draw.addVertex([-7.6 + 0.000002, 33.5 + 0.000001]); // même point qu'au 1ᵉʳ test, mais sans clic
+    expect(clavier.ctx.vertices).toHaveLength(4);
+    expect(clavier.fermer).not.toHaveBeenCalled();
+  });
+});
+
 describe('ACAL506 / ACAL507 — geocode dans le champ « Adresse »', () => {
   function monter() {
     document.body.innerHTML =

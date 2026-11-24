@@ -244,3 +244,26 @@ describe('R1-10 — saisie française des champs de ligne', () => {
     expect(champ('Prix unit. TTC').value).toBe('1234.56')
   })
 })
+
+// T4-U2-011 — une ligne SANS variante déclarée qui ne compte que dans UNE
+// option (règle des paniers + accessoires Huawei) porte l'étiquette de cette
+// option, avec la raison : l'écran dit la répartition que le PDF fera.
+describe('T4-U2-011 — étiquette d’option déduite', () => {
+  it('« Option sans batterie » + raison Huawei sur une ligne non variantée', () => {
+    render(
+      <table><tbody>{wrap(<DevisLineRow {...baseProps()} optionLigne="sans"
+        raisonOption="accessoire de l’onduleur Huawei" />)}</tbody></table>,
+    )
+    const badge = screen.getByText('Option sans batterie')
+    expect(badge.getAttribute('title')).toContain('accessoire de l’onduleur Huawei')
+  })
+  it('aucune étiquette quand la ligne compte dans les deux options', () => {
+    render(<table><tbody>{wrap(<DevisLineRow {...baseProps()} optionLigne={null} />)}</tbody></table>)
+    expect(screen.queryByText(/Option (sans|avec) batterie/)).toBeNull()
+  })
+  it('« Ne compte dans aucune option » quand la règle l’écarte des deux', () => {
+    render(<table><tbody>{wrap(<DevisLineRow {...baseProps()} optionLigne="aucune"
+      raisonOption="accessoire de l’onduleur Huawei" />)}</tbody></table>)
+    expect(screen.getByText('Ne compte dans aucune option')).toBeInTheDocument()
+  })
+})

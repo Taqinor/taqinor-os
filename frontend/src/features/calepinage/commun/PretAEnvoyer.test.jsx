@@ -22,6 +22,7 @@ vi.mock('../../../api/calepinageApi', () => ({
 
 import calepinageApi from '../../../api/calepinageApi'
 import PretAEnvoyer from './PretAEnvoyer'
+import RailGuide from './RailGuide'
 import { ongletParCle } from '../atelier/onglets'
 import { ETAPE_DU_CODE, MESSAGE_ECHEC, MESSAGE_LENT, rangerControles } from './PretAEnvoyer.helpers'
 
@@ -96,6 +97,29 @@ describe('PretAEnvoyer — ordre des listes (H3)', () => {
       .toEqual(['simulation_fraiche', 'dossier_pieces', 'ecart_pvgis'])
     expect(calepinageApi.calepinages.pretAEnvoyer).toHaveBeenCalledWith(102, undefined)
   })
+
+  // T4-B4-010 — Documents : la tuile Toit du rail se disait « fait » (parcours) pendant que « Prêt à envoyer » listait
+  // deux points Toit à régler. Le rail lit la MÊME lecture que la liste : « 2 à régler », plus jamais « fait ».
+  it('le rail des étapes lit la même liste : Toit « 2 à régler », jamais « fait » quand la liste a des points Toit', async () => {
+    calepinageApi.calepinages.pretAEnvoyer.mockResolvedValue(servi([
+      ligne(modeleARegler, 'pentes_confirmees'), ligne(modeleARegler, 'obstacle_hors_pan'), ligne(modeleOk, 'pans_vides'),
+      ligne(modeleOk, 'kwc_coherent'),
+    ]))
+    render(
+      <MemoryRouter>
+        <RailGuide vertical calepinageId={107} etapeActive="documents" onChoisir={() => {}}
+          etats={{ toit: 'fait', panneaux: 'fait' }} manque={[]} />
+        <PretAEnvoyer testIdCompte="compte" calepinageId={107} groupes />
+      </MemoryRouter>,
+    )
+    await screen.findByTestId('cal-pret-groupe-toit')
+    const toit = screen.getByTestId('cal-etape-toit')
+    await waitFor(() => expect(toit).toHaveTextContent('2 à régler'))
+    expect(toit.dataset.etat).not.toBe('fait')
+    // Panneaux : rien à régler dans la liste, l'état servi reste.
+    expect(screen.getByTestId('cal-etape-panneaux').dataset.etat).toBe('fait')
+    expect(screen.getByTestId('cal-etape-panneaux')).not.toHaveTextContent('à régler')
+  })
 })
 
 describe('PretAEnvoyer — lent n’est pas échoué (H3)', () => {
@@ -142,6 +166,50 @@ describe('PretAEnvoyer — lent n’est pas échoué (H3)', () => {
 
   it('le rangement par étape de l’écran est celui du contrat, que le serveur prend pour filtrer `?etape=`', () => {
     expect(ETAPE_DU_CODE).toEqual(etapeDuCode)
+  })
+})
+
+describe('PretAEnvoyer par étape — quinze contrôles sans défilement interne (ACAL1725)', () => {
+  // Quinze contrôles : six à régler (Électrique et Résultats), neuf bons (Toit et Panneaux n'ont aucun point).
+  const quinze = () => [
+    ...['visite_validee', 'approbation_a_jour', 'pentes_confirmees', 'obstacle_hors_pan'].map((c) => ligne(modeleOk, c)),
+    ...['kwc_coherent', 'taille_sans_facture'].map((c) => ligne(modeleOk, c)),
+    ...['verdict_electrique', 'materiel_designe', 'chutes_tension', 'terre_protections'].map((c) => ligne(modeleARegler, c)),
+    ...['tension_froid', 'orientation_mppt'].map((c) => ligne(modeleOk, c)),
+    ligne(modeleARegler, 'simulation_fraiche'), ligne(modeleARegler, 'ecart_pvgis'), ligne(modeleOk, 'dossier_pieces'),
+  ]
+
+  it('un groupe sans point à régler se replie sur une ligne « Toit — 4 bons », ses contrôles restent lisibles', async () => {
+    calepinageApi.calepinages.pretAEnvoyer.mockResolvedValue(servi(quinze()))
+    monter({ calepinageId: 301, groupes: true })
+    const toit = await screen.findByTestId('cal-pret-groupe-toit')
+    expect(toit.tagName).toBe('DETAILS')
+    expect(toit).not.toHaveAttribute('open')
+    expect(within(toit).getByText('Toit — 4 bons')).toBeTruthy()
+    expect(screen.getByTestId('cal-pret-groupe-panneaux')).toHaveTextContent('Panneaux — 2 bons')
+    expect(codesAffiches(toit)).toHaveLength(4)
+    await userEvent.click(within(toit).getByText('Toit — 4 bons'))
+    expect(toit).toHaveAttribute('open')
+  })
+
+  it('les groupes qui portent un point à régler restent dépliés, en tête, avec leurs six points ; aucune hauteur fixe', async () => {
+    calepinageApi.calepinages.pretAEnvoyer.mockResolvedValue(servi(quinze()))
+    monter({ calepinageId: 302, groupes: true })
+    await screen.findByTestId('cal-pret-groupe-electrique')
+    for (const cle of ['electrique', 'resultats']) {
+      expect(screen.getByTestId(`cal-pret-groupe-${cle}`).tagName).not.toBe('DETAILS')
+    }
+    const groupes = screen.getByTestId('cal-pret-groupes')
+    expect([...groupes.children].map((n) => n.dataset.testid))
+      .toEqual(['cal-pret-groupe-electrique', 'cal-pret-groupe-resultats', 'cal-pret-groupe-toit', 'cal-pret-groupe-panneaux'])
+    expect(groupes.querySelectorAll('li[data-etat="a_regler"]')).toHaveLength(6)
+    // plus de dix contrôles : un groupe déplié ne montre que ses points, le reste suit sur une ligne repliée
+    const reste = within(screen.getByTestId('cal-pret-groupe-electrique')).getByText('Autres contrôles — 2 bons').closest('details')
+    expect(reste).not.toHaveAttribute('open')
+    expect(codesAffiches(reste)).toEqual(['tension_froid', 'orientation_mppt'])
+    expect(within(screen.getByTestId('cal-pret-groupe-resultats')).getByText('Autres contrôles — 1 bon')).toBeTruthy()
+    expect(groupes.style.height).toBe('')
+    expect(groupes.style.maxHeight).toBe('')
   })
 })
 
