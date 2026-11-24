@@ -3068,10 +3068,12 @@ export function construireOmbriere(
 ): ChampPose {
   const hauteurConnue = Number.isFinite(opts.hauteurLibreM as number)
     && (opts.hauteurLibreM as number) > 0;
-  const champ = construireChampPose(plan, {
+  const pose = construireChampPose(plan, {
     ...opts,
     hauteurLibreM: hauteurConnue ? opts.hauteurLibreM : 0,
   });
+  // T4-U4-019 — une ombrière se dit avec SES mots : des travées, jamais des « tables » de champ au sol.
+  const champ = { ...pose, nonMesure: pose.nonMesure.map((m) => (m === 'aucune table rendue par le moteur' ? 'aucune travée rendue par le moteur' : m)) };
   if (hauteurConnue) return champ;
   return {
     ...champ,

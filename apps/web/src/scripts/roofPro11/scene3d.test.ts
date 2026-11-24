@@ -963,6 +963,14 @@ describe('ACAL410 — puces de forme : 4 pans, L refusé sur contour convexe', (
   });
 });
 
+describe('T4-U4-019 — l’ombrière se dit avec ses mots', () => {
+  it('aucune travée posée : « aucune travée rendue par le moteur », jamais « table »', () => {
+    const champ = construireOmbriere({ modules: 0, tables: [], rangees: [] } as never, { hauteurLibreM: 2.5 } as never);
+    expect(champ.nonMesure).toContain('aucune travée rendue par le moteur');
+    expect(champ.nonMesure.join(' ')).not.toMatch(/table/);
+  });
+});
+
 describe('T4-U2-005 — la forme se choisit AVANT « Créer le toit » (ordre de la maquette : Forme puis Dimensions)', () => {
   it('sans contour : la forme est retenue et dite ; à la création du toit, il est découpé dans cette forme', () => {
     let contour: [number, number][] = [];
