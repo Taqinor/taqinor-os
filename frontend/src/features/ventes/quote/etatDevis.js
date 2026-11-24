@@ -221,8 +221,13 @@ export function devisVersEtat(d, { bareme = null, produits: catalogue = [] } = {
     etat.ecoCi = ecoCiDepuisSaisies(e.saisies_economie_ci)
   }
   // QX44 — étude commerciale : catégorie + réponses.
-  if (e.categorie_commerciale) {
-    etat.categorieCommerciale = String(e.categorie_commerciale)
+  // T4-U2-004 — le devis AUTOMATIQUE range la catégorie dans `rythme.categorie_commerciale` (entrées v2), jamais à
+  // plat : même ordre de lecture que la tête du PDF (quote_engine/ci/categories.py) — à plat, puis le rythme, puis
+  // l'étude résolue. Sans cela l'édition disait « Non précisée » pour un devis imprimé « Boulangerie ».
+  const categorieLue = e.categorie_commerciale || e.rythme?.categorie_commerciale
+    || e.etude_ci?.entrees_resolues?.categorie_commerciale?.valeur || null
+  if (categorieLue) {
+    etat.categorieCommerciale = String(categorieLue)
     const reponses = {}
     // CIQ131 / CIQ129 — les réponses se relisent de l'entrée v2 du moteur
     // (`rythme.reponses_categorie`), heures données comprises (cuisson,
