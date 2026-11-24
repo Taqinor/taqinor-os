@@ -2,7 +2,9 @@
 
 Une valeur de pompage SAISIE dans l'ERP porte sa provenance, posée ici par le
 sérialiseur du lead (``LeadSerializer._poser_provenances_pompage``). Une valeur
-effacée efface sa provenance ; une valeur inchangée ne touche à rien.
+effacée efface sa provenance ; une valeur inchangée ne touche à rien ; une
+valeur CORRIGÉE garde l'origine choisie sur la fiche (T4-V2-001) — seule une
+origine posée par un autre chemin (visite, site) cède à l'origine déclarée.
 
 T4-U3-002 — la fiche propose l'origine en liste (la question de l'appel :
 « essai, foreur ou votre estimation ? ») : une origine CHOISIE est gardée ;
@@ -78,7 +80,17 @@ def poser_provenances_pompage(instance, attrs):
                 _refuser_provenance(instance, attrs, valeur, source, choisie)
             attrs[source] = choisie
         elif _change(valeur):
-            attrs[source] = origine if attrs[valeur] is not None else None
+            gardee = _avant(source)
+            if attrs[valeur] is None:
+                attrs[source] = None
+            elif (_avant(valeur) is not None
+                  and gardee in PROVENANCES_POMPAGE_CHOISISSABLES[source]):
+                # T4-V2-001 — seule la valeur est corrigée : l'origine CHOISIE
+                # sur la fiche reste (jamais remplacée en silence, ni une
+                # ligne d'historique que l'utilisateur n'a pas causée).
+                attrs.pop(source, None)
+            else:
+                attrs[source] = origine
         else:
             # Renvoyée telle quelle : rien ne change.
             attrs.pop(source, None)
