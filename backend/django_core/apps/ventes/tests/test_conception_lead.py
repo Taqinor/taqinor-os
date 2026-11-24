@@ -1433,17 +1433,27 @@ class MoteurUniqueTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_u
                                    'jours_ouverture', 'heure_debut', 'compteur_puissance_kva',
                                    'equipements_hors_horaires'}, dites)
 
+    def test_exclusions_de_parite_figees(self):
+        """Relecture ADEV134 — l'exclusion de parité est VISIBLE et ne grossit pas
+        en silence : exactement ``journal_taille_cible`` (raison liée à ADEV150), et
+        chaque exclu reste un golden réel (renommé ou supprimé ⇒ ce test rougit)."""
+        self.assertEqual(set(HORS_PARITE), {'journal_taille_cible'})
+        self.assertIn('ADEV150', HORS_PARITE['journal_taille_cible'])
+        for nom in HORS_PARITE:
+            self.assertTrue((DOSSIER_FIGEAGE / f'{nom}.json').is_file(), f'golden exclu {nom} absent')
+            self.assertNotIn(nom, PARITE)
+
 
 def _test_de_parite(nom):
     def test(self):
-        if nom in HORS_PARITE:  # exclusion VISIBLE, avec sa raison (relecture ADEV134)
-            self.skipTest(HORS_PARITE[nom])
         self._parite(nom)
     test.__doc__ = f'ADEV133 — parité du moteur unique avec le golden « {nom} ».'
     return test
 
 
-for _nom in sorted(PARITE + tuple(HORS_PARITE)):
+# Les exclus de ``HORS_PARITE`` n'ont pas de test de parité : leur exclusion est
+# prouvée par ``MoteurUniqueTests.test_exclusions_de_parite_figees``.
+for _nom in PARITE:
     setattr(MoteurUniqueTests, f'test_parite_{_nom}', _test_de_parite(_nom))
 
 
@@ -1925,12 +1935,11 @@ class PariteStockeeTests(_emprunt(RelanceConceptionTests, '_relancer'),
 
 def _test_de_parite_stockee(nom):
     def test(self):
-        if nom in HORS_PARITE:  # exclusion VISIBLE, même raison que la parité du moteur
-            self.skipTest(HORS_PARITE[nom])
         self._parite_stockee(nom)
     test.__doc__ = f'ADEV138 — parité STOCKÉE de la conception avec le golden « {nom} ».'
     return test
 
 
-for _nom in sorted(PARITE + tuple(HORS_PARITE)):
+# Mêmes exclus que la parité du moteur (``test_exclusions_de_parite_figees``).
+for _nom in PARITE:
     setattr(PariteStockeeTests, f'test_parite_stockee_{_nom}', _test_de_parite_stockee(_nom))
