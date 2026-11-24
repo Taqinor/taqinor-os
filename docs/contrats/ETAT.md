@@ -1,10 +1,10 @@
 # Dossier contractuel — état du chantier L5 (à lire EN PREMIER pour reprendre)
 
 Dernière écriture : 24/11/2026 par la session du poste fixe · branche `claude/erp-lead-contracts-e2fdab`.
-**Prochaine action unique** : lire le rapport de la contre-vérification sur écran réel (tête `d6e459643f`,
-défauts C1 à C10 du premier rejeu + parcours heureux jusqu'au quitus). Sans S1-S2 ouvert et CI verte : passer la
-PR Taqinor/taqinor-os#1539 en « prête » et la mettre en file (`gh pr merge 1539 --auto --merge`). Sinon corriger
-d'abord. Puis démonter la pile privée (voir plus bas) et relâcher les worktrees des lanes.
+**Prochaine action unique** : la PR Taqinor/taqinor-os#1539 est prête et en fusion automatique (file de fusion)
+dès sa CI verte. Ensuite : (1) Reda déploie (`scripts/deploy-prod.ps1`) ; (2) tour 2 de relecteurs après le 28/11
+(quota), en commençant par la liste « Restes » ci-dessous ; (3) étage « vraie vie ». La pile privée de revue est
+démontée (conteneurs, réseau, bases `ctr` / `ctr2`, serveur du front, jonction `node_modules`).
 
 ## Demande et cadre
 - Demande de Reda, mot pour mot (24/11/2026) : « i want you make ERP create 4 contract for each lead signed was we
@@ -116,3 +116,31 @@ ctr-minio`, `docker network rm ctr-net`, `DROP DATABASE ctr`.
 - Restent pour le tour suivant (non bloquants) : en-tête de l'aperçu dans `InstallationDetail.jsx` (référence du
   chantier à côté de celle de l'acte), liste des cas « peut attendre » des rapports de relecteurs, relecture de
   l'arabe par un arabophone, les douze points de `juridique.md` § 4, signature par lien.
+
+## Contre-vérification sur écran réel et clôture de la session (25/11/2026)
+- Second relecteur neuf sur la pile privée (tête `d6e459643f`) : C1, C3, C4, C5, C7 à C10 « ok » ; parcours complet
+  rejoué jusqu'au quitus sur un chantier neuf (contrat signé sur place à 390 px, paiements saisis, variante « 90 %
+  réglés » émise une fois l'encaissement enregistré, réception signée, quitus émis et lu en français et en arabe :
+  somme reçue, tableau des paiements, garanties avec dates de fin, page de conseils). C2 « partiel » (le chapeau du
+  brouillon de clôture disait encore « votre installation est payée ») et un constat neuf (réserve de propriété
+  décochée au contrat mais affirmée par la livraison et la réception) → corrigés par une dernière lane, couverts par
+  des tests (clôture non soldée sans aucune phrase de paiement ; option lue sur le contrat par les trois autres
+  actes), NON rejoués sur écran réel (quota).
+- `main` fusionné dans la branche (seul conflit : la carte du code). Tête finale `244cf0702f` : 29 tests de rendu et
+  d'arabe, 43 tests purs du dossier, 48 tests de l'écran, toutes les gardes hôte vertes.
+
+## Restes (tour 2, aucun n'est bloquant)
+- Écran : la case « Réserve de propriété » reste visible sur la livraison et la réception (le serveur l'ignore, la
+  valeur vient du contrat) ; l'en-tête de l'aperçu (`InstallationDetail.jsx`) montre la référence du chantier à côté
+  de celle de l'acte ; l'éditeur renvoie vers « l'échéancier du devis » alors qu'aucun écran ne modifie l'échéancier
+  d'un devis accepté (la route existe) ; nom accessible « Constat N coché » même quand la case est vide.
+- Rendu arabe : point final d'une phrase française placé à gauche ; « درهم.، » dans la livraison ; « Paiement » et
+  « Virement » laissés en français dans le tableau des paiements du quitus.
+- Serveur : `_garde_signature` ne revérifie pas les paiements de la variante « tranche réglée » si un paiement est
+  supprimé après l'émission ; date de signature papier antérieure à l'émission acceptée.
+- Hors périmètre, vu en passant (ventes) : après une facture d'acompte, le dialogue « Facturer… » propose la tranche
+  suivante à « 96,00 MAD » et ne laisse que « Totalité », refusée en 409 ; une facture libre liée au bon de commande
+  n'est pas comptée dans « Réglé ».
+- Données de démonstration : « Installation » et « Transport » rangés en accessoires par `seed_demo`.
+- À faire par Reda : déployer ; saisir son nom et sa qualité dans le modèle du contrat ; faire relire l'arabe par un
+  arabophone et les douze points de `juridique.md` § 4 par un juriste avant un usage réel.
