@@ -14,28 +14,43 @@ from __future__ import annotations
 
 import dataclasses
 
-from core.calepinage.electrique import MODULES_PAR_CHAINE
 from core.calepinage.types import Parametres
 
 from .degagements import SECTION, allee_technique
 
-__all__ = ['liste_des_suppositions', 'repli_longueur_dossier']
+__all__ = ['liste_des_suppositions', 'reference_de_longueur', 'repli_longueur_dossier']
 
 CHAMP_FICHES = 'fiche technique du module et de l\'onduleur'
 CHAMP_ALLEE = ("panneau Allées de l'atelier (largeur de l'allée technique)")
 
 
+def reference_de_longueur(calepinage):
+    """ACAL2014 — la longueur de chaîne de RÉFÉRENCE : pour un dossier d'appel
+    d'offres, la longueur de son cahier des charges (``core.calepinage.electrique.
+    MODULES_PAR_CHAINE``, lue sur ce chemin SEUL) ; sinon celle de la conception
+    courante (``equipements.materiel_de_la_conception``), ou ``None``."""
+    if getattr(calepinage, 'appel_offre_id', None):
+        from core.calepinage.electrique import MODULES_PAR_CHAINE
+        return MODULES_PAR_CHAINE
+    from .equipements import materiel_de_la_conception
+    return materiel_de_la_conception(calepinage).get('longueur')
+
+
 def repli_longueur_dossier(dossier, origine):
     """La longueur de chaîne retenue quand les fiches ne permettent pas de
-    calculer la fenêtre de tension (``longueur_chaine``, CAL170)."""
+    calculer la fenêtre de tension (``longueur_chaine``, CAL170) : la longueur
+    de référence (``reference_de_longueur``), ou ``None`` quand il n'y en a pas
+    (ACAL2014 : jamais la constante d'appel d'offres pour un lead)."""
+    detail = ("longueur de dossier (%d modules par chaîne) : les fiches ne permettent "
+              "pas de calculer la fenêtre de tension — repli assumé, "
+              "jamais présenté comme un calcul" % dossier if dossier else
+              "longueur de chaîne non calculée : les fiches ne permettent pas de calculer "
+              "la fenêtre de tension — renseigner la fiche du module et de l'onduleur")
     return {
-        'longueur': dossier,
+        'longueur': dossier or None,
         'origine': origine,
-        'detail': "longueur de dossier (%d modules par chaîne) : les fiches "
-                  "ne permettent "
-                  "pas de calculer la fenêtre de tension — repli assumé, "
-                  "jamais présenté comme un calcul" % dossier,
-        'longueur_dossier': dossier,
+        'detail': detail,
+        'longueur_dossier': dossier or None,
         'ecart': None,
         'hors_tolerance': False,
         'par_pan': {},
@@ -56,12 +71,13 @@ def liste_des_suppositions(longueur, societe, origine_dossier):
     """
     suppose = []
     if (longueur or {}).get('origine') == origine_dossier:
+        valeur = (longueur or {}).get('longueur')  # ACAL2014 — la longueur retenue, jamais la constante
         suppose.append({
             'code': 'longueur_chaine_dossier',
-            'libelle': "%d modules par chaîne (longueur retenue au dossier : "
-                       "fiche du module ou de l'onduleur incomplète)"
-                       % MODULES_PAR_CHAINE,
-            'valeur': MODULES_PAR_CHAINE, 'champ': CHAMP_FICHES})
+            'libelle': ("%d modules par chaîne (longueur retenue au dossier : fiche du module ou de "
+                        "l'onduleur incomplète)" % valeur if valeur else
+                        "longueur de chaîne non calculée (fiche du module ou de l'onduleur incomplète)"),
+            'valeur': valeur, 'champ': CHAMP_FICHES})
     if allee_technique((societe or {}).get(SECTION))[0] is None:
         allee = _allee_du_moteur()
         suppose.append({

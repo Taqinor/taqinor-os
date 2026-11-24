@@ -197,12 +197,6 @@ def _longueur_du_devis(conception):
     return ((conception or {}).get('chaines') or {}).get('longueur') or None
 
 
-def longueur_du_devis_lie(calepinage):
-    """ACAL1953 — la longueur de chaîne du devis lié (conception électrique
-    rangée de l'option retenue), ou ``None`` : sans elle, aucun écart."""
-    return _longueur_du_devis(conception_du_devis_lie(calepinage))
-
-
 def bloc_devis_retenu(calepinage, stockee, resolu):
     """ACAL1952 — le bloc ``devis_retenu`` de ``GET entree-electrique/`` : le
     matériel électrique que le devis lié a retenu (provenance « devis ») et les

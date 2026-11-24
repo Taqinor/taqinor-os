@@ -61,8 +61,7 @@ from . import (hors_reseau_declaration as _hors_reseau_declaration,  # ACAL790
                suppositions as _suppositions)  # ACAL980
 from .regle_chaine_publiee import _regle_chaine_publiee  # ACAL645 — extraite
 from .valeurs import nombre as _nombre
-from .devis_retenu import (bloc_devis_retenu, bloc_production_devis,  # ACAL1952-1956
-                           longueur_du_devis_lie, produits_retenus)
+from .devis_retenu import bloc_devis_retenu, bloc_production_devis, produits_retenus  # ACAL1952-1956
 from .equipements import PROVENANCE_MOTEUR, materiel_de_la_conception, options_de_la_conception  # ACAL2013
 
 __all__ = [
@@ -1794,7 +1793,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         getattr(calepinage, 'company', None))
 
     # CAL170 — quelle longueur de chaîne a été retenue, et d'où elle vient.
-    reconciliation = _longueur_chaine_retenue(conception, longueur_du_devis_lie(calepinage))  # ACAL1953
+    reconciliation = _longueur_chaine_retenue(conception, _suppositions.reference_de_longueur(calepinage))
     reconciliation = dict(reconciliation, plafond_modules=_plafond_modules(
         donnees.get('plafond_kwc_par_onduleur'),
         pose.get('puissance_module_wc')))
@@ -1821,11 +1820,10 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     if reconciliation['origine'] == ORIGINE_LONGUEUR_DOSSIER:
         messages.append(reconciliation['detail'])
     elif reconciliation['hors_tolerance']:
-        messages.append(
-            "longueur de chaîne calculée %s contre %s au devis (écart %s) — "
-            "information : le devis n'est pas modifié"
-            % (reconciliation['longueur'], reconciliation['longueur_dossier'],
-               reconciliation['ecart']))
+        messages.append(  # ACAL2014 — la référence : la conception (lead), le cahier des charges (AO)
+            "longueur de chaîne calculée %s contre %s %s (écart %s) — information : le devis n'est pas modifié"
+            % (reconciliation['longueur'], reconciliation['longueur_dossier'], 'au dossier' if getattr(
+                calepinage, 'appel_offre_id', None) else 'à la conception', reconciliation['ecart']))
     if terre['justification_requise'] and not terre['justification_fournie']:
         messages.append(
             "prise de terre non fournie au marché : la justification de "
@@ -2839,7 +2837,7 @@ def rejouer_apres_layout(calepinage, *, user=None):
         conception, _materiel, _donnees, _doc = conception_du_calepinage(
             calepinage)
         _journaliser_ecart_longueur(calepinage, _longueur_chaine_retenue(
-            conception, longueur_du_devis_lie(calepinage)))
+            conception, _suppositions.reference_de_longueur(calepinage)))
     except Exception:  # cf. docstring
         logging.getLogger(__name__).exception(
             'CAL170 : réconciliation de longueur en échec (calepinage %s)',
@@ -2904,19 +2902,16 @@ def _longueur_chaine_retenue(conception, longueur_devis=None):
     n'ont pas la même longueur : aucun nombre unique ne serait vrai, et le
     détail par pan est publié à sa place.
 
-    ACAL1953 — la référence de l'écart est la longueur du DEVIS lié
-    (``longueur_devis``, ACAL1950), sous ``longueur_dossier`` ; sans elle,
-    aucun écart n'est publié. La constante d'appel d'offres
-    ``MODULES_PAR_CHAINE`` ne sert plus que de repli assumé (fiche muette).
+    ACAL2014 — la référence de l'écart (``longueur_devis``, sous
+    ``longueur_dossier``) est ``suppositions.reference_de_longueur`` : la
+    longueur de la CONCEPTION pour un lead, celle du cahier des charges pour un
+    dossier d'appel d'offres ; c'est aussi le repli d'une fiche muette (ACAL980).
     """
-    from core.calepinage.electrique import MODULES_PAR_CHAINE
-
-    dossier = MODULES_PAR_CHAINE
     par_pan = {r.pan: r.longueur_chaine for r in conception.repartitions}
 
     if conception.fiche_incomplete or not par_pan:
         return _suppositions.repli_longueur_dossier(
-            dossier, ORIGINE_LONGUEUR_DOSSIER)  # ACAL980
+            longueur_devis, ORIGINE_LONGUEUR_DOSSIER)  # ACAL980
 
     longueurs = set(par_pan.values())
     longueur = longueurs.pop() if len(longueurs) == 1 else None

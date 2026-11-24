@@ -398,14 +398,15 @@ class MaterielRetenuParLeDevis(BaseMateriel):
         self.assertEqual((materiel['produits']['module'], materiel['provenances']['module']),
                          (essai.pk, PROVENANCE_EXPLICITE))
 
-    def test_acal1953_l_ecart_de_longueur_se_mesure_au_devis(self):
+    def test_acal1953_l_ecart_de_longueur_se_mesure_a_la_conception(self):
+        # ACAL2014 — la référence de l'écart est la longueur de la CONCEPTION (plus celle du devis : 9).
         from apps.calepinage.services.electrique import resultat_calepinage
 
-        self._conception()  # ACAL2013 — le module du calcul vient de la conception
+        self._conception(longueur=14)
         devis = self._devis(self.module_devis, self.onduleur)
-        devis.electrical_design = {'chaines': [{'nb_modules': 14}]}
+        devis.electrical_design = {'chaines': [{'nb_modules': 9}]}
         devis.save(update_fields=['electrical_design'])
-        # Onduleur DÉSIGNÉ : la longueur du devis n'est pas imposée au calcul, elle sert de référence.
+        # Onduleur DÉSIGNÉ : la longueur de la conception n'est pas imposée au calcul, elle sert de référence.
         calepinage = self._calepinage(devis=devis, entree={'onduleur_produit': self.onduleur.pk})
         servi = resultat_calepinage(calepinage)
         longueur = servi['longueur_chaine']
@@ -415,4 +416,4 @@ class MaterielRetenuParLeDevis(BaseMateriel):
         texte = json.dumps(servi, ensure_ascii=False)
         self.assertNotIn('au dossier (écart', texte)
         if calcul != 14:
-            self.assertIn('calculée %s contre 14 au devis' % calcul, texte)
+            self.assertIn('calculée %s contre 14 à la conception' % calcul, texte)
