@@ -24,15 +24,13 @@ from decimal import Decimal, ROUND_HALF_UP
 from django.utils import timezone
 
 from . import types as T
-# Les textes personnalisés (gabarits, alignement, validation) vivent
-# dans ``gabarits`` ; chaque nom reste importable depuis ``contenu``.
-from .gabarits import (  # noqa: F401 — réexportés pour services et tests
-    A_PRECISER, FORME_ARTICLE, ZERO, ContenuInvalide, _SEPARATEURS, _d,
-    _date, _en_base, _forme_stockee, _rendre_article, aligner,
-    articles_en_jetons, compacter_articles, compacter_quitus, ecrire_gabarit,
-    lire_gabarit, message_masques, noms_reperes, quitus_en_jetons,
-    rendre_gabarit, rendre_jetons, resoudre_articles, resoudre_paragraphes,
-    sections_modifiables, texte_litteral, valider_surcharges,
+# Les textes personnalisés (gabarits, alignement, validation) vivent dans
+# ``gabarits`` : services, sélecteurs et tests les importent de là.
+from .gabarits import (
+    A_PRECISER, FORME_ARTICLE, ZERO, _SEPARATEURS, _d, _date, _en_base,
+    _forme_stockee, _rendre_article, articles_en_jetons, compacter_articles,
+    compacter_quitus, message_masques, noms_reperes, quitus_en_jetons,
+    rendre_jetons, resoudre_articles, resoudre_paragraphes, texte_litteral,
 )
 from .rendu import composants as C
 

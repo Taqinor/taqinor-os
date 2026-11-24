@@ -26,6 +26,7 @@ from django.test import SimpleTestCase, TestCase, tag
 
 from apps.crm.models import Client
 from apps.documents.contrats import contenu as K
+from apps.documents.contrats import gabarits as G
 from apps.documents.contrats import services as S
 from apps.documents.contrats import types as T
 from apps.documents.models import ActeContractuel
@@ -588,23 +589,23 @@ class GabaritTests(SimpleTestCase):
     """Fonctions pures du gabarit et de l'alignement (aucune base)."""
 
     def aligner_un(self, jetons, saisi, ctx):
-        return K.ecrire_gabarit(K.aligner([K.lire_gabarit(jetons)], [saisi],
+        return G.ecrire_gabarit(G.aligner([G.lire_gabarit(jetons)], [saisi],
                                           ctx)[0])
 
     def test_lecture_stricte_et_accolades(self):
         """Défaut attrapé : le rendu par ``str.format`` évaluait tout texte
         stocké ; les accolades tapées doivent survivre au rendu."""
         ctx = {'societe': 'TAQINOR'}
-        self.assertEqual(K.rendre_gabarit('{societe} {{x}} {inconnu} {0}',
+        self.assertEqual(G.rendre_gabarit('{societe} {{x}} {inconnu} {0}',
                                           ctx), 'TAQINOR {x} {inconnu} {0}')
-        self.assertEqual(K.rendre_gabarit('{penalite_retard}', ctx),
+        self.assertEqual(G.rendre_gabarit('{penalite_retard}', ctx),
                          'à préciser')
         texte = 'clause {spéciale} {societe} {{ }}'
-        self.assertEqual(K.rendre_gabarit(
-            K.ecrire_gabarit([('t', texte)]), ctx), texte)
+        self.assertEqual(G.rendre_gabarit(
+            G.ecrire_gabarit([('t', texte)]), ctx), texte)
 
     def test_reperes_lus_dans_les_textes(self):
-        noms = K.noms_reperes()
+        noms = G.noms_reperes()
         for nom in ('liste_tranches', 'ecart_regle', 'contrat_du',
                     'penalite_retard', 'total_regle', 'reste_a_regler'):
             self.assertIn(nom, noms)
@@ -625,12 +626,12 @@ class GabaritTests(SimpleTestCase):
                                       acte=type_acte, opts=opts):
                         attendu = module.articles_par_defaut(
                             type_acte, variante, ctx, opts)
-                        jetons = K.articles_en_jetons(
+                        jetons = G.articles_en_jetons(
                             module, type_acte, variante, opts, ctx)
                         self.assertEqual(
                             [{'cle': a['cle'],
-                              'titre': K.rendre_jetons(a['titre'], ctx),
-                              'paragraphes': [K.rendre_jetons(p, ctx)
+                              'titre': G.rendre_jetons(a['titre'], ctx),
+                              'paragraphes': [G.rendre_jetons(p, ctx)
                                               for p in a['paragraphes']]}
                              for a in jetons], attendu)
 
@@ -669,7 +670,7 @@ class GabaritTests(SimpleTestCase):
         for texte in ('{societe[x]}', '{societe[0][1]}', '{client.nom}',
                       '{0}', 'accolade { seule'):
             with self.subTest(texte=texte):
-                self.assertIsInstance(K.rendre_gabarit(texte, ctx), str)
+                self.assertIsInstance(G.rendre_gabarit(texte, ctx), str)
 
     def test_montants_du_texte(self):
         self.assertEqual(
@@ -1376,7 +1377,7 @@ class Ecran:
         return K.construire_contenu(self.acte, langue, self.lecture())
 
     def enregistrer(self, corps, langue='fr'):
-        propre = K.valider_surcharges(self.acte.type, corps, langue)
+        propre = G.valider_surcharges(self.acte.type, corps, langue)
         champ = 'surcharges_ar' if langue == 'ar' else 'surcharges'
         setattr(self.acte, champ, K.personnaliser(self.acte, propre, langue,
                                                   self.lecture()))
@@ -1639,7 +1640,7 @@ class EcranTextesTests(SimpleTestCase):
             'objet': remplacer('fournit, pose', 'fournit, livre, pose')})})
         modele = K.textes_pour_modele(e.acte, 'fr', e.lecture())
         objet = next(x for x in modele['articles'] if x['cle'] == 'objet')
-        self.assertNotIn('Solaire Exemple', K.texte_litteral(
+        self.assertNotIn('Solaire Exemple', G.texte_litteral(
             [objet['titre']] + objet['paragraphes']))
         autre = Ecran(T.CONTRAT, societe='Autre Société SARL', modeles={
             T.CONTRAT: SimpleNamespace(surcharges={'articles': modele[

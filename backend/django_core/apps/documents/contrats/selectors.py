@@ -6,6 +6,7 @@ lecture (un chantier ancien ou créé à la main obtient ses actes à la premiè
 ouverture de l'onglet — conception § 5), qui passe par ``services``.
 """
 from . import contenu as K
+from . import gabarits as G
 from . import types as T
 
 
@@ -165,7 +166,7 @@ def detail_acte(acte, langue='fr', *, droits=None):
         'langues': list(T.LANGUES),
         'sections_personnalisees': K.sections_personnalisees(acte, langue),
         'articles_personnalises': K.articles_personnalises(acte, langue),
-        'sections_modifiables': K.sections_modifiables(acte.type, langue),
+        'sections_modifiables': G.sections_modifiables(acte.type, langue),
         'contenu': contenu,
     })
     return detail
