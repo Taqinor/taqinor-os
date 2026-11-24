@@ -92,7 +92,7 @@ export default function ContratsChantier({
     if (ouvrirApercu) {
       // La référence de l'ACTE (CTR-… / LIV-…) accompagne le titre : l'en-tête de
       // l'aperçu y ajoute celle du chantier.
-      ouvrirApercu(`${acte.titre} — ${acte.reference}`, nomFichier(acte, langue), () => documentsApi.pdfActe(acte.id, langue))
+      ouvrirApercu(`${acte.titre} — ${acte.reference}${acte.statut === 'brouillon' ? ' (brouillon — mention PROJET)' : ''}`, nomFichier(acte, langue), () => documentsApi.pdfActe(acte.id, langue))
       return
     }
     telecharger(acte, langue)

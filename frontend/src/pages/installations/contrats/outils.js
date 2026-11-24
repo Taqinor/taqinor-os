@@ -45,7 +45,7 @@ export function formaterPourcent(valeur) {
 export function libelleStatut(acte) {
   switch (acte.statut) {
     case 'brouillon':
-      return 'Brouillon'
+      return 'Brouillon — le PDF porte la mention PROJET'
     case 'emis':
       return `Émis le ${dateCourte(acte.emis_le)}`
     case 'signe': {

@@ -59,7 +59,7 @@ const AIDE_PARAGRAPHES = 'Une ligne vide sépare deux paragraphes ; une ligne qu
 
 /** Les champs d'une section. `v` = brouillon courant, `m` = fixe la valeur. */
 function ChampsSection({
-  cle, v, m, contenu, titreParDefaut = '', articlesPerso = false, onRetablirArticle,
+  cle, v, m, contenu, titreParDefaut = '', articlesModifies = [], onRetablirArticle,
 }) {
   const langue = useContext(LangueContext)
   const p = `contrats-ed-${cle}`
@@ -136,7 +136,10 @@ function ChampsSection({
           <Zone id={`${p}-${a.cle}-x`} libelle={`Texte de l’article ${i + 1}`} lignes={6}
                 valeur={a.texte} aide={AIDE_PARAGRAPHES}
                 onChange={(x) => m(v.map((r, j) => (j === i ? { ...r, texte: x } : r)))} />
-          {articlesPerso && onRetablirArticle && (
+          {articlesModifies.includes(a.cle) && (
+            <p className="contrats-editeur__aide"><strong>Modifié</strong> : ce texte diffère du texte par défaut.</p>
+          )}
+          {articlesModifies.includes(a.cle) && onRetablirArticle && (
             <Button type="button" size="sm" variant="ghost" className="contrats-acte__bouton"
                     aria-label={`Rétablir l’article ${i + 1} (${a.titre})`}
                     onClick={() => onRetablirArticle(a.cle)}>
@@ -454,7 +457,7 @@ export default function ActeEditeur({
                 m={(valeur) => setBrouillon((b) => ({ ...b, [cle]: valeur }))}
                 contenu={acte.contenu}
                 titreParDefaut={acte.titre}
-                articlesPerso={personnalisees.includes('articles')}
+                articlesModifies={acte.articles_personnalises ?? []}
                 onRetablirArticle={(articleCle) => setARetablir({ cle: 'articles', article: articleCle })}
               />
             </LangueContext.Provider>
