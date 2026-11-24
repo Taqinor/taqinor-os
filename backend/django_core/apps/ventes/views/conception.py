@@ -22,7 +22,32 @@ from rest_framework.decorators import api_view, parser_classes, permission_class
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 
+from apps.ventes.conception.champs import CHAMPS_ENTREES
+from apps.ventes.domain.composition_imposee import CHAMPS_IMPOSES
 from authentication.permissions import HasPermissionOrLegacy, IsAnyRole
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
+
+_ID_MAX = 2147483647
+#: api-fuzz (PR #1552) — le corps de l'aperçu publié tel que la vue le REFUSE en
+#: 400 (``x-corps-resserre``, même convention que ``CORPS_LEAD_OU_CLIENT`` de
+#: ``openapi_docs``) : un porteur non nul est requis (« lead » ou « calepinage »,
+#: un identifiant 0 vaut absent) ; « imposes » ne porte que ``CHAMPS_IMPOSES`` ;
+#: « entrees » que les colonnes de ``CHAMPS_ENTREES`` (union des marchés — la
+#: colonne hors du marché du lead et la valeur illisible restent des refus que
+#: le schéma ne peut pas dire, liés au lead lu en base).
+_APERCU_RESSERRE = {EXTENSION_CORPS_RESSERRE: {
+    'anyOf': [
+        {'required': [porteur], 'properties': {porteur: {'type': 'integer', 'minimum': 1}}}
+        for porteur in ('lead', 'calepinage')],
+    'properties': {
+        'lead': {'maximum': _ID_MAX},
+        'calepinage': {'maximum': _ID_MAX},
+        'imposes': {'type': 'object', 'additionalProperties': False,
+                    'properties': {champ: {} for champ in CHAMPS_IMPOSES}},
+        'entrees': {'type': 'object', 'additionalProperties': False,
+                    'properties': {champ: {} for champ in sorted(
+                        {c for champs in CHAMPS_ENTREES.values() for c in champs})}},
+    }}}
 
 _FORME = ("Forme exacte : apps/ventes/contract_samples/conception_lead.json "
           "(clé « exemple » pour la version rangée, « apercu.reponse » pour l'aperçu).")
@@ -66,6 +91,7 @@ def conception_du_lead(request, lead_id):
         'imposes': serializers.DictField(
             required=False, help_text='Champs imposés de POST devis/auto/ (composition_imposee.CHAMPS_IMPOSES).'),
     }),
+    extensions=_APERCU_RESSERRE,
     responses={200: OpenApiResponse(description=_FORME), 400: _ERREUR, 404: _ERREUR, 409: _ERREUR},
     summary='ADEV137 — aperçu de la conception sur des valeurs tapées (aucune écriture)',
     description="Même moteur que la version rangée, sur une copie en mémoire du porteur ; aucune version "
@@ -88,7 +114,6 @@ def apercu_conception(request):
     if not isinstance(entrees, dict) or not isinstance(imposes, dict):
         return Response({'detail': 'Corps de requête invalide : « entrees » et « imposes » sont des objets.'},
                         status=400)
-    from apps.ventes.domain.composition_imposee import CHAMPS_IMPOSES
     inconnus = sorted(set(imposes) - set(CHAMPS_IMPOSES))
     if inconnus:
         return Response({'detail': 'Champ imposé inconnu : %s.' % ', '.join(inconnus), 'champ': inconnus[0]},
