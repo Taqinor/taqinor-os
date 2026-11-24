@@ -817,6 +817,22 @@ describe('en-tête de pose — suit la pose affichée tant que la scène n’est
     expect(sousTitrePose(servi, null)).toBe('16 panneaux · 11,36 kWc · 1 onduleur 5 kW')
   })
 
+  /* T4-U4-016 / T4-U4-024 — UN compte : pans + champ au sol + ombrière, lu sur le DOCUMENT du constructeur (la carte
+     « Recommandation » ne compte que le pan), suivi quand le document change — pas seulement après un rechargement. */
+  it('T4-U4-016 / T4-U4-024 — avec le constructeur : pan 12 + sol 28 + ombrière 16 = « 56 panneaux · 39,76 kWc », suivi', async () => {
+    monterConstructeur({ panneaux: '12 × 710 W', kwc: '8,52 kWc' })
+    const pan = { id: 'z1', vertices: [[0, 0], [1, 0], [1, 1]], geometry: { count: 12, kwc: 8.52 } }
+    const sol = { kind: 'sol', id: 'sol-1', moduleWc: 710, engine: { modules: 28 } }
+    const omb = { kind: 'ombriere', id: 'omb-1', moduleWc: 710, engine: { modules: 16 } }
+    let doc = { zones: [pan], poseSurfaces: [sol] }
+    const builderApi = { serializeLayout: () => doc }
+    const { result } = renderHook(() => usePoseVivante(true, builderApi))
+    expect(result.current).toEqual({ panneaux: 40, kwc: '28,40 kWc' })
+    doc = { zones: [pan], poseSurfaces: [sol, omb] } // « Enregistrer l'ombrière » : la carte du pan ne bouge pas
+    await waitFor(() => expect(result.current).toEqual({ panneaux: 56, kwc: '39,76 kWc' }), { timeout: 3000 })
+    expect(sousTitrePose({ pose: { total_modules: 54, kwc: 38.34 } }, result.current)).toBe('56 panneaux · 39,76 kWc')
+  })
+
   it('usePoseVivante : lit la carte du constructeur, la suit quand le module change, se tait hors scène modifiée', async () => {
     monterConstructeur({ panneaux: '16 × 710 W', kwc: '11,36 kWc' })
     const { result, rerender } = renderHook(({ actif }) => usePoseVivante(actif), { initialProps: { actif: true } })

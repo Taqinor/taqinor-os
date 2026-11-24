@@ -218,6 +218,14 @@ describe('CAL91 — l’ombrière se totalise avec le site, par bâtiment', () =
     expect(c.pans).toBe(1)
   })
 
+  it('T4-U4-016 — un pan VIDE (aucun contour tracé) n’est ni compté dans « Pans » ni dans les modules', () => {
+    const t = totauxParBatiment({
+      zones: [{ id: 'area-1', vertices: [], geometry: null }],
+      poseSurfaces: [{ kind: 'sol', engine: { modules: 28 } }, { kind: 'ombriere', engine: { modules: 16 } }],
+    })
+    expect(t).toEqual([{ batiment: '(bâtiment unique)', modules: 44, pans: 0, ombrieres: 1, sols: 1 }])
+  })
+
   it('sans `buildingId`, tout tombe dans le bâtiment unique', () => {
     const t = totauxParBatiment({
       zones: [{ id: 'P', geometry: { count: 5 } }],

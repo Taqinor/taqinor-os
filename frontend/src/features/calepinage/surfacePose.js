@@ -265,9 +265,10 @@ export function repereLibre(surfaces, kind) {
 
 const LIBELLE_GENRE = { [KIND_SOL]: 'Champ au sol', [KIND_OMBRIERE]: 'Ombrière', facade: 'Façade' }
 
-/** Un pan TRACÉ (au moins trois sommets) : un pan vide n'est ni compté ni affiché. */
+/** Un pan TRACÉ : un pan dont le contour est listé avec moins de trois sommets (le pan vide d'un calepinage neuf, ou
+    resté vide à côté d'un champ au sol) n'est ni compté ni affiché ; une zone sans liste de sommets reste comptée. */
 export function estPanTrace(zone) {
-  return Array.isArray(zone?.vertices) && zone.vertices.length >= 3
+  return !(Array.isArray(zone?.vertices) && zone.vertices.length < 3)
 }
 
 /** `{ panneaux, kwc, toit: {panneaux, kwc}, surfaces: [{kind, id, libelle, modules, kwc}] }`, ou `null` sans document. */

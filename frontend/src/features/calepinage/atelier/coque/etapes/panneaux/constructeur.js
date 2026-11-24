@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
+import { formatNumber } from '../../../../../../lib/format'
+import { totalPose } from '../../../../surfacePose'
 
 /* ============================================================================
    ÉTAPE « PANNEAUX » — LA LECTURE DU CONSTRUCTEUR (22/11).
@@ -50,12 +52,26 @@ function lirePoseVivante() {
 
 /** La pose affichée, SUIVIE : relue à chaque changement du texte de la carte (changement de module, retrait, remplissage).
     `actif` faux ⇒ `null` (l'en-tête garde alors la pose servie). Sert l'en-tête du projet tant que la scène est modifiée. */
-export function usePoseVivante(actif) {
-  const [pose, setPose] = useState(() => (actif ? lirePoseVivante() : null))
+/* T4-U4-016 / T4-U4-024 — avec le constructeur, la pose se lit sur SON DOCUMENT (`totalPose` : pans tracés + champs au
+   sol + ombrières — la carte « Recommandation » ne compte que les pans), relu toutes les 1,5 s et à chaque changement de
+   la carte : la barre suit le document, pas seulement après un rechargement. Sans constructeur : la carte, comme avant. */
+const PERIODE_DOCUMENT_MS = 1500
+function lirePoseDocument(builderApi) {
+  let layout = null
+  try { layout = builderApi.serializeLayout() ?? null } catch { layout = null }
+  const total = totalPose(layout)
+  if (!total) return null
+  return { panneaux: total.panneaux, kwc: total.kwc == null ? null : `${formatNumber(total.kwc, { decimals: 2, locale: 'fr' })} kWc` }
+}
+
+export function usePoseVivante(actif, builderApi = null) {
+  const parDocument = typeof builderApi?.serializeLayout === 'function'
+  const lire = useCallback(() => (parDocument ? lirePoseDocument(builderApi) : lirePoseVivante()), [parDocument, builderApi])
+  const [pose, setPose] = useState(() => (actif ? lire() : null))
   useEffect(() => {
     if (!actif) return undefined
     const relire = () => setPose((avant) => {
-      const suivante = lirePoseVivante()
+      const suivante = lire()
       return JSON.stringify(suivante) === JSON.stringify(avant) ? avant : suivante
     })
     relire()
@@ -64,8 +80,12 @@ export function usePoseVivante(actif) {
       const element = $(id)
       if (element) observateur.observe(element, { childList: true, characterData: true, subtree: true })
     }
-    return () => observateur.disconnect()
-  }, [actif])
+    const minuteur = parDocument ? window.setInterval(relire, PERIODE_DOCUMENT_MS) : null
+    return () => {
+      observateur.disconnect()
+      if (minuteur != null) window.clearInterval(minuteur)
+    }
+  }, [actif, lire, parDocument])
   return actif ? pose : null
 }
 
