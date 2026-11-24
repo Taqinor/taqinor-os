@@ -1428,7 +1428,8 @@ function AtelierToiture({
             UNIQUEMENT : dit laquelle des deux productions on regarde, sans
             jamais toucher un seul chiffre de `rp9-results` ci-dessus. */}
         {estCalepinage && calepinageId && (
-          <BandeauProvenanceProduction calepinageId={calepinageId} chiffrage={contexte?.chiffrage} />
+          <BandeauProvenanceProduction calepinageId={calepinageId} chiffrage={contexte?.chiffrage}
+            devisLie={Boolean(contexte?.calepinage?.devis_lie || contexte?.calepinage?.devis || contexte?.variante?.devis)} />
         )}
             <OutilsVue builderReady={builderReady} utilisateurCourantId={utilisateurCourantId}
               builderApiActuel={builderApiActuel} builderApi={builderApi} chipClass={chipClass}
