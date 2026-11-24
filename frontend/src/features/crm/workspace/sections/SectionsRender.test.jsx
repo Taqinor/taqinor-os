@@ -47,6 +47,16 @@ describe('LW11 — rendu des sections (port 1:1 des champs)', () => {
     expect(document.querySelector('#lf-gps-lat')).toBeInTheDocument()
   })
 
+  it('T4-U1-031 — « Vérifier la ville » / « Modifier le rattachement » vit DANS le champ Ville, jamais sur « Email »', () => {
+    const state = initState({ lead: { id: 3, nom: 'X', ville: 'Marrakech', ville_reference: 'Marrakech' }, mode: 'edit' })
+    render(<SectionContact state={state} {...base} />)
+    const bouton = screen.getByRole('button', { name: 'Modifier le rattachement' })
+    const champVille = document.querySelector('#lf-ville').closest('.form-group')
+    expect(champVille).not.toBeNull()
+    expect(champVille.contains(bouton)).toBe(true)
+    expect(champVille.contains(document.querySelector('#lf-email'))).toBe(false)
+  })
+
   it('SectionPipeline rend type/priorité/canal/tags SANS select d\'étape', () => {
     render(<SectionPipeline state={createState()} {...base} />)
     expect(document.querySelector('#lf-type-installation')).toBeInTheDocument()
