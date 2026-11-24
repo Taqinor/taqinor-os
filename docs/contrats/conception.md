@@ -87,8 +87,9 @@ s'imprime « à préciser » et lève un avertissement à l'écran, jamais un ch
 **État d'une tranche** : `regle` si le payé cumulé couvre sa cible cumulée (au centime) ; `exigible` pour la première
 tranche non réglée dont le moment est arrivé pour CET acte (contrat : la première ; livraison : jusqu'à la tranche de
 livraison ; réception et clôture : toutes) ; `a_venir` sinon. Variante `tranche_reglee` : les tranches jusqu'à la
-livraison comprise sont SUPPOSÉES réglées (c'est la version « le client a payé ses 90 % ») ; si l'ERP n'a pas
-enregistré ces paiements, un avertissement le dit — l'acte reste émettable.
+livraison comprise sont SUPPOSÉES réglées pour l'aperçu (c'est la version « le client a payé ses 90 % », prête à
+l'avance) ; son ÉMISSION est refusée (409 `paiement_non_enregistre`) tant que l'ERP n'a pas enregistré ces
+paiements : signée, elle vaudrait reçu contre la société (revue 1).
 
 ## 5. Cycle de vie
 
@@ -152,7 +153,12 @@ dont seules les polices et le traitement du logo sont importés.
 | C4 | Écriture réservée Responsable / Admin (comme la signature de livraison existante) | même règle que l'existant | ouvrir à un autre rôle |
 | C5 | Garantie d'installation à 24 mois quand rien n'est saisi | c'est la promesse « Installation 2 ans » imprimée sur le devis | une valeur du modèle |
 | C6 | Signature à distance par lien : seconde vague (la cérémonie GED existe : `ged.services.demander_signature`) | d'abord la signature sur place et papier | — |
-| C7 | Version arabe : seconde vague | l'article 206 de la loi n° 31-08 demande une traduction arabe ; elle doit être relue par un arabophone | à faire avant un usage large |
+| C7 | ~~Version arabe : seconde vague~~ — tranché par Reda le 24/11 : dans cette vague (§ 9) | | |
+| C8 | La version « 90 % réglés » de la livraison ne s'émet que si l'encaissement est enregistré dans l'ERP (elle reste prête et se prévisualise) | signée sur une supposition, elle prouverait contre la société un paiement jamais reçu (revue 1) | saisir le paiement avant d'émettre |
+| C9 | Un article ou un quitus corrigé à la main garde ses valeurs VIVANTES (montants, dates, références redeviennent des repères) ; l'émission est refusée (409 `montant_fige`) si un texte cite un montant qui n'est plus celui de la vente | un contrat ne doit jamais dire autre chose que la vente (revue 1) | retaper le montant |
+| C10 | Réception : sans case cochée, la signature vaut réception sans réserve ; une retenue sur le solde n'existe que chiffrée, plafonnée aux travaux restants, payable huit jours après la levée ; en cas de refus de signer, mise en demeure de recevoir (DOC art. 774) | c'est l'acte qui protège le solde (revue 1) | un texte du modèle |
+| C11 | Durées et dates de fin des garanties, date limite : communes aux deux langues (réglées en français) ; l'arabe ne personnalise que les mots | deux versions signées ensemble ne doivent pas se contredire sur un chiffre (revue 1) | — |
+| C12 | Supprimer un chantier emporte ses brouillons et ses actes annulés ; un acte émis ou signé l'empêche | la preuve ne se supprime pas, un brouillon ne bloque pas | — |
 
 ## 9. Décisions de Reda pendant la construction
 

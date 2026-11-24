@@ -292,9 +292,9 @@ def pv_reception(contenu):
             _montant_du(paiement.get('total_regle'), '', langue),
             f'<p>{libelle("regle_totalite", langue)}</p>', 'ok')
     else:
-        explication = (
-            f'<p>{c.texte_libre(paiement.get("engagement") or "")}</p>'
-            if paiement.get('engagement') else '')
+        # La reconnaissance de la somme due est écrite UNE fois, dans l'article
+        # « Solde du prix » : l'encadré ne la répète plus (revue 1).
+        explication = ''
         if paiement.get('modalites'):
             explication += (f'<p class="petit">'
                             f'{c.texte_libre(paiement["modalites"])}</p>')
