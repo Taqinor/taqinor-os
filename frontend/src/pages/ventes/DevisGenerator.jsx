@@ -1650,7 +1650,7 @@ export default function DevisGenerator({
   // SPL44 — persistance et validation (déplacées telles quelles dans le hook).
   const {
     usableLines, enregistrerAvantModele, versionHistorique, revenirAVersion, handleSubmit,
-    ouvrirConception3D,
+    ouvrirConception3D, confirmerSansLignesEcartees,
   } = usePersistanceDevis({
     navigate, confirm, setClients, setLeads, setSaving,
     setErrors, setWarnings, facturesEcartConfirmeRef,
@@ -2209,6 +2209,7 @@ export default function DevisGenerator({
           setEcheancierSaisie={setEcheancierSaisie} modeInstallation={modeInstallation}
           apercuPompage={apercuPompage} kpiTotal={kpiTotal} handleReset={handleReset}
           onEnregistre={onEnregistre} onVoirPdf={onVoirPdf}
+          onConfirmerSansLignes={confirmerSansLignesEcartees}
         />
       </form>
 

@@ -19,7 +19,10 @@ export default function CarteCreation({
   setEcheancierSaisie, modeInstallation, apercuPompage, kpiTotal, handleReset,
   // EDC7/EDC4 (contrat EDC) — l'écran reste ouvert après l'enregistrement.
   onEnregistre = null, onVoirPdf = null,
+  // T4-U3-008 — confirmation explicite des lignes sans produit écartées.
+  onConfirmerSansLignes = null,
 }) {
+  const { lignes: avisLignes, lignesNombre, ...autresAvis } = warnings || {}
   return (
     <>
       {/* ── QJR624 — Échéancier (Édition complète seulement) ── */}
@@ -49,11 +52,25 @@ export default function CarteCreation({
 
       {/* Avertissements NON bloquants (lead perdu/archivé, chiffres d'étude
           auto) — informatifs, n'empêchent jamais l'enregistrement. */}
-      {Object.values(warnings).filter(Boolean).length > 0 && (
+      {Object.values(autresAvis).filter(Boolean).length > 0 && (
         <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
-          {Object.values(warnings).filter(Boolean).map((w, i) => (
+          {Object.values(autresAvis).filter(Boolean).map((w, i) => (
             <p key={i}>{w}</p>
           ))}
+        </div>
+      )}
+      {/* T4-U3-008 — les lignes sans produit écartées : le bandeau porte SON
+          bouton, jamais un 1er clic muet sur « Créer le devis ». */}
+      {avisLignes && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
+             data-testid="lignes-ecartees" role="status">
+          <p className="min-w-0 flex-1">{avisLignes}</p>
+          {onConfirmerSansLignes && (
+            <Button type="button" size="sm" variant="outline" loading={saving}
+                    onClick={onConfirmerSansLignes}>
+              {`${editDevis ? 'Enregistrer' : 'Créer'} sans ${lignesNombre > 1 ? 'ces lignes' : 'cette ligne'}`}
+            </Button>
+          )}
         </div>
       )}
       {/* Toute raison de blocage est VISIBLE à côté du bouton — jamais de

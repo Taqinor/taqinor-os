@@ -118,4 +118,28 @@ describe('AGNR31 — lignes que l’enregistrement ne gardera pas', () => {
     const [, lignes] = vue.ventesApi.replaceLignesDevis.mock.calls.at(-1)
     expect(lignes.map((l) => l.designation)).not.toContain('Câble')
   }, 60000)
+
+  it('T4-U3-008 — le bandeau des lignes écartées porte SON bouton de confirmation : un geste, jamais un clic muet', async () => {
+    const vue = await monter(`/ventes/devis/nouveau?edit=${DEVIS_REGISTRE.id}`, { devis: DEVIS_REGISTRE })
+    await attendreStable(vue.container, act)
+    await act(async () => {
+      fireEvent.click([...document.querySelectorAll('button')].find((b) => /Ajouter ligne/.test(b.textContent || '')))
+    })
+    const derniere = [...document.querySelectorAll('tr[data-line-key]')].at(-1)
+    await taper(derniere.querySelectorAll('input')[0], 'Câble')
+    await taper(derniere.querySelector('[data-role="line-qty"]'), '2')
+    await enregistrer()
+    await attendreStable(vue.container, act)
+    expect(vue.ventesApi.replaceLignesDevis).not.toHaveBeenCalled()
+    const bandeau = document.querySelector('[data-testid="lignes-ecartees"]')
+    expect(bandeau.textContent).toContain('1 ligne sans produit ne sera pas enregistrée : Câble')
+    expect(bandeau.textContent).toContain('donnez-lui un produit')
+    const confirmer = [...bandeau.querySelectorAll('button')]
+      .find((b) => /Enregistrer sans cette ligne/.test(b.textContent || ''))
+    expect(confirmer).toBeTruthy()
+    await act(async () => { fireEvent.click(confirmer) })
+    await waitFor(() => expect(vue.ventesApi.replaceLignesDevis).toHaveBeenCalled(), { timeout: 5000 })
+    const [, lignes] = vue.ventesApi.replaceLignesDevis.mock.calls.at(-1)
+    expect(lignes.map((l) => l.designation)).not.toContain('Câble')
+  }, 60000)
 })
