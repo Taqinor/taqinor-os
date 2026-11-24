@@ -55,7 +55,7 @@ describe('ACAL37 — la conception d’un devis EST son calepinage', () => {
       .toHaveBeenCalledWith(String(CTX.calepinage.id))
     // D-ACAL-10 — le catalogue de modules est chargé, comme en mode calepinage.
     expect(calepinageApi.calepinages.modulesDisponibles)
-      .toHaveBeenCalledWith(String(CTX.calepinage.id))
+      .toHaveBeenCalledWith(String(CTX.calepinage.id), { suppressErrorToast: true }) // T4-U4-026 — l'écran dit l'échec
     const options = initRoofToolPro8.mock.calls[0][0]
     expect(options.modulesDisponibles).toEqual(MODULES)
     // Plus aucune lecture du contexte DEVIS : le calepinage fait foi.
