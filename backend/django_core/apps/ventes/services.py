@@ -328,6 +328,9 @@ refresh_marge_snapshot = _etudes.refresh_marge_snapshot
 # ACAL992 — la porte unique de chiffrage d'une conception (lue par apps/calepinage).
 from apps.ventes.domain import chiffrage_conception as _chiffrage_conception  # noqa: E402 — anti-cycle (D-ENF22)
 chiffrer_conception = _chiffrage_conception.chiffrer_conception
+# ADEV135 (D-ACAL-97) — l'écrivain UNIQUE de la conception rangée (``ConceptionLead``).
+from apps.ventes.conception import service as _conception_service  # noqa: E402 — anti-cycle (D-ENF22)
+relancer = _conception_service.relancer
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -678,6 +681,7 @@ __all__ = [
     'refresh_marge_snapshot',
     'regler_envoi_gamme',
     'rejeter_paiement',
+    'relancer',
     'renouveler_devis',
     'request_esign_otp',
     'request_otp_lecture',

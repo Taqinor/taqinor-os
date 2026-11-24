@@ -110,12 +110,12 @@ def _refus_localisation(lead):
 
 
 def blocs_du_moteur(etude_params):
-    """Les clés DÉRIVÉES des quatre moteurs d'étude (contrat ``blocs``)."""
-    from apps.ventes.domain import etude_schema as es
-    proprietaires = {es.MOTEUR_HORAIRE, es.MOTEUR_DIMENSIONNEMENT, es.MOTEUR_CI, es.MOTEUR_POMPAGE}
-    return {cle: valeur for cle, valeur in etude_params.items()
-            if (es.SCHEMA.get(cle) or {}).get('nature') == es.DERIVEE
-            and es.SCHEMA[cle]['proprietaire'] in proprietaires}
+    """ADEV135 — contrat ``blocs`` : le contenu COMPLET d'``etude_params`` tel
+    que le devis automatique né de cette conception le porterait (blocs
+    d'étude, ``profils_comparatifs``, ``puissance_kwc``, ``ville_calcul``,
+    ``origine_conception``…), pour qu'un devis créé de la version rangée n'ait
+    rien à recalculer ; jamais les notes vendeur ``journal_auto``."""
+    return {cle: valeur for cle, valeur in etude_params.items() if cle != 'journal_auto'}
 
 
 def _fusion(devis, proprietaire, **cles):

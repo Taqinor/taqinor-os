@@ -545,7 +545,8 @@ NO_STATIC_EMITTER = {
     # Chaque entrée nomme la tâche qui la retire en posant le ``send``.
     "lead_entrees_modifiees",            # émetteur crm — retiré par ALEA68
     "pose_enregistree",                  # émetteur calepinage — retiré par ACAL2011
-    "conception_recalculee",             # émetteur ventes — retiré par ADEV135
+    # ``conception_recalculee`` : RETIRÉ par ADEV135 — émetteur vivant
+    # ``apps/ventes/conception/service.py::relancer``, parité de payload vérifiable.
 }
 
 

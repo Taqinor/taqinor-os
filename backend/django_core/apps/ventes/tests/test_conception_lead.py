@@ -163,13 +163,12 @@ class ContratConceptionLeadTests(SimpleTestCase):
             self.assertIn(entree['source'], SOURCES_ENTREE | {'saisie'}, champ)
 
     def test_blocs_forme_actuelle_du_devis(self):
-        """Les blocs sont ceux que le devis porte AUJOURD'HUI dans
-        ``etude_params`` : clés dérivées du schéma, sous-clés relues dans les
-        contrats existants (jamais une seconde définition)."""
+        """Les blocs sont ce que le devis porte AUJOURD'HUI dans
+        ``etude_params`` (ADEV135 : son contenu COMPLET, sans ``journal_auto``) :
+        clés du schéma, sous-clés des blocs d'étude relues dans les contrats
+        existants (jamais une seconde définition)."""
         from apps.ventes.domain import etude_schema as es
 
-        moteurs = {es.MOTEUR_HORAIRE, es.MOTEUR_DIMENSIONNEMENT, es.MOTEUR_CI,
-                   es.MOTEUR_POMPAGE}
         horaire = _lire('etude_horaire.json')['exemple']
         ci = _lire('etude_ci_preview.json')['cles_etude_params_ci_v2']
         pompage = _lire('etude_pompage_preview.json')['cles_etude_params_v2']
@@ -189,15 +188,15 @@ class ContratConceptionLeadTests(SimpleTestCase):
                 with self.subTest(exemple=nom, bloc=cle):
                     regle = es.SCHEMA.get(cle)
                     self.assertIsNotNone(regle, cle)
-                    self.assertEqual(regle['nature'], es.DERIVEE)
-                    self.assertIn(regle['proprietaire'], moteurs)
-                    if regle['proprietaire'] == es.MOTEUR_POMPAGE:
+                    self.assertNotEqual(cle, 'journal_auto')
+                    if regle['proprietaire'] == es.MOTEUR_POMPAGE and regle['nature'] == es.DERIVEE:
                         self.assertTrue(cle in derivees_pompage
                                         or not isinstance(bloc, dict), cle)
                     if cle in sous_cles:
                         self.assertLessEqual(set(bloc), sous_cles[cle])
                     vus.add(cle)
-        self.assertLessEqual({'etude_horaire', 'dimensionnement', 'etude_ci'}, vus)
+        self.assertLessEqual({'etude_horaire', 'dimensionnement', 'etude_ci', 'puissance_kwc',
+                              'ville_calcul', 'origine_conception'}, vus)
 
     def test_aucune_cle_d_achat_ni_de_marge(self):
         self.assertEqual(_cles_interdites(self.doc), [])
@@ -1298,7 +1297,10 @@ class MoteurUniqueTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_u
 
     def test_blocs_servis_et_deux_options(self):
         resultat = self._parite('res_kwh_declare_ete_different')
-        self.assertEqual(set(resultat.blocs), {'etude_horaire', 'etude_horaire_sans', 'dimensionnement'})
+        # ADEV135 — ``blocs`` = l'``etude_params`` complet du devis automatique.
+        self.assertEqual(resultat.blocs, resultat.etude_params)
+        self.assertLessEqual({'etude_horaire', 'etude_horaire_sans', 'dimensionnement', 'profils_comparatifs',
+                              'puissance_kwc', 'ville_calcul', 'origine_conception'}, set(resultat.blocs))
         self.assertEqual(set(resultat.valeurs), {'sans', 'avec'})
         self.assertNotEqual(resultat.valeurs['sans']['puissance_kwc'], resultat.valeurs['avec']['puissance_kwc'])
 
@@ -1365,3 +1367,141 @@ def _test_de_parite(nom):
 
 for _nom in PARITE:
     setattr(MoteurUniqueTests, f'test_parite_{_nom}', _test_de_parite(_nom))
+
+
+# ── ADEV135 — l'écrivain unique : empreinte égale ⇒ rien, sinon version + 1 ───
+
+class _Evenements:
+    """Les ``conception_recalculee`` reçus pendant un test."""
+
+    def __init__(self, test):
+        from core.events import conception_recalculee
+
+        self.recus = []
+        conception_recalculee.connect(self._recevoir, dispatch_uid='adev135-test')
+        test.addCleanup(conception_recalculee.disconnect, dispatch_uid='adev135-test')
+
+    def _recevoir(self, sender, **kwargs):
+        kwargs.pop('signal', None)
+        self.recus.append(kwargs)
+
+
+def _declencheur(origine='remplissage', **champs):
+    return {'champs': [{'champ': c, 'avant': a, 'apres': b} for c, (a, b) in champs.items()],
+            'origine': origine}
+
+
+class RelanceConceptionTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_utilisateur', '_residentiel',
+                                      '_ci', '_agricole', '_fiches_residentielles', '_site_isole', '_structures',
+                                      '_fiches_ci', '_cas'), TestCase):
+    """ADEV135 — ``conception/service.py::relancer`` : une empreinte égale
+    n'écrit rien ; une empreinte changée range la version suivante (l'ancienne
+    ``courante=False``), le déclencheur avec sa phrase « pourquoi », et émet
+    ``conception_recalculee`` une fois, après validation."""
+
+    def _relancer(self, lead, company, declencheur, **kw):
+        from apps.ventes.conception.service import relancer
+
+        with self.captureOnCommitCallbacks(execute=True):
+            return relancer(lead, company=company, declencheur=declencheur, **kw)
+
+    def test_empreinte_egale_rien_puis_facture_changee_version_suivante(self):
+        from django.utils import timezone
+
+        from apps.crm.models import Lead
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        evenements = _Evenements(self)
+        premiere = self._relancer(lead, company, _declencheur())
+        self.assertTrue(premiere.ecrite)
+        self.assertEqual((premiere.conception.version, premiere.conception.courante), (1, True))
+        v1 = _json(ConceptionLead.objects.filter(pk=premiere.conception.pk).values()[0])
+
+        meme = self._relancer(lead, company, _declencheur('manuel'))  # mutant « toujours écrire » : rouge
+        self.assertEqual((meme.ecrite, meme.conception.pk), (False, premiere.conception.pk))
+        self.assertEqual(ConceptionLead.objects.filter(lead=lead).count(), 1)
+        self.assertEqual(len(evenements.recus), 1)
+
+        Lead.objects.filter(pk=lead.pk).update(facture_hiver=Decimal('2400'))
+        lead.refresh_from_db()
+        suivante = self._relancer(lead, company, _declencheur(
+            'lead_entrees_modifiees', facture_hiver=(Decimal('1800.00'), Decimal('2400.00'))))
+        self.assertTrue(suivante.ecrite)
+        relue = ConceptionLead.objects.get(pk=suivante.conception.pk)
+        self.assertEqual((relue.version, relue.courante, relue.company_id), (2, True, company.pk))
+        self.assertNotEqual(relue.empreinte, premiere.conception.empreinte)
+        self.assertEqual(relue.entrees_utilisees['facture_hiver'], {'valeur': 2400.0, 'source': 'lead'})
+        moment = timezone.localtime(relue.calcule_le)
+        self.assertEqual(relue.declencheur, {
+            'raison': 'Recalculé le %s à %d h %02d : Facture hiver 1 800 → 2 400' % (
+                moment.strftime('%d/%m'), moment.hour, moment.minute),
+            'champs': [{'champ': 'facture_hiver', 'avant': 1800.0, 'apres': 2400.0}],
+            'origine': 'lead_entrees_modifiees'})
+        # La version 1 se relit inchangée, sauf ``courante``.
+        v1_relue = _json(ConceptionLead.objects.filter(pk=premiere.conception.pk).values()[0])
+        self.assertEqual(v1_relue, dict(v1, courante=False))
+        self.assertEqual([e['version'] for e in evenements.recus], [1, 2])
+        self.assertEqual(set(evenements.recus[-1]),
+                         {'company_id', 'lead_id', 'calepinage_id', 'version', 'declencheur'})
+        self.assertEqual(evenements.recus[-1]['declencheur'], relue.declencheur)
+        self.assertEqual(_cles_interdites(relue.valeurs) + _cles_interdites(relue.blocs), [])
+        self.assertEqual(set(relue.valeurs), {'sans', 'avec'})
+        self.assertEqual(relue.option_retenue, 'avec')
+
+        forcee = self._relancer(lead, company, _declencheur('manuel'), forcer=True)
+        self.assertEqual((forcee.ecrite, forcee.conception.version), (True, 3))
+        self.assertTrue(forcee.conception.declencheur['raison'].endswith(' : recalcul demandé'))
+
+    def test_aucune_cle_d_achat_ni_de_marge_meme_si_le_moteur_en_rendait(self):
+        from types import SimpleNamespace
+
+        from apps.ventes.conception import entrees, moteur
+        from apps.ventes.conception.moteur import ResultatConception
+
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'))
+        resultat = ResultatConception(
+            marche='residentiel', entrees_utilisees={}, empreinte='e' * 64, niveau_regles=14,
+            option_retenue='sans', valeurs={'sans': {'nb_panneaux': {'valeur': 4, 'unite': None, 'source': 'moteur',
+                                                                     'marge_ht': 9}}},
+            blocs={'etude_ci': {'prix_achat': 1, 'bilan': [{'prix_achat_ht': 2, 'production_kwh': 3}]},
+                   'marge_snapshot': {'x': 1}})
+        self._patcher(entrees, 'entrees_pour', return_value=SimpleNamespace(empreinte_pose=''))
+        self._patcher(moteur, 'calculer_conception', return_value=resultat)
+        rangee = self._relancer(lead, company, _declencheur()).conception
+        rangee.refresh_from_db()
+        self.assertEqual(rangee.blocs, {'etude_ci': {'bilan': [{'production_kwh': 3}]}})
+        self.assertEqual(rangee.valeurs, {'sans': {'nb_panneaux': {'valeur': 4, 'unite': None, 'source': 'moteur'}}})
+
+    def test_autre_societe_ou_origine_inconnue_rien_n_est_ecrit(self):
+        from authentication.models import Company
+
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'))
+        autre = Company.objects.create(nom='Autre relance', slug='autre-relance-conception')
+        with self.assertRaises(ValueError):
+            self._relancer(lead, autre, _declencheur())
+        with self.assertRaises(ValueError):
+            self._relancer(lead, company, _declencheur('inventee'))
+        self.assertFalse(ConceptionLead.objects.filter(lead=lead).exists())
+
+    def test_phrase_du_declencheur_choix_lisibles_et_motif_sans_champ(self):
+        from datetime import datetime, timezone as tz
+
+        from apps.ventes.conception.service import phrase_du_declencheur
+
+        _company, lead = self._residentiel(facture_hiver=Decimal('1800'))
+        quand = datetime(2026, 11, 23, 13, 5, tzinfo=tz.utc)
+        phrase = phrase_du_declencheur(lead, [
+            {'champ': 'occupation_jour', 'avant': None, 'apres': 'absent'},
+            {'champ': 'ete_differente', 'avant': False, 'apres': True},
+            {'champ': 'conso_mensuelle_kwh', 'avant': 1234.5, 'apres': 1300}], 'lead_entrees_modifiees', quand)
+        self.assertTrue(phrase.startswith('Recalculé le 23/11 à '), phrase)
+        choix = dict(lead._meta.get_field('occupation_jour').choices)
+        self.assertTrue(phrase.endswith(
+            ' : Présence en journée — → %s ; Été différent Non → Oui ; Conso mensuelle (kWh) 1 234,5 → 1 300'
+            % choix['absent']), phrase)
+        self.assertTrue(phrase_du_declencheur(lead, [], 'pose_enregistree', quand).endswith(
+            ' : pose enregistrée sur le calepinage'))
