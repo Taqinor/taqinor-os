@@ -268,6 +268,7 @@ function AtelierToiture({
   const [hashBaseBrouillon, setHashBaseBrouillon] = useState(null)
   const [brouillonPropose, setBrouillonPropose] = useState(null)
   const gestionnaireBrouillonRef = useRef(null)
+  const enregistrementEnVolRef = useRef(false) // T4-U4-025 — aucun brouillon pendant un enregistrement réel
   // ACAL85 — la scène est HYDRATÉE (`onHydrationTerminee`, posé par le boot dans
   // les trois modes). `onApiReady` arrive avant l'hydratation : toute référence
   // « non modifiée » (garde de sortie, amorce du brouillon) se prend APRÈS.
@@ -437,6 +438,8 @@ function AtelierToiture({
       obtenirLayout: () => sansVue(builderApi.current?.serializeLayout?.() ?? null), // H1 — jamais un brouillon de vue
       enPause: () => builderApi.current?.ajoutDePanEnCours?.() === true, // ACAL1329 — rien avant le dernier point
       hacher: empreinteSansVue, // ACAL1345 — choisir un pan dans la liste n'écrit aucun brouillon
+      enregistrementEnCours: () => enregistrementEnVolRef.current, // T4-U4-025
+      referenceInitiale: () => hashSceneReferenceRef.current, // T4-U4-025 — clé neuve : référence = document enregistré
     })
     gestionnaireBrouillonRef.current = gestionnaire
     gestionnaire.demarrer()
@@ -753,6 +756,7 @@ function AtelierToiture({
       return false
     }
     setSending(true)
+    enregistrementEnVolRef.current = true // T4-U4-025
     setGenStatus('Enregistrement du calepinage…')
     try {
       const layout = apiTool.serializeLayout()
@@ -826,7 +830,7 @@ function AtelierToiture({
         // serveur sert déjà : le brouillon local ne porte donc plus rien de
         // plus récent, il s'efface (repli sur `layout` si `serializeLayout()`
         // n'est déjà plus joignable).
-        gestionnaireBrouillonRef.current?.effacerEtAmorcer()
+        gestionnaireBrouillonRef.current?.effacerEtAmorcer(sansVue(layout)) // T4-U4-025 — référence = document enregistré
         setHashBaseBrouillon(resultat?.empreinte_document || hashBaseBrouillon) // ACAL84
         if (!silencieux) toastInfo('Aucun changement')
         setGenStatus(null)
@@ -849,7 +853,7 @@ function AtelierToiture({
       // vient de changer (nouvelle version) : son empreinte change avec lui,
       // ce qui fait démarrer une minuterie/clé neuve pour la suite de la
       // session (l'effet dédié plus haut réagit à `hashBaseBrouillon`).
-      gestionnaireBrouillonRef.current?.effacerEtAmorcer()
+      gestionnaireBrouillonRef.current?.effacerEtAmorcer(sansVue(layout)) // T4-U4-025 — référence = document enregistré
       // ACAL84 — la clé suivante est l'empreinte SERVEUR rendue par l'écriture.
       setHashBaseBrouillon(resultat?.empreinte_document || hashBaseBrouillon)
       setGenStatus(null)
@@ -873,6 +877,8 @@ function AtelierToiture({
         : 'Erreur réseau pendant l’enregistrement. Vérifiez votre connexion puis réessayez.')
       setSending(false)
       return false
+    } finally {
+      enregistrementEnVolRef.current = false // T4-U4-025
     }
   }
 

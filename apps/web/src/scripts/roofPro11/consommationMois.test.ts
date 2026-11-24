@@ -228,4 +228,17 @@ describe('ACAL1610 — grille remplie depuis le document relu', () => {
     expect(construireConsommation(relu, [], false, false).factures_mois).toEqual(TROIS);
     expect('factures_mois' in construireConsommation({ consCurve: new Array(24).fill(0.5) } as never, [], false, false)).toBe(false);
   });
+
+  it('T4-U4-025 — deux sérialisations sans geste, à 4 s d’écart : la même signature (aucun brouillon par tic)', async () => {
+    const { construireConsommation } = await import('./consommationSerialisee');
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-24T17:55:28.193Z'));
+    const ctx = { consCurve: new Array(24).fill(0.5) } as never;
+    const premier = construireConsommation(ctx, [], false, false);
+    vi.setSystemTime(new Date('2026-11-24T17:55:32.191Z'));
+    const second = construireConsommation(ctx, [], false, false);
+    expect(second.source).toEqual(premier.source);
+    expect(premier.source).toEqual({ origine: 'atelier', saisi_le: '2026-11-24T17:55:28.193Z' });
+    expect((ctx as { consSource?: unknown }).consSource).toBeUndefined(); // jamais « relue » pour autant
+  });
 });

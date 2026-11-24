@@ -234,9 +234,86 @@ test('demarrer — sans réglage : sondage de repli, notifierGeste reste directe
   tic(1) // ACAL84 — la scène vient d'être hydratée : première vue = amorce
   assert.equal(storage._donnees.size, 0)
   layout = { zones: [{ id: 'z1' }, { id: 'z2' }] }
-  tic(1) // le sondage détecte le changement
+  tic(1) // le sondage détecte le changement…
+  assert.equal(storage._donnees.size, 0, 'T4-U4-025 — anti-rebond : rien au tic qui voit le changement')
+  tic(1) // …et l'écrit au tic suivant, le document n'ayant plus bougé
   assert.equal(storage._donnees.size, 1)
   gestionnaire.arreter()
+})
+
+/* ── T4-U4-025 — le brouillon serveur : aucun PUT sans changement, anti-rebond, jamais pendant un enregistrement ── */
+const PERIODE_SONDAGE_MS = 4000
+function atelierFactice({ obtenirLayout, enregistrementEnCours, referenceInitiale } = {}) {
+  const puts = []
+  const deletes = []
+  const { minuteur, tic } = minuteurFactice()
+  const miroir = creerStockageMiroir({
+    base: stockageFactice(), calepinageId: 41,
+    envoyer: (id, corps) => { puts.push(corps.layout); return Promise.resolve() },
+    effacer: () => { deletes.push(1); return Promise.resolve() },
+  })
+  const g = creerGestionnaireBrouillon({
+    storage: miroir, calepinageId: 41, utilisateurId: 7, hashBase: 'h1',
+    intervalleSecondes: null, // le produit : aucun réglage ⇒ sondage de repli
+    obtenirLayout, hacher: empreinteSansVue, enregistrementEnCours, referenceInitiale, minuteur,
+  })
+  const attendre = async (ms) => { for (let t = 0; t < ms; t += PERIODE_SONDAGE_MS) tic(1); await new Promise((r) => setImmediate(r)) }
+  return { g, puts, deletes, attendre }
+}
+
+test('T4-U4-025 — atelier ouvert 60 s sans geste ⇒ 0 PUT brouillon', async () => {
+  const doc = { zones: [{ id: 'z1' }], consumption: { source: { origine: 'atelier', saisi_le: '2026-11-24T17:55:28Z' } } }
+  const { g, puts, attendre } = atelierFactice({ obtenirLayout: () => structuredClone(doc) })
+  g.demarrer()
+  await attendre(60_000)
+  assert.equal(puts.length, 0)
+})
+
+test('T4-U4-025 — un document qui change à CHAQUE lecture (horodatage recalculé) n’envoie pas un PUT par tic', async () => {
+  let n = 0
+  const { g, puts, attendre } = atelierFactice({ obtenirLayout: () => ({ zones: [{ id: 'z1' }], saisi_le: `t${n++}` }) })
+  g.demarrer()
+  await attendre(60_000)
+  assert.equal(puts.length, 0, `${puts.length} PUT en 60 s sans geste`)
+})
+
+test('T4-U4-025 — une modification ⇒ exactement 1 PUT, après l’anti-rebond', async () => {
+  let doc = { zones: [{ id: 'z1' }] }
+  const { g, puts, attendre } = atelierFactice({ obtenirLayout: () => doc })
+  g.demarrer()
+  doc = { zones: [{ id: 'z1' }, { id: 'z2' }] }
+  await attendre(PERIODE_SONDAGE_MS)
+  assert.equal(puts.length, 0, 'pas encore : le changement vient d’être vu')
+  await attendre(60_000)
+  assert.equal(puts.length, 1)
+  assert.deepEqual(puts[0], doc)
+})
+
+test('T4-U4-025 — modifié PENDANT un enregistrement ⇒ rien en vol, envoyé une fois l’enregistrement fini', async () => {
+  const enregistre = { zones: [{ id: 'z1' }] }
+  let doc = enregistre
+  let enVol = false
+  const { g, puts, deletes, attendre } = atelierFactice({ obtenirLayout: () => doc, enregistrementEnCours: () => enVol })
+  g.demarrer()
+  enVol = true // « Enregistrer le calepinage » : le document `enregistre` part au serveur…
+  doc = { zones: [{ id: 'z1' }, { id: 'z2' }] } // …et l'utilisateur continue de dessiner
+  await attendre(20_000)
+  assert.equal(puts.length, 0, 'aucun brouillon pendant l’enregistrement')
+  g.effacerEtAmorcer(enregistre) // réponse 2xx : la référence est le document ENREGISTRÉ
+  enVol = false
+  await attendre(20_000)
+  assert.equal(deletes.length, 1)
+  assert.equal(puts.length, 1, 'la modification faite pendant l’enregistrement part après lui')
+  assert.deepEqual(puts[0], doc)
+})
+
+test('T4-U4-025 — la minuterie neuve (clé neuve après enregistrement) part de la référence ENREGISTRÉE', async () => {
+  const enregistre = { zones: [{ id: 'z1' }] }
+  const doc = { zones: [{ id: 'z1' }, { id: 'z2' }] }
+  const { g, puts, attendre } = atelierFactice({ obtenirLayout: () => doc, referenceInitiale: () => empreinteSansVue(enregistre) })
+  g.demarrer()
+  await attendre(20_000)
+  assert.equal(puts.length, 1)
 })
 
 /* ── Critère 2 — reprise : plus récent que le serveur ⇒ pertinent ──────── */
