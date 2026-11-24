@@ -1302,6 +1302,40 @@ describe('ACAL1328 — calque rp9-cotes', () => {
     }
   });
 
+  // T4-B4-008 — en thème sombre la pilule des cotes restait BLANCHE (image figée, texte bleu nuit codé) ; maquette ToitSombre :
+  // pilule bleu nuit (rgba 12,19,53), filet clair, texte clair. Fond, filet et texte suivent les jetons du thème.
+  it('pilule des cotes aux jetons du thème : blanche en clair, bleu nuit à texte clair en sombre', () => {
+    const t = carteDeTestCotes();
+    const peint: Record<string, unknown> = {};
+    const images = new Map<string, { width: number; data: Uint8ClampedArray }>();
+    const conteneur = {} as Element;
+    let theme: Record<string, string> = { '--cal-texte-1': 'rgb(12 19 53)', '--cal-flottante': 'rgba(255, 255, 255, 0.86)', '--cal-flottante-filet': 'rgba(255, 255, 255, 0.7)' };
+    const avant = globalThis.getComputedStyle;
+    globalThis.getComputedStyle = ((el: Element) => ({ getPropertyValue: (n: string) => (el === conteneur ? theme[n] ?? '' : '') })) as never;
+    const centre = (img: { width: number; data: Uint8ClampedArray }) => [...img.data.slice((16 * img.width + 24) * 4, (16 * img.width + 24) * 4 + 4)];
+    try {
+      const carte = {
+        ...t.carte,
+        setPaintProperty: (id: string, nom: string, v: unknown) => { peint[`${id}|${nom}`] = v; },
+        getContainer: () => conteneur,
+        hasImage: (id: string) => images.has(id),
+        addImage: (id: string, img: { width: number; data: Uint8ClampedArray }) => { images.set(id, img); },
+        updateImage: (id: string, img: { width: number; data: Uint8ClampedArray }) => { images.set(id, img); },
+      };
+      monterCotesAretes(carte, () => [{ sommets: rectRing(12.4, 8.1), ferme: true, actif: true }], true);
+      const [idPilule] = [...images.keys()];
+      expect(centre(images.get(idPilule)!)).toEqual([255, 255, 255, 219]);
+      t.emettre('idle');
+      expect(peint[`${CALQUE_COTES}|text-color`]).toBe('rgb(12, 19, 53)');
+      theme = { '--cal-texte-1': 'rgb(243 245 251)', '--cal-flottante': 'rgba(12, 19, 53, 0.82)', '--cal-flottante-filet': 'rgba(255, 255, 255, 0.1)' };
+      t.emettre('idle');
+      expect(peint[`${CALQUE_COTES}|text-color`]).toBe('rgb(243, 245, 251)');
+      expect(centre(images.get(idPilule)!)).toEqual([12, 19, 53, 209]);
+    } finally {
+      globalThis.getComputedStyle = avant;
+    }
+  });
+
   // Suites des écrans v2 (24/11) — à l'étape Panneaux la carte montrait cotes, contour or et coins (maquette Main seule).
   it('étape déclarée par la coque : cotes, contour or et coins à l’étape Toit seulement ; sans étape, comme avant', async () => {
     const { creerPoignees3d } = await import('./poigneesSommets3d');

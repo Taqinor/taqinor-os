@@ -50,6 +50,8 @@ interface CarteCotes {
   addImage?(id: string, image: { width: number; height: number; data: Uint8ClampedArray }, o: Record<string, unknown>): unknown;
   setPaintProperty?(id: string, nom: string, v: unknown): unknown;
   getContainer?(): Element;
+  /** T4-B4-008 — repeindre la pilule (même taille) quand le thème change. Absente (carte de test) : sans effet. */
+  updateImage?(id: string, image: { width: number; height: number; data: Uint8ClampedArray }): unknown;
 }
 
 /** ACAL2042 — le contour FERMÉ du toit choisi (calque propre : la ligne du tracé `rp9-line` est vidée à la fermeture, « la 3D
@@ -68,7 +70,22 @@ function styleContour(el: Element | undefined): Array<[string, string, unknown]>
     [CONTOUR, 'line-color', jeton('--cal-action', 'rgb(226, 181, 74)')],
     [COINS, 'circle-radius', 6], [COINS, 'circle-color', jeton('--cal-surface', 'rgb(255, 255, 255)')],
     [COINS, 'circle-stroke-color', jeton('--cal-or-trait', 'rgb(201, 154, 43)')], [COINS, 'circle-stroke-width', 2.5],
+    // T4-B4-008 — le texte de la cote suit le thème (maquette ToitSombre : clair sur une pilule bleu nuit).
+    [CALQUE_COTES, 'text-color', jeton('--cal-texte-1', 'rgb(12, 19, 53)')],
   ];
+}
+
+type Rgba = [number, number, number, number];
+/** `rgb(…)` / `rgba(…)` (virgules ou espaces, alpha 0-1) → [r, g, b, a 0-255] ; illisible : `null`. */
+function rgbaDe(v: string): Rgba | null {
+  const m = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)(?:[\s,/]+([\d.]+))?/.exec(v.trim());
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3]), Math.round((m[4] === undefined ? 1 : Number(m[4])) * 255)] : null;
+}
+/** T4-B4-008 — fond et filet de la pilule aux jetons du thème (`--cal-flottante`, `--cal-flottante-filet`) : blanche en
+ *  clair (maquette Main), bleu nuit à filet clair en sombre (maquette ToitSombre). Sans jeton lisible : la pilule blanche. */
+function couleursPilule(el: Element | undefined): { fond: Rgba; filet: Rgba | null } {
+  const lire = (nom: string) => (el && typeof getComputedStyle === 'function' ? rgbaDe(getComputedStyle(el).getPropertyValue(nom)) : null);
+  return { fond: lire('--cal-flottante') ?? [255, 255, 255, 255], filet: lire('--cal-flottante-filet') };
 }
 
 /** ACAL1924 — la couche 3D (bâtiment, dalle, panneaux : `scene3d.ts`, id `rp9-3d`) ajoutée APRÈS ce calque le couvrait :
@@ -76,15 +93,18 @@ function styleContour(el: Element | undefined): Array<[string, string, unknown]>
 const COUCHE_3D = 'rp9-3d';
 const PILULE = 'rp9-cote-pilule';
 
-/** La pilule blanche (maquette Main : « 12,4 m » dans une pilule), extensible autour du texte. */
-function pilule(): { width: number; height: number; data: Uint8ClampedArray } {
+/** La pilule (maquette Main : « 12,4 m » dans une pilule blanche ; ToitSombre : bleu nuit à filet clair), extensible autour du
+ *  texte. `filet` : un trait de 2 px d'image (1 px à l'écran, pixelRatio 2) sur le bord. */
+function pilule(fond: Rgba = [255, 255, 255, 255], filet: Rgba | null = null): { width: number; height: number; data: Uint8ClampedArray } {
   const [w, h, r] = [48, 32, 16];
   const data = new Uint8ClampedArray(w * h * 4);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const dx = Math.max(r - x - 0.5, x + 0.5 - (w - r), 0);
     const dy = Math.max(r - y - 0.5, y + 0.5 - (h - r), 0);
-    const a = Math.max(0, Math.min(1, r - Math.hypot(dx, dy)));
-    data.set([255, 255, 255, Math.round(a * 255)], (y * w + x) * 4);
+    const d = r - Math.hypot(dx, dy); // distance au bord, vers l'intérieur
+    const a = Math.max(0, Math.min(1, d));
+    const c = filet && d < 2 ? filet : fond;
+    data.set([c[0], c[1], c[2], Math.round(a * c[3])], (y * w + x) * 4);
   }
   return { width: w, height: h, data };
 }
@@ -107,7 +127,8 @@ export function monterCotesAretes(map: CarteCotes, contours: () => Array<{ somme
   map.addSource(CONTOUR, { type: 'geojson', data: contour() as never }); // ACAL2042
   map.addLayer({ id: CONTOUR, type: 'line', source: CONTOUR, layout: { 'line-join': 'round' }, paint: { 'line-color': 'rgb(226, 181, 74)', 'line-width': 2 } });
   // Même police et même halo que les étiquettes de mesure (`rp9-mesure-label`).
-  const poserPilule = () => { if (map.addImage && !map.hasImage?.(PILULE)) map.addImage(PILULE, pilule(), { pixelRatio: 2, stretchX: [[16, 32]], stretchY: [[15, 17]], content: [10, 6, 38, 26] }); };
+  let teinte = couleursPilule(map.getContainer?.());
+  const poserPilule = () => { if (map.addImage && !map.hasImage?.(PILULE)) map.addImage(PILULE, pilule(teinte.fond, teinte.filet), { pixelRatio: 2, stretchX: [[16, 32]], stretchY: [[15, 17]], content: [10, 6, 38, 26] }); };
   poserPilule();
   map.on('styleimagemissing', (e) => { if ((e as { id?: string }).id === PILULE) poserPilule(); }); // un changement de style vide les images
   map.addLayer({
@@ -128,6 +149,12 @@ export function monterCotesAretes(map: CarteCotes, contours: () => Array<{ somme
       if (!map.getLayer?.(id) || pose.get(`${id}|${nom}`) === v) continue;
       map.setPaintProperty?.(id, nom, v);
       pose.set(`${id}|${nom}`, v);
+    }
+    // T4-B4-008 — la pilule suit le thème (repeinte seulement s'il change : pas de boucle de rendu).
+    const neuve = couleursPilule(map.getContainer?.());
+    if (JSON.stringify(neuve) !== JSON.stringify(teinte)) {
+      teinte = neuve;
+      if (map.hasImage?.(PILULE)) map.updateImage?.(PILULE, pilule(teinte.fond, teinte.filet));
     }
   });
   const visibilite = () => {
