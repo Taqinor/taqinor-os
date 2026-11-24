@@ -2059,6 +2059,19 @@ def sections_modifiables(type_acte, langue='fr'):
     return list(sections)
 
 
+def articles_personnalises(acte, langue='fr'):
+    """Les ``cle`` des articles dont l'acte stocke un texte propre dans la
+    langue (différent du texte par défaut) : ceux que « Rétablir » peut
+    remettre par défaut. Un article seulement cité (``{cle}``) ou supprimé
+    n'en est pas un."""
+    entrees = _surcharges_texte(acte, langue).get('articles')
+    if not isinstance(entrees, list):
+        return []
+    return list(dict.fromkeys(
+        e['cle'] for e in entrees if isinstance(e, dict) and e.get('cle')
+        and not e.get('retire') and ('paragraphes' in e or 'titre' in e)))
+
+
 def sections_personnalisees(acte, langue='fr'):
     surcharges = _surcharges_texte(acte, langue)
     ordre = T.SECTIONS_MODIFIABLES[acte.type]

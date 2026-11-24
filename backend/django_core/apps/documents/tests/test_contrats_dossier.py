@@ -1540,6 +1540,27 @@ class EcranTextesTests(SimpleTestCase):
         e.lecture_kw['societe'] = 'Nouveau Nom SARL'
         self.assertIn('Nouveau Nom SARL fournit', article(e.lire(), 'objet'))
 
+    def test_retablir_un_article_puis_tout_retablir(self):
+        """Corps de l'éditeur pour « Rétablir » : la liste ENTIÈRE, l'article
+        rétabli réduit à ``{cle}`` (= retour au texte par défaut, jamais une
+        suppression) ; « Tout rétablir » envoie ``articles: null``."""
+        e = Ecran(T.CONTRAT)
+        e.enregistrer({'articles': articles_ecran(e.lire(), {
+            'objet': ajouter(' Ajout A.'), 'prix': ajouter(' Ajout B.')})})
+        self.assertEqual(K.articles_personnalises(e.acte), ['objet', 'prix'])
+        corps = [{'cle': a['cle']} if a['cle'] == 'objet' else a
+                 for a in articles_ecran(e.lire())]
+        e.enregistrer({'articles': corps})
+        c = e.lire()
+        self.assertIn('objet', [a['cle'] for a in c['articles']])
+        self.assertNotIn('Ajout A.', article(c, 'objet'))
+        self.assertIn('Ajout B.', article(c, 'prix'))
+        self.assertEqual(K.articles_personnalises(e.acte), ['prix'])
+        e.enregistrer({'articles': None})
+        self.assertNotIn('articles', e.acte.surcharges)
+        self.assertEqual(K.articles_personnalises(e.acte), [])
+        self.assertNotIn('Ajout B.', article(e.lire(), 'prix'))
+
     def test_modele_de_la_societe_garde_les_reperes(self):
         """Un article corrigé devenu modèle garde ses repères : un autre
         chantier imprime SA société et la correction."""

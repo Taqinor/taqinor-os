@@ -176,6 +176,8 @@ class ApiContratsTests(TestCase):
         self.assertEqual(r.data['contenu']['articles'][0]['paragraphes'],
                          ['Texte modifié.'])
         self.assertEqual(len(r.data['contenu']['articles']), len(articles))
+        # Le détail dit quels articles portent un texte propre (« Rétablir »).
+        self.assertEqual(r.data['articles_personnalises'], [articles[0]['cle']])
         r = self._patch(acte, {'conditions_particulieres': None,
                                'garanties': [{'cle': '', 'designation': 'Toit',
                                               'duree_mois': 120}]})

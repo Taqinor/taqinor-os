@@ -81,6 +81,7 @@
     "sections_personnalisees": [
       "conditions_particulieres"
     ],
+    "articles_personnalises": [],
     "sections_modifiables": [
       "titre",
       "lieu",
@@ -462,6 +463,7 @@
       "ar"
     ],
     "sections_personnalisees": [],
+    "articles_personnalises": [],
     "sections_modifiables": [
       "titre",
       "lieu",
@@ -708,6 +710,7 @@
       "ar"
     ],
     "sections_personnalisees": [],
+    "articles_personnalises": [],
     "sections_modifiables": [
       "titre",
       "lieu",
@@ -952,6 +955,7 @@
       "ar"
     ],
     "sections_personnalisees": [],
+    "articles_personnalises": [],
     "sections_modifiables": [
       "titre",
       "lieu",
@@ -1201,6 +1205,7 @@
       "ar"
     ],
     "sections_personnalisees": [],
+    "articles_personnalises": [],
     "sections_modifiables": [
       "titre",
       "lieu",

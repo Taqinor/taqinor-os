@@ -164,6 +164,7 @@ def detail_acte(acte, langue='fr', *, droits=None):
         'langue': langue,
         'langues': list(T.LANGUES),
         'sections_personnalisees': K.sections_personnalisees(acte, langue),
+        'articles_personnalises': K.articles_personnalises(acte, langue),
         'sections_modifiables': K.sections_modifiables(acte.type, langue),
         'contenu': contenu,
     })
