@@ -921,8 +921,10 @@ def ancre_de_reference(ville):
     Même résolution que :func:`productible_mensuel` sans point GPS (le devis
     la suit) : la ville de la table (orthographes courantes comprises), sinon
     l'ancre la plus proche de la position gazetier de la ville. Rend
-    ``{'cle', 'lat', 'lon', 'proche_km'}`` (``proche_km`` à ``None`` quand la
-    ville est elle-même dans la table), ou ``None`` : aucune ville devinée.
+    ``{'cle', 'lat', 'lon', 'proche_km', 'exacte'}`` (``proche_km`` à ``None``
+    quand la ville est dans la table, orthographe courante comprise ;
+    ``exacte`` vrai quand elle y est sous son propre nom), ou ``None`` : aucune
+    ville devinée.
     """
     cle = cle_ville(ville)
     km = None
@@ -933,7 +935,8 @@ def ancre_de_reference(ville):
         cle, km = ancre_la_plus_proche(coords[0], coords[1])
     entree = PRODUCTIBLE_MENSUEL_VILLE[cle]
     return {'cle': cle, 'lat': entree['lat'], 'lon': entree['lon'],
-            'proche_km': None if km is None else round(km)}
+            'proche_km': None if km is None else round(km),
+            'exacte': km is None and cle == _normaliser(ville)}
 
 
 def _normaliser_forme(valeurs):

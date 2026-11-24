@@ -467,6 +467,16 @@ class LeDevisAutoDitSesSuppositions(_BaseAuto):
                                   user=self.user, company=self.company)
         self.assertEqual(self._par_designation(devis), self._par_designation(temoin))
 
+    def test_t4_u1_002_ville_casa_calcul_sur_la_reference_dit(self):
+        """Lead « casa » sans GPS : le calcul part sur Casablanca, ville de
+        référence — l'alerte le dit avec le champ Ville (T4-U1-002)."""
+        _devis, par_champ = self._journal(facture_hiver=Decimal('900'), ville='casa')
+        self.assertEqual(par_champ['ville']['code'], 'ville_reference')
+        self.assertEqual(par_champ['ville']['message'], (
+            'Ville du lead « casa » non reconnue telle quelle : calcul fait sur '
+            'Casablanca (ville de référence) — corrigez « Ville » ou posez le GPS '
+            'sur la fiche.'))
+
     def test_fiche_renseignee_seul_le_30_plein_sud_reste_suppose(self):
         _devis, par_champ = self._journal(conso_mensuelle_kwh=Decimal('300'),
                                           occupation_jour='present')
