@@ -373,7 +373,7 @@ export default function CoqueAtelier({
             derniereVersionLe={derniereVersionLe} />} />
         <BandeauAlertes cache={!!presentation}>{alertes}</BandeauAlertes>
         <div id="rp9-studio" className="cal-coque-corps">
-          <RailEtapes cache={!!presentation} etapeActive={cleEtape} parcours={parcours} onChoisir={allerA}
+          <RailEtapes calepinageId={calepinageId} cache={!!presentation} etapeActive={cleEtape} parcours={parcours} onChoisir={allerA}
             avance={avance} onAvance={setAvanceOuvert} />
           <main className="cal-coque-centre">
             <div id="rp9-studio-scene" className="cal-coque-scene" hidden={!carteVisible}>

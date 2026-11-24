@@ -22,6 +22,7 @@ vi.mock('../../../api/calepinageApi', () => ({
 
 import calepinageApi from '../../../api/calepinageApi'
 import PretAEnvoyer from './PretAEnvoyer'
+import RailGuide from './RailGuide'
 import { ongletParCle } from '../atelier/onglets'
 import { ETAPE_DU_CODE, MESSAGE_ECHEC, MESSAGE_LENT, rangerControles } from './PretAEnvoyer.helpers'
 
@@ -95,6 +96,29 @@ describe('PretAEnvoyer — ordre des listes (H3)', () => {
     expect(codesAffiches(screen.getByTestId('cal-pret-groupe-resultats')))
       .toEqual(['simulation_fraiche', 'dossier_pieces', 'ecart_pvgis'])
     expect(calepinageApi.calepinages.pretAEnvoyer).toHaveBeenCalledWith(102, undefined)
+  })
+
+  // T4-B4-010 — Documents : la tuile Toit du rail se disait « fait » (parcours) pendant que « Prêt à envoyer » listait
+  // deux points Toit à régler. Le rail lit la MÊME lecture que la liste : « 2 à régler », plus jamais « fait ».
+  it('le rail des étapes lit la même liste : Toit « 2 à régler », jamais « fait » quand la liste a des points Toit', async () => {
+    calepinageApi.calepinages.pretAEnvoyer.mockResolvedValue(servi([
+      ligne(modeleARegler, 'pentes_confirmees'), ligne(modeleARegler, 'obstacle_hors_pan'), ligne(modeleOk, 'pans_vides'),
+      ligne(modeleOk, 'kwc_coherent'),
+    ]))
+    render(
+      <MemoryRouter>
+        <RailGuide vertical calepinageId={107} etapeActive="documents" onChoisir={() => {}}
+          etats={{ toit: 'fait', panneaux: 'fait' }} manque={[]} />
+        <PretAEnvoyer testIdCompte="compte" calepinageId={107} groupes />
+      </MemoryRouter>,
+    )
+    await screen.findByTestId('cal-pret-groupe-toit')
+    const toit = screen.getByTestId('cal-etape-toit')
+    await waitFor(() => expect(toit).toHaveTextContent('2 à régler'))
+    expect(toit.dataset.etat).not.toBe('fait')
+    // Panneaux : rien à régler dans la liste, l'état servi reste.
+    expect(screen.getByTestId('cal-etape-panneaux').dataset.etat).toBe('fait')
+    expect(screen.getByTestId('cal-etape-panneaux')).not.toHaveTextContent('à régler')
   })
 })
 
