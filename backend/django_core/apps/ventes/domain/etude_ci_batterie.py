@@ -188,19 +188,24 @@ def _batterie(produit, specs):
 
 
 def catalogue_batterie_ci(objets):
-    """``{hybrides, batteries, elements, ecartees}`` du catalogue de la
-    société (objets ``catalogue_de_la_societe``) — lecture seule."""
+    """``{hybrides, batteries, elements, ecartees, hybrides_ht}`` du catalogue
+    de la société (objets ``catalogue_de_la_societe``) — lecture seule.
+    ``hybrides_ht`` : les noms des hybrides HAUTE tension, hors option mais
+    NOMMÉS (fondateur 24/11/2026 : un 80 kW ajouté au catalogue restait écarté
+    sans un mot)."""
     from apps.stock.selectors import plage_batterie_onduleur, specs_for_produit
     from apps.ventes.moteur_ci.batterie import TENSION_PORT_BT_MAX_V
 
     from ..compatibilites import est_triphase_produit
-    hybrides, batteries, elements, ecartees = [], [], [], []
+    hybrides, batteries, elements, ecartees, hybrides_ht = [], [], [], [], []
     for produit in objets:
         role = _role(produit)
         fiche = getattr(produit, 'fiche_technique', None)
         type_fiche = getattr(fiche, 'type_fiche', None)
         if role == 'onduleur_hybride' and type_fiche == 'onduleur':
             plage = plage_batterie_onduleur(produit)
+            if plage and plage[1] > TENSION_PORT_BT_MAX_V:
+                hybrides_ht.append(produit.nom)
             if not plage or not 0 < plage[1] <= TENSION_PORT_BT_MAX_V:
                 continue          # hybride haute tension (ou plage non déclarée)
             specs = specs_for_produit(produit) or {}
@@ -216,7 +221,26 @@ def catalogue_batterie_ci(objets):
                 continue
             batteries.append(batterie)
     return {'hybrides': hybrides, 'batteries': batteries, 'elements': elements,
-            'ecartees': ecartees}
+            'ecartees': ecartees, 'hybrides_ht': hybrides_ht}
+
+
+def alertes_articles_ecartes(bat):
+    """Les articles du catalogue que l'option « avec » n'a pas pu prendre,
+    NOMMÉS en alertes internes : batteries à fiche incomplète, hybrides haute
+    tension (l'option C&I se compose en basse tension)."""
+    from apps.ventes.moteur_ci.batterie import TENSION_PORT_BT_MAX_V
+    alertes = []
+    if bat.get('ecartees'):
+        alertes.append(_alerte('BATTERIE_FICHE_INCOMPLETE', (
+            "Batteries écartées de l'option « avec » (fiche sans capacité utile ni tension "
+            'nominale) : %s.' % ', '.join(bat['ecartees']))))
+    if bat.get('hybrides_ht'):
+        alertes.append(_alerte('HYBRIDE_HAUTE_TENSION_ECARTE', (
+            "Onduleurs hybrides haute tension écartés de l'option « avec » (port batterie "
+            "au-delà de %d V : l'option commercial / industriel se compose en basse tension, "
+            "à poser à la main sur le devis) : %s."
+            % (TENSION_PORT_BT_MAX_V, ', '.join(bat['hybrides_ht'])))))
+    return alertes
 
 
 def elements_socle_ci(objets):
@@ -984,10 +1008,7 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
                              'à fiche complète au catalogue'}
     sortie = dict(vide, prix_a_renseigner=resultat['prix_a_renseigner'],
                   alertes=list(resultat['alertes']), hypotheses=list(resultat['hypotheses']))
-    if bat.get('ecartees'):
-        sortie['alertes'].append(_alerte('BATTERIE_FICHE_INCOMPLETE', (
-            "Batteries écartées de l'option « avec » (fiche sans capacité utile ni tension "
-            'nominale) : %s.' % ', '.join(bat['ecartees']))))
+    sortie['alertes'].extend(alertes_articles_ecartes(bat))
     if choix != 'avec' and resultat['prix_a_renseigner']:
         # Fondateur 27/10/2026 — « les deux » : un article de l'option « avec »
         # sans prix ne refuse pas le devis ; l'offre réseau part seule, les

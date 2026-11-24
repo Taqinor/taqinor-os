@@ -124,6 +124,22 @@ export const ROLES_DEVIS = ['onduleur_reseau', 'onduleur_hybride', 'onduleur_off
   'smart_meter', 'wifi_dongle', 'accessoires', 'tableau', 'installation', 'transport', 'suivi']
 const _roleDeLigne = (l) => ROLES_DEVIS.find(r => r === String(l?.role_devis ?? '').trim()) ?? null
 
+// 24/11/2026 (fondateur, fiche « DEYE SUN-80K-SG02HP3-EU-EM6 ») — un produit
+// nommé par sa seule référence ne dit ni sa famille ni sa puissance : le RÔLE
+// et la FICHE passent devant le nom, qui reste le repli.
+// Rôle d'une ligne d'écran : rôle stocké, sinon rôle effectif du produit lié
+// (`role_devis_effectif` : déclaré → catégorie → nom, celui que le serveur
+// re-déduit à l'enregistrement — QJR523), sinon null (les mots-clés tranchent).
+export function roleLigneOuProduit(l, produits) {
+  return _roleDeLigne(l)
+    ?? ROLES_DEVIS.find(r => r === _produitDeLigne(l, produits)?.role_devis_effectif) ?? null
+}
+// Onduleur HYBRIDE du catalogue : rôle effectif servi, sinon le nom.
+export const estHybrideCatalogue = (p) => (p?.role_devis_effectif
+  ? p.role_devis_effectif === 'onduleur_hybride' : isHybridInverter(p?.nom))
+// Puissance AC (kW) d'un onduleur : sa fiche (`specs_solaire.ac_kw`), sinon son nom.
+export const puissanceAcOnduleur = (p) => Number(p?.specs_solaire?.ac_kw) || parseKw(p?.nom) || 0
+
 // Ordre du serveur (`utils/options.py::panier_de_ligne`) : variante, rôle stocké
 // (tout accessoire de batterie dans « Avec » seulement), mots-clés en repli.
 export function appartientAuPanierSans(l, produits) {
