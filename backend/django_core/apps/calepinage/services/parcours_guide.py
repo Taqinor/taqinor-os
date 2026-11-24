@@ -61,19 +61,29 @@ def _lignes_des_controles(controles):
             for c in controles if c['etat'] in ('bloquant', 'a_regler')]
 
 
-def regrouper_manque(avertissements, controles_electriques=None):
+def regrouper_manque(avertissements, controles_electriques=None, layout=None):
     """Les avertissements bruts → ``manque[]`` sans deux lignes de même
     (``code``, ``cible``) ; ``nombre`` = lignes fusionnées. Ordre de première
     apparition ; le message gardé est celui de la première ligne.
 
     ACAL1539 — ``controles_electriques`` (ceux de « Prêt à envoyer ? »)
-    donnés : ils REMPLACENT les avertissements de l'étape Électrique."""
+    donnés : ils REMPLACENT les avertissements de l'étape Électrique.
+
+    T4-U1-023 — ``layout`` donné et porteur d'obstacles ou de voisins hauts :
+    « accès solaire absent » devient ``ombres_non_mesurees`` (à régler), avec
+    la phrase qui les nomme — jamais « aucune ombre signalée » sur un toit
+    dont on SAIT qu'il porte de l'ombre."""
+    from .ombrage_chaines import motif_ombres_non_mesurees
+
+    ombres = motif_ombres_non_mesurees(layout) if layout is not None else None
     groupes = {}
     for brut in avertissements or ():
         message = str(brut or '').strip()
         if not message:
             continue
         code, etape, onglet, champ, gravite = _classer(message)
+        if code == 'acces_solaire_absent' and ombres:
+            code, message, gravite = 'ombres_non_mesurees', ombres, 'a_regler'
         if controles_electriques is not None and etape == 'electrique':
             continue
         cle = (code, onglet, champ)
@@ -150,5 +160,6 @@ def etat_du_parcours(calepinage):
     controles = agreger(calepinage, (controles_electriques,
                                      controle_compatibilite))['controles']
     return {'etapes': etapes,
-            'manque': regrouper_manque(servi.get('avertissements'),
-                                       controles_electriques=controles)}
+            'manque': regrouper_manque(
+                servi.get('avertissements'), controles_electriques=controles,
+                layout=getattr(calepinage, 'roof_layout', None) or {})}

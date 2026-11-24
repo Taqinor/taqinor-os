@@ -862,6 +862,15 @@ def _cle_ville_tolerante(texte_normalise):
     return None
 
 
+def orthographe_usuelle(ville):
+    """T4-U1-002 — la clé de la table pour une écriture COURANTE de la ville
+    (``_ORTHOGRAPHES``, D-ACAL-95 : « casa », « kech », le nom arabe…), ou
+    ``None``. Égalité du texte entier normalisé seulement : la table du
+    fondateur est lue ici, jamais recopiée (``villes_resolution`` la consulte
+    en premier pour que le statut de la ville et le devis disent pareil)."""
+    return _ORTHOGRAPHES.get(_normaliser(ville))
+
+
 def ville_connue(ville) -> bool:
     """``True`` si la ville figure dans la table PVGIS de référence."""
     return cle_ville(ville) is not None

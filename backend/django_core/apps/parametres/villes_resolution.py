@@ -51,7 +51,19 @@ def nom_canonique(cle):
     return VILLES_CANONIQUES.get(cle) or cle.title()
 
 
-def _resultat(statut, cle=None, candidats=()):
+#: T4-U3-020 — la RAISON servie avec chaque statut, que l'écran imprime à côté du
+#: champ (une phrase d'utilisateur, jamais un code).
+RAISON_ORTHOGRAPHE = 'orthographe usuelle'
+RAISONS = {
+    'exacte': '',
+    'corrigee': 'graphie corrigée',
+    'ambigue': 'plusieurs villes possibles : choisissez-la dans la liste',
+    'inconnue': ('ville non reconnue : choisissez-la dans la liste ou posez '
+                 'le point GPS'),
+}
+
+
+def _resultat(statut, cle=None, candidats=(), raison=None):
     noms = []
     vues = set()
     for c in candidats:
@@ -65,19 +77,32 @@ def _resultat(statut, cle=None, candidats=()):
         'ville': nom_canonique(cle) if cle else None,
         'coords': _COORDS.get(cle) if cle else None,
         'candidats': noms,
+        'raison': RAISONS[statut] if raison is None else raison,
     }
 
 
 def resoudre_ville(texte):
-    """Résout ``texte`` → ``{statut, ville, coords, candidats}``.
+    """Résout ``texte`` → ``{statut, ville, coords, candidats, raison}``.
 
     ``statut`` ∈ ``exacte`` (déjà la bonne graphie canonique), ``corrigee``
     (résolue avec confiance — remplacer le texte), ``ambigue`` (2+ villes
     possibles — l'écran décide), ``inconnue`` (rien de sûr — texte conservé).
+    ``raison`` : la phrase qui l'explique à l'écran.
+
+    ⓪ T4-U1-002 — l'orthographe usuelle de la table du FONDATEUR
+    (``pvgis_profils.orthographe_usuelle``, D-ACAL-95) passe en premier : le
+    devis calcule « casa » sur Casablanca, le statut ne peut pas la dire
+    inconnue (ni « kech » être géocodé dans le Rif).
     """
+    from .pvgis_profils import orthographe_usuelle
+
     cle = _normaliser(texte)
     if not cle:
         return _resultat('inconnue')
+
+    usuelle = orthographe_usuelle(texte)
+    if usuelle and usuelle in _COORDS and usuelle != cle:
+        return _resultat('corrigee', usuelle, raison=RAISON_ORTHOGRAPHE)
 
     # ① exact / collé.
     direct = None

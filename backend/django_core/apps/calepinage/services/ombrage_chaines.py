@@ -48,12 +48,54 @@ from __future__ import annotations
 from .valeurs import nombre as _nombre
 
 __all__ = ['MOTIF_SANS_ACCES', 'acces_des_modules', 'acces_par_bande',
-           'acces_par_module', 'modules_sous_seuil', 'ombrage_des_chaines']
+           'acces_par_module', 'modules_sous_seuil', 'motif_ombres_non_mesurees',
+           'ombrage_des_chaines']
 
 MOTIF_SANS_ACCES = (
     "L'ombre sur chaque panneau n'est pas encore calculée : l'écart d'ombre "
     "entre les chaînes n'est pas connu. Lancez le calcul des ombres du toit "
     "pour le connaître (un panneau non calculé n'est pas un panneau sans ombre).")
+
+
+def _hauts(objets):
+    """Les objets dont la hauteur SAISIE est > 0 : seuls ceux-là portent une
+    ombre (schéma v2 : sans ``heightM``, un obstacle est PLAT)."""
+    return sum(1 for objet in objets or ()
+               if isinstance(objet, dict)
+               and (_nombre(objet.get('heightM')) or 0) > 0)
+
+
+def _sources_d_ombre(layout):
+    """T4-U1-023 — ``(obstacles, voisins)`` du document qui portent une ombre.
+
+    ``zones[].obstacles[]`` et ``environment[]`` (arbres, bâtiments voisins)
+    dont la hauteur est saisie. Un compte, jamais une ombre calculée ici : le
+    calcul vit dans l'atelier, qui l'enregistre dans ``solarAccess``."""
+    if not isinstance(layout, dict):
+        return 0, 0
+    obstacles = sum(_hauts(zone.get('obstacles'))
+                    for zone in layout.get('zones') or ()
+                    if isinstance(zone, dict))
+    return obstacles, _hauts(layout.get('environment'))
+
+
+def _compte(nombre, singulier, pluriel):
+    return '%d %s' % (nombre, singulier if nombre == 1 else pluriel)
+
+
+def motif_ombres_non_mesurees(layout):
+    """T4-U1-023 — la phrase servie quand des objets hauts sont posés mais
+    qu'aucune lecture d'ombre n'est enregistrée ; ``None`` sans objet haut
+    (« pas encore calculée » reste alors vrai tel quel)."""
+    obstacles, voisins = _sources_d_ombre(layout)
+    if not (obstacles or voisins):
+        return None
+    objets = ' et '.join(filter(None, (
+        _compte(obstacles, 'obstacle', 'obstacles') if obstacles else '',
+        _compte(voisins, 'objet voisin', 'objets voisins') if voisins else '')))
+    return ('Ce toit porte %s qui font de l’ombre, mais cette ombre n’est pas '
+            'encore comptée sur les panneaux posés : ouvrez le calcul des ombres '
+            'du toit, puis enregistrez et relancez la simulation.' % objets)
 
 
 def acces_par_module(layout):

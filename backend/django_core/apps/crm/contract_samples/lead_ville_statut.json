@@ -1,0 +1,39 @@
+{
+  "endpoint": "POST /api/django/crm/leads/ville-statut/",
+  "forme_serveur": "complete",
+  "pourquoi": "T4-U1-002 / T4-U3-019 / T4-U3-020 (PACT10) — le statut d'une ville tapée et l'écran « Vérifier la ville ». Le devis calculait « casa » sur Casablanca et « kech » sur Marrakech (table d'orthographes usuelles du fondateur, D-ACAL-95) quand ce statut les disait « inconnue » ; « kech » était alors géocodé tel quel et le dialogue cochait d'avance une ville du Rif à 600 km. La résolution (`parametres/villes_resolution.py::resoudre_ville`) consulte désormais cette table EN PREMIER (`parametres/pvgis_profils.py::orthographe_usuelle`). `raison` : la phrase que l'écran imprime à côté du champ (vide pour une graphie exacte). `preselection` : la SEULE ville que l'écran peut cocher d'avance — une ville reconnue (`exacte` / `corrigee`), sinon `null` : les `proches` restent des suggestions, jamais un choix fait à la place de l'utilisateur. Rien n'est écrit par cette route.",
+  "corps": {
+    "ville": "kech",
+    "proches": true,
+    "gps_lat": null,
+    "gps_lng": null
+  },
+  "exemple": {
+    "statut": "corrigee",
+    "ville_canonique": "Marrakech",
+    "raison": "orthographe usuelle",
+    "preselection": "Marrakech",
+    "candidats": [],
+    "position": {"lat": 31.6342, "lng": -7.9999},
+    "proches": [
+      {"ville": "Marrakech", "lat": 31.6342, "lng": -7.9999, "distance_km": 0.0}
+    ],
+    "gps_hors_zone": false
+  },
+  "exemple_inconnue": {
+    "statut": "inconnue",
+    "ville_canonique": null,
+    "raison": "ville non reconnue : choisissez-la dans la liste ou posez le point GPS",
+    "preselection": null,
+    "candidats": [],
+    "position": null,
+    "proches": [],
+    "gps_hors_zone": false
+  },
+  "statuts": {
+    "exacte": "déjà la bonne graphie — raison vide",
+    "corrigee": "reconnue avec confiance — raison « orthographe usuelle » (table du fondateur) ou « graphie corrigée »",
+    "ambigue": "plusieurs villes possibles — `candidats` les nomme, aucune présélection",
+    "inconnue": "rien de sûr — le texte du lead est gardé tel quel, aucune présélection"
+  }
+}

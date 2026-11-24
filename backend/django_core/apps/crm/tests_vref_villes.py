@@ -86,6 +86,27 @@ class ResolveurTests(TestCase):
         self.assertLessEqual(proches[0]['distance_km'],
                              proches[1]['distance_km'])
 
+    def test_orthographe_usuelle_du_fondateur_d_abord(self):
+        """T4-U1-002 / T4-U3-019 — « casa » et « kech » : le devis les calcule sur
+        Casablanca et Marrakech (``pvgis_profils._ORTHOGRAPHES``, D-ACAL-95) ; le
+        statut de la ville dit la MÊME chose, avec la raison."""
+        from apps.parametres.pvgis_profils import cle_ville
+
+        for texte, ville in (('casa', 'Casablanca'), ('kech', 'Marrakech'),
+                             ('Casa', 'Casablanca'), ('مراكش', 'Marrakech')):
+            r = resoudre_ville(texte)
+            self.assertEqual((r['statut'], r['ville']), ('corrigee', ville), texte)
+            self.assertEqual(r['raison'], 'orthographe usuelle', texte)
+            self.assertIsNotNone(r['coords'], texte)
+            self.assertIsNotNone(cle_ville(texte), texte)
+        # « maroc » reste refusé des deux côtés, et le statut dit quoi faire.
+        r = resoudre_ville('maroc')
+        self.assertEqual(r['statut'], 'inconnue')
+        self.assertIsNone(cle_ville('maroc'))
+        self.assertEqual(r['raison'], 'ville non reconnue : choisissez-la dans la '
+                         'liste ou posez le point GPS')
+        self.assertEqual(resoudre_ville('Fès')['raison'], '')
+
     def test_helpers_webhook_et_odoo(self):
         self.assertEqual(_ville_corrigee('belksiri'), 'Mechraa Bel Ksiri')
         self.assertEqual(_ville_odoo_corrigee('belksiri'),
@@ -145,6 +166,29 @@ class VilleStatutEndpointTests(_Base):
         self.assertEqual(resp.data['ville_canonique'], 'Mechraa Bel Ksiri')
         self.assertEqual(resp.data['proches'], [])
         self.assertIsNone(resp.data['position'])
+
+    def test_kech_place_le_dialogue_a_marrakech_sans_geocoder_le_texte(self):
+        """T4-U3-019 — « kech » plaçait le point dans le Rif (géocodage du texte
+        brut, Midar pré-coché) : reconnu par l'orthographe usuelle, le point est
+        Marrakech et le texte n'est jamais géocodé ; la présélection servie n'est
+        donnée que pour une ville reconnue."""
+        from unittest import mock
+
+        with mock.patch('apps.crm.geolocalisation.coords_depuis_adresse') as geo:
+            resp = self.api.post(self.URL, {'ville': 'kech', 'proches': True},
+                                 format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        geo.assert_not_called()
+        self.assertEqual(resp.data['statut'], 'corrigee')
+        self.assertEqual(resp.data['ville_canonique'], 'Marrakech')
+        self.assertEqual(resp.data['raison'], 'orthographe usuelle')
+        self.assertEqual(resp.data['preselection'], 'Marrakech')
+        self.assertEqual(resp.data['proches'][0]['ville'], 'Marrakech')
+        inconnue = self.api.post(
+            self.URL, {'ville': 'douar bidon', 'proches': True,
+                       'gps_lat': 34.5619, 'gps_lng': -5.9541}, format='json')
+        self.assertIsNone(inconnue.data['preselection'])
+        self.assertIn('posez le point GPS', inconnue.data['raison'])
 
     def test_proches_depuis_le_gps_fourni(self):
         """GPS fourni ⇒ aucune résolution réseau : les proches viennent du
