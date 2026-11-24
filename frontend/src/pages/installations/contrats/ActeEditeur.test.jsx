@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { exempleContrat } from '../../../test/fixtures/contractSamples'
+import { exempleContrat, documentContrat } from '../../../test/fixtures/contractSamples'
 import { ConfirmProvider } from '../../../providers/ConfirmProvider'
 import { useConfirmationSortie } from '../../../ui/useDirtyGuard'
 
@@ -336,5 +336,97 @@ describe('Éditeur d’un acte', () => {
     await user.click(within(groupe).getAllByRole('checkbox')[0])
     await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
     expect(documentsApiMock.modifierActe.mock.calls[0][1].constats[0].cochee).toBe(false)
+  })
+
+  // F9 — la forme du corps envoyé vient de l'exemple (`corps_patch`, sinon le
+  // `contenu` servi), jamais d'une forme écrite dans le test.
+  describe('forme du corps envoyé = forme de l’exemple', () => {
+    const corpsPatch = documentContrat('documents', 'acte_contractuel').corps_patch.surcharges
+
+    // Chaque clé envoyée existe dans la référence, avec la même nature (null permis).
+    function memeForme(envoye, reference, chemin) {
+      if (envoye === null || reference === null || reference === undefined) return
+      if (Array.isArray(reference)) {
+        expect(Array.isArray(envoye), `${chemin} : liste attendue`).toBe(true)
+        for (const e of envoye) if (reference[0] !== undefined) memeForme(e, reference[0], `${chemin}[]`)
+        return
+      }
+      if (typeof reference === 'object') {
+        expect(typeof envoye, `${chemin} : objet attendu`).toBe('object')
+        for (const [k, v] of Object.entries(envoye)) {
+          expect(Object.keys(reference), `${chemin}.${k} absent de l'exemple`).toContain(k)
+          memeForme(v, reference[k], `${chemin}.${k}`)
+        }
+        return
+      }
+      expect(typeof envoye, chemin).toBe(typeof reference)
+    }
+
+    async function modifierEtLire(user, ouvrir) {
+      await ouvrir()
+      await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+      return documentsApiMock.modifierActe.mock.calls.at(-1)[1]
+    }
+
+    it('conditions_particulieres : un texte', async () => {
+      const user = userEvent.setup()
+      monter()
+      const envoye = await modifierEtLire(user, () => salir(user))
+      memeForme(envoye.conditions_particulieres, corpsPatch.conditions_particulieres, 'conditions_particulieres')
+    })
+
+    it('articles : { cle, titre, paragraphes[] }', async () => {
+      const user = userEvent.setup()
+      monter()
+      const envoye = await modifierEtLire(user, async () => {
+        const zone = await within(await screen.findByRole('group', { name: 'Articles' }))
+          .findByLabelText('Texte de l’article 1')
+        await user.type(zone, ' Un mot de plus.')
+      })
+      memeForme(envoye.articles, corpsPatch.articles, 'articles')
+      expect(Object.keys(envoye.articles[0]).sort()).toEqual(Object.keys(corpsPatch.articles[0]).sort())
+    })
+
+    it('echeancier_textes : { <tranche>: { exigibilite, note } }', async () => {
+      const user = userEvent.setup()
+      monter()
+      const envoye = await modifierEtLire(user, async () => {
+        const quand = await within(await screen.findByRole('group', { name: 'Échéancier : les mots' }))
+          .findByLabelText('Quand — Acompte')
+        await user.type(quand, ' x')
+      })
+      for (const tranche of Object.values(envoye.echeancier_textes)) {
+        memeForme(tranche, corpsPatch.echeancier_textes.acompte, 'echeancier_textes.<tranche>')
+        expect(Object.keys(tranche).sort()).toEqual(Object.keys(corpsPatch.echeancier_textes.acompte).sort())
+      }
+    })
+
+    it('options : { reserve_propriete, penalite_retard_pct, … }', async () => {
+      const user = userEvent.setup()
+      monter()
+      const envoye = await modifierEtLire(user, async () => {
+        await user.click(within(await screen.findByRole('group', { name: 'Options' }))
+          .getByLabelText(/Réserve de propriété/))
+      })
+      // Référence : le corps d'exemple, complété par le `contenu` servi (délai d'exécution).
+      memeForme(envoye.options, { ...acte().contenu.options, ...corpsPatch.options }, 'options')
+      expect(typeof envoye.options.reserve_propriete).toBe('boolean')
+    })
+
+    it('delais, paiement, garanties : mêmes clés et mêmes natures que le contenu servi', async () => {
+      const user = userEvent.setup()
+      monter()
+      const envoye = await modifierEtLire(user, async () => {
+        const g = await screen.findByRole('group', { name: 'Garanties' })
+        await user.type(within(g).getByLabelText('Désignation (garantie 1)'), ' x')
+        await user.type(within(screen.getByRole('group', { name: 'Délais' })).getByLabelText('Détail'), ' x')
+        await user.type(within(screen.getByRole('group', { name: 'Paiement : les modalités' }))
+          .getByLabelText('Modalités de paiement'), ' x')
+      })
+      const contenu = acte().contenu
+      memeForme(envoye.delais, contenu.delais, 'delais')
+      memeForme(envoye.paiement, contenu.paiement, 'paiement')
+      memeForme(envoye.garanties, contenu.garanties, 'garanties')
+    })
   })
 })
