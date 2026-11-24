@@ -97,6 +97,10 @@ export const deleteClient = createAsyncThunk('crm/deleteClient', async (id, { re
 // 19 requêtes de 50 à 5 requêtes de 200, et `concurrency: 3` cesse d'assommer
 // les 2 vCPU de prod avec ~19 sérialisations simultanées (l'ancien réglage
 // `concurrency: 20` datait d'un pipeline à ~100 leads).
+// K15 (T4-U1-030, T4-U3-014, mesuré 24/11/2026) — une page de 200 leads coûte ~17 s de sérialisation sur un serveur
+// chargé (686 leads : squelette 45 s, délai de 20 s dépassé 5 fois sur 6) ; la pile de revue sert 50 leads en 2,5 s
+// contre 5,4 s pour 64 leads à 200. Pages de 50 : la première ligne arrive vite et AUCUNE page n'approche le délai.
+export const LEADS_PAGE_SIZE = 50
 export const leadsChunkReceived = createAction('crm/leadsChunkReceived')
 
 export const fetchLeads = createCancellableThunk('crm/fetchLeads', (params, thunkAPI) =>
@@ -107,7 +111,7 @@ export const fetchLeads = createCancellableThunk('crm/fetchLeads', (params, thun
     // requêtes en vol (démontage LeadsPage / changement de filtre serveur).
     fetchAllPages(
       (page) => crmApi.getLeads(
-        { ...(params ?? {}), page, page_size: 200 },
+        { ...(params ?? {}), page, page_size: LEADS_PAGE_SIZE },
         { signal: thunkAPI.signal },
       ).then((r) => r.data),
       {

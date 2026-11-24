@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import calepinageApi from '../../../api/calepinageApi'
 import { compterEnAttente, deposerOuMettreEnFile, rejouerFile } from '../fileEnvoiPhotos'
 import { refusServeur } from '../commun/refusServeur'
@@ -11,21 +11,38 @@ export default function usePhotosReleve(calepinageId) {
   const [photos, setPhotos] = useState([])
   const [enAttente, setEnAttente] = useState(0)
   const [genresEnFile, setGenresEnFile] = useState([])
+  /* T4-U4-021 — les genres ENVOYÉS par le rejeu mais pas encore relus dans la liste du serveur : ils restent comptés
+     (« envoyée ») jusqu'à la relecture, jamais une tuile vidée et un compteur qui redescend pendant qu'elle se fait. */
+  const [genresEnvoyes, setGenresEnvoyes] = useState([])
+  const enFileRef = useRef([])
   const [enCours, setEnCours] = useState(null)
   const [message, setMessage] = useState(null)
 
   const recharger = useCallback(() => {
     if (!calepinageId) return
     Promise.resolve(calepinageApi.calepinages.photos?.(calepinageId))
-      .then((res) => setPhotos(res?.data?.photos ?? []))
+      .then((res) => { setPhotos(res?.data?.photos ?? []); setGenresEnvoyes([]) })
       .catch(() => {})
   }, [calepinageId])
 
+  /* Deux retours du réseau rapprochés (événement `online` + réouverture) ne rejouent pas la file deux fois : la même
+     photo partait deux fois (mesuré sur la pile de revue, 24/11). */
+  const rejeuEnCours = useRef(false)
   const envoyerLaFile = useCallback(() => {
     if (!calepinageId || (typeof navigator !== 'undefined' && navigator.onLine === false)) return
-    Promise.resolve(rejouerFile(calepinageId)).then((r) => {
+    if (rejeuEnCours.current) return
+    rejeuEnCours.current = true
+    Promise.resolve(rejouerFile(calepinageId)).finally(() => { rejeuEnCours.current = false }).then((r) => {
       setEnAttente(r?.restantes ?? 0)
-      if (r?.envoyees) { setGenresEnFile([]); recharger() }
+      if (r?.envoyees) {
+        if (!r.restantes) {
+          const partis = enFileRef.current
+          enFileRef.current = []
+          setGenresEnvoyes((e) => [...e, ...partis])
+          setGenresEnFile([])
+        }
+        recharger()
+      }
       if (r?.refusees?.length) setMessage(r.refusees[0].message || 'Une photo gardée a été refusée par le serveur.')
     }).catch(() => {})
   }, [calepinageId, recharger])
@@ -47,7 +64,8 @@ export default function usePhotosReleve(calepinageId) {
     try {
       const { enFile, res } = await deposerOuMettreEnFile(calepinageId, fichier, { genre, prise_le: dateDuJour() })
       if (enFile) {
-        setGenresEnFile((g) => [...g, genre])
+        enFileRef.current = [...enFileRef.current, genre]
+        setGenresEnFile(enFileRef.current)
         setEnAttente(await compterEnAttente(calepinageId))
         return null
       }
@@ -63,5 +81,5 @@ export default function usePhotosReleve(calepinageId) {
     }
   }
 
-  return { photos, enAttente, genresEnFile, enCours, message, deposer }
+  return { photos, enAttente, genresEnFile, genresEnvoyes, enCours, message, deposer, recharger }
 }

@@ -238,3 +238,41 @@ describe("EDC8 — LeadDevisPanel : le générateur ne se monte qu'après la lec
     expect((await screen.findByTestId('generateur-monte')).textContent).toBe('editId=null')
   })
 })
+
+// T4-U1-029 / T4-U3-016 — téléphone : les cases « Inclure l'étude » / « Devis final » du panneau sont des cases (la règle
+// tactile de l'ERP, `button { min-height: 44px }` en pointer: coarse, les étirait en hauts rectangles — la case Radix est un
+// <button>) ; la barre d'actions passe à la ligne au lieu de couper « Télécharger le PDF » ; la pastille de référence
+// ne s'écrase pas. Lu dans la feuille de style (CSSOM), comme le relevé au téléphone.
+describe('T4-U1-029 / T4-U3-016 — panneau devis au téléphone', () => {
+  const feuille = async () => {
+    const { readFileSync } = await import('node:fs')
+    const { resolve } = await import('node:path')
+    const style = document.createElement('style')
+    style.textContent = readFileSync(resolve(globalThis.process.cwd(), 'src/styles/lead/19-lead-devis-panel.css'), 'utf8')
+    document.head.appendChild(style)
+    return style
+  }
+  const reglesDe = (style, filtre) => [...style.sheet.cssRules].filter(filtre)
+  const regle = (regles, selecteur) => regles.flatMap((r) => (r.media ? [...r.cssRules] : [r]))
+    .find((r) => r.selectorText === selecteur)
+
+  it('au toucher, la case du panneau garde sa taille ; le libellé porte la cible de 44 px', async () => {
+    const style = await feuille()
+    try {
+      const tactile = reglesDe(style, (r) => r.media && r.conditionText?.includes('pointer: coarse'))
+      expect(regle(tactile, '.ldp-etude-toggle [role="checkbox"]')?.style.minHeight).toBe('0px')
+      expect(regle(tactile, '.ldp-etude-toggle')?.style.minHeight).toBe('44px')
+    } finally { style.remove() }
+  })
+
+  it('à 640 px et moins, les actions passent à la ligne ; la référence ne se plie pas', async () => {
+    const style = await feuille()
+    try {
+      const mobile = reglesDe(style, (r) => r.media && r.conditionText?.includes('max-width: 640px'))
+      expect(regle(mobile, '.ldp-toolbar-actions')?.style.flexWrap).toBe('wrap')
+      const ref = regle([...style.sheet.cssRules], '.ldp-ref')
+      expect(ref.style.whiteSpace).toBe('nowrap')
+      expect(ref.style.flexShrink).toBe('0')
+    } finally { style.remove() }
+  })
+})

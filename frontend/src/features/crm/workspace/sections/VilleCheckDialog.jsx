@@ -78,10 +78,9 @@ export default function VilleCheckDialog({
       .then((r) => {
         if (seq !== seqRef.current) return
         setData(r.data)
-        // Pré-sélection : la ville ERP la plus proche — Meryem confirme
-        // d'un clic dans le cas courant.
-        const premiere = r.data?.proches?.[0]
-        if (premiere) setChoix(premiere.ville)
+        // T4-U3-019 — seule la ville que le SERVEUR reconnaît (`preselection`, contrat lead_ville_statut.json) est
+        // cochée d'avance ; une ville inconnue ne coche rien (« kech » cochait Midar, à 600 km de Marrakech).
+        setChoix(r.data?.preselection ?? '')
       })
       .catch(() => { if (seq === seqRef.current) setErreur(true) })
       .finally(() => { if (seq === seqRef.current) setLoading(false) })
@@ -100,7 +99,7 @@ export default function VilleCheckDialog({
       .then((r) => {
         if (seq !== seqRef.current) return
         setData(r.data)
-        setChoix(r.data?.proches?.[0]?.ville ?? '')
+        setChoix(r.data?.preselection ?? '') // T4-U3-019 — jamais la plus proche d'office
       })
       .catch(() => { if (seq === seqRef.current) setRechercheErreur(true) })
       .finally(() => { if (seq === seqRef.current) setRecherche(false) })

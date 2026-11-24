@@ -156,14 +156,14 @@ describe('LB7 — fetchLeads : un résultat périmé n’écrase jamais le plus 
 /* PERF-CRM (mesuré à 930 leads en prod) — flux PROGRESSIF de `fetchLeads` : la
    1re page s'affiche dès son arrivée, pages de 200 (plafond serveur), 3 pages
    en parallèle au plus (2 vCPU de prod). Thunk RÉEL dans un store RÉEL. */
-describe('PERF-CRM — fetchLeads : flux progressif, pages de 200, 3 en parallèle', () => {
+describe('PERF-CRM — fetchLeads : flux progressif, pages de 50 (K15), 3 en parallèle', () => {
   const nouveauStore = () => configureStore({ reducer: { crm: reducer } })
   const page = (n) => ({ data: { count: 16, results: [lead(n * 10 + 1), lead(n * 10 + 2)] } })
   const attendre = (ms) => new Promise((resolve) => { setTimeout(resolve, ms) })
 
   beforeEach(() => { vi.clearAllMocks() })
 
-  it('demande des pages de 200, 3 à la fois au plus, jusqu’à la dernière page', async () => {
+  it('demande des pages de 50 (K15 : jamais 200, ~17 s par page sur un serveur chargé), 3 à la fois au plus, jusqu’à la dernière page', async () => {
     let enVol = 0
     let maxEnVol = 0
     crmApi.getLeads.mockImplementation(async (params) => {
@@ -176,7 +176,7 @@ describe('PERF-CRM — fetchLeads : flux progressif, pages de 200, 3 en parallè
     const store = nouveauStore()
     await store.dispatch(fetchLeads({}))
     const appels = crmApi.getLeads.mock.calls.map(([params]) => params)
-    expect(appels.every((p) => p.page_size === 200)).toBe(true)
+    expect(appels.every((p) => p.page_size === 50)).toBe(true)
     expect(appels.map((p) => p.page).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
     expect(maxEnVol).toBe(3)
     expect(store.getState().crm.leads).toHaveLength(16)

@@ -152,6 +152,9 @@ export default function DevisTab({
   const peutCreerChantier = droitVentesCreer || droitInstallGerer
   const devisList = state.server?.devis ?? []
   const devisAuto = state.server?.devis_auto ?? { pret: false, manquants: [] }
+  // T4-U3-017 — le kWh tapé que les factures contredisent : la fiche SERVIE le dit (`avertissements.kwh_factures`,
+  // ACVI97) — le bouton est grisé AVANT le clic avec cette raison (le serveur refuserait en 409). Aucune règle ici.
+  const kwhContredit = state.server?.avertissements?.kwh_factures || null
   const leadPhone = (state.server?.whatsapp || state.server?.telephone || '').trim()
   const leadPhoneOk = !!normalizePhoneE164(leadPhone)
 
@@ -256,6 +259,18 @@ export default function DevisTab({
       </div>
       {devisAuto.pret && catalogueCiBloque(devisAuto) ? (
         <BlocCatalogueCi devisAuto={devisAuto} leadId={state.leadId} />
+      ) : devisAuto.pret && kwhContredit ? (
+        <div className="lw-context-devis-missing">
+          <Button type="button" variant="default" disabled title={kwhContredit}>
+            <Zap size={14} aria-hidden="true" /> Devis automatique
+          </Button>
+          <p className="gen-hint" role="status" data-testid="lw-devis-kwh-contredit">
+            <button type="button" className="lw-context-missing-link"
+              onClick={() => jumpToMissingField('conso_mensuelle_kwh', state)}>
+              {kwhContredit}
+            </button>
+          </p>
+        </div>
       ) : devisAuto.pret && !visiteRequise ? (
         <div className="lw-context-devis-cta">
           <Button

@@ -52,6 +52,7 @@ const taper = (testId, valeur) => fireEvent.change(screen.getByTestId(testId), {
 
 beforeEach(async () => {
   vi.clearAllMocks()
+  window.localStorage.clear()
   await oublierReleveEnFile('1')
   enLigne = true
   Object.defineProperty(window.navigator, 'onLine', { configurable: true, get: () => enLigne })
@@ -526,5 +527,147 @@ describe('Relevé de visite — la pente est celle du PAN, lue comme l’atelier
     api.get.mockResolvedValue({ data: { nom: 'Calepinage 9', client: null, lead: null } })
     rendre()
     expect(await screen.findByTestId('releve-projet')).toHaveTextContent(/^Calepinage 9$/)
+  })
+})
+
+describe('T4-U4-020..023 — ce qui est tapé n’est jamais perdu, l’écran dit où en est chaque envoi', () => {
+  const ouvrirSaisiesMain = async () => {
+    await waitFor(() => expect(screen.getByTestId('releve-pente-bouton')).not.toBeDisabled())
+    fireEvent.click(screen.getByTestId('releve-pente-bouton'))
+    await screen.findByTestId('releve-pente-main')
+    fireEvent.click(screen.getByTestId('releve-orientation-bouton'))
+    await screen.findByTestId('releve-azimut-main')
+  }
+
+  it('U4-020 : pente et orientation tapées hors ligne partent au retour du réseau, avec le relevé ; la phrase est accordée', async () => {
+    rendre()
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(api.releve).toHaveBeenCalled())
+    await ouvrirSaisiesMain()
+    enLigne = false
+    await act(async () => { window.dispatchEvent(new Event('offline')) })
+    taper('releve-longueur', '9,8')
+    taper('releve-largeur', '6,4')
+    taper('releve-pente-main', '18')
+    taper('releve-azimut-main', '170')
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(screen.getByTestId('releve-message'))
+      .toHaveTextContent('Relevé gardé sur ce téléphone : il partira au retour du réseau. La pente et l’orientation du toit partiront avec lui.'))
+    expect(api.enregistrerSectionLayout).not.toHaveBeenCalled()
+    expect(screen.getByTestId('releve-envois')).toHaveTextContent('Pente et orientation du toit : en attente')
+    expect(screen.getByTestId('releve-envois')).toHaveTextContent('Relevé : en attente')
+
+    enLigne = true
+    await act(async () => { window.dispatchEvent(new Event('online')) })
+    await waitFor(() => expect(api.enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    expect(api.enregistrerSectionLayout.mock.calls[0][1]).toEqual({
+      cle: 'zones', zone_id: 'z1', base_empreinte: 'emp-1',
+      champs: {
+        pitchDeg: 18, pitchSource: { mode: 'degres', degres: 18 },
+        facingAzimuthDeg: 170, facingManual: true, facingAzimuthSource: 'saisie', facingAzimuthPrecisionDeg: null,
+      },
+    })
+    await waitFor(() => expect(api.corrigerReleve).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(screen.getByTestId('releve-envois')).toHaveTextContent('Pente et orientation du toit : envoyées'))
+    expect(screen.getByTestId('releve-envois')).toHaveTextContent('Relevé : envoyé')
+  })
+
+  it('U4-020 : le pan en attente survit au rechargement hors ligne et part à l’ouverture suivante en ligne', async () => {
+    rendre()
+    await screen.findByTestId('releve-projet')
+    await ouvrirSaisiesMain()
+    enLigne = false
+    taper('releve-pente-main', '18')
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('La pente du toit partira avec lui.'))
+    cleanup()
+    enLigne = true
+    rendre()
+    await waitFor(() => expect(api.enregistrerSectionLayout).toHaveBeenCalledTimes(1))
+    expect(api.enregistrerSectionLayout.mock.calls[0][1].champs.pitchDeg).toBe(18)
+  })
+
+  it('U4-022 : en ligne, les mesures tapées sont gardées sur le téléphone, dites telles, et relues à la réouverture', async () => {
+    rendre()
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(api.releve).toHaveBeenCalled())
+    taper('releve-longueur', '9,5')
+    taper('releve-largeur', '6,2')
+    expect(screen.getByTestId('releve-note-hors-ligne'))
+      .toHaveTextContent('2 mesures gardées sur ce téléphone : elles s’enregistrent avec « Terminer le relevé ».')
+    cleanup()
+    rendre()
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(api.releve).toHaveBeenCalledTimes(2))
+    expect(screen.getByTestId('releve-longueur')).toHaveValue('9,5')
+    expect(screen.getByTestId('releve-largeur')).toHaveValue('6,2')
+    // Terminé en ligne : le serveur les a prises, le brouillon est retiré.
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Relevé corrigé.'))
+    expect(screen.queryByTestId('releve-note-hors-ligne')).toBeNull()
+  })
+
+  it('U4-021 : après l’envoi, la tuile et le compteur suivent ce que le serveur a ; l’étiquette en attente est lisible', async () => {
+    file.deposerOuMettreEnFile.mockResolvedValue({ enFile: true })
+    rendre()
+    expect(await screen.findByTestId('releve-photos-compte')).toHaveTextContent('1 sur 3')
+    enLigne = false
+    file.compterEnAttente.mockResolvedValue(1)
+    const entree = screen.getByTestId('releve-photo-oblique').querySelector('input[type="file"]')
+    await act(async () => { fireEvent.change(entree, { target: { files: [new File(['x'], 'o.jpg', { type: 'image/jpeg' })] } }) })
+    await waitFor(() => expect(screen.getByTestId('releve-photos-compte')).toHaveTextContent('2 sur 3'))
+    expect(screen.getByTestId('releve-photo-oblique-etat')).toHaveTextContent('en attente')
+    expect(screen.getByTestId('releve-photo-oblique')).toHaveTextContent('Oblique (aérienne)')
+
+    let servir
+    api.photos.mockImplementationOnce(() => new Promise((r) => { servir = r }))
+    file.rejouerFile.mockResolvedValue({ envoyees: 1, refusees: [], restantes: 0 })
+    enLigne = true
+    await act(async () => { window.dispatchEvent(new Event('online')) })
+    await waitFor(() => expect(screen.getByTestId('releve-photo-oblique-etat')).toHaveTextContent('envoyée'))
+    expect(screen.getByTestId('releve-photos-compte')).toHaveTextContent('2 sur 3') // jamais « 1 sur 3 » pendant la relecture
+    await act(async () => { servir({ data: { photos: [{ id: 5, genre: 'drone', url: '/a/5/' }, { id: 6, genre: 'oblique', url: '/a/6/' }] } }) })
+    await waitFor(() => expect(screen.getByTestId('releve-photo-oblique').querySelector('img')).not.toBeNull())
+    expect(screen.getByTestId('releve-photos-compte')).toHaveTextContent('2 sur 3')
+  })
+
+  it('U4-021 : deux retours du réseau rapprochés ne rejouent la file des photos qu’UNE fois', async () => {
+    rendre()
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(file.rejouerFile).toHaveBeenCalledTimes(1)) // à l'ouverture
+    let liberer
+    file.rejouerFile.mockImplementationOnce(() => new Promise((r) => { liberer = r }))
+    await act(async () => { window.dispatchEvent(new Event('online')) })
+    await act(async () => { window.dispatchEvent(new Event('online')) })
+    expect(file.rejouerFile).toHaveBeenCalledTimes(2)
+    await act(async () => { liberer({ envoyees: 0, refusees: [], restantes: 0 }) })
+  })
+
+  it('U4-021 : après « Relevé envoyé. », l’écran relit le relevé du serveur', async () => {
+    rendre()
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(api.releve).toHaveBeenCalledTimes(1))
+    enLigne = false
+    taper('releve-longueur', '9,8')
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Relevé gardé'))
+    api.releve.mockResolvedValue({ data: { releves: [{ ...RELEVE_COURANT, chaines: [
+      { nom: 'Longueur', total_mesure: null, tolerance_m: null, cotes: [{ nom: 'Longueur', valeur: 9.8 }] },
+    ] }], releve_courant_id: 9 } })
+    enLigne = true
+    await act(async () => { window.dispatchEvent(new Event('online')) })
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Relevé envoyé.'))
+    await waitFor(() => expect(api.releve).toHaveBeenCalledTimes(2))
+    expect(screen.getByTestId('releve-longueur')).toHaveValue('9,8')
+  })
+
+  it('U4-021 : un relevé enregistré illisible le dit (jamais des champs vides muets) et « Réessayer » relit', async () => {
+    api.releve.mockRejectedValueOnce({ code: 'ECONNABORTED', message: 'timeout of 20000ms exceeded' })
+    rendre()
+    expect(await screen.findByTestId('releve-lecture-erreur'))
+      .toHaveTextContent('Le relevé enregistré n’a pas pu être relu')
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }))
+    await waitFor(() => expect(api.releve).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.queryByTestId('releve-lecture-erreur')).toBeNull())
   })
 })

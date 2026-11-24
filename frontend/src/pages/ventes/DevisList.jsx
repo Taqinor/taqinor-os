@@ -394,7 +394,7 @@ export default function DevisList() {
   const [acceptTarget, setAcceptTarget] = useState(null) // devis en cours d'acceptation
   const [acceptNom, setAcceptNom] = useState('')
   const [acceptDate, setAcceptDate] = useState('')
-  const [acceptOption, setAcceptOption] = useState('sans_batterie')
+  const [acceptOption, setAcceptOption] = useState('')
   const [acceptEntreprise, setAcceptEntreprise] = useState(ENTREPRISE_VIDE)
   const [acceptBusy, setAcceptBusy] = useState(false)
   // ADEV15 — refus 403 serveur (avertissement de vente bloquant / blocage
@@ -419,11 +419,16 @@ export default function DevisList() {
     { scopeRef: pageRef },
   )
 
+  /* T4-U1-014 — l'option que le devis lui-même recommande (`etude_params.recommended_option`, la valeur que le moteur
+     PDF lit d'abord) ; `null` quand le devis n'en porte pas : le client choisit, rien n'est coché d'avance. */
+  const optionRecommandee = (d) => ({ 'Sans batterie': 'sans_batterie', 'Avec batterie': 'avec_batterie' })[
+    d?.etude_params?.recommended_option] ?? null
   const openAcceptModal = (d) => {
     setAcceptTarget(d)
     setAcceptNom('')
     setAcceptDate(todayLocalIso())
-    setAcceptOption('sans_batterie')
+    // T4-U1-014 — jamais « Sans batterie » d'office : seule l'option que le DEVIS recommande est présélectionnée.
+    setAcceptOption(optionRecommandee(d) ?? '')
     setAcceptEntreprise({ ...ENTREPRISE_VIDE, raison_sociale: raisonSocialeConnue(d) })
     setAcceptBusy(false)
     setAcceptBlocage(null)
@@ -1015,7 +1020,8 @@ export default function DevisList() {
                 Passer outre
               </Button>
             )}
-            <Button onClick={() => submitAccept()} loading={acceptBusy}>
+            <Button onClick={() => submitAccept()} loading={acceptBusy}
+                    disabled={acceptTarget?.nb_options === 2 && !acceptOption}>
               <Check /> Confirmer l'acceptation
             </Button>
           </>
@@ -1048,15 +1054,21 @@ export default function DevisList() {
               <div className="grid gap-2">
                 <Label>Option retenue par le client</Label>
                 <RadioGroup value={acceptOption} onValueChange={setAcceptOption} className="flex flex-col gap-2">
-                  <label className="flex items-center gap-2 text-sm">
-                    <RadioGroupItem value="sans_batterie" />
-                    <span>Sans batterie</span>
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <RadioGroupItem value="avec_batterie" />
-                    <span>Avec batterie</span>
-                  </label>
+                  {[['sans_batterie', 'Sans batterie'], ['avec_batterie', 'Avec batterie']].map(([valeur, libelle]) => (
+                    <label key={valeur} className="flex items-center gap-2 text-sm">
+                      <RadioGroupItem value={valeur} aria-label={libelle} />
+                      <span>{libelle}</span>
+                      {optionRecommandee(acceptTarget) === valeur && (
+                        <span className="text-xs text-muted-foreground" data-testid="accept-option-recommandee">
+                          · recommandée par le devis
+                        </span>
+                      )}
+                    </label>
+                  ))}
                 </RadioGroup>
+                {!acceptOption && (
+                  <p className="text-xs text-muted-foreground">Choisissez l’option que le client a retenue.</p>
+                )}
               </div>
             )}
             {estDevisCi(acceptTarget) && (

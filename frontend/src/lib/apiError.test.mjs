@@ -59,6 +59,16 @@ test('getApiError: écriture expirée (ECONNABORTED, post) — ACNC52', () => {
   assert.equal(getApiError(lecture).message, 'La connexion a expiré. Vérifiez votre connexion et réessayez.')
 })
 
+// T4-U1-011 / T4-U2-018 / T4-U3-014 — les listes (leads, devis…) rangent `err.message` d'axios quand le serveur n'a
+// pas répondu, puis l'écran le relit comme `response.data` : le texte technique anglais ne doit JAMAIS passer.
+test('getApiError: message technique axios rangé comme donnée → phrase française', () => {
+  const expire = getApiError({ response: { data: 'timeout of 20000ms exceeded' } }).message
+  assert.equal(expire, 'La connexion a expiré. Vérifiez votre connexion et réessayez.')
+  assert.match(getApiError({ response: { data: 'Network Error' } }).message, /[Cc]onnexion/)
+  assert.doesNotMatch(getApiError({ response: { data: 'Request failed with status code 502' } }).message, /Request failed/)
+  assert.doesNotMatch(getApiError({ message: 'timeout of 60000ms exceeded' }, 'Repli.').message, /timeout of/)
+})
+
 test('getApiError: Network Error', () => {
   // VX156 — le moment « erreur réseau » porte désormais la voix Taqinor
   // (honnête, rassurante : la saisie n'est pas perdue).

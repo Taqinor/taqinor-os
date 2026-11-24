@@ -174,10 +174,14 @@
 .cal-tel-tuile-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .cal-tel-tuile-etiquette {
   position: relative;
-  height: 22px;
+  /* T4-U4-023 — un libellé sur deux lignes (« Oblique (aérienne) » sur une tuile de 110 px) reste DANS sa pastille. */
+  min-height: 22px;
+  max-width: 100%;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
-  padding: 0 7px;
+  padding: 2px 7px;
+  line-height: 1.2;
   border-radius: 7px;
   background: color-mix(in oklch, var(--color-encre) 80%, transparent);
   color: var(--app-tile-glyph);
@@ -204,6 +208,32 @@
   cursor: pointer;
 }
 .cal-tel-tuile-vide svg { color: var(--cal-or-texte); }
+/* T4-U4-023 — la photo gardée sur le téléphone (ou envoyée, en relecture) : genre + état sur deux lignes, encre de la
+   feuille sur la surface pleine (jamais une étiquette claire coupée). */
+.cal-tel-tuile-attente {
+  height: 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 4px;
+  box-sizing: border-box;
+  text-align: center;
+  border: 1.5px solid var(--cal-filet-fort);
+  border-radius: var(--cal-rayon-tuile);
+  background: var(--cal-surface-2);
+  color: var(--cal-texte-1);
+  font-size: 0.75rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.cal-tel-tuile-attente svg { width: 16px; height: 16px; color: var(--cal-lien); }
+.cal-tel-tuile-attente-genre { font-weight: 600; }
+.cal-tel-tuile-attente-etat { color: var(--cal-texte-2); }
+/* T4-U4-020 — l'état de chaque envoi (relevé, pente et orientation, photos) : « en attente » ou « envoyé ». */
+.cal-tel-envois { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; font-size: 0.8125rem; color: var(--cal-texte-1); }
+.cal-tel-envois [data-etat='envoye'] { color: var(--cal-ok); }
 .cal-tel-tuile-vide:focus-within { box-shadow: var(--focus-ring); }
 
 .cal-tel-deux { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }

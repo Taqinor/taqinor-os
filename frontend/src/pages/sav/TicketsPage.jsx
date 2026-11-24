@@ -67,7 +67,7 @@ import {
   statusLabel,
   ticketAgeDays,
   statusCountsIndependants,
-  filtresPourStatut,
+  filtresPourStatut, descriptionListeVide,
 } from '../../features/sav/ticketStatuses'
 import {
   TooltipProvider,
@@ -1613,7 +1613,7 @@ export default function TicketsPage() {
   const { createView: createTicketView } = useServerSavedViews(TP_ECRAN)
   // PACT174 — l'assistant ne propose « Partagée à l'équipe » qu'aux rôles qui
   // ont réellement ce droit (SavedViewViewSet répond 403 sinon).
-  const peutPartagerVue = useIsAdminOrResponsable(), peutGerer = useDroitMetier('sav_gerer'), peutReassigner = useDroitMetier('sav_reassign') // ADRG22
+  const peutPartagerVue = useIsAdminOrResponsable(), peutGerer = useDroitMetier('sav_gerer'), peutReassigner = useDroitMetier('sav_reassign'), peutLireChantiersListe = useDroitMetier('installation_voir') // ADRG22 ; T4-U2-016
   const saveCurrentTicketView = () => {
     const name = window.prompt('Nom de la vue enregistrée :')
     const trimmed = (name || '').trim()
@@ -2085,12 +2085,10 @@ export default function TicketsPage() {
               <EmptyState
                 icon={TicketIcon}
                 title={hasFilters ? 'Aucun résultat' : 'Aucun ticket ouvert'}
-                description={hasFilters
-                  ? 'Aucun ticket ne correspond aux filtres.'
-                  : "Aucun ticket ouvert pour le moment. Ouvrez-en un depuis la fiche d'un chantier."}
+                description={descriptionListeVide(hasFilters, peutGerer)} // T4-U2-016 — où (avec le droit), qui (sans)
                 action={hasFilters
                   ? <Button size="sm" variant="outline" onClick={() => setFilters(EMPTY_TICKET_FILTERS)}><RotateCcw /> Réinitialiser</Button>
-                  : undefined}
+                  : (peutGerer && peutLireChantiersListe ? <Button size="sm" variant="outline" asChild><Link to="/chantiers">Choisir le chantier</Link></Button> : undefined)}
               />
             ) : view === 'kanban' ? (
               // L295 — vue Kanban : colonnes Nouveau → Clôturé via TICKET_STATUSES.
