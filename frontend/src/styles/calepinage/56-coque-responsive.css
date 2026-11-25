@@ -89,6 +89,14 @@
     left: calc((var(--cal-libre-gauche) + 100% - var(--cal-libre-droite)) / 2);
   }
   .rp9-host.cal-coque[data-avance='0'] .rp9-toit-client { left: calc(var(--cal-libre-gauche) + 4px); bottom: 16px; }
+  /* T4-X7-019 — la bulle de consigne du constructeur (`#rp9-etat-vide`, « 1 · Localisez le toit… ») est posée en style
+     inline à 12 px du haut de la carte ; la carte étant plein écran SOUS les pièces, elle passait sous le bandeau du
+     projet. Elle se pose dans la zone libre, sous la carte d'adresse (12 + 60 + 12 px), centrée entre rail et panneau. */
+  .rp9-host.cal-coque[data-avance='0'] #rp9-etat-vide {
+    top: calc(var(--cal-libre-haut) + 84px) !important;
+    left: calc((var(--cal-libre-gauche) + 100% - var(--cal-libre-droite)) / 2) !important;
+    max-width: calc(100% - var(--cal-libre-gauche) - var(--cal-libre-droite) - 32px) !important;
+  }
   /* ACAL1804 — pièces posées sur la carte aux places de la maquette, aux trois étapes à carte : pilule de chiffres
      (`cal-sur-carte-resume` : Toit, Panneaux, Électrique) à 16 px du rail et du bandeau (après la bulle de consigne
      quand elle est là), barre d'outils à 28 px du bas. */

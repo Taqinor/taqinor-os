@@ -86,7 +86,7 @@ function ProductionDuDevis({ bloc, p50, incomplet = false }) {
   const [enCours, reviser] = useReviser(bloc)
   if (!bloc) return null
   const kwh = typeof bloc.production_annuelle_kwh === 'number' ? bloc.production_annuelle_kwh : null
-  const lien = <Link to={`/ventes/devis?devis=${bloc.devis}`}>{bloc.reference || 'voir le devis'}</Link>
+  const lien = <Link to={`/ventes/devis?devis=${bloc.devis}`} className="cal-res-lien-devis">{bloc.reference || 'voir le devis'}</Link>
   const simule = typeof p50 === 'number' ? p50 : null
   const dit = (n) => `${formatNumber(n, { decimals: 0 })} kWh par an`
   if (kwh != null && simule != null && Math.round(kwh) === Math.round(simule)) {
@@ -181,7 +181,7 @@ function ProductionDeLaConception({ bloc, taille = null, pose = null, simulee = 
   const reviserPossible = ecarts.length === 0 || ecarts.some((e) => e?.reviser_possible)
   const option = different && envoye?.option && envoye.option !== bloc.option ? ` (${LIBELLE_OPTION[envoye.option] ?? envoye.option})` : ''
   const [enCours, reviser] = useReviser(envoye, { surLaConception: true })  // T4-X5-011 : V2 sur la conception
-  const lien = envoye ? <Link to={`/ventes/devis?devis=${envoye.devis}`}>{envoye.reference || 'voir le devis'}</Link> : null
+  const lien = envoye ? <Link to={`/ventes/devis?devis=${envoye.devis}`} className="cal-res-lien-devis">{envoye.reference || 'voir le devis'}</Link> : null
   return (
     <section className="cal-res-carte flex flex-col gap-1" data-zone="production-conception"
       data-chiffre={different ? 'deux' : 'un-seul'}>
