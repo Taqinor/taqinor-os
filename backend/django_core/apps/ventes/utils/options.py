@@ -466,20 +466,6 @@ def option_lines(devis, option=None):
     return filter_lines_for_option(lignes, option, devis=devis)
 
 
-def lignes_vendues_de_l_option(devis, variante):
-    """T4-X4-004 — les lignes VENDUES (``dimensionnement_devis.lignes_vendues``)
-    de l'option ``variante`` ('sans'/'avec') : sur un devis à deux options, par
-    :func:`filter_lines_for_option` (variante déclarée, rôle, mots-clés, QF9 —
-    la règle du PDF et du noyau monnaie), jamais par la seule étiquette
-    ``variante`` (une batterie non étiquetée tombait dans « sans »). Devis à
-    une option : la lecture d'avant, inchangée."""
-    from apps.ventes.domain.dimensionnement_devis import lignes_vendues as _vendues
-    if not has_two_options(devis):
-        return _vendues(devis, variante)
-    option = SANS_BATTERIE if variante == 'sans' else AVEC_BATTERIE
-    return filter_lines_for_option(_vendues(devis), option, devis=devis)
-
-
 def lignes_vendues(devis):
     """ADOC191 (C-ADOC-VER4-002) — ``[(ligne, quantité vendue)]`` : les
     lignes de l'option retenue (``option_lines``) × nombre de villas

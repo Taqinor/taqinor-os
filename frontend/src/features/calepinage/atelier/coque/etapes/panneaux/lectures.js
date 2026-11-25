@@ -105,15 +105,24 @@ export function useCibleFactures(calepinageId, servi = null, { attendre = false 
     return () => clearTimeout(minuteur)
   }, [calculEnCours, relectures, relireTaille])
   const actualiser = useCallback(() => { setRelectures(0); relireTaille() }, [relireTaille])
+  // Lane E9 — la conception que l'atelier a OUVERTE (`cible.version` du design-context) contre celle qui fait la taille
+  // relue (`cible_factures.version`) : différentes ⇒ la carte dit pourquoi ses chiffres ont changé (`raison` servie).
+  const ouverte = contexte.donnees?.cible?.version
+  const relue = taille.donnees?.cible_factures
+  const recalculee = etat === 'ok' && Number.isInteger(ouverte) && Number.isInteger(relue?.version)
+    && relue.version !== ouverte ? { raison: relue.raison || '' } : null
   return {
+    recalculee,
     calculEnCours,
     calculAbandonne: calculEnCours && relectures >= RELECTURES_CALCUL,
     actualiser,
     etat,
     cible: etat === 'ok' ? cibleFactures(taille.donnees) : null,
-    motif: contexte.etat === 'ok' ? (contexte.donnees?.consommation_lead?.motif || '') : '',
+    // T4-X9-013 — sans lead, ni motif ni refus : ce sont des phrases du moteur sur LE LEAD (« renseigner la ville… du
+    // lead »), qui n'existe pas ; la production d'un tel calepinage est celle de sa simulation.
+    motif: contexte.etat === 'ok' && contexte.donnees?.calepinage?.lead ? (contexte.donnees?.consommation_lead?.motif || '') : '',
     // ACAL1517 — le refus servi par `cible-factures/` (`refus`, ex. lead industriel) : dit tel quel, jamais réécrit.
-    refus: etat === 'ok' ? (taille.donnees?.refus || '') : '',
+    refus: etat === 'ok' && contexte.donnees?.calepinage?.lead ? (taille.donnees?.refus || '') : '',
     leadId: contexte.donnees?.calepinage?.lead ?? null,
     // Critique ACAL1517 — une facture est-elle saisie sur le lead ? (`consommation_lead.facture_mensuelle_mad` du design-context) :
     // un refus servi AVEC une facture saisie (C&I, agricole) ne renvoie pas vers la fiche ; faute de facture, le lien reste.

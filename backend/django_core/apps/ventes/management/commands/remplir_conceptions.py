@@ -335,7 +335,7 @@ def _ecarts_du_plan_par_defaut(lead, company):
     """``{refus}`` (le moteur refuse ce lead) ou ``{options: [...]}`` d'un lead sans toit : par
     option de sa conception (rangée courante, sinon calculée), la production d'aujourd'hui
     contre le plan par défaut au kWc, au compte et au matériel de l'option. Chaque option :
-    ``{option, kwc, avant, apres, kwc_plan, refus, pente_supposee, etapes_sans_fiche,
+    ``{option, kwc, avant, apres, kwc_plan, refus, pente_supposee, pose_supposee, etapes_sans_fiche,
     puissance_conception, fiche_vide}`` (lecture seule) : ``fiche_vide`` = la fiche du module
     ne porte pas sa puissance ou fait omettre des étapes de pertes, la production « après »
     est alors SURESTIMÉE."""
@@ -360,6 +360,8 @@ def _ecarts_du_plan_par_defaut(lead, company):
                         'refus': plan.get('refus'),
                         'pente_supposee': any(s.get('champ') == 'inclinaison_deg'
                                               for s in plan.get('suppositions') or ()),
+                        'pose_supposee': next((s.get('valeur') for s in plan.get('suppositions') or ()
+                                               if s.get('code') == 'pose_supposee'), None),
                         **_fiche_du_module(plan.get('suppositions') or ())})
     return {'options': options}
 
@@ -406,7 +408,8 @@ def _ligne_option(lead, o):
     if avant is None or apres is None:
         return tete + ' (écart —) ; changera : —', None
     kwh, pct = apres - avant, ((apres - avant) / avant * 100 if avant else 0.0)
-    supposee = (', pente supposée 30°' if o['pente_supposee'] else '') + _drapeau_fiche(o)
+    supposee = ((', pente supposée 30°' if o['pente_supposee'] else '')
+                + (f', pose supposée {o["pose_supposee"]}' if o.get('pose_supposee') else '') + _drapeau_fiche(o))
     return (tete + f' (écart {_signe(kwh)} kWh, {pct:+.1f} %{supposee}) ; '
             f'changera : {"oui" if round(apres) != round(avant) else "non"}',
             {'lead': lead.pk, 'option': o['option'], 'kwh': kwh, 'pct': pct,

@@ -15,7 +15,7 @@ import { formatNumber, formatMAD } from '../../../lib/format'
 import {
   balayageStockageAffichable, LIBELLES_MOIS,
 } from '../../../features/ventes/etudeHorairePreview'
-import { facturesRecaleesAffichables } from '../../../features/ventes/etudeHorairePreviewPur'
+import { facturesRecaleesAffichables, motivationAffichable } from '../../../features/ventes/etudeHorairePreviewPur'
 import { moteur } from '../../../features/ventes/quote/valeur'
 import { SAISON_LABELS, fmtNum } from '../../../features/ventes/quote/ecranDefauts.js'
 import CarteMetrique, { GenCardHeader } from './CarteMetrique'
@@ -42,6 +42,8 @@ export default function ApercuSimulation({
   // Deux options montrées ET deux champs PV : une production par option.
   const productionParOption = apercuProductionKwhAvec != null && showSans && showAvec
   // R2-07 — une facture déclarée recalée par le barème (saut de tranche) est DITE.
+  // Revue de l'écran (25/11) — la ligne sous le tableau, composée des valeurs servies.
+  const motivation = motivationAffichable(etudeHoraireDonnees?.dimensionnement)
   const facturesRecalees = facturesRecaleesAffichables(
     etudeHoraireDonnees?.consommation?.detail, etudeHoraireCorps)
   return (
@@ -156,11 +158,16 @@ export default function ApercuSimulation({
                         <Fragment key={ligne.panneaux}>
                           <tr
                               className={`border-b border-border${estRecommandee ? ' bg-success/10' : ''}${estRecommandeeAvec ? ' bg-info/10' : ''}`}>
-                            <td className="py-1.5 pr-3">
+                            <td className="min-w-48 py-1.5 pr-3">
                               {formatNumber(ligne.kwc, { decimals: 2 })} kWc
-                              {estRecommandee && <span className="gen-rec-badge"> ★ Recommandé (sans)</span>}
-                              {estRecommandeeAvec && <span className="gen-rec-badge" data-testid="etude-horaire-reco-avec"> ★ Recommandé (avec)</span>}
-                              {ligne.tailleDuDevis && <span className="gen-rec-badge" data-testid="etude-horaire-taille-devis"> · {ligne.tailleDuDevis}</span>}
+                              {/* Revue de l'écran (25/11) — les badges sous le chiffre, un par ligne. */}
+                              {(estRecommandee || estRecommandeeAvec || ligne.tailleDuDevis) && (
+                                <div className="mt-0.5 flex flex-col items-start gap-0.5" data-testid="etude-horaire-badges">
+                                  {estRecommandee && <span className="gen-rec-badge whitespace-nowrap">★ Recommandé (sans)</span>}
+                                  {estRecommandeeAvec && <span className="gen-rec-badge whitespace-nowrap" data-testid="etude-horaire-reco-avec">★ Recommandé (avec)</span>}
+                                  {ligne.tailleDuDevis && <span className="gen-rec-badge whitespace-nowrap" data-testid="etude-horaire-taille-devis">{ligne.tailleDuDevis}</span>}
+                                </div>
+                              )}
                             </td>
                             <td className="py-1.5 pr-3">
                               {ligne.onduleur} — {formatNumber(ligne.ratio_onduleur_kwc * 100, { decimals: 0 })} % du kWc
@@ -174,7 +181,10 @@ export default function ApercuSimulation({
                             <td className="py-1.5 pr-3">
                               {ligne.batterieVendable
                                 ? fmtNum(Math.round(ligne.economie_avec_mad))
-                                : <span className="text-muted-foreground">{ligne.raisonBatterie}</span>}
+                                : (
+                                  <span className="text-muted-foreground" data-testid="etude-horaire-raison-batterie"
+                                        title={ligne.raisonTechnique || undefined}>{ligne.raisonBatterie}</span>
+                                )}
                             </td>
                             <td className="py-1.5 pr-3">{ligne.payback_sans_annees != null ? `${ansFr(ligne.payback_sans_annees)} ans` : 'N/A'}</td>
                             <td className="py-1.5 pr-3" data-testid="etude-horaire-residuel">
@@ -249,9 +259,10 @@ export default function ApercuSimulation({
                     })}
                   </tbody>
                 </table>
-                {etudeHoraireDonnees?.dimensionnement?.motivation && (
-                  <p className="mt-2 text-xs text-muted-foreground" data-testid="etude-horaire-motivation">
-                    {etudeHoraireDonnees.dimensionnement.motivation}
+                {motivation && (
+                  <p className="mt-2 text-xs text-muted-foreground" data-testid="etude-horaire-motivation"
+                     title={motivation.technique || undefined}>
+                    {motivation.texte}
                   </p>
                 )}
               </BarreDefilementCollante>

@@ -104,7 +104,9 @@ def cible_factures_et_refus(calepinage, *, lire_cible=None):
     cible = lire_cible(calepinage)
     if cible and cible.get('source') == 'factures' and cible.get('panneaux'):
         return ({'panneaux': int(cible['panneaux']), 'kwc': nombre(cible.get('kwc')),
-                 'module_wc': nombre(cible.get('panel_watt'))}, '')
+                 'module_wc': nombre(cible.get('panel_watt')),
+                 # Lane E9 — la version de la conception qui fait ces chiffres et la raison de son calcul.
+                 'version': cible.get('version'), 'raison': cible.get('raison')}, '')
     return None, str((cible or {}).get('refus') or '')
 
 

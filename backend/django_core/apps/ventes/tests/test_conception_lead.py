@@ -41,6 +41,7 @@ CLES_RANGEES = {
     'payback_devis',  # relecture E6 : le devis de référence du payback servi à la lecture
 }
 CLES_VALEUR = {'valeur', 'unite', 'source'}
+CLES_ENTREES_PAYBACK = {'investissement_ttc', 'economie_annuelle', 'cout_onduleur_ttc', 'calcul'}  # T4-X9-016
 SOURCES_VALEUR = {'moteur', 'pose', 'impose', 'devis', 'defaut'}
 SOURCES_ENTREE = {'lead', 'calepinage', 'reglage_societe', 'defaut'}
 CLES_SUPPOSITION = {'code', 'champ', 'valeur', 'source', 'message'}
@@ -129,7 +130,10 @@ class ContratConceptionLeadTests(SimpleTestCase):
                     self.assertIn(option, {'sans', 'avec'})
                     self.assertEqual(set(valeurs), attendues)
                     for cle, valeur in valeurs.items():
-                        self.assertEqual(set(valeur), CLES_VALEUR, cle)
+                        # T4-X9-016 — le payback servi d'un devis porte aussi ses entrées.
+                        attendu = (CLES_VALEUR | CLES_ENTREES_PAYBACK
+                                   if cle == 'payback' and valeur.get('source') == 'devis' else CLES_VALEUR)
+                        self.assertEqual(set(valeur), attendu, cle)
                         self.assertIn(valeur['source'], SOURCES_VALEUR, cle)
 
     def test_suppositions_entrees_et_declencheur(self):
@@ -1821,6 +1825,9 @@ class RelanceConceptionTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher'
         self.assertEqual((relue.lead_id, relue.calepinage_id, relue.courante, relue.version),
                          (None, sans_lead.pk, True, 1))
         self.assertEqual((relue.etat, relue.refus['code']), ('refus', 'localisation_inconnue'))
+        # T4-X9-013 — sans lead, le refus ne demande jamais « la ville … du lead ».
+        self.assertEqual(relue.refus['message'], "Sans lead, l'atelier ne calcule pas de conception : "
+                                                 'la production vient de la simulation de la pose.')
         self.assertTrue(relue.declencheur['raison'].endswith(' : premier calcul'))
         meme = self._relancer(None, company, _declencheur('manuel'), calepinage_id=sans_lead.pk)
         self.assertFalse(meme.ecrite)
@@ -1954,6 +1961,35 @@ class ServirConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
         self.assertEqual(_cles_interdites(lue), [])
         self.assertEqual(_photo_devis(devis.pk), avant)  # le devis envoyé n'est jamais écrit
         self.assertEqual(_json(ConceptionLead.objects.filter(lead=lead).values()[0]), rangee)  # jamais rangé
+
+    def test_t4x9016_le_payback_servi_porte_son_montant_et_son_economie(self):
+        """T4-X9-016 — « Retour 21,4 ans — d'après le devis DEV-… » sans dire quel montant ni
+        quelle économie : le payback servi porte À CÔTÉ de lui l'investissement TTC de SON option
+        et l'économie annuelle de la MÊME option (celle de la colonne), et la phrase du calcul
+        (cumul de 25 ans, baisse de production, remplacement de l'onduleur) quand ce n'est pas un
+        simple quotient. Établi : 65 900 MAD et 6 397 MAD/an donnent 10,6 ans
+        (``payback_publiable``, résidentiel, part stockée 0) — jamais 21,4."""
+        from apps.ventes.quote_engine.pricing import payback_publiable
+        from apps.ventes.selectors import conception_courante
+        from apps.ventes.services import build_devis_auto
+
+        self.assertEqual(payback_publiable(65900, 6397, stockage=True, part_batterie=0,
+                                           cout_onduleur_ttc=15000)['payback_years'], 10.6)
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        self._relancer(lead, company, _declencheur())
+        with self.captureOnCommitCallbacks(execute=True):
+            build_devis_auto(lead=lead, user=self._utilisateur(company), company=company)
+        lue = conception_courante(company, lead.pk)
+        for option, table in lue['valeurs'].items():
+            payback = table['payback']
+            self.assertEqual(payback['economie_annuelle'], table['economies_annuelles']['valeur'], option)
+            self.assertGreater(payback['investissement_ttc'], 0, option)
+            self.assertEqual(payback['valeur'], payback_publiable(
+                payback['investissement_ttc'], payback['economie_annuelle'], stockage=option == 'avec',
+                cout_onduleur_ttc=payback.get('cout_onduleur_ttc'), part_batterie=0)['payback_years'], option)
+            self.assertIn('25 ans', payback['calcul'], option)
+        self.assertEqual(_cles_interdites(lue), [])
 
     def test_e6d_cout_onduleur_un_seul_calcul_payback_servi_au_centime(self):
         """Lane E6d — la provision d'onduleur du payback servi est calculée par LA fonction des
@@ -2422,6 +2458,26 @@ class VerdictsDuMoteurTests(TestCase):
         from apps.ventes.conception.porte_calepinage import verdicts_electriques
 
         self.assertIsNone(verdicts_electriques(self.company, None, [], 10.0))
+
+    def test_t4_x3_009_la_note_nomme_le_panneau_de_la_conception(self):
+        """T4-X3-009 (lane E9) — conception 8 × 550 W = 4,40 kWc, pose en 710 W : la note ne dit
+        jamais un « 8 » nu à côté de panneaux de 710 W, elle nomme le panneau de la conception ;
+        même compte (8) mais autre puissance (5,68 kWc) : jugé pour la POSE, plus le verdict rangé."""
+        from apps.ventes.selectors_conception import verdicts_pour_le_calepinage
+
+        range_ = self._verdicts(self.reseau, ratio=0.88, kwc=4.4)
+        ligne = {'produit': self.reseau.pk, 'designation': self.reseau.nom, 'quantite': 1}
+        conception = {'lead': 9, 'option_retenue': 'sans', 'valeurs': {'sans': {
+            'nb_panneaux': {'valeur': 8}, 'puissance_kwc': {'valeur': 4.4}, 'onduleurs': {'valeur': [ligne]},
+            'verdicts': {'valeur': range_}}}}
+        pose = {'onduleur_produit': self.reseau.pk, 'chaines': [{'nb_modules': 6}]}
+        moins = dict(pose, nb_panneaux=6, kwc=4.26, ratio=0.85)
+        _j, note, _r = verdicts_pour_le_calepinage(self.company, conception, moins)
+        self.assertEqual(note, 'jugé pour la pose : 6 panneaux — la conception du lead en compte 8 de 550 W')
+        autre_module = dict(pose, nb_panneaux=8, kwc=5.68, ratio=1.14)
+        jugees, note, _r = verdicts_pour_le_calepinage(self.company, conception, autre_module)
+        self.assertEqual(jugees['ratio_dc_ac']['valeur'], 1.14)
+        self.assertEqual(note, 'jugé pour la pose : 8 panneaux — la conception du lead en compte 8 de 550 W')
 
     def test_e6_m4_pose_d_un_autre_compte_jugee_par_la_meme_regle(self):
         """Relecture E6 M4 + m3 — même compte : le verdict RANGÉ ; compte différent : LA règle
@@ -3350,10 +3406,13 @@ class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher
 
         def plan(company_, lat, lon, kwc, **kw):
             appels.append((kw['lead_id'], kwc, kw['pente'], kw['produits'], kw['nb_panneaux']))
+            # ACAL2045 — les champs du lead qui font la pose supposée sont passés au plan.
+            self.assertEqual((kw['type_installation'], kw['type_toiture']), (None, None))
             # Le lead pentu : fiche du module VIDE (puissance de la conception, deux étapes omises).
             vide = [{'code': 'puissance_module_de_la_conception'}] + [{'code': 'fiche_module_incomplete'}] * 2
             return {'production_annuelle': kwc * 1500.0,
                     'suppositions': ([] if kw['pente'] is not None else [{'champ': 'inclinaison_deg'}])
+                    + [{'code': 'pose_supposee', 'valeur': 'affleurante'}]
                     + (vide if kw['lead_id'] == pentu.pk else [])}
         sortie = io.StringIO()
         with mock.patch('apps.calepinage.services.plan_par_defaut.simuler_plan_par_defaut', side_effect=plan):
@@ -3394,6 +3453,7 @@ class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher
                     '{:,.0f}'.format(avant).replace(',', ' '), '{:,.0f}'.format(kwc * 1500.0).replace(',', ' '),
                     '{:+,.0f}'.format(ecart).replace(',', ' '), ecart / avant * 100), ligne)
                 self.assertIn('pente supposée 30°' if lead is sans_toit else 'changera : ', ligne)
+                self.assertIn(', pose supposée affleurante', ligne)  # ACAL2045 : la pose supposée, dite
                 drapeau = ('fiche du module vide : 2 étape(s) de pertes non appliquée(s), puissance prise de '
                            'la conception')
                 (self.assertIn if lead is pentu else self.assertNotIn)(drapeau, ligne)

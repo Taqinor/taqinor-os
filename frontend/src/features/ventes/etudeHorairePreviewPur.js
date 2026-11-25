@@ -126,8 +126,8 @@ export function lignesAffichables(dimensionnement) {
       ? ''
       : ((Array.isArray(ligne.verdicts_bloquants_avec) && ligne.verdicts_bloquants_avec.length)
           ? ligne.verdicts_bloquants_avec.join(' ')
-          // T4-X4-018 — la raison du SERVEUR quand il refuse le palier de stockage.
-          : (ligne.stockage_refuse?.motif_refus
+          // T4-X4-018 — le refus du palier de stockage, en mots simples, depuis ses valeurs.
+          : (raisonStockageRefuse(ligne.stockage_refuse)
             || 'Option batterie non livrable pour cette taille (catalogue).'))
     // T4-X4-018 — la ligne à la taille d'une option que le devis vend (aperçu serveur).
     const options = Array.isArray(ligne?.taille_du_devis) ? ligne.taille_du_devis : []
@@ -137,13 +137,17 @@ export function lignesAffichables(dimensionnement) {
       : ''
     // L'option avec batterie que le devis VEND n'est jamais dite « non livrable » à sa taille :
     // sans raison du serveur, la ligne dit que le moteur ne l'a pas chiffrée.
-    const raison = !batterieVendable && options.includes('avec') && !ligne.stockage_refuse?.motif_refus
-      && !(Array.isArray(ligne.verdicts_bloquants_avec) && ligne.verdicts_bloquants_avec.length)
-      ? 'Batterie de ce devis non chiffrée à cette taille par le balayage du moteur.' : raisonBatterie
+    const bloquants = Array.isArray(ligne.verdicts_bloquants_avec) && ligne.verdicts_bloquants_avec.length
+    const duDevis = !batterieVendable && options.includes('avec') && !bloquants
+    const raison = !duDevis ? raisonBatterie
+      : (raisonStockageRefuse(ligne.stockage_refuse, { duDevis: true })
+        || 'Batterie de ce devis non chiffrée à cette taille par le balayage du moteur.')
     return {
       ...ligne,
       batterieVendable,
       raisonBatterie: raison,
+      // La phrase technique du serveur, gardée pour l'infobulle (jamais dans la cellule).
+      raisonTechnique: batterieVendable ? null : (ligne.stockage_refuse?.motif_refus || null),
       tailleDuDevis,
       economie_avec_mad: batterieVendable ? ligne.economie_avec_mad : null,
       cout_avec_ttc: batterieVendable ? ligne.cout_avec_ttc : null,
@@ -152,6 +156,51 @@ export function lignesAffichables(dimensionnement) {
       taux_autoconso_avec: batterieVendable ? ligne.taux_autoconso_avec : null,
     }
   })
+}
+
+const MOIS_NOMS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août',
+  'septembre', 'octobre', 'novembre', 'décembre']
+
+/** Revue de l'écran (25/11) — LE formateur du refus d'un palier de stockage : UNE phrase
+ *  courte, nombres français, nom du mois, composée des VALEURS servies
+ *  (`stockage_refuse.capacite_kwh`, `remplissage.pire_mois.{mois, ratio}`) ; `null` si
+ *  elles manquent (jamais la prose technique relue). */
+export function raisonStockageRefuse(refus, { duDevis = false } = {}) {
+  const capacite = Number(refus?.capacite_kwh)
+  const pire = refus?.remplissage?.pire_mois
+  const mois = MOIS_NOMS[Number(pire?.mois) - 1]
+  const ratio = Number(pire?.ratio)
+  if (!(capacite > 0) || !mois || !Number.isFinite(ratio)) return null
+  // À la taille d'une option que le devis VEND : jamais « pas de batterie », la raison seule.
+  return `${duDevis ? 'Batterie de ce devis' : 'Pas de batterie à cette taille'} : en ${mois}, le surplus `
+    + `solaire d’une journée ne remplirait la batterie de ${formatNumber(capacite, { maxDecimals: 1 })} kWh qu’à `
+    + `${formatNumber(ratio * 100, { decimals: 0 })} %.`
+}
+
+const CRITERES_MOTS = {
+  meilleur_payback: 'le retour sur investissement le plus court',
+  economie_max: 'l’économie annuelle la plus grande',
+  meilleure_couverture: 'la couverture de la consommation la plus grande',
+}
+
+/** Revue de l'écran (25/11) — la ligne sous le tableau, composée des valeurs servies
+ *  (`recommandation`, `critere`) : `{ texte, technique }` (`technique` : la motivation
+ *  servie, pour l'infobulle). Sans recommandation : la phrase du moteur telle quelle. */
+export function motivationAffichable(dimensionnement) {
+  if (!dimensionnement) return null
+  const reco = dimensionnement.recommandation
+  const servie = dimensionnement.motivation || null
+  if (!reco) return servie ? { texte: servie, technique: null } : null
+  const morceaux = [`${reco.panneaux} panneaux (${formatNumber(reco.kwc, { decimals: 2 })} kWc)`]
+  if (reco.payback_sans_annees != null) {
+    morceaux.push(`retour sur investissement ${formatNumber(reco.payback_sans_annees, { decimals: 1 })} ans`)
+  }
+  if (reco.couverture_sans != null) morceaux.push(`couverture ${formatNumber(reco.couverture_sans * 100, { decimals: 0 })} %`)
+  const critere = CRITERES_MOTS[dimensionnement.critere]
+  return {
+    texte: `Taille conseillée sans batterie : ${morceaux.join(', ')}${critere ? ` — critère : ${critere}` : ''}.`,
+    technique: servie,
+  }
 }
 
 // ── L-FRONT (lot 4, 24/08) — falaise/résiduel/remplissage/glitch/estimation ──

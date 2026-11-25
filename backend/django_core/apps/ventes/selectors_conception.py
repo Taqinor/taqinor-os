@@ -123,6 +123,7 @@ def _payback_servi(version, valeurs):
         return valeurs, {'devis_ref': None, 'motif': MOTIF_PAYBACK_SANS_DEVIS}
     from . import offres_tailles
     from .domain.catalogue import classer_produit
+    from .conception.valeurs import entrees_du_payback
     from .quote_engine.pricing import payback_publiable
     from .utils.options import AVEC_BATTERIE, SANS_BATTERIE, filter_lines_for_option, lignes_avec_produit, option_totaux
 
@@ -144,9 +145,11 @@ def _payback_servi(version, valeurs):
         # Modèle HORAIRE (résidentiel) : l'économie « avec » est déjà nette du rendement de la batterie,
         # le cashflow n'en re-déduit rien (part stockée 0, comme le PDF, AMOT58).
         horaire = {'part_batterie': 0} if version.marche == 'residentiel' else {}
-        table['payback'] = {'valeur': payback_publiable(investissement, economie, stockage=option == 'avec',
-                                                        cout_onduleur_ttc=cout, **horaire)['payback_years'],
-                            'unite': 'ans', 'source': 'devis'}
+        table['payback'] = dict({'valeur': payback_publiable(investissement, economie, stockage=option == 'avec',
+                                                             cout_onduleur_ttc=cout, **horaire)['payback_years'],
+                                 'unite': 'ans', 'source': 'devis'},
+                                **entrees_du_payback(investissement, economie, cout,
+                                                     stockage=option == 'avec' and version.marche != 'residentiel'))
     return servies, {'devis_ref': devis.reference, 'motif': None}
 
 
@@ -242,7 +245,10 @@ def verdicts_pour_le_calepinage(company, conception, pose):
         return None, '', True
     verdicts = (valeurs.get('verdicts') or {}).get('valeur') or {}
     nombre, posees = (valeurs.get('nb_panneaux') or {}).get('valeur'), (pose or {}).get('nb_panneaux')
-    if not posees or nombre is None or posees == nombre or (pose or {}).get('ratio') is None:
+    kwc_conception = (valeurs.get('puissance_kwc') or {}).get('valeur')
+    # T4-X3-009 — même compte mais autre puissance de module (8 × 710 W contre 8 × 550 W) : autre pose.
+    meme_pose = posees == nombre and not _autre_puissance(kwc_conception, (pose or {}).get('kwc'))
+    if not posees or nombre is None or meme_pose or (pose or {}).get('ratio') is None:
         return verdicts, '', False
     onduleurs = (valeurs.get('onduleurs') or {}).get('valeur') or []
     produit = pose.get('onduleur_produit')
@@ -254,7 +260,21 @@ def verdicts_pour_le_calepinage(company, conception, pose):
     if jugees is None:
         return verdicts, '', False
     return (dict(jugees, non_calcule=None),
-            'jugé pour la pose : %d panneaux — la conception du lead en compte %d' % (posees, nombre), False)
+            'jugé pour la pose : %d panneaux — la conception du lead en compte %s'
+            % (posees, _compte_de_la_conception(nombre, kwc_conception)), False)
+
+
+def _autre_puissance(kwc_conception, kwc_pose):
+    """T4-X3-009 — vrai quand les deux puissances sont connues et diffèrent (au centième de kWc)."""
+    return kwc_conception is not None and kwc_pose is not None and abs(float(kwc_conception) - float(kwc_pose)) >= 0.01
+
+
+def _compte_de_la_conception(nombre, kwc):
+    """T4-X3-009 — « 8 de 550 W » : le compte de la conception NOMME son panneau (jamais un « 8 » nu
+    à côté de panneaux d'une autre puissance) ; sans puissance servie, le compte seul, comme avant."""
+    if not kwc or not nombre:
+        return '%d' % nombre
+    return '%d de %s W' % (nombre, '{:g}'.format(round(float(kwc) * 1000 / nombre)))
 
 
 def _devis_envoye_du_lead(version):

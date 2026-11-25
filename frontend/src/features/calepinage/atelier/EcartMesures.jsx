@@ -125,7 +125,8 @@ export default function EcartMesures({ calepinageId: idPropose = null }) {
         ? <p className="text-sm" data-testid="acal847-total">Écart sur la période : {nombre(consommation.total_ecart_pct, true)} %</p>
         : null}
 
-      {resultat
+      {/* Lane E9 — « Eau » seulement quand le serveur la sert (`eau` vaut null hors pompage, T4-X5-012). */}
+      {resultat?.eau
         ? (
           <section className="flex flex-col gap-1" data-testid="acal847-eau">
             <h3 className="text-sm font-medium">Eau</h3>

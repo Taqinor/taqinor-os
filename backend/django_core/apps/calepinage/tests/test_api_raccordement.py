@@ -85,6 +85,34 @@ class RefusSaisieRaccordementTest(SimpleTestCase):
                 r'[a-z]+_[a-z_]+', self._refus(fonction, champ, valeur)))
 
 
+class RaisonCourteDuVerdictTest(SimpleTestCase):
+    """T4-X9-002 — liste « Onduleur » : « Courant par entrée MPPT sous le courant admissible (18,6 A
+    au-dessus de la borne de fiche 18,0 A) » disait « sous » puis « au-dessus » du même fait. Le
+    verdict garde son libellé et son détail (l'installateur) et sert ``raison`` : le fait, son sens,
+    sans sigle — la clé que lit la raison courte de la liste."""
+
+    def test_le_courant_qui_depasse_est_dit_dans_son_sens(self):
+        from apps.calepinage.services.electrique import VERDICTS_DE_CHAINE, _verdict
+
+        libelle = dict(VERDICTS_DE_CHAINE)['courant_par_entree_mppt']
+        echec = _verdict('courant_par_entree_mppt', libelle, 18.6, 18.0, 'sous', bloquant=True, unite='A')
+        self.assertEqual(echec['raison'], 'le courant des panneaux (18,6 A) dépasse ce qu’une entrée de cet '
+                                          'onduleur accepte (18,0 A)')
+        self.assertEqual((echec['libelle'], echec['detail']), (libelle, '18,6 A au-dessus de la borne de fiche 18,0 A'))
+        self.assertNotIn('MPPT', echec['raison'])
+        passe = _verdict('courant_par_entree_mppt', libelle, 17.0, 18.0, 'sous', bloquant=True, unite='A')
+        self.assertIsNone(passe['raison'])
+        self.assertEqual(passe['detail'], '17,0 A sous 18,0 A')
+
+    def test_la_tension_trop_basse_par_chaleur_dit_sous(self):
+        from apps.calepinage.services.electrique import _verdict
+
+        echec = _verdict('vmp_hot_over_mppt_min', 'x', 141.4, 150.0, 'au-dessus', bloquant=False, unite='V')
+        self.assertIn('tombe sous la plage de travail de cet onduleur (150,0 V)', echec['raison'])
+        self.assertIsNone(_verdict('vmp_hot_over_mppt_min', 'x', 141.4, None, 'au-dessus', bloquant=False,
+                                   unite='V')['raison'])
+
+
 class ActionRaccordementTest(BaseApiCalepinage):
     """La porte HTTP du point de raccordement réseau."""
 

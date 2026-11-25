@@ -173,8 +173,10 @@ export function contexteCalepinageVersPayload(contexte) {
 // ACAL195 — le libellé d'une cible ESTIMÉE (source 'lead' | 'factures'), ou le refus
 // NOMMÉ du moteur tel que le serveur l'a écrit ; `null` pour une cible vendue (devis)
 // ou absente. Jamais imprimé ailleurs que dans l'atelier (aucune sortie client).
-export function libelleCibleEstimee(cible) {
-  if (!cible || cible.source === 'devis') return null
+// T4-X9-013 — calepinage SANS lead (`sansLead`) : aucune phrase sur une conception (le refus du moteur, servi pour le
+// calepinage porteur, demande de remplir « le lead », qui n'existe pas) ; sa production est celle de sa simulation.
+export function libelleCibleEstimee(cible, { sansLead = false } = {}) {
+  if (!cible || cible.source === 'devis' || sansLead) return null
   if (typeof cible.refus === 'string' && cible.refus) return cible.refus
   const n = Number(cible.panneaux)
   if (!Number.isFinite(n) || n <= 0) return null

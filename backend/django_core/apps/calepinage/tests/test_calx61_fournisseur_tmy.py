@@ -235,3 +235,36 @@ class BranchementParesseuxTest(SimpleTestCase):
                 enregistrer_fournisseur_temperatures(precedent)
 
         appel_tmy.assert_not_called()
+
+
+class SansReseauTest(_Socle):
+    """Lane I4 — ``temperatures_sans_reseau`` : le cache seul, jamais une requête."""
+
+    def test_un_manque_n_appelle_pas_pvgis_et_est_compte(self):
+        from apps.calepinage.services.temperatures_tmy import temperatures_sans_reseau
+
+        transport = TransportEnregistre(self.charge)
+        pvgis = client_a_cache_prive(transport)
+        with temperatures_sans_reseau() as etat:
+            self.assertIsNone(temperatures_tmy(LAT, LON, client=pvgis))
+        self.assertEqual((transport.appels, etat.manques), ([], 1))
+
+    def test_un_point_en_cache_est_servi_comme_aujourd_hui(self):
+        from apps.calepinage.services.temperatures_tmy import temperatures_sans_reseau
+
+        transport = TransportEnregistre(self.charge)
+        pvgis = client_a_cache_prive(transport)
+        attendu = temperatures_tmy(LAT, LON, client=pvgis)  # hors mode : PVGIS (rejoué), mis en cache
+        with temperatures_sans_reseau() as etat:
+            servi = temperatures_tmy(LAT, LON, client=pvgis)
+        self.assertIsNotNone(servi)
+        self.assertEqual((servi, etat.manques, len(transport.appels)), (attendu, 0, 1))
+
+    def test_hors_du_mode_un_manque_interroge_pvgis(self):
+        from apps.calepinage.services.temperatures_tmy import temperatures_sans_reseau
+
+        with temperatures_sans_reseau():
+            pass
+        transport = TransportEnregistre(self.charge)
+        self.assertIsNotNone(temperatures_tmy(LAT, LON, client=client_a_cache_prive(transport)))
+        self.assertEqual(len(transport.appels), 1)

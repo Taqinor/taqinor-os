@@ -725,14 +725,61 @@ def _signaux_economiques(calepinage):
     return signaux + s_devis + s_approbation, bool(lignes) and not any(lignes)
 
 
-def _signaux_couteux(calepinage):
-    """Simulation (résultat servi) et verdict électrique — recalculés."""
-    from .. import selectors
+def _simulation_stockee(calepinage):
+    """Lane I4 (api-fuzz : ``a-traiter/`` en délai dépassé) — ``{simule, simulation_perimee}``
+    de ``selectors.resultat_servi`` LUS sur ce qui est STOCKÉ, sans le résultat servi entier
+    (pose, câbles, bordereau, tronçons, écart et production du devis, copies des blocs).
 
-    resultat = selectors.resultat_servi(calepinage) or {}
-    _simulation, _production, _pertes, s_simulation = _bloc_production(resultat)
-    _electrique, s_electrique = _bloc_electrique(calepinage)
-    return s_simulation + s_electrique
+    Même règle que ``electrique._simulation_servie`` : sans empreinte déposée, jamais simulé ;
+    empreinte déposée ≠ ``simulation.empreinte_simulation`` d'aujourd'hui (mêmes entrées que
+    ``resultat_calepinage`` : entrée stockée, matériel résolu + fiches des pans, réglages
+    société), périmée ; sinon ``simule`` = le P50 stocké est un NOMBRE (sans bloc
+    ``production`` stocké, le squelette servi porte un P50 nul). Seul écart : des températures
+    saisies refusées (``TemperaturesInvalides``) ne sont pas relues ici — le verdict électrique,
+    évalué sur la même ligne, lève le même refus que la lecture d'avant."""
+    from .electrique import (
+        CLE_SIMULATION, _est_un_nombre, _fiches_modules_du_document, entree_stockee,
+        parametres_societe, resoudre_materiel,
+    )
+    from .simulation import empreinte_simulation
+
+    stocke = calepinage.resultat if isinstance(calepinage.resultat, dict) else {}
+    simulation = stocke.get(CLE_SIMULATION) if isinstance(stocke.get(CLE_SIMULATION), dict) else {}
+    deposee = simulation.get('hash_entree') or ''
+    if not deposee:
+        return {'simule': False, 'simulation_perimee': False}
+    company = getattr(calepinage, 'company', None)
+    donnees = dict(entree_stockee(calepinage))
+    document = calepinage.roof_layout
+    materiel = resoudre_materiel(company, donnees, calepinage=calepinage)
+    fiches = (materiel.get('fiches_modules') if 'fiches_modules' in materiel
+              else _fiches_modules_du_document(company, document, materiel))
+    if fiches:
+        materiel = {**materiel, 'fiches_modules': fiches}
+    aujourdhui = empreinte_simulation(calepinage, document=document, donnees=donnees,
+                                      materiel=materiel, reglages=parametres_societe(calepinage))
+    if deposee != aujourdhui:
+        return {'simule': False, 'simulation_perimee': True}
+    production = stocke.get('production')
+    total = production.get('total') if isinstance(production, dict) else None
+    return {'simule': _est_un_nombre(total.get('p50_kwh') if isinstance(total, dict) else None),
+            'simulation_perimee': False}
+
+
+def _signaux_couteux(calepinage):
+    """``(signaux, juge)`` — simulation (LUE sur le stocké, :func:`_simulation_stockee`) et
+    verdict électrique (recalculé : aucun verdict n'est déposé, ACAL325), SANS réseau
+    (``temperatures_tmy.temperatures_sans_reseau``). Une année type absente du cache ⇒ le
+    verdict n'a pas été jugé sur les vraies températures : son signal est OMIS et ``juge``
+    vaut faux ; le signal de simulation (stocké) reste."""
+    from .temperatures_tmy import temperatures_sans_reseau
+
+    with temperatures_sans_reseau() as hors_reseau:
+        _electrique, s_electrique = _bloc_electrique(calepinage)
+    _simulation, _production, _pertes, s_simulation = _bloc_production(
+        _simulation_stockee(calepinage))
+    juge = not hors_reseau.manques
+    return s_simulation + (s_electrique if juge else []), juge
 
 
 def _ligne_a_traiter(calepinage, *, evaluer):
@@ -742,7 +789,8 @@ def _ligne_a_traiter(calepinage, *, evaluer):
 
     signaux, a_retenir = _signaux_economiques(calepinage)
     if evaluer:
-        signaux = signaux + _signaux_couteux(calepinage)
+        couteux, evaluer = _signaux_couteux(calepinage)
+        signaux = signaux + couteux
     signaux = sorted(set(signaux), key=SIGNAUX.index)
     a_faire = _premier_blocage(signaux, a_retenir=a_retenir)
     if a_faire == 'rien':

@@ -1,0 +1,812 @@
+[
+ {
+  "id": "CAL-REG-003",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Cases grisées tant que les 16 réglages sont posés ; après « Retirer le profil » 16 cases actives et cochées ; décocher une → « Remplir les 15 réglages cochés », recocher → 16 ; tout décocher → « Aucun réglage coché » grisé"
+ },
+ {
+  "id": "CAL-REG-004",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "« 48 autres réglages — Aucune valeur publiée — à saisir par vous » ; « Saisir » ouvre /calepinage/reglages#calx69-section-simulation"
+ },
+ {
+  "id": "CAL-REG-005",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "« Remplir les 16 réglages vides » : 16 lignes reviennent « Posée par le profil (retirable) » ; les 333 contrôles de Réglages simulation sont identiques avant/après (diff 0 ligne, e13-reg-diff.txt)"
+ },
+ {
+  "id": "CAL-REG-006",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "« Retirer le profil » : sans question, « 16 valeurs retirées », les 16 lignes passent « Vide » ; annulable en un clic par « Remplir » (fenêtre 17,7 s). Absent pour le Commercial (T4-X3-015)"
+ },
+ {
+  "id": "CAL-REG-007",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "« Tout saisir à la main » → /calepinage/reglages#calx69-section-simulation"
+ },
+ {
+  "id": "CAL-REG-008",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Salissure 3→4 et seuil bas DC/AC 1→0,8 : enregistrés, relus après rechargement ; effet : simulation 6 926 → 6 865 kWh, perte Poussière 3,0 → 4,0 % (cascade et rapport p. 20), contrôle DC/AC 0,85 passe de « sous le seuil » à bon (11→12 contrôles bons) ; remis à 3 et 1, relus, statut « Posée par le profil » revenu. Valeur tapée sans source : refusée avec bandeau"
+ },
+ {
+  "id": "CAL-REG-009",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "« Enregistrer les réglages » → « Réglages enregistrés. » ; valeur sans source → « Réglages incomplets — à corriger » + motif par ligne, rien enregistré (relu vide). Badge « Lecture seule » non produit : aucun des 4 comptes n'a la lecture seule (le Commercial a calepinage_gerer)"
+ },
+ {
+  "id": "CAL-REG-010",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "« Herbe fraîche (0.26) » remplit Valeur 0,26 et une référence PVsyst ; non enregistré exprès (rechargement → 0,2, sans avertissement : T4-X3-018) ; effet sur un résultat non vérifié"
+ },
+ {
+  "id": "CAL-REG-011",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "30 → « 30 versions conservées au plus », relu ; vidé → « Toutes les versions sont conservées » mais préréglage fantôme « versions_conservees » dans la Bibliothèque (T4-X3-004) ; effet sur l'historique non vérifié"
+ },
+ {
+  "id": "CAL-REG-012",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Nomenclature décochée, enregistrée, relue ; effet : rapport d'étude 22 → 21 pages, section Nomenclature (p. 17) absente ; recochée et relue"
+ },
+ {
+  "id": "CAL-REG-013",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Altitude 50 + source enregistrées et relues ; rapport après simulation garde 44,0 m PVGIS (T4-X3-003) ; Pays « ma » enregistré → l'onglet Dossiers propose le gabarit (T4-X3-014) ; tout remis à vide et relu. Fournisseur d'imagerie, Attribution, Fuseau : non saisis"
+ },
+ {
+  "id": "CAL-REG-014",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Gabarit « X3 souche test » Rectangle 0,6×0,6 h 1 dég. 0,3 + source : enregistré, relu ; Modifier (nom) envoyé, relecture non prouvée ; Supprimer → « Aucun gabarit » ; le « + Ajouter » obstacle du mode guidé ne propose pas le gabarit (expert non regardé)"
+ },
+ {
+  "id": "CAL-REG-015",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Zone interdite Nord « X3 bande nord » 1 m + source : enregistrée, relue ; Modifier 1,5 m → « La connexion a expiré » une fois (pile chargée, non rejoué) ; Supprimer → « Aucune zone » ; effet dans l'atelier non vu"
+ },
+ {
+  "id": "CAL-REG-016",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Norme servie NF C 15-100 ; référence « X3-ref test » enregistrée, relue, remise à vide ; Sources dit « Aucune norme » (T4-X3-001)"
+ },
+ {
+  "id": "CAL-REG-017",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Vent de référence 25 + source : enregistré, relu, affiché dans Sources « 25,00 réglage société » ; vidé et relu ; feuille de lestage non vue (pas de toit plat)"
+ },
+ {
+  "id": "CAL-REG-018",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Faîtage 0,3 + source : enregistré, relu ; Sources « non sourcée » (T4-X3-002) ; vidé et relu ; effet sur la pose non vérifié"
+ },
+ {
+  "id": "CAL-REG-019",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Maroc, X3-TEST, Autre dossier (Nom du dossier), intitulé, version, PDF synthétique : 1er essai refusé 400 avec motif nommé (pièce sans intitulé), 2e déposé, relu « ma · X3-TEST · version 1 · fichier présent »"
+ },
+ {
+  "id": "CAL-REG-020",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "2 pièces + 1 champ prérempli « nom de la société » ; Désactiver → « désactivé », Réactiver offert ; Supprimer → boîte, Annuler garde, Supprimer → 204, « Aucun gabarit déposé »"
+ },
+ {
+  "id": "CAL-REG-021",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Système X3-FIX (fabricant, Toiture inclinée, provenance, Tuiles, rail-bord 100 mm + source) : enregistré, relu, libellé modifié et relu"
+ },
+ {
+  "id": "CAL-REG-022",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Composant Rail, m, longueur des rangées × 1,1, source : atelier › onglet Fixation « Rail X3 … 8.73 m » (point décimal, à vérifier sur capture)"
+ },
+ {
+  "id": "CAL-REG-023",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Modifier → PATCH 200 ; Supprimer → boîte, Annuler garde, Supprimer → DELETE 204, « Aucun système de fixation »"
+ },
+ {
+  "id": "CAL-REG-024",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "1,2 m + Maroc 1 m (source) ; bouton grisé tant que « Je confirme » n'est pas coché ; enregistré, relu ; Sources « non sourcée » (T4-X3-013) ; vidé, pays retiré, relu vide"
+ },
+ {
+  "id": "CAL-REG-025",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Page lue avant/pendant/après chaque essai : norme, lestage, dégagements ; ne montre aucune perte (poussière, câbles…) : les pertes n'y ont pas de ligne"
+ },
+ {
+  "id": "CAL-REG-026",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "4 listes + profils types ; kits vides en lecture seule ; badge « Lecture seule » non produit (aucun compte sans calepinage_gerer)"
+ },
+ {
+  "id": "CAL-REG-027",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "« X3 preset test » Pente 15 + source : enregistré, relu (« pitchDeg : 15 », T4-X3-005), proposé à la création ; Retirer ce préréglage + Enregistrer → retiré"
+ },
+ {
+  "id": "CAL-REG-028",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Partir de ce modèle › Lead X3-b (calepinage ouvert) › Créer → 409 + « Ce lead a déjà un calepinage ouvert … Ouvrir l'existant » → /calepinage/1977 ; Annuler referme"
+ },
+ {
+  "id": "CAL-REG-029",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Recherche « X3-a » › Marquer comme modèle → listé ; retiré par la fiche (Avancé › « Retirer des modèles »), liste « Aucun calepinage n'est marqué modèle »"
+ },
+ {
+  "id": "CAL-REG-030",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "?ids=1977,1976 : tableau Grandeur/Statut/Modules/kWc, badges « Non simulé » ; ?ids=1976 seul s'affiche aussi ; Retour à la liste ; « Choisir dans la liste » → /calepinage?comparer=1"
+ },
+ {
+  "id": "CAL-LST-002",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "« X3- » 2, « Toiture test » 1, « CAL-2611-1976 » 1, « zzqq » 0 ; « Rabat » 2 sur 4 (T4-X3-010)"
+ },
+ {
+  "id": "CAL-LST-003",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Mes calepinages : aria-pressed true, ?responsable=6182, 2 cartes ; second clic → 24"
+ },
+ {
+  "id": "CAL-LST-004",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Ouvre le panneau (Statut, Modifié depuis le, Lead, Client, Responsable, Tri, Ordre, étiquette)"
+ },
+ {
+  "id": "CAL-LST-005",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Statut Brouillon 23 ; depuis 25/11 10, 26/11 0 ; Lead X3-a 1 ; Client X2-o 1 ; Responsable anon_commercial 11 ; responsable+statut 11 ; +depuis 2 (requêtes et cartes concordent)"
+ },
+ {
+  "id": "CAL-LST-006",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "5 tris (défaut, création, modification, statut, titre) + Ordre décroissant, gardé dans l'URL après rechargement ; tri Titre illisible (T4-X3-011)"
+ },
+ {
+  "id": "CAL-LST-007",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Réinitialiser → 24 cartes, requête sans filtre (3 fois, après lead, client et combinaison)"
+ },
+ {
+  "id": "CAL-LST-009",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Comparer ouvre le mode sélection (24 cases) ; Annuler la comparaison les retire"
+ },
+ {
+  "id": "CAL-LST-010",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "1 coché : « Comparer la sélection » grisé (2 minimum, dit sur la page vide) ; 2 à 5 actif ; au 5e la 6e case se grise ; 2 cochés → /calepinage/comparaison?ids=1977,1976"
+ },
+ {
+  "id": "CAL-LST-011",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "bloque",
+  "note": "24 calepinages, l'API répond count 24 sans page suivante : Précédent et Suivant restent grisés ; aller à une 2e page demanderait plus d'une page de calepinages"
+ },
+ {
+  "id": "CAL-LST-012",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "État filtré joué (« Aucun calepinage ne correspond à ces filtres » + Réinitialiser, recherche et date) ; « Aucun calepinage pour l'instant » non produisible : la société en a 24, le Technicien n'a pas le module"
+ },
+ {
+  "id": "CAL-LST-013",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Badge « Calepinage périmé » sur la carte X5-n (créée par un autre relecteur) survolé : « Cette vue 3D a été étudiée pour 7 panneau(x) : les chiffres du devis ne correspondent plus » ; je n'en ai pas produit (il faut un devis lié)"
+ },
+ {
+  "id": "CAL-NOU-002",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "« X3-a » → 1 lead (requête société, count 738 sans filtre) ; « zzqq » → 0 ; bornage à la société non prouvable (une seule société)"
+ },
+ {
+  "id": "CAL-NOU-004",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Lead : Ville Casablanca, Source du repère « Coordonnées GPS corrigées » (le rapport dit « coordonnées GPS du lead ») ; onglet Client : ligne Adresse « non renseigné »"
+ },
+ {
+  "id": "CAL-NOU-006",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Menu modèle : « Aucun modèle » puis « X3-a Toiture test » une fois marqué ; création depuis le modèle → 6 panneaux 4,26 kWc recopiés"
+ },
+ {
+  "id": "CAL-NOU-007",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Modèle choisi : « Modules posés 6 », « Empreinte du document 46847a56b4c2 », non modifiables"
+ },
+ {
+  "id": "CAL-NOU-008",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "« X3 preset test » choisi → atelier « Jeu de réglages X3 preset test appliqué aux nouveaux pans »"
+ },
+ {
+  "id": "CAL-NOU-009",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "anon_admin2 puis anon_commercial choisis → responsable sur la carte et filtre Responsable ; propose aussi anon_tech sans accès (T4-X3-016)"
+ },
+ {
+  "id": "CAL-NOU-010",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Lead X3-a déjà pourvu : « Ce lead a déjà un calepinage ouvert : « X3-a Toiture test ». … créez une variante » + Ouvrir l'existant → /calepinage/1976 (Chromium et WebKit tablette)"
+ },
+ {
+  "id": "CAL-RTE-002",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Clic menu → /calepinage/nouveau, entrée active"
+ },
+ {
+  "id": "CAL-RTE-003",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Clic menu → /calepinage/bibliotheque"
+ },
+ {
+  "id": "CAL-RTE-004",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Clic menu → /calepinage/sources"
+ },
+ {
+  "id": "CAL-RTE-005",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Clic menu → /calepinage/reglages"
+ },
+ {
+  "id": "CAL-RTE-006",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Clic menu → /calepinage/reglages/gabarits"
+ },
+ {
+  "id": "CAL-RTE-007",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Clic menu → /calepinage/reglages/fixation"
+ },
+ {
+  "id": "CAL-RTE-008",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Clic menu → /calepinage/reglages/allees"
+ },
+ {
+  "id": "CAL-RTE-009",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Clic menu → /calepinage/comparaison (page sans titre h1/h2, « Aucun calepinage à comparer »)"
+ },
+ {
+  "id": "CAL-RTE-010",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Atteinte par l'atelier › Avancé › « Démarrage rapide des réglages » ; la page Réglages simulation n'a pas de lien : elle embarque le même tableau ; fil d'Ariane « Réglages » → /calepinage/reglages. Technicien : 403 propre"
+ },
+ {
+  "id": "CAL-RTE-013",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "/calepinage/1976/client : plein écran, maison 3D, « 6 panneaux 4,26 kWc », « Production : calculée à la mise à jour de la conception », Retour à l'atelier ; aucun lien ni requête vers le site public (seul maptiler, clé factice)"
+ },
+ {
+  "id": "CAL-RTE-014",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "16 clés → ?onglet=<clé>, bonne étape ; 12 montrent l'onglet, fiches/pente/production/pertes non (T4-X3-007) ; ?onglet=pertes idem, ?onglet=zzz-inconnu → étape 1, premier onglet « Plan importé ». Commercial : « Calepinage introuvable » (calepinage d'un autre) ; Technicien : 403 propre"
+ },
+ {
+  "id": "CAL-LST-002",
+  "scenario": "balayage",
+  "moteur": "webkit",
+  "taille": "1180-tactile",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "WebKit tablette 1180 × 820 au doigt (tap) : même effet qu'en Chromium, aucun débordement horizontal (scrollWidth 1180) ; e39-*.png"
+ },
+ {
+  "id": "CAL-LST-003",
+  "scenario": "balayage",
+  "moteur": "webkit",
+  "taille": "1180-tactile",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "WebKit tablette 1180 × 820 au doigt (tap) : même effet qu'en Chromium, aucun débordement horizontal (scrollWidth 1180) ; e39-*.png"
+ },
+ {
+  "id": "CAL-LST-004",
+  "scenario": "balayage",
+  "moteur": "webkit",
+  "taille": "1180-tactile",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "WebKit tablette 1180 × 820 au doigt (tap) : même effet qu'en Chromium, aucun débordement horizontal (scrollWidth 1180) ; e39-*.png"
+ },
+ {
+  "id": "CAL-LST-005",
+  "scenario": "balayage",
+  "moteur": "webkit",
+  "taille": "1180-tactile",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "WebKit tablette 1180 × 820 au doigt (tap) : même effet qu'en Chromium, aucun débordement horizontal (scrollWidth 1180) ; e39-*.png"
+ },
+ {
+  "id": "CAL-LST-007",
+  "scenario": "balayage",
+  "moteur": "webkit",
+  "taille": "1180-tactile",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "WebKit tablette 1180 × 820 au doigt (tap) : même effet qu'en Chromium, aucun débordement horizontal (scrollWidth 1180) ; e39-*.png"
+ },
+ {
+  "id": "CAL-LST-009",
+  "scenario": "balayage",
+  "moteur": "webkit",
+  "taille": "1180-tactile",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "WebKit tablette 1180 × 820 au doigt (tap) : même effet qu'en Chromium, aucun débordement horizontal (scrollWidth 1180) ; e39-*.png"
+ },
+ {
+  "id": "CAL-LST-010",
+  "scenario": "balayage",
+  "moteur": "webkit",
+  "taille": "1180-tactile",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "WebKit tablette 1180 × 820 au doigt (tap) : même effet qu'en Chromium, aucun débordement horizontal (scrollWidth 1180) ; e39-*.png"
+ },
+ {
+  "id": "CAL-NOU-002",
+  "scenario": "balayage",
+  "moteur": "webkit",
+  "taille": "1180-tactile",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "WebKit tablette 1180 × 820 au doigt (tap) : même effet qu'en Chromium, aucun débordement horizontal (scrollWidth 1180) ; e39-*.png"
+ },
+ {
+  "id": "CAL-NOU-009",
+  "scenario": "balayage",
+  "moteur": "webkit",
+  "taille": "1180-tactile",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "WebKit tablette 1180 × 820 au doigt (tap) : même effet qu'en Chromium, aucun débordement horizontal (scrollWidth 1180) ; e39-*.png"
+ },
+ {
+  "id": "CAL-NOU-010",
+  "scenario": "balayage",
+  "moteur": "webkit",
+  "taille": "1180-tactile",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "WebKit tablette 1180 × 820 au doigt (tap) : même effet qu'en Chromium, aucun débordement horizontal (scrollWidth 1180) ; e39-*.png"
+ },
+ {
+  "id": "CAL-RTE-002",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Commercial : entrée présente, création ouverte"
+ },
+ {
+  "id": "CAL-REG-009",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Commercial : aucun badge Lecture seule, enregistrement accepté 200 (T4-X3-015)"
+ },
+ {
+  "id": "CAL-REG-006",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Commercial : « Retirer le profil » absent"
+ },
+ {
+  "id": "CAL-RTE-002",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Technicien",
+  "resultat": "joue",
+  "note": "Technicien : module absent du menu et des apps ; URL directe → /403 « Accès refusé (403) … Retour à l’accueil », jamais de page blanche"
+ },
+ {
+  "id": "CAL-RTE-003",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Technicien",
+  "resultat": "joue",
+  "note": "Technicien : module absent du menu et des apps ; URL directe → /403 « Accès refusé (403) … Retour à l’accueil », jamais de page blanche"
+ },
+ {
+  "id": "CAL-RTE-004",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Technicien",
+  "resultat": "joue",
+  "note": "Technicien : module absent du menu et des apps ; URL directe → /403 « Accès refusé (403) … Retour à l’accueil », jamais de page blanche"
+ },
+ {
+  "id": "CAL-RTE-005",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Technicien",
+  "resultat": "joue",
+  "note": "Technicien : module absent du menu et des apps ; URL directe → /403 « Accès refusé (403) … Retour à l’accueil », jamais de page blanche"
+ },
+ {
+  "id": "CAL-RTE-006",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Technicien",
+  "resultat": "joue",
+  "note": "Technicien : module absent du menu et des apps ; URL directe → /403 « Accès refusé (403) … Retour à l’accueil », jamais de page blanche"
+ },
+ {
+  "id": "CAL-RTE-007",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Technicien",
+  "resultat": "joue",
+  "note": "Technicien : module absent du menu et des apps ; URL directe → /403 « Accès refusé (403) … Retour à l’accueil », jamais de page blanche"
+ },
+ {
+  "id": "CAL-RTE-008",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Technicien",
+  "resultat": "joue",
+  "note": "Technicien : module absent du menu et des apps ; URL directe → /403 « Accès refusé (403) … Retour à l’accueil », jamais de page blanche"
+ },
+ {
+  "id": "CAL-RTE-009",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Technicien",
+  "resultat": "joue",
+  "note": "Technicien : module absent du menu et des apps ; URL directe → /403 « Accès refusé (403) … Retour à l’accueil », jamais de page blanche"
+ },
+ {
+  "id": "CAL-RTE-010",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Technicien",
+  "resultat": "joue",
+  "note": "Technicien : module absent du menu et des apps ; URL directe → /403 « Accès refusé (403) … Retour à l’accueil », jamais de page blanche"
+ },
+ {
+  "id": "CAL-RTE-013",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Technicien",
+  "resultat": "joue",
+  "note": "Technicien : module absent du menu et des apps ; URL directe → /403 « Accès refusé (403) … Retour à l’accueil », jamais de page blanche"
+ },
+ {
+  "id": "CAL-RTE-014",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Technicien",
+  "resultat": "joue",
+  "note": "Technicien : module absent du menu et des apps ; URL directe → /403 « Accès refusé (403) … Retour à l’accueil », jamais de page blanche"
+ }
+]

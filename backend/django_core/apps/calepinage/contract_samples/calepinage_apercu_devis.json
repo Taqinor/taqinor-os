@@ -1,0 +1,19 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/apercu-devis/",
+  "pourquoi": "Lane E9 (constat T4-X5-010) — AVANT « Générer le devis », l'étape Documents dit le module et l'onduleur que CHAQUE option du devis portera : la composition que la génération écrirait, rejouée À BLANC par le même chemin (`apps.ventes.services.build_devis_from_layout(a_blanc=True)` : étapes 1-4 du pipeline, rien d'écrit, aucune seconde composition ; `services/devis_apercu.py::apercu_materiel_du_devis`). `options` : `[{option, libelle, module, onduleur}]` — `option` `sans` | `avec`, ou `null` pour un devis à une option (`libelle` « Devis ») ; `module` / `onduleur` = la DÉSIGNATION de la ligne que le devis portera (`null` si la composition n'en pose aucune). `ecarts` : `[{champ, message}]`, une phrase par produit désigné à l'étape Électrique (`champ` `module_produit` | `onduleur_produit`) qu'une option ne portera pas, avec sa raison (celle que la conception a rangée dans `designations_ecartees`, sinon : le devis de l'atelier compose son matériel d'après la pose, la désignation électrique n'y entre pas) ; aucune règle sur ce que la désignation devrait faire (non tranché par le fondateur). `refus` : la phrase de la composition ou de l'absence de toit quand rien ne se compose (`options` et `ecarts` vides), sinon `null`. Aucun prix servi. Mêmes droits que le design-context (`PeutVoirCalepinage`), 404 pour une autre société. Valeurs de l'exemple : des PLACEHOLDERS de forme.",
+  "exemple": {
+    "options": [
+      {"option": "sans", "libelle": "Sans batterie", "module": "Module 710 Wc", "onduleur": "Onduleur réseau 6 kW"},
+      {"option": "avec", "libelle": "Avec batterie", "module": "Module 710 Wc", "onduleur": "Onduleur hybride 6 kW"}
+    ],
+    "ecarts": [
+      {"champ": "onduleur_produit", "message": "L’onduleur désigné à l’étape Électrique (« Onduleur hybride 6 kW ») n’est pas celui que le devis portera (« Onduleur réseau 6 kW ») : le devis généré depuis l’atelier compose son matériel d’après la pose du toit : la désignation de l’étape Électrique n’y entre pas."}
+    ],
+    "refus": null
+  },
+  "exemple_refus": {
+    "options": [],
+    "ecarts": [],
+    "refus": "Dessinez d'abord la toiture : sans conception, il n'y a rien à chiffrer."
+  }
+}

@@ -1806,7 +1806,7 @@ et 3 (synthèse de la liste : cache par contenu dont profil société et produit
   REGARDER : onglet Simulation du devis (factures tapées), liste des devis (cartes), atelier d'un lead dont la pose
   diffère de la conception, fiche du lead après désignation d'un onduleur hybride.
 
-### Point du 25/11, 11 h 10 UTC (le plus récent — REPRENDRE ICI)
+### Point du 25/11, 11 h 10 UTC
 
 **Lot 4 (PR Taqinor/taqinor-os#1556, brouillon) : SIXIÈME PASSAGE DE CI lancé à 11 h 10 sur `cb9d338411`**
 (attente : `scripts/watch-ci.ps1 -Pr 1556`). Dans ce push, en plus du point de 10 h 45 : pliage de `lane/moteur-e8`
@@ -1840,3 +1840,110 @@ Bases de test des lanes : 39 bases, 5,2 Go dans la machine des conteneurs — à
 X9 terminé → rebâtir la pile sur la tête, REGARDER (Simulation du devis avec factures tapées, liste des devis,
 atelier d'un lead dont la pose diffère de la conception, fiche du lead après désignation d'un hybride) ; fusion du
 lot 4 ; relecteurs X3, X6, X7, X8 ; rapport.
+
+### Point du 25/11, 12 h 15 UTC
+
+**Lot 4 (PR Taqinor/taqinor-os#1556, brouillon), `dev-lot4`.** Reda, 11 h 50 : « start more lanes ».
+- **Passages de CI** : sixième (`cb9d338411`) rouge sur 4 causes, septième (`e6c6b1263e`) rouge sur 2 causes — TOUTES
+  corrigées en local : forme de la vue effective sans le marqueur `option` ; quantités sœurs réservées au devis
+  résidentiel (un brouillon C&I recomposé voyait sa structure « 1 lot » passer à 162) ; test QJR602 (taille tapée
+  telle quelle) ; `except` muet du cache de la liste ; contrat d'imports M1 (`lignes_vendues_de_l_option` déplacée de
+  `utils/options` vers `domain/dimensionnement_devis`) ; goldens des gestes du générateur (les cartes Tailles se
+  relisent après l'enregistrement). Fuzz et e2e VERTS aux deux passages.
+- **Plié depuis 11 h 10** : E7f (tableau des tailles de la Simulation : la taille de chaque option vendue, raison de
+  refus de batterie en une phrase lisible, pastilles), F2c (T4-X4-004 : la carte « Recommandé — sans batterie »
+  n'est plus servie pour un devis qui ne vend que « avec » — le PDF client n'imprimait PAS de total faux, la page
+  client publique pouvait montrer cette carte), G1 puis G2 (atelier : un seul prédicat « tailles différentes »,
+  inventaire de tous les chiffres, calepinage sans lead, création en double, tableau du site), E9 (ACAL2045 pose du
+  toit supposé, « Conception recalculée : <raison> », aperçu de ce que le devis portera, section Eau, fiche technique
+  regroupée, cible de l'atelier comptée dans le panneau posé).
+- **HUITIÈME PUSH** : dès que gardes d'hôte, tests du front touchés, instantané OpenAPI (route `apercu-devis/`)
+  et empreinte de structure sont passés en local.
+- **EN VOL** : H1 (auteur d'e8, agent afaeb723706ffe3f7 : retour sur investissement de la fiche du lead, obstacle hors
+  du toit, phrase du calepinage sans lead côté serveur, raison de refus de l'onduleur —
+  `scratchpad/tour3/msg-lane-H1-serveur-restes.md`) ; H2 (lane neuve `lane/liste-total`, agent acd5913bf9b7ab14f :
+  ADEV162 total rangé de la liste des devis + T4-X9-015 — `scratchpad/tour3/msg-lane-H2-liste-total.md`) ;
+  relecteurs X6 (agent aafc8b7da92b01fe5 : quatre scénarios C&I de bout en bout) et X3 (agent aac20b788b8e1c4a7 :
+  réglages, liste, création, routes) sur la pile `fc9fa2c7a5` (rebâtie à 12 h 00, E9 et G2 compris).
+- **REGARD DE L'ORCHESTRATEUR (pile `e6c6b1263e`, 11 h 55)** : onglet Simulation du devis 2880, douze factures
+  tapées : plus de refus, « Consommation imposée par le devis (490 kWh par mois, factures saisies) », un aperçu par
+  option avec le matériel des lignes, la taille du devis présente et marquée — VU ; la colonne « Éco. avec » était
+  un mur de texte technique à points décimaux (corrigé par la suite d'E7f, PAS encore revu) ; liste des devis :
+  25 lignes puis cartes « Calcul des totaux… » — VU. À REVOIR sur la pile `fc9fa2c7a5` : tableau des tailles
+  (phrases courtes, pastilles), atelier d'un lead dont la pose diffère de la conception, calepinage sans lead,
+  fiche du lead après désignation d'un hybride, carte « Tailles » après enregistrement.
+- **DISQUE** : 15 Go libres après retrait de 13 dossiers de lanes fusionnées (6 retraits incomplets à finir).
+
+**Tri des constats du relecteur X9 (25 rejeux : 20 corrigés, 5 non ; 17 neufs)** :
+| Constat | Suite |
+|---|---|
+| T4-X9-009 (S2) conception divisée par deux après désignation d'un hybride | corrigé, orchestrateur (438b50856c) ; le reste = décision 28 |
+| T4-X9-003, 004, 008 (S2), 006, 007, 001, 010 ; rejeux T4-X5-005, T4-X5-017 | corrigés, G1 |
+| T4-X9-005 (S2) / T4-X2-001 cible en panneaux de 550 W | corrigé, E9 item 6 ; « comment obtenir les chiffres de la pose » reste ouvert (niveau 15, décision du fondateur) |
+| T4-X2-002 la production disparaît à l'enregistrement | écran : corrigé G1 (« Simulation à refaire ») ; serveur (empreinte) : H1 |
+| T4-X2-006, T4-X9-011, 012, 013 (écran) | corrigés, G2 ; 013 côté serveur : H1 ; clé d'idempotence de la création : tâche à écrire |
+| T4-X9-002 raison de refus de l'onduleur | H1 |
+| T4-X9-014 la liste attend la synthèse | corrigé avant (suite 3 de F3), à revoir en direct |
+| T4-X9-015 deux comptes de devis | H2 |
+| T4-X9-016 retour de 21,4 ans introuvable | H1 |
+| T4-X9-017 trois encarts client sur la fiche du lead | tâche à écrire (plan du lead) |
+
+### Point du 25/11, 13 h 35 UTC
+
+**Lot 4 (PR Taqinor/taqinor-os#1556, brouillon), `dev-lot4`.**
+- **Huitième passage (`ba939f3814`) : rouge sur 5 causes, TOUTES des listes figées ou des gardes que les lanes e9,
+  F2c et H1 ne pouvaient pas voir** — contrat « aperçu du devis » sans moitié cliente citée ; cliquet des imports
+  calepinage → ventes (46 pour 44 : deux lectures repassées par `equipements.py`) ; golden de la région « cal »
+  (recapturé sur l'hôte) ; surface publique de `ventes.services` ; ré-export de `lignes_vendues_de_l_option` dans la
+  façade `dimensionnement.py`. Fuzz, e2e, vitest et front statique VERTS.
+- **Plié depuis 12 h 15** : suite d'E7f (raison de refus de batterie en une phrase, ligne sous le tableau, pastilles),
+  H1 (retour sur investissement de la fiche du lead servi avec son montant et son économie ; obstacle hors du toit
+  hors de l'empreinte ; phrase du calepinage sans lead ; raison courte de refus de l'onduleur), ligne de l'onduleur
+  qui lit la raison courte (orchestrateur), tâches ACAL2047 et ADEV163.
+- **Avant le neuvième push (méthode changée après trois passages rouges d'affilée)** : « paquet des listes
+  figées » joué en docker sur l'arbre plié (`scratchpad/pack_cliquets.txt` : surfaces de ventes, goldens de
+  découpe, goldens du crm, cliquet des imports, contrats — 266 tests, seul `test_actions_devis_ont_appelant` rouge
+  en local parce qu'il lit `frontend/src`, non monté) ; gardes d'hôte + `check_except_larges` +
+  `check_contrats_calepinage_deux_moities` + `lint-imports` ; `node --test` du front ; garde de taille C20
+  (`electrique.py` : les textes du verdict sont bâtis dans `raisons_verdicts.py`).
+- **EN VOL** : H2 (`lane/liste-total`, agent acd5913bf9b7ab14f, 2 commits vus) ; relecteurs X6 (aafc8b7da92b01fe5)
+  et X3 (aac20b788b8e1c4a7) sur la pile `fc9fa2c7a5` (NE PAS rebâtir tant qu'ils tournent).
+- **PAS ENCORE REVU par l'orchestrateur à l'écran** (mémoire : pas de troisième navigateur à côté des deux
+  relecteurs) : tableau des tailles après la suite d'E7f, atelier « pose ≠ conception » (G1), calepinage sans lead
+  (G2), cible comptée dans le panneau posé (E9), fiche du lead (retour tracé, fiche technique regroupée), carte
+  « Tailles » après enregistrement (F2c). À faire dès qu'un relecteur rend la main, pile rebâtie sur la tête.
+- **Changements que lit un CLIENT dans ce lot (à dire à Reda au moment de la fusion)** : la page publique d'un
+  devis qui ne vend que « avec batterie » ne montre plus de carte « Recommandé — sans batterie » (elle affichait
+  un prix sans onduleur) ; aucun montant de PDF ne change.
+
+### Point du 25/11, 14 h 45 UTC (le plus récent — REPRENDRE ICI)
+
+**Lot 4 (PR Taqinor/taqinor-os#1556, brouillon), `dev-lot4`.** Reda, 14 h 15 : « where are you ? » — répondu.
+- **Neuvième passage (`fe1b7982f6`) : rouge sur 2 causes.** (1) `raison_du_verdict` sans appelant hors de son
+  module après mon remaniement → rendue interne (commité, garde verte). (2) FUZZ : `calepinages/a-traiter/` ne
+  répond pas en 10 s (déjà au cinquième passage, vert aux 6-7-8) — CAUSE ÉTABLIE par l'orchestrateur : chaque ligne
+  évaluée calcule le verdict électrique, qui va chercher les températures du site chez PVGIS PAR LE RÉSEAU
+  (`assistant._bloc_electrique` → `electrique.verdict_de_conception` → fournisseur `temperatures_tmy`, limiteur de
+  cadence partagé) ; dans les tests le fournisseur est neutralisé, d'où une liste « rapide » partout sauf en CI et
+  en production à cache froid. La lane I4 (agent a375819ef15513c07, `lane/file-a-traiter`) a d'abord retiré le
+  résultat servi entier de la liste (148 → 124 requêtes, commit 2ef5356f73, PAS encore plié) et pose maintenant un
+  mode « sans réseau » dans `temperatures_tmy.py` : cache seulement, ligne non évaluée si la température manque.
+- **DIXIÈME PUSH** : au retour d'I4 (pliage, paquet des listes figées en docker, gardes d'hôte APRÈS le dernier
+  commit — c'est l'oubli qui a coûté le neuvième passage).
+- **Plié depuis 13 h 35** : suite de la lane e9 (T4-X3-009 : la cible dite dans le module posé partout —
+  première pose automatique, bande des Résultats, contrôle DC/AC, feuille Avancé ; aide unique `cibleAuModule.js`).
+- **PAS plié, gardé pour le lot 5** : H2 (`lane/liste-total` : total rangé + empreinte, migration 0163, tâche
+  planifiée toutes les 10 min, 180 lignes pour 80 prévues — à faire relire par un relecteur neuf avant pliage).
+- **EN VOL** : I1 (`lane/editeur-ci`, agent a3ec71c931984fded : écran du devis C&I, T4-X6-007 à 012) ; I3 (auteur
+  de F4, agent ab75a7c7a60c1d28c : phrases fausses du PDF industriel, case « Devis final », production par option,
+  arrondi du kWc) ; I5 (`lane/reglages-calepinage`, agent a9d37147aa205718d, sonnet : 16 constats de X3 sur
+  réglages / sources / bibliothèque / liste) ; relecteur X6 (agent aafc8b7da92b01fe5, C&I de bout en bout — son
+  fichier de constats est mal encodé, il doit le réécrire en UTF-8).
+- **Relecteur X3 : TERMINÉ** — 57 lignes jouées, 18 constats (2 S2 : T4-X3-008 = décision 28 ; T4-X3-009 corrigé).
+- **REGARD DE L'ORCHESTRATEUR (pile `fc9fa2c7a5`, 14 h 40, captures `scratchpad/acc2027/l5/l5b-1974-*.png`)** :
+  calepinage 1974 (pose 6 × 710 W = 4,26 kWc, conception 2,13 kWc) — étape Résultats : bandeau qui nomme les deux
+  tailles, « Production simulée de la pose 6 926 kWh » en grand, carte « De la consommation » = une phrase (plus
+  de jauge trompeuse), pertes, écart PVGIS, chaîne des pertes — VU, conforme. Expert : carte TOTAL « 6 × 710 W ·
+  4,26 kWc · 6 926 kWh/an · simulation · — » et UNE phrase — VU en texte. À voir encore : libellés de cote de
+  l'obstacle hors toit qui se chevauchent sur la carte (S4), tableau des tailles du devis après la suite d'E7f,
+  fiche du lead (retour tracé), calepinage sans lead après G2.

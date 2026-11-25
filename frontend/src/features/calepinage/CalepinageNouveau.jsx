@@ -8,6 +8,7 @@ import AssigneePicker from '../../components/AssigneePicker'
 import SelecteurRattachement from './SelecteurRattachement'
 import useUtilisateursAssignables from './useUtilisateursAssignables'
 import { unwrapList } from '../../api/resource'
+import { lireToutesLesPages } from '../../utils/fetchAllPages'
 import {
   Button, Card, Input, Label, Tabs, TabsList, TabsTrigger, TabsContent,
 } from '../../ui'
@@ -57,6 +58,15 @@ const CHAMPS = {
 const CHAMPS_DU_CORPS = {
   lead_id: 'lead', client_id: 'client', modele_id: 'modele', preset_id: 'preset',
 }
+
+/* T4-X9-011 — `depuis-modele` ne porte pas de clé d'idempotence (la route ne passe pas par
+   `ActionIdempotenteMixin`) : quand le serveur ne répond pas à temps, la création a peut-être eu lieu. L'écran ne dit
+   jamais « Réessayez » à l'aveugle — il cherche le calepinage (même lead ou client, même nom, créé depuis l'envoi) et y
+   mène ; sans résultat, il désigne la liste avant tout nouvel essai. */
+const SANS_REPONSE = 'Le serveur n’a pas répondu à temps : le calepinage a peut-être été créé. '
+  + 'Vérifiez la liste des calepinages avant de recommencer.'
+/** Marge (ms) avant l'envoi pour la recherche `depuis` (horloges du poste et du serveur). */
+const MARGE_RECHERCHE_MS = 2 * 60 * 1000
 
 /** Le message serveur, tel quel. Jamais un texte fabriqué par l'écran. */
 function erreursServeur(e) {
@@ -158,6 +168,7 @@ export default function CalepinageNouveau() {
   // ACAL183 — le lead choisi a-t-il déjà un calepinage OUVERT ? (lu sur la
   // vraie liste `?lead=<id>`, ou rendu par un 409 `calepinage_existant`.)
   const [existant, setExistant] = useState(null)
+  const [retrouve, setRetrouve] = useState(null) // T4-X9-011 — le calepinage créé malgré une réponse perdue
   // Responsable facultatif : VIDE par défaut (le repli est le propriétaire du lead).
   const [responsableId, setResponsableId] = useState('')
   const responsables = useUtilisateursAssignables()
@@ -275,6 +286,7 @@ export default function CalepinageNouveau() {
     }
     setEnvoi(true)
     setErreurs({})
+    const depuis = new Date(Date.now() - MARGE_RECHERCHE_MS).toISOString() // T4-X9-011
     try {
       // ACAL183 — UNE SEULE PORTE : `depuis-modele`, avec ou sans modèle ni
       // jeu (ce qui n'est pas choisi n'est PAS envoyé).
@@ -282,7 +294,7 @@ export default function CalepinageNouveau() {
       if (modeleId) corps.modele_id = modeleId
       if (presetId) corps.preset_id = presetId
       if (nom.trim()) corps.titre = nom.trim()
-      const res = await calepinageApi.calepinages.depuisModele(corps)
+      const res = await calepinageApi.calepinages.depuisModele(corps, { silencieuxExpiration: true }) // T4-X9-011
       const id = res?.data?.id
       if (id && responsableId) {
         // Le responsable choisi est ÉCRIT puis relu au détail ; un refus ne
@@ -300,6 +312,21 @@ export default function CalepinageNouveau() {
         ? err.response.data?.calepinage_existant : null
       if (existantServi) {
         setExistant({ id: existantServi, titre: '' })
+      } else if (!err?.response) {
+        // T4-X9-011 — aucune réponse : chercher ce que le serveur a peut-être créé, jamais « Réessayez ».
+        let trouve = null
+        try {
+          // Toutes les pages (jamais la page 1 seule) : le filtre `depuis` borne la lecture à quelques lignes.
+          const lignes = await lireToutesLesPages((pages) => calepinageApi.calepinages.list({
+            lead: surLead ? cibleId : undefined, client: surLead ? undefined : cibleId,
+            depuis, ordering: '-created_at', ...pages,
+          }))
+          trouve = lignes.find((l) => !nom.trim() || (l?.titre || l?.nom || '') === nom.trim()) ?? null
+        } catch {
+          trouve = null
+        }
+        if (trouve?.id) setRetrouve({ id: trouve.id, reference: trouve.reference || '', titre: trouve.titre || trouve.nom || '' })
+        else setErreurs({ global: SANS_REPONSE })
       } else {
         setErreurs(erreursServeur(err))
       }
@@ -531,8 +558,18 @@ export default function CalepinageNouveau() {
         </Card>
       ) : null}
 
+      {retrouve ? (
+        <Card className="space-y-2 border-border p-3" data-testid="cal-nouveau-retrouve" role="status">
+          <p className="text-sm">
+            {`Le serveur a répondu trop tard, mais le calepinage a bien été créé${retrouve.reference ? ` : ${retrouve.reference}` : ''}`}
+            {retrouve.titre ? ` « ${retrouve.titre} »` : ''}.
+          </p>
+          <Button type="button" onClick={() => navigate(`/calepinage/${retrouve.id}`)}>Ouvrir le calepinage créé</Button>
+        </Card>
+      ) : null}
+
       <div className="flex gap-2">
-        {existant && surLead ? null : (
+        {(existant && surLead) || retrouve ? null : (
           <Button type="submit" disabled={envoi}>
             <Plus size={16} aria-hidden="true" />
             Créer le calepinage

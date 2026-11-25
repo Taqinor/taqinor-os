@@ -66,6 +66,8 @@ function Section({ cle, libelle, propsDuRail }) {
    configuration retenue) et, quand l'un d'eux échoue, dit que l'onduleur ne convient pas et pourquoi. */
 function motifInadapte(retenue, resultat) {
   const echec = (resultat?.electrique?.verdicts ?? []).find((v) => v && v.bloquant === true && v.conforme === false)
+  // T4-X9-002 — la raison COURTE servie (le fait et son sens, sans sigle) passe devant « libellé (détail) ».
+  if (echec?.raison) return echec.raison
   if (echec?.libelle) return echec.detail ? `${echec.libelle} (${echec.detail})` : echec.libelle
   if (retenue?.verdict === 'bloquant') return retenue.bloquants?.[0] || 'un contrôle bloquant échoue'
   return null

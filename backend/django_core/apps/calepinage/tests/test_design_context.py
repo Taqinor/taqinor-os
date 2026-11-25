@@ -155,7 +155,8 @@ class ContexteConceptionTest(BaseApiCalepinage):
         reponse = self.api.get(url)
         self.assertEqual(sorted(reponse.data), sorted(CONTRAT_CIBLE['exemple']))
         self.assertEqual(reponse.data, {
-            'cible_factures': {'panneaux': panneaux, 'kwc': kwc, 'module_wc': float(round(kwc * 1000 / panneaux))},
+            'cible_factures': {'panneaux': panneaux, 'kwc': kwc, 'module_wc': float(round(kwc * 1000 / panneaux)),
+                               'version': version.version, 'raison': (version.declencheur or {}).get('raison') or None},
             'refus': '', 'calcul_en_cours': False})
         sans_lead = self.api.get(f'{url_detail(self.nu.pk)}cible-factures/')
         self.assertEqual(sans_lead.data, CONTRAT_CIBLE['exemple_vide'])
@@ -577,10 +578,12 @@ class CibleFacturesTest(unittest.TestCase):
 
     def test_taille_tiree_des_factures_servie_telle_quelle(self):
         servi = self.servi({'panneaux': 12, 'panel_watt': 580, 'kwc': 6.96, 'source': 'factures',
-                            'refus': None, 'motif_code': None})
+                            'refus': None, 'motif_code': None, 'version': 3, 'raison': 'Recalculé le 25/11'})
         self.assertEqual(set(servi), set(CONTRAT_CIBLE['exemple']['cible_factures']))
         self.assertNotIn('cible_factures', CONTRAT['exemple'])  # H3 : hors du démarrage de l'atelier
-        self.assertEqual(servi, {'panneaux': 12, 'kwc': 6.96, 'module_wc': 580.0})
+        # Lane E9 — la version et la raison de la conception voyagent avec ses chiffres.
+        self.assertEqual(servi, {'panneaux': 12, 'kwc': 6.96, 'module_wc': 580.0, 'version': 3,
+                                 'raison': 'Recalculé le 25/11'})
 
     def test_aucune_cible_des_factures_vaut_none(self):
         # Sans lead, taille souhaitée du lead, refus (sans facture, C&I…) : jamais une taille devinée.

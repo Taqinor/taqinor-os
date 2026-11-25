@@ -48,7 +48,8 @@
       "largeurMm",
       "pmaxWc"
     ],
-    "motif_liste_vide": null
+    "motif_liste_vide": null,
+    "panneaux_selon_watt": {}
   },
   "exemple_vide": {
     "calepinage": 1,
@@ -58,6 +59,8 @@
       "largeurMm",
       "pmaxWc"
     ],
-    "motif_liste_vide": "Aucune fiche technique « module » n'existe dans le catalogue de cette société : ajoutez le panneau au stock et renseignez sa fiche (longueur, largeur, puissance crête) pour pouvoir le calepiner."
-  }
+    "motif_liste_vide": "Aucune fiche technique « module » n'existe dans le catalogue de cette société : ajoutez le panneau au stock et renseignez sa fiche (longueur, largeur, puissance crête) pour pouvoir le calepiner.",
+    "panneaux_selon_watt": {}
+  },
+  "e9_panneaux_selon_watt_note": "Lane E9 (T4-X2-001 / T4-X9-005) — `panneaux_selon_watt` (objet, toujours présent) : `{\"<Wc>\": panneaux}`, la puissance de la conception COURANTE du lead (option retenue, `puissance_kwc`) comptée dans CHAQUE puissance de module que cette liste offre, la clé étant `modules[].module.pmaxWc` écrit sans zéro inutile (`\"710\"`, `\"712.5\"`), par LA règle du moteur (`apps.ventes.services.panneaux_pour_la_meme_puissance` : même puissance crête au panneau près — celle de `conception/moteur.py::_compte_designe`, décision 28 ouverte). Ex. conception 8 × 550 W = 4,40 kWc, liste 710 / 715 Wc ⇒ `{\"710\": 6, \"715\": 6}`. `{}` sans conception complète (comme ici : calepinage sans lead). La carte « Couvrir la facture » pose ce compte pour le module CHOISI ; un module absent de la table ⇒ la puissance seule, jamais un compte calculé dans le navigateur. Aucune lecture de plus : la conception est celle déjà lue pour placer son module en tête."
 }

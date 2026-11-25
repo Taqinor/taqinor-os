@@ -120,6 +120,8 @@ SURFACE_PUBLIQUE = (
     "grimper_par_pas_marginaux",
     "horizon_du_pas",
     "lignes_vendues",
+    # T4-X4-004 (25/11/2026) — les lignes vendues d'UNE option, par la règle des paniers.
+    "lignes_vendues_de_l_option",
     "logger",
     "module_batterie_du_devis",
     "optima_publiables",

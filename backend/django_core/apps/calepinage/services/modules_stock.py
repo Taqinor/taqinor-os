@@ -231,4 +231,26 @@ def modules_disponibles_du_calepinage(calepinage, produits):
         'modules': entrees,
         'champs_requis': list(CHAMPS_REQUIS),
         'motif_liste_vide': motif,
+        'panneaux_selon_watt': _panneaux_selon_watt(calepinage, entrees),
     }
+
+
+def _panneaux_selon_watt(calepinage, entrees):
+    """Lane E9 (T4-X2-001 / T4-X9-005) — ``{"<Wc>": panneaux}`` : la puissance de la conception
+    COURANTE (option retenue) comptée dans chaque puissance de module que CETTE liste offre, par
+    LA règle du moteur (``apps.ventes.services.panneaux_pour_la_meme_puissance``, décision 28
+    ouverte) — jamais calculée dans le navigateur. ``{}`` sans conception complète. Aucune
+    lecture de plus : la conception est celle que ``_module_de_la_conception`` a déjà lue."""
+    from .devis_retenu import conception_du_calepinage
+    from .equipements import panneaux_pour_la_meme_puissance
+
+    conception = conception_du_calepinage(calepinage) or {}
+    valeurs = (conception.get('valeurs') or {}).get(conception.get('option_retenue')) or {}
+    kwc = (valeurs.get('puissance_kwc') or {}).get('valeur')
+    table = {}
+    for entree in entrees:
+        watt = entree['module'].get('pmaxWc')
+        nombre = panneaux_pour_la_meme_puissance(kwc, watt) if conception.get('etat') == 'complet' else None
+        if nombre is not None:
+            table['{:g}'.format(float(watt))] = nombre
+    return table

@@ -3903,30 +3903,16 @@ def _verdict(code, libelle, valeur, borne, sens, *, bloquant, unite,
     (``temperature_c``) avec sa provenance, au lieu de la laisser dans la
     seule phrase de ``detail``.
     """
-    from core.electrique.types import fr
-
+    from .raisons_verdicts import textes_du_verdict  # T4-X9-002 : détail mesuré + raison courte
     temperature = _bloc_temperature(temperatures, temperature_c)
     borne_publiee = _nombre(borne)
     if borne_publiee is None or borne_publiee <= 0:
-        return {
-            'code': code, 'libelle': libelle, 'conforme': None,
-            'bloquant': bloquant, 'source': None,
-            'detail': "borne non publiée sur la fiche — contrôle NON "
-                      "vérifiable, aucune limite n'est supposée à sa place",
-            **temperature,
-        }
+        return {'code': code, 'libelle': libelle, 'conforme': None, 'bloquant': bloquant, 'source': None,
+                'detail': "borne non publiée sur la fiche — contrôle NON vérifiable, aucune limite "
+                          "n'est supposée à sa place", 'raison': None, **temperature}
     conforme = (valeur <= borne_publiee + 1e-9 if sens == 'sous'
                 else valeur >= borne_publiee - 1e-9)
     return {
-        'code': code, 'libelle': libelle, 'conforme': conforme,
-        'bloquant': bloquant, 'source': 'fiche',
-        'detail': '%s %s %s %s %s' % (
-            fr(valeur, 1), unite,
-            'sous' if sens == 'sous' else 'au-dessus de',
-            fr(borne_publiee, 1), unite) if conforme else
-        '%s %s %s la borne de fiche %s %s' % (
-            fr(valeur, 1), unite,
-            'au-dessus de' if sens == 'sous' else 'sous',
-            fr(borne_publiee, 1), unite),
-        **temperature,
+        'code': code, 'libelle': libelle, 'conforme': conforme, 'bloquant': bloquant, 'source': 'fiche',
+        **textes_du_verdict(code, valeur, borne_publiee, sens, unite, conforme), **temperature,
     }

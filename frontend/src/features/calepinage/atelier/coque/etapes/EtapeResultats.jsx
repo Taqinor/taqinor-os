@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { panneauxDuModule } from '../../cibleAuModule'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import calepinageApi from '../../../../../api/calepinageApi'
 import useResource from '../../../../../hooks/useResource'
@@ -147,7 +148,8 @@ function tailleDeLaConception(contexte) {
   if (valeur == null) return null
   const cible = contexte?.cible
   const panneaux = typeof cible?.panneaux === 'number' && memeTaille(cible?.kwc, valeur) ? cible.panneaux : null
-  return { kwc: valeur, panneaux }
+  // T4-X3-009 — le compte de la conception nomme SON panneau (« 8 panneaux de 550 W »).
+  return { kwc: valeur, panneaux, watt: panneaux != null ? cible?.panel_watt ?? null : null }
 }
 
 /** T4-X9-008 — la part de la consommation servie pour un calepinage de lead est celle de la CONCEPTION
@@ -160,8 +162,8 @@ function phraseCouvertureConception(data, contexte) {
 }
 
 /** Le motif de l'atelier (`affichageErp.ts::raisonSansValeur`) : « X kWc », le nombre de panneaux en plus s'il est servi. */
-const ditTaille = ({ panneaux, kwc }) => `${formatNumber(kwc, { decimals: 2 })} kWc${
-  typeof panneaux === 'number' ? ` (${formatNumber(panneaux, { decimals: 0 })} panneau${panneaux > 1 ? 'x' : ''})` : ''}`
+const ditTaille = ({ panneaux, kwc, watt = null }) => `${formatNumber(kwc, { decimals: 2 })} kWc${
+  typeof panneaux === 'number' ? ` (${panneauxDuModule(panneaux, watt)})` : ''}`
 
 function ProductionDeLaConception({ bloc, taille = null, pose = null, simulee = false }) {
   const kwh = typeof bloc.production_annuelle_kwh === 'number' ? bloc.production_annuelle_kwh : null

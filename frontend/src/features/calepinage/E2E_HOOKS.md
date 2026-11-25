@@ -884,6 +884,7 @@ retiré plus un hook ajouté.
 | `cal-nouveau-preset-aide` | nouveau : aide du jeu de réglages mémorisé (ACAL186). |
 | `cal-nouveau-responsable` | nouveau : choix du responsable (facultatif). |
 | `cal-nouveau-existant` | nouveau : encart « ce lead a déjà un calepinage ». |
+| `cal-nouveau-retrouve` | nouveau : le serveur a répondu trop tard mais le calepinage a été créé — « Ouvrir le calepinage créé » (T4-X9-011). |
 | `cal-nouveau-ouvrir-existant` | nouveau : ouvrir le calepinage existant du lead. |
 | `cal-fiche--erreur` | fiche : erreur serveur sous le champ de rattachement (milieu = champ). |
 | `cal-fiche-lead-ouvrir-existant` | fiche : ouvrir le calepinage existant du lead visé (409). |

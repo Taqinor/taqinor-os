@@ -67,6 +67,13 @@ function Colonne({ option, titre, table, payback, retenue = false }) {
                     d'après le devis {payback.devis_ref}
                   </span>
                 )}
+                {/* T4-X9-016 — le montant et l'économie de CETTE option, servis avec le retour. */}
+                {table.payback.investissement_ttc != null && table.payback.economie_annuelle != null && (
+                  <span className="block text-xs text-muted-foreground" data-testid={`carte-conception-calcul-${option}`}>
+                    {formatMAD(table.payback.investissement_ttc, { decimals: 0 })} pour{' '}
+                    {formatMAD(table.payback.economie_annuelle, { decimals: 0 })}/an — {table.payback.calcul}
+                  </span>
+                )}
               </>
               : <span className="text-xs text-muted-foreground">{payback?.motif || '—'}</span>}
           </Ligne>
@@ -76,14 +83,46 @@ function Colonne({ option, titre, table, payback, retenue = false }) {
   )
 }
 
-/** Les phrases `verdicts.non_calcule` (fiche technique incomplète), sans doublon. */
+/** Lane E9 — LE gabarit de `apps/ventes/electrical_service.py::motifs_fiche_incomplete` (un motif par champ, joints
+    par « ; » dans `non_calcule`) : « « <champ> » non renseigné(e) sur la fiche technique du panneau|de l'onduleur — … ».
+    Seule une phrase qui suit EXACTEMENT ce gabarit est regroupée ; toute autre est dite telle quelle (rien n'est perdu). */
+const MOTIF_FICHE = /^« (.+) » non renseigné\(e\) sur la fiche technique (du panneau|de l'onduleur) — /
+
+/** Les lignes `verdicts.non_calcule`, sans doublon : `{ cle, phrase }` (dite telle quelle) ou, pour une fiche technique
+    incomplète, `{ cle, produit, champs }` — UNE ligne par produit (le module / l'onduleur que l'option sert). */
 function phrasesNonCalcule(valeurs) {
-  const vues = new Set()
+  const lignes = new Map()
   for (const table of Object.values(valeurs || {})) {
     const phrase = table?.verdicts?.valeur?.non_calcule
-    if (phrase) vues.add(phrase)
+    if (!phrase) continue
+    const noms = { 'du panneau': table?.module?.valeur, "de l'onduleur": table?.onduleurs?.valeur?.[0]?.designation }
+    for (const morceau of phrase.split(' ; ')) {
+      const m = MOTIF_FICHE.exec(morceau)
+      const produit = m ? (noms[m[2]] || (m[2] === 'du panneau' ? 'panneau' : 'onduleur')) : null
+      if (!m) { lignes.set(morceau, { cle: morceau, phrase: morceau }); continue }
+      const ligne = lignes.get(`fiche:${produit}`) ?? { cle: `fiche:${produit}`, produit, champs: [] }
+      if (!ligne.champs.includes(m[1])) ligne.champs.push(m[1])
+      lignes.set(ligne.cle, ligne)
+    }
   }
-  return [...vues]
+  return [...lignes.values()]
+}
+
+/** Lane E9 — une fiche technique incomplète en UNE ligne ; ses champs sur demande. */
+function LigneFiche({ ligne }) {
+  if (ligne.phrase) return <li data-testid="carte-conception-non-calcule">{ligne.phrase}</li>
+  const n = ligne.champs.length
+  return (
+    <li data-testid="carte-conception-non-calcule">
+      <span data-zone="fiche-titre">
+        {`Fiche technique de « ${ligne.produit} » incomplète (${n} champ${n > 1 ? 's' : ''}) : complétez-la dans Stock → Catalogue`}
+      </span>
+      <details>
+        <summary className="min-h-11 cursor-pointer">Voir les champs</summary>
+        <ul className="m-0 pl-4">{ligne.champs.map((c) => <li key={c}>{c}</li>)}</ul>
+      </details>
+    </li>
+  )
 }
 
 export default function CarteConception({ leadId, delaiRelectureMs = 4000, maxRelectures = 6 }) {
@@ -203,9 +242,7 @@ export default function CarteConception({ leadId, delaiRelectureMs = 4000, maxRe
                 {s.message}
               </li>
             ))}
-            {nonCalcules.map((phrase) => (
-              <li key={phrase} data-testid="carte-conception-non-calcule">{phrase}</li>
-            ))}
+            {nonCalcules.map((ligne) => <LigneFiche key={ligne.cle} ligne={ligne} />)}
           </ul>
         </div>
       )}

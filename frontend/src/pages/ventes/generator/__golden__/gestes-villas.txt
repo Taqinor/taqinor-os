@@ -357,6 +357,9 @@ gen-cond-acompte-financeur=
   "ventesApi.getOffresTaillesDevis": [
     [
       "35"
+    ],
+    [
+      "35"
     ]
   ],
   "ventesApi.getPrefillSite": [

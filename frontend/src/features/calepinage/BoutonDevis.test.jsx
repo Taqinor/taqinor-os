@@ -13,7 +13,7 @@ import { exempleContrat } from '../../test/fixtures/contractSamples'
    objet tapé à la main. */
 
 vi.mock('../../api/calepinageApi', () => ({
-  default: { calepinages: { genererDevis: vi.fn(), syncDevis: vi.fn() } },
+  default: { calepinages: { genererDevis: vi.fn(), syncDevis: vi.fn(), apercuDevis: vi.fn() } },
 }))
 vi.mock('../../api/ventesApi', () => ({
   default: { reviserDevis: vi.fn() },
@@ -93,6 +93,33 @@ describe('Documents — forme compacte des surfaces et flèche du bouton doré',
 
 // T4-X5-007 — l'écran dit lui-même chaque refus : le toast global est coupé sur generer-devis / sync-devis.
 const SANS_TOAST = { suppressErrorToast: true }
+
+/* Lane E9 (T4-X5-010) — avant « Générer le devis », ce que le devis PORTERA (dry-run servi, mot pour mot). */
+describe('Lane E9 — le matériel que le devis portera, dit avant le bouton', () => {
+  it('par option : module et onduleur servis, puis la phrase de l’écart à la désignation électrique', async () => {
+    const apercu = exempleContrat('calepinage', 'calepinage_apercu_devis')
+    calepinageApi.calepinages.apercuDevis.mockResolvedValue({ data: apercu })
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    const bloc = await screen.findByText('Le devis portera :')
+    const zone = bloc.closest('[data-zone="apercu-materiel-devis"]')
+    expect(within(zone).getByText('Sans batterie : module Module 710 Wc · onduleur Onduleur réseau 6 kW')).toBeInTheDocument()
+    expect(within(zone).getByText('Avec batterie : module Module 710 Wc · onduleur Onduleur hybride 6 kW')).toBeInTheDocument()
+    expect(within(zone).getByText(apercu.ecarts[0].message)).toHaveAttribute('role', 'status')
+    expect(calepinageApi.calepinages.apercuDevis).toHaveBeenCalledWith(DETAIL_VIDE.id)
+    // Placé AVANT le bouton « Générer le devis ».
+    const bouton = screen.getByTestId('cal-generer-devis')
+    expect(zone.compareDocumentPosition(bouton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('rien ne se compose (refus servi) : rien n’est affirmé', async () => {
+    calepinageApi.calepinages.apercuDevis.mockResolvedValue({
+      data: exempleContrat('calepinage', 'calepinage_apercu_devis', 'exemple_refus') })
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    await screen.findByTestId('cal-generer-devis')
+    await waitFor(() => expect(calepinageApi.calepinages.apercuDevis).toHaveBeenCalled())
+    expect(screen.queryByText('Le devis portera :')).toBeNull()
+  })
+})
 
 describe('BoutonDevis (CAL38)', () => {
   it('détail absent (agrégat pas encore lu) : aucun bouton deviné', async () => {

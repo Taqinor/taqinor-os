@@ -1078,7 +1078,9 @@ describe('ToitureDesign — cible estimée vs cible vendue (ACAL195)', () => {
     const sansLead = { ...ctx, calepinage: { ...ctx.calepinage, lead: null } }
     calepinageApi.calepinages.designContext.mockResolvedValue({ data: sansLead })
     rendreCalepinage(ctx.calepinage.id)
-    await screen.findByTestId('acal-cible-estimee')
+    // T4-X9-013 — sans lead, le refus du moteur (phrase sur « le lead ») n'est plus affiché du tout : ni bande, ni lien.
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(screen.queryByTestId('acal-cible-estimee')).toBeNull()
     expect(screen.queryByRole('link', { name: 'Ouvrir la fiche du lead' })).toBeNull()
   })
 
