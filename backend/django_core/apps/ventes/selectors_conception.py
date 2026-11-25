@@ -128,7 +128,8 @@ def _payback_servi(version, valeurs):
     from .domain.catalogue import classer_produit
     from .conception.valeurs import entrees_du_payback
     from .quote_engine.pricing import payback_publiable
-    from .utils.options import AVEC_BATTERIE, SANS_BATTERIE, filter_lines_for_option, lignes_avec_produit, option_totaux
+    from .utils.options import (AVEC_BATTERIE, SANS_BATTERIE, deux_options_declarees, filter_lines_for_option,
+                                lignes_avec_produit, option_totaux)
 
     servies, lignes = copy.deepcopy(valeurs), list(lignes_avec_produit(devis))
     if version.marche in ('commercial', 'industriel'):
@@ -137,12 +138,15 @@ def _payback_servi(version, valeurs):
             if 'payback' in table:
                 table['payback'] = _payback_ci(devis, option, len(servies) > 1)
         return servies, {'devis_ref': devis.reference, 'motif': None}
+    # T4-X7-001 — le DEVIS dit s'il porte deux options, pas la conception : une conception à une
+    # option lue sur un devis à deux options sommait les lignes des deux (97 400 MAD pour 7 987 MAD/an).
+    deux_au_devis = len(servies) > 1 or deux_options_declarees(devis)
     for option, table in servies.items():
         if 'payback' not in table:
             continue
         # Les lignes de l'option, découpées comme le PDF (une option seule : ses lignes).
         panier = AVEC_BATTERIE if option == 'avec' else SANS_BATTERIE
-        de_l_option = filter_lines_for_option(lignes, panier, devis=devis) if len(servies) > 1 else lignes
+        de_l_option = filter_lines_for_option(lignes, panier, devis=devis) if deux_au_devis else lignes
         portees = [li for li in de_l_option if li.type_ligne == 'produit']
         # Lane E6d — LA provision d'onduleur des cartes (``offres_tailles._cout_onduleur_ttc``),
         # rôles du classifieur catalogue, remise du devis : un seul calcul.

@@ -129,8 +129,18 @@ def completer(empreinte, lead, company, utilisees):
         utilisees['raccordement'] = {'valeur': _json(raccordement), 'source': 'lead'}
     societe = entrees_de_la_societe(company)
     utilisees.update(societe)
-    return _empreinte({'entrees': empreinte, 'raccordement': raccordement or '',
-                       'societe': {cle: entree['valeur'] for cle, entree in sorted(societe.items())}})
+    charge = {'entrees': empreinte, 'raccordement': raccordement or '',
+              'societe': {cle: entree['valeur'] for cle, entree in sorted(societe.items())}}
+    # T4-X7-022 — les SOUHAITS du lead (taille, batterie) décident des options
+    # (``decisions.py``) sans entrer dans l'empreinte de l'adaptateur : « Avec » →
+    # « Les deux options » laissait la carte à une seule option (empreinte égale ⇒
+    # rien rangé). Posés seulement quand l'un est renseigné : l'empreinte d'un lead
+    # sans souhait reste celle d'avant (aucune conception rangée ne devient périmée).
+    souhaits = {c: _json(getattr(lead, c, None)) for c in ('taille_souhaitee_kwc', 'batterie_souhaitee')
+                if not _vide(getattr(lead, c, None))}
+    if souhaits:
+        charge['souhaits'] = souhaits
+    return _empreinte(charge)
 
 
 def entrees_pour(lead, company, *, toit=None):
