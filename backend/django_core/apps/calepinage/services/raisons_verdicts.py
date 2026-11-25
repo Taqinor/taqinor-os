@@ -23,7 +23,7 @@ _RAISONS = {
 }
 
 
-def raison_du_verdict(code, valeur, borne, sens, unite):
+def _raison_du_verdict(code, valeur, borne, sens, unite):
     """La phrase du dépassement de ``code`` (``valeur`` contre ``borne``, en ``unite``), ou
     ``None`` pour un code sans phrase ou un sens inattendu."""
     from core.electrique.types import fr
@@ -44,4 +44,4 @@ def textes_du_verdict(code, valeur, borne, sens, unite, conforme):
     mesure, borne_dite = '%s %s' % (fr(valeur, 1), unite), '%s %s' % (fr(borne, 1), unite)
     detail = ('%s %s %s' % (mesure, 'sous' if sens == 'sous' else 'au-dessus de', borne_dite) if conforme
               else '%s %s la borne de fiche %s' % (mesure, 'au-dessus de' if sens == 'sous' else 'sous', borne_dite))
-    return {'detail': detail, 'raison': None if conforme else raison_du_verdict(code, valeur, borne, sens, unite)}
+    return {'detail': detail, 'raison': None if conforme else _raison_du_verdict(code, valeur, borne, sens, unite)}
