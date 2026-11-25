@@ -606,6 +606,8 @@
     detail:texte, variante_pct:texte
 - frontend/src/api/ventesApi.js :: lienPaiementFacture -> /api/django/ventes/factures/<>/lien-paiement
     detail:inconnu, expires_at:texte, montant:texte, montant_a_payer:texte, pay_url:inconnu, provider:inconnu, statut:inconnu, token:inconnu
+- frontend/src/api/ventesApi.js :: mettreAJourConception -> /api/django/ventes/devis/<>/mettre-a-jour-conception
+    appliquees:liste, code:texte, detail:texte, devis_id:inconnu, non_appliquees:inconnu
 - frontend/src/api/ventesApi.js :: partagePdfDevis -> /api/django/ventes/devis/<>/pdf-partage
     devis_statut:inconnu
 - frontend/src/api/ventesApi.js :: patchEtudeParams -> /api/django/ventes/devis/<>/etude-params
