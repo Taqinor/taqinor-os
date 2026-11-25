@@ -25,7 +25,8 @@ from core.parseurs import ObjetJSON
 from ..permissions import PeutLireOuEcrireCalepinage
 from ..serializers import corps_obligatoire, forme_reponse
 from ..services.io_layout import (
-    ImportLayoutRefuse, exporter_layout, importer_layout,
+    ImportEffaceraitLeToit, ImportLayoutRefuse, document_du_corps,
+    exporter_layout, importer_layout,
 )
 from ..services.layout import LayoutRefuse
 from .calepinages import CalepinageViewSet
@@ -74,10 +75,15 @@ def import_layout(self, request, pk=None):
             {'roof_layout': 'Corps requis : le document de conception à '
                             'importer.'},
             status=status.HTTP_400_BAD_REQUEST)
-    if isinstance(corps, dict) and set(corps.keys()) == {'roof_layout'}:
-        corps = corps['roof_layout']
     try:
-        resultat = importer_layout(calepinage, corps, user=request.user)
+        document, remplacer_toit = document_du_corps(corps)
+        resultat = importer_layout(calepinage, document, user=request.user,
+                                   remplacer_toit=remplacer_toit)
+    except ImportEffaceraitLeToit as refus:
+        # T4-X5-009 — rien d'écrit ; l'écran propose de confirmer.
+        return Response({'roof_layout': str(refus),
+                         'confirmation_requise': True},
+                        status=status.HTTP_409_CONFLICT)
     except (ImportLayoutRefuse, LayoutRefuse) as refus:
         return Response({refus.champ or 'roof_layout': str(refus)},
                         status=status.HTTP_400_BAD_REQUEST)

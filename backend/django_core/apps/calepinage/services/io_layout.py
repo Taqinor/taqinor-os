@@ -26,8 +26,9 @@ import json
 from pathlib import Path
 
 __all__ = [
-    'ImportLayoutRefuse', 'VERSION_SCHEMA', 'exporter_layout',
-    'valider_document', 'importer_layout', 'module_du_pan',
+    'ImportLayoutRefuse', 'ImportEffaceraitLeToit', 'VERSION_SCHEMA',
+    'exporter_layout', 'document_du_corps', 'valider_document',
+    'importer_layout', 'module_du_pan',
 ]
 
 #: Numéro de version du schéma v2 publié (CAL232) — celui que ``exporter_
@@ -61,6 +62,43 @@ class ImportLayoutRefuse(ValueError):
     def __init__(self, message, *, champ=''):
         super().__init__(message)
         self.champ = champ
+
+
+class ImportEffaceraitLeToit(ImportLayoutRefuse):
+    """T4-X5-009 — le document importé ne décrit aucun toit alors que la
+    conception enregistrée en a un : rien n'est écrit sans confirmation."""
+
+
+#: Les clés de l'ENVELOPPE que rend ``exporter_layout`` (le fichier que
+#: télécharge « Exporter la conception (JSON) »), plus l'option de
+#: confirmation de l'import. Une enveloppe se reconnaît à ``roof_layout`` ET
+#: à des clés toutes dans cet ensemble — jamais deviné autrement.
+_CLES_ENVELOPPE = frozenset({'roof_layout', 'layout_hash', 'schema_version',
+                             'remplacer_toit'})
+
+
+def document_du_corps(corps):
+    """Le document à importer et l'option ``remplacer_toit``, lus du corps.
+
+    T4-X5-009 — cause : la vue ne déballait que ``{'roof_layout': …}`` SEUL ;
+    le fichier d'export porte aussi ``layout_hash`` et ``schema_version``,
+    il était donc enregistré TEL QUEL comme une conception (le schéma v2
+    admet les clés inconnues) — sans pan ni contour : le toit disparaissait.
+
+    Raises:
+        ImportLayoutRefuse: l'enveloppe ne contient aucune conception (export
+            d'un calepinage vide).
+    """
+    if (isinstance(corps, dict) and 'roof_layout' in corps
+            and set(corps) <= _CLES_ENVELOPPE):
+        document = corps['roof_layout']
+        if document is None:
+            raise ImportLayoutRefuse(
+                'Ce fichier ne contient aucune conception : il a été exporté '
+                'depuis un calepinage encore vide. Rien n’a été enregistré.',
+                champ='roof_layout')
+        return document, corps.get('remplacer_toit') is True
+    return corps, False
 
 
 def exporter_layout(calepinage):
@@ -267,18 +305,30 @@ def valider_document(document):
     _controles_croises(document)
 
 
-def importer_layout(calepinage, document, *, user=None):
+def importer_layout(calepinage, document, *, user=None, remplacer_toit=False):
     """Valide STRICTEMENT ``document`` puis l'enregistre par le chemin
     d'écriture unique (``services.layout.enregistrer_layout``).
 
     Raises:
         ImportLayoutRefuse: document invalide contre le schéma v2.
+        ImportEffaceraitLeToit: document sans toit sur une conception qui en
+            a un, sans ``remplacer_toit`` (T4-X5-009).
         services.layout.LayoutRefuse: calepinage non enregistré.
         services.verrou.VerrouilleRefuse (409): calepinage verrouillé
             (devis lié envoyé) — hérité, jamais recodé.
     """
     valider_document(document)
 
-    from .layout import enregistrer_layout
+    from .layout import enregistrer_layout, layout_decrit_une_geometrie
+
+    if (not remplacer_toit
+            and layout_decrit_une_geometrie(calepinage.roof_layout)
+            and not layout_decrit_une_geometrie(document)):
+        raise ImportEffaceraitLeToit(
+            'Ce fichier ne décrit aucun toit (ni contour ni pan) : '
+            'l’importer effacerait le toit déjà dessiné. Rien n’a été '
+            'enregistré. Choisissez le fichier téléchargé par « Exporter la '
+            'conception (JSON) », ou confirmez que vous voulez remplacer le '
+            'toit par ce fichier.', champ='roof_layout')
 
     return enregistrer_layout(calepinage, document, user=user)

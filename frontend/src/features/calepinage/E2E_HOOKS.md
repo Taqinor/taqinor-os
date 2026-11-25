@@ -697,6 +697,8 @@ retiré plus un hook ajouté.
 | `cal-doc-bouton-kml` | document bouton export pour Google Earth (ACAL536). |
 | `cal-doc-conception` | document conception. |
 | `cal-doc-conception-confirmation` | document conception confirmation. |
+| `cal-doc-conception-remplacement` | avis « ce fichier ne décrit aucun toit », rien d'écrit (T4-X5-009). |
+| `cal-doc-bouton-remplacer-toit` | bouton « Remplacer le toit par ce fichier » — confirme l'import sans toit (T4-X5-009). |
 | `cal-doc-empreinte` | document empreinte. |
 | `cal-doc-erreur` | document message d'erreur. |
 | `cal-doc-erreurs` | document messages d'erreur. |
@@ -853,6 +855,7 @@ retiré plus un hook ajouté.
 | `cal-projet-erreur` | erreur de lecture/import du projet. |
 | `cal-projet-apercu` | aperçu avant import. |
 | `cal-projet-apercu-clone` | aperçu : cloner le projet à l’import. |
+| `cal-projet-apercu-avertissements` | aperçu : avertissements servis (ex. confirmation qui sera refusée, T4-X5-016). |
 | `cal-projet-ouvrir` | projet : ouvrir le projet importé. |
 | `cal-projet-apercu-modules` | aperçu : modules. |
 | `cal-projet-apercu-postes` | aperçu : postes de pertes. |

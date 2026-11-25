@@ -421,6 +421,37 @@ describe('PanneauDocuments — export/import du document de conception (CALX28)'
     expect(downloadBlob).not.toHaveBeenCalled()
   })
 
+  it('T4-X5-009 — un fichier sans toit n’écrase rien et ne remplace qu’après confirmation en mots', async () => {
+    servirInventaire('exemple')
+    const message = 'Ce fichier ne décrit aucun toit (ni contour ni pan) : l’importer effacerait le toit déjà '
+      + 'dessiné. Rien n’a été enregistré.'
+    calepinageApi.calepinages.importerConception
+      .mockRejectedValueOnce({
+        response: { status: 409, data: { roof_layout: message, confirmation_requise: true } },
+      })
+      .mockResolvedValueOnce({ data: { calepinage: 1, layout_hash: 'h2', inchange: false } })
+    const utilisateur = userEvent.setup()
+
+    rendre(1)
+    const document = { version: 2, zones: [] }
+    const fichier = new File([JSON.stringify(document)], 'conception.json', { type: 'application/json' })
+    await utilisateur.upload(await screen.findByTestId('cal-doc-fichier-import-layout'), fichier)
+
+    const avis = await screen.findByTestId('cal-doc-conception-remplacement')
+    expect(avis).toHaveTextContent('Rien n’a été enregistré.')
+    expect(avis).not.toHaveTextContent('confirmation_requise')
+    expect(screen.queryByTestId('cal-doc-conception-confirmation')).toBeNull()
+
+    await utilisateur.click(screen.getByTestId('cal-doc-bouton-remplacer-toit'))
+    await waitFor(() => {
+      expect(screen.getByTestId('cal-doc-conception-confirmation'))
+        .toHaveTextContent('Conception importée et enregistrée.')
+    })
+    expect(calepinageApi.calepinages.importerConception).toHaveBeenLastCalledWith(
+      1, { roof_layout: document, remplacer_toit: true })
+    expect(screen.queryByTestId('cal-doc-conception-remplacement')).toBeNull()
+  })
+
   it('un JSON illisible est refusé AVANT tout appel serveur, même régime d’erreur', async () => {
     servirInventaire('exemple')
     const utilisateur = userEvent.setup()

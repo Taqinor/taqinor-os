@@ -350,6 +350,7 @@ function CarteDocument({
     (`EntitesPage.jsx`), jamais un second widget d'upload inventé ici. */
 function SectionConception({
   enCours, erreurs, confirmation, onExporter, onImporter,
+  remplacement, onRemplacer, onAnnulerRemplacement,
 }) {
   const entreeFichier = useRef(null)
   return (
@@ -393,6 +394,31 @@ function SectionConception({
         >
           {confirmation}
         </p>
+      )}
+      {/* T4-X5-009 — un fichier sans toit sur une conception dessinée : le
+          serveur n'a RIEN écrit ; le remplacement n'a lieu qu'ici, confirmé. */}
+      {remplacement && (
+        <div
+          role="alert"
+          className="mt-2 flex flex-col gap-2 rounded-md border border-warning/50 p-2 text-xs text-foreground"
+          data-testid="cal-doc-conception-remplacement"
+        >
+          <p>{remplacement.message}</p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              loading={enCours === 'import'}
+              onClick={onRemplacer}
+              data-testid="cal-doc-bouton-remplacer-toit"
+            >
+              Remplacer le toit par ce fichier
+            </Button>
+            <Button size="sm" variant="ghost" onClick={onAnnulerRemplacement}>
+              Garder le toit actuel
+            </Button>
+          </div>
+        </div>
       )}
       <ErreursSortie erreurs={erreurs} />
     </div>
@@ -613,6 +639,7 @@ export default function PanneauDocuments({
   const [enCoursConception, setEnCoursConception] = useState(null)
   const [erreurConception, setErreurConception] = useState(null)
   const [confirmationConception, setConfirmationConception] = useState(null)
+  const [remplacementConception, setRemplacementConception] = useState(null)
   // CALX302/CALX320 — dépôt d'image : 'ombrage' | null pendant
   // l'appel, ses erreurs (`{champ,message}`) et le dernier dépôt RÉUSSI de
   // cette session (`{genre, deposeLe}`).
@@ -819,18 +846,29 @@ export default function PanneauDocuments({
   // confirmé : sur refus, ni `confirmationConception` ni la sélection de
   // sortie précédente ne bougent.
   async function importerConception(fichier) {
+    let document
+    try {
+      document = JSON.parse(await fichier.text())
+    } catch {
+      setConfirmationConception(null)
+      setRemplacementConception(null)
+      setErreurConception([{ champ: '<racine>', message: 'Le fichier n’est pas un JSON valide.' }])
+      return
+    }
+    await envoyerConception(document)
+  }
+
+  // T4-X5-009 — `remplacerToit` n'est vrai qu'après le clic explicite
+  // « Remplacer le toit par ce fichier » : le serveur refuse (409, rien
+  // d'écrit) un document sans toit posé sur une conception qui en a un.
+  async function envoyerConception(document, { remplacerToit = false } = {}) {
     setErreurConception(null)
     setConfirmationConception(null)
+    setRemplacementConception(null)
     setEnCoursConception('import')
     try {
-      let document
-      try {
-        document = JSON.parse(await fichier.text())
-      } catch {
-        setErreurConception([{ champ: '<racine>', message: 'Le fichier n’est pas un JSON valide.' }])
-        return
-      }
-      const reponse = await calepinageApi.calepinages.importerConception(id, document)
+      const corps = remplacerToit ? { roof_layout: document, remplacer_toit: true } : document
+      const reponse = await calepinageApi.calepinages.importerConception(id, corps)
       setConfirmationConception(reponse.data.inchange
         ? 'Conception importée — identique à celle déjà enregistrée (empreinte inchangée).'
         : 'Conception importée et enregistrée.')
@@ -838,7 +876,12 @@ export default function PanneauDocuments({
       // (sinon « Enregistrer le calepinage » republierait la copie d'avant).
       if (!reponse.data.inchange && typeof onRecharger === 'function') await onRecharger()
     } catch (erreur) {
-      setErreurConception(await erreurDeTelechargement(erreur))
+      const refus = erreur?.response
+      if (refus?.status === 409 && refus.data?.confirmation_requise) {
+        setRemplacementConception({ document, message: refus.data.roof_layout })
+      } else {
+        setErreurConception(await erreurDeTelechargement(erreur))
+      }
     } finally {
       setEnCoursConception(null)
     }
@@ -915,6 +958,9 @@ export default function PanneauDocuments({
         enCours={enCoursConception}
         erreurs={erreurConception}
         confirmation={confirmationConception}
+        remplacement={remplacementConception}
+        onRemplacer={() => envoyerConception(remplacementConception.document, { remplacerToit: true })}
+        onAnnulerRemplacement={() => setRemplacementConception(null)}
         onExporter={exporterConception}
         onImporter={importerConception}
       />
