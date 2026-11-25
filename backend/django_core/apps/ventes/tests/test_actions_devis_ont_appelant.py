@@ -42,8 +42,9 @@ MARQUEUR = re.compile(r'#\s*api-only\s*:\s*(\S.*)$')
 #: ``vente-assistant``, ``assistant-taille``, ``assistant-taille/apercu``) +
 #: les quatre routes ``assistant-lignes/<operation>`` (20/11/2026, api-only :
 #: actions ``ventes.devis.ligne_*``) + ``assistant-liste`` (21/11/2026, api-only :
-#: action ``ventes.devis.chercher``).
-NB_ACTIONS = 75
+#: action ``ventes.devis.chercher``) + ``synthese`` (T4-X4-005, 25/11/2026 :
+#: l'en-tête de la liste des devis, appelant écran ``ventesApi.getDevisSynthese``).
+NB_ACTIONS = 76
 
 
 def _vues_devis():

@@ -219,7 +219,7 @@ def _idempotente(suffixe):
 @extend_schema_view(list=extend_schema(parameters=[
     qint('lead'), qstr('concevable', enum=CONCEVABLE),
     qstr('statut', enum=Devis.Statut.values), ENTITE, *PARAMS_LISTE],
-    responses=DevisListeSerializer(many=True)),
+    responses=D.LignesDeListeDevis),
     create=extend_schema(extensions=D.CORPS_LEAD_OU_CLIENT))
 class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
                    DevisCycleActionsMixin,
@@ -382,7 +382,7 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
             actifs=bool(choix_requete(self.request, 'actifs', ACTIFS)),
             auteurs=_auteurs_requete(self.request))
 
-    @extend_schema(responses={200: OpenApiTypes.OBJECT})
+    @extend_schema(responses=D.DevisSyntheseResponse)
     @action(pagination_class=None, detail=False, methods=['get'],
             url_path='synthese', permission_classes=[LectureVentes])
     def synthese(self, request):

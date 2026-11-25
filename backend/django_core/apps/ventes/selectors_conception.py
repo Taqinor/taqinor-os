@@ -52,6 +52,20 @@ def conception_courante(company, lead_id=None, *, calepinage_id=None, suivi_des_
     return None if version is None else _forme(version, suivi_des_devis=suivi_des_devis)
 
 
+def kwc_de_la_conception_courante(company, lead_id):
+    """ACAL2021 — le kWc de l'option retenue de la conception COURANTE d'un lead, lu en UNE
+    requête de trois colonnes (la pastille de la fiche du lead n'a besoin ni du payback, ni de
+    l'écart des devis, ni de « périmée » : ``conception_courante`` en coûtait plusieurs à chaque
+    ouverture de fiche). ``None`` sans conception, en refus ou sans valeur — jamais supposé."""
+    ligne = (_versions(company, lead_id, None).filter(courante=True)
+             .values('etat', 'valeurs', 'option_retenue').first())
+    if not ligne or ligne['etat'] != 'complet':
+        return None
+    valeurs = ligne['valeurs'] or {}
+    option = ligne['option_retenue'] or next(iter(valeurs), None)
+    return ((valeurs.get(option) or {}).get('puissance_kwc') or {}).get('valeur')
+
+
 def historique_conception(company, lead_id=None, *, calepinage_id=None):
     """``[{version, courante, etat, calcule_le, empreinte, declencheur,
     entrees_utilisees}]``, la plus récente d'abord (le journal par version)."""

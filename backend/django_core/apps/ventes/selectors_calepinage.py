@@ -66,15 +66,10 @@ logger = logging.getLogger(__name__)
 
 def _kwc_de_la_conception(company, lead_id):
     """ACAL2021 — le kWc de l'option retenue de la conception COURANTE du lead
-    (``conception_courante``), ``None`` sans conception, en refus ou sans valeur :
-    jamais un kWc supposé."""
-    from .selectors_conception import conception_courante
-    conception = conception_courante(company, lead_id, suivi_des_devis=False)
-    if not conception or conception.get('etat') != 'complet':
-        return None
-    valeurs = conception.get('valeurs') or {}
-    option = conception.get('option_retenue') or next(iter(valeurs), None)
-    brut = ((valeurs.get(option) or {}).get('puissance_kwc') or {}).get('valeur')
+    (``kwc_de_la_conception_courante`` : une requête), ``None`` sans conception, en
+    refus ou sans valeur : jamais un kWc supposé."""
+    from .selectors_conception import kwc_de_la_conception_courante
+    brut = kwc_de_la_conception_courante(company, lead_id)
     try:
         return float(brut) if brut not in (None, '') else None
     except (TypeError, ValueError):

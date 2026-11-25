@@ -630,6 +630,15 @@
       ]
     },
     {
+      "nom": "synthese",
+      "url_path": "synthese",
+      "url_name": "synthese",
+      "detail": false,
+      "methodes": [
+        "get"
+      ]
+    },
+    {
       "nom": "telecharger_pdf",
       "url_path": "telecharger-pdf",
       "url_name": "telecharger-pdf",
@@ -839,6 +848,7 @@
     "simuler",
     "superior_contact_status",
     "sync_layout",
+    "synthese",
     "telecharger_pdf",
     "throttle_classes",
     "throttled",
