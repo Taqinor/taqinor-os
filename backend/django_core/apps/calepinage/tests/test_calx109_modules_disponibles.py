@@ -130,8 +130,8 @@ class LExempleEstCeQueLeServiceProduitTest(SimpleTestCase):
                     _FauxCalepinage(), produits)
                 self.assertEqual(
                     sorted(servi),
-                    ['calepinage', 'champs_requis', 'modules',
-                     'kwc_selon_watt', 'motif_liste_vide', 'panneaux_selon_watt'])
+                    ['calepinage', 'champs_requis', 'kwc_selon_watt', 'modules',
+                     'motif_liste_vide', 'panneaux_selon_watt'])
 
     def test_e9_la_taille_de_la_conception_comptee_dans_chaque_puissance_offerte(self):
         """Lane E9 (T4-X2-001 / T4-X9-005) — conception de 8 × 550 W = 4,40 kWc, liste à 710
