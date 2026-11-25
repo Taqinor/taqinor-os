@@ -278,6 +278,15 @@ export default function Projet({ calepinageId: idPropose } = {}) {
               </>
             )}
 
+            {/* T4-X5-016 — ce que le serveur dit d'avance (ex. : le lead a déjà son calepinage ouvert,
+                la confirmation sera refusée — et quoi faire), servi tel quel. */}
+            {(apercu.avertissements || []).length > 0 && (
+              <ul role="status" className="mt-2 list-disc pl-4 text-xs text-foreground"
+                data-testid="cal-projet-apercu-avertissements">
+                {apercu.avertissements.map((texte) => <li key={texte}>{texte}</li>)}
+              </ul>
+            )}
+
             <div className="mt-3 flex gap-2">
               <Button size="sm" loading={enCours} onClick={confirmer} data-testid="cal-projet-confirmer">
                 Confirmer l’import
