@@ -17,7 +17,7 @@ import {
 // (createDevisAtomic / replaceLignesDevis) ; createDevis/addLigneDevis (1+N
 // round-trips non gardés) ne sont plus utilisés ici.
 import {
-  LEAD_TYPE_TO_MODE,
+  LEAD_TYPE_TO_MODE, optionsDepuisComparaison,
   // QJR665 — conso de l'étude C&I = celle du balayage (barème national).
   // QJR308 — même formule que DevisTab.jsx / LeadDevisPanel.jsx : l'avis du
   // palier de 5 kWc, mais affiché ICI au moment RÉEL où `runAutoQuote` déclenche
@@ -53,6 +53,7 @@ import ClientQuickCreateModal from './ClientQuickCreateModal'
 import DevisOffresTailles from './DevisOffresTailles'
 // APX17 — confirmation maison + toasts (jamais une popup du système).
 import { useConfirmDialog } from '../../ui/confirm'
+import { rechargerSansGarde } from '../../ui/useDirtyGuard'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
 import { searchCompanies } from '../../features/crm/companyLookup'
 import {
@@ -63,7 +64,6 @@ import {
   Stat,
   Input, Label, Segmented, Switch,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   // QJR101 — `HelpTip` est parti avec la carte des factures : les trois
   // panneaux réseau l'importent chacun pour leur aide « distributeur ».
   ScrollProgress,
@@ -200,9 +200,10 @@ import { useBrouillonEcran } from './generator/hooks/useBrouillonEcran'
 // SPL43 — aides de module déplacées (fabrique de lignes, défauts d'écran).
 import {
   partDiurneParDefaut,
-  FENETRE_REFERENCE_MS,
+  FENETRE_REFERENCE_MS, dateValiditeParDefaut, rearmerFenetreReference,
 } from '../../features/ventes/quote/ecranDefauts.js'
-import { AlerteErreur } from '../../ui/AlertesServeur'
+import { useLibelleFil } from '../../components/layout/libelleFil'
+import DialogueRenommage from './generator/DialogueRenommage'
 
 // QX43 — 4 marchés réels : industriel et commercial sont désormais distincts.
 const MODE_OPTIONS = [
@@ -363,6 +364,8 @@ export default function DevisGenerator({
       // ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION — le total d'AFFICHAGE
       // canonique (celui de la liste et du PDF), pas une somme de lignes.
       total: devisData?.total_affiche ?? devisData?.total_ttc ?? null,
+      // T4-X4-014 — les deux options nommées (vide pour un devis à une option).
+      options: optionsDepuisComparaison(devisData),
       // ALEA51 — devis AUTOMATIQUE lancé d'ici (`?auto=1`) : les alertes du
       // serveur et le retour (économie, postes à chiffrer…) suivent le devis.
       alertes: devisData?.alertes ?? [],
@@ -1244,16 +1247,15 @@ export default function DevisGenerator({
   // chargée dans les DEUX modes — sinon l'étude I/C était re-persistée au
   // tarif par défaut du code et imprimée.
   const settingsLoaded = useRef(false)
+  const [joursValidite, setJoursValidite] = useState(null) // T4-X1-016 — réglage société « validité du devis »
   useEffect(() => {
     if (settingsLoaded.current) return
     settingsLoaded.current = true
     parametresApi.getProfile().then(({ data }) => {
       const jours = parseInt(data?.quote_validity_days, 10)
+      if (Number.isFinite(jours) && jours > 0) setJoursValidite(jours)
       if (!editId && Number.isFinite(jours) && jours > 0) {
-        const d = new Date()
-        d.setDate(d.getDate() + jours)
-        const iso = `${d.getFullYear()}-${String(d.getMonth() + 1)
-          .padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        const iso = dateValiditeParDefaut(new Date(), jours)
         setDateValidite(prev => prev || iso)
       }
       // AGR208/AGR212 — repères énergie datés et sourcés (simple indication à
@@ -1278,6 +1280,21 @@ export default function DevisGenerator({
       if (Number.isFinite(rmax) && rmax > 0) setRemiseMax(String(rmax))
     }).catch(() => { /* réglages indisponibles → on garde les défauts code */ })
   }, [editId])
+
+  // T4-X1-016 — un brouillon ouvert en édition SANS date de validité (une révision « V2 » :
+  // la date n'est jamais copiée) reçoit la validité par défaut d'un devis neuf : sa date de
+  // création + le réglage société — la dérivation même du serveur (`utils/expiry`), donc
+  // rien ne change pour le client ; la date est seulement montrée, jamais inventée.
+  useEffect(() => {
+    if (!editDevis || editDevis.statut !== 'brouillon' || editDevis.date_validite) return
+    const iso = dateValiditeParDefaut(editDevis.date_creation, joursValidite)
+    if (!iso) return
+    rearmerFenetreReference(captureReferenceJusqua)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- défaut posé une fois que le devis ET le réglage société sont chargés (même motif que l'effet des réglages ci-dessus) (D-ENF22)
+    setDateValidite(prev => prev || iso)
+  }, [editDevis, joursValidite])
+  // T4-X1-016 — le fil d'Ariane nomme le devis que l'écran édite (« Réviser » → DEV-…).
+  useLibelleFil(!embedded && editDevis?.reference ? `Édition — ${editDevis.reference}` : null)
 
   // Arrivée depuis le lead. Pleine page : via l'URL (?lead=…&auto=1&discount=…).
   // Embarqué : via les props (leadId/auto/discount), jamais l'URL.
@@ -1647,7 +1664,11 @@ export default function DevisGenerator({
       description: 'Toutes les saisies en cours seront perdues.',
       confirmLabel: 'Réinitialiser',
     })
-    if (ok) window.location.reload()
+    if (!ok) return
+    // T4-X4-022 — le brouillon local est purgé (sinon « Reprendre le brouillon » le
+    // ramène) et la garde de sortie levée (sinon le navigateur annule le rechargement).
+    clear()
+    rechargerSansGarde()
   }
 
   // CIQ223 — l'économie C&I SERVIE (`POST /ventes/economie-ci/preview/`) :
@@ -1886,7 +1907,10 @@ export default function DevisGenerator({
             <div className="grid gap-1.5">
               <Label htmlFor="gen-validite">Date de validité</Label>
               <Input id="gen-validite" type="date" value={dateValidite}
-                     onChange={e => setDateValidite(e.target.value)} />
+                     onChange={e => {
+                       setDateValidite(e.target.value)
+                       if (erreursChamps.date_validite) setErreursChamps(c => ({ ...c, date_validite: undefined }))
+                     }} />
               {erreursChamps.date_validite && (
                 <p className="text-xs text-destructive" data-testid="erreur-champ-date_validite">
                   {erreursChamps.date_validite}
@@ -2238,32 +2262,10 @@ export default function DevisGenerator({
         }}
       />
 
-      {/* QP2 — dialogue de renommage : deux choix explicites lorsqu'une ligne
-          est renommée à l'écart du nom du produit lié (rôle autorisé). */}
-      <Dialog open={!!renameDialog} onOpenChange={(o) => { if (!o) setRenameDialog(null) }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Désignation modifiée</DialogTitle>
-            <DialogDescription>
-              Vous avez renommé cette ligne
-              {renameDialog ? ` « ${renameDialog.nouveauNom} »` : ''} — elle diffère du
-              produit du stock{renameDialog ? ` « ${renameDialog.ancienNom} »` : ''}.
-              Que souhaitez-vous faire ?
-            </DialogDescription>
-          </DialogHeader>
-          <AlerteErreur error={renameError} />
-          <DialogFooter className="flex-col gap-2 sm:flex-col sm:items-stretch">
-            <Button type="button" variant="outline" onClick={renameHereOnly} disabled={renameBusy}>
-              Renommer sur ce devis seulement
-            </Button>
-            <Button type="button" onClick={renameAsNewProduct} loading={renameBusy}>
-              {renameBusy
-                ? 'Création…'
-                : `Créer un nouveau produit « ${renameDialog?.nouveauNom ?? ''} » dans le stock`}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* QP2 — dialogue de renommage (deux choix) : voir generator/DialogueRenommage.jsx. */}
+      <DialogueRenommage
+        renameDialog={renameDialog} setRenameDialog={setRenameDialog} renameBusy={renameBusy}
+        renameError={renameError} renameHereOnly={renameHereOnly} renameAsNewProduct={renameAsNewProduct} />
     </div>
   )
 }

@@ -369,6 +369,17 @@ describe('économie déclarée (AGR212)', () => {
     expect(screen.getByTestId('coherence-confirmee')).toBeTruthy()
   })
 
+  // T4-X4-017 — juin et juillet portaient le même libellé « Jui » (3 premières lettres).
+  it('les douze cases « Mois d\'irrigation » portent douze libellés distincts', () => {
+    render(<PanneauAgricole {...PROPS_VIDES} />)
+    const libelles = [...screen.getByTestId('mois-irrigation').querySelectorAll('label')]
+      .slice(0, 12).map((l) => l.textContent.trim())
+    expect(libelles).toHaveLength(12)
+    expect(new Set(libelles).size).toBe(12)
+    expect(libelles[5]).toBe('Juin')
+    expect(libelles[6]).toBe('Juil')
+  })
+
   it('tous les champs nombre gardent step="any"', () => {
     render(<PanneauAgricole {...PROPS_VIDES}
       ecoPompage={{ ...ECO_POMPAGE_VIDE, energie: 'electrique' }} />)

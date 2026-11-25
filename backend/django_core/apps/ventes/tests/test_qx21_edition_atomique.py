@@ -7,6 +7,7 @@ Le corps envoyé reprend la FORME de l'exemple committé
 ``contract_samples/devis_replace_lines_entete.json`` (PACT10).
 """
 import json
+from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -99,11 +100,14 @@ class TestEditionAtomique(TestCase):
 
     def test_entete_et_lignes_appliques_ensemble(self):
         devis = self._devis(2, Devis.Statut.BROUILLON)
+        # T4-X4-013 — une validité déjà passée est refusée : la clé vient du contrat
+        # (sa FORME), la date est toujours à venir (jamais l'exemple figé du contrat).
+        self.assertIn('date_validite', self.contrat['corps']['entete'])
         r = self._post(devis, {
             'lignes': self._lignes(),
             'entete': {'remise_globale': '5', 'note': 'après',
-                       'date_validite': self.contrat['corps']['entete'][
-                           'date_validite']},
+                       'date_validite': (timezone.localdate()
+                                         + timedelta(days=30)).isoformat()},
             'etude_params': {'scenario': 'Sans batterie'}})
         self.assertEqual(r.status_code, 200, r.content)
         devis.refresh_from_db()

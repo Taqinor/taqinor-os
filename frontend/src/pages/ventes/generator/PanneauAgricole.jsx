@@ -34,6 +34,7 @@ import {
 import { Sprout } from 'lucide-react'
 import { GenCardHeader } from './CarteMetrique'
 import { formatNumber } from '../../../lib/format'
+import { MONTHS_FR } from '../../../features/ventes/solar'
 import {
   alertesAffichables, besoinDepuisDebitSouhaite, refusAutoRemplirPompage,
 } from '../../../features/ventes/etudePompagePreviewPur'
@@ -371,12 +372,14 @@ function EconomieDeclaree({ eco, majEco, reperes, moisCalendrier, coherenceAvert
             ? ' — pré-cochés par le calendrier de la culture' : ''}
         </legend>
         <div className="flex flex-wrap gap-2">
-          {MOIS.map(([v, l]) => (
-            <label key={v} className="flex items-center gap-1 text-xs">
+          {MOIS.map(([v, l], i) => (
+            <label key={v} className="flex items-center gap-1 text-xs" title={l}>
               <input type="checkbox" data-testid={`mois-irr-${v}`}
                      checked={coches.has(Number(v))}
                      onChange={() => basculerMois(Number(v))} />
-              {l.slice(0, 3)}
+              {/* T4-X4-017 — les libellés courts de la liste partagée (solar.js) : les
+                  trois premières lettres de « Juin » et « Juillet » se confondaient. */}
+              {MONTHS_FR[i]}
             </label>
           ))}
         </div>

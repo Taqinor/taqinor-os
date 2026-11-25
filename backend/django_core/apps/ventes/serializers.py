@@ -1324,6 +1324,22 @@ class DevisWriteSerializer(IdInconnu404Mixin, DecimalSoupleMixin,
     def validate_remise_globale(self, value):
         return _borne_saisie(value, 'remise_globale', 'pourcentage')
 
+    def validate_date_validite(self, value):
+        """T4-X4-013 — un devis ne naît pas expiré : une date de validité déjà
+        passée est refusée (400 qui nomme le champ). Un devis EXISTANT dont la
+        date est déjà passée reste modifiable : la date inchangée (l'écran la
+        renvoie telle quelle) passe ; seule une AUTRE date passée est refusée."""
+        if value is None:
+            return value
+        from django.utils import timezone
+        if value >= timezone.localdate():
+            return value
+        instance = getattr(self, 'instance', None)
+        if instance is not None and instance.date_validite == value:
+            return value
+        raise serializers.ValidationError(
+            "Cette date est déjà passée : choisissez aujourd'hui ou une date à venir.")
+
     def to_representation(self, instance):
         """ADVS9 — la réponse du PATCH/POST masque la marge comme la lecture."""
         data = super().to_representation(instance)
