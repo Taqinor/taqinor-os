@@ -166,6 +166,33 @@ describe('ALEA71 — carte « Conception » de la fiche du lead', () => {
     expect(ligne.closest('[role="alert"]')).toBeNull()
   })
 
+  it('lane E9 — fiche vide : UNE ligne par produit (« Fiche technique de « … » incomplète (N champs) »), champs sur demande', async () => {
+    // La phrase TELLE QUE le moteur la sert (`electrical_service.motifs_fiche_incomplete` joints par « ; »).
+    const motif = (champ, de) => `« ${champ} » non renseigné(e) sur la fiche technique ${de} — complétez la fiche `
+      + 'technique du produit (Stock → Catalogue).'
+    const champsPanneau = ['puissance crête (Wc)', 'tension circuit ouvert — Voc (V)', 'courant de court-circuit — Isc (A)']
+    const phrase = [...champsPanneau.map((c) => motif(c, 'du panneau')), motif('tension MPPT maximale (V)', "de l'onduleur")]
+      .join(' ; ')
+    const incomplet = clone(CONCEPTION)
+    incomplet.valeurs.sans.verdicts.valeur.non_calcule = phrase
+    ventesApi.getConceptionLead.mockResolvedValue({ data: incomplet })
+    rendre()
+    await screen.findByTestId('carte-conception')
+    const lignes = screen.getAllByTestId('carte-conception-non-calcule')
+    const module = incomplet.valeurs.sans.module.valeur
+    const onduleur = incomplet.valeurs.sans.onduleurs.valeur[0].designation
+    expect(lignes.map((l) => l.querySelector('[data-zone="fiche-titre"]').textContent)).toEqual([
+      `Fiche technique de « ${module} » incomplète (3 champs) : complétez-la dans Stock → Catalogue`,
+      `Fiche technique de « ${onduleur} » incomplète (1 champ) : complétez-la dans Stock → Catalogue`,
+    ])
+    // Les champs sont DANS un dépli « Voir les champs », fermé par défaut.
+    const depli = lignes[0].querySelector('details')
+    expect(depli.open).toBe(false)
+    expect(depli.querySelector('summary').textContent).toBe('Voir les champs')
+    expect([...depli.querySelectorAll('li')].map((li) => li.textContent)).toEqual(champsPanneau)
+    expect(texte()).not.toContain('non renseigné(e)')
+  })
+
   it('une seule option servie : pas de seconde colonne vide', async () => {
     const industriel = exempleContrat('ventes', 'conception_lead', 'exemple_industriel')
     ventesApi.getConceptionLead.mockResolvedValue({ data: industriel })
