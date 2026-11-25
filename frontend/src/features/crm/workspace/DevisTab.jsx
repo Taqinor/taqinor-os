@@ -417,7 +417,7 @@ export default function DevisTab({
                 className={`lw-context-devis-lectures${(Number(d.lecture?.nombre_vues ?? 0) > 0) ? ' is-lu' : ''}`}
               >
                 <Eye size={13} aria-hidden="true" />
-                <span>{lectureClientLabel(d.lecture, d.corrige_le)}</span>
+                <span>{lectureClientLabel(d.lecture, d.corrige_le, d.statut)}</span>
               </div>
               {/* L-NIV-UI — badge d'état du lien, TOUJOURS visible sur la carte
                   (le dialogue d'envoi ci-dessous n'a pas à être ouvert pour

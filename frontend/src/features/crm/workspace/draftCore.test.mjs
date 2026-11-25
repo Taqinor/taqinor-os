@@ -18,6 +18,7 @@ import {
   TRACKED_KEYS,
   SECTION_FIELDS,
   CHAMPS_SITE,
+  usersAvecResponsable,
 } from './draftCore.js'
 
 // Un état d'édition minimal, avec de l'état satellite non trivial à purger.
@@ -237,4 +238,23 @@ test('SET_SERVER — une clé embarquée PRÉSENTE dans la réponse fait foi (m�
   const s = editState({ server: { id: 7, chatter_recent: [{ id: 1 }] } })
   assert.deepEqual(reducer(s, { type: 'SET_SERVER', res: { id: 7, chatter_recent: [] } }).server.chatter_recent, [])
   assert.deepEqual(reducer(s, { type: 'SET_SERVER', res: { id: 7, stage: 'CONTACTED' } }).server.chatter_recent, [{ id: 1 }])
+})
+
+// T4-V1-001 — le Commercial ne charge pas la liste des utilisateurs assignables
+// (403 évité) : la fiche disait « Non assigné » alors que le serveur sert le
+// responsable (`owner` + `owner_nom`). Le nom servi complète la liste, jamais
+// un doublon, jamais un responsable inventé.
+test('usersAvecResponsable — liste vide : le responsable servi est ajouté', () => {
+  const liste = usersAvecResponsable([], { owner: 6179, owner_nom: 'anon_commercial', owner_avatar: null })
+  assert.equal(liste.length, 1)
+  assert.equal(liste[0].id, 6179)
+  assert.equal(liste[0].username, 'anon_commercial')
+})
+
+test('usersAvecResponsable — déjà dans la liste, sans nom servi ou sans responsable : liste inchangée', () => {
+  const base = [{ id: 6179, username: 'anon_commercial' }]
+  assert.deepEqual(usersAvecResponsable(base, { owner: 6179, owner_nom: 'anon_commercial' }), base)
+  assert.deepEqual(usersAvecResponsable([], { owner: 6179, owner_nom: '' }), [])
+  assert.deepEqual(usersAvecResponsable([], { owner: null, owner_nom: 'x' }), [])
+  assert.deepEqual(usersAvecResponsable([], null), [])
 })

@@ -287,7 +287,7 @@ export default function ChatterTimeline({
           <ActivityLine a={item} resolveMarketingLink={resolveMarketingLink} />
           {item.bulk && <span className="chatter-bulk">en masse</span>}
           <span className="chatter-meta">
-            — par {item.user_nom ?? '?'} · {timeAgo(item.__at)}
+            {item.user_nom ? `— par ${item.user_nom}` : '— automatique'} · {timeAgo(item.__at)}
           </span>
         </div>
         {onTogglePin && (

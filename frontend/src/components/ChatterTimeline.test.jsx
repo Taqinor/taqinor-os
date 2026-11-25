@@ -140,3 +140,20 @@ describe('ChatterTimeline — touches marketing (NTMKT11)', () => {
     expect(document.querySelector('.chatter-item-marketing')).toBeFalsy()
   })
 })
+
+describe('ChatterTimeline — note automatique sans auteur', () => {
+  it('« — automatique » et jamais « par ? » quand la note n\'a pas d\'auteur', () => {
+    render(
+      <ChatterTimeline
+        entries={[
+          { id: 1, kind: 'note', body: 'Conception recalculée : facture hiver 900 → 1 200 MAD', user_nom: null, created_at: isoAt(1) },
+          { id: 2, kind: 'note', body: 'Appel effectué', user_nom: 'Sami', created_at: isoAt(2) },
+        ]}
+      />,
+    )
+    const metas = [...document.querySelectorAll('.chatter-meta')].map((n) => n.textContent)
+    expect(metas.some((t) => t.includes('— automatique'))).toBe(true)
+    expect(metas.some((t) => t.includes('— par Sami'))).toBe(true)
+    expect(metas.some((t) => t.includes('par ?'))).toBe(false)
+  })
+})

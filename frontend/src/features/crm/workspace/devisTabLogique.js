@@ -117,8 +117,10 @@ export function devisIntent(mode, kwcCible) {
 //   · null  → aucun lien client n'a jamais été créé (rien n'a été envoyé) ;
 //   · 0 vue → lien envoyé mais jamais ouvert ;
 //   · N vues → N lectures humaines + horodatage de la dernière.
-export function lectureClientLabel(lecture, corrigeLe = null) {
-  if (!lecture) return 'Pas encore envoyé au client'
+export function lectureClientLabel(lecture, corrigeLe = null, statut = null) {
+  // Un brouillon n'est PAS envoyé, même si un lien client existe déjà (devis
+  // automatique) : un seul état, un seul libellé tant que le devis n'est pas parti.
+  if (!lecture || statut === 'brouillon') return 'Pas encore envoyé au client'
   const vues = Number(lecture.nombre_vues ?? 0)
   if (!vues) return 'Jamais ouvert par le client'
   const quand = lecture.derniere_consultation
