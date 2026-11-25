@@ -1500,3 +1500,19 @@ créé par un Commercial : aucune fuite (créateur forcé côté serveur, sous-a
 `lane/t3-relecture` (worktree isolé, base de test `f0`, consignes `scratchpad/tour3/msg-lane-F0-relecture.md`).
 **Le lot 3 ne fusionne qu'après le pli de `moteur-e6b1` ET de `t3-relecture`.** Lane suivante prête :
 `scratchpad/tour3/msg-lane-F1-liste.md` (liste des devis légère).
+
+**Ajout de 04 h 40 UTC.** `lane/moteur-e6b1` REVENUE et repliée (`d1f4077849`) : B1 et B2 corrigés (+ un troisième
+bloquant trouvé par la lane : TOUTE désignation à la main faisait refuser la conception), m2 (`source: 'impose'`), M5
+(un brouillon ne suit que si son contenu change), M1 + jamais de simulation dans une requête (niveau 15), M3 (liste
+`--ecarts` vraie, une transaction par lead, `--limite`, `--lead`), M4 + m3 (« Prêt à envoyer ? » juge la pose réelle
+par la règle unique), retour sur investissement servi à la lecture (`payback_devis`). NON faits : ACAL2026, ADEV154,
+les deux clés du moteur pour ACAL2020 (`forme_horaire_24`, entrée imposée `consommation`), M2 côté outil de toit
+(`poseManuelle`) → lane « E6c » à lancer. Doutes à porter au fondateur : une désignation à la main ramène la
+conception à UNE option ; un module désigné d'une autre puissance garde le même kWc, arrondi au panneau.
+- Rejeu docker en cours des modules touchés par les deux lanes (journal `scratchpad/lot3-sweep-e6b.log`) ; la marque
+  « échec attendu » de `test_lead_1742_ratio_juge_pour_la_pose_reelle_ok` est à retirer si le test passe.
+- EN VOL : `lane/moteur-e7b` (étape 7, écran devis : ADEV152 à vérifier, AGEN11, AGEN12, AGEN13 ; consignes
+  `scratchpad/msg-lane-e7b.md`, base de test `e7b`), `lane/t3-relecture`, relecteur X2.
+- FILE D'ATTENTE (trois agents au plus) : E7a fiche du lead (ALEA71, ACAL2021), E7c atelier (ADEV153, ACAL2022,
+  ACAL2023), E6c, lanes de correctifs du tour 3 (1 liste des devis, 2 éditeur — APRÈS e7b, mêmes fichiers —, 3, 4, 5),
+  relecteurs X5, X3, X6 à X8, relecteur des maquettes.
