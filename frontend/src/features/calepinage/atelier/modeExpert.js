@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useSyncExternalStore } from 'react'
 import { store } from '../../../store'
+import { ContextePresentation } from './coque/contexteCoque'
 
 /* ============================================================================
    ACAL394 — LE « MODE EXPERT » DU RAIL, mémorisé PAR UTILISATEUR.
@@ -54,8 +55,11 @@ const abonner = (f) => {
   }
 }
 
-/** `[expert, basculer]` — `forceUrl` (`?mode=expert`) impose l'expert sans l'écrire. */
+/** `[expert, basculer]` — `forceUrl` (`?mode=expert`) impose l'expert sans l'écrire.
+    T4-X8-005 — sous « Montrer au client » (`ContextePresentation`), le mode n'est JAMAIS lu : guidé, toujours (ni la
+    préférence mémorisée ni `?mode=expert` ne montrent au client l'adresse, la date de photo ou les outils de l'atelier). */
 export function useModeExpert(forceUrl = false) {
+  const presentation = useContext(ContextePresentation) !== null
   const utilisateurId = useMemo(() => {
     try { return store.getState()?.auth?.user?.id ?? null } catch { return null }
   }, [])
@@ -65,7 +69,7 @@ export function useModeExpert(forceUrl = false) {
     ecrireModeExpert(utilisateurId, valeur)
     abonnes.forEach((f) => f())
   }, [utilisateurId])
-  const expert = forceUrl || memorise
+  const expert = !presentation && (forceUrl || memorise)
   // Le PONT vers les scripts de l'atelier (ACAL552, 584, 717 : ils lisent
   // `document.body.dataset.modeExpert === '1'`) : posé ici, et retiré au démontage
   // du DERNIER composant qui tient le mode.

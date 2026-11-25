@@ -349,6 +349,37 @@ describe('Montrer au client — l’atelier en mode présentation (vraie 3D)', (
     expect(screen.queryByTestId('client-aide-geste')).toBeNull()
   })
 
+  /* T4-X8-005 — le mode Expert MÉMORISÉ (préférence gardée d'une séance à l'autre) n'atteint jamais la vue client : ni
+     l'adresse, ni la date de photo, ni « Localiser », ni les rangées d'outils de l'atelier, au téléphone comme au bureau. */
+  for (const [nom, poser] of [['au téléphone', () => {}], ['au bureau', auBureau]]) {
+    it(`T4-X8-005 — ${nom}, après l’atelier en Expert : aucun outil de l’atelier devant le client`, async () => {
+      const { readFileSync } = await import('node:fs')
+      const { store } = await import('../../../store')
+      const { cleModeExpert } = await import('../atelier/modeExpert')
+      const utilisateur = (() => { try { return store.getState()?.auth?.user?.id ?? null } catch { return null } })()
+      localStorage.setItem(cleModeExpert(utilisateur), '1')
+      const style = document.createElement('style')
+      style.textContent = ['49-jetons-v2.css', '50-coque-atelier.css', '58-telephone.css']
+        .map((f) => readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/${f}`, 'utf8')).join('\n')
+      document.head.appendChild(style)
+      try {
+        poser()
+        reinitialiserBoot({ appliquerVue: vi.fn() })
+        rendre({ webgl: true })
+        const coque = await screen.findByTestId('cal-coque', {}, ATTENTE_ATELIER)
+        await screen.findByTestId('client-soleil', {}, ATTENTE_ATELIER)
+        expect(coque).toHaveAttribute('data-expert', '0')
+        expect(coque).toHaveAttribute('data-avance', '0')
+        expect(document.body.dataset.modeExpert).toBeUndefined()
+        expect(document.getElementById('rp9-search')).not.toBeVisible()
+        expect(within(coque).queryByRole('button', { name: 'Localiser' })).toBeNull()
+      } finally {
+        style.remove()
+        localStorage.removeItem(cleModeExpert(utilisateur))
+      }
+    })
+  }
+
   it('rien d’argent ni de libellé interne dans ce que voit le client', async () => {
     reinitialiserBoot({ appliquerVue: vi.fn(), ...apiBuilder() })
     rendre({ webgl: true })
