@@ -331,6 +331,7 @@ export const ROLES_POMPAGE = [
   ['entretien_pompage', 'Entretien pompage'],
   ['antivol', 'Antivol'],
   ['cloture', 'Clôture'],
+  ['protection_ac', 'Protection AC (variateur → pompe)'],
 ]
 // source-choix: core.product_roles.TYPES_POMPE
 export const TYPES_POMPE = [['immergee', 'Immergée'], ['surface', 'Surface'], ['dc', 'DC']]

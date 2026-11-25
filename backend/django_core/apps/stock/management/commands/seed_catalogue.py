@@ -563,6 +563,20 @@ CABLES_PROTECTIONS_VIDES = [
     ('Coffret AC',           'COF-AC',      100, 5),
 ]
 
+# D-ACAL-118 (fondateur 25/11/2026) — le kit minimum des NOUVEAUX devis de
+# pompage : UN coffret de protection DC + un disjoncteur AC et un parafoudre AC
+# entre le variateur et la pompe. Rôle pompage DÉCLARÉ à la création de ces
+# articles PVG3 (une base existante le reçoit par les migrations stock 0162 et
+# 0190, gardées sur « rôle vide ») ; prix toujours VIDES : le fondateur les
+# chiffre, et tant qu'ils valent 0 le devis automatique de pompage est refusé.
+ROLE_POMPAGE_PVG3 = {
+    'COF-DC-2STR': 'protection_dc',
+    **{sku: 'protection_ac' for sku in (
+        'DISJ-AC-C-16-1P', 'DISJ-AC-C-20-1P', 'DISJ-AC-C-25-1P',
+        'DISJ-AC-C-32-1P', 'DISJ-AC-C-16-4P', 'DISJ-AC-C-20-4P',
+        'DISJ-AC-C-25-4P', 'DISJ-AC-C-32-4P', 'PARA-AC-T2')},
+}
+
 # ACAL1172 (D-ACAL-39) — le kit de fixation d'un toit incliné : PRIX VIDE (0), le
 # prix est un geste du fondateur ; jamais auto-chiffré tant que ``prix_vente``
 # vaut 0 (``_has_price``), aucun stock inventé, description neutre sans chiffre.
@@ -2121,6 +2135,7 @@ def _semer_prix_vides(company, Produit, MouvementStock, record_stock_movement,
             prix_vente=Decimal('0'),  # à renseigner par le fondateur
             quantite_stock=qte, seuil_alerte=seuil,
             tva=Decimal('20.00'),
+            role_pompage=ROLE_POMPAGE_PVG3.get(sku, ''),
         )
         record_stock_movement(
             company=company, produit=produit,

@@ -67,7 +67,8 @@
     "installation_pompage": "Installation pompage",
     "entretien_pompage": "Entretien pompage",
     "antivol": "Antivol",
-    "cloture": "Clôture"
+    "cloture": "Clôture",
+    "protection_ac": "Protection AC (variateur → pompe)"
   },
   "fiches": {
     "pompe": {

@@ -58,6 +58,40 @@ class OptionsPompageTests(TestCase):
             self.assertEqual(
                 Produit.objects.filter(company=self.co, sku=sku).count(), 1)
 
+    def test_dacal118_protections_du_kit_semees_a_prix_vide_avec_role(self):
+        """D-ACAL-118 — coffret DC, disjoncteurs AC et parafoudre AC : rôle
+        pompage déclaré à la création, prix VIDES (jamais un prix inventé),
+        servis par ``produits_pompage`` ; différentiels et coffret AC sans
+        rôle pompage."""
+        from apps.stock.selectors import produits_pompage
+        _seed(self.co)
+        for sku, role in seed_mod.ROLE_POMPAGE_PVG3.items():
+            p = Produit.objects.get(company=self.co, sku=sku)
+            self.assertEqual(p.role_pompage, role, sku)
+            self.assertIn(role, ROLES_POMPAGE)
+            self.assertEqual(p.prix_vente, 0, sku)
+            self.assertEqual(p.prix_achat, 0, sku)
+        self.assertEqual(
+            {s for s, r in seed_mod.ROLE_POMPAGE_PVG3.items()
+             if r == 'protection_ac'},
+            {s for _n, s, _q, _t in seed_mod.CABLES_PROTECTIONS_VIDES
+             if s.startswith('DISJ-AC-') or s == 'PARA-AC-T2'})
+        for sku in ('DDR-A-300-40', 'COF-AC'):
+            self.assertEqual(Produit.objects.get(
+                company=self.co, sku=sku).role_pompage, '')
+        roles = {e['sku']: e['role_pompage'] for e in produits_pompage(self.co)}
+        self.assertEqual(roles.get('PARA-AC-T2'), 'protection_ac')
+        self.assertEqual(roles.get('COF-DC-2STR'), 'protection_dc')
+
+    def test_dacal118_role_saisi_et_prix_saisi_jamais_reecrits(self):
+        Produit.objects.create(
+            company=self.co, nom='Parafoudre AC du fondateur',
+            sku='PARA-AC-T2', prix_vente=250, role_pompage='')
+        _seed(self.co)
+        p = Produit.objects.get(company=self.co, sku='PARA-AC-T2')
+        self.assertEqual((p.nom, p.prix_vente, p.role_pompage),
+                         ('Parafoudre AC du fondateur', 250, ''))
+
     def test_option_existante_jamais_reecrite(self):
         Produit.objects.create(
             company=self.co, nom='Clapet saisi par le fondateur',
@@ -155,3 +189,24 @@ class MigrationRolesTests(TestCase):
         # les options du seeder (rôle déclaré à la création) ne sont pas dans
         # la table de la migration : le retour n'y touche pas.
         self.assertEqual(self._role('SONDE-NIV'), 'sonde_niveau')
+
+    def test_dacal118_migration_0190_protection_ac(self):
+        m0190 = importlib.import_module(
+            'apps.stock.migrations.0190_dacal118_protection_ac_pompage')
+        Produit.objects.filter(company=self.co, sku='DISJ-AC-C-20-4P').update(
+            role_pompage='cloture')
+        avant = {p.sku: (p.nom, p.prix_vente, p.prix_achat)
+                 for p in Produit.objects.filter(company=self.co)}
+        m0190.declarer_roles(django_apps, None)
+        m0190.declarer_roles(django_apps, None)  # idempotent
+        self.assertEqual(self._role('DISJ-AC-C-16-1P'), 'protection_ac')
+        self.assertEqual(self._role('DISJ-AC-C-32-4P'), 'protection_ac')
+        self.assertEqual(self._role('PARA-AC-T2'), 'protection_ac')
+        self.assertEqual(self._role('DISJ-AC-C-20-4P'), 'cloture')  # saisi
+        self.assertEqual(self._role('DDR-A-300-40'), '')
+        self.assertEqual(self._role('COF-AC'), '')
+        self.assertEqual(avant, {p.sku: (p.nom, p.prix_vente, p.prix_achat)
+                                 for p in Produit.objects.filter(company=self.co)})
+        m0190.retirer_roles(django_apps, None)
+        self.assertEqual(self._role('PARA-AC-T2'), '')
+        self.assertEqual(self._role('DISJ-AC-C-20-4P'), 'cloture')
