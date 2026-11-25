@@ -249,7 +249,7 @@ class ModuleParPanStockReelTest(BaseApiCalepinage):
                 type_ligne='produit', variante='')
         # ACAL2013 — le module et l'onduleur par défaut viennent de la conception du lead.
         from .test_acal_cible_lead import ranger_conception
-        ranger_conception(lead=self.lead, nb=20, module=m550.nom, onduleur={
+        ranger_conception(lead=self.lead, nb=20, module=m550.nom, module_produit=m550.pk, onduleur={
             'produit': onduleur.pk, 'designation': onduleur.nom, 'quantite': 1})
         layout = _layout(produit_550=m550.pk, produit_400=m400.pk)
         # Le document recopie une puissance FAUSSE pour B : la fiche du stock

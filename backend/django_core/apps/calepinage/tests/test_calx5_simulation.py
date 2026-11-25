@@ -1377,3 +1377,75 @@ class SimulationAutomatiqueTest(TestCase):
         self.calepinage.roof_layout = LAYOUT
         self.calepinage.save()
         self.assertEqual(self._etat_servi()['manquants'], [])
+
+
+class PosePourMoteurTest(TestCase):
+    """ACAL2018 — la façade de la pose pour le moteur unique : pose complète ⇒ production de
+    LA simulation (détail au même ``hash_entree``) ; incomplète ⇒ manque nommé, aucune
+    simulation ; ajustée à la main ⇒ ``a_la_main``. Une autre société n'y lit rien."""
+
+    def setUp(self):
+        from authentication.models import Company
+
+        from apps.calepinage.models import Calepinage
+
+        from apps.crm.models import Lead
+
+        self.societe = Company.objects.create(nom='ACAL2018', slug='acal2018')
+        lead = Lead.objects.create(company=self.societe, nom='Toiture 2018')
+        self.calepinage = Calepinage.objects.create(company=self.societe, lead_id=lead.pk, titre='Pose 2018',
+                                                    roof_layout=LAYOUT, layout_hash='e' * 64)
+
+    def _poser(self, **zone):
+        import copy
+
+        layout = copy.deepcopy(LAYOUT)
+        layout['zones'][0].update(zone)
+        self.calepinage.roof_layout = layout
+        self.calepinage.save()
+
+    def test_pose_complete_production_de_la_simulation(self):
+        from apps.calepinage.services.pose_pour_moteur import pose_servie, simuler_pose
+
+        from .acal_livrables_helpers import patch_materiel
+
+        with patch_materiel():
+            pose = pose_servie(self.societe, self.calepinage.pk)
+            sortie = simuler_pose(self.calepinage, materiel={'module': 1, 'onduleur': 2}, client=_ClientRejoue())
+        self.assertEqual((pose['nb_panneaux'], pose['complete'], pose['a_la_main'], pose['empreinte_pose']),
+                         (12, True, False, 'e' * 64))
+        self.calepinage.refresh_from_db()
+        production = self.calepinage.resultat['production']
+        self.assertEqual((sortie['complete'], sortie['production_annuelle'], sortie['hash_entree']),
+                         (True, production['total']['p50_kwh'],
+                          self.calepinage.resultat[service.CLE_SIMULATION]['hash_entree']))
+        self.assertEqual(sortie['production_mensuelle'], [m['p50_kwh'] for m in production['mensuel']])
+
+    def test_pose_incomplete_manque_nomme_aucune_simulation(self):
+        from apps.calepinage.services import pose_pour_moteur
+
+        from .acal_livrables_helpers import patch_materiel
+
+        self._poser(geometry=dict(LAYOUT['zones'][0]['geometry'], count=0))
+        with patch_materiel(), mock.patch.object(service, 'simuler_calepinage') as simulation:
+            pose = pose_pour_moteur.pose_servie(self.societe, self.calepinage.pk)
+            sortie = pose_pour_moteur.simuler_pose(self.calepinage, materiel={'module': 1})
+        simulation.assert_not_called()  # mutant « simuler une pose incomplète » : rouge
+        self.assertFalse(pose['complete'])
+        self.assertEqual(sortie['complete'], False)
+        self.assertIn('plans', [m['champ'] for m in sortie['manquants']])
+
+    def test_pose_ajustee_a_la_main_et_autre_societe(self):
+        from authentication.models import Company
+
+        from apps.calepinage.services.pose_pour_moteur import pose_servie
+
+        from .acal_livrables_helpers import patch_materiel
+
+        self._poser(neededPanels=10)
+        with patch_materiel():
+            self.assertIs(pose_servie(self.societe, self.calepinage.pk)['a_la_main'], True)
+            self._poser(neededPanels=12)
+            self.assertIs(pose_servie(self.societe, self.calepinage.pk)['a_la_main'], False)
+        autre = Company.objects.create(nom='Autre 2018', slug='autre-2018')
+        self.assertIsNone(pose_servie(autre, self.calepinage.pk))

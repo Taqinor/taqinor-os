@@ -90,7 +90,7 @@ class BaseMateriel(BaseApiCalepinage):
         module = module or self.module_devis
         onduleur = onduleur or self.onduleur
         return ranger_conception(
-            lead=self.lead, nb=12, watt=710, module=module.nom, longueur=longueur,
+            lead=self.lead, nb=12, watt=710, module=module.nom, module_produit=module.pk, longueur=longueur,
             onduleur={'produit': onduleur.pk, 'designation': onduleur.nom, 'quantite': nombre}, **extra)
 
     def _calepinage(self, *, devis=None, entree=None):
@@ -127,6 +127,30 @@ class MaterielDeLaConception(BaseMateriel):
         self.assertIn("module PV non désigné — désignez-le dans l'onglet Matériel électrique",
                       materiel['absents'])
 
+    def test_module_relu_par_son_identifiant_meme_nom_en_double(self):
+        # Relecture E5 m4 — un second produit du même nom ne rend plus le module introuvable.
+        double = self._produit(nom='Double', type_fiche='module', vmp_v=40.0, voc_v=48.0,
+                               isc_a=13.0, imp_a=12.0, pmax_wc=500.0)
+        Produit.objects.filter(pk=double.pk).update(nom=self.module_devis.nom)
+        self._conception()
+        _c, materiel, _d, _doc = conception_du_calepinage(self._calepinage())
+        self.assertEqual((materiel['produits']['module'], materiel['provenances']['module']),
+                         (self.module_devis.pk, 'moteur'))
+
+    def test_produits_archives_de_la_conception_dits_jamais_servis(self):
+        from apps.stock.models import Produit
+
+        self._conception()
+        Produit.objects.filter(pk__in=(self.module_devis.pk, self.onduleur.pk)).update(is_archived=True)
+        _c, materiel, _d, _doc = conception_du_calepinage(self._calepinage())
+        self.assertIsNone(materiel['produits']['onduleur'])
+        self.assertNotEqual(materiel['produits']['module'], self.module_devis.pk)
+        textes = ' | '.join(materiel['absents'])
+        self.assertIn('Le module de la conception (produit n° %s) est introuvable ou archivé' % self.module_devis.pk,
+                      textes)
+        self.assertIn("L'onduleur de la conception (produit n° %s) est introuvable ou archivé" % self.onduleur.pk,
+                      textes)
+
     def test_la_provenance_moteur_n_est_pas_persistee(self):
         self._conception()
         calepinage = self._calepinage()
@@ -137,6 +161,50 @@ class MaterielDeLaConception(BaseMateriel):
         calepinage.refresh_from_db()
         self.assertEqual(calepinage.resultat[CLE_ENTREE], avant)
         self.assertNotIn('module_produit', calepinage.resultat[CLE_ENTREE])
+
+
+class DesignationEntreeImposee(BaseMateriel):
+    """ACAL2013 (clause restée ouverte à l'étape 5) — un onduleur désigné À LA MAIN relance
+    le moteur de son porteur (``pose_enregistree`` → file ADEV139), et le moteur le reçoit
+    comme entrée IMPOSÉE (``relancer`` → ``imposes``) ; sans désignation, rien n'est imposé."""
+
+    class _Arret(Exception):
+        pass
+
+    def test_designation_relance_le_moteur_avec_la_designation_imposee(self):
+        from unittest import mock
+
+        from apps.calepinage.services.electrique import enregistrer_entree
+        from apps.ventes.conception.service import relancer
+
+        self._conception()
+        calepinage = self._calepinage()
+        with mock.patch('apps.ventes.conception.receivers.mettre_en_file') as en_file, \
+                mock.patch('apps.calepinage.services.layout.simuler_apres_enregistrement'):
+            with self.captureOnCommitCallbacks(execute=True):
+                enregistrer_entree(calepinage, {'onduleur_produit': self.onduleur.pk})
+        en_file.assert_called_once()  # mutant « aucune relance sur désignation » : rouge
+        self.assertEqual((en_file.call_args.kwargs['calepinage_id'], en_file.call_args.kwargs['origine']),
+                         (calepinage.pk, 'pose_enregistree'))
+        with mock.patch('apps.ventes.conception.moteur.calculer_conception', side_effect=self._Arret) as calcul:
+            with self.assertRaises(self._Arret):
+                relancer(self.lead, company=self.company, declencheur={'origine': 'pose_enregistree'},
+                         calepinage_id=calepinage.pk, forcer=True)
+        self.assertEqual(calcul.call_args.kwargs['imposes'], {'onduleur_produit_id': self.onduleur.pk})
+
+    def test_sans_designation_rien_n_est_impose_ni_relance(self):
+        from unittest import mock
+
+        from apps.calepinage.services.electrique import enregistrer_entree
+        from apps.ventes.conception.porte_calepinage import designations_du_calepinage
+
+        calepinage = self._calepinage()
+        self.assertEqual(designations_du_calepinage(self.company, calepinage.pk), {})
+        with mock.patch('apps.ventes.conception.receivers.mettre_en_file') as en_file, \
+                mock.patch('apps.calepinage.services.layout.simuler_apres_enregistrement'):
+            with self.captureOnCommitCallbacks(execute=True):
+                enregistrer_entree(calepinage, {'regime': 'TT'})
+        en_file.assert_not_called()
 
 
 class MaterielExplicite(BaseMateriel):

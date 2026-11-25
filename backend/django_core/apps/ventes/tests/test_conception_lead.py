@@ -56,7 +56,7 @@ VALEURS_SOLAIRES = {
     'chaines', 'temperature_froid', 'tension_froid', 'ratio_dc_ac',
     'production_annuelle', 'production_mensuelle', 'autoconsommation',
     'couverture', 'economies_annuelles', 'payback', 'consommation_annuelle',
-    'forme_horaire',
+    'forme_horaire', 'module_produit', 'onduleur_produit', 'batterie_produit', 'verdicts',
 }
 #: La table §2 en agricole (la pompe remplace taille / matériel / bilan).
 VALEURS_POMPAGE = {'nb_panneaux', 'puissance_kwc', 'pompe', 'variateur', 'm3_jour'}
@@ -1315,6 +1315,45 @@ class MoteurUniqueTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_u
                               'puissance_kwc', 'ville_calcul', 'origine_conception'}, set(resultat.blocs))
         self.assertEqual(set(resultat.valeurs), {'sans', 'avec'})
         self.assertNotEqual(resultat.valeurs['sans']['puissance_kwc'], resultat.valeurs['avec']['puissance_kwc'])
+        # Relecture E5 m4 — le matériel est nommé par l'IDENTIFIANT de sa ligne, jamais par son nom.
+        from apps.ventes.domain.catalogue import classer_produit
+        for option, valeurs in resultat.valeurs.items():
+            with self.subTest(option=option):
+                lignes = {classer_produit(li.produit.nom): li.produit_id for li in resultat.lignes
+                          if li.produit_id and (li.variante or '') in ('', option) and not li.optionnelle}
+                self.assertEqual(valeurs['module_produit']['valeur'], lignes['panneau'])
+                self.assertEqual(valeurs['onduleur_produit']['valeur'], valeurs['onduleurs']['valeur'][0]['produit'])
+                self.assertEqual(valeurs['batterie_produit']['valeur'], lignes.get('batterie'))
+        self.assertIsNotNone(resultat.valeurs['avec']['batterie_produit']['valeur'])
+
+    def test_verdicts_non_calcules_disent_la_fiche_a_completer(self):
+        # Relecture E6 (acceptation, copie anonymisée) — catalogue sans fiche électrique : chaînes, tension,
+        # ratio null ; le verdict ne passe JAMAIS pour « conforme », il nomme le champ et où le remplir.
+        resultat = self._parite('res_kwh_declare_ete_different')
+        for option, valeurs in resultat.valeurs.items():
+            with self.subTest(option=option):
+                self.assertIsNone(valeurs['chaines']['valeur'])
+                verdicts = valeurs['verdicts']['valeur']
+                self.assertEqual((verdicts['ratio_dc_ac'], verdicts['capacite_hybride'],
+                                  verdicts['longueur_chaine']), (None, None, None))
+                self.assertIn('non renseigné(e) sur la fiche technique', verdicts['non_calcule'])
+                self.assertIn('Stock → Catalogue', verdicts['non_calcule'])
+
+    def test_verdicts_ranges_pour_l_option_de_la_conception_electrique(self):
+        # ACAL2016 — l'option dont la conception électrique porte l'onduleur porte ses verdicts rangés.
+        resultat = self._parite('res_conception_electrique')
+        portees = [o for o, v in resultat.valeurs.items() if v['chaines']['valeur']]
+        self.assertTrue(portees)
+        for option, valeurs in resultat.valeurs.items():
+            verdicts = valeurs['verdicts']['valeur']
+            if option not in portees:
+                self.assertIsNone(verdicts['ratio_dc_ac'])
+                self.assertIn("l'autre option", verdicts['non_calcule'])
+                continue
+            self.assertEqual(set(verdicts), {'ratio_dc_ac', 'capacite_hybride', 'longueur_chaine', 'non_calcule'})
+            self.assertIsNone(verdicts['non_calcule'])
+            self.assertEqual(verdicts['ratio_dc_ac']['valeur'], valeurs['ratio_dc_ac']['valeur'])
+            self.assertIsInstance(verdicts['ratio_dc_ac']['conforme'], bool)
 
     # ── ADEV134 — chaque supposition sort avec le champ de la fiche ─────────
     def _suppositions(self, resultat):
@@ -2036,6 +2075,58 @@ def _panneaux_de_l_option(golden, option):
     return sum(int(float(li['quantite'])) for li in lignes), sorted({li['designation'] for li in lignes})
 
 
+class VerdictsDuMoteurTests(TestCase):
+    """ACAL2016 — le MOTEUR juge, une fois, avec LA règle du calepinage
+    (``ratio_devis.juger_ratio`` + D-HYB-1) et range le verdict ; un hybride dans sa
+    capacité publiée est « conforme » même au-delà du seuil d'alerte de 1,50."""
+
+    def setUp(self):
+        from decimal import Decimal as D
+
+        from authentication.models import Company
+        from apps.stock.models import FicheTechnique, Produit
+
+        self.company = Company.objects.create(nom='Verdicts', slug='verdicts-moteur')
+
+        def onduleur(nom, **fiche):
+            produit = Produit.objects.create(company=self.company, nom=nom, sku='V-' + nom,
+                                             prix_vente=D('1000'), quantite_stock=1)
+            FicheTechnique.objects.create(company=self.company, produit=produit, type_fiche='onduleur',
+                                          ond_ac_kw=10.0, **fiche)
+            return produit
+        self.hybride = onduleur('Onduleur hybride 10 kW', ond_dc_max_kwc=D('18'))
+        self.reseau = onduleur('Onduleur réseau 10 kW')
+
+    def _verdicts(self, produit, ratio=1.7, kwc=17.04, chaines=({'nb_modules': 12, 'conforme': True},)):
+        from apps.ventes.conception.porte_calepinage import verdicts_electriques
+
+        design = {'ratio_dc_ac': ratio, 'chaines': list(chaines),
+                  'materiel': {'onduleur': {'designation': produit.nom, 'ac_kw': 10.0}}}
+        return verdicts_electriques(self.company, design,
+                                    [{'produit': produit.pk, 'designation': produit.nom, 'quantite': 1}], kwc)
+
+    def test_hybride_dans_sa_capacite_conforme_sans_alerte_1_50(self):
+        verdicts = self._verdicts(self.hybride)
+        self.assertEqual((verdicts['ratio_dc_ac']['conforme'], verdicts['capacite_hybride']['conforme'],
+                          verdicts['longueur_chaine']['conforme']), (True, True, True))
+        self.assertEqual(verdicts['ratio_dc_ac']['borne_source'], "capacité publiée de l'onduleur")
+        self.assertNotIn('1,50', json.dumps(verdicts, ensure_ascii=False))
+
+    def test_reseau_meme_ratio_non_conforme_et_hybride_au_dela_de_sa_capacite(self):
+        self.assertIs(self._verdicts(self.reseau)['ratio_dc_ac']['conforme'], False)
+        self.assertIsNone(self._verdicts(self.reseau)['capacite_hybride'])
+        au_dela = self._verdicts(self.hybride, ratio=2.0, kwc=20.0)
+        self.assertEqual((au_dela['ratio_dc_ac']['conforme'], au_dela['capacite_hybride']['conforme']),
+                         (False, False))
+        longue = self._verdicts(self.reseau, ratio=1.2, kwc=12.0, chaines=({'nb_modules': 30, 'conforme': False},))
+        self.assertIs(longue['longueur_chaine']['conforme'], False)
+
+    def test_sans_conception_electrique_aucun_verdict(self):
+        from apps.ventes.conception.porte_calepinage import verdicts_electriques
+
+        self.assertIsNone(verdicts_electriques(self.company, None, [], 10.0))
+
+
 class PariteStockeeTests(_emprunt(RelanceConceptionTests, '_relancer'),
                          _emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_utilisateur', '_residentiel',
                                   '_ci', '_agricole', '_fiches_residentielles', '_site_isole', '_structures',
@@ -2583,6 +2674,49 @@ class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher
         self.assertIn('APPLIQUÉ : 0 version(s) rangée(s), 7 inchangée(s)', rejoue)
         self.assertEqual(ConceptionLead.objects.filter(company=company).count(), 7)
         self.assertEqual(_photo_devis(devis.pk), photo)
+
+    def test_adev151_ecarts_liste_brouillons_production_pose_zero_ecriture(self):
+        """ADEV151 — ``--ecarts`` : deux leads à toit tracé (un brouillon, un envoyé) listés,
+        production actuelle contre production de la pose (niveau 15 forcé dans le
+        processus), écart en kWh et en % ; un lead sans toit absent ; RIEN d'écrit."""
+        from django.utils import timezone
+
+        from apps.crm.models import Lead
+        from apps.ventes.conception import porte_calepinage as P
+        from apps.ventes.domain import regles_calcul as RC
+        from apps.ventes.models import ConceptionLead, Devis
+        from apps.ventes.services import build_devis_auto
+
+        company, brouillon_lead = self._residentiel(facture_hiver=Decimal('1800'))
+        _reglages_de_la_societe(company)
+        envoye_lead = Lead.objects.create(company=company, nom='Envoyé', prenom='Toit', ville=brouillon_lead.ville,
+                                          facture_hiver=Decimal('2000'))
+        sans_toit = Lead.objects.create(company=company, nom='Sans', prenom='Toit', ville=brouillon_lead.ville,
+                                        facture_hiver=Decimal('1600'))
+        auteur = self._utilisateur(company)
+        brouillon = build_devis_auto(lead=brouillon_lead, user=auteur, company=company)
+        envoye = build_devis_auto(lead=envoye_lead, user=auteur, company=company)
+        Devis.objects.filter(pk=envoye.pk).update(statut='envoye', date_envoi=timezone.now())
+        photos = (_photo_devis(brouillon.pk), _photo_devis(envoye.pk))
+        versions = ConceptionLead.objects.count()
+        toits = {brouillon_lead.pk: (501, 'a' * 64), envoye_lead.pk: (502, 'b' * 64)}
+        pose = {'nb_panneaux': 10, 'kwc': None, 'complete': True, 'a_la_main': False, 'empreinte_pose': '',
+                'manquants': [], 'module_produit': None}
+        with mock.patch('apps.ventes.selectors_calepinage.pose_du_lead',
+                        side_effect=lambda c, pk: toits.get(pk, (None, ''))), \
+                mock.patch.object(P, 'pose_du_calepinage', return_value=pose), \
+                mock.patch.object(P, 'simuler_la_pose', return_value={
+                    'complete': True, 'production_annuelle': 1234.0, 'production_mensuelle': [100.0] * 12}):
+            liste = self._commande('--company', str(company.pk), '--ecarts')
+        self.assertEqual(RC.REGLES_COURANTES, 14)  # le niveau 15 n'est jamais laissé courant
+        self.assertIn(f'lead #{brouillon_lead.pk} (calepinage #501) : production ', liste)
+        self.assertIn('→ 1 234 kWh/an (écart ', liste)
+        self.assertIn(f'{brouillon.reference} brouillon jamais envoyé — changera : oui', liste)
+        self.assertIn(f'{envoye.reference} envoye — lecture seule : ne changera jamais', liste)
+        self.assertNotIn(f'lead #{sans_toit.pk} ', liste)
+        self.assertIn('ÉCARTS : 2 lead(s) à toit tracé listé(s)', liste)
+        self.assertEqual(ConceptionLead.objects.count(), versions, liste)  # mutant « écrire pendant la liste »
+        self.assertEqual((_photo_devis(brouillon.pk), _photo_devis(envoye.pk)), photos)
 
     def test_appliquer_ne_touche_pas_une_version_courante_venue_d_un_toit(self):
         """Relecture E3 M2 — un remplissage, pas un rafraîchissement : le lead
@@ -3223,3 +3357,108 @@ class BrouillonsSuiventLaConceptionTests(_emprunt(RelanceConceptionTests, '_rela
                                    'Commercial responsable': (False, 200), 'Administrateur': (False, 200)})
         collegue = self._api(self._avec_role(company, 'collegue', grille['Commercial']))
         self.assertEqual(collegue.post(URL_MISE_A_JOUR % retouche.pk).status_code, 404)
+
+
+# ── ADEV149 / ADEV150 — la pose du toit tracé, PAR le moteur, au niveau 15 seulement ─
+
+class PoseReelleTests(_emprunt(RelanceConceptionTests, '_relancer'), _emprunt(FigeageDevisAutoTests, *_FABRIQUES),
+                      TestCase):
+    """ADEV149 — toit tracé et pose complète, au niveau de règles 15 : la production
+    rangée est celle de LA simulation de la pose (façade ACAL2018), source « pose » ;
+    sans toit, ou au niveau 14 courant : le chemin d'aujourd'hui, la façade jamais
+    appelée. ADEV150 — une pose ajustée à la main impose son compte (source « pose »)."""
+
+    PRODUCTION = [round(500.0 + 10 * m, 1) for m in range(12)]
+
+    def _pose(self, nb, *, complete=True, a_la_main=False, module=None):
+        return {'nb_panneaux': nb, 'kwc': None, 'complete': complete, 'a_la_main': a_la_main,
+                'empreinte_pose': 'f' * 64, 'manquants': [], 'module_produit': module}
+
+    def _calculer(self, company, lead, *, niveau=None, pose=None, calepinage_id=77):
+        from apps.ventes.conception import porte_calepinage as P
+        from apps.ventes.conception.moteur import calculer_conception
+        from apps.ventes.domain import regles_calcul as RC
+
+        _reglages_de_la_societe(company)
+        sortie = {'complete': True, 'production_annuelle': sum(self.PRODUCTION),
+                  'production_mensuelle': self.PRODUCTION, 'hash_entree': 'h' * 64}
+        with mock.patch.object(RC, 'REGLES_COURANTES', niveau or RC.REGLES_COURANTES), \
+                mock.patch.object(P, 'pose_du_calepinage', return_value=pose) as lue, \
+                mock.patch.object(P, 'simuler_la_pose', return_value=sortie) as simulee:
+            resultat = calculer_conception(lead, company, calepinage_id=calepinage_id)
+        return resultat, lue, simulee
+
+    def test_niveau_14_la_facade_n_est_jamais_appelee_parite_intacte(self):
+        company, lead = self._cas('res_facture_dirhams')
+        resultat, lue, simulee = self._calculer(company, lead, pose=self._pose(12))
+        lue.assert_not_called()  # mutant « appeler la simulation au niveau 14 » : rouge
+        simulee.assert_not_called()
+        temoin, _l, _s = self._calculer(company, lead, calepinage_id=None)
+        self.assertEqual(_json(resultat.valeurs), _json(temoin.valeurs))
+        self.assertEqual(resultat.valeurs['sans']['production_annuelle']['source'], 'moteur')
+
+    def test_niveau_15_pose_complete_production_de_la_simulation(self):
+        from apps.ventes.domain.regles_calcul import REGLES_POSE_REELLE_2111
+
+        company, lead = self._cas('res_facture_dirhams')
+        resultat, lue, simulee = self._calculer(company, lead, niveau=REGLES_POSE_REELLE_2111,
+                                                pose=self._pose(12))
+        lue.assert_called_once_with(company, 77)
+        retenue = resultat.valeurs[resultat.option_retenue]
+        simulee.assert_called_once_with(company, 77, {'module': retenue['module_produit']['valeur'],
+                                                      'onduleur': retenue['onduleur_produit']['valeur']})
+        self.assertEqual(retenue['production_annuelle'],
+                         {'valeur': sum(self.PRODUCTION), 'unite': 'kWh/an', 'source': 'pose'})
+        self.assertEqual(retenue['production_mensuelle']['valeur'], self.PRODUCTION)
+        self.assertEqual(resultat.niveau_regles, REGLES_POSE_REELLE_2111)
+        # Un lead SANS toit tracé, même au niveau 15 : chemin par marché.
+        sans_toit, lue, simulee = self._calculer(company, lead, niveau=REGLES_POSE_REELLE_2111,
+                                                 pose=self._pose(12), calepinage_id=None)
+        lue.assert_not_called()
+        self.assertEqual(sans_toit.valeurs[sans_toit.option_retenue]['production_annuelle']['source'], 'moteur')
+
+    def test_niveau_15_pose_incomplete_aucune_simulation(self):
+        from apps.ventes.domain.regles_calcul import REGLES_POSE_REELLE_2111
+
+        company, lead = self._cas('res_facture_dirhams')
+        resultat, _lue, simulee = self._calculer(company, lead, niveau=REGLES_POSE_REELLE_2111,
+                                                 pose=self._pose(12, complete=False))
+        simulee.assert_not_called()
+        self.assertEqual(resultat.valeurs[resultat.option_retenue]['production_annuelle']['source'], 'moteur')
+
+    def test_adev150_pose_a_la_main_souveraine_puis_retiree(self):
+        from apps.ventes.domain.regles_calcul import REGLES_POSE_REELLE_2111
+
+        company, lead = self._cas('res_facture_dirhams')
+        temoin, _l, _s = self._calculer(company, lead, niveau=REGLES_POSE_REELLE_2111, calepinage_id=None)
+        recommande = temoin.valeurs[temoin.option_retenue]['nb_panneaux']['valeur']
+        posee = recommande + 3
+        resultat, _lue, _simulee = self._calculer(company, lead, niveau=REGLES_POSE_REELLE_2111,
+                                                  pose=self._pose(posee, complete=False, a_la_main=True,
+                                                                  module=temoin.valeurs[temoin.option_retenue][
+                                                                      'module_produit']['valeur']))
+        self.assertEqual(resultat.etat, 'complet', resultat.refus)
+        retenue = resultat.valeurs[resultat.option_retenue]
+        self.assertEqual((retenue['nb_panneaux']['valeur'], retenue['nb_panneaux']['source']), (posee, 'pose'))
+        self.assertEqual(retenue['puissance_kwc']['source'], 'pose')
+        self.assertNotEqual(retenue['production_annuelle']['valeur'],
+                            temoin.valeurs[temoin.option_retenue]['production_annuelle']['valeur'])
+        # Pose non ajustée (remplie par le plan) : la facture garde la main.
+        suivie, _l, _s = self._calculer(company, lead, niveau=REGLES_POSE_REELLE_2111,
+                                        pose=self._pose(posee, complete=False))
+        self.assertEqual(suivie.valeurs[suivie.option_retenue]['nb_panneaux']['valeur'], recommande)
+
+    def test_relance_passe_le_calepinage_au_moteur_devis_envoye_intact(self):
+        from apps.ventes.conception import moteur as M
+        from apps.ventes.models import Devis
+        from apps.ventes.services import build_devis_auto
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        devis = build_devis_auto(lead=lead, user=self._utilisateur(company), company=company)
+        Devis.objects.filter(pk=devis.pk).update(statut='envoye')
+        avant = _json(Devis.objects.filter(pk=devis.pk).values()[0])
+        with mock.patch.object(M, 'pose_reelle', return_value=None) as lue:
+            self._relancer(lead, company, _declencheur(), forcer=True)
+        self.assertEqual(lue.call_args.args[1:], (None, 'residentiel'))
+        self.assertEqual(_json(Devis.objects.filter(pk=devis.pk).values()[0]), avant)

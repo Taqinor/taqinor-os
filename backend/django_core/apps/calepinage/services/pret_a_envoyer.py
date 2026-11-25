@@ -422,30 +422,58 @@ def _role_et_champ(libelle):
 
 
 def _ratio_dc_ac(ratio, *, pourquoi='onduleur non désigné', devis_recu=False, verdict=None):
+    """Dossier d'APPEL D'OFFRES seulement (hors moteur unique) : le bloc servi du calepinage,
+    jugé contre l'exigence de marché du dossier."""
+    valeur = (ratio or {}).get('valeur')
+    if valeur is None:
+        return _elec('ratio_dc_ac', LIBELLE_RATIO, 'info', 'Non calculé : %s' % pourquoi)
     from core.electrique.types import fr
 
     from .ratio_devis import detail_ratio
 
-    libelle = 'Puissance des panneaux face à l’onduleur'
-    valeur = (ratio or {}).get('valeur')
-    if valeur is None:
-        return _elec('ratio_dc_ac', libelle, 'info', 'Non calculé : %s' % pourquoi)
-    # ACAL1954 (D-ACAL-91) — le verdict du bloc servi, LU (la MÊME fonction que
-    # l'étape Électrique) ; la phrase dit d'où vient la borne. La phrase servie
-    # du verdict ``ratio_dc_ac`` (``electrique.verdicts``) prime : elle nomme
-    # aussi le seuil bas franchi — les deux écrans disent les MÊMES mots.
     conforme = bool(ratio.get('dans_bornes'))
     texte = (verdict or {}).get('detail') or detail_ratio(fr(valeur, 2), conforme, (
         ratio.get('borne'), None, ratio.get('borne_source'), ratio.get('borne_reference')))
+    return _ratio_juge(conforme, texte, ratio.get('borne_source'), devis_recu=devis_recu)
+
+
+LIBELLE_RATIO = 'Puissance des panneaux face à l’onduleur'
+#: ACAL2016 — sans conception rangée, le contrôle ne rejuge rien : il le dit.
+MOTIF_SANS_CONCEPTION = 'Non calculé : conception non calculée'
+
+
+def _ratio_juge(conforme, texte, source, *, devis_recu=False, cause=''):
     if conforme:
-        controle = _elec('ratio_dc_ac', libelle, 'ok', texte)
+        controle = _elec('ratio_dc_ac', LIBELLE_RATIO, 'ok', texte)
     elif devis_recu:
         # Le client a déjà reçu ce devis : un écart avec lui s'INFORME, il ne bloque pas.
-        controle = _elec('ratio_dc_ac', libelle, 'info', texte, cause='Écart avec le devis déjà envoyé.')
+        controle = _elec('ratio_dc_ac', LIBELLE_RATIO, 'info', texte,
+                         cause=' '.join(filter(None, ('Écart avec le devis déjà envoyé.', cause))))
     else:
-        controle = _elec('ratio_dc_ac', libelle, 'a_regler', texte, geste='Revoir le choix de l’onduleur')
-    controle['seuil_source'] = ratio.get('borne_source')
+        controle = _elec('ratio_dc_ac', LIBELLE_RATIO, 'a_regler', texte, cause=cause,
+                         geste='Revoir le choix de l’onduleur')
+    controle['seuil_source'] = source
     return controle
+
+
+def _ratio_de_la_conception(verdicts, *, devis_recu=False):
+    """ACAL2016 (D-ACAL-97) — les verdicts RANGÉS par le moteur unique (``valeurs.verdicts``
+    de l'option retenue, contrat ``conception_lead.json``), LUS tels quels : ratio panneaux /
+    onduleur, capacité publiée d'un hybride (D-HYB-1), longueur de chaîne. Rien n'est rejugé
+    ici (la règle ``ratio_devis.juger_ratio`` est appelée UNE fois, par le moteur)."""
+    if verdicts is None:
+        return _elec('ratio_dc_ac', LIBELLE_RATIO, 'info', MOTIF_SANS_CONCEPTION)
+    ratio = verdicts.get('ratio_dc_ac') or {}
+    if ratio.get('conforme') is None:
+        # Relecture E6 — jamais un « conforme » muet : le moteur DIT ce qui manque et où le remplir.
+        return _elec('ratio_dc_ac', LIBELLE_RATIO, 'a_regler', 'Non calculé : %s' % (
+            verdicts.get('non_calcule') or 'onduleur non désigné par la conception'),
+            geste='Compléter la fiche technique du produit', cible=CIBLE_MATERIEL)
+    autres = [v for v in (verdicts.get('capacite_hybride'), verdicts.get('longueur_chaine')) if v]
+    conforme = ratio['conforme'] and all(v.get('conforme') for v in autres)
+    cause = ' ; '.join(v.get('detail') or '' for v in autres if not v.get('conforme'))
+    return _ratio_juge(conforme, ratio.get('detail') or '', ratio.get('borne_source'),
+                       devis_recu=devis_recu, cause=cause)
 
 
 def _chutes(troncons):
@@ -458,6 +486,18 @@ def _chutes(troncons):
                for o in (troncons or {}).get('omissions') or ()]
     return _depuis_motifs('chutes_tension', libelle, lignes,
                           geste='Revoir les sections de câble')
+
+
+def _verdicts_de_la_conception(calepinage):
+    """``valeurs.verdicts`` de l'option retenue par la conception COURANTE, ``None`` sans
+    conception complète (ACAL2016)."""
+    from .devis_retenu import conception_du_calepinage
+
+    conception = conception_du_calepinage(calepinage)
+    if not conception or conception.get('etat') != 'complet':
+        return None
+    valeurs = (conception.get('valeurs') or {}).get(conception.get('option_retenue')) or {}
+    return (valeurs.get('verdicts') or {}).get('valeur') or {}
 
 
 def controles_electriques(calepinage):
@@ -499,6 +539,7 @@ def controles_electriques(calepinage):
         pourquoi_ratio = 'fiche%s incomplète' % _DU_ROLE.get(_role_et_champ(fiche[0]['libelle'])[0], '')
     else:
         pourquoi_ratio = 'onduleur non désigné'
+    devis_recu = bool((conception_du_devis_lie(calepinage) or {}).get('recu'))
     poly = [m for m in motifs if m['code'] in (
         CODE_POLYSTRING, 'CH_PANS_PARTAGENT_UNE_ENTREE')]
     terre = [m for m in motifs if str(m['code']).startswith('TERRE_')]
@@ -507,9 +548,10 @@ def controles_electriques(calepinage):
         _tension_froid(verdicts), _tension_chaud(verdicts),
         _depuis_motifs('orientation_mppt', 'Une seule orientation par entrée',
                        poly, geste='Revoir l’affectation des chaînes'),
-        _ratio_dc_ac(resultat.get('ratio_dc_ac'), pourquoi=pourquoi_ratio,
-                     devis_recu=bool((conception_du_devis_lie(calepinage) or {}).get('recu')),
-                     verdict=next((v for v in verdicts if v.get('code') == 'ratio_dc_ac'), None)),
+        (_ratio_dc_ac(resultat.get('ratio_dc_ac'), pourquoi=pourquoi_ratio, devis_recu=devis_recu,
+                      verdict=next((v for v in verdicts if v.get('code') == 'ratio_dc_ac'), None))
+         if getattr(calepinage, 'appel_offre_id', None) else
+         _ratio_de_la_conception(_verdicts_de_la_conception(calepinage), devis_recu=devis_recu)),
         _chutes(troncons_du_calepinage(calepinage)),
         _depuis_motifs('terre_protections', 'Terre et protections', terre,
                        geste='Compléter la check-list de terre'),

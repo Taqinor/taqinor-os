@@ -20,10 +20,13 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-VERSION_MOTEUR = 'moteur-unique-1'
+VERSION_MOTEUR = 'moteur-unique-2'  # relecture E5 m4 : identifiants produit servis
 CODE_LOCALISATION = 'localisation_inconnue'
 MESSAGE_LOCALISATION = 'Ville inconnue du moteur : renseigner la ville ou le point GPS du lead.'
 CODE_REFUS_MOTEUR = 'refus_moteur'
+#: Relecture E6 — conception électrique non dessinée hors fiche incomplète (portails C&I).
+MOTIF_NON_DESSINABLE = ('Conception électrique non calculée : aucun panneau à répartir en chaînes '
+                        'ou configuration refusée par l\'onduleur (voir l\'étape Électrique).')
 #: La sortie servie (contrat ``contract_samples/conception_lead.json``).
 CLES_SORTIE = ('etat', 'refus', 'marche', 'option_retenue', 'valeurs', 'blocs', 'suppositions',
                'entrees_utilisees', 'empreinte', 'niveau_regles', 'version_moteur')
@@ -64,12 +67,17 @@ class ResultatConception:
     #: agricole : la ``decider_agricole`` — jamais rangée, relue par le devis
     #: de la même requête (aucune seconde décision).
     decision_devis: object = None
+    #: Relecture E6 (acceptation) — POURQUOI la conception électrique manque
+    #: (phrases françaises de ``electrical_service.motifs_fiche_incomplete`` :
+    #: le champ de la fiche et où le remplir) ; ``[]`` quand elle est faite.
+    motifs_electriques: list = field(default_factory=list)
 
     def sortie(self):
         return {cle: getattr(self, cle) for cle in CLES_SORTIE}
 
 
-def calculer_conception(lead, company, *, entrees=None, toit=None, imposes=None, investissement=None):
+def calculer_conception(lead, company, *, entrees=None, toit=None, imposes=None, investissement=None,
+                        calepinage_id=None):
     """La conception du ``lead`` (de ``company`` seulement), SANS ÉCRITURE.
 
     ``entrees`` : ``EntreesConception`` déjà lues (sinon ``entrees_pour``) ;
@@ -79,11 +87,19 @@ def calculer_conception(lead, company, *, entrees=None, toit=None, imposes=None,
     ``composition_imposee.imposition_du_corps``) ; ``investissement`` (MAD) :
     le prix de référence du payback. Un lead sans ville ni GPS ⇒ refus
     ``localisation_inconnue`` ; un refus du devis automatique ⇒ refus
-    ``refus_moteur`` nommant son champ."""
+    ``refus_moteur`` nommant son champ.
+
+    ``calepinage_id`` (ADEV149/ADEV150, NIVEAU DE RÈGLES 15 seulement,
+    ``REGLES_POSE_REELLE_2111``) : le toit tracé dont la pose sert. Pose
+    ajustée à la main ⇒ son compte est IMPOSÉ (souverain, source ``pose``) ;
+    pose complète ⇒ la production est celle de LA simulation de la pose
+    (façade ``calepinage/services/pose_pour_moteur.py``, qui écrit le DÉTAIL
+    dans ``Calepinage.resultat`` comme le bouton — seule écriture de ce
+    chemin). Au niveau 14 courant : ignoré, chemin d'aujourd'hui."""
     if getattr(lead, 'company_id', None) != getattr(company, 'pk', None):
         raise ValueError('Lead hors de la société : aucune conception.')
     with reglages_lus_sans_creer(company):
-        return _calculer(lead, company, entrees, toit, imposes, investissement)
+        return _calculer(lead, company, entrees, toit, imposes, investissement, calepinage_id)
 
 
 @contextmanager
@@ -109,7 +125,7 @@ def reglages_lus_sans_creer(company):
         yield
 
 
-def _calculer(lead, company, entrees, toit, imposes, investissement):
+def _calculer(lead, company, entrees, toit, imposes, investissement, calepinage_id=None):
     from apps.ventes.conception.entrees import entrees_pour
     from apps.ventes.domain.regles_calcul import REGLES_COURANTES
     from apps.ventes.domain.taille import AutoDevisError
@@ -118,6 +134,11 @@ def _calculer(lead, company, entrees, toit, imposes, investissement):
     resultat = ResultatConception(
         marche=entrees.marche, entrees_utilisees=entrees.entrees_utilisees,
         niveau_regles=REGLES_COURANTES, empreinte=empreinte_conception(entrees, imposes))
+    pose = pose_reelle(company, calepinage_id, entrees.marche)
+    if pose is not None and pose['a_la_main'] and entrees.marche == 'residentiel':
+        # ADEV150 : la pose souveraine — son compte et le module qu'elle porte (si catalogue).
+        imposes = dict(imposes or {}, nb_panneaux=pose['nb_panneaux'],
+                       **({'panneau_produit_id': pose['module_produit']} if pose.get('module_produit') else {}))
     refus = refus_localisation(lead)
     if refus is None:
         calcul = {'residentiel': _residentiel, 'agricole': _agricole}.get(entrees.marche, _ci)
@@ -136,8 +157,53 @@ def _calculer(lead, company, entrees, toit, imposes, investissement):
     from apps.ventes.conception.suppositions import suppositions_de
     resultat.suppositions = suppositions_de(resultat, froid=froid)
     resultat.option_retenue, options = V.options(resultat)
-    resultat.valeurs = {option: V.valeurs(resultat, option, investissement, froid=froid) for option in options}
+    resultat.valeurs = {option: V.valeurs(resultat, option, investissement, froid=froid, company=company)
+                        for option in options}
+    if pose is not None:
+        _ranger_la_pose(resultat, company, calepinage_id, pose)
     return _sans_cles_interdites_partout(resultat)
+
+
+def pose_reelle(company, calepinage_id, marche):
+    """ADEV149 — la pose servie (façade du calepinage) quand la branche est OUVERTE :
+    niveau de règles courant ≥ 15 (``REGLES_POSE_REELLE_2111``, activé par le
+    fondateur), un toit tracé, un marché solaire ; sinon ``None`` (chemin d'aujourd'hui)."""
+    from apps.ventes.domain import regles_calcul as RC
+
+    if not calepinage_id or marche == 'agricole' or RC.REGLES_COURANTES < RC.REGLES_POSE_REELLE_2111:
+        return None
+    from apps.ventes.conception.porte_calepinage import pose_du_calepinage
+    pose = pose_du_calepinage(company, calepinage_id)
+    return pose if pose and pose.get('nb_panneaux') else None
+
+
+def _ranger_la_pose(resultat, company, calepinage_id, pose):
+    """ADEV150 : taille souveraine dite ``pose`` ; ADEV149 : pose complète ⇒ la
+    production annuelle et mensuelle de LA simulation de la pose, pour le matériel
+    du moteur, sur les options qui portent ce matériel (source ``pose``). Une
+    simulation qui échoue est DITE absente ; la production du marché reste."""
+    retenue = resultat.valeurs.get(resultat.option_retenue) or {}
+    materiel = {role: (retenue.get('%s_produit' % role) or {}).get('valeur') for role in ('module', 'onduleur')}
+    options = [o for o, v in resultat.valeurs.items()
+               if all((v.get('%s_produit' % r) or {}).get('valeur') == pk for r, pk in materiel.items())]
+    for option in options if pose['a_la_main'] and resultat.marche == 'residentiel' else ():
+        for cle in ('nb_panneaux', 'puissance_kwc'):
+            resultat.valeurs[option][cle]['source'] = 'pose'
+    if not pose['complete']:
+        return
+    from apps.ventes.conception.porte_calepinage import simuler_la_pose
+    sortie = {}
+
+    def simuler():
+        sortie.update(simuler_la_pose(company, calepinage_id, materiel) or {})
+    _au_mieux(resultat, 'production_pose', simuler)
+    if not sortie.get('complete') or sortie.get('production_annuelle') is None:
+        return
+    for option in options:
+        resultat.valeurs[option]['production_annuelle'] = {
+            'valeur': sortie['production_annuelle'], 'unite': 'kWh/an', 'source': 'pose'}
+        resultat.valeurs[option]['production_mensuelle'] = {
+            'valeur': sortie['production_mensuelle'], 'unite': 'kWh', 'source': 'pose'}
 
 
 def sans_cles_interdites(noeud):
@@ -407,10 +473,13 @@ def _conception_electrique(resultat, contexte, *, garde):
     jamais rangée (``build_electrical_design``)."""
     from apps.ventes import electrical_service as E
     try:
-        if garde and not E.conception_electrique_dessinable(contexte):
+        resultat.motifs_electriques = E.motifs_fiche_incomplete(contexte)
+        if resultat.motifs_electriques:
             return None
-        return None if E.motifs_fiche_incomplete(contexte) else E.build_electrical_design(
-            contexte, persister=False)
+        if garde and not E.conception_electrique_dessinable(contexte):
+            resultat.motifs_electriques = [MOTIF_NON_DESSINABLE]
+            return None
+        return E.build_electrical_design(contexte, persister=False)
     except Exception as exc:  # noqa: BLE001 — le devis l'aurait avalée : dite absente (D-ENF22-BLE001)
         logger.warning('Conception électrique non calculée (moteur unique)', exc_info=True)
         resultat.absents['conception_electrique'] = 'erreur : %s' % type(exc).__name__

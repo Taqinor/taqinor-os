@@ -139,42 +139,55 @@ def conception_retenue_par_id(devis_id, company):
 PROVENANCE_MOTEUR = 'moteur'
 
 
-def _module_par_designation(company, designation):
-    """Le produit MODULE de la société dont le nom est ``designation`` (la conception
-    nomme son module par la désignation de sa ligne), ou ``None`` (absent, ambigu)."""
+#: Relecture E5 m4 — rôle du calepinage → (clé de ``valeurs``, famille de fiche, libellé dit).
+_PRODUITS_DE_LA_CONCEPTION = (('module', 'module_produit', 'module', 'le module'),
+                              ('onduleur', 'onduleur_produit', 'onduleur', "l'onduleur"))
+
+
+def _produit_actif(company, identifiant, type_fiche):
+    """``identifiant`` s'il désigne un produit ACTIF de ``company`` de la famille
+    ``type_fiche`` (jamais un produit archivé, d'une autre société ou d'une autre
+    famille), sinon ``None``."""
     from apps.stock.selectors import produits_par_type_fiche_qs
 
-    nom = (designation or '').strip() if isinstance(designation, str) else ''
-    if company is None or not nom:
+    if company is None or not isinstance(identifiant, int) or isinstance(identifiant, bool):
         return None
-    trouves = list(produits_par_type_fiche_qs(company, 'module').filter(nom__iexact=nom)
-                   .values_list('pk', flat=True)[:2])
-    return trouves[0] if len(trouves) == 1 else None
+    return identifiant if produits_par_type_fiche_qs(company, type_fiche).filter(pk=identifiant).exists() else None
 
 
 def materiel_de_la_conception(calepinage):
     """ACAL2013 (D-ACAL-97) — le matériel que la conception COURANTE retient (option du
     moteur), DÉFAUT du calcul électrique quand rien n'est désigné : ``{produits: {module?,
-    onduleur?}, nombre_onduleurs, longueur}`` lus sur ``valeurs`` (contrat
-    ``conception_lead.json`` : ``module``, ``onduleurs``, ``nombre_onduleurs``,
-    ``chaines``) ; ``{}`` sans conception complète. Le devis lié n'est pas lu."""
+    onduleur?}, nombre_onduleurs, longueur, avertissements}`` lus sur ``valeurs`` (contrat
+    ``conception_lead.json`` : ``module_produit``, ``onduleur_produit``, ``nombre_onduleurs``,
+    ``chaines``) ; ``{}`` sans conception complète. Le devis lié n'est pas lu.
+
+    Relecture E5 m4 — le produit est relu par son IDENTIFIANT, borné à la société et
+    jamais archivé ; un produit disparu ou archivé n'est pas servi et
+    ``avertissements`` le DIT en français (le calcul retombe alors sur le module posé)."""
     from .devis_retenu import conception_du_calepinage
 
     conception = conception_du_calepinage(calepinage) if calepinage is not None else None
     if not conception or conception.get('etat') != 'complet':
         return {}
     valeurs = (conception.get('valeurs') or {}).get(conception.get('option_retenue')) or {}
-    cles = ('module', 'onduleurs', 'nombre_onduleurs', 'chaines')
-    lu = {cle: (valeurs.get(cle) or {}).get('valeur') for cle in cles}
-    produits = {}
-    onduleurs = [o for o in lu['onduleurs'] or [] if isinstance(o, dict) and o.get('produit')]
-    if onduleurs:
-        produits['onduleur'] = onduleurs[0]['produit']
-    module = _module_par_designation(getattr(calepinage, 'company', None), lu['module'])
-    if module is not None:
-        produits['module'] = module
-    return {'produits': produits, 'nombre_onduleurs': lu['nombre_onduleurs'] or None,
-            'longueur': (lu['chaines'] or {}).get('longueur') or None}
+    company = getattr(calepinage, 'company', None)
+    produits, avertissements = {}, []
+    for role, cle, type_fiche, libelle in _PRODUITS_DE_LA_CONCEPTION:
+        identifiant = (valeurs.get(cle) or {}).get('valeur')
+        if identifiant in (None, ''):
+            continue
+        if _produit_actif(company, identifiant, type_fiche) is None:
+            avertissements.append(
+                "%s de la conception (produit n° %s) est introuvable ou archivé dans le catalogue — "
+                "désignez-le dans l'onglet Matériel électrique%s" % (
+                    libelle[0].upper() + libelle[1:], identifiant,
+                    ' (le module posé sert en attendant)' if role == 'module' else ''))
+            continue
+        produits[role] = identifiant
+    chaines = (valeurs.get('chaines') or {}).get('valeur') or {}
+    return {'produits': produits, 'nombre_onduleurs': (valeurs.get('nombre_onduleurs') or {}).get('valeur') or None,
+            'longueur': chaines.get('longueur') or None, 'avertissements': avertissements}
 
 
 def options_de_la_conception(options, calepinage, donnees):

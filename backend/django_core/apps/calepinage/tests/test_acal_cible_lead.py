@@ -135,7 +135,7 @@ class CibleDuLeadTest(BaseApiCalepinage):
         self.assertEqual(ConceptionLead.objects.filter(lead=lead).count(), 1)
 
 
-def _valeurs(nb, watt=550, onduleur=None, longueur=None, module=None, ratio=None):
+def _valeurs(nb, watt=550, onduleur=None, longueur=None, module=None, ratio=None, module_produit=None):
     """La table §2 d'UNE option (contrat ``conception_lead.json``), valeurs posées."""
     def v(valeur, unite=None, source='moteur'):
         return {'valeur': valeur, 'unite': unite, 'source': source}
@@ -144,7 +144,9 @@ def _valeurs(nb, watt=550, onduleur=None, longueur=None, module=None, ratio=None
             'module': v(module or 'Panneau Jinko %sW' % watt), 'onduleurs': v(onduleurs),
             'nombre_onduleurs': v(sum(o['quantite'] for o in onduleurs), 'onduleurs'),
             'chaines': v({'nombre': 1, 'longueurs': [longueur], 'longueur': longueur} if longueur else None),
-            'ratio_dc_ac': v(ratio), 'production_annuelle': v(round(nb * watt * 1.6, 1), 'kWh/an')}
+            'ratio_dc_ac': v(ratio), 'production_annuelle': v(round(nb * watt * 1.6, 1), 'kWh/an'),
+            'module_produit': v(module_produit), 'batterie_produit': v(None),
+            'onduleur_produit': v(onduleurs[0]['produit'] if onduleurs else None)}
 
 
 def ranger_conception(*, lead=None, calepinage=None, nb=10, etat='complet', refus=None, option='sans',
