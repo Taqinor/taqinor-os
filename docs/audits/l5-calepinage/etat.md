@@ -2076,3 +2076,15 @@ nom commençant par `_` (posé sur la doublure, jamais sur le devis) ; tout autr
 **Outils prêts** : `scratchpad/consolider_couverture.py [--ecrire]` remplit la colonne « Joué par » de
 `T4/couverture.md` et la liste NON COUVERT (407 lignes jouées sur 449 avant X7 et X8) ; `scratchpad/pr-lot5.md`
 (texte de la PR du lot 5, à compléter) ; `scratchpad/rebatir_pile.sh` (défaut `dev-lot5`).
+
+**Ajout de 17 h 40 UTC** — quatre réponses de plus de Reda (questions interactives), au registre et au rapport
+(décisions 26 et 28 répondues) : D-ACAL-107 toit supposé « By roof type » (affleurant pour une maison en pente, sur
+châssis pour un toit plat ou un site C&I, supposition dite) ; D-ACAL-108 bascule sans toit « Yes, with level 15 »
+(ADEV155 DÉBLOQUÉE : construite maintenant, ouverte au niveau 15 seulement, `REGLES_COURANTES` inchangé) ; D-ACAL-109
+« Keep both options » (onduleur désigné dans l'option qui lui convient, l'autre option au matériel du moteur) ;
+D-ACAL-110 « Nearest panel, said ». Lane **N1** `lane/moteur-decisions` (agent aac95571301d1d032, consigne
+`scratchpad/tour3/msg-lane-N1-moteur-decisions.md`) : partie A (D-109, D-110), partie B (ACAL2045), partie C (ADEV155
+et liste `--ecarts-sans-toit` avec la pose supposée). APRÈS son pli : l'orchestrateur rejoue
+`manage.py remplir_conceptions --ecarts-sans-toit` sur la copie (pile l5t, lecture seule) et montre la liste à Reda.
+Neuf agents en vol : J1, I1 suite, I4 suite 2, K1, M1, M2, M4, N1, relecteur X7. En attente de créneau : M3, K2, E9b, B5.
+Le goulot est le créneau docker unique (le paquet de l'orchestrateur le tient depuis 16 h 48 : phase des rendus PDF).
