@@ -237,5 +237,55 @@ class SurfaceAucunForfaitTest(unittest.TestCase):
                 'solar_design'), True)
 
 
+class CalepinageDeLeadTest(unittest.TestCase):
+    """ACAL2024 (D-ACAL-97) — un calepinage DE LEAD lit autoconsommation et couverture sur la
+    conception rangée ; sans lead, il garde son bilan propre."""
+
+    CONCEPTION = {'etat': 'complet', 'marche': 'residentiel', 'option_retenue': 'avec', 'version': 3,
+                  'valeurs': {'sans': {'autoconsommation': {'valeur': 0.9}, 'couverture': {'valeur': 0.2}},
+                              'avec': {'autoconsommation': {'valeur': 0.42}, 'couverture': {'valeur': 0.61},
+                                       'nb_panneaux': {'valeur': 6}}}}
+
+    def _lire(self, calepinage, conception):
+        from unittest import mock
+
+        from apps.calepinage.services import devis_retenu
+        from apps.calepinage.services.etapes import autoconsommation as etape
+
+        with mock.patch.object(devis_retenu, 'conception_du_calepinage', return_value=conception) as lu:
+            return etape.taux_de_la_conception(calepinage), lu
+
+    def test_le_lead_lit_l_option_retenue_de_la_conception(self):
+        import types
+
+        taux, lu = self._lire(types.SimpleNamespace(lead_id=7), self.CONCEPTION)
+        self.assertEqual(taux, {'taux_autoconsommation': 0.42, 'taux_couverture': 0.61,
+                                'version': 3, 'panneaux': 6})
+        lu.assert_called_once()
+
+    def test_sans_lead_ou_sans_conception_complete_rien_n_est_lu(self):
+        import types
+
+        taux, lu = self._lire(types.SimpleNamespace(lead_id=None), self.CONCEPTION)
+        self.assertIsNone(taux)
+        lu.assert_not_called()
+        for conception in (None, dict(self.CONCEPTION, etat='refus'), dict(self.CONCEPTION, marche='agricole')):
+            self.assertIsNone(self._lire(types.SimpleNamespace(lead_id=7), conception)[0])
+
+    def test_le_bloc_publie_les_taux_de_la_conception_et_le_dit(self):
+        from apps.calepinage.services.etapes import autoconsommation as etape
+        from apps.calepinage.tests.test_calx190_autoconsommation import contexte_de_test, serie_de_test
+
+        _serie, propre = etape.bloc_autoconsommation(serie_de_test(), contexte_de_test())
+        contexte = dict(contexte_de_test(), **{etape.CLE_TAUX_CONCEPTION: {
+            'taux_autoconsommation': 0.42, 'taux_couverture': 0.61, 'version': 3, 'panneaux': 6}})
+        _serie, lu = etape.bloc_autoconsommation(serie_de_test(), contexte)
+        self.assertNotEqual(propre['taux_couverture'], 0.61)
+        self.assertEqual((lu['taux_autoconsommation'], lu['taux_couverture']), (0.42, 0.61))
+        self.assertIn('conception du lead (version 3, 6 panneaux)', lu['definition'])
+        self.assertEqual(lu['energie'], propre['energie'])  # les énergies restent celles de la pose
+        self.assertEqual(propre['definition'], etape.DEFINITION_TAUX)
+
+
 if __name__ == '__main__':  # pragma: no cover
     unittest.main()
