@@ -74,3 +74,68 @@ class ResyncAnnonceTest(BaseApiCalepinage):
             calepinage=self.calepinage).count(), versions_avant)
         self.assertEqual(self.calepinage.roof_layout, document_avant)
         self.assertNotIn('_pans_geometry', self.calepinage.roof_layout)
+
+    # ── Lane E6e, item 3 (T4-X5-010) — le devis né de l'atelier et l'onduleur désigné ──
+    def _designer(self, nom):
+        from apps.calepinage.services.electrique import CLE_ENTREE
+        from apps.stock.models import Produit
+
+        produit = Produit.objects.get(company=self.company, nom=nom)
+        self.calepinage.refresh_from_db()
+        resultat = dict(self.calepinage.resultat or {}, **{CLE_ENTREE: {'onduleur_produit': produit.pk}})
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(resultat=resultat)
+        self.calepinage.refresh_from_db()
+        return produit
+
+    def test_e6e_devis_genere_porte_l_onduleur_du_scenario_pas_le_designe(self):
+        """ÉTABLIT ce que fait « Générer le devis » d'un onduleur HYBRIDE désigné sur une pose
+        « réseau » : le devis chiffre l'onduleur RÉSEAU du catalogue. Le fondateur n'a pas
+        tranché la règle : ce test fige le constat, il ne l'invente pas."""
+        from apps.ventes.models import Devis
+
+        Devis.objects.filter(pk=self.calepinage.devis_id).update(is_active=False)
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(devis=None)
+        modifie = copy.deepcopy(TOIT)
+        modifie['result']['panels'] = 10  # une autre pose : aucun brouillon à la même empreinte
+        self.calepinage.refresh_from_db()
+        enregistrer_layout(self.calepinage, modifie, user=self.user)
+        self._designer('Onduleur hybride Deye 5kW Monophasé')
+        reponse = self.api.post(f'{self.base}generer-devis/', {'creer_autre_devis': True}, format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        devis = Devis.objects.get(pk=Calepinage.objects.get(pk=self.calepinage.pk).devis_id)
+        onduleurs = [li.designation for li in devis.lignes.all() if 'nduleur' in li.designation]
+        self.assertEqual(onduleurs, ['Onduleur réseau Huawei 5kW Monophasé'], onduleurs)
+
+    def test_e6e_resynchro_refusee_pour_un_onduleur_non_designe_dit_l_issue(self):
+        """Le refus de « Resynchroniser » qui juge l'onduleur du DEVIS alors qu'un autre est
+        désigné à l'étape Électrique le dit, nomme les deux et propose le geste qui existe :
+        désigner à l'étape Électrique l'onduleur du devis. Rien n'est écrit."""
+        from unittest import mock
+
+        from apps.ventes.services import SyncLayoutError
+
+        self._designer('Onduleur hybride Deye 5kW Monophasé')
+        refus = SyncLayoutError("7 panneaux « P » sont incompatibles avec « Onduleur réseau Huawei 5kW "
+                                "Monophasé » : Isc. Corrigez le nombre de panneaux ou changez d'onduleur — le "
+                                "devis n'a pas été modifié.", revision_possible=False)
+        with mock.patch('apps.ventes.services.resynchroniser_conception', side_effect=refus):
+            reponse = self.api.post(f'{self.base}sync-devis/', {}, format='json')
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertTrue(str(reponse.data['detail']).endswith(
+            " L'étape Électrique juge l'onduleur désigné « Onduleur hybride Deye 5kW Monophasé » ; ce devis "
+            "porte « Onduleur réseau Huawei 5kW Monophasé », c'est lui que ce refus juge. Pour aligner les "
+            "deux, désignez « Onduleur réseau Huawei 5kW Monophasé » à l'étape Électrique (Matériel "
+            "électrique), puis resynchronisez."), reponse.data)
+        self.assertEqual(self.emissions, [])
+
+    def test_e6e_resynchro_refusee_onduleur_designe_inchangee(self):
+        """Le devis porte l'onduleur désigné : le refus reste celui du serveur, mot pour mot."""
+        from unittest import mock
+
+        from apps.ventes.services import SyncLayoutError
+
+        self._designer('Onduleur réseau Huawei 5kW Monophasé')
+        with mock.patch('apps.ventes.services.resynchroniser_conception',
+                        side_effect=SyncLayoutError('Refus du serveur.', revision_possible=False)):
+            reponse = self.api.post(f'{self.base}sync-devis/', {}, format='json')
+        self.assertEqual((reponse.status_code, str(reponse.data['detail'])), (409, 'Refus du serveur.'))
