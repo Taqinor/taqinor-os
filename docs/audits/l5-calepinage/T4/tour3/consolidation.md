@@ -116,3 +116,28 @@ retrouvé, carte de la variante posée, « Enregistré à » identique après re
 - **Pas encore de lane** : lanes 2 (reste de l'éditeur : 001, 004, 011, 018, 019, 020, 021, petits), 3, 4, 5 (restes),
   6 (atelier : 010 d'abord, 002, 004, 005, 008, 011).
 
+## X5 — atelier après le toit, Résultats, Documents, « Générer le devis » (terminé, 25/11 vers 07 h UTC)
+
+Chromium 1440 × 900, thème sombre, pile `22e6aa81ae` (lot 3). 48 lignes notées sur 48 (41 jouées, 3 bloquées, 2
+introuvables, 2 non atteintes). 17 constats : 1 S1, 8 S2, 6 S3, 2 S4 (`registre/constats/T4-X5.jsonl`, rapport `X5.md`).
+Valeurs à plusieurs nombres relevées pour un même calepinage : kWc 5,68 (pose) / 4,40 puis 2,13 (cible) / 2,2 et 4,4
+(devis) ; production 9 228 (simulation de la pose) / 3 414 (conception) / 3 527 et 7 053 (devis) ; couverture 40 %
+(Résultats) / ≈ 123 % (bande) / 74 % (devis) ; économies 6 310 (atelier) / 5 490 et 8 884 MAD par an (devis).
+
+Tri (cause à prouver par la lane avant de corriger) :
+- **S1 T4-X5-009** réimporter la conception que l'atelier vient d'exporter vide le toit → lane F6b (en vol), en premier.
+- **S2 001** deux productions à l'étape Résultats sans dire leurs tailles → F6b. **S3 005** pourcentage calculé sur une
+  ancienne estimation → lane `moteur-e7e` (même composant). **S3 006, 008, 013, 014, 016, S4 007** → F6b. **S4 017**
+  commandes de la carte en plein écran → F6a (outil de toit).
+- **S2 002** consommation du calepinage plate malgré « été différent », **S2 012** « Simulé » dix fois trop petit,
+  **S2 004** écart avec le devis envoyé du lead jamais nommé quand le devis n'est pas lié au calepinage, **S3 015**
+  synthèse qui marie la puissance d'une pose et la production d'un autre devis → lane `moteur-e8` (mêmes fonctions).
+- **S2 010** le devis né de l'atelier chiffre un autre onduleur que celui désigné, « Resynchroniser » en impasse ;
+  **S2 011** « Réviser le devis » reprend l'ancienne pose (6 panneaux) au lieu de la conception (7) ; **S2 003** la
+  cible « Couvrir la facture » change (8 panneaux → 3) sans le dire après une désignation → lane à écrire
+  (« devis né de l'atelier »), APRÈS e6d et e8 (mêmes fichiers) ; liée à la décision 28 du rapport (effets d'une
+  désignation à la main) : dire à l'écran ce que le moteur a fait d'une désignation, ne jamais laisser d'impasse ;
+  le choix de fond reste au fondateur.
+
+État des lanes du tour 3 au 25/11, 07 h 05 UTC : F6b en vol ; F6a, F3, F4, F2a, F2b prêtes (consignes dans le bloc-notes
+de session, `tour3/msg-lane-*.md`) ; relecteurs X3, X6, X7, X8 à lancer sur la pile mise à jour au lot 4 corrigé.
