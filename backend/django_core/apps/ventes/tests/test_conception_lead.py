@@ -2621,6 +2621,34 @@ class RelanceEnTacheTests(_emprunt(RelanceConceptionTests, '_relancer'),
         self.assertEqual(relue['entrees_utilisees']['facture_hiver']['valeur'], 2400.0)
         self.assertEqual(self.en_file.call_count, 0)
 
+    def _calepinage_designe(self, company, lead, **entree):
+        """Un calepinage du lead dont l'étape Électrique porte ``entree`` (désignations)."""
+        from apps.calepinage.models import Calepinage
+        from apps.calepinage.services.electrique import CLE_ENTREE
+
+        return Calepinage.objects.create(company=company, lead_id=lead.pk, titre='Toit',
+                                         resultat={CLE_ENTREE: dict(entree)})
+
+    def test_e6b1_designation_a_la_main_la_lecture_dit_a_jour(self):
+        """Relecture E6 B1 — une désignation à la main entre dans l'empreinte rangée ;
+        la lecture recalcule LA MÊME empreinte : ``perimee`` faux, rien en file
+        (mutant « empreinte de lecture sans les désignations » : perimee vrai, une tâche)."""
+        from apps.stock.models import Produit
+        from apps.ventes.selectors import conception_courante
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        onduleur = Produit.objects.get(company=company, nom='Onduleur réseau Huawei 5kW Monophasé')
+        calepinage = self._calepinage_designe(company, lead, onduleur_produit=onduleur.pk)
+        relance = self._relancer(lead, company, _declencheur('pose_enregistree'), calepinage_id=calepinage.pk)
+        self.assertTrue(relance.ecrite)
+        self.en_file.reset_mock()
+        lue = conception_courante(company, lead.pk)
+        self.assertEqual((lue['perimee'], lue['calepinage']), (False, calepinage.pk))
+        self.assertEqual(self.en_file.call_count, 0)
+        self.assertFalse(conception_courante(company, lead.pk)['perimee'])
+        self.assertEqual(self.en_file.call_count, 0)
+
 
 # ── ADEV141 — remplir les conceptions des leads existants, liste d'abord ─────
 

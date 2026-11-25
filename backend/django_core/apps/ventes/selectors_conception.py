@@ -99,8 +99,14 @@ def _empreinte_des_entrees(version):
         return None
     pose = version.empreinte_pose
     toit = SimpleNamespace(empreinte=pose, plafond_panneaux=None) if pose else None
+    # Relecture E6 B1 — les désignations à la main du calepinage de la version entrent
+    # dans l'empreinte rangée (``service.relancer``) : la lecture les relit par la MÊME porte.
+    imposes = None
+    if version.calepinage_id:
+        from .conception.porte_calepinage import designations_du_calepinage
+        imposes = designations_du_calepinage(company, version.calepinage_id) or None
     with reglages_lus_sans_creer(company):
-        return empreinte_conception(entrees_pour(lead, company, toit=toit))
+        return empreinte_conception(entrees_pour(lead, company, toit=toit), imposes)
 
 
 def _perimee(version):
