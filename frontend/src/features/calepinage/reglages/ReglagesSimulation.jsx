@@ -493,6 +493,7 @@ function CarteRapport({ documents, peutGerer }) {
 export default function ReglagesSimulation() {
   const peutGerer = usePeutReglerSociete()
   const peutApprouver = useHasPermission('calepinage_approuver')
+  const peutRecalculer = useHasPermission('calepinage_gerer') // le droit de la route recalculer-simulations
   // ACAL405 — les sections TELLES QUE SERVIES (état « à appliquer » / « déjà
   // saisie ») et le compteur qui relit les réglages après un geste.
   const [servis, setServis] = useState(null)
@@ -711,33 +712,34 @@ export default function ReglagesSimulation() {
         </Card>
       ))}
 
-      {peutGerer ? (
+      {/* « Enregistrer » change les réglages de la société (`calepinage_approuver`) ; « Tout recalculer » relance
+          les simulations (`calepinage_gerer`, le droit de SA route) : chaque bouton suit le droit de son geste. */}
+      {(peutGerer || peutRecalculer) && (
         <div className="mt-4 flex flex-wrap items-center gap-4">
-          <button
-            type="button"
-            disabled={enregistrement}
-            data-testid="calx69-enregistrer"
-            className="text-sm font-semibold underline"
-            onClick={enregistrer}
-          >
-            {enregistrement ? 'Enregistrement…' : 'Enregistrer les réglages'}
-          </button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={recalcul || enregistrement}
-            data-testid="acal133-tout-recalculer"
-            onClick={toutRecalculer}
-          >
-            {recalcul ? 'Recalcul en cours…' : 'Tout recalculer'}
-          </Button>
+          {peutGerer && (
+            <button
+              type="button"
+              disabled={enregistrement}
+              data-testid="calx69-enregistrer"
+              className="text-sm font-semibold underline"
+              onClick={enregistrer}
+            >
+              {enregistrement ? 'Enregistrement…' : 'Enregistrer les réglages'}
+            </button>
+          )}
+          {peutRecalculer && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={recalcul || enregistrement}
+              data-testid="acal133-tout-recalculer"
+              onClick={toutRecalculer}
+            >
+              {recalcul ? 'Recalcul en cours…' : 'Tout recalculer'}
+            </Button>
+          )}
         </div>
-      ) : (
-        <p className="mt-4 text-xs text-muted-foreground">
-          Sans le droit « gérer le calepinage », la saisie n’est pas proposée
-          ici.
-        </p>
       )}
 
       {/* ACAL947 — TOUTES les erreurs d'un coup, sous le bouton : chaque ligne

@@ -342,6 +342,16 @@ describe('D-ACAL-104 — « gérer » sans « approuver » : les réglages de la
       'Ces réglages de la société se lisent ici : seules les personnes qui peuvent approuver un calepinage peuvent les changer.')
     expect(champValeur('mode_meteo')).toBeDisabled()
     expect(screen.queryByTestId('calx69-enregistrer')).not.toBeInTheDocument()
+    // « Tout recalculer » suit le droit DE SA ROUTE (`calepinage_gerer`), pas la lecture seule des champs.
+    expect(screen.getByTestId('acal133-tout-recalculer')).toBeInTheDocument()
+  })
+
+  it('sans « gérer » ni « approuver » : ni enregistrer, ni tout recalculer', async () => {
+    mocks.hasPermission.mockReturnValue(false)
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
+    expect(screen.queryByTestId('calx69-enregistrer')).toBeNull()
     expect(screen.queryByTestId('acal133-tout-recalculer')).toBeNull()
   })
 
