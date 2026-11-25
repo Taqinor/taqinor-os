@@ -1313,7 +1313,7 @@ sans description), T4-V1-010 (pivot de la vue client), T4-V1-011 (le commercial 
 T4-V1-012 (« SoftTimeLimitExceeded() » brut), T4-V1-004, ACAL2032 (placement libre : « + Ajouter un panneau » sans
 effet vu).
 
-### Point du 24/11, 23 h 40 UTC (le plus récent — REPRENDRE ICI)
+### Point du 24/11, 23 h 40 UTC
 
 **PR Taqinor/taqinor-os#1554 — BROUILLON** (branche `dev-lot2` poussée, Auto-fix allumé, PAS de fusion automatique) :
 lot 2 = étapes 3 et 4 du moteur + lanes `calepinage-serveur`, `atelier-suite`, `front-suite`, `serveur-suite`, balayage
@@ -1346,3 +1346,29 @@ aux résultats ; f, g, h arrêtés après les PDF ; i joué sans pompe ; j, k, l
 PAS ENCORE JOUÉ : balayages s à w ; rôle Technicien (403) ; agricole avec les prix d'essai jusqu'au bout ; relecteur des
 maquettes B5 ; rejeux d'acceptation des tâches « code livré » (ACAL2027, 2028, 2034, 2035, 2036, 2038 et les tâches
 d'écran) ; mesure des lenteurs AU CALME (les relecteurs ont mesuré une pile saturée par les lanes).
+
+### Point du 25/11, 00 h 40 UTC (le plus récent — REPRENDRE ICI)
+
+**Lot 1 — PR Taqinor/taqinor-os#1552 : fusionnée le 24/11, NON déployée** (le fondateur déploie).
+
+**Lot 2 — PR brouillon Taqinor/taqinor-os#1554, branche `dev-lot2`.** Contenu : étapes 3 et 4 du moteur unique et
+leurs corrections de relecture (dont `lane/moteur-e4-fix` repliée EN ENTIER, commit de suite `a770f1f050` compris :
+l'étude d'un brouillon C&I / agricole renaît par l'écrivain unique, plus aucune entrée au registre des écritures en
+bloc), lanes `calepinage-serveur`, `atelier-suite`, `front-suite`, `serveur-suite`, balayage front, correctif EZ16.
+`origin/main` (25 commits : hybrides haute tension, puissance maximale appelée, niveau de règles 16 dormant) intégré —
+un conflit d'imports dans `ventes/domain/etude_ci.py` (les deux côtés gardés) et l'empreinte de CODEMAP recalculée.
+Gardes hôte toutes vertes. Avant le push unique : instantané OpenAPI régénéré + `--strict` en docker, tests-cliquets
+et tests du moteur en docker (journal `lot2-sweep2.log` du scratchpad), budget du bundle à remesurer (4 169,7 Ko pour
+4 175 AVANT l'intégration de main, qui ajoute ~100 lignes de front).
+
+**Lot 3 — pas encore de branche** (à créer depuis `dev-lot2` une fois le lot 2 poussé) :
+- `lane/moteur-e5` (6 commits, étape 5 : ACAL2012, 2013 partiel, 2014, 2015, 2017 ; ACAL2016 CONTESTÉE — la conception
+  ne sert pas de verdict, seulement `ratio_dc_ac`). Relecture adverse indépendante EN VOL. Doutes de la lane à trancher
+  avant de plier : un lead SANS conception rangée voit « Conception du lead pas encore calculée… » dans l'atelier (tous
+  les leads existants juste après un déploiement) ; module rapproché du catalogue par sa désignation ; longueur de
+  chaîne de la conception appliquée au nombre de panneaux de la pose réelle ; +76 lignes pour un budget de 60.
+- `lane/agri-2` (10 commits, relus par l'orchestrateur : champ borné à 1,5 fois la puissance de la pompe quand elle ne
+  délivre pas le débit demandé, origine du forage gardée, « Modifier » rouvre l'étude de pompage, phrases vendeur en
+  mots). Demande le fondateur : T4-V2-006, T4-V2-009, T4-V2-010 côté client (PDF agricole).
+- `lane/devis-2` et `lane/calepinage-2` : EN VOL.
+- Puis étape 6 (ACAL2018-2020, ADEV149-151) par la lane du moteur, sur la base du lot 3.
