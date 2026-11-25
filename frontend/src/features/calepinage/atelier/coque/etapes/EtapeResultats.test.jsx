@@ -920,6 +920,7 @@ describe('Étape Résultats — la conception, et l’écart avec le devis envoy
      la CONCEPTION (4,40 kWc), pas celle de la pose (5,68 kWc) : à une autre taille, la phrase remplace le chiffre. */
   it('T4-X9-008 — conception d’une autre taille : la jauge dit la phrase des deux tailles, aucun pourcentage', async () => {
     const d = { ...COMPLET(), conception: sansTaille() }  // pose du contrat : 12 panneaux · 8,64 kWc
+    d.autoconsommation = { ...d.autoconsommation, taux_source: 'conception' }  // serveur : taux de la conception publiés
     calepinageApi.calepinages.designContext.mockResolvedValue(contexteDeTaille(2.13, 3))
     servir(d)
     rendre()
@@ -928,6 +929,20 @@ describe('Étape Résultats — la conception, et l’écart avec le devis envoy
       `Part de la consommation calculée pour la conception du lead : ${kwc(2.13)} — votre pose en compte ${kwc(d.pose.kwc)}.`))
     expect(tuile()).not.toHaveTextContent('%')
     expect(tuile().querySelector('svg')).toBeNull()
+  })
+
+  /* T4-X7-002 — conception « 7 panneaux + batterie » (76 %), pose de 5 panneaux sans batterie : le serveur publie les taux
+     de la POSE (`taux_source: 'pose'`, ceux de ses énergies) ; la jauge les montre, aucune phrase d'une autre taille. */
+  it('T4-X7-002 — taux de la pose publiés : la jauge montre CE pourcentage, jamais la phrase de la conception', async () => {
+    const d = { ...COMPLET(), conception: sansTaille() }
+    d.autoconsommation = { ...d.autoconsommation, taux_source: 'pose', taux_couverture: 0.474 }
+    calepinageApi.calepinages.designContext.mockResolvedValue(contexteDeTaille(2.13, 3))
+    servir(d)
+    rendre()
+    await waitFor(() => expect(calepinageApi.calepinages.designContext).toHaveBeenCalled())
+    const tuile = () => document.querySelector('[data-tuile="couverture"]')
+    await waitFor(() => expect(tuile()).toHaveTextContent('47 %'))
+    expect(tuile()).not.toHaveTextContent('calculée pour la conception du lead')
   })
 
   it('T4-X9-008 — même taille : la jauge garde son pourcentage', async () => {

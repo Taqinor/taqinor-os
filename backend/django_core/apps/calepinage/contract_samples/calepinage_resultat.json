@@ -900,7 +900,8 @@
       },
       "soutirage": null,
       "motif_absence": "",
-      "definition": "Taux d'autoconsommation = énergie autoconsommée ÷ production vue au point de livraison. Couverture = énergie autoconsommée ÷ CONSOMMATION (règle COUV-AUTO) — jamais production ÷ consommation. Autonomie = 1 − énergie importée ÷ consommation."
+      "definition": "Taux d'autoconsommation = énergie autoconsommée ÷ production vue au point de livraison. Couverture = énergie autoconsommée ÷ CONSOMMATION (règle COUV-AUTO) — jamais production ÷ consommation. Autonomie = 1 − énergie importée ÷ consommation.",
+      "taux_source": "pose"
     },
     "batterie": {
       "groupes": [

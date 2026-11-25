@@ -267,7 +267,7 @@ describe('étape Panneaux — panneau de droite', () => {
     // la pose actuelle = tout ce qui tient (55) : « Le plus de panneaux », son % nommé pour ce qu'il est
     const max = screen.getByTestId('cal-panneaux-option-max')
     expect(max).toHaveAttribute('aria-pressed', 'true')
-    expect(max).toHaveTextContent('55 panneaux · 39,60 kWc · ≈ 809 % : production ÷ consommation')
+    expect(max).toHaveTextContent('55 panneaux · 39,60 kWc · ≈ 809 % de la consommation')
     expect(document.body).not.toHaveTextContent('de la facture')
     fireEvent.click(facture)
     expect(document.getElementById('rp9-need-input').value).toBe('12')
@@ -278,7 +278,7 @@ describe('étape Panneaux — panneau de droite', () => {
     document.getElementById('rp9-reco-kwc').textContent = '8,64 kWc'
     document.getElementById('rp9-reco-prod').textContent = '9 589 kWh/an'
     document.getElementById('rp9-reco-cover').textContent = '144 %'
-    await waitFor(() => expect(facture).toHaveTextContent('12 panneaux · 6,96 kWc · conception · ≈ 144 % : production ÷ consommation'), { timeout: 3000 })
+    await waitFor(() => expect(facture).toHaveTextContent('12 panneaux · 6,96 kWc · conception · ≈ 144 % de la consommation'), { timeout: 3000 })
     expect(facture).toHaveAttribute('aria-pressed', 'true')
     expect(max).toHaveAttribute('aria-pressed', 'false')
     // l'autre carte garde les chiffres lus quand elle était posée
@@ -325,7 +325,7 @@ describe('étape Panneaux — panneau de droite', () => {
     rendre()
     const facture = screen.getByTestId('cal-panneaux-option-facture')
     const max = screen.getByTestId('cal-panneaux-option-max')
-    await waitFor(() => expect(facture).toHaveTextContent('≈ 63 % : production ÷ consommation'))
+    await waitFor(() => expect(facture).toHaveTextContent('≈ 63 % de la consommation'))
     expect(max).toHaveTextContent('20 panneaux · 14,20 kWc') // 20 × 710 W, lu de la pose, dès l'ouverture
     fireEvent.click(max)
     expect(document.getElementById('rp9-need-input').value).toBe('400')
@@ -338,7 +338,7 @@ describe('étape Panneaux — panneau de droite', () => {
     document.querySelector('[data-orient="landscape"]').setAttribute('aria-pressed', 'true')
     await waitFor(() => expect(document.querySelector('[data-zone="sens-bascule"]')).toHaveTextContent('passé de Portrait à Paysage'), { timeout: 3000 })
     expect(max).toHaveAttribute('aria-pressed', 'true')
-    expect(facture).toHaveTextContent('≈ 63 % : production ÷ consommation') // gardée, pas perdue au clic
+    expect(facture).toHaveTextContent('≈ 63 % de la consommation') // gardée, pas perdue au clic
     expect(facture).not.toHaveTextContent('105')
   })
 
@@ -595,21 +595,33 @@ describe('étape Panneaux — panneau de droite', () => {
 })
 
 describe('étape Panneaux — sur la carte', () => {
-  it('ACAL1968 — la part estimée par le constructeur ne porte jamais le nom de la tuile « De la consommation » des Résultats', () => {
-    // Deux grandeurs (production ÷ consommation ici ; énergie autoconsommée ÷ consommation à l'étape Résultats) :
-    // jamais le même intitulé pour deux chiffres différents (règle du fondateur du 23/11 : un nom, un chiffre).
+  it('T4-X7-002 — la part servie (énergie autoconsommée ÷ consommation de la conception) porte le nom de la tuile des Résultats', () => {
+    // Le constructeur de l'ERP montre `chiffrage.couverture_pct` : la MÊME grandeur que « De la consommation » des Résultats.
+    // « Production ÷ consommation » la nommait mal (≈ 76 % pour une pose dont production ÷ consommation fait 94 %).
     monterConstructeur()
     rendre()
     const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
-    expect(puce).toHaveTextContent('Production ÷ consommation')
-    expect(puce).not.toHaveTextContent('De la consommation')
+    expect(puce).toHaveTextContent('De la consommation')
+    expect(puce).toHaveTextContent('≈ 82 %')
+    expect(puce).not.toHaveTextContent('Production ÷ consommation')
+  })
+
+  it('T4-X7-002 — la simulation dit que la conception décrit une autre installation : aucune part de la conception', async () => {
+    servir({ resultat: { simule: false, autoconsommation: { taux_source: 'pose', taux_couverture: 0.474 } } })
+    monterConstructeur()
+    rendre()
+    await waitFor(() => expect(calepinageApi.calepinages.resultat).toHaveBeenCalled())
+    await waitFor(() => expect(within(noeudCarte).getByTestId('cal-sur-carte-resume')).not.toHaveTextContent('De la consommation'))
+    const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
+    expect(puce).not.toHaveTextContent('82 %')
+    expect(document.body).not.toHaveTextContent('82 % de la consommation')
   })
 
   it('puce : les quatre chiffres lus ; un chiffre absent est omis', () => {
     monterConstructeur()
     rendre()
     const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
-    for (const t of ['Panneaux', '12', 'Puissance', '6,96 kWc', 'Production · conception', '11 480 kWh / an', 'Production ÷ consommation', '≈ 82 %']) {
+    for (const t of ['Panneaux', '12', 'Puissance', '6,96 kWc', 'Production · conception', '11 480 kWh / an', 'De la consommation', '≈ 82 %']) {
       expect(puce).toHaveTextContent(t)
     }
     cleanup()
@@ -618,7 +630,7 @@ describe('étape Panneaux — sur la carte', () => {
     rendre()
     const reduite = within(noeudCarte).getByTestId('cal-sur-carte-resume')
     expect(reduite).not.toHaveTextContent('Production')
-    expect(reduite).not.toHaveTextContent('Production ÷ consommation')
+    expect(reduite).not.toHaveTextContent('De la consommation')
   })
 
   it('puce : production PUBLIÉE fraîche et complète → le libellé de l’étape Résultats, jamais « estimation »', async () => {

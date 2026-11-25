@@ -36,7 +36,7 @@ import { SIMULATION_A_REFAIRE } from '../../../production/BandeauProvenanceProdu
 // La palette bleu nuit → or de la carte d'accès solaire est posée au DÉMARRAGE de l'atelier (useAtelierBoot,
 // ACAL1340), jamais ici : l'étape ne fait que la lire (couleurAccesActive) pour sa légende.
 
-/** ACAL1829 — la ligne d'une carte de taille (« 12 panneaux · 6,96 kWc · ≈ 82 % : production ÷ consommation ») : le nombre de chaque
+/** ACAL1829 — la ligne d'une carte de taille (« 12 panneaux · 6,96 kWc · ≈ 82 % de la consommation ») : le nombre de chaque
     morceau est dessiné en gras (Archivo), le texte reste celui de la lecture ; le « · » ne se voit pas (l'écart le remplace). */
 function Seg({ texte }) {
   const m = /^(≈\s*)?(\d(?:[\d\u00a0\u202f ,.]*\d)?(?:\s%)?)(.*)$/.exec(texte)
@@ -93,6 +93,9 @@ function useServi(calepinageId, enregistreLe, servi = null, attendre = false) {
     servis: modulesServis(entree),
     publiee: productionPubliee(resultat),
     aRefaire: simulationARefaire(resultat), // T4-X2-002
+    // T4-X7-002 — la simulation de la pose dit que la conception décrit une AUTRE installation (`taux_source: 'pose'` :
+    // autre puissance, ou batterie d'un seul côté) : sa part de la consommation ne se lit plus à côté de cette pose.
+    partDeLaConception: resultat?.autoconsommation?.taux_source !== 'pose',
   }
 }
 
@@ -206,10 +209,10 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
   const ligneTaille = tient == null ? null : [
     compte(tient), cible.kwc != null ? fmtKwc((cible.kwc * tient) / cible.panneaux) : null, `sur ${cible.panneaux} nécessaires`,
   ].filter(Boolean).join(' · ')
-  // Le % n'est dit qu'à côté de la taille pour laquelle il est calculé : production estimée ÷ consommation du lead.
-  // ACAL1968 — le nom de ce que ce % MESURE : production estimée ÷ consommation (jamais « de la consommation » tout court :
-  // c'est l'intitulé de la tuile des Résultats, qui est l'énergie AUTOCONSOMMÉE ÷ consommation — deux grandeurs, deux noms).
-  const part = (fig) => (fig?.couverture ? `≈ ${fig.couverture} : production ÷ consommation` : null)
+  // Le % n'est dit qu'à côté de la taille pour laquelle il est calculé. T4-X7-002 — ce % est la part SERVIE de la conception
+  // (`chiffrage.couverture_pct` = énergie AUTOCONSOMMÉE ÷ consommation, la grandeur ET le nom de la tuile « De la consommation »
+  // des Résultats), jamais « production ÷ consommation » ; tu quand la simulation dit que la conception décrit une autre pose.
+  const part = (fig) => (servi.partDeLaConception && fig?.couverture ? `≈ ${fig.couverture} de la consommation` : null)
   // La part de la consommation de la carte « Couvrir la facture » : lue sur le constructeur tant que cette taille est
   // posée, gardée pour cette taille et ce module quand une autre carte est choisie (jamais déduite d'une autre pose).
   const partLue = factureChoisie && cible && figures.panneaux === cible.panneaux ? part(figures) : null
@@ -379,9 +382,9 @@ function AlerteOmbre({ ombre, g }) {
 }
 
 /** La puce de la carte. Production publiée FRAÎCHE et COMPLÈTE → la pose simulée et sa production, libellé de l'étape
-    Résultats ; sinon la pose du constructeur, son estimation nommée « estimation » et la part production ÷ consommation
-    (production estimée ÷ consommation du lead : jamais « de la facture »). */
-function PuceResume({ figures, publiee, site = null, aRefaire = false }) {
+    Résultats ; sinon la pose du constructeur, son estimation nommée « estimation » et la part de la consommation servie
+    (T4-X7-002 : énergie autoconsommée ÷ consommation, le nom et la grandeur des Résultats ; tue par `partDeLaConception`). */
+function PuceResume({ figures, publiee, site = null, aRefaire = false, partDeLaConception = true }) {
   // ACAL2022 (T4-X2-009) — le site compte plus que ce pan (champ au sol, autre pan) : la bande dit qu'elle compte CE pan et le total du site est dit.
   const autrePan = !publiee && site?.panneaux > 0 && figures.panneaux > 0 && site.panneaux !== figures.panneaux
   const pan = autrePan ? ' · ce pan' : ''
@@ -400,7 +403,7 @@ function PuceResume({ figures, publiee, site = null, aRefaire = false }) {
         // M5 — la raison est celle que dit le constructeur (`affichageErp.raisonSansValeur`) : « au prochain enregistrement » seulement là où il
         // est vrai, sinon « calculée pour la conception du lead : X kWc — votre pose en compte Y kWc ».
         : ['Production', figures.production ? figures.production.replace(/^production\s+/i, '') : null],
-      ['Production ÷ consommation', figures.couverture ? `≈ ${figures.couverture}` : null],
+      ['De la consommation', partDeLaConception && figures.couverture ? `≈ ${figures.couverture}` : null],
     ]
   const lus = indicateurs.filter(([, valeur]) => valeur)
   // T4-X9-006 — tailles différentes : la phrase du constructeur, UNE fois, en texte courant qui revient à la ligne dans la
@@ -521,7 +524,8 @@ export default function EtapePanneaux({
       <AlerteOmbre key={etat.ombre?.n ?? 0} ombre={etat.ombre} g={g} />
       <AvisOmbresNonComptees manque={parcours?.manque} />
       <SurCarte>
-        <PuceResume figures={etat.figures} publiee={servi.publiee} site={site} aRefaire={servi.aRefaire} />
+        <PuceResume figures={etat.figures} publiee={servi.publiee} site={site} aRefaire={servi.aRefaire}
+          partDeLaConception={servi.partDeLaConception} />
         <div className="cal-carte-soleil" data-testid="cal-carte-soleil">
           {etat.soleil.carte && <LegendeSoleil carte={etat.soleil.carte} g={g} />}
           <LecteurSoleil soleil={etat.soleil} g={g} />

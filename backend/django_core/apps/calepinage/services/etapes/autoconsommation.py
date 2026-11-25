@@ -127,9 +127,44 @@ DEFINITION_TAUX_CONCEPTION = (
     '{panneaux} panneaux) : les mêmes que la fiche du lead et le devis, jamais recalculés ici. '
     'Les énergies et le tableau mensuel sont ceux de la pose simulée. ' + DEFINITION_TAUX)
 
+#: T4-X7-002 — la conception décrit une AUTRE installation que la pose simulée (autre puissance,
+#: ou batterie d'un côté seulement) : ses taux ne se lisent pas à côté des énergies de cette pose.
+DEFINITION_TAUX_AUTRE_POSE = (
+    "Taux d'autoconsommation et couverture calculés sur la pose simulée : la conception du lead "
+    '(version {version}, {panneaux} panneaux{ecart}) décrit une autre installation, ses taux ne '
+    "s'appliquent pas à cette pose. " + DEFINITION_TAUX)
+
+#: T4-X7-002 — ``taux_source`` du bloc : d'où viennent ``taux_autoconsommation`` et ``taux_couverture``.
+TAUX_DE_LA_CONCEPTION, TAUX_DE_LA_POSE = 'conception', 'pose'
+
+#: Écart d'ÉGALITÉ de deux puissances (kWc) : l'arrondi d'affichage, comme l'atelier (tailleConception.ts).
+_ECART_KWC = 0.005
+
+
+def _kwc_de_la_pose(contexte):
+    """La puissance des panneaux POSÉS (``plans_poses``, raccordés ou non), ou ``None``."""
+    plans = (contexte or {}).get('plans_poses')
+    if not isinstance(plans, list) or not plans:
+        return None
+    total = sum(_nombre(plan.get('kwc')) or 0.0 for plan in plans if isinstance(plan, dict))
+    return round(total, 3) if total > 0 else None
+
+
+def ecart_conception_pose(conception, kwc_pose, apres_batterie):
+    """T4-X7-002 — ce qui sépare la conception de la pose simulée (``''`` : rien de connu) :
+    la puissance (quand les deux sont connues) et la batterie (quand la conception la dit)."""
+    morceaux = []
+    kwc_conception = _nombre((conception or {}).get('kwc'))
+    if kwc_conception is not None and kwc_pose is not None and abs(kwc_conception - kwc_pose) >= _ECART_KWC:
+        morceaux.append(('%.2f kWc' % kwc_conception).replace('.', ','))
+    batterie = (conception or {}).get('batterie')
+    if isinstance(batterie, bool) and batterie != bool(apres_batterie):
+        morceaux.append('avec batterie' if batterie else 'sans batterie')
+    return ', '.join(morceaux)
+
 
 def taux_de_la_conception(calepinage):
-    """ACAL2024 — ``{taux_autoconsommation, taux_couverture, version, panneaux}`` de l'option
+    """ACAL2024 — ``{taux_autoconsommation, taux_couverture, version, panneaux, kwc, batterie}`` de l'option
     retenue de la conception COURANTE d'un calepinage DE LEAD (``devis_retenu``, porte de
     ventes), ou ``None`` : sans lead (le calepinage garde son bilan propre), conception non
     complète, agricole, ou taux absent. Lecture pure."""
@@ -145,8 +180,11 @@ def taux_de_la_conception(calepinage):
         ('taux_autoconsommation', 'autoconsommation'), ('taux_couverture', 'couverture'))}
     if None in lus.values():
         return None
+    # T4-X7-002 — la puissance et la batterie de cette option : de quoi dire si elle décrit la pose.
     return dict(lus, version=conception.get('version'),
-                panneaux=(valeurs.get('nb_panneaux') or {}).get('valeur'))
+                panneaux=(valeurs.get('nb_panneaux') or {}).get('valeur'),
+                kwc=_nombre((valeurs.get('puissance_kwc') or {}).get('valeur')),
+                batterie=conception.get('option_retenue') == 'avec')
 
 
 def mode_hors_reseau(contexte):
@@ -369,6 +407,7 @@ def bloc_autoconsommation(serie, contexte=None, *, charge=None):
     return _publier(serie, bilan, courbe, au_compteur, brute, apres_batterie,
                     annees=annees_de_la_fenetre(contexte), plages=plages,
                     conception=contexte.get(CLE_TAUX_CONCEPTION),
+                    kwc_pose=_kwc_de_la_pose(contexte),
                     soutirage=(None if soutirage_kw is None else (
                         soutirage_kw, justification_soutirage,
                         float(pas) / 60.0)))
@@ -412,7 +451,7 @@ def _par_an(valeur, annees):
 
 
 def _publier(serie, bilan, courbe, au_compteur, brute, apres_batterie,
-             annees=1, plages=None, soutirage=None, conception=None):
+             annees=1, plages=None, soutirage=None, conception=None, kwc_pose=None):
     """La série enrichie et le bloc, tirés du MÊME bilan horaire.
 
     ACAL54 — ``annees`` : le N de la fenêtre météo ; les énergies du bloc
@@ -420,10 +459,21 @@ def _publier(serie, bilan, courbe, au_compteur, brute, apres_batterie,
     ne bougent pas ; la série horaire reste celle de la fenêtre).
     ACAL2024 — ``conception`` (calepinage de lead) : les deux taux sont ceux
     de la conception, la définition le dit avec sa version et sa taille.
+    T4-X7-002 — seulement quand la conception décrit CETTE pose (même puissance,
+    batterie des deux côtés ou d'aucun) ; sinon les taux de la pose simulée, ceux
+    des énergies publiées à côté, et la définition dit pourquoi (``taux_source``).
     """
-    if conception:
+    ecart = ecart_conception_pose(conception, kwc_pose, apres_batterie) if conception else ''
+    if ecart:
+        definition = DEFINITION_TAUX_AUTRE_POSE.format(
+            version=conception.get('version'), panneaux=conception.get('panneaux'), ecart=', ' + ecart)
+    elif conception:
+        definition = DEFINITION_TAUX_CONCEPTION.format(**conception)
         bilan = dict(bilan, taux_autoconsommation=conception['taux_autoconsommation'],
                      taux_couverture=conception['taux_couverture'])
+    else:
+        definition = DEFINITION_TAUX
+    taux_source = TAUX_DE_LA_CONCEPTION if conception and not ecart else TAUX_DE_LA_POSE
     bloc_plafond = bilan['plafond']
     if bloc_plafond:
         exports = list(bloc_plafond['surplus_apres_ecretage'])
@@ -481,7 +531,7 @@ def _publier(serie, bilan, courbe, au_compteur, brute, apres_batterie,
         'plafond': publie_plafond,
         'soutirage': _soutirage_publie(soutirage, imports, annees),
         'etape_plafond': etape,
-        'definition': (DEFINITION_TAUX_CONCEPTION.format(**conception) if conception
-                       else DEFINITION_TAUX),
+        'definition': definition,
+        'taux_source': taux_source,
         'motif_absence': '',
     }

@@ -89,7 +89,7 @@ export const PRODUCTION_A_LA_MISE_A_JOUR = 'Production : calculée à la mise à
  * Les tuiles de la maquette, dans son ordre ; une donnée non servie ⇒ tuile omise.
  * ACAL2023 (D-ACAL-97 : un seul moteur) — PRODUCTION ET COUVERTURE : celles de la CONCEPTION COURANTE du lead, lues sur le bloc
  * `chiffrage` du design-context (`production_annuelle_kwh`, `couverture_pct`) : aucune estimation propre à la vue, aucun calcul,
- * LA même part « production ÷ consommation » que l'atelier. Les pertes par défaut sont DITES (`nature: 'pertes'` quand la production
+ * LA même part de la consommation que l'atelier (énergie autoconsommée ÷ consommation, T4-X7-002). Les pertes par défaut sont DITES (`nature: 'pertes'` quand la production
  * n'est pas celle de la pose réelle) ; la conception en cours de calcul ⇒ la tuile « calcul en cours », sans chiffre. Sans conception
  * servie : restent les faits du document enregistré (panneaux posés, puissance de la pose).
  */
@@ -113,7 +113,10 @@ export function tuilesClient(document, resultat, chiffrage = null) {
       cle: 'kwh', valeur: formatNumber(Math.round(kwh), { locale: 'fr' }), libelle: 'kWh par an · estimation', marine: true,
       ...(pertesParDefaut ? { nature: 'pertes' } : {}),
     })
-    const couverture = servi(chiffrage.couverture_pct)
+    // T4-X7-002 — la simulation de la pose dit que la conception décrit une AUTRE installation (`taux_source: 'pose'` :
+    // batterie d'un seul côté, autre puissance) : sa part (76 % avec batterie) n'est pas celle de ces panneaux ⇒ tuile omise.
+    const autreInstallation = resultat?.autoconsommation?.taux_source === 'pose'
+    const couverture = autreInstallation ? null : servi(chiffrage.couverture_pct)
     if (couverture !== null) tuiles.push({ cle: 'couverture', valeur: `${Math.round(couverture)} %`, libelle: 'de votre consommation' })
     return tuiles
   }
