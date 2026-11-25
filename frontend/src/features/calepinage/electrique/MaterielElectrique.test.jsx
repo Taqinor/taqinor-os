@@ -63,14 +63,16 @@ describe('MaterielElectrique (ACAL149)', () => {
     expect(document.getElementById('acal149-champ-onduleur_produit')).toHaveValue('901')
   })
 
-  it('provenance devis affichée et surchargeable', async () => {
+  it('provenance de la conception affichée et surchargeable', async () => {
     calepinageApi.calepinages.entreeElectrique.mockResolvedValue(reponseContrat('calepinage', 'calepinage_entree_electrique'))
     calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: {} })
 
     rendre()
     await screen.findByTestId('acal149-formulaire')
-    expect(screen.getByTestId('acal149-provenance-onduleur')).toHaveTextContent('ligne du devis')
-    expect(libelleProvenance(EXEMPLE.materiel.onduleur)).toBe('ligne du devis')
+    // Relecture E5 M3 — le matériel choisi par le moteur (provenance `moteur`) n'est jamais « à désigner ».
+    expect(screen.getByTestId('acal149-provenance-onduleur')).toHaveTextContent('de la conception')
+    expect(libelleProvenance(EXEMPLE.materiel.onduleur)).toBe('de la conception')
+    expect(libelleProvenance({ ...EXEMPLE.materiel.onduleur, provenance: 'devis' })).toBe('ligne du devis')
     // T4-B4-007 — le module posé à l'étape Panneaux sert le calcul électrique (provenance `pose`) : jamais « à désigner ».
     expect(libelleProvenance({ ...EXEMPLE.materiel.module, provenance: 'pose' })).toBe('posé à l’étape Panneaux')
 
