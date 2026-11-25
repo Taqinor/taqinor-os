@@ -4,6 +4,7 @@ import { couleurAccesActive } from '@rooflib/shadingEngine'
 import { MODULE_PAR_DEFAUT_ATELIER } from '@roofpro/moduleSelect'
 import calepinageApi from '../../../../../api/calepinageApi'
 import useResource from '../../../../../hooks/useResource'
+import { formatNumber } from '../../../../../lib/format'
 import { kwh } from '../../../production/ResultatHeros.helpers'
 import { SurCarte } from '../emplacements'
 import { BoutonMarine, CarteFlottante, Icone, Indicateur, Segmente } from '../primitives'
@@ -85,6 +86,8 @@ function useServi(calepinageId, enregistreLe, servi = null, attendre = false) {
     refusFacture: facture.refus,
     factureSaisie: facture.factureSaisie,
     entrees: Array.isArray(catalogue?.modules) ? catalogue.modules : [],
+    // Lane E9 — la taille de la conception comptée dans chaque puissance de la liste (`modules-disponibles/`).
+    panneauxSelonWatt: catalogue?.panneaux_selon_watt ?? {},
     servis: modulesServis(entree),
     publiee: productionPubliee(resultat),
     aRefaire: simulationARefaire(resultat), // T4-X2-002
@@ -173,9 +176,24 @@ function ChoixModule({ etat, entrees, servis, lectureSeule, g }) {
   )
 }
 
+/** Lane E9 (T4-X2-001 / T4-X9-005) — la cible comptée dans le module CHOISI : la conception est une PUISSANCE ; un module
+    d'une autre puissance en pose le compte SERVI (`panneaux_selon_watt`, la règle du moteur — jamais calculé ici), et la
+    carte dit les deux. Module absent de la table : la puissance seule, aucun compte (`panneaux: null`) ; sans fiche lue
+    (catalogue en lecture) : la cible telle quelle. */
+function cibleDuModule(cible, module, entrees, table) {
+  // Aucun module choisi sur le pan : rien à convertir (la carte garde la taille de la conception, comme avant).
+  if (!cible || !module?.valeur) return cible
+  const fiche = entrees.find((e) => e.module.id === module.valeur)?.module
+  const watt = Number(fiche?.pmaxWc) || null
+  if (!watt || !cible.moduleWc || Math.abs(watt - cible.moduleWc) < 0.5) return cible
+  const servi = table?.[String(watt)]
+  return { ...cible, panneaux: Number.isInteger(servi) ? servi : null, watt,
+    conception: `la conception du lead compte ${compte(cible.panneaux)} de ${formatNumber(cible.moduleWc)} W` }
+}
+
 function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
   const { besoin, figures, memoire } = etat
-  const { cible } = servi
+  const cible = cibleDuModule(servi.cible, etat.module, servi.entrees, servi.panneauxSelonWatt)
   // La carte choisie est celle de la cible ACTUELLE ; ni l'une ni l'autre → « Pose actuelle : N panneaux · kWc ».
   const factureChoisie = !!cible && besoin?.valeur === cible.panneaux
   const max = etat.max && !factureChoisie
@@ -199,7 +217,12 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
     ? gardee.texte : null)
   // ACAL2022 (T4-X2-001) — la carte dit la taille de la CONCEPTION (son nombre de panneaux et SON kWc, nommée) : jamais un nombre
   // de panneaux à côté du kWc d'un autre module ; la pose posée se dit à part (« Posé : … »).
-  const ligneFacture = cible && (ligneTaille ?? [
+  // Lane E9 — un module d'une autre puissance : « 4,40 kWc — 6 panneaux de 710 W (la conception du lead compte 8 panneaux
+  // de 550 W) » ; sans compte servi pour ce module, la puissance seule.
+  const ligneConversion = cible?.conception && cible.kwc != null
+    ? `${fmtKwc(cible.kwc)}${cible.panneaux ? ` — ${compte(cible.panneaux)} de ${formatNumber(cible.watt)} W` : ''} (${cible.conception})`
+    : null
+  const ligneFacture = cible && (ligneConversion ?? ligneTaille ?? [
     compte(cible.panneaux), cible.kwc != null ? fmtKwc(cible.kwc) : null, 'conception',
     partFacture,
   ].filter(Boolean).join(' · '))
@@ -220,7 +243,7 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
     <section className="cal-pan-section">
       <h2 className="cal-pan-titre">Combien de panneaux ?</h2>
       <button type="button" className="cal-pan-option-pose" aria-pressed={factureChoisie}
-        disabled={lectureSeule || !cible || !besoin} onClick={() => { if (!factureChoisie) g.besoin(cible.panneaux) }}
+        disabled={lectureSeule || !cible?.panneaux || !besoin} onClick={() => { if (!factureChoisie) g.besoin(cible.panneaux) }}
         data-testid="cal-panneaux-option-facture">
         <span className="cal-pan-option-tete">
           <span className="cal-pan-option-nom">Couvrir la facture</span>
@@ -232,6 +255,13 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
           <span className="cal-pan-option-ligne" data-zone="cible-en-calcul">calcul en cours</span>
         )}
       </button>
+      {/* Lane E9 — la conception a été recalculée depuis l'ouverture : la carte le DIT, jamais en silence. */}
+      {servi.facture.recalculee && (
+        <p className="cal-pan-note" data-zone="conception-recalculee" role="status">
+          {servi.facture.recalculee.raison ? `Conception recalculée : ${servi.facture.recalculee.raison}`
+            : 'Conception recalculée depuis l’ouverture de l’atelier.'}
+        </p>
+      )}
       {posee && <p className="cal-pan-note" data-zone="pose-posee">{posee}</p>}
       {besoin?.auto && <p className="cal-pan-note" data-zone="taille-auto" role="status">{besoin.note}</p>}
       {servi.facture.etat === 'chargement' && (

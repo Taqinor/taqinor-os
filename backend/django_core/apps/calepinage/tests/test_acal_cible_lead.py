@@ -150,7 +150,7 @@ def _valeurs(nb, watt=550, onduleur=None, longueur=None, module=None, ratio=None
 
 
 def ranger_conception(*, lead=None, calepinage=None, nb=10, etat='complet', refus=None, option='sans',
-                      avec=None, par_avec=None, **par_option):
+                      avec=None, par_avec=None, raison='remplissage', **par_option):
     """ACAL2012 — une version COURANTE de la conception rangée par l'écrivain du modèle
     (``ConceptionLead.ranger``), valeurs posées : la fabrique des tests du calepinage."""
     from apps.ventes.models import ConceptionLead
@@ -165,7 +165,7 @@ def ranger_conception(*, lead=None, calepinage=None, nb=10, etat='complet', refu
         option_retenue=option if etat == 'complet' else '', valeurs=valeurs, blocs={},
         entrees_utilisees={}, suppositions=[], empreinte='c' * 64, empreinte_pose='',
         niveau_regles=14, version_moteur='moteur-unique-1',
-        declencheur={'raison': 'remplissage', 'champs': [], 'origine': 'remplissage'})
+        declencheur={'raison': raison, 'champs': [], 'origine': 'remplissage'})
 
 
 class CibleDeLaConceptionTest(BaseApiCalepinage):
@@ -191,8 +191,27 @@ class CibleDeLaConceptionTest(BaseApiCalepinage):
         cible, factures = self._cibles(self._calepinage(lead, devis=devis))
         self.assertEqual((cible['panneaux'], cible['kwc'], cible['panel_watt']), (48, 26.4, 550))
         self.assertEqual((cible['source'], cible['option'], cible['refus']), ('factures', 'sans', None))
-        self.assertEqual(factures, {'cible_factures': {'panneaux': 48, 'kwc': 26.4, 'module_wc': 550.0},
+        self.assertEqual(factures, {'cible_factures': {'panneaux': 48, 'kwc': 26.4, 'module_wc': 550.0, 'version': 2,
+                                                       'raison': 'remplissage'},
                                     'refus': '', 'calcul_en_cours': False})
+
+    def test_e9_version_et_raison_de_la_conception_servies(self):
+        """Lane E9 — la carte « Couvrir la facture » ne change jamais ses chiffres en silence : la cible du
+        design-context (conception OUVERTE) et ``cible-factures/`` (relue) servent la version et la raison
+        (``declencheur.raison``) de la conception courante ; sans conception complète, ``None``.
+        Mutant « version retirée de la cible » ⇒ rouge."""
+        lead = self._lead(facture_hiver=Decimal('2400'))
+        raison = 'Recalculé le 25/11 à 10 h 05 : matériel désigné à l’atelier : Module 550 Wc / Onduleur 8 kW'
+        ranger_conception(lead=lead, nb=20)
+        ranger_conception(lead=lead, nb=24, raison=raison)
+        calepinage = self._calepinage(lead)
+        cible, factures = self._cibles(calepinage)
+        self.assertEqual((cible['version'], cible['raison']), (2, raison))
+        self.assertEqual((factures['cible_factures']['version'], factures['cible_factures']['raison']), (2, raison))
+        refuse = self._lead(facture_hiver=Decimal('2400'))
+        ranger_conception(lead=refuse, etat='refus', refus={'code': 'x', 'message': 'Refus nommé.'})
+        cible_refus, _factures = self._cibles(self._calepinage(refuse))
+        self.assertEqual((cible_refus['version'], cible_refus['raison']), (None, None))
 
     def test_sans_devis_la_conception_du_lead(self):
         lead = self._lead(facture_hiver=Decimal('2400'))

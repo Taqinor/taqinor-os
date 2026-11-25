@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import CarteDevisCree from './CarteDevisCree'
+import ApercuMaterielDevis from './commun/ApercuMaterielDevis'
 import { Icone } from './atelier/coque/primitives'
 import { libelleEtat } from './electrique/etatVerdict'
 import calepinageApi from '../../api/calepinageApi'
@@ -456,6 +457,9 @@ export default function BoutonDevis({
           {pictoFleche}
         </button>
       ) : (
+        <>
+        {/* Lane E9 (T4-X5-010) — avant le bouton : le matériel que chaque option du devis portera. */}
+        {!lectureSeule && <ApercuMaterielDevis calepinageId={calepinageId} signature={detail?.layout_hash ?? ''} />}
         <button
           type="button"
           onClick={() => generer()}
@@ -466,6 +470,7 @@ export default function BoutonDevis({
           {enCours ? 'Génération…' : 'Générer le devis'}
           {pictoFleche}
         </button>
+        </>
       )}
 
       {/* ACAL1705 — le devis lié se rouvre d'un clic après rechargement : le lien est lu sur

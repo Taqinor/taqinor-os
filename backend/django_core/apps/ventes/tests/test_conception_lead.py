@@ -3350,10 +3350,13 @@ class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher
 
         def plan(company_, lat, lon, kwc, **kw):
             appels.append((kw['lead_id'], kwc, kw['pente'], kw['produits'], kw['nb_panneaux']))
+            # ACAL2045 — les champs du lead qui font la pose supposée sont passés au plan.
+            self.assertEqual((kw['type_installation'], kw['type_toiture']), (None, None))
             # Le lead pentu : fiche du module VIDE (puissance de la conception, deux étapes omises).
             vide = [{'code': 'puissance_module_de_la_conception'}] + [{'code': 'fiche_module_incomplete'}] * 2
             return {'production_annuelle': kwc * 1500.0,
                     'suppositions': ([] if kw['pente'] is not None else [{'champ': 'inclinaison_deg'}])
+                    + [{'code': 'pose_supposee', 'valeur': 'affleurante'}]
                     + (vide if kw['lead_id'] == pentu.pk else [])}
         sortie = io.StringIO()
         with mock.patch('apps.calepinage.services.plan_par_defaut.simuler_plan_par_defaut', side_effect=plan):
@@ -3394,6 +3397,7 @@ class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher
                     '{:,.0f}'.format(avant).replace(',', ' '), '{:,.0f}'.format(kwc * 1500.0).replace(',', ' '),
                     '{:+,.0f}'.format(ecart).replace(',', ' '), ecart / avant * 100), ligne)
                 self.assertIn('pente supposée 30°' if lead is sans_toit else 'changera : ', ligne)
+                self.assertIn(', pose supposée affleurante', ligne)  # ACAL2045 : la pose supposée, dite
                 drapeau = ('fiche du module vide : 2 étape(s) de pertes non appliquée(s), puissance prise de '
                            'la conception')
                 (self.assertIn if lead is pentu else self.assertNotIn)(drapeau, ligne)

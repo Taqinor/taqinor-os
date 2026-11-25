@@ -106,6 +106,47 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         onduleurs = [li.designation for li in devis.lignes.all() if 'nduleur' in li.designation]
         self.assertEqual(onduleurs, ['Onduleur réseau Huawei 5kW Monophasé'], onduleurs)
 
+    def test_e9_apercu_avant_generer_dit_le_materiel_porte_et_l_ecart(self):
+        """Lane E9 (T4-X5-010) — AVANT « Générer le devis », ``apercu-devis/`` dit le module et
+        l'onduleur que le devis portera (dry-run de LA composition : RIEN d'écrit) et, l'onduleur
+        hybride désigné à l'étape Électrique n'étant pas celui-là, UNE phrase qui le dit et pourquoi.
+        Ce que l'aperçu annonce est exactement ce que la génération écrit ensuite. 404 hors société."""
+        import json
+        import pathlib
+
+        from apps.ventes.models import Devis
+
+        Devis.objects.filter(pk=self.calepinage.devis_id).update(is_active=False)
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(devis=None)
+        modifie = copy.deepcopy(TOIT)
+        modifie['result']['panels'] = 10
+        self.calepinage.refresh_from_db()
+        enregistrer_layout(self.calepinage, modifie, user=self.user)
+        self._designer('Onduleur hybride Deye 5kW Monophasé')
+        devis_avant, resultat_avant = Devis.objects.count(), copy.deepcopy(self.calepinage.resultat)
+        reponse = self.api.get(f'{self.base}apercu-devis/')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        contrat = json.loads((pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
+                              / 'calepinage_apercu_devis.json').read_text(encoding='utf-8'))
+        self.assertEqual(set(reponse.data), set(contrat['exemple']))
+        self.assertEqual(set(reponse.data['options'][0]), set(contrat['exemple']['options'][0]))
+        self.assertEqual([o['onduleur'] for o in reponse.data['options']], ['Onduleur réseau Huawei 5kW Monophasé'])
+        self.assertEqual([e['champ'] for e in reponse.data['ecarts']], ['onduleur_produit'])
+        self.assertIn('« Onduleur hybride Deye 5kW Monophasé »', reponse.data['ecarts'][0]['message'])
+        self.assertIn('« Onduleur réseau Huawei 5kW Monophasé »', reponse.data['ecarts'][0]['message'])
+        self.assertIsNone(reponse.data['refus'])
+        self.assertNotIn('prix', json.dumps(reponse.data))
+        self.calepinage.refresh_from_db()
+        self.assertEqual((Devis.objects.count(), self.calepinage.resultat), (devis_avant, resultat_avant))
+        genere = self.api.post(f'{self.base}generer-devis/', {'creer_autre_devis': True}, format='json')
+        self.assertEqual(genere.status_code, 201, genere.data)
+        devis = Devis.objects.get(pk=Calepinage.objects.get(pk=self.calepinage.pk).devis_id)
+        lignes = [li.designation for li in devis.lignes.all()]
+        self.assertIn(reponse.data['options'][0]['onduleur'], lignes)
+        self.assertIn(reponse.data['options'][0]['module'], lignes)
+        etranger = Calepinage.objects.create(company=self.autre, lead_id=self.lead.pk, titre='Autre')
+        self.assertEqual(self.api.get(f'{url_detail(etranger.pk)}apercu-devis/').status_code, 404)
+
     def test_e6e_resynchro_refusee_pour_un_onduleur_non_designe_dit_l_issue(self):
         """Le refus de « Resynchroniser » qui juge l'onduleur du DEVIS alors qu'un autre est
         désigné à l'étape Électrique le dit, nomme les deux et propose le geste qui existe :

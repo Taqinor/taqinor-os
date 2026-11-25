@@ -134,7 +134,7 @@ def _source_de_la_taille(calepinage):
 
 def _refus(message, code, source='factures'):
     return {'panneaux': None, 'kwc': None, 'panel_watt': None, 'source': source, 'refus': message,
-            'motif_code': code, 'option': None}
+            'motif_code': code, 'option': None, 'version': None, 'raison': None}
 
 
 def attend_son_premier_calcul(calepinage):
@@ -150,7 +150,8 @@ def cible_de_la_conception(calepinage):
     """ACAL2012 — la cible de l'atelier : la taille de la conception COURANTE (option que
     le moteur retient), avec ou sans devis — un devis lié, même envoyé, n'est plus la
     source (son écart est servi à part, ACAL2015). ``{panneaux, kwc, panel_watt, source,
-    refus, motif_code, option}`` ; un refus du moteur (ou aucune version rangée) est
+    refus, motif_code, option, version, raison}`` (lane E9 : version et raison de la
+    conception, ``None`` sans conception complète) ; un refus du moteur (ou aucune version rangée) est
     rendu NOMMÉ, panneaux nuls ; ``None`` pour un dossier d'appel d'offres, ou un
     calepinage sans lead dont aucune conception n'est rangée (rien ne le dimensionne,
     comme avant). ``motif_code`` vaut ``facture_absente`` quand le refus nomme la
@@ -177,8 +178,11 @@ def cible_de_la_conception(calepinage):
     panneaux = (valeurs.get('nb_panneaux') or {}).get('valeur')
     kwc = (valeurs.get('puissance_kwc') or {}).get('valeur')
     watt = round(float(kwc) * 1000 / panneaux) if panneaux and kwc else None
+    # Lane E9 — la version et la raison (mots de l'utilisateur) de CETTE conception : l'atelier dit pourquoi
+    # ses chiffres ont changé depuis son ouverture, jamais en silence (aucune lecture de plus : même conception).
     return {'panneaux': panneaux, 'kwc': kwc, 'panel_watt': watt, 'source': _source_de_la_taille(calepinage),
-            'refus': None, 'motif_code': None, 'option': option}
+            'refus': None, 'motif_code': None, 'option': option, 'version': conception.get('version'),
+            'raison': (conception.get('declencheur') or {}).get('raison') or None}
 
 
 def memoriser_option_dessinee(calepinage):

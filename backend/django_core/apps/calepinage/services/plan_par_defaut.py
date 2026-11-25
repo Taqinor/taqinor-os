@@ -33,15 +33,36 @@ MESSAGE_PUISSANCE_CONCEPTION = ('Puissance du module prise de la conception (%s 
                                 'la fiche technique du produit dans Stock.')
 MESSAGE_ETAPE_SANS_FICHE = ('Étape « %s » non appliquée : la fiche technique de « %s » ne porte pas « %s » — '
                             'renseigner la fiche technique du produit dans Stock.')
+#: ACAL2045 — ce qu'il faut renseigner pour que la pose ne soit plus supposée.
+A_RENSEIGNER_POSE = 'renseigner « Type de toiture » sur la fiche du lead ou tracer le toit au calepinage'
 
 
-def _document_du_plan(lat, lon, nb_panneaux, *, pente_deg, azimut_deg, watt_document=None):
+def _pose_supposee(type_installation=None, type_toiture=None):
+    """ACAL2045 — RÈGLE PROPOSÉE, EN ATTENTE DE LA RÉPONSE DU FONDATEUR (décision 26 du rapport) :
+    la seule place où elle vit. ``(flush, supposition)`` : sur châssis quand le lead déclare un
+    toit plat (« Terrasse béton ») ou est commercial, industriel ou agricole ; sinon affleurante
+    (lead résidentiel ou marché non dit). Le document la dit par ``flush`` comme une pose réelle :
+    l'étape « Échauffement des modules » la relie à la table société (D-ACAL-84)."""
+    if type_toiture == 'terrasse_beton':
+        flush, champ, raison, quoi = False, 'type_toiture', 'toit plat déclaré', 'tracer le toit au calepinage'
+    elif type_installation in ('commercial', 'industriel', 'agricole'):
+        flush, champ, raison, quoi = False, 'type_installation', 'lead %s' % type_installation, A_RENSEIGNER_POSE
+    else:
+        flush, champ, raison, quoi = True, 'type_toiture', 'panneaux à plat sur la couverture', A_RENSEIGNER_POSE
+    valeur = 'affleurante' if flush else 'sur châssis'
+    return flush, {'code': 'pose_supposee', 'champ': champ, 'valeur': valeur, 'source': 'defaut',
+                   'message': 'Pose des panneaux supposée %s (%s) : %s.' % (valeur, raison, quoi)}
+
+
+def _document_du_plan(lat, lon, nb_panneaux, *, pente_deg, azimut_deg, watt_document=None, flush=True):
     """Le document ``roof_layout`` v2 du toit supposé : l'épingle (sans point donné : aucune,
     le site est alors celui du lead, résolu comme pour sa pose) et UN pan posé ;
     ``watt_document`` : la puissance unitaire portée par le document (``modules[].pmaxWc``,
-    lue par la pose comme celle d'un pan) quand la fiche n'en a pas."""
+    lue par la pose comme celle d'un pan) quand la fiche n'en a pas ; ``flush`` : la pose
+    supposée (ACAL2045)."""
     epingle = {'pin': {'lat': lat, 'lng': lon}} if lat is not None and lon is not None else {}
-    geometrie = {'count': nb_panneaux, 'azimuthDeg': azimut_deg, 'tiltDeg': pente_deg, 'family': 'surimposition'}
+    geometrie = {'count': nb_panneaux, 'azimuthDeg': azimut_deg, 'tiltDeg': pente_deg, 'family': 'surimposition',
+                 'flush': flush}
     modeles = {}
     if watt_document:
         geometrie['moduleId'] = MODULE_DE_LA_CONCEPTION
@@ -84,7 +105,7 @@ def _suppositions_du_module(rendu, materiel, nb, watt_document):
 
 def simuler_plan_par_defaut(company, lat, lon, kwc, *, pente=None, azimut=AZIMUT_SUD_DEG, pertes=None,
                             lead_id=None, produits=None, nb_panneaux=None, materiel=None, reglages=None,
-                            client=None):
+                            client=None, type_installation=None, type_toiture=None):
     """La production du plan par défaut de ``kwc`` kWc au point ``(lat, lon)``, SANS ÉCRITURE.
 
     ``lat`` / ``lon`` à ``None`` : le point du lead ``lead_id`` (repère toit, sinon ville de
@@ -97,6 +118,8 @@ def simuler_plan_par_defaut(company, lat, lon, kwc, *, pente=None, azimut=AZIMUT
     se pose alors à la taille de la conception, puissance portée par le document comme une
     pose réelle, et le dit dans ``suppositions``). ``materiel`` / ``reglages`` /
     ``client`` : substitutions internes et de test de ``construire_contexte``.
+    ``type_installation`` / ``type_toiture`` : les champs du lead qui font la pose supposée
+    (:func:`_pose_supposee`, toujours dite dans ``suppositions``).
 
     Rend ``{production_annuelle, production_mensuelle, nb_panneaux, kwc, pente_deg,
     azimut_deg, version_moteur, hash_entree, suppositions, document}``. Lève
@@ -112,8 +135,9 @@ def simuler_plan_par_defaut(company, lat, lon, kwc, *, pente=None, azimut=AZIMUT
     nb, watt, watt_document = _taille(kwc, float(((materiel or {}).get('module') or {}).get('pmax_wc') or 0),
                                       nb_panneaux)
     pente_deg = float(pente) if pente is not None else PENTE_SUPPOSEE_DEG
+    flush, pose_dite = _pose_supposee(type_installation, type_toiture)
     pivot.roof_layout = _document_du_plan(lat, lon, nb, pente_deg=pente_deg, azimut_deg=float(azimut),
-                                          watt_document=watt_document)
+                                          watt_document=watt_document, flush=flush)
     rendu = simuler_calepinage(pivot, forcer=True, enregistrer=False, materiel=materiel, reglages=reglages,
                                client=client)
     production = rendu['blocs'].get('production') or {}
@@ -126,7 +150,7 @@ def simuler_plan_par_defaut(company, lat, lon, kwc, *, pente=None, azimut=AZIMUT
         'hash_entree': rendu['hash_entree'],
         'suppositions': ([] if pente is not None else [{
             'code': 'pente_supposee', 'champ': 'inclinaison_deg', 'valeur': PENTE_SUPPOSEE_DEG,
-            'source': 'defaut', 'message': MESSAGE_PENTE_SUPPOSEE}])
+            'source': 'defaut', 'message': MESSAGE_PENTE_SUPPOSEE}]) + [pose_dite]
         + _suppositions_du_module(rendu, materiel, nb, watt_document),
         'document': pivot.roof_layout,
     }

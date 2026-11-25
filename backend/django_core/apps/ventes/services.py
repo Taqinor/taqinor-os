@@ -304,6 +304,8 @@ _est_au_prix_catalogue = _composition._est_au_prix_catalogue
 # ═══════════════════════════════════════════════════════════════════════════
 from apps.ventes.domain import taille as _taille  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 AutoDevisError = _taille.AutoDevisError
+# Lane E9 — LA conversion d'une taille en panneaux d'une autre puissance (lue par l'atelier).
+panneaux_pour_la_meme_puissance = _taille.panneaux_pour_la_meme_puissance
 phase_client_pour_dimensionnement = _taille.phase_client_pour_dimensionnement
 # ADEV125/ADEV126 (fondateur 23/11/2026) — les champs du lead que le moteur C&I
 # SUPPOSE quand ils sont vides : la fiche lead ne les exige plus (une règle).
@@ -594,6 +596,7 @@ __all__ = [
     'bcf_share_url',
     'build_devis_auto',
     'build_devis_from_layout',
+    'panneaux_pour_la_meme_puissance',
     'calculer_date_echeance',
     'capturer_configuration_devis',
     'carte_marques_composition',

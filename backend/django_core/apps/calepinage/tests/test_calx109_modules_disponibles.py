@@ -131,7 +131,26 @@ class LExempleEstCeQueLeServiceProduitTest(SimpleTestCase):
                 self.assertEqual(
                     sorted(servi),
                     ['calepinage', 'champs_requis', 'modules',
-                     'motif_liste_vide'])
+                     'motif_liste_vide', 'panneaux_selon_watt'])
+
+    def test_e9_la_taille_de_la_conception_comptee_dans_chaque_puissance_offerte(self):
+        """Lane E9 (T4-X2-001 / T4-X9-005) — conception de 8 × 550 W = 4,40 kWc, liste à 710
+        et 715 Wc : ``panneaux_selon_watt`` = la même puissance crête au panneau près, par LA
+        règle du moteur (``panneaux_pour_la_meme_puissance``), jamais le compte de la conception
+        reporté tel quel (8 × 710 W = 5,68 kWc, +29 %). Sans conception complète : ``{}``."""
+        def module(pk, watt):
+            return _FauxProduit(pk, 'Module %d Wc' % watt, _FausseFiche(
+                longueur_mm=2384, largeur_mm=1303, pmax_wc=Decimal(watt)))
+
+        conception = {'etat': 'complet', 'option_retenue': 'sans', 'valeurs': {'sans': {
+            'nb_panneaux': {'valeur': 8}, 'puissance_kwc': {'valeur': 4.4}}}}
+        cible = 'apps.calepinage.services.devis_retenu.conception_du_calepinage'
+        with mock.patch(cible, return_value=conception):
+            servi = modules_disponibles_du_calepinage(_FauxCalepinage(), [module(1, 710), module(2, 715)])
+        self.assertEqual(servi['panneaux_selon_watt'], {'710': 6, '715': 6})
+        with mock.patch(cible, return_value={'etat': 'refus', 'valeurs': {}}):
+            servi = modules_disponibles_du_calepinage(_FauxCalepinage(), [module(1, 710)])
+        self.assertEqual(servi['panneaux_selon_watt'], {})
 
     def test_l_identifiant_est_stable_et_derive_du_produit(self):
         entree = entree_module(_produit_complet())

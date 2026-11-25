@@ -171,6 +171,54 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(surChange).toHaveBeenCalledTimes(1)
   })
 
+  it('lane E9 (T4-X2-001) — module de 710 W pour une conception de 8 × 550 W : la carte dit la puissance et le compte servi, la pose reçoit 6', async () => {
+    monterConstructeur({ besoin: '12' })
+    document.getElementById('rp9-pan-module-select').value = 'produit-1'
+    const catalogue = [{ ...CATALOGUE[0], module: { ...CATALOGUE[0].module, libelle: 'Module 710 Wc', pmaxWc: 710 } }]
+    calepinageApi.calepinages.modulesDisponibles.mockResolvedValue({ data: {
+      modules: catalogue, panneaux_selon_watt: { 710: 6, 715: 6 } } })
+    calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: {
+      cible_factures: { panneaux: 8, kwc: 4.4, module_wc: 550 }, refus: '', calcul_en_cours: false } })
+    rendre()
+    const facture = screen.getByTestId('cal-panneaux-option-facture')
+    await waitFor(() => expect(facture).toHaveTextContent(
+      '4,40 kWc — 6 panneaux de 710 W (la conception du lead compte 8 panneaux de 550 W)'))
+    fireEvent.click(facture)
+    expect(document.getElementById('rp9-need-input').value).toBe('6')
+  })
+
+  it('lane E9 (T4-X2-001) — module absent de la table servie : la puissance seule, aucun compte, rien à poser', async () => {
+    monterConstructeur({ besoin: '12' })
+    document.getElementById('rp9-pan-module-select').value = 'produit-1'
+    const catalogue = [{ ...CATALOGUE[0], module: { ...CATALOGUE[0].module, pmaxWc: 710 } }]
+    calepinageApi.calepinages.modulesDisponibles.mockResolvedValue({ data: { modules: catalogue, panneaux_selon_watt: {} } })
+    calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: {
+      cible_factures: { panneaux: 8, kwc: 4.4, module_wc: 550 }, refus: '', calcul_en_cours: false } })
+    rendre()
+    const facture = screen.getByTestId('cal-panneaux-option-facture')
+    await waitFor(() => expect(facture).toHaveTextContent('4,40 kWc (la conception du lead compte 8 panneaux de 550 W)'))
+    expect(facture).toBeDisabled()
+  })
+
+  it('lane E9 — la conception recalculée depuis l’ouverture : la carte « Couvrir la facture » dit pourquoi, jamais en silence', async () => {
+    monterConstructeur()
+    const raison = 'Recalculé le 25/11 à 10 h 05 : matériel désigné à l’atelier : Module 580 Wc / Onduleur 6 kW'
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: {
+      calepinage: { lead: 42 }, consommation_lead: { facture_mensuelle_mad: 900, motif: '' }, cible: { version: 1 } } })
+    calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: {
+      cible_factures: { panneaux: 12, kwc: 6.96, module_wc: 580, version: 2, raison }, refus: '', calcul_en_cours: false } })
+    rendre()
+    expect(await screen.findByText(`Conception recalculée : ${raison}`)).toHaveAttribute('data-zone', 'conception-recalculee')
+    // Même version que celle ouverte : rien n'est dit.
+    cleanup()
+    oublierLecturesServies()
+    calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: {
+      cible_factures: { panneaux: 12, kwc: 6.96, module_wc: 580, version: 1, raison }, refus: '', calcul_en_cours: false } })
+    rendre()
+    await waitFor(() => expect(screen.getByTestId('cal-panneaux-option-facture')).toHaveTextContent('12 panneaux'))
+    expect(document.querySelector('[data-zone="conception-recalculee"]')).toBeNull()
+  })
+
   it('« Couvrir la facture » = la taille servie des factures (cible_factures), jamais la pose posée (55 panneaux, 809 %)', async () => {
     // Calepinage 5 tel que relevé : cible enregistrée 60, 55 tiennent au module par défaut, 809 %.
     const { espion } = monterConstructeur({
