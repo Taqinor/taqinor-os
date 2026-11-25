@@ -2459,6 +2459,26 @@ class VerdictsDuMoteurTests(TestCase):
 
         self.assertIsNone(verdicts_electriques(self.company, None, [], 10.0))
 
+    def test_t4_x3_009_la_note_nomme_le_panneau_de_la_conception(self):
+        """T4-X3-009 (lane E9) — conception 8 × 550 W = 4,40 kWc, pose en 710 W : la note ne dit
+        jamais un « 8 » nu à côté de panneaux de 710 W, elle nomme le panneau de la conception ;
+        même compte (8) mais autre puissance (5,68 kWc) : jugé pour la POSE, plus le verdict rangé."""
+        from apps.ventes.selectors_conception import verdicts_pour_le_calepinage
+
+        range_ = self._verdicts(self.reseau, ratio=0.88, kwc=4.4)
+        ligne = {'produit': self.reseau.pk, 'designation': self.reseau.nom, 'quantite': 1}
+        conception = {'lead': 9, 'option_retenue': 'sans', 'valeurs': {'sans': {
+            'nb_panneaux': {'valeur': 8}, 'puissance_kwc': {'valeur': 4.4}, 'onduleurs': {'valeur': [ligne]},
+            'verdicts': {'valeur': range_}}}}
+        pose = {'onduleur_produit': self.reseau.pk, 'chaines': [{'nb_modules': 6}]}
+        moins = dict(pose, nb_panneaux=6, kwc=4.26, ratio=0.85)
+        _j, note, _r = verdicts_pour_le_calepinage(self.company, conception, moins)
+        self.assertEqual(note, 'jugé pour la pose : 6 panneaux — la conception du lead en compte 8 de 550 W')
+        autre_module = dict(pose, nb_panneaux=8, kwc=5.68, ratio=1.14)
+        jugees, note, _r = verdicts_pour_le_calepinage(self.company, conception, autre_module)
+        self.assertEqual(jugees['ratio_dc_ac']['valeur'], 1.14)
+        self.assertEqual(note, 'jugé pour la pose : 8 panneaux — la conception du lead en compte 8 de 550 W')
+
     def test_e6_m4_pose_d_un_autre_compte_jugee_par_la_meme_regle(self):
         """Relecture E6 M4 + m3 — même compte : le verdict RANGÉ ; compte différent : LA règle
         de la porte du moteur pour la pose (24 panneaux, 14,4 kWc, ratio 1,44) et la note ;

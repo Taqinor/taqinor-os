@@ -5,6 +5,7 @@ import { MODULE_PAR_DEFAUT_ATELIER } from '@roofpro/moduleSelect'
 import calepinageApi from '../../../../../api/calepinageApi'
 import useResource from '../../../../../hooks/useResource'
 import { formatNumber } from '../../../../../lib/format'
+import { cibleAuModule } from '../../cibleAuModule'
 import { kwh } from '../../../production/ResultatHeros.helpers'
 import { SurCarte } from '../emplacements'
 import { BoutonMarine, CarteFlottante, Icone, Indicateur, Segmente } from '../primitives'
@@ -184,11 +185,11 @@ function cibleDuModule(cible, module, entrees, table) {
   // Aucun module choisi sur le pan : rien à convertir (la carte garde la taille de la conception, comme avant).
   if (!cible || !module?.valeur) return cible
   const fiche = entrees.find((e) => e.module.id === module.valeur)?.module
-  const watt = Number(fiche?.pmaxWc) || null
-  if (!watt || !cible.moduleWc || Math.abs(watt - cible.moduleWc) < 0.5) return cible
-  const servi = table?.[String(watt)]
-  return { ...cible, panneaux: Number.isInteger(servi) ? servi : null, watt,
-    conception: `la conception du lead compte ${compte(cible.panneaux)} de ${formatNumber(cible.moduleWc)} W` }
+  const auModule = cibleAuModule({ panneaux: cible.panneaux, kwc: cible.kwc, wattConception: cible.moduleWc },
+    fiche?.pmaxWc, table)  // T4-X3-009 : LE lecteur unique de l'atelier
+  if (!auModule?.convertie) return cible
+  return { ...cible, panneaux: auModule.panneaux, watt: auModule.watt,
+    conception: `la conception du lead compte ${auModule.conception}` }
 }
 
 function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
