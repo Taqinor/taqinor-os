@@ -3070,6 +3070,42 @@ class RelanceEnTacheTests(_emprunt(RelanceConceptionTests, '_relancer'),
         courante = ConceptionLead.objects.get(lead=lead, courante=True)
         self.assertEqual(courante.declencheur['champs'], [])
 
+    def test_x9_009_onduleur_designe_garde_la_taille_de_son_option(self):
+        """Constat T4-X9-009 (relecteur X9, 25/11) — un onduleur HYBRIDE désigné à l'étape
+        Électrique ne laisse que l'option « avec batterie » : sa taille est celle que le
+        moteur décide pour CETTE option (son propre optimum), jamais celle de l'option
+        « sans batterie ». Mutant « taille décidée sans regarder l'onduleur désigné » : la
+        conception retenue perd des panneaux sans que la fiche ait changé."""
+        from apps.stock.models import Produit
+        from apps.ventes.domain import creation_auto_residentiel as R
+        from apps.ventes.selectors import conception_courante
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        reel = R._panneaux_dimensionnement_horaire
+
+        def deux_tailles(**kw):  # le moteur horaire, dont l'axe « avec batterie » retient 2 panneaux de plus
+            nombre, watt, source, avec = reel(**kw)
+            plus = dict(avec or {}, nb_panneaux=nombre + 2, panel_watt=watt,
+                        kwc=round((nombre + 2) * watt / 1000, 2))
+            plus.setdefault('batterie_kwh', 10.0)
+            return nombre, watt, source, plus
+
+        with mock.patch.object(R, '_panneaux_dimensionnement_horaire', side_effect=deux_tailles):
+            self._relancer(lead, company, _declencheur())
+            temoin = conception_courante(company, lead.pk)['valeurs']
+            tailles = {option: v['nb_panneaux']['valeur'] for option, v in temoin.items()}
+            self.assertEqual(set(tailles), {'sans', 'avec'})
+            self.assertEqual(tailles['avec'], tailles['sans'] + 2)
+            deye = Produit.objects.get(company=company, nom='Onduleur hybride Deye 5kW Monophasé')
+            calepinage = self._calepinage_designe(company, lead, onduleur_produit=deye.pk)
+            self._relancer(lead, company, _declencheur('pose_enregistree'), calepinage_id=calepinage.pk)
+            lue = conception_courante(company, lead.pk)
+        self.assertEqual((lue['etat'], lue['option_retenue']), ('complet', 'avec'), lue['refus'])
+        retenue = lue['valeurs']['avec']
+        self.assertEqual(retenue['onduleur_produit']['valeur'], deye.pk)
+        self.assertEqual(retenue['nb_panneaux']['valeur'], tailles['avec'])
+
     def _commande_remplir(self, call_command, company):
         import io
 

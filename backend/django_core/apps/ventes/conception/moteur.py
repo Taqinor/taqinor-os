@@ -255,11 +255,16 @@ def _compte_designe(lead, company, toit, imposes, dimensionner):
     compte de panneaux : la taille que le moteur DÉCIDE sans la désignation (la facture
     garde la main ; un module désigné d'une autre puissance garde la même puissance crête,
     au panneau près) ; le scénario suit l'onduleur désigné (hybride ⇒ avec batterie,
-    réseau ⇒ sans), sinon la décision."""
+    réseau ⇒ sans), sinon la décision. Constat T4-X9-009 : la taille est décidée POUR ce
+    scénario (l'option « avec batterie » a son propre optimum) — sans cela un hybride
+    désigné rangeait l'option « avec » à la taille de l'option « sans »."""
     from apps.ventes.conception.decisions import decider_taille_residentielle
     from apps.ventes.domain import resolution_catalogue as rc
 
-    decision = decider_taille_residentielle(lead=lead, company=company, plafond_toit=getattr(
+    onduleur = (rc.entree_du_produit(company, imposes['onduleur_produit_id'])
+                if imposes.get('onduleur_produit_id') else None)
+    force = {rc.FAMILLE_HYBRIDE: 'avec', rc.FAMILLE_RESEAU: 'sans'}.get(getattr(onduleur, 'famille', None))
+    decision = decider_taille_residentielle(lead=lead, company=company, scenario=force, plafond_toit=getattr(
         toit, 'plafond_panneaux', None), dimensionner=dimensionner)
     nombre, complets = decision.panneaux, {}
     panneau = (rc.entree_du_produit(company, imposes['panneau_produit_id'])
@@ -271,11 +276,7 @@ def _compte_designe(lead, company, toit, imposes, dimensionner):
         resolution = rc.resoudre_panneau(company, rc.vivier(company), wc=decision.watt)
         if resolution.statut == rc.STATUT_UNIQUE:
             complets['panneau_produit_id'] = resolution.produit.pk
-    onduleur = (rc.entree_du_produit(company, imposes['onduleur_produit_id'])
-                if imposes.get('onduleur_produit_id') else None)
-    familles = {rc.FAMILLE_HYBRIDE: 'avec', rc.FAMILLE_RESEAU: 'sans'}
-    scenario = (familles.get(onduleur.famille) if onduleur is not None
-                else ('avec' if decision.avec_batterie else 'sans'))
+    scenario = force if onduleur is not None else ('avec' if decision.avec_batterie else 'sans')
     return dict(imposes, nb_panneaux=nombre, **complets), scenario
 
 
