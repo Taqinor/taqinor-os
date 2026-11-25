@@ -117,6 +117,17 @@ def _marche_du_lead(lead):
             else Devis.ModeInstallation.RESIDENTIEL)
 
 
+def composer_a_blanc_depuis_layout(*, layout, company, lead=None):
+    """Lane E9b — LE dry-run de « Générer le devis » (``build_devis_from_layout(a_blanc=True)``)
+    sous ``conception.moteur.reglages_lus_sans_creer`` : la TVA et le tarif de la société sont
+    lus sur la ligne existante, sinon sur une instance NON enregistrée — un ``GET`` ne crée
+    jamais de ``CompanyProfile`` / ``TariffSettings``. Rend les specs de lignes."""
+    from apps.ventes.conception.moteur import reglages_lus_sans_creer
+
+    with reglages_lus_sans_creer(company):
+        return build_devis_from_layout(layout=layout, user=None, company=company, lead=lead, a_blanc=True)
+
+
 def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
                             taux_tva=None, remise_globale=Decimal('0'),
                             deux_options=False, journal=None, phase=None,

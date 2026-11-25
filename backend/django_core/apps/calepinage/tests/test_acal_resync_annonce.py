@@ -147,6 +147,41 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         etranger = Calepinage.objects.create(company=self.autre, lead_id=self.lead.pk, titre='Autre')
         self.assertEqual(self.api.get(f'{url_detail(etranger.pk)}apercu-devis/').status_code, 404)
 
+    def _nouvelle_pose(self, panneaux=10):
+        """Le devis du setUp mis de côté et une AUTRE pose : « Générer » composerait un devis neuf."""
+        from apps.ventes.models import Devis
+
+        Devis.objects.filter(pk=self.calepinage.devis_id).update(is_active=False)
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(devis=None)
+        modifie = copy.deepcopy(TOIT)
+        modifie['result']['panels'] = panneaux
+        self.calepinage.refresh_from_db()
+        enregistrer_layout(self.calepinage, modifie, user=self.user)
+        self.calepinage.refresh_from_db()
+
+    def test_e9b_apercu_a_blanc_ne_cree_aucun_reglage(self):
+        """Lane E9b — l'aperçu est un calcul À BLANC : une société SANS ``CompanyProfile`` ni
+        ``TariffSettings`` n'en gagne aucun (``reglages_lus_sans_creer``), aucune écriture parmi
+        les requêtes de l'appel. Mutant « aperçu hors du contexte » ⇒ INSERT ⇒ rouge."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from apps.calepinage.services.devis_apercu import apercu_materiel_du_devis
+        from apps.parametres.models import CompanyProfile
+        from apps.parametres.models_tariff import TariffSettings
+
+        self._nouvelle_pose()
+        CompanyProfile.objects.filter(company=self.company).delete()
+        TariffSettings.objects.filter(company=self.company).delete()
+        with CaptureQueriesContext(connection) as requetes:
+            rendu = apercu_materiel_du_devis(self.calepinage)
+        self.assertTrue(rendu['options'], rendu)
+        ecritures = [q['sql'] for q in requetes.captured_queries
+                     if q['sql'].lstrip().upper().startswith(('INSERT', 'UPDATE', 'DELETE'))]
+        self.assertEqual(ecritures, [])
+        self.assertFalse(CompanyProfile.objects.filter(company=self.company).exists())
+        self.assertFalse(TariffSettings.objects.filter(company=self.company).exists())
+
     def test_e6e_resynchro_refusee_pour_un_onduleur_non_designe_dit_l_issue(self):
         """Le refus de « Resynchroniser » qui juge l'onduleur du DEVIS alors qu'un autre est
         désigné à l'étape Électrique le dit, nomme les deux et propose le geste qui existe :

@@ -76,13 +76,12 @@ def apercu_materiel_du_devis(calepinage):
     from .devis import DevisRefuse, _exiger_layout, _lead_et_client
     from .equipements import composition_a_blanc
 
-    build_devis_from_layout, AutoDevisError = composition_a_blanc()
+    composer, AutoDevisError = composition_a_blanc()  # lane E9b : réglages lus sans être créés
 
     try:
         layout = _exiger_layout(calepinage)
         lead, _client = _lead_et_client(calepinage)
-        specs = build_devis_from_layout(layout=layout, user=None, company=calepinage.company, lead=lead,
-                                        a_blanc=True)
+        specs = composer(layout=layout, company=calepinage.company, lead=lead)
     except (AutoDevisError, DevisRefuse) as refus:
         return {'options': [], 'ecarts': [], 'refus': getattr(refus, 'message', None) or str(refus)}
     options = _materiel_par_option(specs)
