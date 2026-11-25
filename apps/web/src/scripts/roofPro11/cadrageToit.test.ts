@@ -384,6 +384,48 @@ describe('modePresentation — vue client tenue de trois quarts (J1)', () => {
       vi.useRealTimers();
     }
   });
+  it('T4-V1-010 — le glisser tourne la maison sur ELLE-MÊME : son centre ne bouge pas à l’écran, elle reste hors de la carte de droite', () => {
+    vi.useFakeTimers();
+    try {
+      // Caméra simulée qui PROJETTE (centre, zoom, cap, pente lus à chaque appel) : la maison est cadrée dans la zone
+      // libre à GAUCHE (la carte « Votre toit produirait… » couvre 600 px à droite), donc loin du centre de la caméra.
+      const c = carteCamera();
+      const [W, H] = [1440, 900];
+      const pxParM = () => 2 ** (c.cam.zoom - 17) * 3;
+      const project = ([lng, lat]: LngLat) => {
+        const cos = Math.cos((c.cam.lat * Math.PI) / 180);
+        const [dx, dy] = [(lng - c.cam.lng) * DEG2M * cos, (lat - c.cam.lat) * DEG2M];
+        const b = (c.cam.bearing * Math.PI) / 180;
+        const [u, v] = [dx * Math.cos(b) - dy * Math.sin(b), dx * Math.sin(b) + dy * Math.cos(b)];
+        return { x: W / 2 + u * pxParM(), y: H / 2 - v * pxParM() * Math.cos((c.cam.pitch * Math.PI) / 180) };
+      };
+      const unproject = ([x, y]: [number, number]) => {
+        const cos = Math.cos((c.cam.lat * Math.PI) / 180);
+        const b = (c.cam.bearing * Math.PI) / 180;
+        const [u, v] = [(x - W / 2) / pxParM(), -(y - H / 2) / (pxParM() * Math.cos((c.cam.pitch * Math.PI) / 180))];
+        const [dx, dy] = [u * Math.cos(b) + v * Math.sin(b), -u * Math.sin(b) + v * Math.cos(b)];
+        return { lng: c.cam.lng + dx / (DEG2M * cos), lat: c.cam.lat + dy / DEG2M };
+      };
+      Object.assign(c.map, { project, unproject, getContainer: () => ({ clientWidth: W, clientHeight: H }) });
+      const api = apiCamera(c.map, sources(), true);
+      api.modePresentation(true, { vue: 'trois-quarts', cadrage: { zoomMax: 21, margesPx: { haut: 0, gauche: 0, droite: 600, bas: 0 } } });
+      vi.runAllTimers();
+      const centreMaison: LngLat = [(toit[0][0] + toit[1][0]) / 2, (toit[0][1] + toit[2][1]) / 2];
+      const avant = project(centreMaison);
+      expect(avant.x).toBeLessThan(W - 600); // dans la zone libre, pas au centre de la caméra
+      expect(Math.abs(avant.x - W / 2)).toBeGreaterThan(100);
+      c.dom.pointerdown({ pointerId: 1, button: 0, clientX: 700 });
+      c.dom.pointermove({ pointerId: 1, clientX: 450 }); // 250 px vers la gauche, comme le relecteur
+      c.dom.pointerup({ pointerId: 1 });
+      expect(c.cam.bearing).toBeCloseTo(45 + 250 * 0.4, 6); // la maison a bien tourné
+      const apres = project(centreMaison);
+      expect(apres.x).toBeCloseTo(avant.x, 3);
+      expect(apres.y).toBeCloseTo(avant.y, 3);
+      api.modePresentation(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it('la toile est nommée en français et sort de l\'ordre de tabulation ; ses attributs sont rendus à la sortie', () => {
     const c = carteCamera();
     const api = apiCamera(c.map, sources(), true);
