@@ -164,6 +164,33 @@ describe('Écran « Sources des paramètres normatifs » (CAL165)', () => {
   })
 })
 
+describe('T4-X3-002 / 013 — les retraits par arête et les allées par pays portent LEUR source', () => {
+  it('chaque entrée de liste montre sa valeur et sa source, jamais « non sourcée » à tort', async () => {
+    const servi = reponseContrat('calepinage', 'parametres_calepinage', 'exemple')
+    servi.data = {
+      ...servi.data,
+      degagements: {
+        retraits_par_arete: [
+          { type: 'faitage', retrait_m: 0.3, source: 'X3 test retrait', reference: '' },
+        ],
+        allees_circulation: [
+          { pays: 'ma', largeur_m: 1, source: 'X3 test allée', reference: 'Réf. allée' },
+        ],
+      },
+    }
+    calepinageApi.parametres.get.mockResolvedValue(servi)
+    rendreEcran()
+    await screen.findByTestId('cal165-ecran')
+    const degagements = screen.getByTestId('cal165-degagements')
+    expect(degagements).toHaveTextContent('Faîtage')
+    expect(degagements).toHaveTextContent('0,3')
+    expect(degagements).toHaveTextContent('X3 test retrait')
+    expect(degagements).toHaveTextContent('MA')
+    expect(degagements).toHaveTextContent('X3 test allée')
+    expect(within(degagements).queryAllByText('non sourcée')).toHaveLength(0)
+  })
+})
+
 describe('T4-X3-001 — la norme choisie est dite même sans coefficient saisi', () => {
   it('norme enregistrée, aucun coefficient propre à la société : la page nomme la norme', async () => {
     const servi = reponseContrat('calepinage', 'parametres_calepinage', 'exemple')

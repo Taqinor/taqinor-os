@@ -19,7 +19,7 @@ import { Button, Card } from '../../../ui'
    ========================================================================== */
 
 //: `services/degagements.py::TYPES_ARETE`, dans le même ordre.
-const TYPES = [
+export const TYPES = [
   ['faitage', 'Faîtage'], ['noue', 'Noue'], ['arretier', 'Arêtier'],
   ['egout', 'Égout'], ['rive', 'Rive'],
 ]
