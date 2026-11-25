@@ -129,7 +129,7 @@ const ventesApi = {
   // Contrat : apps/ventes/contract_samples/devis_etat_pdf.json.
   // R1-02/R1-03 — `demande` (rendu par generer-pdf) : l'état et le fichier de
   // CETTE demande, jamais ceux d'un autre format demandé avant ou après.
-  etatPdfDevis: (id, demande) => api.get(`/ventes/devis/${id}/etat-pdf/`, { params: demande ? { demande } : {} }),
+  etatPdfDevis: (id, demande) => api.get(`/ventes/devis/${id}/etat-pdf/`, { params: demande ? { demande } : {}, timeout: 15000 }),
   telechargerPdfDevis: (id, demande) => api.get(`/ventes/devis/${id}/telecharger-pdf/`, {
     responseType: 'blob', params: demande ? { demande } : {},
   }),

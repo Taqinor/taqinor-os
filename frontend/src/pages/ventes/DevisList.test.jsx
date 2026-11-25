@@ -1775,6 +1775,62 @@ describe('DevisList — T4-V2-008 : un PDF qui n’arrive pas est dit, avec Rée
     expect(result.current.pdfSlowPoll[7]).toBe(false)
     erreur.mockRestore()
   })
+
+  // T4-X1-003 — « Devis Final » seul : la demande était acceptée puis RIEN
+  // pendant 600 s. Cause : un sondage `etat-pdf` en erreur ou sans réponse
+  // coupait la boucle (aucune relance) — et la ligne se disait « en
+  // génération » seulement le temps du POST.
+  async function lancer(etat) {
+    const { renderHook } = await import('@testing-library/react')
+    const { useDevisPdf } = await import('./devisList/useDevisPdf.js')
+    ventesApi.etatPdfDevis.mockImplementation(etat)
+    const dispatch = vi.fn(() => ({ unwrap: () => Promise.resolve({ demande: 'D1' }) }))
+    const rendu = renderHook(() => useDevisPdf({ dispatch, devis: [], selectedIds: [], setSelectedIds: () => {} }))
+    await act(async () => { await rendu.result.current.genererUnPdf({ id: 7, reference: 'DEV-7' }) })
+    return rendu
+  }
+
+  it('T4-X1-003 — la ligne reste « en génération » pendant tout le sondage, puis se referme', async () => {
+    let pret = false
+    const { result } = await lancer(() => Promise.resolve({
+      data: { devis: 7, statut: pret ? 'pret' : 'en_cours', fichier_pdf: pret, erreur: null, date: null },
+    }))
+    await act(async () => { await vi.advanceTimersByTimeAsync(10 * 1000) })
+    expect(result.current.pdfGenerating[7]).toBe(true)
+    pret = true
+    await act(async () => { await vi.advanceTimersByTimeAsync(12 * 1000) })
+    expect(result.current.pdfGenerating[7]).toBe(false)
+  })
+
+  it('T4-X1-003 — un sondage en erreur ou sans réponse ne coupe plus le suivi', async () => {
+    const erreur = vi.spyOn(toast, 'error')
+    let appel = 0
+    const { result } = await lancer(() => {
+      appel += 1
+      if (appel === 1) return Promise.reject(new Error('502'))
+      if (appel === 2) return new Promise(() => {}) // jamais de réponse
+      return Promise.resolve({ data: { devis: 7, statut: 'echec', fichier_pdf: false,
+        erreur: 'Moteur indisponible', date: null } })
+    })
+    await act(async () => { await vi.advanceTimersByTimeAsync(60 * 1000) })
+    expect(appel).toBeGreaterThanOrEqual(3)
+    expect(erreur).toHaveBeenCalledWith(
+      'DEV-7 : la génération du PDF a échoué — Moteur indisponible',
+      expect.objectContaining({ action: expect.objectContaining({ label: 'Réessayer' }) }))
+    expect(result.current.pdfGenerating[7]).toBe(false)
+    erreur.mockRestore()
+  })
+
+  it('T4-X1-003 — un serveur qui ne répond jamais : après 5 min, « Réessayer » et la ligne se referme', async () => {
+    const erreur = vi.spyOn(toast, 'error')
+    const { result } = await lancer(() => new Promise(() => {}))
+    await act(async () => { await vi.advanceTimersByTimeAsync(6 * 60 * 1000) })
+    expect(erreur).toHaveBeenCalledWith(
+      'DEV-7 : le PDF n’est toujours pas prêt après 5 minutes — la génération n’a pas abouti.',
+      expect.objectContaining({ action: expect.objectContaining({ label: 'Réessayer' }) }))
+    expect(result.current.pdfGenerating[7]).toBe(false)
+    erreur.mockRestore()
+  })
 })
 
 // T4-X4-005 (S2) — sur les données de la production, l'écran chargeait TOUS les

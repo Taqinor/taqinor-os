@@ -65,6 +65,19 @@ export function optionsPdfDepuisModale({
 // 300 puis 604 s sans un mot (le serveur ne la classe « échec » qu'à 20 min).
 export const DELAI_MAX_PDF_MS = 5 * 60 * 1000
 
+// T4-X1-003 — UN sondage qui ne répond pas (20 s sans réponse constatées sur
+// la copie de production) bloquait la boucle à jamais : on n'attend qu'un
+// délai borné chaque réponse, puis on re-sonde (jusqu'au délai ci-dessus).
+export const DELAI_REPONSE_ETAT_MS = 15 * 1000
+const maintenant = () => Date.now()
+function avecDelai(promesse, ms) {
+  let minuterie
+  const limite = new Promise((_, rejeter) => {
+    minuterie = setTimeout(() => rejeter(new Error('etat-pdf : pas de réponse')), ms)
+  })
+  return Promise.race([promesse, limite]).finally(() => clearTimeout(minuterie))
+}
+
 // `selectedIds` / `setSelectedIds` (sélection du lot) et `devis` restent dans
 // le composant principal : le lot les lit ici.
 export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
@@ -232,6 +245,8 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
   // l'enchaînement par lot.
   const genererUnPdf = async (d, { autoOpen = true } = {}) => {
     setPdfGenerating(prev => ({ ...prev, [d.id]: true }))
+    let suiviEnCours = false
+    const finGeneration = () => setPdfGenerating(prev => ({ ...prev, [d.id]: false }))
     setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
     try {
       // QJR624 (D-QJR5-10) — l'« acompte personnalisé » n'est plus une option
@@ -254,11 +269,16 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
         })
       }
       const lance = await dispatch(genererPdfDevis({ id: d.id, options: buildPdfOptions(d) })).unwrap()
+      // T4-X1-003 — la ligne reste « en génération » tant que le sondage suit
+      // la demande : il referme lui-même l'indicateur à son issue (prêt,
+      // échec, délai dépassé) ; seul un refus de la demande le referme ici.
+      suiviEnCours = true
       // R1-02/R1-03 — on suit CETTE demande (clé `demande` de generer-pdf) :
       // un ancien fichier d'un autre format ne la dit plus « prête », et le
       // fichier ouvert est rendu dans SES options.
       const suivi = lance?.demande ? [lance.demande] : []
       let attempts = 0
+      const debut = maintenant()
       // WIR217 — le drapeau « lent » était lu dans `pdfSlowPoll[d.id]`, une
       // CLÔTURE PÉRIMÉE figée à `false` à la création de la boucle : la
       // condition restait vraie et le toast « toujours en cours » repartait
@@ -274,8 +294,9 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
       const poll = async () => {
         // WIR217 — plus AUCUN sondage après démontage de l'écran.
         if (pollAnnule.current) return
-        if (attempts >= MAX_ATTEMPTS) {
+        if (attempts >= MAX_ATTEMPTS || maintenant() - debut >= DELAI_MAX_PDF_MS) {
           setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
+          finGeneration()
           toast.error(`${d.reference} : le PDF n’est toujours pas prêt après 5 minutes — la génération n’a pas abouti.`, {
             action: { label: 'Réessayer', onClick: () => genererUnPdf(d, { autoOpen }) }, duration: Infinity,
           })
@@ -295,11 +316,14 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
           // apps/ventes/contract_samples/devis_etat_pdf.json), pas seulement
           // `fichier_pdf` : un échec DÉFINITIF de la tâche Celery (retries
           // épuisés) était invisible et cette boucle ne s'arrêtait jamais.
-          const res = await ventesApi.etatPdfDevis(d.id, ...suivi)
+          const res = await avecDelai(
+            ventesApi.etatPdfDevis(d.id, ...suivi), DELAI_REPONSE_ETAT_MS)
+          if (pollAnnule.current) return
           if (res.data.statut === 'echec') {
             // État TERMINAL : on arrête le sondage et on rend l'échec
             // ACTIONNABLE (le message du serveur nomme la cause).
             setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
+            finGeneration()
             toast.error(
               `${d.reference} : la génération du PDF a échoué${res.data.erreur ? ` — ${res.data.erreur}` : '.'}`,
               { action: { label: 'Réessayer', onClick: () => genererUnPdf(d, { autoOpen }) } },
@@ -309,6 +333,7 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
           if (res.data.fichier_pdf) {
             dispatch(rafraichirDevis(d.id))
             setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
+            finGeneration()
             if (autoOpen) {
               // VX48 — l'auto-open existant (QG1) reste l'expérience PAR
               // DÉFAUT et se déclenche EN PREMIER ; on n'affiche le toast
@@ -338,8 +363,12 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
             pollTimers.current[d.id] = setTimeout(poll, slow ? 10000 : 2000)
           }
         } catch (err) {
-          // Erreur de sondage ignorée : la boucle continue.
+          // Un sondage manqué (délai, 5xx, réseau) ne coupe PAS le suivi : la
+          // boucle re-sonde, bornée par le délai maximal ci-dessus.
           console.warn('useDevisPdf.poll : sondage manqué, on réessaie', err)
+          if (!pollAnnule.current) {
+            pollTimers.current[d.id] = setTimeout(poll, slow ? 10000 : 2000)
+          }
         }
       }
       pollTimers.current[d.id] = setTimeout(poll, 2000)
@@ -354,7 +383,7 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
       }
       return false
     } finally {
-      setPdfGenerating(prev => ({ ...prev, [d.id]: false }))
+      if (!suiviEnCours) finGeneration()
     }
   }
 
