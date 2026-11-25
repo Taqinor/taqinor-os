@@ -3334,6 +3334,54 @@ class BrouillonsSuiventLaConceptionTests(_emprunt(RelanceConceptionTests, '_rela
         self.assertEqual(tasks.task_suivre_la_conception(**self.suivi.call_args.kwargs['kwargs']), [d1.pk])
         self.assertEqual(Devis.objects.get(pk=d1.pk).conception_source['version'], 2)
 
+    def test_e6b1_m5_meme_contenu_seul_le_pointeur_suit(self):
+        """Relecture E6 M5 — une version née sans changement de ce que le devis recevrait
+        (relance forcée : seule la version change, comme un saut de ``VERSION_MOTEUR``) :
+        le brouillon intact n'est PAS recomposé et ne reçoit aucune ligne d'historique —
+        seul son pointeur avance ; l'envoyé n'est jamais écrit. Mutant « recomposer à
+        chaque version » : une ligne d'historique, des lignes réécrites."""
+        from apps.ventes.conception.brouillons import suivre_la_conception
+        from apps.ventes.models import DevisActivity
+
+        company, lead, _user, intact, _retouche, envoye = self._trois_devis()
+        avant, photo_envoye = _photo_devis(intact.pk), _photo_devis(envoye.pk)
+        v2 = self._relancer(lead, company, _declencheur('manuel'), forcer=True).conception
+        self.assertEqual(v2.version, 2)
+        self.assertEqual(suivre_la_conception(v2), [intact.pk])
+        apres = _photo_devis(intact.pk)
+        self.assertEqual(apres['devis'].pop('conception_source')['version'], 2)
+        avant['devis'].pop('conception_source')
+        self.assertEqual(apres, avant)  # devis et lignes octet pour octet, hors pointeur
+        self.assertFalse(DevisActivity.objects.filter(devis_id=intact.pk, body__startswith='Mis à jour').exists())
+        self.assertEqual(_photo_devis(envoye.pk), photo_envoye)
+
+    def test_e6b1_m5_onduleur_designe_le_brouillon_recompose_le_porte(self):
+        """Relecture E6 M5 — une conception née d'un onduleur DÉSIGNÉ à la main : le
+        brouillon intact recomposé porte CET onduleur (l'imposition de la version passe à la
+        recomposition ; mutant « imposition=None » : l'onduleur du moteur)."""
+        from apps.calepinage.models import Calepinage
+        from apps.calepinage.services.electrique import CLE_ENTREE
+        from apps.stock.models import Produit
+        from apps.ventes.conception.brouillons import suivre_la_conception
+        from apps.ventes.models import Devis
+
+        company, lead, _user, intact, _retouche, envoye = self._trois_devis()
+        photo_envoye = _photo_devis(envoye.pk)
+        # Un onduleur plus grand au catalogue : le compositeur le prendrait pour cette taille ;
+        # l'onduleur DÉSIGNÉ (5 kW, ratio dans la fenêtre) doit rester.
+        Produit.objects.create(company=company, nom='Onduleur réseau Growatt 8kW Monophasé', sku='E6M5-OND',
+                               prix_vente=Decimal('15500'), prix_achat=Decimal('1'), quantite_stock=10)
+        designe = Produit.objects.get(company=company, nom='Onduleur réseau Huawei 5kW Monophasé')
+        calepinage = Calepinage.objects.create(company=company, lead_id=lead.pk, titre='Toit',
+                                               resultat={CLE_ENTREE: {'onduleur_produit': designe.pk}})
+        v2 = self._relancer(lead, company, _declencheur('pose_enregistree'), calepinage_id=calepinage.pk).conception
+        self.assertEqual(v2.valeurs[v2.option_retenue]['onduleur_produit']['source'], 'impose', v2.suppositions)
+        self.assertEqual(suivre_la_conception(v2), [intact.pk])
+        relu = Devis.objects.get(pk=intact.pk)
+        onduleurs = [li.produit_id for li in relu.lignes.all() if 'nduleur' in li.designation]
+        self.assertEqual(set(onduleurs), {designe.pk}, [li.designation for li in relu.lignes.all()])
+        self.assertEqual(_photo_devis(envoye.pk), photo_envoye)
+
     def test_envoye_entre_selection_et_ecriture_rien_ne_bouge(self):
         """Relecture E4 M1 — le devis passe « envoyé » entre la sélection et
         l'écriture : relu sous verrou, devis et lignes octet pour octet ; la
