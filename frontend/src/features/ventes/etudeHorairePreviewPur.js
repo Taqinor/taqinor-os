@@ -126,11 +126,25 @@ export function lignesAffichables(dimensionnement) {
       ? ''
       : ((Array.isArray(ligne.verdicts_bloquants_avec) && ligne.verdicts_bloquants_avec.length)
           ? ligne.verdicts_bloquants_avec.join(' ')
-          : 'Option batterie non livrable pour cette taille (catalogue).')
+          // T4-X4-018 — la raison du SERVEUR quand il refuse le palier de stockage.
+          : (ligne.stockage_refuse?.motif_refus
+            || 'Option batterie non livrable pour cette taille (catalogue).'))
+    // T4-X4-018 — la ligne à la taille d'une option que le devis vend (aperçu serveur).
+    const options = Array.isArray(ligne?.taille_du_devis) ? ligne.taille_du_devis : []
+    const tailleDuDevis = options.length
+      ? `taille de ce devis (${options.includes('sans') && options.includes('avec') ? 'sans et avec'
+        : options.includes('avec') ? 'avec' : 'sans'} batterie)`
+      : ''
+    // L'option avec batterie que le devis VEND n'est jamais dite « non livrable » à sa taille :
+    // sans raison du serveur, la ligne dit que le moteur ne l'a pas chiffrée.
+    const raison = !batterieVendable && options.includes('avec') && !ligne.stockage_refuse?.motif_refus
+      && !(Array.isArray(ligne.verdicts_bloquants_avec) && ligne.verdicts_bloquants_avec.length)
+      ? 'Batterie de ce devis non chiffrée à cette taille par le balayage du moteur.' : raisonBatterie
     return {
       ...ligne,
       batterieVendable,
-      raisonBatterie,
+      raisonBatterie: raison,
+      tailleDuDevis,
       economie_avec_mad: batterieVendable ? ligne.economie_avec_mad : null,
       cout_avec_ttc: batterieVendable ? ligne.cout_avec_ttc : null,
       payback_avec_annees: batterieVendable ? ligne.payback_avec_annees : null,

@@ -160,6 +160,7 @@ export default function ApercuSimulation({
                               {formatNumber(ligne.kwc, { decimals: 2 })} kWc
                               {estRecommandee && <span className="gen-rec-badge"> ★ Recommandé (sans)</span>}
                               {estRecommandeeAvec && <span className="gen-rec-badge" data-testid="etude-horaire-reco-avec"> ★ Recommandé (avec)</span>}
+                              {ligne.tailleDuDevis && <span className="gen-rec-badge" data-testid="etude-horaire-taille-devis"> · {ligne.tailleDuDevis}</span>}
                             </td>
                             <td className="py-1.5 pr-3">
                               {ligne.onduleur} — {formatNumber(ligne.ratio_onduleur_kwc * 100, { decimals: 0 })} % du kWc
