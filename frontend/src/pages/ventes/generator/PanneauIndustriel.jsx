@@ -189,7 +189,8 @@ export default function PanneauIndustriel({ marche, ...carte }) {
       <CarteProfilCi {...carte} />
       <CarteIndustrielleMt profilCi={carte.profilCi} setChampCi={carte.setChampCi} apercuCi={carte.apercuCi} />
       <CarteEconomieCi apercu={carte.apercuEcoCi} eco={carte.ecoCi} setEcoChamp={carte.setEcoChamp}
-                       optionAvec={carte.apercuCi?.donnees?.option_avec ?? null} />
+                       optionAvec={carte.apercuCi?.donnees?.option_avec ?? null}
+                       paybackServi={carte.paybackServi} />
     </>
   )
 }

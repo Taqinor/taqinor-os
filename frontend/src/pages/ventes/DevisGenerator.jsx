@@ -87,7 +87,6 @@ import {
   DEFAULT_MONTHLY_BILLS,
   formatMoney, estimerMois, htFromTtc, comptePanneauxOption,
   kwcFactureDesLignes, kwcPanneauxOption, kwcPourPanneaux,
-  KWH_PRICE, EFFICIENCY,
   TVA_STANDARD_DEFAUT, TVA_PANNEAUX_DEFAUT,
   // QJR66 — `buildEtudeParamsChoice` n'est PLUS importé ici : l'écran n'écrit
   // plus `scenario` / `recommended_option` / `distributeur` / `conso_annuelle`
@@ -652,19 +651,13 @@ export default function DevisGenerator({
   const ci = useProfilCiLead({ profilCi, setProfilCi, categorieCommerciale, setCategorieCommerciale,
     commercialAnswers, setCommercialAnswers, tarifSaisie, setTarifSaisie })
   const [prixCible, setPrixCible] = useState('')
-  // ── Logique de devis éditable (D5 ; Paramètres → Avancé). Défauts = constantes
-  // historiques du simulateur, donc le devis est identique tant que rien n'est
-  // édité. kwhPrice/efficiency alimentent les calculs ; prixCibleDefaut
-  // pré-remplit le prix cible ; remiseMax = limite indicative.
+  // ── Logique de devis éditable (D5 ; Paramètres → Avancé) : prixCibleDefaut
+  // pré-remplit le prix cible ; remiseMax = limite indicative. AGEN11 — plus de
+  // tarif, rendement ni productible à l'écran : la conception est servie.
   const [quoteLogic, setQuoteLogic] = useState({
-    kwhPrice: KWH_PRICE, efficiency: EFFICIENCY,
     // DC4/DC6 — repères TVA société (défauts réforme 20/10) : pilotent les
     // repli de taux et l'avertissement de divergence, jamais un recalage forcé.
     tvaStandard: TVA_STANDARD_DEFAUT, tvaPanneaux: TVA_PANNEAUX_DEFAUT,
-    // QX38 — override productible société (CompanyProfile.productible_kwh_kwc).
-    // Vide (null) → productibleForCity lit alors le PVGIS par ville (source
-    // unique alignée écran/PDF/web) ; toute valeur société saisie prime (AMOT64).
-    productible: null,
   })
   const [remiseMax, setRemiseMax] = useState('')
   // QX20 — échappatoire documentée à la garde d'équipement : un avenant ou un
@@ -996,14 +989,12 @@ export default function DevisGenerator({
     verdictBatterieServeur, batterieInvendableServeur,
     apercuEcoAvec, apercuPaybackSans, apercuPaybackAvec,
     apercuPaybackSansJamais, apercuPaybackAvecJamais,
-    signerEcoOuRoi, chartData,
+    signerEcoOuRoi, chartData, paybackServi,
   } = useApercuEtude({
-    monthly, lines, totals, kwp, kwpLignes, kwpAvec, dayUsage, realBillMode, realBillKwh,
-    realBillMad, distributeur, baremeSociete, provenanceMois, realBillSaisi, leadDuDevis, leads,
-    leadId, modeInstallation, clientsConnus, clientId, confirm, quoteLogic, editId, fHiver, fEte,
-    // RGEN5 — niveau de règles du devis édité (`Devis.regles_calcul`, ancien calcul tant
-    // qu'il n'est pas lu) ; devis neuf : null = règles courantes (AMOT125).
-    sizing, dispatchSizing, produits, discountPct, reglesCalcul: editId ? (editDevis?.regles_calcul ?? 0) : null,
+    lines, kwpLignes, kwpAvec, realBillMode, realBillKwh,
+    realBillMad, distributeur, baremeSociete, provenanceMois, leadDuDevis, leads,
+    leadId, modeInstallation, clientsConnus, clientId, confirm, editId, fHiver, fEte,
+    sizing, dispatchSizing, produits,
   })
 
   // ── Mode d'installation (Résidentiel / Industriel-Commercial / Agricole) ──
@@ -1272,27 +1263,14 @@ export default function DevisGenerator({
       setBaremeSociete(baremeDepuisProfil(data?.bareme_effectif))
       // AGNR26 — `agricole_pump_hours` reste un réglage SERVEUR (repli PVGIS
       // du moteur pompage) : l'écran n'a plus de champ « heures » à pré-remplir.
-      // Logique de devis éditable (D5) — repli sur les constantes du simulateur.
-      const kwh = parseFloat(data?.onee_tarif_kwh)
+      // Logique de devis éditable (D5) — repli sur les repères TVA par défaut.
+      // AGEN11 — tarif du kWh et productible société sont lus par le MOTEUR
+      // (conception servie), jamais par l'écran.
       const tvaStd = parseFloat(data?.tva_standard)
       const tvaPan = parseFloat(data?.tva_panneaux)
-      // QJR39 — CompanyProfile.productible_kwh_kwc (QX38, exposé tel quel par
-      // CompanyProfileSerializer, fields='__all__') : ce setQuoteLogic
-      // RECONSTRUIT l'objet entier (repli des 4 champs ci-dessus, historique),
-      // ce qui EFFAÇAIT silencieusement le `productible: null` de l'état
-      // initial et rendait le réglage société mort à l'écran — le générateur
-      // et le PDF citaient alors deux productibles différents pour le même
-      // devis. Repli EXPLICITE sur `null` (jamais une constante d'écran) :
-      // `productibleForCity` (solar.js) sait déjà retomber sur le PVGIS par
-      // ville quand aucune surcharge société réelle n'existe.
-      const prod = parseFloat(data?.productible_kwh_kwc)
       setQuoteLogic({
-        kwhPrice: (Number.isFinite(kwh) && kwh > 0) ? kwh : KWH_PRICE,
-        // RGEN6 (AMOT64) — `rendement_global` ne pilote plus l'écran : la constante du simulateur, celle du serveur.
-        efficiency: EFFICIENCY,
         tvaStandard: (Number.isFinite(tvaStd) && tvaStd > 0) ? tvaStd : TVA_STANDARD_DEFAUT,
         tvaPanneaux: (Number.isFinite(tvaPan) && tvaPan > 0) ? tvaPan : TVA_PANNEAUX_DEFAUT,
-        productible: (Number.isFinite(prod) && prod > 0) ? prod : null,
       })
       const cible = parseFloat(data?.prix_cible_kwc_defaut)
       if (!editId && Number.isFinite(cible) && cible > 0) setPrixCible(prev => prev || String(cible))
@@ -1732,7 +1710,7 @@ export default function DevisGenerator({
   // CIQ125 — le profil déclaré C&I + la réponse du moteur serveur.
   const socleEtudeReseau = {
     profilCi, apercuCi, tarifSaisie, setChampCi: ci.setChampCi, setTarifChamp: ci.setTarifChamp, reprisLead: ci.reprisLead,
-    apercuEcoCi, ecoCi, setEcoChamp,
+    apercuEcoCi, ecoCi, setEcoChamp, paybackServi,
   }
 
   return (

@@ -6,6 +6,7 @@
 // dans la coquille. Props nommées une par une, jamais de spread.
 import { Button, RelationCounters } from '../../../ui'
 import { formatDateTime, formatDate } from '../../../lib/format'
+import BandeauConception from './BandeauConception'
 
 export default function BandeauxEdition({
   editDevis, conflitVerrou, setConflitVerrou, clear, setRechargeEdit, forcerSansJetonRef,
@@ -14,6 +15,9 @@ export default function BandeauxEdition({
 }) {
   return (
     <>
+      {/* AGEN12 — la conception du lead a bougé : « Mettre à jour » (brouillon
+          retouché) ou « Réviser le devis » (envoyé) ; puis l'écran se recharge. */}
+      <BandeauConception devis={editDevis} onMisAJour={() => { clear(); setRechargeEdit((n) => n + 1) }} />
       {editDevis?.statut === 'envoye' && (
         <div
           data-testid="devis-envoye-banner"

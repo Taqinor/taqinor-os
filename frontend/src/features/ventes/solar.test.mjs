@@ -11,23 +11,14 @@ import {
   sizingReducer, ETAT_INITIAL,
 } from './quote/sizingReducer.js'
 import {
-  DEFAULT_MONTHLY_BILLS, estimerMois, formatMoney,
-  ttcFromHt, htFromTtc, GHI,
-  groupProduitsByCategory,
-  KWH_PRICE,
-  productibleForCity, PRODUCTIBLE_PAR_VILLE, DEFAULT_PRODUCTIBLE,
-  PRODUCTIBLE_NET_FACTOR,
-  batteryKwhFromLines} from './solar.js'
+  DEFAULT_MONTHLY_BILLS, estimerMois, formatMoney, ttcFromHt, htFromTtc, groupProduitsByCategory, PRODUCTIBLE_NET_FACTOR, batteryKwhFromLines,
+} from './solar.js'
 // STKCAT10 — sélecteur de structures piloté par le catalogue (SPL202 : calc/lignesDefaut.js).
 import { structureRoleForName, structureChoisie } from './calc/lignesDefaut.js'
 import {
   isReseauInverter, batterieCompatible,
   plageBatterieOnduleur, isBattery, isHybridInverter, isAnyInverter, inverterCostFromLines,
 } from './calc/classification.js'
-import {
-  computeROI, AUTOCONSO_SANS, AUTOCONSO_AVEC,
-  INVERTER_REPLACE_YEAR,
-} from './calc/roi.js'
 import { FALLBACK_KWH_PRICE, twoBillsSavings } from './calc/tarifs.js'
 
 // Reflet du catalogue seedé (prix HT = TTC simulateur / 1.2, 2 décimales)
@@ -292,46 +283,6 @@ test('garde-fou : choisir un lead ne réinitialise JAMAIS le mode choisi', () =>
     'residentiel')
 })
 
-test('ROI : production GHI × kWc × 0.8', () => {
-  const roi = computeROI({
-    kwp: 9.94, factures: Array(12).fill(500), dayUsagePct: 60,
-    totalSans: 65040, totalAvec: 103040, batteryKwh: 10,
-  })
-  const sumGhi = GHI.reduce((a, b) => a + b, 0)
-  assert.ok(Math.abs(roi.production_annuelle_kwh - sumGhi * 9.94 * 0.8) < 0.1)
-  // ORDRE FONDATEUR (18/08) — l'apport batterie n'est plus un forfait de
-  // 60 MAD/kWh/mois : c'est de l'ÉNERGIE, capacité × 1 cycle/jour, valorisée
-  // au tarif. AGNR25 — calculé sur l'ANNÉE comme le serveur
-  // (`autoconso_avec_ratio`) : taux avec = min(1, 0,60 + 10 × 365 / production
-  // arrondie), plafonné par la production.
-  const prodCanon = Math.round(sumGhi * 9.94 * 0.8)
-  const tauxAvec = Math.min(1, 0.6 + (10 * 365) / prodCanon)
-  assert.ok(Math.abs(roi.eco_annuelle_avec - prodCanon * tauxAvec * 1.75) < 0.001)
-  // Le forfait historique (10 kWh × 60 = 600 MAD/mois) n'existe plus.
-  assert.ok(Math.abs(roi.eco_avec_monthly[0] - roi.eco_sans_monthly[0] - 600) > 1)
-  assert.ok(roi.payback_sans > 0 && roi.payback_avec > 0)
-})
-
-test('D5 — tarif ONEE et rendement éditables, défaut strictement inchangé', () => {
-  const base = {
-    kwp: 9.94, factures: Array(12).fill(500), dayUsagePct: 60,
-    totalSans: 65040, totalAvec: 103040, batteryKwh: 0,
-  }
-  // Sans override : identique à la version historique (parité).
-  const def = computeROI(base)
-  const sumGhi = GHI.reduce((a, b) => a + b, 0)
-  assert.ok(Math.abs(def.production_annuelle_kwh - sumGhi * 9.94 * 0.8) < 0.1)
-  // Tarif ONEE doublé → économies (sans batterie) doublées exactement.
-  const dbl = computeROI({ ...base, kwhPrice: 3.5 })
-  assert.ok(Math.abs(dbl.eco_annuelle_sans - def.eco_annuelle_sans * 2) < 1)
-  // Rendement réduit de moitié → production de moitié.
-  const half = computeROI({ ...base, efficiency: 0.4 })
-  assert.ok(Math.abs(half.production_annuelle_kwh - def.production_annuelle_kwh / 2) < 0.2)
-  // Override invalide (0/NaN) → repli sur les constantes (parité).
-  const fallback = computeROI({ ...base, kwhPrice: 0, efficiency: -1 })
-  assert.equal(fallback.production_annuelle_kwh, def.production_annuelle_kwh)
-})
-
 // ── Tolérance d'orthographe Dyness / Deyness (fondateur, 2026-08-18) ─────────
 // La marque s'écrit « Dyness » ; le catalogue a longtemps écrit « Deyness ».
 // Une base pas encore migrée (ou un produit saisi à la main) doit continuer
@@ -516,87 +467,6 @@ test('DC6/DC7 tauxTvaOf : Produit.tva prioritaire, repli standard société', ()
   assert.equal(tauxTvaOf({}, 0), 20)
 })
 
-// ── QF4/QF5 — miroir JS du modèle « deux factures » par tranche ─────────────
-// Valeurs de référence calculées directement avec le module Python réel
-// (apps/ventes/quote_engine/pricing.py) pour garantir la parité écran == PDF.
-test('QF5 — tarif de repli unifié : KWH_PRICE (CompanyProfile) vs FALLBACK_KWH_PRICE (ultime repli backend)', () => {
-  assert.equal(KWH_PRICE, 1.75) // CompanyProfile.onee_tarif_kwh défaut (parametres/selectors.py)
-  assert.equal(FALLBACK_KWH_PRICE, 1.20) // pricing.py _FALLBACK_KWH_PRICE (miroir exact)
-})
-
-// ── QX38 — productible canonique PVGIS par ville (miroir backend) ────────────
-test('QX38 — productibleForCity : PVGIS par ville, repli central, override société', () => {
-  assert.equal(productibleForCity('Agadir'), 1687)
-  assert.equal(productibleForCity('agadir'), 1687)
-  assert.equal(productibleForCity('Casablanca'), PRODUCTIBLE_PAR_VILLE.casablanca)
-  // ville inconnue → repli central (jamais un chiffre inventé)
-  assert.equal(productibleForCity('Oujda'), DEFAULT_PRODUCTIBLE)
-  // alias secondaire → ville de référence
-  assert.equal(productibleForCity('Kenitra'), PRODUCTIBLE_PAR_VILLE.rabat)
-  // AMOT64 — override vide → PVGIS de la ville ; 1600 saisi est respecté
-  assert.equal(productibleForCity('Agadir', null), 1687)
-  assert.equal(productibleForCity('Agadir', 1600), 1600)
-  // override société explicite (≠ 1600) → il prime
-  assert.equal(productibleForCity('Agadir', 1750), 1750)
-})
-
-test('QX38 — computeROI : production = productible × kwp × pertes 20 % (parité PDF/web)', () => {
-  const kwp = 7.1
-  const roi = computeROI({
-    kwp, factures: Array(12).fill(500), dayUsagePct: 60,
-    totalSans: 80000, totalAvec: 100000, batteryKwh: 0,
-    productible: productibleForCity('Agadir'),
-  })
-  // ORDRE FONDATEUR (18/08) — 20 % de pertes AU TOTAL : le productible stocké
-  // (PVGIS, déjà net de 14 %) ne subit que le complément 0,80/0,86 = 0,9302.
-  // À la main : 1687 × 7,1 = 11 977,7 kWh bruts ; × 0,9302325581 = 11 142,05
-  // → 11 142 kWh/an (le PDF calcule EXACTEMENT la même chose).
-  assert.equal(Math.round(roi.production_annuelle_kwh),
-    Math.round(1687 * kwp * PRODUCTIBLE_NET_FACTOR))
-  assert.equal(Math.round(roi.production_annuelle_kwh), 11142)
-})
-
-test('Q1 — computeROI dérive la provision onduleur des VRAIES lignes (sans/avec), jamais un forfait', () => {
-  const lignes = [
-    { designation: 'Onduleur réseau Huawei 10kW Triphasé', quantite: '1', prix_unit_ttc: '20000' },
-    { designation: 'Onduleur hybride Deye 10kW Triphasé', quantite: '1', prix_unit_ttc: '28000' },
-    { designation: 'Batterie Dyness 10 kWh', quantite: '1', prix_unit_ttc: '17000' },
-    { designation: 'Panneau Canadien Solar 710W', quantite: '14', prix_unit_ttc: '1400' },
-  ]
-  // « sans » exclut batterie + onduleur hybride (miroir optionTotalsTTC /
-  // builder.py sans_items) → il ne reste que le réseau (20 000 MAD).
-  // « avec » exclut l'onduleur réseau (miroir avec_items) → il ne reste que
-  // l'hybride (28 000 MAD).
-  const linesSans = lignes.filter(l => !isBattery(l.designation) && !isHybridInverter(l.designation))
-  const linesAvec = lignes.filter(l => !isReseauInverter(l.designation))
-  assert.equal(inverterCostFromLines(linesSans), 20000)
-  assert.equal(inverterCostFromLines(linesAvec), 28000)
-  assert.equal(isAnyInverter('Onduleur réseau Huawei 10kW Triphasé'), true)
-  assert.equal(isAnyInverter('Panneau Canadien Solar 710W'), false)
-
-  const base = {
-    kwp: 10, factures: Array(12).fill(1500), dayUsagePct: 60,
-    totalSans: 100000, totalAvec: 140000, batteryKwh: batteryKwhFromLines(lignes),
-  }
-  const withLines = computeROI({ ...base, lines: lignes })
-  const withoutLines = computeROI({ ...base, lines: [] })
-  // La provision ne touche QUE le cashflow/payback, jamais l'économie année 1.
-  assert.equal(withLines.eco_annuelle_avec, withoutLines.eco_annuelle_avec)
-  // Écart exact = prix RÉEL de l'onduleur hybride (28 000), jamais 8 % de
-  // l'investissement « avec » (0,08 × 140 000 = 11 200).
-  assert.notEqual(28000, Math.round(base.totalAvec * 0.08))
-  assert.equal(
-    withoutLines.cashflow_avec[INVERTER_REPLACE_YEAR - 1]
-      - withLines.cashflow_avec[INVERTER_REPLACE_YEAR - 1],
-    28000)
-  // Le côté « sans » porte SA PROPRE provision (l'onduleur réseau, 20 000) —
-  // jamais mélangée avec celle de l'option « avec ».
-  assert.equal(
-    withoutLines.cashflow_sans[INVERTER_REPLACE_YEAR - 1]
-      - withLines.cashflow_sans[INVERTER_REPLACE_YEAR - 1],
-    20000)
-})
-
 // ── QX40 — pompage : compatibilité phase/tension pompe ↔ variateur ──────────
 const _curvePump = (nom, kw, tension, prix, courbe) => ({
   id: ++_id, nom, pompe_kw: kw, tension_v: tension, prix_vente: prix,
@@ -604,32 +474,6 @@ const _curvePump = (nom, kw, tension, prix, courbe) => ({
 })
 // courbe simple : à HMT 60 m délivre 40 m³/h (≥ le débit demandé de 30)
 const _COURBE = { debits_m3h: [0, 40, 60], hmt_m: [90, 60, 30] }
-
-test('QF5 — computeROI : avec consommation réelle + distributeur, bascule sur « deux factures »', () => {
-  const kwp = 5
-  const EFF = 0.8
-  const prodAnnuelle = GHI.reduce((s, g) => s + g * kwp * EFF, 0)
-  const consoAnnuelleKwh = 7200
-  const roi = computeROI({
-    kwp, factures: Array(12).fill(500), dayUsagePct: 60,
-    totalSans: 80000, totalAvec: 100000, batteryKwh: 0,
-    consoAnnuelleKwh, utility: 'onee',
-  })
-  assert.equal(roi.savings_model, 'factures')
-  // Doit correspondre EXACTEMENT à twoBillsSavings appelé avec la même
-  // production annuelle réellement calculée par computeROI (parité interne).
-  // ALIGNEMENT 18/08 — cette production est ARRONDIE à l'entier avant le modèle
-  // par tranches, comme le fait le moteur PDF (pricing.calculate_savings_roi) :
-  // écran et document tombent ainsi du même côté des arrondis de tranche.
-  const prodCanonique = Math.round(prodAnnuelle)
-  const refSans = twoBillsSavings(prodCanonique, consoAnnuelleKwh, AUTOCONSO_SANS, 'onee')
-  const refAvec = twoBillsSavings(prodCanonique, consoAnnuelleKwh, AUTOCONSO_AVEC, 'onee')
-  assert.equal(roi.eco_annuelle_sans, refSans.economie)
-  assert.equal(roi.eco_annuelle_avec, refAvec.economie)
-  assert.equal(roi.facture_sans, refSans.factureSans)
-  assert.equal(roi.facture_avec_sans, refSans.factureAvec)
-  assert.equal(roi.facture_avec_avec, refAvec.factureAvec)
-})
 
 const ETUDE_BASE = {
   kwp: 300, consoMensuelleKwh: 20000, dayUsagePct: 80,
@@ -778,3 +622,18 @@ test('STKCAT10 — structureChoisie : id résolu sur le catalogue COMPLET, aprè
 //   · STKCAT10 — AVEC une pergola choisie : UNE ligne, à son nom, rôle générique structure
 //   · STKCAT10 — un produit choisi qui porte encore « aluminium » garde le rôle structure_alu
 //   · STKCAT10 — un produit choisi ne déclenche AUCUNE « marque introuvable » de structure
+
+// AGEN13 (D-ACAL-97, contrôle C4-E8) — plus aucun moteur de production ou
+// d'économie dans le navigateur : l'écran lit la conception servie (AGEN11).
+// Gardés car encore lus par un appelant de production que la tâche ne remplace
+// pas : `estimerMois` (répartition des deux factures en 12 mois : écran devis,
+// useLeadClientEcran, etatDevis) et `PRODUCTIBLE_NET_FACTOR` (Paramètres →
+// Avancé, AvanceSection.jsx). Mutant : ré-exporter `computeROI` ⇒ rouge.
+test('AGEN13 — aucun export de production n’est un moteur de production ou d’économie', async () => {
+  const solar = await import('./solar.js')
+  for (const nom of ['GHI', 'EFFICIENCY', 'KWH_PRICE', 'PRODUCTIBLE_PAR_VILLE', 'DEFAULT_PRODUCTIBLE',
+    'productibleForCity', 'computeROI', 'paybackMoteurHoraire']) {
+    assert.equal(nom in solar, false, `solar.js exporte encore ${nom}`)
+  }
+  await assert.rejects(import('./calc/roi.js'), 'calc/roi.js (computeROI, paybackMoteurHoraire) doit avoir disparu')
+})

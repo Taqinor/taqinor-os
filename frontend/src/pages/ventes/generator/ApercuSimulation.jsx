@@ -25,7 +25,7 @@ export default function ApercuSimulation({
   etudeHoraireSourceServeur, etudeHoraireSourceLabel, etudeHoraireChargement, etudeHoraireErreur,
   etudeHoraireDonnees, etudeHoraireLignes, ligneStockageOuverte, appliquerTailleDimensionnement,
   setLigneStockageOuverte, etudeHoraireFalaise, etudeHoraireGlitch, etudeHoraireEstimationConso,
-  marcheCi, roi, etudeHoraireAnnuel, sansRec, showAvec, etudeHoraireAnnuelAvec, distributeur,
+  marcheCi, roi, etudeHoraireAnnuel, sansRec, showAvec, etudeHoraireAnnuelAvec,
   apercuProductionKwh, apercuProductionKwhAvec = null, showSans, signerEcoOuRoi, apercuEcoSans, apercuPaybackSansJamais,
   apercuPaybackSans, totals, avecRec, batterieInvendableServeur, verdictBatterieServeur,
   apercuEcoAvec, apercuPaybackAvecJamais, apercuPaybackAvec, capaciteBatterieInconnue,
@@ -356,10 +356,14 @@ export default function ApercuSimulation({
           <p className="text-center text-sm text-muted-foreground" data-testid="apercu-ci-serveur">
             Économies C&amp;I : voir la carte « Économies » (moteur serveur).
           </p>
-        ) : !roi ? (
-          <p className="text-center text-sm text-muted-foreground">
-            Renseignez le nombre de panneaux et les factures, puis la simulation
-            s'actualise automatiquement.
+        ) : !roi?.modele || roi.modele === 'refus' ? (
+          // AGEN11 — rien de servi : l'attente du moteur, son refus dit tel quel,
+          // ou l'invitation à saisir (aucun chiffre calculé dans le navigateur).
+          <p className="text-center text-sm text-muted-foreground" data-testid="apercu-conception-attente">
+            {roi?.chargement ? 'Calcul en cours…' : (roi?.message || <>
+              Renseignez le nombre de panneaux et les factures, puis la simulation
+              s'actualise automatiquement.
+            </>)}
           </p>
         ) : (
           <>
@@ -367,7 +371,7 @@ export default function ApercuSimulation({
                 (QF4), l'écran affiche le MÊME calcul « deux factures » par
                 tranche que le PDF (facture sans vs avec solaire) au lieu
                 d'une estimation moyenne. */}
-            {etudeHoraireSourceServeur ? (
+            {roi.modele === 'horaire' ? (
               // AGNR23 — le bandeau dit le modèle DES CARTES : l'étude
               // horaire du moteur quand elle répond.
               <div className="mb-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success"
@@ -381,25 +385,18 @@ export default function ApercuSimulation({
                 </strong>
                 {' '}— chiffres des cartes (production horaire × consommation du client).
               </div>
-            ) : roi.savings_model === 'factures' ? (
-              <div className="mb-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
-                Facture réelle {distributeur.toUpperCase()} ≈ <strong>{fmtNum(roi.facture_sans)} MAD/an</strong>
-                {' '}sans solaire → avec solaire ≈{' '}
-                <strong>
-                  {fmtNum(sansRec || !showAvec ? roi.facture_avec_sans : roi.facture_avec_avec)} MAD/an
-                </strong>
-                {' '}— économie calculée par tranche (barème {distributeur.toUpperCase()}), pas une estimation.
-              </div>
             ) : (
-              <div className="mb-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
-                Estimation (production × autoconsommation × tarif moyen) — renseignez la
-                facture réelle du client ci-dessus pour un calcul par tranche exact.
+              // AGEN11 — les cartes lisent la conception du moteur unique.
+              <div className="mb-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success"
+                   data-testid="bandeau-modele-conception">
+                Conception du moteur unique{roi.chargement ? ' — calcul en cours…' : ''} : les chiffres
+                des cartes sont ceux de la fiche du lead et du document.
               </div>
             )}
             <div className="gen-metrics-grid">
               {/* CJ2b — Production/Autoconso/Couverture : le serveur
                   horaire (PVGIS réel) gagne dès qu'il a répondu (résidentiel),
-                  sinon repli sur `roi` (miroir local, inchangé).
+                  sinon la conception du moteur unique (AGEN11).
                   QJR426 — aucune puce ici avant comme après : cette carte
                   ne distingue déjà pas ses deux sources à l'écran (le
                   repli `roi` reste, comme aujourd'hui, non étiqueté) —

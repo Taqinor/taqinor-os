@@ -19,6 +19,19 @@ const apercu = (variante) => ({ donnees: exempleContrat('ventes', 'economie_ci',
 
 beforeEach(() => { vi.clearAllMocks() })
 
+describe('AGEN13 (T4-X4-016) — retour sur investissement : celui SERVI de l’option', () => {
+  it('la carte montre le payback servi (celui du bandeau et du PDF), jamais un retour sur deux options cumulées', () => {
+    const conception = exempleContrat('ventes', 'conception_lead')
+    const servi = conception.valeurs.sans.payback.valeur
+    const local = CONTRAT.exemple.indicateurs.retour_ans
+    expect(local).not.toBe(servi)
+    render(<CarteEconomieCi apercu={apercu('exemple')} paybackServi={{ paybackSans: servi, paybackAvec: null }} />)
+    const ligne = screen.getByTestId('eco-ci-indicateurs').textContent
+    expect(ligne).toContain(`retour : ${String(servi).replace('.', ',')} ans`)
+    expect(ligne).not.toContain(`retour : ${String(local).replace('.', ',')} ans`)
+  })
+})
+
 describe('CIQ223 — CarteEconomieCi', () => {
   it('statut omis ⇒ motif affiché et aucun nombre', () => {
     render(<CarteEconomieCi apercu={apercu('exemple_omis')} />)

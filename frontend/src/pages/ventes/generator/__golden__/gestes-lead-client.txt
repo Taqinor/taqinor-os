@@ -353,6 +353,26 @@ Ligne optionnelle (add-on hors total)=on [ ]
   "parametresApi.getProfile": [
     []
   ],
+  "ventesApi.apercuConception": [
+    [
+      {
+        "lead": 77,
+        "calepinage": null,
+        "entrees": {
+          "facture_hiver": "3000"
+        },
+        "imposes": {}
+      },
+      {
+        "signal": {}
+      }
+    ]
+  ],
+  "ventesApi.getConceptionLead": [
+    [
+      "77"
+    ]
+  ],
   "ventesApi.getPrixApplicable": [
     [
       {

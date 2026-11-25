@@ -20,7 +20,6 @@ import {
   batteryCapaciteInconnue,
 } from './solar.js'
 import { fusionnerVariantes } from './calc/recomposition.js'
-import { computeROI, INVERTER_REPLACE_YEAR } from './calc/roi.js'
 import { optionTotalsTTC, totauxCanoniquesTtc } from './calc/totaux.js'
 import { PAS_ARRONDI_DEVIS } from './remise.js'
 import { lignesFusionSansAvec } from './solarLignesFusionFixture.mjs'
@@ -229,47 +228,6 @@ test('batteryCapaciteInconnue : false quand toutes les lignes batterie sont lisi
 // 'sans' résiduelle (autoFillLines compose TOUJOURS un onduleur hybride/une
 // batterie, même côté SANS — cette ligne, exclue des totaux, ne doit pas non
 // plus fausser la provision de remplacement de l'option AVEC). ────────────
-
-test('L-2OPT — computeROI : une ligne onduleur hybride taguée \'sans\' ne double-compte jamais la provision AVEC', () => {
-  const lignesMergees = [
-    { designation: 'Onduleur réseau Huawei 10kW Triphasé', quantite: '1', prix_unit_ttc: '20000', variante: 'sans' },
-    // hybride divergent : la composition SANS (kwc=10) et la composition
-    // AVEC (kwc=15) choisissent chacune un modèle différent → deux lignes.
-    { designation: 'Onduleur hybride Deye 10kW Triphasé', quantite: '1', prix_unit_ttc: '28000', variante: 'sans' },
-    { designation: 'Onduleur hybride Deye 15kW Triphasé', quantite: '1', prix_unit_ttc: '36000', variante: 'avec' },
-    { designation: 'Batterie Dyness 10 kWh', quantite: '2', variante: 'avec' },
-    { designation: 'Panneau Canadien Solar 710W', quantite: '17', prix_unit_ttc: '1400', variante: 'avec' },
-  ]
-  const lignesAvecSeul = lignesMergees.filter(l => l.variante !== 'sans')
-  const base = {
-    kwp: 12, factures: Array(12).fill(1500), dayUsagePct: 60,
-    totalSans: 100000, totalAvec: 140000, batteryKwh: batteryKwhFromLines(lignesMergees),
-  }
-  const withMerged = computeROI({ ...base, lines: lignesMergees })
-  const withAvecSeul = computeROI({ ...base, lines: lignesAvecSeul })
-  assert.equal(
-    withMerged.cashflow_avec[INVERTER_REPLACE_YEAR - 1],
-    withAvecSeul.cashflow_avec[INVERTER_REPLACE_YEAR - 1],
-    'la ligne hybride \'sans\' (28 000) ne doit JAMAIS s\'ajouter à la provision AVEC (36 000)')
-})
-
-test('L-2OPT — computeROI : une ligne onduleur réseau taguée \'avec\' ne double-compte jamais la provision SANS', () => {
-  const lignesMergees = [
-    { designation: 'Onduleur réseau Huawei 10kW Triphasé', quantite: '1', prix_unit_ttc: '20000', variante: 'sans' },
-    { designation: 'Onduleur réseau Huawei 12kW Triphasé', quantite: '1', prix_unit_ttc: '24000', variante: 'avec' },
-    { designation: 'Panneau Canadien Solar 710W', quantite: '10', prix_unit_ttc: '1400', variante: 'sans' },
-  ]
-  const lignesSansSeul = lignesMergees.filter(l => l.variante !== 'avec')
-  const base = {
-    kwp: 10, factures: Array(12).fill(1500), dayUsagePct: 60,
-    totalSans: 90000, totalAvec: 130000, batteryKwh: 0,
-  }
-  const withMerged = computeROI({ ...base, lines: lignesMergees })
-  const withSansSeul = computeROI({ ...base, lines: lignesSansSeul })
-  assert.equal(
-    withMerged.cashflow_sans[INVERTER_REPLACE_YEAR - 1],
-    withSansSeul.cashflow_sans[INVERTER_REPLACE_YEAR - 1])
-})
 
 // ── comptePanneauxOption ──────────────────────────────────────────────────
 // La brique qui donne à CHAQUE option son kWc. Sans elle, l'écran divisait le

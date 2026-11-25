@@ -36,6 +36,8 @@ import {
 import { libelleStatutDevis } from '../../ventes/devisStatuts'
 // NTCRM19 — badge de consultation de la salle de vente digitale (NTCRM17/18).
 import SalleVenteAnalyticsBadge from '../../../pages/crm/leads/SalleVenteAnalyticsBadge'
+// AGEN12 — les brouillons datés d'avant le dernier calcul de la fiche (conception servie).
+import { AVIS_BROUILLON_AVANT_CALCUL, useBrouillonsConception } from './useBrouillonsConception'
 
 // LW21/LW22 — Onglet Devis : la chaîne document en cartes (StatusPill statut
 // devis — JAMAIS le funnel lead, règle #2) + le CTA « Devis automatique » qui
@@ -166,6 +168,7 @@ export default function DevisTab({
   const droitInstallGerer = useDroitMetier('installation_gerer')
   const peutCreerChantier = droitVentesCreer || droitInstallGerer
   const devisList = state.server?.devis ?? []
+  const brouillonsAMettreAJour = useBrouillonsConception(state.leadId, devisList.map((d) => d.id).join(','))
   const devisAuto = state.server?.devis_auto ?? { pret: false, manquants: [] }
   // T4-U3-017 — le kWh tapé que les factures contredisent : la fiche SERVIE le dit (`avertissements.kwh_factures`,
   // ACVI97) — le bouton est grisé AVANT le clic avec cette raison (le serveur refuserait en 409). Aucune règle ici.
@@ -399,6 +402,11 @@ export default function DevisTab({
                 <span className="num">{formatMAD(d.total_ttc, { decimals: 0 })}</span>
                 <span className="lw-context-devis-date">{formatDate(d.date_creation)}</span>
               </div>
+              {brouillonsAMettreAJour.has(d.id) && (
+                <p className="gen-hint text-warning" data-testid={`devis-conception-a-jour-${d.id}`}>
+                  {AVIS_BROUILLON_AVANT_CALCUL}
+                </p>
+              )}
               {/* QJ-VUES (fondateur 09/09/2026) — combien de fois le CLIENT a
                   ouvert ce devis, TOUJOURS visible sur la carte (aucun clic,
                   aucun dialogue). Chiffre serveur (`d.lecture`), lectures

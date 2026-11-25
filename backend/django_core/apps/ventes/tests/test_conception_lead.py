@@ -2118,6 +2118,38 @@ class ServirConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
         dossier = Calepinage.objects.create(company=company, client=client, appel_offre_id=3, titre='AO')
         self.assertEqual(api.post(URL_APERCU, {'calepinage': dossier.pk}, format='json').status_code, 409)
 
+    def test_apercu_devis_sans_lead_ni_calepinage(self):
+        """ADEV152 — un devis SANS lead (ni calepinage) : l'aperçu porte sur les
+        seules valeurs tapées (lead NON enregistré de la société), même moteur,
+        mêmes chiffres que le lead qui porterait ces valeurs ; rien n'est écrit ;
+        rappeler = même réponse ; sans aucune valeur, le porteur reste requis."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from apps.crm.models import Lead
+        from apps.ventes.conception.service import apercu_conception
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        api = self._api(self._utilisateur(company))
+        tapees = {'ville': lead.ville, 'facture_hiver': 1800}
+        corps = {'lead': None, 'calepinage': None, 'entrees': tapees}
+        leads, versions = Lead.objects.count(), ConceptionLead.objects.count()
+        reponse = api.post(URL_APERCU, corps, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])  # avant : 400 « Porteur requis »
+        sans_lead = reponse.json()
+        self.assertEqual(set(sans_lead), CLES_RESULTAT)
+        self.assertEqual(sans_lead['entrees_utilisees']['facture_hiver'], {'valeur': 1800.0, 'source': 'saisie'})
+        par_lead, _refus = apercu_conception(lead, company)
+        self.assertEqual(sans_lead['valeurs'], par_lead['valeurs'])  # un seul moteur, un seul chiffre
+        with CaptureQueriesContext(connection) as requetes:
+            apercu_conception(None, company, saisies=tapees)
+        self.assertEqual(_ecritures(requetes), [])
+        self.assertEqual(api.post(URL_APERCU, corps, format='json').json()['valeurs'], sans_lead['valeurs'])
+        self.assertEqual((Lead.objects.count(), ConceptionLead.objects.count()), (leads, versions))
+        self.assertEqual(api.post(URL_APERCU, {'lead': None, 'entrees': {}}, format='json').status_code, 400)
+
 
 # ── ADEV138 — PARITÉ STOCKÉE : ce que relancer RANGE = ce qu'écrit le devis auto ─
 #
@@ -3674,6 +3706,29 @@ class BrouillonsSuiventLaConceptionTests(_emprunt(RelanceConceptionTests, '_rela
                                                                      photo['lignes']].index(True)]['quantite']))
         self.assertEqual(api.post(URL_MISE_A_JOUR % retouche.pk).json()['appliquees'], [])  # rien de plus
         self.assertEqual(conception_courante(company, lead.pk)['brouillons_a_mettre_a_jour'], [])
+
+    def test_agen12_raisons_disent_la_conception_du_lead(self):
+        """AGEN12 (constat en direct) — « Mettre à jour » réutilise le chemin
+        réconcilier, qui parle du CALEPINAGE (« La conception 3D porte… »,
+        « Écart de calepinage non entièrement appliqué… ») quand seule la fiche du
+        lead a changé : le vendeur lit désormais ce qui a vraiment changé (la
+        conception du lead et son champ) ; le chemin réconcilier, lui, est intact."""
+        from apps.ventes.domain import pipeline
+
+        company, lead, user, _intact, retouche, _envoye = self._trois_devis()
+        self._nouvelle_version(company, lead)
+        dit_par_le_calepinage = ['La conception 3D porte le devis de 5 à 7 panneaux.',
+                                 'Écart de calepinage non entièrement appliqué : le devis reste « à resynchroniser » '
+                                 '— corrigez la cause ci-dessus puis resynchronisez.', 'Autre avertissement.']
+        with mock.patch.object(pipeline, 'reappliquer_lead', return_value={'avertissements': dit_par_le_calepinage}):
+            corps = self._api(user).post(URL_MISE_A_JOUR % retouche.pk).json()
+        raisons = [n['raison'] for n in corps['non_appliquees'] if n['champ'] == 'composition']
+        self.assertEqual(raisons, [
+            'La conception du lead porte le devis de 5 à 7 panneaux (champ modifié : Facture hiver).',
+            "La conception du lead n'a pas pu être entièrement appliquée (champ modifié : Facture hiver) : "
+            'corrigez la cause ci-dessus puis cliquez de nouveau « Mettre à jour ».',
+            'Autre avertissement.'])
+        self.assertFalse([r for r in raisons if 'calepinage' in r or '3D' in r])
 
     def test_mise_a_jour_meme_garde_que_reprendre_le_lead(self):
         """Relecture E4 M4 — aucun rôle élargi : la garde de « Reprendre les

@@ -24,6 +24,7 @@ accepté, refusé ou expiré ; aucun statut n'est écrit (règle #4). Seuls les 
 nés d'une conception (``Devis.conception_source``, ADEV143) sont concernés.
 """
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +115,28 @@ def _ce_qui_a_change(version):
         libelles = ', '.join(libelle_champ(version.lead, c) for c in champs)
         return ('champ modifié : %s' if len(champs) == 1 else 'champs modifiés : %s') % libelles
     return MOTIFS_ORIGINE.get((version.declencheur or {}).get('origine'), 'conception recalculée')
+
+
+#: AGEN12 (constat en direct) — « Mettre à jour » emprunte le chemin réconcilier
+#: (``domain/resynchronisation.py``), qui parle du CALEPINAGE ; sur ce geste la cause
+#: est la conception du LEAD : ses deux phrases sont redites ici (le chemin réconcilier,
+#: quand un calepinage est la cause, garde les siennes).
+_PANNEAUX_DU_CALEPINAGE = re.compile(r'^La conception 3D porte le devis de (\d+) à (\d+) panneaux\.$')
+_ECART_DU_CALEPINAGE = 'Écart de calepinage non entièrement appliqué'
+
+
+def _dit_pour_la_conception(avertissement, version):
+    """La phrase que lit le vendeur sur « Mettre à jour » : elle nomme la conception
+    du lead et ce qui a changé (:func:`_ce_qui_a_change`), jamais un calepinage."""
+    texte = str(avertissement)
+    panneaux = _PANNEAUX_DU_CALEPINAGE.match(texte)
+    if panneaux:
+        return 'La conception du lead porte le devis de %s à %s panneaux (%s).' % (
+            panneaux.group(1), panneaux.group(2), _ce_qui_a_change(version))
+    if texte.startswith(_ECART_DU_CALEPINAGE):
+        return ("La conception du lead n'a pas pu être entièrement appliquée (%s) : corrigez la cause "
+                'ci-dessus puis cliquez de nouveau « Mettre à jour ».' % _ce_qui_a_change(version))
+    return texte
 
 
 #: Relecture E6 M5 — les valeurs d'une option qui décident des LIGNES du devis.
@@ -215,8 +238,8 @@ def _realigner(devis, version, user=None, *, a_la_demande=False):
             recomposer = _recomposer_residentiel if residentiel else _recomposer_par_la_decision
             avertissements = recomposer(verrou, version, user)
         else:  # quantités tapées gardées (mode réconcilier)
-            avertissements = list(reappliquer_lead(verrou, user=user, company=verrou.company)
-                                  .get('avertissements') or [])
+            avertissements = [_dit_pour_la_conception(a, version) for a in (
+                reappliquer_lead(verrou, user=user, company=verrou.company).get('avertissements') or [])]
             suit = residentiel or _taille_de_la_conception(verrou, version)
         if suit:
             Devis.objects.filter(pk=verrou.pk, statut=Devis.Statut.BROUILLON).update(

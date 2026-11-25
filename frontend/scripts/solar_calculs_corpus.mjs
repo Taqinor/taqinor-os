@@ -36,7 +36,9 @@ import { writeFileSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { computeROI } from '../src/features/ventes/calc/roi.js'
+// AGEN13 (D-ACAL-97) — le miroir JS `computeROI` est RETIRÉ (l'écran lit le moteur
+// unique) : l'axe `roi` n'est plus recalculé côté écran ; ses entrées et l'attendu
+// FIGÉ restent, vérifiés côté Python par `test_solar_differential_calculs`.
 import { ONEE_TRANCHES, monthlyBillFromKwh, kwhFromBill, consoAnnuelleDepuisFactures, factureMad, tppanMad, twoBillsSavings } from '../src/features/ventes/calc/tarifs.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -210,24 +212,9 @@ export function computeExpectedForEntry(e) {
         economie: r.economie, autoconso_kwh: r.autoconsoKwh,
       }
     }
-    case 'roi': {
-      const r = computeROI({
-        kwp: e.kwp, factures: undefined, dayUsagePct: undefined,
-        totalSans: e.totalSans, totalAvec: Math.round(e.totalSans * e.facteurAvec),
-        batteryKwh: e.batteryKwh, consoAnnuelleKwh: e.conso ?? undefined,
-        utility: e.utility ?? undefined, productible: e.productible ?? undefined,
-      })
-      return {
-        modele: r.savings_model,
-        production: r.production_annuelle_kwh,
-        eco_sans: r.eco_annuelle_sans, eco_avec: r.eco_annuelle_avec,
-        payback_sans: r.payback_sans, payback_avec: r.payback_avec,
-        autoconso_sans: r.autoconso_sans, autoconso_avec: r.autoconso_avec,
-        facture_sans: r.facture_sans, facture_avec_sans: r.facture_avec_sans,
-        facture_avec_avec: r.facture_avec_avec,
-        net_gain_sans: r.net_gain_sans, net_gain_avec: r.net_gain_avec,
-      }
-    }
+    case 'roi':
+      // AGEN13 — plus de jumeau JS : l'attendu figé fait foi (jamais régénéré ici).
+      throw new Error("axe roi : le miroir JS computeROI est retiré (AGEN13) — l'attendu figé fait foi")
     default:
       throw new Error(`axe inconnu : ${e.axe}`)
   }
