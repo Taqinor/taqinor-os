@@ -498,6 +498,40 @@ class MemoireVingtSimulationsTest(SimpleTestCase):
         self.assertLess(ecart, 300 * 10 ** 6,
                         f'+{ecart / 1e6:.0f} Mo en vingt simulations')
 
+    def test_le_cache_partage_par_des_fils_reste_coherent(self):
+        """gunicorn ``--threads 4`` : les fils d'un worker partagent le cache.
+        Huit fils posent et relisent des clés distinctes sous une petite borne
+        (évictions en continu) : aucune exception, et après eux le compte de
+        lignes est EXACTEMENT celui des entrées gardées, jamais au-dessus de
+        la borne."""
+        import threading
+
+        cache = _Cache(lignes_max=50)
+        erreurs = []
+
+        def fil(rang):
+            try:
+                for tour in range(400):
+                    lignes = [{}] * (1 + (rang + tour) % 7)
+                    cle = f'{rang}-{tour % 25}'
+                    cache.poser(cle, {'outputs': {'hourly': lignes}})
+                    cache.lire(f'{(rang + 1) % 8}-{tour % 25}')
+                    self.assertLessEqual(cache.lignes_gardees(), 50)
+            except Exception as erreur:  # noqa: BLE001 — l'erreur EST le constat
+                erreurs.append(erreur)
+
+        fils = [threading.Thread(target=fil, args=(rang,)) for rang in range(8)]
+        for un_fil in fils:
+            un_fil.start()
+        for un_fil in fils:
+            un_fil.join()
+        self.assertEqual(erreurs, [])
+        gardees = sum(len(valeur['outputs']['hourly'])
+                      for _pose, valeur in cache._entrees.values())
+        self.assertEqual(cache.lignes_gardees(), gardees)
+        self.assertEqual(set(cache._lignes), set(cache._entrees))
+        self.assertLessEqual(gardees, 50)
+
     def test_la_borne_pese_aussi_les_series_nasa_power(self):
         """Les réponses horaires de NASA POWER (``properties.parameter``)
         passent par le MÊME cache : elles comptent dans la borne."""

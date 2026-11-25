@@ -369,38 +369,46 @@ class _Cache:
         self._horloge = horloge or time.monotonic
         self._entrees = {}
         self._lignes = {}
+        # Partagé par les fils d'un worker (gunicorn --threads) : UN verrou
+        # garde les deux dicts, jamais tenu pendant un appel réseau.
+        self._verrou = threading.RLock()
 
     def lignes_gardees(self):
         """ACAL2044 — les lignes horaires que le cache retient en ce moment."""
-        return sum(self._lignes.values())
+        with self._verrou:
+            return sum(self._lignes.values())
 
     def lire(self, cle):
-        entree = self._entrees.get(cle)
-        if entree is None:
-            return None
-        pose_a, valeur = entree
-        if self._horloge() - pose_a > self.ttl_s:
-            self._retirer(cle)
-            return None
-        return valeur
+        with self._verrou:
+            entree = self._entrees.get(cle)
+            if entree is None:
+                return None
+            pose_a, valeur = entree
+            if self._horloge() - pose_a > self.ttl_s:
+                self._retirer(cle)
+                return None
+            return valeur
 
     def _retirer(self, cle):
-        self._entrees.pop(cle, None)
-        self._lignes.pop(cle, None)
+        with self._verrou:
+            self._entrees.pop(cle, None)
+            self._lignes.pop(cle, None)
 
     def poser(self, cle, valeur):
-        self._retirer(cle)
         lignes = _lignes_horaires(valeur)
-        while self._entrees and (
-                len(self._entrees) >= self.taille_max
-                or self.lignes_gardees() + lignes > self.lignes_max):
-            self._retirer(next(iter(self._entrees)))
-        self._entrees[cle] = (self._horloge(), valeur)
-        self._lignes[cle] = lignes
+        with self._verrou:
+            self._retirer(cle)
+            while self._entrees and (
+                    len(self._entrees) >= self.taille_max
+                    or self.lignes_gardees() + lignes > self.lignes_max):
+                self._retirer(next(iter(self._entrees)))
+            self._entrees[cle] = (self._horloge(), valeur)
+            self._lignes[cle] = lignes
 
     def vider(self):
-        self._entrees.clear()
-        self._lignes.clear()
+        with self._verrou:
+            self._entrees.clear()
+            self._lignes.clear()
 
 
 def _lignes_horaires(charge):
