@@ -5962,3 +5962,29 @@ decisions:
     date: "2026-11-25"
     source: "rapport L5, décision 22 (test utilisateur) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « No number (Recommended) » ; nouveaux rendus seulement"
     taches: []
+  - id: D-ACAL-115
+    question: "Deux affirmations fausses des PDF client, corrigées derrière le niveau de règles 15 : (a) la page « Confiance, Garanties » du PDF avec étude imprime « Onduleur 10 ans » et « onduleurs Huawei » même quand l'option recommandée porte un Deye garanti 5 ans ; (b) à deux options de tailles différentes, le « prix par kWc » de l'option 1 est divisé par la taille de l'autre. Les rendre actives tout de suite pour les NOUVEAUX rendus ?"
+    options:
+      - cle: les_deux_tout_de_suite
+        texte: "Les nouveaux PDF impriment la marque et la garantie de l'onduleur réellement vendu, et le bon prix par kWc ; un devis envoyé garde le sien ; le reste du niveau 15 reste éteint"
+      - cle: garantie_seulement
+        texte: "Seule la page des garanties est corrigée maintenant"
+      - cle: attendre_le_niveau_15
+        texte: "Rien ne change aujourd'hui"
+    reponse: les_deux_tout_de_suite
+    date: "2026-11-25"
+    source: "rapport L5, décision 24 ; constats T4-X1-001, T4-X1-002 et, revu le 25/11 par le relecteur X7, T4-X7-004 (S1) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Both live now (Recommended) » ; même mécanique que D-ACAL-102 (nouveaux rendus, coupure au 26/11/2026), `REGLES_COURANTES` inchangé"
+    taches: []
+  - id: D-ACAL-116
+    question: "PDF d'un devis FINAL à DEUX options : « Modalités de paiement 30 % / 60 % / 10 % » imprime des montants calculés sur l'option « avec batterie » sans le dire, alors que le client coche encore l'une des deux. Qu'imprimer ?"
+    options:
+      - cle: un_echeancier_par_option
+        texte: "Deux lignes : « Sans batterie : … / … / … MAD » et « Avec batterie : … / … / … MAD » ; si cela ne tient pas sans ajouter une page, revenir vers le fondateur"
+      - cle: pourcentages_seuls
+        texte: "Tant que deux options restent, seulement « 30 % / 60 % / 10 % », sans montants"
+      - cle: nommer_l_option
+        texte: "Montants d'aujourd'hui, avec « calculé sur l'option avec batterie »"
+    reponse: un_echeancier_par_option
+    date: "2026-11-25"
+    source: "constat T4-X7-020 du relecteur X7 (25/11/2026) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « One schedule per option (Recommended) » ; nouveaux rendus seulement ; aucune page ajoutée sans son accord"
+    taches: []
