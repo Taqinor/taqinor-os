@@ -596,6 +596,59 @@ class TechnicienReleveTest(BaseReleve):
                         format='json')
         self.assertEqual(cree.status_code, 201, cree.data)
 
+    def _routes_du_lead(self, api, lead_id):
+        url = '/api/django/calepinage/calepinages/'
+        return (api.get(f'{url}du-lead/', {'lead': lead_id}),
+                api.get(f'{url}contenance/', {'lead': lead_id,
+                                              'origine': 'visite'}))
+
+    def test_du_lead_et_contenance_hors_visite_introuvables(self):
+        """Revue lot 5 — ``du-lead`` et ``contenance`` répondent pour le lead
+        d'un pair EXACTEMENT ce qu'ils répondent pour un lead hors portée."""
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+
+        api = self._api(self._pairs_sous_un_directeur(TECHNICIEN_PERMISSIONS))
+        absent = self._routes_du_lead(api, 999999)
+        for reponse, temoin in zip(self._routes_du_lead(api, self.lead.pk),
+                                   absent):
+            self.assertEqual(temoin.status_code, 404, temoin.data)
+            self.assertEqual(reponse.status_code, 404, reponse.data)
+            self.assertEqual(reponse.data, temoin.data)
+
+    def test_du_lead_et_contenance_de_sa_visite_servis(self):
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+        from apps.visites.models import VisiteTerrain
+
+        pair = self._pairs_sous_un_directeur(TECHNICIEN_PERMISSIONS)
+        VisiteTerrain.objects.create(company=self.company, lead=self.lead,
+                                     commercial=pair)
+        du_lead, contenance = self._routes_du_lead(self._api(pair), self.lead.pk)
+        self.assertEqual(du_lead.status_code, 200, du_lead.data)
+        # Servie : jamais « introuvable » (un refus métier 409 reste possible
+        # faute de visite validée — c'est le lead qui est atteint).
+        self.assertNotEqual(contenance.status_code, 404, contenance.data)
+
+    def test_bibliotheque_des_modeles_bornee_a_ses_visites(self):
+        """Revue lot 5 — ``modeles/`` servait au Technicien TOUS les modèles de
+        la société (lead, client, géométrie), hors de ses visites."""
+        from apps.calepinage.services.modeles import marquer_modele
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+        from apps.visites.models import VisiteTerrain
+
+        marquer_modele(self.calepinage, user=self.user)
+        url = '/api/django/calepinage/calepinages/modeles/'
+        pair = self._pairs_sous_un_directeur(TECHNICIEN_PERMISSIONS)
+
+        def ids(user):
+            reponse = self._api(user).get(url)
+            self.assertEqual(reponse.status_code, 200, reponse.data)
+            return [ligne['id'] for ligne in reponse.data]
+        self.assertNotIn(self.calepinage.pk, ids(pair))
+        self.assertIn(self.calepinage.pk, ids(self.commercial))
+        VisiteTerrain.objects.create(company=self.company, lead=self.lead,
+                                     commercial=pair)
+        self.assertIn(self.calepinage.pk, ids(pair))
+
     def test_commercial_et_directeur_inchanges(self):
         """La restriction ne touche que le porteur du seul relevé."""
         from apps.calepinage.selectors import lit_par_le_seul_releve
