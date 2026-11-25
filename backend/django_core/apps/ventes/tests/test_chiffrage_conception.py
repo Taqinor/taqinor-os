@@ -31,10 +31,11 @@ def _v(valeur, unite=None, source='moteur'):
 
 
 def _conception(*, marche='residentiel', etat='complet', option='sans', sur_la_pose=True, entrees=None,
-                nb=35, kwc=19.25, production=6047.0, economie=5100.0, autoconso=0.62):
+                nb=35, kwc=19.25, production=6047.0, economie=5100.0, autoconso=0.62, couverture=0.55):
     table = {'nb_panneaux': _v(nb, 'panneaux'), 'puissance_kwc': _v(kwc, 'kWc'),
              'production_annuelle': _v(production, 'kWh/an', 'pose' if sur_la_pose else 'moteur'),
-             'autoconsommation': _v(autoconso, 'ratio'), 'economies_annuelles': _v(economie, 'MAD/an')}
+             'autoconsommation': _v(autoconso, 'ratio'), 'couverture': _v(couverture, 'ratio'),
+             'economies_annuelles': _v(economie, 'MAD/an')}
     return {'etat': etat, 'refus': None, 'marche': marche, 'option_retenue': option,
             'valeurs': {option: table}, 'niveau_regles': 15, 'version': 3, 'lead': 3,
             'entrees_utilisees': FACTURES if entrees is None else entrees}
@@ -72,6 +73,9 @@ class ChiffrerConceptionTest(SimpleTestCase):
         economie = bloc['economie_annee1_mad']
         self.assertEqual((economie['valeur'], economie['option'], economie['etat']), (5100.0, 'sans_batterie', 'servi'))
         self.assertEqual(bloc['autoconsommation_pct']['valeur'], 62.0)
+        # ACAL2022/2023 — la part production ÷ consommation de la conception est SERVIE (une seule, pour tous)
+        self.assertEqual(bloc['couverture_pct'],
+                         {'valeur': 55.0, 'unite': '%', 'source': 'conception', 'etat': 'servi'})
         self.assertEqual((bloc['marche'], bloc['regles_calcul'], bloc['omissions']), ('residentiel', 15, []))
         self.last_lecture.assert_called_once_with(SOCIETE, 3)
 

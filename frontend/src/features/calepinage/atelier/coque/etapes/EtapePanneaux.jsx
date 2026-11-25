@@ -7,7 +7,7 @@ import useResource from '../../../../../hooks/useResource'
 import { kwh } from '../../../production/ResultatHeros.helpers'
 import { SurCarte } from '../emplacements'
 import { BoutonMarine, CarteFlottante, Icone, Indicateur, Segmente } from '../primitives'
-import { BESOIN_MAX, gestes, useConstructeur } from './panneaux/constructeur'
+import { BESOIN_MAX, gestes, useConstructeur, usePoseVivante } from './panneaux/constructeur'
 import { jourMois, ligneModule } from './panneaux/formats'
 import { useCibleFactures } from './panneaux/lectures'
 import ValeurUnite from './panneaux/ValeurUnite'
@@ -195,10 +195,15 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
   }
   const partFacture = partLue ?? (gardee && cible && gardee.pour === cible.panneaux && gardee.watt === figures.watt
     ? gardee.texte : null)
+  // ACAL2022 (T4-X2-001) — la carte dit la taille de la CONCEPTION (son nombre de panneaux et SON kWc, nommée) : jamais un nombre
+  // de panneaux à côté du kWc d'un autre module ; la pose posée se dit à part (« Posé : … »).
   const ligneFacture = cible && (ligneTaille ?? [
-    compte(cible.panneaux), cible.kwc != null ? fmtKwc(cible.kwc) : null,
+    compte(cible.panneaux), cible.kwc != null ? fmtKwc(cible.kwc) : null, 'conception',
     partFacture,
   ].filter(Boolean).join(' · '))
+  const posee = factureChoisie && cible && figures.panneaux > 0 && figures.kwc
+    && (figures.panneaux !== cible.panneaux || (cible.kwc != null && figures.kwc !== fmtKwc(cible.kwc)))
+    ? ['Posé : ' + compte(figures.panneaux), figures.kwc].join(' · ') : null
   // « Le plus de panneaux » : ses chiffres dès l'ouverture — ce que le constructeur dit tenir × la puissance du module
   // qu'il pose (`figures.watt`), jamais une seconde formule ; la mémoire prime quand la carte a été posée.
   const parTenue = besoin?.tiennent ? {
@@ -225,6 +230,7 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
           <span className="cal-pan-option-ligne" data-zone="cible-en-calcul">calcul en cours</span>
         )}
       </button>
+      {posee && <p className="cal-pan-note" data-zone="pose-posee">{posee}</p>}
       {besoin?.auto && <p className="cal-pan-note" data-zone="taille-auto" role="status">{besoin.note}</p>}
       {servi.facture.etat === 'chargement' && (
         <p className="cal-pan-note cal-pan-note-attente" data-zone="facture-lecture" aria-live="polite">
@@ -333,7 +339,10 @@ function AlerteOmbre({ ombre, g }) {
 /** La puce de la carte. Production publiée FRAÎCHE et COMPLÈTE → la pose simulée et sa production, libellé de l'étape
     Résultats ; sinon la pose du constructeur, son estimation nommée « estimation » et la part production ÷ consommation
     (production estimée ÷ consommation du lead : jamais « de la facture »). */
-function PuceResume({ figures, publiee }) {
+function PuceResume({ figures, publiee, site = null }) {
+  // ACAL2022 (T4-X2-009) — le site compte plus que ce pan (champ au sol, autre pan) : la bande dit qu'elle compte CE pan et le total du site est dit.
+  const autrePan = !publiee && site?.panneaux > 0 && figures.panneaux > 0 && site.panneaux !== figures.panneaux
+  const pan = autrePan ? ' · ce pan' : ''
   const indicateurs = publiee
     ? [
       ['Panneaux', publiee.panneaux != null ? String(publiee.panneaux) : null],
@@ -341,9 +350,12 @@ function PuceResume({ figures, publiee }) {
       [publiee.libelle, kwh(publiee.p50)],
     ]
     : [
-      ['Panneaux', figures.panneaux ? String(figures.panneaux) : null],
-      ['Puissance', figures.kwc],
-      ['Production · estimation de la pose', figures.production],
+      [`Panneaux${pan}`, figures.panneaux ? String(figures.panneaux) : null],
+      [`Puissance${pan}`, figures.kwc],
+      ...(autrePan ? [['Total du site', [`${site.panneaux} panneaux`, site.kwc].filter(Boolean).join(' · ')]] : []),
+      // ACAL2022 — la production est celle de la conception SERVIE ; pendant le dessin, « au prochain enregistrement ».
+      figures.productionKwh != null ? ['Production · conception', figures.production]
+        : ['Production', figures.production ? 'au prochain enregistrement' : null],
       ['Production ÷ consommation', figures.couverture ? `≈ ${figures.couverture}` : null],
     ]
   const lus = indicateurs.filter(([, valeur]) => valeur)
@@ -420,8 +432,10 @@ function useEnsoleillementALEntree(carteLue, rafraichir) {
 
 export default function EtapePanneaux({
   calepinageId, lectureSeule = false, enregistreLe = null, contexte = null, contexteEnCours = false, parcours = null,
+  builderApi = null,
 }) {
   const [etat, rafraichir] = useConstructeur()
+  const site = usePoseVivante(true, builderApi)
   // Chaque geste part au vrai contrôle, puis la lecture est refaite tout de suite (sinon elle suit 0,4 s plus tard).
   const g = Object.fromEntries(Object.entries(gestes).map(([nom, geste]) => [
     nom, (...args) => { geste(...args); rafraichir() },
@@ -456,7 +470,7 @@ export default function EtapePanneaux({
       <AlerteOmbre key={etat.ombre?.n ?? 0} ombre={etat.ombre} g={g} />
       <AvisOmbresNonComptees manque={parcours?.manque} />
       <SurCarte>
-        <PuceResume figures={etat.figures} publiee={servi.publiee} />
+        <PuceResume figures={etat.figures} publiee={servi.publiee} site={site} />
         <div className="cal-carte-soleil" data-testid="cal-carte-soleil">
           {etat.soleil.carte && <LegendeSoleil carte={etat.soleil.carte} g={g} />}
           <LecteurSoleil soleil={etat.soleil} g={g} />

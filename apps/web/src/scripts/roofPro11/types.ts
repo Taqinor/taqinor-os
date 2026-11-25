@@ -39,6 +39,8 @@ export interface ChiffrageAtelier {
   /** R2-16/17 — kWc et production annuelle SERVIS (même bloc `chiffrage` : lus, jamais recalculés ici). */
   kwc?: { valeur: number | null; etat: string } | null;
   production_annuelle_kwh?: { valeur: number | null; etat: string } | null;
+  /** ACAL2022 — la part production ÷ consommation de la conception SERVIE (%), lue telle quelle. */
+  couverture_pct?: { valeur: number | null; etat: string } | null;
 }
 
 export interface InitOptions {

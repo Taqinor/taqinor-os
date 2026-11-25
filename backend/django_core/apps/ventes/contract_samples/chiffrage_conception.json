@@ -14,6 +14,7 @@
     "production_annuelle_kwh": {"valeur": 98576, "unite": "kWh/an", "source": "calepinage_enregistre", "etat": "servi"},
     "economie_annee1_mad": {"valeur": 7420, "unite": "MAD", "source": "devis", "etat": "servi", "option": "sans_batterie"},
     "autoconsommation_pct": {"valeur": 62.0, "unite": "%", "source": "devis", "etat": "servi"},
+    "couverture_pct": {"valeur": 55.0, "unite": "%", "source": "conception", "etat": "servi"},
     "omissions": []
   },
   "exemple_ville": {
@@ -23,6 +24,7 @@
     "production_annuelle_kwh": {"valeur": 111420, "unite": "kWh/an", "source": "standard_ville", "etat": "servi"},
     "economie_annee1_mad": {"valeur": 7420, "unite": "MAD", "source": "devis", "etat": "servi", "option": "sans_batterie"},
     "autoconsommation_pct": {"valeur": 62.0, "unite": "%", "source": "devis", "etat": "servi"},
+    "couverture_pct": {"valeur": 55.0, "unite": "%", "source": "conception", "etat": "servi"},
     "omissions": []
   },
   "exemple_sans_facture": {
@@ -32,9 +34,11 @@
     "production_annuelle_kwh": {"valeur": 98576, "unite": "kWh/an", "source": "calepinage_enregistre", "etat": "servi"},
     "economie_annee1_mad": {"valeur": null, "unite": "MAD", "source": null, "etat": "omis", "option": null},
     "autoconsommation_pct": {"valeur": null, "unite": "%", "source": null, "etat": "omis"},
+    "couverture_pct": {"valeur": null, "unite": "%", "source": null, "etat": "omis"},
     "omissions": [
       {"grandeur": "economie_annee1_mad", "motif": "renseignez la facture"},
-      {"grandeur": "autoconsommation_pct", "motif": "renseignez la facture"}
+      {"grandeur": "autoconsommation_pct", "motif": "renseignez la facture"},
+      {"grandeur": "couverture_pct", "motif": "renseignez la facture"}
     ]
   },
   "exemple_ci": {
@@ -44,6 +48,7 @@
     "production_annuelle_kwh": {"valeur": 182400, "unite": "kWh/an", "source": "calepinage_enregistre", "etat": "servi"},
     "economie_annee1_mad": {"valeur": 168000, "unite": "MAD", "source": "devis", "etat": "servi", "option": "sans_batterie"},
     "autoconsommation_pct": {"valeur": 81.0, "unite": "%", "source": "devis", "etat": "servi"},
+    "couverture_pct": {"valeur": 74.0, "unite": "%", "source": "conception", "etat": "servi"},
     "omissions": []
   },
   "exemple_agricole": {
@@ -53,11 +58,13 @@
     "production_annuelle_kwh": {"valeur": null, "unite": "kWh/an", "source": null, "etat": "non_servi"},
     "economie_annee1_mad": {"valeur": null, "unite": "MAD", "source": null, "etat": "non_servi", "option": null},
     "autoconsommation_pct": {"valeur": null, "unite": "%", "source": null, "etat": "non_servi"},
+    "couverture_pct": {"valeur": null, "unite": "%", "source": null, "etat": "non_servi"},
     "omissions": [
       {"grandeur": "kwc", "motif": "le chiffrage agricole se lit au devis"},
       {"grandeur": "production_annuelle_kwh", "motif": "le chiffrage agricole se lit au devis"},
       {"grandeur": "economie_annee1_mad", "motif": "le chiffrage agricole se lit au devis"},
-      {"grandeur": "autoconsommation_pct", "motif": "le chiffrage agricole se lit au devis"}
+      {"grandeur": "autoconsommation_pct", "motif": "le chiffrage agricole se lit au devis"},
+      {"grandeur": "couverture_pct", "motif": "le chiffrage agricole se lit au devis"}
     ]
   }
 }

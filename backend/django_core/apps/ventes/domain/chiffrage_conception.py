@@ -15,7 +15,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 UNITES = {'kwc': 'kWc', 'production_annuelle_kwh': 'kWh/an',
-          'economie_annee1_mad': 'MAD', 'autoconsommation_pct': '%'}
+          'economie_annee1_mad': 'MAD', 'autoconsommation_pct': '%', 'couverture_pct': '%'}
 MOTIF_FACTURE = 'renseignez la facture'  # D-ACAL-40
 MOTIF_AGRICOLE = 'le chiffrage agricole se lit au devis'
 MOTIF_SANS_LEAD = 'aucun lead lié : le chiffrage du devis ne peut pas être calculé'
@@ -69,6 +69,8 @@ def _depuis_conception(conception, marche_du_lead):
     if any(cle in (conception.get('entrees_utilisees') or {}) for cle in ENTREES_FACTURE):  # D-ACAL-40
         valeurs['economie_annee1_mad'] = (_valeur(table, 'economies_annuelles'), SOURCE_CONCEPTION)
         valeurs['autoconsommation_pct'] = (_pct(_valeur(table, 'autoconsommation')), SOURCE_CONCEPTION)
+        # ACAL2022/2023 — LA part production ÷ consommation de la conception (atelier et vue client la lisent).
+        valeurs['couverture_pct'] = (_pct(_valeur(table, 'couverture')), SOURCE_CONCEPTION)
     return _bloc(marche, regles, valeurs, option='avec_batterie' if option == 'avec' else 'sans_batterie')
 
 
