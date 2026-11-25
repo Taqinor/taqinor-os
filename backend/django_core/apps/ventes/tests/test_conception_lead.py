@@ -1635,6 +1635,27 @@ class RelanceConceptionTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher'
         self.assertEqual((forcee.ecrite, forcee.conception.version), (True, 3))
         self.assertTrue(forcee.conception.declencheur['raison'].endswith(' : recalcul demandé'))
 
+    def test_t4x7022_batterie_avec_puis_les_deux_options_range_les_deux(self):
+        """T4-X7-022 — « Batterie » Avec → « Les deux options » : la carte gardait UNE taille
+        (empreinte des entrées sans les souhaits ⇒ rien rangé) quand le devis auto en donnait
+        deux. Le souhait entre dans l'empreinte : version suivante, les deux options, et la
+        lecture ne la dit périmée qu'avant ce rangement."""
+        from apps.crm.models import Lead
+        from apps.ventes.selectors_conception import _empreinte_des_entrees
+
+        company, lead = self._cas('res_batterie_avec')
+        _reglages_de_la_societe(company)
+        premiere = self._relancer(lead, company, _declencheur())
+        self.assertEqual(set(premiere.conception.valeurs), {'avec'})
+        Lead.objects.filter(pk=lead.pk).update(batterie_souhaitee='les_deux')
+        lead.refresh_from_db()
+        self.assertNotEqual(_empreinte_des_entrees(premiere.conception), premiere.conception.empreinte)
+        suivante = self._relancer(lead, company, _declencheur(
+            'lead_entrees_modifiees', batterie_souhaitee=('avec', 'les_deux')))
+        self.assertTrue(suivante.ecrite)  # mutant « souhaits hors empreinte » : False, une option
+        self.assertEqual(set(suivante.conception.valeurs), {'sans', 'avec'})
+        self.assertEqual(_empreinte_des_entrees(suivante.conception), suivante.conception.empreinte)
+
     def test_relances_simultanees_des_memes_entrees_une_seule_version(self):
         """Relecture m1 — deux relances parties ensemble lisent toutes deux
         l'ancienne courante (empreinte différente) ; la seconde, qui range
