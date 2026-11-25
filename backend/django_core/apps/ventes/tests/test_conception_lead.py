@@ -1349,6 +1349,19 @@ class MoteurUniqueTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_u
         messages = {sup['code']: sup['message'] for sup in resultat.suppositions}
         self.assertEqual(messages['suppose_presence'], SUPPOSITIONS_RESIDENTIEL['occupation_jour'][1])
 
+    def test_facture_ete_saisie_sans_ete_different_dit_de_cocher_la_case(self):
+        """Relecture E5 (rejeu orchestrateur, b) — facture d'été SAISIE (900) sans « Été
+        différent » : la supposition ne demande pas de la renseigner (elle l'est), elle dit
+        de cocher « Été différent » pour qu'elle compte."""
+        from apps.ventes.domain.creation_auto_residentiel import SUPPOSITIONS_RESIDENTIEL
+
+        resultat = self._calculer(*self._residentiel(facture_hiver=Decimal('1800'), facture_ete=Decimal('900')))
+        messages = {sup['code']: sup['message'] for sup in resultat.suppositions}
+        self.assertEqual(messages['suppose_ete_egal_hiver'],
+                         "Facture d'été saisie (900 MAD) mais non prise en compte : cochez « Été différent » "
+                         "sur la fiche pour qu'elle compte (sinon l'été est supposé égal à l'hiver).")
+        self.assertNotEqual(messages['suppose_ete_egal_hiver'], SUPPOSITIONS_RESIDENTIEL['facture_ete'][1])
+
     def test_suppositions_residentiel_renseigne_seule_la_production_reste_supposee(self):
         """Présence, été et kWh déclarés : plus rien de supposé sur la fiche ;
         la production à 30° plein sud reste dite (aucune pose au niveau 14)."""
