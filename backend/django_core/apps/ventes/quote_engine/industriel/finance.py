@@ -1075,7 +1075,7 @@ def build(ctx):
   </div>"""
         # T4-U2-020 (D-ACAL-102, nouveaux rendus) — l'annonce « bases du calcul
         # ci-dessous » seulement si le bloc est rendu (page simple ou deux options).
-        if not d.get("phrases_profil_historique") and 'data-graphique="hypotheses"' not in corps:
+        if d.get("phrases_profil_ouvertes") and 'data-graphique="hypotheses"' not in corps:
             lead_txt = L("ci_cpdf_lead_finance_sans_bases",
                          "Projection sur {n} ans : flux annuels, délai de "
                          "retour et TRI tirés de la même série.", n=horizon_txt)

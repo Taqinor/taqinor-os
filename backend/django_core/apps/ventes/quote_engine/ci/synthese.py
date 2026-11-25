@@ -1043,7 +1043,7 @@ def synthese_ci(data):
                           "motif": MOTIF_ETUDE_AUTRE_PUISSANCE})
     else:
         energie, motif = _bloc_energie(etude_option, langue, etude_ci.get("alertes"),
-                                       not data.get("phrases_profil_historique"))  # T4-U2-019, D-ACAL-102
+                                       bool(data.get("phrases_profil_ouvertes")))  # T4-U2-019, D-ACAL-102
         if energie is not None:
             synthese["energie"] = energie
         else:

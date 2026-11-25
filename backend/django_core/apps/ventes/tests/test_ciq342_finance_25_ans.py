@@ -76,12 +76,12 @@ class Ciq342Jalons(SimpleTestCase):
                          len(d["economie_ci"]["flux_ht"]["flux"]))
 
     def test_d_acal_102_bases_annoncees_nouveaux_rendus(self):
-        """D-ACAL-102 — au niveau courant : bloc cédé ⇒ plus d'annonce pour un
-        brouillon ; un devis envoyé avant la coupure garde la phrase d'hier ;
-        bloc rendu ⇒ l'annonce reste dans les deux cas."""
+        """D-ACAL-102 — ``phrases_profil_ouvertes`` (posé par le builder pour un
+        rendu qui change) : bloc cédé ⇒ plus d'annonce ; sans la clé (envoyé
+        avant la coupure) la phrase d'hier ; bloc rendu ⇒ l'annonce reste."""
         annonce = "bases du calcul ci-dessous"
         for historique in (False, True):
-            d = dict(_data(), **({"phrases_profil_historique": True} if historique else {}))
+            d = dict(_data(), **({} if historique else {"phrases_profil_ouvertes": True}))
             with self.subTest(historique=historique, bloc="rendu"):
                 texte = _texte(_pages(d)[3])
                 self.assertIn("Bases du calcul", texte)

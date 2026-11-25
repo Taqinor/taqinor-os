@@ -481,7 +481,7 @@ def cgv_ci_du_devis(devis, tva_note="", langue=None):
 
 
 def _avec_regles_pose_reelle(data, pose_reelle, devis=None):
-    # ACAL1033 (D-ACAL-45) — ``regles_pose_reelle`` au niveau 15 seulement ; D-ACAL-102 : ``phrases_profil_historique``.
+    # ACAL1033 (D-ACAL-45) — ``regles_pose_reelle`` au niveau 15 seulement ; D-ACAL-102 : ``phrases_profil_ouvertes``.
     from apps.ventes.domain.regles_calcul import drapeaux_phrases_profil
     data.update({"regles_pose_reelle": True} if pose_reelle else {}, **drapeaux_phrases_profil(devis))
     return data

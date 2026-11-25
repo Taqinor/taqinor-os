@@ -179,13 +179,16 @@ def phrases_profil_ouvertes(devis) -> bool:
 
 
 def drapeaux_phrases_profil(devis) -> dict:
-    """D-ACAL-102 — le drapeau de RENDU des deux phrases : ``{'phrases_profil_
-    historique': True}`` pour un devis commercial / industriel qui garde la
-    phrase reçue, ``{}`` sinon (brouillon, nouveaux rendus, autre marché : la
-    charge utile du builder ne change pas)."""
+    """D-ACAL-102 — le drapeau de RENDU des deux phrases, posé pour le cas
+    OUVERT : ``{'phrases_profil_ouvertes': True}`` pour un devis commercial /
+    industriel dont le rendu change (nouveaux rendus), ``{}`` sinon. Ainsi
+    l'empreinte des données (``builder.empreinte_donnees_pdf``) bouge pour les
+    devis dont le PDF change — le fichier stocké d'un brouillon est re-rendu —
+    et la charge utile d'un devis qui garde ce que son client a reçu (envoyé
+    avant la coupure, autre marché) ne bouge pas d'un octet."""
     marche = (getattr(devis, 'mode_installation', None) or '').strip().lower()
-    if marche in ('commercial', 'industriel') and not phrases_profil_ouvertes(devis):
-        return {'phrases_profil_historique': True}
+    if marche in ('commercial', 'industriel') and phrases_profil_ouvertes(devis):
+        return {'phrases_profil_ouvertes': True}
     return {}
 
 

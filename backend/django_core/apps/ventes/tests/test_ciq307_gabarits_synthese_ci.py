@@ -125,30 +125,29 @@ class GabaritsLisentSyntheseCi(_ReglesCourantes):
                               html)
 
     def test_d_acal_102_horaires_supposes_nouveaux_rendus(self):
-        """D-ACAL-102 — au niveau courant (14) : un BROUILLON (aucun drapeau)
-        dit déjà le profil type ; un devis ENVOYÉ avant la coupure (drapeau
-        ``phrases_profil_historique`` du builder) garde son document, octet
-        pour octet ; des horaires déclarés restent « déclarés » partout."""
+        """D-ACAL-102 — le builder pose ``phrases_profil_ouvertes`` pour un devis
+        C&I dont le rendu change (brouillon, envoyé après la coupure) : le profil
+        type est dit ; sans la clé (envoyé avant la coupure), le document reçu,
+        octet pour octet ; des horaires déclarés restent « déclarés » partout."""
         from apps.ventes.quote_engine.ci.onepage import lire_synthese
         supposes = [{"code": "heure_debut_supposee", "niveau": "info"},
                     {"code": "jours_ouverts_supposes", "niveau": "info"}]
+        ouvert = {"phrases_profil_ouvertes": True}
         for nom, sample, renderer, render, _pages in GABARITS:
             with self.subTest(gabarit=nom):
                 declare = _data(sample)
                 suppose = _data(sample)
                 suppose["etude"]["etude_ci"]["alertes"] = supposes
-                brouillon = render.build_html(renderer._augment(copy.deepcopy(suppose)))
-                self.assertIn("profil type de votre activité — estimation", brouillon)
-                self.assertNotIn("horaires déclarés", brouillon)
-                self.assertEqual(lire_synthese(copy.deepcopy(suppose), nom)[1]["methode"],
+                nouveau = render.build_html(renderer._augment(dict(copy.deepcopy(suppose), **ouvert)))
+                self.assertIn("profil type de votre activité — estimation", nouveau)
+                self.assertNotIn("horaires déclarés", nouveau)
+                self.assertEqual(lire_synthese(dict(copy.deepcopy(suppose), **ouvert), nom)[1]["methode"],
                                  "archetype_estimation")
-                envoye = render.build_html(renderer._augment(
-                    dict(copy.deepcopy(suppose), phrases_profil_historique=True)))
+                envoye = render.build_html(renderer._augment(copy.deepcopy(suppose)))
                 self.assertIn("horaires déclarés", envoye)
                 self.assertNotIn("profil type de votre activité", envoye)
-                self.assertEqual(envoye, render.build_html(renderer._augment(
-                    dict(copy.deepcopy(declare), phrases_profil_historique=True))))
-                for drapeaux in ({}, {"phrases_profil_historique": True}):
+                self.assertEqual(envoye, render.build_html(renderer._augment(copy.deepcopy(declare))))
+                for drapeaux in ({}, ouvert):
                     self.assertIn("horaires déclarés", render.build_html(renderer._augment(
                         dict(copy.deepcopy(declare), **drapeaux))))
 

@@ -110,19 +110,19 @@ class ReglesCalculTests(SimpleTestCase):
         self.assertTrue(phrases_profil_ouvertes(devis(regles_calcul=15, statut='envoye', date_envoi=avant)))
         for apercu in (None, SimpleNamespace()):
             self.assertTrue(phrases_profil_ouvertes(apercu))
-        # Le drapeau de rendu : posé SEULEMENT pour un devis C&I envoyé avant la
-        # coupure (un brouillon et tout autre marché : charge utile inchangée).
-        self.assertEqual(drapeaux_phrases_profil(devis(statut='envoye', date_envoi=avant)),
-                         {'phrases_profil_historique': True})
+        # Le drapeau de rendu marque le cas OUVERT (le rendu change : l'empreinte
+        # des données bouge) ; un devis qui garde son rendu (envoyé avant la
+        # coupure, autre marché) n'en reçoit aucun : charge utile inchangée.
         for ouvert in (devis(statut='brouillon', date_envoi=None),
-                       devis(statut='envoye', date_envoi=apres),
-                       devis(statut='envoye', date_envoi=avant, mode_installation='residentiel')):
-            self.assertEqual(drapeaux_phrases_profil(ouvert), {})
-        # Le builder pose CE drapeau (et seulement lui) dans la charge utile.
+                       devis(statut='envoye', date_envoi=apres)):
+            self.assertEqual(drapeaux_phrases_profil(ouvert), {'phrases_profil_ouvertes': True})
+        for ferme in (devis(statut='envoye', date_envoi=avant),
+                      devis(statut='brouillon', date_envoi=None, mode_installation='residentiel')):
+            self.assertEqual(drapeaux_phrases_profil(ferme), {})
         from apps.ventes.quote_engine.builder import _avec_regles_pose_reelle
-        self.assertEqual(_avec_regles_pose_reelle({}, False, devis(statut='envoye', date_envoi=avant)),
-                         {'phrases_profil_historique': True})
-        self.assertEqual(_avec_regles_pose_reelle({}, False, devis(statut='brouillon', date_envoi=None)), {})
+        self.assertEqual(_avec_regles_pose_reelle({}, False, devis(statut='brouillon', date_envoi=None)),
+                         {'phrases_profil_ouvertes': True})
+        self.assertEqual(_avec_regles_pose_reelle({}, False, devis(statut='envoye', date_envoi=avant)), {})
         self.assertEqual(_avec_regles_pose_reelle({}, True, None), {'regles_pose_reelle': True})
 
     # ── Niveau 3 (corrections résidentielles du 27/10/2026) ──
