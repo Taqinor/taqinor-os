@@ -208,6 +208,24 @@ describe('ALEA71 — carte « Conception » de la fiche du lead', () => {
     expect(document.querySelectorAll('[data-testid^="carte-conception-option-"]').length).toBe(1)
   })
 
+  it('D-ACAL-109 / 110 — l’option qui porte le matériel désigné le dit ; les phrases servies (deux arrondis) sont toutes affichées', async () => {
+    const designee = clone(CONCEPTION)
+    designee.valeurs.avec.onduleur_produit = { ...designee.valeurs.avec.onduleur_produit, source: 'impose' }
+    const arrondi = (option) => ({ code: 'panneaux_au_module_designe', champ: 'module_produit', source: 'defaut',
+      valeur: { option }, message: `phrase servie de l’arrondi ${option}` })
+    designee.suppositions = [...designee.suppositions,
+      { code: 'option_materiel_du_moteur', champ: 'onduleur_produit', valeur: 'sans', source: 'defaut',
+        message: 'phrase servie laquelle est laquelle' }, arrondi('sans'), arrondi('avec')]
+    ventesApi.getConceptionLead.mockResolvedValue({ data: designee })
+    rendre()
+    await screen.findByTestId('carte-conception')
+    expect(screen.getByTestId('carte-conception-designe-avec')).toHaveTextContent('matériel désigné')
+    expect(screen.queryByTestId('carte-conception-designe-sans')).toBeNull()
+    for (const phrase of ['phrase servie laquelle est laquelle', 'phrase servie de l’arrondi sans',
+      'phrase servie de l’arrondi avec']) expect(texte()).toContain(phrase)
+    expect(screen.getAllByTestId('carte-conception-supposition-module_produit')).toHaveLength(2)
+  })
+
   it('erreur autre que 404 : la carte le dit sans casser la fiche', async () => {
     ventesApi.getConceptionLead.mockRejectedValue(
       Object.assign(new Error('x'), { response: { status: 500 } }))

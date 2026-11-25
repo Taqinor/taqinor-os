@@ -263,7 +263,20 @@ def bloc_conception(calepinage):
     production = ((conception.get('valeurs') or {}).get(option) or {}).get('production_annuelle') or {}
     return {'production_annuelle_kwh': production.get('valeur'), 'option': option,
             'version': conception.get('version'), 'calcule_le': conception.get('calcule_le'),
+            'designations': _phrases_des_designations(conception),
             'devis_envoye': _devis_envoye_lie(calepinage)}
+
+
+#: D-ACAL-109 / D-ACAL-110 — les champs des suppositions qui parlent du matériel DÉSIGNÉ à
+#: l'étape Électrique (laquelle des options il sert, arrondi au module, désignation écartée).
+CHAMPS_DESIGNATION = ('onduleur_produit', 'module_produit')
+
+
+def _phrases_des_designations(conception):
+    """Les phrases SERVIES par ventes (``suppositions`` de la conception) sur le matériel
+    désigné à la main, dans leur ordre ; ``[]`` sans désignation. Aucune n'est réécrite."""
+    return [s['message'] for s in conception.get('suppositions') or []
+            if isinstance(s, dict) and s.get('champ') in CHAMPS_DESIGNATION and s.get('message')]
 
 
 def _devis_envoye_lie(calepinage):

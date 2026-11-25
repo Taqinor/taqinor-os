@@ -13,6 +13,8 @@ import ventesApi from '../../../api/ventesApi'
 import { formatKwc, formatMAD, formatNumber } from '../../../lib/format'
 
 const OPTIONS = [['sans', 'Sans batterie'], ['avec', 'Avec batterie']]
+/** Les valeurs servies d'une option qui portent un produit désigné à la main (`source: 'impose'`). */
+const DESIGNES = ['onduleur_produit', 'module_produit']
 
 /** Une valeur servie `{valeur, unite, source}` → sa valeur, ou `null`. */
 const lire = (table, cle) => table?.[cle]?.valeur ?? null
@@ -41,6 +43,12 @@ function Colonne({ option, titre, table, payback, retenue = false }) {
           {retenue && (
             <span className="ml-2 rounded border border-border px-1 text-xs font-normal text-muted-foreground"
               data-testid={`carte-conception-retenue-${option}`}>retenue</span>
+          )}
+          {/* D-ACAL-109 — laquelle des options porte le matériel désigné à la main (source servie « impose ») ;
+              la phrase servie qui le dit est dans les suppositions. */}
+          {DESIGNES.some((cle) => table?.[cle]?.source === 'impose') && (
+            <span className="ml-2 rounded border border-border px-1 text-xs font-normal text-muted-foreground"
+              data-testid={`carte-conception-designe-${option}`}>matériel désigné</span>
           )}
         </div>
       )}
@@ -238,8 +246,8 @@ export default function CarteConception({ leadId, delaiRelectureMs = 4000, maxRe
         <div className="mt-2 border-t border-border pt-2">
           <div className="text-xs font-semibold text-foreground">Suppositions à vérifier</div>
           <ul className="m-0 mt-1 list-disc pl-4 text-xs text-muted-foreground">
-            {(conception.suppositions || []).map((s) => (
-              <li key={`${s.code}-${s.champ}`} data-testid={`carte-conception-supposition-${s.champ}`}>
+            {(conception.suppositions || []).map((s, i) => (
+              <li key={`${s.code}-${s.champ}-${i}`} data-testid={`carte-conception-supposition-${s.champ}`}>
                 {s.message}
               </li>
             ))}

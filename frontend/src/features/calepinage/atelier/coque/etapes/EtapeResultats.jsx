@@ -199,6 +199,11 @@ function ProductionDeLaConception({ bloc, taille = null, pose = null, simulee = 
       ) : (
         <p>{kwh != null ? `Production de la conception : ${dit(kwh)}` : 'Production de la conception : non calculée'}</p>
       )}
+      {/* D-ACAL-109 / D-ACAL-110 — le matériel désigné à la main : quelle option il sert, l'arrondi au module désigné
+          (phrases SERVIES par ventes, `conception.designations`, affichées telles quelles). */}
+      {(bloc.designations ?? []).map((phrase) => (
+        <p key={phrase} className="cal-res-sourdine" data-zone="designation-conception">{phrase}</p>
+      ))}
       {envoye && duDevis == null && (
         <p className="cal-res-sourdine">{'Le devis envoyé '}{lien}{' ne porte pas de production enregistrée.'}</p>
       )}
