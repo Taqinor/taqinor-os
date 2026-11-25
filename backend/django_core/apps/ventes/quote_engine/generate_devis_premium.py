@@ -349,7 +349,7 @@ PAY_A, PAY_M, PAY_S = 30, 60, 10
 # QJR623 — cases « Modalités de paiement » calculées par le builder (par
 # branche « sans » / « avec », au centime) ; le moteur ne fait qu'imprimer.
 MONTANTS_TRANCHES = {}
-BRANCHE_ECHEANCIER = None  # AMOT122 — branche servie par le builder (niveau 12)
+BRANCHE_ECHEANCIER = ECHEANCIER_OPTION_SIGNEE = None  # AMOT122 ; D-ACAL-116 — branche servie par le builder (niveau 12)
 # Devis deux-options rendu en une page : option 1 seule + mention discrète.
 ONEPAGE_NOTE_BATTERIE = False
 # M4 — branche ('sans' | 'avec' | None) dont proviennent les lignes du format
@@ -3734,8 +3734,8 @@ def apply_quote_data(data: dict) -> None:
     PAY_A = _pct_echeance(_terms.get("acompte"), 30)
     PAY_M = _pct_echeance(_terms.get("materiel"), 60)
     PAY_S = _pct_echeance(_terms.get("solde"), 10)
-    global MONTANTS_TRANCHES, BRANCHE_ECHEANCIER  # AMOT122 — branche servie par le builder
-    MONTANTS_TRANCHES, BRANCHE_ECHEANCIER = dict(data.get("montants_tranches") or {}), data.get("branche_echeancier")
+    global MONTANTS_TRANCHES, BRANCHE_ECHEANCIER, ECHEANCIER_OPTION_SIGNEE  # AMOT122 ; D-ACAL-116 — branche servie par le builder
+    MONTANTS_TRANCHES, BRANCHE_ECHEANCIER, ECHEANCIER_OPTION_SIGNEE = dict(data.get("montants_tranches") or {}), data.get("branche_echeancier"), bool(data.get("echeancier_option_signee"))
     ONEPAGE_NOTE_BATTERIE = bool(data.get("onepage_note_batterie", False))
     LIBELLE_AVEC = str(data.get("libelle_avec") or "Avec batterie")
     LINKS = dict(data.get("links") or {})

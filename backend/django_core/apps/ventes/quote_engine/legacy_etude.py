@@ -763,6 +763,7 @@ def lignes_echeancier_option():
     from .montants import fmt_centimes
     lignes = echeanciers_par_option(
         {"phrases_pdf_2511": getattr(_g, "RENDUS_2511", False),
+         "echeancier_option_signee": getattr(_g, "ECHEANCIER_OPTION_SIGNEE", False),
          "montants_tranches": _g.MONTANTS_TRANCHES}, _deux_options_document())
     noms = {"sans": i18n_labels.nom_option("Sans batterie", _g.LANGUE_SORTIE),
             "avec": i18n_labels.nom_option(_g.LIBELLE_AVEC, _g.LANGUE_SORTIE)}
