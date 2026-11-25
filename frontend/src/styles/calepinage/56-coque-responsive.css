@@ -79,6 +79,10 @@
     top: calc(var(--cal-libre-haut) + 89px);
     right: calc(var(--cal-libre-droite) + 16px);
   }
+  /* T4-X5-017 — plein écran : plus aucune pièce ne couvre la carte, la pile (zoom, plein écran, boussole) suit le bord
+     de l'écran au lieu de rester à la place du panneau d'étape. */
+  .cal-coque .rp9-map-wrap[data-plein-ecran='1'] .maplibregl-ctrl-top-right { top: 16px; right: 16px; }
+  .rp9-host.cal-coque .rp9-map-wrap[data-plein-ecran='1'] .rp9-chip.rp9-carte-puce.cal-carte-plein-ecran { top: calc(16px + 89px); right: 16px; }
   .cal-coque[data-avance='0'] .rp9-map-wrap > div:has(> #rp9-finish) {
     left: calc((var(--cal-libre-gauche) + 100% - var(--cal-libre-droite)) / 2);
   }
