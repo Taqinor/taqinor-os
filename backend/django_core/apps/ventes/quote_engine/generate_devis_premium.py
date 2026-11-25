@@ -391,7 +391,7 @@ DELAI_INSTALLATION = ""
 # client d'une économie estimée sur un tarif de référence. Défaut False =
 # rendu inchangé pour tout appel sans la clé.
 SAVINGS_ESTIMATED = False
-ECONOMIES_SANS_ANCRAGE = REGLES_POSE_REELLE = UNE_OPTION_SANS_NUMERO = False  # ACAL1033 (D-ACAL-45) — niveau 15 sans donnée réelle : une page sans économie ; T4-X1-002 — niveau 15
+ECONOMIES_SANS_ANCRAGE = GARANTIES_PAR_OPTION = UNE_OPTION_SANS_NUMERO = False  # ACAL1033 (D-ACAL-45) — niveau 15 sans donnée réelle : une page sans économie ; T4-X1-002 — niveau 15
 
 # ── DC1 — identité société (multi-tenant) ──────────────────────────────────────
 # Chaque littéral d'identité (nom de marque du footer, coordonnées, ligne légale
@@ -3796,8 +3796,8 @@ def apply_quote_data(data: dict) -> None:
     _dl = data.get("delais") or {}
     from .residential.theme import delai_doc as _dd  # RPDF : délais dans la langue du document
     DELAI_VISITE, DELAI_INSTALLATION = (_dd(data, (_dl.get(k) or "").strip()) for k in ("visite_technique", "installation"))
-    global SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE, REGLES_POSE_REELLE, UNE_OPTION_SANS_NUMERO  # M10 ; ACAL1033 ; niveau 15 ; D-ACAL-114
-    SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE, REGLES_POSE_REELLE, UNE_OPTION_SANS_NUMERO = bool(data.get("savings_estimated")), _economies_sans_ancrage(data), bool(data.get("regles_pose_reelle")), bool(data.get("phrases_pdf_2511")) and data.get("scenario") in ("Avec batterie", "Sans batterie")
+    global SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE, GARANTIES_PAR_OPTION, UNE_OPTION_SANS_NUMERO  # M10 ; ACAL1033 ; niveau 15 ; D-ACAL-114
+    SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE, GARANTIES_PAR_OPTION, UNE_OPTION_SANS_NUMERO = bool(data.get("savings_estimated")), _economies_sans_ancrage(data), bool(data.get("regles_pose_reelle") or data.get("phrases_pdf_2511")), bool(data.get("phrases_pdf_2511")) and data.get("scenario") in ("Avec batterie", "Sans batterie")
     # XSAL14/XSAL5 — structure (sections/notes) + options proposées (rendu seul,
     # hors totaux). Absents → byte-identique. Escapés à l'ingestion (ERR37).
     global LIGNES_STRUCTURE, OPTIONS_PROPOSEES
