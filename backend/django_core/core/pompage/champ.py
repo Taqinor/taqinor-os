@@ -587,8 +587,9 @@ def _repli_borne(nb, kwc0, pmax, plaque):
     if nb_borne >= nb:
         return nb, ""
     nb = max(nb_borne, 1)
-    return nb, (" ; borne de %s × la plaque de %s kW (%d panneaux)"
-                % (_fr(bande_max), _fr(plaque), nb))
+    # T4-V2-011 — des mots, plus « borne de 1,5 × la plaque ».
+    return nb, (", limité à %s fois la puissance de la pompe (%s kW), soit %d "
+                "panneaux" % (_fr(bande_max), _fr(plaque), nb))
 
 
 def _cause_champ_non_dimensionne(e_d, besoin, mois, hmt_m):
@@ -776,7 +777,8 @@ def dimensionner_champ(*, besoin_m3_jour_mois, hmt_m, panneau,
                     "besoin_non_couvert_champ", "pompe",
                     "Même avec un champ très surdimensionné, la pompe ne "
                     "couvre pas le besoin de chaque mois d'irrigation : champ "
-                    "ramené au kWc de départ (énergie hydraulique)%s." % borne))
+                    "ramené à l'énergie qu'il faut pour monter ce besoin à "
+                    "cette hauteur%s." % borne))
     elif nb is None:
         cause = _cause_champ_non_dimensionne(e_d, besoin, mois, hmt_m)
         alertes.append(_alerte(cause[0], cause[1],
@@ -790,10 +792,15 @@ def dimensionner_champ(*, besoin_m3_jour_mois, hmt_m, panneau,
         # de départ est borné à la plaque comme le repli « non couvert » : une
         # pompe de 22 kW ne consomme jamais 61 kWc.
         nb, borne = _repli_borne(nb, kwc0, pmax, plaque)
+        # T4-V2-011 / T4-V2-012 — UNE chose vraie, sans formule : ce qui
+        # n'est PAS calculé (l'eau livrée par la pompe) et ce qui l'est (le
+        # champ, sur l'énergie du besoin déclaré).
         alertes.append(_alerte(
             "champ_kwc_depart", "champ.nb_panneaux",
-            "Production heure par heure non calculable (%s) : champ au kWc de "
-            "départ E / (η × E_d)%s." % (raison, borne)))
+            "Eau livrée par la pompe non calculée (%s) : aucun m³/jour n'est "
+            "publié. Le champ est dimensionné sur l'énergie qu'il faut pour "
+            "monter le besoin déclaré à cette hauteur (%s kWc%s)."
+            % (raison, _fr(kwc0, 2), borne)))
 
     # Chaînes : variateur retenu, sinon le suivant (courant / fenêtre).
     chaines = _chaines_vides("aucun variateur retenu")
