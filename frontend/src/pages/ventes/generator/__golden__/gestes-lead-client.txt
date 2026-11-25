@@ -111,7 +111,7 @@ Recalculer le dimensionnement
 Auto-remplir depuis le stock
 Aperçu de la Simulation
 Replier
-Calcul du moteur horaire en cours…
+Aucune conception servie pour l’instant.
 Renseignez le nombre de panneaux et les factures, puis la simulation s'actualise automatiquement.
 Lignes de Produits
 + Section
@@ -384,19 +384,6 @@ Ligne optionnelle (add-on hors total)=on [ ]
       {
         "produit": "105",
         "quantite": "0"
-      }
-    ]
-  ],
-  "ventesApi.postEtudeHorairePreview": [
-    [
-      {
-        "dimensionner": true,
-        "lead": 77,
-        "facture_hiver": 3000,
-        "ville": "Mohammedia"
-      },
-      {
-        "signal": {}
       }
     ]
   ]

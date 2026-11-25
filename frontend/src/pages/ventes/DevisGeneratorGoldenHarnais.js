@@ -19,6 +19,7 @@ import { configureStore } from '@reduxjs/toolkit'
 import authReducer from '../../features/auth/store/authSlice'
 import ventesReducer from '../../features/ventes/store/ventesSlice'
 import { estimerMois } from '../../features/ventes/solar'
+import { documentContrat } from '../../test/fixtures/contractSamples'
 
 //: La date figée de toutes les captures (Date.now / new Date de l'écran).
 export const DATE_FIGEE = new Date('2026-10-08T09:00:00Z')
@@ -276,7 +277,13 @@ export function configurer({ crmApi, stockApi, parametresApi, ventesApi }, {
 } = {}) {
   // E7d (M3) — la conception du moteur unique (version rangée ET aperçu) : la
   // SEULE source des blocs de l'aperçu ; l'aperçu horaire n'est plus appelé.
-  if (conception) {
+  // m3 — `conception: 'contrat'` sert le contrat committé `conception_lead.json`
+  // (version rangée `exemple` du lead, réponse d'aperçu `apercu.reponse`, PACT10).
+  if (conception === 'contrat') {
+    const doc = documentContrat('ventes', 'conception_lead')
+    ventesApi.getConceptionLead.mockResolvedValue({ data: { ...doc.exemple, lead: LEAD.id } })
+    ventesApi.apercuConception.mockResolvedValue({ data: doc.apercu.reponse })
+  } else if (conception) {
     ventesApi.getConceptionLead.mockResolvedValue({ data: conception })
     ventesApi.apercuConception.mockResolvedValue({ data: conception })
   }

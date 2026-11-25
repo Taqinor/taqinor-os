@@ -130,6 +130,7 @@ export function useConceptionEcran({ leadId, corps }) {
   const echec = Boolean(cle) && Boolean(apercu.erreur) && apercu.cle === cle
   return {
     conception: echec ? null : (apercu.donnees ?? servie), servie, chargement: apercu.chargement,
+    apercuServi: !echec && Boolean(cle) && Boolean(apercu.donnees),
     erreur: apercu.erreur, champErreur: echec ? (apercu.champ || null) : null,
     reessayer: echec ? () => setEssai((n) => n + 1) : null,
     cleCourante: cle || (surRangee ? 'rangee' : null),

@@ -153,7 +153,7 @@ export function useApercuEtude(ctx) {
   const chiffres = chiffresConception(conceptionEcran.conception)
   // La conception affichée est-elle l'APERÇU de cet écran (payback sur ses lignes) ?
   // La version rangée porte le payback d'un devis de RÉFÉRENCE : jamais affiché ici.
-  const surApercu = Boolean(conceptionEcran.conception) && conceptionEcran.conception !== conceptionEcran.servie
+  const surApercu = conceptionEcran.apercuServi
 
   // E7d (revue lot 4, M3) — UNE SOURCE PAR BLOC. Le graphe mensuel, la falaise,
   // le verdict batterie, le tableau de dimensionnement ET la recommandation de
@@ -254,8 +254,9 @@ export function useApercuEtude(ctx) {
   // référence de la conception rangée) ; absent ⇒ « N/A », jamais recalculé.
   // E7d (M1) — le payback de l'APERÇU, calculé sur le TTC des lignes de l'écran ;
   // sans prix sur les lignes : « après enregistrement » ; jamais celui d'un autre devis.
-  const apercuPaybackSans = surApercu ? (chiffres?.paybackSans ?? null) : null
-  const apercuPaybackAvec = surApercu ? (chiffres?.paybackAvec ?? null) : null
+  const chiffre = (total, v) => (surApercu && Number(total) > 0 ? (v ?? null) : null)
+  const apercuPaybackSans = chiffre(totals?.totalSans, chiffres?.paybackSans)
+  const apercuPaybackAvec = chiffre(totals?.totalAvec, chiffres?.paybackAvec)
   const paybackAbsent = (total) => (!(Number(total) > 0) ? 'après enregistrement'
     : conceptionEcran.chargement ? 'calcul en cours…' : 'N/A')
   const apercuPaybackSansAbsent = paybackAbsent(totals?.totalSans)

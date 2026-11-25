@@ -83,7 +83,8 @@ export default function ApercuSimulation({
                 {etudeHoraireChargement
                   ? 'Calcul du moteur horaire en cours…'
                   : (etudeHoraireErreur
-                      || 'Estimation locale (hors ligne) — en attente du moteur horaire serveur.')}
+                      || (roi?.modele === 'conception' ? 'Détail horaire non servi pour cet aperçu.'
+                        : 'Aucune conception servie pour l’instant.'))}
               </p>
             )}
             {/* E7d — les phrases du moteur sur la consommation retenue (imposée par le devis…), telles quelles. */}

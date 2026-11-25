@@ -71,8 +71,11 @@ describe('SPL40 — golden du générateur (DOM + appels API)', () => {
   }, 60000)
 
   it('(c) ?edit= d’un devis envoyé « Les deux », reco « Sans batterie »', async () => {
+    // m3 (revue lot 4) — le lead du devis a sa conception (contrat `conception_lead.json`) :
+    // le golden fige de nouveau les ancres `data-figure` de l'édition.
     const vue = await monter(`/ventes/devis/nouveau?edit=${DEVIS_ENVOYE_LES_DEUX.id}`,
-      { devis: DEVIS_ENVOYE_LES_DEUX })
+      { devis: DEVIS_ENVOYE_LES_DEUX, conception: 'contrat' })
+    await waitFor(() => expect(vue.ventesApi.getConceptionLead).toHaveBeenCalled(), { timeout: 5000 })
     await figerDom(vue.container, 'c-edition-envoye-les-deux')
     await enregistrerEtFiger(vue, 'c-edition-envoye-les-deux')
   }, 60000)
