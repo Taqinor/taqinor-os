@@ -62,13 +62,14 @@ class PlanParDefautTest(TestCase):
         suppose = self._plan()
         self.assertEqual(suppose['pente_deg'], PENTE_SUPPOSEE_DEG)
         self.assertEqual(PENTE_SUPPOSEE_DEG, 30.0)
-        self.assertEqual([s['champ'] for s in suppose['suppositions']], ['inclinaison_deg'])
+        self.assertEqual([s['champ'] for s in suppose['suppositions']], ['inclinaison_deg', 'type_toiture'])
         self.assertIn('30°', suppose['suppositions'][0]['message'])
 
         client = _ClientRejoue()
         declaree = self._plan(pente=18, client=client)
         self.assertEqual(declaree['pente_deg'], 18.0)
-        self.assertEqual(declaree['suppositions'], [])
+        # ACAL2045 — la pose reste supposée (dite), la pente non.
+        self.assertEqual([s['code'] for s in declaree['suppositions']], ['pose_supposee'])
         self.assertEqual(declaree['document']['zones'][0]['geometry']['tiltDeg'], 18.0)
         # La météo est DEMANDÉE au plan déclaré (la réponse rejouée, elle, ne dépend pas de l'angle ;
         # 0° = la demande horizontale que la cascade fait aussi pour tout plan).
@@ -98,6 +99,46 @@ class PlanParDefautTest(TestCase):
         self.assertEqual(fiches[0]['code'], 'puissance_module_de_la_conception')
         self.assertTrue(all('Panneau mono 550W' in s['message'] for s in fiches))
         self.assertIn('fiche_module_incomplete', {s['code'] for s in fiches})
+
+    def test_toit_suppose_echauffement_applique_et_pose_supposee_dite(self):
+        """ACAL2045 — le document du toit supposé DIT sa pose (``flush``, comme une pose réelle) :
+        l'étape « Échauffement des modules » est appliquée par la table société (affleurant ⇒
+        « dos isolé », châssis ⇒ « pose libre ») au lieu d'être omise, et ``suppositions`` dit la
+        pose supposée avec le champ du lead à renseigner. Mutant « retirer la pose du document »
+        ⇒ l'étape est omise : rouge."""
+        reglages = {**REGLAGES, 'simulation': {**REGLAGES['simulation'], 'thermique_par_pose': {
+            'source': 'profil de départ', 'valeur': {
+                'pose_libre': {'uc_w_m2k': 29, 'uv_w_m3sk': 0, 'source': 'texte'},
+                'dos_isole': {'uc_w_m2k': 15, 'uv_w_m3sk': 0, 'source': 'texte'}}}}}
+
+        def plan(**lead):
+            rendu = simuler_plan_par_defaut(self.company, *CASABLANCA, 21.6, materiel=MATERIEL, reglages=reglages,
+                                            client=_ClientRejoue(), pente=30, **lead)
+            pose = simulation.simuler_calepinage(
+                Calepinage(company=self.company, roof_layout=rendu['document'], pertes=[]), forcer=True,
+                enregistrer=False, materiel=MATERIEL, reglages=reglages, client=_ClientRejoue())
+            etapes = pose['blocs']['cascade']['etapes']
+            return rendu, next(e for e in etapes if e.get('libelle') == 'Échauffement des modules')
+
+        residentiel, etape_r = plan(type_installation='residentiel', type_toiture='tuiles')
+        terrasse, etape_t = plan(type_installation='residentiel', type_toiture='terrasse_beton')
+        industriel, _etape_i = plan(type_installation='industriel')
+        inconnu, _etape_x = plan()
+        self.assertTrue(residentiel['document']['zones'][0]['geometry']['flush'])
+        self.assertFalse(terrasse['document']['zones'][0]['geometry']['flush'])
+        self.assertFalse(industriel['document']['zones'][0]['geometry']['flush'])
+        self.assertTrue(inconnu['document']['zones'][0]['geometry']['flush'])
+        for etape in (etape_r, etape_t):
+            self.assertFalse(etape.get('motif_omission'), etape)
+        # Affleurant (dos isolé, Uc 15) chauffe plus que châssis (pose libre, Uc 29) : moins de production.
+        self.assertLess(residentiel['production_annuelle'], terrasse['production_annuelle'])
+        dites = {nom: [s for s in r['suppositions'] if s['code'] == 'pose_supposee']
+                 for nom, r in (('r', residentiel), ('t', terrasse), ('i', industriel), ('x', inconnu))}
+        self.assertEqual({nom: [(s['champ'], s['valeur']) for s in d] for nom, d in dites.items()},
+                         {'r': [('type_toiture', 'affleurante')], 't': [('type_toiture', 'sur châssis')],
+                          'i': [('type_installation', 'sur châssis')], 'x': [('type_toiture', 'affleurante')]})
+        self.assertIn('Type de toiture', dites['r'][0]['message'])
+        self.assertIn('calepinage', dites['t'][0]['message'])
 
     def test_fiche_sans_puissance_sans_compte_de_conception_refuse_comme_avant(self):
         materiel = dict(MATERIEL, module={})

@@ -200,7 +200,9 @@ def production_du_plan_par_defaut(company, lead, kwc, produits, nb_panneaux=None
     try:
         return simuler_plan_par_defaut(company, None, None, kwc, lead_id=lead.pk, produits=produits,
                                        nb_panneaux=nb_panneaux,
-                                       pente=float(pente) if pente is not None else None)
+                                       pente=float(pente) if pente is not None else None,
+                                       type_installation=getattr(lead, 'type_installation', None),
+                                       type_toiture=getattr(lead, 'type_toiture', None))
     except SimulationRefusee as refus:
         return {'refus': refus.motif or str(refus)}
 
