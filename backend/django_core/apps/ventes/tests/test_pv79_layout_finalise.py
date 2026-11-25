@@ -73,6 +73,12 @@ class NoteChatterTest(TestCase):
                     .values_list('body', flat=True))
 
     def test_note_posee_avec_la_puissance(self):
+        # ACAL2021 — la puissance dite est celle de la conception courante.
+        from apps.ventes.models import ConceptionLead
+        ConceptionLead.ranger(
+            lead=self.lead, etat='complet', marche='residentiel', option_retenue='sans',
+            valeurs={'sans': {'puissance_kwc': {'valeur': 7.7, 'unite': 'kWc', 'source': 'moteur'}}},
+            empreinte='a' * 64, niveau_regles=14, version_moteur='t')
         devis = self._devis(lead=self.lead)
         events.layout_finalise.send(sender='test', devis=devis,
                                     user=self.user)

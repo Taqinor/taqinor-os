@@ -20,9 +20,9 @@ def conception_pour_lead(lead, company):
     jamais un ``None`` global : une fiche lead sans conception affiche deux
     valeurs vides, elle ne plante pas sur ``undefined``.
 
-    * ``kwc`` — la puissance crête RÉELLEMENT calepinée, lue dans le layout du
-      devis (``roof_layout['result']['kwc']``), à défaut la puissance de
-      l'étude. C'est le chiffre de la TOITURE, pas une cible commerciale ;
+    * ``kwc`` — ACAL2021 : la puissance crête de la CONCEPTION courante du lead
+      (moteur unique, ``conception_courante``), ``None`` sans conception — plus
+      celle du dernier devis ni du calepinage ;
     * ``image_url`` — ACAL314 : chemin RELATIF du rendu 3D servi par Django
       (``/api/django/ventes/devis/<id>/roof-image/fichier/``, même origine,
       cookie httpOnly) — jamais une URL pré-signée portant l'hôte interne du
@@ -41,30 +41,13 @@ def conception_pour_lead(lead, company):
     devis = (tous.filter(roof_layout__isnull=False)
              .order_by('-date_creation', '-id').first())
 
-    # ACAL273 — la pastille lit d'abord le kWc VENDU (celui des lignes du
-    # devis le plus récent, ``puissance_kwc_du_devis``) ; sans devis chiffré,
-    # le calepinage OUVERT du lead (fiche du document, jamais 720 W constants).
-    # R2-10 — le LIEN vers le calepinage, lui, est servi TOUJOURS (devis ou
-    # non) : la fiche du lead montre son calepinage et son devis.
-    from .domain.scenario import puissance_kwc_du_devis
-    kwc = None
+    # ACAL2021 — la pastille lit la CONCEPTION courante (moteur unique) : plus le
+    # kWc du dernier devis ni du calepinage. R2-10 — le LIEN vers le calepinage
+    # et le devis le plus récent restent servis (devis ou non).
     dernier = tous.order_by('-date_creation', '-id').first()
-    if dernier is not None:
-        kwc = puissance_kwc_du_devis(dernier)
-    ouvert = _calepinage_ouvert_mesure(company, lead_id, avec_kwc=kwc in (None, ''))
+    ouvert = _calepinage_ouvert_mesure(company, lead_id, avec_kwc=False)
     calepinage = ouvert['calepinage'] if ouvert else None
-    if kwc in (None, '') and ouvert and ouvert['kwc']:
-        kwc = ouvert['kwc']
-    if kwc in (None, '') and devis is not None:
-        layout = devis.roof_layout if isinstance(devis.roof_layout, dict) else {}
-        resultat = layout.get('result')
-        kwc = (resultat or {}).get('kwc') if isinstance(resultat, dict) else None
-        if kwc in (None, ''):
-            kwc = (devis.etude_params or {}).get('puissance_kwc')
-    try:
-        kwc = float(kwc) if kwc not in (None, '') else None
-    except (TypeError, ValueError):
-        kwc = None
+    kwc = _kwc_de_la_conception(company, lead_id)
 
     image_url = None
     if devis is not None and (devis.roof_image or '').strip():
@@ -79,6 +62,23 @@ def conception_pour_lead(lead, company):
 
 
 logger = logging.getLogger(__name__)
+
+
+def _kwc_de_la_conception(company, lead_id):
+    """ACAL2021 — le kWc de l'option retenue de la conception COURANTE du lead
+    (``conception_courante``), ``None`` sans conception, en refus ou sans valeur :
+    jamais un kWc supposé."""
+    from .selectors_conception import conception_courante
+    conception = conception_courante(company, lead_id, suivi_des_devis=False)
+    if not conception or conception.get('etat') != 'complet':
+        return None
+    valeurs = conception.get('valeurs') or {}
+    option = conception.get('option_retenue') or next(iter(valeurs), None)
+    brut = ((valeurs.get(option) or {}).get('puissance_kwc') or {}).get('valeur')
+    try:
+        return float(brut) if brut not in (None, '') else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _calepinage_ouvert_mesure(company, lead_id, avec_kwc=True):

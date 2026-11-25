@@ -46,6 +46,16 @@ class ConceptionPourLeadTest(TestCase):
             company=self.other, nom="Client PV78 bis",
             email="pv78bis@example.com")
 
+    def _conception(self, kwc=21.6, option='sans', lead=None, **extra):
+        """ACAL2021 — la conception COURANTE rangée du lead (moteur unique)."""
+        from apps.ventes.models import ConceptionLead
+        champs = dict(
+            etat='complet', marche='residentiel', option_retenue=option,
+            valeurs={option: {'puissance_kwc': {'valeur': kwc, 'unite': 'kWc', 'source': 'moteur'}}},
+            empreinte='a' * 64, niveau_regles=14, version_moteur='t')
+        champs.update(extra)
+        return ConceptionLead.ranger(lead=lead or self.lead, **champs)
+
     def _devis(self, company=None, layout=LAYOUT, image='', lead=None):
         company = company or self.company
         return Devis.objects.create(
@@ -62,26 +72,43 @@ class ConceptionPourLeadTest(TestCase):
                          {'kwc': None, 'image_url': None, 'calepinage': None,
                           'devis': None})
 
-    def test_kwc_lu_dans_le_calepinage(self):
+    def test_kwc_de_la_conception_jamais_celui_du_devis(self):
+        # ACAL2021 — un devis à 7,7 kWc (calepinage) et 9,9 (étude), une
+        # conception à 21,6 : la pastille rend 21,6.
         self._devis()
-        self.assertEqual(
-            conception_pour_lead(self.lead, self.company)['kwc'], 7.7)
+        self._conception(21.6)
+        self.assertEqual(conception_pour_lead(self.lead, self.company)['kwc'], 21.6)
 
-    def test_repli_sur_la_puissance_de_letude(self):
-        self._devis(layout={'zones': []})    # layout sans result.kwc
-        self.assertEqual(
-            conception_pour_lead(self.lead, self.company)['kwc'], 9.9)
+    def test_sans_conception_kwc_nul_jamais_suppose(self):
+        # Ni le calepinage du devis, ni la puissance de l'étude ne remplacent
+        # la conception : sans conception rangée, ``null``.
+        self._devis()
+        self._devis(layout={'zones': []})
+        self.assertIsNone(conception_pour_lead(self.lead, self.company)['kwc'])
 
     def test_devis_sans_calepinage_ignore(self):
         self._devis(layout=None)
         self.assertIsNone(
             conception_pour_lead(self.lead, self.company)['kwc'])
 
-    def test_le_plus_recent_gagne(self):
-        self._devis(layout={'result': {'kwc': 3.3}})
-        self._devis(layout={'result': {'kwc': 8.8}})
-        self.assertEqual(
-            conception_pour_lead(self.lead, self.company)['kwc'], 8.8)
+    def test_deux_brouillons_la_pastille_suit_la_conception(self):
+        # Mesuré en direct : deux brouillons à 4,40 et 6,05 kWc, la pastille
+        # suivait le DERNIER devis (copie périmée) au lieu de la conception.
+        self._devis(layout={'result': {'kwc': 4.4}})
+        self._devis(layout={'result': {'kwc': 6.05}})
+        self._conception(5.5)
+        self.assertEqual(conception_pour_lead(self.lead, self.company)['kwc'], 5.5)
+
+    def test_option_retenue_de_la_conception(self):
+        self._conception(7.2, option='avec',
+                         valeurs={'sans': {'puissance_kwc': {'valeur': 6.0, 'unite': 'kWc', 'source': 'moteur'}},
+                                  'avec': {'puissance_kwc': {'valeur': 7.2, 'unite': 'kWc', 'source': 'moteur'}}})
+        self.assertEqual(conception_pour_lead(self.lead, self.company)['kwc'], 7.2)
+
+    def test_conception_refusee_kwc_nul(self):
+        self._conception(etat='refus', option_retenue='', valeurs={},
+                         refus={'code': 'localisation_inconnue', 'champ': 'ville', 'message': 'x'})
+        self.assertIsNone(conception_pour_lead(self.lead, self.company)['kwc'])
 
     def test_scope_societe(self):
         self._devis(company=self.other)
@@ -89,6 +116,10 @@ class ConceptionPourLeadTest(TestCase):
         self.assertEqual(conception_pour_lead(self.lead, self.company),
                          {'kwc': None, 'image_url': None, 'calepinage': None,
                           'devis': None})
+
+    def test_conception_d_une_autre_societe_ne_remonte_pas(self):
+        self._conception(8.8)  # rangée sous la société du lead : l'autre société ne la lit pas
+        self.assertIsNone(conception_pour_lead(self.lead, self.other)['kwc'])
 
     def test_image_url_chemin_relatif_meme_origine(self):
         # ACAL314 — un chemin RELATIF servi par Django, plus une URL
@@ -106,16 +137,17 @@ class ConceptionPourLeadTest(TestCase):
         # Le chemin ne lit pas le magasin : une panne de stockage ne touche
         # ni le kWc ni la fiche (le proxy répondra 404 au navigateur).
         self._devis(image='ventes/1/rendu.png')
+        self._conception(7.7)
         with mock.patch('apps.ventes.utils.pdf.roof_image_signed_url',
                         side_effect=RuntimeError('MinIO down')):
             resultat = conception_pour_lead(self.lead, self.company)
         self.assertTrue(resultat['image_url'].startswith('/api/django/'))
         self.assertEqual(resultat['kwc'], 7.7)
 
-    # ── ACAL273 — la pastille lit le kWc VENDU, sinon le calepinage ouvert ──
-    def test_pastille_lit_le_vendu(self):
-        """Devis 10 lignes de 550 W (5,5 kWc) sur un layout à 7,2 kWc (base
-        720 W) : la pastille dit 5,5 = ``puissance_kwc_du_devis``."""
+    # ── ACAL2021 — la pastille lit la CONCEPTION, plus le vendu ni le calepinage ──
+    def test_pastille_ne_lit_plus_le_vendu(self):
+        """Devis 10 lignes de 550 W (5,5 kWc, ``puissance_kwc_du_devis``) et
+        une conception à 8,0 kWc : la pastille dit 8,0 (ACAL273 remplacé)."""
         from decimal import Decimal
 
         from apps.stock.models import Produit
@@ -127,15 +159,15 @@ class ConceptionPourLeadTest(TestCase):
         devis.lignes.create(
             produit=produit, designation='Panneau Solar 550W',
             quantite=Decimal('10'), prix_unitaire=Decimal('1000'))
-        from apps.ventes.domain.scenario import puissance_kwc_du_devis
+        self._conception(8.0)
         resultat = conception_pour_lead(self.lead, self.company)
-        self.assertEqual(resultat['kwc'], 5.5)
-        self.assertEqual(resultat['kwc'], puissance_kwc_du_devis(devis))
+        self.assertEqual(resultat['kwc'], 8.0)
         self.assertIsNone(resultat['calepinage'])
 
-    def test_lead_sans_devis_lit_le_calepinage(self):
-        """Lead sans devis, calepinage ouvert de 12 modules de 710 Wc : 8,52
-        kWc lus par ``apps.calepinage.selectors`` avec l'id et le statut."""
+    def test_lead_sans_conception_ne_lit_plus_le_calepinage_mais_garde_le_lien(self):
+        """Calepinage ouvert de 12 modules de 710 Wc (8,52 kWc) mais aucune
+        conception rangée : kWc ``null`` (jamais le chiffre du calepinage),
+        le LIEN du calepinage reste servi."""
         from apps.calepinage.models import Calepinage
         calepinage = Calepinage.objects.create(
             company=self.company, lead_id=self.lead.pk, titre='Toit',
@@ -144,7 +176,7 @@ class ConceptionPourLeadTest(TestCase):
                 'zones': [{'label': 'Sud',
                            'geometry': {'count': 12, 'moduleId': 'm710'}}]})
         resultat = conception_pour_lead(self.lead, self.company)
-        self.assertEqual(resultat['kwc'], 8.52)
+        self.assertIsNone(resultat['kwc'])
         self.assertEqual(
             resultat['calepinage'],
             {'id': calepinage.pk, 'statut': calepinage.statut,
@@ -159,6 +191,7 @@ class ConceptionPourLeadTest(TestCase):
             company=self.company, lead_id=self.lead.pk, titre='',
             roof_layout={'zones': []})
         devis = self._devis()
+        self._conception(7.7)
         resultat = conception_pour_lead(self.lead, self.company)
         self.assertEqual(resultat['calepinage']['id'], calepinage.pk)
         self.assertEqual(resultat['calepinage']['reference'],
@@ -179,6 +212,7 @@ class ConceptionPourLeadTest(TestCase):
 
     def test_selecteur_crm_passe_plat(self):
         self._devis()
+        self._conception(7.7)
         self.assertEqual(conception_3d_du_lead(self.lead),
                          conception_pour_lead(self.lead, self.company))
         self.assertEqual(conception_3d_du_lead(None),
@@ -204,6 +238,11 @@ class ConceptionSurLaFicheLeadTest(TestCase):
             client=self.crm_client, roof_layout=LAYOUT)
 
     def test_fiche_expose_la_conception(self):
+        from apps.ventes.models import ConceptionLead
+        ConceptionLead.ranger(
+            lead=self.lead, etat='complet', marche='residentiel', option_retenue='sans',
+            valeurs={'sans': {'puissance_kwc': {'valeur': 7.7, 'unite': 'kWc', 'source': 'moteur'}}},
+            empreinte='a' * 64, niveau_regles=14, version_moteur='t')
         resp = self.api.get('/api/django/crm/leads/%s/' % self.lead.id)
         self.assertEqual(resp.status_code, 200)
         self.assertIn('conception', resp.data)
