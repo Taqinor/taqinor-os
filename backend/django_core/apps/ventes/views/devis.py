@@ -14,8 +14,12 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from ..models import Devis
 from ..serializers import (
+    DevisListeSerializer,
     DevisSerializer,
     DevisWriteSerializer,
+)
+from ..selectors_listes import (  # T4-X4-005 — liste paginée par le serveur
+    STATUTS_EFFECTIFS, filtrer_liste_devis, synthese_liste_devis,
 )
 from authentication.permissions import (
     IsAnyRole,
@@ -64,6 +68,35 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
 CONCEVABLE = ['1', 'true']
+#: T4-X4-005 — ``?forme=complete`` : la forme COMPLÈTE en liste (lignes,
+#: étude, calepinage), demandée par le seul dialogue « Signé » d'un lead.
+FORMES_LISTE = ['complete']
+ACTIFS = ['1']
+#: T4-X4-005 — paramètres de la liste paginée par le serveur (DevisList.jsx).
+PARAMS_LISTE = [
+    qstr('forme', enum=FORMES_LISTE,
+         desc="« complete » : lignes, étude et calepinage dans chaque ligne "
+              "(par défaut, la forme légère de la liste)."),
+    qstr('q', desc='Recherche dans la référence ou le nom du client.'),
+    qstr('statut_effectif', enum=list(STATUTS_EFFECTIFS),
+         desc="Statut affiché (un devis en attente dont la validité est "
+              "passée se lit « expire »)."),
+    qstr('actifs', enum=ACTIFS, desc='« 1 » : masque les versions remplacées.'),
+    qstr('auteurs', desc="Identifiants des auteurs, séparés par des virgules."),
+]
+
+
+def _auteurs_requete(request):
+    """``?auteurs=1,2,3`` → liste d'entiers ; vide → ``None`` ; autre → 400."""
+    from rest_framework.exceptions import ValidationError
+    brut = (request.query_params.get('auteurs') or '').strip()
+    if not brut:
+        return None
+    morceaux = [m.strip() for m in brut.split(',') if m.strip()]
+    if len(morceaux) > 500 or not all(m.isdigit() for m in morceaux):
+        raise ValidationError({'auteurs': [
+            "« auteurs » attend des identifiants séparés par des virgules."]})
+    return [int(m) for m in morceaux]
 
 
 def _resume_devis_auto(devis):
@@ -185,7 +218,8 @@ def _idempotente(suffixe):
 
 @extend_schema_view(list=extend_schema(parameters=[
     qint('lead'), qstr('concevable', enum=CONCEVABLE),
-    qstr('statut', enum=Devis.Statut.values), ENTITE]),
+    qstr('statut', enum=Devis.Statut.values), ENTITE, *PARAMS_LISTE],
+    responses=DevisListeSerializer(many=True)),
     create=extend_schema(extensions=D.CORPS_LEAD_OU_CLIENT))
 class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
                    DevisCycleActionsMixin,
@@ -327,7 +361,44 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
             return DevisWriteSerializer
+        # T4-X4-005 — la LISTE sert la forme légère, sauf ``?forme=complete``.
+        if self.action == 'list' and not choix_requete(
+                self.request, 'forme', FORMES_LISTE):
+            return DevisListeSerializer
         return DevisSerializer
+
+    def filter_queryset(self, queryset):
+        """T4-X4-005 — recherche, statut effectif, versions remplacées et
+        auteurs appliqués par le SERVEUR, sur la LISTE seule (les autres
+        actions gardent leur portée inchangée)."""
+        queryset = super().filter_queryset(queryset)
+        if self.action != 'list':
+            return queryset
+        q = (self.request.query_params.get('q') or '').strip()[:100]
+        return filtrer_liste_devis(
+            queryset, getattr(self.request.user, 'company', None), q=q,
+            statut_effectif=choix_requete(
+                self.request, 'statut_effectif', list(STATUTS_EFFECTIFS)),
+            actifs=bool(choix_requete(self.request, 'actifs', ACTIFS)),
+            auteurs=_auteurs_requete(self.request))
+
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
+    @action(pagination_class=None, detail=False, methods=['get'],
+            url_path='synthese', permission_classes=[LectureVentes])
+    def synthese(self, request):
+        """T4-X4-005 — l'en-tête de la liste des devis (cartes par statut,
+        devis à relancer, option batterie, versions remplacées, nombre total)
+        calculé sur TOUTE la portée du rôle, puisque l'écran ne charge plus
+        qu'une page. Contrat : ``contract_samples/devis_synthese.json``."""
+        donnees = synthese_liste_devis(
+            self.get_queryset(), getattr(request.user, 'company', None))
+        return Response({
+            'total': donnees['total'],
+            'remplaces': donnees['remplaces'],
+            'par_statut': donnees['par_statut'],
+            'a_relancer': donnees['a_relancer'],
+            'batterie': donnees['batterie'],
+        })
 
     def get_permissions(self):
         # AUD403 — la garde DÉCLARÉE par l'@action PRIME (``core.permissions.

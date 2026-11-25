@@ -123,6 +123,12 @@ export default function DevisRow({ d, ctx }) {
   // date de validité est dépassée s'affiche « Expiré » sans changer
   // son statut stocké ni l'étape du lead.
   const effStatut = d.is_expired ? 'expire' : d.statut
+  // T4-X4-005 — la ligne LÉGÈRE dit qu'un plan existe (`a_plan_toiture`) sans
+  // le transporter ; un devis complet (détail relu) le porte (`roof_layout`).
+  const aPlanToiture = d.a_plan_toiture ?? !!d.roof_layout
+  // Les panneaux qui lisent le devis COMPLET (plan, lignes, étude) attendent
+  // sa relecture (DevisList la lance à l'ouverture) au lieu d'un rendu vide.
+  const attenteDetail = d.detail_partiel === true
   // VX141 — parcours DOCUMENT (règle #4) affiché par <DocumentStageTrack> à
   // côté du StatusPill : brouillon/envoyé sont pilotés par `d.statut` ; passé
   // l'acceptation, `d.statut` reste figé à 'accepte' (règle #4 — les statuts
@@ -679,7 +685,7 @@ export default function DevisRow({ d, ctx }) {
                   Concevoir en 3D
                 </DropdownMenuItem>
               )}
-              {effStatut !== 'brouillon' && effStatut !== 'envoye' && d.roof_layout && (
+              {effStatut !== 'brouillon' && effStatut !== 'envoye' && aPlanToiture && (
                 <DropdownMenuItem
                   onSelect={() => navigate(`/ventes/devis/${d.id}/3d`)}
                   aria-label={`Voir le design 3D de ${d.reference}`}
@@ -691,14 +697,14 @@ export default function DevisRow({ d, ctx }) {
               {/* QG11/QG12 — « Voir le design 3D » : ouvre le plan de toiture
                   (roof_layout) en lecture seule dans le détail, ou dans une
                   fenêtre séparée. N'apparaît que si un plan existe. */}
-              {d.roof_layout && (
+              {aPlanToiture && (
                 <DropdownMenuItem onSelect={() => setRoofOpenId(
                   roofOpenId === d.id ? null : d.id)}>
                   <Box className="size-3.5" aria-hidden="true" />
                   Design 3D
                 </DropdownMenuItem>
               )}
-              {d.roof_layout && (
+              {aPlanToiture && (
                 <DropdownMenuItem
                   onSelect={() => window.open(`/ventes/devis/${d.id}/3d`, '_blank', 'noopener')}
                   aria-label={`Ouvrir le design 3D de ${d.reference} dans une fenêtre`}
@@ -995,12 +1001,16 @@ export default function DevisRow({ d, ctx }) {
               </div>
             </div>
             <div className="max-w-2xl">
-              <RoofViewer
-                layout={d.roof_layout}
-                clientNom={d.client_nom}
-                leadNom={d.lead_nom}
-                lignes={d.lignes}
-              />
+              {attenteDetail ? (
+                <p className="text-sm text-muted-foreground" role="status">Chargement du plan de toiture…</p>
+              ) : (
+                <RoofViewer
+                  layout={d.roof_layout}
+                  clientNom={d.client_nom}
+                  leadNom={d.lead_nom}
+                  lignes={d.lignes}
+                />
+              )}
             </div>
           </div>
         </td>
@@ -1055,7 +1065,11 @@ export default function DevisRow({ d, ctx }) {
             <p className="mb-2 text-xs font-medium text-muted-foreground">
               Étude bancable — {d.reference}
             </p>
-            <EtudeBancable devis={d} onRefresh={() => dispatch(rafraichirDevis(d.id))} />
+            {attenteDetail ? (
+              <p className="text-sm text-muted-foreground" role="status">Chargement de l’étude…</p>
+            ) : (
+              <EtudeBancable devis={d} onRefresh={() => dispatch(rafraichirDevis(d.id))} />
+            )}
           </div>
         </td>
       </tr>

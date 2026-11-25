@@ -86,3 +86,87 @@ def _devis_sans_etude():
             .defer('etude_params')
             .annotate(**{annote: _extrait(chemin)
                          for chemin, annote in ANNOTATION_PAR_CLE.items()}))
+
+
+# ---------------------------------------------------------------------------
+# T4-X4-005 — la liste des devis (``/ventes/devis``) paginée PAR LE SERVEUR :
+# l'écran chargeait TOUS les devis (590 pour un responsable ≈ 48 Mo) pour
+# filtrer, chercher et compter dans le navigateur. Les filtres et la synthèse
+# de l'en-tête sont calculés ici, sur la portée déjà bornée par la vue.
+# ---------------------------------------------------------------------------
+#: Statuts effectifs de la liste : le statut stocké, sauf qu'un devis en
+#: attente dont la validité est passée se lit « expire » (T7, ``utils.expiry``).
+STATUTS_EFFECTIFS = ('brouillon', 'envoye', 'accepte', 'refuse', 'expire')
+
+
+def filtrer_liste_devis(qs, company, *, q=None, statut_effectif=None,
+                        actifs=False, auteurs=None):
+    """Recherche (référence ou nom du client), statut effectif, versions
+    remplacées masquées, auteurs — les mêmes règles que l'écran appliquait
+    aux devis chargés, appliquées en SQL."""
+    from django.db.models import Q
+    from django.utils import timezone
+
+    from .utils.expiry import q_expire_a_la_volee
+
+    if q:
+        qs = qs.filter(Q(reference__icontains=q) | Q(client__nom__icontains=q))
+    if statut_effectif:
+        expire = q_expire_a_la_volee(company, timezone.localdate())
+        if statut_effectif == 'expire':
+            qs = qs.filter(Q(statut='expire') | expire)
+        elif statut_effectif in ('brouillon', 'envoye'):
+            qs = qs.filter(statut=statut_effectif).exclude(expire)
+        else:
+            qs = qs.filter(statut=statut_effectif)
+    if actifs:
+        qs = qs.filter(is_active=True)
+    if auteurs:
+        qs = qs.filter(created_by_id__in=auteurs)
+    return qs
+
+
+def synthese_liste_devis(qs, company):
+    """L'en-tête de la liste sur TOUTE la portée (pas sur la page) : nombre et
+    total affiché par statut effectif des devis en jeu, devis à relancer
+    (envoyés, validité ≤ 7 jours), option batterie des acceptés, versions
+    remplacées. Le total d'argent est ``display_totals`` — le MÊME que la
+    colonne « Total TTC » de chaque ligne (``total_affiche``), jamais un
+    second calcul ; les devis sont lus par paquets (mémoire bornée)."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .quote_engine.builder import display_totals
+    from .utils.expiry import is_expired, q_expiration
+
+    jour = timezone.localdate()
+    par_statut = {s: {'count': 0, 'total': 0.0} for s in STATUTS_EFFECTIFS}
+    en_jeu = (qs.filter(is_active=True).order_by('pk')
+              .prefetch_related(None)
+              .prefetch_related('lignes', 'lignes__produit',
+                                'lignes__produit__fiche_technique'))
+    for devis in en_jeu.iterator(chunk_size=50):
+        cle = 'expire' if is_expired(devis, today=jour) else devis.statut
+        cellule = par_statut.setdefault(cle, {'count': 0, 'total': 0.0})
+        cellule['count'] += 1
+        cellule['total'] += float(display_totals(
+            devis, lignes_prechargees=True)['total'] or 0)
+    for cellule in par_statut.values():
+        cellule['total'] = round(cellule['total'], 2)
+    a_relancer = (qs.filter(is_active=True, statut='envoye')
+                  .filter(q_expiration(company, apres=jour,
+                                       avant=jour + timedelta(days=7)))
+                  .values('id', 'reference'))
+    acceptes = qs.filter(statut='accepte')
+    return {
+        'total': qs.count(),
+        'remplaces': qs.filter(is_active=False).count(),
+        'par_statut': par_statut,
+        'a_relancer': [{'id': d['id'], 'reference': d['reference']}
+                       for d in a_relancer],
+        'batterie': {
+            'avec': acceptes.filter(option_acceptee='avec_batterie').count(),
+            'sans': acceptes.filter(option_acceptee='sans_batterie').count(),
+        },
+    }

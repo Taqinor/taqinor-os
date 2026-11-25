@@ -50,7 +50,14 @@ const ventesApi = {
   // Devis
   // VX55 — `config` optionnel (ex. { signal }) pour l'annulation
   // AbortController câblée depuis fetchDevis (createAsyncThunk {signal}).
+  // T4-X4-005 — la liste sert une forme LÉGÈRE par ligne (sans étude, lignes
+  // ni calepinage : `detail_partiel`) ; `{ forme: 'complete' }` la demande
+  // complète (dialogue « Signé » seulement). Filtres serveur : `q`,
+  // `statut_effectif`, `actifs`, `auteurs`, `lead`, `statut`, `concevable`.
   getDevis: (params, config) => api.get('/ventes/devis/', { params, ...config }),
+  // T4-X4-005 — l'en-tête de l'écran Devis sur toute la portée du rôle
+  // (contrat `apps/ventes/contract_samples/devis_synthese.json`).
+  getDevisSynthese: (config) => api.get('/ventes/devis/synthese/', config),
   getDevisById: (id) => api.get(`/ventes/devis/${id}/`),
   createDevis: (data) => api.post('/ventes/devis/', data),
   // QX21 — création ATOMIQUE (devis + lignes en un seul commit serveur) : plus

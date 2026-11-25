@@ -23,6 +23,14 @@ import {
 } from '../../../features/ventes/calc/classification.js'
 import { frenchError } from './devisListHelpers.js'
 
+// T4-X4-005 — le devis porte-t-il des données d'étude ? La ligne LÉGÈRE de la
+// liste le dit par `etude_resume.a_etude` (sans transporter l'étude) ; un
+// devis complet (détail relu) le dit par `etude_params`.
+export function aDesDonneesEtude(d) {
+  if (d?.etude_resume) return !!d.etude_resume.a_etude
+  return !!(d?.etude_params && Object.keys(d.etude_params).length > 0)
+}
+
 // Les options PDF envoyées à `generer-pdf` (whitelist `clean_pdf_options`)
 // depuis l'état de la modale — fonction PURE (testable sans React).
 export function optionsPdfDepuisModale({
@@ -36,7 +44,7 @@ export function optionsPdfDepuisModale({
     // T12/T13 — étude uniquement si premium ET données d'étude présentes.
     include_etude: pdfMode === 'full' && includeEtude
       && !(d?.mode_installation === 'commercial' || d?.mode_installation === 'industriel')
-      && !!(d?.etude_params && Object.keys(d.etude_params).length > 0),
+      && aDesDonneesEtude(d),
     // CAL184 — tri-état envoyé TEL QUEL à la whitelist `clean_pdf_options` :
     // `null` = auto (le serveur ajoute la planche si le devis en porte une),
     // `true`/`false` = le commercial tranche et sa valeur prime sur l'auto.
@@ -114,8 +122,7 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
   const [pdfModeAutoOnepage, setPdfModeAutoOnepage] = useState(false)
 
   // T13 — la case « Inclure l'étude » n'a de sens qu'avec des données d'étude.
-  const targetHasEtude = !!(pdfTarget?.etude_params
-    && Object.keys(pdfTarget.etude_params).length > 0)
+  const targetHasEtude = aDesDonneesEtude(pdfTarget)
   // T14 — le format premium « full » n'est pas pertinent pour le pompage agricole.
   const targetIsAgricole = pdfTarget?.mode_installation === 'agricole'
   // CIQ325 — le C&I a son document (3 pages commercial, 4 pages industriel,

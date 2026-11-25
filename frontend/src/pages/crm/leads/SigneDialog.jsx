@@ -122,7 +122,8 @@ export default function SigneDialog({ lead, onClose, onConfirmed, onAccepted, on
   useEffect(() => {
     let alive = true
     fetchAllPages((page, { page_size: pageSize } = {}) =>
-      ventesApi.getDevis({ lead: lead.id, page, page_size: pageSize }).then((r) => r.data))
+      // T4-X4-005 — forme COMPLÈTE : `optionsDetail` lit les lignes du devis.
+      ventesApi.getDevis({ lead: lead.id, forme: 'complete', page, page_size: pageSize }).then((r) => r.data))
       .then((rows) => {
         if (!alive) return
         const all = Array.isArray(rows) ? rows : (rows?.results ?? [])
