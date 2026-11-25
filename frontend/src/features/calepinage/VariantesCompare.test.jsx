@@ -53,10 +53,10 @@ const RETENUE = CONTRAT.lignes.find((l) => l.est_retenue)
 const AUTRE = CONTRAT.lignes.find((l) => !l.est_retenue && l.simulee && !l.courante)
 const NON_SIMULEE = CONTRAT.lignes.find((l) => !l.simulee)
 
-const rendre = () => render(
+const rendre = (props = {}) => render(
   <MemoryRouter initialEntries={['/calepinage/1/variantes']}>
     <Routes>
-      <Route path="/calepinage/:id/variantes" element={<VariantesCompare />} />
+      <Route path="/calepinage/:id/variantes" element={<VariantesCompare {...props} />} />
     </Routes>
   </MemoryRouter>,
 )
@@ -151,6 +151,25 @@ describe('VariantesCompare (CAL42)', () => {
     await waitFor(() => expect(mocks.retenirVariante).toHaveBeenCalledWith('1', AUTRE.id))
     await waitFor(() => expect(screen.getByTestId(`cal-retenue-${AUTRE.id}`)).toBeInTheDocument())
     expect(screen.queryByTestId(`cal-retenue-${RETENUE.id}`)).not.toBeInTheDocument()
+  })
+
+  it('T4-X5-014 — après « Retenir », l’atelier entier relit la conception (Documents, devis) : onRecharger, une fois', async () => {
+    const onRecharger = vi.fn().mockResolvedValue(undefined)
+    rendre({ onRecharger })
+    await screen.findByTestId('cal-tableau-variantes')
+    const cellule = screen.getByTestId(`cal-ecart_modules-${AUTRE.id}`).closest('table')
+    fireEvent.click(within(cellule).getAllByRole('button', { name: 'Retenir' })[0])
+    await waitFor(() => expect(onRecharger).toHaveBeenCalledTimes(1))
+  })
+
+  it('T4-X5-014 — un refus de « Retenir » ne relit pas l’atelier', async () => {
+    mocks.retenirVariante.mockRejectedValue({ response: { status: 409, data: { variante: 'Refus.' } } })
+    const onRecharger = vi.fn()
+    rendre({ onRecharger })
+    await screen.findByTestId('cal-tableau-variantes')
+    fireEvent.click(screen.getAllByRole('button', { name: 'Retenir' })[0])
+    await screen.findByRole('alert')
+    expect(onRecharger).not.toHaveBeenCalled()
   })
 
   it('un refus de « Retenir » s’affiche tel quel, et la retenue ne bouge pas', async () => {
