@@ -73,9 +73,9 @@ function titreEtatElectrique(data, manquantes) {
    `calepinage_publication.json`) : avertissements et marques manquantes du
    serveur, MOT POUR MOT ; lignes de kit ajoutées ; « Aucun changement ». Sans
    rien à dire, le geste reste celui d'aujourd'hui (navigation / rechargement). */
-function messagesDuServeur(data) {
+function messagesDuServeur(data, cles = ['avertissements', 'marques_manquantes']) {
   const messages = []
-  for (const cle of ['avertissements', 'marques_manquantes']) {
+  for (const cle of cles) {
     for (const m of Array.isArray(data?.[cle]) ? data[cle] : []) {
       if (typeof m === 'string' && m.trim()) messages.push(m.trim())
     }
@@ -310,7 +310,10 @@ export default function BoutonDevis({
     // les lignes techniques (ACAL95, ACAL171) repliées dessous ; la référence est celle du serveur.
     const manquantes = manquantesElectriques(res.data)
     setRetour({
-      messages: messagesDuServeur(res.data),
+      // T4-X7-008 — les avertissements de composition (« ce panneau ne convient pas à cet onduleur »…)
+      // se lisent SUR la carte du devis créé, jamais repliés ; le technique reste sous « Détails ».
+      alertes: messagesDuServeur(res.data, ['avertissements']),
+      messages: messagesDuServeur(res.data, ['marques_manquantes']),
       manquantes,
       etatTitre: titreEtatElectrique(res.data, manquantes),
       lignes: null,
@@ -580,6 +583,7 @@ export default function BoutonDevis({
           devisId={retour.devisId}
           reference={retour.reference}
           onRevenir={() => setRetour(null)}
+          alertes={retour.alertes ?? []}
           aDetails={retour.messages.length > 0 || retour.manquantes?.length > 0}
         >
           <div data-testid="cal-devis-avertissements">

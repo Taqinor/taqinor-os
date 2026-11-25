@@ -108,6 +108,7 @@ export const ALL_HOOKS = [
   'cal-devis-avertissements',
   'cal-devis-j-ai-lu',
   'cal-devis-cree',
+  'cal-devis-alertes',
   'cal-devis-details-technicien',
   'cal-devis-ouvrir',
   'cal-devis-revenir',

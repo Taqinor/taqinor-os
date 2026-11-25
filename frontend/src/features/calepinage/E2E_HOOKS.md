@@ -117,6 +117,7 @@ retiré plus un hook ajouté.
 | `cal-devis-avertissements` | devis avertissements et marques manquantes (ACAL95). |
 | `cal-devis-j-ai-lu` | devis « J'ai lu » avant rechargement (ACAL95). |
 | `cal-devis-cree` | devis : carte « Devis … créé » après la génération (ACAL866). |
+| `cal-devis-alertes` | devis : avertissements de composition lisibles sur la carte du devis créé, jamais repliés (T4-X7-008). |
 | `cal-devis-details-technicien` | devis : détails techniques repliés sous la carte (ACAL866). |
 | `cal-devis-ouvrir` | devis : bouton « Voir le devis » (`/ventes/devis?devis=<id>`, ACAL95/ACAL866). |
 | `cal-devis-revenir` | devis : « Revenir à la conception » sous la carte (ACAL866). |

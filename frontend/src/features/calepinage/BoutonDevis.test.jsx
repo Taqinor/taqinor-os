@@ -305,8 +305,12 @@ describe('BoutonDevis — retour du serveur (ACAL95)', () => {
     await userEvent.click(await screen.findByTestId('cal-generer-devis'))
 
     const bloc = await screen.findByTestId('cal-devis-avertissements')
-    expect(bloc).toHaveTextContent(PUBLICATION.avertissements[0])
     expect(bloc).toHaveTextContent(PUBLICATION.marques_manquantes[0])
+    // T4-X7-008 — l'avertissement de composition se lit SUR la carte, hors du repli technicien.
+    const alertes = screen.getByTestId('cal-devis-alertes')
+    expect(alertes).toHaveTextContent(PUBLICATION.avertissements[0])
+    expect(alertes.closest('details')).toBeNull()
+    expect(bloc).not.toHaveTextContent(PUBLICATION.avertissements[0])
     expect(navigateMock).not.toHaveBeenCalled()
     expect(screen.getByTestId('cal-devis-ouvrir'))
       .toHaveAttribute('href', `/ventes/devis?devis=${PUBLICATION.devis}`)
