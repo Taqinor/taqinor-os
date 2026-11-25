@@ -678,6 +678,32 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     expect(carte).not.toHaveTextContent('En stock')
   })
 
+  // T4-X2-004 — « proposé pour 5 panneaux » à côté d'un verdict « Bloquant : 2 » (courant de chaîne au-dessus du maxi).
+  it('T4-X2-004 — un contrôle bloquant échoue : la ligne ne dit plus « proposé », elle dit pourquoi l’onduleur ne convient pas', async () => {
+    const r = resultat()
+    const courant = r.electrique.verdicts.find((v) => v.code === 'courant_par_entree_mppt')
+    Object.assign(courant, { conforme: false, bloquant: true, detail: '18,6 A > 18,0 A maxi' })
+    servirEtape({ r })
+    rendreEtape()
+    const carte = screen.getByTestId('cal-elec-onduleur')
+    await waitFor(() => expect(carte).toHaveTextContent(`ne convient pas pour 12 panneaux : ${courant.libelle} (18,6 A > 18,0 A maxi)`))
+    expect(carte).not.toHaveTextContent('proposé pour')
+  })
+
+  // T4-X9-002 — le libellé du contrôle collé à son détail disait « sous … (… au-dessus …) » : la raison COURTE servie
+  // (`raison`, une phrase qui dit le fait et son sens) passe devant ; sans elle, le repli d'avant.
+  it('T4-X9-002 — la raison courte servie remplace « libellé (détail) » dans la ligne de l’onduleur', async () => {
+    const r = resultat()
+    const courant = r.electrique.verdicts.find((v) => v.code === 'courant_par_entree_mppt')
+    const raison = 'le courant des panneaux (18,6 A) dépasse ce qu’une entrée de cet onduleur accepte (18,0 A)'
+    Object.assign(courant, { conforme: false, bloquant: true, detail: '18,6 A au-dessus de la borne de fiche 18,0 A', raison })
+    servirEtape({ r })
+    rendreEtape()
+    const carte = screen.getByTestId('cal-elec-onduleur')
+    await waitFor(() => expect(carte).toHaveTextContent(`ne convient pas pour 12 panneaux : ${raison} — comparez`))
+    expect(carte).not.toHaveTextContent('borne de fiche')
+  })
+
   it('F3 — lecture en cours : le titre est posé tout de suite, seules les lignes sont grisées, aucun compte inventé', async () => {
     servirEtape()
     calepinageApi.calepinages.pretAEnvoyer.mockReturnValue(new Promise(() => {}))

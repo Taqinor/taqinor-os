@@ -32,11 +32,40 @@ const DEVIS_PAGE_CONCURRENCY = 5
 // VX163 — enrobé par `createCancellableThunk` (annulation → `meta.aborted ===
 // true`, propre plutôt qu'un `rejectWithValue`) + dé-duplication en vol (deux
 // montages simultanés de DevisList ne déclenchent qu'UNE seule pagination).
-export const fetchDevis = createCancellableThunk('ventes/fetchDevis', (_, { signal }) => {
-  const charger = () => dedupeInFlight('ventes/fetchDevis', () =>
-    fetchAllPages((page, { page_size: pageSize } = {}) => ventesApi.getDevis({ page, page_size: pageSize }, { signal }).then((r) => r.data), { concurrency: DEVIS_PAGE_CONCURRENCY })
-      .then((results) => ({ results })),
-  )
+// T4-X4-005 — `fetchDevis(requete)` avec une `requete` (`page`, `page_size`,
+// `q`, `statut_effectif`, `actifs`, `auteurs`) : l'écran Devis demande UNE page
+// filtrée par le serveur, plus la synthèse de son en-tête (`devis/synthese/`,
+// contrat `devis_synthese.json`) — sur les données de la production, charger
+// TOUS les devis par pages de 200 (≈ 48 Mo) n'ouvrait jamais l'écran. Une
+// synthèse en échec n'empêche pas la page (`syntheseEchec`). Sans `requete`
+// (tableau de bord, cockpit Ventes) : toutes les pages, comme avant.
+async function chargerPageDevis(requete, signal, { dispatch, getState } = {}) {
+  // La synthèse (≈ 11 s à froid sur 583 devis) ne RETARDE PAS la page : elle est
+  // lancée à part (une seule à la fois) et range son résultat quand elle arrive ;
+  // l'écran dit « Calcul des totaux… » en attendant (limite propre : 60 s).
+  if (dispatch && !getState?.()?.ventes?.devisSyntheseChargement) {
+    dispatch(syntheseDemandee())
+    ventesApi.getDevisSynthese({ signal }).then(
+      (r) => dispatch(synthesePosee(r.data)),
+      (err) => dispatch(isCancelledError(err) ? syntheseAbandonnee() : syntheseEchouee()),
+    )
+  }
+  // L'écran pagine lui-même : il envoie `page` et lit `count` (le total du pager).
+  const data = await ventesApi.getDevis({ ...requete, page: requete.page ?? 1 }, { signal }).then((r) => r.data)
+  const results = Array.isArray(data) ? data : (data?.results ?? [])
+  return {
+    results,
+    count: Array.isArray(data) ? results.length : (data?.count ?? results.length),
+    requete,
+  }
+}
+
+export const fetchDevis = createCancellableThunk('ventes/fetchDevis', (requete, { signal, dispatch, getState }) => {
+  const charger = () => (requete && typeof requete === 'object'
+    ? dedupeInFlight(`ventes/fetchDevis:${JSON.stringify(requete)}`, () => chargerPageDevis(requete, signal, { dispatch, getState }))
+    : dedupeInFlight('ventes/fetchDevis', () =>
+      fetchAllPages((page, { page_size: pageSize } = {}) => ventesApi.getDevis({ page, page_size: pageSize }, { signal }).then((r) => r.data), { concurrency: DEVIS_PAGE_CONCURRENCY })
+        .then((results) => ({ results }))))
   // CE2E8 — StrictMode : la promesse partagée appartient au 1er montage, annulée
   // à son démontage ; ce 2e appel (signal vivant) la relance au lieu de la subir.
   return charger().catch((err) => (isCancelledError(err) && !signal.aborted ? charger() : Promise.reject(err)))
@@ -46,14 +75,17 @@ export const fetchDevis = createCancellableThunk('ventes/fetchDevis', (_, { sign
 // refus, relance, révision…), on ne relit PLUS toute la liste (40 requêtes à
 // 2 000 devis) : UN `GET devis/<id>/` remplace la seule ligne touchée
 // (`devisPatched`). Si la lecture échoue, repli sûr sur la relecture complète.
-export const rafraichirDevis = createAsyncThunk('ventes/rafraichirDevis', async (id, { dispatch }) => {
+// T4-X4-005 — « complète » = la DERNIÈRE page demandée par l'écran Devis
+// (`devisRequete`), jamais tous les devis.
+export const rafraichirDevis = createAsyncThunk('ventes/rafraichirDevis', async (id, { dispatch, getState }) => {
   if (id == null) return null
   try {
     const res = await ventesApi.getDevisById(id)
     dispatch(devisPatched(res.data))
     return res.data
   } catch {
-    dispatch(fetchDevis())
+    // parametres-requete: page, page_size, q, statut_effectif, actifs, auteurs
+    dispatch(fetchDevis(getState()?.ventes?.devisRequete ?? undefined))
     return null
   }
 })
@@ -325,6 +357,14 @@ const ventesSlice = createSlice({
   name: 'ventes',
   initialState: {
     devis: [],
+    // T4-X4-005 — page servie à l'écran Devis : nombre total de la requête,
+    // requête elle-même (relecture), synthèse de l'en-tête (null tant
+    // qu'aucune page n'a été demandée, ou si elle a échoué : `devisSyntheseEchec`).
+    devisCount: null,
+    devisRequete: null,
+    devisSynthese: null,
+    devisSyntheseEchec: false,
+    devisSyntheseChargement: false,
     bonsCommande: [],
     factures: [],
     // AUD157 (FAC-13) — KPI monetaires agreges PAR LE SERVEUR (jamais sommes
@@ -352,7 +392,22 @@ const ventesSlice = createSlice({
       const i = state.devis.findIndex((x) => x.id === d.id)
       if (i !== -1) state.devis[i] = d
     },
+    // T4-X4-005 — lien profond `?devis=<id>` vers un devis hors de la page
+    // affichée : il est lu (`GET devis/<id>/`) et posé EN TÊTE de la page.
+    devisInsere(state, action) {
+      const d = action.payload
+      if (!d || d.id == null || state.devis.some((x) => x.id === d.id)) return
+      state.devis.unshift(d)
+    },
     clearError(state) { state.error = null },
+    syntheseDemandee(state) { state.devisSyntheseChargement = true; state.devisSyntheseEchec = false },
+    synthesePosee(state, action) {
+      state.devisSynthese = action.payload
+      state.devisSyntheseChargement = false
+      state.devisSyntheseEchec = false
+    },
+    syntheseAbandonnee(state) { state.devisSyntheseChargement = false },
+    syntheseEchouee(state) { state.devisSyntheseChargement = false; state.devisSyntheseEchec = true },
   },
   extraReducers: (builder) => {
     // VX165 — compteur `pendingCount` partagé : voir lib/reducersChargement.js.
@@ -363,6 +418,18 @@ const ventesSlice = createSlice({
       .addCase(fetchDevis.fulfilled, (state, action) => {
         settleLoading(state)
         state.devis = action.payload.results ?? action.payload
+        // T4-X4-005 — une page (écran Devis) porte son compte et sa synthèse ;
+        // la lecture complète (tableau de bord) remet ces champs à zéro.
+        const p = action.payload
+        state.devisRequete = p?.requete ?? null
+        state.devisCount = p?.requete ? p.count : null
+        // La synthèse arrive à part (synthesePosee / syntheseEchouee) ; la lecture
+        // complète (sans requête) la remet à zéro.
+        if (!p?.requete) {
+          state.devisSynthese = null
+          state.devisSyntheseEchec = false
+          state.devisSyntheseChargement = false
+        }
       })
       .addCase(fetchDevis.rejected, rejected)
       .addCase(createDevis.fulfilled, (state, action) => { state.devis.push(action.payload) })
@@ -459,5 +526,8 @@ const ventesSlice = createSlice({
   },
 })
 
-export const { clearError, devisPatched } = ventesSlice.actions
+export const {
+  clearError, devisPatched, devisInsere,
+  syntheseDemandee, synthesePosee, syntheseEchouee, syntheseAbandonnee,
+} = ventesSlice.actions
 export default ventesSlice.reducer

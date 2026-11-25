@@ -766,6 +766,10 @@
             "free"
           ]
         },
+        "poseManuelle": {
+          "description": "Relecture E6 M2 — la pose de ce pan a-t-elle été AJUSTÉE À LA MAIN (panneau ajouté, retiré ou déplacé, ou placement libre) ? Écrite par l'outil de toiture à chaque export depuis `hasManualEdits` (`apps/web/src/lib/layoutVariability.ts`) : `false` quand la pose est celle du remplissage automatique, même si le toit est trop petit pour la cible. Lue par `calepinage/services/pose_pour_moteur.py::pose_servie` (`a_la_main`) ; un document enregistré AVANT cette clé garde l'ancienne règle (compte posé ≠ somme des `neededPanels`). Partie du pan, donc IMPRIMÉE : au niveau de règles 15, une pose ajustée impose son compte au devis.",
+          "type": "boolean"
+        },
         "solarAccess": {
           "description": "CAL248 — accès solaire PAR MODULE, persisté pour que le backend puisse le lire (`pointSolarAccess` / `cellsSolarAccess` vivent aujourd'hui côté client et ne sortent jamais de l'écran). OPTIONNEL et additif : absent = comportement d'aujourd'hui, JAMAIS une valeur par défaut — un module sans accès solaire calculé n'est pas un module à 100 %.",
           "$ref": "#/$defs/solarAccess"
@@ -2708,6 +2712,7 @@
           "flush": true,
           "kwc": 8.64,
           "count": 12,
+          "poseManuelle": false,
           "origin": [
             -7.6,
             33.5

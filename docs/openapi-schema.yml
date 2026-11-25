@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5322, operations: 8176, components: 4100}
+counts: {paths: 5326, operations: 8180, components: 4108}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -558,6 +558,7 @@ operations:
 - patch /api/django/calepinage/calepinages/systemes-fixation/{systeme_id}/ -> django_calepinage_calepinages_systemes_fixation_partial_update
 - get /api/django/calepinage/calepinages/{id}/ -> django_calepinage_calepinages_retrieve
 - patch /api/django/calepinage/calepinages/{id}/ -> django_calepinage_calepinages_partial_update
+- get /api/django/calepinage/calepinages/{id}/apercu-devis/ -> django_calepinage_calepinages_apercu_devis_retrieve
 - get /api/django/calepinage/calepinages/{id}/apercu-document/ -> django_calepinage_calepinages_apercu_document_retrieve
 - get /api/django/calepinage/calepinages/{id}/approbation/ -> django_calepinage_calepinages_approbation_retrieve
 - post /api/django/calepinage/calepinages/{id}/approbation/ -> django_calepinage_calepinages_approbation_create
@@ -3802,6 +3803,7 @@ operations:
 - post /api/django/ventes/devis/composition/ -> django_ventes_devis_composition_create
 - post /api/django/ventes/devis/from-layout/ -> django_ventes_devis_from_layout_create
 - get /api/django/ventes/devis/prefill-site/ -> django_ventes_devis_prefill_site_retrieve
+- get /api/django/ventes/devis/synthese/ -> django_ventes_devis_synthese_retrieve
 - get /api/django/ventes/devis/variante-config/ -> django_ventes_devis_variante_config_retrieve
 - put /api/django/ventes/devis/variante-config/ -> django_ventes_devis_variante_config_update
 - post /api/django/ventes/devis/{devis_id}/mettre-a-jour-conception/ -> django_ventes_devis_mettre_a_jour_conception_create
@@ -4687,6 +4689,7 @@ operations:
 - patch /api/v1/calepinage/calepinages/systemes-fixation/{systeme_id}/ -> v1_calepinage_calepinages_systemes_fixation_partial_update
 - get /api/v1/calepinage/calepinages/{id}/ -> v1_calepinage_calepinages_retrieve
 - patch /api/v1/calepinage/calepinages/{id}/ -> v1_calepinage_calepinages_partial_update
+- get /api/v1/calepinage/calepinages/{id}/apercu-devis/ -> v1_calepinage_calepinages_apercu_devis_retrieve
 - get /api/v1/calepinage/calepinages/{id}/apercu-document/ -> v1_calepinage_calepinages_apercu_document_retrieve
 - get /api/v1/calepinage/calepinages/{id}/approbation/ -> v1_calepinage_calepinages_approbation_retrieve
 - post /api/v1/calepinage/calepinages/{id}/approbation/ -> v1_calepinage_calepinages_approbation_create
@@ -7894,6 +7897,7 @@ operations:
 - post /api/v1/ventes/devis/composition/ -> v1_ventes_devis_composition_create
 - post /api/v1/ventes/devis/from-layout/ -> v1_ventes_devis_from_layout_create
 - get /api/v1/ventes/devis/prefill-site/ -> v1_ventes_devis_prefill_site_retrieve
+- get /api/v1/ventes/devis/synthese/ -> v1_ventes_devis_synthese_retrieve
 - get /api/v1/ventes/devis/variante-config/ -> v1_ventes_devis_variante_config_retrieve
 - put /api/v1/ventes/devis/variante-config/ -> v1_ventes_devis_variante_config_update
 - post /api/v1/ventes/devis/{devis_id}/mettre-a-jour-conception/ -> v1_ventes_devis_mettre_a_jour_conception_create
@@ -8979,7 +8983,7 @@ query_params:
   get /api/django/ventes/courbes-iv/: defaut ordering page page_size recette search
   get /api/django/ventes/dashboard/: end mine month start
   get /api/django/ventes/devis-lignes/: ordering page page_size search
-  get /api/django/ventes/devis/: concevable entite lead ordering page page_size search statut
+  get /api/django/ventes/devis/: actifs auteurs concevable entite forme lead ordering page page_size q search statut statut_effectif
   get /api/django/ventes/devis/assistant-liste/: depuis jusqu_a limite q statut
   get /api/django/ventes/devis/prefill-site/: client
   get /api/django/ventes/devis/{id}/assistant-taille/apercu/: batterie_nb_modules nb_panneaux
@@ -9827,7 +9831,7 @@ query_params:
   get /api/v1/ventes/courbes-iv/: defaut ordering page page_size recette search
   get /api/v1/ventes/dashboard/: end mine month start
   get /api/v1/ventes/devis-lignes/: ordering page page_size search
-  get /api/v1/ventes/devis/: concevable entite lead ordering page page_size search statut
+  get /api/v1/ventes/devis/: actifs auteurs concevable entite forme lead ordering page page_size q search statut statut_effectif
   get /api/v1/ventes/devis/assistant-liste/: depuis jusqu_a limite q statut
   get /api/v1/ventes/devis/prefill-site/: client
   get /api/v1/ventes/devis/{id}/assistant-taille/apercu/: batterie_nb_modules nb_panneaux
@@ -10306,6 +10310,7 @@ components:
 - CalendrierOuvre
 - CalendrierReglementaire
 - CalendrierResume
+- CalepinageApercuDevis
 - CalepinageAppliquerCote
 - CalepinageAppliquerCoteCorpsRequest
 - CalepinageApprobation
@@ -10950,7 +10955,9 @@ components:
 - DevisLayoutResponse
 - DevisLectureClient
 - DevisLigneAssistant
+- DevisLigneDeListe
 - DevisLignesAssistantResponse
+- DevisListe
 - DevisListeAssistantLigne
 - DevisListeAssistantResponse
 - DevisLotCreationRequestRequest
@@ -10997,6 +11004,11 @@ components:
 - DevisStatutEnum
 - DevisSuperiorContactStatus
 - DevisSyncLayoutResponse
+- DevisSyntheseARelancer
+- DevisSyntheseBatterie
+- DevisSyntheseParStatut
+- DevisSyntheseResponse
+- DevisSyntheseStatut
 - DevisVarianteConfigRequestRequest
 - DevisVarianteConfigResponse
 - DevisWhatsappPreviewResponse
@@ -11963,7 +11975,7 @@ components:
 - PaginatedDepartementList
 - PaginatedDepotConsignationList
 - PaginatedDepotPublicList
-- PaginatedDevisList
+- PaginatedDevisLigneDeListeList
 - PaginatedDocumentClientPortailList
 - PaginatedDocumentConformiteFournisseurList
 - PaginatedDocumentFournisseurList

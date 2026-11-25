@@ -41,6 +41,7 @@ CLES_RANGEES = {
     'payback_devis',  # relecture E6 : le devis de référence du payback servi à la lecture
 }
 CLES_VALEUR = {'valeur', 'unite', 'source'}
+CLES_ENTREES_PAYBACK = {'investissement_ttc', 'economie_annuelle', 'cout_onduleur_ttc', 'calcul'}  # T4-X9-016
 SOURCES_VALEUR = {'moteur', 'pose', 'impose', 'devis', 'defaut'}
 SOURCES_ENTREE = {'lead', 'calepinage', 'reglage_societe', 'defaut'}
 CLES_SUPPOSITION = {'code', 'champ', 'valeur', 'source', 'message'}
@@ -57,11 +58,11 @@ VALEURS_SOLAIRES = {
     'chaines', 'temperature_froid', 'tension_froid', 'ratio_dc_ac',
     'production_annuelle', 'production_mensuelle', 'autoconsommation',
     'couverture', 'economies_annuelles', 'payback', 'consommation_annuelle',
-    'forme_horaire', 'module_produit', 'onduleur_produit', 'batterie_produit', 'verdicts',
+    'forme_horaire', 'forme_horaire_24', 'module_produit', 'onduleur_produit', 'batterie_produit', 'verdicts',
 }
 #: La table §2 en agricole (la pompe remplace taille / matériel / bilan).
 VALEURS_POMPAGE = {'nb_panneaux', 'puissance_kwc', 'pompe', 'variateur', 'm3_jour'}
-CLES_CORPS_APERCU = {'lead', 'calepinage', 'entrees', 'imposes'}
+CLES_CORPS_APERCU = {'lead', 'calepinage', 'entrees', 'imposes', 'investissement'}
 #: ADEV137 — la forme des champs imposés de ``POST devis/auto/`` (celle du moteur).
 CLES_IMPOSES = {'nb_panneaux', 'panneau_produit_id', 'onduleur_produit_id', 'onduleur_kw',
                 'onduleur_phase', 'batterie_produit_id', 'batterie_kwh'}
@@ -129,7 +130,10 @@ class ContratConceptionLeadTests(SimpleTestCase):
                     self.assertIn(option, {'sans', 'avec'})
                     self.assertEqual(set(valeurs), attendues)
                     for cle, valeur in valeurs.items():
-                        self.assertEqual(set(valeur), CLES_VALEUR, cle)
+                        # T4-X9-016 — le payback servi d'un devis porte aussi ses entrées.
+                        attendu = (CLES_VALEUR | CLES_ENTREES_PAYBACK
+                                   if cle == 'payback' and valeur.get('source') == 'devis' else CLES_VALEUR)
+                        self.assertEqual(set(valeur), attendu, cle)
                         self.assertIn(valeur['source'], SOURCES_VALEUR, cle)
 
     def test_suppositions_entrees_et_declencheur(self):
@@ -1289,6 +1293,39 @@ class MoteurUniqueTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_u
         self.assertEqual((resultat.etat, resultat.refus['code']), ('refus', 'refus_moteur'))
         self.assertTrue(resultat.refus['message'])
 
+    def test_e6d_refus_ci_nomme_l_heure_de_fin_quand_le_debut_est_saisi(self):
+        """Écart 5 de l'acceptation du 25/11 — lead commercial sans activité, jours saisis :
+        sans aucune heure, le refus nomme ``heure_debut`` ; heure de début saisie et fin
+        absente, il nomme ``heure_fin`` (mutant « toujours heure_debut » : rouge)."""
+        from apps.ventes.conception.decisions import MESSAGE_HEURE_FIN
+
+        commun = dict(conso_mensuelle_kwh=Decimal('6000'), categorie_commerciale=None, jours_ouverture=[1, 2, 3, 4, 5])
+        company, sans_heure = self._ci(**commun)
+        refus = self._calculer(company, sans_heure).refus
+        self.assertEqual((refus['code'], refus['champ']), ('refus_moteur', 'heure_debut'))
+        type(sans_heure).objects.filter(pk=sans_heure.pk).update(heure_debut=8)
+        sans_heure.refresh_from_db()
+        refus = self._calculer(company, sans_heure).refus
+        self.assertEqual((refus['code'], refus['champ'], refus['message']), ('refus_moteur', 'heure_fin',
+                                                                             MESSAGE_HEURE_FIN))
+
+    def test_acal2020_forme_horaire_24_du_moteur_residentiel(self):
+        """Reste d'ACAL2020 — la forme 24 h de la consommation que le moteur horaire a utilisée
+        est SERVIE (24 parts de somme 1, source de ``forme_horaire``), la même pour chaque option,
+        jamais uniforme ; hors résidentiel : ``None``."""
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'))
+        resultat = self._calculer(company, lead)
+        self.assertEqual((resultat.etat, resultat.absents), ('complet', {}), resultat.refus)
+        formes = {option: v['forme_horaire_24'] for option, v in resultat.valeurs.items()}
+        for option, forme in formes.items():
+            self.assertEqual(len(forme['valeur']), 24, option)  # mutant « clé absente » : rouge
+            self.assertAlmostEqual(sum(forme['valeur']), 1.0, places=4)
+            self.assertEqual((forme['unite'], forme['source']),
+                             ('part', resultat.valeurs[option]['forme_horaire']['source']))
+            self.assertGreater(max(forme['valeur']) - min(forme['valeur']), 0.01)  # jamais uniforme
+        self.assertEqual(len({tuple(f['valeur']) for f in formes.values()}), 1)
+        self.assertEqual(formes[resultat.option_retenue]['valeur'], resultat.forme_horaire_24)
+
     def test_une_autre_societe_n_obtient_rien(self):
         from authentication.models import Company
 
@@ -1788,6 +1825,9 @@ class RelanceConceptionTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher'
         self.assertEqual((relue.lead_id, relue.calepinage_id, relue.courante, relue.version),
                          (None, sans_lead.pk, True, 1))
         self.assertEqual((relue.etat, relue.refus['code']), ('refus', 'localisation_inconnue'))
+        # T4-X9-013 — sans lead, le refus ne demande jamais « la ville … du lead ».
+        self.assertEqual(relue.refus['message'], "Sans lead, l'atelier ne calcule pas de conception : "
+                                                 'la production vient de la simulation de la pose.')
         self.assertTrue(relue.declencheur['raison'].endswith(' : premier calcul'))
         meme = self._relancer(None, company, _declencheur('manuel'), calepinage_id=sans_lead.pk)
         self.assertFalse(meme.ecrite)
@@ -1848,6 +1888,47 @@ class ServirConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
     """ADEV137 — ``selectors_conception`` (bornés société, lecture seule) et
     les routes ``GET conception/<lead_id>/`` et ``POST conception/apercu/``."""
 
+    def test_acal2020_apercu_recoit_la_consommation_imposee_de_l_ecran(self):
+        """Reste d'ACAL2020 (note de l'orchestrateur) — l'aperçu de l'écran devis reçoit LA
+        consommation imposée du moteur (``imposes.consommation`` : douze factures saisies) :
+        la conception servie est calculée avec elle et le DIT ; rien n'est écrit ; une forme
+        hors bornes ⇒ 400 nommant le champ (mutant « clé inconnue » : 400 ``consommation``)."""
+        from apps.crm.models import Lead
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        api = self._api(self._utilisateur(company))
+        fiche, versions = _json(Lead.objects.filter(pk=lead.pk).values()[0]), ConceptionLead.objects.count()
+        temoin = api.post(URL_APERCU, {'lead': lead.pk}, format='json')
+        self.assertEqual(temoin.status_code, 200, temoin.content[:300])
+        mois = [700.0, 650.0, 600.0, 560.0, 620.0, 800.0, 950.0, 980.0, 760.0, 600.0, 640.0, 740.0]
+        corps = {'lead': lead.pk, 'imposes': {'consommation': {'kwh_mensuels': mois, 'source': 'factures'}}}
+        reponse = api.post(URL_APERCU, corps, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        lue = reponse.json()
+        self.assertEqual(lue['entrees_utilisees']['conso_mensuelle_kwh'], {'valeur': 716.7, 'source': 'saisie'})
+        dites = [s for s in lue['suppositions'] if s['code'] == 'consommation_imposee']
+        self.assertEqual(len(dites), 1, lue['suppositions'])
+        self.assertIn('factures saisies', dites[0]['message'])
+        self.assertIn('ramenés à leur moyenne mensuelle', dites[0]['message'])
+        option = lue['option_retenue']
+        avant = temoin.json()
+        self.assertNotEqual(lue['valeurs'][option]['consommation_annuelle']['valeur'],
+                            avant['valeurs'][avant['option_retenue']]['consommation_annuelle']['valeur'])
+        for faute, champ in (({'kwh_mensuels': mois[:11], 'source': 'factures'}, 'kwh_mensuels'),
+                             ({'kwh_annuel': 9000, 'kwh_mensuels': mois, 'source': 'factures'}, 'kwh_annuel'),
+                             ({'kwh_annuel': True, 'source': 'saisie'}, 'kwh_annuel'),
+                             ({'kwh_annuel': -5, 'source': 'saisie'}, 'kwh_annuel'),
+                             ({'kwh_annuel': 6000, 'source': 'devine'}, 'source'),
+                             ({'kwh_annuel': 6000, 'source': 'saisie', 'pic': 1}, 'pic')):
+            with self.subTest(champ=champ, faute=faute):
+                refus = api.post(URL_APERCU, {'lead': lead.pk, 'imposes': {'consommation': faute}}, format='json')
+                self.assertEqual(refus.status_code, 400, refus.content[:300])
+                self.assertEqual(refus.json()['champ'], 'imposes.consommation.' + champ)
+        self.assertEqual((_json(Lead.objects.filter(pk=lead.pk).values()[0]), ConceptionLead.objects.count()),
+                         (fiche, versions))  # l'aperçu n'écrit rien
+
     def test_e6_payback_servi_a_la_lecture_celui_du_pdf(self):
         """Relecture E6 — le payback de la conception est SERVI À LA LECTURE (jamais rangé) :
         par option, celui que ``build_quote_data`` imprime pour le devis de référence ; source
@@ -1880,6 +1961,179 @@ class ServirConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
         self.assertEqual(_cles_interdites(lue), [])
         self.assertEqual(_photo_devis(devis.pk), avant)  # le devis envoyé n'est jamais écrit
         self.assertEqual(_json(ConceptionLead.objects.filter(lead=lead).values()[0]), rangee)  # jamais rangé
+
+    def test_t4x9016_le_payback_servi_porte_son_montant_et_son_economie(self):
+        """T4-X9-016 — « Retour 21,4 ans — d'après le devis DEV-… » sans dire quel montant ni
+        quelle économie : le payback servi porte À CÔTÉ de lui l'investissement TTC de SON option
+        et l'économie annuelle de la MÊME option (celle de la colonne), et la phrase du calcul
+        (cumul de 25 ans, baisse de production, remplacement de l'onduleur) quand ce n'est pas un
+        simple quotient. Établi : 65 900 MAD et 6 397 MAD/an donnent 10,6 ans
+        (``payback_publiable``, résidentiel, part stockée 0) — jamais 21,4."""
+        from apps.ventes.quote_engine.pricing import payback_publiable
+        from apps.ventes.selectors import conception_courante
+        from apps.ventes.services import build_devis_auto
+
+        self.assertEqual(payback_publiable(65900, 6397, stockage=True, part_batterie=0,
+                                           cout_onduleur_ttc=15000)['payback_years'], 10.6)
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        self._relancer(lead, company, _declencheur())
+        with self.captureOnCommitCallbacks(execute=True):
+            build_devis_auto(lead=lead, user=self._utilisateur(company), company=company)
+        lue = conception_courante(company, lead.pk)
+        for option, table in lue['valeurs'].items():
+            payback = table['payback']
+            self.assertEqual(payback['economie_annuelle'], table['economies_annuelles']['valeur'], option)
+            self.assertGreater(payback['investissement_ttc'], 0, option)
+            self.assertEqual(payback['valeur'], payback_publiable(
+                payback['investissement_ttc'], payback['economie_annuelle'], stockage=option == 'avec',
+                cout_onduleur_ttc=payback.get('cout_onduleur_ttc'), part_batterie=0)['payback_years'], option)
+            self.assertIn('25 ans', payback['calcul'], option)
+        self.assertEqual(_cles_interdites(lue), [])
+
+    def test_e6d_cout_onduleur_un_seul_calcul_payback_servi_au_centime(self):
+        """Lane E6d — la provision d'onduleur du payback servi est calculée par LA fonction des
+        cartes (``offres_tailles._cout_onduleur_ttc``) : sur ce devis de référence elle vaut, au
+        centime, l'ancien calcul de la lecture (Σ qté × P.U. × (1 + TVA de la ligne) × remise),
+        et le payback servi est identique."""
+        from unittest import mock as _mock
+
+        from apps.ventes import offres_tailles
+        from apps.ventes.domain.catalogue import classer_produit
+        from apps.ventes.quote_engine.montants import arrondi_affichage
+        from apps.ventes.quote_engine.pricing import payback_publiable
+        from apps.ventes.selectors import conception_courante
+        from apps.ventes.services import build_devis_auto
+        from apps.ventes.utils.options import (AVEC_BATTERIE, SANS_BATTERIE, filter_lines_for_option,
+                                               lignes_avec_produit, option_totaux)
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        self._relancer(lead, company, _declencheur())
+        with self.captureOnCommitCallbacks(execute=True):
+            devis = build_devis_auto(lead=lead, user=self._utilisateur(company), company=company)
+        from apps.ventes.models import Devis
+        Devis.objects.filter(pk=devis.pk).update(remise_globale=Decimal('5'))
+        devis.refresh_from_db()
+        lignes = list(lignes_avec_produit(devis))
+        couts = []
+        vrai = offres_tailles._cout_onduleur_ttc
+
+        def espion(*args, **kwargs):
+            couts.append(vrai(*args, **kwargs))
+            return couts[-1]
+        with _mock.patch.object(offres_tailles, '_cout_onduleur_ttc', side_effect=espion):
+            lue = conception_courante(company, lead.pk)
+        self.assertEqual(len(couts), len(lue['valeurs']))  # LA fonction des cartes, une fois par option
+        for (option, table), cout in zip(lue['valeurs'].items(), couts):
+            panier = AVEC_BATTERIE if option == 'avec' else SANS_BATTERIE
+            de_l_option = filter_lines_for_option(lignes, panier, devis=devis) if len(lue['valeurs']) > 1 else lignes
+            onduleurs = [li for li in de_l_option if li.type_ligne == 'produit' and (classer_produit(
+                getattr(li.produit, 'nom', '') or li.designation) or '').startswith('onduleur')]
+            ancien = sum(float(li.quantite or 0) * float(li.prix_unitaire or 0) * (1 + float(li.taux_tva or 0) / 100)
+                         for li in onduleurs) * (1 - float(devis.remise_globale or 0) / 100)
+            self.assertTrue(onduleurs, option)
+            self.assertEqual(cout, arrondi_affichage(ancien, 2) or None, option)  # au centime
+            horaire = {'part_batterie': 0}
+            attendu = payback_publiable(option_totaux(devis, '', lignes=de_l_option)['ttc'],
+                                        table['economies_annuelles']['valeur'], stockage=option == 'avec',
+                                        cout_onduleur_ttc=arrondi_affichage(ancien, 2) or None,
+                                        **horaire)['payback_years']
+            self.assertEqual(table['payback']['valeur'], attendu, option)
+
+    def test_t4x4018_tableau_de_l_apercu_couvre_la_taille_de_chaque_option(self):
+        """T4-X4-018 — le tableau des tailles (``blocs.dimensionnement.tableau``,
+        ``recommander_taille``) s'arrête à la parité + 1 panneau
+        (``dimensionnement.bornes_candidates``) : la taille de l'option « avec » que la
+        conception vend (panneaux ajoutés pour remplir la batterie) peut être au-delà,
+        donc absente. L'aperçu porte une ligne à la taille de CHAQUE option servie,
+        calculée par le même balayage (une taille), marquée ``taille_du_devis`` ; la
+        version rangée n'est pas touchée (aucune clé ne bouge)."""
+        from apps.ventes.selectors import conception_courante
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        self._relancer(lead, company, _declencheur())
+        rangee = conception_courante(company, lead.pk)
+        api = self._api(self._utilisateur(company))
+        apercu = api.post(URL_APERCU, {'lead': lead.pk}, format='json').json()
+        tableau = apercu['blocs']['dimensionnement']['tableau']
+        for option, table in apercu['valeurs'].items():
+            with self.subTest(option=option):
+                nb = table['nb_panneaux']['valeur']
+                lignes = [li for li in tableau if li['panneaux'] == nb]
+                self.assertEqual(len(lignes), 1, (option, nb, [li['panneaux'] for li in tableau]))
+                self.assertIn(option, lignes[0]['taille_du_devis'])
+        self.assertEqual([li['panneaux'] for li in tableau], sorted(li['panneaux'] for li in tableau))
+        rangees = rangee['blocs']['dimensionnement']['tableau']
+        self.assertFalse(any('taille_du_devis' in li for li in rangees))  # la version rangée ne bouge pas
+        self.assertEqual(conception_courante(company, lead.pk)['blocs'], rangee['blocs'])
+        # Le cas du constat : un balayage borné SOUS la taille des options (parité + 1
+        # plus petite que l'option avec) ⇒ les tailles des options y sont ajoutées.
+        from unittest import mock as _mock
+
+        from apps.ventes.conception import etudes_lignes as EL
+        vrai = EL.dimensionnement_des_lignes
+
+        def borne_a_deux(*args, **kwargs):
+            etat, bloc = vrai(*args, **kwargs)
+            if isinstance(bloc, dict):
+                bloc = dict(bloc, tableau=[li for li in bloc.get('tableau') or [] if li['panneaux'] <= 2])
+            return etat, bloc
+        with _mock.patch.object(EL, 'dimensionnement_des_lignes', side_effect=borne_a_deux):
+            borne = api.post(URL_APERCU, {'lead': lead.pk}, format='json').json()
+        tableau = borne['blocs']['dimensionnement']['tableau']
+        for option, table in borne['valeurs'].items():
+            with self.subTest(option=option, borne=2):
+                nb = table['nb_panneaux']['valeur']
+                self.assertGreater(nb, 2)
+                ligne = next((li for li in tableau if li['panneaux'] == nb), None)
+                self.assertIsNotNone(ligne, [li['panneaux'] for li in tableau])
+                self.assertIn(option, ligne['taille_du_devis'])
+
+    def test_e7d_payback_de_l_apercu_sur_l_investissement_de_l_ecran(self):
+        """E7d (revue lot 4, M1) — l'aperçu sert le payback de CE QUE L'ÉCRAN MONTRE :
+        ``investissement`` (TTC de vente des lignes de chaque option) entre dans le corps ;
+        même fonction que le payback servi à la lecture (provision d'onduleur des cartes,
+        part stockée 0 en résidentiel) : sur les lignes du devis de référence, le même
+        chiffre au centime ; sans investissement, aucun payback ; hors forme ⇒ 400 nommant
+        ``investissement.<option>`` ; aucun prix d'achat dans la réponse, rien d'écrit."""
+        from apps.ventes.models import ConceptionLead
+        from apps.ventes.selectors import conception_courante
+        from apps.ventes.services import build_devis_auto
+        from apps.ventes.utils.options import (AVEC_BATTERIE, SANS_BATTERIE, filter_lines_for_option,
+                                               lignes_avec_produit, option_totaux)
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        self._relancer(lead, company, _declencheur())
+        user = self._utilisateur(company)
+        with self.captureOnCommitCallbacks(execute=True):
+            devis = build_devis_auto(lead=lead, user=user, company=company)
+        lue, lignes = conception_courante(company, lead.pk), list(lignes_avec_produit(devis))
+        plusieurs = len(lue['valeurs']) > 1
+        investissement = {option: float(option_totaux(devis, '', lignes=filter_lines_for_option(
+            lignes, AVEC_BATTERIE if option == 'avec' else SANS_BATTERIE, devis=devis) if plusieurs else lignes)['ttc'])
+            for option in lue['valeurs']}
+        api, versions = self._api(user), ConceptionLead.objects.count()
+        sans = api.post(URL_APERCU, {'lead': lead.pk}, format='json').json()
+        self.assertTrue(all(v['payback']['valeur'] is None for v in sans['valeurs'].values()))
+        reponse = api.post(URL_APERCU, {'lead': lead.pk, 'investissement': investissement}, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        apercu = reponse.json()
+        for option, table in apercu['valeurs'].items():
+            with self.subTest(option=option):
+                self.assertIsNotNone(table['payback']['valeur'])
+                self.assertEqual(table['payback'], lue['valeurs'][option]['payback'])  # un seul chiffre
+        self.assertEqual(_cles_interdites(apercu), [])
+        for faute, champ in (({'sans': -1}, 'sans'), ({'sans': True}, 'sans'), ({'les_deux': 9}, 'les_deux'),
+                             ('50000', 'investissement')):
+            with self.subTest(faute=faute):
+                refus = api.post(URL_APERCU, {'lead': lead.pk, 'investissement': faute}, format='json')
+                self.assertEqual(refus.status_code, 400, refus.content[:300])
+                self.assertEqual(refus.json()['champ'],
+                                 champ if champ == 'investissement' else 'investissement.' + champ)
+        self.assertEqual(ConceptionLead.objects.count(), versions)  # l'aperçu n'écrit rien
 
     def _api(self, user):
         from rest_framework.test import APIClient
@@ -2101,6 +2355,38 @@ class ServirConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
         dossier = Calepinage.objects.create(company=company, client=client, appel_offre_id=3, titre='AO')
         self.assertEqual(api.post(URL_APERCU, {'calepinage': dossier.pk}, format='json').status_code, 409)
 
+    def test_apercu_devis_sans_lead_ni_calepinage(self):
+        """ADEV152 — un devis SANS lead (ni calepinage) : l'aperçu porte sur les
+        seules valeurs tapées (lead NON enregistré de la société), même moteur,
+        mêmes chiffres que le lead qui porterait ces valeurs ; rien n'est écrit ;
+        rappeler = même réponse ; sans aucune valeur, le porteur reste requis."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from apps.crm.models import Lead
+        from apps.ventes.conception.service import apercu_conception
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        api = self._api(self._utilisateur(company))
+        tapees = {'ville': lead.ville, 'facture_hiver': 1800}
+        corps = {'lead': None, 'calepinage': None, 'entrees': tapees}
+        leads, versions = Lead.objects.count(), ConceptionLead.objects.count()
+        reponse = api.post(URL_APERCU, corps, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])  # avant : 400 « Porteur requis »
+        sans_lead = reponse.json()
+        self.assertEqual(set(sans_lead), CLES_RESULTAT)
+        self.assertEqual(sans_lead['entrees_utilisees']['facture_hiver'], {'valeur': 1800.0, 'source': 'saisie'})
+        par_lead, _refus = apercu_conception(lead, company)
+        self.assertEqual(sans_lead['valeurs'], par_lead['valeurs'])  # un seul moteur, un seul chiffre
+        with CaptureQueriesContext(connection) as requetes:
+            apercu_conception(None, company, saisies=tapees)
+        self.assertEqual(_ecritures(requetes), [])
+        self.assertEqual(api.post(URL_APERCU, corps, format='json').json()['valeurs'], sans_lead['valeurs'])
+        self.assertEqual((Lead.objects.count(), ConceptionLead.objects.count()), (leads, versions))
+        self.assertEqual(api.post(URL_APERCU, {'lead': None, 'entrees': {}}, format='json').status_code, 400)
+
 
 # ── ADEV138 — PARITÉ STOCKÉE : ce que relancer RANGE = ce qu'écrit le devis auto ─
 #
@@ -2172,6 +2458,26 @@ class VerdictsDuMoteurTests(TestCase):
         from apps.ventes.conception.porte_calepinage import verdicts_electriques
 
         self.assertIsNone(verdicts_electriques(self.company, None, [], 10.0))
+
+    def test_t4_x3_009_la_note_nomme_le_panneau_de_la_conception(self):
+        """T4-X3-009 (lane E9) — conception 8 × 550 W = 4,40 kWc, pose en 710 W : la note ne dit
+        jamais un « 8 » nu à côté de panneaux de 710 W, elle nomme le panneau de la conception ;
+        même compte (8) mais autre puissance (5,68 kWc) : jugé pour la POSE, plus le verdict rangé."""
+        from apps.ventes.selectors_conception import verdicts_pour_le_calepinage
+
+        range_ = self._verdicts(self.reseau, ratio=0.88, kwc=4.4)
+        ligne = {'produit': self.reseau.pk, 'designation': self.reseau.nom, 'quantite': 1}
+        conception = {'lead': 9, 'option_retenue': 'sans', 'valeurs': {'sans': {
+            'nb_panneaux': {'valeur': 8}, 'puissance_kwc': {'valeur': 4.4}, 'onduleurs': {'valeur': [ligne]},
+            'verdicts': {'valeur': range_}}}}
+        pose = {'onduleur_produit': self.reseau.pk, 'chaines': [{'nb_modules': 6}]}
+        moins = dict(pose, nb_panneaux=6, kwc=4.26, ratio=0.85)
+        _j, note, _r = verdicts_pour_le_calepinage(self.company, conception, moins)
+        self.assertEqual(note, 'jugé pour la pose : 6 panneaux — la conception du lead en compte 8 de 550 W')
+        autre_module = dict(pose, nb_panneaux=8, kwc=5.68, ratio=1.14)
+        jugees, note, _r = verdicts_pour_le_calepinage(self.company, conception, autre_module)
+        self.assertEqual(jugees['ratio_dc_ac']['valeur'], 1.14)
+        self.assertEqual(note, 'jugé pour la pose : 8 panneaux — la conception du lead en compte 8 de 550 W')
 
     def test_e6_m4_pose_d_un_autre_compte_jugee_par_la_meme_regle(self):
         """Relecture E6 M4 + m3 — même compte : le verdict RANGÉ ; compte différent : LA règle
@@ -2776,6 +3082,142 @@ class RelanceEnTacheTests(_emprunt(RelanceConceptionTests, '_relancer'),
                          {'valeur': onduleur.nom, 'source': 'calepinage'})
         self.assertNotIn('module_designe', lue['entrees_utilisees'])
 
+    def test_e6e_une_conception_quel_que_soit_le_declencheur(self):
+        """Lane E6e, item 1 (T4-X5-003) — un lead dont le calepinage OUVERT porte un onduleur
+        désigné à l'étape Électrique : la conception rangée (empreinte et valeurs) est LA
+        MÊME, que le recalcul parte du calepinage (pose enregistrée) ou du lead (porte de
+        lecture, fiche modifiée, devis automatique, commande de remplissage) ; et, une fois
+        rangée depuis le calepinage, aucun déclencheur du lead ne la refait sans lui."""
+        from types import SimpleNamespace
+
+        from django.core.management import call_command
+
+        from apps.calepinage.models import Calepinage
+        from apps.stock.models import Produit
+        from apps.ventes.conception.receivers import mettre_en_file
+        from apps.ventes.conception.service import conception_ou_calcul
+        from apps.ventes.domain.creation_auto import conception_pour_le_devis
+        from apps.ventes.models import ConceptionLead
+        from apps.ventes.selectors import conception_courante
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        deye = Produit.objects.get(company=company, nom='Onduleur hybride Deye 5kW Monophasé')
+        module = Produit.objects.create(company=company, nom='Panneau Canadian Solar 710W', sku='E6E-710',
+                                        prix_vente=Decimal('1500'), prix_achat=Decimal('1'), quantite_stock=50)
+        calepinage = self._calepinage_designe(company, lead, onduleur_produit=deye.pk, module_produit=module.pk)
+        Calepinage.objects.filter(pk=calepinage.pk).update(layout_hash='h' * 64)
+        user = self._utilisateur(company)
+
+        def _rangee():
+            courante = ConceptionLead.objects.get(company=company, lead=lead, courante=True)
+            retenue = courante.valeurs[courante.option_retenue]
+            return (courante.empreinte, courante.calepinage_id, courante.option_retenue,
+                    retenue['onduleur_produit']['valeur'], retenue['module_produit']['valeur'],
+                    retenue['nb_panneaux']['valeur'], retenue['puissance_kwc']['valeur'])
+
+        toit = SimpleNamespace(empreinte='h' * 64, plafond_panneaux=None)
+        self._relancer(None, company, _declencheur('pose_enregistree'), calepinage_id=calepinage.pk, toit=toit)
+        reference = _rangee()
+        self.assertEqual(reference[3:5], (deye.pk, module.pk))
+
+        def _taches():
+            self._executer_les_taches()
+
+        declencheurs = {
+            'porte_de_lecture': lambda: (conception_ou_calcul(company, lead.pk), _taches()),
+            'fiche_modifiee': lambda: (mettre_en_file(company.pk, lead_id=lead.pk, origine='lead_entrees_modifiees',
+                                                      champs=[]), _taches()),
+            'devis_automatique': lambda: conception_pour_le_devis(lead, company, user),
+            'remplissage': lambda: self._commande_remplir(call_command, company),
+        }
+        for nom, declencher in declencheurs.items():
+            with self.subTest(declencheur=nom, premier=True):  # le lead déclenche le PREMIER calcul
+                ConceptionLead.objects.filter(company=company, lead=lead).delete()
+                declencher()
+                self.assertEqual(_rangee(), reference)
+                self.assertFalse(conception_courante(company, lead.pk)['perimee'])  # le filet lit la même pose
+        for nom, declencher in declencheurs.items():
+            with self.subTest(declencheur=nom, premier=False):  # rangée depuis le calepinage : rien ne bouge
+                ConceptionLead.objects.filter(company=company, lead=lead).delete()
+                self._relancer(None, company, _declencheur('pose_enregistree'), calepinage_id=calepinage.pk,
+                               toit=toit)
+                declencher()
+                self.assertEqual(ConceptionLead.objects.filter(company=company, lead=lead).count(), 1)
+                self.assertEqual(_rangee(), reference)
+
+    def test_e6e_conception_recalculee_dit_le_materiel_designe(self):
+        """Lane E6e, item 2 — une désignation à l'étape Électrique change la conception : la
+        phrase rangée (lue au chatter du lead et à l'atelier) dit « matériel désigné à
+        l'atelier : <module> / <onduleur> », jamais un « Module désigné X → — » parasite sur
+        un recalcul qui ne touche pas au matériel (filet, fiche modifiée)."""
+        from apps.calepinage.models import Calepinage
+        from apps.calepinage.services.electrique import CLE_ENTREE
+        from apps.stock.models import Produit
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        deye = Produit.objects.get(company=company, nom='Onduleur hybride Deye 5kW Monophasé')
+        module = Produit.objects.create(company=company, nom='Panneau Canadian Solar 710W', sku='E6E-710b',
+                                        prix_vente=Decimal('1500'), prix_achat=Decimal('1'), quantite_stock=50)
+        calepinage = self._calepinage_designe(company, lead)
+        self._relancer(lead, company, _declencheur('pose_enregistree'))
+        Calepinage.objects.filter(pk=calepinage.pk).update(
+            resultat={CLE_ENTREE: {'onduleur_produit': deye.pk, 'module_produit': module.pk}})
+        self.assertTrue(self._relancer(lead, company, _declencheur('pose_enregistree')).ecrite)
+        courante = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertTrue(courante.declencheur['raison'].endswith(
+            " : matériel désigné à l'atelier : Panneau Canadian Solar 710W / Onduleur hybride Deye 5kW Monophasé"),
+            courante.declencheur['raison'])
+        self.assertEqual([c['champ'] for c in courante.declencheur['champs']], ['materiel_designe'])
+
+        self._relancer(lead, company, _declencheur('filet'), forcer=True)  # même matériel : rien à dire de lui
+        courante = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual(courante.declencheur['champs'], [])
+
+    def test_x9_009_onduleur_designe_garde_la_taille_de_son_option(self):
+        """Constat T4-X9-009 (relecteur X9, 25/11) — un onduleur HYBRIDE désigné à l'étape
+        Électrique ne laisse que l'option « avec batterie » : sa taille est celle que le
+        moteur décide pour CETTE option (son propre optimum), jamais celle de l'option
+        « sans batterie ». Mutant « taille décidée sans regarder l'onduleur désigné » : la
+        conception retenue perd des panneaux sans que la fiche ait changé."""
+        from apps.stock.models import Produit
+        from apps.ventes.domain import creation_auto_residentiel as R
+        from apps.ventes.selectors import conception_courante
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        reel = R._panneaux_dimensionnement_horaire
+
+        def deux_tailles(**kw):  # le moteur horaire, dont l'axe « avec batterie » retient 2 panneaux de plus
+            nombre, watt, source, avec = reel(**kw)
+            plus = dict(avec or {}, nb_panneaux=nombre + 2, panel_watt=watt,
+                        kwc=round((nombre + 2) * watt / 1000, 2))
+            plus.setdefault('batterie_kwh', 10.0)
+            return nombre, watt, source, plus
+
+        with mock.patch.object(R, '_panneaux_dimensionnement_horaire', side_effect=deux_tailles):
+            self._relancer(lead, company, _declencheur())
+            temoin = conception_courante(company, lead.pk)['valeurs']
+            tailles = {option: v['nb_panneaux']['valeur'] for option, v in temoin.items()}
+            self.assertEqual(set(tailles), {'sans', 'avec'})
+            self.assertEqual(tailles['avec'], tailles['sans'] + 2)
+            deye = Produit.objects.get(company=company, nom='Onduleur hybride Deye 5kW Monophasé')
+            calepinage = self._calepinage_designe(company, lead, onduleur_produit=deye.pk)
+            self._relancer(lead, company, _declencheur('pose_enregistree'), calepinage_id=calepinage.pk)
+            lue = conception_courante(company, lead.pk)
+        self.assertEqual((lue['etat'], lue['option_retenue']), ('complet', 'avec'), lue['refus'])
+        retenue = lue['valeurs']['avec']
+        self.assertEqual(retenue['onduleur_produit']['valeur'], deye.pk)
+        self.assertEqual(retenue['nb_panneaux']['valeur'], tailles['avec'])
+
+    def _commande_remplir(self, call_command, company):
+        import io
+
+        with self.captureOnCommitCallbacks(execute=True):
+            call_command('remplir_conceptions', '--company', str(company.pk), '--appliquer', stdout=io.StringIO())
+
 
 # ── ADEV141 — remplir les conceptions des leads existants, liste d'abord ─────
 
@@ -2938,6 +3380,96 @@ class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher
         self.assertEqual(_json(list(ConceptionLead.objects.order_by('pk').values())), conceptions)
         self.assertEqual(_json(list(Calepinage.objects.order_by('pk').values('pk', 'resultat'))), resultats)
         self.assertEqual((_photo_devis(brouillon.pk), _photo_devis(envoye.pk)), photos)
+
+    def test_adev154_ecarts_sans_toit_plan_par_defaut_zero_ecriture(self):
+        """ADEV154 — ``--ecarts-sans-toit`` : deux leads sans toit listés (production du moteur
+        contre le plan par défaut au kWc et au matériel de l'option, pente du lead ou supposée),
+        écart et « changera » ; moyenne et plus grand écart EN TÊTE ; un lead à toit absent ;
+        RIEN d'écrit (mutant « écrire pendant la liste » : rouge)."""
+        import io
+
+        from django.core.management import call_command
+
+        from apps.calepinage.models import Calepinage
+        from apps.ventes.conception.moteur import calculer_conception
+        from apps.ventes.models import ConceptionLead
+
+        company, toit_lead, _envoye_lead, sans_toit, _b, _e, _toits = self._banc_des_ecarts()
+        pentu = type(sans_toit).objects.create(company=company, nom='Pentu', prenom='Sans toit', ville=sans_toit.ville,
+                                               facture_hiver=Decimal('2200'), inclinaison_deg=Decimal('18'))
+        sans_ville = type(sans_toit).objects.create(company=company, nom='Sans', prenom='Ville', ville='',
+                                                    facture_hiver=Decimal('1800'))
+        attendus = {lead.pk: calculer_conception(lead, company) for lead in (sans_toit, pentu)}
+        instantane = (_json(list(ConceptionLead.objects.order_by('pk').values())),
+                      _json(list(Calepinage.objects.order_by('pk').values())))
+        appels = []
+
+        def plan(company_, lat, lon, kwc, **kw):
+            appels.append((kw['lead_id'], kwc, kw['pente'], kw['produits'], kw['nb_panneaux']))
+            # ACAL2045 — les champs du lead qui font la pose supposée sont passés au plan.
+            self.assertEqual((kw['type_installation'], kw['type_toiture']), (None, None))
+            # Le lead pentu : fiche du module VIDE (puissance de la conception, deux étapes omises).
+            vide = [{'code': 'puissance_module_de_la_conception'}] + [{'code': 'fiche_module_incomplete'}] * 2
+            return {'production_annuelle': kwc * 1500.0,
+                    'suppositions': ([] if kw['pente'] is not None else [{'champ': 'inclinaison_deg'}])
+                    + [{'code': 'pose_supposee', 'valeur': 'affleurante'}]
+                    + (vide if kw['lead_id'] == pentu.pk else [])}
+        sortie = io.StringIO()
+        with mock.patch('apps.calepinage.services.plan_par_defaut.simuler_plan_par_defaut', side_effect=plan):
+            call_command('remplir_conceptions', '--company', str(company.pk), '--ecarts-sans-toit', stdout=sortie,
+                         stderr=io.StringIO())
+        liste = sortie.getvalue()
+        lignes = liste.splitlines()
+        options = sum(len(attendus[lead.pk].valeurs) for lead in (sans_toit, pentu))
+        vides, completes = len(attendus[pentu.pk].valeurs), len(attendus[sans_toit.pk].valeurs)
+        # Les COMPTES d'abord, puis les moyennes (fiche complète, puis toutes les lignes), avant les leads.
+        self.assertEqual(lignes[1], f"  COMPTES : 3 lead(s) sans toit listé(s) ; {options} ligne(s) d'option "
+                                    f"simulée(s), dont {vides} avec une fiche de module vide (production "
+                                    "surestimée) ; 0 non simulée(s) : aucune ; 1 lead(s) refusé(s) par le moteur : "
+                                    "1 × localisation_inconnue", liste)
+        self.assertTrue(lignes[2].startswith(f'  ÉCART MOYEN (fiche complète, {completes} ligne(s)) : '), liste)
+        self.assertIn('PLUS GRAND : lead #%d ' % sans_toit.pk, lignes[2])  # jamais une ligne à fiche vide
+        self.assertTrue(lignes[3].startswith(f'  ÉCART MOYEN (toutes les lignes simulées, {options}) : '), liste)
+        self.assertNotIn(f'lead #{toit_lead.pk} ', liste)
+        self.assertIn('ÉCARTS SANS TOIT : 3 lead(s) sans toit tracé listé(s)', liste)
+        # Le lead refusé n'est PAS un écart : un seul bloc, à la fin, après toutes les options.
+        bloc = lignes.index('  LEADS REFUSÉS PAR LE MOTEUR (1, pas des écarts) :')
+        self.assertTrue(lignes[bloc + 1].startswith(f'    lead #{sans_ville.pk} : localisation_inconnue — '))
+        self.assertFalse([li for li in lignes[bloc:] if '(sans toit) option' in li])
+        for lead in (sans_toit, pentu):
+            conception = attendus[lead.pk]
+            for option, valeurs in conception.valeurs.items():
+                kwc, avant = valeurs['puissance_kwc']['valeur'], valeurs['production_annuelle']['valeur']
+                self.assertIn((lead.pk, kwc, 18.0 if lead is pentu else None,
+                               {'module': valeurs['module_produit']['valeur'],
+                                'onduleur': valeurs['onduleur_produit']['valeur']},
+                               valeurs['nb_panneaux']['valeur']), appels)
+                ligne = next(li for li in lignes if li.startswith(f'  lead #{lead.pk} (sans toit) option {option} '))
+                self.assertLess(lignes.index(ligne), bloc)
+                ecart = kwc * 1500.0 - avant
+                # Le RENDEMENT avant → après (kWh/kWc) : c'est lui qui bouge, pas la taille.
+                self.assertIn('rendement %s → 1 500 kWh/kWc' % '{:,.0f}'.format(avant / kwc).replace(',', ' '), ligne)
+                self.assertIn('production %s → %s kWh/an (écart %s kWh, %+.1f %%' % (
+                    '{:,.0f}'.format(avant).replace(',', ' '), '{:,.0f}'.format(kwc * 1500.0).replace(',', ' '),
+                    '{:+,.0f}'.format(ecart).replace(',', ' '), ecart / avant * 100), ligne)
+                self.assertIn('pente supposée 30°' if lead is sans_toit else 'changera : ', ligne)
+                self.assertIn(', pose supposée affleurante', ligne)  # ACAL2045 : la pose supposée, dite
+                drapeau = ('fiche du module vide : 2 étape(s) de pertes non appliquée(s), puissance prise de '
+                           'la conception')
+                (self.assertIn if lead is pentu else self.assertNotIn)(drapeau, ligne)
+                self.assertIn('changera : oui' if round(kwc * 1500.0) != round(avant) else 'changera : non', ligne)
+        self.assertEqual((_json(list(ConceptionLead.objects.order_by('pk').values())),
+                          _json(list(Calepinage.objects.order_by('pk').values()))), instantane)
+        # Aucune ligne à fiche complète : la tête le DIT au lieu d'une moyenne.
+        from types import SimpleNamespace
+
+        from apps.ventes.management.commands.remplir_conceptions import _sortie_sans_toit
+        seule = {'option': 'sans', 'kwc': 5.0, 'avant': 7000.0, 'apres': 8000.0, 'kwc_plan': 5.0, 'refus': None,
+                 'pente_supposee': False, 'etapes_sans_fiche': 1, 'puissance_conception': True, 'fiche_vide': True}
+        tete = _sortie_sans_toit([(SimpleNamespace(pk=1), {'options': [seule]})])
+        self.assertEqual(tete[1], '  ÉCART MOYEN (fiche complète) : aucune ligne simulée avec une fiche de module '
+                                  'complète — aucun écart fiable à moyenner')
+        self.assertTrue(tete[2].startswith('  ÉCART MOYEN (toutes les lignes simulées, 1) : '))
 
     def test_appliquer_ne_touche_pas_une_version_courante_venue_d_un_toit(self):
         """Relecture E3 M2 — un remplissage, pas un rafraîchissement : le lead
@@ -3392,6 +3924,76 @@ class BrouillonsSuiventLaConceptionTests(_emprunt(RelanceConceptionTests, '_rela
         return self._relancer(lead, company, _declencheur(
             'lead_entrees_modifiees', facture_hiver=(Decimal('1800'), Decimal('3600')))).conception
 
+    def test_e6e_reviser_sur_la_conception_compose_la_v2_sur_la_conception_courante(self):
+        """Lane E6e, item 4 (T4-X5-011) — « Réviser le devis » de l'atelier (corps
+        ``sur_la_conception``) : la V2 est composée sur la conception COURANTE du lead (la même
+        recomposition que le suivi des brouillons, ``brouillons.appliquer_a_la_demande``), le
+        devis envoyé reste octet pour octet ; sans le drapeau, la révision clone comme avant."""
+        from apps.ventes.conception.brouillons import _comptes
+        from apps.ventes.models import Devis
+
+        company, lead, user, _intact, _retouche, envoye = self._trois_devis()
+
+        def _lignes(devis):
+            return list(devis.lignes.order_by('ordre', 'pk').values_list(
+                'designation', 'quantite', 'prix_unitaire', 'remise', 'variante'))
+        avant, comptes_v1 = _lignes(envoye), _comptes(envoye)
+        version = self._nouvelle_version(company, lead)
+        attendus = {o: v['nb_panneaux']['valeur'] for o, v in version.valeurs.items()}
+        self.assertNotEqual(comptes_v1.get('avec', comptes_v1.get('')), attendus.get('avec'))
+
+        reponse = self._api(user).post('/api/django/ventes/devis/%d/reviser/' % envoye.pk,
+                                       {'sur_la_conception': True}, format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        v2 = Devis.objects.get(pk=reponse.data['id'])
+        self.assertEqual({o: _comptes(v2).get(o, _comptes(v2).get('')) for o in attendus}, attendus)
+        self.assertEqual(v2.conception_source['version'], version.version)
+        envoye.refresh_from_db()
+        self.assertEqual((_lignes(envoye), envoye.statut), (avant, 'envoye'))
+
+    def test_e6e_reviser_sans_drapeau_clone(self):
+        from apps.ventes.conception.brouillons import _comptes
+        from apps.ventes.models import Devis
+
+        company, lead, user, _intact, _retouche, envoye = self._trois_devis()
+        comptes_v1 = _comptes(envoye)
+        self._nouvelle_version(company, lead)
+        reponse = self._api(user).post('/api/django/ventes/devis/%d/reviser/' % envoye.pk, {}, format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        self.assertEqual(_comptes(Devis.objects.get(pk=reponse.data['id'])), comptes_v1)
+
+    def test_e6d_duplicata_garde_le_pointeur_suit_ou_est_liste(self):
+        """Écart 4 de l'acceptation du 25/11 — un brouillon né de « Dupliquer » garde la version
+        de conception de sa source (même contenu, même version) : intact, il SUIT la nouvelle
+        version ; retouché, il est listé « à mettre à jour ». Une source sans conception donne un
+        duplicata sans pointeur (mutant « pointeur jamais copié » : rouge)."""
+        from apps.ventes.conception.brouillons import brouillons_a_mettre_a_jour, suivre_la_conception
+        from apps.ventes.domain.creation_clone import dupliquer_devis
+        from apps.ventes.models import Devis
+
+        from django.core.cache import cache
+
+        company, lead, user, intact, retouche, envoye = self._trois_devis()
+        cache.clear()
+        self.suivi.reset_mock()
+        with self.captureOnCommitCallbacks(execute=True):
+            copie_intacte = dupliquer_devis(intact, user=user)
+        self.assertEqual(self.suivi.call_count, 1)  # le suivi du lead la rattrape si sa version est dépassée
+        copie_retouchee = dupliquer_devis(retouche, user=user)
+        copie_envoyee = dupliquer_devis(envoye, user=user)
+        for source, copie in ((intact, copie_intacte), (retouche, copie_retouchee), (envoye, copie_envoyee)):
+            self.assertEqual(copie.conception_source, source.conception_source)
+            self.assertEqual((copie.statut, copie.lead_id), ('brouillon', lead.pk))
+        v2 = self._nouvelle_version(company, lead)
+        suivis = suivre_la_conception(v2)
+        self.assertIn(copie_intacte.pk, suivis)
+        self.assertIn(copie_envoyee.pk, suivis)  # copie intacte d'un envoyé : un brouillon qui suit
+        self.assertEqual(Devis.objects.get(pk=copie_intacte.pk).conception_source['version'], 2)
+        self.assertIn(copie_retouchee.pk, [b['devis'] for b in brouillons_a_mettre_a_jour(company.pk, lead.pk, 2)])
+        Devis.objects.filter(pk=intact.pk).update(conception_source=None)
+        intact.refresh_from_db()
+        self.assertIsNone(dupliquer_devis(intact, user=user).conception_source)
+
     def test_intact_suit_retouche_et_envoye_ne_bougent_pas(self):
         from apps.ventes.conception.brouillons import suivre_la_conception
         from apps.ventes.models import Devis, DevisActivity
@@ -3606,6 +4208,29 @@ class BrouillonsSuiventLaConceptionTests(_emprunt(RelanceConceptionTests, '_rela
         self.assertEqual(api.post(URL_MISE_A_JOUR % retouche.pk).json()['appliquees'], [])  # rien de plus
         self.assertEqual(conception_courante(company, lead.pk)['brouillons_a_mettre_a_jour'], [])
 
+    def test_agen12_raisons_disent_la_conception_du_lead(self):
+        """AGEN12 (constat en direct) — « Mettre à jour » réutilise le chemin
+        réconcilier, qui parle du CALEPINAGE (« La conception 3D porte… »,
+        « Écart de calepinage non entièrement appliqué… ») quand seule la fiche du
+        lead a changé : le vendeur lit désormais ce qui a vraiment changé (la
+        conception du lead et son champ) ; le chemin réconcilier, lui, est intact."""
+        from apps.ventes.domain import pipeline
+
+        company, lead, user, _intact, retouche, _envoye = self._trois_devis()
+        self._nouvelle_version(company, lead)
+        dit_par_le_calepinage = ['La conception 3D porte le devis de 5 à 7 panneaux.',
+                                 'Écart de calepinage non entièrement appliqué : le devis reste « à resynchroniser » '
+                                 '— corrigez la cause ci-dessus puis resynchronisez.', 'Autre avertissement.']
+        with mock.patch.object(pipeline, 'reappliquer_lead', return_value={'avertissements': dit_par_le_calepinage}):
+            corps = self._api(user).post(URL_MISE_A_JOUR % retouche.pk).json()
+        raisons = [n['raison'] for n in corps['non_appliquees'] if n['champ'] == 'composition']
+        self.assertEqual(raisons, [
+            'La conception du lead porte le devis de 5 à 7 panneaux (champ modifié : Facture hiver).',
+            "La conception du lead n'a pas pu être entièrement appliquée (champ modifié : Facture hiver) : "
+            'corrigez la cause ci-dessus puis cliquez de nouveau « Mettre à jour ».',
+            'Autre avertissement.'])
+        self.assertFalse([r for r in raisons if 'calepinage' in r or '3D' in r])
+
     def test_mise_a_jour_meme_garde_que_reprendre_le_lead(self):
         """Relecture E4 M4 — aucun rôle élargi : la garde de « Reprendre les
         valeurs du lead » (rôles RÉELS du registre), 403 en français ; hors
@@ -3776,6 +4401,63 @@ class PoseReelleTests(_emprunt(RelanceConceptionTests, '_relancer'), _emprunt(Fi
         suivie, _l, _s = self._calculer(company, lead, niveau=REGLES_POSE_REELLE_2111,
                                         pose=self._pose(posee, complete=False))
         self.assertEqual(suivie.valeurs[suivie.option_retenue]['nb_panneaux']['valeur'], recommande)
+
+    def test_acal2020_releve_colle_entree_imposee_du_moteur_niveau_15(self):
+        """Reste d'ACAL2020 — au niveau 15, le relevé collé au calepinage (source ``csv``) est une
+        entrée IMPOSÉE : la conception est recalculée avec lui, le dit (entrée de source
+        ``calepinage`` + supposition), la lecture la dit À JOUR (mutant « filet sans le relevé » :
+        périmée pour toujours), le lead n'est jamais écrit ; retirer le relevé rend la
+        consommation du lead. Au niveau 14 : rien ne bouge."""
+        from apps.calepinage.models import Calepinage
+        from apps.crm.models import Lead
+        from apps.ventes.conception import porte_calepinage as P
+        from apps.ventes.conception.moteur import calculer_conception
+        from apps.ventes.domain import regles_calcul as RC
+        from apps.ventes.models import ConceptionLead
+        from apps.ventes.selectors import conception_courante
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        releve = {'courbe24': [1.5] * 24, 'methode': 'courbe', 'appareils': [],  # 36 kWh/j ⇒ 1 095 kWh/mois
+                  'source': {'origine': 'csv', 'saisi_le': '2026-11-20T10:00:00Z', 'bareme': 'societe'}}
+        calepinage = Calepinage.objects.create(company=company, lead_id=lead.pk, titre='Toit',
+                                               roof_layout={'version': 2, 'consumption': releve})
+        fiche = _json(Lead.objects.filter(pk=lead.pk).values()[0])
+
+        def conso(version):
+            return version.valeurs[version.option_retenue]['consommation_annuelle']['valeur']
+        with mock.patch.object(RC, 'REGLES_COURANTES', RC.REGLES_POSE_REELLE_2111), \
+                mock.patch.object(P, 'pose_du_calepinage', return_value=None):
+            temoin = calculer_conception(lead, company)
+            relance = self._relancer(lead, company, _declencheur('pose_enregistree'), calepinage_id=calepinage.pk)
+            rangee = ConceptionLead.objects.get(pk=relance.conception.pk)
+            self.assertEqual(rangee.etat, 'complet', rangee.refus)
+            self.assertEqual(rangee.entrees_utilisees['conso_mensuelle_kwh'],
+                             {'valeur': 1095.0, 'source': 'calepinage'})
+            dites = [s for s in rangee.suppositions if s['code'] == 'consommation_du_releve']
+            self.assertEqual([(s['champ'], s['valeur'], s['source']) for s in dites],
+                             [('conso_mensuelle_kwh', 1095.0, 'calepinage')])
+            self.assertIn('relevé collé au calepinage (1 095 kWh par mois)', dites[0]['message'])
+            self.assertNotEqual(conso(rangee), temoin.valeurs[temoin.option_retenue]['consommation_annuelle']['valeur'])
+            self.assertFalse(conception_courante(company, lead.pk)['perimee'])  # le filet relit le relevé
+            self.assertFalse(self._relancer(lead, company, _declencheur('pose_enregistree'),
+                                            calepinage_id=calepinage.pk).ecrite)  # même empreinte : rien
+            self.assertEqual(_json(Lead.objects.filter(pk=lead.pk).values()[0]), fiche)  # jamais écrit sur le lead
+            # Retirer le relevé : la consommation du lead revient, sans supposition, à jour.
+            Calepinage.objects.filter(pk=calepinage.pk).update(roof_layout={'version': 2})
+            retour = self._relancer(lead, company, _declencheur('pose_enregistree'), calepinage_id=calepinage.pk)
+            self.assertTrue(retour.ecrite)
+            revenue = ConceptionLead.objects.get(pk=retour.conception.pk)
+            self.assertEqual(conso(revenue), temoin.valeurs[temoin.option_retenue]['consommation_annuelle']['valeur'])
+            self.assertFalse([s for s in revenue.suppositions if s['code'] == 'consommation_du_releve'])
+            self.assertFalse(conception_courante(company, lead.pk)['perimee'])
+        # Niveau 14 courant : le relevé n'entre pas, la conception est celle du lead, au bit près.
+        Calepinage.objects.filter(pk=calepinage.pk).update(roof_layout={'version': 2, 'consumption': releve})
+        with mock.patch.object(P, 'pose_du_calepinage', return_value=None):
+            avec = calculer_conception(lead, company, calepinage_id=calepinage.pk)
+            sans = calculer_conception(lead, company)
+        self.assertEqual((_json(avec.valeurs), avec.empreinte, avec.suppositions),
+                         (_json(sans.valeurs), sans.empreinte, sans.suppositions))
 
     def test_relance_passe_le_calepinage_au_moteur_devis_envoye_intact(self):
         from apps.ventes.conception import moteur as M

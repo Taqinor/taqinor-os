@@ -53,10 +53,10 @@ const RETENUE = CONTRAT.lignes.find((l) => l.est_retenue)
 const AUTRE = CONTRAT.lignes.find((l) => !l.est_retenue && l.simulee && !l.courante)
 const NON_SIMULEE = CONTRAT.lignes.find((l) => !l.simulee)
 
-const rendre = () => render(
+const rendre = (props = {}) => render(
   <MemoryRouter initialEntries={['/calepinage/1/variantes']}>
     <Routes>
-      <Route path="/calepinage/:id/variantes" element={<VariantesCompare />} />
+      <Route path="/calepinage/:id/variantes" element={<VariantesCompare {...props} />} />
     </Routes>
   </MemoryRouter>,
 )
@@ -153,6 +153,25 @@ describe('VariantesCompare (CAL42)', () => {
     expect(screen.queryByTestId(`cal-retenue-${RETENUE.id}`)).not.toBeInTheDocument()
   })
 
+  it('T4-X5-014 — après « Retenir », l’atelier entier relit la conception (Documents, devis) : onRecharger, une fois', async () => {
+    const onRecharger = vi.fn().mockResolvedValue(undefined)
+    rendre({ onRecharger })
+    await screen.findByTestId('cal-tableau-variantes')
+    const cellule = screen.getByTestId(`cal-ecart_modules-${AUTRE.id}`).closest('table')
+    fireEvent.click(within(cellule).getAllByRole('button', { name: 'Retenir' })[0])
+    await waitFor(() => expect(onRecharger).toHaveBeenCalledTimes(1))
+  })
+
+  it('T4-X5-014 — un refus de « Retenir » ne relit pas l’atelier', async () => {
+    mocks.retenirVariante.mockRejectedValue({ response: { status: 409, data: { variante: 'Refus.' } } })
+    const onRecharger = vi.fn()
+    rendre({ onRecharger })
+    await screen.findByTestId('cal-tableau-variantes')
+    fireEvent.click(screen.getAllByRole('button', { name: 'Retenir' })[0])
+    await screen.findByRole('alert')
+    expect(onRecharger).not.toHaveBeenCalled()
+  })
+
   it('un refus de « Retenir » s’affiche tel quel, et la retenue ne bouge pas', async () => {
     // ACAL279 — la forme RÉELLE du handler : `{approbation: [msg], error: {…}}`.
     mocks.retenirVariante.mockRejectedValue({
@@ -168,6 +187,25 @@ describe('VariantesCompare (CAL42)', () => {
     expect(alerte).toHaveTextContent('Approbation exigée')
     expect(alerte).not.toHaveTextContent('Impossible de retenir cette variante')
     expect(screen.getByTestId(`cal-retenue-${RETENUE.id}`)).toBeInTheDocument()
+  })
+
+  // T4-X9-010 — 409 sur « Retenir » (verdict électrique bloquant) : rien ne changeait là où l'on avait cliqué, le refus
+  // s'écrivait tout en haut, hors de la vue, avec la clé interne « (terre.justification_continuite) », sans chemin.
+  it('T4-X9-010 — le refus se dit À CÔTÉ du bouton cliqué, sans clé interne, avec le lien vers l’étape Électrique', async () => {
+    const detail = 'Cette variante ne peut pas être retenue : verdict électrique bloquant — prise de terre non fournie au '
+      + 'marché : la justification de continuité de la terre existante reste à cocher (terre.justification_continuite)'
+    mocks.retenirVariante.mockRejectedValue({ response: { status: 409, data: { detail } } })
+    rendre()
+    await screen.findByTestId('cal-tableau-variantes')
+    const cellule = screen.getByTestId(`cal-ecart_modules-${AUTRE.id}`).closest('table')
+    fireEvent.click(within(cellule).getAllByRole('button', { name: 'Retenir' })[0])
+    const pres = await screen.findByTestId(`cal-variante-refus-${AUTRE.id}`)
+    expect(pres).toHaveAttribute('role', 'alert')
+    expect(pres).toHaveTextContent('la justification de continuité de la terre existante reste à cocher')
+    expect(pres).not.toHaveTextContent('terre.justification_continuite')
+    const lien = within(pres).getByRole('link', { name: 'Ouvrir l’étape Électrique' })
+    expect(lien.getAttribute('href')).toContain('onglet=decisions-electriques')
+    expect(screen.getAllByRole('alert')).toHaveLength(1) // plus de copie en haut de l'onglet
   })
 
   it('la vue CÔTE À CÔTE compare deux variantes, écarts serveur inclus', async () => {

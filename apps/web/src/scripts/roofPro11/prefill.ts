@@ -58,6 +58,7 @@ import { semerFondDepuisDocument, imageCapturePourDocument } from './fondDocumen
 import { epingleDuSite } from './epingleSite'; // acceptation ACAL490 — épingle gardée sur un pan actif vide
 import { emettreProvenanceEpingle } from './provenanceEpingle'; import { emettreReperesChantier } from './reperesChantier'; import { emettreCoupures } from './coupuresPavage'; // ACAL193 (sorti), ACAL593, ACAL576
 import { orientationEmise } from './orientationDocument'; // ACAL608
+import { hasManualEdits } from '../../lib/layoutVariability'; // relecture E6 M2 — poseManuelle
 import { construireConsommation } from './consommationSerialisee'; import { type ChargeAvenir } from './chargesAvenir'; // ACAL780
 import { pitchSourceEmise } from './provenancePente'; import { emettrePortee } from './piedsChassis'; // ACAL252 (sorti), ACAL579
 
@@ -240,6 +241,14 @@ export interface SerializedZoneGeometry {
    * (les re-snapper sur la lattice détruirait le gain de place qu'ils enregistrent).
    */
   mode?: 'free';
+  /**
+   * Relecture E6 M2 — la pose a-t-elle été AJUSTÉE À LA MAIN (`hasManualEdits` : panneau ajouté,
+   * retiré ou déplacé, ou placement libre) ? Écrite à chaque export d'une géométrie pavée ; une
+   * géométrie relue VERBATIM (pan non actif, document d'avant) garde ce qu'elle portait. Le
+   * backend (`pose_pour_moteur.pose_servie`) la lit : un toit trop petit pour la cible, rempli
+   * automatiquement, n'est plus pris pour une pose ajustée.
+   */
+  poseManuelle?: boolean;
   /**
    * CAL248 — ACCÈS SOLAIRE PAR MODULE, persisté avec le document. `pointSolarAccess` /
    * `cellsSolarAccess` vivaient côté client et ne sortaient jamais de l'écran : aucune
@@ -993,6 +1002,9 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
         flush: g.flush,
         kwc: g.grid.panels.length > 0 ? (g.grid.kwc * posed) / g.grid.panels.length : 0,
         count: posed,
+        // Relecture E6 M2 — la marque « ajustée à la main » (placement libre, ou occupation vivante
+        // ≠ les `count` premières cellules) ; un pan figé exporte les `count` premières : false.
+        poseManuelle: !!freePosed || (live !== null && hasManualEdits(ctx.layoutState, g.count)),
         origin: [g.pack.origin[0], g.pack.origin[1]] as LngLat,
         panels,
         ...ori, // ACAL608

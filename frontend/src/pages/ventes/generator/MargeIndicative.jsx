@@ -20,14 +20,20 @@ function AvisPartiel({ lignesSansAchat }) {
   )
 }
 
-export default function MargeIndicative({ marge, kpiTotal, lignesSansAchat = 0, variante = 'rail' }) {
+// T4-X4-020 — `option` ('sans' | 'avec') : sur un devis à deux options, la
+// marge est celle de CETTE option (son total face au coût de SES lignes).
+const titre = (option) => (option
+  ? `Marge indicative (interne) — option ${option === 'avec' ? 'avec' : 'sans'} batterie`
+  : 'Marge indicative (interne)')
+
+export default function MargeIndicative({ marge, kpiTotal, lignesSansAchat = 0, variante = 'rail', option = null }) {
   if (marge == null) return null
   const ton = marge < 0 ? 'text-destructive' : 'text-success'
   if (variante === 'lateral') {
     return (
       <div>
         <div className="text-xs uppercase tracking-wide text-muted-foreground">
-          Marge indicative (interne)
+          {titre(option)}
         </div>
         <div className={`text-sm font-semibold ${ton}`}>
           {formatMoney(marge)}
@@ -42,7 +48,7 @@ export default function MargeIndicative({ marge, kpiTotal, lignesSansAchat = 0, 
       {/* VX17 — couleurs via tokens de thème (text-success/destructive)
           plutôt qu'un hex codé en dur. */}
       <span className={`gen-total-label ${ton}`}>
-        Marge indicative (interne)
+        {titre(option)}
       </span>
       <span className={`gen-total-value ${ton}`}>
         {formatMoney(marge)}

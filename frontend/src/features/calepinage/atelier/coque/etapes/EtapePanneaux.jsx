@@ -4,14 +4,17 @@ import { couleurAccesActive } from '@rooflib/shadingEngine'
 import { MODULE_PAR_DEFAUT_ATELIER } from '@roofpro/moduleSelect'
 import calepinageApi from '../../../../../api/calepinageApi'
 import useResource from '../../../../../hooks/useResource'
+import { formatNumber } from '../../../../../lib/format'
+import { cibleAuModule } from '../../cibleAuModule'
 import { kwh } from '../../../production/ResultatHeros.helpers'
 import { SurCarte } from '../emplacements'
 import { BoutonMarine, CarteFlottante, Icone, Indicateur, Segmente } from '../primitives'
-import { BESOIN_MAX, gestes, useConstructeur } from './panneaux/constructeur'
+import { BESOIN_MAX, gestes, useConstructeur, usePoseVivante } from './panneaux/constructeur'
 import { jourMois, ligneModule } from './panneaux/formats'
 import { useCibleFactures } from './panneaux/lectures'
 import ValeurUnite from './panneaux/ValeurUnite'
-import { fmtKwc, modulesServis, productionPubliee } from './panneaux/sources'
+import { fmtKwc, modulesServis, productionPubliee, simulationARefaire } from './panneaux/sources'
+import { SIMULATION_A_REFAIRE } from '../../../production/BandeauProvenanceProduction.helpers' // T4-X2-002
 
 /* ============================================================================
    COQUE — L'ÉCRAN DE L'ÉTAPE « PANNEAUX » (maquettes Panneaux et Tablette).
@@ -84,8 +87,11 @@ function useServi(calepinageId, enregistreLe, servi = null, attendre = false) {
     refusFacture: facture.refus,
     factureSaisie: facture.factureSaisie,
     entrees: Array.isArray(catalogue?.modules) ? catalogue.modules : [],
+    // Lane E9 — la taille de la conception comptée dans chaque puissance de la liste (`modules-disponibles/`).
+    panneauxSelonWatt: catalogue?.panneaux_selon_watt ?? {},
     servis: modulesServis(entree),
     publiee: productionPubliee(resultat),
+    aRefaire: simulationARefaire(resultat), // T4-X2-002
   }
 }
 
@@ -171,9 +177,24 @@ function ChoixModule({ etat, entrees, servis, lectureSeule, g }) {
   )
 }
 
+/** Lane E9 (T4-X2-001 / T4-X9-005) — la cible comptée dans le module CHOISI : la conception est une PUISSANCE ; un module
+    d'une autre puissance en pose le compte SERVI (`panneaux_selon_watt`, la règle du moteur — jamais calculé ici), et la
+    carte dit les deux. Module absent de la table : la puissance seule, aucun compte (`panneaux: null`) ; sans fiche lue
+    (catalogue en lecture) : la cible telle quelle. */
+function cibleDuModule(cible, module, entrees, table) {
+  // Aucun module choisi sur le pan : rien à convertir (la carte garde la taille de la conception, comme avant).
+  if (!cible || !module?.valeur) return cible
+  const fiche = entrees.find((e) => e.module.id === module.valeur)?.module
+  const auModule = cibleAuModule({ panneaux: cible.panneaux, kwc: cible.kwc, wattConception: cible.moduleWc },
+    fiche?.pmaxWc, table)  // T4-X3-009 : LE lecteur unique de l'atelier
+  if (!auModule?.convertie) return cible
+  return { ...cible, panneaux: auModule.panneaux, watt: auModule.watt,
+    conception: `la conception du lead compte ${auModule.conception}` }
+}
+
 function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
   const { besoin, figures, memoire } = etat
-  const { cible } = servi
+  const cible = cibleDuModule(servi.cible, etat.module, servi.entrees, servi.panneauxSelonWatt)
   // La carte choisie est celle de la cible ACTUELLE ; ni l'une ni l'autre → « Pose actuelle : N panneaux · kWc ».
   const factureChoisie = !!cible && besoin?.valeur === cible.panneaux
   const max = etat.max && !factureChoisie
@@ -195,10 +216,20 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
   }
   const partFacture = partLue ?? (gardee && cible && gardee.pour === cible.panneaux && gardee.watt === figures.watt
     ? gardee.texte : null)
-  const ligneFacture = cible && (ligneTaille ?? [
-    compte(cible.panneaux), cible.kwc != null ? fmtKwc(cible.kwc) : null,
+  // ACAL2022 (T4-X2-001) — la carte dit la taille de la CONCEPTION (son nombre de panneaux et SON kWc, nommée) : jamais un nombre
+  // de panneaux à côté du kWc d'un autre module ; la pose posée se dit à part (« Posé : … »).
+  // Lane E9 — un module d'une autre puissance : « 4,40 kWc — 6 panneaux de 710 W (la conception du lead compte 8 panneaux
+  // de 550 W) » ; sans compte servi pour ce module, la puissance seule.
+  const ligneConversion = cible?.conception && cible.kwc != null
+    ? `${fmtKwc(cible.kwc)}${cible.panneaux ? ` — ${compte(cible.panneaux)} de ${formatNumber(cible.watt)} W` : ''} (${cible.conception})`
+    : null
+  const ligneFacture = cible && (ligneConversion ?? ligneTaille ?? [
+    compte(cible.panneaux), cible.kwc != null ? fmtKwc(cible.kwc) : null, 'conception',
     partFacture,
   ].filter(Boolean).join(' · '))
+  const posee = factureChoisie && cible && figures.panneaux > 0 && figures.kwc
+    && (figures.panneaux !== cible.panneaux || (cible.kwc != null && figures.kwc !== fmtKwc(cible.kwc)))
+    ? ['Posé : ' + compte(figures.panneaux), figures.kwc].join(' · ') : null
   // « Le plus de panneaux » : ses chiffres dès l'ouverture — ce que le constructeur dit tenir × la puissance du module
   // qu'il pose (`figures.watt`), jamais une seconde formule ; la mémoire prime quand la carte a été posée.
   const parTenue = besoin?.tiennent ? {
@@ -208,12 +239,15 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
   const figuresMax = max ? figures : (memoire.max ?? parTenue)
   const ligneMax = figuresMax?.panneaux ? [compte(figuresMax.panneaux), figuresMax.kwc, part(figuresMax)]
     .filter(Boolean).join(' · ') : ''
-  const raison = servi.motifFacture || 'Aucune taille ne se tire des factures de ce lead.'
+  // T4-X9-013 (reste) — sans lead, la phrase de repli ne nomme pas « ce lead ».
+  const raison = servi.motifFacture || (servi.leadId
+    ? 'Aucune taille ne se tire des factures de ce lead.'
+    : 'Ce calepinage n’a pas de lead : aucune taille n’est tirée d’une facture. Choisissez le nombre de panneaux à poser.')
   return (
     <section className="cal-pan-section">
       <h2 className="cal-pan-titre">Combien de panneaux ?</h2>
       <button type="button" className="cal-pan-option-pose" aria-pressed={factureChoisie}
-        disabled={lectureSeule || !cible || !besoin} onClick={() => { if (!factureChoisie) g.besoin(cible.panneaux) }}
+        disabled={lectureSeule || !cible?.panneaux || !besoin} onClick={() => { if (!factureChoisie) g.besoin(cible.panneaux) }}
         data-testid="cal-panneaux-option-facture">
         <span className="cal-pan-option-tete">
           <span className="cal-pan-option-nom">Couvrir la facture</span>
@@ -225,6 +259,14 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
           <span className="cal-pan-option-ligne" data-zone="cible-en-calcul">calcul en cours</span>
         )}
       </button>
+      {/* Lane E9 — la conception a été recalculée depuis l'ouverture : la carte le DIT, jamais en silence. */}
+      {servi.facture.recalculee && (
+        <p className="cal-pan-note" data-zone="conception-recalculee" role="status">
+          {servi.facture.recalculee.raison ? `Conception recalculée : ${servi.facture.recalculee.raison}`
+            : 'Conception recalculée depuis l’ouverture de l’atelier.'}
+        </p>
+      )}
+      {posee && <p className="cal-pan-note" data-zone="pose-posee">{posee}</p>}
       {besoin?.auto && <p className="cal-pan-note" data-zone="taille-auto" role="status">{besoin.note}</p>}
       {servi.facture.etat === 'chargement' && (
         <p className="cal-pan-note cal-pan-note-attente" data-zone="facture-lecture" aria-live="polite">
@@ -333,7 +375,10 @@ function AlerteOmbre({ ombre, g }) {
 /** La puce de la carte. Production publiée FRAÎCHE et COMPLÈTE → la pose simulée et sa production, libellé de l'étape
     Résultats ; sinon la pose du constructeur, son estimation nommée « estimation » et la part production ÷ consommation
     (production estimée ÷ consommation du lead : jamais « de la facture »). */
-function PuceResume({ figures, publiee }) {
+function PuceResume({ figures, publiee, site = null, aRefaire = false }) {
+  // ACAL2022 (T4-X2-009) — le site compte plus que ce pan (champ au sol, autre pan) : la bande dit qu'elle compte CE pan et le total du site est dit.
+  const autrePan = !publiee && site?.panneaux > 0 && figures.panneaux > 0 && site.panneaux !== figures.panneaux
+  const pan = autrePan ? ' · ce pan' : ''
   const indicateurs = publiee
     ? [
       ['Panneaux', publiee.panneaux != null ? String(publiee.panneaux) : null],
@@ -341,18 +386,30 @@ function PuceResume({ figures, publiee }) {
       [publiee.libelle, kwh(publiee.p50)],
     ]
     : [
-      ['Panneaux', figures.panneaux ? String(figures.panneaux) : null],
-      ['Puissance', figures.kwc],
-      ['Production · estimation de la pose', figures.production],
+      [`Panneaux${pan}`, figures.panneaux ? String(figures.panneaux) : null],
+      [`Puissance${pan}`, figures.kwc],
+      ...(autrePan ? [['Total du site', [`${site.panneaux} panneaux`, site.kwc].filter(Boolean).join(' · ')]] : []),
+      // ACAL2022 — la production est celle de la conception SERVIE ; pendant le dessin, « au prochain enregistrement ».
+      figures.productionKwh != null ? ['Production · conception', figures.production]
+        // M5 — la raison est celle que dit le constructeur (`affichageErp.raisonSansValeur`) : « au prochain enregistrement » seulement là où il
+        // est vrai, sinon « calculée pour la conception du lead : X kWc — votre pose en compte Y kWc ».
+        : ['Production', figures.production ? figures.production.replace(/^production\s+/i, '') : null],
       ['Production ÷ consommation', figures.couverture ? `≈ ${figures.couverture}` : null],
     ]
   const lus = indicateurs.filter(([, valeur]) => valeur)
-  if (lus.length === 0) return null
+  // T4-X9-006 — tailles différentes : la phrase du constructeur, UNE fois, en texte courant qui revient à la ligne dans la
+  // bande (jamais dans une case de chiffre, qui débordait sous la pile de zoom).
+  const phrase = publiee ? null : figures.tailles
+  // T4-X2-002 — la simulation enregistrée est périmée : DIT, avec le geste pour la refaire (jamais un silence).
+  const aRefaireTexte = !publiee && aRefaire ? `${SIMULATION_A_REFAIRE} Relancez-la à l’étape Les résultats.` : null
+  if (lus.length === 0 && !phrase && !aRefaireTexte) return null
   return (
     <CarteFlottante className="cal-pan-puce" data-testid="cal-sur-carte-resume">
       {lus.map(([libelle, valeur]) => (
         <Indicateur key={libelle} libelle={libelle} valeur={<ValeurUnite texte={valeur} />} />
       ))}
+      {phrase && <p className="cal-pan-puce-phrase">{phrase}</p>}
+      {aRefaireTexte && <p className="cal-pan-puce-phrase">{aRefaireTexte}</p>}
     </CarteFlottante>
   )
 }
@@ -420,8 +477,10 @@ function useEnsoleillementALEntree(carteLue, rafraichir) {
 
 export default function EtapePanneaux({
   calepinageId, lectureSeule = false, enregistreLe = null, contexte = null, contexteEnCours = false, parcours = null,
+  builderApi = null,
 }) {
   const [etat, rafraichir] = useConstructeur()
+  const site = usePoseVivante(true, builderApi)
   // Chaque geste part au vrai contrôle, puis la lecture est refaite tout de suite (sinon elle suit 0,4 s plus tard).
   const g = Object.fromEntries(Object.entries(gestes).map(([nom, geste]) => [
     nom, (...args) => { geste(...args); rafraichir() },
@@ -456,7 +515,7 @@ export default function EtapePanneaux({
       <AlerteOmbre key={etat.ombre?.n ?? 0} ombre={etat.ombre} g={g} />
       <AvisOmbresNonComptees manque={parcours?.manque} />
       <SurCarte>
-        <PuceResume figures={etat.figures} publiee={servi.publiee} />
+        <PuceResume figures={etat.figures} publiee={servi.publiee} site={site} aRefaire={servi.aRefaire} />
         <div className="cal-carte-soleil" data-testid="cal-carte-soleil">
           {etat.soleil.carte && <LegendeSoleil carte={etat.soleil.carte} g={g} />}
           <LecteurSoleil soleil={etat.soleil} g={g} />

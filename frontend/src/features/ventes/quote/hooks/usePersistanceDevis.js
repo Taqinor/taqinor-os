@@ -20,6 +20,7 @@ import { fetchAllPages } from '../../../../utils/fetchAllPages'
 import { getApiError } from '../../../../lib/apiError'
 import { erreursBaseLegaleServeur, lignesServeurVersEcran, lignesEnvoyees, lignesNonEnvoyees } from '../lignesEcran'
 import { useRef, useState } from 'react'
+import { todayLocalIso } from '../../../../lib/dateLocale.js'
 import { withKeys } from '../ligneFabrique.js'
 
 // AGNR33 — les champs d'en-tête dont un refus 400 se lit sous le champ.
@@ -27,6 +28,9 @@ import { withKeys } from '../ligneFabrique.js'
 // serveur : toutes les 2 s, pendant ~4 min (une création chargée a pris 100 s).
 const DELAI_REPRISE_EN_COURS_MS = 2000
 const REPRISES_EN_COURS = 120
+
+// T4-X4-013 — la même phrase que le refus du serveur (une seule voix).
+const MESSAGE_DATE_PASSEE = "Cette date est déjà passée : choisissez aujourd'hui ou une date à venir."
 
 const LIBELLES_CHAMPS_ENTETE = {
   remise_globale: 'Réduction',
@@ -222,6 +226,17 @@ export function usePersistanceDevis(ctx) {
       const nom = `${selectedLead.nom}${selectedLead.prenom ? ` ${selectedLead.prenom}` : ''}`.trim()
       w.lead = `Attention : le lead « ${nom} » est ${flags}. `
         + 'Vous pouvez tout de même créer ce devis.'
+    }
+
+    // T4-X4-013 — un devis ne naît pas expiré : une date de validité déjà passée est
+    // refusée SUR le champ (le serveur applique la même règle). Un devis existant dont
+    // la date est déjà passée reste enregistrable tant qu'on ne la change pas.
+    const datePassee = Boolean(dateValidite)
+      && dateValidite < todayLocalIso()
+      && dateValidite !== (editDevis?.date_validite || null)
+    if (datePassee) {
+      setErreursChamps({ date_validite: MESSAGE_DATE_PASSEE })
+      if (!e.submit) e.submit = `${LIBELLES_CHAMPS_ENTETE.date_validite} : ${MESSAGE_DATE_PASSEE}`
     }
 
     // AGNR58 — une ligne sans produit (hors « prix à renseigner », qui bloque)

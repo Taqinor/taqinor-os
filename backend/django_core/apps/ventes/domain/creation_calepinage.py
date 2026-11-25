@@ -122,8 +122,13 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
                             deux_options=False, journal=None, phase=None,
                             dimensionnement_avec=None,
                             mppt_paires=1, structure_type=None,
-                            structure_produit_id=None, hors_reseau=None):
+                            structure_produit_id=None, hors_reseau=None, a_blanc=False):
     """Q3 — turn a FINALISED roof layout into a coherent, company-scoped Devis.
+
+    ``a_blanc`` (lane E9, T4-X5-010) — LE DRY-RUN de ce même chemin : aucun client résolu
+    (``resolve_client_for_lead`` écrit), aucun devis ; la composition des étapes 1-4 du
+    pipeline (``composer_l_intention``) est rendue en specs de lignes
+    (``specs_de_composition``) — ce que l'appel écrirait, sans une seconde composition.
 
     ``mppt_paires`` / ``structure_type`` (QJR80) — les DEUX paramètres de
     composition que cette fonction n'acceptait pas et ne transmettait donc
@@ -236,7 +241,7 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     hors_reseau = isole_lead if hors_reseau is None else bool(hors_reseau)
     deux_options = deux_options_composables(deux_options, hors_reseau)
 
-    if client is None:
+    if client is None and not a_blanc:
         if lead is None:
             raise ValueError("build_devis_from_layout requires a lead or client")
         from apps.crm.services import resolve_client_for_lead
@@ -308,7 +313,7 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     # que la forme est à deux options). PVCOMPAT (``phase``), QJR80
     # (``mppt_paires`` / ``structure_type``) et L-2OPT (``dimensionnement_avec``)
     # sont transmis par les mêmes champs que les quatre autres origines.
-    resultat = appliquer(None, IntentionDevis(
+    intention = IntentionDevis(
         origine=ORIGINE_CALEPINAGE,
         company=company,
         user=user,
@@ -345,7 +350,12 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
         mppt_paires=mppt_paires,
         phase=phase,
         hors_reseau=hors_reseau,
-    ))
+    )
+    if a_blanc:
+        from apps.ventes.domain.pipeline import composer_l_intention, specs_de_composition
+
+        return specs_de_composition(composer_l_intention(None, intention, [])[2])
+    resultat = appliquer(None, intention)
     devis = resultat['devis']
     line_specs = resultat['composition']
     avertissements = resultat['avertissements']

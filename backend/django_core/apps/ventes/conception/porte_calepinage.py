@@ -185,6 +185,51 @@ def simuler_la_pose(company, calepinage_id, materiel):
     return simuler_pose(calepinage, materiel=materiel) if calepinage is not None else None
 
 
+def production_du_plan_par_defaut(company, lead, kwc, produits, nb_panneaux=None):
+    """ADEV154 / ACAL2026 — la production du PLAN PAR DÉFAUT d'un lead sans toit tracé
+    (``calepinage/services/plan_par_defaut.py``, sans écriture) : ``kwc`` du moteur, son
+    matériel (``{module, onduleur}`` : identifiants produit), le point du lead et sa pente
+    déclarée (``Lead.inclinaison_deg``, sinon 30° dite) ; ``nb_panneaux`` : le compte de la
+    conception, qui pose le plan à SA taille quand la fiche du module ne porte aucune
+    puissance (correction d'ACAL2026). Une simulation refusée rend ``{refus: <motif
+    nommé>}`` (aucun autre fichier de ventes n'importe le calepinage)."""
+    from apps.calepinage.services.plan_par_defaut import simuler_plan_par_defaut
+    from apps.calepinage.services.simulation import SimulationRefusee
+
+    pente = getattr(lead, 'inclinaison_deg', None)
+    try:
+        return simuler_plan_par_defaut(company, None, None, kwc, lead_id=lead.pk, produits=produits,
+                                       nb_panneaux=nb_panneaux,
+                                       pente=float(pente) if pente is not None else None,
+                                       type_installation=getattr(lead, 'type_installation', None),
+                                       type_toiture=getattr(lead, 'type_toiture', None))
+    except SimulationRefusee as refus:
+        return {'refus': refus.motif or str(refus)}
+
+
+#: Reste d'ACAL2020 — l'origine du RELEVÉ collé à l'étape Consommation (``consumption.source``
+#: du document, écrite par ``calepinage/services/consommation.py::proposer_consommation``).
+ORIGINE_RELEVE = 'csv'
+
+
+def consommation_du_calepinage(company, calepinage_id):
+    """Reste d'ACAL2020 — le RELEVÉ collé au calepinage (``roof_layout.consumption`` dont la
+    source est ``csv`` : la journée moyenne de 24 h du relevé) à la forme de la consommation
+    imposée du moteur (``conception/consommation_imposee.py``) : ``{kwh_annuel, kwh_mensuels:
+    None, source: 'releve'}`` (journée moyenne × 365, la convention de l'étape pour une courbe
+    sans saisons) ; ``None`` sans calepinage de la société, sans relevé (factures, appareils,
+    consommation du lead) ou sans courbe lisible de 24 valeurs."""
+    from apps.ventes.selectors_calepinage import calepinage_de_societe
+
+    calepinage = calepinage_de_societe(calepinage_id, company) if calepinage_id else None
+    conso = ((getattr(calepinage, 'roof_layout', None) or {}).get('consumption') or {}) if calepinage else {}
+    source = conso.get('source') if isinstance(conso, dict) and isinstance(conso.get('source'), dict) else {}
+    courbe = [_nombre(v) for v in conso.get('courbe24') or []] if source.get('origine') == ORIGINE_RELEVE else []
+    if len(courbe) != 24 or any(v is None or v < 0 for v in courbe) or not sum(courbe):
+        return None
+    return {'kwh_annuel': round(sum(courbe) * 365, 1), 'kwh_mensuels': None, 'source': 'releve'}
+
+
 #: Relecture E6 B2 — une désignation que le catalogue de vente du moteur refuse.
 CODE_DESIGNATION_HORS_CATALOGUE = 'designation_hors_catalogue'
 MESSAGE_HORS_CATALOGUE = ('Le matériel désigné « %s » n\'est plus au catalogue de vente : la conception utilise le '
@@ -195,14 +240,15 @@ _ROLES_DESIGNES = (('module_produit', 'panneau_produit_id', 'panneau'),
                    ('onduleur_produit', 'onduleur_produit_id', 'onduleur'))
 
 
-def _designations(company, calepinage_id):
+def _designations(company, calepinage_id, lu=None):
     """``(imposes, écartées)`` : les désignations que le vivier du moteur accepte (forme des
     champs imposés) et ``[{champ, nom}]`` de celles qu'il refuse (archivé, sans prix de
     vente, d'un autre genre, inconnu) — jamais imposées (relecture E6 B2)."""
     from apps.calepinage.services.electrique import entree_stockee
     from apps.ventes.selectors_calepinage import calepinage_de_societe
 
-    calepinage = calepinage_de_societe(calepinage_id, company) if calepinage_id else None
+    calepinage = (lu if lu is not None and lu.pk == calepinage_id
+                  else calepinage_de_societe(calepinage_id, company) if calepinage_id else None)
     entree = (entree_stockee(calepinage) or {}) if calepinage is not None else {}
     designes = [(role, cle, genre, entree[role]) for role, cle, genre in _ROLES_DESIGNES
                 if entree.get(role) not in (None, '')]
@@ -229,14 +275,40 @@ def _nom_produit(company, produit_id):
     return getattr(produit, 'nom', None) or None
 
 
-def designations_du_calepinage(company, calepinage_id):
+def calepinage_du_lead(company, lead, calepinage_id=None, toit=None):
+    """``(calepinage_id, toit)`` — :func:`calepinage_et_toit_du_lead` sans l'objet lu."""
+    return calepinage_et_toit_du_lead(company, lead, calepinage_id, toit)[:2]
+
+
+def calepinage_et_toit_du_lead(company, lead, calepinage_id=None, toit=None):
+    """Lane E6e (T4-X5-003) — ``(calepinage_id, toit)`` d'une relance du LEAD : ceux que
+    l'appelant passe, sinon le calepinage OUVERT du lead (hors appel d'offres) et sa pose
+    enregistrée (``layout_hash``) comme toit. LA résolution unique des entrées imposées
+    d'un lead : quel que soit le déclencheur (fiche, lecture, devis, calepinage), la
+    conception lit le même toit et les mêmes désignations. Sans calepinage : inchangés."""
+    from types import SimpleNamespace
+
+    if calepinage_id or lead is None or not getattr(lead, 'pk', None):
+        return calepinage_id, toit, None
+    from apps.calepinage.selectors import calepinage_ouvert_du_lead
+
+    calepinage = calepinage_ouvert_du_lead(company, lead.pk)
+    if calepinage is None or calepinage.appel_offre_id:
+        return None, toit, None
+    empreinte = (calepinage.layout_hash or '').strip()
+    if toit is None and empreinte:
+        toit = SimpleNamespace(empreinte=calepinage.layout_hash, plafond_panneaux=None)
+    return calepinage.pk, toit, calepinage  # coût des requêtes : l'objet lu sert ses désignations
+
+
+def designations_du_calepinage(company, calepinage_id, calepinage=None):
     """ACAL2013 — le module et l'onduleur DÉSIGNÉS À LA MAIN à l'étape Électrique du
     calepinage (entrée électrique stockée : ``module_produit``, ``onduleur_produit``), à la
     forme des champs imposés du moteur (``panneau_produit_id``, ``onduleur_produit_id``) ;
     ``{}`` sans désignation ou sans calepinage de la société. Relecture E6 B2 : seulement
     celles que le catalogue de vente du moteur accepte (les autres :
     :func:`designations_ecartees`)."""
-    return _designations(company, calepinage_id)[0]
+    return _designations(company, calepinage_id, calepinage)[0]
 
 
 def designations_ecartees(company, calepinage_id):

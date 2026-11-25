@@ -35,7 +35,7 @@ import { isSortieSigne } from '../stages'
 import { useConfirmerRecul } from '../confirmRecul'
 import { useLeadDraft, rememberVille } from './useLeadDraft'
 import { schedulePrefetch } from './leadPrefetch'
-import { getField } from './draftCore'
+import { getField, usersAvecResponsable } from './draftCore'
 import { sectionDuChamp } from './missingFields'
 import { jumpToField } from './jumpToField'
 import fieldLabels, { LIBELLES_SECTIONS } from './fieldLabels'
@@ -212,7 +212,10 @@ export default function LeadWorkspace({
   const leadNom = state.server?.nom ?? lead?.nom ?? ''
 
   // ── Données de référence (partagées avec les rails / sections) ────────────
-  const [users, setUsers] = useState([])
+  const [usersCharges, setUsers] = useState([])
+  // T4-V1-001 — le responsable SERVI par la fiche complète la liste (un
+  // Commercial ne charge pas les utilisateurs assignables : « Non assigné » à tort).
+  const users = useMemo(() => usersAvecResponsable(usersCharges, state.server), [usersCharges, state.server])
   const [tagOptions, setTagOptions] = useState([])
   const [motifOptions, setMotifOptions] = useState([])
   const [historique, setHistorique] = useState([])

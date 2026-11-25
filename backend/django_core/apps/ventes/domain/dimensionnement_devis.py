@@ -392,6 +392,21 @@ def lignes_vendues(devis, option=None):
     return vendues
 
 
+def lignes_vendues_de_l_option(devis, variante):
+    """T4-X4-004 — les lignes VENDUES (:func:`lignes_vendues`) de l'option ``variante``
+    ('sans'/'avec') : sur un devis à deux options, par ``utils.options.filter_lines_for_option``
+    (variante déclarée, rôle, mots-clés, QF9 — la règle du PDF et du noyau monnaie), jamais par
+    la seule étiquette ``variante`` (une batterie non étiquetée tombait dans « sans »). Devis à
+    une option : la lecture d'avant, inchangée. Vit ICI et non dans ``utils/options`` : ce
+    module-là est importé par ``models`` (contrat d'imports M1, CI rouge du 25/11)."""
+    from apps.ventes.utils.options import (AVEC_BATTERIE, SANS_BATTERIE, filter_lines_for_option,
+                                           has_two_options)
+    if not has_two_options(devis):
+        return lignes_vendues(devis, variante)
+    option = SANS_BATTERIE if variante == 'sans' else AVEC_BATTERIE
+    return filter_lines_for_option(lignes_vendues(devis), option, devis=devis)
+
+
 def _lignes_produit_du_devis(devis):
     """Les LIGNES PRODUIT réellement facturées par ce devis, ou ``[]``.
 

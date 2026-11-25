@@ -365,6 +365,25 @@ class _TransportNasa:
         return self.statut, json.dumps(self.charge)
 
 
+class _TransportNasaParAnnee(_TransportNasa):
+    """ACAL2043 — la règle MESURÉE le 25/11/2026 : une demande horaire JSON de plus d'un an est
+    refusée en HTTP 422 ; une demande d'une année reçoit les heures de CETTE année de ``charge``."""
+
+    def __call__(self, url, timeout_s):
+        from urllib.parse import parse_qs, urlparse
+
+        self.urls.append((url, timeout_s))
+        demande = parse_qs(urlparse(url).query)
+        debut, fin = demande['start'][0], demande['end'][0]
+        if debut[:4] != fin[:4]:
+            return 422, json.dumps({'messages': ['please shorten your requested time extent']})
+        charge = copy.deepcopy(self.charge)
+        charge['properties']['parameter'] = {
+            nom: {h: v for h, v in heures.items() if h[:4] == debut[:4]}
+            for nom, heures in charge['properties']['parameter'].items()}
+        return 200, json.dumps(charge)
+
+
 def _client_nasa(transport):
     from apps.calepinage.services.nasa_power import ClientNasaPower
     return ClientNasaPower(transport, cache=_Cache())
@@ -476,13 +495,13 @@ class NasaPowerDansLaSimulationTest(unittest.TestCase):
     GAIN = {'ghi_annuel_kwh_m2': 1850.0}
 
     @staticmethod
-    def _deux_annees(ghi_w_m2):
+    def _deux_annees(ghi_w_m2, premiere=2019, derniere=2020):
         import datetime
 
         from apps.calepinage.services.nasa_power import PARAMETRES
         charge = _reponse_nasa()
-        heures, instant = [], datetime.datetime(2019, 1, 1)
-        while instant.year <= 2020:
+        heures, instant = [], datetime.datetime(premiere, 1, 1)
+        while instant.year <= derniere:
             heures.append(instant.strftime('%Y%m%d%H'))
             instant += datetime.timedelta(hours=1)
         charge['properties']['parameter'] = {
@@ -499,14 +518,45 @@ class NasaPowerDansLaSimulationTest(unittest.TestCase):
 
     def test_le_bloc_servi_est_celui_du_contrat(self):
         contrat = json.loads((ECHANTILLONS / 'calepinage_meteo.json').read_text(encoding='utf-8'))
-        transport = _TransportNasa(self._deux_annees(210.0))
+        transport = _TransportNasaParAnnee(self._deux_annees(210.0))
         servi = self._comparer(self._client_pvgis(client_nasa_power=_client_nasa(transport)))
         attendu = copy.deepcopy(contrat['exemple']['meteo']['comparaison_nasa_power'])
         servi['meteo']['obtenue_le'] = attendu['meteo']['obtenue_le']  # l'horloge du jour
         self.assertEqual(servi, attendu)
         self.assertEqual(servi['source_du_chiffre'], 'pvgis')
-        self.assertEqual(len(transport.urls), 1)
+        self.assertEqual(len(transport.urls), 2)  # ACAL2043 : une demande par année
         self.assertIsNone(contrat['exemple_vide']['meteo']['comparaison_nasa_power'])
+
+    def test_acal2043_fenetre_de_dix_ans_un_service_qui_refuse_plus_d_un_an_donne_l_ecart(self):
+        """ACAL2043 — le service refuse en 422 toute demande horaire de plus d'un an (mesuré le
+        25/11/2026) : la fenêtre 2014-2023 est demandée année par année et l'écart est servi."""
+        transport = _TransportNasaParAnnee(self._deux_annees(210.0, 2014, 2023))
+        servi = self._comparer(self._client_pvgis(client_nasa_power=_client_nasa(transport)),
+                               decision={'fenetre_annees': (2014, 2023)})
+        self.assertEqual(servi['motif'], '')  # mutant « toute la fenêtre en un appel » : 422, motif
+        self.assertEqual(servi['annees'], list(range(2014, 2024)))
+        self.assertIsNotNone(servi['irradiation_horizontale_kwh_m2']['nasa_power'])
+        self.assertIsNotNone(servi['ecart_pct'])
+        self.assertEqual(len(transport.urls), 10)
+
+    def test_acal2043_delai_total_depasse_motif_et_valeurs_nulles(self):
+        from unittest import mock
+
+        from apps.calepinage.services import nasa_power
+        transport = _TransportNasaParAnnee(self._deux_annees(210.0))
+        lectures = []
+
+        def horloge():  # départ, 1re année à 0 s, puis le délai total dépassé
+            lectures.append(None)
+            return 0.0 if len(lectures) <= 2 else nasa_power.DELAI_TOTAL_S + 1.0
+
+        with mock.patch('time.monotonic', horloge):
+            bloc = _client_nasa(transport).comparaison_horizontale(
+                lat=33.5, lon=-7.6, annee_debut=2019, annee_fin=2020, ghi_pvgis_kwh_m2=1850.0)
+        self.assertIn('à temps', bloc['motif'])
+        self.assertIsNone(bloc['irradiation_horizontale_kwh_m2']['nasa_power'])
+        self.assertIsNone(bloc['ecart_pct'])
+        self.assertEqual(len(transport.urls), 1)
 
     def test_un_transport_de_test_ne_recoit_jamais_d_url_nasa(self):
         contrat = json.loads((ECHANTILLONS / 'calepinage_meteo.json').read_text(encoding='utf-8'))
@@ -519,11 +569,11 @@ class NasaPowerDansLaSimulationTest(unittest.TestCase):
         from unittest import mock
 
         from apps.calepinage.services import nasa_power, pvgis_serie
-        sonde = _TransportNasa(self._deux_annees(210.0))
+        sonde = _TransportNasaParAnnee(self._deux_annees(210.0))
         with mock.patch.object(pvgis_serie, '_transport_urllib', sonde):
             with mock.patch.object(nasa_power, '_CACHE_PARTAGE', pvgis_serie._Cache()):
                 servi = self._comparer(self._client_pvgis(transport=pvgis_serie._transport_urllib))
-        self.assertEqual(len(sonde.urls), 1)
+        self.assertEqual(len(sonde.urls), 2)
         self.assertIn('power.larc.nasa.gov', sonde.urls[0][0])
         self.assertEqual(servi['irradiation_horizontale_kwh_m2']['nasa_power'], 1842.1)
 

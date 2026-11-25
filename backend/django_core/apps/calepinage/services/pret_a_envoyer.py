@@ -791,11 +791,19 @@ def controle_pans_vides(calepinage):
     if not pans:
         return _controle('pans_vides', libelle, 'info', 'Aucun pan dessiné',
                          cible=CIBLE_PANNEAUX)
-    vides = ['le pan %s n’a aucun panneau : %s' % (pan['pan'], pan['motif'])
-             for pan in pans if pan['motif']]
+    vides = [pan for pan in pans if pan['motif']]
     if not vides:
         return _controle('pans_vides', libelle, 'ok', 'Tous garnis',
                          cible=CIBLE_PANNEAUX)
+    if len(vides) < len(pans):
+        # T4-X5-006 — un pan laissé vide à côté d'un pan garni (le mode guidé
+        # laisse le pan nord vide) est permis : une information, hors du
+        # compte des points à régler.
+        return _controle('pans_vides', libelle, 'info', ' ; '.join(
+            'le pan %s est laissé sans panneau : il n’est ni chiffré ni '
+            'simulé' % pan['pan'] for pan in vides), cible=CIBLE_PANNEAUX)
+    vides = ['le pan %s n’a aucun panneau : %s' % (pan['pan'], pan['motif'])
+             for pan in vides]
     return _controle('pans_vides', libelle, 'a_regler', ' ; '.join(vides),
                      geste='Remplir le pan', cible=CIBLE_PANNEAUX)
 

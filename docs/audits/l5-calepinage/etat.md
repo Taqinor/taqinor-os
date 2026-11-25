@@ -1453,7 +1453,7 @@ atelier sans relecture automatique, budget de requêtes de `resultat/` à 22 pou
 (la CI les joue), note « par ? » (source : `crm/serializers.py:129`, `ChatterTimeline.jsx:290`).
 EN VOL à 02 h 25 : relecture de l'étape 6 (lecture seule), X1 et X4. EN PAUSE : relecteur des trois lanes de correctifs.
 
-### Point du 25/11, 03 h 15 UTC (le plus récent — REPRENDRE ICI)
+### Point du 25/11, 03 h 15 UTC
 
 **Lot 3 — PR BROUILLON Taqinor/taqinor-os#1555 (`dev-lot3`), tête poussée `580c0ab95b` : CI VERTE (38 jobs) au second
 passage.** Premier passage : 15 jobs rouges ramenés à huit causes, toutes corrigées (désignation sur un calepinage sans
@@ -1529,3 +1529,421 @@ Tour 3 : X2 TERMINÉ (11 constats, 10 rejeux confirmés) — total 49 constats, 
 `T4/tour3/consolidation.md`. EN VOL : `lane/moteur-e7b`, `lane/moteur-e6c` (consignes `scratchpad/msg-lane-e6c.md`,
 base de test `e6c`). À lancer aux places libres : relecteur X5 puis X3 (sur l'instrument mis à jour), lane F1 (liste
 des devis, `scratchpad/tour3/msg-lane-F1-liste.md`), E7a, E7c, lanes de correctifs 2 à 6.
+
+**Ajout de 06 h 15 UTC.** Troisième passage de CI du lot 3 : tous les tests verts, deux gardes rouges corrigées et
+repoussées (`fb0abf2d4d`) — arrondi d'argent (`selectors_conception._payback_servi` : `arrondi_affichage` au lieu de
+`round`) et budget du bundle (4 175,0 mesuré → 4 190). QUATRIÈME passage en cours. **Dès qu'il est vert : `gh pr ready
+1555`, réécrire le corps de la PR (ce n'est plus un brouillon), `gh pr merge 1555 --auto --merge`, puis dire au
+fondateur « mergé — à déployer par toi ».**
+Instrument `l5t` mis à jour à 04 h 40 sur `dev-lot3@22e6aa81ae` (branche locale `instr-lot3` du worktree `l5t-instr`).
+Écrans de l'étape 5 REGARDÉS par l'orchestrateur (captures `scratchpad/acc2027/c1970-*.png`) : étape Panneaux (cible
+de la conception : 8 panneaux · 4,40 kWc), étape Électrique (« jugé pour la pose : 23 panneaux — la conception du
+lead en compte 8 »), Résultats (« Production de la conception : 6 969 kWh par an », « Calcul à refaire ») ; par l'API :
+un lead neuf reçoit sa conception seul en 13 s, le retour sur investissement est servi (6,0 / 6,2 ans, devis de
+référence nommé), `site_de_repli` = « Casablanca (ville de référence) » pour un client sans lead, un ancien ticket
+sans description se modifie. L'enregistrement d'acceptation ACAL2028 reste À ÉCRIRE (états « brouillon » et « devis
+envoyé lié qui diffère » non rejoués à l'écran : le relecteur X5 les joue).
+FAIT pour le fondateur : la fiche technique du panneau par défaut des devis automatiques (« Panneau mono 550W ») est
+VIDE (puissance crête, Voc…) — les verdicts électriques de la conception disent donc « non calculé » pour ces leads.
+EN VOL : `lane/moteur-e7b`, `lane/moteur-e6c`, relecteur X5 (atelier après le toit, thème sombre).
+
+### Point du 25/11 noté « 07 h 05 » (heure réelle ≈ 05 h 15 UTC)
+
+**Lot 3 — PR Taqinor/taqinor-os#1555 : CI VERTE au quatrième passage (37 jobs), passée « prête », DANS LA FILE DE
+FUSION (position 1) à 07 h 00.** À sa fusion : dire au fondateur « mergé — à déployer par toi : `scripts/deploy-prod.ps1` »
+(les lots 1 et 2 ne sont pas déployés non plus).
+
+**Lot 4 — branche locale `dev-lot4`** (worktree de l'orchestrateur ; sauvegarde `origin/notes-l5-2511`) = `dev-lot3`
++ notes + `lane/moteur-e6c` (ACAL2026 plan par défaut, ADEV154 liste `--ecarts-sans-toit`, `forme_horaire_24`,
+`poseManuelle` écrite par l'outil de toit ; NON fait : entrée imposée « consommation »). À y plier : `lane/moteur-e7b`,
+`lane/t3-liste`, puis E7a, E7c, lanes de correctifs 2 à 6 du tour 3.
+
+**LISTE ADEV154 jouée sur la copie anonymisée (40 leads, rien d'écrit)** — fichier CONFIDENTIEL hors dépôt :
+`scratchpad/ecarts-sans-toit-echantillon.txt`. 14 leads refusés par le moteur (facture, phase, jours d'ouverture,
+ville, profil météo) ; 26 leads à conception, 45 lignes d'option : **6 simulées — production du toit supposé de
++18,2 % à +21,5 % au-dessus de la production actuelle** (ex. 6 813 → 8 183 kWh/an) ; **39 NON simulées** : « aucun pan
+ne porte à la fois des modules et une puissance crête » — la fiche technique du module par défaut (« Panneau mono
+550W ») est vide. À CORRIGER avant de montrer la liste au fondateur : le plan par défaut doit simuler sur le kWc que
+la conception porte déjà (puissance par panneau = kWc ÷ panneaux), en supposant et en DISANT les valeurs de fiche
+manquantes. ADEV155 reste GATED (réponse du fondateur après lecture).
+EN VOL : `lane/moteur-e7b`, `lane/t3-liste`, relecteur X5.
+
+### Point du 25/11, 05 h 45 UTC, heure RÉELLE
+
+(Les heures des points précédents de cette nuit sont en avance d'environ 1 h 30 à 1 h 45 sur l'heure réelle : repère
+sûr = les fusions, 00 h 57 UTC pour le lot 2 et 05 h 22 UTC pour le lot 3.)
+
+**Lot 3 — PR Taqinor/taqinor-os#1555 FUSIONNÉE le 25/11 à 05 h 22 UTC.** Dit au fondateur : « mergé — à déployer par
+toi : `scripts/deploy-prod.ps1` ». TROIS lots sur `main`, AUCUN déployé.
+
+**Lot 4 — branche locale `dev-lot4`** (worktree de l'orchestrateur ; `origin/main` d'après le lot 3 intégré ;
+sauvegarde `origin/notes-l5-2511` ; PAS de PR) : `lane/moteur-e6c` + `lane/moteur-e7b` (ADEV152, AGEN11, AGEN12,
+AGEN13 : l'écran devis lit la conception, bandeau « La conception a changé », maths locales retirées ; ACAL1216
+résolue par conséquence) + tâches marquées « code livré » + contrats d'API régénérés. Gardes hôte vertes. À FAIRE
+avant sa PR : instantané OpenAPI (docker), REGARDER les écrans de l'écran devis sur l'instrument (liste au rapport de
+la lane : générateur avec lead / sans lead, brouillon retouché et « Mettre à jour », devis envoyé « Réviser », fiche
+du lead, devis commercial) — après le retour du relecteur X5 (il utilise l'instrument).
+- EN VOL : `lane/moteur-e7a` (fiche du lead : ALEA71, ACAL2021, note « par ? », libellé du brouillon jamais envoyé,
+  T4-V1-001 ; sonnet ; consignes `scratchpad/msg-lane-e7a.md`, base de test `e7a`), `lane/t3-liste` (liste des devis
+  légère), relecteur X5.
+- FILE : E7c atelier (ADEV153, ACAL2022, ACAL2023), correction du plan par défaut sur le kWc de la conception +
+  relance de la liste ADEV154, entrée imposée « consommation », lanes de correctifs 2 à 6 du tour 3, relecteurs X3,
+  X6 à X8, relecteur des maquettes ; étape 8 (ACAL2024, ADEP108) ; ADEV155 GATED.
+
+### Point du 25/11, 06 h 50 UTC
+
+**Lot 4 — PR Taqinor/taqinor-os#1556 (BROUILLON), branche `dev-lot4`, Auto-fix allumé, auto-archive éteint.** Trois
+lots sur `main` (PR #1552, #1554, #1555), AUCUN déployé.
+- Contenu : fin de l'étape 6 (`lane/moteur-e6c`), étape 7 entière — écran devis (`e7b` : ADEV152, AGEN11 à 13), fiche
+  du lead (`e7a` : ALEA71, ACAL2021 + trois petits défauts), atelier (`e7c` : ADEV153, ACAL2022, ACAL2023) — et la
+  liste des devis légère (`t3-liste`, T4-X4-005). Tâches marquées « code livré, preuve en direct due ».
+- Premier passage de CI (tête `2a9f3e052c`, SANS e7c) : 10 rouges, tous lus. Corrigés et commités en local, PAS
+  ENCORE POUSSÉS : deux tests de lecture du source de la liste, le miroir du productible du site public (la table par
+  ville de l'écran devis est retirée : il se compare au moteur), quatre gardes de `stage-names` (paramètres de requête
+  déclarés, liste qui envoie sa page en clair, bloc de test recopié, deux formes OpenAPI : la liste sert DEUX formes de
+  ligne — `oneOf` — et la synthèse a sa forme), la règle de taille sur `optimizer.ts` (texte de l'économie sorti vers
+  `affichageErp.ts`), l'ancre d'ACAL1239, les deux listes figées des routes du devis (+ `synthese`), le budget de
+  requêtes de la fiche du lead (15 → 16 ; la pastille lit le kWc en UNE requête, `kwc_de_la_conception_courante`).
+- ROUGE RESTANT : `frontend/src/pages/ventes/DevisGenerator.agnrConsoApercu.test.jsx` (AGNR24, « l'aperçu reçoit la
+  consommation que l'écran enregistre »). Le bandeau « Facture réelle ONEE ≈ » venait du modèle local retiré par
+  AGEN13. À TRANCHER avec la relecture : `corpsApercuConception` n'envoie au moteur que la facture d'hiver, celle
+  d'été, les kWh par mois et le nombre de panneaux — PAS les douze factures tapées ni la « Facture réelle » en MAD ;
+  l'aperçu horaire (`etude-horaire/preview`) reste servi en premier. Si l'aperçu de la conception peut montrer des
+  chiffres pour une autre consommation que celle enregistrée, c'est un défaut de l'étape 7 à corriger (lane), pas un
+  test à réaligner.
+- EN COURS : instantané OpenAPI régénéré dans un conteneur (`scratchpad/openapi-write6.log`), à commiter avec les
+  contrats d'API ; puis UN push (deuxième passage de CI, qui portera aussi e7c).
+- EN VOL (trois agents, le plafond de ce poste) : `lane/moteur-e6d` (opus ; consignes `scratchpad/msg-lane-e6d.md` :
+  plan par défaut quand la fiche du module est vide + liste ADEV154 lisible, un seul calcul du coût de l'onduleur,
+  entrée imposée « consommation », écarts 4 et 5 de l'acceptation) ; relecteur X5 (atelier après le toit, sombre) ;
+  relecteur indépendant du lot 4 (opus, lecture seule ; consignes `scratchpad/msg-revue-lot4.md`, rapport attendu
+  `scratchpad/revue-lot4.md`, trois questions précises dont AGNR24).
+- PRÊT À LANCER dès qu'une place se libère : `lane/moteur-e8` (consignes `scratchpad/msg-lane-e8.md` : ACAL2024,
+  reste d'ACAL2025, garde ADEP108) — base `dev-lot4` APRÈS le pli d'e6d (mêmes fichiers du moteur).
+- À FAIRE ENSUITE, dans l'ordre : corriger ce que la relecture trouve (lanes) ; mettre l'instrument sur `dev-lot4`
+  (après le retour de X5 ; recette dans le point de 05 h 45) et REGARDER les écrans de l'étape 7 (listes dans les
+  rapports des lanes e7a, e7b, e7c et t3-liste) ; CI verte ; fusion par la file ; dire « mergé — à déployer par toi ».
+  Puis : liste ADEV154 complète à montrer au fondateur (ADEV155 GATED), relecteurs X3, X6, X7, X8, lanes de correctifs
+  2 à 6 du tour 3, enregistrements d'acceptation ACAL2028 et ACAL2029, les quatre rejeux `@acceptation` de la vague D
+  (ACAL2034, 2035, 2036, 2038), comparaison aux maquettes, rapport final.
+- Vague D (15 tâches) : 5 cochées, 6 « code livré, preuve en direct due », 4 rejeux en direct à jouer par
+  l'orchestrateur.
+- Point laissé au fondateur par la lane e7c : la vue « Montrer au client » ne montre AUCUN montant (garde « rien
+  d'argent » ; mention « Les montants figurent dans le devis ») — la tuile d'économie en MAD demandée par ACAL2023
+  n'est pas posée ; décision à lui demander (au rapport).
+
+### Point du 25/11, 07 h 00 UTC
+
+**Lot 4 (PR Taqinor/taqinor-os#1556, brouillon) NE FUSIONNE PAS EN L'ÉTAT.** Relecture indépendante rendue :
+`docs/audits/l5-calepinage/controles/revue-lot4-2026-11-25.md` — 2 bloquants, 6 majeurs, 4 mineurs (rien exécuté par
+le relecteur : chaque constat est à vérifier dans le code par la lane qui le corrige).
+- **B1** vue « Montrer au client » : panneaux POSÉS à côté de la production d'une autre taille → lane `moteur-e7e`.
+- **B2** écran devis : l'aperçu n'est pas calculé sur la consommation que le devis enregistre (douze factures, facture
+  réelle en MAD) ; le test AGNR24 rouge en CI le dit : NE PAS le réaligner sur un bandeau → lane `moteur-e7d`.
+- M1 retour sur investissement de l'écran devis = celui d'un autre devis ou « N/A » ; M2 aperçu en échec = chiffres
+  rangés montrés en silence ; M3 deux calculs serveur sur le même bloc (cartes : conception ; graphe, falaise, verdict
+  batterie : étude horaire) ; M4 « Mettre à jour » efface des frappes non enregistrées → tous à `moteur-e7d`.
+- M5 atelier : « production au prochain enregistrement » ne vient jamais au niveau 14 quand la pose diffère de la
+  conception ; m1 carte Conception bloquée sur « Recalcul en cours » ; m4 « au prix catalogue » ; marque de l'option
+  retenue → `moteur-e7e`. M6 sélection sur plusieurs pages perdue par « Générer les PDF » → lane F3. m2 forme 24 h du
+  calepinage hors niveau 15 → lane `moteur-e8`. m3 références figées de l'écran devis sans ancres de chiffres → e7d.
+- Vérifié correct par le relecteur : un devis envoyé ne bouge jamais ; `REGLES_COURANTES` inchangé ; plan par défaut
+  sans écriture ; aperçu borné à la société, sans prix d'achat ; liste légère et synthèse dans la portée du rôle.
+
+**CI, deuxième passage (tête `9d4a2b30c9`, avec e7c)** : rouges lus — (1) le test du signal de la liste (ma faute :
+test mis à jour avant la ligne du chargeur), corrigé `e0c898edea` ; (2) les deux références figées du démarrage de
+l'atelier (`toitureDesign.{calepinage,devis}.boot.json`) : clé `couverture_pct` du contrat ajoutée, `e80ac5a0f0` ;
+(3) AGNR24 : reste rouge jusqu'à e7d. Non poussés : attendre la fin du passage (9 jobs en cours à 06 h 54) puis pousser
+AVEC les lanes de correctifs pliées — pas de passage de CI pour deux petits correctifs seuls.
+
+**EN VOL (trois agents)** : `lane/moteur-e6d` (opus ; + note envoyée : l'entrée imposée « consommation » doit aussi
+être acceptée par `apercu_conception`, clé et forme à dire au rapport) ; `lane/moteur-e7e` (sonnet ; consignes
+`scratchpad/msg-lane-e7e.md` : B1, M5, m1, m4, marque de l'option retenue) ; relecteur X5.
+**PRÊTS À LANCER, dans cet ordre de priorité, dès qu'une place se libère** :
+1. `lane/moteur-e7d` (opus ; `scratchpad/msg-lane-e7d.md`) — APRÈS le pli d'e6d (mêmes fichiers du moteur) ; remplacer
+   la ligne `%%CLE_CONSOMMATION%%` des consignes par la clé et la forme de l'entrée imposée que le rapport d'e6d donne.
+2. `lane/moteur-e8` (opus ; `scratchpad/msg-lane-e8.md`, 4 tâches dont m2) — après le pli d'e6d.
+3. `lane/t3-pompage-pdf` F4 (opus ; `scratchpad/tour3/msg-lane-F4-pompage-pdf.md`) — indépendante, peut partir dès
+   le retour de X5.
+4. `lane/t3-listes-envoi` F3 (sonnet ; `scratchpad/tour3/msg-lane-F3-listes-envoi.md`, 9 points dont M6).
+5. `lane/t3-atelier` F6 (opus ; `scratchpad/tour3/msg-lane-F6-atelier.md`) — APRÈS le pli d'e7e (mêmes fichiers de
+   l'atelier) ; remplacer `%%X5%%` par les constats de X5 à corriger.
+6. F2 (éditeur du devis, restes du tour 3) — APRÈS e7d (même écran) ; consignes à écrire.
+
+### Point du 25/11, 07 h 25 UTC
+
+**Lot 4 (PR Taqinor/taqinor-os#1556, brouillon)** — branche `dev-lot4`, tête locale après plis : e7c, e7e (correctifs
+de la relecture : vue client, atelier, fiche du lead), les quatre premiers commits d'e6d (plan par défaut avec fiche
+vide, un seul coût d'onduleur, consommation imposée `imposes.consommation`, écarts 4 et 5). Deuxième passage de CI
+(tête `9d4a2b30c9`) : seuls rouges = test du signal (corrigé), références de l'atelier (corrigées), AGNR24 (attend
+e7d). À FAIRE : instantané OpenAPI en cours (`scratchpad/openapi-write7.log`), le commiter avec l'empreinte, puis UN
+push (troisième passage). Rien de déployé (trois lots sur `main`).
+
+**EN VOL (cinq agents le temps qu'e6d finisse, puis quatre)** — plafond relevé à quatre : plus d'`npm ci` (jonction
+vers `agent-a8dd86f2f627793f9/{frontend,apps/web}/node_modules` — NE PAS supprimer ce worktree, et retirer une
+jonction par `cmd //c rmdir`, jamais `rm -rf`), un seul test docker à la fois (le script `ressources.ps1` lit
+maintenant la mémoire de la VM des conteneurs : verdicts GO, GO-DOCKER, GO-LEGER, ATTENDRE). Les deux conteneurs
+serveurs de l'instrument (`l5t-django`, `l5t-celery`) sont ARRÊTÉS pour laisser la mémoire aux tests des lanes : les
+relancer par `bash scratchpad/l5t/lancer.sh serveur` avant tout regard d'écran ou relecteur.
+- `lane/moteur-e6d` (opus) : finit — deux notes envoyées : la liste `--ecarts-sans-toit` doit signaler les lignes
+  simulées avec une fiche de module vide (étapes de pertes non appliquées : production surestimée) et donner l'écart
+  moyen sur les seules lignes à fiche complète. À son retour : plier le reste, marquer ACAL2020 (reste livré), rejouer
+  la liste complète sur la copie (`remplir_conceptions --ecarts-sans-toit --company 7487`, instrument relancé) et la
+  porter au fondateur (ADEV155 GATED).
+- `lane/moteur-e7d` (opus ; `scratchpad/msg-lane-e7d.md`) : écran devis — B2, M1, M2, M3, M4, m3 de la relecture.
+- `lane/t3-atelier-ecrans` F6b (opus) : T4-X5-009 (S1, conception vidée par réimport) d'abord, puis 001, 014, 008,
+  013, 016, 006, 007.
+- `lane/t3-atelier` F6a (opus) : T4-X2-010 (S2, panneaux perdus) d'abord, puis 002, 004, 005, 008, 011, T4-X5-017.
+- `lane/t3-pompage-pdf` F4 (opus) : T4-X1-001 et 002 (PDF client, derrière le niveau 15), 008, 009, 014.
+
+**FILE, dans l'ordre** : `lane/moteur-e8` (`msg-lane-e8.md` : ACAL2024, reste d'ACAL2025, ADEP108, m2, T4-X5-002, 012,
+004, 015, ACAL2043) ; `lane/moteur-e6e` (`msg-lane-e6e.md` : une seule conception par lead quel que soit le
+déclencheur, raison dite, devis né de l'atelier T4-X5-010, révision T4-X5-011) ; F3 (`tour3/msg-lane-F3-listes-envoi.md`) ;
+F2a et F2b (`tour3/msg-lane-F2a-options.md`, `F2b-petits.md`) APRÈS e7d (même écran). Puis : instrument sur `dev-lot4`,
+regard des écrans, relecteurs X3, X6, X7, X8 et rejeu par des relecteurs neufs, enregistrements ACAL2028 et ACAL2029,
+rejeux ACAL2034, 2035, 2038, comparaison aux maquettes, rapport final.
+
+**Fait depuis 07 h 00** : relecteur X5 rendu (17 constats, tri dans `T4/tour3/consolidation.md`) ; ACAL2036 jouée
+(enregistrement `docs/audits/acceptation/ACAL/2026-11-25-22e6aa81a.md` : NASA POWER refuse la fenêtre de dix ans en un
+appel — tâche ACAL2043) ; décisions 29 à 33 au rapport (vue client sans montant, variante darija, relecture du lot 4,
+ce que montre la vue client quand la pose n'a pas la taille de la conception, NASA POWER).
+
+### Point du 25/11, 08 h 15 UTC
+
+**Lot 4 (PR Taqinor/taqinor-os#1556, brouillon), `dev-lot4`.** Pliées depuis 07 h 25 : `moteur-e6d` (5 commits),
+F6b `t3-atelier-ecrans` (8 constats dont T4-X5-009), F4 `t3-pompage-pdf` (5 constats ; PDF client derrière le niveau
+15), F6a `t3-atelier` (6 corrigés, T4-X2-002 contesté). Troisième passage de CI (tête `9311c26655`, 07 h 53) TERMINÉ :
+rouges = registre mono-devise (régénéré), empreinte de `dupliquer_devis` (recapturée : changement voulu, écart 4),
+grand livre des appels d'`appliquer` (fonction d'e6d renommée `imposer`), et AGNR24 (attend e7d). Corrigés en local
+(`0a16fdfee5`), NON poussés ; F6a pliée après ce passage (clé servie `calepinage.site_de_repli_point`, instantané
+OpenAPI régénéré : inchangé). PROCHAIN PUSH : au retour d'e7d (quatrième passage, visé vert).
+Le blocage de 40 min du shard 3 au deuxième passage ne s'est PAS reproduit (shards de 5 à 13 min) : aléa, à surveiller.
+
+**EN VOL (quatre lanes)** : `moteur-e7d` (opus, écran devis — bloque la fusion) ; `moteur-e8` (opus, 6 points) ;
+`moteur-e6e` (opus, une seule conception par lead, devis né de l'atelier) ; F3 `t3-listes-envoi` (sonnet, 9 points).
+**Tâche de fond** : liste `--ecarts-sans-toit` sur 60 leads de la copie avec le code de `dev-lot4`
+(`scratchpad/ecarts-sans-toit-60.txt`, CONFIDENTIEL : jamais commité) — mesurer la durée, puis lancer la liste
+entière, la résumer SANS aucun nom ni montant d'un client, et la porter au fondateur (ADEV155 GATED).
+**FILE** : F2a et F2b après e7d ; instrument à relancer sur `dev-lot4` (`lancer.sh serveur` ; `l5t-django` et
+`l5t-celery` sont arrêtés) puis regard des écrans (listes aux rapports des lanes e7a, e7b, e7c, e7e, t3-liste, F4,
+F6a, F6b) ; relecteurs X3, X6, X7, X8 et rejeu des constats corrigés par des relecteurs neufs ; enregistrements
+ACAL2028, ACAL2029 ; rejeux ACAL2034, 2035, 2038 ; comparaison aux maquettes ; rapport final.
+**Reste d'une lane à nettoyer** : entrée de remise « f6-item1-src » (lane F6a, changements déjà commités) dans la pile
+de remises PARTAGÉE — ne pas y toucher par `git stash pop` ; la retirer par son étiquette en fin de session.
+
+### Point du 25/11, 10 h 10 UTC
+
+**Lot 4 (PR Taqinor/taqinor-os#1556, brouillon), `dev-lot4`.** TOUT ce qui suit est plié en local : e6c, e7a, e7b,
+e7c, e7e, e6d, e7d (+ suite e2e), e8, e6e, t3-liste, F3 (+ 3 correctifs de CI), F4, F6a, F6b, F2a, F2b (+ crochet du
+fuzz). Dernier push : `b51d59a4a8` (09 h 47, cinquième passage de CI). Plié APRÈS ce push, non poussé : F2a
+(`lane/t3-editeur-options`), suite de F2b (crochet `_validite_devis_a_venir` du fuzz), contrats régénérés.
+- **Cinquième passage de CI : rouges lus et attribués** — (1) test de lecture du source des cartes Économies / ROI
+  (`QJR35/QJR426`, frontend-static) → auteur d'e7d ; (2) fuzz : date de validité passée refusée sans être déclarée
+  → corrigé par le crochet de F2b (plié) ; (3) `test_calx390_budgets_requetes` : `resultat/` coûte 25 requêtes avec
+  une conception rangée contre 13 sans (budget 9) et (4) fuzz : `calepinages/a-traiter/` ne répond plus en 10 s →
+  auteur d'e8 (régressions de coût d'e8 ou d'e6e : la conception se relit plusieurs fois, quelque chose du moteur
+  se calcule par ligne de liste).
+- **REGARD DE L'ORCHESTRATEUR sur la pile de revue** (lead synthétique 3731 « ACC-L4 », devis 2880 ; captures dans
+  `scratchpad/acc2027/l4/`, jamais commitées) :
+  - fiche du lead : carte « Conception » à deux colonnes, option « retenue » marquée, 3 518 / 7 037 kWh, 5 486 / 8 886
+    MAD, retour « d'après le devis DEV-… », pastille 4,40 kWc, plus de « par ? » — VU, conforme (la puce des
+    suppositions de la fiche technique vide du panneau est une seule phrase très longue : à condenser, S3) ;
+  - écran devis, onglet Simulation, RIEN de tapé : bandeau « Conception du moteur unique… », cartes égales à la
+    conception rangée — VU ; MAIS trois retours sur investissement pour l'option avec batterie (carte 7,5 ans, tableau
+    8,72 ans, falaise 7,65 ans) et 8 886 contre 8 614 MAD d'économies → auteur d'e7d ;
+  - écran devis, douze factures tapées : BLOQUANT — l'aperçu est remplacé par un refus imprimé DEUX fois sur un
+    panneau de 710 W qui n'est pas dans le devis (l'écran n'impose que le nombre de panneaux : le moteur choisit son
+    module) → auteur d'e7d ;
+  - liste des devis : 25 lignes, « Page 1 sur 24 · 583 devis », page de 90 Ko en 1,0 s — VU ; MAIS la synthèse
+    (`devis/synthese/`) prend 11 à 12,5 s : les cartes par statut tombent en délai dépassé, l'en-tête dit « 0 devis »
+    pendant le chargement, le message de délai s'affiche deux fois → auteur de F3.
+- **EN VOL (auteurs rappelés sur leurs propres branches)** : e7d (4 points : refus sur le mauvais panneau, refus en
+  double, trois retours sur investissement, test QJR35), e8 (2 régressions de coût), F3 (3 points de la liste).
+  Relecteur X9 (rejeu de tous les constats corrigés, Chromium bureau clair) sur la pile `b51d59a4a8`.
+- **PROCHAIN PUSH** : au retour d'e7d et d'e8 (sixième passage, visé vert) ; puis rebâtir l'instrument (`checkout -B
+  instr-lot4 dev-lot4`, `vite build` ≈ 30 s, `lancer.sh serveur`) et REGARDER de nouveau l'onglet Simulation.
+
+**RESTE À FAIRE après ce passage** : lane ACAL2045 (le toit supposé dit sa pose) puis relancer la liste ; restes
+d'e6e (carte « Couvrir la facture » : « Conception recalculée : <raison> » ; avis avant « Générer le devis ») et
+d'e8 (`EcartMesures.jsx` : section « Eau » seulement si servie) ; F2a non corrigés : T4-X4-004 (carte Tailles :
+lignes non étiquetées) et T4-X4-018 (balayage arrêté à 4,40 kWc) ; jumeau serveur `selectors.multi_villa_totaux`
+qui additionne les deux options et nourrit le PDF (à corriger derrière le niveau 15) ; relecteurs X3, X6, X7, X8 ;
+enregistrements ACAL2028 et ACAL2029 ; rejeux ACAL2034, 2035, 2038 ; comparaison aux maquettes ; rapport final ;
+fusion du lot 4 quand CI verte + X9 sans « pas-corrigé » bloquant ; dire « mergé — à déployer par toi ».
+**Décision majeure portée au fondateur (rapport, décision 26)** : la liste « sans toit » annonçait +19 % parce que
+le toit supposé ne dit pas sa pose (échauffement omis) ; corrigé, l'effet serait d'environ +4 % à +8 % (pose
+affleurante) ou +11 % à +16 % (châssis). ADEV155 reste fermé.
+
+### Point du 25/11, 10 h 45 UTC
+
+**Lot 4 (PR Taqinor/taqinor-os#1556, brouillon), `dev-lot4`.** Plié depuis 10 h 10, non poussé : suite 2 d'e7d
+(composition imposée par option depuis les LIGNES, refus dit une fois, retours libellés, fenêtre QJR35), F3 suites 2
+et 3 (synthèse de la liste : cache par contenu dont profil société et produits des lignes ; limite propre de 60 s,
+« Calcul des totaux… », la page n'attend plus la synthèse), tâche ADEV162 (total rangé sur le devis, à construire).
+- **Rouges du cinquième passage** : QJR35 et date de validité du fuzz = pliés ; `resultat/` (25 requêtes) et
+  `a-traiter/` (délai) = corrigés par l'auteur d'e8 (`c096d3d9d1`, `a723c5f232` sur `lane/moteur-e8`, test en cours,
+  PAS encore pliés).
+- **Relecteur X9 (en cours, 13 rejeux lus : 10 corrigés, 3 pas corrigés ; 9 constats neufs)**, fichiers
+  `T4/tour3/rejeu-X9.json` et `registre/constats/T4-X9.jsonl` (non commités tant que X9 tourne). Lecture de
+  l'orchestrateur — UNE classe : à l'atelier, au niveau 14, des chiffres de la conception du lead restent posés à
+  côté d'une pose d'une autre taille (économies de la carte TOTAL, ligne « Moteur du devis sur cette pose », jauge
+  « De la consommation », ratio 123 % de la carte Recommandation), la phrase d'explication est rendue dans une case
+  de chiffre clé et quatre fois, et la cible « Couvrir la facture » compte en panneaux de 550 W quand l'atelier ne
+  pose que des 710 W (8 × 710 W posés pour une conception de 4,40 kWc). Plus UN défaut du moteur (T4-X9-009) : un
+  onduleur hybride désigné à l'atelier rangeait l'option « avec batterie » à la taille de l'option « sans »
+  (conception retenue divisée par deux).
+- **Qui corrige** : T4-X9-009 = l'orchestrateur (`conception/moteur.py::_compte_designe` décide la taille POUR le
+  scénario que l'onduleur désigné impose ; test `test_x9_009_onduleur_designe_garde_la_taille_de_son_option`, à
+  jouer rouge puis vert dès qu'un test docker est libre — non commité à 10 h 45) ; classe de l'atelier = auteur de
+  F6a rappelé (mission `scratchpad/tour3/msg-lane-G1-atelier-conception.md` : inventaire de TOUS les chiffres de
+  l'atelier, un seul prédicat, T4-X9-003/004/006/007/008/001, T4-X5-005, T4-X5-017) ; cible comptée dans le panneau
+  posé = auteur d'e9, item 6 (`scratchpad/msg-lane-e9-item6.md` : une seule fonction de conversion partagée avec
+  le moteur, table servie par la cible, T4-X2-001 et T4-X9-005). Le reste de la décision 28 (une seule option quand
+  un onduleur est désigné ; même puissance arrondie au panneau) reste au fondateur.
+- **e9** : ACAL2045 commité (`23778ec898` sur `lane/moteur-e9`), items 2 à 5 puis 6 en cours.
+- **PROCHAIN PUSH (sixième passage)** : après pliage d'e8 (test vert), d'e9, de G1, du correctif X9-009 ; gardes
+  d'hôte (`scratchpad/gardes.sh`), contrats et instantané OpenAPI régénérés ; puis rebâtir la pile de revue et
+  REGARDER : onglet Simulation du devis (factures tapées), liste des devis (cartes), atelier d'un lead dont la pose
+  diffère de la conception, fiche du lead après désignation d'un onduleur hybride.
+
+### Point du 25/11, 11 h 10 UTC
+
+**Lot 4 (PR Taqinor/taqinor-os#1556, brouillon) : SIXIÈME PASSAGE DE CI lancé à 11 h 10 sur `cb9d338411`**
+(attente : `scripts/watch-ci.ps1 -Pr 1556`). Dans ce push, en plus du point de 10 h 45 : pliage de `lane/moteur-e8`
+(coût de `resultat/` et de la file « à traiter »), correctif T4-X9-009 (`438b50856c` : rouge « 11 != 13 », vert avec
+ses cinq voisins), deux tests de lecture du source réalignés (`axiosVX55Timeout`, `devisAutoKwc.ez5`), tâche ACAL2046.
+Vérifié avant le push : gardes d'hôte 0 rouge (`scratchpad/gardes.sh`), instantané OpenAPI inchangé, budgets de
+requêtes du calepinage 39 tests OK avec `docs/` monté (`scratchpad/lane-test-docs.sh` — la lane ne voyait pas
+`docs/query-budgets.yml`), `node --test src/**/*.test.mjs` du front : seuls restent rouges en local trois artefacts
+(fins de ligne Windows sur deux tests CIQ126, plafond de poids mesuré sur un vieux `dist/` → ACAL2046).
+
+**EN VOL (auteurs rappelés sur leur branche, rien de poussé)** :
+- `lane/moteur-e9` (agent a1144b5df28380f54) : ACAL2045 commité ; items 2 à 5 ; item 6 = la cible de l'atelier comptée
+  dans le panneau posé (`scratchpad/msg-lane-e9-item6.md`, T4-X2-001 et T4-X9-005).
+- G1 sur `lane/t3-atelier` (agent a0a39b75aa1be319f) : classe « chiffres de la conception à côté d'une pose d'une
+  autre taille » (`scratchpad/tour3/msg-lane-G1-atelier-conception.md`) + T4-X2-002 rejoué pas corrigé + T4-X9-010.
+- F2c sur `lane/t3-editeur-options` (agent a01f644f2f20473ee) : T4-X4-004 — EXPLIQUER le prix « sans batterie »
+  de 36 900 MAD (peut-être aussi imprimé au PDF client), puis corriger sous verrou de niveau 15 avec liste en lecture
+  seule (`scratchpad/tour3/msg-lane-F2c-option-sans.md`).
+- E7f sur `lane/moteur-e7d` (agent a7c564f9b92c99be9) : T4-X4-018 — le tableau des tailles de la Simulation couvre
+  l'option vendue ; retours « 5,7 ans » (`scratchpad/tour3/msg-lane-E7f-simulation-avec.md`).
+- Relecteur X9 (agent a769f787d565e28cf) : 16 rejeux (12 corrigés, 4 pas corrigés), 10 constats neufs, continue sur
+  la pile `b51d59a4a8` — NE PAS rebâtir la pile tant qu'il tourne.
+
+**DISQUE** : C: était à 1,8 Go libres à 11 h 00 (64 dossiers de travail). Retrait des dossiers des lanes déjà
+fusionnées dans `main` (script `scratchpad/menage_worktrees.ps1` : jonctions défaites d'abord, donneur
+`agent-a8dd86f2f627793f9` et lanes actives intacts) : 12 Go libres à 11 h 10, retrait encore en cours. Gardés
+(auteurs à rappeler) : e8, F3, F4, F6b, e6e ; gardés (commits non pliés) : `fix/ci-front` (+5), `fix/ci-gardes` (+8).
+Bases de test des lanes : 39 bases, 5,2 Go dans la machine des conteneurs — à supprimer au démontage.
+
+**ENSUITE** : plier e9, G1, F2c, E7f à leur retour (revue de chaque diff, gardes, UN push = septième passage) ;
+X9 terminé → rebâtir la pile sur la tête, REGARDER (Simulation du devis avec factures tapées, liste des devis,
+atelier d'un lead dont la pose diffère de la conception, fiche du lead après désignation d'un hybride) ; fusion du
+lot 4 ; relecteurs X3, X6, X7, X8 ; rapport.
+
+### Point du 25/11, 12 h 15 UTC
+
+**Lot 4 (PR Taqinor/taqinor-os#1556, brouillon), `dev-lot4`.** Reda, 11 h 50 : « start more lanes ».
+- **Passages de CI** : sixième (`cb9d338411`) rouge sur 4 causes, septième (`e6c6b1263e`) rouge sur 2 causes — TOUTES
+  corrigées en local : forme de la vue effective sans le marqueur `option` ; quantités sœurs réservées au devis
+  résidentiel (un brouillon C&I recomposé voyait sa structure « 1 lot » passer à 162) ; test QJR602 (taille tapée
+  telle quelle) ; `except` muet du cache de la liste ; contrat d'imports M1 (`lignes_vendues_de_l_option` déplacée de
+  `utils/options` vers `domain/dimensionnement_devis`) ; goldens des gestes du générateur (les cartes Tailles se
+  relisent après l'enregistrement). Fuzz et e2e VERTS aux deux passages.
+- **Plié depuis 11 h 10** : E7f (tableau des tailles de la Simulation : la taille de chaque option vendue, raison de
+  refus de batterie en une phrase lisible, pastilles), F2c (T4-X4-004 : la carte « Recommandé — sans batterie »
+  n'est plus servie pour un devis qui ne vend que « avec » — le PDF client n'imprimait PAS de total faux, la page
+  client publique pouvait montrer cette carte), G1 puis G2 (atelier : un seul prédicat « tailles différentes »,
+  inventaire de tous les chiffres, calepinage sans lead, création en double, tableau du site), E9 (ACAL2045 pose du
+  toit supposé, « Conception recalculée : <raison> », aperçu de ce que le devis portera, section Eau, fiche technique
+  regroupée, cible de l'atelier comptée dans le panneau posé).
+- **HUITIÈME PUSH** : dès que gardes d'hôte, tests du front touchés, instantané OpenAPI (route `apercu-devis/`)
+  et empreinte de structure sont passés en local.
+- **EN VOL** : H1 (auteur d'e8, agent afaeb723706ffe3f7 : retour sur investissement de la fiche du lead, obstacle hors
+  du toit, phrase du calepinage sans lead côté serveur, raison de refus de l'onduleur —
+  `scratchpad/tour3/msg-lane-H1-serveur-restes.md`) ; H2 (lane neuve `lane/liste-total`, agent acd5913bf9b7ab14f :
+  ADEV162 total rangé de la liste des devis + T4-X9-015 — `scratchpad/tour3/msg-lane-H2-liste-total.md`) ;
+  relecteurs X6 (agent aafc8b7da92b01fe5 : quatre scénarios C&I de bout en bout) et X3 (agent aac20b788b8e1c4a7 :
+  réglages, liste, création, routes) sur la pile `fc9fa2c7a5` (rebâtie à 12 h 00, E9 et G2 compris).
+- **REGARD DE L'ORCHESTRATEUR (pile `e6c6b1263e`, 11 h 55)** : onglet Simulation du devis 2880, douze factures
+  tapées : plus de refus, « Consommation imposée par le devis (490 kWh par mois, factures saisies) », un aperçu par
+  option avec le matériel des lignes, la taille du devis présente et marquée — VU ; la colonne « Éco. avec » était
+  un mur de texte technique à points décimaux (corrigé par la suite d'E7f, PAS encore revu) ; liste des devis :
+  25 lignes puis cartes « Calcul des totaux… » — VU. À REVOIR sur la pile `fc9fa2c7a5` : tableau des tailles
+  (phrases courtes, pastilles), atelier d'un lead dont la pose diffère de la conception, calepinage sans lead,
+  fiche du lead après désignation d'un hybride, carte « Tailles » après enregistrement.
+- **DISQUE** : 15 Go libres après retrait de 13 dossiers de lanes fusionnées (6 retraits incomplets à finir).
+
+**Tri des constats du relecteur X9 (25 rejeux : 20 corrigés, 5 non ; 17 neufs)** :
+| Constat | Suite |
+|---|---|
+| T4-X9-009 (S2) conception divisée par deux après désignation d'un hybride | corrigé, orchestrateur (438b50856c) ; le reste = décision 28 |
+| T4-X9-003, 004, 008 (S2), 006, 007, 001, 010 ; rejeux T4-X5-005, T4-X5-017 | corrigés, G1 |
+| T4-X9-005 (S2) / T4-X2-001 cible en panneaux de 550 W | corrigé, E9 item 6 ; « comment obtenir les chiffres de la pose » reste ouvert (niveau 15, décision du fondateur) |
+| T4-X2-002 la production disparaît à l'enregistrement | écran : corrigé G1 (« Simulation à refaire ») ; serveur (empreinte) : H1 |
+| T4-X2-006, T4-X9-011, 012, 013 (écran) | corrigés, G2 ; 013 côté serveur : H1 ; clé d'idempotence de la création : tâche à écrire |
+| T4-X9-002 raison de refus de l'onduleur | H1 |
+| T4-X9-014 la liste attend la synthèse | corrigé avant (suite 3 de F3), à revoir en direct |
+| T4-X9-015 deux comptes de devis | H2 |
+| T4-X9-016 retour de 21,4 ans introuvable | H1 |
+| T4-X9-017 trois encarts client sur la fiche du lead | tâche à écrire (plan du lead) |
+
+### Point du 25/11, 13 h 35 UTC
+
+**Lot 4 (PR Taqinor/taqinor-os#1556, brouillon), `dev-lot4`.**
+- **Huitième passage (`ba939f3814`) : rouge sur 5 causes, TOUTES des listes figées ou des gardes que les lanes e9,
+  F2c et H1 ne pouvaient pas voir** — contrat « aperçu du devis » sans moitié cliente citée ; cliquet des imports
+  calepinage → ventes (46 pour 44 : deux lectures repassées par `equipements.py`) ; golden de la région « cal »
+  (recapturé sur l'hôte) ; surface publique de `ventes.services` ; ré-export de `lignes_vendues_de_l_option` dans la
+  façade `dimensionnement.py`. Fuzz, e2e, vitest et front statique VERTS.
+- **Plié depuis 12 h 15** : suite d'E7f (raison de refus de batterie en une phrase, ligne sous le tableau, pastilles),
+  H1 (retour sur investissement de la fiche du lead servi avec son montant et son économie ; obstacle hors du toit
+  hors de l'empreinte ; phrase du calepinage sans lead ; raison courte de refus de l'onduleur), ligne de l'onduleur
+  qui lit la raison courte (orchestrateur), tâches ACAL2047 et ADEV163.
+- **Avant le neuvième push (méthode changée après trois passages rouges d'affilée)** : « paquet des listes
+  figées » joué en docker sur l'arbre plié (`scratchpad/pack_cliquets.txt` : surfaces de ventes, goldens de
+  découpe, goldens du crm, cliquet des imports, contrats — 266 tests, seul `test_actions_devis_ont_appelant` rouge
+  en local parce qu'il lit `frontend/src`, non monté) ; gardes d'hôte + `check_except_larges` +
+  `check_contrats_calepinage_deux_moities` + `lint-imports` ; `node --test` du front ; garde de taille C20
+  (`electrique.py` : les textes du verdict sont bâtis dans `raisons_verdicts.py`).
+- **EN VOL** : H2 (`lane/liste-total`, agent acd5913bf9b7ab14f, 2 commits vus) ; relecteurs X6 (aafc8b7da92b01fe5)
+  et X3 (aac20b788b8e1c4a7) sur la pile `fc9fa2c7a5` (NE PAS rebâtir tant qu'ils tournent).
+- **PAS ENCORE REVU par l'orchestrateur à l'écran** (mémoire : pas de troisième navigateur à côté des deux
+  relecteurs) : tableau des tailles après la suite d'E7f, atelier « pose ≠ conception » (G1), calepinage sans lead
+  (G2), cible comptée dans le panneau posé (E9), fiche du lead (retour tracé, fiche technique regroupée), carte
+  « Tailles » après enregistrement (F2c). À faire dès qu'un relecteur rend la main, pile rebâtie sur la tête.
+- **Changements que lit un CLIENT dans ce lot (à dire à Reda au moment de la fusion)** : la page publique d'un
+  devis qui ne vend que « avec batterie » ne montre plus de carte « Recommandé — sans batterie » (elle affichait
+  un prix sans onduleur) ; aucun montant de PDF ne change.
+
+### Point du 25/11, 14 h 45 UTC (le plus récent — REPRENDRE ICI)
+
+**Lot 4 (PR Taqinor/taqinor-os#1556, brouillon), `dev-lot4`.** Reda, 14 h 15 : « where are you ? » — répondu.
+- **Neuvième passage (`fe1b7982f6`) : rouge sur 2 causes.** (1) `raison_du_verdict` sans appelant hors de son
+  module après mon remaniement → rendue interne (commité, garde verte). (2) FUZZ : `calepinages/a-traiter/` ne
+  répond pas en 10 s (déjà au cinquième passage, vert aux 6-7-8) — CAUSE ÉTABLIE par l'orchestrateur : chaque ligne
+  évaluée calcule le verdict électrique, qui va chercher les températures du site chez PVGIS PAR LE RÉSEAU
+  (`assistant._bloc_electrique` → `electrique.verdict_de_conception` → fournisseur `temperatures_tmy`, limiteur de
+  cadence partagé) ; dans les tests le fournisseur est neutralisé, d'où une liste « rapide » partout sauf en CI et
+  en production à cache froid. La lane I4 (agent a375819ef15513c07, `lane/file-a-traiter`) a d'abord retiré le
+  résultat servi entier de la liste (148 → 124 requêtes, commit 2ef5356f73, PAS encore plié) et pose maintenant un
+  mode « sans réseau » dans `temperatures_tmy.py` : cache seulement, ligne non évaluée si la température manque.
+- **DIXIÈME PUSH** : au retour d'I4 (pliage, paquet des listes figées en docker, gardes d'hôte APRÈS le dernier
+  commit — c'est l'oubli qui a coûté le neuvième passage).
+- **Plié depuis 13 h 35** : suite de la lane e9 (T4-X3-009 : la cible dite dans le module posé partout —
+  première pose automatique, bande des Résultats, contrôle DC/AC, feuille Avancé ; aide unique `cibleAuModule.js`).
+- **PAS plié, gardé pour le lot 5** : H2 (`lane/liste-total` : total rangé + empreinte, migration 0163, tâche
+  planifiée toutes les 10 min, 180 lignes pour 80 prévues — à faire relire par un relecteur neuf avant pliage).
+- **EN VOL** : I1 (`lane/editeur-ci`, agent a3ec71c931984fded : écran du devis C&I, T4-X6-007 à 012) ; I3 (auteur
+  de F4, agent ab75a7c7a60c1d28c : phrases fausses du PDF industriel, case « Devis final », production par option,
+  arrondi du kWc) ; I5 (`lane/reglages-calepinage`, agent a9d37147aa205718d, sonnet : 16 constats de X3 sur
+  réglages / sources / bibliothèque / liste) ; relecteur X6 (agent aafc8b7da92b01fe5, C&I de bout en bout — son
+  fichier de constats est mal encodé, il doit le réécrire en UTF-8).
+- **Relecteur X3 : TERMINÉ** — 57 lignes jouées, 18 constats (2 S2 : T4-X3-008 = décision 28 ; T4-X3-009 corrigé).
+- **REGARD DE L'ORCHESTRATEUR (pile `fc9fa2c7a5`, 14 h 40, captures `scratchpad/acc2027/l5/l5b-1974-*.png`)** :
+  calepinage 1974 (pose 6 × 710 W = 4,26 kWc, conception 2,13 kWc) — étape Résultats : bandeau qui nomme les deux
+  tailles, « Production simulée de la pose 6 926 kWh » en grand, carte « De la consommation » = une phrase (plus
+  de jauge trompeuse), pertes, écart PVGIS, chaîne des pertes — VU, conforme. Expert : carte TOTAL « 6 × 710 W ·
+  4,26 kWc · 6 926 kWh/an · simulation · — » et UNE phrase — VU en texte. À voir encore : libellés de cote de
+  l'obstacle hors toit qui se chevauchent sur la carte (S4), tableau des tailles du devis après la suite d'E7f,
+  fiche du lead (retour tracé), calepinage sans lead après G2.

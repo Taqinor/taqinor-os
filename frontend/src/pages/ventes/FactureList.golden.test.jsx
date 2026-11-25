@@ -114,7 +114,10 @@ const normaliser = (html) => html
 
 const snap = () => normaliser(document.body.innerHTML)
 
-const renderList = (opts) => renderFactureList(FactureList, opts)
+// T4-X4-010 — la tuile « À échoir ≤ 7 j » lit le nombre SERVI (`nb_a_echoir_7j`,
+// contrat factures_kpis.json) ; la fixture le sert tel que l'ancien décompte
+// client le comptait (2), sans toucher aux autres chiffres : DOM inchangé.
+const renderList = (opts) => renderFactureList(FactureList, { facturesKpis: { nb_a_echoir_7j: 2 }, ...opts })
 
 const base = {
   client: 9, client_nom: 'ACME', client_telephone: '+212600000000', date_emission: '2026-07-01',

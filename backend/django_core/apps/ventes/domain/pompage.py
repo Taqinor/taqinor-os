@@ -111,6 +111,11 @@ CLES_DEVIS = (('mode_pompe', 'mode_pompe'), ('plaque', 'plaque'),
 
 TAILLES_VALIDES = ('recommandee', 'inferieure', 'superieure')
 
+#: T4-X1-008 — les origines du débit du forage que l'éditeur enregistre
+#: (``source.debit_exploitation_origine``), mêmes valeurs que la fiche du lead
+#: (« Provenance du débit du forage ») et que ``CLES_MESURE`` du rendu.
+ORIGINES_DEBIT_FORAGE = ('essai', 'foreur', 'client', 'mesure_visite')
+
 
 # ── petits outils ────────────────────────────────────────────────────────────
 
@@ -202,6 +207,17 @@ class _Resolution:
                 for champ in champs:
                     self.poser('%s.%s' % (bloc, champ), objet.get(champ),
                                provenance)
+        # T4-X1-008 — l'origine du débit du forage enregistrée avec lui (éditeur
+        # complet) reste son origine : « Donné par le foreur » ne devient pas
+        # « saisie au devis » (« déclaré par vous », « à confirmer ») au save.
+        origine = _lire_chemin(arbre, 'source.debit_exploitation_origine')
+        debit = 'source.debit_exploitation_m3h'
+        pose = self.valeurs.get(debit)
+        if origine in ORIGINES_DEBIT_FORAGE and pose and pose[1] is provenance:
+            date = _lire_chemin(arbre, 'source.debit_exploitation_date')
+            self.valeurs[debit] = (self.valeurs[debit][0], dict(
+                provenance, detail=origine,
+                date=str(date)[:10] if date else provenance.get('date')))
 
     def valeur(self, chemin):
         entree = self.valeurs.get(chemin)
@@ -910,9 +926,11 @@ def _production_du_champ(champ_complet, plan_irr, alertes_moteur):
     if production and production_brute.get('plafond_atteint'):
         alertes_moteur.append(_alerte(
             'debit_limite_forage', 'source.debit_exploitation_m3h',
+            # T4-X1-014 — des mots, plus la formule ; le nombre reste.
             "Débit limité par votre forage : la pompe livrerait davantage, "
-            "la production de chaque heure est plafonnée à %s m³/h (débit "
-            "d'exploitation × part du réglage société)."
+            "la production de chaque heure est plafonnée à %s m³/h, la part "
+            "du débit d'exploitation du forage que les réglages de la "
+            "société autorisent à pomper."
             % _fr_m3h(production.get('plafond_forage_m3h'))))
     return production
 

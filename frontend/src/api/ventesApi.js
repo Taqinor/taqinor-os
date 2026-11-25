@@ -50,7 +50,17 @@ const ventesApi = {
   // Devis
   // VX55 — `config` optionnel (ex. { signal }) pour l'annulation
   // AbortController câblée depuis fetchDevis (createAsyncThunk {signal}).
+  // T4-X4-005 — la liste sert une forme LÉGÈRE par ligne (sans étude, lignes
+  // ni calepinage : `detail_partiel`) ; `{ forme: 'complete' }` la demande
+  // complète (dialogue « Signé » seulement). Filtres serveur : `q`,
+  // `statut_effectif`, `actifs`, `auteurs`, `lead`, `statut`, `concevable`.
   getDevis: (params, config) => api.get('/ventes/devis/', { params, ...config }),
+  // T4-X4-005 — l'en-tête de l'écran Devis sur toute la portée du rôle
+  // (contrat `apps/ventes/contract_samples/devis_synthese.json`).
+  // À froid, ≈ 11 s sur 583 devis : limite propre de 60 s (la liste est déjà à l'écran).
+  // Revue de la liste : un échec de la synthèse est DIT par l'en-tête (« Réessayer ») —
+  // aucun toast, sinon « La connexion a expiré » paraît deux fois (page + synthèse).
+  getDevisSynthese: (config) => api.get('/ventes/devis/synthese/', { suppressErrorToast: true, timeout: 60000, ...config }),
   getDevisById: (id) => api.get(`/ventes/devis/${id}/`),
   createDevis: (data) => api.post('/ventes/devis/', data),
   // QX21 — création ATOMIQUE (devis + lignes en un seul commit serveur) : plus
@@ -122,7 +132,7 @@ const ventesApi = {
   // Contrat : apps/ventes/contract_samples/devis_etat_pdf.json.
   // R1-02/R1-03 — `demande` (rendu par generer-pdf) : l'état et le fichier de
   // CETTE demande, jamais ceux d'un autre format demandé avant ou après.
-  etatPdfDevis: (id, demande) => api.get(`/ventes/devis/${id}/etat-pdf/`, { params: demande ? { demande } : {} }),
+  etatPdfDevis: (id, demande) => api.get(`/ventes/devis/${id}/etat-pdf/`, { params: demande ? { demande } : {}, timeout: 15000 }),
   telechargerPdfDevis: (id, demande) => api.get(`/ventes/devis/${id}/telecharger-pdf/`, {
     responseType: 'blob', params: demande ? { demande } : {},
   }),
@@ -147,7 +157,7 @@ const ventesApi = {
   // serveur : niveau 'standard').
   shareLinkDevis: (id, opts) => api.post(`/ventes/devis/${id}/share-link/`, opts),
   // Révision : crée une nouvelle version (v2, v3…) d'un devis.
-  reviserDevis: (id) => api.post(`/ventes/devis/${id}/reviser/`),
+  reviserDevis: (id, corps) => api.post(`/ventes/devis/${id}/reviser/`, corps),
   // PV20 — TOUT ce que l'écran de conception 3D doit savoir d'un devis, en UN
   // SEUL appel : identité + statut, géométrie déjà enregistrée (roof_layout /
   // pin / contour), cible vendue (panneaux, kWc, scénario), disponibilité de la
@@ -620,6 +630,14 @@ const ventesApi = {
   // tapé part tel quel, le serveur réécrit HT / TVA et l'échéancier (409 sur une émise).
   montantTrancheFacture: (id, montantTtc) =>
     api.post(`/ventes/factures/${id}/montant-tranche/`, { montant_ttc: montantTtc }),
+
+  // AGEN11 (D-ACAL-97) — LE moteur unique : la conception RANGÉE du lead et
+  // l'aperçu SANS écriture d'une saisie (ADEV137/ADEV152). Forme :
+  // `apps/ventes/contract_samples/conception_lead.json`.
+  getConceptionLead: (leadId, config = {}) => api.get(`/ventes/conception/${leadId}/`, config),
+  apercuConception: (corps, config = {}) => api.post('/ventes/conception/apercu/', corps, config),
+  // AGEN12 — « Mettre à jour » un brouillon retouché (ADEV148) ; corps vide.
+  mettreAJourConception: (devisId) => api.post(`/ventes/devis/${devisId}/mettre-a-jour-conception/`, {}),
 }
 
 // 409 « déjà accepté » sur un POST d'acceptation : le devis EST accepté (clic

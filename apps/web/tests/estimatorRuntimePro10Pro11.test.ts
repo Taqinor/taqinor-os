@@ -1773,14 +1773,14 @@ describe('runtime ACAL64 — ajouter un pan à un dossier rouvert', () => {
     vi.resetModules();
   });
 
-  it('dossier rouvert area-1/area-2 → « + Ajouter une zone » → area-3, area-2 garde son contour', async () => {
+  it('dossier rouvert area-1 (en pente)/area-2 → bloc de pente montré ; « + Ajouter une zone » → area-3, area-2 garde son contour', async () => {
     const pan = (id: string, lng0: number) => ({
       id, label: id, vertices: squareCorners(16, lng0), obstacles: [], roofType: 'flat', pitchDeg: 22,
       facingAzimuthDeg: 180, facingManual: false, neededPanels: 0, neededAuto: true,
     });
     const doc = {
       version: 2, pin: null, outline: [], billKwh: null, activeAreaId: 'area-1',
-      zones: [pan('area-1', -7.62), pan('area-2', -7.6195)],
+      zones: [{ ...pan('area-1', -7.62), roofType: 'pitched' }, pan('area-2', -7.6195)],
     };
     const init = await loadTool();
     let api: import('../src/scripts/roofPro11/types').RoofToolApi | null = null;
@@ -1789,7 +1789,9 @@ describe('runtime ACAL64 — ajouter un pan à un dossier rouvert', () => {
       hydrate: { devis: { id: 3, geometrie: { roof_layout: doc as never }, cibleVendue: false } },
       onApiReady: (a) => { api = a; },
     });
-    fakeMaps[0].fire('load', {});
+    // T4-X2-008 — le pan actif rouvert est EN PENTE : « Toit en pente / tuiles » enfoncé montrait les réglages du toit
+    // PLAT et le bloc de pente restait caché, même après un nouveau clic sur le bouton déjà enfoncé.
+    fakeMaps[0].fire('load', {}); const blocs = () => ['rp9-pitched-controls', 'rp9-flat-only'].map((id) => (document.getElementById(id) as HTMLElement).hidden); expect(blocs()).toEqual([false, true]); (document.querySelector('[data-rooftype="pitched"]') as HTMLButtonElement).click(); expect(blocs()).toEqual([false, true]);
     (document.getElementById('rp9-add-area') as HTMLButtonElement).click();
     const sortie = api!.serializeLayout() as { zones: Array<{ id: string; vertices: unknown }> };
     expect(sortie.zones.map((z) => z.id)).toEqual(['area-1', 'area-2', 'area-3']);

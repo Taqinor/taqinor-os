@@ -23,6 +23,14 @@ import {
 } from '../../../features/ventes/calc/classification.js'
 import { frenchError } from './devisListHelpers.js'
 
+// T4-X4-005 — le devis porte-t-il des données d'étude ? La ligne LÉGÈRE de la
+// liste le dit par `etude_resume.a_etude` (sans transporter l'étude) ; un
+// devis complet (détail relu) le dit par `etude_params`.
+export function aDesDonneesEtude(d) {
+  if (d?.etude_resume) return !!d.etude_resume.a_etude
+  return !!(d?.etude_params && Object.keys(d.etude_params).length > 0)
+}
+
 // Les options PDF envoyées à `generer-pdf` (whitelist `clean_pdf_options`)
 // depuis l'état de la modale — fonction PURE (testable sans React).
 export function optionsPdfDepuisModale({
@@ -36,7 +44,7 @@ export function optionsPdfDepuisModale({
     // T12/T13 — étude uniquement si premium ET données d'étude présentes.
     include_etude: pdfMode === 'full' && includeEtude
       && !(d?.mode_installation === 'commercial' || d?.mode_installation === 'industriel')
-      && !!(d?.etude_params && Object.keys(d.etude_params).length > 0),
+      && aDesDonneesEtude(d),
     // CAL184 — tri-état envoyé TEL QUEL à la whitelist `clean_pdf_options` :
     // `null` = auto (le serveur ajoute la planche si le devis en porte une),
     // `true`/`false` = le commercial tranche et sa valeur prime sur l'auto.
@@ -57,6 +65,19 @@ export function optionsPdfDepuisModale({
 // 300 puis 604 s sans un mot (le serveur ne la classe « échec » qu'à 20 min).
 export const DELAI_MAX_PDF_MS = 5 * 60 * 1000
 
+// T4-X1-003 — UN sondage qui ne répond pas (20 s sans réponse constatées sur
+// la base de test issue de la production) bloquait la boucle à jamais : chaque réponse est
+// attendue un délai borné, puis le sondage reprend (jusqu'au délai ci-dessus).
+export const DELAI_REPONSE_ETAT_MS = 15 * 1000
+const maintenant = () => Date.now()
+function avecDelai(promesse, ms) {
+  let minuterie
+  const limite = new Promise((_, rejeter) => {
+    minuterie = setTimeout(() => rejeter(new Error('etat-pdf : pas de réponse')), ms)
+  })
+  return Promise.race([promesse, limite]).finally(() => clearTimeout(minuterie))
+}
+
 // `selectedIds` / `setSelectedIds` (sélection du lot) et `devis` restent dans
 // le composant principal : le lot les lit ici.
 export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
@@ -66,6 +87,7 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
   // et le polling se poursuit à un rythme plus espacé, sans jamais relancer un
   // second job (un seul dispatch(genererPdfDevis) par appel de genererUnPdf).
   const [pdfSlowPoll, setPdfSlowPoll] = useState({}) // id → true
+  const [pdfSuivi, setPdfSuivi] = useState({}) // id → true tant que la demande est suivie
   // WIR217 — les minuteries de sondage PDF, et le drapeau d'annulation. Sans
   // eux, quitter l'écran pendant une génération laissait la boucle vivante :
   // elle continuait d'appeler l'API et de poser du state sur un composant
@@ -114,8 +136,7 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
   const [pdfModeAutoOnepage, setPdfModeAutoOnepage] = useState(false)
 
   // T13 — la case « Inclure l'étude » n'a de sens qu'avec des données d'étude.
-  const targetHasEtude = !!(pdfTarget?.etude_params
-    && Object.keys(pdfTarget.etude_params).length > 0)
+  const targetHasEtude = aDesDonneesEtude(pdfTarget)
   // T14 — le format premium « full » n'est pas pertinent pour le pompage agricole.
   const targetIsAgricole = pdfTarget?.mode_installation === 'agricole'
   // CIQ325 — le C&I a son document (3 pages commercial, 4 pages industriel,
@@ -225,6 +246,7 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
   // l'enchaînement par lot.
   const genererUnPdf = async (d, { autoOpen = true } = {}) => {
     setPdfGenerating(prev => ({ ...prev, [d.id]: true }))
+    const finGeneration = () => setPdfSuivi(prev => ({ ...prev, [d.id]: false }))
     setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
     try {
       // QJR624 (D-QJR5-10) — l'« acompte personnalisé » n'est plus une option
@@ -247,11 +269,16 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
         })
       }
       const lance = await dispatch(genererPdfDevis({ id: d.id, options: buildPdfOptions(d) })).unwrap()
+      // T4-X1-003 — la ligne DIT « génération en cours » tant que le sondage
+      // suit la demande (badge distinct : le bouton PDF reste utilisable) ;
+      // le sondage referme l'indicateur à son issue (prêt, échec, délai).
+      setPdfSuivi(prev => ({ ...prev, [d.id]: true }))
       // R1-02/R1-03 — on suit CETTE demande (clé `demande` de generer-pdf) :
       // un ancien fichier d'un autre format ne la dit plus « prête », et le
       // fichier ouvert est rendu dans SES options.
       const suivi = lance?.demande ? [lance.demande] : []
       let attempts = 0
+      const debut = maintenant()
       // WIR217 — le drapeau « lent » était lu dans `pdfSlowPoll[d.id]`, une
       // CLÔTURE PÉRIMÉE figée à `false` à la création de la boucle : la
       // condition restait vraie et le toast « toujours en cours » repartait
@@ -267,8 +294,9 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
       const poll = async () => {
         // WIR217 — plus AUCUN sondage après démontage de l'écran.
         if (pollAnnule.current) return
-        if (attempts >= MAX_ATTEMPTS) {
+        if (attempts >= MAX_ATTEMPTS || maintenant() - debut >= DELAI_MAX_PDF_MS) {
           setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
+          finGeneration()
           toast.error(`${d.reference} : le PDF n’est toujours pas prêt après 5 minutes — la génération n’a pas abouti.`, {
             action: { label: 'Réessayer', onClick: () => genererUnPdf(d, { autoOpen }) }, duration: Infinity,
           })
@@ -288,11 +316,14 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
           // apps/ventes/contract_samples/devis_etat_pdf.json), pas seulement
           // `fichier_pdf` : un échec DÉFINITIF de la tâche Celery (retries
           // épuisés) était invisible et cette boucle ne s'arrêtait jamais.
-          const res = await ventesApi.etatPdfDevis(d.id, ...suivi)
+          const res = await avecDelai(
+            ventesApi.etatPdfDevis(d.id, ...suivi), DELAI_REPONSE_ETAT_MS)
+          if (pollAnnule.current) return
           if (res.data.statut === 'echec') {
             // État TERMINAL : on arrête le sondage et on rend l'échec
             // ACTIONNABLE (le message du serveur nomme la cause).
             setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
+            finGeneration()
             toast.error(
               `${d.reference} : la génération du PDF a échoué${res.data.erreur ? ` — ${res.data.erreur}` : '.'}`,
               { action: { label: 'Réessayer', onClick: () => genererUnPdf(d, { autoOpen }) } },
@@ -302,6 +333,7 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
           if (res.data.fichier_pdf) {
             dispatch(rafraichirDevis(d.id))
             setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
+            finGeneration()
             if (autoOpen) {
               // VX48 — l'auto-open existant (QG1) reste l'expérience PAR
               // DÉFAUT et se déclenche EN PREMIER ; on n'affiche le toast
@@ -331,8 +363,12 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
             pollTimers.current[d.id] = setTimeout(poll, slow ? 10000 : 2000)
           }
         } catch (err) {
-          // Erreur de sondage ignorée : la boucle continue.
+          // Un sondage manqué (délai, 5xx, réseau) ne coupe PAS le suivi : la
+          // boucle re-sonde, bornée par le délai maximal ci-dessus.
           console.warn('useDevisPdf.poll : sondage manqué, on réessaie', err)
+          if (!pollAnnule.current) {
+            pollTimers.current[d.id] = setTimeout(poll, slow ? 10000 : 2000)
+          }
         }
       }
       pollTimers.current[d.id] = setTimeout(poll, 2000)
@@ -360,14 +396,39 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
   // QG1 — pas d'ouverture automatique par lot (N devis => N ouvertures serait
   // intrusif) : chacun reste téléchargeable via son bouton vert une fois prêt.
   const handleGenererPdfLot = async () => {
-    const cibles = devis.filter(d => selectedIds.includes(d.id))
+    // M6 (revue du lot 4) — la liste ne charge qu'UNE page, mais la sélection
+    // survit au changement de page : la barre compte « N devis », le geste doit
+    // agir sur EXACTEMENT ces N. Un devis coché sur une autre page est relu
+    // (`getDevisById`, détail complet) ; aucun n'est écarté sans un mot.
     setBatchPdf(false)
+    const surLaPage = new Map(devis.map(d => [d.id, d]))
+    const cibles = []
+    const illisiblesIds = []
+    for (const id of selectedIds) {
+      let d = surLaPage.get(id)
+      if (!d) {
+        try {
+          d = (await ventesApi.getDevisById(id))?.data
+        } catch (err) {
+          console.warn('useDevisPdf.handleGenererPdfLot : devis coché relu en échec', err)
+        }
+      }
+      if (d?.id) cibles.push(d)
+      else illisiblesIds.push(id)
+    }
     let ok = 0
     for (const d of cibles) {
       if (await genererUnPdf(d, { autoOpen: false })) ok += 1
     }
     if (ok > 0) toast.success(`Génération lancée pour ${ok} devis.`)
-    setSelectedIds([])
+    const illisibles = illisiblesIds.length
+    if (illisibles > 0) {
+      toast.error(`${illisibles} devis coché${illisibles > 1 ? 's' : ''} n’${illisibles > 1 ? 'ont' : 'a'} pas pu être relu${illisibles > 1 ? 's' : ''} : `
+        + 'aucun PDF lancé pour '
+        + `${illisibles > 1 ? 'eux' : 'lui'}. Ils restent cochés : réessayez.`)
+    }
+    // Seuls les devis réellement traités quittent la sélection.
+    setSelectedIds(illisiblesIds)
   }
 
   // WIR103/XFAC10 — Proforma PDF : document sans aucun impact comptable
@@ -459,6 +520,7 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
   return {
     pdfGenerating,
     pdfSlowPoll,
+    pdfSuivi,
     pdfDownloading,
     previewDevis,
     setPreviewDevis,

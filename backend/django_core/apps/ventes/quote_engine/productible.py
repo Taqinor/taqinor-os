@@ -23,9 +23,10 @@ ville → un productible. Le builder l'appelle avec la ville du lead/devis.
 from __future__ import annotations
 
 # ── Productible PVGIS par ville (kWh/kWc/an), plein sud, inclinaison optimale ──
-# Miroir EXACT de apps/web/src/lib/yieldTable.ts (grid["0"] au tilt optimal ~30°)
-# et de la constante JS PRODUCTIBLE_PAR_VILLE dans solar.js. Rafraîchir une fois
-# par an EN MÊME TEMPS que le yieldTable web (garder les trois alignés).
+# Miroir EXACT de apps/web/src/lib/yieldTable.ts (grid["0"] au tilt optimal ~30°).
+# L'écran ERP n'en porte plus de copie (AGEN13 : il lit la conception servie).
+# Rafraîchir une fois par an EN MÊME TEMPS que le yieldTable web (garder les deux
+# alignés : apps/web/tests/systemLoss20pct.test.ts compare les deux fichiers).
 PRODUCTIBLE_PAR_VILLE = {
     "agadir": 1687,
     "marrakech": 1651,

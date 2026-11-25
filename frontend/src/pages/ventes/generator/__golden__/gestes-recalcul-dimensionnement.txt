@@ -108,37 +108,13 @@ Type de Structure
 Acier galvanisé
 Aluminium
 Part de consommation diurne de l'aperçu : 60 % — hypothèse par défaut (non réglable, non imprimée sur le devis).
-Dimensionnement en cours de calcul — réessayez dans un instant.
+Le moteur n'a pas pu chiffrer de recommandation : complétez la facture, la ville et le raccordement du client, puis réessayez.
 Recalculer le dimensionnement
 Auto-remplir depuis le stock
 Aperçu de la Simulation
 Replier
-Calcul du moteur horaire en cours…
-Facture réelle ONEE ≈ 36 001 MAD/an sans solaire → avec solaire ≈ 20 594 MAD/an — économie calculée par tranche (barème ONEE), pas une estimation.
-Production annuelle
-13 085
-kWh / an
-Sans batterie
-Économies
-12 741
-MAD / an
-ROI
-4 ans
-retour sur invest.
-Coût
-50 800
-MAD TTC
-Avec batterie★ Recommandé
-Économies
-15 407
-MAD / an
-ROI
-4.6 ans
-retour sur invest.
-Coût
-70 000
-MAD TTC
-Économies mensuelles estimées (MAD / mois)
+Aucune conception servie pour l’instant.
+Renseignez le nombre de panneaux et les factures, puis la simulation s'actualise automatiquement.
 Lignes de Produits
 + Section
 + Note
@@ -373,6 +349,38 @@ Ligne optionnelle (add-on hors total)=on [ ]
   "parametresApi.getProfile": [
     []
   ],
+  "ventesApi.apercuConception": [
+    [
+      {
+        "lead": 77,
+        "calepinage": null,
+        "entrees": {
+          "facture_hiver": "3000"
+        },
+        "imposes": {}
+      },
+      {
+        "signal": {}
+      }
+    ],
+    [
+      {
+        "lead": 77,
+        "calepinage": null,
+        "entrees": {
+          "facture_hiver": "3000"
+        },
+        "imposes": {},
+        "investissement": {
+          "sans": 50800,
+          "avec": 70000
+        }
+      },
+      {
+        "signal": {}
+      }
+    ]
+  ],
   "ventesApi.composerDevis": [
     [
       {
@@ -381,6 +389,11 @@ Ligne optionnelle (add-on hors total)=on [ ]
         "structure_type": "acier",
         "lead": 77
       }
+    ]
+  ],
+  "ventesApi.getConceptionLead": [
+    [
+      "77"
     ]
   ],
   "ventesApi.getPrixApplicable": [
@@ -478,38 +491,6 @@ Ligne optionnelle (add-on hors total)=on [ ]
       {
         "produit": "94",
         "quantite": "1"
-      }
-    ]
-  ],
-  "ventesApi.postEtudeHorairePreview": [
-    [
-      {
-        "dimensionner": true,
-        "lead": 77,
-        "facture_hiver": 3000,
-        "ville": "Mohammedia"
-      },
-      {
-        "signal": {}
-      }
-    ],
-    [
-      {
-        "dimensionner": true,
-        "lead": 77,
-        "facture_hiver": 3000,
-        "ville": "Mohammedia",
-        "kwc": 5.68,
-        "batterie_kwh": 5,
-        "batteries": [
-          {
-            "produit": 61,
-            "quantite": 1
-          }
-        ]
-      },
-      {
-        "signal": {}
       }
     ]
   ]

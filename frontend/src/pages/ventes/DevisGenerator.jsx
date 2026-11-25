@@ -17,7 +17,7 @@ import {
 // (createDevisAtomic / replaceLignesDevis) ; createDevis/addLigneDevis (1+N
 // round-trips non gardés) ne sont plus utilisés ici.
 import {
-  LEAD_TYPE_TO_MODE,
+  LEAD_TYPE_TO_MODE, optionsDepuisComparaison,
   // QJR665 — conso de l'étude C&I = celle du balayage (barème national).
   // QJR308 — même formule que DevisTab.jsx / LeadDevisPanel.jsx : l'avis du
   // palier de 5 kWc, mais affiché ICI au moment RÉEL où `runAutoQuote` déclenche
@@ -53,6 +53,7 @@ import ClientQuickCreateModal from './ClientQuickCreateModal'
 import DevisOffresTailles from './DevisOffresTailles'
 // APX17 — confirmation maison + toasts (jamais une popup du système).
 import { useConfirmDialog } from '../../ui/confirm'
+import { rechargerSansGarde } from '../../ui/useDirtyGuard'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
 import { searchCompanies } from '../../features/crm/companyLookup'
 import {
@@ -63,7 +64,6 @@ import {
   Stat,
   Input, Label, Segmented, Switch,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   // QJR101 — `HelpTip` est parti avec la carte des factures : les trois
   // panneaux réseau l'importent chacun pour leur aide « distributeur ».
   ScrollProgress,
@@ -87,7 +87,6 @@ import {
   DEFAULT_MONTHLY_BILLS,
   formatMoney, estimerMois, htFromTtc, comptePanneauxOption,
   kwcFactureDesLignes, kwcPanneauxOption, kwcPourPanneaux,
-  KWH_PRICE, EFFICIENCY,
   TVA_STANDARD_DEFAUT, TVA_PANNEAUX_DEFAUT,
   // QJR66 — `buildEtudeParamsChoice` n'est PLUS importé ici : l'écran n'écrit
   // plus `scenario` / `recommended_option` / `distributeur` / `conso_annuelle`
@@ -105,7 +104,7 @@ import {
 import { _hasPrix } from '../../features/ventes/calc/lignesDefaut.js' // QJR546 — garde « produit tarifé »
 import { useGabaritMarche } from './generator/hooks/useGabaritMarche' // T4-U3-006 — table par marché
 import {
-  optionTotalsTTC, prixParKwc, discountForTarget, computeBuyCostDetail, avecBatterieAvailability,
+  optionTotalsTTC, prixParKwc, discountForTarget, coutAchatOption, avecBatterieAvailability,
   multiPropertyPreviewTTC, lignesRemiseesParPanier,
 } from '../../features/ventes/calc/totaux.js'
 import { MESSAGE_KWH_INCOHERENT, baremeDepuisProfil } from '../../features/ventes/calc/tarifs.js'
@@ -201,9 +200,10 @@ import { useBrouillonEcran } from './generator/hooks/useBrouillonEcran'
 // SPL43 — aides de module déplacées (fabrique de lignes, défauts d'écran).
 import {
   partDiurneParDefaut,
-  FENETRE_REFERENCE_MS,
+  FENETRE_REFERENCE_MS, dateValiditeParDefaut, rearmerFenetreReference,
 } from '../../features/ventes/quote/ecranDefauts.js'
-import { AlerteErreur } from '../../ui/AlertesServeur'
+import { useLibelleFil } from '../../components/layout/libelleFil'
+import DialogueRenommage from './generator/DialogueRenommage'
 
 // QX43 — 4 marchés réels : industriel et commercial sont désormais distincts.
 const MODE_OPTIONS = [
@@ -364,6 +364,8 @@ export default function DevisGenerator({
       // ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION — le total d'AFFICHAGE
       // canonique (celui de la liste et du PDF), pas une somme de lignes.
       total: devisData?.total_affiche ?? devisData?.total_ttc ?? null,
+      // T4-X4-014 — les deux options nommées (vide pour un devis à une option).
+      options: optionsDepuisComparaison(devisData),
       // ALEA51 — devis AUTOMATIQUE lancé d'ici (`?auto=1`) : les alertes du
       // serveur et le retour (économie, postes à chiffrer…) suivent le devis.
       alertes: devisData?.alertes ?? [],
@@ -652,19 +654,13 @@ export default function DevisGenerator({
   const ci = useProfilCiLead({ profilCi, setProfilCi, categorieCommerciale, setCategorieCommerciale,
     commercialAnswers, setCommercialAnswers, tarifSaisie, setTarifSaisie })
   const [prixCible, setPrixCible] = useState('')
-  // ── Logique de devis éditable (D5 ; Paramètres → Avancé). Défauts = constantes
-  // historiques du simulateur, donc le devis est identique tant que rien n'est
-  // édité. kwhPrice/efficiency alimentent les calculs ; prixCibleDefaut
-  // pré-remplit le prix cible ; remiseMax = limite indicative.
+  // ── Logique de devis éditable (D5 ; Paramètres → Avancé) : prixCibleDefaut
+  // pré-remplit le prix cible ; remiseMax = limite indicative. AGEN11 — plus de
+  // tarif, rendement ni productible à l'écran : la conception est servie.
   const [quoteLogic, setQuoteLogic] = useState({
-    kwhPrice: KWH_PRICE, efficiency: EFFICIENCY,
     // DC4/DC6 — repères TVA société (défauts réforme 20/10) : pilotent les
     // repli de taux et l'avertissement de divergence, jamais un recalage forcé.
     tvaStandard: TVA_STANDARD_DEFAUT, tvaPanneaux: TVA_PANNEAUX_DEFAUT,
-    // QX38 — override productible société (CompanyProfile.productible_kwh_kwc).
-    // Vide (null) → productibleForCity lit alors le PVGIS par ville (source
-    // unique alignée écran/PDF/web) ; toute valeur société saisie prime (AMOT64).
-    productible: null,
   })
   const [remiseMax, setRemiseMax] = useState('')
   // QX20 — échappatoire documentée à la garde d'équipement : un avenant ou un
@@ -996,14 +992,12 @@ export default function DevisGenerator({
     verdictBatterieServeur, batterieInvendableServeur,
     apercuEcoAvec, apercuPaybackSans, apercuPaybackAvec,
     apercuPaybackSansJamais, apercuPaybackAvecJamais,
-    signerEcoOuRoi, chartData,
+    signerEcoOuRoi, chartData, apercuPaybackSansAbsent, apercuPaybackAvecAbsent, apercuAvecAbsent,
   } = useApercuEtude({
-    monthly, lines, totals, kwp, kwpLignes, kwpAvec, dayUsage, realBillMode, realBillKwh,
-    realBillMad, distributeur, baremeSociete, provenanceMois, realBillSaisi, leadDuDevis, leads,
-    leadId, modeInstallation, clientsConnus, clientId, confirm, quoteLogic, editId, fHiver, fEte,
-    // RGEN5 — niveau de règles du devis édité (`Devis.regles_calcul`, ancien calcul tant
-    // qu'il n'est pas lu) ; devis neuf : null = règles courantes (AMOT125).
-    sizing, dispatchSizing, produits, discountPct, reglesCalcul: editId ? (editDevis?.regles_calcul ?? 0) : null,
+    lines, kwpLignes, kwpAvec, realBillMode, realBillKwh,
+    realBillMad, distributeur, baremeSociete, provenanceMois, leadDuDevis, leads,
+    leadId, modeInstallation, clientsConnus, clientId, confirm, editId, fHiver, fEte,
+    sizing, dispatchSizing, produits, monthly, realBillSaisi, distributeurChoisi, consoStockee, totals, showSans, showAvec,
   })
 
   // ── Mode d'installation (Résidentiel / Industriel-Commercial / Agricole) ──
@@ -1253,16 +1247,15 @@ export default function DevisGenerator({
   // chargée dans les DEUX modes — sinon l'étude I/C était re-persistée au
   // tarif par défaut du code et imprimée.
   const settingsLoaded = useRef(false)
+  const [joursValidite, setJoursValidite] = useState(null) // T4-X1-016 — réglage société « validité du devis »
   useEffect(() => {
     if (settingsLoaded.current) return
     settingsLoaded.current = true
     parametresApi.getProfile().then(({ data }) => {
       const jours = parseInt(data?.quote_validity_days, 10)
+      if (Number.isFinite(jours) && jours > 0) setJoursValidite(jours)
       if (!editId && Number.isFinite(jours) && jours > 0) {
-        const d = new Date()
-        d.setDate(d.getDate() + jours)
-        const iso = `${d.getFullYear()}-${String(d.getMonth() + 1)
-          .padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        const iso = dateValiditeParDefaut(new Date(), jours)
         setDateValidite(prev => prev || iso)
       }
       // AGR208/AGR212 — repères énergie datés et sourcés (simple indication à
@@ -1272,27 +1265,14 @@ export default function DevisGenerator({
       setBaremeSociete(baremeDepuisProfil(data?.bareme_effectif))
       // AGNR26 — `agricole_pump_hours` reste un réglage SERVEUR (repli PVGIS
       // du moteur pompage) : l'écran n'a plus de champ « heures » à pré-remplir.
-      // Logique de devis éditable (D5) — repli sur les constantes du simulateur.
-      const kwh = parseFloat(data?.onee_tarif_kwh)
+      // Logique de devis éditable (D5) — repli sur les repères TVA par défaut.
+      // AGEN11 — tarif du kWh et productible société sont lus par le MOTEUR
+      // (conception servie), jamais par l'écran.
       const tvaStd = parseFloat(data?.tva_standard)
       const tvaPan = parseFloat(data?.tva_panneaux)
-      // QJR39 — CompanyProfile.productible_kwh_kwc (QX38, exposé tel quel par
-      // CompanyProfileSerializer, fields='__all__') : ce setQuoteLogic
-      // RECONSTRUIT l'objet entier (repli des 4 champs ci-dessus, historique),
-      // ce qui EFFAÇAIT silencieusement le `productible: null` de l'état
-      // initial et rendait le réglage société mort à l'écran — le générateur
-      // et le PDF citaient alors deux productibles différents pour le même
-      // devis. Repli EXPLICITE sur `null` (jamais une constante d'écran) :
-      // `productibleForCity` (solar.js) sait déjà retomber sur le PVGIS par
-      // ville quand aucune surcharge société réelle n'existe.
-      const prod = parseFloat(data?.productible_kwh_kwc)
       setQuoteLogic({
-        kwhPrice: (Number.isFinite(kwh) && kwh > 0) ? kwh : KWH_PRICE,
-        // RGEN6 (AMOT64) — `rendement_global` ne pilote plus l'écran : la constante du simulateur, celle du serveur.
-        efficiency: EFFICIENCY,
         tvaStandard: (Number.isFinite(tvaStd) && tvaStd > 0) ? tvaStd : TVA_STANDARD_DEFAUT,
         tvaPanneaux: (Number.isFinite(tvaPan) && tvaPan > 0) ? tvaPan : TVA_PANNEAUX_DEFAUT,
-        productible: (Number.isFinite(prod) && prod > 0) ? prod : null,
       })
       const cible = parseFloat(data?.prix_cible_kwc_defaut)
       if (!editId && Number.isFinite(cible) && cible > 0) setPrixCible(prev => prev || String(cible))
@@ -1300,6 +1280,21 @@ export default function DevisGenerator({
       if (Number.isFinite(rmax) && rmax > 0) setRemiseMax(String(rmax))
     }).catch(() => { /* réglages indisponibles → on garde les défauts code */ })
   }, [editId])
+
+  // T4-X1-016 — un brouillon ouvert en édition SANS date de validité (une révision « V2 » :
+  // la date n'est jamais copiée) reçoit la validité par défaut d'un devis neuf : sa date de
+  // création + le réglage société — la dérivation même du serveur (`utils/expiry`), donc
+  // rien ne change pour le client ; la date est seulement montrée, jamais inventée.
+  useEffect(() => {
+    if (!editDevis || editDevis.statut !== 'brouillon' || editDevis.date_validite) return
+    const iso = dateValiditeParDefaut(editDevis.date_creation, joursValidite)
+    if (!iso) return
+    rearmerFenetreReference(captureReferenceJusqua)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- défaut posé une fois que le devis ET le réglage société sont chargés (même motif que l'effet des réglages ci-dessus) (D-ENF22)
+    setDateValidite(prev => prev || iso)
+  }, [editDevis, joursValidite])
+  // T4-X1-016 — le fil d'Ariane nomme le devis que l'écran édite (« Réviser » → DEV-…).
+  useLibelleFil(!embedded && editDevis?.reference ? `Édition — ${editDevis.reference}` : null)
 
   // Arrivée depuis le lead. Pleine page : via l'URL (?lead=…&auto=1&discount=…).
   // Embarqué : via les props (leadId/auto/discount), jamais l'URL.
@@ -1599,7 +1594,7 @@ export default function DevisGenerator({
 
   // QJR568 / AGNR74 — prix/kWc et prix cible au kWc FACTURÉ de l'option affichée.
   const pkwc = prixParKwc(kpiTotal, optionArgent === 'avec' ? kwpAvec : kwpLignes)
-  const buyDetail = useMemo(() => computeBuyCostDetail(lines, produits), [lines, produits])
+  const buyDetail = useMemo(() => coutAchatOption(lines, optionArgent, produits, { scenario }), [lines, optionArgent, produits, scenario]) // T4-X4-020
   const buyCost = buyDetail.cost
   const marge = buyCost != null ? Math.round(kpiTotal - buyCost) : null
 
@@ -1669,7 +1664,11 @@ export default function DevisGenerator({
       description: 'Toutes les saisies en cours seront perdues.',
       confirmLabel: 'Réinitialiser',
     })
-    if (ok) window.location.reload()
+    if (!ok) return
+    // T4-X4-022 — le brouillon local est purgé (sinon « Reprendre le brouillon » le
+    // ramène) et la garde de sortie levée (sinon le navigateur annule le rechargement).
+    clear()
+    rechargerSansGarde()
   }
 
   // CIQ223 — l'économie C&I SERVIE (`POST /ventes/economie-ci/preview/`) :
@@ -1797,7 +1796,7 @@ export default function DevisGenerator({
           clear={clear} setRechargeEdit={setRechargeEdit} forcerSansJetonRef={forcerSansJetonRef}
           handleSubmit={handleSubmit} brouillonProposable={brouillonProposable} restored={restored}
           handleRestoreDraft={handleRestoreDraft} discard={discard} savedAt={savedAt}
-          refsLoading={refsLoading} loadFailed={loadFailed} saleWarnings={saleWarnings}
+          refsLoading={refsLoading} loadFailed={loadFailed} saleWarnings={saleWarnings} dirty={dirty} confirm={confirm} enregistrer={enregistrerAvantModele}
         />
         {/* ── Mode d'installation (marché) ── */}
         <Card>
@@ -1908,7 +1907,10 @@ export default function DevisGenerator({
             <div className="grid gap-1.5">
               <Label htmlFor="gen-validite">Date de validité</Label>
               <Input id="gen-validite" type="date" value={dateValidite}
-                     onChange={e => setDateValidite(e.target.value)} />
+                     onChange={e => {
+                       setDateValidite(e.target.value)
+                       if (erreursChamps.date_validite) setErreursChamps(c => ({ ...c, date_validite: undefined }))
+                     }} />
               {erreursChamps.date_validite && (
                 <p className="text-xs text-destructive" data-testid="erreur-champ-date_validite">
                   {erreursChamps.date_validite}
@@ -2036,12 +2038,12 @@ export default function DevisGenerator({
           etudeHoraireAnnuelAvec={etudeHoraireAnnuelAvec} distributeur={distributeur}
           apercuProductionKwh={apercuProductionKwh} apercuProductionKwhAvec={apercuProductionKwhAvec} showSans={showSans}
           signerEcoOuRoi={signerEcoOuRoi} apercuEcoSans={apercuEcoSans}
-          apercuPaybackSansJamais={apercuPaybackSansJamais} apercuPaybackSans={apercuPaybackSans}
+          apercuPaybackSansJamais={apercuPaybackSansJamais} apercuPaybackSans={apercuPaybackSans} apercuPaybackSansAbsent={apercuPaybackSansAbsent}
           totals={totals} avecRec={avecRec} batterieInvendableServeur={batterieInvendableServeur}
           verdictBatterieServeur={verdictBatterieServeur} apercuEcoAvec={apercuEcoAvec}
-          apercuPaybackAvecJamais={apercuPaybackAvecJamais} apercuPaybackAvec={apercuPaybackAvec}
+          apercuPaybackAvecJamais={apercuPaybackAvecJamais} apercuPaybackAvec={apercuPaybackAvec} apercuPaybackAvecAbsent={apercuPaybackAvecAbsent}
           capaciteBatterieInconnue={capaciteBatterieInconnue} facturesSaisies={facturesSaisies}
-          chartData={chartData}
+          chartData={chartData} apercuAvecAbsent={apercuAvecAbsent}
           editDevis={editDevis} simulationRepliee={simulationRepliee}
           basculerCarte={basculerCarte}
         />
@@ -2057,7 +2059,7 @@ export default function DevisGenerator({
             modifiabilité servi (QJR516). `produits` réutilise le catalogue
             déjà chargé pour « Auto-remplir » (pas de second aller-retour). */}
         <DevisOffresTailles devisId={editId} modeInstallation={modeInstallation} produits={produits}
-                            modifiable={editDevis?.modifiable}
+                            modifiable={editDevis?.modifiable} versionDevis={editDevis?.updated_at}
                             raisonNonModifiable={editDevis?.raison_non_modifiable}
                             onDevisRecompose={rechargerDevisRecompose}
                             onDevisEcrit={armerJeton} />
@@ -2122,7 +2124,7 @@ export default function DevisGenerator({
             applyPrixCible={applyPrixCible}
             kwp={kwp}
             marge={marge}
-            margeLignesSansAchat={buyDetail.sansAchat}
+            margeLignesSansAchat={buyDetail.sansAchat} margeOption={buyDetail.option}
             kpiTotal={kpiTotal}
           />
         </LigneTable>
@@ -2232,7 +2234,7 @@ export default function DevisGenerator({
             {/* AGNR29 — même composant que le Rail : jamais un % sur un coût
                 partiel (« marge partielle : N ligne(s) sans prix d'achat »). */}
             <MargeIndicative marge={marge} kpiTotal={kpiTotal}
-                             lignesSansAchat={buyDetail.sansAchat} variante="lateral" />
+                             lignesSansAchat={buyDetail.sansAchat} option={buyDetail.option} variante="lateral" />
             <div className="border-t border-border pt-3">
               <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Système</div>
               <RailSysteme lines={lines} produits={produits} kwp={kwp} kwpLignes={kwpLignes} kwpAvec={kwpAvec}
@@ -2260,32 +2262,10 @@ export default function DevisGenerator({
         }}
       />
 
-      {/* QP2 — dialogue de renommage : deux choix explicites lorsqu'une ligne
-          est renommée à l'écart du nom du produit lié (rôle autorisé). */}
-      <Dialog open={!!renameDialog} onOpenChange={(o) => { if (!o) setRenameDialog(null) }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Désignation modifiée</DialogTitle>
-            <DialogDescription>
-              Vous avez renommé cette ligne
-              {renameDialog ? ` « ${renameDialog.nouveauNom} »` : ''} — elle diffère du
-              produit du stock{renameDialog ? ` « ${renameDialog.ancienNom} »` : ''}.
-              Que souhaitez-vous faire ?
-            </DialogDescription>
-          </DialogHeader>
-          <AlerteErreur error={renameError} />
-          <DialogFooter className="flex-col gap-2 sm:flex-col sm:items-stretch">
-            <Button type="button" variant="outline" onClick={renameHereOnly} disabled={renameBusy}>
-              Renommer sur ce devis seulement
-            </Button>
-            <Button type="button" onClick={renameAsNewProduct} loading={renameBusy}>
-              {renameBusy
-                ? 'Création…'
-                : `Créer un nouveau produit « ${renameDialog?.nouveauNom ?? ''} » dans le stock`}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* QP2 — dialogue de renommage (deux choix) : voir generator/DialogueRenommage.jsx. */}
+      <DialogueRenommage
+        renameDialog={renameDialog} setRenameDialog={setRenameDialog} renameBusy={renameBusy}
+        renameError={renameError} renameHereOnly={renameHereOnly} renameAsNewProduct={renameAsNewProduct} />
     </div>
   )
 }

@@ -135,14 +135,14 @@ def conception_retenue_par_id(devis_id, company):
     return conception_retenue_du_devis_id(devis_id, company)
 
 
-def conception_ou_calcul(company, lead_id=None, *, calepinage_id=None):
+def conception_ou_calcul(company, lead_id=None, *, calepinage_id=None, en_liste=False):
     """Relecture E5 — LA porte de lecture de la conception (``apps.ventes.services.
     conception_ou_calcul``), passée par ce module, déjà importateur de ventes : la
     conception est lue par ``devis_retenu`` sans un importateur de plus (cliquet
     ``test_imports_croises_ventes``)."""
     from apps.ventes.services import conception_ou_calcul as porte
 
-    return porte(company, lead_id, calepinage_id=calepinage_id)
+    return porte(company, lead_id, calepinage_id=calepinage_id, en_liste=en_liste)
 
 
 def motif_facture_absente():
@@ -156,8 +156,9 @@ def devis_et_ecart(devis_id, retenue, company_id):
     """``(devis, ecart_devis)`` du devis lié de ``company_id`` (``get_devis_by_pk`` / ``apps.ventes.
     selectors.ecart_devis``, conception retenue déjà lue en ``retenue``) ; ``(None, [])`` hors société."""
     from apps.ventes.selectors import ecart_devis
+    from apps.ventes.selectors_calepinage import devis_lu_par_pk
 
-    devis = get_devis_by_pk(devis_id)
+    devis = devis_lu_par_pk(devis_id)  # coût des requêtes : déjà lu par la conception retenue
     if devis is None or devis.company_id != company_id:
         return None, []
     # Mot-clé passé par dictionnaire : la garde de surface du champ ``CalepinageVariante.retenue``
@@ -348,3 +349,21 @@ def equipements_du_calepinage(calepinage):
         resultat[famille] = bloc
 
     return {'calepinage': calepinage.pk, 'devis': devis.pk, **resultat}
+
+
+def panneaux_pour_la_meme_puissance(kwc, watt):
+    """Lane E9 (T4-X2-001) — LA règle du moteur qui compte une puissance dans un autre module
+    (``apps.ventes.services.panneaux_pour_la_meme_puissance``), passée par ce module déjà
+    importateur de ventes : aucun importateur de plus (cliquet ``test_imports_croises_ventes``)."""
+    from apps.ventes.services import panneaux_pour_la_meme_puissance as regle
+
+    return regle(kwc, watt)
+
+
+def composition_a_blanc():
+    """T4-X5-010 — ``(build_devis_from_layout, AutoDevisError)`` de ``apps.ventes.services`` pour
+    l'aperçu à blanc du devis (``devis_apercu``), passés par ce module déjà importateur de ventes
+    (même cliquet)."""
+    from apps.ventes.services import AutoDevisError, build_devis_from_layout
+
+    return build_devis_from_layout, AutoDevisError

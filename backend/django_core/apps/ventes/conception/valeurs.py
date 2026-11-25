@@ -96,6 +96,62 @@ def _sur_la_pose(resultat, option):
                for h in (source.get('hypotheses') or etude.get('hypotheses') or []))
 
 
+def _payback(resultat, option, investissement, economie, company):
+    """E7d (revue lot 4, M1) — le payback de ``option`` sur ``investissement`` (MAD TTC de
+    vente, ``None`` ⇒ ``None``), par LA fonction du payback servi à la lecture
+    (``selectors_conception._payback_servi``) : ``payback_publiable``, provision d'onduleur
+    des cartes (``offres_tailles._cout_onduleur_ttc``) sur les lignes de l'option du moteur,
+    part stockée 0 au modèle horaire résidentiel. Aucun prix d'achat lu."""
+    if investissement is None:
+        return None, {}
+    from apps.ventes import offres_tailles
+    from apps.ventes.domain.catalogue import classer_produit
+    from apps.ventes.quote_engine.pricing import payback_publiable
+    from apps.ventes.utils.options import AVEC_BATTERIE, SANS_BATTERIE, filter_lines_for_option
+
+    devis = resultat.lignes[0].devis if resultat.lignes else None
+    lignes = list(resultat.lignes)
+    if len(options(resultat)[1]) > 1:
+        lignes = filter_lines_for_option(lignes, AVEC_BATTERIE if option == 'avec' else SANS_BATTERIE, devis=devis)
+    portees = [li for li in lignes if li.type_ligne == 'produit']
+    remise = float(getattr(devis, 'remise_globale', 0) or 0)
+    cout = offres_tailles._cout_onduleur_ttc(
+        portees, [classer_produit(getattr(li.produit, 'nom', '') or li.designation) for li in portees],
+        1 - remise / 100, getattr(devis, 'taux_tva', None), company, devis)
+    horaire = {'part_batterie': 0} if resultat.marche == 'residentiel' else {}
+    annees = payback_publiable(investissement, economie, stockage=option == 'avec', cout_onduleur_ttc=cout,
+                               **horaire)['payback_years']
+    # T4-X9-016 — les entrées servies à côté, comme le payback servi à la lecture.
+    return annees, entrees_du_payback(investissement, economie, cout,
+                                      stockage=option == 'avec' and resultat.marche != 'residentiel')
+
+
+def entrees_du_payback(investissement, economie, cout_onduleur, *, stockage):
+    """T4-X9-016 — ce que le payback servi a pris, servi À CÔTÉ de lui (même option) : le
+    montant TTC de l'option, son économie annuelle, la provision d'onduleur, et la phrase du
+    calcul (``quote_engine/pricing.compute_cashflow_payback`` : un cumul, jamais un quotient)."""
+    from core.money import quantize_mad
+
+    from apps.ventes.quote_engine import pricing
+
+    morceaux = ['production en baisse de %s %%/an' % _pct(pricing.PANEL_DEGRADATION)]
+    if pricing.TARIFF_ESCALATION:
+        morceaux.append('tarif en hausse de %s %%/an' % _pct(pricing.TARIFF_ESCALATION))
+    if stockage:
+        morceaux.append('part stockée au rendement de la batterie (%s %%)' % _pct(pricing.BATTERY_ROUNDTRIP))
+    if cout_onduleur:
+        morceaux.append('onduleur remplacé la %de année' % pricing.INVERTER_REPLACE_YEAR)
+    return {'investissement_ttc': float(quantize_mad(investissement)) if investissement else None,
+            'economie_annuelle': economie,
+            'cout_onduleur_ttc': float(quantize_mad(cout_onduleur)) if cout_onduleur else None,
+            'calcul': 'Cumul des économies sur %d ans (%s) jusqu’à couvrir le montant.' % (
+                pricing.CASHFLOW_YEARS, ', '.join(morceaux))}
+
+
+def _pct(fraction):
+    return ('%g' % round(float(fraction) * 100, 2)).replace('.', ',')
+
+
 def valeurs(resultat, option, investissement, *, froid, company=None):
     """La table §2 de ``option`` ; ``froid`` : le froid du site lu UNE fois par
     ``calculer_conception`` (``compatibilites.froid_du_lead``). ACAL2016 :
@@ -108,13 +164,13 @@ def valeurs(resultat, option, investissement, *, froid, company=None):
                 'variateur': _v(resultat.materiel_pompage.get('variateur_pompage')),
                 'm3_jour': _v(params.get('m3_jour'), 'm³/jour')}
     from apps.ventes.quote_engine.lignes_classement import kwc_des_lignes
-    from apps.ventes.quote_engine.pricing import payback_publiable
     panneaux, (nb, watt), onduleurs, batteries = _materiel(resultat, option)
     chaines, tension, ratio = _electrique(resultat.conception_electrique, onduleurs)
     production, mensuelle, autoconso, couverture, economies, conso, forme, source_forme = _bilan(resultat, option)
     source_production = 'pose' if _sur_la_pose(resultat, option) else 'moteur'
-    payback = (payback_publiable(investissement, economies, stockage=option == 'avec')['payback_years']
-               if investissement is not None else None)
+    if isinstance(investissement, dict):  # E7d (M1) — l'aperçu : un prix par option
+        investissement = investissement.get(option)
+    payback, entrees_payback = _payback(resultat, option, investissement, economies, company)
     devis = resultat.lignes[0].devis if resultat.lignes else None
     kwc = kwc_des_lignes(panneaux, nb, watt, devis)
     return {
@@ -128,8 +184,11 @@ def valeurs(resultat, option, investissement, *, froid, company=None):
         'production_mensuelle': _v(mensuelle or None, 'kWh', source_production),
         'autoconsommation': _v(autoconso, 'ratio'), 'couverture': _v(couverture, 'ratio'),
         'economies_annuelles': _v(economies, 'MAD/an'),
-        'payback': _v(payback, 'ans', 'devis' if investissement is not None else 'moteur'),
+        'payback': dict(_v(payback, 'ans', 'devis' if investissement is not None else 'moteur'), **entrees_payback),
         'consommation_annuelle': _v(conso, 'kWh/an'), 'forme_horaire': _v(forme, None, source_forme),
+        # Reste d'ACAL2020 — la forme 24 h du moteur résidentiel (``None`` hors résidentiel).
+        'forme_horaire_24': _v(resultat.forme_horaire_24 if resultat.marche == 'residentiel' else None,
+                               'part', source_forme),
         **_produits(panneaux, onduleurs, batteries),
         'verdicts': _v(_verdicts(resultat, onduleurs, kwc, chaines, company)),
     }

@@ -36,6 +36,8 @@ import {
 import { libelleStatutDevis } from '../../ventes/devisStatuts'
 // NTCRM19 — badge de consultation de la salle de vente digitale (NTCRM17/18).
 import SalleVenteAnalyticsBadge from '../../../pages/crm/leads/SalleVenteAnalyticsBadge'
+// AGEN12 — les brouillons datés d'avant le dernier calcul de la fiche (conception servie).
+import { AVIS_BROUILLON_AVANT_CALCUL, useBrouillonsConception } from './useBrouillonsConception'
 
 // LW21/LW22 — Onglet Devis : la chaîne document en cartes (StatusPill statut
 // devis — JAMAIS le funnel lead, règle #2) + le CTA « Devis automatique » qui
@@ -166,6 +168,7 @@ export default function DevisTab({
   const droitInstallGerer = useDroitMetier('installation_gerer')
   const peutCreerChantier = droitVentesCreer || droitInstallGerer
   const devisList = state.server?.devis ?? []
+  const brouillonsAMettreAJour = useBrouillonsConception(state.leadId, devisList.map((d) => d.id).join(','))
   const devisAuto = state.server?.devis_auto ?? { pret: false, manquants: [] }
   // T4-U3-017 — le kWh tapé que les factures contredisent : la fiche SERVIE le dit (`avertissements.kwh_factures`,
   // ACVI97) — le bouton est grisé AVANT le clic avec cette raison (le serveur refuserait en 409). Aucune règle ici.
@@ -234,11 +237,19 @@ export default function DevisTab({
           message: res.data?.message ?? '',
           links: res.data?.links ?? [],
           wa_url: res.data?.wa_url ?? '',
+          // T4-X1-010 — la langue RÉELLE du message (servie) : « darija » sans
+          // texte rédigé donne du français, et la boîte le dit.
+          langue_effective: res.data?.langue_effective ?? wa.langue,
         })
       })
       .catch((err) => toastError(errorMessageFrom(err, 'Envoi WhatsApp impossible.')))
       .finally(() => setWaBusy(false))
   }
+
+  // T4-X1-010 — vrai quand le message de l'aperçu est bien dans la langue
+  // choisie (le serveur dit `langue_effective`).
+  const darijaRedige = wa.langue !== 'darija'
+    || (wa.preview?.langue_effective ?? 'darija') === 'darija'
 
   const ouvrirWhatsApp = () => {
     if (wa.preview?.wa_url) window.open(wa.preview.wa_url, '_blank', 'noopener')
@@ -399,6 +410,11 @@ export default function DevisTab({
                 <span className="num">{formatMAD(d.total_ttc, { decimals: 0 })}</span>
                 <span className="lw-context-devis-date">{formatDate(d.date_creation)}</span>
               </div>
+              {brouillonsAMettreAJour.has(d.id) && (
+                <p className="gen-hint text-warning" data-testid={`devis-conception-a-jour-${d.id}`}>
+                  {AVIS_BROUILLON_AVANT_CALCUL}
+                </p>
+              )}
               {/* QJ-VUES (fondateur 09/09/2026) — combien de fois le CLIENT a
                   ouvert ce devis, TOUJOURS visible sur la carte (aucun clic,
                   aucun dialogue). Chiffre serveur (`d.lecture`), lectures
@@ -409,7 +425,7 @@ export default function DevisTab({
                 className={`lw-context-devis-lectures${(Number(d.lecture?.nombre_vues ?? 0) > 0) ? ' is-lu' : ''}`}
               >
                 <Eye size={13} aria-hidden="true" />
-                <span>{lectureClientLabel(d.lecture, d.corrige_le)}</span>
+                <span>{lectureClientLabel(d.lecture, d.corrige_le, d.statut)}</span>
               </div>
               {/* L-NIV-UI — badge d'état du lien, TOUJOURS visible sur la carte
                   (le dialogue d'envoi ci-dessous n'a pas à être ouvert pour
@@ -572,20 +588,23 @@ export default function DevisTab({
             <DialogTitle>Aperçu du message WhatsApp</DialogTitle>
             <DialogDescription>
               {wa.langue === 'darija' ? 'Variante Darija' : 'Variante Français'}
-              {' '}— vérifiez le texte et le(s) lien(s), puis ouvrez WhatsApp.
+              {' '}— vérifiez le texte, puis ouvrez WhatsApp.
             </DialogDescription>
           </DialogHeader>
-          <pre className="lw-context-wa-preview">{wa.preview?.message}</pre>
-          {(wa.preview?.links?.length ?? 0) > 0 && (
-            <ul className="gen-hint lw-context-wa-links">
-              {wa.preview.links.map((l) => (
-                <li key={l.devis_id ?? l.url}>{l.reference} : {l.url}</li>
-              ))}
-            </ul>
+          {/* T4-X1-010 — jamais un texte français présenté comme du darija :
+              sans texte darija rédigé, la variante est indisponible et le dit.
+              Aucun texte n'est inventé ici. Le lien n'est montré QU'UNE fois :
+              il est dans le message (la liste dessous le répétait). */}
+          {!darijaRedige && (
+            <p role="alert" className="gen-hint" data-testid="wa-darija-non-redige">
+              Variante darija : texte non rédigé — le message ci-dessous est en français.
+              Choisissez FR pour l’envoyer en français.
+            </p>
           )}
+          <pre className="lw-context-wa-preview">{wa.preview?.message}</pre>
           <div className="lw-context-wa-dialog-actions">
             <Button type="button" variant="ghost" onClick={() => onWaPreview(null)}>Annuler</Button>
-            <Button type="button" variant="success" disabled={!wa.preview?.wa_url} onClick={ouvrirWhatsApp}>
+            <Button type="button" variant="success" disabled={!wa.preview?.wa_url || !darijaRedige} onClick={ouvrirWhatsApp}>
               🟢 Ouvrir WhatsApp
             </Button>
           </div>

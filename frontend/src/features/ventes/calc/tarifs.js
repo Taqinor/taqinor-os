@@ -9,9 +9,9 @@
 // calcul que le PDF (facture sans vs avec solaire, économie réelle) au lieu
 // d'une approximation production × autoconsommation × prix moyen.
 //
-// QF5 — divergence de tarif corrigée : `KWH_PRICE` (1.75) reste le défaut
-// historique de `computeROI` (aligné sur CompanyProfile.onee_tarif_kwh, le
-// repli RÉEL en pratique) ; `FALLBACK_KWH_PRICE` (1.20) mirror l'ultime repli
+// QF5 — divergence de tarif corrigée. AGEN13 — le défaut écran `KWH_PRICE` et
+// le calcul local du ROI sont RETIRÉS (le moteur unique lit le tarif société) ;
+// `FALLBACK_KWH_PRICE` (1.20) mirror l'ultime repli
 // `_FALLBACK_KWH_PRICE` de pricing.py, utilisé UNIQUEMENT quand ni tranche ni
 // tarif société ne sont disponibles (repli en cascade, comme le backend).
 export const FALLBACK_KWH_PRICE = 1.20 // MAD/kWh — miroir pricing.py._FALLBACK_KWH_PRICE

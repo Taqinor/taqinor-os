@@ -538,6 +538,23 @@ def _refus_deja_ouvert(existant, user):
     return ImportProjetRefuse(corps.get('lead') or corps['detail'], champ='lead', corps=corps)
 
 
+def _avis_deja_ouvert(existant, user):
+    """T4-X5-016 — l'avertissement de l'aperçu quand le lead a déjà un
+    calepinage ouvert : la confirmation sera refusée, et quoi faire. Même
+    discrétion que le 409 (``corps_conflit`` : rien de l'existant hors vue)."""
+    from .creation import corps_conflit
+
+    corps = corps_conflit(existant, user)
+    if 'calepinage_existant' in corps:
+        return ('Confirmer l’import sera refusé : %s Pour reprendre ce '
+                'fichier, ouvrez ce calepinage et créez-y une variante, ou '
+                'importez-le depuis un calepinage rattaché à un client.'
+                % corps['lead'])
+    return ('Confirmer l’import sera refusé : %s Pour reprendre ce fichier, '
+            'importez-le depuis un calepinage rattaché à un client.'
+            % corps['detail'])
+
+
 def _chemin_layout(prefixe, champ):
     """``roof_layout`` + le chemin rendu par ``io_layout`` (jamais ``<racine>``)."""
     champ = str(champ or '')
@@ -952,9 +969,11 @@ def importer_projet(document, company, *, user=None, lead_id=None,
         if client_id and get_company_client(company, client_id) is None:
             raise ImportProjetRefuse(f'Client introuvable (#{client_id}).', champ='client', statut=404)
         existant = calepinage_ouvert_du_lead(company, lead_id)
-        if existant is not None:
-            raise _refus_deja_ouvert(existant, user)
-        return _resume(plan, ecrit=False)
+        # T4-X5-016 — l'APERÇU n'écrit rien : il reste atteignable (l'onglet
+        # Projet d'un calepinage de lead l'annonce) et dit d'avance que
+        # l'écriture sera refusée (D-ACAL-12, la confirmation garde son 409).
+        avis = [_avis_deja_ouvert(existant, user)] if existant is not None else []
+        return _resume(plan, ecrit=False, avertissements=avis)
 
     from django.db import transaction
 

@@ -24,7 +24,7 @@ import {
   DEVIS_ENVOYE_LES_DEUX, DEVIS_INDUSTRIEL_MT, DEVIS_COMMERCIAL_HOTEL, DEVIS_AGRICOLE_POMPE,
   DEVIS_MULTI_VILLAS, DEVIS_REGISTRE, REGISTRE_NON_VIDE, DEVIS_ETUDE_HORAIRE,
 } from './DevisGeneratorGoldenHarnais'
-import { exempleContrat } from '../../test/fixtures/contractSamples'
+import { exempleContrat, documentContrat } from '../../test/fixtures/contractSamples'
 
 // Chaque API est un objet dont TOUTE méthode est un `vi.fn` qui répond
 // `{ data: {} }` par défaut ; le scénario pose les réponses qui comptent.
@@ -71,8 +71,11 @@ describe('SPL40 — golden du générateur (DOM + appels API)', () => {
   }, 60000)
 
   it('(c) ?edit= d’un devis envoyé « Les deux », reco « Sans batterie »', async () => {
+    // m3 (revue lot 4) — le lead du devis a sa conception (contrat `conception_lead.json`) :
+    // le golden fige de nouveau les ancres `data-figure` de l'édition.
     const vue = await monter(`/ventes/devis/nouveau?edit=${DEVIS_ENVOYE_LES_DEUX.id}`,
-      { devis: DEVIS_ENVOYE_LES_DEUX })
+      { devis: DEVIS_ENVOYE_LES_DEUX, conception: 'contrat' })
+    await waitFor(() => expect(vue.ventesApi.getConceptionLead).toHaveBeenCalled(), { timeout: 5000 })
     await figerDom(vue.container, 'c-edition-envoye-les-deux')
     await enregistrerEtFiger(vue, 'c-edition-envoye-les-deux')
   }, 60000)
@@ -111,10 +114,14 @@ describe('SPL40 — golden du générateur (DOM + appels API)', () => {
     await figerDom(vue.container, 'h-admin-registre')
   }, 60000)
 
-  it('(i) résidentiel avec aperçu d’étude horaire serveur', async () => {
+  // E7d (M3) — l'aperçu résidentiel servi est la CONCEPTION du moteur unique
+  // (contrat `conception_lead.json`, réponse d'aperçu) : cartes, graphe et blocs
+  // sortent de cette seule réponse ; l'aperçu horaire n'est plus appelé.
+  it('(i) résidentiel avec aperçu de la conception servie', async () => {
     const vue = await monter(`/ventes/devis/nouveau?edit=${DEVIS_ETUDE_HORAIRE.id}`,
-      { devis: DEVIS_ETUDE_HORAIRE, etudeHoraire: exempleContrat('ventes', 'etude_horaire') })
-    await waitFor(() => expect(vue.ventesApi.postEtudeHorairePreview).toHaveBeenCalled(), { timeout: 5000 })
+      { devis: DEVIS_ETUDE_HORAIRE, conception: documentContrat('ventes', 'conception_lead').apercu.reponse })
+    await waitFor(() => expect(vue.ventesApi.apercuConception).toHaveBeenCalled(), { timeout: 5000 })
+    expect(vue.ventesApi.postEtudeHorairePreview).not.toHaveBeenCalled()
     await figerDom(vue.container, 'i-residentiel-etude-horaire')
   }, 60000)
 
@@ -124,12 +131,13 @@ describe('SPL40 — golden du générateur (DOM + appels API)', () => {
   // prérempli. Capturé AVANT le déplacement de la carte.
   it('(j) création depuis ?lead=, dimensionnement refusé par le moteur (U3-900)', async () => {
     const vue = await monter(`/ventes/devis/nouveau?lead=${LEAD.id}`, {
-      etudeHoraire: {
-        dimensionnement: { recommandation: null, motivation: 'Dimensionnement impossible : ville du lead inconnue.' },
-        avertissements: [],
+      conception: {
+        ...exempleContrat('ventes', 'conception_lead'), lead: LEAD.id,
+        blocs: { dimensionnement: { recommandation: null,
+          motivation: 'Dimensionnement impossible : ville du lead inconnue.' } },
       },
     })
-    await waitFor(() => expect(vue.ventesApi.postEtudeHorairePreview).toHaveBeenCalled(), { timeout: 5000 })
+    await waitFor(() => expect(vue.ventesApi.getConceptionLead).toHaveBeenCalled(), { timeout: 5000 })
     await waitFor(() => expect(vue.container.querySelector('[data-testid="sizing-serveur-refus"]')).toBeTruthy(),
       { timeout: 5000 })
     await figerDom(vue.container, 'j-residentiel-refus-moteur')

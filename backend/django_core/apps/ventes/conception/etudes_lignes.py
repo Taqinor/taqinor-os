@@ -134,7 +134,6 @@ def dimensionnement_des_lignes(devis, lignes=None, *, force=False):
     from apps.ventes.dimensionnement import recommander_taille
     from apps.ventes.domain.entrees import empreinte_entrees
     from apps.ventes.domain.etudes import entrees_dimensionnement_du_devis
-    from apps.ventes.domain.regles_calcul import REGLES_CORRIGEES_2710, regles_au_moins
     devis = avec_lignes(devis, lignes)
     # P2-A / QJR42 — LECTURE UNIQUE des entrées, AVEC contexte (empreinte).
     entrees = entrees_dimensionnement_du_devis(devis)
@@ -150,8 +149,16 @@ def dimensionnement_des_lignes(devis, lignes=None, *, force=False):
     bloc = etude_params.get('dimensionnement')
     if not force and isinstance(bloc, dict) and bloc.get('_empreinte') == empreinte:
         return 'a_jour', bloc
-    resultat = recommander_taille(
-        company=entrees['company'], conso_kwh_mensuelles=conso,
+    resultat = recommander_taille(**_arguments_du_balayage(devis, entrees))
+    resultat['_empreinte'] = empreinte
+    return 'calcule', resultat
+
+
+def _arguments_du_balayage(devis, entrees):
+    """Les arguments de ``recommander_taille`` pour ``devis`` (UNE lecture des entrées)."""
+    from apps.ventes.domain.regles_calcul import REGLES_CORRIGEES_2710, regles_au_moins
+    return dict(
+        company=entrees['company'], conso_kwh_mensuelles=entrees['conso_kwh_mensuelles'],
         ville=entrees['ville'], lat=entrees['lat'], lon=entrees['lon'],
         occupation=entrees['occupation'], equipements=entrees['equipements'],
         source_conso=entrees['source_conso'], jour_reference=entrees['jour_reference'],
@@ -160,8 +167,24 @@ def dimensionnement_des_lignes(devis, lignes=None, *, force=False):
         hors_reseau=entrees['hors_reseau'], mppt_paires=entrees['mppt_paires'],  # ERR-QJR605
         # RSIZ2/3/5 — un devis aux règles < 3 garde ses sondes.
         regles_2710=regles_au_moins(devis, REGLES_CORRIGEES_2710), devis=devis)  # AMOT130
-    resultat['_empreinte'] = empreinte
-    return 'calcule', resultat
+
+
+def lignes_aux_tailles(devis, lignes, nombres):
+    """T4-X4-018 — les lignes du tableau de dimensionnement de ``devis`` aux tailles
+    ``nombres`` (panneaux), chacune par LE balayage (``recommander_taille``, bornes
+    forcées à cette taille : ``min_panneaux = max_panneaux``) ; ``[]`` sans
+    consommation. Aucune seconde règle : même évaluation, même choix de batterie."""
+    from apps.ventes.dimensionnement import recommander_taille
+    from apps.ventes.domain.etudes import entrees_dimensionnement_du_devis
+    devis = avec_lignes(devis, lignes)
+    entrees = entrees_dimensionnement_du_devis(devis)
+    if entrees is None or not entrees['conso_kwh_mensuelles']:
+        return []
+    arguments, trouvees = _arguments_du_balayage(devis, entrees), []
+    for nombre in sorted(set(int(n) for n in nombres)):
+        tableau = recommander_taille(**arguments, min_panneaux=nombre, max_panneaux=nombre)['tableau']
+        trouvees += [ligne for ligne in tableau if ligne.get('panneaux') == nombre]
+    return trouvees
 
 
 def preparation_etude_ci(devis, lignes=None):

@@ -683,8 +683,10 @@ def _mesures_kwh(brut):
 
 
 def _ecart_consommation(resultat, mesures):
-    """Le bloc ``consommation`` — PUR. Le profil simulé somme TOUTE la fenêtre
-    météo : il est ramené à l'année moyenne (comme ``autoconsommation``)."""
+    """Le bloc ``consommation`` — PUR. T4-X5-012 : le profil simulé publié
+    (``courbe_charge._profil_mensuel_publie``) est DÉJÀ celui de l'année moyenne
+    de la fenêtre météo ; il est lu tel quel (le rediviser par le nombre
+    d'années rendait 59,66 kWh pour les 596,61 du rapport d'étude)."""
     from .valeurs import nombre
 
     resultat = resultat if isinstance(resultat, dict) else {}
@@ -694,13 +696,10 @@ def _ecart_consommation(resultat, mesures):
     if not profil:
         return {'lignes': [], 'total_ecart_pct': None,
                 'motif': MOTIF_LANCER_SIMULATION}
-    total = ((resultat.get('production') or {}).get('total') or {})
-    annees = nombre(total.get('annees_fenetre'))
-    annees = annees if annees and annees >= 1 else 1
     lignes = []
     for mois, mesure in zip(range(1, 13), mesures):
         brut = profil.get(mois)
-        simule = None if brut is None else round(brut / annees, 2)
+        simule = None if brut is None else round(brut, 2)
         lignes.append({'mois': mois, 'simule_kwh': simule,
                        'mesure_kwh': mesure, 'ecart_pct': _pct(mesure, simule)})
     comparables = [ligne for ligne in lignes if ligne['ecart_pct'] is not None]
@@ -709,6 +708,16 @@ def _ecart_consommation(resultat, mesures):
                 sum(ligne['mesure_kwh'] for ligne in comparables) if comparables else None,
                 sum(ligne['simule_kwh'] for ligne in comparables)),
             'motif': None}
+
+
+def _sans_pompage(calepinage):
+    """T4-X5-012 — vrai quand la conception courante du calepinage est d'un marché sans
+    pompage (résidentiel, commercial, industriel) ; sans conception rangée, faux (l'eau
+    reste servie comme avant)."""
+    from .devis_retenu import conception_du_calepinage
+
+    marche = (conception_du_calepinage(calepinage) or {}).get('marche')
+    return marche in ('residentiel', 'commercial', 'industriel')
 
 
 def ecart_mesures_du_calepinage(calepinage, corps):
@@ -730,7 +739,9 @@ def ecart_mesures_du_calepinage(calepinage, corps):
     annee = int(annee)
     eau = {'m3_mesures': [None] * 12, 'simule_m3': None,
            'motif': f'{MOTIF_EAU_SIMULEE} ; {MOTIF_EAU_SANS_DEVIS}'}
-    if calepinage.devis_id:
+    if _sans_pompage(calepinage):
+        eau = None  # T4-X5-012 — un calepinage solaire sans pompage n'a aucune ligne d'eau
+    elif calepinage.devis_id:
         from apps.sav.selectors_releves import volumes_mensuels_du_devis
 
         volumes = volumes_mensuels_du_devis(calepinage.company, calepinage.devis_id,

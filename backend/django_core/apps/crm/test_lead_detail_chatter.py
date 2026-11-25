@@ -124,8 +124,10 @@ class LeadDetailChatterRecentTests(AssertQueryBudgetMixin, TestCase):
     def test_query_count_stays_within_fixed_budget(self):
         """Plafond absolu généreux (comportement RETRIEVE existant déjà
         chargé : owner/client/devis + next_activity + stage_since_days +
-        chatter_recent) — attrape un N+1 dès la 1ère ligne d'activité."""
+        chatter_recent) — attrape un N+1 dès la 1ère ligne d'activité.
+        ACAL2021 (25/11/2026) : 15 → 16, la pastille kWc lit la conception
+        COURANTE du lead (une requête constante de trois colonnes)."""
         self._seed_activites(10)
-        with self.assertMaxQueries(15):
+        with self.assertMaxQueries(16):
             resp = self.api.get(self._detail_url())
         self.assertEqual(resp.status_code, 200)

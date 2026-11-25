@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import calepinageApi from '../../../api/calepinageApi'
+import { useSimulationFraiche } from './simulationFraiche' // T4-X2-006 — relue aussi tant que la simulation tourne
 import { formatNumber } from '../../../lib/format'
 
 /* ACAL401 — résumé vivant de l'atelier, passé en `children` de la barre d'enregistrement :
@@ -19,7 +19,6 @@ function lireResultat(lireLayout) {
 
 export default function ResumeAtelier({ lireLayout, calepinageId, rechargerLe }) {
   const [vivant, setVivant] = useState(() => lireResultat(lireLayout))
-  const [p50, setP50] = useState(null)
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -30,16 +29,7 @@ export default function ResumeAtelier({ lireLayout, calepinageId, rechargerLe })
     return () => window.clearInterval(id)
   }, [lireLayout])
 
-  useEffect(() => {
-    if (!calepinageId) return undefined
-    let annule = false
-    Promise.resolve(calepinageApi.calepinages.resultat(calepinageId)).then((rep) => {
-      const d = rep?.data
-      const frais = d?.simule === true && d?.simulation_perimee === false
-      if (!annule) setP50(frais ? nombre(d?.production?.total?.p50_kwh) : null)
-    }).catch(() => { if (!annule) setP50(null) })
-    return () => { annule = true }
-  }, [calepinageId, rechargerLe])
+  const p50 = useSimulationFraiche(calepinageId, rechargerLe)
 
   let production = '—'
   if (p50 !== null) production = `P50 ${formatNumber(p50, { decimals: 0 })} kWh/an (simulation)`

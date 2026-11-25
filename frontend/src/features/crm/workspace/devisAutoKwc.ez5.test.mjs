@@ -114,8 +114,13 @@ test('la cible prime sur la fiche, mais ne l’écrase jamais', () => {
   assert.doesNotMatch(autoQuote, /taille_souhaitee_kwc:/)
 })
 
-test('la conversion kWc→panneaux est RÉUTILISÉE, pas réécrite', () => {
-  assert.match(autoQuote, /panneauxPourKwc\(tailleKwc, PANEL_W_DEFAUT\)/)
+test('la conversion kWc→panneaux n’est faite QUE par le serveur, jamais réécrite à l’écran', () => {
+  // T4-X1-004 (25/11/2026) — la taille tapée part TELLE QUELLE (`target_kwc`) : l'arrondir
+  // ici au panneau de 710 W supposé faisait annoncer « Taille imposée : 3,55 kWc » pour 3
+  // tapés. Le serveur dérive le nombre de panneaux de ses vrais produits, avec le même
+  // plafond U1 (`apps/ventes/domain/catalogue.py::plafond_panneaux`).
+  assert.doesNotMatch(autoQuote, /panneauxPourKwc\(/)
+  assert.match(autoQuote, /const kwpAuto = tailleKwc > 0 \? tailleKwc : 0/)
   // Aucune arithmétique kWc→panneaux recopiée à la main dans autoQuote.
   assert.doesNotMatch(autoQuote, /Math\.ceil\([^)]*\*\s*1000\s*\/\s*710/)
   // U1 (fondateur 20/08/2026) — la conversion partagée est un PLAFOND : le

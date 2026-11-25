@@ -55,17 +55,20 @@ import { TYPES_EQUIPEMENT, libelleProduit, libelleType } from './EquipementsElec
 
 const LIBELLES_SOURCE = { saisie: 'saisie', import: 'import' }
 
-export default function EquipementsElectriques({ calepinageId, builderApi } = {}) {
+export default function EquipementsElectriques({ calepinageId, builderApi, documentVivant = null } = {}) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
 
+  // T4-X5-008 — le document est RELU à chaque nouvelle empreinte (`documentVivant.empreinte`, le jeton du dernier
+  // enregistrement) : un organe posé puis « Enregistrer le calepinage » s'affiche sans quitter l'onglet.
   const { data, loading, error } = useResource(
-    () => calepinageApi.calepinages.layout(id), id,
+    () => calepinageApi.calepinages.layout(id), [id, documentVivant?.empreinte ?? null],
     { select: (r) => r.data, errorMessage: 'Équipements électriques indisponibles.' },
   )
 
   const [type, setType] = useState(TYPES_EQUIPEMENT[0])
   const [motifArmement, setMotifArmement] = useState(null)
+  const [arme, setArme] = useState(false)
 
   // ACAL634 — « n onduleurs sont nécessaires » : la suggestion SERVIE (`onduleurs_suggeres`), tant que l'entrée
   // ne porte pas encore `nombre_onduleurs` ; « Prendre n onduleurs » l'enregistre puis relit le verdict.
@@ -97,10 +100,12 @@ export default function EquipementsElectriques({ calepinageId, builderApi } = {}
       setMotifArmement(
         'Outil 3D non prêt — ouvrez la conception dans l’atelier 3D avant d’armer une pose.',
       )
+      setArme(false)
       return
     }
     setMotifArmement(null)
     armer(type)
+    setArme(true)
   }
 
   if (loading) {
@@ -169,6 +174,11 @@ export default function EquipementsElectriques({ calepinageId, builderApi } = {}
         {motifArmement
           ? <p className="text-sm text-destructive" data-testid="calx222-armement-motif">{motifArmement}</p>
           : null}
+        {arme && !motifArmement ? (
+          <p role="status" className="text-sm text-foreground" data-testid="calx222-armement-consigne">
+            {`Pose de « ${libelleType(type)} » armée. Cliquez dans l’atelier 3D à l’endroit de l’organe, puis « Enregistrer le calepinage » : il s’ajoutera à cette liste.`}
+          </p>
+        ) : null}
 
         {liste.length === 0
           ? (

@@ -19,6 +19,22 @@ const apercu = (variante) => ({ donnees: exempleContrat('ventes', 'economie_ci',
 
 beforeEach(() => { vi.clearAllMocks() })
 
+describe('E7d (revue lot 4, M1) — retour sur investissement : celui de la MÊME réponse que le TRI et la VAN', () => {
+  it('la ligne des indicateurs lit le retour de l’aperçu C&I (jamais le payback d’un autre devis)', () => {
+    const conception = exempleContrat('ventes', 'conception_lead')
+    const autreDevis = conception.valeurs.sans.payback.valeur
+    const ind = CONTRAT.exemple.indicateurs
+    const memeReponse = ind.retour_dixieme_ans ?? ind.retour_ans
+    expect(memeReponse).not.toBe(autreDevis)
+    render(<CarteEconomieCi apercu={apercu('exemple')} paybackServi={{ paybackSans: autreDevis, paybackAvec: null }} />)
+    const ligne = screen.getByTestId('eco-ci-indicateurs').textContent
+    // Même règle d'arrondi que le TRI voisin (un décimal quand le dixième est servi).
+    const attendu = ind.retour_dixieme_ans != null ? memeReponse.toFixed(1) : String(memeReponse)
+    expect(ligne).toContain(`retour : ${attendu.replace('.', ',')} ans`)
+    expect(ligne).not.toContain(`retour : ${String(autreDevis).replace('.', ',')} ans`)
+  })
+})
+
 describe('CIQ223 — CarteEconomieCi', () => {
   it('statut omis ⇒ motif affiché et aucun nombre', () => {
     render(<CarteEconomieCi apercu={apercu('exemple_omis')} />)

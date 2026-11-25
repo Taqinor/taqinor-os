@@ -461,6 +461,9 @@ export interface AtelierPoseDeps {
   setStatus?: (msg: string) => void;
   /** Re-rendu de la scène après l'ajout d'une surface. */
   recalc?: () => void;
+  /** T4-X9-012 — redessine le tableau du site (pans ET surfaces) aux mêmes instants : surface enregistrée, plan du
+   *  moteur reçu, retrait annulé — la barre du projet, qui relit le document, changeait seule. */
+  rendreSite?: () => void;
 }
 
 /** Ce que le panneau expose (testable sans DOM réel). */
@@ -593,7 +596,7 @@ export function monterAtelierPose(ctx: Ctx, deps: AtelierPoseDeps = {}): Atelier
     if (motifEl) motifEl.textContent = '';
     if (!demander) return;
     enAttente = Promise.resolve().then(() => demander(surface)).then(
-      (reponse) => { surface.engine = engineDepuisReponseMoteur(reponse, surface.areaM2); rendreListe(); deps.recalc?.(); },
+      (reponse) => { surface.engine = engineDepuisReponseMoteur(reponse, surface.areaM2); rendreListe(); deps.recalc?.(); deps.rendreSite?.(); },
       (e: unknown) => {
         const motif = `Plan du moteur non reçu : ${e instanceof Error && e.message ? e.message : 'le moteur n’a pas répondu'}. La surface est gardée sans plan.`;
         if (motifEl) motifEl.textContent = motif;
@@ -613,11 +616,12 @@ export function monterAtelierPose(ctx: Ctx, deps: AtelierPoseDeps = {}): Atelier
     afficherRefus(racine!, null, '');
     Object.assign(verdict.surface, moduleDuPanActif(ctx)); // ACAL918
     // Demande croisée : la photo d'historique se prend AVANT la surface — le retrait du pan la prend (deleteArea), sinon ici.
-    const retire = genre === 'sol' && retirerPanDeTrace(verdict.surface.id); // ACAL1412
+    const retire = genre !== 'facade' && retirerPanDeTrace(verdict.surface.id); // ACAL1412 ; T4-X2-010 — l'ombrière aussi (la façade garde le pan : c'est le bâtiment)
     if (!retire) ctx.pushWorkshopHistory?.();
     list.push(verdict.surface);
     rendreListe();
     deps.recalc?.();
+    deps.rendreSite?.(); // T4-X9-012
     demanderPlan(verdict.surface);
     const manque = verdict.nonSaisi.length
       ? ` Non renseigné : ${verdict.nonSaisi.join(', ')} — la valeur reste absente du document.`
@@ -668,6 +672,7 @@ export function monterAtelierPose(ctx: Ctx, deps: AtelierPoseDeps = {}): Atelier
     if (v >= 0) ctx.areas.splice(v, 1);
     rendreListe();
     deps.recalc?.();
+    deps.rendreSite?.(); // T4-X9-012
     deps.setStatus?.(`${r.pan.label} rétabli : la surface tracée est retirée.`);
   }
   annulerEl?.addEventListener('click', annulerRetrait);

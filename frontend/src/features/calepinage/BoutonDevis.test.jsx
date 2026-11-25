@@ -13,7 +13,7 @@ import { exempleContrat } from '../../test/fixtures/contractSamples'
    objet tapé à la main. */
 
 vi.mock('../../api/calepinageApi', () => ({
-  default: { calepinages: { genererDevis: vi.fn(), syncDevis: vi.fn() } },
+  default: { calepinages: { genererDevis: vi.fn(), syncDevis: vi.fn(), apercuDevis: vi.fn() } },
 }))
 vi.mock('../../api/ventesApi', () => ({
   default: { reviserDevis: vi.fn() },
@@ -91,6 +91,36 @@ describe('Documents — forme compacte des surfaces et flèche du bouton doré',
   })
 })
 
+// T4-X5-007 — l'écran dit lui-même chaque refus : le toast global est coupé sur generer-devis / sync-devis.
+const SANS_TOAST = { suppressErrorToast: true }
+
+/* Lane E9 (T4-X5-010) — avant « Générer le devis », ce que le devis PORTERA (dry-run servi, mot pour mot). */
+describe('Lane E9 — le matériel que le devis portera, dit avant le bouton', () => {
+  it('par option : module et onduleur servis, puis la phrase de l’écart à la désignation électrique', async () => {
+    const apercu = exempleContrat('calepinage', 'calepinage_apercu_devis')
+    calepinageApi.calepinages.apercuDevis.mockResolvedValue({ data: apercu })
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    const bloc = await screen.findByText('Le devis portera :')
+    const zone = bloc.closest('[data-zone="apercu-materiel-devis"]')
+    expect(within(zone).getByText('Sans batterie : module Module 710 Wc · onduleur Onduleur réseau 6 kW')).toBeInTheDocument()
+    expect(within(zone).getByText('Avec batterie : module Module 710 Wc · onduleur Onduleur hybride 6 kW')).toBeInTheDocument()
+    expect(within(zone).getByText(apercu.ecarts[0].message)).toHaveAttribute('role', 'status')
+    expect(calepinageApi.calepinages.apercuDevis).toHaveBeenCalledWith(DETAIL_VIDE.id)
+    // Placé AVANT le bouton « Générer le devis ».
+    const bouton = screen.getByTestId('cal-generer-devis')
+    expect(zone.compareDocumentPosition(bouton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('rien ne se compose (refus servi) : rien n’est affirmé', async () => {
+    calepinageApi.calepinages.apercuDevis.mockResolvedValue({
+      data: exempleContrat('calepinage', 'calepinage_apercu_devis', 'exemple_refus') })
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    await screen.findByTestId('cal-generer-devis')
+    await waitFor(() => expect(calepinageApi.calepinages.apercuDevis).toHaveBeenCalled())
+    expect(screen.queryByText('Le devis portera :')).toBeNull()
+  })
+})
+
 describe('BoutonDevis (CAL38)', () => {
   it('détail absent (agrégat pas encore lu) : aucun bouton deviné', async () => {
     rendre({ detail: null })
@@ -107,7 +137,7 @@ describe('BoutonDevis (CAL38)', () => {
     await userEvent.click(await screen.findByTestId('cal-generer-devis'))
 
     await waitFor(() => expect(calepinageApi.calepinages.genererDevis)
-      .toHaveBeenCalledWith(DETAIL_VIDE.id, {}))
+      .toHaveBeenCalledWith(DETAIL_VIDE.id, {}, SANS_TOAST))
     expect(navigateMock).not.toHaveBeenCalled() // ACAL866 : plus de navigation immédiate
     expect(await screen.findByTestId('cal-devis-cree')).toHaveTextContent('Devis DEV-2609-0042 créé')
     expect(screen.getByTestId('cal-devis-ouvrir')).toHaveAttribute('href', '/ventes/devis?devis=42')
@@ -329,7 +359,7 @@ describe('BoutonDevis — confirmation de taille (ACAL923)', () => {
 
     await userEvent.click(within(encadre).getByRole('button', { name: 'Confirmer et générer' }))
     await waitFor(() => expect(calepinageApi.calepinages.genererDevis)
-      .toHaveBeenLastCalledWith(DETAIL_VIDE.id, CORPS))
+      .toHaveBeenLastCalledWith(DETAIL_VIDE.id, CORPS, SANS_TOAST))
     expect(await screen.findByTestId('cal-devis-cree')).toHaveTextContent('Devis DEV-2611-0043 créé')
     expect(screen.queryByTestId('cal-devis-confirmation-taille')).toBeNull()
   })
@@ -477,6 +507,24 @@ describe('BoutonDevis — verdict électrique (ACAL171)', () => {
     expect(navigateMock).not.toHaveBeenCalled()
   })
 
+  it('T4-X5-007 — refus électrique : aucun nom de champ technique, dit UNE fois (le toast global est coupé)', async () => {
+    const terre = {
+      code: 'TERRE_JUSTIFICATION_MANQUANTE',
+      libelle: 'prise de terre non fournie au marché : la justification de continuité de la terre existante reste '
+        + 'à cocher (terre.justification_continuite)',
+      detail: '',
+    }
+    calepinageApi.calepinages.genererDevis.mockRejectedValueOnce({
+      response: { status: 409, data: { ...REFUS, electrique: { ...REFUS.electrique, bloquants: [terre] } } },
+    })
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: avecDroit(false) })
+    await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+    const bloc = await screen.findByTestId('cal-devis-bloquants')
+    expect(bloc).toHaveTextContent('reste à cocher')
+    expect(bloc).not.toHaveTextContent('terre.justification_continuite')
+    expect(calepinageApi.calepinages.genererDevis.mock.calls[0][2]).toEqual({ suppressErrorToast: true })
+  })
+
   it('dérogation sans motif refusée sous le champ', async () => {
     await refuser()
     await userEvent.click(screen.getByTestId('cal-devis-passer-outre'))
@@ -492,7 +540,7 @@ describe('BoutonDevis — verdict électrique (ACAL171)', () => {
     await userEvent.type(screen.getByTestId('cal-devis-motif'), motif)
     await userEvent.click(screen.getByTestId('cal-devis-passer-outre'))
     await waitFor(() => expect(calepinageApi.calepinages.genererDevis)
-      .toHaveBeenLastCalledWith(DETAIL_VIDE.id, CORPS))
+      .toHaveBeenLastCalledWith(DETAIL_VIDE.id, CORPS, SANS_TOAST))
     expect(await screen.findByTestId('cal-devis-ouvrir'))
       .toHaveAttribute('href', `/ventes/devis?devis=${DEROGUE.devis}`)
     expect(screen.queryByTestId('cal-devis-bloquants')).toBeNull()
@@ -628,7 +676,7 @@ describe('BoutonDevis — recette R2 (pose au-delà de la cible, devis existant,
     expect(encadre).toHaveTextContent(POSE.refus)
     await userEvent.click(within(encadre).getByRole('button', { name: 'Confirmer et générer' }))
     await waitFor(() => expect(calepinageApi.calepinages.genererDevis)
-      .toHaveBeenLastCalledWith(DETAIL_VIDE.id, CONFIRMER))
+      .toHaveBeenLastCalledWith(DETAIL_VIDE.id, CONFIRMER, SANS_TOAST))
     expect(await screen.findByTestId('cal-devis-cree')).toHaveTextContent('Devis DEV-2611-0075 créé')
   })
 
@@ -647,7 +695,7 @@ describe('BoutonDevis — recette R2 (pose au-delà de la cible, devis existant,
     await userEvent.click(within(question).getByRole('button',
       { name: `Rattacher ce calepinage au devis ${EXISTANT.reference}` }))
     await waitFor(() => expect(calepinageApi.calepinages.genererDevis)
-      .toHaveBeenLastCalledWith(DETAIL_VIDE.id, RATTACHER))
+      .toHaveBeenLastCalledWith(DETAIL_VIDE.id, RATTACHER, SANS_TOAST))
     const lu = await screen.findByTestId('cal-devis-avertissements')
     expect(lu).toHaveTextContent(`Calepinage rattaché au devis ${EXISTANT.reference}`)
     expect(screen.queryByTestId('cal-devis-cree')).toBeNull()
@@ -666,11 +714,11 @@ describe('BoutonDevis — recette R2 (pose au-delà de la cible, devis existant,
     await userEvent.click(within(await screen.findByTestId('cal-devis-existant'))
       .getByRole('button', { name: 'Créer un autre devis' }))
     await waitFor(() => expect(calepinageApi.calepinages.genererDevis)
-      .toHaveBeenLastCalledWith(DETAIL_VIDE.id, AUTRE))
+      .toHaveBeenLastCalledWith(DETAIL_VIDE.id, AUTRE, SANS_TOAST))
     await userEvent.click(within(await screen.findByTestId('cal-devis-confirmation-taille'))
       .getByRole('button', { name: 'Confirmer et générer' }))
     await waitFor(() => expect(calepinageApi.calepinages.genererDevis)
-      .toHaveBeenLastCalledWith(DETAIL_VIDE.id, { ...AUTRE, ...CONFIRMER }))
+      .toHaveBeenLastCalledWith(DETAIL_VIDE.id, { ...AUTRE, ...CONFIRMER }, SANS_TOAST))
     expect(await screen.findByTestId('cal-devis-cree')).toHaveTextContent('Devis DEV-2611-0078 créé')
   })
 

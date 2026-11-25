@@ -102,3 +102,23 @@ export function emettreProvenanceEpingle<T extends object>(layout: T, ctx: Ctx):
   if (site && site.valeur !== undefined) sortie.siteLocalise = site.valeur;
   return layout;
 }
+
+// ═══════════ T4-X2-005 — UN SEUL LIEU POUR TOUS LES CALCULS D'UN CALEPINAGE ═══════════
+// Site non localisé : la simulation (serveur) calcule sur le point de repli (ville de
+// référence, repère GPS de la fiche — `calepinage.site_de_repli_point`), alors que l'atelier
+// calait le pas entre rangées et ses autres calculs solaires sur la latitude du TRACÉ (un toit
+// dessiné sur la carte au niveau du pays : 31,79° au lieu de 33,57°). Tant que le suivi dit
+// « non localisé » (`null`), la latitude des calculs est celle du repli SERVI ; sinon (site
+// localisé, document ancien, site public sans suivi) celle du tracé, comme avant.
+
+/** Le point de repli SERVI utilisé pour les calculs, ou `null` (site localisé, pas de repli, pas de suivi). */
+export function lieuDeRepli(ctx: Ctx): { lat: number; libelle: string } | null {
+  const repli = (ctx.opts as { suiviSite?: { repli?: { lat?: unknown; libelle?: unknown } | null } } | undefined)?.suiviSite?.repli;
+  if (etatSite(ctx) !== null || !repli || typeof repli.lat !== 'number' || !Number.isFinite(repli.lat)) return null;
+  return { lat: repli.lat, libelle: typeof repli.libelle === 'string' ? repli.libelle : '' };
+}
+
+/** La latitude des calculs solaires de l'atelier : le repli servi tant que le site n'est pas localisé, sinon celle du tracé. */
+export function latitudeDuCalcul(ctx: Ctx, latitudeDuTrace: number): number {
+  return lieuDeRepli(ctx)?.lat ?? latitudeDuTrace;
+}

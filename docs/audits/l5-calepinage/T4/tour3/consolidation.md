@@ -105,3 +105,69 @@ retrouvé, carte de la variante posée, « Enregistré à » identique après re
    rangées au bon lieu (005), production avant / après rechargement (002), raccordement automatique bloquant (004),
    réglages de pente en Expert (008), boutons en anglais (011).
 
+## État des corrections du tour 3 (25/11, 05 h 55 UTC)
+
+- **Corrigé, à rejouer par un relecteur neuf** : T4-X4-005 (liste des devis : 25 devis = 78 Ko au lieu de 1,8 Mo, une
+  page à la fois, total et cartes par statut servis à part — lane `t3-liste`) ; T4-X4-016 et T4-X4-008 (l'écran devis
+  lit la conception servie, bandeau « La conception a changé » et « Mettre à jour », avis sur la carte du devis de la
+  fiche — lane `moteur-e7b`) ; T4-X2-003 (bandeau du site : lieu servi par le serveur — lot 3, fusionné).
+- **En cours** : T4-V1-001, note « par ? », libellé du brouillon jamais envoyé (lane `moteur-e7a`) ; T4-X2-001, 006,
+  007, 009 (lane `moteur-e7c`).
+- **Pas encore de lane** : lanes 2 (reste de l'éditeur : 001, 004, 011, 018, 019, 020, 021, petits), 3, 4, 5 (restes),
+  6 (atelier : 010 d'abord, 002, 004, 005, 008, 011).
+
+## X5 — atelier après le toit, Résultats, Documents, « Générer le devis » (terminé, 25/11 vers 07 h UTC)
+
+Chromium 1440 × 900, thème sombre, pile `22e6aa81ae` (lot 3). 48 lignes notées sur 48 (41 jouées, 3 bloquées, 2
+introuvables, 2 non atteintes). 17 constats : 1 S1, 8 S2, 6 S3, 2 S4 (`registre/constats/T4-X5.jsonl`, rapport `X5.md`).
+Valeurs à plusieurs nombres relevées pour un même calepinage : kWc 5,68 (pose) / 4,40 puis 2,13 (cible) / 2,2 et 4,4
+(devis) ; production 9 228 (simulation de la pose) / 3 414 (conception) / 3 527 et 7 053 (devis) ; couverture 40 %
+(Résultats) / ≈ 123 % (bande) / 74 % (devis) ; économies 6 310 (atelier) / 5 490 et 8 884 MAD par an (devis).
+
+Tri (cause à prouver par la lane avant de corriger) :
+- **S1 T4-X5-009** réimporter la conception que l'atelier vient d'exporter vide le toit → lane F6b (en vol), en premier.
+- **S2 001** deux productions à l'étape Résultats sans dire leurs tailles → F6b. **S3 005** pourcentage calculé sur une
+  ancienne estimation → lane `moteur-e7e` (même composant). **S3 006, 008, 013, 014, 016, S4 007** → F6b. **S4 017**
+  commandes de la carte en plein écran → F6a (outil de toit).
+- **S2 002** consommation du calepinage plate malgré « été différent », **S2 012** « Simulé » dix fois trop petit,
+  **S2 004** écart avec le devis envoyé du lead jamais nommé quand le devis n'est pas lié au calepinage, **S3 015**
+  synthèse qui marie la puissance d'une pose et la production d'un autre devis → lane `moteur-e8` (mêmes fonctions).
+- **S2 010** le devis né de l'atelier chiffre un autre onduleur que celui désigné, « Resynchroniser » en impasse ;
+  **S2 011** « Réviser le devis » reprend l'ancienne pose (6 panneaux) au lieu de la conception (7) ; **S2 003** la
+  cible « Couvrir la facture » change (8 panneaux → 3) sans le dire après une désignation → lane à écrire
+  (« devis né de l'atelier »), APRÈS e6d et e8 (mêmes fichiers) ; liée à la décision 28 du rapport (effets d'une
+  désignation à la main) : dire à l'écran ce que le moteur a fait d'une désignation, ne jamais laisser d'impasse ;
+  le choix de fond reste au fondateur.
+
+État des lanes du tour 3 au 25/11, 07 h 05 UTC : F6b en vol ; F6a, F3, F4, F2a, F2b prêtes (consignes dans le bloc-notes
+de session, `tour3/msg-lane-*.md`) ; relecteurs X3, X6, X7, X8 à lancer sur la pile mise à jour au lot 4 corrigé.
+
+## État des corrections du tour 3 (25/11, 08 h 05 UTC) — remplace l'état de 05 h 55
+
+**Corrigé dans `dev-lot4`, à REJOUER par un relecteur neuf sur la pile mise à jour** (chaque lane : test rouge d'abord,
+cause lue ; rien n'a encore été regardé à l'écran) :
+- Liste des devis : T4-X4-005 (lane `t3-liste`).
+- Écran devis, étape 7 : T4-X4-016, T4-X4-008 (lane `moteur-e7b`) — puis la relecture du lot 4 a trouvé B2, M1 à M4
+  sur ce même écran : lane `moteur-e7d` EN VOL.
+- Fiche du lead : T4-V1-001, note « — automatique », libellé du brouillon jamais envoyé (lane `moteur-e7a`) ; carte
+  Conception : recalcul non terminé dit, option retenue marquée (lane `moteur-e7e`).
+- Atelier, valeurs servies : T4-X2-001, 006, 007, 009 (lane `moteur-e7c`) ; vue client et bande Panneaux quand la pose
+  n'a pas la taille de la conception (B1, M5 de la relecture ; lane `moteur-e7e`).
+- Atelier, écrans (lane F6b `t3-atelier-ecrans`) : **T4-X5-009 (S1)** — cause : l'import enregistrait l'enveloppe du
+  fichier exporté comme conception (`views/io_layout.py`) ; un import sans toit par-dessus un toit demande maintenant
+  confirmation ; T4-X5-001, 014, 008, 013, 016, 006, 007.
+- Atelier, outil de toit (lane F6a `t3-atelier`) : **T4-X2-010 (S2)** — cause : au rechargement, les zones non actives
+  perdaient leur rendu (`result` et `renderPlan` nuls) : compteurs à 0 et toit vide à l'écran alors que le document
+  gardait ses panneaux ; l'ombrière laissait une zone fantôme ; T4-X2-004 (la ligne de l'onduleur lit les mêmes
+  contrôles que le verdict), 005 (un seul lieu : `site_de_repli_point` servi), 008, 011, T4-X5-017.
+  T4-X2-002 CONTESTÉ par la lane (l'atelier ERP ne montre plus l'estimation du navigateur) : à vérifier à l'écran.
+- Pompage et PDF (lane F4 `t3-pompage-pdf`) : T4-X1-008 (origine du débit gardée à l'enregistrement), 009 (une taille
+  sous la puissance minimale le dit), 014 (alertes sans formule) ; T4-X1-001 et 002 (PDF client) corrigés DERRIÈRE le
+  niveau de règles 15, dormant — niveau 14 inchangé (références figées vertes sans retouche).
+- T4-X5-005 : non reproduit dans le code du lot 4 (garde ajoutée) ; T4-X2-003 : lot 3.
+
+**En vol** : `moteur-e7d` (écran devis), `moteur-e8` (T4-X5-002, 012, 004, 015 + étape 8), `moteur-e6e` (T4-X5-003,
+010, 011), F3 `t3-listes-envoi` (T4-X1-003, 007, 010, 011, 012, T4-X4-006, 009, 010 + M6 de la relecture).
+**Pas encore lancées** (même écran que `moteur-e7d`, après son retour) : F2a (T4-X4-001, 004, 011, 018, 019, 020, 021,
+T4-X1-004), F2b (T4-X4-012, 013, 014, 015, 017, 022, T4-X1-016).
+**Restent sans lane** : aucun constat S1 ou S2 du tour 3.

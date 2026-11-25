@@ -85,6 +85,11 @@ def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None
 
     debut = timezone.now()  # relecture E3 Q5 : avant toute lecture des entrées
     origine, champs = _declencheur_valide(declencheur)
+    if lead is not None and calepinage_id is None:
+        # Lane E6e (T4-X5-003) — UNE conception par lead : son calepinage ouvert (pose et
+        # désignations) entre quel que soit le déclencheur, pas seulement côté calepinage.
+        from apps.ventes.conception.porte_calepinage import calepinage_du_lead
+        calepinage_id, toit = calepinage_du_lead(company, lead, None, toit)
     try:
         lead, porteur, refus = _porteur(lead, company, calepinage_id)
     except ValueError:
@@ -108,7 +113,12 @@ def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None
         # Relecture E6 B2 : désignations du calepinage = imposition SOUPLE (jamais un refus).
         imposes = designations_du_calepinage(company, calepinage_id) or None
         souple = imposes is not None
+    from apps.ventes.conception.moteur import consommation_imposee, separer_consommation
     from apps.ventes.conception.porte_calepinage import contexte_de_la_relance
+    # Reste d'ACAL2020 (niveau 15) : la consommation imposée (``imposes.consommation`` ou le relevé
+    # collé au calepinage) — une COPIE du lead la porte (jamais écrite), comptée dans l'empreinte.
+    lead, _conso = consommation_imposee(lead, company, calepinage_id, imposes)
+    imposes = separer_consommation(imposes)[0]
     # Relecture E6 — jamais de simulation de pose dans une requête (la tâche et la commande
     # posent ``contexte_de_pose(simuler=True)``) ; une requête la met en file au nom de l'auteur.
     with reglages_lus_sans_creer(company), contexte_de_la_relance(auteur):
@@ -149,7 +159,27 @@ def _pourquoi(courante, entrees, origine, champs):
     releves = changements(ancienne, entrees.entrees_utilisees, champs)
     if not champs and not releves and origine == 'filet' and format_d_avant(ancienne):
         return 'regles', champs
-    return origine, champs + _declencheur_valide({'origine': origine, 'champs': releves})[1]
+    return origine, champs + _declencheur_valide({'origine': origine, 'champs': _materiel_designe(
+        releves, ancienne, entrees.entrees_utilisees)})[1]
+
+
+#: Lane E6e — les entrées du matériel DÉSIGNÉ à l'étape Électrique, dites en UN morceau.
+DESIGNES = ('module_designe', 'onduleur_designe')
+CHAMP_MATERIEL_DESIGNE = 'materiel_designe'
+
+
+def _materiel_designe(releves, ancienne, nouvelle):
+    """Les changements relevés, ceux du module / onduleur désignés réunis en UN champ
+    ``materiel_designe`` (``avant`` / ``apres`` = « <module> / <onduleur> », un rôle sans
+    désignation dit « matériel du moteur ») ; rien quand la paire n'a pas changé."""
+    autres = [c for c in releves if c['champ'] not in DESIGNES]
+    paires = [tuple(((e or {}).get(cle) or {}).get('valeur') for cle in DESIGNES) for e in (ancienne, nouvelle)]
+    if paires[0] == paires[1]:
+        return autres
+
+    def _dite(paire):
+        return None if not any(paire) else ' / '.join(v or 'matériel du moteur' for v in paire)
+    return autres + [{'champ': CHAMP_MATERIEL_DESIGNE, 'avant': _dite(paires[0]), 'apres': _dite(paires[1])}]
 
 
 def _garde_de_rangement(company, lead, debut):
@@ -228,7 +258,8 @@ class SaisieRefusee(ValueError):
         self.champ = champ
 
 
-def apercu_conception(lead, company, *, calepinage_id=None, calepinage=None, saisies=None, imposes=None):
+def apercu_conception(lead, company, *, calepinage_id=None, calepinage=None, saisies=None, imposes=None,
+                      investissement=None):
     """ADEV137/ADEV152 — la sortie du moteur (contrat, clés ``CLES_SORTIE``)
     pour des valeurs TAPÉES et non enregistrées, SANS AUCUNE ÉCRITURE : le
     porteur (lead, ou calepinage sans lead) est copié en mémoire, ses colonnes
@@ -236,7 +267,8 @@ def apercu_conception(lead, company, *, calepinage_id=None, calepinage=None, sai
     ``saisie``), ``imposes`` = champs imposés de ``POST devis/auto/``
     (``composition_imposee.CHAMPS_IMPOSES``, résidentiel). Rend ``(sortie,
     refus du porteur)`` ; ``SaisieRefusee`` pour une saisie hors liste ou
-    illisible."""
+    illisible. E7d (M1) : ``investissement`` = ``{option: MAD TTC de vente}`` des
+    lignes de l'écran, le prix du payback de chaque option (``valeurs._payback``)."""
     import copy
 
     from django.core.exceptions import ValidationError
@@ -246,6 +278,11 @@ def apercu_conception(lead, company, *, calepinage_id=None, calepinage=None, sai
     from apps.ventes.conception.moteur import calculer_conception, reglages_lus_sans_creer, sans_cles_interdites
     from apps.ventes.domain.composition_imposee import imposition_du_corps
 
+    if lead is None and calepinage is None and calepinage_id is None:
+        # ADEV152 — devis SANS lead ni calepinage : un lead NON ENREGISTRÉ de la
+        # société ne portant que les valeurs tapées (comme ``lead_du_calepinage``).
+        from django.apps import apps as registre
+        lead = registre.get_model('crm', 'Lead')(company=company)
     lead, _filtre, refus = _porteur(lead, company, calepinage_id, calepinage)
     if refus is not None:
         return None, refus
@@ -263,11 +300,85 @@ def apercu_conception(lead, company, *, calepinage_id=None, calepinage=None, sai
             setattr(copie, champ, copie._meta.get_field(champ).to_python(valeur))
         except (ValidationError, TypeError, ValueError):
             raise SaisieRefusee('Valeur illisible pour « %s ».' % champ, champ)
+    copie = _avec_la_consommation_de_l_apercu(copie, company, imposes)
+    prix = _investissement_valide(investissement)
     with reglages_lus_sans_creer(company):
-        resultat = calculer_conception(copie, company, imposes=imposition_du_corps(imposes or {}) or None)
+        resultat = calculer_conception(copie, company, imposes=imposition_du_corps(imposes or {}) or None,
+                                       investissement=prix)
+        _tailles_des_options(resultat)
     for champ in saisies:
         resultat.entrees_utilisees[champ] = {'valeur': _en_json(getattr(copie, champ)), 'source': 'saisie'}
     return sans_cles_interdites(_en_json(resultat.sortie())), None
+
+
+def _tailles_des_options(resultat):
+    """T4-X4-018 — le tableau des tailles de l'APERÇU (``blocs.dimensionnement.tableau``)
+    porte une ligne à la taille de CHAQUE option servie, marquée ``taille_du_devis``
+    (options de cette taille) : ``recommander_taille`` borne son balayage à la parité + 1
+    panneau (``bornes_candidates``) quand l'option avec batterie de la conception monte
+    au-delà pour remplir sa batterie. Une taille absente est calculée par LE même
+    balayage, à cette seule taille (``etudes_lignes.lignes_aux_tailles``). Aperçu
+    seulement : la version rangée n'est pas touchée."""
+    from apps.ventes.conception.etudes_lignes import lignes_aux_tailles
+
+    bloc = (resultat.blocs or {}).get('dimensionnement')
+    if resultat.etat != 'complet' or resultat.marche != 'residentiel' or not isinstance(bloc, dict) \
+            or not resultat.lignes:
+        return
+    tailles = {}
+    for option, table in (resultat.valeurs or {}).items():
+        nb = (table.get('nb_panneaux') or {}).get('valeur')
+        if nb:
+            tailles.setdefault(int(nb), []).append(option)
+    if not tailles:
+        return
+    tableau = [dict(li, taille_du_devis=tailles[li.get('panneaux')]) if li.get('panneaux') in tailles else li
+               for li in bloc.get('tableau') or []]
+    presentes = {li.get('panneaux') for li in tableau}
+    manquantes = [nb for nb in tailles if nb not in presentes]
+    if manquantes:
+        ajoutees = lignes_aux_tailles(resultat.lignes[0].devis, resultat.lignes, manquantes)
+        tableau += [dict(li, taille_du_devis=tailles[li['panneaux']]) for li in ajoutees]
+    resultat.blocs = dict(resultat.blocs, dimensionnement=dict(
+        bloc, tableau=sorted(tableau, key=lambda li: li.get('panneaux') or 0)))
+
+
+def _investissement_valide(brut):
+    """E7d (revue lot 4, M1) — ``{option: MAD}`` (options ``sans`` / ``avec``, montant de
+    VENTE TTC > 0, fini), ou ``None`` ; ``SaisieRefusee`` nommant ``investissement[.<option>]``."""
+    import math
+
+    if brut is None:
+        return None
+    if not isinstance(brut, dict):
+        raise SaisieRefusee('« investissement » est un objet {option : montant TTC}.', 'investissement')
+    propre = {}
+    for option, montant in brut.items():
+        champ = 'investissement.%s' % option
+        if option not in ('sans', 'avec'):
+            raise SaisieRefusee('Option inconnue : %s (sans ou avec).' % option, champ)
+        if isinstance(montant, bool) or not isinstance(montant, (int, float)) or not math.isfinite(montant) \
+                or montant <= 0:
+            raise SaisieRefusee('« %s » : un montant TTC positif est attendu.' % champ, champ)
+        propre[option] = float(montant)
+    return propre or None
+
+
+def _avec_la_consommation_de_l_apercu(copie, company, imposes):
+    """Reste d'ACAL2020 — ``imposes.consommation`` de l'écran devis (``conception/
+    consommation_imposee.py`` : douze factures saisies, facture réelle, saisie), validée UNE
+    fois là-bas et posée sur la copie du porteur ; l'aperçu n'écrit rien, donc elle est
+    acceptée au niveau de règles courant. Hors forme ⇒ ``SaisieRefusee`` nommant le champ."""
+    from apps.ventes.conception import consommation_imposee as CI
+
+    brute = CI.separer(imposes)[1]
+    if brute is None:
+        return copie
+    try:
+        imposee = CI.valider(brute)
+    except CI.ConsommationRefusee as exc:
+        raise SaisieRefusee(str(exc), 'imposes.' + exc.champ)
+    return CI.imposer(copie, company, imposee=imposee)[0]
 
 
 def _declencheur_valide(declencheur):
@@ -316,7 +427,7 @@ def _annoncer_apres_validation(version):
 
 # ── Relecture E5 B1 — la porte de LECTURE du calepinage (jamais une impasse) ─
 
-def conception_ou_calcul(company, lead_id=None, *, calepinage_id=None):
+def conception_ou_calcul(company, lead_id=None, *, calepinage_id=None, en_liste=False):
     """``(conception, en_cours)`` du porteur : la version COURANTE à la forme du
     contrat (``selectors_conception.conception_courante``, qui reste une
     lecture) ; sans version rangée d'un LEAD, UNE relance dédupliquée part en
@@ -326,22 +437,26 @@ def conception_ou_calcul(company, lead_id=None, *, calepinage_id=None):
     ou déjà en file. Un calepinage SANS lead n'en met aucune : le moteur le
     refuserait faute de lieu (``moteur.lead_du_calepinage`` ne porte ni ville
     ni GPS). Lue UNE fois par requête (mémo ``core.request_cache``), sans le suivi des
-    devis (``ecart_devis`` / brouillons servis vides : le calepinage sert son propre écart)."""
+    devis (``ecart_devis`` / brouillons servis vides : le calepinage sert son propre écart).
+    ``en_liste`` (une LISTE, ex. la file « à traiter ») : rien du moteur — ni empreinte des
+    entrées (péremption), ni relance en file ; la version rangée est lue telle quelle
+    (``perimee`` à faux), ``None`` sans version."""
     from core import request_cache
 
     if company is None or not getattr(company, 'pk', None):
         return None, False
-    cle = ('ventes.conception.courante', company.pk, lead_id, None if lead_id else calepinage_id)
-    return request_cache.memoize(cle, lambda: _conception_ou_calcul(company, lead_id, calepinage_id))
+    cle = ('ventes.conception.courante', company.pk, lead_id, None if lead_id else calepinage_id, en_liste)
+    return request_cache.memoize(cle, lambda: _conception_ou_calcul(company, lead_id, calepinage_id, en_liste))
 
 
-def _conception_ou_calcul(company, lead_id, calepinage_id):
+def _conception_ou_calcul(company, lead_id, calepinage_id, en_liste=False):
     from apps.ventes.conception.receivers import mettre_en_file
     from apps.ventes.selectors_conception import conception_courante
 
     # Le calepinage sert lui-même l'écart du devis qu'il montre (``devis_retenu.bloc_conception``).
-    conception = conception_courante(company, lead_id, calepinage_id=calepinage_id, suivi_des_devis=False)
-    if conception is not None or not lead_id:
+    conception = conception_courante(company, lead_id, calepinage_id=calepinage_id, suivi_des_devis=False,
+                                     peremption=not en_liste)
+    if conception is not None or not lead_id or en_liste:
         return conception, False
     issue = mettre_en_file(company.pk, lead_id=lead_id, origine='remplissage', champs=[])
     return None, issue in ('lancee', 'deja_en_file')
@@ -365,6 +480,9 @@ def phrase_du_declencheur(lead, champs, origine, quand):
 def _morceau(lead, c):
     from apps.ventes.conception.societe import MOTIFS
 
+    if c['champ'] == CHAMP_MATERIEL_DESIGNE:  # lane E6e : la désignation de l'atelier, en mots
+        return ("matériel désigné à l'atelier : %s" % c['apres'] if c['apres']
+                else "désignation retirée à l'atelier : matériel du moteur")
     if c['champ'] in MOTIFS:  # relecture E4 B1 : un réglage société, dit en mots
         if c['avant'] is None or c['apres'] is None:
             return MOTIFS[c['champ']]

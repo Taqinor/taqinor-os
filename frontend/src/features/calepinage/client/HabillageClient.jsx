@@ -4,7 +4,7 @@ import { Icone, Segmente } from '../atelier/coque/primitives'
 import { gestes, useConstructeur } from '../atelier/coque/etapes/panneaux/constructeur'
 import { jourMois } from '../atelier/coque/etapes/panneaux/formats'
 import { AttenteScene, AvisEchec3D, PastilleAttente, PiedClient, PlanDessus, PuceProjet, TuilesClient, IconeTourner } from './partiesClient'
-import { estimationPose, instantSoleilChoisi, useBureau } from './vueClient.helpers'
+import { instantSoleilChoisi, useBureau } from './vueClient.helpers'
 import { useHorsVueClientInerte } from './inerteHorsClient'
 
 /* ============================================================================
@@ -168,9 +168,8 @@ export default function HabillageClient({
   // « Réessayer » : seulement ce qui a échoué — le démarrage de la 3D (relancé par la vue client) et la vue tenue ;
   // les tuiles déjà montrées restent.
   const reessayer = () => { setEssai((n) => n + 1); onReessayer?.() }
-  // ACAL1840 (D-ACAL-88) — sans résultat complet, la production montrée est l'estimation de la pose de l'atelier.
-  const [constructeur] = useConstructeur()
-  const tuiles = donnees.tuilesAvec ? donnees.tuilesAvec(estimationPose(constructeur.figures)) : donnees.tuiles
+  // ACAL2023 — les chiffres sont ceux de la conception courante servie (`donnees.tuiles`) : aucune estimation lue sur l'atelier.
+  const { tuiles } = donnees
   return (
     <>
       {noeudScene && createPortal(

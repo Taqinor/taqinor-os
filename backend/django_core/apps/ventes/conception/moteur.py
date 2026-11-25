@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 VERSION_MOTEUR = 'moteur-unique-2'  # relecture E5 m4 : identifiants produit servis
 CODE_LOCALISATION = 'localisation_inconnue'
 MESSAGE_LOCALISATION = 'Ville inconnue du moteur : renseigner la ville ou le point GPS du lead.'
+#: T4-X9-013 — le même refus pour un calepinage SANS lead : son entrée ne porte aucun lieu.
+MESSAGE_LOCALISATION_SANS_LEAD = ("Sans lead, l'atelier ne calcule pas de conception : la production "
+                                  'vient de la simulation de la pose.')
 CODE_REFUS_MOTEUR = 'refus_moteur'
 #: Relecture E6 — conception électrique non dessinée hors fiche incomplète (portails C&I).
 MOTIF_NON_DESSINABLE = ('Conception électrique non calculée : aucun panneau à répartir en chaînes '
@@ -81,6 +84,9 @@ class ResultatConception:
     #: productible servi retenu (``None`` : production de la ville). Jamais servis.
     pose_a_produire: object = None
     productible_pose: object = None
+    #: Reste d'ACAL2020 — résidentiel : la forme 24 h (somme = 1) de la consommation que le
+    #: moteur horaire a utilisée (occupation + équipements), servie par ``valeurs``.
+    forme_horaire_24: object = None
 
     def sortie(self):
         return {cle: getattr(self, cle) for cle in CLES_SORTIE}
@@ -114,8 +120,32 @@ def calculer_conception(lead, company, *, entrees=None, toit=None, imposes=None,
     conception : le matériel du moteur reste et une supposition le dit."""
     if getattr(lead, 'company_id', None) != getattr(company, 'pk', None):
         raise ValueError('Lead hors de la société : aucune conception.')
+    porte, _conso = consommation_imposee(lead, company, calepinage_id, imposes)
+    imposes = separer_consommation(imposes)[0]
+    if porte is not lead:  # une consommation imposée : les entrées se relisent sur la copie
+        lead, entrees = porte, None
     with reglages_lus_sans_creer(company):
         return _calculer(lead, company, entrees, toit, imposes, investissement, calepinage_id, souple)
+
+
+def separer_consommation(imposes):
+    """Reste d'ACAL2020 — ``(imposes sans consommation, consommation brute)``."""
+    from apps.ventes.conception.consommation_imposee import separer
+    return separer(imposes)
+
+
+def consommation_imposee(lead, company, calepinage_id, imposes=None):
+    """Reste d'ACAL2020 (``conception/consommation_imposee.py``) — ``(porteur, consommation |
+    None)`` : ``imposes.consommation`` (validée) ou le relevé collé au calepinage, au NIVEAU DE
+    RÈGLES 15 seulement (une conception rangée en change) ; l'aperçu, qui n'écrit rien, la
+    pose lui-même avant l'appel (copie déjà portée : rendue telle quelle)."""
+    from apps.ventes.conception import consommation_imposee as CI
+    from apps.ventes.domain.regles_calcul import REGLES_POSE_REELLE_2111, regles_au_moins
+
+    brute = CI.separer(imposes)[1]
+    imposee = (CI.valider(brute) if brute is not None and getattr(lead, '_consommation_imposee', None) is None
+               and regles_au_moins(None, REGLES_POSE_REELLE_2111) else None)
+    return CI.imposer(lead, company, calepinage_id, imposee=imposee)
 
 
 @contextmanager
@@ -180,6 +210,8 @@ def _calculer(lead, company, entrees, toit, imposes, investissement, calepinage_
                         for option in options}
     V.dire_l_impose(resultat, 'calepinage' if souple or (pose or {}).get('a_la_main') else 'saisie',
                     pose_a_la_main=bool((pose or {}).get('a_la_main')) and entrees.marche == 'residentiel')
+    from apps.ventes.conception.consommation_imposee import dire
+    dire(resultat, getattr(lead, '_consommation_imposee', None))
     return _sans_cles_interdites_partout(resultat)
 
 
@@ -226,27 +258,29 @@ def _compte_designe(lead, company, toit, imposes, dimensionner):
     compte de panneaux : la taille que le moteur DÉCIDE sans la désignation (la facture
     garde la main ; un module désigné d'une autre puissance garde la même puissance crête,
     au panneau près) ; le scénario suit l'onduleur désigné (hybride ⇒ avec batterie,
-    réseau ⇒ sans), sinon la décision."""
+    réseau ⇒ sans), sinon la décision. Constat T4-X9-009 : la taille est décidée POUR ce
+    scénario (l'option « avec batterie » a son propre optimum) — sans cela un hybride
+    désigné rangeait l'option « avec » à la taille de l'option « sans »."""
     from apps.ventes.conception.decisions import decider_taille_residentielle
     from apps.ventes.domain import resolution_catalogue as rc
+    from apps.ventes.domain.taille import panneaux_pour_la_meme_puissance
 
-    decision = decider_taille_residentielle(lead=lead, company=company, plafond_toit=getattr(
+    onduleur = (rc.entree_du_produit(company, imposes['onduleur_produit_id'])
+                if imposes.get('onduleur_produit_id') else None)
+    force = {rc.FAMILLE_HYBRIDE: 'avec', rc.FAMILLE_RESEAU: 'sans'}.get(getattr(onduleur, 'famille', None))
+    decision = decider_taille_residentielle(lead=lead, company=company, scenario=force, plafond_toit=getattr(
         toit, 'plafond_panneaux', None), dimensionner=dimensionner)
     nombre, complets = decision.panneaux, {}
     panneau = (rc.entree_du_produit(company, imposes['panneau_produit_id'])
                if imposes.get('panneau_produit_id') else None)
     watt = float(getattr(panneau, 'wc', None) or 0)
     if watt and abs(watt - float(decision.watt or 0)) >= 0.5:
-        nombre = max(1, int(round(decision.kwc * 1000 / watt)))
+        nombre = panneaux_pour_la_meme_puissance(decision.kwc, watt)
     if panneau is None:  # le module du moteur (sa puissance, par LE résolveur), jamais le défaut 710 Wc
         resolution = rc.resoudre_panneau(company, rc.vivier(company), wc=decision.watt)
         if resolution.statut == rc.STATUT_UNIQUE:
             complets['panneau_produit_id'] = resolution.produit.pk
-    onduleur = (rc.entree_du_produit(company, imposes['onduleur_produit_id'])
-                if imposes.get('onduleur_produit_id') else None)
-    familles = {rc.FAMILLE_HYBRIDE: 'avec', rc.FAMILLE_RESEAU: 'sans'}
-    scenario = (familles.get(onduleur.famille) if onduleur is not None
-                else ('avec' if decision.avec_batterie else 'sans'))
+    scenario = force if onduleur is not None else ('avec' if decision.avec_batterie else 'sans')
     return dict(imposes, nb_panneaux=nombre, **complets), scenario
 
 
@@ -337,7 +371,9 @@ def lead_du_calepinage(calepinage, company):
     sans ville ni consommation, le moteur rend son refus nommé."""
     from django.apps import apps
     marche = getattr(calepinage.devis, 'mode_installation', None) if calepinage.devis_id else None
-    return apps.get_model('crm', 'Lead')(company=company, type_installation=marche or None)
+    lead = apps.get_model('crm', 'Lead')(company=company, type_installation=marche or None)
+    lead.porteur_calepinage = True  # T4-X9-013 : le refus de lieu le dit sans « du lead »
+    return lead
 
 
 def refus_localisation(lead):
@@ -345,7 +381,9 @@ def refus_localisation(lead):
     if ville_effective(lead) or (getattr(lead, 'gps_lat', None) is not None
                                  and getattr(lead, 'gps_lng', None) is not None):
         return None
-    return {'code': CODE_LOCALISATION, 'champ': 'ville', 'message': MESSAGE_LOCALISATION}
+    sans_lead = getattr(lead, 'porteur_calepinage', False)  # T4-X9-013 : jamais « du lead » sans lead
+    return {'code': CODE_LOCALISATION, 'champ': 'ville',
+            'message': MESSAGE_LOCALISATION_SANS_LEAD if sans_lead else MESSAGE_LOCALISATION}
 
 
 def blocs_du_moteur(etude_params):
@@ -511,6 +549,9 @@ def _etudes(resultat, devis, contexte, *, sortie=None):
         kwc, kwc_sans = EL.puissances_des_lignes(contexte)
         bloc, bloc_sans = EL.blocs_horaires_des_lignes(contexte, kwc=kwc, kwc_sans=kwc_sans)
         _fusion(devis, es.MOTEUR_HORAIRE, etude_horaire=bloc, etude_horaire_sans=bloc_sans)
+        if bloc:  # une forme illisible est dite absente, jamais l'étude horaire
+            _au_mieux(resultat, 'forme_horaire_24', lambda: setattr(
+                resultat, 'forme_horaire_24', forme_horaire_24(contexte, kwc)))
 
     def _dimensionnement():
         etat, bloc = EL.dimensionnement_des_lignes(contexte)
@@ -535,6 +576,27 @@ def _etudes(resultat, devis, contexte, *, sortie=None):
     _au_mieux(resultat, 'ville_calcul', lambda: _fusion(
         devis, es.PIPELINE, ville_calcul=ville_calcul_du_devis(contexte)))
     return design
+
+
+def forme_horaire_24(devis, kwc):
+    """Reste d'ACAL2020 — la forme 24 h (somme = 1) de la consommation du moteur horaire
+    résidentiel : les douze jours types de ``etude_horaire.jours_types_annee`` (LA source des
+    courbes de l'étude : silhouette d'occupation + équipements + Ramadan, appelée telle
+    quelle sur les entrées du devis), pondérés par leurs jours. ``None`` sans les douze."""
+    from apps.ventes.domain.entrees import entrees_depuis_devis
+    from apps.ventes.etude_horaire import jours_types_annee, kwargs_moteur_horaire
+
+    entrees = entrees_depuis_devis(devis)
+    if entrees is None:
+        return None
+    arguments = {cle: valeur for cle, valeur in kwargs_moteur_horaire(entrees).items()
+                 if cle not in ('tranches', 'charges_fixes_mad')}
+    jours, _avertissements, _sources = jours_types_annee(kwc=kwc, **arguments)
+    if not jours or len(jours) != 12:
+        return None
+    total = [sum(jour['conso_24h'][heure] * jour['jours'] for jour in jours) for heure in range(24)]
+    somme = sum(total)
+    return [round(valeur / somme, 6) for valeur in total] if somme > 0 else None
 
 
 def _au_mieux(resultat, cle, calcul):

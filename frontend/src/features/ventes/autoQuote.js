@@ -9,11 +9,6 @@
    d'étude locale, plus de `createDevisAtomic`. Lit le lead directement (pas d'état React). */
 import ventesApi from '../../api/ventesApi'
 import { formatKwc, formatMAD, formatNumber } from '../../lib/format'
-import {
-  panneauxPourKwc,
-  // QJR576 — UNE conversion panneaux ↔ kWc et UN wattage par défaut.
-  kwcPourPanneaux, PANEL_W_DEFAUT,
-} from './solar'
 import fieldLabels, { CHOIX_BATTERIE_SOUHAITEE, LIBELLES_SECTIONS } from '../crm/workspace/fieldLabels'
 
 // QX52 — parité 4 modes : `commercial` route désormais vers son PROPRE mode
@@ -43,6 +38,15 @@ export const buildEtudePompage = (sel, { typePompe, alim, hmt, debit, heures,
   distance_m: distance || null,
   champ_kwc: sel.dims.champKwc,
 })
+
+// T4-X1-011 — un 500 (ou aucune réponse : réseau, délai) n'est PAS la faute de
+// la fiche du lead : la seconde tentative, fiche inchangée, créait le devis.
+// Un refus qui répond 4xx garde son message (et son champ nommé) ; une panne
+// serveur le dit, et marque `serveur: true` pour que l'écran offre « Réessayer »
+// (la route est idempotente 120 s : un nouvel essai ne crée jamais deux devis).
+export const MESSAGE_SERVEUR_SANS_REPONSE = 'Le serveur n’a pas répondu (ou a rencontré une erreur) — '
+  + 'la fiche du lead n’est pas en cause. Réessayez dans un instant.'
+export const estPanneServeur = (err) => !err?.response || err.response.status >= 500
 
 // AGR126 / CIQ127 — l'agricole et le C&I partent au serveur (AGR124, CIQ120) :
 // un seul appel `POST /ventes/devis/auto/`, jamais `createDevisAtomic`. Le 422
@@ -74,6 +78,7 @@ async function creerDevisServeur({ lead, discountStr, onAlertes, onResultat, tar
         delaiDepasse: true,
       }
     }
+    if (estPanneServeur(err)) throw { detail: MESSAGE_SERVEUR_SANS_REPONSE, serveur: true }
     const data = err?.response?.data || {}
     throw {
       detail: data.detail
@@ -144,8 +149,11 @@ export async function createAutoQuote({ lead, discountStr, onAlertes, onResultat
     // moteur horaire serveur dimensionne (U3-MOTEUR, `target_kwc` omis).
     const cibleKwc = parseFloat(targetKwc) || 0
     const tailleKwc = cibleKwc > 0 ? cibleKwc : (parseFloat(lead.taille_souhaitee_kwc) || 0)
-    const panels = tailleKwc > 0 ? panneauxPourKwc(tailleKwc, PANEL_W_DEFAUT) : 0
-    const kwpAuto = panels > 0 ? kwcPourPanneaux(panels, PANEL_W_DEFAUT) : 0
+    // T4-X1-004 — la taille tapée part TELLE QUELLE : l'arrondir ici au
+    // panneau de 710 W supposé (3 → 5 × 710 W = 3,55) faisait annoncer
+    // « Taille imposée : 3,55 kWc » pour 3 tapés ; le serveur, qui connaît ses
+    // vrais panneaux, en dérive lui-même le nombre de panneaux.
+    const kwpAuto = tailleKwc > 0 ? tailleKwc : 0
 
     const etudeExtra = {}
     // AGNR34 (D-AGNR-1 option (a)) — plus de série de douze mois ni de conso
@@ -185,6 +193,7 @@ export async function createAutoQuote({ lead, discountStr, onAlertes, onResultat
       // `err.detail` — on rend son message tel quel, jamais un nôtre.
       // ALEA48 — le 409 nomme aussi le champ à compléter (`field`) : on le
       // relaie, comme la branche C&I, pour que l'écran propose « Compléter ».
+      if (estPanneServeur(err)) throw { detail: MESSAGE_SERVEUR_SANS_REPONSE, serveur: true }
       const champ = err?.response?.data?.field
       throw {
         detail: err?.response?.data?.detail
@@ -210,6 +219,37 @@ export async function createAutoQuote({ lead, discountStr, onAlertes, onResultat
 }
 
 /**
+ * T4-X4-014 — LA phrase d'UNE option d'un devis à deux options : « Sans batterie :
+ * 2,2 kWc · 37 800 MAD TTC ». Partagée par le bandeau « Devis créé » du devis
+ * automatique et le panneau « Devis enregistré » du générateur. Une puissance non
+ * fournie (`kwc` absent) est omise ; fournie mais illisible, elle s'écrit « — ».
+ */
+export function libelleOptionDevis(o) {
+  const morceaux = []
+  if (o.kwc !== undefined) {
+    const k = Number(o.kwc)
+    morceaux.push(Number.isFinite(k) && k > 0 ? formatKwc(k) : '—')
+  }
+  const t = Number(o.total_ttc)
+  if (o.total_ttc != null && Number.isFinite(t)) morceaux.push(`${formatMAD(t, { decimals: 0 })} TTC`)
+  return `${o.libelle} : ${morceaux.join(' · ')}`
+}
+
+/**
+ * T4-X4-014 — les deux options d'un devis qu'on vient d'enregistrer, lues sur ce que
+ * le serveur sert déjà avec le devis (`comparaison_options`, totaux ×N compris) :
+ * `[]` pour un devis à une seule option (rien à nommer).
+ */
+export function optionsDepuisComparaison(devisData) {
+  const c = devisData?.comparaison_options
+  if (!c || devisData.nb_options !== 2 || c.sans?.ttc == null || c.avec?.ttc == null) return []
+  return [
+    { variante: 'sans', libelle: 'Sans batterie', total_ttc: c.sans.ttc },
+    { variante: 'avec', libelle: 'Avec batterie', total_ttc: c.avec.ttc },
+  ]
+}
+
+/**
  * ALEA51 — la phrase du bandeau de SUCCÈS après un devis automatique :
  * « DEV-… · 65 kWc · 212 100 MAD TTC · économie ≈ 102 000 MAD/an · retour ≈
  * 4,2 ans · 3 postes à chiffrer après la visite ». Chaque morceau vient de la
@@ -226,12 +266,7 @@ export function libelleSuccesDevisAuto(resultat) {
   // total ; `kwc`/`total_ttc` de tête sont ceux de l'option affichée (avec).
   const options = Array.isArray(resultat.options) ? resultat.options.filter((o) => o?.variante) : []
   if (options.length === 2) {
-    for (const o of options) {
-      const k = Number(o.kwc)
-      const t = Number(o.total_ttc)
-      morceaux.push([`${o.libelle} : ${Number.isFinite(k) && k > 0 ? formatKwc(k) : '—'}`,
-        ...(o.total_ttc != null && Number.isFinite(t) ? [`${formatMAD(t, { decimals: 0 })} TTC`] : [])].join(' · '))
-    }
+    for (const o of options) morceaux.push(libelleOptionDevis(o))
   } else {
     const kwc = Number(resultat.kwc)
     // T4-U1-026 — la puissance du devis, jamais arrondie à l'entier.

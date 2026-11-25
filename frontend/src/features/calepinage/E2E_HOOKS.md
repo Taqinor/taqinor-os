@@ -446,6 +446,8 @@ retiré plus un hook ajouté.
 | `cal-tableau-variantes` | tableau variantes. |
 | `cal-variante-confirmer` | variante confirmer. |
 | `cal-variante-dupliquer` | variante dupliquer. |
+| `cal-simulation-a-refaire` | Expert, ligne de provenance de la production : « Simulation à refaire : le toit a changé depuis le dernier calcul. » et le lien pour la relancer (T4-X2-002). |
+| `cal-variante-refus` | Comparer les variantes : refus de « Retenir », dit à côté du bouton cliqué, avec le lien vers l'étape Électrique (T4-X9-010). |
 | `cal-variante-formulaire` | variante formulaire. |
 | `cal-variante-nom` | variante nom. |
 | `cal-variante-nom-erreur` | variante nom message d'erreur. |
@@ -697,6 +699,8 @@ retiré plus un hook ajouté.
 | `cal-doc-bouton-kml` | document bouton export pour Google Earth (ACAL536). |
 | `cal-doc-conception` | document conception. |
 | `cal-doc-conception-confirmation` | document conception confirmation. |
+| `cal-doc-conception-remplacement` | avis « ce fichier ne décrit aucun toit », rien d'écrit (T4-X5-009). |
+| `cal-doc-bouton-remplacer-toit` | bouton « Remplacer le toit par ce fichier » — confirme l'import sans toit (T4-X5-009). |
 | `cal-doc-empreinte` | document empreinte. |
 | `cal-doc-erreur` | document message d'erreur. |
 | `cal-doc-erreurs` | document messages d'erreur. |
@@ -853,6 +857,7 @@ retiré plus un hook ajouté.
 | `cal-projet-erreur` | erreur de lecture/import du projet. |
 | `cal-projet-apercu` | aperçu avant import. |
 | `cal-projet-apercu-clone` | aperçu : cloner le projet à l’import. |
+| `cal-projet-apercu-avertissements` | aperçu : avertissements servis (ex. confirmation qui sera refusée, T4-X5-016). |
 | `cal-projet-ouvrir` | projet : ouvrir le projet importé. |
 | `cal-projet-apercu-modules` | aperçu : modules. |
 | `cal-projet-apercu-postes` | aperçu : postes de pertes. |
@@ -879,6 +884,7 @@ retiré plus un hook ajouté.
 | `cal-nouveau-preset-aide` | nouveau : aide du jeu de réglages mémorisé (ACAL186). |
 | `cal-nouveau-responsable` | nouveau : choix du responsable (facultatif). |
 | `cal-nouveau-existant` | nouveau : encart « ce lead a déjà un calepinage ». |
+| `cal-nouveau-retrouve` | nouveau : le serveur a répondu trop tard mais le calepinage a été créé — « Ouvrir le calepinage créé » (T4-X9-011). |
 | `cal-nouveau-ouvrir-existant` | nouveau : ouvrir le calepinage existant du lead. |
 | `cal-fiche--erreur` | fiche : erreur serveur sous le champ de rattachement (milieu = champ). |
 | `cal-fiche-lead-ouvrir-existant` | fiche : ouvrir le calepinage existant du lead visé (409). |

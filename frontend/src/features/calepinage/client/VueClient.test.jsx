@@ -33,6 +33,20 @@ const RESULTAT = {
   production: { total: { p50_kwh: 11480.4, complete: true } },
   autoconsommation: { taux_couverture: 0.82 },
 }
+/* ACAL2023 — la conception COURANTE servie par le design-context (`chiffrage`) : la vue client la lit, ne calcule rien. */
+const CHIFFRAGE = {
+  marche: 'residentiel', regles_calcul: 15,
+  kwc: { valeur: 1.1, unite: 'kWc', source: 'conception', etat: 'servi' },
+  production_annuelle_kwh: { valeur: 11480.4, unite: 'kWh/an', source: 'calepinage_enregistre', etat: 'servi' },
+  economie_annee1_mad: { valeur: 7420, unite: 'MAD', source: 'conception', etat: 'servi', option: 'sans_batterie' },
+  autoconsommation_pct: { valeur: 60, unite: '%', source: 'conception', etat: 'servi' },
+  couverture_pct: { valeur: 82, unite: '%', source: 'conception', etat: 'servi' },
+  omissions: [],
+}
+const contexteAvec = (chiffrage) => {
+  const ctx = exempleContrat('calepinage', 'calepinage_design_context')
+  return { data: { ...ctx, calepinage: { ...ctx.calepinage, titre: 'Villa Bennani', client_ville: 'Casablanca' }, chiffrage } }
+}
 const api = calepinageApi.calepinages
 // Le chunk de l'atelier (lazy) se charge sous charge en plus d'1 s (délai par défaut de findBy) : 15 s.
 const ATTENTE_ATELIER = { timeout: 15000 }
@@ -62,10 +76,7 @@ beforeEach(() => {
   reinitialiserBoot()
   api.layout.mockResolvedValue({ data: { roof_layout: { zones: [ZONE], activeAreaId: 'z1' }, empreinte_document: 'e' } })
   // Le contexte COMMITTÉ (contrat), au titre et à la ville de la maquette.
-  const ctx = exempleContrat('calepinage', 'calepinage_design_context')
-  api.designContext.mockResolvedValue({
-    data: { ...ctx, calepinage: { ...ctx.calepinage, titre: 'Villa Bennani', client_ville: 'Casablanca' } },
-  })
+  api.designContext.mockResolvedValue(contexteAvec(CHIFFRAGE))
   api.resultat.mockResolvedValue({ data: RESULTAT })
 })
 afterEach(() => { cleanup(); oublierLecturesServies(); delete window.matchMedia })
@@ -94,7 +105,8 @@ describe('Montrer au client — repli 2D, avec les seules données servies', () 
     expect(screen.getByTestId('cal-vue-client').textContent).not.toMatch(/MAD|DH|prix|marge/i)
   })
 
-  it('H2 — résultat publié INCOMPLET (borne haute) : ni production ni couverture devant le client ; restent panneaux et puissance', async () => {
+  it('H2 / ACAL2023 — conception non servie (borne haute publiée) : ni production ni couverture devant le client ; restent panneaux et puissance', async () => {
+    api.designContext.mockResolvedValue(contexteAvec(null))
     api.resultat.mockResolvedValue({ data: {
       ...RESULTAT,
       production: { total: { p50_kwh: 52695.1, complete: false, mention: 'borne haute — 17 pertes non renseignées' } },
@@ -350,6 +362,7 @@ describe('Montrer au client — l’atelier en mode présentation (vraie 3D)', (
 
 describe('J1 — tuiles tenues hors de l’atelier, orientation certaine', () => {
   it('une lecture du résultat en échec est relue seule : la tuile de puissance arrive sans recharger la page', async () => {
+    api.designContext.mockResolvedValue(contexteAvec(null)) // conception non servie : seuls les faits du document et du résultat
     api.resultat.mockRejectedValueOnce(Object.assign(new Error('timeout'), { code: 'ECONNABORTED' }))
     api.resultat.mockResolvedValue({ data: { ...RESULTAT, production: { total: { p50_kwh: 1, complete: false } } } })
     rendre()
@@ -374,47 +387,99 @@ describe('J1 — tuiles tenues hors de l’atelier, orientation certaine', () =>
   })
 })
 
-/* ACAL1840 (D-ACAL-88 : « l'estimation de la pose, dite estimation ») — tant que le résultat n'est pas complet, « Montrer
-   au client » montre l'estimation de la pose de l'atelier (le chiffre de « Production · estimation de la pose »), dite
-   telle ; un résultat complet la remplace ; jamais deux chiffres de production. */
-describe('ACAL1840 — la tuile de production avant un résultat complet', () => {
-  const INCOMPLET = { ...RESULTAT, production: { total: { p50_kwh: 52695.1, complete: false, mention: 'borne haute — 17 pertes non renseignées' } } }
+/* ACAL2023 (D-ACAL-97 : un seul moteur ; T4-X2-007) — « Montrer au client » montre la conception COURANTE du lead : sa production et sa
+   part « de votre consommation » sont celles du bloc `chiffrage` servi (les mêmes que l'atelier), pertes par défaut dites ; aucune
+   estimation propre à la vue, ni lue sur l'atelier, ni calculée ; conception en cours : « calcul en cours », sans chiffre. */
+describe('ACAL2023 — la vue client lit la conception courante servie', () => {
+  const INCOMPLET = { ...RESULTAT, production: { total: { p50_kwh: 52695.1, complete: false } }, autoconsommation: { taux_couverture: 0.35 } }
+  const sans = (cle) => Object.fromEntries(Object.entries(CHIFFRAGE).filter(([k]) => k !== cle))
 
-  it('tuilesClient : incomplet + estimation ⇒ panneaux, production « estimation de la pose » (marine), puissance ; complet ⇒ la production publiée seule', async () => {
-    const { tuilesClient, estimationPose } = await import('./vueClient.helpers')
+  it('tuilesClient : production et part de la conception servie, JAMAIS celles du résultat publié (35 % ≠ 82 %) ni une estimation', async () => {
+    const { tuilesClient } = await import('./vueClient.helpers')
     const document = { zones: [ZONE] }
-    const tuiles = tuilesClient(document, INCOMPLET, estimationPose({ productionKwh: 5571 }))
-    expect(tuiles.map((t) => t.cle)).toEqual(['panneaux', 'kwh', 'kwc'])
-    expect(tuiles[1].valeur.replace(/\s/g, ' ')).toBe('5 571')
-    expect(tuiles[1].libelle).toBe('kWh par an · estimation de la pose')
-    expect(tuiles[1].marine).toBe(true)
-    expect(tuiles[2].marine).toBe(false)
-    // Un résultat complet remplace l'estimation : une seule tuile de production, celle du résultat publié.
-    const complet = tuilesClient(document, RESULTAT, estimationPose({ productionKwh: 5571 }))
-    expect(complet.filter((t) => t.cle === 'kwh')).toHaveLength(1)
-    expect(complet.find((t) => t.cle === 'kwh').valeur.replace(/\s/g, ' ')).toBe('11 480')
-    expect(complet.find((t) => t.cle === 'kwh').libelle).toBe('kWh par an · estimation')
-    // Sans estimation lue : le comportement d'avant (panneaux et puissance seulement).
-    expect(tuilesClient(document, INCOMPLET, estimationPose({ productionKwh: null })).map((t) => t.cle)).toEqual(['panneaux', 'kwc'])
-    expect(estimationPose({ productionKwh: 0 })).toBeNull()
+    const tuiles = tuilesClient(document, RESULTAT, CHIFFRAGE)
+    expect(tuiles.map((t) => t.cle)).toEqual(['panneaux', 'kwh', 'couverture'])
+    expect(tuiles[1].valeur.replace(/\s/g, ' ')).toBe('11 480')
+    expect(tuiles[1].libelle).toBe('kWh par an · estimation')
+    expect(tuiles[1].nature).toBeUndefined() // pose réelle : pas de pertes par défaut à dire
+    expect(tuiles[2].valeur).toBe('82 %') // la part SERVIE — le résultat publié disait 35 %
+    expect(tuilesClient(document, INCOMPLET, CHIFFRAGE).find((t) => t.cle === 'couverture').valeur).toBe('82 %')
+    // pertes par défaut (production de la ville, pas de la pose) : DITES
+    const ville = { ...CHIFFRAGE, production_annuelle_kwh: { ...CHIFFRAGE.production_annuelle_kwh, source: 'standard_ville' } }
+    expect(tuilesClient(document, RESULTAT, ville).find((t) => t.cle === 'kwh').nature).toBe('pertes')
+    // sans part servie : aucune couverture (jamais celle du résultat publié)
+    expect(tuilesClient(document, RESULTAT, sans('couverture_pct')).map((t) => t.cle)).toEqual(['panneaux', 'kwh'])
+    // sans conception servie : les faits du document seulement ; en cours de calcul : « calcul en cours », sans chiffre
+    expect(tuilesClient(document, RESULTAT, null).map((t) => t.cle)).toEqual(['panneaux', 'kwc'])
+    const enCours = { ...CHIFFRAGE, production_annuelle_kwh: { valeur: null, unite: 'kWh/an', source: null, etat: 'omis' },
+      omissions: [{ grandeur: 'production_annuelle_kwh', motif: 'premier calcul de la conception en cours' }] }
+    const attente = tuilesClient(document, RESULTAT, enCours)
+    expect(attente.map((t) => t.cle)).toEqual(['panneaux', 'calcul', 'kwc'])
+    expect(attente.find((t) => t.cle === 'calcul').valeur).toBe('calcul en cours')
+    expect(attente.find((t) => t.cle === 'kwh')).toBeUndefined()
   })
 
-  it('3D : résultat incomplet ⇒ la tuile dit « estimation de la pose » avec le chiffre de l’atelier, sans la borne haute', async () => {
+  it('B1 — conception d’une AUTRE taille que la pose : aucun nombre de production ni de couverture, une phrase vraie ; même taille : les nombres', async () => {
+    const { tuilesClient } = await import('./vueClient.helpers')
+    const document = { zones: [ZONE] } // 2 panneaux posés, pose de 1,1 kWc
+    const autre = { ...CHIFFRAGE, kwc: { ...CHIFFRAGE.kwc, valeur: 21.6 } } // conception de 48 panneaux
+    const tuiles = tuilesClient(document, RESULTAT, autre)
+    expect(tuiles.find((t) => t.cle === 'kwh')).toBeUndefined()
+    expect(tuiles.find((t) => t.cle === 'couverture')).toBeUndefined()
+    expect(tuiles.map((t) => t.valeur).join(' ')).not.toMatch(/11.480|82/)
+    expect(tuiles.find((t) => t.cle === 'miseajour').libelle).toBe('Production : calculée à la mise à jour de la conception.')
+    expect(tuiles.find((t) => t.cle === 'panneaux').valeur).toBe('2')
+    // taille de la conception non servie : rien ne prouve la même taille ⇒ aucun nombre non plus
+    expect(tuilesClient(document, RESULTAT, sans('kwc')).find((t) => t.cle === 'kwh')).toBeUndefined()
+    // même taille (écart < 0,005) : les nombres de la conception
+    const egale = { ...CHIFFRAGE, kwc: { ...CHIFFRAGE.kwc, valeur: 1.1004 } }
+    expect(tuilesClient(document, RESULTAT, egale).map((t) => t.cle)).toEqual(['panneaux', 'kwh', 'couverture'])
+    // aucune conception : comme avant
+    expect(tuilesClient(document, RESULTAT, null).map((t) => t.cle)).toEqual(['panneaux', 'kwc'])
+  })
+
+  it('B1 — à l’écran : la phrase remplace la production et la part ; pas un chiffre de l’autre taille', async () => {
+    api.designContext.mockResolvedValue(contexteAvec({ ...CHIFFRAGE, kwc: { ...CHIFFRAGE.kwc, valeur: 21.6 } }))
+    rendre()
+    await waitFor(() => expect(screen.getByTestId('client-mention-miseajour')).toHaveTextContent('Production : calculée à la mise à jour de la conception.'))
+    expect(screen.queryByTestId('client-tuile-kwh')).toBeNull()
+    expect(screen.queryByTestId('client-tuile-couverture')).toBeNull()
+    expect(screen.getByTestId('cal-vue-client').textContent).not.toMatch(/11.480|82 %|kWh par an/)
+  })
+
+  it('3D : la production est celle de la conception, jamais l’estimation du constructeur ; les pertes par défaut sont dites', async () => {
+    api.designContext.mockResolvedValue(contexteAvec({
+      ...CHIFFRAGE, production_annuelle_kwh: { ...CHIFFRAGE.production_annuelle_kwh, source: 'standard_ville' },
+    }))
     api.resultat.mockResolvedValue({ data: INCOMPLET })
     reinitialiserBoot({ appliquerVue: vi.fn(), ...apiBuilder() })
     rendre({ webgl: true })
     await screen.findByTestId('client-soleil', {}, ATTENTE_ATELIER)
-    // Le constructeur de l'atelier publie son estimation dans « Recommandation » (`#rp9-reco-prod`).
+    // Le constructeur de l'atelier publie son estimation dans « Recommandation » (`#rp9-reco-prod`) : la vue client ne la lit plus.
     let prod = document.getElementById('rp9-reco-prod')
     if (!prod) { prod = document.createElement('p'); prod.id = 'rp9-reco-prod'; document.body.appendChild(prod) }
     prod.textContent = '5 571 kWh/an'
     await waitFor(() => expect(screen.getByTestId('client-tuile-kwh')).toBeInTheDocument(), { timeout: 5000 })
     const tuile = screen.getByTestId('client-tuile-kwh')
-    expect(tuile.textContent.replace(/\s/g, ' ')).toMatch(/^5 571Estimation ?kWh par an$/)
+    expect(tuile.textContent.replace(/\s/g, ' ')).toMatch(/^11 480Estimation ?kWh par an$/)
     expect(screen.getAllByTestId('client-tuile-kwh')).toHaveLength(1)
-    expect(screen.getByTestId('client-mention-estimation')).toHaveTextContent('Estimation de la pose')
-    expect(texteVisible(screen.getByTestId('cal-coque'))).not.toMatch(/52.695|au plus|borne haute/)
+    expect(screen.getByTestId('client-mention-pertes')).toHaveTextContent('Estimation : pertes par défaut')
+    expect(screen.getByTestId('client-tuile-couverture')).toHaveTextContent('82 %')
+    expect(texteVisible(screen.getByTestId('cal-coque'))).not.toMatch(/5.571|52.695|au plus|borne haute/)
     prod.textContent = '—'
+  })
+
+  it('conception en cours de calcul : « calcul en cours », aucun chiffre de production ni de couverture (repli 2D)', async () => {
+    api.designContext.mockResolvedValue(contexteAvec({
+      ...CHIFFRAGE, production_annuelle_kwh: { valeur: null, unite: 'kWh/an', source: null, etat: 'omis' },
+      couverture_pct: { valeur: null, unite: '%', source: null, etat: 'omis' },
+      omissions: [{ grandeur: 'production_annuelle_kwh', motif: 'premier calcul de la conception en cours' }],
+    }))
+    rendre()
+    await waitFor(() => expect(screen.getByTestId('client-tuile-calcul')).toHaveTextContent('calcul en cours'))
+    expect(screen.queryByTestId('client-tuile-kwh')).toBeNull()
+    expect(screen.queryByTestId('client-tuile-couverture')).toBeNull()
+    expect(screen.getByTestId('cal-vue-client').textContent).not.toMatch(/\d\s?%|kWh par an/)
   })
 })
 

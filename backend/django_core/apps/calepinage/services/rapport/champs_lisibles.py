@@ -91,6 +91,12 @@ INTITULES_CHEMINS = {
     'batterie.coupures': 'coupures de courant déclarées',
     'batterie.coupures.duree_h': 'durée des coupures (h)',
     'batterie.appareils': 'appareils secourus',
+    # T4-X5-013 — la batterie de la simulation est le PRODUIT de la ligne
+    # batterie du devis lié (``chaines.batterie_du_calepinage``) : sans lui,
+    # la stratégie déclarée seule ne suffit pas.
+    'batterie.groupes': ('produit batterie : ajoutez la batterie au devis '
+                         'lié, puis relancez la simulation'),
+    'hors_reseau': 'hors réseau',
     'electrique.chainage': 'câblage des chaînes',
     'roof_layout.pin': 'point GPS du site',
     # ACAL1323 — chemins encore servis bruts à l'écran (Économie, Production).

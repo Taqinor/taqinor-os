@@ -26,7 +26,8 @@
         "token": "tok_d4e5f6",
         "url": "https://taqinor.ma/proposition/amina/tok_d4e5f6"
       }
-    ]
+    ],
+    "langue_effective": "fr"
   },
   "exemple_sans_telephone": {
     "wa_url": null,
@@ -39,13 +40,15 @@
         "token": "tok_a1b2c3",
         "url": "https://taqinor.ma/proposition/amina/tok_a1b2c3"
       }
-    ]
+    ],
+    "langue_effective": "fr"
   },
   "exemple_400": {
     "detail": "Remise supérieure au plafond autorisé : validation requise."
   },
   "notes": {
     "aucun_effet": "Ni mark_devis_sent, ni AuditLog, ni note : un aperçu ne change aucun statut (règle #4).",
-    "wa_url": "null si le lead n'a aucun téléphone exploitable."
+    "wa_url": "null si le lead n'a aucun téléphone exploitable.",
+    "langue_effective": "T4-X1-010 — la langue dans laquelle le message est RÉELLEMENT écrit : « darija » demandée sans texte darija rédigé (ni corps de la société, ni défaut validé) rend « fr », jamais un français présenté comme du darija."
   }
 }

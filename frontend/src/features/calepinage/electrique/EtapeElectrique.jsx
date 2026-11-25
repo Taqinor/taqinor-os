@@ -61,16 +61,32 @@ function Section({ cle, libelle, propsDuRail }) {
   )
 }
 
+/* T4-X2-004 — « proposé pour N panneaux » se lisait sur le seul compte du chaînage, à côté d'un verdict « Bloquant » :
+   la ligne lit désormais les MÊMES contrôles que le verdict (contrôles bloquants servis du raccordement, verdict de la
+   configuration retenue) et, quand l'un d'eux échoue, dit que l'onduleur ne convient pas et pourquoi. */
+function motifInadapte(retenue, resultat) {
+  const echec = (resultat?.electrique?.verdicts ?? []).find((v) => v && v.bloquant === true && v.conforme === false)
+  // T4-X9-002 — la raison COURTE servie (le fait et son sens, sans sigle) passe devant « libellé (détail) ».
+  if (echec?.raison) return echec.raison
+  if (echec?.libelle) return echec.detail ? `${echec.libelle} (${echec.detail})` : echec.libelle
+  if (retenue?.verdict === 'bloquant') return retenue.bloquants?.[0] || 'un contrôle bloquant échoue'
+  return null
+}
+
 /** La ligne sous le nom de l'onduleur : puissance et entrées de la configuration RETENUE servie,
     nombre de panneaux du chaînage servi — chaque morceau seulement s'il est servi. */
 function ligneOnduleur(retenue, resultat) {
   const kw = retenue?.puissance_ac_totale_kw
   const entrees = retenue?.mppt_disponibles
   const panneaux = resultat?.electrique?.chainage?.modules
+  const motif = motifInadapte(retenue, resultat)
+  const nPanneaux = typeof panneaux === 'number' && panneaux > 0 ? `${panneaux} panneau${panneaux > 1 ? 'x' : ''}` : null
   return [
     typeof kw === 'number' ? `${nb(kw, Number.isInteger(kw) ? 0 : 1)} kW` : null,
     typeof entrees === 'number' ? `${entrees} entrée${entrees > 1 ? 's' : ''}` : null,
-    typeof panneaux === 'number' && panneaux > 0 ? `proposé pour ${panneaux} panneau${panneaux > 1 ? 'x' : ''}` : null,
+    motif
+      ? `ne convient pas${nPanneaux ? ` pour ${nPanneaux}` : ''} : ${motif} — comparez avec un autre onduleur`
+      : nPanneaux ? `proposé pour ${nPanneaux}` : null,
   ].filter(Boolean).join(' · ')
 }
 

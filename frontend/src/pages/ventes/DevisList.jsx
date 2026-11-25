@@ -6,9 +6,11 @@ import {
   Copy, X, AlertTriangle,
 } from 'lucide-react'
 import {
+  // parametres-requete: page, page_size, q, statut_effectif, actifs, auteurs
   fetchDevis,
   rafraichirDevis,
   convertirDevisEnBC,
+  devisInsere,
 } from '../../features/ventes/store/ventesSlice'
 import ventesApi, { acceptationDejaFaite } from '../../api/ventesApi'
 import installationsApi from '../../api/installationsApi'
@@ -83,6 +85,10 @@ function DevisTableSkeleton() {
 // ne servent qu'à décrire la grille au moteur (identité de colonnes) : aucun
 // `cell` n'est utilisé, le tri/filtre/pagination sont désactivés (seams manuels).
 // Le rendu réel (cellules, boutons, panneaux) reste 100 % dans <DevisRow>.
+// T4-X4-005 — l'écran demande UNE page de devis à la fois au serveur (forme
+// légère), jamais plus tous les devis par pages de 200.
+const TAILLE_PAGE_DEVIS = 25
+
 const DEVIS_DT_COLUMNS = [
   { id: 'reference', header: 'Référence', sortable: false, hideable: false, reorderable: false },
   { id: 'client', header: 'Client', sortable: false, hideable: false, reorderable: false },
@@ -118,7 +124,10 @@ export default function DevisList() {
   // APX17 — confirmations maison (VX19/L152) : plus une seule popup du système.
   const { confirm, confirmDelete } = useConfirmDialog()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { devis, loading, error } = useSelector(s => s.ventes)
+  const {
+    devis, loading, error, devisCount, devisSynthese, devisSyntheseEchec,
+    devisSyntheseChargement,
+  } = useSelector(s => s.ventes)
   const role = useSelector(s => s.auth.role)
   const canDelete = role === 'admin'  // règle existante : destroy = admin
   // QG10 / ADRG11 (D-ADRG-5) — MODIFIER le pourcentage des variantes exige
@@ -364,6 +373,43 @@ export default function DevisList() {
   // bouton « voir les versions remplacées » les réaffiche, toujours badgées
   // « Remplacé » + lien vers la version courante.
   const [showSuperseded, setShowSuperseded] = useState(false)
+
+  // VX236 — `?equipe=<id>` (lien depuis MesEquipesCard) : filtre additif sur
+  // les membres de l'équipe (commercial créateur du devis).
+  const equipeId = searchParams.get('equipe')
+  const equipeMembreIds = useEquipeMembreIds(equipeId)
+
+  /* T4-X4-005 — PAGINATION SERVEUR. Sur les données de la production, l'écran
+     chargeait TOUS les devis (pages de 200, ≈ 48 Mo pour 590 devis) et ne
+     s'ouvrait jamais. Il demande désormais UNE page légère ; recherche,
+     statut, versions remplacées et équipe partent en paramètres de requête
+     (le filtre local ci-dessous ne fait plus que reconfirmer la page servie).
+     La recherche part 300 ms après la dernière frappe. Changer un filtre
+     revient à la page 1 (la page retenue est attachée à SES filtres). */
+  const [qServeur, setQServeur] = useState(() => (searchParams.get('q') ?? '').trim())
+  useEffect(() => {
+    const t = setTimeout(() => setQServeur(query.trim()), 300)
+    return () => clearTimeout(t)
+  }, [query])
+  const auteurs = equipeId && equipeMembreIds ? ([...equipeMembreIds].join(',') || '0') : ''
+  const cleFiltres = JSON.stringify([qServeur, statutFilter, showSuperseded, auteurs])
+  const [pageEtat, setPageEtat] = useState({ cle: cleFiltres, page: 1 })
+  const page = pageEtat.cle === cleFiltres ? pageEtat.page : 1
+  const allerPage = (n) => setPageEtat({ cle: cleFiltres, page: n })
+  const requete = useMemo(() => {
+    const r = { page, page_size: TAILLE_PAGE_DEVIS }
+    if (qServeur) r.q = qServeur
+    if (statutFilter !== 'tous') r.statut_effectif = statutFilter
+    if (!showSuperseded) r.actifs = 1
+    if (auteurs) r.auteurs = auteurs
+    return r
+  }, [page, qServeur, statutFilter, showSuperseded, auteurs])
+  // Relit la page affichée (et la synthèse de l'en-tête) après un geste.
+  const relire = () => dispatch(fetchDevis(requete))
+  const nbPages = devisCount ? Math.max(1, Math.ceil(devisCount / TAILLE_PAGE_DEVIS)) : 1
+  // Une page déjà servie : jamais le squelette pleine page (le champ de
+  // recherche resterait démonté pendant la frappe).
+  const pageDejaServie = devisCount != null
   // WIR21 — vues sauvegardées côté serveur (remplace le localStorage FG11 :
   // vues EQUIPE désormais visibles par l'équipe, cf. ViewsManagerPopover).
   const { createView: createDevisView } = useServerSavedViews(DL_ECRAN)
@@ -387,7 +433,7 @@ export default function DevisList() {
   // (rowCtx) et à <DevisPdfDialog>, au lieu de recopier sa liste de retour.
   const pdf = useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds })
   const {
-    previewDevis, setPreviewDevis, openPdfModal, openBatchPdfModal, fetchDevisPreviewBlob,
+    previewDevis, setPreviewDevis, openBatchPdfModal, fetchDevisPreviewBlob,
   } = pdf
 
   // ── Modale d'acceptation inline (nom / date / option) ──
@@ -414,7 +460,7 @@ export default function DevisList() {
   const pageRef = useRef(null)
   useFocusedRecordShortcuts(
     'devisDetail',
-    { a: () => openPdfModal(highlightedDevis) },
+    { a: () => ouvrirPdf(highlightedDevis) },
     !!highlightedDevis,
     { scopeRef: pageRef },
   )
@@ -422,7 +468,7 @@ export default function DevisList() {
   /* T4-U1-014 — l'option que le devis lui-même recommande (`etude_params.recommended_option`, la valeur que le moteur
      PDF lit d'abord) ; `null` quand le devis n'en porte pas : le client choisit, rien n'est coché d'avance. */
   const optionRecommandee = (d) => ({ 'Sans batterie': 'sans_batterie', 'Avec batterie': 'avec_batterie' })[
-    d?.etude_params?.recommended_option] ?? null
+    d?.etude_resume?.recommended_option ?? d?.etude_params?.recommended_option] ?? null
   const openAcceptModal = (d) => {
     setAcceptTarget(d)
     setAcceptNom('')
@@ -483,7 +529,7 @@ export default function DevisList() {
         ? { variante_pct: pct } : {}
       await ventesApi.dupliquerVariante(d.id, { ...payload, idempotency_key: cleVarianteRef.current })
       cleVarianteRef.current = null
-      dispatch(fetchDevis())
+      relire()
       toast.success(`Variantes créées pour ${d.reference}.`)
       closeVarianteModal()
       // Route vers la comparaison : panneau versions du devis source ouvert.
@@ -503,7 +549,7 @@ export default function DevisList() {
     cleGammeRef.current = nouvelleCle()
     setGammeTarget(d)
     setGammeNom('Premium')
-    setGammeNomSource(d?.etude_params?.gamme?.nom || 'Essentielle')
+    setGammeNomSource(d?.etude_resume?.gamme_nom || d?.etude_params?.gamme?.nom || 'Essentielle')
     setGammeRecommandee(false)
     setGammeBusy(false)
   }
@@ -525,7 +571,7 @@ export default function DevisList() {
         idempotency_key: cleGammeRef.current,
       })
       cleGammeRef.current = null
-      dispatch(fetchDevis())
+      relire()
       toast.success(`Gamme « ${nom} » créée pour ${d.reference}.`)
       closeGammeModal()
       setVersionsOpenId(d.id)
@@ -540,10 +586,64 @@ export default function DevisList() {
 
   // VX55 — annule la requête en vol au démontage : sans ça, une réponse tardive
   // (3G qui cale) peut écraser l'état d'un AUTRE écran après navigation.
+  // T4-X4-005 — et à chaque changement de page / filtre (une page à la fois).
   useEffect(() => {
-    const thunk = dispatch(fetchDevis())
+    const thunk = dispatch(fetchDevis(requete))
     return () => thunk?.abort?.()
-  }, [dispatch])
+  }, [dispatch, requete])
+
+  /* T4-X4-005 — un geste qui lit le devis COMPLET (aperçu des lignes du
+     dialogue PDF, plan de toiture, étude bancable) relit d'abord la ligne
+     LÉGÈRE de la liste (`detail_partiel`) : `GET devis/<id>/`, qui remplace la
+     ligne dans la page. Une ligne déjà complète part telle quelle. */
+  const avecDetail = async (d) => {
+    if (d?.detail_partiel !== true) return d
+    const res = await dispatch(rafraichirDevis(d.id))
+    const complet = res?.payload
+    if (complet && complet.id === d.id) return complet
+    toast.error(`Le devis ${d.reference} n’a pas pu être lu — réessayez.`)
+    return null
+  }
+  const ouvrirPdf = async (d) => {
+    const complet = await avecDetail(d)
+    if (complet) pdf.openPdfModal(complet)
+  }
+  // Plan de toiture / étude bancable ouverts (clic ou lien profond
+  // `?design3d=`) sur une ligne légère : relecture du devis complet.
+  const detailDemandeRef = useRef(new Set())
+  useEffect(() => {
+    for (const id of [roofOpenId, etudeOpenId]) {
+      const ligne = id != null ? devis.find(x => x.id === id) : null
+      if (ligne?.detail_partiel === true && !detailDemandeRef.current.has(id)) {
+        detailDemandeRef.current.add(id)
+        // Un échec referme le panneau et le dit (jamais une relance en boucle).
+        dispatch(rafraichirDevis(id)).then((r) => {
+          detailDemandeRef.current.delete(id)
+          if (r?.payload) return
+          if (roofOpenId === id) setRoofOpenId(null)
+          if (etudeOpenId === id) setEtudeOpenId(null)
+          toast.error('Ce devis n’a pas pu être lu — rouvrez le panneau pour réessayer.')
+        })
+      }
+    }
+  }, [roofOpenId, etudeOpenId, devis, dispatch])
+
+  // T4-X4-005 — lien profond `?devis=<id>` vers un devis absent de la page
+  // servie : il est lu et posé en tête ; seul un devis que le serveur ne rend
+  // pas est dit « introuvable ».
+  const [introuvableId, setIntrouvableId] = useState(null)
+  const rechercheLienRef = useRef(null)
+  useEffect(() => {
+    if (!highlightId || loading || !pageDejaServie) return
+    if (devis.some(d => d.id === highlightId) || rechercheLienRef.current === highlightId) return
+    rechercheLienRef.current = highlightId
+    ventesApi.getDevisById(highlightId)
+      .then((r) => {
+        if (r?.data?.id === highlightId) dispatch(devisInsere(r.data))
+        else setIntrouvableId(highlightId)
+      })
+      .catch(() => setIntrouvableId(highlightId))
+  }, [highlightId, loading, pageDejaServie, devis, dispatch])
 
   // QX12 — une fois les devis chargés, fait défiler jusqu'à la ligne ciblée par
   // ?devis=<pk> et efface le paramètre après un court délai (la surbrillance
@@ -590,7 +690,7 @@ export default function DevisList() {
     setDeletingId(d.id)
     try {
       await ventesApi.deleteDevis(d.id)
-      dispatch(fetchDevis())
+      relire()
       toast.success(`Devis ${d.reference} supprimé.`)
     } catch (err) {
       // AERR22 — le pont axios toaste déjà le refus (sauf 404) : un seul toast.
@@ -789,11 +889,6 @@ export default function DevisList() {
   // sans changer son statut stocké (logique T7, partagée filtre/résumé/tableau).
   const effStatutOf = (d) => (d.is_expired ? 'expire' : d.statut)
 
-  // VX236 — `?equipe=<id>` (lien depuis MesEquipesCard) : filtre additif sur
-  // les membres de l'équipe (commercial créateur du devis).
-  const equipeId = searchParams.get('equipe')
-  const equipeMembreIds = useEquipeMembreIds(equipeId)
-
   // T5 — Liste filtrée (statut effectif) + recherche (référence / client).
   // U7 — les révisions remplacées (is_active === false) sont masquées tant que
   // le bouton « voir les versions remplacées » n'est pas activé.
@@ -814,12 +909,15 @@ export default function DevisList() {
   // ceux chargés (une fois le chargement terminé) : signalé par un EmptyState
   // inline, jamais une page blanche. Un devis masqué (révision remplacée) reste
   // « trouvé » — on cherche dans TOUS les devis chargés, pas seulement filtrés.
+  // T4-X4-005 — en pagination serveur, « introuvable » = le serveur ne rend
+  // pas ce devis (la lecture par id a échoué), pas « absent de la page ».
   const highlightMissing = !!highlightId && !loading
     && !devis.some(d => d.id === highlightId)
+    && (!pageDejaServie || introuvableId === highlightId)
 
   // U7 — nombre de révisions remplacées actuellement masquées (pour le bouton
   // de bascule + le compteur).
-  const supersededCount = useMemo(
+  const supersededCountPage = useMemo(
     () => devis.filter(d => d.is_active === false).length,
     [devis],
   )
@@ -829,7 +927,22 @@ export default function DevisList() {
   // le panneau lit désormais le groupe complet servi par `getVariantes`.
 
   // SPL206 — dérivés de la synthèse (T6 / T15 / T16), déplacés avec l'en-tête.
-  const { summary, expiringSoon, batteryInsight } = useDevisListSynthese(devis, effStatutOf)
+  // T4-X4-005 — l'écran ne tient plus qu'une page : l'en-tête lit la synthèse
+  // SERVIE sur toute la portée (`devis/synthese/`). Le calcul local ne sert
+  // que tant qu'aucune page n'a été demandée au serveur ; une synthèse en
+  // échec masque les cartes (jamais des totaux d'une seule page).
+  const syntheseLocale = useDevisListSynthese(devis, effStatutOf)
+  // Synthèse en cours de calcul (≈ 11 s à froid) : mêmes règles qu'un échec —
+  // jamais les totaux d'une seule page — mais l'écran dit « Calcul des totaux… ».
+  const syntheseAbsente = devisSyntheseEchec || (devisSyntheseChargement && !devisSynthese)
+  const summary = devisSynthese?.par_statut
+    ?? (syntheseAbsente ? null : syntheseLocale.summary)
+  const expiringSoon = devisSynthese?.a_relancer
+    ?? (syntheseAbsente ? [] : syntheseLocale.expiringSoon)
+  const batteryInsight = devisSynthese?.batterie
+    ?? (syntheseAbsente ? { avec: 0, sans: 0 } : syntheseLocale.batteryInsight)
+  const supersededCount = devisSynthese?.remplaces ?? supersededCountPage
+  const nombreTotal = devisSynthese?.total ?? devisCount ?? devis.length
 
   const toggleSelected = (id) => setSelectedIds(prev =>
     prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
@@ -849,6 +962,8 @@ export default function DevisList() {
     // ACAL345 — état + handlers des flux PDF (SPL204) et d'envoi (SPL205),
     // passés tels quels : DevisRow n'en lit que ce qu'il destructure.
     ...pdf, ...envoi,
+    // T4-X4-005 — le dialogue PDF lit les lignes : relecture d'une ligne légère.
+    openPdfModal: ouvrirPdf,
     selectedIds, toggleSelected, effStatutOf, navigate, dispatch,
     versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
     // WIR225 - comparaison des variantes servie par le serveur.
@@ -900,6 +1015,7 @@ export default function DevisList() {
   const pageHeader = (
     <DevisPageHeader
       devis={devis}
+      nombreTotal={nombreTotal}
       expiringSoon={expiringSoon}
       loading={loading}
       error={error}
@@ -913,7 +1029,9 @@ export default function DevisList() {
 
   // AERR2 — squelette / StateBlock seulement si AUCUN devis n'a été chargé :
   // une relecture (suppression, variante, gamme) ne démonte plus la liste.
-  if (loading && devis.length === 0) {
+  // T4-X4-005 — une page vide APRÈS une première page servie (filtre sans
+  // résultat, page suivante) garde l'écran : en-tête, filtres, message.
+  if (loading && devis.length === 0 && !pageDejaServie) {
     return (
       <PageListeChargement pageHeader={pageHeader} showSpinner={showSpinner}
         showSkeleton={showSkeleton} libelle="Chargement des devis…">
@@ -930,7 +1048,7 @@ export default function DevisList() {
       </PageListeChargement>
     )
   }
-  if (error && devis.length === 0) {
+  if (error && devis.length === 0 && !pageDejaServie) {
     // VX67 — StateBlock unifie l'état d'erreur avec un bouton « Réessayer »
     // (relance le même thunk que le montage initial), là où l'ancien
     // EmptyState d'erreur n'offrait aucun moyen de réessayer sans recharger
@@ -945,7 +1063,7 @@ export default function DevisList() {
         <StateBlock
           className="mt-4"
           error={frenchError(error, 'Erreur de chargement.')}
-          onRetry={() => dispatch(fetchDevis())}
+          onRetry={relire}
         />
       </div>
     )
@@ -959,14 +1077,24 @@ export default function DevisList() {
           <span className="text-sm text-muted-foreground">
             Liste pas à jour — {frenchError(error, 'le serveur n’a pas répondu.')} Les lignes datent du dernier chargement réussi.
           </span>
-          <Button type="button" size="sm" variant="outline" onClick={() => dispatch(fetchDevis())}>Réessayer</Button>
+          <Button type="button" size="sm" variant="outline" onClick={relire}>Réessayer</Button>
+        </div>
+      )}
+      {devisSyntheseEchec && !devisSynthese && (
+        <div className="mt-3 flex flex-wrap items-center gap-2" role="status" data-testid="devis-synthese-echec">
+          <span className="text-sm text-muted-foreground">
+            Les totaux par statut n’ont pas pu être calculés — la liste reste à jour.
+          </span>
+          <Button type="button" size="sm" variant="outline" onClick={relire}>Réessayer</Button>
         </div>
       )}
 
       {/* SPL206 — en-tête de page : synthèse, filtres, barre de lot (move only). */}
       <DevisListChrome
         devis={devis}
+        nombreTotal={nombreTotal}
         summary={summary}
+        syntheseChargement={!!devisSyntheseChargement && !devisSynthese}
         batteryInsight={batteryInsight}
         expiringSoon={expiringSoon}
         statutFilter={statutFilter}
@@ -1265,7 +1393,7 @@ export default function DevisList() {
         />
       )}
 
-      {devis.length === 0 ? (
+      {devis.length === 0 && nombreTotal === 0 ? (
         <EmptyState
           illustrated
           title="Aucun devis"
@@ -1327,6 +1455,25 @@ export default function DevisList() {
             )}
           </div>
         </Card>
+      )}
+
+      {/* T4-X4-005 — pages servies par le serveur (nombre total servi). */}
+      {devisCount != null && devisCount > TAILLE_PAGE_DEVIS && (
+        <nav className="mt-3 flex flex-wrap items-center justify-between gap-2" aria-label="Pages de la liste des devis" data-testid="devis-pagination">
+          <span className="text-sm text-muted-foreground">
+            Page {page} sur {nbPages} · {devisCount} devis
+          </span>
+          <div className="flex gap-2">
+            <Button type="button" size="sm" variant="outline" className="min-h-11"
+              disabled={page <= 1 || loading} onClick={() => allerPage(page - 1)}>
+              Page précédente
+            </Button>
+            <Button type="button" size="sm" variant="outline" className="min-h-11"
+              disabled={page >= nbPages || loading} onClick={() => allerPage(page + 1)}>
+              Page suivante
+            </Button>
+          </div>
+        </nav>
       )}
     </div>
   )

@@ -24,6 +24,14 @@
       "verbe": "post"
     }
   ],
+  "calepinages.apercuDevis": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/apercu-devis/",
+      "verbe": "get"
+    }
+  ],
   "calepinages.apercuDocument": [
     {
       "config": {
@@ -647,7 +655,9 @@
   ],
   "calepinages.genererDevis": [
     {
-      "config": null,
+      "config": {
+        "k": 1
+      },
       "data": 3,
       "url": "/calepinage/calepinages/7/generer-devis/",
       "verbe": "post"
@@ -692,7 +702,9 @@
   ],
   "calepinages.importerConception": [
     {
-      "config": null,
+      "config": {
+        "suppressErrorToast": true
+      },
       "data": 3,
       "url": "/calepinage/calepinages/7/import-layout/",
       "verbe": "post"
@@ -1164,7 +1176,9 @@
   ],
   "calepinages.syncDevis": [
     {
-      "config": null,
+      "config": {
+        "k": 1
+      },
       "data": 3,
       "url": "/calepinage/calepinages/7/sync-devis/",
       "verbe": "post"

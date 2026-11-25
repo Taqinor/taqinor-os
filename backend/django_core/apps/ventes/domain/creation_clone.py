@@ -233,6 +233,18 @@ def dupliquer_devis(devis, *, user):
         # Duplicata indépendant : jamais de groupe de version (à la
         # différence de dupliquer-variante, QJ15).
         version=1, version_parent=None)
+    if devis.conception_source:
+        # Écart 4 de l'acceptation du 25/11 (D-ACAL-97) — même contenu, même version de
+        # conception : le duplicata garde le pointeur de sa source, donc il SUIT la conception
+        # (intact) ou est listé « à mettre à jour » (retouché), comme elle.
+        import copy as _copie
+        copie.conception_source = _copie.deepcopy(devis.conception_source)
+        type(copie).objects.filter(pk=copie.pk).update(conception_source=copie.conception_source)
+        if copie.lead_id:  # née d'une version déjà dépassée : le suivi du lead la rattrape tout de suite
+            from django.db import transaction
+
+            from apps.ventes.conception.receivers import mettre_suivi_en_file
+            transaction.on_commit(lambda: mettre_suivi_en_file(copie.company_id, copie.lead_id))
     from apps.ventes import activity
     activity.log_devis_note(copie, user, f'Copie de {devis.reference}')
     logger.info('NTUX13: devis %s dupliqué en %s (company %s)',

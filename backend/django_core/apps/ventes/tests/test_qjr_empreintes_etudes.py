@@ -362,7 +362,8 @@ class PointeurConceptionTests(_EmpreintesBase):
         self.assertNotEqual(envoye.etude_params['dimensionnement']['_empreinte'], avant)
 
         copie = dupliquer_devis(envoye, user=user)
-        self.assertIsNone(Devis.objects.get(pk=copie.pk).conception_source)
+        # Écart 4 de l'acceptation du 25/11 : le duplicata garde le pointeur de sa source.
+        self.assertEqual(Devis.objects.get(pk=copie.pk).conception_source, pointeur)
         revision = reviser_devis(envoye, user=user)
         self.assertIsNone(Devis.objects.get(pk=revision.pk).conception_source)
 

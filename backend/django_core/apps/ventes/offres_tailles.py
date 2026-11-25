@@ -304,12 +304,11 @@ def _materiel_du_devis(devis, variante):
     une famille manquée côté référence ferait accuser les autres tailles d'un
     ajout ou d'un retrait imaginaire.
     """
-    from apps.ventes.domain.dimensionnement_devis import lignes_vendues
-
+    from apps.ventes.domain.dimensionnement_devis import lignes_vendues_de_l_option
     admises = ('', 'sans') if variante == 'sans' else ('', 'avec')
     materiel, deja_vues, tout_classe = [], set(), True
-    # AMOT31 — les seules lignes VENDUES (jamais une ligne optionnelle).
-    for ligne in lignes_vendues(devis, variante):
+    # AMOT31 — VENDUES, de CETTE option par la règle des paniers (T4-X4-004).
+    for ligne in lignes_vendues_de_l_option(devis, variante):
         # L-2OPT — LA VARIANTE DÉCIDE. Un devis à deux options porte les lignes
         # des DEUX (onduleur réseau côté « sans », onduleur hybride + batterie
         # côté « avec ») plus les lignes communes. Les lire toutes faisait
@@ -1483,7 +1482,8 @@ def deriver(devis, data):
         # public NON CACHÉ.
         if cle == 'recommande' and not ajuste:
             cartes = {
-                'sans': _carte_du_devis(contexte, data, 'sans'),
+                'sans': (_carte_du_devis(contexte, data, 'sans')  # T4-X4-004
+                         if 'sans' in ((data or {}).get('variantes_servables', ['sans']) or []) else None),
                 'avec': (_carte_du_devis(contexte, data, 'avec')
                          if avec_servable else None),
             }

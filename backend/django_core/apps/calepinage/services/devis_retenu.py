@@ -45,6 +45,26 @@ def conception_du_devis_lie(calepinage, devis=None):
     return valeur
 
 
+#: Coût des requêtes (lot 4) — vrai pendant une LISTE (file « à traiter ») : la conception est
+#: lue telle que rangée, sans rien du moteur (péremption, relance), et le devis reçu comparé
+#: est le seul devis lié (aucun repli sur le lead) — la liste n'en lit que ses signaux.
+_EN_LISTE = __import__('contextvars').ContextVar('calepinage_lecture_de_liste', default=False)
+
+
+def lecture_de_liste():
+    """Le bloc ``with`` d'une LISTE de calepinages (voir :data:`_EN_LISTE`)."""
+    import contextlib
+
+    @contextlib.contextmanager
+    def _bloc():
+        jeton = _EN_LISTE.set(True)
+        try:
+            yield
+        finally:
+            _EN_LISTE.reset(jeton)
+    return _bloc()
+
+
 #: ACAL2012 — mémoire de la conception COURANTE lue, posée sur l'instance (une requête).
 _MEMOIRE_CONCEPTION = '_acal2012_conception_courante'
 #: ACAL2012 — le refus NOMMÉ d'un porteur sans version rangée : jamais une taille inventée.
@@ -83,13 +103,14 @@ def _lire_conception(calepinage):
     # Une société qui n'est pas une ligne enregistrée (double de calcul pur) ne se lit pas en base.
     if not isinstance(company, Model) or not company.pk or getattr(calepinage, 'appel_offre_id', None):
         return None, False
-    lead_id = getattr(calepinage, 'lead_id', None)
-    cle = (lead_id, getattr(calepinage, 'pk', None))
+    lead_id, en_liste = getattr(calepinage, 'lead_id', None), _EN_LISTE.get()
+    cle = (lead_id, getattr(calepinage, 'pk', None), en_liste)
     memoire = getattr(calepinage, _MEMOIRE_CONCEPTION, None)
     if memoire is not None and memoire[0] == cle:
         return memoire[1]
-    valeur = (conception_ou_calcul(company, lead_id) if lead_id
-              else conception_ou_calcul(company, calepinage_id=cle[1]) if cle[1] else (None, False))
+    valeur = (conception_ou_calcul(company, lead_id, en_liste=en_liste) if lead_id
+              else conception_ou_calcul(company, calepinage_id=cle[1], en_liste=en_liste) if cle[1]
+              else (None, False))
     try:
         setattr(calepinage, _MEMOIRE_CONCEPTION, (cle, valeur))
     except AttributeError:  # double de test sans attributs libres : relu à chaque appel
@@ -113,7 +134,7 @@ def _source_de_la_taille(calepinage):
 
 def _refus(message, code, source='factures'):
     return {'panneaux': None, 'kwc': None, 'panel_watt': None, 'source': source, 'refus': message,
-            'motif_code': code, 'option': None}
+            'motif_code': code, 'option': None, 'version': None, 'raison': None}
 
 
 def attend_son_premier_calcul(calepinage):
@@ -129,7 +150,8 @@ def cible_de_la_conception(calepinage):
     """ACAL2012 — la cible de l'atelier : la taille de la conception COURANTE (option que
     le moteur retient), avec ou sans devis — un devis lié, même envoyé, n'est plus la
     source (son écart est servi à part, ACAL2015). ``{panneaux, kwc, panel_watt, source,
-    refus, motif_code, option}`` ; un refus du moteur (ou aucune version rangée) est
+    refus, motif_code, option, version, raison}`` (lane E9 : version et raison de la
+    conception, ``None`` sans conception complète) ; un refus du moteur (ou aucune version rangée) est
     rendu NOMMÉ, panneaux nuls ; ``None`` pour un dossier d'appel d'offres, ou un
     calepinage sans lead dont aucune conception n'est rangée (rien ne le dimensionne,
     comme avant). ``motif_code`` vaut ``facture_absente`` quand le refus nomme la
@@ -156,19 +178,24 @@ def cible_de_la_conception(calepinage):
     panneaux = (valeurs.get('nb_panneaux') or {}).get('valeur')
     kwc = (valeurs.get('puissance_kwc') or {}).get('valeur')
     watt = round(float(kwc) * 1000 / panneaux) if panneaux and kwc else None
+    # Lane E9 — la version et la raison (mots de l'utilisateur) de CETTE conception : l'atelier dit pourquoi
+    # ses chiffres ont changé depuis son ouverture, jamais en silence (aucune lecture de plus : même conception).
     return {'panneaux': panneaux, 'kwc': kwc, 'panel_watt': watt, 'source': _source_de_la_taille(calepinage),
-            'refus': None, 'motif_code': None, 'option': option}
+            'refus': None, 'motif_code': None, 'option': option, 'version': conception.get('version'),
+            'raison': (conception.get('declencheur') or {}).get('raison') or None}
 
 
 def memoriser_option_dessinee(calepinage):
     """ACAL1951 — range ``{devis, option}`` visés par l'enregistrement du dessin
-    dans ``resultat`` (retiré sans devis lié). N'écrit rien quand la valeur
-    rangée est déjà la bonne. Rend la valeur rangée."""
+    dans ``resultat`` : ACAL2025, l'option est celle de la conception COURANTE
+    (cible de l'atelier), jamais celle des lignes du devis ; retirée sans option
+    (aucune conception complète). N'écrit rien quand la valeur rangée est déjà
+    la bonne. Rend la valeur rangée."""
     from .resultat import modifier_resultat
 
-    conception = conception_du_devis_lie(calepinage)
-    valeur = ({'devis': conception['devis'], 'option': conception['option']}
-              if conception else None)
+    option = (cible_de_la_conception(calepinage) or {}).get('option')
+    valeur = ({'devis': getattr(calepinage, 'devis_id', None), 'option': option}
+              if option else None)
     if (getattr(calepinage, 'resultat', None) or {}).get(CLE_OPTION_DESSINEE) == valeur:
         return valeur
 
@@ -186,20 +213,6 @@ def _onduleur_retenu(conception):
     """ACAL1952 — la première ligne onduleur de l'option retenue, ou ``None``."""
     onduleurs = (conception or {}).get('onduleurs') or []
     return onduleurs[0] if onduleurs and onduleurs[0].get('produit') else None
-
-
-def _module_retenu(conception):
-    module = (conception or {}).get('module')
-    produit = module.get('produit') if isinstance(module, dict) else None
-    return produit if produit not in (None, '') else None
-
-
-def module_retenu_du_devis(calepinage):
-    """Rejeu T3-VAGUEC2 — le produit MODULE de la conception retenue du devis
-    lié (``apps.ventes.selectors_calepinage.conception_retenue_du_devis``),
-    ou ``None`` sans devis lié ni ligne panneau : le module que l'atelier pose
-    d'office, jamais un module d'essai du catalogue de même puissance."""
-    return _module_retenu(conception_du_devis_lie(calepinage))
 
 
 def _longueur_du_devis(conception):
@@ -260,8 +273,8 @@ def _devis_envoye_lie(calepinage):
     l'écran les compare au chiffre qu'il affiche, jamais à la conception."""
     from .equipements import devis_et_ecart
 
-    lu = conception_du_devis_lie(calepinage)
-    if not lu or not lu.get('recu'):
+    lu = _devis_recu_du_calepinage(calepinage)
+    if not lu:
         return None
     devis, ecart = devis_et_ecart(lu['devis'], lu, getattr(calepinage, 'company_id', None))
     if devis is None:
@@ -273,6 +286,42 @@ def _devis_envoye_lie(calepinage):
             'ecart_devis': ecart}
 
 
+def _devis_recu_du_calepinage(calepinage):
+    """T4-X5-004 — la conception retenue du devis que le client a REÇU, à comparer à ce
+    calepinage : son devis lié s'il est reçu, sinon — calepinage DE LEAD — le dernier devis
+    reçu du lead, lié ou non (``liens.dernier_devis_recu``, porte de ventes). ``None`` sinon.
+    Rien n'est écrit, aucun devis n'est touché."""
+    lu = conception_du_devis_lie(calepinage)
+    if lu and lu.get('recu'):
+        return lu
+    lead_id = getattr(calepinage, 'lead_id', None)
+    if not lead_id or getattr(calepinage, 'company', None) is None or _EN_LISTE.get():
+        return None
+    memoire = getattr(calepinage, _MEMOIRE_RECU_DU_LEAD, None)
+    if memoire is not None and memoire[0] == lead_id:  # bloc_conception et production_devis : UNE lecture
+        return memoire[1]
+    valeur = _devis_recu_du_lead(calepinage, lead_id)
+    try:
+        setattr(calepinage, _MEMOIRE_RECU_DU_LEAD, (lead_id, valeur))
+    except AttributeError:  # double de test sans attributs libres : relu à chaque appel
+        pass
+    return valeur
+
+
+#: Coût des requêtes (lot 4) — le devis reçu du lead lu, posé sur l'instance (une requête).
+_MEMOIRE_RECU_DU_LEAD = '_lot4_devis_recu_du_lead'
+
+
+def _devis_recu_du_lead(calepinage, lead_id):
+    """Le dernier devis reçu du lead (porte de ventes), sa conception retenue, ou ``None``."""
+    from .equipements import conception_retenue
+    from .liens import dernier_devis_recu
+
+    devis = dernier_devis_recu(calepinage.company, lead_id)
+    lu = conception_retenue(devis) if devis is not None else None
+    return lu if lu and lu.get('recu') else None
+
+
 def bloc_production_devis(calepinage):
     """ACAL1956 (D-ACAL-90) — ``production_devis`` de ``GET resultat/`` : la
     production annuelle RETENUE PAR LE DEVIS (``conception_retenue_du_devis``,
@@ -280,8 +329,8 @@ def bloc_production_devis(calepinage):
     l'étape Résultats n'est jamais vide, même avant la simulation de la pose.
     ``{devis, reference, statut, production_annuelle_kwh, production_origine}``
     ou ``None`` (sans devis lié, ou devis encore brouillon)."""
-    conception = conception_du_devis_lie(calepinage)
-    if not conception or not conception['recu']:
+    conception = _devis_recu_du_calepinage(calepinage)  # T4-X5-004 : lié, sinon reçu du lead
+    if not conception:
         return None
     return {cle: conception[cle] for cle in ('devis', 'reference', 'statut',
                                              'production_annuelle_kwh', 'production_origine')}

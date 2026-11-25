@@ -52,3 +52,37 @@ def is_expired(devis, today=None):
         from django.utils import timezone
         today = timezone.localdate()
     return today > exp
+
+
+def q_expiration(company, apres=None, avant=None):
+    """T4-X4-005 — la JUMELLE SQL de :func:`date_expiration` : les devis dont
+    la date d'expiration tombe entre ``apres`` et ``avant`` (bornes incluses,
+    ``None`` = ouverte), pour filtrer et compter la liste côté serveur sans
+    charger les devis. Même règle : ``date_validite`` si renseignée, sinon
+    le jour (UTC, comme ``date_creation.date()``) de création + la validité
+    de la société."""
+    from datetime import datetime, time, timezone as tz_utc
+    from django.db.models import Q
+
+    jours = _validity_days(company)
+
+    def minuit(jour):
+        return datetime.combine(jour - timedelta(days=jours), time.min,
+                                tzinfo=tz_utc.utc)
+
+    par_validite = Q(date_validite__isnull=False)
+    par_creation = Q(date_validite__isnull=True, date_creation__isnull=False)
+    if apres is not None:
+        par_validite &= Q(date_validite__gte=apres)
+        par_creation &= Q(date_creation__gte=minuit(apres))
+    if avant is not None:
+        par_validite &= Q(date_validite__lte=avant)
+        par_creation &= Q(date_creation__lt=minuit(avant + timedelta(days=1)))
+    return par_validite | par_creation
+
+
+def q_expire_a_la_volee(company, today):
+    """La jumelle SQL de :func:`is_expired` (statut en attente + date passée)."""
+    from django.db.models import Q
+    return Q(statut__in=PENDING_STATUTS) & q_expiration(
+        company, avant=today - timedelta(days=1))

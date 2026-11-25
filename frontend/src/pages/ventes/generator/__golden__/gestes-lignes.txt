@@ -110,23 +110,7 @@ Recalculer le dimensionnement
 Auto-remplir depuis le stock
 Aperçu de la Simulation
 Déplier
-Calcul du moteur horaire en cours…
-Estimation (production × autoconsommation × tarif moyen) — renseignez la facture réelle du client ci-dessus pour un calcul par tranche exact.
-Production annuelle
-8 785
-kWh / an
-Sans batterie★ Recommandé
-Économies
-9 224estimation d'exemple
-MAD / an
-ROI
-2.5 ansestimation d'exemple
-retour sur invest.
-Coût
-22 900
-MAD TTC
-Économies mensuelles estimées (MAD / mois)
-Graphique masqué — exemple sans saisie réelle. Renseignez vos factures (hiver/été ou détail mensuel ci-dessus) pour voir vos économies mensuelles réelles.
+Renseignez le nombre de panneaux et les factures, puis la simulation s'actualise automatiquement.
 Tailles Éco / Recommandé / Max
 Les tailles ne sont pas encore disponibles pour ce devis.
 Lignes de Produits
@@ -318,6 +302,9 @@ gen-cond-acompte-financeur=
   "ventesApi.getOffresTaillesDevis": [
     [
       "36"
+    ],
+    [
+      "36"
     ]
   ],
   "ventesApi.getPrefillSite": [
@@ -337,37 +324,6 @@ gen-cond-acompte-financeur=
   "ventesApi.lireOverrides": [
     [
       36
-    ]
-  ],
-  "ventesApi.postEtudeHorairePreview": [
-    [
-      {
-        "dimensionner": true,
-        "devis": 36
-      },
-      {
-        "signal": {}
-      }
-    ],
-    [
-      {
-        "dimensionner": true,
-        "devis": 36,
-        "kwc": 5.72
-      },
-      {
-        "signal": {}
-      }
-    ],
-    [
-      {
-        "dimensionner": true,
-        "devis": 36,
-        "kwc": 7.15
-      },
-      {
-        "signal": {}
-      }
     ]
   ]
 }

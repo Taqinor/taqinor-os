@@ -126,11 +126,29 @@ export function lignesAffichables(dimensionnement) {
       ? ''
       : ((Array.isArray(ligne.verdicts_bloquants_avec) && ligne.verdicts_bloquants_avec.length)
           ? ligne.verdicts_bloquants_avec.join(' ')
-          : 'Option batterie non livrable pour cette taille (catalogue).')
+          // T4-X4-018 — le refus du palier de stockage, en mots simples, depuis ses valeurs.
+          : (raisonStockageRefuse(ligne.stockage_refuse)
+            || 'Option batterie non livrable pour cette taille (catalogue).'))
+    // T4-X4-018 — la ligne à la taille d'une option que le devis vend (aperçu serveur).
+    const options = Array.isArray(ligne?.taille_du_devis) ? ligne.taille_du_devis : []
+    const tailleDuDevis = options.length
+      ? `taille de ce devis (${options.includes('sans') && options.includes('avec') ? 'sans et avec'
+        : options.includes('avec') ? 'avec' : 'sans'} batterie)`
+      : ''
+    // L'option avec batterie que le devis VEND n'est jamais dite « non livrable » à sa taille :
+    // sans raison du serveur, la ligne dit que le moteur ne l'a pas chiffrée.
+    const bloquants = Array.isArray(ligne.verdicts_bloquants_avec) && ligne.verdicts_bloquants_avec.length
+    const duDevis = !batterieVendable && options.includes('avec') && !bloquants
+    const raison = !duDevis ? raisonBatterie
+      : (raisonStockageRefuse(ligne.stockage_refuse, { duDevis: true })
+        || 'Batterie de ce devis non chiffrée à cette taille par le balayage du moteur.')
     return {
       ...ligne,
       batterieVendable,
-      raisonBatterie,
+      raisonBatterie: raison,
+      // La phrase technique du serveur, gardée pour l'infobulle (jamais dans la cellule).
+      raisonTechnique: batterieVendable ? null : (ligne.stockage_refuse?.motif_refus || null),
+      tailleDuDevis,
       economie_avec_mad: batterieVendable ? ligne.economie_avec_mad : null,
       cout_avec_ttc: batterieVendable ? ligne.cout_avec_ttc : null,
       payback_avec_annees: batterieVendable ? ligne.payback_avec_annees : null,
@@ -138,6 +156,51 @@ export function lignesAffichables(dimensionnement) {
       taux_autoconso_avec: batterieVendable ? ligne.taux_autoconso_avec : null,
     }
   })
+}
+
+const MOIS_NOMS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août',
+  'septembre', 'octobre', 'novembre', 'décembre']
+
+/** Revue de l'écran (25/11) — LE formateur du refus d'un palier de stockage : UNE phrase
+ *  courte, nombres français, nom du mois, composée des VALEURS servies
+ *  (`stockage_refuse.capacite_kwh`, `remplissage.pire_mois.{mois, ratio}`) ; `null` si
+ *  elles manquent (jamais la prose technique relue). */
+export function raisonStockageRefuse(refus, { duDevis = false } = {}) {
+  const capacite = Number(refus?.capacite_kwh)
+  const pire = refus?.remplissage?.pire_mois
+  const mois = MOIS_NOMS[Number(pire?.mois) - 1]
+  const ratio = Number(pire?.ratio)
+  if (!(capacite > 0) || !mois || !Number.isFinite(ratio)) return null
+  // À la taille d'une option que le devis VEND : jamais « pas de batterie », la raison seule.
+  return `${duDevis ? 'Batterie de ce devis' : 'Pas de batterie à cette taille'} : en ${mois}, le surplus `
+    + `solaire d’une journée ne remplirait la batterie de ${formatNumber(capacite, { maxDecimals: 1 })} kWh qu’à `
+    + `${formatNumber(ratio * 100, { decimals: 0 })} %.`
+}
+
+const CRITERES_MOTS = {
+  meilleur_payback: 'le retour sur investissement le plus court',
+  economie_max: 'l’économie annuelle la plus grande',
+  meilleure_couverture: 'la couverture de la consommation la plus grande',
+}
+
+/** Revue de l'écran (25/11) — la ligne sous le tableau, composée des valeurs servies
+ *  (`recommandation`, `critere`) : `{ texte, technique }` (`technique` : la motivation
+ *  servie, pour l'infobulle). Sans recommandation : la phrase du moteur telle quelle. */
+export function motivationAffichable(dimensionnement) {
+  if (!dimensionnement) return null
+  const reco = dimensionnement.recommandation
+  const servie = dimensionnement.motivation || null
+  if (!reco) return servie ? { texte: servie, technique: null } : null
+  const morceaux = [`${reco.panneaux} panneaux (${formatNumber(reco.kwc, { decimals: 2 })} kWc)`]
+  if (reco.payback_sans_annees != null) {
+    morceaux.push(`retour sur investissement ${formatNumber(reco.payback_sans_annees, { decimals: 1 })} ans`)
+  }
+  if (reco.couverture_sans != null) morceaux.push(`couverture ${formatNumber(reco.couverture_sans * 100, { decimals: 0 })} %`)
+  const critere = CRITERES_MOTS[dimensionnement.critere]
+  return {
+    texte: `Taille conseillée sans batterie : ${morceaux.join(', ')}${critere ? ` — critère : ${critere}` : ''}.`,
+    technique: servie,
+  }
 }
 
 // ── L-FRONT (lot 4, 24/08) — falaise/résiduel/remplissage/glitch/estimation ──
@@ -340,5 +403,46 @@ export function verdictBatteriePourTaille(lignes, kwc, tolerance = 0.4) {
     raison: meilleure.raisonBatterie || '',
     kwc: meilleure.kwc,
   }
+}
+
+//: Les suppositions du moteur que l'écran devis montre telles quelles (la consommation).
+const CODES_NOTES = new Set(['consommation_imposee', 'consommation_du_releve'])
+
+/**
+ * E7d (revue lot 4, M3) — UNE source par bloc. La conception RÉSIDENTIELLE
+ * complète servie (`conception_lead.json` : `blocs` = l'`etude_params` que le
+ * moteur a calculé) remise à la forme que lisent les blocs de l'écran (graphe,
+ * falaise, verdict batterie, tableau) : `{ sans, avec }`, chacun `{ etude,
+ * dimensionnement, consommation: null, estimation_conso: null, avertissements:
+ * [], notes }` (`notes` : les phrases du moteur sur la consommation, telles
+ * quelles). Aucun calcul : des lectures. `null` pour un refus, un autre marché
+ * ou rien de servi — jamais les données d'une autre source.
+ */
+export function donneesHorairesDeConception(conception) {
+  if (!conception || conception.etat !== 'complet' || conception.marche !== 'residentiel') return null
+  const blocs = conception.blocs || {}
+  const notes = (conception.suppositions || []).filter((s) => CODES_NOTES.has(s?.code)).map((s) => s.message)
+  const forme = (etude) => (etude || blocs.dimensionnement ? {
+    etude: etude || null, dimensionnement: blocs.dimensionnement || null, consommation: null,
+    estimation_conso: null, avertissements: [], notes,
+  } : null)
+  const avec = blocs.etude_horaire || null
+  return { sans: forme(blocs.etude_horaire_sans || avec), avec: forme(avec) }
+}
+
+/** E7d — les 12 points du graphe « Économies mensuelles », lus sur l'étude servie
+ *  (option sans : `donneesSans`, option avec : `donneesAvec`, sinon la même) ;
+ *  `[]` sans douze mois servis (le bloc dit alors qu'il n'est pas disponible). */
+export function serieEconomiesMensuelles(donneesSans, donneesAvec, libelles = LIBELLES_MOIS) {
+  const mois = donneesSans?.etude?.mois
+  if (!Array.isArray(mois) || mois.length !== 12) return []
+  const moisAvec = donneesAvec?.etude?.mois
+  const avec = Array.isArray(moisAvec) && moisAvec.length === 12 ? moisAvec : mois
+  return mois.map((m, i) => ({
+    month: libelles[i],
+    facture: Math.round(Number(m.facture_avant_mad) || 0),
+    ecoSans: Math.round(Number(m.economie_sans_mad) || 0),
+    ecoAvec: Math.round(Number(avec[i]?.economie_avec_mad) || 0),
+  }))
 }
 

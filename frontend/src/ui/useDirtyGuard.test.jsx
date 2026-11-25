@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { renderHook, act, render, screen, fireEvent, waitFor, within } from '@testing-library/react'
-import { useDirtyGuard, confirmLeaveIfDirty, isAnyFormDirty } from './useDirtyGuard'
+import { useDirtyGuard, confirmLeaveIfDirty, isAnyFormDirty, rechargerSansGarde } from './useDirtyGuard'
 import { ConfirmProvider } from '../providers/ConfirmProvider'
 
 /* VX170 — repli WebKit `pagehide`/`visibilitychange`→`hidden` : on ne peut pas
@@ -102,5 +102,23 @@ describe('AERR155 — sortie d\'un formulaire modifié : boîte de l\'applicatio
     await waitFor(() => expect(onReponse).toHaveBeenLastCalledWith(true))
     expect(natif).not.toHaveBeenCalled()
     natif.mockRestore()
+  })
+})
+
+// T4-X4-022 — « Réinitialiser » : la sortie volontaire déjà confirmée ne rouvre pas la
+// confirmation native du navigateur (qui annulait le rechargement : rien n'était effacé).
+describe('T4-X4-022 — rechargerSansGarde', () => {
+  it('formulaire modifié : beforeunload bloque, puis plus après la sortie volontaire', () => {
+    renderHook(() => useDirtyGuard(true))
+    const avant = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(avant)
+    expect(avant.defaultPrevented).toBe(true)
+
+    const recharger = vi.fn()
+    rechargerSansGarde(recharger)
+    expect(recharger).toHaveBeenCalledTimes(1)
+    const apres = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(apres)
+    expect(apres.defaultPrevented).toBe(false)
   })
 })

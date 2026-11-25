@@ -43,13 +43,30 @@ def _versions(company, lead_id, calepinage_id):
     return ConceptionLead.objects.filter(company=company, **_porteur(lead_id, calepinage_id))
 
 
-def conception_courante(company, lead_id=None, *, calepinage_id=None, suivi_des_devis=True):
+def conception_courante(company, lead_id=None, *, calepinage_id=None, suivi_des_devis=True,
+                        peremption=True):
     """La version COURANTE du porteur (de ``company``), forme du contrat.
     ``suivi_des_devis=False`` (relecture E5, coût des requêtes) : ``ecart_devis`` et
     ``brouillons_a_mettre_a_jour`` servis vides — pour un lecteur qui sert lui-même
-    l'écart du devis qu'il montre (le calepinage, ``devis_retenu.bloc_conception``)."""
+    l'écart du devis qu'il montre (le calepinage, ``devis_retenu.bloc_conception``).
+    ``peremption=False`` (coût d'une LISTE) : ni empreinte des entrées recalculée, ni relance
+    du filet ADEV140 — ``perimee`` servi ``False`` ; réservé aux listes qui n'en lisent rien."""
     version = _versions(company, lead_id, calepinage_id).filter(courante=True).select_related('company').first()
-    return None if version is None else _forme(version, suivi_des_devis=suivi_des_devis)
+    return None if version is None else _forme(version, suivi_des_devis=suivi_des_devis, peremption=peremption)
+
+
+def kwc_de_la_conception_courante(company, lead_id):
+    """ACAL2021 — le kWc de l'option retenue de la conception COURANTE d'un lead, lu en UNE
+    requête de trois colonnes (la pastille de la fiche du lead n'a besoin ni du payback, ni de
+    l'écart des devis, ni de « périmée » : ``conception_courante`` en coûtait plusieurs à chaque
+    ouverture de fiche). ``None`` sans conception, en refus ou sans valeur — jamais supposé."""
+    ligne = (_versions(company, lead_id, None).filter(courante=True)
+             .values('etat', 'valeurs', 'option_retenue').first())
+    if not ligne or ligne['etat'] != 'complet':
+        return None
+    valeurs = ligne['valeurs'] or {}
+    option = ligne['option_retenue'] or next(iter(valeurs), None)
+    return ((valeurs.get(option) or {}).get('puissance_kwc') or {}).get('valeur')
 
 
 def historique_conception(company, lead_id=None, *, calepinage_id=None):
@@ -61,14 +78,14 @@ def historique_conception(company, lead_id=None, *, calepinage_id=None):
             for v in _versions(company, lead_id, calepinage_id).order_by('-version')]
 
 
-def _forme(version, suivi_des_devis=True):
+def _forme(version, suivi_des_devis=True, peremption=True):
     from .conception.moteur import CLES_SORTIE
     forme = {cle: getattr(version, cle) for cle in CLES_SORTIE}
     suivi = suivi_des_devis and version.lead_id
     forme.update(
         option_retenue=version.option_retenue or None, lead=version.lead_id, calepinage=version.calepinage_id,
         empreinte_pose=version.empreinte_pose, declencheur=version.declencheur, version=version.version,
-        calcule_le=version.calcule_le.isoformat(), perimee=_perimee(version),
+        calcule_le=version.calcule_le.isoformat(), perimee=_perimee(version) if peremption else False,
         brouillons_a_mettre_a_jour=_brouillons_a_mettre_a_jour(version) if suivi else [],
         ecart_devis=ecart_devis(_devis_envoye_du_lead(version)) if suivi else [])
     forme['valeurs'], forme['payback_devis'] = _payback_servi(version, forme['valeurs'])
@@ -104,8 +121,9 @@ def _payback_servi(version, valeurs):
     devis = _devis_de_reference(version)
     if devis is None:
         return valeurs, {'devis_ref': None, 'motif': MOTIF_PAYBACK_SANS_DEVIS}
+    from . import offres_tailles
     from .domain.catalogue import classer_produit
-    from .quote_engine.montants import arrondi_affichage
+    from .conception.valeurs import entrees_du_payback
     from .quote_engine.pricing import payback_publiable
     from .utils.options import AVEC_BATTERIE, SANS_BATTERIE, filter_lines_for_option, lignes_avec_produit, option_totaux
 
@@ -117,19 +135,21 @@ def _payback_servi(version, valeurs):
         panier = AVEC_BATTERIE if option == 'avec' else SANS_BATTERIE
         de_l_option = filter_lines_for_option(lignes, panier, devis=devis) if len(servies) > 1 else lignes
         portees = [li for li in de_l_option if li.type_ligne == 'produit']
-        onduleurs = [li for li in portees if (classer_produit(getattr(li.produit, 'nom', '') or li.designation)
-                                              or '').startswith('onduleur')]
-        cout = sum(float(li.quantite or 0) * float(li.prix_unitaire or 0) * (1 + float(li.taux_tva or 0) / 100)
-                   for li in onduleurs) * (1 - float(devis.remise_globale or 0) / 100)
+        # Lane E6d — LA provision d'onduleur des cartes (``offres_tailles._cout_onduleur_ttc``),
+        # rôles du classifieur catalogue, remise du devis : un seul calcul.
+        cout = offres_tailles._cout_onduleur_ttc(
+            portees, [classer_produit(getattr(li.produit, 'nom', '') or li.designation) for li in portees],
+            1 - float(devis.remise_globale or 0) / 100, devis.taux_tva, getattr(devis, 'company', None), devis)
         investissement = option_totaux(devis, '', lignes=de_l_option)['ttc']
         economie = (table.get('economies_annuelles') or {}).get('valeur')
         # Modèle HORAIRE (résidentiel) : l'économie « avec » est déjà nette du rendement de la batterie,
         # le cashflow n'en re-déduit rien (part stockée 0, comme le PDF, AMOT58).
         horaire = {'part_batterie': 0} if version.marche == 'residentiel' else {}
-        table['payback'] = {'valeur': payback_publiable(investissement, economie, stockage=option == 'avec',
-                                                        cout_onduleur_ttc=arrondi_affichage(cout, 2) or None,
-                                                        **horaire)['payback_years'],
-                            'unite': 'ans', 'source': 'devis'}
+        table['payback'] = dict({'valeur': payback_publiable(investissement, economie, stockage=option == 'avec',
+                                                             cout_onduleur_ttc=cout, **horaire)['payback_years'],
+                                 'unite': 'ans', 'source': 'devis'},
+                                **entrees_du_payback(investissement, economie, cout,
+                                                     stockage=option == 'avec' and version.marche != 'residentiel'))
     return servies, {'devis_ref': devis.reference, 'motif': None}
 
 
@@ -160,10 +180,19 @@ def _empreinte_des_entrees(version):
     toit = SimpleNamespace(empreinte=pose, plafond_panneaux=None) if pose else None
     # Relecture E6 B1 — les désignations à la main du calepinage de la version entrent
     # dans l'empreinte rangée (``service.relancer``) : la lecture les relit par la MÊME porte.
-    imposes = None
-    if version.calepinage_id:
+    imposes, calepinage_id, lu = None, version.calepinage_id, None
+    if version.lead_id and not calepinage_id:
+        # Lane E6e — la résolution de l'écrivain (``porte_calepinage.calepinage_du_lead``) : une
+        # version rangée sans le calepinage ouvert du lead est périmée, une relance la range avec.
+        # Coût des requêtes : le calepinage lu sert aussi ses désignations (pas de seconde lecture).
+        from .conception.porte_calepinage import calepinage_et_toit_du_lead
+        calepinage_id, toit, lu = calepinage_et_toit_du_lead(company, lead, None, toit)
+    if calepinage_id:
+        from .conception.moteur import consommation_imposee
         from .conception.porte_calepinage import designations_du_calepinage
-        imposes = designations_du_calepinage(company, version.calepinage_id) or None
+        imposes = designations_du_calepinage(company, calepinage_id, lu) or None
+        # Reste d'ACAL2020 — le relevé collé, relu par LA MÊME porte que l'écrivain (niveau 15).
+        lead, _conso = consommation_imposee(lead, company, calepinage_id)
     with reglages_lus_sans_creer(company):
         return empreinte_conception(entrees_pour(lead, company, toit=toit), imposes)
 
@@ -216,7 +245,10 @@ def verdicts_pour_le_calepinage(company, conception, pose):
         return None, '', True
     verdicts = (valeurs.get('verdicts') or {}).get('valeur') or {}
     nombre, posees = (valeurs.get('nb_panneaux') or {}).get('valeur'), (pose or {}).get('nb_panneaux')
-    if not posees or nombre is None or posees == nombre or (pose or {}).get('ratio') is None:
+    kwc_conception = (valeurs.get('puissance_kwc') or {}).get('valeur')
+    # T4-X3-009 — même compte mais autre puissance de module (8 × 710 W contre 8 × 550 W) : autre pose.
+    meme_pose = posees == nombre and not _autre_puissance(kwc_conception, (pose or {}).get('kwc'))
+    if not posees or nombre is None or meme_pose or (pose or {}).get('ratio') is None:
         return verdicts, '', False
     onduleurs = (valeurs.get('onduleurs') or {}).get('valeur') or []
     produit = pose.get('onduleur_produit')
@@ -228,7 +260,21 @@ def verdicts_pour_le_calepinage(company, conception, pose):
     if jugees is None:
         return verdicts, '', False
     return (dict(jugees, non_calcule=None),
-            'jugé pour la pose : %d panneaux — la conception du lead en compte %d' % (posees, nombre), False)
+            'jugé pour la pose : %d panneaux — la conception du lead en compte %s'
+            % (posees, _compte_de_la_conception(nombre, kwc_conception)), False)
+
+
+def _autre_puissance(kwc_conception, kwc_pose):
+    """T4-X3-009 — vrai quand les deux puissances sont connues et diffèrent (au centième de kWc)."""
+    return kwc_conception is not None and kwc_pose is not None and abs(float(kwc_conception) - float(kwc_pose)) >= 0.01
+
+
+def _compte_de_la_conception(nombre, kwc):
+    """T4-X3-009 — « 8 de 550 W » : le compte de la conception NOMME son panneau (jamais un « 8 » nu
+    à côté de panneaux d'une autre puissance) ; sans puissance servie, le compte seul, comme avant."""
+    if not kwc or not nombre:
+        return '%d' % nombre
+    return '%d de %s W' % (nombre, '{:g}'.format(round(float(kwc) * 1000 / nombre)))
 
 
 def _devis_envoye_du_lead(version):

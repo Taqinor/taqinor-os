@@ -57,8 +57,10 @@ FIXTURE = Path(__file__).resolve().parent / 'fixtures' / \
 #: ``assistant-taille`` POST et ``assistant-taille/apercu`` GET) + les quatre
 #: routes de lignes de l'assistant (20/11/2026, ``assistant-lignes/ajouter``,
 #: ``/modifier``, ``/supprimer``, ``/remplacer``, POST) + ``assistant-liste``
-#: (21/11/2026, GET, collection : retrouver des devis).
-NB_ROUTES = 75
+#: (21/11/2026, GET, collection : retrouver des devis) + ``synthese``
+#: (T4-X4-005, 25/11/2026, GET, collection : l'en-tête de la liste des devis,
+#: servi à part depuis que la liste est paginée par le serveur).
+NB_ROUTES = 76
 MIXIN = re.compile(r'^Devis\w*ActionsMixin$')
 
 #: Les symboles que chaque tâche de la piste déplace (texte des tâches

@@ -377,6 +377,8 @@ export const ALL_HOOKS = [
   'cal-tableau-variantes',
   'cal-variante-confirmer',
   'cal-variante-dupliquer',
+  'cal-variante-refus', // T4-X9-010
+  'cal-simulation-a-refaire', // T4-X2-002
   'cal-variante-formulaire',
   'cal-variante-nom',
   'cal-variante-nom-erreur',
@@ -576,6 +578,8 @@ export const ALL_HOOKS = [
   'cal-doc-bouton-kml',
   'cal-doc-conception',
   'cal-doc-conception-confirmation',
+  'cal-doc-conception-remplacement',
+  'cal-doc-bouton-remplacer-toit',
   'cal-doc-empreinte',
   'cal-doc-erreur',
   'cal-doc-erreurs',
@@ -722,6 +726,7 @@ export const ALL_HOOKS = [
   'cal-projet-annuler',
   'cal-projet-apercu',
   'cal-projet-apercu-clone',
+  'cal-projet-apercu-avertissements',
   'cal-projet-ouvrir',
   'cal-projet-apercu-ignores',
   'cal-projet-apercu-modules',
@@ -761,6 +766,7 @@ export const ALL_HOOKS = [
   'cal-nouveau-preset-aide',
   'cal-nouveau-responsable',
   'cal-nouveau-existant',
+  'cal-nouveau-retrouve', // T4-X9-011
   'cal-nouveau-ouvrir-existant',
   // FicheCalepinage.jsx
   'cal-fiche--erreur',

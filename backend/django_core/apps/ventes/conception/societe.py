@@ -39,7 +39,9 @@ MOTIFS = {CLE_CATALOGUE: 'catalogue modifié', 'tva_standard': 'TVA modifiée',
 LIBELLES = {CLE_CATALOGUE: 'Catalogue', 'tva_standard': 'TVA standard', 'tva_panneaux': 'TVA des panneaux',
             # Relecture E6 m2 — les entrées IMPOSÉES au calepinage (``valeurs.dire_l_impose``).
             'module_designe': 'Module désigné', 'onduleur_designe': 'Onduleur désigné',
-            'pose': 'Panneaux posés à la main'}
+            'pose': 'Panneaux posés à la main',
+            # Lane E6e — la paire désignée, dite en un morceau (``service._materiel_designe``).
+            'materiel_designe': "Matériel désigné à l'atelier"}
 
 
 def cle_memo_catalogue(company_id):

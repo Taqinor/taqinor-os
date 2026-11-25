@@ -491,10 +491,20 @@ class DevisCycleActionsMixin:
         # est remplacé par LE service de domaine verrouillé. QJR407 (cloneur
         # unique, sept champs, lignes QJR224/QJR84) vit dans ``cloner_devis``,
         # appelé par ``reviser_devis``.
+        from ..conception.brouillons import MiseAJourRefusee, reviser_sur_la_conception
         from ..domain.revision import RevisionError, reviser_devis
+        from ..domain.taille import AutoDevisError
         old = self.get_object()
         try:
-            nd = reviser_devis(old, user=request.user)
+            # Lane E6e (T4-X5-011) — l'atelier demande la V2 SUR la conception courante du lead.
+            sur_la_conception = str(request.data.get('sur_la_conception', '')).lower() in ('1', 'true')
+            nd = (reviser_sur_la_conception(old, request.user) if sur_la_conception
+                  else reviser_devis(old, user=request.user))
+        except (MiseAJourRefusee, AutoDevisError) as exc:
+            motif = (getattr(exc, 'message', None) or str(exc)).rstrip('. ')
+            return Response({'detail': "La nouvelle version n'a pas pu suivre la conception du lead (%s) : "
+                                       'aucune version créée.' % motif,
+                             'code': 'conception_non_appliquee'}, status=status.HTTP_409_CONFLICT)
         except RevisionError as exc:
             # VNT24 — même forme 409 que accepter / refuser / envoyer.
             from ..domain.modifiabilite import (

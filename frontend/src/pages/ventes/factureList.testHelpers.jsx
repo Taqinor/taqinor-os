@@ -5,10 +5,10 @@ import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
-export function renderFactureList(FactureList, { factures = [], role = 'admin' } = {}) {
+export function renderFactureList(FactureList, { factures = [], role = 'admin', facturesKpis } = {}) {
   const store = configureStore({
     reducer: {
-      ventes: (s = { factures, loading: false, error: null }) => s,
+      ventes: (s = { factures, loading: false, error: null, facturesKpis }) => s,
       auth: (s = { role }) => s,
     },
   })

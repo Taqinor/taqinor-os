@@ -17,6 +17,15 @@ export function isAnyFormDirty() {
   return _dirtyForms > 0
 }
 
+// T4-X4-022 — une sortie VOLONTAIRE déjà confirmée (« Réinitialiser ») ne doit pas
+// rouvrir la confirmation native du navigateur : sinon le rechargement est annulé
+// (ou jamais confirmé) et rien n'est effacé. On lève la garde, puis on recharge.
+let _sortieVolontaire = false
+export function rechargerSansGarde(recharger = () => window.location.reload()) {
+  _sortieVolontaire = true
+  recharger()
+}
+
 // VX170 — repli WebKit : `beforeunload` est quasi muet sur iOS Safari (un
 // swipe-back ou une bascule d'app ne le déclenche pas) — l'événement fiable y
 // est `pagehide` (+ `visibilitychange` → `hidden`, qui le précède souvent).
@@ -35,6 +44,7 @@ export function useDirtyGuard(
     if (!dirty) return undefined
     _dirtyForms += 1
     const handler = (e) => {
+      if (_sortieVolontaire) return undefined
       e.preventDefault()
       e.returnValue = message // requis par certains navigateurs
       return message

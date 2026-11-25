@@ -176,15 +176,15 @@ def _favoris_modules(calepinage):
     return [str(identifiant) for identifiant in favoris]
 
 
-def _module_du_devis(calepinage):
-    """L'identifiant (texte) du module de la conception retenue du devis lié,
-    ou ``None`` — sans devis lié, aucune lecture (appelable sans base)."""
-    if not getattr(calepinage, 'devis_id', None):
-        return None
-    from .devis_retenu import module_retenu_du_devis
+def _module_de_la_conception(calepinage):
+    """ACAL2025 — l'identifiant (texte) du module de la conception COURANTE
+    (``equipements.materiel_de_la_conception``, produit actif de la société),
+    ou ``None`` ; les lignes d'un devis lié ne sont plus lues (appelable sans
+    base : un double sans société enregistrée ne lit rien)."""
+    from .equipements import materiel_de_la_conception
 
-    produit = module_retenu_du_devis(calepinage)
-    return str(produit) if produit is not None else None
+    produit = (materiel_de_la_conception(calepinage).get('produits') or {}).get('module')
+    return str(produit) if produit not in (None, '') else None
 
 
 def modules_disponibles_du_calepinage(calepinage, produits):
@@ -210,12 +210,11 @@ def modules_disponibles_du_calepinage(calepinage, produits):
             for position, identifiant in enumerate(favoris)}
     for entree in entrees:
         entree['favori'] = str(entree['module']['produitId']) in rang
-    # Rejeu T3-VAGUEC2 — devis lié : le module de SA conception retenue passe
-    # EN TÊTE, devant les favoris. L'atelier pose d'office le premier module du
-    # catalogue de la puissance du devis (``moduleDeDepart``) : c'est donc lui,
-    # jamais un module d'essai de même puissance. Le choisir autrement reste un
-    # geste de l'atelier.
-    du_devis = _module_du_devis(calepinage)
+    # Rejeu T3-VAGUEC2 + ACAL2025 — le module de la CONCEPTION passe EN TÊTE,
+    # devant les favoris. L'atelier pose d'office le premier module du catalogue
+    # (``moduleDeDepart``) : c'est donc lui, jamais un module d'essai de même
+    # puissance. Le choisir autrement reste un geste de l'atelier.
+    du_devis = _module_de_la_conception(calepinage)
     entrees.sort(key=lambda entree: (
         0 if du_devis is not None and str(entree['module']['produitId']) == du_devis else 1,
         0 if entree['favori'] else 1,
@@ -232,4 +231,26 @@ def modules_disponibles_du_calepinage(calepinage, produits):
         'modules': entrees,
         'champs_requis': list(CHAMPS_REQUIS),
         'motif_liste_vide': motif,
+        'panneaux_selon_watt': _panneaux_selon_watt(calepinage, entrees),
     }
+
+
+def _panneaux_selon_watt(calepinage, entrees):
+    """Lane E9 (T4-X2-001 / T4-X9-005) — ``{"<Wc>": panneaux}`` : la puissance de la conception
+    COURANTE (option retenue) comptée dans chaque puissance de module que CETTE liste offre, par
+    LA règle du moteur (``apps.ventes.services.panneaux_pour_la_meme_puissance``, décision 28
+    ouverte) — jamais calculée dans le navigateur. ``{}`` sans conception complète. Aucune
+    lecture de plus : la conception est celle que ``_module_de_la_conception`` a déjà lue."""
+    from .devis_retenu import conception_du_calepinage
+    from .equipements import panneaux_pour_la_meme_puissance
+
+    conception = conception_du_calepinage(calepinage) or {}
+    valeurs = (conception.get('valeurs') or {}).get(conception.get('option_retenue')) or {}
+    kwc = (valeurs.get('puissance_kwc') or {}).get('valeur')
+    table = {}
+    for entree in entrees:
+        watt = entree['module'].get('pmaxWc')
+        nombre = panneaux_pour_la_meme_puissance(kwc, watt) if conception.get('etat') == 'complet' else None
+        if nombre is not None:
+            table['{:g}'.format(float(watt))] = nombre
+    return table

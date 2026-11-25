@@ -30,7 +30,7 @@ from .lignes_classement import (
 )
 # SPL163 — la phase D1 (chiffrage de l'étude) vit dans ``etude_chiffrage``
 # (move only) ; builder n'importe ici que ce qu'il utilise lui-même.
-from .etude_chiffrage import _nombre, _regles_2710, chiffrer_etude
+from .etude_chiffrage import _nombre, _regles_2710, chiffrer_etude, divergence_par_kwc
 # SPL163 — ré-export (noqa: F401) pour d'autres propriétaires : public_views
 # (CLES_BLOCS_HORAIRES), tests devis test_options (_etude_horaire_sans_stockage)
 # et test_ciq129_cles_v1 (_etude_rendue).
@@ -285,7 +285,7 @@ def _scalaires_par_option(sans_lignes, avec_lignes, devis=None) -> dict:
     """
     nb_sans, watt_sans = panneaux_et_watt_lu(sans_lignes)
     nb_avec, watt_avec = panneaux_et_watt_lu(avec_lignes)
-    return {
+    return divergence_par_kwc({  # T4-X1-001 — tailles différentes à comptes égaux (niveau 15)
         "nb_sans": nb_sans or None,
         "nb_avec": nb_avec or None,
         "watt_sans": watt_sans,
@@ -293,7 +293,7 @@ def _scalaires_par_option(sans_lignes, avec_lignes, devis=None) -> dict:
         "kwc_sans": kwc_des_lignes(sans_lignes, nb_sans, watt_sans, devis),  # AGNR69
         "kwc_avec": kwc_des_lignes(avec_lignes, nb_avec, watt_avec, devis),
         "divergents": bool(nb_sans and nb_avec and nb_sans != nb_avec),
-    }
+    }, devis)
 
 
 def _panneaux_variantes(lignes) -> bool:

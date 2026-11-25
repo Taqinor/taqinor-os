@@ -23,7 +23,7 @@ export default function RailArgent({
   showSans, showAvec, sansRec, avecRec, totals,
   discountPct, setDiscountPct, remiseMax,
   pkwc, prixCible, setPrixCible, applyPrixCible, kwp,
-  marge, kpiTotal, margeLignesSansAchat = 0,
+  marge, kpiTotal, margeLignesSansAchat = 0, margeOption = null,
   // AGV10 — pompage : pas de batterie, donc aucun mot « batterie » au rail.
   agricole = false,
   // ATOT25 — `lignesRemiseesParPanier` (solar.js) : par option, l'« Arrondi
@@ -160,12 +160,18 @@ export default function RailArgent({
         </div>
         {/* AGNR29 — composant partagé avec le rail latéral (AGR134 : marge
             partielle dite, jamais de % sur un coût partiel). */}
-        <MargeIndicative marge={marge} kpiTotal={kpiTotal} lignesSansAchat={margeLignesSansAchat} />
+        <MargeIndicative marge={marge} kpiTotal={kpiTotal} lignesSansAchat={margeLignesSansAchat}
+                         option={margeOption} />
       </div>
       {marge != null && marge < 0 && (
         <div className="mx-5 mb-4 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          Le total après remise est INFÉRIEUR au coût d'achat estimé — vous
-          vendez à perte. Réduisez la remise ou le prix cible.
+          {/* T4-X4-020 — l'option dont il s'agit est nommée ; sans remise, on ne conseille pas de la réduire. */}
+          {margeOption ? `Le total de l'option ${margeOption === 'avec' ? 'avec' : 'sans'} batterie` : 'Le total'}
+          {(parseFloat(discountPct) || 0) > 0 ? ' après remise' : ''} est INFÉRIEUR au coût d'achat estimé de
+          ses lignes — vous vendez à perte.{' '}
+          {(parseFloat(discountPct) || 0) > 0
+            ? 'Réduisez la remise ou le prix cible.'
+            : 'Vérifiez les prix de vente et d’achat de ses lignes.'}
         </div>
       )}
     </>

@@ -11,6 +11,10 @@ interdit la croissance — budget 0 ligne nette.
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def prefetch_devis_liste_leads(prefixe='devis'):
     """AOOM1 — LE préchargement des devis d'une LISTE de leads, SANS leur
@@ -86,3 +90,141 @@ def _devis_sans_etude():
             .defer('etude_params')
             .annotate(**{annote: _extrait(chemin)
                          for chemin, annote in ANNOTATION_PAR_CLE.items()}))
+
+
+# ---------------------------------------------------------------------------
+# T4-X4-005 — la liste des devis (``/ventes/devis``) paginée PAR LE SERVEUR :
+# l'écran chargeait TOUS les devis (590 pour un responsable ≈ 48 Mo) pour
+# filtrer, chercher et compter dans le navigateur. Les filtres et la synthèse
+# de l'en-tête sont calculés ici, sur la portée déjà bornée par la vue.
+# ---------------------------------------------------------------------------
+#: Statuts effectifs de la liste : le statut stocké, sauf qu'un devis en
+#: attente dont la validité est passée se lit « expire » (T7, ``utils.expiry``).
+STATUTS_EFFECTIFS = ('brouillon', 'envoye', 'accepte', 'refuse', 'expire')
+
+
+def filtrer_liste_devis(qs, company, *, q=None, statut_effectif=None,
+                        actifs=False, auteurs=None):
+    """Recherche (référence ou nom du client), statut effectif, versions
+    remplacées masquées, auteurs — les mêmes règles que l'écran appliquait
+    aux devis chargés, appliquées en SQL."""
+    from django.db.models import Q
+    from django.utils import timezone
+
+    from .utils.expiry import q_expire_a_la_volee
+
+    if q:
+        qs = qs.filter(Q(reference__icontains=q) | Q(client__nom__icontains=q))
+    if statut_effectif:
+        expire = q_expire_a_la_volee(company, timezone.localdate())
+        if statut_effectif == 'expire':
+            qs = qs.filter(Q(statut='expire') | expire)
+        elif statut_effectif in ('brouillon', 'envoye'):
+            qs = qs.filter(statut=statut_effectif).exclude(expire)
+        else:
+            qs = qs.filter(statut=statut_effectif)
+    if actifs:
+        qs = qs.filter(is_active=True)
+    if auteurs:
+        qs = qs.filter(created_by_id__in=auteurs)
+    return qs
+
+
+# T4-X1 (revue de la liste sur la copie de production) — le total d'un devis
+# est calculé par le MOTEUR du PDF (≈ 20 ms par devis, du calcul pur : 11
+# requêtes constantes, aucun N+1) ; sur 583 devis la synthèse prenait 11 à 12 s
+# et dépassait la limite de l'écran. Il est donc mémorisé par CONTENU du devis :
+# la clé porte l'horodatage du devis, la signature de ses lignes (quantité,
+# prix, remise, produit) et la version de ce calcul ; elle change à la moindre
+# modification du devis. Seul un changement fait HORS du devis (fiche produit,
+# réglage de société) peut laisser un total mémorisé jusqu'à son expiration
+# (``DUREE_TOTAL_MEMORISE_S``) — la colonne de la ligne, elle, se recalcule.
+# Lu HORS du devis par le moteur, et marqueur porté par la clé : le profil de la
+# société (``CompanyProfile.updated_at`` : TVA, règles, réglages) et chaque
+# produit des lignes (``Produit.date_mise_a_jour`` : nom, marque, classement en
+# option batterie / sans). SANS marqueur, donc couverts par la seule expiration :
+# la fiche technique du produit (``FicheTechnique``, description/garantie — elle
+# n'entre ni dans un prix ni dans le classement) et un changement du MOTEUR
+# lui-même (à ce jour : relever ``VERSION_TOTAL_MEMORISE`` avec le correctif).
+VERSION_TOTAL_MEMORISE = 1
+DUREE_TOTAL_MEMORISE_S = 6 * 3600
+
+
+def _total_affiche_memorise(devis, display_totals, marqueur_societe=None):
+    from decimal import Decimal
+
+    import hashlib
+
+    from django.core.cache import cache
+
+    lignes = [(lg.pk, str(lg.quantite), str(lg.prix_unitaire), str(lg.remise),
+               lg.produit_id,
+               str(getattr(lg.produit, 'date_mise_a_jour', '') if lg.produit_id else ''))
+              for lg in devis.lignes.all()]
+    cle = 'devis-total:v%s:%s:%s:%s:%s' % (
+        VERSION_TOTAL_MEMORISE, devis.pk, devis.updated_at, marqueur_societe,
+        hashlib.sha1(repr(lignes).encode('utf-8'), usedforsecurity=False).hexdigest())
+    try:
+        trouve = cache.get(cle)
+    except Exception:  # noqa: BLE001 — cache indisponible : on calcule, comme avant (D-ENF22-BLE001)
+        logger.warning('Total mémorisé du devis non lu : cache indisponible', exc_info=True)
+        trouve = None
+    if trouve is not None:
+        return Decimal(trouve)
+    total = Decimal(str(display_totals(devis, lignes_prechargees=True)['total'] or 0))
+    try:
+        cache.set(cle, str(total), DUREE_TOTAL_MEMORISE_S)
+    except Exception:  # noqa: BLE001 — le total est rendu quand même (D-ENF22-BLE001)
+        logger.warning('Total mémorisé du devis non rangé : cache indisponible', exc_info=True)
+    return total
+
+
+def synthese_liste_devis(qs, company):
+    """L'en-tête de la liste sur TOUTE la portée (pas sur la page) : nombre et
+    total affiché par statut effectif des devis en jeu, devis à relancer
+    (envoyés, validité ≤ 7 jours), option batterie des acceptés, versions
+    remplacées. Le total d'argent est ``display_totals`` — le MÊME que la
+    colonne « Total TTC » de chaque ligne (``total_affiche``), jamais un
+    second calcul ; les devis sont lus par paquets (mémoire bornée)."""
+    from datetime import timedelta
+    from decimal import Decimal
+
+    from django.utils import timezone
+
+    from core.money import quantize_mad
+
+    from .quote_engine.builder import display_totals
+    from .utils.expiry import is_expired, q_expiration
+
+    from apps.parametres.models import CompanyProfile
+    marqueur_societe = getattr(CompanyProfile.get(company), 'updated_at', None)
+    jour = timezone.localdate()
+    par_statut = {s: {'count': 0, 'total': Decimal('0')} for s in STATUTS_EFFECTIFS}
+    en_jeu = (qs.filter(is_active=True).order_by('pk')
+              .prefetch_related(None)
+              .prefetch_related('lignes', 'lignes__produit',
+                                'lignes__produit__fiche_technique'))
+    for devis in en_jeu.iterator(chunk_size=50):
+        cle = 'expire' if is_expired(devis, today=jour) else devis.statut
+        cellule = par_statut.setdefault(cle, {'count': 0, 'total': Decimal('0')})
+        cellule['count'] += 1
+        cellule['total'] += _total_affiche_memorise(
+            devis, display_totals, marqueur_societe)
+    for cellule in par_statut.values():  # une seule règle d'arrondi de l'argent (core.money)
+        cellule['total'] = float(quantize_mad(cellule['total']))
+    a_relancer = (qs.filter(is_active=True, statut='envoye')
+                  .filter(q_expiration(company, apres=jour,
+                                       avant=jour + timedelta(days=7)))
+                  .values('id', 'reference'))
+    acceptes = qs.filter(statut='accepte')
+    return {
+        'total': qs.count(),
+        'remplaces': qs.filter(is_active=False).count(),
+        'par_statut': par_statut,
+        'a_relancer': [{'id': d['id'], 'reference': d['reference']}
+                       for d in a_relancer],
+        'batterie': {
+            'avec': acceptes.filter(option_acceptee='avec_batterie').count(),
+            'sans': acceptes.filter(option_acceptee='sans_batterie').count(),
+        },
+    }

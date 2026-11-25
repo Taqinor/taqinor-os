@@ -377,6 +377,12 @@ class DevisAutoAgricoleTests(TestCase):
                           debit_forage_m3h=Decimal('25'))
         sortie = pompage.etudier_pompage(self.co, {'alim': 'tri'}, lead=lead)
         self.assertEqual(sortie['production']['plafond_forage_m3h'], 22.5)
+        # T4-X1-014 — l'alerte dit le plafond en mots, sans formule.
+        forage = [a['message'] for a in sortie['alertes']
+                  if a['code'] == 'debit_limite_forage'][0]
+        self.assertIn('22,5 m³/h', forage)
+        self.assertNotIn('×', forage)
+        self.assertNotIn('réglage société', forage)
         self.assertEqual(sortie['controle_conception']['statut'],
                          'couverture_insuffisante')
         rep = self._post(lead)

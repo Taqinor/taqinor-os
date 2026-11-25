@@ -64,6 +64,21 @@ describe('CALX109 câblage — le catalogue de modules atteint le constructeur',
     expect(initRoofToolPro8.mock.calls[0][0].modulesDisponibles).toEqual(MODULES)
   })
 
+  it('T4-X3-009 — la PREMIÈRE pose automatique reçoit la cible comptée dans le module de départ (8 × 550 W ⇒ 6 × 710 W)', async () => {
+    const contexte = structuredClone(CTX)
+    contexte.cible = { ...contexte.cible, panneaux: 8, kwc: 4.4, panel_watt: 550, source: 'factures' }
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: contexte })
+    // Le module de départ du constructeur (`moduleDeDepart` : le premier sélectionnable de l'exemple) ; table servie.
+    const depart = MODULES.modules.find((e) => e.selectionnable).module.pmaxWc
+    calepinageApi.calepinages.modulesDisponibles.mockResolvedValue({ data: {
+      ...MODULES, panneaux_selon_watt: { [String(depart)]: 7 } } })
+
+    rendreCalepinage(CTX.calepinage.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(initRoofToolPro8.mock.calls[0][0].hydrate.devis.cible.panneaux).toBe(7)
+  })
+
   // ACAL30 — RÉÉCRIT : un catalogue illisible n'empêche pas de REGARDER la conception (le
   // boot a lieu, aucun module inventé), mais il INTERDIT l'enregistrement : sans catalogue,
   // le module de chaque pan retombait en silence sur le défaut 720 Wc (porte ATL-10).

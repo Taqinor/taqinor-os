@@ -104,6 +104,32 @@ describe('EquipementsElectriques (CALX222)', () => {
     expect(screen.queryByTestId('calx222-liste')).toBeNull()
   })
 
+  it('T4-X5-008 — un organe posé puis enregistré (nouvelle empreinte du document) apparaît sans rouvrir l’onglet', async () => {
+    servirLayout(CONTRAT.exemple_vide.electrical)
+    const vue = rendre({ documentVivant: { empreinte: 'avant' } })
+    await screen.findByTestId('calx222-vide')
+
+    const eq = CONTRAT.exemple.electrical.equipements[0]
+    servirLayout({ ...CONTRAT.exemple_vide.electrical, equipements: [eq] })
+    vue.rerender(
+      <MemoryRouter>
+        <EquipementsElectriques calepinageId={12} documentVivant={{ empreinte: 'apres' }} />
+      </MemoryRouter>,
+    )
+    expect(await screen.findByTestId(`calx222-equipement-${eq.id}`)).toHaveTextContent(eq.label)
+    expect(screen.queryByTestId('calx222-vide')).toBeNull()
+  })
+
+  it('T4-X5-008 — « Armer la pose » dit où cliquer et comment garder l’organe', async () => {
+    servirLayout(CONTRAT.exemple_vide.electrical)
+    const user = userEvent.setup()
+    rendre({ builderApi: { electrique: { armerPose: vi.fn() } } })
+    await screen.findByTestId('calx222-vide')
+    await user.click(screen.getByTestId('calx222-armer'))
+    expect(await screen.findByTestId('calx222-armement-consigne')).toHaveTextContent(
+      'Cliquez dans l’atelier 3D à l’endroit de l’organe, puis « Enregistrer le calepinage »')
+  })
+
   it('document SANS clé `electrical` : même état vide, jamais une erreur', async () => {
     servirLayout(undefined)
 

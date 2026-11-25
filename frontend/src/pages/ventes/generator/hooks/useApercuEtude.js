@@ -1,52 +1,42 @@
-// SPL51 — LES DÉRIVATIONS D'APERÇU ET D'ÉTUDE HORAIRE, déplacées telles
-// quelles de DevisGenerator.jsx : valeurs différées, conso réelle / écran,
-// lead prioritaire (bandeau de segment, rappel ICE), `roi` / `roiAvec`, corps
-// et données de l'étude horaire (`useSizingMoteur`, effet de décision),
-// `etudeHoraire*`, `apercu*` / `payback*`, `signerEcoOuRoi`, `chartData`.
-// Corps verbatim ; `ctx` porte, nom par nom, ce que le corps lit du
-// composant. Appelé à la MÊME position (ordre des hooks inchangé).
+// SPL51 — LES DÉRIVATIONS D'APERÇU, déplacées de DevisGenerator.jsx :
+// valeurs différées, conso réelle / écran, lead prioritaire (bandeau de
+// segment, rappel ICE), conception servie (AGEN11) et, depuis E7d (M3), TOUS
+// les blocs de l'aperçu lus sur cette même conception (graphe, falaise,
+// verdict batterie, tableau, décision de dimensionnement), `apercu*` /
+// `payback*`, `signerEcoOuRoi`, `chartData`. `ctx` porte, nom par nom, ce que
+// le corps lit du composant. Appelé à la MÊME position (ordre des hooks inchangé).
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import crmApi from '../../../../api/crmApi'
 import { toast } from '../../../../ui/confirm'
+import { formatNumber } from '../../../../lib/format'
 import {
-  CHART_MONTHS,
-  batteryKwhFromLines, batteryCapaciteInconnue,
-  productibleForCity} from '../../../../features/ventes/solar'
-import {
-  inverterCostFromLines, appartientAuPanierSans, appartientAuPanierAvec, isBattery, texteClassement,
-} from '../../../../features/ventes/calc/classification.js'
-import { computeROI, paybackMoteurHoraire, provisionOnduleurPayee } from '../../../../features/ventes/calc/roi.js'
+  CHART_MONTHS, batteryCapaciteInconnue,
+} from '../../../../features/ventes/solar'
 import { consoAnnuelleDepuisFactures } from '../../../../features/ventes/calc/tarifs.js'
 import {
-  construireCorpsPreview, etiquetteSource, lignesAffichables,
-  useEtudeHorairePreview, verdictBatteriePourTaille,
-  falaiseAffichable, glitchAnnuel,
-  estimationConsoAffichable,
-} from '../../../../features/ventes/etudeHorairePreview'
-import { batteriesDesLignes } from '../../../../features/ventes/etudeHorairePreviewPur'
+  lignesAffichables, verdictBatteriePourTaille, falaiseAffichable, glitchAnnuel,
+  donneesHorairesDeConception, serieEconomiesMensuelles,
+} from '../../../../features/ventes/etudeHorairePreviewPur'
 import { toucheNbPanneauxPourComposition } from '../../../../features/ventes/quote/sizingReducer'
-import { useSizingMoteur } from '../../../../features/ventes/quote/hooks/useSizingMoteur'
+import { decisionSizing } from '../../../../features/ventes/quote/hooks/useSizingMoteurPur'
 import { moteur, apercu } from '../../../../features/ventes/quote/valeur'
 import { villeEffectiveLead } from '../../../../features/ventes/quote/ecranDefauts.js'
+import { consommationImposeeDeEtat } from '../../../../features/ventes/quote/etatDevis.js'
+import {
+  chiffresConception, compositionDesLignes, corpsApercuConception, useConceptionEcran,
+} from './useConceptionEcran'
 
 export function useApercuEtude(ctx) {
   const {
-    monthly, lines, totals, kwp, kwpLignes, kwpAvec, dayUsage, realBillMode, realBillKwh,
-    realBillMad, distributeur, baremeSociete, provenanceMois, realBillSaisi, leadDuDevis, leads,
-    leadId, modeInstallation, clientsConnus, clientId, confirm, quoteLogic, editId, fHiver, fEte,
-    sizing, dispatchSizing, produits, reglesCalcul, discountPct,
+    lines, realBillMode, realBillKwh,
+    realBillMad, distributeur, baremeSociete, provenanceMois, leadDuDevis, leads,
+    leadId, modeInstallation, clientsConnus, clientId, confirm, fHiver, fEte,
+    sizing, dispatchSizing, produits, monthly, realBillSaisi, distributeurChoisi, consoStockee, totals,
+    showSans, showAvec,
   } = ctx
 
-  // Simulation/graphique en VALEURS DIFFÉRÉES : la frappe et les bascules
-  // restent instantanées (les champs gardent leurs valeurs exactes — rien
-  // n'est perdu ni arrondi), le recalcul lourd + recharts suit d'un souffle.
-  const dMonthly = useDeferredValue(monthly)
+  // La capacité batterie se juge sur des lignes DIFFÉRÉES (la frappe reste instantanée).
   const dLines = useDeferredValue(lines)
-  const dTotals = useDeferredValue(totals)
-  const dKwp = useDeferredValue(kwp)
-  const dKwpLignes = useDeferredValue(kwpLignes)
-  const dKwpAvec = useDeferredValue(kwpAvec)
-  const dDayUsage = useDeferredValue(dayUsage)
 
   // BAT5DEF (26/08/2026) — au moins une ligne batterie n'a pas de kWh lisible
   // dans sa désignation : `batteryKwhFromLines` ne lui compte plus un défaut
@@ -58,7 +48,7 @@ export function useApercuEtude(ctx) {
 
   // QF4/QF5 — consommation annuelle RÉELLE dérivée de la facture/kWh du
   // client (barème par tranche du distributeur choisi). Alimente à la fois
-  // etude_params (à l'enregistrement) et l'aperçu écran (roi ci-dessous) —
+  // etude_params (à l'enregistrement) et l'étude horaire servie —
   // UNE seule dérivation, jamais deux chiffres qui pourraient diverger.
   const consoAnnuelleReelle = (() => {
     if (realBillMode === 'kwh') {
@@ -89,25 +79,7 @@ export function useApercuEtude(ctx) {
   const moisNonSaisis = provenanceMois.some(p => p !== 'exemple')
     ? CHART_MONTHS.filter((_, i) => provenanceMois[i] === 'exemple') : []
 
-  // AGNR24 — LA consommation que l'écran ENREGISTRE, un seul sélecteur :
-  // même cascade que `entreesReellesEcran` (usePersistanceDevis) — saisie
-  // réelle de la session → conso stockée relue (`?edit=` : mode kWh non
-  // retouché) → 12 factures réelles au barème → facture réelle. L'aperçu
-  // (`computeROI`) la reçoit : jamais « estimation » quand le corps
-  // enregistré porte une conso.
-  const consoEcran = (() => {
-    if (realBillSaisi && consoAnnuelleReelle > 0) return consoAnnuelleReelle
-    if (!realBillSaisi && realBillMode === 'kwh' && consoAnnuelleReelle > 0) return consoAnnuelleReelle
-    if (facturesSaisies) {
-      const derivee = consoAnnuelleDepuisFactures(monthly.map(v => parseFloat(v) || 0), distributeur,
-        baremeSociete?.tranches, baremeSociete?.chargesFixes)
-      if (derivee > 0) return derivee
-    }
-    return consoAnnuelleReelle > 0 ? consoAnnuelleReelle : null
-  })()
-
-  // Lead prioritaire résolu tôt : le calcul ROI ci-dessous lit sa ville
-  // (productible par ville) — doit être déclaré avant le useMemo (pas de TDZ).
+  // Lead prioritaire résolu tôt (bandeau de segment, rappel ICE, ville de calcul).
   const leadsListe = (leadDuDevis
     && !leads.some(l => String(l.id) === String(leadDuDevis.id)))
     ? [leadDuDevis, ...leads] : leads
@@ -160,170 +132,86 @@ export function useApercuEtude(ctx) {
     }
   }
 
-  const roi = useMemo(() => {
-    if (dKwp <= 0 || !dMonthly.some(v => v > 0)) return null
-    return computeROI({
-      kwp: dKwp,
-      factures: dMonthly.map(v => parseFloat(v) || 0),
-      dayUsagePct: parseInt(dDayUsage) || 50,
-      totalSans: dTotals.totalSans,
-      totalAvec: dTotals.totalAvec,
-      batteryKwh: batteryKwhFromLines(dLines, produits),
-      // Q1 (fondateur 20/08/2026) — lignes RÉELLES pour la provision de
-      // remplacement onduleur (prix TTC de la ligne, jamais 8 % forfaitaires).
-      lines: dLines,
-      produits,
-      kwhPrice: quoteLogic.kwhPrice,
-      efficiency: quoteLogic.efficiency,
-      reglesCalcul,
-      discountPct,
-      // QF5 — bascule sur le modèle « deux factures » par tranche (parité
-      // PDF) dès qu'une consommation réelle + un distributeur sont connus.
-      // AGNR24 — la conso ENREGISTRÉE (`consoEcran`), jamais la seule saisie.
-      consoAnnuelleKwh: consoEcran,
-      utility: distributeur,
-      bareme: baremeSociete,
-      // QX38 — productible CANONIQUE PVGIS par ville (source unique alignée
-      // avec le PDF/web) ; override société si renseigné ≠ 1600.
-      productible: productibleForCity(
-        (selectedLead?.ville_effective ?? selectedLead?.ville) || '', quoteLogic.productible),
-    })
-  }, [dKwp, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
-    consoEcran, distributeur, selectedLead, baremeSociete, produits, reglesCalcul, discountPct])
-
-  // L-2OPT — miroir local de `roi` recalculé AU kWc DE LA BRANCHE AVEC. `null`
-  // dès que rien ne diverge (`kwpAvec === kwp`) : l'écran retombe alors mot
-  // pour mot sur `roi`, aucun second calcul, comportement d'hier. Quand les
-  // deux optimiseurs ont réellement rendu deux tailles, seuls les champs
-  // « avec » de CE résultat sont lus (l'option sans garde `roi`).
-  const roiAvec = useMemo(() => {
-    // QJR568 — « non divergent » se juge contre le kWc FACTURÉ des lignes
-    // (`kwpAvec` y retombe quand les options ne divergent pas).
-    if (dKwpAvec === dKwp || dKwpAvec === dKwpLignes) return null
-    if (dKwpAvec <= 0 || !dMonthly.some(v => v > 0)) return null
-    return computeROI({
-      kwp: dKwpAvec,
-      factures: dMonthly.map(v => parseFloat(v) || 0),
-      dayUsagePct: parseInt(dDayUsage) || 50,
-      totalSans: dTotals.totalSans,
-      totalAvec: dTotals.totalAvec,
-      batteryKwh: batteryKwhFromLines(dLines, produits),
-      lines: dLines,
-      produits,
-      kwhPrice: quoteLogic.kwhPrice,
-      efficiency: quoteLogic.efficiency,
-      reglesCalcul,
-      discountPct,
-      consoAnnuelleKwh: consoEcran,
-      utility: distributeur,
-      bareme: baremeSociete,
-      productible: productibleForCity(
-        (selectedLead?.ville_effective ?? selectedLead?.ville) || '', quoteLogic.productible),
-    })
-  }, [dKwpAvec, dKwp, dKwpLignes, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
-    consoEcran, distributeur, selectedLead, baremeSociete, produits, reglesCalcul, discountPct])
-
   // QJR586 — la ville de CALCUL du lead sélectionné (servie par le serveur).
   const villeCalculLead = villeEffectiveLead(selectedLead)
 
 
-  // Source des chiffres « avec batterie » du miroir local : `roiAvec` quand
-  // les deux optimiseurs divergent, sinon `roi` (identique par construction).
-  const roiPourAvec = roiAvec || roi
+  // AGEN11 (D-ACAL-97) — LE moteur unique : la conception rangée du lead, puis
+  // l'aperçu SANS écriture de ce qui est tapé (`useConceptionEcran`). Aucun
+  // calcul local de production, d'économie ni de payback ne subsiste ici.
+  // E7d (revue lot 4, B2) — la consommation de l'aperçu = celle que le devis
+  // ENREGISTRE : le même état, le même sélecteur (`etatDevis.consoDeEtat`).
+  const consommationImposee = consommationImposeeDeEtat({
+    monthly, provenanceMois, facturesSaisies, fHiver, fEte, realBillSaisi, realBillMode,
+    consoAnnuelleReelle, distributeur, distributeurChoisi, consoStockee: consoStockee?.current ?? null,
+    bareme: baremeSociete,
+  })
+  // E7d (revue lot 4, M1) — le prix du payback : le TTC de VENTE des lignes de
+  // chaque option à l'écran (jamais un prix d'achat), envoyé avec l'aperçu.
+  const corpsConception = corpsApercuConception({
+    leadId, modeInstallation, fHiver, fEte, consommation: consommationImposee,
+    investissement: { sans: totals?.totalSans, avec: totals?.totalAvec },
+  })
+  // E7d — la composition des LIGNES par option montrée (compte, panneau, onduleur,
+  // batterie) : la conception servie doit la porter ; sinon l'aperçu est redemandé en
+  // l'imposant (une option par aperçu chez le moteur).
+  const composition = modeInstallation === 'residentiel' ? {
+    sans: showSans ? compositionDesLignes(lines, 'sans', produits) : null,
+    avec: showAvec ? compositionDesLignes(lines, 'avec', produits) : null,
+    deux: Boolean(showSans && showAvec),
+  } : null
+  const conceptionEcran = useConceptionEcran({ leadId, corps: corpsConception, composition })
+  const chiffres = chiffresConception(conceptionEcran.conception)
+  // La conception affichée est-elle l'APERÇU de cet écran (payback sur ses lignes) ?
+  // La version rangée porte le payback d'un devis de RÉFÉRENCE : jamais affiché ici.
+  const surApercu = conceptionEcran.apercuServi
 
-  // CJ2b — ORDRE FONDATEUR : « on ne voit ni l'économie réelle calculée, ni
-  // les données PVGIS — cette donnée devrait être comparée à la courbe de
-  // consommation ». Résidentiel UNIQUEMENT : appelle le moteur horaire
-  // serveur (intégration PVGIS réelle × consommation réelle, mois par mois)
-  // au lieu de ne montrer QUE le miroir local `roi` ci-dessus (conservé
-  // intact comme repli hors-ligne). `null` = rien à ancrer (aucune facture,
-  // aucun devis) : aucun appel réseau (règle d'honnêteté — on omet, on
-  // n'invente pas).
-  // RGEN7 — batteries des lignes « avec » liées à un produit : le serveur lit leur fiche (capacité utile, rendement).
-  const batteriesAvec = batteriesDesLignes(lines,
-    l => isBattery(texteClassement(l, produits)) && appartientAuPanierAvec(l, produits))
+  // E7d (revue lot 4, M3) — UNE SOURCE PAR BLOC. Le graphe mensuel, la falaise,
+  // le verdict batterie, le tableau de dimensionnement ET la recommandation de
+  // taille (U3-900) se lisent sur la MÊME réponse que les cartes : la conception
+  // servie (`blocs` = l'étude que le moteur unique a calculée,
+  // `donneesHorairesDeConception`). L'aperçu horaire (`etude-horaire/preview/`)
+  // n'est plus appelé par cet écran : un bloc dont la donnée manque le dit.
+  const horaires = useMemo(
+    () => donneesHorairesDeConception(modeInstallation === 'residentiel' ? conceptionEcran.conception : null),
+    [modeInstallation, conceptionEcran.conception])
+  const etudeHoraireDonnees = horaires?.sans ?? null
+  const etudeHoraireDonneesPourAvec = horaires?.avec ?? etudeHoraireDonnees
+  const etudeHoraireChargement = conceptionEcran.chargement
+  const refusDesigne = conceptionEcran.conception?.etat === 'refus' ? conceptionEcran.conception.refus : null
+  const etudeHoraireErreur = conceptionEcran.erreur || refusDesigne?.message || null
+  // Corps « présent » = l'écran a demandé ou reçu une conception résidentielle.
   const etudeHoraireCorps = modeInstallation === 'residentiel'
-    ? construireCorpsPreview({
-        modeInstallation,
-        editId,
-        leadId,
-        fHiver,
-        fEte,
-        eteDifferente: !!fEte && Number(fEte) > 0,
-        ville: villeCalculLead,
-        raccordement: selectedLead?.raccordement || '',
-        // QJR568 — le kWc FACTURÉ par les lignes, pas la seule cible.
-        kwp: kwpLignes,
-        batterieKwh: batteryKwhFromLines(lines, produits),
-        batteries: batteriesAvec,
-      })
-    : null
-  // L-2OPT — l'étude horaire de la branche AVEC porte SON PROPRE kWc. Le corps
-  // ci-dessus décrit la branche SANS (`kwp`) ; l'interroger avec les batteries
-  // de la composition AVEC produisait une chimère (kWc sans + batteries avec).
-  // `null` tant que rien ne diverge ⇒ AUCUN second appel réseau et l'écran lit
-  // le corps unique comme hier.
-  const etudeHoraireCorpsAvec = (modeInstallation === 'residentiel'
-      && kwpAvec !== kwpLignes)
-    ? construireCorpsPreview({
-        modeInstallation,
-        editId,
-        leadId,
-        fHiver,
-        fEte,
-        eteDifferente: !!fEte && Number(fEte) > 0,
-        ville: villeCalculLead,
-        raccordement: selectedLead?.raccordement || '',
-        kwp: kwpAvec,
-        batterieKwh: batteryKwhFromLines(lines, produits),
-        batteries: batteriesAvec,
-      })
-    : null
-  // QJR99 — `useSizingMoteur` (QJR90) enrobe `useEtudeHorairePreview` : il rend
-  // les mêmes données réseau (aucun appel supplémentaire) PLUS une `decision`
-  // déjà prise par sa moitié pure. La garde de réponse PÉRIMÉE y couvre les
-  // DEUX branches : l'ancienne comparaison de clé en ligne ne valait que pour
-  // `donnees`, si bien que la branche d'ÉCHEC refermait l'attente et épinglait
-  // le refus d'une facture qu'on venait de remplacer (correctif intentionnel).
-  const {
-    decision: decisionMoteur,
-    donnees: etudeHoraireDonnees,
-    chargement: etudeHoraireChargement,
-    erreur: etudeHoraireErreur,
-  } = useSizingMoteur(etudeHoraireCorps, {
+    && (corpsConception || conceptionEcran.conception || conceptionEcran.chargement)
+    ? (corpsConception || {}) : null
+  // La garde de péremption du dimensionnement (QJR90) sur les clés de la conception.
+  const decisionMoteur = decisionSizing({
     attente: sizing.attenteMoteur,
     toucheNbPanneaux: toucheNbPanneauxPourComposition(sizing),
+    chargement: conceptionEcran.chargement,
+    donnees: etudeHoraireDonnees
+      ?? (refusDesigne ? { dimensionnement: null, avertissements: [refusDesigne.message].filter(Boolean) } : null),
+    erreur: conceptionEcran.erreur,
+    cleServie: conceptionEcran.cleServie,
+    cleErreur: conceptionEcran.cleErreur,
+    cleCourante: conceptionEcran.cleCourante,
   })
-  const { donnees: etudeHoraireDonneesAvec } =
-    useEtudeHorairePreview(etudeHoraireCorpsAvec)
   // U3-900 (fondateur 29/08/2026, « ALL sizing goes through the new sizing
-  // tool ») — LE SEUL remplaçant du repli `estimerPanneaux` (panneaux/900 MAD,
-  // supprimé du backend le même jour, cf. apps/ventes/dimensionnement.py).
-  // L'attente (`sizing.attenteMoteur`) est posée par applyLead /
-  // applySiteProfile / syncBillEstimator quand le résidentiel ne se dimensionne
-  // plus à l'écran : la recommandation du moteur horaire SERVEUR
-  // (`etudeHoraireDonnees`, déjà interrogé dès que fHiver/lead est posé — AUCUN
-  // appel réseau supplémentaire) la satisfait dès qu'elle répond. Un dry-run qui
-  // décline (ville manquante, catalogue incomplet…) affiche son message
-  // FRANÇAIS EXACT et ne préremplit RIEN — un vide honnête plutôt qu'une
-  // supposition sur 900 DH (règle #4 CLAUDE.md). Une frappe manuelle gagne
-  // toujours, comme partout ailleurs sur ce champ.
-  //
-  // QJR99 — la DÉCISION (appliquer / refuser / abandonner / attendre) est prise
-  // par `useSizingMoteur` ; il ne reste ici que sa traduction en transition. La
-  // garde de réponse périmée, les deux formes de motif (F4 :
-  // `avertissements[0]` PUIS `dimensionnement.motivation`, rendues VERBATIM) et
-  // la priorité de la frappe manuelle sont toutes dans la moitié pure, testée.
+  // tool ») — l'attente (`sizing.attenteMoteur`) posée par applyLead /
+  // applySiteProfile / syncBillEstimator est satisfaite par la recommandation
+  // du moteur (`blocs.dimensionnement.recommandation` de la conception). Un
+  // refus affiche son message FRANÇAIS EXACT et ne préremplit RIEN ; une frappe
+  // manuelle gagne toujours. La DÉCISION est prise par la moitié pure
+  // (`decisionSizing`) ; il ne reste ici que sa traduction en transition.
   const actionMoteur = decisionMoteur.action
   const recoMoteur = decisionMoteur.recommandation ?? null
   const motifMoteurServeur = decisionMoteur.motif ?? null
   useEffect(() => {
     // dispatch SYNCHRONE dans l'effet, idiome MAISON (ProductTour.jsx,
     // Avatar.jsx, FollowToggle.jsx…) : la valeur arrive d'un aller-retour
-    // réseau DÉJÀ asynchrone (`useEtudeHorairePreview`), et la différer encore
-    // d'une microtâche n'ajouterait qu'un tour de boucle entre la réponse et
-    // l'affichage. Aucune de ces valeurs n'est relue dans le MÊME rendu.
-     
+    // réseau DÉJÀ asynchrone, et la différer encore d'une microtâche
+    // n'ajouterait qu'un tour de boucle. Aucune de ces valeurs n'est relue
+    // dans le MÊME rendu.
     if (actionMoteur === 'appliquer') {
       dispatchSizing({ type: 'MOTEUR_A_REPONDU', recommandation: recoMoteur })
     } else if (actionMoteur === 'refuser') {
@@ -333,154 +221,94 @@ export function useApercuEtude(ctx) {
       dispatchSizing({ type: 'MOTEUR_A_REPONDU' })
     }
   }, [actionMoteur, recoMoteur, motifMoteurServeur]) // eslint-disable-line react-hooks/exhaustive-deps -- dispatchSizing : dispatch de useReducer (stable), reçu du ctx (D-ENF22)
-  // Le serveur GAGNE dès qu'il a répondu (etude non nul) : `roi` reste le
-  // seul chiffre affiché tant que la réponse n'est pas là (ou a échoué).
   const etudeHoraireAnnuel = etudeHoraireDonnees?.etude?.annuel || null
   const etudeHoraireSourceServeur = !!etudeHoraireAnnuel
-  // Réponse serveur à lire pour l'option AVEC. DIVERGENT : uniquement la
-  // sienne — tant qu'elle n'est pas revenue, l'écran retombe sur le miroir
-  // local `roiAvec` (au bon kWc) plutôt que de ré-afficher l'étude du kWc
-  // SANS, ce qui recréerait exactement le croisement corrigé ici. NON
-  // divergent : le corps unique, comme hier.
-  const etudeHoraireDonneesPourAvec = etudeHoraireCorpsAvec
-    ? etudeHoraireDonneesAvec
-    : etudeHoraireDonnees
-  const etudeHoraireAnnuelAvec =
-    etudeHoraireDonneesPourAvec?.etude?.annuel || null
+  const etudeHoraireAnnuelAvec = etudeHoraireDonneesPourAvec?.etude?.annuel || null
   const etudeHoraireLignes = useMemo(
     () => lignesAffichables(etudeHoraireDonnees?.dimensionnement),
     [etudeHoraireDonnees])
-  // Lignes de dimensionnement à interroger pour le VERDICT batterie : celles
-  // de l'étude de la branche AVEC (son kWc), jamais celles du kWc SANS.
-  const etudeHoraireLignesAvec = useMemo(
-    () => lignesAffichables(etudeHoraireDonneesPourAvec?.dimensionnement),
-    [etudeHoraireDonneesPourAvec])
-  const etudeHoraireSourceLabel = etudeHoraireDonnees?.consommation
-    ? etiquetteSource(etudeHoraireDonnees.consommation.source)
-    : null
-  // L-FRONT lot 4 — falaise tarifaire (palier visé + meilleure combinaison du
-  // balayage qui y passe), résumé annuel des impulsions équipements (glitch)
-  // et décomposition mensuelle de la consommation estimée : les trois `null`
-  // quand le moteur n'a rien calculé (mode non résidentiel, Z2, aucun
-  // équipement concentrable) — jamais un bloc affiché sur un chiffre absent.
+  // La source de la consommation (« estimation ») est dite par les phrases du
+  // moteur (`notes`), plus par l'étiquette de l'aperçu horaire.
+  const etudeHoraireSourceLabel = null
   const etudeHoraireFalaise = useMemo(
     () => falaiseAffichable(etudeHoraireDonnees?.dimensionnement),
     [etudeHoraireDonnees])
   const etudeHoraireGlitch = useMemo(
     () => glitchAnnuel(etudeHoraireDonnees?.etude),
     [etudeHoraireDonnees])
-  const etudeHoraireEstimationConso = useMemo(
-    () => estimationConsoAffichable(etudeHoraireDonnees?.estimation_conso),
-    [etudeHoraireDonnees])
+  // La décomposition mensuelle de la consommation estimée n'est pas dans la
+  // conception : le bloc ne s'affiche pas (jamais un chiffre d'une autre source).
+  const etudeHoraireEstimationConso = null
   const [ligneStockageOuverte, setLigneStockageOuverte] = useState(null)
 
-  // CJ2b — chiffres AFFICHÉS dans le bloc « Aperçu de la Simulation »
-  // (Production / Économies / ROI) : le serveur horaire gagne dès qu'il a
-  // répondu, sinon repli SUR `roi` tel quel (miroir local inchangé — c'est
-  // uniquement la SOURCE de ce qui est montré à l'écran qui bascule). Le
-  // payback affiché en mode serveur est une simple division coût réel des
-  // lignes / économie réelle serveur — jamais un chiffre inventé.
-  const apercuProductionKwh = etudeHoraireSourceServeur
-    ? etudeHoraireAnnuel.production_kwh : roi?.production_annuelle_kwh
-  // ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT — champs PV DIVERGENTS : la
-  // carte ci-dessus décrit l'option SANS (son kWc) ; l'option AVEC a SA
-  // production, lue sur SA réponse serveur (sinon le miroir local au même
-  // kWc). `null` hors divergence : la carte unique d'hier.
-  const apercuProductionKwhAvec = etudeHoraireCorpsAvec
-    ? (etudeHoraireAnnuelAvec?.production_kwh ?? roiAvec?.production_annuelle_kwh ?? null)
-    : null
-  const apercuEcoSans = etudeHoraireSourceServeur
-    ? etudeHoraireAnnuel.economie_sans_mad : roi?.eco_annuelle_sans
-  // CJ2b — ORDRE FONDATEUR (« l'omission honnête, jamais un zéro inventé ») :
-  // le moteur dit, POUR LA TAILLE CHIFFRÉE, si l'option batterie est
-  // électriquement livrable. Quand elle ne l'est pas, les cartes « Avec
-  // batterie » n'affichent AUCUN montant — elles affichent la raison. C'est le
-  // trou catalogue RÉEL exhumé par CJ2a (panneau 710 Wc + hybride 5 kW
-  // monophasé : Isc 18,6 A > 17,0 A) : sans cette garde, l'écran promettait au
-  // vendeur l'économie d'une installation qu'on ne peut pas livrer.
-  // `null` (le moteur ne dit rien sur cette taille) ⇒ comportement d'avant.
-  // L-2OPT — verdict + économie « avec » lus sur l'étude de la branche AVEC,
-  // à SON kWc (`kwpAvec`). Non divergent : mêmes lignes, même taille, même
-  // résultat qu'hier.
+  // CJ2b / AGEN11 — chiffres AFFICHÉS dans le bloc « Aperçu de la Simulation »
+  // (Production / Économies / ROI) : la conception du moteur unique seule.
+  // Rien de servi ⇒ rien d'affiché.
+  const valeursServies = conceptionEcran.conception?.valeurs || {}
+  const apercuProductionKwh = chiffres?.productionSans ?? null
+  // ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT — deux options de productions
+  // DIFFÉRENTES : l'option AVEC a SA production. `null` sinon : la carte unique.
+  const apercuProductionKwhAvec = (chiffres && valeursServies.sans && valeursServies.avec
+    && chiffres.productionAvec !== chiffres.productionSans) ? chiffres.productionAvec : null
+  const apercuEcoSans = chiffres?.ecoSans ?? null
+  // CJ2b — le moteur dit, POUR LA TAILLE CHIFFRÉE (le kWc de l'option avec de la
+  // MÊME conception), si l'option batterie est électriquement livrable ; sinon
+  // les cartes « Avec batterie » affichent la raison, aucun montant.
+  const kwcAvecServi = (valeursServies.avec || valeursServies.sans)?.puissance_kwc?.valeur ?? null
   const verdictBatterieServeur = etudeHoraireAnnuelAvec
-    ? verdictBatteriePourTaille(etudeHoraireLignesAvec, kwpAvec)
+    ? verdictBatteriePourTaille(lignesAffichables(etudeHoraireDonneesPourAvec?.dimensionnement), kwcAvecServi)
     : null
   const batterieInvendableServeur = verdictBatterieServeur
     ? !verdictBatterieServeur.vendable : false
-  const apercuEcoAvec = etudeHoraireAnnuelAvec
-    ? (batterieInvendableServeur ? null : etudeHoraireAnnuelAvec.economie_avec_mad)
-    : roiPourAvec?.eco_annuelle_avec
-  // ERR-QAH-FIG-PAYBACK-FORMULE-ECRAN — branche serveur : le payback du
-  // MOTEUR (cashflow 25 ans QX39, `paybackMoteurHoraire`) sur l'économie
-  // servie, jamais une division coût ÷ économie. Un cumul qui ne croise jamais
-  // zéro s'affiche « Non rentabilisé sur 25 ans », jamais « 25 ans ».
-  const paybackServeurSans = etudeHoraireSourceServeur
-    ? paybackMoteurHoraire(totals.totalSans, apercuEcoSans, {
-        annuel: etudeHoraireAnnuel,
-        inverterReplaceCost: provisionOnduleurPayee(inverterCostFromLines(
-          lines.filter(l => appartientAuPanierSans(l, produits)), produits), discountPct, reglesCalcul),
-      })
+  // E7d (CI e2e figures-parite) — les deux options montrées, la conception n'en sert
+  // qu'une (nombre de panneaux imposé : le moteur chiffre une option) : l'option avec
+  // batterie n'est pas chiffrée — l'écran le DIT, jamais les chiffres de l'option sans.
+  const apercuAvecAbsent = chiffres && showSans && showAvec && !valeursServies.avec
+    ? 'Option avec batterie non chiffrée pour ce nombre de panneaux : le moteur chiffre une seule option '
+      + 'quand le nombre de panneaux est imposé. Enregistrez le devis pour recalculer les deux options.'
     : null
-  const paybackServeurAvec = etudeHoraireAnnuelAvec
-    ? paybackMoteurHoraire(totals.totalAvec, apercuEcoAvec, {
-        annuel: etudeHoraireAnnuelAvec,
-        rendementBatterie: etudeHoraireDonneesPourAvec?.etude?.rendement_batterie ?? null,
-        stockage: batteryKwhFromLines(lines, produits) > 0, reglesCalcul,
-        inverterReplaceCost: provisionOnduleurPayee(inverterCostFromLines(
-          lines.filter(l => appartientAuPanierAvec(l, produits)), produits), discountPct, reglesCalcul),
-      })
+  const apercuEcoAvec = batterieInvendableServeur || apercuAvecAbsent ? null : (chiffres?.ecoAvec ?? null)
+  // AGEN11 — le payback SERVI par option (celui du PDF, sur le devis de
+  // référence de la conception rangée) ; absent ⇒ « N/A », jamais recalculé.
+  // E7d (M1) — le payback de l'APERÇU, calculé sur le TTC des lignes de l'écran ;
+  // sans prix sur les lignes : « après enregistrement » ; jamais celui d'un autre devis.
+  // Au dixième, virgule française (règle unique de l'aperçu, `ApercuSimulation.ansFr`).
+  const chiffre = (total, v) => (surApercu && Number(total) > 0 && v != null
+    ? formatNumber(v, { decimals: 1 }) : null)
+  const apercuPaybackSans = chiffre(totals?.totalSans, chiffres?.paybackSans)
+  const apercuPaybackAvec = chiffre(totals?.totalAvec, chiffres?.paybackAvec)
+  const paybackAbsent = (total) => (!(Number(total) > 0) ? 'après enregistrement'
+    : conceptionEcran.chargement ? 'calcul en cours…' : 'N/A')
+  const apercuPaybackSansAbsent = paybackAbsent(totals?.totalSans)
+  const apercuPaybackAvecAbsent = paybackAbsent(totals?.totalAvec)
+  const apercuPaybackSansJamais = false
+  const apercuPaybackAvecJamais = false
+  // L'état de l'aperçu servi, lu par la carte : `modele` (« conception »,
+  // « refus » avec son message), `chargement` (« Calcul en cours »). Un refus
+  // est TOUJOURS dit (sa phrase et son champ), jamais remplacé par un autre calcul.
+  const refusConception = refusDesigne
+    ? (refusDesigne.message || 'Le moteur n’a pas pu calculer la conception.')
+    : conceptionEcran.erreur
+  const modeleServi = refusDesigne ? 'refus' : chiffres ? 'conception' : refusConception ? 'refus' : null
+  const roi = (modeleServi || conceptionEcran.chargement)
+    ? { modele: modeleServi, chargement: conceptionEcran.chargement, message: refusConception || null,
+        champ: refusDesigne?.champ || conceptionEcran.champErreur || null, reessayer: conceptionEcran.reessayer,
+        surApercu }
     : null
-  const apercuPaybackSans = etudeHoraireSourceServeur
-    ? (paybackServeurSans?.paybackYears ?? null)
-    : roi?.payback_sans
-  const apercuPaybackAvec = etudeHoraireAnnuelAvec
-    ? (paybackServeurAvec?.paybackYears ?? null)
-    : roiPourAvec?.payback_avec
-  const apercuPaybackSansJamais = etudeHoraireSourceServeur
-    ? !!paybackServeurSans?.jamaisRembourse : !!roi?.payback_sans_jamais
-  const apercuPaybackAvecJamais = etudeHoraireAnnuelAvec
-    ? !!paybackServeurAvec?.jamaisRembourse : !!roiPourAvec?.payback_avec_jamais
 
-  // QJR35 — au montage (roi tourne dès dKwp>0 && dMonthly.some(v=>v>0), vrai
-  // avec DEFAULT_MONTHLY_BILLS), les cartes Économies/ROI peuvent afficher un
-  // chiffre dérivé du MIROIR LOCAL sans qu'aucune facture réelle ni étude
-  // horaire serveur n'existe encore. Ni caché (le vendeur s'en sert comme
-  // repère) ni remplacé par un autre chiffre — étiqueté. QJR89/QJR90 rendent
-  // cette règle structurelle ; ceci est l'intérim minimal.
-  const apercuEstimationExemple = !facturesSaisies && !etudeHoraireSourceServeur
+  // QJR35 — sans facture réelle ni chiffre servi, un chiffre affiché est étiqueté « exemple ».
+  const apercuEstimationExemple = !facturesSaisies && !etudeHoraireSourceServeur && !chiffres
   // QJR426 (DR5) — même discriminant que la puce ci-dessus, porté sur la
   // VALEUR SIGNÉE des quatre cartes Économies/ROI : `apercu()` (puce
-  // `PUCE_APERCU`, strictement le même texte que le `badge` littéral
-  // remplacé) quand aucune donnée réelle n'appuie le chiffre, `moteur()`
-  // (aucune puce, comme aujourd'hui) dès qu'une facture réelle ou l'étude
-  // horaire serveur est là — rendu byte-identique à l'ancien `badge=`.
+  // `PUCE_APERCU`) quand aucune donnée réelle n'appuie le chiffre, `moteur()`
+  // (aucune puce) dès qu'une facture réelle ou un chiffre servi est là.
   const signerEcoOuRoi = (v) => (apercuEstimationExemple ? apercu(v) : moteur(v))
 
-  const chartData = useMemo(() => {
-    // AGNR23 — le graphe sort du MODÈLE QUI PORTE LES CARTES : quand l'étude
-    // horaire serveur répond, ses 12 mois (Σ = la carte) ; sinon `roi`.
-    const moisServeur = etudeHoraireDonnees?.etude?.mois
-    if (etudeHoraireSourceServeur && Array.isArray(moisServeur) && moisServeur.length === 12) {
-      const moisAvec = etudeHoraireDonneesPourAvec?.etude?.mois
-      const avec = Array.isArray(moisAvec) && moisAvec.length === 12 ? moisAvec : moisServeur
-      return moisServeur.map((m, i) => ({
-        month: CHART_MONTHS[i],
-        facture: Math.round(Number(m.facture_avant_mad) || 0),
-        ecoSans: Math.round(Number(m.economie_sans_mad) || 0),
-        ecoAvec: Math.round(Number(avec[i]?.economie_avec_mad) || 0),
-      }))
-    }
-    if (!roi) return []
-    // L-2OPT — la courbe « avec batterie » suit le kWc de SA branche quand les
-    // deux optimiseurs divergent (`roiAvec`), sinon `roi` (identique).
-    const detailAvec = (roiAvec || roi).monthly_detail
-    return roi.monthly_detail.map((d, i) => ({
-      month: CHART_MONTHS[i],
-      facture: d.facture,
-      ecoSans: Math.round(d.eco_sans),
-      ecoAvec: Math.round((detailAvec[i] ?? d).eco_avec),
-    }))
-  }, [roi, roiAvec, etudeHoraireSourceServeur, etudeHoraireDonnees, etudeHoraireDonneesPourAvec])
+  // AGNR23 / E7d — le graphe sort de la MÊME réponse que les cartes : les 12
+  // mois de l'étude de la conception (Σ = la carte) ; sinon aucun graphe.
+  const chartData = useMemo(
+    () => serieEconomiesMensuelles(etudeHoraireDonnees, etudeHoraireDonneesPourAvec, CHART_MONTHS),
+    [etudeHoraireDonnees, etudeHoraireDonneesPourAvec])
 
   return {
     capaciteBatterieInconnue, consoAnnuelleReelle, facturesSaisies, moisNonSaisis, leadsListe,
@@ -491,6 +319,7 @@ export function useApercuEtude(ctx) {
     etudeHoraireEstimationConso, ligneStockageOuverte, setLigneStockageOuverte,
     apercuProductionKwh, apercuProductionKwhAvec, apercuEcoSans, verdictBatterieServeur,
     batterieInvendableServeur, apercuEcoAvec, apercuPaybackSans, apercuPaybackAvec, apercuPaybackSansJamais,
-    apercuPaybackAvecJamais, signerEcoOuRoi, chartData,
+    apercuPaybackAvecJamais, signerEcoOuRoi, chartData, apercuPaybackSansAbsent, apercuPaybackAvecAbsent,
+    apercuAvecAbsent,
   }
 }

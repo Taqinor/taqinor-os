@@ -594,6 +594,8 @@
     buckets:inconnu, mode:texte, rows:inconnu, total_en_cours:inconnu
 - frontend/src/api/ventesApi.js :: getDevisActionBoard -> /api/django/ventes/devis/action-requise
     buckets:inconnu, devis:inconnu, wa_drafts:inconnu
+- frontend/src/api/ventesApi.js :: getDevisSynthese -> /api/django/ventes/devis/synthese
+    a_relancer:inconnu, batterie:inconnu, par_statut:inconnu, remplaces:inconnu, total:inconnu
 - frontend/src/api/ventesApi.js :: getLectureClientDevis -> /api/django/ventes/devis/<>/lecture-client
     friction:inconnu, sections:inconnu
 - frontend/src/api/ventesApi.js :: getPrefillSite -> /api/django/ventes/devis/prefill-site
@@ -606,6 +608,8 @@
     detail:texte, variante_pct:texte
 - frontend/src/api/ventesApi.js :: lienPaiementFacture -> /api/django/ventes/factures/<>/lien-paiement
     detail:inconnu, expires_at:texte, montant:texte, montant_a_payer:texte, pay_url:inconnu, provider:inconnu, statut:inconnu, token:inconnu
+- frontend/src/api/ventesApi.js :: mettreAJourConception -> /api/django/ventes/devis/<>/mettre-a-jour-conception
+    appliquees:liste, code:texte, detail:texte, devis_id:inconnu, non_appliquees:inconnu
 - frontend/src/api/ventesApi.js :: partagePdfDevis -> /api/django/ventes/devis/<>/pdf-partage
     devis_statut:inconnu
 - frontend/src/api/ventesApi.js :: patchEtudeParams -> /api/django/ventes/devis/<>/etude-params

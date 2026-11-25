@@ -71,9 +71,18 @@ test('VX55 : fetchDevis transmet le signal du thunk à chaque page', () => {
   const fetchDevisBody = VENTES_SLICE_SRC.slice(
     VENTES_SLICE_SRC.indexOf("export const fetchDevis"),
     VENTES_SLICE_SRC.indexOf("export const createDevis"))
-  // VX163 — fetchDevis enrobé par createCancellableThunk : (_, { signal }).
-  assert.match(fetchDevisBody, /createCancellableThunk\('ventes\/fetchDevis', \(_, \{ signal \}\)/)
+  // VX163 — fetchDevis enrobé par createCancellableThunk : (requete, { signal }).
+  // T4-X4-005 — l'écran Devis demande UNE page (`requete`) : le signal du thunk
+  // suit les DEUX chemins (toutes les pages sans requête, une page avec), et la
+  // synthèse par statut lue à côté de la page est annulée avec elle.
+  assert.match(fetchDevisBody, /createCancellableThunk\('ventes\/fetchDevis', \(requete, \{ signal, dispatch, getState \}\)/)
   assert.match(fetchDevisBody, /ventesApi\.getDevis\(\{ page, page_size: pageSize \}, \{ signal \}\)/)
+  assert.match(fetchDevisBody, /chargerPageDevis\(requete, signal, \{ dispatch, getState \}\)/)
+  const pageBody = VENTES_SLICE_SRC.slice(
+    VENTES_SLICE_SRC.indexOf('async function chargerPageDevis'),
+    VENTES_SLICE_SRC.indexOf('export const fetchDevis'))
+  assert.match(pageBody, /ventesApi\.getDevis\(\{ \.\.\.requete, page: requete\.page \?\? 1 \}, \{ signal \}\)/)
+  assert.match(pageBody, /ventesApi\.getDevisSynthese\(\{ signal \}\)/)
 })
 
 test('VX55 : LeadsPage annule le thunk fetchLeads au cleanup d\'effet (démontage/changement de filtre)', () => {
@@ -88,7 +97,8 @@ test('VX55 : LeadsPage annule le thunk fetchLeads au cleanup d\'effet (démontag
 })
 
 test('VX55 : DevisList annule le thunk fetchDevis au cleanup d\'effet (démontage)', () => {
-  const start = DEVIS_LIST_SRC.indexOf('const thunk = dispatch(fetchDevis())')
+  // T4-X4-005 — la liste charge la page demandée (`requete`) : même annulation.
+  const start = DEVIS_LIST_SRC.indexOf('const thunk = dispatch(fetchDevis(requete))')
   assert.notEqual(start, -1)
   const block = DEVIS_LIST_SRC.slice(start, start + 100)
   assert.match(block, /return \(\) => thunk\??\.abort\??\.\(\)/)

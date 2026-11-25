@@ -160,6 +160,19 @@ export function getField(state, key) {
   return state.server ? state.server[key] : undefined
 }
 
+// T4-V1-001 — la liste des responsables possibles complétée par le responsable
+// SERVI par le lead (`owner` + `owner_nom`) : un Commercial ne charge pas la
+// liste des utilisateurs assignables (droit), le sélecteur disait alors « Non
+// assigné » pour un lead qui a un responsable. Jamais de doublon ni de nom inventé.
+export function usersAvecResponsable(users, server) {
+  const liste = Array.isArray(users) ? users : []
+  const id = server?.owner
+  const nom = (server?.owner_nom || '').trim()
+  if (id == null || id === '' || !nom) return liste
+  if (liste.some((u) => String(u.id) === String(id))) return liste
+  return [...liste, { id, username: nom, avatar_url: server.owner_avatar ?? null }]
+}
+
 // L'ensemble complet des champs éditables actuels (draft ∪ serveur), pour la
 // soumission en création et le calcul de couplage été/hiver.
 export function currentFields(state) {

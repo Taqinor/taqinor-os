@@ -209,3 +209,72 @@ class ACAL927PoseAffleuranteKitDeFixation(_Base):
             _appliquer_preseance_quantite(devis, specs)
             par_designation = {s['designation']: s['quantite'] for s in specs}
             self.assertEqual((par_designation['Structure acier'], par_designation['Socle béton']), attendu)
+
+
+class T4X4001PanneauxRetouchesALEcran(_Base):
+    """T4-X4-001 — le vendeur passe 5 → 7 panneaux à l'écran : structure et
+    socles de la MÊME option suivent par LA règle de la composition ; une
+    sœur saisie à la main est gardée et dite."""
+
+    def _devis_et_specs(self):
+        """Un devis à 5 panneaux en base et les specs d'écran de ses lignes."""
+        self._seq += 1
+        devis = make_devis(
+            self.company, self.user, self.client_obj,
+            [('Panneau Canadian Solar 710W', '5', '1166.67'),
+             ('Structure acier', '5', '416.67'), ('Socle béton', '10', '120')],
+            reference='DEV-T4X4001-%04d' % self._seq)
+        specs = [{'produit': li.produit_id, 'designation': li.designation,
+                  'quantite': str(li.quantite), 'prix_unitaire': str(li.prix_unitaire),
+                  'ordre': k} for k, li in enumerate(devis.lignes.order_by('id'))]
+        return devis, {s['designation']: s for s in specs}, specs
+
+    def _quantites(self, devis):
+        return {li.designation: li.quantite for li in devis.lignes.all()}
+
+    def test_structure_et_socles_suivent_les_panneaux_retouches(self):
+        from apps.ventes.domain.pipeline import ecrire_lignes
+        devis, par, specs = self._devis_et_specs()
+        par['Panneau Canadian Solar 710W'].update(quantite='7', quantite_manuelle=True)
+        ecrire_lignes(devis, specs, company=self.company)
+        q = self._quantites(devis)
+        self.assertEqual(q['Panneau Canadian Solar 710W'], Decimal('7'))
+        self.assertEqual(q['Structure acier'], Decimal('7'))
+        self.assertEqual(q['Socle béton'], Decimal('14'))
+
+    def test_un_devis_commercial_garde_les_quantites_de_son_moteur(self):
+        """CI rouge du 25/11 (``BrouillonsSuiventLaConceptionTests``, cas C&I : structure
+        « 1 lot » réécrite à 162) — la règle des sœurs est celle de la composition
+        résidentielle : sur un devis commercial, industriel ou agricole rien n'est réécrit."""
+        from apps.ventes.domain.pipeline import ecrire_lignes
+        from apps.ventes.models import Devis
+
+        for mode in ('commercial', 'industriel', 'agricole'):
+            with self.subTest(mode=mode):
+                devis, par, specs = self._devis_et_specs()
+                Devis.objects.filter(pk=devis.pk).update(mode_installation=mode)
+                devis.refresh_from_db()
+                par['Panneau Canadian Solar 710W'].update(quantite='7', quantite_manuelle=True)
+                ecrire_lignes(devis, specs, company=self.company)
+                q = self._quantites(devis)
+                self.assertEqual((q['Structure acier'], q['Socle béton']), (Decimal('5'), Decimal('10')))
+
+    def test_une_soeur_tapee_a_la_main_est_gardee_et_dite(self):
+        from apps.ventes.domain.pipeline import ecrire_lignes
+        devis, par, specs = self._devis_et_specs()
+        par['Panneau Canadian Solar 710W'].update(quantite='7', quantite_manuelle=True)
+        par['Socle béton'].update(quantite='12', quantite_manuelle=True)
+        avertissements = []
+        ecrire_lignes(devis, specs, company=self.company, avertissements=avertissements)
+        q = self._quantites(devis)
+        self.assertEqual(q['Structure acier'], Decimal('7'))
+        self.assertEqual(q['Socle béton'], Decimal('12'))
+        self.assertIn('« Socle béton » : quantité saisie à la main (12) gardée pour 7 panneaux.',
+                      avertissements)
+
+    def test_reenregistrer_a_l_identique_ne_reecrit_rien(self):
+        from apps.ventes.domain.pipeline import ecrire_lignes
+        devis, par, specs = self._devis_et_specs()
+        par['Structure acier']['quantite'] = '6'
+        ecrire_lignes(devis, specs, company=self.company)
+        self.assertEqual(self._quantites(devis)['Structure acier'], Decimal('6'))

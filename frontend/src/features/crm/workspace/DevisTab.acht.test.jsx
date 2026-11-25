@@ -36,7 +36,7 @@ const base = {
   option_acceptee: 'A', chantier: null, is_active: true,
 }
 
-function rendre(devis) {
+function rendre(devis, wa = { selected: [], langue: 'fr', preview: null }) {
   const state = initState({
     lead: {
       id: 7, nom: 'Karim', telephone: '0612345678', whatsapp: '',
@@ -48,7 +48,7 @@ function rendre(devis) {
     <MemoryRouter>
       <DevisTab
         state={state} onAction={vi.fn()}
-        wa={{ selected: [], langue: 'fr', preview: null }}
+        wa={wa}
         onWaToggle={vi.fn()} onWaLangue={vi.fn()} onWaPreview={vi.fn()} onWaReset={vi.fn()}
       />
     </MemoryRouter>,
@@ -68,5 +68,31 @@ describe('ACHT5 — création de chantier sur la tête de chaîne seulement', ()
   it('bouton gardé sur tête active', () => {
     rendre([{ ...base, id: 3, reference: 'DEV-V3' }])
     expect(screen.getByRole('button', { name: /Créer le chantier/ })).toBeInTheDocument()
+  })
+})
+
+// T4-X1-010 — « Variante Darija » montrait le même français sans le dire, et le
+// lien paraissait deux fois (dans le message ET dans une liste dessous).
+describe('T4-X1-010 — aperçu WhatsApp : darija non rédigé, lien unique', () => {
+  const apercu = (extra) => ({
+    selected: [1], langue: 'fr',
+    preview: {
+      message: 'Bonjour X, voici votre devis : https://t/p/abc',
+      links: [{ devis_id: 1, reference: 'DEV-1', url: 'https://t/p/abc' }],
+      wa_url: 'https://wa.me/212600000000?text=x', langue_effective: 'fr', ...extra,
+    },
+  })
+
+  it('darija sans texte rédigé : la phrase le dit, « Ouvrir WhatsApp » est grisé', () => {
+    rendre([{ ...base, id: 1, reference: 'DEV-1', statut: 'envoye' }], { ...apercu(), langue: 'darija' })
+    expect(screen.getByTestId('wa-darija-non-redige').textContent).toMatch(/Variante darija : texte non rédigé/)
+    expect(screen.getByRole('button', { name: /Ouvrir WhatsApp/ })).toBeDisabled()
+  })
+
+  it('le lien n’est montré qu’une fois (dans le message), jamais répété dessous', () => {
+    rendre([{ ...base, id: 1, reference: 'DEV-1', statut: 'envoye' }], apercu())
+    expect(screen.getAllByText(/https:\/\/t\/p\/abc/)).toHaveLength(1)
+    expect(screen.queryByTestId('wa-darija-non-redige')).toBeNull()
+    expect(screen.getByRole('button', { name: /Ouvrir WhatsApp/ })).toBeEnabled()
   })
 })

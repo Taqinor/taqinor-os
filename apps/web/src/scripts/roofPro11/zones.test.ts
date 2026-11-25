@@ -49,7 +49,7 @@ import { type LngLat } from '../../lib/roof';
 import { type Obstacle } from '../../lib/obstacles';
 import { CALQUE_CONTOUR, CALQUE_COTES, cotesDesAretes, monterCotesAretes, texteCote } from './cotesAretes'; // ACAL1328, ACAL2042
 import { CALQUES_EDITION, poserEtapeAtelier, poserPresentation } from './presentationCarte'; // ACAL1328 ; suites v2 — l'étape
-import { peindreBande, texteTotalProduction } from './affichageErp'; // ACAL1612
+import { peindreBande, phraseTaillesDuChiffrage, texteEconomie, texteTotalProduction } from './affichageErp'; // ACAL1612, T4-X9-007
 import { type CardData } from './types'; // ACAL1612
 
 const A: LngLat = [-7.6, 33.5];
@@ -1155,28 +1155,77 @@ describe('ACAL853 — liveActiveResult reprend le kWh de la carte peinte', () =>
 // « TOUTES LES ZONES » dit « estimation de l'atelier » en nommant le P50 de la simulation et l'écart.
 describe('ACAL1612 — bande sans taux inventé ; Total qui nomme la simulation', () => {
   const carte = { annualKwh: 4362, kwc: 3.6, count: 5, savingsLow: 5000, savingsHigh: 6000, target: 4000 } as unknown as CardData;
-  const bande = (erp: boolean) => {
+  const SERVI = { kwc: { valeur: 3.6, etat: 'servi' }, production_annuelle_kwh: { valeur: 5000, etat: 'servi' } } as never;
+  const bande = (erp: boolean, chiffrage: unknown = null) => {
     const el = new JSDOM('<!doctype html><p></p>').window.document.querySelector('p') as HTMLElement;
-    peindreBande(el, carte, 4000, erp, null, false);
+    peindreBande(el, carte, 4000, erp, chiffrage as never, false);
     return el.textContent ?? '';
   };
-  it('fiche sans dégradation (ERP) : aucun taux affiché, la raison est dite, l’année 1 reste', () => {
-    expect(bande(true)).not.toMatch(/%\/an/);
-    expect(bande(true)).toContain(`Année 1 ~${(4362).toLocaleString('fr-FR')} kWh/an`);
-    expect(bande(true)).toContain('la fiche du module ne porte pas sa dégradation');
-    expect(bande(true)).not.toContain('Année 25');
+  it('fiche sans dégradation (ERP) : aucun taux affiché, la raison est dite, l’année 1 est la SERVIE (ACAL2022 : jamais l’estimation)', () => {
+    expect(bande(true, SERVI)).not.toMatch(/%\/an/);
+    expect(bande(true, SERVI)).toContain(`Année 1 ~${(5000).toLocaleString('fr-FR')} kWh/an`);
+    expect(bande(true, SERVI)).toContain('la fiche du module ne porte pas sa dégradation');
+    expect(bande(true, SERVI)).not.toContain('Année 25');
+    expect(bande(true)).toContain('Année 1 : production au prochain enregistrement'); // pendant le dessin : rien d'estimé
+    expect(bande(true)).not.toContain('4');
   });
   it('site public : le texte d’avant (taux du barème, inchangé)', () => {
     expect(bande(false)).toContain('dégradation ~0,5 %/an');
   });
-  it('Total : 4 362 « estimation de l’atelier » + « simulation : 5 131 kWh/an (écart − 15 %) » quand une simulation à jour existe', () => {
+  it('Total (ACAL2022, T4-X2-006) : la simulation à jour remplace l’estimation ; sans simulation « production au prochain enregistrement » ; servi : la production servie', () => {
     const sim = { simulation: { p50_kwh: 5131, a_jour: true } };
-    expect(texteTotalProduction(4362, 3.6, true, sim as never)).toBe(
-      `${(4362).toLocaleString('fr-FR')} kWh/an · estimation de l’atelier · simulation : ${(5131).toLocaleString('fr-FR')} kWh/an (écart − 15 %)`);
-    expect(texteTotalProduction(4362, 3.6, true, { simulation: { p50_kwh: 5131, a_jour: false } } as never)).toBe(
-      `${(4362).toLocaleString('fr-FR')} kWh/an · estimation de l’atelier`);
-    expect(texteTotalProduction(4362, 3.6, true, null)).toBe(`${(4362).toLocaleString('fr-FR')} kWh/an · estimation de l’atelier`);
-    expect(texteTotalProduction(4362, 3.6, false, sim as never)).toBe(`${(4362).toLocaleString('fr-FR')} kWh/an`);
+    expect(texteTotalProduction(4362, 3.6, true, sim as never)).toBe(`${(5131).toLocaleString('fr-FR')} kWh/an · simulation`);
+    expect(texteTotalProduction(4362, 3.6, true, { simulation: { p50_kwh: 5131, a_jour: false } } as never)).toBe('production au prochain enregistrement');
+    expect(texteTotalProduction(4362, 3.6, true, null)).toBe('production au prochain enregistrement');
+    expect(texteTotalProduction(0, 3.6, true, null)).toBe('—');
+    expect(texteTotalProduction(4362, 3.6, true, { ...(SERVI as object), ...sim } as never)).toBe(
+      `${(5000).toLocaleString('fr-FR')} kWh/an · simulation : ${(5131).toLocaleString('fr-FR')} kWh/an (écart − 3 %)`);
+    expect(texteTotalProduction(4362, 3.6, false, sim as never)).toBe(`${(4362).toLocaleString('fr-FR')} kWh/an`); // site public : le texte d'avant
+  });
+});
+
+// M5 — au niveau de règles 14, enregistrer la pose ne change pas la taille de la conception : une pose d'une AUTRE taille ne
+// recevra jamais de valeur. L'atelier dit la vraie raison, avec les deux tailles ; « au prochain enregistrement » reste pour
+// le cas où il est vrai (même taille, bloc pas encore relu ; rien d'enregistré).
+describe('M5 — la raison vraie quand la pose n’a pas la taille de la conception', () => {
+  const carte = { annualKwh: 4362, kwc: 1.1, count: 2, savingsLow: 5000, savingsHigh: 6000, target: 4000 } as unknown as CardData;
+  const AUTRE = { kwc: { valeur: 21.6, etat: 'servi' }, production_annuelle_kwh: { valeur: 25000, etat: 'servi' }, economie_annee1_mad: { valeur: null, etat: 'omis' } } as never;
+  const EGALE = { kwc: { valeur: 1.1, etat: 'servi' }, production_annuelle_kwh: { valeur: null, etat: 'omis' }, economie_annee1_mad: { valeur: null, etat: 'omis' } } as never;
+  const PHRASE = 'Production et économie calculées pour la conception du lead : 21,60 kWc — votre pose en compte 1,10 kWc.';
+  const bande = (chiffrage: unknown) => {
+    const el = new JSDOM('<!doctype html><p></p>').window.document.querySelector('p') as HTMLElement;
+    peindreBande(el, carte, 4000, true, chiffrage as never, false, 1.1);
+    return el.textContent ?? '';
+  };
+  it('autre taille : la bande, le Total et l’économie disent pour quelle taille la valeur est calculée, jamais « au prochain enregistrement »', () => {
+    // T4-X9-007 — les cases des chiffres clés disent « — » ; la phrase, une, en texte courant, deux décimales.
+    expect(bande(AUTRE)).toContain('Année 1 : —.');
+    expect(texteTotalProduction(4362, 1.1, true, AUTRE)).toBe('—');
+    expect(texteEconomie(AUTRE, 1.1, '≈ 5 000 MAD/an')).toBe('—');
+    expect(phraseTaillesDuChiffrage(AUTRE, 1.1)).toBe(PHRASE);
+    expect(phraseTaillesDuChiffrage(EGALE, 1.1)).toBe('');
+    expect(bande(AUTRE)).not.toContain('prochain enregistrement');
+  });
+  it('même taille mais valeur pas encore servie, ou rien d’enregistré : « au prochain enregistrement » (vrai dans ces cas)', () => {
+    expect(bande(EGALE)).toContain('Année 1 : production au prochain enregistrement');
+    expect(texteTotalProduction(4362, 1.1, true, EGALE)).toBe('production au prochain enregistrement');
+    expect(texteEconomie(EGALE, 1.1, '≈ 5 000 MAD/an')).toBe('économie au prochain enregistrement');
+    expect(texteTotalProduction(4362, 1.1, true, null)).toBe('production au prochain enregistrement');
+    expect(texteEconomie(null, 1.1, '≈ 5 000 MAD/an')).toBe('économie au prochain enregistrement');
+  });
+  // T4-X2-006 / T4-X9-013 — calepinage SANS lead : aucune conception ne viendra (le bloc est « non servi ») ; le Total ne dit
+  // jamais « au prochain enregistrement » : la simulation fraîche de la pose (relayée par la page hôte), sinon « — ».
+  it('sans lead : jamais « au prochain enregistrement » ; la simulation fraîche de la pose quand elle est là', () => {
+    const SANS_LEAD = { production_annuelle_kwh: { valeur: null, etat: 'non_servi' }, economie_annee1_mad: { valeur: null, etat: 'non_servi' }, kwc: { valeur: null, etat: 'non_servi' } } as never;
+    expect(texteTotalProduction(21735, 17.04, true, SANS_LEAD)).toBe('—');
+    expect(texteEconomie(SANS_LEAD, 17.04, '≈ 5 000 MAD/an')).toBe('—');
+    const simule = { ...(SANS_LEAD as object), simulation: { p50_kwh: 27197, a_jour: true } } as never;
+    expect(texteTotalProduction(21735, 17.04, true, simule)).toBe(`${(27197).toLocaleString('fr-FR')} kWh/an · simulation`);
+  });
+
+  it('site public (aucun bloc `chiffrage`) : l’estimation, inchangée', () => {
+    expect(texteEconomie(undefined, 1.1, '≈ 5 000 MAD/an')).toBe('≈ 5 000 MAD/an');
+    expect(texteTotalProduction(4362, 1.1, false, undefined)).toBe(`${(4362).toLocaleString('fr-FR')} kWh/an`);
   });
 });
 
@@ -1382,5 +1431,49 @@ describe('ACAL1328 — calque rp9-cotes', () => {
     const t = carteDeTestCotes();
     monterCotesAretes(t.carte, () => [{ sommets: rectRing(12.4, 8.1), ferme: true }], false);
     expect(t.visibilite.has(CALQUE_COTES)).toBe(false);
+  });
+});
+
+// T4-X2-010 — toit plat de 24 panneaux + un second pan ACTIF à l'enregistrement : rouvert, le toit disait « 0 modules ·
+// à calculer » et paraissait vide sur la carte, alors que le document portait ses 24 panneaux (la barre les comptait).
+describe('T4-X2-010 — un pan non actif rouvert garde sa pose : document, tableau du site, carte', () => {
+  const panneaux = Array.from({ length: 24 }, (_, i) => ({ cx: (i % 6) * 1.2 - 3, cy: Math.floor(i / 6) * 2.2 - 3 }));
+  const documentDeuxPans = (): SerializedLayout => ({
+    version: 2, activeAreaId: 'z2',
+    zones: [
+      { id: 'z1', label: 'Zone 1', vertices: rectRing(10, 8), obstacles: [], roofType: 'flat', pitchDeg: 0, facingAzimuthDeg: 180, facingManual: false, neededPanels: 24, neededAuto: true,
+        geometry: { azimuthDeg: 180, tiltDeg: 15, family: 'south', flush: false, kwc: 17.28, count: 24, origin: [-7.6, 33.5], panels: panneaux } },
+      { id: 'z2', label: 'Zone 2', vertices: rectRing(6, 5, -7.5995, 33.5004), obstacles: [], roofType: 'flat', pitchDeg: 0, facingAzimuthDeg: 180, facingManual: false, neededPanels: 0, neededAuto: true },
+    ],
+  } as unknown as SerializedLayout);
+
+  it('le document rouvert garde 24 panneaux sur le toit ; le tableau du site dit 24 modules, son total celui du document', async () => {
+    const { poserPlansEnregistres } = await import('./poseEnregistree');
+    const h = hydrateFromDevis({ id: null, geometrie: { roof_layout: documentDeuxPans() }, cibleVendue: false });
+    const areas = h.zones!;
+    expect(h.activeAreaId).toBe('z2');
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><div id="rp9-areas"><ul id="liste"></ul></div></body>').window.document;
+    try {
+      const ctx = { ...ctxDeBase(areas, 'z2'), activeArea: () => areas[1], closed: true, surfacesPose: [],
+        dom: { areasWindowEl: document.getElementById('rp9-areas'), areasListEl: document.getElementById('liste') } } as unknown as Ctx;
+      // Enregistrer sans geste : le toit garde ses 24 panneaux dans le document.
+      const doc = serializeLayout(ctx);
+      expect(doc.zones[0].geometry?.count).toBe(24);
+      const totalDocument = doc.zones.reduce((s, z) => s + (z.geometry?.count ?? 0), 0);
+      createZones(ctx, { setStatus: vi.fn() }).renderAreasPanel();
+      const ligne = document.querySelector('[data-site-ligne="z1"]')?.textContent ?? '';
+      expect(ligne).toContain('24 modules');
+      expect(ligne).not.toContain('à calculer');
+      expect(document.querySelector('[data-site-resume]')?.textContent).toContain(`${totalDocument} modules`);
+      expect(document.querySelector('[data-area-row="z1"]')?.textContent).toContain('24 panneaux');
+      // La carte : le toit non actif reçoit un plan de rendu de ses 24 panneaux ; le pan actif aucun (la scène pose le sien).
+      poserPlansEnregistres(areas, 'z2');
+      expect(areas[0].renderPlan?.count).toBe(24);
+      expect(areas[1].renderPlan).toBeNull();
+      // Le plan posé ne change pas le document : le pan non actif est réémis tel qu'enregistré.
+      expect(serializeLayout(ctx).zones[0].geometry).toEqual(doc.zones[0].geometry);
+    } finally { g.document = avant; }
   });
 });

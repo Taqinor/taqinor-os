@@ -161,6 +161,19 @@ describe('Projet — import, un APERÇU avant toute écriture (CALX371)', () => 
     expect(screen.getByTestId('cal-projet-apercu-clone')).toHaveTextContent('pas un clone identique')
   })
 
+  it('T4-X5-016 — l’aperçu d’un lead qui a déjà son calepinage ouvert est atteint et dit d’avance le refus', async () => {
+    const avis = 'Confirmer l’import sera refusé : Ce lead a déjà un calepinage ouvert (#7) : ouvrez-le, ou créez '
+      + 'une variante. Pour reprendre ce fichier, ouvrez ce calepinage et créez-y une variante, ou importez-le '
+      + 'depuis un calepinage rattaché à un client.'
+    mocks.importerProjet.mockResolvedValue({ data: { ...IMPORT_APERCU, avertissements: [avis] } })
+    const utilisateur = userEvent.setup()
+    rendre()
+    await waitFor(() => expect(mocks.get).toHaveBeenCalled())
+    await utilisateur.upload(await screen.findByTestId('cal-projet-fichier'), fichierProjet())
+    await screen.findByTestId('cal-projet-apercu')
+    expect(screen.getByTestId('cal-projet-apercu-avertissements')).toHaveTextContent(avis)
+  })
+
   it('propose Ouvrir le calepinage apres import (ACAL244)', async () => {
     mocks.importerProjet
       .mockResolvedValueOnce({ data: IMPORT_APERCU })

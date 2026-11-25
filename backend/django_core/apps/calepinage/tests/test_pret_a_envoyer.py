@@ -716,18 +716,23 @@ class PansVidesTest(SimpleTestCase):
         _forme_du_contrat(self, [controle])
         return controle
 
-    def test_pan_vide_nomme_avec_son_motif(self):
+    def test_pan_vide_a_cote_d_un_pan_garni_est_une_information(self):
+        """T4-X5-006 — un pan laissé vide (le mode guidé laisse le pan nord
+        vide) n'est pas un point à régler : une information, hors du compte."""
         controle = self._controle([_pan('A', 8), _pan('B', 0, 'non pavé')])
-        self.assertEqual(controle['etat'], 'a_regler')
+        self.assertEqual(controle['etat'], 'info')
         self.assertEqual(controle['valeur_texte'],
-                         'le pan B n’a aucun panneau : non pavé')
-        self.assertEqual(controle['geste'], 'Remplir le pan')
+                         'le pan B est laissé sans panneau : il n’est ni '
+                         'chiffré ni simulé')
+        self.assertFalse(controle.get('geste'))
 
-    def test_deux_pans_vides_une_ligne(self):
+    def test_aucun_pan_garni_reste_a_regler(self):
         controle = self._controle([_pan('B', 0, 'non pavé'),
                                    _pan('C', 0, 'non pavé')])
+        self.assertEqual(controle['etat'], 'a_regler')
         self.assertIn('pan B', controle['valeur_texte'])
         self.assertIn('pan C', controle['valeur_texte'])
+        self.assertEqual(controle['geste'], 'Remplir le pan')
 
     def test_tous_garnis_ok_et_sans_pan_info(self):
         self.assertEqual(self._controle([_pan('A', 8)])['etat'], 'ok')

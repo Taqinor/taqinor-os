@@ -28,6 +28,9 @@ const STATUT_FILTERS = STATUT_DEVIS_FILTRES
 
 export function DevisPageHeader({
   devis,
+  // T4-X4-005 — le nombre de devis de la portée (servi par la synthèse) :
+  // l'écran ne tient plus qu'une page de `devis`.
+  nombreTotal,
   expiringSoon,
   loading,
   error,
@@ -37,14 +40,18 @@ export function DevisPageHeader({
   peutExporter = true,
   peutCreer = true,
 }) {
+  const total = nombreTotal ?? devis.length
   return (
     <EnteteVentes
       icon={FileText}
       title="Devis"
       subtitle={
-        expiringSoon.length > 0
-          ? `${devis.length} devis · ${expiringSoon.length} à relancer (validité ≤ 7 jours)`
-          : `${devis.length} devis`
+        // Première page en cours de chargement : aucun compte connu — jamais « 0 devis ».
+        loading && total === 0 && devis.length === 0
+          ? 'Chargement des devis…'
+          : expiringSoon.length > 0
+          ? `${total} devis · ${expiringSoon.length} à relancer (validité ≤ 7 jours)`
+          : `${total} devis`
       }
       actions={(
         <>
@@ -73,7 +80,9 @@ export function DevisPageHeader({
 
 export default function DevisListChrome({
   devis,
+  nombreTotal,
   summary,
+  syntheseChargement = false,
   batteryInsight,
   expiringSoon,
   statutFilter,
@@ -91,13 +100,28 @@ export default function DevisListChrome({
   setSelectedIds,
   openBatchPdfModal,
 }) {
+  // T4-X4-005 — une page vide (filtre sans résultat) garde la barre de filtres.
+  const aDesDevis = (nombreTotal ?? devis.length) > 0
   return (
     <>
     {/* ── T6 — Résumé par statut (nombre + total TTC des devis chargés) ──
         APX12 — les 5 cartes étaient des `<div>` nus : elles passent au
         langage UNIQUE des KPI d'argent (`<Stat>`, chiffres `.num`
         tabulaires), comme le cockpit trésorerie et le rail du générateur. */}
-    {devis.length > 0 && (
+    {aDesDevis && !summary && syntheseChargement && (
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5" data-testid="devis-synthese-calcul">
+        {Object.keys(STATUT_DISPLAY).map(key => (
+          <Stat
+            key={key}
+            className="p-3 sm:p-3"
+            label={<StatusPill status={key} label={STATUT_DISPLAY[key]} className="normal-case tracking-normal" />}
+            value="…"
+            hint="Calcul des totaux…"
+          />
+        ))}
+      </div>
+    )}
+    {aDesDevis && summary && (
       <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
         {Object.keys(STATUT_DISPLAY).map(key => (
           <Stat
@@ -137,7 +161,7 @@ export default function DevisListChrome({
     )}
 
     {/* ── T5 — Filtre statut + recherche (référence / client) ── */}
-    {devis.length > 0 && (
+    {aDesDevis && (
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <Segmented
           options={STATUT_FILTERS}

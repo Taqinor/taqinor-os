@@ -164,18 +164,27 @@ export default function LigneTable({
                 </Button>
               </div>
               {multiPreview?.mode === 'villas' && (
-                <div className="rounded-md border border-info/30 bg-info/5 p-2 text-sm">
-                  {multiPreview.groupes.map(g => (
-                    <div key={g.index ?? 'hors-groupe'} className="flex justify-between gap-4">
-                      <span>{g.label}</span>
-                      <span className="tabular-nums">{formatMoney(g.totalTtc)}</span>
+                /* T4-X4-011 — deux options : un récapitulatif par option, nommé. */
+                (multiPreview.parOption || [{ option: null, ...multiPreview }]).map(r => (
+                  <div key={r.option || 'unique'} data-testid={`villas-recap-${r.option || 'unique'}`}
+                       className="rounded-md border border-info/30 bg-info/5 p-2 text-sm">
+                    {r.option && (
+                      <div className="mb-1 font-medium">
+                        {r.option === 'avec' ? 'Option avec batterie' : 'Option sans batterie'}
+                      </div>
+                    )}
+                    {r.groupes.map(g => (
+                      <div key={g.index ?? 'hors-groupe'} className="flex justify-between gap-4">
+                        <span>{g.label}</span>
+                        <span className="tabular-nums">{formatMoney(g.totalTtc)}</span>
+                      </div>
+                    ))}
+                    <div className="mt-1 flex justify-between gap-4 border-t border-info/30 pt-1 font-semibold">
+                      <span>{r.option ? `Total général — ${r.option === 'avec' ? 'avec' : 'sans'} batterie` : 'Total général'}</span>
+                      <span className="tabular-nums">{formatMoney(r.grandTotalTtc)}</span>
                     </div>
-                  ))}
-                  <div className="mt-1 flex justify-between gap-4 border-t border-info/30 pt-1 font-semibold">
-                    <span>Total général</span>
-                    <span className="tabular-nums">{formatMoney(multiPreview.grandTotalTtc)}</span>
                   </div>
-                </div>
+                ))
               )}
             </div>
           )}

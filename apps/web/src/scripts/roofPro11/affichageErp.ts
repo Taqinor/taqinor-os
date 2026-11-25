@@ -3,6 +3,33 @@
 import { fmt, fmtMad } from './dom';
 import { annualSavingsMad, degradationFactor, ANNUAL_DEGRADATION, LIFETIME_YEARS } from '../../lib/estimatorBrainV2';
 import { type CardData, type ChiffrageAtelier } from './types';
+import { memeTaille, phraseTailles, tailleDifferente } from './tailleConception'; // T4-X9 — LE prédicat de taille
+
+/** ACAL2022 — ce que l'atelier ERP dit à la place d'un chiffre qu'il ne calcule plus : la production et l'économie sont celles de
+ *  la conception SERVIE ; pendant le dessin (kWc posé ≠ kWc servi) il ne montre que panneaux et kWc posés. */
+export const AU_PROCHAIN_ENREGISTREMENT = 'production au prochain enregistrement';
+export const ECONOMIE_AU_PROCHAIN_ENREGISTREMENT = 'économie au prochain enregistrement';
+/** M5 — la vraie raison d'une valeur absente. Au niveau de règles 14, enregistrer la pose ne change PAS la taille de la
+ *  conception : si la taille servie diffère de celle posée, la valeur ne viendra jamais — on le dit avec les deux tailles.
+ *  « au prochain enregistrement » ne reste que là où il est vrai (même taille mais bloc pas encore relu ; rien d'enregistré). */
+export function raisonSansValeur(chiffrage: ChiffrageAtelier | null | undefined, kwc: number | null | undefined, grandeur: 'production' | 'économie'): string {
+  // T4-X9-007 — tailles différentes : la case d'un chiffre clé dit « — » ; la phrase se lit UNE fois, en texte courant,
+  // sous les cartes qu'elle explique (`phraseTaillesDuChiffrage`).
+  if (tailleDifferente(serviNb(chiffrage?.kwc), kwc)) return '—';
+  // T4-X2-006 / T4-X9-013 — bloc « non servi » (calepinage sans lead, agricole) : aucune conception ne viendra à
+  // l'enregistrement ; la case dit « — » (la production est celle de la simulation, relayée à part).
+  if (chiffrage?.production_annuelle_kwh?.etat === 'non_servi') return '—';
+  return grandeur === 'production' ? AU_PROCHAIN_ENREGISTREMENT : ECONOMIE_AU_PROCHAIN_ENREGISTREMENT;
+}
+
+/** T4-X9-007 — la phrase des deux tailles, en texte courant (« Production et économie calculées pour la conception du
+ *  lead : 4,40 kWc — votre pose en compte 5,68 kWc. »), ou `''` quand les tailles sont égales ou inconnues. */
+export function phraseTaillesDuChiffrage(chiffrage: ChiffrageAtelier | null | undefined, kwc: number | null | undefined): string {
+  const servi = serviNb(chiffrage?.kwc);
+  return tailleDifferente(servi, kwc) ? phraseTailles('Production et économie', servi as number, kwc as number, true) : '';
+}
+/** ACAL2022 — le bloc servi n'a pas pu être relu (hors ligne) : les valeurs gardées sont celles du dernier calcul. */
+export const VALEURS_HORS_LIGNE = 'valeurs du dernier calcul, hors ligne';
 
 /** Une grandeur SERVIE (`etat: 'servi'` + nombre), sinon `null`. */
 export const serviNb = (g: { valeur: number | null; etat: string } | null | undefined): number | null =>
@@ -62,10 +89,15 @@ export function peindreBande(band: HTMLElement | null, d: CardData, cible: numbe
 
 function texteBandeCarte(d: CardData, cible: number, erp: boolean, chiffrage: ChiffrageAtelier | null | undefined, factureInconnue: boolean, kwc: number | null): string {
   if (!(d.annualKwh > 0)) return '';
-  const servie = erp ? serviNb(chiffrage?.economie_annee1_mad) : null;
-  const prod = (erp ? productionServie(chiffrage, kwc) : null) ?? d.annualKwh; // ACAL1418 — l'Année 1 lit la production de la carte
-  // ACAL1612 — l'ERP n'invente aucun taux : la fiche servie ne porte pas sa dégradation, l'année N se tait en disant pourquoi.
-  if (erp) return `Année 1 ~${fmt(Math.round(prod))} kWh/an${factureInconnue ? '' : ` (${fmtMad(servie ?? d.savingsLow)}/an)`}. ${SANS_DEGRADATION}`;
+  if (erp) {
+    // ACAL2022 — l'ERP ne montre que le SERVI à kWc égal, jamais l'estimation du navigateur ; pendant le dessin : « au prochain enregistrement ».
+    const servieProd = productionServie(chiffrage, kwc); // ACAL1418 — l'Année 1 lit la production de la carte
+    if (servieProd == null) return `Année 1 : ${raisonSansValeur(chiffrage, kwc, 'production')}. ${SANS_DEGRADATION}`;
+    const servie = serviNb(chiffrage?.economie_annee1_mad);
+    // ACAL1612 — l'ERP n'invente aucun taux : la fiche servie ne porte pas sa dégradation, l'année N se tait en disant pourquoi.
+    return `Année 1 ~${fmt(Math.round(servieProd))} kWh/an${factureInconnue || servie == null ? '' : ` (${fmtMad(servie)}/an)`}. ${SANS_DEGRADATION}`;
+  }
+  const prod = d.annualKwh;
   const fac25 = degradationFactor(LIFETIME_YEARS);
   const sav25 = cible > 0 ? annualSavingsMad(prod * fac25, cible) : { low: d.savingsLow * fac25, high: d.savingsHigh * fac25 };
   return texteBande({
@@ -77,23 +109,51 @@ function texteBandeCarte(d: CardData, cible: number, erp: boolean, chiffrage: Ch
 /** R2-17 — la production SERVIE (celle du PDF), seulement à kWc égal : sinon `null` (l'estimation du navigateur reste). */
 export function productionServie(chiffrage: ChiffrageAtelier | null | undefined, kwc: number | null): number | null {
   const prod = serviNb(chiffrage?.production_annuelle_kwh);
-  const kwcServi = serviNb(chiffrage?.kwc);
-  return prod != null && kwcServi != null && kwc != null && Math.abs(kwcServi - kwc) < 0.005 ? prod : null;
+  return prod != null && memeTaille(serviNb(chiffrage?.kwc), kwc) ? prod : null;
 }
 
 /** ACAL1418 — le Total « Production estimée » : la production SERVIE à kWc égal (comme la carte), sinon l'estimation du
  *  navigateur, DITE « estimation » dans l'ERP. Site public (`erp` faux) : le texte d'avant. */
 export function texteTotalProduction(annualKwh: number, kwc: number | null, erp: boolean, chiffrage: ChiffrageAtelier | null | undefined): string {
-  const servie = erp ? productionServie(chiffrage, kwc) : null;
-  const sim = erp ? texteSimulation(servie ?? annualKwh, chiffrage) : '';
-  if (servie != null) return `${fmt(Math.round(servie))} kWh/an${sim}`;
-  return annualKwh > 0 ? `${fmt(Math.round(annualKwh))} kWh/an${erp ? ` · estimation de l’atelier${sim}` : ''}` : '—';
+  if (!erp) return annualKwh > 0 ? `${fmt(Math.round(annualKwh))} kWh/an` : '—';
+  const servie = productionServie(chiffrage, kwc);
+  if (servie != null) return `${fmt(Math.round(servie))} kWh/an${texteSimulation(servie, chiffrage)}`;
+  // ACAL2022 (T4-X2-006) — une simulation à jour existe : l'estimation de l'atelier n'est plus montrée à côté d'elle.
+  const p50 = p50ADate(chiffrage);
+  if (p50 != null) return `${fmt(Math.round(p50))} kWh/an · simulation`;
+  return annualKwh > 0 ? raisonSansValeur(chiffrage, kwc, 'production') : '—';
 }
 
-/** ACAL1612 — le P50 de la simulation À JOUR (`chiffrage.simulation`, fourni par la page hôte) et l'écart de l'estimation. */
-function texteSimulation(kwh: number, chiffrage: ChiffrageAtelier | null | undefined): string {
+/** Le P50 de la simulation À JOUR (`chiffrage.simulation`, fourni par la page hôte), sinon `null`. */
+function p50ADate(chiffrage: ChiffrageAtelier | null | undefined): number | null {
   const sim = (chiffrage as { simulation?: { p50_kwh?: number | null; a_jour?: boolean } | null } | null | undefined)?.simulation;
-  const p50 = sim?.a_jour === true && typeof sim.p50_kwh === 'number' && sim.p50_kwh > 0 ? sim.p50_kwh : null;
+  return sim?.a_jour === true && typeof sim.p50_kwh === 'number' && sim.p50_kwh > 0 ? sim.p50_kwh : null;
+}
+
+/** ACAL2022 / ACAL2023 — la part « production ÷ consommation » SERVIE (`chiffrage.couverture_pct`, % de la conception), à kWc égal. */
+export function couvertureServie(chiffrage: ChiffrageAtelier | null | undefined, kwc: number | null): number | null {
+  const pct = serviNb(chiffrage?.couverture_pct);
+  return pct != null && memeTaille(serviNb(chiffrage?.kwc), kwc) ? pct : null;
+}
+
+/** ACAL2022 / T4-X9-003 — l'économie SERVIE, seulement au kWc de la conception — la carte ET le Total (avant, sans `kwc`,
+ *  le Total la montrait sans contrôle, à côté d'une pose d'une autre taille). */
+export function economieServie(chiffrage: ChiffrageAtelier | null | undefined, kwc?: number | null): number | null {
+  const eco = serviNb(chiffrage?.economie_annee1_mad);
+  return eco != null && memeTaille(serviNb(chiffrage?.kwc), kwc) ? eco : null;
+}
+
+/** ACAL2022 — le texte de l'économie de la carte et du Total : site public (`chiffrage` absent) ⇒ l'estimation du
+ *  navigateur ; ERP ⇒ la servie (au kWc posé), sinon « au prochain enregistrement » — jamais l'estimation. */
+export function texteEconomie(chiffrage: ChiffrageAtelier | null | undefined, kwc: number | null | undefined, estime: string): string {
+  if (chiffrage === undefined) return estime;
+  const servie = economieServie(chiffrage, kwc);
+  return servie != null ? `${fmtMad(servie)}/an` : estime.startsWith('—') ? estime : raisonSansValeur(chiffrage, kwc, 'économie');
+}
+
+/** ACAL1612 — le P50 de la simulation À JOUR et l'écart de la production servie. */
+function texteSimulation(kwh: number, chiffrage: ChiffrageAtelier | null | undefined): string {
+  const p50 = p50ADate(chiffrage);
   if (p50 == null || !(kwh > 0)) return '';
   const ecart = Math.round(((kwh - p50) / p50) * 100);
   return ` · simulation : ${fmt(Math.round(p50))} kWh/an (écart ${ecart < 0 ? '−' : '+'} ${fmt(Math.abs(ecart))} %)`;

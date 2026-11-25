@@ -209,6 +209,49 @@ class ProposerTest(_Base):
         self.lead.refresh_from_db()
         self.assertEqual((self.lead.facture_hiver, self.lead.facture_ete), (Decimal('650'), Decimal('900')))
 
+    def test_acal2020_lead_residentiel_forme_horaire_24_servie_par_le_moteur(self):
+        """Reste d'ACAL2020 — la conception SERT la forme 24 h que le moteur résidentiel a
+        vraiment utilisée (occupation + équipements, ``valeurs.<option>.forme_horaire_24``) :
+        le calepinage la lit telle quelle, ni silhouette recomposée ici ni forme uniforme."""
+        from apps.calepinage.services.consommation import AVIS_FORME_UNIFORME
+
+        parts = [0.02] * 8 + [0.06] * 12 + [0.03] * 4  # une journée chargée le jour (somme = 1)
+        version = self._ranger('residentiel', {'etude_horaire': {
+            'occupation': 'presence_jour',
+            'mois': [{'mois': rang + 1, 'consommation_kwh': kwh} for rang, kwh in enumerate(self.KWH_CONCEPTION)]}})
+        type(version).objects.filter(pk=version.pk).update(
+            niveau_regles=15,  # relecture m2 : la forme du moteur n'est lue qu'au niveau 15
+            valeurs={'sans': {'forme_horaire_24': {'valeur': parts, 'unite': 'part', 'source': 'moteur'}}})
+
+        reponse = self._proposer({'source': 'lead'})
+
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        jour_moyen = sum(self.KWH_CONCEPTION) / 365.0
+        for heure in range(24):  # mutant « silhouette d'occupation » ou « uniforme » : rouge
+            self.assertAlmostEqual(reponse.data['courbe24'][heure], jour_moyen * parts[heure], places=3)
+        self.assertNotIn(AVIS_FORME_UNIFORME, reponse.data['avertissements'])
+
+    def test_m2_au_niveau_14_la_silhouette_d_occupation_reste(self):
+        """Relecture du lot 4, m2 — une conception rangée au niveau 14 (courant) qui porte la
+        forme 24 h du moteur : le calepinage garde la silhouette d'occupation qu'il prenait
+        avant (aucun chiffre du calepinage ne bouge au niveau 14)."""
+        from apps.ventes.courbes_journalieres import OCCUPATION_PRESENCE, silhouette_occupation
+
+        parts = [0.02] * 8 + [0.06] * 12 + [0.03] * 4
+        version = self._ranger('residentiel', {'etude_horaire': {
+            'occupation': OCCUPATION_PRESENCE,
+            'mois': [{'mois': rang + 1, 'consommation_kwh': kwh} for rang, kwh in enumerate(self.KWH_CONCEPTION)]}})
+        type(version).objects.filter(pk=version.pk).update(
+            valeurs={'sans': {'forme_horaire_24': {'valeur': parts, 'unite': 'part', 'source': 'moteur'}}})
+
+        reponse = self._proposer({'source': 'lead'})
+
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        jour_moyen = sum(self.KWH_CONCEPTION) / 365.0
+        silhouette = silhouette_occupation(OCCUPATION_PRESENCE)
+        for heure in range(24):  # mutant « forme du moteur lue à tout niveau » : rouge
+            self.assertAlmostEqual(reponse.data['courbe24'][heure], jour_moyen * silhouette[heure], places=2)
+
     def test_acal2020_lead_commercial_forme_horaire_de_la_conception(self):
         """Lead commercial : la journée moyenne des jours types de la conception
         (``blocs.etude_ci.profil_charge.jours_types``, pondérée par ``nb_jours``) —
@@ -462,6 +505,74 @@ class CorpsProposerPublieTest(SimpleTestCase):
         from apps.calepinage.serializers_conso import SOURCES_CONSOMMATION
 
         self.assertEqual(SOURCES_CONSOMMATION, SOURCES_PROPOSITION)
+
+
+class FormeDuMoteurAuNiveau14Test(SimpleTestCase):
+    """Relecture du lot 4, m2 — la forme 24 h du moteur résidentiel (``conception/moteur.py::
+    forme_horaire_24`` : douze jours types de ``etude_horaire.jours_types_annee`` pondérés par
+    leurs jours) n'est PAS la silhouette d'occupation (``courbes_journalieres.
+    silhouette_occupation``) que le calepinage prenait avant : la lire déplace la courbe, donc
+    l'autoconsommation et la couverture du calepinage. Elle n'est lue qu'au niveau 15."""
+
+    def test_la_forme_du_moteur_differe_de_la_silhouette_pour_un_lead_present_sans_equipement(self):
+        from apps.ventes import courbes_journalieres as cj
+        from apps.ventes.etude_horaire import jours_types_annee
+
+        jours, _avis, _sources = jours_types_annee(kwc=4.0, conso_kwh_mensuelles=[597.0] * 12,
+                                                   ville='Casablanca', occupation=cj.OCCUPATION_PRESENCE)
+        self.assertEqual(len(jours or []), 12)
+        total = [sum(jour['conso_24h'][heure] * jour['jours'] for jour in jours) for heure in range(24)]
+        forme = [valeur / sum(total) for valeur in total]
+        silhouette = cj.silhouette_occupation(cj.OCCUPATION_PRESENCE)
+        self.assertGreater(max(abs(a - b) for a, b in zip(forme, silhouette)), 1e-3)
+
+
+class ConsoDeLaConceptionDansLaSimulationTest(SimpleTestCase):
+    """T4-X5-002 — lead à deux factures (hiver 1 200 / été 700 MAD, « été différent ») : la
+    simulation de son calepinage lisait la courbe PLATE que l'atelier estime depuis la facture
+    moyenne (597 kWh en janvier comme en juillet). Elle lit maintenant la consommation de la
+    conception : ses kWh et leur répartition sur les douze mois, une saisie imposée gardée."""
+
+    KWH = [760.0, 700.0, 700.0, 600.0, 520.0, 450.0, 430.0, 430.0, 450.0, 560.0, 680.0, 748.0]
+    ESTIMEE = {'courbe24': [0.8] * 24, 'methode': 'facture', 'source': {'origine': 'atelier', 'saisi_le': 'x'}}
+
+    def _document(self, conso, lu=None):
+        import types
+        from unittest import mock
+
+        from apps.calepinage.services import consommation as service
+
+        lu = lu if lu is not None else (self.KWH, [1 / 24.0] * 24, 'residentiel', 4)
+        calepinage = types.SimpleNamespace(lead_id=3, company=object())
+        with mock.patch.object(service, '_consommation_de_la_conception', return_value=lu), \
+                mock.patch.object(service, '_lire_lead', return_value=types.SimpleNamespace()):
+            return service.document_avec_conso_de_la_conception(calepinage, {'consumption': conso, 'zones': []})
+
+    def test_la_simulation_suit_les_douze_mois_de_la_conception(self):
+        from apps.calepinage.services.consommation import JOURS_DU_MOIS
+        from apps.calepinage.services.courbe_charge import _repeter_courbe24
+
+        document = self._document(dict(self.ESTIMEE))
+        conso = document['consumption']
+        self.assertEqual(conso['source'], {'origine': 'conception', 'version': 4})
+        points = [{'mois': mois, 'heure': heure} for mois in (1, 7) for heure in range(24)]
+        courbe = _repeter_courbe24(points, conso['courbe24'], conso['saisons'], 'test', 'test', [])
+        janvier, juillet = sum(courbe[:24]) * JOURS_DU_MOIS[0], sum(courbe[24:]) * JOURS_DU_MOIS[6]
+        self.assertAlmostEqual(janvier, self.KWH[0], delta=1.0)  # mutant « courbe plate » : 597 / 597
+        self.assertAlmostEqual(juillet, self.KWH[6], delta=1.0)
+
+    def test_une_saisie_imposee_ou_sans_conception_reste(self):
+        for conso in (dict(self.ESTIMEE, methode='courbe'), dict(self.ESTIMEE, appareils=[{'kind': 'tv'}]),
+                      dict(self.ESTIMEE, source={'origine': 'csv'})):
+            self.assertIs(self._document(conso)['consumption'], conso)
+        import types
+        from unittest import mock
+
+        from apps.calepinage.services import consommation as service
+        with mock.patch.object(service, '_consommation_de_la_conception', return_value=None):
+            document = {'consumption': dict(self.ESTIMEE)}
+            self.assertIs(service.document_avec_conso_de_la_conception(
+                types.SimpleNamespace(lead_id=3, company=object()), document), document)
 
 
 class SaisonsLuesParLaSimulationTest(SimpleTestCase):

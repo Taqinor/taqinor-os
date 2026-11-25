@@ -53,7 +53,8 @@ test('les branches limites sont dans le corpus (aucun distributeur, autre, SRM, 
 })
 
 const parId = new Map(EXPECTED.entries.map((e) => [e.id, e]))
-for (const entry of CORPUS.entries) {
+// AGEN13 — l'axe `roi` n'a plus de jumeau JS (`computeROI` retiré) : seul le Python le revérifie.
+for (const entry of CORPUS.entries.filter((e) => e.axe !== 'roi')) {
   test(`recalcul ${entry.id} (${entry.axe}) == fichier attendu commis`, () => {
     const recalc = { id: entry.id, axe: entry.axe, ...computeExpectedForEntry(entry) }
     // Aller-retour JSON : NaN/undefined disparaissent exactement comme à l'écriture.

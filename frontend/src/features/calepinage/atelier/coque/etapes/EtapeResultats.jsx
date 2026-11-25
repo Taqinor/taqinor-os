@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { panneauxDuModule } from '../../cibleAuModule'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import calepinageApi from '../../../../../api/calepinageApi'
 import useResource from '../../../../../hooks/useResource'
@@ -14,10 +15,12 @@ import PiedResultats from '../../../production/PiedResultats'
 import ResultatAvantSimulation from '../../../production/ResultatAvantSimulation'
 import ResultatIncomplet from '../../../production/ResultatIncomplet'
 import TuilesResultat from '../../../production/TuilesResultat'
+import { memeTaille, phraseTailles, tailleDifferente } from '@roofpro/tailleConception' // T4-X9 — LE prédicat de taille de l'atelier
 import { messageResultatIndisponible } from '../../../delaiReseau'
 import EtatEcranAtelier from '../../EtatEcranAtelier'
 import { useModeExpert } from '../../modeExpert'
 import PanneauPertes from '../../PanneauPertes'
+import { useLectureServie } from './panneaux/lectures'
 
 /* ============================================================================
    L'ÉTAPE « RÉSULTATS » DU PARCOURS GUIDÉ (maquettes Resultats.dc.html et
@@ -57,7 +60,7 @@ function PertesAvance({ calepinageId, lectureSeule, onEnregistre, sourcesOuverte
     modifié : la révision en crée une V2). Rien n'est recalculé ici. `p50` : la simulation de la pose, seulement quand
     elle est complète (un plafond « au plus » n'est pas un chiffre à comparer). */
 /** « Réviser le devis » (devis reçu : jamais touché, la révision en fait une V2 — même geste que `BoutonDevis`). */
-function useReviser(devis) {
+function useReviser(devis, { surLaConception = false } = {}) {
   const navigate = useNavigate()
   const [enCours, setEnCours] = useState(false)
   const reviser = async () => {
@@ -67,6 +70,7 @@ function useReviser(devis) {
     try {
       await reviserEtOuvrir({
         devis: { id: devis.devis, reference: devis.reference },
+        surLaConception,
         onApres: (nouveau) => { v2 = nouveau },
         navigate: () => { if (v2?.id != null) navigate(`/ventes/devis/${v2.id}/design`) },
       })
@@ -136,9 +140,37 @@ const NOM_PRODUCTION_POSE = 'Production simulée de la pose'
 /** ACAL2015 (C4-E5, D-ACAL-96) — LA conception (`conception` de `GET resultat/`) : UN chiffre de production, celui que le
     moteur unique a rangé ; un devis ENVOYÉ dont l'écart servi (`devis_envoye.ecart_devis`, lignes de ventes) porte la
     production est NOMMÉ (référence, date d'envoi) avec « Réviser le devis » quand ventes le permet. Rien n'est recalculé. */
-function ProductionDeLaConception({ bloc }) {
+/** T4-X5-001 — LA taille de la conception : `chiffrage.kwc` servi du design-context (le lecteur de la bande Panneaux et de
+    la vue client) ; le nombre de panneaux est celui de `cible` quand il décrit cette même taille, sinon il est tu. */
+function tailleDeLaConception(contexte) {
+  const kwc = contexte?.chiffrage?.kwc
+  const valeur = kwc?.etat === 'servi' && typeof kwc.valeur === 'number' ? kwc.valeur : null
+  if (valeur == null) return null
+  const cible = contexte?.cible
+  const panneaux = typeof cible?.panneaux === 'number' && memeTaille(cible?.kwc, valeur) ? cible.panneaux : null
+  // T4-X3-009 — le compte de la conception nomme SON panneau (« 8 panneaux de 550 W »).
+  return { kwc: valeur, panneaux, watt: panneaux != null ? cible?.panel_watt ?? null : null }
+}
+
+/** T4-X9-008 — la part de la consommation servie pour un calepinage de lead est celle de la CONCEPTION
+    (`services/etapes/autoconsommation.py::_publier`) : à une autre taille que la pose, la phrase des deux tailles (prédicat
+    et formateur uniques de l'atelier) remplace le chiffre ; `null` sinon (même taille, ou taille inconnue). */
+function phraseCouvertureConception(data, contexte) {
+  const taille = data?.conception && contexte?.etat === 'ok' ? tailleDeLaConception(contexte.donnees) : null
+  return taille && tailleDifferente(taille.kwc, data?.pose?.kwc)
+    ? phraseTailles('Part de la consommation', taille.kwc, data.pose.kwc) : null
+}
+
+/** Le motif de l'atelier (`affichageErp.ts::raisonSansValeur`) : « X kWc », le nombre de panneaux en plus s'il est servi. */
+const ditTaille = ({ panneaux, kwc, watt = null }) => `${formatNumber(kwc, { decimals: 2 })} kWc${
+  typeof panneaux === 'number' ? ` (${panneauxDuModule(panneaux, watt)})` : ''}`
+
+function ProductionDeLaConception({ bloc, taille = null, pose = null, simulee = false }) {
   const kwh = typeof bloc.production_annuelle_kwh === 'number' ? bloc.production_annuelle_kwh : null
   const dit = (n) => `${formatNumber(n, { decimals: 0 })} kWh par an`
+  // T4-X5-001 — une pose d'une AUTRE taille que la conception : le chiffre de la conception dit sa taille, la pose est
+  // renvoyée à sa propre simulation (jamais deux productions de deux tailles sans le dire). Même taille : une ligne.
+  const autreTaille = kwh != null && tailleDifferente(taille?.kwc, pose?.kwc)
   const envoye = bloc.devis_envoye
   const ecarts = envoye?.ecart_devis ?? []
   // Relecture E5 M2 — la production QUE LE DEVIS ENVOYÉ A RANGÉE (`devis_envoye.production_annuelle_kwh`, servie par
@@ -147,12 +179,25 @@ function ProductionDeLaConception({ bloc }) {
   const different = duDevis != null && (kwh == null || Math.round(duDevis) !== Math.round(kwh))
   const reviserPossible = ecarts.length === 0 || ecarts.some((e) => e?.reviser_possible)
   const option = different && envoye?.option && envoye.option !== bloc.option ? ` (${LIBELLE_OPTION[envoye.option] ?? envoye.option})` : ''
-  const [enCours, reviser] = useReviser(envoye)
+  const [enCours, reviser] = useReviser(envoye, { surLaConception: true })  // T4-X5-011 : V2 sur la conception
   const lien = envoye ? <Link to={`/ventes/devis?devis=${envoye.devis}`}>{envoye.reference || 'voir le devis'}</Link> : null
   return (
     <section className="cal-res-carte flex flex-col gap-1" data-zone="production-conception"
       data-chiffre={different ? 'deux' : 'un-seul'}>
-      <p>{kwh != null ? `Production de la conception : ${dit(kwh)}` : 'Production de la conception : non calculée'}</p>
+      {autreTaille ? (
+        <>
+          <p>
+            {`Production de la conception : ${dit(kwh)}, calculée pour la conception du lead : ${ditTaille(taille)} — `
+              + `votre pose en compte ${ditTaille({ panneaux: pose.total_modules, kwc: pose.kwc })}.`}
+          </p>
+          <p className="cal-res-sourdine">
+            {simulee ? 'La production simulée de votre pose est ci-dessous.'
+              : 'La production de votre pose sera celle de sa simulation.'}
+          </p>
+        </>
+      ) : (
+        <p>{kwh != null ? `Production de la conception : ${dit(kwh)}` : 'Production de la conception : non calculée'}</p>
+      )}
       {envoye && duDevis == null && (
         <p className="cal-res-sourdine">{'Le devis envoyé '}{lien}{' ne porte pas de production enregistrée.'}</p>
       )}
@@ -268,6 +313,8 @@ export default function EtapeResultats({
     () => calepinageApi.calepinages.resultat(id), id,
     { select: (r) => r.data, errorMessage: messageResultatIndisponible },
   )
+  // T4-X5-001 — la taille de la conception (lecture partagée du design-context, jamais un second appel en vol).
+  const contexte = useLectureServie('contexte', id, { actif: data?.conception != null })
   if (loading || error) {
     return (
       <EtatEcranAtelier id={id} loading={loading} error={error} testIdErreur="cal236-erreur" forme="resultats"
@@ -295,7 +342,8 @@ export default function EtapeResultats({
   return (
     <div className="cal-res" data-zone="etape-resultats">
       {data?.conception
-        ? <ProductionDeLaConception bloc={data.conception} />
+        ? <ProductionDeLaConception bloc={data.conception} pose={data?.pose} simulee={complet}
+          taille={contexte.etat === 'ok' ? tailleDeLaConception(contexte.donnees) : null} />
         : <ProductionDuDevis bloc={blocDuDevis(data)} p50={complet ? total?.p50_kwh : null} incomplet={incomplet} />}
       {simule && <PanneauxNonRaccordes data={data} />}
       {enCours && <SimulationEnCours calepinageId={id} intervalleMs={intervalleMs} onTermine={refetch} />}
@@ -310,7 +358,8 @@ export default function EtapeResultats({
       )}
       {complet && (
         <>
-          <TuilesResultat data={data} nomProduction={data?.conception ? NOM_PRODUCTION_POSE : null} />
+          <TuilesResultat data={data} nomProduction={data?.conception ? NOM_PRODUCTION_POSE : null}
+            phraseCouverture={phraseCouvertureConception(data, contexte)} />
           <section className="cal-res-milieu">
             <MoisParMois data={data} nomProduction={data?.conception ? NOM_PRODUCTION_POSE : null} />
             <DuSoleilAuReseau cascade={data?.cascade} note={note} />

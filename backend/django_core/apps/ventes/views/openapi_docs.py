@@ -12,7 +12,8 @@ from django.core.validators import RegexValidator as _RegexValidator
 from drf_spectacular.drainage import set_override
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema_field, inline_serializer)
+    OpenApiParameter, PolymorphicProxySerializer, extend_schema_field,
+    inline_serializer)
 from rest_framework import serializers as s
 
 from core.champs_stricts import (
@@ -25,8 +26,10 @@ from ..domain.bornes import (
     MOTIF_MONTANT_DEMANDE, MOTIF_MONTANT_POSITIF, MOTIF_POURCENTAGE_DEMANDE)
 from ..models import Devis, Paiement, ROLES_AUTO_COMPOSITION
 from ..payments.providers import providers_lien_actifs
+from ..selectors_listes import STATUTS_EFFECTIFS
 from ..serializers import (
-    DevisSerializer, DevisWriteSerializer, PlanCommissionSerializer,
+    DevisListeSerializer, DevisSerializer, DevisWriteSerializer,
+    PlanCommissionSerializer,
 )
 from ..serializers_facturation import (
     AvoirSerializer, FactureListeSerializer, FactureWriteSerializer,
@@ -1862,4 +1865,34 @@ CreditWarningResponse = _ser('ClientCreditWarning', {
         'niveau_relance': s.DictField(allow_null=True),
         'encours_echu': s.CharField(),
     }),
+})
+
+
+# T4-X4-005 — la liste des devis sert DEUX formes de ligne : légère par défaut,
+# complète avec ``?forme=complete`` (dialogue « Signé »). Les deux sont
+# déclarées (``oneOf``) : un schéma qui n'en nommait qu'une mentait sur l'autre
+# (fuzz du 25/11/2026 : « a_plan_toiture is a required property »).
+LignesDeListeDevis = PolymorphicProxySerializer(
+    component_name='DevisLigneDeListe', resource_type_field_name=None,
+    serializers=[DevisListeSerializer, DevisSerializer])
+
+
+class DevisSyntheseStatutSerializer(s.Serializer):
+    """Une carte par statut de l'en-tête de la liste des devis."""
+    count = s.IntegerField()
+    total = s.FloatField()
+
+
+# T4-X4-005 — l'en-tête de la liste (contrat
+# ``contract_samples/devis_synthese.json``).
+DevisSyntheseResponse = _ser('DevisSyntheseResponse', {
+    'total': s.IntegerField(),
+    'remplaces': s.IntegerField(),
+    'par_statut': _ser('DevisSyntheseParStatut', {
+        statut: DevisSyntheseStatutSerializer()
+        for statut in STATUTS_EFFECTIFS}),
+    'a_relancer': _ser('DevisSyntheseARelancer', {
+        'id': s.IntegerField(), 'reference': s.CharField()}, many=True),
+    'batterie': _ser('DevisSyntheseBatterie', {
+        'avec': s.IntegerField(), 'sans': s.IntegerField()}),
 })

@@ -471,16 +471,30 @@ class EcartMesuresTest(SimpleTestCase):
         self.assertEqual(bloc, MESURES['exemple']['consommation'])
         self.assertEqual(len(bloc['lignes']), 12)
 
-    def test_fenetre_de_deux_ans_ramenee_a_l_annee_moyenne(self):
+    def test_le_profil_publie_est_deja_l_annee_moyenne(self):
+        """T4-X5-012 — ``consommation.profil_mensuel`` est DÉJÀ ramené à l'année moyenne par
+        ``courbe_charge`` : la longueur de la fenêtre ne le redivise pas (59,66 au lieu de
+        596,61 kWh en janvier, « Écart sur la période : +1076,6 % »)."""
         une_annee = copy.deepcopy(MESURES['resultat_simule'])
         une_annee['production']['total']['annees_fenetre'] = 1
+        dix_ans = copy.deepcopy(MESURES['resultat_simule'])
+        dix_ans['production']['total']['annees_fenetre'] = 10
         mesures = [820.0] + [None] * 11
-        deux = service._ecart_consommation(MESURES['resultat_simule'], mesures)
-        une = service._ecart_consommation(une_annee, mesures)
-        self.assertEqual(deux['lignes'][0]['simule_kwh'], 820.0)
-        self.assertEqual(deux['lignes'][0]['ecart_pct'], 0.0)
-        self.assertEqual(une['lignes'][0]['simule_kwh'], 1640.0)
-        self.assertEqual(une['lignes'][0]['ecart_pct'], -50.0)
+        for resultat in (MESURES['resultat_simule'], une_annee, dix_ans):
+            ligne = service._ecart_consommation(resultat, mesures)['lignes'][0]
+            self.assertEqual((ligne['simule_kwh'], ligne['ecart_pct']), (820.0, 0.0))  # mutant « ÷ années » : rouge
+
+    def test_un_calepinage_sans_pompage_n_a_pas_de_ligne_d_eau(self):
+        import types
+        from unittest import mock
+
+        from apps.calepinage.services import devis_retenu
+
+        calepinage = types.SimpleNamespace(resultat=MESURES['resultat_simule'], devis_id=None, company=None)
+        for marche, attendu in (('residentiel', True), ('agricole', False)):
+            with mock.patch.object(devis_retenu, 'conception_du_calepinage', return_value={'marche': marche}):
+                eau = service.ecart_mesures_du_calepinage(calepinage, {'kwh': [None] * 12, 'annee': 2025})['eau']
+            self.assertEqual(eau is None, attendu, marche)
 
     def test_sans_simulation_motif(self):
         self.assertEqual(service._ecart_consommation({}, [None] * 12),

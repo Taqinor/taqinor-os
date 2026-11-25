@@ -10,7 +10,6 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { ttcExactFromHt, htFromTtc} from './solar.js'
-import { computeROI } from './calc/roi.js'
 import { baremeDepuisProfil, consoAnnuelleDepuisFactures, controlerFacturesSaisies, controlerKwhDeclare, consoDescendDesFactures, chargesFixesTtc } from './calc/tarifs.js'
 import { exempleContrat } from '../../test/fixtures/contractSamples.js'
 
@@ -45,17 +44,6 @@ test('AGNR35 — une conso dérivée au barème société reste « descendue des
   const b = baremeDepuisProfil(SOCIETE)
   assert.equal(consoDescendDesFactures(10189, FACTURES, 'onee'), false)
   assert.equal(consoDescendDesFactures(10189, FACTURES, 'onee', b), true)
-})
-
-test('AGNR35 — computeROI au modèle « factures » lit la grille et la redevance société', () => {
-  const base = {
-    kwp: 6, factures: FACTURES, dayUsagePct: 60, totalSans: 60000, totalAvec: 90000,
-    batteryKwh: 0, consoAnnuelleKwh: 10189, utility: 'onee', productible: 1651,
-  }
-  const national = computeROI(base)
-  const societe = computeROI({ ...base, bareme: baremeDepuisProfil(SOCIETE) })
-  assert.equal(societe.savings_model, 'factures')
-  assert.notEqual(societe.eco_annuelle_sans, national.eco_annuelle_sans)
 })
 
 test('AGNR35 — rouvrir puis ré-enregistrer sans toucher ne change jamais la conso stockée', async () => {

@@ -155,7 +155,8 @@ class ContexteConceptionTest(BaseApiCalepinage):
         reponse = self.api.get(url)
         self.assertEqual(sorted(reponse.data), sorted(CONTRAT_CIBLE['exemple']))
         self.assertEqual(reponse.data, {
-            'cible_factures': {'panneaux': panneaux, 'kwc': kwc, 'module_wc': float(round(kwc * 1000 / panneaux))},
+            'cible_factures': {'panneaux': panneaux, 'kwc': kwc, 'module_wc': float(round(kwc * 1000 / panneaux)),
+                               'version': version.version, 'raison': (version.declencheur or {}).get('raison') or None},
             'refus': '', 'calcul_en_cours': False})
         sans_lead = self.api.get(f'{url_detail(self.nu.pk)}cible-factures/')
         self.assertEqual(sans_lead.data, CONTRAT_CIBLE['exemple_vide'])
@@ -300,6 +301,21 @@ class ContexteConceptionTest(BaseApiCalepinage):
             self._contexte(self.avec_devis)['calepinage']['site_de_repli'],
             'la position GPS de la fiche')
 
+    def test_t4_x2_005_point_de_repli_meme_lieu_que_la_simulation(self):
+        """T4-X2-005 — le POINT du repli (l'atelier y cale le pas entre
+        rangées) est celui que la simulation prend : ``point_du_site`` sur un
+        document sans épingle ; ``None`` exactement quand le libellé l'est."""
+        from apps.calepinage.services.site import point_du_site
+        self.assertIsNone(self._contexte(self.nu)['calepinage']['site_de_repli_point'])
+        self.client_lie.adresse = '12 rue des Fleurs, Casablanca'
+        self.client_lie.save(update_fields=['adresse'])
+        point = self._contexte(self.nu)['calepinage']['site_de_repli_point']
+        lat, lon, reference = point_du_site({}, lambda: {'adresse': '12 rue des Fleurs, Casablanca'})
+        self.assertEqual(point, {'lat': lat, 'lon': lon, 'libelle': reference['libelle']})
+        self.assertEqual(point['libelle'], 'Casablanca (ville de référence)')
+        bloc = self._contexte(self.avec_devis)['calepinage']
+        self.assertEqual(bloc['site_de_repli_point']['libelle'], bloc['site_de_repli'])
+
     def _lead_gps_hors_contour(self):
         """ACAL250 — roof_point A DANS R, GPS corrigé B HORS de R."""
         self.lead_lie.roof_outline = CONTOUR_AUTOUR_DU_REPERE
@@ -436,12 +452,21 @@ class ContexteConceptionTest(BaseApiCalepinage):
         calepinage = Calepinage.objects.create(
             company=self.company, lead_id=self.lead_lie.pk, titre='ACAL993',
             roof_layout=LAYOUT, layout_hash='b' * 64)
-        servi = self._contexte(calepinage)['chiffrage']
-        attendu = chiffrer_conception(calepinage=calepinage, company=self.company)
+        # ADEV153 — le chiffrage LIT la conception rangée du lead (aucun noyau) : ici 6 047 kWh/an rangés.
+        rangee = {'etat': 'complet', 'marche': 'residentiel', 'option_retenue': 'sans', 'niveau_regles': 15,
+                  'entrees_utilisees': {'facture_hiver': {'valeur': 900, 'source': 'lead'}},
+                  'valeurs': {'sans': {
+                      'puissance_kwc': {'valeur': 4.4}, 'production_annuelle': {'valeur': 6047.0, 'source': 'pose'},
+                      'economies_annuelles': {'valeur': 5100.0}, 'autoconsommation': {'valeur': 0.62},
+                      'couverture': {'valeur': 0.55}}}}
+        with mock.patch('apps.ventes.conception.service.conception_ou_calcul', return_value=(rangee, False)):
+            servi = self._contexte(calepinage)['chiffrage']
+            attendu = chiffrer_conception(calepinage=calepinage, company=self.company)
         self.assertEqual(set(servi), set(CONTRAT['exemple']['chiffrage']))
         self.assertEqual(servi['production_annuelle_kwh']['valeur'],
                          attendu['production_annuelle_kwh']['valeur'])
-        self.assertIsNotNone(servi['production_annuelle_kwh']['valeur'])
+        self.assertEqual(servi['production_annuelle_kwh']['valeur'], 6047.0)
+        self.assertEqual(servi['couverture_pct']['valeur'], 55.0)
         sans_lead = self._contexte(self.nu)['chiffrage']
         self.assertEqual({sans_lead[c]['etat'] for c in ('kwc', 'production_annuelle_kwh')}, {'non_servi'})
         self.assertEqual(sans_lead['omissions'], CONTRAT['exemple_vide']['chiffrage']['omissions'])
@@ -553,10 +578,12 @@ class CibleFacturesTest(unittest.TestCase):
 
     def test_taille_tiree_des_factures_servie_telle_quelle(self):
         servi = self.servi({'panneaux': 12, 'panel_watt': 580, 'kwc': 6.96, 'source': 'factures',
-                            'refus': None, 'motif_code': None})
+                            'refus': None, 'motif_code': None, 'version': 3, 'raison': 'Recalculé le 25/11'})
         self.assertEqual(set(servi), set(CONTRAT_CIBLE['exemple']['cible_factures']))
         self.assertNotIn('cible_factures', CONTRAT['exemple'])  # H3 : hors du démarrage de l'atelier
-        self.assertEqual(servi, {'panneaux': 12, 'kwc': 6.96, 'module_wc': 580.0})
+        # Lane E9 — la version et la raison de la conception voyagent avec ses chiffres.
+        self.assertEqual(servi, {'panneaux': 12, 'kwc': 6.96, 'module_wc': 580.0, 'version': 3,
+                                 'raison': 'Recalculé le 25/11'})
 
     def test_aucune_cible_des_factures_vaut_none(self):
         # Sans lead, taille souhaitée du lead, refus (sans facture, C&I…) : jamais une taille devinée.

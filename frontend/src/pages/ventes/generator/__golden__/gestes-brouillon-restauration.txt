@@ -186,7 +186,7 @@ Réduction
 TVA : par ligne (voir la table)
 Prix cible / kWc
 Appliquer via remise
-Marge indicative (interne)
+Marge indicative (interne) — option avec batterie
 0 MAD
 <button type="button" class="flex w-full items-center gap-2 px-4 py-3 text-sm font-semibold
 hover:bg-muted/30 transition-colors rounded-lg" aria-expanded="false">
@@ -206,7 +206,7 @@ Total avec batterie · TTC
 0 MAD
 Option recommandée
 Écart batterie : 0 MAD
-Marge indicative (interne)
+Marge indicative (interne) — option avec batterie
 0 MAD
 Système
 — kWc

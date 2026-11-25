@@ -457,16 +457,28 @@
 </div>
 <div class="p-4 sm:p-5 sm:pt-0 gen-preview-body pt-4" id="gen-sec-simulation-contenu" hidden="">
 <div class="mb-4" data-testid="etude-horaire-block">
-<p class="mb-2 text-xs text-muted-foreground" data-testid="etude-horaire-source">Calcul du moteur horaire en cours…</p>
+<p class="mb-2 text-xs font-medium text-success" data-testid="etude-horaire-source">Chiffres du moteur horaire (serveur) — PVGIS réel × consommation réelle du client.</p>
 </div>
-<div class="mb-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">Facture réelle ONEE ≈ <strong>36 001 MAD/an</strong> sans solaire → avec solaire ≈ <strong>27 447 MAD/an</strong> — économie calculée par tranche (barème ONEE), pas une estimation.</div>
+<div class="mb-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success" data-testid="bandeau-modele-conception">Conception du moteur unique : chiffres calculés sur les valeurs de l’écran (aperçu, rien n’est enregistré).</div>
 <div class="gen-metrics-grid">
 <div class="gen-metric gen-metric-accent">
 <div class="gen-metric-label">Production annuelle</div>
-<div class="gen-metric-value">8 785<span data-figure="production_annuelle_kwh" data-figure-value="8 785" hidden="">
+<div class="gen-metric-value">12 000<span data-figure="production_annuelle_kwh" data-figure-value="12 000" hidden="">
 </span>
 </div>
 <div class="gen-metric-unit">kWh / an</div>
+</div>
+<div class="gen-metric">
+<div class="gen-metric-label">Taux d'autoconsommation (sans)</div>
+<div class="gen-metric-value">50 %</div>
+<div class="gen-metric-unit">part de la production consommée</div>
+</div>
+<div class="gen-metric">
+<div class="gen-metric-label">Taux de couverture (sans)</div>
+<div class="gen-metric-value">60 %<span data-figure="couverture_pct" data-figure-option="sans" data-figure-value="60 %" hidden="">
+</span>
+</div>
+<div class="gen-metric-unit">part de la conso couverte</div>
 </div>
 </div>
 <div class="gen-compare-grid">
@@ -475,14 +487,14 @@
 </div>
 <div class="gen-metric">
 <div class="gen-metric-label">Économies</div>
-<div class="gen-metric-value">8 554<span data-figure="economie_annuelle" data-figure-option="sans" data-figure-value="8 554" hidden="">
+<div class="gen-metric-value">6 000<span data-figure="economie_annuelle" data-figure-option="sans" data-figure-value="6 000" hidden="">
 </span>
 </div>
 <div class="gen-metric-unit">MAD / an</div>
 </div>
 <div class="gen-metric gen-metric-accent">
 <div class="gen-metric-label">ROI</div>
-<div class="gen-metric-value">2.9 ans<span data-figure="payback_ans" data-figure-option="sans" data-figure-value="2.9 ans" hidden="">
+<div class="gen-metric-value">6,0 ans<span data-figure="payback_ans" data-figure-option="sans" data-figure-value="6,0 ans" hidden="">
 </span>
 </div>
 <div class="gen-metric-unit">retour sur invest.</div>
@@ -499,14 +511,14 @@
 <div class="gen-compare-col-title">Avec batterie</div>
 <div class="gen-metric">
 <div class="gen-metric-label">Économies</div>
-<div class="gen-metric-value">11 516<span data-figure="economie_annuelle" data-figure-option="avec" data-figure-value="11 516" hidden="">
+<div class="gen-metric-value">6 000<span data-figure="economie_annuelle" data-figure-option="avec" data-figure-value="6 000" hidden="">
 </span>
 </div>
 <div class="gen-metric-unit">MAD / an</div>
 </div>
 <div class="gen-metric gen-metric-accent">
 <div class="gen-metric-label">ROI</div>
-<div class="gen-metric-value">4.5 ans<span data-figure="payback_ans" data-figure-option="avec" data-figure-value="4.5 ans" hidden="">
+<div class="gen-metric-value">6,0 ans<span data-figure="payback_ans" data-figure-option="avec" data-figure-value="6,0 ans" hidden="">
 </span>
 </div>
 <div class="gen-metric-unit">retour sur invest.</div>
@@ -934,8 +946,8 @@
 <button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" disabled="" type="button">Appliquer via remise</button>
 </div>
 <div class="gen-total-item">
-<span class="gen-total-label text-success">Marge indicative (interne)</span>
-<span class="gen-total-value text-success">7 423 MAD (15 %)</span>
+<span class="gen-total-label text-success">Marge indicative (interne) — option avec batterie</span>
+<span class="gen-total-value text-success">14 983 MAD (30 %)</span>
 </div>
 </div>
 </div>
@@ -1205,8 +1217,8 @@
 <div class="rounded-xl border border-border bg-card text-card-foreground shadow-card">
 <div class="p-4 sm:p-5 sm:pt-0 pt-4 flex flex-col gap-3">
 <div>
-<div class="text-xs uppercase tracking-wide text-muted-foreground">Marge indicative (interne)</div>
-<div class="text-sm font-semibold text-success">7 423 MAD (15 %)</div>
+<div class="text-xs uppercase tracking-wide text-muted-foreground">Marge indicative (interne) — option avec batterie</div>
+<div class="text-sm font-semibold text-success">14 983 MAD (30 %)</div>
 </div>
 <div class="border-t border-border pt-3">
 <div class="text-xs uppercase tracking-wide text-muted-foreground mb-1">Système</div>

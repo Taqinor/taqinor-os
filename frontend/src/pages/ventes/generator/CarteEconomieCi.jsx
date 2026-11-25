@@ -114,7 +114,8 @@ function DeuxOptions({ d, avec }) {
           )}
           <tr data-testid="eco-ci-deux-retour">
             <td>Retour sur investissement</td>
-            <td>{ans(retour(sans?.indicateurs))}</td><td><strong>{ans(retour(ind))}</strong></td>
+            <td>{ans(retour(sans?.indicateurs))}</td>
+            <td><strong>{ans(retour(ind))}</strong></td>
           </tr>
           <tr><td>TRI</td><td>{tri(sans?.indicateurs)}</td><td>{tri(ind)}</td></tr>
         </tbody>
@@ -131,6 +132,9 @@ function DeuxOptions({ d, avec }) {
   )
 }
 
+// E7d (revue lot 4, M1) — le retour affiché est celui de la MÊME réponse que le TRI
+// et la VAN (aperçu `economie_ci`), à la même règle d'arrondi qu'eux ; plus le payback
+// de la conception rangée, calculé sur le devis de RÉFÉRENCE (un autre devis possible).
 export default function CarteEconomieCi({ apercu, eco, setEcoChamp, optionAvec = null, children }) {
   const { donnees: d, chargement, erreur } = apercu || {}
   return (
@@ -188,7 +192,8 @@ export default function CarteEconomieCi({ apercu, eco, setEcoChamp, optionAvec =
           {d.indicateurs && (
             <p data-testid="eco-ci-indicateurs">
               TRI : <strong>{nb(d.indicateurs.tri_pct, 1)} %</strong> sur {d.indicateurs.tri_horizon_ans} ans
-              {' · '}retour : {nb(d.indicateurs.retour_ans)} ans
+              {' · '}retour : {d.indicateurs.retour_dixieme_ans != null
+                ? nb(d.indicateurs.retour_dixieme_ans, 1) : nb(d.indicateurs.retour_ans)} ans
               {' · '}{d.indicateurs.van_mad != null
                 ? <>VAN : {mad(d.indicateurs.van_mad)}</>
                 : <span data-testid="eco-ci-van-motif">VAN non calculée : {d.indicateurs.van_motif}</span>}

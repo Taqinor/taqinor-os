@@ -129,6 +129,9 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   const [errorMsg, setErrorMsg] = useState(null)
   // ALEA48 — champ du lead nommé par le 409 du devis auto (bouton « Compléter »).
   const [errorField, setErrorField] = useState(null)
+  // T4-X1-011 — panne SERVEUR (5xx, délai, réseau) : « Réessayer » plutôt qu'une
+  // fiche à vérifier (la clé d'idempotence du panneau rejoue le même devis).
+  const [errorServeur, setErrorServeur] = useState(false)
   // AGR126 — alertes renvoyées par le serveur avec le devis automatique
   // (agricole : étude pompage, articles « prix à renseigner » omis).
   const [alertes, setAlertes] = useState([])
@@ -274,6 +277,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
     setPhase('creating')
     setErrorMsg(null)
     setErrorField(null)
+    setErrorServeur(false)
     try {
       // ALEA55 — AUCUN préchargement du catalogue ni des gammes avant l'appel :
       // le serveur lit lui-même le catalogue, les marques épinglées (PVMRQ) et
@@ -306,6 +310,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
       // 409) : le panneau le dit et propose « Compléter : <champ> » (un seul
       // message : le toast global est coupé pour cet appel, `suppressErrorToast`).
       setErrorField(typeof err?.field === 'string' ? err.field : null)
+      setErrorServeur(err?.serveur === true)
       setPhase('error')
     }
   }
@@ -598,6 +603,12 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
               )}
               <div className="ldp-actions">
                 <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
+                {errorServeur && (
+                  <Button type="button" data-testid="ldp-reessayer"
+                          onClick={() => doCreateAuto(discount || '0')}>
+                    Réessayer
+                  </Button>
+                )}
                 {editable && (
                   <Button type="button" onClick={() => setPhase('edit')}>
                     Ouvrir l'édition complète

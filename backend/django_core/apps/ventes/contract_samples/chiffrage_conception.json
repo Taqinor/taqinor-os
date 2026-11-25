@@ -4,7 +4,7 @@
   "pourquoi": "ACAL991 (PACT10, contrat pose SEUL) — la PORTE UNIQUE de chiffrage d'apps/ventes : UNE fonction de service (`apps.ventes.services.chiffrer_conception`, moitie devis ACAL992, module `apps/ventes/domain/chiffrage_conception.py`) qui rend, pour un calepinage (lie a un devis ou seulement a un lead) et son marche, les grandeurs que le client lit sur son devis — kWc, production annuelle, economie de la premiere annee, autoconsommation — SANS aucun calcul neuf : devis lie => lecture du rendu `build_quote_data` (production `prod_kwh`, economie `eco_s_ann` ou `eco_a_ann` selon l'option recommandee `recommended`) ; sans devis => le moteur du devis sur les entrees du lead. La moitie calepinage (ACAL993, docs/plans/PLAN_AUDIT_CALEPINAGE.md) relaie CE bloc sous la cle `chiffrage` de GET calepinages/<pk>/design-context/ (forme partielle : un bloc de la reponse, pas la reponse entiere). Chaque grandeur porte les quatre cles {valeur, unite, source, etat} ; `etat` vaut servi, omis, non_servi ou indisponible ; une grandeur qui n'est pas servie a son motif dans `omissions[]` ; `economie_annee1_mad.option` dit de quelle option du rendu vient l'economie (sans_batterie ou avec_batterie, l'option recommandee). Aucune cle de prix (D-ACAL-40 : sans consommation connue, l'economie est omise avec « renseignez la facture »). Les valeurs ci-dessous sont des exemples de FORME, jamais des mesures (coherents avec calepinage_productible_pose.json, ACAL996).",
   "notes": {
     "moities": "ACAL992 (apps/ventes : la porte `chiffrer_conception`, ecrite contre cet echantillon) ; ACAL993 (apps/calepinage : la cle `chiffrage` du contexte de conception, lue par l'ecran).",
-    "source": "`calepinage_enregistre` = production de la pose reelle du calepinage (D-ACAL-36, niveau de regles 15) ; `standard_ville` = productible de la ville (niveaux <= 14) ; `devis` = lu sur le rendu du devis lie ; `lead` = moteur du devis sur les entrees du lead.",
+    "source": "`calepinage_enregistre` = production de la pose reelle du calepinage (D-ACAL-36, niveau de regles 15) ; `standard_ville` = productible de la ville (niveaux <= 14) ; `conception` = lu sur la conception rangee du lead (ADEV153 : aucun calcul, un seul moteur) ; `devis` et `lead` : anciennes sources des echantillons ci-dessous (forme inchangee).",
     "etat": "servi = valeur presente ; omis = donnee du client absente (motif dans omissions[]) ; non_servi = le marche ne se chiffre pas ici ; indisponible = calcul en echec, jamais leve (motif dans omissions[])."
   },
   "exemple": {
@@ -14,6 +14,7 @@
     "production_annuelle_kwh": {"valeur": 98576, "unite": "kWh/an", "source": "calepinage_enregistre", "etat": "servi"},
     "economie_annee1_mad": {"valeur": 7420, "unite": "MAD", "source": "devis", "etat": "servi", "option": "sans_batterie"},
     "autoconsommation_pct": {"valeur": 62.0, "unite": "%", "source": "devis", "etat": "servi"},
+    "couverture_pct": {"valeur": 55.0, "unite": "%", "source": "conception", "etat": "servi"},
     "omissions": []
   },
   "exemple_ville": {
@@ -23,6 +24,7 @@
     "production_annuelle_kwh": {"valeur": 111420, "unite": "kWh/an", "source": "standard_ville", "etat": "servi"},
     "economie_annee1_mad": {"valeur": 7420, "unite": "MAD", "source": "devis", "etat": "servi", "option": "sans_batterie"},
     "autoconsommation_pct": {"valeur": 62.0, "unite": "%", "source": "devis", "etat": "servi"},
+    "couverture_pct": {"valeur": 55.0, "unite": "%", "source": "conception", "etat": "servi"},
     "omissions": []
   },
   "exemple_sans_facture": {
@@ -32,9 +34,11 @@
     "production_annuelle_kwh": {"valeur": 98576, "unite": "kWh/an", "source": "calepinage_enregistre", "etat": "servi"},
     "economie_annee1_mad": {"valeur": null, "unite": "MAD", "source": null, "etat": "omis", "option": null},
     "autoconsommation_pct": {"valeur": null, "unite": "%", "source": null, "etat": "omis"},
+    "couverture_pct": {"valeur": null, "unite": "%", "source": null, "etat": "omis"},
     "omissions": [
       {"grandeur": "economie_annee1_mad", "motif": "renseignez la facture"},
-      {"grandeur": "autoconsommation_pct", "motif": "renseignez la facture"}
+      {"grandeur": "autoconsommation_pct", "motif": "renseignez la facture"},
+      {"grandeur": "couverture_pct", "motif": "renseignez la facture"}
     ]
   },
   "exemple_ci": {
@@ -44,6 +48,7 @@
     "production_annuelle_kwh": {"valeur": 182400, "unite": "kWh/an", "source": "calepinage_enregistre", "etat": "servi"},
     "economie_annee1_mad": {"valeur": 168000, "unite": "MAD", "source": "devis", "etat": "servi", "option": "sans_batterie"},
     "autoconsommation_pct": {"valeur": 81.0, "unite": "%", "source": "devis", "etat": "servi"},
+    "couverture_pct": {"valeur": 74.0, "unite": "%", "source": "conception", "etat": "servi"},
     "omissions": []
   },
   "exemple_agricole": {
@@ -53,11 +58,13 @@
     "production_annuelle_kwh": {"valeur": null, "unite": "kWh/an", "source": null, "etat": "non_servi"},
     "economie_annee1_mad": {"valeur": null, "unite": "MAD", "source": null, "etat": "non_servi", "option": null},
     "autoconsommation_pct": {"valeur": null, "unite": "%", "source": null, "etat": "non_servi"},
+    "couverture_pct": {"valeur": null, "unite": "%", "source": null, "etat": "non_servi"},
     "omissions": [
       {"grandeur": "kwc", "motif": "le chiffrage agricole se lit au devis"},
       {"grandeur": "production_annuelle_kwh", "motif": "le chiffrage agricole se lit au devis"},
       {"grandeur": "economie_annee1_mad", "motif": "le chiffrage agricole se lit au devis"},
-      {"grandeur": "autoconsommation_pct", "motif": "le chiffrage agricole se lit au devis"}
+      {"grandeur": "autoconsommation_pct", "motif": "le chiffrage agricole se lit au devis"},
+      {"grandeur": "couverture_pct", "motif": "le chiffrage agricole se lit au devis"}
     ]
   }
 }

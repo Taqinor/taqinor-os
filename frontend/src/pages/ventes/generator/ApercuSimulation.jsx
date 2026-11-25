@@ -15,27 +15,35 @@ import { formatNumber, formatMAD } from '../../../lib/format'
 import {
   balayageStockageAffichable, LIBELLES_MOIS,
 } from '../../../features/ventes/etudeHorairePreview'
-import { facturesRecaleesAffichables } from '../../../features/ventes/etudeHorairePreviewPur'
+import { facturesRecaleesAffichables, motivationAffichable } from '../../../features/ventes/etudeHorairePreviewPur'
 import { moteur } from '../../../features/ventes/quote/valeur'
 import { SAISON_LABELS, fmtNum } from '../../../features/ventes/quote/ecranDefauts.js'
 import CarteMetrique, { GenCardHeader } from './CarteMetrique'
+
+//: Revue de l'écran (25/11) — UNE règle pour tout retour en années de l'aperçu (cartes,
+//: tableau, falaise) : au dixième, virgule française (celle des cellules C&I voisines).
+const ansFr = (v) => formatNumber(v, { decimals: 1 })
+import { APERCU_INDISPONIBLE } from './hooks/useConceptionEcran'
 
 export default function ApercuSimulation({
   setPreviewCollapsed, previewCollapsed, modeInstallation, etudeHoraireCorps,
   etudeHoraireSourceServeur, etudeHoraireSourceLabel, etudeHoraireChargement, etudeHoraireErreur,
   etudeHoraireDonnees, etudeHoraireLignes, ligneStockageOuverte, appliquerTailleDimensionnement,
   setLigneStockageOuverte, etudeHoraireFalaise, etudeHoraireGlitch, etudeHoraireEstimationConso,
-  marcheCi, roi, etudeHoraireAnnuel, sansRec, showAvec, etudeHoraireAnnuelAvec, distributeur,
+  marcheCi, roi, etudeHoraireAnnuel, sansRec, showAvec,
   apercuProductionKwh, apercuProductionKwhAvec = null, showSans, signerEcoOuRoi, apercuEcoSans, apercuPaybackSansJamais,
   apercuPaybackSans, totals, avecRec, batterieInvendableServeur, verdictBatterieServeur,
   apercuEcoAvec, apercuPaybackAvecJamais, apercuPaybackAvec, capaciteBatterieInconnue,
-  facturesSaisies, chartData,
+  apercuPaybackSansAbsent = 'N/A', apercuPaybackAvecAbsent = 'N/A',
+  facturesSaisies, chartData, apercuAvecAbsent = null,
   // EDC9 — repli en Édition complète (état tenu par l'écran, choix mémorisé).
   editDevis = null, simulationRepliee = false, basculerCarte = () => {},
 }) {
   // Deux options montrées ET deux champs PV : une production par option.
   const productionParOption = apercuProductionKwhAvec != null && showSans && showAvec
   // R2-07 — une facture déclarée recalée par le barème (saut de tranche) est DITE.
+  // Revue de l'écran (25/11) — la ligne sous le tableau, composée des valeurs servies.
+  const motivation = motivationAffichable(etudeHoraireDonnees?.dimensionnement)
   const facturesRecalees = facturesRecaleesAffichables(
     etudeHoraireDonnees?.consommation?.detail, etudeHoraireCorps)
   return (
@@ -76,13 +84,22 @@ export default function ApercuSimulation({
                   <> {' '}Détail mensuel : {etudeHoraireSourceLabel.libelle}.</>
                 )}
               </p>
-            ) : (
+            ) : roi?.modele === 'refus' && !etudeHoraireChargement ? null : (
+              // Revue de l'écran (25/11) — un refus ou un échec est dit UNE fois, plus
+              // bas (`apercu-conception-attente`), jamais répété ici.
               <p className="mb-2 text-xs text-muted-foreground" data-testid="etude-horaire-source">
                 {etudeHoraireChargement
                   ? 'Calcul du moteur horaire en cours…'
                   : (etudeHoraireErreur
-                      || 'Estimation locale (hors ligne) — en attente du moteur horaire serveur.')}
+                      || (roi?.modele === 'conception' ? 'Détail horaire non servi pour cet aperçu.'
+                        : 'Aucune conception servie pour l’instant.'))}
               </p>
+            )}
+            {/* E7d — les phrases du moteur sur la consommation retenue (imposée par le devis…), telles quelles. */}
+            {etudeHoraireDonnees?.notes?.length > 0 && (
+              <ul className="mb-3 list-disc pl-5 text-xs text-muted-foreground" data-testid="etude-horaire-notes">
+                {etudeHoraireDonnees.notes.map((a) => <li key={a}>{a}</li>)}
+              </ul>
             )}
             {etudeHoraireDonnees?.avertissements?.length > 0 && (
               <ul className="mb-3 list-disc pl-5 text-xs text-warning" data-testid="etude-horaire-avertissements">
@@ -106,8 +123,8 @@ export default function ApercuSimulation({
                       <th className="py-1 pr-3 font-medium">Autoconso.</th>
                       <th className="py-1 pr-3 font-medium">Couverture</th>
                       <th className="py-1 pr-3 font-medium">Éco. sans (MAD/an)</th>
-                      <th className="py-1 pr-3 font-medium">Éco. avec (MAD/an)</th>
-                      <th className="py-1 pr-3 font-medium">Payback</th>
+                      <th className="py-1 pr-3 font-medium">Éco. avec (MAD/an, batterie du moteur)</th>
+                      <th className="py-1 pr-3 font-medium">Payback sans (prix du moteur)</th>
                       <th className="py-1 pr-3 font-medium">Résiduel après (kWh/mois)</th>
                       <th className="py-1 pr-3 font-medium">Remplissage batterie</th>
                       <th className="py-1" />
@@ -141,10 +158,16 @@ export default function ApercuSimulation({
                         <Fragment key={ligne.panneaux}>
                           <tr
                               className={`border-b border-border${estRecommandee ? ' bg-success/10' : ''}${estRecommandeeAvec ? ' bg-info/10' : ''}`}>
-                            <td className="py-1.5 pr-3">
+                            <td className="min-w-48 py-1.5 pr-3">
                               {formatNumber(ligne.kwc, { decimals: 2 })} kWc
-                              {estRecommandee && <span className="gen-rec-badge"> ★ Recommandé (sans)</span>}
-                              {estRecommandeeAvec && <span className="gen-rec-badge" data-testid="etude-horaire-reco-avec"> ★ Recommandé (avec)</span>}
+                              {/* Revue de l'écran (25/11) — les badges sous le chiffre, un par ligne. */}
+                              {(estRecommandee || estRecommandeeAvec || ligne.tailleDuDevis) && (
+                                <div className="mt-0.5 flex flex-col items-start gap-0.5" data-testid="etude-horaire-badges">
+                                  {estRecommandee && <span className="gen-rec-badge whitespace-nowrap">★ Recommandé (sans)</span>}
+                                  {estRecommandeeAvec && <span className="gen-rec-badge whitespace-nowrap" data-testid="etude-horaire-reco-avec">★ Recommandé (avec)</span>}
+                                  {ligne.tailleDuDevis && <span className="gen-rec-badge whitespace-nowrap" data-testid="etude-horaire-taille-devis">{ligne.tailleDuDevis}</span>}
+                                </div>
+                              )}
                             </td>
                             <td className="py-1.5 pr-3">
                               {ligne.onduleur} — {formatNumber(ligne.ratio_onduleur_kwc * 100, { decimals: 0 })} % du kWc
@@ -158,9 +181,12 @@ export default function ApercuSimulation({
                             <td className="py-1.5 pr-3">
                               {ligne.batterieVendable
                                 ? fmtNum(Math.round(ligne.economie_avec_mad))
-                                : <span className="text-muted-foreground">{ligne.raisonBatterie}</span>}
+                                : (
+                                  <span className="text-muted-foreground" data-testid="etude-horaire-raison-batterie"
+                                        title={ligne.raisonTechnique || undefined}>{ligne.raisonBatterie}</span>
+                                )}
                             </td>
-                            <td className="py-1.5 pr-3">{ligne.payback_sans_annees != null ? `${ligne.payback_sans_annees} ans` : 'N/A'}</td>
+                            <td className="py-1.5 pr-3">{ligne.payback_sans_annees != null ? `${ansFr(ligne.payback_sans_annees)} ans` : 'N/A'}</td>
                             <td className="py-1.5 pr-3" data-testid="etude-horaire-residuel">
                               {residuelApres != null
                                 ? <>{fmtNum(Math.round(residuelApres))} kWh{trancheApres && <> — {trancheApres}</>}</>
@@ -213,7 +239,7 @@ export default function ApercuSimulation({
                                           <td className="py-1 pr-3">{p.coutTtc != null ? `${fmtNum(Math.round(p.coutTtc))} MAD` : '—'}</td>
                                           <td className="py-1 pr-3">{p.economieMad != null ? fmtNum(Math.round(p.economieMad)) : '—'}</td>
                                           <td className="py-1 pr-3">{p.economieMarginaleMad != null ? fmtNum(Math.round(p.economieMarginaleMad)) : '—'}</td>
-                                          <td className="py-1 pr-3">{p.paybackAnnees != null ? `${p.paybackAnnees} ans` : '—'}</td>
+                                          <td className="py-1 pr-3">{p.paybackAnnees != null ? `${ansFr(p.paybackAnnees)} ans` : '—'}</td>
                                           <td className="py-1 pr-3">
                                             {p.residuelKwhMois != null
                                               ? <>{fmtNum(Math.round(p.residuelKwhMois))}{p.trancheApres && <> — {p.trancheApres}</>}</>
@@ -233,9 +259,10 @@ export default function ApercuSimulation({
                     })}
                   </tbody>
                 </table>
-                {etudeHoraireDonnees?.dimensionnement?.motivation && (
-                  <p className="mt-2 text-xs text-muted-foreground" data-testid="etude-horaire-motivation">
-                    {etudeHoraireDonnees.dimensionnement.motivation}
+                {motivation && (
+                  <p className="mt-2 text-xs text-muted-foreground" data-testid="etude-horaire-motivation"
+                     title={motivation.technique || undefined}>
+                    {motivation.texte}
                   </p>
                 )}
               </BarreDefilementCollante>
@@ -288,7 +315,7 @@ export default function ApercuSimulation({
                         {etudeHoraireFalaise.meilleure.trancheApres && <> ({etudeHoraireFalaise.meilleure.trancheApres})</>}</>
                     )}
                     {etudeHoraireFalaise.meilleure.paybackAnnees != null && (
-                      <> — payback {etudeHoraireFalaise.meilleure.paybackAnnees} ans</>
+                      <> — payback {ansFr(etudeHoraireFalaise.meilleure.paybackAnnees)} ans (batterie et prix du moteur)</>
                     )}.
                   </div>
                 )}
@@ -356,10 +383,31 @@ export default function ApercuSimulation({
           <p className="text-center text-sm text-muted-foreground" data-testid="apercu-ci-serveur">
             Économies C&amp;I : voir la carte « Économies » (moteur serveur).
           </p>
-        ) : !roi ? (
-          <p className="text-center text-sm text-muted-foreground">
-            Renseignez le nombre de panneaux et les factures, puis la simulation
-            s'actualise automatiquement.
+        ) : !roi?.modele || roi.modele === 'refus' ? (
+          // AGEN11 — rien de servi : l'attente du moteur, son refus dit tel quel,
+          // ou l'invitation à saisir (aucun chiffre calculé dans le navigateur).
+          <p className="text-center text-sm text-muted-foreground" data-testid="apercu-conception-attente"
+             data-champ={roi?.champ || undefined}>
+            {roi?.chargement ? 'Calcul en cours…' : roi?.reessayer && roi.message === APERCU_INDISPONIBLE ? (
+              // E7d (M2) — échec sans phrase du serveur (5xx, réseau) : le dire et relancer.
+              <>
+                Aperçu indisponible —{' '}
+                <Button type="button" size="sm" variant="outline" className="min-h-11 min-w-11"
+                        onClick={roi.reessayer}>Réessayer</Button>
+              </>
+            ) : roi?.message ? (
+              <>
+                {roi.message}
+                {/* Les cartes disent ce qui manque au lieu de disparaître en silence. */}
+                <span className="mt-1 block text-xs">
+                  Production, économies et retour sur investissement ne sont pas calculés tant que ce
+                  point n’est pas réglé.
+                </span>
+              </>
+            ) : (<>
+              Renseignez le nombre de panneaux et les factures, puis la simulation
+              s'actualise automatiquement.
+            </>)}
           </p>
         ) : (
           <>
@@ -367,39 +415,22 @@ export default function ApercuSimulation({
                 (QF4), l'écran affiche le MÊME calcul « deux factures » par
                 tranche que le PDF (facture sans vs avec solaire) au lieu
                 d'une estimation moyenne. */}
-            {etudeHoraireSourceServeur ? (
-              // AGNR23 — le bandeau dit le modèle DES CARTES : l'étude
-              // horaire du moteur quand elle répond.
-              <div className="mb-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success"
-                   data-testid="bandeau-modele-cartes">
-                Moteur horaire : facture ≈ <strong>{fmtNum(Math.round(etudeHoraireAnnuel.facture_avant_mad))} MAD/an</strong>
-                {' '}sans solaire → avec solaire ≈{' '}
-                <strong>
-                  {fmtNum(Math.round(sansRec || !showAvec
-                    ? etudeHoraireAnnuel.facture_apres_sans_mad
-                    : (etudeHoraireAnnuelAvec || etudeHoraireAnnuel).facture_apres_avec_mad))} MAD/an
-                </strong>
-                {' '}— chiffres des cartes (production horaire × consommation du client).
-              </div>
-            ) : roi.savings_model === 'factures' ? (
-              <div className="mb-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
-                Facture réelle {distributeur.toUpperCase()} ≈ <strong>{fmtNum(roi.facture_sans)} MAD/an</strong>
-                {' '}sans solaire → avec solaire ≈{' '}
-                <strong>
-                  {fmtNum(sansRec || !showAvec ? roi.facture_avec_sans : roi.facture_avec_avec)} MAD/an
-                </strong>
-                {' '}— économie calculée par tranche (barème {distributeur.toUpperCase()}), pas une estimation.
-              </div>
-            ) : (
-              <div className="mb-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
-                Estimation (production × autoconsommation × tarif moyen) — renseignez la
-                facture réelle du client ci-dessus pour un calcul par tranche exact.
-              </div>
-            )}
+            {/* AGEN11 / E7d — les cartes lisent la conception du moteur unique
+                (l'ancien bandeau « Moteur horaire » de l'aperçu horaire, retiré
+                avec lui, ne pouvait plus s'afficher). M2 : le bandeau dit d'où
+                viennent les chiffres (aperçu de l'écran, ou dernière conception
+                rangée du lead) — jamais « ceux du document », qu'il ne lit pas. */}
+            <div className="mb-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success"
+                 data-testid="bandeau-modele-conception">
+              Conception du moteur unique{roi.chargement ? ' — calcul en cours…' : ''} :{' '}
+              {roi.surApercu
+                ? 'chiffres calculés sur les valeurs de l’écran (aperçu, rien n’est enregistré).'
+                : 'chiffres de la dernière conception calculée pour ce lead.'}
+            </div>
             <div className="gen-metrics-grid">
               {/* CJ2b — Production/Autoconso/Couverture : le serveur
                   horaire (PVGIS réel) gagne dès qu'il a répondu (résidentiel),
-                  sinon repli sur `roi` (miroir local, inchangé).
+                  sinon la conception du moteur unique (AGEN11).
                   QJR426 — aucune puce ici avant comme après : cette carte
                   ne distingue déjà pas ses deux sources à l'écran (le
                   repli `roi` reste, comme aujourd'hui, non étiqueté) —
@@ -471,7 +502,7 @@ export default function ApercuSimulation({
                   <CarteMetrique label="ROI"
                                  valeur={signerEcoOuRoi(
                                    apercuPaybackSansJamais ? 'Non rentabilisé sur 25 ans'
-                                     : apercuPaybackSans != null ? apercuPaybackSans + ' ans' : 'N/A')}
+                                     : apercuPaybackSans != null ? apercuPaybackSans + ' ans' : apercuPaybackSansAbsent)}
                                  unit="retour sur invest." accent
                                  figure="payback_ans" figureOption="sans" />
                   {/* QJR426 — le coût est celui, certain, des lignes du
@@ -502,16 +533,26 @@ export default function ApercuSimulation({
                     </p>
                   ) : (
                     <>
-                      <CarteMetrique label="Économies"
-                                     valeur={signerEcoOuRoi(fmtNum(Math.round(apercuEcoAvec)))}
-                                     unit="MAD / an"
-                                     figure="economie_annuelle" figureOption="avec" />
-                      <CarteMetrique label="ROI"
-                                     valeur={signerEcoOuRoi(
-                                       apercuPaybackAvecJamais ? 'Non rentabilisé sur 25 ans'
-                                         : apercuPaybackAvec != null ? apercuPaybackAvec + ' ans' : 'N/A')}
-                                     unit="retour sur invest." accent
-                                     figure="payback_ans" figureOption="avec" />
+                      {/* E7d — option avec non chiffrée par la conception servie : la
+                          raison à la place de l'économie et du ROI ; le coût (lignes) reste. */}
+                      {apercuAvecAbsent ? (
+                        <p className="text-xs text-muted-foreground" data-testid="apercu-avec-non-chiffree">
+                          {apercuAvecAbsent}
+                        </p>
+                      ) : (
+                        <>
+                          <CarteMetrique label="Économies"
+                                         valeur={signerEcoOuRoi(fmtNum(Math.round(apercuEcoAvec)))}
+                                         unit="MAD / an"
+                                         figure="economie_annuelle" figureOption="avec" />
+                          <CarteMetrique label="ROI"
+                                         valeur={signerEcoOuRoi(
+                                           apercuPaybackAvecJamais ? 'Non rentabilisé sur 25 ans'
+                                             : apercuPaybackAvec != null ? apercuPaybackAvec + ' ans' : apercuPaybackAvecAbsent)}
+                                         unit="retour sur invest." accent
+                                         figure="payback_ans" figureOption="avec" />
+                        </>
+                      )}
                       <CarteMetrique label="Coût"
                                      valeur={moteur(fmtNum(Math.round(totals.totalAvec)))}
                                      unit="MAD TTC"
@@ -543,7 +584,14 @@ export default function ApercuSimulation({
                 graphique « Facture ONEE » ne doit alors jamais se
                 présenter comme une donnée du client — il est masqué au
                 profit d'un message explicite. */}
-            {facturesSaisies ? (
+            {facturesSaisies && chartData.length !== 12 ? (
+              // E7d (M3) — le graphe ne sort que de la réponse des cartes : sans
+              // ses douze mois, il le dit (jamais une courbe d'une autre source).
+              <p className="py-6 text-center text-sm text-muted-foreground" data-testid="chart-indisponible">
+                Graphique mensuel non disponible pour cet aperçu : le moteur n’a pas servi le détail
+                mois par mois.
+              </p>
+            ) : facturesSaisies ? (
               <ResponsiveContainer width="100%" height={260}>
                 <ComposedChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.07)" />

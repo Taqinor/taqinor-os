@@ -60,6 +60,19 @@ describe('EcartMesures (ACAL847)', () => {
     expect(screen.getByTestId('acal847-eau')).toHaveTextContent('simulé : non enregistré')
   })
 
+  it('lane E8/E9 — hors pompage le serveur sert `eau: null` : aucune section « Eau »', async () => {
+    calepinageApi.calepinages.ecartMesures.mockResolvedValue({
+      data: { ...contrat().exemple, eau: null },
+    })
+    rendre()
+    saisirTout(contrat().corps.kwh)
+    fireEvent.click(screen.getByTestId('acal847-comparer'))
+    expect(await screen.findByTestId('acal847-ligne-1')).toBeTruthy()
+    expect(screen.getByTestId('acal847-mention')).toHaveTextContent(contrat().exemple.mention)
+    expect(screen.queryByTestId('acal847-eau')).toBeNull()
+    expect(screen.queryByText('Eau')).toBeNull()
+  })
+
   it('sans le droit : la mention seule, aucune requête', () => {
     mocks.hasPermission.mockReturnValue(false)
     rendre()

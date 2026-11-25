@@ -190,7 +190,10 @@ describe('pro-11 — W47 : « Alignée toit » présente/forcée en pente, orien
 
   it('setRoofType masque #rp9-flat-only en pente (orientations plates non offertes)', () => {
     const script = read('../src/scripts/roof-tool-pro11.ts');
-    expect(script).toContain("flatOnlyEl.hidden = t !== 'flat'");
+    // T4-X2-008 — le masquage vit dans `syncRoofTypeChips` (appelé par `setRoofType` ET au démarrage :
+    // un toit en pente rouvert montrait les réglages du plat) ; il lit l'état `roofType`.
+    expect(script).toContain("if (flatOnlyEl) flatOnlyEl.hidden = roofType !== 'flat'");
+    expect(script).toContain("if (pitchedControlsEl) pitchedControlsEl.hidden = roofType !== 'pitched'");
   });
 });
 

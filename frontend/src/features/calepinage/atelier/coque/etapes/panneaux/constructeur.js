@@ -38,9 +38,11 @@ function lireFigures() {
     watt: apres ? Number(apres[1].replace(/\D/g, '')) : null,
     kwc: valeurOuNull(texteDe('rp9-reco-kwc')),
     production: prod ? prod.replace(/\s*kWh\s*\/\s*an/, ' kWh / an') : null,
-    productionKwh: prod ? entierDe(prod) : null,
+    productionKwh: prod && /kWh/i.test(prod) ? entierDe(prod) : null, // M5 — la phrase de raison porte des kWc, pas des kWh
     couverture,
     couverturePct: couverture ? entierDe(couverture) : null,
+    // T4-X9-006 — la phrase des deux tailles, dite par le constructeur sous ses cartes (`tailleConception.ts`), ou `null`.
+    tailles: valeurOuNull(texteDe('rp9-reco-tailles')),
   }
 }
 

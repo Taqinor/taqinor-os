@@ -20,7 +20,7 @@
 import * as maplibregl from 'maplibre-gl';
 import { creerPoignees3d, type PoigneeEcran } from './poigneesSommets3d'; // ACAL1185
 import * as THREE from 'three';
-import { enuSharedEdgeOverlapM } from './edgeOverlap';
+import { enuSharedEdgeOverlapM } from './edgeOverlap'; import { lieuDeRepli } from './provenanceEpingle'; // T4-X2-005
 import { makeCompose, configureShadowRenderer, ringsBBox, fitShadowCamera } from './threeShared';
 import { PANEL2_THICK_M, sunDirection, describeRowPitch } from '../../lib/roofPro2';
 import { rowSelfShading } from '../../lib/shadingEngine';
@@ -2388,7 +2388,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     }
     const d = describeRowPitch({
       rowPitchM: grid.rowPitchM,
-      latitudeDeg: ctx.centroidLat,
+      latitudeDeg: ctx.centroidLat, lieu: lieuDeRepli(ctx)?.libelle ?? null, // T4-X2-005 — le lieu de la simulation, nommé
       flush,
       configFamily: family,
     });

@@ -1,0 +1,522 @@
+[
+ {
+  "id": "CAL-RTE-002",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "Nouveau calepinage ouvert depuis la liste"
+ },
+ {
+  "id": "CAL-RTE-011",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "atelier /calepinage/1974 et 1975"
+ },
+ {
+  "id": "CAL-RTE-013",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "vue client 1974 : 8 panneaux, 5,68 kWc, phrase « Production : calculée à la mise à jour de la conception »"
+ },
+ {
+  "id": "CAL-LST-001",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "ouvre le formulaire"
+ },
+ {
+  "id": "CAL-LST-008",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "cartes 1974 (4,26 kWc · 6 926 kWh/an) et 1975 lues"
+ },
+ {
+  "id": "CAL-NOU-001",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "bascule Client"
+ },
+ {
+  "id": "CAL-NOU-003",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "client X9-o trouvé"
+ },
+ {
+  "id": "CAL-NOU-004",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "« Adresse : Casablanca », « Un client ne porte pas d’épingle »"
+ },
+ {
+  "id": "CAL-NOU-005",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "nom saisi, repris sur la carte"
+ },
+ {
+  "id": "CAL-NOU-011",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "créé côté serveur mais écran « Le serveur n’a pas répondu » (T4-X9-011)"
+ },
+ {
+  "id": "CAL-ATL-003",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "Guidé/Expert à chaque script"
+ },
+ {
+  "id": "CAL-ATL-004",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "Montrer au client"
+ },
+ {
+  "id": "CAL-ATL-005",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "Générer le devis (refus électrique)"
+ },
+ {
+  "id": "CAL-ATL-006",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "Enregistrer le calepinage, états modifié/enregistré"
+ },
+ {
+  "id": "CAL-ATL-008",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "rail et compteurs « N à régler »"
+ },
+ {
+  "id": "CAL-ATL-009",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "Avancé, onglets par étape"
+ },
+ {
+  "id": "CAL-ATL-010",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "Poser les panneaux"
+ },
+ {
+  "id": "CAL-ATL-015",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "plein écran : zoom au bord, boussole et toit non suivis (T4-X5-017)"
+ },
+ {
+  "id": "CAL-TOIT-002",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "boussole nommée en français (Expert)"
+ },
+ {
+  "id": "CAL-TOIT-003",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "2 pans puis Plat"
+ },
+ {
+  "id": "CAL-TOIT-004",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "12 × 8 et 10 × 8, Créer le toit"
+ },
+ {
+  "id": "CAL-TOIT-005",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "22° face sud à confirmer"
+ },
+ {
+  "id": "CAL-TOIT-007",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "+ Ajouter un obstacle (tombé hors du toit, message dit)"
+ },
+ {
+  "id": "CAL-PAN-001",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "module 710 W ; liste 710/715/710"
+ },
+ {
+  "id": "CAL-ELEC-001",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "Huawei 5 kW « ne convient pas » puis Deye 5 kW, Raccorder automatiquement"
+ },
+ {
+  "id": "CAL-RES-001",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "Simulation en cours… (batterie)"
+ },
+ {
+  "id": "CAL-RES-002",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "production de la conception nommée avec sa taille + production simulée de la pose"
+ },
+ {
+  "id": "CAL-DOC-001",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "Prêt à envoyer ? + Régler dans …"
+ },
+ {
+  "id": "CAL-DOC-002",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "refus électrique en mots du métier ; actif après variante retenue"
+ },
+ {
+  "id": "CAL-DOC-006",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "export JSON 6 141 octets"
+ },
+ {
+  "id": "CAL-DOC-007",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "réimport identique ; fichier sans toit : avertissement + 2 boutons"
+ },
+ {
+  "id": "CAL-DEV-006",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "bloc refus électrique"
+ },
+ {
+  "id": "CAL-AV-018",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "Coffret AC armé, posé, listé après rechargement"
+ },
+ {
+  "id": "CAL-AV-023",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "case justification de continuité de la terre cochée, Enregistrer les décisions"
+ },
+ {
+  "id": "CAL-AV-030",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "Autoconsommation/AC/1 pack, la donnée manquante est nommée"
+ },
+ {
+  "id": "CAL-AV-031",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "créer variante, Retenir (409 puis 200)"
+ },
+ {
+  "id": "CAL-AV-037",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "onglet Documents Expert"
+ },
+ {
+  "id": "CAL-AV-043",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "export projet 105 425 octets, aperçu à l’import"
+ },
+ {
+  "id": "CAL-DRAW-001",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "Toit en pente / tuiles enfoncé"
+ },
+ {
+  "id": "CAL-DRAW-010",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "~30° puis ~22°, pente fine suit"
+ },
+ {
+  "id": "CAL-DRAW-019",
+  "scenario": "p",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "+ Ajouter une zone ×2, Parcelle, Effacer la parcelle"
+ },
+ {
+  "id": "CAL-DRAW-024",
+  "scenario": "p",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "Genre Champ au sol (pente 2, rangées 0, tables 25) puis Ombrière"
+ },
+ {
+  "id": "CAL-CLI-002",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "tuiles 8 panneaux / 5,68 kWc, phrase au lieu de la production"
+ },
+ {
+  "id": "LEAD-DEV-002",
+  "scenario": "a",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "Devis automatique sur X9-n, X9-i, X9-m ; grisé sur X9-m2 sans ville"
+ },
+ {
+  "id": "LEAD-DEV-010",
+  "scenario": "a",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "DEV-202611-0150 Brouillon « Pas encore envoyé au client »"
+ },
+ {
+  "id": "LEAD-DEV-016",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "Modifier → édition complète (X9-i, X9-m)"
+ },
+ {
+  "id": "LEAD-DEV-033",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "bandeau Devis créé + alertes"
+ },
+ {
+  "id": "LEAD-DEV-040",
+  "scenario": "a",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "montant estimé + référence sur la fiche"
+ },
+ {
+  "id": "GEN-SUC-001",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "Modifications enregistrées"
+ },
+ {
+  "id": "PDF-001",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "PDF de la ligne (liste)"
+ },
+ {
+  "id": "PDF-003",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "fenêtre Générer le PDF"
+ },
+ {
+  "id": "PDF-004",
+  "scenario": "i",
+  "moteur": "chromium",
+  "taille": 1440,
+  "theme": "clair",
+  "role": "Commercial responsable",
+  "resultat": "joue",
+  "note": "Document agricole complet, 3 pages lues deux fois"
+ }
+]

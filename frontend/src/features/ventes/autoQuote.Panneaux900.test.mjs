@@ -18,9 +18,9 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC = readFileSync(join(HERE, 'autoQuote.js'), 'utf8')
 
 test("autoQuote.js : n'importe plus estimerPanneaux depuis solar.js", () => {
+  // T4-X1-004 — autoQuote.js n'importe plus rien de solar.js : rien à exclure.
   const idx = SRC.indexOf("} from './solar'")
-  assert.ok(idx > -1, "l'import de solar.js est introuvable")
-  const bloc = SRC.slice(Math.max(0, idx - 900), idx)
+  const bloc = idx > -1 ? SRC.slice(Math.max(0, idx - 900), idx) : ''
   assert.ok(!/\bestimerPanneaux\b/.test(bloc),
     "estimerPanneaux ne doit plus être importé : la règle des 900 MAD est supprimée")
 })
@@ -33,7 +33,8 @@ test("autoQuote.js : n'appelle plus JAMAIS estimerPanneaux (aucune occurrence ex
 })
 
 test('CIQ127 — autoQuote.js : `panels` ne vient QUE d\'une taille explicite, jamais d\'un nombre deviné', () => {
-  assert.match(SRC, /const panels = tailleKwc > 0 \? panneauxPourKwc\(tailleKwc, PANEL_W_DEFAUT\) : 0/)
+  // T4-X1-004 — la taille explicite part telle quelle (plus d'arrondi au 710 W supposé).
+  assert.match(SRC, /const kwpAuto = tailleKwc > 0 \? tailleKwc : 0/)
 })
 
 // U3-MOTEUR (fondateur 29/08/2026, « ALL sizing goes through the new sizing
@@ -52,8 +53,8 @@ test("autoQuote.js : le devis auto RÉSIDENTIEL sans taille explicite n'envoie A
   // Preuve structurelle : `kwpAuto` ne peut venir que de `panels`, et `panels`
   // n'est alimenté en résidentiel que par la branche « taille explicite ».
   // QJR576 — LA conversion partagée (kwcPourPanneaux = n × W / 1000).
-  assert.match(SRC, /const kwpAuto = panels > 0 \? kwcPourPanneaux\(panels, PANEL_W_DEFAUT\) : 0/,
-    'kwpAuto doit rester dérivé de panels uniquement')
+  assert.match(SRC, /const kwpAuto = tailleKwc > 0 \? tailleKwc : 0/,
+    'kwpAuto doit rester dérivé de la seule taille explicite')
   const idx = SRC.indexOf('reponse = await ventesApi.creerDevisAuto({')
   assert.ok(idx > -1, "l'appel creerDevisAuto est introuvable")
   const bloc = SRC.slice(idx, idx + 1600)

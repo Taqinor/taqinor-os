@@ -55,6 +55,8 @@ FIGEE = {
     # @actions déclarées.
     'accepter': VALIDER, 'refuser': VALIDER,
     'action_requise': ANY, 'etat_pdf': ANY, 'historique': LECTURE,
+    # T4-X4-005 — l'en-tête de la liste paginée : même garde que la liste.
+    'synthese': LECTURE,
     # CALX288 (views/economie.py, rattachée au viewset pivot) : lecture.
     'economie': ANY,
     # AGR206 (views/economie_pompage.py, même patron) : lecture du bloc

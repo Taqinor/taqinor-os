@@ -379,6 +379,9 @@ def choisir_pompe(pompes, *, hmt_m, debit_conception_m3h, alimentation,
     """
     alertes = []
     cles = {"cv_vers_kw"}
+    # T4-X1-009 — la puissance hydraulique du débit demandé à cette HMT,
+    # servie aux trois tailles (AGR120) pour juger chaque palier SANS courbe.
+    etat = {"kw_hydraulique": None}
     type_voulu = _norme_type(type_pompe) or "immergee"
     alim = (alimentation or "").strip().lower() or None
     h = _flottant(hmt_m)
@@ -404,6 +407,7 @@ def choisir_pompe(pompes, *, hmt_m, debit_conception_m3h, alimentation,
                 "couverture": couverture,
                 "production_publiable": etape == "courbe",
                 "paliers": list(paliers), "index_palier": index,
+                "kw_hydraulique": etat["kw_hydraulique"],
                 "alertes": alertes, "hypotheses": utilisees(cles)}
 
     if not h or not q or h <= 0 or q <= 0:
@@ -461,6 +465,7 @@ def choisir_pompe(pompes, *, hmt_m, debit_conception_m3h, alimentation,
 
     cles.update({"energie_hydraulique_wh_par_m3_m", "rendement_groupe"})
     hydraulique_kw = q * h * valeur("energie_hydraulique_wh_par_m3_m") / 1000.0
+    etat["kw_hydraulique"] = hydraulique_kw
     sans_courbe = sorted([e for e in famille if not e["courbe"] and e["kw"]],
                          key=_cle)
     # AGQ8 (D-AGQ-8) — kW min de CHAQUE pompe = hydraulique ÷ son rendement
@@ -527,9 +532,11 @@ def choisir_pompe(pompes, *, hmt_m, debit_conception_m3h, alimentation,
     if etape == "pre_dimensionnement":
         sortie["etiquette"] = ETIQUETTE_A_CONFIRMER
     if choisie["source_kw"] == "cv":
+        # T4-X1-014 — des mots, plus la formule ; le nombre reste (en kW).
         alerte("kw_plaque_a_relever", "pompe.kw",
-               "kW de plaque de « %s » non saisi : puissance estimée sur le "
-               "CV (× 0,7355)." % p.get("nom"))
+               "kW de plaque de « %s » non saisi : puissance estimée à partir "
+               "de ses chevaux (CV), environ %s kW." % (p.get("nom"),
+                                                        _fr(choisie["kw"])))
 
     for pose in alertes_pose_pompe(_fiche_pompe(p), diametre_tubage_mm=diametre_tubage_mm,
                                    profondeur_calage_m=profondeur_calage_m,

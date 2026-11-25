@@ -165,11 +165,12 @@ def choisir_variateur(variateurs, *, kw_plaque=None, cv=None, tension_v=None,
             source_kw = "cv"
             alertes.append(_alerte(
                 "kw_plaque_a_relever", "plaque.kw",
-                "kW de plaque à relever : variateur choisi sur %s CV × 0,7355 "
-                "= %s kW%s, en attendant la plaque de la pompe."
+                # T4-X1-014 (jumeau) — des mots, plus la formule.
+                "kW de plaque à relever : variateur choisi sur les %s CV de la "
+                "pompe, soit %s kW%s, en attendant la plaque de la pompe."
                 % (_fr(cv_val), _fr(cv_val * valeur("cv_vers_kw"), 2),
-                   (" (moteur normalisé %s kW, IEC 60034-1)" % _fr(kw, 2))
-                   if normalise else "")))
+                   (" (puissance de moteur standard la plus proche : %s kW)"
+                    % _fr(kw, 2)) if normalise else "")))
     tension = _flottant(tension_v)
     tension = int(tension) if tension else _tension_alim(alimentation)
     phases_voulues = phases or _phases_alim(alimentation)

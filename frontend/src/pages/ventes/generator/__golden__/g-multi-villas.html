@@ -465,50 +465,7 @@
 </div>
 </div>
 <div class="p-4 sm:p-5 sm:pt-0 gen-preview-body pt-4" id="gen-sec-simulation-contenu" hidden="">
-<div class="mb-4" data-testid="etude-horaire-block">
-<p class="mb-2 text-xs text-muted-foreground" data-testid="etude-horaire-source">Calcul du moteur horaire en cours…</p>
-</div>
-<div class="mb-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">Estimation (production × autoconsommation × tarif moyen) — renseignez la facture réelle du client ci-dessus pour un calcul par tranche exact.</div>
-<div class="gen-metrics-grid">
-<div class="gen-metric gen-metric-accent">
-<div class="gen-metric-label">Production annuelle</div>
-<div class="gen-metric-value">19 766<span data-figure="production_annuelle_kwh" data-figure-value="19 766" hidden="">
-</span>
-</div>
-<div class="gen-metric-unit">kWh / an</div>
-</div>
-</div>
-<div class="gen-compare-grid">
-<div class="gen-compare-col gen-compare-col-rec">
-<div class="gen-compare-col-title">Sans batterie<span class="gen-rec-badge">★ Recommandé</span>
-</div>
-<div class="gen-metric">
-<div class="gen-metric-label">Économies</div>
-<div class="gen-metric-value">20 754<span class="ml-1.5 align-middle rounded px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide bg-warning/10 text-warning" data-testid="gen-metric-badge-exemple">estimation d'exemple</span>
-<span data-figure="economie_annuelle" data-figure-option="sans" data-figure-value="20 754" hidden="">
-</span>
-</div>
-<div class="gen-metric-unit">MAD / an</div>
-</div>
-<div class="gen-metric gen-metric-accent">
-<div class="gen-metric-label">ROI</div>
-<div class="gen-metric-value">2.3 ans<span class="ml-1.5 align-middle rounded px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide bg-warning/10 text-warning" data-testid="gen-metric-badge-exemple">estimation d'exemple</span>
-<span data-figure="payback_ans" data-figure-option="sans" data-figure-value="2.3 ans" hidden="">
-</span>
-</div>
-<div class="gen-metric-unit">retour sur invest.</div>
-</div>
-<div class="gen-metric">
-<div class="gen-metric-label">Coût</div>
-<div class="gen-metric-value">46 800<span data-figure="total_ttc" data-figure-option="sans" data-figure-value="46 800" hidden="">
-</span>
-</div>
-<div class="gen-metric-unit">MAD TTC</div>
-</div>
-</div>
-</div>
-<div class="gen-chart-title">Économies mensuelles estimées (MAD / mois)</div>
-<p class="py-6 text-center text-sm text-muted-foreground" data-testid="chart-no-bills">Graphique masqué — exemple sans saisie réelle. Renseignez vos factures (hiver/été ou détail mensuel ci-dessus) pour voir vos économies mensuelles réelles.</p>
+<p class="text-center text-sm text-muted-foreground" data-testid="apercu-conception-attente">Renseignez le nombre de panneaux et les factures, puis la simulation s'actualise automatiquement.</p>
 </div>
 </div>
 <div class="rounded-xl border border-border bg-card text-card-foreground shadow-card" data-testid="offres-tailles-section">
@@ -613,7 +570,7 @@
 </path>
 </svg> Ajouter une villa</button>
 </div>
-<div class="rounded-md border border-info/30 bg-info/5 p-2 text-sm">
+<div data-testid="villas-recap-unique" class="rounded-md border border-info/30 bg-info/5 p-2 text-sm">
 <div class="flex justify-between gap-4">
 <span>Équipement commun</span>
 <span class="tabular-nums">1 440 MAD</span>

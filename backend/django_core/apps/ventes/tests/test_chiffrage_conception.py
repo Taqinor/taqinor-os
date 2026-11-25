@@ -1,14 +1,15 @@
-"""ACAL992 — la porte unique ``chiffrer_conception`` (contrat
+"""ACAL992 / ADEV153 — la porte unique ``chiffrer_conception`` (contrat
 ``contract_samples/chiffrage_conception.json``, ACAL991).
 
-Nouveau fichier car : la porte est neuve et aucun module de test ne couvre un
-chiffrage hors rendu. SimpleTestCase : les lectures (devis, lead, rendu,
-simulation du calepinage) sont des doublures ; le moteur horaire et
-``base_depuis_servi`` sont RÉELS.
+ADEV153 : le chiffrage de l'atelier est une LECTURE de la conception rangée
+(``ConceptionLead``) — aucun noyau (``calculer_etude_horaire``, ``etudier_ci``,
+rendu du devis) n'est appelé ; la forme des clés ne change pas. Sans conception
+rangée, UNE relance part en file (``conception_ou_calcul``). SimpleTestCase : la
+version rangée est une doublure à la forme du contrat ``conception_lead.json`` ;
+les noyaux sont surveillés (compteur à 0).
 """
 import json
 from contextlib import ExitStack
-from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace as N
 from unittest import mock
@@ -17,164 +18,122 @@ from django.test import SimpleTestCase
 
 from apps.ventes import services
 from apps.ventes.domain import chiffrage_conception as cc
-from apps.ventes.domain.entrees import EntreesMoteur
-from apps.ventes.etude_horaire import calculer_etude_horaire
-from apps.ventes.horaire.public import production_annuelle_pour_kwc
 
 CONTRAT = json.loads((Path(__file__).resolve().parents[1] / 'contract_samples'
                       / 'chiffrage_conception.json').read_text(encoding='utf-8'))
-SOCIETE = N(id=7)
-#: Rendu ``build_quote_data`` d'un devis à production SAISIE et économie
-#: imposée : la porte le recopie, elle ne recalcule rien.
-RENDU = {'puissance_kwc': 71.0, 'prod_kwh': 98576, 'eco_s_ann': 7420, 'eco_a_ann': 9100,
-         'autoconso_sans': 0.62, 'autoconso_avec': 0.81, 'recommended': 'Sans batterie',
-         'savings_estimated': False}
-SERVI = {'perime': False, 'pertes_et_ombrage_inclus': True, 'kwh_kwc_annuel': 1500.0,
-         'kwh_kwc_mensuel': [125.0] * 12, 'kwc_simule': 5.0}
+SOCIETE = N(id=7, pk=7)
 LAYOUT = {'result': {'kwc': 5.0, 'panels': 10}}
+FACTURES = {'facture_hiver': {'valeur': 900, 'source': 'lead'}}
 
 
-def _calepinage(devis=None, lead_id=3):
-    return N(pk=1, devis=devis, devis_id=getattr(devis, 'pk', None), lead_id=lead_id,
-             roof_layout=LAYOUT)
+def _v(valeur, unite=None, source='moteur'):
+    return {'valeur': valeur, 'unite': unite, 'source': source}
 
 
-def _entrees(conso=(300.0,) * 12):
-    return EntreesMoteur(company=SOCIETE, mode='residentiel', etude_params={},
-                         conso_kwh_mensuelles=list(conso) if conso else None,
-                         source_conso='factures', ville='Casablanca')
+def _conception(*, marche='residentiel', etat='complet', option='sans', sur_la_pose=True, entrees=None,
+                nb=35, kwc=19.25, production=6047.0, economie=5100.0, autoconso=0.62, couverture=0.55):
+    table = {'nb_panneaux': _v(nb, 'panneaux'), 'puissance_kwc': _v(kwc, 'kWc'),
+             'production_annuelle': _v(production, 'kWh/an', 'pose' if sur_la_pose else 'moteur'),
+             'autoconsommation': _v(autoconso, 'ratio'), 'couverture': _v(couverture, 'ratio'),
+             'economies_annuelles': _v(economie, 'MAD/an')}
+    return {'etat': etat, 'refus': None, 'marche': marche, 'option_retenue': option,
+            'valeurs': {option: table}, 'niveau_regles': 15, 'version': 3, 'lead': 3,
+            'entrees_utilisees': FACTURES if entrees is None else entrees}
+
+
+def _calepinage(lead_id=3, devis_id=None):
+    return N(pk=1, devis=None, devis_id=devis_id, lead_id=lead_id, roof_layout=LAYOUT)
 
 
 class ChiffrerConceptionTest(SimpleTestCase):
-    def _chiffrer(self, calepinage, lead=N(type_installation=None)):
-        with mock.patch('apps.crm.selectors.get_company_lead', return_value=lead):
-            return services.chiffrer_conception(calepinage=calepinage, company=SOCIETE)
+    def _chiffrer(self, conception, *, en_cours=False, calepinage=None):
+        """Chiffre contre la conception rangée ``conception`` ; rend ``(bloc, noyaux)`` où
+        ``noyaux`` = les trois noyaux surveillés (aucun ne doit être appelé)."""
+        with ExitStack() as pile:
+            lecture = pile.enter_context(mock.patch(
+                'apps.ventes.conception.service.conception_ou_calcul', return_value=(conception, en_cours)))
+            noyaux = [pile.enter_context(mock.patch(cible)) for cible in (
+                'apps.ventes.etude_horaire.calculer_etude_horaire', 'apps.ventes.domain.etude_ci.etudier_ci',
+                'apps.ventes.quote_engine.builder.build_quote_data')]
+            pile.enter_context(mock.patch('apps.crm.selectors.get_company_lead',
+                                          return_value=N(type_installation=None)))
+            bloc = services.chiffrer_conception(calepinage=calepinage or _calepinage(), company=SOCIETE)
+        self.last_lecture = lecture
+        return bloc, noyaux
 
-    def test_devis_lie_porte_egale_rendu_sans_recalcul(self):
-        """Production saisie et économie imposée comprises ; mutant :
-        recalculer le devis par le moteur ⇒ ``calculer_etude_horaire`` appelé."""
-        devis = N(pk=4, company_id=7, mode_installation='residentiel', regles_calcul=15,
-                  etude_params={'production_source': 'saisie'})
-        with mock.patch('apps.ventes.quote_engine.builder.build_quote_data',
-                        return_value=dict(RENDU)) as rendu, \
-                mock.patch('apps.ventes.horaire.productible_pose.base_de_production', return_value=None), \
-                mock.patch('apps.ventes.etude_horaire.calculer_etude_horaire') as moteur:
-            bloc = self._chiffrer(_calepinage(devis))
-        rendu.assert_called_once_with(devis, {'pdf_mode': 'full'})
-        moteur.assert_not_called()
+    def test_chiffrage_egale_la_conception_rangee_sans_aucun_noyau(self):
+        """ADEV153 — 35 panneaux, 6 047 kWh/an rangés : le chiffrage les rend, aucun noyau n'est
+        appelé ; mutant : rappeler ``etudier_ci`` / le moteur horaire ⇒ un compteur monte."""
+        bloc, noyaux = self._chiffrer(_conception())
+        self.assertEqual([n.call_count for n in noyaux], [0, 0, 0])
         self.assertEqual(set(bloc), set(CONTRAT['exemple']))
         self.assertEqual(bloc['production_annuelle_kwh'],
-                         {'valeur': 98576, 'unite': 'kWh/an', 'source': 'devis', 'etat': 'servi'})
-        self.assertEqual((bloc['economie_annee1_mad']['valeur'], bloc['economie_annee1_mad']['option']),
-                         (7420, 'sans_batterie'))
-        self.assertEqual((bloc['kwc']['valeur'], bloc['autoconsommation_pct']['valeur'], bloc['regles_calcul']),
-                         (71.0, 62.0, 15))
-        with mock.patch('apps.ventes.quote_engine.builder.build_quote_data',
-                        return_value=dict(RENDU, recommended='Avec batterie')), \
-                mock.patch('apps.ventes.horaire.productible_pose.base_de_production', return_value={'x': 1}):
-            avec = self._chiffrer(_calepinage(N(**dict(vars(devis), etude_params={}))))
-        self.assertEqual((avec['economie_annee1_mad']['valeur'], avec['economie_annee1_mad']['option']),
-                         (9100, 'avec_batterie'))
-        self.assertEqual(avec['production_annuelle_kwh']['source'], cc.SOURCE_POSE)
+                         {'valeur': 6047.0, 'unite': 'kWh/an', 'source': cc.SOURCE_POSE, 'etat': 'servi'})
+        self.assertEqual(bloc['kwc']['valeur'], 19.25)
+        economie = bloc['economie_annee1_mad']
+        self.assertEqual((economie['valeur'], economie['option'], economie['etat']), (5100.0, 'sans_batterie', 'servi'))
+        self.assertEqual(bloc['autoconsommation_pct']['valeur'], 62.0)
+        # ACAL2022/2023 — la part production ÷ consommation de la conception est SERVIE (une seule, pour tous)
+        self.assertEqual(bloc['couverture_pct'],
+                         {'valeur': 55.0, 'unite': '%', 'source': 'conception', 'etat': 'servi'})
+        self.assertEqual((bloc['marche'], bloc['regles_calcul'], bloc['omissions']), ('residentiel', 15, []))
+        self.last_lecture.assert_called_once_with(SOCIETE, 3)
 
-    def test_devis_entreprise_porte_la_production_imprimee_agricole_rien(self):
-        """R3-D — « Le devis annonce » lit ``figures.production_imprimee`` : en
-        C&I le PDF imprime la production de l'ÉTUDE (pas ``prod_kwh``) ; en
-        agricole le document n'imprime aucun kWh (fonction RÉELLE ici)."""
-        def chiffrer(mode, rendu, imprimee=None):
-            devis = N(pk=4, company_id=7, mode_installation=mode, regles_calcul=15, etude_params={})
-            with ExitStack() as pile:
-                pile.enter_context(mock.patch('apps.ventes.quote_engine.builder.build_quote_data',
-                                              return_value=rendu))
-                pile.enter_context(mock.patch('apps.ventes.horaire.productible_pose.base_de_production',
-                                              return_value=None))
-                if imprimee is not None:  # la lecture C&I a ses propres tests : doublure de sa SORTIE
-                    pile.enter_context(mock.patch('apps.ventes.quote_engine.figures.production_imprimee',
-                                                  return_value=imprimee))
-                return self._chiffrer(_calepinage(devis))['production_annuelle_kwh']
-        commercial = chiffrer('commercial', dict(RENDU, mode_installation='commercial', prod_kwh=144000),
-                              imprimee=Decimal('95425'))
-        self.assertEqual((commercial['valeur'], commercial['etat']), (95425.0, 'servi'))
-        agricole = chiffrer('agricole', dict(RENDU, mode_installation='agricole'))
-        self.assertEqual((agricole['valeur'], agricole['etat']), (None, 'non_servi'))  # marché agricole : non servi
+    def test_deux_appels_rendent_la_meme_reponse(self):
+        un, _ = self._chiffrer(_conception())
+        deux, _ = self._chiffrer(_conception())
+        self.assertEqual(un, deux)
 
-    def test_devis_sans_production_imprimee_dit_le_vrai_motif(self):
-        """R3-E — un devis qui n'imprime aucune production (options aux parcs
-        différents…) ne dit pas « renseignez la facture » pour elle ; la
-        facture, elle, reste le motif de l'économie quand elle manque."""
-        devis = N(pk=4, company_id=7, mode_installation='residentiel', regles_calcul=15, etude_params={})
+    def test_option_avec_batterie_et_production_de_la_ville(self):
+        bloc, _ = self._chiffrer(_conception(option='avec', sur_la_pose=False))
+        self.assertEqual(bloc['economie_annee1_mad']['option'], 'avec_batterie')
+        self.assertEqual(bloc['production_annuelle_kwh']['source'], cc.SOURCE_VILLE)
 
-        def chiffrer(rendu):
-            with (mock.patch('apps.ventes.quote_engine.builder.build_quote_data', return_value=rendu),
-                  mock.patch('apps.ventes.horaire.productible_pose.base_de_production', return_value=None),
-                  mock.patch('apps.ventes.quote_engine.figures.production_imprimee', return_value=None)):
-                return self._chiffrer(_calepinage(devis))
-        motifs = lambda bloc: {o['grandeur']: o['motif'] for o in bloc['omissions']}  # noqa: E731
-        avec_facture = chiffrer(dict(RENDU))
-        self.assertEqual(motifs(avec_facture), {'production_annuelle_kwh': cc.MOTIF_SANS_PRODUCTION})
-        self.assertEqual(avec_facture['economie_annee1_mad']['valeur'], 7420)
-        sans_facture = chiffrer(dict(RENDU, savings_estimated=True))
-        self.assertEqual(motifs(sans_facture)['production_annuelle_kwh'], cc.MOTIF_SANS_PRODUCTION)
-        self.assertEqual(motifs(sans_facture)['economie_annee1_mad'], cc.MOTIF_FACTURE)
-        self.assertNotIn('facture', cc.MOTIF_SANS_PRODUCTION)
-
-    def test_sans_devis_regles_15_base_de_la_pose(self):
-        with mock.patch('apps.ventes.domain.entrees.entrees_depuis_lead', return_value=_entrees()), \
-                mock.patch('apps.ventes.domain.regles_calcul.regles_au_moins', return_value=True), \
-                mock.patch('apps.calepinage.selectors_devis.productible_pose_du_calepinage',
-                           return_value=SERVI):
-            bloc = self._chiffrer(_calepinage())
-        attendu = calculer_etude_horaire(
-            kwc=5.0, conso_kwh_mensuelles=[300.0] * 12, ville='Casablanca', tranches=None,
-            charges_fixes_mad=None, source_conso='factures',
-            base_production={'kwh_kwc_annuel': 1500.0, 'kwh_kwc_mensuel': [125.0] * 12,
-                             'pertes_incluses': True, 'source': cc.SOURCE_POSE})['annuel']
-        self.assertEqual(bloc['production_annuelle_kwh']['valeur'], attendu['production_kwh'])
-        self.assertAlmostEqual(bloc['production_annuelle_kwh']['valeur'], 7500, delta=1)
-        self.assertEqual(bloc['production_annuelle_kwh']['source'], cc.SOURCE_POSE)
-        self.assertEqual(bloc['economie_annee1_mad']['valeur'], attendu['economie_sans_mad'])
-        self.assertEqual(bloc['kwc'], {'valeur': 5.0, 'unite': 'kWc', 'source': 'lead', 'etat': 'servi'})
+    def test_sans_conception_une_relance_part_une_fois(self):
+        """ADEV153 — sans version rangée, ``conception_ou_calcul`` met UNE relance en file
+        (jamais un calcul dans la requête) ; le bloc dit « premier calcul en cours », jamais un zéro."""
+        with ExitStack() as pile:
+            pile.enter_context(mock.patch('apps.ventes.selectors_conception.conception_courante', return_value=None))
+            file = pile.enter_context(mock.patch('apps.ventes.conception.receivers.mettre_en_file',
+                                                 return_value='lancee'))
+            noyaux = [pile.enter_context(mock.patch(cible)) for cible in (
+                'apps.ventes.etude_horaire.calculer_etude_horaire', 'apps.ventes.domain.etude_ci.etudier_ci')]
+            pile.enter_context(mock.patch('apps.crm.selectors.get_company_lead',
+                                          return_value=N(type_installation=None)))
+            bloc = services.chiffrer_conception(calepinage=_calepinage(), company=SOCIETE)
+        file.assert_called_once()
+        self.assertEqual(file.call_args.kwargs['origine'], 'remplissage')
+        self.assertEqual([n.call_count for n in noyaux], [0, 0])
+        self.assertEqual({bloc[c]['etat'] for c in cc.UNITES}, {'omis'})
+        self.assertEqual({bloc[c]['valeur'] for c in cc.UNITES}, {None})
+        self.assertEqual({o['motif'] for o in bloc['omissions']}, {cc.MOTIF_EN_COURS})
+        self.assertEqual(set(bloc), set(CONTRAT['exemple']))
 
     def test_sans_facture_economie_omise(self):
-        """D-ACAL-40 : base servie ⇒ production seule ; sans base ⇒ rien de chiffré."""
-        with mock.patch('apps.ventes.domain.entrees.entrees_depuis_lead', return_value=_entrees(None)), \
-                mock.patch('apps.ventes.domain.regles_calcul.regles_au_moins', return_value=True), \
-                mock.patch('apps.calepinage.selectors_devis.productible_pose_du_calepinage',
-                           return_value=SERVI):
-            bloc = self._chiffrer(_calepinage())
+        """D-ACAL-40 : une conception bâtie sans consommation connue sert la production, jamais
+        une économie ni une autoconsommation de profil supposé."""
+        bloc, _ = self._chiffrer(_conception(entrees={'ville': {'valeur': 'Rabat', 'source': 'lead'}}))
         self.assertEqual(set(bloc), set(CONTRAT['exemple_sans_facture']))
-        self.assertEqual(bloc['production_annuelle_kwh']['valeur'], production_annuelle_pour_kwc(
-            5.0, base_production={'kwh_kwc_annuel': 1500.0, 'kwh_kwc_mensuel': [125.0] * 12,
-                                  'pertes_incluses': True, 'source': cc.SOURCE_POSE}))
+        self.assertEqual(bloc['production_annuelle_kwh']['etat'], 'servi')
         self.assertEqual(bloc['economie_annee1_mad'], CONTRAT['exemple_sans_facture']['economie_annee1_mad'])
         self.assertEqual(bloc['omissions'], CONTRAT['exemple_sans_facture']['omissions'])
-        with mock.patch('apps.ventes.domain.entrees.entrees_depuis_lead', return_value=_entrees(None)), \
-                mock.patch('apps.ventes.domain.regles_calcul.regles_au_moins', return_value=False):
-            ville = self._chiffrer(_calepinage())
-        self.assertEqual(ville['production_annuelle_kwh']['etat'], 'omis')
-        self.assertIsNone(ville['economie_annee1_mad']['option'])
 
-    def test_ci_relaie_etudier_ci(self):
-        etude = {'taille': {'retenue_kwc': 120.0}, 'bilan': {'production_kwh': 182400, 'taux_autoconso': 0.81},
-                 'economie_ci': {'statut': 'calcule', 'economie_annee1': {'total_mad': 168000}}}
-        lead = N(type_installation='industriel')
-        with mock.patch('apps.ventes.domain.etude_ci.etudier_ci', return_value=etude) as ci:
-            bloc = self._chiffrer(_calepinage(), lead=lead)
-        ci.assert_called_once_with(SOCIETE, {'mode': 'industriel', 'taille_explicite_kwc': 5.0}, lead=lead)
-        self.assertEqual(bloc['marche'], 'industriel')
-        self.assertEqual([bloc[c]['valeur'] for c in cc.UNITES], [120.0, 182400, 168000, 81.0])
-
-    def test_agricole_non_servi(self):
-        bloc = self._chiffrer(_calepinage(), lead=N(type_installation='agricole'))
-        attendu = dict(CONTRAT['exemple_agricole'], regles_calcul=bloc['regles_calcul'])
-        self.assertEqual(bloc, attendu)
-
-    def test_sans_lead_non_servi_et_echec_indisponible(self):
-        sans = self._chiffrer(_calepinage(lead_id=None), lead=None)
+    def test_refus_non_servi_agricole_et_sans_lead(self):
+        refusee = dict(_conception(), etat='refus',
+                       refus={'code': 'localisation_inconnue', 'message': 'Ville inconnue'})
+        bloc, _ = self._chiffrer(refusee)
+        self.assertEqual({bloc[c]['etat'] for c in cc.UNITES}, {'indisponible'})
+        self.assertEqual(bloc['omissions'][0]['motif'], 'Ville inconnue')
+        agricole, _ = self._chiffrer(_conception(marche='agricole'))
+        attendu = dict(CONTRAT['exemple_agricole'], regles_calcul=agricole['regles_calcul'])
+        self.assertEqual(agricole, attendu)
+        sans, noyaux = self._chiffrer(None, calepinage=_calepinage(lead_id=None))
         self.assertEqual({sans[c]['etat'] for c in cc.UNITES}, {'non_servi'})
         self.assertEqual(sans['omissions'][0]['motif'], cc.MOTIF_SANS_LEAD)
-        devis = N(pk=4, company_id=7, mode_installation='residentiel', regles_calcul=14, etude_params={})
-        with mock.patch('apps.ventes.quote_engine.builder.build_quote_data', side_effect=RuntimeError('panne')):
-            echec = self._chiffrer(_calepinage(devis))
+
+    def test_une_lecture_en_echec_est_indisponible_jamais_une_exception(self):
+        with mock.patch('apps.ventes.conception.service.conception_ou_calcul', side_effect=RuntimeError('panne')), \
+                mock.patch('apps.crm.selectors.get_company_lead', return_value=N(type_installation=None)):
+            echec = services.chiffrer_conception(calepinage=_calepinage(), company=SOCIETE)
         self.assertEqual({echec[c]['etat'] for c in cc.UNITES}, {'indisponible'})
         self.assertEqual(echec['omissions'][0]['motif'], cc.MOTIF_ECHEC)

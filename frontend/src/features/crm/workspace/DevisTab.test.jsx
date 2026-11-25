@@ -81,6 +81,8 @@ const {
 vi.mock('../../../api/ventesApi', async () => ({
   default: {
     apercuFacturerVente, shareLinkDevis, getOffresTaillesDevis, reviserDevis, envoyerEmailDevis,
+    // AGEN12 — la conception servie du lead (aucune par défaut : rien à dire).
+    getConceptionLead: vi.fn(() => Promise.reject(new Error('conception_absente'))),
     ...(await import('../../../test/mocksVentesEcrans.js')).gestesFactureVente(),
   },
 }))
@@ -358,6 +360,20 @@ describe('T4-U3-017 — kWh contredit par les factures, dit avant le clic', () =
     expect(bouton).toHaveAttribute('title', avertissements.kwh_factures)
     expect(screen.getByTestId('lw-devis-kwh-contredit')).toHaveTextContent(avertissements.kwh_factures)
     expect(onAction).not.toHaveBeenCalled()
+  })
+})
+
+describe('AGEN12 — brouillon daté d’avant le dernier calcul de la fiche (T4-X4-008)', () => {
+  it('la carte d’un brouillon listé dans `brouillons_a_mettre_a_jour` le dit ; les autres non', async () => {
+    const conception = exempleContrat('ventes', 'conception_lead')
+    const liste = conception.brouillons_a_mettre_a_jour[0]
+    ventesApi.getConceptionLead.mockResolvedValueOnce({ data: conception })
+    const brouillon = (id, reference) => ({ id, reference, statut: 'brouillon', total_ttc: '9000', date_creation: '2026-11-20' })
+    renderTab({ state: leadState({ devis: [brouillon(liste.devis, liste.reference), brouillon(liste.devis + 1, 'DEV-AUTRE')] }) })
+    const avis = await screen.findByTestId(`devis-conception-a-jour-${liste.devis}`)
+    expect(avis.textContent).toBe('Ce brouillon date d’avant le dernier calcul de la fiche : ouvrez-le pour le mettre à jour.')
+    expect(screen.queryByTestId(`devis-conception-a-jour-${liste.devis + 1}`)).toBeNull()
+    expect(ventesApi.getConceptionLead).toHaveBeenCalledWith(7)
   })
 })
 
@@ -758,11 +774,11 @@ describe('LW22 — WhatsApp multi-devis', () => {
     await user.click(btn)
     // QJR538 — l'aperçu passe par l'action SANS EFFET ; le commit n'est pas appelé.
     await waitFor(() => expect(whatsappDevisApercu).toHaveBeenCalledWith(7, { devis_ids: [1], langue: 'fr' }))
-    await waitFor(() => expect(onWaPreview).toHaveBeenCalledWith({
+    await waitFor(() => expect(onWaPreview).toHaveBeenCalledWith(expect.objectContaining({
       message: apercu.message,
       links: apercu.links,
       wa_url: apercu.wa_url,
-    }))
+    })))
     expect(whatsappDevis).not.toHaveBeenCalled()
   })
 
@@ -1663,6 +1679,20 @@ describe('QJ-VUES — compteur de lectures client sur chaque carte devis', () =>
       }),
     })
     expect(screen.getByText('Jamais ouvert par le client')).toBeInTheDocument()
+  })
+
+  it('brouillon jamais envoyé : « Pas encore envoyé au client », même né du devis automatique (lien déjà créé)', () => {
+    // Un lien client existe dès la création du devis automatique (0 vue) : tant
+    // que le devis n'est pas envoyé, un seul état, un seul libellé.
+    expect(lectureClientLabel({ nombre_vues: 0, derniere_consultation: null }, null, 'brouillon'))
+      .toBe('Pas encore envoyé au client')
+    renderTab({
+      state: leadState({
+        devis: [{ ...devisBase, statut: 'brouillon', lecture: { nombre_vues: 0, derniere_consultation: null } }],
+      }),
+    })
+    expect(screen.getByText('Pas encore envoyé au client')).toBeInTheDocument()
+    expect(screen.queryByText('Jamais ouvert par le client')).toBeNull()
   })
 })
 

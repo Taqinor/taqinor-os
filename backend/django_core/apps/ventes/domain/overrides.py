@@ -414,6 +414,9 @@ def vue_effective(devis, autos, chemins_supplementaires=()):
         if chemin not in chemins:
             chemins.append(chemin)
     bloc = {}
+    # T4-X4-019 — l'option que décrivent les chemins ``taille.*`` (deux options).
+    option_taille = (option_decrite_par_taille(devis.lignes.all())
+                     if getattr(devis, 'pk', None) and hasattr(devis, 'lignes') else None)
     for chemin in chemins:
         auto = (autos or {}).get(chemin)
         valeur, source = effectif(devis, chemin, auto)
@@ -426,6 +429,8 @@ def vue_effective(devis, autos, chemins_supplementaires=()):
             vue['non_derivable'] = True
         if chemin not in CHEMINS_LUS:
             vue['non_lu'] = True
+        if option_taille and chemin.startswith('taille.'):
+            vue['option'] = option_taille
         bloc[chemin] = vue
     return bloc
 
@@ -474,6 +479,14 @@ CHEMINS_SANS_AUTO = {
 }
 
 
+def option_decrite_par_taille(lignes):
+    """T4-X4-019 — ``'sans'`` quand les lignes portent deux options
+    (``variante`` 'sans'/'avec') : les chemins ``taille.*`` décrivent alors
+    l'option sans batterie ; ``None`` sur un devis mono-option."""
+    return 'sans' if any((getattr(li, 'variante', '') or '') in ('sans', 'avec')
+                         for li in lignes) else None
+
+
 def _autos_taille_panneaux(devis):
     """``{chemin: valeur}`` du champ PV — le lecteur unique des lignes PVUNI."""
     from apps.ventes.quote_engine.builder import panneaux_et_watt_lu
@@ -483,6 +496,12 @@ def _autos_taille_panneaux(devis):
             'produit', 'produit__fiche_technique').all()
         if getattr(li, 'type_ligne', 'produit') == 'produit'
         and not getattr(li, 'optionnelle', False)]
+    # T4-X4-019 — sur un devis à DEUX options (lignes variantées), le champ PV
+    # décrit est celui de l'option SANS batterie (commun + « sans », la branche
+    # que dimensionne ``taille.nb_panneaux``), jamais la somme des deux (7 + 11
+    # = 18 panneaux qu'aucune option n'a). Mono-option : inchangé.
+    if option_decrite_par_taille(lignes):
+        lignes = [li for li in lignes if (getattr(li, 'variante', '') or '') != 'avec']
     nb, watt = panneaux_et_watt_lu(lignes)
     autos = {}
     if nb:

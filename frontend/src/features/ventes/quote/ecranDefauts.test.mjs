@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 
 import {
   SAISON_LABELS, villeEffectiveLead, partDiurneParDefaut, lireLastTva, ecrireLastTva,
-  FENETRE_REFERENCE_MS, fmtNum,
+  FENETRE_REFERENCE_MS, fmtNum, dateValiditeParDefaut,
 } from './ecranDefauts.js'
 import { DAY_USAGE_DEFAULTS, TVA_STANDARD_DEFAUT } from '../solar.js'
 
@@ -34,4 +34,16 @@ test('constantes et format', () => {
   assert.equal(fmtNum(null), 'N/A')
   assert.equal(fmtNum(undefined), 'N/A')
   assert.notEqual(fmtNum(1234), 'N/A')
+})
+
+// T4-X1-016 — UNE règle de la validité par défaut d'un devis : la base + le réglage société
+// (`quote_validity_days`), la même que le serveur dérive quand la date est vide
+// (`utils/expiry.date_expiration` : création + jours). Création : la base est aujourd'hui ;
+// une révision (V2) ouverte en édition : sa date de création.
+test('validité par défaut : base + jours du réglage société, au format du champ date', () => {
+  assert.equal(dateValiditeParDefaut(new Date(2026, 10, 25), 30), '2026-12-25')
+  assert.equal(dateValiditeParDefaut(new Date(2026, 11, 20), 30), '2027-01-19')
+  assert.equal(dateValiditeParDefaut(new Date(2026, 10, 25), 0), '')
+  assert.equal(dateValiditeParDefaut(null, 30), '')
+  assert.equal(dateValiditeParDefaut('pas une date', 30), '')
 })

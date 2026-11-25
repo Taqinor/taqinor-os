@@ -6,7 +6,7 @@
    « Confirmer » = la requête de « Enregistrer la pente », « Je ne la connais pas » n'écrit rien, le compte des
    contrôles, et la feuille 51-etape-toit.css sans couleur littérale (thème sombre par les jetons). */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, within, fireEvent, waitFor, act } from '@testing-library/react'
+import { render, renderHook, screen, cleanup, within, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -878,6 +878,45 @@ describe('ACAL1904 — carte d’adresse sans toit', () => {
     expect(droiteCarte).toBeGreaterThanOrEqual(parseFloat(cs(pile).right) + largeurZoom)
   })
 
+  // T4-X5-017 — plein écran : la pile zoom / plein écran / boussole restait décalée de la largeur du panneau d'étape
+  // (au milieu de l'écran, x ≈ 985 sur 1 440) alors qu'aucune pièce ne couvre plus la carte.
+  it('T4-X5-017 — en plein écran, la pile de la carte suit le bord de l’écran (16 px), plus la place du panneau', async () => {
+    // jsdom n'évalue pas les @media : on applique, par le CSSOM, les règles du BUREAU (≥ 640 px, sans borne haute),
+    // comme sur l'écran de 1 440 px du constat.
+    const source = document.createElement('style')
+    source.textContent = readFileSync(resolve(process.cwd(), 'src/styles/calepinage/56-coque-responsive.css'), 'utf8')
+    document.head.appendChild(source)
+    const bureau = [...source.sheet.cssRules].filter((r) => r.media && /min-width: 640px/.test(r.media.mediaText)
+      && !/max-width/.test(r.media.mediaText)).flatMap((r) => [...r.cssRules].map((x) => x.cssText))
+    source.remove()
+    const responsive = document.createElement('style')
+    responsive.textContent = bureau.join('\n')
+    document.head.appendChild(responsive)
+    // T4-X5-017 (rejeu X9) — la boussole de l'étape Panneaux (52-etape-panneaux.css) restait à la place du panneau.
+    const panneaux = document.createElement('style')
+    panneaux.textContent = readFileSync(resolve(process.cwd(), 'src/styles/calepinage/52-etape-panneaux.css'), 'utf8')
+    document.head.insertBefore(panneaux, responsive)
+    try {
+      await rendreCarte()
+      document.querySelector('.cal-coque').dataset.etape = 'panneaux'
+      const enveloppe = document.querySelector('[data-testid="rp9-map-wrap"]')
+      enveloppe.setAttribute('data-plein-ecran', '1')
+      document.getElementById('rp9-map').insertAdjacentHTML('beforeend', '<div class="maplibregl-ctrl-top-right" data-test="dans-la-carte"></div>')
+      const pile = document.querySelector('[data-test="dans-la-carte"]')
+      expect(cs(pile).right).toBe('16px')
+      expect(cs(pile).top).toBe('16px')
+      const boussole = document.getElementById('rp9-compass')
+      expect(boussole.closest('[data-testid="rp9-map-wrap"]')).toBe(enveloppe) // même conteneur que la pile
+      expect(cs(boussole).right).toBe('16px')
+      // Le recadrage tardif de l'entrée d'étape ne compte plus les pièces : aucune ne couvre une carte en plein écran.
+      const { margesCouvertes } = await import('../cadrageZoneLibre')
+      expect(margesCouvertes(document)).toEqual({ haut: 0, bas: 0, gauche: 0, droite: 0 })
+    } finally {
+      responsive.remove()
+      panneaux.remove()
+    }
+  })
+
   it('un clic hors des champs traverse la carte ; les champs, le bouton et les suggestions le reçoivent', async () => {
     const carte = await rendreCarte()
     expect(cs(carte).pointerEvents).toBe('none')
@@ -976,5 +1015,27 @@ describe('ACAL1907 — pièces de la carte', () => {
     expect(c.background).toContain('--cal-surface')
     expect(c.background).not.toMatch(/--cal-action|--primary|brass/)
     expect(regleMedia('min-width: 640px', bouton).map((r) => r.style.getPropertyValue('align-self'))).toContain('center')
+  })
+})
+
+// T4-X5-017 — la carte passait en plein écran sans que le toit soit recadré : il restait à sa place d'avant.
+describe('T4-X5-017 — plein écran de la carte (useAtelierVues)', () => {
+  // T4-X5-017 (rejeu X9) — le toit restait dans la moitié gauche : la coque re-cadrait dans la zone libre (pièces comptées)
+  // après la bascule. Le recadrage passe par LE cadrage de la coque, à l'entrée ET à la sortie, au rendu du nouvel état.
+  it('entrer puis sortir du plein écran recadre le toit chaque fois, par le cadrage de la coque ; rien au montage', async () => {
+    const { useAtelierVues } = await import('../../useAtelierVues')
+    const { ZOOM_MAX_CADRAGE_ATELIER } = await import('../../useAtelierBoot')
+    const cadrerToit = vi.fn(() => true)
+    const { result } = renderHook(() => useAtelierVues({ builderApi: { current: { cadrerToit } }, calepinageId: 1, devisId: null }))
+    // jsdom n'a pas l'API plein écran : la bascule prend le repli CSS (`enPleinEcran: true`), comme Safari iPhone.
+    result.current.mapWrapRef.current = document.createElement('div')
+    await new Promise((fin) => { requestAnimationFrame(fin) })
+    expect(cadrerToit).not.toHaveBeenCalled()
+    await act(async () => { result.current.basculerPleinEcran3d() })
+    await waitFor(() => expect(result.current.pleinEcran3d).toBe(true))
+    await waitFor(() => expect(cadrerToit).toHaveBeenCalledWith({ zoomMax: ZOOM_MAX_CADRAGE_ATELIER, basPx: 0 }))
+    await act(async () => { result.current.basculerPleinEcran3d() })
+    await waitFor(() => expect(result.current.pleinEcran3d).toBe(false))
+    await waitFor(() => expect(cadrerToit).toHaveBeenCalledTimes(2))
   })
 })

@@ -18,6 +18,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from ..permissions import PeutVoirCalepinage
+from ..serializers import forme_du_contrat
 from ..services import pret_a_envoyer as controles
 from ..services.lecture_liste import ranger_verdict
 from .calepinages import CalepinageViewSet
@@ -93,3 +94,19 @@ def pret_a_envoyer(self, request, pk=None):
 
 
 CalepinageViewSet.pret_a_envoyer = pret_a_envoyer
+
+
+# Lane E9 (T4-X5-010) — ``GET calepinages/<pk>/apercu-devis/`` : AVANT « Générer le devis », le module et
+# l'onduleur que chaque option du devis PORTERA (dry-run de LA composition, rien d'écrit) et les
+# désignations de l'étape Électrique qu'il ne portera pas. Société bornée par ``get_object()`` (404).
+# Contrat ``contract_samples/calepinage_apercu_devis.json``.
+@extend_schema(responses=forme_du_contrat('CalepinageApercuDevis', 'calepinage_apercu_devis.json'))
+@action(detail=True, methods=['get'], url_path='apercu-devis', permission_classes=[PeutVoirCalepinage])
+def apercu_devis(self, request, pk=None):
+    """Le matériel que « Générer le devis » portera, par option, et les écarts aux désignations."""
+    from ..services.devis_apercu import apercu_materiel_du_devis
+
+    return Response(apercu_materiel_du_devis(self.get_object()))
+
+
+CalepinageViewSet.apercu_devis = apercu_devis

@@ -20,9 +20,9 @@ def conception_pour_lead(lead, company):
     jamais un ``None`` global : une fiche lead sans conception affiche deux
     valeurs vides, elle ne plante pas sur ``undefined``.
 
-    * ``kwc`` — la puissance crête RÉELLEMENT calepinée, lue dans le layout du
-      devis (``roof_layout['result']['kwc']``), à défaut la puissance de
-      l'étude. C'est le chiffre de la TOITURE, pas une cible commerciale ;
+    * ``kwc`` — ACAL2021 : la puissance crête de la CONCEPTION courante du lead
+      (moteur unique, ``conception_courante``), ``None`` sans conception — plus
+      celle du dernier devis ni du calepinage ;
     * ``image_url`` — ACAL314 : chemin RELATIF du rendu 3D servi par Django
       (``/api/django/ventes/devis/<id>/roof-image/fichier/``, même origine,
       cookie httpOnly) — jamais une URL pré-signée portant l'hôte interne du
@@ -41,30 +41,13 @@ def conception_pour_lead(lead, company):
     devis = (tous.filter(roof_layout__isnull=False)
              .order_by('-date_creation', '-id').first())
 
-    # ACAL273 — la pastille lit d'abord le kWc VENDU (celui des lignes du
-    # devis le plus récent, ``puissance_kwc_du_devis``) ; sans devis chiffré,
-    # le calepinage OUVERT du lead (fiche du document, jamais 720 W constants).
-    # R2-10 — le LIEN vers le calepinage, lui, est servi TOUJOURS (devis ou
-    # non) : la fiche du lead montre son calepinage et son devis.
-    from .domain.scenario import puissance_kwc_du_devis
-    kwc = None
+    # ACAL2021 — la pastille lit la CONCEPTION courante (moteur unique) : plus le
+    # kWc du dernier devis ni du calepinage. R2-10 — le LIEN vers le calepinage
+    # et le devis le plus récent restent servis (devis ou non).
     dernier = tous.order_by('-date_creation', '-id').first()
-    if dernier is not None:
-        kwc = puissance_kwc_du_devis(dernier)
-    ouvert = _calepinage_ouvert_mesure(company, lead_id, avec_kwc=kwc in (None, ''))
+    ouvert = _calepinage_ouvert_mesure(company, lead_id, avec_kwc=False)
     calepinage = ouvert['calepinage'] if ouvert else None
-    if kwc in (None, '') and ouvert and ouvert['kwc']:
-        kwc = ouvert['kwc']
-    if kwc in (None, '') and devis is not None:
-        layout = devis.roof_layout if isinstance(devis.roof_layout, dict) else {}
-        resultat = layout.get('result')
-        kwc = (resultat or {}).get('kwc') if isinstance(resultat, dict) else None
-        if kwc in (None, ''):
-            kwc = (devis.etude_params or {}).get('puissance_kwc')
-    try:
-        kwc = float(kwc) if kwc not in (None, '') else None
-    except (TypeError, ValueError):
-        kwc = None
+    kwc = _kwc_de_la_conception(company, lead_id)
 
     image_url = None
     if devis is not None and (devis.roof_image or '').strip():
@@ -79,6 +62,18 @@ def conception_pour_lead(lead, company):
 
 
 logger = logging.getLogger(__name__)
+
+
+def _kwc_de_la_conception(company, lead_id):
+    """ACAL2021 — le kWc de l'option retenue de la conception COURANTE du lead
+    (``kwc_de_la_conception_courante`` : une requête), ``None`` sans conception, en
+    refus ou sans valeur : jamais un kWc supposé."""
+    from .selectors_conception import kwc_de_la_conception_courante
+    brut = kwc_de_la_conception_courante(company, lead_id)
+    try:
+        return float(brut) if brut not in (None, '') else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _calepinage_ouvert_mesure(company, lead_id, avec_kwc=True):
@@ -356,7 +351,32 @@ def conception_retenue_du_devis_id(devis_id, company):
                   .select_related('devis', 'produit').order_by('id'))
     devis = (lignes[0].devis if lignes
              else Devis.objects.filter(pk=devis_id, company=company).first())
+    if devis is not None:
+        _garder_devis_lu(devis)
     return conception_retenue_du_devis(devis, lignes=lignes) if devis is not None else None
+
+
+def _cle_devis_lu(devis_id):
+    return ('ventes.selectors_calepinage.devis_lu', devis_id)
+
+
+def _garder_devis_lu(devis):
+    """Coût des requêtes (lot 4) — le devis que :func:`conception_retenue_du_devis_id` vient de lire
+    est gardé pour la requête (``core.request_cache``, aucun effet hors requête)."""
+    from core import request_cache
+
+    request_cache.memoize(_cle_devis_lu(devis.pk), lambda: devis)
+
+
+def devis_lu_par_pk(devis_id):
+    """Le devis ``devis_id`` (non borné : l'appelant vérifie la société) : celui déjà lu par
+    :func:`conception_retenue_du_devis_id` dans la requête, sinon ``ventes.selectors.get_devis_by_pk``.
+    Lecture pour un écran (écart d'un devis reçu), jamais avant une écriture."""
+    from core import request_cache
+
+    from .selectors import get_devis_by_pk
+
+    return request_cache.memoize(_cle_devis_lu(devis_id), lambda: get_devis_by_pk(devis_id))
 
 
 def conception_retenue_du_devis(devis, lignes=None):
@@ -705,6 +725,18 @@ def production_annoncee_du_devis(devis_id, company):
     base, motif = lire(devis)
     return {'regles_a_jour': regles_au_moins(devis, REGLES_POSE_REELLE_2111),
             'servie': base is not None, 'motif': motif}
+
+
+def pose_reelle_au_niveau(niveau):
+    """Relecture du lot 4, m2 — vrai quand un résultat rangé au niveau de règles ``niveau``
+    (``ConceptionLead.niveau_regles``) suit les règles de la pose réelle (niveau 15,
+    ``REGLES_POSE_REELLE_2111``) ; ``None`` suit les règles courantes. Lecture pure."""
+    from types import SimpleNamespace
+
+    from .domain.regles_calcul import REGLES_POSE_REELLE_2111, regles_au_moins
+
+    return regles_au_moins(None if niveau is None else SimpleNamespace(regles_calcul=niveau),
+                           REGLES_POSE_REELLE_2111)
 
 
 def production_imprimee_du_devis(devis):

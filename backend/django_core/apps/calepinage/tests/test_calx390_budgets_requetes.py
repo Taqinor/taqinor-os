@@ -53,6 +53,9 @@ from .test_api_liste import BaseApiCalepinage
 #: ``check_query_budgets.py`` cherche ces chaînes dans ce fichier).
 LISTE = '/api/django/calepinage/calepinages/'
 DETAIL = '/api/django/calepinage/calepinages/<pk>/'
+#: Lot 4 — la file « à traiter » (8 calepinages de 8 leads à conception rangée), mesurée :
+#: 152, puis 122 quand la simulation est LUE sur le stocké (lane I4, résultat servi jamais calculé).
+BUDGET_FILE_A_TRAITER = 122
 RESULTAT = '/api/django/calepinage/calepinages/<pk>/resultat/'
 
 #: Un document de pose minimal (schéma v2) : deux pans posés.
@@ -94,6 +97,50 @@ def budget_du_manifeste(chemin):
 
 def _url(modele, pk):
     return modele.replace('<pk>', str(pk))
+
+
+#: Lane I4 — les huit dossiers de la file « simulée » : frais (simulation qui décrit encore le
+#: document), périmé (empreinte stockée d'un autre document), jamais simulé, et un toit de 60
+#: modules sur un onduleur de 10 kW.
+CAS_FILE_SIMULEE = ('frais', 'perime', 'jamais', 'grand', 'frais', 'sans_resultat', 'perime', 'frais')
+
+
+def semer_file_simulee(test, devis):
+    """Lane I4 — huit calepinages de huit leads, chacun avec un document posé, une entrée
+    électrique et (sauf « jamais » / « sans_resultat ») la simulation déposée par les VRAIS
+    écrivains (``calepinage_simule_reel``). Matériel et réglages : les seams des livrables,
+    posés pour toute la durée de l'essai ; températures : le TMY rejoué (aucun appel PVGIS)."""
+    import copy
+
+    from apps.calepinage.selectors import resultat_servi
+    from apps.calepinage.services.electrique import CLE_SIMULATION, enregistrer_fournisseur_temperatures
+    from apps.crm.models import Lead
+
+    from .acal_livrables_helpers import LAYOUT_SIMULABLE, calepinage_simule_reel, patch_materiel
+    from .test_acal_empreinte_simulation import _tmy_rejoue
+
+    test.addCleanup(enregistrer_fournisseur_temperatures, enregistrer_fournisseur_temperatures(_tmy_rejoue))
+    seams = patch_materiel()
+    seams.start()
+    test.addCleanup(seams.stop)
+    simule = calepinage_simule_reel()
+    grand = copy.deepcopy(LAYOUT_SIMULABLE)
+    grand['zones'][0]['geometry']['count'] = 60
+    calepinages = []
+    for rang, cas in enumerate(CAS_FILE_SIMULEE):
+        resultat = {'sans_resultat': {}, 'jamais': {'entree_electrique': simule.resultat['entree_electrique']}}.get(
+            cas, copy.deepcopy(simule.resultat))
+        if cas == 'perime':
+            resultat[CLE_SIMULATION]['hash_entree'] = 'e' * 64
+        lead = Lead.objects.create(company=test.company, nom='Simulée %d' % rang)
+        calepinage = Calepinage.objects.create(
+            company=test.company, lead_id=lead.pk, devis=devis(), titre='Simulée %d' % rang,
+            roof_layout=copy.deepcopy(grand if cas == 'grand' else LAYOUT_SIMULABLE), resultat=resultat)
+        if cas in ('frais', 'grand'):  # la simulation décrit ENCORE ce document
+            resultat[CLE_SIMULATION]['hash_entree'] = resultat_servi(calepinage)['hash_entree']
+            Calepinage.objects.filter(pk=calepinage.pk).update(resultat=resultat)
+        calepinages.append(calepinage)
+    return calepinages
 
 
 class BudgetsRequetesCalepinageEnBaseTest(
@@ -284,3 +331,148 @@ class BudgetsRequetesCalepinageEnBaseTest(
                 with self.assertMaxQueries(budget):
                     reponse = self.api.get(url)
                 self.assertEqual(reponse.status_code, 200)
+
+    def test_la_file_a_traiter_ne_calcule_rien_du_moteur(self):
+        """Lot 4 (CI rouge du 25/11, api-fuzz : « Read timed out » sur ``a-traiter/?limite=19``) —
+        LISTER ne calcule rien du moteur : ni empreinte des entrées (péremption ADEV140), ni
+        relance en file, ni repli sur le devis reçu du lead. Mesuré avant le correctif, 8
+        calepinages de 8 leads à conception rangée : 203 requêtes et 5 relances en file."""
+        from django.core.cache import cache
+
+        from apps.crm.models import Lead
+        from apps.ventes import selectors_conception, tasks
+
+        from .test_acal_cible_lead import ranger_conception
+
+        cache.clear()
+        self.addCleanup(cache.clear)
+        for rang in range(8):
+            lead = Lead.objects.create(company=self.company, nom='File %d' % rang)
+            ranger_conception(lead=lead, nb=19, watt=710)
+            Calepinage.objects.create(company=self.company, lead_id=lead.pk, devis=self._devis(),
+                                      titre='File %d' % rang, roof_layout=LAYOUT, layout_hash='d' * 64)
+        url = '/api/django/calepinage/calepinages/a-traiter/?limite=19'
+        with mock.patch.object(tasks.task_relancer_conception, 'apply_async') as file, \
+                mock.patch.object(selectors_conception, '_empreinte_des_entrees',
+                                  wraps=selectors_conception._empreinte_des_entrees) as empreinte:
+            self._compte(url)  # à blanc
+            requetes, _reponse = self._compte(url)
+        self.assertEqual((file.call_count, empreinte.call_count), (0, 0))  # mutant « péremption lue » : rouge
+        self.assertLessEqual(requetes, BUDGET_FILE_A_TRAITER, 'GET a-traiter/ : %d requêtes' % requetes)
+
+    def test_la_file_a_traiter_ne_sert_pas_le_resultat_entier(self):
+        """Lane I4 — la file LIT la simulation stockée (empreinte déposée contre celle
+        d'aujourd'hui, P50 stocké) : le résultat servi entier n'est jamais calculé."""
+        from apps.calepinage.services import simulation
+
+        semer_file_simulee(self, self._devis)
+        interdit = AssertionError('la file a calculé le résultat servi entier')
+        url = '/api/django/calepinage/calepinages/a-traiter/?limite=19'
+        with mock.patch('apps.calepinage.selectors.resultat_servi', side_effect=interdit), \
+                mock.patch('apps.calepinage.services.electrique.resultat_calepinage', side_effect=interdit), \
+                mock.patch('apps.calepinage.services.electrique._simulation_servie', side_effect=interdit), \
+                mock.patch.object(simulation, 'empreinte_simulation',
+                                  wraps=simulation.empreinte_simulation) as empreinte:
+            _requetes, reponse = self._compte(url)
+        self.assertGreater(empreinte.call_count, 0)  # la fraîcheur a bien été jugée
+        self.assertIn(['simulation_perimee'], [ligne['signaux'] for ligne in reponse.data['lignes']])
+
+    def test_la_file_a_traiter_garde_les_signaux_du_resultat_servi(self):
+        """Lane I4 — pour chaque dossier de la file simulée, les signaux coûteux lus sur le
+        stocké sont CEUX que donnait le résultat servi entier, et la réponse est identique."""
+        from apps.calepinage import selectors
+        from apps.calepinage.services import assistant
+
+        def avant(calepinage):
+            servi = selectors.resultat_servi(calepinage) or {}
+            return assistant._bloc_production(servi)[3] + assistant._bloc_electrique(calepinage)[1]
+
+        semer_file_simulee(self, self._devis)
+        vus = set()
+        for calepinage in Calepinage.objects.filter(company=self.company, titre__startswith='Simulée'):
+            servi = selectors.resultat_servi(calepinage)
+            with self.subTest(calepinage=calepinage.titre):
+                self.assertEqual(assistant._simulation_stockee(calepinage),
+                                 {cle: servi[cle] for cle in ('simule', 'simulation_perimee')})
+                self.assertEqual(sorted(assistant._signaux_couteux(calepinage)[0]), sorted(avant(calepinage)))
+            vus.add((servi['simule'], servi['simulation_perimee']))
+        self.assertEqual(vus, {(True, False), (False, True), (False, False)})  # frais, périmé, jamais
+        url = '/api/django/calepinage/calepinages/a-traiter/?limite=19'
+        apres = self.api.get(url).data
+        with mock.patch.object(assistant, '_signaux_couteux', side_effect=lambda c: (avant(c), True)):
+            self.assertEqual(self.api.get(url).data, apres)
+
+    # ── Lane I4 — la file ne touche jamais le réseau (PVGIS TMY) ─────────────
+    def _fournir_tmy(self, transport, cache=None):
+        """Branche le VRAI ``temperatures_tmy`` sur un client au transport injecté (cache
+        privé ou ``cache``) ; le fournisseur précédent est rendu en fin d'essai."""
+        import functools
+
+        from apps.calepinage.services.electrique import enregistrer_fournisseur_temperatures
+        from apps.calepinage.services.temperatures_tmy import temperatures_tmy
+
+        from .test_pvgis_serie import client
+
+        options = {} if cache is None else {'cache': cache}
+        precedent = enregistrer_fournisseur_temperatures(
+            functools.partial(temperatures_tmy, client=client(transport, **options)))
+        self.addCleanup(enregistrer_fournisseur_temperatures, precedent)
+
+    def _file_au_verdict_espionne(self, vus):
+        """La file, le verdict électrique RÉEL calculé (et noté dans ``vus``) mais son signal
+        forcé à « bloquant » : ce qui en sort dit si la file l'a tenu pour jugé."""
+        from apps.calepinage.services import assistant
+
+        vrai = assistant._bloc_electrique
+
+        def espion(calepinage, variante=None):
+            vus[calepinage.pk] = vrai(calepinage, variante)[0]
+            return vus[calepinage.pk], ['bloquant_electrique']
+
+        with mock.patch.object(assistant, '_bloc_electrique', side_effect=espion):
+            _requetes, reponse = self._compte('/api/django/calepinage/calepinages/a-traiter/?limite=19')
+        return reponse.data['lignes']
+
+    def test_la_file_a_traiter_ne_touche_jamais_le_reseau(self):
+        """(a) + (c) : année type absente du cache ⇒ aucune requête, ligne NON évaluée, aucun
+        signal électrique, le signal de simulation (stocké) reste ; (d) hors de la file, le
+        même manque interroge PVGIS comme aujourd'hui."""
+        from .test_pvgis_serie import TransportEnregistre
+
+        semer_file_simulee(self, self._devis)
+        transport = TransportEnregistre(erreur=OSError('la file a appelé PVGIS'))
+        self._fournir_tmy(transport)
+        vus = {}
+        with mock.patch('socket.getaddrinfo', side_effect=AssertionError('la file a touché le réseau')):
+            lignes = self._file_au_verdict_espionne(vus)
+        self.assertEqual(transport.appels, [])
+        self.assertEqual(len(vus), 5)  # le verdict a été calculé pour les COUTEUX_MAX premiers…
+        self.assertTrue(lignes)
+        self.assertEqual([ligne['evalue'] for ligne in lignes], [False] * len(lignes))  # …mais pas jugé
+        self.assertFalse([ligne for ligne in lignes if 'bloquant_electrique' in ligne['signaux']])
+        self.assertIn(['simulation_perimee'], [ligne['signaux'] for ligne in lignes])
+        _requetes, _reponse = self._compte(_url(RESULTAT, next(iter(vus))))
+        self.assertTrue(transport.appels)  # (d) : le détail interroge PVGIS sur un manque
+
+    def test_la_file_a_traiter_juge_sur_une_annee_type_en_cache(self):
+        """(b) : l'année type EN CACHE est servie dans la file — la ligne est évaluée et son
+        verdict électrique est celui calculé hors de la file."""
+        from apps.calepinage.services import assistant
+        from apps.calepinage.services.pvgis_serie import _Cache
+
+        from .test_pvgis_serie import TransportEnregistre, charger
+
+        semer_file_simulee(self, self._devis)
+        cache, rejoue = _Cache(), TransportEnregistre(charger('tmy_casablanca.json'))
+        self._fournir_tmy(rejoue, cache)
+        premiers = Calepinage.objects.filter(company=self.company).order_by('-updated_at', '-id')[:5]
+        attendus = {calepinage.pk: assistant._bloc_electrique(calepinage)[0] for calepinage in premiers}
+        self.assertEqual(len(rejoue.appels), 1)  # hors de la file : PVGIS (rejoué), mis en cache
+        refus = TransportEnregistre(erreur=OSError('la file a appelé PVGIS'))
+        self._fournir_tmy(refus, cache)
+        vus = {}
+        lignes = self._file_au_verdict_espionne(vus)
+        self.assertEqual((refus.appels, vus), ([], attendus))
+        evaluees = [ligne for ligne in lignes if ligne['evalue']]
+        self.assertEqual(sorted(ligne['calepinage'] for ligne in evaluees), sorted(attendus))
+        self.assertTrue(all('bloquant_electrique' in ligne['signaux'] for ligne in evaluees))

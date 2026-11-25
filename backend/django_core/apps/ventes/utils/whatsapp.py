@@ -85,6 +85,31 @@ def _lien_rdv_for(lead, request):
         return ''
 
 
+def langue_effective_devis(company, langue, nb_devis):
+    """T4-X1-010 — la langue dans laquelle le message devis SERA écrit.
+
+    Un message ``darija`` n'existe que si un texte darija est RÉDIGÉ pour
+    chaque clé qu'il utilise (le corps darija de la société, sinon le défaut
+    validé) : sinon ``MessageTemplate.get_corps`` retombe sur le français, et
+    l'écran ne doit pas présenter ce français comme une variante darija. Rien
+    n'est traduit ici : la fonction ne fait que LIRE ce qui existe.
+    """
+    if langue != 'darija':
+        return langue
+    from apps.parametres.models import MessageTemplate
+    from apps.parametres.models_messages import MESSAGE_TEMPLATE_DEFAULTS_DARIJA
+
+    cles = (('devis_unique',) if nb_devis == 1
+            else ('devis_multi_entete', 'devis_multi_ligne'))
+    for cle in cles:
+        ligne = MessageTemplate.objects.filter(company=company, cle=cle).first()
+        redige = ((ligne is not None and (ligne.corps_darija or '').strip())
+                  or MESSAGE_TEMPLATE_DEFAULTS_DARIJA.get(cle))
+        if not redige:
+            return 'fr'
+    return 'darija'
+
+
 def build_devis_whatsapp(request, lead, devis_list, langue='fr'):
     """Construit le message WhatsApp pour un ou plusieurs devis d'un lead.
 
