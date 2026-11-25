@@ -1898,6 +1898,56 @@ class ServirConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
         self.assertEqual(_photo_devis(devis.pk), avant)  # le devis envoyé n'est jamais écrit
         self.assertEqual(_json(ConceptionLead.objects.filter(lead=lead).values()[0]), rangee)  # jamais rangé
 
+    def test_e6d_cout_onduleur_un_seul_calcul_payback_servi_au_centime(self):
+        """Lane E6d — la provision d'onduleur du payback servi est calculée par LA fonction des
+        cartes (``offres_tailles._cout_onduleur_ttc``) : sur ce devis de référence elle vaut, au
+        centime, l'ancien calcul de la lecture (Σ qté × P.U. × (1 + TVA de la ligne) × remise),
+        et le payback servi est identique."""
+        from unittest import mock as _mock
+
+        from apps.ventes import offres_tailles
+        from apps.ventes.domain.catalogue import classer_produit
+        from apps.ventes.quote_engine.montants import arrondi_affichage
+        from apps.ventes.quote_engine.pricing import payback_publiable
+        from apps.ventes.selectors import conception_courante
+        from apps.ventes.services import build_devis_auto
+        from apps.ventes.utils.options import (AVEC_BATTERIE, SANS_BATTERIE, filter_lines_for_option,
+                                               lignes_avec_produit, option_totaux)
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        self._relancer(lead, company, _declencheur())
+        with self.captureOnCommitCallbacks(execute=True):
+            devis = build_devis_auto(lead=lead, user=self._utilisateur(company), company=company)
+        from apps.ventes.models import Devis
+        Devis.objects.filter(pk=devis.pk).update(remise_globale=Decimal('5'))
+        devis.refresh_from_db()
+        lignes = list(lignes_avec_produit(devis))
+        couts = []
+        vrai = offres_tailles._cout_onduleur_ttc
+
+        def espion(*args, **kwargs):
+            couts.append(vrai(*args, **kwargs))
+            return couts[-1]
+        with _mock.patch.object(offres_tailles, '_cout_onduleur_ttc', side_effect=espion):
+            lue = conception_courante(company, lead.pk)
+        self.assertEqual(len(couts), len(lue['valeurs']))  # LA fonction des cartes, une fois par option
+        for (option, table), cout in zip(lue['valeurs'].items(), couts):
+            panier = AVEC_BATTERIE if option == 'avec' else SANS_BATTERIE
+            de_l_option = filter_lines_for_option(lignes, panier, devis=devis) if len(lue['valeurs']) > 1 else lignes
+            onduleurs = [li for li in de_l_option if li.type_ligne == 'produit' and (classer_produit(
+                getattr(li.produit, 'nom', '') or li.designation) or '').startswith('onduleur')]
+            ancien = sum(float(li.quantite or 0) * float(li.prix_unitaire or 0) * (1 + float(li.taux_tva or 0) / 100)
+                         for li in onduleurs) * (1 - float(devis.remise_globale or 0) / 100)
+            self.assertTrue(onduleurs, option)
+            self.assertEqual(cout, arrondi_affichage(ancien, 2) or None, option)  # au centime
+            horaire = {'part_batterie': 0}
+            attendu = payback_publiable(option_totaux(devis, '', lignes=de_l_option)['ttc'],
+                                        table['economies_annuelles']['valeur'], stockage=option == 'avec',
+                                        cout_onduleur_ttc=arrondi_affichage(ancien, 2) or None,
+                                        **horaire)['payback_years']
+            self.assertEqual(table['payback']['valeur'], attendu, option)
+
     def _api(self, user):
         from rest_framework.test import APIClient
         from rest_framework_simplejwt.tokens import AccessToken
