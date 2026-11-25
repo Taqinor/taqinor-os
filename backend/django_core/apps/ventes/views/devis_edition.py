@@ -598,6 +598,10 @@ class DevisEditionActionsMixin:
                 # deux (le second attend la fin de la transaction du premier,
                 # puis lit son jeton avancé ci-dessous → 409).
                 _jeton_sous_verrou(devis, request)
+                # T4-X6-012 — les lignes d'avant le geste : un brouillon né d'une
+                # conception enregistré avec d'autres lignes est « retouché ».
+                from ..conception.brouillons import empreinte_des_lignes, marquer_retouche_ecran
+                lignes_avant = empreinte_des_lignes(devis)
                 # QJR544 — avec un en-tête, la trace QJR518 encadre le geste
                 # ENTIER : UNE ligne de chatter et UN instantané par clic.
                 avant_geste = None
@@ -622,6 +626,7 @@ class DevisEditionActionsMixin:
                     company=devis.company, user=request.user,
                     composition=lignes_in,
                     tracer_correction=not geste_complet))
+                marquer_retouche_ecran(devis, lignes_avant)
                 _garde_capacite_totaux(devis)
                 # AGNR63 — nouveau TTC : échéancier re-basé ou 409 (rollback).
                 rebaser_echeancier_ou_409(devis, ttc_avant=ttc_avant)
