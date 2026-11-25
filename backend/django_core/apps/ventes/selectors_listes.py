@@ -126,6 +126,45 @@ def filtrer_liste_devis(qs, company, *, q=None, statut_effectif=None,
     return qs
 
 
+# T4-X1 (revue de la liste sur la copie de production) — le total d'un devis
+# est calculé par le MOTEUR du PDF (≈ 20 ms par devis, du calcul pur : 11
+# requêtes constantes, aucun N+1) ; sur 583 devis la synthèse prenait 11 à 12 s
+# et dépassait la limite de l'écran. Il est donc mémorisé par CONTENU du devis :
+# la clé porte l'horodatage du devis, la signature de ses lignes (quantité,
+# prix, remise, produit) et la version de ce calcul ; elle change à la moindre
+# modification du devis. Seul un changement fait HORS du devis (fiche produit,
+# réglage de société) peut laisser un total mémorisé jusqu'à son expiration
+# (``DUREE_TOTAL_MEMORISE_S``) — la colonne de la ligne, elle, se recalcule.
+VERSION_TOTAL_MEMORISE = 1
+DUREE_TOTAL_MEMORISE_S = 6 * 3600
+
+
+def _total_affiche_memorise(devis, display_totals):
+    from decimal import Decimal
+
+    import hashlib
+
+    from django.core.cache import cache
+
+    lignes = [(lg.pk, str(lg.quantite), str(lg.prix_unitaire), str(lg.remise),
+               lg.produit_id) for lg in devis.lignes.all()]
+    cle = 'devis-total:v%s:%s:%s:%s' % (
+        VERSION_TOTAL_MEMORISE, devis.pk, devis.updated_at,
+        hashlib.sha1(repr(lignes).encode('utf-8'), usedforsecurity=False).hexdigest())
+    try:
+        trouve = cache.get(cle)
+    except Exception:  # cache indisponible : on calcule, comme avant
+        trouve = None
+    if trouve is not None:
+        return Decimal(trouve)
+    total = Decimal(str(display_totals(devis, lignes_prechargees=True)['total'] or 0))
+    try:
+        cache.set(cle, str(total), DUREE_TOTAL_MEMORISE_S)
+    except Exception:
+        pass
+    return total
+
+
 def synthese_liste_devis(qs, company):
     """L'en-tête de la liste sur TOUTE la portée (pas sur la page) : nombre et
     total affiché par statut effectif des devis en jeu, devis à relancer
@@ -153,8 +192,7 @@ def synthese_liste_devis(qs, company):
         cle = 'expire' if is_expired(devis, today=jour) else devis.statut
         cellule = par_statut.setdefault(cle, {'count': 0, 'total': Decimal('0')})
         cellule['count'] += 1
-        cellule['total'] += Decimal(str(display_totals(
-            devis, lignes_prechargees=True)['total'] or 0))
+        cellule['total'] += _total_affiche_memorise(devis, display_totals)
     for cellule in par_statut.values():  # une seule règle d'arrondi de l'argent (core.money)
         cellule['total'] = float(quantize_mad(cellule['total']))
     a_relancer = (qs.filter(is_active=True, statut='envoye')

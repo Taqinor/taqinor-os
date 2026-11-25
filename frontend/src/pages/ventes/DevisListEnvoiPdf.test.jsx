@@ -34,7 +34,8 @@ vi.mock('../../api/crmApi', async (importOriginal) =>
 vi.mock('../../api/uxviewsApi', async () =>
   (await import('../../test/devisListMocks.js')).uxviewsApiMock())
 
-import { renderList } from './devisList.testHelpers.jsx'
+import { renderList, renderListAvecStore } from './devisList.testHelpers.jsx'
+import { configureStore } from '@reduxjs/toolkit'
 import ventesApi from '../../api/ventesApi'
 import { toast } from '../../ui'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
@@ -154,6 +155,21 @@ describe('T4-X1-012 — la colonne « Validité » montre la date du PDF', () =>
     renderList([brouillon({ date_validite: '2026-12-31', date_expiration: '2026-12-31' })])
     const ligne = screen.getByText('DEV-X1-012').closest('tr')
     expect(within(ligne).getByText('31/12/2026')).toBeInTheDocument()
+  })
+})
+
+// ── Revue de la liste : jamais « 0 devis » pendant le chargement ────────────
+describe('En-tête — chargement de la première page', () => {
+  it('pendant le chargement : « Chargement des devis… », jamais « 0 devis »', () => {
+    const store = configureStore({
+      reducer: {
+        ventes: (state = { devis: [], loading: true, error: null }) => state,
+        auth: (state = { role: 'admin', role_nom: 'Directeur', permissions: [] }) => state,
+      },
+    })
+    renderListAvecStore(store)
+    expect(screen.queryByText(/^0 devis/)).toBeNull()
+    expect(screen.getByText('Chargement des devis…')).toBeInTheDocument()
   })
 })
 
