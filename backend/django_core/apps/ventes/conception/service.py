@@ -108,7 +108,12 @@ def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None
         # Relecture E6 B2 : désignations du calepinage = imposition SOUPLE (jamais un refus).
         imposes = designations_du_calepinage(company, calepinage_id) or None
         souple = imposes is not None
+    from apps.ventes.conception.moteur import consommation_imposee, separer_consommation
     from apps.ventes.conception.porte_calepinage import contexte_de_la_relance
+    # Reste d'ACAL2020 (niveau 15) : la consommation imposée (``imposes.consommation`` ou le relevé
+    # collé au calepinage) — une COPIE du lead la porte (jamais écrite), comptée dans l'empreinte.
+    lead, _conso = consommation_imposee(lead, company, calepinage_id, imposes)
+    imposes = separer_consommation(imposes)[0]
     # Relecture E6 — jamais de simulation de pose dans une requête (la tâche et la commande
     # posent ``contexte_de_pose(simuler=True)``) ; une requête la met en file au nom de l'auteur.
     with reglages_lus_sans_creer(company), contexte_de_la_relance(auteur):
@@ -268,11 +273,29 @@ def apercu_conception(lead, company, *, calepinage_id=None, calepinage=None, sai
             setattr(copie, champ, copie._meta.get_field(champ).to_python(valeur))
         except (ValidationError, TypeError, ValueError):
             raise SaisieRefusee('Valeur illisible pour « %s ».' % champ, champ)
+    copie = _avec_la_consommation_de_l_apercu(copie, company, imposes)
     with reglages_lus_sans_creer(company):
         resultat = calculer_conception(copie, company, imposes=imposition_du_corps(imposes or {}) or None)
     for champ in saisies:
         resultat.entrees_utilisees[champ] = {'valeur': _en_json(getattr(copie, champ)), 'source': 'saisie'}
     return sans_cles_interdites(_en_json(resultat.sortie())), None
+
+
+def _avec_la_consommation_de_l_apercu(copie, company, imposes):
+    """Reste d'ACAL2020 — ``imposes.consommation`` de l'écran devis (``conception/
+    consommation_imposee.py`` : douze factures saisies, facture réelle, saisie), validée UNE
+    fois là-bas et posée sur la copie du porteur ; l'aperçu n'écrit rien, donc elle est
+    acceptée au niveau de règles courant. Hors forme ⇒ ``SaisieRefusee`` nommant le champ."""
+    from apps.ventes.conception import consommation_imposee as CI
+
+    brute = CI.separer(imposes)[1]
+    if brute is None:
+        return copie
+    try:
+        imposee = CI.valider(brute)
+    except CI.ConsommationRefusee as exc:
+        raise SaisieRefusee(str(exc), 'imposes.' + exc.champ)
+    return CI.appliquer(copie, company, imposee=imposee)[0]
 
 
 def _declencheur_valide(declencheur):

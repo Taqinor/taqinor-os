@@ -28,8 +28,8 @@ class PlanParDefautTest(TestCase):
     def setUpTestData(cls):
         cls.company = Company.objects.create(nom='Plan par défaut')
 
-    def _plan(self, client=None, **kwargs):
-        return simuler_plan_par_defaut(self.company, *CASABLANCA, 21.6, materiel=MATERIEL, reglages=REGLAGES,
+    def _plan(self, client=None, kwc=21.6, materiel=MATERIEL, **kwargs):
+        return simuler_plan_par_defaut(self.company, *CASABLANCA, kwc, materiel=materiel, reglages=REGLAGES,
                                        client=client or _ClientRejoue(), **kwargs)
 
     def test_production_par_la_cascade_de_la_pose_et_rien_d_ecrit(self):
@@ -73,3 +73,33 @@ class PlanParDefautTest(TestCase):
         # La météo est DEMANDÉE au plan déclaré (la réponse rejouée, elle, ne dépend pas de l'angle ;
         # 0° = la demande horizontale que la cascade fait aussi pour tout plan).
         self.assertEqual({demande['inclinaison_deg'] for demande in client.demandes} - {0.0}, {18.0})
+
+    def test_fiche_sans_puissance_simule_a_la_taille_de_la_conception(self):
+        """Correction d'ACAL2026 — la fiche du module ne porte AUCUNE puissance (« Panneau mono
+        550W » de la production) : le plan prend le compte et la puissance unitaire de la
+        conception (22 kWc ÷ 40 panneaux), portés dans le document comme une pose réelle
+        (``modules[].pmaxWc``), et DIT ce que la fiche vide fait supposer."""
+        materiel = dict(MATERIEL, module={}, designations={'module': 'Panneau mono 550W', 'onduleur': '',
+                                                           'optimiseur': ''})
+        plan = self._plan(materiel=materiel, nb_panneaux=40, kwc=22.0)
+        self.assertEqual(plan['nb_panneaux'], 40)
+        self.assertAlmostEqual(plan['kwc'], 22.0, places=3)
+        self.assertGreater(plan['production_annuelle'], 0)
+        # LE chemin d'une pose réelle : le même document simulé tel quel rend le même chiffre.
+        self.assertEqual(plan['document']['modules'][0]['pmaxWc'], 550.0)
+        pose = simulation.simuler_calepinage(
+            Calepinage(company=self.company, roof_layout=plan['document'], pertes=[]), forcer=True,
+            enregistrer=False, materiel=materiel, reglages=REGLAGES, client=_ClientRejoue())
+        self.assertEqual(plan['production_annuelle'], pose['blocs']['production']['total']['p50_kwh'])
+        # Rien d'inventé : la puissance prise de la conception et chaque étape que la fiche vide
+        # empêche sont dites, le produit nommé, le champ à remplir = sa fiche technique.
+        fiches = [s for s in plan['suppositions'] if s['champ'] == 'fiche_technique']
+        self.assertTrue(fiches)
+        self.assertEqual(fiches[0]['code'], 'puissance_module_de_la_conception')
+        self.assertTrue(all('Panneau mono 550W' in s['message'] for s in fiches))
+        self.assertIn('fiche_module_incomplete', {s['code'] for s in fiches})
+
+    def test_fiche_sans_puissance_sans_compte_de_conception_refuse_comme_avant(self):
+        materiel = dict(MATERIEL, module={})
+        with self.assertRaises(simulation.SimulationRefusee):
+            self._plan(materiel=materiel)

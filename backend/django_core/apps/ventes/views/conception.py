@@ -114,7 +114,8 @@ def apercu_conception(request):
     if not isinstance(entrees, dict) or not isinstance(imposes, dict):
         return Response({'detail': 'Corps de requête invalide : « entrees » et « imposes » sont des objets.'},
                         status=400)
-    inconnus = sorted(set(imposes) - set(CHAMPS_IMPOSES))
+    from ..conception.consommation_imposee import CLE as CLE_CONSOMMATION
+    inconnus = sorted(set(imposes) - set(CHAMPS_IMPOSES) - {CLE_CONSOMMATION})  # reste d'ACAL2020
     if inconnus:
         return Response({'detail': 'Champ imposé inconnu : %s.' % ', '.join(inconnus), 'champ': inconnus[0]},
                         status=400)

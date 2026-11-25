@@ -117,8 +117,32 @@ def calculer_conception(lead, company, *, entrees=None, toit=None, imposes=None,
     conception : le matériel du moteur reste et une supposition le dit."""
     if getattr(lead, 'company_id', None) != getattr(company, 'pk', None):
         raise ValueError('Lead hors de la société : aucune conception.')
+    porte, _conso = consommation_imposee(lead, company, calepinage_id, imposes)
+    imposes = separer_consommation(imposes)[0]
+    if porte is not lead:  # une consommation imposée : les entrées se relisent sur la copie
+        lead, entrees = porte, None
     with reglages_lus_sans_creer(company):
         return _calculer(lead, company, entrees, toit, imposes, investissement, calepinage_id, souple)
+
+
+def separer_consommation(imposes):
+    """Reste d'ACAL2020 — ``(imposes sans consommation, consommation brute)``."""
+    from apps.ventes.conception.consommation_imposee import separer
+    return separer(imposes)
+
+
+def consommation_imposee(lead, company, calepinage_id, imposes=None):
+    """Reste d'ACAL2020 (``conception/consommation_imposee.py``) — ``(porteur, consommation |
+    None)`` : ``imposes.consommation`` (validée) ou le relevé collé au calepinage, au NIVEAU DE
+    RÈGLES 15 seulement (une conception rangée en change) ; l'aperçu, qui n'écrit rien, la
+    pose lui-même avant l'appel (copie déjà portée : rendue telle quelle)."""
+    from apps.ventes.conception import consommation_imposee as CI
+    from apps.ventes.domain.regles_calcul import REGLES_POSE_REELLE_2111, regles_au_moins
+
+    brute = CI.separer(imposes)[1]
+    imposee = (CI.valider(brute) if brute is not None and getattr(lead, '_consommation_imposee', None) is None
+               and regles_au_moins(None, REGLES_POSE_REELLE_2111) else None)
+    return CI.appliquer(lead, company, calepinage_id, imposee=imposee)
 
 
 @contextmanager
@@ -183,6 +207,8 @@ def _calculer(lead, company, entrees, toit, imposes, investissement, calepinage_
                         for option in options}
     V.dire_l_impose(resultat, 'calepinage' if souple or (pose or {}).get('a_la_main') else 'saisie',
                     pose_a_la_main=bool((pose or {}).get('a_la_main')) and entrees.marche == 'residentiel')
+    from apps.ventes.conception.consommation_imposee import dire
+    dire(resultat, getattr(lead, '_consommation_imposee', None))
     return _sans_cles_interdites_partout(resultat)
 
 

@@ -118,8 +118,8 @@ def _payback_servi(version, valeurs):
     devis = _devis_de_reference(version)
     if devis is None:
         return valeurs, {'devis_ref': None, 'motif': MOTIF_PAYBACK_SANS_DEVIS}
+    from . import offres_tailles
     from .domain.catalogue import classer_produit
-    from .quote_engine.montants import arrondi_affichage
     from .quote_engine.pricing import payback_publiable
     from .utils.options import AVEC_BATTERIE, SANS_BATTERIE, filter_lines_for_option, lignes_avec_produit, option_totaux
 
@@ -131,18 +131,18 @@ def _payback_servi(version, valeurs):
         panier = AVEC_BATTERIE if option == 'avec' else SANS_BATTERIE
         de_l_option = filter_lines_for_option(lignes, panier, devis=devis) if len(servies) > 1 else lignes
         portees = [li for li in de_l_option if li.type_ligne == 'produit']
-        onduleurs = [li for li in portees if (classer_produit(getattr(li.produit, 'nom', '') or li.designation)
-                                              or '').startswith('onduleur')]
-        cout = sum(float(li.quantite or 0) * float(li.prix_unitaire or 0) * (1 + float(li.taux_tva or 0) / 100)
-                   for li in onduleurs) * (1 - float(devis.remise_globale or 0) / 100)
+        # Lane E6d — LA provision d'onduleur des cartes (``offres_tailles._cout_onduleur_ttc``),
+        # rôles du classifieur catalogue, remise du devis : un seul calcul.
+        cout = offres_tailles._cout_onduleur_ttc(
+            portees, [classer_produit(getattr(li.produit, 'nom', '') or li.designation) for li in portees],
+            1 - float(devis.remise_globale or 0) / 100, devis.taux_tva, getattr(devis, 'company', None), devis)
         investissement = option_totaux(devis, '', lignes=de_l_option)['ttc']
         economie = (table.get('economies_annuelles') or {}).get('valeur')
         # Modèle HORAIRE (résidentiel) : l'économie « avec » est déjà nette du rendement de la batterie,
         # le cashflow n'en re-déduit rien (part stockée 0, comme le PDF, AMOT58).
         horaire = {'part_batterie': 0} if version.marche == 'residentiel' else {}
         table['payback'] = {'valeur': payback_publiable(investissement, economie, stockage=option == 'avec',
-                                                        cout_onduleur_ttc=arrondi_affichage(cout, 2) or None,
-                                                        **horaire)['payback_years'],
+                                                        cout_onduleur_ttc=cout, **horaire)['payback_years'],
                             'unite': 'ans', 'source': 'devis'}
     return servies, {'devis_ref': devis.reference, 'motif': None}
 
@@ -176,8 +176,11 @@ def _empreinte_des_entrees(version):
     # dans l'empreinte rangée (``service.relancer``) : la lecture les relit par la MÊME porte.
     imposes = None
     if version.calepinage_id:
+        from .conception.moteur import consommation_imposee
         from .conception.porte_calepinage import designations_du_calepinage
         imposes = designations_du_calepinage(company, version.calepinage_id) or None
+        # Reste d'ACAL2020 — le relevé collé, relu par LA MÊME porte que l'écrivain (niveau 15).
+        lead, _conso = consommation_imposee(lead, company, version.calepinage_id)
     with reglages_lus_sans_creer(company):
         return empreinte_conception(entrees_pour(lead, company, toit=toit), imposes)
 

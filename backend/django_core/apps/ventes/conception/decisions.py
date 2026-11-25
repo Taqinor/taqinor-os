@@ -207,6 +207,22 @@ def verifier_composition_residentielle(decision, *, lead, company, taux_tva=None
     return structure_produit_id, structure_type
 
 
+#: Écart 5 de l'acceptation du 25/11 — l'heure d'ouverture est saisie, seule la fin manque.
+MESSAGE_HEURE_FIN = ("Demandez au client son heure de fermeture (fin de journée) : l'heure d'ouverture "
+                     "est déjà saisie sur la fiche ; ou choisissez son régime d'équipes.")
+
+
+def _heure_qui_manque(refus, lead):
+    """``(message, field)`` du refus C&I ; un refus qui nomme les heures d'ouverture
+    (``heure_debut``) alors que le début EST saisi nomme le champ qui manque vraiment :
+    ``heure_fin`` (écart 5 de l'acceptation du 25/11)."""
+    message, champ = refus
+    if champ == 'heure_debut' and getattr(lead, 'heure_debut', None) is not None \
+            and getattr(lead, 'heure_fin', None) is None:
+        return MESSAGE_HEURE_FIN, 'heure_fin'
+    return message, champ
+
+
 def decider_ci(*, lead, company, target_kwc=None):
     """CIQ120 — taille (``target_kwc`` / taille souhaitée SOUVERAINES, sinon
     l'étude), ``etude_ci.etudier_ci``, refus moteur, options batterie
@@ -227,7 +243,8 @@ def decider_ci(*, lead, company, target_kwc=None):
     etude = etudier_ci(company, corps, lead=lead)
     refus = refus_devis_auto_ci(etude)
     if refus:
-        raise AutoDevisError(refus[0], field=refus[1])
+        message, champ = _heure_qui_manque(refus, lead)
+        raise AutoDevisError(message, field=champ)
     lignes, scenario = lignes_des_options(etude, lead)
     if not any(ligne['produit_id'] for ligne in lignes):
         raise AutoDevisError('Aucun article C&I chiffré à composer.', field='composition')

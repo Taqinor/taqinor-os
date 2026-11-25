@@ -185,21 +185,47 @@ def simuler_la_pose(company, calepinage_id, materiel):
     return simuler_pose(calepinage, materiel=materiel) if calepinage is not None else None
 
 
-def production_du_plan_par_defaut(company, lead, kwc, produits):
+def production_du_plan_par_defaut(company, lead, kwc, produits, nb_panneaux=None):
     """ADEV154 / ACAL2026 — la production du PLAN PAR DÉFAUT d'un lead sans toit tracé
     (``calepinage/services/plan_par_defaut.py``, sans écriture) : ``kwc`` du moteur, son
     matériel (``{module, onduleur}`` : identifiants produit), le point du lead et sa pente
-    déclarée (``Lead.inclinaison_deg``, sinon 30° dite). Une simulation refusée rend
-    ``{refus: <motif nommé>}`` (aucun autre fichier de ventes n'importe le calepinage)."""
+    déclarée (``Lead.inclinaison_deg``, sinon 30° dite) ; ``nb_panneaux`` : le compte de la
+    conception, qui pose le plan à SA taille quand la fiche du module ne porte aucune
+    puissance (correction d'ACAL2026). Une simulation refusée rend ``{refus: <motif
+    nommé>}`` (aucun autre fichier de ventes n'importe le calepinage)."""
     from apps.calepinage.services.plan_par_defaut import simuler_plan_par_defaut
     from apps.calepinage.services.simulation import SimulationRefusee
 
     pente = getattr(lead, 'inclinaison_deg', None)
     try:
         return simuler_plan_par_defaut(company, None, None, kwc, lead_id=lead.pk, produits=produits,
+                                       nb_panneaux=nb_panneaux,
                                        pente=float(pente) if pente is not None else None)
     except SimulationRefusee as refus:
         return {'refus': refus.motif or str(refus)}
+
+
+#: Reste d'ACAL2020 — l'origine du RELEVÉ collé à l'étape Consommation (``consumption.source``
+#: du document, écrite par ``calepinage/services/consommation.py::proposer_consommation``).
+ORIGINE_RELEVE = 'csv'
+
+
+def consommation_du_calepinage(company, calepinage_id):
+    """Reste d'ACAL2020 — le RELEVÉ collé au calepinage (``roof_layout.consumption`` dont la
+    source est ``csv`` : la journée moyenne de 24 h du relevé) à la forme de la consommation
+    imposée du moteur (``conception/consommation_imposee.py``) : ``{kwh_annuel, kwh_mensuels:
+    None, source: 'releve'}`` (journée moyenne × 365, la convention de l'étape pour une courbe
+    sans saisons) ; ``None`` sans calepinage de la société, sans relevé (factures, appareils,
+    consommation du lead) ou sans courbe lisible de 24 valeurs."""
+    from apps.ventes.selectors_calepinage import calepinage_de_societe
+
+    calepinage = calepinage_de_societe(calepinage_id, company) if calepinage_id else None
+    conso = ((getattr(calepinage, 'roof_layout', None) or {}).get('consumption') or {}) if calepinage else {}
+    source = conso.get('source') if isinstance(conso, dict) and isinstance(conso.get('source'), dict) else {}
+    courbe = [_nombre(v) for v in conso.get('courbe24') or []] if source.get('origine') == ORIGINE_RELEVE else []
+    if len(courbe) != 24 or any(v is None or v < 0 for v in courbe) or not sum(courbe):
+        return None
+    return {'kwh_annuel': round(sum(courbe) * 365, 1), 'kwh_mensuels': None, 'source': 'releve'}
 
 
 #: Relecture E6 B2 — une désignation que le catalogue de vente du moteur refuse.
