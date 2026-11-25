@@ -1888,7 +1888,7 @@ lot 4 ; relecteurs X3, X6, X7, X8 ; rapport.
 | T4-X9-016 retour de 21,4 ans introuvable | H1 |
 | T4-X9-017 trois encarts client sur la fiche du lead | tâche à écrire (plan du lead) |
 
-### Point du 25/11, 13 h 35 UTC (le plus récent — REPRENDRE ICI)
+### Point du 25/11, 13 h 35 UTC
 
 **Lot 4 (PR Taqinor/taqinor-os#1556, brouillon), `dev-lot4`.**
 - **Huitième passage (`ba939f3814`) : rouge sur 5 causes, TOUTES des listes figées ou des gardes que les lanes e9,
@@ -1915,3 +1915,35 @@ lot 4 ; relecteurs X3, X6, X7, X8 ; rapport.
 - **Changements que lit un CLIENT dans ce lot (à dire à Reda au moment de la fusion)** : la page publique d'un
   devis qui ne vend que « avec batterie » ne montre plus de carte « Recommandé — sans batterie » (elle affichait
   un prix sans onduleur) ; aucun montant de PDF ne change.
+
+### Point du 25/11, 14 h 45 UTC (le plus récent — REPRENDRE ICI)
+
+**Lot 4 (PR Taqinor/taqinor-os#1556, brouillon), `dev-lot4`.** Reda, 14 h 15 : « where are you ? » — répondu.
+- **Neuvième passage (`fe1b7982f6`) : rouge sur 2 causes.** (1) `raison_du_verdict` sans appelant hors de son
+  module après mon remaniement → rendue interne (commité, garde verte). (2) FUZZ : `calepinages/a-traiter/` ne
+  répond pas en 10 s (déjà au cinquième passage, vert aux 6-7-8) — CAUSE ÉTABLIE par l'orchestrateur : chaque ligne
+  évaluée calcule le verdict électrique, qui va chercher les températures du site chez PVGIS PAR LE RÉSEAU
+  (`assistant._bloc_electrique` → `electrique.verdict_de_conception` → fournisseur `temperatures_tmy`, limiteur de
+  cadence partagé) ; dans les tests le fournisseur est neutralisé, d'où une liste « rapide » partout sauf en CI et
+  en production à cache froid. La lane I4 (agent a375819ef15513c07, `lane/file-a-traiter`) a d'abord retiré le
+  résultat servi entier de la liste (148 → 124 requêtes, commit 2ef5356f73, PAS encore plié) et pose maintenant un
+  mode « sans réseau » dans `temperatures_tmy.py` : cache seulement, ligne non évaluée si la température manque.
+- **DIXIÈME PUSH** : au retour d'I4 (pliage, paquet des listes figées en docker, gardes d'hôte APRÈS le dernier
+  commit — c'est l'oubli qui a coûté le neuvième passage).
+- **Plié depuis 13 h 35** : suite de la lane e9 (T4-X3-009 : la cible dite dans le module posé partout —
+  première pose automatique, bande des Résultats, contrôle DC/AC, feuille Avancé ; aide unique `cibleAuModule.js`).
+- **PAS plié, gardé pour le lot 5** : H2 (`lane/liste-total` : total rangé + empreinte, migration 0163, tâche
+  planifiée toutes les 10 min, 180 lignes pour 80 prévues — à faire relire par un relecteur neuf avant pliage).
+- **EN VOL** : I1 (`lane/editeur-ci`, agent a3ec71c931984fded : écran du devis C&I, T4-X6-007 à 012) ; I3 (auteur
+  de F4, agent ab75a7c7a60c1d28c : phrases fausses du PDF industriel, case « Devis final », production par option,
+  arrondi du kWc) ; I5 (`lane/reglages-calepinage`, agent a9d37147aa205718d, sonnet : 16 constats de X3 sur
+  réglages / sources / bibliothèque / liste) ; relecteur X6 (agent aafc8b7da92b01fe5, C&I de bout en bout — son
+  fichier de constats est mal encodé, il doit le réécrire en UTF-8).
+- **Relecteur X3 : TERMINÉ** — 57 lignes jouées, 18 constats (2 S2 : T4-X3-008 = décision 28 ; T4-X3-009 corrigé).
+- **REGARD DE L'ORCHESTRATEUR (pile `fc9fa2c7a5`, 14 h 40, captures `scratchpad/acc2027/l5/l5b-1974-*.png`)** :
+  calepinage 1974 (pose 6 × 710 W = 4,26 kWc, conception 2,13 kWc) — étape Résultats : bandeau qui nomme les deux
+  tailles, « Production simulée de la pose 6 926 kWh » en grand, carte « De la consommation » = une phrase (plus
+  de jauge trompeuse), pertes, écart PVGIS, chaîne des pertes — VU, conforme. Expert : carte TOTAL « 6 × 710 W ·
+  4,26 kWc · 6 926 kWh/an · simulation · — » et UNE phrase — VU en texte. À voir encore : libellés de cote de
+  l'obstacle hors toit qui se chevauchent sur la carte (S4), tableau des tailles du devis après la suite d'E7f,
+  fiche du lead (retour tracé), calepinage sans lead après G2.
