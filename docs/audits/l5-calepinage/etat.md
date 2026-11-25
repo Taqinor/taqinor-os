@@ -1632,7 +1632,7 @@ lots sur `main` (PR #1552, #1554, #1555), AUCUN déployé.
   d'argent » ; mention « Les montants figurent dans le devis ») — la tuile d'économie en MAD demandée par ACAL2023
   n'est pas posée ; décision à lui demander (au rapport).
 
-### Point du 25/11, 07 h 00 UTC (le plus récent — REPRENDRE ICI)
+### Point du 25/11, 07 h 00 UTC
 
 **Lot 4 (PR Taqinor/taqinor-os#1556, brouillon) NE FUSIONNE PAS EN L'ÉTAT.** Relecture indépendante rendue :
 `docs/audits/l5-calepinage/controles/revue-lot4-2026-11-25.md` — 2 bloquants, 6 majeurs, 4 mineurs (rien exécuté par
@@ -1669,3 +1669,41 @@ AVEC les lanes de correctifs pliées — pas de passage de CI pour deux petits c
 5. `lane/t3-atelier` F6 (opus ; `scratchpad/tour3/msg-lane-F6-atelier.md`) — APRÈS le pli d'e7e (mêmes fichiers de
    l'atelier) ; remplacer `%%X5%%` par les constats de X5 à corriger.
 6. F2 (éditeur du devis, restes du tour 3) — APRÈS e7d (même écran) ; consignes à écrire.
+
+### Point du 25/11, 07 h 25 UTC (le plus récent — REPRENDRE ICI)
+
+**Lot 4 (PR Taqinor/taqinor-os#1556, brouillon)** — branche `dev-lot4`, tête locale après plis : e7c, e7e (correctifs
+de la relecture : vue client, atelier, fiche du lead), les quatre premiers commits d'e6d (plan par défaut avec fiche
+vide, un seul coût d'onduleur, consommation imposée `imposes.consommation`, écarts 4 et 5). Deuxième passage de CI
+(tête `9d4a2b30c9`) : seuls rouges = test du signal (corrigé), références de l'atelier (corrigées), AGNR24 (attend
+e7d). À FAIRE : instantané OpenAPI en cours (`scratchpad/openapi-write7.log`), le commiter avec l'empreinte, puis UN
+push (troisième passage). Rien de déployé (trois lots sur `main`).
+
+**EN VOL (cinq agents le temps qu'e6d finisse, puis quatre)** — plafond relevé à quatre : plus d'`npm ci` (jonction
+vers `agent-a8dd86f2f627793f9/{frontend,apps/web}/node_modules` — NE PAS supprimer ce worktree, et retirer une
+jonction par `cmd //c rmdir`, jamais `rm -rf`), un seul test docker à la fois (le script `ressources.ps1` lit
+maintenant la mémoire de la VM des conteneurs : verdicts GO, GO-DOCKER, GO-LEGER, ATTENDRE). Les deux conteneurs
+serveurs de l'instrument (`l5t-django`, `l5t-celery`) sont ARRÊTÉS pour laisser la mémoire aux tests des lanes : les
+relancer par `bash scratchpad/l5t/lancer.sh serveur` avant tout regard d'écran ou relecteur.
+- `lane/moteur-e6d` (opus) : finit — deux notes envoyées : la liste `--ecarts-sans-toit` doit signaler les lignes
+  simulées avec une fiche de module vide (étapes de pertes non appliquées : production surestimée) et donner l'écart
+  moyen sur les seules lignes à fiche complète. À son retour : plier le reste, marquer ACAL2020 (reste livré), rejouer
+  la liste complète sur la copie (`remplir_conceptions --ecarts-sans-toit --company 7487`, instrument relancé) et la
+  porter au fondateur (ADEV155 GATED).
+- `lane/moteur-e7d` (opus ; `scratchpad/msg-lane-e7d.md`) : écran devis — B2, M1, M2, M3, M4, m3 de la relecture.
+- `lane/t3-atelier-ecrans` F6b (opus) : T4-X5-009 (S1, conception vidée par réimport) d'abord, puis 001, 014, 008,
+  013, 016, 006, 007.
+- `lane/t3-atelier` F6a (opus) : T4-X2-010 (S2, panneaux perdus) d'abord, puis 002, 004, 005, 008, 011, T4-X5-017.
+- `lane/t3-pompage-pdf` F4 (opus) : T4-X1-001 et 002 (PDF client, derrière le niveau 15), 008, 009, 014.
+
+**FILE, dans l'ordre** : `lane/moteur-e8` (`msg-lane-e8.md` : ACAL2024, reste d'ACAL2025, ADEP108, m2, T4-X5-002, 012,
+004, 015, ACAL2043) ; `lane/moteur-e6e` (`msg-lane-e6e.md` : une seule conception par lead quel que soit le
+déclencheur, raison dite, devis né de l'atelier T4-X5-010, révision T4-X5-011) ; F3 (`tour3/msg-lane-F3-listes-envoi.md`) ;
+F2a et F2b (`tour3/msg-lane-F2a-options.md`, `F2b-petits.md`) APRÈS e7d (même écran). Puis : instrument sur `dev-lot4`,
+regard des écrans, relecteurs X3, X6, X7, X8 et rejeu par des relecteurs neufs, enregistrements ACAL2028 et ACAL2029,
+rejeux ACAL2034, 2035, 2038, comparaison aux maquettes, rapport final.
+
+**Fait depuis 07 h 00** : relecteur X5 rendu (17 constats, tri dans `T4/tour3/consolidation.md`) ; ACAL2036 jouée
+(enregistrement `docs/audits/acceptation/ACAL/2026-11-25-22e6aa81a.md` : NASA POWER refuse la fenêtre de dix ans en un
+appel — tâche ACAL2043) ; décisions 29 à 33 au rapport (vue client sans montant, variante darija, relecture du lot 4,
+ce que montre la vue client quand la pose n'a pas la taille de la conception, NASA POWER).
