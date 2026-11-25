@@ -1455,7 +1455,8 @@ function AtelierToiture({
             jamais toucher un seul chiffre de `rp9-results` ci-dessus. */}
         {estCalepinage && calepinageId && (
           <BandeauProvenanceProduction calepinageId={calepinageId} chiffrage={contexte?.chiffrage}
-            devisLie={Boolean(contexte?.calepinage?.devis_lie || contexte?.calepinage?.devis || contexte?.variante?.devis)} />
+            devisLie={Boolean(contexte?.calepinage?.devis_lie || contexte?.calepinage?.devis || contexte?.variante?.devis)}
+            variante={Boolean(contexte?.variante)} />
         )}
             <OutilsVue builderReady={builderReady} utilisateurCourantId={utilisateurCourantId}
               builderApiActuel={builderApiActuel} builderApi={builderApi} chipClass={chipClass}

@@ -508,6 +508,26 @@ describe('ACAL995 — « Le devis annonce » seulement hors pose réelle', () =>
     expect(t).not.toContain('Le devis annonce')
   })
 
+  /* Revue de 0c4ba1f6d — variante du devis B (`?devis=B`) : `chiffrage` est celui de B, `conception.devis_lie` celui du
+     calepinage de BASE (devis A). Jamais la référence de A à côté du chiffre de B ; la ligne d'avant, sans référence. */
+  it('T4-X7-013 — variante : la référence du devis de base n’est jamais posée à côté du chiffre du devis de la variante', async () => {
+    for (const aJour of [true, false]) {
+      simule(bloc({ devis: 101, reference: 'DEV-202611-0101', statut: 'envoye', a_jour: aJour }))
+      const { unmount } = render(
+        <MemoryRouter><BandeauProvenanceProduction calepinageId={1} chiffrage={ville} devisLie variante /></MemoryRouter>,
+      )
+      const t = await texte()
+      expect(t).not.toContain('DEV-202611-0101')
+      expect(t).not.toContain('resynchroniser')
+      expect(t).not.toContain('aucun devis lié')
+      expect(t).toContain(`Le devis annonce : ${chiffreVille()}`)
+      unmount()
+    }
+    simule(bloc(null)) // la base n'a aucun devis lié, la variante porte B : jamais « aucun devis lié »
+    render(<MemoryRouter><BandeauProvenanceProduction calepinageId={1} chiffrage={ville} devisLie variante /></MemoryRouter>)
+    expect(await texte()).toContain(`Le devis annonce : ${chiffreVille()}`)
+  })
+
   it('standard ville ⇒ la ligne et l’écart −11,5 %', async () => {
     simule()
     rendreAvec(ville)
