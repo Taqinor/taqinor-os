@@ -14,6 +14,7 @@ import {
   // QJR576 — UNE conversion panneaux ↔ kWc et UN wattage par défaut.
   kwcPourPanneaux, PANEL_W_DEFAUT,
 } from './solar'
+import fieldLabels, { CHOIX_BATTERIE_SOUHAITEE, LIBELLES_SECTIONS } from '../crm/workspace/fieldLabels'
 
 // QX52 — parité 4 modes : `commercial` route désormais vers son PROPRE mode
 // (plus le repli historique vers `industriel`). Aucun mode ne tombe dans un
@@ -245,6 +246,12 @@ export function libelleSuccesDevisAuto(resultat) {
   if (unique && typeof unique === 'object') {
     morceaux.push(`option unique : ${unique.batterie ? 'avec' : 'sans'} batterie`
       + (unique.souhait_fiche ? (unique.batterie ? ' (batterie souhaitée sur la fiche)' : ' (sans batterie souhaité sur la fiche)') : ''))
+    // Relecture m2 — où demander la comparaison : seulement quand c'est la fiche qui a décidé
+    // (la changer donne alors les deux options) ; libellés lus sur la fiche, jamais recopiés.
+    if (unique.souhait_fiche) {
+      morceaux.push(`pour comparer les deux, choisissez « ${CHOIX_BATTERIE_SOUHAITEE.les_deux} » au champ`
+        + ` « ${fieldLabels.batterie_souhaitee.label} » de la fiche (${LIBELLES_SECTIONS.toiture})`)
+    }
   }
   const eco = Number(resultat.economie_an_1_ht)
   if (resultat.economie_an_1_ht != null && Number.isFinite(eco) && eco > 0) {

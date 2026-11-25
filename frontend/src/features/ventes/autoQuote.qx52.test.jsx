@@ -78,7 +78,9 @@ describe('T4-V2-013/015 — le bandeau nomme la ou les options', () => {
       options: [{ variante: '', libelle: 'Option unique', kwc: 5.5, nb_panneaux: 10, total_ttc: '74700.00' }],
       option_unique: { batterie: true, souhait_fiche: true },
     }))
-    expect(t).toBe('DEV-202611-0119 · 5,5 kWc · 74 700 MAD TTC · option unique : avec batterie (batterie souhaitée sur la fiche)')
+    // Relecture m2 — et où demander les deux options (le contrôle réel de la fiche).
+    expect(t).toBe('DEV-202611-0119 · 5,5 kWc · 74 700 MAD TTC · option unique : avec batterie (batterie souhaitée sur la fiche)'
+      + ' · pour comparer les deux, choisissez « Les deux options » au champ « Batterie » de la fiche (Toiture & site)')
   })
   it('option unique sans batterie, sans souhait de la fiche : dit sans raison inventée', () => {
     const t = normaliser(libelleSuccesDevisAuto({

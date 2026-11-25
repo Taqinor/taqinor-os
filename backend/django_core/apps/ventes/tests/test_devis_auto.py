@@ -450,6 +450,20 @@ class AutoEndpointTest(TestCase):
             self.assertEqual(resp.data['option_unique'],
                              {'batterie': batterie, 'souhait_fiche': True}, souhait)
 
+    def test_relecture_m2_option_imposee_par_la_requete_pas_par_la_fiche(self):
+        """Relecture m2 — ``souhait_fiche`` n'est vrai que si l'option vient
+        du souhait de la fiche : un ``scenario`` demandé par la requête
+        l'impose, même quand la fiche dit pareil."""
+        for souhait, scenario, batterie in (('avec', 'avec', True), ('', 'sans', False)):
+            lead = Lead.objects.create(
+                company=self.company, nom='Imposee', prenom=scenario, ville=VILLE_ANCRE,
+                facture_hiver=Decimal('1800'), batterie_souhaitee=souhait)
+            resp = self.api.post(AUTO_URL, {'lead': lead.id, 'scenario': scenario},
+                                 format='json')
+            self.assertEqual(resp.status_code, 201, resp.data)
+            self.assertEqual(resp.data['option_unique'],
+                             {'batterie': batterie, 'souhait_fiche': False}, scenario)
+
     def test_cross_tenant_lead_404(self):
         other = make_company('autoep-other')
         other_lead = Lead.objects.create(

@@ -375,4 +375,9 @@ export const LIBELLES_SECTIONS = {
   visite: 'Visite technique',
 }
 
+// Relecture m2 — les choix du champ « Batterie » de la fiche (SectionSite) : UNE
+// définition, lue aussi par le bandeau du devis automatique pour dire où
+// demander les deux options.
+export const CHOIX_BATTERIE_SOUHAITEE = { sans: 'Sans batterie', avec: 'Avec batterie', les_deux: 'Les deux options' }
+
 export default fieldLabels
