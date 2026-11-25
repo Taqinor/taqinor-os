@@ -6095,3 +6095,14 @@ decisions:
     date: "2026-11-25"
     source: "compte rendu de la lane kit-pompage-protections (poste Reda_Laptop) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Ship it in lot 5 (Recommended) »"
     taches: []
+  - id: D-ACAL-126
+    question: "Suite de D-ACAL-106 : depuis la correction de la relecture du lot 5, un Technicien ne lit que les calepinages des visites qui lui sont assignées. Le « Technicien responsable » ne lit donc plus ceux des visites de ses techniciens. Que doit-il voir ?"
+    options:
+      - cle: ses_visites_seulement
+        texte: "Comme construit : ses propres visites seulement"
+      - cle: aussi_son_equipe
+        texte: "Ses visites et celles assignées aux techniciens de son équipe (son sous-arbre) ; jamais le lead d'un collègue sans visite"
+    reponse: aussi_son_equipe
+    date: "2026-11-25"
+    source: "compte rendu de la lane technicien-ses-visites (poste Reda_Laptop) ; RÉPONSE DU FONDATEUR le 25/11/2026 (en discussion), mot pour mot : « Technicien responsable should see his team's calepinages too »"
+    taches: []
