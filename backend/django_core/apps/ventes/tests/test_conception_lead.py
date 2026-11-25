@@ -57,7 +57,7 @@ VALEURS_SOLAIRES = {
     'chaines', 'temperature_froid', 'tension_froid', 'ratio_dc_ac',
     'production_annuelle', 'production_mensuelle', 'autoconsommation',
     'couverture', 'economies_annuelles', 'payback', 'consommation_annuelle',
-    'forme_horaire', 'module_produit', 'onduleur_produit', 'batterie_produit', 'verdicts',
+    'forme_horaire', 'forme_horaire_24', 'module_produit', 'onduleur_produit', 'batterie_produit', 'verdicts',
 }
 #: La table §2 en agricole (la pompe remplace taille / matériel / bilan).
 VALEURS_POMPAGE = {'nb_panneaux', 'puissance_kwc', 'pompe', 'variateur', 'm3_jour'}
@@ -1288,6 +1288,23 @@ class MoteurUniqueTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_u
         resultat = self._calculer(company, lead)
         self.assertEqual((resultat.etat, resultat.refus['code']), ('refus', 'refus_moteur'))
         self.assertTrue(resultat.refus['message'])
+
+    def test_acal2020_forme_horaire_24_du_moteur_residentiel(self):
+        """Reste d'ACAL2020 — la forme 24 h de la consommation que le moteur horaire a utilisée
+        est SERVIE (24 parts de somme 1, source de ``forme_horaire``), la même pour chaque option,
+        jamais uniforme ; hors résidentiel : ``None``."""
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'))
+        resultat = self._calculer(company, lead)
+        self.assertEqual((resultat.etat, resultat.absents), ('complet', {}), resultat.refus)
+        formes = {option: v['forme_horaire_24'] for option, v in resultat.valeurs.items()}
+        for option, forme in formes.items():
+            self.assertEqual(len(forme['valeur']), 24, option)  # mutant « clé absente » : rouge
+            self.assertAlmostEqual(sum(forme['valeur']), 1.0, places=4)
+            self.assertEqual((forme['unite'], forme['source']),
+                             ('part', resultat.valeurs[option]['forme_horaire']['source']))
+            self.assertGreater(max(forme['valeur']) - min(forme['valeur']), 0.01)  # jamais uniforme
+        self.assertEqual(len({tuple(f['valeur']) for f in formes.values()}), 1)
+        self.assertEqual(formes[resultat.option_retenue]['valeur'], resultat.forme_horaire_24)
 
     def test_une_autre_societe_n_obtient_rien(self):
         from authentication.models import Company
@@ -2938,6 +2955,58 @@ class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher
         self.assertEqual(_json(list(ConceptionLead.objects.order_by('pk').values())), conceptions)
         self.assertEqual(_json(list(Calepinage.objects.order_by('pk').values('pk', 'resultat'))), resultats)
         self.assertEqual((_photo_devis(brouillon.pk), _photo_devis(envoye.pk)), photos)
+
+    def test_adev154_ecarts_sans_toit_plan_par_defaut_zero_ecriture(self):
+        """ADEV154 — ``--ecarts-sans-toit`` : deux leads sans toit listés (production du moteur
+        contre le plan par défaut au kWc et au matériel de l'option, pente du lead ou supposée),
+        écart et « changera » ; moyenne et plus grand écart EN TÊTE ; un lead à toit absent ;
+        RIEN d'écrit (mutant « écrire pendant la liste » : rouge)."""
+        import io
+
+        from django.core.management import call_command
+
+        from apps.calepinage.models import Calepinage
+        from apps.ventes.conception.moteur import calculer_conception
+        from apps.ventes.models import ConceptionLead
+
+        company, toit_lead, _envoye_lead, sans_toit, _b, _e, _toits = self._banc_des_ecarts()
+        pentu = type(sans_toit).objects.create(company=company, nom='Pentu', prenom='Sans toit', ville=sans_toit.ville,
+                                               facture_hiver=Decimal('2200'), inclinaison_deg=Decimal('18'))
+        attendus = {lead.pk: calculer_conception(lead, company) for lead in (sans_toit, pentu)}
+        instantane = (_json(list(ConceptionLead.objects.order_by('pk').values())),
+                      _json(list(Calepinage.objects.order_by('pk').values())))
+        appels = []
+
+        def plan(company_, lat, lon, kwc, **kw):
+            appels.append((kw['lead_id'], kwc, kw['pente'], kw['produits']))
+            return {'production_annuelle': kwc * 1500.0,
+                    'suppositions': [] if kw['pente'] is not None else [{'champ': 'inclinaison_deg'}]}
+        sortie = io.StringIO()
+        with mock.patch('apps.calepinage.services.plan_par_defaut.simuler_plan_par_defaut', side_effect=plan):
+            call_command('remplir_conceptions', '--company', str(company.pk), '--ecarts-sans-toit', stdout=sortie,
+                         stderr=io.StringIO())
+        liste = sortie.getvalue()
+        lignes = liste.splitlines()
+        self.assertTrue(lignes[1].startswith('  ÉCART MOYEN : '), liste)  # en tête, avant les leads
+        self.assertIn('PLUS GRAND : lead #', lignes[1])
+        self.assertNotIn(f'lead #{toit_lead.pk} ', liste)
+        self.assertIn('ÉCARTS SANS TOIT : 2 lead(s) sans toit tracé listé(s)', liste)
+        for lead in (sans_toit, pentu):
+            conception = attendus[lead.pk]
+            for option, valeurs in conception.valeurs.items():
+                kwc, avant = valeurs['puissance_kwc']['valeur'], valeurs['production_annuelle']['valeur']
+                self.assertIn((lead.pk, kwc, 18.0 if lead is pentu else None,
+                               {'module': valeurs['module_produit']['valeur'],
+                                'onduleur': valeurs['onduleur_produit']['valeur']}), appels)
+                ligne = next(li for li in lignes if li.startswith(f'  lead #{lead.pk} (sans toit) option {option} '))
+                ecart = kwc * 1500.0 - avant
+                self.assertIn('production %s → %s kWh/an (écart %s kWh, %+.1f %%' % (
+                    '{:,.0f}'.format(avant).replace(',', ' '), '{:,.0f}'.format(kwc * 1500.0).replace(',', ' '),
+                    '{:+,.0f}'.format(ecart).replace(',', ' '), ecart / avant * 100), ligne)
+                self.assertIn('pente supposée 30°' if lead is sans_toit else 'changera : ', ligne)
+                self.assertIn('changera : oui' if round(kwc * 1500.0) != round(avant) else 'changera : non', ligne)
+        self.assertEqual((_json(list(ConceptionLead.objects.order_by('pk').values())),
+                          _json(list(Calepinage.objects.order_by('pk').values()))), instantane)
 
     def test_appliquer_ne_touche_pas_une_version_courante_venue_d_un_toit(self):
         """Relecture E3 M2 — un remplissage, pas un rafraîchissement : le lead

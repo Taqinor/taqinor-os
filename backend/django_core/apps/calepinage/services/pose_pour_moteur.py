@@ -8,9 +8,9 @@ passe par ces deux fonctions, porte ``services`` du calepinage.
   manquants, module_produit}`` (``module_produit`` : le module posé,
   ADEV150). ``complete`` = la simulation peut partir (mêmes manques, mot
   pour mot, que ``services/manquants_simulation.py``, plus le module ou
-  l'onduleur non désigné) ; ``a_la_main`` = le compte POSÉ diffère du compte
-  que le plan a demandé à chaque pan (``neededPanels``, posé par le
-  remplissage automatique) : l'utilisateur a ajouté ou retiré des panneaux.
+  l'onduleur non désigné) ; ``a_la_main`` = la marque ``geometry.poseManuelle``
+  écrite par l'outil de toiture (relecture E6 M2), sinon (document d'avant la
+  marque) le compte POSÉ diffère du compte demandé (``neededPanels``).
 * :func:`simuler_pose` — la production de LA simulation de la pose
   (``simulation.simuler_calepinage``, non modifiée, une seule simulation) pour
   le matériel du moteur ; ``Calepinage.resultat`` en garde le DÉTAIL au même
@@ -34,6 +34,20 @@ def _compte_demande(layout):
     demandes = [z.get('neededPanels') for z in zones or [] if isinstance(z, dict)
                 and isinstance(z.get('neededPanels'), (int, float)) and not isinstance(z.get('neededPanels'), bool)]
     return int(sum(demandes)) if demandes else None
+
+
+def _a_la_main(layout, nb):
+    """Relecture E6 M2 — la marque ``zones[].geometry.poseManuelle`` que l'outil de toiture
+    ÉCRIT à l'export (``hasManualEdits``) : vrai dès qu'un pan posé la porte à vrai. Un
+    document enregistré AVANT cette marque (un pan posé sans elle) garde la règle d'avant :
+    compte posé ≠ somme des ``neededPanels`` (fausse pour un toit trop petit pour la cible)."""
+    zones = [z for z in (layout or {}).get('zones') or [] if isinstance(z, dict)]
+    marques = [(z.get('geometry') or {}).get('poseManuelle') for z in zones
+               if isinstance(z.get('geometry'), dict) and (z['geometry'].get('count') or 0)]
+    if marques and all(isinstance(m, bool) for m in marques):
+        return any(marques)
+    demande = _compte_demande(layout)
+    return bool(nb) and demande is not None and nb != demande
 
 
 def _manquants(calepinage, materiel=None):
@@ -63,9 +77,9 @@ def pose_servie(company, calepinage_id):
     layout = calepinage.roof_layout if isinstance(calepinage.roof_layout, dict) else {}
     mesures = mesures_du_document(layout)
     _contexte, _meta, manquants = _manquants(calepinage)
-    nb, demande = mesures['modules'], _compte_demande(layout)
+    nb = mesures['modules']
     return {'nb_panneaux': nb, 'kwc': mesures['kwc'], 'complete': bool(nb) and not manquants,
-            'a_la_main': bool(nb) and demande is not None and nb != demande,
+            'a_la_main': bool(nb) and _a_la_main(layout, nb),
             'empreinte_pose': calepinage.layout_hash or '', 'manquants': manquants,
             'module_produit': _produit_du_module_pose(layout)}
 
