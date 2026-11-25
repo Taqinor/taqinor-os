@@ -1,0 +1,192 @@
+[
+ {
+  "id": "CAL-REL-001",
+  "resultat": "joue",
+  "note": "En-tête « Relevé de visite » + ligne projet ; pastille « Hors ligne » dès la coupure (Chromium et WebKit) ; lien « Retour » non touché.",
+  "scenario": "q",
+  "moteur": "chromium+webkit",
+  "taille": "390x844",
+  "theme": "sombre",
+  "role": "anon_admin2 / anon_commercial (WebKit)"
+ },
+ {
+  "id": "CAL-REL-002",
+  "resultat": "joue",
+  "note": "Longueur/Largeur tapées hors ligne, reprises du toit dessiné dites ; une mesure reprise du brouillon n’est pas envoyée (T4-X8-001).",
+  "scenario": "q",
+  "moteur": "chromium+webkit",
+  "taille": "390x844",
+  "theme": "sombre",
+  "role": "anon_admin2"
+ },
+ {
+  "id": "CAL-REL-003",
+  "resultat": "joue",
+  "note": "« Mesurer » → « Capteurs refusés : saisissez… » → « Pente saisie à la main » 22 → « 22° · saisie à la main » ; partie au retour du réseau (pan pitchSource degrés vu au bureau).",
+  "scenario": "q",
+  "moteur": "chromium",
+  "taille": "390x844",
+  "theme": "sombre",
+  "role": "anon_admin2"
+ },
+ {
+  "id": "CAL-REL-004",
+  "resultat": "joue",
+  "note": "« Boussole » → capteurs refusés → orientation à la main 180 → « Sud · saisie à la main » ; « Précision de la boussole » jamais rendue (exige une lecture du capteur).",
+  "scenario": "q",
+  "moteur": "chromium",
+  "taille": "390x844",
+  "theme": "sombre",
+  "role": "anon_admin2"
+ },
+ {
+  "id": "CAL-REL-005",
+  "resultat": "joue",
+  "note": "3 photos (fichiers générés) hors ligne : « 3 sur 3 », « en attente », envoyées au retour (POST photos ×3) ; erreur de photo non produite ; voir T4-X8-003.",
+  "scenario": "q",
+  "moteur": "chromium",
+  "taille": "390x844",
+  "theme": "sombre",
+  "role": "anon_admin2"
+ },
+ {
+  "id": "CAL-REL-006",
+  "resultat": "joue",
+  "note": "Note « … gardées sur ce téléphone », liste « Relevé : en attente / Pente et orientation : en attente » → « Relevé : envoyé » 2 à 4 s après le retour du réseau (Chromium et WebKit).",
+  "scenario": "q",
+  "moteur": "chromium+webkit",
+  "taille": "390x844",
+  "theme": "sombre",
+  "role": "anon_admin2 / anon_commercial (WebKit)"
+ },
+ {
+  "id": "CAL-REL-007",
+  "resultat": "joue",
+  "note": "« Terminer le relevé » hors ligne → « Relevé gardé sur ce téléphone… » ; en ligne « Relevé corrigé. » ; « Voir en 3D » ouvre la vue client.",
+  "scenario": "q",
+  "moteur": "chromium+webkit",
+  "taille": "390x844",
+  "theme": "sombre",
+  "role": "anon_admin2 / anon_commercial"
+ },
+ {
+  "id": "CAL-CLI-001",
+  "resultat": "joue",
+  "note": "3D : « La vue 3D se prépare… » puis maison 3D (Chromium 9 s, WebKit 22 s) ; sans WebGL : plan 2D + puce « Vue de dessus » ; « Réessayer » et « sans toit » non produits ; fuite des outils en Expert (T4-X8-005).",
+  "scenario": "q",
+  "moteur": "chromium+webkit",
+  "taille": "390x844",
+  "theme": "sombre",
+  "role": "anon_commercial"
+ },
+ {
+  "id": "CAL-CLI-002",
+  "resultat": "joue",
+  "note": "Puce « Calepinage 1978 · Marrakech », tuiles 5 panneaux · 3,55 kWc (puis 9 · 6,39), phrase « Production : calculée à la mise à jour de la conception. », aucun kWh ni montant (texte et réseau) ; pastille « Estimation » et mention « Les montants figurent dans le devis » absentes (pas de tuile kWh dans cet état).",
+  "scenario": "q",
+  "moteur": "chromium+webkit",
+  "taille": "390x844",
+  "theme": "sombre",
+  "role": "anon_commercial"
+ },
+ {
+  "id": "CAL-CLI-003",
+  "resultat": "joue",
+  "note": "« Retour au relevé » → /releve (même en venant de l’atelier) ; « Envoyer le lien » grisé avec sa raison écrite ; paysage 844 × 390 joué.",
+  "scenario": "q",
+  "moteur": "chromium+webkit",
+  "taille": "390x844",
+  "theme": "sombre",
+  "role": "anon_commercial"
+ },
+ {
+  "id": "CAL-ATL-012",
+  "resultat": "joue",
+  "note": "Poignée « Agrandir ou réduire le panneau du bas » : tiroir 96 px ↔ 644 px, aria-expanded suit ; absente aux étapes Résultats et Documents (pleine page).",
+  "scenario": "q",
+  "moteur": "chromium",
+  "taille": "390x844",
+  "theme": "sombre",
+  "role": "anon_commercial"
+ },
+ {
+  "id": "CAL-ATL-018",
+  "resultat": "bloque",
+  "note": "Bandeau « Conception rapide » : exige un calepinage ouvert depuis un devis automatique, et la reprise exige une visite validée. Visite 48 planifiée (anon_admin2) et mesures enregistrées au téléphone, mais les 5 photos de la visite n’ont pas pu être déposées dans mes gestes (caméra indisponible, « Choisir une photo ») : visite jamais soumise ni validée.",
+  "scenario": "q",
+  "moteur": "chromium",
+  "taille": "390x844",
+  "theme": "sombre",
+  "role": "anon_admin2"
+ },
+ {
+  "id": "CAL-AV-010",
+  "resultat": "bloque",
+  "note": "Onglet ouvert au bureau (?onglet=reprise-visite) : « La visite technique de ce lead n’est pas encore validée par le bureau d’études : ses mesures et ses photos ne sont pas reprises… » (phrase claire) ; écarts et bandeau de reprise exigent la visite validée (voir CAL-ATL-018).",
+  "scenario": "q",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "anon_commercial"
+ },
+ {
+  "id": "CAL-DRAW-005",
+  "resultat": "introuvable",
+  "note": "Groupe Azimut caché (hidden) sur toit en pente et après « Toit plat » : il n’apparaît que pour un toit plat dont le contour n’est pas aligné au sud (optimizer : hasAlignedChoice). Au téléphone « Tracé libre » garde le contour existant et les coins sont dessinés dans le canvas : contour tourné non produit.",
+  "scenario": "t",
+  "moteur": "chromium",
+  "taille": "390x844",
+  "theme": "sombre",
+  "role": "anon_commercial"
+ },
+ {
+  "id": "CAL-DRAW-010",
+  "resultat": "joue",
+  "note": "Expert au téléphone : « ~30° » → Pente fine 30°, note « Panneaux qui tiennent : 8 » ; Face « Sud-Est » → « Sud-Est · 135° », tiennent 5 ; Pente fine +3 (flèches) → 33°, tiennent 6 ; remis à 22° / Sud, rien enregistré.",
+  "scenario": "t",
+  "moteur": "chromium",
+  "taille": "390x844",
+  "theme": "sombre",
+  "role": "anon_commercial"
+ },
+ {
+  "id": "CAL-DRAW-020",
+  "resultat": "bloque",
+  "note": "Bascules « Toit dessiné » / « Photo réelle » : exigent un contour envoyé par le client ou une visite validée ; visite 48 non validée (voir CAL-ATL-018).",
+  "scenario": "t",
+  "moteur": "chromium",
+  "taille": "390x844",
+  "theme": "sombre",
+  "role": "anon_commercial"
+ },
+ {
+  "id": "CAL-DRAW-029",
+  "resultat": "joue",
+  "note": "Expert › Résultats : Voiture électrique 40 km/jour · 7 kWh/100 km · 7 h → ligne ajoutée avec « déjà dans mes factures » et « × » ; effet sur un résultat non vérifié (pas de simulation relancée).",
+  "scenario": "t",
+  "moteur": "chromium",
+  "taille": "390x844",
+  "theme": "sombre",
+  "role": "anon_commercial"
+ },
+ {
+  "id": "CAL-DRAW-031",
+  "resultat": "joue",
+  "note": "« Déplacer les panneaux » puis « ⤢ Remplir automatiquement » : 5 → 8 panneaux, emplacements libres 3 → 0, en-tête 8 panneaux · 5,68 kWc ; non enregistré.",
+  "scenario": "t",
+  "moteur": "chromium",
+  "taille": "390x844",
+  "theme": "sombre",
+  "role": "anon_commercial"
+ },
+ {
+  "id": "CAL-DRAW-035",
+  "resultat": "joue",
+  "note": "« ✥ Placement libre » → marges + « ＋ Ajouter un panneau » qui attend un toucher sur le toit, impossible au téléphone en Expert (T4-X8-008) ; retour « ▦ Emplacements validés ».",
+  "scenario": "t",
+  "moteur": "chromium",
+  "taille": "390x844",
+  "theme": "sombre",
+  "role": "anon_commercial"
+ }
+]
