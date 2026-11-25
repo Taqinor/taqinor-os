@@ -260,8 +260,13 @@ def bloc_conception(calepinage):
     if not conception or conception.get('etat') != 'complet':
         return None
     option = conception.get('option_retenue')
-    production = ((conception.get('valeurs') or {}).get(option) or {}).get('production_annuelle') or {}
+    table = (conception.get('valeurs') or {}).get(option) or {}
+    production = table.get('production_annuelle') or {}
+    # T4-X7-013 — la production et LA taille pour laquelle elle est calculée, lues sur la même
+    # option de la même version : l'écran ne les prend plus à deux lectures différentes.
     return {'production_annuelle_kwh': production.get('valeur'), 'option': option,
+            'puissance_kwc': (table.get('puissance_kwc') or {}).get('valeur'),
+            'nb_panneaux': (table.get('nb_panneaux') or {}).get('valeur'),
             'version': conception.get('version'), 'calcule_le': conception.get('calcule_le'),
             'designations': _phrases_des_designations(conception),
             'devis_envoye': _devis_envoye_lie(calepinage)}

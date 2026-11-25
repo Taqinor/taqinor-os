@@ -143,21 +143,29 @@ const NOM_PRODUCTION_POSE = 'Production simulée de la pose'
     production est NOMMÉ (référence, date d'envoi) avec « Réviser le devis » quand ventes le permet. Rien n'est recalculé. */
 /** T4-X5-001 — LA taille de la conception : `chiffrage.kwc` servi du design-context (le lecteur de la bande Panneaux et de
     la vue client) ; le nombre de panneaux est celui de `cible` quand il décrit cette même taille, sinon il est tu. */
-function tailleDeLaConception(contexte) {
+/** T4-X7-013 — la taille servie AVEC la production, sur le bloc `conception` de `GET resultat/` (même option, même version,
+    `puissance_kwc` / `nb_panneaux`), prime : la production et sa taille vont ensemble, jamais une production fraîche à côté
+    de la taille d'une lecture plus ancienne. Sans elle (serveur d'avant), le design-context comme avant. */
+function tailleDeLaConception(contexte, bloc = null) {
+  const propre = typeof bloc?.puissance_kwc === 'number' ? bloc.puissance_kwc : null
   const kwc = contexte?.chiffrage?.kwc
-  const valeur = kwc?.etat === 'servi' && typeof kwc.valeur === 'number' ? kwc.valeur : null
+  const valeur = propre ?? (kwc?.etat === 'servi' && typeof kwc.valeur === 'number' ? kwc.valeur : null)
   if (valeur == null) return null
   const cible = contexte?.cible
-  const panneaux = typeof cible?.panneaux === 'number' && memeTaille(cible?.kwc, valeur) ? cible.panneaux : null
-  // T4-X3-009 — le compte de la conception nomme SON panneau (« 8 panneaux de 550 W »).
-  return { kwc: valeur, panneaux, watt: panneaux != null ? cible?.panel_watt ?? null : null }
+  const cibleDeCetteTaille = typeof cible?.panneaux === 'number' && memeTaille(cible?.kwc, valeur)
+  const servis = propre != null && typeof bloc?.nb_panneaux === 'number' ? bloc.nb_panneaux : null
+  const panneaux = servis ?? (cibleDeCetteTaille ? cible.panneaux : null)
+  // T4-X3-009 — le compte de la conception nomme SON panneau (« 8 panneaux de 550 W ») quand la cible décrit ce même compte.
+  const watt = panneaux != null && cibleDeCetteTaille && cible.panneaux === panneaux ? cible?.panel_watt ?? null : null
+  return { kwc: valeur, panneaux, watt }
 }
 
 /** T4-X9-008 — la part de la consommation servie pour un calepinage de lead est celle de la CONCEPTION
     (`services/etapes/autoconsommation.py::_publier`) : à une autre taille que la pose, la phrase des deux tailles (prédicat
     et formateur uniques de l'atelier) remplace le chiffre ; `null` sinon (même taille, ou taille inconnue). */
 function phraseCouvertureConception(data, contexte) {
-  const taille = data?.conception && contexte?.etat === 'ok' ? tailleDeLaConception(contexte.donnees) : null
+  const taille = data?.conception
+    ? tailleDeLaConception(contexte?.etat === 'ok' ? contexte.donnees : null, data.conception) : null
   return taille && tailleDifferente(taille.kwc, data?.pose?.kwc)
     ? phraseTailles('Part de la consommation', taille.kwc, data.pose.kwc) : null
 }
@@ -351,7 +359,7 @@ export default function EtapeResultats({
     <div className="cal-res" data-zone="etape-resultats">
       {data?.conception
         ? <ProductionDeLaConception bloc={data.conception} pose={data?.pose} simulee={complet}
-          taille={contexte.etat === 'ok' ? tailleDeLaConception(contexte.donnees) : null} />
+          taille={tailleDeLaConception(contexte.etat === 'ok' ? contexte.donnees : null, data.conception)} />
         : <ProductionDuDevis bloc={blocDuDevis(data)} p50={complet ? total?.p50_kwh : null} incomplet={incomplet} />}
       {simule && <PanneauxNonRaccordes data={data} />}
       {enCours && <SimulationEnCours calepinageId={id} intervalleMs={intervalleMs} onTermine={refetch} />}
