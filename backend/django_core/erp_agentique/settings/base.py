@@ -1463,8 +1463,8 @@ CELERY_TASK_ROUTES = {
     # ADEV139 (relecture E3 m-e) — la relance de la conception (moteur unique,
     # calcul différé après une fiche ou une pose) part sur `bulk` : jamais sur
     # `default` avec les webhooks entrants ; `bulk` est consommée par le worker
-    # `celery_worker` (-Q default,scheduled,bulk), jamais une file orpheline.
-    'ventes.relancer_conception': {'queue': 'bulk'},
+    # `celery_worker` (-Q default,scheduled,bulk), jamais une file orpheline ; son suivi des brouillons aussi (E4 M2).
+    'ventes.relancer_conception': {'queue': 'bulk'}, 'ventes.suivre_la_conception': {'queue': 'bulk'},
     # NTOBS1 — rafraîchissement 5 min des composants publics de statut.
     # `statuspage` est une app CONSERVÉE : sa route avait été retirée par
     # ricochet avec celles de ses voisines parquées (paie/grc/rh), alors que son

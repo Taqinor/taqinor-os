@@ -220,13 +220,11 @@ def executer_relance(company_id, *, lead_id=None, calepinage_id=None, origine, c
         if company is None or (lead_id and lead is None) or lead_efface(lead):
             return None  # porteur disparu ou effacé (loi 09-08, relecture E3 B1) : rien
         toit, calepinage_id = _pose_servie(company, lead_id, calepinage_id, empreinte_pose)
+        # ADEV147 (relecture E4 M2) — le suivi des brouillons n'est plus fait
+        # ici : toute version rangée (tâche, devis demandé, remplissage) met
+        # en file ``task_suivre_la_conception`` (``service._annoncer_apres_validation``).
         relance = relancer(lead, company=company, declencheur={'origine': origine, 'champs': champs or []},
                            toit=toit, calepinage_id=calepinage_id)
-        if relance.ecrite:
-            # ADEV147 — dans la tâche (jamais dans la requête) : les brouillons
-            # intacts nés d'une version plus ancienne suivent la nouvelle.
-            from apps.ventes.conception.brouillons import suivre_la_conception
-            suivre_la_conception(relance.conception)
         return {'version': getattr(relance.conception, 'version', None), 'ecrite': relance.ecrite}
     except Exception:  # noqa: BLE001 — une relance ratée n'écrit rien ; le filet la rejoue (D-ENF22-BLE001)
         logger.exception('ADEV139 : relance de la conception en échec (lead #%s, calepinage #%s)',
@@ -238,6 +236,61 @@ def executer_relance(company_id, *, lead_id=None, calepinage_id=None, origine, c
                 _liberer(cle, jeton)
             except Exception:  # noqa: BLE001 — cache indisponible : le marqueur expire seul (D-ENF22-BLE001)
                 logger.debug('ADEV139 : marqueur non libéré', exc_info=True)
+
+
+#: Relecture E4 M2 — marqueur du suivi des brouillons d'un lead (une tâche en file).
+CLE_SUIVI = 'ventes:conception:suivi:lead:%s'
+
+
+def mettre_suivi_en_file(company_id, lead_id):
+    """ADEV147 (relecture E4 M2) — après CHAQUE version rangée d'un lead (le
+    seul point de passage : ``service._annoncer_apres_validation``, après
+    validation), UNE tâche ``ventes.suivre_la_conception`` par lead tant
+    qu'elle n'est pas partie. Jamais dans la requête ; ne lève jamais."""
+    from django.core.cache import cache
+
+    if not company_id or not lead_id:
+        return 'echec'
+    try:
+        cle = _cle(company_id, CLE_SUIVI % lead_id)
+        if not cache.add(cle, 1, DUREE_MARQUEUR_S):
+            return 'deja_en_file'
+        from apps.ventes.tasks import task_suivre_la_conception
+        try:
+            task_suivre_la_conception.apply_async(kwargs={'company_id': company_id, 'lead_id': lead_id},
+                                                  countdown=DELAI_REGROUPEMENT_S, retry=False)
+        except Exception:
+            cache.delete(cle)  # la prochaine version retentera
+            raise
+        return 'lancee'
+    except Exception:  # noqa: BLE001 — la version est rangée ; « Mettre à jour » reste offert (D-ENF22-BLE001)
+        logger.warning('ADEV147 : suivi des brouillons non mis en file (lead #%s)', lead_id, exc_info=True)
+        return 'echec'
+
+
+def executer_suivi(company_id, lead_id):
+    """Corps de ``tasks.task_suivre_la_conception`` : le marqueur part AVANT la
+    lecture (une version rangée pendant le suivi remet une tâche en file), puis
+    les brouillons intacts suivent la version COURANTE du lead. Rend les ids
+    réalignés ; un lead effacé ou disparu : rien. Ne lève jamais."""
+    from authentication.models import Company
+    from django.core.cache import cache
+
+    from apps.crm.selectors import get_company_lead, lead_efface
+    from apps.ventes.conception.brouillons import suivre_la_conception
+    from apps.ventes.models import ConceptionLead
+
+    try:
+        cache.delete(_cle(company_id, CLE_SUIVI % lead_id))
+        company = Company.objects.filter(pk=company_id).first()
+        lead = get_company_lead(company, lead_id) if company is not None else None
+        if lead is None or lead_efface(lead):
+            return []
+        return suivre_la_conception(ConceptionLead.objects.filter(
+            company=company, lead=lead, courante=True).first())
+    except Exception:  # noqa: BLE001 — un suivi raté est rattrapé par « Mettre à jour » (D-ENF22-BLE001)
+        logger.exception('ADEV147 : suivi des brouillons en échec (lead #%s)', lead_id)
+        return []
 
 
 def _sur_entrees_modifiees(sender, company_id=None, lead_id=None, champs=None, **kwargs):

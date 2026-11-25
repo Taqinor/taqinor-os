@@ -2931,6 +2931,18 @@ class BrouillonsSuiventLaConceptionTests(_emprunt(RelanceConceptionTests, '_rela
     SUR DEMANDE (route), quantité tapée gardée et nommée ; envoyé : 409 ;
     hors portée : 404."""
 
+    def setUp(self):
+        from django.core.cache import cache
+
+        from apps.ventes import tasks
+
+        FigeageDevisAutoTests.setUp(self)
+        cache.clear()
+        self.addCleanup(cache.clear)
+        patcher = mock.patch.object(tasks.task_suivre_la_conception, 'apply_async')  # jamais le courtier réel
+        self.suivi = patcher.start()
+        self.addCleanup(patcher.stop)
+
     def _trois_devis(self):
         from django.utils import timezone
 
@@ -2978,18 +2990,35 @@ class BrouillonsSuiventLaConceptionTests(_emprunt(RelanceConceptionTests, '_rela
         # Une seconde relance sans changement ne le touche pas.
         self.assertEqual(suivre_la_conception(v2), [])
 
-    def test_la_tache_de_relance_fait_suivre_les_brouillons(self):
-        from apps.ventes.conception import brouillons
-        from apps.ventes.conception.receivers import executer_relance
+    def test_chaque_version_rangee_fait_suivre_en_tache(self):
+        """Relecture E4 M2 — D1 né de v1 ; la facture change (relance en file) ;
+        « Devis auto » range v2 DANS la requête ; la tâche de relance n'écrit
+        plus rien : le suivi, mis en file par l'écriture de la requête, fait
+        suivre D1 quand même."""
+        from apps.ventes import tasks
+        from apps.ventes.models import Devis
+        from apps.ventes.services import build_devis_auto
 
-        company, lead, _user, _intact, _retouche, _envoye = self._trois_devis()
-        from apps.crm.models import Lead
-        Lead.objects.filter(pk=lead.pk).update(facture_hiver=Decimal('3600'))
-        with mock.patch.object(brouillons, 'suivre_la_conception') as suivre, \
-                self.captureOnCommitCallbacks(execute=True):
-            rendu = executer_relance(company.pk, lead_id=lead.pk, origine='lead_entrees_modifiees')
-        self.assertEqual(rendu, {'version': 2, 'ecrite': True})
-        self.assertEqual(suivre.call_args.args[0].version, 2)
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        user = self._utilisateur(company)
+        with mock.patch.object(tasks.task_relancer_conception, 'apply_async') as relance:
+            with self.captureOnCommitCallbacks(execute=True):
+                d1 = build_devis_auto(lead=lead, user=user, company=company)
+            self.assertEqual(tasks.task_suivre_la_conception(**self.suivi.call_args.kwargs['kwargs']), [])
+            self.suivi.reset_mock()
+            lead.refresh_from_db()
+            lead.facture_hiver = Decimal('3600')
+            with self.captureOnCommitCallbacks(execute=True):
+                lead.save()
+            self.assertEqual(relance.call_count, 1)
+            with self.captureOnCommitCallbacks(execute=True):
+                build_devis_auto(lead=lead, user=user, company=company)
+                rendu = tasks.task_relancer_conception(**relance.call_args.kwargs['kwargs'])
+        self.assertEqual(rendu, {'version': 2, 'ecrite': False})
+        self.assertEqual(self.suivi.call_count, 1)  # mutant « suivi dans la tâche seulement » : 0
+        self.assertEqual(tasks.task_suivre_la_conception(**self.suivi.call_args.kwargs['kwargs']), [d1.pk])
+        self.assertEqual(Devis.objects.get(pk=d1.pk).conception_source['version'], 2)
 
     def test_envoye_entre_selection_et_ecriture_rien_ne_bouge(self):
         """Relecture E4 M1 — le devis passe « envoyé » entre la sélection et

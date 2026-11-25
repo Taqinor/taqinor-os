@@ -291,6 +291,10 @@ def _annoncer_apres_validation(version):
             sender=type(version), company_id=version.company_id, lead_id=version.lead_id,
             calepinage_id=version.calepinage_id, version=version.version, declencheur=version.declencheur)
     transaction.on_commit(annoncer)
+    if version.lead_id and version.etat == 'complet':
+        # Relecture E4 M2 — ADEV147 après CHAQUE écriture, en tâche (jamais dans la requête).
+        from apps.ventes.conception.receivers import mettre_suivi_en_file
+        transaction.on_commit(lambda: mettre_suivi_en_file(version.company_id, version.lead_id))
 
 
 # ── La phrase « pourquoi » (lue telle quelle au chatter du lead) ─────────────
