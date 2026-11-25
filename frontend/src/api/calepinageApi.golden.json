@@ -24,6 +24,14 @@
       "verbe": "post"
     }
   ],
+  "calepinages.apercuDevis": [
+    {
+      "config": null,
+      "data": null,
+      "url": "/calepinage/calepinages/7/apercu-devis/",
+      "verbe": "get"
+    }
+  ],
   "calepinages.apercuDocument": [
     {
       "config": {
