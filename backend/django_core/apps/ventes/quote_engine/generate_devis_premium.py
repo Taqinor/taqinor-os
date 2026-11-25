@@ -391,7 +391,7 @@ DELAI_INSTALLATION = ""
 # client d'une économie estimée sur un tarif de référence. Défaut False =
 # rendu inchangé pour tout appel sans la clé.
 SAVINGS_ESTIMATED = False
-ECONOMIES_SANS_ANCRAGE = False  # ACAL1033 (D-ACAL-45) — niveau 15 sans donnée réelle : une page sans économie
+ECONOMIES_SANS_ANCRAGE = REGLES_POSE_REELLE = False  # ACAL1033 (D-ACAL-45) — niveau 15 sans donnée réelle : une page sans économie ; T4-X1-002 — niveau 15
 
 # ── DC1 — identité société (multi-tenant) ──────────────────────────────────────
 # Chaque littéral d'identité (nom de marque du footer, coordonnées, ligne légale
@@ -1676,10 +1676,8 @@ def _garanties_du_devis():
     _pan = lambda d: "panneau" in d or "module" in d
     _bat = lambda d: "batterie" in d
 
-    out = []
-    n = _premier(is_inverter, "garantie_mois")
-    if n:
-        out.append((n, _L("lg_gar_onduleur")))
+    from .legacy_etude import garanties_onduleur_document  # T4-X1-002 — import local (cycle)
+    out = garanties_onduleur_document(_premier(is_inverter, "garantie_mois"))
     n = _premier(_pan, "garantie_mois")
     if n:
         out.append((n, _L("lg_gar_panneaux_produit")))
@@ -1709,13 +1707,14 @@ def _marques_du_devis():
     page 2) — jamais une marque devinée dans une désignation libre. Aucune
     marque lisible ⇒ dict vide ⇒ la carte est OMISE.
     """
+    from .legacy_etude import lignes_des_marques  # T4-X1-002 — import local (cycle)
     familles = {"panneaux": [], "onduleurs": [], "batteries": []}
     predicats = (
         ("panneaux", lambda d: "panneau" in d or "module" in d),
         ("onduleurs", is_inverter),
         ("batteries", lambda d: "batterie" in d),
     )
-    for it in _lignes_option_rendue():
+    for it in lignes_des_marques(_lignes_option_rendue()):
         des = (it.get("designation") or "").lower()
         marque = (it.get("marque") or "").strip()
         if not marque:
@@ -2497,7 +2496,7 @@ def page3():
             f'letter-spacing:1px;text-transform:uppercase;">{_L("lg_ans_maj")}</div>'
             f'<div style="font-size:8pt;color:{CG4};margin-top:2px;">{lbl}</div>'
             f'</div>'
-            for n, lbl in _gars[:4])
+            for n, lbl in _gars[:5])
         _badges_garanties_html = (
             f'<div style="padding:0 24px 4px;margin-bottom:5px;">'
             f'<div style="display:flex;gap:5px;">{_cards}</div></div>')
@@ -3797,8 +3796,8 @@ def apply_quote_data(data: dict) -> None:
     _dl = data.get("delais") or {}
     from .residential.theme import delai_doc as _dd  # RPDF : délais dans la langue du document
     DELAI_VISITE, DELAI_INSTALLATION = (_dd(data, (_dl.get(k) or "").strip()) for k in ("visite_technique", "installation"))
-    global SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE  # M10 — économies estimées ? ACAL1033 — sans ancrage ?
-    SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE = bool(data.get("savings_estimated")), _economies_sans_ancrage(data)
+    global SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE, REGLES_POSE_REELLE  # M10 — estimées ? ACAL1033 — sans ancrage ? niveau 15 ?
+    SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE, REGLES_POSE_REELLE = bool(data.get("savings_estimated")), _economies_sans_ancrage(data), bool(data.get("regles_pose_reelle"))
     # XSAL14/XSAL5 — structure (sections/notes) + options proposées (rendu seul,
     # hors totaux). Absents → byte-identique. Escapés à l'ingestion (ERR37).
     global LIGNES_STRUCTURE, OPTIONS_PROPOSEES

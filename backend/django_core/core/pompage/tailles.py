@@ -24,12 +24,14 @@ Noyau PUR : stdlib seulement, aucune I/O.
 """
 from __future__ import annotations
 
-from core.pompage.champ import choisir_variateur, dimensionner_champ
+from core.pompage.champ import (
+    choisir_variateur, dimensionner_champ, rendement_systeme,
+)
 from core.pompage.conception import NOM_POMPE_EXISTANTE, pompe_existante
 from core.pompage.hydraulique import _flottant, debit_a_hmt
 from core.pompage.hypotheses import valeur
 from core.pompage.kit import composer_kit
-from core.pompage.selection import _sortie_pompe, kw_pompe
+from core.pompage.selection import _fr as _fr_kw, _sortie_pompe, kw_pompe
 
 CLES = ("inferieure", "recommandee", "superieure")
 MOTIF_EXISTANTE = "pompe existante imposée : une seule taille"
@@ -55,6 +57,32 @@ def motif_debit_insuffisant(debit_hmt, debit_demande, hmt_m):
             "couverture affichée"
             % (_fr(debit_hmt), _fr(_flottant(hmt_m) or 0), _fr(debit_demande),
                _fr(valeur("ratio_champ_pompe_bande_alerte").max)))
+
+
+MOTIF_SANS_COURBE = ("pompe sans courbe constructeur : couverture non "
+                     "calculée (à confirmer sur la courbe)")
+
+
+def motif_puissance_insuffisante(kw, kw_min):
+    """T4-X1-009 — la phrase d'une taille SANS courbe dont la puissance est
+    sous la puissance minimale que l'écran affiche pour ce débit à cette
+    hauteur (la même règle que l'alerte ``pompe_sans_courbe``)."""
+    return ("ne peut pas monter le débit demandé à cette hauteur : %s kW, "
+            "alors qu'il faut au moins %s kW (pompe sans courbe "
+            "constructeur)" % (_fr_kw(kw), _fr_kw(kw_min)))
+
+
+def _motif_sans_courbe(produit, kw_hydraulique):
+    """La phrase d'une taille en pré-dimensionnement : puissance minimale =
+    puissance hydraulique ÷ rendement de la pompe (publié, sinon prudent) —
+    exactement le calcul de :func:`core.pompage.selection.choisir_pompe`."""
+    kw, _source = kw_pompe(produit)
+    if kw and kw_hydraulique:
+        kw_min = kw_hydraulique / rendement_systeme(
+            produit, pompe_seule=True)["valeur"]
+        if kw < kw_min - 1e-9:
+            return motif_puissance_insuffisante(kw, kw_min)
+    return MOTIF_SANS_COURBE
 
 
 def _couverture(production, besoin, mois):
@@ -254,8 +282,8 @@ def proposer_tailles(*, mode_pompe="neuve", choix_pompe=None, plaque=None,
         sortie, champ, composition, mois, _var = evaluer(j)
         motif = None
         if etape != "courbe":
-            motif = ("pompe sans courbe constructeur : couverture non "
-                     "calculée (à confirmer sur la courbe)")
+            motif = _motif_sans_courbe(paliers[j],
+                                       choix_pompe.get("kw_hydraulique"))
         else:
             debit_j = debit_a_hmt(paliers[j]["courbe_pompe"], hmt_m)
             if debit_j is not None and debit_demande \

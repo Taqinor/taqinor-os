@@ -85,6 +85,14 @@ class ChoixVariateur(unittest.TestCase):
         self.assertIn("kw_plaque_a_relever", codes)
         self.assertNotIn("aucun_variateur", codes)
         self.assertIsNotNone(res["variateur"])
+        # T4-X1-014 (jumeau) — des mots, sans « × 0,7355 = » ; les nombres
+        # restent (3 CV, 2,21 kW, moteur normalisé 2,2 kW).
+        message = [a["message"] for a in res["alertes"]
+                   if a["code"] == "kw_plaque_a_relever"][0]
+        for attendu in ("3 CV", "2,21 kW", "2,2 kW"):
+            self.assertIn(attendu, message)
+        for interdit in ("×", "0,7355", "IEC"):
+            self.assertNotIn(interdit, message)
 
     def test_cv_hors_puissance_normalisee_jamais_arrondi_vers_le_bas(self):
         # 12,5 CV = 9,19 kW : aucune puissance normalisée dans la tolérance

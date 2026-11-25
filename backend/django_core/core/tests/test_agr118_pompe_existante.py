@@ -66,6 +66,11 @@ class PompeExistante(unittest.TestCase):
         self.assertIsNone(res["variateur"]["produit"])
         # Affichage seulement : 3 × 0,7355 = 2,21 kW.
         self.assertEqual(res["puissance_retenue"], {"kw": 2.21, "cv": 3})
+        # T4-X1-014 (jumeau) — le message dit la règle en mots, sans formule.
+        message = [a["message"] for a in res["alertes"]
+                   if a["code"] == "kw_plaque_a_relever"][0]
+        for interdit in ("×", "0,7355"):
+            self.assertNotIn(interdit, message)
 
     def test_sans_debit_declare_production_null(self):
         res = pompe_existante(

@@ -54,6 +54,10 @@ COMMUN = ((PANNEAU, '8', '1166.67', ''),) + EQUIPEMENT
 DIVERGENTS = ((PANNEAU, '6', '1166.67', 'sans'),
               (PANNEAU, '8', '1166.67', 'avec')) + EQUIPEMENT
 
+#: T4-X1-001 — mêmes COMPTES (5 / 5) mais modules différents : 2,75 / 3,55 kWc.
+TAILLES = (('Panneau mono 550W', '5', '1000.00', 'sans'),
+           (PANNEAU, '5', '1166.67', 'avec')) + EQUIPEMENT
+
 
 class PanneauxDeuxOptionsEgalesTests(TestCase):
 
@@ -125,3 +129,47 @@ class PanneauxDeuxOptionsEgalesTests(TestCase):
         self.assertTrue(data['panneaux_divergents'])
         self.assertEqual(data['nb_panneaux'], 8)
         self.assertEqual(data['puissance_kwc'], 5.68)
+
+    # ── T4-X1-001 — chaque option porte SA taille et SON prix par kWc ──────
+    def _tailles(self, slug, niveau):
+        devis = self._devis(slug, TAILLES)
+        Devis.objects.filter(pk=devis.pk).update(regles_calcul=niveau)
+        return Devis.objects.get(pk=devis.pk)
+
+    @staticmethod
+    def _prix_kwc_imprimes(html):
+        import re
+        return [int(re.sub(r'\D', '', m)) for m in re.findall(
+            r'soit ([\d\s   ]+) MAD/kWc', html)]
+
+    def test_t4x1_001_niveau_14_inchange(self):
+        """Niveau 14 (courant) : le rendu d'hier, une seule taille."""
+        from apps.ventes.quote_engine.residential import render, renderer
+        data = self._build(self._tailles('t4x1-n14', 14))
+        self.assertEqual(data['puissance_kwc_sans'], 2.75)
+        self.assertEqual(data['puissance_kwc_avec'], 3.55)
+        self.assertFalse(data['panneaux_divergents'])
+        html = render.build_html(renderer._augment(dict(data)))
+        self.assertIn('panneaux · 710 W', html)
+        self.assertNotIn('2,75 · 3,55', html)
+
+    def test_t4x1_001_niveau_15_chaque_option_sa_taille(self):
+        from apps.ventes.quote_engine import generate_devis_premium as moteur
+        from apps.ventes.quote_engine.residential import render, renderer
+        data = self._build(self._tailles('t4x1-n15', 15))
+        self.assertTrue(data['panneaux_divergents'])
+        # Page 1 (premium complet) : prix ÷ SA taille, pour chaque option.
+        html = render.build_html(renderer._augment(dict(data)))
+        self.assertEqual(self._prix_kwc_imprimes(html)[:2], [
+            round(data['total_sans'] / 2.75), round(data['total_avec'] / 3.55)])
+        # Page 2 : les deux tailles, jamais « 3,55 kWc » pour les deux.
+        self.assertIn('2,75 · 3,55', html)
+        self.assertNotIn('panneaux · 710 W', html)
+        # Format avec étude (moteur legacy) : même règle.
+        data_etude = self._build(self._tailles('t4x1-etude', 15),
+                                 {'include_etude': True})
+        self.assertTrue(data_etude['panneaux_divergents'])
+        # Une page, option 1 : la puissance crête de CETTE option.
+        data_1p = self._build(self._tailles('t4x1-1p', 15),
+                              {'pdf_mode': 'onepage', 'variante_option': 'sans'})
+        self.assertIn('2,75', moteur.render_html_for(data_1p))

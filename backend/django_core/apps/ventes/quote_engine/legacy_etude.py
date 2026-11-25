@@ -701,3 +701,40 @@ def page_etude():
   </div>
 </div>
 """
+
+
+# ── T4-X1-002 — page « Confiance, garanties » : l'onduleur de CHAQUE option ──
+
+def _deux_options_document():
+    return _g.SCENARIO not in ("Avec batterie", "Sans batterie")
+
+
+def garanties_onduleur_document(n_premier):
+    """Les badges « Onduleur » de ``_garanties_du_devis``. Niveau 14 : la
+    garantie du premier onduleur (rendu d'hier, octet-identique). Niveau 15
+    (``regles_pose_reelle``, nouveaux rendus) : la garantie de l'onduleur de
+    CHAQUE option, par la lecture de la bande du PDF premium sans étude
+    (``theme.lignes_garantie_onduleur``) — « Onduleur (option 1) » /
+    « (option 2) » quand elles diffèrent, l'option sans durée écrite omise
+    (jamais une durée inventée)."""
+    if not getattr(_g, "REGLES_POSE_REELLE", False):
+        return [(n_premier, _g._L("lg_gar_onduleur"))] if n_premier else []
+    from .residential.theme import lignes_garantie_onduleur
+    if _deux_options_document():
+        d = {"deux_options": True, "sans_items": list(_g.SANS_ITEMS or []),
+             "avec_items": list(_g.AVEC_ITEMS or [])}
+    else:
+        d = {"deux_options": False, "sans_items": _g._lignes_option_rendue()}
+    cles = {"Onduleur": "lg_gar_onduleur", "Onduleur (option 1)": "rpdf_gar_onduleur_opt1",
+            "Onduleur (option 2)": "rpdf_gar_onduleur_opt2"}
+    return [(int(n), _g._L(cles[libelle])) for n, _u, libelle, _s in lignes_garantie_onduleur(d)]
+
+
+def lignes_des_marques(rendues):
+    """Les lignes dont ``_marques_du_devis`` lit les marques. Niveau 14 : les
+    lignes de l'option rendue (« onduleurs Huawei » seul sur un document à deux
+    options). Niveau 15 : sur un document à deux options, les lignes des DEUX
+    options (« onduleurs Huawei & Deye ») — la marque du produit chiffré."""
+    if getattr(_g, "REGLES_POSE_REELLE", False) and _deux_options_document():
+        return list(_g.SANS_ITEMS or []) + list(_g.AVEC_ITEMS or [])
+    return rendues

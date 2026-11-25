@@ -119,6 +119,46 @@ class TroisTailles(unittest.TestCase):
         self.assertEqual(len(res["tailles_omises"]), 3)
 
 
+class PreDimensionnement(unittest.TestCase):
+    """T4-X1-009 — pompes monophasées SANS courbe : une taille proposée sous la
+    puissance minimale que l'écran affiche le dit en mots."""
+
+    def test_inferieure_sous_la_puissance_minimale_le_dit(self):
+        def mono(id_, nom, kw):
+            return {"id": id_, "nom": nom, "role_pompage": "pompe",
+                    "type_pompe": "immergee", "alimentation": "mono",
+                    "pompe_kw": str(kw), "tension_v": 220,
+                    "courbe_pompe": None, "fiche": None, "prix_connu": True}
+        pompes = [mono(60, "Pompe test 1,1 kW mono", 1.1),
+                  mono(61, "Pompe test 2hp mono", 1.47),
+                  mono(62, "Pompe test 2,2 kW mono", 2.2)]
+        variateurs = [{"id": 9, "nom": "VARIATEUR VEICHI SI22 2.2KW 220V",
+                       "role_pompage": "variateur_pompage", "pompe_kw": "2.2",
+                       "tension_v": 220, "fiche": None, "prix_connu": True}]
+        # HMT 40 m, 5 m³/h : il faut au moins 1,56 kW (message de l'écran).
+        choix = choisir_pompe(pompes, hmt_m=40, debit_conception_m3h=5,
+                              alimentation="mono")
+        self.assertEqual(choix["etape"], "pre_dimensionnement")
+        self.assertEqual(choix["pompe"]["produit"], 62)
+        self.assertIn("au moins 1,56 kW", [
+            a["message"] for a in choix["alertes"]
+            if a["code"] == "pompe_sans_courbe"][0])
+        res = proposer_tailles(
+            choix_pompe=choix, besoin_m3_jour_mois=[35.0] * 12, hmt_m=40,
+            alimentation="mono", variateurs=variateurs, panneau=PANNEAU,
+            profils_horaires=PROFILS, kit=KIT)
+        par_cle = {t["cle"]: t for t in res["tailles"]}
+        self.assertEqual(par_cle["inferieure"]["pompe_produit"], 61)
+        inferieure = par_cle["inferieure"]["motif"]
+        self.assertIn("ne peut pas monter le débit demandé", inferieure)
+        self.assertIn("1,47 kW", inferieure)
+        self.assertIn("au moins 1,56 kW", inferieure)
+        # La recommandée (2,2 kW ≥ 1,56 kW) garde la phrase d'avant.
+        self.assertIn("couverture non calculée",
+                      par_cle["recommandee"]["motif"])
+        self.assertNotIn("ne peut pas", par_cle["recommandee"]["motif"])
+
+
 class Hectares(unittest.TestCase):
 
     def test_ha_derives_et_etiquetes_estimation(self):
