@@ -208,3 +208,6 @@
 .cal-coque[data-avance='0'] .cal-coque-groupe[data-groupe='pose'] { display: none; }
 /* H2 — « réessayer » (lecture de la facture en échec) : un bouton qui a l'air du lien de la note. */
 .cal-coque button.cal-pan-lien { background: none; border: 0; padding: 0; font: inherit; cursor: pointer; }
+/* ACAL2032 — « Ajouter un panneau » ARMÉ (placement libre) : le bouton se voit enclenché tant que le prochain clic sur le
+   toit pose le panneau ; son texte dit le geste (layoutEditor.ts::syncFreeInputs). */
+#rp9-free-add[aria-pressed='true'] { background: var(--cal-actif); color: var(--cal-actif-texte); border-color: var(--cal-actif); }

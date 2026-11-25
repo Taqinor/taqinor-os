@@ -296,6 +296,17 @@ describe('CALX110 — deux modèles sur deux pans', () => {
     expect(synthese.mention).not.toContain('Plusieurs');
   });
 
+  it('ACAL2032 — un pan sans panneau posé (module par défaut) ne fait pas « plusieurs modèles »', () => {
+    const p715 = module({ id: 'produit-715', libelle: 'Panneau Canadien Solar 715W', pmaxWc: 715 });
+    const synthese = syntheseModules(
+      { catalogue: [p715, MODULE_PAR_DEFAUT_ATELIER], parPan: { 'pan-a': 'produit-715' } },
+      [{ id: 'pan-a', panels: 3 }, { id: 'pan-b', panels: 0 }],
+    );
+    expect(synthese.plusieursModeles).toBe(false);
+    expect(synthese.mention).toBe('Module posé : Panneau Canadien Solar 715W.');
+    expect(synthese.watt).toBe(715);
+  });
+
   it('kwcDuPan omet plutôt que d’inventer quand la puissance manque', () => {
     expect(kwcDuPan(10, grand)).toBeCloseTo(5.8, 9);
     expect(kwcDuPan(10, module({ id: 'x', pmaxWc: null }))).toBeNull();
