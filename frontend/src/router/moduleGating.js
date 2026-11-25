@@ -88,7 +88,7 @@ export function estAutoriseEntree(entree, tier, permissions) {
   const perms = permissions || []
   if (!entree.perm) return roles.includes(tier)
   if (entree.permRepliPalier) {
-    // T4-X8-014 — `permRepliPalier: REPLI_ROLES` : miroir de `LectureDuModule`
+    // T4-X8-014 — `permRepliPalier: REPLI_ROLES` suit la garde du serveur `LectureDuModule`
     // (apps/ventes/gardes_lecture.py) — un rôle fin est jugé sur la SEULE
     // permission, un compte légacy garde le palier de l'entrée (`roles`),
     // comme le serveur qui le laisse lire.
