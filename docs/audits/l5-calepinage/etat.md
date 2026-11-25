@@ -1453,7 +1453,7 @@ atelier sans relecture automatique, budget de requêtes de `resultat/` à 22 pou
 (la CI les joue), note « par ? » (source : `crm/serializers.py:129`, `ChatterTimeline.jsx:290`).
 EN VOL à 02 h 25 : relecture de l'étape 6 (lecture seule), X1 et X4. EN PAUSE : relecteur des trois lanes de correctifs.
 
-### Point du 25/11, 03 h 15 UTC (le plus récent — REPRENDRE ICI)
+### Point du 25/11, 03 h 15 UTC
 
 **Lot 3 — PR BROUILLON Taqinor/taqinor-os#1555 (`dev-lot3`), tête poussée `580c0ab95b` : CI VERTE (38 jobs) au second
 passage.** Premier passage : 15 jobs rouges ramenés à huit causes, toutes corrigées (désignation sur un calepinage sans
@@ -1546,3 +1546,24 @@ envoyé lié qui diffère » non rejoués à l'écran : le relecteur X5 les joue
 FAIT pour le fondateur : la fiche technique du panneau par défaut des devis automatiques (« Panneau mono 550W ») est
 VIDE (puissance crête, Voc…) — les verdicts électriques de la conception disent donc « non calculé » pour ces leads.
 EN VOL : `lane/moteur-e7b`, `lane/moteur-e6c`, relecteur X5 (atelier après le toit, thème sombre).
+
+### Point du 25/11, 07 h 05 UTC (le plus récent — REPRENDRE ICI)
+
+**Lot 3 — PR Taqinor/taqinor-os#1555 : CI VERTE au quatrième passage (37 jobs), passée « prête », DANS LA FILE DE
+FUSION (position 1) à 07 h 00.** À sa fusion : dire au fondateur « mergé — à déployer par toi : `scripts/deploy-prod.ps1` »
+(les lots 1 et 2 ne sont pas déployés non plus).
+
+**Lot 4 — branche locale `dev-lot4`** (worktree de l'orchestrateur ; sauvegarde `origin/notes-l5-2511`) = `dev-lot3`
++ notes + `lane/moteur-e6c` (ACAL2026 plan par défaut, ADEV154 liste `--ecarts-sans-toit`, `forme_horaire_24`,
+`poseManuelle` écrite par l'outil de toit ; NON fait : entrée imposée « consommation »). À y plier : `lane/moteur-e7b`,
+`lane/t3-liste`, puis E7a, E7c, lanes de correctifs 2 à 6 du tour 3.
+
+**LISTE ADEV154 jouée sur la copie anonymisée (40 leads, rien d'écrit)** — fichier CONFIDENTIEL hors dépôt :
+`scratchpad/ecarts-sans-toit-echantillon.txt`. 14 leads refusés par le moteur (facture, phase, jours d'ouverture,
+ville, profil météo) ; 26 leads à conception, 45 lignes d'option : **6 simulées — production du toit supposé de
++18,2 % à +21,5 % au-dessus de la production actuelle** (ex. 6 813 → 8 183 kWh/an) ; **39 NON simulées** : « aucun pan
+ne porte à la fois des modules et une puissance crête » — la fiche technique du module par défaut (« Panneau mono
+550W ») est vide. À CORRIGER avant de montrer la liste au fondateur : le plan par défaut doit simuler sur le kWc que
+la conception porte déjà (puissance par panneau = kWc ÷ panneaux), en supposant et en DISANT les valeurs de fiche
+manquantes. ADEV155 reste GATED (réponse du fondateur après lecture).
+EN VOL : `lane/moteur-e7b`, `lane/t3-liste`, relecteur X5.
