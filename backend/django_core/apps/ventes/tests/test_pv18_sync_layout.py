@@ -1217,8 +1217,11 @@ class TestSyncRefuseUneCompositionImpossible(TestCase):
         # Les ampères viennent des DEUX fiches, jamais d'un seuil ajouté.
         self.assertIn('18,6 A', detail)
         self.assertIn('17,0 A', detail)
-        # Le message dit quoi FAIRE, pas seulement ce qui ne va pas.
-        self.assertIn('Corrigez le nombre de panneaux', detail)
+        # Le message dit quoi FAIRE, pas seulement ce qui ne va pas — et seulement un
+        # geste qui lève le refus (T4-X7-007 : le couple est en cause, pas le compte).
+        self.assertNotIn('Corrigez le nombre de panneaux', detail)
+        self.assertIn("Le nombre de panneaux n'y change rien : choisissez un autre module, "
+                      'ou remplacez cet onduleur dans le devis, puis resynchronisez', detail)
         self.assertFalse(resp.data['revision_possible'])
 
     def test_le_refus_n_ecrit_absolument_rien(self):
