@@ -21,6 +21,12 @@ vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksApiDev
     getDevisById: vi.fn(() => Promise.resolve({ data: {} })),
 }))
 
+vi.mock('../../ui/useDirtyGuard', async (original) => ({
+  ...(await original()),
+  rechargerSansGarde: vi.fn(),
+}))
+
+import { rechargerSansGarde } from '../../ui/useDirtyGuard'
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import DevisGenerator from './DevisGenerator'
@@ -121,6 +127,31 @@ describe('QP2 — renommer : deux options', () => {
     expect(stockApi.dupliquerProduit).toHaveBeenCalledWith('10', 'Smart Meter clone')
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     expect(screen.getByDisplayValue('Smart Meter clone')).toBeInTheDocument()
+  })
+})
+
+// T4-X4-022 — « Réinitialiser » purge le brouillon local et recharge SANS rouvrir la
+// garde de sortie du navigateur (sinon le rechargement était annulé, rien n'était effacé).
+describe('T4-X4-022 — Réinitialiser efface vraiment', () => {
+  it('confirmé : brouillon purgé, rechargement sans garde', async () => {
+    window.localStorage.setItem('taqinor:draft:devis:new', JSON.stringify({ savedAt: '2026-11-25T08:00:00Z', data: { note: 'x' } }))
+    const confirmation = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderGenerator({ role_nom: 'Directeur', permissions: ['stock_creer'] })
+    await findSmartMeterDesignation()
+    fireEvent.click(screen.getByRole('button', { name: /Réinitialiser/ }))
+    await waitFor(() => expect(rechargerSansGarde).toHaveBeenCalledTimes(1))
+    expect(window.localStorage.getItem('taqinor:draft:devis:new')).toBeNull()
+    confirmation.mockRestore()
+  })
+
+  it('refusé : rien ne bouge', async () => {
+    const confirmation = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderGenerator({ role_nom: 'Directeur', permissions: ['stock_creer'] })
+    await findSmartMeterDesignation()
+    fireEvent.click(screen.getByRole('button', { name: /Réinitialiser/ }))
+    await waitFor(() => expect(confirmation).toHaveBeenCalled())
+    expect(rechargerSansGarde).not.toHaveBeenCalled()
+    confirmation.mockRestore()
   })
 })
 

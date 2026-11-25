@@ -53,6 +53,7 @@ import ClientQuickCreateModal from './ClientQuickCreateModal'
 import DevisOffresTailles from './DevisOffresTailles'
 // APX17 — confirmation maison + toasts (jamais une popup du système).
 import { useConfirmDialog } from '../../ui/confirm'
+import { rechargerSansGarde } from '../../ui/useDirtyGuard'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
 import { searchCompanies } from '../../features/crm/companyLookup'
 import {
@@ -1647,7 +1648,11 @@ export default function DevisGenerator({
       description: 'Toutes les saisies en cours seront perdues.',
       confirmLabel: 'Réinitialiser',
     })
-    if (ok) window.location.reload()
+    if (!ok) return
+    // T4-X4-022 — le brouillon local est purgé (sinon « Reprendre le brouillon » le
+    // ramène) et la garde de sortie levée (sinon le navigateur annule le rechargement).
+    clear()
+    rechargerSansGarde()
   }
 
   // CIQ223 — l'économie C&I SERVIE (`POST /ventes/economie-ci/preview/`) :
