@@ -39,8 +39,10 @@ export const projet = {
     // le champ du corps (`preset_id`, `modele_id`…) ; un modèle d'une autre
     // société est introuvable (404). Sans modèle ni jeu, l'écran de création
     // garde `create()` — la création d'aujourd'hui, inchangée.
-    depuisModele: (corps) =>
-      api.post('/calepinage/calepinages/depuis-modele/', corps),
+    // T4-X9-011 — `silencieuxExpiration` (écran de création) : sans réponse à temps, l'écran cherche lui-même le
+    // calepinage peut-être créé ; le toast global « … réessayez » (qui menait au doublon) est tu pour lui seul.
+    depuisModele: (corps, { silencieuxExpiration = false } = {}) =>
+      api.post('/calepinage/calepinages/depuis-modele/', corps, silencieuxExpiration ? { silencieuxExpiration: true } : undefined),
 
     // CALX349 — la DÉCISION D'APPROBATION (second regard interne, CALX347) :
     // GET rend `{etat, decide_par, decide_le, motif, exigee}` (contrat

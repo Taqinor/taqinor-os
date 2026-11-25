@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   modeles: vi.fn(),
   getParametres: vi.fn(),
   depuisModele: vi.fn(),
+  optionsDepuisModele: vi.fn(),
   // ACAL183 — la vraie liste `?lead=`, la relecture du responsable, les agents.
   list: vi.fn(),
   update: vi.fn(),
@@ -43,7 +44,8 @@ vi.mock('../../api/calepinageApi', () => ({
       list: (...a) => mocks.list(...a),
       update: (...a) => mocks.update(...a),
       modeles: (...a) => mocks.modeles(...a),
-      depuisModele: (...a) => mocks.depuisModele(...a),
+      // T4-X9-011 — les options de la requête (2ᵉ argument) sont relevées à part : le corps reste comparé seul.
+      depuisModele: (corps, options) => { mocks.optionsDepuisModele(options); return mocks.depuisModele(corps) },
     },
     parametres: { get: (...a) => mocks.getParametres(...a) },
   },
@@ -253,6 +255,39 @@ describe('CalepinageNouveau (CAL36)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
     await waitFor(() => expect(mocks.depuisModele).toHaveBeenCalledWith({ client_id: '3' }))
     expect(mocks.depuisModele.mock.calls[0][0]).not.toHaveProperty('lead_id')
+  })
+
+  // T4-X9-011 — « Le serveur n'a pas répondu. Réessayez dans un instant. » alors que le calepinage AVAIT été créé : suivre
+  // « Réessayez » faisait un doublon. La route ne porte pas de clé d'idempotence : l'écran cherche ce qu'il vient de créer.
+  it('T4-X9-011 — pas de réponse mais calepinage créé : retrouvé (même client, même nom, créé à l’instant), jamais « Réessayez »', async () => {
+    mocks.depuisModele.mockRejectedValue({ code: 'ECONNABORTED', message: 'timeout of 20000ms exceeded' })
+    mocks.list.mockResolvedValue({ data: { results: [{ id: 1975, titre: 'X9-o Calepinage sans lead', reference: 'CAL-2611-1975' }] } })
+    rendre()
+    allerSurOnglet('Client')
+    await choisirDansCombobox('Client rattaché au calepinage', 'Client d’essai')
+    fireEvent.change(screen.getByLabelText(/Nom du calepinage/), { target: { value: 'X9-o Calepinage sans lead' } })
+    fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
+    const carte = await screen.findByTestId('cal-nouveau-retrouve')
+    expect(carte).toHaveTextContent('CAL-2611-1975')
+    const [params] = mocks.list.mock.calls.at(-1)
+    expect(params).toMatchObject({ client: '3', ordering: '-created_at' })
+    expect(typeof params.depuis).toBe('string')
+    expect(screen.queryByText(/Réessayez/)).toBeNull()
+    expect(mocks.optionsDepuisModele).toHaveBeenCalledWith({ silencieuxExpiration: true }) // pas de toast « … réessayez »
+    expect(screen.queryByRole('button', { name: /Créer le calepinage/ })).toBeNull() // aucun second envoi possible ici
+    fireEvent.click(screen.getByRole('button', { name: 'Ouvrir le calepinage créé' }))
+    expect(mocks.navigate).toHaveBeenCalledWith('/calepinage/1975')
+  })
+
+  it('T4-X9-011 — pas de réponse et rien de retrouvé : la liste est désignée avant tout nouvel essai', async () => {
+    mocks.depuisModele.mockRejectedValue({ code: 'ECONNABORTED', message: 'timeout' })
+    mocks.list.mockResolvedValue({ data: { results: [] } })
+    rendre()
+    allerSurOnglet('Client')
+    await choisirDansCombobox('Client rattaché au calepinage', 'Client d’essai')
+    fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
+    expect(await screen.findByText(/Vérifiez la liste des calepinages avant de recommencer/)).toBeInTheDocument()
+    expect(screen.queryByText(/Réessayez dans un instant/)).toBeNull()
   })
 
   it('le nom facultatif ne part QUE s’il est saisi', async () => {
