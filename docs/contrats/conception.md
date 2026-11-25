@@ -173,7 +173,7 @@ fichier téléversé n'est jamais imprimé tel quel.
 | C15 | Les garanties sont UNE par chantier : le certificat de clôture reprend les lignes, durées et dates de fin du CONTRAT (figé s'il est émis ou signé) ; sa date de départ est celle de la réception signée | rejeu sur écran réel : garantie portée à 3 ans au contrat signé, « 2 ans » au certificat | — |
 | C16 | Dans l'acte arabe, les cases cochées suivent le français ; un texte libre saisi en français sans traduction (réserves, conditions particulières) s'imprime tel que saisi | deux documents signés ensemble ne doivent pas différer sur un fait | traduire le texte |
 | C17 | Le rappel des sommes dues tient compte des avoirs : jamais plus que ce que la vente doit encore | contre-vérification | — |
-| C18 | Une durée ou une ligne de garantie modifiée sur le certificat de clôture est portée au CONTRAT tant qu'il est un brouillon (les deux actes disent la même durée) ; contrat émis ou signé : lecture seule sur le certificat, avec sa raison. Même règle d'affichage pour la réserve de propriété sur les procès-verbaux (grisée, « réglée sur le contrat ») | défaut vécu en production le 25/11/2026, suite de C15 : 36 mois tapés sur le certificat étaient enregistrés puis ignorés, l'écran réaffichait 24 | interdire la saisie sur le certificat et renvoyer au contrat |
+| C18 | **Confirmé par Reda le 25/11/2026 (§ 9).** Une durée ou une ligne de garantie modifiée sur le certificat de clôture est portée au CONTRAT tant qu'il est un brouillon (les deux actes disent la même durée) ; contrat émis ou signé : lecture seule sur le certificat, avec sa raison. Même règle d'affichage pour la réserve de propriété sur les procès-verbaux (grisée, « réglée sur le contrat ») | défaut vécu en production le 25/11/2026, suite de C15 : 36 mois tapés sur le certificat étaient enregistrés puis ignorés, l'écran réaffichait 24 | interdire la saisie sur le certificat et renvoyer au contrat |
 
 Constat laissé tel quel (données, pas produit) : sur la société de démonstration, « Installation » et « Transport »
 sont rangés en accessoires par `seed_demo` et sortent donc dans « Le matériel livré », comme sur le bon de livraison
@@ -199,6 +199,12 @@ existant ; le catalogue réel les range en prestations (D-APDF-4).
   personnalisée en français dont l'arabe est resté au défaut lève un avertissement. Le montant en lettres n'est pas
   imprimé en arabe (aucun convertisseur vérifié) ; les désignations du catalogue restent telles quelles.
   **À faire relire par un arabophone avant un usage réel** — dit à Reda.
+
+- **25/11/2026 — la durée de garantie se règle aussi depuis le certificat** (« Oui, garder »). Reda avait porté
+  la garantie d'installation de 24 à 36 mois sur le certificat de clôture ; elle revenait à 24 à l'enregistrement.
+  Décision : tant que le contrat est un brouillon, une durée ou une ligne de garantie enregistrée sur le certificat
+  est portée au contrat (les deux actes disent la même chose) ; contrat émis ou signé, elle s'affiche sur le
+  certificat sans se modifier, avec sa raison. Écarté : interdire la saisie sur le certificat et renvoyer au contrat.
 
 **Retraits demandés par Reda après lecture du contrat sur la production (24/11/2026)** — ne pas les remettre :
 - article « Objet » : plus de « si deux lignes se contredisent, les conditions particulières l'emportent… » ; il

@@ -57,6 +57,14 @@ bien terminés, signé par le client (protection si le solde n'est pas payé), (
   logo sur fond blanc ; régénérer ces icônes sur fond blanc ou transparent était l'inverse de la demande (fait
   puis annulé le même jour).
 
+- **Durée de garantie : réglable depuis le certificat (25/11/2026, « Oui, garder »)** : Reda a tapé 36 mois sur
+  le 4ᵉ acte (certificat), l'écran revenait à 24 parce que la clôture lit la durée du contrat. Décision : tant que
+  le contrat est un brouillon, une durée ou une ligne de garantie enregistrée sur le certificat est portée au
+  contrat ; contrat émis ou signé, lecture seule sur le certificat avec sa raison (rouvrir le contrat émis, jamais
+  un signé). Ne pas revenir à « la durée ne se règle que sur le contrat ». Règle d'écran tirée du même défaut : un
+  champ que le serveur reprend d'un autre acte ne s'affiche jamais comme modifiable (la case « Réserve de
+  propriété » des procès-verbaux est grisée, « réglée sur le contrat »). Spécification : conception.md § 8 (C18).
+
 - **Client société (Reda, 24/11 soir)** : « on ne montre le nom du client (le gérant ou le responsable) que pour
   signer, mais pour le nom du client il devient le nom de la société » + « l'ICE sur les 4 contrats ». Donc, pour
   une fiche client `entreprise` : « le Client » = la raison sociale (`Client.nom`, jamais prénom + nom) ; l'ICE
