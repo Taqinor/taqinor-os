@@ -197,7 +197,7 @@ import {
   type Measurement,
   type MeasureKind,
 } from './roofPro11/mesureUi';
-import { createParcelleUi } from './roofPro11/parcelle'; // ACAL233
+import { createParcelleUi } from './roofPro11/parcelle'; import { poserPlansEnregistres } from './roofPro11/poseEnregistree'; // ACAL233, T4-X2-010
 import { type ModeClavier } from './roofPro11/clavier'; // CALX128 câblage
 import { createShadingUi } from './roofPro11/shadingUi';
 import { createMapDraw } from './roofPro11/mapDraw';
@@ -234,7 +234,7 @@ import {
 import { creerCoucheElectrique } from './roofPro11/electrique3d';
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
 import { hydrateFromLead, hydrateFromDevis, serializeLayout, geometrieZoneActive, referenceContourRing, deserializeHorizonProfileFromLayout } from './roofPro11/prefill';
-import { deplacerEpingleALaMain, localiserSiTraceVisible, oublierEpingleDeplacee } from './roofPro11/provenanceEpingle'; // ACAL593 — sorti de prefill.ts ; T4-U4-013
+import { deplacerEpingleALaMain, latitudeDuCalcul, localiserSiTraceVisible, oublierEpingleDeplacee } from './roofPro11/provenanceEpingle'; // ACAL593 — sorti de prefill.ts ; T4-U4-013, T4-X2-005
 import { masquerMarqueur, retirerMarqueur } from './roofPro11/epingleClient'; // ACAL972
 import { createReperesUi } from './roofPro11/reperesChantier'; // ACAL593
 import { refleterPrioriteRemplissage } from './roofPro11/prioriteRemplissage'; import { anneauxCoupuresDuPanActif, monterChampsCoupures } from './roofPro11/coupuresPavage'; import { monterChampPortee } from './roofPro11/piedsChassis'; import { monterChampsChassis } from './roofPro11/chassisPavage'; import { grouperStructurePose } from './roofPro11/structurePose'; // ACAL576, ACAL579, ACAL585, ACAL1522
@@ -953,7 +953,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       prodPanels = v;
     },
     get centroidLat() {
-      return centroidLat;
+      return latitudeDuCalcul(ctx, centroidLat); // T4-X2-005 — site non localisé : le lieu de la simulation
     },
     set centroidLat(v) {
       centroidLat = v;
@@ -2088,7 +2088,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       areas.length = 0;
       for (const z of h.zones) areas.push(z);
       poserDepart(); // ACAL1273
-      activeAreaId = h.activeAreaId ?? areas[0].id;
+      activeAreaId = h.activeAreaId ?? areas[0].id; poserPlansEnregistres(areas, activeAreaId, layout?.modules as never); // T4-X2-010 — les autres pans se dessinent posés
       const a = activeArea() ?? areas[0];
       vertices = [...a.vertices];
       obstacles = a.obstacles.map((o) => ({ ...o }));
@@ -2249,7 +2249,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     }
     const ring: LngLat[] = [...vertices];
     const pins = currentPins();
-    const re = reoptimize(pins, ring, centroidLat, monthlyBill(), obstructionRings());
+    const re = reoptimize(pins, ring, ctx.centroidLat, monthlyBill(), obstructionRings());
     const w = re.winner;
     useRecommended = false;
     sel = { family: w.family, tilt: w.tiltDeg, orient: w.orientation, azimuth: w.azimuth, margin: w.margin };
@@ -2269,14 +2269,14 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // PV62 — la pose MIXTE n'existe que sur toit plat (en pente, pose affleurante).
     const mixedChip = document.querySelector<HTMLButtonElement>('[data-orient="mixed"]');
     if (mixedChip) mixedChip.hidden = roofType === 'pitched';
+    if (flatOnlyEl) flatOnlyEl.hidden = roofType !== 'flat'; // T4-X2-008 — au boot aussi : un toit en pente rouvert
+    if (pitchedControlsEl) pitchedControlsEl.hidden = roofType !== 'pitched'; // montrait les réglages du plat
   }
   function setRoofType(t: RoofType) {
     if (roofType === t) return;
     roofType = t;
     // W35 — on masque SEULEMENT les contrôles propres au plat (#rp9-flat-only) ; la pose
-    // et la marge (axes libres en pente) restent visibles. Le bloc pente apparaît en pente.
-    if (flatOnlyEl) flatOnlyEl.hidden = t !== 'flat';
-    if (pitchedControlsEl) pitchedControlsEl.hidden = t !== 'pitched';
+    // et la marge (axes libres en pente) restent visibles. Le bloc pente apparaît en pente (syncRoofTypeChips).
     if (t === 'pitched' && azimuthGroup) azimuthGroup.hidden = true;
     // V6 : la carte « Optimum calculé » est propre au toit plat ; recompute la rouvre
     // en mode plat. Le tableau comparatif est repeuplé selon le mode (plat ou pente).
@@ -2298,7 +2298,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     const bill = monthlyBill();
     // W1 : la marge de rive courante (toggle) entre dans le cerveau, et pro-5 ACTIVE
     // le balayage d'azimut aligné-toit (opt-in ; pro-4 ne l'active pas → inchangé).
-    rec = recommend(ring, centroidLat, bill, obstructionRings(), { setbackM: setbackOf(), enableRoofAligned: true });
+    rec = recommend(ring, ctx.centroidLat, bill, obstructionRings(), { setbackM: setbackOf(), enableRoofAligned: true });
     pvgisPerKwc = null;
     // W1 : (ré)affiche/masque le groupe AZIMUT selon que le toit est tourné, et
     // repose les badges « Recommandé » de chaque groupe depuis rec.recommendedOptions.
@@ -2308,7 +2308,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // figé. INDÉPENDANT des obstacles — eux ne changent que « ce qui tient », pas le
     // besoin énergétique — donc une édition d'obstacle ne réécrit jamais ce nombre.
     if (neededAuto) {
-      const n = neededPanelsForTarget(rec.targetAnnualKwh, centroidLat);
+      const n = neededPanelsForTarget(rec.targetAnnualKwh, ctx.centroidLat);
       neededPanels = n > 0 ? clampNeeded(n) : besoinAutoRelu(ctx.documentRelu, activeAreaId, bill);
     }
     // FIX 2 (V6) — la MATRICE complète remplace les ~6 lignes : balayage estimé
@@ -2607,8 +2607,6 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // (la pose se re-résout ensuite via recalc → liveResolvePitched).
     syncFacingChips();
     syncFacingSlider();
-    if (flatOnlyEl) flatOnlyEl.hidden = roofType !== 'flat';
-    if (pitchedControlsEl) pitchedControlsEl.hidden = roofType !== 'pitched';
     if (configPanel) configPanel.hidden = !closed;
     updateAreaReadout();
     if (closed) {
@@ -2658,8 +2656,6 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     syncRoofTypeChips();
     syncFacingChips();
     syncFacingSlider();
-    if (flatOnlyEl) flatOnlyEl.hidden = roofType !== 'flat';
-    if (pitchedControlsEl) pitchedControlsEl.hidden = roofType !== 'pitched';
   }
 
   /** ACAL308 — la mention « Jeu de réglages <libellé> appliqué aux nouveaux pans » sous la
@@ -3916,7 +3912,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
         soleilBtns.jourBtn.setAttribute('aria-pressed', 'false');
         return;
       }
-      const bounds = sunriseSunsetHours(centroidLat, ctx.sunDay);
+      const bounds = sunriseSunsetHours(ctx.centroidLat, ctx.sunDay);
       if (!bounds) {
         if (soleilBtns.noteEl) soleilBtns.noteEl.textContent = 'Le soleil ne se lève pas à cette latitude et cette date — aucune lecture possible.';
         return;

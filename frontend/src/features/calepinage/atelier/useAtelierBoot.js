@@ -556,6 +556,8 @@ export function useAtelierBoot(ctx) {
           suiviSite: {
             initial: siteLocaliseInitial(payload?.geometrie?.roof_layout, ctx?.geometrie?.source_repere),
             ecouter: (etat) => setSiteLocalise?.(etat),
+            // T4-X2-005 — le point de repli SERVI : site non localisé, l'atelier calcule au lieu de la simulation.
+            repli: ctx?.calepinage?.site_de_repli_point ?? null,
           },
           // ACAL777 — la facture du lead, repli d'affichage des cartes (jamais écrite au document).
           factureMensuelleMad: payload?.factureMensuelleMad ?? null,

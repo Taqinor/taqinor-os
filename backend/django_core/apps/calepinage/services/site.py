@@ -712,10 +712,20 @@ def site_de_repli(geo):
     :data:`LIBELLE_REPERE_LEAD` quand le lead porte un repère, ou ``None``
     quand le calcul serait refusé. MÊME résolution que :func:`point_du_site`
     (appelée sur un document sans épingle) — l'écran ne la redérive jamais."""
+    point = point_de_repli(geo)
+    return point['libelle'] if point else None
+
+
+def point_de_repli(geo):
+    """T4-X2-005 — le POINT de :func:`site_de_repli` : ``{lat, lon, libelle}``
+    (le libellé du bandeau), ou ``None`` quand le calcul serait refusé. L'atelier
+    y cale ses calculs solaires (pas entre rangées…) tant que le site n'est pas
+    localisé : le même lieu que la simulation, jamais l'épingle du centre du pays."""
     lat, lon, reference = point_du_site({}, lambda: geo or {})
-    if reference is not None:
-        return reference['libelle']
-    return LIBELLE_REPERE_LEAD if lat is not None and lon is not None else None
+    if lat is None or lon is None:
+        return None
+    libelle = reference['libelle'] if reference is not None else LIBELLE_REPERE_LEAD
+    return {'lat': lat, 'lon': lon, 'libelle': libelle}
 
 
 def site_dit(meteo, site):

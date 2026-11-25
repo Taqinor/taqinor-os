@@ -296,6 +296,9 @@ export function describeRowPitch(opts: {
   latitudeDeg: number;
   flush?: boolean;
   configFamily?: 'south' | 'eastwest';
+  /** T4-X2-005 — le lieu NOMMÉ de `latitudeDeg` quand ce n'est pas le site tracé (site non localisé : le point de
+   *  repli de la simulation). Absent : « la latitude du site », comme avant. */
+  lieu?: string | null;
 }): RowPitchDisclosure {
   const flush = !!opts.flush;
   const rowPitchM = Number.isFinite(opts.rowPitchM) && opts.rowPitchM > 0 ? opts.rowPitchM : 0;
@@ -312,7 +315,7 @@ export function describeRowPitch(opts: {
     ? `${family} — rangées jointives : pas de ${pas} m${ew}, aucun espacement anti-ombrage (la pente porte les modules).`
     : `${family} — pas entre rangées ${pas} m${ew}, calé sur une élévation solaire de ` +
       `${(designElevDeg as number).toLocaleString('fr-FR', { maximumFractionDigits: 1 })}° ` +
-      `(soleil de ${DESIGN_SOLAR_HOUR_V2} h au solstice d’hiver à la latitude du site, ${opts.latitudeDeg.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}°).`;
+      `(soleil de ${DESIGN_SOLAR_HOUR_V2} h au solstice d’hiver à la latitude ${opts.lieu ? `de ${opts.lieu} — site non localisé, le lieu de la simulation` : 'du site'}, ${opts.latitudeDeg.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}°).`;
   return { rowPitchM, family, flush, designElevDeg, label };
 }
 

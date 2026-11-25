@@ -945,6 +945,21 @@ describe('ACAL1412 — « Enregistrer le contour tracé » remplace le pan de tr
     } finally { m.restaurer(); }
   });
 
+  // T4-X2-010 — le pan de tracé d'une ombrière restait un pan de toit : rouvert, il se pavait (6 modules en plus).
+  it('ombrière : le pan de tracé est retiré aussi ; une façade garde le pan (c’est le bâtiment)', () => {
+    const m = monter();
+    try {
+      m.pose.enregistrerContour('ombriere');
+      expect(m.areas.map((a) => a.id)).toEqual(['z1']);
+      expect(m.pose.surfaces().map((s) => s.kind)).toEqual(['ombriere']);
+    } finally { m.restaurer(); }
+    const f = monter();
+    try {
+      f.pose.enregistrerContour('facade');
+      expect(f.areas.map((a) => a.id)).toEqual(['z1', 'z2']);
+    } finally { f.restaurer(); }
+  });
+
   it('sans bouton « × » ni « + Ajouter une zone », aucun pan n’est retiré : la surface s’ajoute, rien d’autre', () => {
     const m = monter();
     try {

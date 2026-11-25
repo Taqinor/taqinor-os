@@ -300,6 +300,21 @@ class ContexteConceptionTest(BaseApiCalepinage):
             self._contexte(self.avec_devis)['calepinage']['site_de_repli'],
             'la position GPS de la fiche')
 
+    def test_t4_x2_005_point_de_repli_meme_lieu_que_la_simulation(self):
+        """T4-X2-005 — le POINT du repli (l'atelier y cale le pas entre
+        rangées) est celui que la simulation prend : ``point_du_site`` sur un
+        document sans épingle ; ``None`` exactement quand le libellé l'est."""
+        from apps.calepinage.services.site import point_du_site
+        self.assertIsNone(self._contexte(self.nu)['calepinage']['site_de_repli_point'])
+        self.client_lie.adresse = '12 rue des Fleurs, Casablanca'
+        self.client_lie.save(update_fields=['adresse'])
+        point = self._contexte(self.nu)['calepinage']['site_de_repli_point']
+        lat, lon, reference = point_du_site({}, lambda: {'adresse': '12 rue des Fleurs, Casablanca'})
+        self.assertEqual(point, {'lat': lat, 'lon': lon, 'libelle': reference['libelle']})
+        self.assertEqual(point['libelle'], 'Casablanca (ville de référence)')
+        bloc = self._contexte(self.avec_devis)['calepinage']
+        self.assertEqual(bloc['site_de_repli_point']['libelle'], bloc['site_de_repli'])
+
     def _lead_gps_hors_contour(self):
         """ACAL250 — roof_point A DANS R, GPS corrigé B HORS de R."""
         self.lead_lie.roof_outline = CONTOUR_AUTOUR_DU_REPERE

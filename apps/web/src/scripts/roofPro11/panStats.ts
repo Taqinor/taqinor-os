@@ -80,7 +80,7 @@ export interface PanStatsResult {
  *  le kWc du résultat de zone reste affiché tel quel. */
 export function computePanStats(
   areas: readonly AreaRecord[],
-  resultFor: (a: AreaRecord) => AreaResult | null,
+  resultFor: (a: AreaRecord) => Pick<AreaResult, 'panels' | 'kwc'> | null,
   moduleFor?: (a: AreaRecord) => ModuleDocument | null,
 ): PanStatsResult {
   const modulesParPan: Record<string, string | undefined> = {};

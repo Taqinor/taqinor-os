@@ -316,7 +316,7 @@ describe('CALX109 câblage — le sélecteur de module du pan, créé par le con
   });
 
   it('`zones.ts` passe bien le 3ᵉ argument `moduleFor` à `computePanStats`', () => {
-    expect(SOURCE_ZONES).toContain('a.result), moduleDuPan);');
+    expect(SOURCE_ZONES).toContain('poseAfficheeDuPan(a, activeAreaId, liveActive), moduleDuPan);'); // T4-X2-010
   });
 });
 

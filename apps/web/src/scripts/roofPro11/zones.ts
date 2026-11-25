@@ -19,6 +19,7 @@ import { type Obstacle } from '../../lib/obstacles';
 import { pivoterSite } from './siteRotation'; // ACAL514
 import { motifPanVerrouille } from './panVerrouille'; // ACAL520
 import { texteTotalProduction } from './affichageErp'; // ACAL1418
+import { poseAfficheeDuPan } from './poseEnregistree'; // T4-X2-010
 import { anneeValide, motifPanExistant } from './panExistant'; // ACAL510, ACAL574
 import { appliquerReglagesAuxPans, pansReglesAMain } from './jeuReglages'; // ACAL554
 import { accesMoyenDuPan, mentionAcces, trierPansParAcces } from './triPans'; // ACAL728
@@ -563,11 +564,16 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     // économie plafonnée à partir du kWh produit total.
     const targetAnnualKwh = ctx.roofType === 'pitched' ? ctx.pitchedRec?.targetAnnualKwh : ctx.rec?.targetAnnualKwh;
     const total = aggregateAreas(results, targetAnnualKwh, annualSavingsMad);
+    // T4-X2-010 — un pan NON actif se lit sur sa pose ENREGISTRÉE (ce que le document émet) : rouvert, il n'a pas de
+    // `result` et le tableau disait « 0 modules · à calculer » à côté d'une barre qui comptait ses panneaux.
+    const posesAffichees = areas.map((a) => poseAfficheeDuPan(a, activeAreaId, liveActive));
+    total.panels = posesAffichees.reduce((s, p) => s + (p?.panels ?? 0), 0);
+    total.kwc = posesAffichees.reduce((s, p) => s + (p?.kwc ?? 0), 0);
     // ACAL851 — le module CHOISI de chaque pan (le kWc de zone du solveur pour un pan sans choix).
     const poses = areas.map((a, i) => {
       const m = a.moduleId ? resoudreModuleDuPan(catalogueAtelier.choisissables, a.moduleId) : null;
       const module = m && !estRefus(m) ? m : null;
-      const r = results[i];
+      const r = posesAffichees[i];
       return { r, module, kwc: r && module ? kwcDuPan(r.panels, module) : r?.kwc ?? 0 };
     }).filter((p) => p.r != null && p.r.panels > 0);
     const watts = new Set(poses.map((p) => (p.module ?? MODULE_PAR_DEFAUT_ATELIER).pmaxWc));
@@ -588,7 +594,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     // ACAL1420 — le pan ACTIF se mesure sur ses sommets VIVANTS (`ctx.vertices`), son enregistrement n'étant
     // synchronisé qu'au changement de pan (même patron que la sérialisation) : jamais « non tracé » à côté de son aire.
     const pansVivants = areas.map((a) => (a.id === activeAreaId ? { ...a, vertices: ctx.vertices } : a));
-    const stats = computePanStats(pansVivants, (a) => (a.id === activeAreaId ? liveActive : a.result), moduleDuPan);
+    const stats = computePanStats(pansVivants, (a) => poseAfficheeDuPan(a, activeAreaId, liveActive), moduleDuPan); // T4-X2-010
     const multiBuilding = hasMultipleBuildings(stats);
 
     if (areasListEl) {
@@ -608,7 +614,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
       triBtn.hidden = areas.length < 2;
       triBtn.setAttribute('aria-pressed', String(triParAcces));
       const rowHtml = (a: AreaRecord, i: number): string => {
-        const r = a.id === activeAreaId ? liveActive : a.result;
+        const r = poseAfficheeDuPan(a, activeAreaId, liveActive); // T4-X2-010
         const active = a.id === activeAreaId;
         const panels = r ? fmt(r.panels) : '—';
         const kwc = r ? `${r.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} kWc` : a.vertices.length >= 3 ? 'non calculé' : 'à tracer';
