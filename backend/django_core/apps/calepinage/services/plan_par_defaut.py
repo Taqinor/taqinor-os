@@ -35,6 +35,7 @@ MESSAGE_ETAPE_SANS_FICHE = ('Étape « %s » non appliquée : la fiche technique
                             'renseigner la fiche technique du produit dans Stock.')
 #: ACAL2045 — ce qu'il faut renseigner pour que la pose ne soit plus supposée.
 A_RENSEIGNER_POSE = 'renseigner « Type de toiture » sur la fiche du lead ou tracer le toit au calepinage'
+A_TRACER_LE_TOIT = 'tracer le toit au calepinage'
 
 
 def _pose_supposee(type_installation=None, type_toiture=None):
@@ -44,12 +45,17 @@ def _pose_supposee(type_installation=None, type_toiture=None):
     posé sur châssis) ; sinon affleurante (toit en pente d'une maison, marché non dit). Le
     document la dit par ``flush`` comme une pose réelle : l'étape « Échauffement des modules »
     la relie à la table société (D-ACAL-84), aucun coefficient n'est posé ici."""
+    # B2 (relecture lot 5) — la phrase nomme le geste qui LÈVE la supposition : « Type de
+    # toiture » seulement quand il est vide et qu'il change la pose (lead résidentiel ou marché
+    # non dit) ; déjà rempli, ou pour un site commercial / industriel / agricole (sur châssis
+    # quel que soit le toit), seul le toit tracé au calepinage la lève.
     if type_toiture == 'terrasse_beton':
-        flush, champ, raison, quoi = False, 'type_toiture', 'toit plat déclaré', 'tracer le toit au calepinage'
+        flush, champ, raison, quoi = False, 'type_toiture', 'toit plat déclaré', A_TRACER_LE_TOIT
     elif type_installation in ('commercial', 'industriel', 'agricole'):
-        flush, champ, raison, quoi = False, 'type_installation', 'lead %s' % type_installation, A_RENSEIGNER_POSE
+        flush, champ, raison, quoi = False, 'type_installation', 'lead %s' % type_installation, A_TRACER_LE_TOIT
     else:
-        flush, champ, raison, quoi = True, 'type_toiture', 'panneaux à plat sur la couverture', A_RENSEIGNER_POSE
+        flush, champ, raison = True, 'type_toiture', 'panneaux à plat sur la couverture'
+        quoi = A_TRACER_LE_TOIT if type_toiture else A_RENSEIGNER_POSE
     valeur = 'affleurante' if flush else 'sur châssis'
     return flush, {'code': 'pose_supposee', 'champ': champ, 'valeur': valeur, 'source': 'defaut',
                    'message': 'Pose des panneaux supposée %s (%s) : %s.' % (valeur, raison, quoi)}

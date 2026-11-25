@@ -145,8 +145,12 @@ class PlanParDefautTest(TestCase):
         self.assertEqual({nom: [(s['champ'], s['valeur']) for s in d] for nom, d in dites.items()},
                          {'r': [('type_toiture', 'affleurante')], 't': [('type_toiture', 'sur châssis')],
                           'i': [('type_installation', 'sur châssis')], 'x': [('type_toiture', 'affleurante')]})
-        self.assertIn('Type de toiture', dites['r'][0]['message'])
-        self.assertIn('calepinage', dites['t'][0]['message'])
+        # B2 (relecture lot 5) — la phrase nomme le geste qui LÈVE la supposition : « Type de
+        # toiture » seulement s'il est vide ; rempli (tuiles), ou site industriel : le toit tracé.
+        self.assertIn('Type de toiture', dites['x'][0]['message'])
+        for nom in ('r', 't', 'i'):
+            self.assertNotIn('Type de toiture', dites[nom][0]['message'], nom)  # mutant « phrase d'avant » : rouge
+            self.assertTrue(dites[nom][0]['message'].endswith(': tracer le toit au calepinage.'), nom)
 
     def test_fiche_a_puissance_sans_coefficient_de_temperature_echauffement_omis_dit(self):
         """B1 (relecture lot 5) — la fiche porte ``pmax_wc`` mais pas ``temp_coeff_pmax_pct_c`` :
