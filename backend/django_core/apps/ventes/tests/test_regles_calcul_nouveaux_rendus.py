@@ -870,6 +870,14 @@ class MoteurSansToitPlanParDefautTests(TCL._emprunt(TCL.FigeageDevisAutoTests, *
         # Le plan refusé : la ville reste, l'absence est DITE (jamais un refus de la conception).
         self.assertEqual(avant['production_annuelle']['source'], 'moteur')
         self.assertEqual(temoin.absents['production_plan_par_defaut'], 'plan par défaut refusé : fiche vide')
+        # Point 4 de la relecture — l'échec n'est plus muet : une supposition SERVIE le dit (``absents``
+        # n'est ni rangé ni servi). Mutant « absents seulement » : rouge.
+        non_simule = [s for s in temoin.suppositions if s['code'] == 'plan_par_defaut_non_simule']
+        self.assertEqual(len(non_simule), 1, temoin.suppositions)
+        self.assertIn('plan par défaut refusé : fiche vide', non_simule[0]['message'])
+        self.assertIn('production standard de la ville', non_simule[0]['message'])
+        self.assertIn('plan_par_defaut_non_simule', [s['code'] for s in temoin.sortie()['suppositions']])
+        self.assertNotIn('plan_par_defaut_non_simule', codes)
 
     def test_niveau_15_fiche_du_module_vide_jamais_servie(self):
         from apps.ventes.domain.regles_calcul import REGLES_POSE_REELLE_2111 as N15
@@ -881,6 +889,89 @@ class MoteurSansToitPlanParDefautTests(TCL._emprunt(TCL.FigeageDevisAutoTests, *
         self.assertEqual(resultat.valeurs[resultat.option_retenue]['production_annuelle']['source'], 'moteur')
         self.assertIn('fiche technique du module', resultat.absents['production_plan_par_defaut'])
         self.assertNotIn('production_plan_par_defaut', [s['code'] for s in resultat.suppositions])
+        dite = next(s for s in resultat.suppositions if s['code'] == 'plan_par_defaut_non_simule')
+        self.assertEqual(dite['champ'], 'fiche_technique')
+        self.assertIn('renseigner la fiche technique du produit dans Stock', dite['message'])
+
+
+class MoteurSansToitCITests(TCL._emprunt(TCL.FigeageDevisAutoTests, *TCL._FABRIQUES), TestCase):
+    """ADEV155, point 1 (a) de la relecture — un lead COMMERCIAL sans toit tracé : au niveau 14
+    courant rien ne bouge ; au niveau 15 la production de l'étude C&I vient du plan par défaut,
+    et la pose supposée est « sur châssis » (D-ACAL-107, règle RÉELLE de ``_pose_supposee``
+    alimentée par le ``type_installation`` du lead)."""
+
+    def _calculer(self, company, lead, *, niveau=None, ouvert=None):
+        from apps.calepinage.services import plan_par_defaut as PPD
+        from apps.ventes.conception import moteur as M
+        from apps.ventes.domain import regles_calcul as RC
+
+        def simuler(company_, lat, lon, kwc, **kw):  # la simulation doublée, la règle de pose réelle
+            _flush, pose = PPD._pose_supposee(kw.get('type_installation'), kw.get('type_toiture'))
+            return dict(_plan_simule(company_, None, kwc, {}), suppositions=[pose])
+        TCL._reglages_de_la_societe(company)
+        with mock.patch.object(RC, 'REGLES_COURANTES', niveau or RC.REGLES_COURANTES), \
+                mock.patch.object(PPD, 'simuler_plan_par_defaut', side_effect=simuler) as simule, \
+                mock.patch.object(M, 'plan_par_defaut_ouvert', wraps=M.plan_par_defaut_ouvert,
+                                  **({'return_value': False} if ouvert is False else {})):
+            return M.calculer_conception(lead, company), simule
+
+    def test_niveau_courant_identique_puis_niveau_15_plan_par_defaut_sur_chassis(self):
+        from apps.ventes.domain.regles_calcul import REGLES_POSE_REELLE_2111 as N15
+
+        company, lead = self._cas('ci_commercial')
+        courant, simule = self._calculer(company, lead)
+        simule.assert_not_called()
+        ferme, _s = self._calculer(company, lead, ouvert=False)
+        self.assertEqual(TCL._json(courant.sortie()), TCL._json(ferme.sortie()))
+        resultat, simule = self._calculer(company, lead, niveau=N15)
+        self.assertEqual(resultat.etat, 'complet', resultat.refus)
+        self.assertEqual(simule.call_args.kwargs['type_installation'], 'commercial')
+        etude = resultat.blocs['etude_ci']
+        self.assertEqual(etude['production']['source'], 'calepinage')
+        self.assertEqual(etude['production']['kwh_kwc_mensuel'], [175.0] * 12)
+        self.assertIn('plan_par_defaut', [h.get('source') for h in etude.get('hypotheses') or []])
+        option = resultat.option_retenue
+        self.assertEqual(resultat.valeurs[option]['production_annuelle']['source'], 'plan_par_defaut')
+        self.assertNotEqual(resultat.valeurs[option]['production_annuelle']['valeur'],
+                            courant.valeurs[option]['production_annuelle']['valeur'])
+        pose = [s for s in resultat.suppositions if s['code'] == 'pose_supposee']
+        self.assertEqual([(s['champ'], s['valeur']) for s in pose], [('type_installation', 'sur châssis')])
+        self.assertIn('tracer le toit au calepinage', pose[0]['message'])
+
+
+class ListeSansToitHorsPompageTests(TCL._emprunt(TCL.FigeageDevisAutoTests, *TCL._FABRIQUES), TestCase):
+    """Point 3 de la relecture — ``remplir_conceptions --ecarts-sans-toit`` laisse de côté un lead
+    AGRICOLE sans toit par LA règle du moteur (``moteur.marche_au_plan_par_defaut``), le dit dans
+    sa ligne de synthèse, et ne simule jamais son plan. (Dans ce module plutôt que dans
+    ``test_conception_lead.py`` : ce fichier-mur de 4 481 lignes ne peut plus grossir — C20.)"""
+
+    def test_lead_agricole_sans_toit_hors_liste_et_compte(self):
+        import io
+
+        from django.core.management import call_command
+
+        from apps.crm.models import Lead
+
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'))
+        TCL._reglages_de_la_societe(company)
+        agricole = Lead.objects.create(company=company, nom='Agri', prenom='Sans toit', ville=lead.ville,
+                                       type_installation='agricole', facture_hiver=Decimal('1800'))
+        simules = []
+
+        def plan(company_, lat, lon, kwc, **kw):
+            simules.append(kw['lead_id'])
+            return dict(_plan_simule(company_, None, kwc, {}), suppositions=[])
+        sortie = io.StringIO()
+        with mock.patch('apps.calepinage.services.plan_par_defaut.simuler_plan_par_defaut', side_effect=plan):
+            call_command('remplir_conceptions', '--company', str(company.pk), '--ecarts-sans-toit', stdout=sortie,
+                         stderr=io.StringIO())
+        liste = sortie.getvalue()
+        self.assertIn('ÉCARTS SANS TOIT : 1 lead(s) sans toit tracé listé(s), 1 lead(s) agricole(s) laissé(s) '
+                      'de côté', liste)  # mutant « liste sans la règle du moteur » : 2 listés, rouge
+        self.assertIn(f'lead #{lead.pk} (sans toit) option ', liste)
+        self.assertNotIn(f'lead #{agricole.pk} ', liste)
+        self.assertNotIn(agricole.pk, simules)
+        self.assertIn(lead.pk, simules)
 
 
 class ProductibleDuPlanParDefautTests(SimpleTestCase):
@@ -930,3 +1021,27 @@ class BrouillonDuPlanParDefautTests(SimpleTestCase):
         autre = dict(self.BASE, source='calepinage_enregistre')
         self.assertEqual(self._diag(etude_params={'etude_horaire': {'base_production': autre}}),
                          (None, 'aucune simulation du calepinage'))
+
+    def test_brouillon_ci_niveau_15_relit_la_base_du_plan_de_son_etude(self):
+        """Point 1 (b) de la relecture — un brouillon C&I né du plan par défaut, rafraîchi : sa
+        base est relue sur son bloc ``etude_ci`` (12 kWh/kWc d'origine ``calepinage`` + la
+        source ``plan_par_defaut`` de ses hypothèses), jamais la ville. Mutant « lire le seul
+        bloc horaire » : (None, …) — rouge."""
+        from apps.ventes.horaire.productible_pose import base_etude_ci
+        etude_ci = {'production': {'source': 'calepinage', 'kwh_kwc_mensuel': [175.0] * 12},
+                    'hypotheses': [{'cle': 'forme_horaire', 'source': 'plan_par_defaut'}]}
+        devis = SimpleNamespace(pk=1, company=None, regles_calcul=REGLES_POSE_REELLE_2111, statut='brouillon',
+                                mode_installation='commercial', etude_params={'etude_ci': etude_ci})
+        with mock.patch('apps.calepinage.selectors_devis.productible_pose_servi', return_value=None):
+            base, hypothese = base_etude_ci(devis, kwc=30.0)
+            self.assertEqual(base, self.BASE)
+            self.assertEqual(hypothese['source'], 'plan_par_defaut')
+            # Une étude C&I sur PVGIS (ou d'une pose) n'est jamais prise pour le plan.
+            devis.etude_params = {'etude_ci': dict(etude_ci, hypotheses=[])}
+            self.assertIsNone(base_etude_ci(devis, kwc=30.0)[0])
+            pvgis = {'source': 'pvgis', 'kwh_kwc_mensuel': [175.0] * 12}
+            devis.etude_params = {'etude_ci': dict(etude_ci, production=pvgis)}
+            self.assertIsNone(base_etude_ci(devis, kwc=30.0)[0])
+            devis.regles_calcul = REGLES_SENSIBILITES_1911  # niveau 14 : rien
+            devis.etude_params = {'etude_ci': etude_ci}
+            self.assertEqual(base_etude_ci(devis, kwc=30.0), (None, None))

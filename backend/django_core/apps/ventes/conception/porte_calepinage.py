@@ -238,7 +238,10 @@ def productible_du_plan_par_defaut(company, lead, kwc, produits):
     if (not plan.get('complete') or not annuel or not kwc_plan or not isinstance(mensuel, list) or len(mensuel) != 12
             or any(m is None for m in mensuel)):  # un mois absent : jamais servi comme zéro
         return None, [], 'plan par défaut incomplet'
-    rendement = round(float(annuel) / float(kwc_plan), 1)
+    par_mois = [round(float(m) / float(kwc_plan), 1) for m in mensuel]
+    # Le rendement annuel = la somme des 12 mois servis : celle que relit un brouillon C&I
+    # (``horaire/productible_pose._base_du_plan_rangee``), une seule valeur de bout en bout.
+    rendement = round(sum(par_mois), 1)
     azimut = float(plan.get('azimut_deg') or 180.0)
     suppositions.append({'code': 'production_plan_par_defaut', 'champ': 'calepinage', 'valeur': rendement,
                          'source': 'defaut', 'message': MESSAGE_PRODUCTION_PLAN % (
@@ -247,7 +250,7 @@ def productible_du_plan_par_defaut(company, lead, kwc, produits):
                              '{:g}'.format(rendement).replace('.', ','))})
     return {'perime': False, 'motif': '', 'source': SOURCE_PLAN_PAR_DEFAUT, 'kwc_simule': None,
             'kwh_kwc_annuel': rendement,
-            'kwh_kwc_mensuel': [round(float(m) / float(kwc_plan), 1) for m in mensuel],
+            'kwh_kwc_mensuel': par_mois,
             'complete': True, 'pertes_et_ombrage_inclus': True}, suppositions, ''
 
 

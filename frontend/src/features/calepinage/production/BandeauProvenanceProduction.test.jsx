@@ -451,6 +451,18 @@ describe('ACAL995 — « Le devis annonce » seulement hors pose réelle', () =>
     }
   })
 
+  // ADEV155 (niveau 15) — la conception d'un lead sans pose tourne sur le plan par défaut : la ligne le DIT
+  // (jamais « production standard de la ville »), au lieu de se taire sur une source inconnue.
+  it('ADEV155 — conception du plan par défaut : la ligne dit « toit supposé », jamais la ville', async () => {
+    kwcPose = 5.68
+    simule()
+    const plan = { ...ville, production_annuelle_kwh: { ...ville.production_annuelle_kwh, source: 'plan_par_defaut' } }
+    rendreAvec(plan, false)
+    const ligne = await screen.findByTestId('acal995-devis-annonce')
+    expect(ligne).toHaveTextContent('production du toit supposé (plan par défaut)')
+    expect(ligne).not.toHaveTextContent('production standard de la ville')
+  })
+
   // T4-U4-006 — « Le devis annonce » ne parle que d'un devis LIÉ (`calepinage.devis_lie` du contexte).
   const rendreAvec = (chiffrage, devisLie = true) => render(
     <MemoryRouter><BandeauProvenanceProduction calepinageId={1} chiffrage={chiffrage} devisLie={devisLie} /></MemoryRouter>,

@@ -123,6 +123,7 @@ function mentionBorneHaute(total) {
 const ORIGINE_ANNONCE = {
   standard_ville: 'production standard de la ville',
   calepinage_enregistre: 'pose réelle recalculée par le moteur du devis',
+  plan_par_defaut: 'production du toit supposé (plan par défaut), sans la pose de ce calepinage', // ADEV155, niveau 15
 }
 /* T4-U4-006 / T4-U4-017 — sans devis LIÉ au calepinage, le chiffre est celui du moteur du devis sur CETTE pose (la
    production standard de la ville) : jamais « Le devis annonce », qui faisait lire au vendeur l'estimation de l'atelier

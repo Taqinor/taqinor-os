@@ -234,17 +234,25 @@ class Command(BaseCommand):
         moyen et le plus grand EN TÊTE, puis les lignes des leads. Rien n'est écrit."""
         from apps.ventes.selectors_calepinage import pose_du_lead
 
+        hors_plan = []
+
         def retenir(lead):
-            return None if pose_du_lead(company, lead.pk)[0] else lead
+            if pose_du_lead(company, lead.pk)[0]:
+                return None
+            if not _au_plan_par_defaut(lead):  # le moteur ne lui servira jamais le plan : pas une ligne
+                hors_plan.append(lead.pk)
+                return None
+            return lead
 
         rendus = [(lead, rendu) for lead, rendu in self._examiner(
             company, limite=limite, lead_id=lead_id, retenir=retenir,
             calculer=lambda lead, _porteur: _ecarts_du_plan_par_defaut(lead, company))]
         for ligne in _sortie_sans_toit(rendus):
             self.stdout.write(ligne)
-        self.stdout.write(f'  ÉCARTS SANS TOIT : {len(rendus)} lead(s) sans toit tracé listé(s) — rien n\'est '
-                          'écrit ; le moteur sans toit ne passe au plan par défaut qu\'après lecture de cette liste '
-                          'par le fondateur (ADEV155).')
+        self.stdout.write(f'  ÉCARTS SANS TOIT : {len(rendus)} lead(s) sans toit tracé listé(s), {len(hors_plan)} '
+                          'lead(s) agricole(s) laissé(s) de côté (le pompage suit sa pose : le moteur ne leur sert '
+                          'jamais le plan par défaut) — rien n\'est écrit ; le moteur sans toit ne passe au plan par '
+                          'défaut qu\'après lecture de cette liste par le fondateur (ADEV155).')
 
 
 def _actuel_et_pose(lead, company, calepinage_id, empreinte_pose):
@@ -329,6 +337,19 @@ def _lignes_ecart(lead, calepinage_id, actuel, pose):
 
 def _signe(kwh):
     return f'{kwh:+,.0f}'.replace(',', ' ')
+
+
+def _au_plan_par_defaut(lead):
+    """Le moteur servirait-il le plan par défaut à ce lead ? LA règle du moteur
+    (``moteur.marche_au_plan_par_defaut``) sur SON marché (``entrees.marche_du_lead``) ; un
+    marché inconnu reste listé (le moteur le refuse, la ligne le dit)."""
+    from apps.ventes.conception.entrees import marche_du_lead
+    from apps.ventes.conception.moteur import marche_au_plan_par_defaut
+
+    try:
+        return marche_au_plan_par_defaut(marche_du_lead(lead))
+    except ValueError:
+        return True
 
 
 def _ecarts_du_plan_par_defaut(lead, company):

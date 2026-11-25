@@ -22,6 +22,11 @@ MOTIF_SANS_LEAD = 'aucun lead lié : le chiffrage du devis ne peut pas être cal
 MOTIF_ECHEC = 'chiffrage indisponible : calcul du devis en échec'
 MOTIF_EN_COURS = 'premier calcul de la conception en cours'
 SOURCE_POSE, SOURCE_VILLE, SOURCE_CONCEPTION = 'calepinage_enregistre', 'standard_ville', 'conception'
+#: ADEV155 (niveau 15) — la production du toit supposé : la conception rangée d'un lead sans
+#: toit tracé reste servie tant que l'empreinte ne bouge pas, calepinage ouvert sans pose compris.
+SOURCE_PLAN_PAR_DEFAUT = 'plan_par_defaut'
+#: La source de la production d'une conception (``valeurs.production_annuelle.source``) → celle du chiffrage.
+SOURCES_PRODUCTION = {'pose': SOURCE_POSE, 'plan_par_defaut': SOURCE_PLAN_PAR_DEFAUT}
 #: Les entrées de la conception qui disent qu'une consommation est CONNUE (D-ACAL-40).
 ENTREES_FACTURE = ('facture_hiver', 'facture_ete', 'conso_mensuelle_kwh', 'bill_kwh', 'releve_conso')
 
@@ -62,10 +67,9 @@ def _depuis_conception(conception, marche_du_lead):
         return _bloc(marche, regles, {}, motif=motif, etat='indisponible')
     option = conception.get('option_retenue') or 'sans'
     table = (conception.get('valeurs') or {}).get(option) or {}
-    sur_la_pose = (table.get('production_annuelle') or {}).get('source') == 'pose'
+    source = SOURCES_PRODUCTION.get((table.get('production_annuelle') or {}).get('source'), SOURCE_VILLE)
     valeurs = {'kwc': (_valeur(table, 'puissance_kwc'), SOURCE_CONCEPTION),
-               'production_annuelle_kwh': (_valeur(table, 'production_annuelle'),
-                                           SOURCE_POSE if sur_la_pose else SOURCE_VILLE)}
+               'production_annuelle_kwh': (_valeur(table, 'production_annuelle'), source)}
     if any(cle in (conception.get('entrees_utilisees') or {}) for cle in ENTREES_FACTURE):  # D-ACAL-40
         valeurs['economie_annee1_mad'] = (_valeur(table, 'economies_annuelles'), SOURCE_CONCEPTION)
         valeurs['autoconsommation_pct'] = (_pct(_valeur(table, 'autoconsommation')), SOURCE_CONCEPTION)
