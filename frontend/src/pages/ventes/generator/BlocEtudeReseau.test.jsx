@@ -715,3 +715,33 @@ describe('Batteries au départ — ajout possible sur la carte + contrôle de qu
       "Onduleur hybride 15 kW retenu pour l'extension : jusqu'à 3 batteries (2 à ajouter plus tard). Un onduleur de 12 kW suffirait")
   })
 })
+
+// T4-X6-009 — douze factures tapées : la ligne « Retenu » dit qu'elles sont retenues, ou
+// l'écran dit pourquoi elles ne comptent pas (des kWh passent devant) et quel geste fait.
+describe('T4-X6-009 — factures tapées : retenues, ou pourquoi pas', () => {
+  const factures = Array.from({ length: 12 }, (_, i) => ({
+    mois: `2025-${String(i + 1).padStart(2, '0')}`, montant_ttc: i === 6 ? '4200' : '3000', kwh: '' }))
+  const profil = { ...profilCiVide(), saisieConso: 'factures', factures }
+  const rendreBloc = (feuille, resolues) => render(
+    <BlocEtudeReseau profil={profil} setChamp={() => {}} resolues={resolues} feuilleRetenue={feuille} />)
+
+  it('les factures retenues : « Retenu : les 12 factures tapées »', () => {
+    rendreBloc('factures_mad', { factures_mad: { valeur: factures, provenance: { origine: 'saisie' } } })
+    expect(screen.getByTestId('ci-retenu-factures')).toHaveTextContent('Retenu : les 12 factures tapées — saisi')
+    expect(screen.queryByTestId('ci-factures-ignorees')).toBeNull()
+  })
+
+  it('le kWh mensuel de la fiche du lead passe devant : la phrase et le geste', () => {
+    rendreBloc('kwh_mensuel_declare', { kwh_mensuel_declare: { valeur: 6000, provenance: { origine: 'lead' } } })
+    expect(screen.getByTestId('ci-factures-ignorees')).toHaveTextContent(
+      'Les factures tapées ne comptent pas : le calcul retient le kWh mensuel de la fiche du lead. '
+      + 'Videz la consommation en kWh de la fiche du lead pour utiliser les factures.')
+  })
+
+  it('des kWh enregistrés sur le devis passent devant : « Videz les 12 mois en kWh »', () => {
+    rendreBloc('kwh_mensuels', { kwh_mensuels: { valeur: Array(12).fill(2000), provenance: { origine: 'devis' } } })
+    expect(screen.getByTestId('ci-factures-ignorees')).toHaveTextContent(
+      'Les factures tapées ne comptent pas : le calcul retient les kWh enregistrés sur le devis. '
+      + 'Videz les 12 mois en kWh pour utiliser les factures.')
+  })
+})

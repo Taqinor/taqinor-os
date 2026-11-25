@@ -1127,3 +1127,25 @@ class EcranEditionSurLesLignesTests(TestCase):
                               e['option_avec']['batterie']['nom'], e['option_avec']['batterie']['quantite']))
         self.assertEqual(systeme(apercu), systeme(range_))
         self.assertEqual(apercu['entrees_resolues']['kwh_mensuels']['valeur'], consommation['kwh_mensuels'])
+
+    def test_x6_009_factures_tapees_passent_devant_les_kwh_ranges(self):
+        """T4-X6-009 — 12 mois en kWh ENREGISTRÉS sur le devis, puis 12 factures en MAD tapées
+        (l'écran envoie le bloc ``consommation`` entier, kWh vides : celui que l'enregistrement
+        rangera) : l'aperçu retient les factures, jamais les kWh rangés « origine devis »."""
+        from apps.ventes import tarif_ci
+        from apps.ventes.models import Devis
+        devis = self._devis_les_deux()
+        api = APIClient()
+        api.force_authenticate(self.user)
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=self._ci120()._tarif_grille):
+            reponse = api.patch('/api/django/ventes/devis/%d/etude-params/' % devis.pk,
+                                {'consommation': {'kwh_mensuels': [2600] + [2000] * 11}}, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        Lead.objects.filter(pk=devis.lead_id).update(conso_mensuelle_kwh=None)
+        devis = Devis.objects.get(pk=devis.pk)
+        factures = [{'mois': '2025-%02d' % m, 'montant_ttc': 4200 if m == 7 else 3000, 'kwh': None}
+                    for m in range(1, 13)]
+        consommation = {'kwh_mensuels': None, 'kwh_annuel': None, 'factures_mad': factures, 'registres_mt': None}
+        apercu, _eco = self._servi_a_l_ecran(devis, {'consommation': consommation})
+        self.assertEqual(apercu['feuille_consommation_retenue'], 'factures_mad')
+        self.assertIsNone((apercu['entrees_resolues'].get('kwh_mensuels') or {}).get('valeur'))

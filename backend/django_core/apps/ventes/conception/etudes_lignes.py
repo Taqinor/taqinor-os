@@ -254,16 +254,18 @@ def lignes_de_l_ecran(devis, lignes):
     return composees
 
 
-def etude_ci_de_l_ecran(devis, lignes, entrees):
+def etude_ci_de_l_ecran(devis, lignes, entrees, *, vu=None):
     """T4-X6-008 — l'étude C&I de l'écran d'édition : LE calcul rangé du devis
     (:func:`preparation_etude_ci` + :func:`etude_ci_calculee`, taille, onduleurs et option
     « avec » DES LIGNES envoyées) avec les entrées TAPÉES par-dessus ; ``None`` quand les
-    lignes ne portent aucun panneau (l'écran garde l'aperçu du moteur)."""
+    lignes ne portent aucun panneau (l'écran garde l'aperçu du moteur). ``vu`` : le devis
+    tel que l'aperçu le lit (consommation de l'écran, T4-X6-009), sinon ``devis``."""
     composees = lignes_de_l_ecran(devis, lignes)
-    preparation = preparation_etude_ci(devis, composees)
+    vu = devis if vu is None else vu
+    preparation = preparation_etude_ci(vu, composees)
     if not preparation or not preparation.get('kwc'):
         return None
-    return etude_ci_calculee(devis, preparation, composees, entrees=entrees)[0]
+    return etude_ci_calculee(vu, preparation, composees, entrees=entrees)[0]
 
 
 def etude_ci_calculee(devis, preparation, lignes=None, *, entrees=None):

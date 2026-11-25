@@ -61,6 +61,7 @@ export function CarteProfilCi({
           mentionReventeServeur={apercuCi?.donnees?.economie_ci?.revente?.statut === 'absente_bt'
             ? apercuCi.donnees.economie_ci.revente.mentions?.[0] : null}
           contrat={tarif('contrat')} affiner={tarif('affiner')} activite={children}
+          feuilleRetenue={apercuCi?.donnees?.feuille_consommation_retenue ?? null}
           affinerOuvert={Object.keys(erreursTarif).some((k) => k === 'base_tarifs' || k.startsWith('mt.'))}
         />
         <CarteResultatCi {...(apercuCi || {})} />
@@ -248,6 +249,32 @@ function Retenu({ resolues, cle, champ = null, repris = [] }) {
   )
 }
 
+// T4-X6-009 — douze factures tapées : la ligne « Retenu » le dit quand le calcul les retient ;
+// sinon l'écran dit QUELS kWh passent devant et le geste qui rend la main aux factures.
+const FEUILLES_FACTURES = ['factures_mad']
+function FacturesRetenues({ profil, resolues, feuille }) {
+  const tapees = (profil.factures || []).filter((f) => String(f?.montant_ttc ?? '').trim()
+    || String(f?.kwh ?? '').trim()).length
+  if (profil.saisieConso !== 'factures' || !tapees || !feuille) return null
+  const r = (resolues && resolues[feuille]) || null
+  if (FEUILLES_FACTURES.includes(feuille)) {
+    return (
+      <p className="text-xs text-muted-foreground" data-testid="ci-retenu-factures">
+        Retenu : les {tapees} factures tapées{r ? ` — ${libelleProvenance(r.provenance)}` : ''}
+      </p>
+    )
+  }
+  const duLead = r?.provenance?.origine === 'lead'
+  return (
+    <p className="text-xs text-warning" data-testid="ci-factures-ignorees">
+      Les factures tapées ne comptent pas : le calcul retient {duLead
+        ? 'le kWh mensuel de la fiche du lead' : 'les kWh enregistrés sur le devis'}. {duLead
+        ? 'Videz la consommation en kWh de la fiche du lead pour utiliser les factures.'
+        : 'Videz les 12 mois en kWh pour utiliser les factures.'}
+    </p>
+  )
+}
+
 function Nombre({ id, label, value, onChange, placeholder, testid, aide }) {
   return (
     <div className="grid gap-1.5">
@@ -282,7 +309,7 @@ export function AideAppel({ id, children }) {
 export default function BlocEtudeReseau({
   inclinaisonRetenue = null, tailleLimiteeToit = null,
   profil, setChamp, resolues = null, erreurConso, mentionReventeServeur = null, repris = [],
-  contrat = null, activite = null, affiner = null, affinerOuvert = false,
+  contrat = null, activite = null, affiner = null, affinerOuvert = false, feuilleRetenue = null,
 }) {
   const p = profil || {}
   const estMt = p.tension === 'mt'
@@ -350,6 +377,7 @@ export default function BlocEtudeReseau({
             </div>
           </div>
         )}
+        <FacturesRetenues profil={p} resolues={resolues} feuille={feuilleRetenue} />
         <Retenu resolues={resolues} cle="kwh_mensuels" champ="kwhAnnuel" repris={repris} />
         {!repris.includes('kwhAnnuel') && <Retenu resolues={resolues} cle="kwh_annuel" />}
         {/* ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES / CIQ125 — le refus s'affiche SOUS le champ. */}

@@ -171,7 +171,7 @@
   "corps_regles": {
     "mode": "commercial | industriel — obligatoire",
     "lead": "entier ou null — lu via crm.selectors (contrat `lead_pro.json`, CIQ1)",
-    "devis": "entier ou null — un devis existant : ses `etude_params` C&I sont relues (priorité corps > devis > lead)",
+    "devis": "entier ou null — un devis existant : ses `etude_params` C&I sont relues (priorité corps > devis > lead) ; T4-X6-009 : un bloc `consommation` envoyé REMPLACE celui du devis en entier (c'est lui que l'enregistrement rangera) — un champ vidé à l'écran ne laisse plus passer les kWh rangés avant devant les factures tapées",
     "tension": "bt | mt | inconnue",
     "phases": "mono | tri | inconnu",
     "consommation": "`kwh_mensuels` [12] OU `kwh_annuel` ; `factures_mad` [{mois AAAA-MM, montant_ttc, kwh}] ; `registres_mt` [12 × {pointe_kwh, pleines_kwh, creuses_kwh, puissance_atteinte_kw, kvarh}] (MT) — une tranche ouverte (« plus de 4 000 DH ») n'est JAMAIS un montant (D-CIQ-19)",
