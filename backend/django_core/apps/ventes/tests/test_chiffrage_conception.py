@@ -89,6 +89,17 @@ class ChiffrerConceptionTest(SimpleTestCase):
         self.assertEqual(bloc['economie_annee1_mad']['option'], 'avec_batterie')
         self.assertEqual(bloc['production_annuelle_kwh']['source'], cc.SOURCE_VILLE)
 
+    def test_adev155_production_du_plan_par_defaut_jamais_dite_de_la_ville(self):
+        """ADEV155 (niveau 15) — la conception rangée d'un lead sans toit tracé reste servie quand
+        un calepinage SANS pose est ouvert (empreinte inchangée : ``calepinage_du_lead`` ne pose
+        de toit qu'avec un ``layout_hash``) ; sa production vient du plan par défaut : le chiffrage
+        le dit, jamais « standard_ville ». Mutant « pose sinon ville » : rouge."""
+        conception = _conception(sur_la_pose=False)
+        conception['valeurs']['sans']['production_annuelle']['source'] = 'plan_par_defaut'
+        bloc, _ = self._chiffrer(conception)
+        self.assertEqual(bloc['production_annuelle_kwh']['source'], cc.SOURCE_PLAN_PAR_DEFAUT)
+        self.assertEqual(cc.SOURCE_PLAN_PAR_DEFAUT, 'plan_par_defaut')
+
     def test_sans_conception_une_relance_part_une_fois(self):
         """ADEV153 — sans version rangée, ``conception_ou_calcul`` met UNE relance en file
         (jamais un calcul dans la requête) ; le bloc dit « premier calcul en cours », jamais un zéro."""
