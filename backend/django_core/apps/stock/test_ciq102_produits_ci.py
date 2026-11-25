@@ -9,7 +9,7 @@ from pathlib import Path
 from django.test import TestCase
 
 from apps.stock.models import FicheTechnique, Produit
-from apps.stock.selectors import produits_ci
+from apps.stock.selectors import etat_ci_produit, produits_ci
 from authentication.models import Company
 
 CONTRAT = json.loads(
@@ -115,6 +115,40 @@ class ProduitsCiTests(TestCase):
 
     def _par_id(self, **kw):
         return {e['id']: e for e in produits_ci(self.company, **kw)}
+
+    def test_dacal130_structure_de_pompage_jamais_structure_ci(self):
+        """D-ACAL-130 — une structure DE POMPAGE (rôle pompage déclaré, aucun
+        role_ci) à fiche « structure / sol » n'est jamais une structure C&I,
+        chiffrée ou non ; la structure C&I au sol déclarée l'est."""
+        ci_sol = Produit.objects.create(
+            company=self.company, nom='Structure au sol C&I', sku='CI-STRUCT-SOL',
+            role_ci='structure_ci', type_pose='sol', prix_vente=Decimal('0'))
+        ids = []
+        for prix in ('0', '450'):
+            pompage = Produit.objects.create(
+                company=self.company, nom='Structure au sol pompage %s' % prix,
+                role_pompage='structure_sol', prix_vente=Decimal(prix))
+            FicheTechnique.objects.create(
+                company=self.company, produit=pompage, type_fiche='structure',
+                struct_type_pose='sol')
+            self.assertIsNone(etat_ci_produit(pompage))
+            ids.append(pompage.id)
+        par_id = self._par_id()
+        self.assertFalse(set(ids) & set(par_id))
+        self.assertEqual(par_id[ci_sol.id]['role_ci'], 'structure_ci')
+
+    def test_dacal130_pont_cable_dc_du_pompage_garde(self):
+        sans_fiche = Produit.objects.create(
+            company=self.company, nom='Câble pompage', role_pompage='cable_dc',
+            prix_vente=Decimal('9'))
+        avec_fiche = Produit.objects.create(
+            company=self.company, nom='Câble pompage fiché', role_pompage='cable_dc',
+            prix_vente=Decimal('9'))
+        FicheTechnique.objects.create(company=self.company, produit=avec_fiche,
+                                      type_fiche='cable', cable_cote='dc')
+        par_id = self._par_id()
+        self.assertEqual(par_id[sans_fiche.id]['role_ci'], 'cable_dc')
+        self.assertEqual(par_id[avec_fiche.id]['role_ci'], 'cable_dc')
 
     def test_forme_du_contrat(self):
         for element in produits_ci(self.company):
