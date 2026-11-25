@@ -377,11 +377,19 @@ class DevisAutoAgricoleTests(TestCase):
             pompe_kw=Decimal('2.2'), tension_v=220)
         lead = self._lead(raccordement='monophase',
                           besoin_eau_m3j=Decimal('10'))
+        # L'étude retient le SI22 sur les 3 CV de la pompe (AGQ6).
+        sortie = pompage.etudier_pompage(self.co, {'alim': 'mono'}, lead=lead)
+        self.assertEqual(sortie['variateur']['produit'], si22.id)
+        self.assertEqual(sortie['pompe']['produit'], pompe.id)
+        # Revue R3 (F1/F2, D-ACAL-124) — SI22 sans fiche : chaînes non
+        # vérifiables ⇒ aucun coffret DC ; pompe sans kW ni tension ⇒ aucun
+        # disjoncteur. Le devis automatique est refusé en nommant la cause.
         rep = self._post(lead)
-        self.assertEqual(rep.status_code, 201, rep.data)
-        devis = Devis.objects.get(pk=rep.data['id'])
-        self.assertTrue(devis.lignes.filter(produit=pompe).exists())
-        self.assertTrue(devis.lignes.filter(produit=si22).exists())
+        self.assertEqual(rep.status_code, 409, rep.data)
+        self.assertEqual(rep.data['field'], 'kit.coffret_dc')
+        self.assertIn('nombre de chaînes en parallèle du champ inconnu',
+                      rep.data['detail'])
+        self.assertFalse(Devis.objects.filter(lead=lead).exists())
 
     def test_etude_calculee_une_fois_sans_tmy(self):
         """AGQ24 (C-AGQ-023) — le devis automatique calcule l'étude UNE fois

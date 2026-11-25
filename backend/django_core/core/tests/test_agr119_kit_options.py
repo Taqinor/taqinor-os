@@ -46,7 +46,7 @@ OPTIONS_SEED = [
 BASE = dict(mode_pompe="neuve", pompe=POMPE, variateur=VARIATEUR,
             panneau=PANNEAU, nb_panneaux=14, structure=STRUCTURE,
             installation_pompage=INST_PMP_VIDE, installation_toiture=INST_CAT,
-            transport=TRANSPORT, produits_options=OPTIONS_SEED)
+            transport=TRANSPORT, produits_options=OPTIONS_SEED, nb_chaines=1)
 
 
 def _cles(kit):
@@ -266,7 +266,8 @@ class Options(unittest.TestCase):
             panneau=avec_prix(PANNEAU, 1000),
             structure=avec_prix(STRUCTURE, 200), installation_pompage=inst,
             transport=avec_prix(TRANSPORT, 500), options_cochees=[],
-            produits_options=OPTIONS_SEED + protections, alimentation="tri"))
+            produits_options=OPTIONS_SEED + protections, alimentation="tri",
+            courant_pompe_a=10))
         self.assertEqual(kit["total_ttc"],
                          10000 + 4000 + 14 * 1000 + 14 * 200 + 900 + 300
                          + 400 + 3600 + 500)
@@ -349,10 +350,61 @@ class Protections(unittest.TestCase):
         ligne = self._ligne(self._kit(pompe_kw=5.5), "disjoncteur_ac")
         self.assertIsNone(ligne["produit"])
         self.assertIn("ni tension de la pompe (tension_v)", ligne["motif"])
-        # Un seul disjoncteur de la phase : celui-là.
+        # Revue R3 (F2) — UN seul disjoncteur de la phase n'est PAS choisi
+        # sans courant (publié ou déduit) : le motif nomme le champ.
         kit = composer_kit(**dict(BASE, produits_options=PROTECTIONS_SEED,
                                   alimentation="tri"))
+        ligne = self._ligne(kit, "disjoncteur_ac")
+        self.assertIsNone(ligne["produit"])
+        self.assertIn("ni kW de la pompe (pompe_kw)", ligne["motif"])
+        # Avec un courant : le seul calibre s'il le couvre, sinon aucun.
+        kit = composer_kit(**dict(BASE, produits_options=PROTECTIONS_SEED,
+                                  alimentation="tri", courant_pompe_a=14))
         self.assertEqual(self._ligne(kit, "disjoncteur_ac")["produit"], 91)
+        kit = composer_kit(**dict(BASE, produits_options=PROTECTIONS_SEED,
+                                  alimentation="tri", courant_pompe_a=40))
+        ligne = self._ligne(kit, "disjoncteur_ac")
+        self.assertIsNone(ligne["produit"])
+        self.assertIn("courant nominal de la pompe (40 A)", ligne["motif"])
+
+    def test_r3_phase_inconnue_nommee_pas_aucun_article(self):
+        kit = composer_kit(**dict(BASE, produits_options=PROTECTIONS_SEED,
+                                  courant_pompe_a=14))
+        ligne = self._ligne(kit, "disjoncteur_ac")
+        self.assertIsNone(ligne["produit"])
+        self.assertIn("phase (mono / tri) de la pompe inconnue", ligne["motif"])
+
+    def test_r3_disjoncteur_sans_calibre_publie_jamais_choisi(self):
+        sans = [_option(88, "Disjoncteur AC tétrapolaire", "protection_ac")]
+        kit = composer_kit(**dict(BASE, produits_options=sans,
+                                  alimentation="tri", courant_pompe_a=40))
+        ligne = self._ligne(kit, "disjoncteur_ac")
+        self.assertIsNone(ligne["produit"])
+        self.assertIn("« Disjoncteur AC tétrapolaire » ne publie aucun calibre",
+                      ligne["motif"])
+
+    def test_r3_chaines_inconnues_aucun_coffret(self):
+        kit = composer_kit(**dict(BASE, produits_options=PROTECTIONS_SEED,
+                                  nb_chaines=None))
+        ligne = self._ligne(kit, "coffret_dc")
+        self.assertIsNone(ligne["produit"])
+        self.assertIn("nombre de chaînes en parallèle du champ inconnu",
+                      ligne["motif"])
+        self.assertIn("fiche du variateur", ligne["motif"])
+        motif = ("chaîne PV non vérifiable : fiche du variateur X non saisie")
+        kit = composer_kit(**dict(BASE, produits_options=PROTECTIONS_SEED,
+                                  nb_chaines=None, motif_chaines=motif))
+        self.assertIn(motif, self._ligne(kit, "coffret_dc")["motif"])
+
+    def test_r3_coffret_sans_nombre_de_chaines_jamais_choisi(self):
+        sans = [_option(87, "Coffret DC", "protection_dc", True)]
+        for n in (1, 3):
+            kit = composer_kit(**dict(BASE, produits_options=sans,
+                                      nb_chaines=n))
+            ligne = self._ligne(kit, "coffret_dc")
+            self.assertIsNone(ligne["produit"], n)
+            self.assertIn("« Coffret DC » ne publie aucun nombre de chaînes",
+                          ligne["motif"])
 
     def test_dacal124_courant_publie_gagne_sur_le_deduit(self):
         # 15 kW tri 380 V : déduit ≈ 22,8 A ⇒ 32 A ; publié 18 A ⇒ 20 A.
