@@ -11,7 +11,7 @@ import {
 } from 'lucide-react'
 import ventesApi from '../../../api/ventesApi'
 import { createAutoQuote, libelleSuccesDevisAuto } from '../../../features/ventes/autoQuote'
-import { proposalParams, pdfBlob } from '../../../features/ventes/previewPdf'
+import { proposalParams, pdfBlob, CONDITION_ETUDE } from '../../../features/ventes/previewPdf'
 import { usePdfPreview } from '../../../features/ventes/usePdfPreview'
 import PdfPreviewBody from '../../../features/ventes/PdfPreviewBody'
 import { previewBodyProps } from '../../../features/ventes/previewBodyProps'
@@ -707,6 +707,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
                         />
                         <span>Inclure l'étude</span>
                       </label>
+                      {includeEtude && <p className="basis-full text-xs text-muted-foreground" data-testid="ldp-etude-condition">{CONDITION_ETUDE}</p>}
                     </>
                   )}
                   {devisId && (pdfMode === 'full' || marcheCi) && (

@@ -7,6 +7,7 @@ import {
 } from '../../../ui/index.js'
 import { ResponsiveDialog } from '../../../ui/ResponsiveDialog'
 import { libelleFormatComplet } from './devisListHelpers.js'
+import { CONDITION_ETUDE } from '../../../features/ventes/previewPdf.js'
 
 // ── ARC49 — Modale de génération PDF de la LISTE (formats du simulateur). ──
 // Extraite telle quelle de DevisList (« lignes divisées ») : mêmes contrôles,
@@ -98,7 +99,8 @@ export default function DevisPdfDialog({
           {pdfMode === 'full' && !targetIsAgricole && !targetIsCi && (
             <label className="flex items-start gap-2 text-sm">
               <Checkbox checked={showMonthly} onCheckedChange={v => setShowMonthly(!!v)} className="mt-0.5" />
-              <span>Économies mensuelles <span className="text-muted-foreground">(graphique mensuel page 2)</span></span>
+              {/* T4-V1-004 — le graphique est en page 1 du résidentiel : aucune page promise ici. */}
+              <span>Économies mensuelles <span className="text-muted-foreground">(graphique de la facture mois par mois, avant / après)</span></span>
             </label>
           )}
 
@@ -116,6 +118,13 @@ export default function DevisPdfDialog({
                 {!targetHasEtude && (
                   <span className="block text-xs text-muted-foreground">
                     Aucune donnée d'étude sur ce devis — option indisponible.
+                  </span>
+                )}
+                {/* T4-V2-017 — la page ne s'ajoute qu'avec une étude CHIFFRÉE (le moteur la
+                    retire sinon, legacy_etude.etude_rendue) : dit AVANT de générer. */}
+                {targetHasEtude && (
+                  <span className="block text-xs text-muted-foreground" data-testid="pdf-etude-condition">
+                    {CONDITION_ETUDE}
                   </span>
                 )}
               </span>

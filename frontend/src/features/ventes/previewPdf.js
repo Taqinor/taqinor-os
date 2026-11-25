@@ -10,6 +10,12 @@
 
 export const PDF_MIME = 'application/pdf'
 
+// T4-V2-017 — « Inclure l'étude » : la page n'est ajoutée qu'avec une étude
+// CHIFFRÉE (le moteur la retire sinon — quote_engine/legacy_etude.etude_rendue) ;
+// la phrase est dite AVANT de générer, au dialogue de la liste et au panneau du lead.
+export const CONDITION_ETUDE = 'La page d’étude n’est ajoutée que si le devis porte une étude chiffrée '
+  + '(production, consommation, économies) ; sinon le PDF garde ses 3 pages.'
+
 // Params attendus par GET /ventes/devis/<id>/proposal/ (whitelist serveur).
 // include_etude n'est pertinent qu'en Premium ; en 1 page on l'omet (0).
 // « Devis final » (fondateur, 30/10/2026) : les modalités de paiement

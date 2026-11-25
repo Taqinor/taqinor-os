@@ -150,6 +150,18 @@ describe('AMOT68 — note de calcul FDA demandable', () => {
     expect(screen.getByText(/Inclure l.étude/).textContent).not.toMatch(/industriel/)
   })
 
+  // T4-V1-004 — « graphique mensuel page 2 » : le graphique est en page 1 du résidentiel ; aucune page promise.
+  // T4-V2-017 — « Inclure l'étude » sans étude chiffrée rendait 3 pages, autre mise en page, sans un mot : la
+  // condition est dite AVANT de générer.
+  it('T4-V1-004 / T4-V2-017 — les légendes disent ce que l’option fait, sans page inventée', () => {
+    dialogue({ targetIsAgricole: false, targetMode: 'residentiel', targetHasEtude: true })
+    const mensuel = screen.getByText(/Économies mensuelles/).textContent
+    expect(mensuel).not.toMatch(/page/)
+    expect(mensuel).toMatch(/graphique de la facture mois par mois/)
+    expect(screen.getByTestId('pdf-etude-condition')).toHaveTextContent(
+      'La page d’étude n’est ajoutée que si le devis porte une étude chiffrée (production, consommation, économies) ; sinon le PDF garde ses 3 pages.')
+  })
+
   // T4-U1-009 — « Devis final (paiement + RIB) » : société identifiée SANS RIB ni banque (identite.ligne_rib rend "")
   // → l'avertissement INTERNE le dit avant de générer ; le PDF, lui, n'est pas touché.
   it('T4-U1-009 — Devis final coché, profil société sans RIB : avertissement interne avec le chemin', async () => {

@@ -435,6 +435,10 @@ describe('ALEA52 — aperçu : « Envoyer au client » ouvre la boîte partagée
     await userEvent.keyboard('{Escape}')
     await boiteFermee()
     expect(screen.getByText("Inclure l'étude")).toBeInTheDocument()
+    // T4-V2-017 — cochée, la case dit AVANT de générer quand la page s'ajoute.
+    expect(screen.queryByTestId('ldp-etude-condition')).toBeNull()
+    await userEvent.click(screen.getByText("Inclure l'étude"))
+    expect(screen.getByTestId('ldp-etude-condition')).toHaveTextContent('sinon le PDF garde ses 3 pages')
   })
 
   it('industriel : ni « Inclure l’étude » ni options 1/2/3 (sans effet en C&I)', async () => {
