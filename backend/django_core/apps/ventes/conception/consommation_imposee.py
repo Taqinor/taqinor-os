@@ -86,7 +86,7 @@ def separer(imposes):
     return reste or None, imposes[CLE]
 
 
-def appliquer(lead, company, calepinage_id=None, *, imposee=None):
+def imposer(lead, company, calepinage_id=None, *, imposee=None):
     """``(porteur, consommation | None)`` : ``imposee`` (déjà validée, aperçu) sinon, au
     niveau de règles 15 seulement, le relevé collé au calepinage ``calepinage_id``. Une COPIE
     non enregistrée du lead porte ``conso_mensuelle_kwh`` ; idempotent ; agricole, ou sans

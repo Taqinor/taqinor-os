@@ -295,7 +295,7 @@ def _avec_la_consommation_de_l_apercu(copie, company, imposes):
         imposee = CI.valider(brute)
     except CI.ConsommationRefusee as exc:
         raise SaisieRefusee(str(exc), 'imposes.' + exc.champ)
-    return CI.appliquer(copie, company, imposee=imposee)[0]
+    return CI.imposer(copie, company, imposee=imposee)[0]
 
 
 def _declencheur_valide(declencheur):

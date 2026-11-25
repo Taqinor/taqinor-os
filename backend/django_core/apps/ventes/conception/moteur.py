@@ -142,7 +142,7 @@ def consommation_imposee(lead, company, calepinage_id, imposes=None):
     brute = CI.separer(imposes)[1]
     imposee = (CI.valider(brute) if brute is not None and getattr(lead, '_consommation_imposee', None) is None
                and regles_au_moins(None, REGLES_POSE_REELLE_2111) else None)
-    return CI.appliquer(lead, company, calepinage_id, imposee=imposee)
+    return CI.imposer(lead, company, calepinage_id, imposee=imposee)
 
 
 @contextmanager
