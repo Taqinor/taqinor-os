@@ -540,7 +540,7 @@ def _point_par_defaut(lat, lon):
                for c_lat, c_lon in CENTRES_CARTE_PAR_DEFAUT)
 
 
-def _site_de_reference(ville):
+def _site_de_reference(ville, *, adresse=False):
     """Le site d'un calepinage SANS épingle : la ville de référence du devis.
 
     Réutilise ``pvgis_profils.ancre_de_reference`` — la résolution que suit
@@ -548,11 +548,17 @@ def _site_de_reference(ville):
     sinon ancre la plus proche du gazetier). Rend ``{lat, lon, source,
     ville_reference, libelle}``, ou ``None`` quand aucune ville de référence
     ne se résout (la simulation est alors refusée en le disant).
+    ``adresse=True`` (relecture m1) : une ADRESSE libre ne se résout que si
+    elle nomme exactement une ville (``ancre_de_reference_adresse``).
     """
-    from apps.parametres.pvgis_profils import ancre_de_reference
+    from apps.parametres.pvgis_profils import (
+        ancre_de_reference,
+        ancre_de_reference_adresse,
+    )
     from apps.parametres.villes_resolution import nom_canonique
 
-    reference = ancre_de_reference(ville)
+    reference = (ancre_de_reference_adresse if adresse
+                 else ancre_de_reference)(ville)
     if reference is None:
         return None
     nom = nom_canonique(reference['cle'])
@@ -664,10 +670,13 @@ def _epingle_posee(document, lire_geo):
 
 def _reference_du_contexte(geo):
     """La ville de référence de la ville du lead, sinon de l'adresse (lead ou
-    client) quand elle nomme une ville connue — jamais une ville devinée."""
-    for texte in (geo.get('ville'), geo.get('adresse')):
+    client) quand elle nomme UNE SEULE ville connue — jamais une ville
+    devinée (relecture m1 : « Route d'El Jadida, Casablanca » ne se résout
+    pas)."""
+    for texte, adresse in ((geo.get('ville'), False),
+                           (geo.get('adresse'), True)):
         if texte:
-            reference = _site_de_reference(texte)
+            reference = _site_de_reference(texte, adresse=adresse)
             if reference is not None:
                 return reference
     return None

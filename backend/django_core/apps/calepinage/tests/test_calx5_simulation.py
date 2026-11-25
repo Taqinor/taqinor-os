@@ -441,6 +441,20 @@ class SiteSansEpingleTest(SimpleTestCase):
         self.assertEqual(resultat['blocs']['meteo']['site']['ville_reference'],
                          'Casablanca')
 
+    def test_relecture_m1_adresse_a_deux_villes_jamais_devinee(self):
+        """Relecture m1 — « Route d'El Jadida, Casablanca » nomme deux villes :
+        le site n'est pas résolu (refus), jamais El Jadida."""
+        calepinage = self._trace_sans_site()
+        client = _ClientRejoue()
+        with mock.patch('apps.calepinage.selectors.contexte_geographique',
+                        return_value={'pin': None, 'outline': None,
+                                      'adresse': "Route d'El Jadida, Casablanca",
+                                      'ville': None, 'source': None}), \
+                self.assertRaises(SimulationRefusee) as refus:
+            _simuler(calepinage, client=client, enregistrer=True)
+        self.assertEqual(refus.exception.champ, 'site.pin')
+        self.assertEqual(client.demandes, [])
+
     def test_t4_u4_013_epingle_localisee_par_l_utilisateur_inchangee(self):
         for provenance in ('adresse', 'epingle', 'trace', 'lead'):
             client = _ClientRejoue()

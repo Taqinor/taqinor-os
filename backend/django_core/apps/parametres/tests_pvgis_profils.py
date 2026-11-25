@@ -187,6 +187,20 @@ class NormalisationVilleTests(SimpleTestCase):
         cles = [(-len(c.split()), c in pp._ORTHOGRAPHES, c) for c in candidats]
         self.assertEqual(len(set(cles)), len(cles))
 
+    def test_relecture_m1_adresse_libre_une_seule_ville_sinon_rien(self):
+        """Relecture m1 — d'une ADRESSE, une ville n'est prise que si elle
+        est la SEULE nommée : « Route d'El Jadida, Casablanca » en nomme deux
+        (le repli tolérant y lisait El Jadida) ; la ville du lead, elle, garde
+        la résolution tolérante."""
+        self.assertIsNone(pp.ancre_de_reference_adresse("Route d'El Jadida, Casablanca"))
+        self.assertEqual(pp.ancre_de_reference_adresse('12 rue des Fleurs, Casablanca')['cle'],
+                         'casablanca')
+        self.assertEqual(pp.ancre_de_reference_adresse('Aïn Sbaa, Casablanca')['cle'],
+                         'casablanca', 'deux écritures d’UNE ville comptent pour une')
+        for sans_ville in ('12 rue des Fleurs', '', None):
+            self.assertIsNone(pp.ancre_de_reference_adresse(sans_ville), sans_ville)
+        self.assertEqual(pp.cle_ville("Route d'El Jadida, Casablanca"), 'el jadida')
+
 
 class DecalageHoraireTests(SimpleTestCase):
     """Le décalage est DÉRIVÉ de la base de fuseaux, jamais figé à « +1 ».
