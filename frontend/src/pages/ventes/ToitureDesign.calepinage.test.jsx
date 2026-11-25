@@ -594,9 +594,22 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
       // La clé périmée est purgée à l'ouverture, la courante reste.
       expect(window.localStorage.getItem(orpheline)).toBeNull()
       expect(window.localStorage.getItem(cle)).not.toBeNull()
+      // T4-X8-010 — le bouton dit ce qu'il fait, et le fait : CE brouillon est effacé, le bandeau ne revient pas pour lui.
+      expect(screen.getByTestId('cal-brouillon-ignorer')).toHaveTextContent(/^Effacer ce brouillon$/)
       await userEvent.click(screen.getByTestId('cal-brouillon-ignorer'))
       expect(screen.queryByTestId('cal-brouillon-bandeau')).toBeNull()
       expect(initRoofToolPro8).toHaveBeenCalledTimes(1)
+      expect(window.localStorage.getItem(cle)).toBeNull()
+      cleanup(); reinitialiserBoot()
+      const boots = initRoofToolPro8.mock.calls.length
+      rendreCalepinage(CTX.calepinage.id)
+      await waitFor(() => expect(initRoofToolPro8.mock.calls.length).toBeGreaterThan(boots))
+      expect(screen.queryByTestId('cal-brouillon-bandeau')).toBeNull()
+      // Un brouillon PLUS RÉCENT (nouveaux gestes) relève le bandeau.
+      cleanup(); reinitialiserBoot()
+      window.localStorage.setItem(cle, JSON.stringify({ layout: { version: 2, zones: [{ id: 'neuf' }] }, horodatage: '2026-10-05T10:00:00.000Z' }))
+      rendreCalepinage(CTX.calepinage.id)
+      expect(await screen.findByTestId('cal-brouillon-bandeau')).toBeTruthy()
     } finally {
       window.localStorage.removeItem(cle)
       window.localStorage.removeItem(orpheline)
