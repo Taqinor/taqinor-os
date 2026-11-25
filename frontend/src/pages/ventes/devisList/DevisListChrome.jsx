@@ -46,7 +46,10 @@ export function DevisPageHeader({
       icon={FileText}
       title="Devis"
       subtitle={
-        expiringSoon.length > 0
+        // Première page en cours de chargement : aucun compte connu — jamais « 0 devis ».
+        loading && total === 0 && devis.length === 0
+          ? 'Chargement des devis…'
+          : expiringSoon.length > 0
           ? `${total} devis · ${expiringSoon.length} à relancer (validité ≤ 7 jours)`
           : `${total} devis`
       }
