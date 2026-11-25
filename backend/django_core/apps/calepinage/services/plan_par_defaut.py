@@ -85,21 +85,32 @@ def _taille(kwc, watt_fiche, nb_conception):
     return 0, 0.0, None
 
 
+def _champ_de_fiche(motif, fiche):
+    """Le champ manquant d'une étape omise pour une raison ``fiche_module.*`` (le texte entier
+    de « Champ manquant : « … » », qui peut nommer aussi le réglage société qui la lève), sinon
+    ``None``. Un champ nommé que la fiche ``fiche`` PORTE n'est pas un manque de la fiche
+    (ex. ``vmp_v`` nommé quand c'est le chaînage qui manque)."""
+    noms = re.findall(r'fiche_module\.(\w+)', motif or '')
+    if not noms or any((fiche or {}).get(nom) not in (None, '') for nom in noms):
+        return None
+    entier = re.search(r'Champ manquant : « ([^»]*fiche_module\.[^»]*) »', motif or '')
+    return entier.group(1).strip() if entier is not None else 'fiche_module.' + noms[0]
+
+
 def _suppositions_du_module(rendu, materiel, nb, watt_document):
-    """Rien d'inventé : la puissance prise de la conception, puis chaque étape de la cascade
-    que la fiche vide empêche (``Champ manquant : « fiche_module.… »``), le produit nommé."""
-    if not watt_document:
-        return []
+    """Rien d'inventé : la puissance prise de la conception (fiche sans ``pmax_wc``), puis
+    CHAQUE étape de la cascade omise pour une raison ``fiche_module.*`` — que la fiche porte
+    sa puissance ou non (relecture lot 5, B1 : une fiche à puissance sans coefficient de
+    température faisait omettre l'échauffement en silence) —, le produit et le champ nommés."""
     nom = ((materiel or {}).get('designations') or {}).get('module') or 'module du moteur'
     dites = [{'code': 'puissance_module_de_la_conception', 'champ': 'fiche_technique', 'valeur': watt_document,
               'source': 'conception', 'message': MESSAGE_PUISSANCE_CONCEPTION % (
-                  '{:g}'.format(watt_document), nb, nom)}]
+                  '{:g}'.format(watt_document), nb, nom)}] if watt_document else []
     for etape in (rendu['blocs'].get('cascade') or {}).get('etapes') or ():
-        manque = re.search(r'fiche_module\.(\w+)', etape.get('motif_omission') or '')
-        if manque is None:
+        champ = _champ_de_fiche(etape.get('motif_omission'), (materiel or {}).get('module'))
+        if champ is None:
             continue
-        champ = manque.group(1)
-        dites.append({'code': 'fiche_module_incomplete', 'champ': 'fiche_technique', 'valeur': None,
+        dites.append({'code': 'fiche_module_incomplete', 'champ': 'fiche_technique', 'valeur': champ,
                       'source': 'defaut', 'message': MESSAGE_ETAPE_SANS_FICHE % (etape.get('libelle'), nom, champ)})
     return dites
 

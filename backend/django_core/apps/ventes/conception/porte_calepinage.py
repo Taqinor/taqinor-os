@@ -229,8 +229,11 @@ def productible_du_plan_par_defaut(company, lead, kwc, produits):
     if plan.get('refus'):
         return None, [], 'plan par défaut refusé : %s' % plan['refus']
     suppositions = list(plan.get('suppositions') or ())
-    if any(s.get('code') in CODES_FICHE_VIDE for s in suppositions):
-        return None, [], 'fiche technique du module incomplète : pertes non appliquées'
+    vides = [s for s in suppositions if s.get('code') in CODES_FICHE_VIDE]
+    if vides:  # B1 (relecture lot 5) : toute étape omise faute de fiche, puissance portée ou non
+        champs = [str(s['valeur']) for s in vides if s.get('code') == 'fiche_module_incomplete' and s.get('valeur')]
+        return None, [], 'fiche technique du module incomplète : pertes non appliquées%s' % (
+            ' (champ manquant : %s)' % ' ; '.join('« %s »' % c for c in champs) if champs else '')
     annuel, mensuel, kwc_plan = plan.get('production_annuelle'), plan.get('production_mensuelle'), plan.get('kwc')
     if not plan.get('complete') or not annuel or not kwc_plan or not isinstance(mensuel, list) or len(mensuel) != 12:
         return None, [], 'plan par défaut incomplet'

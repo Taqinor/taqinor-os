@@ -883,6 +883,26 @@ class MoteurSansToitPlanParDefautTests(TCL._emprunt(TCL.FigeageDevisAutoTests, *
         self.assertNotIn('production_plan_par_defaut', [s['code'] for s in resultat.suppositions])
 
 
+class ProductibleDuPlanParDefautTests(SimpleTestCase):
+    """ADEV155 — la porte ne sert JAMAIS un plan dont une étape a été omise faute de fiche
+    (B1, relecture lot 5 : fiche à puissance sans coefficient de température)."""
+
+    def _porte(self, plan):
+        from apps.ventes.conception import porte_calepinage as P
+        with mock.patch.object(P, 'production_du_plan_par_defaut', return_value=plan):
+            return P.productible_du_plan_par_defaut(None, SimpleNamespace(pk=1), 6.0, {})
+
+    def test_fiche_a_puissance_sans_coefficient_jamais_servie_champ_nomme(self):
+        manque = {'code': 'fiche_module_incomplete', 'champ': 'fiche_technique',
+                  'valeur': 'fiche_module.temp_coeff_pmax_pct_c'}
+        servi, suppositions, motif = self._porte(_plan_simule(None, None, 6.0, {}, suppositions=[manque]))
+        self.assertIsNone(servi)  # mutant « ne refuser que si la puissance vient de la conception » : rouge
+        self.assertEqual(suppositions, [])
+        self.assertIn('« fiche_module.temp_coeff_pmax_pct_c »', motif)
+        servi, _s, _m = self._porte(_plan_simule(None, None, 6.0, {}))
+        self.assertEqual(servi['kwh_kwc_annuel'], 2100.0)
+
+
 class BrouillonDuPlanParDefautTests(SimpleTestCase):
     """ADEV155 — un brouillon de niveau 15 né du plan par défaut (aucune pose servie) garde la
     base rangée du plan ; au niveau 14, et pour une base rangée d'une autre source, rien ne change."""
