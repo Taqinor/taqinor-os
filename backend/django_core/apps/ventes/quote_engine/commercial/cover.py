@@ -101,7 +101,8 @@ def build(ctx):
     # CIQ331 — la production annuelle du moteur C&I (``synthese_ci``), ancrée
     # pour la parité avec /proposition ; non servie ⇒ tuile omise.
     production = d.get("com_production")
-    if production is not None:
+    # T4-X6-002 (niveau 15) — tailles différentes : chaque carte dit SA production.
+    if production is not None and not options_cote.production_par_option(d, "com"):
         cellules.append(kpi(fmt(round(production)),
                             L("ci_unite_kwh_an", "&nbsp;kWh/an"),
                             L("ci_production_annuelle", "Production annuelle"),

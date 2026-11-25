@@ -1329,6 +1329,60 @@ class TestAmot95BaseDeclaree(SimpleTestCase):
         self.assertIn("i.e. 118,717 MAD incl. VAT", p1)
 
 
+class TestT4X6002ProductionParOption(SimpleTestCase):
+    """T4-X6-002 — deux options de TAILLES différentes (35,03 / 36,47 kWc) :
+    chaque carte porte SA production (offre sans : ``com_production`` ;
+    option avec : ``etude_ci.option_avec.bilan.production_kwh``) et la tuile
+    unique « Production annuelle » n'est plus imprimée comme si elle valait
+    pour les deux. Niveau de règles 15 (``regles_pose_reelle``) seulement ;
+    tailles égales ou niveau 14 : la couverture d'hier."""
+
+    def _d(self, kwc_avec=36.47, **extra):
+        synthese = {"argent": {"base": "ht"},
+                    "option_batterie": {"totaux": {"ht_net": 700000.0, "ttc": 840000.0},
+                                        "valeur_chiffree": {"retour_simple_ans": 9.1}}}
+        d = {"langue_sortie": "fr", "option_servie": "sans", "com_synthese": synthese,
+             "com_kwc": 35.03, "puissance_kwc_avec": kwc_avec, "com_production": 55780.4,
+             "totaux_all": {"ht_net": 533333.0, "ttc": 640000.0},
+             "etude": {"etude_ci": {"option_avec": {"bilan": {"production_kwh": 56601.2}}}}}
+        d.update(extra)
+        return d
+
+    def _cartes(self, d):
+        import html as _h
+        from apps.ventes.quote_engine.ci import options_cote
+        from apps.ventes.quote_engine.residential.theme import fmt
+        brut = options_cote.cartes_options(d, "com", "c1c", fmt, fmt, 640000.0)
+        texte = re.sub(r"\s+", " ", _h.unescape(re.sub(r"<[^>]+>", " ", brut))
+                       .replace("\xa0", " ").replace("\u202f", " "))
+        return texte.split("Avec batterie", 1), brut
+
+    def test_niveau_15_chaque_carte_sa_production(self):
+        from apps.ventes.quote_engine.ci import options_cote
+        d = self._d(regles_pose_reelle=True)
+        (sans, avec), brut = self._cartes(d)
+        self.assertIn("Production annuelle 55 780 kWh/an", sans)
+        self.assertIn("Production annuelle 56 601 kWh/an", avec)
+        self.assertNotIn("56 601", sans)
+        self.assertEqual(brut.count('data-figure="production_annuelle_kwh"'), 1)
+        self.assertTrue(options_cote.production_par_option(d, "com"))
+
+    def test_niveau_14_ou_tailles_egales_rien_ne_change(self):
+        from apps.ventes.quote_engine.ci import options_cote
+        for d in (self._d(), self._d(kwc_avec=35.03, regles_pose_reelle=True)):
+            with self.subTest(d=d.get("puissance_kwc_avec")):
+                (sans, avec), _brut = self._cartes(d)
+                self.assertNotIn("Production annuelle", sans + avec)
+                self.assertFalse(options_cote.production_par_option(d, "com"))
+
+    def test_production_avec_absente_aucune_ligne(self):
+        from apps.ventes.quote_engine.ci import options_cote
+        d = self._d(regles_pose_reelle=True, etude={"etude_ci": {"option_avec": {}}})
+        (sans, avec), _brut = self._cartes(d)
+        self.assertNotIn("Production annuelle", sans + avec)
+        self.assertFalse(options_cote.production_par_option(d, "com"))
+
+
 class TestAmot97ScenarioPrudent(SimpleTestCase):
     """AMOT97 (D-ACI-15=a) — les sensibilités restent SERVIES
     (``argent.sensibilites``) ; CPDF5 (décision prise pour le fondateur, à
