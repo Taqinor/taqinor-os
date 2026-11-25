@@ -98,11 +98,12 @@ def _lire_conception(calepinage):
 
 
 def _source_de_la_taille(calepinage):
-    """``'lead'`` quand la taille souhaitée du lead fait la taille (souveraine), sinon ``'factures'``."""
+    """``'lead'`` quand la taille souhaitée du lead fait la taille (souveraine), sinon ``'factures'`` ;
+    relecture E5 m2 — ``'conception'`` pour un calepinage SANS lead (sa propre conception, aucune facture)."""
     from apps.crm.selectors import get_company_lead
 
     if not getattr(calepinage, 'lead_id', None):
-        return 'factures'
+        return 'conception'
     lead = get_company_lead(calepinage.company, calepinage.lead_id, avec_corbeille=True)
     try:
         return 'lead' if float(getattr(lead, 'taille_souhaitee_kwc', None) or 0) > 0 else 'factures'

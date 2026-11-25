@@ -1488,10 +1488,22 @@ def _cible(calepinage, contexte_devis, devis=None):
         return None
     # Aucun scénario de devis n'est vendu ici : on ne l'invente pas.
     return {'panneaux': cible['panneaux'], 'kwc': cible['kwc'], 'panel_watt': cible['panel_watt'],
-            'scenario': None, 'batterie': cible['option'] == 'avec', 'avertissements': [],
+            'scenario': None, 'batterie': _batterie_de_la_cible(calepinage, cible), 'avertissements': [],
             'source': cible['source'], 'refus': cible['refus'], 'option': cible['option'],
             # Relecture E5 B1 — le premier calcul de la conception est en file : l'atelier attend et relit.
             'calcul_en_cours': cible.get('motif_code') == CODE_CONCEPTION_EN_COURS}
+
+
+def _batterie_de_la_cible(calepinage, cible):
+    """L'option de la conception complète ; relecture E5 m5 — sans elle (absente, en
+    calcul, refusée), le souhait du lead (``batterie_souhaitee``), jamais un ``False`` forcé."""
+    if cible.get('option'):
+        return cible['option'] == 'avec'
+    from apps.crm.selectors import get_company_lead
+
+    lead_id = getattr(calepinage, 'lead_id', None)
+    lead = get_company_lead(getattr(calepinage, 'company', None), lead_id, avec_corbeille=True) if lead_id else None
+    return (getattr(lead, 'batterie_souhaitee', '') or '') == 'avec'
 
 
 def _raison_lecture_seule(contexte_devis):

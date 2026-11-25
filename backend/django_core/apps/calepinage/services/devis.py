@@ -331,11 +331,14 @@ def taille_non_dimensionnee(calepinage, *, cible=None):
 
     from .devis_retenu import CODE_CONCEPTION_ABSENTE, CODE_CONCEPTION_EN_COURS
 
-    if not getattr(calepinage, 'lead_id', None):
-        return {'refus': "Calepinage sans lead : aucune facture ne "
-                         "dimensionne le système."}
     if cible is None:
         cible = _cible_du_calepinage(calepinage)
+    if not getattr(calepinage, 'lead_id', None):
+        # Relecture E5 m1 — la conception du calepinage lui-même donne la taille : rien à demander.
+        if (cible or {}).get('panneaux'):
+            return None
+        return {'refus': "Calepinage sans lead : aucune facture ne "
+                         "dimensionne le système."}
     motif = (cible or {}).get('motif_code')
     if motif == MOTIF_FACTURE_ABSENTE or (motif in (CODE_CONCEPTION_ABSENTE, CODE_CONCEPTION_EN_COURS)
                                           and lead_sans_facture_ni_taille(calepinage)):
