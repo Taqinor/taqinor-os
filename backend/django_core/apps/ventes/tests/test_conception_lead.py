@@ -38,6 +38,7 @@ CLES_RESULTAT = {
 CLES_RANGEES = {
     'declencheur', 'version', 'calcule_le', 'perimee', 'ecart_devis',
     'brouillons_a_mettre_a_jour', 'lead', 'calepinage', 'empreinte_pose',
+    'payback_devis',  # relecture E6 : le devis de référence du payback servi à la lecture
 }
 CLES_VALEUR = {'valeur', 'unite', 'source'}
 SOURCES_VALEUR = {'moteur', 'pose', 'impose', 'devis', 'defaut'}
@@ -1846,6 +1847,39 @@ class ServirConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
                                      '_fiches_ci', '_cas'), TestCase):
     """ADEV137 — ``selectors_conception`` (bornés société, lecture seule) et
     les routes ``GET conception/<lead_id>/`` et ``POST conception/apercu/``."""
+
+    def test_e6_payback_servi_a_la_lecture_celui_du_pdf(self):
+        """Relecture E6 — le payback de la conception est SERVI À LA LECTURE (jamais rangé) :
+        par option, celui que ``build_quote_data`` imprime pour le devis de référence ; source
+        ``devis`` et sa référence ; sans devis, ``None`` et le motif ; un devis envoyé n'est
+        pas écrit ; aucun prix d'achat dans la réponse."""
+        from apps.ventes.models import ConceptionLead, Devis
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.selectors import conception_courante
+        from apps.ventes.services import build_devis_auto
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        self._relancer(lead, company, _declencheur())
+        sans_devis = conception_courante(company, lead.pk)
+        self.assertEqual(sans_devis['payback_devis'],
+                         {'devis_ref': None, 'motif': 'retour sur investissement : après un premier devis'})
+        self.assertTrue(all(v['payback']['valeur'] is None for v in sans_devis['valeurs'].values()))
+        with self.captureOnCommitCallbacks(execute=True):
+            devis = build_devis_auto(lead=lead, user=self._utilisateur(company), company=company)
+        Devis.objects.filter(pk=devis.pk).update(statut='envoye')
+        devis.refresh_from_db()
+        avant, rangee = _photo_devis(devis.pk), _json(ConceptionLead.objects.filter(lead=lead).values()[0])
+        lue = conception_courante(company, lead.pk)
+        data = build_quote_data(devis, {'pdf_mode': 'full'})
+        self.assertEqual(lue['payback_devis'], {'devis_ref': devis.reference, 'motif': None})
+        for option, cle in (('sans', 'roi_s'), ('avec', 'roi_a')):
+            payback = lue['valeurs'][option]['payback']
+            self.assertEqual(payback['source'], 'devis')
+            self.assertAlmostEqual(payback['valeur'], data[cle], places=1, msg=option)
+        self.assertEqual(_cles_interdites(lue), [])
+        self.assertEqual(_photo_devis(devis.pk), avant)  # le devis envoyé n'est jamais écrit
+        self.assertEqual(_json(ConceptionLead.objects.filter(lead=lead).values()[0]), rangee)  # jamais rangé
 
     def _api(self, user):
         from rest_framework.test import APIClient

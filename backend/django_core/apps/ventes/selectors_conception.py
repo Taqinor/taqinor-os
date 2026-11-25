@@ -71,7 +71,65 @@ def _forme(version, suivi_des_devis=True):
         calcule_le=version.calcule_le.isoformat(), perimee=_perimee(version),
         brouillons_a_mettre_a_jour=_brouillons_a_mettre_a_jour(version) if suivi else [],
         ecart_devis=ecart_devis(_devis_envoye_du_lead(version)) if suivi else [])
+    forme['valeurs'], forme['payback_devis'] = _payback_servi(version, forme['valeurs'])
     return forme
+
+
+#: Relecture E6 — sans devis de référence, le retour sur investissement n'est pas chiffrable.
+MOTIF_PAYBACK_SANS_DEVIS = 'retour sur investissement : après un premier devis'
+
+
+def _devis_de_reference(version):
+    """Le devis de RÉFÉRENCE du lead pour le payback : le brouillon ou devis actif qui pointe
+    sur CETTE version (``Devis.conception_source``), sinon le devis envoyé ou accepté le plus
+    récent ; ``None`` sinon. Lu, jamais écrit."""
+    from .models import Devis
+    if not version.lead_id:
+        return None
+    actifs = Devis.objects.filter(company_id=version.company_id, lead_id=version.lead_id, is_active=True)
+    return (actifs.filter(conception_source__version=version.version).order_by('-pk').first()
+            or _devis_envoye_du_lead(version))
+
+
+def _payback_servi(version, valeurs):
+    """Relecture E6 — le payback SERVI À LA LECTURE (jamais rangé périmé) : par option, LA
+    fonction du PDF (``quote_engine/pricing.payback_publiable``, appelée telle quelle) sur
+    l'investissement TTC de l'option du devis de référence et l'économie de la conception,
+    provision d'onduleur au prix de ses lignes ; ``source: 'devis'``. Rend ``(valeurs,
+    {devis_ref, motif})`` ; sans devis : payback ``None`` et le motif dit."""
+    import copy
+
+    if version.etat != 'complet' or version.marche == 'agricole':
+        return valeurs, {'devis_ref': None, 'motif': None}
+    devis = _devis_de_reference(version)
+    if devis is None:
+        return valeurs, {'devis_ref': None, 'motif': MOTIF_PAYBACK_SANS_DEVIS}
+    from .domain.catalogue import classer_produit
+    from .quote_engine.pricing import payback_publiable
+    from .utils.options import AVEC_BATTERIE, SANS_BATTERIE, filter_lines_for_option, lignes_avec_produit, option_totaux
+
+    servies, lignes = copy.deepcopy(valeurs), list(lignes_avec_produit(devis))
+    for option, table in servies.items():
+        if 'payback' not in table:
+            continue
+        # Les lignes de l'option, découpées comme le PDF (une option seule : ses lignes).
+        panier = AVEC_BATTERIE if option == 'avec' else SANS_BATTERIE
+        de_l_option = filter_lines_for_option(lignes, panier, devis=devis) if len(servies) > 1 else lignes
+        portees = [li for li in de_l_option if li.type_ligne == 'produit']
+        onduleurs = [li for li in portees if (classer_produit(getattr(li.produit, 'nom', '') or li.designation)
+                                              or '').startswith('onduleur')]
+        cout = sum(float(li.quantite or 0) * float(li.prix_unitaire or 0) * (1 + float(li.taux_tva or 0) / 100)
+                   for li in onduleurs) * (1 - float(devis.remise_globale or 0) / 100)
+        investissement = option_totaux(devis, '', lignes=de_l_option)['ttc']
+        economie = (table.get('economies_annuelles') or {}).get('valeur')
+        # Modèle HORAIRE (résidentiel) : l'économie « avec » est déjà nette du rendement de la batterie,
+        # le cashflow n'en re-déduit rien (part stockée 0, comme le PDF, AMOT58).
+        horaire = {'part_batterie': 0} if version.marche == 'residentiel' else {}
+        table['payback'] = {'valeur': payback_publiable(investissement, economie, stockage=option == 'avec',
+                                                        cout_onduleur_ttc=round(cout, 2) or None,
+                                                        **horaire)['payback_years'],
+                            'unite': 'ans', 'source': 'devis'}
+    return servies, {'devis_ref': devis.reference, 'motif': None}
 
 
 def _brouillons_a_mettre_a_jour(version):

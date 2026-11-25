@@ -15,7 +15,7 @@
     "empreinte": "SHA-256 (64 hex) des entrées (raccordement, TVA et catalogue de la société compris — relecture E4 B1) + version_moteur + niveau_regles + empreinte de la pose ; égale ⇒ aucune nouvelle version.",
     "declencheur": "{raison, champs: [{champ, avant, apres}], origine} ; origine = lead_entrees_modifiees | pose_enregistree | regles | remplissage | manuel | filet (empreinte des entrées différente relevée en lecture) ; raison = LA phrase que lit l'utilisateur, construite par l'écrivain (`conception/service.py::phrase_du_declencheur`) et recopiée telle quelle au chatter : « Recalculé le JJ/MM à H h MM : <libellé> <avant> → <après>[ <unité>] ; … » (heure locale, unité MAD des factures, libellés de l'historique du lead `crm.activity.TRACKED_FIELDS`, choix lisibles, nombres à la française) ou, sans champ nommé, « Recalculé le JJ/MM à H h MM : <motif de l'origine> » ; relecture E4 B1 : un réglage société changé est dit en mots (champ catalogue ⇒ « catalogue modifié », avant/apres null ; tva_standard ⇒ « TVA modifiée (20 → 10 %) ») et, sans champ nommé par l'appelant (filet, devis demandé), les entrées du lead changées sont relevées sur entrees_utilisees.",
     "perimee": "true quand l'empreinte des entrées du lead ne correspond plus à la version courante : l'écran garde les valeurs et dit « Recalcul en cours ».",
-    "ecart_devis": "[{valeur, devis, conception, devis_ref, reviser_possible, mise_a_jour_proposee, courante_refusee}] : la valeur (clé de `valeurs`) qui diffère entre le devis ENVOYÉ lié et la dernière version COMPLÈTE de la conception (D-ACAL-96 : les deux chiffres nommés, « Réviser le devis ») ; mise_a_jour_proposee = brouillon retouché à la main (Q2) ; courante_refusee = la version courante est un refus : l'écart reste comparé à la dernière version complète (ADEV146, relecture m5).",
+    "payback_devis": "Relecture E6 — {devis_ref, motif} : le payback (valeurs.<option>.payback) est SERVI À LA LECTURE, jamais rangé : quote_engine/pricing.payback_publiable (la fonction du PDF) sur l'investissement TTC de l'option du devis de RÉFÉRENCE (le brouillon ou devis qui pointe sur la version courante, Devis.conception_source, sinon le devis envoyé ou accepté le plus récent), source devis ; devis_ref = sa référence ; sans devis : payback null et motif « retour sur investissement : après un premier devis » (devis_ref null). Agricole et refus : {null, null}.", "ecart_devis": "[{valeur, devis, conception, devis_ref, reviser_possible, mise_a_jour_proposee, courante_refusee}] : la valeur (clé de `valeurs`) qui diffère entre le devis ENVOYÉ lié et la dernière version COMPLÈTE de la conception (D-ACAL-96 : les deux chiffres nommés, « Réviser le devis ») ; mise_a_jour_proposee = brouillon retouché à la main (Q2) ; courante_refusee = la version courante est un refus : l'écart reste comparé à la dernière version complète (ADEV146, relecture m5).",
     "brouillons_a_mettre_a_jour": "[{devis, reference, motif}] : brouillons retouchés à la main qui gardent leurs valeurs et proposent « Mettre à jour » (Q2, 23/11) ; un brouillon non retouché suit seul et n'y figure pas."
   },
   "interdit": ["prix_achat", "marge"],
@@ -73,7 +73,7 @@
     "niveau_regles": 14, "version_moteur": "qjr43-2",
     "declencheur": {"raison": "Recalculé le 23/11 à 14 h 05 : Facture hiver 900 → 1 200 MAD", "champs": [{"champ": "facture_hiver", "avant": 900, "apres": 1200}], "origine": "lead_entrees_modifiees"},
     "lead": 1, "calepinage": null, "empreinte_pose": "",
-    "version": 2, "calcule_le": "2026-11-23T14:05:00+01:00", "perimee": false,
+    "version": 2, "calcule_le": "2026-11-23T14:05:00+01:00", "perimee": false, "payback_devis": {"devis_ref": "DEV-202611-0001", "motif": null},
     "ecart_devis": [{"valeur": "nb_panneaux", "devis": 14, "conception": 12, "devis_ref": "DEV-202611-0001", "reviser_possible": true, "mise_a_jour_proposee": false, "courante_refusee": false}],
     "brouillons_a_mettre_a_jour": [{"devis": 2, "reference": "DEV-202611-0002", "motif": "retouché à la main"}]
   },
@@ -102,7 +102,7 @@
     "niveau_regles": 14, "version_moteur": "qjr43-2",
     "declencheur": {"raison": "Recalculé le 23/11 à 15 h 00 : pose enregistrée sur le calepinage", "champs": [], "origine": "pose_enregistree"},
     "lead": 2, "calepinage": 3, "empreinte_pose": "8888888888888888888888888888888888888888888888888888888888888888",
-    "version": 3, "calcule_le": "2026-11-23T15:00:00+01:00", "perimee": false, "ecart_devis": [], "brouillons_a_mettre_a_jour": []
+    "version": 3, "calcule_le": "2026-11-23T15:00:00+01:00", "perimee": false, "payback_devis": {"devis_ref": "DEV-202611-0001", "motif": null}, "ecart_devis": [], "brouillons_a_mettre_a_jour": []
   },
   "exemple_agricole": {
     "etat": "complet", "refus": null, "marche": "agricole", "option_retenue": "sans",
@@ -117,7 +117,7 @@
     "niveau_regles": 14, "version_moteur": "qjr43-2",
     "declencheur": {"raison": "Recalculé le 23/11 à 16 h 00 : HMT (m) 35 → 40", "champs": [{"champ": "pompe_hmt_m", "avant": 35, "apres": 40}], "origine": "lead_entrees_modifiees"},
     "lead": 4, "calepinage": null, "empreinte_pose": "",
-    "version": 1, "calcule_le": "2026-11-23T16:00:00+01:00", "perimee": true, "ecart_devis": [], "brouillons_a_mettre_a_jour": []
+    "version": 1, "calcule_le": "2026-11-23T16:00:00+01:00", "perimee": true, "payback_devis": {"devis_ref": "DEV-202611-0001", "motif": null}, "ecart_devis": [], "brouillons_a_mettre_a_jour": []
   },
   "exemple_refus": {
     "etat": "refus", "refus": {"code": "localisation_inconnue", "champ": "ville", "message": "Ville inconnue du moteur : renseigner la ville ou le point GPS du lead."},
@@ -127,7 +127,7 @@
     "niveau_regles": 14, "version_moteur": "qjr43-2",
     "declencheur": {"raison": "Recalculé le 23/11 à 9 h 00 : premier calcul", "champs": [], "origine": "remplissage"},
     "lead": 5, "calepinage": null, "empreinte_pose": "",
-    "version": 1, "calcule_le": "2026-11-23T09:00:00+01:00", "perimee": false, "ecart_devis": [], "brouillons_a_mettre_a_jour": []
+    "version": 1, "calcule_le": "2026-11-23T09:00:00+01:00", "perimee": false, "payback_devis": {"devis_ref": "DEV-202611-0001", "motif": null}, "ecart_devis": [], "brouillons_a_mettre_a_jour": []
   },
   "apercu": {
     "endpoint": "POST /api/django/ventes/conception/apercu/",
