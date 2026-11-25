@@ -767,6 +767,26 @@ describe('T4-U4-020..023 — ce qui est tapé n’est jamais perdu, l’écran d
       .toHaveTextContent('Largeur reprise du toit dessiné : non envoyée comme mesure.')
   })
 
+  it('X8-004 : « Notes de terrain » au téléphone — le champ du relevé servi, gardé au rechargement hors ligne, parti avec « Terminer »', async () => {
+    api.releve.mockResolvedValue({ data: { releves: [{ ...RELEVE_COURANT, notes: 'Accès par l’escalier' }], releve_courant_id: 9 } })
+    rendre()
+    await waitFor(() => expect(screen.getByLabelText('Notes de terrain')).toHaveValue('Accès par l’escalier'))
+    expect(screen.getByLabelText('Notes de terrain').tagName).toBe('TEXTAREA')
+    enLigne = false
+    await act(async () => { window.dispatchEvent(new Event('offline')) })
+    fireEvent.change(screen.getByLabelText('Notes de terrain'), { target: { value: 'Tuiles fragiles côté rue' } })
+    cleanup()
+    rendre() // rechargement hors ligne : la note tapée prime sur celle du serveur
+    await waitFor(() => expect(api.releve).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.getByLabelText('Notes de terrain')).toHaveValue('Tuiles fragiles côté rue'))
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Relevé gardé sur ce téléphone'))
+    enLigne = true
+    await act(async () => { window.dispatchEvent(new Event('online')) })
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Relevé envoyé.'))
+    expect(api.corrigerReleve.mock.calls[0][2].notes).toBe('Tuiles fragiles côté rue')
+  })
+
   it('U4-021 : un relevé enregistré illisible le dit (jamais des champs vides muets) et « Réessayer » relit', async () => {
     api.releve.mockRejectedValueOnce({ code: 'ECONNABORTED', message: 'timeout of 20000ms exceeded' })
     rendre()

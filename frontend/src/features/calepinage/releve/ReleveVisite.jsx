@@ -67,6 +67,7 @@ const attendre = (ms) => new Promise((r) => { setTimeout(r, ms) })
 function champFautif(champs) {
   const cle = Object.keys(champs ?? {})[0] ?? ''
   if (cle === 'precision_azimut_deg') return 'releve-precision'
+  if (cle === 'notes') return 'releve-notes' // T4-X8-004 — un caractère refusé dans la note ramène la note
   if (cle.startsWith('azimut')) return 'releve-azimut-main'
   const chaine = /^chaines\[(\d+)\]/.exec(cle)
   if (chaine) return Number(chaine[1]) === 1 ? 'releve-largeur' : 'releve-longueur'
@@ -123,7 +124,7 @@ export default function ReleveVisite() {
 
   const [titre, setTitre] = useState('')
   const [releve, setReleve] = useState(() => ({
-    id: null, releveLe: '', notes: '', chaines: [], photoIds: [],
+    id: null, releveLe: '', notes: depart.notes?.texte ?? '', chaines: [], photoIds: [],
     ...(depart.Longueur !== undefined ? { [`saisie${LONGUEUR}`]: depart.Longueur } : {}),
     ...(depart.Largeur !== undefined ? { [`saisie${LARGEUR}`]: depart.Largeur } : {}),
   }))
@@ -153,7 +154,7 @@ export default function ReleveVisite() {
       setMessage((m) => ({ texte: `Relevé envoyé.${m?.envoiPan ? ` ${m.envoiPan}` : ''}`, ton: 'ok' }))
       setEnvois((e) => ({ ...e, releve: true }))
       // T4-U4-021 — le serveur a pris les mesures : le brouillon les rend, l'écran relit CE QUE LE SERVEUR TIENT.
-      brouillonRef.current.oublier([LONGUEUR, LARGEUR, 'boussole'])
+      brouillonRef.current.oublier([LONGUEUR, LARGEUR, 'boussole', 'notes'])
       relireRef.current(false)
       photos.recharger()
     },
@@ -182,7 +183,8 @@ export default function ReleveVisite() {
       const c = champsDuReleve(courant)
       const garde = garderSaisies ? brouillonRef.current.brouillon : {}
       setReleve((r) => ({
-        id: courant.id, releveLe: c.releveLe, notes: c.notes, chaines: chainesSaisies(c.chaines), photoIds: c.photoIds,
+        id: courant.id, releveLe: c.releveLe, notes: garde.notes !== undefined ? r.notes : c.notes,
+        chaines: chainesSaisies(c.chaines), photoIds: c.photoIds,
         ...(garderSaisies ? Object.fromEntries([LONGUEUR, LARGEUR].filter((n) => r[`saisie${n}`] !== undefined)
           .map((n) => [`saisie${n}`, r[`saisie${n}`]])) : {}),
       }))
@@ -210,6 +212,8 @@ export default function ReleveVisite() {
     setReleve((r) => ({ ...r, chaines: avecMesure(r.chaines, nom, valeur), [`saisie${nom}`]: valeur }))
     brouillons.garder({ [nom]: valeur })
   }
+  /* T4-X8-004 — « Notes de terrain » : le MÊME champ `notes` que le relevé du bureau (PanneauReleve), gardé au brouillon (même vidée). */
+  const majNotes = (texte) => { setReleve((r) => ({ ...r, notes: texte })); brouillons.garder({ notes: { texte } }) } // enveloppée : une note vidée reste une saisie
   const majPente = (p) => { setPente(p); brouillons.garder({ pente: p }) }
   /* ACAL1836 — sans mesure du relevé ni saisie, les cotes du toit DÉJÀ CRÉÉ (pan rectangulaire servi) sont reprises et DITES
      telles ; une saisie (même vide) les remplace. T4-X8-001 — une reprise n'est PAS une mesure : elle ne part jamais avec
@@ -364,7 +368,7 @@ export default function ReleveVisite() {
         : calepinageApi.calepinages.enregistrerReleve(id, corps))
       if (fileReleve.enAttente) await fileReleve.oublier() // l'envoi en ligne a réussi : la copie gardée ne repart pas
       if (!sansPanPourAzimut) brouillons.oublier() // le serveur a tout pris : le brouillon est rendu
-      else brouillons.oublier([LONGUEUR, LARGEUR, 'pente', 'boussole'])
+      else brouillons.oublier([LONGUEUR, LARGEUR, 'pente', 'boussole', 'notes'])
       if (brouillons.pan) brouillons.oublierPan()
       const nouvelId = res?.data?.releve?.id
       setReleve((r) => ({ ...r, id: nouvelId ?? r.id, releveLe: corps.releve_le }))
@@ -490,6 +494,12 @@ export default function ReleveVisite() {
             {Object.keys(erreurs).filter((c) => c.startsWith('chaines')).map((c) => (
               <p key={c} role="alert" className="cal-tel-erreur">{erreurs[c]}</p>
             ))}
+            <div className="cal-tel-champ">
+              <label htmlFor="releve-notes" className="cal-tel-libelle">Notes de terrain</label>
+              <textarea id="releve-notes" data-testid="releve-notes" className="cal-tel-notes" rows={3}
+                value={releve.notes ?? ''} onChange={(e) => majNotes(e.target.value)} />
+            </div>
+            {erreurs.notes && <p role="alert" className="cal-tel-erreur">{erreurs.notes}</p>}
           </section>
 
           {(photos.enAttente > 0 || fileReleve.enAttente || !enLigne || mesuresGardees > 0) && (
