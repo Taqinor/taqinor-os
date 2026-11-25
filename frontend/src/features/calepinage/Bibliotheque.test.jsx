@@ -205,6 +205,22 @@ describe('CAL201 — les quatre listes, depuis les DEUX endpoints réels', () =>
     expect(screen.getByText(/Aucun matériel favori réglé/)).toBeInTheDocument()
   })
 
+  it('T4-X3-006 — un échec de chargement dit pourquoi et offre « Réessayer »', async () => {
+    mocks.hasPermission.mockReturnValue(true)
+    // Pile qui ne répond pas : aucune réponse HTTP, donc aucun motif serveur.
+    mocks.getParametres.mockRejectedValueOnce(new Error('Network Error'))
+    mocks.getParametres.mockResolvedValue({ data: REGLAGES })
+    mocks.getModeles.mockResolvedValue({ data: MODELES })
+    render(<Bibliotheque />)
+
+    const bloc = await screen.findByTestId('cal-biblio-erreur')
+    expect(bloc).toHaveTextContent('La bibliothèque n’a pas pu être chargée.')
+    expect(bloc).toHaveTextContent('Le serveur ne répond pas')
+    await userEvent.click(within(bloc).getByRole('button', { name: 'Réessayer' }))
+    await waitFor(() => expect(screen.getByTestId('cal-biblio-modele-5')).toBeInTheDocument())
+    expect(screen.queryByTestId('cal-biblio-erreur')).toBeNull()
+  })
+
   it('une erreur serveur s’affiche telle quelle, jamais un texte fabriqué', async () => {
     mocks.hasPermission.mockReturnValue(true)
     mocks.getParametres.mockRejectedValue({

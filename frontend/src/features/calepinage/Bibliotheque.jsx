@@ -3,6 +3,7 @@ import calepinageApi from '../../api/calepinageApi'
 import { unwrapList } from '../../api/resource'
 import { useHasPermission } from '../../hooks/useHasPermission'
 import { Badge, Card, Combobox, Spinner } from '../../ui'
+import PageErreurChargement from '../../components/PageErreurChargement'
 import SelecteurRattachement from './SelecteurRattachement'
 
 /* ============================================================================
@@ -317,6 +318,8 @@ export default function Bibliotheque() {
   const [modeles, setModeles] = useState(null)
   const [chargement, setChargement] = useState(true)
   const [erreur, setErreur] = useState(null)
+  // T4-X3-006 — « Réessayer » relance le chargement (change la clé de l'effet).
+  const [essai, setEssai] = useState(0)
   // CALX30 — les profils types, SERVIS puis édités sur place. `refusProfils`
   // porte la clé du profil fautif : l'erreur s'affiche SOUS lui, jamais en
   // haut de page comme un « non enregistré » anonyme.
@@ -385,12 +388,16 @@ export default function Bibliotheque() {
       })
       .catch((e) => {
         if (annule) return
+        // T4-X3-006 — un motif, toujours : celui du serveur, sinon ce qui s'est
+        // passé (pas de réponse, ou un code d'erreur).
         setErreur(e?.response?.data?.detail
-          || 'La bibliothèque n’a pas pu être chargée.')
+          || (e?.response?.status
+            ? `Le serveur a répondu par une erreur (code ${e.response.status}).`
+            : 'Le serveur ne répond pas : vérifiez votre connexion.'))
       })
       .finally(() => { if (!annule) setChargement(false) })
     return () => { annule = true }
-  }, [])
+  }, [essai])
 
   useEffect(() => {
     if (!peutGerer) return undefined
@@ -408,8 +415,13 @@ export default function Bibliotheque() {
   if (erreur) {
     return (
       <div className="page" data-testid="cal-bibliotheque">
-        <p role="alert" className="text-sm text-destructive"
-          data-testid="cal-biblio-erreur">{erreur}</p>
+        <div role="alert" data-testid="cal-biblio-erreur">
+          <PageErreurChargement
+            title="La bibliothèque n’a pas pu être chargée."
+            error={erreur}
+            onRetry={() => { setErreur(null); setChargement(true); setEssai((n) => n + 1) }}
+          />
+        </div>
       </div>
     )
   }
