@@ -101,7 +101,7 @@ describe('ACAL37 — la conception d’un devis EST son calepinage', () => {
 
     const encart = await screen.findByTestId('pv21-reviser')
     expect(encart).toHaveTextContent('Devis envoyé : révisez-le')
-    expect(screen.getByRole('button', { name: 'Réviser (v2)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Réviser (nouvelle version)' })).toBeInTheDocument()
   })
 
   it('devis introuvable : message FR, aucun boot du builder', async () => {

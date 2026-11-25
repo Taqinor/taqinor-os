@@ -117,7 +117,7 @@ function BandeauVerrou({ raison }) {
         {raison || 'Cet atelier est en lecture seule : le devis lié ne se modifie plus.'}
       </p>
       <p className="mt-1 text-sm text-muted-foreground">
-        Pour changer cette conception, utilisez « Réviser (v2) » : une nouvelle
+        Pour changer cette conception, utilisez « Réviser (nouvelle version) » : une nouvelle
         version du devis rouvre l’écriture.
       </p>
     </div>

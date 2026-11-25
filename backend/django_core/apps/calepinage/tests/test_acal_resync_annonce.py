@@ -246,17 +246,36 @@ class ResyncAnnonceTest(BaseApiCalepinage):
 
         self._designer('Onduleur hybride Deye 5kW Monophasé')
         refus = SyncLayoutError("7 panneaux « P » sont incompatibles avec « Onduleur réseau Huawei 5kW "
-                                "Monophasé » : Isc. Corrigez le nombre de panneaux ou changez d'onduleur — le "
-                                "devis n'a pas été modifié.", revision_possible=False)
+                                "Monophasé » : Isc. — le devis n'a pas été modifié.", revision_possible=False,
+                                code='couple_incompatible')
         with mock.patch('apps.ventes.services.resynchroniser_conception', side_effect=refus):
             reponse = self.api.post(f'{self.base}sync-devis/', {}, format='json')
         self.assertEqual(reponse.status_code, 409, reponse.data)
+        # T4-X7-007 — plus de « désignez l'onduleur du devis » (geste qui ne lève pas ce refus) :
+        # les gestes qui le lèvent sont nommés.
         self.assertTrue(str(reponse.data['detail']).endswith(
             " L'étape Électrique juge l'onduleur désigné « Onduleur hybride Deye 5kW Monophasé » ; ce devis "
-            "porte « Onduleur réseau Huawei 5kW Monophasé », c'est lui que ce refus juge. Pour aligner les "
-            "deux, désignez « Onduleur réseau Huawei 5kW Monophasé » à l'étape Électrique (Matériel "
-            "électrique), puis resynchronisez."), reponse.data)
+            "porte « Onduleur réseau Huawei 5kW Monophasé », c'est lui que ce refus juge : désigner un "
+            "onduleur à l'étape Électrique ne le change pas. Pour lever ce refus, choisissez un autre module "
+            "à l'étape Électrique (Matériel électrique), ou remplacez « Onduleur réseau Huawei 5kW "
+            "Monophasé » dans le devis, puis resynchronisez."), reponse.data)
+        self.assertNotIn('désignez « Onduleur réseau Huawei', reponse.data['detail'])
         self.assertEqual(self.emissions, [])
+
+    def test_t4_x7_007_refus_d_etat_ne_propose_pas_de_changer_de_module(self):
+        """T4-X7-007 — un refus qui n'est pas celui du couple (ici un refus d'état) garde
+        l'onduleur jugé nommé, sans « choisissez un autre module »."""
+        from unittest import mock
+
+        from apps.ventes.services import SyncLayoutError
+
+        self._designer('Onduleur hybride Deye 5kW Monophasé')
+        with mock.patch('apps.ventes.services.resynchroniser_conception',
+                        side_effect=SyncLayoutError('Devis accepté.', revision_possible=True)):
+            reponse = self.api.post(f'{self.base}sync-devis/', {}, format='json')
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertIn('c\'est lui que ce refus juge', reponse.data['detail'])
+        self.assertNotIn('autre module', reponse.data['detail'])
 
     def test_e6e_resynchro_refusee_onduleur_designe_inchangee(self):
         """Le devis porte l'onduleur désigné : le refus reste celui du serveur, mot pour mot."""

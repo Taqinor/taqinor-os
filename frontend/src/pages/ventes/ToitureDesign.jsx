@@ -1303,7 +1303,7 @@ function AtelierToiture({
                 data-testid="acal-reviser-lecture-seule"
                 className="mt-4 ml-3 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-primary-text disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Réviser (v2)
+                Réviser (nouvelle version)
               </button>
             )}
           </div>

@@ -112,11 +112,13 @@ retiré plus un hook ajouté.
 | `cal-devis-reviser` | devis réviser. |
 | `cal-devis-variante-manquante` | devis variante manquant. |
 | `cal-devis-surfaces` | étape Documents : surfaces chiffrées par le devis repliées sur une ligne qui se déplie (`<details>`, BoutonDevis `compact`). |
-| `cal-devis-reviser-lecture-seule` | devis réviser (v2) depuis la lecture seule (ACAL93). |
+| `cal-devis-reviser-lecture-seule` | devis « Réviser (nouvelle version) » depuis la lecture seule (ACAL93, T4-X7-016). |
+| `cal-devis-reviser-refus` | devis : la révision refusée ou échouée, dite sous le bouton (motif du serveur, lien vers la version plus récente ; T4-X7-016). |
 | `cal-devis-retouches` | devis retouches non enregistrées / lignes ajoutées (ACAL94/95). |
 | `cal-devis-avertissements` | devis avertissements et marques manquantes (ACAL95). |
 | `cal-devis-j-ai-lu` | devis « J'ai lu » avant rechargement (ACAL95). |
 | `cal-devis-cree` | devis : carte « Devis … créé » après la génération (ACAL866). |
+| `cal-devis-alertes` | devis : avertissements de composition lisibles sur la carte du devis créé, jamais repliés (T4-X7-008). |
 | `cal-devis-details-technicien` | devis : détails techniques repliés sous la carte (ACAL866). |
 | `cal-devis-ouvrir` | devis : bouton « Voir le devis » (`/ventes/devis?devis=<id>`, ACAL95/ACAL866). |
 | `cal-devis-revenir` | devis : « Revenir à la conception » sous la carte (ACAL866). |

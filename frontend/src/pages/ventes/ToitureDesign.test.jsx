@@ -727,7 +727,7 @@ describe('ToitureDesign — PV21 / ACAL37 : enregistrer la conception', () => {
     // Le motif affiché est celui du SERVEUR, jamais rédigé côté écran.
     expect(encart).toHaveTextContent('Devis déjà envoyé au client — créez une révision (v2).')
 
-    await userEvent.click(screen.getByRole('button', { name: 'Réviser (v2)' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Réviser (nouvelle version)' }))
     await waitFor(() => expect(ventesApi.reviserDevis)
       .toHaveBeenCalledWith(String(DEVIS_ID)))
     expect(navigateMock).toHaveBeenCalledWith('/ventes/devis/777/design')
@@ -750,7 +750,7 @@ describe('ToitureDesign — PV21 / ACAL37 : enregistrer la conception', () => {
     const bandeau = await screen.findByTestId('cal-conflit-lecture-seule')
     expect(bandeau).toHaveTextContent('Devis accepté — aucune révision de calepinage possible.')
     expect(screen.queryByTestId('pv21-reviser')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Réviser (v2)' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Réviser (nouvelle version)' })).toBeNull()
   })
 })
 

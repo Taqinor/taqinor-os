@@ -73,9 +73,9 @@ function titreEtatElectrique(data, manquantes) {
    `calepinage_publication.json`) : avertissements et marques manquantes du
    serveur, MOT POUR MOT ; lignes de kit ajoutées ; « Aucun changement ». Sans
    rien à dire, le geste reste celui d'aujourd'hui (navigation / rechargement). */
-function messagesDuServeur(data) {
+function messagesDuServeur(data, cles = ['avertissements', 'marques_manquantes']) {
   const messages = []
-  for (const cle of ['avertissements', 'marques_manquantes']) {
+  for (const cle of cles) {
     for (const m of Array.isArray(data?.[cle]) ? data[cle] : []) {
       if (typeof m === 'string' && m.trim()) messages.push(m.trim())
     }
@@ -99,6 +99,10 @@ export const MESSAGE_ENREGISTREMENT_ECHOUE = 'La conception à l’écran n’a 
   + 'enregistrée : rien n’a été envoyé au devis. Corrigez puis réessayez.'
 export const MESSAGE_RETOUCHES_NON_ENREGISTREES = 'Retouches non enregistrées : elles ne '
   + 'seront pas reprises dans la V2.'
+/** T4-X7-016 — le libellé du geste nomme la version SUIVANTE, jamais « (v2) » sur un devis déjà V2. */
+export const LIBELLE_REVISER = 'Réviser (nouvelle version)'
+export const MESSAGE_REVISION_ECHOUEE = 'La nouvelle version n’a pas été créée : le devis est inchangé. Réessayez, '
+  + 'ou ouvrez le devis depuis la liste des devis.'
 
 // ACAL1414 — les clés des surfaces que le devis lié ne chiffre PAS (`chiffree === false`, servi par ACAL1413) ;
 // `null` (sans devis lié ou sans sélection écrite) ne décoche rien : tout est coché à l'ouverture (ACAL968).
@@ -157,6 +161,7 @@ export default function BoutonDevis({
   const [retour, setRetour] = useState(null)
   // ACAL94 — avertissement (jamais un refus) avant une révision.
   const [retouches, setRetouches] = useState(false)
+  const [refusRevision, setRefusRevision] = useState(null) // T4-X7-016 — `{texte, successeur}`
   const gesteEnCours = useRef(false) // ACON46 — garde ré-entrante (voir unSeulGeste)
   // ACAL968 — clés des surfaces décochées ; ACAL1414 : à l'ouverture, celles que le devis lié ne chiffre PAS.
   const [decochees, setDecochees] = useState(() => surfacesNonChiffrees(detail))
@@ -172,7 +177,7 @@ export default function BoutonDevis({
   // (CAL17) est chargé par `AtelierPanneaux` et descendu ici en prop. Le
   // charger une seconde fois ferait deux appels pour la même vérité — et deux
   // vérités le jour où l'une des deux serait périmée.
-  // ACAL93 — en LECTURE SEULE, le seul geste offert est « Réviser (v2) », quand
+  // ACAL93 — en LECTURE SEULE, le seul geste offert est « Réviser (nouvelle version) », quand
   // le serveur le dit possible (jamais masqué par rôle ni refusé).
   if (!detail || (lectureSeule && !(revisionPossible && detail?.devis?.id))) return null
 
@@ -310,7 +315,10 @@ export default function BoutonDevis({
     // les lignes techniques (ACAL95, ACAL171) repliées dessous ; la référence est celle du serveur.
     const manquantes = manquantesElectriques(res.data)
     setRetour({
-      messages: messagesDuServeur(res.data),
+      // T4-X7-008 — les avertissements de composition (« ce panneau ne convient pas à cet onduleur »…)
+      // se lisent SUR la carte du devis créé, jamais repliés ; le technique reste sous « Détails ».
+      alertes: messagesDuServeur(res.data, ['avertissements']),
+      messages: messagesDuServeur(res.data, ['marques_manquantes']),
       manquantes,
       etatTitre: titreEtatElectrique(res.data, manquantes),
       lignes: null,
@@ -383,17 +391,37 @@ export default function BoutonDevis({
     // s'ouvre sur sa CONCEPTION.
     if (enCours) return
     setEnCours(true)
+    setRefusRevision(null)
     let v2 = null
     try {
-      await reviserEtOuvrir({
+      const rendu = await reviserEtOuvrir({
         devis: devisLie,
         onApres: (nouveau) => { v2 = nouveau },
         navigate: () => { if (v2?.id != null) navigate(`/ventes/devis/${v2.id}/design`) },
+        // T4-X7-016 — un refus qui nomme un autre devis se lit sous le bouton (jamais un clic muet).
+        onConflit: ({ conflit: texte, successeur }) => setRefusRevision({ texte, successeur }),
       })
+      if (rendu == null) setRefusRevision((avant) => avant ?? { texte: MESSAGE_REVISION_ECHOUEE, successeur: null })
+    } catch {
+      setRefusRevision({ texte: MESSAGE_REVISION_ECHOUEE, successeur: null })
     } finally {
       setEnCours(false)
     }
   }
+  // T4-X7-016 — ce que la révision a répondu, sous le bouton : le motif du serveur, ou l'échec dit.
+  const refusDeRevision = refusRevision && (
+    <p className="text-xs text-destructive" role="alert" data-testid="cal-devis-reviser-refus">
+      {refusRevision.texte}
+      {refusRevision.successeur && (
+        <>
+          {' '}
+          <Link to={`/ventes/devis?devis=${refusRevision.successeur.id}`} className="underline">
+            {`Ouvrir ${refusRevision.successeur.reference}`}
+          </Link>
+        </>
+      )}
+    </p>
+  )
 
   if (lectureSeule) {
     return (
@@ -405,8 +433,9 @@ export default function BoutonDevis({
           data-testid="cal-devis-reviser-lecture-seule"
           className="inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-primary-text disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Réviser (v2)
+          {enCours ? 'Création de la nouvelle version…' : LIBELLE_REVISER}
         </button>
+        {refusDeRevision}
         {retouches && (
           <p className="text-xs text-primary-text" role="status" data-testid="cal-devis-retouches">
             {MESSAGE_RETOUCHES_NON_ENREGISTREES}
@@ -580,6 +609,7 @@ export default function BoutonDevis({
           devisId={retour.devisId}
           reference={retour.reference}
           onRevenir={() => setRetour(null)}
+          alertes={retour.alertes ?? []}
           aDetails={retour.messages.length > 0 || retour.manquantes?.length > 0}
         >
           <div data-testid="cal-devis-avertissements">
@@ -710,9 +740,10 @@ export default function BoutonDevis({
               data-testid="cal-devis-reviser"
               className="mt-3 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-primary-text disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Réviser (v2)
+              {enCours ? 'Création de la nouvelle version…' : LIBELLE_REVISER}
             </button>
           )}
+          {refusDeRevision}
         </div>
       )}
     </div>

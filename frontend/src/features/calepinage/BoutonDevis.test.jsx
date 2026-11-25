@@ -269,6 +269,32 @@ describe('BoutonDevis (CAL38)', () => {
     await waitFor(() => expect(ventesApi.reviserDevis).toHaveBeenCalledWith(DETAIL.devis.id))
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/ventes/devis/81/design'))
   })
+
+  // T4-X7-016 — le geste nomme la version SUIVANTE (jamais « (v2) » sur une V2) et un échec se dit sous le bouton.
+  it('lecture seule : « Réviser (nouvelle version) », et un refus du serveur dit pourquoi sous le bouton', async () => {
+    ventesApi.reviserDevis.mockRejectedValue({ response: { status: 409, data: {
+      code: 'version_remplacee', detail: 'Ce devis a déjà une version plus récente.',
+      successeur: { id: 90, reference: 'DEV-V3' } } } })
+    rendre({ lectureSeule: true, revisionPossible: true })
+
+    const bouton = await screen.findByTestId('cal-devis-reviser-lecture-seule')
+    expect(bouton).toHaveTextContent('Réviser (nouvelle version)')
+    expect(bouton).not.toHaveTextContent('(v2)')
+    await userEvent.click(bouton)
+    const refus = await screen.findByTestId('cal-devis-reviser-refus')
+    expect(refus).toHaveTextContent('Ce devis a déjà une version plus récente.')
+    expect(within(refus).getByRole('link', { name: 'Ouvrir DEV-V3' })).toHaveAttribute('href', '/ventes/devis?devis=90')
+    expect(navigateMock).not.toHaveBeenCalled()
+  })
+
+  it('lecture seule : un échec sans motif nommé dit que rien n’a été créé', async () => {
+    ventesApi.reviserDevis.mockRejectedValue({ response: { status: 500, data: {} } })
+    rendre({ lectureSeule: true, revisionPossible: true })
+
+    await userEvent.click(await screen.findByTestId('cal-devis-reviser-lecture-seule'))
+    expect(await screen.findByTestId('cal-devis-reviser-refus'))
+      .toHaveTextContent('La nouvelle version n’a pas été créée')
+  })
 })
 
 /* ACAL95 — ce que la génération et la resynchro n'ont pas pu faire se LIT
@@ -305,8 +331,12 @@ describe('BoutonDevis — retour du serveur (ACAL95)', () => {
     await userEvent.click(await screen.findByTestId('cal-generer-devis'))
 
     const bloc = await screen.findByTestId('cal-devis-avertissements')
-    expect(bloc).toHaveTextContent(PUBLICATION.avertissements[0])
     expect(bloc).toHaveTextContent(PUBLICATION.marques_manquantes[0])
+    // T4-X7-008 — l'avertissement de composition se lit SUR la carte, hors du repli technicien.
+    const alertes = screen.getByTestId('cal-devis-alertes')
+    expect(alertes).toHaveTextContent(PUBLICATION.avertissements[0])
+    expect(alertes.closest('details')).toBeNull()
+    expect(bloc).not.toHaveTextContent(PUBLICATION.avertissements[0])
     expect(navigateMock).not.toHaveBeenCalled()
     expect(screen.getByTestId('cal-devis-ouvrir'))
       .toHaveAttribute('href', `/ventes/devis?devis=${PUBLICATION.devis}`)

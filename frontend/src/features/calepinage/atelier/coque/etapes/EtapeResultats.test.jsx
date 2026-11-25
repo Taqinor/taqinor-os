@@ -832,6 +832,36 @@ describe('Étape Résultats — la conception, et l’écart avec le devis envoy
       .toHaveBeenCalledWith(bloc.devis_envoye.devis, { sur_la_conception: true }))
   })
 
+  it('T4-X7-006 — la révision est dite telle qu’elle est (copie remise sur la conception, la pose par la resynchronisation)', async () => {
+    const bloc = SERVI()
+    bloc.devis_envoye.ecart_devis = [LIGNE(), { ...LIGNE(), valeur: 'production_annuelle', devis: 6047, conception: 8198 }]
+    servir({ ...JAMAIS(), conception: bloc })
+    rendre()
+    await screen.findByRole('link', { name: bloc.devis_envoye.reference })
+    const phrase = document.querySelector('[data-zone="reviser-explique"]')
+    expect(phrase).toHaveTextContent('copie de ce devis remise sur la conception du lead si elle a changé depuis')
+    expect(phrase).toHaveTextContent('Votre pose n’y entre qu’en resynchronisant cette nouvelle version')
+    expect(zone()).not.toHaveTextContent('crée une nouvelle version sur la conception.')
+  })
+
+  it('T4-X7-006 — après la révision, la V2 liée qui ne porte pas la pose reste NOMMÉE ; à jour ou absente : rien', async () => {
+    const lie = { devis: 2892, reference: 'DEV-202611-0161', statut: 'brouillon', a_jour: false }
+    servir({ ...JAMAIS(), conception: { ...sans(), devis_lie: lie } })
+    const { unmount } = rendre()
+    const ligne = await waitFor(() => {
+      const el = document.querySelector('[data-zone="devis-lie-pose"]')
+      expect(el).not.toBeNull()
+      return el
+    })
+    expect(ligne).toHaveTextContent('Le devis lié DEV-202611-0161 ne porte pas votre pose : « Resynchroniser le devis »')
+    expect(within(ligne).getByRole('link', { name: 'DEV-202611-0161' })).toHaveAttribute('href', '/ventes/devis?devis=2892')
+    unmount()
+    servir({ ...JAMAIS(), conception: { ...sans(), devis_lie: { ...lie, a_jour: true } } })
+    rendre()
+    await screen.findByText(/Production de la conception/)
+    expect(document.querySelector('[data-zone="devis-lie-pose"]')).toBeNull()
+  })
+
   it('devis envoyé au même chiffre de production : UN seul chiffre, pas de bouton', async () => {
     const bloc = SERVI()
     bloc.devis_envoye.ecart_devis = [LIGNE()]

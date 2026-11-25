@@ -934,10 +934,12 @@ def _montants(taux_tva, remise_globale, Decimal):
     return montants
 
 
-def _onduleur_juge(calepinage, devis):
+def _onduleur_juge(calepinage, devis, refus=None):
     """Lane E6e (T4-X5-010) — un refus de resynchro juge l'onduleur du DEVIS ; quand
-    l'étape Électrique en désigne un AUTRE, la phrase le dit, nomme les deux et propose
-    le geste qui existe (désigner l'onduleur du devis). ``''`` sinon (refus inchangé)."""
+    l'étape Électrique en désigne un AUTRE, la phrase le dit et nomme les deux. T4-X7-007 —
+    elle ne propose plus de désigner l'onduleur du devis (geste qui ne lève pas un refus
+    jugé sur ce même onduleur) : elle nomme les gestes qui le lèvent (un autre module à
+    l'étape Électrique, ou un autre onduleur dans le devis). ``''`` sinon (refus inchangé)."""
     from apps.stock.selectors import get_produit_scoped
     from apps.ventes.selectors_calepinage import lignes_produits_calepinage
     from apps.ventes.services import classer_produit
@@ -954,9 +956,14 @@ def _onduleur_juge(calepinage, devis):
     if not onduleurs or produit is None or designe in {o.pk for o in onduleurs}:
         return ''
     du_devis = onduleurs[0].nom
-    return (f" L'étape Électrique juge l'onduleur désigné « {produit.nom} » ; ce devis porte "
-            f"« {du_devis} », c'est lui que ce refus juge. Pour aligner les deux, désignez "
-            f"« {du_devis} » à l'étape Électrique (Matériel électrique), puis resynchronisez.")
+    phrase = (f" L'étape Électrique juge l'onduleur désigné « {produit.nom} » ; ce devis porte "
+              f"« {du_devis} », c'est lui que ce refus juge : désigner un onduleur à l'étape "
+              f"Électrique ne le change pas.")
+    if getattr(refus, 'code', '') == 'couple_incompatible':  # ventes.domain.resynchronisation.COUPLE_INCOMPATIBLE
+        phrase += (f" Pour lever ce refus, choisissez un autre module à l'étape Électrique "
+                   f"(Matériel électrique), ou remplacez « {du_devis} » dans le devis, puis "
+                   f"resynchronisez.")
+    return phrase
 
 
 def resynchroniser_devis(calepinage, *, user=None,
@@ -1045,7 +1052,7 @@ def resynchroniser_devis(calepinage, *, user=None,
             roof_image=None if variante is not None else (
                 getattr(calepinage, 'roof_image', None) or None))
     except SyncLayoutError as refus:
-        detail = refus.detail + _onduleur_juge(calepinage, devis)
+        detail = refus.detail + _onduleur_juge(calepinage, devis, refus)
         raise DevisRefuse(
             detail, champ='devis', statut=409,
             donnees={'detail': detail,

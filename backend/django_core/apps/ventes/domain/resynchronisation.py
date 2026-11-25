@@ -57,10 +57,17 @@ class SyncLayoutError(Exception):
     refus : il se corrige sur place, tracé (QJR557, D-QJR5-5).
     """
 
-    def __init__(self, detail, *, revision_possible=False):
+    def __init__(self, detail, *, revision_possible=False, code=''):
         super().__init__(detail)
         self.detail = detail
         self.revision_possible = revision_possible
+        # T4-X7-007 — ``COUPLE_INCOMPATIBLE`` : le couple panneau/onduleur lui-même est en
+        # cause (lu par la porte du calepinage pour nommer le geste qui lève le refus).
+        self.code = code
+
+
+#: T4-X7-007 — code du refus « ce panneau ne se raccorde pas à cet onduleur ».
+COUPLE_INCOMPATIBLE = 'couple_incompatible'
 
 
 def _refus_resynchro(devis):

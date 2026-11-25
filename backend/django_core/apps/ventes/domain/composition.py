@@ -1146,14 +1146,17 @@ def _refuser_couple_panneau_onduleur_impossible(devis, lignes, lignes_panneau,
                 continue
             raisons = verdict.get('raisons') or []
             raise SyncLayoutError(
+                # T4-X7-007 — ce refus vise le COUPLE (aucune configuration de chaînes ne
+                # l'évite) : changer le nombre de panneaux n'y peut rien, on ne le propose plus.
                 '%d panneaux « %s » sont incompatibles avec « %s » : %s. '
-                'Corrigez le nombre de panneaux ou changez d\'onduleur — le '
-                'devis n\'a pas été modifié.'
+                'Le nombre de panneaux n\'y change rien : choisissez un autre '
+                'module, ou remplacez cet onduleur dans le devis, puis '
+                'resynchronisez — le devis n\'a pas été modifié.'
                 % (compte_juge, getattr(panneau, 'nom', '') or 'panneau',
                    getattr(onduleur, 'nom', '') or 'onduleur',
                    raisons[0] if raisons else
                    'le couple sort des bornes de la fiche constructeur'),
-                revision_possible=False)
+                revision_possible=False, code=COUPLE_INCOMPATIBLE)
 
 
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────
@@ -1185,4 +1188,5 @@ from apps.ventes.domain.etape_composer import (  # noqa: E402 — fin de module 
     IntentionComposition,
     composer,
 )
-from apps.ventes.domain.resynchronisation import SyncLayoutError  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from apps.ventes.domain.resynchronisation import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+    COUPLE_INCOMPATIBLE, SyncLayoutError)
