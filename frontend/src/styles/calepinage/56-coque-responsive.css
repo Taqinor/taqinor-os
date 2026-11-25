@@ -229,6 +229,12 @@
   .cal-coque[data-expert='0'] { --cal-tiroir: 96px; }
   .cal-coque .cal-coque-corps { flex-direction: column; }
   .cal-coque .cal-coque-sur-carte .cal-carte-flottante { max-width: calc(100vw - 24px); overflow-x: auto; }
+  /* T4-X8-009 — la barre d'outils de la carte défile à 390 px (427 px dans 364) : le choix Plan / 3D, LE contrôle dont le
+     téléphone a besoin, passe en tête (ordre visuel seul : l'ordre lu reste celui de la maquette), suivi de son filet ;
+     les autres outils défilent après lui. */
+  .cal-coque .cal-barre-outils-carte > [role='group'] { order: -2; flex-shrink: 0; }
+  .cal-coque .cal-barre-outils-carte > .cal-barre-outils-separateur:last-of-type { order: -1; }
+  .cal-coque .cal-barre-outils-carte > :not([role='group'], .cal-barre-outils-separateur) { flex-shrink: 0; }
   .cal-coque .cal-coque-centre { order: 1; flex: 1; min-height: 0; }
   .cal-coque .cal-rail {
     order: 2;

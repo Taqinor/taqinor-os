@@ -348,6 +348,33 @@ describe('Étape Toit — sur la carte', () => {
     expect(within(barre).getByRole('button', { name: 'Rétablir' })).toBeDisabled()
   })
 
+  // T4-X8-009 — au téléphone (390 px), la barre défile (427 px dans 364) et « 3D » commençait à x = 387 : le choix
+  // Plan / 3D passe EN TÊTE de la barre (ordre visuel seul, l'ordre lu reste celui de la maquette), suivi de son filet ;
+  // les autres outils peuvent défiler. jsdom n'évalue pas les @media : les règles du bloc téléphone sont posées seules.
+  it('T4-X8-009 — téléphone : Plan / 3D en tête de la barre, jamais coupé au bord droit', () => {
+    const source = document.createElement('style')
+    source.textContent = readFileSync(resolve(process.cwd(), 'src/styles/calepinage/56-coque-responsive.css'), 'utf8')
+    document.head.appendChild(source)
+    const telephone = [...source.sheet.cssRules].filter((r) => r.media && r.media.mediaText === '(max-width: 639px)')
+      .flatMap((r) => [...r.cssRules].map((x) => x.cssText))
+    source.remove()
+    const style = document.createElement('style')
+    style.textContent = telephone.join(' ')
+    document.head.appendChild(style)
+    try {
+      rendre()
+      const barre = within(surCarte).getByRole('toolbar', { name: 'Outils du plan' })
+      const ordre = (el) => Number(getComputedStyle(el).order || 0)
+      const vue = within(barre).getByRole('group', { name: 'Vue' })
+      const filets = [...barre.querySelectorAll('.cal-barre-outils-separateur')]
+      const outils = within(barre).getAllByRole('button').filter((b) => !vue.contains(b))
+      expect(getComputedStyle(vue).flexShrink).toBe('0')
+      for (const b of outils) expect(ordre(vue)).toBeLessThan(ordre(b))
+      expect(ordre(vue)).toBeLessThan(ordre(filets[filets.length - 1]))
+      for (const b of outils) expect(ordre(filets[filets.length - 1])).toBeLessThan(ordre(b))
+    } finally { style.remove() }
+  })
+
   it('chaque outil clique le VRAI contrôle du constructeur', async () => {
     rendre()
     const barre = within(surCarte).getByRole('toolbar')
