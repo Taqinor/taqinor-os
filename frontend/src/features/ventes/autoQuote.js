@@ -221,12 +221,30 @@ export function libelleSuccesDevisAuto(resultat) {
   const avecBatterie = Number(resultat.economie_an_1_ht_avec)
   const optionAvec = resultat.economie_an_1_ht_avec != null && Number.isFinite(avecBatterie) && avecBatterie > 0
   if (resultat.reference) morceaux.push(resultat.reference)
-  const kwc = Number(resultat.kwc)
-  // T4-U1-026 — la puissance du devis, jamais arrondie à l'entier.
-  if (Number.isFinite(kwc) && kwc > 0) morceaux.push(formatKwc(kwc))
-  const ttc = Number(resultat.total_ttc)
-  if (resultat.total_ttc != null && Number.isFinite(ttc)) {
-    morceaux.push(`${formatMAD(ttc, { decimals: 0 })} TTC`)
+  // T4-V2-013 — deux options servies (`options`) : chacune avec SON kWc et SON
+  // total ; `kwc`/`total_ttc` de tête sont ceux de l'option affichée (avec).
+  const options = Array.isArray(resultat.options) ? resultat.options.filter((o) => o?.variante) : []
+  if (options.length === 2) {
+    for (const o of options) {
+      const k = Number(o.kwc)
+      const t = Number(o.total_ttc)
+      morceaux.push([`${o.libelle} : ${Number.isFinite(k) && k > 0 ? formatKwc(k) : '—'}`,
+        ...(o.total_ttc != null && Number.isFinite(t) ? [`${formatMAD(t, { decimals: 0 })} TTC`] : [])].join(' · '))
+    }
+  } else {
+    const kwc = Number(resultat.kwc)
+    // T4-U1-026 — la puissance du devis, jamais arrondie à l'entier.
+    if (Number.isFinite(kwc) && kwc > 0) morceaux.push(formatKwc(kwc))
+    const ttc = Number(resultat.total_ttc)
+    if (resultat.total_ttc != null && Number.isFinite(ttc)) {
+      morceaux.push(`${formatMAD(ttc, { decimals: 0 })} TTC`)
+    }
+  }
+  // T4-V2-015 — une SEULE option : laquelle, et la raison quand c'est la fiche.
+  const unique = resultat.option_unique
+  if (unique && typeof unique === 'object') {
+    morceaux.push(`option unique : ${unique.batterie ? 'avec' : 'sans'} batterie`
+      + (unique.souhait_fiche ? (unique.batterie ? ' (batterie souhaitée sur la fiche)' : ' (sans batterie souhaité sur la fiche)') : ''))
   }
   const eco = Number(resultat.economie_an_1_ht)
   if (resultat.economie_an_1_ht != null && Number.isFinite(eco) && eco > 0) {

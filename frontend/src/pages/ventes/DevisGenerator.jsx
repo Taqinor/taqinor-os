@@ -2015,7 +2015,7 @@ export default function DevisGenerator({
           leadValeursModifiees={leadValeursModifiees}
           setLeadValeursModifiees={setLeadValeursModifiees} clear={clear}
           setRechargeEdit={setRechargeEdit} onduleursIncomplets={onduleursIncomplets}
-          pompageAutoFilled={pompageAutoFilled} apercuPompage={apercuPompage}
+          pompageAutoFilled={pompageAutoFilled} apercuPompage={apercuPompage} lines={lines}
         />
 
         {/* ── Aperçu de la simulation (masqué en mode pompage) ── */}

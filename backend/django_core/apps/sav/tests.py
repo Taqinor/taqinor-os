@@ -477,6 +477,49 @@ class TestTicketWarrantyAndChatter(TestCase):
         self.assertFalse(Ticket.objects.get(pk=tid).annule)
 
 
+class TestTicketDescriptionObligatoire(TestCase):
+    """T4-V1-008 — un ticket ne s'ouvre pas sans description du problème : le
+    bouton du chantier créait un ticket vide (POST 201, description null)."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = User.objects.create_user(
+            username='sav_desc', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.inst, self.client_obj = make_installation(
+            self.company, ref='CHT-DESC')
+
+    def _creer(self, **extra):
+        body = {'client': self.client_obj.id, 'installation': self.inst.id,
+                'type': 'correctif'}
+        body.update(extra)
+        return self.api.post('/api/django/sav/tickets/', body, format='json')
+
+    def test_sans_description_refuse_en_francais(self):
+        for corps in ({}, {'description': ''}, {'description': '   '},
+                      {'description': None}):
+            r = self._creer(**corps)
+            self.assertEqual(r.status_code, 400, (corps, r.data))
+            self.assertIn('Décrivez le problème', str(r.data['description']))
+        self.assertFalse(Ticket.objects.filter(installation=self.inst).exists())
+
+    def test_avec_description_cree(self):
+        r = self._creer(description='Onduleur en défaut')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['description'], 'Onduleur en défaut')
+
+    def test_ancien_ticket_sans_description_reste_modifiable(self):
+        ancien = Ticket.objects.create(
+            company=self.company, reference='SAV-DESC-1',
+            client=self.client_obj, installation=self.inst)
+        r = self.api.patch(f'/api/django/sav/tickets/{ancien.pk}/',
+                           {'priorite': 'haute'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        # Servi en texte (jamais null) : le schéma publié n'est pas nullable.
+        self.assertEqual(r.data['description'], '')
+
+
 class TestTicketPrefillFromEquipement(TestCase):
     """Un ticket ouvert depuis le parc (équipement) porte client + installation
     + equipement sans sélection manuelle (déduits côté serveur)."""
@@ -590,6 +633,7 @@ class TestTenantScoping(TestCase):
         api_b = auth(self.ub)
         inst_b, client_b = make_installation(self.b, ref='CHT-B')
         r = api_b.post('/api/django/sav/tickets/', {
+            'description': 'Panne signalée',
             'company': self.a.id, 'client': client_b.id,
             'installation': inst_b.id, 'type': 'correctif',
         }, format='json')
@@ -630,6 +674,7 @@ class TestPermissions(TestCase):
         self.assertEqual(r.status_code, 403, r.data)
         # Pas de sav_gerer → création de ticket refusée.
         r2 = api.post('/api/django/sav/tickets/', {
+            'description': 'Panne signalée',
             'client': self.client_obj.id, 'installation': self.inst.id,
         }, format='json')
         self.assertEqual(r2.status_code, 403, r2.data)
@@ -637,6 +682,7 @@ class TestPermissions(TestCase):
     def test_commerciale_can_open_and_work_tickets(self):
         api = auth(self.com)
         r = api.post('/api/django/sav/tickets/', {
+            'description': 'Panne signalée',
             'client': self.client_obj.id, 'installation': self.inst.id,
             'type': 'correctif',
         }, format='json')

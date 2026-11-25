@@ -15,7 +15,7 @@ import ProduitQuickCreateModal from './ProduitQuickCreateModal'
 
 /* G23 — Picker produit groupé CATÉGORIE → MARQUE → ARTICLE, search-first.
    Conçu pour la saisie ligne à ligne : ouvrir → taper → Entrée (le premier
-   résultat est présélectionné) ; ↑/↓ naviguent, Échap ferme. Les produits sans
+   article trouvé PAR SON NOM est présélectionné — T4-V1-002) ; ↑/↓ naviguent, Échap ferme. Les produits sans
    prix sont visibles mais non sélectionnables.
 
    Reconstruit sur le Popover (G28) + jetons sémantiques (les anciennes classes
@@ -62,6 +62,10 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [cursor, setCursor] = useState(0)
+  // T4-V1-002 — vrai dès que l'utilisateur a désigné un article (flèches,
+  // survol) ; la frappe le remet à faux : seul un article TROUVÉ PAR SON NOM
+  // est alors surligné d'office.
+  const [navigue, setNavigue] = useState(false)
   const [quickCreateOpen, setQuickCreateOpen] = useState(false)
   // STKCAT13 — chargée paresseusement (jamais à l'ouverture du picker, qui
   // ligne-à-ligne serait bien trop de requêtes) SEULEMENT quand « Nouveau »
@@ -71,10 +75,6 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
   const inputRef = useRef(null)
   const listRef = useRef(null)
   const canCreateProduit = useCanCreateProduit()
-  // VX191 — `aria-activedescendant` : flécher au clavier annonce enfin
-  // l'article visé (ProduitPicker n'avait aucun id d'option jusqu'ici).
-  const { listId, getOptionId, activeId } = useActiveDescendant(cursor)
-
   const selected = useMemo(
     () => produits.find((p) => String(p.id) === String(value)) ?? null,
     [produits, value])
@@ -110,7 +110,7 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
   }, [famille, categoriesForCreate])
 
   // Lignes à plat (en-têtes + articles) dans l'ordre délibéré de la taxonomie
-  const { rows, selectables } = useMemo(() => {
+  const { rows, selectables, nbForts } = useMemo(() => {
     const isRecommande = (p) => !!typeFilter && (
       classifyProduct(p.nom) === typeFilter
       || (famille !== null && typeOfProduit(p) === famille)
@@ -119,6 +119,14 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
     )
     const actifs = produits.filter((p) => !p.is_archived)
     const matches = searchCatalogue(actifs, query)
+    // T4-V1-002 — un article dont seule la FICHE (description) cite le mot
+    // tapé (« parafoudre intégré » d'un onduleur) n'est qu'une piste : rangé
+    // à part, en dernier, jamais surligné d'office.
+    const parNom = query.trim()
+      ? new Set(searchCatalogue(actifs.map((p) => ({ ...p, description: undefined })), query).map((p) => p.id))
+      : null
+    const forts = parNom ? matches.filter((p) => parNom.has(p.id)) : matches
+    const faibles = parNom ? matches.filter((p) => !parNom.has(p.id)) : []
     const rows = []
     const selectables = []
 
@@ -141,10 +149,10 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
     }
 
     if (!typeFilter) {
-      appendGroup(matches, 'all')
+      appendGroup(forts, 'all')
     } else {
-      const recommandes = matches.filter(isRecommande)
-      const reste = matches.filter((p) => !isRecommande(p))
+      const recommandes = forts.filter(isRecommande)
+      const reste = forts.filter((p) => !isRecommande(p))
       // Sans recherche tapée, seule la section Recommandé s'affiche (comme
       // avant STKCAT12) — l'indice au-dessus rappelle que taper cherche dans
       // TOUT le catalogue ; « reste » redevient visible dès la 1ʳᵉ frappe,
@@ -158,8 +166,21 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
         appendGroup(reste, 'reste')
       }
     }
-    return { rows, selectables }
+    const nbForts = selectables.length
+    if (faibles.length) {
+      rows.push({ kind: 'section', label: `Cités seulement dans la fiche produit (${faibles.length})`, key: 'sec-fiche' })
+      appendGroup(faibles, 'fiche')
+    }
+    return { rows, selectables, nbForts }
   }, [produits, query, typeFilter, famille])
+
+  // T4-V1-002 — l'article surligné : celui que l'utilisateur a désigné, sinon
+  // le premier trouvé PAR SON NOM après une frappe, sinon aucun (-1) : Entrée
+  // n'ajoute alors rien.
+  const curseur = navigue ? cursor : (query.trim() && nbForts > 0 ? 0 : -1)
+  // VX191 — `aria-activedescendant` : flécher au clavier annonce enfin
+  // l'article visé (ProduitPicker n'avait aucun id d'option jusqu'ici).
+  const { listId, getOptionId, activeId } = useActiveDescendant(curseur)
 
   useEffect(() => {
     if (open) requestAnimationFrame(() => inputRef.current?.focus())
@@ -168,7 +189,7 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
   // Réinitialise la recherche à la fermeture (hors effet → pas de cascade).
   const handleOpenChange = (next) => {
     setOpen(next)
-    if (!next) { setQuery(''); setCursor(0) }
+    if (!next) { setQuery(''); setCursor(0); setNavigue(false) }
   }
 
   // L'élément sous le curseur reste visible pendant la navigation clavier
@@ -176,7 +197,7 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
     listRef.current
       ?.querySelector('[data-cursor="true"]')
       ?.scrollIntoView({ block: 'nearest' })
-  }, [cursor, open])
+  }, [curseur, open])
 
   const pick = (p) => {
     onChange(p ? String(p.id) : '')
@@ -191,18 +212,20 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
     if (e.key === 'Escape') { setOpen(false); return }
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      setCursor((c) => Math.min(c + 1, selectables.length - 1))
+      setNavigue(true)
+      setCursor(Math.min(curseur + 1, selectables.length - 1))
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
-      setCursor((c) => Math.max(c - 1, 0))
+      setNavigue(true)
+      setCursor(Math.max(curseur - 1, 0))
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      if (selectables[cursor]) pick(selectables[cursor])
+      if (selectables[curseur]) pick(selectables[curseur])
     } else if (e.key === 'Tab' && !e.shiftKey) {
       // VX238(b) — Tab sélectionne l'article sous le curseur SANS
       // preventDefault : la tabulation continue naturellement vers le champ
       // suivant (Qté, via onPicked) au lieu de blur à vide.
-      if (selectables[cursor]) pick(selectables[cursor])
+      if (selectables[curseur]) pick(selectables[curseur])
     }
   }
 
@@ -246,7 +269,7 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
               className="h-8 w-full rounded-md bg-transparent px-2 text-base outline-none placeholder:text-muted-foreground sm:text-sm"
               placeholder="Chercher un produit… (Entrée = premier résultat)"
               value={query}
-              onChange={(e) => { setQuery(e.target.value); setCursor(0) }}
+              onChange={(e) => { setQuery(e.target.value); setCursor(0); setNavigue(false) }}
               onKeyDown={onKeyDown}
             />
             {canCreateProduit && (
@@ -303,7 +326,7 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
               }
               const { p, dispo, index } = r
               const spec = keySpec(p)
-              const isCur = index === cursor
+              const isCur = index === curseur
               return (
                 <button
                   type="button"
@@ -314,7 +337,7 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
                   aria-disabled={!dispo || undefined}
                   disabled={!dispo}
                   data-cursor={dispo && isCur ? 'true' : undefined}
-                  onMouseEnter={() => dispo && setCursor(index)}
+                  onMouseEnter={() => { if (dispo) { setNavigue(true); setCursor(index) } }}
                   onClick={() => dispo && pick(p)}
                   // T4-U3-005 — une option désactivée DIT pourquoi (title + texte).
                   title={dispo ? undefined

@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { renderInstallationDetail as rendre } from '../../test/installationDetailHarness'
 import crmApi from '../../api/crmApi'
 import installationsApi from '../../api/installationsApi'
+import savApi from '../../api/savApi'
 import { polyfillResizeObserver } from '../../test/selectNatif'
 
 /* ACHT3 — l'écran du chantier masque les gestes que le serveur refuse :
@@ -189,5 +190,24 @@ describe('InstallationDetail — ACHT3 gestes refusés masqués', () => {
     await user.click(await screen.findByRole('tab', { name: /Interventions/ }))
     expect(await screen.findByRole('button', OUVRIR)).toBeInTheDocument()
     expect(screen.queryByTestId('chantier-sav-creation-reservee')).toBeNull()
+  })
+
+  // T4-V1-008 — un clic avec la description vide créait un ticket vide (POST 201, description null).
+  it('« Ouvrir un ticket » exige la description du problème', async () => {
+    const user = userEvent.setup()
+    savApi.createTicket = vi.fn(() => Promise.resolve({ data: { id: 1 } }))
+    rendre({ id: 18, reference: 'CH-18', statut: 'installe', annule: false, client: 4 },
+      { role: 'responsable', role_nom: 'Technicien responsable', permissions: ['installation_voir', 'installation_gerer', 'sav_gerer'] })
+    await user.click(await screen.findByRole('tab', { name: /Interventions/ }))
+    const ouvrir = await screen.findByRole('button', { name: 'Ouvrir un ticket' })
+    expect(ouvrir).toBeDisabled()
+    expect(screen.getByText('Décrivez le problème pour ouvrir le ticket.')).toBeInTheDocument()
+    await user.type(screen.getByLabelText(/Description/), '   ')
+    expect(ouvrir).toBeDisabled()
+    await user.type(screen.getByLabelText(/Description/), 'Onduleur muet')
+    expect(ouvrir).toBeEnabled()
+    await user.click(ouvrir)
+    await waitFor(() => expect(savApi.createTicket).toHaveBeenCalledWith(
+      expect.objectContaining({ description: 'Onduleur muet' })))
   })
 })

@@ -105,6 +105,7 @@ class ZMFG1EquipeMaintenanceTest(TestCase):
         equipe_etrangere = EquipeMaintenance.objects.create(
             company=self.other_company, nom='Équipe Étrangère')
         r = self.api.post('/api/django/sav/tickets/', {
+            'description': 'Panne signalée',
             'client': self.client_obj.id, 'installation': self.inst.id,
             'equipe': equipe_etrangere.id,
         }, format='json')

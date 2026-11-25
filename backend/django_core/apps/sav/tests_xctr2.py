@@ -126,6 +126,7 @@ class XCTR2RegistreEquipementsTest(TestCase):
         self.contrat.equipements.add(self.equip)
         api = auth(self.admin)
         resp = api.post('/api/django/sav/tickets/', {
+            'description': 'Panne signalée',
             'client': self.client_obj.pk, 'installation': self.inst.pk,
             'equipement': autre_equip.pk, 'type': 'correctif',
         }, format='json')

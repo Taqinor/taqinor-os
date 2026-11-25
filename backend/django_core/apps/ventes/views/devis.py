@@ -107,6 +107,25 @@ def _resume_devis_auto(devis):
     return resume
 
 
+def _option_unique(devis):
+    """T4-V2-013/015 — un devis à UNE option (scénario mono déclaré) :
+    ``{batterie, souhait_fiche}`` = l'option porte-t-elle la batterie, et
+    est-ce le souhait « batterie » de la fiche du lead qui l'a décidé ;
+    ``None`` sur un devis à deux options (``options`` les nomme). Lecture pure."""
+    from ..utils.options import (
+        AVEC_BATTERIE, deux_options_declarees, option_du_scenario_mono,
+        scenario_declare)
+    if deux_options_declarees(devis):
+        return None
+    option = option_du_scenario_mono(scenario_declare(devis))
+    if not option:
+        return None
+    batterie = option == AVEC_BATTERIE
+    souhait = (getattr(devis.lead, 'batterie_souhaitee', '') or '').strip() if devis.lead_id else ''
+    return {'batterie': batterie,
+            'souhait_fiche': souhait == ('avec' if batterie else 'sans')}
+
+
 def _reponse_devis_auto(devis, alertes):
     """COP2-V3 — LA réponse de ``POST devis/auto/`` (création 201 ET rejeu
     d'idempotence 200) : la bannière (ALEA51) + la carte ``devis_cree`` de
@@ -140,6 +159,8 @@ def _reponse_devis_auto(devis, alertes):
         # 20/11/2026 (DEV-202611-0090) — chaque option avec SES chiffres :
         # ``total_ttc`` (gardé) ne dit pas à quelle option il correspond.
         'options': options_du_devis(devis),
+        # T4-V2-015 — l'option unique et sa raison (souhait de la fiche).
+        'option_unique': _option_unique(devis),
     }
 
 

@@ -491,12 +491,9 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   const openTicket = async () => {
     setTicketBusy(true)
     try {
-      const nullable = (v) => (v === '' || v === undefined) ? null : v
       await savApi.createTicket({
-        client: current.client,
-        installation: id,
-        type: newTicket.type,
-        description: nullable(newTicket.description),
+        client: current.client, installation: id, type: newTicket.type,
+        description: newTicket.description.trim(),
         equipement: newTicket.equipement === '' ? null : newTicket.equipement,
       })
       setNewTicket({ type: 'correctif', description: '', equipement: '' })
@@ -1809,15 +1806,15 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                     </SelectContent>
                   </Select>
                 </FormField>
-                <FormField label="Description" htmlFor="tk-desc">
-                  <Input id="tk-desc" value={newTicket.description}
+                <FormField label="Description" htmlFor="tk-desc" required>
+                  <Input id="tk-desc" value={newTicket.description} aria-describedby="tk-desc-requise"
                          onChange={(e) => setNewTicket(s => ({ ...s, description: e.target.value }))}
                          placeholder="Symptôme / demande" />
                 </FormField>
-                <Button variant="outline" loading={ticketBusy} onClick={openTicket}>
-                  Ouvrir un ticket
-                </Button>
+                <Button variant="outline" loading={ticketBusy} onClick={openTicket} disabled={!newTicket.description.trim()}
+                        aria-describedby="tk-desc-requise">Ouvrir un ticket</Button>{/* T4-V1-008 — jamais de ticket vide */}
               </div>}
+              {peutSav && !newTicket.description.trim() && <p id="tk-desc-requise" className="text-xs text-muted-foreground">Décrivez le problème pour ouvrir le ticket.</p>}
             </Section>
             {/* ── Suivi & maintenance (N10 — hub système installé) ── */}
             <Section
