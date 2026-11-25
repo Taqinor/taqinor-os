@@ -1529,3 +1529,20 @@ Tour 3 : X2 TERMINÉ (11 constats, 10 rejeux confirmés) — total 49 constats, 
 `T4/tour3/consolidation.md`. EN VOL : `lane/moteur-e7b`, `lane/moteur-e6c` (consignes `scratchpad/msg-lane-e6c.md`,
 base de test `e6c`). À lancer aux places libres : relecteur X5 puis X3 (sur l'instrument mis à jour), lane F1 (liste
 des devis, `scratchpad/tour3/msg-lane-F1-liste.md`), E7a, E7c, lanes de correctifs 2 à 6.
+
+**Ajout de 06 h 15 UTC.** Troisième passage de CI du lot 3 : tous les tests verts, deux gardes rouges corrigées et
+repoussées (`fb0abf2d4d`) — arrondi d'argent (`selectors_conception._payback_servi` : `arrondi_affichage` au lieu de
+`round`) et budget du bundle (4 175,0 mesuré → 4 190). QUATRIÈME passage en cours. **Dès qu'il est vert : `gh pr ready
+1555`, réécrire le corps de la PR (ce n'est plus un brouillon), `gh pr merge 1555 --auto --merge`, puis dire au
+fondateur « mergé — à déployer par toi ».**
+Instrument `l5t` mis à jour à 04 h 40 sur `dev-lot3@22e6aa81ae` (branche locale `instr-lot3` du worktree `l5t-instr`).
+Écrans de l'étape 5 REGARDÉS par l'orchestrateur (captures `scratchpad/acc2027/c1970-*.png`) : étape Panneaux (cible
+de la conception : 8 panneaux · 4,40 kWc), étape Électrique (« jugé pour la pose : 23 panneaux — la conception du
+lead en compte 8 »), Résultats (« Production de la conception : 6 969 kWh par an », « Calcul à refaire ») ; par l'API :
+un lead neuf reçoit sa conception seul en 13 s, le retour sur investissement est servi (6,0 / 6,2 ans, devis de
+référence nommé), `site_de_repli` = « Casablanca (ville de référence) » pour un client sans lead, un ancien ticket
+sans description se modifie. L'enregistrement d'acceptation ACAL2028 reste À ÉCRIRE (états « brouillon » et « devis
+envoyé lié qui diffère » non rejoués à l'écran : le relecteur X5 les joue).
+FAIT pour le fondateur : la fiche technique du panneau par défaut des devis automatiques (« Panneau mono 550W ») est
+VIDE (puissance crête, Voc…) — les verdicts électriques de la conception disent donc « non calculé » pour ces leads.
+EN VOL : `lane/moteur-e7b`, `lane/moteur-e6c`, relecteur X5 (atelier après le toit, thème sombre).
