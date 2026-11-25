@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 
-vi.mock('./axios', () => ({ default: { post: vi.fn(() => Promise.resolve({ data: {} })) } }))
+vi.mock('./axios', () => ({ default: { post: vi.fn(() => Promise.resolve({ data: {} })), get: vi.fn(() => Promise.resolve({ data: {} })) } }))
 
 import api from './axios'
 import ventesApi, { acceptationDejaFaite } from './ventesApi'
@@ -17,6 +17,18 @@ describe('acceptationDejaFaite', () => {
   it('timeout / 400 restent des erreurs', () => {
     expect(acceptationDejaFaite({ code: 'ECONNABORTED' })).toBe(false)
     expect(acceptationDejaFaite({ response: { status: 400, data: { detail: 'déjà accepté' } } })).toBe(false)
+  })
+})
+
+// Revue de la liste : un délai dépassé affichait « La connexion a expiré » deux
+// fois (la page ET la synthèse). La synthèse dit déjà son échec dans l'en-tête
+// (« Réessayer ») : son appel ne lève AUCUN toast.
+describe('getDevisSynthese', () => {
+  it('ne lève aucun toast d’erreur (l’en-tête le dit), et garde le signal', async () => {
+    const signal = {}
+    await ventesApi.getDevisSynthese({ signal })
+    expect(api.get).toHaveBeenLastCalledWith(
+      '/ventes/devis/synthese/', { suppressErrorToast: true, signal })
   })
 })
 
