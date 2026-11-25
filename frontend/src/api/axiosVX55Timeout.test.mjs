@@ -81,7 +81,7 @@ test('VX55 : fetchDevis transmet le signal du thunk à chaque page', () => {
   const pageBody = VENTES_SLICE_SRC.slice(
     VENTES_SLICE_SRC.indexOf('async function chargerPageDevis'),
     VENTES_SLICE_SRC.indexOf('export const fetchDevis'))
-  assert.match(pageBody, /ventesApi\.getDevis\(requete, \{ signal \}\)/)
+  assert.match(pageBody, /ventesApi\.getDevis\(\{ \.\.\.requete, page: requete\.page \?\? 1 \}, \{ signal \}\)/)
   assert.match(pageBody, /ventesApi\.getDevisSynthese\(\{ signal \}\)/)
 })
 
