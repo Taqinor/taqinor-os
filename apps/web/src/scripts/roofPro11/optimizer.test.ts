@@ -23,7 +23,7 @@ import {
   PRIORITES_REMPLISSAGE,
   type EntreeDepartage,
 } from './optimizer';
-import { rectRing } from './harnaisAtelier';
+import { rectRing } from './harnaisAtelier'; import { MODULE_PAR_DEFAUT_ATELIER } from './moduleSelect'; // T4-X8-012
 import { freeGeomFrom } from './freeMode'; // ACAL2032
 import { hardViolationsFor, panelCornersFor, toUV } from '../../lib/freeLayout'; // ACAL2032
 import type { Obstacle } from '../../lib/obstacles'; // ACAL2032
@@ -1232,7 +1232,7 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
     const avant = g.document;
     const doc = new JSDOM('<!doctype html><body><dd id="rp9-reco-kwc"></dd><dd id="rp9-reco-prod"></dd><dl><dd id="rp9-reco-savings"></dd></dl>'
       + '<div><dd id="rp9-reco-cover"></dd><dt>Couverture<span>?</span></dt></div><p id="rp9-reco-band"></p><p id="rp9-reco-why"></p>'
-      + '<p id="rp9-need-note"></p><p data-couverture-max>aucune pose</p></body>').window.document;
+      + '<input id="rp9-need-input"><p id="rp9-need-note"></p><p data-couverture-max>aucune pose</p></body>').window.document;
     g.document = doc;
     const ctx = { opts, dom: {}, centroidLat: 33.5, rec: { targetAnnualKwh: cible }, neededPanels: 0, activeArea: () => null, batiments: [], centroid: [-7, 33],
       environment: [], shadeObstructions: [], obstacles: [], areas: [], pinned: new Set(), ...ctxOver } as unknown as Ctx;
@@ -1381,6 +1381,33 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
       a.opt.majChiffrage(null);
       expect(a.t('rp9-need-note')).toContain('· 16 au devis');
     } finally { for (const x of [a, sansDevis, nonVendu, sansCompte, publique]) x.fin(); }
+  });
+
+  // T4-X8-012 — après « Le plus de panneaux » (le plafond 400 de `clampNeeded`, « tout ce qui tient ») puis Enregistrer, l'Expert
+  // disait « PANNEAUX NÉCESSAIRES 400 » et « 9 posés / 400 cible » : le plafond lu comme le besoin de la facture.
+  it('T4-X8-012 — ERP, « le plus de panneaux » : le champ dit le besoin de la FACTURE (servi), la note dit le choix en mots, jamais « 400 cible »', () => {
+    const watt = String(MODULE_PAR_DEFAUT_ATELIER.pmaxWc); // aucun module choisi sur le pan : le module par défaut est posé
+    const lePlus = monter({ chiffrage: null, hydrate: { devis: { panneauxSelonWatt: { [watt]: 7 } } } }, { devisMode: true, cibleVendue: false, neededPanels: 400 });
+    const sansTable = monter({ chiffrage: null }, { devisMode: true, cibleVendue: false, neededPanels: 400 });
+    const ordinaire = monter({ chiffrage: null, hydrate: { devis: { panneauxSelonWatt: { [watt]: 7 } } } }, { devisMode: true, cibleVendue: false, neededPanels: 12 });
+    const publique = monter({}, { devisMode: true, cibleVendue: true, neededPanels: 400 });
+    const champ = (x: { doc: Document }) => x.doc.getElementById('rp9-need-input') as HTMLInputElement;
+    try {
+      expect(lePlus.t('rp9-need-note')).toBe('Vous avez choisi le plus de panneaux possible : 10 posés. Le besoin de la facture : 7.');
+      expect(champ(lePlus).value).toBe('7');
+      expect(champ(lePlus).dataset.lePlus).toBe('1');
+      expect(sansTable.t('rp9-need-note')).toBe('Vous avez choisi le plus de panneaux possible : 10 posés.');
+      expect(champ(sansTable).value).toBe('—');
+      for (const x of [lePlus, sansTable]) expect(`${x.t('rp9-need-note')} ${champ(x).value}`).not.toContain('400');
+      // un besoin ordinaire : le champ et la note d'avant
+      expect(champ(ordinaire).value).toBe('12');
+      expect(champ(ordinaire).dataset.lePlus ?? '').toBe('');
+      expect(ordinaire.t('rp9-need-note')).toContain('10 posés / 12 cible — seuls 10 tiennent');
+      expect(publique.t('rp9-need-note')).toContain('10 posés / 400 au devis'); // site public : texte d’avant
+    } finally { for (const x of [lePlus, sansTable, ordinaire, publique]) x.fin(); }
+    // la pose rouverte ne se compare jamais au plafond (« 9 posés / 400 cible … 391 de moins que la cible »)
+    expect(noteEcartPoseRelue(9, 400, fmt)).toBeNull();
+    expect(noteEcartPoseRelue(9, 12, fmt)).toContain('9 posés / 12 cible');
   });
 
   it('ACAL1951 — « au devis » nomme le devis et l’option (sans / avec batterie) ; une cible estimée ne nomme aucune option', () => {

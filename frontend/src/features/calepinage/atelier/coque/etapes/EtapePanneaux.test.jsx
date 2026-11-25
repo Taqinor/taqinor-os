@@ -40,7 +40,7 @@ function monterConstructeur(o = {}) {
   const racine = document.createElement('div')
   racine.id = 'faux-constructeur'
   racine.innerHTML = `
-    <input id="rp9-need-input" value="${c.besoin}" ${c.besoinDesactive ? 'disabled' : ''}>
+    <input id="rp9-need-input" value="${c.besoin}" ${c.besoinDesactive ? 'disabled' : ''} ${c.lePlus ? 'data-le-plus="1"' : ''}>
     <p id="rp9-need-note">${c.note}</p>
     <p id="rp9-reco-panels">${c.panneaux}</p><p id="rp9-reco-kwc">${c.kwc}</p>
     <p id="rp9-reco-prod">${c.prod}</p><p id="rp9-reco-cover">${c.cover}</p>
@@ -416,6 +416,21 @@ describe('étape Panneaux — panneau de droite', () => {
     // Reste de G2 (orchestrateur) : la phrase de repli ne nomme pas « ce lead » quand il n'y en a pas.
     expect(document.body).not.toHaveTextContent('factures de ce lead')
     expect(document.body).toHaveTextContent('Ce calepinage n’a pas de lead : aucune taille n’est tirée d’une facture.')
+  })
+
+  it('T4-X8-012 — « le plus de panneaux » posé : le champ du constructeur dit le besoin de la facture (7 = la cible), la carte choisie reste « Le plus de panneaux »', async () => {
+    monterConstructeur({ besoin: '7', lePlus: true, panneaux: '9 × 580 W', kwc: '5,22 kWc',
+      note: 'Vous avez choisi le plus de panneaux possible : 9 posés. Le besoin de la facture : 7.' })
+    document.getElementById('rp9-pan-module-select').value = 'produit-1'
+    servir({ cible: { panneaux: 7, kwc: 4.06, module_wc: 580 } })
+    rendre()
+    const facture = screen.getByTestId('cal-panneaux-option-facture')
+    await waitFor(() => expect(facture).toHaveTextContent('7 panneaux · 4,06 kWc'))
+    expect(facture).toHaveAttribute('aria-pressed', 'false')
+    const max = screen.getByTestId('cal-panneaux-option-max')
+    expect(max).toHaveAttribute('aria-pressed', 'true')
+    expect(max).toHaveTextContent('9 panneaux · 5,22 kWc')
+    expect(document.body).not.toHaveTextContent('400')
   })
 
   it('ni l’une ni l’autre : aucune carte choisie et « Pose actuelle : N panneaux · kWc »', async () => {

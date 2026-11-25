@@ -95,10 +95,15 @@ function lireBesoin() {
   const champ = $('rp9-need-input')
   if (!champ) return null
   const note = texteDe('rp9-need-note')
-  // « … seuls 55 tiennent … » (besoin > ce qui tient) ou « on pose ce qui tient (55) » (aucune cible) — optimizer.ts.
+  // « … seuls 55 tiennent … » (besoin > ce qui tient) ou « on pose ce qui tient (55) » (aucune cible) — optimizer.ts ;
+  // T4-X8-012 — « … le plus de panneaux possible : 9 posés. » (affichageErp.ts::noteLePlus).
   const tiennent = /(\d[\d\s]*)\s+tiennent/.exec(note) ?? /ce qui tient \((\d[\d\s]*)\)/.exec(note)
+    ?? /possible : (\d[\d\s]*) posés/.exec(note)
+  // T4-X8-012 — sur « le plus de panneaux », le champ AFFICHE le besoin de la facture et le script le marque
+  // `data-le-plus="1"` (affichageErp.ts::peindreChampBesoin) : le choix reste le plafond, jamais ce nombre affiché.
+  const lePlus = champ.dataset?.lePlus === '1'
   return {
-    valeur: entierDe(champ.value),
+    valeur: lePlus ? BESOIN_MAX : entierDe(champ.value),
     editable: !champ.disabled,
     note,
     tiennent: tiennent ? Number(tiennent[1].replace(/\D/g, '')) : null,

@@ -158,3 +158,40 @@ function texteSimulation(kwh: number, chiffrage: ChiffrageAtelier | null | undef
   const ecart = Math.round(((kwh - p50) / p50) * 100);
   return ` · simulation : ${fmt(Math.round(p50))} kWh/an (écart ${ecart < 0 ? '−' : '+'} ${fmt(Math.abs(ecart))} %)`;
 }
+
+// ═══════════ T4-X8-012 — « LE PLUS DE PANNEAUX » N'EST PAS UN BESOIN DE FACTURE ═══════════
+// « Le plus de panneaux » (atelier ERP) pose le PLAFOND du besoin (`optimizer.ts::clampNeeded`, 400) : « tout ce qui tient ».
+// Enregistré dans le pan (`neededPanels`), il était relu comme le nombre de panneaux que la FACTURE demande (« PANNEAUX
+// NÉCESSAIRES 400 », « 9 posés / 400 cible »). Le champ dit le besoin de la facture, la note dit le choix en mots.
+
+/** Le plafond du besoin (`clampNeeded`) : un besoin qui l'atteint veut dire « le plus de panneaux », jamais « 400 nécessaires ». */
+export const LE_PLUS_DE_PANNEAUX = 400;
+export const estLePlus = (besoin: number | null | undefined): boolean => typeof besoin === 'number' && besoin >= LE_PLUS_DE_PANNEAUX;
+/** L'atelier ERP (`opts.chiffrage` défini) dont le pan actif porte « le plus de panneaux » : aucune couverture ni « besoin (400) »
+ *  ne se calcule contre ce plafond. Site public : jamais (texte d'avant). */
+export const lePlusErp = (ctx: { opts?: { chiffrage?: unknown } | null; neededPanels: number }): boolean =>
+  ctx.opts?.chiffrage !== undefined && estLePlus(ctx.neededPanels);
+
+/** Le besoin de la FACTURE compté dans le module posé (`watt`) : le compte SERVI par `modules-disponibles/`
+ *  (`panneaux_selon_watt`, LA règle du moteur `panneaux_pour_la_meme_puissance` — le même chiffre que la carte « Couvrir la
+ *  facture »), porté par le payload de boot (`hydrate.devis.panneauxSelonWatt`). `null` quand il n'est pas servi. */
+export function besoinDeLaFacture(opts: { hydrate?: { devis?: object | null } | null } | null | undefined, watt: number | null | undefined): number | null {
+  const table = (opts?.hydrate?.devis as { panneauxSelonWatt?: Record<string, unknown> } | null | undefined)?.panneauxSelonWatt;
+  const n = table && typeof watt === 'number' && watt > 0 ? table[String(watt)] : null;
+  return typeof n === 'number' && Number.isInteger(n) && n > 0 ? n : null;
+}
+
+/** Le champ « Panneaux nécessaires » : en ERP sur « le plus de panneaux », le besoin de la facture (« — » s'il n'est pas
+ *  servi) et `data-le-plus="1"` (lu par l'étape Panneaux du Guidé, qui garde « Le plus de panneaux » choisi) ; sinon le
+ *  besoin tel quel. `data-besoin-facture` garde le chiffre affiché pour le re-poser à la sortie du champ. */
+export function peindreChampBesoin(el: HTMLInputElement, besoin: number, erp: boolean, facture: number | null, ecrire: boolean): void {
+  const lePlus = erp && estLePlus(besoin);
+  el.dataset.lePlus = lePlus ? '1' : '';
+  el.dataset.besoinFacture = lePlus && facture ? fmt(facture) : '';
+  if (ecrire) el.value = lePlus ? (facture ? fmt(facture) : '—') : besoin > 0 ? fmt(besoin) : '—';
+}
+
+/** La note du nombre de panneaux sur « le plus de panneaux » : le choix dit en mots, puis le besoin de la facture s'il est servi. */
+export function noteLePlus(poses: number, facture: number | null): string {
+  return `Vous avez choisi le plus de panneaux possible : ${fmt(poses)} posés.${facture ? ` Le besoin de la facture : ${fmt(facture)}.` : ''}`;
+}
