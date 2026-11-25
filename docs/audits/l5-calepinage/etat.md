@@ -1488,3 +1488,15 @@ le document du toit ne porte aucune marque de retouche à la main ; il faut que 
 `zones[].geometry.poseManuelle` (= `hasManualEdits()` de `apps/web/src/lib/layoutVariability.ts`) à l'export, et que
 `pose_servie.a_la_main` la lise — ne concerne que le niveau 15 (dormant) : à confier à une lane avec l'étape 7.
 Relecteur en lecture seule des trois lanes de correctifs REPRIS. EN VOL : `moteur-e6b1`, X2, ce relecteur.
+
+**Ajout de 04 h 00 UTC — relecture indépendante des lanes `agri-2`, `devis-2`, `calepinage-2` (déjà dans `dev-lot3`).**
+`agri-2` : fusionnable (reste l'écart de spécification T4-V2-003 : la pompe supérieure garde moins de panneaux que la
+recommandée — non régressif). `devis-2` : APRÈS CORRECTION — un ancien ticket après-vente sans description ne peut plus
+être enregistré depuis son écran de modification (le formulaire renvoie `description: null` ; le changement de statut
+part AVANT l'enregistrement refusé). `calepinage-2` : APRÈS CORRECTION — le bandeau « site non localisé » contredit le
+serveur pour un calepinage de client sans lead ; les températures électriques lisent encore l'épingle brute (deux
+lieux pour un calepinage) ; une adresse « Route d'El Jadida, Casablanca » est résolue à El Jadida. Portée du client
+créé par un Commercial : aucune fuite (créateur forcé côté serveur, sous-arbre de la société). EN VOL pour tout cela :
+`lane/t3-relecture` (worktree isolé, base de test `f0`, consignes `scratchpad/tour3/msg-lane-F0-relecture.md`).
+**Le lot 3 ne fusionne qu'après le pli de `moteur-e6b1` ET de `t3-relecture`.** Lane suivante prête :
+`scratchpad/tour3/msg-lane-F1-liste.md` (liste des devis légère).
