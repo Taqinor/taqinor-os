@@ -379,6 +379,9 @@ def choisir_pompe(pompes, *, hmt_m, debit_conception_m3h, alimentation,
     """
     alertes = []
     cles = {"cv_vers_kw"}
+    # T4-X1-009 — la puissance hydraulique du débit demandé à cette HMT,
+    # servie aux trois tailles (AGR120) pour juger chaque palier SANS courbe.
+    etat = {"kw_hydraulique": None}
     type_voulu = _norme_type(type_pompe) or "immergee"
     alim = (alimentation or "").strip().lower() or None
     h = _flottant(hmt_m)
@@ -404,6 +407,7 @@ def choisir_pompe(pompes, *, hmt_m, debit_conception_m3h, alimentation,
                 "couverture": couverture,
                 "production_publiable": etape == "courbe",
                 "paliers": list(paliers), "index_palier": index,
+                "kw_hydraulique": etat["kw_hydraulique"],
                 "alertes": alertes, "hypotheses": utilisees(cles)}
 
     if not h or not q or h <= 0 or q <= 0:
@@ -461,6 +465,7 @@ def choisir_pompe(pompes, *, hmt_m, debit_conception_m3h, alimentation,
 
     cles.update({"energie_hydraulique_wh_par_m3_m", "rendement_groupe"})
     hydraulique_kw = q * h * valeur("energie_hydraulique_wh_par_m3_m") / 1000.0
+    etat["kw_hydraulique"] = hydraulique_kw
     sans_courbe = sorted([e for e in famille if not e["courbe"] and e["kw"]],
                          key=_cle)
     # AGQ8 (D-AGQ-8) — kW min de CHAQUE pompe = hydraulique ÷ son rendement
