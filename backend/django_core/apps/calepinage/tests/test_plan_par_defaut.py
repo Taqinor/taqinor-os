@@ -28,9 +28,9 @@ class PlanParDefautTest(TestCase):
     def setUpTestData(cls):
         cls.company = Company.objects.create(nom='Plan par défaut')
 
-    def _plan(self, **kwargs):
+    def _plan(self, client=None, **kwargs):
         return simuler_plan_par_defaut(self.company, *CASABLANCA, 21.6, materiel=MATERIEL, reglages=REGLAGES,
-                                       client=_ClientRejoue(), **kwargs)
+                                       client=client or _ClientRejoue(), **kwargs)
 
     def test_production_par_la_cascade_de_la_pose_et_rien_d_ecrit(self):
         avant = Calepinage.objects.count()
@@ -65,8 +65,11 @@ class PlanParDefautTest(TestCase):
         self.assertEqual([s['champ'] for s in suppose['suppositions']], ['inclinaison_deg'])
         self.assertIn('30°', suppose['suppositions'][0]['message'])
 
-        declaree = self._plan(pente=18)
+        client = _ClientRejoue()
+        declaree = self._plan(pente=18, client=client)
         self.assertEqual(declaree['pente_deg'], 18.0)
         self.assertEqual(declaree['suppositions'], [])
         self.assertEqual(declaree['document']['zones'][0]['geometry']['tiltDeg'], 18.0)
-        self.assertNotEqual(declaree['production_annuelle'], suppose['production_annuelle'])
+        # La météo est DEMANDÉE au plan déclaré (la réponse rejouée, elle, ne dépend pas de l'angle ;
+        # 0° = la demande horizontale que la cascade fait aussi pour tout plan).
+        self.assertEqual({demande['inclinaison_deg'] for demande in client.demandes} - {0.0}, {18.0})
