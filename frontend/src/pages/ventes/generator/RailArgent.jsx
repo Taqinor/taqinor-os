@@ -46,6 +46,9 @@ export default function RailArgent({
       )}
     </>
   )
+  // T4-V1-003 — avec une remise, le brut et le total final sont deux chiffres :
+  // le brut s'appelle « … avant remise » (jamais le même nom que le final).
+  const avantRemise = parseFloat(discountPct) > 0 ? ' avant remise' : ''
   const arrondiSans = remiseParPanier?.sans?.arrondi ?? 0
   const arrondiAvec = remiseParPanier?.avec?.arrondi ?? 0
   return (
@@ -56,13 +59,13 @@ export default function RailArgent({
       <div className="gen-totals-row gen-tier-1">
         {showSans && (
           <div className="gen-total-item">
-            <span className="gen-total-label">{agricole ? 'Total TTC' : 'Total SANS batterie'}{sansRec ? ' ⭐' : ''}</span>
+            <span className="gen-total-label">{agricole ? 'Total TTC' : 'Total SANS batterie'}{avantRemise}{sansRec ? ' ⭐' : ''}</span>
             <span className="gen-total-value">{formatMoney(totals.totalSansBrut)}</span>
           </div>
         )}
         {showAvec && (
           <div className="gen-total-item">
-            <span className="gen-total-label">{agricole ? 'Total TTC' : 'Total AVEC batterie'}{avecRec ? ' ⭐' : ''}</span>
+            <span className="gen-total-label">{agricole ? 'Total TTC' : 'Total AVEC batterie'}{avantRemise}{avecRec ? ' ⭐' : ''}</span>
             <span className="gen-total-value orange">{formatMoney(totals.totalAvecBrut)}</span>
           </div>
         )}
