@@ -577,21 +577,9 @@ KIT_FIXATION_PRIX_A_RENSEIGNER = [
 # dans « Protection & accessoires » (aucun mot « structure » ni « socle »).
 CATEGORIE_IMPOSEE_PAR_SKU = {'KIT-FIX-INCL': 'Structures & fixation'}
 
-# ── AGR104 — articles des OPTIONS du kit pompage (D-AGR-8), PRIX VIDES ───────
-# Articles GÉNÉRIQUES, sans marque ni caractéristique inventée : le fondateur
-# les renseigne (prix, fournisseur) ; tant que ``prix_vente`` vaut 0 ils sont
-# « prix à renseigner » et jamais auto-chiffrés (même garde que les pompes OSP).
-# ``role_pompage`` est DÉCLARÉ à la création (vocabulaire ROLES_POMPAGE, AGR100).
-# (nom, sku, role_pompage, qte, seuil)
-OPTIONS_POMPAGE = [
-    ('Sonde de niveau (protection marche à sec)', 'SONDE-NIV', 'sonde_niveau', 20, 2),
-    ("Compteur d'eau / débitmètre", 'CPT-EAU', 'compteur_eau', 20, 2),
-    ('Câble de descente immergé (au mètre)', 'CAB-DESC-M', 'cable_descente', 5000, 200),
-    ('Colonne de refoulement', 'COL-REF', 'colonne_refoulement', 20, 2),
-    ('Clapet anti-retour', 'CLAP-AR', 'clapet', 20, 2),
-    ('Tuyauterie (au mètre)', 'TUY-M', 'tuyauterie', 5000, 200),
-    ('Bassin', 'BASSIN', 'bassin', 20, 2),
-]
+# ── AGR104 — articles des OPTIONS du kit pompage (D-AGR-8) et D-ACAL-118 —
+# rôles pompage des protections PVG3 : ``_articles_pompage`` (OPTIONS_POMPAGE,
+# ROLE_POMPAGE_PVG3), importés plus bas.
 
 # ── AGR620 — SKU pompage « prix à renseigner » : installation, entretien,
 # antivol, clôture ──────────────────────────────────────────────────────────
@@ -674,6 +662,8 @@ from apps.stock.management.commands._articles_ci import (  # noqa: E402
     ARTICLES_CI_PRIX_A_RENSEIGNER)
 from apps.stock.management.commands._articles_ht import (  # noqa: E402
     ACCESSOIRES_GRAPPE_HT, HYBRIDES_DEYE_HT, semer_haute_tension)
+from apps.stock.management.commands._articles_pompage import (  # noqa: E402
+    OPTIONS_POMPAGE, ROLE_POMPAGE_PVG3)
 
 #: CIQ103 — rôle C&I des articles DÉJÀ seedés (``lim_mode`` laissé vide : la
 #: fiche du Smart Meter ne publie pas son mode de raccordement).
@@ -2121,6 +2111,7 @@ def _semer_prix_vides(company, Produit, MouvementStock, record_stock_movement,
             prix_vente=Decimal('0'),  # à renseigner par le fondateur
             quantite_stock=qte, seuil_alerte=seuil,
             tva=Decimal('20.00'),
+            role_pompage=ROLE_POMPAGE_PVG3.get(sku, ''),
         )
         record_stock_movement(
             company=company, produit=produit,

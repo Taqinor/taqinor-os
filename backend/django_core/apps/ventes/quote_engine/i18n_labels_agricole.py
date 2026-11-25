@@ -41,6 +41,23 @@ LIBELLES_AGRICOLE = {
         "en": "Pump {pompe} &gt; borehole {forage}",
         "ar": "المضخة {pompe} &gt; الثقب {forage}",
     },
+    # D-ACAL-112 / D-ACAL-118 (fondateur 25/11/2026) — les protections du kit
+    # minimum restées SANS prix (absentes des lignes), dites « non incluses ».
+    "agr_non_inclus_coffret_dc": {
+        "fr": "le coffret de protection DC",
+        "en": "the DC protection box",
+        "ar": "علبة حماية التيار المستمر",
+    },
+    "agr_non_inclus_disjoncteur_ac": {
+        "fr": "le disjoncteur AC variateur → pompe",
+        "en": "the AC circuit breaker from drive to pump",
+        "ar": "قاطع التيار المتناوب من المغير إلى المضخة",
+    },
+    "agr_non_inclus_parafoudre_ac": {
+        "fr": "le parafoudre AC variateur → pompe",
+        "en": "the AC surge arrester from drive to pump",
+        "ar": "مانعة الصواعق للتيار المتناوب من المغير إلى المضخة",
+    },
 }
 
 

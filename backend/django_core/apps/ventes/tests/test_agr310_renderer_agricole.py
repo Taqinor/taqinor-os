@@ -274,6 +274,38 @@ class ControleForageDevisFinalD113(SimpleTestCase):
                           self._html(**extra))
 
 
+class PoseEtProtectionsD112(SimpleTestCase):
+    """D-ACAL-112 — le PDF ne promet « et protections » que si le devis en
+    vend ; les protections sans prix sont dites « Non inclus » par leur nom.
+    Nouveaux rendus seulement (``phrases_pdf_2511``)."""
+
+    def _html(self, **extra):
+        d = data_complete()
+        d['etude']['kit'] = {'inclus': [
+            {'cle': cle, 'role_pompage': role, 'produit': None,
+             'designation': cle, 'quantite': 1, 'prix_connu': False}
+            for cle, role in (('coffret_dc', 'protection_dc'),
+                              ('disjoncteur_ac', 'protection_ac'),
+                              ('parafoudre_ac', 'protection_ac'))],
+            'options': [], 'non_inclus': ['forage', 'genie_civil']}
+        d.update(extra)
+        return html_de(d)
+
+    def test_nouveau_rendu_sans_ligne_de_protection(self):
+        html = self._html(phrases_pdf_2511=True)
+        self.assertIn('Pose : pompe, variateur et champ solaire.', html)
+        self.assertNotIn('champ solaire et protections', html)
+        for nom in ('le coffret de protection DC',
+                    'le disjoncteur AC variateur → pompe',
+                    'le parafoudre AC variateur → pompe'):
+            self.assertIn(nom, html)
+        self.assertNotIn('coffret dc', html)
+
+    def test_envoye_avant_la_coupure_la_phrase_d_hier(self):
+        self.assertIn('Pose : pompe, variateur, champ solaire et protections.',
+                      self._html())
+
+
 class Renderer(SimpleTestCase):
     """AGQ30 (C-AGQ-028, D-AGQ-11, D-AGR-10) — « Étapes suivantes » sans
     délai chiffré, mise en service mesurée, entretien, acompte après FDA."""

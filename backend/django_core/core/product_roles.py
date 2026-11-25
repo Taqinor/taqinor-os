@@ -90,6 +90,9 @@ ROLES_POMPAGE = (
     'cable_dc', 'cable_descente', 'protection_dc', 'sonde_niveau',
     'compteur_eau', 'colonne_refoulement', 'clapet', 'tuyauterie', 'bassin',
     'installation_pompage', 'entretien_pompage', 'antivol', 'cloture',
+    # D-ACAL-118 (fondateur 25/11/2026) — disjoncteur AC et parafoudre AC entre
+    # le variateur et la pompe, au kit minimum des nouveaux devis.
+    'protection_ac',
 )
 
 #: Libellés FR des rôles pompage (voyagent par l'API : aucun miroir JS).
@@ -111,6 +114,7 @@ LIBELLES_ROLES_POMPAGE = {
     'entretien_pompage': 'Entretien pompage',
     'antivol': 'Antivol',
     'cloture': 'Clôture',
+    'protection_ac': 'Protection AC (variateur → pompe)',
 }
 
 #: AGR100 — types de pompe et alimentations déclarables sur la fiche produit.

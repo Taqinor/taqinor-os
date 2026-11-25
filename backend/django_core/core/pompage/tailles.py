@@ -185,9 +185,17 @@ def proposer_tailles(*, mode_pompe="neuve", choix_pompe=None, plaque=None,
             debit_declare_m3h=debit_declare_m3h, type_pompe=type_pompe,
             **commun)
         champ = res["champ"] or {}
+        # D-ACAL-118 — protections choisies sur la plaque relevée (phases,
+        # courant) ; sans phases, l'alimentation demandée.
+        phases = (plaque or {}).get("phases")
+        phases = phases if phases in ("mono", "tri") else _flottant(phases)
         composition = composer_kit(
             mode_pompe="existante", variateur=champ.get("variateur"),
-            panneau=panneau, nb_panneaux=champ.get("nb_panneaux"), **kit)
+            panneau=panneau, nb_panneaux=champ.get("nb_panneaux"),
+            nb_chaines=(champ.get("chaines") or {}).get("paralleles"),
+            alimentation={1.0: "mono", 3.0: "tri", "mono": "mono",
+                          "tri": "tri"}.get(phases, alimentation),
+            courant_pompe_a=(plaque or {}).get("courant_a"), **kit)
         mois = mois_critique or champ.get("mois_critique")
         taille = _taille("recommandee", pompe_sortie=dict(
             res["pompe"], nom=NOM_POMPE_EXISTANTE), champ=champ,
@@ -246,7 +254,10 @@ def proposer_tailles(*, mode_pompe="neuve", choix_pompe=None, plaque=None,
         composition = composer_kit(
             mode_pompe="neuve", pompe=sortie,
             variateur=champ.get("variateur"), panneau=panneau,
-            nb_panneaux=champ.get("nb_panneaux"), **kit)
+            nb_panneaux=champ.get("nb_panneaux"),
+            nb_chaines=(champ.get("chaines") or {}).get("paralleles"),
+            alimentation=alimentation,
+            courant_pompe_a=fiche.get("pompe_i_nominal_a"), **kit)
         mois = mois_critique or champ.get("mois_critique")
         cache[i] = (sortie, champ, composition, mois, choix_var)
         return cache[i]
