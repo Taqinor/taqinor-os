@@ -484,8 +484,11 @@ class MemoireVingtSimulationsTest(SimpleTestCase):
         225 Mo de réponses) ; +659 Mo sans elle (1 403 520 lignes, 80
         entrées). Plafond 300 Mo : la mesure + 130 Mo de marge (allocateur,
         ordre des tests), toujours 2,2 fois sous la croissance non bornée."""
-        if _octets_residents() is None:
-            self.skipTest('mémoire résidente illisible sur ce système')
+        # Une mesure qui ne peut pas être prise n'est ni un succès ni un saut.
+        self.assertIsNotNone(
+            _octets_residents(),
+            'mémoire résidente illisible sur ce système (ni /proc/self/statm '
+            'ni GetProcessMemoryInfo) : la mesure ACAL2044 n\'est pas prise')
         self.transport = _transport_pluriannuel()
         cache = _Cache()
         for rang in range(20):
