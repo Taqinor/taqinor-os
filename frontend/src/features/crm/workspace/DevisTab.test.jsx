@@ -1697,6 +1697,23 @@ describe('QJR534 — cartes devis : Modifier / Réviser', () => {
     await waitFor(() => expect(reviserDevis).toHaveBeenCalledWith(414))
   })
 
+  // T4-V2-024 / T4-U4-010 — rien ne bougeait pendant ≥ 4 s après le clic, puis la
+  // fiche gardait « 1 devis » (la V1 « Envoyé » et son « Réviser ») : le geste en
+  // cours est dit, et la fiche est relue après la révision (V1 « Remplacé par », V2).
+  it('T4-V2-024 — « Réviser » : état en cours dit, puis la fiche du lead relue', async () => {
+    const user = userEvent.setup()
+    let repondre
+    reviserDevis.mockImplementationOnce(() => new Promise((r) => { repondre = r }))
+    const { onAction } = renderTab({ state: leadState({ devis: [carte('exemple_accepte')] }) })
+    await user.click(screen.getByRole('button', { name: /Réviser/ }))
+    expect(await screen.findByTestId('reviser-en-cours')).toHaveTextContent('Création de la nouvelle version…')
+    expect(screen.getByRole('button', { name: /Réviser/ })).toHaveAttribute('aria-busy', 'true')
+    expect(onAction).not.toHaveBeenCalledWith('refresh')
+    repondre({ data: { id: 99, reference: 'DEV-V2' } })
+    await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
+    await waitFor(() => expect(screen.queryByTestId('reviser-en-cours')).toBeNull())
+  })
+
   it('chantier en cours → avertissement AVANT l\'appel serveur', async () => {
     const user = userEvent.setup()
     const ordre = []

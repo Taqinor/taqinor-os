@@ -73,18 +73,33 @@ function jumpToMissingField(champ, state) {
 // une carte révisable) : le reste de l'onglet n'exige aucun contexte Router.
 // VNT80 — un refus qui nomme un autre devis s'affiche SOUS la carte avec
 // « Ouvrir <réf> », qui fait défiler jusqu'à la carte de la tête.
-function BoutonReviser({ devis }) {
+// T4-V2-024 / T4-U4-010 — le clic restait ≥ 4 s sans effet visible, et la fiche
+// gardait la V1 « Envoyé » : état en cours dit, puis la fiche RELUE (V1 « Remplacé
+// par », V2) avant l'ouverture de la V2.
+function BoutonReviser({ devis, onRefresh }) {
   const navigate = useNavigate()
   const [conflit, setConflit] = useState(null)
+  const [enCours, setEnCours] = useState(false)
   const ouvrir = (id) => document.getElementById(`devis-carte-${id}`)?.scrollIntoView({ block: 'center' })
+  const reviser = async () => {
+    setConflit(null)
+    setEnCours(true)
+    try {
+      await reviserEtOuvrir({ devis, navigate, onConflit: setConflit, onApres: () => onRefresh?.() })
+    } finally {
+      setEnCours(false)
+    }
+  }
   return (
     <>
-      <Button
-        type="button" size="sm" variant="outline"
-        onClick={() => { setConflit(null); reviserEtOuvrir({ devis, navigate, onConflit: setConflit }) }}
-      >
+      <Button type="button" size="sm" variant="outline" loading={enCours} onClick={reviser}>
         <Pencil size={14} aria-hidden="true" /> Réviser (nouvelle version)
       </Button>
+      {enCours && (
+        <p className="basis-full gen-hint" role="status" data-testid="reviser-en-cours">
+          Création de la nouvelle version…
+        </p>
+      )}
       {conflit && (
         <p className="basis-full text-sm text-destructive" role="alert">
           {conflit.conflit}{' '}
@@ -472,7 +487,7 @@ export default function DevisTab({
                     <Pencil size={14} aria-hidden="true" /> Modifier
                   </Button>
                 )}
-                {peutReviserDevis(d) && <BoutonReviser devis={d} />}
+                {peutReviserDevis(d) && <BoutonReviser devis={d} onRefresh={() => onAction?.('refresh')} />}
               </div>
               <EnvoiDevisDialog
                 devis={d}
