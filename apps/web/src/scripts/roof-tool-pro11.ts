@@ -197,7 +197,7 @@ import {
   type Measurement,
   type MeasureKind,
 } from './roofPro11/mesureUi';
-import { createParcelleUi } from './roofPro11/parcelle'; // ACAL233
+import { createParcelleUi } from './roofPro11/parcelle'; import { poserPlansEnregistres } from './roofPro11/poseEnregistree'; // ACAL233, T4-X2-010
 import { type ModeClavier } from './roofPro11/clavier'; // CALX128 câblage
 import { createShadingUi } from './roofPro11/shadingUi';
 import { createMapDraw } from './roofPro11/mapDraw';
@@ -2088,7 +2088,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       areas.length = 0;
       for (const z of h.zones) areas.push(z);
       poserDepart(); // ACAL1273
-      activeAreaId = h.activeAreaId ?? areas[0].id;
+      activeAreaId = h.activeAreaId ?? areas[0].id; poserPlansEnregistres(areas, activeAreaId, layout?.modules as never); // T4-X2-010 — les autres pans se dessinent posés
       const a = activeArea() ?? areas[0];
       vertices = [...a.vertices];
       obstacles = a.obstacles.map((o) => ({ ...o }));

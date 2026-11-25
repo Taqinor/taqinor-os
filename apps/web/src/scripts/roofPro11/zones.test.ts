@@ -1420,3 +1420,47 @@ describe('ACAL1328 — calque rp9-cotes', () => {
     expect(t.visibilite.has(CALQUE_COTES)).toBe(false);
   });
 });
+
+// T4-X2-010 — toit plat de 24 panneaux + un second pan ACTIF à l'enregistrement : rouvert, le toit disait « 0 modules ·
+// à calculer » et paraissait vide sur la carte, alors que le document portait ses 24 panneaux (la barre les comptait).
+describe('T4-X2-010 — un pan non actif rouvert garde sa pose : document, tableau du site, carte', () => {
+  const panneaux = Array.from({ length: 24 }, (_, i) => ({ cx: (i % 6) * 1.2 - 3, cy: Math.floor(i / 6) * 2.2 - 3 }));
+  const documentDeuxPans = (): SerializedLayout => ({
+    version: 2, activeAreaId: 'z2',
+    zones: [
+      { id: 'z1', label: 'Zone 1', vertices: rectRing(10, 8), obstacles: [], roofType: 'flat', pitchDeg: 0, facingAzimuthDeg: 180, facingManual: false, neededPanels: 24, neededAuto: true,
+        geometry: { azimuthDeg: 180, tiltDeg: 15, family: 'south', flush: false, kwc: 17.28, count: 24, origin: [-7.6, 33.5], panels: panneaux } },
+      { id: 'z2', label: 'Zone 2', vertices: rectRing(6, 5, -7.5995, 33.5004), obstacles: [], roofType: 'flat', pitchDeg: 0, facingAzimuthDeg: 180, facingManual: false, neededPanels: 0, neededAuto: true },
+    ],
+  } as unknown as SerializedLayout);
+
+  it('le document rouvert garde 24 panneaux sur le toit ; le tableau du site dit 24 modules, son total celui du document', async () => {
+    const { poserPlansEnregistres } = await import('./poseEnregistree');
+    const h = hydrateFromDevis({ id: null, geometrie: { roof_layout: documentDeuxPans() }, cibleVendue: false });
+    const areas = h.zones!;
+    expect(h.activeAreaId).toBe('z2');
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><div id="rp9-areas"><ul id="liste"></ul></div></body>').window.document;
+    try {
+      const ctx = { ...ctxDeBase(areas, 'z2'), activeArea: () => areas[1], closed: true, surfacesPose: [],
+        dom: { areasWindowEl: document.getElementById('rp9-areas'), areasListEl: document.getElementById('liste') } } as unknown as Ctx;
+      // Enregistrer sans geste : le toit garde ses 24 panneaux dans le document.
+      const doc = serializeLayout(ctx);
+      expect(doc.zones[0].geometry?.count).toBe(24);
+      const totalDocument = doc.zones.reduce((s, z) => s + (z.geometry?.count ?? 0), 0);
+      createZones(ctx, { setStatus: vi.fn() }).renderAreasPanel();
+      const ligne = document.querySelector('[data-site-ligne="z1"]')?.textContent ?? '';
+      expect(ligne).toContain('24 modules');
+      expect(ligne).not.toContain('à calculer');
+      expect(document.querySelector('[data-site-resume]')?.textContent).toContain(`${totalDocument} modules`);
+      expect(document.querySelector('[data-area-row="z1"]')?.textContent).toContain('24 panneaux');
+      // La carte : le toit non actif reçoit un plan de rendu de ses 24 panneaux ; le pan actif aucun (la scène pose le sien).
+      poserPlansEnregistres(areas, 'z2');
+      expect(areas[0].renderPlan?.count).toBe(24);
+      expect(areas[1].renderPlan).toBeNull();
+      // Le plan posé ne change pas le document : le pan non actif est réémis tel qu'enregistré.
+      expect(serializeLayout(ctx).zones[0].geometry).toEqual(doc.zones[0].geometry);
+    } finally { g.document = avant; }
+  });
+});
