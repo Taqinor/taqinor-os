@@ -61,7 +61,7 @@ VALEURS_SOLAIRES = {
 }
 #: La table §2 en agricole (la pompe remplace taille / matériel / bilan).
 VALEURS_POMPAGE = {'nb_panneaux', 'puissance_kwc', 'pompe', 'variateur', 'm3_jour'}
-CLES_CORPS_APERCU = {'lead', 'calepinage', 'entrees', 'imposes'}
+CLES_CORPS_APERCU = {'lead', 'calepinage', 'entrees', 'imposes', 'investissement'}
 #: ADEV137 — la forme des champs imposés de ``POST devis/auto/`` (celle du moteur).
 CLES_IMPOSES = {'nb_panneaux', 'panneau_produit_id', 'onduleur_produit_id', 'onduleur_kw',
                 'onduleur_phase', 'batterie_produit_id', 'batterie_kwh'}
@@ -2004,6 +2004,50 @@ class ServirConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
                                         cout_onduleur_ttc=arrondi_affichage(ancien, 2) or None,
                                         **horaire)['payback_years']
             self.assertEqual(table['payback']['valeur'], attendu, option)
+
+    def test_e7d_payback_de_l_apercu_sur_l_investissement_de_l_ecran(self):
+        """E7d (revue lot 4, M1) — l'aperçu sert le payback de CE QUE L'ÉCRAN MONTRE :
+        ``investissement`` (TTC de vente des lignes de chaque option) entre dans le corps ;
+        même fonction que le payback servi à la lecture (provision d'onduleur des cartes,
+        part stockée 0 en résidentiel) : sur les lignes du devis de référence, le même
+        chiffre au centime ; sans investissement, aucun payback ; hors forme ⇒ 400 nommant
+        ``investissement.<option>`` ; aucun prix d'achat dans la réponse, rien d'écrit."""
+        from apps.ventes.models import ConceptionLead
+        from apps.ventes.selectors import conception_courante
+        from apps.ventes.services import build_devis_auto
+        from apps.ventes.utils.options import (AVEC_BATTERIE, SANS_BATTERIE, filter_lines_for_option,
+                                               lignes_avec_produit, option_totaux)
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        self._relancer(lead, company, _declencheur())
+        user = self._utilisateur(company)
+        with self.captureOnCommitCallbacks(execute=True):
+            devis = build_devis_auto(lead=lead, user=user, company=company)
+        lue, lignes = conception_courante(company, lead.pk), list(lignes_avec_produit(devis))
+        plusieurs = len(lue['valeurs']) > 1
+        investissement = {option: float(option_totaux(devis, '', lignes=filter_lines_for_option(
+            lignes, AVEC_BATTERIE if option == 'avec' else SANS_BATTERIE, devis=devis) if plusieurs else lignes)['ttc'])
+            for option in lue['valeurs']}
+        api, versions = self._api(user), ConceptionLead.objects.count()
+        sans = api.post(URL_APERCU, {'lead': lead.pk}, format='json').json()
+        self.assertTrue(all(v['payback']['valeur'] is None for v in sans['valeurs'].values()))
+        reponse = api.post(URL_APERCU, {'lead': lead.pk, 'investissement': investissement}, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        apercu = reponse.json()
+        for option, table in apercu['valeurs'].items():
+            with self.subTest(option=option):
+                self.assertIsNotNone(table['payback']['valeur'])
+                self.assertEqual(table['payback'], lue['valeurs'][option]['payback'])  # un seul chiffre
+        self.assertEqual(_cles_interdites(apercu), [])
+        for faute, champ in (({'sans': -1}, 'sans'), ({'sans': True}, 'sans'), ({'les_deux': 9}, 'les_deux'),
+                             ('50000', 'investissement')):
+            with self.subTest(faute=faute):
+                refus = api.post(URL_APERCU, {'lead': lead.pk, 'investissement': faute}, format='json')
+                self.assertEqual(refus.status_code, 400, refus.content[:300])
+                self.assertEqual(refus.json()['champ'],
+                                 champ if champ == 'investissement' else 'investissement.' + champ)
+        self.assertEqual(ConceptionLead.objects.count(), versions)  # l'aperçu n'écrit rien
 
     def _api(self, user):
         from rest_framework.test import APIClient

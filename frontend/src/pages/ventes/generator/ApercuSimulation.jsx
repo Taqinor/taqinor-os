@@ -29,6 +29,7 @@ export default function ApercuSimulation({
   apercuProductionKwh, apercuProductionKwhAvec = null, showSans, signerEcoOuRoi, apercuEcoSans, apercuPaybackSansJamais,
   apercuPaybackSans, totals, avecRec, batterieInvendableServeur, verdictBatterieServeur,
   apercuEcoAvec, apercuPaybackAvecJamais, apercuPaybackAvec, capaciteBatterieInconnue,
+  apercuPaybackSansAbsent = 'N/A', apercuPaybackAvecAbsent = 'N/A',
   facturesSaisies, chartData,
   // EDC9 — repli en Édition complète (état tenu par l'écran, choix mémorisé).
   editDevis = null, simulationRepliee = false, basculerCarte = () => {},
@@ -461,7 +462,7 @@ export default function ApercuSimulation({
                   <CarteMetrique label="ROI"
                                  valeur={signerEcoOuRoi(
                                    apercuPaybackSansJamais ? 'Non rentabilisé sur 25 ans'
-                                     : apercuPaybackSans != null ? apercuPaybackSans + ' ans' : 'N/A')}
+                                     : apercuPaybackSans != null ? apercuPaybackSans + ' ans' : apercuPaybackSansAbsent)}
                                  unit="retour sur invest." accent
                                  figure="payback_ans" figureOption="sans" />
                   {/* QJR426 — le coût est celui, certain, des lignes du
@@ -499,7 +500,7 @@ export default function ApercuSimulation({
                       <CarteMetrique label="ROI"
                                      valeur={signerEcoOuRoi(
                                        apercuPaybackAvecJamais ? 'Non rentabilisé sur 25 ans'
-                                         : apercuPaybackAvec != null ? apercuPaybackAvec + ' ans' : 'N/A')}
+                                         : apercuPaybackAvec != null ? apercuPaybackAvec + ' ans' : apercuPaybackAvecAbsent)}
                                      unit="retour sur invest." accent
                                      figure="payback_ans" figureOption="avec" />
                       <CarteMetrique label="Coût"

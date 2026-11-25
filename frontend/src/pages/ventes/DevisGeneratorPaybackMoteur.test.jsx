@@ -40,6 +40,12 @@ import { ONDULEUR, PANNEAU, declarerBeforeEachDevis, lignesResidentielles, makeD
 
 const RANGEE = exempleContrat('ventes', 'conception_lead')
 const APERCU = documentContrat('ventes', 'conception_lead').apercu.reponse
+// L'aperçu sur l'investissement des lignes de l'écran : son payback diffère de la version rangée.
+const APERCU_SUR_LES_LIGNES = { ...APERCU, valeurs: { sans: { ...APERCU.valeurs.sans,
+  payback: { valeur: 4.2, unite: 'ans', source: 'devis' } } } }
+// Sans investissement dans le corps, le serveur ne sert aucun payback.
+const APERCU_SANS_PRIX = { ...APERCU, valeurs: { sans: { ...APERCU.valeurs.sans,
+  payback: { valeur: null, unite: 'ans', source: 'moteur' } } } }
 
 function devisRouvert(lead) {
   return {
@@ -72,9 +78,10 @@ const figure = (container, nom) => container
   ?.getAttribute('data-figure-value') ?? null
 
 describe('AGEN11 — l’aperçu de l’écran devis vient du moteur unique', () => {
-  it('avec lead : la conception rangée, puis l’aperçu de la saisie ; payback servi ; saisie non arrondie', async () => {
+  it('avec lead : la conception rangée, puis l’aperçu de la saisie ; payback de l’aperçu ; saisie non arrondie', async () => {
     ventesApi.getConceptionLead.mockResolvedValue({ data: RANGEE })
-    ventesApi.apercuConception.mockResolvedValue({ data: APERCU })
+    ventesApi.apercuConception.mockImplementation((corps) => Promise.resolve({
+      data: corps?.investissement ? APERCU_SUR_LES_LIGNES : APERCU }))
     const { container } = renderEdition()
 
     await waitFor(() => expect(ventesApi.getConceptionLead).toHaveBeenCalledWith(String(RANGEE.lead)), { timeout: 5000 })
@@ -92,8 +99,28 @@ describe('AGEN11 — l’aperçu de l’écran devis vient du moteur unique', ()
     // La production affichée est celle de l'APERÇU (12 000), plus celle rangée (10 000).
     await waitFor(() => expect((figure(container, 'production_annuelle_kwh') || '').replace(/\D/g, ''))
       .toBe(String(production)), { timeout: 5000 })
-    // Le payback est celui SERVI avec la version rangée (l'aperçu n'en porte pas).
-    expect(figure(container, 'payback_ans')).toBe(`${RANGEE.valeurs.sans.payback.valeur} ans`)
+    // E7d (M1) — le payback est celui de l'APERÇU, calculé sur le TTC des lignes de
+    // l'écran (envoyé avec le corps), jamais celui du devis de référence de la version rangée.
+    const corps = ventesApi.apercuConception.mock.calls.at(-1)[0]
+    expect(String(Math.round(corps.investissement.sans))).toBe((figure(container, 'total_ttc') || '').replace(/\D/g, ''))
+    expect(figure(container, 'payback_ans')).toBe(`${APERCU_SUR_LES_LIGNES.valeurs.sans.payback.valeur} ans`)
+    expect(figure(container, 'payback_ans')).not.toBe(`${RANGEE.valeurs.sans.payback.valeur} ans`)
+  }, 20000)
+
+  it('lignes sans prix : le payback dit « après enregistrement », aucun investissement envoyé', async () => {
+    const devis = devisRouvert(RANGEE.lead)
+    devis.data.lignes = devis.data.lignes.map((l) => ({ ...l, prix_unitaire: '0.00' }))
+    ventesApi.getDevisById.mockResolvedValue(devis)
+    ventesApi.getConceptionLead.mockResolvedValue({ data: RANGEE })
+    ventesApi.apercuConception.mockResolvedValue({ data: APERCU_SANS_PRIX })
+    const { container } = renderEdition()
+    await act(async () => { fireEvent.change(container.querySelector('#gen-hiver'), { target: { value: '1400' } }) })
+    await waitFor(() => expect(container.querySelector('[data-testid="bandeau-modele-conception"]')).not.toBeNull(),
+      { timeout: 5000 })
+    await waitFor(() => expect(ventesApi.apercuConception).toHaveBeenCalled(), { timeout: 5000 })
+    expect(ventesApi.apercuConception.mock.calls.every(([c]) => !('investissement' in c))).toBe(true)
+    const roi = container.querySelector('[data-figure="payback_ans"]')
+    expect(roi?.textContent || container.textContent).toContain('après enregistrement')
   }, 20000)
 
   it('sans lead : rien avant la saisie, « Calcul en cours… » pendant l’appel, puis les chiffres servis', async () => {
@@ -114,8 +141,10 @@ describe('AGEN11 — l’aperçu de l’écran devis vient du moteur unique', ()
       { timeout: 5000 })
     expect((figure(container, 'economie_annuelle') || '').replace(/\D/g, ''))
       .toBe(String(APERCU.valeurs.sans.economies_annuelles.valeur))
-    // Aucun devis de référence servi : le payback n'est pas inventé (« N/A », aucune ancre chiffrée).
-    expect(figure(container, 'payback_ans')).toBeNull()
+    // E7d (M1) — sans lead ni devis de référence, le payback est celui de l'aperçu sur les
+    // lignes chiffrées de l'écran (plus « N/A » pour un brouillon aux lignes chiffrées).
+    expect(corps.investissement.sans).toBeGreaterThan(0)
+    expect(figure(container, 'payback_ans')).toBe(`${APERCU.valeurs.sans.payback.valeur} ans`)
   }, 20000)
 
   // E7d (revue lot 4, M3) — un refus du moteur est TOUJOURS dit (sa phrase, son

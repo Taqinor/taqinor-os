@@ -153,8 +153,7 @@ export default function PanneauCommercial({
       </div>
     </CarteProfilCi>
     <CarteEconomieCi apercu={carte.apercuEcoCi} eco={carte.ecoCi} setEcoChamp={carte.setEcoChamp}
-                       optionAvec={carte.apercuCi?.donnees?.option_avec ?? null}
-                       paybackServi={carte.paybackServi} />
+                       optionAvec={carte.apercuCi?.donnees?.option_avec ?? null} />
     </>
   )
 }

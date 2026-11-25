@@ -28,7 +28,7 @@ export function useApercuEtude(ctx) {
     lines, realBillMode, realBillKwh,
     realBillMad, distributeur, baremeSociete, provenanceMois, leadDuDevis, leads,
     leadId, modeInstallation, clientsConnus, clientId, confirm, fHiver, fEte,
-    sizing, dispatchSizing, produits, monthly, realBillSaisi, distributeurChoisi, consoStockee,
+    sizing, dispatchSizing, produits, monthly, realBillSaisi, distributeurChoisi, consoStockee, totals,
   } = ctx
 
   // La capacité batterie se juge sur des lignes DIFFÉRÉES (la frappe reste instantanée).
@@ -142,15 +142,18 @@ export function useApercuEtude(ctx) {
     consoAnnuelleReelle, distributeur, distributeurChoisi, consoStockee: consoStockee?.current ?? null,
     bareme: baremeSociete,
   })
+  // E7d (revue lot 4, M1) — le prix du payback : le TTC de VENTE des lignes de
+  // chaque option à l'écran (jamais un prix d'achat), envoyé avec l'aperçu.
   const corpsConception = corpsApercuConception({
     leadId, modeInstallation, fHiver, fEte, consommation: consommationImposee,
     nbPanneaux: comptePanneauxOption(lines, 'sans', produits),
+    investissement: { sans: totals?.totalSans, avec: totals?.totalAvec },
   })
   const conceptionEcran = useConceptionEcran({ leadId, corps: corpsConception })
   const chiffres = chiffresConception(conceptionEcran.conception)
-  // Le payback est celui SERVI avec la version rangée (devis de référence, la
-  // fonction du PDF) : un aperçu n'en porte aucun (rien n'est encore chiffré).
-  const paybackServi = chiffresConception(conceptionEcran.servie)
+  // La conception affichée est-elle l'APERÇU de cet écran (payback sur ses lignes) ?
+  // La version rangée porte le payback d'un devis de RÉFÉRENCE : jamais affiché ici.
+  const surApercu = Boolean(conceptionEcran.conception) && conceptionEcran.conception !== conceptionEcran.servie
 
   // E7d (revue lot 4, M3) — UNE SOURCE PAR BLOC. Le graphe mensuel, la falaise,
   // le verdict batterie, le tableau de dimensionnement ET la recommandation de
@@ -249,8 +252,14 @@ export function useApercuEtude(ctx) {
   const apercuEcoAvec = batterieInvendableServeur ? null : (chiffres?.ecoAvec ?? null)
   // AGEN11 — le payback SERVI par option (celui du PDF, sur le devis de
   // référence de la conception rangée) ; absent ⇒ « N/A », jamais recalculé.
-  const apercuPaybackSans = paybackServi?.paybackSans ?? null
-  const apercuPaybackAvec = paybackServi?.paybackAvec ?? null
+  // E7d (M1) — le payback de l'APERÇU, calculé sur le TTC des lignes de l'écran ;
+  // sans prix sur les lignes : « après enregistrement » ; jamais celui d'un autre devis.
+  const apercuPaybackSans = surApercu ? (chiffres?.paybackSans ?? null) : null
+  const apercuPaybackAvec = surApercu ? (chiffres?.paybackAvec ?? null) : null
+  const paybackAbsent = (total) => (!(Number(total) > 0) ? 'après enregistrement'
+    : conceptionEcran.chargement ? 'calcul en cours…' : 'N/A')
+  const apercuPaybackSansAbsent = paybackAbsent(totals?.totalSans)
+  const apercuPaybackAvecAbsent = paybackAbsent(totals?.totalAvec)
   const apercuPaybackSansJamais = false
   const apercuPaybackAvecJamais = false
   // L'état de l'aperçu servi, lu par la carte : `modele` (« conception »,
@@ -288,6 +297,6 @@ export function useApercuEtude(ctx) {
     etudeHoraireEstimationConso, ligneStockageOuverte, setLigneStockageOuverte,
     apercuProductionKwh, apercuProductionKwhAvec, apercuEcoSans, verdictBatterieServeur,
     batterieInvendableServeur, apercuEcoAvec, apercuPaybackSans, apercuPaybackAvec, apercuPaybackSansJamais,
-    apercuPaybackAvecJamais, signerEcoOuRoi, chartData, paybackServi,
+    apercuPaybackAvecJamais, signerEcoOuRoi, chartData, apercuPaybackSansAbsent, apercuPaybackAvecAbsent,
   }
 }

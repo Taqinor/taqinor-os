@@ -233,7 +233,8 @@ class SaisieRefusee(ValueError):
         self.champ = champ
 
 
-def apercu_conception(lead, company, *, calepinage_id=None, calepinage=None, saisies=None, imposes=None):
+def apercu_conception(lead, company, *, calepinage_id=None, calepinage=None, saisies=None, imposes=None,
+                      investissement=None):
     """ADEV137/ADEV152 — la sortie du moteur (contrat, clés ``CLES_SORTIE``)
     pour des valeurs TAPÉES et non enregistrées, SANS AUCUNE ÉCRITURE : le
     porteur (lead, ou calepinage sans lead) est copié en mémoire, ses colonnes
@@ -241,7 +242,8 @@ def apercu_conception(lead, company, *, calepinage_id=None, calepinage=None, sai
     ``saisie``), ``imposes`` = champs imposés de ``POST devis/auto/``
     (``composition_imposee.CHAMPS_IMPOSES``, résidentiel). Rend ``(sortie,
     refus du porteur)`` ; ``SaisieRefusee`` pour une saisie hors liste ou
-    illisible."""
+    illisible. E7d (M1) : ``investissement`` = ``{option: MAD TTC de vente}`` des
+    lignes de l'écran, le prix du payback de chaque option (``valeurs._payback``)."""
     import copy
 
     from django.core.exceptions import ValidationError
@@ -274,11 +276,34 @@ def apercu_conception(lead, company, *, calepinage_id=None, calepinage=None, sai
         except (ValidationError, TypeError, ValueError):
             raise SaisieRefusee('Valeur illisible pour « %s ».' % champ, champ)
     copie = _avec_la_consommation_de_l_apercu(copie, company, imposes)
+    prix = _investissement_valide(investissement)
     with reglages_lus_sans_creer(company):
-        resultat = calculer_conception(copie, company, imposes=imposition_du_corps(imposes or {}) or None)
+        resultat = calculer_conception(copie, company, imposes=imposition_du_corps(imposes or {}) or None,
+                                       investissement=prix)
     for champ in saisies:
         resultat.entrees_utilisees[champ] = {'valeur': _en_json(getattr(copie, champ)), 'source': 'saisie'}
     return sans_cles_interdites(_en_json(resultat.sortie())), None
+
+
+def _investissement_valide(brut):
+    """E7d (revue lot 4, M1) — ``{option: MAD}`` (options ``sans`` / ``avec``, montant de
+    VENTE TTC > 0, fini), ou ``None`` ; ``SaisieRefusee`` nommant ``investissement[.<option>]``."""
+    import math
+
+    if brut is None:
+        return None
+    if not isinstance(brut, dict):
+        raise SaisieRefusee('« investissement » est un objet {option : montant TTC}.', 'investissement')
+    propre = {}
+    for option, montant in brut.items():
+        champ = 'investissement.%s' % option
+        if option not in ('sans', 'avec'):
+            raise SaisieRefusee('Option inconnue : %s (sans ou avec).' % option, champ)
+        if isinstance(montant, bool) or not isinstance(montant, (int, float)) or not math.isfinite(montant) \
+                or montant <= 0:
+            raise SaisieRefusee('« %s » : un montant TTC positif est attendu.' % champ, champ)
+        propre[option] = float(montant)
+    return propre or None
 
 
 def _avec_la_consommation_de_l_apercu(copie, company, imposes):

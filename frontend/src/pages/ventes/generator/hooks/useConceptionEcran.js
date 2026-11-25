@@ -22,7 +22,7 @@ const tape = (v) => (v === null || v === undefined ? '' : String(v).trim())
  *  (`etatDevis.consommationImposeeDeEtat`, le sélecteur de l'enregistrement),
  *  imposée au moteur (`imposes.consommation`) ; `null` ⇒ celle du lead. */
 export function corpsApercuConception({
-  leadId, modeInstallation, fHiver, fEte, nbPanneaux, consommation = null,
+  leadId, modeInstallation, fHiver, fEte, nbPanneaux, consommation = null, investissement = null,
 }) {
   if (!modeInstallation || modeInstallation === 'agricole') return null
   const entrees = {}
@@ -38,7 +38,11 @@ export function corpsApercuConception({
   if (lead && !Object.keys(entrees).length && !Object.keys(imposes).length) return null
   // Sans lead, le marché du devis est une valeur tapée de l'écran.
   if (!lead) entrees.type_installation = modeInstallation
-  return { lead, calepinage: null, entrees, imposes }
+  // E7d (M1) — le TTC de vente des lignes de chaque option (> 0 seulement) : le
+  // prix du payback servi ; il ne déclenche jamais à lui seul un aperçu.
+  const prix = Object.fromEntries(Object.entries(investissement || {})
+    .filter(([, v]) => Number.isFinite(Number(v)) && Number(v) > 0).map(([k, v]) => [k, Number(v)]))
+  return { lead, calepinage: null, entrees, imposes, ...(Object.keys(prix).length ? { investissement: prix } : {}) }
 }
 
 const valeur = (table, cle) => table?.[cle]?.valeur ?? null
