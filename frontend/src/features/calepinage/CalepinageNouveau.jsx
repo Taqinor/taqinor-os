@@ -8,6 +8,7 @@ import AssigneePicker from '../../components/AssigneePicker'
 import SelecteurRattachement from './SelecteurRattachement'
 import useUtilisateursAssignables from './useUtilisateursAssignables'
 import { unwrapList } from '../../api/resource'
+import { lireToutesLesPages } from '../../utils/fetchAllPages'
 import {
   Button, Card, Input, Label, Tabs, TabsList, TabsTrigger, TabsContent,
 } from '../../ui'
@@ -315,8 +316,11 @@ export default function CalepinageNouveau() {
         // T4-X9-011 — aucune réponse : chercher ce que le serveur a peut-être créé, jamais « Réessayez ».
         let trouve = null
         try {
-          const rep = await calepinageApi.calepinages.list({ [champCible]: cibleId, depuis, ordering: '-created_at' })
-          const lignes = unwrapList(rep)
+          // Toutes les pages (jamais la page 1 seule) : le filtre `depuis` borne la lecture à quelques lignes.
+          const lignes = await lireToutesLesPages((pages) => calepinageApi.calepinages.list({
+            lead: surLead ? cibleId : undefined, client: surLead ? undefined : cibleId,
+            depuis, ordering: '-created_at', ...pages,
+          }))
           trouve = lignes.find((l) => !nom.trim() || (l?.titre || l?.nom || '') === nom.trim()) ?? null
         } catch {
           trouve = null

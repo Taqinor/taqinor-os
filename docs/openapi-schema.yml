@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5324, operations: 8178, components: 4107}
+counts: {paths: 5326, operations: 8180, components: 4108}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -558,6 +558,7 @@ operations:
 - patch /api/django/calepinage/calepinages/systemes-fixation/{systeme_id}/ -> django_calepinage_calepinages_systemes_fixation_partial_update
 - get /api/django/calepinage/calepinages/{id}/ -> django_calepinage_calepinages_retrieve
 - patch /api/django/calepinage/calepinages/{id}/ -> django_calepinage_calepinages_partial_update
+- get /api/django/calepinage/calepinages/{id}/apercu-devis/ -> django_calepinage_calepinages_apercu_devis_retrieve
 - get /api/django/calepinage/calepinages/{id}/apercu-document/ -> django_calepinage_calepinages_apercu_document_retrieve
 - get /api/django/calepinage/calepinages/{id}/approbation/ -> django_calepinage_calepinages_approbation_retrieve
 - post /api/django/calepinage/calepinages/{id}/approbation/ -> django_calepinage_calepinages_approbation_create
@@ -4688,6 +4689,7 @@ operations:
 - patch /api/v1/calepinage/calepinages/systemes-fixation/{systeme_id}/ -> v1_calepinage_calepinages_systemes_fixation_partial_update
 - get /api/v1/calepinage/calepinages/{id}/ -> v1_calepinage_calepinages_retrieve
 - patch /api/v1/calepinage/calepinages/{id}/ -> v1_calepinage_calepinages_partial_update
+- get /api/v1/calepinage/calepinages/{id}/apercu-devis/ -> v1_calepinage_calepinages_apercu_devis_retrieve
 - get /api/v1/calepinage/calepinages/{id}/apercu-document/ -> v1_calepinage_calepinages_apercu_document_retrieve
 - get /api/v1/calepinage/calepinages/{id}/approbation/ -> v1_calepinage_calepinages_approbation_retrieve
 - post /api/v1/calepinage/calepinages/{id}/approbation/ -> v1_calepinage_calepinages_approbation_create
@@ -10308,6 +10310,7 @@ components:
 - CalendrierOuvre
 - CalendrierReglementaire
 - CalendrierResume
+- CalepinageApercuDevis
 - CalepinageAppliquerCote
 - CalepinageAppliquerCoteCorpsRequest
 - CalepinageApprobation
