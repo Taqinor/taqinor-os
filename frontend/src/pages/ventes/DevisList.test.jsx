@@ -1907,3 +1907,26 @@ describe('DevisList — T4-X4-005 : une page à la fois, filtres et en-tête ser
     expect(ventesApi.getDevisById).toHaveBeenCalledWith(77)
   })
 })
+
+// T4-X1-012 — la colonne « Validité » disait « — » pour un brouillon dont le PDF
+// imprime « Validité : jusqu'au 25/12/2026 » : la liste lisait `date_validite`
+// (vide tant que le vendeur n'a rien saisi) au lieu de `date_expiration`, la
+// date que le serveur calcule avec la fonction du PDF.
+describe('DevisList — T4-X1-012 : la validité affichée est celle du PDF', () => {
+  const brouillon = (extra) => ({ id: 61, reference: 'DEV-X1-012', client_nom: 'ACME',
+    statut: 'brouillon', is_active: true, date_creation: '2026-11-25', total_ttc: 4000,
+    nb_options: 1, version: 1, date_validite: null, ...extra })
+
+  it('brouillon sans date saisie : la date servie (date_expiration) s’affiche', () => {
+    renderList({ loading: false, devis: [brouillon({ date_expiration: '2026-12-25' })] })
+    const ligne = screen.getByText('DEV-X1-012').closest('tr')
+    expect(within(ligne).getByText('25/12/2026')).toBeInTheDocument()
+  })
+
+  it('date saisie par le vendeur : c’est elle que le serveur sert, et la liste l’affiche', () => {
+    renderList({ loading: false, devis: [brouillon({
+      date_validite: '2026-12-31', date_expiration: '2026-12-31' })] })
+    const ligne = screen.getByText('DEV-X1-012').closest('tr')
+    expect(within(ligne).getByText('31/12/2026')).toBeInTheDocument()
+  })
+})

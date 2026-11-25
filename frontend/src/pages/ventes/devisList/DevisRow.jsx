@@ -393,8 +393,11 @@ export default function DevisRow({ d, ctx }) {
           : new Date(d.date_creation).toLocaleDateString('fr-FR')}
       </td>
       <td className="m-hide text-muted-foreground">
-        {d.date_validite
-          ? new Date(d.date_validite).toLocaleDateString('fr-FR')
+        {/* T4-X1-012 — la date que le PDF imprime : `date_expiration` est
+            calculée par le serveur avec la fonction du PDF (date saisie, sinon
+            création + réglage société) ; jamais recalculée ici. */}
+        {d.date_expiration
+          ? new Date(d.date_expiration).toLocaleDateString('fr-FR')
           : '—'}
       </td>
       <td className="ta-right tabular-nums" data-label="Total TTC">
