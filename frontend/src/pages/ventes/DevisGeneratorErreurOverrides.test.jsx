@@ -78,3 +78,20 @@ describe('QJR309 — une erreur CLIENT cesse d’être maquillée en « le serve
     expect(screen.getByTestId('overrides-erreur').textContent).toBe('Chemin non dérivable pour ce devis.')
   })
 })
+
+describe('T4-X6-018 — une surcharge posée depuis le panneau s’affiche dans le menu qu’elle impose', () => {
+  it('recommended_option = « Sans batterie » : « Imposé par le registre » ET le menu montre « Sans batterie »', async () => {
+    ventesApi.poserOverrides.mockResolvedValueOnce({
+      data: { overrides: {}, lignes: {}, effectif: {
+        recommended_option: { auto: 'Avec batterie', manuel: 'Sans batterie', effectif: 'Sans batterie', source: 'manuel' },
+      } },
+    })
+    renderGenerator()
+    await waitFor(() => expect(screen.getByTestId('overrides-panel')).toBeInTheDocument())
+    fireEvent.change(screen.getByTestId('overrides-chemin'), { target: { value: 'recommended_option' } })
+    fireEvent.change(screen.getByTestId('overrides-valeur'), { target: { value: 'Sans batterie' } })
+    fireEvent.click(screen.getByTestId('overrides-poser'))
+    await screen.findByTestId('registre-impose-recommended_option')
+    await waitFor(() => expect(document.getElementById('gen-reco').textContent).toBe('Sans batterie'))
+  })
+})

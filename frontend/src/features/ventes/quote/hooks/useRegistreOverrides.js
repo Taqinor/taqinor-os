@@ -94,7 +94,9 @@ export function useRegistreOverrides(ctx) {
       const { data } = await ventesApi.poserOverrides(editDevis.id, {
         [ovChemin]: { valeur },
       })
-      setOverridesReg(data)
+      // T4-X6-018 — la surcharge posée ICI s'affiche aussi dans le menu qu'elle
+      // impose (comme à l'ouverture) : jamais « Imposé » sous une autre valeur.
+      setOverridesReg(data); alignerSurRegistre(data)
       setOvValeur('')
     } catch (err) {
       setOverridesErreur(messageErreurOverrides(err))
