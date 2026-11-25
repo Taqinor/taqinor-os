@@ -143,7 +143,8 @@ export function MoisParMois({ data, nomProduction = null }) {
       </div>
       <div className="cal-res-graphe">
         <div className="cal-res-axe" aria-hidden="true">
-          {[1, 2, 3].map((k) => <span key={k} style={{ bottom: `${(k / 3) * 100}%` }}>{formatNumber(pas * k, { decimals: 0 })}</span>)}
+          {/* T4-X7-005 — le repère 0 est dit : une courbe nulle se lit sur la ligne du bas, jamais « sous 400 kWh ». */}
+          {[0, 1, 2, 3].map((k) => <span key={k} style={{ bottom: `${(k / 3) * 100}%` }}>{formatNumber(pas * k, { decimals: 0 })}</span>)}
         </div>
         <div role="img" className="cal-res-mois"
           aria-label={`Histogramme mensuel de ${[avecProd && 'la production', avecConso && 'la consommation'].filter(Boolean).join(' et de ')}`}>

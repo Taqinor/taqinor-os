@@ -343,6 +343,15 @@ class ResultatsDeLaConceptionTest(_DevisDeuxOptions):
                          (self.attendu, 'sans', None))
         self.assertEqual(bloc['version'], self.version.version)
 
+    def test_t4_x7_013_la_production_porte_sa_taille(self):
+        """T4-X7-013 — la production servie va avec la taille de la MÊME option (48 × 715 W) :
+        jamais une production lue ici et une taille lue sur une autre lecture."""
+        bloc = self._bloc()
+        table = self.version.valeurs['sans']
+        self.assertEqual((bloc['puissance_kwc'], bloc['nb_panneaux']),
+                         (table['puissance_kwc']['valeur'], 48))
+        self.assertEqual(bloc['puissance_kwc'], round(48 * 715 / 1000, 2))
+
     def test_brouillon_un_seul_chiffre(self):
         bloc = self._bloc(self._les_deux('Sans batterie', statut='brouillon'))
         self.assertEqual((bloc['production_annuelle_kwh'], bloc['devis_envoye']), (self.attendu, None))

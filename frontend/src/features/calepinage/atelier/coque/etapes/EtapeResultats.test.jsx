@@ -103,6 +103,32 @@ describe('Étape Résultats — résultat complet (maquette Resultats)', () => {
     expect(tuiles).not.toHaveTextContent('non calculée')
   })
 
+  /* T4-X7-005 — 3 panneaux 710 W sur un Deye 5 kW : 0 kWh, pertes 100 %, et aucune phrase sur l'étape ; la cause (tension
+     par forte chaleur sous la plage de l'onduleur) n'était que dans Documents / Électrique. */
+  it('T4-X7-005 — production nulle : la cause servie et le geste (étape Électrique) sont dits sur l’étape', async () => {
+    const d = COMPLET()
+    d.production.total.p50_kwh = 0
+    const raison = 'par forte chaleur, la tension des panneaux (105,4 V) tombe sous la plage de travail de cet onduleur (150,0 V)'
+    d.electrique.verdicts = d.electrique.verdicts.map((v) => (v.code === 'vmp_hot_over_mppt_min'
+      ? { ...v, conforme: false, raison } : v))
+    servir(d)
+    rendre()
+    const alerte = await screen.findByRole('alert')
+    expect(alerte).toHaveAttribute('data-zone', 'production-nulle')
+    expect(alerte).toHaveTextContent('La simulation de la pose donne 0 kWh par an.')
+    expect(alerte).toHaveTextContent(`Cause : Par forte chaleur, la tension des panneaux (105,4 V) tombe sous la plage`)
+    fireEvent.click(within(alerte).getByRole('button', { name: 'Aller à l’étape Électrique' }))
+    // le premier panneau de l'étape Électrique (parcoursGuide.premierOngletEtape), comme un clic sur le rail
+    expect(screen.getByTestId('lieu').textContent).toMatch(/onglet=(equipements-electriques|cheminement-cables|raccordement|verdict-electrique|materiel-electrique|saisies-electriques|decisions-electriques|controle-chaine|schema)/)
+  })
+
+  it('T4-X7-005 — production non nulle : aucune alerte de production nulle', async () => {
+    servir(COMPLET())
+    rendre()
+    await screen.findByTestId('cal-resultats-tuiles')
+    expect(document.querySelector('[data-zone="production-nulle"]')).toBeNull()
+  })
+
   it('pied : année basse et dernière année servies ; bouton = action de l’étape, sinon URL de l’étape Documents', async () => {
     servir(COMPLET())
     const onClick = vi.fn()
@@ -331,7 +357,8 @@ describe('Étape Résultats — résultat complet à la maquette v2 (ACAL1832)',
     expect(mois.querySelectorAll('.cal-res-point')).toHaveLength(12)
     // Repères ronds de l'échelle, au-dessus du plus grand mois servi.
     const reperes = [...mois.querySelectorAll('.cal-res-axe span')].map((s) => s.textContent.replace(/\s/g, ''))
-    expect(reperes).toHaveLength(3)
+    expect(reperes).toHaveLength(4)
+    expect(reperes[0]).toBe('0') // T4-X7-005 — l'axe part de 0
     unmount()
     const sans = COMPLET_MAQUETTE()
     sans.autoconsommation.par_mois = sans.autoconsommation.par_mois.map((m) => ({ ...m, consommation_kwh: null }))
@@ -882,9 +909,38 @@ describe('Étape Résultats — la conception, et l’écart avec le devis envoy
     data: { chiffrage: { kwc: { valeur: kwc, unite: 'kWc', etat: 'servi' } }, cible: { panneaux, kwc } },
   })
   const kwc = (n) => `${formatNumber(n, { decimals: 2 })} kWc`.replace(/\s+/g, ' ')
+  // Serveur d'avant T4-X7-013 (bloc sans sa taille) : la taille se lit sur le design-context.
+  const sansTaille = () => { const b = sans(); delete b.puissance_kwc; delete b.nb_panneaux; return b }
+
+  /* T4-X7-013 — « 5 677 kWh … calculée pour 3,85 kWc (7 panneaux de 550 W) » : la production d'une conception refaite au
+     module de la pose (5 × 710 W), à côté de la taille d'une lecture plus ancienne. La taille vient du MÊME bloc. */
+  it('T4-X7-013 — la production de la conception porte SA taille servie, jamais celle d’une autre lecture', async () => {
+    const d = { ...COMPLET(), conception: { ...sans(), production_annuelle_kwh: 5677, puissance_kwc: 3.55, nb_panneaux: 5 } }
+    calepinageApi.calepinages.designContext.mockResolvedValue({
+      data: { chiffrage: { kwc: { valeur: 3.85, unite: 'kWc', etat: 'servi' } }, cible: { panneaux: 7, kwc: 3.85, panel_watt: 550 } },
+    })
+    servir(d)
+    rendre()
+    await waitFor(() => expect(zone()).toHaveTextContent(
+      `Production de la conception : ${kwh(5677)}, calculée pour la conception du lead : ${kwc(3.55)} (5 panneaux) — `))
+    expect(zone()).not.toHaveTextContent('3,85')
+    expect(zone()).not.toHaveTextContent('550 W')
+  })
+
+  it('T4-X7-013 — conception servie à la taille de la pose : UNE ligne, même si le design-context dit une autre taille', async () => {
+    const d = { ...COMPLET(), conception: sans() }  // bloc : 8,64 kWc · 12 panneaux, comme la pose du contrat
+    calepinageApi.calepinages.designContext.mockResolvedValue(contexteDeTaille(3.85, 7))
+    servir(d)
+    rendre()
+    await screen.findByTestId('cal-resultats-tuiles')
+    await waitFor(() => expect(calepinageApi.calepinages.designContext).toHaveBeenCalled())
+    expect(zone()).toHaveTextContent(`Production de la conception : ${kwh(sans().production_annuelle_kwh)}`)
+    expect(zone()).not.toHaveTextContent('votre pose en compte')
+    expect(zone()).not.toHaveTextContent('3,85')
+  })
 
   it('T4-X5-001 — conception d’une autre taille que la pose : sa taille, son chiffre, et la pose renvoyée à sa simulation', async () => {
-    const d = { ...COMPLET(), conception: sans() }  // pose du contrat : 12 panneaux · 8,64 kWc
+    const d = { ...COMPLET(), conception: sansTaille() }  // pose du contrat : 12 panneaux · 8,64 kWc
     calepinageApi.calepinages.designContext.mockResolvedValue(contexteDeTaille(2.13, 3))
     servir(d)
     rendre()
@@ -896,7 +952,7 @@ describe('Étape Résultats — la conception, et l’écart avec le devis envoy
   })
 
   it('T4-X3-009 — la conception compte 8 panneaux de 550 W : la ligne NOMME son panneau, jamais un « 8 » nu', async () => {
-    const d = { ...COMPLET(), conception: sans() }
+    const d = { ...COMPLET(), conception: sansTaille() }
     calepinageApi.calepinages.designContext.mockResolvedValue({
       data: { chiffrage: { kwc: { valeur: 4.4, unite: 'kWc', etat: 'servi' } }, cible: { panneaux: 8, kwc: 4.4, panel_watt: 550 } },
     })
@@ -920,7 +976,8 @@ describe('Étape Résultats — la conception, et l’écart avec le devis envoy
   /* T4-X9-008 — la jauge « De la consommation » (74 %) posée à côté de « Production simulée de la pose » était la part de
      la CONCEPTION (4,40 kWc), pas celle de la pose (5,68 kWc) : à une autre taille, la phrase remplace le chiffre. */
   it('T4-X9-008 — conception d’une autre taille : la jauge dit la phrase des deux tailles, aucun pourcentage', async () => {
-    const d = { ...COMPLET(), conception: sans() }  // pose du contrat : 12 panneaux · 8,64 kWc
+    const d = { ...COMPLET(), conception: sansTaille() }  // pose du contrat : 12 panneaux · 8,64 kWc
+    d.autoconsommation = { ...d.autoconsommation, taux_source: 'conception' }  // serveur : taux de la conception publiés
     calepinageApi.calepinages.designContext.mockResolvedValue(contexteDeTaille(2.13, 3))
     servir(d)
     rendre()
@@ -929,6 +986,20 @@ describe('Étape Résultats — la conception, et l’écart avec le devis envoy
       `Part de la consommation calculée pour la conception du lead : ${kwc(2.13)} — votre pose en compte ${kwc(d.pose.kwc)}.`))
     expect(tuile()).not.toHaveTextContent('%')
     expect(tuile().querySelector('svg')).toBeNull()
+  })
+
+  /* T4-X7-002 — conception « 7 panneaux + batterie » (76 %), pose de 5 panneaux sans batterie : le serveur publie les taux
+     de la POSE (`taux_source: 'pose'`, ceux de ses énergies) ; la jauge les montre, aucune phrase d'une autre taille. */
+  it('T4-X7-002 — taux de la pose publiés : la jauge montre CE pourcentage, jamais la phrase de la conception', async () => {
+    const d = { ...COMPLET(), conception: sansTaille() }
+    d.autoconsommation = { ...d.autoconsommation, taux_source: 'pose', taux_couverture: 0.474 }
+    calepinageApi.calepinages.designContext.mockResolvedValue(contexteDeTaille(2.13, 3))
+    servir(d)
+    rendre()
+    await waitFor(() => expect(calepinageApi.calepinages.designContext).toHaveBeenCalled())
+    const tuile = () => document.querySelector('[data-tuile="couverture"]')
+    await waitFor(() => expect(tuile()).toHaveTextContent('47 %'))
+    expect(tuile()).not.toHaveTextContent('calculée pour la conception du lead')
   })
 
   it('T4-X9-008 — même taille : la jauge garde son pourcentage', async () => {

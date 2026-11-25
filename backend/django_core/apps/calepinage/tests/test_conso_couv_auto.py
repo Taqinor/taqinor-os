@@ -260,7 +260,7 @@ class CalepinageDeLeadTest(unittest.TestCase):
 
         taux, lu = self._lire(types.SimpleNamespace(lead_id=7), self.CONCEPTION)
         self.assertEqual(taux, {'taux_autoconsommation': 0.42, 'taux_couverture': 0.61,
-                                'version': 3, 'panneaux': 6})
+                                'version': 3, 'panneaux': 6, 'kwc': None, 'batterie': True})
         lu.assert_called_once()
 
     def test_sans_lead_ou_sans_conception_complete_rien_n_est_lu(self):
@@ -285,6 +285,48 @@ class CalepinageDeLeadTest(unittest.TestCase):
         self.assertIn('conception du lead (version 3, 6 panneaux)', lu['definition'])
         self.assertEqual(lu['energie'], propre['energie'])  # les énergies restent celles de la pose
         self.assertEqual(propre['definition'], etape.DEFINITION_TAUX)
+        self.assertEqual((propre['taux_source'], lu['taux_source']), ('pose', 'conception'))
+
+    def _bloc_de_lead(self, conception, kwc_pose=None):
+        from apps.calepinage.services.etapes import autoconsommation as etape
+        from apps.calepinage.tests.test_calx190_autoconsommation import contexte_de_test, serie_de_test
+
+        contexte = dict(contexte_de_test(), **{etape.CLE_TAUX_CONCEPTION: conception})
+        if kwc_pose is not None:
+            contexte['plans_poses'] = [{'kwc': kwc_pose - 1.0}, {'kwc': 1.0}]
+        return etape.bloc_autoconsommation(serie_de_test(), contexte)[1]
+
+    def test_t4_x7_002_conception_avec_batterie_pose_sans_les_taux_de_la_pose(self):
+        """T4-X7-002 — conception « avec batterie » (76 %), pose simulée sans batterie : le bloc ne
+        publie pas 76 % à côté d'énergies qui en font 47 % ; il publie les taux de SES énergies."""
+        from apps.calepinage.services.etapes import autoconsommation as etape
+        from apps.calepinage.tests.test_calx190_autoconsommation import contexte_de_test, serie_de_test
+
+        _serie, propre = etape.bloc_autoconsommation(serie_de_test(), contexte_de_test())
+        lu = self._bloc_de_lead({'taux_autoconsommation': 0.42, 'taux_couverture': 0.7654, 'version': 3,
+                                 'panneaux': 7, 'kwc': None, 'batterie': True})
+        self.assertEqual((lu['taux_autoconsommation'], lu['taux_couverture']),
+                         (propre['taux_autoconsommation'], propre['taux_couverture']))
+        self.assertNotEqual(lu['taux_couverture'], 0.7654)
+        energie = lu['energie']
+        self.assertAlmostEqual(lu['taux_couverture'],
+                               energie['autoconsomme_kwh'] / energie['consommation_kwh'], places=3)
+        self.assertEqual(lu['taux_source'], 'pose')
+        self.assertIn('(version 3, 7 panneaux, avec batterie) décrit une autre installation', lu['definition'])
+
+    def test_t4_x7_002_conception_d_une_autre_puissance_les_taux_de_la_pose(self):
+        lu = self._bloc_de_lead({'taux_autoconsommation': 0.42, 'taux_couverture': 0.61, 'version': 3,
+                                 'panneaux': 7, 'kwc': 3.85, 'batterie': False}, kwc_pose=3.55)
+        self.assertNotEqual(lu['taux_couverture'], 0.61)
+        self.assertEqual(lu['taux_source'], 'pose')
+        self.assertIn('7 panneaux, 3,85 kWc)', lu['definition'])
+
+    def test_t4_x7_002_meme_installation_les_taux_de_la_conception(self):
+        """Même puissance, aucune batterie des deux côtés : la règle ACAL2024 tient (taux de la conception)."""
+        lu = self._bloc_de_lead({'taux_autoconsommation': 0.42, 'taux_couverture': 0.61, 'version': 3,
+                                 'panneaux': 7, 'kwc': 3.55, 'batterie': False}, kwc_pose=3.55)
+        self.assertEqual((lu['taux_couverture'], lu['taux_source']), (0.61, 'conception'))
+        self.assertIn('conception du lead (version 3, 7 panneaux)', lu['definition'])
 
 
 if __name__ == '__main__':  # pragma: no cover
