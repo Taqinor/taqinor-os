@@ -1373,7 +1373,7 @@ et tests du moteur en docker (journal `lot2-sweep2.log` du scratchpad), budget d
 - `lane/devis-2` et `lane/calepinage-2` : EN VOL.
 - Puis étape 6 (ACAL2018-2020, ADEV149-151) par la lane du moteur, sur la base du lot 3.
 
-### Point du 25/11, 01 h 35 UTC (le plus récent — REPRENDRE ICI)
+### Point du 25/11, 01 h 35 UTC
 
 **Lot 2 — PR Taqinor/taqinor-os#1554 FUSIONNÉE le 25/11 à 00 h 57 UTC** (CI verte du premier coup : 39 jobs ; file de
 fusion). Lots 1 et 2 NON déployés : « mergé — à déployer par toi : `scripts/deploy-prod.ps1` » dit au fondateur.
@@ -1415,3 +1415,28 @@ scripts ; serveur à 1 700 Mo).
   devis automatique 12 à 18 s : c'était la saturation de l'instrument.
 - Constats du tour 2 sans lane : T4-V1-001 (responsable « Non assigné »), T4-V2-022 (fondateur) ; écarts 3 à 11 de la
   trace d'ACAL2027 (`docs/audits/acceptation/ACAL/traces/2026-11-25/`), dont 4, 5, 6, 8 sans lane.
+
+### Point du 25/11, 02 h 00 UTC (le plus récent — REPRENDRE ICI)
+
+**Charge du poste (16 Go).** Mesuré à 01 h 45 : 1 Go libre, 24 Go demandés. Règle tenue depuis : TROIS agents de fond
+au plus, dont DEUX à navigateur au plus, UN seul travail lourd à la fois (test docker, build du front, vitest), et
+aucun lancement tant que `scratchpad/ressources.ps1` ne dit pas GO. Fait : test front de fond arrêté, serveur
+d'aperçu oublié d'une lane (port 5262) arrêté, relecteur en lecture seule des trois lanes de correctifs MIS EN PAUSE
+(agent `ab340260a0e92250d` : à reprendre par un message « continue », il repart de sa transcription), lane
+`moteur-e5-fix` privée de build, d'aperçu et de navigateur (les écrans seront vus à l'acceptation).
+
+**`lane/moteur-e6` REVENUE et repliée dans `dev-lot3`** (8 commits) : identifiants de produit dans la conception,
+ACAL2016 (verdicts rangés par le moteur, « Prêt à envoyer ? » ne rejuge plus), ACAL2018 (façade de la pose), ADEV149
+et ADEV150 (au niveau de règles 15 seulement ; parité au niveau 14 : 0 clé), ADEV151 (`remplir_conceptions --ecarts`,
+n'écrit rien), clause restante d'ACAL2013. NON faits : ACAL2019 (arbitrage de l'orchestrateur : liée au niveau 15,
+comme ADEV149), ACAL2020, ACAL2026, ADEV154, le retour sur investissement de la conception (servi à la lecture depuis
+le devis de référence). `VERSION_MOTEUR` = `moteur-unique-2` : toute conception rangée devient périmée et se recalcule
+à la lecture. Plafond des imports ventes → calepinage relevé 22 → 23 (porte `porte_calepinage.py`) ; calepinage →
+ventes à 45 pour 44 (`devis_retenu.py`, étape 5) : confié à la lane `moteur-e5-fix`.
+- À LANCER dès qu'une place se libère, dans cet ordre : (1) relecture indépendante de l'étape 6 (consignes
+  `scratchpad/msg-revue-e6.md`, lecture seule) ; (2) lane `moteur-e6b` (consignes `scratchpad/msg-lane-e6b.md`, base de
+  test `t6`, avec les constats de la relecture en tête) ; (3) reprise du relecteur en pause ; (4) étape 7 en trois lanes
+  disjointes — fiche du lead (ALEA71, ACAL2021), écran devis (AGEN11, AGEN12 puis AGEN13), atelier (ADEV153, ACAL2022,
+  ACAL2023) ; (5) relecteurs X2, X5, X3 du tour 3 (consignes `scratchpad/tour3/msg-X*.md`).
+- Événements de CI reçus à 01 h 45 pour les PR #1552 et #1554 : ils visent d'anciennes têtes de PR DÉJÀ fusionnées —
+  rien à faire.
