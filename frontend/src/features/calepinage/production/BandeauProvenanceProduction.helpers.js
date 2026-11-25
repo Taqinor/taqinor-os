@@ -14,7 +14,7 @@
 /** T4-X2-002 — LA phrase d'une simulation périmée (le document enregistré a changé depuis le calcul : le serveur ne
     publie plus sa production, `simulation_perimee`). Le chiffre simulé n'est plus montré : c'est DIT, jamais remplacé
     en silence par l'estimation de l'atelier. */
-export const SIMULATION_A_REFAIRE = 'Simulation à refaire : le toit a changé depuis le dernier calcul.'
+export const SIMULATION_A_REFAIRE = 'Simulation à refaire : le toit ou un réglage de votre société a changé depuis le dernier calcul.'
 
 /** Une simulation existe mais elle est périmée. */
 export const simulationARefaire = (resultat) => resultat?.simule === true && resultat?.simulation_perimee === true

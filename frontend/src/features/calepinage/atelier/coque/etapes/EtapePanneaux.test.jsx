@@ -620,7 +620,7 @@ describe('étape Panneaux — sur la carte', () => {
     rendre()
     const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
     await waitFor(() => expect(puce).toHaveTextContent(
-      'Simulation à refaire : le toit a changé depuis le dernier calcul. Relancez-la à l’étape Les résultats.'))
+      'Simulation à refaire : le toit ou un réglage de votre société a changé depuis le dernier calcul. Relancez-la à l’étape Les résultats.'))
     expect(puce.textContent.split('Simulation à refaire').length).toBe(2)
     expect(puce).not.toHaveTextContent('6 926')
   })

@@ -53,6 +53,15 @@ MESSAGE_AUCUN_GABARIT = (
     "réglages du module pour en voir apparaître un."
 )
 
+#: T4-X3-014 — le message servi quand le PAYS de la société n'est pas renseigné :
+#: aucun gabarit n'est alors cherché (on ne devine pas un pays), même si la
+#: société en a déposé. Il dit la vraie cause et où la corriger.
+MESSAGE_PAYS_NON_RENSEIGNE = (
+    "Le pays de votre société n'est pas renseigné : aucun gabarit de dossier "
+    "n'est proposé, même si vous en avez déposé. Renseignez le pays dans "
+    "Réglages › Calepinage › Site et imagerie."
+)
+
 MOTIF_GABARIT_ABSENT = (
     "Le fichier de gabarit de la société n'a pas été déposé : l'ERP ne "
     "fabrique aucun formulaire officiel qu'il n'a pas reçu."
@@ -64,7 +73,7 @@ MESSAGE_CHAMP_SANS_SOURCE = (
 )
 
 __all__ = [
-    'ETAT_FOURNIE', 'ETAT_A_COMPLETER', 'ETAT_MANQUANTE',
+    'MESSAGE_PAYS_NON_RENSEIGNE', 'ETAT_FOURNIE', 'ETAT_A_COMPLETER', 'ETAT_MANQUANTE',
     'MESSAGE_AUCUN_GABARIT',
     'dossiers_du_calepinage',
     # CAL192 / CAL193 — les packs pays (Maroc, France).
@@ -291,7 +300,9 @@ def _composer_dossiers(*, calepinage_id, pays, entrees, infos):
         'calepinage': calepinage_id,
         'pays': (pays or '').upper() or None,
         'gabarits_deposes': len(entrees),
-        'message_aucun_gabarit': (None if entrees else MESSAGE_AUCUN_GABARIT),
+        'message_aucun_gabarit': (
+            None if entrees
+            else (MESSAGE_AUCUN_GABARIT if pays else MESSAGE_PAYS_NON_RENSEIGNE)),
         'dossiers': [_composer_dossier(entree, infos) for entree in entrees],
     }
 

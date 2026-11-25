@@ -51,7 +51,7 @@ import Rail from './Rail'
 import { BoutonOr, BoutonMarine, Segmente, Tuile, Indicateur, SectionEtape } from './coque/primitives'
 import { GLOSSAIRE_ONGLETS } from '../commun/glossaireOnglets'
 import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
-import { ETAPES, ESSENTIELS, ecranGuideDeOnglet, ongletsVisibles } from './parcoursGuide'
+import { ETAPES, ESSENTIELS, ecranGuideDeOnglet, ongletDansLaFeuille, ongletsVisibles } from './parcoursGuide'
 import { ONGLETS, PARAM_ONGLET, ongletParCle, ongletsTries, resoudreOnglet } from './onglets'
 
 const ID = '7'
@@ -563,6 +563,18 @@ describe('ACAL397 — `?champ=` ouvre le champ exact', () => {
     await panneauOuvert()
     expect(screen.queryByTestId('cal-onglet-erreur')).toBeNull()
   }, 30_000)
+})
+
+describe('T4-X3-007 — un lien profond vers un panneau que l’étape ne montre pas ouvre « Avancé »', () => {
+  // Les 16 clés relevées par le relecteur : quatre seulement tombent sur l'écran ordinaire de leur étape.
+  const SEIZE = ['variantes', 'pompage', 'plan', 'photos', 'terrain', 'ombriere', 'schema', 'horizon',
+    'course-soleil', 'dossiers', 'affectation', 'detection-toit', 'fiches', 'pente', 'production', 'pertes']
+
+  it('exactement fiches, pente, production et pertes, et jamais en mode expert', () => {
+    expect(SEIZE.filter((cle) => ongletDansLaFeuille(cle))).toEqual(['fiches', 'pente', 'production', 'pertes'])
+    expect(SEIZE.filter((cle) => ongletDansLaFeuille(cle, true))).toEqual([])
+    expect(ongletDansLaFeuille(null)).toBe(false)
+  })
 })
 
 describe('CALX1 — aucune route du module ne reste orpheline', () => {

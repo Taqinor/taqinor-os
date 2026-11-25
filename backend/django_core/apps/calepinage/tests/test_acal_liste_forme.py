@@ -141,6 +141,33 @@ class RechercheDeLaListeTest(BaseApiCalepinage):
         self.assertNotIn(etranger.pk, self._ids('Tétouan'))
         self.assertEqual(self._ids('Quelquepartintrouvable'), set())
 
+    def test_recherche_ville_au_dela_des_cinquante_premiers_leads(self):
+        """T4-X3-010 — « Rabat » doit trouver TOUS les calepinages de Rabat :
+        ``_condition_recherche`` ne retenait que les 50 premiers leads (par nom)
+        et perdait le reste en silence."""
+        from apps.calepinage.selectors import appliquer_filtres_liste
+        from apps.crm.models import Lead
+
+        attendus = set()
+        for i in range(55):
+            lead = Lead.objects.create(company=self.company,
+                                       nom='A lead %02d' % i, ville='Rabat')
+            attendus.add(Calepinage.objects.create(
+                company=self.company, lead_id=lead.pk).pk)
+        dernier = Lead.objects.create(company=self.company, nom='Zorro',
+                                      ville='Rabat')
+        attendus.add(Calepinage.objects.create(
+            company=self.company, lead_id=dernier.pk).pk)
+        etranger = Lead.objects.create(company=self.autre, nom='Voisin',
+                                       ville='Rabat')
+        Calepinage.objects.create(company=self.autre, lead_id=etranger.pk)
+
+        trouves = set(appliquer_filtres_liste(
+            Calepinage.objects.filter(company=self.company), q='Rabat',
+            company=self.company).values_list('pk', flat=True))
+
+        self.assertEqual(trouves, attendus)
+
     def test_titre_de_repli_calepinage_diese_numero_est_trouve(self):
         """ACAL948 — « Calepinage #12 » et « #12 » trouvent le 12 sans titre,
         pas le 120 ; l'égalité porte sur le numéro."""
@@ -167,6 +194,36 @@ class RechercheDeLaListeTest(BaseApiCalepinage):
 
     def test_une_reference_inconnue_ne_rend_rien(self):
         self.assertEqual(self._ids('CAL-2601-9999'), set())
+
+
+class TriParTitreAfficheTest(BaseApiCalepinage):
+    """T4-X3-011 — « Tri : Titre » range le titre que la carte AFFICHE
+    (``CalepinageList.helpers.js::identiteCarte`` : client, sinon lead, sinon
+    titre, sinon « Calepinage #N »), sans tenir compte de la casse ni des accents."""
+
+    def _creer(self, **champs):
+        return Calepinage.objects.create(
+            company=self.company, lead_id=champs.pop('lead_id', 9_999_999),
+            **champs)
+
+    def test_tri_titre_suit_le_nom_affiche_sans_casse_ni_accents(self):
+        zebre = self._creer(titre='zèbre')
+        eric = self._creer(titre='Éric')
+        abel = self._creer(titre='abel')
+        repli = self._creer(titre='')
+        # La carte montre le CLIENT avant le titre saisi.
+        atlas = self._creer(titre='zzz dernier', client=self.client_a)
+
+        reponse = self.api.get(URL, {'ordering': 'titre'})
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        ids = [ligne['id'] for ligne in self._lignes(reponse)]
+        self.assertEqual(
+            ids, [abel.pk, atlas.pk, repli.pk, eric.pk, zebre.pk])
+
+        reponse = self.api.get(URL, {'ordering': '-titre'})
+        ids = [ligne['id'] for ligne in self._lignes(reponse)]
+        self.assertEqual(
+            ids, [zebre.pk, eric.pk, repli.pk, atlas.pk, abel.pk])
 
 
 class StatutsEtBudgetTest(BaseApiCalepinage):

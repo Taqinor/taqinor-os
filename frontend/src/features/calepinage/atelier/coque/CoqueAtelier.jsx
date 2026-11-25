@@ -8,7 +8,7 @@ import { PARAM_MODE, useModeExpert } from '../modeExpert'
 import { PARAM_ONGLET, resoudreOnglet } from '../onglets'
 import { cadrerDansZoneLibre } from './cadrageZoneLibre' // T4-X5-017 — sorti tel quel (partagé avec le plein écran)
 import {
-  CADRES, ETAPES, ecranCoque, memoriserEtape, premierOngletEtape, useParcours, vueParcours,
+  CADRES, ETAPES, ecranCoque, memoriserEtape, ongletDansLaFeuille, premierOngletEtape, useParcours, vueParcours,
 } from '../parcoursGuide'
 import { BandeauAlertes } from './BandeauxCoque'
 import BarreProjet from './BarreProjet'
@@ -230,13 +230,22 @@ export default function CoqueAtelier({
   useFermetureFeuille(feuille, () => setAvanceOuvert(false), `${lieu.pathname}${lieu.search}`)
   const carteVisible = cadre === CADRES.CARTE
 
+  // T4-X3-007 — un LIEN (adresse tapée, lien envoyé) vers un panneau que l'écran de l'étape ne monte pas ouvre la feuille
+  // « Avancé » sur lui. Le clic sur une étape change aussi `?onglet=` (vers son premier panneau) : ce changement-là, posé
+  // par `choisirEtape`, porte `state.etapeChoisie` (adresse de l'historique) et n'ouvre jamais la feuille.
+  const [ongletVu, setOngletVu] = useState(null)
+  if (ongletVu !== cleActive) { // ajustement au rendu (React : « state dérivé d'une valeur qui change »), sans effet
+    setOngletVu(cleActive)
+    if (lieu.state?.etapeChoisie !== true && !presentation && ongletDansLaFeuille(cleActive, expert)) setAvanceOuvert(true)
+  }
+
   const choisirEtape = (cle) => {
     const premier = premierOngletEtape(cle, expert)
     setAvanceOuvert(false) // une étape choisie referme la feuille « Avancé »
     if (!premier || premier === cleActive) return
     const suivants = new URLSearchParams(parametres)
     suivants.set(PARAM_ONGLET, premier)
-    setParametres(suivants)
+    setParametres(suivants, { state: { etapeChoisie: true } })
   }
   const choisirRef = useRef(choisirEtape)
   useEffect(() => { choisirRef.current = choisirEtape })

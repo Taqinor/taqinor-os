@@ -660,6 +660,8 @@ describe('Étape Résultats — calcul à refaire (simulation périmée)', () =>
     await screen.findByTestId('cal-avant-simulation')
     expect(screen.getByTestId('cal-avant-simulation')).toHaveAttribute('data-etat', 'perime')
     expect(screen.getByTestId('cal-avant-titre')).toHaveTextContent('Calcul à refaire')
+    // T4-X3-012 — le motif nomme AUSSI les réglages de la société (ils périment le calcul sans toucher au toit).
+    expect(screen.getByTestId('cal-avant-phrase')).toHaveTextContent('ou un réglage de votre société a changé depuis le dernier calcul')
     expect(screen.getByTestId('cal-avant-titre')).toHaveAttribute('title', expect.stringContaining('19/09/2026'))
     expect(screen.getByTestId('calx48-lancer-bouton')).toHaveAttribute('data-etat', 'perime')
     expect(screen.getByText('Pour un résultat complet')).toBeInTheDocument()

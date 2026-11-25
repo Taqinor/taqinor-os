@@ -92,7 +92,7 @@
         "modules": 16,
         "kwc": 11.52,
         "simule": false,
-        "motif": "La conception de ce calepinage a changé depuis sa dernière simulation : la production affichée serait celle d’un autre toit. Elle est donc traitée comme non simulée — relancez la simulation.",
+        "motif": "La conception de ce calepinage ou un réglage de votre société a changé depuis sa dernière simulation : la production affichée serait celle d’un autre toit. Elle est donc traitée comme non simulée — relancez la simulation.",
         "p50_kwh": null,
         "p75_kwh": null,
         "p90_kwh": null,

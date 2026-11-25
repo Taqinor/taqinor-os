@@ -143,6 +143,35 @@ describe('ACAL133 — les lignes viennent EXCLUSIVEMENT du registre servi', () =
   })
 })
 
+describe('T4-X3-018 — une saisie non enregistrée ne se perd pas sans avertissement', () => {
+  const quitter = () => {
+    const evenement = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(evenement)
+    return evenement.defaultPrevented
+  }
+
+  it('quitter après une saisie demande confirmation ; enregistrée ou rétablie, non', async () => {
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage', 'exemple_vide'))
+    mocks.putParametres.mockResolvedValue({ data: REGLAGES })
+    rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
+    expect(quitter()).toBe(false)
+
+    fireEvent.change(champValeur('cos_phi_par_defaut'), { target: { value: '0.9' } })
+    expect(quitter()).toBe(true)
+    // Revenir à la valeur servie : plus rien à perdre.
+    fireEvent.change(champValeur('cos_phi_par_defaut'), { target: { value: '' } })
+    expect(quitter()).toBe(false)
+
+    fireEvent.change(champValeur('cos_phi_par_defaut'), { target: { value: '1' } })
+    fireEvent.change(champSource('cos_phi_par_defaut'), { target: { value: 'societe' } })
+    expect(quitter()).toBe(true)
+    fireEvent.click(screen.getByTestId('calx69-enregistrer'))
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(quitter()).toBe(false))
+  })
+})
+
 describe('ACAL133 — un seul PUT pour les deux sections', () => {
   it('un seul PUT {simulation, electrique_societe}', async () => {
     mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage', 'exemple_vide'))

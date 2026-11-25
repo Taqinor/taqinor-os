@@ -99,7 +99,9 @@ describe('Écran « Sources des paramètres normatifs » (CAL165)', () => {
     await screen.findByTestId('cal165-ecran')
 
     const lestage = screen.getByTestId('cal165-lestage')
-    expect(within(lestage).getByText('vitesse vent reference m s')).toBeInTheDocument()
+    // T4-X3-005 — le libellé SERVI (`registre.lestage`), jamais la clé technique.
+    expect(within(lestage).getByText('Vitesse de vent de référence')).toBeInTheDocument()
+    expect(lestage).not.toHaveTextContent('vitesse vent reference m s')
     // La valeur ET sa source viennent du contrat, mot pour mot.
     const echantillon = reponseContrat('calepinage', 'parametres_calepinage', 'exemple').data
     const attendue = echantillon.lestage.vitesse_vent_reference_m_s
@@ -161,5 +163,76 @@ describe('Écran « Sources des paramètres normatifs » (CAL165)', () => {
     expect(await screen.findByTestId('cal165-erreur')).toHaveTextContent(
       'Paramètres normatifs indisponibles.',
     )
+  })
+})
+
+describe('T4-X3-005 — la page parle comme l’écran de saisie, jamais en clés techniques', () => {
+  it('dégagements à valeur unique et coefficients de norme portent leur libellé', async () => {
+    const servi = reponseContrat('calepinage', 'parametres_calepinage', 'exemple')
+    servi.data = {
+      ...servi.data,
+      degagements: { retrait_rive_m: 0.5, allee_technique_m: 0.9, source: 'notice X' },
+      norme_electrique: {
+        norme: 'nf_c_15_100',
+        reference: 'X3-ref',
+        coefficients: { chute_dc_max_pct: { valeur: 3, reference: 'UTE C 15-712-1' } },
+      },
+    }
+    calepinageApi.parametres.get.mockResolvedValue(servi)
+    rendreEcran()
+    await screen.findByTestId('cal165-ecran')
+    const texte = screen.getByTestId('cal165-ecran').textContent
+    for (const technique of ['retrait rive m', 'allee technique m', 'chute dc max pct', '_m', '_pct']) {
+      expect(texte).not.toContain(technique)
+    }
+    expect(screen.getByTestId('cal165-degagements')).toHaveTextContent('Retrait de rive')
+    expect(screen.getByTestId('cal165-degagements')).toHaveTextContent('Largeur d’allée technique par défaut')
+    expect(screen.getByTestId('cal165-norme')).toHaveTextContent('Chute de tension continue maximale')
+  })
+})
+
+describe('T4-X3-002 / 013 — les retraits par arête et les allées par pays portent LEUR source', () => {
+  it('chaque entrée de liste montre sa valeur et sa source, jamais « non sourcée » à tort', async () => {
+    const servi = reponseContrat('calepinage', 'parametres_calepinage', 'exemple')
+    servi.data = {
+      ...servi.data,
+      degagements: {
+        retraits_par_arete: [
+          { type: 'faitage', retrait_m: 0.3, source: 'X3 test retrait', reference: '' },
+        ],
+        allees_circulation: [
+          { pays: 'ma', largeur_m: 1, source: 'X3 test allée', reference: 'Réf. allée' },
+        ],
+      },
+    }
+    calepinageApi.parametres.get.mockResolvedValue(servi)
+    rendreEcran()
+    await screen.findByTestId('cal165-ecran')
+    const degagements = screen.getByTestId('cal165-degagements')
+    expect(degagements).toHaveTextContent('Faîtage')
+    expect(degagements).toHaveTextContent('0,3')
+    expect(degagements).toHaveTextContent('X3 test retrait')
+    expect(degagements).toHaveTextContent('MA')
+    expect(degagements).toHaveTextContent('X3 test allée')
+    expect(within(degagements).queryAllByText('non sourcée')).toHaveLength(0)
+  })
+})
+
+describe('T4-X3-001 — la norme choisie est dite même sans coefficient saisi', () => {
+  it('norme enregistrée, aucun coefficient propre à la société : la page nomme la norme', async () => {
+    const servi = reponseContrat('calepinage', 'parametres_calepinage', 'exemple')
+    servi.data = {
+      ...servi.data,
+      norme_electrique: { norme: 'nf_c_15_100', reference: 'X3-ref test', coefficients: {} },
+    }
+    calepinageApi.parametres.get.mockResolvedValue(servi)
+    rendreEcran()
+    await screen.findByTestId('cal165-ecran')
+    const norme = screen.getByTestId('cal165-norme')
+    expect(norme).not.toHaveTextContent('Aucune norme électrique choisie')
+    expect(norme).toHaveTextContent('NF C 15-100')
+    expect(norme).toHaveTextContent('X3-ref test')
+    expect(norme).toHaveTextContent('ceux de la norme s’appliquent')
+    expect(within(norme).getByRole('link', { name: 'Changer la norme' })).toBeInTheDocument()
   })
 })

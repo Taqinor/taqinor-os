@@ -118,7 +118,7 @@ describe('CAL201 — les quatre listes, depuis les DEUX endpoints réels', () =>
 
     await waitFor(() => expect(screen.getByTestId('cal-bibliotheque')).toBeInTheDocument())
 
-    for (const cle of Object.keys(REGLAGES.presets)) {
+    for (const cle of Object.keys(REGLAGES.presets).filter((c) => c !== 'versions_conservees')) {
       expect(screen.getByTestId(`cal-biblio-preset-${cle}`)).toBeInTheDocument()
     }
     for (const kit of REGLAGES.kits) {
@@ -128,6 +128,22 @@ describe('CAL201 — les quatre listes, depuis les DEUX endpoints réels', () =>
       expect(screen.getByTestId(`cal-biblio-favori-${cle}`)).toBeInTheDocument()
     }
     expect(screen.getByTestId('cal-biblio-modele-5')).toHaveTextContent('Villa type R+1')
+  })
+
+  it('T4-X3-004 — « versions conservées » est un réglage, jamais un préréglage fantôme', async () => {
+    mocks.hasPermission.mockReturnValue(true)
+    mocks.getModeles.mockResolvedValue({ data: [] })
+    // Seul réglage d'historique posé (puis remis à vide : la clé reste, à null).
+    for (const versions of [30, null]) {
+      cleanup()
+      mocks.getParametres.mockResolvedValue({
+        data: { ...REGLAGES, presets: { versions_conservees: versions } },
+      })
+      render(<Bibliotheque />)
+      await waitFor(() => expect(screen.getByTestId('cal-bibliotheque')).toBeInTheDocument())
+      expect(screen.queryByTestId('cal-biblio-preset-versions_conservees')).toBeNull()
+      expect(screen.getByText(/Aucun preset réglé/)).toBeInTheDocument()
+    }
   })
 
   it('un favori compte EXACTEMENT ses ids — jamais un total inventé', async () => {
@@ -140,7 +156,32 @@ describe('CAL201 — les quatre listes, depuis les DEUX endpoints réels', () =>
     const attendu = REGLAGES.favoris_materiel[cle]
     const ligne = await screen.findByTestId(`cal-biblio-favori-${cle}`)
     expect(ligne).toHaveTextContent(`${attendu.length} produit(s)`)
-    for (const id of attendu) expect(ligne).toHaveTextContent(String(id))
+    // T4-X3-005 — des NOMS de produits (catalogue servi), jamais « #412 ».
+    const noms = CATALOGUE[cle].filter((p) => attendu.includes(p.id)).map((p) => p.libelle)
+    expect(noms).toHaveLength(attendu.length)
+    await waitFor(() => { for (const nom of noms) expect(ligne).toHaveTextContent(nom) })
+    expect(ligne).not.toHaveTextContent('#')
+    expect(ligne).toHaveTextContent('Modules')
+    expect(ligne).not.toHaveTextContent(`${cle} —`)
+  })
+
+  it('T4-X3-005 — un préréglage se lit avec ses libellés et unités, pas ses clés techniques', async () => {
+    mocks.hasPermission.mockReturnValue(false)
+    mocks.getParametres.mockResolvedValue({
+      data: {
+        ...REGLAGES,
+        presets: { 'X3 preset test': { pitchDeg: 15, orientation: 'portrait', source: 'X3 test préréglage' } },
+      },
+    })
+    mocks.getModeles.mockResolvedValue({ data: [] })
+    render(<Bibliotheque />)
+
+    const ligne = await screen.findByTestId('cal-biblio-preset-X3 preset test')
+    expect(ligne).toHaveTextContent('Pente : 15 °')
+    expect(ligne).toHaveTextContent('Orientation du module : portrait')
+    expect(ligne).toHaveTextContent('Source : X3 test préréglage')
+    expect(ligne).not.toHaveTextContent('pitchDeg')
+    expect(ligne).not.toHaveTextContent('source :')
   })
 
   it('aucun kit disponible : le DIT, sans tableau cassé', async () => {
@@ -187,6 +228,22 @@ describe('CAL201 — les quatre listes, depuis les DEUX endpoints réels', () =>
     await waitFor(() => expect(screen.getByTestId('cal-bibliotheque')).toBeInTheDocument())
     expect(screen.getByText(/Aucun preset réglé/)).toBeInTheDocument()
     expect(screen.getByText(/Aucun matériel favori réglé/)).toBeInTheDocument()
+  })
+
+  it('T4-X3-006 — un échec de chargement dit pourquoi et offre « Réessayer »', async () => {
+    mocks.hasPermission.mockReturnValue(true)
+    // Pile qui ne répond pas : aucune réponse HTTP, donc aucun motif serveur.
+    mocks.getParametres.mockRejectedValueOnce(new Error('Network Error'))
+    mocks.getParametres.mockResolvedValue({ data: REGLAGES })
+    mocks.getModeles.mockResolvedValue({ data: MODELES })
+    render(<Bibliotheque />)
+
+    const bloc = await screen.findByTestId('cal-biblio-erreur')
+    expect(bloc).toHaveTextContent('La bibliothèque n’a pas pu être chargée.')
+    expect(bloc).toHaveTextContent('Le serveur ne répond pas')
+    await userEvent.click(within(bloc).getByRole('button', { name: 'Réessayer' }))
+    await waitFor(() => expect(screen.getByTestId('cal-biblio-modele-5')).toBeInTheDocument())
+    expect(screen.queryByTestId('cal-biblio-erreur')).toBeNull()
   })
 
   it('une erreur serveur s’affiche telle quelle, jamais un texte fabriqué', async () => {

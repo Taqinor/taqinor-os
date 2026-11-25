@@ -3,6 +3,7 @@ import calepinageApi from '../../api/calepinageApi'
 import { unwrapList } from '../../api/resource'
 import { useHasPermission } from '../../hooks/useHasPermission'
 import { Badge, Card, Combobox, Spinner } from '../../ui'
+import PageErreurChargement from '../../components/PageErreurChargement'
 import SelecteurRattachement from './SelecteurRattachement'
 
 /* ============================================================================
@@ -171,6 +172,38 @@ const CLE_SOURCE = 'source'
 //: elles ont leur propre chemin d'écriture et traversent intactes.
 const PRESETS_RESERVES = ['jeux', 'kits']
 
+/** T4-X3-004 — un VRAI préréglage est un objet de valeurs. `versions_conservees`
+ *  (le réglage d'historique, un nombre ou null), `jeux` et `kits` partagent la
+ *  section serveur mais ne sont jamais un préréglage : ni listés, ni éditables. */
+function estPreset(cle, valeur) {
+  return Boolean(valeur) && typeof valeur === 'object'
+    && !Array.isArray(valeur) && !PRESETS_RESERVES.includes(cle)
+}
+
+/** T4-X3-005 — un préréglage en clair : le libellé et l'unité de chaque champ viennent des
+ *  définitions SERVIES (`champs_preset`, les mêmes que l'écran d'édition), la source se lit « Source : … ». */
+function champsLisibles(preset, definitions) {
+  const morceaux = Object.entries(preset ?? {})
+    .filter(([champ]) => champ !== CLE_SOURCE)
+    .map(([champ, valeur]) => {
+      const def = definitions.find((d) => d.cle === champ)
+      const texte = typeof valeur === 'boolean' ? (valeur ? 'oui' : 'non') : valeur
+      return `${def?.libelle ?? champ} : ${texte}${def?.unite ? ` ${def.unite}` : ''}`
+    })
+  const source = preset?.[CLE_SOURCE]
+  if (typeof source === 'string' && source.trim()) morceaux.push(`Source : ${source.trim()}`)
+  return morceaux.join(', ') || 'aucun champ'
+}
+
+/** T4-X3-005 — « : Panneau A, Panneau B » : les NOMS des produits favoris, lus au catalogue servi. Catalogue
+ *  pas encore lu, ou produit archivé : rien d'inventé (le compte reste dit par l'appelant). */
+function nomsFavoris(lignes, ids) {
+  const noms = (Array.isArray(lignes) ? lignes : [])
+    .filter((ligne) => ids.includes(ligne.id))
+    .map((ligne) => [ligne.libelle, ligne.marque].filter(Boolean).join(' — '))
+  return noms.length > 0 ? ` : ${noms.join(', ')}` : ''
+}
+
 /** ACAL961 — les champs d'un préréglage, hors provenance, tels qu'enregistrés. */
 function champsDuPreset(valeur) {
   return Object.fromEntries(Object.entries(valeur ?? {})
@@ -272,9 +305,7 @@ function brouillonsDepuis(reglages) {
   for (const [cle, valeur] of Object.entries(presets)) {
     // Ce qui n'est pas un objet de valeurs (les listes `jeux`/`kits`) n'est
     // pas un préréglage de cet écran : il est GARDÉ, jamais réécrit.
-    const editable = valeur && typeof valeur === 'object'
-      && !Array.isArray(valeur) && !PRESETS_RESERVES.includes(cle)
-    if (!editable) {
+    if (!estPreset(cle, valeur)) {
       reserves[cle] = valeur
       continue
     }
@@ -311,6 +342,8 @@ export default function Bibliotheque() {
   const [modeles, setModeles] = useState(null)
   const [chargement, setChargement] = useState(true)
   const [erreur, setErreur] = useState(null)
+  // T4-X3-006 — « Réessayer » relance le chargement (change la clé de l'effet).
+  const [essai, setEssai] = useState(0)
   // CALX30 — les profils types, SERVIS puis édités sur place. `refusProfils`
   // porte la clé du profil fautif : l'erreur s'affiche SOUS lui, jamais en
   // haut de page comme un « non enregistré » anonyme.
@@ -379,22 +412,26 @@ export default function Bibliotheque() {
       })
       .catch((e) => {
         if (annule) return
+        // T4-X3-006 — un motif, toujours : celui du serveur, sinon ce qui s'est
+        // passé (pas de réponse, ou un code d'erreur).
         setErreur(e?.response?.data?.detail
-          || 'La bibliothèque n’a pas pu être chargée.')
+          || (e?.response?.status
+            ? `Le serveur a répondu par une erreur (code ${e.response.status}).`
+            : 'Le serveur ne répond pas : vérifiez votre connexion.'))
       })
       .finally(() => { if (!annule) setChargement(false) })
     return () => { annule = true }
-  }, [])
+  }, [essai])
 
+  // T4-X3-005 — lu aussi en lecture seule : la liste des favoris dit les NOMS des produits, jamais leurs numéros.
   useEffect(() => {
-    if (!peutGerer) return undefined
     let annule = false
     Promise.resolve()
       .then(() => calepinageApi.parametres.catalogueMateriel())
       .then((res) => { if (!annule) setCatalogue(res?.data ?? null) })
       .catch(() => { if (!annule) setCatalogueIndisponible(true) })
     return () => { annule = true }
-  }, [peutGerer])
+  }, [])
 
   if (chargement) {
     return <div className="page" data-testid="cal-bibliotheque"><Spinner /></div>
@@ -402,8 +439,13 @@ export default function Bibliotheque() {
   if (erreur) {
     return (
       <div className="page" data-testid="cal-bibliotheque">
-        <p role="alert" className="text-sm text-destructive"
-          data-testid="cal-biblio-erreur">{erreur}</p>
+        <div role="alert" data-testid="cal-biblio-erreur">
+          <PageErreurChargement
+            title="La bibliothèque n’a pas pu être chargée."
+            error={erreur}
+            onRetry={() => { setErreur(null); setChargement(true); setEssai((n) => n + 1) }}
+          />
+        </div>
       </div>
     )
   }
@@ -412,7 +454,7 @@ export default function Bibliotheque() {
   const favoris = parametres?.favoris_materiel ?? {}
   const kits = Array.isArray(parametres?.kits) ? parametres.kits : []
 
-  const clesPresets = Object.keys(presets)
+  const clesPresets = Object.keys(presets).filter((cle) => estPreset(cle, presets[cle]))
   // ACAL961 — les champs admis d'un préréglage, servis (lecture seule).
   const definitionsChamps = Array.isArray(parametres?.champs_preset) ? parametres.champs_preset : []
   const clesFavoris = Object.keys(favoris)
@@ -644,9 +686,7 @@ export default function Bibliotheque() {
                     <span className="font-medium">{cle}</span>
                     {' — '}
                     <span className="text-muted-foreground">
-                      {Object.entries(presets[cle] ?? {})
-                        .map(([champ, valeur]) => `${champ} : ${valeur}`)
-                        .join(', ') || 'aucun champ'}
+                      {champsLisibles(presets[cle], definitionsChamps)}
                     </span>
                   </li>
                 ))}
@@ -954,11 +994,11 @@ export default function Bibliotheque() {
                   const ids = Array.isArray(favoris[cle]) ? favoris[cle] : []
                   return (
                     <li key={cle} data-testid={`cal-biblio-favori-${cle}`}>
-                      <span className="font-medium">{cle}</span>
+                      <span className="font-medium">{CATEGORIES_FAVORIS.find((c) => c.cle === cle)?.titre ?? cle}</span>
                       {' — '}
                       <span className="text-muted-foreground">
                         {ids.length > 0
-                          ? `${ids.length} produit(s) (#${ids.join(', #')})`
+                          ? `${ids.length} produit(s)${nomsFavoris(catalogue?.[cle], ids)}`
                           : 'aucun produit'}
                       </span>
                     </li>

@@ -92,6 +92,52 @@ def rechercher_leads_minimal(company, q, limit=10, *, user=None, par_ville=False
             for ligne in lignes]
 
 
+def ids_leads_pour_recherche(company, q, *, user=None, par_ville=False):
+    """T4-X3-010 — les IDS de TOUS les leads qui répondent à ``q``, SANS plafond.
+
+    ``rechercher_leads_minimal`` plafonne à 50 (un sélecteur d'écran) : un
+    consommateur qui s'en sert pour FILTRER une liste perdait en silence tout ce
+    qui se trouvait après le 50ᵉ lead. Ici, la même condition (nom, téléphone,
+    et ville si ``par_ville``), même borne société et même portée ``user``, mais
+    rendue en requête PARESSEUSE de ``id`` : l'appelant l'emploie en sous-requête
+    SQL (``lead_id__in=…``), rien n'est chargé en mémoire. Recherche vide =
+    ensemble vide, jamais l'annuaire entier.
+    """
+    from django.db.models import Q
+
+    from .models import Lead
+
+    terme = (q or '').strip()
+    if not terme:
+        return Lead.objects.none().values('id')
+    base = (leads_visibles(user, company) if user is not None
+            else Lead.objects.filter(company=company))
+    condition = Q(nom__icontains=terme) | Q(telephone__icontains=terme)
+    if par_ville:
+        condition |= Q(ville__icontains=terme)
+    return base.filter(condition).values('id')
+
+
+def nom_affiche_lead_sous_requete(lead_ref='lead_id', company_ref='company_id'):
+    """T4-X3-011 — « nom prénom » du lead, en SOUS-REQUÊTE à annoter sur la ligne d'un
+    consommateur cross-app (jamais ``apps.crm.models`` importé chez lui). ``lead_ref`` /
+    ``company_ref`` nomment, sur le modèle appelant, la colonne de l'identifiant du lead et celle
+    de la société : le lead est borné à la MÊME société, corbeille comprise (comme le nom
+    affiché d'un lead supprimé). Même composition que le nom que l'écran affiche
+    (``nom`` puis ``prenom``, rognés) ; ``NULL`` sans lead ou sans nom."""
+    from django.db.models import OuterRef, Subquery, Value
+    from django.db.models.functions import Coalesce, Concat, NullIf, Trim
+
+    from .models import Lead
+
+    return Subquery(
+        Lead.all_objects
+        .filter(pk=OuterRef(lead_ref), company_id=OuterRef(company_ref))
+        .annotate(_nom_affiche=NullIf(Trim(Concat(
+            Coalesce('nom', Value('')), Value(' '), Coalesce('prenom', Value('')))), Value('')))
+        .values('_nom_affiche')[:1])
+
+
 def lead_card(lead_id, company):
     """S8 — fiche-carte LECTURE SEULE d'un lead pour le partage dans la
     messagerie. Scopée société : renvoie None si le lead n'appartient pas à la

@@ -142,6 +142,11 @@ describe('CalepinageNouveau (CAL36)', () => {
     expect(screen.getByRole('tab', { name: 'Client' })).toBeInTheDocument()
   })
 
+  it('T4-X3-016 — le menu « Responsable » ne demande que ceux qui peuvent ouvrir un calepinage', async () => {
+    rendre()
+    await waitFor(() => expect(mocks.getAssignableUsers).toHaveBeenCalledWith({ permission: 'calepinage_voir' }))
+  })
+
   it('la recherche de LEADS part au SERVEUR (seul bornage société possible)', async () => {
     rendre()
     fireEvent.click(screen.getByRole('combobox', { name: 'Lead rattaché au calepinage' }))
