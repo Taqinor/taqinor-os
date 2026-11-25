@@ -1,90 +1,45 @@
-// QJR39 (audit L3 29/08/2026, origine generator-frontend-12 / R4-B2.13) — le
-// générateur initialise `quoteLogic.productible: null` (QX38, commentaire à
-// l'état initial), mais le fetch des réglages société (`parametresApi.
-// getProfile()`) reconstruisait l'objet entier avec `setQuoteLogic({...})`
-// SANS jamais lire `data?.productible_kwh_kwc` (CompanyProfile.
-// productible_kwh_kwc, exposé tel quel — CompanyProfileSerializer,
-// `fields = '__all__'`) : la surcharge société n'était donc JAMAIS appliquée
-// à l'écran, et l'écran + le PDF pouvaient citer deux productibles différents
-// pour le même devis. Le réglage exposé côté Paramètres était mort.
-//
-// Correctif : lire `data?.productible_kwh_kwc`, le poser dans `quoteLogic.
-// productible` — repli EXPLICITE sur `null` (jamais une constante d'écran,
-// `productibleForCity` sait déjà retomber sur le PVGIS par ville).
+// QJR39 → AGEN11 (D-ACAL-97, contrôle C4-E7) — le productible société
+// (`CompanyProfile.productible_kwh_kwc`) n'est plus lu par l'écran : QJR39
+// l'avait branché sur un calcul LOCAL (`productibleForCity` → `computeROI`),
+// un second moteur dont les chiffres pouvaient diverger de la fiche du lead.
+// Depuis AGEN11 le moteur unique (serveur) lit ce réglage et l'écran affiche
+// la conception servie : aucun productible, tarif ni rendement ne vit plus
+// dans l'état de l'écran, aucun appel de calcul local ne subsiste.
 //
 // DevisGenerator.jsx est du JSX/ESM non exécutable par `node --test` sans
-// node_modules : ce test lit donc le SOURCE, même patron que les autres
-// tests QJR de ce fichier.
+// node_modules : ce test lit donc le SOURCE (patron historique des tests QJR
+// de ce fichier) ; mutant : rappeler `productibleForCity(` ou `computeROI(`
+// dans l'écran ou son hook d'aperçu ⇒ échec.
 //
 // Run : node --test src/pages/ventes/DevisGeneratorProductibleSociete.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { productibleForCity } from '../../features/ventes/solar.js'
 import { lireSourceGenerateur } from './DevisGeneratorSource.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const DG = lireSourceGenerateur()
+const APERCU = readFileSync(join(HERE, 'generator', 'hooks', 'useApercuEtude.js'), 'utf8')
 
-test('QJR39 — quoteLogic.productible est initialisé à null (surcharge société absente par défaut)', () => {
-  assert.match(DG, /const \[quoteLogic, setQuoteLogic\] = useState\(\{[\s\S]{0,700}productible: null,/)
-})
-
-test('QJR39 — le fetch des réglages société lit productible_kwh_kwc et le pose dans quoteLogic (setQuoteLogic ne l\'omet plus)', () => {
-  const idx = DG.indexOf("const prod = parseFloat(data?.productible_kwh_kwc)")
-  assert.ok(idx > -1, 'la lecture de productible_kwh_kwc est introuvable')
-  const bloc = DG.slice(idx, idx + 700)
-  assert.match(bloc, /setQuoteLogic\(\{/)
-  assert.match(bloc,
-    /productible: \(Number\.isFinite\(prod\) && prod > 0\) \? prod : null,/,
-    'productible doit être posé avec repli EXPLICITE sur null, jamais une constante')
-  // Les 4 autres champs restent posés dans le MÊME appel setQuoteLogic (pas
-  // un second setState qui pourrait arriver dans un ordre différent).
-  assert.match(bloc, /kwhPrice:/)
-  assert.match(bloc, /efficiency:/)
-  assert.match(bloc, /tvaStandard:/)
-  assert.match(bloc, /tvaPanneaux:/)
-})
-
-test('QJR39 — quoteLogic.productible alimente déjà productibleForCity (ROI + ROI avec) : le point de lecture existant profite du correctif sans autre changement', () => {
-  // QJR586 — la ville lue est `ville_effective` (ville_reference or ville),
-  // repli sur `ville` pour un lead servi sans le champ.
-  const occurrences = DG.match(/productibleForCity\(\s*\n\s*\(selectedLead\?\.ville_effective \?\? selectedLead\?\.ville\) \|\| '', quoteLogic\.productible\)/g) || []
-  // ERR-QAH-DIFF-ROI-PRODUCTIBLE-DEFAUT — le 3ᵉ site (balayage C&I écran) a
-  // été supprimé par CIQ126 : le C&I est dimensionné par le moteur serveur.
-  assert.equal(occurrences.length, 2,
-    'productibleForCity(ville, quoteLogic.productible) doit rester appelé aux 2 sites (roi + roiAvec)')
-})
-
-test('QJR39 — rejoué avec le VRAI productibleForCity(solar.js) : société avec surcharge → productible de la société ; société sans surcharge (absente/null) → PVGIS ville ; 1600 saisi respecté (AMOT64)', () => {
-  // Reproduit la résolution verrouillée par le 2ᵉ test.
-  const resoudreProductible = (dataProductibleKwhKwc) => {
-    const prod = parseFloat(dataProductibleKwhKwc)
-    return (Number.isFinite(prod) && prod > 0) ? prod : null
+test('AGEN11 — aucun calcul local de production, d’économie ni de payback dans l’écran devis', () => {
+  for (const appel of ['productibleForCity(', 'computeROI(', 'paybackMoteurHoraire(']) {
+    assert.ok(!DG.includes(appel), `${appel} ne doit plus être appelé par l'écran devis`)
+    assert.ok(!APERCU.includes(appel), `${appel} ne doit plus être appelé par useApercuEtude`)
   }
+})
 
-  // Société AVEC surcharge réelle (≠ 1600) : l'écran doit citer CETTE valeur,
-  // quelle que soit la ville du lead.
-  const surcharge = resoudreProductible('1750.0')
-  assert.equal(surcharge, 1750)
-  assert.equal(productibleForCity('casablanca', surcharge), 1750,
-    'une surcharge société réelle doit primer sur le PVGIS de la ville')
-  assert.equal(productibleForCity('marrakech', surcharge), 1750)
+test('AGEN11 — l’état de l’écran ne porte plus ni productible, ni tarif du kWh, ni rendement', () => {
+  const idx = DG.indexOf('const [quoteLogic, setQuoteLogic] = useState({')
+  assert.ok(idx > -1, 'état quoteLogic introuvable')
+  const etat = DG.slice(idx, DG.indexOf('})', idx))
+  for (const cle of ['productible', 'kwhPrice', 'efficiency']) {
+    assert.ok(!new RegExp(`\\b${cle}\\s*:`).test(etat), `quoteLogic ne doit plus porter « ${cle} »`)
+  }
+  assert.ok(!DG.includes('data?.productible_kwh_kwc'), 'le productible société est lu par le moteur, pas par l’écran')
+})
 
-  // Société SANS réglage (champ absent du profil, ex. company jamais éditée) :
-  // repli null → productibleForCity retombe sur le PVGIS par ville, comme
-  // avant ce correctif (comportement STRICTEMENT inchangé).
-  const sansReglage = resoudreProductible(undefined)
-  assert.equal(sansReglage, null)
-  assert.equal(productibleForCity('casablanca', sansReglage),
-    productibleForCity('casablanca', null),
-    'sans surcharge, le résultat doit être identique au comportement historique (override=null)')
-
-  // AMOT64 (D-AMOT-3 = a) — 1600 n'est plus une sentinelle : une société qui
-  // SAISIT 1600 voit 1600 ; « non renseigné » arrive désormais en null
-  // (champ nullable côté serveur) → PVGIS ville, ci-dessus.
-  const saisi1600 = resoudreProductible('1600.0')
-  assert.equal(productibleForCity('casablanca', saisi1600), 1600)
-  assert.equal(resoudreProductible(null), null)
+test('AGEN11 — l’aperçu de l’écran passe par le moteur unique (hook de conception)', () => {
+  assert.match(APERCU, /useConceptionEcran\(/)
 })

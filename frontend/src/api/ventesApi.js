@@ -620,6 +620,14 @@ const ventesApi = {
   // tapé part tel quel, le serveur réécrit HT / TVA et l'échéancier (409 sur une émise).
   montantTrancheFacture: (id, montantTtc) =>
     api.post(`/ventes/factures/${id}/montant-tranche/`, { montant_ttc: montantTtc }),
+
+  // AGEN11 (D-ACAL-97) — LE moteur unique : la conception RANGÉE du lead et
+  // l'aperçu SANS écriture d'une saisie (ADEV137/ADEV152). Forme :
+  // `apps/ventes/contract_samples/conception_lead.json`.
+  getConceptionLead: (leadId, config = {}) => api.get(`/ventes/conception/${leadId}/`, config),
+  apercuConception: (corps, config = {}) => api.post('/ventes/conception/apercu/', corps, config),
+  // AGEN12 — « Mettre à jour » un brouillon retouché (ADEV148) ; corps vide.
+  mettreAJourConception: (devisId) => api.post(`/ventes/devis/${devisId}/mettre-a-jour-conception/`, {}),
 }
 
 // 409 « déjà accepté » sur un POST d'acceptation : le devis EST accepté (clic
