@@ -171,7 +171,7 @@ describe('ACAL42 — bandeau de lecture seule', () => {
     expect(screen.queryByTestId('cal-deverrouiller')).toBeNull()
     expect(screen.queryByText(/Déverrouiller/)).toBeNull()
     expect(await screen.findByTestId('cal-devis-reviser-lecture-seule'))
-      .toHaveTextContent('Réviser (v2)')
+      .toHaveTextContent('Réviser (nouvelle version)')
   })
 
   it('conception ouverte : aucun bandeau', async () => {

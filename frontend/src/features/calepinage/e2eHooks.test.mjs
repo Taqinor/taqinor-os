@@ -104,6 +104,7 @@ export const ALL_HOOKS = [
   'cal-devis-variante-manquante',
   'cal-devis-surfaces',
   'cal-devis-reviser-lecture-seule',
+  'cal-devis-reviser-refus',
   'cal-devis-retouches',
   'cal-devis-avertissements',
   'cal-devis-j-ai-lu',
