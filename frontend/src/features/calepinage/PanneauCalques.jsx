@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { ORDRE_CALQUES, CALQUE_ELECTRIQUE_ID, lireEtatCalques, ecrireEtatCalques } from './calques'
 
 /* ============================================================================
@@ -74,10 +74,23 @@ const ETAT_PAR_DEFAUT = { visible: true, opacite: 1 }
  * @param {string|number} utilisateurId  clé de persistance PAR UTILISATEUR.
  */
 export default function PanneauCalques({ builderApi, onChange, utilisateurId, stockage }) {
+  // T4-X7-015 — le panneau vit dans la feuille « Avancé », montée dès le départ mais CACHÉE : la liste lue à ce
+  // moment-là (carte pas encore dessinée) restait vide à vie. On la relit quand le panneau DEVIENT VISIBLE
+  // (ouverture de la feuille) : événement de mise en page, aucune minuterie.
+  const racine = useRef(null)
+  const [lecture, setLecture] = useState(0)
+  useEffect(() => {
+    const noeud = racine.current
+    if (!noeud || typeof ResizeObserver === 'undefined') return undefined
+    const obs = new ResizeObserver(() => { if (noeud.offsetWidth > 0 || noeud.offsetHeight > 0) setLecture((n) => n + 1) })
+    obs.observe(noeud)
+    return () => obs.disconnect()
+  }, [])
   // CALX54 — ce que la scène porte VRAIMENT, jamais les dix identifiants
   // statiques. `calquesDisponibles` est APPELÉE (pas seulement lue) : une
   // fonction absente, ou qui lève, rend une liste vide plutôt qu'une exception.
   const disponibles = useMemo(() => {
+    void lecture // T4-X7-015 : relecture déclenchée à l'ouverture de la feuille
     try {
       const brut = builderApi?.calquesDisponibles?.()
       const liste = Array.isArray(brut) ? [...brut] : []
@@ -91,7 +104,7 @@ export default function PanneauCalques({ builderApi, onChange, utilisateurId, st
     }
     // Ne se relit QUE quand `builderApi` change d'identité (le builder devient
     // prêt) — jamais à chaque rendu : sinon la carte serait interrogée en boucle.
-  }, [builderApi])
+  }, [builderApi, lecture])
 
   const listes = useMemo(
     () => CALQUES_DU_PANNEAU.filter((c) => disponibles.includes(c.id)),
@@ -121,7 +134,7 @@ export default function PanneauCalques({ builderApi, onChange, utilisateurId, st
   )
 
   return (
-    <section data-testid="pc-panneau" aria-label="Calques" className="border border-border bg-card p-3">
+    <section ref={racine} data-testid="pc-panneau" aria-label="Calques" className="border border-border bg-card p-3">
       <h3 className="text-xs font-semibold uppercase tracking-wide mb-2 text-muted-foreground">Calques</h3>
       {listes.length === 0 ? (
         // CALX54 — état vide EXPLICITE : le constructeur n'est pas encore prêt,
