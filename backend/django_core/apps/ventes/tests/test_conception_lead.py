@@ -2783,12 +2783,22 @@ class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher
     def test_adev151_ecarts_liste_brouillons_production_pose_zero_ecriture(self):
         """ADEV151 — ``--ecarts`` : deux leads à toit tracé (un brouillon, un envoyé) listés,
         production actuelle contre production de la pose (niveau 15 forcé dans le
-        processus), écart en kWh et en % ; un lead sans toit absent ; RIEN d'écrit."""
+        processus), écart en kWh et en % ; un lead sans toit absent ; RIEN d'écrit.
+        Relecture E6 M3 — la simulation n'est PAS doublée à la frontière d'écriture : elle
+        écrit vraiment ``Calepinage.resultat`` (``modifier_resultat``, sous verrou), et tout
+        est annulé lead par lead ; « actuel » = la conception RANGÉE ; ``--limite``,
+        ``--lead`` et la ligne de progression."""
+        import io
+
+        from django.core.management import call_command
         from django.utils import timezone
 
+        from apps.calepinage.models import Calepinage
+        from apps.calepinage.services.resultat import modifier_resultat
         from apps.crm.models import Lead
         from apps.ventes.conception import porte_calepinage as P
         from apps.ventes.domain import regles_calcul as RC
+        from apps.ventes.management.commands import remplir_conceptions as commande
         from apps.ventes.models import ConceptionLead, Devis
         from apps.ventes.services import build_devis_auto
 
@@ -2799,28 +2809,62 @@ class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher
         sans_toit = Lead.objects.create(company=company, nom='Sans', prenom='Toit', ville=brouillon_lead.ville,
                                         facture_hiver=Decimal('1600'))
         auteur = self._utilisateur(company)
-        brouillon = build_devis_auto(lead=brouillon_lead, user=auteur, company=company)
-        envoye = build_devis_auto(lead=envoye_lead, user=auteur, company=company)
+        with self.captureOnCommitCallbacks(execute=True):
+            brouillon = build_devis_auto(lead=brouillon_lead, user=auteur, company=company)
+            envoye = build_devis_auto(lead=envoye_lead, user=auteur, company=company)
         Devis.objects.filter(pk=envoye.pk).update(statut='envoye', date_envoi=timezone.now())
+        toits = {}
+        for lead, empreinte in ((brouillon_lead, 'a' * 64), (envoye_lead, 'b' * 64)):
+            toit = Calepinage.objects.create(company=company, lead_id=lead.pk, titre='Toit', resultat={'x': 1})
+            Calepinage.objects.filter(pk=toit.pk).update(layout_hash=empreinte)
+            toits[lead.pk] = toit.pk
         photos = (_photo_devis(brouillon.pk), _photo_devis(envoye.pk))
-        versions = ConceptionLead.objects.count()
-        toits = {brouillon_lead.pk: (501, 'a' * 64), envoye_lead.pk: (502, 'b' * 64)}
+        conceptions = _json(list(ConceptionLead.objects.order_by('pk').values()))
+        resultats = _json(list(Calepinage.objects.order_by('pk').values('pk', 'resultat')))
+        rangee = ConceptionLead.objects.get(lead=brouillon_lead, courante=True)
+        production_rangee = rangee.valeurs[rangee.option_retenue]['production_annuelle']['valeur']
         pose = {'nb_panneaux': 10, 'kwc': None, 'complete': True, 'a_la_main': False, 'empreinte_pose': '',
                 'manquants': [], 'module_produit': None}
-        with mock.patch('apps.ventes.selectors_calepinage.pose_du_lead',
-                        side_effect=lambda c, pk: toits.get(pk, (None, ''))), \
-                mock.patch.object(P, 'pose_du_calepinage', return_value=pose), \
-                mock.patch.object(P, 'simuler_la_pose', return_value={
-                    'complete': True, 'production_annuelle': 1234.0, 'production_mensuelle': [100.0] * 12}):
-            liste = self._commande('--company', str(company.pk), '--ecarts')
+        kwh = [150.0, 160.0, 190.0, 210.0, 230.0, 240.0, 250.0, 240.0, 210.0, 180.0, 150.0, 140.0]
+
+        def simuler(calepinage, *, materiel=None, client=None):  # ÉCRIT vraiment, sous verrou
+            modifier_resultat(calepinage, lambda resultat: resultat.update(e6_simule=True))
+            return {'complete': True}
+
+        def lire(calepinage, **_kw):
+            if not (calepinage.resultat or {}).get('e6_simule'):
+                return None  # jamais simulée
+            return {'perime': False, 'kwc_simule': None, 'source': 'calepinage_enregistre', 'complete': True,
+                    'kwh_kwc_annuel': sum(kwh), 'kwh_kwc_mensuel': list(kwh), 'pertes_et_ombrage_inclus': True}
+
+        def lancer(*args):
+            sortie, erreurs = io.StringIO(), io.StringIO()
+            call_command('remplir_conceptions', *args, stdout=sortie, stderr=erreurs)
+            return sortie.getvalue(), erreurs.getvalue()
+        with mock.patch.object(P, 'pose_du_calepinage', return_value=pose), \
+                mock.patch('apps.calepinage.services.pose_pour_moteur.simuler_pose', side_effect=simuler) as simulee, \
+                mock.patch('apps.calepinage.selectors_devis.productible_pose_du_calepinage', side_effect=lire), \
+                mock.patch.object(commande, 'PROGRESSION_TOUS', 1):
+            liste, progression = lancer('--company', str(company.pk), '--ecarts')
+            limitee, _p = lancer('--company', str(company.pk), '--ecarts', '--limite', '1')
+            seule, _p = lancer('--company', str(company.pk), '--ecarts', '--lead', str(envoye_lead.pk))
         self.assertEqual(RC.REGLES_COURANTES, 14)  # le niveau 15 n'est jamais laissé courant
-        self.assertIn(f'lead #{brouillon_lead.pk} (calepinage #501) : production ', liste)
-        self.assertIn('→ 1 234 kWh/an (écart ', liste)
+        self.assertTrue(simulee.called)  # la simulation a tourné (et écrit) dans la commande
+        ligne = next(li for li in liste.splitlines()
+                     if li.startswith(f'  lead #{brouillon_lead.pk} (calepinage #{toits[brouillon_lead.pk]})'))
+        self.assertIn('production %s → ' % '{:,.0f}'.format(production_rangee).replace(',', ' '), ligne)
+        self.assertNotIn('simulation de la pose non faite', ligne)  # mutant « niveau 15 du module seul »
         self.assertIn(f'{brouillon.reference} brouillon jamais envoyé — changera : oui', liste)
         self.assertIn(f'{envoye.reference} envoye — lecture seule : ne changera jamais', liste)
         self.assertNotIn(f'lead #{sans_toit.pk} ', liste)
         self.assertIn('ÉCARTS : 2 lead(s) à toit tracé listé(s)', liste)
-        self.assertEqual(ConceptionLead.objects.count(), versions, liste)  # mutant « écrire pendant la liste »
+        self.assertIn('lead(s) examiné(s)', progression)
+        self.assertIn('ÉCARTS : 1 lead(s)', limitee)
+        self.assertIn(f'lead #{envoye_lead.pk} ', seule)
+        self.assertNotIn(f'lead #{brouillon_lead.pk} ', seule)
+        # RIEN d'écrit : conceptions, calepinages (écriture de la simulation annulée) et devis.
+        self.assertEqual(_json(list(ConceptionLead.objects.order_by('pk').values())), conceptions)
+        self.assertEqual(_json(list(Calepinage.objects.order_by('pk').values('pk', 'resultat'))), resultats)
         self.assertEqual((_photo_devis(brouillon.pk), _photo_devis(envoye.pk)), photos)
 
     def test_appliquer_ne_touche_pas_une_version_courante_venue_d_un_toit(self):
