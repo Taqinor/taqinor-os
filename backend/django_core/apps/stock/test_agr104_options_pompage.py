@@ -336,6 +336,19 @@ class PrixFigesDacal127Tests(SimpleTestCase):
                        '400.0' if sku.startswith('VEI-SI22') else '450.0')
             self.assertEqual(valeurs['ond_v_max_abs'], Decimal(attendu), sku)
 
+    def test_dacal129_cv_figes_et_tension_par_la_phase_du_kit(self):
+        m0194 = importlib.import_module(
+            'apps.stock.migrations.0194_dacal129_tension_cv_petites_pompes')
+        pompes = {sku: Decimal(cv) for _n, sku, _t, _q, _s, cv, _h, _d in seed_mod.POMPAGE
+                  if sku.startswith('PMP-')}
+        self.assertEqual(len(pompes), 8)
+        self.assertEqual(m0194.POMPES_CV, {**pompes, 'PMP-IMM-2M': None})
+        from apps.stock.management.commands._articles_pompage import tension_pompe
+        for nom, sku, *_r in seed_mod.POMPAGE:
+            if sku.startswith('PMP-'):
+                self.assertEqual(tension_pompe(nom), 220 if sku.endswith('M') else 380, sku)
+        self.assertIsNone(tension_pompe('Câble solaire Nexans 6mm² (au mètre)'))
+
 
 class FichesVariateursDacal129Tests(TestCase):
     """D-ACAL-129 — fiche « variateur de pompage » des variateurs VEICHI :
@@ -419,3 +432,64 @@ class FichesVariateursDacal129Tests(TestCase):
         self.assertEqual(restantes, {'VEI-SI23-4-380', 'VEI-SI23-7.5-380',
                                      'VEI-SI23-11-380'})
         self.assertIsNone(self._fiche('vei-si22-2.2-220'))
+
+
+class PetitesPompesDacal129Tests(TestCase):
+    """D-ACAL-129 — tension 220/380 V et CV des petites pompes du lot POMPAGE."""
+
+    def setUp(self):
+        self.co = Company.objects.get_or_create(
+            slug='dacal129-pmp', defaults={'nom': 'DACAL129 Pompes'})[0]
+        _seed(self.co)
+
+    def _p(self, sku):
+        return Produit.objects.get(company=self.co, sku=sku)
+
+    def test_seeder_pose_la_tension_des_petites_pompes(self):
+        for _n, sku, _t, _q, _s, cv, _h, _d in seed_mod.POMPAGE:
+            if not sku.startswith('PMP-'):
+                continue
+            p = self._p(sku)
+            self.assertEqual(p.tension_v, 220 if sku.endswith('M') else 380, sku)
+            self.assertEqual(p.pompe_cv, Decimal(cv), sku)
+            self.assertIsNone(p.pompe_kw, sku)
+        self.assertEqual(self._p('PMP-OSP-30-8').tension_v, 380)  # OSP intacte
+        self.assertIsNone(self._p('CAB-6MM-M').tension_v)
+
+    def test_migration_0194_champs_vides_seulement_aller_retour(self):
+        m0194 = importlib.import_module(
+            'apps.stock.migrations.0194_dacal129_tension_cv_petites_pompes')
+        skus = [s for s in m0194.POMPES_CV if s != 'PMP-IMM-2M']
+        Produit.objects.filter(company=self.co, sku__in=skus).update(
+            tension_v=None, pompe_cv=None)
+        Produit.objects.filter(company=self.co, sku='PMP-IMM-3M').update(
+            tension_v=380, pompe_cv=Decimal('2'))  # saisis : jamais réécrits
+        deux = Produit.objects.create(
+            company=self.co, nom='Pompe immergée solaire 2 CV Monophasé',
+            sku='Pmp-imm-2m', prix_vente=Decimal('5000'))
+        osp_avant = (self._p('PMP-OSP-30-8').tension_v, self._p('PMP-OSP-30-8').pompe_kw)
+        nb = Produit.objects.count()
+        m0194.poser(django_apps, None)
+        m0194.poser(django_apps, None)  # idempotent
+        self.assertEqual(Produit.objects.count(), nb)
+        self.assertEqual((self._p('PMP-IMM-1.5M').tension_v, self._p('PMP-IMM-1.5M').pompe_cv),
+                         (220, Decimal('1.50')))
+        self.assertEqual((self._p('PMP-IMM-10T').tension_v, self._p('PMP-IMM-10T').pompe_cv),
+                         (380, Decimal('10.00')))
+        self.assertEqual((self._p('PMP-SUR-3T').tension_v, self._p('PMP-SUR-3T').pompe_kw),
+                         (380, None))
+        self.assertEqual((self._p('PMP-IMM-3M').tension_v, self._p('PMP-IMM-3M').pompe_cv),
+                         (380, Decimal('2.00')))
+        deux.refresh_from_db()
+        self.assertEqual((deux.tension_v, deux.pompe_cv, deux.pompe_kw), (220, None, None))
+        self.assertEqual(osp_avant, (self._p('PMP-OSP-30-8').tension_v,
+                                     self._p('PMP-OSP-30-8').pompe_kw))
+        m0194.retirer(django_apps, None)
+        self.assertEqual((self._p('PMP-IMM-4T').tension_v, self._p('PMP-IMM-4T').pompe_cv),
+                         (None, None))
+        deux.refresh_from_db()
+        self.assertIsNone(deux.tension_v)
+        # La tension saisie 380 contredit la phase (monophasée) : gardée ; ses
+        # CV saisis (2) ne sont pas ceux de la table (3) : gardés.
+        self.assertEqual((self._p('PMP-IMM-3M').tension_v, self._p('PMP-IMM-3M').pompe_cv),
+                         (380, Decimal('2.00')))

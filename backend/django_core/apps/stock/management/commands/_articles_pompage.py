@@ -112,3 +112,14 @@ def semer_fiches_variateurs(company, Produit, FicheTechnique):
             type_fiche='variateur_pompage', **valeurs)
         crees += 1
     return crees
+
+
+def tension_pompe(nom):
+    """D-ACAL-129 (fondateur 25/11/2026, « Yes: 220 V / 380 V ») — la tension
+    d'une petite pompe du lot POMPAGE : 220 V monophasée, 380 V triphasée,
+    phase lue par la MÊME fonction que le kit (``alimentation_produit``) ;
+    ``None`` quand la phase n'est pas lisible."""
+    from core.pompage.selection import (
+        TENSION_MONO_V, TENSION_TRI_V, alimentation_produit)
+    return {'mono': TENSION_MONO_V, 'tri': TENSION_TRI_V}.get(
+        alimentation_produit({'nom': nom}))
