@@ -214,8 +214,9 @@ const calepinageApi = {
     // `apps/ventes/services` et n'est pas doublé : ces deux actions l'appellent.
     // RÈGLE #4 : aucune ligne de devis n'est fabriquée ici, aucun PDF n'est
     // produit, aucun statut n'est écrit par l'écran.
-    genererDevis: (id, corps) => api.post(`${pivot(id)}generer-devis/`, corps),
-    syncDevis: (id, corps) => api.post(`${pivot(id)}sync-devis/`, corps),
+    // T4-X5-007 — `config` (ex. `{ suppressErrorToast: true }`) : l'écran qui dit lui-même le refus coupe le toast global.
+    genererDevis: (id, corps, config) => api.post(`${pivot(id)}generer-devis/`, corps, config),
+    syncDevis: (id, corps, config) => api.post(`${pivot(id)}sync-devis/`, corps, config),
 
     ...sorties,
 

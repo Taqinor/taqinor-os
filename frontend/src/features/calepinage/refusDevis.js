@@ -1,4 +1,5 @@
 import { refusServeur as refusCommun } from './commun/refusServeur'
+import { sansCleInterne } from './commun/PretAEnvoyer.helpers'
 /* ============================================================================
    Lot 2 critique #23 / #29 — LE décodeur des refus du pont devis, partagé par
    « Générer / Resynchroniser le devis » (`BoutonDevis`) et l'enregistrement
@@ -45,9 +46,11 @@ export function bloquageElectrique(erreur) {
   }
 }
 
+/** T4-X5-007 — le libellé d'un bloquant, sans la clé interne finale (« … (terre.justification_continuite) ») :
+    le MÊME nettoyage que les points de « Prêt à envoyer ? » (`sansCleInterne`), jamais une clé à l'écran. */
 export function texteBloquant(b) {
-  if (typeof b === 'string') return b
-  return String(b?.libelle || b?.code || '')
+  if (typeof b === 'string') return sansCleInterne(b)
+  return sansCleInterne(String(b?.libelle || b?.code || ''))
 }
 
 /**

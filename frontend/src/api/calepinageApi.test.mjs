@@ -164,8 +164,8 @@ test('CAL33 — les neuf actions exigées par la tâche sont déclarées', () =>
     retenir: /retenirVariante: \(id, varianteId\) =>\s*\n?\s*api\.post\(`\$\{pivot\(id\)\}variantes\/\$\{varianteId\}\/retenir\/`\)/,
     comparer: /comparer: \(id\) => api\.get\(`\$\{pivot\(id\)\}comparer\/`\)/,
     moteur: /calculer: \(corps\) => api\.post\('\/calepinage\/moteur\/calculer\/', corps\)/,
-    'generer-devis': /genererDevis: \(id, corps\) => api\.post\(`\$\{pivot\(id\)\}generer-devis\/`, corps\)/,
-    'sync-devis': /syncDevis: \(id, corps\) => api\.post\(`\$\{pivot\(id\)\}sync-devis\/`, corps\)/,
+    'generer-devis': /genererDevis: \(id, corps, config\) => api\.post\(`\$\{pivot\(id\)\}generer-devis\/`, corps, config\)/, // T4-X5-007
+    'sync-devis': /syncDevis: \(id, corps, config\) => api\.post\(`\$\{pivot\(id\)\}sync-devis\/`, corps, config\)/, // T4-X5-007
   }
   for (const [nom, motif] of Object.entries(attendues)) {
     assert.match(code, motif, `action manquante ou mal écrite : ${nom}`)
