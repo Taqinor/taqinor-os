@@ -24,7 +24,7 @@ const tape = (v) => (v === null || v === undefined ? '' : String(v).trim())
  *  (`etatDevis.consommationImposeeDeEtat`, le sélecteur de l'enregistrement),
  *  imposée au moteur (`imposes.consommation`) ; `null` ⇒ celle du lead. */
 export function corpsApercuConception({
-  leadId, modeInstallation, fHiver, fEte, nbPanneaux, consommation = null, investissement = null,
+  leadId, modeInstallation, fHiver, fEte, nbPanneaux = 0, consommation = null, investissement = null,
 }) {
   if (!modeInstallation || modeInstallation === 'agricole') return null
   const entrees = {}
@@ -36,18 +36,31 @@ export function corpsApercuConception({
   const lead = leadId ? Number(leadId) : null
   const imposes = modeInstallation === 'residentiel' && nbPanneaux > 0 ? { nb_panneaux: nbPanneaux } : {}
   if (consommation) imposes.consommation = consommation
-  if (!lead && !Object.keys(entrees).length && !consommation) return null
-  if (lead && !Object.keys(entrees).length && !Object.keys(imposes).length) return null
-  // Sans lead, le marché du devis est une valeur tapée de l'écran.
-  if (!lead) entrees.type_installation = modeInstallation
   // E7d (M1) — le TTC de vente des lignes de chaque option (> 0 seulement) : le
-  // prix du payback servi ; il ne déclenche jamais à lui seul un aperçu.
+  // prix du payback servi ; avec un lead, des lignes chiffrées suffisent à demander
+  // l'aperçu (le payback de CE devis), jamais sans porteur.
   const prix = Object.fromEntries(Object.entries(investissement || {})
     .filter(([, v]) => Number.isFinite(Number(v)) && Number(v) > 0).map(([k, v]) => [k, Number(v)]))
+  if (!lead && !Object.keys(entrees).length && !consommation) return null
+  if (lead && !Object.keys(entrees).length && !Object.keys(imposes).length && !Object.keys(prix).length) return null
+  // Sans lead, le marché du devis est une valeur tapée de l'écran.
+  if (!lead) entrees.type_installation = modeInstallation
   return { lead, calepinage: null, entrees, imposes, ...(Object.keys(prix).length ? { investissement: prix } : {}) }
 }
 
 const valeur = (table, cle) => table?.[cle]?.valeur ?? null
+
+/** E7d (CI e2e figures-parite) — la conception décrit-elle les panneaux des lignes ?
+ *  `compte` = `{ sans, avec, deux }` (comptes de l'écran par option, `deux` : les deux
+ *  options montrées). Vrai si chaque option servie porte le compte de l'écran et, quand
+ *  l'écran montre les deux, si les deux sont servies. Un refus : vrai (rien à imposer). */
+export function concordeAvecLesLignes(conception, compte) {
+  if (!conception || conception.etat !== 'complet' || !compte) return true
+  const valeurs = conception.valeurs || {}
+  if (compte.deux && !(valeurs.sans && valeurs.avec)) return false
+  return Object.entries(valeurs).every(([opt, table]) => !(compte[opt] > 0)
+    || valeur(table, 'nb_panneaux') === compte[opt])
+}
 
 /** Les chiffres AFFICHÉS d'une conception servie (aucun calcul : des lectures).
  *  `null` tant qu'elle n'est pas complète. */
@@ -76,7 +89,7 @@ export function chiffresConception(conception) {
  *  (`decisionSizing`) : `cleCourante` (ce qui est à l'écran), `cleServie` /
  *  `cleErreur` (ce qui a produit la réponse ou l'échec) ; un lead SANS version
  *  rangée (404) est prévisualisé sur ses seules colonnes (corps vide). */
-export function useConceptionEcran({ leadId, corps }) {
+export function useConceptionEcran({ leadId, corps, compte = null }) {
   const [rangee, setRangee] = useState({ lead: null, donnees: null })
   const [apercu, setApercu] = useState({ donnees: null, chargement: false, erreur: null, cle: '' })
   const [essai, setEssai] = useState(0)  // E7d (M2) — « Réessayer » relance le même corps
@@ -100,29 +113,41 @@ export function useConceptionEcran({ leadId, corps }) {
   const sansVersion = Boolean(leadId) && rangee.lead === leadId && !rangee.donnees
   const corpsEffectif = corps
     ?? (sansVersion ? { lead: Number(leadId), calepinage: null, entrees: {}, imposes: {} } : null)
-  const cle = corpsEffectif ? JSON.stringify(corpsEffectif) : ''
+  const cleLibre = corpsEffectif ? JSON.stringify(corpsEffectif) : ''
+  // E7d (CI e2e figures-parite) — d'abord la conception sur les valeurs du porteur
+  // (aucun nombre de panneaux imposé : le moteur sert ses deux options, comme au
+  // devis automatique) ; SEULEMENT si elle ne porte pas les panneaux des lignes,
+  // l'aperçu est redemandé au compte de l'écran (`imposes.nb_panneaux`, une option).
+  const libre = apercu.libre?.cle === cleLibre ? apercu.libre.donnees : null
+  const impose = corpsEffectif && compte?.sans > 0 && libre && !concordeAvecLesLignes(libre, compte)
+    ? { ...corpsEffectif, imposes: { ...corpsEffectif.imposes, nb_panneaux: compte.sans } } : null
+  const cle = impose ? JSON.stringify(impose) : cleLibre
   useEffect(() => {
     const ctrl = new AbortController()
     let minuterie = null
     const demander = async () => {
       try {
         const { data } = await ventesApi.apercuConception(JSON.parse(cle), { signal: ctrl.signal })
-        if (!ctrl.signal.aborted) setApercu({ donnees: data?.etat ? data : null, chargement: false, erreur: null, cle })
+        const donnees = data?.etat ? data : null
+        if (!ctrl.signal.aborted) {
+          setApercu((a) => ({ donnees, chargement: false, erreur: null, cle,
+            libre: cle === cleLibre ? { cle, donnees } : a.libre }))
+        }
       } catch (err) {
         if (ctrl.signal.aborted) return
         const detail = err?.response?.data?.detail
-        setApercu({ donnees: null, chargement: false, cle, champ: err?.response?.data?.champ || null,
-          erreur: typeof detail === 'string' ? detail : APERCU_INDISPONIBLE })
+        setApercu((a) => ({ donnees: null, chargement: false, cle, champ: err?.response?.data?.champ || null,
+          erreur: typeof detail === 'string' ? detail : APERCU_INDISPONIBLE, libre: a.libre }))
       }
     }
     const lancer = async () => {
-      if (!cle) { setApercu({ donnees: null, chargement: false, erreur: null, cle: '' }); return }
+      if (!cle) { setApercu({ donnees: null, chargement: false, erreur: null, cle: '', libre: null }); return }
       setApercu((a) => ({ ...a, chargement: true, erreur: null }))
       minuterie = setTimeout(demander, DELAI_APERCU_MS)
     }
     lancer()
     return () => { if (minuterie) clearTimeout(minuterie); ctrl.abort() }
-  }, [cle, essai])
+  }, [cle, essai]) // eslint-disable-line react-hooks/exhaustive-deps -- cleLibre : dérivée du même corps que `cle`
 
   const surRangee = !cle && Boolean(servie)
   // E7d (revue lot 4, M2) — une saisie dont l'aperçu a ÉCHOUÉ ne retombe jamais sur la
@@ -131,7 +156,7 @@ export function useConceptionEcran({ leadId, corps }) {
   return {
     conception: echec ? null : (apercu.donnees ?? servie), servie, chargement: apercu.chargement,
     apercuServi: !echec && Boolean(cle) && Boolean(apercu.donnees),
-    erreur: apercu.erreur, champErreur: echec ? (apercu.champ || null) : null,
+    erreur: apercu.erreur, champErreur: echec ? (apercu.champ || null) : null, compteImpose: Boolean(impose),
     reessayer: echec ? () => setEssai((n) => n + 1) : null,
     cleCourante: cle || (surRangee ? 'rangee' : null),
     cleServie: apercu.donnees ? apercu.cle : (surRangee ? 'rangee' : null),
