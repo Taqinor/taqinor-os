@@ -118,9 +118,11 @@ export function useCibleFactures(calepinageId, servi = null, { attendre = false 
     actualiser,
     etat,
     cible: etat === 'ok' ? cibleFactures(taille.donnees) : null,
-    motif: contexte.etat === 'ok' ? (contexte.donnees?.consommation_lead?.motif || '') : '',
+    // T4-X9-013 — sans lead, ni motif ni refus : ce sont des phrases du moteur sur LE LEAD (« renseigner la ville… du
+    // lead »), qui n'existe pas ; la production d'un tel calepinage est celle de sa simulation.
+    motif: contexte.etat === 'ok' && contexte.donnees?.calepinage?.lead ? (contexte.donnees?.consommation_lead?.motif || '') : '',
     // ACAL1517 — le refus servi par `cible-factures/` (`refus`, ex. lead industriel) : dit tel quel, jamais réécrit.
-    refus: etat === 'ok' ? (taille.donnees?.refus || '') : '',
+    refus: etat === 'ok' && contexte.donnees?.calepinage?.lead ? (taille.donnees?.refus || '') : '',
     leadId: contexte.donnees?.calepinage?.lead ?? null,
     // Critique ACAL1517 — une facture est-elle saisie sur le lead ? (`consommation_lead.facture_mensuelle_mad` du design-context) :
     // un refus servi AVEC une facture saisie (C&I, agricole) ne renvoie pas vers la fiche ; faute de facture, le lien reste.

@@ -1909,7 +1909,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     if (h.electrical !== undefined) coucheElectrique.rafraichir();
     if (h.shadeObstructions !== undefined) shadingUi.rafraichirOmbres(); // ACAL27
     if (h.surfacesPose !== undefined) {
-      monterAtelierPose(ctx, { setStatus: (msg: string) => setStatus(msg), recalc: () => updateAreaReadout() });
+      monterAtelierPose(ctx, { setStatus: (msg: string) => setStatus(msg), recalc: () => updateAreaReadout(), rendreSite: () => renderAreasPanel() }); // T4-X9-012
       updateAreaReadout();
     }
     if (h.documentRelu) {

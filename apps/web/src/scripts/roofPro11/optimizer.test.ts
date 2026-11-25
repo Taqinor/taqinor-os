@@ -1264,7 +1264,7 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
       expect(autreKwc.t('rp9-reco-tailles')).toBe('Production et économie calculées pour la conception du lead : 6,00 kWc — votre pose en compte 5,50 kWc.');
       expect(autreKwc.doc.querySelectorAll('[data-phrase-tailles]')).toHaveLength(1);
       expect(egal.doc.getElementById('rp9-reco-tailles')).toBeNull();
-      expect(nonServi.t('rp9-reco-prod')).toBe(estimation);
+      expect(nonServi.t('rp9-reco-prod')).toBe('—'); // T4-X2-006 — « non servi » : aucune conception ne viendra à l'enregistrement
       expect(sansKwc.t('rp9-reco-prod')).toBe(estimation);
     } finally { egal.fin(); autreKwc.fin(); nonServi.fin(); sansKwc.fin(); }
   });
@@ -1315,6 +1315,18 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
       e.opt.majChiffrage(servi({ production_annuelle_kwh: { valeur: 9105, etat: 'servi' }, couverture_pct: { valeur: null, etat: 'omis' } }) as never);
       expect(e.t('rp9-reco-cover')).toBe('—'); // production sans part servie : aucun pourcentage gardé d'avant
     } finally { e.fin(); }
+  });
+
+  // T4-X2-006 (rejeu X9) — « Est-Ouest dos à dos — 24 panneaux · 17,04 kWc · 21 735 kWh/an » : la carte de la variante
+  // posée gardait l'estimation de l'atelier sans le dire, après la simulation (27 197 kWh). ERP : elle est DITE estimation.
+  it('T4-X2-006 — variante posée : l’estimation de l’atelier est dite « Estimation pour comparer les poses » (ERP) ; servie : sans préfixe', async () => {
+    const { chiffresDeLaPose, texteChiffresVariante } = await import('./chiffresVariante');
+    const carte = { count: 24, kwc: 17.04, annualKwh: 21735 };
+    const estimee = chiffresDeLaPose(carte, null, () => null);
+    expect(texteChiffresVariante(carte, estimee, null, fmt, fmtKwc, true)).toBe(`Estimation pour comparer les poses : 24 panneaux · 17,04 kWc · ${fmt(21735)} kWh/an`);
+    expect(texteChiffresVariante(carte, estimee, null, fmt, fmtKwc)).toBe(`24 panneaux · 17,04 kWc · ${fmt(21735)} kWh/an`); // site public : inchangé
+    const servie = chiffresDeLaPose(carte, null, () => 22000);
+    expect(texteChiffresVariante(carte, servie, null, fmt, fmtKwc, true)).toBe(`24 panneaux · 17,04 kWc · ${fmt(22000)} kWh/an`);
   });
 
   // T4-X5-005 (rejeu X9) — la phrase de la carte disait « 8 panneaux — production ÷ consommation : 123 % », un rapport tiré

@@ -1244,7 +1244,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       title.textContent = c.title;
       const figures = document.createElement('span');
       figures.className = 'rp9-variant-figures';
-      figures.textContent = texteChiffresVariante(c, variantIsCurrent(c) && derniereCarte ? chiffresDeLaPose(derniereCarte, moduleDuPanActif(), prodServieAuKwc) : null, moduleDuPanActif(), fmt, fmtKwc); // T4-V2-021
+      figures.textContent = texteChiffresVariante(c, variantIsCurrent(c) && derniereCarte ? chiffresDeLaPose(derniereCarte, moduleDuPanActif(), prodServieAuKwc) : null, moduleDuPanActif(), fmt, fmtKwc, modeErp()); // T4-V2-021, T4-X2-006
       const why = document.createElement('span');
       why.className = 'rp9-variant-why';
       why.textContent = c.reason;

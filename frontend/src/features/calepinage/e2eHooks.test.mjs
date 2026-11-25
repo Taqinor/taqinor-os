@@ -766,6 +766,7 @@ export const ALL_HOOKS = [
   'cal-nouveau-preset-aide',
   'cal-nouveau-responsable',
   'cal-nouveau-existant',
+  'cal-nouveau-retrouve', // T4-X9-011
   'cal-nouveau-ouvrir-existant',
   // FicheCalepinage.jsx
   'cal-fiche--erreur',
