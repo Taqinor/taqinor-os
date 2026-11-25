@@ -1815,12 +1815,32 @@ describe('DevisList — T4-X4-005 : une page à la fois, filtres et en-tête ser
   it('en-tête lu dans la synthèse servie (toute la portée), pages servies par le serveur', () => {
     fetchDevis.mockClear()
     renderPage({ devis: [ligne(1), ligne(2)], devisCount: 60, devisSynthese: synthese })
-    expect(screen.getByText(`${synthese.total} devis · 1 à relancer (validité ≤ 7 jours)`)).toBeTruthy()
+    // T4-X9-015 — versions remplacées masquées : l'en-tête compte les devis en jeu.
+    expect(screen.getByText(
+      `${synthese.total - synthese.remplaces} devis · 1 version remplacée · 1 à relancer (validité ≤ 7 jours)`,
+    )).toBeTruthy()
     expect(screen.getByText(/DEV-202611-0042/)).toBeTruthy()
     const pages = screen.getByTestId('devis-pagination')
     expect(pages.textContent).toContain('Page 1 sur 3 · 60 devis')
     fireEvent.click(within(pages).getByRole('button', { name: 'Page suivante' }))
     expect(fetchDevis).toHaveBeenLastCalledWith({ page: 2, page_size: 25, actifs: 1 })
+  })
+
+  it('T4-X9-015 — un seul compte de devis : l’en-tête dit le nombre de la pagination et nomme les versions remplacées', () => {
+    const portee = { ...synthese, total: 596, remplaces: 12, a_relancer: [] }
+    renderPage({ devis: [ligne(1), ligne(2)], devisCount: 584, devisSynthese: portee })
+    expect(screen.getByText('584 devis · 12 versions remplacées')).toBeTruthy()
+    expect(screen.queryByText(/^596 devis/)).toBeNull()
+    expect(screen.getByTestId('devis-pagination').textContent).toContain('Page 1 sur 24 · 584 devis')
+    fireEvent.click(screen.getByRole('button', { name: 'Voir les versions remplacées (12)' }))
+    expect(screen.getByText('596 devis dont 12 versions remplacées')).toBeTruthy()
+  })
+
+  it('T4-X9-015 — filtre posé : l’en-tête dit qu’il compte l’ensemble des devis, pas la page filtrée', () => {
+    const portee = { ...synthese, total: 596, remplaces: 12, a_relancer: [] }
+    renderPage({ devis: [ligne(1)], devisCount: 40, devisSynthese: portee })
+    fireEvent.click(screen.getByRole('radio', { name: 'Envoyé' }))
+    expect(screen.getByText('584 devis · 12 versions remplacées, sur l’ensemble de vos devis')).toBeTruthy()
   })
 
   it('synthèse en échec : cartes masquées (jamais les totaux d’une seule page), page gardée, Réessayer', () => {

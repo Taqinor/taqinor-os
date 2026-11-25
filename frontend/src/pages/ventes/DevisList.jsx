@@ -1016,6 +1016,11 @@ export default function DevisList() {
     <DevisPageHeader
       devis={devis}
       nombreTotal={nombreTotal}
+      /* T4-X9-015 — seulement avec la synthèse (son `total` les compte) :
+         sans elle, `devisCount` est déjà le compte de la pagination. */
+      versionsRemplacees={devisSynthese?.remplaces ?? 0}
+      remplaceesVisibles={showSuperseded}
+      filtreActif={!!devisSynthese && (!!qServeur || statutFilter !== 'tous' || !!auteurs)}
       expiringSoon={expiringSoon}
       loading={loading}
       error={error}

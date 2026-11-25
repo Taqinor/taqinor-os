@@ -103,6 +103,14 @@ app.conf.beat_schedule = {
         'task': 'ventes.expire_stale_devis',
         'schedule': crontab(hour=1, minute=0),
     },
+    # ADEV162 — range le total affiché des devis dont l'empreinte a bougé
+    # (statut, profil société, produit, déploiement du moteur) : l'en-tête de
+    # la liste reste sous 2 s. Idempotent ; apps/ventes/scheduled.py.
+    'ventes-ranger-totaux-affiches': {
+        'task': 'ventes.ranger_totaux_affiches',
+        'schedule': crontab(minute='*/10'),
+        'options': _expire_dans(600),
+    },
     'crm-appointment-reminders': {
         'task': 'crm.appointment_reminders',
         'schedule': crontab(minute='*/15'),  # every 15 minutes
