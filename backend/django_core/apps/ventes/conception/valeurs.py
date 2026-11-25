@@ -81,9 +81,11 @@ def _bilan(resultat, option):
             (etude.get('profil_charge') or {}).get('archetype'), 'moteur')
 
 
-def valeurs(resultat, option, investissement, *, froid):
+def valeurs(resultat, option, investissement, *, froid, company=None):
     """La table §2 de ``option`` ; ``froid`` : le froid du site lu UNE fois par
-    ``calculer_conception`` (``compatibilites.froid_du_lead``)."""
+    ``calculer_conception`` (``compatibilites.froid_du_lead``). ACAL2016 :
+    ``verdicts`` = les verdicts électriques de l'option, jugés UNE fois ici par la
+    règle existante (``porte_calepinage.verdicts_electriques``) et relus partout."""
     if resultat.marche == 'agricole':
         champ, params = resultat.etude_params.get('champ') or {}, resultat.etude_params
         return {'nb_panneaux': _v(champ.get('nb_panneaux'), 'panneaux'), 'puissance_kwc': _v(champ.get('kwc'), 'kWc'),
@@ -112,4 +114,11 @@ def valeurs(resultat, option, investissement, *, froid):
         'payback': _v(payback, 'ans', 'devis' if investissement is not None else 'moteur'),
         'consommation_annuelle': _v(conso, 'kWh/an'), 'forme_horaire': _v(forme, None, source_forme),
         **_produits(panneaux, onduleurs, batteries),
+        'verdicts': _v(_verdicts(resultat, onduleurs, kwc, chaines, company)),
     }
+
+
+def _verdicts(resultat, onduleurs, kwc, chaines, company):
+    """ACAL2016 — seulement pour l'option dont la conception électrique porte l'onduleur."""
+    from apps.ventes.conception.porte_calepinage import verdicts_electriques
+    return verdicts_electriques(company, resultat.conception_electrique, onduleurs, kwc) if chaines else None

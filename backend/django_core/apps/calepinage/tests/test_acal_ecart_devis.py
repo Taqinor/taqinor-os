@@ -268,20 +268,36 @@ class EcartDevisSansRenduTest(SimpleTestCase):
 class PariteLead1742Test(BaseMateriel):
     """ACAL2017 (C4-E5, PARITÉ) — le lead 1742 rejoué en fabrique : résidentiel, deux options,
     conception rangée à 35 panneaux (option « sans », onduleur HYBRIDE dans sa capacité publiée,
-    chaînes de 12), devis ENVOYÉ à 35. Le calepinage lit la cible, le matériel, la chaîne et
-    les contrôles de la conception : 35, l'hybride de l'option « sans », aucun « contre 16 »,
-    aucune alerte 1,50 — et le même calepinage SANS devis rend les mêmes valeurs."""
+    chaînes de 12). Le calepinage lit la cible, le matériel, la chaîne et les contrôles de la
+    conception : 35, l'hybride de l'option « sans », aucun « contre 16 », aucune alerte 1,50.
+
+    ACAL2016 (relecture E5, TESTS) — le ratio de « Prêt à envoyer ? » est le verdict RANGÉ par le
+    moteur (jugé par ``ventes.conception.porte_calepinage.verdicts_electriques``, LA règle
+    ``ratio_devis.juger_ratio``) pour les 35 panneaux de la conception (2,07 : au-delà de 1,50,
+    dans les 30 kWc publiés), lu sur un BROUILLON et sans devis — jamais rejugé sur les 24
+    panneaux posés (1,42 : ce que rendait l'ancien code)."""
 
     def setUp(self):
         super().setUp()
+        from apps.ventes.conception.porte_calepinage import verdicts_electriques
+        from apps.ventes.models import ConceptionLead
+
         self.hybride = self._produit(
             nom='Onduleur hybride Deye 12 kW', type_fiche='onduleur', ond_n_mppt=2, ond_mppt_v_min=160.0,
             ond_mppt_v_max=950.0, ond_v_max_abs=1100.0, ond_i_max_mppt_a=26.0, ond_ac_kw=12.0, ond_phases=3,
-            ond_dc_max_kwc=Decimal('18'))
+            ond_dc_max_kwc=Decimal('30'))
         hybride = {'produit': self.hybride.pk, 'designation': self.hybride.nom, 'quantite': 1}
-        ranger_conception(lead=self.lead, nb=35, watt=710, module=self.module_devis.nom,
-                          module_produit=self.module_devis.pk, onduleur=hybride,
-                          longueur=12, avec=35, option='sans')
+        version = ranger_conception(lead=self.lead, nb=35, watt=710, module=self.module_devis.nom,
+                                    module_produit=self.module_devis.pk, onduleur=hybride,
+                                    longueur=12, avec=35, option='sans')
+        chaines = [{'nb_modules': 12, 'conforme': True}] * 2 + [{'nb_modules': 11, 'conforme': True}]
+        design = {'ratio_dc_ac': 2.07, 'chaines': chaines,
+                  'materiel': {'onduleur': {'designation': self.hybride.nom, 'ac_kw': 12.0}}}
+        self.verdicts = verdicts_electriques(self.company, design, [hybride], 24.85)
+        valeurs = dict(version.valeurs)
+        valeurs['sans'] = dict(valeurs['sans'], verdicts={'valeur': self.verdicts, 'unite': None,
+                                                          'source': 'moteur'})
+        ConceptionLead.objects.filter(pk=version.pk).update(valeurs=valeurs)
 
     def _lu(self, devis):
         from apps.calepinage.services.devis import _cible_du_calepinage
@@ -299,13 +315,14 @@ class PariteLead1742Test(BaseMateriel):
         texte = json.dumps([servi, ratio], ensure_ascii=False, default=str)
         self.assertNotIn('contre 16', texte)
         self.assertNotIn('1,50', texte)
-        self.assertNotEqual(ratio['etat'], 'a_regler', ratio)
         return (cible['panneaux'], materiel['produits']['onduleur'], materiel['provenances']['onduleur'],
-                servi['longueur_chaine']['longueur_dossier'], ratio['etat'])
+                servi['longueur_chaine']['longueur_dossier'], ratio['etat'], ratio['valeur_texte'])
 
     def test_lead_1742_trente_cinq_hybride_sans_seize_ni_alerte(self):
-        devis = self._devis(self.module_devis, self.hybride)
-        Devis.objects.filter(pk=devis.pk).update(statut=Devis.Statut.ENVOYE)
-        avec_devis = self._lu(Devis.objects.get(pk=devis.pk))
-        self.assertEqual(avec_devis[:4], (35, self.hybride.pk, 'moteur', 12))
-        self.assertEqual(self._lu(None), avec_devis)
+        ratio = self.verdicts['ratio_dc_ac']
+        self.assertEqual((ratio['conforme'], ratio['borne_source']), (True, "capacité publiée de l'onduleur"))
+        brouillon = self._lu(self._devis(self.module_devis, self.hybride))
+        # Rouge sur l'ancien code : le ratio y était rejugé sur la pose (« 1,42 … »).
+        self.assertEqual(brouillon, (35, self.hybride.pk, 'moteur', 12, 'ok', ratio['detail']))
+        self.assertTrue(ratio['detail'].startswith('2,07'), ratio['detail'])
+        self.assertEqual(self._lu(None), brouillon)

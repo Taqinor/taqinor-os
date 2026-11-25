@@ -56,7 +56,7 @@ VALEURS_SOLAIRES = {
     'chaines', 'temperature_froid', 'tension_froid', 'ratio_dc_ac',
     'production_annuelle', 'production_mensuelle', 'autoconsommation',
     'couverture', 'economies_annuelles', 'payback', 'consommation_annuelle',
-    'forme_horaire', 'module_produit', 'onduleur_produit', 'batterie_produit',
+    'forme_horaire', 'module_produit', 'onduleur_produit', 'batterie_produit', 'verdicts',
 }
 #: La table §2 en agricole (la pompe remplace taille / matériel / bilan).
 VALEURS_POMPAGE = {'nb_panneaux', 'puissance_kwc', 'pompe', 'variateur', 'm3_jour'}
@@ -1326,6 +1326,20 @@ class MoteurUniqueTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_u
                 self.assertEqual(valeurs['batterie_produit']['valeur'], lignes.get('batterie'))
         self.assertIsNotNone(resultat.valeurs['avec']['batterie_produit']['valeur'])
 
+    def test_verdicts_ranges_pour_l_option_de_la_conception_electrique(self):
+        # ACAL2016 — l'option dont la conception électrique porte l'onduleur porte ses verdicts rangés.
+        resultat = self._parite('res_conception_electrique')
+        portees = [o for o, v in resultat.valeurs.items() if v['chaines']['valeur']]
+        self.assertTrue(portees)
+        for option, valeurs in resultat.valeurs.items():
+            verdicts = valeurs['verdicts']['valeur']
+            if option not in portees:
+                self.assertIsNone(verdicts)
+                continue
+            self.assertEqual(set(verdicts), {'ratio_dc_ac', 'capacite_hybride', 'longueur_chaine'})
+            self.assertEqual(verdicts['ratio_dc_ac']['valeur'], valeurs['ratio_dc_ac']['valeur'])
+            self.assertIsInstance(verdicts['ratio_dc_ac']['conforme'], bool)
+
     # ── ADEV134 — chaque supposition sort avec le champ de la fiche ─────────
     def _suppositions(self, resultat):
         for sup in resultat.suppositions:
@@ -2044,6 +2058,58 @@ def _panneaux_de_l_option(golden, option):
     lignes = [li for li in golden['lignes'] if (li['produit_nom'] or '').startswith('Panneau')
               and not li['optionnelle'] and (li['variante'] or '') in ('', option)]
     return sum(int(float(li['quantite'])) for li in lignes), sorted({li['designation'] for li in lignes})
+
+
+class VerdictsDuMoteurTests(TestCase):
+    """ACAL2016 — le MOTEUR juge, une fois, avec LA règle du calepinage
+    (``ratio_devis.juger_ratio`` + D-HYB-1) et range le verdict ; un hybride dans sa
+    capacité publiée est « conforme » même au-delà du seuil d'alerte de 1,50."""
+
+    def setUp(self):
+        from decimal import Decimal as D
+
+        from authentication.models import Company
+        from apps.stock.models import FicheTechnique, Produit
+
+        self.company = Company.objects.create(nom='Verdicts', slug='verdicts-moteur')
+
+        def onduleur(nom, **fiche):
+            produit = Produit.objects.create(company=self.company, nom=nom, sku='V-' + nom,
+                                             prix_vente=D('1000'), quantite_stock=1)
+            FicheTechnique.objects.create(company=self.company, produit=produit, type_fiche='onduleur',
+                                          ond_ac_kw=10.0, **fiche)
+            return produit
+        self.hybride = onduleur('Onduleur hybride 10 kW', ond_dc_max_kwc=D('18'))
+        self.reseau = onduleur('Onduleur réseau 10 kW')
+
+    def _verdicts(self, produit, ratio=1.7, kwc=17.04, chaines=({'nb_modules': 12, 'conforme': True},)):
+        from apps.ventes.conception.porte_calepinage import verdicts_electriques
+
+        design = {'ratio_dc_ac': ratio, 'chaines': list(chaines),
+                  'materiel': {'onduleur': {'designation': produit.nom, 'ac_kw': 10.0}}}
+        return verdicts_electriques(self.company, design,
+                                    [{'produit': produit.pk, 'designation': produit.nom, 'quantite': 1}], kwc)
+
+    def test_hybride_dans_sa_capacite_conforme_sans_alerte_1_50(self):
+        verdicts = self._verdicts(self.hybride)
+        self.assertEqual((verdicts['ratio_dc_ac']['conforme'], verdicts['capacite_hybride']['conforme'],
+                          verdicts['longueur_chaine']['conforme']), (True, True, True))
+        self.assertEqual(verdicts['ratio_dc_ac']['borne_source'], "capacité publiée de l'onduleur")
+        self.assertNotIn('1,50', json.dumps(verdicts, ensure_ascii=False))
+
+    def test_reseau_meme_ratio_non_conforme_et_hybride_au_dela_de_sa_capacite(self):
+        self.assertIs(self._verdicts(self.reseau)['ratio_dc_ac']['conforme'], False)
+        self.assertIsNone(self._verdicts(self.reseau)['capacite_hybride'])
+        au_dela = self._verdicts(self.hybride, ratio=2.0, kwc=20.0)
+        self.assertEqual((au_dela['ratio_dc_ac']['conforme'], au_dela['capacite_hybride']['conforme']),
+                         (False, False))
+        longue = self._verdicts(self.reseau, ratio=1.2, kwc=12.0, chaines=({'nb_modules': 30, 'conforme': False},))
+        self.assertIs(longue['longueur_chaine']['conforme'], False)
+
+    def test_sans_conception_electrique_aucun_verdict(self):
+        from apps.ventes.conception.porte_calepinage import verdicts_electriques
+
+        self.assertIsNone(verdicts_electriques(self.company, None, [], 10.0))
 
 
 class PariteStockeeTests(_emprunt(RelanceConceptionTests, '_relancer'),

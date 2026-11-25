@@ -136,7 +136,8 @@ def _calculer(lead, company, entrees, toit, imposes, investissement):
     from apps.ventes.conception.suppositions import suppositions_de
     resultat.suppositions = suppositions_de(resultat, froid=froid)
     resultat.option_retenue, options = V.options(resultat)
-    resultat.valeurs = {option: V.valeurs(resultat, option, investissement, froid=froid) for option in options}
+    resultat.valeurs = {option: V.valeurs(resultat, option, investissement, froid=froid, company=company)
+                        for option in options}
     return _sans_cles_interdites_partout(resultat)
 
 
