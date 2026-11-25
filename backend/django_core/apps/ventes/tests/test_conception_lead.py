@@ -1955,6 +1955,35 @@ class ServirConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
         self.assertEqual(_photo_devis(devis.pk), avant)  # le devis envoyé n'est jamais écrit
         self.assertEqual(_json(ConceptionLead.objects.filter(lead=lead).values()[0]), rangee)  # jamais rangé
 
+    def test_t4x9016_le_payback_servi_porte_son_montant_et_son_economie(self):
+        """T4-X9-016 — « Retour 21,4 ans — d'après le devis DEV-… » sans dire quel montant ni
+        quelle économie : le payback servi porte À CÔTÉ de lui l'investissement TTC de SON option
+        et l'économie annuelle de la MÊME option (celle de la colonne), et la phrase du calcul
+        (cumul de 25 ans, baisse de production, remplacement de l'onduleur) quand ce n'est pas un
+        simple quotient. Établi : 65 900 MAD et 6 397 MAD/an donnent 10,6 ans
+        (``payback_publiable``, résidentiel, part stockée 0) — jamais 21,4."""
+        from apps.ventes.quote_engine.pricing import payback_publiable
+        from apps.ventes.selectors import conception_courante
+        from apps.ventes.services import build_devis_auto
+
+        self.assertEqual(payback_publiable(65900, 6397, stockage=True, part_batterie=0,
+                                           cout_onduleur_ttc=15000)['payback_years'], 10.6)
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        self._relancer(lead, company, _declencheur())
+        with self.captureOnCommitCallbacks(execute=True):
+            build_devis_auto(lead=lead, user=self._utilisateur(company), company=company)
+        lue = conception_courante(company, lead.pk)
+        for option, table in lue['valeurs'].items():
+            payback = table['payback']
+            self.assertEqual(payback['economie_annuelle'], table['economies_annuelles']['valeur'], option)
+            self.assertGreater(payback['investissement_ttc'], 0, option)
+            self.assertEqual(payback['valeur'], payback_publiable(
+                payback['investissement_ttc'], payback['economie_annuelle'], stockage=option == 'avec',
+                cout_onduleur_ttc=payback.get('cout_onduleur_ttc'), part_batterie=0)['payback_years'], option)
+            self.assertIn('25 ans', payback['calcul'], option)
+        self.assertEqual(_cles_interdites(lue), [])
+
     def test_e6d_cout_onduleur_un_seul_calcul_payback_servi_au_centime(self):
         """Lane E6d — la provision d'onduleur du payback servi est calculée par LA fonction des
         cartes (``offres_tailles._cout_onduleur_ttc``) : sur ce devis de référence elle vaut, au
