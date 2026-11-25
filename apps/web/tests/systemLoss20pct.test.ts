@@ -12,7 +12,8 @@
 //
 // VERROU DE DÉRIVE à trois branches (les trois DOIVENT rester alignées) :
 //   • ce fichier / apps/web/src/lib/estimatorBrainV2.ts  (site public)
-//   • frontend/src/features/ventes/solar.js              (écran ERP)
+//   • frontend/src/features/ventes/solar.js              (écran ERP : constantes de pertes seules,
+//     plus de table par ville depuis AGEN13 — elle vit dans quote_engine/productible.py)
 //   • backend/django_core/apps/ventes/quote_engine/pricing.py (PDF)
 // Le test « miroir » ci-dessous lit RÉELLEMENT les deux fichiers ERP sur disque
 // et compare les constantes, pour qu'une modification d'un seul côté échoue ici.
@@ -108,12 +109,22 @@ describe('MIROIR à trois branches — site public ↔ écran ERP ↔ moteur PDF
   });
 
   it('la table de productible PVGIS est la MÊME des deux côtés (villes communes)', () => {
-    // Le productible par ville de solar.js est le plein-sud inclinaison optimale
-    // de la table web : les deux doivent rester alignés (QX38).
+    // AGEN13 (D-ACAL-97, un seul moteur) — l'écran ERP ne porte plus de table par
+    // ville : production et économies y viennent de la conception servie. Le
+    // miroir compare donc la table web à celle du MOTEUR
+    // (`quote_engine/productible.py::PRODUCTIBLE_PAR_VILLE`, plein sud, inclinaison
+    // optimale) : les deux doivent rester alignées (QX38).
+    const moteur = readFileSync(
+      join(REPO, 'backend', 'django_core', 'apps', 'ventes', 'quote_engine', 'productible.py'),
+      'utf8',
+    );
+    // L'écran ERP ne doit pas en reporter une seconde.
     const solar = readFileSync(
       join(REPO, 'frontend', 'src', 'features', 'ventes', 'solar.js'),
       'utf8',
     );
+    expect(solar).not.toMatch(/export const PRODUCTIBLE_PAR_VILLE/);
+    expect(solar).not.toMatch(/agadir: \d+/);
     for (const [ville, attendu] of [
       ['agadir', 1687],
       ['marrakech', 1651],
@@ -121,7 +132,7 @@ describe('MIROIR à trois branches — site public ↔ écran ERP ↔ moteur PDF
       ['rabat', 1630],
       ['tanger', 1634],
     ] as const) {
-      expect(solar).toContain(`${ville}: ${attendu}`);
+      expect(moteur).toContain(`"${ville}": ${attendu},`);
       const grid = YIELD_TABLE[ville];
       if (grid) {
         const best = Math.max(...Object.values(grid.grid['0']).map(Number));
