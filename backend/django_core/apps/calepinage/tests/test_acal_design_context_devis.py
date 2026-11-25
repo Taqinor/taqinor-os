@@ -327,6 +327,16 @@ class ResultatsDeLaConceptionTest(_DevisDeuxOptions):
         self.assertEqual(bloc_production_devis(calepinage)['devis'], devis.pk)
         self.assertEqual(Devis.objects.filter(pk=devis.pk).values().get(), avant)
 
+    def test_d_acal_109_les_phrases_du_materiel_designe_servies_telles_quelles(self):
+        """D-ACAL-109 / D-ACAL-110 — ``designations`` : les phrases servies par ventes dont le
+        champ est le matériel désigné (onduleur, module), dans leur ordre ; ``[]`` sinon."""
+        self.assertEqual(self._bloc()['designations'], [])
+        phrases = [{'code': 'option_materiel_du_moteur', 'champ': 'onduleur_produit', 'message': 'A'},
+                   {'code': 'froid_suppose', 'champ': 'gps_lat', 'message': 'B'},
+                   {'code': 'panneaux_au_module_designe', 'champ': 'module_produit', 'message': 'C'}]
+        type(self.version).objects.filter(pk=self.version.pk).update(suppositions=phrases)
+        self.assertEqual(self._bloc()['designations'], ['A', 'C'])
+
     def test_sans_devis_un_seul_chiffre(self):
         bloc = self._bloc()
         self.assertEqual((bloc['production_annuelle_kwh'], bloc['option'], bloc['devis_envoye']),

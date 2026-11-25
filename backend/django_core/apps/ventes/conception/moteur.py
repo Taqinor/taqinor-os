@@ -20,7 +20,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-VERSION_MOTEUR = 'moteur-unique-2'  # relecture E5 m4 : identifiants produit servis
+#: D-ACAL-109 / D-ACAL-110 : une conception désignée garde ses deux options et dit l'arrondi
+#: (forme rangée changée : toute conception rangée est périmée et refaite par le filet).
+VERSION_MOTEUR = 'moteur-unique-3'
 CODE_LOCALISATION = 'localisation_inconnue'
 MESSAGE_LOCALISATION = 'Ville inconnue du moteur : renseigner la ville ou le point GPS du lead.'
 #: T4-X9-013 — le même refus pour un calepinage SANS lead : son entrée ne porte aucun lieu.
@@ -87,6 +89,12 @@ class ResultatConception:
     #: Reste d'ACAL2020 — résidentiel : la forme 24 h (somme = 1) de la consommation que le
     #: moteur horaire a utilisée (occupation + équipements), servie par ``valeurs``.
     forme_horaire_24: object = None
+    #: D-ACAL-109 / D-ACAL-110 (``conception/autre_option.py``) — l'option que la désignation
+    #: a prise, l'autre option ``(option, ResultatConception)`` composée sans l'onduleur
+    #: désigné, et les arrondis au module désigné. Jamais servis tels quels.
+    option_designee: object = None
+    autre_option: object = None
+    arrondis: list = field(default_factory=list)
 
     def sortie(self):
         return {cle: getattr(self, cle) for cle in CLES_SORTIE}
@@ -208,6 +216,8 @@ def _calculer(lead, company, entrees, toit, imposes, investissement, calepinage_
     resultat.option_retenue, options = V.options(resultat)
     resultat.valeurs = {option: V.valeurs(resultat, option, investissement, froid=froid, company=company)
                         for option in options}
+    from apps.ventes.conception.autre_option import ajouter_l_autre_option
+    ajouter_l_autre_option(resultat, investissement, froid=froid, company=company)
     V.dire_l_impose(resultat, 'calepinage' if souple or (pose or {}).get('a_la_main') else 'saisie',
                     pose_a_la_main=bool((pose or {}).get('a_la_main')) and entrees.marche == 'residentiel')
     from apps.ventes.conception.consommation_imposee import dire
@@ -232,10 +242,14 @@ def _calcul_et_repli(resultat, calcul, porteur, toit, imposes, designes):
         try:
             calcul(resultat, *porteur, toit=toit, imposes=avec, completer=True)
             resultat.imposes_retenus = avec
+            if resultat.marche == 'residentiel':  # D-ACAL-109 : l'autre option reste
+                from apps.ventes.conception.autre_option import garder_l_autre_option
+                garder_l_autre_option(resultat, calcul, porteur, toit, imposes, designes)
             return None
         except SimulationEnCours:
             raise
         except AutoDevisError as exc:
+            resultat.option_designee, resultat.arrondis = None, []
             champ = 'onduleur_produit' if str(exc.field or '').startswith('onduleur') or (
                 'panneau_produit_id' not in designes) else 'module_produit'
             resultat.designations_ecartees.append({
@@ -253,34 +267,42 @@ def _calcul_et_repli(resultat, calcul, porteur, toit, imposes, designes):
     return None
 
 
-def _compte_designe(lead, company, toit, imposes, dimensionner):
+def _compte_designe(lead, company, toit, imposes, dimensionner, scenario=None, arrondis=None):
     """Relecture E6 B2 — ``(imposes complétés, scénario)`` d'un matériel désigné sans
     compte de panneaux : la taille que le moteur DÉCIDE sans la désignation (la facture
     garde la main ; un module désigné d'une autre puissance garde la même puissance crête,
     au panneau près) ; le scénario suit l'onduleur désigné (hybride ⇒ avec batterie,
     réseau ⇒ sans), sinon la décision. Constat T4-X9-009 : la taille est décidée POUR ce
     scénario (l'option « avec batterie » a son propre optimum) — sans cela un hybride
-    désigné rangeait l'option « avec » à la taille de l'option « sans »."""
+    désigné rangeait l'option « avec » à la taille de l'option « sans ».
+
+    D-ACAL-109 — ``scenario`` : l'option demandée (l'AUTRE option d'une conception
+    désignée, module désigné seul). D-ACAL-110 — ``arrondis`` reçoit le passage du compte
+    du moteur au compte du module désigné (``autre_option.arrondi``)."""
+    from apps.ventes.conception.autre_option import arrondi
     from apps.ventes.conception.decisions import decider_taille_residentielle
     from apps.ventes.domain import resolution_catalogue as rc
     from apps.ventes.domain.taille import panneaux_pour_la_meme_puissance
 
     onduleur = (rc.entree_du_produit(company, imposes['onduleur_produit_id'])
                 if imposes.get('onduleur_produit_id') else None)
-    force = {rc.FAMILLE_HYBRIDE: 'avec', rc.FAMILLE_RESEAU: 'sans'}.get(getattr(onduleur, 'famille', None))
+    force = scenario or {rc.FAMILLE_HYBRIDE: 'avec', rc.FAMILLE_RESEAU: 'sans'}.get(
+        getattr(onduleur, 'famille', None))
     decision = decider_taille_residentielle(lead=lead, company=company, scenario=force, plafond_toit=getattr(
         toit, 'plafond_panneaux', None), dimensionner=dimensionner)
-    nombre, complets = decision.panneaux, {}
+    nombre, complets, porte = decision.panneaux, {}, False
     panneau = (rc.entree_du_produit(company, imposes['panneau_produit_id'])
                if imposes.get('panneau_produit_id') else None)
     watt = float(getattr(panneau, 'wc', None) or 0)
     if watt and abs(watt - float(decision.watt or 0)) >= 0.5:
-        nombre = panneaux_pour_la_meme_puissance(decision.kwc, watt)
+        nombre, porte = panneaux_pour_la_meme_puissance(decision.kwc, watt), True
     if panneau is None:  # le module du moteur (sa puissance, par LE résolveur), jamais le défaut 710 Wc
         resolution = rc.resoudre_panneau(company, rc.vivier(company), wc=decision.watt)
         if resolution.statut == rc.STATUT_UNIQUE:
             complets['panneau_produit_id'] = resolution.produit.pk
-    scenario = force if onduleur is not None else ('avec' if decision.avec_batterie else 'sans')
+    scenario = force if onduleur is not None or force else ('avec' if decision.avec_batterie else 'sans')
+    if arrondis is not None and porte:  # D-ACAL-110 : le kWc change toujours, le compte parfois
+        arrondi(arrondis, scenario, panneau, decision, nombre)
     return dict(imposes, nb_panneaux=nombre, **complets), scenario
 
 
@@ -433,10 +455,12 @@ def _provenance(devis, contexte, intention):
         _fusion(devis, PIPELINE, provenance=stamp)
 
 
-def _residentiel(resultat, lead, company, entrees, *, toit, imposes, completer=False):
+def _residentiel(resultat, lead, company, entrees, *, toit, imposes, completer=False, scenario=None):
     """``_build_devis_auto_residentiel`` sans écriture : décision, contrôle à
     blanc, intention, étapes 1-4, lignes de l'écrivain, étapes 6-8. ``completer``
-    (relecture E6 B2) : un matériel désigné sans compte reçoit celui du moteur."""
+    (relecture E6 B2) : un matériel désigné sans compte reçoit celui du moteur ;
+    ``scenario`` (D-ACAL-109) : l'option demandée de ce compte."""
+    demande_option = scenario
     from apps.ventes.conception.decisions import decider_taille_residentielle, verifier_composition_residentielle
     from apps.ventes.domain import creation_auto_residentiel as R
     from apps.ventes.domain import etude_schema as es
@@ -454,7 +478,9 @@ def _residentiel(resultat, lead, company, entrees, *, toit, imposes, completer=F
         from apps.ventes.domain.composition_imposee import _alerter, preparer_imposition
         demande = None
         if completer and not imposes.get('nb_panneaux'):
-            imposes, demande = _compte_designe(lead, company, toit, imposes, dimensionner)
+            imposes, demande = _compte_designe(lead, company, toit, imposes, dimensionner, scenario=demande_option,
+                                               arrondis=resultat.arrondis)
+            resultat.option_designee = demande
         imposition, alertes, _phase, _isole = preparer_imposition(company=company, lead=lead, imposes=imposes,
                                                                   scenario=demande)
         scenario = imposition.scenario

@@ -243,3 +243,120 @@ class DevisAutoDeuxOptionsTests(tcl._emprunt(tcl.RelanceConceptionTests, '_relan
         alertes = [a for a in journal.get('alertes') or [] if a.get('code') == 'OPTION_BATTERIE_NON_COMPOSEE']
         self.assertEqual(len(alertes), 1, journal.get('alertes'))  # dit au vendeur (alerte du devis créé)
         self.assertIn('chaînes non câblables', alertes[0]['message'])
+
+
+class DesignationGardeLesDeuxOptionsTests(tcl._emprunt(tcl.RelanceConceptionTests, '_relancer'),
+                                          tcl._emprunt(tcl.RelanceEnTacheTests, '_calepinage_designe'),
+                                          tcl._emprunt(tcl.FigeageDevisAutoTests, *tcl._FABRIQUES), TestCase):
+    """D-ACAL-109 / D-ACAL-110 (fondateur, 25/11/2026) — un onduleur désigné à la main sert
+    l'option qui lui convient ; l'AUTRE option reste, celle que le moteur compose sans
+    désignation ; un module d'une autre puissance garde la puissance de CHAQUE option, au
+    panneau le plus proche, et la conception le dit (phrase servie). Mutant « une seule
+    option forcée par l'onduleur » (le comportement d'avant) : rouge."""
+
+    def _temoin(self, cas='res_facture_dirhams'):
+        from apps.ventes.selectors import conception_courante
+        company, lead = self._cas(cas)
+        tcl._reglages_de_la_societe(company)
+        self._relancer(lead, company, tcl._declencheur())
+        return company, lead, conception_courante(company, lead.pk)
+
+    def _designer(self, company, lead, **entree):
+        from apps.ventes.selectors import conception_courante
+        calepinage = self._calepinage_designe(company, lead, **entree)
+        self._relancer(lead, company, tcl._declencheur('pose_enregistree'), calepinage_id=calepinage.pk)
+        lue = conception_courante(company, lead.pk)
+        self.assertEqual(lue['etat'], 'complet', lue['refus'])
+        return lue
+
+    @staticmethod
+    def _materiel(valeurs):
+        return {cle: valeurs[cle]['valeur'] for cle in (
+            'nb_panneaux', 'puissance_kwc', 'module_produit', 'onduleur_produit', 'batterie_produit',
+            'production_annuelle', 'economies_annuelles')}
+
+    def test_hybride_designe_l_option_sans_batterie_reste_celle_du_moteur(self):
+        from apps.stock.models import Produit
+        company, lead, temoin = self._temoin()
+        self.assertEqual(sorted(temoin['valeurs']), ['avec', 'sans'])
+        deye = Produit.objects.get(company=company, nom='Onduleur hybride Deye 5kW Monophasé')
+        lue = self._designer(company, lead, onduleur_produit=deye.pk)
+        self.assertEqual(sorted(lue['valeurs']), ['avec', 'sans'])
+        self.assertEqual(lue['option_retenue'], 'avec')
+        avec, sans = lue['valeurs']['avec'], lue['valeurs']['sans']
+        self.assertEqual((avec['onduleur_produit']['valeur'], avec['onduleur_produit']['source']),
+                         (deye.pk, 'impose'))
+        self.assertEqual(sans['onduleur_produit']['source'], 'moteur')
+        self.assertEqual(self._materiel(sans), self._materiel(temoin['valeurs']['sans']))
+        dite = next(s for s in lue['suppositions'] if s['code'] == 'option_materiel_du_moteur')
+        self.assertEqual(dite['message'], (
+            "Onduleur désigné à la main « Onduleur hybride Deye 5kW Monophasé » : il sert l'option "
+            "avec batterie ; l'option sans batterie garde l'onduleur choisi par le moteur."))
+        self.assertEqual((dite['champ'], dite['valeur'], dite['source']), ('onduleur_produit', 'sans', 'defaut'))
+        self.assertEqual(tcl._cles_interdites(lue), [])
+
+    def test_reseau_designe_l_option_avec_batterie_reste_celle_du_moteur(self):
+        from apps.stock.models import Produit
+        company, lead, temoin = self._temoin()
+        huawei = Produit.objects.get(company=company, nom='Onduleur réseau Huawei 5kW Monophasé')
+        lue = self._designer(company, lead, onduleur_produit=huawei.pk)
+        self.assertEqual((sorted(lue['valeurs']), lue['option_retenue']), (['avec', 'sans'], 'sans'))
+        self.assertEqual(lue['valeurs']['sans']['onduleur_produit']['valeur'], huawei.pk)
+        self.assertEqual(self._materiel(lue['valeurs']['avec']), self._materiel(temoin['valeurs']['avec']))
+        dite = next(s for s in lue['suppositions'] if s['code'] == 'option_materiel_du_moteur')
+        self.assertTrue(dite['message'].endswith(
+            "il sert l'option sans batterie ; l'option avec batterie garde l'onduleur choisi par le moteur."))
+
+    def test_module_designe_chaque_option_garde_sa_puissance_au_plus_proche_et_le_dit(self):
+        from apps.stock.models import Produit
+        from apps.ventes.domain.taille import panneaux_pour_la_meme_puissance
+        from apps.ventes.selectors import conception_courante
+        # Le module désigné existe AVANT le témoin : le moteur garde le sien (550 Wc, le plus puissant).
+        company, lead = self._cas('res_facture_dirhams')
+        module = Produit.objects.create(company=company, nom='Panneau Désigné 450W', sku='ACAL110-450',
+                                        prix_vente=Decimal('1000'), prix_achat=Decimal('1'), quantite_stock=80)
+        tcl._reglages_de_la_societe(company)
+        self._relancer(lead, company, tcl._declencheur())
+        temoin = conception_courante(company, lead.pk)
+        self.assertNotIn(module.pk, {v['module_produit']['valeur'] for v in temoin['valeurs'].values()})
+        lue = self._designer(company, lead, module_produit=module.pk)
+        self.assertEqual(sorted(lue['valeurs']), ['avec', 'sans'])
+        arrondis = {s['valeur']['option']: s for s in lue['suppositions'] if s['code'] == 'panneaux_au_module_designe'}
+        for option in ('sans', 'avec'):
+            with self.subTest(option=option):
+                moteur = temoin['valeurs'][option]
+                attendu = panneaux_pour_la_meme_puissance(moteur['puissance_kwc']['valeur'], 450)
+                valeurs = lue['valeurs'][option]
+                self.assertEqual((valeurs['module_produit']['valeur'], valeurs['module_produit']['source']),
+                                 (module.pk, 'impose'))
+                self.assertEqual(valeurs['nb_panneaux']['valeur'], attendu)
+                dite = arrondis[option]
+                self.assertEqual((dite['champ'], dite['valeur']['moteur']['nb_panneaux'],
+                                  dite['valeur']['retenu']['nb_panneaux']),
+                                 ('module_produit', moteur['nb_panneaux']['valeur'], attendu))
+                label = 'sans batterie' if option == 'sans' else 'avec batterie'
+                self.assertTrue(dite['message'].startswith(
+                    'Module désigné « Panneau Désigné 450W » (450 Wc) : option %s à %d panneaux pour ' % (
+                        label, attendu)), dite['message'])
+                self.assertTrue(dite['message'].endswith(
+                    ' calculés par le moteur depuis la facture (au panneau le plus proche de la même puissance).'))
+        self.assertEqual(tcl._cles_interdites(lue), [])
+
+    def test_lead_qui_demande_la_batterie_garde_une_option(self):
+        from apps.stock.models import Produit
+        company, lead, temoin = self._temoin('res_batterie_avec')
+        self.assertEqual(sorted(temoin['valeurs']), ['avec'])
+        deye = Produit.objects.get(company=company, nom='Onduleur hybride Deye 5kW Monophasé')
+        lue = self._designer(company, lead, onduleur_produit=deye.pk)
+        self.assertEqual(sorted(lue['valeurs']), ['avec'])
+        self.assertNotIn('option_materiel_du_moteur', [s['code'] for s in lue['suppositions']])
+
+    def test_devis_automatique_d_une_conception_designee_a_deux_options(self):
+        from apps.stock.models import Produit
+        from apps.ventes.services import build_devis_auto
+        company, lead, _temoin = self._temoin()
+        deye = Produit.objects.get(company=company, nom='Onduleur hybride Deye 5kW Monophasé')
+        self._designer(company, lead, onduleur_produit=deye.pk)
+        with self.captureOnCommitCallbacks(execute=True):
+            devis = build_devis_auto(lead=lead, user=self._utilisateur(company), company=company)
+        self.assertEqual(set(devis.lignes.exclude(variante='').values_list('variante', flat=True)), {'avec', 'sans'})

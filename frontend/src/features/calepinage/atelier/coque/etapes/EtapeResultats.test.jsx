@@ -778,6 +778,21 @@ describe('Étape Résultats — la conception, et l’écart avec le devis envoy
     expect(screen.queryByRole('button', { name: 'Réviser le devis' })).toBeNull()
   })
 
+  it('D-ACAL-109 / 110 — les phrases servies sur le matériel désigné sont affichées telles quelles ; aucune sans désignation', async () => {
+    const bloc = sans()
+    servir({ ...COMPLET(), conception: bloc })
+    const { unmount } = rendre()
+    await screen.findByTestId('cal-resultats-tuiles')
+    const dites = [...document.querySelectorAll('[data-zone="designation-conception"]')].map((p) => p.textContent)
+    expect(bloc.designations.length).toBeGreaterThan(0)
+    expect(dites).toEqual(bloc.designations)
+    unmount()
+    servir({ ...COMPLET(), conception: { ...sans(), designations: [] } })
+    rendre()
+    await screen.findByTestId('cal-resultats-tuiles')
+    expect(document.querySelector('[data-zone="designation-conception"]')).toBeNull()
+  })
+
   it('brouillon lié (écart de l’atelier servi) : toujours UN seul chiffre, aucun bouton', async () => {
     const d = { ...COMPLET(), conception: sans() }
     d.ecart_devis = { devis: 412, reference: 'DEV-202610-0042', production_devis_kwh: 12600, p50_calepinage_kwh: 13000, ecart_pct: 3.2, mention: '' }
