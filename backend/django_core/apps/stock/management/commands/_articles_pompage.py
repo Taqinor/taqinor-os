@@ -44,7 +44,6 @@ ROLE_POMPAGE_PVG3 = {
 # Stockés HT par ``seed_catalogue.ht`` (TVA 20 %), à la CRÉATION seulement : un
 # article existant garde son prix (une base déjà semée les reçoit par la
 # migration stock 0191, gardée sur « prix vide »). ``prix_achat`` reste vide.
-# ``PARA-AC-T2`` n'a AUCUN prix fiable au Maroc : il reste à 0, hors table.
 PRIX_TTC_PVG3 = {
     # EATON Xpole « Disjoncteur Modulaire AC 2P » (1P+N, courbe C, 6 kA) —
     # https://mrelec.ma/products/disjoncteur-modulaire-ac-2p
@@ -57,4 +56,7 @@ PRIX_TTC_PVG3 = {
     # Misterelec « Boite de jonction DC », 2 entrées, sur commande —
     # https://mrelec.ma/products/boite-de-jonction-dc
     'COF-DC-2STR': 2000,
+    # D-ACAL-128 — prix donné par le fondateur le 25/11/2026 (aucune annonce
+    # marocaine fiable lue) ; base existante : migration stock 0192.
+    'PARA-AC-T2': 1000,
 }

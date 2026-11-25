@@ -70,12 +70,12 @@ class OptionsPompageTests(TestCase):
             p = Produit.objects.get(company=self.co, sku=sku)
             self.assertEqual(p.role_pompage, role, sku)
             self.assertIn(role, ROLES_POMPAGE)
-            # D-ACAL-127 : prix confirmés posés HT, le parafoudre AC reste à 0.
+            # D-ACAL-127/128 : prix confirmés posés HT (parafoudre AC compris).
             self.assertEqual(p.prix_vente,
                              seed_mod.ht(seed_mod.PRIX_TTC_PVG3.get(sku, 0)), sku)
             self.assertEqual(p.prix_achat, 0, sku)
         self.assertEqual(Produit.objects.get(
-            company=self.co, sku='PARA-AC-T2').prix_vente, 0)
+            company=self.co, sku='PARA-AC-T2').prix_vente, Decimal('833.33'))
         self.assertEqual(
             {s for s, r in seed_mod.ROLE_POMPAGE_PVG3.items()
              if r == 'protection_ac'},
@@ -249,7 +249,7 @@ class MigrationRolesTests(TestCase):
         m0191 = importlib.import_module(
             'apps.stock.migrations.0191_dacal127_prix_protections_pompage')
         # État de prod : les neuf articles à 0 ; l'un déjà chiffré à la main.
-        Produit.objects.filter(company=self.co, sku__in=list(m0191.PRIX_HT)
+        Produit.objects.filter(company=self.co, sku__in=[*m0191.PRIX_HT, 'PARA-AC-T2']
                                ).update(prix_vente=0)
         Produit.objects.filter(company=self.co, sku='DISJ-AC-C-25-4P').update(
             prix_vente=Decimal('199'))
@@ -280,6 +280,31 @@ class MigrationRolesTests(TestCase):
         self.assertEqual(Produit.objects.get(
             company=autre, sku='COF-DC-2STR').prix_vente, 0)
 
+    def test_dacal128_migration_0192_parafoudre_ac(self):
+        m0192 = importlib.import_module(
+            'apps.stock.migrations.0192_dacal128_prix_parafoudre_ac')
+        Produit.objects.filter(company=self.co, sku='PARA-AC-T2').update(prix_vente=0)
+        autre = Company.objects.get_or_create(
+            slug='agr104-mig-co-3', defaults={'nom': 'AGR104 Mig Co 3'})[0]
+        Produit.objects.create(company=autre, nom='Parafoudre saisi', sku='PARA-AC-T2',
+                               prix_vente=Decimal('250'))
+        avant = {p.sku: (p.nom, p.prix_achat, p.quantite_stock, p.role_pompage)
+                 for p in Produit.objects.filter(company=self.co)}
+        nb = Produit.objects.count()
+        m0192.poser_prix(django_apps, None)
+        m0192.poser_prix(django_apps, None)  # idempotent
+        self.assertEqual(Produit.objects.count(), nb)
+        self.assertEqual(self._prix('PARA-AC-T2'), Decimal('833.33'))
+        saisi = Produit.objects.get(company=autre, sku='PARA-AC-T2')
+        self.assertEqual(saisi.prix_vente, Decimal('250'))  # jamais réécrit
+        self.assertEqual(avant, {
+            p.sku: (p.nom, p.prix_achat, p.quantite_stock, p.role_pompage)
+            for p in Produit.objects.filter(company=self.co)})
+        m0192.retirer_prix(django_apps, None)
+        self.assertEqual(self._prix('PARA-AC-T2'), 0)
+        saisi.refresh_from_db()
+        self.assertEqual(saisi.prix_vente, Decimal('250'))
+
 
 class PrixFigesDacal127Tests(SimpleTestCase):
     """D-ACAL-127 — la table HT figée de la migration 0191 égale la
@@ -288,7 +313,11 @@ class PrixFigesDacal127Tests(SimpleTestCase):
     def test_ht_fige_egale_conversion_du_seeder(self):
         m0191 = importlib.import_module(
             'apps.stock.migrations.0191_dacal127_prix_protections_pompage')
-        self.assertEqual(set(m0191.PRIX_HT), set(seed_mod.PRIX_TTC_PVG3))
+        m0192 = importlib.import_module(
+            'apps.stock.migrations.0192_dacal128_prix_parafoudre_ac')
+        figes = {**m0191.PRIX_HT, **m0192.PRIX_HT}
+        self.assertFalse(set(m0191.PRIX_HT) & set(m0192.PRIX_HT))
+        self.assertEqual(set(figes), set(seed_mod.PRIX_TTC_PVG3))
         for sku, ttc in seed_mod.PRIX_TTC_PVG3.items():
-            self.assertEqual(m0191.PRIX_HT[sku], seed_mod.ht(ttc), sku)
-        self.assertNotIn('PARA-AC-T2', m0191.PRIX_HT)
+            self.assertEqual(figes[sku], seed_mod.ht(ttc), sku)
+        self.assertEqual(m0192.PRIX_HT, {'PARA-AC-T2': Decimal('833.33')})

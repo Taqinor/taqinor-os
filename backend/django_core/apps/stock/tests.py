@@ -688,7 +688,7 @@ class TestSeedCatalogue(TestCase):
             first_count)
         self.assertEqual(first_count, 1)
         # Un second run ne crée rien de plus et ne touche pas les prix (0).
-        self.assertEqual(Produit.objects.get(company=self.company, sku='PARA-AC-T2').prix_vente, Decimal('0'))
+        self.assertEqual(Produit.objects.get(company=self.company, sku='DDR-A-300-40').prix_vente, Decimal('0'))
 
     def test_pvg3_priceless_products_excluded_like_osp_guard(self):
         """Même garde que les pompes OSP (apps.ventes.services._has_price) :
@@ -697,7 +697,7 @@ class TestSeedCatalogue(TestCase):
         seed(self.company)
         osp = Produit.objects.get(company=self.company, sku='PMP-OSP-30-8')
         cable = Produit.objects.get(company=self.company, sku='CAB-H1Z2Z2-6-M')
-        disjoncteur = Produit.objects.get(company=self.company, sku='PARA-AC-T2')  # D-ACAL-127
+        disjoncteur = Produit.objects.get(company=self.company, sku='DDR-A-300-40')  # D-ACAL-127/128
         self.assertFalse(_has_price(osp))
         self.assertFalse(_has_price(cable))
         self.assertFalse(_has_price(disjoncteur))
