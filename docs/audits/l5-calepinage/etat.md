@@ -2105,3 +2105,15 @@ sans échec (aucune marque E/F), seuls les rendus PDF de `test_quote_engine` n'o
 d'avant push, après le pli de P1.
 En vol (12) : J1, I1 suite, I4 suite 2, M2, M3 (agent abf2f974be2593484), M4, N1, K2 (auteur d'I5), E9b (auteur d'E9),
 P1, relecteur X7. Reste à lancer : B5 (maquettes) après la pile rebâtie.
+
+**Ajout de 18 h 05 UTC — TOUR 4 du test utilisateur ouvert.** Tableau de suivi généré
+(`T4/suivi-des-constats.md`, script `scratchpad/suivi_constats.py --branche dev-lot5 --ecrire`) : 276 constats — 68
+corrigés ET rejoués par un relecteur neuf, 94 corrigés sur `main` jamais rejoués, 31 corrigés dans le lot 5, 15 rejoués
+non corrigés ou autres, 68 qu'aucun commit ne cite. Pour ces 68 : agent de tenue de registre en lecture seule
+(a675e65a011933cdd, sonnet) qui établit le sort de chacun (corrigé sous un numéro de tâche, décision, tâche écrite,
+fusionné, SANS SUITE) → `scratchpad/dispositions-constats.json`, à verser dans le tableau.
+Rejeu des 105 corrections déjà sur `main` et jamais vues à l'écran par un relecteur neuf (la pile `1cfa550e99` les
+porte) : listes `T4/tour4/a-rejouer-devis.json` (52) et `a-rejouer-calepinage.json` (53) ; relecteur **Y1** lancé
+(agent aa0ab783422a1743b, consigne `scratchpad/tour4/msg-Y1.md`, côté devis) ; **Y2** (calepinage,
+`scratchpad/tour4/msg-Y2.md`) à lancer dès que X7 rend la main (deux navigateurs au plus). NE PAS rebâtir la pile tant
+que X7, Y1 ou Y2 jouent ; les corrections du lot 5 seront rejouées au tour 5, sur la pile rebâtie.
