@@ -183,3 +183,47 @@ class PlafondPhysiqueDuDevisTests(SimpleTestCase):
             for _ in range(3):
                 self.assertEqual(dim.plafond_physique_du_devis(devis), 40)
         self.assertEqual(panneau.call_count, 1)
+
+
+class MemoSurLaDoublureAuxLignesTest(SimpleTestCase):
+    """Lot 5 (25/11/2026) — les études par LIGNES lisent le devis à travers
+    ``conception.etudes_lignes.DevisAuxLignes`` (lecture seule). Les deux mémos
+    de calcul posés sur l'instance (``_MEMO_PLAFOND_PHYSIQUE`` ici,
+    ``calepinage_options._MEMO_CAPACITE``) y étaient REFUSÉS : chaque appel
+    recalculait et écrivait un avertissement avec sa trace (76 dans un seul
+    passage de tests). Un mémo de calcul se pose sur la doublure, jamais sur le
+    devis ; un champ du devis reste en lecture seule."""
+
+    def _doublure(self):
+        from apps.ventes.conception.etudes_lignes import DevisAuxLignes
+        devis = SimpleNamespace(roof_layout={'zones': [_zone(*CARRE)]}, company=None, lead=None, statut='brouillon')
+        return devis, DevisAuxLignes(devis, [])
+
+    def test_le_plafond_physique_se_memorise_sur_la_doublure_sans_avertissement(self):
+        from apps.ventes.domain import dimensionnement_devis as dd
+        devis, doublure = self._doublure()
+        geometrie = 'apps.ventes.domain.geometrie.'
+        with mock.patch(geometrie + '_panneau_pour_calepinage', return_value=(None, None)):
+            with mock.patch(geometrie + 'plafond_physique_du_contour', return_value=41) as mesure:
+                with self.assertNoLogs(dd.logger.name, level='WARNING'):
+                    self.assertEqual(dd.plafond_physique_du_devis(doublure), 41)
+                    self.assertEqual(dd.plafond_physique_du_devis(doublure), 41)
+        self.assertEqual(mesure.call_count, 1)  # le second appel est servi par le mémo
+        self.assertFalse(hasattr(devis, dd._MEMO_PLAFOND_PHYSIQUE))  # jamais posé sur le devis lui-même
+
+    def test_la_capacite_du_toit_se_memorise_sur_la_doublure_sans_avertissement(self):
+        from apps.ventes import calepinage_options as co
+        devis, doublure = self._doublure()
+        with mock.patch.object(co, 'capacite_du_layout', return_value=17) as mesure:
+            with mock.patch.object(co, '_modes_libres', return_value=()):
+                with self.assertNoLogs(co.logger.name, level='WARNING'):
+                    self.assertEqual(co.capacite_toit_du_devis(doublure), 17)
+                    self.assertEqual(co.capacite_toit_du_devis(doublure), 17)
+        self.assertEqual(mesure.call_count, 1)
+        self.assertFalse(hasattr(devis, co._MEMO_CAPACITE))
+
+    def test_un_champ_du_devis_reste_en_lecture_seule(self):
+        _devis, doublure = self._doublure()
+        with self.assertRaises(AttributeError):
+            doublure.statut = 'envoye'
+        self.assertEqual(doublure.statut, 'brouillon')

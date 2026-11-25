@@ -47,8 +47,13 @@ class _LignesComposees:
 
 class DevisAuxLignes:
     """Le devis (contexte, en LECTURE) dont ``.lignes`` rend des lignes
-    composées. Tout autre attribut est celui du devis ; toute écriture est
-    refusée (une étude ne modifie jamais son devis)."""
+    composées. Tout autre attribut est celui du devis ; toute écriture d'un
+    champ est refusée (une étude ne modifie jamais son devis).
+
+    Seul un MÉMO DE CALCUL (nom privé, ``_taqinor_*`` : contenance du toit,
+    plafond physique) se pose — sur la doublure, jamais sur le devis : le
+    refuser ne protégeait rien et coûtait un recalcul et un avertissement
+    avec sa trace à chaque appel."""
 
     def __init__(self, devis, lignes):
         self.__dict__['_devis'] = devis
@@ -58,6 +63,9 @@ class DevisAuxLignes:
         return getattr(self.__dict__['_devis'], nom)
 
     def __setattr__(self, nom, valeur):
+        if nom.startswith('_'):
+            self.__dict__[nom] = valeur
+            return
         raise AttributeError('DevisAuxLignes est en lecture seule (%s)' % nom)
 
 
