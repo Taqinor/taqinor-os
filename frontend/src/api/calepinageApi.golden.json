@@ -694,7 +694,9 @@
   ],
   "calepinages.importerConception": [
     {
-      "config": null,
+      "config": {
+        "suppressErrorToast": true
+      },
       "data": 3,
       "url": "/calepinage/calepinages/7/import-layout/",
       "verbe": "post"
