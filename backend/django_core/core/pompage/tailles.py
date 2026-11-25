@@ -195,7 +195,9 @@ def proposer_tailles(*, mode_pompe="neuve", choix_pompe=None, plaque=None,
             nb_chaines=(champ.get("chaines") or {}).get("paralleles"),
             alimentation={1.0: "mono", 3.0: "tri", "mono": "mono",
                           "tri": "tri"}.get(phases, alimentation),
-            courant_pompe_a=(plaque or {}).get("courant_a"), **kit)
+            courant_pompe_a=(plaque or {}).get("courant_a"),
+            pompe_kw=(plaque or {}).get("kw"),
+            tension_pompe_v=(plaque or {}).get("tension_v"), **kit)
         mois = mois_critique or champ.get("mois_critique")
         taille = _taille("recommandee", pompe_sortie=dict(
             res["pompe"], nom=NOM_POMPE_EXISTANTE), champ=champ,
@@ -257,7 +259,9 @@ def proposer_tailles(*, mode_pompe="neuve", choix_pompe=None, plaque=None,
             nb_panneaux=champ.get("nb_panneaux"),
             nb_chaines=(champ.get("chaines") or {}).get("paralleles"),
             alimentation=alimentation,
-            courant_pompe_a=fiche.get("pompe_i_nominal_a"), **kit)
+            courant_pompe_a=fiche.get("pompe_i_nominal_a"),
+            pompe_kw=produit.get("pompe_kw"),
+            tension_pompe_v=produit.get("tension_v"), **kit)
         mois = mois_critique or champ.get("mois_critique")
         cache[i] = (sortie, champ, composition, mois, choix_var)
         return cache[i]

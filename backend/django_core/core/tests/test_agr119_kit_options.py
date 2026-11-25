@@ -342,15 +342,57 @@ class Protections(unittest.TestCase):
         self.assertIsNone(ligne["produit"])
         self.assertIn("40 A", ligne["motif"])
 
-    def test_calibre_jamais_devine_sans_courant(self):
+    def test_calibre_jamais_devine_sans_courant_ni_kw(self):
         ligne = self._ligne(self._kit(), "disjoncteur_ac")
         self.assertIsNone(ligne["produit"])
-        self.assertIn("courant nominal de la pompe non publié",
-                      ligne["motif"])
+        self.assertIn("ni kW de la pompe (pompe_kw)", ligne["motif"])
+        ligne = self._ligne(self._kit(pompe_kw=5.5), "disjoncteur_ac")
+        self.assertIsNone(ligne["produit"])
+        self.assertIn("ni tension de la pompe (tension_v)", ligne["motif"])
         # Un seul disjoncteur de la phase : celui-là.
         kit = composer_kit(**dict(BASE, produits_options=PROTECTIONS_SEED,
                                   alimentation="tri"))
         self.assertEqual(self._ligne(kit, "disjoncteur_ac")["produit"], 91)
+
+    def test_dacal124_courant_publie_gagne_sur_le_deduit(self):
+        # 15 kW tri 380 V : déduit ≈ 22,8 A ⇒ 32 A ; publié 18 A ⇒ 20 A.
+        kit = self._kit(courant_pompe_a=18, pompe_kw=15, tension_pompe_v=380)
+        ligne = self._ligne(kit, "disjoncteur_ac")
+        self.assertEqual(ligne["produit"], 95)
+        self.assertNotIn("hypothese", ligne)
+        self.assertFalse([a for a in kit["alertes"]
+                          if a["code"] == "calibre_disjoncteur_deduit"])
+
+    def test_dacal124_deduit_triphase(self):
+        # I = 15 000 / (√3 × 380) ≈ 22,8 A ⇒ le plus petit tri ≥ : 32 A.
+        kit = self._kit(pompe_kw=15, tension_pompe_v=380)
+        ligne = self._ligne(kit, "disjoncteur_ac")
+        self.assertEqual(ligne["produit"], 96)
+        self.assertEqual(
+            ligne["hypothese"],
+            "Calibre du disjoncteur AC déduit des 15 kW et 380 V de la pompe "
+            "(courant estimé 22,8 A, sans facteur de puissance ni rendement "
+            "du moteur : sous-estimé) ; saisir le courant nominal de la pompe "
+            "sur sa fiche du catalogue le remplace.")
+        alerte = [a for a in kit["alertes"]
+                  if a["code"] == "calibre_disjoncteur_deduit"]
+        self.assertEqual(len(alerte), 1)
+        self.assertTrue(alerte[0]["interne"])
+        self.assertEqual(alerte[0]["champ"], "kit.disjoncteur_ac")
+
+    def test_dacal124_deduit_monophase(self):
+        # I = 3 000 / 220 ≈ 13,6 A ⇒ le plus petit mono ≥ : 16 A ;
+        # 5 kW ⇒ 22,7 A ⇒ 32 A.
+        kit = self._kit(alimentation="mono", pompe_kw=3, tension_pompe_v=220)
+        self.assertEqual(self._ligne(kit, "disjoncteur_ac")["produit"], 93)
+        kit = self._kit(alimentation="mono", pompe_kw=5, tension_pompe_v=220)
+        self.assertEqual(self._ligne(kit, "disjoncteur_ac")["produit"], 94)
+
+    def test_dacal124_deduit_trop_fort_motif_estime(self):
+        ligne = self._ligne(self._kit(pompe_kw=30, tension_pompe_v=380),
+                            "disjoncteur_ac")
+        self.assertIsNone(ligne["produit"])
+        self.assertIn("courant estimé de la pompe (45,6 A)", ligne["motif"])
 
     def test_jamais_un_fusible_ni_un_sectionneur_pour_coffret(self):
         kit = composer_kit(**dict(BASE, produits_options=DISJONCTEURS_SEED))

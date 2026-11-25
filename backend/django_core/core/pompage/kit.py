@@ -39,6 +39,7 @@ Noyau PUR : stdlib seulement, aucune I/O.
 """
 from __future__ import annotations
 
+import math
 import re
 import unicodedata
 
@@ -193,8 +194,42 @@ def _plus_petit_suffisant(candidats, taille, besoin):
     return _premier_price([p for t, p in suffisants if t == mini])
 
 
+def courant_deduit_pompe(pompe_kw, tension_v, alimentation):
+    """D-ACAL-124 (fondateur 25/11/2026, « Derive from kW and voltage ») —
+    ``(courant_a | None, motif | None)`` : le courant de la pompe DÉDUIT de son
+    kW (``pompe_kw``) et de sa tension (``tension_v``), relation électrique
+    seule : I = P / U en monophasé, I = P / (√3 · U) en triphasé (même relation
+    que ``core.electrique.protections.courant_emploi_ac``, à la tension de la
+    pompe). AUCUN facteur de puissance ni rendement du moteur n'est supposé (le
+    dépôt n'en publie aucun) : la valeur SOUS-ESTIME le courant réel d'un
+    moteur. ``motif`` nomme le champ manquant."""
+    kw, tension = _flottant(pompe_kw), _flottant(tension_v)
+    if not kw or kw <= 0:
+        return None, ("calibre du disjoncteur AC à choisir : ni courant "
+                      "nominal ni kW de la pompe (pompe_kw) sur sa fiche")
+    if not tension or tension <= 0:
+        return None, ("calibre du disjoncteur AC à choisir : ni courant "
+                      "nominal ni tension de la pompe (tension_v) sur sa fiche")
+    if alimentation not in ("mono", "tri"):
+        return None, ("calibre du disjoncteur AC à choisir : ni courant "
+                      "nominal ni phase (mono / tri) connus pour la pompe")
+    diviseur = tension * (math.sqrt(3.0) if alimentation == "tri" else 1.0)
+    return kw * 1000.0 / diviseur, None
+
+
+def phrase_calibre_deduit(pompe_kw, tension_v, courant):
+    """D-ACAL-124 — l'hypothèse DITE (écran, hypothèses internes ; jamais au
+    PDF client) et le champ qui la lève."""
+    return ("Calibre du disjoncteur AC déduit des %s kW et %s V de la pompe "
+            "(courant estimé %s A, sans facteur de puissance ni rendement du "
+            "moteur : sous-estimé) ; saisir le courant nominal de la pompe sur "
+            "sa fiche du catalogue le remplace."
+            % (_fr(_flottant(pompe_kw)), _fr(_flottant(tension_v)),
+               _fr(courant)))
+
+
 def choisir_protections(produits, *, nb_chaines=None, alimentation=None,
-                        courant_pompe_a=None):
+                        courant_pompe_a=None, pompe_kw=None, tension_v=None):
     """D-ACAL-118 — ``{cle: (produit | None, motif | None)}`` des trois
     protections du kit, choisies sur les données publiées SEULEMENT :
 
@@ -203,8 +238,10 @@ def choisir_protections(produits, *, nb_chaines=None, alimentation=None,
       chaînes en parallèle du champ ; sans coffret à capacité publiée qui
       suffise, un coffret qui n'en publie aucune ;
     * disjoncteur AC (rôle ``protection_ac``) : de la phase de la pompe ; un
-      seul calibre au catalogue = celui-là ; plusieurs = le plus petit calibre
-      ≥ courant nominal de la pompe (Ib ≤ In), jamais deviné sans ce courant ;
+      seul calibre au catalogue = celui-là (s'il couvre le courant) ;
+      plusieurs = le plus petit calibre ≥ courant de la pompe (Ib ≤ In) —
+      courant PUBLIÉ, sinon déduit de son kW et de sa tension (D-ACAL-124,
+      :func:`courant_deduit_pompe`, hypothèse dite) ;
     * parafoudre AC (rôle ``protection_ac``) : de la phase, sinon générique.
 
     ``motif`` dit pourquoi aucun article n'est retenu (jamais une valeur
@@ -232,6 +269,15 @@ def choisir_protections(produits, *, nb_chaines=None, alimentation=None,
     calibres = {calibre(p) for p in disjoncteurs}
     courant = _flottant(courant_pompe_a)
     motif = None
+    # D-ACAL-124 — le courant PUBLIÉ gagne ; sinon déduit du kW et de la
+    # tension de la pompe (hypothèse dite), sinon le champ manquant est nommé.
+    motif_deduit = None
+    if (courant is None or courant <= 0) and disjoncteurs:
+        courant, motif_deduit = courant_deduit_pompe(
+            pompe_kw, tension_v, alimentation)
+        if courant is not None:
+            choix["_hypothese_disjoncteur"] = phrase_calibre_deduit(
+                pompe_kw, tension_v, courant)
     if not disjoncteurs:
         disjoncteur = None
     elif len(calibres) == 1 and (courant is None or None in calibres
@@ -241,11 +287,12 @@ def choisir_protections(produits, *, nb_chaines=None, alimentation=None,
         disjoncteur = _plus_petit_suffisant(disjoncteurs, calibre, courant)
         if disjoncteur is None:
             motif = ("aucun disjoncteur AC du catalogue n'atteint le courant "
-                     "nominal de la pompe (%s A)" % _fr(courant))
+                     "%s de la pompe (%s A)" % (
+                         "estimé" if choix.get("_hypothese_disjoncteur")
+                         else "nominal", _fr(courant)))
     else:
         disjoncteur = None
-        motif = ("calibre du disjoncteur AC à choisir : courant nominal de la "
-                 "pompe non publié (fiche de la pompe)")
+        motif = motif_deduit
     choix["disjoncteur_ac"] = (disjoncteur, motif)
 
     parafoudres = _de_la_phase(
@@ -291,7 +338,7 @@ def composer_kit(*, mode_pompe, pompe=None, variateur=None, panneau=None,
                  profondeur_calage_m=None, marge_cable_m=None,
                  longueur_conduite_m=None, volume_bassin_m3=None,
                  options_cochees=None, nb_chaines=None, alimentation=None,
-                 courant_pompe_a=None):
+                 courant_pompe_a=None, pompe_kw=None, tension_pompe_v=None):
     """AGR119 — ``{inclus, options, non_inclus, lignes, total_ttc, alertes}``.
 
     * ``pompe`` : forme ``pompe`` du contrat (sortie AGR117) — ignorée en
@@ -304,7 +351,9 @@ def composer_kit(*, mode_pompe, pompe=None, variateur=None, panneau=None,
     * ``options_cochees`` : liste de clés cochées, ``None`` = défauts ;
     * ``nb_chaines`` (chaînes en parallèle du champ), ``alimentation``
       (``mono``/``tri``) et ``courant_pompe_a`` (courant nominal publié de la
-      pompe) choisissent les protections (:func:`choisir_protections`).
+      pompe) choisissent les protections (:func:`choisir_protections`) ;
+      sans courant publié, ``pompe_kw`` et ``tension_pompe_v`` le déduisent
+      (D-ACAL-124).
 
     D-ACAL-112 / D-ACAL-118 — ``inclus`` porte les trois protections
     (:data:`PROTECTIONS`) : coffret DC dès que le champ est dimensionné,
@@ -359,7 +408,8 @@ def composer_kit(*, mode_pompe, pompe=None, variateur=None, panneau=None,
                            round(distance, 1)), cable_dc)
         protections = choisir_protections(
             produits_options, nb_chaines=nb_chaines,
-            alimentation=alimentation, courant_pompe_a=courant_pompe_a)
+            alimentation=alimentation, courant_pompe_a=courant_pompe_a,
+            pompe_kw=pompe_kw, tension_v=tension_pompe_v)
         for cle, role, libelle in PROTECTIONS:
             if (cle == "coffret_dc" and not nb) or (
                     cle != "coffret_dc" and variateur is None):
@@ -368,6 +418,13 @@ def composer_kit(*, mode_pompe, pompe=None, variateur=None, panneau=None,
             ligne = _ligne(cle, role, produit, libelle, 1)
             if motif:
                 ligne["motif"] = motif
+            hypothese = protections.get("_hypothese_disjoncteur")
+            if cle == "disjoncteur_ac" and hypothese:
+                # D-ACAL-124 — l'hypothèse dite à l'écran (alerte INTERNE).
+                ligne["hypothese"] = hypothese
+                alertes.append(_alerte("calibre_disjoncteur_deduit",
+                                       "kit.disjoncteur_ac", hypothese,
+                                       interne=True))
             ajouter(ligne, produit)
         if bareme_saisi(installation_pompage):
             ajouter(_ligne("installation", "installation_pompage",
