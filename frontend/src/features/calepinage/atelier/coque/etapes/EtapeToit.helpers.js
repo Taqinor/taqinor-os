@@ -187,10 +187,22 @@ export function lireSoleil(racine) {
   return { date, heure, min: borne('min', 6), max: borne('max', 18) }
 }
 
+/** T4-X7-018 — un tracé à la mauvaise échelle : le script dit « Surface trop petite pour une rangée » (`#rp9-status`)
+    alors que la surface affichée est vaste. Aucun plafond physique n'existe dans le code : le signal est cette
+    CONTRADICTION elle-même (une surface sur laquelle aucune rangée ne tient, bien qu'elle dépasse 1 000 m²). Le seuil
+    ne REFUSE rien : il ne sert qu'à dire « vérifiez le tracé ». `surface` = le texte de `lireSurface` (« 120 534 m² »). */
+export const SURFACE_CONTRADICTOIRE_M2 = 1000
+export function traceHorsEchelle(racine, surface) {
+  if (!/trop petite pour une rang/i.test(texte(parId(racine, 'rp9-status')))) return false
+  const m2 = nombre(String(surface ?? ''))
+  return m2 !== null && m2 > SURFACE_CONTRADICTOIRE_M2
+}
+
 /** Tout ce que l'étape Toit affiche, lu d'un coup (objet sérialisable : comparé pour éviter les rendus inutiles). */
 export function lireEtatToit(racine) {
   return {
     surface: lireSurface(racine),
+    horsEchelle: traceHorsEchelle(racine, lireSurface(racine)),
     pans: lirePans(racine),
     cotes: lireCotes(racine),
     obstacles: lireObstacles(racine),

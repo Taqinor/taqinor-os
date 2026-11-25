@@ -330,6 +330,39 @@ describe('Étape Toit — sur la carte', () => {
     expect(cibleFactures).toHaveBeenCalledTimes(1)
   })
 
+  it('T4-X7-018 — un tracé à l’échelle du pays : « trop petite pour une rangée » à côté d’une surface vaste = alerte, sans refus', async () => {
+    rendre()
+    document.querySelectorAll('[data-pan-stat]').forEach((n) => n.remove())
+    const statut = document.createElement('p')
+    statut.id = 'rp9-status'
+    statut.textContent = 'Surface trop petite pour une rangée — élargissez le tracé.'
+    document.body.querySelector('.rp9-host').appendChild(statut)
+    $('rp9-area-value').textContent = '~120 534 611 780 m²'
+    expect(H.traceHorsEchelle(document, H.lireSurface(document))).toBe(true)
+    // Une vraie petite surface au même message : aucune alerte d'échelle.
+    $('rp9-area-value').textContent = '~3 m²'
+    expect(H.traceHorsEchelle(document, H.lireSurface(document))).toBe(false)
+    // Surface vaste sans le message du script : aucune alerte.
+    $('rp9-area-value').textContent = '~120 534 611 780 m²'
+    statut.textContent = 'Calcul prêt.'
+    expect(H.traceHorsEchelle(document, H.lireSurface(document))).toBe(false)
+  })
+
+  it('T4-X7-018 — au doigt, l’aide du contour dit « Touchez deux fois », jamais « Double-cliquez »', () => {
+    vi.useFakeTimers()
+    const ancien = window.matchMedia
+    window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {} })
+    rendre()
+    $('rp9-add-area').disabled = true
+    $('rp9-finish').disabled = false
+    act(() => { vi.advanceTimersByTime(600) })
+    $('rp9-finish').disabled = true
+    $('rp9-add-area').disabled = false
+    act(() => { vi.advanceTimersByTime(600) })
+    expect(within(surCarte).getByText('Glissez un coin pour le déplacer. Touchez deux fois un bord pour ajouter un point.')).toBeInTheDocument()
+    window.matchMedia = ancien
+  })
+
   it('sans contour, pas de puce', () => {
     rendre()
     document.querySelectorAll('[data-pan-stat]').forEach((n) => n.remove())
