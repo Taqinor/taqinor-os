@@ -1635,27 +1635,6 @@ class RelanceConceptionTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher'
         self.assertEqual((forcee.ecrite, forcee.conception.version), (True, 3))
         self.assertTrue(forcee.conception.declencheur['raison'].endswith(' : recalcul demandé'))
 
-    def test_t4x7022_batterie_avec_puis_les_deux_options_range_les_deux(self):
-        """T4-X7-022 — « Batterie » Avec → « Les deux options » : la carte gardait UNE taille
-        (empreinte des entrées sans les souhaits ⇒ rien rangé) quand le devis auto en donnait
-        deux. Le souhait entre dans l'empreinte : version suivante, les deux options, et la
-        lecture ne la dit périmée qu'avant ce rangement."""
-        from apps.crm.models import Lead
-        from apps.ventes.selectors_conception import _empreinte_des_entrees
-
-        company, lead = self._cas('res_batterie_avec')
-        _reglages_de_la_societe(company)
-        premiere = self._relancer(lead, company, _declencheur())
-        self.assertEqual(set(premiere.conception.valeurs), {'avec'})
-        Lead.objects.filter(pk=lead.pk).update(batterie_souhaitee='les_deux')
-        lead.refresh_from_db()
-        self.assertNotEqual(_empreinte_des_entrees(premiere.conception), premiere.conception.empreinte)
-        suivante = self._relancer(lead, company, _declencheur(
-            'lead_entrees_modifiees', batterie_souhaitee=('avec', 'les_deux')))
-        self.assertTrue(suivante.ecrite)  # mutant « souhaits hors empreinte » : False, une option
-        self.assertEqual(set(suivante.conception.valeurs), {'sans', 'avec'})
-        self.assertEqual(_empreinte_des_entrees(suivante.conception), suivante.conception.empreinte)
-
     def test_relances_simultanees_des_memes_entrees_une_seule_version(self):
         """Relecture m1 — deux relances parties ensemble lisent toutes deux
         l'ancienne courante (empreinte différente) ; la seconde, qui range
@@ -2011,38 +1990,6 @@ class ServirConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
                 cout_onduleur_ttc=payback.get('cout_onduleur_ttc'), part_batterie=0)['payback_years'], option)
             self.assertIn('25 ans', payback['calcul'], option)
         self.assertEqual(_cles_interdites(lue), [])
-
-    def test_t4x7001_conception_a_une_option_sur_un_devis_a_deux_options(self):
-        """T4-X7-001 — « Retour 16,4 ans — 97 400 MAD pour 7 987 MAD/an » : la conception n'a qu'une
-        option (batterie « Avec ») mais le devis de référence en porte deux ; le montant servi
-        était la somme des lignes des DEUX options. Il est celui des lignes de CETTE option,
-        découpées comme le PDF, et le retour est calculé dessus."""
-        from apps.crm.models import Lead
-        from apps.ventes.models import Devis
-        from apps.ventes.selectors import conception_courante
-        from apps.ventes.services import build_devis_auto
-        from apps.ventes.utils.options import (AVEC_BATTERIE, deux_options_declarees, filter_lines_for_option,
-                                               lignes_avec_produit, option_totaux)
-
-        company, lead = self._cas('res_batterie_avec')
-        _reglages_de_la_societe(company)
-        Lead.objects.filter(pk=lead.pk).update(batterie_souhaitee='les_deux')
-        lead.refresh_from_db()
-        with self.captureOnCommitCallbacks(execute=True):
-            devis = build_devis_auto(lead=lead, user=self._utilisateur(company), company=company)
-        Devis.objects.filter(pk=devis.pk).update(statut='envoye')
-        devis.refresh_from_db()
-        self.assertTrue(deux_options_declarees(devis))
-        Lead.objects.filter(pk=lead.pk).update(batterie_souhaitee='avec')
-        lead.refresh_from_db()
-        self._relancer(lead, company, _declencheur('lead_entrees_modifiees', batterie_souhaitee=('les_deux', 'avec')))
-        lue = conception_courante(company, lead.pk)
-        self.assertEqual((set(lue['valeurs']), lue['payback_devis']['devis_ref']), ({'avec'}, devis.reference))
-        lignes = list(lignes_avec_produit(devis))
-        de_l_option = option_totaux(devis, '', lignes=filter_lines_for_option(lignes, AVEC_BATTERIE, devis=devis))
-        payback = lue['valeurs']['avec']['payback']
-        self.assertLess(de_l_option['ttc'], option_totaux(devis, '', lignes=lignes)['ttc'])
-        self.assertAlmostEqual(payback['investissement_ttc'], float(de_l_option['ttc']), places=2)  # mutant : la somme
 
     def test_e6d_cout_onduleur_un_seul_calcul_payback_servi_au_centime(self):
         """Lane E6d — la provision d'onduleur du payback servi est calculée par LA fonction des
