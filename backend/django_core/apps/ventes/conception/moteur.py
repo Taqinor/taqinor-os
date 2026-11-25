@@ -258,6 +258,7 @@ def _compte_designe(lead, company, toit, imposes, dimensionner):
     réseau ⇒ sans), sinon la décision."""
     from apps.ventes.conception.decisions import decider_taille_residentielle
     from apps.ventes.domain import resolution_catalogue as rc
+    from apps.ventes.domain.taille import panneaux_pour_la_meme_puissance
 
     decision = decider_taille_residentielle(lead=lead, company=company, plafond_toit=getattr(
         toit, 'plafond_panneaux', None), dimensionner=dimensionner)
@@ -266,7 +267,7 @@ def _compte_designe(lead, company, toit, imposes, dimensionner):
                if imposes.get('panneau_produit_id') else None)
     watt = float(getattr(panneau, 'wc', None) or 0)
     if watt and abs(watt - float(decision.watt or 0)) >= 0.5:
-        nombre = max(1, int(round(decision.kwc * 1000 / watt)))
+        nombre = panneaux_pour_la_meme_puissance(decision.kwc, watt)
     if panneau is None:  # le module du moteur (sa puissance, par LE résolveur), jamais le défaut 710 Wc
         resolution = rc.resoudre_panneau(company, rc.vivier(company), wc=decision.watt)
         if resolution.statut == rc.STATUT_UNIQUE:

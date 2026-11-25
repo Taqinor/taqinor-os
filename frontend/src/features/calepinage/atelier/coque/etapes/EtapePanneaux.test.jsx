@@ -170,6 +170,35 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(surChange).toHaveBeenCalledTimes(1)
   })
 
+  it('lane E9 (T4-X2-001) — module de 710 W pour une conception de 8 × 550 W : la carte dit la puissance et le compte servi, la pose reçoit 6', async () => {
+    monterConstructeur({ besoin: '12' })
+    document.getElementById('rp9-pan-module-select').value = 'produit-1'
+    const catalogue = [{ ...CATALOGUE[0], module: { ...CATALOGUE[0].module, libelle: 'Module 710 Wc', pmaxWc: 710 } }]
+    calepinageApi.calepinages.modulesDisponibles.mockResolvedValue({ data: {
+      modules: catalogue, panneaux_selon_watt: { 710: 6, 715: 6 } } })
+    calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: {
+      cible_factures: { panneaux: 8, kwc: 4.4, module_wc: 550 }, refus: '', calcul_en_cours: false } })
+    rendre()
+    const facture = screen.getByTestId('cal-panneaux-option-facture')
+    await waitFor(() => expect(facture).toHaveTextContent(
+      '4,40 kWc — 6 panneaux de 710 W (la conception du lead compte 8 panneaux de 550 W)'))
+    fireEvent.click(facture)
+    expect(document.getElementById('rp9-need-input').value).toBe('6')
+  })
+
+  it('lane E9 (T4-X2-001) — module absent de la table servie : la puissance seule, aucun compte, rien à poser', async () => {
+    monterConstructeur({ besoin: '12' })
+    document.getElementById('rp9-pan-module-select').value = 'produit-1'
+    const catalogue = [{ ...CATALOGUE[0], module: { ...CATALOGUE[0].module, pmaxWc: 710 } }]
+    calepinageApi.calepinages.modulesDisponibles.mockResolvedValue({ data: { modules: catalogue, panneaux_selon_watt: {} } })
+    calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: {
+      cible_factures: { panneaux: 8, kwc: 4.4, module_wc: 550 }, refus: '', calcul_en_cours: false } })
+    rendre()
+    const facture = screen.getByTestId('cal-panneaux-option-facture')
+    await waitFor(() => expect(facture).toHaveTextContent('4,40 kWc (la conception du lead compte 8 panneaux de 550 W)'))
+    expect(facture).toBeDisabled()
+  })
+
   it('lane E9 — la conception recalculée depuis l’ouverture : la carte « Couvrir la facture » dit pourquoi, jamais en silence', async () => {
     monterConstructeur()
     const raison = 'Recalculé le 25/11 à 10 h 05 : matériel désigné à l’atelier : Module 580 Wc / Onduleur 6 kW'

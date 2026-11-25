@@ -302,6 +302,17 @@ def _residential_panel_count(*, taille_kwc=None, panel_watt=_AUTO_PANEL_WATT):
     return 0
 
 
+def panneaux_pour_la_meme_puissance(kwc, watt):
+    """Lane E9 (constats T4-X2-001 / T4-X9-005) — LA conversion d'une taille en panneaux d'une
+    AUTRE puissance unitaire : la même puissance crête, au panneau près (jamais moins d'un).
+    Règle du moteur (``conception/moteur.py::_compte_designe``), décision 28 du rapport encore
+    ouverte : elle vit ICI seule, l'atelier la lit par la façade de ventes. ``None`` sans
+    taille ou sans puissance exploitable."""
+    if kwc in (None, '') or not watt or float(watt) <= 0:
+        return None
+    return max(1, int(round(float(kwc) * 1000 / float(watt))))
+
+
 # ── PONT M3 : nom hébergé ailleurs ───────────────────────────────────────────
 # Import EN BAS DE FICHIER, visant le module qui PORTE le corps.
 from apps.ventes.domain.catalogue import plafond_panneaux  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
