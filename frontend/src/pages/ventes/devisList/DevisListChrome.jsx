@@ -82,6 +82,7 @@ export default function DevisListChrome({
   devis,
   nombreTotal,
   summary,
+  syntheseChargement = false,
   batteryInsight,
   expiringSoon,
   statutFilter,
@@ -107,6 +108,19 @@ export default function DevisListChrome({
         APX12 — les 5 cartes étaient des `<div>` nus : elles passent au
         langage UNIQUE des KPI d'argent (`<Stat>`, chiffres `.num`
         tabulaires), comme le cockpit trésorerie et le rail du générateur. */}
+    {aDesDevis && !summary && syntheseChargement && (
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5" data-testid="devis-synthese-calcul">
+        {Object.keys(STATUT_DISPLAY).map(key => (
+          <Stat
+            key={key}
+            className="p-3 sm:p-3"
+            label={<StatusPill status={key} label={STATUT_DISPLAY[key]} className="normal-case tracking-normal" />}
+            value="…"
+            hint="Calcul des totaux…"
+          />
+        ))}
+      </div>
+    )}
     {aDesDevis && summary && (
       <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
         {Object.keys(STATUT_DISPLAY).map(key => (

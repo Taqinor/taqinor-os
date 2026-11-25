@@ -52,6 +52,7 @@ describe('T4-X4-005 — fetchDevis(requete) : une page et sa synthèse', () => {
     ventesApi.getDevisSynthese.mockReset().mockResolvedValue({ data: exempleContrat('ventes', 'devis_synthese') })
     const s = store()
     await s.dispatch(fetchDevis(requete))
+    await vi.waitFor(() => expect(s.getState().ventes.devisSynthese).not.toBeNull())
     expect(ventesApi.getDevis).toHaveBeenCalledTimes(1)
     expect(ventesApi.getDevis.mock.calls[0][0]).toEqual(requete)
     const v = s.getState().ventes
@@ -68,7 +69,47 @@ describe('T4-X4-005 — fetchDevis(requete) : une page et sa synthèse', () => {
     const s = store()
     await s.dispatch(fetchDevis(requete))
     expect(s.getState().ventes.devis).toHaveLength(3)
-    expect(s.getState().ventes.devisSyntheseEchec).toBe(true)
+    await vi.waitFor(() => expect(s.getState().ventes.devisSyntheseEchec).toBe(true))
+    expect(s.getState().ventes.devisSyntheseChargement).toBe(false)
+  })
+
+  // Revue de la liste : la synthèse (≈ 11 s à froid) ne retarde PAS la page ; en
+  // attendant elle est « en calcul » (pas un échec), puis rangée à son arrivée.
+  it('synthèse lente : la page est là tout de suite, « en calcul » puis rangée', async () => {
+    vi.useFakeTimers()
+    try {
+      ventesApi.getDevis.mockReset().mockResolvedValue(page(5))
+      ventesApi.getDevisSynthese.mockReset().mockImplementation(() => new Promise((resolve) => {
+        setTimeout(() => resolve({ data: exempleContrat('ventes', 'devis_synthese') }), 30000)
+      }))
+      const s = store()
+      await s.dispatch(fetchDevis(requete))
+      let v = s.getState().ventes
+      expect(v.devis).toHaveLength(5)
+      expect(v.devisSyntheseChargement).toBe(true)
+      expect(v.devisSyntheseEchec).toBe(false)
+      expect(v.devisSynthese).toBeNull()
+      await vi.advanceTimersByTimeAsync(31000)
+      v = s.getState().ventes
+      expect(v.devisSyntheseChargement).toBe(false)
+      expect(v.devisSynthese.total).toBe(exempleContrat('ventes', 'devis_synthese').total)
+    } finally { vi.useRealTimers() }
+  })
+
+  it('synthèse qui échoue après la limite : alors seulement l’échec est posé', async () => {
+    vi.useFakeTimers()
+    try {
+      ventesApi.getDevis.mockReset().mockResolvedValue(page(2))
+      ventesApi.getDevisSynthese.mockReset().mockImplementation(() => new Promise((_, rejeter) => {
+        setTimeout(() => rejeter(new Error('timeout')), 60000)
+      }))
+      const s = store()
+      await s.dispatch(fetchDevis(requete))
+      await vi.advanceTimersByTimeAsync(30000)
+      expect(s.getState().ventes.devisSyntheseEchec).toBe(false)
+      await vi.advanceTimersByTimeAsync(31000)
+      expect(s.getState().ventes.devisSyntheseEchec).toBe(true)
+    } finally { vi.useRealTimers() }
   })
 
   it('page en échec : les lignes déjà affichées restent, l’erreur est posée', async () => {

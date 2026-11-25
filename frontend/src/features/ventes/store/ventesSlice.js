@@ -39,27 +39,30 @@ const DEVIS_PAGE_CONCURRENCY = 5
 // TOUS les devis par pages de 200 (≈ 48 Mo) n'ouvrait jamais l'écran. Une
 // synthèse en échec n'empêche pas la page (`syntheseEchec`). Sans `requete`
 // (tableau de bord, cockpit Ventes) : toutes les pages, comme avant.
-async function chargerPageDevis(requete, signal) {
-  const [page, synthese] = await Promise.allSettled([
-    // L'écran pagine lui-même : il envoie `page` et lit `count` (le total du pager).
-    ventesApi.getDevis({ ...requete, page: requete.page ?? 1 }, { signal }).then((r) => r.data),
-    ventesApi.getDevisSynthese({ signal }).then((r) => r.data),
-  ])
-  if (page.status === 'rejected') throw page.reason
-  const data = page.value
+async function chargerPageDevis(requete, signal, { dispatch, getState } = {}) {
+  // La synthèse (≈ 11 s à froid sur 583 devis) ne RETARDE PAS la page : elle est
+  // lancée à part (une seule à la fois) et range son résultat quand elle arrive ;
+  // l'écran dit « Calcul des totaux… » en attendant (limite propre : 60 s).
+  if (dispatch && !getState?.()?.ventes?.devisSyntheseChargement) {
+    dispatch(syntheseDemandee())
+    ventesApi.getDevisSynthese({ signal }).then(
+      (r) => dispatch(synthesePosee(r.data)),
+      (err) => dispatch(isCancelledError(err) ? syntheseAbandonnee() : syntheseEchouee()),
+    )
+  }
+  // L'écran pagine lui-même : il envoie `page` et lit `count` (le total du pager).
+  const data = await ventesApi.getDevis({ ...requete, page: requete.page ?? 1 }, { signal }).then((r) => r.data)
   const results = Array.isArray(data) ? data : (data?.results ?? [])
   return {
     results,
     count: Array.isArray(data) ? results.length : (data?.count ?? results.length),
     requete,
-    synthese: synthese.status === 'fulfilled' ? synthese.value : null,
-    syntheseEchec: synthese.status === 'rejected',
   }
 }
 
-export const fetchDevis = createCancellableThunk('ventes/fetchDevis', (requete, { signal }) => {
+export const fetchDevis = createCancellableThunk('ventes/fetchDevis', (requete, { signal, dispatch, getState }) => {
   const charger = () => (requete && typeof requete === 'object'
-    ? dedupeInFlight(`ventes/fetchDevis:${JSON.stringify(requete)}`, () => chargerPageDevis(requete, signal))
+    ? dedupeInFlight(`ventes/fetchDevis:${JSON.stringify(requete)}`, () => chargerPageDevis(requete, signal, { dispatch, getState }))
     : dedupeInFlight('ventes/fetchDevis', () =>
       fetchAllPages((page, { page_size: pageSize } = {}) => ventesApi.getDevis({ page, page_size: pageSize }, { signal }).then((r) => r.data), { concurrency: DEVIS_PAGE_CONCURRENCY })
         .then((results) => ({ results }))))
@@ -361,6 +364,7 @@ const ventesSlice = createSlice({
     devisRequete: null,
     devisSynthese: null,
     devisSyntheseEchec: false,
+    devisSyntheseChargement: false,
     bonsCommande: [],
     factures: [],
     // AUD157 (FAC-13) — KPI monetaires agreges PAR LE SERVEUR (jamais sommes
@@ -396,6 +400,14 @@ const ventesSlice = createSlice({
       state.devis.unshift(d)
     },
     clearError(state) { state.error = null },
+    syntheseDemandee(state) { state.devisSyntheseChargement = true; state.devisSyntheseEchec = false },
+    synthesePosee(state, action) {
+      state.devisSynthese = action.payload
+      state.devisSyntheseChargement = false
+      state.devisSyntheseEchec = false
+    },
+    syntheseAbandonnee(state) { state.devisSyntheseChargement = false },
+    syntheseEchouee(state) { state.devisSyntheseChargement = false; state.devisSyntheseEchec = true },
   },
   extraReducers: (builder) => {
     // VX165 — compteur `pendingCount` partagé : voir lib/reducersChargement.js.
@@ -411,12 +423,12 @@ const ventesSlice = createSlice({
         const p = action.payload
         state.devisRequete = p?.requete ?? null
         state.devisCount = p?.requete ? p.count : null
-        if (p?.requete) {
-          if (p.synthese) state.devisSynthese = p.synthese
-          state.devisSyntheseEchec = !!p.syntheseEchec
-        } else {
+        // La synthèse arrive à part (synthesePosee / syntheseEchouee) ; la lecture
+        // complète (sans requête) la remet à zéro.
+        if (!p?.requete) {
           state.devisSynthese = null
           state.devisSyntheseEchec = false
+          state.devisSyntheseChargement = false
         }
       })
       .addCase(fetchDevis.rejected, rejected)
@@ -514,5 +526,8 @@ const ventesSlice = createSlice({
   },
 })
 
-export const { clearError, devisPatched, devisInsere } = ventesSlice.actions
+export const {
+  clearError, devisPatched, devisInsere,
+  syntheseDemandee, synthesePosee, syntheseEchouee, syntheseAbandonnee,
+} = ventesSlice.actions
 export default ventesSlice.reducer

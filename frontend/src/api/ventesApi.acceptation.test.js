@@ -24,11 +24,11 @@ describe('acceptationDejaFaite', () => {
 // fois (la page ET la synthèse). La synthèse dit déjà son échec dans l'en-tête
 // (« Réessayer ») : son appel ne lève AUCUN toast.
 describe('getDevisSynthese', () => {
-  it('ne lève aucun toast d’erreur (l’en-tête le dit), et garde le signal', async () => {
+  it('ne lève aucun toast, a sa propre limite de 60 s et garde le signal', async () => {
     const signal = {}
     await ventesApi.getDevisSynthese({ signal })
     expect(api.get).toHaveBeenLastCalledWith(
-      '/ventes/devis/synthese/', { suppressErrorToast: true, signal })
+      '/ventes/devis/synthese/', { suppressErrorToast: true, timeout: 60000, signal })
   })
 })
 

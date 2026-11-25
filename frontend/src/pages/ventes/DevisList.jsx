@@ -126,6 +126,7 @@ export default function DevisList() {
   const [searchParams, setSearchParams] = useSearchParams()
   const {
     devis, loading, error, devisCount, devisSynthese, devisSyntheseEchec,
+    devisSyntheseChargement,
   } = useSelector(s => s.ventes)
   const role = useSelector(s => s.auth.role)
   const canDelete = role === 'admin'  // règle existante : destroy = admin
@@ -931,12 +932,15 @@ export default function DevisList() {
   // que tant qu'aucune page n'a été demandée au serveur ; une synthèse en
   // échec masque les cartes (jamais des totaux d'une seule page).
   const syntheseLocale = useDevisListSynthese(devis, effStatutOf)
+  // Synthèse en cours de calcul (≈ 11 s à froid) : mêmes règles qu'un échec —
+  // jamais les totaux d'une seule page — mais l'écran dit « Calcul des totaux… ».
+  const syntheseAbsente = devisSyntheseEchec || (devisSyntheseChargement && !devisSynthese)
   const summary = devisSynthese?.par_statut
-    ?? (devisSyntheseEchec ? null : syntheseLocale.summary)
+    ?? (syntheseAbsente ? null : syntheseLocale.summary)
   const expiringSoon = devisSynthese?.a_relancer
-    ?? (devisSyntheseEchec ? [] : syntheseLocale.expiringSoon)
+    ?? (syntheseAbsente ? [] : syntheseLocale.expiringSoon)
   const batteryInsight = devisSynthese?.batterie
-    ?? (devisSyntheseEchec ? { avec: 0, sans: 0 } : syntheseLocale.batteryInsight)
+    ?? (syntheseAbsente ? { avec: 0, sans: 0 } : syntheseLocale.batteryInsight)
   const supersededCount = devisSynthese?.remplaces ?? supersededCountPage
   const nombreTotal = devisSynthese?.total ?? devisCount ?? devis.length
 
@@ -1090,6 +1094,7 @@ export default function DevisList() {
         devis={devis}
         nombreTotal={nombreTotal}
         summary={summary}
+        syntheseChargement={!!devisSyntheseChargement && !devisSynthese}
         batteryInsight={batteryInsight}
         expiringSoon={expiringSoon}
         statutFilter={statutFilter}

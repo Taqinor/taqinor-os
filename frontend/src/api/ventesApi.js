@@ -57,9 +57,10 @@ const ventesApi = {
   getDevis: (params, config) => api.get('/ventes/devis/', { params, ...config }),
   // T4-X4-005 — l'en-tête de l'écran Devis sur toute la portée du rôle
   // (contrat `apps/ventes/contract_samples/devis_synthese.json`).
+  // À froid, ≈ 11 s sur 583 devis : limite propre de 60 s (la liste est déjà à l'écran).
   // Revue de la liste : un échec de la synthèse est DIT par l'en-tête (« Réessayer ») —
   // aucun toast, sinon « La connexion a expiré » paraît deux fois (page + synthèse).
-  getDevisSynthese: (config) => api.get('/ventes/devis/synthese/', { suppressErrorToast: true, ...config }),
+  getDevisSynthese: (config) => api.get('/ventes/devis/synthese/', { suppressErrorToast: true, timeout: 60000, ...config }),
   getDevisById: (id) => api.get(`/ventes/devis/${id}/`),
   createDevis: (data) => api.post('/ventes/devis/', data),
   // QX21 — création ATOMIQUE (devis + lignes en un seul commit serveur) : plus

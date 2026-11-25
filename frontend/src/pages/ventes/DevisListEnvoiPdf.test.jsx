@@ -173,6 +173,28 @@ describe('En-tête — chargement de la première page', () => {
   })
 })
 
+// ── Totaux par statut : « Calcul des totaux… » puis seulement l'échec ───────
+describe('Cartes par statut — calcul lent, puis échec réel', () => {
+  const rendre = (ventes) => renderListAvecStore(configureStore({
+    reducer: {
+      ventes: (state = { devis: [brouillon()], loading: false, error: null, devisCount: 1, ...ventes }) => state,
+      auth: (state = { role: 'admin', role_nom: 'Directeur', permissions: [] }) => state,
+    },
+  }))
+
+  it('synthèse en calcul : cinq cartes « Calcul des totaux… », aucune phrase d’échec', () => {
+    rendre({ devisSyntheseChargement: true, devisSynthese: null, devisSyntheseEchec: false })
+    expect(screen.getAllByText('Calcul des totaux…')).toHaveLength(5)
+    expect(screen.queryByTestId('devis-synthese-echec')).toBeNull()
+  })
+
+  it('échec réel : la phrase et « Réessayer », plus de « Calcul… »', () => {
+    rendre({ devisSyntheseChargement: false, devisSynthese: null, devisSyntheseEchec: true })
+    expect(screen.queryByText('Calcul des totaux…')).toBeNull()
+    expect(screen.getByTestId('devis-synthese-echec')).toBeInTheDocument()
+  })
+})
+
 // ── T4-X4-009 : « Envoyer » sans numéro ─────────────────────────────────────
 describe('T4-X4-009 — « Envoyer » sans numéro sur la fiche', () => {
   it('409 « Numéro de téléphone invalide » : le manque est dit, avec « Copier le lien »', async () => {
