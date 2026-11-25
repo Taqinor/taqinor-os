@@ -215,7 +215,7 @@ class ProposerTest(_Base):
         le calepinage la lit telle quelle, ni silhouette recomposée ici ni forme uniforme."""
         from apps.calepinage.services.consommation import AVIS_FORME_UNIFORME
 
-        parts = [0.02] * 6 + [0.05] * 12 + [0.04] * 6  # une journée chargée le jour (somme = 1)
+        parts = [0.02] * 8 + [0.06] * 12 + [0.03] * 4  # une journée chargée le jour (somme = 1)
         version = self._ranger('residentiel', {'etude_horaire': {
             'occupation': 'presence_jour',
             'mois': [{'mois': rang + 1, 'consommation_kwh': kwh} for rang, kwh in enumerate(self.KWH_CONCEPTION)]}})
