@@ -86,3 +86,22 @@ def chercher_collegues(user, q='', limite=20):
         proches = [_ligne(c) for ratio, _nom, c in notes[:PROCHES_MAX]
                    if ratio >= RATIO_PROCHE]
     return len(trouves), [_ligne(c) for c in trouves[:limite]], proches
+
+
+def filtrer_par_permission(collegues, permission):
+    """T4-X3-016 — les collègues qui PORTENT ``permission`` (un code du registre des permissions) :
+    même prédicat que le serveur du module (``ScopedPermission`` → ``_user_has_or_legacy``), pour
+    qu'un sélecteur ne propose que des comptes qui peuvent ouvrir ce qu'on leur confie. Sans code :
+    la liste telle quelle. Code inconnu : refus 400 nommé (``ValidationError``). Vit ici, pas dans
+    ``views.py`` (plus de 2 000 lignes, qui ne grossit pas)."""
+    permission = (permission or '').strip()
+    if not permission:
+        return collegues
+    from rest_framework.exceptions import ValidationError
+
+    from apps.roles.permissions_registre import ALL_PERMISSIONS
+    from core.permissions import _user_has_or_legacy
+
+    if permission not in ALL_PERMISSIONS:
+        raise ValidationError({'permission': 'Permission inconnue.'})
+    return [u for u in collegues.select_related('role') if _user_has_or_legacy(u, permission)]

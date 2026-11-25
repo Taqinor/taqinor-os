@@ -118,17 +118,10 @@ def assignable_users(request):
     /users/ réservé à l'admin. Avatar Odoo (initiales/photo), nom, prénom, poste.
     """
     from authentication.avatars import presign_avatar
-    from .collegues import collegues_assignables
-    qs = collegues_assignables(request.user).order_by('username')
-    # T4-X3-016 — « qui peut OUVRIR ce qu'on lui confie » : même prédicat que le serveur du module
-    # (``ScopedPermission`` → ``_user_has_or_legacy``). Sans le paramètre, la liste reste celle des leads.
-    permission = (request.query_params.get('permission') or '').strip()
-    if permission:
-        from apps.roles.permissions_registre import ALL_PERMISSIONS
-        from core.permissions import _user_has_or_legacy
-        if permission not in ALL_PERMISSIONS:
-            return Response({'permission': 'Permission inconnue.'}, status=400)
-        qs = [u for u in qs.select_related('role') if _user_has_or_legacy(u, permission)]
+    from .collegues import collegues_assignables, filtrer_par_permission
+    # T4-X3-016 — « qui peut OUVRIR ce qu'on lui confie » (``?permission=``) : filtré dans ``collegues.py``.
+    qs = filtrer_par_permission(collegues_assignables(request.user).order_by('username'),
+                                request.query_params.get('permission'))
     return Response([
         {
             'id': u.id,
