@@ -264,5 +264,11 @@ describe('AGEN11 — l’aperçu de l’écran devis vient du moteur unique', ()
       .toBe(refus.refus.champ)
     expect(figure(container, 'production_annuelle_kwh')).toBeNull()
     expect(ventesApi.postEtudeHorairePreview).not.toHaveBeenCalled()
+    // Revue de l'écran (25/11) — le refus est dit UNE fois dans le bloc, et les cartes
+    // disent ce qui manque au lieu de disparaître en silence.
+    const bloc = container.querySelector('#gen-sec-simulation-contenu').textContent
+    expect(bloc.split(refus.refus.message).length - 1).toBe(1)
+    expect(container.querySelector('[data-testid="apercu-conception-attente"]').textContent)
+      .toContain('Production, économies et retour sur investissement ne sont pas calculés')
   }, 20000)
 })

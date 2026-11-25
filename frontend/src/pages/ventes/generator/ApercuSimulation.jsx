@@ -78,7 +78,9 @@ export default function ApercuSimulation({
                   <> {' '}Détail mensuel : {etudeHoraireSourceLabel.libelle}.</>
                 )}
               </p>
-            ) : (
+            ) : roi?.modele === 'refus' && !etudeHoraireChargement ? null : (
+              // Revue de l'écran (25/11) — un refus ou un échec est dit UNE fois, plus
+              // bas (`apercu-conception-attente`), jamais répété ici.
               <p className="mb-2 text-xs text-muted-foreground" data-testid="etude-horaire-source">
                 {etudeHoraireChargement
                   ? 'Calcul du moteur horaire en cours…'
@@ -377,7 +379,16 @@ export default function ApercuSimulation({
                 <Button type="button" size="sm" variant="outline" className="min-h-11 min-w-11"
                         onClick={roi.reessayer}>Réessayer</Button>
               </>
-            ) : (roi?.message || <>
+            ) : roi?.message ? (
+              <>
+                {roi.message}
+                {/* Les cartes disent ce qui manque au lieu de disparaître en silence. */}
+                <span className="mt-1 block text-xs">
+                  Production, économies et retour sur investissement ne sont pas calculés tant que ce
+                  point n’est pas réglé.
+                </span>
+              </>
+            ) : (<>
               Renseignez le nombre de panneaux et les factures, puis la simulation
               s'actualise automatiquement.
             </>)}
