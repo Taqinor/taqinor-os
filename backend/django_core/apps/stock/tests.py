@@ -688,8 +688,7 @@ class TestSeedCatalogue(TestCase):
             first_count)
         self.assertEqual(first_count, 1)
         # Un second run ne crée rien de plus et ne touche pas les prix (0).
-        p = Produit.objects.get(company=self.company, sku='PARA-AC-T2')
-        self.assertEqual(p.prix_vente, Decimal('0'))
+        self.assertEqual(Produit.objects.get(company=self.company, sku='PARA-AC-T2').prix_vente, Decimal('0'))
 
     def test_pvg3_priceless_products_excluded_like_osp_guard(self):
         """Même garde que les pompes OSP (apps.ventes.services._has_price) :
