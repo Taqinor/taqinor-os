@@ -42,6 +42,8 @@ import {
 
 const RANGEE = exempleContrat('ventes', 'conception_lead')
 const APERCU = documentContrat('ventes', 'conception_lead').apercu.reponse
+//: Un retour en années au format de l'écran (dixième, virgule française).
+const ans = (v) => v.toFixed(1).replace('.', ',')
 // L'aperçu sur l'investissement des lignes de l'écran : son payback diffère de la version rangée.
 const APERCU_SUR_LES_LIGNES = { ...APERCU, valeurs: { sans: { ...APERCU.valeurs.sans,
   payback: { valeur: 4.2, unite: 'ans', source: 'devis' } } } }
@@ -109,8 +111,9 @@ describe('AGEN11 — l’aperçu de l’écran devis vient du moteur unique', ()
     // l'écran (envoyé avec le corps), jamais celui du devis de référence de la version rangée.
     const corps = ventesApi.apercuConception.mock.calls.at(-1)[0]
     expect(String(Math.round(corps.investissement.sans))).toBe((figure(container, 'total_ttc') || '').replace(/\D/g, ''))
-    expect(figure(container, 'payback_ans')).toBe(`${APERCU_SUR_LES_LIGNES.valeurs.sans.payback.valeur} ans`)
-    expect(figure(container, 'payback_ans')).not.toBe(`${RANGEE.valeurs.sans.payback.valeur} ans`)
+    // Revue de l'écran (25/11) — une règle d'arrondi : au dixième, virgule française.
+    expect(figure(container, 'payback_ans')).toBe(`${ans(APERCU_SUR_LES_LIGNES.valeurs.sans.payback.valeur)} ans`)
+    expect(figure(container, 'payback_ans')).not.toBe(`${ans(RANGEE.valeurs.sans.payback.valeur)} ans`)
   }, 20000)
 
   it('lignes sans prix : le payback dit « après enregistrement », aucun investissement envoyé', async () => {
@@ -150,7 +153,7 @@ describe('AGEN11 — l’aperçu de l’écran devis vient du moteur unique', ()
     // E7d (M1) — sans lead ni devis de référence, le payback est celui de l'aperçu sur les
     // lignes chiffrées de l'écran (plus « N/A » pour un brouillon aux lignes chiffrées).
     expect(corps.investissement.sans).toBeGreaterThan(0)
-    expect(figure(container, 'payback_ans')).toBe(`${APERCU.valeurs.sans.payback.valeur} ans`)
+    expect(figure(container, 'payback_ans')).toBe(`${ans(APERCU.valeurs.sans.payback.valeur)} ans`)
   }, 20000)
 
   // E7d (CI e2e figures-parite, 25/11) — un devis « Les deux » aux champs PV
@@ -212,14 +215,43 @@ describe('AGEN11 — l’aperçu de l’écran devis vient du moteur unique', ()
     }
     const prod = (opt) => container.querySelector(`[data-figure="production_annuelle_kwh"][data-figure-option="${opt}"]`)
       ?.getAttribute('data-figure-value')?.replace(/\D/g, '')
+    const imposesFaits = () => ventesApi.apercuConception.mock.calls.map(([c]) => c.imposes).filter((i) => i.nb_panneaux)
+    // Les deux DERNIERS aperçus imposés portent les 12 factures tapées (la frappe est finie).
+    await waitFor(() => expect(imposesFaits().slice(-2).map((i) => i.consommation?.source))
+      .toEqual(['factures', 'factures']), { timeout: 10000 })
     await waitFor(() => expect([prod('sans'), prod('avec')]).toEqual(['3518', '7037']), { timeout: 10000 })
-    const imposes = ventesApi.apercuConception.mock.calls.map(([c]) => c.imposes).filter((i) => i.nb_panneaux)
+    const imposes = imposesFaits()
     expect(imposes).toContainEqual(expect.objectContaining({ nb_panneaux: 4, panneau_produit_id: PANNEAU.id,
       onduleur_produit_id: ONDULEUR.id }))
     expect(imposes).toContainEqual(expect.objectContaining({ nb_panneaux: 8, panneau_produit_id: PANNEAU.id,
       onduleur_produit_id: HYBRIDE.id, batterie_produit_id: BATTERIE.id }))
-    expect(imposes.every((i) => i.consommation?.source === 'factures')).toBe(true)
   }, 30000)
+
+  // Revue de l'écran (25/11) — trois paybacks « avec batterie » sur un même onglet : la
+  // carte (ce devis, ses lignes), le tableau et la falaise (taille, batterie et prix du
+  // MOTEUR). Chacun dit pour quoi il est calculé ; un seul arrondi (dixième, virgule).
+  it('paybacks du tableau et de la falaise : étiquetés « du moteur », au dixième', async () => {
+    const ligne = { panneaux: 8, kwc: 4.4, onduleur: 'Onduleur hybride', ratio_onduleur_kwc: 1.1,
+      regle_80_pct_respectee: true, taux_autoconso_sans: 0.5, couverture_sans: 0.4, economie_sans_mad: 5000,
+      economie_avec_mad: 8614, batterie_disponible: true, payback_sans_annees: 6.89, payback_avec_annees: 8.72 }
+    const dimensionnement = { tableau: [ligne], recommandation: { panneaux: 8, kwc: 4.4 },
+      falaise: { cible_kwh_mois: 300 }, meilleure_falaise: { panneaux: 8, kwc: 4.4, batterie_kwh: 4.6,
+        payback_annees: 7.66 } }
+    ventesApi.getConceptionLead.mockResolvedValue({ data: RANGEE })
+    ventesApi.apercuConception.mockResolvedValue({ data: { ...APERCU_SUR_LES_LIGNES,
+      blocs: { ...APERCU.blocs, dimensionnement } } })
+    const { container } = renderEdition()
+    await act(async () => { fireEvent.change(container.querySelector('#gen-hiver'), { target: { value: '1400' } }) })
+    await waitFor(() => expect(container.querySelector('[data-testid="etude-horaire-dimensionnement"]'))
+      .not.toBeNull(), { timeout: 5000 })
+    const tableau = container.querySelector('[data-testid="etude-horaire-dimensionnement"]').textContent
+    expect(tableau).toContain('Payback sans (prix du moteur)')
+    expect(tableau).toContain('6,9 ans')
+    expect(tableau).not.toContain('6.89')
+    expect(container.querySelector('[data-testid="etude-horaire-meilleure-falaise"]').textContent)
+      .toContain('payback 7,7 ans (batterie et prix du moteur)')
+    expect(figure(container, 'payback_ans')).toBe('4,2 ans')  // la carte : ce devis
+  }, 20000)
 
   // E7d (revue lot 4, M2) — un aperçu en ÉCHEC après une saisie est DIT : la phrase du
   // serveur (400 nommant un champ) ou « Aperçu indisponible — Réessayer » (5xx, réseau) ;

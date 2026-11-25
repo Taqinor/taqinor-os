@@ -8,6 +8,7 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import crmApi from '../../../../api/crmApi'
 import { toast } from '../../../../ui/confirm'
+import { formatNumber } from '../../../../lib/format'
 import {
   CHART_MONTHS, batteryCapaciteInconnue,
 } from '../../../../features/ventes/solar'
@@ -271,7 +272,9 @@ export function useApercuEtude(ctx) {
   // référence de la conception rangée) ; absent ⇒ « N/A », jamais recalculé.
   // E7d (M1) — le payback de l'APERÇU, calculé sur le TTC des lignes de l'écran ;
   // sans prix sur les lignes : « après enregistrement » ; jamais celui d'un autre devis.
-  const chiffre = (total, v) => (surApercu && Number(total) > 0 ? (v ?? null) : null)
+  // Au dixième, virgule française (règle unique de l'aperçu, `ApercuSimulation.ansFr`).
+  const chiffre = (total, v) => (surApercu && Number(total) > 0 && v != null
+    ? formatNumber(v, { decimals: 1 }) : null)
   const apercuPaybackSans = chiffre(totals?.totalSans, chiffres?.paybackSans)
   const apercuPaybackAvec = chiffre(totals?.totalAvec, chiffres?.paybackAvec)
   const paybackAbsent = (total) => (!(Number(total) > 0) ? 'après enregistrement'

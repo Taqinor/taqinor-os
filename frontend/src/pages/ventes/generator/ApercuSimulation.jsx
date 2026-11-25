@@ -19,6 +19,10 @@ import { facturesRecaleesAffichables } from '../../../features/ventes/etudeHorai
 import { moteur } from '../../../features/ventes/quote/valeur'
 import { SAISON_LABELS, fmtNum } from '../../../features/ventes/quote/ecranDefauts.js'
 import CarteMetrique, { GenCardHeader } from './CarteMetrique'
+
+//: Revue de l'écran (25/11) — UNE règle pour tout retour en années de l'aperçu (cartes,
+//: tableau, falaise) : au dixième, virgule française (celle des cellules C&I voisines).
+const ansFr = (v) => formatNumber(v, { decimals: 1 })
 import { APERCU_INDISPONIBLE } from './hooks/useConceptionEcran'
 
 export default function ApercuSimulation({
@@ -117,8 +121,8 @@ export default function ApercuSimulation({
                       <th className="py-1 pr-3 font-medium">Autoconso.</th>
                       <th className="py-1 pr-3 font-medium">Couverture</th>
                       <th className="py-1 pr-3 font-medium">Éco. sans (MAD/an)</th>
-                      <th className="py-1 pr-3 font-medium">Éco. avec (MAD/an)</th>
-                      <th className="py-1 pr-3 font-medium">Payback</th>
+                      <th className="py-1 pr-3 font-medium">Éco. avec (MAD/an, batterie du moteur)</th>
+                      <th className="py-1 pr-3 font-medium">Payback sans (prix du moteur)</th>
                       <th className="py-1 pr-3 font-medium">Résiduel après (kWh/mois)</th>
                       <th className="py-1 pr-3 font-medium">Remplissage batterie</th>
                       <th className="py-1" />
@@ -171,7 +175,7 @@ export default function ApercuSimulation({
                                 ? fmtNum(Math.round(ligne.economie_avec_mad))
                                 : <span className="text-muted-foreground">{ligne.raisonBatterie}</span>}
                             </td>
-                            <td className="py-1.5 pr-3">{ligne.payback_sans_annees != null ? `${ligne.payback_sans_annees} ans` : 'N/A'}</td>
+                            <td className="py-1.5 pr-3">{ligne.payback_sans_annees != null ? `${ansFr(ligne.payback_sans_annees)} ans` : 'N/A'}</td>
                             <td className="py-1.5 pr-3" data-testid="etude-horaire-residuel">
                               {residuelApres != null
                                 ? <>{fmtNum(Math.round(residuelApres))} kWh{trancheApres && <> — {trancheApres}</>}</>
@@ -224,7 +228,7 @@ export default function ApercuSimulation({
                                           <td className="py-1 pr-3">{p.coutTtc != null ? `${fmtNum(Math.round(p.coutTtc))} MAD` : '—'}</td>
                                           <td className="py-1 pr-3">{p.economieMad != null ? fmtNum(Math.round(p.economieMad)) : '—'}</td>
                                           <td className="py-1 pr-3">{p.economieMarginaleMad != null ? fmtNum(Math.round(p.economieMarginaleMad)) : '—'}</td>
-                                          <td className="py-1 pr-3">{p.paybackAnnees != null ? `${p.paybackAnnees} ans` : '—'}</td>
+                                          <td className="py-1 pr-3">{p.paybackAnnees != null ? `${ansFr(p.paybackAnnees)} ans` : '—'}</td>
                                           <td className="py-1 pr-3">
                                             {p.residuelKwhMois != null
                                               ? <>{fmtNum(Math.round(p.residuelKwhMois))}{p.trancheApres && <> — {p.trancheApres}</>}</>
@@ -299,7 +303,7 @@ export default function ApercuSimulation({
                         {etudeHoraireFalaise.meilleure.trancheApres && <> ({etudeHoraireFalaise.meilleure.trancheApres})</>}</>
                     )}
                     {etudeHoraireFalaise.meilleure.paybackAnnees != null && (
-                      <> — payback {etudeHoraireFalaise.meilleure.paybackAnnees} ans</>
+                      <> — payback {ansFr(etudeHoraireFalaise.meilleure.paybackAnnees)} ans (batterie et prix du moteur)</>
                     )}.
                   </div>
                 )}
