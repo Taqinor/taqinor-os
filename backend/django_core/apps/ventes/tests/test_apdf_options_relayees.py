@@ -96,3 +96,69 @@ class OptionsRelayeesTests(TestCase):
                                     'la valeur testée doit différer du défaut')
                 options = self._options_recues(param, valeur)
                 self.assertEqual(options[cle], attendu)
+
+
+class DevisFinalSansVisiteTests(TestCase):
+    """T4-X6-004 — « Devis final » (visite faite) refusé, sur le serveur, pour
+    un site qui demande une visite avant le devis (moyenne tension, CIQ404) tant
+    qu'aucune visite n'est enregistrée — sur les trois chemins qui la posent."""
+
+    def setUp(self):
+        from apps.crm.models import Lead
+        self.company = make_company(slug='t4x6-004', nom='T4X6')
+        self.user = make_user(self.company)
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Usine MT', type_installation='industriel',
+            tension_raccordement='mt')
+        self.devis = make_devis(
+            self.company, self.user, make_client(self.company), [
+                ('Panneau mono 450W', '12', '1500'),
+                ('Onduleur réseau', '1', '12000'),
+            ], reference='DEV-T4X6-004')
+        self.devis.lead = self.lead
+        self.devis.mode_installation = 'industriel'
+        self.devis.save(update_fields=['lead', 'mode_installation'])
+        self.api = APIClient()
+        self.api.force_authenticate(self.user)
+        self.url = '/api/django/ventes/devis/%s/' % self.devis.pk
+
+    def _refus(self, resp):
+        self.assertEqual(resp.status_code, 409, resp.content[:300])
+        self.assertEqual(resp.data['field'], 'devis_final')
+        self.assertIn('visite technique', resp.data['detail'])
+        self.assertIn('site en moyenne tension', resp.data['detail'])
+        self.assertIn('Visite effectuée', resp.data['detail'])
+
+    def test_generer_pdf_refuse(self):
+        with mock.patch('apps.ventes.tasks.task_generate_devis_pdf.delay') as tache:
+            tache.return_value.id = 'x'
+            self._refus(self.api.post(self.url + 'generer-pdf/',
+                                      {'pdf_mode': 'full', 'devis_final': True},
+                                      format='json'))
+        tache.assert_not_called()
+
+    def test_proposal_refuse(self):
+        self._refus(self.api.get(self.url + 'proposal/', {'devis_final': '1'}))
+
+    def test_case_enregistree_refusee(self):
+        self._refus(self.api.patch(self.url + 'etude-params/',
+                                   {'devis_final': True}, format='json'))
+        self.devis.refresh_from_db()
+        self.assertNotEqual((self.devis.etude_params or {}).get('devis_final'), True)
+
+    def test_visite_effectuee_la_case_passe(self):
+        self.lead.visite_effectuee = True
+        self.lead.save(update_fields=['visite_effectuee'])
+        with mock.patch('apps.ventes.tasks.task_generate_devis_pdf.delay') as tache:
+            tache.return_value.id = 'x'
+            resp = self.api.post(self.url + 'generer-pdf/',
+                                 {'pdf_mode': 'full', 'devis_final': True},
+                                 format='json')
+        self.assertEqual(resp.status_code, 202, resp.content[:300])
+
+    def test_sans_case_rien_ne_change(self):
+        with mock.patch('apps.ventes.tasks.task_generate_devis_pdf.delay') as tache:
+            tache.return_value.id = 'x'
+            resp = self.api.post(self.url + 'generer-pdf/', {'pdf_mode': 'full'},
+                                 format='json')
+        self.assertEqual(resp.status_code, 202, resp.content[:300])

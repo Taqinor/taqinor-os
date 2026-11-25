@@ -41,6 +41,40 @@ MSG_PROPOSITION_INDISPONIBLE = (
     'Génération de la proposition momentanément indisponible.')
 
 
+#: T4-X6-004 — « Devis final » refusé tant que la visite exigée n'est pas faite.
+MSG_DEVIS_FINAL_SANS_VISITE = (
+    "Devis final impossible : ce site demande une visite technique avant le "
+    "devis final (%s). Enregistrez d'abord la visite (case « Visite effectuée » "
+    "de la fiche du lead, ou visite validée), puis cochez « Devis final ».")
+
+
+def refus_devis_final(devis):
+    """T4-X6-004 — le motif (409) qui refuse « Devis final » (visite faite),
+    sinon ``None``. Refusé quand le lead du devis exige une visite AVANT le
+    devis (commercial / industriel : moyenne tension ou données du site
+    inconnues — ``crm.services.visite_pro_avant_devis``, le drapeau du devis
+    automatique, CIQ404) et qu'aucune visite n'est enregistrée : ni la case
+    « Visite effectuée » du lead, ni une visite validée (``visites.selectors.
+    visite_feu_vert``). Lecture seule ; le rendu d'une case légitime ne change
+    pas."""
+    lead = devis.lead if getattr(devis, 'lead_id', None) else None
+    if lead is None:
+        return None
+    from apps.crm.services import visite_pro_avant_devis
+    bloc = visite_pro_avant_devis(lead)
+    if not bloc or getattr(lead, 'visite_effectuee', False):
+        return None
+    from apps.visites.selectors import visite_feu_vert
+    if visite_feu_vert(devis.company_id, lead.id) is not None:
+        return None
+    return MSG_DEVIS_FINAL_SANS_VISITE % ', '.join(bloc.get('motifs') or [])
+
+
+def _reponse_refus_devis_final(motif):
+    return Response({'detail': motif, 'field': 'devis_final'},
+                    status=status.HTTP_409_CONFLICT)
+
+
 def _signaler_pdf_devis_genere(devis):
     """ADEV22 — émet ``document_pdf_generated(kind='devis')`` (journal
     d'audit) ; jamais bloquant pour le rendu."""
@@ -66,7 +100,7 @@ def _memes_options(devis, options):
 class DevisPdfActionsMixin:
     """SPL139 — actions de rendu PDF de ``DevisViewSet`` (mixin, aucune base)."""
 
-    @extend_schema(request=D.PdfOptionsRequest, responses={202: D.PdfTaskResponse})
+    @extend_schema(request=D.PdfOptionsRequest, responses={202: D.PdfTaskResponse, 409: D.ErreurDetail})
     @action(
         detail=True,
         methods=['post'],
@@ -83,6 +117,10 @@ class DevisPdfActionsMixin:
         corps_valide(request, D.PdfOptionsRequest)
         # Format options (simulator parity) — whitelisted server-side.
         pdf_options = clean_pdf_options(request.data)
+        # T4-X6-004 — pas de « Devis final » sans la visite que le site exige.
+        motif = refus_devis_final(devis) if pdf_options.get('devis_final') else None
+        if motif:
+            return _reponse_refus_devis_final(motif)
         # R1-02/R1-03 — la demande est consignée AVANT la mise en file (une
         # tâche exécutée sur-le-champ la clôt donc toujours APRÈS) ; elle
         # devient la dernière demande, ce qui efface aussi l'échec consigné
@@ -174,6 +212,9 @@ class DevisPdfActionsMixin:
                 raw['show_monthly'] = request.query_params['show_monthly'] not in ('0', 'false')
             if 'devis_final' in request.query_params:
                 raw['devis_final'] = request.query_params['devis_final'] in ('1', 'true')
+            motif = refus_devis_final(devis) if raw.get('devis_final') else None
+            if motif:  # T4-X6-004
+                return _reponse_refus_devis_final(motif)
             # Page « Étude » (4e page premium) — dégrade proprement à 3 pages
             # si le devis n'a pas de données d'étude (géré par le moteur).
             if 'include_etude' in request.query_params:
