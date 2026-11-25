@@ -49,6 +49,7 @@ fichier). Trois responsabilités, toutes du HARNAIS (aucun code produit) :
 """
 from __future__ import annotations
 
+import datetime
 import json
 import os
 import atexit
@@ -229,6 +230,28 @@ _CONNEXION = re.compile(r'^/api/(django|v1)/token/')
 _MODE_BLOQUANT = 'enforce'
 _MODE_SUR = 'monitor'
 _FOURNISSEURS_SSO = re.compile(r'^/api/django/identity/providers/')
+
+
+# T4-X4-013 — la date de validité d'un devis ne peut pas être passée (400 nommant le champ) :
+# règle RELATIVE au jour, que ``format: date`` ne dit pas. Création, mise à jour, PATCH et
+# création atomique du devis (pas ses actions : ``accepter``… n'ont pas ce champ).
+_DEVIS_ECRITURE = re.compile(r'^/api/django/ventes/devis/(\{[^/]+\}/|atomic/)?$')
+_DATE_ISO = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+
+
+def _validite_devis_a_venir(case):
+    """Une date de validité bien formée mais passée devient aujourd'hui (un cas positif reste
+    positif) ; un mauvais type ou une chaîne mal formée atteint le serveur tel quel."""
+    if case.operation.method.upper() not in _METHODES_ECRITURE:
+        return
+    if not _DEVIS_ECRITURE.match(case.operation.path):
+        return
+    corps = case.body
+    valeur = corps.get('date_validite') if isinstance(corps, dict) else None
+    if isinstance(valeur, str) and _DATE_ISO.match(valeur):
+        aujourdhui = datetime.date.today().isoformat()
+        if valeur < aujourdhui:
+            corps['date_validite'] = aujourdhui
 
 
 def _proteger_soi(case):
@@ -1128,6 +1151,7 @@ def before_call(context, case, kwargs):
     _proteger_connexion(case)
     _neutraliser_politique_reseau(case)
     _neutraliser_sso_obligatoire(case)
+    _validite_devis_a_venir(case)
     _ids_fk_connus(case)
     _parts_nuls_absents(case)
     _fichiers_valides(case)
