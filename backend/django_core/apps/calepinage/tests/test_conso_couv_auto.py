@@ -311,14 +311,14 @@ class CalepinageDeLeadTest(unittest.TestCase):
         energie = lu['energie']
         self.assertAlmostEqual(lu['taux_couverture'],
                                energie['autoconsomme_kwh'] / energie['consommation_kwh'], places=3)
-        self.assertEqual(lu['taux_source'], 'pose')
+        self.assertEqual(lu['taux_source'], 'autre_installation')
         self.assertIn('(version 3, 7 panneaux, avec batterie) décrit une autre installation', lu['definition'])
 
     def test_t4_x7_002_conception_d_une_autre_puissance_les_taux_de_la_pose(self):
         lu = self._bloc_de_lead({'taux_autoconsommation': 0.42, 'taux_couverture': 0.61, 'version': 3,
                                  'panneaux': 7, 'kwc': 3.85, 'batterie': False}, kwc_pose=3.55)
         self.assertNotEqual(lu['taux_couverture'], 0.61)
-        self.assertEqual(lu['taux_source'], 'pose')
+        self.assertEqual(lu['taux_source'], 'autre_installation')
         self.assertIn('7 panneaux, 3,85 kWc)', lu['definition'])
 
     def test_t4_x7_002_meme_installation_les_taux_de_la_conception(self):
@@ -327,6 +327,19 @@ class CalepinageDeLeadTest(unittest.TestCase):
                                  'panneaux': 7, 'kwc': 3.55, 'batterie': False}, kwc_pose=3.55)
         self.assertEqual((lu['taux_couverture'], lu['taux_source']), (0.61, 'conception'))
         self.assertIn('conception du lead (version 3, 7 panneaux)', lu['definition'])
+
+    def test_t4_x7_002_aucun_taux_de_conception_pose_et_jamais_autre_installation(self):
+        """Revue du 25/11 — sans taux de conception (pas de lead, conception incomplète au moment de
+        la simulation, agricole, taux absent : ``CLE_TAUX_CONCEPTION`` vaut ``None``) le bloc garde
+        son bilan propre, ``taux_source: 'pose'`` — JAMAIS le signal d'un écart réel."""
+        from apps.calepinage.services.etapes import autoconsommation as etape
+        from apps.calepinage.tests.test_calx190_autoconsommation import contexte_de_test, serie_de_test
+
+        for contexte in (contexte_de_test(), dict(contexte_de_test(), **{etape.CLE_TAUX_CONCEPTION: None})):
+            contexte['plans_poses'] = [{'kwc': 3.55}]
+            _serie, bloc = etape.bloc_autoconsommation(serie_de_test(), contexte)
+            self.assertEqual(bloc['taux_source'], 'pose')
+            self.assertEqual(bloc['definition'], etape.DEFINITION_TAUX)
 
 
 if __name__ == '__main__':  # pragma: no cover

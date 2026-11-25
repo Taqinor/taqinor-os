@@ -606,8 +606,8 @@ describe('étape Panneaux — sur la carte', () => {
     expect(puce).not.toHaveTextContent('Production ÷ consommation')
   })
 
-  it('T4-X7-002 — la simulation dit que la conception décrit une autre installation : aucune part de la conception', async () => {
-    servir({ resultat: { simule: false, autoconsommation: { taux_source: 'pose', taux_couverture: 0.474 } } })
+  it('T4-X7-002 — écart réel trouvé par la simulation (`autre_installation`) : aucune part de la conception', async () => {
+    servir({ resultat: { simule: false, autoconsommation: { taux_source: 'autre_installation', taux_couverture: 0.474 } } })
     monterConstructeur()
     rendre()
     await waitFor(() => expect(calepinageApi.calepinages.resultat).toHaveBeenCalled())
@@ -616,6 +616,25 @@ describe('étape Panneaux — sur la carte', () => {
     expect(puce).not.toHaveTextContent('82 %')
     expect(document.body).not.toHaveTextContent('82 % de la consommation')
   })
+
+  // Revue du 25/11 — `'pose'` = aucun taux de conception au moment de la simulation (conception pas encore complète,
+  // pas de lead…) ; `'conception'` = ses taux ; aucune clé = résultat rangé d'avant : la part servie reste dite.
+  for (const [cas, autoconsommation] of [
+    ['aucun taux de conception (`pose`)', { taux_source: 'pose', taux_couverture: 0.474 }],
+    ['taux de la conception (`conception`)', { taux_source: 'conception', taux_couverture: 0.82 }],
+    ['résultat rangé sans la clé', { taux_couverture: 0.82 }],
+  ]) {
+    it(`T4-X7-002 — ${cas} : la part servie de la conception reste dite`, async () => {
+      servir({ resultat: { simule: false, autoconsommation } })
+      monterConstructeur()
+      rendre()
+      await waitFor(() => expect(calepinageApi.calepinages.resultat).toHaveBeenCalled())
+      await new Promise((r) => setTimeout(r, 50))
+      const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
+      expect(puce).toHaveTextContent('De la consommation')
+      expect(puce).toHaveTextContent('≈ 82 %')
+    })
+  }
 
   it('puce : les quatre chiffres lus ; un chiffre absent est omis', () => {
     monterConstructeur()

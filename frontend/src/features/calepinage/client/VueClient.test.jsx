@@ -451,16 +451,26 @@ describe('ACAL2023 — la vue client lit la conception courante servie', () => {
     expect(attente.find((t) => t.cle === 'kwh')).toBeUndefined()
   })
 
-  it('T4-X7-002 — la simulation dit que la conception décrit une autre installation (batterie) : aucune part « de votre consommation »', async () => {
+  it('T4-X7-002 — écart réel trouvé par la simulation (`autre_installation`, batterie) : aucune part « de votre consommation »', async () => {
     const { tuilesClient } = await import('./vueClient.helpers')
     const document = { zones: [ZONE] }
-    const autrePose = { ...RESULTAT, autoconsommation: { taux_couverture: 0.474, taux_source: 'pose' } }
+    const autrePose = { ...RESULTAT, autoconsommation: { taux_couverture: 0.474, taux_source: 'autre_installation' } }
     const tuiles = tuilesClient(document, autrePose, CHIFFRAGE)
     expect(tuiles.map((t) => t.cle)).toEqual(['panneaux', 'kwh'])
     expect(tuiles.map((t) => t.valeur).join(' ')).not.toMatch(/82|47/)
     // la conception décrit CETTE pose : sa part reste dite
     const memePose = { ...RESULTAT, autoconsommation: { taux_couverture: 0.82, taux_source: 'conception' } }
     expect(tuilesClient(document, memePose, CHIFFRAGE).find((t) => t.cle === 'couverture').valeur).toBe('82 %')
+  })
+
+  it('T4-X7-002 — aucun taux de conception à la simulation (`pose`), ou résultat rangé sans clé : la part servie reste dite', async () => {
+    const { tuilesClient } = await import('./vueClient.helpers')
+    const document = { zones: [ZONE] }
+    // ce que le serveur sert quand la conception n'était pas complète au moment de la simulation : le bilan propre, `pose`
+    const sansTaux = { ...RESULTAT, autoconsommation: { taux_couverture: 0.35, taux_source: 'pose' } }
+    expect(tuilesClient(document, sansTaux, CHIFFRAGE).find((t) => t.cle === 'couverture').valeur).toBe('82 %')
+    const avant = { ...RESULTAT, autoconsommation: { taux_couverture: 0.82 } }
+    expect(tuilesClient(document, avant, CHIFFRAGE).find((t) => t.cle === 'couverture').valeur).toBe('82 %')
   })
 
   it('B1 — conception d’une AUTRE taille que la pose : aucun nombre de production ni de couverture, une phrase vraie ; même taille : les nombres', async () => {

@@ -93,9 +93,10 @@ function useServi(calepinageId, enregistreLe, servi = null, attendre = false) {
     servis: modulesServis(entree),
     publiee: productionPubliee(resultat),
     aRefaire: simulationARefaire(resultat), // T4-X2-002
-    // T4-X7-002 — la simulation de la pose dit que la conception décrit une AUTRE installation (`taux_source: 'pose'` :
-    // autre puissance, ou batterie d'un seul côté) : sa part de la consommation ne se lit plus à côté de cette pose.
-    partDeLaConception: resultat?.autoconsommation?.taux_source !== 'pose',
+    // T4-X7-002 — la simulation de la pose a trouvé un ÉCART RÉEL avec la conception (`taux_source: 'autre_installation'` :
+    // autre puissance, ou batterie d'un seul côté) : sa part de la consommation ne se lit plus à côté de cette pose. Seul ce
+    // signal la tait (`'pose'` = aucun taux de conception, résultat rangé sans clé : comme avant).
+    partDeLaConception: resultat?.autoconsommation?.taux_source !== 'autre_installation',
   }
 }
 

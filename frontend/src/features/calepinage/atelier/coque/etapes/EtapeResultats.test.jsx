@@ -988,11 +988,11 @@ describe('Étape Résultats — la conception, et l’écart avec le devis envoy
     expect(tuile().querySelector('svg')).toBeNull()
   })
 
-  /* T4-X7-002 — conception « 7 panneaux + batterie » (76 %), pose de 5 panneaux sans batterie : le serveur publie les taux
-     de la POSE (`taux_source: 'pose'`, ceux de ses énergies) ; la jauge les montre, aucune phrase d'une autre taille. */
-  it('T4-X7-002 — taux de la pose publiés : la jauge montre CE pourcentage, jamais la phrase de la conception', async () => {
+  /* T4-X7-002 — conception « 7 panneaux + batterie » (76 %), pose de 5 panneaux sans batterie : le serveur trouve l'écart
+     et publie les taux de la POSE (`taux_source: 'autre_installation'`) ; la jauge les montre, aucune phrase d'une autre taille. */
+  it('T4-X7-002 — écart réel (`autre_installation`) : la jauge montre CE pourcentage, jamais la phrase de la conception', async () => {
     const d = { ...COMPLET(), conception: sansTaille() }
-    d.autoconsommation = { ...d.autoconsommation, taux_source: 'pose', taux_couverture: 0.474 }
+    d.autoconsommation = { ...d.autoconsommation, taux_source: 'autre_installation', taux_couverture: 0.474 }
     calepinageApi.calepinages.designContext.mockResolvedValue(contexteDeTaille(2.13, 3))
     servir(d)
     rendre()
@@ -1000,6 +1000,19 @@ describe('Étape Résultats — la conception, et l’écart avec le devis envoy
     const tuile = () => document.querySelector('[data-tuile="couverture"]')
     await waitFor(() => expect(tuile()).toHaveTextContent('47 %'))
     expect(tuile()).not.toHaveTextContent('calculée pour la conception du lead')
+  })
+
+  /* Revue du 25/11 — `'pose'` sans écart = aucun taux de conception au moment de la simulation : l'écran fait comme avant
+     (deux tailles connues et différentes ⇒ la phrase des deux tailles), jamais comme pour un écart réel. */
+  it('T4-X7-002 — aucun taux de conception (`pose`) : comme avant, la phrase des deux tailles quand elles diffèrent', async () => {
+    const d = { ...COMPLET(), conception: sansTaille() }
+    d.autoconsommation = { ...d.autoconsommation, taux_source: 'pose' }
+    calepinageApi.calepinages.designContext.mockResolvedValue(contexteDeTaille(2.13, 3))
+    servir(d)
+    rendre()
+    const tuile = () => document.querySelector('[data-tuile="couverture"]')
+    await waitFor(() => expect(tuile()).toHaveTextContent(
+      `Part de la consommation calculée pour la conception du lead : ${kwc(2.13)} — votre pose en compte ${kwc(d.pose.kwc)}.`))
   })
 
   it('T4-X9-008 — même taille : la jauge garde son pourcentage', async () => {

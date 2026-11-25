@@ -170,9 +170,9 @@ function tailleDeLaConception(contexte, bloc = null) {
     (`services/etapes/autoconsommation.py::_publier`) : à une autre taille que la pose, la phrase des deux tailles (prédicat
     et formateur uniques de l'atelier) remplace le chiffre ; `null` sinon (même taille, ou taille inconnue). */
 function phraseCouvertureConception(data, contexte) {
-  // T4-X7-002 — le serveur a publié les taux de la POSE simulée (la conception décrit une autre installation) : le chiffre
-  // est celui de cette pose, de ses énergies ; aucune phrase ne le remplace.
-  if (data?.autoconsommation?.taux_source === 'pose') return null
+  // T4-X7-002 — le serveur a trouvé un écart réel et publié les taux de la POSE simulée (`autre_installation`) : le chiffre
+  // est celui de cette pose, de ses énergies ; aucune phrase ne le remplace. `'pose'` (aucun taux de conception) : comme avant.
+  if (data?.autoconsommation?.taux_source === 'autre_installation') return null
   const taille = data?.conception
     ? tailleDeLaConception(contexte?.etat === 'ok' ? contexte.donnees : null, data.conception) : null
   return taille && tailleDifferente(taille.kwc, data?.pose?.kwc)
