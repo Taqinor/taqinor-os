@@ -1,0 +1,482 @@
+[
+ {
+  "id": "CAL-AV-001",
+  "resultat": "joue",
+  "note": "DXF exporté de l'atelier déposé › Analyser : unité m, calques COTES / MODULES / TOITURE ; « Proposer ce contour » sans calque choisi ne fait rien de visible (re-POST de l'analyse) ; PNG « Poser comme fond » : « Image posée… calez-la avec l'outil deux points » et enregistré aussitôt (fond-plan) ; contrôles Rotation / Sommets A-B jamais rendus (aucun plan importé rattaché côté serveur)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-002",
+  "resultat": "joue",
+  "note": "% 40,4 → 22,0° « convertie depuis un pourcentage » ; cotes 4 / 1,6 m → 21,8° · 40,0 % ; 22° « Enregistrer la pente » → « Pente enregistrée sur le pan Zone 1 » (POST layout/section). « Utiliser » introuvable : n'existe qu'avec une mesure de visite (aucune visite)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-005",
+  "resultat": "joue",
+  "note": "« Récupérer depuis PVGIS » : 48 points (max 1,5°) ; fichier CSV 8 points importé après choix de la convention (Importer grisé avant, sans dire pourquoi) ; point 200°/7° ajouté, un point retiré ; « Enregistrer le profil » → « la simulation affichée est périmée : relancez-la ». Profil laissé enregistré",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-006",
+  "resultat": "joue",
+  "note": "Pan Zone 1 → Zone 2 : diagramme et texte suivent ; « hauteur de toit supposée à 6 m (2 étages × 3 m) » dite",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-007",
+  "resultat": "joue",
+  "note": "Une seule rangée posée : « Coupe non calculée — Moins de deux rangées » (état à deux rangées non produit)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-008",
+  "resultat": "bloque",
+  "note": "« La détection du toit n'est pas configurée sur ce serveur. Détection automatique non activée : tracez le toit à la main. »",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-010",
+  "resultat": "bloque",
+  "note": "« Aucune visite technique n'a été faite pour ce lead : il n'y a ni mesure ni photo de terrain à reprendre. »",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-012",
+  "resultat": "joue",
+  "note": "Sans devis lié : « Aucun devis lié… » ; après Générer le devis : champs manquants par fiche (NOCT, Uc, Uv, dégradation… ; onduleur Huawei du devis) avec « Ouvrir la fiche au catalogue »",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-013",
+  "resultat": "joue",
+  "note": "« Teinter par MPPT », « Relancer l'affectation automatique » : avertissements relus (ratio DC/AC 0,99) ; sélection au glisser non jouée",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-017",
+  "resultat": "joue",
+  "note": "Aucun système au catalogue (dit) ; « Télécharger le classeur » → fixation-calepinage-1973.xlsx ; « Saisir un système » ouvre /calepinage/reglages/fixation (quitte l'atelier, brouillon gardé)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-018",
+  "resultat": "joue",
+  "note": "Onduleur puis Coffret AC armés et posés sur le plan, enregistrés : liste toujours « Aucun équipement électrique posé » (T4-X5-008)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-020",
+  "resultat": "joue",
+  "note": "Puissance souscrite 6, phases 1, tension 230 enregistrées ; verdict passe à « puissance APPARENTE non calculable : la fiche onduleur ne publie pas… » ; injection 61 % au-dessus du plafond 20 % dite",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-022",
+  "resultat": "joue",
+  "note": "Températures −2 / 45 °C, liaisons DC 15 m / AC 10 m enregistrées (entree-electrique) ; « Chutes de tension » reste « 1 point » (aucun cheminement tracé)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-025",
+  "resultat": "joue",
+  "note": "Canadian 710 W + Deye 5 kW : 6 modules → « Conforme — Voc à froid 309 V » ; 20 modules → bloquant 1 031 V > 600 V",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-026",
+  "resultat": "joue",
+  "note": "P50, productible, pertes, « DE LA CONSOMMATION 40 % », manques listés, « Simulation périmée » après changement ; aucun bouton « Ouvrir ce réglage » / « Ouvrir les réglages de simulation » rendu dans les états vus",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-027",
+  "resultat": "joue",
+  "note": "« Recalculer » relance une simulation forcée (job 104) ; « Réglages utilisés » déplie le tableau des valeurs et sources",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-028",
+  "resultat": "joue",
+  "note": "Postes (IAM, salissure 3 %, LID…) avec source et référence lus, 41 champs, bouton « Enregistrer les postes de pertes » ; aucune valeur modifiée ni enregistrée",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-029",
+  "resultat": "joue",
+  "note": "Agrégat mensuel CSV téléchargé ; dépôt d'une série météo sans fournisseur refusé en nommant « fournisseur » (400 avec message)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-030",
+  "resultat": "joue",
+  "note": "Autoconsommation / AC / 1 pack › Enregistrer et relancer : « Déclaration enregistrée » puis « Aucune batterie n'est déclarée » (T4-X5-013) ; case hors réseau non cochée",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-031",
+  "resultat": "joue",
+  "note": "Variante « X5 variante A » créée (tableau 2 colonnes, Écart 0) puis « Retenir » (T4-X5-014)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-032",
+  "resultat": "joue",
+  "note": "Sans devis lié : « Aucun devis lié… » ; avec DEV-202611-0147 : TRI 14,40 %, retour 7 ans, flux 25 ans, sources « issue du devis » (production 6 829 kWh)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-033",
+  "resultat": "joue",
+  "note": "« Lancer » sur toit en pente → 409 « La pente de ce pan est imposée par le toit : rien à balayer » affiché (pan libre non produit)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-034",
+  "resultat": "joue",
+  "note": "Commercial responsable : « Réservé aux porteurs du droit calepinage_approuver ». Administrateur : 12 valeurs › Comparer → simulé 59,66 kWh en janvier (T4-X5-012)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Administrateur (anon_admin2) — droit absent du Commercial responsable"
+ },
+ {
+  "id": "CAL-AV-035",
+  "resultat": "joue",
+  "note": "12 mesures 2026 saisies › « Enregistrer et comparer » → « Écart annuel : −0,2 % » et tableau mois par mois",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-036",
+  "resultat": "bloque",
+  "note": "« Aucun gabarit de dossier réglementaire n'a été déposé pour cette société : aucun dossier n'est proposé. »",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-037",
+  "resultat": "joue",
+  "note": "Vue Expert : liste des documents (rapport d'étude, ombrage refusé faute d'ombre, export JSON, plans, KML, conception) ; voir CAL-DOC-006 à 011",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-038",
+  "resultat": "joue",
+  "note": "Note ajoutée « Note X5 : essai du journal » ; journal : modules 8→6→7, devis lié, variante retenue",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-039",
+  "resultat": "joue",
+  "note": "Restaurer › « Confirmer la restauration ? » › Annuler (rien) ; puis Restaurer › Confirmer deux fois : versions « Avant restauration » + « Restauration de #534 » créées, toit rendu",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-040",
+  "resultat": "joue",
+  "note": "Gauche « Version 528 » / droite état courant : modules 8 → 7, kWc 5,68 → 4,97, empreinte",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-041",
+  "resultat": "joue",
+  "note": "Posé 7 sans date → « La date du relevé est obligatoire » ; avec 2026-11-25 → écart 0, « Pose du pan Zone 1 enregistrée »",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-AV-042",
+  "resultat": "joue",
+  "note": "Commercial responsable : lecture seule « Vous n'avez pas le code calepinage_approuver ». Administrateur (auteur ≠ relecteur) : « Approuver » → « Approuvée par anon_admin2 le 25/11/2026 06:44 »",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Administrateur (anon_admin2) — droit absent du Commercial responsable"
+ },
+ {
+  "id": "CAL-AV-043",
+  "resultat": "joue",
+  "note": "Export JSON (108 ko) ; import du même fichier refusé 409 « Ce lead a déjà un calepinage ouvert (#1973) » : aperçu jamais atteint (T4-X5-016)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-ATL-012",
+  "resultat": "non-atteint",
+  "note": "Poignée réservée au téléphone : combinaison X5 = bureau 1440 × 900",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-ATL-015",
+  "resultat": "joue",
+  "note": "Plein écran → document en plein écran, bouton devient « Quitter le plein écran », retour OK ; commandes restées au milieu (T4-X5-017)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-ATL-016",
+  "resultat": "joue",
+  "note": "Touche « ? » et bouton « Raccourcis clavier (?) » du tiroir Avancé ouvrent l'aide (sections tracé, carte…) ; Échap la ferme",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-ATL-018",
+  "resultat": "introuvable",
+  "note": "BandeauConceptionRapide exige une visite technique validée ; le lead n'en a aucune (et la créer sort du périmètre)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-RES-003",
+  "resultat": "introuvable",
+  "note": "L'avis n'apparaît que si des panneaux restent hors chaîne ; le raccordement automatique a toujours raccordé toute la pose (8, 6, 7 panneaux) ; sélection manuelle non jouée",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DOC-006",
+  "resultat": "joue",
+  "note": "« Exporter la conception (JSON) » → conception-calepinage-1973.json (6 431 octets, roof_layout complet)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DOC-007",
+  "resultat": "joue",
+  "note": "Import de ce fichier : la conception est vidée, deux fois (T4-X5-009, S1) ; aucune confirmation affichée",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DOC-008",
+  "resultat": "joue",
+  "note": "« Joindre la carte de chaleur » → « Aucune ombre saisie : rien à teinter — saisissez une ombre ou un obstacle avec sa hauteur » ; liste / « Périmée » / « Voir » non produits (aucune image jointe)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DOC-010",
+  "resultat": "joue",
+  "note": "KML téléchargé (Placemark Zone 1, coordonnées du contour)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DOC-011",
+  "resultat": "joue",
+  "note": "Guidé : Plan de pose 2 p., Schéma électrique 1 p., Note de calcul 3 p., Rapport d'étude 23 p. (19 s), DXF ; Expert : Présentation compacte 2 p. (T4-X5-015) ; les autres formats non téléchargés",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DOC-012",
+  "resultat": "joue",
+  "note": "« Exporter 2× » → img-1973-1832x1030.png",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DOC-013",
+  "resultat": "joue",
+  "note": "« Exporter la 3D (glTF) » → calepinage-1973.glb ; « Vidéo 10 s » → 1973-orbite.mp4 (« Vidéo enregistrée »)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DEV-005",
+  "resultat": "joue",
+  "note": "Variante créée non retenue : bouton grisé + « Choisissez d'abord une variante retenue » ; hors condition (retenue après rechargement) l'avis disparaît",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DEV-006",
+  "resultat": "joue",
+  "note": "Verdict bloquant (terre) : cadre rouge avec le contrôle, la norme et « Dérogation réservée aux approbateurs » (T4-X5-007)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DEV-007",
+  "resultat": "joue",
+  "note": "Administrateur : « Motif de la dérogation » + « Passer outre et resynchroniser » ; motif saisi → refus suivant (onduleur Huawei incompatible, T4-X5-010). Commercial responsable : pas de bouton, « Dérogation réservée aux approbateurs »",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Administrateur (anon_admin2) — droit absent du Commercial responsable"
+ },
+ {
+  "id": "CAL-DEV-009",
+  "resultat": "non-atteint",
+  "note": "« Générer le devis » a créé DEV-202611-0147 sans demander de confirmation de taille (6 panneaux contre une conception du lead à 3) ; la réponse à l'écran n'a pas été vue (navigateur fermé pendant la requête). « Renseigner la facture du lead » : le lead a sa facture",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "sombre",
+  "role": "Commercial responsable (anon_resp)"
+ }
+]
