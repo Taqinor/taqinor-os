@@ -1865,6 +1865,47 @@ class ServirConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
     """ADEV137 — ``selectors_conception`` (bornés société, lecture seule) et
     les routes ``GET conception/<lead_id>/`` et ``POST conception/apercu/``."""
 
+    def test_acal2020_apercu_recoit_la_consommation_imposee_de_l_ecran(self):
+        """Reste d'ACAL2020 (note de l'orchestrateur) — l'aperçu de l'écran devis reçoit LA
+        consommation imposée du moteur (``imposes.consommation`` : douze factures saisies) :
+        la conception servie est calculée avec elle et le DIT ; rien n'est écrit ; une forme
+        hors bornes ⇒ 400 nommant le champ (mutant « clé inconnue » : 400 ``consommation``)."""
+        from apps.crm.models import Lead
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        api = self._api(self._utilisateur(company))
+        fiche, versions = _json(Lead.objects.filter(pk=lead.pk).values()[0]), ConceptionLead.objects.count()
+        temoin = api.post(URL_APERCU, {'lead': lead.pk}, format='json')
+        self.assertEqual(temoin.status_code, 200, temoin.content[:300])
+        mois = [700.0, 650.0, 600.0, 560.0, 620.0, 800.0, 950.0, 980.0, 760.0, 600.0, 640.0, 740.0]
+        corps = {'lead': lead.pk, 'imposes': {'consommation': {'kwh_mensuels': mois, 'source': 'factures'}}}
+        reponse = api.post(URL_APERCU, corps, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        lue = reponse.json()
+        self.assertEqual(lue['entrees_utilisees']['conso_mensuelle_kwh'], {'valeur': 716.7, 'source': 'saisie'})
+        dites = [s for s in lue['suppositions'] if s['code'] == 'consommation_imposee']
+        self.assertEqual(len(dites), 1, lue['suppositions'])
+        self.assertIn('factures saisies', dites[0]['message'])
+        self.assertIn('ramenés à leur moyenne mensuelle', dites[0]['message'])
+        option = lue['option_retenue']
+        avant = temoin.json()
+        self.assertNotEqual(lue['valeurs'][option]['consommation_annuelle']['valeur'],
+                            avant['valeurs'][avant['option_retenue']]['consommation_annuelle']['valeur'])
+        for faute, champ in (({'kwh_mensuels': mois[:11], 'source': 'factures'}, 'kwh_mensuels'),
+                             ({'kwh_annuel': 9000, 'kwh_mensuels': mois, 'source': 'factures'}, 'kwh_annuel'),
+                             ({'kwh_annuel': True, 'source': 'saisie'}, 'kwh_annuel'),
+                             ({'kwh_annuel': -5, 'source': 'saisie'}, 'kwh_annuel'),
+                             ({'kwh_annuel': 6000, 'source': 'devine'}, 'source'),
+                             ({'kwh_annuel': 6000, 'source': 'saisie', 'pic': 1}, 'pic')):
+            with self.subTest(champ=champ, faute=faute):
+                refus = api.post(URL_APERCU, {'lead': lead.pk, 'imposes': {'consommation': faute}}, format='json')
+                self.assertEqual(refus.status_code, 400, refus.content[:300])
+                self.assertEqual(refus.json()['champ'], 'imposes.consommation.' + champ)
+        self.assertEqual((_json(Lead.objects.filter(pk=lead.pk).values()[0]), ConceptionLead.objects.count()),
+                         (fiche, versions))  # l'aperçu n'écrit rien
+
     def test_e6_payback_servi_a_la_lecture_celui_du_pdf(self):
         """Relecture E6 — le payback de la conception est SERVI À LA LECTURE (jamais rangé) :
         par option, celui que ``build_quote_data`` imprime pour le devis de référence ; source
@@ -3965,6 +4006,63 @@ class PoseReelleTests(_emprunt(RelanceConceptionTests, '_relancer'), _emprunt(Fi
         suivie, _l, _s = self._calculer(company, lead, niveau=REGLES_POSE_REELLE_2111,
                                         pose=self._pose(posee, complete=False))
         self.assertEqual(suivie.valeurs[suivie.option_retenue]['nb_panneaux']['valeur'], recommande)
+
+    def test_acal2020_releve_colle_entree_imposee_du_moteur_niveau_15(self):
+        """Reste d'ACAL2020 — au niveau 15, le relevé collé au calepinage (source ``csv``) est une
+        entrée IMPOSÉE : la conception est recalculée avec lui, le dit (entrée de source
+        ``calepinage`` + supposition), la lecture la dit À JOUR (mutant « filet sans le relevé » :
+        périmée pour toujours), le lead n'est jamais écrit ; retirer le relevé rend la
+        consommation du lead. Au niveau 14 : rien ne bouge."""
+        from apps.calepinage.models import Calepinage
+        from apps.crm.models import Lead
+        from apps.ventes.conception import porte_calepinage as P
+        from apps.ventes.conception.moteur import calculer_conception
+        from apps.ventes.domain import regles_calcul as RC
+        from apps.ventes.models import ConceptionLead
+        from apps.ventes.selectors import conception_courante
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        releve = {'courbe24': [1.5] * 24, 'methode': 'courbe', 'appareils': [],  # 36 kWh/j ⇒ 1 095 kWh/mois
+                  'source': {'origine': 'csv', 'saisi_le': '2026-11-20T10:00:00Z', 'bareme': 'societe'}}
+        calepinage = Calepinage.objects.create(company=company, lead_id=lead.pk, titre='Toit',
+                                               roof_layout={'version': 2, 'consumption': releve})
+        fiche = _json(Lead.objects.filter(pk=lead.pk).values()[0])
+
+        def conso(version):
+            return version.valeurs[version.option_retenue]['consommation_annuelle']['valeur']
+        with mock.patch.object(RC, 'REGLES_COURANTES', RC.REGLES_POSE_REELLE_2111), \
+                mock.patch.object(P, 'pose_du_calepinage', return_value=None):
+            temoin = calculer_conception(lead, company)
+            relance = self._relancer(lead, company, _declencheur('pose_enregistree'), calepinage_id=calepinage.pk)
+            rangee = ConceptionLead.objects.get(pk=relance.conception.pk)
+            self.assertEqual(rangee.etat, 'complet', rangee.refus)
+            self.assertEqual(rangee.entrees_utilisees['conso_mensuelle_kwh'],
+                             {'valeur': 1095.0, 'source': 'calepinage'})
+            dites = [s for s in rangee.suppositions if s['code'] == 'consommation_du_releve']
+            self.assertEqual([(s['champ'], s['valeur'], s['source']) for s in dites],
+                             [('conso_mensuelle_kwh', 1095.0, 'calepinage')])
+            self.assertIn('relevé collé au calepinage (1 095 kWh par mois)', dites[0]['message'])
+            self.assertNotEqual(conso(rangee), temoin.valeurs[temoin.option_retenue]['consommation_annuelle']['valeur'])
+            self.assertFalse(conception_courante(company, lead.pk)['perimee'])  # le filet relit le relevé
+            self.assertFalse(self._relancer(lead, company, _declencheur('pose_enregistree'),
+                                            calepinage_id=calepinage.pk).ecrite)  # même empreinte : rien
+            self.assertEqual(_json(Lead.objects.filter(pk=lead.pk).values()[0]), fiche)  # jamais écrit sur le lead
+            # Retirer le relevé : la consommation du lead revient, sans supposition, à jour.
+            Calepinage.objects.filter(pk=calepinage.pk).update(roof_layout={'version': 2})
+            retour = self._relancer(lead, company, _declencheur('pose_enregistree'), calepinage_id=calepinage.pk)
+            self.assertTrue(retour.ecrite)
+            revenue = ConceptionLead.objects.get(pk=retour.conception.pk)
+            self.assertEqual(conso(revenue), temoin.valeurs[temoin.option_retenue]['consommation_annuelle']['valeur'])
+            self.assertFalse([s for s in revenue.suppositions if s['code'] == 'consommation_du_releve'])
+            self.assertFalse(conception_courante(company, lead.pk)['perimee'])
+        # Niveau 14 courant : le relevé n'entre pas, la conception est celle du lead, au bit près.
+        Calepinage.objects.filter(pk=calepinage.pk).update(roof_layout={'version': 2, 'consumption': releve})
+        with mock.patch.object(P, 'pose_du_calepinage', return_value=None):
+            avec = calculer_conception(lead, company, calepinage_id=calepinage.pk)
+            sans = calculer_conception(lead, company)
+        self.assertEqual((_json(avec.valeurs), avec.empreinte, avec.suppositions),
+                         (_json(sans.valeurs), sans.empreinte, sans.suppositions))
 
     def test_relance_passe_le_calepinage_au_moteur_devis_envoye_intact(self):
         from apps.ventes.conception import moteur as M

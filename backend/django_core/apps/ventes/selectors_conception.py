@@ -162,8 +162,11 @@ def _empreinte_des_entrees(version):
     # dans l'empreinte rangée (``service.relancer``) : la lecture les relit par la MÊME porte.
     imposes = None
     if version.calepinage_id:
+        from .conception.moteur import consommation_imposee
         from .conception.porte_calepinage import designations_du_calepinage
         imposes = designations_du_calepinage(company, version.calepinage_id) or None
+        # Reste d'ACAL2020 — le relevé collé, relu par LA MÊME porte que l'écrivain (niveau 15).
+        lead, _conso = consommation_imposee(lead, company, version.calepinage_id)
     with reglages_lus_sans_creer(company):
         return empreinte_conception(entrees_pour(lead, company, toit=toit), imposes)
 
