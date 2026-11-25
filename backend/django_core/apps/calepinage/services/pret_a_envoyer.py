@@ -465,7 +465,10 @@ def _ratio_de_la_conception(verdicts, *, devis_recu=False):
         return _elec('ratio_dc_ac', LIBELLE_RATIO, 'info', MOTIF_SANS_CONCEPTION)
     ratio = verdicts.get('ratio_dc_ac') or {}
     if ratio.get('conforme') is None:
-        return _elec('ratio_dc_ac', LIBELLE_RATIO, 'info', 'Non calculé : onduleur non désigné par la conception')
+        # Relecture E6 — jamais un « conforme » muet : le moteur DIT ce qui manque et où le remplir.
+        return _elec('ratio_dc_ac', LIBELLE_RATIO, 'a_regler', 'Non calculé : %s' % (
+            verdicts.get('non_calcule') or 'onduleur non désigné par la conception'),
+            geste='Compléter la fiche technique du produit', cible=CIBLE_MATERIEL)
     autres = [v for v in (verdicts.get('capacite_hybride'), verdicts.get('longueur_chaine')) if v]
     conforme = ratio['conforme'] and all(v.get('conforme') for v in autres)
     cause = ' ; '.join(v.get('detail') or '' for v in autres if not v.get('conforme'))

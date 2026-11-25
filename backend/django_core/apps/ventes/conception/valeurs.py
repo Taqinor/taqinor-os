@@ -119,6 +119,15 @@ def valeurs(resultat, option, investissement, *, froid, company=None):
 
 
 def _verdicts(resultat, onduleurs, kwc, chaines, company):
-    """ACAL2016 — seulement pour l'option dont la conception électrique porte l'onduleur."""
+    """ACAL2016 — jugés pour l'option dont la conception électrique porte l'onduleur ;
+    sinon les trois verdicts valent ``None`` et ``non_calcule`` DIT pourquoi (jamais un
+    « conforme » muet) : la fiche à compléter, ou l'option que la conception sert."""
     from apps.ventes.conception.porte_calepinage import verdicts_electriques
-    return verdicts_electriques(company, resultat.conception_electrique, onduleurs, kwc) if chaines else None
+    verdicts = verdicts_electriques(company, resultat.conception_electrique, onduleurs, kwc) if chaines else None
+    if verdicts is not None:
+        return dict(verdicts, non_calcule=None)
+    if resultat.motifs_electriques or not resultat.conception_electrique:
+        motif = ' ; '.join(resultat.motifs_electriques) or 'Conception électrique non calculée.'
+    else:
+        motif = "Conception électrique calculée pour l'autre option seulement (onduleur différent)."
+    return {'ratio_dc_ac': None, 'capacite_hybride': None, 'longueur_chaine': None, 'non_calcule': motif}

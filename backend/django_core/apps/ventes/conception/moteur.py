@@ -24,6 +24,9 @@ VERSION_MOTEUR = 'moteur-unique-2'  # relecture E5 m4 : identifiants produit ser
 CODE_LOCALISATION = 'localisation_inconnue'
 MESSAGE_LOCALISATION = 'Ville inconnue du moteur : renseigner la ville ou le point GPS du lead.'
 CODE_REFUS_MOTEUR = 'refus_moteur'
+#: Relecture E6 — conception électrique non dessinée hors fiche incomplète (portails C&I).
+MOTIF_NON_DESSINABLE = ('Conception électrique non calculée : aucun panneau à répartir en chaînes '
+                        'ou configuration refusée par l\'onduleur (voir l\'étape Électrique).')
 #: La sortie servie (contrat ``contract_samples/conception_lead.json``).
 CLES_SORTIE = ('etat', 'refus', 'marche', 'option_retenue', 'valeurs', 'blocs', 'suppositions',
                'entrees_utilisees', 'empreinte', 'niveau_regles', 'version_moteur')
@@ -64,6 +67,10 @@ class ResultatConception:
     #: agricole : la ``decider_agricole`` — jamais rangée, relue par le devis
     #: de la même requête (aucune seconde décision).
     decision_devis: object = None
+    #: Relecture E6 (acceptation) — POURQUOI la conception électrique manque
+    #: (phrases françaises de ``electrical_service.motifs_fiche_incomplete`` :
+    #: le champ de la fiche et où le remplir) ; ``[]`` quand elle est faite.
+    motifs_electriques: list = field(default_factory=list)
 
     def sortie(self):
         return {cle: getattr(self, cle) for cle in CLES_SORTIE}
@@ -466,10 +473,13 @@ def _conception_electrique(resultat, contexte, *, garde):
     jamais rangée (``build_electrical_design``)."""
     from apps.ventes import electrical_service as E
     try:
-        if garde and not E.conception_electrique_dessinable(contexte):
+        resultat.motifs_electriques = E.motifs_fiche_incomplete(contexte)
+        if resultat.motifs_electriques:
             return None
-        return None if E.motifs_fiche_incomplete(contexte) else E.build_electrical_design(
-            contexte, persister=False)
+        if garde and not E.conception_electrique_dessinable(contexte):
+            resultat.motifs_electriques = [MOTIF_NON_DESSINABLE]
+            return None
+        return E.build_electrical_design(contexte, persister=False)
     except Exception as exc:  # noqa: BLE001 — le devis l'aurait avalée : dite absente (D-ENF22-BLE001)
         logger.warning('Conception électrique non calculée (moteur unique)', exc_info=True)
         resultat.absents['conception_electrique'] = 'erreur : %s' % type(exc).__name__

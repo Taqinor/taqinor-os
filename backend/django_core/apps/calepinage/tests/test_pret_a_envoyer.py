@@ -337,6 +337,15 @@ class ControlesElectriquesTest(SimpleTestCase):
         self.assertEqual((controle['etat'], controle['valeur_texte']),
                          ('info', 'Non calculé : conception non calculée'))
 
+    def test_verdict_non_calcule_dit_le_champ_et_ou_le_remplir(self):
+        motif = ('« Tension Vmp » non renseigné(e) sur la fiche technique du module — '
+                 'complétez la fiche technique du produit (Stock → Catalogue).')
+        controle = self._verdicts({'ratio_dc_ac': None, 'capacite_hybride': None, 'longueur_chaine': None,
+                                   'non_calcule': motif})
+        self.assertEqual((controle['etat'], controle['valeur_texte'], controle['geste']),
+                         ('a_regler', 'Non calculé : ' + motif, 'Compléter la fiche technique du produit'))
+        self.assertEqual(controle['cible']['onglet'], 'materiel-electrique')
+
     def test_capacite_ou_longueur_non_conforme_a_regler_avec_la_cause(self):
         verdicts = {'ratio_dc_ac': {'conforme': True, 'valeur': 1.2, 'borne_source': 'règle du devis',
                                     'detail': '1,20 pour 1,35 au plus (règle du devis)'},

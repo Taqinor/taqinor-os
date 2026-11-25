@@ -1326,6 +1326,19 @@ class MoteurUniqueTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_u
                 self.assertEqual(valeurs['batterie_produit']['valeur'], lignes.get('batterie'))
         self.assertIsNotNone(resultat.valeurs['avec']['batterie_produit']['valeur'])
 
+    def test_verdicts_non_calcules_disent_la_fiche_a_completer(self):
+        # Relecture E6 (acceptation, copie anonymisée) — catalogue sans fiche électrique : chaînes, tension,
+        # ratio null ; le verdict ne passe JAMAIS pour « conforme », il nomme le champ et où le remplir.
+        resultat = self._parite('res_kwh_declare_ete_different')
+        for option, valeurs in resultat.valeurs.items():
+            with self.subTest(option=option):
+                self.assertIsNone(valeurs['chaines']['valeur'])
+                verdicts = valeurs['verdicts']['valeur']
+                self.assertEqual((verdicts['ratio_dc_ac'], verdicts['capacite_hybride'],
+                                  verdicts['longueur_chaine']), (None, None, None))
+                self.assertIn('non renseigné(e) sur la fiche technique', verdicts['non_calcule'])
+                self.assertIn('Stock → Catalogue', verdicts['non_calcule'])
+
     def test_verdicts_ranges_pour_l_option_de_la_conception_electrique(self):
         # ACAL2016 — l'option dont la conception électrique porte l'onduleur porte ses verdicts rangés.
         resultat = self._parite('res_conception_electrique')
@@ -1334,9 +1347,11 @@ class MoteurUniqueTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_u
         for option, valeurs in resultat.valeurs.items():
             verdicts = valeurs['verdicts']['valeur']
             if option not in portees:
-                self.assertIsNone(verdicts)
+                self.assertIsNone(verdicts['ratio_dc_ac'])
+                self.assertIn("l'autre option", verdicts['non_calcule'])
                 continue
-            self.assertEqual(set(verdicts), {'ratio_dc_ac', 'capacite_hybride', 'longueur_chaine'})
+            self.assertEqual(set(verdicts), {'ratio_dc_ac', 'capacite_hybride', 'longueur_chaine', 'non_calcule'})
+            self.assertIsNone(verdicts['non_calcule'])
             self.assertEqual(verdicts['ratio_dc_ac']['valeur'], valeurs['ratio_dc_ac']['valeur'])
             self.assertIsInstance(verdicts['ratio_dc_ac']['conforme'], bool)
 
