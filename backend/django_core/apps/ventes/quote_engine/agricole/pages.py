@@ -887,7 +887,8 @@ def _formalites(synthese, lg):
 def _libelle_non_inclus(lg, cle):
     """AGQ11 — forage, génie civil, puis les éléments du kit absents des
     lignes (libellé de l'option, en minuscule dans la phrase)."""
-    if f"agr_non_inclus_{cle}" in i18n_labels.LIBELLES:
+    if (f"agr_non_inclus_{cle}" in i18n_labels.LIBELLES
+            or i18n_labels_agricole.a_la_cle(f"agr_non_inclus_{cle}")):
         return _t(lg, f"agr_non_inclus_{cle}")
     if f"agr_option_{cle}" in i18n_labels.LIBELLES:
         texte = _t(lg, f"agr_option_{cle}")

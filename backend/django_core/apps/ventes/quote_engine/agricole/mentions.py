@@ -272,11 +272,24 @@ ENTRETIEN = {
 }
 
 
-def etapes_suivantes():
+#: D-ACAL-112 (fondateur 25/11/2026, nouveaux rendus) — l'étape « Pose » d'un
+#: devis SANS ligne de protection (devis d'avant, articles encore sans prix) :
+#: elle ne promet pas des protections que le devis ne vend pas.
+_POSE_SANS_PROTECTIONS = (
+    "pose",
+    "Pose : pompe, variateur et champ solaire.",
+    "Installation: pump, drive and solar array.",
+    "التركيب: المضخة والمغير والحقل الشمسي.")
+
+
+def etapes_suivantes(protections=True):
     """AGQ30 — les 5 étapes du devis agricole, ``[{cle, textes}]`` en
-    fr/en/ar ; aucun délai chiffré (D-AGR-10)."""
+    fr/en/ar ; aucun délai chiffré (D-AGR-10). ``protections=False`` :
+    l'étape « Pose » sans « et protections » (D-ACAL-112)."""
     return [{"cle": cle, "textes": {"fr": fr, "en": en, "ar": ar}}
-            for cle, fr, en, ar in _ETAPES]
+            for cle, fr, en, ar in (
+                _POSE_SANS_PROTECTIONS if not protections and e[0] == "pose"
+                else e for e in _ETAPES)]
 
 
 #: Les phrases de provenance (contrat AGR2 › ``provenance``), par langue.

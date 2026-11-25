@@ -385,7 +385,9 @@ class SyntheseAgricoleTests(SimpleTestCase):
         data['options_proposees'] = []
         s = synthese_agricole(data)
         cles = [o['cle'] for o in s['options_kit']]
-        self.assertEqual(len(cles), 12)
+        # D-ACAL-118 — 11 options : les protections sont au kit minimum.
+        self.assertEqual(len(cles), 11)
+        self.assertNotIn('protection_dc', cles)
         self.assertIn('cable_descente', cles)
         for o in s['options_kit']:
             with self.subTest(option=o['cle']):
@@ -652,6 +654,41 @@ class SyntheseAgricoleTests(SimpleTestCase):
         s = synthese_agricole(data)
         self.assertEqual(s['provenance']['volume_m3_jour']['valeur'], 120)
         self.assertNotIn('debit_exploitation_m3h', s['a_confirmer_par_visite'])
+
+    def test_dacal112_pose_et_protections_seulement_si_vendues(self):
+        """D-ACAL-112 — nouveaux rendus (``phrases_pdf_2511``) : sans ligne
+        de protection au devis, l'étape « Pose » ne dit plus « et
+        protections » (elles sont rangées « Non inclus ») ; avec une ligne de
+        protection, elle le dit et rien de contradictoire n'est « non inclus ».
+        Sans le drapeau (devis envoyé avant la coupure) : phrase d'hier."""
+        def pose(s, lg='fr'):
+            return next(e['textes'][lg] for e in s['etapes_suivantes']
+                        if e['cle'] == 'pose')
+        data = _data_complete()
+        data['etude']['kit'] = {'inclus': [
+            {'cle': 'coffret_dc', 'role_pompage': 'protection_dc',
+             'produit': 9, 'designation': 'Coffret DC 2 strings — prix à '
+             'renseigner', 'quantite': 1, 'prix_connu': False}],
+            'options': [], 'non_inclus': ['forage', 'genie_civil']}
+        hier = synthese_agricole(data)
+        self.assertEqual(pose(hier), 'Pose : pompe, variateur, champ solaire '
+                                     'et protections.')
+        data['phrases_pdf_2511'] = True
+        s = synthese_agricole(data)
+        self.assertEqual(pose(s), 'Pose : pompe, variateur et champ solaire.')
+        self.assertEqual(pose(s, 'en'),
+                         'Installation: pump, drive and solar array.')
+        self.assertNotIn('الحمايات', pose(s, 'ar'))
+        self.assertIn('coffret_dc', s['non_inclus'])
+        data['all_items'].append(
+            {'designation': 'Coffret DC 2 strings', 'quantite': 1,
+             'prix_unit_ht': 900.0, 'role_pompage': 'protection_dc',
+             'courbe_pompe': None})
+        s = synthese_agricole(data)
+        self.assertEqual(pose(s), 'Pose : pompe, variateur, champ solaire '
+                                  'et protections.')
+        self.assertNotIn('coffret_dc', s['non_inclus'])
+        self.assertNotIn('protection_dc', s['non_inclus'])
 
     def test_option_deja_ligne_du_devis_non_reproposee(self):
         data = _data_complete()

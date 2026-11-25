@@ -799,8 +799,12 @@ def synthese_agricole(data):
     synthese["non_inclus"] = _non_inclus(etude, items)
     # AGR306 — les formalités du client (82-21 hors réseau, 36-15 eau).
     synthese["formalites"] = formalites()
-    # AGQ30 — les étapes suivantes, sans délai chiffré (D-AGR-10).
-    synthese["etapes_suivantes"] = etapes_suivantes()
+    # AGQ30 — les étapes suivantes, sans délai chiffré (D-AGR-10). D-ACAL-112
+    # (nouveaux rendus, ``phrases_pdf_2511``) : sans ligne de protection au
+    # devis, la pose ne dit plus « et protections » (rangées « Non inclus »).
+    synthese["etapes_suivantes"] = etapes_suivantes(
+        protections=not data.get("phrases_pdf_2511") or bool(
+            _roles_des_lignes(items) & {"protection_dc", "protection_ac"}))
     # AGQ38 — les alertes client du noyau, dites au client (page 2 + page web).
     synthese["notes"] = _bloc_notes(etude, items)
 
