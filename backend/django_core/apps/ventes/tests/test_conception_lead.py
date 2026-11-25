@@ -2139,6 +2139,35 @@ class VerdictsDuMoteurTests(TestCase):
 
         self.assertIsNone(verdicts_electriques(self.company, None, [], 10.0))
 
+    def test_e6_m4_pose_d_un_autre_compte_jugee_par_la_meme_regle(self):
+        """Relecture E6 M4 + m3 — même compte : le verdict RANGÉ ; compte différent : LA règle
+        de la porte du moteur pour la pose (24 panneaux, 14,4 kWc, ratio 1,44) et la note ;
+        version sans ``verdicts`` : « à recalculer » et UNE relance en file."""
+        from apps.ventes.conception import porte_calepinage as P
+        from apps.ventes.selectors_conception import verdicts_pour_le_calepinage
+
+        range_ = self._verdicts(self.reseau, ratio=2.07, kwc=20.7)
+        ligne = {'produit': self.reseau.pk, 'designation': self.reseau.nom, 'quantite': 1}
+        conception = {'lead': 9, 'option_retenue': 'sans', 'valeurs': {'sans': {
+            'nb_panneaux': {'valeur': 35}, 'onduleurs': {'valeur': [ligne]},
+            'verdicts': {'valeur': range_}}}}
+        pose = {'nb_panneaux': 35, 'kwc': 20.7, 'ratio': 2.07, 'onduleur_produit': self.reseau.pk,
+                'chaines': [{'nb_modules': 12}]}
+        with mock.patch.object(P, 'verdicts_electriques', wraps=P.verdicts_electriques) as regle:
+            self.assertEqual(verdicts_pour_le_calepinage(self.company, conception, pose), (range_, '', False))
+            regle.assert_not_called()
+            jugees, note, a_recalculer = verdicts_pour_le_calepinage(
+                self.company, conception, dict(pose, nb_panneaux=24, kwc=14.4, ratio=1.44))
+        self.assertEqual(regle.call_args.args[3], 14.4)  # mutant « verdict rangé pour une autre pose »
+        self.assertEqual(jugees['ratio_dc_ac']['valeur'], 1.44)
+        self.assertNotEqual(jugees['ratio_dc_ac'], range_['ratio_dc_ac'])
+        self.assertEqual((note, a_recalculer),
+                         ('jugé pour la pose : 24 panneaux — la conception du lead en compte 35', False))
+        ancienne = {'lead': 9, 'option_retenue': 'sans', 'valeurs': {'sans': {'nb_panneaux': {'valeur': 35}}}}
+        with mock.patch('apps.ventes.conception.receivers.mettre_en_file') as en_file:
+            self.assertEqual(verdicts_pour_le_calepinage(self.company, ancienne, pose), (None, '', True))
+        en_file.assert_called_once_with(self.company.pk, lead_id=9, origine='filet', champs=[])
+
 
 class PariteStockeeTests(_emprunt(RelanceConceptionTests, '_relancer'),
                          _emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_utilisateur', '_residentiel',

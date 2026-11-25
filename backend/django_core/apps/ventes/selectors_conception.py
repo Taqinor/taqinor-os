@@ -130,6 +130,48 @@ def _perimee(version):
     return True
 
 
+#: Relecture E6 m3 — une version rangée AVANT les verdicts (ACAL2016) : rien n'est jugé.
+MOTIF_A_RECALCULER = 'conception à recalculer'
+
+
+def verdicts_pour_le_calepinage(company, conception, pose):
+    """Relecture E6 M4 + m3 — ``(verdicts | None, note, a_recalculer)`` que « Prêt à
+    envoyer ? » montre pour la POSE ``pose`` (``{nb_panneaux, kwc, ratio, onduleur_produit,
+    chaines}``, lue par le calepinage) face à la conception servie ``conception`` (forme du
+    contrat) :
+
+    * même nombre de panneaux : le verdict RANGÉ, tel quel ;
+    * nombre différent (au niveau 14 la pose n'est pas une entrée du moteur) : LA MÊME
+      règle, par la porte du moteur (``porte_calepinage.verdicts_electriques``, celle qui a
+      produit le verdict rangé — aucune seconde règle, aucun seuil copié), pour le compte
+      et le matériel de la pose ; ``note`` dit pour quoi il est jugé ;
+    * version rangée sans ``verdicts`` (d'avant leur calcul) : ``a_recalculer`` et UNE
+      relance part en file (le filet ADEV140) — jamais « Compléter la fiche technique »."""
+    from .conception.porte_calepinage import verdicts_electriques
+    from .conception.receivers import mettre_en_file
+
+    valeurs = (conception.get('valeurs') or {}).get(conception.get('option_retenue')) or {}
+    if 'verdicts' not in valeurs:
+        if conception.get('lead'):
+            mettre_en_file(company.pk, lead_id=conception['lead'], origine='filet', champs=[])
+        return None, '', True
+    verdicts = (valeurs.get('verdicts') or {}).get('valeur') or {}
+    nombre, posees = (valeurs.get('nb_panneaux') or {}).get('valeur'), (pose or {}).get('nb_panneaux')
+    if not posees or nombre is None or posees == nombre or (pose or {}).get('ratio') is None:
+        return verdicts, '', False
+    onduleurs = (valeurs.get('onduleurs') or {}).get('valeur') or []
+    produit = pose.get('onduleur_produit')
+    lignes = ([o for o in onduleurs if o.get('produit') == produit]
+              or ([{'produit': produit, 'designation': None, 'quantite': 1}] if produit else onduleurs))
+    design = {'ratio_dc_ac': pose['ratio'], 'chaines': pose.get('chaines') or [],
+              'materiel': {'onduleur': {'designation': lignes[0].get('designation') if lignes else None}}}
+    jugees = verdicts_electriques(company, design, lignes, pose.get('kwc'))
+    if jugees is None:
+        return verdicts, '', False
+    return (dict(jugees, non_calcule=None),
+            'jugé pour la pose : %d panneaux — la conception du lead en compte %d' % (posees, nombre), False)
+
+
 def _devis_envoye_du_lead(version):
     """Le devis ENVOYÉ (ou accepté), actif, le plus récent du lead."""
     from .models import Devis
