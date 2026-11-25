@@ -440,6 +440,27 @@ class Protections(unittest.TestCase):
         kit = self._kit(alimentation="mono", pompe_kw=5, tension_pompe_v=220)
         self.assertEqual(self._ligne(kit, "disjoncteur_ac")["produit"], 94)
 
+    def test_r4_kw_tire_des_cv_dit_dans_la_phrase(self):
+        # Pompe 3 CV / 220 V sans pompe_kw : le kW de ``kw_pompe`` (2,2 kW,
+        # celui du variateur) ⇒ 10 A ⇒ 16 A mono ; la phrase nomme les CV.
+        kit = self._kit(alimentation="mono", pompe_kw=2.2,
+                        pompe_cv_source=3, tension_pompe_v=220)
+        ligne = self._ligne(kit, "disjoncteur_ac")
+        self.assertEqual(ligne["produit"], 93)
+        self.assertTrue(ligne["hypothese"].startswith(
+            "Calibre du disjoncteur AC déduit des 3 CV de la pompe (2,2 kW) "
+            "et 220 V (courant estimé 10 A"))
+
+    def test_r4_disjoncteurs_d_une_autre_phase_seulement(self):
+        tetra = [_option(86, "Disjoncteur AC courbe C 25 A tétrapolaire",
+                         "protection_ac")]
+        kit = composer_kit(**dict(BASE, produits_options=tetra,
+                                  alimentation="mono", courant_pompe_a=10))
+        ligne = self._ligne(kit, "disjoncteur_ac")
+        self.assertIsNone(ligne["produit"])
+        self.assertEqual(ligne["motif"], "aucun disjoncteur AC monophasé au "
+                         "catalogue (seulement d'une autre phase)")
+
     def test_dacal124_deduit_trop_fort_motif_estime(self):
         ligne = self._ligne(self._kit(pompe_kw=30, tension_pompe_v=380),
                             "disjoncteur_ac")

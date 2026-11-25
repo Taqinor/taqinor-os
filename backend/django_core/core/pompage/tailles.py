@@ -231,7 +231,7 @@ def proposer_tailles(*, mode_pompe="neuve", choix_pompe=None, plaque=None,
         if i in cache:
             return cache[i]
         produit = paliers[i]
-        kw, _source = kw_pompe(produit)
+        kw, source_kw = kw_pompe(produit)
         fiche = produit.get("fiche") if isinstance(produit.get("fiche"),
                                                    dict) else {}
         choix_var = choisir_variateur(
@@ -262,7 +262,10 @@ def proposer_tailles(*, mode_pompe="neuve", choix_pompe=None, plaque=None,
             motif_chaines=(champ.get("chaines") or {}).get("motif"),
             alimentation=alimentation,
             courant_pompe_a=fiche.get("pompe_i_nominal_a"),
-            pompe_kw=produit.get("pompe_kw"),
+            # Revue R4 — UN kW par pompe : celui du variateur (``kw_pompe`` :
+            # plaque, sinon CV normalisés), dit quand il vient des CV.
+            pompe_kw=kw, pompe_cv_source=(produit.get("pompe_cv")
+                                          if source_kw == "cv" else None),
             tension_pompe_v=produit.get("tension_v"), **kit)
         mois = mois_critique or champ.get("mois_critique")
         cache[i] = (sortie, champ, composition, mois, choix_var)
