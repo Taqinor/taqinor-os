@@ -113,3 +113,22 @@ test('remise par ligne : chaque option répartit SA remise (les paniers ne se m�
   }
   assert.equal(r.avec.total, optionTotalsTTC(KIT_DEUX_OPTIONS, 10, { scenario: LES_DEUX }).totalAvec)
 })
+
+// T4-X4-011 — « + Villas différentes » sur un devis « Les deux » : chaque
+// option a son récapitulatif NOMMÉ ; le total général d'une option est celui
+// du rail pour CETTE option, jamais les lignes des deux options additionnées.
+test('villas sur un devis à deux options : un récapitulatif par option, nommé', () => {
+  const lignes = KIT_DEUX_OPTIONS.map((l) => ({ ...l, groupeIndex: 0, groupeLabel: 'Équipement commun' }))
+  const rail = optionTotalsTTC(lignes, 0, { scenario: LES_DEUX })
+  const r = multiPropertyPreviewTTC(lignes, { scenario: LES_DEUX, option: 'avec' })
+  assert.equal(r.mode, 'villas')
+  assert.equal(r.option, 'avec')
+  assert.equal(r.grandTotalTtc, rail.totalAvec)
+  assert.deepEqual(r.parOption.map((p) => p.option), ['sans', 'avec'])
+  assert.equal(r.parOption[0].grandTotalTtc, rail.totalSans)
+  assert.equal(r.parOption[1].grandTotalTtc, rail.totalAvec)
+  const somme = totauxCanoniquesTtc(lignes, 0, PAS_ARRONDI_DEVIS)
+  assert.notEqual(r.grandTotalTtc, somme, 'jamais les deux paniers additionnés')
+  assert.equal(r.parOption[1].groupes[0].totalTtc, totauxCanoniquesTtc(
+    lignes.filter((l) => !l.designation.startsWith('Onduleur réseau')), 0, 0))
+})

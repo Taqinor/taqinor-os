@@ -128,39 +128,42 @@ export function alternativeDeclareeServable(lines, scenario, produits) {
   return hasReseau && avecOk
 }
 
+// T4-X4-011/019/020 — LE devis porte-t-il DEUX options déclarées ? Miroir de
+// `deux_options_declarees` (utils/options.py) : une ligne variantée
+// ('sans'/'avec', posée par `fusionnerVariantes` pour « Les deux ») ou un
+// scénario qui déclare l'alternative avec un équipement qui la sert.
+export function deuxOptionsDeclarees(lines, { scenario, produits } = {}) {
+  const comptees = (lines || []).filter(ligneCompteDansTotaux)
+  return comptees.some(l => l?.variante === 'sans' || l?.variante === 'avec')
+    || alternativeDeclareeServable(comptees, scenario, produits)
+}
+
+// T4-X4-011/019/020 — « LES LIGNES DE L'OPTION X » : LA seule fonction de
+// l'écran qui le dit (le rail, la répartition de remise, l'étiquette par
+// ligne, l'aperçu par villa et la marge la lisent). Une option = les lignes
+// qui comptent (QJR567 : ni optionnelle, ni section/note) de SON panier
+// (`appartientAuPanierSans/Avec`, miroir de `utils/options.py::panier_de_ligne`
+// et de builder.py `_repartir_options` : une ligne DÉCLARÉE tranche seule,
+// sinon rôle puis mots-clés), privées — sur un VRAI devis à deux options
+// (QJR402/QJR300, ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION) — des accessoires
+// Huawei orphelins (QF9). Un devis mono-option garde TOUTES ses lignes de
+// panier, comportement historique inchangé. Jamais l'union des deux paniers.
+export function lignesDeLOption(lines, option, { scenario, produits } = {}) {
+  const comptees = (lines || []).filter(ligneCompteDansTotaux)
+  const panier = option === 'avec'
+    ? comptees.filter(l => appartientAuPanierAvec(l, produits))
+    : comptees.filter(l => appartientAuPanierSans(l, produits))
+  return deuxOptionsDeclarees(comptees, { scenario, produits })
+    ? _retirerAccessoiresHuawei(panier, produits) : panier
+}
+
 // `options.scenario` (facultatif) — le scénario DÉCLARÉ par l'écran. Absent :
 // comportement historique inchangé (QF9 réservée aux lignes variantées).
 export function optionTotalsTTC(lines, discountPct, { scenario, produits, montee = true } = {}) {
-  // QJR567 — MÊME population que le noyau (`ligne_compte_dans_totaux`) : une
-  // ligne optionnelle (add-on non activé) et les sections / notes ne
-  // comptent JAMAIS — sans ce filtre le rail, le prix/kWc, la marge et
-  // l'étude C&I persistée comptaient un add-on que le document exclut.
-  lines = (lines || []).filter(ligneCompteDansTotaux)
-  // F14 (26/08) — une ligne DÉCLARÉE ('sans'/'avec') tranche SEULE, plus de
-  // second filtre mot-clé sur elle (voir `appartientAuPanierSans/Avec` :
-  // miroir exact de builder.py `_repartir_options` et de
-  // `apps/ventes/utils/options.py`). Une ligne SANS `variante` retombe sur
-  // les mots-clés, mot pour mot comme avant.
-  let linesSans = lines.filter(l => appartientAuPanierSans(l, produits))
-  let linesAvec = lines.filter(l => appartientAuPanierAvec(l, produits))
-  // QJR402/QJR300 — QF9 ne s'applique QUE sur un VRAI devis à deux options
-  // DÉCLARÉES (miroir de `deux_options`/`alternative_declaree` au noyau) :
-  // la seule trace, côté lignes, d'une alternative déclarée est `variante`
-  // ('sans'/'avec'), posée uniquement par `fusionnerVariantes` pour un
-  // scénario « Les deux ». Un devis SANS aucune ligne variantée (mono-
-  // composition, y compris l'artefact « deux onduleurs non déclarés ») garde
-  // TOUTES ses lignes, comportement historique strictement inchangé.
-  // ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION — …ET sur un devis dont le
-  // SCÉNARIO déclare l'alternative (miroir de `deux_options_declarees` :
-  // `alternative_declaree or variantes`). Sans cette branche, un devis « Les
-  // deux » à lignes non variantées affichait l'option AVEC avec le Smart
-  // Meter + la clé Wi-Fi Huawei que le noyau et le PDF retirent (3 000 MAD
-  // d'écart mesurés entre le formulaire et le devis persisté).
-  if (lines.some(l => l?.variante === 'sans' || l?.variante === 'avec')
-      || alternativeDeclareeServable(lines, scenario, produits)) {
-    linesSans = _retirerAccessoiresHuawei(linesSans, produits)
-    linesAvec = _retirerAccessoiresHuawei(linesAvec, produits)
-  }
+  // T4-X4-011 — les deux paniers viennent de `lignesDeLOption` (population
+  // QJR567, paniers F14, QF9 sur un vrai devis à deux options).
+  const linesSans = lignesDeLOption(lines, 'sans', { scenario, produits })
+  const linesAvec = lignesDeLOption(lines, 'avec', { scenario, produits })
   // ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER — LA CHAÎNE CANONIQUE DU NOYAU, plus
   // une somme de TTC arrondis ligne à ligne remisée ensuite. Le chiffre facturé
   // (PDF/BC/facture) est `selectors._canonical_totaux` sur les lignes
@@ -194,13 +197,11 @@ export const RAISON_ACCESSOIRE_HUAWEI = 'accessoire de l’onduleur Huawei : '
 export function optionsDesLignes(lines, { scenario, produits } = {}) {
   const tous = lines || []
   const comptees = tous.filter(ligneCompteDansTotaux)
-  const deuxOptions = comptees.some(l => l?.variante === 'sans' || l?.variante === 'avec')
-    || alternativeDeclareeServable(comptees, scenario, produits)
-  if (!deuxOptions) return tous.map(() => null)
+  if (!deuxOptionsDeclarees(comptees, { scenario, produits })) return tous.map(() => null)
   const sans = comptees.filter(l => appartientAuPanierSans(l, produits))
   const avec = comptees.filter(l => appartientAuPanierAvec(l, produits))
-  const sansFinal = new Set(_retirerAccessoiresHuawei(sans, produits))
-  const avecFinal = new Set(_retirerAccessoiresHuawei(avec, produits))
+  const sansFinal = new Set(lignesDeLOption(comptees, 'sans', { scenario, produits }))
+  const avecFinal = new Set(lignesDeLOption(comptees, 'avec', { scenario, produits }))
   return tous.map((l) => {
     // Seules les lignes qui PARTENT (produit + quantité > 0) sont étiquetées :
     // une ligne en attente de produit ou à 0 ne pèse sur aucun total.
@@ -229,14 +230,8 @@ export function optionsDesLignes(lines, { scenario, produits } = {}) {
 // panier de l'option effective (`option`).
 export function lignesRemiseesParPanier(lines, discountPct, { scenario, option = 'sans', produits, montee = true } = {}) {
   const tous = lines || []
-  const comptees = tous.filter(ligneCompteDansTotaux)
-  let lignesSans = comptees.filter(l => appartientAuPanierSans(l, produits))
-  let lignesAvec = comptees.filter(l => appartientAuPanierAvec(l, produits))
-  if (comptees.some(l => l?.variante === 'sans' || l?.variante === 'avec')
-      || alternativeDeclareeServable(comptees, scenario, produits)) {
-    lignesSans = _retirerAccessoiresHuawei(lignesSans, produits)
-    lignesAvec = _retirerAccessoiresHuawei(lignesAvec, produits)
-  }
+  const lignesSans = lignesDeLOption(tous, 'sans', { scenario, produits })
+  const lignesAvec = lignesDeLOption(tous, 'avec', { scenario, produits })
   const pct = parseFloat(discountPct) || 0
   const centimes = (v) => BigInt(Math.round((Number(v) || 0) * 100))
   const panier = (rows) => {
@@ -321,10 +316,28 @@ export function multiPropertyPreviewTTC(lines, {
   }
 
   const tous = lines || []
-  const grouped = tous.filter(l => l.groupeIndex != null)
-  if (!grouped.length) return null
-
+  if (!tous.some(l => l.groupeIndex != null)) return null
   const pct = parseFloat(discountPct) || 0
+  // T4-X4-011 — un devis à DEUX options : chaque option a son récapitulatif
+  // par villa, NOMMÉ (`parOption`), et `groupes`/`grandTotalTtc` sont ceux de
+  // l'option effective (celle du rail) — jamais les lignes des deux options
+  // additionnées (82 800 MAD pour des offres à 53 800 et 65 800).
+  if (deuxOptionsDeclarees(tous, { scenario, produits })) {
+    const effective = option === 'avec' || option === 'sans'
+      ? option : (scenario === 'Avec batterie' ? 'avec' : 'sans')
+    const parOption = ['sans', 'avec'].map(opt => ({
+      option: opt,
+      ..._villasDe(lignesDeLOption(tous, opt, { scenario, produits }), pct, montee),
+    }))
+    const eff = parOption.find(p => p.option === effective)
+    return { mode: 'villas', option: effective, groupes: eff.groupes, grandTotalTtc: eff.grandTotalTtc, parOption }
+  }
+  return { mode: 'villas', ..._villasDe(tous, pct, montee) }
+}
+
+// Récapitulatif par villa d'UN ensemble de lignes (QJ31/ATOT24, inchangé).
+function _villasDe(tous, pct, montee) {
+  const grouped = tous.filter(l => l.groupeIndex != null)
   const byIndex = new Map()
   for (const l of grouped) {
     const idx = l.groupeIndex
@@ -346,7 +359,7 @@ export function multiPropertyPreviewTTC(lines, {
     groupes.push({ index: null, label: 'Hors groupe', totalTtc: totauxCanoniquesTtc(horsGroupe, pct, 0) })
   }
   const grandTotalTtc = totauxCanoniquesTtc(tous, pct, PAS_ARRONDI_DEVIS, montee)
-  return { mode: 'villas', groupes, grandTotalTtc }
+  return { groupes, grandTotalTtc }
 }
 
 // ── Prix par kWc, prix cible et marge ─────────────────────────────────────────
