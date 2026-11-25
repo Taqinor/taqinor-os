@@ -267,6 +267,28 @@ class ListeLegereT4X4005Tests(TestCase):
         self.assertAlmostEqual(apres['par_statut']['brouillon']['total'],
                                float(page['total_affiche']))
 
+    def test_synthese_total_suit_un_changement_de_reglage_societe(self):
+        """Pas de carte périmée : un réglage de la société change la clé du
+        total mémorisé ; la carte égale alors la colonne de la liste."""
+        from unittest import mock
+        from django.core.cache import cache
+        from apps.parametres.models import CompanyProfile
+        from apps.ventes.quote_engine import builder
+        cache.clear()
+        self._creer(1)
+        reel = builder.display_totals
+        with mock.patch.object(builder, 'display_totals', wraps=reel) as espion:
+            self.api.get(URL + 'synthese/')
+            avant = espion.call_count
+            profil = CompanyProfile.get(self.company)
+            profil.quote_validity_days = (profil.quote_validity_days or 30) + 5
+            profil.save()
+            apres = self.api.get(URL + 'synthese/').json()
+            self.assertGreater(espion.call_count, avant)
+        page = self._page().json()['results'][0]
+        self.assertAlmostEqual(apres['par_statut']['brouillon']['total'],
+                               float(page['total_affiche']))
+
     def test_synthese_nombre_de_requetes_constant(self):
         """Les cartes par statut : pas de requête par devis (5 devis = 50)."""
         from django.db import connection

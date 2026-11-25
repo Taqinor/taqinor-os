@@ -135,11 +135,18 @@ def filtrer_liste_devis(qs, company, *, q=None, statut_effectif=None,
 # modification du devis. Seul un changement fait HORS du devis (fiche produit,
 # réglage de société) peut laisser un total mémorisé jusqu'à son expiration
 # (``DUREE_TOTAL_MEMORISE_S``) — la colonne de la ligne, elle, se recalcule.
+# Lu HORS du devis par le moteur, et marqueur porté par la clé : le profil de la
+# société (``CompanyProfile.updated_at`` : TVA, règles, réglages) et chaque
+# produit des lignes (``Produit.date_mise_a_jour`` : nom, marque, classement en
+# option batterie / sans). SANS marqueur, donc couverts par la seule expiration :
+# la fiche technique du produit (``FicheTechnique``, description/garantie — elle
+# n'entre ni dans un prix ni dans le classement) et un changement du MOTEUR
+# lui-même (à ce jour : relever ``VERSION_TOTAL_MEMORISE`` avec le correctif).
 VERSION_TOTAL_MEMORISE = 1
 DUREE_TOTAL_MEMORISE_S = 6 * 3600
 
 
-def _total_affiche_memorise(devis, display_totals):
+def _total_affiche_memorise(devis, display_totals, marqueur_societe=None):
     from decimal import Decimal
 
     import hashlib
@@ -147,9 +154,11 @@ def _total_affiche_memorise(devis, display_totals):
     from django.core.cache import cache
 
     lignes = [(lg.pk, str(lg.quantite), str(lg.prix_unitaire), str(lg.remise),
-               lg.produit_id) for lg in devis.lignes.all()]
-    cle = 'devis-total:v%s:%s:%s:%s' % (
-        VERSION_TOTAL_MEMORISE, devis.pk, devis.updated_at,
+               lg.produit_id,
+               str(getattr(lg.produit, 'date_mise_a_jour', '') if lg.produit_id else ''))
+              for lg in devis.lignes.all()]
+    cle = 'devis-total:v%s:%s:%s:%s:%s' % (
+        VERSION_TOTAL_MEMORISE, devis.pk, devis.updated_at, marqueur_societe,
         hashlib.sha1(repr(lignes).encode('utf-8'), usedforsecurity=False).hexdigest())
     try:
         trouve = cache.get(cle)
@@ -182,6 +191,8 @@ def synthese_liste_devis(qs, company):
     from .quote_engine.builder import display_totals
     from .utils.expiry import is_expired, q_expiration
 
+    from apps.parametres.models import CompanyProfile
+    marqueur_societe = getattr(CompanyProfile.get(company), 'updated_at', None)
     jour = timezone.localdate()
     par_statut = {s: {'count': 0, 'total': Decimal('0')} for s in STATUTS_EFFECTIFS}
     en_jeu = (qs.filter(is_active=True).order_by('pk')
@@ -192,7 +203,8 @@ def synthese_liste_devis(qs, company):
         cle = 'expire' if is_expired(devis, today=jour) else devis.statut
         cellule = par_statut.setdefault(cle, {'count': 0, 'total': Decimal('0')})
         cellule['count'] += 1
-        cellule['total'] += _total_affiche_memorise(devis, display_totals)
+        cellule['total'] += _total_affiche_memorise(
+            devis, display_totals, marqueur_societe)
     for cellule in par_statut.values():  # une seule règle d'arrondi de l'argent (core.money)
         cellule['total'] = float(quantize_mad(cellule['total']))
     a_relancer = (qs.filter(is_active=True, statut='envoye')
