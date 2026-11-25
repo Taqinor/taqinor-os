@@ -3120,8 +3120,11 @@ class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher
 
         def plan(company_, lat, lon, kwc, **kw):
             appels.append((kw['lead_id'], kwc, kw['pente'], kw['produits'], kw['nb_panneaux']))
+            # Le lead pentu : fiche du module VIDE (puissance de la conception, deux étapes omises).
+            vide = [{'code': 'puissance_module_de_la_conception'}] + [{'code': 'fiche_module_incomplete'}] * 2
             return {'production_annuelle': kwc * 1500.0,
-                    'suppositions': [] if kw['pente'] is not None else [{'champ': 'inclinaison_deg'}]}
+                    'suppositions': ([] if kw['pente'] is not None else [{'champ': 'inclinaison_deg'}])
+                    + (vide if kw['lead_id'] == pentu.pk else [])}
         sortie = io.StringIO()
         with mock.patch('apps.calepinage.services.plan_par_defaut.simuler_plan_par_defaut', side_effect=plan):
             call_command('remplir_conceptions', '--company', str(company.pk), '--ecarts-sans-toit', stdout=sortie,
@@ -3129,12 +3132,15 @@ class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher
         liste = sortie.getvalue()
         lignes = liste.splitlines()
         options = sum(len(attendus[lead.pk].valeurs) for lead in (sans_toit, pentu))
-        # Les COMPTES d'abord, puis la moyenne et le plus grand écart, avant les leads.
+        vides, completes = len(attendus[pentu.pk].valeurs), len(attendus[sans_toit.pk].valeurs)
+        # Les COMPTES d'abord, puis les moyennes (fiche complète, puis toutes les lignes), avant les leads.
         self.assertEqual(lignes[1], f"  COMPTES : 3 lead(s) sans toit listé(s) ; {options} ligne(s) d'option "
-                                    "simulée(s) ; 0 non simulée(s) : aucune ; 1 lead(s) refusé(s) par le moteur : "
+                                    f"simulée(s), dont {vides} avec une fiche de module vide (production "
+                                    "surestimée) ; 0 non simulée(s) : aucune ; 1 lead(s) refusé(s) par le moteur : "
                                     "1 × localisation_inconnue", liste)
-        self.assertTrue(lignes[2].startswith('  ÉCART MOYEN : '), liste)
-        self.assertIn('PLUS GRAND : lead #', lignes[2])
+        self.assertTrue(lignes[2].startswith(f'  ÉCART MOYEN (fiche complète, {completes} ligne(s)) : '), liste)
+        self.assertIn('PLUS GRAND : lead #%d ' % sans_toit.pk, lignes[2])  # jamais une ligne à fiche vide
+        self.assertTrue(lignes[3].startswith(f'  ÉCART MOYEN (toutes les lignes simulées, {options}) : '), liste)
         self.assertNotIn(f'lead #{toit_lead.pk} ', liste)
         self.assertIn('ÉCARTS SANS TOIT : 3 lead(s) sans toit tracé listé(s)', liste)
         # Le lead refusé n'est PAS un écart : un seul bloc, à la fin, après toutes les options.
@@ -3158,9 +3164,22 @@ class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher
                     '{:,.0f}'.format(avant).replace(',', ' '), '{:,.0f}'.format(kwc * 1500.0).replace(',', ' '),
                     '{:+,.0f}'.format(ecart).replace(',', ' '), ecart / avant * 100), ligne)
                 self.assertIn('pente supposée 30°' if lead is sans_toit else 'changera : ', ligne)
+                drapeau = ('fiche du module vide : 2 étape(s) de pertes non appliquée(s), puissance prise de '
+                           'la conception')
+                (self.assertIn if lead is pentu else self.assertNotIn)(drapeau, ligne)
                 self.assertIn('changera : oui' if round(kwc * 1500.0) != round(avant) else 'changera : non', ligne)
         self.assertEqual((_json(list(ConceptionLead.objects.order_by('pk').values())),
                           _json(list(Calepinage.objects.order_by('pk').values()))), instantane)
+        # Aucune ligne à fiche complète : la tête le DIT au lieu d'une moyenne.
+        from types import SimpleNamespace
+
+        from apps.ventes.management.commands.remplir_conceptions import _sortie_sans_toit
+        seule = {'option': 'sans', 'kwc': 5.0, 'avant': 7000.0, 'apres': 8000.0, 'kwc_plan': 5.0, 'refus': None,
+                 'pente_supposee': False, 'etapes_sans_fiche': 1, 'puissance_conception': True, 'fiche_vide': True}
+        tete = _sortie_sans_toit([(SimpleNamespace(pk=1), {'options': [seule]})])
+        self.assertEqual(tete[1], '  ÉCART MOYEN (fiche complète) : aucune ligne simulée avec une fiche de module '
+                                  'complète — aucun écart fiable à moyenner')
+        self.assertTrue(tete[2].startswith('  ÉCART MOYEN (toutes les lignes simulées, 1) : '))
 
     def test_appliquer_ne_touche_pas_une_version_courante_venue_d_un_toit(self):
         """Relecture E3 M2 — un remplissage, pas un rafraîchissement : le lead
