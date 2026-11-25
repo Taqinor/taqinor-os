@@ -11,7 +11,7 @@ import { act, waitFor, fireEvent } from '@testing-library/react'
 import {
   monter, attendreStable, CATALOGUE, DEVIS_ETUDE_HORAIRE, DEVIS_ENVOYE_LES_DEUX,
 } from './DevisGeneratorGoldenHarnais'
-import { exempleContrat } from '../../test/fixtures/contractSamples'
+import { documentContrat } from '../../test/fixtures/contractSamples'
 
 vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
 vi.mock('../../api/stockApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
@@ -37,26 +37,30 @@ cycleEcran()
 const bouton = (container, re) => [...container.querySelectorAll('button')].find((b) => re.test(b.textContent))
 
 describe('AGNR18 — kWc des lignes au watt de chaque ligne panneau', () => {
-  it('modèle 10 × Jinko 550W appliqué ⇒ corps de l’aperçu horaire `kwc: 5.5`', async () => {
+  // E7d (M3) — l'aperçu horaire (qui recevait `kwc`) n'est plus appelé : l'aperçu
+  // est celui du moteur unique, qui reçoit le NOMBRE de panneaux des lignes
+  // (`imposes.nb_panneaux`) ; le kWc facturé des lignes reste celui du rail (AGNR74).
+  it('modèle 10 × Jinko 550W appliqué ⇒ l’aperçu du moteur reçoit `nb_panneaux: 10`', async () => {
     const vue = await monter(`/ventes/devis/nouveau?edit=${DEVIS_ETUDE_HORAIRE.id}`, {
       devis: DEVIS_ETUDE_HORAIRE,
-      etudeHoraire: exempleContrat('ventes', 'etude_horaire'),
+      conception: documentContrat('ventes', 'conception_lead').apercu.reponse,
       avant: (apis) => {
         apis.stockApi.getProduits.mockResolvedValue({ data: [...CATALOGUE, JINKO] })
         apis.ventesApi.getPresets.mockResolvedValue({ data: [MODELE] })
       },
     })
     const { container } = vue
-    await waitFor(() => expect(vue.ventesApi.postEtudeHorairePreview).toHaveBeenCalled(), { timeout: 5000 })
+    await waitFor(() => expect(vue.ventesApi.apercuConception).toHaveBeenCalled(), { timeout: 5000 })
     await attendreStable(container, act, { stables: 10 })
 
     await act(async () => { fireEvent.click(bouton(container, /Modèles de devis/)) })
     await waitFor(() => expect(bouton(container, /^Appliquer$/)).toBeTruthy(), { timeout: 5000 })
     await act(async () => { fireEvent.click(bouton(container, /^Appliquer$/)) })
     await waitFor(() => {
-      const corps = vue.ventesApi.postEtudeHorairePreview.mock.calls.at(-1)[0]
-      expect(corps.kwc).toBe(5.5)
+      const corps = vue.ventesApi.apercuConception.mock.calls.at(-1)[0]
+      expect(corps.imposes.nb_panneaux).toBe(10)
     }, { timeout: 5000 })
+    expect(vue.ventesApi.postEtudeHorairePreview).not.toHaveBeenCalled()
   }, 60000)
 
   it('prix_kwc_option_avec — AGNR74 : le prix/kWc divise le total « avec » par le kWc « avec »', async () => {

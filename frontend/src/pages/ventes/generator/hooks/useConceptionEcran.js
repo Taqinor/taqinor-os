@@ -65,43 +65,51 @@ export function chiffresConception(conception) {
 /** La conception de l'écran : `conception` (l'aperçu dès qu'il a répondu,
  *  sinon la version rangée du lead), `servie` (la version rangée seule : son
  *  payback est celui du devis de référence, comme le PDF), `chargement`,
- *  `erreur` (message du serveur, en français). */
+ *  `erreur` (message du serveur, en français).
+ *  E7d (M3) — les clés de la garde de péremption du dimensionnement
+ *  (`decisionSizing`) : `cleCourante` (ce qui est à l'écran), `cleServie` /
+ *  `cleErreur` (ce qui a produit la réponse ou l'échec) ; un lead SANS version
+ *  rangée (404) est prévisualisé sur ses seules colonnes (corps vide). */
 export function useConceptionEcran({ leadId, corps }) {
-  const [servie, setServie] = useState(null)
-  const [apercu, setApercu] = useState({ donnees: null, chargement: false, erreur: null })
+  const [rangee, setRangee] = useState({ lead: null, donnees: null })
+  const [apercu, setApercu] = useState({ donnees: null, chargement: false, erreur: null, cle: '' })
 
   useEffect(() => {
     let vivant = true
     const lire = async () => {
-      if (!leadId) { setServie(null); return }
+      if (!leadId) { setRangee({ lead: null, donnees: null }); return }
       try {
         const { data } = await ventesApi.getConceptionLead(leadId)
-        if (vivant) setServie(data?.etat ? data : null)
+        if (vivant) setRangee({ lead: leadId, donnees: data?.etat ? data : null })
       } catch {
-        if (vivant) setServie(null)  // 404 « conception_absente » : rien de rangé
+        if (vivant) setRangee({ lead: leadId, donnees: null })  // 404 « conception_absente » : rien de rangé
       }
     }
     lire()
     return () => { vivant = false }
   }, [leadId])
 
-  const cle = corps ? JSON.stringify(corps) : ''
+  const servie = rangee.lead === leadId ? rangee.donnees : null
+  const sansVersion = Boolean(leadId) && rangee.lead === leadId && !rangee.donnees
+  const corpsEffectif = corps
+    ?? (sansVersion ? { lead: Number(leadId), calepinage: null, entrees: {}, imposes: {} } : null)
+  const cle = corpsEffectif ? JSON.stringify(corpsEffectif) : ''
   useEffect(() => {
     const ctrl = new AbortController()
     let minuterie = null
     const demander = async () => {
       try {
         const { data } = await ventesApi.apercuConception(JSON.parse(cle), { signal: ctrl.signal })
-        if (!ctrl.signal.aborted) setApercu({ donnees: data?.etat ? data : null, chargement: false, erreur: null })
+        if (!ctrl.signal.aborted) setApercu({ donnees: data?.etat ? data : null, chargement: false, erreur: null, cle })
       } catch (err) {
         if (ctrl.signal.aborted) return
         const detail = err?.response?.data?.detail
-        setApercu({ donnees: null, chargement: false,
+        setApercu({ donnees: null, chargement: false, cle,
           erreur: typeof detail === 'string' ? detail : 'Aperçu du moteur indisponible.' })
       }
     }
     const lancer = async () => {
-      if (!cle) { setApercu({ donnees: null, chargement: false, erreur: null }); return }
+      if (!cle) { setApercu({ donnees: null, chargement: false, erreur: null, cle: '' }); return }
       setApercu((a) => ({ ...a, chargement: true, erreur: null }))
       minuterie = setTimeout(demander, DELAI_APERCU_MS)
     }
@@ -109,5 +117,11 @@ export function useConceptionEcran({ leadId, corps }) {
     return () => { if (minuterie) clearTimeout(minuterie); ctrl.abort() }
   }, [cle])
 
-  return { conception: apercu.donnees ?? servie, servie, chargement: apercu.chargement, erreur: apercu.erreur }
+  const surRangee = !cle && Boolean(servie)
+  return {
+    conception: apercu.donnees ?? servie, servie, chargement: apercu.chargement, erreur: apercu.erreur,
+    cleCourante: cle || (surRangee ? 'rangee' : null),
+    cleServie: apercu.donnees ? apercu.cle : (surRangee ? 'rangee' : null),
+    cleErreur: apercu.erreur ? apercu.cle : null,
+  }
 }

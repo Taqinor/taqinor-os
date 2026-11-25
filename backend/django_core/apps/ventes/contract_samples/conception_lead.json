@@ -145,7 +145,22 @@
         "consommation_annuelle": {"valeur": 12000.0, "unite": "kWh/an", "source": "moteur"}, "forme_horaire": {"valeur": "presence_jour", "unite": null, "source": "defaut"}, "forme_horaire_24": {"valeur": [0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.03, 0.03, 0.03, 0.03], "unite": "part", "source": "defaut"},
         "module_produit": {"valeur": 2, "unite": null, "source": "moteur"}, "onduleur_produit": {"valeur": 3, "unite": null, "source": "moteur"}, "batterie_produit": {"valeur": null, "unite": null, "source": "moteur"}, "verdicts": {"valeur": {"ratio_dc_ac": {"conforme": true, "valeur": 1.2, "borne": 1.35, "borne_source": "règle du devis", "detail": "1,20 pour 1,35 au plus (règle du devis)"}, "capacite_hybride": null, "longueur_chaine": {"conforme": true, "longueurs": [12], "longueur": 12, "detail": "chaînes de 12 modules toutes dans la fenêtre de tension de l'onduleur"}, "non_calcule": null}, "unite": null, "source": "moteur"}
       }},
-      "blocs": {"etude_horaire": {"version": 1, "kwc": 7.2, "source_production": "pvgis_ville:casablanca"}},
+      "blocs": {"etude_horaire": {"version": 1, "kwc": 7.2, "source_production": "pvgis_ville:casablanca",
+        "annuel": {"production_kwh": 12000.0, "consommation_kwh": 12000.0, "economie_sans_mad": 6000.0, "facture_avant_mad": 12000.0, "facture_apres_sans_mad": 6000.0, "taux_autoconso_sans": 0.5, "couverture_sans": 0.6},
+        "mois": [
+          {"mois": 1, "production_kwh": 700.0, "consommation_kwh": 1000.0, "economie_sans_mad": 350.0, "facture_avant_mad": 1000.0},
+          {"mois": 2, "production_kwh": 800.0, "consommation_kwh": 1000.0, "economie_sans_mad": 400.0, "facture_avant_mad": 1000.0},
+          {"mois": 3, "production_kwh": 1000.0, "consommation_kwh": 1000.0, "economie_sans_mad": 500.0, "facture_avant_mad": 1000.0},
+          {"mois": 4, "production_kwh": 1100.0, "consommation_kwh": 1000.0, "economie_sans_mad": 550.0, "facture_avant_mad": 1000.0},
+          {"mois": 5, "production_kwh": 1200.0, "consommation_kwh": 1000.0, "economie_sans_mad": 600.0, "facture_avant_mad": 1000.0},
+          {"mois": 6, "production_kwh": 1300.0, "consommation_kwh": 1000.0, "economie_sans_mad": 650.0, "facture_avant_mad": 1000.0},
+          {"mois": 7, "production_kwh": 1300.0, "consommation_kwh": 1000.0, "economie_sans_mad": 650.0, "facture_avant_mad": 1000.0},
+          {"mois": 8, "production_kwh": 1200.0, "consommation_kwh": 1000.0, "economie_sans_mad": 600.0, "facture_avant_mad": 1000.0},
+          {"mois": 9, "production_kwh": 1100.0, "consommation_kwh": 1000.0, "economie_sans_mad": 550.0, "facture_avant_mad": 1000.0},
+          {"mois": 10, "production_kwh": 1000.0, "consommation_kwh": 1000.0, "economie_sans_mad": 500.0, "facture_avant_mad": 1000.0},
+          {"mois": 11, "production_kwh": 700.0, "consommation_kwh": 1000.0, "economie_sans_mad": 350.0, "facture_avant_mad": 1000.0},
+          {"mois": 12, "production_kwh": 600.0, "consommation_kwh": 1000.0, "economie_sans_mad": 300.0, "facture_avant_mad": 1000.0}
+        ]}},
       "suppositions": [{"code": "occupation_supposee", "champ": "occupation_jour", "valeur": "presence_jour", "source": "defaut", "message": "Présence en journée supposée : renseigner « Occupation en journée » sur la fiche du lead."}],
       "entrees_utilisees": {"facture_hiver": {"valeur": 1500, "source": "saisie"}},
       "empreinte": "7777777777777777777777777777777777777777777777777777777777777777",

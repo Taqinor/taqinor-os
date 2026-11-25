@@ -342,3 +342,44 @@ export function verdictBatteriePourTaille(lignes, kwc, tolerance = 0.4) {
   }
 }
 
+//: Les suppositions du moteur que l'écran devis montre telles quelles (la consommation).
+const CODES_NOTES = new Set(['consommation_imposee', 'consommation_du_releve'])
+
+/**
+ * E7d (revue lot 4, M3) — UNE source par bloc. La conception RÉSIDENTIELLE
+ * complète servie (`conception_lead.json` : `blocs` = l'`etude_params` que le
+ * moteur a calculé) remise à la forme que lisent les blocs de l'écran (graphe,
+ * falaise, verdict batterie, tableau) : `{ sans, avec }`, chacun `{ etude,
+ * dimensionnement, consommation: null, estimation_conso: null, avertissements:
+ * [], notes }` (`notes` : les phrases du moteur sur la consommation, telles
+ * quelles). Aucun calcul : des lectures. `null` pour un refus, un autre marché
+ * ou rien de servi — jamais les données d'une autre source.
+ */
+export function donneesHorairesDeConception(conception) {
+  if (!conception || conception.etat !== 'complet' || conception.marche !== 'residentiel') return null
+  const blocs = conception.blocs || {}
+  const notes = (conception.suppositions || []).filter((s) => CODES_NOTES.has(s?.code)).map((s) => s.message)
+  const forme = (etude) => (etude || blocs.dimensionnement ? {
+    etude: etude || null, dimensionnement: blocs.dimensionnement || null, consommation: null,
+    estimation_conso: null, avertissements: [], notes,
+  } : null)
+  const avec = blocs.etude_horaire || null
+  return { sans: forme(blocs.etude_horaire_sans || avec), avec: forme(avec) }
+}
+
+/** E7d — les 12 points du graphe « Économies mensuelles », lus sur l'étude servie
+ *  (option sans : `donneesSans`, option avec : `donneesAvec`, sinon la même) ;
+ *  `[]` sans douze mois servis (le bloc dit alors qu'il n'est pas disponible). */
+export function serieEconomiesMensuelles(donneesSans, donneesAvec, libelles = LIBELLES_MOIS) {
+  const mois = donneesSans?.etude?.mois
+  if (!Array.isArray(mois) || mois.length !== 12) return []
+  const moisAvec = donneesAvec?.etude?.mois
+  const avec = Array.isArray(moisAvec) && moisAvec.length === 12 ? moisAvec : mois
+  return mois.map((m, i) => ({
+    month: libelles[i],
+    facture: Math.round(Number(m.facture_avant_mad) || 0),
+    ecoSans: Math.round(Number(m.economie_sans_mad) || 0),
+    ecoAvec: Math.round(Number(avec[i]?.economie_avec_mad) || 0),
+  }))
+}
+

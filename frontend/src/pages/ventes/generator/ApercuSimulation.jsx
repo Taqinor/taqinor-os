@@ -25,7 +25,7 @@ export default function ApercuSimulation({
   etudeHoraireSourceServeur, etudeHoraireSourceLabel, etudeHoraireChargement, etudeHoraireErreur,
   etudeHoraireDonnees, etudeHoraireLignes, ligneStockageOuverte, appliquerTailleDimensionnement,
   setLigneStockageOuverte, etudeHoraireFalaise, etudeHoraireGlitch, etudeHoraireEstimationConso,
-  marcheCi, roi, etudeHoraireAnnuel, sansRec, showAvec, etudeHoraireAnnuelAvec,
+  marcheCi, roi, etudeHoraireAnnuel, sansRec, showAvec,
   apercuProductionKwh, apercuProductionKwhAvec = null, showSans, signerEcoOuRoi, apercuEcoSans, apercuPaybackSansJamais,
   apercuPaybackSans, totals, avecRec, batterieInvendableServeur, verdictBatterieServeur,
   apercuEcoAvec, apercuPaybackAvecJamais, apercuPaybackAvec, capaciteBatterieInconnue,
@@ -83,6 +83,12 @@ export default function ApercuSimulation({
                   : (etudeHoraireErreur
                       || 'Estimation locale (hors ligne) — en attente du moteur horaire serveur.')}
               </p>
+            )}
+            {/* E7d — les phrases du moteur sur la consommation retenue (imposée par le devis…), telles quelles. */}
+            {etudeHoraireDonnees?.notes?.length > 0 && (
+              <ul className="mb-3 list-disc pl-5 text-xs text-muted-foreground" data-testid="etude-horaire-notes">
+                {etudeHoraireDonnees.notes.map((a) => <li key={a}>{a}</li>)}
+              </ul>
             )}
             {etudeHoraireDonnees?.avertissements?.length > 0 && (
               <ul className="mb-3 list-disc pl-5 text-xs text-warning" data-testid="etude-horaire-avertissements">
@@ -359,7 +365,8 @@ export default function ApercuSimulation({
         ) : !roi?.modele || roi.modele === 'refus' ? (
           // AGEN11 — rien de servi : l'attente du moteur, son refus dit tel quel,
           // ou l'invitation à saisir (aucun chiffre calculé dans le navigateur).
-          <p className="text-center text-sm text-muted-foreground" data-testid="apercu-conception-attente">
+          <p className="text-center text-sm text-muted-foreground" data-testid="apercu-conception-attente"
+             data-champ={roi?.champ || undefined}>
             {roi?.chargement ? 'Calcul en cours…' : (roi?.message || <>
               Renseignez le nombre de panneaux et les factures, puis la simulation
               s'actualise automatiquement.
@@ -371,28 +378,14 @@ export default function ApercuSimulation({
                 (QF4), l'écran affiche le MÊME calcul « deux factures » par
                 tranche que le PDF (facture sans vs avec solaire) au lieu
                 d'une estimation moyenne. */}
-            {roi.modele === 'horaire' ? (
-              // AGNR23 — le bandeau dit le modèle DES CARTES : l'étude
-              // horaire du moteur quand elle répond.
-              <div className="mb-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success"
-                   data-testid="bandeau-modele-cartes">
-                Moteur horaire : facture ≈ <strong>{fmtNum(Math.round(etudeHoraireAnnuel.facture_avant_mad))} MAD/an</strong>
-                {' '}sans solaire → avec solaire ≈{' '}
-                <strong>
-                  {fmtNum(Math.round(sansRec || !showAvec
-                    ? etudeHoraireAnnuel.facture_apres_sans_mad
-                    : (etudeHoraireAnnuelAvec || etudeHoraireAnnuel).facture_apres_avec_mad))} MAD/an
-                </strong>
-                {' '}— chiffres des cartes (production horaire × consommation du client).
-              </div>
-            ) : (
-              // AGEN11 — les cartes lisent la conception du moteur unique.
-              <div className="mb-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success"
-                   data-testid="bandeau-modele-conception">
-                Conception du moteur unique{roi.chargement ? ' — calcul en cours…' : ''} : les chiffres
-                des cartes sont ceux de la fiche du lead et du document.
-              </div>
-            )}
+            {/* AGEN11 / E7d — les cartes lisent la conception du moteur unique
+                (l'ancien bandeau « Moteur horaire » de l'aperçu horaire, retiré
+                avec lui, ne pouvait plus s'afficher). */}
+            <div className="mb-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success"
+                 data-testid="bandeau-modele-conception">
+              Conception du moteur unique{roi.chargement ? ' — calcul en cours…' : ''} : les chiffres
+              des cartes sont ceux de la fiche du lead et du document.
+            </div>
             <div className="gen-metrics-grid">
               {/* CJ2b — Production/Autoconso/Couverture : le serveur
                   horaire (PVGIS réel) gagne dès qu'il a répondu (résidentiel),
@@ -540,7 +533,14 @@ export default function ApercuSimulation({
                 graphique « Facture ONEE » ne doit alors jamais se
                 présenter comme une donnée du client — il est masqué au
                 profit d'un message explicite. */}
-            {facturesSaisies ? (
+            {facturesSaisies && chartData.length !== 12 ? (
+              // E7d (M3) — le graphe ne sort que de la réponse des cartes : sans
+              // ses douze mois, il le dit (jamais une courbe d'une autre source).
+              <p className="py-6 text-center text-sm text-muted-foreground" data-testid="chart-indisponible">
+                Graphique mensuel non disponible pour cet aperçu : le moteur n’a pas servi le détail
+                mois par mois.
+              </p>
+            ) : facturesSaisies ? (
               <ResponsiveContainer width="100%" height={260}>
                 <ComposedChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.07)" />

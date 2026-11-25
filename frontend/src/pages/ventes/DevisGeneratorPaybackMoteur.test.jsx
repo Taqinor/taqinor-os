@@ -117,4 +117,21 @@ describe('AGEN11 — l’aperçu de l’écran devis vient du moteur unique', ()
     // Aucun devis de référence servi : le payback n'est pas inventé (« N/A », aucune ancre chiffrée).
     expect(figure(container, 'payback_ans')).toBeNull()
   }, 20000)
+
+  // E7d (revue lot 4, M3) — un refus du moteur est TOUJOURS dit (sa phrase, son
+  // champ) : jamais remplacé par les chiffres d'un autre calcul ; aucun appel à
+  // l'aperçu horaire.
+  it('conception refusée : la phrase et le champ du refus, aucun chiffre', async () => {
+    const refus = exempleContrat('ventes', 'conception_lead', 'exemple_refus')
+    ventesApi.getConceptionLead.mockResolvedValue({ data: RANGEE })
+    ventesApi.apercuConception.mockResolvedValue({ data: refus })
+    const { container } = renderEdition()
+    await act(async () => { fireEvent.change(container.querySelector('#gen-hiver'), { target: { value: '1400' } }) })
+    await waitFor(() => expect(container.querySelector('[data-testid="apercu-conception-attente"]')?.textContent)
+      .toContain(refus.refus.message), { timeout: 5000 })
+    expect(container.querySelector('[data-testid="apercu-conception-attente"]').getAttribute('data-champ'))
+      .toBe(refus.refus.champ)
+    expect(figure(container, 'production_annuelle_kwh')).toBeNull()
+    expect(ventesApi.postEtudeHorairePreview).not.toHaveBeenCalled()
+  }, 20000)
 })
