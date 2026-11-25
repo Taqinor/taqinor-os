@@ -98,7 +98,7 @@ export default function DevisRow({ d, ctx }) {
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
     peutCreer = true, peutModifier = true, peutPdf = true,
     deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,
-    pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, setFacturerTarget,
+    pdfGenerating, pdfDownloading, pdfSlowPoll, pdfSuivi, convertingId, chantierBusy, setFacturerTarget,
     panneauVenteOpenId, setPanneauVenteOpenId,
     conflitLigne, setConflitLigne, ouvrirDevis,
     openEdit, openVarianteModal, openGammeModal, handleDelete, handleEnvoyer, handleRelancer,
@@ -202,6 +202,7 @@ export default function DevisRow({ d, ctx }) {
   // tant que le polling se poursuit (aucun second job n'est jamais relancé
   // en dessous).
   const isSlowPolling = !!pdfSlowPoll[d.id]
+  const isSuivi = !!pdfSuivi?.[d.id] && !isSlowPolling
   return (
     <Fragment key={d.id}>
     {/* QX12 — deep-link ?devis=<pk> : la ligne ciblée porte un id ancrable et
@@ -499,6 +500,11 @@ export default function DevisRow({ d, ctx }) {
           {/* QX21 — passé 30 s, on n'abandonne plus le suivi : ce badge reste
               visible tant que le polling se poursuit (aucun second job
               n'est jamais relancé en dessous). */}
+          {isSuivi && (
+            <Badge tone="neutral" title="La demande est acceptée : la page vérifie automatiquement quand le PDF est prêt.">
+              PDF en cours de génération…
+            </Badge>
+          )}
           {isSlowPolling && (
             <Badge tone="warning" title="Le PDF est toujours en cours de génération côté serveur — la page continue de vérifier automatiquement.">
               PDF toujours en cours…

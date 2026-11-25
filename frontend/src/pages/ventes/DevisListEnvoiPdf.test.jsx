@@ -65,10 +65,10 @@ describe('T4-X1-003 — un PDF « Devis Final » qui n’arrive pas est suivi pu
       data: { devis: 7, statut: pret ? 'pret' : 'en_cours', fichier_pdf: pret, erreur: null, date: null },
     }))
     await act(async () => { await vi.advanceTimersByTimeAsync(10 * 1000) })
-    expect(result.current.pdfGenerating[7]).toBe(true)
+    expect(result.current.pdfSuivi[7]).toBe(true)
     pret = true
     await act(async () => { await vi.advanceTimersByTimeAsync(12 * 1000) })
-    expect(result.current.pdfGenerating[7]).toBe(false)
+    expect(result.current.pdfSuivi[7]).toBe(false)
   })
 
   it('un sondage en erreur ou sans réponse ne coupe plus le suivi : l’échec du serveur est dit', async () => {
@@ -86,7 +86,7 @@ describe('T4-X1-003 — un PDF « Devis Final » qui n’arrive pas est suivi pu
     expect(erreur).toHaveBeenCalledWith(
       'DEV-7 : la génération du PDF a échoué — Moteur indisponible',
       expect.objectContaining({ action: expect.objectContaining({ label: 'Réessayer' }) }))
-    expect(result.current.pdfGenerating[7]).toBe(false)
+    expect(result.current.pdfSuivi[7]).toBe(false)
     erreur.mockRestore()
   })
 
@@ -97,7 +97,7 @@ describe('T4-X1-003 — un PDF « Devis Final » qui n’arrive pas est suivi pu
     expect(erreur).toHaveBeenCalledWith(
       'DEV-7 : le PDF n’est toujours pas prêt après 5 minutes — la génération n’a pas abouti.',
       expect.objectContaining({ action: expect.objectContaining({ label: 'Réessayer' }) }))
-    expect(result.current.pdfGenerating[7]).toBe(false)
+    expect(result.current.pdfSuivi[7]).toBe(false)
     erreur.mockRestore()
   })
 })
