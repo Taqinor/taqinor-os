@@ -214,6 +214,39 @@ class TestDevisVerrouEdition(TestCase):
         self.assertFalse(r.json()['par_vous'])
         self.assertIn('par un autre utilisateur', r.json()['detail'])
 
+    def test_t4_x4_021_course_deux_onglets_second_refuse(self):
+        # T4-X4-021 — deux onglets, MÊME jeton : B arrive pendant que A
+        # recalcule ses études (étape hors transaction, ~30 s en vrai). Le
+        # jeton en base doit déjà avoir avancé à cet instant : la garde de B
+        # (``verifier_jeton``, celle de ``replace-lines``) le refuse.
+        from unittest import mock
+        from apps.ventes.domain.pipeline import MODE_RAFRAICHIR
+        from apps.ventes.domain.verrou_devis import verifier_jeton
+        from apps.ventes.views import devis_edition
+        devis = self._devis(10)
+        api_a = self._api(self.user_a)
+        jeton = self._jeton(api_a, devis)
+        vrai_appliquer = devis_edition.appliquer
+        verdicts_b = []
+
+        def appliquer_puis_b(dv, intention):
+            if intention.mode == MODE_RAFRAICHIR and not verdicts_b:
+                verdicts_b.append(verifier_jeton(
+                    devis, {'expected_updated_at': jeton}, self.user_b))
+            return vrai_appliquer(dv, intention)
+
+        with mock.patch.object(devis_edition, 'appliquer', appliquer_puis_b):
+            r = self._replace(api_a, devis, {'lignes': self._lignes(10),
+                                             'expected_updated_at': jeton})
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertIsNotNone(verdicts_b[0], 'B passait pendant le recalcul de A')
+        self.assertEqual(verdicts_b[0]['code'], 'devis_modifie')
+        r = self._replace(self._api(self.user_b), devis, {
+            'lignes': self._lignes(4), 'expected_updated_at': jeton})
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertEqual(devis.lignes.get(produit=self.panneau).quantite,
+                         Decimal('10'))
+
     def test_lock_version_absent_comportement_inchange(self):
         # NTPLT17 — sans ``lock_version`` dans le corps, rien ne change :
         # deux PATCH successifs « à l'aveugle » passent, la version avance.

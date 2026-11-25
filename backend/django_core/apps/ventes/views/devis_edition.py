@@ -315,6 +315,20 @@ def _garde_capacite_totaux(devis):
                 'champ': nom})
 
 
+def _jeton_sous_verrou(devis, request):
+    """T4-X4-021 — sous la transaction d'écriture : verrouille la ligne du
+    devis (``SELECT … FOR UPDATE``) puis re-juge le jeton QJR545. La garde
+    d'avant la transaction lisait le jeton SANS verrou : deux enregistrements
+    au même jeton la passaient tous deux et le second écrasait le premier.
+    Jeton absent ⇒ rien (comportement inchangé)."""
+    from ..domain.verrou_devis import verifier_jeton
+    list(Devis.objects.select_for_update().filter(pk=devis.pk)
+         .values_list('pk', flat=True))
+    charge = verifier_jeton(devis, request.data, request.user)
+    if charge is not None:
+        raise _DevisModifie(charge)
+
+
 class DevisEditionActionsMixin:
     """SPL135 — actions d'édition de ``DevisViewSet`` (mixin, aucune base)."""
 
@@ -579,6 +593,11 @@ class DevisEditionActionsMixin:
         ttc_avant = ttc_du_devis(devis)
         try:
             with transaction.atomic():
+                # T4-X4-021 — le jeton est re-jugé SOUS le verrou de la ligne
+                # du devis : deux onglets au même jeton ne passent plus tous
+                # deux (le second attend la fin de la transaction du premier,
+                # puis lit son jeton avancé ci-dessous → 409).
+                _jeton_sous_verrou(devis, request)
                 # QJR544 — avec un en-tête, la trace QJR518 encadre le geste
                 # ENTIER : UNE ligne de chatter et UN instantané par clic.
                 avant_geste = None
@@ -615,10 +634,16 @@ class DevisEditionActionsMixin:
                     from ..domain.modifiabilite import fin_de_geste_devis
                     fin_de_geste_devis(devis, request.user, avant=avant_geste,
                                        objet='lignes')
+                # T4-X4-021 — le jeton avance AVANT le commit, pas après le
+                # recalcul des études (hors transaction, ~30 s) : un second
+                # onglet au jeton d'avant est refusé dès que ces lignes sont
+                # écrites.
+                from ..domain.verrou_devis import toucher
+                toucher(devis)
         except RemiseNonApprouvee as erreur:
             return Response({'detail': erreur.message},
                             status=status.HTTP_400_BAD_REQUEST)
-        except (ValidationError, ConflitEtat):
+        except (ValidationError, ConflitEtat, _DevisModifie):
             raise
         except ValueError as exc:  # rollback : lignes d'origine
             if _produit_inconnu(exc):
