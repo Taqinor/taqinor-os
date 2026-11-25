@@ -272,6 +272,27 @@ def _nom_produit(company, produit_id):
     return getattr(produit, 'nom', None) or None
 
 
+def calepinage_du_lead(company, lead, calepinage_id=None, toit=None):
+    """Lane E6e (T4-X5-003) — ``(calepinage_id, toit)`` d'une relance du LEAD : ceux que
+    l'appelant passe, sinon le calepinage OUVERT du lead (hors appel d'offres) et sa pose
+    enregistrée (``layout_hash``) comme toit. LA résolution unique des entrées imposées
+    d'un lead : quel que soit le déclencheur (fiche, lecture, devis, calepinage), la
+    conception lit le même toit et les mêmes désignations. Sans calepinage : inchangés."""
+    from types import SimpleNamespace
+
+    if calepinage_id or lead is None or not getattr(lead, 'pk', None):
+        return calepinage_id, toit
+    from apps.calepinage.selectors import calepinage_ouvert_du_lead
+
+    calepinage = calepinage_ouvert_du_lead(company, lead.pk)
+    if calepinage is None or calepinage.appel_offre_id:
+        return None, toit
+    empreinte = (calepinage.layout_hash or '').strip()
+    if toit is None and empreinte:
+        toit = SimpleNamespace(empreinte=calepinage.layout_hash, plafond_panneaux=None)
+    return calepinage.pk, toit
+
+
 def designations_du_calepinage(company, calepinage_id):
     """ACAL2013 — le module et l'onduleur DÉSIGNÉS À LA MAIN à l'étape Électrique du
     calepinage (entrée électrique stockée : ``module_produit``, ``onduleur_produit``), à la

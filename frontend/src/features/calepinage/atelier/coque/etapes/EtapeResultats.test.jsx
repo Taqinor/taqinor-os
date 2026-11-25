@@ -799,7 +799,9 @@ describe('Étape Résultats — la conception, et l’écart avec le devis envoy
     expect(zone()).toHaveTextContent(`Devis ${bloc.devis_envoye.reference} envoyé le 10/11/2026 : ${kwh(6047)}`)
     expect(zone()).toHaveTextContent('Le devis envoyé n’est pas modifié')
     fireEvent.click(screen.getByRole('button', { name: 'Réviser le devis' }))
-    await waitFor(() => expect(ventesApi.reviserDevis).toHaveBeenCalledWith(bloc.devis_envoye.devis))
+    // T4-X5-011 — la V2 née de ce bouton est composée sur la conception courante du lead.
+    await waitFor(() => expect(ventesApi.reviserDevis)
+      .toHaveBeenCalledWith(bloc.devis_envoye.devis, { sur_la_conception: true }))
   })
 
   it('devis envoyé au même chiffre de production : UN seul chiffre, pas de bouton', async () => {

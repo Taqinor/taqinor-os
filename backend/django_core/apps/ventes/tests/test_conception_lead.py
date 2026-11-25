@@ -2976,6 +2976,106 @@ class RelanceEnTacheTests(_emprunt(RelanceConceptionTests, '_relancer'),
                          {'valeur': onduleur.nom, 'source': 'calepinage'})
         self.assertNotIn('module_designe', lue['entrees_utilisees'])
 
+    def test_e6e_une_conception_quel_que_soit_le_declencheur(self):
+        """Lane E6e, item 1 (T4-X5-003) — un lead dont le calepinage OUVERT porte un onduleur
+        désigné à l'étape Électrique : la conception rangée (empreinte et valeurs) est LA
+        MÊME, que le recalcul parte du calepinage (pose enregistrée) ou du lead (porte de
+        lecture, fiche modifiée, devis automatique, commande de remplissage) ; et, une fois
+        rangée depuis le calepinage, aucun déclencheur du lead ne la refait sans lui."""
+        from types import SimpleNamespace
+
+        from django.core.management import call_command
+
+        from apps.calepinage.models import Calepinage
+        from apps.stock.models import Produit
+        from apps.ventes.conception.receivers import mettre_en_file
+        from apps.ventes.conception.service import conception_ou_calcul
+        from apps.ventes.domain.creation_auto import conception_pour_le_devis
+        from apps.ventes.models import ConceptionLead
+        from apps.ventes.selectors import conception_courante
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        deye = Produit.objects.get(company=company, nom='Onduleur hybride Deye 5kW Monophasé')
+        module = Produit.objects.create(company=company, nom='Panneau Canadian Solar 710W', sku='E6E-710',
+                                        prix_vente=Decimal('1500'), prix_achat=Decimal('1'), quantite_stock=50)
+        calepinage = self._calepinage_designe(company, lead, onduleur_produit=deye.pk, module_produit=module.pk)
+        Calepinage.objects.filter(pk=calepinage.pk).update(layout_hash='h' * 64)
+        user = self._utilisateur(company)
+
+        def _rangee():
+            courante = ConceptionLead.objects.get(company=company, lead=lead, courante=True)
+            retenue = courante.valeurs[courante.option_retenue]
+            return (courante.empreinte, courante.calepinage_id, courante.option_retenue,
+                    retenue['onduleur_produit']['valeur'], retenue['module_produit']['valeur'],
+                    retenue['nb_panneaux']['valeur'], retenue['puissance_kwc']['valeur'])
+
+        toit = SimpleNamespace(empreinte='h' * 64, plafond_panneaux=None)
+        self._relancer(None, company, _declencheur('pose_enregistree'), calepinage_id=calepinage.pk, toit=toit)
+        reference = _rangee()
+        self.assertEqual(reference[3:5], (deye.pk, module.pk))
+
+        def _taches():
+            self._executer_les_taches()
+
+        declencheurs = {
+            'porte_de_lecture': lambda: (conception_ou_calcul(company, lead.pk), _taches()),
+            'fiche_modifiee': lambda: (mettre_en_file(company.pk, lead_id=lead.pk, origine='lead_entrees_modifiees',
+                                                      champs=[]), _taches()),
+            'devis_automatique': lambda: conception_pour_le_devis(lead, company, user),
+            'remplissage': lambda: self._commande_remplir(call_command, company),
+        }
+        for nom, declencher in declencheurs.items():
+            with self.subTest(declencheur=nom, premier=True):  # le lead déclenche le PREMIER calcul
+                ConceptionLead.objects.filter(company=company, lead=lead).delete()
+                declencher()
+                self.assertEqual(_rangee(), reference)
+                self.assertFalse(conception_courante(company, lead.pk)['perimee'])  # le filet lit la même pose
+        for nom, declencher in declencheurs.items():
+            with self.subTest(declencheur=nom, premier=False):  # rangée depuis le calepinage : rien ne bouge
+                ConceptionLead.objects.filter(company=company, lead=lead).delete()
+                self._relancer(None, company, _declencheur('pose_enregistree'), calepinage_id=calepinage.pk,
+                               toit=toit)
+                declencher()
+                self.assertEqual(ConceptionLead.objects.filter(company=company, lead=lead).count(), 1)
+                self.assertEqual(_rangee(), reference)
+
+    def test_e6e_conception_recalculee_dit_le_materiel_designe(self):
+        """Lane E6e, item 2 — une désignation à l'étape Électrique change la conception : la
+        phrase rangée (lue au chatter du lead et à l'atelier) dit « matériel désigné à
+        l'atelier : <module> / <onduleur> », jamais un « Module désigné X → — » parasite sur
+        un recalcul qui ne touche pas au matériel (filet, fiche modifiée)."""
+        from apps.calepinage.models import Calepinage
+        from apps.calepinage.services.electrique import CLE_ENTREE
+        from apps.stock.models import Produit
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        deye = Produit.objects.get(company=company, nom='Onduleur hybride Deye 5kW Monophasé')
+        module = Produit.objects.create(company=company, nom='Panneau Canadian Solar 710W', sku='E6E-710b',
+                                        prix_vente=Decimal('1500'), prix_achat=Decimal('1'), quantite_stock=50)
+        calepinage = self._calepinage_designe(company, lead)
+        self._relancer(lead, company, _declencheur('pose_enregistree'))
+        Calepinage.objects.filter(pk=calepinage.pk).update(
+            resultat={CLE_ENTREE: {'onduleur_produit': deye.pk, 'module_produit': module.pk}})
+        self.assertTrue(self._relancer(lead, company, _declencheur('pose_enregistree')).ecrite)
+        courante = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertTrue(courante.declencheur['raison'].endswith(
+            " : matériel désigné à l'atelier : Panneau Canadian Solar 710W / Onduleur hybride Deye 5kW Monophasé"),
+            courante.declencheur['raison'])
+        self.assertEqual([c['champ'] for c in courante.declencheur['champs']], ['materiel_designe'])
+
+        self._relancer(lead, company, _declencheur('filet'), forcer=True)  # même matériel : rien à dire de lui
+        courante = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual(courante.declencheur['champs'], [])
+
+    def _commande_remplir(self, call_command, company):
+        import io
+
+        with self.captureOnCommitCallbacks(execute=True):
+            call_command('remplir_conceptions', '--company', str(company.pk), '--appliquer', stdout=io.StringIO())
+
 
 # ── ADEV141 — remplir les conceptions des leads existants, liste d'abord ─────
 
@@ -3677,6 +3777,44 @@ class BrouillonsSuiventLaConceptionTests(_emprunt(RelanceConceptionTests, '_rela
         lead.refresh_from_db()
         return self._relancer(lead, company, _declencheur(
             'lead_entrees_modifiees', facture_hiver=(Decimal('1800'), Decimal('3600')))).conception
+
+    def test_e6e_reviser_sur_la_conception_compose_la_v2_sur_la_conception_courante(self):
+        """Lane E6e, item 4 (T4-X5-011) — « Réviser le devis » de l'atelier (corps
+        ``sur_la_conception``) : la V2 est composée sur la conception COURANTE du lead (la même
+        recomposition que le suivi des brouillons, ``brouillons.appliquer_a_la_demande``), le
+        devis envoyé reste octet pour octet ; sans le drapeau, la révision clone comme avant."""
+        from apps.ventes.conception.brouillons import _comptes
+        from apps.ventes.models import Devis
+
+        company, lead, user, _intact, _retouche, envoye = self._trois_devis()
+
+        def _lignes(devis):
+            return list(devis.lignes.order_by('ordre', 'pk').values_list(
+                'designation', 'quantite', 'prix_unitaire', 'remise', 'variante'))
+        avant, comptes_v1 = _lignes(envoye), _comptes(envoye)
+        version = self._nouvelle_version(company, lead)
+        attendus = {o: v['nb_panneaux']['valeur'] for o, v in version.valeurs.items()}
+        self.assertNotEqual(comptes_v1.get('avec', comptes_v1.get('')), attendus.get('avec'))
+
+        reponse = self._api(user).post('/api/django/ventes/devis/%d/reviser/' % envoye.pk,
+                                       {'sur_la_conception': True}, format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        v2 = Devis.objects.get(pk=reponse.data['id'])
+        self.assertEqual({o: _comptes(v2).get(o, _comptes(v2).get('')) for o in attendus}, attendus)
+        self.assertEqual(v2.conception_source['version'], version.version)
+        envoye.refresh_from_db()
+        self.assertEqual((_lignes(envoye), envoye.statut), (avant, 'envoye'))
+
+    def test_e6e_reviser_sans_drapeau_clone(self):
+        from apps.ventes.conception.brouillons import _comptes
+        from apps.ventes.models import Devis
+
+        company, lead, user, _intact, _retouche, envoye = self._trois_devis()
+        comptes_v1 = _comptes(envoye)
+        self._nouvelle_version(company, lead)
+        reponse = self._api(user).post('/api/django/ventes/devis/%d/reviser/' % envoye.pk, {}, format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        self.assertEqual(_comptes(Devis.objects.get(pk=reponse.data['id'])), comptes_v1)
 
     def test_e6d_duplicata_garde_le_pointeur_suit_ou_est_liste(self):
         """Écart 4 de l'acceptation du 25/11 — un brouillon né de « Dupliquer » garde la version

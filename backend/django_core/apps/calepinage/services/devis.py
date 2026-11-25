@@ -916,6 +916,31 @@ def _montants(taux_tva, remise_globale, Decimal):
     return montants
 
 
+def _onduleur_juge(calepinage, devis):
+    """Lane E6e (T4-X5-010) — un refus de resynchro juge l'onduleur du DEVIS ; quand
+    l'étape Électrique en désigne un AUTRE, la phrase le dit, nomme les deux et propose
+    le geste qui existe (désigner l'onduleur du devis). ``''`` sinon (refus inchangé)."""
+    from apps.stock.selectors import get_produit_scoped
+    from apps.ventes.selectors_calepinage import lignes_produits_calepinage
+    from apps.ventes.services import classer_produit
+
+    from .electrique import entree_stockee
+
+    try:
+        designe = int((entree_stockee(calepinage) or {}).get('onduleur_produit'))
+    except (TypeError, ValueError):
+        return ''
+    onduleurs = [li['produit'] for li in lignes_produits_calepinage(devis)
+                 if (classer_produit(li['produit'].nom or li['designation']) or '').startswith('onduleur')]
+    produit = get_produit_scoped(calepinage.company, designe)
+    if not onduleurs or produit is None or designe in {o.pk for o in onduleurs}:
+        return ''
+    du_devis = onduleurs[0].nom
+    return (f" L'étape Électrique juge l'onduleur désigné « {produit.nom} » ; ce devis porte "
+            f"« {du_devis} », c'est lui que ce refus juge. Pour aligner les deux, désignez "
+            f"« {du_devis} » à l'étape Électrique (Matériel électrique), puis resynchronisez.")
+
+
 def resynchroniser_devis(calepinage, *, user=None,
                          derogation_electrique=None, devis_id=None,
                          surfaces_chiffrees=None):
@@ -1002,9 +1027,10 @@ def resynchroniser_devis(calepinage, *, user=None,
             roof_image=None if variante is not None else (
                 getattr(calepinage, 'roof_image', None) or None))
     except SyncLayoutError as refus:
+        detail = refus.detail + _onduleur_juge(calepinage, devis)
         raise DevisRefuse(
-            refus.detail, champ='devis', statut=409,
-            donnees={'detail': refus.detail,
+            detail, champ='devis', statut=409,
+            donnees={'detail': detail,
                      'revision_possible': refus.revision_possible}) from refus
     resultat = dict(resultat or {})
     resultat['electrique'] = _consigner_et_servir(calepinage, garde,
