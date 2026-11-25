@@ -271,7 +271,8 @@ export function useApercuEtude(ctx) {
   const modeleServi = refusDesigne ? 'refus' : chiffres ? 'conception' : refusConception ? 'refus' : null
   const roi = (modeleServi || conceptionEcran.chargement)
     ? { modele: modeleServi, chargement: conceptionEcran.chargement, message: refusConception || null,
-        champ: refusDesigne?.champ || null }
+        champ: refusDesigne?.champ || conceptionEcran.champErreur || null, reessayer: conceptionEcran.reessayer,
+        surApercu }
     : null
 
   // QJR35 — sans facture réelle ni chiffre servi, un chiffre affiché est étiqueté « exemple ».

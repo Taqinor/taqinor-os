@@ -13,6 +13,8 @@ import ventesApi from '../../../../api/ventesApi'
 
 //: Délai avant l'appel d'aperçu (la frappe reste instantanée).
 export const DELAI_APERCU_MS = 500
+//: E7d (M2) — l'échec sans phrase du serveur (5xx, réseau) ; l'écran offre « Réessayer ».
+export const APERCU_INDISPONIBLE = 'Aperçu indisponible — Réessayer'
 
 const tape = (v) => (v === null || v === undefined ? '' : String(v).trim())
 
@@ -77,6 +79,7 @@ export function chiffresConception(conception) {
 export function useConceptionEcran({ leadId, corps }) {
   const [rangee, setRangee] = useState({ lead: null, donnees: null })
   const [apercu, setApercu] = useState({ donnees: null, chargement: false, erreur: null, cle: '' })
+  const [essai, setEssai] = useState(0)  // E7d (M2) — « Réessayer » relance le même corps
 
   useEffect(() => {
     let vivant = true
@@ -108,8 +111,8 @@ export function useConceptionEcran({ leadId, corps }) {
       } catch (err) {
         if (ctrl.signal.aborted) return
         const detail = err?.response?.data?.detail
-        setApercu({ donnees: null, chargement: false, cle,
-          erreur: typeof detail === 'string' ? detail : 'Aperçu du moteur indisponible.' })
+        setApercu({ donnees: null, chargement: false, cle, champ: err?.response?.data?.champ || null,
+          erreur: typeof detail === 'string' ? detail : APERCU_INDISPONIBLE })
       }
     }
     const lancer = async () => {
@@ -119,11 +122,16 @@ export function useConceptionEcran({ leadId, corps }) {
     }
     lancer()
     return () => { if (minuterie) clearTimeout(minuterie); ctrl.abort() }
-  }, [cle])
+  }, [cle, essai])
 
   const surRangee = !cle && Boolean(servie)
+  // E7d (revue lot 4, M2) — une saisie dont l'aperçu a ÉCHOUÉ ne retombe jamais sur la
+  // version rangée comme si elle était à jour : aucune conception, l'erreur est dite.
+  const echec = Boolean(cle) && Boolean(apercu.erreur) && apercu.cle === cle
   return {
-    conception: apercu.donnees ?? servie, servie, chargement: apercu.chargement, erreur: apercu.erreur,
+    conception: echec ? null : (apercu.donnees ?? servie), servie, chargement: apercu.chargement,
+    erreur: apercu.erreur, champErreur: echec ? (apercu.champ || null) : null,
+    reessayer: echec ? () => setEssai((n) => n + 1) : null,
     cleCourante: cle || (surRangee ? 'rangee' : null),
     cleServie: apercu.donnees ? apercu.cle : (surRangee ? 'rangee' : null),
     cleErreur: apercu.erreur ? apercu.cle : null,

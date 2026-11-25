@@ -19,6 +19,7 @@ import { facturesRecaleesAffichables } from '../../../features/ventes/etudeHorai
 import { moteur } from '../../../features/ventes/quote/valeur'
 import { SAISON_LABELS, fmtNum } from '../../../features/ventes/quote/ecranDefauts.js'
 import CarteMetrique, { GenCardHeader } from './CarteMetrique'
+import { APERCU_INDISPONIBLE } from './hooks/useConceptionEcran'
 
 export default function ApercuSimulation({
   setPreviewCollapsed, previewCollapsed, modeInstallation, etudeHoraireCorps,
@@ -368,7 +369,14 @@ export default function ApercuSimulation({
           // ou l'invitation à saisir (aucun chiffre calculé dans le navigateur).
           <p className="text-center text-sm text-muted-foreground" data-testid="apercu-conception-attente"
              data-champ={roi?.champ || undefined}>
-            {roi?.chargement ? 'Calcul en cours…' : (roi?.message || <>
+            {roi?.chargement ? 'Calcul en cours…' : roi?.reessayer && roi.message === APERCU_INDISPONIBLE ? (
+              // E7d (M2) — échec sans phrase du serveur (5xx, réseau) : le dire et relancer.
+              <>
+                Aperçu indisponible —{' '}
+                <Button type="button" size="sm" variant="outline" className="min-h-11 min-w-11"
+                        onClick={roi.reessayer}>Réessayer</Button>
+              </>
+            ) : (roi?.message || <>
               Renseignez le nombre de panneaux et les factures, puis la simulation
               s'actualise automatiquement.
             </>)}
@@ -381,11 +389,15 @@ export default function ApercuSimulation({
                 d'une estimation moyenne. */}
             {/* AGEN11 / E7d — les cartes lisent la conception du moteur unique
                 (l'ancien bandeau « Moteur horaire » de l'aperçu horaire, retiré
-                avec lui, ne pouvait plus s'afficher). */}
+                avec lui, ne pouvait plus s'afficher). M2 : le bandeau dit d'où
+                viennent les chiffres (aperçu de l'écran, ou dernière conception
+                rangée du lead) — jamais « ceux du document », qu'il ne lit pas. */}
             <div className="mb-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success"
                  data-testid="bandeau-modele-conception">
-              Conception du moteur unique{roi.chargement ? ' — calcul en cours…' : ''} : les chiffres
-              des cartes sont ceux de la fiche du lead et du document.
+              Conception du moteur unique{roi.chargement ? ' — calcul en cours…' : ''} :{' '}
+              {roi.surApercu
+                ? 'chiffres calculés sur les valeurs de l’écran (aperçu, rien n’est enregistré).'
+                : 'chiffres de la dernière conception calculée pour ce lead.'}
             </div>
             <div className="gen-metrics-grid">
               {/* CJ2b — Production/Autoconso/Couverture : le serveur

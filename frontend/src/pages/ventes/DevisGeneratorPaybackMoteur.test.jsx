@@ -147,6 +147,34 @@ describe('AGEN11 — l’aperçu de l’écran devis vient du moteur unique', ()
     expect(figure(container, 'payback_ans')).toBe(`${APERCU.valeurs.sans.payback.valeur} ans`)
   }, 20000)
 
+  // E7d (revue lot 4, M2) — un aperçu en ÉCHEC après une saisie est DIT : la phrase du
+  // serveur (400 nommant un champ) ou « Aperçu indisponible — Réessayer » (5xx, réseau) ;
+  // les cartes ne retombent JAMAIS sur la version rangée comme si elle était à jour.
+  it('aperçu en échec : la phrase du serveur, jamais les chiffres rangés ; Réessayer relance', async () => {
+    ventesApi.getConceptionLead.mockResolvedValue({ data: RANGEE })
+    const detail = '« facture_hiver » : valeur illisible.'
+    ventesApi.apercuConception.mockRejectedValue({ response: { status: 400, data: { detail, champ: 'facture_hiver' } } })
+    const { container } = renderEdition()
+    await waitFor(() => expect(container.querySelector('[data-testid="bandeau-modele-conception"]')).not.toBeNull(),
+      { timeout: 5000 })
+    expect(container.textContent).not.toContain('ceux de la fiche du lead et du document')
+    await act(async () => { fireEvent.change(container.querySelector('#gen-hiver'), { target: { value: '1400' } }) })
+    await waitFor(() => expect(container.querySelector('[data-testid="apercu-conception-attente"]')?.textContent)
+      .toContain(detail), { timeout: 5000 })
+    expect(figure(container, 'production_annuelle_kwh')).toBeNull()  // jamais la version rangée
+    ventesApi.apercuConception.mockRejectedValue(new Error('Network Error'))
+    await act(async () => { fireEvent.change(container.querySelector('#gen-hiver'), { target: { value: '1500' } }) })
+    await waitFor(() => expect(container.querySelector('[data-testid="apercu-conception-attente"]')?.textContent)
+      .toContain('Aperçu indisponible — Réessayer'), { timeout: 5000 })
+    const appels = ventesApi.apercuConception.mock.calls.length
+    ventesApi.apercuConception.mockResolvedValue({ data: APERCU })
+    const bouton = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Réessayer')
+    await act(async () => { fireEvent.click(bouton) })
+    await waitFor(() => expect(ventesApi.apercuConception.mock.calls.length).toBeGreaterThan(appels), { timeout: 5000 })
+    await waitFor(() => expect((figure(container, 'production_annuelle_kwh') || '').replace(/\D/g, ''))
+      .toBe(String(APERCU.valeurs.sans.production_annuelle.valeur)), { timeout: 5000 })
+  }, 30000)
+
   // E7d (revue lot 4, M3) — un refus du moteur est TOUJOURS dit (sa phrase, son
   // champ) : jamais remplacé par les chiffres d'un autre calcul ; aucun appel à
   // l'aperçu horaire.
