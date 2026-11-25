@@ -238,7 +238,6 @@ class RpdfLegacyMiseEnPageTest(SimpleTestCase):
                     self.assertIn("Sans batterie : ", html)
                     self.assertEqual(len(HTML(string=html).render().pages), attendu)
 
-    @tag('pdf')  # rendu WeasyPrint réel (WOW5)
     def test_d_acal_111_phrase_facture_recalculee_aucune_page_ajoutee(self):
         """T4-X7-003 / D-ACAL-111 — la phrase approuvée suit aussi l'exemple
         « Facture actuelle ≈ … » des blocs « Comment nous calculons » : premium
