@@ -94,6 +94,43 @@ class EcheancierParOptionD116(SimpleTestCase):
                   deux_options=False)
         self.assertEqual(_html(**un), _html(phrases_pdf_2511=True, **un))
 
+    def test_option_acceptee_bloc_de_la_branche_facturee(self):
+        """Revue du lot 5 — devis à deux options envoyé le 27/11 puis accepté
+        en « sans » : plus rien à cocher, le bloc d'avant (montants de la
+        branche facturée dans les cases), jamais deux lignes ; premium et
+        format avec étude (moteur legacy)."""
+        from apps.ventes.tests import _moteur_fixtures as F
+        signe = dict(devis_final=True, montants_tranches=MONTANTS, phrases_pdf_2511=True,
+                     echeancier_option_signee=True, branche_echeancier="sans")
+        for t in (_texte(_html(**signe)),
+                  _texte(F.html_legacy(pdf_mode='full', include_etude=True, **signe))):
+            self.assertNotIn("Sans batterie : ", t)
+            self.assertNotIn("Avec batterie : ", t)
+            self.assertIn("18 518,52", t)
+        # Aucune option acceptée : les deux lignes nommées (D-ACAL-116).
+        self.assertIn("Sans batterie : ", _texte(F.html_legacy(
+            pdf_mode='full', include_etude=True, devis_final=True,
+            montants_tranches=MONTANTS, phrases_pdf_2511=True)))
+
+    def test_drapeau_pose_par_le_builder_cas_ouvert_seulement(self):
+        """``branche_echeancier`` pose ``echeancier_option_signee`` pour une
+        option acceptée sur un nouveau rendu (envoyé le 27/11), jamais pour un
+        devis envoyé avant la coupure (charge utile inchangée) ni sans option."""
+        from datetime import datetime, timezone
+        from types import SimpleNamespace
+        from apps.ventes.quote_engine.conditions_commerciales import branche_echeancier
+
+        def drapeau(option, jour):
+            devis = SimpleNamespace(pk=None, option_acceptee=option, statut='accepte',
+                                    mode_installation='residentiel', regles_calcul=14,
+                                    date_envoi=datetime(2026, 11, jour, 9, tzinfo=timezone.utc))
+            data = {}
+            branche_echeancier(devis, data, "avec", "sans")
+            return data
+        self.assertEqual(drapeau('sans_batterie', 27), {"echeancier_option_signee": True})
+        self.assertEqual(drapeau('sans_batterie', 20), {})
+        self.assertEqual(drapeau('', 27), {})
+
 
 class LeFrancaisParDefautEstInchange(SimpleTestCase):
     def test_langue_fr_explicite_octet_identique(self):

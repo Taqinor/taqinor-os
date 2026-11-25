@@ -224,7 +224,7 @@ CLES_HORS_RENDU_ORIGINE = (
     # D-ACAL-102 / D-ACAL-111 à 114 (25/11/2026) — drapeaux de RENDU du cas
     # ouvert (nouveaux rendus : un brouillon jamais envoyé les porte) et la
     # phrase approuvée sous la facture recalculée : des textes, aucun chiffre.
-    ('phrases_profil_ouvertes',), ('phrases_pdf_2511',),
+    ('phrases_profil_ouvertes',), ('phrases_pdf_2511',), ('echeancier_option_signee',),
     ('libelles_document', 'res_facture_recalculee_tranches'),
     ('libelles_document', 'agr_base_besoin_agronomique'),
     # Libellé « suite » des CGV tronquées, ajouté au catalogue sans chiffre.
