@@ -493,3 +493,49 @@ class PetitesPompesDacal129Tests(TestCase):
         # CV saisis (2) ne sont pas ceux de la table (3) : gardés.
         self.assertEqual((self._p('PMP-IMM-3M').tension_v, self._p('PMP-IMM-3M').pompe_cv),
                          (380, Decimal('2.00')))
+
+
+class BaremePoseDacal130Tests(TestCase):
+    """D-ACAL-130 — barème de la pose de pompage INST-PMP (2 000 + 250 HT par
+    panneau) ; prix de vente laissé à 0."""
+
+    def setUp(self):
+        self.co = Company.objects.get_or_create(
+            slug='dacal130-co', defaults={'nom': 'DACAL130 Co'})[0]
+        _seed(self.co)
+
+    def _inst(self, co=None):
+        return Produit.objects.get(company=co or self.co, sku='INST-PMP')
+
+    def test_bareme_fige_egal_au_seeder(self):
+        m0195 = importlib.import_module(
+            'apps.stock.migrations.0195_dacal130_bareme_installation_pompage')
+        self.assertEqual(m0195.BAREMES, seed_mod.BAREME_POMPAGE)
+        inst = self._inst()
+        self.assertEqual((inst.prix_fixe_ht, inst.prix_par_panneau_ht, inst.prix_vente),
+                         (Decimal('2000.00'), Decimal('250.0000'), 0))
+
+    def test_migration_0195_champs_vides_seulement_aller_retour(self):
+        m0195 = importlib.import_module(
+            'apps.stock.migrations.0195_dacal130_bareme_installation_pompage')
+        Produit.objects.filter(company=self.co, sku='INST-PMP').update(
+            prix_fixe_ht=None, prix_par_panneau_ht=0)
+        autre = Company.objects.get_or_create(
+            slug='dacal130-co-2', defaults={'nom': 'DACAL130 Co 2'})[0]
+        Produit.objects.create(company=autre, nom='Pose pompage', sku='INST-PMP',
+                               prix_vente=0, prix_fixe_ht=Decimal('1500'))
+        nb = Produit.objects.count()
+        m0195.poser_bareme(django_apps, None)
+        m0195.poser_bareme(django_apps, None)  # idempotent
+        self.assertEqual(Produit.objects.count(), nb)
+        inst = self._inst()
+        self.assertEqual((inst.prix_fixe_ht, inst.prix_par_panneau_ht, inst.prix_vente),
+                         (Decimal('2000.00'), Decimal('250.0000'), 0))
+        saisi = self._inst(autre)
+        self.assertEqual((saisi.prix_fixe_ht, saisi.prix_par_panneau_ht),
+                         (Decimal('1500.00'), Decimal('250.0000')))
+        m0195.retirer_bareme(django_apps, None)
+        inst, saisi = self._inst(), self._inst(autre)
+        self.assertEqual((inst.prix_fixe_ht, inst.prix_par_panneau_ht), (None, None))
+        self.assertEqual((saisi.prix_fixe_ht, saisi.prix_par_panneau_ht),
+                         (Decimal('1500.00'), None))

@@ -123,3 +123,15 @@ def tension_pompe(nom):
         TENSION_MONO_V, TENSION_TRI_V, alimentation_produit)
     return {'mono': TENSION_MONO_V, 'tri': TENSION_TRI_V}.get(
         alimentation_produit({'nom': nom}))
+
+
+# D-ACAL-130 — prix confirmés par le fondateur le 25/11/2026 (D-ACAL-130) —
+# pose : barème de l'installation résidentielle (2 000 HT + 250 HT par
+# panneau). Le kit lit ``prix_fixe_ht``/``prix_par_panneau_ht``
+# (``core.pompage.kit.bareme_saisi``) : ``prix_vente`` reste 0, ce qui garde
+# l'article hors du devis résidentiel (``_has_price``). À la création
+# seulement ; base existante : migration stock 0195.
+BAREME_POMPAGE = {
+    'INST-PMP': {'prix_fixe_ht': Decimal('2000'),
+                 'prix_par_panneau_ht': Decimal('250')},
+}

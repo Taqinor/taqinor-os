@@ -663,7 +663,7 @@ from apps.stock.management.commands._articles_ci import (  # noqa: E402
 from apps.stock.management.commands._articles_ht import (  # noqa: E402
     ACCESSOIRES_GRAPPE_HT, HYBRIDES_DEYE_HT, semer_haute_tension)
 from apps.stock.management.commands._articles_pompage import (  # noqa: E402
-    OPTIONS_POMPAGE, PRIX_TTC_PVG3, ROLE_POMPAGE_PVG3, semer_fiches_variateurs, tension_pompe)
+    OPTIONS_POMPAGE, PRIX_TTC_PVG3, ROLE_POMPAGE_PVG3, semer_fiches_variateurs, tension_pompe, BAREME_POMPAGE)
 
 #: CIQ103 — rôle C&I des articles DÉJÀ seedés (``lim_mode`` laissé vide : la
 #: fiche du Smart Meter ne publie pas son mode de raccordement).
@@ -2388,7 +2388,7 @@ class Command(BaseCommand):
                 tva=Decimal('20.00'),
                 role_pompage=role_pompage,
                 description=description,
-                est_recurrent=recurrent,
+                est_recurrent=recurrent, **BAREME_POMPAGE.get(sku, {}),  # D-ACAL-130
             )
             record_stock_movement(
                 company=company, produit=produit,
