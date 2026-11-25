@@ -141,3 +141,33 @@ Tri (cause à prouver par la lane avant de corriger) :
 
 État des lanes du tour 3 au 25/11, 07 h 05 UTC : F6b en vol ; F6a, F3, F4, F2a, F2b prêtes (consignes dans le bloc-notes
 de session, `tour3/msg-lane-*.md`) ; relecteurs X3, X6, X7, X8 à lancer sur la pile mise à jour au lot 4 corrigé.
+
+## État des corrections du tour 3 (25/11, 08 h 05 UTC) — remplace l'état de 05 h 55
+
+**Corrigé dans `dev-lot4`, à REJOUER par un relecteur neuf sur la pile mise à jour** (chaque lane : test rouge d'abord,
+cause lue ; rien n'a encore été regardé à l'écran) :
+- Liste des devis : T4-X4-005 (lane `t3-liste`).
+- Écran devis, étape 7 : T4-X4-016, T4-X4-008 (lane `moteur-e7b`) — puis la relecture du lot 4 a trouvé B2, M1 à M4
+  sur ce même écran : lane `moteur-e7d` EN VOL.
+- Fiche du lead : T4-V1-001, note « — automatique », libellé du brouillon jamais envoyé (lane `moteur-e7a`) ; carte
+  Conception : recalcul non terminé dit, option retenue marquée (lane `moteur-e7e`).
+- Atelier, valeurs servies : T4-X2-001, 006, 007, 009 (lane `moteur-e7c`) ; vue client et bande Panneaux quand la pose
+  n'a pas la taille de la conception (B1, M5 de la relecture ; lane `moteur-e7e`).
+- Atelier, écrans (lane F6b `t3-atelier-ecrans`) : **T4-X5-009 (S1)** — cause : l'import enregistrait l'enveloppe du
+  fichier exporté comme conception (`views/io_layout.py`) ; un import sans toit par-dessus un toit demande maintenant
+  confirmation ; T4-X5-001, 014, 008, 013, 016, 006, 007.
+- Atelier, outil de toit (lane F6a `t3-atelier`) : **T4-X2-010 (S2)** — cause : au rechargement, les zones non actives
+  perdaient leur rendu (`result` et `renderPlan` nuls) : compteurs à 0 et toit vide à l'écran alors que le document
+  gardait ses panneaux ; l'ombrière laissait une zone fantôme ; T4-X2-004 (la ligne de l'onduleur lit les mêmes
+  contrôles que le verdict), 005 (un seul lieu : `site_de_repli_point` servi), 008, 011, T4-X5-017.
+  T4-X2-002 CONTESTÉ par la lane (l'atelier ERP ne montre plus l'estimation du navigateur) : à vérifier à l'écran.
+- Pompage et PDF (lane F4 `t3-pompage-pdf`) : T4-X1-008 (origine du débit gardée à l'enregistrement), 009 (une taille
+  sous la puissance minimale le dit), 014 (alertes sans formule) ; T4-X1-001 et 002 (PDF client) corrigés DERRIÈRE le
+  niveau de règles 15, dormant — niveau 14 inchangé (références figées vertes sans retouche).
+- T4-X5-005 : non reproduit dans le code du lot 4 (garde ajoutée) ; T4-X2-003 : lot 3.
+
+**En vol** : `moteur-e7d` (écran devis), `moteur-e8` (T4-X5-002, 012, 004, 015 + étape 8), `moteur-e6e` (T4-X5-003,
+010, 011), F3 `t3-listes-envoi` (T4-X1-003, 007, 010, 011, 012, T4-X4-006, 009, 010 + M6 de la relecture).
+**Pas encore lancées** (même écran que `moteur-e7d`, après son retour) : F2a (T4-X4-001, 004, 011, 018, 019, 020, 021,
+T4-X1-004), F2b (T4-X4-012, 013, 014, 015, 017, 022, T4-X1-016).
+**Restent sans lane** : aucun constat S1 ou S2 du tour 3.
