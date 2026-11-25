@@ -39,6 +39,16 @@ export const ESSENTIELS = [
 
 export const ETATS = ['a_faire', 'en_cours', 'fait', 'bloque']
 
+/* T4-X3-007 — les quatre panneaux dont le lien profond (`/calepinage/<id>/<cle>`, `?onglet=<cle>`) retombait sur
+   l'écran ORDINAIRE de leur étape (Le toit, Les panneaux, Les résultats) : leur panneau n'est monté que dans le rail
+   de la feuille « Avancé », qui restait fermée. Les douze autres clés s'affichent déjà dans l'étape. */
+const ONGLETS_DE_LA_FEUILLE = ['fiches', 'pente', 'production', 'pertes']
+
+/** Vrai quand `?onglet=<cleOnglet>` n'est lisible que dans la feuille « Avancé » (mode guidé) : la coque l'ouvre alors. */
+export function ongletDansLaFeuille(cleOnglet, expert = false) {
+  return !expert && ONGLETS_DE_LA_FEUILLE.includes(cleOnglet)
+}
+
 /** L'étape (clé) qui porte l'onglet `cleOnglet`, ou `null`. */
 export function etapeDeOnglet(cleOnglet) {
   return ETAPES.find((e) => e.onglets.includes(cleOnglet))?.cle ?? null

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import calepinageApi from '../../../api/calepinageApi'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { Card } from '../../../ui'
+import { NORMES } from '../commun/libellesReglages'
 
 /* ============================================================================
    ACAL397 (acceptation ACAL490) — LA NORME ÉLECTRIQUE, SAISISSABLE.
@@ -16,10 +17,6 @@ import { Card } from '../../../ui'
    section servie (coefficients compris), seules `norme` et `reference`
    changent.
    ========================================================================== */
-export const NORMES = [
-  { valeur: '', libelle: 'Aucune — calculs dépendant d’une norme omis' },
-  { valeur: 'nf_c_15_100', libelle: 'NF C 15-100 / UTE C 15-712-1 / IEC 62548 (jeu français)' },
-]
 
 const texte = (v) => (typeof v === 'string' ? v : '')
 

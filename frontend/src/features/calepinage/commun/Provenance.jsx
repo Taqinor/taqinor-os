@@ -4,8 +4,7 @@ import useResource from '../../../hooks/useResource'
 import { formatNumber } from '../../../lib/format'
 import { Card, Spinner } from '../../../ui'
 import { ORIGINES, estOrigineDeclaree } from './Provenance.helpers'
-import { NORMES } from '../reglages/ReglagesNorme'
-import { TYPES as TYPES_ARETE } from '../reglages/ReglagesRetraitsAretes'
+import { NORMES, TYPES_ARETE } from './libellesReglages'
 
 /* ============================================================================
    CAL165 — LA SOURCE DE CHAQUE PARAMÈTRE NORMATIF, AFFICHÉE AVEC LUI.
