@@ -41,6 +41,11 @@
     "message": "Coefficients de température non sourcés sur la fiche du panneau (temp_coeff_voc_pct_c = -0,27 %/°C, temp_coeff_pmax_pct_c = -0,35 %/°C) : défauts du noyau appliqués, tensions de chaîne à confirmer."
    },
    {
+    "champ": "kit.disjoncteur_ac",
+    "code": "calibre_disjoncteur_deduit",
+    "message": "Calibre du disjoncteur AC déduit des 5,5 kW et 380 V de la pompe (courant estimé 8,4 A, sans facteur de puissance ni rendement du moteur : sous-estimé) ; saisir le courant nominal de la pompe sur sa fiche du catalogue le remplace."
+   },
+   {
     "champ": "kit.options.sonde_niveau",
     "code": "marche_a_sec_non_protegee",
     "message": "Ni sonde de niveau cochée ni protection marche à sec connue : la fiche du variateur « VARIATEUR VEICHI SI23 5.5KW 380V » ne dit pas s'il protège la pompe de la marche à sec. À saisir dans Stock, fiche du variateur (protection marche à sec), ou cocher l'option « Sonde de niveau »."
@@ -271,6 +276,7 @@
     {
      "cle": "disjoncteur_ac",
      "designation": "Disjoncteur AC courbe C 16 A tétrapolaire",
+     "hypothese": "Calibre du disjoncteur AC déduit des 5,5 kW et 380 V de la pompe (courant estimé 8,4 A, sans facteur de puissance ni rendement du moteur : sous-estimé) ; saisir le courant nominal de la pompe sur sa fiche du catalogue le remplace.",
      "prix_connu": true,
      "produit": "<masque>",
      "quantite": 1,
