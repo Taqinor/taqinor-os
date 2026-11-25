@@ -56,6 +56,29 @@ def _base_rangee(devis):
     return dict(base), ''
 
 
+def _base_du_plan_rangee(devis):
+    """ADEV155 — la base du PLAN PAR DÉFAUT rangée sur un brouillon né du moteur, ou ``None``.
+    Résidentiel : ``etude_horaire.base_production`` (source ``plan_par_defaut``). C&I : l'étude
+    ne range pas la base telle quelle, mais son bloc ``etude_ci.production`` porte ses 12
+    kWh/kWc (``moteur_ci/production.bloc_production_ci``, origine ``calepinage``) et ses
+    ``hypotheses`` la source (``base_etude_ci``) : la base en est relue, aucune clé neuve."""
+    rangee = _base_rangee(devis)[0]
+    if rangee and rangee.get('source') == SOURCE_PLAN_PAR_DEFAUT:
+        return rangee
+    etude = getattr(devis, 'etude_params', None)
+    ci = etude.get('etude_ci') if isinstance(etude, dict) else None
+    ci = ci if isinstance(ci, dict) else {}
+    production = ci.get('production') if isinstance(ci.get('production'), dict) else {}
+    mensuel = production.get('kwh_kwc_mensuel')
+    if (production.get('source') != 'calepinage' or not isinstance(mensuel, list) or len(mensuel) != 12
+            or any(m is None for m in mensuel)
+            or not any(isinstance(h, dict) and h.get('source') == SOURCE_PLAN_PAR_DEFAUT
+                       for h in ci.get('hypotheses') or ())):
+        return None
+    return {'kwh_kwc_annuel': round(sum(float(m) for m in mensuel), 1), 'kwh_kwc_mensuel': list(mensuel),
+            'pertes_incluses': True, 'source': SOURCE_PLAN_PAR_DEFAUT}
+
+
 def _kwc_du_devis(devis):
     from apps.ventes.domain.scenario import puissance_kwc_du_devis
     return puissance_kwc_du_devis(devis)
@@ -86,10 +109,11 @@ def diagnostic_base_de_production(devis, *, kwc=None, marches=('residentiel',)):
         servi = productible_pose_servi(
             devis.pk, getattr(devis, 'company', None),
             tolerance_kwc_ratio=TOLERANCES['kwc_calepinage_ratio'])
-        rangee = _base_rangee(devis)[0] if servi is None else None
-        if rangee and rangee.get('source') == SOURCE_PLAN_PAR_DEFAUT:
-            # ADEV155 — brouillon né du moteur d'un lead SANS toit tracé : il garde la base du
-            # plan par défaut rangée (aucune simulation au rendu) tant qu'aucune pose n'est servie.
+        rangee = _base_du_plan_rangee(devis) if servi is None else None
+        if rangee:
+            # ADEV155 — brouillon né du moteur d'un lead SANS toit tracé (résidentiel ou C&I) : il
+            # garde la base du plan par défaut rangée (aucune simulation au rendu) tant
+            # qu'aucune pose n'est servie.
             return rangee, ''
         return base_depuis_servi(
             servi, kwc=_kwc_du_devis(devis) if kwc is None else kwc)
