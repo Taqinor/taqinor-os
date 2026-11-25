@@ -161,7 +161,20 @@ export function useDevisEnvoi({
       // Aperçu seul — AUCUNE mutation de statut ici (fermer la modale sans
       // cliquer « Ouvrir WhatsApp » laisse le devis brouillon).
     } catch (err) {
-      toast.error(frenchError(err, 'Préparation WhatsApp impossible.'))
+      // T4-X4-009 — le serveur refuse l'aperçu (409) quand la fiche n'a aucun
+      // numéro exploitable : on dit CE qui manque (« invalide » trompait : il
+      // n'y en avait aucun) et on offre le geste de la fiche du lead, copier
+      // le lien (le même que « Copier le lien de la proposition » de la ligne).
+      if (err?.response?.status === 409
+        && /Numéro de téléphone invalide/.test(String(err?.response?.data?.detail || ''))) {
+        toast.error(
+          `${d.reference} : aucun numéro de téléphone exploitable sur la fiche — WhatsApp est impossible. `
+          + 'Copiez le lien pour l’envoyer vous-même, ou complétez la fiche.',
+          { action: { label: 'Copier le lien', onClick: () => handleCopierLienProposition(d) }, duration: 20000 },
+        )
+      } else {
+        toast.error(frenchError(err, 'Préparation WhatsApp impossible.'))
+      }
     } finally {
       setStatutActionId(null)
     }

@@ -33,12 +33,13 @@ import DevisGenerator from './DevisGenerator'
 import { bancEdition, devisResidentielRouvert } from './devisGenerator.testHelpers.jsx'
 
 
-function devisRouvert(variante, calepinage = 'exemple') {
+function devisRouvert(variante, calepinage = 'exemple', extra = {}) {
   return devisResidentielRouvert(variante, {
     id: 12,
     ...exempleContrat('calepinage', 'calepinage_du_devis', calepinage),
     factures_liees: [{ id: 3 }], bon_commande_etat: null, chantier: null,
     layout_stale: null, layout_nb_panneaux: null,
+    ...extra,
   })
 }
 
@@ -54,6 +55,24 @@ describe('QJR540 — blocs repris de DevisForm dans l’Édition complète', () 
     expect(screen.getByText(/factures liées/)).toBeTruthy()
     expect(screen.getByTestId('devis-attente-signature').textContent)
       .toMatch(/En attente de signature client/)
+  })
+
+  // T4-X4-006 — le serveur renvoie TOUJOURS un objet (`{exists: false, …}`) :
+  // le compteur lisait sa seule présence et affichait « 1 bon de commande » sur
+  // chaque brouillon. Il compte `exists`.
+  it('T4-X4-006 — « 1 bon de commande » seulement si un bon de commande existe', async () => {
+    ventesApi.getDevisById.mockResolvedValue(devisRouvert('exemple_envoye', 'exemple', {
+      bon_commande_etat: { exists: false, id: null, reference: null, mismatch: false } }))
+    renderEdition(12)
+    expect(await screen.findByText(/factures liées/)).toBeTruthy()
+    expect(screen.queryByText(/bon de commande/)).toBeNull()
+  })
+
+  it('T4-X4-006 — un bon de commande existant se compte', async () => {
+    ventesApi.getDevisById.mockResolvedValue(devisRouvert('exemple_envoye', 'exemple', {
+      bon_commande_etat: { exists: true, id: 5, reference: 'BC-5', mismatch: false } }))
+    renderEdition(12)
+    expect(await screen.findByText('1 bon de commande')).toBeTruthy()
   })
 
   it('brouillon sans calepinage : aucun bloc calepinage vide, pas de bandeau de signature', async () => {

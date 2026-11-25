@@ -83,7 +83,7 @@ export default function BandeauxEdition({
               count: editDevis.factures_liees?.length ?? 0,
               to: `/ventes/factures?q=${encodeURIComponent(editDevis.client_nom ?? '')}`,
             },
-            { label: 'bon de commande', count: editDevis.bon_commande_etat ? 1 : 0 },
+            { label: 'bon de commande', count: editDevis.bon_commande_etat?.exists ? 1 : 0 },
             {
               label: 'chantier',
               count: editDevis.chantier ? 1 : 0,

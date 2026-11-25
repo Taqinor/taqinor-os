@@ -38,6 +38,8 @@ export default function DevisPdfDialog({
   onClose, onGenererLot, onGenererUn,
 }) {
   const ouvert = !!pdfTarget || batchPdf
+  const sansPlan = !batchPdf && !!pdfTarget
+    && !(pdfTarget.a_plan_toiture ?? !!pdfTarget.roof_layout)
   const [profil, setProfil] = useState(null)
   useEffect(() => {
     if (!ouvert || !devisFinal) return undefined
@@ -155,9 +157,19 @@ export default function DevisPdfDialog({
                     <span className="text-muted-foreground"> (page ajoutée si ce devis porte un calepinage)</span>
                   </span>
                 </label>
-                <label className="flex items-start gap-2 text-sm">
-                  <RadioGroupItem value="oui" className="mt-0.5" />
-                  <span>Inclure la planche cotée</span>
+                {/* T4-X1-007 — sans calepinage lié (`a_plan_toiture` de la
+                    ligne de la liste, `roof_layout` d'un devis complet), la
+                    planche ne peut pas être ajoutée : le choix est grisé et dit
+                    pourquoi, au lieu de produire un PDF identique en silence.
+                    Un lot (plusieurs devis) n'a pas de plan unique à tester. */}
+                <label className="flex items-start gap-2 text-sm aria-disabled:opacity-50" aria-disabled={sansPlan}>
+                  <RadioGroupItem value="oui" className="mt-0.5" disabled={sansPlan} />
+                  <span>
+                    Inclure la planche cotée
+                    {sansPlan && (
+                      <span className="block text-xs text-muted-foreground">Aucun calepinage lié à ce devis.</span>
+                    )}
+                  </span>
                 </label>
                 <label className="flex items-start gap-2 text-sm">
                   <RadioGroupItem value="non" className="mt-0.5" />

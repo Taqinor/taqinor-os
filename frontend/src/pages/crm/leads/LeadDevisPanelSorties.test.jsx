@@ -312,6 +312,31 @@ describe('ALEA48 — 409 du devis automatique : bouton « Compléter »', () => 
   })
 })
 
+// T4-X1-011 — un 500 du devis automatique : le panneau dit que le SERVEUR n'a
+// pas répondu (pas la fiche) et offre « Réessayer », qui relance la création.
+describe('T4-X1-011 — 500 du devis automatique : « Réessayer »', () => {
+  it('500 ⇒ message serveur sans « vérifiez la fiche », le bouton relance un 2e appel', async () => {
+    ventesApi.creerDevisAuto.mockRejectedValueOnce({ response: { status: 500, data: {} } })
+    ventesApi.creerDevisAuto.mockResolvedValueOnce({ data: { id: 777, reference: 'DEV-RETRY' } })
+    rendrePanneau({ lead: { id: 93, nom: 'Maison', type_installation: 'residentiel' },
+      mode: 'auto', existingDevisId: undefined })
+    const alerte = await screen.findByRole('alert')
+    expect(alerte.textContent).toMatch(/serveur/)
+    expect(alerte.textContent).not.toMatch(/vérifiez la fiche/)
+    await userEvent.click(screen.getByTestId('ldp-reessayer'))
+    await waitFor(() => expect(ventesApi.creerDevisAuto).toHaveBeenCalledTimes(2))
+    expect(screen.queryByTestId('ldp-reessayer')).toBeNull()
+  })
+
+  it('422 nommant un champ : pas de « Réessayer » (la fiche est bien en cause)', async () => {
+    ventesApi.creerDevisAuto.mockRejectedValueOnce({ response: { status: 409, data: { detail: 'Facture manquante.', field: 'facture_hiver' } } })
+    rendrePanneau({ lead: { id: 94, nom: 'Maison', type_installation: 'residentiel' },
+      mode: 'auto', existingDevisId: undefined })
+    expect(await screen.findByText('Facture manquante.')).toBeInTheDocument()
+    expect(screen.queryByTestId('ldp-reessayer')).toBeNull()
+  })
+})
+
 // ALEA51 — après le devis automatique : une phrase de SUCCÈS (jamais la boîte
 // rouge des erreurs), les alertes du serveur en avertissement dessous.
 describe('ALEA51 — devis automatique créé : bannière de succès', () => {

@@ -97,6 +97,31 @@ describe('CIQ127 — devis automatique non résidentiel : UN appel serveur', () 
     expect(api.creerDevisAuto.mock.calls[0][0]).toEqual({ lead: 14, remise_globale: '0' })
   })
 
+  // T4-X1-011 — un 500 (ou aucune réponse) accusait « la fiche du lead » : la
+  // seconde tentative, fiche inchangée, créait le devis. Une panne SERVEUR le dit.
+  it.each([
+    ['résidentiel', { id: 21, type_installation: 'residentiel', facture_hiver: '600' }],
+    ['commercial', { id: 22, type_installation: 'commercial' }],
+  ])('T4-X1-011 — %s : un 500 dit que le serveur n’a pas répondu, sans accuser la fiche', async (_nom, lead) => {
+    api.creerDevisAuto.mockRejectedValueOnce({ response: { status: 500, data: {} } })
+    const refus = await createAutoQuote({ lead, discountStr: '0', dispatch: vi.fn() })
+      .then(() => null, (e) => e)
+    expect(refus.serveur).toBe(true)
+    expect(refus.detail).toMatch(/serveur/)
+    expect(refus.detail).not.toMatch(/vérifiez la fiche/)
+  })
+
+  it('T4-X1-011 — aucune réponse (réseau, délai) : même message serveur ; un 409 nommant un champ garde la fiche', async () => {
+    api.creerDevisAuto.mockRejectedValueOnce(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }))
+    const reseau = await createAutoQuote({ lead: { id: 23, type_installation: 'residentiel', facture_hiver: '600' }, discountStr: '0' })
+      .then(() => null, (e) => e)
+    expect(reseau.serveur).toBe(true)
+    api.creerDevisAuto.mockRejectedValueOnce({ response: { status: 409, data: { detail: 'Facture manquante.', field: 'facture_hiver' } } })
+    const champ = await createAutoQuote({ lead: { id: 24, type_installation: 'residentiel' }, discountStr: '0' })
+      .then(() => null, (e) => e)
+    expect(champ).toEqual({ detail: 'Facture manquante.', field: 'facture_hiver' })
+  })
+
   it('commercial : un 422 du moteur C&I remonte TEL QUEL (champ nommé), aucun devis créé', async () => {
     const detail = 'Consommation du site absente : renseignez les kWh mensuels ou une taille.'
     api.creerDevisAuto.mockRejectedValueOnce({

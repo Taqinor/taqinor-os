@@ -339,12 +339,10 @@ export default function FactureList() {
   const totalEnRetard = toNumber(facturesKpis?.total_en_retard) || 0
   const countEnRetard = facturesKpis?.nb_en_retard ?? 0
   const totalAEcheoirSoon = toNumber(facturesKpis?.total_a_echoir_7j) || 0
-  // Le decompte des factures a echoir se lit sur la page chargee (aucun
-  // montant : c'est un simple cardinal d'affichage).
+  // T4-X4-010 — le NOMBRE de la tuile vient du serveur, de la même boucle que
+  // son montant (ni compté sur la page chargée, ni borné autrement).
+  const nbAEcheoirSoon = facturesKpis?.nb_a_echoir_7j ?? 0
   const today = todayLocalIso() // AERR138 — lue au rendu, jamais au chargement du module.
-  const nbAEcheoirSoon = useMemo(() => factures.filter(f =>
-    f.statut === 'emise' && !isOverdue(f, today) && f.date_echeance
-    && f.date_echeance >= today).length, [factures, today])
   const openNew   = () => { setEditFacture(null); setShowForm(true) }
   const openEdit  = f  => { setEditFacture(f);    setShowForm(true) }
   const closeForm = () => { setShowForm(false);   setEditFacture(null) }

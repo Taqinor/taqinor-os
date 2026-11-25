@@ -774,11 +774,11 @@ describe('LW22 — WhatsApp multi-devis', () => {
     await user.click(btn)
     // QJR538 — l'aperçu passe par l'action SANS EFFET ; le commit n'est pas appelé.
     await waitFor(() => expect(whatsappDevisApercu).toHaveBeenCalledWith(7, { devis_ids: [1], langue: 'fr' }))
-    await waitFor(() => expect(onWaPreview).toHaveBeenCalledWith({
+    await waitFor(() => expect(onWaPreview).toHaveBeenCalledWith(expect.objectContaining({
       message: apercu.message,
       links: apercu.links,
       wa_url: apercu.wa_url,
-    }))
+    })))
     expect(whatsappDevis).not.toHaveBeenCalled()
   })
 

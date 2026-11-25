@@ -80,6 +80,25 @@ class TestWhatsAppDevisApercu(TestCase):
         self.assertEqual(set(lien), set(CONTRAT['exemple']['links'][0]))
         self.assertTrue(r.json()['wa_url'].startswith('https://wa.me/'))
 
+    def test_t4x1010_darija_sans_texte_redige_dit_francais(self):
+        """ROUGE avant le correctif : « Variante Darija » affichait le même
+        français sans le dire. Aucun texte darija n'est rédigé pour le devis
+        (ni corps de société ni défaut validé) : l'aperçu le DIT, il n'invente
+        rien."""
+        r = self._apercu(langue='darija')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()['langue_effective'], 'fr')
+        self.assertEqual(self._apercu(langue='fr').json()['langue_effective'], 'fr')
+
+    def test_t4x1010_darija_redige_par_la_societe_est_lu(self):
+        from apps.parametres.models import MessageTemplate
+        MessageTemplate.objects.create(
+            company=self.company, cle='devis_unique',
+            corps_fr='Bonjour {nom} : {lien}', corps_darija='نص تجريبي {lien}')
+        r = self._apercu(langue='darija')
+        self.assertEqual(r.json()['langue_effective'], 'darija')
+        self.assertIn('نص تجريبي', r.json()['message'])
+
     def test_apercu_puis_commit_portent_le_meme_lien(self):
         apercu = self._apercu().json()
         commit = self.api.post(

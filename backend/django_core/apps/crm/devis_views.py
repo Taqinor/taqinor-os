@@ -155,10 +155,20 @@ class LeadDevisActionsMixin:
             request, lead, enregistrer=False)
         if erreur is not None:
             return erreur
-        _devis_list, phone, message, links = built
+        devis_list, phone, message, links = built
+        # T4-X1-010 — la langue RÉELLE du message : « darija » demandée sans
+        # texte darija rédigé donne du français, et l'écran doit le dire.
+        from apps.ventes.utils.whatsapp import langue_effective_devis
+
+        from .params_requete import corps_objet
+        langue = corps_objet(request).get('langue')
+        if langue is None:
+            langue = lead.langue_preferee or 'fr'
         return Response({
             'wa_url': build_wa_url(phone, message),
             'phone': phone, 'message': message, 'links': links,
+            'langue_effective': langue_effective_devis(
+                lead.company, langue, len(devis_list)),
         })
 
     @extend_schema(

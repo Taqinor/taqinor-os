@@ -980,6 +980,7 @@ def kpis_factures(qs):
     total_du = Decimal('0')
     total_en_retard = Decimal('0')
     total_a_echoir_7j = Decimal('0')
+    nb_a_echoir_7j = 0
     nb_impayees = 0
     nb_en_retard = 0
     for facture in ouvertes:
@@ -1000,6 +1001,7 @@ def kpis_factures(qs):
         elif (facture.date_echeance
                 and aujourdhui <= facture.date_echeance <= dans_7_jours):
             total_a_echoir_7j += du
+            nb_a_echoir_7j += 1
 
     return {
         'mois': aujourdhui.strftime('%Y-%m'),
@@ -1012,4 +1014,6 @@ def kpis_factures(qs):
         'total_en_retard': str(total_en_retard),
         'nb_en_retard': nb_en_retard,
         'total_a_echoir_7j': str(total_a_echoir_7j),
+        # T4-X4-010 — le NOMBRE de la même tuile, compté dans la même boucle.
+        'nb_a_echoir_7j': nb_a_echoir_7j,
     }
