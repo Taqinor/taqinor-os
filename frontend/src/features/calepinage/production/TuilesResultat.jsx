@@ -70,10 +70,20 @@ function Heros({ total, data, nom }) {
 const RAYON = 38
 const CIRCONFERENCE = 2 * Math.PI * RAYON
 
-function Consommation({ autoconsommation }) {
+function Consommation({ autoconsommation, phraseTailles = null }) {
   const [ouvert, setOuvert] = useState(false)
   const taux = autoconsommation?.taux_couverture
   if (!nombre(taux)) return null
+  // T4-X9-008 — la part servie est celle de la CONCEPTION du lead : à une autre taille que la pose, la phrase la remplace
+  // (jamais un pourcentage d'une autre taille à côté de la production simulée de la pose).
+  if (phraseTailles) {
+    return (
+      <div className="cal-res-tuile" data-tuile="couverture">
+        <span className="cal-res-tuile-label">De la consommation</span>
+        <p className="cal-res-tuile-note">{phraseTailles}</p>
+      </div>
+    )
+  }
   const definition = typeof autoconsommation?.definition === 'string' ? autoconsommation.definition : ''
   const pct = taux * 100
   const arc = CIRCONFERENCE * borne(taux, 0, 1)
@@ -176,11 +186,11 @@ function EcartPvgis({ validation }) {
 
 /** `nomProduction` (relecture E5 M1) : le nom exact de la production du héros quand une AUTRE production est à
     l'écran (la conception) — `null` : le libellé historique. */
-export default function TuilesResultat({ data, nomProduction = null }) {
+export default function TuilesResultat({ data, nomProduction = null, phraseCouverture = null }) {
   return (
     <section className="cal-res-tuiles" data-testid="cal-resultats-tuiles" aria-label="Résultats en un coup d'œil">
       <Heros total={data?.production?.total} data={data} nom={nomProduction} />
-      <Consommation autoconsommation={data?.autoconsommation} />
+      <Consommation autoconsommation={data?.autoconsommation} phraseTailles={phraseCouverture} />
       <Pertes total={data?.production?.total} plages={data?.cascade?.plages} />
       <EcartPvgis validation={data?.validation} />
     </section>
