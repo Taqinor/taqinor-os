@@ -1590,7 +1590,7 @@ du lead, devis commercial) — après le retour du relecteur X5 (il utilise l'in
   relance de la liste ADEV154, entrée imposée « consommation », lanes de correctifs 2 à 6 du tour 3, relecteurs X3,
   X6 à X8, relecteur des maquettes ; étape 8 (ACAL2024, ADEP108) ; ADEV155 GATED.
 
-### Point du 25/11, 06 h 50 UTC (le plus récent — REPRENDRE ICI)
+### Point du 25/11, 06 h 50 UTC
 
 **Lot 4 — PR Taqinor/taqinor-os#1556 (BROUILLON), branche `dev-lot4`, Auto-fix allumé, auto-archive éteint.** Trois
 lots sur `main` (PR #1552, #1554, #1555), AUCUN déployé.
@@ -1631,3 +1631,41 @@ lots sur `main` (PR #1552, #1554, #1555), AUCUN déployé.
 - Point laissé au fondateur par la lane e7c : la vue « Montrer au client » ne montre AUCUN montant (garde « rien
   d'argent » ; mention « Les montants figurent dans le devis ») — la tuile d'économie en MAD demandée par ACAL2023
   n'est pas posée ; décision à lui demander (au rapport).
+
+### Point du 25/11, 07 h 00 UTC (le plus récent — REPRENDRE ICI)
+
+**Lot 4 (PR Taqinor/taqinor-os#1556, brouillon) NE FUSIONNE PAS EN L'ÉTAT.** Relecture indépendante rendue :
+`docs/audits/l5-calepinage/controles/revue-lot4-2026-11-25.md` — 2 bloquants, 6 majeurs, 4 mineurs (rien exécuté par
+le relecteur : chaque constat est à vérifier dans le code par la lane qui le corrige).
+- **B1** vue « Montrer au client » : panneaux POSÉS à côté de la production d'une autre taille → lane `moteur-e7e`.
+- **B2** écran devis : l'aperçu n'est pas calculé sur la consommation que le devis enregistre (douze factures, facture
+  réelle en MAD) ; le test AGNR24 rouge en CI le dit : NE PAS le réaligner sur un bandeau → lane `moteur-e7d`.
+- M1 retour sur investissement de l'écran devis = celui d'un autre devis ou « N/A » ; M2 aperçu en échec = chiffres
+  rangés montrés en silence ; M3 deux calculs serveur sur le même bloc (cartes : conception ; graphe, falaise, verdict
+  batterie : étude horaire) ; M4 « Mettre à jour » efface des frappes non enregistrées → tous à `moteur-e7d`.
+- M5 atelier : « production au prochain enregistrement » ne vient jamais au niveau 14 quand la pose diffère de la
+  conception ; m1 carte Conception bloquée sur « Recalcul en cours » ; m4 « au prix catalogue » ; marque de l'option
+  retenue → `moteur-e7e`. M6 sélection sur plusieurs pages perdue par « Générer les PDF » → lane F3. m2 forme 24 h du
+  calepinage hors niveau 15 → lane `moteur-e8`. m3 références figées de l'écran devis sans ancres de chiffres → e7d.
+- Vérifié correct par le relecteur : un devis envoyé ne bouge jamais ; `REGLES_COURANTES` inchangé ; plan par défaut
+  sans écriture ; aperçu borné à la société, sans prix d'achat ; liste légère et synthèse dans la portée du rôle.
+
+**CI, deuxième passage (tête `9d4a2b30c9`, avec e7c)** : rouges lus — (1) le test du signal de la liste (ma faute :
+test mis à jour avant la ligne du chargeur), corrigé `e0c898edea` ; (2) les deux références figées du démarrage de
+l'atelier (`toitureDesign.{calepinage,devis}.boot.json`) : clé `couverture_pct` du contrat ajoutée, `e80ac5a0f0` ;
+(3) AGNR24 : reste rouge jusqu'à e7d. Non poussés : attendre la fin du passage (9 jobs en cours à 06 h 54) puis pousser
+AVEC les lanes de correctifs pliées — pas de passage de CI pour deux petits correctifs seuls.
+
+**EN VOL (trois agents)** : `lane/moteur-e6d` (opus ; + note envoyée : l'entrée imposée « consommation » doit aussi
+être acceptée par `apercu_conception`, clé et forme à dire au rapport) ; `lane/moteur-e7e` (sonnet ; consignes
+`scratchpad/msg-lane-e7e.md` : B1, M5, m1, m4, marque de l'option retenue) ; relecteur X5.
+**PRÊTS À LANCER, dans cet ordre de priorité, dès qu'une place se libère** :
+1. `lane/moteur-e7d` (opus ; `scratchpad/msg-lane-e7d.md`) — APRÈS le pli d'e6d (mêmes fichiers du moteur) ; remplacer
+   la ligne `%%CLE_CONSOMMATION%%` des consignes par la clé et la forme de l'entrée imposée que le rapport d'e6d donne.
+2. `lane/moteur-e8` (opus ; `scratchpad/msg-lane-e8.md`, 4 tâches dont m2) — après le pli d'e6d.
+3. `lane/t3-pompage-pdf` F4 (opus ; `scratchpad/tour3/msg-lane-F4-pompage-pdf.md`) — indépendante, peut partir dès
+   le retour de X5.
+4. `lane/t3-listes-envoi` F3 (sonnet ; `scratchpad/tour3/msg-lane-F3-listes-envoi.md`, 9 points dont M6).
+5. `lane/t3-atelier` F6 (opus ; `scratchpad/tour3/msg-lane-F6-atelier.md`) — APRÈS le pli d'e7e (mêmes fichiers de
+   l'atelier) ; remplacer `%%X5%%` par les constats de X5 à corriger.
+6. F2 (éditeur du devis, restes du tour 3) — APRÈS e7d (même écran) ; consignes à écrire.
