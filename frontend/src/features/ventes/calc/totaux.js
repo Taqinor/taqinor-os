@@ -128,8 +128,8 @@ export function alternativeDeclareeServable(lines, scenario, produits) {
   return hasReseau && avecOk
 }
 
-// T4-X4-011/019/020 — LE devis porte-t-il DEUX options déclarées ? Miroir de
-// `deux_options_declarees` (utils/options.py) : une ligne variantée
+// T4-X4-011/019/020 — LE devis porte-t-il DEUX options déclarées ? Même
+// règle que `deux_options_declarees` (utils/options.py) : une ligne variantée
 // ('sans'/'avec', posée par `fusionnerVariantes` pour « Les deux ») ou un
 // scénario qui déclare l'alternative avec un équipement qui la sert.
 export function deuxOptionsDeclarees(lines, { scenario, produits } = {}) {
@@ -142,7 +142,7 @@ export function deuxOptionsDeclarees(lines, { scenario, produits } = {}) {
 // l'écran qui le dit (le rail, la répartition de remise, l'étiquette par
 // ligne, l'aperçu par villa et la marge la lisent). Une option = les lignes
 // qui comptent (QJR567 : ni optionnelle, ni section/note) de SON panier
-// (`appartientAuPanierSans/Avec`, miroir de `utils/options.py::panier_de_ligne`
+// (`appartientAuPanierSans/Avec`, même règle que `utils/options.py::panier_de_ligne`
 // et de builder.py `_repartir_options` : une ligne DÉCLARÉE tranche seule,
 // sinon rôle puis mots-clés), privées — sur un VRAI devis à deux options
 // (QJR402/QJR300, ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION) — des accessoires
