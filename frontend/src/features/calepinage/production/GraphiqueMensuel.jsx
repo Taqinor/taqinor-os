@@ -114,7 +114,7 @@ export default function GraphiqueMensuel({ autoconsommation, production = null }
 const INITIALES = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D']
 const MOIS_LONG = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre',
   'Novembre', 'Décembre']
-export function MoisParMois({ data }) {
+export function MoisParMois({ data, nomProduction = null }) {
   const { prod, conso } = lectureMensuelle(data)
   const [touche, setTouche] = useState(null)
   const avecProd = prod.some((v) => v !== null)
@@ -130,7 +130,7 @@ export function MoisParMois({ data }) {
   return (
     <section className="cal-res-carte cal-res-carte-mois" data-testid="cal-resultats-mois">
       <div className="cal-res-entete">
-        <h2 className="cal-res-titre">Mois par mois</h2>
+        <h2 className="cal-res-titre">{nomProduction ? `Mois par mois · ${nomProduction}` : 'Mois par mois'}</h2>
         <div className="cal-res-legende" data-testid="cal-res-mois-choisi">
           <strong>{MOIS_LONG[choisi]}</strong>
           {avecProd && prod[choisi] !== null && (
@@ -171,7 +171,7 @@ export function MoisParMois({ data }) {
       </div>
       <table className="sr-only">
         <caption>Valeurs mensuelles</caption>
-        <thead><tr><th>Mois</th>{avecProd && <th>Production</th>}{avecConso && <th>Consommation</th>}</tr></thead>
+        <thead><tr><th>Mois</th>{avecProd && <th>{nomProduction ?? 'Production'}</th>}{avecConso && <th>Consommation</th>}</tr></thead>
         <tbody>
           {MOIS_COURT.map((nom, i) => (prod[i] !== null || conso[i] !== null) && (
             <tr key={nom}><td>{nom}</td>

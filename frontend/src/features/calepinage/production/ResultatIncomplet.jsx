@@ -213,8 +213,10 @@ function DemarrageRapideBloc({ compte }) {
 
 const MAX_PASTILLES = 4
 
-export default function ResultatIncomplet({ calepinageId, data, parcours = null, onVoirEtapes = null }) {
+export default function ResultatIncomplet({ calepinageId, data, parcours = null, onVoirEtapes = null, nomProduction = null }) {
   const total = data?.production?.total
+  // Relecture E5 M1 — la conception servie à côté : la production de la POSE porte son nom exact.
+  const nom = nomProduction ?? 'Production la première année'
   if (!estIncomplet(total)) return null
   const aRenseigner = data?.cascade?.a_renseigner
   const lignes = Array.isArray(aRenseigner?.lignes) ? aRenseigner.lignes : []
@@ -227,10 +229,10 @@ export default function ResultatIncomplet({ calepinageId, data, parcours = null,
     <div className="cal-resinc" data-testid="acal700-incomplet">
       <div className="cal-resinc-haut">
         <div className="cal-resinc-colonne">
-          <section className="cal-res-tuile cal-resinc-plafond" aria-label="Production la première année, au plus">
+          <section className="cal-res-tuile cal-resinc-plafond" aria-label={`${nom}, au plus`}>
             <div className="cal-resinc-plafond-tete">
               <p className="cal-res-tuile-label m-0" data-testid="acal700-etiquette">
-                Production la première année · au plus
+                {`${nom} · au plus`}
               </p>
               <span className="cal-resinc-pilule-plafond">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6"
