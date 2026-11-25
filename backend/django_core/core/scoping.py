@@ -165,9 +165,14 @@ def _exists_relation(model, relation, champ_user, ids):
 
 
 def scope_client_queryset(qs, user):
-    """Le Client n'a pas de propriétaire propre : on le rattache aux documents
-    visibles (devis/factures/avoirs créés par un utilisateur visible, ou leads
-    dont le responsable est visible). Portée 'all' → inchangé.
+    """Le Client est visible quand un utilisateur visible l'a CRÉÉ
+    (``created_by``, T4-V1-011), ou par les documents visibles (devis/
+    factures/avoirs créés par un utilisateur visible, ou leads dont le
+    responsable est visible). Portée 'all' → inchangé.
+
+    T4-V1-011 — un Commercial (portée « ses enregistrements ») qui créait un
+    client sans lead ni devis ne le retrouvait ni dans sa liste ni dans la
+    recherche du calepinage : le client qu'il a créé est le sien.
 
     APRF16 — quatre ``Exists`` corrélés combinés par ``|`` : aucune jointure
     multi-valuée (un client à 15 devis × 15 factures × 15 leads produisait
@@ -176,7 +181,7 @@ def scope_client_queryset(qs, user):
     if ids is None:
         return qs
     ids = list(ids)
-    cond = Q()
+    cond = Q(created_by_id__in=ids)
     for relation, champ_user in _CLIENT_RELATIONS_VISIBLES:
         cond |= Q(_exists_relation(qs.model, relation, champ_user, ids))
     return qs.filter(cond)
