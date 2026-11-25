@@ -331,6 +331,30 @@ describe('CALX69 — lecture seule sans le droit de gérer', () => {
   })
 })
 
+describe('D-ACAL-104 — « gérer » sans « approuver » : les réglages de la société se lisent seulement', () => {
+  it('une phrase, saisie désactivée, aucun bouton d’enregistrement ni de réinitialisation', async () => {
+    mocks.hasPermission.mockImplementation((code) => code === 'calepinage_gerer')
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
+
+    expect(screen.getByTestId('cal-reglages-lecture-seule')).toHaveTextContent(
+      'Ces réglages de la société se lisent ici : seules les personnes qui peuvent approuver un calepinage peuvent les changer.')
+    expect(champValeur('mode_meteo')).toBeDisabled()
+    expect(screen.queryByTestId('calx69-enregistrer')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('acal133-tout-recalculer')).toBeNull()
+  })
+
+  it('un approbateur ne voit pas la phrase et enregistre', async () => {
+    mocks.hasPermission.mockImplementation((code) => code === 'calepinage_approuver')
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
+    expect(screen.queryByTestId('cal-reglages-lecture-seule')).toBeNull()
+    expect(screen.getByTestId('calx69-enregistrer')).toBeInTheDocument()
+  })
+})
+
 describe('ACAL132 — le PUT fusionne : une clé stockée puis vidée part à `null`', () => {
   it('envoie `null` pour la clé vidée et garde les autres clés servies', async () => {
     mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))

@@ -273,6 +273,21 @@ describe('CAL201 — sans `calepinage_gerer`, lecture seule (Done de la tâche)'
     expect(mocks.hasPermission).toHaveBeenCalledWith('calepinage_gerer')
   })
 
+  it('D-ACAL-104 — « gérer » sans « approuver » : préréglages, favoris et profils se lisent seulement', async () => {
+    mocks.hasPermission.mockImplementation((code) => code === 'calepinage_gerer')
+    mocks.getParametres.mockResolvedValue({ data: REGLAGES })
+    mocks.getModeles.mockResolvedValue({ data: MODELES })
+    render(<Bibliotheque />)
+
+    expect(await screen.findByTestId('cal-reglages-lecture-seule')).toHaveTextContent('peuvent approuver un calepinage')
+    expect(await screen.findByTestId('cal-biblio-modele-5')).toBeInTheDocument()
+    for (const id of ['cal-biblio-presets-edition', 'cal-biblio-favoris-edition', 'cal-biblio-preset-ajouter']) {
+      expect(screen.queryByTestId(id)).toBeNull()
+    }
+    // Le calepinage d'UN projet reste à qui peut gérer : « Marquer comme modèle » est toujours proposé.
+    expect(screen.getByTestId('cal-biblio-marquer')).toBeInTheDocument()
+  })
+
   it('avec `calepinage_gerer`, aucun badge « Lecture seule »', async () => {
     mocks.hasPermission.mockReturnValue(true)
     mocks.getParametres.mockResolvedValue({ data: REGLAGES })

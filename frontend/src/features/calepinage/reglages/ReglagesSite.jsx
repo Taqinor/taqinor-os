@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import calepinageApi from '../../../api/calepinageApi'
-import { useHasPermission } from '../../../hooks/useHasPermission'
 import { Card } from '../../../ui'
+import LectureSeuleSociete from '../commun/LectureSeuleSociete'
+import { usePeutReglerSociete } from '../commun/useReglagesSociete'
 
 /* ============================================================================
    ACAL130 — « SITE & IMAGERIE » : LES RÉGLAGES DU SITE, SAISISSABLES.
@@ -101,7 +102,7 @@ function erreursDepuis(corps) {
 }
 
 export default function ReglagesSite({ imagerie = null }) {
-  const peutGerer = useHasPermission('calepinage_gerer')
+  const peutGerer = usePeutReglerSociete()
   const [servi, setServi] = useState(imagerie)
   const [brouillon, setBrouillon] = useState(() => brouillonDe(imagerie))
   const [brouillonInitial, setBrouillonInitial] = useState(() => brouillonDe(imagerie))

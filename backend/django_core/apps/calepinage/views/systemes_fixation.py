@@ -31,7 +31,7 @@ from core.champs_stricts import MOTIF_SANS_NUL
 from core.parseurs import PARSEURS_JSON
 
 from ..models import ComposantFixation, SystemeFixation
-from ..permissions import PeutLireOuEcrireCalepinage
+from ..permissions import PeutLireOuEcrireCalepinage, exiger_droit_reglages_societe
 from ..serializers import forme_du_contrat, forme_reponse
 from ..services.catalogue_fixation import (
     BASES, CLES_REGLE, COUVERTURES, PREFIXE_ROLE, systeme_de_societe,
@@ -168,6 +168,7 @@ def systemes_fixation(self, request):
     company = _company(request)
     if request.method.lower() == 'get':
         return Response(liste_des_systemes(company))
+    exiger_droit_reglages_societe(request.user)  # D-ACAL-104 — le catalogue de fixation est à la société
     try:
         systeme = creer_systeme(company, request.data)
     except SystemeRefuse as refus:
@@ -186,6 +187,8 @@ def systemes_fixation(self, request):
         parser_classes=PARSEURS_JSON)
 def systeme_fixation(self, request, systeme_id=None):
     """ACAL558 — lire, modifier (composants remplacés) ou supprimer."""
+    if request.method.lower() != 'get':
+        exiger_droit_reglages_societe(request.user)  # D-ACAL-104
     systeme = systeme_de_societe(_company(request), systeme_id)
     if systeme is None:
         return Response(

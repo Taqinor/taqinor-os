@@ -12,6 +12,8 @@ import ReglagesLestage from './ReglagesLestage'
 import ReglagesRetraitsAretes from './ReglagesRetraitsAretes'
 import { useOuvrirChamp } from '../atelier/ouvrirChamp'
 import { refusServeur } from '../commun/refusServeur'
+import LectureSeuleSociete from '../commun/LectureSeuleSociete'
+import { usePeutReglerSociete } from '../commun/useReglagesSociete'
 
 /* ============================================================================
    CALX69 / ACAL133 — LES RÉGLAGES DE SIMULATION ET D'ÉLECTRIQUE, AVEC
@@ -489,7 +491,7 @@ function CarteRapport({ documents, peutGerer }) {
 }
 
 export default function ReglagesSimulation() {
-  const peutGerer = useHasPermission('calepinage_gerer')
+  const peutGerer = usePeutReglerSociete()
   const peutApprouver = useHasPermission('calepinage_approuver')
   // ACAL405 — les sections TELLES QUE SERVIES (état « à appliquer » / « déjà
   // saisie ») et le compteur qui relit les réglages après un geste.
@@ -664,6 +666,7 @@ export default function ReglagesSimulation() {
           <Badge variant="outline" data-testid="calx69-lecture-seule">Lecture seule</Badge>
         )}
       </div>
+      {!peutGerer && <div className="mt-1"><LectureSeuleSociete /></div>}
       <p className="mt-1 text-sm text-muted-foreground">
         Chaque valeur saisie porte sa provenance : sans elle, elle n’est pas
         enregistrée. Une clé non saisie reste omise — chaque étape de

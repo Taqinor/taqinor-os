@@ -61,6 +61,8 @@ retiré plus un hook ajouté.
 | `cal-biblio-kit` | bibliothèque kit. |
 | `cal-biblio-kits-liste` | bibliothèque kits liste. |
 | `cal-biblio-lecture-seule` | bibliothèque lecture seule. |
+| `cal-reglages-lecture-seule` | phrase des écrans de réglages de la société lus sans le droit de les changer. |
+| `cal-allees-source` | champ « Source » partagé de l’allée par défaut et du retrait de bord par défaut. |
 | `cal-biblio-lien-reglages` | bibliothèque lien réglages. |
 | `cal-biblio-modele` | bibliothèque modèle. |
 | `cal-biblio-modele-annuler` | bibliothèque modèle annuler. |
