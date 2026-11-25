@@ -237,11 +237,19 @@ export default function DevisTab({
           message: res.data?.message ?? '',
           links: res.data?.links ?? [],
           wa_url: res.data?.wa_url ?? '',
+          // T4-X1-010 — la langue RÉELLE du message (servie) : « darija » sans
+          // texte rédigé donne du français, et la boîte le dit.
+          langue_effective: res.data?.langue_effective ?? wa.langue,
         })
       })
       .catch((err) => toastError(errorMessageFrom(err, 'Envoi WhatsApp impossible.')))
       .finally(() => setWaBusy(false))
   }
+
+  // T4-X1-010 — vrai quand le message de l'aperçu est bien dans la langue
+  // choisie (le serveur dit `langue_effective`).
+  const darijaRedige = wa.langue !== 'darija'
+    || (wa.preview?.langue_effective ?? 'darija') === 'darija'
 
   const ouvrirWhatsApp = () => {
     if (wa.preview?.wa_url) window.open(wa.preview.wa_url, '_blank', 'noopener')
@@ -580,20 +588,23 @@ export default function DevisTab({
             <DialogTitle>Aperçu du message WhatsApp</DialogTitle>
             <DialogDescription>
               {wa.langue === 'darija' ? 'Variante Darija' : 'Variante Français'}
-              {' '}— vérifiez le texte et le(s) lien(s), puis ouvrez WhatsApp.
+              {' '}— vérifiez le texte, puis ouvrez WhatsApp.
             </DialogDescription>
           </DialogHeader>
-          <pre className="lw-context-wa-preview">{wa.preview?.message}</pre>
-          {(wa.preview?.links?.length ?? 0) > 0 && (
-            <ul className="gen-hint lw-context-wa-links">
-              {wa.preview.links.map((l) => (
-                <li key={l.devis_id ?? l.url}>{l.reference} : {l.url}</li>
-              ))}
-            </ul>
+          {/* T4-X1-010 — jamais un texte français présenté comme du darija :
+              sans texte darija rédigé, la variante est indisponible et le dit.
+              Aucun texte n'est inventé ici. Le lien n'est montré QU'UNE fois :
+              il est dans le message (la liste dessous le répétait). */}
+          {!darijaRedige && (
+            <p role="alert" className="gen-hint" data-testid="wa-darija-non-redige">
+              Variante darija : texte non rédigé — le message ci-dessous est en français.
+              Choisissez FR pour l’envoyer en français.
+            </p>
           )}
+          <pre className="lw-context-wa-preview">{wa.preview?.message}</pre>
           <div className="lw-context-wa-dialog-actions">
             <Button type="button" variant="ghost" onClick={() => onWaPreview(null)}>Annuler</Button>
-            <Button type="button" variant="success" disabled={!wa.preview?.wa_url} onClick={ouvrirWhatsApp}>
+            <Button type="button" variant="success" disabled={!wa.preview?.wa_url || !darijaRedige} onClick={ouvrirWhatsApp}>
               🟢 Ouvrir WhatsApp
             </Button>
           </div>

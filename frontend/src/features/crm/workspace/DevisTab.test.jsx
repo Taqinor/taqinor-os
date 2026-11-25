@@ -778,6 +778,7 @@ describe('LW22 — WhatsApp multi-devis', () => {
       message: apercu.message,
       links: apercu.links,
       wa_url: apercu.wa_url,
+      langue_effective: apercu.langue_effective,
     }))
     expect(whatsappDevis).not.toHaveBeenCalled()
   })
@@ -807,6 +808,31 @@ describe('LW22 — WhatsApp multi-devis', () => {
     expect(whatsappDevis).toHaveBeenCalledWith(7, { devis_ids: [1], langue: 'fr' })
     await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
     expect(onWaReset).toHaveBeenCalled()
+  })
+
+  // T4-X1-010 — « Variante Darija » montrait le même français sans le dire, et
+  // le lien paraissait deux fois (dans le message ET dans une liste dessous).
+  it('T4-X1-010 — darija sans texte rédigé : la phrase le dit, WhatsApp ne s’ouvre pas', () => {
+    renderTab({
+      state: leadState({ telephone: '0612345678', devis: [devis1] }),
+      wa: waState({ selected: [1], langue: 'darija', preview: { message: 'Bonjour X, voici votre devis : https://t/p/abc',
+        links: [{ devis_id: 1, reference: 'DEV-1', url: 'https://t/p/abc' }],
+        wa_url: 'https://wa.me/212600000000?text=x', langue_effective: 'fr' } }),
+    })
+    expect(screen.getByTestId('wa-darija-non-redige').textContent).toMatch(/Variante darija : texte non rédigé/)
+    expect(screen.getByRole('button', { name: /Ouvrir WhatsApp/ })).toBeDisabled()
+  })
+
+  it('T4-X1-010 — le lien n’est montré qu’une fois (dans le message), jamais répété dessous', () => {
+    renderTab({
+      state: leadState({ telephone: '0612345678', devis: [devis1] }),
+      wa: waState({ selected: [1], preview: { message: 'Bonjour X, voici votre devis : https://t/p/abc',
+        links: [{ devis_id: 1, reference: 'DEV-1', url: 'https://t/p/abc' }],
+        wa_url: 'https://wa.me/212600000000?text=x', langue_effective: 'fr' } }),
+    })
+    expect(screen.getAllByText(/https:\/\/t\/p\/abc/)).toHaveLength(1)
+    expect(screen.queryByTestId('wa-darija-non-redige')).toBeNull()
+    expect(screen.getByRole('button', { name: /Ouvrir WhatsApp/ })).toBeEnabled()
   })
 
   it('langue FR/Darija appelle onWaLangue', async () => {
