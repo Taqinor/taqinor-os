@@ -1136,7 +1136,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     // R2-17 — à kWc égal, la production SERVIE (celle du PDF) remplace l'estimation du navigateur (`prodServieAuKwc`).
     const pServie = modeErp() ? prodServieAuKwc(kwc) : null, cServie = modeErp() ? couvertureServie(etatEco(ctx).chiffrage, kwc) : null;
     set('rp9-reco-prod', modeErp() ? (pServie != null ? `${fmt(Math.round(pServie))} kWh/an` : raisonSansValeur(etatEco(ctx).chiffrage, kwc, 'production')) : prodPose != null ? `${fmt(Math.round(prodPose))} kWh/an` : '—');
-    renommerDt($('rp9-reco-cover'), modeErp() ? 'Production ÷ consommation' : null, true); // R2-05 — l'ERP : jamais « couverture » (mot du PDF)
+    renommerDt($('rp9-reco-cover'), modeErp() ? 'De la consommation' : null, true); // R2-05 — l'ERP : jamais « couverture » (mot du PDF) ; T4-X7-002 — la part servie (`couverture_pct`) est l'énergie autoconsommée ÷ consommation : le nom des Résultats
     set('rp9-reco-cover', modeErp() ? (cServie != null ? `${Math.round(cServie)} %` : '—') : d.pct > 0 ? `${Math.round(d.pct)} %` : '—');
     // R2-08 — l'ERP donne UNE estimation (la borne prudente) : la fourchette 75-100 % n'encadrait rien du calcul du serveur.
     set('rp9-reco-savings', economieAffichee(ctx, 'carte', factureInconnue ? '— facture inconnue' : modeErp() ? `≈ ${fmtMad(d.savingsLow)}/an` : `${fmtMad(d.savingsLow)} – ${fmtMad(d.savingsHigh)}/an`, kwc)); if (modeErp()) peindrePhraseTailles($('rp9-reco-savings')?.closest('dl'), 'rp9-reco-tailles', phraseTaillesDuChiffrage(etatEco(ctx).chiffrage, kwc)); // T4-X9-007 — la phrase UNE fois, sous les cartes

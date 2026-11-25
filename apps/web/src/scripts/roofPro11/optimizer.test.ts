@@ -1423,11 +1423,11 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
     } finally { for (const x of [avec, sans, estimee]) x.fin(); }
   });
 
-  it('renommage de la tuile : « Production ÷ consommation » en ERP seulement ; « Couverture » reste sur le site public', () => {
+  it('renommage de la tuile : « De la consommation » en ERP seulement (T4-X7-002) ; « Couverture » reste sur le site public', () => {
     const e = erp(null);
     const p = monter({});
     try {
-      expect(e.doc.querySelector('dt')?.firstChild?.nodeValue).toBe('Production ÷ consommation');
+      expect(e.doc.querySelector('dt')?.firstChild?.nodeValue).toBe('De la consommation');
       expect(e.doc.querySelector('dt span')?.textContent).toBe('?'); // l’infobulle voisine reste
       expect(p.doc.querySelector('dt')?.firstChild?.nodeValue).toBe('Couverture');
     } finally { e.fin(); p.fin(); }

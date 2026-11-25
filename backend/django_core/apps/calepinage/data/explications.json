@@ -1088,7 +1088,7 @@
     {
       "cle": "toit.reco_couverture",
       "famille": "toit",
-      "phrase": "Part de la consommation de l'année couverte par l'installation recommandée : elle compare la production estimée à la consommation.",
+      "phrase": "Part de la consommation de l'année couverte par l'installation de la conception du lead : l'énergie produite et consommée sur place, divisée par la consommation. C'est la même part que « De la consommation » à l'étape Résultats.",
       "valeurs": {},
       "geste": "Si la consommation paraît fausse, corrigez-la sur le dossier.",
       "lexique": null,

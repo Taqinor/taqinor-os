@@ -104,7 +104,7 @@ export default function BandeauProvenanceProduction({ calepinageId, chiffrage = 
       )}
       <EcartDevis ecart={data?.ecart_devis} borneHaute={borneHaute} />
       <DevisAnnonce chiffrage={chiffrage} p50={aSimulation ? p50 : null} borneHaute={borneHaute} devisLie={devisLie}
-        kwcPose={data?.pose?.kwc} />
+        kwcPose={data?.pose?.kwc} conception={data?.conception} />
     </p>
   )
 }
@@ -126,8 +126,22 @@ const ORIGINE_ANNONCE = {
 }
 /* T4-U4-006 / T4-U4-017 — sans devis LIÉ au calepinage, le chiffre est celui du moteur du devis sur CETTE pose (la
    production standard de la ville) : jamais « Le devis annonce », qui faisait lire au vendeur l'estimation de l'atelier
-   comme le chiffre envoyé au client. */
-function DevisAnnonce({ chiffrage, p50, borneHaute = null, devisLie = false, kwcPose = null }) {
+   comme le chiffre envoyé au client.
+   T4-X7-013 — la ligne ne dit que ce qui est SERVI : `conception.devis_lie` de `GET resultat/` ({devis, reference, statut,
+   a_jour}, `null` sans devis lié). Lié et portant la pose ⇒ « Le devis DEV-… annonce » ; lié sans la pose (ou sans savoir) ⇒
+   le chiffre est celui de la conception, le devis est nommé et dit à resynchroniser ; non lié ⇒ « aucun devis lié à CE
+   calepinage » (le lead peut avoir d'autres devis : l'atelier ne les lit pas). Sans ce bloc (serveur d'avant) : `devisLie`. */
+function phraseDuDevis(conception, devisLie) {
+  const servi = conception && Object.prototype.hasOwnProperty.call(conception, 'devis_lie')
+  if (!servi) return devisLie ? { annonce: 'Le devis annonce' } : { annonce: null }
+  const lie = conception.devis_lie
+  if (!lie) return { annonce: null }
+  const nom = lie.reference ? `Le devis ${lie.reference}` : 'Le devis lié'
+  if (lie.a_jour === true) return { annonce: `${nom} annonce` }
+  return { annonce: null, suite: lie.a_jour === false ? `${nom} ne porte pas la pose enregistrée (à resynchroniser).` : `Devis lié : ${lie.reference || 'sans référence'}.` }
+}
+
+function DevisAnnonce({ chiffrage, p50, borneHaute = null, devisLie = false, kwcPose = null, conception = null }) {
   const prod = chiffrage?.production_annuelle_kwh
   if (!prod) return null
   if (prod.etat === 'non_servi' || prod.etat === 'indisponible') {
@@ -148,12 +162,14 @@ function DevisAnnonce({ chiffrage, p50, borneHaute = null, devisLie = false, kwc
     )
   }
   const ecart = typeof p50 === 'number' ? ((p50 - prod.valeur) / prod.valeur) * 100 : null
+  const { annonce, suite = null } = phraseDuDevis(conception, devisLie)
+  const chiffre = `${formatNumber(prod.valeur, { decimals: 0 })} kWh/an — ${ORIGINE_ANNONCE[prod.source]}`
+  const sujet = annonce ?? (suite ? 'Conception du lead sur cette pose' : 'Moteur du devis sur cette pose (aucun devis lié à ce calepinage)')
   return (
     <span className="block" data-testid="acal995-devis-annonce">
-      {devisLie
-        ? `Le devis annonce : ${formatNumber(prod.valeur, { decimals: 0 })} kWh/an — ${ORIGINE_ANNONCE[prod.source]}`
-        : `Moteur du devis sur cette pose (aucun devis lié) : ${formatNumber(prod.valeur, { decimals: 0 })} kWh/an — ${ORIGINE_ANNONCE[prod.source]}`}
+      {`${sujet} : ${chiffre}`}
       {ecart !== null && ` (étude technique : ${ecart < 0 ? '−' : '+'}${formatNumber(Math.abs(ecart), { decimals: 1 })} %${borneHaute ? ` — ${borneHaute}` : ''})`}
+      {suite && ` ${suite}`}
     </span>
   )
 }
