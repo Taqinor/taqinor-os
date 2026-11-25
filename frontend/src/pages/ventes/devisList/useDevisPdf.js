@@ -87,6 +87,7 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
   // et le polling se poursuit à un rythme plus espacé, sans jamais relancer un
   // second job (un seul dispatch(genererPdfDevis) par appel de genererUnPdf).
   const [pdfSlowPoll, setPdfSlowPoll] = useState({}) // id → true
+  const [pdfSuivi, setPdfSuivi] = useState({}) // id → true tant que la demande est suivie
   // WIR217 — les minuteries de sondage PDF, et le drapeau d'annulation. Sans
   // eux, quitter l'écran pendant une génération laissait la boucle vivante :
   // elle continuait d'appeler l'API et de poser du state sur un composant
@@ -245,8 +246,7 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
   // l'enchaînement par lot.
   const genererUnPdf = async (d, { autoOpen = true } = {}) => {
     setPdfGenerating(prev => ({ ...prev, [d.id]: true }))
-    let suiviEnCours = false
-    const finGeneration = () => setPdfGenerating(prev => ({ ...prev, [d.id]: false }))
+    const finGeneration = () => setPdfSuivi(prev => ({ ...prev, [d.id]: false }))
     setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
     try {
       // QJR624 (D-QJR5-10) — l'« acompte personnalisé » n'est plus une option
@@ -269,10 +269,10 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
         })
       }
       const lance = await dispatch(genererPdfDevis({ id: d.id, options: buildPdfOptions(d) })).unwrap()
-      // T4-X1-003 — la ligne reste « en génération » tant que le sondage suit
-      // la demande : il referme lui-même l'indicateur à son issue (prêt,
-      // échec, délai dépassé) ; seul un refus de la demande le referme ici.
-      suiviEnCours = true
+      // T4-X1-003 — la ligne DIT « génération en cours » tant que le sondage
+      // suit la demande (badge distinct : le bouton PDF reste utilisable) ;
+      // le sondage referme l'indicateur à son issue (prêt, échec, délai).
+      setPdfSuivi(prev => ({ ...prev, [d.id]: true }))
       // R1-02/R1-03 — on suit CETTE demande (clé `demande` de generer-pdf) :
       // un ancien fichier d'un autre format ne la dit plus « prête », et le
       // fichier ouvert est rendu dans SES options.
@@ -383,7 +383,7 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
       }
       return false
     } finally {
-      if (!suiviEnCours) finGeneration()
+      setPdfGenerating(prev => ({ ...prev, [d.id]: false }))
     }
   }
 
@@ -520,6 +520,7 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
   return {
     pdfGenerating,
     pdfSlowPoll,
+    pdfSuivi,
     pdfDownloading,
     previewDevis,
     setPreviewDevis,
