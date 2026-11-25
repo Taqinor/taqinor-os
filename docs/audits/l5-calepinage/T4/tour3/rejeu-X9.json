@@ -1,0 +1,20 @@
+[
+ {
+  "id": "T4-X2-011",
+  "verdict": "corrige",
+  "vu": "Calepinage 1974 (lead X9-n), mode Expert : le bouton boussole s'appelle « Faire pivoter la carte (glisser) ; cliquer pour revenir au nord » (aria-label et infobulle) et son voisin « Me localiser » ; zoom « Zoomer »/« Dézoomer » ; plus aucun texte anglais lu dans les noms des boutons de la carte",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/e1-total.png"
+ },
+ {
+  "id": "T4-X2-008",
+  "verdict": "corrige",
+  "vu": "Calepinage 1974 (toit 2 pans 22°), Expert › Toit, « Toit en pente / tuiles » enfoncé : le bloc montre PENTE ~15°/~22°/~30°/~45°, PENTE FINE, FACE DU PAN, SENS DE LA PENTE ; clic sur « ~30° » → « PENTE FINE 30° » et « Inclinaison 30° = pente » ; retour à ~22°. Les réglages du toit plat ne sont plus affichés à la place",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/e1-pente30.png"
+ },
+ {
+  "id": "T4-X5-017",
+  "verdict": "pas-corrige",
+  "vu": "Étape Panneaux › « Plein écran » : la pile zoom / plein écran suit maintenant le bord (Zoomer passe de x 963 à x 1379), MAIS la boussole reste au milieu de l'écran (x ≈ 985 sur 1 440, à sa place d'avant) et le toit n'est pas recentré (il reste dans la moitié gauche). « Quitter le plein écran » fonctionne",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/e1-fullscreen.png"
+ }
+]
