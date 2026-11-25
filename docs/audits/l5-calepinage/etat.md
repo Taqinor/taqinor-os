@@ -1731,7 +1731,7 @@ ACAL2028, ACAL2029 ; rejeux ACAL2034, 2035, 2038 ; comparaison aux maquettes ; r
 **Reste d'une lane à nettoyer** : entrée de remise « f6-item1-src » (lane F6a, changements déjà commités) dans la pile
 de remises PARTAGÉE — ne pas y toucher par `git stash pop` ; la retirer par son étiquette en fin de session.
 
-### Point du 25/11, 10 h 10 UTC (le plus récent — REPRENDRE ICI)
+### Point du 25/11, 10 h 10 UTC
 
 **Lot 4 (PR Taqinor/taqinor-os#1556, brouillon), `dev-lot4`.** TOUT ce qui suit est plié en local : e6c, e7a, e7b,
 e7c, e7e, e6d, e7d (+ suite e2e), e8, e6e, t3-liste, F3 (+ 3 correctifs de CI), F4, F6a, F6b, F2a, F2b (+ crochet du
@@ -1773,3 +1773,35 @@ fusion du lot 4 quand CI verte + X9 sans « pas-corrigé » bloquant ; dire « m
 **Décision majeure portée au fondateur (rapport, décision 26)** : la liste « sans toit » annonçait +19 % parce que
 le toit supposé ne dit pas sa pose (échauffement omis) ; corrigé, l'effet serait d'environ +4 % à +8 % (pose
 affleurante) ou +11 % à +16 % (châssis). ADEV155 reste fermé.
+
+### Point du 25/11, 10 h 45 UTC (le plus récent — REPRENDRE ICI)
+
+**Lot 4 (PR Taqinor/taqinor-os#1556, brouillon), `dev-lot4`.** Plié depuis 10 h 10, non poussé : suite 2 d'e7d
+(composition imposée par option depuis les LIGNES, refus dit une fois, retours libellés, fenêtre QJR35), F3 suites 2
+et 3 (synthèse de la liste : cache par contenu dont profil société et produits des lignes ; limite propre de 60 s,
+« Calcul des totaux… », la page n'attend plus la synthèse), tâche ADEV162 (total rangé sur le devis, à construire).
+- **Rouges du cinquième passage** : QJR35 et date de validité du fuzz = pliés ; `resultat/` (25 requêtes) et
+  `a-traiter/` (délai) = corrigés par l'auteur d'e8 (`c096d3d9d1`, `a723c5f232` sur `lane/moteur-e8`, test en cours,
+  PAS encore pliés).
+- **Relecteur X9 (en cours, 13 rejeux lus : 10 corrigés, 3 pas corrigés ; 9 constats neufs)**, fichiers
+  `T4/tour3/rejeu-X9.json` et `registre/constats/T4-X9.jsonl` (non commités tant que X9 tourne). Lecture de
+  l'orchestrateur — UNE classe : à l'atelier, au niveau 14, des chiffres de la conception du lead restent posés à
+  côté d'une pose d'une autre taille (économies de la carte TOTAL, ligne « Moteur du devis sur cette pose », jauge
+  « De la consommation », ratio 123 % de la carte Recommandation), la phrase d'explication est rendue dans une case
+  de chiffre clé et quatre fois, et la cible « Couvrir la facture » compte en panneaux de 550 W quand l'atelier ne
+  pose que des 710 W (8 × 710 W posés pour une conception de 4,40 kWc). Plus UN défaut du moteur (T4-X9-009) : un
+  onduleur hybride désigné à l'atelier rangeait l'option « avec batterie » à la taille de l'option « sans »
+  (conception retenue divisée par deux).
+- **Qui corrige** : T4-X9-009 = l'orchestrateur (`conception/moteur.py::_compte_designe` décide la taille POUR le
+  scénario que l'onduleur désigné impose ; test `test_x9_009_onduleur_designe_garde_la_taille_de_son_option`, à
+  jouer rouge puis vert dès qu'un test docker est libre — non commité à 10 h 45) ; classe de l'atelier = auteur de
+  F6a rappelé (mission `scratchpad/tour3/msg-lane-G1-atelier-conception.md` : inventaire de TOUS les chiffres de
+  l'atelier, un seul prédicat, T4-X9-003/004/006/007/008/001, T4-X5-005, T4-X5-017) ; cible comptée dans le panneau
+  posé = auteur d'e9, item 6 (`scratchpad/msg-lane-e9-item6.md` : une seule fonction de conversion partagée avec
+  le moteur, table servie par la cible, T4-X2-001 et T4-X9-005). Le reste de la décision 28 (une seule option quand
+  un onduleur est désigné ; même puissance arrondie au panneau) reste au fondateur.
+- **e9** : ACAL2045 commité (`23778ec898` sur `lane/moteur-e9`), items 2 à 5 puis 6 en cours.
+- **PROCHAIN PUSH (sixième passage)** : après pliage d'e8 (test vert), d'e9, de G1, du correctif X9-009 ; gardes
+  d'hôte (`scratchpad/gardes.sh`), contrats et instantané OpenAPI régénérés ; puis rebâtir la pile de revue et
+  REGARDER : onglet Simulation du devis (factures tapées), liste des devis (cartes), atelier d'un lead dont la pose
+  diffère de la conception, fiche du lead après désignation d'un onduleur hybride.
