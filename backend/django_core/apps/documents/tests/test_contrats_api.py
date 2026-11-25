@@ -14,6 +14,7 @@ from django.test import TestCase, tag
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
+from apps.documents.contrats import contenu as K
 from apps.documents.contrats import types as T
 from apps.documents.models import ActeContractuel
 from apps.documents.tests.test_contrats_dossier import (
@@ -354,6 +355,76 @@ class ApiContratsTests(TestCase):
                         langue='ar')
         self.assertEqual((r.status_code, r.data['code']),
                          (400, T.CODE_CONTENU_INVALIDE))
+
+    # ── Une garantie par chantier : la clôture règle celle du contrat ───
+
+    def _pose(self, acte, langue='fr'):
+        return next(g for g in self._detail(acte, langue=langue)[
+            'contenu']['garanties'] if g['cle'] == 'installation')
+
+    def _garanties_cloture(self, **pose):
+        return [dict(g, **pose) if g['cle'] == 'installation' else g
+                for g in self._detail(self.v.acte(T.CLOTURE))[
+                    'contenu']['garanties']]
+
+    def test_duree_tapee_sur_la_cloture_portee_au_contrat_brouillon(self):
+        """Défaut vécu (25/11/2026) : 36 mois tapés sur le certificat de
+        garantie, « Enregistrer », l'écran réaffichait 24 — la clôture
+        stockait 36 mais lisait toujours la durée du contrat."""
+        contrat, cloture = self.v.acte(T.CONTRAT), self.v.acte(T.CLOTURE)
+        self.assertEqual(self._detail(cloture)['garanties_du_contrat'],
+                         T.BROUILLON)
+        self.assertEqual(self._detail(contrat)['garanties_du_contrat'], '')
+        texte_contrat = self._pose(contrat)['detail']
+        r = self._patch(cloture, {'garanties': self._garanties_cloture(
+            duree_mois=36, detail='Pose et câblage.')})
+        self.assertEqual(r.status_code, 200, r.data)
+        pose = next(g for g in r.data['contenu']['garanties']
+                    if g['cle'] == 'installation')
+        self.assertEqual((pose['duree_mois'], pose['detail']),
+                         (36, 'Pose et câblage.'))
+        for langue in T.LANGUES:
+            with self.subTest(langue=langue):
+                self.assertEqual(self._pose(cloture, langue)['duree_mois'], 36)
+                self.assertEqual(self._pose(contrat, langue)['duree_mois'], 36)
+        # Le texte tapé sur la clôture reste le sien : le contrat garde le
+        # sien, et ne reçoit jamais une date de fin.
+        self.assertEqual(self._pose(contrat)['detail'], texte_contrat)
+        stockees = self.v.acte(T.CONTRAT).surcharges['garanties']
+        self.assertTrue(all(g['fin'] is None for g in stockees))
+        # Une ligne retirée sur la clôture l'est pour tout le chantier.
+        sans_pose = [g for g in self._garanties_cloture()
+                     if g['cle'] != 'installation']
+        r = self._patch(cloture, {'garanties': sans_pose})
+        self.assertEqual(r.status_code, 200, r.data)
+        for acte in (cloture, contrat):
+            self.assertNotIn('installation', [
+                g['cle'] for g in self._detail(acte)['contenu']['garanties']])
+
+    def test_texte_seul_sur_la_cloture_ne_touche_pas_le_contrat(self):
+        r = self._patch(self.v.acte(T.CLOTURE), {
+            'garanties': self._garanties_cloture(detail='Pose et câblage.')})
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(self._pose(self.v.acte(T.CLOTURE))['detail'],
+                         'Pose et câblage.')
+        self.assertEqual(self.v.acte(T.CONTRAT).surcharges, {})
+
+    def test_contrat_emis_la_duree_ne_se_regle_plus_sur_la_cloture(self):
+        contrat, cloture = self.v.acte(T.CONTRAT), self.v.acte(T.CLOTURE)
+        ActeContractuel.objects.filter(pk=contrat.pk).update(
+            statut=T.EMIS, contenu=K.construire_contenu(contrat),
+            contenu_ar=K.construire_contenu(contrat, 'ar'))
+        self.assertEqual(self._detail(cloture)['garanties_du_contrat'], T.EMIS)
+        r = self._patch(cloture, {'garanties': self._garanties_cloture(
+            duree_mois=36, detail='Pose et câblage.')})
+        self.assertEqual(r.status_code, 200, r.data)
+        pose = self._pose(cloture)
+        self.assertEqual((pose['duree_mois'], pose['detail']),
+                         (24, 'Pose et câblage.'))
+        self.assertEqual(self.v.acte(T.CONTRAT).surcharges, {})
+        ActeContractuel.objects.filter(pk=contrat.pk).update(statut=T.SIGNE)
+        self.assertEqual(self._detail(cloture)['garanties_du_contrat'],
+                         T.SIGNE)
 
     def test_paiement_modalites_seules_dans_les_deux_langues(self):
         acte = self.v.acte(T.CONTRAT)

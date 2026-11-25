@@ -227,14 +227,46 @@ def modifier(acte, surcharges, user=None, langue='fr'):
         propre = G.valider_surcharges(acte.type, surcharges, langue)
     except G.ContenuInvalide as exc:
         raise ErreurActe(T.CODE_CONTENU_INVALIDE, str(exc), 400)
+    garanties = propre.get('garanties') if langue == 'fr' else None
     with transaction.atomic():
+        # Le contrat AVANT l'acte (ordre de création du dossier) : deux
+        # enregistrements ne se croisent jamais sur leurs verrous.
+        contrat = (_contrat_brouillon(acte) if acte.type == T.CLOTURE
+                   and isinstance(garanties, list) else None)
         acte = _verrouiller(acte)
         _garde_chantier(acte)
         _garde_brouillon(acte)
         champ = 'surcharges_ar' if langue == 'ar' else 'surcharges'
         setattr(acte, champ, K.personnaliser(acte, propre, langue))
         acte.save(update_fields=[champ, 'updated_at'])
+        if contrat is not None:
+            _porter_garanties_au_contrat(contrat, garanties)
     return acte
+
+
+def _contrat_brouillon(acte):
+    """Le CONTRAT du chantier de ``acte``, verrouillé, tant qu'il est un
+    brouillon ; None sans contrat ou s'il est émis, signé ou annulé."""
+    contrat = (_modele_acte().objects.select_for_update(of=('self',))
+               .select_related('chantier', 'chantier__devis',
+                               'chantier__client', 'chantier__company')
+               .filter(company=acte.company_id, chantier=acte.chantier_id,
+                       type=T.CONTRAT)
+               .exclude(statut=T.ANNULE).order_by('pk').first())
+    if contrat is None or contrat.statut != T.BROUILLON:
+        return None
+    return contrat
+
+
+def _porter_garanties_au_contrat(contrat, garanties):
+    """Une garantie par chantier : les lignes et les durées enregistrées sur
+    la clôture deviennent celles du contrat encore brouillon (la clôture les
+    lit sur lui — sans cela 36 mois tapés revenaient à 24 à l'écran)."""
+    lignes = K.garanties_portees_au_contrat(contrat, garanties)
+    if lignes is None:
+        return
+    contrat.surcharges = dict(contrat.surcharges or {}, garanties=lignes)
+    contrat.save(update_fields=['surcharges', 'updated_at'])
 
 
 # ── Émettre / rouvrir ───────────────────────────────────────────────────────

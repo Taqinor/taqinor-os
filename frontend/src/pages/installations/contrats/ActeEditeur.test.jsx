@@ -176,6 +176,45 @@ describe('Éditeur d’un acte', () => {
     expect(documentsApiMock.modifierActe.mock.calls[0][2]).toBe('ar')
   })
 
+  // Défaut vécu le 25/11/2026 : 36 mois tapés sur le certificat de garantie revenaient
+  // à 24 après « Enregistrer » (la clôture reprend la durée du contrat).
+  const cloture = (origine) => ({
+    ...structuredClone(exempleContrat('documents', 'acte_contractuel', 'exemple_cloture_garanties')),
+    garanties_du_contrat: origine,
+  })
+
+  it('clôture, contrat encore brouillon : la durée se tape, part au serveur, et l’écran dit qu’elle vaut pour le contrat', async () => {
+    const detail = cloture('brouillon')
+    documentsApiMock.acte.mockResolvedValue({ data: detail })
+    documentsApiMock.modifierActe.mockResolvedValue({ data: detail })
+    const user = userEvent.setup()
+    monter()
+    const garanties = await screen.findByRole('group', { name: 'Garanties' })
+    expect(garanties.textContent).toMatch(/vaut aussi pour le contrat/)
+    const i = detail.contenu.garanties.findIndex((g) => g.cle === 'installation')
+    const duree = within(garanties).getAllByLabelText('Durée en mois')[i]
+    await user.clear(duree)
+    await user.type(duree, '36')
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    const envoye = documentsApiMock.modifierActe.mock.calls[0][1]
+    expect(envoye.garanties[i]).toMatchObject({ cle: 'installation', duree_mois: 36 })
+  })
+
+  it.each([['emis', /contrat émis/], ['signe', /contrat signé/]])(
+    'clôture, contrat %s : durée en lecture seule avec sa raison, ni ajout ni retrait ; les textes restent modifiables',
+    async (origine, raison) => {
+      documentsApiMock.acte.mockResolvedValue({ data: cloture(origine) })
+      const user = userEvent.setup()
+      monter()
+      const garanties = await screen.findByRole('group', { name: 'Garanties' })
+      expect(within(garanties).queryByLabelText('Durée en mois')).toBeNull()
+      expect(within(garanties).queryByRole('button', { name: /Ajouter une garantie|Retirer/ })).toBeNull()
+      expect(within(garanties).getAllByText(raison).length).toBeGreaterThan(0)
+      await user.type(within(garanties).getByLabelText('Désignation (garantie 1)'), ' x')
+      expect(screen.getByRole('button', { name: 'Enregistrer' })).toBeEnabled()
+    },
+  )
+
   it('demande confirmation avant de changer de langue avec des modifications en cours', async () => {
     const user = userEvent.setup()
     monter()
@@ -282,7 +321,11 @@ describe('Éditeur d’un acte', () => {
     monter()
     const pv = await screen.findByRole('group', { name: 'Options' })
     expect(within(pv).queryByLabelText(/Délai d’exécution/)).toBeNull()
-    await user.click(within(pv).getByLabelText(/Réserve de propriété/))
+    // Une réserve de propriété par chantier : celle du contrat. Sur un procès-verbal
+    // le serveur l'ignore — la case se montre, dit où elle se règle, ne se coche pas.
+    const reserve = within(pv).getByLabelText(/Réserve de propriété.*réglée sur le contrat/)
+    expect(reserve).toBeDisabled()
+    await user.type(within(pv).getByLabelText(/Pénalité de retard/), '2')
     await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
     expect(Object.keys(documentsApiMock.modifierActe.mock.calls[0][1].options).sort())
       .toEqual(['penalite_retard_pct', 'reserve_propriete'])

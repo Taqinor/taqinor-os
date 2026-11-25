@@ -57,9 +57,23 @@ const TOAST_HAUT = { position: 'top-center', duration: 2500 }
 
 const AIDE_PARAGRAPHES = 'Une ligne vide sépare deux paragraphes ; une ligne qui commence par « - » devient une puce ; **gras** reste tel quel.'
 
+// Une seule garantie par chantier : la clôture reprend les lignes et les durées du
+// CONTRAT. `garantiesDuContrat` (détail servi) dit où elles se règlent : '' ici,
+// 'brouillon' ici ET portées au contrat, 'emis' / 'signe' lecture seule.
+const AIDE_GARANTIES = {
+  brouillon: 'Une seule garantie par chantier : une durée modifiée ici vaut aussi pour le contrat, tant qu’il n’est pas émis.',
+  emis: 'Les durées sont celles du contrat émis : pour les changer, rouvrez le contrat. Les textes se modifient ici.',
+  signe: 'Les durées sont celles du contrat signé : elles ne changent plus. Les textes se modifient ici.',
+}
+const LIBELLE_DUREE_FIGEE = {
+  emis: 'Durée en mois (fixée par le contrat émis)',
+  signe: 'Durée en mois (fixée par le contrat signé)',
+}
+
 /** Les champs d'une section. `v` = brouillon courant, `m` = fixe la valeur. */
 function ChampsSection({
   cle, v, m, contenu, titreParDefaut = '', articlesModifies = [], onRetablirArticle,
+  garantiesDuContrat = '',
 }) {
   const langue = useContext(LangueContext)
   const p = `contrats-ed-${cle}`
@@ -148,9 +162,15 @@ function ChampsSection({
           )}
         </div>
       ))
-    case 'garanties':
+    case 'garanties': {
+      // Durées figées : en arabe (réglées en français) ou par un contrat émis / signé.
+      const figeParContrat = LIBELLE_DUREE_FIGEE[garantiesDuContrat]
+      const dureeFigee = langue === 'ar' || !!figeParContrat
       return (
         <>
+          {langue !== 'ar' && AIDE_GARANTIES[garantiesDuContrat] && (
+            <p className="contrats-editeur__aide">{AIDE_GARANTIES[garantiesDuContrat]}</p>
+          )}
           {v.map((g, i) => {
             const set = (champ) => (x) => m(v.map((r, j) => (j === i ? { ...r, [champ]: x } : r)))
             return (
@@ -158,12 +178,13 @@ function ChampsSection({
                 <Texte id={`${p}-${i}-d`} libelle={`Désignation (garantie ${i + 1})`}
                        valeur={g.designation} onChange={set('designation')} />
                 <div className="contrats-editeur__duo">
-                  {/* En arabe, durée et fin viennent du français : lecture seule. */}
-                  {langue === 'ar'
+                  {/* En arabe, durée et fin viennent du français : lecture seule.
+                      Contrat émis ou signé : la durée est la sienne, lecture seule aussi. */}
+                  {dureeFigee
                     ? (
                       <p className="contrats-editeur__lecture-seule">
-                        <span>Durée en mois (réglée en français)</span>
-                        <strong dir="ltr">{g.duree_mois || 'à préciser'}</strong>
+                        <span>{langue === 'ar' ? 'Durée en mois (réglée en français)' : figeParContrat}</span>
+                        <strong dir="ltr">{g.duree_mois || g.duree_libelle || 'à préciser'}</strong>
                         {g.fin && <span>Fin : <bdi>{dateLisible(g.fin, langue)}</bdi></span>}
                       </p>
                     )
@@ -175,7 +196,7 @@ function ChampsSection({
                 </div>
                 <Zone id={`${p}-${i}-c`} libelle="Ce que cela couvre" lignes={2}
                       valeur={g.detail ?? ''} onChange={set('detail')} />
-                {langue !== 'ar' && (
+                {!dureeFigee && (
                   <Button type="button" size="sm" variant="ghost" className="contrats-acte__bouton"
                           onClick={() => m(v.filter((_, j) => j !== i))}>
                     <Trash2 className="size-4" aria-hidden="true" /> Retirer cette garantie
@@ -184,7 +205,7 @@ function ChampsSection({
               </div>
             )
           })}
-          {langue !== 'ar' && (
+          {!dureeFigee && (
             <Button type="button" size="sm" variant="outline" className="contrats-acte__bouton"
                     onClick={() => m([...v, {
                       cle: '', designation: '', duree_mois: '', duree_libelle: '',
@@ -195,15 +216,22 @@ function ChampsSection({
           )}
         </>
       )
+    }
     case 'conditions_particulieres':
       return <Zone id={p} libelle="Conditions particulières" lignes={5} valeur={v} onChange={m} />
-    case 'options':
+    case 'options': {
+      // Une réserve de propriété par chantier : celle du CONTRAT. Sur un autre acte
+      // le serveur l'ignore — on la montre donc sans la laisser cocher.
+      const surContrat = contenu?.type === 'contrat_installation'
       return (
         <>
           <label className="contrats-editeur__case">
-            <input type="checkbox" checked={v.reserve_propriete}
+            <input type="checkbox" checked={v.reserve_propriete} disabled={!surContrat}
                    onChange={(e) => m({ ...v, reserve_propriete: e.target.checked })} />
-            <span>Réserve de propriété jusqu’au paiement complet</span>
+            <span>
+              Réserve de propriété jusqu’au paiement complet
+              {!surContrat && ' — réglée sur le contrat'}
+            </span>
           </label>
           {'delai_execution_jours' in v && (
             <Texte id={`${p}-delai`} libelle="Délai d’exécution (jours après la date du contrat)"
@@ -215,6 +243,7 @@ function ChampsSection({
                  onChange={(x) => m({ ...v, penalite_retard_pct: x })} />
         </>
       )
+    }
     case 'livraison':
       return (
         <>
@@ -458,6 +487,7 @@ export default function ActeEditeur({
                 contenu={acte.contenu}
                 titreParDefaut={acte.titre}
                 articlesModifies={acte.articles_personnalises ?? []}
+                garantiesDuContrat={acte.garanties_du_contrat ?? ''}
                 onRetablirArticle={(articleCle) => setARetablir({ cle: 'articles', article: articleCle })}
               />
             </LangueContext.Provider>
