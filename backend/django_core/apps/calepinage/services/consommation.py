@@ -1282,8 +1282,13 @@ def _consommation_de_la_conception(calepinage):
     if marche == 'residentiel':
         # Reste d'ACAL2020 — la forme 24 h que le moteur a VRAIMENT utilisée (occupation +
         # équipements) ; une version d'avant cette clé garde la silhouette d'occupation.
+        # Relecture m2 : elle déplace la courbe (autoconsommation, couverture) — lue
+        # seulement pour une conception rangée au niveau 15 (pose réelle), comme l'étape 6.
+        from apps.ventes.selectors_calepinage import pose_reelle_au_niveau
+
         retenue = (conception.get('valeurs') or {}).get(conception.get('option_retenue')) or {}
-        forme = _nombres((retenue.get('forme_horaire_24') or {}).get('valeur'), 24)
+        forme = (_nombres((retenue.get('forme_horaire_24') or {}).get('valeur'), 24)
+                 if pose_reelle_au_niveau(conception.get('niveau_regles')) else None)
         mois = (blocs.get('etude_horaire') or {}).get('mois')
         parts = [valeur / sum(forme) for valeur in forme] if forme and sum(forme) else None
     else:

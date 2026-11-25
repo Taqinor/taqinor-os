@@ -220,6 +220,7 @@ class ProposerTest(_Base):
             'occupation': 'presence_jour',
             'mois': [{'mois': rang + 1, 'consommation_kwh': kwh} for rang, kwh in enumerate(self.KWH_CONCEPTION)]}})
         type(version).objects.filter(pk=version.pk).update(
+            niveau_regles=15,  # relecture m2 : la forme du moteur n'est lue qu'au niveau 15
             valeurs={'sans': {'forme_horaire_24': {'valeur': parts, 'unite': 'part', 'source': 'moteur'}}})
 
         reponse = self._proposer({'source': 'lead'})
@@ -229,6 +230,27 @@ class ProposerTest(_Base):
         for heure in range(24):  # mutant « silhouette d'occupation » ou « uniforme » : rouge
             self.assertAlmostEqual(reponse.data['courbe24'][heure], jour_moyen * parts[heure], places=3)
         self.assertNotIn(AVIS_FORME_UNIFORME, reponse.data['avertissements'])
+
+    def test_m2_au_niveau_14_la_silhouette_d_occupation_reste(self):
+        """Relecture du lot 4, m2 — une conception rangée au niveau 14 (courant) qui porte la
+        forme 24 h du moteur : le calepinage garde la silhouette d'occupation qu'il prenait
+        avant (aucun chiffre du calepinage ne bouge au niveau 14)."""
+        from apps.ventes.courbes_journalieres import OCCUPATION_PRESENCE, silhouette_occupation
+
+        parts = [0.02] * 8 + [0.06] * 12 + [0.03] * 4
+        version = self._ranger('residentiel', {'etude_horaire': {
+            'occupation': OCCUPATION_PRESENCE,
+            'mois': [{'mois': rang + 1, 'consommation_kwh': kwh} for rang, kwh in enumerate(self.KWH_CONCEPTION)]}})
+        type(version).objects.filter(pk=version.pk).update(
+            valeurs={'sans': {'forme_horaire_24': {'valeur': parts, 'unite': 'part', 'source': 'moteur'}}})
+
+        reponse = self._proposer({'source': 'lead'})
+
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        jour_moyen = sum(self.KWH_CONCEPTION) / 365.0
+        silhouette = silhouette_occupation(OCCUPATION_PRESENCE)
+        for heure in range(24):  # mutant « forme du moteur lue à tout niveau » : rouge
+            self.assertAlmostEqual(reponse.data['courbe24'][heure], jour_moyen * silhouette[heure], places=2)
 
     def test_acal2020_lead_commercial_forme_horaire_de_la_conception(self):
         """Lead commercial : la journée moyenne des jours types de la conception
@@ -483,6 +505,26 @@ class CorpsProposerPublieTest(SimpleTestCase):
         from apps.calepinage.serializers_conso import SOURCES_CONSOMMATION
 
         self.assertEqual(SOURCES_CONSOMMATION, SOURCES_PROPOSITION)
+
+
+class FormeDuMoteurAuNiveau14Test(SimpleTestCase):
+    """Relecture du lot 4, m2 — la forme 24 h du moteur résidentiel (``conception/moteur.py::
+    forme_horaire_24`` : douze jours types de ``etude_horaire.jours_types_annee`` pondérés par
+    leurs jours) n'est PAS la silhouette d'occupation (``courbes_journalieres.
+    silhouette_occupation``) que le calepinage prenait avant : la lire déplace la courbe, donc
+    l'autoconsommation et la couverture du calepinage. Elle n'est lue qu'au niveau 15."""
+
+    def test_la_forme_du_moteur_differe_de_la_silhouette_pour_un_lead_present_sans_equipement(self):
+        from apps.ventes import courbes_journalieres as cj
+        from apps.ventes.etude_horaire import jours_types_annee
+
+        jours, _avis, _sources = jours_types_annee(kwc=4.0, conso_kwh_mensuelles=[597.0] * 12,
+                                                   ville='Casablanca', occupation=cj.OCCUPATION_PRESENCE)
+        self.assertEqual(len(jours or []), 12)
+        total = [sum(jour['conso_24h'][heure] * jour['jours'] for jour in jours) for heure in range(24)]
+        forme = [valeur / sum(total) for valeur in total]
+        silhouette = cj.silhouette_occupation(cj.OCCUPATION_PRESENCE)
+        self.assertGreater(max(abs(a - b) for a, b in zip(forme, silhouette)), 1e-3)
 
 
 class SaisonsLuesParLaSimulationTest(SimpleTestCase):
