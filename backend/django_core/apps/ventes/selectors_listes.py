@@ -134,26 +134,29 @@ def synthese_liste_devis(qs, company):
     colonne « Total TTC » de chaque ligne (``total_affiche``), jamais un
     second calcul ; les devis sont lus par paquets (mémoire bornée)."""
     from datetime import timedelta
+    from decimal import Decimal
 
     from django.utils import timezone
+
+    from core.money import quantize_mad
 
     from .quote_engine.builder import display_totals
     from .utils.expiry import is_expired, q_expiration
 
     jour = timezone.localdate()
-    par_statut = {s: {'count': 0, 'total': 0.0} for s in STATUTS_EFFECTIFS}
+    par_statut = {s: {'count': 0, 'total': Decimal('0')} for s in STATUTS_EFFECTIFS}
     en_jeu = (qs.filter(is_active=True).order_by('pk')
               .prefetch_related(None)
               .prefetch_related('lignes', 'lignes__produit',
                                 'lignes__produit__fiche_technique'))
     for devis in en_jeu.iterator(chunk_size=50):
         cle = 'expire' if is_expired(devis, today=jour) else devis.statut
-        cellule = par_statut.setdefault(cle, {'count': 0, 'total': 0.0})
+        cellule = par_statut.setdefault(cle, {'count': 0, 'total': Decimal('0')})
         cellule['count'] += 1
-        cellule['total'] += float(display_totals(
-            devis, lignes_prechargees=True)['total'] or 0)
-    for cellule in par_statut.values():
-        cellule['total'] = round(cellule['total'], 2)
+        cellule['total'] += Decimal(str(display_totals(
+            devis, lignes_prechargees=True)['total'] or 0))
+    for cellule in par_statut.values():  # une seule règle d'arrondi de l'argent (core.money)
+        cellule['total'] = float(quantize_mad(cellule['total']))
     a_relancer = (qs.filter(is_active=True, statut='envoye')
                   .filter(q_expiration(company, apres=jour,
                                        avant=jour + timedelta(days=7)))
