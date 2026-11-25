@@ -154,6 +154,8 @@ SURFACE_PUBLIQUE = (
     "composition_residentielle",
     "compte_moteur_du_layout",
     "compute_marge_snapshot",
+    # Relecture E5 B1 — porte de lecture de la conception (version courante, sinon une relance en file).
+    "conception_ou_calcul",
     "concevoir_electrique_du_devis",
     "configuration_devis_contenu",
     "consigner_correction_apres_envoi",

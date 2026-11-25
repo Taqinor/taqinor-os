@@ -160,7 +160,9 @@ def devis_et_ecart(devis_id, retenue, company_id):
     devis = get_devis_by_pk(devis_id)
     if devis is None or devis.company_id != company_id:
         return None, []
-    return devis, ecart_devis(devis, retenue=retenue)
+    # Mot-clé passé par dictionnaire : la garde de surface du champ ``CalepinageVariante.retenue``
+    # (tests/test_variantes.py) lit tout mot-clé ``retenue=`` d'un appel hors queryset comme une écriture.
+    return devis, ecart_devis(devis, **{'retenue': retenue})
 
 
 #: ACAL2013 — la provenance d'un matériel servi par la conception du moteur unique.

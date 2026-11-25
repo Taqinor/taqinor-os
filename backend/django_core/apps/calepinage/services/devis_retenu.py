@@ -68,7 +68,7 @@ def conception_du_calepinage(calepinage):
     return _lire_conception(calepinage)[0]
 
 
-def calcul_en_cours(calepinage):
+def _calcul_en_cours(calepinage):
     """Relecture E5 B1 — vrai quand le lead n'a encore aucune conception rangée et que
     son premier calcul vient d'être mis en file (ou l'était déjà) : l'atelier attend."""
     return _lire_conception(calepinage)[1]
@@ -116,6 +116,15 @@ def _refus(message, code, source='factures'):
             'motif_code': code, 'option': None}
 
 
+def attend_son_premier_calcul(calepinage):
+    """Relecture E5 B1 — l'atelier ATTEND (« calcul en cours ») : le premier calcul de la conception est
+    en file ET le lead a de quoi être dimensionné. Un lead sans facture ni taille n'attend rien : aucun
+    calcul ne lui donnera de taille, le refus nomme ce qu'il faut saisir (question de taille, ACAL922)."""
+    from .devis import lead_sans_facture_ni_taille
+
+    return _calcul_en_cours(calepinage) and not lead_sans_facture_ni_taille(calepinage)
+
+
 def cible_de_la_conception(calepinage):
     """ACAL2012 — la cible de l'atelier : la taille de la conception COURANTE (option que
     le moteur retient), avec ou sans devis — un devis lié, même envoyé, n'est plus la
@@ -133,7 +142,7 @@ def cible_de_la_conception(calepinage):
     if conception is None:
         if not getattr(calepinage, 'lead_id', None):
             return None
-        if calcul_en_cours(calepinage):  # relecture E5 B1 : jamais 0 panneau, l'atelier attend
+        if attend_son_premier_calcul(calepinage):  # relecture E5 B1 : jamais 0 panneau, l'atelier attend
             return _refus(REFUS_CONCEPTION_EN_COURS, CODE_CONCEPTION_EN_COURS)
         return _refus(REFUS_CONCEPTION_ABSENTE, CODE_CONCEPTION_ABSENTE)
     if conception.get('marche') == 'agricole':

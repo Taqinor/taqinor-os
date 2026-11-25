@@ -70,6 +70,10 @@
       "modulesDisponibles": null,
       "reglagesAtelier": null,
       "demanderPlanSurface": "[fn]",
+      "suiviSite": {
+        "initial": "lead",
+        "ecouter": "[fn]"
+      },
       "factureMensuelleMad": 900,
       "devisLie": true,
       "chiffrage": {

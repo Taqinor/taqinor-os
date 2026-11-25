@@ -228,6 +228,10 @@ def relancer_sur_designation(calepinage, avant, apres):
     range une nouvelle version avec sa phrase « pourquoi »."""
     if not any((avant or {}).get(cle) != (apres or {}).get(cle) for cle in DESIGNATIONS_IMPOSEES):
         return False
+    # Un calepinage sans identité rangée (pivot en mémoire, jamais enregistré) n'a ni porteur ni
+    # conception : rien à relancer.
+    if not getattr(calepinage, 'pk', None) or not getattr(calepinage, 'company_id', None):
+        return False
     from .layout import _emettre_pose_enregistree
 
     _emettre_pose_enregistree(calepinage, getattr(calepinage, 'layout_hash', '') or '')

@@ -129,11 +129,11 @@ def cible_factures(calepinage, *, lire_cible=None):
 def cible_factures_servie(self, request, pk=None):
     """La taille tirée des factures du lead (``cible_factures``), ou ``null`` avec le ``refus`` nommé ;
     ``calcul_en_cours`` (relecture E5 B1) : le premier calcul de la conception est en file, l'écran relit."""
-    from ..services.devis_retenu import calcul_en_cours
+    from ..services.devis_retenu import attend_son_premier_calcul
 
     calepinage = self.get_object()
     cible, refus = cible_factures_et_refus(calepinage)
-    return Response({'cible_factures': cible, 'refus': refus, 'calcul_en_cours': calcul_en_cours(calepinage)})
+    return Response({'cible_factures': cible, 'refus': refus, 'calcul_en_cours': attend_son_premier_calcul(calepinage)})
 
 
 CalepinageViewSet.cible_factures_servie = cible_factures_servie
