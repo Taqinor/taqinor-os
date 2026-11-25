@@ -8,7 +8,9 @@ fichier de ``ventes`` en plus au cliquet ACAL1009) :
   existante du ratio (``calepinage/services/ratio_devis.py::juger_ratio``,
   ACAL1954, D-ACAL-91) et la règle D-HYB-1 de la capacité publiée d'un hybride
   (``core.electrique.onduleurs.capacite_publiee_hybride``) : aucune seconde
-  règle ici, le moteur RANGE le verdict et « Prêt à envoyer ? » le relit.
+  règle ici, le moteur RANGE le verdict et « Prêt à envoyer ? » le relit ;
+* ACAL2018 — la pose du toit tracé et LA simulation de la pose, par la façade
+  ``calepinage/services/pose_pour_moteur.py`` (jamais ``simulation.py``).
 
 Lecture pure : rien n'est écrit.
 """
@@ -93,3 +95,23 @@ def verdicts_electriques(company, design, onduleurs, puissance_kwc):
         'capacite_hybride': _verdict_capacite(onduleur, nombre, _nombre(puissance_kwc)),
         'longueur_chaine': _verdict_longueur(design.get('chaines') or []),
     }
+
+
+# ── ACAL2018 / ADEV149 — la pose du toit tracé, par la façade du calepinage ──
+
+def pose_du_calepinage(company, calepinage_id):
+    """``pose_servie`` de la façade (``{nb_panneaux, kwc, complete, a_la_main,
+    empreinte_pose, manquants}``), ``None`` sans calepinage de la société."""
+    from apps.calepinage.services.pose_pour_moteur import pose_servie
+
+    return pose_servie(company, calepinage_id) if calepinage_id else None
+
+
+def simuler_la_pose(company, calepinage_id, materiel):
+    """La production de LA simulation de la pose pour le matériel du moteur
+    (``{module, onduleur}`` : identifiants produit) ; ``None`` sans calepinage."""
+    from apps.calepinage.services.pose_pour_moteur import simuler_pose
+    from apps.ventes.selectors_calepinage import calepinage_de_societe
+
+    calepinage = calepinage_de_societe(calepinage_id, company) if calepinage_id else None
+    return simuler_pose(calepinage, materiel=materiel) if calepinage is not None else None
