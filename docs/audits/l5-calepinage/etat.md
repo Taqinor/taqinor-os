@@ -1670,7 +1670,7 @@ AVEC les lanes de correctifs pliées — pas de passage de CI pour deux petits c
    l'atelier) ; remplacer `%%X5%%` par les constats de X5 à corriger.
 6. F2 (éditeur du devis, restes du tour 3) — APRÈS e7d (même écran) ; consignes à écrire.
 
-### Point du 25/11, 07 h 25 UTC (le plus récent — REPRENDRE ICI)
+### Point du 25/11, 07 h 25 UTC
 
 **Lot 4 (PR Taqinor/taqinor-os#1556, brouillon)** — branche `dev-lot4`, tête locale après plis : e7c, e7e (correctifs
 de la relecture : vue client, atelier, fiche du lead), les quatre premiers commits d'e6d (plan par défaut avec fiche
@@ -1707,3 +1707,26 @@ rejeux ACAL2034, 2035, 2038, comparaison aux maquettes, rapport final.
 (enregistrement `docs/audits/acceptation/ACAL/2026-11-25-22e6aa81a.md` : NASA POWER refuse la fenêtre de dix ans en un
 appel — tâche ACAL2043) ; décisions 29 à 33 au rapport (vue client sans montant, variante darija, relecture du lot 4,
 ce que montre la vue client quand la pose n'a pas la taille de la conception, NASA POWER).
+
+### Point du 25/11, 08 h 15 UTC (le plus récent — REPRENDRE ICI)
+
+**Lot 4 (PR Taqinor/taqinor-os#1556, brouillon), `dev-lot4`.** Pliées depuis 07 h 25 : `moteur-e6d` (5 commits),
+F6b `t3-atelier-ecrans` (8 constats dont T4-X5-009), F4 `t3-pompage-pdf` (5 constats ; PDF client derrière le niveau
+15), F6a `t3-atelier` (6 corrigés, T4-X2-002 contesté). Troisième passage de CI (tête `9311c26655`, 07 h 53) TERMINÉ :
+rouges = registre mono-devise (régénéré), empreinte de `dupliquer_devis` (recapturée : changement voulu, écart 4),
+grand livre des appels d'`appliquer` (fonction d'e6d renommée `imposer`), et AGNR24 (attend e7d). Corrigés en local
+(`0a16fdfee5`), NON poussés ; F6a pliée après ce passage (clé servie `calepinage.site_de_repli_point`, instantané
+OpenAPI régénéré : inchangé). PROCHAIN PUSH : au retour d'e7d (quatrième passage, visé vert).
+Le blocage de 40 min du shard 3 au deuxième passage ne s'est PAS reproduit (shards de 5 à 13 min) : aléa, à surveiller.
+
+**EN VOL (quatre lanes)** : `moteur-e7d` (opus, écran devis — bloque la fusion) ; `moteur-e8` (opus, 6 points) ;
+`moteur-e6e` (opus, une seule conception par lead, devis né de l'atelier) ; F3 `t3-listes-envoi` (sonnet, 9 points).
+**Tâche de fond** : liste `--ecarts-sans-toit` sur 60 leads de la copie avec le code de `dev-lot4`
+(`scratchpad/ecarts-sans-toit-60.txt`, CONFIDENTIEL : jamais commité) — mesurer la durée, puis lancer la liste
+entière, la résumer SANS aucun nom ni montant d'un client, et la porter au fondateur (ADEV155 GATED).
+**FILE** : F2a et F2b après e7d ; instrument à relancer sur `dev-lot4` (`lancer.sh serveur` ; `l5t-django` et
+`l5t-celery` sont arrêtés) puis regard des écrans (listes aux rapports des lanes e7a, e7b, e7c, e7e, t3-liste, F4,
+F6a, F6b) ; relecteurs X3, X6, X7, X8 et rejeu des constats corrigés par des relecteurs neufs ; enregistrements
+ACAL2028, ACAL2029 ; rejeux ACAL2034, 2035, 2038 ; comparaison aux maquettes ; rapport final.
+**Reste d'une lane à nettoyer** : entrée de remise « f6-item1-src » (lane F6a, changements déjà commités) dans la pile
+de remises PARTAGÉE — ne pas y toucher par `git stash pop` ; la retirer par son étiquette en fin de session.
