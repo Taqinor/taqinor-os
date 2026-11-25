@@ -178,3 +178,62 @@ describe('V3-02 — ChampDecimal : un champ vidé pendant la frappe n’est pas 
     expect(champ.value).toBe('3.55')
   })
 })
+
+// T4-V2-018 — « Recommandé sans batterie : 6 panneaux · 3,30 kWc » (conseil du
+// moteur) et, sur le même écran, la taille « Recommandé · Devis officiel ·
+// 10 panneaux » (LE devis, définition fondateur des tailles) : deux choses
+// différentes sous un même mot. Chacune son nom ; l'écran dit ce que le devis
+// chiffre quand il diffère du conseil, et le geste qui chiffre le conseil.
+describe('T4-V2-018 — CarteParametresTechniques : conseil du moteur et taille chiffrée', () => {
+  const DIM = { sans: { nbPanneaux: 6, kwc: 3.3 }, avec: { nbPanneaux: 10, kwc: 5.5 } }
+  const ligne = (designation, quantite, extra = {}) => ({ designation, quantite: String(quantite), ...extra })
+  const carte = (lines) => rendreCarte({ panelW: '550', showAvec: true, deuxValeursDim: DIM, lines })
+
+  it('les lignes communes chiffrent 10 panneaux dans les deux options : l’écart sans batterie est dit', () => {
+    carte([ligne('Panneau mono 550W', 10), ligne('Onduleur réseau Huawei 3kW', 1, { variante: 'sans' }),
+      ligne('Onduleur hybride Deye 5kW', 1, { variante: 'avec' }), ligne('Batterie lithium 5kWh', 1, { variante: 'avec' })])
+    const bloc = screen.getByTestId('dimensionnement-deux-valeurs').textContent.replace(/\s/g, ' ')
+    expect(bloc).toMatch(/Conseillé par le moteur, sans batterie : 6 panneaux · 3,30 kWc/)
+    expect(bloc).toMatch(/Conseillé par le moteur, avec batterie : 10 panneaux · 5,50 kWc/)
+    expect(screen.getByTestId('dimensionnement-ecart-sans').textContent.replace(/\s/g, ' '))
+      .toMatch(/Ce devis chiffre 10 panneaux · 5,50 kWc dans l’option sans batterie .*« Recalculer le dimensionnement »/)
+    expect(screen.queryByTestId('dimensionnement-ecart-avec')).toBeNull()
+    expect(bloc).not.toMatch(/Recommandé/)
+  })
+
+  it('les lignes suivent le conseil : aucun écart affiché', () => {
+    carte([ligne('Panneau mono 550W', 6), ligne('Panneau mono 550W', 4, { variante: 'avec' })])
+    expect(screen.queryByTestId('dimensionnement-ecart-sans')).toBeNull()
+    expect(screen.queryByTestId('dimensionnement-ecart-avec')).toBeNull()
+  })
+})
+
+// T4-V1-003 — sous la table « TOTAL SANS BATTERIE 34 900 » (AVANT remise) et dans
+// la carte de droite « Total sans batterie · TTC 33 900 » (après remise) : même nom,
+// deux chiffres. Avec une remise, le brut s'appelle « … avant remise ».
+describe('T4-V1-003 — rail : le total avant remise porte son nom', () => {
+  const monter = (remise) => {
+    const totals = optionTotalsTTC(KIT, remise)
+    const { container } = render(
+      <RailArgent
+        showSans showAvec sansRec={false} avecRec={false} totals={totals}
+        discountPct={String(remise)} setDiscountPct={() => {}} remiseMax=""
+        pkwc={null} prixCible="" setPrixCible={() => {}} applyPrixCible={() => {}} kwp={0}
+        marge={null} kpiTotal={totals.totalSans} remiseParPanier={lignesRemiseesParPanier(KIT, remise)}
+      />,
+    )
+    return container
+  }
+  it('remise 3 % : « avant remise » sur le brut, « Total final » sur le remisé', () => {
+    const c = monter(3)
+    expect(screen.getByText('Total SANS batterie avant remise')).toBeInTheDocument()
+    expect(screen.getByText('Total AVEC batterie avant remise')).toBeInTheDocument()
+    expect(screen.getByText('Total final SANS batterie')).toBeInTheDocument()
+    expect(c.textContent).not.toMatch(/Total SANS batterie(?! avant remise)\d/)
+  })
+  it('sans remise : un seul total, sans « avant remise »', () => {
+    const c = monter(0)
+    expect(c.textContent).not.toMatch(/avant remise/)
+    expect(screen.getByText('Total SANS batterie')).toBeInTheDocument()
+  })
+})

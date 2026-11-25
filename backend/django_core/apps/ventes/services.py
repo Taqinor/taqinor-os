@@ -331,6 +331,17 @@ chiffrer_conception = _chiffrage_conception.chiffrer_conception
 # ADEV135 (D-ACAL-97) — l'écrivain UNIQUE de la conception rangée (``ConceptionLead``).
 from apps.ventes.conception import service as _conception_service  # noqa: E402 — anti-cycle (D-ENF22)
 relancer = _conception_service.relancer
+# Relecture E5 B1 — la porte de lecture du calepinage : version courante, ou premier calcul mis en file.
+conception_ou_calcul = _conception_service.conception_ou_calcul
+
+
+def moteur_simule_la_pose():
+    """ACAL2019 — le moteur unique simule-t-il la pose ? Vrai au niveau de règles COURANT
+    ≥ 15 (``REGLES_POSE_REELLE_2111``, la condition de ``conception/moteur.pose_reelle``,
+    ADEV149) : le calepinage relance alors le moteur au lieu de simuler lui-même."""
+    from apps.ventes.domain import regles_calcul as RC
+
+    return RC.REGLES_COURANTES >= RC.REGLES_POSE_REELLE_2111
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -682,6 +693,8 @@ __all__ = [
     'regler_envoi_gamme',
     'rejeter_paiement',
     'relancer',
+    'conception_ou_calcul',
+    'moteur_simule_la_pose',
     'renouveler_devis',
     'request_esign_otp',
     'request_otp_lecture',

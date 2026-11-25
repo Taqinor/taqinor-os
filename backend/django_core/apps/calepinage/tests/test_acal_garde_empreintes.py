@@ -67,6 +67,7 @@ CLASSEMENT_RACINE = {
     'repereAcquitte': DOCUMENT,
     'reperesChantier': DOCUMENT,  # ACAL599 : repères de sécurité, non chiffrés
     'setbacksM': DOCUMENT,
+    'siteLocalise': DOCUMENT,  # T4-U4-013 : d'où vient l'épingle décide du lieu du calcul — versionnée comme pin
     'source': DOCUMENT,
     'underlay': DOCUMENT,
     'version': DOCUMENT,

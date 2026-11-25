@@ -230,7 +230,8 @@ class Champ(unittest.TestCase):
         alerte = [a for a in res["alertes"]
                   if a["code"] == "besoin_non_couvert_champ"]
         self.assertEqual(len(alerte), 1)
-        self.assertIn("borne de 1,5 × la plaque de 7,5 kW", alerte[0]["message"])
+        self.assertIn("limité à 1,5 fois la puissance de la pompe (7,5 kW)",
+                      alerte[0]["message"])
         self.assertIn("15 panneaux", alerte[0]["message"])
         # AGM16 — le champ borné reste DANS la bande (≤ 1,5 × la plaque).
         self.assertLessEqual(res["nb_panneaux"] * 710 / 1000, 1.5 * 7.5)
@@ -265,7 +266,8 @@ class Champ(unittest.TestCase):
         self.assertEqual(res["nb_panneaux"], borne)
         alerte = [a for a in res["alertes"] if a["code"] == "champ_kwc_depart"]
         self.assertEqual(len(alerte), 1)
-        self.assertIn("borne de 1,5 × la plaque de 7,5 kW", alerte[0]["message"])
+        self.assertIn("limité à 1,5 fois la puissance de la pompe (7,5 kW), "
+                      "soit %d panneaux" % borne, alerte[0]["message"])
 
     def test_agm14_sans_courbe_petit_besoin_inchange(self):
         res = self._sans_courbe(20, 40)
@@ -273,7 +275,23 @@ class Champ(unittest.TestCase):
                          math.ceil(res["kwc_depart"] * 1000 / 710))
         alerte = [a for a in res["alertes"] if a["code"] == "champ_kwc_depart"]
         self.assertEqual(len(alerte), 1)
-        self.assertNotIn("borne", alerte[0]["message"])
+        self.assertNotIn("limité à", alerte[0]["message"])
+
+    def test_t4v2_011_012_sans_courbe_une_phrase_vraie_sans_formule(self):
+        # Ce qui n'est PAS calculé (l'eau livrée par la pompe, faute de
+        # courbe) et ce qui l'est (le champ, sur le besoin déclaré) ; ni
+        # formule, ni « sans débit déclaré » (le débit souhaité l'est).
+        res = self._sans_courbe(20, 40)
+        message = next(a["message"] for a in res["alertes"]
+                       if a["code"] == "champ_kwc_depart")
+        self.assertIn("Eau livrée par la pompe non calculée", message)
+        self.assertIn("pompe sans courbe constructeur", message)
+        self.assertIn("besoin déclaré", message)
+        self.assertIn("%s kWc" % ("%.2f" % res["kwc_depart"]).rstrip("0")
+                      .rstrip(".").replace(".", ","), message)
+        for interdit in ("E / (", "η", "E_d", "sans débit déclaré",
+                         "kWc de départ"):
+            self.assertNotIn(interdit, message)
 
     def _codes_non_dimensionne(self, **kwargs):
         params = dict(besoin_m3_jour_mois=[20.0] * 12, hmt_m=40,

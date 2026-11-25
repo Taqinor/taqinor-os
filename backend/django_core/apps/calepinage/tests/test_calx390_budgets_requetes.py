@@ -240,6 +240,39 @@ class BudgetsRequetesCalepinageEnBaseTest(
             'GET %s : %d requêtes mesurées, plafond %d dans '
             'docs/query-budgets.yml.' % (RESULTAT, a_25, budget))
 
+    def test_le_resultat_avec_une_conception_rangee_lue_une_fois(self):
+        """Relecture E5 (coût des requêtes) — ``resultat/`` d'un lead qui porte une
+        conception RANGÉE et un devis ENVOYÉ (bloc ``conception``, filet de péremption,
+        écart du devis) : la conception courante n'est lue qu'UNE fois par requête et
+        ne coûte que ses lectures propres (9 : version, filet ADEV140 = lead, catalogue,
+        deux réglages ; module de la conception ; écart = devis, versions…). Mesuré le
+        25/11 : 30 → 22 requêtes, contre 13 sans conception — au-delà du plafond du
+        manifeste (15, mesuré sans conception) : décision laissée à l'orchestrateur
+        (rapport de la lane E5-fix), budget NON relevé."""
+        from django.core.cache import cache
+
+        from apps.ventes import tasks
+        from apps.ventes.selectors_conception import conception_courante as vraie
+
+        from .test_acal_cible_lead import ranger_conception
+
+        cache.clear()
+        self.addCleanup(cache.clear)
+        pivot = self._pivot()
+        Devis.objects.filter(pk=pivot.devis_id).update(statut=Devis.Statut.ENVOYE)
+        url = _url(RESULTAT, pivot.pk)
+        with mock.patch.object(tasks.task_relancer_conception, 'apply_async'):  # jamais le courtier
+            self._compte(url)  # à blanc
+            sans, _reponse = self._compte(url)
+            ranger_conception(lead=self.lead, nb=19, watt=710)
+            self._compte(url)
+            with mock.patch('apps.ventes.selectors_conception.conception_courante', wraps=vraie) as lue:
+                avec, reponse = self._compte(url)
+        self.assertEqual(reponse.data['conception']['production_annuelle_kwh'], round(19 * 710 * 1.6, 1))
+        self.assertEqual(lue.call_count, 1)  # mutant « sans mémo de requête » : plusieurs lectures
+        self.assertLessEqual(avec - sans, 9, 'GET %s : %d requêtes avec une conception rangée, %d sans.'
+                             % (RESULTAT, avec, sans))
+
     def test_detail_et_resultat_tiennent_leur_plafond(self):
         pivot = self._pivot()
         self._semer_lignes_du_pivot(pivot, 10)

@@ -22,6 +22,8 @@ import { Combobox } from '../../ui'
      onChange (id | null, ligneServeur | null) => void
    ========================================================================== */
 
+const VIDE_CLIENTS = 'Aucun de vos clients ne correspond (vos clients : ceux que vous avez créés ou liés à vos leads et devis). Vérifiez l’orthographe, ou créez le client dans CRM › Clients.'
+
 const nomComplet = (ligne, repli) =>
   [ligne.nom, ligne.prenom].filter(Boolean).join(' ') || repli
 
@@ -43,7 +45,9 @@ export default function SelecteurRattachement({
     const res = surLead
       ? await crmApi.getLeads({ search: q, page_size: 20 })
       : await crmApi.searchClients(q)
-    const trouvees = unwrapList(res)
+    // T4-V1-011 — `clients/search/` est la recherche d'ENTREPRISE (clients, fournisseurs, leads) : seul un client
+    // peut être rattaché comme client (l'id d'un lead ou d'un fournisseur n'est pas celui d'un client).
+    const trouvees = unwrapList(res).filter((l) => surLead || !l.source || l.source === 'client')
     lignes.current = trouvees
     return trouvees.map((l) => ({
       value: String(l.id),
@@ -69,6 +73,8 @@ export default function SelecteurRattachement({
       disabled={disabled}
       invalid={invalid}
       aria-label={surLead ? 'Lead rattaché au calepinage' : 'Client rattaché au calepinage'}
+      // T4-V1-011 — la recherche suit la portée du rôle : la phrase dit ce qu'elle couvre et quoi faire.
+      emptyText={surLead ? undefined : VIDE_CLIENTS}
       placeholder={placeholder
         || (surLead ? 'Rechercher un lead…' : 'Rechercher un client…')}
     />

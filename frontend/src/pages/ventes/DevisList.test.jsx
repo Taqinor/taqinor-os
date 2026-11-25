@@ -1743,3 +1743,35 @@ describe('DevisList — ADRG19 : gestes gardés par le code de leur route', () =
     for (const nom of TROIS) expect(await screen.findByRole('menuitem', { name: nom })).toBeInTheDocument()
   })
 })
+
+// T4-V2-008 — deux demandes de PDF sur sept n'ont jamais rien livré (300 s puis
+// 604 s) : le sondage tournait sans fin, la fenêtre fermée, aucun message. Une
+// génération qui n'aboutit pas en 5 min est DITE, avec « Réessayer », et le
+// sondage s'arrête.
+describe('DevisList — T4-V2-008 : un PDF qui n’arrive pas est dit, avec Réessayer', () => {
+  beforeEach(() => { vi.useFakeTimers() })
+  afterEach(() => { vi.runOnlyPendingTimers(); vi.useRealTimers() })
+
+  it('5 min sans fichier : message persistant avec « Réessayer », plus aucun sondage', async () => {
+    const { renderHook } = await import('@testing-library/react')
+    const { useDevisPdf } = await import('./devisList/useDevisPdf.js')
+    ventesApi.etatPdfDevis.mockImplementation(() => Promise.resolve({
+      data: { devis: 7, statut: 'en_cours', fichier_pdf: null, erreur: null, date: null },
+    }))
+    const erreur = vi.spyOn(toast, 'error')
+    const dispatch = vi.fn(() => ({ unwrap: () => Promise.resolve({ demande: 'D1' }) }))
+    const { result } = renderHook(() => useDevisPdf({ dispatch, devis: [], selectedIds: [], setSelectedIds: () => {} }))
+    await act(async () => { await result.current.genererUnPdf({ id: 7, reference: 'DEV-7' }) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(4 * 60 * 1000) })
+    expect(erreur).not.toHaveBeenCalledWith(expect.stringContaining('DEV-7'), expect.anything())
+    await act(async () => { await vi.advanceTimersByTimeAsync(90 * 1000) })
+    expect(erreur).toHaveBeenCalledWith(
+      'DEV-7 : le PDF n’est toujours pas prêt après 5 minutes — la génération n’a pas abouti.',
+      expect.objectContaining({ action: expect.objectContaining({ label: 'Réessayer' }), duration: Infinity }))
+    const appels = ventesApi.etatPdfDevis.mock.calls.length
+    await act(async () => { await vi.advanceTimersByTimeAsync(5 * 60 * 1000) })
+    expect(ventesApi.etatPdfDevis.mock.calls.length).toBe(appels)
+    expect(result.current.pdfSlowPoll[7]).toBe(false)
+    erreur.mockRestore()
+  })
+})

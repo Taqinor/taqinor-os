@@ -17,7 +17,7 @@ import {
   repereDuLead, leadToBuilderPayload,
   contexteCalepinageVersPayload, bankableFromDevis,
   stockageBrouillonLocal, stockageSessionLocal, tailleImagePlan, messageRefusRepere,
-  reglagesAtelierDesParametres, phraseCalepinageCharge,
+  reglagesAtelierDesParametres, phraseCalepinageCharge, siteLocaliseInitial,
 } from './contexteAtelier.js'
 
 // R2-20 — le refus de DROIT (403) n'est pas « introuvable — réessayez » : l'écran le DIT et masque ses outils.
@@ -170,6 +170,8 @@ export function useAtelierBoot(ctx) {
   // modes. `onApiReady` arrive AVANT l'hydratation (roof-tool-pro11) : une référence
   // prise là compterait l'hydratation elle-même comme une modification.
   const { setSceneHydratee } = ctx
+  // T4-U4-013 — l'état de localisation du site, suivi par l'atelier (bandeau « Site non localisé »).
+  const { setSiteLocalise } = ctx
   // ACAL192 — refus serveur du recentrage automatique (calepinage verrouillé…), en français.
   const { setRepereErreur } = ctx
   // ACAL311 — la porte `consommation/proposer/` (ToitureDesign), liée au calepinage ouvert :
@@ -549,6 +551,12 @@ export function useAtelierBoot(ctx) {
           imagery: imageryDesReglages(reglagesAtelier), // ACAL1421
           // ACAL918 — le plan du moteur pour « Enregistrer le contour tracé » (surface de pose).
           demanderPlanSurface: demanderPlanSurfaceDepuis(ctx),
+          // T4-U4-013 — l'atelier écrit `siteLocalise` (le serveur n'utilise l'épingle que localisée)
+          // et nous dit, à chaque geste, si le site est localisé (bandeau).
+          suiviSite: {
+            initial: siteLocaliseInitial(payload?.geometrie?.roof_layout, ctx?.geometrie?.source_repere),
+            ecouter: (etat) => setSiteLocalise?.(etat),
+          },
           // ACAL777 — la facture du lead, repli d'affichage des cartes (jamais écrite au document).
           factureMensuelleMad: payload?.factureMensuelleMad ?? null,
           // ACAL778 — un devis lié ⇒ la carte Économies renvoie vers l'onglet Économie.

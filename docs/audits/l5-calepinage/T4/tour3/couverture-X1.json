@@ -1,0 +1,302 @@
+[
+ {
+  "id": "PDF-002",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Liste › cocher DEV-0137 et DEV-0138 › « Générer les PDF » › fenêtre « Générer le PDF — 2 devis (format partagé) » › Générer : 2 POST generer-pdf 202 ; pas d'ouverture automatique (choix du code) ; toast non relu (capture prise 5 min après)"
+ },
+ {
+  "id": "PDF-006",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "non-atteint",
+  "note": "Aucun devis résidentiel sans onduleur produit dans le temps imparti"
+ },
+ {
+  "id": "PDF-012",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "« Devis Final » › radios « Échéancier du devis » / « Acompte personnalisé » ; le format premium + Devis Final n'a jamais livré de PDF (T4-X1-003)"
+ },
+ {
+  "id": "PDF-013",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Acompte personnalisé 5 000 : enregistré dans l'échéancier ; le PDF suivant imprime 8 % / 82 % / 10 % = 5 000 / 51 338,26 / 6 261,74 MAD (total 62 600)"
+ },
+ {
+  "id": "PDF-015",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "« Partager le PDF » au bureau : téléchargement de repli d'un PDF 1 page avec QR « site-public.invalid/proposition »"
+ },
+ {
+  "id": "PDF-016",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Proforma PF-202611-0001 (2 pages, chiffres = devis) ; « Bon de commande (PDF) » apparaît après « Convertir en bon de commande » : BC-202611-0001, totaux = devis (106 200 TTC)"
+ },
+ {
+  "id": "PDF-023",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "introuvable",
+  "note": "include_annexe_technique : aucun contrôle dans la fenêtre ni dans le menu ; seulement par paramètre d'URL, que je n'appelle pas"
+ },
+ {
+  "id": "PDF-024",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "introuvable",
+  "note": "kit_agrege : aucun contrôle (le niveau « Client standard » du dialogue d'envoi regroupe en kit, autre chemin)"
+ },
+ {
+  "id": "PDF-025",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "introuvable",
+  "note": "variante_option sans/avec/les_deux : aucun sélecteur ; l'action « Variante » ouvre « Créer des variantes » (−20 % · Standard · +20 %), lue puis fermée sans créer"
+ },
+ {
+  "id": "PDF-026",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "introuvable",
+  "note": "sections_masquees « economies » : aucun contrôle dans la fenêtre PDF"
+ },
+ {
+  "id": "PDF-027",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "introuvable",
+  "note": "langue_sortie : aucun sélecteur de langue dans la fenêtre"
+ },
+ {
+  "id": "PDF-028",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "introuvable",
+  "note": "share_token : aucun contrôle ; le jeton n'apparaît que dans le lien client copié"
+ },
+ {
+  "id": "PDF-031",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "non-atteint",
+  "note": "Assistant non ouvert (indisponible sur la pile d'après le brief) — non essayé"
+ },
+ {
+  "id": "PDF-032",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "bloque",
+  "note": "Liste › « Envoyer par email » x1-s@example.test : POST envoyer-email 502 « E-mail non opérationnel : aucun message ne part » (limite de la pile) ; pièce jointe non observable"
+ },
+ {
+  "id": "LEAD-DEV-003",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "« Devis modifiable ▾ » ne contient que « Remise %… » ; ouvre « Devis automatique avec remise »"
+ },
+ {
+  "id": "LEAD-DEV-004",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Saisie 3 → requête target_kwc 3.55, options 2,75 / 3,55 kWc (T4-X1-004)"
+ },
+ {
+  "id": "LEAD-DEV-008",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Lead X1-s neuf : « Aucun devis pour ce lead. »"
+ },
+ {
+  "id": "LEAD-DEV-023",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "FR / Darija : même texte français (T4-X1-010)"
+ },
+ {
+  "id": "LEAD-DEV-024",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Aperçu du message WhatsApp : Annuler joué ; « Ouvrir WhatsApp » non suivi (sortirait de la pile) ; lien du message = site-public.invalid"
+ },
+ {
+  "id": "LEAD-DEV-026",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Standard / Confiance changent le texte d'explication ; OTP coché/décoché : POST share-link otp_lecture true puis false"
+ },
+ {
+  "id": "LEAD-DEV-027",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "« Étude bancable » décochée puis recochée (case suivie) ; les corps POST relus portaient tous bankable true : effet de la décoche non vérifié"
+ },
+ {
+  "id": "LEAD-DEV-029",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "« Copier le lien » copie http://site-public.invalid/proposition/… et passe le devis Envoyé ; « Aperçu interne » ouvre un onglet qui échoue (adresse publique morte voulue)"
+ },
+ {
+  "id": "LEAD-DEV-031",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Remise 5 % › Créer le devis : DEV-202611-0138, PDF « Remise de 5 % appliquée sur chaque ligne » ; Annuler non joué"
+ },
+ {
+  "id": "LEAD-DEV-035",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Case « Devis final » cochée, toujours cochée à la réouverture de la fiche"
+ },
+ {
+  "id": "LEAD-DEV-036",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Édition complète (X1-s), Envoyer au client, Réviser sur le devis accepté de X1-i → DEV-202611-0142 (un 2e clic a reçu 409 « Déjà remplacé par DEV-202611-0142 »)"
+ },
+ {
+  "id": "LEAD-DEV-037",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Facture d'hiver 800 → 950 : bandeau « Valeurs du lead modifiées … : facture d'hiver » ; « Reprendre les valeurs du lead » : boutons grisés plus de 8 s, bandeau disparu à la réouverture"
+ },
+ {
+  "id": "LEAD-DEV-038",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Depuis l'édition embarquée, « Voir le PDF » ramène à l'aperçu du devis"
+ },
+ {
+  "id": "LEAD-DEV-043",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Ctrl+K sur la fiche : « Envoyer les devis par WhatsApp », « Devis automatique », « Nouveau devis (édition complète) », Archiver, Convertir, Aller à … listés ; « Aller à » joué"
+ },
+ {
+  "id": "LEAD-DEV-045",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "« Aller à : Toiture & site » ouvre la section Toiture & site"
+ },
+ {
+  "id": "LEAD-DEV-046",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Archiver (confirmation + toast « archivé »), Restaurer depuis la fiche archivée (POST restaurer 200, aucun message), Convertir : fenêtre à 3 choix, « Confirmer » ferme la fiche — effet non vérifié"
+ }
+]

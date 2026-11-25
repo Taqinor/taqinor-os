@@ -116,7 +116,9 @@ __all__ = [
     'fuseau_du_site', 'decalage_utc_minutes',
     # T4-U1-003 — jamais un point par défaut anonyme.
     'CENTRES_CARTE_PAR_DEFAUT', 'SOURCE_VILLE_REFERENCE',
-    'epingle_posee', 'point_du_site', 'site_dit',
+    'point_du_site', 'site_dit',
+    # T4-U4-013 — la provenance du site portée par le document.
+    'CLE_PROVENANCE_SITE', 'PROVENANCES_SITE_POSE', 'RAYON_CENTRE_ANCIEN_M',
 ]
 
 
@@ -538,7 +540,7 @@ def _point_par_defaut(lat, lon):
                for c_lat, c_lon in CENTRES_CARTE_PAR_DEFAUT)
 
 
-def _site_de_reference(ville):
+def _site_de_reference(ville, *, adresse=False):
     """Le site d'un calepinage SANS épingle : la ville de référence du devis.
 
     Réutilise ``pvgis_profils.ancre_de_reference`` — la résolution que suit
@@ -546,11 +548,17 @@ def _site_de_reference(ville):
     sinon ancre la plus proche du gazetier). Rend ``{lat, lon, source,
     ville_reference, libelle}``, ou ``None`` quand aucune ville de référence
     ne se résout (la simulation est alors refusée en le disant).
+    ``adresse=True`` (relecture m1) : une ADRESSE libre ne se résout que si
+    elle nomme exactement une ville (``ancre_de_reference_adresse``).
     """
-    from apps.parametres.pvgis_profils import ancre_de_reference
+    from apps.parametres.pvgis_profils import (
+        ancre_de_reference,
+        ancre_de_reference_adresse,
+    )
     from apps.parametres.villes_resolution import nom_canonique
 
-    reference = ancre_de_reference(ville)
+    reference = (ancre_de_reference_adresse if adresse
+                 else ancre_de_reference)(ville)
     if reference is None:
         return None
     nom = nom_canonique(reference['cle'])
@@ -566,48 +574,148 @@ def _site_de_reference(ville):
     }
 
 
-def epingle_posee(document, lire_geo):
-    """``(lat, lon, geo)`` — L'épingle du site, au sens unique « site posé ».
+# ── T4-U4-013 — LA PROVENANCE DE L'ÉPINGLE, PORTÉE PAR LE DOCUMENT ─────────
+#
+# L'atelier écrit ``pin`` = centroïde du pan tracé, que le site ait été
+# localisé ou non : un toit tracé par clics à l'échelle du pays partait avec
+# une épingle à quelques kilomètres du centre par défaut (pas EXACTEMENT
+# dessus), et la simulation calculait au milieu du Maroc (« Coordonnées — »,
+# 737 m). Le document dit désormais D'OÙ vient le site, clé racine
+# ``siteLocalise`` (contrat ``roof_layout_v2.schema.json``) :
+#
+# * ``'lead'`` (GPS / repère de la fiche), ``'adresse'`` (recherche d'adresse,
+#   « Localiser », coordonnées collées), ``'epingle'`` (épingle déplacée à la
+#   main), ``'trace'`` (toit tracé à la main sur la carte zoomée au niveau du
+#   toit) : l'épingle est POSÉE ;
+# * ``null`` : l'atelier sait que personne n'a localisé le site — l'épingle
+#   n'est que le centre du tracé, elle n'est PAS un site ;
+# * clé ABSENTE (document écrit avant ce changement, ou par le serveur —
+#   reprise du site public, webhook) : RÈGLE SANS MIGRATION — l'épingle compte
+#   comme posée si elle est le repère du lead, ou si elle est à plus de
+#   ``RAYON_CENTRE_ANCIEN_M`` de tout centre de carte par défaut ; à moins de
+#   2 km d'un centre par défaut (zone montagneuse sans client connu, là où
+#   tombe un tracé fait sans localiser), elle ne l'est pas.
 
-    Lue par la simulation ET par ``soleil-legal`` (une seule définition) :
-    l'épingle du document prime, SAUF un centre de carte par défaut
-    (:func:`_point_par_defaut`, jamais choisi par personne) ; à défaut, celle
-    du lead (``lire_geo()`` : ``selectors.contexte_geographique``, appelé
-    seulement s'il le faut, rendu dans ``geo``). ``(None, None, geo)`` quand
-    aucune épingle n'est posée.
-    """
+#: La clé racine du document qui porte la provenance du site.
+CLE_PROVENANCE_SITE = 'siteLocalise'
+
+#: Les provenances qui font d'une épingle un site posé.
+PROVENANCES_SITE_POSE = ('lead', 'adresse', 'epingle', 'trace')
+
+#: Documents sans provenance : rayon (m) autour d'un centre par défaut dans
+#: lequel une épingle n'est pas un site (sauf si c'est le repère du lead).
+RAYON_CENTRE_ANCIEN_M = 2000.0
+
+
+def _distance_au_centre_m(lat, lon):
+    """Distance (m, approximation locale) au centre par défaut le plus proche."""
+    import math
+
+    return min(
+        math.hypot((lat - c_lat) * 111320.0,
+                   (lon - c_lon) * 111320.0 * math.cos(math.radians(c_lat)))
+        for c_lat, c_lon in CENTRES_CARTE_PAR_DEFAUT)
+
+
+def _lat_lon(epingle):
     from .valeurs import nombre
 
-    geo = None
-    epingle = document.get('pin') if isinstance(document, dict) else None
-    if isinstance(epingle, dict) and _point_par_defaut(
-            nombre(epingle.get('lat')), nombre(epingle.get('lng'))):
-        epingle = None
     if not isinstance(epingle, dict):
-        geo = lire_geo() or {}
-        epingle = geo.get('pin') or {}
-    lat = nombre(epingle.get('lat'))
-    lon = nombre(epingle.get('lng') if epingle.get('lng') is not None
-                 else epingle.get('lon'))
-    return lat, lon, geo
+        return None, None
+    return (nombre(epingle.get('lat')),
+            nombre(epingle.get('lng') if epingle.get('lng') is not None
+                   else epingle.get('lon')))
+
+
+def _epingle_du_document_posee(document, lire_geo_une_fois):
+    """Vrai quand l'épingle du document est un SITE (règles ci-dessus)."""
+    lat, lon = _lat_lon(document.get('pin'))
+    if lat is None or lon is None or _point_par_defaut(lat, lon):
+        return False
+    if CLE_PROVENANCE_SITE in document:
+        return document.get(CLE_PROVENANCE_SITE) in PROVENANCES_SITE_POSE
+    if _distance_au_centre_m(lat, lon) > RAYON_CENTRE_ANCIEN_M:
+        return True
+    lat_lead, lon_lead = _lat_lon(lire_geo_une_fois().get('pin'))
+    return (lat_lead is not None and lon_lead is not None
+            and abs(lat - lat_lead) <= TOLERANCE_CENTRE_DEG
+            and abs(lon - lon_lead) <= TOLERANCE_CENTRE_DEG)
+
+
+def _epingle_posee(document, lire_geo):
+    """``(lat, lon, geo)`` — L'épingle du site, au sens unique « site posé ».
+
+    Lue par la simulation ET par ``soleil-legal`` (une seule définition, via
+    :func:`point_du_site`) : l'épingle du document quand elle est un site
+    (:func:`_epingle_du_document_posee` — provenance ``siteLocalise``, règle
+    sans migration pour les documents qui ne la portent pas, jamais un centre
+    de carte par défaut) ; à défaut, celle du lead (``lire_geo()`` :
+    ``selectors.contexte_geographique``, appelé au plus une fois, rendu dans
+    ``geo``). ``(None, None, geo)`` quand aucune épingle n'est posée.
+    """
+    lu = {}
+
+    def lire_geo_une_fois():
+        if 'geo' not in lu:
+            lu['geo'] = lire_geo() or {}
+        return lu['geo']
+
+    document = document if isinstance(document, dict) else {}
+    if _epingle_du_document_posee(document, lire_geo_une_fois):
+        lat, lon = _lat_lon(document.get('pin'))
+        return lat, lon, lu.get('geo')
+    lat, lon = _lat_lon(lire_geo_une_fois().get('pin'))
+    return lat, lon, lu['geo']
+
+
+def _reference_du_contexte(geo):
+    """La ville de référence de la ville du lead, sinon de l'adresse (lead ou
+    client) quand elle nomme UNE SEULE ville connue — jamais une ville
+    devinée (relecture m1 : « Route d'El Jadida, Casablanca » ne se résout
+    pas)."""
+    for texte, adresse in ((geo.get('ville'), False),
+                           (geo.get('adresse'), True)):
+        if texte:
+            reference = _site_de_reference(texte, adresse=adresse)
+            if reference is not None:
+                return reference
+    return None
 
 
 def point_du_site(document, lire_geo):
-    """``(lat, lon, reference)`` du site simulé — T4-U1-003.
+    """``(lat, lon, reference)`` du site simulé — T4-U1-003, T4-U4-013.
 
-    L'épingle posée (:func:`epingle_posee`) ; sans elle, la ville de
-    référence de la ville du lead (``reference`` = ``{source,
-    ville_reference, libelle}``), sinon ``(None, None, None)``.
+    L'épingle posée (:func:`_epingle_posee`) ; sans elle, la ville de
+    référence de la ville du lead, sinon de l'adresse du lead ou du client
+    (``reference`` = ``{source, ville_reference, libelle}``), sinon
+    ``(None, None, None)`` — et l'appelant refuse en disant quoi faire.
     """
-    lat, lon, geo = epingle_posee(document, lire_geo)
+    lat, lon, geo = _epingle_posee(document, lire_geo)
     if lat is not None and lon is not None:
         return lat, lon, None
-    reference = _site_de_reference((geo if geo is not None
-                                   else lire_geo() or {}).get('ville'))
+    reference = _reference_du_contexte(geo if geo is not None
+                                       else lire_geo() or {})
     if reference is None:
         return lat, lon, None
     return reference['lat'], reference['lon'], {
         cle: reference[cle] for cle in ('source', 'ville_reference', 'libelle')}
+
+
+#: Ce que le bandeau nomme quand le calcul prendrait le repère GPS du lead.
+LIBELLE_REPERE_LEAD = 'la position GPS de la fiche'
+
+
+def site_de_repli(geo):
+    """Relecture M1 — ce que le calcul fera quand le document n'a PAS de site
+    posé, nommé pour le bandeau « Site non localisé » : le libellé de la ville
+    de référence (``« Casablanca (ville de référence) »``),
+    :data:`LIBELLE_REPERE_LEAD` quand le lead porte un repère, ou ``None``
+    quand le calcul serait refusé. MÊME résolution que :func:`point_du_site`
+    (appelée sur un document sans épingle) — l'écran ne la redérive jamais."""
+    lat, lon, reference = point_du_site({}, lambda: geo or {})
+    if reference is not None:
+        return reference['libelle']
+    return LIBELLE_REPERE_LEAD if lat is not None and lon is not None else None
 
 
 def site_dit(meteo, site):

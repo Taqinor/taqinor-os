@@ -263,7 +263,12 @@ const PER_CHUNK_BUDGET_KB = 350
 // gabarit agricole du générateur, lien d'envoi affiché) : mesuré 4 162,2 Ko gzip sur le runner (job frontend-static du
 // run 45475331155, tête 6633028331), aucune dépendance npm ajoutée (diff package.json vide), aucun autre plafond
 // dépassé (roof-tool 644,5 pour 650). Budget : mesure arrondie aux 5 Ko + 10 : 4160 -> 4175.
-const TOTAL_BUDGET_KB = 4175
+// 25/11/2026 (calepinage L5, lot 3 : étapes 5 et 6 du moteur unique — l'atelier lit la conception, « calcul en cours »,
+// Résultats qui nomme la conception et le devis envoyé — et correctifs du tour 2 du test utilisateur : choix du produit,
+// bandeau du devis automatique, tickets après-vente, bandeau du site, étude de pompage rouverte) : mesuré 4 175,0x Ko
+// gzip sur le runner (job frontend-static du run 45548112417, tête 5a8dae9886), aucune dépendance npm ajoutée (diff
+// package.json vide), aucun autre plafond dépassé. Budget : mesure arrondie aux 5 Ko + 10 : 4175 -> 4190.
+const TOTAL_BUDGET_KB = 4190
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,

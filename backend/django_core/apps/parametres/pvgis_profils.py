@@ -948,6 +948,55 @@ def ancre_de_reference(ville):
             'exacte': km is None and cle == _normaliser(ville)}
 
 
+def _villes_nommees(texte_normalise):
+    """Les villes CONNUES (table + orthographes, puis gazetier) nommées comme
+    MOTS ENTIERS dans ``texte_normalise`` — noms composés d'abord, un mot déjà
+    pris par un nom composé ne compte pas deux fois. Une ville se compte une
+    fois quelle que soit son écriture (clé de table, sinon position gazetier).
+    """
+    mots = texte_normalise.replace(',', ' ').split()
+    try:
+        from apps.parametres.villes_maroc import VILLES_MAROC
+    except Exception:  # noqa: BLE001 — gazetier indisponible : la table seule (D-ENF22-BLE001)
+        logger.warning('_villes_nommees : gazetier indisponible', exc_info=True)
+        VILLES_MAROC = {}
+    table = set(PRODUCTIBLE_MENSUEL_VILLE) | set(_ORTHOGRAPHES)
+    pris, villes = [False] * len(mots), set()
+    for candidat in sorted(table | set(VILLES_MAROC),
+                           key=lambda c: (-len(c.split()), c)):
+        n = len(candidat.split())
+        for i in range(len(mots) - n + 1):
+            if mots[i:i + n] == candidat.split() and not any(pris[i:i + n]):
+                pris[i:i + n] = [True] * n
+                villes.add(_ORTHOGRAPHES.get(candidat, candidat) if candidat in table
+                           else tuple(VILLES_MAROC[candidat]))
+    return villes
+
+
+def ancre_de_reference_adresse(adresse):
+    """Relecture m1 — la ville de référence d'une ADRESSE libre, STRICTE.
+
+    Une ville n'est prise que si EXACTEMENT UNE ville connue est nommée dans
+    l'adresse : « Route d'El Jadida, Casablanca » en nomme deux et ne se résout
+    pas (le repli tolérant de :func:`cle_ville` y lisait El Jadida) — jamais
+    une ville devinée. Rend ce que rend :func:`ancre_de_reference`, ou ``None``.
+    La ville saisie d'un lead garde la résolution tolérante.
+    """
+    texte = _normaliser(adresse)
+    if not texte:
+        return None
+    villes = _villes_nommees(texte)
+    if len(villes) != 1:
+        return None
+    ville = villes.pop()
+    if isinstance(ville, tuple):
+        cle, km = ancre_la_plus_proche(ville[0], ville[1])
+        entree = PRODUCTIBLE_MENSUEL_VILLE[cle]
+        return {'cle': cle, 'lat': entree['lat'], 'lon': entree['lon'],
+                'proche_km': round(km), 'exacte': False}
+    return ancre_de_reference(ville)
+
+
 def _normaliser_forme(valeurs):
     """Ramène 24 valeurs positives à une somme de 1,0 (ou ``None`` si vide).
 

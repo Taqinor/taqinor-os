@@ -89,6 +89,7 @@ class XSAV19PublicSignalerTest(TestCase):
             statut=Equipement.Statut.EN_SERVICE, mis_au_rebut=True)
         self.assertEqual(self.public_client.post(url, corps).status_code, 410)
         resp = auth(self.admin).post('/api/django/sav/tickets/', {
+            'description': 'Panne signalée',
             'client': self.client_obj.id, 'equipement': self.equip.id,
             'type': Ticket.Type.CORRECTIF}, format='json')
         self.assertEqual(resp.status_code, 400, resp.content)

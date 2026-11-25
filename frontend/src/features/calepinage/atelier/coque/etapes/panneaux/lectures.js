@@ -8,6 +8,9 @@ import calepinageApi from '../../../../../../api/calepinageApi'
 import { cibleFactures } from './sources'
 
 const DUREE_MS = 15000
+/** Relecture E5 B1 — relectures automatiques bornées pendant le premier calcul de la conception. */
+export const RELECTURES_CALCUL = 5
+export const INTERVALLE_CALCUL_MS = 3000
 
 const LECTEURS = {
   contexte: (id) => calepinageApi.calepinages.designContext(id),
@@ -91,7 +94,21 @@ export function useCibleFactures(calepinageId, servi = null, { attendre = false 
     if (etatContexte === 'echec') relireContexte()
     if (etatTaille !== 'ok') relireTaille()
   }, [etatContexte, etatTaille, relireContexte, relireTaille])
+  // Relecture E5 B1 — le lead n'a encore aucune conception : son premier calcul est en file (`calcul_en_cours` servi).
+  // La taille est relue d'elle-même au plus `RELECTURES_CALCUL` fois, toutes les `INTERVALLE_CALCUL_MS` ; ensuite
+  // `calculAbandonne` dit à l'écran de proposer le geste (modifier la fiche) — « Actualiser » relit à la demande.
+  const calculEnCours = etat === 'ok' && taille.donnees?.calcul_en_cours === true
+  const [relectures, setRelectures] = useState(0)
+  useEffect(() => {
+    if (!calculEnCours || relectures >= RELECTURES_CALCUL) return undefined
+    const minuteur = setTimeout(() => { setRelectures((n) => n + 1); relireTaille() }, INTERVALLE_CALCUL_MS)
+    return () => clearTimeout(minuteur)
+  }, [calculEnCours, relectures, relireTaille])
+  const actualiser = useCallback(() => { setRelectures(0); relireTaille() }, [relireTaille])
   return {
+    calculEnCours,
+    calculAbandonne: calculEnCours && relectures >= RELECTURES_CALCUL,
+    actualiser,
     etat,
     cible: etat === 'ok' ? cibleFactures(taille.donnees) : null,
     motif: contexte.etat === 'ok' ? (contexte.donnees?.consommation_lead?.motif || '') : '',

@@ -398,6 +398,88 @@ class SiteSansEpingleTest(SimpleTestCase):
             self.assertIn('ville du lead', refus.exception.motif)
             self.assertIsNone(calepinage.resultat)
 
+    # T4-U4-013 — un toit tracé par clics à l'échelle du pays : l'épingle est
+    # le centre du tracé, À CÔTÉ du centre par défaut (pas dessus), et le
+    # document dit que personne n'a localisé le site (``siteLocalise: null``).
+    TRACE_PAYS = {'lat': 31.6123, 'lng': -7.3456}
+
+    def _trace_sans_site(self, provenance=None):
+        calepinage = self._sans_pin(self.TRACE_PAYS)
+        calepinage.roof_layout['siteLocalise'] = provenance
+        return calepinage
+
+    def test_t4_u4_013_trace_au_niveau_pays_sans_lead_refuse_rien_ecrit(self):
+        calepinage = self._trace_sans_site()
+        client = _ClientRejoue()
+        with mock.patch('apps.calepinage.selectors.contexte_geographique',
+                        return_value={'pin': None, 'outline': None,
+                                      'adresse': None, 'ville': None,
+                                      'source': None}), \
+                self.assertRaises(SimulationRefusee) as refus:
+            _simuler(calepinage, client=client, enregistrer=True)
+        self.assertEqual(refus.exception.champ, 'site.pin')
+        self.assertEqual(client.demandes, [])
+        self.assertIsNone(calepinage.resultat)
+
+    def test_t4_u4_013_trace_au_niveau_pays_lead_a_marrakech_dit(self):
+        client, resultat = self._sur_ville(self._trace_sans_site(),
+                                           'Marrakech')
+        self.assertEqual(client.demandes[0]['lat'], 31.63)
+        site = resultat['blocs']['meteo']['site']
+        self.assertEqual(site['ville_reference'], 'Marrakech')
+        self.assertEqual(site['libelle'], 'Marrakech (ville de référence)')
+
+    def test_t4_u4_013_client_sans_lead_adresse_casablanca_dite(self):
+        calepinage = self._trace_sans_site()
+        client = _ClientRejoue()
+        with mock.patch('apps.calepinage.selectors.contexte_geographique',
+                        return_value={'pin': None, 'outline': None,
+                                      'adresse': 'Casablanca', 'ville': None,
+                                      'source': None}):
+            resultat = _simuler(calepinage, client=client)
+        self.assertEqual(client.demandes[0]['lat'], 33.573)
+        self.assertEqual(resultat['blocs']['meteo']['site']['ville_reference'],
+                         'Casablanca')
+
+    def test_relecture_m1_adresse_a_deux_villes_jamais_devinee(self):
+        """Relecture m1 — « Route d'El Jadida, Casablanca » nomme deux villes :
+        le site n'est pas résolu (refus), jamais El Jadida."""
+        calepinage = self._trace_sans_site()
+        client = _ClientRejoue()
+        with mock.patch('apps.calepinage.selectors.contexte_geographique',
+                        return_value={'pin': None, 'outline': None,
+                                      'adresse': "Route d'El Jadida, Casablanca",
+                                      'ville': None, 'source': None}), \
+                self.assertRaises(SimulationRefusee) as refus:
+            _simuler(calepinage, client=client, enregistrer=True)
+        self.assertEqual(refus.exception.champ, 'site.pin')
+        self.assertEqual(client.demandes, [])
+
+    def test_t4_u4_013_epingle_localisee_par_l_utilisateur_inchangee(self):
+        for provenance in ('adresse', 'epingle', 'trace', 'lead'):
+            client = _ClientRejoue()
+            with self.subTest(provenance=provenance), mock.patch(
+                    'apps.calepinage.selectors.contexte_geographique',
+                    return_value=_geo('Marrakech')):
+                resultat = _simuler(self._trace_sans_site(provenance),
+                                    client=client)
+                self.assertEqual((client.demandes[0]['lat'],
+                                  client.demandes[0]['lon']),
+                                 (31.6123, -7.3456))
+                self.assertNotIn('site', resultat['blocs']['meteo'])
+
+    def test_t4_u4_013_document_ancien_sans_provenance(self):
+        """Règle sans migration : sans ``siteLocalise``, une épingle à moins de
+        2 km d'un centre par défaut n'est pas un site, plus loin elle l'est."""
+        pres = {'lat': 31.795, 'lng': -7.085}
+        client, resultat = self._sur_ville(self._sans_pin(pres), 'Marrakech')
+        self.assertEqual(resultat['blocs']['meteo']['site']['ville_reference'],
+                         'Marrakech')
+        client, resultat = self._sur_ville(self._sans_pin(self.TRACE_PAYS),
+                                           'Marrakech')
+        self.assertEqual(client.demandes[0]['lat'], 31.6123)
+        self.assertNotIn('site', resultat['blocs']['meteo'])
+
 
 class SiteDuLeadEnBaseTest(TestCase):
     """T4-U1-003, le cas réel en base : la géométrie porte le centre de carte
@@ -1309,3 +1391,177 @@ class SimulationAutomatiqueTest(TestCase):
         self.calepinage.roof_layout = LAYOUT
         self.calepinage.save()
         self.assertEqual(self._etat_servi()['manquants'], [])
+
+
+class SimulationParLeMoteurTest(TestCase):
+    """ACAL2019 (D-ACAL-97, lié au niveau de règles 15 comme ADEV149) — au niveau 15 le bouton
+    « Simuler » est une relance FORCÉE du moteur unique (``relancer(…, forcer=True)``, dans un
+    job du kind ``calepinage`` dont le 202 garde sa forme) et l'enregistrement d'une pose passe
+    par la file du moteur (ADEV139) : un geste = une relance, AUCUNE mise en file directe de
+    ``tasks.simuler_calepinage``. Au niveau 14 rien ne change (``SimulationAutomatiqueTest``)."""
+
+    setUp = SimulationAutomatiqueTest.setUp
+    _enregistrer = SimulationAutomatiqueTest._enregistrer
+    _jobs = SimulationAutomatiqueTest._jobs
+
+    def _niveau(self, niveau):
+        from unittest import mock
+
+        from apps.ventes.domain import regles_calcul as RC
+
+        return mock.patch.object(RC, 'REGLES_COURANTES', niveau)
+
+    def _api(self):
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
+
+        self.user.role, _cree = Role.objects.get_or_create(
+            company=self.societe, nom='Directeur', defaults={'permissions': list(DIRECTEUR_PERMISSIONS)})
+        self.user.save()
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        return api
+
+    def test_niveau_15_enregistrer_une_pose_passe_par_la_file_du_moteur(self):
+        from unittest import mock
+
+        from apps.ventes import tasks as taches_ventes
+
+        with self._niveau(15), mock.patch.object(taches_ventes.task_relancer_conception,
+                                                 'apply_async') as relance_du_moteur:
+            depart = self._enregistrer(LAYOUT)
+        depart.assert_not_called()  # mutant « remettre la mise en file directe » : rouge
+        self.assertEqual(self._jobs().count(), 0)
+        relance_du_moteur.assert_called_once()  # un geste = UNE relance (file dédupliquée)
+        # Porteur = le lead du calepinage (la pose regroupée garde son calepinage dans le marqueur).
+        self.assertEqual(relance_du_moteur.call_args.kwargs['kwargs']['lead_id'], self.calepinage.lead_id)
+
+    def test_niveau_15_le_bouton_relance_le_moteur_force(self):
+        from unittest import mock
+
+        from apps.calepinage import tasks
+        from apps.calepinage.services.simulation_auto import simulation_automatique_en_cours
+
+        from .acal_livrables_helpers import patch_materiel
+
+        self.calepinage.roof_layout = LAYOUT
+        self.calepinage.save()
+        echantillon = json.loads((pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
+                                  / 'calepinage_simulation.json').read_text(encoding='utf-8'))
+        api = self._api()
+        with self._niveau(15), patch_materiel(), \
+                mock.patch.object(tasks.simuler_calepinage, 'delay') as simulation_directe, \
+                mock.patch.object(tasks.relancer_moteur_calepinage, 'delay') as depart:
+            reponse = api.post(f'/api/django/calepinage/calepinages/{self.calepinage.pk}/simuler/',
+                               {'forcer': True}, format='json')
+        self.assertEqual(reponse.status_code, 202, reponse.content[:300])
+        simulation_directe.assert_not_called()
+        depart.assert_called_once()
+        job = self._jobs().get()
+        self.assertEqual(reponse.data['job_id'], job.pk)  # l'identifiant est celui du job du moteur
+        self.assertEqual(sorted(reponse.data), sorted(echantillon['exemple_accepte']))
+        self.assertEqual(simulation_automatique_en_cours(self.calepinage), job.pk)
+        # Le job : UNE relance forcée du moteur unique, porteur = ce calepinage.
+        with mock.patch('apps.ventes.services.relancer') as relancer:
+            relancer.return_value = mock.Mock(refus=None)
+            tasks.relancer_moteur_calepinage(job_id=job.pk, company_id=self.societe.pk,
+                                             calepinage_id=self.calepinage.pk)
+        relancer.assert_called_once()
+        self.assertEqual((relancer.call_args.kwargs['forcer'], relancer.call_args.kwargs['calepinage_id'],
+                          relancer.call_args.kwargs['auteur']), (True, self.calepinage.pk, self.user))
+        job.refresh_from_db()
+        self.assertEqual(job.statut, job.STATUT_DONE)
+
+    def test_niveau_14_le_bouton_garde_la_simulation_directe(self):
+        from unittest import mock
+
+        from apps.calepinage import tasks
+
+        from .acal_livrables_helpers import patch_materiel
+
+        self.calepinage.roof_layout = LAYOUT
+        self.calepinage.save()
+        api = self._api()
+        with self._niveau(14), patch_materiel(), \
+                mock.patch.object(tasks.simuler_calepinage, 'delay') as simulation_directe, \
+                mock.patch('apps.ventes.services.relancer') as relancer:
+            reponse = api.post(f'/api/django/calepinage/calepinages/{self.calepinage.pk}/simuler/',
+                               {'forcer': True}, format='json')
+        self.assertEqual(reponse.status_code, 202, reponse.content[:300])
+        simulation_directe.assert_called_once()
+        relancer.assert_not_called()
+
+
+class PosePourMoteurTest(TestCase):
+    """ACAL2018 — la façade de la pose pour le moteur unique : pose complète ⇒ production de
+    LA simulation (détail au même ``hash_entree``) ; incomplète ⇒ manque nommé, aucune
+    simulation ; ajustée à la main ⇒ ``a_la_main``. Une autre société n'y lit rien."""
+
+    def setUp(self):
+        from authentication.models import Company
+
+        from apps.calepinage.models import Calepinage
+
+        from apps.crm.models import Lead
+
+        self.societe = Company.objects.create(nom='ACAL2018', slug='acal2018')
+        lead = Lead.objects.create(company=self.societe, nom='Toiture 2018')
+        self.calepinage = Calepinage.objects.create(company=self.societe, lead_id=lead.pk, titre='Pose 2018',
+                                                    roof_layout=LAYOUT, layout_hash='e' * 64)
+
+    def _poser(self, **zone):
+        import copy
+
+        layout = copy.deepcopy(LAYOUT)
+        layout['zones'][0].update(zone)
+        self.calepinage.roof_layout = layout
+        self.calepinage.save()
+
+    def test_pose_complete_production_de_la_simulation(self):
+        from apps.calepinage.services.pose_pour_moteur import pose_servie, simuler_pose
+
+        from .acal_livrables_helpers import patch_materiel
+
+        with patch_materiel():
+            pose = pose_servie(self.societe, self.calepinage.pk)
+            sortie = simuler_pose(self.calepinage, materiel={'module': 1, 'onduleur': 2}, client=_ClientRejoue())
+        self.assertEqual((pose['nb_panneaux'], pose['complete'], pose['a_la_main'], pose['empreinte_pose']),
+                         (12, True, False, 'e' * 64))
+        self.calepinage.refresh_from_db()
+        production = self.calepinage.resultat['production']
+        self.assertEqual((sortie['complete'], sortie['production_annuelle'], sortie['hash_entree']),
+                         (True, production['total']['p50_kwh'],
+                          self.calepinage.resultat[service.CLE_SIMULATION]['hash_entree']))
+        self.assertEqual(sortie['production_mensuelle'], [m['p50_kwh'] for m in production['mensuel']])
+
+    def test_pose_incomplete_manque_nomme_aucune_simulation(self):
+        from apps.calepinage.services import pose_pour_moteur
+
+        from .acal_livrables_helpers import patch_materiel
+
+        self._poser(geometry=dict(LAYOUT['zones'][0]['geometry'], count=0))
+        with patch_materiel(), mock.patch.object(service, 'simuler_calepinage') as simulation:
+            pose = pose_pour_moteur.pose_servie(self.societe, self.calepinage.pk)
+            sortie = pose_pour_moteur.simuler_pose(self.calepinage, materiel={'module': 1})
+        simulation.assert_not_called()  # mutant « simuler une pose incomplète » : rouge
+        self.assertFalse(pose['complete'])
+        self.assertEqual(sortie['complete'], False)
+        self.assertIn('plans', [m['champ'] for m in sortie['manquants']])
+
+    def test_pose_ajustee_a_la_main_et_autre_societe(self):
+        from authentication.models import Company
+
+        from apps.calepinage.services.pose_pour_moteur import pose_servie
+
+        from .acal_livrables_helpers import patch_materiel
+
+        self._poser(neededPanels=10)
+        with patch_materiel():
+            self.assertIs(pose_servie(self.societe, self.calepinage.pk)['a_la_main'], True)
+            self._poser(neededPanels=12)
+            self.assertIs(pose_servie(self.societe, self.calepinage.pk)['a_la_main'], False)
+        autre = Company.objects.create(nom='Autre 2018', slug='autre-2018')
+        self.assertIsNone(pose_servie(autre, self.calepinage.pk))

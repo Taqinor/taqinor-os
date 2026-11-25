@@ -146,3 +146,26 @@ export const formatDateFR = (iso) => {
   const d = new Date(`${iso}T00:00:00`)
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('fr-FR')
 }
+
+// Relecture B1 — la charge du bouton « Mettre à jour » de la fiche. La
+// description n'est envoyée que si elle a CHANGÉ, et jamais null : un ancien
+// ticket sans description s'enregistre sans elle ; vider une description
+// existante reste refusé par le serveur. `instructions` (WIR233, TextField
+// blank=True) n'est jamais nullifiée.
+export function chargeFicheTicket(fields, current) {
+  const ouNull = (v) => (v === '' ? null : v)
+  const data = {
+    type: fields.type, priorite: fields.priorite, sous_garantie: fields.sous_garantie,
+    equipement: ouNull(fields.equipement), technicien_responsable: ouNull(fields.technicien_responsable),
+    instructions: fields.instructions ?? '',
+    cause: fields.cause === '' ? null : Number(fields.cause),
+    remede: fields.remede === '' ? null : Number(fields.remede),
+  }
+  if ((fields.description ?? '') !== (current.description ?? '')) data.description = fields.description ?? ''
+  return data
+}
+
+// Relecture B1 — un refus APRÈS l'enregistrement des champs (la transition de
+// statut) dit ce qui est enregistré et ce qui ne l'est pas.
+export const messageRefusFiche = (champsEnregistres, raison) => (champsEnregistres
+  ? `Vos modifications sont enregistrées, mais le statut n'a pas changé : ${raison}` : raison)

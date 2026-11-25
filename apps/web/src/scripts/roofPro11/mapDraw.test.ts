@@ -27,6 +27,7 @@ import { dateImageCapturee, semerImageCapture } from './imageCapture'; // ACAL14
 import { type Ctx } from './context'; // ACAL68
 import { UNDERLAY_PHOTO_LAYER_ID, UNDERLAY_PLAN_LAYER_ID } from './underlay';
 import { distanceEntreM } from './snap';
+import { emettreProvenanceEpingle, ZOOM_TOIT_VISIBLE } from './provenanceEpingle'; // T4-U4-013
 import { geodesicAreaM2, layoutPanels, type LngLat } from '../../lib/roof';
 
 describe('CAL49 — pays du géocodage', () => {
@@ -594,5 +595,50 @@ describe('R2-09 / R3-03 — barre d’aides au tracé : sous la carte quand « T
   it('aucun bandeau absolu (page publique) : la barre reste dans le bandeau de « Terminer », comme avant', () => {
     const chips = monter('<section><div id="barre"><button id="rp9-finish"></button></div></section>');
     expect(chips.parentElement?.id).toBe('barre');
+  });
+});
+
+// T4-U4-013 — l'épingle n'est que le centre du tracé : le document dit si quelqu'un a LOCALISÉ le site (`siteLocalise`).
+// Un toit tracé par clics à l'échelle du pays reste « non localisé » (`null`) ; tracé sur le toit VU (zoom ≥ 17), ou après
+// une adresse retenue, il l'est. Sans suivi activé par la page hôte (site public), aucune clé n'est écrite.
+describe('T4-U4-013 — la provenance du site suit les gestes', () => {
+  function monter(zoom: number, suivi: boolean) {
+    document.body.innerHTML = '<form id="rp9-search"><input id="rp9-address"><ul id="rp9-suggestions" hidden></ul></form><button id="rp9-finish" type="button"></button>';
+    const map = { getSource: () => undefined, flyTo: vi.fn(), jumpTo: vi.fn(), ...methodesCarteInertes(), getZoom: () => zoom, getCenter: () => ({ lng: -7.09, lat: 31.79 }), getCanvas: () => ({ clientWidth: 800, clientHeight: 600 }) };
+    const ecouter = vi.fn();
+    const ctx = {
+      opts: { maptilerKey: 'K', reducedMotion: true, ...(suivi ? { suiviSite: { initial: null, ecouter } } : {}) },
+      vertices: [], obstacles: [], areas: [], activeAreaId: 'a1', closed: false, centroid: null,
+    } as unknown as Ctx;
+    const draw = createMapDraw(ctx, { map: map as never, setStatus: vi.fn(), updateAreaReadout: vi.fn() });
+    return { draw, ctx, ecouter };
+  }
+  const tracer = (draw: { addVertex: (v: [number, number]) => void }) => {
+    for (const c of [[-7.5, 32.2], [-6.6, 32.2], [-6.6, 31.4]] as [number, number][]) draw.addVertex(c);
+  };
+  const documentEmis = (ctx: Ctx) => emettreProvenanceEpingle({ pin: { lat: 31.93, lng: -6.9 } } as Record<string, unknown>, ctx);
+
+  it('tracé par clics au niveau du pays : le document dit « non localisé » (null), jamais une épingle posée', () => {
+    const { draw, ctx, ecouter } = monter(6, true);
+    tracer(draw);
+    expect(ctx.vertices).toHaveLength(3);
+    expect(documentEmis(ctx).siteLocalise).toBeNull();
+    expect(ecouter).toHaveBeenLastCalledWith(null);
+  });
+
+  it('tracé sur le toit vu (zoom ≥ 17) : « trace » ; adresse retenue : « adresse »', async () => {
+    const vu = monter(ZOOM_TOIT_VISIBLE, true);
+    tracer(vu.draw);
+    expect(documentEmis(vu.ctx).siteLocalise).toBe('trace');
+    expect(vu.ecouter).toHaveBeenLastCalledWith('trace');
+    const adresse = monter(6, true);
+    await adresse.draw.geocode('31.6295, -7.9811', true); // coordonnées collées, retenues
+    expect(documentEmis(adresse.ctx).siteLocalise).toBe('adresse');
+  });
+
+  it('suivi éteint (site public) : aucune clé `siteLocalise`', () => {
+    const { draw, ctx } = monter(6, false);
+    tracer(draw);
+    expect('siteLocalise' in documentEmis(ctx)).toBe(false);
   });
 });

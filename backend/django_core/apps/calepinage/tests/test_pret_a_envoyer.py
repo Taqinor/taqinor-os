@@ -204,8 +204,9 @@ class ControlesElectriquesTest(SimpleTestCase):
         self.assertEqual(controles['materiel_designe']['valeur_texte'],
                          'Non désigné')
         self.assertEqual(controles['materiel_designe']['cause'], absent)
+        # ACAL2016 — le ratio n'est plus jugé ici : sans conception, il le dit.
         self.assertEqual(controles['ratio_dc_ac']['valeur_texte'],
-                         'Non calculé : onduleur non désigné')
+                         'Non calculé : conception non calculée')
         verdict = controles['verdict_electrique']
         self.assertEqual(verdict['etat'], 'a_regler')
         # ACAL1539 : « À compléter » seul — le détail des motifs est au Verdict.
@@ -230,7 +231,7 @@ class ControlesElectriquesTest(SimpleTestCase):
         self.assertEqual(materiel['cause'],
                          'module : tension au point de puissance maximale (Vmp)')
         self.assertEqual(controles['ratio_dc_ac']['valeur_texte'],
-                         'Non calculé : fiche du module incomplète')
+                         'Non calculé : conception non calculée')  # ACAL2016
         onduleur = [dict(motifs[0], libelle='onduleur : puissance AC')]
         controles = self._controles(motifs=onduleur, materiel={'absents': ()})
         self.assertEqual(controles['materiel_designe']['valeur_texte'],
@@ -238,7 +239,7 @@ class ControlesElectriquesTest(SimpleTestCase):
         self.assertEqual(controles['materiel_designe']['geste'],
                          'Compléter la fiche de l’onduleur')
         self.assertEqual(controles['ratio_dc_ac']['valeur_texte'],
-                         'Non calculé : fiche de l’onduleur incomplète')
+                         'Non calculé : conception non calculée')  # ACAL2016
 
     def test_resume_de_motifs_singulier_pluriel(self):
         # R3-10 : jamais « 1 point(s) » — « 1 point », « 2 points ».
@@ -296,16 +297,88 @@ class ControlesElectriquesTest(SimpleTestCase):
 
     def test_ratio_juge_par_la_regle_du_devis_jamais_bon_au_dessus(self):
         # ACAL1954 (D-ACAL-91) — 4,26 sur un onduleur réseau : « à régler », jamais « Bon ».
+        # ACAL2016 : ce bloc jugé par le calepinage ne sert plus qu'au dossier d'appel d'offres.
+        from apps.calepinage.services.pret_a_envoyer import _ratio_dc_ac
+
         ratio = {'valeur': 1.25, 'borne': 1.35, 'dans_bornes': True,
                  'borne_source': 'règle du devis', 'borne_reference': ''}
-        controle = self._controles(ratio=ratio)['ratio_dc_ac']
+        controle = _ratio_dc_ac(ratio)
         self.assertEqual(controle['etat'], 'ok')
         self.assertEqual(controle['valeur_texte'], '1,25 pour 1,35 au plus (règle du devis)')
         hors = dict(ratio, valeur=4.26, dans_bornes=False, borne_source='fourchette de la société')
-        controle = self._controles(ratio=hors)['ratio_dc_ac']
+        controle = _ratio_dc_ac(hors)
         self.assertEqual(controle['etat'], 'a_regler')
         self.assertEqual(controle['valeur_texte'], '4,26 pour 1,35 au plus (fourchette de la société)')
         self.assertEqual(controle['seuil_source'], 'fourchette de la société')
+
+    # ── ACAL2016 — le verdict RANGÉ par le moteur unique, lu tel quel ─────────
+    def _verdicts(self, verdicts, *, ratio=None, note='', a_recalculer=False):
+        with mock.patch('apps.calepinage.services.pret_a_envoyer._verdicts_de_la_conception',
+                        return_value=(verdicts, note, a_recalculer)):
+            return self._controles(ratio=ratio)['ratio_dc_ac']
+
+    def test_e6_pose_d_un_autre_compte_la_ligne_dit_pour_quoi_elle_est_jugee(self):
+        """Relecture E6 M4 — la pose (24) n'a pas le compte de la conception (35) : le verdict
+        est celui de LA règle pour la pose, et la ligne le dit."""
+        verdicts = {'ratio_dc_ac': {'conforme': True, 'valeur': 1.42, 'borne_source': 'règle du devis',
+                                    'detail': '1,42 pour 1,50 au plus (règle du devis)'},
+                    'capacite_hybride': None, 'longueur_chaine': None}
+        note = 'jugé pour la pose : 24 panneaux — la conception du lead en compte 35'
+        controle = self._verdicts(verdicts, note=note)
+        self.assertEqual((controle['etat'], controle['valeur_texte']),
+                         ('ok', '1,42 pour 1,50 au plus (règle du devis) (%s)' % note))
+
+    def test_e6_version_sans_verdicts_conception_a_recalculer_jamais_completer_la_fiche(self):
+        """Relecture E6 m3 — une version rangée avant les verdicts : « conception à
+        recalculer », aucun geste « Compléter la fiche » ; l'« autre option » non plus."""
+        controle = self._verdicts(None, a_recalculer=True)
+        self.assertEqual((controle['etat'], controle['valeur_texte']),
+                         ('info', 'Non calculé : conception à recalculer'))
+        self.assertFalse(controle.get('geste'))
+        autre = self._verdicts({'ratio_dc_ac': None, 'capacite_hybride': None, 'longueur_chaine': None,
+                                'non_calcule': "Conception électrique calculée pour l'autre option seulement "
+                                               '(onduleur différent).'})
+        self.assertEqual(autre['etat'], 'info')
+        self.assertFalse(autre.get('geste'))
+
+    def test_hybride_dans_sa_capacite_verdict_conforme_lu_jamais_1_50(self):
+        hybride = {'ratio_dc_ac': {'conforme': True, 'valeur': 1.7, 'borne': 1.8,
+                                   'borne_source': "capacité publiée de l'onduleur",
+                                   'detail': "1,70 — dans la capacité publiée de l'onduleur (18 kWc)"},
+                   'capacite_hybride': {'conforme': True, 'capacite_kwc': 18.0, 'puissance_kwc': 17.04,
+                                        'detail': "17,04 kWc dans la capacité publiée de l'onduleur hybride"},
+                   'longueur_chaine': {'conforme': True, 'longueurs': [12], 'longueur': 12, 'detail': ''}}
+        # Mutant « rejuger localement » : le bloc du calepinage (1,70 hors de 1,35) serait « à régler ».
+        local = {'valeur': 1.7, 'borne': 1.35, 'dans_bornes': False, 'borne_source': 'règle du devis',
+                 'borne_reference': ''}
+        controle = self._verdicts(hybride, ratio=local)
+        self.assertEqual((controle['etat'], controle['valeur_texte']),
+                         ('ok', "1,70 — dans la capacité publiée de l'onduleur (18 kWc)"))
+        self.assertNotIn('1,50', json.dumps(controle, ensure_ascii=False))
+
+    def test_sans_conception_le_controle_le_dit(self):
+        controle = self._verdicts(None, ratio={'valeur': 4.2, 'dans_bornes': False})
+        self.assertEqual((controle['etat'], controle['valeur_texte']),
+                         ('info', 'Non calculé : conception non calculée'))
+
+    def test_verdict_non_calcule_dit_le_champ_et_ou_le_remplir(self):
+        motif = ('« Tension Vmp » non renseigné(e) sur la fiche technique du module — '
+                 'complétez la fiche technique du produit (Stock → Catalogue).')
+        controle = self._verdicts({'ratio_dc_ac': None, 'capacite_hybride': None, 'longueur_chaine': None,
+                                   'non_calcule': motif})
+        self.assertEqual((controle['etat'], controle['valeur_texte'], controle['geste']),
+                         ('a_regler', 'Non calculé : ' + motif, 'Compléter la fiche technique du produit'))
+        self.assertEqual(controle['cible']['onglet'], 'materiel-electrique')
+
+    def test_capacite_ou_longueur_non_conforme_a_regler_avec_la_cause(self):
+        verdicts = {'ratio_dc_ac': {'conforme': True, 'valeur': 1.2, 'borne_source': 'règle du devis',
+                                    'detail': '1,20 pour 1,35 au plus (règle du devis)'},
+                    'capacite_hybride': None,
+                    'longueur_chaine': {'conforme': False, 'longueurs': [30], 'longueur': 30,
+                                        'detail': 'chaînes de 30 modules pas toutes dans la fenêtre'}}
+        controle = self._verdicts(verdicts)
+        self.assertEqual((controle['etat'], controle['cause']),
+                         ('a_regler', 'chaînes de 30 modules pas toutes dans la fenêtre'))
 
     def test_ratio_hors_devis_deja_envoye_est_une_information(self):
         from apps.calepinage.services.pret_a_envoyer import _ratio_dc_ac
@@ -697,7 +770,8 @@ class KwcCoherentTest(SimpleTestCase):
 
 
 LEAD = 'apps.crm.selectors.get_company_lead'
-CIBLE = 'apps.ventes.selectors.cible_depuis_lead'
+#: ACAL2012 — la cible se lit sur la conception rangée (plus ``cible_depuis_lead``).
+CIBLE = 'apps.calepinage.services.devis_retenu.cible_de_la_conception'
 
 
 def _cible(motif_code=None, refus=None):
@@ -997,7 +1071,9 @@ class AgregatTest(SimpleTestCase):
                 (PUBLIABLE, (publication, None, materiel)), (SERVI, {}),
                 (TRONCONS, {}), (DOSSIERS, {'dossiers': []}),
                 (MESURES, {'kwc': None, 'pans': []}), (LEAD, object()),
-                (CIBLE, _cible()), (HYPOTHESES, [])):
+                (CIBLE, _cible()), (HYPOTHESES, []),
+                # ACAL2013 — le matériel par défaut vient de la conception (lue en base).
+                ('apps.calepinage.services.electrique.materiel_de_la_conception', {})):
             pile.enter_context(mock.patch(cible, return_value=valeur))
         return pile
 

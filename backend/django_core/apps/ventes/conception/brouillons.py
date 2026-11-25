@@ -104,13 +104,68 @@ def _taille_de_la_conception(devis, version):
 
 def _ce_qui_a_change(version):
     """Les entrées nommées par leur libellé (jamais leurs valeurs : une ligne
-    du devis survit à l'effacement du lead), sinon le motif de l'origine."""
+    du devis survit à l'effacement du lead), sinon le motif de l'origine. Relecture E5
+    (c) — accord en français simple, sans « (s) » : « champ modifié : Facture hiver »,
+    « champs modifiés : Facture hiver, Ville » (le genre des libellés n'est pas connu)."""
     from apps.ventes.conception.service import MOTIFS_ORIGINE, libelle_champ
 
     champs = [c.get('champ') for c in (version.declencheur or {}).get('champs') or []]
     if champs:
-        return ', '.join(libelle_champ(version.lead, c) for c in champs) + ' modifié(s)'
+        libelles = ', '.join(libelle_champ(version.lead, c) for c in champs)
+        return ('champ modifié : %s' if len(champs) == 1 else 'champs modifiés : %s') % libelles
     return MOTIFS_ORIGINE.get((version.declencheur or {}).get('origine'), 'conception recalculée')
+
+
+#: Relecture E6 M5 — les valeurs d'une option qui décident des LIGNES du devis.
+VALEURS_COMPOSEES = ('nb_panneaux', 'puissance_kwc', 'module_produit', 'onduleurs', 'batterie_produit')
+
+
+def _contenu_compose(version):
+    """Ce qu'un devis recevrait de ``version`` : par option, la taille et le matériel
+    (:data:`VALEURS_COMPOSEES`, valeurs seules), et les blocs que le devis copie
+    (``creation_auto.blocs_a_apporter`` : sans la provenance horodatée), le marqueur
+    d'imposition réduit à son contenu (jamais son auteur ni son heure)."""
+    from apps.ventes.domain.composition_imposee import CLE_MARQUEUR
+    from apps.ventes.domain.creation_auto import blocs_a_apporter
+
+    blocs = dict(blocs_a_apporter(version))
+    if isinstance(blocs.get(CLE_MARQUEUR), dict):
+        blocs[CLE_MARQUEUR] = {cle: blocs[CLE_MARQUEUR].get(cle) for cle in ('demande', 'produits')}
+    from apps.ventes.conception.societe import MOTIFS
+
+    tailles = {option: {cle: (valeurs.get(cle) or {}).get('valeur') for cle in VALEURS_COMPOSEES}
+               for option, valeurs in (version.valeurs or {}).items()}
+    # Les prix et la TVA que les lignes recevraient : le catalogue de vente et les taux rangés.
+    prix = {cle: ((version.entrees_utilisees or {}).get(cle) or {}).get('valeur')
+            for cle in MOTIFS}
+    return {'valeurs': tailles, 'blocs': blocs, 'prix': prix}
+
+
+def _meme_contenu(devis, version):
+    """Relecture E6 M5 — la version dont le brouillon est né (``conception_source``)
+    porte-t-elle le même :func:`_contenu_compose` que ``version`` ? Une source illisible
+    ⇒ ``False`` (le brouillon est recomposé, comme avant)."""
+    from apps.ventes.models import ConceptionLead
+
+    nee_de = (devis.conception_source or {}).get('version')
+    source = (ConceptionLead.objects.filter(company_id=devis.company_id, lead_id=devis.lead_id, version=nee_de)
+              .only('valeurs', 'blocs', 'entrees_utilisees').first() if nee_de is not None else None)
+    return source is not None and _contenu_compose(source) == _contenu_compose(version)
+
+
+def _imposition_de_la_version(version, lead, company):
+    """Relecture E6 M5 — l'imposition avec laquelle ``version`` a été calculée (matériel
+    désigné, pose ajustée : le marqueur rangé dans ses blocs), refaite par la MÊME
+    préparation que le moteur (``composition_imposee.preparer_imposition``) ; ``None``
+    sans imposition. Une option unique rangée = le scénario imposé."""
+    from apps.ventes.domain.composition_imposee import CLE_MARQUEUR, preparer_imposition
+
+    demande = ((version.blocs or {}).get(CLE_MARQUEUR) or {}).get('demande')
+    if not demande:
+        return None
+    options = list(version.valeurs or {})
+    scenario = options[0] if len(options) == 1 else None
+    return preparer_imposition(company=company, lead=lead, imposes=dict(demande), scenario=scenario)[0]
 
 
 def _verrouiller(devis, version, *, a_la_demande):
@@ -149,6 +204,13 @@ def _realigner(devis, version, user=None, *, a_la_demande=False):
             return None
         avant, residentiel = _panneaux(verrou), (verrou.mode_installation or 'residentiel') == 'residentiel'
         avertissements, suit = [], True
+        if not est_retouche(verrou) and _meme_contenu(verrou, version):
+            # Relecture E6 M5 — rien de ce que le devis recevrait n'a changé (saut de
+            # VERSION_MOTEUR, filet de lecture…) : seul le pointeur avance, sans historique.
+            Devis.objects.filter(pk=verrou.pk, statut=Devis.Statut.BROUILLON).update(
+                conception_source=pointeur_de_conception(version))
+            devis.refresh_from_db()
+            return True, []
         if not est_retouche(verrou):
             recomposer = _recomposer_residentiel if residentiel else _recomposer_par_la_decision
             avertissements = recomposer(verrou, version, user)
@@ -176,16 +238,20 @@ def _recomposer_residentiel(devis, version, user):
     from apps.ventes.domain.pipeline import appliquer
 
     lead, company = devis.lead, devis.company
+    # Relecture E6 M5 — l'imposition de la version (matériel désigné) passe à la recomposition.
+    imposition = _imposition_de_la_version(version, lead, company)
     decision = decider_taille_residentielle(
-        lead=lead, company=company, scenario=None, imposition=None, plafond_toit=None,
-        dimensionner=R.dimensionneur_de_la_conception(version))
+        lead=lead, company=company, scenario=getattr(imposition, 'scenario', None), imposition=imposition,
+        plafond_toit=None, dimensionner=R.dimensionneur_de_la_conception(version))
     structure_produit_id, structure_type = verifier_composition_residentielle(
-        decision, lead=lead, company=company, taux_tva=devis.taux_tva, imposition=None)
+        decision, lead=lead, company=company, taux_tva=devis.taux_tva, imposition=imposition)
     intention = R.intention_auto_residentielle(
         decision, lead=lead, company=company, user=user, taux_tva=devis.taux_tva,
         remise_globale=devis.remise_globale, structure_produit_id=structure_produit_id,
-        structure_type=structure_type)
-    return list(appliquer(devis, intention).get('avertissements') or [])
+        structure_type=structure_type, imposition=imposition)
+    avertissements = list(appliquer(devis, intention).get('avertissements') or [])
+    R._poser_marqueur_impose(devis, imposition)  # comme la création : les recompositions ne la défont pas
+    return avertissements
 
 
 def _recomposer_par_la_decision(devis, version, user):

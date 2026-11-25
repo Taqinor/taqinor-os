@@ -1,0 +1,98 @@
+[
+ {
+  "id": "T4-V1-002",
+  "verdict": "corrige",
+  "vu": "Lead X4-r2 › Modifier › Ajouter ligne › « — Produit — » › taper « Parafoudre », 5 s : la liste ne montre que les 4 parafoudres (puis une section « Cités seulement dans la fiche produit (10) ») ; Entrée ajoute « Parafoudre AC C&I » (le premier surligné) avec Qté 0 et le curseur sur la quantité ; total inchangé. « zzqx » : 0 option, Entrée n'ajoute rien",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/pk-enter.png"
+ },
+ {
+  "id": "T4-V1-003",
+  "verdict": "corrige",
+  "vu": "Réduction 3 % : sous le tableau « TOTAL SANS BATTERIE AVANT REMISE 49 900 » / « TOTAL AVEC BATTERIE AVANT REMISE 78 000 » puis « TOTAL FINAL SANS BATTERIE 48 400 » / « TOTAL FINAL AVEC BATTERIE 75 600 » ; carte de droite « TOTAL SANS BATTERIE · TTC 48 400 » et « TOTAL AVEC BATTERIE · TTC 75 600 » : plus deux chiffres sous le même nom",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/pk-remise.png"
+ },
+ {
+  "id": "T4-V2-013",
+  "verdict": "corrige",
+  "vu": "Devis auto X4-r1 : « Devis créé : DEV-202611-0130 · Sans batterie : 2,75 kWc · 41 900 MAD TTC · Avec batterie : 4,4 kWc · 65 900 MAD TTC »",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/ar1-done.png"
+ },
+ {
+  "id": "T4-V2-015",
+  "verdict": "corrige",
+  "vu": "Devis auto X4-c (Batterie « Avec batterie ») : « Devis créé : DEV-202611-0131 · 4,4 kWc · 65 900 MAD TTC · option unique : avec batterie (batterie souhaitée sur la fiche) » ; PDF non relu à ce stade",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/ac-done.png"
+ },
+ {
+  "id": "T4-V2-018",
+  "verdict": "autre",
+  "vu": "Même geste (Les deux + Auto-remplir + Enregistrer) : Paramètres techniques ne donne plus que « Conseillé par le moteur, avec batterie : 8 panneaux · 4,40 kWc » ; les 8 panneaux sont partagés par les deux options (sans batterie = 4,40 kWc, 53 900 MAD), la taille sans batterie du moteur (5 panneaux · 2,75 kWc, celle du devis auto de X4-r1) n'apparaît que comme « Éco ». Le défaut des deux tailles a changé de forme : la carte « Recommandé · Devis officiel » de l'onglet Sans batterie affiche 36 900 MAD avec la batterie (voir T4-X4-004)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/tl-b-Sansbatterie.png"
+ },
+ {
+  "id": "T4-V2-019",
+  "verdict": "corrige",
+  "vu": "Lead X4-c › 1 devis › « Envoyer au client » › attendre 4 s › « Copier le lien », joué 3 fois : 3 clics = 3 POST share-link 200, bouton en attente vu 2 fois sur 3, lien affiché (« Lien de la page client » ; copie presse-papiers refusée par le navigateur sans tête, message clair), devis passé « Envoyé »",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/sd-1-open.png"
+ },
+ {
+  "id": "T4-V2-024",
+  "verdict": "corrige",
+  "vu": "DEV-202611-0131 envoyé › « Réviser (nouvelle version) » : bouton grisé aria-busy dès 0,5 s avec « Création de la nouvelle version… » ; 32 s plus tard l'écran ouvre le générateur de la V2 DEV-202611-0136 ; fiche rouverte : V2 « Brouillon » en tête, V1 « Envoyé · Remplacé par DEV-202611-0136 »",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/tbc.png"
+ },
+ {
+  "id": "T4-U4-010",
+  "verdict": "corrige",
+  "vu": "Partie demandée rejouée (retour du clic, carte V1/V2) : corrigée, voir T4-V2-024. Partie « la V2 reprend la conception du calepinage » NON rejouée : X4-c n'a pas de calepinage",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/rv-1s.png"
+ },
+ {
+  "id": "T4-V2-016",
+  "verdict": "corrige",
+  "vu": "WebKit 390×844 tactile, lead X4-c › 2 devis › « PDF ▾ » › « Premium (PDF complet) » : « Télécharger le PDF » sur toute la largeur (x 13→378 px, texte entier), cases « Inclure l'étude » et « Devis final » carrées 18×18 px",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/ph-etude.png"
+ },
+ {
+  "id": "T4-V2-017",
+  "verdict": "corrige",
+  "vu": "Même panneau (téléphone) : cocher « Inclure l'étude » fait paraître « La page d’étude n’est ajoutée que si le devis porte une étude chiffrée (production, consommation, économies) ; sinon le PDF garde ses 3 pages. » Le PDF lui-même n'a pas été téléchargé ici (aperçu en attente)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/ph-etude.png"
+ },
+ {
+  "id": "T4-V2-025",
+  "verdict": "corrige",
+  "vu": "Commercial responsable : Après-vente › Tickets SAV › bouton « Nouveau ticket » présent → fenêtre « Nouveau ticket SAV » (Client*, Type, Description*) → client X4-c + description → « Créer » : POST sav/tickets 201, ticket n° 9 en tête de liste (2 tickets)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/sv-created.png"
+ },
+ {
+  "id": "T4-V1-008",
+  "verdict": "corrige",
+  "vu": "Depuis /sav (périmètre demandé) : « Créer » champ vide → « Le client est requis. » ; client choisi, description vide → « La description est requise. », aucun POST ; avec description → 201. Le bloc « Tickets SAV » de l'onglet Interventions d'un chantier (geste d'origine) n'a PAS été rejoué : aucun chantier atteignable, la liste des devis ne charge pas (T4-X4-005)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/sv-submit-nodesc.png"
+ },
+ {
+  "id": "T4-V1-004",
+  "verdict": "corrige",
+  "vu": "Liste des devis › DEV-202611-0136 › « PDF » : la case s'appelle maintenant « Économies mensuelles (graphique de la facture mois par mois, avant / après) », plus de « page 2 ». (Le format est annoncé « Devis premium (3 pages …) » alors que le PDF premium reçu en a 4 : T4-X4-007)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/lr-pdfdlg.png"
+ },
+ {
+  "id": "T4-V1-007",
+  "verdict": "corrige",
+  "vu": "DEV-202611-0136 envoyé › Accepter › option « Avec batterie » › Confirmer : ligne « Facturé 0,00 MAD · En brouillon 19 770,00 MAD · Payé 0,00 MAD · Reste à facturer 46 130,00 MAD » (0 + 19 770 + 46 130 = 65 900, total accepté) ; l'acompte en brouillon BROUILLON-122 est nommé",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/ch3-3.png"
+ },
+ {
+  "id": "T4-V2-023",
+  "verdict": "corrige",
+  "vu": "Factures › « Émettre » BROUILLON-122 (acompte 30 % de DEV-202611-0136, 19 770 MAD) → FAC-202611-0005 : la carte « TOTAL DÛ » et « Reste à encaisser (onglet) » montent toutes deux de 19 770 MAD et restent égales entre elles",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/fa-after.png"
+ },
+ {
+  "id": "T4-V2-008",
+  "verdict": "non-rejoue",
+  "vu": "Tous les PDF demandés sont arrivés (Premium DEV-202611-0130 en 21 s et DEV-202611-0141 en 5 s depuis le panneau de la fiche ; aperçu de DEV-202611-0143 en 25 s depuis la liste) : la panne d'origine (2 demandes sur 7) ne s'est pas reproduite, le message de fin d'attente et « Réessayer » n'ont donc pas pu être vus. La fenêtre PDF de la liste n'a pas servi à générer (liste trop lente au moment voulu : T4-X4-005)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/r1prem-panel.png"
+ }
+]

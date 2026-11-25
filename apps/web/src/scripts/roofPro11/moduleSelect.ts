@@ -386,7 +386,10 @@ export function syntheseModules(
     if (ligne) ligne.modules += compte;
     else poses.set(module.id, { module, modules: compte });
   }
-  const lignes = [...poses.values()];
+  // ACAL2032 — un pan où rien n'est posé (pan vide, resté au module par défaut) n'est pas un « modèle posé » : il ne
+  // fait pas « Plusieurs modèles posés » à côté des 3 panneaux de 715 W du pan voisin. Site entièrement vide : inchangé.
+  const toutes = [...poses.values()];
+  const lignes = toutes.some((ligne) => ligne.modules > 0) ? toutes.filter((ligne) => ligne.modules > 0) : toutes;
   if (!lignes.length) {
     return { watt: null, plusieursModeles: false, libelles: [], mention: 'Aucun module posé.' };
   }

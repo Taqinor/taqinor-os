@@ -131,10 +131,12 @@ function CalendarQuickCreateDialog({ date: openDate, onClose, onCreated }) {
   const submit = async () => {
     setErr(null)
     if (!clientId) { setErr('Le client est requis.'); return }
+    // T4-V1-008 — le serveur refuse un ticket sans description du problème.
+    if (!description.trim()) { setErr('Décrivez le problème pour ouvrir le ticket.'); return }
     setBusy(true)
     try {
       const r = await savApi.createTicket({
-        client: parseInt(clientId, 10), type, description: description || undefined,
+        client: parseInt(clientId, 10), type, description: description.trim(),
       })
       // Pose la date planifiée sur le ticket fraîchement créé.
       await savApi.replanifierTicket(r.data.id, openDate)
@@ -164,8 +166,8 @@ function CalendarQuickCreateDialog({ date: openDate, onClose, onCreated }) {
                             invalid={err && !clientId ? true : undefined} />
           </FormField>
           <ChampTypeTicket value={type} onValueChange={setType} />
-          <FormField label="Description">
-            <Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+          <FormField label="Description" htmlFor="cqc-desc" required>
+            <Textarea id="cqc-desc" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
           </FormField>
           {err && (
             <div role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">

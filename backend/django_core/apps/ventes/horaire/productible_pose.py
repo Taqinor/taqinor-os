@@ -60,6 +60,15 @@ def _kwc_du_devis(devis):
 def diagnostic_base_de_production(devis, *, kwc=None, marches=('residentiel',)):
     """``(base | None, motif)`` — le motif dit pourquoi la ville sert.
     ``marches`` : ACAL1195 — seule l'étude C&I passe ``('commercial', 'industriel')``."""
+    servi_moteur = getattr(devis, 'productible_pose_moteur', None)
+    if servi_moteur is not None and getattr(devis, 'pk', None) is None:
+        # Relecture E6 M1 — le devis EN MÉMOIRE du moteur unique (jamais enregistré) porte
+        # le productible de SA pose (``conception/moteur._base_de_la_pose``) : mêmes gardes.
+        if not regles_au_moins(devis, REGLES_POSE_REELLE_2111):
+            return None, 'règles d’avant le 21/11'
+        if getattr(devis, 'mode_installation', None) not in marches:
+            return None, 'marché non résidentiel'
+        return base_depuis_servi(servi_moteur, kwc=_kwc_du_devis(devis) if kwc is None else kwc)
     if devis is None or not getattr(devis, 'pk', None):
         return None, 'devis non enregistré'
     if not regles_au_moins(devis, REGLES_POSE_REELLE_2111):

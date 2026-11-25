@@ -270,6 +270,16 @@ export function BoutonCalculer({
               </Link>
             </>
           )}
+          {/* T4-V1-012 — une erreur du serveur (temps dépassé, erreur inattendue) se relance d'ici. */}
+          {refus.relancable && (
+            <>
+              {' '}
+              <button type="button" onClick={() => lancer(true)} disabled={enCours}
+                className="inline-flex min-h-11 items-center font-semibold underline" data-testid="calx48-reessayer">
+                Réessayer
+              </button>
+            </>
+          )}
         </p>
       )}
     </div>

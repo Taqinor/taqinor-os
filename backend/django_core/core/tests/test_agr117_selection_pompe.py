@@ -147,6 +147,23 @@ class ChoixPompe(unittest.TestCase):
         self.assertEqual(alertes["rendement_non_publie"]["champ"],
                          "pompe.fiche")
 
+    def test_t4v2_011_pre_dimensionnement_dit_en_phrases(self):
+        # Les nombres restent (kW minimal 4,67, rendement 35 %), les formules
+        # et sigles (« Q × HMT × 2,725 », « η EST. », « AMEE ») partent.
+        res = choisir_pompe(GENERIQUES, hmt_m=60, debit_conception_m3h=10,
+                            alimentation="tri")
+        alertes = {a["code"]: a["message"] for a in res["alertes"]}
+        sans_courbe = alertes["pompe_sans_courbe"]
+        self.assertIn("il faut au moins 4,67 kW pour monter ce débit",
+                      sans_courbe)
+        self.assertIn("à confirmer sur la courbe constructeur", sans_courbe)
+        rendement = alertes["rendement_non_publie"]
+        self.assertIn("rendement prudent de 35 %", rendement)
+        self.assertIn("À saisir dans Stock, fiche de la pompe", rendement)
+        for message in (sans_courbe, rendement):
+            for interdit in ("Q × HMT", "η", "EST.", "AMEE", "kW min "):
+                self.assertNotIn(interdit, message)
+
 
 class Gardes(unittest.TestCase):
 

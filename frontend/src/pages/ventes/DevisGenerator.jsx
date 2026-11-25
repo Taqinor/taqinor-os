@@ -1170,7 +1170,7 @@ export default function DevisGenerator({
   // AGR420 — recopie `lead.entrees_pompage` dans les états agricoles. Une
   // entrée absente laisse l'état VIDE ; un état déjà saisi par le vendeur
   // (autre que la valeur posée par un lead) n'est jamais écrasé.
-  const appliquerEntreesPompage = (lead) => {
+  const appliquerEntreesPompage = (lead, deja = {}) => {
     const res = entreesPompageDuLead(lead)
     if (!res) return
     const poseurs = {
@@ -1180,7 +1180,7 @@ export default function DevisGenerator({
       farmRegion: setFarmRegion, farmCrop: setFarmCrop,
       farmSurfaceHa: setFarmSurfaceHa, farmIrrigation: setFarmIrrigation,
     }
-    const actuel = courantPompage.current
+    const actuel = { ...courantPompage.current, ...deja } // T4-V2-002 : `deja` = valeurs du devis rouvert
     const libre = (cle, courant) => courant === '' || courant == null
       || courant === posesLead.current[cle]
     for (const [cle, valeur] of Object.entries(res.ecran)) {
@@ -1240,7 +1240,7 @@ export default function DevisGenerator({
     setFarmCrop, setFarmSurfaceHa, setFarmIrrigation,
     setEcoPompage, setAttestationAgricole, setFarmHmtStatic,
     setFarmHmtDrawdown, setPompageSaisie, clear,
-    baremeSociete,
+    baremeSociete, appliquerEntreesPompage,
   })
 
   // ── Réglages entreprise (Paramètres) → valeurs par défaut du générateur ──
@@ -2015,7 +2015,7 @@ export default function DevisGenerator({
           leadValeursModifiees={leadValeursModifiees}
           setLeadValeursModifiees={setLeadValeursModifiees} clear={clear}
           setRechargeEdit={setRechargeEdit} onduleursIncomplets={onduleursIncomplets}
-          pompageAutoFilled={pompageAutoFilled} apercuPompage={apercuPompage}
+          pompageAutoFilled={pompageAutoFilled} apercuPompage={apercuPompage} lines={lines}
         />
 
         {/* ── Aperçu de la simulation (masqué en mode pompage) ── */}

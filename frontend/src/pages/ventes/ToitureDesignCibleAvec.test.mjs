@@ -27,6 +27,7 @@ import {
   reglagesAtelierDesParametres,
   phraseCalepinageCharge,
   phraseToitureLead,
+  siteLocaliseInitial, phraseSiteNonLocalise, // T4-U4-013
 } from '../../features/calepinage/atelier/contexteAtelier.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -143,4 +144,21 @@ test('R2-15 / R2-01 — phraseToitureLead redit ce que le lead déclare (contrat
     'Le lead déclare : ombrage : antenne · toiture de 15 ans · structure acier')
   assert.equal(phraseToitureLead(contrat.exemple_vide.toiture_lead), null, 'tout nul : aucune ligne')
   assert.equal(phraseToitureLead(undefined), null, 'contexte sans la clé (mode devis) : aucune ligne')
+})
+
+test('T4-U4-013 — siteLocaliseInitial : provenance relue, document ancien, repère du lead, sinon non localisé', () => {
+  assert.equal(siteLocaliseInitial({ siteLocalise: 'adresse', pin: { lat: 31.6, lng: -7.3 } }, null), 'adresse')
+  assert.equal(siteLocaliseInitial({ siteLocalise: null, pin: { lat: 31.6, lng: -7.3 } }, 'gps'), null)
+  assert.equal(siteLocaliseInitial({ version: 2, pin: { lat: 31.6, lng: -7.3 } }, null), undefined, 'document ancien : règle du serveur')
+  assert.equal(siteLocaliseInitial({ version: 2, zones: [] }, 'gps'), 'lead')
+  assert.equal(siteLocaliseInitial(null, null), null, 'client sans adresse, sans lead : non localisé')
+})
+
+test('T4-U4-013 — phraseSiteNonLocalise : le geste, et ce que fait le calcul sans lui', () => {
+  // Relecture M1 — le « sinon » imprime le site SERVI (`calepinage.site_de_repli`), tel quel.
+  assert.equal(phraseSiteNonLocalise('Marrakech (ville de référence)'),
+    'Site non localisé — carte au niveau Maroc. Cherchez l’adresse du client puis « Localiser », ou zoomez jusqu’au toit avant de le tracer : sinon le calcul se fait sur Marrakech (ville de référence).')
+  assert.ok(phraseSiteNonLocalise('la position GPS de la fiche').endsWith('sinon le calcul se fait sur la position GPS de la fiche.'))
+  assert.ok(phraseSiteNonLocalise('').endsWith('sinon le calcul est refusé.'))
+  assert.ok(phraseSiteNonLocalise(null).endsWith('sinon le calcul est refusé.'))
 })

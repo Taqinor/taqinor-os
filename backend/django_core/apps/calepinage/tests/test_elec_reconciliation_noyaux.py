@@ -78,8 +78,9 @@ class ArbitrageTest(SimpleTestCase):
         incomplet = {cle: valeur for cle, valeur in MODULE.items()
                      if cle != 'voc_v'}
 
+        # ACAL2014 — la référence d'un dossier d'appel d'offres (``reference_de_longueur``).
         reconciliation = _longueur_chaine_retenue(
-            _conception(24, module_specs=incomplet))
+            _conception(24, module_specs=incomplet), MODULES_PAR_CHAINE)
 
         self.assertEqual(reconciliation['origine'], ORIGINE_LONGUEUR_DOSSIER)
         self.assertEqual(reconciliation['longueur'], MODULES_PAR_CHAINE)

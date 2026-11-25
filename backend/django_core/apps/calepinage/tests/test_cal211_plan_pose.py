@@ -44,7 +44,7 @@ from apps.calepinage.services.planche import (
 
 from .acal_livrables_helpers import (
     LAYOUT_PLANCHE_SIMULABLE, MATERIEL, calepinage_simule_reel,
-    patch_materiel,
+    patch_materiel, texte_des_lignes_svg,
 )
 from .test_cal171_planche import LAYOUT
 from .test_cal173_empreinte import MOMENT, FauxCalepinage
@@ -400,6 +400,46 @@ class FeuilleDePanTest(SimpleTestCase):
         self.assertEqual(apres.count('<svg'), avant.count('<svg') + 1)
 
 
+class BandeauDansLaPageTest(SimpleTestCase):
+    """T4-V1-006 — page 1 du plan de pose : le bandeau de droite était coupé
+    par le bord de la feuille (« Onduleur Huawei … 5kW Monophas », « Chaîne 1 :
+    152,4 V à vide maxi à froid (4,18 °C, météo type d »). Le PDF RÉEL est rendu
+    et lu par PyMuPDF : chaque mot tient dans la page, chaque phrase est entière."""
+
+    LIGNES = (
+        'Onduleur Huawei Onduleur réseau Huawei 5kW Monophasé — emplacement '
+        ': à définir sur site',
+        'Chaîne 1 : 152,4 V à vide maxi à froid (4,18 °C, météo type du site)',
+    )
+
+    def test_chaque_mot_du_bandeau_tient_dans_la_page_et_les_phrases_sont_entieres(self):
+        import fitz
+
+        from core.pdf import render_pdf
+
+        from apps.calepinage.services.planche import html_de_planche
+
+        svg = svg_de_planche(geometrie_de_planche(LAYOUT), titre='Plan de pose',
+                             bandeau=self.LIGNES, contenu=CONTENU_POSE)
+        document = fitz.open(stream=render_pdf(html=html_de_planche(svg)),
+                             filetype='pdf')
+        page = document[0]
+        mots = page.get_text('words')
+        dehors = [m[4] for m in mots if m[2] > page.rect.width + 0.5]
+        self.assertEqual(dehors, [])
+        texte = ' '.join(m[4] for m in mots)
+        for ligne in self.LIGNES:
+            self.assertIn(ligne, texte)
+        # La mention d'échelle, en bas : aucun trait du dessin (cote, toit) ne la
+        # traverse.
+        mention = page.search_for('Échelle du tracé')[0]
+        mention.x1 = mention.x0 + 140 * 72 / 25.4  # la phrase entière (≈ 140 mm)
+        traversants = [d['rect'] for d in page.get_drawings()
+                       if d['rect'].width < page.rect.width - 1  # fond de page
+                       and fitz.Rect(d['rect']).intersects(mention)]
+        self.assertEqual(traversants, [])
+
+
 def pan_de_10_sur_6(pose='portrait'):
     """ACAL591 - un pan rectangulaire de 10 x 6 m (repere local, metres),
     plein sud, a plat, module 1,7 x 1,1 m dont la pose est ``pose``."""
@@ -751,15 +791,16 @@ class TensionsDesChainesSurLePlanTest(SimpleTestCase):
 
     def test_une_ligne_par_chaine_avec_la_temperature_citee(self):
         svg = self._rendre(self.SERVIES)
+        lu = texte_des_lignes_svg(svg)  # T4-V1-006 — lignes coupées à la largeur du bandeau
         self.assertIn('Chaîne 1 : 343 V à vide maxi à froid (−5 °C, saisie)',
-                      svg)
+                      lu)
         self.assertIn('Chaîne 2 : tension non calculée : fiche incomplète',
-                      svg)
+                      lu)
         self.assertNotIn('216', svg)  # jamais la tension à chaud
 
     def test_la_consigne_de_la_societe_est_imprimee_mot_pour_mot(self):
         svg = self._rendre(self.SERVIES, self.CONSIGNE)
-        self.assertIn(escape(self.CONSIGNE), svg)
+        self.assertIn(self.CONSIGNE, texte_des_lignes_svg(svg))
         self.assertNotIn('Couper', self._rendre(self.SERVIES, ''))
 
     def test_electrique_non_chaine_garde_la_mention_existante(self):
@@ -782,7 +823,7 @@ class TensionsDesChainesSurLePlanTest(SimpleTestCase):
                     'Chaîne %s : %s V à vide maxi à froid' % (
                         ligne['chaine'],
                         ('%g' % ligne['voc_froid_v']).replace('.', ',')),
-                    svg)
+                    texte_des_lignes_svg(svg))
 
 
 class PiedsDeChassisTest(SimpleTestCase):

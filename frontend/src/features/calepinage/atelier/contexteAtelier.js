@@ -365,3 +365,27 @@ export function formaterHeureBrouillon(horodatageIso) {
   return new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
 }
 
+// T4-U4-013 — l'état de LOCALISATION du site à l'ouverture de l'atelier (clé `siteLocalise` du
+// document, contrat `roof_layout_v2.schema.json`) : la provenance relue ; un document ANCIEN qui
+// porte une épingle sans la clé ⇒ `undefined` (le serveur garde sa règle, rien n'est réécrit) ;
+// sinon le repère du lead (`source_repere`) ⇒ 'lead' ; sinon `null` = personne ne l'a localisé.
+export function siteLocaliseInitial(roofLayout, sourceRepere) {
+  const doc = roofLayout && typeof roofLayout === 'object' ? roofLayout : null
+  if (doc && Object.prototype.hasOwnProperty.call(doc, 'siteLocalise')) return doc.siteLocalise ?? null
+  const pin = doc?.pin
+  if (pin && Number.isFinite(pin.lat) && Number.isFinite(pin.lng)) return undefined
+  return sourceRepere ? 'lead' : null
+}
+
+// T4-U4-013 — la phrase du bandeau quand le site n'est pas localisé : le geste à faire, et ce
+// que le calcul fera sans lui. Relecture M1 — ce « sinon » est SERVI (`calepinage.site_de_repli` :
+// libellé de la ville de référence ou de la position GPS de la fiche, `null` = refus) : l'écran
+// ne redérive jamais la ville (il lisait `client_ville`, vide pour un client sans lead).
+export function phraseSiteNonLocalise(siteDeRepli) {
+  const v = typeof siteDeRepli === 'string' ? siteDeRepli.trim() : ''
+  const sinon = v
+    ? `sinon le calcul se fait sur ${v}`
+    : 'sinon le calcul est refusé'
+  return `Site non localisé — carte au niveau Maroc. Cherchez l’adresse du client puis « Localiser », ou zoomez jusqu’au toit avant de le tracer : ${sinon}.`
+}
+

@@ -190,7 +190,10 @@ class SupposeTest(SimpleTestCase):
         from apps.calepinage.services.suppositions import (
             liste_des_suppositions)
 
-        return liste_des_suppositions({'origine': origine}, societe,
+        # ACAL2014 — la valeur dite est la longueur RETENUE (ici celle d'un dossier d'appel d'offres).
+        from core.calepinage.electrique import MODULES_PAR_CHAINE
+
+        return liste_des_suppositions({'origine': origine, 'longueur': MODULES_PAR_CHAINE}, societe,
                                       self.DOSSIER)
 
     def test_fiche_incomplete_et_sans_allee_nomme_les_deux_replis(self):

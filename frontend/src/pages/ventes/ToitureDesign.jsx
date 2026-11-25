@@ -86,7 +86,7 @@ import {
   dataUrlToBlob, repereDuLead, contourUtilisableDuLead, httpMessage,
   stockageBrouillonLocal, stockageSessionLocal, formaterHeureBrouillon,
   messageRefusRepere, libelleEcartRepere, libelleCibleEstimee, phraseToitureLead,
-  cibleActiveDuContexte,
+  cibleActiveDuContexte, phraseSiteNonLocalise,
 } from '../../features/calepinage/atelier/contexteAtelier.js'
 import BuilderDom from '../../features/calepinage/atelier/BuilderDom.jsx'
 import OutilsVue from '../../features/calepinage/atelier/OutilsVue.jsx'
@@ -277,6 +277,8 @@ function AtelierToiture({
   // les trois modes). `onApiReady` arrive avant l'hydratation : toute référence
   // « non modifiée » (garde de sortie, amorce du brouillon) se prend APRÈS.
   const [sceneHydratee, setSceneHydratee] = useState(false)
+  // T4-U4-013 — le site est-il localisé ? (suivi par l'atelier : provenance, `null` = non, `undefined` = document ancien)
+  const [siteLocalise, setSiteLocalise] = useState(undefined)
   // ACAL311 (CI vague 10) — sans clé carte servie (`contexte.carte`), le boot s'arrête sur
   // « Carte indisponible » : AUCUNE scène n'est construite, `onHydrationTerminee` n'arrive
   // jamais. Générer / Resynchroniser restent alors CLIQUABLES (comme avant la garde) et
@@ -330,6 +332,7 @@ function AtelierToiture({
     setLead,
     setLoadError,
     setSceneHydratee,
+    setSiteLocalise,
     setRepereErreur,
     setStatus,
     utilisateurCourantId,
@@ -1055,8 +1058,11 @@ function AtelierToiture({
   // de chez le client. Mode AO non concerné (affaire, pas de repli GPS ici).
   const sansPositionGps = !loadError && (
     (estLead && !!lead && !repereDuLead(lead))
-    || (estCalepinage && !!contexte && !contexte?.geometrie?.pin)
+    || (estCalepinage && !!contexte && !contexte?.geometrie?.pin && siteLocalise === undefined)
   )
+  // T4-U4-013 — calepinage : l'atelier SAIT que personne n'a localisé le site (tracé à l'échelle
+  // du pays, aucune adresse retenue) ; le bandeau le dit avec le geste, et s'efface dès qu'il est fait.
+  const siteNonLocalise = !loadError && estCalepinage && siteLocalise === null
 
   const inputClass =
     'w-full border border-border bg-muted px-3 py-3 text-base text-foreground outline-none focus:border-brass-400'
@@ -1230,6 +1236,11 @@ function AtelierToiture({
         {sansPositionGps && (
           <p className="mt-1 text-xs text-muted-foreground/70" data-testid="pv-sans-gps">
             Pas de position GPS sur la fiche — carte au niveau Maroc.
+          </p>
+        )}
+        {siteNonLocalise && (
+          <p className="mt-1 text-sm text-foreground" role="status" data-testid="pv-sans-gps">
+            {phraseSiteNonLocalise(contexte?.calepinage?.site_de_repli)}
           </p>
         )}
 

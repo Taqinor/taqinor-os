@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """ACAL56 — module, onduleur, optimiseur du calcul électrique (D-ACAL-10).
 
-Désignation EXPLICITE d'abord ; sinon les LIGNES DU DEVIS LIÉ (provenance
-« devis », recalculée à chaque lecture, jamais persistée) ; sinon un refus
+Désignation EXPLICITE d'abord ; sinon — ACAL2013 (D-ACAL-97) — le matériel de la
+CONCEPTION courante du lead (provenance « moteur », relue à chaque lecture, jamais
+persistée ; le devis lié n'est plus lu) ; sinon le module posé ; sinon un refus
 NOMMÉ qui dit le geste. Et ``GET entree-electrique/`` relit l'entrée stockée.
 
 Produit / FicheTechnique / Devis / LigneDevis RÉELS en base :
@@ -24,6 +25,7 @@ from apps.calepinage.services.simulation import construire_contexte
 from apps.stock.models import FicheTechnique, Produit
 from apps.ventes.models import Devis, LigneDevis
 
+from .test_acal_cible_lead import ranger_conception
 from .test_api_liste import BaseApiCalepinage, url_detail
 
 CONTRAT = (pathlib.Path(__file__).resolve().parent.parent
@@ -83,6 +85,14 @@ class BaseMateriel(BaseApiCalepinage):
                 type_ligne='produit', variante='')
         return devis
 
+    def _conception(self, module=None, onduleur=None, nombre=1, longueur=None, **extra):
+        """ACAL2013 — la conception COURANTE du lead : module (par sa désignation) et onduleur."""
+        module = module or self.module_devis
+        onduleur = onduleur or self.onduleur
+        return ranger_conception(
+            lead=self.lead, nb=12, watt=710, module=module.nom, module_produit=module.pk, longueur=longueur,
+            onduleur={'produit': onduleur.pk, 'designation': onduleur.nom, 'quantite': nombre}, **extra)
+
     def _calepinage(self, *, devis=None, entree=None):
         return Calepinage.objects.create(
             company=self.company, lead_id=self.lead.pk,
@@ -91,48 +101,177 @@ class BaseMateriel(BaseApiCalepinage):
             resultat={CLE_ENTREE: dict(TEMPERATURES, **(entree or {}))})
 
 
-class MaterielDuDevis(BaseMateriel):
+class MaterielDeLaConception(BaseMateriel):
+    """ACAL2013 — sans saisie, le matériel de la CONCEPTION (provenance « moteur ») ;
+    un devis lié n'est plus lu pour le matériel (mutant : relire la ligne ⇒ rouge)."""
 
-    def test_defaut_ligne_du_devis_provenance_devis(self):
-        calepinage = self._calepinage(
-            devis=self._devis(self.module_devis, self.onduleur))
+    def test_defaut_conception_provenance_moteur_devis_non_lu(self):
+        self._conception()
+        autre_onduleur = self._produit(
+            nom='Onduleur du devis 5 kW', type_fiche='onduleur', ond_n_mppt=1, ond_mppt_v_min=100.0,
+            ond_mppt_v_max=500.0, ond_v_max_abs=600.0, ond_i_max_mppt_a=13.0, ond_ac_kw=5.0, ond_phases=1)
+        calepinage = self._calepinage(devis=self._devis(self.module_explicite, autre_onduleur))
         conception, materiel, _d, _doc = conception_du_calepinage(calepinage)
-        self.assertEqual(materiel['provenances']['module'], PROVENANCE_DEVIS)
-        self.assertEqual(materiel['provenances']['onduleur'],
-                         PROVENANCE_DEVIS)
-        self.assertEqual(materiel['produits']['module'],
-                         self.module_devis.pk)
+        self.assertEqual(materiel['provenances'], {'module': 'moteur', 'onduleur': 'moteur', 'optimiseur': None})
+        self.assertEqual((materiel['produits']['module'], materiel['produits']['onduleur']),
+                         (self.module_devis.pk, self.onduleur.pk))
         self.assertFalse(conception.fiche_incomplete, conception.manquantes)
         self.assertTrue(conception.chaines)
         self.assertEqual(materiel['absents'], ())
 
-    def test_la_provenance_devis_n_est_pas_persistee(self):
-        calepinage = self._calepinage(
-            devis=self._devis(self.module_devis, self.onduleur))
+    def test_sans_conception_le_devis_lie_n_est_pas_lu(self):
+        calepinage = self._calepinage(devis=self._devis(self.module_devis, self.onduleur))
+        _c, materiel, _d, _doc = conception_du_calepinage(calepinage)
+        self.assertIsNone(materiel['produits']['onduleur'])
+        self.assertNotIn(PROVENANCE_DEVIS, materiel['provenances'].values())
+        self.assertIn("module PV non désigné — désignez-le dans l'onglet Matériel électrique",
+                      materiel['absents'])
+
+    def test_module_relu_par_son_identifiant_meme_nom_en_double(self):
+        # Relecture E5 m4 — un second produit du même nom ne rend plus le module introuvable.
+        double = self._produit(nom='Double', type_fiche='module', vmp_v=40.0, voc_v=48.0,
+                               isc_a=13.0, imp_a=12.0, pmax_wc=500.0)
+        Produit.objects.filter(pk=double.pk).update(nom=self.module_devis.nom)
+        self._conception()
+        _c, materiel, _d, _doc = conception_du_calepinage(self._calepinage())
+        self.assertEqual((materiel['produits']['module'], materiel['provenances']['module']),
+                         (self.module_devis.pk, 'moteur'))
+
+    def test_produits_archives_de_la_conception_dits_jamais_servis(self):
+        from apps.stock.models import Produit
+
+        self._conception()
+        Produit.objects.filter(pk__in=(self.module_devis.pk, self.onduleur.pk)).update(is_archived=True)
+        _c, materiel, _d, _doc = conception_du_calepinage(self._calepinage())
+        self.assertIsNone(materiel['produits']['onduleur'])
+        self.assertNotEqual(materiel['produits']['module'], self.module_devis.pk)
+        textes = ' | '.join(materiel['absents'])
+        # Revue E6 m1 — le produit est nommé par la DÉSIGNATION que la conception a gardée,
+        # jamais par son identifiant interne.
+        self.assertIn('Le module de la conception (Module devis 710) est introuvable ou archivé', textes)
+        self.assertIn("L'onduleur de la conception (Onduleur 10 kW) est introuvable ou archivé", textes)
+        self.assertNotIn('n°', textes)
+
+    def test_produit_archive_sans_designation_gardee_jamais_d_identifiant(self):
+        from apps.stock.models import Produit
+
+        ranger_conception(lead=self.lead, nb=12, watt=710, module=self.module_devis.nom,
+                          module_produit=self.module_devis.pk,
+                          onduleur={'produit': self.onduleur.pk, 'designation': '', 'quantite': 1})
+        Produit.objects.filter(pk=self.onduleur.pk).update(is_archived=True)
+        _c, materiel, _d, _doc = conception_du_calepinage(self._calepinage())
+        textes = ' | '.join(materiel['absents'])
+        self.assertIn("L'onduleur de la conception est introuvable ou archivé", textes)
+        self.assertNotIn(str(self.onduleur.pk), textes)
+
+    def test_la_provenance_moteur_n_est_pas_persistee(self):
+        self._conception()
+        calepinage = self._calepinage()
         avant = dict(calepinage.resultat[CLE_ENTREE])
         reponse = self.api.get(url_entree(calepinage.pk))
         self.assertEqual(reponse.status_code, 200, reponse.data)
-        self.assertEqual(reponse.data['materiel']['module']['provenance'],
-                         PROVENANCE_DEVIS)
+        self.assertEqual(reponse.data['materiel']['module']['provenance'], 'moteur')
         calepinage.refresh_from_db()
         self.assertEqual(calepinage.resultat[CLE_ENTREE], avant)
         self.assertNotIn('module_produit', calepinage.resultat[CLE_ENTREE])
 
 
+class DesignationEntreeImposee(BaseMateriel):
+    """ACAL2013 (clause restée ouverte à l'étape 5) — un onduleur désigné À LA MAIN relance
+    le moteur de son porteur (``pose_enregistree`` → file ADEV139), et le moteur le reçoit
+    comme entrée IMPOSÉE (``relancer`` → ``imposes``) ; sans désignation, rien n'est imposé."""
+
+    class _Arret(Exception):
+        pass
+
+    def test_designation_relance_le_moteur_avec_la_designation_imposee(self):
+        from unittest import mock
+
+        from apps.calepinage.services.electrique import enregistrer_entree
+        from apps.ventes.conception.service import relancer
+
+        # Relecture E6 B2 : seule une désignation que le catalogue de VENTE du moteur accepte est
+        # imposée — l'onduleur porte un nom que le classement reconnaît (réseau, triphasé).
+        Produit.objects.filter(pk=self.onduleur.pk).update(nom='Onduleur réseau 10 kW Triphasé')
+        self._conception()
+        calepinage = self._calepinage()
+        with mock.patch('apps.ventes.conception.receivers.mettre_en_file') as en_file, \
+                mock.patch('apps.calepinage.services.layout.simuler_apres_enregistrement'):
+            with self.captureOnCommitCallbacks(execute=True):
+                enregistrer_entree(calepinage, {'onduleur_produit': self.onduleur.pk})
+        en_file.assert_called_once()  # mutant « aucune relance sur désignation » : rouge
+        self.assertEqual((en_file.call_args.kwargs['calepinage_id'], en_file.call_args.kwargs['origine']),
+                         (calepinage.pk, 'pose_enregistree'))
+        with mock.patch('apps.ventes.conception.moteur.calculer_conception', side_effect=self._Arret) as calcul:
+            with self.assertRaises(self._Arret):
+                relancer(self.lead, company=self.company, declencheur={'origine': 'pose_enregistree'},
+                         calepinage_id=calepinage.pk, forcer=True)
+        self.assertEqual(calcul.call_args.kwargs['imposes'], {'onduleur_produit_id': self.onduleur.pk})
+
+    def test_sans_designation_rien_n_est_impose_ni_relance(self):
+        from unittest import mock
+
+        from apps.calepinage.services.electrique import enregistrer_entree
+        from apps.ventes.conception.porte_calepinage import designations_du_calepinage
+
+        calepinage = self._calepinage()
+        self.assertEqual(designations_du_calepinage(self.company, calepinage.pk), {})
+        with mock.patch('apps.ventes.conception.receivers.mettre_en_file') as en_file, \
+                mock.patch('apps.calepinage.services.layout.simuler_apres_enregistrement'):
+            with self.captureOnCommitCallbacks(execute=True):
+                enregistrer_entree(calepinage, {'regime': 'TT'})
+        en_file.assert_not_called()
+
+
+class ConceptionSurUnePoseDAutreTaille(BaseMateriel):
+    """Relecture E5 M4 — les chaînes de la conception (12 modules, 1 onduleur) ne sont
+    IMPOSÉES qu'à une pose du MÊME nombre de panneaux ; 16 panneaux posés : chaînes
+    calculées pour la pose réelle, aucun module « en réserve », aucune partition
+    forcée ; la longueur de la conception reste la RÉFÉRENCE de l'écart."""
+
+    def _pose(self, nb):
+        calepinage = self._calepinage()
+        zone = dict(LAYOUT['zones'][0], neededPanels=nb, result={'count': nb})
+        calepinage.roof_layout = {**LAYOUT, 'zones': [zone]}
+        calepinage.save(update_fields=['roof_layout'])
+        return calepinage
+
+    @staticmethod
+    def _textes(conception):
+        return ' | '.join([*conception.alertes, *conception.bloquants,
+                           *(str(getattr(v, 'message', v)) for v in getattr(conception, 'verdicts', ()))])
+
+    def test_seize_panneaux_poses_conception_de_douze(self):
+        from apps.calepinage.services.suppositions import reference_de_longueur
+
+        self._conception(longueur=12)
+        calepinage = self._pose(16)
+        conception, materiel, _d, _doc = conception_du_calepinage(calepinage)
+        self.assertEqual(materiel['provenances']['onduleur'], 'moteur')
+        self.assertEqual(sum(chaine.nb_modules for chaine in conception.chaines), 16)  # mutant forçage : 12
+        self.assertNotIn('en réserve', self._textes(conception))
+        self.assertNotIn('aucune découpe en chaînes ÉGALES', self._textes(conception))
+        self.assertEqual(reference_de_longueur(calepinage), 12)
+
+    def test_meme_taille_la_conception_est_imposee(self):
+        self._conception(longueur=6)
+        conception, _m, _d, _doc = conception_du_calepinage(self._pose(12))
+        self.assertEqual({chaine.nb_modules for chaine in conception.chaines}, {6})
+
+
 class MaterielExplicite(BaseMateriel):
 
-    def test_designation_gagne_sur_le_devis(self):
+    def test_designation_gagne_sur_la_conception(self):
+        self._conception()
         calepinage = self._calepinage(
-            devis=self._devis(self.module_devis, self.onduleur),
             entree={'module_produit': self.module_explicite.pk})
         _c, materiel, _d, _doc = conception_du_calepinage(calepinage)
         self.assertEqual(materiel['produits']['module'],
                          self.module_explicite.pk)
         self.assertEqual(materiel['provenances']['module'],
                          PROVENANCE_EXPLICITE)
-        # L'onduleur, non désigné, reste celui du devis.
-        self.assertEqual(materiel['provenances']['onduleur'],
-                         PROVENANCE_DEVIS)
+        # ACAL2013 — l'onduleur, non désigné, reste celui de la conception.
+        self.assertEqual(materiel['provenances']['onduleur'], 'moteur')
 
 
 class SansDevis(BaseMateriel):
@@ -222,6 +361,7 @@ class GetEntree(BaseMateriel):
 
     def test_forme_du_contrat(self):
         contrat = json.loads(CONTRAT.read_text(encoding='utf-8'))
+        self._conception()  # ACAL2013 — le matériel vient de la conception
         calepinage = self._calepinage(
             devis=self._devis(self.module_devis, self.onduleur))
         reponse = self.api.get(url_entree(calepinage.pk))
@@ -273,8 +413,8 @@ class GetEntree(BaseMateriel):
 class Simulation(BaseMateriel):
 
     def test_construire_contexte_fiche_module_non_vide(self):
-        calepinage = self._calepinage(
-            devis=self._devis(self.module_devis, self.onduleur))
+        self._conception()  # ACAL2013
+        calepinage = self._calepinage()
         contexte, meta = construire_contexte(calepinage)
         self.assertEqual(contexte['fiche_module'].get('pmax_wc'), 710.0)
         self.assertIsNotNone(meta['kwc'])
@@ -308,6 +448,7 @@ class MaterielRetenuParLeDevis(BaseMateriel):
         return devis
 
     def test_devis_a_un_onduleur_sert_l_onduleur_le_nombre_et_la_provenance(self):
+        self._conception()  # relecture E5 — le calcul lit la CONCEPTION, jamais la ligne du devis
         calepinage = self._calepinage(devis=self._devis(self.module_devis, self.onduleur))
         reponse = self.api.get(url_entree(calepinage.pk))
         self.assertEqual(reponse.status_code, 200, reponse.data)
@@ -315,15 +456,19 @@ class MaterielRetenuParLeDevis(BaseMateriel):
         self.assertEqual((bloc['onduleur']['produit_id'], bloc['nombre_onduleurs'], bloc['provenance']),
                          (self.onduleur.pk, 1, 'devis'))
         self.assertEqual(bloc['ecarts'], [])
-        self.assertEqual(reponse.data['materiel']['onduleur']['provenance'], PROVENANCE_DEVIS)
+        # ACAL2013 — le bloc du devis informe ; le CALCUL ne lit plus la ligne du devis.
+        self.assertEqual(reponse.data['materiel']['onduleur']['provenance'], 'moteur')  # mutant « ligne » : devis
         self.assertEqual(sorted(bloc), sorted(json.loads(CONTRAT.read_text(encoding='utf-8'))
                                               ['exemple']['devis_retenu']))
 
-    def test_option_avec_retenue_sert_l_onduleur_hybride(self):
-        calepinage = self._calepinage(devis=self._devis_deux_options('Avec batterie'))
+    def test_option_avec_du_moteur_sert_l_onduleur_hybride(self):
+        # ACAL2013 — l'option que la CONCEPTION retient, plus celle que le devis recommande.
+        self._conception(avec=12, option='avec', par_avec={'onduleur': {
+            'produit': self.hybride.pk, 'designation': self.hybride.nom, 'quantite': 1}})
+        calepinage = self._calepinage(devis=self._devis_deux_options('Sans batterie'))
         _c, materiel, _d, _doc = conception_du_calepinage(calepinage)
         self.assertEqual((materiel['produits']['onduleur'], materiel['provenances']['onduleur']),
-                         (self.hybride.pk, PROVENANCE_DEVIS))
+                         (self.hybride.pk, 'moteur'))
 
     def test_saisie_contraire_servie_et_ecart_nomme(self):
         calepinage = self._calepinage(
@@ -359,10 +504,11 @@ class MaterielRetenuParLeDevis(BaseMateriel):
             LigneDevis.objects.create(
                 devis=devis, produit=produit, designation=produit.nom, quantite=Decimal('1'),
                 prix_unitaire=Decimal('100'), type_ligne='produit', variante=variante)
+        self._conception(module=retenu)  # ACAL2013 — le module de la CONCEPTION
         calepinage = self._calepinage(devis=devis)
         _c, materiel, _d, _doc = conception_du_calepinage(calepinage)
         self.assertEqual((materiel['produits']['module'], materiel['provenances']['module']),
-                         (retenu.pk, PROVENANCE_DEVIS))
+                         (retenu.pk, 'moteur'))
         catalogue = self.api.get(f'{url_detail(calepinage.pk)}modules-disponibles/')
         self.assertEqual(catalogue.status_code, 200, catalogue.data)
         self.assertEqual(catalogue.data['modules'][0]['module']['produitId'], retenu.pk)
@@ -373,13 +519,15 @@ class MaterielRetenuParLeDevis(BaseMateriel):
         self.assertEqual((materiel['produits']['module'], materiel['provenances']['module']),
                          (essai.pk, PROVENANCE_EXPLICITE))
 
-    def test_acal1953_l_ecart_de_longueur_se_mesure_au_devis(self):
+    def test_acal1953_l_ecart_de_longueur_se_mesure_a_la_conception(self):
+        # ACAL2014 — la référence de l'écart est la longueur de la CONCEPTION (plus celle du devis : 9).
         from apps.calepinage.services.electrique import resultat_calepinage
 
+        self._conception(longueur=14)
         devis = self._devis(self.module_devis, self.onduleur)
-        devis.electrical_design = {'chaines': [{'nb_modules': 14}]}
+        devis.electrical_design = {'chaines': [{'nb_modules': 9}]}
         devis.save(update_fields=['electrical_design'])
-        # Onduleur DÉSIGNÉ : la longueur du devis n'est pas imposée au calcul, elle sert de référence.
+        # Onduleur DÉSIGNÉ : la longueur de la conception n'est pas imposée au calcul, elle sert de référence.
         calepinage = self._calepinage(devis=devis, entree={'onduleur_produit': self.onduleur.pk})
         servi = resultat_calepinage(calepinage)
         longueur = servi['longueur_chaine']
@@ -389,4 +537,4 @@ class MaterielRetenuParLeDevis(BaseMateriel):
         texte = json.dumps(servi, ensure_ascii=False)
         self.assertNotIn('au dossier (écart', texte)
         if calcul != 14:
-            self.assertIn('calculée %s contre 14 au devis' % calcul, texte)
+            self.assertIn('calculée %s contre 14 à la conception' % calcul, texte)

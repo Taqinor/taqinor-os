@@ -67,6 +67,24 @@ def _alerte(code, champ, message, interne=False):
     return alerte
 
 
+#: Le droit qui permet de saisir un prix ou un barème au catalogue (libellé du
+#: registre ``catalogue_prix_modifier``).
+DROIT_PRIX_CATALOGUE = "Modifier les prix du catalogue"
+
+
+def message_pose_au_tarif_toiture(installation_pompage):
+    """T4-V2-004 — la phrase vendeur quand la pose du pompage est chiffrée au
+    tarif toiture : ce qui se passe, où saisir le tarif, qui peut le faire."""
+    nom = (installation_pompage or {}).get("nom")
+    if nom:
+        return ("Le tarif de pose du pompage n'est pas saisi : la pose est "
+                "chiffrée au tarif toiture. À saisir dans Stock, article « %s » "
+                "(droit « %s »)." % (nom, DROIT_PRIX_CATALOGUE))
+    return ("Aucun article de pose du pompage au catalogue : la pose est "
+            "chiffrée au tarif toiture. À créer dans Stock (droit « %s »)."
+            % DROIT_PRIX_CATALOGUE)
+
+
 def _fr(nombre):
     texte = "%.1f" % nombre
     texte = texte.rstrip("0").rstrip(".")
@@ -206,10 +224,12 @@ def composer_kit(*, mode_pompe, pompe=None, variateur=None, panneau=None,
         elif installation_toiture is not None:
             ajouter(_ligne("installation", "", installation_toiture,
                            "Installation", 1), installation_toiture)
+            # T4-V2-004 — ni code article ni « alerte interne » : ce qui est
+            # chiffré, où le saisir et qui peut le faire.
             alertes.append(_alerte(
                 "bareme_installation_toiture", "kit.installation",
-                "Barème toiture appliqué à un pompage — renseigner INST-PMP "
-                "(alerte interne).", interne=True))
+                message_pose_au_tarif_toiture(installation_pompage),
+                interne=True))
         elif installation_pompage is not None:
             ajouter(_ligne("installation", "installation_pompage",
                            dict(installation_pompage, prix_connu=False),
@@ -263,12 +283,16 @@ def composer_kit(*, mode_pompe, pompe=None, variateur=None, panneau=None,
         protection = fiche_var.get("var_protection_marche_a_sec")
         sonde = any(o["cle"] == "sonde_niveau" and o["cochee"] for o in options)
         if variateur is not None and not sonde and not protection:
+            # T4-V2-010 — dire OÙ saisir l'information manquante.
             message = ("Ni sonde de niveau ni protection marche à sec du "
                        "variateur : la pompe tournerait à sec si le puits se "
                        "vide" if protection is False else
-                       "Ni sonde de niveau ni protection marche à sec connue : "
-                       "la fiche du variateur ne dit pas s'il protège de la "
-                       "marche à sec : à saisir")
+                       "Ni sonde de niveau cochée ni protection marche à sec "
+                       "connue : la fiche du variateur « %s » ne dit pas s'il "
+                       "protège la pompe de la marche à sec. À saisir dans "
+                       "Stock, fiche du variateur (protection marche à sec), "
+                       "ou cocher l'option « Sonde de niveau »."
+                       % (variateur.get("nom") or "retenu"))
             alertes.append(_alerte("marche_a_sec_non_protegee",
                                    "kit.options.sonde_niveau", message))
 

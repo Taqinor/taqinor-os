@@ -43,7 +43,8 @@ logger = logging.getLogger(__name__)
 
 __all__ = ['ETAT_A_JOUR', 'ETAT_EN_FILE', 'ETAT_IGNOREE', 'ETAT_INCOMPLETE',
            'ETAT_LANCEE', 'etat_simulation_automatique',
-           'lancer_simulation_automatique', 'simulation_automatique_en_cours']
+           'lancer_simulation_automatique', 'par_le_moteur', 'relancer_sur_designation',
+           'simulation_automatique_en_cours', 'soumettre_relance_du_moteur']
 
 ETAT_LANCEE = 'lancee'
 ETAT_A_JOUR = 'a_jour'
@@ -190,6 +191,14 @@ def _lancer(calepinage, user, rendu):
     if (empreinte and isinstance(entete, dict)
             and entete.get('hash_entree') == empreinte):
         return dict(rendu, etat=ETAT_A_JOUR)
+    if par_le_moteur(calepinage):
+        # ACAL2019 — niveau 15 : la pose enregistrée part par la FILE DU MOTEUR
+        # (ADEV139, dédupliquée par porteur), qui simule la pose (ADEV149) ; jamais la
+        # tâche directe.
+        from .layout import _emettre_pose_enregistree
+
+        _emettre_pose_enregistree(calepinage, getattr(calepinage, 'layout_hash', '') or '')
+        return dict(rendu, etat=ETAT_LANCEE)
 
     marqueur = cache_tenant.get(calepinage.company_id, cle)
     if (isinstance(marqueur, dict) and empreinte
@@ -214,3 +223,54 @@ def _lancer(calepinage, user, rendu):
                      {'hash_entree': empreinte, 'job_id': job.pk},
                      timeout=DUREE_MARQUEUR_S)
     return dict(rendu, etat=ETAT_LANCEE, job_id=job.pk)
+
+
+def par_le_moteur(calepinage):
+    """ACAL2019 (lié au niveau de règles 15, comme ADEV149) — vrai quand le bouton et
+    l'enregistrement de CE calepinage passent par le moteur unique : niveau courant ≥ 15
+    et calepinage hors appel d'offres (un dossier d'appel d'offres reste hors du moteur,
+    ``Relance.refus``). Faux ⇒ chemin d'aujourd'hui, octet pour octet."""
+    if getattr(calepinage, 'appel_offre_id', None):
+        return False
+    from .layout import moteur_simule_la_pose
+
+    return moteur_simule_la_pose()
+
+
+def soumettre_relance_du_moteur(calepinage, *, user, hash_entree):
+    """ACAL2019 — le bouton au niveau 15 : UN job du kind ``calepinage`` (même accusé
+    202, même suivi ``moteur/resultat/<job_id>/``) dont la tâche relance le moteur unique
+    en forçant (``tasks.relancer_moteur_calepinage``). Le marqueur « simulation en cours »
+    porte ce job : l'écran dit « Simulation en cours… » par le même chemin."""
+    from core import cache as cache_tenant
+    from core.jobs import submit
+
+    from ..tasks import KIND_CALEPINAGE, NATURE_SIMULATION, relancer_moteur_calepinage
+
+    job = submit(KIND_CALEPINAGE, relancer_moteur_calepinage, company=calepinage.company, user=user,
+                 calepinage_id=calepinage.pk, nature=NATURE_SIMULATION)
+    cache_tenant.set(calepinage.company_id, _cle_marqueur(calepinage),
+                     {'hash_entree': hash_entree, 'job_id': job.pk}, timeout=DUREE_MARQUEUR_S)
+    return job
+
+
+#: ACAL2013 — les désignations de l'étape Électrique qui sont des ENTRÉES imposées du moteur.
+DESIGNATIONS_IMPOSEES = ('module_produit', 'onduleur_produit')
+
+
+def relancer_sur_designation(calepinage, avant, apres):
+    """ACAL2013 (D-ACAL-97) — un module ou un onduleur désigné (ou retiré) À LA MAIN
+    relance le moteur unique de son porteur : ``pose_enregistree`` part après validation
+    (même chemin qu'une pose changée, file dédupliquée ADEV139) ; le moteur relit la
+    désignation comme entrée IMPOSÉE (``relancer`` → ``designations_du_calepinage``) et
+    range une nouvelle version avec sa phrase « pourquoi »."""
+    if not any((avant or {}).get(cle) != (apres or {}).get(cle) for cle in DESIGNATIONS_IMPOSEES):
+        return False
+    # Un calepinage sans identité rangée (pivot en mémoire, jamais enregistré) n'a ni porteur ni
+    # conception : rien à relancer.
+    if not getattr(calepinage, 'pk', None) or not getattr(calepinage, 'company_id', None):
+        return False
+    from .layout import _emettre_pose_enregistree
+
+    _emettre_pose_enregistree(calepinage, getattr(calepinage, 'layout_hash', '') or '')
+    return True

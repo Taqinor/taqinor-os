@@ -6,6 +6,7 @@
 // porte, nom par nom, ce que le corps lit du composant.
 import { roleLabel, tauxTvaOf, tauxTvaOuDefaut, ttcExactFromHt } from '../../../../features/ventes/solar'
 import { lignesDepuisKit } from '../../../../features/ventes/quote/etudeMarcheBloc'
+import { tailleAutoRemplirPompage } from '../../../../features/ventes/quote/reouverture'
 import { refusAutoRemplirPompage } from '../../../../features/ventes/etudePompagePreviewPur'
 import { SCENARIO_AVEC, SCENARIO_LES_DEUX } from '../../../../features/ventes/quote/sizingReducer'
 import ventesApi from '../../../../api/ventesApi'
@@ -171,10 +172,10 @@ export function useCompositionEcran(ctx) {
       // QJR99 — le dimensionnement POSE une taille calculée : la même
       // transition que la réouverture d'un devis (`REOUVERTURE`) la pose SANS
       // marquer le champ « touché » (ce n'est pas une frappe).
-      const nb = apercuPompage?.donnees?.champ?.nb_panneaux
-      if (Number.isFinite(Number(nb)) && Number(nb) > 0) {
-        dispatchSizing({ type: 'REOUVERTURE', devis: { panneaux: Number(nb) } })
-      }
+      // T4-V2-007 — et le wattage du panneau des LIGNES posées (une seule
+      // puissance de champ à l'écran, jamais le défaut 710 W).
+      const taille = tailleAutoRemplirPompage(apercuPompage?.donnees?.champ, generated, produits)
+      if (taille) dispatchSizing({ type: 'REOUVERTURE', devis: taille })
       setPompageAutoFilled(true)
       return
     }

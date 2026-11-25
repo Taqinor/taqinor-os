@@ -33,7 +33,7 @@ from apps.calepinage.views.sorties import inventaire_des_sorties
 from .acal_livrables_helpers import (
     LAYOUT_PLANCHE_SIMULABLE, LAYOUT_SIMULABLE, PivotSansBase,
     calepinage_simule_reel,
-    modifier_la_conception, patch_materiel,
+    modifier_la_conception, patch_materiel, texte_des_lignes_svg,
 )
 
 SITE = {'ville': 'Casablanca', 'adresse': '', 'source': 'roof_point'}
@@ -179,7 +179,7 @@ class PlanDePoseEtClasseurSurResultatServiTest(SimpleTestCase):
         # (l'électrique du servi vient de la conception, pas du calcul).
         jamais = PivotSansBase(copy.deepcopy(LAYOUT_PLANCHE_SIMULABLE))
         svg = _rendre_plan_pose_svg(jamais)
-        self.assertIn(MENTION_NON_CHAINE, svg)
+        self.assertIn(MENTION_NON_CHAINE, texte_des_lignes_svg(svg))  # T4-V1-006 — ligne coupée au bandeau
         self.assertNotIn('Chaînes : ', svg)
 
     def test_classeur_chaines_et_nomenclature_remplis(self):

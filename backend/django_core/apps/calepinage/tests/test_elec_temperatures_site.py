@@ -102,6 +102,37 @@ class TemperaturesSourceesTest(SimpleTestCase):
                             'source'])
 
 
+class UnSiteParCalepinageTest(SimpleTestCase):
+    """Relecture M2 — les températures (tensions à froid) se lisent au MÊME
+    site que la production (``site.point_du_site``) : une épingle au centre
+    par défaut de la carte n'est pas un site ; avant, le froid venait du
+    milieu du Maroc pendant que la production se calculait à Casablanca."""
+
+    def test_epingle_au_centre_par_defaut_lead_a_casablanca(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.calepinage.services.electrique import (
+            temperatures_pour_calepinage)
+
+        appels = []
+
+        def espion(lat, lon):
+            appels.append((lat, lon))
+            return _fournisseur_tmy(lat, lon)
+
+        calepinage = SimpleNamespace(roof_layout={
+            'pin': {'lat': 31.79, 'lng': -7.09}, 'zones': []})
+        geo = {'pin': None, 'outline': None, 'adresse': None,
+               'ville': 'Casablanca', 'source': None}
+        with mock.patch('apps.calepinage.selectors.contexte_geographique',
+                        return_value=geo):
+            temperatures = temperatures_pour_calepinage(
+                calepinage, fournisseur=espion)
+        self.assertEqual(appels, [(33.573, -7.59)])
+        self.assertEqual(temperatures.source, SOURCE_TMY)
+
+
 class SaisieRefuseeTest(SimpleTestCase):
     """Une saisie à moitié faite est refusée EN NOMMANT le champ."""
 

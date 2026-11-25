@@ -419,3 +419,53 @@ describe('T4-U3-005 — option sans prix lisible', () => {
     expect(option.getAttribute('title')).toMatch(/sans prix de vente/)
   })
 })
+
+// T4-V1-002 — « Parafoudre » tapé : la liste montrait les onduleurs dont la FICHE
+// cite un parafoudre (« Onduleurs réseau » en tête), le premier surligné, et
+// Entrée l'ajoutait au devis (78 000 DH en une touche). Entrée n'ajoute que
+// l'article surligné par la frappe (nom, marque, référence) ou par les flèches.
+describe('T4-V1-002 — Entrée n’ajoute jamais un article que la frappe n’a pas désigné', () => {
+  const ONDULEUR = {
+    id: 21, nom: 'Onduleur réseau Huawei 100kW Triphasé', prix_vente: 78000, tva: 20, is_archived: false,
+    description: 'Protection parafoudre DC intégrée, IP66.',
+  }
+  const PARAFOUDRE = { id: 22, nom: 'Parafoudre AC 40 kA', prix_vente: 450, tva: 20, is_archived: false }
+  const WIFI = { id: 23, nom: 'Clé Wifi monitoring', prix_vente: 300, tva: 20, is_archived: false }
+  const taper = (texte) => fireEvent.change(screen.getByRole('combobox'), { target: { value: texte } })
+  const entree = () => fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' })
+
+  it('seule la fiche cite le mot : rien de surligné, Entrée n’ajoute rien ; ↓ puis Entrée l’ajoute', () => {
+    const onChange = vi.fn()
+    renderPicker({ produits: [ONDULEUR, WIFI], value: '', onChange })
+    openPicker()
+    taper('Parafoudre')
+    expect(screen.getByText(/Cités seulement dans la fiche produit \(1\)/)).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /Huawei 100kW/ })).not.toHaveAttribute('data-cursor')
+    entree()
+    expect(onChange).not.toHaveBeenCalled()
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'ArrowDown' })
+    entree()
+    expect(onChange).toHaveBeenCalledWith('21')
+  })
+
+  it('un article dont le NOM correspond passe devant et c’est lui qu’Entrée ajoute', () => {
+    const onChange = vi.fn()
+    renderPicker({ produits: [ONDULEUR, PARAFOUDRE, WIFI], value: '', onChange })
+    openPicker()
+    taper('Parafoudre')
+    expect(screen.getByRole('option', { name: /Parafoudre AC/ })).toHaveAttribute('data-cursor', 'true')
+    entree()
+    expect(onChange).toHaveBeenCalledWith('22')
+  })
+
+  it('aucun article : « Aucun produit » et Entrée n’ajoute rien ; sans frappe, Entrée n’ajoute rien', () => {
+    const onChange = vi.fn()
+    renderPicker({ produits: [ONDULEUR, WIFI], value: '', onChange })
+    openPicker()
+    entree()
+    taper('zzz-inexistant')
+    expect(screen.getByText(/Aucun produit pour/)).toBeInTheDocument()
+    entree()
+    expect(onChange).not.toHaveBeenCalled()
+  })
+})

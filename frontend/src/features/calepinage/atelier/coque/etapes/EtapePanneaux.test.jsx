@@ -271,6 +271,40 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(document.body).not.toHaveTextContent('Aucune taille ne se tire des factures')
   })
 
+  /* Relecture E5 B1 — le lead n'a encore aucune conception : son premier calcul est en file (`calcul_en_cours`). L'étape le
+     dit (jamais « 0 panneau »), relit d'elle-même un nombre BORNÉ de fois, offre « Actualiser » ; après les relectures,
+     la phrase dit le geste (modifier la fiche du lead). */
+  it('B1 — conception en cours de calcul : dite, relue d’elle-même, « Actualiser » ; puis le geste', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      servir()
+      calepinageApi.calepinages.cibleFactures.mockResolvedValue(
+        reponseContrat('calepinage', 'calepinage_cible_factures', 'exemple_en_cours'))
+      rendre()
+      const note = await screen.findByText(/La conception du lead est en cours de calcul/)
+      expect(note).toHaveTextContent('la taille s’affichera ici dans quelques secondes')
+      expect(screen.getByTestId('cal-panneaux-option-facture')).toHaveTextContent('calcul en cours')
+      expect(screen.getByTestId('cal-panneaux-option-facture')).not.toHaveTextContent('0 panneau')
+      expect(document.body).not.toHaveTextContent('Aucune taille ne se tire des factures')
+      for (let i = 0; i < 5; i += 1) {
+        await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+      }
+      await screen.findByText(/n’est toujours pas calculée/)
+      const appels = calepinageApi.calepinages.cibleFactures.mock.calls.length
+      expect(appels).toBe(6)  // une lecture + cinq relectures, jamais plus (mutant « sans borne » : rouge)
+      await act(async () => { await vi.advanceTimersByTimeAsync(9000) })
+      expect(calepinageApi.calepinages.cibleFactures.mock.calls.length).toBe(appels)
+      expect(screen.getByRole('link', { name: 'Ouvrir la fiche du lead' })).toHaveAttribute('href', '/crm/leads/42')
+      calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: {
+        cible_factures: { panneaux: 9, kwc: 5.22, module_wc: 580 }, refus: '', calcul_en_cours: false } })
+      fireEvent.click(screen.getByTestId('cal-panneaux-actualiser-conception'))
+      await waitFor(() => expect(screen.getByTestId('cal-panneaux-option-facture')).toHaveTextContent('9 panneaux'))
+      expect(screen.queryByText(/en cours de calcul/)).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('Critique ACAL1517 — facture ABSENTE : le refus servi est dit ET le lien « Renseigner la facture du lead » reste là', async () => {
     servir()
     calepinageApi.calepinages.designContext.mockResolvedValue({

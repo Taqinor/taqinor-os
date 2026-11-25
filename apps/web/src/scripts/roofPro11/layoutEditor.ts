@@ -1595,7 +1595,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (modeLatticeBtn) modeLatticeBtn.setAttribute('aria-pressed', String(!on));
     if (modeFreeBtn) modeFreeBtn.setAttribute('aria-pressed', String(on));
     if (freeControlsEl) freeControlsEl.hidden = !on;
-    if (freeAddBtn) freeAddBtn.setAttribute('aria-pressed', String(freeAddArmed));
+    if (freeAddBtn) { freeAddBtn.setAttribute('aria-pressed', String(freeAddArmed)); freeAddBtn.textContent = freeAddArmed ? 'Cliquez sur le toit pour poser le panneau (Échap : annuler)' : '＋ Ajouter un panneau'; } // ACAL2032 — l'état armé se DIT sur le bouton
     // Les champs sont en CENTIMÈTRES (l'unité dans laquelle un poseur raisonne) ; on ne
     // réécrit pas la valeur pendant que l'utilisateur tape (sinon le curseur saute).
     if (freeSetbackEl && document.activeElement !== freeSetbackEl) {

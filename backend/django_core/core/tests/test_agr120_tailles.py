@@ -176,5 +176,44 @@ class BesoinIncouvrable(unittest.TestCase):
             self.assertLess(taille["couverture_mois_critique_pct"], 100)
 
 
+class PompeQuiNeDelivrePasLeDebit(unittest.TestCase):
+    """T4-V2-003 — HMT 80 m, débit souhaité 20 m³/h : l'OSP 30/8 (≈ 16 m³/h
+    à 80 m) ne « couvre » plus le besoin sous un champ de 4 à 8 fois sa
+    puissance ; elle est dite insuffisante, champ dans la bande."""
+
+    def _tailles(self):
+        from core.pompage.conception import heures_pic
+
+        heures = [heures_pic(p) for p in PROFILS]
+        besoin = [20.0 * h for h in heures]
+        choix = choisir_pompe(POMPES, hmt_m=80, debit_conception_m3h=20,
+                              alimentation="tri")
+        res = proposer_tailles(
+            choix_pompe=choix, besoin_m3_jour_mois=besoin, hmt_m=80,
+            alimentation="tri", variateurs=VARIATEURS, panneau=PANNEAU,
+            profils_horaires=PROFILS, kit=KIT)
+        return {t["cle"]: t for t in res["tailles"]}
+
+    def test_inferieure_bornee_et_dite_insuffisante(self):
+        tailles = self._tailles()
+        inf, reco = tailles["inferieure"], tailles["recommandee"]
+        self.assertEqual(inf["pompe_produit"], 314)
+        self.assertLessEqual(inf["nb_panneaux"],
+                             math.floor(1.5 * 7.5 * 1000 / 710))
+        self.assertLessEqual(inf["nb_panneaux"], reco["nb_panneaux"])
+        self.assertLess(inf["couverture_mois_critique_pct"], 100)
+        self.assertIn("ne délivre pas le débit demandé", inf["motif"])
+        self.assertIn("80 m", inf["motif"])
+        codes = [a["code"] for a in inf["champ"]["alertes"]]
+        self.assertIn("besoin_non_couvert_champ", codes)
+
+    def test_recommandee_et_superieure_inchangees(self):
+        tailles = self._tailles()
+        self.assertIsNone(tailles["recommandee"]["motif"])
+        self.assertIsNone(tailles["superieure"]["motif"])
+        self.assertGreaterEqual(
+            tailles["recommandee"]["couverture_mois_critique_pct"], 95)
+
+
 if __name__ == "__main__":
     unittest.main()

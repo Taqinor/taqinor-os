@@ -286,6 +286,9 @@ export default function useFactureGestes({ dispatch, confirm, lot, relire = () =
     setActionId(id)
     try {
       await dispatch(thunk(id)).unwrap()
+      // T4-V2-023 — la ligne se mettait à jour (réducteur) mais pas les tuiles :
+      // « Total dû » restait sans l'acompte émis que l'onglet comptait déjà.
+      relire()
       return true
     } catch (err) {
       // VX63 — plus de JSON brut à l'écran : message FR lisible extrait du

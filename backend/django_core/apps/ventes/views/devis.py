@@ -107,7 +107,29 @@ def _resume_devis_auto(devis):
     return resume
 
 
-def _reponse_devis_auto(devis, alertes):
+def _option_unique(devis, decide_par_la_requete=False):
+    """T4-V2-013/015 — un devis à UNE option (scénario mono déclaré) :
+    ``{batterie, souhait_fiche}`` = l'option porte-t-elle la batterie, et
+    est-ce le souhait « batterie » de la fiche du lead qui l'a décidé ;
+    ``None`` sur un devis à deux options (``options`` les nomme). Lecture pure.
+    Relecture m2 — ``souhait_fiche`` est faux quand la REQUÊTE a imposé
+    l'option (``scenario`` ou composition imposée), même si la fiche dit pareil."""
+    from ..utils.options import (
+        AVEC_BATTERIE, deux_options_declarees, option_du_scenario_mono,
+        scenario_declare)
+    if deux_options_declarees(devis):
+        return None
+    option = option_du_scenario_mono(scenario_declare(devis))
+    if not option:
+        return None
+    batterie = option == AVEC_BATTERIE
+    souhait = (getattr(devis.lead, 'batterie_souhaitee', '') or '').strip() if devis.lead_id else ''
+    return {'batterie': batterie,
+            'souhait_fiche': not decide_par_la_requete
+            and souhait == ('avec' if batterie else 'sans')}
+
+
+def _reponse_devis_auto(devis, alertes, decide_par_la_requete=False):
     """COP2-V3 — LA réponse de ``POST devis/auto/`` (création 201 ET rejeu
     d'idempotence 200) : la bannière (ALEA51) + la carte ``devis_cree`` de
     l'assistant — ``devis_id`` (alias de ``id``), ``lead_id`` et
@@ -140,6 +162,8 @@ def _reponse_devis_auto(devis, alertes):
         # 20/11/2026 (DEV-202611-0090) — chaque option avec SES chiffres :
         # ``total_ttc`` (gardé) ne dit pas à quelle option il correspond.
         'options': options_du_devis(devis),
+        # T4-V2-015 — l'option unique et sa raison (souhait de la fiche).
+        'option_unique': _option_unique(devis, decide_par_la_requete),
     }
 
 
@@ -680,6 +704,9 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
         etude_extra = nettoyer_json(corps.get('etude_params'))
         # COP2-V3 — les champs de composition IMPOSÉE présents (corps validé).
         imposes = imposition_du_corps(corps)
+        # Relecture m2 — l'option unique a-t-elle été décidée par la REQUÊTE
+        # (scénario demandé ou composition imposée) plutôt que par la fiche ?
+        par_requete = bool(imposes) or bool(str(corps.get('scenario') or '').strip())
         # AGR124 — le devis automatique AGRICOLE dépose ici ses alertes
         # (étude pompage + articles « prix à renseigner » omis), rendues à
         # l'écran (``alertes``) ; les autres marchés n'y écrivent rien.
@@ -716,7 +743,7 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
                 # COP2-V3 — le rejeu porte la MÊME forme que la création
                 # (composition, devis_id, lead_id compris).
                 return Response(
-                    _reponse_devis_auto(deja, trace.get('alertes')),
+                    _reponse_devis_auto(deja, trace.get('alertes'), par_requete),
                     status=status.HTTP_200_OK)
 
         cle_verrou = 'devis-auto:%s:%s' % (company.id, lead_obj.id)
@@ -769,7 +796,7 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
             cache.set(cle_rejeu, {'id': devis.id, 'alertes': alertes}, 120)
         except Exception:
             logger.warning('devis/auto : cache indisponible — étape ignorée (mode dégradé)', exc_info=True)
-        return Response(_reponse_devis_auto(devis, alertes),
+        return Response(_reponse_devis_auto(devis, alertes, par_requete),
                         status=status.HTTP_201_CREATED)
 
     # api-only: lue par l'assistant (action `ventes.devis.lignes`), aucun écran ne l'appelle.

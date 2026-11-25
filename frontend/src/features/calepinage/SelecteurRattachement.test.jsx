@@ -40,4 +40,27 @@ describe('SelecteurRattachement (ACAL181)', () => {
     expect(crmApi.searchClients).toHaveBeenCalled()
     expect(onChange.mock.calls[0][0]).toBe('9')
   })
+
+  it('T4-V1-011 — aucun client trouvé : la phrase dit ce que couvre la recherche et quoi faire', async () => {
+    crmApi.searchClients.mockResolvedValue({ data: { results: [] } })
+    render(<SelecteurRattachement genre="client" onChange={vi.fn()} />)
+    await userEvent.click(screen.getByRole('combobox'))
+    await userEvent.type(screen.getByPlaceholderText('Rechercher…'), 'sans adresse')
+    expect(await screen.findByText(
+      'Aucun de vos clients ne correspond (vos clients : ceux que vous avez créés ou liés à vos leads et devis). Vérifiez l’orthographe, ou créez le client dans CRM › Clients.',
+    )).toBeInTheDocument()
+  })
+
+  it('T4-V1-011 — la recherche d’entreprise rend aussi leads et fournisseurs : seuls les CLIENTS sont proposés', async () => {
+    crmApi.searchClients.mockResolvedValue({ data: { results: [
+      { source: 'lead', id: 41, nom: 'Atlas lead' },
+      { source: 'fournisseur', id: 7, nom: 'Atlas fournisseur' },
+      { source: 'client', id: 9, nom: 'Atlas client' },
+    ] } })
+    render(<SelecteurRattachement genre="client" onChange={vi.fn()} />)
+    await userEvent.click(screen.getByRole('combobox'))
+    expect(await screen.findByText('Atlas client')).toBeInTheDocument()
+    expect(screen.queryByText('Atlas lead')).toBeNull()
+    expect(screen.queryByText('Atlas fournisseur')).toBeNull()
+  })
 })

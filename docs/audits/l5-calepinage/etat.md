@@ -1347,7 +1347,7 @@ PAS ENCORE JOUÉ : balayages s à w ; rôle Technicien (403) ; agricole avec les
 maquettes B5 ; rejeux d'acceptation des tâches « code livré » (ACAL2027, 2028, 2034, 2035, 2036, 2038 et les tâches
 d'écran) ; mesure des lenteurs AU CALME (les relecteurs ont mesuré une pile saturée par les lanes).
 
-### Point du 25/11, 00 h 40 UTC (le plus récent — REPRENDRE ICI)
+### Point du 25/11, 00 h 40 UTC
 
 **Lot 1 — PR Taqinor/taqinor-os#1552 : fusionnée le 24/11, NON déployée** (le fondateur déploie).
 
@@ -1372,3 +1372,160 @@ et tests du moteur en docker (journal `lot2-sweep2.log` du scratchpad), budget d
   mots). Demande le fondateur : T4-V2-006, T4-V2-009, T4-V2-010 côté client (PDF agricole).
 - `lane/devis-2` et `lane/calepinage-2` : EN VOL.
 - Puis étape 6 (ACAL2018-2020, ADEV149-151) par la lane du moteur, sur la base du lot 3.
+
+### Point du 25/11, 01 h 35 UTC
+
+**Lot 2 — PR Taqinor/taqinor-os#1554 FUSIONNÉE le 25/11 à 00 h 57 UTC** (CI verte du premier coup : 39 jobs ; file de
+fusion). Lots 1 et 2 NON déployés : « mergé — à déployer par toi : `scripts/deploy-prod.ps1` » dit au fondateur.
+
+**Lot 3 — branche locale `dev-lot3`** (worktree de l'orchestrateur ; sauvegarde `origin/notes-l5-2511`, PAS de PR) =
+`main` (après #1554) + `lane/moteur-e5` + `lane/agri-2` + `lane/devis-2` + `lane/calepinage-2` + l'acceptation
+ACAL2027. **L'étape 5 n'est pas fusionnable en l'état** (relecture indépendante : `scratchpad/revue-e5.md` — B1 un lead
+sans conception rangée tombe sur un refus sans issue ; M1 deux productions sans nom à Résultats ; M2 « le devis envoyé
+porte le même chiffre » parfois faux ; M3 provenance « moteur » sans libellé ; M4 chaînes de la conception forcées sur
+une pose d'une autre taille ; m1-m5 ; tests affaiblis ; coût en requêtes).
+- EN VOL : `lane/moteur-e5-fix` (worktree isolé, base de test `r5`, consignes `scratchpad/msg-lane-e5-fix.md` +
+  ajouts par message : ACAL2025 en dernier, note « par ? », supposition de la facture d'été, accord de la ligne
+  d'historique) ; `lane/moteur-e6` (worktree isolé, base `s6` : identifiants de produit dans la conception, ACAL2016,
+  ACAL2018, ADEV149, ADEV150, ACAL2019, ACAL2020, ADEV151, suite d'ACAL2013, ACAL2026, ADEV154 ; ADEV155 reste GATED ;
+  fait vivant transmis : conception rangée sans chaînes, tension à froid, ratio ni retour sur investissement).
+- La garde `check_ancres_taches.py` est ROUGE sur `dev-lot3` tant qu'ACAL2012 et ACAL2025 ne sont pas cochées (symbole
+  `cible_de_l_option_retenue` supprimé par l'étape 5) : à cocher au pli de `lane/moteur-e5-fix`.
+- À cocher au pli (après relecture) : ACAL2012, 2013, 2014, 2015, 2017, 2025 ; puis l'étape 6.
+- Décisions prises par les lanes, à dire au fondateur (réversibles) : un Commercial voit le client qu'il a créé
+  (`core/scoping.py`) ; un ticket SAV exige une description ; « Enregistré à » = heure de la dernière version ;
+  un toit tracé à un zoom ≥ 17 vaut site localisé ; champ agricole borné à 1,5 fois la puissance de la pompe.
+- Demandent le fondateur (rien de codé) : T4-V2-006, T4-V2-009, T4-V2-010 côté client (PDF agricole) ; lead « avec
+  batterie » = une seule option ; « OPTION 2 » imprimé pour une option unique ; type de toiture « toit plat » et
+  orientation « Est-Ouest » de la fiche (T4-V2-022, trois options) ; auto-remplir « les deux » à la taille du moteur.
+
+**Test utilisateur — tour 3 EN COURS** sur l'instrument `l5t` (branche locale `instr-tour3` du worktree `l5t-instr` =
+`main` après #1554 + agri-2 + devis-2 + calepinage-2, SANS l'étape 5 ; migrations crm 0166, stock 0188-0189 jouées ;
+`LOGIN_RATE_LIMIT=120/minute` posé dans `l5t.env` — la limite de 5 connexions par minute et par adresse bloquait les
+scripts ; serveur à 1 700 Mo).
+- Couverture après deux tours : 188 lignes jouées sur 449 (`scratchpad/remplir_couverture.py`, à lancer avec
+  `--ecrire` à la fin). Listes des lignes jamais jouées par relecteur : `scratchpad/tour3/ids-X1..X5.txt`.
+- EN VOL : X1 (agricole i / j de bout en bout avec prix d'essai + fenêtre des PDF + onglet devis de la fiche) et X4
+  (rejeux des correctifs devis du tour 2 + balayage du générateur + brouillon retouché à l'écran puis facture changée).
+- À LANCER ENSUITE, deux à la fois : X2 (outil de dessin + étapes 1 à 3 + rejeux calepinage T4-U1-006, T4-U2-007,
+  T4-U4-007, T4-U4-013, ACAL2032, T4-V1-006, 010, 011, 012, T4-V2-020, 021), X5 (onglets « Avancé », coque, Résultats,
+  Documents, bouton devis), X3 (réglages, liste, création, routes), puis X6 (commercial et industriel f, g, h + chaîne
+  après le devis), X7 (WebKit bureau + tablette), X8 (téléphone, sombre, rôle Technicien), relecteur des maquettes B5.
+- Lenteurs des tours 1 et 2 remesurées au calme : 0,0 à 0,5 s par route (`T4/tour3/mesure-lenteur-orchestrateur.md`) ;
+  devis automatique 12 à 18 s : c'était la saturation de l'instrument.
+- Constats du tour 2 sans lane : T4-V1-001 (responsable « Non assigné »), T4-V2-022 (fondateur) ; écarts 3 à 11 de la
+  trace d'ACAL2027 (`docs/audits/acceptation/ACAL/traces/2026-11-25/`), dont 4, 5, 6, 8 sans lane.
+
+### Point du 25/11, 02 h 00 UTC
+
+**Charge du poste (16 Go).** Mesuré à 01 h 45 : 1 Go libre, 24 Go demandés. Règle tenue depuis : TROIS agents de fond
+au plus, dont DEUX à navigateur au plus, UN seul travail lourd à la fois (test docker, build du front, vitest), et
+aucun lancement tant que `scratchpad/ressources.ps1` ne dit pas GO. Fait : test front de fond arrêté, serveur
+d'aperçu oublié d'une lane (port 5262) arrêté, relecteur en lecture seule des trois lanes de correctifs MIS EN PAUSE
+(agent `ab340260a0e92250d` : à reprendre par un message « continue », il repart de sa transcription), lane
+`moteur-e5-fix` privée de build, d'aperçu et de navigateur (les écrans seront vus à l'acceptation).
+
+**`lane/moteur-e6` REVENUE et repliée dans `dev-lot3`** (8 commits) : identifiants de produit dans la conception,
+ACAL2016 (verdicts rangés par le moteur, « Prêt à envoyer ? » ne rejuge plus), ACAL2018 (façade de la pose), ADEV149
+et ADEV150 (au niveau de règles 15 seulement ; parité au niveau 14 : 0 clé), ADEV151 (`remplir_conceptions --ecarts`,
+n'écrit rien), clause restante d'ACAL2013. NON faits : ACAL2019 (arbitrage de l'orchestrateur : liée au niveau 15,
+comme ADEV149), ACAL2020, ACAL2026, ADEV154, le retour sur investissement de la conception (servi à la lecture depuis
+le devis de référence). `VERSION_MOTEUR` = `moteur-unique-2` : toute conception rangée devient périmée et se recalcule
+à la lecture. Plafond des imports ventes → calepinage relevé 22 → 23 (porte `porte_calepinage.py`) ; calepinage →
+ventes à 45 pour 44 (`devis_retenu.py`, étape 5) : confié à la lane `moteur-e5-fix`.
+- À LANCER dès qu'une place se libère, dans cet ordre : (1) relecture indépendante de l'étape 6 (consignes
+  `scratchpad/msg-revue-e6.md`, lecture seule) ; (2) lane `moteur-e6b` (consignes `scratchpad/msg-lane-e6b.md`, base de
+  test `t6`, avec les constats de la relecture en tête) ; (3) reprise du relecteur en pause ; (4) étape 7 en trois lanes
+  disjointes — fiche du lead (ALEA71, ACAL2021), écran devis (AGEN11, AGEN12 puis AGEN13), atelier (ADEV153, ACAL2022,
+  ACAL2023) ; (5) relecteurs X2, X5, X3 du tour 3 (consignes `scratchpad/tour3/msg-X*.md`).
+- Événements de CI reçus à 01 h 45 pour les PR #1552 et #1554 : ils visent d'anciennes têtes de PR DÉJÀ fusionnées —
+  rien à faire.
+
+**Ajout de 02 h 25 UTC.** `lane/moteur-e5-fix` REVENUE (13 commits) et repliée dans `dev-lot3` (un conflit de test,
+les deux côtés gardés). **PR brouillon Taqinor/taqinor-os#1555 OUVERTE sur `dev-lot3`** pour faire tourner la CI à la
+place du poste (Auto-fix allumé, pas de fusion automatique demandée). Rouges CONNUS de cette première passe : garde C20
+(`test_conception_lead.py` + 173 lignes : l'exception ne peut être portée que par une tâche COCHÉE par la PR — ADEV151
+dès que sa preuve en direct est jouée : `remplir_conceptions --ecarts` sur la société de démonstration de l'instrument,
+APRÈS la relecture de l'étape 6) ; instantané OpenAPI à régénérer en docker. Tâches des étapes 5 et 6 marquées « code
+livré, preuve en direct due » ; ACAL2025 : une clause restante (`conception_retenue_du_devis` encore lue par cinq
+appelants). Restes de la lane e5-fix : étape Électrique sans phrase « calcul en cours » (27 assertions à déplacer),
+atelier sans relecture automatique, budget de requêtes de `resultat/` à 22 pour 15, tests du front NON joués en local
+(la CI les joue), note « par ? » (source : `crm/serializers.py:129`, `ChatterTimeline.jsx:290`).
+EN VOL à 02 h 25 : relecture de l'étape 6 (lecture seule), X1 et X4. EN PAUSE : relecteur des trois lanes de correctifs.
+
+### Point du 25/11, 03 h 15 UTC (le plus récent — REPRENDRE ICI)
+
+**Lot 3 — PR BROUILLON Taqinor/taqinor-os#1555 (`dev-lot3`), tête poussée `580c0ab95b` : CI VERTE (38 jobs) au second
+passage.** Premier passage : 15 jobs rouges ramenés à huit causes, toutes corrigées (désignation sur un calepinage sans
+identité rangée — 83 erreurs ; « calcul en cours » pour un lead sans facture ; surface publique de `ventes.services` ;
+clé `siteLocalise` non classée ; garde du champ `retenue` ; golden de `ToitureDesign` ; zoom de la carte lu sans garde
+dans l'outil de toit ; instantané OpenAPI). **NE PAS FUSIONNER en l'état** : l'étape 6 y est avec ses deux défauts
+bloquants au niveau 14 (relecture `scratchpad/revue-e6.md`) ; la fusion attend le pli de `lane/moteur-e6b1`.
+Commits locaux NON poussés au-dessus de `580c0ab95b` : rapports et constats du tour 3, consolidation (docs seuls).
+- EN VOL (trois agents, la limite du poste) : `lane/moteur-e6b1` (worktree isolé, base de test `t6`, consignes
+  `scratchpad/msg-lane-e6b1.md` : B1, B2, m2, M5, M1, jamais de simulation synchrone, M3, M4 + m3, retour sur
+  investissement servi à la lecture, ACAL2026, ADEV154) ; `lane/moteur-e6b2` (base `u6`, consignes
+  `scratchpad/msg-lane-e6b2.md` : M2, m1, m4, ACAL2019 liée au niveau 15, ACAL2020) ; relecteur X2 du tour 3.
+- EN PAUSE : relecteur en lecture seule des lanes `agri-2` / `devis-2` / `calepinage-2` (agent `ab340260a0e92250d`,
+  à reprendre par message).
+- Garde C20 locale encore rouge (`test_conception_lead.py` + 173 lignes) alors que le job de la CI est vert : à régler
+  quand ADEV151 sera cochée (preuve en direct : `remplir_conceptions --ecarts` sur la société de démonstration de
+  l'instrument, après le pli de `moteur-e6b1` qui corrige la commande).
+
+**Test utilisateur, tour 3** — X1 et X4 TERMINÉS : 38 constats (2 S1 sur des PDF clients, 10 S2), tri et plan des cinq
+lanes de correctifs dans `T4/tour3/consolidation.md`, consignes communes `scratchpad/brief-lane-correctifs-tour3.md`.
+Faits mesurés : le pompage va de bout en bout avec un seul chiffre par valeur ; les 14 correctifs devis rejoués sont
+confirmés ; la liste des devis sert 52 à 82 Ko par devis et l'écran les charge tous (590 devis ≈ 48 Mo : un processus
+du serveur de la pile tué pour mémoire) — vrai défaut, priorité des lanes de correctifs. Erreurs 500 du devis
+automatique = instrument (connexion à la base perdue sous charge). À FAIRE ENSUITE, dans l'ordre des places libres :
+reprise du relecteur en pause ; lanes de correctifs 1 à 5 ; relecteurs X5, X3 ; étape 7 (après le pli de l'étape 6).
+
+**Ajout de 03 h 40 UTC.** `lane/moteur-e6b2` REVENUE et repliée (`ff796938ef`) : m1 (plus de numéro de produit dans une
+phrase), m4 (parité du lead 1742 restaurée, UNE marque « échec attendu » sur
+`test_acal_ecart_devis.py::test_lead_1742_ratio_juge_pour_la_pose_reelle_ok` — À RETIRER au pli de `moteur-e6b1`, dont
+le point M4 la fait passer), ACAL2019 (niveau 15 seulement), ACAL2020 (moitié calepinage). **M2 NON fait** (diagnostic) :
+le document du toit ne porte aucune marque de retouche à la main ; il faut que l'outil de toit écrive
+`zones[].geometry.poseManuelle` (= `hasManualEdits()` de `apps/web/src/lib/layoutVariability.ts`) à l'export, et que
+`pose_servie.a_la_main` la lise — ne concerne que le niveau 15 (dormant) : à confier à une lane avec l'étape 7.
+Relecteur en lecture seule des trois lanes de correctifs REPRIS. EN VOL : `moteur-e6b1`, X2, ce relecteur.
+
+**Ajout de 04 h 00 UTC — relecture indépendante des lanes `agri-2`, `devis-2`, `calepinage-2` (déjà dans `dev-lot3`).**
+`agri-2` : fusionnable (reste l'écart de spécification T4-V2-003 : la pompe supérieure garde moins de panneaux que la
+recommandée — non régressif). `devis-2` : APRÈS CORRECTION — un ancien ticket après-vente sans description ne peut plus
+être enregistré depuis son écran de modification (le formulaire renvoie `description: null` ; le changement de statut
+part AVANT l'enregistrement refusé). `calepinage-2` : APRÈS CORRECTION — le bandeau « site non localisé » contredit le
+serveur pour un calepinage de client sans lead ; les températures électriques lisent encore l'épingle brute (deux
+lieux pour un calepinage) ; une adresse « Route d'El Jadida, Casablanca » est résolue à El Jadida. Portée du client
+créé par un Commercial : aucune fuite (créateur forcé côté serveur, sous-arbre de la société). EN VOL pour tout cela :
+`lane/t3-relecture` (worktree isolé, base de test `f0`, consignes `scratchpad/tour3/msg-lane-F0-relecture.md`).
+**Le lot 3 ne fusionne qu'après le pli de `moteur-e6b1` ET de `t3-relecture`.** Lane suivante prête :
+`scratchpad/tour3/msg-lane-F1-liste.md` (liste des devis légère).
+
+**Ajout de 04 h 40 UTC.** `lane/moteur-e6b1` REVENUE et repliée (`d1f4077849`) : B1 et B2 corrigés (+ un troisième
+bloquant trouvé par la lane : TOUTE désignation à la main faisait refuser la conception), m2 (`source: 'impose'`), M5
+(un brouillon ne suit que si son contenu change), M1 + jamais de simulation dans une requête (niveau 15), M3 (liste
+`--ecarts` vraie, une transaction par lead, `--limite`, `--lead`), M4 + m3 (« Prêt à envoyer ? » juge la pose réelle
+par la règle unique), retour sur investissement servi à la lecture (`payback_devis`). NON faits : ACAL2026, ADEV154,
+les deux clés du moteur pour ACAL2020 (`forme_horaire_24`, entrée imposée `consommation`), M2 côté outil de toit
+(`poseManuelle`) → lane « E6c » à lancer. Doutes à porter au fondateur : une désignation à la main ramène la
+conception à UNE option ; un module désigné d'une autre puissance garde le même kWc, arrondi au panneau.
+- Rejeu docker en cours des modules touchés par les deux lanes (journal `scratchpad/lot3-sweep-e6b.log`) ; la marque
+  « échec attendu » de `test_lead_1742_ratio_juge_pour_la_pose_reelle_ok` est à retirer si le test passe.
+- EN VOL : `lane/moteur-e7b` (étape 7, écran devis : ADEV152 à vérifier, AGEN11, AGEN12, AGEN13 ; consignes
+  `scratchpad/msg-lane-e7b.md`, base de test `e7b`), `lane/t3-relecture`, relecteur X2.
+- FILE D'ATTENTE (trois agents au plus) : E7a fiche du lead (ALEA71, ACAL2021), E7c atelier (ADEV153, ACAL2022,
+  ACAL2023), E6c, lanes de correctifs du tour 3 (1 liste des devis, 2 éditeur — APRÈS e7b, mêmes fichiers —, 3, 4, 5),
+  relecteurs X5, X3, X6 à X8, relecteur des maquettes.
+
+**Ajout de 05 h 35 UTC.** `lane/t3-relecture` REVENUE (5 corrections) et repliée ; marque « échec attendu » retirée ;
+garde C20 verte (banc du test ADEV151 extrait, exception motivée sur ADEV151) ; contrats et instantané OpenAPI à jour.
+**`dev-lot3` POUSSÉE (troisième passage de CI de la PR brouillon #1555).** AVANT de la passer « prête » et de demander
+la fusion : mettre l'instrument à jour sur `dev-lot3` (worktree `l5t-instr` : `git checkout -B instr-lot3 dev-lot3`,
+build du front avec `VITE_PUBLIC_SITE_URL=http://site-public.invalid`, `bash l5t/lancer.sh serveur`) et REGARDER les
+écrans de l'étape 5 que personne n'a vus (étape Panneaux « calcul en cours », Résultats avec la conception, provenance
+« de la conception » à l'étape Électrique, bandeau du site d'un client sans lead, modification d'un ancien ticket
+après-vente) = acceptation ACAL2028.
+Tour 3 : X2 TERMINÉ (11 constats, 10 rejeux confirmés) — total 49 constats, six lanes de correctifs décrites dans
+`T4/tour3/consolidation.md`. EN VOL : `lane/moteur-e7b`, `lane/moteur-e6c` (consignes `scratchpad/msg-lane-e6c.md`,
+base de test `e6c`). À lancer aux places libres : relecteur X5 puis X3 (sur l'instrument mis à jour), lane F1 (liste
+des devis, `scratchpad/tour3/msg-lane-F1-liste.md`), E7a, E7c, lanes de correctifs 2 à 6.

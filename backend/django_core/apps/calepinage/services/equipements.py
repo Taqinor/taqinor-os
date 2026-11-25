@@ -135,6 +135,145 @@ def conception_retenue_par_id(devis_id, company):
     return conception_retenue_du_devis_id(devis_id, company)
 
 
+def conception_ou_calcul(company, lead_id=None, *, calepinage_id=None):
+    """Relecture E5 — LA porte de lecture de la conception (``apps.ventes.services.
+    conception_ou_calcul``), passée par ce module, déjà importateur de ventes : la
+    conception est lue par ``devis_retenu`` sans un importateur de plus (cliquet
+    ``test_imports_croises_ventes``)."""
+    from apps.ventes.services import conception_ou_calcul as porte
+
+    return porte(company, lead_id, calepinage_id=calepinage_id)
+
+
+def motif_facture_absente():
+    """Le motif ``facture_absente`` de ventes (question de taille, ACAL922), par la même porte."""
+    from apps.ventes.services import MOTIF_FACTURE_ABSENTE
+
+    return MOTIF_FACTURE_ABSENTE
+
+
+def devis_et_ecart(devis_id, retenue, company_id):
+    """``(devis, ecart_devis)`` du devis lié de ``company_id`` (``get_devis_by_pk`` / ``apps.ventes.
+    selectors.ecart_devis``, conception retenue déjà lue en ``retenue``) ; ``(None, [])`` hors société."""
+    from apps.ventes.selectors import ecart_devis
+
+    devis = get_devis_by_pk(devis_id)
+    if devis is None or devis.company_id != company_id:
+        return None, []
+    # Mot-clé passé par dictionnaire : la garde de surface du champ ``CalepinageVariante.retenue``
+    # (tests/test_variantes.py) lit tout mot-clé ``retenue=`` d'un appel hors queryset comme une écriture.
+    return devis, ecart_devis(devis, **{'retenue': retenue})
+
+
+#: ACAL2013 — la provenance d'un matériel servi par la conception du moteur unique.
+PROVENANCE_MOTEUR = 'moteur'
+
+
+#: Relecture E5 m4 — rôle du calepinage → (clé de ``valeurs``, famille de fiche, libellé dit).
+_PRODUITS_DE_LA_CONCEPTION = (('module', 'module_produit', 'module', 'le module'),
+                              ('onduleur', 'onduleur_produit', 'onduleur', "l'onduleur"))
+
+
+def _produit_actif(company, identifiant, type_fiche):
+    """``identifiant`` s'il désigne un produit ACTIF de ``company`` de la famille
+    ``type_fiche`` (jamais un produit archivé, d'une autre société ou d'une autre
+    famille), sinon ``None``."""
+    from apps.stock.selectors import produits_par_type_fiche_qs
+
+    if company is None or not isinstance(identifiant, int) or isinstance(identifiant, bool):
+        return None
+    return identifiant if produits_par_type_fiche_qs(company, type_fiche).filter(pk=identifiant).exists() else None
+
+
+def _designation_gardee(valeurs, role, identifiant):
+    """Revue E6 m1 — la désignation que la conception a GARDÉE pour ce produit (``module``,
+    ou la ligne ``onduleurs`` qui le porte), ``''`` sans elle : jamais l'identifiant."""
+    if role == 'module':
+        nom = (valeurs.get('module') or {}).get('valeur')
+        return nom.strip() if isinstance(nom, str) else ''
+    for ligne in (valeurs.get('onduleurs') or {}).get('valeur') or []:
+        nom = ligne.get('designation') if isinstance(ligne, dict) and ligne.get('produit') == identifiant else None
+        if isinstance(nom, str):
+            return nom.strip()
+    return ''
+
+
+def materiel_de_la_conception(calepinage):
+    """ACAL2013 (D-ACAL-97) — le matériel que la conception COURANTE retient (option du
+    moteur), DÉFAUT du calcul électrique quand rien n'est désigné : ``{produits: {module?,
+    onduleur?}, nombre_onduleurs, longueur, avertissements}`` lus sur ``valeurs`` (contrat
+    ``conception_lead.json`` : ``module_produit``, ``onduleur_produit``, ``nombre_onduleurs``,
+    ``chaines``) ; ``{}`` sans conception complète. Le devis lié n'est pas lu.
+
+    Relecture E5 m4 — le produit est relu par son IDENTIFIANT, borné à la société et
+    jamais archivé ; un produit disparu ou archivé n'est pas servi et
+    ``avertissements`` le DIT en français (le calcul retombe alors sur le module posé)."""
+    from .devis_retenu import conception_du_calepinage
+
+    conception = conception_du_calepinage(calepinage) if calepinage is not None else None
+    if not conception or conception.get('etat') != 'complet':
+        return {}
+    valeurs = (conception.get('valeurs') or {}).get(conception.get('option_retenue')) or {}
+    company = getattr(calepinage, 'company', None)
+    produits, avertissements = {}, []
+    for role, cle, type_fiche, libelle in _PRODUITS_DE_LA_CONCEPTION:
+        identifiant = (valeurs.get(cle) or {}).get('valeur')
+        if identifiant in (None, ''):
+            continue
+        if _produit_actif(company, identifiant, type_fiche) is None:
+            designation = _designation_gardee(valeurs, role, identifiant)
+            avertissements.append(
+                "%s de la conception%s est introuvable ou archivé dans le catalogue — "
+                "désignez-le dans l'onglet Matériel électrique%s" % (
+                    libelle[0].upper() + libelle[1:], ' (%s)' % designation if designation else '',
+                    ' (le module posé sert en attendant)' if role == 'module' else ''))
+            continue
+        produits[role] = identifiant
+    chaines = (valeurs.get('chaines') or {}).get('valeur') or {}
+    return {'produits': produits, 'nombre_onduleurs': (valeurs.get('nombre_onduleurs') or {}).get('valeur') or None,
+            'longueur': chaines.get('longueur') or None, 'avertissements': avertissements}
+
+
+def _panneaux_de_la_conception(calepinage):
+    """Le nombre de panneaux de l'option que la conception courante retient, ou ``None``."""
+    from .devis_retenu import conception_du_calepinage
+
+    conception = conception_du_calepinage(calepinage) or {}
+    valeurs = (conception.get('valeurs') or {}).get(conception.get('option_retenue')) or {}
+    return (valeurs.get('nb_panneaux') or {}).get('valeur')
+
+
+def _panneaux_poses(calepinage, document):
+    from .mesures import mesures_du_document
+
+    document = document if document is not None else getattr(calepinage, 'roof_layout', None)
+    return mesures_du_document(document)['modules'] if isinstance(document, dict) and document else None
+
+
+def options_de_la_conception(options, calepinage, donnees, document=None):
+    """ACAL2013 — les options du noyau complétées par la CONCEPTION : sans onduleur
+    désigné, le nombre d'onduleurs et la longueur de chaîne sont ceux de la conception
+    courante. Une désignation d'onduleur SAISIE garde la main ; une option saisie n'est
+    jamais remplacée. Relecture E5 M4 — imposés SEULEMENT quand la pose (``document``,
+    sinon celui du calepinage) compte autant de panneaux que la conception : une pose
+    d'une autre taille garde ses chaînes calculées (la longueur de la conception reste
+    la référence de l'écart, ``suppositions.reference_de_longueur``)."""
+    if (donnees or {}).get('onduleur_produit') not in (None, ''):
+        return options
+    materiel = materiel_de_la_conception(calepinage)
+    if not (materiel.get('produits') or {}).get('onduleur'):
+        return options
+    panneaux = _panneaux_de_la_conception(calepinage)
+    if panneaux is None or _panneaux_poses(calepinage, document) != panneaux:
+        return options
+    options = dict(options)
+    if 'nombre_onduleurs' not in options and (materiel.get('nombre_onduleurs') or 0) >= 1:
+        options['nombre_onduleurs'] = materiel['nombre_onduleurs']
+    if 'longueur_forcee' not in options and materiel.get('longueur'):
+        options['longueur_forcee'] = materiel['longueur']
+    return options
+
+
 def borne_dc_ac_devis(mode_installation=None):
     """ACAL1954 — la borne DC/AC du MOTEUR DE DEVIS (porte de lecture
     ``apps.ventes.selectors_calepinage.borne_dc_ac_du_moteur_devis``)."""

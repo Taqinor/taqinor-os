@@ -35,7 +35,17 @@ def _materiel(resultat, option):
     panneaux = [li for li, c in classes if c == 'panneau']
     onduleurs = [{'produit': li.produit_id, 'designation': li.designation, 'quantite': int(li.quantite)}
                  for li, c in classes if c.startswith('onduleur')]
-    return panneaux, panneaux_et_watt_lu(panneaux), onduleurs
+    batteries = [li.produit_id for li, c in classes if c == 'batterie' and li.produit_id]
+    return panneaux, panneaux_et_watt_lu(panneaux), onduleurs, batteries
+
+
+def _produits(panneaux, onduleurs, batteries):
+    """Relecture E5 m4 — l'IDENTIFIANT produit du module, de l'onduleur et de la
+    batterie de l'option (``None`` sans ligne) : le calepinage relit le produit par
+    lui, jamais par son nom."""
+    return {'module_produit': _v(panneaux[0].produit_id if panneaux else None),
+            'onduleur_produit': _v(onduleurs[0]['produit'] if onduleurs else None),
+            'batterie_produit': _v(batteries[0] if batteries else None)}
 
 
 def _electrique(design, onduleurs):
@@ -71,9 +81,26 @@ def _bilan(resultat, option):
             (etude.get('profil_charge') or {}).get('archetype'), 'moteur')
 
 
-def valeurs(resultat, option, investissement, *, froid):
+def _sur_la_pose(resultat, option):
+    """Relecture E6 M1 — l'étude de ``option`` a-t-elle tourné sur la base de production de
+    LA pose (``horaire/productible_pose.SOURCE_POSE``, publiée par le bloc) ?"""
+    from apps.ventes.horaire.productible_pose import SOURCE_POSE
+
+    params = resultat.etude_params
+    if resultat.marche == 'residentiel':
+        bloc = (params.get('etude_horaire_sans') if option == 'sans' else None) or params.get('etude_horaire') or {}
+        return (bloc.get('base_production') or {}).get('source') == SOURCE_POSE
+    etude = params.get('etude_ci') or {}
+    source = (etude.get('option_avec') or {}) if option == 'avec' else etude
+    return any(isinstance(h, dict) and h.get('source') == SOURCE_POSE
+               for h in (source.get('hypotheses') or etude.get('hypotheses') or []))
+
+
+def valeurs(resultat, option, investissement, *, froid, company=None):
     """La table §2 de ``option`` ; ``froid`` : le froid du site lu UNE fois par
-    ``calculer_conception`` (``compatibilites.froid_du_lead``)."""
+    ``calculer_conception`` (``compatibilites.froid_du_lead``). ACAL2016 :
+    ``verdicts`` = les verdicts électriques de l'option, jugés UNE fois ici par la
+    règle existante (``porte_calepinage.verdicts_electriques``) et relus partout."""
     if resultat.marche == 'agricole':
         champ, params = resultat.etude_params.get('champ') or {}, resultat.etude_params
         return {'nb_panneaux': _v(champ.get('nb_panneaux'), 'panneaux'), 'puissance_kwc': _v(champ.get('kwc'), 'kWc'),
@@ -82,22 +109,77 @@ def valeurs(resultat, option, investissement, *, froid):
                 'm3_jour': _v(params.get('m3_jour'), 'm³/jour')}
     from apps.ventes.quote_engine.lignes_classement import kwc_des_lignes
     from apps.ventes.quote_engine.pricing import payback_publiable
-    panneaux, (nb, watt), onduleurs = _materiel(resultat, option)
+    panneaux, (nb, watt), onduleurs, batteries = _materiel(resultat, option)
     chaines, tension, ratio = _electrique(resultat.conception_electrique, onduleurs)
     production, mensuelle, autoconso, couverture, economies, conso, forme, source_forme = _bilan(resultat, option)
+    source_production = 'pose' if _sur_la_pose(resultat, option) else 'moteur'
     payback = (payback_publiable(investissement, economies, stockage=option == 'avec')['payback_years']
                if investissement is not None else None)
     devis = resultat.lignes[0].devis if resultat.lignes else None
+    kwc = kwc_des_lignes(panneaux, nb, watt, devis)
     return {
-        'nb_panneaux': _v(nb, 'panneaux'), 'puissance_kwc': _v(kwc_des_lignes(panneaux, nb, watt, devis), 'kWc'),
+        'nb_panneaux': _v(nb, 'panneaux'), 'puissance_kwc': _v(kwc, 'kWc'),
         'module': _v(panneaux[0].designation if panneaux else None), 'onduleurs': _v(onduleurs),
         'nombre_onduleurs': _v(sum(o['quantite'] for o in onduleurs), 'onduleurs'),
         'chaines': _v(chaines, 'panneaux'), 'tension_froid': _v(tension, 'V'), 'ratio_dc_ac': _v(ratio),
         'temperature_froid': _v(getattr(froid, 'valeur_c', None), '°C',
                                 'moteur' if getattr(froid, 'source', None) else 'defaut'),
-        'production_annuelle': _v(production, 'kWh/an'), 'production_mensuelle': _v(mensuelle or None, 'kWh'),
+        'production_annuelle': _v(production, 'kWh/an', source_production),
+        'production_mensuelle': _v(mensuelle or None, 'kWh', source_production),
         'autoconsommation': _v(autoconso, 'ratio'), 'couverture': _v(couverture, 'ratio'),
         'economies_annuelles': _v(economies, 'MAD/an'),
         'payback': _v(payback, 'ans', 'devis' if investissement is not None else 'moteur'),
         'consommation_annuelle': _v(conso, 'kWh/an'), 'forme_horaire': _v(forme, None, source_forme),
+        **_produits(panneaux, onduleurs, batteries),
+        'verdicts': _v(_verdicts(resultat, onduleurs, kwc, chaines, company)),
     }
+
+
+#: Relecture E6 m2 — champ imposé → (clé ``*_produit`` comparée, valeurs dites ``impose``,
+#: entrée nommée dans ``entrees_utilisees``, clé de la valeur qui porte le NOM du produit).
+_IMPOSES = (('panneau_produit_id', 'module_produit', ('module', 'module_produit'), 'module_designe', 'module'),
+            ('onduleur_produit_id', 'onduleur_produit', ('onduleurs', 'onduleur_produit'),
+             'onduleur_designe', 'onduleurs'))
+
+
+def dire_l_impose(resultat, provenance, *, pose_a_la_main=False):
+    """Relecture E6 m2 — chaque valeur posée par un humain (``resultat.imposes_retenus`` :
+    matériel désigné, compte d'une pose ajustée à la main) porte la source ``impose`` sur
+    les options qui la portent, et l'entrée figure dans ``entrees_utilisees`` (le produit
+    par son NOM ; ``provenance`` : ``calepinage`` ou ``saisie`` pour l'aperçu)."""
+    imposes = resultat.imposes_retenus or {}
+    for cle, produit, cles, entree, nom in _IMPOSES:
+        try:
+            pk = int(imposes.get(cle))
+        except (TypeError, ValueError):
+            continue
+        portees = [v for v in resultat.valeurs.values() if (v.get(produit) or {}).get('valeur') == pk]
+        for v in portees:
+            for c in cles:
+                v[c]['source'] = 'impose'
+        if portees:
+            lu = portees[0][nom]['valeur']
+            resultat.entrees_utilisees[entree] = {
+                'valeur': (lu[0].get('designation') if isinstance(lu, list) and lu else lu), 'source': provenance}
+    nombre = imposes.get('nb_panneaux') if pose_a_la_main else None
+    if nombre:
+        for v in resultat.valeurs.values():
+            if (v.get('nb_panneaux') or {}).get('valeur') == nombre:
+                for c in ('nb_panneaux', 'puissance_kwc'):
+                    v[c]['source'] = 'impose'
+        resultat.entrees_utilisees['pose'] = {'valeur': nombre, 'source': provenance}
+
+
+def _verdicts(resultat, onduleurs, kwc, chaines, company):
+    """ACAL2016 — jugés pour l'option dont la conception électrique porte l'onduleur ;
+    sinon les trois verdicts valent ``None`` et ``non_calcule`` DIT pourquoi (jamais un
+    « conforme » muet) : la fiche à compléter, ou l'option que la conception sert."""
+    from apps.ventes.conception.porte_calepinage import verdicts_electriques
+    verdicts = verdicts_electriques(company, resultat.conception_electrique, onduleurs, kwc) if chaines else None
+    if verdicts is not None:
+        return dict(verdicts, non_calcule=None)
+    if resultat.motifs_electriques or not resultat.conception_electrique:
+        motif = ' ; '.join(resultat.motifs_electriques) or 'Conception électrique non calculée.'
+    else:
+        motif = "Conception électrique calculée pour l'autre option seulement (onduleur différent)."
+    return {'ratio_dc_ac': None, 'capacite_hybride': None, 'longueur_chaine': None, 'non_calcule': motif}

@@ -59,6 +59,7 @@ class XSAV5WorkingDaysSlaTest(TestCase):
 
         # Vendredi 2024-05-03 + 3 jours calendaires = lundi 2024-05-06.
         resp = self.api.post('/api/django/sav/tickets/', {
+            'description': 'Panne signalée',
             'client': self.client_obj.id, 'installation': self.inst.id,
             'date_ouverture': '2024-05-03',
         }, format='json')
@@ -76,6 +77,7 @@ class XSAV5WorkingDaysSlaTest(TestCase):
         # Vendredi 2024-05-03 + 3 jours OUVRÉS = mercredi 2024-05-08
         # (lun 06, mar 07, mer 08 — sam/dim sautés).
         resp = self.api.post('/api/django/sav/tickets/', {
+            'description': 'Panne signalée',
             'client': self.client_obj.id, 'installation': self.inst.id,
             'date_ouverture': '2024-05-03',
         }, format='json')

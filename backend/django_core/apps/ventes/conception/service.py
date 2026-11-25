@@ -53,7 +53,8 @@ class Relance:
     refus: object = None
 
 
-def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None, calepinage_id=None):
+def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None, calepinage_id=None,
+             imposes=None):
     """La conception du porteur (de ``company`` seulement) recalculée et, si
     son empreinte a changé (ou ``forcer``), rangée en version suivante.
 
@@ -67,7 +68,13 @@ def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None
     l'utilisateur (``None`` = tâche du moteur) ; ``toit`` : la pose servie (son
     ``empreinte`` et son ``plafond_panneaux`` entrent dans le calcul). Une
     empreinte égale n'appelle même pas le calcul (``Relance.resultat`` vaut
-    alors ``None``)."""
+    alors ``None``).
+
+    ``imposes`` (ADEV135, forme ``composition_imposee.CHAMPS_IMPOSES``) : la
+    composition IMPOSÉE par un humain ; absente, celle que le calepinage
+    ``calepinage_id`` porte (ACAL2013 : module / onduleur désignés à la main à
+    l'étape Électrique, ``porte_calepinage.designations_du_calepinage``) — elle
+    entre dans l'empreinte, donc une désignation changée range une version."""
     from django.utils import timezone
 
     from apps.ventes.conception.entrees import entrees_pour
@@ -95,11 +102,21 @@ def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None
     if lead_efface(lead):  # relecture E3 B1 (loi 09-08) : rien calculé, rangé ni émis
         return Relance(None, False, None, dict(REFUS_LEAD_EFFACE))
     courante = _courante(ConceptionLead, company, porteur)
-    with reglages_lus_sans_creer(company):
+    souple = False
+    if imposes is None and calepinage_id:
+        from apps.ventes.conception.porte_calepinage import designations_du_calepinage
+        # Relecture E6 B2 : désignations du calepinage = imposition SOUPLE (jamais un refus).
+        imposes = designations_du_calepinage(company, calepinage_id) or None
+        souple = imposes is not None
+    from apps.ventes.conception.porte_calepinage import contexte_de_la_relance
+    # Relecture E6 — jamais de simulation de pose dans une requête (la tâche et la commande
+    # posent ``contexte_de_pose(simuler=True)``) ; une requête la met en file au nom de l'auteur.
+    with reglages_lus_sans_creer(company), contexte_de_la_relance(auteur):
         entrees = entrees_pour(lead, company, toit=toit)
-        if courante is not None and courante.empreinte == empreinte_conception(entrees) and not forcer:
+        if courante is not None and courante.empreinte == empreinte_conception(entrees, imposes) and not forcer:
             return Relance(courante, False, None)
-        resultat = calculer_conception(lead, company, entrees=entrees, toit=toit)
+        resultat = calculer_conception(lead, company, entrees=entrees, toit=toit, calepinage_id=calepinage_id,
+                                       imposes=imposes, **({'souple': True} if souple else {}))
     origine, champs = _pourquoi(courante, entrees, origine, champs)
     maintenant = timezone.now()
     version = ConceptionLead.ranger(
@@ -295,6 +312,39 @@ def _annoncer_apres_validation(version):
         # Relecture E4 M2 — ADEV147 après CHAQUE écriture, en tâche (jamais dans la requête).
         from apps.ventes.conception.receivers import mettre_suivi_en_file
         transaction.on_commit(lambda: mettre_suivi_en_file(version.company_id, version.lead_id))
+
+
+# ── Relecture E5 B1 — la porte de LECTURE du calepinage (jamais une impasse) ─
+
+def conception_ou_calcul(company, lead_id=None, *, calepinage_id=None):
+    """``(conception, en_cours)`` du porteur : la version COURANTE à la forme du
+    contrat (``selectors_conception.conception_courante``, qui reste une
+    lecture) ; sans version rangée d'un LEAD, UNE relance dédupliquée part en
+    file (``receivers.mettre_en_file``, le mécanisme du filet ADEV140 — jamais
+    une seconde file, jamais un calcul dans la requête ; origine
+    ``remplissage`` : « premier calcul ») et ``en_cours`` dit qu'elle est partie
+    ou déjà en file. Un calepinage SANS lead n'en met aucune : le moteur le
+    refuserait faute de lieu (``moteur.lead_du_calepinage`` ne porte ni ville
+    ni GPS). Lue UNE fois par requête (mémo ``core.request_cache``), sans le suivi des
+    devis (``ecart_devis`` / brouillons servis vides : le calepinage sert son propre écart)."""
+    from core import request_cache
+
+    if company is None or not getattr(company, 'pk', None):
+        return None, False
+    cle = ('ventes.conception.courante', company.pk, lead_id, None if lead_id else calepinage_id)
+    return request_cache.memoize(cle, lambda: _conception_ou_calcul(company, lead_id, calepinage_id))
+
+
+def _conception_ou_calcul(company, lead_id, calepinage_id):
+    from apps.ventes.conception.receivers import mettre_en_file
+    from apps.ventes.selectors_conception import conception_courante
+
+    # Le calepinage sert lui-même l'écart du devis qu'il montre (``devis_retenu.bloc_conception``).
+    conception = conception_courante(company, lead_id, calepinage_id=calepinage_id, suivi_des_devis=False)
+    if conception is not None or not lead_id:
+        return conception, False
+    issue = mettre_en_file(company.pk, lead_id=lead_id, origine='remplissage', champs=[])
+    return None, issue in ('lancee', 'deja_en_file')
 
 
 # ── La phrase « pourquoi » (lue telle quelle au chatter du lead) ─────────────

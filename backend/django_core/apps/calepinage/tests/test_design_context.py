@@ -108,19 +108,57 @@ class ContexteConceptionTest(BaseApiCalepinage):
         self.assertEqual(self.api.get(f'{url_detail(self.etranger.pk)}cible-factures/').status_code, 404)
         self.assertNotIn('cible_factures', self._contexte(self.nu))
 
-    def test_acal1500_lead_industriel_sert_le_refus_nomme(self):
-        """ACAL1500 — un lead commercial avec facture : ``cible_factures`` nul
-        ET ``refus`` = la phrase de ``cible_depuis_lead`` (celle de l'exemple) ;
-        un calepinage sans lead sert ``refus`` vide. Mutant : ``refus`` vide ⇒ échec."""
-        lead = Lead.objects.create(company=self.company, nom='Boulangerie 1500',
-                                   type_installation='commercial', facture_hiver=1200)
-        ci = Calepinage.objects.create(company=self.company, lead_id=lead.pk,
-                                       titre='Boulangerie')
-        reponse = self.api.get(f'{url_detail(ci.pk)}cible-factures/')
-        self.assertEqual(reponse.status_code, 200, reponse.data)
-        self.assertEqual(reponse.data, CONTRAT_CIBLE['exemple_refus'])
+    def test_acal1500_lead_commercial_cible_de_sa_conception_calculee(self):
+        """ACAL1500 réaligné par la relecture E5 B1 — un lead commercial AVEC
+        facture et sans conception rangée : la première lecture met UN calcul en
+        file et sert EXACTEMENT ``exemple_en_cours`` du contrat (jamais une
+        impasse, jamais 0 panneau) ; une seconde lecture n'en remet pas ; le
+        calcul fait par le VRAI moteur (la tâche que ferait le worker), la cible
+        est la taille de la conception rangée ; un calepinage sans lead sert
+        ``exemple_vide``. Mutants : porte sans file ⇒ refus « absente » ; cible
+        hors conception ⇒ autre taille."""
+        from django.core.cache import cache
+
+        from apps.ventes import tarif_ci, tasks
+        from apps.ventes.domain import etude_ci
+        from apps.ventes.models import ConceptionLead
+        from apps.ventes.tests import test_ciq120_devis_auto_ci as ci_fab
+        from authentication.models import Company
+
+        cache.clear()
+        self.addCleanup(cache.clear)
+        fab = type('CatalogueCI', (), {})
+        with mock.patch.object(Company.objects, 'get_or_create', return_value=(self.company, False)):
+            ci_fab._Base.setUpTestData.__func__(fab)  # le catalogue C&I des tests du moteur, sur CETTE société
+        lead = Lead.objects.create(company=self.company, nom='Boulangerie 1500', type_installation='commercial',
+                                   facture_hiver=1200, ville='Casablanca', categorie_commerciale='bureau',
+                                   tension_raccordement='bt', raccordement='triphase', type_toiture='bac_acier')
+        calepinage = Calepinage.objects.create(company=self.company, lead_id=lead.pk, titre='Boulangerie')
+        url = f'{url_detail(calepinage.pk)}cible-factures/'
+        with mock.patch.object(tasks.task_relancer_conception, 'apply_async') as en_file:  # jamais le courtier
+            premiere, seconde = self.api.get(url), self.api.get(url)
+        self.assertEqual(premiere.status_code, 200, premiere.data)
+        self.assertEqual(premiere.data, CONTRAT_CIBLE['exemple_en_cours'])
+        self.assertEqual(seconde.data, CONTRAT_CIBLE['exemple_en_cours'])
+        self.assertEqual(en_file.call_count, 1)  # dédupliqué : une seule tâche pour ce lead
+        self.assertFalse(ConceptionLead.objects.filter(lead=lead).exists())  # rien calculé dans la requête
+
+        with mock.patch.object(etude_ci, 'lire_production', side_effect=ci_fab._production_casablanca), \
+                mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=ci_fab._tarif_grille):
+            rendu = tasks.task_relancer_conception(**en_file.call_args.kwargs['kwargs'])
+        self.assertEqual(rendu, {'version': 1, 'ecrite': True})
+        version = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual(version.etat, 'complet', version.refus)
+        valeurs = version.valeurs[version.option_retenue]
+        panneaux, kwc = valeurs['nb_panneaux']['valeur'], valeurs['puissance_kwc']['valeur']
+        self.assertGreater(panneaux, 0)
+        reponse = self.api.get(url)
+        self.assertEqual(sorted(reponse.data), sorted(CONTRAT_CIBLE['exemple']))
+        self.assertEqual(reponse.data, {
+            'cible_factures': {'panneaux': panneaux, 'kwc': kwc, 'module_wc': float(round(kwc * 1000 / panneaux))},
+            'refus': '', 'calcul_en_cours': False})
         sans_lead = self.api.get(f'{url_detail(self.nu.pk)}cible-factures/')
-        self.assertEqual(sans_lead.data['refus'], CONTRAT_CIBLE['exemple_vide']['refus'])
+        self.assertEqual(sans_lead.data, CONTRAT_CIBLE['exemple_vide'])
 
     def test_sans_devis_ni_facture_la_cible_est_nulle(self):
         contexte = self._contexte(self.nu)
@@ -147,10 +185,13 @@ class ContexteConceptionTest(BaseApiCalepinage):
         self.assertEqual(contexte['geometrie']['pin'],
                          {'lat': 33.5731, 'lng': -7.5898})
 
-    def test_cible_du_devis_marquee_a_sa_source(self):
+    def test_cible_avec_devis_lie_vient_de_la_conception(self):
+        # ACAL2012 — le devis lié n'est plus la source de la cible : la conception du lead l'est.
+        from .test_acal_cible_lead import ranger_conception
+
+        ranger_conception(lead=self.lead_lie, nb=14)
         contexte = self._contexte(self.avec_devis)
-        self.assertIsNotNone(contexte['cible'])
-        self.assertEqual(contexte['cible']['source'], 'devis')
+        self.assertEqual((contexte['cible']['source'], contexte['cible']['panneaux']), ('factures', 14))
 
     def test_raison_lecture_seule_reprise_mot_pour_mot(self):
         phrase = 'Devis accepté : la conception ne se modifie plus.'
@@ -241,6 +282,23 @@ class ContexteConceptionTest(BaseApiCalepinage):
         bloc = self._contexte(self.nu)['calepinage']
         self.assertEqual(bloc['client_adresse'], '')
         self.assertEqual(bloc['client_ville'], '')
+
+    def test_relecture_m1_site_de_repli_dit_ce_que_fera_le_calcul(self):
+        """Relecture M1 — un calepinage d'un CLIENT sans lead dont l'adresse
+        nomme une ville : le serveur sert la ville qu'il prendra (le bandeau
+        l'imprime) ; rien de résoluble ⇒ ``None`` (le calcul est refusé) ;
+        un lead avec repère ⇒ sa position GPS."""
+        self.assertIsNone(self._contexte(self.nu)['calepinage']['site_de_repli'])
+        self.client_lie.adresse = '12 rue des Fleurs, Casablanca'
+        self.client_lie.save(update_fields=['adresse'])
+        self.assertEqual(self._contexte(self.nu)['calepinage']['site_de_repli'],
+                         'Casablanca (ville de référence)')
+        self.client_lie.adresse = "Route d'El Jadida, Casablanca"
+        self.client_lie.save(update_fields=['adresse'])
+        self.assertIsNone(self._contexte(self.nu)['calepinage']['site_de_repli'])
+        self.assertEqual(
+            self._contexte(self.avec_devis)['calepinage']['site_de_repli'],
+            'la position GPS de la fiche')
 
     def _lead_gps_hors_contour(self):
         """ACAL250 — roof_point A DANS R, GPS corrigé B HORS de R."""

@@ -61,8 +61,8 @@ from . import (hors_reseau_declaration as _hors_reseau_declaration,  # ACAL790
                suppositions as _suppositions)  # ACAL980
 from .regle_chaine_publiee import _regle_chaine_publiee  # ACAL645 — extraite
 from .valeurs import nombre as _nombre
-from .devis_retenu import (bloc_devis_retenu, bloc_production_devis,  # ACAL1952-1956
-                           longueur_du_devis_lie, options_avec_devis, produits_retenus)
+from .devis_retenu import bloc_conception, bloc_devis_retenu, bloc_production_devis  # ACAL1952-1956, 2015
+from .equipements import PROVENANCE_MOTEUR, materiel_de_la_conception, options_de_la_conception  # ACAL2013
 
 __all__ = [
     'SOURCE_SAISIE', 'SOURCE_TMY', 'MENTION_NON_SOURCEE',
@@ -342,21 +342,20 @@ def temperatures_site(*, pin=None, saisie=None, fournisseur=None,
 
 def temperatures_pour_calepinage(calepinage, *, saisie=None,
                                  fournisseur=None, module_specs=None):
-    """``temperatures_site`` avec l'épingle DU calepinage (lecture bornée).
-
-    L'épingle est lue par ``selectors.contexte_geographique`` — la MÊME
-    lecture que l'atelier, bornée à la société du calepinage, jamais une
-    seconde façon de retrouver un point GPS.
+    """``temperatures_site`` au site DU calepinage — relecture M2 : LE MÊME
+    site que la production (``site.point_du_site`` : épingle posée, sinon
+    repère du lead, sinon ville de référence ; jamais le centre par défaut de
+    la carte), contexte lu par ``selectors.contexte_geographique`` (borné).
     """
     from ..selectors import contexte_geographique
+    from .site import point_du_site
 
-    pin = None
+    lat = lon = None
     if calepinage is not None:
-        layout = getattr(calepinage, 'roof_layout', None)
-        if isinstance(layout, dict) and isinstance(layout.get('pin'), dict):
-            pin = layout['pin']
-        if pin is None:
-            pin = contexte_geographique(calepinage).get('pin')
+        lat, lon, _reference = point_du_site(
+            getattr(calepinage, 'roof_layout', None),
+            lambda: contexte_geographique(calepinage))
+    pin = None if lat is None or lon is None else {'lat': lat, 'lng': lon}
     return temperatures_site(pin=pin, saisie=saisie, fournisseur=fournisseur,
                              module_specs=module_specs)
 
@@ -1001,6 +1000,9 @@ def enregistrer_entree(calepinage, donnees, *, user=None):
     posee = modifier_resultat(calepinage, _poser)
     from .journal import noter
     from .layout import simuler_apres_enregistrement
+    from .simulation_auto import relancer_sur_designation
+
+    relancer_sur_designation(calepinage, avant_saisie, posee)  # ACAL2013 : désignation ⇒ entrée imposée
 
     if apres_envoi(calepinage):
         # ACAL43 — une saisie d'un devis ENVOYÉ se TRACE (corrigé après envoi).
@@ -1037,8 +1039,6 @@ PROVENANCE_DEVIS = 'devis'
 #: Les rôles du matériel électrique, et la famille de l'agrégat
 #: ``services/equipements.py`` (LA lecture des lignes du devis) qui les sert.
 ROLES_MATERIEL = ('module', 'onduleur', 'optimiseur')
-FAMILLE_EQUIPEMENT = {'module': 'panneau', 'onduleur': 'onduleur',
-                      'optimiseur': 'optimiseur'}
 LIBELLES_ROLES = {'module': 'module PV', 'onduleur': 'onduleur',
                   'optimiseur': 'optimiseur'}
 
@@ -1046,35 +1046,14 @@ LIBELLES_ROLES = {'module': 'module PV', 'onduleur': 'onduleur',
 GESTE_DESIGNATION = "désignez-le dans l'onglet Matériel électrique"
 
 
-def _produits_du_devis(calepinage):
-    """``{rôle: id produit}`` des lignes du devis LIÉ, ou ``{}``.
-
-    LA lecture du devis reste ``services/equipements.py::
-    equipements_du_calepinage`` (sélecteur cross-app ventes, borné société,
-    variante par défaut) — aucune seconde sélection « première ligne » ici.
-    """
-    if calepinage is None or not getattr(calepinage, 'devis_id', None):
-        return {}
-    from .equipements import equipements_du_calepinage
-
-    agregat = equipements_du_calepinage(calepinage) or {}
-    produits = {}
-    for role, famille in FAMILLE_EQUIPEMENT.items():
-        bloc = agregat.get(famille)
-        if isinstance(bloc, dict) and bloc.get('produit') not in (None, ''):
-            produits[role] = bloc['produit']
-    return produits_retenus(calepinage, produits)  # ACAL1952 — l'onduleur de l'option retenue
-
-
 def resoudre_materiel(company, entree, *, calepinage=None):
     """Les blocs de fiche technique du matériel RETENU, bornés société.
 
-    D-ACAL-10 / ACAL56 — par rôle (module, onduleur, optimiseur) : la
-    désignation EXPLICITE de l'entrée (``<rôle>_produit``) d'abord ; sinon la
-    ligne du DEVIS LIÉ à ``calepinage`` (provenance ``'devis'``, recalculée à
-    chaque lecture : changer la ligne du devis change le calcul) ; sinon le
-    rôle est ABSENT et le message nomme le geste. L'optimiseur n'est jamais
-    réclamé (il est optionnel).
+    D-ACAL-10 / ACAL56 / ACAL2013 — par rôle : la désignation EXPLICITE de
+    l'entrée (``<rôle>_produit``) d'abord ; sinon le matériel de la CONCEPTION
+    courante (provenance ``'moteur'``, ``equipements.materiel_de_la_conception`` :
+    le devis lié n'est plus lu) ; sinon le module POSÉ ; sinon le rôle est ABSENT
+    et le message nomme le geste. L'optimiseur n'est jamais réclamé.
 
     Lecture cross-app par SÉLECTEUR (``apps.stock.selectors``) uniquement :
     ``get_produit_scoped`` (donc jamais un produit d'une autre société) puis
@@ -1086,22 +1065,24 @@ def resoudre_materiel(company, entree, *, calepinage=None):
     — ``absents`` nomme EN FRANÇAIS le matériel manquant ou introuvable.
     """
     from apps.stock.selectors import get_produit_scoped, specs_for_produit
-    from .modules_pans import repli_materiel  # T4-B4-007 : devis, puis module posé
+    from .modules_pans import repli_materiel  # T4-B4-007 : conception, puis module posé
 
     blocs = {'module': {}, 'onduleur': {}, 'optimiseur': None}
     designations = {role: '' for role in ROLES_MATERIEL}
     produits = {role: None for role in ROLES_MATERIEL}
     provenances = {role: None for role in ROLES_MATERIEL}
     skus = {role: None for role in ROLES_MATERIEL}  # ACAL662
-    absents = []
-    du_devis = None
+    absents, du_moteur = [], None
     for role in ROLES_MATERIEL:
         identifiant = (entree or {}).get('%s_produit' % role)
         provenance = PROVENANCE_EXPLICITE
         if identifiant in (None, ''):
-            if du_devis is None:
-                du_devis = _produits_du_devis(calepinage)
-            identifiant, provenance = repli_materiel(role, du_devis, calepinage)
+            if du_moteur is None:  # relecture E5 m4 : un produit de la conception perdu est DIT
+                lu = materiel_de_la_conception(calepinage)
+                du_moteur = lu.get('produits') or {}
+                absents += lu.get('avertissements') or ()
+            identifiant, provenance = repli_materiel(role, du_moteur, calepinage)
+            provenance = PROVENANCE_MOTEUR if provenance == PROVENANCE_DEVIS else provenance
         if identifiant in (None, ''):
             if role != 'optimiseur':
                 absents.append('%s non désigné — %s'
@@ -1390,7 +1371,7 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
         # ACAL650 — tolérance d'orientation SAISIE (sourcée) ou None.
         tolerance_orientation_deg=tolerance_orientation_societe(
             parametres_societe(calepinage)),
-        **options_avec_devis(_options_entree(donnees), calepinage, donnees),  # ACAL1952
+        **options_de_la_conception(_options_entree(donnees), calepinage, donnees, document),  # ACAL2013, E5 M4
         **_options_batterie(calepinage, donnees, materiel))
     return (_nommer_module_pose(conception, materiel, document), materiel, donnees, document)
 
@@ -1794,7 +1775,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         getattr(calepinage, 'company', None))
 
     # CAL170 — quelle longueur de chaîne a été retenue, et d'où elle vient.
-    reconciliation = _longueur_chaine_retenue(conception, longueur_du_devis_lie(calepinage))  # ACAL1953
+    reconciliation = _longueur_chaine_retenue(conception, _suppositions.reference_de_longueur(calepinage))
     reconciliation = dict(reconciliation, plafond_modules=_plafond_modules(
         donnees.get('plafond_kwc_par_onduleur'),
         pose.get('puissance_module_wc')))
@@ -1821,11 +1802,10 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     if reconciliation['origine'] == ORIGINE_LONGUEUR_DOSSIER:
         messages.append(reconciliation['detail'])
     elif reconciliation['hors_tolerance']:
-        messages.append(
-            "longueur de chaîne calculée %s contre %s au devis (écart %s) — "
-            "information : le devis n'est pas modifié"
-            % (reconciliation['longueur'], reconciliation['longueur_dossier'],
-               reconciliation['ecart']))
+        messages.append(  # ACAL2014 — la référence : la conception (lead), le cahier des charges (AO)
+            "longueur de chaîne calculée %s contre %s %s (écart %s) — information : le devis n'est pas modifié"
+            % (reconciliation['longueur'], reconciliation['longueur_dossier'], 'au dossier' if getattr(
+                calepinage, 'appel_offre_id', None) else 'à la conception', reconciliation['ecart']))
     if terre['justification_requise'] and not terre['justification_fournie']:
         messages.append(
             "prise de terre non fournie au marché : la justification de "
@@ -1927,6 +1907,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         # sans devis lié, sans simulation fraîche ou sans production devis.
         'ecart_devis': _ecart_devis(calepinage, p50 if simule else None),
         'production_devis': bloc_production_devis(calepinage),  # ACAL1956 — le chiffre du devis envoyé
+        'conception': bloc_conception(calepinage),  # ACAL2015 — LE chiffre de la conception (+ devis reçu nommé)
         # ACAL48 — l'en-tête de la simulation STOCKÉE (empreinte, version de
         # simulation, réglages figés, date, durée), servi même périmé : il dit
         # avec quoi le calcul a été fait. Jamais simulé ⇒ l'empreinte
@@ -2839,7 +2820,7 @@ def rejouer_apres_layout(calepinage, *, user=None):
         conception, _materiel, _donnees, _doc = conception_du_calepinage(
             calepinage)
         _journaliser_ecart_longueur(calepinage, _longueur_chaine_retenue(
-            conception, longueur_du_devis_lie(calepinage)))
+            conception, _suppositions.reference_de_longueur(calepinage)))
     except Exception:  # cf. docstring
         logging.getLogger(__name__).exception(
             'CAL170 : réconciliation de longueur en échec (calepinage %s)',
@@ -2904,19 +2885,16 @@ def _longueur_chaine_retenue(conception, longueur_devis=None):
     n'ont pas la même longueur : aucun nombre unique ne serait vrai, et le
     détail par pan est publié à sa place.
 
-    ACAL1953 — la référence de l'écart est la longueur du DEVIS lié
-    (``longueur_devis``, ACAL1950), sous ``longueur_dossier`` ; sans elle,
-    aucun écart n'est publié. La constante d'appel d'offres
-    ``MODULES_PAR_CHAINE`` ne sert plus que de repli assumé (fiche muette).
+    ACAL2014 — la référence de l'écart (``longueur_devis``, sous
+    ``longueur_dossier``) est ``suppositions.reference_de_longueur`` : la
+    longueur de la CONCEPTION pour un lead, celle du cahier des charges pour un
+    dossier d'appel d'offres ; c'est aussi le repli d'une fiche muette (ACAL980).
     """
-    from core.calepinage.electrique import MODULES_PAR_CHAINE
-
-    dossier = MODULES_PAR_CHAINE
     par_pan = {r.pan: r.longueur_chaine for r in conception.repartitions}
 
     if conception.fiche_incomplete or not par_pan:
         return _suppositions.repli_longueur_dossier(
-            dossier, ORIGINE_LONGUEUR_DOSSIER)  # ACAL980
+            longueur_devis, ORIGINE_LONGUEUR_DOSSIER)  # ACAL980
 
     longueurs = set(par_pan.values())
     longueur = longueurs.pop() if len(longueurs) == 1 else None

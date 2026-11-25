@@ -129,6 +129,19 @@ d'accès, la liste des écrans à capturer.
    « ouvrir » coche) ; viser l'élément d'ouverture nommé.
 5. Fichiers temporaires : dans le scratchpad de la session seulement (un fichier hors arbre a été impossible à
    supprimer).
+6. Plusieurs relecteurs sur UN poste partagent une adresse : la limite de connexion (5 par minute et par adresse)
+   répond 429 à leurs scripts. Poser `LOGIN_RATE_LIMIT=120/minute` dans l'environnement de l'instrument, et faire
+   garder leur session aux scripts (cookies sur disque) au lieu de se reconnecter à chaque lancement.
+7. Un instrument saturé fabrique de faux constats de lenteur (mesuré le 24/11/2026 : 12 à 90 s relevés à quatre
+   relecteurs, 0,0 à 0,5 s sur les mêmes routes au calme). Sur 16 Go : DEUX relecteurs à navigateur à la fois, jamais
+   quatre ; une lenteur n'est un constat qu'au second essai, sans rien d'autre en cours ; l'orchestrateur la remesure
+   sans navigateur avant de la router.
+8. `SITE_URL` / `PUBLIC_SITE_URL` / `VITE_PUBLIC_SITE_URL` pointent par défaut le site public RÉEL : les neutraliser
+   (`http://site-public.invalid`) AVANT le premier relecteur — « Ouvrir la page client » ouvrait une page de la
+   production avec un jeton local.
+9. Un redémarrage de l'instrument pendant un tour : prévenir chaque relecteur par message (un appel en échec pendant
+   la minute n'est pas un constat) ; la limite de mémoire posée à la main par `docker update` se perd à la recréation
+   du conteneur — l'écrire dans le lanceur.
 
 ## 6. Fiche de l'instrument du run (à remplir et à donner aux relecteurs)
 - Front : http://127.0.0.1:<port front> · serveur : http://127.0.0.1:<port> · base `<run>` · Redis `<run>-redis`

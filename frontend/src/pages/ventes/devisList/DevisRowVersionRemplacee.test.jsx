@@ -81,4 +81,16 @@ describe('VNT79 — « Facturer… » jamais sur une version remplacée', () => 
     rendre(accepte('exemple'))
     expect(screen.getAllByRole('button', { name: /^Facturer/ })).toHaveLength(1)
   })
+
+  // T4-V1-007 — « Facturé 0 · Payé 0 · Reste 34 000 » sur une vente de 49 000 : le
+  // reste déduisait l'acompte en BROUILLON (non émis) sans le nommer. Les trois
+  // parts nommées s'additionnent au prix convenu.
+  it('acompte en brouillon : nommé à part, Facturé + En brouillon + Reste à facturer = prix', () => {
+    rendre(accepte('exemple_acompte_brouillon'))
+    const ligne = screen.getByRole('button', { name: /^Vente de / }).textContent.replace(/\s/g, ' ')
+    expect(ligne).toMatch(/Facturé 0,00 MAD · En brouillon 15 000,00 MAD · Payé 0,00 MAD · Reste à facturer 34 000,00 MAD/)
+    cleanup()
+    rendre(accepte('exemple'))
+    expect(screen.getByRole('button', { name: /^Vente de / }).textContent).not.toMatch(/brouillon/)
+  })
 })

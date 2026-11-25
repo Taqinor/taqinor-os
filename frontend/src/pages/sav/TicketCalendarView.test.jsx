@@ -189,10 +189,15 @@ describe('CalendarQuickCreateDialog (WIR178 — client obligatoire)', () => {
     await user.type(screen.getByPlaceholderText('Nom ou ICE…'), 'Client Calendrier')
     await user.click(await screen.findByText('Client Calendrier Test'))
 
+    // T4-V1-008 — sans description, rien n'est envoyé et l'écran dit quoi faire.
+    await user.click(screen.getByRole('button', { name: 'Créer' }))
+    expect(await screen.findByText('Décrivez le problème pour ouvrir le ticket.')).toBeInTheDocument()
+    expect(savApi.createTicket).not.toHaveBeenCalled()
+    await user.type(screen.getByLabelText(/Description/), 'Onduleur muet')
     await user.click(screen.getByRole('button', { name: 'Créer' }))
 
     await waitFor(() => expect(savApi.createTicket).toHaveBeenCalledWith(expect.objectContaining({
-      client: 12,
+      client: 12, description: 'Onduleur muet',
     })))
     await waitFor(() => expect(savApi.replanifierTicket).toHaveBeenCalledWith(99, todayIso))
   })

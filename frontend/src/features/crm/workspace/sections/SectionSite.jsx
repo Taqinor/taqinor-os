@@ -11,6 +11,7 @@ import TraceToitClient from './TraceToitClient'
 // « structure » : cette section ne perd jamais son contrôle.
 import StructureSelector from '../../../stock/StructureSelector'
 import { enumOptions } from './enumOptions'
+import { CHOIX_BATTERIE_SOUHAITEE } from '../fieldLabels'
 
 const TYPES_TOITURE = {
   terrasse_beton: 'Terrasse béton', tole_metal: 'Tôle/Métal', tuiles: 'Tuiles',
@@ -22,7 +23,7 @@ const ORIENTATIONS = {
 }
 const OMBRAGES = { aucun: 'Aucun', partiel: 'Partiel', important: 'Important' }
 const STRUCTURES = { acier: 'Acier', aluminium: 'Aluminium' }
-const BATTERIES = { sans: 'Sans batterie', avec: 'Avec batterie', les_deux: 'Les deux options' }
+const BATTERIES = CHOIX_BATTERIE_SOUHAITEE // relecture m2 — une définition (fieldLabels.js)
 
 const MOIS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
   'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']

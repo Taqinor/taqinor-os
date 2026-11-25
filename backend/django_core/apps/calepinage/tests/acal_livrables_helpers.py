@@ -36,7 +36,7 @@ LAYOUT_PLANCHE_SIMULABLE = dict(copy.deepcopy(_LAYOUT_PLANCHE),
 __all__ = ['LAYOUT_SIMULABLE', 'LAYOUT_PLANCHE_SIMULABLE', 'MATERIEL',
            'PivotSansBase', 'exiger_bibliotheques_pdf',
            'calepinage_simule_reel', 'modifier_la_conception',
-           'patch_materiel', 'patch_servi_frais']
+           'patch_materiel', 'patch_servi_frais', 'texte_des_lignes_svg']
 
 
 class PivotSansBase:
@@ -160,3 +160,13 @@ def exiger_bibliotheques_pdf():
             importlib.import_module(bibliotheque)
     except Exception:  # bibliothèques natives absentes
         raise unittest.SkipTest('WeasyPrint ou PyMuPDF indisponible')
+
+
+def texte_des_lignes_svg(svg):
+    """T4-V1-006 — le texte LU d'une planche : le contenu de chaque ``<text>``,
+    joint par un espace (une ligne du bandeau coupée à sa largeur se relit
+    entière), entités décodées."""
+    import html
+    import re
+
+    return ' '.join(html.unescape(t) for t in re.findall(r'<text[^>]*>([^<]*)</text>', svg))

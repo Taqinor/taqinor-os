@@ -10,6 +10,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 // APX31 — MÊME garde champ-de-saisie que la file J/K des leads (LW) : une
 // seule définition dans tout l'ERP, jamais une copie locale.
 import { isTypingTarget } from '../../providers/shortcuts'
+import { openQuickCreate } from '../../features/uxviews/quickcreate/quickCreateEvents'
 import { dialogueParDessus } from '../../providers/focusedRecordShortcuts'
 import { useConfirm } from '../../providers/confirm-context'
 // EZ15 — dictée INLINE navigateur, surface BUREAU.
@@ -91,8 +92,8 @@ import {
   toast,
 } from '../../ui'
 import {
-  annulerEditionStatut, executerEditionStatut, formatDateFR, frError, parseBulkResult,
-  ticketSlaEcheance, ticketSlaTri,
+  annulerEditionStatut, chargeFicheTicket, executerEditionStatut, formatDateFR, frError, messageRefusFiche,
+  parseBulkResult, ticketSlaEcheance, ticketSlaTri,
 } from './ticketsLogique'
 import { TicketCalendarView } from './TicketCalendarView'
 import { BandeauListePasAJour, BoutonExportExcel, ChampTypeTicket, CollapsibleSection, ErreurChargement, OptionsEquipement, SqueletteListe, ScannerQrPleinEcran } from './SavCommun'
@@ -528,35 +529,21 @@ function TicketDetailCorps({ ticket, onClose, onSaved }) {
     setSaving(true)
     setSaveError(null)
     setForcerSansFacture(false)
+    let champsEnregistres = false
     try {
-      const nullable = (v) => (v === '' || v === undefined ? null : v)
-      const data = {
-        type: fields.type,
-        priorite: fields.priorite,
-        description: nullable(fields.description),
-        sous_garantie: fields.sous_garantie,
-        equipement: fields.equipement === '' ? null : fields.equipement,
-        technicien_responsable: fields.technicien_responsable === '' ? null : fields.technicien_responsable,
-        // WIR233 — `instructions` (TextField blank=True) : jamais nullifiée,
-        // une chaîne vide est une valeur normale (comme `description` avant
-        // `nullable()`).
-        instructions: fields.instructions ?? '',
-        cause: fields.cause === '' ? null : Number(fields.cause),
-        remede: fields.remede === '' ? null : Number(fields.remede),
-      }
-      // ASAV42 — l'action de statut d'abord (le serveur pose date_resolution,
-      // ASAV14) ; le PATCH des champs seulement si elle a réussi.
-      if (fields.statut && fields.statut !== current.statut) {
-        const action = STATUT_ACTION[fields.statut]
-        if (action) await action(id)
-      }
-      const updated = await dispatch(updateTicket({ id, data })).unwrap()
-      setCurrent(updated)
+      // Relecture B1 — les champs d'abord (description seulement si changée,
+      // `chargeFicheTicket`), l'action de statut ensuite : un refus des champs
+      // ne change PAS le statut. ASAV14 — date_resolution posée par le serveur.
+      setCurrent(await dispatch(updateTicket({ id, data: chargeFicheTicket(fields, current) })).unwrap())
+      champsEnregistres = true
+      const action = fields.statut && fields.statut !== current.statut ? STATUT_ACTION[fields.statut] : null
+      const r = action ? await action(id) : null
+      if (r?.data) setCurrent(r.data)
       loadHistorique()
       toast.success('Ticket mis à jour')
       onSaved?.()
     } catch (err) {
-      setSaveError(frError(err, 'Échec de la mise à jour.'))
+      setSaveError(messageRefusFiche(champsEnregistres, frError(err, 'Échec de la mise à jour.')))
       setForcerSansFacture(err?.response?.data?.code === 'ticket_non_facture')
       // ASAV42 — refus : rien n'a été écrit, la fiche reprend l'état serveur.
       try {
@@ -1935,9 +1922,9 @@ export default function TicketsPage() {
               {rows.length} ticket{rows.length > 1 ? 's' : ''}
             </p>
           </div>
-          {/* MB5 — segmenté + bouton export : passe sur deux lignes sous 375px
-              au lieu de déborder horizontalement. */}
+          {/* MB5 — segmenté + bouton export : deux lignes sous 375px au lieu de déborder horizontalement. */}
           <div className="flex flex-wrap items-center gap-2">
+            {peutGerer && <Button size="sm" onClick={() => openQuickCreate('ticket')}><Plus /> Nouveau ticket</Button>}{/* T4-V2-025 */}
             {/* L295 — bascule Table / Kanban. */}
             <Segmented
               size="sm"
@@ -1949,8 +1936,7 @@ export default function TicketsPage() {
                 { value: 'calendrier', label: 'Calendrier' },
               ]}
             />
-            {/* VX79 — « Copier le lien » du ticket ouvert : URL INTERNE
-                partageable (/sav?id=<pk>), pour l'envoyer à un collègue. */}
+            {/* VX79 — « Copier le lien » du ticket ouvert : URL INTERNE partageable (/sav?id=<pk>), pour un collègue. */}
             {detailTicket && (
               <Button variant="ghost" size="sm"
                       onClick={() => copierLien(detailTicket)}

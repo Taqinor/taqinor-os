@@ -1,0 +1,62 @@
+[
+ {
+  "id": "T4-V2-001",
+  "verdict": "corrige",
+  "vu": "Lead X1-i : débit 25 + « Donné par le foreur », puis 25 → 30 (et 30 → 25 → 30) : l'origine reste « foreur » à la réouverture ; PATCH n'envoie que le débit et la réponse garde debit_forage_source « foreur » ; historique sans changement d'origine non voulu",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X1/v001-3-reopen.png"
+ },
+ {
+  "id": "T4-V2-002",
+  "verdict": "corrige",
+  "vu": "Lead X1-i › Devis auto DEV-202611-0132 › « Modifier » : l'édition complète reprend niveau 42, débit du forage 30 (Donné par le foreur), débit souhaité 20, HMT 80, mode neuve ; encart des tailles et « Auto-remplir depuis le stock » actifs",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X1/i-mod-ed0.png"
+ },
+ {
+  "id": "T4-V2-003",
+  "verdict": "pas-corrige",
+  "vu": "La plus petite pompe est corrigée (« Inférieure » 10,72 kWc · 15 panneaux, champ limité à 1,5 fois sa puissance, couverture du mois critique 0 % dite) ; MAIS la plus grande pompe reçoit toujours moins de panneaux que la recommandée : Supérieure OSP 30/13 (11 kW) 15,73 kWc · 22 panneaux contre Recommandée OSP 30/11 (9,3 kW) 16,45 kWc · 23 panneaux (ratio 1,77×, hors bande)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X1/i-sz-z-inferieure.png"
+ },
+ {
+  "id": "T4-V2-004",
+  "verdict": "corrige",
+  "vu": "Alerte en mots d'utilisateur : « Le tarif de pose du pompage n'est pas saisi : la pose est chiffrée au tarif toiture. À saisir dans Stock, article « Installation pompage solaire » (droit « Modifier les prix du catalogue ») » ; plus de code INST-PMP ni « alerte interne ». La ligne Installation reste au tarif toiture (9 300 MAD TTC) et le PDF client ne le dit pas",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X1/i-auto-done.png"
+ },
+ {
+  "id": "T4-V2-007",
+  "verdict": "corrige",
+  "vu": "Lead X1-m (monophasé) › « Modifier » : Puissance cible 2.86, Puissance panneau 715 W, Puissance PV calculée 2,86 kWp, carte Système et encart 2,86 kWc · 4 panneaux",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X1/m-mod-ed0.png"
+ },
+ {
+  "id": "T4-V2-010",
+  "verdict": "pas-corrige",
+  "vu": "Alerte vendeur (Devis auto et éditeur) : « la fiche du variateur … ne dit pas s'il protège la pompe de la marche à sec » ; le client lit sur la ligne du variateur du PDF 1 page et de la note de calcul : « Pilotage automatique lever/coucher du soleil, protection marche à sec »",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X1/i-1p.txt"
+ },
+ {
+  "id": "T4-V2-011",
+  "verdict": "corrige",
+  "vu": "Plus de « Q × HMT × 2,725 / (1000 × η EST.) », ni « η EST. (borne basse AMEE) », ni « E / (η × E_d) » : phrases d'utilisateur (« il faut au moins 1,56 kW … rendement estimé »). Reste « (× 0,7355) » : noté à part (T4-X1-014)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X1/m-mod-editor.txt"
+ },
+ {
+  "id": "T4-V2-012",
+  "verdict": "corrige",
+  "vu": "Plus de contradiction : l'en-tête dit le débit souhaité 5 m³/h déclaré, l'alerte dit « pompe sans courbe constructeur ni débit relevé … aucun m³/jour n'est publié » ; le PDF dit « Volume d'eau par jour non calculé : à confirmer par la visite »",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X1/m-full.txt"
+ },
+ {
+  "id": "T4-U3-022",
+  "verdict": "corrige",
+  "vu": "Lead X1-j (pompe actuelle 7,5 kW 380 V triphasée gardée, 12 m³/h, 8 h) : le devis automatique passe (DEV-202611-0134) et « Modifier » reprend « Débit de la pompe actuelle 12 » et « Heures de pompage 8 » déclarés",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X1/j-mod-ed0.png"
+ },
+ {
+  "id": "T4-U3-013",
+  "verdict": "autre",
+  "vu": "Lead X1-m sans GPS › « Dessiner le toit » : l'atelier s'ouvre sans toast « Site.pin » ; bandeau en mots d'utilisateur (« Site non localisé … sinon le calcul se fait sur la ville de la fiche ») ; il n'y a plus d'onglet Pompage dans l'atelier : un toast dit « Lead agricole : le pompage se chiffre depuis l'écran devis agricole. Ouvrir la fiche du lead » ; aucune réponse 4xx sur les routes calepinage écoutées",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X1/m-cal-atelier.png"
+ }
+]

@@ -709,6 +709,11 @@ AutoDevisResponse = _ser('DevisAutoResponse', {
         'variante': s.CharField(allow_blank=True),
     })),
     'options': options_devis_assistant(),
+    # T4-V2-015 — devis à UNE option : batterie ou non, et si c'est le souhait
+    # « batterie » de la fiche du lead qui l'a décidé (``null`` : deux options).
+    'option_unique': _ser('DevisAutoOptionUnique', {
+        'batterie': s.BooleanField(), 'souhait_fiche': s.BooleanField(),
+    }, allow_null=True),
 })
 #: COP2-V3 — le 409 « choix » : zéro ou plusieurs produits pour un élément
 #: imposé ; ``choix`` les nomme (jamais un choix silencieux du serveur).

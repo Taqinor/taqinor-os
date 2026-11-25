@@ -868,6 +868,7 @@ export const ALL_HOOKS = [
   'cal-toit-soleil',
   'cal-panneaux-module',
   'cal-panneaux-option-facture',
+  'cal-panneaux-actualiser-conception',
   'cal-panneaux-option-max',
   'cal-panneaux-sens-pose',
   'cal-panneaux-ombre',

@@ -1238,10 +1238,88 @@ def _forme_du_devis(courbe24, annuel, avertissements, lead, classe):
     return courbe, avis
 
 
-def _depuis_lead(corps, company, lead_id, lire_lead=None):
+#: ACAL2020 — la phrase qui dit d'où viennent les kWh du chemin lead.
+AVIS_CONSO_DE_LA_CONCEPTION = (
+    'Consommation lue sur la conception du lead (version {version}) : les mêmes kWh '
+    'que le devis, jamais recalculés ici.')
+
+
+def _nombres(valeurs, longueur):
+    """``valeurs`` si ce sont ``longueur`` nombres positifs ou nuls, sinon ``None``."""
+    if not isinstance(valeurs, list) or len(valeurs) != longueur or any(
+            isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0 for v in valeurs):
+        return None
+    return [float(v) for v in valeurs]
+
+
+def _jour_moyen_des_jours_types(jours_types):
+    """La journée moyenne (24 h) des jours types du moteur, pondérée par ``nb_jours`` ;
+    ``None`` si un jour type est illisible ou si la journée est nulle."""
+    total, poids = [0.0] * 24, 0
+    for jour in jours_types if isinstance(jours_types, list) else ():
+        charge = _nombres((jour or {}).get('charge_kwh') if isinstance(jour, dict) else None, 24)
+        nb = jour.get('nb_jours') if isinstance(jour, dict) else None
+        if charge is None or isinstance(nb, bool) or not isinstance(nb, (int, float)) or nb <= 0:
+            return None
+        total = [somme + nb * valeur for somme, valeur in zip(total, charge)]
+        poids += nb
+    return [valeur / poids for valeur in total] if poids and sum(total) > 0 else None
+
+
+def _consommation_de_la_conception(calepinage):
+    """ACAL2020 (D-ACAL-97) — ``(kwh des douze mois, parts horaires | None, marché,
+    version)`` lus sur la conception COURANTE du calepinage (``devis_retenu``, porte de
+    ventes) : résidentiel ``blocs.etude_horaire.mois[].consommation_kwh`` ; sinon
+    ``blocs.etude_ci.bilan.par_mois[].consommation_kwh`` et la journée moyenne de
+    ``blocs.etude_ci.profil_charge.jours_types``. ``None`` sans conception complète qui
+    porte ses douze mois. Lecture pure."""
+    from .devis_retenu import conception_du_calepinage
+
+    conception = conception_du_calepinage(calepinage) if calepinage is not None else None
+    if not conception or conception.get('etat') != 'complet':
+        return None
+    blocs, marche = conception.get('blocs') or {}, conception.get('marche')
+    if marche == 'residentiel':
+        mois, parts = (blocs.get('etude_horaire') or {}).get('mois'), None
+    else:
+        etude = blocs.get('etude_ci') or {}
+        mois = (etude.get('bilan') or {}).get('par_mois')
+        jour = _jour_moyen_des_jours_types((etude.get('profil_charge') or {}).get('jours_types'))
+        parts = [valeur / sum(jour) for valeur in jour] if jour else None
+    kwh = _nombres([(m or {}).get('consommation_kwh') if isinstance(m, dict) else None
+                    for m in mois or []], 12)
+    if kwh is None or not sum(kwh):
+        return None
+    return kwh, parts, marche, conception.get('version')
+
+
+def _depuis_la_conception(lu, lead):
+    """ACAL2020 — le rendu du chemin lead depuis la conception (``lu`` de
+    :func:`_consommation_de_la_conception`) : ses kWh, ses saisons, sa forme horaire
+    (résidentiel : la silhouette d'occupation du moteur, ``_forme_du_devis``)."""
+    kwh, parts, marche, version = lu
+    annuel = round(sum(kwh), 1)
+    jour_moyen = annuel / sum(JOURS_DU_MOIS)
+    saisons = _saisons_des_mois(kwh) or {}
+    avertissements = [AVIS_CONSO_DE_LA_CONCEPTION.format(version=version)]
+    if saisons:
+        avertissements.append(AVIS_SAISONS_DES_FACTURES.format(**saisons))
+    if parts is not None:
+        courbe24 = [round(jour_moyen * part, 4) for part in parts]
+    else:
+        courbe24, avertissements = _forme_du_devis(
+            [round(jour_moyen / 24.0, 4)] * 24, annuel, avertissements + [AVIS_FORME_UNIFORME], lead,
+            'residentiel' if marche == 'residentiel' else '')
+    return courbe24, annuel, saisons, avertissements, 'facture'
+
+
+def _depuis_lead(corps, company, lead_id, lire_lead=None, calepinage=None):
     lead = (lire_lead or _lire_lead)(company, lead_id) if lead_id else None
     if lead is None:
         raise LeadIntrouvable('Introuvable.')
+    lu = _consommation_de_la_conception(calepinage)
+    if lu is not None:
+        return _depuis_la_conception(lu, lead)
     profil = _profil_depuis_lead(company, lead_id,
                                  lire_lead=lambda *_: lead)
     classe = _classe_saisie(corps, lead)
@@ -1353,7 +1431,8 @@ def proposer_consommation(calepinage, corps, *, company, maintenant=None,
             f'{", ".join(SOURCES_PROPOSITION)}).', champ='source')
     if source == 'lead':
         rendu = _depuis_lead(corps, company,
-                             getattr(calepinage, 'lead_id', None), lire_lead)
+                             getattr(calepinage, 'lead_id', None), lire_lead,
+                             calepinage=calepinage)
     elif source == 'factures':
         rendu = _depuis_factures(corps, company)
     elif source == 'appareils':

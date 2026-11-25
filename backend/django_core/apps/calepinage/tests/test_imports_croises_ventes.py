@@ -29,7 +29,9 @@ PLAFONDS = {
     # ``calepinage.selectors_devis.productible_pose_du_calepinage`` (porte selectors).
     # ADEV122 : +1 — ``ventes/domain/etude_ci_visite.py`` lit
     # ``calepinage.selectors_devis.froid_dimensionnement_au_point`` (porte selectors).
-    ('ventes', 'calepinage'): (22, 1),
+    # ACAL2016 : +1 — ``ventes/conception/porte_calepinage.py``, LA seule porte du moteur
+    # unique vers le calepinage (``services.ratio_devis``, ``selectors``) : portes seulement.
+    ('ventes', 'calepinage'): (23, 1),
     # Compte MESURÉ sur l'arbre de la vague 2 (+4, tous par les portes
     # selectors*/services*) : ACAL997 ``selectors_devis.py`` (relit
     # ``ventes.selectors``/``selectors_calepinage`` pour la fraîcheur de la

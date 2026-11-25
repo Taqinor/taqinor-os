@@ -43,10 +43,13 @@ def _versions(company, lead_id, calepinage_id):
     return ConceptionLead.objects.filter(company=company, **_porteur(lead_id, calepinage_id))
 
 
-def conception_courante(company, lead_id=None, *, calepinage_id=None):
-    """La version COURANTE du porteur (de ``company``), forme du contrat."""
-    version = _versions(company, lead_id, calepinage_id).filter(courante=True).first()
-    return None if version is None else _forme(version)
+def conception_courante(company, lead_id=None, *, calepinage_id=None, suivi_des_devis=True):
+    """La version COURANTE du porteur (de ``company``), forme du contrat.
+    ``suivi_des_devis=False`` (relecture E5, coût des requêtes) : ``ecart_devis`` et
+    ``brouillons_a_mettre_a_jour`` servis vides — pour un lecteur qui sert lui-même
+    l'écart du devis qu'il montre (le calepinage, ``devis_retenu.bloc_conception``)."""
+    version = _versions(company, lead_id, calepinage_id).filter(courante=True).select_related('company').first()
+    return None if version is None else _forme(version, suivi_des_devis=suivi_des_devis)
 
 
 def historique_conception(company, lead_id=None, *, calepinage_id=None):
@@ -58,16 +61,76 @@ def historique_conception(company, lead_id=None, *, calepinage_id=None):
             for v in _versions(company, lead_id, calepinage_id).order_by('-version')]
 
 
-def _forme(version):
+def _forme(version, suivi_des_devis=True):
     from .conception.moteur import CLES_SORTIE
     forme = {cle: getattr(version, cle) for cle in CLES_SORTIE}
+    suivi = suivi_des_devis and version.lead_id
     forme.update(
         option_retenue=version.option_retenue or None, lead=version.lead_id, calepinage=version.calepinage_id,
         empreinte_pose=version.empreinte_pose, declencheur=version.declencheur, version=version.version,
         calcule_le=version.calcule_le.isoformat(), perimee=_perimee(version),
-        brouillons_a_mettre_a_jour=_brouillons_a_mettre_a_jour(version),
-        ecart_devis=ecart_devis(_devis_envoye_du_lead(version)) if version.lead_id else [])
+        brouillons_a_mettre_a_jour=_brouillons_a_mettre_a_jour(version) if suivi else [],
+        ecart_devis=ecart_devis(_devis_envoye_du_lead(version)) if suivi else [])
+    forme['valeurs'], forme['payback_devis'] = _payback_servi(version, forme['valeurs'])
     return forme
+
+
+#: Relecture E6 — sans devis de référence, le retour sur investissement n'est pas chiffrable.
+MOTIF_PAYBACK_SANS_DEVIS = 'retour sur investissement : après un premier devis'
+
+
+def _devis_de_reference(version):
+    """Le devis de RÉFÉRENCE du lead pour le payback : le brouillon ou devis actif qui pointe
+    sur CETTE version (``Devis.conception_source``), sinon le devis envoyé ou accepté le plus
+    récent ; ``None`` sinon. Lu, jamais écrit."""
+    from .models import Devis
+    if not version.lead_id:
+        return None
+    actifs = Devis.objects.filter(company_id=version.company_id, lead_id=version.lead_id, is_active=True)
+    return (actifs.filter(conception_source__version=version.version).order_by('-pk').first()
+            or _devis_envoye_du_lead(version))
+
+
+def _payback_servi(version, valeurs):
+    """Relecture E6 — le payback SERVI À LA LECTURE (jamais rangé périmé) : par option, LA
+    fonction du PDF (``quote_engine/pricing.payback_publiable``, appelée telle quelle) sur
+    l'investissement TTC de l'option du devis de référence et l'économie de la conception,
+    provision d'onduleur au prix de ses lignes ; ``source: 'devis'``. Rend ``(valeurs,
+    {devis_ref, motif})`` ; sans devis : payback ``None`` et le motif dit."""
+    import copy
+
+    if version.etat != 'complet' or version.marche == 'agricole':
+        return valeurs, {'devis_ref': None, 'motif': None}
+    devis = _devis_de_reference(version)
+    if devis is None:
+        return valeurs, {'devis_ref': None, 'motif': MOTIF_PAYBACK_SANS_DEVIS}
+    from .domain.catalogue import classer_produit
+    from .quote_engine.montants import arrondi_affichage
+    from .quote_engine.pricing import payback_publiable
+    from .utils.options import AVEC_BATTERIE, SANS_BATTERIE, filter_lines_for_option, lignes_avec_produit, option_totaux
+
+    servies, lignes = copy.deepcopy(valeurs), list(lignes_avec_produit(devis))
+    for option, table in servies.items():
+        if 'payback' not in table:
+            continue
+        # Les lignes de l'option, découpées comme le PDF (une option seule : ses lignes).
+        panier = AVEC_BATTERIE if option == 'avec' else SANS_BATTERIE
+        de_l_option = filter_lines_for_option(lignes, panier, devis=devis) if len(servies) > 1 else lignes
+        portees = [li for li in de_l_option if li.type_ligne == 'produit']
+        onduleurs = [li for li in portees if (classer_produit(getattr(li.produit, 'nom', '') or li.designation)
+                                              or '').startswith('onduleur')]
+        cout = sum(float(li.quantite or 0) * float(li.prix_unitaire or 0) * (1 + float(li.taux_tva or 0) / 100)
+                   for li in onduleurs) * (1 - float(devis.remise_globale or 0) / 100)
+        investissement = option_totaux(devis, '', lignes=de_l_option)['ttc']
+        economie = (table.get('economies_annuelles') or {}).get('valeur')
+        # Modèle HORAIRE (résidentiel) : l'économie « avec » est déjà nette du rendement de la batterie,
+        # le cashflow n'en re-déduit rien (part stockée 0, comme le PDF, AMOT58).
+        horaire = {'part_batterie': 0} if version.marche == 'residentiel' else {}
+        table['payback'] = {'valeur': payback_publiable(investissement, economie, stockage=option == 'avec',
+                                                        cout_onduleur_ttc=arrondi_affichage(cout, 2) or None,
+                                                        **horaire)['payback_years'],
+                            'unite': 'ans', 'source': 'devis'}
+    return servies, {'devis_ref': devis.reference, 'motif': None}
 
 
 def _brouillons_a_mettre_a_jour(version):
@@ -95,8 +158,14 @@ def _empreinte_des_entrees(version):
         return None
     pose = version.empreinte_pose
     toit = SimpleNamespace(empreinte=pose, plafond_panneaux=None) if pose else None
+    # Relecture E6 B1 — les désignations à la main du calepinage de la version entrent
+    # dans l'empreinte rangée (``service.relancer``) : la lecture les relit par la MÊME porte.
+    imposes = None
+    if version.calepinage_id:
+        from .conception.porte_calepinage import designations_du_calepinage
+        imposes = designations_du_calepinage(company, version.calepinage_id) or None
     with reglages_lus_sans_creer(company):
-        return empreinte_conception(entrees_pour(lead, company, toit=toit))
+        return empreinte_conception(entrees_pour(lead, company, toit=toit), imposes)
 
 
 def _perimee(version):
@@ -118,6 +187,48 @@ def _perimee(version):
     mettre_en_file(version.company_id, lead_id=version.lead_id,
                    calepinage_id=None if version.lead_id else version.calepinage_id, origine='filet', champs=[])
     return True
+
+
+#: Relecture E6 m3 — une version rangée AVANT les verdicts (ACAL2016) : rien n'est jugé.
+MOTIF_A_RECALCULER = 'conception à recalculer'
+
+
+def verdicts_pour_le_calepinage(company, conception, pose):
+    """Relecture E6 M4 + m3 — ``(verdicts | None, note, a_recalculer)`` que « Prêt à
+    envoyer ? » montre pour la POSE ``pose`` (``{nb_panneaux, kwc, ratio, onduleur_produit,
+    chaines}``, lue par le calepinage) face à la conception servie ``conception`` (forme du
+    contrat) :
+
+    * même nombre de panneaux : le verdict RANGÉ, tel quel ;
+    * nombre différent (au niveau 14 la pose n'est pas une entrée du moteur) : LA MÊME
+      règle, par la porte du moteur (``porte_calepinage.verdicts_electriques``, celle qui a
+      produit le verdict rangé — aucune seconde règle, aucun seuil copié), pour le compte
+      et le matériel de la pose ; ``note`` dit pour quoi il est jugé ;
+    * version rangée sans ``verdicts`` (d'avant leur calcul) : ``a_recalculer`` et UNE
+      relance part en file (le filet ADEV140) — jamais « Compléter la fiche technique »."""
+    from .conception.porte_calepinage import verdicts_electriques
+    from .conception.receivers import mettre_en_file
+
+    valeurs = (conception.get('valeurs') or {}).get(conception.get('option_retenue')) or {}
+    if 'verdicts' not in valeurs:
+        if conception.get('lead'):
+            mettre_en_file(company.pk, lead_id=conception['lead'], origine='filet', champs=[])
+        return None, '', True
+    verdicts = (valeurs.get('verdicts') or {}).get('valeur') or {}
+    nombre, posees = (valeurs.get('nb_panneaux') or {}).get('valeur'), (pose or {}).get('nb_panneaux')
+    if not posees or nombre is None or posees == nombre or (pose or {}).get('ratio') is None:
+        return verdicts, '', False
+    onduleurs = (valeurs.get('onduleurs') or {}).get('valeur') or []
+    produit = pose.get('onduleur_produit')
+    lignes = ([o for o in onduleurs if o.get('produit') == produit]
+              or ([{'produit': produit, 'designation': None, 'quantite': 1}] if produit else onduleurs))
+    design = {'ratio_dc_ac': pose['ratio'], 'chaines': pose.get('chaines') or [],
+              'materiel': {'onduleur': {'designation': lignes[0].get('designation') if lignes else None}}}
+    jugees = verdicts_electriques(company, design, lignes, pose.get('kwc'))
+    if jugees is None:
+        return verdicts, '', False
+    return (dict(jugees, non_calcule=None),
+            'jugé pour la pose : %d panneaux — la conception du lead en compte %d' % (posees, nombre), False)
 
 
 def _devis_envoye_du_lead(version):
@@ -149,7 +260,7 @@ def manques_du_moteur(lead):
                       if m['champ'] not in vus]
 
 
-def ecart_devis(devis):
+def ecart_devis(devis, *, retenue=None):
     """``[{valeur, devis, conception, devis_ref, reviser_possible,
     mise_a_jour_proposee, courante_refusee}]`` — chaque valeur de
     :data:`VALEURS_COMPAREES` qui diffère entre ``devis`` (lu tel qu'il est
@@ -161,16 +272,25 @@ def ecart_devis(devis):
     pour ce devis (actif, pas un brouillon — ``domain/revision.py``) ;
     ``mise_a_jour_proposee`` (ADEV148) : un brouillon actif RETOUCHÉ, né d'une
     version plus ancienne, propose « Mettre à jour » (rien n'est écrit ici).
-    Vide sans devis, sans lead, sans conception."""
+    Vide sans devis, sans lead, sans conception. ``retenue`` : la conception retenue du
+    devis déjà lue par l'appelant (relecture E5, coût des requêtes : jamais relue)."""
+    from django.db.models import Q
+
     from .models import ConceptionLead, Devis
     from .selectors_calepinage import conception_retenue_du_devis
 
     if devis is None or not devis.lead_id:
         return []
-    versions = ConceptionLead.objects.filter(company_id=devis.company_id, lead_id=devis.lead_id)
-    version = versions.filter(etat=ConceptionLead.Etat.COMPLET).order_by('-version').first()
-    courante_refusee = versions.filter(courante=True, etat=ConceptionLead.Etat.REFUS).exists()
-    retenue = conception_retenue_du_devis(devis) if version is not None else None
+    # UNE lecture : la dernière version complète et la courante (relecture E5, coût des requêtes).
+    lues = list(ConceptionLead.objects.filter(company_id=devis.company_id, lead_id=devis.lead_id)
+                .filter(Q(etat=ConceptionLead.Etat.COMPLET) | Q(courante=True))
+                .only('pk', 'etat', 'courante', 'version', 'valeurs', 'option_retenue').order_by('-version'))
+    version = next((v for v in lues if v.etat == ConceptionLead.Etat.COMPLET), None)
+    courante_refusee = any(v.courante and v.etat == ConceptionLead.Etat.REFUS for v in lues)
+    if version is not None and retenue is None:
+        retenue = conception_retenue_du_devis(devis)
+    elif version is None:
+        retenue = None
     if not retenue:
         return []
     module = retenue.get('module') or {}

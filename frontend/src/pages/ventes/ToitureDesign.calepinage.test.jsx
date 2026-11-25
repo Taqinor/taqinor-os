@@ -715,6 +715,24 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     expect(document.getElementById('rp9-address').value).toBe('')
   })
 
+  /* Relecture M1 — le bandeau « Site non localisé » imprime le site que le SERVEUR prendra
+     (`calepinage.site_de_repli`) ; un client sans lead n'a pas de `client_ville` : avant, le
+     bandeau disait « refusé » alors que le serveur calculait sur la ville de l'adresse. */
+  it.each([
+    ['Casablanca (ville de référence)', /sinon le calcul se fait sur Casablanca \(ville de référence\)\./],
+    [null, /sinon le calcul est refusé\./],
+  ])('site non localisé : le bandeau dit ce que fera le serveur (%s)', async (siteDeRepli, attendu) => {
+    initRoofToolPro8.mockImplementation((options) => { options?.suiviSite?.ecouter?.(null) })
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: {
+      ...CTX_VIDE, carte: CTX.carte,
+      calepinage: { ...CTX_VIDE.calepinage, client_ville: '', site_de_repli: siteDeRepli },
+    } })
+
+    rendreCalepinage(CTX_VIDE.calepinage.id)
+
+    expect(await screen.findByText(attendu)).toBeInTheDocument()
+  })
+
   /* ACAL399 — barre d'enregistrement collée en bas : indicateur d'état + bouton. */
   describe('ACAL399 — barre d’enregistrement', () => {
     const bootHydrate = () => initRoofToolPro8.mockImplementation((options) => {
@@ -742,6 +760,26 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
       await userEvent.click(bouton)
       await waitFor(() => expect(screen.getByTestId('cal-etat-enregistrement'))
         .toHaveTextContent(/Enregistré à \d{2}:\d{2}/))
+    })
+
+    it('T4-U4-015 — l’heure lue est l’heure SERVEUR de la version enregistrée, la même dans la session et à la réouverture', async () => {
+      // La version servie a été enregistrée à 16:10 (heure serveur) ; la réponse de l'enregistrement arrive à 16:20 (en-tête
+      // `Date`). Un renvoi à l'identique (« Aucun changement ») n'écrit aucune version : la barre et les Documents disent
+      // 16:10 — comme à la réouverture —, jamais l'heure du clic.
+      const jour = new Date()
+      const a = (h, m) => new Date(jour.getFullYear(), jour.getMonth(), jour.getDate(), h, m).toISOString()
+      calepinageApi.calepinages.designContext.mockResolvedValue(
+        reponseContrat('calepinage', 'calepinage_design_context'))
+      calepinageApi.calepinages.get.mockResolvedValue({ data: { versions: { derniere_le: a(16, 10) } } })
+      calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
+        { data: { inchange: true, version: null }, headers: { date: a(16, 20) } })
+      bootHydrate()
+      rendreCalepinage(CTX.calepinage.id)
+      await waitFor(() => expect(screen.getByTestId('cal-etat-enregistrement')).toHaveTextContent('Enregistré à 16:10'))
+      await userEvent.click(screen.getByRole('button', { name: /Enregistrer le calepinage/ }))
+      await waitFor(() => expect(calepinageApi.calepinages.get.mock.calls.length).toBeGreaterThan(1))
+      await waitFor(() => expect(screen.getByTestId('cal-etat-enregistrement')).toHaveTextContent('Enregistré à 16:10'))
+      expect(screen.getByTestId('cal-etat-enregistrement')).not.toHaveTextContent('16:20')
     })
 
     it('lecture seule ⇒ pas de barre', async () => {
