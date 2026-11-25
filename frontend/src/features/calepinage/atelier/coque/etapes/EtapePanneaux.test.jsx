@@ -319,6 +319,22 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(lien).toHaveAttribute('href', '/crm/leads/42')
   })
 
+  // T4-X9-013 — calepinage SANS lead : « Ville inconnue du moteur : renseigner la ville ou le point GPS du lead. » sous
+  // « Couvrir la facture », alors qu'aucun lead n'existe (refus du moteur sur la conception du calepinage porteur).
+  it('T4-X9-013 — sans lead : aucune phrase qui demande de remplir le lead (refus et motif du moteur tus)', async () => {
+    servir()
+    const VILLE = 'Ville inconnue du moteur : renseigner la ville ou le point GPS du lead.'
+    calepinageApi.calepinages.designContext.mockResolvedValue({
+      data: { calepinage: { lead: null }, consommation_lead: { facture_mensuelle_mad: null, motif: VILLE } },
+    })
+    calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: { cible_factures: null, refus: VILLE } })
+    rendre()
+    await waitFor(() => expect(calepinageApi.calepinages.cibleFactures).toHaveBeenCalled())
+    await screen.findByTestId('cal-panneaux-option-facture')
+    expect(screen.queryByText(/Ville inconnue du moteur/)).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Renseigner la facture du lead' })).toBeNull()
+  })
+
   it('ni l’une ni l’autre : aucune carte choisie et « Pose actuelle : N panneaux · kWc »', async () => {
     monterConstructeur({ besoin: '30', panneaux: '30 × 580 W', kwc: '17,40 kWc', prod: '28 700 kWh/an', cover: '431 %',
       note: '30 posés — il reste de la place sur le toit, laissée libre.' })

@@ -126,6 +126,17 @@ describe('F6 — cadrage du toit par l’atelier ERP', () => {
   })
 })
 
+/* T4-X9-013 — le bandeau d'un calepinage SANS lead disait « Ville inconnue du moteur : renseigner la ville ou le point
+   GPS du lead. » (refus servi du moteur, `design-context` › `cible.refus`) : sans lead, aucune phrase sur une conception. */
+describe('T4-X9-013 — libelleCibleEstimee : sans lead, rien', () => {
+  it('refus servi : dit avec un lead, tu sans lead', async () => {
+    const { libelleCibleEstimee } = await import('./contexteAtelier')
+    const cible = { source: 'factures', panneaux: 0, refus: 'Ville inconnue du moteur : renseigner la ville ou le point GPS du lead.' }
+    expect(libelleCibleEstimee(cible)).toBe(cible.refus)
+    expect(libelleCibleEstimee(cible, { sansLead: true })).toBeNull()
+  })
+})
+
 /* T4-X2-006 — calepinage SANS lead, enregistré PUIS simulé (simulation automatique, partie après l'enregistrement) : la
    vue Expert ne montrait que l'estimation de l'atelier (« ≈ 21 735 kWh/an (estimation) ») et le Total « production au
    prochain enregistrement », jamais les 27 197 kWh simulés. La lecture est refaite tant que la simulation tourne, et la

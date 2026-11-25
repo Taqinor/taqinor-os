@@ -1036,7 +1036,8 @@ function AtelierToiture({
   // « aucune » n'affiche rien. Toute translation est décidée par le SERVEUR.
   // ACAL195 — refus nommé du moteur, affiché tel quel. ACAL1805 — une cible estimée SANS refus n'ouvre plus de bande
   // (absente des maquettes v2) : elle se lit dans la pilule « Besoin d'après la facture » de l'étape Toit.
-  const cibleEstimee = estCalepinage && contexte?.cible?.refus ? libelleCibleEstimee(contexte?.cible) : null
+  const cibleEstimee = estCalepinage && contexte?.cible?.refus
+    ? libelleCibleEstimee(contexte?.cible, { sansLead: !contexte?.calepinage?.lead }) : null // T4-X9-013
   const toitureLead = estCalepinage ? phraseToitureLead(contexte?.toiture_lead) : null // R2-15 — lecture seule
   const deriveRepere = estCalepinage ? contexte?.geometrie?.derive?.etat ?? null : null
   const ecartRepere = libelleEcartRepere(contexte?.geometrie?.ecart_m)
