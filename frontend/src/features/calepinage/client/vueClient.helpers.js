@@ -5,6 +5,9 @@ import { memeTaille } from '@roofpro/tailleConception'
 import { formatNumber } from '../../../lib/format'
 import { useLectureServie } from '../atelier/coque/etapes/panneaux/lectures'
 
+/** T4-X8-007 — l'état d'adresse posé par le relevé (« Voir en 3D ») : la vue client sait qu'on vient de lui. */
+export const DEPUIS_RELEVE = { depuis: 'releve' }
+
 /* ============================================================================
    « MONTRER AU CLIENT » — lectures pures (maquette TelephoneClient).
    Chaque chiffre vient du calepinage ENREGISTRÉ (son document) ou de son résultat

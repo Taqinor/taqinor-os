@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import { Icone } from '../atelier/coque/primitives'
+import { DEPUIS_RELEVE } from './vueClient.helpers'
 
 /* ============================================================================
    « MONTRER AU CLIENT » — LES PIÈCES PARTAGÉES de la vue 3D (l'atelier en mode
@@ -161,9 +162,6 @@ export function TuilesClient({ tuiles, ville, bureau = false }) {
     </>
   )
 }
-
-/** T4-X8-007 — l'état d'adresse posé par le relevé (« Voir en 3D ») : la vue client sait qu'on vient de lui. */
-export const DEPUIS_RELEVE = { depuis: 'releve' }
 
 /** Le pied : « Retour » là d'où l'on vient (T4-X8-007 — du relevé : « Retour au relevé » ; de l'atelier ou d'une adresse
     ouverte directement : « Retour à l'atelier », au téléphone comme au bureau) + « Envoyer le lien » doré, désactivé avec

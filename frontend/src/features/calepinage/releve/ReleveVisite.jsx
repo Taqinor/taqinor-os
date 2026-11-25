@@ -7,8 +7,8 @@ import { demarrerCapteurs, lireInclinaison, lireVisee, arreter as arreterCapteur
 import { messageRefus, refusServeur } from '../commun/refusServeur'
 import { lireConflit } from '../conflitEcriture'
 import { Icone } from '../atelier/coque/primitives'
-import { DEPUIS_RELEVE, PlanDessus } from '../client/partiesClient'
-import { planDessus } from '../client/vueClient.helpers'
+import { PlanDessus } from '../client/partiesClient'
+import { DEPUIS_RELEVE, planDessus } from '../client/vueClient.helpers'
 import { champsDuReleve, corpsDuReleve, validerAvantEnvoi } from './corpsReleve'
 import {
   LARGEUR, LONGUEUR, avecMesure, chainesSaisies, dateDuJour, mesureDesChaines, mesureDuCapteur,
