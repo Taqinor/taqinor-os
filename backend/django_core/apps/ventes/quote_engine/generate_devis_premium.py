@@ -391,7 +391,7 @@ DELAI_INSTALLATION = ""
 # client d'une économie estimée sur un tarif de référence. Défaut False =
 # rendu inchangé pour tout appel sans la clé.
 SAVINGS_ESTIMATED = False
-ECONOMIES_SANS_ANCRAGE = GARANTIES_PAR_OPTION = UNE_OPTION_SANS_NUMERO = False  # ACAL1033 (D-ACAL-45) — niveau 15 sans donnée réelle : une page sans économie ; T4-X1-002 — niveau 15
+ECONOMIES_SANS_ANCRAGE = RENDUS_2511 = UNE_OPTION_SANS_NUMERO = False  # ACAL1033 (D-ACAL-45) — niveau 15 sans donnée réelle : une page sans économie ; T4-X1-002 — niveau 15
 
 # ── DC1 — identité société (multi-tenant) ──────────────────────────────────────
 # Chaque littéral d'identité (nom de marque du footer, coordonnées, ligne légale
@@ -1930,8 +1930,7 @@ def page1():
             f'{eaa_mad}{_L("lg_par_an")}</span>{_mt_src}\n'
             '      </div>')
     # Scenario-aware option card visibility
-    _s1   = 'display:none;' if SCENARIO == 'Avec batterie' else ''
-    _s2   = 'display:none;' if SCENARIO == 'Sans batterie' else ''
+    _s1, _s2 = ('display:none;' if SCENARIO == 'Avec batterie' else ''), ('display:none;' if SCENARIO == 'Sans batterie' else '')
     _both = not _s1 and not _s2
     # Espacement entre cartes par MARGE + padding droit du conteneur
     # compensé : WeasyPrint ne déduit pas l'espacement des enfants flex:1.
@@ -2324,8 +2323,7 @@ def page2(sans_items, img_roi, img_mon):
                     ancres=None if SCENARIO == 'Sans batterie' else "avec")
 
     # Scenario visibility
-    _p2_s1 = 'display:none;' if SCENARIO == 'Avec batterie' else ''
-    _p2_s2 = 'display:none;' if SCENARIO == 'Sans batterie' else ''
+    _p2_s1, _p2_s2 = ('display:none;' if SCENARIO == 'Avec batterie' else ''), ('display:none;' if SCENARIO == 'Sans batterie' else '')
 
     # ── Dynamic table row scaling: many rows would squeeze the charts off the page ──
     if SCENARIO == 'Avec batterie':
@@ -2631,6 +2629,8 @@ def page3():
         # (``builder.repartition_paiement``). Plus d'arrondi au millier ni de
         # reliquat tronqué ici. Rendu seul : aucun statut touché (règle #4).
         _rep = (MONTANTS_TRANCHES or {}).get(_branche) or {}
+        from .legacy_etude import lignes_echeancier_option  # D-ACAL-116 — import local (cycle)
+        _par_option = lignes_echeancier_option()  # une ligne d'échéances par option, nommée
         _acompte = _rep.get('acompte', 0)
         _materiel = _rep.get('materiel', 0)
         _solde = _rep.get('solde', 0)
@@ -2644,7 +2644,7 @@ def page3():
             return (
                 f'<div style="flex:1;text-align:center;padding:6px 5px;background:white;border-radius:8px;border:1px solid {CG2};">'
                 f'<div class="serif" style="font-size:22px;font-weight:800;color:{CA};line-height:1.0;">{pct}%</div>'
-                f'<div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">{_fmt2_mad(montant)}</div>'
+                + ('' if _par_option else f'<div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">{_fmt2_mad(montant)}</div>') +
                 f'<div style="font-size:9px;color:{CG4};margin-top:2px;">{label}</div>'
                 f'</div>')
 
@@ -2675,7 +2675,7 @@ def page3():
             f'</div>'
             f'<div style="display:flex;gap:6px;margin-bottom:3px;">'
             f'{_boxes}'
-            f'</div>'
+            f'</div>{_par_option or ""}'
             # Note
             f'<div style="font-size:7pt;color:{CG4};font-style:italic;margin-bottom:3px;">'
             f'{_L("lg_pay_note")}'
@@ -3796,8 +3796,8 @@ def apply_quote_data(data: dict) -> None:
     _dl = data.get("delais") or {}
     from .residential.theme import delai_doc as _dd  # RPDF : délais dans la langue du document
     DELAI_VISITE, DELAI_INSTALLATION = (_dd(data, (_dl.get(k) or "").strip()) for k in ("visite_technique", "installation"))
-    global SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE, GARANTIES_PAR_OPTION, UNE_OPTION_SANS_NUMERO  # M10 ; ACAL1033 ; niveau 15 ; D-ACAL-114
-    SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE, GARANTIES_PAR_OPTION, UNE_OPTION_SANS_NUMERO = bool(data.get("savings_estimated")), _economies_sans_ancrage(data), bool(data.get("regles_pose_reelle") or data.get("phrases_pdf_2511")), bool(data.get("phrases_pdf_2511")) and data.get("scenario") in ("Avec batterie", "Sans batterie")
+    global SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE, RENDUS_2511, UNE_OPTION_SANS_NUMERO  # M10 ; ACAL1033 ; niveau 15 ; D-ACAL-114
+    SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE, RENDUS_2511, UNE_OPTION_SANS_NUMERO = bool(data.get("savings_estimated")), _economies_sans_ancrage(data), bool(data.get("regles_pose_reelle") or data.get("phrases_pdf_2511")), bool(data.get("phrases_pdf_2511")) and data.get("scenario") in ("Avec batterie", "Sans batterie")
     # XSAL14/XSAL5 — structure (sections/notes) + options proposées (rendu seul,
     # hors totaux). Absents → byte-identique. Escapés à l'ingestion (ERR37).
     global LIGNES_STRUCTURE, OPTIONS_PROPOSEES

@@ -66,6 +66,35 @@ def _html(**extra):
     return rrender.build_html(renderer._augment(_data(**extra)))
 
 
+def _texte(html):
+    import re
+    from html import unescape
+    t = re.sub(r"<style>.*?</style>", " ", html, flags=re.S)
+    t = unescape(re.sub(r"<[^>]+>", " ", t))
+    return re.sub(r"\s+", " ", t.replace("\u202f", " ").replace("\xa0", " "))
+
+
+class EcheancierParOptionD116(SimpleTestCase):
+    """D-ACAL-116 (fondateur 25/11 « One schedule per option ») — Devis final
+    d'un devis à DEUX options, nouveaux rendus (``phrases_pdf_2511``) : une
+    ligne d'échéances par option, nommée ; sans le drapeau (envoyé avant) ou
+    sur un devis à une option, le bloc d'hier."""
+
+    def test_deux_options_deux_lignes_nommees(self):
+        t = _texte(_html(devis_final=True, montants_tranches=MONTANTS, phrases_pdf_2511=True))
+        self.assertIn("Sans batterie : 18 518,52 / 37 037,04 / 6 172,84 MAD", t)
+        self.assertIn("Avec batterie : 29 629,63 / 59 259,26 / 9 876,54 MAD", t)
+        self.assertIn("30% ", t)
+
+    def test_envoye_avant_ou_une_option_inchange(self):
+        self.assertEqual(_html(devis_final=True, montants_tranches=MONTANTS),
+                         _html(devis_final=True, montants_tranches=MONTANTS, phrases_pdf_2511=False))
+        self.assertNotIn("Sans batterie : ", _texte(_html(devis_final=True, montants_tranches=MONTANTS)))
+        un = dict(devis_final=True, montants_tranches=MONTANTS, scenario="Avec batterie",
+                  deux_options=False)
+        self.assertEqual(_html(**un), _html(phrases_pdf_2511=True, **un))
+
+
 class LeFrancaisParDefautEstInchange(SimpleTestCase):
     def test_langue_fr_explicite_octet_identique(self):
         self.assertEqual(
@@ -215,6 +244,15 @@ class PaginationReelle(SimpleTestCase):
         n, texte = self._pages(devis_final=True, montants_tranches=MONTANTS)
         self.assertEqual(n, 3)
         self.assertIn("Bon pour accord", texte)
+
+    def test_d_acal_116_deux_echeanciers_trois_pages(self):
+        # D-ACAL-116 — condition du fondateur : aucune page ajoutée.
+        for langue in ("fr", "en", "ar"):
+            with self.subTest(langue=langue):
+                n, texte = self._pages(devis_final=True, montants_tranches=MONTANTS,
+                                       phrases_pdf_2511=True, langue_sortie=langue,
+                                       libelles_document=i18n_labels.libelles(langue))
+                self.assertEqual(n, 3)
 
     def test_sans_graphe_mensuel_trois_pages(self):
         n, _ = self._pages(show_monthly=False)

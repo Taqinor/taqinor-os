@@ -213,6 +213,31 @@ class RpdfLegacyMiseEnPageTest(SimpleTestCase):
                     self.assertEqual(len(HTML(string=html).render().pages),
                                      attendu)
 
+    def test_d_acal_116_deux_echeanciers_aucune_page_ajoutee(self):
+        """D-ACAL-116 — Devis final à deux options, nouveaux rendus : une ligne
+        d'échéances par option ; condition du fondateur, AUCUNE page ajoutée
+        (format avec étude et sans, fr/en/ar)."""
+        from weasyprint import HTML
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        from apps.ventes.quote_engine import i18n_labels
+        from apps.ventes.tests import _moteur_fixtures as F
+        tranches = {b: {"acompte": a, "materiel": m, "solde": s, "pct_a": 30, "pct_m": 60,
+                        "pct_s": 10, "solde2": m + s, "pct_s2": 70}
+                    for b, a, m, s in (("sans", 18518.52, 37037.04, 6172.84),
+                                       ("avec", 29629.63, 59259.26, 9876.54))}
+        for etude, attendu in ((None, 3), ({'production_annuelle': 25415}, 4)):
+            for langue in ('fr', 'en', 'ar'):
+                with self.subTest(etude=bool(etude), langue=langue):
+                    d = F.donnees_legacy(
+                        pdf_mode='full', include_etude=True, langue_sortie=langue,
+                        libelles_document=i18n_labels.libelles(langue), devis_final=True,
+                        montants_tranches=tranches, phrases_pdf_2511=True)
+                    if etude:
+                        d['etude'] = etude
+                    html = G.render_html_for(d)
+                    self.assertIn("Sans batterie : ", html)
+                    self.assertEqual(len(HTML(string=html).render().pages), attendu)
+
     @staticmethod
     def _page2(html):
         from apps.ventes.quote_engine import generate_devis_premium as G
